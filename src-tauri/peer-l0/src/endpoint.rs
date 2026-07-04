@@ -16,12 +16,17 @@ use tracing::{debug, info};
 /// "discovery" is called "address lookup": each backend is added via
 /// `Builder::address_lookup` and the endpoint combines them in an internal
 /// `AddressLookupServices`, so layering several is purely ADDITIVE.
-/// - `Both` (default): n0 DNS **and** the BitTorrent Mainline DHT, concurrently. n0 keeps
-///   working, the DHT is layered on for decentralized resolution.
+/// - `Both` (default): n0 DNS, the BitTorrent Mainline DHT **and** LAN mDNS, concurrently.
+///   n0 keeps working, the DHT is layered on for decentralized WAN resolution, and mDNS
+///   makes same-subnet peers resolve instantly (and offline).
 /// - `Dht`: Mainline DHT ONLY (no n0 anywhere), the zero-n0 path exercised by GATE
 ///   IND-1. Bootstrap = 20-year-old BitTorrent infra, neither the owner nor a single
 ///   operator.
 /// - `N0`: legacy n0-only (the pre-WI-5a behaviour).
+/// - `Lan`: LAN-local mDNS ONLY (no n0, no DHT). Discovery stays entirely on the local
+///   subnet, so nothing is published to any WAN service. This is the fully-offline,
+///   firewall/sandbox-friendly path: two devices on the same network find each other with
+///   zero internet and zero relay. `Both` layers mDNS on top of n0 + DHT additively.
 /// - `None`: NO discovery service at all (privacy opt-out). The endpoint neither
 ///   publishes its NodeId to n0 DNS / pkarr / the Mainline DHT nor resolves peers
 ///   from them, so the long-term AFID is no longer enumerable on the public DHT
@@ -35,6 +40,7 @@ pub enum DiscoveryMode {
     Dht,
     #[default]
     Both,
+    Lan,
     None,
 }
 
@@ -73,13 +79,17 @@ pub struct PeerEndpointConfig {
 /// `Builder::address_lookup`. The Mainline DHT backend moved out of iroh's
 /// `discovery-pkarr-dht` cargo feature into the `iroh-mainline-address-lookup` crate
 /// (`DhtAddressLookup`, publishing on by default); adding it alongside the n0 services is
-/// the same ADDITIVE concurrent layering as before.
+/// the same ADDITIVE concurrent layering as before. The LAN mDNS backend lives in the
+/// `iroh-mdns-address-lookup` crate (`MdnsAddressLookup`); its builder implements the same
+/// `AddressLookupBuilder` trait, so it plugs into `Builder::address_lookup` exactly like
+/// the others (iroh finalizes it with the endpoint id at build time).
 fn apply_discovery(
     builder: iroh::endpoint::Builder,
     mode: DiscoveryMode,
 ) -> iroh::endpoint::Builder {
     use iroh::address_lookup::{DnsAddressLookup, PkarrPublisher};
     use iroh_mainline_address_lookup::DhtAddressLookup;
+    use iroh_mdns_address_lookup::MdnsAddressLookup;
     match mode {
         DiscoveryMode::N0 => builder
             .address_lookup(PkarrPublisher::n0_dns())
@@ -88,7 +98,10 @@ fn apply_discovery(
         DiscoveryMode::Both => builder
             .address_lookup(PkarrPublisher::n0_dns())
             .address_lookup(DnsAddressLookup::n0_dns())
-            .address_lookup(DhtAddressLookup::builder()),
+            .address_lookup(DhtAddressLookup::builder())
+            .address_lookup(MdnsAddressLookup::builder()),
+        // LAN-only: mDNS on the local subnet, nothing published to n0 or the DHT.
+        DiscoveryMode::Lan => builder.address_lookup(MdnsAddressLookup::builder()),
         // Privacy opt-out: add no address-lookup service, so the NodeId is never
         // published to n0/DHT and no peer is resolved from them.
         DiscoveryMode::None => builder,

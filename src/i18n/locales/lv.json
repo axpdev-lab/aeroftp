@@ -5215,7 +5215,9 @@
                 "rotateConfirm": "Tas aizstāj jūsu AeroFTP-ID. Jūsu pašreizējais ID, visas koplietošanas saites un visi jūsu apkalpotie drive pārstās darboties, un jaunais ID būs atkārtoti jākoplieto ar draugiem. Šo darbību nevar atsaukt.",
                 "rotateConfirmYes": "Nomainīt tagad",
                 "rotateCancel": "Atcelt",
-                "rotateDone": "Jauns AeroFTP-ID:"
+                "rotateDone": "Jauns AeroFTP-ID:",
+                "discovery_lan": "Tikai LAN (mDNS)",
+                "discovery_lan_desc": "Atklāšana paliek lokālajā tīklā, izmantojot mDNS; nekas netiek publicēts n0 vai publiskajā DHT. Darbojas pilnībā bezsaistē: divas ierīces vienā tīklā atrod viena otru bez interneta un bez retranslatora."
             }
         },
         "extractWindow": {

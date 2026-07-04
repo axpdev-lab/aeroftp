@@ -158,7 +158,7 @@ fn endpoint_config(custom_relay_urls: Option<Vec<String>>) -> PeerEndpointConfig
 /// process.
 static DISCOVERY_PREF: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
 
-/// Map a persisted `discovery_mode` string (`both|dht|n0|none`) onto the process
+/// Map a persisted `discovery_mode` string (`both|dht|n0|lan|none`) onto the process
 /// preference. Unknown values clear the preference (fall back to env / default).
 /// The runtime calls this at receiver start and whenever the setting changes.
 pub fn set_discovery_pref(mode: &str) {
@@ -167,6 +167,7 @@ pub fn set_discovery_pref(mode: &str) {
         "dht" => 2,
         "n0" => 3,
         "none" => 4,
+        "lan" => 5,
         _ => 0,
     };
     DISCOVERY_PREF.store(code, std::sync::atomic::Ordering::Relaxed);
@@ -174,10 +175,10 @@ pub fn set_discovery_pref(mode: &str) {
 
 /// WI-5a independence seam, extended for the v4.1.0 discovery opt-out. Selection
 /// precedence: the `AEROFTP_PEER_DISCOVERY` env var wins when set (`dht` | `n0` |
-/// `both` | `none`, the GATE IND-1 / dev lever); else the persisted per-user
+/// `both` | `lan` | `none`, the GATE IND-1 / dev lever); else the persisted per-user
 /// preference set via [`set_discovery_pref`]; else the default `both` (n0 DNS +
-/// Mainline DHT, additive). An unknown value at any level falls through rather
-/// than failing, so a stray value never breaks a transfer.
+/// Mainline DHT + LAN mDNS, additive). An unknown value at any level falls through
+/// rather than failing, so a stray value never breaks a transfer.
 fn resolve_discovery_mode() -> DiscoveryMode {
     match std::env::var("AEROFTP_PEER_DISCOVERY")
         .ok()
@@ -189,6 +190,7 @@ fn resolve_discovery_mode() -> DiscoveryMode {
         Some("dht") => return DiscoveryMode::Dht,
         Some("n0") => return DiscoveryMode::N0,
         Some("both") => return DiscoveryMode::Both,
+        Some("lan") => return DiscoveryMode::Lan,
         Some("none") => return DiscoveryMode::None,
         _ => {}
     }
@@ -197,6 +199,7 @@ fn resolve_discovery_mode() -> DiscoveryMode {
         2 => DiscoveryMode::Dht,
         3 => DiscoveryMode::N0,
         4 => DiscoveryMode::None,
+        5 => DiscoveryMode::Lan,
         _ => DiscoveryMode::Both,
     }
 }

@@ -5215,7 +5215,9 @@
                 "rotateConfirm": "Bu, AeroFTP-ID'nizi değiştirir. Geçerli kimliğiniz, her paylaşım bağlantısı ve sunduğunuz her sürücü çalışmayı durdurur ve yeni kimliği arkadaşlarınızla yeniden paylaşmanız gerekir. Bu işlem geri alınamaz.",
                 "rotateConfirmYes": "Şimdi döndür",
                 "rotateCancel": "İptal",
-                "rotateDone": "Yeni AeroFTP-ID:"
+                "rotateDone": "Yeni AeroFTP-ID:",
+                "discovery_lan": "Yalnızca LAN (mDNS)",
+                "discovery_lan_desc": "Keşif, mDNS aracılığıyla yerel ağınızda kalır; n0'a veya genel DHT'ye hiçbir şey yayınlanmaz. Tamamen çevrimdışı çalışır: aynı ağdaki iki cihaz internet ve aktarıcı olmadan birbirini bulur."
             }
         },
         "extractWindow": {

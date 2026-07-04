@@ -5215,7 +5215,9 @@
                 "rotateConfirm": "To zamenja vaš AeroFTP-ID. Vaš trenutni ID, vse povezave za skupno rabo in vsi pogoni, ki jih strežete, prenehajo delovati, novi ID pa boste morali znova deliti s prijatelji. Tega ni mogoče razveljaviti.",
                 "rotateConfirmYes": "Zamenjaj zdaj",
                 "rotateCancel": "Prekliči",
-                "rotateDone": "Nov AeroFTP-ID:"
+                "rotateDone": "Nov AeroFTP-ID:",
+                "discovery_lan": "Samo LAN (mDNS)",
+                "discovery_lan_desc": "Odkrivanje ostane v lokalnem omrežju prek mDNS; nič se ne objavi v n0 ali javni DHT. Deluje popolnoma brez povezave: napravi v istem omrežju se najdeta brez interneta in brez releja."
             }
         },
         "extractWindow": {

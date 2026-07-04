@@ -5234,7 +5234,9 @@
                 "rotateConfirm": "Dette erstatter AeroFTP-ID-en din. Den nåværende ID-en din, alle delingslenker og alle drive du betjener slutter å virke, og du må dele den nye ID-en med vennene dine på nytt. Dette kan ikke angres.",
                 "rotateConfirmYes": "Roter nå",
                 "rotateCancel": "Avbryt",
-                "rotateDone": "Ny AeroFTP-ID:"
+                "rotateDone": "Ny AeroFTP-ID:",
+                "discovery_lan": "Kun LAN (mDNS)",
+                "discovery_lan_desc": "Oppdagelse holder seg på det lokale nettverket via mDNS; ingenting publiseres til n0 eller det offentlige DHT-et. Fungerer helt frakoblet: to enheter på samme nettverk finner hverandre uten internett og uten relé."
             }
         },
         "extractWindow": {

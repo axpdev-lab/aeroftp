@@ -5215,7 +5215,9 @@
                 "rotateConfirm": "Detta ersätter ditt AeroFTP-ID. Ditt nuvarande ID, alla delningslänkar och alla enheter du betjänar slutar fungera, och du måste dela det nya ID:t med dina vänner igen. Detta kan inte ångras.",
                 "rotateConfirmYes": "Rotera nu",
                 "rotateCancel": "Avbryt",
-                "rotateDone": "Nytt AeroFTP-ID:"
+                "rotateDone": "Nytt AeroFTP-ID:",
+                "discovery_lan": "Endast LAN (mDNS)",
+                "discovery_lan_desc": "Upptäckt sker enbart i ditt lokala nätverk via mDNS; inget publiceras till n0 eller den publika DHT:n. Fungerar helt offline: två enheter i samma nätverk hittar varandra utan internet och utan relä."
             }
         },
         "extractWindow": {

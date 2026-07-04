@@ -5234,7 +5234,9 @@
                 "rotateConfirm": "Þetta kemur í stað AeroFTP-ID-sins þíns. Núverandi auðkenni þitt, hver deilihlekkur og hvert drif sem þú þjónar hætta að virka, og þú verður að deila nýja auðkenninu með vinum þínum aftur. Þetta er ekki hægt að afturkalla.",
                 "rotateConfirmYes": "Skipta núna",
                 "rotateCancel": "Hætta við",
-                "rotateDone": "Nýtt AeroFTP-ID:"
+                "rotateDone": "Nýtt AeroFTP-ID:",
+                "discovery_lan": "Aðeins staðarnet (mDNS)",
+                "discovery_lan_desc": "Uppgötvun helst á staðarnetinu þínu í gegnum mDNS; ekkert er birt á n0 eða opinbera DHT-inu. Virkar algjörlega án nettengingar: tvö tæki á sama neti finna hvort annað án internets og án endurvarpa."
             }
         },
         "extractWindow": {

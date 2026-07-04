@@ -5215,7 +5215,9 @@
                 "rotateConfirm": "See asendab teie AeroFTP-ID. Teie praegune ID, iga jagamislink ja iga ketas, mida te teenindate, lakkavad töötamast, ning peate uue ID uuesti oma sõpradega jagama. Seda ei saa tagasi võtta.",
                 "rotateConfirmYes": "Vaheta kohe",
                 "rotateCancel": "Tühista",
-                "rotateDone": "Uus AeroFTP-ID:"
+                "rotateDone": "Uus AeroFTP-ID:",
+                "discovery_lan": "Ainult LAN (mDNS)",
+                "discovery_lan_desc": "Avastamine jääb kohalikku võrku mDNS-i kaudu; midagi ei avaldata n0-le ega avalikule DHT-le. Töötab täielikult võrguühenduseta: kaks seadet samas võrgus leiavad teineteise ilma internetita ja ilma releeta."
             }
         },
         "extractWindow": {

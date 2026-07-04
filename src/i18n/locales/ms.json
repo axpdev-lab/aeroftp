@@ -5215,7 +5215,9 @@
                 "rotateConfirm": "Ini menggantikan AeroFTP-ID anda. ID semasa anda, setiap pautan kongsi dan setiap drive yang anda sajikan akan berhenti berfungsi, dan anda mesti berkongsi ID baharu dengan rakan anda semula. Ini tidak boleh dibatalkan.",
                 "rotateConfirmYes": "Putar sekarang",
                 "rotateCancel": "Batal",
-                "rotateDone": "AeroFTP-ID baharu:"
+                "rotateDone": "AeroFTP-ID baharu:",
+                "discovery_lan": "LAN sahaja (mDNS)",
+                "discovery_lan_desc": "Penemuan kekal dalam rangkaian setempat anda melalui mDNS; tiada apa-apa diterbitkan ke n0 atau DHT awam. Berfungsi sepenuhnya luar talian: dua peranti dalam rangkaian yang sama menemui satu sama lain tanpa internet dan tanpa geganti."
             }
         },
         "extractWindow": {

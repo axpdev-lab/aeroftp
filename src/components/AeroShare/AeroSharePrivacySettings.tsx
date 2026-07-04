@@ -34,7 +34,7 @@ import {
   type PeerDiscoveryMode,
 } from '../../utils/aeroShare';
 
-const DISCOVERY_MODES: PeerDiscoveryMode[] = ['both', 'dht', 'n0', 'none'];
+const DISCOVERY_MODES: PeerDiscoveryMode[] = ['both', 'dht', 'n0', 'lan', 'none'];
 
 export function AeroSharePrivacySettings() {
   const t = useTranslation();

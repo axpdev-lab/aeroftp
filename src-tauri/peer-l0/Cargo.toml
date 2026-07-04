@@ -42,6 +42,11 @@ iroh-gossip = "0.101"
 # publisher + resolver that `apply_discovery` adds via `Builder::address_lookup` for the
 # `Dht`/`Both` modes (n0 DNS stays via iroh's built-in PkarrPublisher/DnsAddressLookup).
 iroh-mainline-address-lookup = "0.4"
+# LAN (mDNS) address lookup: iroh 1.0's mDNS backend lives in this companion crate
+# (`MdnsAddressLookup`, swarm-discovery based). `apply_discovery` adds it via
+# `Builder::address_lookup` for the `Lan` (mDNS only, fully offline) and `Both` modes, so
+# two devices on the same subnet find each other with zero internet and zero relay.
+iroh-mdns-address-lookup = "0.4"
 blake3 = "1"
 bytes = "1"
 futures-lite = "2"

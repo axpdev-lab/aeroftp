@@ -5215,7 +5215,9 @@
                 "rotateConfirm": "Dit vervangt uw AeroFTP-ID. Uw huidige ID, elke deellink en elke drive die u aanbiedt stoppen met werken, en u moet de nieuwe ID opnieuw met uw vrienden delen. Dit kan niet ongedaan worden gemaakt.",
                 "rotateConfirmYes": "Nu roteren",
                 "rotateCancel": "Annuleren",
-                "rotateDone": "Nieuwe AeroFTP-ID:"
+                "rotateDone": "Nieuwe AeroFTP-ID:",
+                "discovery_lan": "Alleen LAN (mDNS)",
+                "discovery_lan_desc": "Detectie blijft via mDNS op je lokale netwerk; er wordt niets gepubliceerd naar n0 of de publieke DHT. Het werkt volledig offline: twee apparaten op hetzelfde netwerk vinden elkaar zonder internet en zonder relay."
             }
         },
         "extractWindow": {

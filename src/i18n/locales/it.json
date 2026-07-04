@@ -5223,7 +5223,9 @@
                 "rotateConfirm": "Questo sostituisce il tuo AeroFTP-ID. L'ID attuale, tutti i link di condivisione e tutti i drive che servi smettono di funzionare, e dovrai condividere di nuovo il nuovo ID con i tuoi amici. Operazione irreversibile.",
                 "rotateConfirmYes": "Ruota ora",
                 "rotateCancel": "Annulla",
-                "rotateDone": "Nuovo AeroFTP-ID:"
+                "rotateDone": "Nuovo AeroFTP-ID:",
+                "discovery_lan": "Solo LAN (mDNS)",
+                "discovery_lan_desc": "Il rilevamento resta sulla rete locale tramite mDNS; nulla viene pubblicato su n0 o sul DHT pubblico. Funziona completamente offline: due dispositivi sulla stessa rete si trovano senza internet e senza relay."
             }
         }
     }

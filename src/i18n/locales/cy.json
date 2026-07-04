@@ -5234,7 +5234,9 @@
                 "rotateConfirm": "Mae hyn yn disodli eich AeroFTP-ID. Bydd eich ID cyfredol, pob dolen rannu a phob gyriant rydych yn ei wasanaethu yn rhoi'r gorau i weithio, a rhaid i chi rannu'r ID newydd gyda'ch ffrindiau eto. Ni ellir dadwneud hyn.",
                 "rotateConfirmYes": "Cylchdroi nawr",
                 "rotateCancel": "Canslo",
-                "rotateDone": "AeroFTP-ID newydd:"
+                "rotateDone": "AeroFTP-ID newydd:",
+                "discovery_lan": "LAN yn unig (mDNS)",
+                "discovery_lan_desc": "Mae darganfod yn aros ar eich rhwydwaith lleol drwy mDNS; nid oes dim yn cael ei gyhoeddi i n0 na'r DHT cyhoeddus. Mae'n gweithio'n gyfan gwbl all-lein: mae dwy ddyfais ar yr un rhwydwaith yn dod o hyd i'w gilydd heb ryngrwyd a heb relay."
             }
         },
         "extractWindow": {

@@ -5215,7 +5215,9 @@
                 "rotateConfirm": "Hii inabadilisha AeroFTP-ID yako. Kitambulisho chako cha sasa, kila kiungo cha kushiriki na kila diski unayohudumia zitaacha kufanya kazi, na lazima ushiriki kitambulisho kipya na marafiki zako tena. Hili haliwezi kutenduliwa.",
                 "rotateConfirmYes": "Zungusha sasa",
                 "rotateCancel": "Ghairi",
-                "rotateDone": "AeroFTP-ID mpya:"
+                "rotateDone": "AeroFTP-ID mpya:",
+                "discovery_lan": "LAN pekee (mDNS)",
+                "discovery_lan_desc": "Ugunduzi hubaki kwenye mtandao wako wa ndani kupitia mDNS; hakuna kinachochapishwa kwa n0 au DHT ya umma. Hufanya kazi bila mtandao kabisa: vifaa viwili kwenye mtandao ule ule hupatana bila intaneti na bila relay."
             }
         },
         "extractWindow": {

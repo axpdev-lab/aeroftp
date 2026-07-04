@@ -5215,7 +5215,9 @@
                 "rotateConfirm": "Tämä korvaa AeroFTP-ID-tunnuksesi. Nykyinen tunnuksesi, jokainen jakolinkki ja jokainen jakamasi asema lakkaavat toimimasta, ja sinun on jaettava uusi tunnus ystävillesi uudelleen. Tätä ei voi peruuttaa.",
                 "rotateConfirmYes": "Vaihda nyt",
                 "rotateCancel": "Peruuta",
-                "rotateDone": "Uusi AeroFTP-ID:"
+                "rotateDone": "Uusi AeroFTP-ID:",
+                "discovery_lan": "Vain LAN (mDNS)",
+                "discovery_lan_desc": "Löytäminen pysyy paikallisverkossa mDNS:n kautta; mitään ei julkaista n0:aan eikä julkiseen DHT:hen. Toimii täysin offline-tilassa: kaksi laitetta samassa verkossa löytävät toisensa ilman internetiä ja ilman välitintä."
             }
         },
         "extractWindow": {

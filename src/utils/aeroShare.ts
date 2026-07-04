@@ -262,7 +262,7 @@ export const peerMutesList = (): Promise<string[]> => invoke<string[]>('peer_mut
  *  - `none`: publish to neither, so the long-term AFID is NOT enumerable on the
  *    public DHT while receiving (privacy opt-out). Tradeoff: you are reachable
  *    only by a peer who already holds your full address (e.g. via a ticket). */
-export type PeerDiscoveryMode = 'both' | 'dht' | 'n0' | 'none';
+export type PeerDiscoveryMode = 'both' | 'dht' | 'n0' | 'lan' | 'none';
 
 /** The active partition's AeroShare preferences (anti-flood gate + discovery). */
 export interface PeerSettings {

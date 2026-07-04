@@ -5215,7 +5215,9 @@
                 "rotateConfirm": "Tai pakeičia jūsų AeroFTP-ID. Jūsų dabartinis ID, visos bendrinimo nuorodos ir visi jūsų teikiami drive nustos veikti, todėl turėsite vėl pasidalyti nauju ID su draugais. Šio veiksmo negalima atšaukti.",
                 "rotateConfirmYes": "Pakeisti dabar",
                 "rotateCancel": "Atšaukti",
-                "rotateDone": "Naujas AeroFTP-ID:"
+                "rotateDone": "Naujas AeroFTP-ID:",
+                "discovery_lan": "Tik LAN (mDNS)",
+                "discovery_lan_desc": "Aptikimas lieka vietiniame tinkle per mDNS; niekas neskelbiama į n0 ar viešąjį DHT. Veikia visiškai neprisijungus: du įrenginiai tame pačiame tinkle randa vienas kitą be interneto ir be perdavimo mazgo."
             }
         },
         "extractWindow": {

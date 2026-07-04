@@ -5215,7 +5215,9 @@
                 "rotateConfirm": "Ez lecseréli az AeroFTP-ID-ját. A jelenlegi azonosítója, minden megosztási hivatkozása és minden kiszolgált meghajtója leáll, és újra meg kell osztania az új azonosítót a barátaival. Ez nem vonható vissza.",
                 "rotateConfirmYes": "Csere most",
                 "rotateCancel": "Mégse",
-                "rotateDone": "Új AeroFTP-ID:"
+                "rotateDone": "Új AeroFTP-ID:",
+                "discovery_lan": "Csak LAN (mDNS)",
+                "discovery_lan_desc": "A felderítés a helyi hálózaton marad mDNS-en keresztül; semmi nem kerül közzétételre az n0-ba vagy a nyilvános DHT-be. Teljesen offline működik: az azonos hálózaton lévő két eszköz internet és relé nélkül megtalálja egymást."
             }
         },
         "extractWindow": {

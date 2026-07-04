@@ -5215,7 +5215,9 @@
                 "rotateConfirm": "To zastępuje Twój AeroFTP-ID. Twój obecny ID, każdy link udostępniania i każdy drive, który udostępniasz, przestaną działać, i musisz ponownie udostępnić nowy ID swoim znajomym. Tej operacji nie można cofnąć.",
                 "rotateConfirmYes": "Zmień teraz",
                 "rotateCancel": "Anuluj",
-                "rotateDone": "Nowy AeroFTP-ID:"
+                "rotateDone": "Nowy AeroFTP-ID:",
+                "discovery_lan": "Tylko LAN (mDNS)",
+                "discovery_lan_desc": "Wykrywanie pozostaje w sieci lokalnej przez mDNS; nic nie jest publikowane w n0 ani w publicznym DHT. Działa całkowicie offline: dwa urządzenia w tej samej sieci znajdują się bez internetu i bez przekaźnika."
             }
         },
         "extractWindow": {

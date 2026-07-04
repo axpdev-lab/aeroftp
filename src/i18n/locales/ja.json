@@ -5215,7 +5215,9 @@
                 "rotateConfirm": "これにより AeroFTP-ID が置き換えられます。現在の ID、すべての共有リンク、提供中のすべてのドライブが機能しなくなり、新しい ID を友達に再度共有する必要があります。この操作は元に戻せません。",
                 "rotateConfirmYes": "今すぐローテーション",
                 "rotateCancel": "キャンセル",
-                "rotateDone": "新しい AeroFTP-ID:"
+                "rotateDone": "新しい AeroFTP-ID:",
+                "discovery_lan": "LANのみ (mDNS)",
+                "discovery_lan_desc": "検出はmDNSを使ってローカルネットワーク内にとどまり、n0や公開DHTには何も公開されません。完全にオフラインで動作し、同じネットワーク上の2台のデバイスがインターネットもリレーもなしに互いを見つけられます。"
             }
         },
         "extractWindow": {

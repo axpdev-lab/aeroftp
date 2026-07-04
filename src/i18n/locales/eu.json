@@ -5234,7 +5234,9 @@
                 "rotateConfirm": "Honek zure AeroFTP-ID ordezkatzen du. Zure uneko IDa, partekatze-esteka bakoitza eta zerbitzatzen duzun unitate bakoitza funtzionatzeari uzten diote, eta ID berria zure lagunekin berriro partekatu behar duzu. Hau ezin da desegin.",
                 "rotateConfirmYes": "Birziklatu orain",
                 "rotateCancel": "Utzi",
-                "rotateDone": "AeroFTP-ID berria:"
+                "rotateDone": "AeroFTP-ID berria:",
+                "discovery_lan": "LAN soilik (mDNS)",
+                "discovery_lan_desc": "Aurkikuntza zure sare lokalean geratzen da mDNS bidez; ez da ezer argitaratzen n0-n ez DHT publikoan. Erabat lineaz kanpo funtzionatzen du: sare bereko bi gailuk elkar aurkitzen dute internetik eta erreletik gabe."
             }
         },
         "extractWindow": {

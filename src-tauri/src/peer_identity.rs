@@ -218,7 +218,7 @@ pub fn is_muted(conn: &Connection, user_id: i64, contact_id: &str) -> Result<boo
 // ----------------------------------------------------------------------------
 
 /// The per-partition AeroShare preferences. `friends_only` gates inbound
-/// signals to saved contacts; `discovery_mode` is one of `both|dht|n0|none`;
+/// signals to saved contacts; `discovery_mode` is one of `both|dht|n0|lan|none`;
 /// `rate_limit_per_min` caps inbound signals per sender per minute (`0` = off).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PeerSettings {

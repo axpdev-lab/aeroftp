@@ -5215,7 +5215,9 @@
                 "rotateConfirm": "此操作将替换你的 AeroFTP-ID。你当前的 ID、每个共享链接以及你提供的每个驱动器都将停止工作，你必须再次与好友共享新的 ID。此操作无法撤销。",
                 "rotateConfirmYes": "立即轮换",
                 "rotateCancel": "取消",
-                "rotateDone": "新的 AeroFTP-ID："
+                "rotateDone": "新的 AeroFTP-ID：",
+                "discovery_lan": "仅局域网 (mDNS)",
+                "discovery_lan_desc": "发现仅通过 mDNS 保留在本地网络中，不会向 n0 或公共 DHT 发布任何内容。完全离线工作：同一网络中的两台设备无需互联网和中继即可相互发现。"
             }
         },
         "extractWindow": {

@@ -5215,7 +5215,9 @@
                 "rotateConfirm": "Thao tác này sẽ thay thế AeroFTP-ID của bạn. ID hiện tại, mọi liên kết chia sẻ và mọi ổ đĩa bạn đang phục vụ sẽ ngừng hoạt động, và bạn phải chia sẻ lại ID mới với bạn bè. Thao tác này không thể hoàn tác.",
                 "rotateConfirmYes": "Xoay ngay",
                 "rotateCancel": "Hủy",
-                "rotateDone": "AeroFTP-ID mới:"
+                "rotateDone": "AeroFTP-ID mới:",
+                "discovery_lan": "Chỉ LAN (mDNS)",
+                "discovery_lan_desc": "Việc khám phá chỉ diễn ra trong mạng nội bộ của bạn qua mDNS; không có gì được công bố lên n0 hoặc DHT công khai. Hoạt động hoàn toàn ngoại tuyến: hai thiết bị trong cùng một mạng tìm thấy nhau mà không cần internet và không cần relay."
             }
         },
         "extractWindow": {

@@ -5215,7 +5215,9 @@
                 "rotateConfirm": "Tímto nahradíte své AeroFTP-ID. Vaše stávající ID, každý odkaz pro sdílení a každá jednotka, kterou poskytujete, přestanou fungovat a nové ID budete muset znovu sdílet se svými přáteli. Tuto akci nelze vrátit zpět.",
                 "rotateConfirmYes": "Obměnit nyní",
                 "rotateCancel": "Zrušit",
-                "rotateDone": "Nové AeroFTP-ID:"
+                "rotateDone": "Nové AeroFTP-ID:",
+                "discovery_lan": "Pouze LAN (mDNS)",
+                "discovery_lan_desc": "Zjišťování zůstává v místní síti přes mDNS; nic se nepublikuje do n0 ani do veřejné DHT. Funguje zcela offline: dvě zařízení ve stejné síti se najdou bez internetu a bez relay."
             }
         },
         "extractWindow": {

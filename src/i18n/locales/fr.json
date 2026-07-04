@@ -5215,7 +5215,9 @@
                 "rotateConfirm": "Cela remplace votre AeroFTP-ID. Votre identifiant actuel, chaque lien de partage et chaque lecteur que vous servez cesseront de fonctionner, et vous devrez à nouveau partager le nouvel identifiant avec vos amis. Cette action est irréversible.",
                 "rotateConfirmYes": "Renouveler maintenant",
                 "rotateCancel": "Annuler",
-                "rotateDone": "Nouvel AeroFTP-ID :"
+                "rotateDone": "Nouvel AeroFTP-ID :",
+                "discovery_lan": "LAN uniquement (mDNS)",
+                "discovery_lan_desc": "La découverte reste sur votre réseau local via mDNS ; rien n'est publié sur n0 ni sur le DHT public. Cela fonctionne entièrement hors ligne : deux appareils sur le même réseau se trouvent sans internet et sans relais."
             }
         },
         "extractWindow": {

@@ -876,7 +876,7 @@ pub async fn peer_mutes_list(app: AppHandle) -> Result<Vec<String>, String> {
 pub struct PeerSettingsDto {
     /// Accept inbound knock/action/offer only from saved contacts.
     pub friends_only: bool,
-    /// Discovery backend: `both` | `dht` | `n0` | `none`.
+    /// Discovery backend: `both` | `dht` | `n0` | `lan` | `none`.
     pub discovery_mode: String,
     /// Max inbound signals per sender per minute (`0` = no limit).
     pub rate_limit_per_min: u32,
@@ -910,8 +910,8 @@ pub async fn peer_settings_set(
     settings: PeerSettingsDto,
 ) -> Result<(), String> {
     let mode = settings.discovery_mode.trim().to_ascii_lowercase();
-    if !matches!(mode.as_str(), "both" | "dht" | "n0" | "none") {
-        return Err("discovery mode must be one of both|dht|n0|none".to_string());
+    if !matches!(mode.as_str(), "both" | "dht" | "n0" | "lan" | "none") {
+        return Err("discovery mode must be one of both|dht|n0|lan|none".to_string());
     }
     let previous = crate::user_partitions::gui_peer_settings_get(&app)?;
     let next = crate::peer_identity::PeerSettings {

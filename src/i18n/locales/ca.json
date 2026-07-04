@@ -5234,7 +5234,9 @@
                 "rotateConfirm": "Això substitueix el vostre AeroFTP-ID. L'ID actual, cada enllaç de compartició i cada unitat que serviu deixaran de funcionar, i haureu de tornar a compartir el nou ID amb els vostres amics. Aquesta acció no es pot desfer.",
                 "rotateConfirmYes": "Renova ara",
                 "rotateCancel": "Cancel·la",
-                "rotateDone": "Nou AeroFTP-ID:"
+                "rotateDone": "Nou AeroFTP-ID:",
+                "discovery_lan": "Només LAN (mDNS)",
+                "discovery_lan_desc": "El descobriment es manté a la xarxa local mitjançant mDNS; no es publica res a n0 ni al DHT públic. Funciona totalment sense connexió: dos dispositius a la mateixa xarxa es troben sense internet i sense relé."
             }
         },
         "extractWindow": {

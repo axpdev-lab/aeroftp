@@ -5234,7 +5234,9 @@
                 "rotateConfirm": "Pinapalitan nito ang iyong AeroFTP-ID. Ang iyong kasalukuyang ID, bawat share link at bawat drive na iyong sineserbisyuhan ay titigil sa paggana, at kailangan mong ibahagi muli ang bagong ID sa iyong mga kaibigan. Hindi ito maibabalik.",
                 "rotateConfirmYes": "I-rotate ngayon",
                 "rotateCancel": "Kanselahin",
-                "rotateDone": "Bagong AeroFTP-ID:"
+                "rotateDone": "Bagong AeroFTP-ID:",
+                "discovery_lan": "LAN lamang (mDNS)",
+                "discovery_lan_desc": "Nananatili sa iyong lokal na network ang pagtuklas sa pamamagitan ng mDNS; walang inilalathala sa n0 o sa pampublikong DHT. Gumagana nang ganap na offline: dalawang device sa parehong network ang nagkakahanap nang walang internet at walang relay."
             }
         },
         "extractWindow": {
