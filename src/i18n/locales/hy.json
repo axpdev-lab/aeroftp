@@ -4418,10 +4418,6 @@
                 "failed": "Միացման վերջին փորձն անհաջող էր",
                 "lastFailedAt": "Վերջին սխալը {time} առաջ"
             },
-            "view": {
-                "grid": "Ցանց",
-                "list": "Ցանկ"
-            },
             "check": "Ստուգել",
             "scanning": "Սկանավորում...",
             "checkAvailability": "Ստուգել ծառայության հասանելիությունը",
@@ -4442,8 +4438,7 @@
                 "customFtp": "FTP / FTPS",
                 "customSftp": "SFTP",
                 "customS3": "S3",
-                "customWebdav": "WebDAV",
-                "customAzure": "Azure Blob"
+                "customWebdav": "WebDAV"
             },
             "healthCheck": "Հասանելիության ստուգում",
             "storageVersioning": "Ֆայլի տարբերակներ՝ {size}",
@@ -5201,11 +5196,11 @@
                 "rateLimitUnit": "րոպեում",
                 "rateLimitOff": "Արագության սահմանափակում չկա (0). թույլատրվում է յուրաքանչյուր ազդանշան։",
                 "discoveryLabel": "Հայտնաբերելիություն",
-                "discovery_both": "n0 DNS + Mainline DHT (լռելյայն)",
+                "discovery_both": "n0 DNS + Mainline DHT + LAN mDNS (լռելյայն)",
                 "discovery_dht": "Միայն Mainline DHT",
                 "discovery_n0": "Միայն n0 DNS",
                 "discovery_none": "Ոչ մեկը (չհայտնաբերելի)",
-                "discovery_both_desc": "Առավելագույն հասանելիություն. ստանալիս ձեր հասցեն հրապարակվում է և՛ n0 գրացուցակում, և՛ հանրային DHT-ում։",
+                "discovery_both_desc": "Առավելագույն հասանելիություն. ստանալիս ձեր հասցեն հրապարակվում է և՛ n0 գրացուցակում, և՛ հանրային DHT-ում։ և հայտարարվում է ձեր տեղական ցանցում mDNS-ի միջոցով",
                 "discovery_dht_desc": "Հրապարակվում է միայն հանրային Mainline DHT-ում, առանց n0 գրացուցակի։",
                 "discovery_n0_desc": "Հրապարակվում է միայն n0 գրացուցակում, առանց հանրային DHT-ի։",
                 "discovery_none_desc": "Ձեր AeroFTP-ID-ն ստանալիս ոչ մի տեղ չի հրապարակվում, ուստի այն հնարավոր չէ թվարկել հանրային DHT-ում։ Ձեզ հետ կարող է կապվել միայն նա, ով արդեն ունի ձեր ամբողջական հասցեն (օրինակ՝ սկավառակի տոմսի միջոցով)։",

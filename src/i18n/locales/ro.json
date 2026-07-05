@@ -4418,10 +4418,6 @@
                 "failed": "Ultima încercare de conectare a eșuat",
                 "lastFailedAt": "Ultima eroare acum {time}"
             },
-            "view": {
-                "grid": "Grilă",
-                "list": "Listă"
-            },
             "check": "Verifică",
             "scanning": "Se scanează...",
             "checkAvailability": "Verifică disponibilitatea serviciului",
@@ -4442,8 +4438,7 @@
                 "customFtp": "FTP / FTPS",
                 "customSftp": "SFTP",
                 "customS3": "S3",
-                "customWebdav": "WebDAV",
-                "customAzure": "Azure Blob"
+                "customWebdav": "WebDAV"
             },
             "healthCheck": "Verificarea disponibilității",
             "storageVersioning": "Versiuni fișier: {size}",
@@ -5201,11 +5196,11 @@
                 "rateLimitUnit": "pe minut",
                 "rateLimitOff": "Fără limită de rată (0): fiecare semnal este permis.",
                 "discoveryLabel": "Descoperibilitate",
-                "discovery_both": "n0 DNS + Mainline DHT (default)",
+                "discovery_both": "n0 DNS + Mainline DHT + LAN mDNS (default)",
                 "discovery_dht": "Doar Mainline DHT",
                 "discovery_n0": "Doar n0 DNS",
                 "discovery_none": "Niciuna (not discoverable)",
-                "discovery_both_desc": "Cel mai ușor de contactat: în timp ce primești, adresa ta este publicată atât în directorul n0, cât și în DHT-ul public.",
+                "discovery_both_desc": "Cel mai ușor de contactat: în timp ce primești, adresa ta este publicată atât în directorul n0, cât și în DHT-ul public și anunțată în rețeaua locală prin mDNS.",
                 "discovery_dht_desc": "Publicat doar în Mainline DHT public, fără directorul n0.",
                 "discovery_n0_desc": "Publicat doar în directorul n0, fără DHT-ul public.",
                 "discovery_none_desc": "AeroFTP-ID-ul tău nu este publicat nicăieri în timp ce primești, așa că nu poate fi enumerat în DHT-ul public. Poți fi contactat doar de cineva care deține deja adresa ta completă (de exemplu, printr-un drive ticket).",

@@ -4418,10 +4418,6 @@
                 "failed": "Letzter Verbindungsversuch fehlgeschlagen",
                 "lastFailedAt": "Letzter Fehler vor {time}"
             },
-            "view": {
-                "grid": "Raster",
-                "list": "Liste"
-            },
             "check": "Prüfen",
             "scanning": "Wird gescannt...",
             "checkAvailability": "Verfügbarkeit des Dienstes prüfen",
@@ -4442,8 +4438,7 @@
                 "customFtp": "FTP / FTPS",
                 "customSftp": "SFTP",
                 "customS3": "S3",
-                "customWebdav": "WebDAV",
-                "customAzure": "Azure Blob"
+                "customWebdav": "WebDAV"
             },
             "healthCheck": "Verfügbarkeitsprüfung",
             "storageVersioning": "Dateiversionen: {size}",
@@ -5201,11 +5196,11 @@
                 "rateLimitUnit": "pro Minute",
                 "rateLimitOff": "Keine Ratenbegrenzung (0): jedes Signal ist erlaubt.",
                 "discoveryLabel": "Auffindbarkeit",
-                "discovery_both": "n0 DNS + Mainline DHT (Standard)",
+                "discovery_both": "n0 DNS + Mainline DHT + LAN mDNS (Standard)",
                 "discovery_dht": "Nur Mainline DHT",
                 "discovery_n0": "Nur n0 DNS",
                 "discovery_none": "Keine (nicht auffindbar)",
-                "discovery_both_desc": "Am besten erreichbar: beim Empfangen wird Ihre Adresse sowohl im n0-Verzeichnis als auch im öffentlichen DHT veröffentlicht.",
+                "discovery_both_desc": "Am besten erreichbar: beim Empfangen wird Ihre Adresse sowohl im n0-Verzeichnis als auch im öffentlichen DHT veröffentlicht und über mDNS in Ihrem lokalen Netzwerk angekündigt.",
                 "discovery_dht_desc": "Nur im öffentlichen Mainline DHT veröffentlicht, ohne das n0-Verzeichnis.",
                 "discovery_n0_desc": "Nur im n0-Verzeichnis veröffentlicht, ohne das öffentliche DHT.",
                 "discovery_none_desc": "Ihre AeroFTP-ID wird beim Empfangen nirgendwo veröffentlicht, sodass sie im öffentlichen DHT nicht aufgelistet werden kann. Sie können nur von jemandem erreicht werden, der bereits Ihre vollständige Adresse besitzt (zum Beispiel über ein Laufwerk-Ticket).",

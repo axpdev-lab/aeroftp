@@ -4418,10 +4418,6 @@
                 "failed": "Последняя попытка подключения не удалась",
                 "lastFailedAt": "Последний сбой {time} назад"
             },
-            "view": {
-                "grid": "Сетка",
-                "list": "Список"
-            },
             "check": "Проверить",
             "scanning": "Сканирование...",
             "checkAvailability": "Проверить доступность сервиса",
@@ -4442,8 +4438,7 @@
                 "customFtp": "FTP / FTPS",
                 "customSftp": "SFTP",
                 "customS3": "S3",
-                "customWebdav": "WebDAV",
-                "customAzure": "Azure Blob"
+                "customWebdav": "WebDAV"
             },
             "healthCheck": "Проверка доступности",
             "storageVersioning": "Версии файла: {size}",
@@ -5201,11 +5196,11 @@
                 "rateLimitUnit": "в минуту",
                 "rateLimitOff": "Без ограничения (0): разрешён каждый сигнал.",
                 "discoveryLabel": "Обнаруживаемость",
-                "discovery_both": "n0 DNS + Mainline DHT (по умолчанию)",
+                "discovery_both": "n0 DNS + Mainline DHT + LAN mDNS (по умолчанию)",
                 "discovery_dht": "Только Mainline DHT",
                 "discovery_n0": "Только n0 DNS",
                 "discovery_none": "Нет (не обнаруживается)",
-                "discovery_both_desc": "Наиболее доступно: при приёме ваш адрес публикуется как в каталоге n0, так и в публичном DHT.",
+                "discovery_both_desc": "Наиболее доступно: при приёме ваш адрес публикуется как в каталоге n0, так и в публичном DHT и объявляется в вашей локальной сети через mDNS.",
                 "discovery_dht_desc": "Публикуется только в публичном Mainline DHT, без каталога n0.",
                 "discovery_n0_desc": "Публикуется только в каталоге n0, без публичного DHT.",
                 "discovery_none_desc": "Ваш AeroFTP-ID нигде не публикуется при приёме, поэтому его нельзя перечислить в публичном DHT. С вами может связаться только тот, у кого уже есть ваш полный адрес (например, через тикет диска).",

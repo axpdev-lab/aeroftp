@@ -4437,10 +4437,6 @@
                 "failed": "O último intento de conexión fallou",
                 "lastFailedAt": "Último erro hai {time}"
             },
-            "view": {
-                "grid": "Grade",
-                "list": "Lista"
-            },
             "check": "Comprobar",
             "scanning": "Escaneando...",
             "checkAvailability": "Comprobar a dispoñibilidade do servizo",
@@ -4461,8 +4457,7 @@
                 "customFtp": "FTP / FTPS",
                 "customSftp": "SFTP",
                 "customS3": "S3",
-                "customWebdav": "WebDAV",
-                "customAzure": "Azure Blob"
+                "customWebdav": "WebDAV"
             },
             "healthCheck": "Comprobación de dispoñibilidade",
             "storageVersioning": "Versións do ficheiro: {size}",
@@ -5220,11 +5215,11 @@
                 "rateLimitUnit": "por minuto",
                 "rateLimitOff": "Sen límite de taxa (0): permítese todos os sinais.",
                 "discoveryLabel": "Capacidade de descubrimento",
-                "discovery_both": "n0 DNS + Mainline DHT (predeterminado)",
+                "discovery_both": "n0 DNS + Mainline DHT + LAN mDNS (predeterminado)",
                 "discovery_dht": "Só Mainline DHT",
                 "discovery_n0": "Só n0 DNS",
                 "discovery_none": "Ningunha (non descubrible)",
-                "discovery_both_desc": "Maior alcance: mentres recibes, o teu enderezo publícase tanto no directorio n0 como na DHT pública.",
+                "discovery_both_desc": "Maior alcance: mentres recibes, o teu enderezo publícase tanto no directorio n0 como na DHT pública, e anúnciase na túa rede local mediante mDNS.",
                 "discovery_dht_desc": "Publícase só na Mainline DHT pública, sen o directorio n0.",
                 "discovery_n0_desc": "Publícase só no directorio n0, sen a DHT pública.",
                 "discovery_none_desc": "O teu AeroFTP-ID non se publica en ningún lugar mentres recibes, polo que non se pode enumerar na DHT pública. Só pode contactar contigo alguén que xa teña o teu enderezo completo (por exemplo, a través dun tícket de unidade).",

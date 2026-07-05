@@ -4418,10 +4418,6 @@
                 "failed": "Последният опит за свързване е неуспешен",
                 "lastFailedAt": "Последен неуспех преди {time}"
             },
-            "view": {
-                "grid": "Мрежа",
-                "list": "Списък"
-            },
             "check": "Провери",
             "scanning": "Сканиране...",
             "checkAvailability": "Провери наличността на услугата",
@@ -4442,8 +4438,7 @@
                 "customFtp": "FTP / FTPS",
                 "customSftp": "SFTP",
                 "customS3": "S3",
-                "customWebdav": "WebDAV",
-                "customAzure": "Azure Blob"
+                "customWebdav": "WebDAV"
             },
             "healthCheck": "Проверка на достъпност",
             "storageVersioning": "Версии на файлове: {size}",
@@ -5201,11 +5196,11 @@
                 "rateLimitUnit": "в минута",
                 "rateLimitOff": "Без ограничение на честотата (0): всеки сигнал е разрешен.",
                 "discoveryLabel": "Откриваемост",
-                "discovery_both": "n0 DNS + Mainline DHT (по подразбиране)",
+                "discovery_both": "n0 DNS + Mainline DHT + LAN mDNS (по подразбиране)",
                 "discovery_dht": "Само Mainline DHT",
                 "discovery_n0": "Само n0 DNS",
                 "discovery_none": "Без (не е откриваем)",
-                "discovery_both_desc": "Най-достъпен: докато приемате, адресът ви се публикува едновременно в директорията n0 и в публичния DHT.",
+                "discovery_both_desc": "Най-достъпен: докато приемате, адресът ви се публикува едновременно в директорията n0 и в публичния DHT, и се обявява в локалната ви мрежа чрез mDNS.",
                 "discovery_dht_desc": "Публикува се само в публичния Mainline DHT, без директорията n0.",
                 "discovery_n0_desc": "Публикува се само в директорията n0, без публичния DHT.",
                 "discovery_none_desc": "Вашият AeroFTP-ID не се публикува никъде, докато приемате, така че не може да бъде изброен в публичния DHT. Можете да бъдете достигнат само от някой, който вече разполага с пълния ви адрес (например чрез билет за устройство).",

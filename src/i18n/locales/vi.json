@@ -4418,10 +4418,6 @@
                 "failed": "Lần kết nối cuối cùng đã thất bại",
                 "lastFailedAt": "Lỗi gần nhất {time} trước"
             },
-            "view": {
-                "grid": "Lưới",
-                "list": "Danh sách"
-            },
             "check": "Kiểm tra",
             "scanning": "Đang quét...",
             "checkAvailability": "Kiểm tra tình trạng dịch vụ",
@@ -4442,8 +4438,7 @@
                 "customFtp": "FTP / FTPS",
                 "customSftp": "SFTP",
                 "customS3": "S3",
-                "customWebdav": "WebDAV",
-                "customAzure": "Azure Blob"
+                "customWebdav": "WebDAV"
             },
             "healthCheck": "Kiểm tra tình trạng",
             "storageVersioning": "Phiên bản tệp: {size}",
@@ -5201,11 +5196,11 @@
                 "rateLimitUnit": "mỗi phút",
                 "rateLimitOff": "Không giới hạn tốc độ (0): mọi tín hiệu đều được phép.",
                 "discoveryLabel": "Khả năng được phát hiện",
-                "discovery_both": "n0 DNS + Mainline DHT (mặc định)",
+                "discovery_both": "n0 DNS + Mainline DHT + LAN mDNS (mặc định)",
                 "discovery_dht": "Chỉ Mainline DHT",
                 "discovery_n0": "Chỉ n0 DNS",
                 "discovery_none": "Không (không thể phát hiện)",
-                "discovery_both_desc": "Dễ tiếp cận nhất: khi đang nhận, địa chỉ của bạn được công bố cả trong thư mục n0 lẫn DHT công khai.",
+                "discovery_both_desc": "Dễ tiếp cận nhất: khi đang nhận, địa chỉ của bạn được công bố cả trong thư mục n0 lẫn DHT công khai, và được thông báo trên mạng cục bộ của bạn qua mDNS.",
                 "discovery_dht_desc": "Chỉ được công bố trong Mainline DHT công khai, không có thư mục n0.",
                 "discovery_n0_desc": "Chỉ được công bố trong thư mục n0, không có DHT công khai.",
                 "discovery_none_desc": "AeroFTP-ID của bạn không được công bố ở bất kỳ đâu khi đang nhận, vì vậy không thể liệt kê nó trên DHT công khai. Chỉ những người đã có địa chỉ đầy đủ của bạn mới có thể liên hệ với bạn (ví dụ qua vé ổ đĩa).",

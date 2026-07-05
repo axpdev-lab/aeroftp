@@ -4418,10 +4418,6 @@
                 "failed": "Paskutinis prisijungimo bandymas nepavyko",
                 "lastFailedAt": "Paskutinė klaida prieš {time}"
             },
-            "view": {
-                "grid": "Tinklelis",
-                "list": "Sąrašas"
-            },
             "check": "Tikrinti",
             "scanning": "Nuskaitoma...",
             "checkAvailability": "Tikrinti paslaugos prieinamumą",
@@ -4442,8 +4438,7 @@
                 "customFtp": "FTP / FTPS",
                 "customSftp": "SFTP",
                 "customS3": "S3",
-                "customWebdav": "WebDAV",
-                "customAzure": "Azure Blob"
+                "customWebdav": "WebDAV"
             },
             "healthCheck": "Pasiekiamumo tikrinimas",
             "storageVersioning": "Failų versijos: {size}",
@@ -5201,11 +5196,11 @@
                 "rateLimitUnit": "per minutę",
                 "rateLimitOff": "Be dažnio ribos (0): leidžiamas kiekvienas signalas.",
                 "discoveryLabel": "Aptinkamumas",
-                "discovery_both": "n0 DNS + Mainline DHT (default)",
+                "discovery_both": "n0 DNS + Mainline DHT + LAN mDNS (default)",
                 "discovery_dht": "Tik Mainline DHT",
                 "discovery_n0": "Tik n0 DNS",
                 "discovery_none": "Nėra (not discoverable)",
-                "discovery_both_desc": "Lengviausiai pasiekiama: priimdami, jūsų adresas skelbiamas tiek n0 kataloge, tiek viešame DHT.",
+                "discovery_both_desc": "Lengviausiai pasiekiama: priimdami, jūsų adresas skelbiamas tiek n0 kataloge, tiek viešame DHT ir skelbiamas jūsų vietiniame tinkle per mDNS.",
                 "discovery_dht_desc": "Skelbiama tik viešame Mainline DHT, be n0 katalogo.",
                 "discovery_n0_desc": "Skelbiama tik n0 kataloge, be viešo DHT.",
                 "discovery_none_desc": "Jūsų AeroFTP-ID niekur neskelbiamas priimant, todėl jo negalima išvardyti viešame DHT. Su jumis gali susisiekti tik tas, kas jau turi visą jūsų adresą (pavyzdžiui, per drive ticket).",

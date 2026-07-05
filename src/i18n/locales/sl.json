@@ -4418,10 +4418,6 @@
                 "failed": "Zadnji poskus povezave ni uspel",
                 "lastFailedAt": "Zadnja napaka pred {time}"
             },
-            "view": {
-                "grid": "Mreža",
-                "list": "Seznam"
-            },
             "check": "Preveri",
             "scanning": "Pregledovanje...",
             "checkAvailability": "Preveri razpoložljivost storitve",
@@ -4442,8 +4438,7 @@
                 "customFtp": "FTP / FTPS",
                 "customSftp": "SFTP",
                 "customS3": "S3",
-                "customWebdav": "WebDAV",
-                "customAzure": "Azure Blob"
+                "customWebdav": "WebDAV"
             },
             "healthCheck": "Preverjanje razpoložljivosti",
             "storageVersioning": "Različice datotek: {size}",
@@ -5201,11 +5196,11 @@
                 "rateLimitUnit": "na minuto",
                 "rateLimitOff": "Brez omejitve (0): dovoljen je vsak signal.",
                 "discoveryLabel": "Vidnost",
-                "discovery_both": "n0 DNS + Mainline DHT (privzeto)",
+                "discovery_both": "n0 DNS + Mainline DHT + LAN mDNS (privzeto)",
                 "discovery_dht": "Samo Mainline DHT",
                 "discovery_n0": "Samo n0 DNS",
                 "discovery_none": "Brez (ni vidno)",
-                "discovery_both_desc": "Najbolj dosegljivo: med prejemanjem je vaš naslov objavljen tako v imeniku n0 kot v javnem DHT.",
+                "discovery_both_desc": "Najbolj dosegljivo: med prejemanjem je vaš naslov objavljen tako v imeniku n0 kot v javnem DHT in objavljen v vašem lokalnem omrežju prek mDNS.",
                 "discovery_dht_desc": "Objavljeno samo v javnem Mainline DHT, brez imenika n0.",
                 "discovery_n0_desc": "Objavljeno samo v imeniku n0, brez javnega DHT.",
                 "discovery_none_desc": "Vaš AeroFTP-ID med prejemanjem ni nikjer objavljen, zato ga ni mogoče našteti v javnem DHT. Doseže vas lahko le nekdo, ki že ima vaš celotni naslov (na primer prek vstopnice za pogon).",

@@ -4418,10 +4418,6 @@
                 "failed": "Последњи покушај повезивања није успео",
                 "lastFailedAt": "Последња грешка пре {time}"
             },
-            "view": {
-                "grid": "Мрежа",
-                "list": "Листа"
-            },
             "check": "Провери",
             "scanning": "Скенирање...",
             "checkAvailability": "Провери доступност услуге",
@@ -4442,8 +4438,7 @@
                 "customFtp": "FTP / FTPS",
                 "customSftp": "SFTP",
                 "customS3": "S3",
-                "customWebdav": "WebDAV",
-                "customAzure": "Azure Blob"
+                "customWebdav": "WebDAV"
             },
             "healthCheck": "Провера доступности",
             "storageVersioning": "Верзије датотека: {size}",
@@ -5201,11 +5196,11 @@
                 "rateLimitUnit": "у минути",
                 "rateLimitOff": "Без ограничења (0): дозвољен је сваки сигнал.",
                 "discoveryLabel": "Видљивост",
-                "discovery_both": "n0 DNS + Mainline DHT (подразумевано)",
+                "discovery_both": "n0 DNS + Mainline DHT + LAN mDNS (подразумевано)",
                 "discovery_dht": "Само Mainline DHT",
                 "discovery_n0": "Само n0 DNS",
                 "discovery_none": "Ниједно (није видљиво)",
-                "discovery_both_desc": "Најдоступније: током пријема ваша адреса се објављује и у директоријуму n0 и у јавном DHT.",
+                "discovery_both_desc": "Најдоступније: током пријема ваша адреса се објављује и у директоријуму n0 и у јавном DHT и објављује се у вашој локалној мрежи преко mDNS-а.",
                 "discovery_dht_desc": "Објављено само у јавном Mainline DHT, без директоријума n0.",
                 "discovery_n0_desc": "Објављено само у директоријуму n0, без јавног DHT.",
                 "discovery_none_desc": "Ваш AeroFTP-ID се током пријема нигде не објављује, па се не може набројати у јавном DHT. Може вас контактирати само неко ко већ има вашу пуну адресу (на пример преко тикета диска).",

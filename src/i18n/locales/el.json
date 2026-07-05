@@ -4418,10 +4418,6 @@
                 "failed": "Η τελευταία προσπάθεια σύνδεσης απέτυχε",
                 "lastFailedAt": "Τελευταίο σφάλμα πριν {time}"
             },
-            "view": {
-                "grid": "Πλέγμα",
-                "list": "Λίστα"
-            },
             "check": "Έλεγχος",
             "scanning": "Σάρωση...",
             "checkAvailability": "Έλεγχος διαθεσιμότητας υπηρεσίας",
@@ -4442,8 +4438,7 @@
                 "customFtp": "FTP / FTPS",
                 "customSftp": "SFTP",
                 "customS3": "S3",
-                "customWebdav": "WebDAV",
-                "customAzure": "Azure Blob"
+                "customWebdav": "WebDAV"
             },
             "healthCheck": "Έλεγχος διαθεσιμότητας",
             "storageVersioning": "Εκδόσεις αρχείου: {size}",
@@ -5201,11 +5196,11 @@
                 "rateLimitUnit": "ανά λεπτό",
                 "rateLimitOff": "Χωρίς όριο ρυθμού (0): κάθε σήμα επιτρέπεται.",
                 "discoveryLabel": "Ανιχνευσιμότητα",
-                "discovery_both": "n0 DNS + Mainline DHT (προεπιλογή)",
+                "discovery_both": "n0 DNS + Mainline DHT + LAN mDNS (προεπιλογή)",
                 "discovery_dht": "Μόνο Mainline DHT",
                 "discovery_n0": "Μόνο n0 DNS",
                 "discovery_none": "Καμία (μη ανιχνεύσιμος)",
-                "discovery_both_desc": "Πιο προσβάσιμο: ενώ λαμβάνετε, η διεύθυνσή σας δημοσιεύεται τόσο στον κατάλογο n0 όσο και στο δημόσιο DHT.",
+                "discovery_both_desc": "Πιο προσβάσιμο: ενώ λαμβάνετε, η διεύθυνσή σας δημοσιεύεται τόσο στον κατάλογο n0 όσο και στο δημόσιο DHT και ανακοινώνεται στο τοπικό σας δίκτυο μέσω mDNS.",
                 "discovery_dht_desc": "Δημοσιεύεται μόνο στο δημόσιο Mainline DHT, χωρίς τον κατάλογο n0.",
                 "discovery_n0_desc": "Δημοσιεύεται μόνο στον κατάλογο n0, χωρίς το δημόσιο DHT.",
                 "discovery_none_desc": "Το AeroFTP-ID σας δεν δημοσιεύεται πουθενά ενώ λαμβάνετε, επομένως δεν μπορεί να απαριθμηθεί στο δημόσιο DHT. Μπορείτε να προσεγγιστείτε μόνο από κάποιον που έχει ήδη την πλήρη διεύθυνσή σας (για παράδειγμα μέσω ενός εισιτηρίου μονάδας δίσκου).",

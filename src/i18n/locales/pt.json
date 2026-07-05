@@ -4418,10 +4418,6 @@
                 "failed": "A última tentativa de conexão falhou",
                 "lastFailedAt": "Última falha há {time}"
             },
-            "view": {
-                "grid": "Grade",
-                "list": "Lista"
-            },
             "check": "Verificar",
             "scanning": "Verificando...",
             "checkAvailability": "Verificar a disponibilidade do serviço",
@@ -4442,8 +4438,7 @@
                 "customFtp": "FTP / FTPS",
                 "customSftp": "SFTP",
                 "customS3": "S3",
-                "customWebdav": "WebDAV",
-                "customAzure": "Azure Blob"
+                "customWebdav": "WebDAV"
             },
             "healthCheck": "Verificação de disponibilidade",
             "storageVersioning": "Versões do arquivo: {size}",
@@ -5201,11 +5196,11 @@
                 "rateLimitUnit": "por minuto",
                 "rateLimitOff": "Sem limite de taxa (0): cada sinal é permitido.",
                 "discoveryLabel": "Detetabilidade",
-                "discovery_both": "n0 DNS + Mainline DHT (default)",
+                "discovery_both": "n0 DNS + Mainline DHT + LAN mDNS (default)",
                 "discovery_dht": "Apenas Mainline DHT",
                 "discovery_n0": "Apenas n0 DNS",
                 "discovery_none": "Nenhum (not discoverable)",
-                "discovery_both_desc": "Mais acessível: enquanto recebe, o seu endereço é publicado tanto no diretório n0 como no DHT público.",
+                "discovery_both_desc": "Mais acessível: enquanto recebe, o seu endereço é publicado tanto no diretório n0 como no DHT público, e anunciado na sua rede local via mDNS.",
                 "discovery_dht_desc": "Publicado apenas no Mainline DHT público, sem o diretório n0.",
                 "discovery_n0_desc": "Publicado apenas no diretório n0, sem o DHT público.",
                 "discovery_none_desc": "O seu AeroFTP-ID não é publicado em lado nenhum enquanto recebe, pelo que não pode ser enumerado no DHT público. Só pode ser contactado por alguém que já tenha o seu endereço completo (por exemplo, através de um drive ticket).",

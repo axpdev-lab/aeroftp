@@ -4437,10 +4437,6 @@
                 "failed": "Azken konexio-saiakera huts egin du",
                 "lastFailedAt": "Azken hutsegitea duela {time}"
             },
-            "view": {
-                "grid": "Sareta",
-                "list": "Zerrenda"
-            },
             "check": "Egiaztatu",
             "scanning": "Eskaneatzen...",
             "checkAvailability": "Egiaztatu zerbitzuaren erabilgarritasuna",
@@ -4461,8 +4457,7 @@
                 "customFtp": "FTP / FTPS",
                 "customSftp": "SFTP",
                 "customS3": "S3",
-                "customWebdav": "WebDAV",
-                "customAzure": "Azure Blob"
+                "customWebdav": "WebDAV"
             },
             "healthCheck": "Erabilgarritasun-egiaztapena",
             "storageVersioning": "Fitxategi-bertsioak: {size}",
@@ -5220,11 +5215,11 @@
                 "rateLimitUnit": "minutuko",
                 "rateLimitOff": "Maiztasun-mugarik ez (0): seinale guztiak onartzen dira.",
                 "discoveryLabel": "Aurkigarritasuna",
-                "discovery_both": "n0 DNS + Mainline DHT (lehenetsia)",
+                "discovery_both": "n0 DNS + Mainline DHT + LAN mDNS (lehenetsia)",
                 "discovery_dht": "Mainline DHT soilik",
                 "discovery_n0": "n0 DNS soilik",
                 "discovery_none": "Bat ere ez (ez aurkigarria)",
-                "discovery_both_desc": "Eskuragarriena: jasotzen ari zarela, zure helbidea n0 direktorioan eta DHT publikoan argitaratzen da.",
+                "discovery_both_desc": "Eskuragarriena: jasotzen ari zarela, zure helbidea n0 direktorioan eta DHT publikoan argitaratzen da, eta zure sare lokalean iragartzen da mDNS bidez.",
                 "discovery_dht_desc": "Mainline DHT publikoan soilik argitaratzen da, n0 direktoriorik gabe.",
                 "discovery_n0_desc": "n0 direktorioan soilik argitaratzen da, DHT publikorik gabe.",
                 "discovery_none_desc": "Zure AeroFTP-ID ez da inon argitaratzen jasotzen ari zarela, beraz, ezin da DHT publikoan zerrendatu. Zure helbide osoa jada duen norbaitek soilik kontaktatu zaitzake (adibidez, unitate-txartel baten bidez).",

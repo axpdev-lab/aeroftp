@@ -4418,10 +4418,6 @@
                 "failed": "Остання спроба підключення не вдалася",
                 "lastFailedAt": "Останній збій {time} тому"
             },
-            "view": {
-                "grid": "Сітка",
-                "list": "Список"
-            },
             "check": "Перевірити",
             "scanning": "Сканування...",
             "checkAvailability": "Перевірити доступність сервісу",
@@ -4442,8 +4438,7 @@
                 "customFtp": "FTP / FTPS",
                 "customSftp": "SFTP",
                 "customS3": "S3",
-                "customWebdav": "WebDAV",
-                "customAzure": "Azure Blob"
+                "customWebdav": "WebDAV"
             },
             "healthCheck": "Перевірка доступності",
             "storageVersioning": "Версії файлу: {size}",
@@ -5201,11 +5196,11 @@
                 "rateLimitUnit": "за хвилину",
                 "rateLimitOff": "Без обмеження частоти (0): дозволено кожен сигнал.",
                 "discoveryLabel": "Виявність",
-                "discovery_both": "n0 DNS + Mainline DHT (за замовчуванням)",
+                "discovery_both": "n0 DNS + Mainline DHT + LAN mDNS (за замовчуванням)",
                 "discovery_dht": "Лише Mainline DHT",
                 "discovery_n0": "Лише n0 DNS",
                 "discovery_none": "Немає (не виявляється)",
-                "discovery_both_desc": "Найдоступніше: під час приймання ваша адреса публікується як у каталозі n0, так і в публічному DHT.",
+                "discovery_both_desc": "Найдоступніше: під час приймання ваша адреса публікується як у каталозі n0, так і в публічному DHT і оголошується у вашій локальній мережі через mDNS.",
                 "discovery_dht_desc": "Публікується лише в публічному Mainline DHT, без каталогу n0.",
                 "discovery_n0_desc": "Публікується лише в каталозі n0, без публічного DHT.",
                 "discovery_none_desc": "Ваш AeroFTP-ID ніде не публікується під час приймання, тому його не можна перелічити в публічному DHT. З вами може зв'язатися лише той, хто вже має вашу повну адресу (наприклад, через квиток диска).",

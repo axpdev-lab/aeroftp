@@ -4418,10 +4418,6 @@
                 "failed": "前回の接続試行に失敗しました",
                 "lastFailedAt": "前回の失敗は{time}前"
             },
-            "view": {
-                "grid": "グリッド",
-                "list": "リスト"
-            },
             "check": "確認",
             "scanning": "スキャン中...",
             "checkAvailability": "サービスの可用性を確認",
@@ -4442,8 +4438,7 @@
                 "customFtp": "FTP / FTPS",
                 "customSftp": "SFTP",
                 "customS3": "S3",
-                "customWebdav": "WebDAV",
-                "customAzure": "Azure Blob"
+                "customWebdav": "WebDAV"
             },
             "healthCheck": "ヘルスチェック",
             "storageVersioning": "ファイルのバージョン: {size}",
@@ -5201,11 +5196,11 @@
                 "rateLimitUnit": "1分あたり",
                 "rateLimitOff": "レート制限なし (0): すべてのシグナルが許可されます。",
                 "discoveryLabel": "発見可能性",
-                "discovery_both": "n0 DNS + Mainline DHT (デフォルト)",
+                "discovery_both": "n0 DNS + Mainline DHT + LAN mDNS (デフォルト)",
                 "discovery_dht": "Mainline DHT のみ",
                 "discovery_n0": "n0 DNS のみ",
                 "discovery_none": "なし (発見不可)",
-                "discovery_both_desc": "最も到達しやすい設定: 受信中、あなたのアドレスは n0 ディレクトリと公開 DHT の両方に公開されます。",
+                "discovery_both_desc": "最も到達しやすい設定: 受信中、あなたのアドレスは n0 ディレクトリと公開 DHT の両方に公開され、さらに mDNS 経由でローカルネットワークにも通知されます。",
                 "discovery_dht_desc": "n0 ディレクトリを使わず、公開 Mainline DHT にのみ公開されます。",
                 "discovery_n0_desc": "公開 DHT を使わず、n0 ディレクトリにのみ公開されます。",
                 "discovery_none_desc": "受信中、あなたの AeroFTP-ID はどこにも公開されないため、公開 DHT 上で列挙されることはありません。すでにあなたの完全なアドレスを持っている人 (たとえばドライブチケット経由) だけがあなたに連絡できます。",

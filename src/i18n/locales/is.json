@@ -4437,10 +4437,6 @@
                 "failed": "Síðasta tengitilraun mistókst",
                 "lastFailedAt": "Síðasta villa fyrir {time}"
             },
-            "view": {
-                "grid": "Reitir",
-                "list": "Listi"
-            },
             "check": "Athuga",
             "scanning": "Skanna...",
             "checkAvailability": "Athuga framboð þjónustu",
@@ -4461,8 +4457,7 @@
                 "customFtp": "FTP / FTPS",
                 "customSftp": "SFTP",
                 "customS3": "S3",
-                "customWebdav": "WebDAV",
-                "customAzure": "Azure Blob"
+                "customWebdav": "WebDAV"
             },
             "healthCheck": "Aðgengisathugun",
             "storageVersioning": "Skráarútgáfur: {size}",
@@ -5220,11 +5215,11 @@
                 "rateLimitUnit": "á mínútu",
                 "rateLimitOff": "Engin hraðatakmörk (0): hvert merki er leyft.",
                 "discoveryLabel": "Uppgötvanleiki",
-                "discovery_both": "n0 DNS + Mainline DHT (sjálfgefið)",
+                "discovery_both": "n0 DNS + Mainline DHT + LAN mDNS (sjálfgefið)",
                 "discovery_dht": "Aðeins Mainline DHT",
                 "discovery_n0": "Aðeins n0 DNS",
                 "discovery_none": "Ekkert (ekki uppgötvanlegt)",
-                "discovery_both_desc": "Best aðgengilegt: á meðan þú tekur á móti er veffangið þitt birt bæði í n0 skránni og í opinbera DHT-inu.",
+                "discovery_both_desc": "Best aðgengilegt: á meðan þú tekur á móti er veffangið þitt birt bæði í n0 skránni og í opinbera DHT-inu og tilkynnt á staðarnetinu þínu um mDNS.",
                 "discovery_dht_desc": "Birt aðeins í opinbera Mainline DHT-inu, án n0 skrárinnar.",
                 "discovery_n0_desc": "Birt aðeins í n0 skránni, án opinbera DHT-sins.",
                 "discovery_none_desc": "AeroFTP-ID-ið þitt er ekki birt neins staðar á meðan þú tekur á móti, svo ekki er hægt að telja það upp í opinbera DHT-inu. Aðeins einhver sem hefur þegar fullt veffang þitt getur náð í þig (til dæmis í gegnum drifmiða).",

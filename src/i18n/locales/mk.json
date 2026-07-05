@@ -4437,10 +4437,6 @@
                 "failed": "Последниот обид за поврзување не успеа",
                 "lastFailedAt": "Последна грешка пред {time}"
             },
-            "view": {
-                "grid": "Мрежа",
-                "list": "Список"
-            },
             "check": "Провери",
             "scanning": "Скенирање...",
             "checkAvailability": "Провери ја достапноста на услугата",
@@ -4461,8 +4457,7 @@
                 "customFtp": "FTP / FTPS",
                 "customSftp": "SFTP",
                 "customS3": "S3",
-                "customWebdav": "WebDAV",
-                "customAzure": "Azure Blob"
+                "customWebdav": "WebDAV"
             },
             "healthCheck": "Проверка на достапност",
             "storageVersioning": "Верзии на датотеки: {size}",
@@ -5220,11 +5215,11 @@
                 "rateLimitUnit": "во минута",
                 "rateLimitOff": "Без ограничување на стапка (0): секој сигнал е дозволен.",
                 "discoveryLabel": "Видливост",
-                "discovery_both": "n0 DNS + Mainline DHT (default)",
+                "discovery_both": "n0 DNS + Mainline DHT + LAN mDNS (default)",
                 "discovery_dht": "Само Mainline DHT",
                 "discovery_n0": "Само n0 DNS",
                 "discovery_none": "Ништо (not discoverable)",
-                "discovery_both_desc": "Најдостапно: додека примате, вашата адреса се објавува и во директориумот n0 и во јавниот DHT.",
+                "discovery_both_desc": "Најдостапно: додека примате, вашата адреса се објавува и во директориумот n0 и во јавниот DHT и се објавува во вашата локална мрежа преку mDNS.",
                 "discovery_dht_desc": "Објавена само во јавниот Mainline DHT, без директориумот n0.",
                 "discovery_n0_desc": "Објавена само во директориумот n0, без јавниот DHT.",
                 "discovery_none_desc": "Вашиот AeroFTP-ID не се објавува никаде додека примате, така што не може да се набројува на јавниот DHT. Може да ве контактира само некој што веќе ја има вашата целосна адреса (на пример преку drive ticket).",

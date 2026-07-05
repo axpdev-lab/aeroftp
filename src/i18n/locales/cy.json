@@ -4437,10 +4437,6 @@
                 "failed": "Methodd y cais cysylltu diwethaf",
                 "lastFailedAt": "Methiant diwethaf {time} yn ôl"
             },
-            "view": {
-                "grid": "Grid",
-                "list": "Rhestr"
-            },
             "check": "Gwirio",
             "scanning": "Sganio...",
             "checkAvailability": "Gwirio argaeledd y gwasanaeth",
@@ -4461,8 +4457,7 @@
                 "customFtp": "FTP / FTPS",
                 "customSftp": "SFTP",
                 "customS3": "S3",
-                "customWebdav": "WebDAV",
-                "customAzure": "Azure Blob"
+                "customWebdav": "WebDAV"
             },
             "healthCheck": "Gwiriad iechyd",
             "storageVersioning": "Fersiynau ffeil: {size}",
@@ -5220,11 +5215,11 @@
                 "rateLimitUnit": "y funud",
                 "rateLimitOff": "Dim cyfyngiad cyfradd (0): caniateir pob signal.",
                 "discoveryLabel": "Darganfyddadwyedd",
-                "discovery_both": "n0 DNS + Mainline DHT (rhagosodedig)",
+                "discovery_both": "n0 DNS + Mainline DHT + LAN mDNS (rhagosodedig)",
                 "discovery_dht": "Mainline DHT yn unig",
                 "discovery_n0": "n0 DNS yn unig",
                 "discovery_none": "Dim (ddim yn ddarganfyddadwy)",
-                "discovery_both_desc": "Mwyaf cyraeddadwy: wrth dderbyn, mae eich cyfeiriad yn cael ei gyhoeddi i'r cyfeiriadur n0 a'r DHT cyhoeddus.",
+                "discovery_both_desc": "Mwyaf cyraeddadwy: wrth dderbyn, mae eich cyfeiriad yn cael ei gyhoeddi i'r cyfeiriadur n0 a'r DHT cyhoeddus ac yn cael ei ddatgan ar eich rhwydwaith lleol dros mDNS.",
                 "discovery_dht_desc": "Cyhoeddwyd i'r Mainline DHT cyhoeddus yn unig, heb y cyfeiriadur n0.",
                 "discovery_n0_desc": "Cyhoeddwyd i'r cyfeiriadur n0 yn unig, heb y DHT cyhoeddus.",
                 "discovery_none_desc": "Nid yw eich AeroFTP-ID yn cael ei gyhoeddi yn unman wrth dderbyn, felly ni ellir ei restru ar y DHT cyhoeddus. Dim ond rhywun sydd eisoes â'ch cyfeiriad llawn all gysylltu â chi (er enghraifft trwy docyn gyrru).",

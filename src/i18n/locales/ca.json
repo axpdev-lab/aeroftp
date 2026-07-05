@@ -4437,10 +4437,6 @@
                 "failed": "L'últim intent de connexió ha fallat",
                 "lastFailedAt": "Últim error fa {time}"
             },
-            "view": {
-                "grid": "Quadrícula",
-                "list": "Llista"
-            },
             "check": "Comprova",
             "scanning": "Escanejant...",
             "checkAvailability": "Comprova la disponibilitat del servei",
@@ -4461,8 +4457,7 @@
                 "customFtp": "FTP / FTPS",
                 "customSftp": "SFTP",
                 "customS3": "S3",
-                "customWebdav": "WebDAV",
-                "customAzure": "Azure Blob"
+                "customWebdav": "WebDAV"
             },
             "healthCheck": "Comprovació de disponibilitat",
             "storageVersioning": "Versions del fitxer: {size}",
@@ -5220,11 +5215,11 @@
                 "rateLimitUnit": "per minut",
                 "rateLimitOff": "Sense límit de freqüència (0): es permet qualsevol senyal.",
                 "discoveryLabel": "Visibilitat",
-                "discovery_both": "n0 DNS + Mainline DHT (per defecte)",
+                "discovery_both": "n0 DNS + Mainline DHT + LAN mDNS (per defecte)",
                 "discovery_dht": "Només Mainline DHT",
                 "discovery_n0": "Només n0 DNS",
                 "discovery_none": "Cap (no visible)",
-                "discovery_both_desc": "Més accessible: mentre rebeu, la vostra adreça es publica tant al directori n0 com al DHT públic.",
+                "discovery_both_desc": "Més accessible: mentre rebeu, la vostra adreça es publica tant al directori n0 com al DHT públic, i s'anuncia a la vostra xarxa local mitjançant mDNS.",
                 "discovery_dht_desc": "Es publica només al Mainline DHT públic, sense el directori n0.",
                 "discovery_n0_desc": "Es publica només al directori n0, sense el DHT públic.",
                 "discovery_none_desc": "El vostre AeroFTP-ID no es publica enlloc mentre rebeu, de manera que no es pot enumerar al DHT públic. Només us pot contactar algú que ja tingui la vostra adreça completa (per exemple, mitjançant un tiquet d'unitat).",

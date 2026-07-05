@@ -4418,10 +4418,6 @@
                 "failed": "El último intento de conexión ha fallado",
                 "lastFailedAt": "Último error hace {time}"
             },
-            "view": {
-                "grid": "Cuadrícula",
-                "list": "Lista"
-            },
             "check": "Comprobar",
             "scanning": "Escaneando...",
             "checkAvailability": "Comprobar la disponibilidad del servicio",
@@ -4442,8 +4438,7 @@
                 "customFtp": "FTP / FTPS",
                 "customSftp": "SFTP",
                 "customS3": "S3",
-                "customWebdav": "WebDAV",
-                "customAzure": "Azure Blob"
+                "customWebdav": "WebDAV"
             },
             "healthCheck": "Comprobación de disponibilidad",
             "storageVersioning": "Versiones de archivo: {size}",
@@ -5201,11 +5196,11 @@
                 "rateLimitUnit": "por minuto",
                 "rateLimitOff": "Sin límite de frecuencia (0): se permite cada señal.",
                 "discoveryLabel": "Detectabilidad",
-                "discovery_both": "n0 DNS + Mainline DHT (predeterminado)",
+                "discovery_both": "n0 DNS + Mainline DHT + LAN mDNS (predeterminado)",
                 "discovery_dht": "Solo Mainline DHT",
                 "discovery_n0": "Solo n0 DNS",
                 "discovery_none": "Ninguna (no detectable)",
-                "discovery_both_desc": "Más accesible: mientras recibes, tu dirección se publica tanto en el directorio n0 como en la DHT pública.",
+                "discovery_both_desc": "Más accesible: mientras recibes, tu dirección se publica tanto en el directorio n0 como en la DHT pública, y se anuncia en tu red local mediante mDNS.",
                 "discovery_dht_desc": "Se publica solo en la Mainline DHT pública, sin el directorio n0.",
                 "discovery_n0_desc": "Se publica solo en el directorio n0, sin la DHT pública.",
                 "discovery_none_desc": "Tu AeroFTP-ID no se publica en ningún lugar mientras recibes, por lo que no se puede enumerar en la DHT pública. Solo puede contactarte alguien que ya tenga tu dirección completa (por ejemplo, mediante un ticket de unidad).",

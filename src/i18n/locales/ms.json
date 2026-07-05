@@ -4418,10 +4418,6 @@
                 "failed": "Percubaan sambungan terakhir gagal",
                 "lastFailedAt": "Kegagalan terakhir {time} lalu"
             },
-            "view": {
-                "grid": "Grid",
-                "list": "Senarai"
-            },
             "check": "Semak",
             "scanning": "Mengimbas...",
             "checkAvailability": "Semak ketersediaan perkhidmatan",
@@ -4442,8 +4438,7 @@
                 "customFtp": "FTP / FTPS",
                 "customSftp": "SFTP",
                 "customS3": "S3",
-                "customWebdav": "WebDAV",
-                "customAzure": "Azure Blob"
+                "customWebdav": "WebDAV"
             },
             "healthCheck": "Pemeriksaan kesihatan",
             "storageVersioning": "Versi fail: {size}",
@@ -5201,11 +5196,11 @@
                 "rateLimitUnit": "seminit",
                 "rateLimitOff": "Tiada had kadar (0): setiap isyarat dibenarkan.",
                 "discoveryLabel": "Keboleh temuan",
-                "discovery_both": "n0 DNS + Mainline DHT (default)",
+                "discovery_both": "n0 DNS + Mainline DHT + LAN mDNS (default)",
                 "discovery_dht": "Mainline DHT sahaja",
                 "discovery_n0": "n0 DNS sahaja",
                 "discovery_none": "Tiada (not discoverable)",
-                "discovery_both_desc": "Paling mudah dihubungi: semasa menerima, alamat anda diterbitkan ke kedua-dua direktori n0 dan DHT awam.",
+                "discovery_both_desc": "Paling mudah dihubungi: semasa menerima, alamat anda diterbitkan ke kedua-dua direktori n0 dan DHT awam, dan diumumkan ke rangkaian setempat anda melalui mDNS.",
                 "discovery_dht_desc": "Diterbitkan ke Mainline DHT awam sahaja, tanpa direktori n0.",
                 "discovery_n0_desc": "Diterbitkan ke direktori n0 sahaja, tanpa DHT awam.",
                 "discovery_none_desc": "AeroFTP-ID anda tidak diterbitkan di mana-mana semasa menerima, jadi ia tidak boleh disenaraikan pada DHT awam. Anda hanya boleh dihubungi oleh seseorang yang sudah memiliki alamat penuh anda (contohnya melalui drive ticket).",

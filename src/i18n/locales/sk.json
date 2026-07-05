@@ -4418,10 +4418,6 @@
                 "failed": "Posledný pokus o pripojenie zlyhal",
                 "lastFailedAt": "Posledná chyba pred {time}"
             },
-            "view": {
-                "grid": "Mriežka",
-                "list": "Zoznam"
-            },
             "check": "Skontrolovať",
             "scanning": "Skenovanie...",
             "checkAvailability": "Skontrolovať dostupnosť služby",
@@ -4442,8 +4438,7 @@
                 "customFtp": "FTP / FTPS",
                 "customSftp": "SFTP",
                 "customS3": "S3",
-                "customWebdav": "WebDAV",
-                "customAzure": "Azure Blob"
+                "customWebdav": "WebDAV"
             },
             "healthCheck": "Kontrola dostupnosti",
             "storageVersioning": "Verzie súborov: {size}",
@@ -5201,11 +5196,11 @@
                 "rateLimitUnit": "za minútu",
                 "rateLimitOff": "Žiadne obmedzenie (0): povolený je každý signál.",
                 "discoveryLabel": "Vyhľadateľnosť",
-                "discovery_both": "n0 DNS + Mainline DHT (predvolené)",
+                "discovery_both": "n0 DNS + Mainline DHT + LAN mDNS (predvolené)",
                 "discovery_dht": "Iba Mainline DHT",
                 "discovery_n0": "Iba n0 DNS",
                 "discovery_none": "Žiadna (nevyhľadateľný)",
-                "discovery_both_desc": "Najdostupnejšie: počas prijímania sa vaša adresa zverejní v adresári n0 aj vo verejnom DHT.",
+                "discovery_both_desc": "Najdostupnejšie: počas prijímania sa vaša adresa zverejní v adresári n0 aj vo verejnom DHT a oznamovaná vo vašej miestnej sieti cez mDNS.",
                 "discovery_dht_desc": "Zverejnené iba vo verejnom Mainline DHT, bez adresára n0.",
                 "discovery_n0_desc": "Zverejnené iba v adresári n0, bez verejného DHT.",
                 "discovery_none_desc": "Vaše AeroFTP-ID sa počas prijímania nikde nezverejní, takže ho nemožno vymenovať vo verejnom DHT. Kontaktovať vás môže len niekto, kto už má vašu úplnú adresu (napríklad cez tiket disku).",

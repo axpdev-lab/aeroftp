@@ -4437,10 +4437,6 @@
                 "failed": "Siste tilkoblingsforsøk mislyktes",
                 "lastFailedAt": "Siste feil for {time} siden"
             },
-            "view": {
-                "grid": "Rutenett",
-                "list": "Liste"
-            },
             "check": "Sjekk",
             "scanning": "Skanner...",
             "checkAvailability": "Sjekk tjenestens tilgjengelighet",
@@ -4461,8 +4457,7 @@
                 "customFtp": "FTP / FTPS",
                 "customSftp": "SFTP",
                 "customS3": "S3",
-                "customWebdav": "WebDAV",
-                "customAzure": "Azure Blob"
+                "customWebdav": "WebDAV"
             },
             "healthCheck": "Tilgjengelighetssjekk",
             "storageVersioning": "Filversjoner: {size}",
@@ -5220,11 +5215,11 @@
                 "rateLimitUnit": "per minutt",
                 "rateLimitOff": "Ingen hastighetsgrense (0): hvert signal er tillatt.",
                 "discoveryLabel": "Synlighet",
-                "discovery_both": "n0 DNS + Mainline DHT (default)",
+                "discovery_both": "n0 DNS + Mainline DHT + LAN mDNS (default)",
                 "discovery_dht": "Kun Mainline DHT",
                 "discovery_n0": "Kun n0 DNS",
                 "discovery_none": "Ingen (not discoverable)",
-                "discovery_both_desc": "Mest tilgjengelig: mens du mottar, publiseres adressen din til både n0-katalogen og den offentlige DHT.",
+                "discovery_both_desc": "Mest tilgjengelig: mens du mottar, publiseres adressen din til både n0-katalogen og den offentlige DHT og annonseres på ditt lokale nettverk via mDNS.",
                 "discovery_dht_desc": "Publisert kun til den offentlige Mainline DHT, uten n0-katalogen.",
                 "discovery_n0_desc": "Publisert kun til n0-katalogen, uten den offentlige DHT.",
                 "discovery_none_desc": "AeroFTP-ID-en din publiseres ingen steder mens du mottar, så den kan ikke listes opp på den offentlige DHT. Du kan kun nås av noen som allerede har hele adressen din (for eksempel via en drive ticket).",

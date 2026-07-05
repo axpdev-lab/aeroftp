@@ -4418,10 +4418,6 @@
                 "failed": "Posljednji pokušaj povezivanja nije uspio",
                 "lastFailedAt": "Posljednja pogreška prije {time}"
             },
-            "view": {
-                "grid": "Mreža",
-                "list": "Popis"
-            },
             "check": "Provjeri",
             "scanning": "Skeniranje...",
             "checkAvailability": "Provjeri dostupnost usluge",
@@ -4442,8 +4438,7 @@
                 "customFtp": "FTP / FTPS",
                 "customSftp": "SFTP",
                 "customS3": "S3",
-                "customWebdav": "WebDAV",
-                "customAzure": "Azure Blob"
+                "customWebdav": "WebDAV"
             },
             "healthCheck": "Provjera dostupnosti",
             "storageVersioning": "Verzije datoteka: {size}",
@@ -5201,11 +5196,11 @@
                 "rateLimitUnit": "po minuti",
                 "rateLimitOff": "Bez ograničenja brzine (0): svaki je signal dopušten.",
                 "discoveryLabel": "Vidljivost",
-                "discovery_both": "n0 DNS + Mainline DHT (zadano)",
+                "discovery_both": "n0 DNS + Mainline DHT + LAN mDNS (zadano)",
                 "discovery_dht": "Samo Mainline DHT",
                 "discovery_n0": "Samo n0 DNS",
                 "discovery_none": "Nijedno (nije vidljivo)",
-                "discovery_both_desc": "Najdostupnije: tijekom primanja vaša se adresa objavljuje i u n0 imenik i u javni DHT.",
+                "discovery_both_desc": "Najdostupnije: tijekom primanja vaša se adresa objavljuje i u n0 imenik i u javni DHT i objavljuje se na vašoj lokalnoj mreži putem mDNS-a.",
                 "discovery_dht_desc": "Objavljuje se samo u javni Mainline DHT, bez n0 imenika.",
                 "discovery_n0_desc": "Objavljuje se samo u n0 imenik, bez javnog DHT-a.",
                 "discovery_none_desc": "Vaš AeroFTP-ID se ne objavljuje nigdje tijekom primanja, pa se ne može nabrojati u javnom DHT-u. Može vas kontaktirati samo netko tko već ima vašu punu adresu (na primjer putem ulaznice za disk).",

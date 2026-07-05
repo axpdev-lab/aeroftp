@@ -4418,10 +4418,6 @@
                 "failed": "Ostatnia próba połączenia nie powiodła się",
                 "lastFailedAt": "Ostatni błąd {time} temu"
             },
-            "view": {
-                "grid": "Siatka",
-                "list": "Lista"
-            },
             "check": "Sprawdź",
             "scanning": "Skanowanie...",
             "checkAvailability": "Sprawdź dostępność usługi",
@@ -4442,8 +4438,7 @@
                 "customFtp": "FTP / FTPS",
                 "customSftp": "SFTP",
                 "customS3": "S3",
-                "customWebdav": "WebDAV",
-                "customAzure": "Azure Blob"
+                "customWebdav": "WebDAV"
             },
             "healthCheck": "Sprawdzanie dostępności",
             "storageVersioning": "Wersje plików: {size}",
@@ -5201,11 +5196,11 @@
                 "rateLimitUnit": "na minutę",
                 "rateLimitOff": "Brak limitu częstotliwości (0): każdy sygnał jest dozwolony.",
                 "discoveryLabel": "Wykrywalność",
-                "discovery_both": "n0 DNS + Mainline DHT (default)",
+                "discovery_both": "n0 DNS + Mainline DHT + LAN mDNS (default)",
                 "discovery_dht": "Tylko Mainline DHT",
                 "discovery_n0": "Tylko n0 DNS",
                 "discovery_none": "Brak (not discoverable)",
-                "discovery_both_desc": "Najlepiej osiągalny: podczas odbierania Twój adres jest publikowany zarówno w katalogu n0, jak i w publicznym DHT.",
+                "discovery_both_desc": "Najlepiej osiągalny: podczas odbierania Twój adres jest publikowany zarówno w katalogu n0, jak i w publicznym DHT i ogłaszany w sieci lokalnej przez mDNS.",
                 "discovery_dht_desc": "Publikowany tylko w publicznym Mainline DHT, bez katalogu n0.",
                 "discovery_n0_desc": "Publikowany tylko w katalogu n0, bez publicznego DHT.",
                 "discovery_none_desc": "Twój AeroFTP-ID nie jest nigdzie publikowany podczas odbierania, więc nie można go wyliczyć w publicznym DHT. Może się z Tobą skontaktować tylko ktoś, kto już posiada Twój pełny adres (na przykład przez drive ticket).",

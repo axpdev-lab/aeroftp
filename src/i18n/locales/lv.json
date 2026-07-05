@@ -4418,10 +4418,6 @@
                 "failed": "Pēdējais savienojuma mēģinājums neizdevās",
                 "lastFailedAt": "Pēdējā kļūda pirms {time}"
             },
-            "view": {
-                "grid": "Režģis",
-                "list": "Saraksts"
-            },
             "check": "Pārbaudīt",
             "scanning": "Notiek skenēšana...",
             "checkAvailability": "Pārbaudīt pakalpojuma pieejamību",
@@ -4442,8 +4438,7 @@
                 "customFtp": "FTP / FTPS",
                 "customSftp": "SFTP",
                 "customS3": "S3",
-                "customWebdav": "WebDAV",
-                "customAzure": "Azure Blob"
+                "customWebdav": "WebDAV"
             },
             "healthCheck": "Pieejamības pārbaude",
             "storageVersioning": "Failu versijas: {size}",
@@ -5201,11 +5196,11 @@
                 "rateLimitUnit": "minūtē",
                 "rateLimitOff": "Bez ātruma ierobežojuma (0): atļauts katrs signāls.",
                 "discoveryLabel": "Atrodamība",
-                "discovery_both": "n0 DNS + Mainline DHT (default)",
+                "discovery_both": "n0 DNS + Mainline DHT + LAN mDNS (default)",
                 "discovery_dht": "Tikai Mainline DHT",
                 "discovery_n0": "Tikai n0 DNS",
                 "discovery_none": "Nav (not discoverable)",
-                "discovery_both_desc": "Vislabāk sasniedzams: saņemšanas laikā jūsu adrese tiek publicēta gan n0 direktorijā, gan publiskajā DHT.",
+                "discovery_both_desc": "Vislabāk sasniedzams: saņemšanas laikā jūsu adrese tiek publicēta gan n0 direktorijā, gan publiskajā DHT un tiek izziņota jūsu lokālajā tīklā, izmantojot mDNS.",
                 "discovery_dht_desc": "Publicēts tikai publiskajā Mainline DHT, bez n0 direktorija.",
                 "discovery_n0_desc": "Publicēts tikai n0 direktorijā, bez publiskā DHT.",
                 "discovery_none_desc": "Jūsu AeroFTP-ID saņemšanas laikā nekur netiek publicēts, tāpēc to nevar uzskaitīt publiskajā DHT. Ar jums var sazināties tikai tas, kuram jau ir jūsu pilnā adrese (piemēram, izmantojot drive ticket).",

@@ -4418,10 +4418,6 @@
                 "failed": "শেষ সংযোগের চেষ্টা ব্যর্থ হয়েছে",
                 "lastFailedAt": "শেষ ব্যর্থতা {time} আগে"
             },
-            "view": {
-                "grid": "গ্রিড",
-                "list": "তালিকা"
-            },
             "check": "যাচাই",
             "scanning": "স্ক্যান করা হচ্ছে...",
             "checkAvailability": "পরিষেবার উপলব্ধতা যাচাই করুন",
@@ -4442,8 +4438,7 @@
                 "customFtp": "FTP / FTPS",
                 "customSftp": "SFTP",
                 "customS3": "S3",
-                "customWebdav": "WebDAV",
-                "customAzure": "Azure Blob"
+                "customWebdav": "WebDAV"
             },
             "healthCheck": "হেলথ চেক",
             "storageVersioning": "ফাইল সংস্করণ: {size}",
@@ -5201,11 +5196,11 @@
                 "rateLimitUnit": "প্রতি মিনিটে",
                 "rateLimitOff": "কোনো হার সীমা নেই (0): প্রতিটি সংকেত অনুমোদিত।",
                 "discoveryLabel": "আবিষ্কারযোগ্যতা",
-                "discovery_both": "n0 DNS + Mainline DHT (ডিফল্ট)",
+                "discovery_both": "n0 DNS + Mainline DHT + LAN mDNS (ডিফল্ট)",
                 "discovery_dht": "শুধু Mainline DHT",
                 "discovery_n0": "শুধু n0 DNS",
                 "discovery_none": "কোনোটি নয় (আবিষ্কারযোগ্য নয়)",
-                "discovery_both_desc": "সর্বাধিক নাগালযোগ্য: গ্রহণ করার সময়, আপনার ঠিকানা n0 ডিরেক্টরি এবং সর্বজনীন DHT উভয়েই প্রকাশিত হয়।",
+                "discovery_both_desc": "সর্বাধিক নাগালযোগ্য: গ্রহণ করার সময়, আপনার ঠিকানা n0 ডিরেক্টরি এবং সর্বজনীন DHT উভয়েই প্রকাশিত হয়। এবং mDNS এর মাধ্যমে আপনার স্থানীয় নেটওয়ার্কে ঘোষণা করা হয়",
                 "discovery_dht_desc": "n0 ডিরেক্টরি ছাড়া শুধুমাত্র সর্বজনীন Mainline DHT-তে প্রকাশিত।",
                 "discovery_n0_desc": "সর্বজনীন DHT ছাড়া শুধুমাত্র n0 ডিরেক্টরিতে প্রকাশিত।",
                 "discovery_none_desc": "গ্রহণ করার সময় আপনার AeroFTP-ID কোথাও প্রকাশিত হয় না, তাই এটি সর্বজনীন DHT-তে গণনা করা যায় না। শুধুমাত্র এমন কেউ আপনার সাথে যোগাযোগ করতে পারবেন যিনি ইতিমধ্যে আপনার সম্পূর্ণ ঠিকানা ধারণ করেন (উদাহরণস্বরূপ একটি ড্রাইভ টিকিটের মাধ্যমে)।",

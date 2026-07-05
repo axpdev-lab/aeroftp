@@ -4418,10 +4418,6 @@
                 "failed": "上次连接尝试失败",
                 "lastFailedAt": "上次失败于 {time} 前"
             },
-            "view": {
-                "grid": "网格",
-                "list": "列表"
-            },
             "check": "检查",
             "scanning": "扫描中...",
             "checkAvailability": "检查服务可用性",
@@ -4442,8 +4438,7 @@
                 "customFtp": "FTP / FTPS",
                 "customSftp": "SFTP",
                 "customS3": "S3",
-                "customWebdav": "WebDAV",
-                "customAzure": "Azure Blob"
+                "customWebdav": "WebDAV"
             },
             "healthCheck": "健康检查",
             "storageVersioning": "文件版本：{size}",
@@ -5201,11 +5196,11 @@
                 "rateLimitUnit": "每分钟",
                 "rateLimitOff": "无速率限制 (0)：允许每一个信号。",
                 "discoveryLabel": "可发现性",
-                "discovery_both": "n0 DNS + Mainline DHT (默认)",
+                "discovery_both": "n0 DNS + Mainline DHT + LAN mDNS (默认)",
                 "discovery_dht": "仅 Mainline DHT",
                 "discovery_n0": "仅 n0 DNS",
                 "discovery_none": "无 (不可发现)",
-                "discovery_both_desc": "最易访问：接收时，你的地址会同时发布到 n0 目录和公共 DHT。",
+                "discovery_both_desc": "最易访问：接收时，你的地址会同时发布到 n0 目录和公共 DHT，并通过 mDNS 在你的本地网络中公布。",
                 "discovery_dht_desc": "仅发布到公共 Mainline DHT，不使用 n0 目录。",
                 "discovery_n0_desc": "仅发布到 n0 目录，不使用公共 DHT。",
                 "discovery_none_desc": "接收时，你的 AeroFTP-ID 不会在任何地方发布，因此无法在公共 DHT 上被枚举。只有已经持有你完整地址的人才能联系到你（例如通过驱动器票据）。",

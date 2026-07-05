@@ -4437,10 +4437,6 @@
                 "failed": "ការប៉ុនប៉ងភ្ជាប់ចុងក្រោយបានបរាជ័យ",
                 "lastFailedAt": "បរាជ័យចុងក្រោយ {time} មុន"
             },
-            "view": {
-                "grid": "ក្រឡា",
-                "list": "បញ្ជី"
-            },
             "check": "ពិនិត្យ",
             "scanning": "កំពុងស្កេន...",
             "checkAvailability": "ពិនិត្យភាពអាចរកបាននៃសេវាកម្ម",
@@ -4461,8 +4457,7 @@
                 "customFtp": "FTP / FTPS",
                 "customSftp": "SFTP",
                 "customS3": "S3",
-                "customWebdav": "WebDAV",
-                "customAzure": "Azure Blob"
+                "customWebdav": "WebDAV"
             },
             "healthCheck": "ការពិនិត្យសុខភាព",
             "storageVersioning": "កំណែឯកសារ៖ {size}",
@@ -5220,11 +5215,11 @@
                 "rateLimitUnit": "ក្នុងមួយនាទី",
                 "rateLimitOff": "គ្មានកំណត់អត្រា (0): គ្រប់សញ្ញាត្រូវបានអនុញ្ញាត។",
                 "discoveryLabel": "សមត្ថភាពរកឃើញ",
-                "discovery_both": "n0 DNS + Mainline DHT (default)",
+                "discovery_both": "n0 DNS + Mainline DHT + LAN mDNS (default)",
                 "discovery_dht": "Mainline DHT តែប៉ុណ្ណោះ",
                 "discovery_n0": "n0 DNS តែប៉ុណ្ណោះ",
                 "discovery_none": "គ្មាន (not discoverable)",
-                "discovery_both_desc": "ទាក់ទងបានច្រើនបំផុត: ពេលកំពុងទទួល អាសយដ្ឋានរបស់អ្នកត្រូវបានផ្សព្វផ្សាយទៅទាំងបញ្ជី n0 និង DHT សាធារណៈ។",
+                "discovery_both_desc": "ទាក់ទងបានច្រើនបំផុត: ពេលកំពុងទទួល អាសយដ្ឋានរបស់អ្នកត្រូវបានផ្សព្វផ្សាយទៅទាំងបញ្ជី n0 និង DHT សាធារណៈ។ ហើយត្រូវបានប្រកាសនៅលើបណ្តាញមូលដ្ឋានរបស់អ្នកតាមរយៈ mDNS",
                 "discovery_dht_desc": "ផ្សព្វផ្សាយទៅ Mainline DHT សាធារណៈតែប៉ុណ្ណោះ ដោយគ្មានបញ្ជី n0។",
                 "discovery_n0_desc": "ផ្សព្វផ្សាយទៅបញ្ជី n0 តែប៉ុណ្ណោះ ដោយគ្មាន DHT សាធារណៈ។",
                 "discovery_none_desc": "AeroFTP-ID របស់អ្នកមិនត្រូវបានផ្សព្វផ្សាយនៅកន្លែងណាឡើយពេលកំពុងទទួល ដូច្នេះវាមិនអាចត្រូវបានរាប់បញ្ចូលនៅលើ DHT សាធារណៈបានទេ។ អ្នកអាចត្រូវបានទាក់ទងតែដោយអ្នកដែលមានអាសយដ្ឋានពេញលេញរបស់អ្នករួចហើយ (ឧទាហរណ៍តាមរយៈ drive ticket)។",

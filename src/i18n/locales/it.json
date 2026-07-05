@@ -4593,10 +4593,6 @@
                 "developer": "Sviluppatore",
                 "mediaServices": "Servizi multimediali"
             },
-            "view": {
-                "grid": "Griglia",
-                "list": "Elenco"
-            },
             "check": "Verifica",
             "scanning": "Scansione...",
             "checkAvailability": "Verifica la disponibilità del servizio",
@@ -4618,8 +4614,7 @@
                 "customFtp": "FTP / FTPS",
                 "customSftp": "SFTP",
                 "customS3": "S3",
-                "customWebdav": "WebDAV",
-                "customAzure": "Azure Blob"
+                "customWebdav": "WebDAV"
             },
             "confirmDeleteServer": "Eliminare il server \"{name}\"? Verranno rimosse le credenziali salvate e l'operazione non potrà essere annullata.",
             "renameWithHotkey": "Rinomina (F2)",
@@ -5209,11 +5204,11 @@
                 "rateLimitUnit": "al minuto",
                 "rateLimitOff": "Nessun limite (0): ogni segnale è consentito.",
                 "discoveryLabel": "Rintracciabilità",
-                "discovery_both": "DNS n0 + DHT Mainline (predefinito)",
+                "discovery_both": "DNS n0 + DHT Mainline + LAN mDNS (predefinito)",
                 "discovery_dht": "Solo DHT Mainline",
                 "discovery_n0": "Solo DNS n0",
                 "discovery_none": "Nessuna (non rintracciabile)",
-                "discovery_both_desc": "Massima raggiungibilità: mentre ricevi il tuo indirizzo viene pubblicato sia nella directory n0 sia nella DHT pubblica.",
+                "discovery_both_desc": "Massima raggiungibilità: mentre ricevi il tuo indirizzo viene pubblicato sia nella directory n0 sia nella DHT pubblica e annunciato nella tua rete locale via mDNS.",
                 "discovery_dht_desc": "Pubblicato solo nella DHT Mainline pubblica, senza la directory n0.",
                 "discovery_n0_desc": "Pubblicato solo nella directory n0, senza la DHT pubblica.",
                 "discovery_none_desc": "Il tuo AeroFTP-ID non viene pubblicato da nessuna parte mentre ricevi, quindi non è enumerabile sulla DHT pubblica. Puoi essere raggiunto solo da chi possiede già il tuo indirizzo completo (per esempio tramite un ticket di drive).",

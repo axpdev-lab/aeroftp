@@ -4418,10 +4418,6 @@
                 "failed": "마지막 연결 시도 실패",
                 "lastFailedAt": "마지막 실패 {time} 전"
             },
-            "view": {
-                "grid": "그리드",
-                "list": "목록"
-            },
             "check": "확인",
             "scanning": "스캔 중...",
             "checkAvailability": "서비스 가용성 확인",
@@ -4442,8 +4438,7 @@
                 "customFtp": "FTP / FTPS",
                 "customSftp": "SFTP",
                 "customS3": "S3",
-                "customWebdav": "WebDAV",
-                "customAzure": "Azure Blob"
+                "customWebdav": "WebDAV"
             },
             "healthCheck": "상태 확인",
             "storageVersioning": "파일 버전: {size}",
@@ -5201,11 +5196,11 @@
                 "rateLimitUnit": "분당",
                 "rateLimitOff": "속도 제한 없음 (0): 모든 신호가 허용됩니다.",
                 "discoveryLabel": "검색 가능성",
-                "discovery_both": "n0 DNS + Mainline DHT (default)",
+                "discovery_both": "n0 DNS + Mainline DHT + LAN mDNS (default)",
                 "discovery_dht": "Mainline DHT만",
                 "discovery_n0": "n0 DNS만",
                 "discovery_none": "없음 (not discoverable)",
-                "discovery_both_desc": "가장 도달하기 쉬움: 수신 중에 주소가 n0 디렉터리와 공개 DHT 모두에 게시됩니다.",
+                "discovery_both_desc": "가장 도달하기 쉬움: 수신 중에 주소가 n0 디렉터리와 공개 DHT 모두에 게시됩니다, 그리고 mDNS를 통해 로컬 네트워크에 알려집니다.",
                 "discovery_dht_desc": "n0 디렉터리 없이 공개 Mainline DHT에만 게시됩니다.",
                 "discovery_n0_desc": "공개 DHT 없이 n0 디렉터리에만 게시됩니다.",
                 "discovery_none_desc": "수신 중에 AeroFTP-ID가 어디에도 게시되지 않으므로 공개 DHT에서 열거할 수 없습니다. 이미 전체 주소를 가진 사람만 연락할 수 있습니다 (예: drive ticket을 통해).",

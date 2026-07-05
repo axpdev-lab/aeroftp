@@ -4418,10 +4418,6 @@
                 "failed": "Poslední pokus o připojení selhal",
                 "lastFailedAt": "Poslední selhání před {time}"
             },
-            "view": {
-                "grid": "Mřížka",
-                "list": "Seznam"
-            },
             "check": "Zkontrolovat",
             "scanning": "Skenování...",
             "checkAvailability": "Zkontrolovat dostupnost služby",
@@ -4442,8 +4438,7 @@
                 "customFtp": "FTP / FTPS",
                 "customSftp": "SFTP",
                 "customS3": "S3",
-                "customWebdav": "WebDAV",
-                "customAzure": "Azure Blob"
+                "customWebdav": "WebDAV"
             },
             "healthCheck": "Kontrola dostupnosti",
             "storageVersioning": "Verze souborů: {size}",
@@ -5201,11 +5196,11 @@
                 "rateLimitUnit": "za minutu",
                 "rateLimitOff": "Bez limitu četnosti (0): povolen je každý signál.",
                 "discoveryLabel": "Viditelnost",
-                "discovery_both": "n0 DNS + Mainline DHT (výchozí)",
+                "discovery_both": "n0 DNS + Mainline DHT + LAN mDNS (výchozí)",
                 "discovery_dht": "Pouze Mainline DHT",
                 "discovery_n0": "Pouze n0 DNS",
                 "discovery_none": "Žádná (neviditelný)",
-                "discovery_both_desc": "Nejdostupnější: během příjmu je vaše adresa zveřejněna jak v adresáři n0, tak ve veřejném DHT.",
+                "discovery_both_desc": "Nejdostupnější: během příjmu je vaše adresa zveřejněna jak v adresáři n0, tak ve veřejném DHT a oznamována ve vaší místní síti přes mDNS.",
                 "discovery_dht_desc": "Zveřejněno pouze ve veřejném Mainline DHT, bez adresáře n0.",
                 "discovery_n0_desc": "Zveřejněno pouze v adresáři n0, bez veřejného DHT.",
                 "discovery_none_desc": "Vaše AeroFTP-ID není během příjmu nikde zveřejněno, takže jej nelze vyhledat ve veřejném DHT. Kontaktovat vás může pouze někdo, kdo již má vaši úplnou adresu (například prostřednictvím lístku jednotky).",

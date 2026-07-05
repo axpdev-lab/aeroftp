@@ -4418,10 +4418,6 @@
                 "failed": "Son bağlantı denemesi başarısız",
                 "lastFailedAt": "Son hata {time} önce"
             },
-            "view": {
-                "grid": "Izgara",
-                "list": "Liste"
-            },
             "check": "Kontrol et",
             "scanning": "Taranıyor...",
             "checkAvailability": "Hizmet kullanılabilirliğini kontrol et",
@@ -4442,8 +4438,7 @@
                 "customFtp": "FTP / FTPS",
                 "customSftp": "SFTP",
                 "customS3": "S3",
-                "customWebdav": "WebDAV",
-                "customAzure": "Azure Blob"
+                "customWebdav": "WebDAV"
             },
             "healthCheck": "Sağlık kontrolü",
             "storageVersioning": "Dosya sürümleri: {size}",
@@ -5201,11 +5196,11 @@
                 "rateLimitUnit": "dakika başına",
                 "rateLimitOff": "Hız sınırı yok (0): her sinyale izin verilir.",
                 "discoveryLabel": "Keşfedilebilirlik",
-                "discovery_both": "n0 DNS + Mainline DHT (varsayılan)",
+                "discovery_both": "n0 DNS + Mainline DHT + LAN mDNS (varsayılan)",
                 "discovery_dht": "Yalnızca Mainline DHT",
                 "discovery_n0": "Yalnızca n0 DNS",
                 "discovery_none": "Hiçbiri (keşfedilemez)",
-                "discovery_both_desc": "En erişilebilir: alırken adresiniz hem n0 dizininde hem de genel DHT'de yayımlanır.",
+                "discovery_both_desc": "En erişilebilir: alırken adresiniz hem n0 dizininde hem de genel DHT'de yayımlanır ve mDNS üzerinden yerel ağınızda duyurulur.",
                 "discovery_dht_desc": "Yalnızca genel Mainline DHT'de yayımlanır, n0 dizini olmadan.",
                 "discovery_n0_desc": "Yalnızca n0 dizininde yayımlanır, genel DHT olmadan.",
                 "discovery_none_desc": "AeroFTP-ID'niz alırken hiçbir yerde yayımlanmaz, bu nedenle genel DHT'de listelenemez. Size yalnızca tam adresinize zaten sahip olan biri ulaşabilir (örneğin bir sürücü bileti aracılığıyla).",

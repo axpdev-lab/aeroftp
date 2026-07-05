@@ -4418,10 +4418,6 @@
                 "failed": "अंतिम कनेक्शन प्रयास विफल",
                 "lastFailedAt": "अंतिम विफलता {time} पहले"
             },
-            "view": {
-                "grid": "ग्रिड",
-                "list": "सूची"
-            },
             "check": "जाँचें",
             "scanning": "स्कैन हो रहा है...",
             "checkAvailability": "सेवा की उपलब्धता जाँचें",
@@ -4442,8 +4438,7 @@
                 "customFtp": "FTP / FTPS",
                 "customSftp": "SFTP",
                 "customS3": "S3",
-                "customWebdav": "WebDAV",
-                "customAzure": "Azure Blob"
+                "customWebdav": "WebDAV"
             },
             "healthCheck": "उपलब्धता जाँच",
             "storageVersioning": "फ़ाइल संस्करण: {size}",
@@ -5201,11 +5196,11 @@
                 "rateLimitUnit": "प्रति मिनट",
                 "rateLimitOff": "कोई दर सीमा नहीं (0): हर संकेत की अनुमति है।",
                 "discoveryLabel": "खोज योग्यता",
-                "discovery_both": "n0 DNS + Mainline DHT (डिफ़ॉल्ट)",
+                "discovery_both": "n0 DNS + Mainline DHT + LAN mDNS (डिफ़ॉल्ट)",
                 "discovery_dht": "केवल Mainline DHT",
                 "discovery_n0": "केवल n0 DNS",
                 "discovery_none": "कोई नहीं (खोजे जाने योग्य नहीं)",
-                "discovery_both_desc": "सबसे अधिक पहुँच योग्य: प्राप्त करते समय, आपका पता n0 निर्देशिका और सार्वजनिक DHT दोनों में प्रकाशित होता है।",
+                "discovery_both_desc": "सबसे अधिक पहुँच योग्य: प्राप्त करते समय, आपका पता n0 निर्देशिका और सार्वजनिक DHT दोनों में प्रकाशित होता है।, और mDNS के ज़रिए आपके स्थानीय नेटवर्क पर घोषित किया जाता है",
                 "discovery_dht_desc": "n0 निर्देशिका के बिना, केवल सार्वजनिक Mainline DHT में प्रकाशित होता है।",
                 "discovery_n0_desc": "सार्वजनिक DHT के बिना, केवल n0 निर्देशिका में प्रकाशित होता है।",
                 "discovery_none_desc": "प्राप्त करते समय आपका AeroFTP-ID कहीं भी प्रकाशित नहीं होता, इसलिए इसे सार्वजनिक DHT पर सूचीबद्ध नहीं किया जा सकता। आप तक केवल वही व्यक्ति पहुँच सकता है जिसके पास पहले से आपका पूरा पता है (उदाहरण के लिए ड्राइव टिकट के माध्यम से)।",

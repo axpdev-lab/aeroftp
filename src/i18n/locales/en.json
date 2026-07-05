@@ -4614,10 +4614,6 @@
                 "mediaServices": "Media Services",
                 "developer": "Developer"
             },
-            "view": {
-                "grid": "Grid",
-                "list": "List"
-            },
             "check": "Check",
             "scanning": "Scanning...",
             "checkAvailability": "Check service availability",
@@ -4639,8 +4635,7 @@
                 "customFtp": "FTP / FTPS",
                 "customSftp": "SFTP",
                 "customS3": "S3",
-                "customWebdav": "WebDAV",
-                "customAzure": "Azure Blob"
+                "customWebdav": "WebDAV"
             },
             "table": {
                 "columnSettings": "Columns",
@@ -5209,12 +5204,12 @@
                 "rateLimitUnit": "per minute",
                 "rateLimitOff": "No rate limit (0): every signal is allowed.",
                 "discoveryLabel": "Discoverability",
-                "discovery_both": "n0 DNS + Mainline DHT (default)",
+                "discovery_both": "n0 DNS + Mainline DHT + LAN mDNS (default)",
                 "discovery_dht": "Mainline DHT only",
                 "discovery_n0": "n0 DNS only",
                 "discovery_none": "None (not discoverable)",
                 "discovery_lan": "LAN only (mDNS)",
-                "discovery_both_desc": "Most reachable: while receiving, your address is published to both the n0 directory and the public DHT.",
+                "discovery_both_desc": "Most reachable: while receiving, your address is published to both the n0 directory and the public DHT, and announced to your local network over mDNS.",
                 "discovery_dht_desc": "Published to the public Mainline DHT only, without the n0 directory.",
                 "discovery_n0_desc": "Published to the n0 directory only, without the public DHT.",
                 "discovery_none_desc": "Your AeroFTP-ID is not published anywhere while receiving, so it cannot be enumerated on the public DHT. You can be reached only by someone who already holds your full address (for example via a drive ticket).",

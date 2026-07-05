@@ -157,22 +157,30 @@ impl PeerEndpoint {
         // (`relay(http://localhost:3340)`), discovered purely via the Mainline DHT. This is what makes
         // the "every capable user runs their own relay" model work. The earlier "same relay set"
         // claim (from the WI-4g observation) was wrong; that failure had another cause.
-        let relay_mode = match cfg.custom_relay_urls.as_deref() {
-            Some(urls) if !urls.is_empty() => {
-                let parsed: Vec<iroh::RelayUrl> = urls
-                    .iter()
-                    .map(|u| {
-                        u.parse::<iroh::RelayUrl>()
-                            .with_context(|| format!("invalid custom relay URL: {u:?}"))
-                    })
-                    .collect::<Result<_>>()?;
-                info!(
-                    count = parsed.len(),
-                    "PeerEndpoint using RelayMode::Custom (self-hosted/override relays)"
-                );
-                iroh::RelayMode::Custom(iroh::RelayMap::from_iter(parsed))
+        // LAN-only discovery promises "local network, fully offline, no relay":
+        // honor it by disabling relays entirely (same-subnet peers connect
+        // directly, no hole punching needed), so no WAN service is ever
+        // contacted; this takes precedence over custom relay URLs too.
+        let relay_mode = if cfg.discovery == DiscoveryMode::Lan {
+            iroh::RelayMode::Disabled
+        } else {
+            match cfg.custom_relay_urls.as_deref() {
+                Some(urls) if !urls.is_empty() => {
+                    let parsed: Vec<iroh::RelayUrl> = urls
+                        .iter()
+                        .map(|u| {
+                            u.parse::<iroh::RelayUrl>()
+                                .with_context(|| format!("invalid custom relay URL: {u:?}"))
+                        })
+                        .collect::<Result<_>>()?;
+                    info!(
+                        count = parsed.len(),
+                        "PeerEndpoint using RelayMode::Custom (self-hosted/override relays)"
+                    );
+                    iroh::RelayMode::Custom(iroh::RelayMap::from_iter(parsed))
+                }
+                _ => iroh::RelayMode::Staging,
             }
-            _ => iroh::RelayMode::Staging,
         };
         // Register every ALPN the receive loop must accept: the L0 gate binary
         // dials with `PEER_L0_ALPN`, the app's "Send file" receive loop accepts
@@ -377,22 +385,27 @@ impl ConnectivitySample {
 /// No L0 ALPN is registered here; the L1 docs paths use a Router + blobs/gossip/docs ALPNs instead.
 /// This reuses the relay/discovery logic so L1 gets the same hole-punch behavior as the proven L0 stack.
 pub async fn build_base_endpoint(cfg: PeerEndpointConfig) -> Result<Endpoint> {
-    let relay_mode = match cfg.custom_relay_urls.as_deref() {
-        Some(urls) if !urls.is_empty() => {
-            let parsed: Vec<iroh::RelayUrl> = urls
-                .iter()
-                .map(|u| {
-                    u.parse::<iroh::RelayUrl>()
-                        .with_context(|| format!("invalid custom relay URL: {u:?}"))
-                })
-                .collect::<Result<_>>()?;
-            info!(
-                count = parsed.len(),
-                "build_base_endpoint (L1) using RelayMode::Custom (self-hosted/override relays)"
-            );
-            iroh::RelayMode::Custom(iroh::RelayMap::from_iter(parsed))
+    // Same LAN-only contract as PeerEndpoint::bind: no relay is ever contacted.
+    let relay_mode = if cfg.discovery == DiscoveryMode::Lan {
+        iroh::RelayMode::Disabled
+    } else {
+        match cfg.custom_relay_urls.as_deref() {
+            Some(urls) if !urls.is_empty() => {
+                let parsed: Vec<iroh::RelayUrl> = urls
+                    .iter()
+                    .map(|u| {
+                        u.parse::<iroh::RelayUrl>()
+                            .with_context(|| format!("invalid custom relay URL: {u:?}"))
+                    })
+                    .collect::<Result<_>>()?;
+                info!(
+                    count = parsed.len(),
+                    "build_base_endpoint (L1) using RelayMode::Custom (self-hosted/override relays)"
+                );
+                iroh::RelayMode::Custom(iroh::RelayMap::from_iter(parsed))
+            }
+            _ => iroh::RelayMode::Staging,
         }
-        _ => iroh::RelayMode::Staging,
     };
     let mut base = Endpoint::builder(iroh::endpoint::presets::Minimal).relay_mode(relay_mode);
     if let Some(seed) = cfg.identity_secret_key {

@@ -4418,10 +4418,6 @@
                 "failed": "Jaribio la mwisho la kuunganisha limeshindwa",
                 "lastFailedAt": "Hitilafu ya mwisho {time} iliyopita"
             },
-            "view": {
-                "grid": "Gridi",
-                "list": "Orodha"
-            },
             "check": "Angalia",
             "scanning": "Inachanganua...",
             "checkAvailability": "Angalia upatikanaji wa huduma",
@@ -4442,8 +4438,7 @@
                 "customFtp": "FTP / FTPS",
                 "customSftp": "SFTP",
                 "customS3": "S3",
-                "customWebdav": "WebDAV",
-                "customAzure": "Azure Blob"
+                "customWebdav": "WebDAV"
             },
             "healthCheck": "Ukaguzi wa afya",
             "storageVersioning": "Matoleo ya faili: {size}",
@@ -5201,11 +5196,11 @@
                 "rateLimitUnit": "kwa dakika",
                 "rateLimitOff": "Hakuna kikomo cha kasi (0): kila ishara inaruhusiwa.",
                 "discoveryLabel": "Uwezekano wa kupatikana",
-                "discovery_both": "n0 DNS + Mainline DHT (chaguo-msingi)",
+                "discovery_both": "n0 DNS + Mainline DHT + LAN mDNS (chaguo-msingi)",
                 "discovery_dht": "Mainline DHT pekee",
                 "discovery_n0": "n0 DNS pekee",
                 "discovery_none": "Hakuna (haipatikani)",
-                "discovery_both_desc": "Inafikika zaidi: wakati wa kupokea, anwani yako huchapishwa katika saraka ya n0 na pia DHT ya umma.",
+                "discovery_both_desc": "Inafikika zaidi: wakati wa kupokea, anwani yako huchapishwa katika saraka ya n0 na pia DHT ya umma, na kutangazwa kwenye mtandao wako wa karibu kupitia mDNS.",
                 "discovery_dht_desc": "Inachapishwa katika Mainline DHT ya umma pekee, bila saraka ya n0.",
                 "discovery_n0_desc": "Inachapishwa katika saraka ya n0 pekee, bila DHT ya umma.",
                 "discovery_none_desc": "AeroFTP-ID yako haichapishwi popote wakati wa kupokea, kwa hivyo haiwezi kuorodheshwa katika DHT ya umma. Unaweza kufikiwa tu na mtu ambaye tayari ana anwani yako kamili (kwa mfano kupitia tiketi ya diski).",

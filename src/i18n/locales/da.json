@@ -4418,10 +4418,6 @@
                 "failed": "Sidste forbindelsesforsøg mislykkedes",
                 "lastFailedAt": "Seneste fejl for {time} siden"
             },
-            "view": {
-                "grid": "Gitter",
-                "list": "Liste"
-            },
             "check": "Tjek",
             "scanning": "Scanner...",
             "checkAvailability": "Tjek tjenestens tilgængelighed",
@@ -4442,8 +4438,7 @@
                 "customFtp": "FTP / FTPS",
                 "customSftp": "SFTP",
                 "customS3": "S3",
-                "customWebdav": "WebDAV",
-                "customAzure": "Azure Blob"
+                "customWebdav": "WebDAV"
             },
             "healthCheck": "Tilgængelighedstjek",
             "storageVersioning": "Filversioner: {size}",
@@ -5201,11 +5196,11 @@
                 "rateLimitUnit": "pr. minut",
                 "rateLimitOff": "Ingen hastighedsgrænse (0): alle signaler tillades.",
                 "discoveryLabel": "Synlighed",
-                "discovery_both": "n0 DNS + Mainline DHT (standard)",
+                "discovery_both": "n0 DNS + Mainline DHT + LAN mDNS (standard)",
                 "discovery_dht": "Kun Mainline DHT",
                 "discovery_n0": "Kun n0 DNS",
                 "discovery_none": "Ingen (ikke synlig)",
-                "discovery_both_desc": "Mest tilgængelig: mens du modtager, offentliggøres din adresse både i n0-mappen og i det offentlige DHT.",
+                "discovery_both_desc": "Mest tilgængelig: mens du modtager, offentliggøres din adresse både i n0-mappen og i det offentlige DHT og annonceres på dit lokale netværk via mDNS.",
                 "discovery_dht_desc": "Offentliggøres kun i det offentlige Mainline DHT, uden n0-mappen.",
                 "discovery_n0_desc": "Offentliggøres kun i n0-mappen, uden det offentlige DHT.",
                 "discovery_none_desc": "Dit AeroFTP-ID offentliggøres ingen steder, mens du modtager, så det kan ikke opregnes i det offentlige DHT. Du kan kun nås af nogen, der allerede har din fulde adresse (for eksempel via en drevbillet).",

@@ -4418,10 +4418,6 @@
                 "failed": "Upaya koneksi terakhir gagal",
                 "lastFailedAt": "Kegagalan terakhir {time} lalu"
             },
-            "view": {
-                "grid": "Kisi",
-                "list": "Daftar"
-            },
             "check": "Periksa",
             "scanning": "Memindai...",
             "checkAvailability": "Periksa ketersediaan layanan",
@@ -4442,8 +4438,7 @@
                 "customFtp": "FTP / FTPS",
                 "customSftp": "SFTP",
                 "customS3": "S3",
-                "customWebdav": "WebDAV",
-                "customAzure": "Azure Blob"
+                "customWebdav": "WebDAV"
             },
             "healthCheck": "Pemeriksaan ketersediaan",
             "storageVersioning": "Versi file: {size}",
@@ -5201,11 +5196,11 @@
                 "rateLimitUnit": "per menit",
                 "rateLimitOff": "Tanpa batas laju (0): setiap sinyal diizinkan.",
                 "discoveryLabel": "Keterdeteksian",
-                "discovery_both": "n0 DNS + Mainline DHT (bawaan)",
+                "discovery_both": "n0 DNS + Mainline DHT + LAN mDNS (bawaan)",
                 "discovery_dht": "Hanya Mainline DHT",
                 "discovery_n0": "Hanya n0 DNS",
                 "discovery_none": "Tidak ada (tidak dapat ditemukan)",
-                "discovery_both_desc": "Paling mudah dijangkau: saat menerima, alamat Anda dipublikasikan ke direktori n0 dan DHT publik.",
+                "discovery_both_desc": "Paling mudah dijangkau: saat menerima, alamat Anda dipublikasikan ke direktori n0 dan DHT publik, dan diumumkan ke jaringan lokal Anda melalui mDNS.",
                 "discovery_dht_desc": "Dipublikasikan hanya ke Mainline DHT publik, tanpa direktori n0.",
                 "discovery_n0_desc": "Dipublikasikan hanya ke direktori n0, tanpa DHT publik.",
                 "discovery_none_desc": "AeroFTP-ID Anda tidak dipublikasikan di mana pun saat menerima, sehingga tidak dapat dienumerasi di DHT publik. Anda hanya dapat dihubungi oleh seseorang yang sudah memiliki alamat lengkap Anda (misalnya melalui tiket drive).",

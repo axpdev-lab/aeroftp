@@ -4418,10 +4418,6 @@
                 "failed": "Viimeisin yhteysyritys epäonnistui",
                 "lastFailedAt": "Viimeisin virhe {time} sitten"
             },
-            "view": {
-                "grid": "Ruudukko",
-                "list": "Luettelo"
-            },
             "check": "Tarkista",
             "scanning": "Skannataan...",
             "checkAvailability": "Tarkista palvelun saatavuus",
@@ -4442,8 +4438,7 @@
                 "customFtp": "FTP / FTPS",
                 "customSftp": "SFTP",
                 "customS3": "S3",
-                "customWebdav": "WebDAV",
-                "customAzure": "Azure Blob"
+                "customWebdav": "WebDAV"
             },
             "healthCheck": "Saatavuuden tarkistus",
             "storageVersioning": "Tiedostoversiot: {size}",
@@ -5201,11 +5196,11 @@
                 "rateLimitUnit": "minuutissa",
                 "rateLimitOff": "Ei nopeusrajaa (0): jokainen signaali sallitaan.",
                 "discoveryLabel": "Löydettävyys",
-                "discovery_both": "n0 DNS + Mainline DHT (oletus)",
+                "discovery_both": "n0 DNS + Mainline DHT + LAN mDNS (oletus)",
                 "discovery_dht": "Vain Mainline DHT",
                 "discovery_n0": "Vain n0 DNS",
                 "discovery_none": "Ei mitään (ei löydettävissä)",
-                "discovery_both_desc": "Parhaiten tavoitettavissa: vastaanottaessasi osoitteesi julkaistaan sekä n0-hakemistoon että julkiseen DHT:hen.",
+                "discovery_both_desc": "Parhaiten tavoitettavissa: vastaanottaessasi osoitteesi julkaistaan sekä n0-hakemistoon että julkiseen DHT:hen ja siitä ilmoitetaan paikallisverkossasi mDNS:n kautta.",
                 "discovery_dht_desc": "Julkaistaan vain julkiseen Mainline DHT:hen ilman n0-hakemistoa.",
                 "discovery_n0_desc": "Julkaistaan vain n0-hakemistoon ilman julkista DHT:tä.",
                 "discovery_none_desc": "AeroFTP-ID-tunnustasi ei julkaista missään vastaanottaessasi, joten sitä ei voi luetella julkisesta DHT:stä. Sinut voi tavoittaa vain henkilö, jolla on jo täydellinen osoitteesi (esimerkiksi aseman lipun kautta).",

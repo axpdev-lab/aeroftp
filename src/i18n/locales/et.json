@@ -4418,10 +4418,6 @@
                 "failed": "Viimane ühenduskatse ebaõnnestus",
                 "lastFailedAt": "Viimane viga {time} tagasi"
             },
-            "view": {
-                "grid": "Ruudustik",
-                "list": "Loend"
-            },
             "check": "Kontrolli",
             "scanning": "Skannimine...",
             "checkAvailability": "Kontrolli teenuse saadavust",
@@ -4442,8 +4438,7 @@
                 "customFtp": "FTP / FTPS",
                 "customSftp": "SFTP",
                 "customS3": "S3",
-                "customWebdav": "WebDAV",
-                "customAzure": "Azure Blob"
+                "customWebdav": "WebDAV"
             },
             "healthCheck": "Saadavuse kontroll",
             "storageVersioning": "Faili versioonid: {size}",
@@ -5201,11 +5196,11 @@
                 "rateLimitUnit": "minutis",
                 "rateLimitOff": "Sageduspiirang puudub (0): iga signaal on lubatud.",
                 "discoveryLabel": "Leitavus",
-                "discovery_both": "n0 DNS + Mainline DHT (vaikimisi)",
+                "discovery_both": "n0 DNS + Mainline DHT + LAN mDNS (vaikimisi)",
                 "discovery_dht": "Ainult Mainline DHT",
                 "discovery_n0": "Ainult n0 DNS",
                 "discovery_none": "Puudub (pole leitav)",
-                "discovery_both_desc": "Kõige paremini ligipääsetav: vastuvõtmise ajal avaldatakse teie aadress nii n0 kataloogis kui ka avalikus DHT-s.",
+                "discovery_both_desc": "Kõige paremini ligipääsetav: vastuvõtmise ajal avaldatakse teie aadress nii n0 kataloogis kui ka avalikus DHT-s ja teatatakse teie kohtvõrgus mDNS-i kaudu.",
                 "discovery_dht_desc": "Avaldatakse ainult avalikus Mainline DHT-s, ilma n0 kataloogita.",
                 "discovery_n0_desc": "Avaldatakse ainult n0 kataloogis, ilma avaliku DHT-ta.",
                 "discovery_none_desc": "Teie AeroFTP-ID-d ei avaldata vastuvõtmise ajal kusagil, mistõttu seda ei saa avalikus DHT-s loendada. Teiega saab ühendust võtta ainult keegi, kellel on juba teie täielik aadress (näiteks ketta pileti kaudu).",

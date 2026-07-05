@@ -4437,10 +4437,6 @@
                 "failed": "Nabigo ang huling pagsubok na kumonekta",
                 "lastFailedAt": "Huling pagkabigo {time} ang nakalipas"
             },
-            "view": {
-                "grid": "Grid",
-                "list": "Listahan"
-            },
             "check": "Tingnan",
             "scanning": "Nag-iiscan...",
             "checkAvailability": "Tingnan ang availability ng serbisyo",
@@ -4461,8 +4457,7 @@
                 "customFtp": "FTP / FTPS",
                 "customSftp": "SFTP",
                 "customS3": "S3",
-                "customWebdav": "WebDAV",
-                "customAzure": "Azure Blob"
+                "customWebdav": "WebDAV"
             },
             "healthCheck": "Health check",
             "storageVersioning": "Mga bersyon ng file: {size}",
@@ -5220,11 +5215,11 @@
                 "rateLimitUnit": "kada minuto",
                 "rateLimitOff": "Walang limitasyon sa rate (0): pinapayagan ang bawat signal.",
                 "discoveryLabel": "Pagkatuklas",
-                "discovery_both": "n0 DNS + Mainline DHT (default)",
+                "discovery_both": "n0 DNS + Mainline DHT + LAN mDNS (default)",
                 "discovery_dht": "Mainline DHT lamang",
                 "discovery_n0": "n0 DNS lamang",
                 "discovery_none": "Wala (hindi natutuklasan)",
-                "discovery_both_desc": "Pinaka-naaabot: habang tumatanggap, ang iyong address ay nai-publish sa parehong direktoryo ng n0 at sa pampublikong DHT.",
+                "discovery_both_desc": "Pinaka-naaabot: habang tumatanggap, ang iyong address ay nai-publish sa parehong direktoryo ng n0 at sa pampublikong DHT, at inaanunsyo sa iyong lokal na network sa pamamagitan ng mDNS.",
                 "discovery_dht_desc": "Nai-publish lamang sa pampublikong Mainline DHT, nang walang direktoryo ng n0.",
                 "discovery_n0_desc": "Nai-publish lamang sa direktoryo ng n0, nang walang pampublikong DHT.",
                 "discovery_none_desc": "Ang iyong AeroFTP-ID ay hindi nai-publish kahit saan habang tumatanggap, kaya hindi ito maaaring ilista sa pampublikong DHT. Maaabot ka lamang ng isang taong may hawak na ng iyong buong address (halimbawa sa pamamagitan ng drive ticket).",

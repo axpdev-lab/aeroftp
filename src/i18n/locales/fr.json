@@ -4418,10 +4418,6 @@
                 "failed": "Dernière tentative de connexion échouée",
                 "lastFailedAt": "Dernier échec il y a {time}"
             },
-            "view": {
-                "grid": "Grille",
-                "list": "Liste"
-            },
             "check": "Vérifier",
             "scanning": "Analyse...",
             "checkAvailability": "Vérifier la disponibilité du service",
@@ -4442,8 +4438,7 @@
                 "customFtp": "FTP / FTPS",
                 "customSftp": "SFTP",
                 "customS3": "S3",
-                "customWebdav": "WebDAV",
-                "customAzure": "Azure Blob"
+                "customWebdav": "WebDAV"
             },
             "healthCheck": "Vérification de disponibilité",
             "storageVersioning": "Versions du fichier : {size}",
@@ -5201,11 +5196,11 @@
                 "rateLimitUnit": "par minute",
                 "rateLimitOff": "Aucune limite de débit (0) : tous les signaux sont autorisés.",
                 "discoveryLabel": "Visibilité",
-                "discovery_both": "n0 DNS + Mainline DHT (par défaut)",
+                "discovery_both": "n0 DNS + Mainline DHT + LAN mDNS (par défaut)",
                 "discovery_dht": "Mainline DHT uniquement",
                 "discovery_n0": "n0 DNS uniquement",
                 "discovery_none": "Aucune (non détectable)",
-                "discovery_both_desc": "Joignabilité maximale : pendant la réception, votre adresse est publiée à la fois dans l'annuaire n0 et sur le DHT public.",
+                "discovery_both_desc": "Joignabilité maximale : pendant la réception, votre adresse est publiée à la fois dans l'annuaire n0 et sur le DHT public, et annoncée sur votre réseau local via mDNS.",
                 "discovery_dht_desc": "Publiée uniquement sur le Mainline DHT public, sans l'annuaire n0.",
                 "discovery_n0_desc": "Publiée uniquement dans l'annuaire n0, sans le DHT public.",
                 "discovery_none_desc": "Votre AeroFTP-ID n'est publié nulle part pendant la réception, il ne peut donc pas être énuméré sur le DHT public. Vous ne pouvez être joint que par une personne possédant déjà votre adresse complète (par exemple via un ticket de lecteur).",

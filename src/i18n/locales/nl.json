@@ -4418,10 +4418,6 @@
                 "failed": "Laatste verbindingspoging mislukt",
                 "lastFailedAt": "Laatste fout {time} geleden"
             },
-            "view": {
-                "grid": "Raster",
-                "list": "Lijst"
-            },
             "check": "Controleren",
             "scanning": "Scannen...",
             "checkAvailability": "Beschikbaarheid van service controleren",
@@ -4442,8 +4438,7 @@
                 "customFtp": "FTP / FTPS",
                 "customSftp": "SFTP",
                 "customS3": "S3",
-                "customWebdav": "WebDAV",
-                "customAzure": "Azure Blob"
+                "customWebdav": "WebDAV"
             },
             "healthCheck": "Beschikbaarheidscontrole",
             "storageVersioning": "Bestandsversies: {size}",
@@ -5201,11 +5196,11 @@
                 "rateLimitUnit": "per minuut",
                 "rateLimitOff": "Geen snelheidslimiet (0): elk signaal is toegestaan.",
                 "discoveryLabel": "Vindbaarheid",
-                "discovery_both": "n0 DNS + Mainline DHT (default)",
+                "discovery_both": "n0 DNS + Mainline DHT + LAN mDNS (default)",
                 "discovery_dht": "Alleen Mainline DHT",
                 "discovery_n0": "Alleen n0 DNS",
                 "discovery_none": "Geen (not discoverable)",
-                "discovery_both_desc": "Best bereikbaar: tijdens het ontvangen wordt uw adres gepubliceerd in zowel de n0-directory als de openbare DHT.",
+                "discovery_both_desc": "Best bereikbaar: tijdens het ontvangen wordt uw adres gepubliceerd in zowel de n0-directory als de openbare DHT en via mDNS aangekondigd op uw lokale netwerk.",
                 "discovery_dht_desc": "Alleen gepubliceerd in de openbare Mainline DHT, zonder de n0-directory.",
                 "discovery_n0_desc": "Alleen gepubliceerd in de n0-directory, zonder de openbare DHT.",
                 "discovery_none_desc": "Uw AeroFTP-ID wordt tijdens het ontvangen nergens gepubliceerd, zodat het niet op de openbare DHT kan worden opgesomd. U kunt alleen worden bereikt door iemand die al uw volledige adres heeft (bijvoorbeeld via een drive ticket).",

@@ -4418,10 +4418,6 @@
                 "failed": "Senaste anslutningsförsöket misslyckades",
                 "lastFailedAt": "Senaste fel för {time} sedan"
             },
-            "view": {
-                "grid": "Rutnät",
-                "list": "Lista"
-            },
             "check": "Kontrollera",
             "scanning": "Söker...",
             "checkAvailability": "Kontrollera tjänstens tillgänglighet",
@@ -4442,8 +4438,7 @@
                 "customFtp": "FTP / FTPS",
                 "customSftp": "SFTP",
                 "customS3": "S3",
-                "customWebdav": "WebDAV",
-                "customAzure": "Azure Blob"
+                "customWebdav": "WebDAV"
             },
             "healthCheck": "Tillgänglighetskontroll",
             "storageVersioning": "Filversioner: {size}",
@@ -5201,11 +5196,11 @@
                 "rateLimitUnit": "per minut",
                 "rateLimitOff": "Ingen hastighetsgräns (0): varje signal tillåts.",
                 "discoveryLabel": "Upptäckbarhet",
-                "discovery_both": "n0 DNS + Mainline DHT (standard)",
+                "discovery_both": "n0 DNS + Mainline DHT + LAN mDNS (standard)",
                 "discovery_dht": "Endast Mainline DHT",
                 "discovery_n0": "Endast n0 DNS",
                 "discovery_none": "Ingen (inte upptäckbar)",
-                "discovery_both_desc": "Mest nåbar: medan du tar emot publiceras din adress både i n0-katalogen och i den publika DHT:n.",
+                "discovery_both_desc": "Mest nåbar: medan du tar emot publiceras din adress både i n0-katalogen och i den publika DHT:n och annonseras på ditt lokala nätverk via mDNS.",
                 "discovery_dht_desc": "Publiceras endast i den publika Mainline DHT, utan n0-katalogen.",
                 "discovery_n0_desc": "Publiceras endast i n0-katalogen, utan den publika DHT:n.",
                 "discovery_none_desc": "Ditt AeroFTP-ID publiceras ingenstans medan du tar emot, så det kan inte räknas upp i den publika DHT:n. Du kan endast nås av någon som redan har din fullständiga adress (till exempel via en enhetsbiljett).",
