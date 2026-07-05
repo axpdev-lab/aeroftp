@@ -5246,6 +5246,11 @@
             "passwordPrompt": "Aquest element està xifrat. Introduïu la contrasenya per extreure'l.",
             "showPassword": "Mostra la contrasenya",
             "hidePassword": "Amaga la contrasenya"
+        },
+        "provider": {
+            "modes": {
+                "lockedInEdit": "El mode es tria en crear la connexió i es manté fix mentre s'edita un perfil desat. Per utilitzar un mode diferent, crea una connexió nova."
+            }
         }
     }
 }

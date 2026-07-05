@@ -5227,6 +5227,11 @@
                 "discovery_lan": "Solo LAN (mDNS)",
                 "discovery_lan_desc": "Il rilevamento resta sulla rete locale tramite mDNS; nulla viene pubblicato su n0 o sul DHT pubblico. Funziona completamente offline: due dispositivi sulla stessa rete si trovano senza internet e senza relay."
             }
+        },
+        "provider": {
+            "modes": {
+                "lockedInEdit": "La modalità viene scelta quando si crea la connessione e resta fissa durante la modifica di un profilo salvato. Per usare una modalità diversa, crea una nuova connessione."
+            }
         }
     }
 }

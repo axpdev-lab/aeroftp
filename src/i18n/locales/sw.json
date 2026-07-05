@@ -5227,6 +5227,11 @@
             "passwordPrompt": "Kipengee hiki kimesimbwa. Weka nenosiri ili kukitoa.",
             "showPassword": "Onyesha nenosiri",
             "hidePassword": "Ficha nenosiri"
+        },
+        "provider": {
+            "modes": {
+                "lockedInEdit": "Hali huchaguliwa wakati muunganisho unaundwa na hubaki bila kubadilika unapohariri wasifu uliohifadhiwa. Ili kutumia hali tofauti, unda muunganisho mpya."
+            }
         }
     }
 }

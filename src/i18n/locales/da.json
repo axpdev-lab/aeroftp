@@ -5227,6 +5227,11 @@
             "passwordPrompt": "Dette element er krypteret. Indtast adgangskoden for at udpakke.",
             "showPassword": "Vis adgangskode",
             "hidePassword": "Skjul adgangskode"
+        },
+        "provider": {
+            "modes": {
+                "lockedInEdit": "Tilstanden vælges, når forbindelsen oprettes, og forbliver fast, mens du redigerer en gemt profil. Opret en ny forbindelse for at bruge en anden tilstand."
+            }
         }
     }
 }

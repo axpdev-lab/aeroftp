@@ -5246,6 +5246,11 @@
             "passwordPrompt": "Naka-encrypt ang item na ito. Ilagay ang password para i-extract.",
             "showPassword": "Ipakita ang password",
             "hidePassword": "Itago ang password"
+        },
+        "provider": {
+            "modes": {
+                "lockedInEdit": "Pinipili ang mode kapag ginawa ang koneksyon at nananatiling nakapirmi habang ine-edit ang naka-save na profile. Para gumamit ng ibang mode, gumawa ng bagong koneksyon."
+            }
         }
     }
 }

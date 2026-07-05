@@ -5227,6 +5227,11 @@
             "passwordPrompt": "Tämä kohde on salattu. Anna salasana purkamista varten.",
             "showPassword": "Näytä salasana",
             "hidePassword": "Piilota salasana"
+        },
+        "provider": {
+            "modes": {
+                "lockedInEdit": "Tila valitaan yhteyttä luotaessa ja pysyy muuttumattomana tallennettua profiilia muokattaessa. Käytä eri tilaa luomalla uusi yhteys."
+            }
         }
     }
 }

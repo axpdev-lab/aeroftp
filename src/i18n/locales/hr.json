@@ -5227,6 +5227,11 @@
             "passwordPrompt": "Ova je stavka šifrirana. Unesite lozinku za raspakiravanje.",
             "showPassword": "Prikaži lozinku",
             "hidePassword": "Sakrij lozinku"
+        },
+        "provider": {
+            "modes": {
+                "lockedInEdit": "Način se odabire pri stvaranju veze i ostaje nepromijenjen tijekom uređivanja spremljenog profila. Za korištenje drugog načina stvorite novu vezu."
+            }
         }
     }
 }

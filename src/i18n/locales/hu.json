@@ -5227,6 +5227,11 @@
             "passwordPrompt": "Ez az elem titkosítva van. Adja meg a jelszót a kibontáshoz.",
             "showPassword": "Jelszó megjelenítése",
             "hidePassword": "Jelszó elrejtése"
+        },
+        "provider": {
+            "modes": {
+                "lockedInEdit": "A mód a kapcsolat létrehozásakor kerül kiválasztásra, és mentett profil szerkesztése közben változatlan marad. Másik mód használatához hozzon létre új kapcsolatot."
+            }
         }
     }
 }

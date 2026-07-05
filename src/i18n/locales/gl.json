@@ -5246,6 +5246,11 @@
             "passwordPrompt": "Este elemento está cifrado. Introduza o contrasinal para extraelo.",
             "showPassword": "Amosar o contrasinal",
             "hidePassword": "Ocultar o contrasinal"
+        },
+        "provider": {
+            "modes": {
+                "lockedInEdit": "O modo escóllese ao crear a conexión e mantense fixo mentres se edita un perfil gardado. Para usar un modo diferente, crea unha nova conexión."
+            }
         }
     }
 }

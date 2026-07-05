@@ -5227,6 +5227,11 @@
             "passwordPrompt": "Item ini terenkripsi. Masukkan kata sandi untuk mengekstrak.",
             "showPassword": "Tampilkan kata sandi",
             "hidePassword": "Sembunyikan kata sandi"
+        },
+        "provider": {
+            "modes": {
+                "lockedInEdit": "Mode dipilih saat koneksi dibuat dan tetap tidak berubah saat mengedit profil tersimpan. Untuk menggunakan mode berbeda, buat koneksi baru."
+            }
         }
     }
 }

@@ -5246,6 +5246,11 @@
             "passwordPrompt": "Þetta atriði er dulkóðað. Sláðu inn lykilorðið til að afþjappa.",
             "showPassword": "Sýna lykilorð",
             "hidePassword": "Fela lykilorð"
+        },
+        "provider": {
+            "modes": {
+                "lockedInEdit": "Hamurinn er valinn þegar tengingin er stofnuð og helst óbreyttur meðan vistuðu sniði er breytt. Til að nota annan ham skaltu stofna nýja tengingu."
+            }
         }
     }
 }

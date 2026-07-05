@@ -5227,6 +5227,11 @@
             "passwordPrompt": "Este item está encriptado. Introduza a palavra-passe para extrair.",
             "showPassword": "Mostrar palavra-passe",
             "hidePassword": "Ocultar palavra-passe"
+        },
+        "provider": {
+            "modes": {
+                "lockedInEdit": "O modo é escolhido ao criar a conexão e permanece fixo ao editar um perfil salvo. Para usar um modo diferente, crie uma nova conexão."
+            }
         }
     }
 }

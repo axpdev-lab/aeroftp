@@ -5227,6 +5227,11 @@
             "passwordPrompt": "Šis elementas užšifruotas. Įveskite slaptažodį, kad išskleistumėte.",
             "showPassword": "Rodyti slaptažodį",
             "hidePassword": "Slėpti slaptažodį"
+        },
+        "provider": {
+            "modes": {
+                "lockedInEdit": "Režimas pasirenkamas kuriant ryšį ir lieka nepakitęs redaguojant išsaugotą profilį. Norėdami naudoti kitą režimą, sukurkite naują ryšį."
+            }
         }
     }
 }

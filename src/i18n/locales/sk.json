@@ -5227,6 +5227,11 @@
             "passwordPrompt": "Táto položka je šifrovaná. Na rozbalenie zadajte heslo.",
             "showPassword": "Zobraziť heslo",
             "hidePassword": "Skryť heslo"
+        },
+        "provider": {
+            "modes": {
+                "lockedInEdit": "Režim sa vyberá pri vytváraní pripojenia a zostáva nezmenený počas úpravy uloženého profilu. Ak chcete použiť iný režim, vytvorte nové pripojenie."
+            }
         }
     }
 }

@@ -5227,6 +5227,11 @@
             "passwordPrompt": "Acest element este criptat. Introduceți parola pentru a-l extrage.",
             "showPassword": "Afișează parola",
             "hidePassword": "Ascunde parola"
+        },
+        "provider": {
+            "modes": {
+                "lockedInEdit": "Modul este ales la crearea conexiunii și rămâne fix în timpul editării unui profil salvat. Pentru a folosi un alt mod, creați o conexiune nouă."
+            }
         }
     }
 }

@@ -5227,6 +5227,11 @@
             "passwordPrompt": "Ta element je šifriran. Za razširjanje vnesite geslo.",
             "showPassword": "Pokaži geslo",
             "hidePassword": "Skrij geslo"
+        },
+        "provider": {
+            "modes": {
+                "lockedInEdit": "Način se izbere ob ustvarjanju povezave in ostane nespremenjen med urejanjem shranjenega profila. Za uporabo drugega načina ustvarite novo povezavo."
+            }
         }
     }
 }

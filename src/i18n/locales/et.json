@@ -5227,6 +5227,11 @@
             "passwordPrompt": "See üksus on krüpteeritud. Ekstraktimiseks sisesta parool.",
             "showPassword": "Näita parooli",
             "hidePassword": "Peida parool"
+        },
+        "provider": {
+            "modes": {
+                "lockedInEdit": "Režiim valitakse ühenduse loomisel ja jääb salvestatud profiili muutmise ajal muutumatuks. Teistsuguse režiimi kasutamiseks looge uus ühendus."
+            }
         }
     }
 }

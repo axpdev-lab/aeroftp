@@ -5227,6 +5227,11 @@
             "passwordPrompt": "Šis vienums ir šifrēts. Ievadiet paroli, lai izvilktu.",
             "showPassword": "Rādīt paroli",
             "hidePassword": "Slēpt paroli"
+        },
+        "provider": {
+            "modes": {
+                "lockedInEdit": "Režīms tiek izvēlēts, veidojot savienojumu, un paliek nemainīgs, rediģējot saglabātu profilu. Lai izmantotu citu režīmu, izveidojiet jaunu savienojumu."
+            }
         }
     }
 }

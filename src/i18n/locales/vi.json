@@ -5227,6 +5227,11 @@
             "passwordPrompt": "Mục này được mã hóa. Nhập mật khẩu để giải nén.",
             "showPassword": "Hiện mật khẩu",
             "hidePassword": "Ẩn mật khẩu"
+        },
+        "provider": {
+            "modes": {
+                "lockedInEdit": "Chế độ được chọn khi tạo kết nối và giữ nguyên khi chỉnh sửa hồ sơ đã lưu. Để dùng chế độ khác, hãy tạo kết nối mới."
+            }
         }
     }
 }

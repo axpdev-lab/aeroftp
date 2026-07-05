@@ -5227,6 +5227,11 @@
             "passwordPrompt": "Item ini disulitkan. Masukkan kata laluan untuk mengekstrak.",
             "showPassword": "Tunjukkan kata laluan",
             "hidePassword": "Sembunyikan kata laluan"
+        },
+        "provider": {
+            "modes": {
+                "lockedInEdit": "Mod dipilih semasa sambungan dicipta dan kekal tetap semasa menyunting profil tersimpan. Untuk menggunakan mod berbeza, cipta sambungan baharu."
+            }
         }
     }
 }

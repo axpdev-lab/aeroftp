@@ -5227,6 +5227,11 @@
             "passwordPrompt": "此项目已加密。请输入密码以解压。",
             "showPassword": "显示密码",
             "hidePassword": "隐藏密码"
+        },
+        "provider": {
+            "modes": {
+                "lockedInEdit": "模式在创建连接时选择，编辑已保存的配置文件时保持不变。要使用其他模式，请创建新连接。"
+            }
         }
     }
 }

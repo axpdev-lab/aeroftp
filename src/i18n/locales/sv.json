@@ -5227,6 +5227,11 @@
             "passwordPrompt": "Det här objektet är krypterat. Ange lösenordet för att extrahera.",
             "showPassword": "Visa lösenord",
             "hidePassword": "Dölj lösenord"
+        },
+        "provider": {
+            "modes": {
+                "lockedInEdit": "Läget väljs när anslutningen skapas och förblir oförändrat när en sparad profil redigeras. Skapa en ny anslutning för att använda ett annat läge."
+            }
         }
     }
 }

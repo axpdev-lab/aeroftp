@@ -5227,6 +5227,11 @@
                 "rotateCancel": "Cancel",
                 "rotateDone": "New AeroFTP-ID:"
             }
+        },
+        "provider": {
+            "modes": {
+                "lockedInEdit": "Mode is chosen when the connection is created and stays fixed while editing a saved profile. To use a different mode, create a new connection."
+            }
         }
     }
 }

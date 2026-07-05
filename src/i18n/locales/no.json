@@ -5246,6 +5246,11 @@
             "passwordPrompt": "Dette elementet er kryptert. Skriv inn passordet for å pakke ut.",
             "showPassword": "Vis passord",
             "hidePassword": "Skjul passord"
+        },
+        "provider": {
+            "modes": {
+                "lockedInEdit": "Modusen velges når tilkoblingen opprettes og forblir fast mens du redigerer en lagret profil. Opprett en ny tilkobling for å bruke en annen modus."
+            }
         }
     }
 }

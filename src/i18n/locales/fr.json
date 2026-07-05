@@ -5227,6 +5227,11 @@
             "passwordPrompt": "Cet élément est chiffré. Saisissez le mot de passe pour l'extraire.",
             "showPassword": "Afficher le mot de passe",
             "hidePassword": "Masquer le mot de passe"
+        },
+        "provider": {
+            "modes": {
+                "lockedInEdit": "Le mode est choisi lors de la création de la connexion et reste fixe pendant la modification d'un profil enregistré. Pour utiliser un autre mode, créez une nouvelle connexion."
+            }
         }
     }
 }

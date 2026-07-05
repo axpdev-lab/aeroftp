@@ -5246,6 +5246,11 @@
             "passwordPrompt": "Elementu hau zifratuta dago. Sartu pasahitza erauzteko.",
             "showPassword": "Erakutsi pasahitza",
             "hidePassword": "Ezkutatu pasahitza"
+        },
+        "provider": {
+            "modes": {
+                "lockedInEdit": "Modua konexioa sortzean aukeratzen da eta finko mantentzen da gordetako profil bat editatzean. Beste modu bat erabiltzeko, sortu konexio berri bat."
+            }
         }
     }
 }

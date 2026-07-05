@@ -5227,6 +5227,11 @@
             "passwordPrompt": "Bu öğe şifreli. Çıkarmak için parolayı girin.",
             "showPassword": "Parolayı göster",
             "hidePassword": "Parolayı gizle"
+        },
+        "provider": {
+            "modes": {
+                "lockedInEdit": "Mod, bağlantı oluşturulurken seçilir ve kayıtlı bir profil düzenlenirken sabit kalır. Farklı bir mod kullanmak için yeni bir bağlantı oluşturun."
+            }
         }
     }
 }

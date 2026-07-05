@@ -5227,6 +5227,11 @@
             "passwordPrompt": "Ten element jest zaszyfrowany. Wprowadź hasło, aby go wyodrębnić.",
             "showPassword": "Pokaż hasło",
             "hidePassword": "Ukryj hasło"
+        },
+        "provider": {
+            "modes": {
+                "lockedInEdit": "Tryb jest wybierany podczas tworzenia połączenia i pozostaje niezmienny podczas edycji zapisanego profilu. Aby użyć innego trybu, utwórz nowe połączenie."
+            }
         }
     }
 }
