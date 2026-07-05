@@ -988,6 +988,31 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         };
     };
 
+    // #385 follow-up: Convert and Save-as-new mint a NEW profile id, but the
+    // crypt-overlay password (and rclone salt) live in the vault under the OLD
+    // id and the edit form shows them blank ("leave blank to keep"). Without
+    // carrying them over, the converted/duplicated profile has no stored crypt
+    // secret, so maybeAutoUnlockProfileOverlay bails and the transparent overlay
+    // never auto-unlocks on the next connect. Copy the secrets old id -> new id
+    // and report what was carried so aeroCryptOverlayFields marks hasStored*
+    // correctly. Best-effort: a re-typed password in the form still wins (it
+    // overwrites the migrated one under the new id in aeroCryptOverlayFields).
+    const migrateCryptCredentials = async (
+        oldId: string | null | undefined,
+        newId: string,
+    ): Promise<{ hadStored: boolean; hadStoredSalt: boolean }> => {
+        let hadStored = false;
+        let hadStoredSalt = false;
+        if (!oldId || oldId === newId) return { hadStored, hadStoredSalt };
+        try {
+            const pw = await invoke<string>('get_credential', { account: `aerocrypt_overlay_pw_${oldId}` }).catch(() => '');
+            if (pw) hadStored = await tryStoreCredential(`aerocrypt_overlay_pw_${newId}`, pw);
+            const salt = await invoke<string>('get_credential', { account: `aerocrypt_overlay_salt_${oldId}` }).catch(() => '');
+            if (salt) hadStoredSalt = await tryStoreCredential(`aerocrypt_overlay_salt_${newId}`, salt);
+        } catch { /* best-effort; a missing secret just leaves the field to re-enter */ }
+        return { hadStored, hadStoredSalt };
+    };
+
     // Resolved label of the active target mode (for the "Convert to X"
     // button). Falls back to the protocol string when the active mode
     // cannot be resolved.
@@ -1472,7 +1497,12 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         const newId = `srv_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
         const credentialStored = await tryStoreCredential(`server_${newId}`, connectionParams.password);
         const filenKeyStored = await stashFilenApiKey(newId, optionsToSave);
-        const aeroFields = await aeroCryptOverlayFields(newId);
+        // #385: carry the crypt overlay secrets from the edited profile to the
+        // new id so the converted/duplicated profile can auto-unlock its overlay.
+        const migratedCrypt = aeroCryptEnabled
+            ? await migrateCryptCredentials(editingProfileId, newId)
+            : { hadStored: false, hadStoredSalt: false };
+        const aeroFields = await aeroCryptOverlayFields(newId, migratedCrypt.hadStored, migratedCrypt.hadStoredSalt);
         // Carry-over from the original profile when present: visual color
         // tag + favicon (sort position is handled by the insert index
         // below). Custom icon URL is already in component state via
@@ -1596,7 +1626,12 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         const newId = `srv_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
         const credentialStored = await tryStoreCredential(`server_${newId}`, connectionParams.password);
         const filenKeyStored = await stashFilenApiKey(newId, optionsToSave);
-        const aeroFields = await aeroCryptOverlayFields(newId);
+        // #385: carry the crypt overlay secrets from the edited profile to the
+        // new id so the converted/duplicated profile can auto-unlock its overlay.
+        const migratedCrypt = aeroCryptEnabled
+            ? await migrateCryptCredentials(editingProfileId, newId)
+            : { hadStored: false, hadStoredSalt: false };
+        const aeroFields = await aeroCryptOverlayFields(newId, migratedCrypt.hadStored, migratedCrypt.hadStoredSalt);
         const newServer: ServerProfile = {
             id: newId,
             name: finalName,
