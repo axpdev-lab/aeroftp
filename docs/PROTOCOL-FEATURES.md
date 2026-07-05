@@ -296,17 +296,30 @@ Box exposes management and collaboration features beyond generic file operations
 
 ---
 
-## Archive Support Matrix (v1.7.0)
+## Archive Support Matrix (v4.1.2)
+
+Compression levels use the 7-Zip canonical presets (Store=0, Fastest=1, Fast=3, Normal=5, Maximum=7, Ultra=9); formats whose codec has no store mode omit Store. Default is Normal (5).
 
 | Format | Compress | Extract | Browse | Selective Extract | Encryption | Levels | Backend |
 |--------|----------|---------|--------|-------------------|------------|--------|---------|
-| **ZIP** | Yes | Yes | Yes | Yes | AES-256 (read+write) | Store/Fast/Normal/Max | `zip` v7.2 |
-| **7z** | Yes | Yes | Yes | Yes | AES-256 (read+write) | Fast/Normal/Max | `sevenz-rust` v0.6 |
-| **TAR** | Yes | Yes | Yes | Yes | No | - | `tar` v0.4 |
-| **TAR.GZ** | Yes | Yes | Yes | Yes | No | Fast/Normal/Max | `tar` + `flate2` v1.0 |
-| **TAR.XZ** | Yes | Yes | Yes | Yes | No | Fast/Normal/Max | `tar` + `xz2` v0.1 |
-| **TAR.BZ2** | Yes | Yes | Yes | Yes | No | Fast/Normal/Max | `tar` + `bzip2` v0.6 |
+| **ZIP** | Yes (Store/Deflate) | Yes (+ BZip2, LZMA, Deflate64, Zstd, XZ members) | Yes | Yes | AES-256 (read+write) | Store/Fastest/Fast/Normal/Maximum/Ultra | `zip` v8 |
+| **7z** | Yes (LZMA2/LZMA/PPMd/BZip2 + dictionary, solid, threads) | Yes | Yes | Yes | AES-256 + encrypted header (read+write) | Fastest/Fast/Normal/Maximum/Ultra | `sevenz-rust2` v0.21 |
+| **TAR** | Yes | Yes (safe symlinks) | Yes | Yes | No | - | `tar` v0.4 |
+| **TAR.GZ** | Yes | Yes | Yes | Yes | No | Fastest/Fast/Normal/Maximum/Ultra | `tar` + `flate2` v1.0 |
+| **TAR.XZ** | Yes | Yes | Yes | Yes | No | Fastest/Fast/Normal/Maximum/Ultra | `tar` + `xz2` v0.1 |
+| **TAR.BZ2** | Yes | Yes | Yes | Yes | No | Fastest/Fast/Normal/Maximum/Ultra | `tar` + `bzip2` v0.6 |
+| **GZ** (standalone) | Yes | Yes | - (single stream) | - | No | Fastest/Fast/Normal/Maximum/Ultra | `flate2` v1.0 |
+| **XZ** (standalone) | Yes | Yes | - (single stream) | - | No | Fastest/Fast/Normal/Maximum/Ultra | `xz2` v0.1 |
+| **BZ2** (standalone) | Yes | Yes | - (single stream) | - | No | Fastest/Fast/Normal/Maximum/Ultra | `bzip2` v0.6 |
 | **RAR** | No | Yes | Yes | Yes | Password support | - | `unrar` v0.5 |
+
+**Standalone GZ / XZ / BZ2** (v4.1.2): a single file compresses to and extracts from a plain `.gz` / `.xz` / `.bz2` with no tar wrapper (single-stream codecs, offered only for a lone non-folder file; nothing to browse). The member name on extract is the archive name minus the codec extension.
+
+**7z Advanced options** (v4.1.2): content method (LZMA2 default, plus LZMA, PPMd, BZip2), LZMA2 dictionary size, thread count, and a solid-block option, in the Compress dialog and as `aeroftp compress` flags. Every method round-trips through the extractor.
+
+**Safe tar links** (v4.1.2): symlink and hardlink entries are validated with the same in-root check as file paths; an in-root symlink is recreated (unix), a link pointing outside the extraction root is never materialised and is surfaced in the report.
+
+**Multi-volume parts** (v4.1.2): a split part (`.7z.001`, `.zip.001`, `.z01`, `.r00`) gets a clear "rejoin the volumes" message instead of a generic error; multi-part RAR (`.partN.rar`) extracts normally (unrar follows co-located volumes).
 
 **Archive Browser** (v1.7.0): Browse archive contents in-app without extracting. Password dialog for encrypted ZIP/7z/RAR. Selective extraction of individual files.
 

@@ -137,6 +137,12 @@
   </languages>
 
   <releases>
+    <release version="4.1.2" date="2026-07-05">
+      <description>
+        <p>Complete Archive Format Coverage, Quick Connect Consistency and a Full-Surface Security Audit. A format-coverage audit closed every gap it found, so what AeroFTP creates it can always reopen and archives from native tools open reliably. A single file now compresses to and extracts from a plain .gz, .xz or .bz2 with no tar wrapper, the Compress dialog gains a 7z Advanced section (content method LZMA2, LZMA, PPMd or BZip2, dictionary size, solid block, thread count), ZIP archives using non-Deflate methods (BZip2, LZMA, Deflate64, Zstd, XZ) now open, tar symlinks extract safely with out-of-root targets refused, split multi-volume parts get a clear message, and the compression level presets align with the 7-Zip canonical levels (Store, Fastest, Fast, Normal, Maximum, Ultra).</p>
+        <p>A full-surface security and hardening audit fixed 16 findings (3 high, 7 medium, 6 low), including a remote-controlled path traversal in the sync download engine and fail-closed privileged auto-update installs. AeroShare gains an offline LAN (mDNS) discovery mode for same-subnet peers with nothing published to the public DHT. A broad Quick Connect consistency pass lands: MEGA API/CMD adopt the two-column layout with the crypt overlay exposed, kDrive gets a numeric Drive ID field with direct help links, the 2FA code fields are compact, digit-only and auto-submit, and the crypt overlay reconnect, strict-WebDAV upload, Koofr mode-switch and Convert secret-migration issues reported against v4.1.1 are fixed. 47 languages translated.</p>
+      </description>
+    </release>
     <release version="4.1.1" date="2026-07-01">
       <description>
         <p>Transparent Crypt Overlays, AeroShare Privacy Controls and 7z Encrypted Headers. A consolidation release built on the v4.1.0 feedback. Encrypted-overlay profiles (native AeroCrypt and rclone-crypt) now stay encrypted end to end through one transparent decorator wired at every provider chokepoint (CLI, cross-profile, AeroAgent, MCP, GUI, AeroCloud background sync, the selective-sync folder tree), so no surface can bypass the overlay and write plaintext into the encrypted store; the decorator is fail-closed, refusing a bound-but-locked vault rather than downgrading to raw. A Resume action continues interrupted transfers.</p>
