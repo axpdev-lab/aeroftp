@@ -2334,6 +2334,17 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         </div>
     );
 
+    // #369: the 2FA code fields (Filen / MEGA / Internxt) accept digits only,
+    // so a stray letter or space can never make a TOTP silently wrong. Shared
+    // by all three forms so the behaviour stays identical.
+    const handleTotpCodeChange = (raw: string) => {
+        const digits = raw.replace(/\D/g, '');
+        onConnectionParamsChange({
+            ...connectionParams,
+            options: { ...connectionParams.options, two_factor_code: digits || undefined },
+        });
+    };
+
     const parseEndpointPort = (value: string, fallback: number) => {
         try {
             const url = new URL(value);
@@ -2946,6 +2957,20 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                     pixelunion: { name: 'PixelUnion', desc: t('protocol.discoverPixelUnion') },
                                     immich: { name: 'Immich', desc: t('protocol.discoverImmich') },
                                 };
+                                // #369: single-preset OAuth/API providers launched by protocol
+                                // alone (no providerId) used to fall back to protocol.toUpperCase(),
+                                // rendering the header as DROPBOX / ONEDRIVE / BOX and so on. Map
+                                // the protocol to its properly cased brand name so the header reads
+                                // consistently (MEGA stays all-caps because that is its real style).
+                                const PROTOCOL_FALLBACK_NAMES: Record<string, string> = {
+                                    dropbox: 'Dropbox', onedrive: 'OneDrive', googledrive: 'Google Drive',
+                                    googlephotos: 'Google Photos', box: 'Box', pcloud: 'pCloud',
+                                    jottacloud: 'Jottacloud', filen: 'Filen', internxt: 'Internxt',
+                                    kdrive: 'kDrive', zohoworkdrive: 'Zoho WorkDrive', yandexdisk: 'Yandex Disk',
+                                    drime: 'Drime', mega: 'MEGA', backblaze: 'Backblaze B2', fourshared: '4shared',
+                                    imagekit: 'ImageKit', uploadcare: 'Uploadcare', cloudinary: 'Cloudinary',
+                                    filelu: 'FileLu', github: 'GitHub', gitlab: 'GitLab',
+                                };
                                 const pid = connectionParams.providerId || '';
                                 // When the active config belongs to a mode
                                 // group (Koofr/OpenDrive/...), the header
@@ -2962,7 +2987,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                 const logoId = modeHeader?.providerId || selectedProviderId || pid || protocol || '';
                                 const LogoComponent = PROVIDER_LOGOS[logoId];
                                 const display = PROTOCOL_DISPLAY[pid] || PROTOCOL_DISPLAY[protocol || ''];
-                                const providerName = modeHeader?.name || headerProv?.name || display?.name || protocol?.toUpperCase() || '';
+                                const providerName = modeHeader?.name || headerProv?.name || display?.name || PROTOCOL_FALLBACK_NAMES[protocol || ''] || protocol?.toUpperCase() || '';
                                 // Description fallback: registry > PROTOCOL_DISPLAY > i18n protocol.<protocol>Desc
                                 const tryProtocolDesc = (key: string): string | undefined => {
                                     if (!key) return undefined;
@@ -4348,12 +4373,58 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                         </div>
                                     </div>
                                 ) : protocol === 'kdrive' ? (
-                                    /* kDrive Specific Form: API Token + Drive ID */
+                                    /* kDrive Specific Form: Drive ID + API Token (#369) */
                                     <div className={formOnly ? 'grid grid-cols-2 gap-6 items-start' : 'space-y-4 pt-2'}>
                                         {/* LEFT COLUMN: Credentials */}
                                         <div className="space-y-4">
+                                        {/* Drive ID (numeric identifier) sits above the API Token
+                                            (the secret), mirroring the id-then-secret order used for
+                                            S3, per #369. The green link opens the kSuite page whose
+                                            address bar shows the numeric Drive ID. */}
                                         <div>
-                                            {renderPasswordLabel(t('connection.kdriveToken'))}
+                                            <div className="flex items-center justify-between gap-2 mb-1.5">
+                                                <label className="block text-sm font-medium">{t('connection.kdriveDriveId')}</label>
+                                                <a
+                                                    href="https://ksuite.infomaniak.com/all/kdrive"
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    title={t('connection.kdriveFindDriveIdHint')}
+                                                    className="inline-flex items-center gap-1 text-xs text-emerald-500 hover:text-emerald-600 dark:text-emerald-400 dark:hover:text-emerald-300"
+                                                >
+                                                    <ExternalLink size={10} />
+                                                    {t('connection.kdriveFindDriveId')}
+                                                </a>
+                                            </div>
+                                            <input
+                                                type="text"
+                                                value={connectionParams.options?.drive_id || connectionParams.options?.bucket || ''}
+                                                onChange={(e) => {
+                                                    const v = e.target.value.replace(/\D/g, '');
+                                                    onConnectionParamsChange({
+                                                        ...connectionParams,
+                                                        options: { ...connectionParams.options, bucket: v, drive_id: v }
+                                                    });
+                                                }}
+                                                className="w-40 px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                                placeholder="1234567"
+                                                inputMode="numeric"
+                                                maxLength={10}
+                                                autoFocus
+                                            />
+                                        </div>
+                                        <div>
+                                            <div className="flex items-center justify-between gap-2 mb-1.5">
+                                                <label className="block text-sm font-medium">{t('connection.kdriveToken')}</label>
+                                                <a
+                                                    href="https://manager.infomaniak.com/v3/ng/profile/user/token/list"
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="inline-flex items-center gap-1 text-xs text-amber-500 hover:text-amber-600 dark:text-amber-400 dark:hover:text-amber-300"
+                                                >
+                                                    <ExternalLink size={10} />
+                                                    {t('connection.kdriveCreateToken')}
+                                                </a>
+                                            </div>
                                             <div className="relative">
                                                 <input
                                                     type={showPassword ? 'text' : 'password'}
@@ -4367,32 +4438,12 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     })}
                                                     className="w-full px-4 py-2.5 pr-12 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                                                     placeholder={t('connection.kdriveTokenPlaceholder')}
-                                                    autoFocus
                                                 />
                                                 <button tabIndex={-1} type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
                                                     {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                                                 </button>
                                             </div>
                                         </div>
-                                        <div>
-                                            <label className="block text-sm font-medium mb-1.5">{t('connection.kdriveDriveId')}</label>
-                                            <input
-                                                type="text"
-                                                value={connectionParams.options?.drive_id || connectionParams.options?.bucket || ''}
-                                                onChange={(e) => onConnectionParamsChange({
-                                                    ...connectionParams,
-                                                    options: { ...connectionParams.options, bucket: e.target.value, drive_id: e.target.value }
-                                                })}
-                                                className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                                placeholder={t('connection.kdriveDriveIdPlaceholder')}
-                                                inputMode="numeric"
-                                            />
-                                        </div>
-                                        <p className="text-xs text-gray-400 mt-2 select-text">
-                                            <a href="https://manager.infomaniak.com/v3/ng/profile/user/token/list" target="_blank" rel="noopener noreferrer" className="underline hover:text-blue-600 dark:hover:text-blue-300">
-                                                {t('connection.kdriveTokenHelp')}
-                                            </a>
-                                        </p>
                                         </div>
 
                                         {formOnly ? (
@@ -4509,10 +4560,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             <input
                                                 type="text"
                                                 value={connectionParams.options?.two_factor_code || ''}
-                                                onChange={(e) => onConnectionParamsChange({
-                                                    ...connectionParams,
-                                                    options: { ...connectionParams.options, two_factor_code: e.target.value || undefined }
-                                                })}
+                                                onChange={(e) => handleTotpCodeChange(e.target.value)}
                                                 className="w-32 px-4 py-2.5 text-center tracking-[0.3em] font-mono bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                                                 placeholder="000000"
                                                 maxLength={6}
@@ -4678,10 +4726,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             <input
                                                 type="text"
                                                 value={connectionParams.options?.two_factor_code || ''}
-                                                onChange={(e) => onConnectionParamsChange({
-                                                    ...connectionParams,
-                                                    options: { ...connectionParams.options, two_factor_code: e.target.value || undefined }
-                                                })}
+                                                onChange={(e) => handleTotpCodeChange(e.target.value)}
                                                 className="w-32 px-4 py-2.5 text-center tracking-[0.3em] font-mono bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                                                 placeholder="000000"
                                                 maxLength={6}
@@ -5091,10 +5136,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             <input
                                                 type="text"
                                                 value={connectionParams.options?.two_factor_code || ''}
-                                                onChange={(e) => onConnectionParamsChange({
-                                                    ...connectionParams,
-                                                    options: { ...connectionParams.options, two_factor_code: e.target.value || undefined }
-                                                })}
+                                                onChange={(e) => handleTotpCodeChange(e.target.value)}
                                                 className="w-32 px-4 py-2.5 text-center tracking-[0.3em] font-mono bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-red-500 focus:border-red-500"
                                                 placeholder="000000"
                                                 maxLength={6}
