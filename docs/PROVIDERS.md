@@ -20,7 +20,6 @@ aeroftp.app / docs.aeroftp.app provider tables mirror this list.
 | 4shared | VG | 15 GB | OAuth, WebDAV |
 | Alibaba OSS | CN | 5 GB (overseas only, card req.) | S3* |
 | Amazon S3 | US | 5 GB (always-free, card req.) | S3* |
-| Azure Blob | US | 5 GB (always-free, card req.) | Blob* |
 | Backblaze B2 | US | 10 GB | API, S3 |
 | Box | US | 10 GB | OAuth |
 | Cloudflare R2 | US | 10 GB (egress-free, card req.) | S3* |
@@ -28,7 +27,7 @@ aeroftp.app / docs.aeroftp.app provider tables mirror this list.
 | CloudMe | SE | 3 GB | WebDAV |
 | DigitalOcean Spaces | US | paid plan | S3* |
 | Drime | FR | 20 GB | API |
-| DriveHQ | US | 1 GB | WebDAV |
+| DriveHQ | US | 5 GB | WebDAV |
 | Dropbox | US | 2 GB | OAuth |
 | Felicloud | - | 10 GB (Nextcloud host) | WebDAV |
 | FileLu | US | 10 GB | API, WebDAV, S3 |
@@ -49,9 +48,10 @@ aeroftp.app / docs.aeroftp.app provider tables mirror this list.
 | Koofr | SI | 10 GB | API, WebDAV |
 | MEGA | NZ | 20 GB (E2E) | API, MEGAcmd |
 | MEGA S4 Object Storage | EU | Pro plan | S3* |
+| Microsoft Azure Blob | US | 5 GB (always-free, card req.) | Blob* |
+| Microsoft OneDrive | US | 5 GB | OAuth |
 | MinIO | - | self-hosted | S3 |
 | Nextcloud | - | self-hosted | WebDAV |
-| OneDrive | US | 5 GB | OAuth |
 | OpenDrive | US | 5 GB | API, WebDAV |
 | Oracle Cloud | US | 20 GB (always-free, card req.) | S3* |
 | pCloud | CH | 10 GB | OAuth, WebDAV* |
@@ -61,7 +61,7 @@ aeroftp.app / docs.aeroftp.app provider tables mirror this list.
 | Storj | US | 30-day trial | S3* |
 | Tab.digital | IN | 8 GB (managed Nextcloud) | WebDAV |
 | Tencent COS | CN | 6-month trial | S3* |
-| Uploadcare | US | 3 GB (media CDN) | API |
+| Uploadcare | US | 1 GB (media CDN) | API |
 | Wasabi | US | 30-day trial | S3* |
 | Yandex Disk | RU | 5 GB | OAuth, WebDAV |
 | Yandex Object Storage | RU | 1 GB (always-free, card req.) | S3* |

@@ -117,7 +117,7 @@ describe('commercial tier model: free / free-card / paid', () => {
 
     it('free-card companies have a free allowance but require a card, and stay OUT of the paid bucket', () => {
         // Alibaba OSS has a permanent 5 GB/mo fixed quota (overseas regions) but a card on file.
-        for (const name of ['Amazon S3', 'Azure Blob', 'Yandex Object Storage', 'Oracle Cloud', 'Google Cloud Storage', 'Cloudflare R2', 'Alibaba OSS']) {
+        for (const name of ['Amazon S3', 'Microsoft Azure Blob', 'Yandex Object Storage', 'Oracle Cloud', 'Google Cloud Storage', 'Cloudflare R2', 'Alibaba OSS']) {
             const c = PROVIDER_CATALOG.find(x => x.company === name)!;
             expect(c.freeRequiresCard, `${name} freeRequiresCard`).toBe(true);
             expect(c.freeStorageGb, `${name} has a free GB figure`).not.toBeNull();
@@ -139,7 +139,7 @@ describe('commercial tier model: free / free-card / paid', () => {
 
     it('freeRequiresCard companies are never reported as paid-only by the CLI projection', () => {
         const cli = buildCliCatalog();
-        for (const name of ['Amazon S3', 'Azure Blob', 'Yandex Object Storage', 'Oracle Cloud', 'Google Cloud Storage', 'Cloudflare R2', 'Alibaba OSS']) {
+        for (const name of ['Amazon S3', 'Microsoft Azure Blob', 'Yandex Object Storage', 'Oracle Cloud', 'Google Cloud Storage', 'Cloudflare R2', 'Alibaba OSS']) {
             const row = cli.find(c => c.company === name)!;
             expect(row.freeRequiresCard, `${name} CLI freeRequiresCard`).toBe(true);
         }

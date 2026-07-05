@@ -453,7 +453,7 @@
     ]
   },
   {
-    "company": "OneDrive",
+    "company": "Microsoft OneDrive",
     "logoId": "onedrive",
     "country": "US",
     "freeGb": 5,
@@ -646,7 +646,7 @@
     "company": "Uploadcare",
     "logoId": "uploadcare",
     "country": "US",
-    "freeGb": 3,
+    "freeGb": 1,
     "freeNote": "media CDN",
     "freeRequiresCard": false,
     "regions": [
@@ -746,7 +746,7 @@
     "company": "DriveHQ",
     "logoId": "drivehq",
     "country": "US",
-    "freeGb": 1,
+    "freeGb": 5,
     "freeNote": null,
     "freeRequiresCard": false,
     "regions": [
@@ -967,7 +967,7 @@
     ]
   },
   {
-    "company": "Azure Blob",
+    "company": "Microsoft Azure Blob",
     "logoId": "azure",
     "country": "US",
     "freeGb": 5,

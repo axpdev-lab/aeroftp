@@ -2,7 +2,7 @@ import * as React from 'react';
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import {
     Server, Database, Globe, Cloud, Code, Camera, Layers,
-    ChevronRight, Search, X, Zap, Activity, ShieldCheck, Lock, Info, LayoutGrid, List as ListIcon, RefreshCw, Share2,
+    ChevronRight, Search, X, Zap, Activity, ShieldCheck, Lock, Info, LayoutGrid, Table as TableIcon, RefreshCw, Share2,
 } from 'lucide-react';
 import { ProviderType } from '../../types';
 import { PROVIDER_LOGOS } from '../ProviderLogos';
@@ -52,13 +52,17 @@ function resolveCompanyHealthUrl(c: CatalogCompany): string | undefined {
     return undefined;
 }
 
-/** Generic / custom server entry points shown below the list view. */
-const CUSTOM_PROFILES: { labelKey: string; protocol: ProviderType; providerId?: string }[] = [
-    { labelKey: 'introHub.list.customFtp', protocol: 'ftp' },
-    { labelKey: 'introHub.list.customSftp', protocol: 'sftp' },
-    { labelKey: 'introHub.list.customS3', protocol: 's3', providerId: 'custom-s3' },
-    { labelKey: 'introHub.list.customWebdav', protocol: 'webdav', providerId: 'custom-webdav' },
-    { labelKey: 'introHub.list.customAzure', protocol: 'azure' },
+/** Generic / custom server entry points shown below the table view, each
+ *  tagged with the catalog categories it belongs to so the strip can be
+ *  filtered to the active tab (Ehud #274): only the relevant protocols show,
+ *  and nothing shows in the cloud / media / developer tabs. Azure Blob is
+ *  dropped here since it is a first-class Object Storage provider with its own
+ *  row. */
+const CUSTOM_PROFILES: { labelKey: string; protocol: ProviderType; providerId?: string; categories: CatalogCategoryId[] }[] = [
+    { labelKey: 'introHub.list.customFtp', protocol: 'ftp', categories: ['protocols'] },
+    { labelKey: 'introHub.list.customSftp', protocol: 'sftp', categories: ['protocols'] },
+    { labelKey: 'introHub.list.customS3', protocol: 's3', providerId: 'custom-s3', categories: ['object-storage'] },
+    { labelKey: 'introHub.list.customWebdav', protocol: 'webdav', providerId: 'custom-webdav', categories: ['webdav'] },
 ];
 
 const CATEGORY_ICONS: Record<string, React.ReactNode> = {
@@ -448,32 +452,28 @@ export function DiscoverPanel({ onSelectProvider }: DiscoverPanelProps) {
                         {headerCount}
                     </span>
                     <div className="flex-1" />
-                    {/* Grid / list view toggle (persisted), mirroring My Servers. */}
+                    {/* Grid / Table view toggle (persisted): a single "switch to"
+                        button showing only the inactive view, mirroring the My
+                        Servers page (Ehud #274). "Table" wording since the list
+                        view is a real table. */}
                     <div className="flex items-center rounded-md border border-gray-200 dark:border-gray-600 overflow-hidden mr-1">
-                        <button
-                            onClick={() => setView('grid')}
-                            className={`flex items-center gap-1 px-2 py-1 text-[11px] transition-colors ${
-                                viewMode === 'grid'
-                                    ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
-                                    : 'text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700/50'
-                            }`}
-                            title={t('introHub.view.grid')}
-                            aria-pressed={viewMode === 'grid'}
-                        >
-                            <LayoutGrid size={12} />
-                        </button>
-                        <button
-                            onClick={() => setView('list')}
-                            className={`flex items-center gap-1 px-2 py-1 text-[11px] transition-colors ${
-                                viewMode === 'list'
-                                    ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
-                                    : 'text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700/50'
-                            }`}
-                            title={t('introHub.view.list')}
-                            aria-pressed={viewMode === 'list'}
-                        >
-                            <ListIcon size={12} />
-                        </button>
+                        {viewMode === 'grid' ? (
+                            <button
+                                onClick={() => setView('list')}
+                                className="flex items-center px-2 py-1 text-[11px] text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700/50 transition-colors"
+                                title={t('introHub.viewList')}
+                            >
+                                <TableIcon size={12} />
+                            </button>
+                        ) : (
+                            <button
+                                onClick={() => setView('grid')}
+                                className="flex items-center px-2 py-1 text-[11px] text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700/50 transition-colors"
+                                title={t('introHub.viewGrid')}
+                            >
+                                <LayoutGrid size={12} />
+                            </button>
+                        )}
                     </div>
                     {/* Health-check on/off: an icon-only toggle. The Activity icon
                         is lit (blue) when on, dimmed when off. Independent of the
@@ -544,24 +544,34 @@ export function DiscoverPanel({ onSelectProvider }: DiscoverPanelProps) {
                             getSignupUrl={resolveCompanySignupUrl}
                             onOpenUrl={openUrl}
                         />
-                        {/* Custom / generic servers below the table */}
-                        <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
-                            <div className="text-[11px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-2">
-                                {t('introHub.list.customProfiles')}
-                            </div>
-                            <div className="flex flex-wrap gap-2">
-                                {CUSTOM_PROFILES.map((p) => (
-                                    <button
-                                        key={p.labelKey}
-                                        onClick={() => onSelectProvider(p.protocol, p.providerId)}
-                                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:border-blue-300 dark:hover:border-blue-500/40 hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors"
-                                    >
-                                        <Server size={12} className="text-gray-400" />
-                                        {t(p.labelKey)}
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
+                        {/* Custom / generic servers below the table, filtered to
+                            the active tab (Ehud #274): hidden entirely in tabs
+                            with no generic protocol (cloud / media / developer). */}
+                        {(() => {
+                            const customProfiles = CUSTOM_PROFILES.filter(
+                                (p) => activeCategory === 'all' || p.categories.includes(activeCategory),
+                            );
+                            if (customProfiles.length === 0) return null;
+                            return (
+                                <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
+                                    <div className="text-[11px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-2">
+                                        {t('introHub.list.customProfiles')}
+                                    </div>
+                                    <div className="flex flex-wrap gap-2">
+                                        {customProfiles.map((p) => (
+                                            <button
+                                                key={p.labelKey}
+                                                onClick={() => onSelectProvider(p.protocol, p.providerId)}
+                                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:border-blue-300 dark:hover:border-blue-500/40 hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors"
+                                            >
+                                                <Server size={12} className="text-gray-400" />
+                                                {t(p.labelKey)}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            );
+                        })()}
                     </div>
                 ) : (
                     <>
