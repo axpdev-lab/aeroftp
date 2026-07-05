@@ -2922,7 +2922,10 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     const twoColProtocols = ['ftp', 'ftps', 'sftp', 's3', 'webdav', 'azure', 'filen', 'internxt', 'koofr', 'opendrive', 'kdrive', 'immich', 'imagekit', 'uploadcare', 'cloudinary', 'filelu', 'drime', 'jottacloud', 'backblaze',
         // #215 harmonization: OAuth clouds are now two-column too, so they get the
         // same wide card (max-w-4xl) as the rest instead of the narrow single-column one.
-        'googledrive', 'googlephotos', 'dropbox', 'onedrive', 'box', 'pcloud', 'zohoworkdrive', 'yandexdisk'];
+        'googledrive', 'googlephotos', 'dropbox', 'onedrive', 'box', 'pcloud', 'zohoworkdrive', 'yandexdisk',
+        // #369: MEGA API/CMD now uses the two-column layout too, so the wide
+        // card gives the MEGA MODES bar room and its S4 tab no longer wraps.
+        'mega'];
     const isTwoColumnProtocol = protocol && twoColProtocols.includes(protocol);
     const formOnlyMaxW = formOnly ? (isTwoColumnProtocol ? 'max-w-4xl' : 'max-w-lg') : 'max-w-5xl';
 
@@ -5097,8 +5100,15 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                         )}
                                     </div>
                                 ) : protocol === 'mega' ? (
-                                    /* MEGA Specific Form (Beta v0.5.0) */
-                                    <div className="space-y-4 pt-2">
+                                    /* MEGA Specific Form (Beta v0.5.0). #369: two-column
+                                       layout like every other Quick Connect page. The wide
+                                       card gives the MEGA MODES bar room (S4 no longer wraps),
+                                       and the shared right column brings Wrappers/Overlays
+                                       (Crypt), Remember credentials and Save to API/CMD, which
+                                       the legacy single-column form never exposed. */
+                                    <div className={formOnly ? 'grid grid-cols-2 gap-6 items-start' : 'space-y-4 pt-2'}>
+                                        {/* LEFT COLUMN: MEGA credentials + connection-backend selector */}
+                                        <div className="space-y-4">
                                         <div>
                                             {renderUsernameLabel(t('connection.emailAccount'))}
                                             <input
@@ -5273,109 +5283,23 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                 </div>
                                             )}
                                         </div>
-
-                                        {/* Optional Remote Path */}
-                                        <div className="pt-2">
-                                            <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1.5">
-                                                {t('connection.optionalSettings')}
-                                            </label>
-                                            <div className="space-y-2">
-                                                <input
-                                                    type="text"
-                                                    value={quickConnectDirs.remoteDir}
-                                                    onChange={(e) => onQuickConnectDirsChange({ ...quickConnectDirs, remoteDir: e.target.value })}
-                                                    className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
-                                                    placeholder={t('connection.initialRemotePathMega')}
-                                                />
-                                                <div className="flex gap-2">
-                                                    <input
-                                                        type="text"
-                                                        value={quickConnectDirs.localDir}
-                                                        onChange={(e) => onQuickConnectDirsChange({ ...quickConnectDirs, localDir: e.target.value })}
-                                                        className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
-                                                        placeholder={t('connection.initialLocalPath')}
-                                                    />
-                                                    <button
-                                                        type="button"
-                                                        onClick={handleBrowseLocalDir}
-                                                        className="px-3 py-2 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 rounded-lg transition-colors"
-                                                        title={t('common.browse')}
-                                                    >
-                                                        <FolderOpen size={16} />
-                                                    </button>
-                                                </div>
-                                            </div>
                                         </div>
-
-                                        {/* Save Connection Option (re-added) */}
-                                        <div className="pt-3 border-t border-gray-100 dark:border-gray-700/50">
-                                            <div>
-                                                <label className="block text-sm font-medium mb-1.5 flex items-center gap-1.5">
-                                                    <Save size={14} />
-                                                    {t('connection.connectionNameOptional')}
-                                                </label>
-                                                <input
-                                                    type="text"
-                                                    value={connectionName}
-                                                    onChange={(e) => setConnectionName(e.target.value)}
-                                                    placeholder={t('connection.megaConnectionNamePlaceholder')}
-                                                    className="w-full px-4 py-2.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-red-500 focus:border-transparent"
-                                                />
-                                                {renderIconPicker()}
-                                            </div>
-                                        </div>
-
-                                        <div className="pt-2">
-                                            {editingProfileId ? (
-                                                (() => {
-                                                    if (modeChanged) {
-                                                        return renderModeChangedFooter();
-                                                    }
-                                                    const hasFreshTotp = !!connectionParams.options?.two_factor_code;
-                                                    return (
-                                                        <div className="flex gap-2">
-                                                            <button
-                                                                onClick={handleConnectAndSave}
-                                                                disabled={loading || !connectionParams.username || !connectionParams.password || hasFreshTotp}
-                                                                title={hasFreshTotp ? t('connection.saveDisabledTotp') : undefined}
-                                                                className={`flex-1 py-3.5 rounded-lg font-medium cursor-pointer shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.3)] active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed ${loading ? 'bg-gray-400 text-white cursor-not-allowed' : 'bg-gray-200 hover:bg-gray-300 text-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-200'}`}
-                                                            >
-                                                                <Save size={18} /> {t('common.save')}
-                                                            </button>
-                                                            <button
-                                                                onClick={handleSaveAndConnect}
-                                                                disabled={loading || !connectionParams.username || !connectionParams.password}
-                                                                className={`flex-1 py-3.5 rounded-lg font-medium text-white cursor-pointer shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.3)] active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50 ${loading ? 'bg-gray-400 cursor-not-allowed' : 'bg-red-600 hover:bg-red-700'}`}
-                                                            >
-                                                                {loading ? (
-                                                                    <><div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> {t('connection.connecting')}</>
-                                                                ) : (
-                                                                    <>{ConnectIcon} {t('connection.saveAndConnect')}</>
-                                                                )}
-                                                            </button>
-                                                        </div>
-                                                    );
-                                                })()
-                                            ) : (
-                                                <button
-                                                    onClick={handleConnectAndSave}
-                                                    disabled={loading || !connectionParams.username || !connectionParams.password}
-                                                    className={`w-full py-3.5 rounded-lg font-medium text-white cursor-pointer shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.3)] active:scale-[0.98] transition-all flex items-center justify-center gap-2
-                                                    ${loading ? 'bg-gray-400 cursor-not-allowed' : 'bg-red-600 hover:bg-red-700'}`}
-                                                >
-                                                    {loading ? (
-                                                        <><div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> {t('connection.connecting')}</>
-                                                    ) : saveConnection ? (
-                                                        <><Save size={18} /> {t('common.save')}</>
-                                                    ) : (
-                                                        <>{ConnectIcon} {t('connection.secureLogin')}</>
-                                                    )}
-                                                </button>
-                                            )}
-                                            <p className="text-center text-xs text-gray-400 mt-3 flex items-center justify-center gap-1.5">
-                                                <Lock size={12} /> {t('connection.endToEndEncrypted')}
-                                            </p>
-                                        </div>
+                                        {/* RIGHT COLUMN: shared block (profile name + icon,
+                                            local/remote path, Wrappers/Overlays -> Crypt,
+                                            Remember credentials, Save). #369: this is what
+                                            brings the transparent Crypt overlay to MEGA
+                                            API/CMD, which the legacy single-column form never
+                                            exposed. Edit-mode Save stays blocked while a fresh
+                                            one-time TOTP is typed (a code must never be
+                                            persisted), matching the old custom footer. */}
+                                        {renderRightColumn({
+                                            disabled: !connectionParams.username || !connectionParams.password || (!!editingProfileId && !!connectionParams.options?.two_factor_code),
+                                            buttonColorClass: 'bg-red-600 hover:bg-red-700',
+                                            showCancelSaveAsNew: true,
+                                            connectionNameKey: t('connection.megaConnectionNamePlaceholder'),
+                                            remotePathPlaceholder: t('connection.initialRemotePathMega'),
+                                            showE2ENote: 'connection.endToEndEncrypted',
+                                        })}
                                     </div>
                                 ) : protocol === 'gitlab' ? (
                                     /* GitLab Form: single-column like GitHub */
