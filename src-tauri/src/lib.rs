@@ -8584,10 +8584,14 @@ fn tar_final_output(
 /// Unpack a tar stream into `final_output`, skipping unsafe (traversal / absolute)
 /// entries. Shared by extension-sniffing and format-forced extraction so both
 /// enforce the identical path-traversal guard.
+///
+/// Returns the destination path and the skipped-link notes as SEPARATE values:
+/// the path must stay a clean directory string (the CLI walks it to size the
+/// extraction), so skip notes are never smuggled into it.
 fn tar_unpack(
     reader: Box<dyn std::io::Read>,
     final_output: &std::path::Path,
-) -> Result<String, String> {
+) -> Result<(String, Vec<String>), String> {
     use std::fs::File;
     let mut ar = tar::Archive::new(reader);
 
@@ -8666,6 +8670,11 @@ fn tar_unpack(
 
             #[cfg(unix)]
             {
+                // Overwrite semantics on re-extract: File::create truncates an
+                // existing regular file, but symlink()/hard_link() fail EEXIST,
+                // so extracting the same tar twice died at the first link. Remove
+                // a pre-existing file or link at the path (NotFound is fine).
+                let _ = std::fs::remove_file(&out_path);
                 if et.is_symlink() {
                     std::os::unix::fs::symlink(&*target, &out_path)
                         .map_err(|e| format!("Failed to create symlink '{}': {}", entry_path, e))?;
@@ -8700,18 +8709,11 @@ fn tar_unpack(
         }
     }
 
-    if !link_reports.is_empty() {
-        for note in &link_reports {
-            eprintln!("tar_unpack: {}", note);
-        }
-        return Ok(format!(
-            "{}\n{}",
-            final_output.to_string_lossy(),
-            link_reports.join("\n")
-        ));
+    for note in &link_reports {
+        eprintln!("tar_unpack: {}", note);
     }
 
-    Ok(final_output.to_string_lossy().to_string())
+    Ok((final_output.to_string_lossy().to_string(), link_reports))
 }
 
 /// Extract TAR-based archives (auto-detects tar, tar.gz, tar.xz, tar.bz2 from extension)
@@ -8723,7 +8725,7 @@ async fn extract_tar(
 ) -> Result<String, String> {
     let final_output = tar_final_output(&archive_path, &output_dir, create_subfolder)?;
     let reader = tar_reader_for(&archive_path, None)?;
-    tar_unpack(reader, &final_output)
+    tar_unpack(reader, &final_output).map(|(dest, _skipped)| dest)
 }
 
 /// As `extract_tar_core`, but the tar filter is forced by `kind`
@@ -8737,7 +8739,7 @@ pub async fn extract_tar_as_core(
 ) -> Result<String, String> {
     let final_output = tar_final_output(&archive_path, &output_dir, create_subfolder)?;
     let reader = tar_reader_for(&archive_path, Some(&kind))?;
-    tar_unpack(reader, &final_output)
+    tar_unpack(reader, &final_output).map(|(dest, _skipped)| dest)
 }
 
 /// Extract a RAR archive with optional password
@@ -18791,7 +18793,11 @@ mod standalone_stream_tests {
         let out = dir.path().join("extracted");
         std::fs::create_dir_all(&out).unwrap();
         let reader: Box<dyn std::io::Read> = Box::new(std::fs::File::open(&tar_path).unwrap());
-        let report = tar_unpack(reader, &out).unwrap();
+        let (dest, skipped) = tar_unpack(reader, &out).unwrap();
+        // The destination stays a clean directory path (the CLI walks it to size
+        // the extraction); skip notes travel in their own channel.
+        assert_eq!(dest, out.to_string_lossy());
+        let report = skipped.join("\n");
 
         // Benign symlink was recreated and resolves to the in-root file's bytes.
         let link_meta =
