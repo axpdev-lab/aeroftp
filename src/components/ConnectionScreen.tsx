@@ -891,11 +891,25 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         return !!group && !group.sharedCredentials;
     }, [activeProviderId, protocol]);
 
+    // Mode-stash key: uniquely identifies a mode within a group. It MUST include
+    // the protocol, not just the providerId. Koofr's native API is preset-less
+    // (its providerId falls back to the protocol 'koofr') while its WebDAV
+    // preset's providerId is ALSO 'koofr', so a providerId-only key collided:
+    // switching API->WebDAV in edit stashed the API creds under 'koofr' and then
+    // restored them as the WebDAV mode, leaking the bare app.koofr.net endpoint
+    // over the preset's https://app.koofr.net/dav/Koofr -> 404 on every switch
+    // (#385). Normalizing a legacy native whose providerId === protocol back to
+    // preset-less keeps the native key stable however the profile persisted it.
+    const modeStashKey = (providerId: string | null | undefined, proto: string): string => {
+        const pid = providerId && providerId !== proto ? providerId : '';
+        return `${pid}|${proto}`;
+    };
+
     // The stash key of the currently-active mode, matching the oldKey/newKey
-    // convention in handleProtocolChange (providerId, else protocol).
+    // convention in handleProtocolChange.
     const computeActiveModeKey = (): string => {
         const pid = selectedProviderId || connectionParams.providerId || undefined;
-        return pid || (protocol as string);
+        return modeStashKey(pid, protocol as string);
     };
 
     // The full per-mode map to persist: every stashed mode plus the live one.
@@ -1948,7 +1962,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                 // what was typed there (incl. options-level secrets), instead
                 // of wiping the API key / 2FA secret (#215). On a first visit
                 // there is no stash, so the original carry-over behaviour holds.
-                const oldKey = oldProviderId || effectiveOldProtocol;
+                const oldKey = modeStashKey(oldProviderId, effectiveOldProtocol);
                 modeCredentialSnapshotsRef.current[oldKey] = {
                     username: connectionParams.username,
                     password: connectionParams.password,
@@ -1956,7 +1970,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                     port: connectionParams.port,
                     options: connectionParams.options ? { ...connectionParams.options } : undefined,
                 };
-                const newKey = providerId || newProtocol;
+                const newKey = modeStashKey(providerId, newProtocol);
                 const restored = modeCredentialSnapshotsRef.current[newKey];
                 // Issue #215 (Ehud, security): the S3 "Secret Access Key" field
                 // is the shared `password` slot relabeled, and the API "password"
@@ -2174,6 +2188,13 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         if (protocol === 'azure') return t('connection.azureAccountName');
         if (protocol === 'github') return t('github.ownerRepo');
         if (protocol === 'gitlab') return 'Project Path';
+        // A selected preset can relabel the shared username field (Koofr,
+        // OpenDrive, pCloud, Yandex WebDAV all declare "Email"), so a provider's
+        // WebDAV mode reads the same label as its dedicated native form instead
+        // of the generic "Username" (#369 label consistency). Mirrors how the
+        // placeholder already prefers the preset field below.
+        const presetLabel = selectedProvider?.fields?.find((f) => f.key === 'username')?.label;
+        if (presetLabel) return presetLabel;
         return t('connection.username');
     };
 
@@ -2234,6 +2255,11 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         if (protocol === 'azure') return t('connection.azureAccessKey');
         if (protocol === 'github') return t('github.personalAccessToken');
         if (protocol === 'gitlab') return 'Access Token';
+        // Same as getUsernameLabel: honour a preset's own password label so the
+        // WebDAV mode matches the native form ("App Password" for Koofr/Yandex,
+        // "Password" for OpenDrive/pCloud) instead of the generic "Password".
+        const presetLabel = selectedProvider?.fields?.find((f) => f.key === 'password')?.label;
+        if (presetLabel) return presetLabel;
         return t('connection.password');
     };
 
@@ -4328,7 +4354,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             />
                                         </div>
                                         <p className="text-xs text-gray-400 mt-2 select-text">
-                                            {t('connection.kdriveTokenHelp')}
+                                            <a href="https://manager.infomaniak.com/v3/ng/profile/user/token/list" target="_blank" rel="noopener noreferrer" className="underline hover:text-blue-600 dark:hover:text-blue-300">
+                                                {t('connection.kdriveTokenHelp')}
+                                            </a>
                                         </p>
                                         </div>
 
@@ -5615,7 +5643,13 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                         {(() => {
                                             const isNonGenericS3 = protocol === 's3' && selectedProviderId && !getProviderById(selectedProviderId)?.isGeneric;
                                             const hasPresetServer = selectedProvider && selectedProvider.defaults?.server && !selectedProvider.isGeneric;
-                                            const hideServerField = hasPresetServer && !editingProfileId;
+                                            // Reinforce the preset: a preset endpoint stays hidden from the
+                                            // main form in EVERY mode (add and edit), so switching modes in
+                                            // edit behaves like add and the managed endpoint is never shown
+                                            // as an editable top-level field. It remains reachable, unlock-
+                                            // gated, in Advanced Options below for the rare case the provider
+                                            // changes its endpoint before the app ships an update.
+                                            const hideServerField = hasPresetServer;
                                             // Z.4.5 R1: providers that mark `serverLocked: true` keep
                                             // the server/port row hidden in EVERY mode (including edit),
                                             // because their endpoint is fully managed by AeroFTP and
@@ -5813,7 +5847,11 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                         />
                                         {/* Advanced Options: hidden server/port for preset WebDAV, hidden endpoint for preset S3 */}
                                         {(() => {
-                                            const hasPresetServer = selectedProvider && selectedProvider.defaults?.server && !selectedProvider.isGeneric && !editingProfileId;
+                                            // Surface the accordion in EVERY mode (add and edit): the main
+                                            // Server/Port row is hidden for a preset provider in both, so edit
+                                            // must expose the managed endpoint here too (collapsed, unlock-
+                                            // gated), matching add mode and keeping it overridable.
+                                            const hasPresetServer = selectedProvider && selectedProvider.defaults?.server && !selectedProvider.isGeneric;
                                             // Z.4.5 R1: providers marked `serverLocked` ALWAYS surface the
                                             // accordion (even in edit mode) because the main Server/Port
                                             // row is unconditionally hidden for them. Without this branch

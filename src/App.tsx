@@ -159,6 +159,7 @@ import { openAeroShareDialog, openAeroShareSend } from './utils/aeroShare';
 import { AeroShareHub } from './components/AeroShare/AeroShareHub';
 import { SavedServers } from './components/SavedServers';
 import { ConnectionScreen } from './components/ConnectionScreen';
+import { findActiveModeGroup } from './components/providerModeGroups';
 import { TwoFactorPromptDialog } from './components/TwoFactorPromptDialog';
 import { IntroHub } from './components/IntroHub';
 import { AboutDialog } from './components/AboutDialog';
@@ -5862,6 +5863,31 @@ interface UpdateVerificationInfo {
         if (!match && isOAuth) {
           const sameProvider = all.filter(s => (s.protocol || 'ftp') === protocol);
           if (sameProvider.length === 1) match = sameProvider[0];
+        }
+        // #385: after switching protocol/mode within a provider group whose
+        // modes address ONE account (Koofr, OpenDrive: WebDAV <-> native API),
+        // the exact protocol+host match above no longer resolves the saved
+        // profile, so a crypt-overlay binding stops re-linking on reconnect and
+        // the transparent overlay plus its path-bar button silently vanish. When
+        // the live connection is in such a shared-credential group and exactly
+        // one saved profile in the SAME group with the SAME account username
+        // carries an enabled crypt-overlay binding, adopt it: every mode of the
+        // group hits the same account and the same encrypted blobs, and the
+        // overlay derives its keys from the password+salt (not the transport),
+        // so decrypting over API vs WebDAV is identical. Gated tightly (shared
+        // group, same non-empty username, unique) so a plain profile or a
+        // different account is never mislinked.
+        if (!match) {
+          const liveGroup = findActiveModeGroup(effectiveParams.providerId, effectiveParams.protocol || protocol);
+          const liveUser = effectiveParams.username;
+          if (liveGroup?.sharedCredentials && liveUser) {
+            const cryptSiblings = all.filter(s =>
+              s.aeroCryptOverlay?.enabled
+              && s.username === liveUser
+              && findActiveModeGroup(s.providerId, s.protocol)?.id === liveGroup.id
+            );
+            if (cryptSiblings.length === 1) match = cryptSiblings[0];
+          }
         }
         if (match) effectiveParams = { ...effectiveParams, savedServerId: match.id };
       } catch { /* best-effort profile linkage only */ }
