@@ -224,7 +224,7 @@ export const PROVIDER_CATALOG: CatalogCompany[] = [
           { label: 'WebDAV', protocol: 'webdav', providerId: 'filelu-webdav', category: 'webdav' },
           { label: 'S3', protocol: 's3', providerId: 'filelu-s3', category: 'object-storage' },
       ] },
-    { company: 'DriveHQ', logoId: 'drivehq', countryCode: 'US', freeStorageGb: 1,
+    { company: 'DriveHQ', logoId: 'drivehq', countryCode: 'US', freeStorageGb: 5,
       protocols: [{ label: 'WebDAV', protocol: 'webdav', providerId: 'drivehq', category: 'webdav' }] },
     { company: 'Jianguoyun', logoId: 'jianguoyun', countryCode: 'CN', freeStorageGb: 1,
       freeNote: 'monthly traffic cap',
@@ -290,14 +290,31 @@ export function totalFreeStorageGb(companies: CatalogCompany[]): number {
     return companies.reduce((sum, c) => sum + (c.freeStorageGb ?? 0), 0);
 }
 
+/**
+ * Canonical badge display order, independent of the array order in the catalog
+ * (which is authored default-first, since `protocols[0]` is the row launch
+ * target). Ehud (#274) asked for a consistent S3-vs-WebDAV ordering: FileLu
+ * showed WebDAV before S3 while Filen showed S3 before WebDAV. We follow the
+ * order FileLu already has (native API/OAuth, then WebDAV, then S3/object),
+ * which keeps WebDAV in the middle for every company. Ranks are relative;
+ * anything unranked (media, developer, SFTP) sorts first with the native
+ * method. A stable sort preserves the authored order within a rank.
+ */
+const BADGE_CATEGORY_RANK: Partial<Record<CatalogCategoryId, number>> = {
+    webdav: 1,
+    'object-storage': 2,
+};
+const badgeRank = (p: CatalogProtocolRef): number => BADGE_CATEGORY_RANK[p.category] ?? 0;
+const byBadgeRank = (a: CatalogProtocolRef, b: CatalogProtocolRef): number => badgeRank(a) - badgeRank(b);
+
 /** Connection methods available on the free tier (blue badges). */
 export function freeProtocols(c: CatalogCompany): CatalogProtocolRef[] {
-    return c.protocols.filter(p => !p.paid);
+    return c.protocols.filter(p => !p.paid).sort(byBadgeRank);
 }
 
 /** Connection methods gated behind a paid plan / credit card (orange badges). */
 export function paidProtocols(c: CatalogCompany): CatalogProtocolRef[] {
-    return c.protocols.filter(p => p.paid);
+    return c.protocols.filter(p => p.paid).sort(byBadgeRank);
 }
 
 /** True when the company has at least one free-tier connection method. */
