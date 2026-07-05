@@ -190,6 +190,32 @@ impl DeltaSyncResult {
     }
 }
 
+/// Translate a native `HardRejection` envelope into the delta result.
+///
+/// A wire-level transport drop (the remote closing the exec channel mid
+/// stream, a kex blip) is NOT a security refusal: the destination is never
+/// torn (every write goes through a temp file plus atomic rename), so the
+/// classic SFTP path may take over, exactly as the Z.1.2 batch boundary
+/// already reconnects on the same envelopes. Security and protocol faults
+/// (host-key mismatch, invalid frame, internal) stay hard: those must
+/// surface, never silently retry. Single source of truth for the split is
+/// `rsync_over_ssh::is_transient_native_envelope`.
+fn hard_rejection_result(msg: &str) -> DeltaSyncResult {
+    if crate::rsync_over_ssh::is_transient_native_envelope(&msg.to_ascii_lowercase()) {
+        tracing::warn!(
+            "delta transport drop: {}: falling back to the classic path",
+            msg
+        );
+        DeltaSyncResult::fallback(sanitize_rsync_message(&format!(
+            "delta transport drop: {}",
+            msg
+        )))
+    } else {
+        tracing::error!("delta hard rejection: {}: classic fallback suppressed", msg);
+        DeltaSyncResult::hard_error(sanitize_rsync_message(msg))
+    }
+}
+
 /// Per-session capability cache.
 ///
 /// `session_key` → (capability, cached_at). Entries expire after [`CACHE_TTL`];
@@ -351,15 +377,12 @@ pub async fn transfer_with_delta(
             "local rsync disappeared between probe and transfer",
         )),
         Err(RsyncError::HardRejection(msg)) => {
-            // Native path refused for a reason that MUST NOT trigger silent
-            // classic fallback (e.g. SSH host-key pinning mismatch). The
-            // caller is responsible for surfacing the error to the UI.
-            tracing::error!(
-                "delta sync {:?} hard rejection: {}: classic fallback suppressed",
-                direction,
-                msg
-            );
-            Ok(DeltaSyncResult::hard_error(sanitize_rsync_message(&msg)))
+            // Security/protocol refusals MUST NOT trigger silent classic
+            // fallback (e.g. SSH host-key pinning mismatch); a wire-level
+            // transport drop demotes to the classic path instead of failing
+            // the transfer outright. The split lives in
+            // `hard_rejection_result`.
+            Ok(hard_rejection_result(&msg))
         }
         Err(e) => {
             // TransferFailed, SpawnFailed, Io, Cancelled, VersionTooOld, ProbeFailed →
@@ -661,13 +684,7 @@ pub async fn try_delta_transfer_with_batch(
         Err(RsyncError::TooSmall { size, threshold }) => DeltaSyncResult::fallback(format!(
             "file size {size} bytes is below delta threshold {threshold} bytes"
         )),
-        Err(RsyncError::HardRejection(msg)) => {
-            tracing::error!(
-                "delta batch {:?} hard rejection: {msg}: classic fallback suppressed",
-                direction,
-            );
-            DeltaSyncResult::hard_error(sanitize_rsync_message(&msg))
-        }
+        Err(RsyncError::HardRejection(msg)) => hard_rejection_result(&msg),
         Err(e) => {
             tracing::warn!("delta batch {:?} failed: {e}", direction);
             DeltaSyncResult::fallback(sanitize_rsync_message(&format!("batch delta failed: {e}")))
@@ -689,6 +706,40 @@ pub async fn invalidate_session_cache(session_key: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn hard_rejection_transport_drop_demotes_to_classic_fallback() {
+        // The live WD MyCloud case: the remote closed the exec channel during
+        // the file list. Not a security refusal, so the single-shot lane must
+        // hand the transfer to the classic SFTP path instead of failing it.
+        let r = hard_rejection_result(
+            "native hard rejection (TransportFailure): next_data_frame: remote closed mid file list",
+        );
+        assert!(r.hard_error.is_none(), "transport drop must not be hard");
+        assert!(!r.used_delta);
+        let reason = r.fallback_reason.expect("fallback reason expected");
+        assert!(reason.contains("delta transport drop"), "got: {reason}");
+    }
+
+    #[test]
+    fn hard_rejection_host_key_stays_hard() {
+        // Security refusals must never silently fall back: that is exactly
+        // the condition host-key pinning exists for. The deny markers win
+        // even when a transient kind is also present in the envelope.
+        let r = hard_rejection_result(
+            "native hard rejection (TransportFailure): host key verification failed",
+        );
+        assert!(r.fallback_reason.is_none(), "host-key must not fall back");
+        assert!(r.hard_error.is_some());
+    }
+
+    #[test]
+    fn hard_rejection_protocol_fault_stays_hard() {
+        let r =
+            hard_rejection_result("native hard rejection (InvalidFrame): unexpected opcode 0x42");
+        assert!(r.fallback_reason.is_none());
+        assert!(r.hard_error.is_some());
+    }
 
     #[test]
     fn delta_sync_result_used_shape() {

@@ -413,7 +413,11 @@ pub fn is_transient_for_reconnect(err: &RsyncError) -> bool {
 /// enum is mixed-case, e.g. `TransportFailure`, but the substring match
 /// stays case-insensitive). The denylist wins: any deny marker present
 /// returns false even if a transient kind is also mentioned.
-fn is_transient_native_envelope(lower: &str) -> bool {
+///
+/// pub(crate): `delta_sync_rsync` consults the same classifier to demote a
+/// wire-level HardRejection to a classic-path fallback on the single-shot
+/// lane, so the two policies can never drift apart.
+pub(crate) fn is_transient_native_envelope(lower: &str) -> bool {
     const DENY: &[&str] = &[
         "hostkeyrejected",
         "host key",
