@@ -905,6 +905,31 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         return `${pid}|${proto}`;
     };
 
+    // Legacy persisted snapshots (pre collision-free keys) used
+    // `providerId || protocol` as the map key. Re-key them to the current
+    // `pid|proto` form at hydrate time, so per-mode credentials saved before
+    // the rekey keep restoring instead of coming up blank, and the old-format
+    // entries do not linger in the vault map as dead secrets. For the one
+    // historic collision (Koofr: both modes hashed to 'koofr') the surviving
+    // entry deterministically lands on the group's first matching mode.
+    const migrateLegacyModeKeys = (
+        persisted: ModeCredentialMap,
+        group: ReturnType<typeof findActiveModeGroup>
+    ): ModeCredentialMap => {
+        if (!group) return persisted;
+        const out: ModeCredentialMap = { ...persisted };
+        for (const mode of group.modes) {
+            const proto = mode.protocol as string;
+            const legacyKey = mode.providerId || proto;
+            const newKey = modeStashKey(mode.providerId, proto);
+            if (legacyKey !== newKey && out[legacyKey] && !out[newKey]) {
+                out[newKey] = out[legacyKey];
+                delete out[legacyKey];
+            }
+        }
+        return out;
+    };
+
     // The stash key of the currently-active mode, matching the oldKey/newKey
     // convention in handleProtocolChange.
     const computeActiveModeKey = (): string => {
@@ -1895,7 +1920,10 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             try {
                 const persisted = await loadModeCredentials(targetProfileId);
                 if (editingProfileIdRef.current === targetProfileId) {
-                    modeCredentialSnapshotsRef.current = persisted;
+                    // Re-key any legacy-format snapshot so pre-rekey saves
+                    // still restore on the first mode switch.
+                    const group = findActiveModeGroup(profile.providerId, profile.protocol);
+                    modeCredentialSnapshotsRef.current = migrateLegacyModeKeys(persisted, group);
                 }
             } catch {
                 // No persisted modes: in-session snapshots only.
@@ -2336,9 +2364,12 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
 
     // #369: the 2FA code fields (Filen / MEGA / Internxt) accept digits only,
     // so a stray letter or space can never make a TOTP silently wrong. Shared
-    // by all three forms so the behaviour stays identical.
+    // by all three forms so the behaviour stays identical. The 6-digit clamp
+    // lives HERE, not in a maxLength attribute: the DOM truncates a paste
+    // BEFORE the change event, so "123 456" under maxLength arrived as
+    // "123 45" and stripped to five digits, silently corrupting the code.
     const handleTotpCodeChange = (raw: string) => {
-        const digits = raw.replace(/\D/g, '');
+        const digits = raw.replace(/\D/g, '').slice(0, 6);
         onConnectionParamsChange({
             ...connectionParams,
             options: { ...connectionParams.options, two_factor_code: digits || undefined },
@@ -4566,7 +4597,6 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                 onChange={(e) => handleTotpCodeChange(e.target.value)}
                                                 className="w-32 px-4 py-2.5 text-center tracking-[0.3em] font-mono bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                                                 placeholder="000000"
-                                                maxLength={6}
                                                 inputMode="numeric"
                                                 autoComplete="one-time-code"
                                             />
@@ -4732,7 +4762,6 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                 onChange={(e) => handleTotpCodeChange(e.target.value)}
                                                 className="w-32 px-4 py-2.5 text-center tracking-[0.3em] font-mono bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                                                 placeholder="000000"
-                                                maxLength={6}
                                                 inputMode="numeric"
                                                 autoComplete="one-time-code"
                                             />
@@ -5149,7 +5178,6 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                 onChange={(e) => handleTotpCodeChange(e.target.value)}
                                                 className="w-32 px-4 py-2.5 text-center tracking-[0.3em] font-mono bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-red-500 focus:border-red-500"
                                                 placeholder="000000"
-                                                maxLength={6}
                                                 inputMode="numeric"
                                                 autoComplete="one-time-code"
                                             />
