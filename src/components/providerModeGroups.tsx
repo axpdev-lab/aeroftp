@@ -166,7 +166,7 @@ export const PROVIDER_MODE_GROUPS: ProviderModeGroup[] = [
                 protocol: 'webdav',
                 icon: <Globe size={14} />,
                 activeColor: 'text-blue-500',
-                label: 'Local WebDAV',
+                label: 'WebDAV',
                 description:
                     'WebDAV bridge exposed by Filen Desktop on 127.0.0.1:1900. Requires Filen Desktop running and signed in.',
                 badge: 'LOCAL',
@@ -177,7 +177,7 @@ export const PROVIDER_MODE_GROUPS: ProviderModeGroup[] = [
                 protocol: 's3',
                 icon: <Layers size={14} />,
                 activeColor: 'text-amber-500',
-                label: 'Local S3',
+                label: 'S3',
                 description:
                     'S3-compatible bridge exposed by Filen Desktop on 127.0.0.1:1800 via local.s3.filen.io. Path-style addressing, bucket "filen".',
                 badge: 'LOCAL',
@@ -185,9 +185,9 @@ export const PROVIDER_MODE_GROUPS: ProviderModeGroup[] = [
             },
         ],
         activeWarnings: {
-            'Local WebDAV':
+            'WebDAV':
                 'Requires Filen Desktop running and signed in on this machine. The bridge is local-only: nothing leaves the loopback. Use the Native API mode for E2E encryption without Filen Desktop.',
-            'Local S3':
+            'S3':
                 'Requires Filen Desktop running and signed in on this machine. On first connect the bridge auto-creates a top-level folder named "filen" on your account: existing files live one level above the bridge view.',
         },
     },
