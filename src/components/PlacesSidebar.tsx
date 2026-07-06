@@ -369,6 +369,20 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
 
   const handleEject = useCallback(async (mountPoint: string, e: React.MouseEvent) => {
     e.stopPropagation();
+    // #351: if AeroFile is currently browsing inside the device being ejected,
+    // step out to Home first (like File Explorer closing windows on the drive).
+    // Otherwise the panel is left pointing at a path that no longer exists after
+    // the eject, and the follow-up listing surfaces an error.
+    const mp = mountPoint.replace(/[\\/]+$/, '');
+    const insideEjected =
+      currentPath === mountPoint ||
+      currentPath === mp ||
+      currentPath.startsWith(mp + '/') ||
+      currentPath.startsWith(mp + '\\');
+    if (insideEjected) {
+      const home = userDirs.find(d => d.key === 'home')?.path ?? userDirs[0]?.path;
+      if (home) onNavigate(home);
+    }
     setEjectingMount(mountPoint);
     try {
       await invoke('eject_volume', { mountPoint });
@@ -397,7 +411,7 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
     } finally {
       if (mountedRef.current) setEjectingMount(null);
     }
-  }, [fetchVolumes, t]);
+  }, [fetchVolumes, t, currentPath, userDirs, onNavigate]);
 
   // -----------------------------------------------------------------------
   // Mount unmounted partition
