@@ -2336,6 +2336,18 @@ impl StorageProvider for S3Provider {
     }
 
     async fn connect(&mut self) -> Result<(), ProviderError> {
+        // #389: the Filen Desktop S3 bridge protocol (HTTP vs HTTPS) is a user
+        // setting in the Filen app, independent of the scheme saved in this
+        // profile. Reconcile the endpoint against the live bridge (scheme +
+        // loopback IP) so the connect survives either choice. The client already
+        // trusts loopback / local.s3.filen.io self-signed certs (is_local_s3_endpoint).
+        if let Some(ep) = self.config.endpoint.clone() {
+            let fixed = crate::local_bridge::reconcile_local_bridge_url(&ep).await;
+            if fixed != ep {
+                tracing::info!("[S3] Filen bridge endpoint reconciled {} -> {}", ep, fixed);
+                self.config.endpoint = Some(fixed);
+            }
+        }
         // STS AssumeRole (issue #301): when a role ARN is configured, exchange
         // the long-term base credentials for temporary ones before any signed S3
         // request is made. Runs ahead of the bucket probe (and the

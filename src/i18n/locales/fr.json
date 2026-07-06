@@ -1726,6 +1726,7 @@
             "discoverTabDigital": "Tab.digital (8 Go gratuits, basé sur Nextcloud, EU/GDPR, sous-domaines régionaux)",
             "webdavLocalScheme": "Protocole",
             "webdavLocalSchemeHelp": "Faites correspondre le paramètre HTTP/HTTPS du pont WebDAV local (Filen Desktop, MEGAcmd). HTTPS utilise un certificat auto-signé, donc la vérification du certificat est automatiquement désactivée.",
+            "webdavLocalSchemeAuto": "AeroFTP détecte automatiquement le protocole du pont Filen (HTTP ou HTTPS) lors de la connexion, il n'y a donc rien à configurer ici.",
             "s3SessionToken": "Jeton de session (facultatif)",
             "s3SessionTokenPlaceholder": "Jeton de session AWS STS",
             "s3SessionTokenHint": "Pour les identifiants temporaires d'AWS STS AssumeRole ou SSO. Laissez vide pour les clés d'accès IAM permanentes.",

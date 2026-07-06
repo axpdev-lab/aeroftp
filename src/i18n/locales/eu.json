@@ -1726,6 +1726,7 @@
             "discoverTabDigital": "Tab.digital (8 GB doan, Nextcloud-en oinarrituta, EU/GDPR, eskualdeko azpidomeinuak)",
             "webdavLocalScheme": "Protokoloa",
             "webdavLocalSchemeHelp": "Bat etorri tokiko WebDAV zubiaren HTTP/HTTPS ezarpenarekin (Filen Desktop, MEGAcmd). HTTPSk auto-sinatutako ziurtagiri bat erabiltzen du, beraz ziurtagirien egiaztapena automatikoki desaktibatzen da.",
+            "webdavLocalSchemeAuto": "AeroFTP-k automatikoki hautematen du Filen zubiaren protokoloa (HTTP edo HTTPS) konektatzean, beraz, ez dago ezer ezarri beharrik hemen.",
             "s3SessionToken": "Saioaren tokena (aukerakoa)",
             "s3SessionTokenPlaceholder": "AWS STS saioaren tokena",
             "s3SessionTokenHint": "AWS STS AssumeRole edo SSO bidezko behin-behineko kredentzialetarako. Utzi hutsik betiko IAM sarbide-gakoentzat.",

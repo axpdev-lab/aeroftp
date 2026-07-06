@@ -1726,6 +1726,7 @@
             "discoverTabDigital": "Tab.digital (8 GB miễn phí, dựa trên Nextcloud, EU/GDPR, tên miền phụ theo khu vực)",
             "webdavLocalScheme": "Giao thức",
             "webdavLocalSchemeHelp": "Khớp với cài đặt HTTP/HTTPS của cầu WebDAV cục bộ (Filen Desktop, MEGAcmd). HTTPS sử dụng chứng chỉ tự ký, vì vậy việc xác minh chứng chỉ bị tự động vô hiệu hóa.",
+            "webdavLocalSchemeAuto": "AeroFTP tự động phát hiện giao thức của cầu nối Filen (HTTP hoặc HTTPS) khi bạn kết nối, vì vậy không có gì cần thiết lập ở đây.",
             "s3SessionToken": "Mã thông báo phiên (tùy chọn)",
             "s3SessionTokenPlaceholder": "Mã thông báo phiên AWS STS",
             "s3SessionTokenHint": "Dành cho thông tin xác thực tạm thời từ AWS STS AssumeRole hoặc SSO. Để trống cho khóa truy cập IAM dài hạn.",

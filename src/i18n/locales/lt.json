@@ -1726,6 +1726,7 @@
             "discoverTabDigital": "Tab.digital (8 GB nemokamai, Nextcloud pagrindu, EU/GDPR, regioniniai padomeniai)",
             "webdavLocalScheme": "Protokolas",
             "webdavLocalSchemeHelp": "Atitikite vietinio WebDAV tilto HTTP/HTTPS nustatymą (Filen Desktop, MEGAcmd). HTTPS naudoja savaime pasirašytą sertifikatą, todėl sertifikato patikrinimas automatiškai išjungiamas.",
+            "webdavLocalSchemeAuto": "AeroFTP prisijungiant automatiškai aptinka Filen tilto protokolą (HTTP arba HTTPS), todėl čia nieko nustatyti nereikia.",
             "s3SessionToken": "Seanso žetonas (nebūtina)",
             "s3SessionTokenPlaceholder": "AWS STS seanso žetonas",
             "s3SessionTokenHint": "Laikiniems prisijungimo duomenims iš AWS STS AssumeRole arba SSO. Nuolatiniams IAM prieigos raktams palikite tuščią.",

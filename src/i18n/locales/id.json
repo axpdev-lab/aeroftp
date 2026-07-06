@@ -1726,6 +1726,7 @@
             "discoverTabDigital": "Tab.digital (8 GB gratis, berbasis Nextcloud, EU/GDPR, subdomain regional)",
             "webdavLocalScheme": "Protokol",
             "webdavLocalSchemeHelp": "Sesuaikan dengan pengaturan HTTP/HTTPS jembatan WebDAV lokal (Filen Desktop, MEGAcmd). HTTPS menggunakan sertifikat yang ditandatangani sendiri, sehingga verifikasi sertifikat dinonaktifkan secara otomatis.",
+            "webdavLocalSchemeAuto": "AeroFTP mendeteksi protokol jembatan Filen (HTTP atau HTTPS) secara otomatis saat Anda terhubung, jadi tidak ada yang perlu diatur di sini.",
             "s3SessionToken": "Token sesi (opsional)",
             "s3SessionTokenPlaceholder": "Token sesi AWS STS",
             "s3SessionTokenHint": "Untuk kredensial sementara dari AWS STS AssumeRole atau SSO. Biarkan kosong untuk kunci akses IAM permanen.",

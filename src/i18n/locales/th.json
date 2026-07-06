@@ -1726,6 +1726,7 @@
             "discoverTabDigital": "Tab.digital (8 GB ฟรี, ใช้ Nextcloud, EU/GDPR, โดเมนย่อยตามภูมิภาค)",
             "webdavLocalScheme": "โปรโตคอล",
             "webdavLocalSchemeHelp": "ให้ตรงกับการตั้งค่า HTTP/HTTPS ของบริดจ์ WebDAV ในเครื่อง (Filen Desktop, MEGAcmd) HTTPS ใช้ใบรับรองที่ลงนามด้วยตนเอง ดังนั้นการตรวจสอบใบรับรองจะถูกปิดใช้งานโดยอัตโนมัติ",
+            "webdavLocalSchemeAuto": "AeroFTP จะตรวจจับโปรโตคอลของบริดจ์ Filen (HTTP หรือ HTTPS) โดยอัตโนมัติเมื่อคุณเชื่อมต่อ ดังนั้นจึงไม่มีอะไรต้องตั้งค่าที่นี่",
             "s3SessionToken": "โทเค็นเซสชัน (ไม่บังคับ)",
             "s3SessionTokenPlaceholder": "โทเค็นเซสชัน AWS STS",
             "s3SessionTokenHint": "สำหรับข้อมูลรับรองชั่วคราวจาก AWS STS AssumeRole หรือ SSO เว้นว่างไว้สำหรับคีย์การเข้าถึง IAM แบบถาวร",

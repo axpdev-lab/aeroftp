@@ -1726,6 +1726,7 @@
             "discoverTabDigital": "Tab.digital (ឥតគិតថ្លៃ 8 GB, ផ្អែកលើ Nextcloud, EU/GDPR, ដែនរងតាមតំបន់)",
             "webdavLocalScheme": "ពិធីការ",
             "webdavLocalSchemeHelp": "ផ្គូផ្គងការកំណត់ HTTP/HTTPS របស់ស្ពាន WebDAV ក្នុងស្រុក (Filen Desktop, MEGAcmd)។ HTTPS ប្រើវិញ្ញាបនបត្រដែលចុះហត្ថលេខាដោយខ្លួនឯង ដូច្នេះការផ្ទៀងផ្ទាត់វិញ្ញាបនបត្រត្រូវបានបិទដោយស្វ័យប្រវត្តិ។",
+            "webdavLocalSchemeAuto": "AeroFTP រកឃើញពិធីការនៃស្ពាន Filen (HTTP ឬ HTTPS) ដោយស្វ័យប្រវត្តិនៅពេលអ្នកភ្ជាប់ ដូច្នេះគ្មានអ្វីត្រូវកំណត់នៅទីនេះទេ។",
             "s3SessionToken": "ថូខឹនវគ្គ (ស្រេចចិត្ត)",
             "s3SessionTokenPlaceholder": "ថូខឹនវគ្គ AWS STS",
             "s3SessionTokenHint": "សម្រាប់ព័ត៌មានសម្គាល់បណ្ដោះអាសន្នពី AWS STS AssumeRole ឬ SSO។ ទុកឱ្យនៅទទេសម្រាប់សោចូលប្រើ IAM អចិន្ត្រៃយ៍។",

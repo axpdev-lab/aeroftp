@@ -1719,6 +1719,7 @@
             "discoverTabDigital": "Tab.digital (8 ԳԲ անվճար, Nextcloud-ի վրա հիմնված, EU/GDPR, տարածաշրջանային ենթադոմեններ)",
             "webdavLocalScheme": "Արձանագրություն",
             "webdavLocalSchemeHelp": "Համապատասխանեցրեք տեղական WebDAV կամրջի HTTP/HTTPS կարգավորմանը (Filen Desktop, MEGAcmd)։ HTTPS-ն օգտագործում է ինքնաստորագրված վկայական, ուստի վկայականի ստուգումն ինքնաշխատ կերպով անջատվում է։",
+            "webdavLocalSchemeAuto": "AeroFTP-ը միանալիս ինքնաշխատ հայտնաբերում է Filen կամրջի արձանագրությունը (HTTP կամ HTTPS), ուստի այստեղ կարգավորելու ոչինչ չկա։",
             "s3SessionToken": "Աշխատաշրջանի թոքեն (ընտրովի)",
             "s3SessionTokenPlaceholder": "AWS STS աշխատաշրջանի թոքեն",
             "s3SessionTokenHint": "AWS STS AssumeRole-ից կամ SSO-ից ստացված ժամանակավոր հավատարմագրերի համար։ Երկարաժամկետ IAM մուտքի բանալիների համար թողեք դատարկ։",

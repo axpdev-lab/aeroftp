@@ -1354,12 +1354,16 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
         const isNextcloud = selectedProviderId === 'nextcloud';
         const isCustomOrGeneric = !selectedProviderId || selectedProviderId === 'custom-webdav';
         const showNextcloudHint = isNextcloud || isCustomOrGeneric;
-        // Local-bridge WebDAV presets (Filen Desktop, MEGAcmd, OpenDrive Desktop, ...)
-        // mark themselves with `defaults.webdavScheme`. The bridge server inside
-        // the host app can be flipped between HTTP and HTTPS by the user, and we
-        // need to mirror that choice here. HTTPS local bridges always use a
-        // self-signed certificate (loopback), so auto-disable cert verification.
-        const showWebdavSchemeToggle = !!providerConfig?.defaults?.webdavScheme;
+        // Local-bridge WebDAV presets (Filen Desktop, MEGAcmd, ...) mark
+        // themselves with `defaults.webdavScheme`. MEGAcmd's scheme is chosen by
+        // AeroFTP (it arms `mega-webdav /` on HTTP), so the manual toggle stays.
+        // The Filen Desktop bridge protocol is a user setting in the Filen app;
+        // AeroFTP now auto-detects it at connect (#389), so its manual toggle is
+        // replaced by an informational note. HTTPS local bridges always use a
+        // self-signed certificate (loopback), so cert verification is disabled.
+        const isFilenLocalBridge = selectedProviderId === 'filen-desktop-webdav';
+        const showWebdavSchemeToggle =
+            !!providerConfig?.defaults?.webdavScheme && !isFilenLocalBridge;
         const currentScheme = (options.webdavScheme as 'http' | 'https' | undefined) || 'http';
 
         return (
@@ -1390,6 +1394,12 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                         <p className="text-xs text-gray-500 mt-1">
                             {t('protocol.webdavLocalSchemeHelp')}
                         </p>
+                    </div>
+                )}
+                {isFilenLocalBridge && (
+                    <div className="text-sm text-gray-600 dark:text-gray-400 flex items-start gap-2">
+                        <Cloud size={14} className="mt-0.5 shrink-0" />
+                        <span>{t('protocol.webdavLocalSchemeAuto')}</span>
                     </div>
                 )}
                 {showNextcloudHint && (

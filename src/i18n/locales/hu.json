@@ -1726,6 +1726,7 @@
             "discoverTabDigital": "Tab.digital (8 GB ingyenes, Nextcloud-alapú, EU/GDPR, regionális aldomainek)",
             "webdavLocalScheme": "Protokoll",
             "webdavLocalSchemeHelp": "Egyezzen meg a helyi WebDAV híd HTTP/HTTPS beállításával (Filen Desktop, MEGAcmd). A HTTPS önaláírt tanúsítványt használ, így a tanúsítvány-ellenőrzés automatikusan letiltásra kerül.",
+            "webdavLocalSchemeAuto": "Az AeroFTP csatlakozáskor automatikusan felismeri a Filen híd protokollját (HTTP vagy HTTPS), így itt nincs mit beállítani.",
             "s3SessionToken": "Munkamenet-token (opcionális)",
             "s3SessionTokenPlaceholder": "AWS STS munkamenet-token",
             "s3SessionTokenHint": "Ideiglenes hitelesítő adatokhoz AWS STS AssumeRole vagy SSO révén. Állandó IAM hozzáférési kulcsokhoz hagyja üresen.",

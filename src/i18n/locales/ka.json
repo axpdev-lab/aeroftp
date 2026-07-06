@@ -1726,6 +1726,7 @@
             "discoverTabDigital": "Tab.digital (8 GB უფასო, Nextcloud-ზე დაფუძნებული, EU/GDPR, რეგიონული ქვედომენები)",
             "webdavLocalScheme": "პროტოკოლი",
             "webdavLocalSchemeHelp": "შეუსაბამეთ ლოკალური WebDAV ხიდის HTTP/HTTPS პარამეტრს (Filen Desktop, MEGAcmd). HTTPS იყენებს თვითხელმოწერილ სერტიფიკატს, ამიტომ სერტიფიკატის შემოწმება ავტომატურად გათიშულია.",
+            "webdavLocalSchemeAuto": "AeroFTP ავტომატურად ამოიცნობს Filen-ის ხიდის პროტოკოლს (HTTP ან HTTPS) დაკავშირებისას, ამიტომ აქ არაფრის დაყენება არ არის საჭირო.",
             "s3SessionToken": "სესიის ტოკენი (არასავალდებულო)",
             "s3SessionTokenPlaceholder": "AWS STS სესიის ტოკენი",
             "s3SessionTokenHint": "AWS STS AssumeRole-ის ან SSO-ის დროებითი სერტიფიკატებისთვის. დატოვეთ ცარიელი მუდმივი IAM წვდომის გასაღებებისთვის.",

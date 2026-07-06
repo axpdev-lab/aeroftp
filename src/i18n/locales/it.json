@@ -465,6 +465,7 @@
             "webdavExampleLabel": "Esempio:",
             "webdavLocalScheme": "Protocollo",
             "webdavLocalSchemeHelp": "Allinea l'impostazione HTTP/HTTPS al bridge WebDAV locale (Filen Desktop, MEGAcmd). HTTPS usa un certificato autofirmato, quindi la verifica del certificato viene disattivata automaticamente.",
+            "webdavLocalSchemeAuto": "AeroFTP rileva automaticamente il protocollo del bridge Filen (HTTP o HTTPS) alla connessione, quindi qui non c'è nulla da impostare.",
             "connectVia": "Connetti a {name} tramite {protocol}",
             "webdavConnectVia": "Connetti a {name} via WebDAV",
             "s3Endpoint": "Endpoint",

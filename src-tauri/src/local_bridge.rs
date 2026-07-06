@@ -248,6 +248,80 @@ pub async fn bridge_status(kind: String, port: Option<u16>) -> Result<BridgeStat
     probe_bridge(&kind, port).await
 }
 
+/// Whether `(host, port)` is a supported local mount-app bridge endpoint whose
+/// HTTP/HTTPS protocol is chosen inside the host app (independently of the
+/// scheme saved in the AeroFTP profile), so AeroFTP auto-resolves it: the Filen
+/// Desktop S3 (1800) and WebDAV (1900) servers, and the MEGAcmd WebDAV bridge
+/// (4443). Matched on the reserved loopback hostname or the loopback IP.
+/// Deliberately NOT any local host: a LAN NAS on one of these ports is not a
+/// bridge and must keep its saved scheme untouched. #389.
+pub fn is_local_bridge_authority(host: &str, port: u16) -> bool {
+    let loopback = host == "127.0.0.1" || host == "::1" || host.eq_ignore_ascii_case("localhost");
+    match port {
+        1800 => loopback || host.eq_ignore_ascii_case("local.s3.filen.io"),
+        1900 => loopback || host.eq_ignore_ascii_case("local.webdav.filen.io"),
+        4443 => loopback, // MEGAcmd local WebDAV bridge
+        _ => false,
+    }
+}
+
+/// Probe a loopback bridge port to learn whether it speaks HTTPS or plain HTTP.
+///
+/// The local mount apps let the user pick the protocol (HTTP/HTTPS) inside the
+/// app, independently of the scheme saved in the AeroFTP profile, so a mismatch
+/// breaks the connect (#389). We try HTTPS then HTTP and report whichever
+/// answers an HTTP response; a scheme mismatch fails at the transport / TLS
+/// layer and yields `Err`, so any HTTP status (even 400/401/404) proves the
+/// live scheme. Returns `None` when neither answered (bridge down / not yet
+/// started), so the caller keeps the saved URL and the normal flow proceeds.
+pub async fn detect_bridge_scheme(host: &str, port: u16) -> Option<&'static str> {
+    for scheme in ["https", "http"] {
+        let Ok(client) = reqwest::Client::builder()
+            .danger_accept_invalid_certs(true)
+            .connect_timeout(std::time::Duration::from_secs(3))
+            .timeout(std::time::Duration::from_secs(5))
+            .build()
+        else {
+            continue;
+        };
+        let url = format!("{scheme}://{host}:{port}/");
+        if client.get(&url).send().await.is_ok() {
+            return Some(scheme);
+        }
+    }
+    None
+}
+
+/// Reconcile a local mount-app bridge URL/endpoint against the live bridge:
+/// probe the actual scheme (the user's HTTP/HTTPS choice in the host app) and
+/// pin the loopback IP so `local.*.filen.io` DNS NODATA on Windows cannot break
+/// the connect. Returns the corrected `scheme://127.0.0.1:port<path>` (the path
+/// and query are preserved, e.g. MEGAcmd serves under a path), or the input
+/// unchanged when it is not a known bridge or the bridge does not answer (so the
+/// normal connect / auto-arm flow still runs). #389.
+pub async fn reconcile_local_bridge_url(url: &str) -> String {
+    let Some((_, rest)) = url.split_once("://") else {
+        return url.to_string();
+    };
+    // Split authority from the path/query tail (preserved verbatim).
+    let authority_end = rest.find('/').unwrap_or(rest.len());
+    let (authority, tail) = rest.split_at(authority_end);
+    let Some((host, port_str)) = authority.rsplit_once(':') else {
+        return url.to_string();
+    };
+    let host = host.trim_start_matches('[').trim_end_matches(']');
+    let Ok(port) = port_str.parse::<u16>() else {
+        return url.to_string();
+    };
+    if !is_local_bridge_authority(host, port) {
+        return url.to_string();
+    }
+    match detect_bridge_scheme("127.0.0.1", port).await {
+        Some(scheme) => format!("{scheme}://127.0.0.1:{port}{tail}"),
+        None => url.to_string(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -258,6 +332,35 @@ mod tests {
         assert_eq!(bridge_kind_default_port("filen-s3"), Some(1800));
         assert_eq!(bridge_kind_default_port("megacmd-webdav"), Some(4443));
         assert_eq!(bridge_kind_default_port("nope"), None);
+    }
+
+    #[test]
+    fn local_bridge_authority_gates_to_the_known_bridges() {
+        assert!(is_local_bridge_authority("local.webdav.filen.io", 1900));
+        assert!(is_local_bridge_authority("local.s3.filen.io", 1800));
+        assert!(is_local_bridge_authority("127.0.0.1", 1900));
+        assert!(is_local_bridge_authority("localhost", 1800));
+        assert!(is_local_bridge_authority("127.0.0.1", 4443)); // MEGAcmd WebDAV
+                                                               // Wrong port on the right host, a filen host on the wrong bridge port,
+                                                               // and a LAN NAS on the bridge ports must NOT be treated as a bridge
+                                                               // (their saved scheme is intentional).
+        assert!(!is_local_bridge_authority("local.webdav.filen.io", 443));
+        assert!(!is_local_bridge_authority("local.webdav.filen.io", 4443));
+        assert!(!is_local_bridge_authority("192.168.1.10", 1800));
+        assert!(!is_local_bridge_authority("example.com", 1900));
+    }
+
+    #[tokio::test]
+    async fn reconcile_passes_through_non_bridge_urls_without_probing() {
+        // Non-bridge URLs return unchanged and never touch the network.
+        for u in [
+            "https://cloud.example.com/remote.php/dav",
+            "https://192.168.1.10:1800",
+            "https://s3.us-east-1.amazonaws.com",
+            "not-a-url",
+        ] {
+            assert_eq!(reconcile_local_bridge_url(u).await, u);
+        }
     }
 
     #[test]

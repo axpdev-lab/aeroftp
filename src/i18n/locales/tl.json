@@ -1726,6 +1726,7 @@
             "discoverTabDigital": "Tab.digital (8 GB libre, batay sa Nextcloud, EU/GDPR, mga rehiyonal na subdomain)",
             "webdavLocalScheme": "Protocol",
             "webdavLocalSchemeHelp": "Itugma sa HTTP/HTTPS na setting ng lokal na WebDAV bridge (Filen Desktop, MEGAcmd). Gumagamit ang HTTPS ng self-signed certificate, kaya awtomatikong hindi pinagana ang pag-verify ng certificate.",
+            "webdavLocalSchemeAuto": "Awtomatikong natutukoy ng AeroFTP ang protocol ng Filen bridge (HTTP o HTTPS) kapag kumonekta ka, kaya walang kailangang i-set dito.",
             "s3SessionToken": "Token ng session (opsyonal)",
             "s3SessionTokenPlaceholder": "AWS STS session token",
             "s3SessionTokenHint": "Para sa mga pansamantalang kredensyal mula sa AWS STS AssumeRole o SSO. Iwanang blangko para sa mga permanenteng IAM access key.",

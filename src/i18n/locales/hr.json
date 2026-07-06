@@ -1726,6 +1726,7 @@
             "discoverTabDigital": "Tab.digital (8 GB besplatno, temeljeno na Nextcloud, EU/GDPR, regionalne poddomene)",
             "webdavLocalScheme": "Protokol",
             "webdavLocalSchemeHelp": "Uskladite s HTTP/HTTPS postavkom lokalnog WebDAV mosta (Filen Desktop, MEGAcmd). HTTPS koristi samopotpisani certifikat, pa je provjera certifikata automatski onemogućena.",
+            "webdavLocalSchemeAuto": "AeroFTP pri povezivanju automatski otkriva protokol Filen mosta (HTTP ili HTTPS), pa ovdje nema ništa za postaviti.",
             "s3SessionToken": "Token sesije (neobavezno)",
             "s3SessionTokenPlaceholder": "AWS STS token sesije",
             "s3SessionTokenHint": "Za privremene vjerodajnice iz AWS STS AssumeRole ili SSO. Ostavite prazno za trajne IAM pristupne ključeve.",

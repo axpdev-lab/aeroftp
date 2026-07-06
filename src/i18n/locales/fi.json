@@ -1726,6 +1726,7 @@
             "discoverTabDigital": "Tab.digital (8 GB ilmainen, Nextcloud-pohjainen, EU/GDPR, alueelliset alidomainit)",
             "webdavLocalScheme": "Protokolla",
             "webdavLocalSchemeHelp": "Vastaa paikallisen WebDAV-sillan HTTP/HTTPS-asetusta (Filen Desktop, MEGAcmd). HTTPS käyttää itse allekirjoitettua varmennetta, joten varmenteen tarkistus poistetaan automaattisesti käytöstä.",
+            "webdavLocalSchemeAuto": "AeroFTP tunnistaa Filen-sillan protokollan (HTTP tai HTTPS) automaattisesti yhdistäessäsi, joten tässä ei tarvitse asettaa mitään.",
             "s3SessionToken": "Istuntotunnus (valinnainen)",
             "s3SessionTokenPlaceholder": "AWS STS -istuntotunnus",
             "s3SessionTokenHint": "Väliaikaisille tunnistetiedoille AWS STS AssumeRolesta tai SSO:sta. Jätä tyhjäksi pysyviä IAM-käyttöavaimia varten.",

@@ -1726,6 +1726,7 @@
             "discoverTabDigital": "Tab.digital (8 GB ücretsiz, Nextcloud tabanlı, EU/GDPR, bölgesel alt alan adları)",
             "webdavLocalScheme": "Protokol",
             "webdavLocalSchemeHelp": "Yerel WebDAV köprüsünün HTTP/HTTPS ayarıyla eşleştirin (Filen Desktop, MEGAcmd). HTTPS kendinden imzalı sertifika kullanır, bu nedenle sertifika doğrulaması otomatik olarak devre dışı bırakılır.",
+            "webdavLocalSchemeAuto": "AeroFTP bağlanırken Filen köprüsünün protokolünü (HTTP veya HTTPS) otomatik olarak algılar, bu nedenle burada ayarlanacak bir şey yoktur.",
             "s3SessionToken": "Oturum belirteci (isteğe bağlı)",
             "s3SessionTokenPlaceholder": "AWS STS oturum belirteci",
             "s3SessionTokenHint": "AWS STS AssumeRole veya SSO'dan alınan geçici kimlik bilgileri için. Kalıcı IAM erişim anahtarları için boş bırakın.",

@@ -2257,6 +2257,23 @@ impl StorageProvider for WebDavProvider {
     }
 
     async fn connect(&mut self) -> Result<(), ProviderError> {
+        // #389: the Filen Desktop WebDAV bridge protocol (HTTP vs HTTPS) is a
+        // user setting in the Filen app, independent of the scheme saved in
+        // this profile. Reconcile the base URL against the live bridge so the
+        // connect survives either choice, pinning the loopback IP to dodge
+        // local.webdav.filen.io DNS NODATA on Windows. The client already trusts
+        // the bridge's self-signed cert (verify_cert is false for the preset).
+        if self.config.provider_id.as_deref() == Some("filen-desktop-webdav") {
+            let fixed = crate::local_bridge::reconcile_local_bridge_url(&self.config.url).await;
+            if fixed != self.config.url {
+                tracing::info!(
+                    "[WEBDAV] Filen bridge reconciled {} -> {}",
+                    self.config.url,
+                    fixed
+                );
+                self.config.url = fixed;
+            }
+        }
         if super::mega_df::is_megacmd_webdav_provider_id(self.config.provider_id.as_deref()) {
             // mega-df warms up the MEGAcmd Server when it has been quit/exited
             // (issue #253) and tells us whether a login session exists.
