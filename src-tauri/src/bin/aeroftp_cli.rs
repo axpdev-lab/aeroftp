@@ -208,6 +208,12 @@ struct Cli {
     )]
     two_factor: Option<String>,
 
+    /// Connect to a crypt-overlay profile RAW (skip the bound Crypt overlay),
+    /// mirroring the GUI's Crypt On/Off toggle. On-wire names and content stay
+    /// encrypted; no decrypt/encrypt is applied. Ignored for non-crypt profiles.
+    #[arg(long, global = true, help_heading = "Connection options")]
+    no_crypt: bool,
+
     /// Use a saved server profile instead of URL (name or ID)
     #[arg(long, short = 'P', global = true)]
     profile: Option<String>,
@@ -23758,6 +23764,19 @@ async fn cli_apply_crypt_overlay(
         _ => return Ok(provider),
     };
     if !profile_has_crypt_overlay(profile) {
+        return Ok(provider);
+    }
+
+    // GUI Crypt On/Off toggle parity: --no-crypt connects a crypt-bound profile
+    // RAW (skip the overlay wrap). The on-wire store stays fully encrypted; this
+    // is the CLI equivalent of turning the GUI's crypt button off, useful for
+    // inspecting the ciphertext layout and for reproducing crypt path bugs.
+    if cli.no_crypt {
+        if cli.verbose > 0 {
+            eprintln!(
+                "Crypt overlay bypassed (--no-crypt): connecting raw; on-wire names and content stay encrypted"
+            );
+        }
         return Ok(provider);
     }
 
@@ -58148,6 +58167,7 @@ mod tests {
             insecure: false,
             trust_host_key: false,
             two_factor: None,
+            no_crypt: false,
             profile: None,
             user: None,
             user_passphrase: None,
