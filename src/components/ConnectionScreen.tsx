@@ -24,6 +24,7 @@ import { ProviderModeTabs } from './ProviderModeTabs';
 import { CollapsibleSetupBox } from './CollapsibleSetupBox';
 import { AeroShareHandshakeBody } from './AeroShare/AeroShareHandshakeBody';
 import { TotpLivePreview } from './TotpLivePreview';
+import { TotpCodeInput } from './TotpCodeInput';
 import { findActiveMode, findActiveModeGroup, modeGroupProviderIds, resolveModeHeader, resolveModeSwitchCredentials } from './providerModeGroups';
 import { loadModeCredentials, storeModeCredentials, deleteModeCredentials, type ModeCredentialMap } from '../utils/modeCredentialStore';
 import { openUrl } from '../utils/openUrl';
@@ -4439,7 +4440,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                         options: { ...connectionParams.options, bucket: v, drive_id: v }
                                                     });
                                                 }}
-                                                className="w-40 px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                                className="w-32 px-4 py-2.5 font-mono tracking-wider bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                                                 placeholder="1234567"
                                                 inputMode="numeric"
                                                 maxLength={10}
@@ -4591,14 +4592,10 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
 
                                         <div>
                                             <label className="block text-sm font-medium mb-1.5">{t('connection.twoFactorCode')}</label>
-                                            <input
-                                                type="text"
+                                            <TotpCodeInput
                                                 value={connectionParams.options?.two_factor_code || ''}
-                                                onChange={(e) => handleTotpCodeChange(e.target.value)}
-                                                className="w-32 px-4 py-2.5 text-center tracking-[0.3em] font-mono bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                                placeholder="000000"
-                                                inputMode="numeric"
-                                                autoComplete="one-time-code"
+                                                onChange={handleTotpCodeChange}
+                                                autoFocus
                                             />
                                         </div>
 
@@ -4756,14 +4753,10 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
 
                                         <div>
                                             <label className="block text-sm font-medium mb-1.5">{t('connection.twoFactorCode')}</label>
-                                            <input
-                                                type="text"
+                                            <TotpCodeInput
                                                 value={connectionParams.options?.two_factor_code || ''}
-                                                onChange={(e) => handleTotpCodeChange(e.target.value)}
-                                                className="w-32 px-4 py-2.5 text-center tracking-[0.3em] font-mono bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
-                                                placeholder="000000"
-                                                inputMode="numeric"
-                                                autoComplete="one-time-code"
+                                                onChange={handleTotpCodeChange}
+                                                autoFocus
                                             />
                                         </div>
 
@@ -5172,14 +5165,10 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
 
                                         <div>
                                             <label className="block text-sm font-medium mb-1.5">{t('connection.twoFactorCode')}</label>
-                                            <input
-                                                type="text"
+                                            <TotpCodeInput
                                                 value={connectionParams.options?.two_factor_code || ''}
-                                                onChange={(e) => handleTotpCodeChange(e.target.value)}
-                                                className="w-32 px-4 py-2.5 text-center tracking-[0.3em] font-mono bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-red-500 focus:border-red-500"
-                                                placeholder="000000"
-                                                inputMode="numeric"
-                                                autoComplete="one-time-code"
+                                                onChange={handleTotpCodeChange}
+                                                autoFocus
                                             />
                                         </div>
 
