@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import type { TransferItem, TransferStatus, TransferType } from './TransferQueue';
 import {
     addItem,
+    computeFooterPercentage,
     filterSurvivingBatchEntries,
     removeItem,
     reorder,
@@ -256,5 +257,63 @@ describe('counters', () => {
             completed: 1,
             error: 1,
         });
+    });
+});
+
+describe('computeFooterPercentage (#364 folder-batch aggregate bar)', () => {
+    const snap = (bytes_transferred: number, bytes_total: number, completed = 0, total = 0) => ({
+        bytes_transferred,
+        bytes_total,
+        completed,
+        total,
+    });
+
+    it('drives the bar from real bytes when a batch snapshot is live and items transfer', () => {
+        // The bug: a folder upload enqueues items lazily on file_start, so early
+        // on only 2 of ~100 files exist in the queue. The item-count wave would
+        // read (waveDone / waveTotal) ~= 100% while barely any bytes have moved.
+        // With the real snapshot (300MB of 1GB done) the bar must read ~30%.
+        const wave = computeFooterPercentage(
+            /* waveTotal */ 2,
+            /* waveDone  */ 2, // item-count wave alone => 100% (the pegged bug)
+            /* transferringCount */ 1,
+            snap(300_000_000, 1_000_000_000),
+        );
+        expect(wave).toBeCloseTo(30, 5);
+    });
+
+    it('reaches 100 only when the real bytes are fully transferred', () => {
+        expect(computeFooterPercentage(2, 2, 1, snap(1_000_000_000, 1_000_000_000))).toBe(100);
+    });
+
+    it('starts near 0 at the top of a fresh batch (not pegged high)', () => {
+        const pct = computeFooterPercentage(1, 1, 1, snap(0, 1_000_000_000));
+        expect(pct).toBe(0);
+    });
+
+    it('falls back to the item-count wave when no snapshot is present', () => {
+        // Single-file / non-batch transfers keep the historical wave behaviour.
+        expect(computeFooterPercentage(4, 1, 1, null)).toBeCloseTo(25, 5);
+        expect(computeFooterPercentage(4, 1, 1, undefined)).toBeCloseTo(25, 5);
+    });
+
+    it('ignores the snapshot once nothing is transferring (wave holds the finished state)', () => {
+        // transferringCount === 0 => a finished/idle wave keeps its own value
+        // rather than resurrecting a stale snapshot.
+        expect(computeFooterPercentage(3, 3, 0, snap(100, 1_000_000_000))).toBe(100);
+    });
+
+    it('falls back to file counts when the backend reports no byte totals', () => {
+        // A count-only batch (bytes_total === 0) uses completed/total files.
+        expect(computeFooterPercentage(2, 2, 1, snap(0, 0, 3, 12))).toBeCloseTo(25, 5);
+    });
+
+    it('clamps a real percentage into 0..100', () => {
+        // Defensive: a late completed-file snapshot could momentarily overshoot.
+        expect(computeFooterPercentage(1, 1, 1, snap(1_200_000_000, 1_000_000_000))).toBe(100);
+    });
+
+    it('returns 0 when there is nothing to show', () => {
+        expect(computeFooterPercentage(0, 0, 0, null)).toBe(0);
     });
 });

@@ -7,12 +7,14 @@ import { Upload, Download, Check, X, Clock, Loader2, Folder, RotateCcw, Trash2, 
 import { formatBytes, formatSpeed } from '../utils/formatters';
 import { useTranslation } from '../i18n';
 import { TransferProgressBar } from './TransferProgressBar';
+import type { BatchProgressSnapshot } from '../hooks/useTransferEvents';
 import {
     addItem as addItemHelper,
     removeItem as removeItemHelper,
     reorder as reorderHelper,
     startAll as startAllHelper,
     startStaged as startStagedHelper,
+    computeFooterPercentage,
     type AddItemOptions,
 } from './transferQueueActions';
 
@@ -59,6 +61,10 @@ interface TransferQueueProps {
     pauseReason?: string | null;
     onResume?: () => void;
     onRetryAllFailed?: () => void;
+    /** Real aggregate byte snapshot for the active folder/batch transfer (#364),
+     *  so the footer bar climbs on real bytes instead of a lazily-enqueued
+     *  item-count wave that pegs near 100% mid-batch. */
+    activeBatchSnapshot?: BatchProgressSnapshot | null;
 }
 
 const StatusIcon: React.FC<{ status: TransferStatus }> = ({ status }) => {
@@ -406,6 +412,7 @@ export const TransferQueue: React.FC<TransferQueueProps> = ({
     pauseReason,
     onResume,
     onRetryAllFailed,
+    activeBatchSnapshot,
 }) => {
     const t = useTranslation();
     const scrollRef = useRef<HTMLDivElement>(null);
@@ -473,7 +480,10 @@ export const TransferQueue: React.FC<TransferQueueProps> = ({
     const waveBaseline = Math.min(waveBaselineRef.current, finishedCount);
     const waveTotal = Math.max(0, items.length - waveBaseline);
     const waveDone = Math.max(0, finishedCount - waveBaseline) + transferringProgressSum;
-    const wavePercentage = waveTotal > 0 ? Math.max(0, Math.min(100, (waveDone / waveTotal) * 100)) : 0;
+    // #364: prefer the backend's real aggregate bytes over the item-count wave
+    // (folder items enqueue lazily, so the wave denominator pegs near 100%).
+    // See `computeFooterPercentage` for the full precedence + rationale.
+    const wavePercentage = computeFooterPercentage(waveTotal, waveDone, transferringCount, activeBatchSnapshot);
 
     // Only render if visible AND has items
     if (!isVisible || items.length === 0) return null;

@@ -164,3 +164,45 @@ export function filterSurvivingBatchEntries<T>(
     }
     return out;
 }
+
+/** Minimal shape of the real aggregate byte snapshot the footer bar needs
+ *  (#364). `BatchProgressSnapshot` from `useTransferEvents` is structurally
+ *  assignable to it, but the helper stays free of any React/tauri import so it
+ *  runs under the pure-TS vitest project. */
+export interface FooterBatchBytes {
+    bytes_total: number;
+    bytes_transferred: number;
+    total: number;
+    completed: number;
+}
+
+/** #364: compute the Transfer Queue footer aggregate percentage.
+ *
+ *  The footer historically drove the bar from an item-count "wave"
+ *  (`waveDone / waveTotal`). For a folder/batch transfer that denominator is
+ *  wrong mid-batch: queue items are enqueued LAZILY on `file_start`, so
+ *  `items.length` excludes not-yet-started files and the wave pegs the bar near
+ *  100% almost immediately. The backend already knows the true total upfront
+ *  (`bytes_total` is fixed from the pre-scan), so when a batch snapshot is live
+ *  AND items are still transferring we drive the bar from real bytes. If the
+ *  backend reports no byte totals (e.g. a count-only batch) we fall back to its
+ *  completed/total file counts, then finally to the item-count wave for
+ *  single-file / non-batch transfers.
+ *
+ *  Always returns a value clamped to 0..100. */
+export function computeFooterPercentage(
+    waveTotal: number,
+    waveDone: number,
+    transferringCount: number,
+    batchSnapshot: FooterBatchBytes | null | undefined,
+): number {
+    const clamp = (n: number) => Math.max(0, Math.min(100, n));
+    const snap = batchSnapshot;
+    const realPct = snap && transferringCount > 0
+        ? (snap.bytes_total > 0
+            ? (snap.bytes_transferred / snap.bytes_total) * 100
+            : (snap.total > 0 ? (snap.completed / snap.total) * 100 : null))
+        : null;
+    if (realPct !== null && Number.isFinite(realPct)) return clamp(realPct);
+    return waveTotal > 0 ? clamp((waveDone / waveTotal) * 100) : 0;
+}

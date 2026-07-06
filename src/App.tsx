@@ -450,6 +450,7 @@ import { useOverwriteCheck } from './hooks/useOverwriteCheck';
 import { useDragAndDrop } from './hooks/useDragAndDrop';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useTransferEvents, TRANSFER_EVENT_BRIDGE } from './hooks/useTransferEvents';
+import type { BatchProgressSnapshot } from './hooks/useTransferEvents';
 import { useCloudSync } from './hooks/useCloudSync';
 import { useFileTags } from './hooks/useFileTags';
 import { useBridgeConfigDetection } from './hooks/useBridgeConfigDetection';
@@ -4800,6 +4801,10 @@ interface UpdateVerificationInfo {
   };
 
   // Transfer events (backend progress updates) - handles downloads, uploads, and deletes
+  // Real aggregate byte snapshot for the active folder/batch transfer, so the
+  // Transfer Queue footer bar climbs on real bytes (folder queue items enqueue
+  // lazily on file_start, so an item-count wave pegs the bar near 100%). #364.
+  const [activeBatchSnapshot, setActiveBatchSnapshot] = useState<BatchProgressSnapshot | null>(null);
   const { pendingFileLogIds, pendingDeleteLogIds } = useTransferEvents({
     t, activityLog, humanLog, transferQueue, notify,
     setActiveTransfer, loadRemoteFiles, loadLocalFiles, currentLocalPath,
@@ -4807,6 +4812,7 @@ interface UpdateVerificationInfo {
     onTransferStart: () => {
       if (!showActivityLog) setShowActivityLog(true);
     },
+    onBatchProgress: setActiveBatchSnapshot,
     onScanningUpdate: setScanningState,
     onTransferComplete: handleQuotaAfterTransfer,
     maxChannels: (connectionParams.protocol && isFtpProtocol(connectionParams.protocol as ProviderType))
@@ -13308,6 +13314,7 @@ interface UpdateVerificationInfo {
           pauseReason={batchPauseReason}
           onResume={resumeBatch}
           onRetryAllFailed={retryAllFailedItems}
+          activeBatchSnapshot={activeBatchSnapshot}
         />
         {contextMenu.state.visible && <ContextMenu x={contextMenu.state.x} y={contextMenu.state.y} items={contextMenu.state.items} onClose={contextMenu.hide} />}
         {settings.showTransferProgress !== false && <TransferToastContainer onOpen={transferQueue.show} />}

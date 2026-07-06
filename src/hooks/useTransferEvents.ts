@@ -44,7 +44,7 @@ interface TransferBatchStartedEvent {
  *  uses a NoopSink, so this never fires for the panel-rendered S2S path. There
  *  is intentionally no id field: only one batch feeds the floating toast at a
  *  time, so the unkeyed snapshot is unambiguous for it. */
-interface BatchProgressSnapshot {
+export interface BatchProgressSnapshot {
   batch_id: string;
   completed: number;
   skipped: number;
@@ -78,6 +78,11 @@ interface UseTransferEventsOptions {
   onTransferComplete?: (info: { direction: string; bytes: number }) => void;
   /** Max concurrent transfers (from speed preset: 1/3/5): controls visible channel slots */
   maxChannels?: number;
+  /** Real aggregate byte snapshot for the active folder/batch transfer, so the
+   *  Transfer Queue footer bar can climb on real bytes instead of an item-count
+   *  wave (folder items enqueue lazily on file_start, so the count denominator
+   *  is wrong mid-batch). Fires `null` when no batch is active (footer resets). */
+  onBatchProgress?: (snap: BatchProgressSnapshot | null) => void;
 }
 
 export function useTransferEvents(options: UseTransferEventsOptions) {
@@ -298,6 +303,7 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
       toastLaneCleanupTimers.current.clear();
       toastSpeedHistory.current = [];
       toastBatchBytesRef.current = null;
+      optRef.current.onBatchProgress?.(null);
       optRef.current.onTransferStart?.();
       optRef.current.setActiveTransfer(batchSummary);
       dispatchTransferToast({ summary: batchSummary });
@@ -316,6 +322,7 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
       // Only meaningful while an aggregate (folder/batch) toast is showing.
       if (!toastSummaryRef.current?.total_files) return;
       toastBatchBytesRef.current = { total: snap.bytes_total, completed: snap.bytes_transferred };
+      optRef.current.onBatchProgress?.(snap);
     });
 
     const unlisten = listen<TransferEvent>('transfer_event', (event) => {
@@ -409,6 +416,7 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
         toastLaneCleanupTimers.current.clear();
         toastSpeedHistory.current = [];
         toastBatchBytesRef.current = null;
+        optRef.current.onBatchProgress?.(null);
         if (toastSummaryRef.current) {
           setActiveTransfer(toastSummaryRef.current);
           dispatchTransferToast({ summary: toastSummaryRef.current });
@@ -703,6 +711,7 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
           for (const timer of toastLaneCleanupTimers.current.values()) clearTimeout(timer);
           toastLaneCleanupTimers.current.clear();
           toastBatchBytesRef.current = null;
+          optRef.current.onBatchProgress?.(null);
           clearToastTimer.current = null;
         }, 500);
 
@@ -768,6 +777,7 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
         for (const timer of toastLaneCleanupTimers.current.values()) clearTimeout(timer);
         toastLaneCleanupTimers.current.clear();
         toastBatchBytesRef.current = null;
+        optRef.current.onBatchProgress?.(null);
 
         const loc = data.direction === 'remote' ? t('browser.remote') : t('browser.local');
         const displayName = transferIdToDisplayPath.current.get(data.transfer_id)
@@ -819,6 +829,7 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
         for (const timer of toastLaneCleanupTimers.current.values()) clearTimeout(timer);
         toastLaneCleanupTimers.current.clear();
         toastBatchBytesRef.current = null;
+        optRef.current.onBatchProgress?.(null);
 
         const cancelledMsg = t('transfer.cancelledByUser');
 
