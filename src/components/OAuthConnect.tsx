@@ -626,7 +626,10 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
                 onClick={() => openUrl(oauthApp.help_url)}
                 className="text-xs text-blue-500 hover:text-blue-600 flex items-center gap-1"
               >
-                {t('settings.getCredentials')} <ExternalLink className="w-3 h-3" />
+                {/* #369: pCloud's link only manages an existing app (it cannot
+                    create one), so label it honestly; other providers keep the
+                    "Get credentials" wording for their developer console. */}
+                {t(provider === 'pcloud' ? 'settings.manageCredentials' : 'settings.getCredentials')} <ExternalLink className="w-3 h-3" />
               </button>
             </div>
           </div>

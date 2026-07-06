@@ -787,6 +787,7 @@
             "connectWithPcloud": "Susieti su pCloud",
             "foursharedDesc": "4shared yra debesies saugyklos paslauga",
             "getCredentials": "Gauti kredencialus",
+            "manageCredentials": "Tvarkyti prisijungimo duomenis",
             "clientId": "Kliento ID",
             "clientSecret": "Kliento slaptasis kodas",
             "appKey": "Programos raktas",

@@ -787,6 +787,7 @@
             "connectWithPcloud": "Kết nối bằng tài khoản pCloud",
             "foursharedDesc": "OAuth 1.0 - 15 GB bộ nhớ miễn phí",
             "getCredentials": "Lấy thông tin xác thực",
+            "manageCredentials": "Quản lý thông tin xác thực",
             "clientId": "ID khách hàng",
             "clientSecret": "Bí mật khách hàng",
             "appKey": "Khóa ứng dụng",

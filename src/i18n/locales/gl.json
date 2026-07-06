@@ -787,6 +787,7 @@
             "connectWithPcloud": "Conectar con Conta de pCloud",
             "foursharedDesc": "OAuth 1.0 - 15 GB de almacenamento libre",
             "getCredentials": "Obter credenciais",
+            "manageCredentials": "Xestionar credenciais",
             "clientId": "ID do cliente",
             "clientSecret": "Segredo do cliente",
             "appKey": "Chave da aplicación",

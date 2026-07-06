@@ -787,6 +787,7 @@
             "connectWithPcloud": "តភ្ជាប់ជាមួយគណនី pCloud",
             "foursharedDesc": "OAuth 1.0 - ឃ្លាំងផ្ទុក ១៥ GB ឥតគិតថ្លៃ",
             "getCredentials": "ទទួលបានក្រឹតិយកម្ម",
+            "manageCredentials": "គ្រប់គ្រងព័ត៌មានសម្គាល់",
             "clientId": "ID ក្លាយចន៍",
             "clientSecret": "ស៊ីក្រេត ក្លាយចន៍",
             "appKey": "សោកម្មវិធី",

@@ -787,6 +787,7 @@
             "connectWithPcloud": "Միացեք pCloud հաշվով",
             "foursharedDesc": "OAuth 1.0 - 15 GB անվճար պահպանավանջ",
             "getCredentials": "Ստանալ վավերացումներ",
+            "manageCredentials": "Կառավարել հավատարմագրերը",
             "clientId": "Հաճախորդի ID",
             "clientSecret": "Հաճախորդի գաղտնիք",
             "appKey": "Հավելվածի բանալի",

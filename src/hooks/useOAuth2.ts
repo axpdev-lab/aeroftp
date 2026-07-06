@@ -176,7 +176,10 @@ export const OAUTH_APPS = {
     // Placeholder - users need to set up their own pCloud app
     client_id: '',
     client_secret: '',
-    help_url: 'https://docs.pcloud.com/methods/oauth_2.0/authorize.html',
+    // #369: the OAuth authorize reference overwhelms and cannot create an app;
+    // point at the app-management page (the trailing slash matters, the bare
+    // path redirects to the docs root).
+    help_url: 'https://docs.pcloud.com/my_apps/',
   },
   zoho_workdrive: {
     // Users need to create a Server-based Application at api-console.zoho.com

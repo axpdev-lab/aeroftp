@@ -787,6 +787,7 @@
             "connectWithPcloud": "Verbinden met pCloud-account",
             "foursharedDesc": "OAuth 1.0 - 15 GB gratis opslag",
             "getCredentials": "Inloggegevens ophalen",
+            "manageCredentials": "Inloggegevens beheren",
             "clientId": "Client-ID",
             "clientSecret": "Clientgeheim",
             "appKey": "App-sleutel",

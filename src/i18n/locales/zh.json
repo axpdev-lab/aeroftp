@@ -787,6 +787,7 @@
             "connectWithPcloud": "使用 pCloud 账户连接",
             "foursharedDesc": "OAuth 1.0 - 15 GB 免费存储",
             "getCredentials": "获取凭据",
+            "manageCredentials": "管理凭据",
             "clientId": "客户端 ID",
             "clientSecret": "客户端密钥",
             "appKey": "应用密钥",

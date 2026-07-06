@@ -787,6 +787,7 @@
             "connectWithPcloud": "Anslut med pCloud-konto",
             "foursharedDesc": "OAuth 1.0 - 15 GB kostnadsfri lagring",
             "getCredentials": "Hämta autentiseringsuppgifter",
+            "manageCredentials": "Hantera autentiseringsuppgifter",
             "clientId": "Klient-ID",
             "clientSecret": "Klienthemlighet",
             "appKey": "App-nyckel",

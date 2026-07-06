@@ -787,6 +787,7 @@
             "connectWithPcloud": "Savienojieties ar pCloud",
             "foursharedDesc": "4shared ir debesies uzglabāšanas pakalpojums",
             "getCredentials": "Iegūt akreditācijas",
+            "manageCredentials": "Pārvaldīt akreditācijas datus",
             "clientId": "Klienta ID",
             "clientSecret": "Klienta noslēpums",
             "appKey": "Lietojumprogrammas atslēga",

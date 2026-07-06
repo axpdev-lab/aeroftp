@@ -787,6 +787,7 @@
             "connectWithPcloud": "pCloud Hesabıyla Bağlan",
             "foursharedDesc": "OAuth 1.0 - 15 GB ücretsiz depolama",
             "getCredentials": "Kimlik bilgileri al",
+            "manageCredentials": "Kimlik bilgilerini yönet",
             "clientId": "İstemci Kimliği",
             "clientSecret": "İstemci Gizli Anahtarı",
             "appKey": "Uygulama Anahtarı",

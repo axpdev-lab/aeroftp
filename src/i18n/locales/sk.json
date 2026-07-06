@@ -787,6 +787,7 @@
             "connectWithPcloud": "Pripojiť sa pomocou konta pCloud",
             "foursharedDesc": "OAuth 1.0 - 15 GB bezplatného úložiska",
             "getCredentials": "Získať poverenia",
+            "manageCredentials": "Spravovať prihlasovacie údaje",
             "clientId": "ID klienta",
             "clientSecret": "Tajný kód klienta",
             "appKey": "Kľúč aplikácie",

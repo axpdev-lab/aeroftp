@@ -787,6 +787,7 @@
             "connectWithPcloud": "pCloud खाते से कनेक्ट करें",
             "foursharedDesc": "OAuth 1.0 - 15 GB मुक्त संग्रहण",
             "getCredentials": "क्रेडेंशियल प्राप्त करें",
+            "manageCredentials": "क्रेडेंशियल प्रबंधित करें",
             "clientId": "क्लाइंट ID",
             "clientSecret": "क्लाइंट गोपनीयता",
             "appKey": "ऐप कुंजी",

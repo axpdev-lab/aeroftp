@@ -787,6 +787,7 @@
             "connectWithPcloud": "Conectează-te cu cont pCloud",
             "foursharedDesc": "OAuth 1.0 - 15 GB spațiu gratuit",
             "getCredentials": "Obține credențiale",
+            "manageCredentials": "Gestionează acreditările",
             "clientId": "ID client",
             "clientSecret": "Secret client",
             "appKey": "Cheie aplicație",

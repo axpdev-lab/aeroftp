@@ -787,6 +787,7 @@
             "connectWithPcloud": "Σύνδεση με λογαριασμό pCloud",
             "foursharedDesc": "OAuth 1.0 - 15 GB δωρεάν αποθηκευτικού χώρου",
             "getCredentials": "Λήψη διαπιστευτηρίων",
+            "manageCredentials": "Διαχείριση διαπιστευτηρίων",
             "clientId": "ID πελάτη",
             "clientSecret": "Μυστικό πελάτη",
             "appKey": "Κλειδί εφαρμογής",

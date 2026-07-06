@@ -787,6 +787,7 @@
             "connectWithPcloud": "Yhdistä pCloud-tiliin",
             "foursharedDesc": "OAuth 1.0 - 15 Gt ilmaista tallennustilaa",
             "getCredentials": "Hae tunnistetiedot",
+            "manageCredentials": "Hallitse tunnistetietoja",
             "clientId": "Asiakastunnus",
             "clientSecret": "Asiakkaan salaisuus",
             "appKey": "Sovelluksen avain",

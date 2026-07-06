@@ -787,6 +787,7 @@
             "connectWithPcloud": "pCloud অ্যাকাউন্টের সাথে সংযোগ করুন",
             "foursharedDesc": "OAuth 1.0 - 15 GB বিনামূল্যে স্টোরেজ",
             "getCredentials": "শংসাপত্র পান",
+            "manageCredentials": "শংসাপত্র পরিচালনা করুন",
             "clientId": "ক্লায়েন্ট আইডি",
             "clientSecret": "ক্লায়েন্ট সিক্রেট",
             "appKey": "অ্যাপ কি",

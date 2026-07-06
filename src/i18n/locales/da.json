@@ -787,6 +787,7 @@
             "connectWithPcloud": "Forbind med pCloud-konto",
             "foursharedDesc": "OAuth 1.0 - 15 GB gratis lagerplads",
             "getCredentials": "Hent legitimationsoplysninger",
+            "manageCredentials": "Administrer legitimationsoplysninger",
             "clientId": "Klient-ID",
             "clientSecret": "Klienthemmelighed",
             "appKey": "App-nøgle",

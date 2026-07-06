@@ -787,6 +787,7 @@
             "connectWithPcloud": "เชื่อมต่อด้วยบัญชี pCloud",
             "foursharedDesc": "OAuth 1.0 - 15 GB พื้นที่เก็บข้อมูลฟรี",
             "getCredentials": "รับข้อมูลรับรอง",
+            "manageCredentials": "จัดการข้อมูลรับรอง",
             "clientId": "ID ไคลเอนต์",
             "clientSecret": "ความลับไคลเอนต์",
             "appKey": "คีย์แอป",

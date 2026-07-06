@@ -787,6 +787,7 @@
             "connectWithPcloud": "Ühenda pCloud kontoga",
             "foursharedDesc": "OAuth 1.0 - 15 GB tasuta salvestusruum",
             "getCredentials": "Hangi mandaadid",
+            "manageCredentials": "Halda mandaate",
             "clientId": "Kliendi ID",
             "clientSecret": "Kliendi saladus",
             "appKey": "Rakenduse võti",

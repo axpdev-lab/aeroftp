@@ -787,6 +787,7 @@
             "connectWithPcloud": "Повежи се са pCloud налогом",
             "foursharedDesc": "OAuth 1.0 - 15 GB слободног складиштења",
             "getCredentials": "Добиј акредитиве",
+            "manageCredentials": "Управљај акредитивима",
             "clientId": "ID клијента",
             "clientSecret": "Тајна клијента",
             "appKey": "Кључ апликације",

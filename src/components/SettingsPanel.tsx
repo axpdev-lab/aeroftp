@@ -1667,8 +1667,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                     <p className="text-xs text-gray-500">{t('settings.connectWithPcloud')}</p>
                                                 </div>
                                             </div>
-                                            <button onClick={() => openUrl('https://docs.pcloud.com/methods/oauth_2.0/authorize.html')} className="text-xs text-blue-500 hover:text-blue-600 flex items-center gap-1">
-                                                {t('settings.getCredentials')} <ExternalLink size={12} />
+                                            <button onClick={() => openUrl('https://docs.pcloud.com/my_apps/')} className="text-xs text-blue-500 hover:text-blue-600 flex items-center gap-1">
+                                                {t('settings.manageCredentials')} <ExternalLink size={12} />
                                             </button>
                                         </div>
                                         <div className="grid grid-cols-2 gap-3">

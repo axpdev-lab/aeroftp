@@ -787,6 +787,7 @@
             "connectWithPcloud": "Sambung dengan Akaun pCloud",
             "foursharedDesc": "OAuth 1.0 - 15 GB storan percuma",
             "getCredentials": "Dapatkan kelayakan",
+            "manageCredentials": "Urus kelayakan",
             "clientId": "ID Klien",
             "clientSecret": "Rahsia Klien",
             "appKey": "Kunci Aplikasi",

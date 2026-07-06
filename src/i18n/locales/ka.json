@@ -787,6 +787,7 @@
             "connectWithPcloud": "pCloud ანგარიშთან დაკავშირება",
             "foursharedDesc": "OAuth 1.0 - 15 GB უფასო შენახვა",
             "getCredentials": "რეკვიზიტების მიღება",
+            "manageCredentials": "სერტიფიკატების მართვა",
             "clientId": "კლიენტის ID",
             "clientSecret": "კლიენტის საიდუმლო",
             "appKey": "აპლიკაციის გასაღები",

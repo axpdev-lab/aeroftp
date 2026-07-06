@@ -2966,6 +2966,7 @@
             "general": "General",
             "generalSettings": "General Settings",
             "getCredentials": "Get credentials",
+            "manageCredentials": "Manage credentials",
             "googleClientIdPlaceholder": "xxxxxxxx.apps.googleusercontent.com",
             "googleClientSecretPlaceholder": "GOCSPX-...",
             "hideSecrets": "Hide secrets",

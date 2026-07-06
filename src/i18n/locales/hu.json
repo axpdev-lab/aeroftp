@@ -787,6 +787,7 @@
             "connectWithPcloud": "Csatlakozás pCloud-fiókkal",
             "foursharedDesc": "OAuth 1.0 - 15 GB ingyenes tárhely",
             "getCredentials": "Hitelesítő adatok beszerzése",
+            "manageCredentials": "Hitelesítő adatok kezelése",
             "clientId": "Kliens azonosító",
             "clientSecret": "Kliens titok",
             "appKey": "Alkalmazás kulcs",

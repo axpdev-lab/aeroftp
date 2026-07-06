@@ -787,6 +787,7 @@
             "connectWithPcloud": "Konektatu pCloud kontua bidez",
             "foursharedDesc": "OAuth 1.0 - 15 GB doako biltegiratze",
             "getCredentials": "Lortu kredentzialak",
+            "manageCredentials": "Kudeatu kredentzialak",
             "clientId": "Bezero IDa",
             "clientSecret": "Bezero sekretua",
             "appKey": "Aplikazioaren gakoa",

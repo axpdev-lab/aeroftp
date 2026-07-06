@@ -787,6 +787,7 @@
             "connectWithPcloud": "Poveži se s pCloud računom",
             "foursharedDesc": "OAuth 1.0 - 15 GB brezplačnega shranjevanja",
             "getCredentials": "Pridobi poverilnice",
+            "manageCredentials": "Upravljanje poverilnic",
             "clientId": "ID odjemalca",
             "clientSecret": "Skrivnost odjemalca",
             "appKey": "Ključ aplikacije",

@@ -787,6 +787,7 @@
             "connectWithPcloud": "pCloud 계정으로 연결",
             "foursharedDesc": "OAuth 1.0 - 15GB 무료 저장소",
             "getCredentials": "자격 증명 받기",
+            "manageCredentials": "자격 증명 관리",
             "clientId": "클라이언트 ID",
             "clientSecret": "클라이언트 비밀",
             "appKey": "앱 키",

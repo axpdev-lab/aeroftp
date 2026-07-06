@@ -787,6 +787,7 @@
             "connectWithPcloud": "Unganisha kwa Akaunti ya pCloud",
             "foursharedDesc": "OAuth 1.0 - hifadhi 15 GB isiyolipwa",
             "getCredentials": "Pata kitambulisho",
+            "manageCredentials": "Dhibiti stakabadha",
             "clientId": "Kitambulisho cha Mteja",
             "clientSecret": "Siri ya Mteja",
             "appKey": "Ufunguo wa Programu",

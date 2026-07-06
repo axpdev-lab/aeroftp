@@ -787,6 +787,7 @@
             "connectWithPcloud": "Połącz z kontem pCloud",
             "foursharedDesc": "OAuth 1.0 - 15 GB darmowej pamięci",
             "getCredentials": "Uzyskaj poświadczenia",
+            "manageCredentials": "Zarządzaj poświadczeniami",
             "clientId": "ID klienta",
             "clientSecret": "Tajny klucz klienta",
             "appKey": "Klucz aplikacji",

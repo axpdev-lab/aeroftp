@@ -787,6 +787,7 @@
             "connectWithPcloud": "Cysylltu gyda Chyfrif pCloud",
             "foursharedDesc": "OAuth 1.0 - 15 GB o storio am ddim",
             "getCredentials": "Cael credydau",
+            "manageCredentials": "Rheoli manylion",
             "clientId": "ID Clïent",
             "clientSecret": "Cyfrinach Clïent",
             "appKey": "Allwedd Ap",

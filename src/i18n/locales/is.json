@@ -787,6 +787,7 @@
             "connectWithPcloud": "Tengjast pCloud Reikningi",
             "foursharedDesc": "OAuth 1.0 - 15 GB ókeypis geymsla",
             "getCredentials": "Fá skilríki",
+            "manageCredentials": "Stjórna auðkennum",
             "clientId": "Biðlara Auðkenni",
             "clientSecret": "Biðlara Leynilykill",
             "appKey": "Forritslykill",
