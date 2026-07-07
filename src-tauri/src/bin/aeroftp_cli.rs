@@ -23829,25 +23829,12 @@ async fn cli_apply_crypt_overlay(
     // Scope the overlay-secret read to the SAME user the profile was loaded for
     // (honor --user), matching cli_unlock_crypt_compare_keys.
     let uid = scoped_credential_user_id(cli, &store);
-    let password = read_server_cred(&store, uid, &format!("aerocrypt_overlay_pw_{}", id))
-        .or_else(|| std::env::var("AEROFTP_CRYPT_OVERLAY_PASSWORD").ok())
-        .unwrap_or_default();
-    if password.is_empty() {
-        print_error(
-            format,
-            "Crypt overlay profile has no stored password. Store it in the AeroFTP GUI, or set AEROFTP_CRYPT_OVERLAY_PASSWORD.",
-            5,
-        );
-        return Err(5);
-    }
-    let salt = read_server_cred(&store, uid, &format!("aerocrypt_overlay_salt_{}", id))
-        .or_else(|| std::env::var("AEROFTP_CRYPT_OVERLAY_SALT").ok())
-        .unwrap_or_default();
     // Tier 1 keyfile second factor: the profile-bound keyfile path (same
     // per-profile vault key the GUI stores, honoring --user scoping like the
-    // pw/salt reads) resolved fail-closed to its digest. A stored-but-unreadable
-    // keyfile refuses the connection; a keyfile vault never unlocks
-    // password-only.
+    // pw/salt reads) resolved fail-closed to its digest, BEFORE the password
+    // guard: a keyfile-only AeroCrypt vault legally has an empty password. A
+    // stored-but-unreadable keyfile refuses the connection; a keyfile vault
+    // never unlocks password-only.
     let keyfile_path = read_server_cred(
         &store,
         uid,
@@ -23869,6 +23856,21 @@ async fn cli_apply_crypt_overlay(
             }
         },
     };
+    let password = read_server_cred(&store, uid, &format!("aerocrypt_overlay_pw_{}", id))
+        .or_else(|| std::env::var("AEROFTP_CRYPT_OVERLAY_PASSWORD").ok())
+        .unwrap_or_default();
+    // Keyfiles do not apply to rclone-crypt, which keeps requiring a password.
+    if password.is_empty() && (kind != "aerocrypt" || keyfile_digest.is_none()) {
+        print_error(
+            format,
+            "Crypt overlay profile has no stored password. Store it in the AeroFTP GUI, or set AEROFTP_CRYPT_OVERLAY_PASSWORD.",
+            5,
+        );
+        return Err(5);
+    }
+    let salt = read_server_cred(&store, uid, &format!("aerocrypt_overlay_salt_{}", id))
+        .or_else(|| std::env::var("AEROFTP_CRYPT_OVERLAY_SALT").ok())
+        .unwrap_or_default();
 
     let params = ftp_client_gui_lib::crypt_compare::OverlayUnlockParams {
         kind,
@@ -47231,10 +47233,36 @@ async fn cli_unlock_crypt_compare_keys(
     // (honor --user), not the persistent active user: otherwise `--user other`
     // reads the wrong partition's overlay password.
     let uid = scoped_credential_user_id(cli, &store);
+    // Tier 1 keyfile second factor: the profile-bound keyfile path (same
+    // per-profile vault key the GUI stores, honoring --user scoping like the
+    // pw/salt reads) resolved fail-closed to its digest, BEFORE the password
+    // guard: a keyfile-only AeroCrypt vault legally has an empty password.
+    let keyfile_path = read_server_cred(
+        &store,
+        uid,
+        &format!("aerocrypt_overlay_keyfile_path_{}", id),
+    )
+    .filter(|s| !s.is_empty())
+    .or_else(|| {
+        std::env::var("AEROFTP_CRYPT_OVERLAY_KEYFILE")
+            .ok()
+            .filter(|s| !s.is_empty())
+    });
+    let keyfile_digest = match keyfile_path {
+        None => None,
+        Some(p) => match ftp_client_gui_lib::crypt_overlay_provider::keyfile_digest_from_path(&p) {
+            Ok(d) => Some(d),
+            Err(e) => {
+                print_error(format, &format!("Crypt overlay unlock failed: {}", e), 6);
+                return Err(6);
+            }
+        },
+    };
     let password = read_server_cred(&store, uid, &format!("aerocrypt_overlay_pw_{}", id))
         .or_else(|| std::env::var("AEROFTP_CRYPT_OVERLAY_PASSWORD").ok())
         .unwrap_or_default();
-    if password.is_empty() {
+    // Keyfiles do not apply to rclone-crypt, which keeps requiring a password.
+    if password.is_empty() && (kind != "aerocrypt" || keyfile_digest.is_none()) {
         print_error(
             format,
             "Crypt overlay profile has no stored password. Store it in the AeroFTP GUI, or set AEROFTP_CRYPT_OVERLAY_PASSWORD.",
@@ -47254,7 +47282,11 @@ async fn cli_unlock_crypt_compare_keys(
         off_suffix: None,
     };
     match ftp_client_gui_lib::crypt_compare::unlock_overlay_keys(
-        provider, &params, &password, &salt,
+        provider,
+        &params,
+        &password,
+        &salt,
+        keyfile_digest.as_ref(),
     )
     .await
     {

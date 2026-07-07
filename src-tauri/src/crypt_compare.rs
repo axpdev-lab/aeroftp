@@ -203,14 +203,29 @@ const AEROCRYPT_CONFIG_FILENAME: &str = ".aeroftp-crypt.json";
 /// trip. AeroCrypt downloads the remote `.aeroftp-crypt.json` config from
 /// `remote_scope`, derives the master key, and verifies the config MAC so a
 /// wrong password fails closed instead of silently dropping every row.
+///
+/// `keyfile_digest` is the Tier 1 keyfile second factor, reconciled against
+/// what the downloaded config requires exactly like the encrypting unlock
+/// (`crypt_overlay_provider::unlock_overlay_keys_encrypting`): a keyfile vault
+/// never unlocks password-only, a password-only vault rejects a spurious
+/// keyfile, and rclone-crypt (which has no keyfiles) rejects one outright.
 pub async fn unlock_overlay_keys(
     provider: &mut dyn StorageProvider,
     params: &OverlayUnlockParams,
     password: &str,
     salt: &str,
+    keyfile_digest: Option<&[u8; 32]>,
 ) -> Result<CryptCompareKeys, String> {
     match params.kind.as_str() {
         "rclone-crypt" => {
+            if keyfile_digest.is_some() {
+                // Keyfiles are an AeroCrypt-only feature; a keyfile stored on an
+                // rclone-crypt binding is a misconfiguration that must surface,
+                // never be silently ignored.
+                return Err(
+                    "keyfiles are an AeroCrypt feature; this overlay is rclone-crypt".to_string(),
+                );
+            }
             let (name_key, data_key, name_tweak) =
                 crate::rclone_crypt::derive_keys_with_tweak(password, salt)?;
             let filename_encryption = match params.filename_encryption.as_str() {
@@ -239,8 +254,26 @@ pub async fn unlock_overlay_keys(
             let config_str = String::from_utf8_lossy(&config_bytes);
             let cfg = overlay::parse_config(&config_str)
                 .map_err(|e| format!("Invalid AeroCrypt overlay config: {}", e))?;
-            let master_key = overlay::derive_master_key(&cfg, password)
-                .map_err(|e| format!("AeroCrypt key derivation failed: {}", e))?;
+            // Reconcile the supplied keyfile against what the config requires
+            // (v1/v2 never require one) before deriving.
+            let keyfile_digest = match (cfg.requires_keyfile(), keyfile_digest) {
+                (true, None) => {
+                    return Err(
+                        "this AeroCrypt overlay requires a keyfile (none was provided)".to_string(),
+                    )
+                }
+                (false, Some(_)) => {
+                    return Err(
+                        "this AeroCrypt overlay was not created with a keyfile (remove the keyfile to unlock)"
+                            .to_string(),
+                    )
+                }
+                (true, kd) => kd,
+                (false, _) => None,
+            };
+            let master_key =
+                overlay::derive_master_key_with_keyfile(&cfg, password, keyfile_digest)
+                    .map_err(|e| format!("AeroCrypt key derivation failed: {}", e))?;
             overlay::verify_config_mac(&cfg, &master_key)
                 .map_err(|e| format!("AeroCrypt unlock failed: {}", e))?;
             Ok(CryptCompareKeys::AeroCrypt(master_key))
@@ -377,5 +410,246 @@ mod tests {
         assert_eq!(normalized[0].size, 123);
         assert_eq!(normalized[0].checksum_alg, None);
         assert_eq!(normalized[0].checksum_hex, None);
+    }
+
+    /// Minimal read-only provider for `unlock_overlay_keys`: serves the remote
+    /// `.aeroftp-crypt.json` config via `download_to_bytes` and nothing else
+    /// (the read-side unlock never writes, unlike the encrypting twin's
+    /// MemProvider in `crypt_overlay_provider` tests).
+    struct ConfigProvider {
+        files: std::collections::HashMap<String, Vec<u8>>,
+    }
+
+    #[async_trait::async_trait]
+    impl StorageProvider for ConfigProvider {
+        fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+            self
+        }
+        fn provider_type(&self) -> crate::providers::ProviderType {
+            crate::providers::ProviderType::Ftp
+        }
+        fn display_name(&self) -> String {
+            "cfg-mem".into()
+        }
+        async fn connect(&mut self) -> Result<(), crate::providers::ProviderError> {
+            Ok(())
+        }
+        async fn disconnect(&mut self) -> Result<(), crate::providers::ProviderError> {
+            Ok(())
+        }
+        fn is_connected(&self) -> bool {
+            true
+        }
+        async fn list(
+            &mut self,
+            _path: &str,
+        ) -> Result<Vec<crate::providers::RemoteEntry>, crate::providers::ProviderError> {
+            Ok(Vec::new())
+        }
+        async fn pwd(&mut self) -> Result<String, crate::providers::ProviderError> {
+            Ok("/".into())
+        }
+        async fn cd(&mut self, _p: &str) -> Result<(), crate::providers::ProviderError> {
+            Ok(())
+        }
+        async fn cd_up(&mut self) -> Result<(), crate::providers::ProviderError> {
+            Ok(())
+        }
+        async fn download(
+            &mut self,
+            remote: &str,
+            _local: &str,
+            _cb: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), crate::providers::ProviderError> {
+            Err(crate::providers::ProviderError::NotFound(remote.into()))
+        }
+        async fn download_to_bytes(
+            &mut self,
+            remote: &str,
+        ) -> Result<Vec<u8>, crate::providers::ProviderError> {
+            self.files
+                .get(remote)
+                .cloned()
+                .ok_or_else(|| crate::providers::ProviderError::NotFound(remote.into()))
+        }
+        async fn upload(
+            &mut self,
+            _local: &str,
+            remote: &str,
+            _cb: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), crate::providers::ProviderError> {
+            Err(crate::providers::ProviderError::NotFound(remote.into()))
+        }
+        async fn mkdir(&mut self, _p: &str) -> Result<(), crate::providers::ProviderError> {
+            Ok(())
+        }
+        async fn delete(&mut self, _p: &str) -> Result<(), crate::providers::ProviderError> {
+            Ok(())
+        }
+        async fn rmdir(&mut self, _p: &str) -> Result<(), crate::providers::ProviderError> {
+            Ok(())
+        }
+        async fn rmdir_recursive(
+            &mut self,
+            _p: &str,
+        ) -> Result<(), crate::providers::ProviderError> {
+            Ok(())
+        }
+        async fn rename(
+            &mut self,
+            _from: &str,
+            _to: &str,
+        ) -> Result<(), crate::providers::ProviderError> {
+            Ok(())
+        }
+        async fn stat(
+            &mut self,
+            path: &str,
+        ) -> Result<crate::providers::RemoteEntry, crate::providers::ProviderError> {
+            Err(crate::providers::ProviderError::NotFound(path.into()))
+        }
+        async fn size(&mut self, path: &str) -> Result<u64, crate::providers::ProviderError> {
+            self.files
+                .get(path)
+                .map(|d| d.len() as u64)
+                .ok_or_else(|| crate::providers::ProviderError::NotFound(path.into()))
+        }
+        async fn exists(&mut self, path: &str) -> Result<bool, crate::providers::ProviderError> {
+            Ok(self.files.contains_key(path))
+        }
+        async fn keep_alive(&mut self) -> Result<(), crate::providers::ProviderError> {
+            Ok(())
+        }
+        async fn server_info(&mut self) -> Result<String, crate::providers::ProviderError> {
+            Ok("cfg-mem".into())
+        }
+    }
+
+    /// Provider holding a v3 config at `<scope>/.aeroftp-crypt.json`: a keyfile
+    /// vault when `keyfile_digest` is `Some` (kdf_inputs + vault_id, MAC over
+    /// the extended info string), a plain password-only vault otherwise.
+    fn provider_with_v3_config(
+        scope: &str,
+        password: &str,
+        keyfile_digest: Option<&[u8; 32]>,
+    ) -> ConfigProvider {
+        use crate::aerocrypt::overlay;
+        let salt = overlay::random_salt_v3();
+        let tmp = overlay::OverlayConfig::v3_bootstrap(salt);
+        let master_key = overlay::derive_master_key_with_keyfile(&tmp, password, keyfile_digest)
+            .expect("derive fixture master key");
+        let json = match keyfile_digest {
+            Some(_) => overlay::init_config_v3_with_keyfile(
+                &salt,
+                &master_key,
+                &overlay::random_vault_id(),
+                None,
+            ),
+            None => overlay::init_config_v3(&salt, &master_key),
+        }
+        .expect("build fixture config");
+        let mut files = std::collections::HashMap::new();
+        files.insert(
+            format!("{}/{}", scope, AEROCRYPT_CONFIG_FILENAME),
+            json.into_bytes(),
+        );
+        ConfigProvider { files }
+    }
+
+    fn aerocrypt_params(scope: &str) -> OverlayUnlockParams {
+        OverlayUnlockParams {
+            kind: "aerocrypt".to_string(),
+            remote_scope: scope.to_string(),
+            filename_encryption: String::new(),
+            directory_name_encryption: true,
+            off_suffix: None,
+        }
+    }
+
+    /// `expect_err` for unlock results. [`CryptCompareKeys`] intentionally has
+    /// no `Debug` impl (key material), so `Result::expect_err` cannot be used.
+    fn unlock_err(res: Result<CryptCompareKeys, String>, msg: &str) -> String {
+        match res {
+            Ok(_) => panic!("{msg}"),
+            Err(e) => e,
+        }
+    }
+
+    #[tokio::test]
+    async fn unlock_overlay_keys_reconciles_keyfile_and_fails_closed() {
+        // Read-side twin of crypt_overlay_provider's
+        // `aerocrypt_keyfile_vault_reconciles_and_fails_closed`: the Compare /
+        // check_tree unlock must enforce the exact same keyfile reconcile.
+        let digest = crate::aerocrypt::keyfile_digest_from_file(
+            crate::aerocrypt::generate_keyfile_v1().as_bytes(),
+        )
+        .unwrap();
+        let params = aerocrypt_params("/KfVault");
+        let mut kf_vault = provider_with_v3_config("/KfVault", "pw", Some(&digest));
+
+        // Right password + right digest unlocks (config MAC verifies).
+        let keys = unlock_overlay_keys(&mut kf_vault, &params, "pw", "", Some(&digest))
+            .await
+            .expect("correct password + keyfile must unlock");
+        assert!(matches!(keys, CryptCompareKeys::AeroCrypt(_)));
+
+        // Password-only on a keyfile vault fails closed with the frozen string.
+        let err = unlock_err(
+            unlock_overlay_keys(&mut kf_vault, &params, "pw", "", None).await,
+            "password-only on a keyfile vault must fail closed",
+        );
+        assert!(
+            err.contains("requires a keyfile"),
+            "clear reconcile error: {err}"
+        );
+
+        // A wrong keyfile fails closed at the MAC check.
+        let wrong = crate::aerocrypt::keyfile_digest(b"not the keyfile");
+        let res = unlock_overlay_keys(&mut kf_vault, &params, "pw", "", Some(&wrong)).await;
+        assert!(res.is_err(), "a wrong keyfile must fail closed");
+
+        // A keyfile-only vault (EMPTY password, legal by design) unlocks.
+        let mut kf_only = provider_with_v3_config("/KfVault", "", Some(&digest));
+        unlock_overlay_keys(&mut kf_only, &params, "", "", Some(&digest))
+            .await
+            .expect("empty password + keyfile must unlock a keyfile-only vault");
+
+        // A spurious keyfile on a password-only vault is rejected with the
+        // frozen string, never a confusing derived-key mismatch.
+        let pw_params = aerocrypt_params("/PwVault");
+        let mut pw_vault = provider_with_v3_config("/PwVault", "pw", None);
+        let err = unlock_err(
+            unlock_overlay_keys(&mut pw_vault, &pw_params, "pw", "", Some(&digest)).await,
+            "a spurious keyfile on a password-only vault must be rejected",
+        );
+        assert!(
+            err.contains("was not created with a keyfile"),
+            "clear reconcile error: {err}"
+        );
+        unlock_overlay_keys(&mut pw_vault, &pw_params, "pw", "", None)
+            .await
+            .expect("password-only vault still unlocks without a keyfile");
+    }
+
+    #[tokio::test]
+    async fn unlock_overlay_keys_rclone_rejects_keyfile() {
+        // Keyfiles are an AeroCrypt feature; a keyfile stored against an
+        // rclone-crypt binding is a misconfiguration that must surface.
+        let mut mem = ConfigProvider {
+            files: std::collections::HashMap::new(),
+        };
+        let params = OverlayUnlockParams {
+            kind: "rclone-crypt".to_string(),
+            remote_scope: String::new(),
+            filename_encryption: "standard".to_string(),
+            directory_name_encryption: true,
+            off_suffix: None,
+        };
+        let digest = crate::aerocrypt::keyfile_digest(b"kf");
+        let err = unlock_err(
+            unlock_overlay_keys(&mut mem, &params, "pw", "salt", Some(&digest)).await,
+            "rclone-crypt must reject a keyfile",
+        );
+        assert!(err.contains("AeroCrypt feature"), "clear error: {err}");
     }
 }

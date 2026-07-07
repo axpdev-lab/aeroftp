@@ -1213,7 +1213,9 @@ pub fn resolve_profile_keyfile_digest(
 ///
 /// FAIL-CLOSED: a profile WITH an enabled binding but no usable stored password
 /// returns `Err` (the operation is refused); the raw provider is never handed
-/// back. A profile without a binding returns `inner` byte-identical.
+/// back. A profile without a binding returns `inner` byte-identical. Exception:
+/// an AeroCrypt binding with a resolved keyfile digest may legally have an
+/// EMPTY password (keyfile-only vault) and unlocks with `""`.
 ///
 /// The binding (kind / scope / name-encryption modes) reuses the profile's
 /// `aeroCryptOverlay` JSON; the secrets reuse the generic per-profile vault keys
@@ -1234,6 +1236,11 @@ pub async fn wrap_connected_provider_for_profile(
     };
     let id = profile.get("id").and_then(|v| v.as_str()).unwrap_or("");
 
+    // Tier 1 keyfile second factor: resolve the profile's stored keyfile path to
+    // its digest at connect time, BEFORE the password guard (a keyfile-only
+    // AeroCrypt vault legally has an empty password). FAIL-CLOSED on an
+    // unreadable stored keyfile.
+    let keyfile_digest = resolve_profile_keyfile_digest(store, id)?;
     let password = crate::user_partitions::resolve_active_credential(
         store,
         &format!("aerocrypt_overlay_pw_{}", id),
@@ -1242,11 +1249,16 @@ pub async fn wrap_connected_provider_for_profile(
     .flatten()
     .map(|s| s.to_string())
     .filter(|s| !s.is_empty())
-    .or_else(|| std::env::var("AEROFTP_CRYPT_OVERLAY_PASSWORD").ok())
-    .ok_or_else(|| {
-        "Crypt overlay profile has no stored password. Store it in the AeroFTP GUI, or set AEROFTP_CRYPT_OVERLAY_PASSWORD."
-            .to_string()
-    })?;
+    .or_else(|| std::env::var("AEROFTP_CRYPT_OVERLAY_PASSWORD").ok());
+    // Keyfiles do not apply to rclone-crypt, which keeps requiring a password.
+    let password = match password {
+        Some(p) => p,
+        None if params.kind == "aerocrypt" && keyfile_digest.is_some() => String::new(),
+        None => return Err(
+            "Crypt overlay profile has no stored password. Store it in the AeroFTP GUI, or set AEROFTP_CRYPT_OVERLAY_PASSWORD."
+                .to_string(),
+        ),
+    };
     let salt = crate::user_partitions::resolve_active_credential(
         store,
         &format!("aerocrypt_overlay_salt_{}", id),
@@ -1256,9 +1268,6 @@ pub async fn wrap_connected_provider_for_profile(
     .map(|s| s.to_string())
     .or_else(|| std::env::var("AEROFTP_CRYPT_OVERLAY_SALT").ok())
     .unwrap_or_default();
-    // Tier 1 keyfile second factor: resolve the profile's stored keyfile path to
-    // its digest at connect time. FAIL-CLOSED on an unreadable stored keyfile.
-    let keyfile_digest = resolve_profile_keyfile_digest(store, id)?;
 
     wrap_provider_with_overlay_if_bound(
         inner,

@@ -113,19 +113,10 @@ impl ConnectionPool {
         // `resolve_overlay_secrets`. Fail-closed: a bound profile with no usable
         // secret returns Err and the raw provider is never pooled.
         let connected = match resolve_overlay_secrets(server_query, "") {
-            Ok(Some((params, password, salt))) => {
-                // Tier 1 keyfile second factor: resolve the profile's stored
-                // keyfile path to its digest, fail-closed (a keyfile vault is
-                // never unlocked password-only).
-                let store = CredentialStore::from_cache()
-                    .ok_or_else(|| "Vault not open. Cannot resolve crypt overlay.".to_string())?;
-                let keyfile_digest = crate::crypt_overlay_provider::resolve_profile_keyfile_digest(
-                    &store,
-                    &profile_id,
-                )
-                .map_err(|e| {
-                    format!("Crypt overlay unlock failed for '{}': {}", server_query, e)
-                })?;
+            Ok(Some((params, password, salt, keyfile_digest))) => {
+                // Tier 1 keyfile second factor: the digest comes resolved
+                // (fail-closed) from resolve_overlay_secrets, so a keyfile
+                // vault is never unlocked password-only.
                 crate::crypt_overlay_provider::wrap_provider_with_overlay_if_bound(
                     connected,
                     Some(&params),
@@ -384,18 +375,34 @@ fn find_unique_profile<'a>(
     }
 }
 
+/// Crypt-overlay binding + unlock secrets resolved from a saved profile:
+/// (unlock params, password, salt, Tier 1 keyfile digest).
+pub type OverlaySecrets = (
+    crate::crypt_compare::OverlayUnlockParams,
+    String,
+    String,
+    Option<[u8; 32]>,
+);
+
 /// Resolve a server query to its crypt-overlay binding and unlock secrets, when
 /// the saved profile has an enabled overlay. Returns `Ok(None)` for a profile
 /// without one. The caller feeds the result into
 /// `crate::crypt_compare::unlock_overlay_keys` so MCP `check_tree` decrypts the
 /// remote tree the same way the GUI and CLI Compare do (Ehud, discussion #364).
 ///
+/// The last tuple element is the Tier 1 keyfile digest, resolved fail-closed
+/// from the profile's stored keyfile path (or `AEROFTP_CRYPT_OVERLAY_KEYFILE`):
+/// a stored-but-unreadable keyfile refuses the operation.
+///
 /// A profile WITH an overlay but no stored password is an error (fail closed):
-/// silently comparing ciphertext is the bug this closes.
+/// silently comparing ciphertext is the bug this closes. Exception: an
+/// AeroCrypt vault with a keyfile may legally have an EMPTY password
+/// (keyfile-only vault), so a missing password with a resolved keyfile digest
+/// unlocks with `""` instead of erroring.
 pub fn resolve_overlay_secrets(
     server_query: &str,
     remote_dir: &str,
-) -> Result<Option<(crate::crypt_compare::OverlayUnlockParams, String, String)>, String> {
+) -> Result<Option<OverlaySecrets>, String> {
     let store = CredentialStore::from_cache()
         .ok_or_else(|| "Vault not open. Cannot resolve crypt overlay.".to_string())?;
     let profiles = crate::user_partitions::mcp_list_active_server_profiles(&store)?;
@@ -436,6 +443,9 @@ pub fn resolve_overlay_secrets(
         .and_then(|v| v.as_bool())
         .unwrap_or(true);
 
+    // Tier 1 keyfile second factor: resolve the stored keyfile path to its
+    // digest BEFORE the password guard, fail-closed on an unreadable keyfile.
+    let keyfile_digest = crate::crypt_overlay_provider::resolve_profile_keyfile_digest(&store, id)?;
     let password = crate::user_partitions::resolve_active_credential(
         &store,
         &format!("aerocrypt_overlay_pw_{}", id),
@@ -444,11 +454,17 @@ pub fn resolve_overlay_secrets(
     .flatten()
     .map(|s| s.to_string())
     .filter(|s| !s.is_empty())
-    .or_else(|| std::env::var("AEROFTP_CRYPT_OVERLAY_PASSWORD").ok())
-    .ok_or_else(|| {
-        "Crypt overlay profile has no stored password. Store it in the AeroFTP GUI, or set AEROFTP_CRYPT_OVERLAY_PASSWORD."
-            .to_string()
-    })?;
+    .or_else(|| std::env::var("AEROFTP_CRYPT_OVERLAY_PASSWORD").ok());
+    // A keyfile-only AeroCrypt vault legally has an empty password; keyfiles do
+    // not apply to rclone-crypt, which keeps requiring a password.
+    let password = match password {
+        Some(p) => p,
+        None if kind == "aerocrypt" && keyfile_digest.is_some() => String::new(),
+        None => return Err(
+            "Crypt overlay profile has no stored password. Store it in the AeroFTP GUI, or set AEROFTP_CRYPT_OVERLAY_PASSWORD."
+                .to_string(),
+        ),
+    };
     let salt = crate::user_partitions::resolve_active_credential(
         &store,
         &format!("aerocrypt_overlay_salt_{}", id),
@@ -466,7 +482,7 @@ pub fn resolve_overlay_secrets(
         directory_name_encryption,
         off_suffix: None,
     };
-    Ok(Some((params, password, salt)))
+    Ok(Some((params, password, salt, keyfile_digest)))
 }
 
 /// Resolve a server query (name, ID, or unique substring) to a profile ID.

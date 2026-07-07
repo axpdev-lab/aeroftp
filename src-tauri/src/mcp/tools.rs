@@ -1142,12 +1142,15 @@ pub async fn execute_tool(
                     // pool has already wrapped this provider, it lists plaintext
                     // names/sizes and must not be unlocked or normalized again.
                     let crypt_keys = match &overlay_secrets {
-                        Some((params, password, salt)) if !provider_is_crypt_overlay => {
+                        Some((params, password, salt, keyfile_digest))
+                            if !provider_is_crypt_overlay =>
+                        {
                             match crate::crypt_compare::unlock_overlay_keys(
                                 p.as_mut(),
                                 params,
                                 password,
                                 salt,
+                                keyfile_digest.as_ref(),
                             )
                             .await
                             {
