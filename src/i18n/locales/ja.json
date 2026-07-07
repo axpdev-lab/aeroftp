@@ -331,6 +331,7 @@
             "permsHeader": "権限",
             "syncPathMismatch": "パスが同期されていません - 一致するフォルダに移動するか、同期ナビゲーションを無効にしてください",
             "encryption": "暗号化",
+            "compression": "圧縮",
             "encrypted": "暗号化済み",
             "notEncrypted": "暗号化なし"
         },

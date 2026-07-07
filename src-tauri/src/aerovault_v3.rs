@@ -532,6 +532,25 @@ pub async fn detect_aero_container(path: String) -> Result<Option<String>, Strin
     Ok(None)
 }
 
+/// Report the AeroVault container generation for the file-panel Type-column
+/// badge, password-free (reads only the magic + the plaintext extension
+/// directory): `v4` = AEROVAULT3 carrying the rev. 4 embedded Error-Correction
+/// (Reed-Solomon) extension, `v3` = AEROVAULT3 without it, `v2` = the legacy
+/// AEROVAULT2 container, `None` = not an AeroVault (e.g. the plaintext `.aerozip`
+/// Zip lane, which is not a versioned vault).
+#[tauri::command]
+pub async fn detect_aero_vault_version(path: String) -> Result<Option<String>, String> {
+    let p = Path::new(&path);
+    if aerovault::v3::VaultV3::is_vault_v3(p) {
+        let has_ec = aerovault::v3::VaultV3::has_error_correction(p).unwrap_or(false);
+        return Ok(Some(if has_ec { "v4" } else { "v3" }.to_string()));
+    }
+    if aerovault::Vault::is_vault(&path) {
+        return Ok(Some("v2".to_string()));
+    }
+    Ok(None)
+}
+
 #[tauri::command]
 pub async fn aerovz_create_archive(
     vault_path: String,

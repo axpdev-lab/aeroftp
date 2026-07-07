@@ -931,6 +931,7 @@
             "sortBy": "Sort by",
             "type": "Type",
             "encryption": "Encryption",
+            "compression": "Compression",
             "encrypted": "Encrypted",
             "notEncrypted": "Not encrypted",
             "uploadFiles": "Upload Files",

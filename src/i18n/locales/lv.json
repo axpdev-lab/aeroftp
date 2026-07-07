@@ -331,6 +331,7 @@
             "permsHeader": "Atļaujas",
             "syncPathMismatch": "Celi nav sinhronizeti - parejiet uz atbilstosam mapem vai atspejojiet sinhronizeto navigaciju",
             "encryption": "Šifrēšana",
+            "compression": "Saspiešana",
             "encrypted": "Šifrēts",
             "notEncrypted": "Nešifrēts"
         },

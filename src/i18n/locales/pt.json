@@ -331,6 +331,7 @@
             "permsHeader": "Perms",
             "syncPathMismatch": "Os caminhos estão dessincronizados - navegue para pastas correspondentes ou desative a navegação sincronizada",
             "encryption": "Criptografia",
+            "compression": "Compressão",
             "encrypted": "Criptografado",
             "notEncrypted": "Não criptografado"
         },

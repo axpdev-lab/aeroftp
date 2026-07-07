@@ -331,6 +331,7 @@
             "permsHeader": "Upraw.",
             "syncPathMismatch": "Sciezki nie sa zsynchronizowane - przejdz do pasujacych folderow lub wylacz synchronizowana nawigacje",
             "encryption": "Szyfrowanie",
+            "compression": "Kompresja",
             "encrypted": "Zaszyfrowano",
             "notEncrypted": "Niezaszyfrowano"
         },

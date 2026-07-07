@@ -329,6 +329,7 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
   const archiveMetaEnabled = !!(
     localColumns.config.visibility.type ||
     localColumns.config.visibility.encryption ||
+    localColumns.config.visibility.compression ||
     viewMode === 'grid' ||
     viewMode === 'large'
   );
@@ -890,12 +891,20 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
               }
               return <LockOpen size={12} className="shrink-0 text-gray-400" aria-label={t('browser.notEncrypted')} />;
             };
+            // AeroVault generation chip shown after the type text: v2 (legacy
+            // AEROVAULT2), v3 (AEROVAULT3), v4 (AEROVAULT3 + rev.4 Reed-Solomon
+            // Error Correction). Detected password-free; nothing for other files.
+            const renderVaultVersion = (file: LocalFile): React.ReactNode => {
+              const meta = archiveMetaOf(file);
+              if (!meta || meta.status !== 'done' || !meta.vaultVersion) return null;
+              return <span className="shrink-0 px-1 py-0.5 rounded text-[9px] font-semibold leading-none bg-violet-500/15 text-violet-700 dark:text-violet-300 normal-case">{meta.vaultVersion}</span>;
+            };
             const renderFileExtra = (id: AeroFileLocalColId, file: LocalFile) => {
               switch (id) {
                 case 'size':
                   return <td key="size" className="px-4 py-2 text-sm text-gray-500">{file.size !== null ? (!file.is_dir && file.size === 0 ? <span title={t('toast.zeroByteWarning')}>&#9888; 0 B</span> : formatBytes(file.size)) : '-'}</td>;
                 case 'type':
-                  return <td key="type" className="hidden xl:table-cell px-3 py-2 text-xs text-gray-500 uppercase"><span className="flex items-center gap-1">{renderPadlock(file)}<span className="truncate">{file.is_dir ? t('browser.folderType') : (file.name.includes('.') ? file.name.split('.').pop() : '-')}</span></span></td>;
+                  return <td key="type" className="hidden xl:table-cell px-3 py-2 text-xs text-gray-500 uppercase"><span className="flex items-center gap-1">{renderPadlock(file)}<span className="truncate">{file.is_dir ? t('browser.folderType') : (file.name.includes('.') ? file.name.split('.').pop() : '-')}</span>{renderVaultVersion(file)}</span></td>;
                 case 'encryption': {
                   const meta = file.is_dir ? undefined : archiveMetaOf(file);
                   let content: React.ReactNode = <span className="text-gray-400">-</span>;
@@ -906,6 +915,20 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
                     content = <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold tracking-wide ${c.strong ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300' : 'bg-amber-500/15 text-amber-700 dark:text-amber-300'}`} title={c.strong ? undefined : t('contextMenu.zipCryptoLegacy')}>{c.label}</span>;
                   }
                   return <td key="encryption" className="px-4 py-2 text-xs">{content}</td>;
+                }
+                case 'compression': {
+                  // Compression method for compressed archives (and AeroVault v3
+                  // containers, which are always Zstd). Stored/uncompressed
+                  // archives and non-archives show nothing; a neutral slate badge
+                  // keeps it distinct from the emerald/amber encryption column.
+                  const meta = file.is_dir ? undefined : archiveMetaOf(file);
+                  let content: React.ReactNode = <span className="text-gray-400">-</span>;
+                  if (meta?.status === 'loading') {
+                    content = <Loader2 size={12} className="animate-spin text-gray-400" />;
+                  } else if (meta?.status === 'done' && meta.compression) {
+                    content = <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold tracking-wide bg-slate-500/15 text-slate-600 dark:text-slate-300">{meta.compression}</span>;
+                  }
+                  return <td key="compression" className="px-4 py-2 text-xs">{content}</td>;
                 }
                 case 'modified':
                   return <td key="modified" className="px-4 py-2 text-xs text-gray-500 whitespace-nowrap">{formatDate(file.modified)}</td>;

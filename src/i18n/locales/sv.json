@@ -331,6 +331,7 @@
             "permsHeader": "Rättigheter",
             "syncPathMismatch": "Sokvagarna ar inte synkroniserade - navigera till matchande mappar eller inaktivera synkroniserad navigering",
             "encryption": "Kryptering",
+            "compression": "Komprimering",
             "encrypted": "Krypterad",
             "notEncrypted": "Inte krypterad"
         },

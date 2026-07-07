@@ -331,6 +331,7 @@
             "permsHeader": "Pahintulot",
             "syncPathMismatch": "Hindi magkatugma ang mga path - mag-navigate sa magkatugmang mga folder o i-disable ang sync na pag-navigate",
             "encryption": "Pag-encrypt",
+            "compression": "Compression",
             "encrypted": "Naka-encrypt",
             "notEncrypted": "Hindi naka-encrypt"
         },

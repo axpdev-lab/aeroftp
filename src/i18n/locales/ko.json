@@ -331,6 +331,7 @@
             "permsHeader": "권한",
             "syncPathMismatch": "경로가 동기화되지 않았습니다 - 일치하는 폴더로 이동하거나 동기화 탐색을 비활성화하세요",
             "encryption": "암호화",
+            "compression": "압축",
             "encrypted": "암호화됨",
             "notEncrypted": "암호화 안 됨"
         },

@@ -331,6 +331,7 @@
             "permsHeader": "Leidimai",
             "syncPathMismatch": "Keliai nesinchronizuoti - pereikite i atitinkamus aplankus arba isijunkite sinchronizuota navigacija",
             "encryption": "Šifravimas",
+            "compression": "Glaudinimas",
             "encrypted": "Užšifruota",
             "notEncrypted": "Nešifruota"
         },

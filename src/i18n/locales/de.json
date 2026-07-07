@@ -331,6 +331,7 @@
             "permsHeader": "Ber.",
             "syncPathMismatch": "Pfade sind nicht synchron - navigieren Sie zu übereinstimmenden Ordnern oder deaktivieren Sie die synchronisierte Navigation",
             "encryption": "Verschlüsselung",
+            "compression": "Komprimierung",
             "encrypted": "Verschlüsselt",
             "notEncrypted": "Nicht verschlüsselt"
         },

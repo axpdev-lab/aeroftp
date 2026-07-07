@@ -331,6 +331,7 @@
             "permsHeader": "Jogosultságok",
             "syncPathMismatch": "Az utvonalak nincsenek szinkronban - navigaljon egyezo mappakhoz, vagy tiltsa le a szinkron navigaciot",
             "encryption": "Titkosítás",
+            "compression": "Tömörítés",
             "encrypted": "Titkosítva",
             "notEncrypted": "Nincs titkosítva"
         },

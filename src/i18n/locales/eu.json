@@ -331,6 +331,7 @@
             "permsHeader": "Baim.",
             "syncPathMismatch": "Bideak ez daude sinkronizatuta - bat datozen karpetetara nabigatu edo desgaitu sinkronizazio-nabigazioa",
             "encryption": "Enkriptatzea",
+            "compression": "Konpresioa",
             "encrypted": "Enkriptatuta",
             "notEncrypted": "Enkriptatu gabe"
         },

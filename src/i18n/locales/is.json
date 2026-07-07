@@ -331,6 +331,7 @@
             "permsHeader": "Heimildir",
             "syncPathMismatch": "Slodirnar eru ekki samstilltar - fardu i samsvurandi moppur eda slakktu a samstilltri leidsogu",
             "encryption": "Dulkóðun",
+            "compression": "Þjöppun",
             "encrypted": "Dulkóðað",
             "notEncrypted": "Ekki dulkóðað"
         },

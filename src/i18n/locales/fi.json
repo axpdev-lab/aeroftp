@@ -331,6 +331,7 @@
             "permsHeader": "Oikeudet",
             "syncPathMismatch": "Polut eivät ole synkronoituja - siirry vastaaviin kansioihin tai poista synkronoitu navigointi käytöstä",
             "encryption": "Salaus",
+            "compression": "Pakkaus",
             "encrypted": "Salattu",
             "notEncrypted": "Ei salattu"
         },

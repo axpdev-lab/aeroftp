@@ -331,6 +331,7 @@
             "permsHeader": "Práva",
             "syncPathMismatch": "Cesty nie su synchronizovane - prejdite do zodpovedajucich priecinkov alebo vypnite synchronizovanu navigaciu",
             "encryption": "Šifrovanie",
+            "compression": "Kompresia",
             "encrypted": "Šifrované",
             "notEncrypted": "Nešifrované"
         },

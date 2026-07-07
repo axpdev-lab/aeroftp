@@ -9,7 +9,7 @@ import {
     useTableColumns,
 } from './useTableColumns';
 
-export type AeroFileLocalColId = 'name' | 'size' | 'type' | 'encryption' | 'modified';
+export type AeroFileLocalColId = 'name' | 'size' | 'type' | 'encryption' | 'compression' | 'modified';
 export type AeroFileRemoteColId = 'name' | 'size' | 'type' | 'permissions' | 'modified';
 export type AeroFileSortableColId = 'name' | 'size' | 'type' | 'modified';
 
@@ -20,6 +20,7 @@ const LOCAL_COLUMNS: TableColumnDef<AeroFileLocalColId>[] = [
     { id: 'size', labelKey: 'browser.size', sortable: true, defaultVisible: true, defaultWidth: 96, minWidth: 70 },
     { id: 'type', labelKey: 'browser.type', sortable: true, defaultVisible: false, defaultWidth: 96, minWidth: 70 },
     { id: 'encryption', labelKey: 'browser.encryption', sortable: false, defaultVisible: false, defaultWidth: 128, minWidth: 90 },
+    { id: 'compression', labelKey: 'browser.compression', sortable: false, defaultVisible: false, defaultWidth: 120, minWidth: 90 },
     { id: 'modified', labelKey: 'browser.modified', sortable: true, defaultVisible: true, defaultWidth: 160, minWidth: 110 },
 ];
 

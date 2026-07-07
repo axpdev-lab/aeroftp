@@ -331,6 +331,7 @@
             "permsHeader": "Dovoljenja",
             "syncPathMismatch": "Poti niso sinhronizirane - pojdite v ujemajoce se mape ali onemogocite sinhrono navigacijo",
             "encryption": "Šifriranje",
+            "compression": "Stiskanje",
             "encrypted": "Šifrirano",
             "notEncrypted": "Ni šifrirano"
         },

@@ -331,6 +331,7 @@
             "permsHeader": "Kebenaran",
             "syncPathMismatch": "Laluan tidak segerak - navigasi ke folder yang sepadan atau nyahaktifkan navigasi segerak",
             "encryption": "Penyulitan",
+            "compression": "Pemampatan",
             "encrypted": "Disulitkan",
             "notEncrypted": "Tidak disulitkan"
         },

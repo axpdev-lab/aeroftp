@@ -22,7 +22,15 @@ import { archiveKindForName } from '../utils/archiveCipher';
 export type ArchiveMetaState =
     | { status: 'loading' }
     | { status: 'unknown' }
-    | { status: 'done'; encrypted: boolean; cipher: string | null };
+    | {
+          status: 'done';
+          encrypted: boolean;
+          cipher: string | null;
+          compression: string | null;
+          /** AeroVault container generation (`v2`/`v3`/`v4`) for the Type-column
+           *  badge; null for non-vault entries. */
+          vaultVersion: string | null;
+      };
 
 interface FileLike {
     path: string;
@@ -35,6 +43,11 @@ interface FileLike {
 interface CachedMeta {
     encrypted: boolean;
     cipher: string | null;
+    /** Compression method token (e.g. `Deflate`, `Zstd`), or null for a stored
+     *  archive / a container whose method cannot be read proactively. */
+    compression: string | null;
+    /** AeroVault generation (`v2`/`v3`/`v4`), or null for non-vault entries. */
+    vaultVersion: string | null;
     /** False when detection failed or the format is not proactively detectable. */
     known: boolean;
 }
@@ -47,10 +60,73 @@ function cacheKey(f: FileLike): string {
     return `${f.path}|${f.size ?? ''}|${f.modified ?? ''}`;
 }
 
-/** Kinds the backend can detect proactively (RAR deferred). */
-function detectableKind(name: string): 'zip' | 'sevenz' | null {
+/**
+ * How a given file's encryption metadata is obtained. Third-party archives
+ * (zip/7z) go through the header-parsing `detect_archive_meta`; our own
+ * container formats go through the cheap `detect_aero_container` magic sniff
+ * (.aerovault = encrypted AES-256, .aerozip = the plaintext Zip lane); our
+ * exported bundles (.aeroftp-keystore keystore, .aeroftp profile backup) are
+ * AES-256-GCM encrypted by construction, so they need no read at all. RAR is
+ * intentionally excluded (no proactive detection), so it gets no badge rather
+ * than a wrong one.
+ */
+type DetectPlan =
+    | { via: 'archive'; kind: 'zip' | 'sevenz' }
+    | { via: 'aero' }
+    | { via: 'sealed' };
+
+function detectionPlan(name: string): DetectPlan | null {
     const kind = archiveKindForName(name);
-    return kind === 'zip' || kind === 'sevenz' ? kind : null;
+    if (kind === 'zip' || kind === 'sevenz') return { via: 'archive', kind };
+    const lower = name.toLowerCase();
+    if (lower.endsWith('.aerovault') || lower.endsWith('.aerozip')) return { via: 'aero' };
+    // Our exported bundles are always AES-256-GCM encrypted (order matters:
+    // `.aeroftp-keystore` must be tested before the `.aeroftp` suffix).
+    if (lower.endsWith('.aeroftp-keystore') || lower.endsWith('.aeroftp')) return { via: 'sealed' };
+    return null;
+}
+
+type DetectResult = {
+    encrypted: boolean;
+    cipher: string | null;
+    compression: string | null;
+    vaultVersion: string | null;
+};
+
+/** Resolve one file's encryption + compression (+ AeroVault version) metadata via
+ *  the backend path its plan selects. */
+function runDetection(plan: DetectPlan, path: string): Promise<DetectResult> {
+    if (plan.via === 'archive') {
+        return invoke<{ encrypted: boolean; cipher: string | null; compression: string | null }>(
+            'detect_archive_meta',
+            { archivePath: path, kind: plan.kind },
+        ).then((m) => ({ ...m, vaultVersion: null }));
+    }
+    if (plan.via === 'aero') {
+        // detect_aero_container sniffs the AeroVault family header: "vault" is an
+        // encrypted AES-256 container, "zip" is the plaintext .aerozip lane, null
+        // is not one of ours (renamed/corrupt) -> undetectable, no badge. Both
+        // lanes are AeroVault v3, which always compresses per-chunk with Zstd. For
+        // an actual vault we also read the generation (v2/v3/v4) for the Type badge.
+        return invoke<string | null>('detect_aero_container', { path }).then((kind) => {
+            if (kind === 'zip') {
+                return { encrypted: false, cipher: null, compression: 'Zstd', vaultVersion: null };
+            }
+            if (kind === 'vault') {
+                return invoke<string | null>('detect_aero_vault_version', { path }).then((v) => ({
+                    encrypted: true,
+                    cipher: 'AES-256',
+                    compression: 'Zstd',
+                    vaultVersion: v ?? null,
+                }));
+            }
+            throw new Error('not an aero container');
+        });
+    }
+    // sealed: an exported .aeroftp-keystore / .aeroftp bundle is always AES-256
+    // encrypted; the payload is an opaque (uncompressed) encrypted blob, so it
+    // carries an emerald cipher badge but no compression / version badge.
+    return Promise.resolve({ encrypted: true, cipher: 'AES-256', compression: null, vaultVersion: null });
 }
 
 export function useArchiveMeta(files: FileLike[], enabled: boolean) {
@@ -61,7 +137,7 @@ export function useArchiveMeta(files: FileLike[], enabled: boolean) {
         if (!enabled) return;
         let cancelled = false;
         const targets = files
-            .filter((f) => !f.is_dir && detectableKind(f.name))
+            .filter((f) => !f.is_dir && detectionPlan(f.name))
             .slice(0, MAX_DETECT)
             .filter((f) => {
                 const k = cacheKey(f);
@@ -78,19 +154,28 @@ export function useArchiveMeta(files: FileLike[], enabled: boolean) {
             while (active < CONCURRENCY && idx < targets.length) {
                 const f = targets[idx++];
                 const k = cacheKey(f);
-                const kind = detectableKind(f.name)!;
+                const plan = detectionPlan(f.name)!;
                 inflight.current.add(k);
                 active++;
-                invoke<{ encrypted: boolean; cipher: string | null }>('detect_archive_meta', {
-                    archivePath: f.path,
-                    kind,
-                })
+                runDetection(plan, f.path)
                     .then((meta) => {
-                        CACHE.set(k, { encrypted: !!meta.encrypted, cipher: meta.cipher ?? null, known: true });
+                        CACHE.set(k, {
+                            encrypted: !!meta.encrypted,
+                            cipher: meta.cipher ?? null,
+                            compression: meta.compression ?? null,
+                            vaultVersion: meta.vaultVersion ?? null,
+                            known: true,
+                        });
                     })
                     .catch(() => {
                         // Undetectable (truncated, unreadable): neutral, not a wrong badge.
-                        CACHE.set(k, { encrypted: false, cipher: null, known: false });
+                        CACHE.set(k, {
+                            encrypted: false,
+                            cipher: null,
+                            compression: null,
+                            vaultVersion: null,
+                            known: false,
+                        });
                     })
                     .finally(() => {
                         inflight.current.delete(k);
@@ -111,11 +196,17 @@ export function useArchiveMeta(files: FileLike[], enabled: boolean) {
 
     return useCallback(
         (f: FileLike): ArchiveMetaState | undefined => {
-            if (!enabled || f.is_dir || !detectableKind(f.name)) return undefined;
+            if (!enabled || f.is_dir || !detectionPlan(f.name)) return undefined;
             const hit = CACHE.get(cacheKey(f));
             if (!hit) return { status: 'loading' };
             if (!hit.known) return { status: 'unknown' };
-            return { status: 'done', encrypted: hit.encrypted, cipher: hit.cipher };
+            return {
+                status: 'done',
+                encrypted: hit.encrypted,
+                cipher: hit.cipher,
+                compression: hit.compression,
+                vaultVersion: hit.vaultVersion,
+            };
         },
         // version bumps as results land, giving the lookup a fresh identity so
         // consumers re-render and read the newly-cached entries.

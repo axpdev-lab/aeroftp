@@ -331,6 +331,7 @@
             "permsHeader": "Permisiuni",
             "syncPathMismatch": "Caile sunt desincronizate - navigati la foldere corespondente sau dezactivati navigarea sincronizata",
             "encryption": "Criptare",
+            "compression": "Compresie",
             "encrypted": "Criptat",
             "notEncrypted": "Necriptat"
         },

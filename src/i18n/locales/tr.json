@@ -331,6 +331,7 @@
             "permsHeader": "İzinler",
             "syncPathMismatch": "Yollar senkronize degil - eslesen klasorlere gidin veya senkronize gezintiyi devre disi birakin",
             "encryption": "Şifreleme",
+            "compression": "Sıkıştırma",
             "encrypted": "Şifreli",
             "notEncrypted": "Şifresiz"
         },

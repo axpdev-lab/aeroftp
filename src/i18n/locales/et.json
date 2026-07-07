@@ -331,6 +331,7 @@
             "permsHeader": "Õigused",
             "syncPathMismatch": "Teed ei ole sünkroonis - navigeerige vastavatesse kaustadesse või keelake sünkroonitud navigeerimine",
             "encryption": "Krüpteering",
+            "compression": "Tihendus",
             "encrypted": "Krüpteeritud",
             "notEncrypted": "Krüpteerimata"
         },

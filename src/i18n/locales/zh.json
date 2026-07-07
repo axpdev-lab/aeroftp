@@ -331,6 +331,7 @@
             "permsHeader": "权限",
             "syncPathMismatch": "路径不同步 - 请导航到匹配的文件夹或禁用同步导航",
             "encryption": "加密",
+            "compression": "压缩",
             "encrypted": "已加密",
             "notEncrypted": "未加密"
         },

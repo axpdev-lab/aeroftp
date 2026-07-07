@@ -331,6 +331,7 @@
             "permsHeader": "Ruhusa",
             "syncPathMismatch": "Njia haziko sawa - nenda kwenye folda zinazolingana au zima urambazaji uliosawazishwa",
             "encryption": "Usimbaji",
+            "compression": "Mgandamizo",
             "encrypted": "Imesimbwa",
             "notEncrypted": "Haijasimbwa"
         },

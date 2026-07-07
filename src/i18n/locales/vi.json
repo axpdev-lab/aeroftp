@@ -331,6 +331,7 @@
             "permsHeader": "Quyền",
             "syncPathMismatch": "Duong dan khong dong bo - dieu huong den cac thu muc tuong ung hoac tat dieu huong dong bo",
             "encryption": "Mã hóa",
+            "compression": "Nén",
             "encrypted": "Đã mã hóa",
             "notEncrypted": "Chưa mã hóa"
         },

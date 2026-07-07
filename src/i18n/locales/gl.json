@@ -331,6 +331,7 @@
             "permsHeader": "Perms",
             "syncPathMismatch": "As rutas non están sincronizadas - navegue a cartafoles coincidentes ou desactive a navegación sincronizada",
             "encryption": "Cifrado",
+            "compression": "Compresión",
             "encrypted": "Cifrado",
             "notEncrypted": "Sen cifrar"
         },

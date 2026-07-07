@@ -331,6 +331,7 @@
             "permsHeader": "Izin",
             "syncPathMismatch": "Jalur tidak sinkron - navigasi ke folder yang sesuai atau nonaktifkan navigasi sinkron",
             "encryption": "Enkripsi",
+            "compression": "Kompresi",
             "encrypted": "Terenkripsi",
             "notEncrypted": "Tidak terenkripsi"
         },

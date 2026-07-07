@@ -8194,6 +8194,11 @@ struct ArchiveMeta {
     /// Canonical cipher token when encrypted: `AES-256` / `AES-192` / `AES-128`
     /// / `AES` / `ZipCrypto`. `None` when not encrypted or undetermined.
     cipher: Option<String>,
+    /// Representative compression method token for the Compression column, e.g.
+    /// `Deflate` / `LZMA2` / `BZip2` / `Zstd` / `PPMd`. `None` for a stored
+    /// (uncompressed) archive or when the method cannot be read (e.g. a 7z with
+    /// an encrypted header). Only compressed archives get a badge.
+    compression: Option<String>,
 }
 
 /// Proactively detect whether an archive is encrypted, and with which cipher,
@@ -8296,6 +8301,9 @@ fn detect_zip_meta(path: &str) -> Result<ArchiveMeta, String> {
 /// file header) and return the encryption metadata of the first encrypted entry.
 fn parse_zip_central_dir(cd: &[u8], entries: usize) -> ArchiveMeta {
     let mut p = 0usize;
+    let mut encrypted = false;
+    let mut cipher: Option<String> = None;
+    let mut compression: Option<String> = None;
     for _ in 0..entries {
         if p + 46 > cd.len() || cd[p..p + 4] != [0x50, 0x4B, 0x01, 0x02] {
             break;
@@ -8306,26 +8314,73 @@ fn parse_zip_central_dir(cd: &[u8], entries: usize) -> ArchiveMeta {
         let extralen = u16::from_le_bytes([cd[p + 30], cd[p + 31]]) as usize;
         let commentlen = u16::from_le_bytes([cd[p + 32], cd[p + 33]]) as usize;
         let extra_start = p + 46 + fnlen;
-        if flags & 0x0001 != 0 {
-            let cipher = if method == 99 {
+        // Compression: report the first compressed entry's method. A WinZip AES
+        // entry (method 99) stores its real method inside the 0x9901 extra field;
+        // a stored (uncompressed) entry maps to None so we keep scanning for a
+        // compressed one and, if there is none, show no badge.
+        if compression.is_none() {
+            let eff_method = if method == 99 {
+                zip_aes_inner_method(cd, extra_start, extralen).unwrap_or(99)
+            } else {
+                method
+            };
+            compression = zip_method_label(eff_method);
+        }
+        // Encryption: first encrypted entry wins the cipher token.
+        if !encrypted && flags & 0x0001 != 0 {
+            encrypted = true;
+            cipher = Some(if method == 99 {
                 match zip_aes_strength(cd, extra_start, extralen) {
                     Some(bits) => format!("AES-{bits}"),
                     None => "AES".to_string(),
                 }
             } else {
                 "ZipCrypto".to_string()
-            };
-            return ArchiveMeta {
-                encrypted: true,
-                cipher: Some(cipher),
-            };
+            });
         }
         p = extra_start + extralen + commentlen;
     }
     ArchiveMeta {
-        encrypted: false,
-        cipher: None,
+        encrypted,
+        cipher,
+        compression,
     }
+}
+
+/// Map a ZIP compression method id to a display token, or `None` for a stored
+/// (method 0) entry or one we do not label. The WinZip AES wrapper (method 99)
+/// is resolved to its inner method by the caller before this is called.
+fn zip_method_label(method: u16) -> Option<String> {
+    let label = match method {
+        8 => "Deflate",
+        9 => "Deflate64",
+        12 => "BZip2",
+        14 => "LZMA",
+        93 => "Zstd",
+        95 => "XZ",
+        96 => "Jpeg",
+        98 => "PPMd",
+        _ => return None, // 0 = Store (uncompressed), or unknown -> no badge
+    };
+    Some(label.to_string())
+}
+
+/// Read the WinZip AES (0x9901) extra field's inner compression-method id (the
+/// two bytes after the 2-byte version, 2-byte vendor, 1-byte strength). Mirrors
+/// `zip_aes_strength`, which reads the strength byte from the same field.
+fn zip_aes_inner_method(data: &[u8], start: usize, len: usize) -> Option<u16> {
+    let end = (start + len).min(data.len());
+    let mut off = start;
+    while off + 4 <= end {
+        let id = u16::from_le_bytes([data[off], data[off + 1]]);
+        let sz = u16::from_le_bytes([data[off + 2], data[off + 3]]) as usize;
+        let field = off + 4;
+        if id == 0x9901 && field + 7 <= end {
+            return Some(u16::from_le_bytes([data[field + 5], data[field + 6]]));
+        }
+        off = field + sz;
+    }
+    None
 }
 
 /// 7z proactive encryption detection. The 32-byte start header points at the
@@ -8350,6 +8405,7 @@ fn detect_7z_meta(path: &str) -> Result<ArchiveMeta, String> {
         return Ok(ArchiveMeta {
             encrypted: false,
             cipher: None,
+            compression: None,
         });
     }
     f.seek(SeekFrom::Start(32 + nh_off))
@@ -8362,7 +8418,51 @@ fn detect_7z_meta(path: &str) -> Result<ArchiveMeta, String> {
     Ok(ArchiveMeta {
         encrypted,
         cipher: encrypted.then(|| "AES-256".to_string()),
+        compression: detect_7z_compression(path),
     })
+}
+
+/// Best-effort 7z compression method for the Compression column. Parses the
+/// archive header via `sevenz-rust2` (metadata only, no extraction) and returns
+/// the first block's real compression coder, skipping filters (BCJ/Delta) and
+/// the AES coder. Reading the header with an empty password succeeds only for a
+/// plaintext header; an `-mhe` encrypted-header archive errors out here, so we
+/// return `None` (no method badge) rather than guessing.
+fn detect_7z_compression(path: &str) -> Option<String> {
+    use sevenz_rust2::{Archive, Password};
+    let mut f = std::fs::File::open(path).ok()?;
+    let archive = Archive::read(&mut f, &Password::empty()).ok()?;
+    for block in &archive.blocks {
+        for coder in &block.coders {
+            if let Some(label) = sevenz_rust2::EncoderMethod::by_id(coder.encoder_method_id())
+                .and_then(sevenz_method_label)
+            {
+                return Some(label);
+            }
+        }
+    }
+    None
+}
+
+/// Map a `sevenz-rust2` coder to a display token, or `None` for a stored (COPY)
+/// stream, a chained filter (BCJ/Delta), or AES encryption, so only a real
+/// compression method surfaces in the Compression column.
+fn sevenz_method_label(m: sevenz_rust2::EncoderMethod) -> Option<String> {
+    let label = match m.name() {
+        "LZMA2" => "LZMA2",
+        "LZMA" => "LZMA",
+        "PPMD" => "PPMd",
+        "BZIP2" => "BZip2",
+        "ZSTD" => "Zstd",
+        "BROTLI" => "Brotli",
+        "LZ4" => "LZ4",
+        "LZS" => "LZS",
+        "LIZARD" => "Lizard",
+        "DEFLATE" => "Deflate",
+        "DEFLATE64" => "Deflate64",
+        _ => return None, // COPY (store), filters, AES -> not a compression badge
+    };
+    Some(label.to_string())
 }
 
 /// RAR cipher by archive-signature version: RAR5 uses AES-256, legacy RAR4 uses
@@ -17502,6 +17602,7 @@ pub fn run() {
             // AeroVault v3 draft wrapper-stack backend
             aerovault_v3::aerovz_is_archive,
             aerovault_v3::detect_aero_container,
+            aerovault_v3::detect_aero_vault_version,
             aerovault_v3::aerovz_create_archive,
             aerovault_v3::aerovz_open_archive,
             aerovault_v3::aerovz_recovery_status,
@@ -19406,5 +19507,53 @@ mod archive_meta_tests {
         let meta = parse_zip_central_dir(&cd, 2);
         assert!(meta.encrypted);
         assert_eq!(meta.cipher.as_deref(), Some("AES-192"));
+    }
+
+    /// WinZip AES (0x9901) extra field with the given strength byte and inner
+    /// (real) compression method, so the Compression column can be exercised for
+    /// AES entries whose visible method is the 99 wrapper.
+    fn aes_extra_method(strength: u8, inner_method: u16) -> Vec<u8> {
+        let m = inner_method.to_le_bytes();
+        vec![
+            0x01, 0x99, // header id 0x9901
+            0x07, 0x00, // data size 7
+            0x01, 0x00, // vendor version
+            b'A', b'E',     // vendor id "AE"
+            strength, // 1=128, 2=192, 3=256
+            m[0], m[1], // actual compression method
+        ]
+    }
+
+    #[test]
+    fn compression_deflate_is_reported() {
+        let cd = cdfh(0x0000, 8, b"a.txt", &[]);
+        let meta = super::parse_zip_central_dir(&cd, 1);
+        assert_eq!(meta.compression.as_deref(), Some("Deflate"));
+    }
+
+    #[test]
+    fn compression_store_is_none() {
+        let cd = cdfh(0x0000, 0, b"a.txt", &[]);
+        let meta = super::parse_zip_central_dir(&cd, 1);
+        assert!(meta.compression.is_none());
+    }
+
+    #[test]
+    fn compression_reads_inner_method_of_aes_entry() {
+        // A WinZip AES entry (method 99) with inner Deflate (8) must report
+        // Deflate, not the 99 wrapper.
+        let cd = cdfh(0x0001, 99, b"a.txt", &aes_extra_method(3, 8));
+        let meta = super::parse_zip_central_dir(&cd, 1);
+        assert_eq!(meta.cipher.as_deref(), Some("AES-256"));
+        assert_eq!(meta.compression.as_deref(), Some("Deflate"));
+    }
+
+    #[test]
+    fn compression_first_compressed_entry_wins_over_leading_store() {
+        // A stored entry first, then an LZMA entry: the column shows LZMA.
+        let mut cd = cdfh(0x0000, 0, b"stored.bin", &[]);
+        cd.extend_from_slice(&cdfh(0x0000, 14, b"data.txt", &[]));
+        let meta = super::parse_zip_central_dir(&cd, 2);
+        assert_eq!(meta.compression.as_deref(), Some("LZMA"));
     }
 }

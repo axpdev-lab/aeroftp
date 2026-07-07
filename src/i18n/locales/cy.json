@@ -331,6 +331,7 @@
             "permsHeader": "Hawl.",
             "syncPathMismatch": "Nid yw'r llwybrau wedi'u cydweddu - ewch i ffolderi cyfatebol neu analluogwch lywio cydweddu",
             "encryption": "Amgryptio",
+            "compression": "Cywasgu",
             "encrypted": "Wedi'i amgryptio",
             "notEncrypted": "Heb ei amgryptio"
         },

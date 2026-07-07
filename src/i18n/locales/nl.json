@@ -331,6 +331,7 @@
             "permsHeader": "Rechten",
             "syncPathMismatch": "Paden zijn niet gesynchroniseerd - navigeer naar overeenkomende mappen of schakel synchrone navigatie uit",
             "encryption": "Versleuteling",
+            "compression": "Compressie",
             "encrypted": "Versleuteld",
             "notEncrypted": "Niet versleuteld"
         },

@@ -331,6 +331,7 @@
             "permsHeader": "Tillatelser",
             "syncPathMismatch": "Stier er ikke synkronisert - naviger til samsvarende mapper eller deaktiver synkronisert navigasjon",
             "encryption": "Kryptering",
+            "compression": "Komprimering",
             "encrypted": "Kryptert",
             "notEncrypted": "Ikke kryptert"
         },

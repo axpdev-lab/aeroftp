@@ -713,6 +713,7 @@
             "permsHeader": "Perm.",
             "syncPathMismatch": "I percorsi non sono sincronizzati - naviga nelle cartelle corrispondenti o disattiva la navigazione sincronizzata",
             "encryption": "Cifratura",
+            "compression": "Compressione",
             "encrypted": "Cifrato",
             "notEncrypted": "Non cifrato"
         },

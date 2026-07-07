@@ -331,6 +331,7 @@
             "permsHeader": "Perms",
             "syncPathMismatch": "Els camins no estan sincronitzats - navegueu a carpetes coincidents o desactiveu la navegació sincronitzada",
             "encryption": "Xifratge",
+            "compression": "Compressió",
             "encrypted": "Xifrat",
             "notEncrypted": "No xifrat"
         },
