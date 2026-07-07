@@ -4981,7 +4981,8 @@
             "keyfileChoose": "Chagua...",
             "keyfileGenerate": "Tengeneza...",
             "keyfileGeneratedBackup": "Faili ya ufunguo imetengenezwa. Hifadhi nakala sasa: kuipoteza hufunga kasha milele.",
-            "keyfileRepointHint": "Njia hii inaonyesha tu mahali faili ya ufunguo ilipo; kuibadilisha hakubadilishi ufunguo wa kasha. Faili ya ufunguo isiyo sahihi au isiyopo hukataa kufungua."
+            "keyfileRepointHint": "Njia hii inaonyesha tu mahali faili ya ufunguo ilipo; kuibadilisha hakubadilishi ufunguo wa kasha. Faili ya ufunguo isiyo sahihi au isiyopo hukataa kufungua.",
+            "keyfileStorageHint": "Ihifadhi kwenye diski ya ndani au kiendeshi cha USB, tofauti na seva ya mbali unayosimba, na uweke nakala rudufu."
         },
         "modalGuard": {
             "busyTitle": "Operesheni inaendelea",

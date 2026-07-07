@@ -4981,7 +4981,8 @@
             "keyfileChoose": "Wybierz...",
             "keyfileGenerate": "Generuj...",
             "keyfileGeneratedBackup": "Wygenerowano plik klucza. Zrób kopię teraz: jego utrata zamknie sejf na zawsze.",
-            "keyfileRepointHint": "Ta ścieżka wskazuje tylko, gdzie leży plik klucza; jej zmiana nie zmienia klucza sejfu. Błędny lub brakujący plik klucza odmawia odblokowania."
+            "keyfileRepointHint": "Ta ścieżka wskazuje tylko, gdzie leży plik klucza; jej zmiana nie zmienia klucza sejfu. Błędny lub brakujący plik klucza odmawia odblokowania.",
+            "keyfileStorageHint": "Przechowuj go na dysku lokalnym lub napędzie USB, oddzielnie od zdalnego serwera, który szyfrujesz, i zachowaj kopię zapasową."
         },
         "modalGuard": {
             "busyTitle": "Operacja w toku",

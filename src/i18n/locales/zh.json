@@ -4981,7 +4981,8 @@
             "keyfileChoose": "选择...",
             "keyfileGenerate": "生成...",
             "keyfileGeneratedBackup": "密钥文件已生成。请立即备份: 丢失它将导致保险库永久无法打开。",
-            "keyfileRepointHint": "此路径只指向密钥文件所在位置; 更改它不会更换保险库的密钥。错误或缺失的密钥文件将被拒绝解锁。"
+            "keyfileRepointHint": "此路径只指向密钥文件所在位置; 更改它不会更换保险库的密钥。错误或缺失的密钥文件将被拒绝解锁。",
+            "keyfileStorageHint": "请将其保存在本地磁盘或 U 盘上，与您正在加密的远程存储分开，并保留一份备份。"
         },
         "modalGuard": {
             "busyTitle": "操作进行中",

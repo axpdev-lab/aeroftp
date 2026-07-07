@@ -4981,7 +4981,8 @@
             "keyfileChoose": "Vælg...",
             "keyfileGenerate": "Generér...",
             "keyfileGeneratedBackup": "Nøglefil genereret. Tag backup nu: mistes den, kan boksen aldrig åbnes igen.",
-            "keyfileRepointHint": "Denne sti peger kun på, hvor nøglefilen ligger; at ændre den omnøgler ikke boksen. En forkert eller manglende nøglefil afviser oplåsningen."
+            "keyfileRepointHint": "Denne sti peger kun på, hvor nøglefilen ligger; at ændre den omnøgler ikke boksen. En forkert eller manglende nøglefil afviser oplåsningen.",
+            "keyfileStorageHint": "Gem den på en lokal disk eller et USB-drev, adskilt fra det fjernlager, du krypterer, og opbevar en sikkerhedskopi."
         },
         "modalGuard": {
             "busyTitle": "Handling i gang",

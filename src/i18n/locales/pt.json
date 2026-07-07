@@ -4981,7 +4981,8 @@
             "keyfileChoose": "Escolher...",
             "keyfileGenerate": "Gerar...",
             "keyfileGeneratedBackup": "Ficheiro de chave gerado. Faça uma cópia agora: perdê-lo torna o cofre inabrível para sempre.",
-            "keyfileRepointHint": "Este caminho apenas indica onde está o ficheiro de chave; alterá-lo não recifra o cofre. Um ficheiro de chave errado ou ausente recusa o desbloqueio."
+            "keyfileRepointHint": "Este caminho apenas indica onde está o ficheiro de chave; alterá-lo não recifra o cofre. Um ficheiro de chave errado ou ausente recusa o desbloqueio.",
+            "keyfileStorageHint": "Guarde-o em um disco local ou em uma unidade USB, separado do remoto que você está criptografando, e mantenha uma cópia de backup."
         },
         "modalGuard": {
             "busyTitle": "Operação em curso",

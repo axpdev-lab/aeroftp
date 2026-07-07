@@ -4981,7 +4981,8 @@
             "keyfileChoose": "Kiezen...",
             "keyfileGenerate": "Genereren...",
             "keyfileGeneratedBackup": "Sleutelbestand gegenereerd. Maak nu een back-up: verlies maakt de kluis voorgoed onopenbaar.",
-            "keyfileRepointHint": "Dit pad wijst alleen aan waar het sleutelbestand staat; het wijzigen versleutelt de kluis niet opnieuw. Een verkeerd of ontbrekend sleutelbestand weigert het ontgrendelen."
+            "keyfileRepointHint": "Dit pad wijst alleen aan waar het sleutelbestand staat; het wijzigen versleutelt de kluis niet opnieuw. Een verkeerd of ontbrekend sleutelbestand weigert het ontgrendelen.",
+            "keyfileStorageHint": "Bewaar het op een lokale schijf of USB-stick, gescheiden van de externe locatie die u versleutelt, en bewaar een back-up."
         },
         "modalGuard": {
             "busyTitle": "Bewerking bezig",

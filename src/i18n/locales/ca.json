@@ -5000,7 +5000,8 @@
             "keyfileChoose": "Tria...",
             "keyfileGenerate": "Genera...",
             "keyfileGeneratedBackup": "Fitxer de clau generat. Feu-ne una còpia ara: perdre'l fa la caixa forta inaccessible per sempre.",
-            "keyfileRepointHint": "Aquest camí només indica on és el fitxer de clau; canviar-lo no torna a xifrar la caixa forta. Un fitxer de clau erroni o absent bloqueja el desbloqueig."
+            "keyfileRepointHint": "Aquest camí només indica on és el fitxer de clau; canviar-lo no torna a xifrar la caixa forta. Un fitxer de clau erroni o absent bloqueja el desbloqueig.",
+            "keyfileStorageHint": "Deseu-lo en un disc local o una unitat USB, separat del remot que esteu xifrant, i conserveu-ne una còpia de seguretat."
         },
         "modalGuard": {
             "busyTitle": "Operació en curs",

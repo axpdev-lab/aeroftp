@@ -4981,7 +4981,8 @@
             "keyfileChoose": "Vali...",
             "keyfileGenerate": "Genereeri...",
             "keyfileGeneratedBackup": "Võtmefail genereeritud. Tehke varukoopia kohe: selle kaotamine muudab hoidla jäädavalt avamatuks.",
-            "keyfileRepointHint": "See tee näitab vaid, kus võtmefail asub; selle muutmine hoidlat ümber ei võtmesta. Vale või puuduv võtmefail keelab avamise."
+            "keyfileRepointHint": "See tee näitab vaid, kus võtmefail asub; selle muutmine hoidlat ümber ei võtmesta. Vale või puuduv võtmefail keelab avamise.",
+            "keyfileStorageHint": "Salvestage see kohalikule kettale või USB-mälupulgale, eraldi kaugserverist, mida krüpteerite, ja hoidke alles varukoopia."
         },
         "modalGuard": {
             "busyTitle": "Toiming käib",

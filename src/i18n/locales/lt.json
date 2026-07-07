@@ -4981,7 +4981,8 @@
             "keyfileChoose": "Pasirinkti...",
             "keyfileGenerate": "Generuoti...",
             "keyfileGeneratedBackup": "Rakto failas sugeneruotas. Tuoj pat pasidarykite kopiją: jį praradus saugykla užsirakins visam laikui.",
-            "keyfileRepointHint": "Šis kelias tik nurodo, kur yra rakto failas; jo keitimas saugyklos rakto nekeičia. Neteisingas ar trūkstamas rakto failas atrakinimą atmeta."
+            "keyfileRepointHint": "Šis kelias tik nurodo, kur yra rakto failas; jo keitimas saugyklos rakto nekeičia. Neteisingas ar trūkstamas rakto failas atrakinimą atmeta.",
+            "keyfileStorageHint": "Išsaugokite jį vietiniame diske arba USB atmintinėje, atskirai nuo šifruojamo nuotolinio serverio, ir laikykite atsarginę kopiją."
         },
         "modalGuard": {
             "busyTitle": "Vykdoma operacija",

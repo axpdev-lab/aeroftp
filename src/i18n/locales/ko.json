@@ -4981,7 +4981,8 @@
             "keyfileChoose": "선택...",
             "keyfileGenerate": "생성...",
             "keyfileGeneratedBackup": "키파일이 생성되었습니다. 지금 백업하세요: 분실하면 볼트는 영구히 열 수 없습니다.",
-            "keyfileRepointHint": "이 경로는 키파일의 위치만 가리키며, 변경해도 볼트의 키는 바뀌지 않습니다. 잘못되었거나 없는 키파일은 잠금 해제가 거부됩니다."
+            "keyfileRepointHint": "이 경로는 키파일의 위치만 가리키며, 변경해도 볼트의 키는 바뀌지 않습니다. 잘못되었거나 없는 키파일은 잠금 해제가 거부됩니다.",
+            "keyfileStorageHint": "암호화하는 원격 저장소와 분리하여 로컬 디스크나 USB 드라이브에 저장하고 백업 사본을 보관하세요."
         },
         "modalGuard": {
             "busyTitle": "작업 진행 중",

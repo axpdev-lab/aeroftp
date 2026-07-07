@@ -4981,7 +4981,8 @@
             "keyfileChoose": "Vybrat...",
             "keyfileGenerate": "Vygenerovat...",
             "keyfileGeneratedBackup": "Soubor klíče vygenerován. Ihned jej zálohujte: jeho ztráta trezor navždy uzamkne.",
-            "keyfileRepointHint": "Tato cesta pouze ukazuje, kde soubor klíče leží; její změna trezor nepřeklíčuje. Špatný nebo chybějící soubor klíče odemčení odmítne."
+            "keyfileRepointHint": "Tato cesta pouze ukazuje, kde soubor klíče leží; její změna trezor nepřeklíčuje. Špatný nebo chybějící soubor klíče odemčení odmítne.",
+            "keyfileStorageHint": "Uložte jej na místní disk nebo USB disk, odděleně od vzdáleného úložiště, které šifrujete, a uchovejte si záložní kopii."
         },
         "modalGuard": {
             "busyTitle": "Probíhá operace",

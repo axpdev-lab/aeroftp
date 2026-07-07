@@ -4981,7 +4981,8 @@
             "keyfileChoose": "Pilih...",
             "keyfileGenerate": "Buat...",
             "keyfileGeneratedBackup": "Berkas kunci dibuat. Cadangkan sekarang: kehilangannya membuat brankas terkunci selamanya.",
-            "keyfileRepointHint": "Jalur ini hanya menunjuk lokasi berkas kunci; mengubahnya tidak mengganti kunci brankas. Berkas kunci yang salah atau hilang menolak pembukaan."
+            "keyfileRepointHint": "Jalur ini hanya menunjuk lokasi berkas kunci; mengubahnya tidak mengganti kunci brankas. Berkas kunci yang salah atau hilang menolak pembukaan.",
+            "keyfileStorageHint": "Simpan di disk lokal atau drive USB, terpisah dari remote yang Anda enkripsi, dan simpan salinan cadangan."
         },
         "modalGuard": {
             "busyTitle": "Operasi berlangsung",

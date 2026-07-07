@@ -4981,7 +4981,8 @@
             "keyfileChoose": "Valitse...",
             "keyfileGenerate": "Luo...",
             "keyfileGeneratedBackup": "Avaintiedosto luotu. Varmuuskopioi se heti: sen katoaminen lukitsee holvin pysyvästi.",
-            "keyfileRepointHint": "Tämä polku vain osoittaa, missä avaintiedosto sijaitsee; sen muuttaminen ei vaihda holvin avainta. Väärä tai puuttuva avaintiedosto estää avauksen."
+            "keyfileRepointHint": "Tämä polku vain osoittaa, missä avaintiedosto sijaitsee; sen muuttaminen ei vaihda holvin avainta. Väärä tai puuttuva avaintiedosto estää avauksen.",
+            "keyfileStorageHint": "Tallenna se paikalliselle levylle tai USB-asemalle, erilleen etäpalvelimesta, jota salaat, ja säilytä varmuuskopio."
         },
         "modalGuard": {
             "busyTitle": "Toiminto käynnissä",

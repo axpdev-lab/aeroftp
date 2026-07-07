@@ -5000,7 +5000,8 @@
             "keyfileChoose": "Escoller...",
             "keyfileGenerate": "Xerar...",
             "keyfileGeneratedBackup": "Ficheiro de clave xerado. Faga unha copia agora: perdelo deixa a caixa forte inaccesible para sempre.",
-            "keyfileRepointHint": "Esta ruta só indica onde está o ficheiro de clave; cambiala non volve cifrar a caixa forte. Un ficheiro de clave errado ou ausente rexeita o desbloqueo."
+            "keyfileRepointHint": "Esta ruta só indica onde está o ficheiro de clave; cambiala non volve cifrar a caixa forte. Un ficheiro de clave errado ou ausente rexeita o desbloqueo.",
+            "keyfileStorageHint": "Gárdao nun disco local ou nunha unidade USB, separado do remoto que estás cifrando, e conserva unha copia de seguranza."
         },
         "modalGuard": {
             "busyTitle": "Operación en curso",

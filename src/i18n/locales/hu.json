@@ -4981,7 +4981,8 @@
             "keyfileChoose": "Kiválasztás...",
             "keyfileGenerate": "Generálás...",
             "keyfileGeneratedBackup": "Kulcsfájl létrehozva. Készítsen másolatot most: elvesztése a széfet végleg megnyithatatlanná teszi.",
-            "keyfileRepointHint": "Ez az útvonal csak azt mutatja, hol van a kulcsfájl; módosítása nem kulcsolja újra a széfet. Hibás vagy hiányzó kulcsfájl esetén a feloldás megtagadva."
+            "keyfileRepointHint": "Ez az útvonal csak azt mutatja, hol van a kulcsfájl; módosítása nem kulcsolja újra a széfet. Hibás vagy hiányzó kulcsfájl esetén a feloldás megtagadva.",
+            "keyfileStorageHint": "Mentse el helyi lemezre vagy USB-meghajtóra, a titkosított távoli tárhelytől elkülönítve, és őrizzen meg egy biztonsági másolatot."
         },
         "modalGuard": {
             "busyTitle": "Művelet folyamatban",

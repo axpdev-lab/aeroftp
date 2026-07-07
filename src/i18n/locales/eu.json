@@ -5000,7 +5000,8 @@
             "keyfileChoose": "Aukeratu...",
             "keyfileGenerate": "Sortu...",
             "keyfileGeneratedBackup": "Gako-fitxategia sortu da. Egin babeskopia orain: galtzen bada, kutxa betiko itxita geratuko da.",
-            "keyfileRepointHint": "Bide honek gako-fitxategia non dagoen baino ez du adierazten; aldatzeak ez du kutxa berriro zifratzen. Gako-fitxategi oker edo faltak desblokeoa ukatzen du."
+            "keyfileRepointHint": "Bide honek gako-fitxategia non dagoen baino ez du adierazten; aldatzeak ez du kutxa berriro zifratzen. Gako-fitxategi oker edo faltak desblokeoa ukatzen du.",
+            "keyfileStorageHint": "Gorde ezazu tokiko disko batean edo USB unitate batean, enkriptatzen ari zaren urrunekotik bereizita, eta gorde segurtasun-kopia bat."
         },
         "modalGuard": {
             "busyTitle": "Eragiketa abian",

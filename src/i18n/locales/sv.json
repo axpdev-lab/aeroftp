@@ -4981,7 +4981,8 @@
             "keyfileChoose": "Välj...",
             "keyfileGenerate": "Generera...",
             "keyfileGeneratedBackup": "Nyckelfil genererad. Säkerhetskopiera nu: förlust låser valvet för alltid.",
-            "keyfileRepointHint": "Denna sökväg pekar bara på var nyckelfilen ligger; att ändra den byter inte valvets nyckel. En fel eller saknad nyckelfil nekar upplåsningen."
+            "keyfileRepointHint": "Denna sökväg pekar bara på var nyckelfilen ligger; att ändra den byter inte valvets nyckel. En fel eller saknad nyckelfil nekar upplåsningen.",
+            "keyfileStorageHint": "Spara den på en lokal disk eller ett USB-minne, åtskild från fjärrservern du krypterar, och behåll en säkerhetskopia."
         },
         "modalGuard": {
             "busyTitle": "Åtgärd pågår",

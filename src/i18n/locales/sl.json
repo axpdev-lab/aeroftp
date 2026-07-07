@@ -4981,7 +4981,8 @@
             "keyfileChoose": "Izberi...",
             "keyfileGenerate": "Ustvari...",
             "keyfileGeneratedBackup": "Datoteka ključa ustvarjena. Takoj naredite kopijo: njena izguba trezor za vedno zaklene.",
-            "keyfileRepointHint": "Ta pot samo kaže, kje leži datoteka ključa; njena sprememba ne prešifrira trezorja. Napačna ali manjkajoča datoteka ključa odklepanje zavrne."
+            "keyfileRepointHint": "Ta pot samo kaže, kje leži datoteka ključa; njena sprememba ne prešifrira trezorja. Napačna ali manjkajoča datoteka ključa odklepanje zavrne.",
+            "keyfileStorageHint": "Shranite ga na lokalni disk ali USB ključ, ločeno od oddaljenega strežnika, ki ga šifrirate, in hranite varnostno kopijo."
         },
         "modalGuard": {
             "busyTitle": "Operacija poteka",

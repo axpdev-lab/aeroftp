@@ -5000,7 +5000,8 @@
             "keyfileChoose": "Velg...",
             "keyfileGenerate": "Generer...",
             "keyfileGeneratedBackup": "Nøkkelfil generert. Ta sikkerhetskopi nå: mistes den, låses hvelvet for alltid.",
-            "keyfileRepointHint": "Denne stien peker bare på hvor nøkkelfilen ligger; å endre den bytter ikke hvelvets nøkkel. En feil eller manglende nøkkelfil avviser opplåsingen."
+            "keyfileRepointHint": "Denne stien peker bare på hvor nøkkelfilen ligger; å endre den bytter ikke hvelvets nøkkel. En feil eller manglende nøkkelfil avviser opplåsingen.",
+            "keyfileStorageHint": "Lagre den på en lokal disk eller USB-enhet, atskilt fra fjernlageret du krypterer, og oppbevar en sikkerhetskopi."
         },
         "modalGuard": {
             "busyTitle": "Operasjon pågår",

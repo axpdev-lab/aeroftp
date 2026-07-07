@@ -5000,7 +5000,8 @@
             "keyfileChoose": "Dewis...",
             "keyfileGenerate": "Cynhyrchu...",
             "keyfileGeneratedBackup": "Ffeil allwedd wedi'i chynhyrchu. Cadwch gopi wrth gefn nawr: mae ei cholli yn cloi'r gladdgell am byth.",
-            "keyfileRepointHint": "Dim ond dangos lle mae'r ffeil allwedd y mae'r llwybr hwn; nid yw ei newid yn ail-allweddu'r gladdgell. Bydd ffeil allwedd anghywir neu goll yn gwrthod datgloi."
+            "keyfileRepointHint": "Dim ond dangos lle mae'r ffeil allwedd y mae'r llwybr hwn; nid yw ei newid yn ail-allweddu'r gladdgell. Bydd ffeil allwedd anghywir neu goll yn gwrthod datgloi.",
+            "keyfileStorageHint": "Cadwch ef ar ddisg lleol neu yriant USB, ar wahân i'r pell rydych chi'n ei amgryptio, a chadwch gopi wrth gefn."
         },
         "modalGuard": {
             "busyTitle": "Gweithrediad ar y gweill",

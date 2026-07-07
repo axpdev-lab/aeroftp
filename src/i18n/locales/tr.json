@@ -4981,7 +4981,8 @@
             "keyfileChoose": "Seç...",
             "keyfileGenerate": "Oluştur...",
             "keyfileGeneratedBackup": "Anahtar dosyası oluşturuldu. Hemen yedekleyin: kaybı kasayı sonsuza dek kilitler.",
-            "keyfileRepointHint": "Bu yol yalnızca anahtar dosyasının nerede olduğunu gösterir; değiştirmek kasanın anahtarını değiştirmez. Yanlış veya eksik anahtar dosyası kilit açmayı reddeder."
+            "keyfileRepointHint": "Bu yol yalnızca anahtar dosyasının nerede olduğunu gösterir; değiştirmek kasanın anahtarını değiştirmez. Yanlış veya eksik anahtar dosyası kilit açmayı reddeder.",
+            "keyfileStorageHint": "Şifrelediğiniz uzak sunucudan ayrı olarak yerel diskte veya USB sürücüde saklayın ve bir yedek kopyasını tutun."
         },
         "modalGuard": {
             "busyTitle": "İşlem sürüyor",

@@ -2809,20 +2809,22 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                 value={aeroCryptKeyfilePath}
                                                 readOnly
                                                 placeholder={t('aerocryptProfile.keyfilePlaceholder')}
-                                                className="flex-1 px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
+                                                className="flex-1 min-w-0 px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm truncate"
+                                                title={aeroCryptKeyfilePath || undefined}
                                                 aria-label={t('aerocryptProfile.keyfileLabel')}
                                             />
                                             <button
                                                 type="button"
                                                 onClick={handleChooseKeyfile}
-                                                className="px-3 py-2 rounded-lg text-xs font-medium border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+                                                className="shrink-0 whitespace-nowrap px-3 py-2 rounded-lg text-xs font-medium border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
                                             >
                                                 {t('aerocryptProfile.keyfileChoose')}
                                             </button>
                                             <button
                                                 type="button"
                                                 onClick={handleGenerateKeyfile}
-                                                className="px-3 py-2 rounded-lg text-xs font-medium border border-emerald-400/60 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/10"
+                                                title={t('aerocryptProfile.keyfileStorageHint')}
+                                                className="shrink-0 whitespace-nowrap px-3 py-2 rounded-lg text-xs font-medium border border-emerald-400/60 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/10"
                                             >
                                                 {t('aerocryptProfile.keyfileGenerate')}
                                             </button>

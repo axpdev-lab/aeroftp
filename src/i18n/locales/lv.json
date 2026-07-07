@@ -4981,7 +4981,8 @@
             "keyfileChoose": "Izvēlēties...",
             "keyfileGenerate": "Ģenerēt...",
             "keyfileGeneratedBackup": "Atslēgas fails izveidots. Izveidojiet kopiju tūlīt: tā zaudēšana uz visiem laikiem aizslēgs seifu.",
-            "keyfileRepointHint": "Šis ceļš tikai norāda, kur atrodas atslēgas fails; tā maiņa nepāršifrē seifu. Nepareizs vai trūkstošs atslēgas fails noraida atslēgšanu."
+            "keyfileRepointHint": "Šis ceļš tikai norāda, kur atrodas atslēgas fails; tā maiņa nepāršifrē seifu. Nepareizs vai trūkstošs atslēgas fails noraida atslēgšanu.",
+            "keyfileStorageHint": "Saglabājiet to lokālajā diskā vai USB diskā, atsevišķi no attālā servera, ko šifrējat, un saglabājiet dublējumkopiju."
         },
         "modalGuard": {
             "busyTitle": "Notiek darbība",

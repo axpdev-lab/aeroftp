@@ -4996,6 +4996,7 @@
             "keyfileLabel": "Keyfile (optional)",
             "keyfilePlaceholder": "No keyfile: password only",
             "keyfileHint": "Optional second factor mixed into the encryption key: the vault opens only with the password AND this file. Back it up: losing it makes the vault unopenable.",
+            "keyfileStorageHint": "Store it on local disk or a USB drive, kept separate from the remote you are encrypting, and keep a backup copy.",
             "keyfileChoose": "Choose...",
             "keyfileGenerate": "Generate...",
             "keyfileGeneratedBackup": "Keyfile generated. Back it up now: losing it makes the vault permanently unopenable.",

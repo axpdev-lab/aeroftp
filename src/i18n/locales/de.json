@@ -4981,7 +4981,8 @@
             "keyfileChoose": "Auswählen...",
             "keyfileGenerate": "Generieren...",
             "keyfileGeneratedBackup": "Schlüsseldatei erzeugt. Sichern Sie sie jetzt: ihr Verlust macht den Tresor dauerhaft unöffenbar.",
-            "keyfileRepointHint": "Dieser Pfad zeigt nur, wo die Schlüsseldatei liegt; ihn zu ändern verschlüsselt den Tresor nicht neu. Eine falsche oder fehlende Schlüsseldatei verweigert das Entsperren."
+            "keyfileRepointHint": "Dieser Pfad zeigt nur, wo die Schlüsseldatei liegt; ihn zu ändern verschlüsselt den Tresor nicht neu. Eine falsche oder fehlende Schlüsseldatei verweigert das Entsperren.",
+            "keyfileStorageHint": "Speichern Sie sie auf einer lokalen Festplatte oder einem USB-Stick, getrennt von dem Remote, das Sie verschlüsseln, und bewahren Sie eine Sicherungskopie auf."
         },
         "modalGuard": {
             "busyTitle": "Vorgang läuft",
