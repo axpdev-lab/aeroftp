@@ -416,10 +416,10 @@ import { adaptFileComparisons } from './utils/recursiveCompare';
 import { useTranslation } from './i18n';
 
 // Components
-import { ConfirmDialog, InputDialog, SyncNavDialog, PropertiesDialog, FileProperties, MultiFilePropertiesDialog, MultiFileProperties, MasterPasswordSetupDialog } from './components/Dialogs';
+import { ConfirmDialog, InputDialog, ArchivePasswordDialog, SyncNavDialog, PropertiesDialog, FileProperties, MultiFilePropertiesDialog, MultiFileProperties, MasterPasswordSetupDialog } from './components/Dialogs';
 import { TransferToastContainer, dispatchTransferToast, reopenTransferToast } from './components/Transfer/TransferToastContainer';
 import { runExtractWithToast } from './utils/extractToast';
-import { dispatchGeneralExtract } from './utils/extractOrchestrator';
+import { dispatchGeneralExtract, isWrongPasswordError } from './utils/extractOrchestrator';
 import { formatExtractDetails, formatCompressDetails } from './utils/archiveSizeReport';
 import { GlobalTooltip } from './components/GlobalTooltip';
 import { TransferProgressBar } from './components/TransferProgressBar';
@@ -885,6 +885,8 @@ const App: React.FC = () => {
     onContinue: () => void;
   } | null>(null);
   const [inputDialog, setInputDialog] = useState<{ title: string; defaultValue: string; onConfirm: (v: string) => void; isPassword?: boolean; placeholder?: string; description?: string } | null>(null);
+  // Dedicated encrypted-archive unlock mini-modal (zip/7z/rar); AeroVault keeps its own.
+  const [archivePasswordDialog, setArchivePasswordDialog] = useState<{ archiveName: string; format: string; cipher?: string; onSubmit: (password: string) => Promise<void> } | null>(null);
   // F-012 W1/W2: post-import summary modal (restart prompt + cross-machine warning).
   const [keystoreImportResult, setKeystoreImportResult] = useState<KeystoreImportResult | null>(null);
   const [zohoShareLinksDialog, setZohoShareLinksDialog] = useState<{ fileName: string; links: Array<{ id: string; attributes: Record<string, unknown> }> } | null>(null);
@@ -12474,33 +12476,39 @@ interface UpdateVerificationInfo {
                 ? await invoke<boolean>('is_rar_encrypted', { archivePath: file.path })
                 : false;
           if (isEncrypted) {
-            setInputDialog({
-              title: t('contextMenu.passwordRequired'),
-              defaultValue: '',
-              isPassword: true,
-              onConfirm: async (password: string) => {
-                setInputDialog(null);
-                if (!password) {
-                  notify.warning(t('contextMenu.passwordRequired'), t('contextMenu.enterArchivePassword'));
-                  return;
-                }
+            // tar is never encrypted, so this branch is zip/7z/rar only.
+            const generalKind = is7zArchive ? 'sevenz' : isRarArchive ? 'rar' : 'zip';
+            const archiveFormat = is7zArchive ? '7z' : isRarArchive ? 'rar' : 'zip';
+            // Dedicated draggable unlock modal: it owns the retry lifecycle, so a
+            // wrong password stays inline (no flash) and the Decrypt button spins
+            // while verifying. onSubmit resolves on success (the modal closes) and
+            // throws an Error whose message is shown inline on failure.
+            setArchivePasswordDialog({
+              archiveName: file.name,
+              format: archiveFormat,
+              onSubmit: async (password: string) => {
+                const dest = createSubfolder ? `📁 ${file.name.replace(/\.[^.]+$/, '')}/` : currentLocalPath;
+                notify.info(t('contextMenu.extracting'), file.name);
+                const logId = activityLog.log('INFO', `Extracting ${file.name}${createSubfolder ? ` → ${dest}` : ''}...`, 'running');
+                const toastOpts = { filename: file.name, archiveBytes: file.size };
                 try {
-                  const dest = createSubfolder ? `📁 ${file.name.replace(/\.[^.]+$/, '')}/` : currentLocalPath;
-                  notify.info(t('contextMenu.extracting'), file.name);
-                  const logId = activityLog.log('INFO', `Extracting ${file.name}${createSubfolder ? ` → ${dest}` : ''}...`, 'running');
-                  const toastOpts = { filename: file.name, archiveBytes: file.size };
-                  // tar is never encrypted, so this branch is zip/7z/rar only.
-                  const generalKind = is7zArchive ? 'sevenz' : isRarArchive ? 'rar' : 'zip';
                   const { extractedTotal } = await dispatchGeneralExtract({ kind: generalKind, archivePath: file.path, outputDir: currentLocalPath, createSubfolder, password, toastOpts });
                   activityLog.updateEntry(logId, { status: 'success', message: `Extracted ${file.name}${createSubfolder ? ` → ${dest}` : ''}`, details: formatExtractDetails(file.size ?? 0, extractedTotal) });
                   notify.success(t('toast.extracted'), t('toast.extractedTo', { dest }));
                   await loadLocalFiles(currentLocalPath);
                 } catch (err) {
-                  activityLog.log('ERROR', `Extraction failed: ${String(err)}`, 'error');
-                  notify.error(t('contextMenu.extractionFailed'), t('contextMenu.wrongPassword'));
+                  activityLog.updateEntry(logId, { status: 'error', message: `Extraction failed: ${String(err)}` });
+                  // Wrong password stays inline for retry; a real failure surfaces
+                  // its true message inline too (the user can cancel).
+                  throw new Error(isWrongPasswordError(err) ? t('contextMenu.wrongPassword') : String(err));
                 }
-              }
+              },
             });
+            // Fill the cipher badge with the real detected algorithm (best effort:
+            // no-op until the backend command exists or on any detection failure).
+            void invoke<string>('detect_archive_cipher', { archivePath: file.path, kind: generalKind })
+              .then((c) => setArchivePasswordDialog((prev) => (prev && prev.archiveName === file.name ? { ...prev, cipher: c } : prev)))
+              .catch(() => { /* detection unavailable: format badge only */ });
             return;
           }
           const dest = createSubfolder ? `📁 ${file.name.replace(/\.[^.]+$/, '')}/` : currentLocalPath;
@@ -13434,6 +13442,7 @@ interface UpdateVerificationInfo {
         )}
 
         {inputDialog && <InputDialog title={inputDialog.title} defaultValue={inputDialog.defaultValue} onConfirm={inputDialog.onConfirm} onCancel={() => setInputDialog(null)} isPassword={inputDialog.isPassword} placeholder={inputDialog.placeholder} description={inputDialog.description} />}
+        {archivePasswordDialog && <ArchivePasswordDialog archiveName={archivePasswordDialog.archiveName} format={archivePasswordDialog.format} cipher={archivePasswordDialog.cipher} onSubmit={archivePasswordDialog.onSubmit} onClose={() => setArchivePasswordDialog(null)} />}
         {zohoShareLinksDialog && (
           <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50" onClick={() => setZohoShareLinksDialog(null)}>
             <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-[480px] max-h-[70vh] flex flex-col" onClick={e => e.stopPropagation()}>

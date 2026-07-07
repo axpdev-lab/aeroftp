@@ -437,7 +437,9 @@
             "privacyEllipsis": "Pribatutasuna...",
             "openWithAeroVaultZip": "Ireki AeroVault Zip-ekin",
             "importToAeroFTP": "Inportatu AeroFTPra",
-            "permissionsEllipsis": "Baimenak..."
+            "permissionsEllipsis": "Baimenak...",
+            "decrypt": "Deszifratu",
+            "zipCryptoLegacy": "ZipCrypto zaharra: enkriptatze ahula, bateragarritasunerako mantendua."
         },
         "transfer": {
             "transferring": "Transferitzen...",

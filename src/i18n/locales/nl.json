@@ -437,7 +437,9 @@
             "privacyEllipsis": "Privacy...",
             "openWithAeroVaultZip": "Openen met AeroVault Zip",
             "importToAeroFTP": "Importeren in AeroFTP",
-            "permissionsEllipsis": "Machtigingen..."
+            "permissionsEllipsis": "Machtigingen...",
+            "decrypt": "Ontsleutelen",
+            "zipCryptoLegacy": "Verouderde ZipCrypto: zwakke versleuteling, behouden voor compatibiliteit."
         },
         "transfer": {
             "transferring": "Overdragen...",

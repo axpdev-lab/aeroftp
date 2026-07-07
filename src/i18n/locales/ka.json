@@ -437,7 +437,9 @@
             "privacyEllipsis": "კონფიდენციალურობა...",
             "openWithAeroVaultZip": "გახსნა AeroVault Zip-ით",
             "importToAeroFTP": "AeroFTP-ში იმპორტი",
-            "permissionsEllipsis": "ნებართვები..."
+            "permissionsEllipsis": "ნებართვები...",
+            "decrypt": "გაშიფვრა",
+            "zipCryptoLegacy": "მოძველებული ZipCrypto: სუსტი დაშიფვრა, შენარჩუნებულია თავსებადობისთვის."
         },
         "transfer": {
             "transferring": "გადაცემა...",

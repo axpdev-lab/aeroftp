@@ -767,6 +767,8 @@
             "encryptionOptional": "Imposta Password (AES-256)",
             "encryptionOptionalHint": "Lascia vuoto per nessuna crittografia",
             "enterArchivePassword": "Questo archivio e' crittografato. Inserisci la password:",
+            "decrypt": "Decifra",
+            "zipCryptoLegacy": "ZipCrypto legacy: cifratura debole, mantenuta per compatibilita'.",
             "extract": "Estrai",
             "extract7zHere": "Estrai 7z qui",
             "extractHere": "Estrai qui",

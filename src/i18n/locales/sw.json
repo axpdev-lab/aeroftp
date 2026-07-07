@@ -437,7 +437,9 @@
             "privacyEllipsis": "Faragha...",
             "openWithAeroVaultZip": "Fungua kwa AeroVault Zip",
             "importToAeroFTP": "Ingiza kwenye AeroFTP",
-            "permissionsEllipsis": "Ruhusa..."
+            "permissionsEllipsis": "Ruhusa...",
+            "decrypt": "Simbua",
+            "zipCryptoLegacy": "ZipCrypto ya zamani: usimbaji dhaifu, umehifadhiwa kwa uoanifu."
         },
         "transfer": {
             "transferring": "Inahamisha...",

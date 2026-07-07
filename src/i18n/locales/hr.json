@@ -437,7 +437,9 @@
             "privacyEllipsis": "Privatnost...",
             "openWithAeroVaultZip": "Otvori s AeroVault Zip",
             "importToAeroFTP": "Uvezi u AeroFTP",
-            "permissionsEllipsis": "Dozvole..."
+            "permissionsEllipsis": "Dozvole...",
+            "decrypt": "Dešifriraj",
+            "zipCryptoLegacy": "Naslijeđeni ZipCrypto: slaba enkripcija, zadržana radi kompatibilnosti."
         },
         "transfer": {
             "transferring": "Prijenos...",

@@ -437,7 +437,9 @@
             "privacyEllipsis": "Yksityisyys...",
             "openWithAeroVaultZip": "Avaa sovelluksella AeroVault Zip",
             "importToAeroFTP": "Tuo AeroFTP:hen",
-            "permissionsEllipsis": "Käyttöoikeudet..."
+            "permissionsEllipsis": "Käyttöoikeudet...",
+            "decrypt": "Pura salaus",
+            "zipCryptoLegacy": "Vanha ZipCrypto: heikko salaus, säilytetty yhteensopivuuden vuoksi."
         },
         "transfer": {
             "transferring": "Siirretään...",

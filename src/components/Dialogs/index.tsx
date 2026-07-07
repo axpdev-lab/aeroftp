@@ -207,6 +207,129 @@ export const InputDialog: React.FC<InputDialogProps> = ({
     );
 };
 
+// ============ Archive Password Dialog (encrypted zip / 7z / rar) ============
+// A dedicated draggable mini-modal for unlocking an encrypted general archive.
+// Unlike the generic InputDialog it owns the verify lifecycle: a wrong password
+// stays IN the same modal with an inline error (no close/reopen flash), the
+// Decrypt button shows a spinner while verifying, and the title bar names the
+// archive plus its real format / detected cipher. AeroVault uses its own dialog.
+interface ArchivePasswordDialogProps {
+    /** Archive file name, shown in the draggable title bar. */
+    archiveName: string;
+    /** Short format tag for the badge, e.g. "zip", "7z", "rar". */
+    format: string;
+    /** Real detected cipher for the badge, e.g. "AES-256", "ZipCrypto". Absent
+     *  until detection resolves (the badge simply does not render meanwhile). */
+    cipher?: string;
+    /** Runs the decrypt/extract. Resolve = success (dialog closes); throw an
+     *  Error whose message is shown inline so the user retries without a flash. */
+    onSubmit: (password: string) => Promise<void>;
+    onClose: () => void;
+}
+
+/** Format a detected cipher token for the badge, adding "-bit" where it applies
+ *  (AES variants) and flagging legacy ZipCrypto as weak so it reads amber, not
+ *  green. Keeps the house "256-bit" wording consistent with the provider badges. */
+function formatArchiveCipher(cipher: string): { label: string; strong: boolean } {
+    const aes = /^AES-(\d+)$/.exec(cipher);
+    if (aes) return { label: `AES ${aes[1]}-bit`, strong: true };
+    if (cipher === 'AES') return { label: 'AES', strong: true };
+    if (cipher.toLowerCase() === 'zipcrypto') return { label: 'ZipCrypto', strong: false };
+    return { label: cipher, strong: true };
+}
+
+export const ArchivePasswordDialog: React.FC<ArchivePasswordDialogProps> = ({ archiveName, format, cipher, onSubmit, onClose }) => {
+    const t = useTranslation();
+    const modalDrag = useDraggableModal();
+    const [password, setPassword] = useState('');
+    const [showPassword, setShowPassword] = useState(false);
+    const [verifying, setVerifying] = useState(false);
+    const [error, setError] = useState('');
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!password || verifying) return;
+        setVerifying(true);
+        setError('');
+        try {
+            await onSubmit(password);
+            onClose();
+        } catch (err) {
+            // Stay mounted: surface the error inline and let the user retry. No
+            // close/reopen flash; the input keeps focus for the next attempt.
+            setError(err instanceof Error ? err.message : String(err));
+            setVerifying(false);
+        }
+    };
+
+    return (
+        <div
+            className="fixed inset-0 z-50 flex items-start justify-center pt-[18vh] bg-black/50 backdrop-blur-sm"
+            onClick={(e) => { if (e.target === e.currentTarget && !verifying) onClose(); }}
+        >
+            <form
+                {...modalDrag.panelProps}
+                onSubmit={handleSubmit}
+                className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl border border-gray-200 dark:border-gray-700 w-full max-w-sm mx-4 overflow-hidden animate-scale-in"
+            >
+                {/* Draggable title bar: names the archive being unlocked + close. */}
+                <div
+                    {...modalDrag.dragHandleProps}
+                    className="flex items-center gap-2 px-3 py-2 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60 cursor-grab active:cursor-grabbing"
+                >
+                    <Lock size={14} className="text-sky-500 shrink-0 pointer-events-none" />
+                    <span className="text-xs font-semibold text-gray-700 dark:text-gray-200 truncate pointer-events-none" title={archiveName}>{archiveName}</span>
+                    <button type="button" onClick={onClose} disabled={verifying} aria-label={t('common.close')} className="ml-auto shrink-0 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 p-0.5 rounded disabled:opacity-40">
+                        <X size={15} />
+                    </button>
+                </div>
+
+                <div className="p-4 space-y-3">
+                    {/* Real format + detected-cipher badges (cipher is filled once
+                        backend detection resolves; weak ZipCrypto reads amber). */}
+                    <div className="flex items-center gap-1.5">
+                        <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300">{format}</span>
+                        {cipher && (() => {
+                            const c = formatArchiveCipher(cipher);
+                            return (
+                                <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold tracking-wide ${c.strong ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300' : 'bg-amber-500/15 text-amber-700 dark:text-amber-300'}`} title={c.strong ? undefined : t('contextMenu.zipCryptoLegacy')}>{c.label}</span>
+                            );
+                        })()}
+                    </div>
+                    <p className="text-xs text-gray-600 dark:text-gray-400 flex items-center gap-1.5">
+                        <KeyRound size={13} className="shrink-0" /> {t('contextMenu.enterArchivePassword')}
+                    </p>
+                    <div className="relative">
+                        <input
+                            type={showPassword ? 'text' : 'password'}
+                            value={password}
+                            autoFocus
+                            disabled={verifying}
+                            onChange={(e) => { setPassword(e.target.value); if (error) setError(''); }}
+                            placeholder={t('contextMenu.enterArchivePassword')}
+                            className={`w-full px-3 py-2 pr-9 text-sm rounded-md border bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 outline-none focus:ring-2 ${error ? 'border-red-500 dark:border-red-500 focus:ring-red-500' : 'border-gray-300 dark:border-gray-600 focus:ring-sky-500'}`}
+                            aria-invalid={error ? true : undefined}
+                        />
+                        <button type="button" onClick={() => setShowPassword((v) => !v)} tabIndex={-1} aria-label={showPassword ? t('extractWindow.hidePassword') : t('extractWindow.showPassword')} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
+                            {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                        </button>
+                    </div>
+                    {error && <p className="text-xs text-red-500" role="alert">{error}</p>}
+                    <div className="flex justify-end gap-2 pt-1">
+                        <button type="button" onClick={onClose} disabled={verifying} className="px-3 py-1.5 text-sm rounded-md text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-40">
+                            {t('common.cancel')}
+                        </button>
+                        <button type="submit" disabled={!password || verifying} className="px-3 py-1.5 text-sm rounded-md bg-sky-500 text-white hover:bg-sky-600 disabled:opacity-50 flex items-center gap-1.5">
+                            {verifying && <Loader2 size={14} className="animate-spin" />}
+                            {t('contextMenu.decrypt')}
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    );
+};
+
 // ============ Sync Navigation Choice Dialog ============
 interface SyncNavDialogProps {
     missingPath: string;

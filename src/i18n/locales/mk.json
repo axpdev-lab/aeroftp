@@ -437,7 +437,9 @@
             "privacyEllipsis": "Приватност...",
             "openWithAeroVaultZip": "Отвори со AeroVault Zip",
             "importToAeroFTP": "Увези во AeroFTP",
-            "permissionsEllipsis": "Дозволи..."
+            "permissionsEllipsis": "Дозволи...",
+            "decrypt": "Дешифрирај",
+            "zipCryptoLegacy": "Наследен ZipCrypto: слаба енкрипција, задржана заради компатибилност."
         },
         "transfer": {
             "transferring": "Се пренесува...",

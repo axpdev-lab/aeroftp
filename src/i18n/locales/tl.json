@@ -437,7 +437,9 @@
             "privacyEllipsis": "Privacy...",
             "openWithAeroVaultZip": "Buksan gamit ang AeroVault Zip",
             "importToAeroFTP": "I-import sa AeroFTP",
-            "permissionsEllipsis": "Mga pahintulot..."
+            "permissionsEllipsis": "Mga pahintulot...",
+            "decrypt": "I-decrypt",
+            "zipCryptoLegacy": "Lumang ZipCrypto: mahinang pag-encrypt, itinago para sa pagkakatugma."
         },
         "transfer": {
             "transferring": "Naglilipat...",

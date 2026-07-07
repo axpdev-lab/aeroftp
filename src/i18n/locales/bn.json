@@ -437,7 +437,9 @@
             "privacyEllipsis": "গোপনীয়তা...",
             "openWithAeroVaultZip": "AeroVault Zip দিয়ে খুলুন",
             "importToAeroFTP": "AeroFTP-তে ইম্পোর্ট করুন",
-            "permissionsEllipsis": "অনুমতি..."
+            "permissionsEllipsis": "অনুমতি...",
+            "decrypt": "ডিক্রিপ্ট করুন",
+            "zipCryptoLegacy": "লিগ্যাসি ZipCrypto: দুর্বল এনক্রিপশন, সামঞ্জস্যের জন্য রাখা হয়েছে।"
         },
         "transfer": {
             "transferring": "স্থানান্তর করা হচ্ছে...",

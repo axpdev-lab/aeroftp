@@ -437,7 +437,9 @@
             "privacyEllipsis": "Privatliv...",
             "openWithAeroVaultZip": "Åbn med AeroVault Zip",
             "importToAeroFTP": "Importer til AeroFTP",
-            "permissionsEllipsis": "Tilladelser..."
+            "permissionsEllipsis": "Tilladelser...",
+            "decrypt": "Dekryptér",
+            "zipCryptoLegacy": "Ældre ZipCrypto: svag kryptering, bevaret af hensyn til kompatibilitet."
         },
         "transfer": {
             "transferring": "Overfører...",

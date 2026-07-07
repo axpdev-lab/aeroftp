@@ -437,7 +437,9 @@
             "privacyEllipsis": "Privatumas...",
             "openWithAeroVaultZip": "Atidaryti su AeroVault Zip",
             "importToAeroFTP": "Importuoti į AeroFTP",
-            "permissionsEllipsis": "Leidimai..."
+            "permissionsEllipsis": "Leidimai...",
+            "decrypt": "Iššifruoti",
+            "zipCryptoLegacy": "Senasis ZipCrypto: silpnas šifravimas, paliktas dėl suderinamumo."
         },
         "transfer": {
             "transferring": "Perduodama...",

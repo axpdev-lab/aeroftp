@@ -437,7 +437,9 @@
             "privacyEllipsis": "プライバシー…",
             "openWithAeroVaultZip": "AeroVault Zip で開く",
             "importToAeroFTP": "AeroFTPにインポート",
-            "permissionsEllipsis": "アクセス権..."
+            "permissionsEllipsis": "アクセス権...",
+            "decrypt": "復号",
+            "zipCryptoLegacy": "レガシー ZipCrypto: 弱い暗号化、互換性のために保持されています。"
         },
         "transfer": {
             "transferring": "転送中...",

@@ -437,7 +437,9 @@
             "privacyEllipsis": "Privasi...",
             "openWithAeroVaultZip": "Buka dengan AeroVault Zip",
             "importToAeroFTP": "Impor ke AeroFTP",
-            "permissionsEllipsis": "Izin..."
+            "permissionsEllipsis": "Izin...",
+            "decrypt": "Dekripsi",
+            "zipCryptoLegacy": "ZipCrypto lama: enkripsi lemah, dipertahankan demi kompatibilitas."
         },
         "transfer": {
             "transferring": "Mentransfer...",

@@ -437,7 +437,9 @@
             "privacyEllipsis": "गोपनीयता...",
             "openWithAeroVaultZip": "AeroVault Zip से खोलें",
             "importToAeroFTP": "AeroFTP में आयात करें",
-            "permissionsEllipsis": "अनुमतियाँ..."
+            "permissionsEllipsis": "अनुमतियाँ...",
+            "decrypt": "डिक्रिप्ट करें",
+            "zipCryptoLegacy": "लीगेसी ZipCrypto: कमज़ोर एन्क्रिप्शन, संगतता के लिए रखा गया।"
         },
         "transfer": {
             "transferring": "स्थानांतरित हो रहा है...",

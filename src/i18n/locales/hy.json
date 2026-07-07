@@ -437,7 +437,9 @@
             "privacyEllipsis": "Գաղտնիություն...",
             "openWithAeroVaultZip": "Բացել AeroVault Zip-ով",
             "importToAeroFTP": "Ներմուծել AeroFTP",
-            "permissionsEllipsis": "Թույլտվություններ..."
+            "permissionsEllipsis": "Թույլտվություններ...",
+            "decrypt": "Վերծանել",
+            "zipCryptoLegacy": "Հին ZipCrypto. թույլ գաղտնագրում, պահպանված համատեղելիության համար։"
         },
         "transfer": {
             "transferring": "Փոխանցում...",

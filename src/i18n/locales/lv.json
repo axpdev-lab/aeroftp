@@ -437,7 +437,9 @@
             "privacyEllipsis": "Privātums...",
             "openWithAeroVaultZip": "Atvērt ar AeroVault Zip",
             "importToAeroFTP": "Importēt uz AeroFTP",
-            "permissionsEllipsis": "Atļaujas..."
+            "permissionsEllipsis": "Atļaujas...",
+            "decrypt": "Atšifrēt",
+            "zipCryptoLegacy": "Mantotais ZipCrypto: vāja šifrēšana, saglabāta saderības dēļ."
         },
         "transfer": {
             "transferring": "Pārsūta...",

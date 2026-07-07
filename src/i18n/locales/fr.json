@@ -437,7 +437,9 @@
             "privacyEllipsis": "Confidentialité...",
             "openWithAeroVaultZip": "Ouvrir avec AeroVault Zip",
             "importToAeroFTP": "Importer dans AeroFTP",
-            "permissionsEllipsis": "Autorisations..."
+            "permissionsEllipsis": "Autorisations...",
+            "decrypt": "Déchiffrer",
+            "zipCryptoLegacy": "ZipCrypto hérité : chiffrement faible, conservé pour compatibilité."
         },
         "transfer": {
             "transferring": "Transfert en cours...",

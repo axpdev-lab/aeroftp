@@ -437,7 +437,9 @@
             "privacyEllipsis": "隐私…",
             "openWithAeroVaultZip": "用 AeroVault Zip 打开",
             "importToAeroFTP": "导入到 AeroFTP",
-            "permissionsEllipsis": "权限…"
+            "permissionsEllipsis": "权限…",
+            "decrypt": "解密",
+            "zipCryptoLegacy": "旧版 ZipCrypto：加密强度弱，为兼容性保留。"
         },
         "transfer": {
             "transferring": "传输中...",

@@ -437,7 +437,9 @@
             "privacyEllipsis": "ឯកជនភាព...",
             "openWithAeroVaultZip": "បើកជាមួយ AeroVault Zip",
             "importToAeroFTP": "នាំចូលទៅ AeroFTP",
-            "permissionsEllipsis": "ការអនុញ្ញាត..."
+            "permissionsEllipsis": "ការអនុញ្ញាត...",
+            "decrypt": "ឌិគ្រីប",
+            "zipCryptoLegacy": "ZipCrypto ចាស់៖ ការអ៊ិនគ្រីបខ្សោយ រក្សាទុកសម្រាប់ភាពឆបគ្នា។"
         },
         "transfer": {
             "transferring": "កំពុងផ្ទេរ...",

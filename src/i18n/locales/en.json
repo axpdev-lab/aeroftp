@@ -1412,6 +1412,8 @@
             "encryptionOptional": "Set Password (AES-256)",
             "encryptionOptionalHint": "Leave empty for no encryption",
             "enterArchivePassword": "This archive is encrypted. Enter password:",
+            "decrypt": "Decrypt",
+            "zipCryptoLegacy": "Legacy ZipCrypto: weak encryption, kept for compatibility.",
             "extract": "Extract",
             "extract7zHere": "Extract 7z Here",
             "extractHere": "Extract Here",

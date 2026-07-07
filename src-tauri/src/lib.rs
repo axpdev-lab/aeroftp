@@ -8160,6 +8160,116 @@ async fn is_zip_encrypted(archive_path: String) -> Result<bool, String> {
     Ok(false)
 }
 
+/// Detect the real encryption cipher of an already-known-encrypted general
+/// archive, for the unlock dialog badge. Returns a short canonical token the
+/// frontend formats and colors: `AES-256` / `AES-192` / `AES-128` (strong) or
+/// `ZipCrypto` (legacy, weak). Best-effort: the caller shows only the format
+/// badge when this errors, so a detection miss never blocks the unlock.
+#[tauri::command]
+async fn detect_archive_cipher(archive_path: String, kind: String) -> Result<String, String> {
+    match kind.as_str() {
+        // 7z encryption is AES-256 (AES-256-CBC) only, by format.
+        "sevenz" => Ok("AES-256".to_string()),
+        "rar" => detect_rar_cipher(&archive_path),
+        "zip" => detect_zip_cipher(&archive_path),
+        other => Err(format!(
+            "unsupported archive kind for cipher detection: {other}"
+        )),
+    }
+}
+
+/// RAR cipher by archive-signature version: RAR5 uses AES-256, legacy RAR4 uses
+/// AES-128. The caller only opens this for an already-encrypted archive.
+fn detect_rar_cipher(path: &str) -> Result<String, String> {
+    use std::io::Read;
+    let mut f = std::fs::File::open(path).map_err(|e| format!("open: {e}"))?;
+    let mut sig = [0u8; 8];
+    f.read_exact(&mut sig).map_err(|e| format!("read: {e}"))?;
+    const RAR5: [u8; 7] = [0x52, 0x61, 0x72, 0x21, 0x1A, 0x07, 0x01];
+    const RAR4: [u8; 7] = [0x52, 0x61, 0x72, 0x21, 0x1A, 0x07, 0x00];
+    if sig[..7] == RAR5 {
+        Ok("AES-256".to_string())
+    } else if sig[..7] == RAR4 {
+        Ok("AES-128".to_string())
+    } else {
+        // Unknown RAR variant: still AES, do not claim a strength we did not read.
+        Ok("AES".to_string())
+    }
+}
+
+/// ZIP cipher by parsing the central directory of the first encrypted entry:
+/// WinZip AES (compression method 99) carries a 0x9901 extra field whose
+/// strength byte gives 128/192/256; a plain encrypted entry is legacy ZipCrypto.
+fn detect_zip_cipher(path: &str) -> Result<String, String> {
+    let data = std::fs::read(path).map_err(|e| format!("read: {e}"))?;
+    let eocd = zip_find_eocd(&data).ok_or("no end-of-central-directory record")?;
+    if eocd + 20 > data.len() {
+        return Err("truncated EOCD".to_string());
+    }
+    let entries = u16::from_le_bytes([data[eocd + 10], data[eocd + 11]]) as usize;
+    let cd_off = u32::from_le_bytes([
+        data[eocd + 16],
+        data[eocd + 17],
+        data[eocd + 18],
+        data[eocd + 19],
+    ]) as usize;
+    let mut p = cd_off;
+    for _ in 0..entries {
+        if p + 46 > data.len() || data[p..p + 4] != [0x50, 0x4B, 0x01, 0x02] {
+            break;
+        }
+        let flags = u16::from_le_bytes([data[p + 8], data[p + 9]]);
+        let method = u16::from_le_bytes([data[p + 10], data[p + 11]]);
+        let fnlen = u16::from_le_bytes([data[p + 28], data[p + 29]]) as usize;
+        let extralen = u16::from_le_bytes([data[p + 30], data[p + 31]]) as usize;
+        let commentlen = u16::from_le_bytes([data[p + 32], data[p + 33]]) as usize;
+        let extra_start = p + 46 + fnlen;
+        if flags & 0x0001 != 0 {
+            if method == 99 {
+                return Ok(match zip_aes_strength(&data, extra_start, extralen) {
+                    Some(bits) => format!("AES-{bits}"),
+                    None => "AES".to_string(),
+                });
+            }
+            return Ok("ZipCrypto".to_string());
+        }
+        p = extra_start + extralen + commentlen;
+    }
+    Err("no encrypted entry in ZIP".to_string())
+}
+
+/// Scan backward (max 64 KiB + 22) for the End Of Central Directory signature.
+fn zip_find_eocd(data: &[u8]) -> Option<usize> {
+    if data.len() < 22 {
+        return None;
+    }
+    let last = data.len() - 22;
+    let start = last.saturating_sub(65536);
+    (start..=last)
+        .rev()
+        .find(|&i| data[i..i + 4] == [0x50, 0x4B, 0x05, 0x06])
+}
+
+/// Read the WinZip AES (0x9901) extra field strength byte (1=128, 2=192, 3=256).
+fn zip_aes_strength(data: &[u8], start: usize, len: usize) -> Option<u16> {
+    let end = (start + len).min(data.len());
+    let mut off = start;
+    while off + 4 <= end {
+        let id = u16::from_le_bytes([data[off], data[off + 1]]);
+        let sz = u16::from_le_bytes([data[off + 2], data[off + 3]]) as usize;
+        let field = off + 4;
+        if id == 0x9901 && field + 5 <= end {
+            return Some(match data[field + 4] {
+                1 => 128,
+                2 => 192,
+                _ => 256,
+            });
+        }
+        off = field + sz;
+    }
+    None
+}
+
 /// Append one regular file to a tar `Builder`, emitting byte-true progress as the
 /// data is read. Replaces `append_path_with_name` (which opens and reads the file
 /// itself, giving no progress hook) with an explicit header + `append_data` over a
@@ -16935,6 +17045,7 @@ pub fn run() {
             extract_7z,
             is_7z_encrypted,
             is_zip_encrypted,
+            detect_archive_cipher,
             extract_rar,
             is_rar_encrypted,
             compress_tar,
