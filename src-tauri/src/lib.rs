@@ -8178,6 +8178,193 @@ async fn detect_archive_cipher(archive_path: String, kind: String) -> Result<Str
     }
 }
 
+/// Structured archive metadata for the proactive list-view badges (the Type
+/// column padlock and the optional Encryption column). Unlike
+/// `detect_archive_cipher`, which the unlock dialog calls for an archive already
+/// known to be encrypted, this determines *whether* an archive is encrypted,
+/// reading only the bytes it needs (the ZIP tail plus central directory, the 7z
+/// next-header) so it stays cheap enough to run lazily per visible row.
+/// Best-effort: on any parse error the caller shows a neutral state, never a
+/// wrong badge.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ArchiveMeta {
+    /// True when at least one entry (or the header) is encrypted.
+    encrypted: bool,
+    /// Canonical cipher token when encrypted: `AES-256` / `AES-192` / `AES-128`
+    /// / `AES` / `ZipCrypto`. `None` when not encrypted or undetermined.
+    cipher: Option<String>,
+}
+
+/// Proactively detect whether an archive is encrypted, and with which cipher,
+/// for the list-view badges. ZIP and 7z are supported; RAR proactive detection
+/// is deferred (the unlock dialog still uses `detect_archive_cipher`
+/// reactively). Reads only the header regions, not the whole file.
+#[tauri::command]
+async fn detect_archive_meta(archive_path: String, kind: String) -> Result<ArchiveMeta, String> {
+    match kind.as_str() {
+        "sevenz" => detect_7z_meta(&archive_path),
+        "zip" => detect_zip_meta(&archive_path),
+        other => Err(format!(
+            "unsupported archive kind for meta detection: {other}"
+        )),
+    }
+}
+
+/// ZIP metadata by parsing the central directory: WinZip AES (compression
+/// method 99) carries a 0x9901 extra field whose strength byte gives
+/// 128/192/256; a plain encrypted entry (general-purpose flag bit 0) is legacy
+/// ZipCrypto; no encrypted entry means not encrypted. Reads only the tail (EOCD
+/// lives within the last 64 KiB + 22) and the central directory for archives
+/// larger than 8 MiB, falling back to a whole-file read for small or ZIP64
+/// archives where the seek offsets are cheap or use 32-bit sentinels.
+fn detect_zip_meta(path: &str) -> Result<ArchiveMeta, String> {
+    use std::io::{Read, Seek, SeekFrom};
+    let mut f = std::fs::File::open(path).map_err(|e| format!("open: {e}"))?;
+    let flen = f.metadata().map_err(|e| format!("stat: {e}"))?.len();
+    if flen < 22 {
+        return Err("too small for ZIP".to_string());
+    }
+
+    // Small or ZIP64 archives: read whole file (cheap, and it sidesteps the
+    // 0xFFFFFFFF central-directory sentinel that ZIP64 stores in the EOCD).
+    if flen <= 8 * 1024 * 1024 {
+        let data = std::fs::read(path).map_err(|e| format!("read: {e}"))?;
+        let eocd = zip_find_eocd(&data).ok_or("no end-of-central-directory record")?;
+        if eocd + 20 > data.len() {
+            return Err("truncated EOCD".to_string());
+        }
+        let entries = u16::from_le_bytes([data[eocd + 10], data[eocd + 11]]) as usize;
+        let cd_off = u32::from_le_bytes([
+            data[eocd + 16],
+            data[eocd + 17],
+            data[eocd + 18],
+            data[eocd + 19],
+        ]) as usize;
+        let cd = data.get(cd_off..).unwrap_or(&[]);
+        return Ok(parse_zip_central_dir(cd, entries));
+    }
+
+    // Large archive: read only the tail to find the EOCD, then the central
+    // directory it points at.
+    let tail_len = flen.min(65_557) as usize;
+    let tail_start = flen - tail_len as u64;
+    f.seek(SeekFrom::Start(tail_start))
+        .map_err(|e| format!("seek tail: {e}"))?;
+    let mut tail = vec![0u8; tail_len];
+    f.read_exact(&mut tail)
+        .map_err(|e| format!("read tail: {e}"))?;
+    let eocd = zip_find_eocd(&tail).ok_or("no end-of-central-directory record")?;
+    if eocd + 20 > tail.len() {
+        return Err("truncated EOCD".to_string());
+    }
+    let entries = u16::from_le_bytes([tail[eocd + 10], tail[eocd + 11]]) as usize;
+    let cd_size = u32::from_le_bytes([
+        tail[eocd + 12],
+        tail[eocd + 13],
+        tail[eocd + 14],
+        tail[eocd + 15],
+    ]) as usize;
+    let cd_off = u32::from_le_bytes([
+        tail[eocd + 16],
+        tail[eocd + 17],
+        tail[eocd + 18],
+        tail[eocd + 19],
+    ]);
+    // ZIP64 sentinel: fall back to the whole-file read.
+    if cd_off == 0xFFFF_FFFF || cd_size == 0 {
+        let data = std::fs::read(path).map_err(|e| format!("read: {e}"))?;
+        let eocd = zip_find_eocd(&data).ok_or("no end-of-central-directory record")?;
+        let entries = u16::from_le_bytes([data[eocd + 10], data[eocd + 11]]) as usize;
+        let cd_off = u32::from_le_bytes([
+            data[eocd + 16],
+            data[eocd + 17],
+            data[eocd + 18],
+            data[eocd + 19],
+        ]) as usize;
+        let cd = data.get(cd_off..).unwrap_or(&[]);
+        return Ok(parse_zip_central_dir(cd, entries));
+    }
+    f.seek(SeekFrom::Start(cd_off as u64))
+        .map_err(|e| format!("seek cd: {e}"))?;
+    let mut cd = vec![0u8; cd_size];
+    f.read_exact(&mut cd).map_err(|e| format!("read cd: {e}"))?;
+    Ok(parse_zip_central_dir(&cd, entries))
+}
+
+/// Parse a ZIP central directory (a slice starting at the first central-directory
+/// file header) and return the encryption metadata of the first encrypted entry.
+fn parse_zip_central_dir(cd: &[u8], entries: usize) -> ArchiveMeta {
+    let mut p = 0usize;
+    for _ in 0..entries {
+        if p + 46 > cd.len() || cd[p..p + 4] != [0x50, 0x4B, 0x01, 0x02] {
+            break;
+        }
+        let flags = u16::from_le_bytes([cd[p + 8], cd[p + 9]]);
+        let method = u16::from_le_bytes([cd[p + 10], cd[p + 11]]);
+        let fnlen = u16::from_le_bytes([cd[p + 28], cd[p + 29]]) as usize;
+        let extralen = u16::from_le_bytes([cd[p + 30], cd[p + 31]]) as usize;
+        let commentlen = u16::from_le_bytes([cd[p + 32], cd[p + 33]]) as usize;
+        let extra_start = p + 46 + fnlen;
+        if flags & 0x0001 != 0 {
+            let cipher = if method == 99 {
+                match zip_aes_strength(cd, extra_start, extralen) {
+                    Some(bits) => format!("AES-{bits}"),
+                    None => "AES".to_string(),
+                }
+            } else {
+                "ZipCrypto".to_string()
+            };
+            return ArchiveMeta {
+                encrypted: true,
+                cipher: Some(cipher),
+            };
+        }
+        p = extra_start + extralen + commentlen;
+    }
+    ArchiveMeta {
+        encrypted: false,
+        cipher: None,
+    }
+}
+
+/// 7z proactive encryption detection. The 32-byte start header points at the
+/// "next header" (offset and size, both u64 LE, relative to the end of the start
+/// header). AES-256 encryption appears as the coder id 06F10701 in that header
+/// stream, for both encrypted content and an encrypted header (whose outer
+/// kEncodedHeader coder is AES too, and whose id is still readable in the
+/// referenced next-header region). We read only that region and scan for the id.
+/// 7z encryption is AES-256 by format.
+fn detect_7z_meta(path: &str) -> Result<ArchiveMeta, String> {
+    use std::io::{Read, Seek, SeekFrom};
+    let mut f = std::fs::File::open(path).map_err(|e| format!("open: {e}"))?;
+    let mut start = [0u8; 32];
+    f.read_exact(&mut start).map_err(|e| format!("read: {e}"))?;
+    const SIG: [u8; 6] = [0x37, 0x7A, 0xBC, 0xAF, 0x27, 0x1C];
+    if start[..6] != SIG {
+        return Err("not a 7z archive".to_string());
+    }
+    let nh_off = u64::from_le_bytes(start[12..20].try_into().unwrap());
+    let nh_size = u64::from_le_bytes(start[20..28].try_into().unwrap());
+    if nh_size == 0 || nh_size > 16 * 1024 * 1024 {
+        return Ok(ArchiveMeta {
+            encrypted: false,
+            cipher: None,
+        });
+    }
+    f.seek(SeekFrom::Start(32 + nh_off))
+        .map_err(|e| format!("seek: {e}"))?;
+    let mut hdr = vec![0u8; nh_size as usize];
+    f.read_exact(&mut hdr)
+        .map_err(|e| format!("read hdr: {e}"))?;
+    const AES_CODER_ID: [u8; 4] = [0x06, 0xF1, 0x07, 0x01];
+    let encrypted = hdr.windows(4).any(|w| w == AES_CODER_ID);
+    Ok(ArchiveMeta {
+        encrypted,
+        cipher: encrypted.then(|| "AES-256".to_string()),
+    })
+}
+
 /// RAR cipher by archive-signature version: RAR5 uses AES-256, legacy RAR4 uses
 /// AES-128. The caller only opens this for an already-encrypted archive.
 fn detect_rar_cipher(path: &str) -> Result<String, String> {
@@ -8197,45 +8384,14 @@ fn detect_rar_cipher(path: &str) -> Result<String, String> {
     }
 }
 
-/// ZIP cipher by parsing the central directory of the first encrypted entry:
-/// WinZip AES (compression method 99) carries a 0x9901 extra field whose
-/// strength byte gives 128/192/256; a plain encrypted entry is legacy ZipCrypto.
+/// ZIP cipher for the unlock dialog badge of an archive already known to be
+/// encrypted. Delegates to the proactive `detect_zip_meta` and maps the
+/// not-encrypted case back to an error so the dialog keeps its prior contract.
 fn detect_zip_cipher(path: &str) -> Result<String, String> {
-    let data = std::fs::read(path).map_err(|e| format!("read: {e}"))?;
-    let eocd = zip_find_eocd(&data).ok_or("no end-of-central-directory record")?;
-    if eocd + 20 > data.len() {
-        return Err("truncated EOCD".to_string());
+    match detect_zip_meta(path)?.cipher {
+        Some(cipher) => Ok(cipher),
+        None => Err("no encrypted entry in ZIP".to_string()),
     }
-    let entries = u16::from_le_bytes([data[eocd + 10], data[eocd + 11]]) as usize;
-    let cd_off = u32::from_le_bytes([
-        data[eocd + 16],
-        data[eocd + 17],
-        data[eocd + 18],
-        data[eocd + 19],
-    ]) as usize;
-    let mut p = cd_off;
-    for _ in 0..entries {
-        if p + 46 > data.len() || data[p..p + 4] != [0x50, 0x4B, 0x01, 0x02] {
-            break;
-        }
-        let flags = u16::from_le_bytes([data[p + 8], data[p + 9]]);
-        let method = u16::from_le_bytes([data[p + 10], data[p + 11]]);
-        let fnlen = u16::from_le_bytes([data[p + 28], data[p + 29]]) as usize;
-        let extralen = u16::from_le_bytes([data[p + 30], data[p + 31]]) as usize;
-        let commentlen = u16::from_le_bytes([data[p + 32], data[p + 33]]) as usize;
-        let extra_start = p + 46 + fnlen;
-        if flags & 0x0001 != 0 {
-            if method == 99 {
-                return Ok(match zip_aes_strength(&data, extra_start, extralen) {
-                    Some(bits) => format!("AES-{bits}"),
-                    None => "AES".to_string(),
-                });
-            }
-            return Ok("ZipCrypto".to_string());
-        }
-        p = extra_start + extralen + commentlen;
-    }
-    Err("no encrypted entry in ZIP".to_string())
 }
 
 /// Scan backward (max 64 KiB + 22) for the End Of Central Directory signature.
@@ -17046,6 +17202,7 @@ pub fn run() {
             is_7z_encrypted,
             is_zip_encrypted,
             detect_archive_cipher,
+            detect_archive_meta,
             extract_rar,
             is_rar_encrypted,
             compress_tar,
@@ -19165,5 +19322,89 @@ mod sevenz_advanced_tests {
             err.contains("unknown 7z method"),
             "unexpected error message: {err}"
         );
+    }
+}
+
+#[cfg(test)]
+mod archive_meta_tests {
+    use super::parse_zip_central_dir;
+
+    /// Build one ZIP central-directory file header with the given flags, method,
+    /// name and extra field. Fixed 46-byte layout followed by name then extra.
+    fn cdfh(flags: u16, method: u16, name: &[u8], extra: &[u8]) -> Vec<u8> {
+        let mut v = Vec::new();
+        v.extend_from_slice(&[0x50, 0x4B, 0x01, 0x02]); // central-file-header signature
+        v.extend_from_slice(&[0, 0]); // version made by
+        v.extend_from_slice(&[0, 0]); // version needed
+        v.extend_from_slice(&flags.to_le_bytes());
+        v.extend_from_slice(&method.to_le_bytes());
+        v.extend_from_slice(&[0, 0]); // mod time
+        v.extend_from_slice(&[0, 0]); // mod date
+        v.extend_from_slice(&[0, 0, 0, 0]); // crc-32
+        v.extend_from_slice(&[0, 0, 0, 0]); // compressed size
+        v.extend_from_slice(&[0, 0, 0, 0]); // uncompressed size
+        v.extend_from_slice(&(name.len() as u16).to_le_bytes());
+        v.extend_from_slice(&(extra.len() as u16).to_le_bytes());
+        v.extend_from_slice(&[0, 0]); // comment length
+        v.extend_from_slice(&[0, 0]); // disk number start
+        v.extend_from_slice(&[0, 0]); // internal attrs
+        v.extend_from_slice(&[0, 0, 0, 0]); // external attrs
+        v.extend_from_slice(&[0, 0, 0, 0]); // local header offset
+        v.extend_from_slice(name);
+        v.extend_from_slice(extra);
+        v
+    }
+
+    /// WinZip AES (0x9901) extra field with the given strength byte (1/2/3).
+    fn aes_extra(strength: u8) -> Vec<u8> {
+        vec![
+            0x01, 0x99, // header id 0x9901
+            0x07, 0x00, // data size 7
+            0x01, 0x00, // vendor version
+            b'A', b'E',     // vendor id "AE"
+            strength, // 1=128, 2=192, 3=256
+            0x63, 0x00, // actual compression method (99 = store here)
+        ]
+    }
+
+    #[test]
+    fn winzip_aes256_is_detected() {
+        let cd = cdfh(0x0001, 99, b"a.txt", &aes_extra(3));
+        let meta = parse_zip_central_dir(&cd, 1);
+        assert!(meta.encrypted);
+        assert_eq!(meta.cipher.as_deref(), Some("AES-256"));
+    }
+
+    #[test]
+    fn winzip_aes128_is_detected() {
+        let cd = cdfh(0x0001, 99, b"a.txt", &aes_extra(1));
+        let meta = parse_zip_central_dir(&cd, 1);
+        assert_eq!(meta.cipher.as_deref(), Some("AES-128"));
+    }
+
+    #[test]
+    fn legacy_zipcrypto_is_detected() {
+        // Encrypted flag set, ordinary deflate method, no AES extra field.
+        let cd = cdfh(0x0001, 8, b"a.txt", &[]);
+        let meta = parse_zip_central_dir(&cd, 1);
+        assert!(meta.encrypted);
+        assert_eq!(meta.cipher.as_deref(), Some("ZipCrypto"));
+    }
+
+    #[test]
+    fn plaintext_zip_is_not_encrypted() {
+        let cd = cdfh(0x0000, 8, b"a.txt", &[]);
+        let meta = parse_zip_central_dir(&cd, 1);
+        assert!(!meta.encrypted);
+        assert!(meta.cipher.is_none());
+    }
+
+    #[test]
+    fn encrypted_entry_found_after_a_plaintext_one() {
+        let mut cd = cdfh(0x0000, 8, b"plain.txt", &[]);
+        cd.extend_from_slice(&cdfh(0x0001, 99, b"secret.txt", &aes_extra(2)));
+        let meta = parse_zip_central_dir(&cd, 2);
+        assert!(meta.encrypted);
+        assert_eq!(meta.cipher.as_deref(), Some("AES-192"));
     }
 }
