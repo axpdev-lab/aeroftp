@@ -4292,9 +4292,18 @@ enum CryptCommands {
         /// Remote directory to encrypt
         #[arg(default_value = "/")]
         path: String,
-        /// Encryption password (or will prompt interactively)
+        /// Encryption password (or will prompt interactively). May be empty ONLY
+        /// when a keyfile is supplied.
         #[arg(long, env = "AEROFTP_CRYPT_PASSWORD", hide_env_values = true)]
         password: Option<String>,
+        /// Optional keyfile (a second factor mixed into the KDF). Any file works;
+        /// a keyfile generated with --keyfile-gen is transfer-safe.
+        #[arg(long)]
+        keyfile: Option<String>,
+        /// Generate a fresh transfer-safe keyfile at this path, then use it for
+        /// the new overlay. Mutually exclusive with --keyfile.
+        #[arg(long, conflicts_with = "keyfile")]
+        keyfile_gen: Option<String>,
         /// Overwrite an existing overlay config at the target. DESTRUCTIVE:
         /// rotates the salt, making every file already in the overlay
         /// permanently undecryptable.
@@ -4315,6 +4324,9 @@ enum CryptCommands {
         /// Encryption password
         #[arg(long, env = "AEROFTP_CRYPT_PASSWORD", hide_env_values = true)]
         password: Option<String>,
+        /// Keyfile, required if the overlay was created with one
+        #[arg(long)]
+        keyfile: Option<String>,
     },
     /// Upload a file or directory with encryption (content + names encrypted)
     Put {
@@ -4332,6 +4344,9 @@ enum CryptCommands {
         /// Encryption password
         #[arg(long, env = "AEROFTP_CRYPT_PASSWORD", hide_env_values = true)]
         password: Option<String>,
+        /// Keyfile, required if the overlay was created with one
+        #[arg(long)]
+        keyfile: Option<String>,
     },
     /// Download and decrypt a file or directory from an encrypted overlay
     Get {
@@ -4352,6 +4367,9 @@ enum CryptCommands {
         /// Encryption password
         #[arg(long, env = "AEROFTP_CRYPT_PASSWORD", hide_env_values = true)]
         password: Option<String>,
+        /// Keyfile, required if the overlay was created with one
+        #[arg(long)]
+        keyfile: Option<String>,
     },
 }
 
@@ -44534,10 +44552,53 @@ fn crypt_encrypt_rel_path(master_key: &[u8; 32], rel: &str) -> Result<String, St
 }
 
 /// CLI commands for crypt overlay operations.
+/// Read a keyfile from disk and return its digest, or `None` when no path was
+/// given. Canonicalizes structured keyfiles so line-ending mangling is safe.
+fn read_keyfile_digest(keyfile: &Option<String>) -> Result<Option<[u8; 32]>, String> {
+    match keyfile {
+        None => Ok(None),
+        Some(path) => {
+            let bytes =
+                std::fs::read(path).map_err(|e| format!("cannot read keyfile '{path}': {e}"))?;
+            ftp_client_gui_lib::aerocrypt::keyfile_digest_from_file(&bytes).map(Some)
+        }
+    }
+}
+
+/// Resolve the keyfile digest for `crypt init`, generating a fresh transfer-safe
+/// keyfile first when `--keyfile-gen` was given (refuses to overwrite).
+fn resolve_init_keyfile(
+    keyfile: &Option<String>,
+    keyfile_gen: &Option<String>,
+) -> Result<Option<[u8; 32]>, String> {
+    if let Some(path) = keyfile_gen {
+        if std::path::Path::new(path).exists() {
+            return Err(format!(
+                "keyfile '{path}' already exists; refusing to overwrite"
+            ));
+        }
+        let content = ftp_client_gui_lib::aerocrypt::generate_keyfile_v1();
+        std::fs::write(path, content.as_bytes())
+            .map_err(|e| format!("cannot write keyfile '{path}': {e}"))?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600));
+        }
+        eprintln!(
+            "Generated keyfile at '{path}'. Back it up: losing it makes the vault unopenable."
+        );
+        return ftp_client_gui_lib::aerocrypt::keyfile_digest_from_file(content.as_bytes())
+            .map(Some);
+    }
+    read_keyfile_digest(keyfile)
+}
+
 async fn cmd_crypt_init(
     url: &str,
     path: &str,
     password: &str,
+    keyfile_digest: Option<&[u8; 32]>,
     force: bool,
     cli: &Cli,
     format: OutputFormat,
@@ -44545,24 +44606,34 @@ async fn cmd_crypt_init(
     use ftp_client_gui_lib::aerocrypt::overlay;
     // New overlays are created as AECR v3 (length-bound content + key-bound
     // config MAC). Derive the master key first so we can both validate the
-    // password and bind the config MAC.
+    // password and bind the config MAC. An optional keyfile is mixed into the
+    // KDF and recorded in the config (kdf_inputs + a fresh vault_id).
     let salt = overlay::random_salt_v3();
-    let cfg = overlay::OverlayConfig::V3 {
-        salt,
-        mac: [0u8; 32],
-    };
-    let master_key = match overlay::derive_master_key(&cfg, password) {
+    let cfg = overlay::OverlayConfig::v3_bootstrap(salt);
+    let master_key = match overlay::derive_master_key_with_keyfile(&cfg, password, keyfile_digest) {
         Ok(k) => k,
         Err(e) => {
             print_error(format, &format!("Invalid password: {}", e), 6);
             return 6;
         }
     };
-    let config_json = match overlay::init_config_v3(&salt, &master_key) {
-        Ok(j) => j,
-        Err(e) => {
-            print_error(format, &format!("Failed to build crypt config: {}", e), 5);
-            return 5;
+    let config_json = if keyfile_digest.is_some() {
+        // F5: no keyfile_hint on the remote by default.
+        let vault_id = overlay::random_vault_id();
+        match overlay::init_config_v3_with_keyfile(&salt, &master_key, &vault_id, None) {
+            Ok(j) => j,
+            Err(e) => {
+                print_error(format, &format!("Failed to build crypt config: {}", e), 5);
+                return 5;
+            }
+        }
+    } else {
+        match overlay::init_config_v3(&salt, &master_key) {
+            Ok(j) => j,
+            Err(e) => {
+                print_error(format, &format!("Failed to build crypt config: {}", e), 5);
+                return 5;
+            }
         }
     };
 
@@ -44616,6 +44687,11 @@ async fn cmd_crypt_init(
                     "Cipher: AES-256-GCM-SIV (content) + AES-256-KW (key wrap) + AES-256-SIV (filenames)"
                 );
                 println!("KDF: Argon2id (128 MB, 4 iterations)");
+                if keyfile_digest.is_some() {
+                    println!(
+                        "Second factor: keyfile required (keep both the password and the keyfile)"
+                    );
+                }
             }
             0
         }
@@ -44626,10 +44702,28 @@ async fn cmd_crypt_init(
     }
 }
 
+/// Reconcile the supplied keyfile against what the overlay config requires, so a
+/// mismatch is a clear error instead of a confusing "wrong password" from a
+/// silently-wrong derived key.
+fn reconcile_keyfile<'a>(
+    cfg: &ftp_client_gui_lib::aerocrypt::overlay::OverlayConfig,
+    keyfile_digest: Option<&'a [u8; 32]>,
+) -> Result<Option<&'a [u8; 32]>, String> {
+    match (cfg.requires_keyfile(), keyfile_digest) {
+        (true, None) => Err("this overlay requires a keyfile; pass --keyfile <file>".to_string()),
+        (false, Some(_)) => {
+            Err("this overlay was not created with a keyfile; omit --keyfile".to_string())
+        }
+        (true, kd) => Ok(kd),
+        (false, _) => Ok(None),
+    }
+}
+
 async fn cmd_crypt_ls(
     url: &str,
     path: &str,
     password: &str,
+    keyfile_digest: Option<&[u8; 32]>,
     recursive: bool,
     cli: &Cli,
     format: OutputFormat,
@@ -44660,7 +44754,14 @@ async fn cmd_crypt_ls(
         }
     };
 
-    let master_key = match overlay::derive_master_key(&cfg, password) {
+    let keyfile_digest = match reconcile_keyfile(&cfg, keyfile_digest) {
+        Ok(kd) => kd,
+        Err(e) => {
+            print_error(format, &e, 6);
+            return 6;
+        }
+    };
+    let master_key = match overlay::derive_master_key_with_keyfile(&cfg, password, keyfile_digest) {
         Ok(k) => k,
         Err(e) => {
             print_error(format, &format!("Key derivation failed: {}", e), 6);
@@ -44813,6 +44914,7 @@ async fn cmd_crypt_put(
     local_file: &str,
     remote_path: &str,
     password: &str,
+    keyfile_digest: Option<&[u8; 32]>,
     recursive: bool,
     cli: &Cli,
     format: OutputFormat,
@@ -44842,7 +44944,14 @@ async fn cmd_crypt_put(
         }
     };
 
-    let master_key = match overlay::derive_master_key(&cfg, password) {
+    let keyfile_digest = match reconcile_keyfile(&cfg, keyfile_digest) {
+        Ok(kd) => kd,
+        Err(e) => {
+            print_error(format, &e, 6);
+            return 6;
+        }
+    };
+    let master_key = match overlay::derive_master_key_with_keyfile(&cfg, password, keyfile_digest) {
         Ok(k) => k,
         Err(e) => {
             print_error(format, &format!("Key derivation failed: {}", e), 6);
@@ -45142,6 +45251,7 @@ async fn cmd_crypt_get(
     path: &str,
     local_dest: &str,
     password: &str,
+    keyfile_digest: Option<&[u8; 32]>,
     recursive: bool,
     cli: &Cli,
     format: OutputFormat,
@@ -45171,7 +45281,14 @@ async fn cmd_crypt_get(
         }
     };
 
-    let master_key = match overlay::derive_master_key(&cfg, password) {
+    let keyfile_digest = match reconcile_keyfile(&cfg, keyfile_digest) {
+        Ok(kd) => kd,
+        Err(e) => {
+            print_error(format, &e, 6);
+            return 6;
+        }
+    };
+    let master_key = match overlay::derive_master_key_with_keyfile(&cfg, password, keyfile_digest) {
         Ok(k) => k,
         Err(e) => {
             print_error(format, &format!("Key derivation failed: {}", e), 6);
@@ -56565,68 +56682,110 @@ async fn main() {
                     None
                 }
             };
+            // A keyfile lets the password be empty; empty-everything stays rejected.
+            let require_secret = |pw: &str, kf: Option<&[u8; 32]>, verb: &str| -> bool {
+                if pw.is_empty() && kf.is_none() {
+                    print_error(
+                        format,
+                        &format!("Password or keyfile required for crypt {verb}"),
+                        5,
+                    );
+                    false
+                } else {
+                    true
+                }
+            };
             match command {
                 CryptCommands::Init {
                     url,
                     path,
                     password,
+                    keyfile,
+                    keyfile_gen,
                     force,
-                } => {
-                    let pw = resolve_crypt_password(password).unwrap_or_default();
-                    if pw.is_empty() {
-                        print_error(format, "Password required for crypt init", 5);
+                } => match resolve_init_keyfile(keyfile, keyfile_gen) {
+                    Err(e) => {
+                        print_error(format, &e, 5);
                         5
-                    } else {
-                        let (u, dir) = resolve_profile_crypt_positionals(
-                            cli.profile.is_some(),
-                            url,
-                            path,
-                            "/",
-                        );
-                        cmd_crypt_init(&u, &dir, &pw, *force, &cli, format).await
                     }
-                }
+                    Ok(kf) => {
+                        let pw = resolve_crypt_password(password).unwrap_or_default();
+                        if !require_secret(&pw, kf.as_ref(), "init") {
+                            5
+                        } else {
+                            let (u, dir) = resolve_profile_crypt_positionals(
+                                cli.profile.is_some(),
+                                url,
+                                path,
+                                "/",
+                            );
+                            cmd_crypt_init(&u, &dir, &pw, kf.as_ref(), *force, &cli, format).await
+                        }
+                    }
+                },
                 CryptCommands::Ls {
                     url,
                     path,
                     recursive,
                     password,
-                } => {
-                    let pw = resolve_crypt_password(password).unwrap_or_default();
-                    if pw.is_empty() {
-                        print_error(format, "Password required for crypt ls", 5);
-                        5
-                    } else {
-                        let (u, dir) = resolve_profile_crypt_positionals(
-                            cli.profile.is_some(),
-                            url,
-                            path,
-                            "/",
-                        );
-                        cmd_crypt_ls(&u, &dir, &pw, *recursive, &cli, format).await
+                    keyfile,
+                } => match read_keyfile_digest(keyfile) {
+                    Err(e) => {
+                        print_error(format, &e, 6);
+                        6
                     }
-                }
+                    Ok(kf) => {
+                        let pw = resolve_crypt_password(password).unwrap_or_default();
+                        if !require_secret(&pw, kf.as_ref(), "ls") {
+                            5
+                        } else {
+                            let (u, dir) = resolve_profile_crypt_positionals(
+                                cli.profile.is_some(),
+                                url,
+                                path,
+                                "/",
+                            );
+                            cmd_crypt_ls(&u, &dir, &pw, kf.as_ref(), *recursive, &cli, format).await
+                        }
+                    }
+                },
                 CryptCommands::Put {
                     local,
                     url,
                     remote,
                     recursive,
                     password,
-                } => {
-                    let pw = resolve_crypt_password(password).unwrap_or_default();
-                    if pw.is_empty() {
-                        print_error(format, "Password required for crypt put", 5);
-                        5
-                    } else {
-                        let (u, dir) = resolve_profile_crypt_positionals(
-                            cli.profile.is_some(),
-                            url,
-                            remote,
-                            "/",
-                        );
-                        cmd_crypt_put(&u, local, &dir, &pw, *recursive, &cli, format).await
+                    keyfile,
+                } => match read_keyfile_digest(keyfile) {
+                    Err(e) => {
+                        print_error(format, &e, 6);
+                        6
                     }
-                }
+                    Ok(kf) => {
+                        let pw = resolve_crypt_password(password).unwrap_or_default();
+                        if !require_secret(&pw, kf.as_ref(), "put") {
+                            5
+                        } else {
+                            let (u, dir) = resolve_profile_crypt_positionals(
+                                cli.profile.is_some(),
+                                url,
+                                remote,
+                                "/",
+                            );
+                            cmd_crypt_put(
+                                &u,
+                                local,
+                                &dir,
+                                &pw,
+                                kf.as_ref(),
+                                *recursive,
+                                &cli,
+                                format,
+                            )
+                            .await
+                        }
+                    }
+                },
                 CryptCommands::Get {
                     remote,
                     url,
@@ -56634,21 +56793,38 @@ async fn main() {
                     local,
                     recursive,
                     password,
-                } => {
-                    let pw = resolve_crypt_password(password).unwrap_or_default();
-                    if pw.is_empty() {
-                        print_error(format, "Password required for crypt get", 5);
-                        5
-                    } else {
-                        let (u, dir) = resolve_profile_crypt_positionals(
-                            cli.profile.is_some(),
-                            url,
-                            path,
-                            "/",
-                        );
-                        cmd_crypt_get(&u, remote, &dir, local, &pw, *recursive, &cli, format).await
+                    keyfile,
+                } => match read_keyfile_digest(keyfile) {
+                    Err(e) => {
+                        print_error(format, &e, 6);
+                        6
                     }
-                }
+                    Ok(kf) => {
+                        let pw = resolve_crypt_password(password).unwrap_or_default();
+                        if !require_secret(&pw, kf.as_ref(), "get") {
+                            5
+                        } else {
+                            let (u, dir) = resolve_profile_crypt_positionals(
+                                cli.profile.is_some(),
+                                url,
+                                path,
+                                "/",
+                            );
+                            cmd_crypt_get(
+                                &u,
+                                remote,
+                                &dir,
+                                local,
+                                &pw,
+                                kf.as_ref(),
+                                *recursive,
+                                &cli,
+                                format,
+                            )
+                            .await
+                        }
+                    }
+                },
             }
         }
         Commands::RcloneCrypt { command } => {

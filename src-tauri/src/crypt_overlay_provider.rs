@@ -1365,10 +1365,7 @@ async fn unlock_overlay_keys_encrypting(
                 // factory (CLI / cross-profile / MCP) passes allow_init=false and
                 // stays fail-closed below.
                 let salt = overlay::random_salt_v3();
-                let tmp = OverlayConfig::V3 {
-                    salt,
-                    mac: [0u8; 32],
-                };
+                let tmp = OverlayConfig::v3_bootstrap(salt);
                 let master_key = overlay::derive_master_key(&tmp, password)
                     .map_err(|e| format!("AeroCrypt key derivation failed: {e}"))?;
                 let json = overlay::init_config_v3(&salt, &master_key)
@@ -1480,10 +1477,7 @@ mod tests {
 
     fn aerocrypt_keys() -> OverlayKeys {
         let salt = overlay::random_salt_v3();
-        let tmp = OverlayConfig::V3 {
-            salt,
-            mac: [0u8; 32],
-        };
+        let tmp = OverlayConfig::v3_bootstrap(salt);
         let master_key = overlay::derive_master_key(&tmp, "overlay-pass").unwrap();
         let json = overlay::init_config_v3(&salt, &master_key).unwrap();
         let config = overlay::parse_config(&json).unwrap();

@@ -49,6 +49,9 @@ const SALT_V1_SIZE: usize = 16;
 const SALT_V2_SIZE: usize = 32; // == super::SALT_SIZE
 const SALT_V3_SIZE: usize = 32;
 const CONFIG_MAC_SIZE: usize = 32;
+/// Random per-vault identifier length (bytes). Emitted in every new v3 config
+/// from Tier 1 onward; seeds rollback pinning, Emergency Kits, and diagnostics.
+pub const VAULT_ID_SIZE: usize = 16;
 
 /// Legacy Argon2id parameters for v1 overlays (balanced 64 MiB / t3 / p4).
 const ARGON2_V1_MEM_KIB: u32 = 65536;
@@ -64,6 +67,12 @@ const V2_BLOCK_AAD_PREFIX: &[u8] = b"AeroCrypt overlay v2 block";
 const V3_BLOCK_AAD_PREFIX: &[u8] = b"AeroCrypt overlay v3 block";
 /// Domain-separating label for the v3 config MAC (key-bound config integrity).
 const V3_CONFIG_MAC_LABEL: &[u8] = b"AeroCrypt overlay v3 config MAC";
+/// FROZEN suffix appended to the v3 config-MAC info string for KEYFILE vaults
+/// only (F3). Password-only vaults keep the original info string byte-for-byte,
+/// so their MAC is unchanged and old readers keep verifying. No pre-keyfile
+/// reader can open a keyfile vault, so extending the info here is back-compat
+/// safe and binds the keyfile requirement + vault_id against tampering.
+const V3_KEYFILE_MAC_SUFFIX: &[u8] = b"|kdf_inputs=password+keyfile|vault_id=";
 
 /// GCM tag length added to every AEAD block.
 const GCM_TAG: usize = 16;
@@ -80,6 +89,12 @@ pub enum OverlayConfig {
     V3 {
         salt: [u8; SALT_V3_SIZE],
         mac: [u8; CONFIG_MAC_SIZE],
+        /// Present in every config written from Tier 1 on; `None` for older v3
+        /// configs. Authenticated by the config MAC only for keyfile vaults.
+        vault_id: Option<[u8; VAULT_ID_SIZE]>,
+        /// True when `kdf_inputs` includes a keyfile, i.e. unlock needs the
+        /// keyfile digest in addition to the password.
+        requires_keyfile: bool,
     },
 }
 
@@ -95,6 +110,38 @@ impl OverlayConfig {
     /// True for legacy formats that are kept readable but never written.
     pub fn is_read_only(&self) -> bool {
         !matches!(self, OverlayConfig::V3 { .. })
+    }
+
+    /// True when this overlay requires a keyfile in addition to the password.
+    /// Always false for legacy v1/v2 (keyfiles are a v3-only feature).
+    pub fn requires_keyfile(&self) -> bool {
+        matches!(
+            self,
+            OverlayConfig::V3 {
+                requires_keyfile: true,
+                ..
+            }
+        )
+    }
+
+    /// The vault id, when present (v3 configs written from Tier 1 on).
+    pub fn vault_id(&self) -> Option<[u8; VAULT_ID_SIZE]> {
+        match self {
+            OverlayConfig::V3 { vault_id, .. } => *vault_id,
+            _ => None,
+        }
+    }
+
+    /// Build a bare v3 config carrying only the salt, for the internal
+    /// derive-then-init bootstrap (the MAC and metadata are filled in when the
+    /// real config JSON is written). Never persisted.
+    pub fn v3_bootstrap(salt: [u8; SALT_V3_SIZE]) -> Self {
+        OverlayConfig::V3 {
+            salt,
+            mac: [0u8; CONFIG_MAC_SIZE],
+            vault_id: None,
+            requires_keyfile: false,
+        }
     }
 }
 
@@ -120,12 +167,27 @@ fn derive_master_key_v1(
     Ok(key)
 }
 
-/// Derive the overlay master key for the given config version.
+/// Derive the overlay master key for the given config version (password only).
 pub fn derive_master_key(cfg: &OverlayConfig, password: &str) -> Result<[u8; KEY_SIZE], String> {
+    derive_master_key_with_keyfile(cfg, password, None)
+}
+
+/// Derive the overlay master key with an OPTIONAL keyfile digest mixed into the
+/// KDF (Tier 1). `None` is byte-identical to the password-only path, so existing
+/// vaults are unaffected. Keyfiles apply to v3 only; a v1/v2 config ignores the
+/// digest (callers reject `--keyfile` against legacy overlays upstream).
+pub fn derive_master_key_with_keyfile(
+    cfg: &OverlayConfig,
+    password: &str,
+    keyfile_digest: Option<&[u8; KEY_SIZE]>,
+) -> Result<[u8; KEY_SIZE], String> {
     match cfg {
         OverlayConfig::V1 { salt } => derive_master_key_v1(password, salt),
-        OverlayConfig::V2 { salt } => derive_base_kek(password, salt),
-        OverlayConfig::V3 { salt, .. } => derive_base_kek(password, salt),
+        OverlayConfig::V2 { salt } | OverlayConfig::V3 { salt, .. } => match keyfile_digest {
+            // No keyfile: byte-identical to the classic password-only KDF.
+            None => derive_base_kek(password, salt),
+            some => super::derive_base_kek_with_keyfile(password, some, salt),
+        },
     }
 }
 
@@ -135,10 +197,18 @@ pub fn derive_master_key(cfg: &OverlayConfig, password: &str) -> Result<[u8; KEY
 /// AEAD instead).
 pub fn verify_config_mac(cfg: &OverlayConfig, master_key: &[u8; KEY_SIZE]) -> Result<(), String> {
     match cfg {
-        OverlayConfig::V3 { salt, mac } => {
-            let expected = compute_config_mac_v3(master_key, salt)?;
+        OverlayConfig::V3 {
+            salt,
+            mac,
+            vault_id,
+            requires_keyfile,
+        } => {
+            let expected =
+                compute_config_mac_v3(master_key, salt, *requires_keyfile, vault_id.as_ref())?;
             if expected.ct_eq(mac).into() {
                 Ok(())
+            } else if *requires_keyfile {
+                Err("wrong password, wrong keyfile, or tampered crypt config".to_string())
             } else {
                 Err("wrong password or tampered crypt config".to_string())
             }
@@ -151,9 +221,16 @@ pub fn verify_config_mac(cfg: &OverlayConfig, master_key: &[u8; KEY_SIZE]) -> Re
 /// parameters (label, version, block size, Argon2 profile, salt). Because the
 /// master key already depends on the salt, an attacker who rewrites the config
 /// cannot forge a matching MAC without the password.
+///
+/// For KEYFILE vaults (`requires_keyfile`) the info string is extended with a
+/// FROZEN suffix binding the keyfile requirement and the vault_id (F3). This is
+/// back-compat safe: password-only vaults produce the exact original MAC, and no
+/// pre-keyfile reader can open a keyfile vault anyway.
 fn compute_config_mac_v3(
     master_key: &[u8; KEY_SIZE],
     salt: &[u8; SALT_V3_SIZE],
+    requires_keyfile: bool,
+    vault_id: Option<&[u8; VAULT_ID_SIZE]>,
 ) -> Result<[u8; CONFIG_MAC_SIZE], String> {
     let mut info = Vec::with_capacity(V3_CONFIG_MAC_LABEL.len() + 1 + 4 + 12 + SALT_V3_SIZE);
     info.extend_from_slice(V3_CONFIG_MAC_LABEL);
@@ -163,6 +240,11 @@ fn compute_config_mac_v3(
     info.extend_from_slice(&super::argon2_time().to_le_bytes());
     info.extend_from_slice(&super::argon2_lanes().to_le_bytes());
     info.extend_from_slice(salt);
+    if requires_keyfile {
+        let vid = vault_id.ok_or("keyfile vault requires a vault_id for the config MAC")?;
+        info.extend_from_slice(V3_KEYFILE_MAC_SUFFIX);
+        info.extend_from_slice(vid);
+    }
     hkdf_expand::<CONFIG_MAC_SIZE>(master_key, &info)
 }
 
@@ -402,15 +484,44 @@ pub fn random_salt_v3() -> [u8; SALT_V3_SIZE] {
     random_array::<SALT_V3_SIZE>()
 }
 
-/// Build the v3 config JSON written at the root of a new overlay. The MAC binds
-/// the config to the master key so later tampering of `version`/`salt` (and the
-/// wrong password) is detected on unlock.
+/// Generate a fresh random vault id for a new overlay.
+pub fn random_vault_id() -> [u8; VAULT_ID_SIZE] {
+    random_array::<VAULT_ID_SIZE>()
+}
+
+/// Build the v3 config JSON for a PASSWORD-ONLY overlay. Emits a fresh
+/// `vault_id` (unauthenticated, Axis-6) but keeps the original MAC info string
+/// so the config MAC is byte-identical to what a pre-Tier-1 client would write.
 pub fn init_config_v3(
     salt: &[u8; SALT_V3_SIZE],
     master_key: &[u8; KEY_SIZE],
 ) -> Result<String, String> {
-    let mac = compute_config_mac_v3(master_key, salt)?;
-    Ok(serde_json::json!({
+    build_config_v3_json(salt, master_key, &random_vault_id(), false, None)
+}
+
+/// Build the v3 config JSON for a KEYFILE overlay. The caller supplies the
+/// `vault_id` (so it can also be recorded locally / in an Emergency Kit). The
+/// MAC binds `kdf_inputs` + `vault_id` via the extended info string.
+/// `keyfile_hint` is an OPTIONAL, non-sensitive display hint; pass `None` to omit
+/// it entirely (the recommended default, F5), or a basename-only string.
+pub fn init_config_v3_with_keyfile(
+    salt: &[u8; SALT_V3_SIZE],
+    master_key: &[u8; KEY_SIZE],
+    vault_id: &[u8; VAULT_ID_SIZE],
+    keyfile_hint: Option<&str>,
+) -> Result<String, String> {
+    build_config_v3_json(salt, master_key, vault_id, true, keyfile_hint)
+}
+
+fn build_config_v3_json(
+    salt: &[u8; SALT_V3_SIZE],
+    master_key: &[u8; KEY_SIZE],
+    vault_id: &[u8; VAULT_ID_SIZE],
+    requires_keyfile: bool,
+    keyfile_hint: Option<&str>,
+) -> Result<String, String> {
+    let mac = compute_config_mac_v3(master_key, salt, requires_keyfile, Some(vault_id))?;
+    let mut obj = serde_json::json!({
         "version": VERSION_V3,
         "cipher": "AES-256-GCM-SIV",
         "filename_cipher": "AES-256-SIV",
@@ -420,10 +531,17 @@ pub fn init_config_v3(
         "kdf_time": super::argon2_time(),
         "kdf_lanes": super::argon2_lanes(),
         "salt": base64::engine::general_purpose::STANDARD.encode(salt),
+        "vault_id": base64::engine::general_purpose::STANDARD.encode(vault_id),
         "block_size": BLOCK_SIZE,
         "mac": base64::engine::general_purpose::STANDARD.encode(mac),
-    })
-    .to_string())
+    });
+    if requires_keyfile {
+        obj["kdf_inputs"] = serde_json::json!(["password", "keyfile"]);
+        if let Some(hint) = keyfile_hint {
+            obj["keyfile_hint"] = serde_json::json!(hint);
+        }
+    }
+    Ok(obj.to_string())
 }
 
 /// Parse an overlay config. A missing or unknown `version` is a hard error
@@ -477,9 +595,45 @@ pub fn parse_config(config_json: &str) -> Result<OverlayConfig, String> {
             salt.copy_from_slice(&salt_bytes);
             let mut mac = [0u8; CONFIG_MAC_SIZE];
             mac.copy_from_slice(&mac_bytes);
-            Ok(OverlayConfig::V3 { salt, mac })
+
+            // Optional vault_id (present from Tier 1 on).
+            let vault_id = match val.get("vault_id").and_then(|v| v.as_str()) {
+                Some(vid_b64) => {
+                    let vid_bytes = base64::engine::general_purpose::STANDARD
+                        .decode(vid_b64)
+                        .map_err(|e| format!("invalid vault_id: {e}"))?;
+                    if vid_bytes.len() != VAULT_ID_SIZE {
+                        return Err(format!("v3 vault_id must be {VAULT_ID_SIZE} bytes"));
+                    }
+                    let mut vid = [0u8; VAULT_ID_SIZE];
+                    vid.copy_from_slice(&vid_bytes);
+                    Some(vid)
+                }
+                None => None,
+            };
+
+            // `kdf_inputs` decides whether a keyfile is required. Absent (or
+            // exactly ["password"]) means password-only.
+            let requires_keyfile = match val.get("kdf_inputs").and_then(|v| v.as_array()) {
+                Some(arr) => arr
+                    .iter()
+                    .any(|v| v.as_str() == Some("keyfile")),
+                None => false,
+            };
+            if requires_keyfile && vault_id.is_none() {
+                return Err("keyfile crypt config is missing its vault_id".to_string());
+            }
+
+            Ok(OverlayConfig::V3 {
+                salt,
+                mac,
+                vault_id,
+                requires_keyfile,
+            })
         }
-        other => Err(format!("unsupported crypt config version {other}")),
+        other => Err(format!(
+            "unsupported crypt config version {other}: this vault was created by a newer AeroFTP, please update"
+        )),
     }
 }
 
@@ -538,8 +692,16 @@ mod tests {
     fn v3_cfg() -> (OverlayConfig, [u8; KEY_SIZE]) {
         let salt = [9u8; SALT_V3_SIZE];
         let master = derive_base_kek("correct horse battery staple", &salt).unwrap();
-        let mac = compute_config_mac_v3(&master, &salt).unwrap();
-        (OverlayConfig::V3 { salt, mac }, master)
+        let mac = compute_config_mac_v3(&master, &salt, false, None).unwrap();
+        (
+            OverlayConfig::V3 {
+                salt,
+                mac,
+                vault_id: None,
+                requires_keyfile: false,
+            },
+            master,
+        )
     }
 
     #[test]
@@ -701,10 +863,49 @@ mod tests {
             let evil_cfg = OverlayConfig::V3 {
                 salt: evil_salt,
                 mac,
+                vault_id: None,
+                requires_keyfile: false,
             };
             let evil_key = derive_base_kek("right-password", &evil_salt).unwrap();
             assert!(verify_config_mac(&evil_cfg, &evil_key).is_err());
         }
+    }
+
+    #[test]
+    fn keyfile_vault_round_trips_and_binds_requirement() {
+        let salt = random_salt_v3();
+        let vault_id = random_vault_id();
+        let kf = super::super::keyfile_digest(b"my-keyfile-payload");
+        // Build a keyfile vault (password + keyfile).
+        let master =
+            derive_master_key_with_keyfile(&OverlayConfig::v3_bootstrap(salt), "pw", Some(&kf))
+                .unwrap();
+        let json = init_config_v3_with_keyfile(&salt, &master, &vault_id, None).unwrap();
+        let cfg = parse_config(&json).unwrap();
+        assert!(cfg.requires_keyfile());
+        assert_eq!(cfg.vault_id(), Some(vault_id));
+
+        // Right password + right keyfile verifies.
+        let m_ok = derive_master_key_with_keyfile(&cfg, "pw", Some(&kf)).unwrap();
+        assert!(verify_config_mac(&cfg, &m_ok).is_ok());
+        // Right password, WRONG keyfile fails closed.
+        let kf_wrong = super::super::keyfile_digest(b"other");
+        let m_bad = derive_master_key_with_keyfile(&cfg, "pw", Some(&kf_wrong)).unwrap();
+        assert!(verify_config_mac(&cfg, &m_bad).is_err());
+        // Password only (keyfile stripped) fails closed.
+        let m_nopass = derive_master_key_with_keyfile(&cfg, "pw", None).unwrap();
+        assert!(verify_config_mac(&cfg, &m_nopass).is_err());
+    }
+
+    #[test]
+    fn password_only_config_mac_is_unchanged_by_vault_id() {
+        // Back-compat: a password-only vault's MAC must not depend on vault_id
+        // (old readers ignore the field and still verify).
+        let salt = [4u8; SALT_V3_SIZE];
+        let master = derive_base_kek("pw", &salt).unwrap();
+        let with_vid = compute_config_mac_v3(&master, &salt, false, Some(&[7u8; VAULT_ID_SIZE]));
+        let without = compute_config_mac_v3(&master, &salt, false, None);
+        assert_eq!(with_vid.unwrap(), without.unwrap());
     }
 
     #[test]

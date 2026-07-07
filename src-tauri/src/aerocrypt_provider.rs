@@ -133,10 +133,7 @@ pub async fn aerocrypt_unlock(
         }
         None => {
             let salt = overlay::random_salt_v3();
-            let tmp = OverlayConfig::V3 {
-                salt,
-                mac: [0u8; 32],
-            };
+            let tmp = OverlayConfig::v3_bootstrap(salt);
             let master_key = derive_master_key_async(&tmp, pw).await?;
             let json = overlay::init_config_v3(&salt, &master_key)?;
             let config = overlay::parse_config(&json)?;
@@ -257,10 +254,7 @@ pub async fn aerocrypt_provider_create_remote(
     let secret_pwd = secrecy::SecretString::from(password);
     let force = force.unwrap_or(false);
     let salt = overlay::random_salt_v3();
-    let tmp_cfg = OverlayConfig::V3 {
-        salt,
-        mac: [0u8; 32],
-    };
+    let tmp_cfg = OverlayConfig::v3_bootstrap(salt);
     let master_key =
         derive_master_key_async(&tmp_cfg, secrecy::ExposeSecret::expose_secret(&secret_pwd))
             .await?;
@@ -353,14 +347,7 @@ mod tests {
     #[test]
     fn file_round_trip_through_codec() {
         let salt = [9u8; 32];
-        let master = overlay::derive_master_key(
-            &OverlayConfig::V3 {
-                salt,
-                mac: [0u8; 32],
-            },
-            "pw",
-        )
-        .unwrap();
+        let master = overlay::derive_master_key(&OverlayConfig::v3_bootstrap(salt), "pw").unwrap();
         let json = overlay::init_config_v3(&salt, &master).unwrap();
         let cfg = overlay::parse_config(&json).unwrap();
         let plaintext = b"AeroCrypt provider round trip".repeat(4096);

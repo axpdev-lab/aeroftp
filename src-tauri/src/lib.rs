@@ -15055,6 +15055,15 @@ fn collect_provider_secrets_for_server(
     ) {
         out.aerocrypt_overlay_salt = Some(salt.to_string());
     }
+    // AeroCrypt keyfile PATH (not the keyfile contents). Lets a same-device
+    // re-import find the keyfile without re-picking it; on another device the
+    // path may be stale and the UI must re-point.
+    if let Ok(Some(kf_path)) = user_partitions::resolve_active_credential(
+        store,
+        &format!("aerocrypt_overlay_keyfile_path_{}", server.id),
+    ) {
+        out.aerocrypt_overlay_keyfile_path = Some(kf_path.to_string());
+    }
 
     // Issue #215 Caveat A: bundle the per-protocol credential snapshots so a
     // multi-protocol account keeps each mode's saved credentials on import. The
@@ -15118,6 +15127,7 @@ pub async fn export_server_profiles_core(
                         || secrets.jotta_refresh.is_some()
                         || secrets.aerocrypt_overlay_pw.is_some()
                         || secrets.aerocrypt_overlay_salt.is_some()
+                        || secrets.aerocrypt_overlay_keyfile_path.is_some()
                         || secrets.mode_credentials.is_some()
                         || secrets.oauth_client_id.is_some()
                         || secrets.oauth_client_secret.is_some()
@@ -15189,6 +15199,8 @@ pub async fn import_server_profiles_core_filtered(
     let mut restored_aerocrypt_pw: std::collections::HashSet<String> =
         std::collections::HashSet::new();
     let mut restored_aerocrypt_salt: std::collections::HashSet<String> =
+        std::collections::HashSet::new();
+    let mut restored_aerocrypt_keyfile_path: std::collections::HashSet<String> =
         std::collections::HashSet::new();
     match credential_store::CredentialStore::from_cache() {
         Some(store) => {
@@ -15313,6 +15325,20 @@ pub async fn import_server_profiles_core_filtered(
                         Err(e) => cred_errors.push(format!("{} aerocrypt salt: {}", profile_id, e)),
                     }
                 }
+                // Restore the AeroCrypt keyfile PATH (not the keyfile itself). On a
+                // different device this path may be stale; the UI validates it and
+                // re-points before unlock. A keyfile vault still fails closed if the
+                // keyfile is missing, so restoring a stale path is never unsafe.
+                if let Some(ref kf_path) = secrets.aerocrypt_overlay_keyfile_path {
+                    let key = format!("aerocrypt_overlay_keyfile_path_{}", profile_id);
+                    match user_partitions::store_active_credential_dual(&store, &key, kf_path) {
+                        Ok(()) => {
+                            restored_aerocrypt_keyfile_path.insert(profile_id.clone());
+                        }
+                        Err(e) => cred_errors
+                            .push(format!("{} aerocrypt keyfile path: {}", profile_id, e)),
+                    }
+                }
                 // Issue #215 Caveat A: restore the per-protocol snapshots under
                 // the same `server_modes_<id>` key the connect/edit path reads
                 // (modeCredentialStore get/store_credential). The `server_`
@@ -15379,6 +15405,9 @@ pub async fn import_server_profiles_core_filtered(
                 "aeroCryptOverlay": s.aero_crypt_overlay,
                 "hasStoredAeroCryptPassword": restored_aerocrypt_pw.contains(&s.id),
                 "hasStoredAeroCryptSalt": restored_aerocrypt_salt.contains(&s.id),
+                // A keyfile PATH may have been restored; the UI validates it exists
+                // (it can be stale on a different device) and re-points before unlock.
+                "hasStoredAeroCryptKeyfilePath": restored_aerocrypt_keyfile_path.contains(&s.id),
                 // Issue #215 Caveat A: surface the opt-in so the imported profile
                 // re-hydrates per-mode snapshots. It is a user preference, not a
                 // secret-presence flag, so it round-trips verbatim: ConnectionScreen

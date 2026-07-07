@@ -86,6 +86,15 @@ pub struct ProviderSecrets {
     /// leaves it unset.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub aerocrypt_overlay_salt: Option<String>,
+    /// AeroCrypt keyfile PATH (`aerocrypt_overlay_keyfile_path_<id>`) for a v3
+    /// overlay created with a keyfile second factor. This is a filesystem
+    /// reference, NOT the keyfile contents (the keyfile itself, the "something you
+    /// have" factor, is never exported). On import the path is restored verbatim
+    /// but may not exist on the destination device, so the UI must validate it and
+    /// prompt the user to re-point. A keyfile vault fails closed if the keyfile is
+    /// missing (never a silent password-only fallback).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub aerocrypt_overlay_keyfile_path: Option<String>,
     /// Issue #215 Caveat A: per-protocol credential snapshots
     /// (`server_modes_<id>` vault JSON) so a one-account-many-protocols profile
     /// keeps each mode's saved credentials across export/import. Single-use
@@ -140,6 +149,10 @@ pub struct ServerProfileExport {
     pub has_stored_aero_crypt_password: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub has_stored_aero_crypt_salt: Option<bool>,
+    /// Mirrors whether a keyfile PATH is on file for this AeroCrypt overlay; on
+    /// import corrected to reflect whether the path was actually restored.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub has_stored_aero_crypt_keyfile_path: Option<bool>,
     /// Issue #215 Caveat A: round-trip the opt-in so an imported profile
     /// re-hydrates its per-mode snapshots (ConnectionScreen reads
     /// `profile.persistModeCredentials` before loading `server_modes_<id>`).
@@ -169,6 +182,7 @@ pub fn export_profiles(
             || s.jotta_refresh.is_some()
             || s.aerocrypt_overlay_pw.is_some()
             || s.aerocrypt_overlay_salt.is_some()
+            || s.aerocrypt_overlay_keyfile_path.is_some()
             || s.mode_credentials.is_some()
     });
     let metadata = ExportMetadata {
@@ -291,6 +305,7 @@ mod tests {
             aero_crypt_overlay: None,
             has_stored_aero_crypt_password: None,
             has_stored_aero_crypt_salt: None,
+            has_stored_aero_crypt_keyfile_path: None,
             persist_mode_credentials: None,
         }
     }
@@ -424,6 +439,7 @@ mod tests {
             "crypt-native".to_string(),
             ProviderSecrets {
                 aerocrypt_overlay_pw: Some("native-overlay-pw".to_string()),
+                aerocrypt_overlay_keyfile_path: Some("/home/user/.aeroftp/vault.key".to_string()),
                 ..Default::default()
             },
         );
@@ -478,6 +494,13 @@ mod tests {
                 .get("crypt-native")
                 .and_then(|s| s.aerocrypt_overlay_pw.clone()),
             Some("native-overlay-pw".to_string()),
+        );
+        // The AeroCrypt keyfile PATH round-trips (the keyfile contents never do).
+        assert_eq!(
+            restored_secrets
+                .get("crypt-native")
+                .and_then(|s| s.aerocrypt_overlay_keyfile_path.clone()),
+            Some("/home/user/.aeroftp/vault.key".to_string()),
         );
         assert_eq!(
             restored_secrets

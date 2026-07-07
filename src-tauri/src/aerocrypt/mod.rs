@@ -21,6 +21,7 @@ use aes_gcm_siv::{Aes256GcmSiv, KeyInit, Nonce};
 use aes_kw::Kek;
 #[cfg(not(feature = "test-vectors"))]
 use rand::RngCore;
+use zeroize::Zeroizing;
 
 pub mod names;
 pub mod overlay;
@@ -112,6 +113,105 @@ pub fn derive_base_kek(password: &str, salt: &[u8; SALT_SIZE]) -> Result<[u8; KE
     let mut key = [0u8; KEY_SIZE];
     argon2
         .hash_password_into(password.as_bytes(), salt, &mut key)
+        .map_err(|e| format!("Argon2 derive: {e}"))?;
+    Ok(key)
+}
+
+// --- Optional keyfile second factor (AeroCrypt Tier 1, scheme `aecr-t1-combined-v1`) ---
+//
+// A keyfile is an OPTIONAL "something you have" factor mixed into the same
+// Argon2id call as the password. FROZEN decisions (a keyfile vault's key
+// material depends on all of them; changing any one breaks every keyfile vault):
+//   F1: the keyfile digest uses BLAKE3 in KDF (`derive_key`) mode with a fixed
+//       context, NEVER a bare `blake3::hash`, so it is domain-separated from
+//       every checksum use of BLAKE3 anywhere in the app.
+//   F2: keyfile bytes are canonicalized. A structured `AEROFTP-KEYFILE-V1` file
+//       is decoded (immune to CRLF/BOM/trailing-newline mangling by FTP ASCII
+//       mode, editors, or email); any other file is hashed verbatim.
+//   F4: the KDF secret is `keyfile_digest || password_bytes` (digest first,
+//       fixed-width, so the concatenation parses unambiguously).
+
+/// Domain-separation context for keyfile digests. FROZEN.
+const KEYFILE_DERIVE_CONTEXT: &str = "aeroftp.app/aerocrypt keyfile v1";
+/// Header line of the structured, transfer-safe keyfile format.
+pub const KEYFILE_HEADER: &str = "AEROFTP-KEYFILE-V1";
+
+/// Digest an already-canonicalized keyfile payload via BLAKE3's KDF mode (F1).
+/// Never a bare hash: this value is key material and must be disjoint from any
+/// checksum use of BLAKE3.
+pub fn keyfile_digest(payload: &[u8]) -> [u8; KEY_SIZE] {
+    blake3::derive_key(KEYFILE_DERIVE_CONTEXT, payload)
+}
+
+/// Canonicalize raw keyfile bytes (F2). A well-formed `AEROFTP-KEYFILE-V1` file
+/// yields its decoded 32-byte payload (transfer-safe); anything else yields the
+/// raw bytes verbatim. A file that LOOKS structured but is malformed is a hard
+/// error (never a silent raw fallback that would brick the vault).
+fn canonicalize_keyfile(raw: &[u8]) -> Result<Vec<u8>, String> {
+    // Strip a leading UTF-8 BOM if present.
+    let body = raw.strip_prefix(&[0xEF, 0xBB, 0xBF]).unwrap_or(raw);
+    if let Ok(text) = std::str::from_utf8(body) {
+        let lines: Vec<&str> = text.lines().map(|l| l.trim()).collect();
+        let mut non_empty = lines.iter().filter(|l| !l.is_empty());
+        if let Some(first) = non_empty.next() {
+            if *first == KEYFILE_HEADER {
+                let hex_str: String = non_empty
+                    .flat_map(|l| l.chars())
+                    .filter(|c| !c.is_whitespace())
+                    .collect();
+                let decoded = hex::decode(&hex_str).map_err(|_| {
+                    "malformed AEROFTP-KEYFILE-V1 keyfile (invalid hex)".to_string()
+                })?;
+                if decoded.len() != KEY_SIZE {
+                    return Err(format!(
+                        "malformed AEROFTP-KEYFILE-V1 keyfile (expected {KEY_SIZE} bytes, got {})",
+                        decoded.len()
+                    ));
+                }
+                return Ok(decoded);
+            }
+        }
+    }
+    Ok(body.to_vec())
+}
+
+/// Canonicalize then digest raw keyfile file bytes (F1 + F2). Use this at the
+/// I/O boundary where a keyfile has just been read from disk.
+pub fn keyfile_digest_from_file(raw: &[u8]) -> Result<[u8; KEY_SIZE], String> {
+    let payload = Zeroizing::new(canonicalize_keyfile(raw)?);
+    Ok(keyfile_digest(&payload))
+}
+
+/// Generate the content of a fresh structured keyfile (`AEROFTP-KEYFILE-V1`):
+/// a header line plus the hex of 32 random bytes. Printable and transfer-safe.
+pub fn generate_keyfile_v1() -> String {
+    let raw = random_array::<KEY_SIZE>();
+    format!("{}\n{}\n", KEYFILE_HEADER, hex::encode(raw))
+}
+
+/// Derive the base KEK from a password and an OPTIONAL keyfile digest via a
+/// single Argon2id (F4: `keyfile_digest || password_bytes`). With `None` this is
+/// byte-identical to [`derive_base_kek`], so existing password-only vaults are
+/// unaffected. The combined single-Argon2id form (not password-then-HKDF) forces
+/// a full memory-hard pass per keyfile candidate, so an attacker who knows the
+/// password still cannot enumerate low-entropy keyfiles cheaply.
+pub fn derive_base_kek_with_keyfile(
+    password: &str,
+    keyfile_digest: Option<&[u8; KEY_SIZE]>,
+    salt: &[u8; SALT_SIZE],
+) -> Result<[u8; KEY_SIZE], String> {
+    let Some(kf) = keyfile_digest else {
+        return derive_base_kek(password, salt);
+    };
+    let mut secret = Zeroizing::new(Vec::with_capacity(KEY_SIZE + password.len()));
+    secret.extend_from_slice(kf);
+    secret.extend_from_slice(password.as_bytes());
+    let params = argon2::Params::new(ARGON2_MEM_KIB, ARGON2_TIME, ARGON2_LANES, Some(KEY_SIZE))
+        .map_err(|e| format!("Argon2 params: {e}"))?;
+    let argon2 = argon2::Argon2::new(argon2::Algorithm::Argon2id, argon2::Version::V0x13, params);
+    let mut key = [0u8; KEY_SIZE];
+    argon2
+        .hash_password_into(&secret, salt, &mut key)
         .map_err(|e| format!("Argon2 derive: {e}"))?;
     Ok(key)
 }
@@ -242,5 +342,100 @@ mod tests {
         let k3 = hkdf_expand::<KEY_SIZE>(&a, b"label-2").unwrap();
         assert_eq!(k1, k2);
         assert_ne!(k1, k3);
+    }
+
+    #[test]
+    fn keyfile_digest_is_domain_separated_from_bare_hash() {
+        // F1: the keyfile digest must NOT equal a bare BLAKE3 checksum of the
+        // same bytes, or any feature that logs/stores a file's BLAKE3 leaks key
+        // material.
+        let bytes = b"a file the user happened to pick as a keyfile";
+        let digest = keyfile_digest(bytes);
+        let bare = *blake3::hash(bytes).as_bytes();
+        assert_ne!(digest, bare);
+        // Deterministic.
+        assert_eq!(keyfile_digest(bytes), digest);
+    }
+
+    #[test]
+    fn keyfile_changes_the_derived_key() {
+        let salt = [2u8; SALT_SIZE];
+        let pw_only = derive_base_kek_with_keyfile("hunter2", None, &salt).unwrap();
+        // None path is byte-identical to the password-only KDF (back-compat).
+        assert_eq!(pw_only, derive_base_kek("hunter2", &salt).unwrap());
+
+        let kf = keyfile_digest(b"secret-keyfile-payload");
+        let with_kf = derive_base_kek_with_keyfile("hunter2", Some(&kf), &salt).unwrap();
+        assert_ne!(with_kf, pw_only);
+
+        // A different keyfile yields a different key even with the same password.
+        let kf2 = keyfile_digest(b"other-keyfile-payload");
+        let with_kf2 = derive_base_kek_with_keyfile("hunter2", Some(&kf2), &salt).unwrap();
+        assert_ne!(with_kf, with_kf2);
+    }
+
+    #[test]
+    fn digest_first_order_is_unambiguous() {
+        // F4: digest-first means (password P, keyfile K) cannot collide with a
+        // password-only vault whose password is P prefixed by the digest, since
+        // the digest occupies the fixed-width leading field. Concretely, swapping
+        // which factor leads must change the key.
+        let salt = [5u8; SALT_SIZE];
+        let kf = keyfile_digest(b"K");
+        let normal = derive_base_kek_with_keyfile("P", Some(&kf), &salt).unwrap();
+        // Password-only with the SAME concatenated bytes but password-first order
+        // would differ; emulate a hypothetical password-first mix and confirm it
+        // is not what we produce.
+        let mut password_first = Zeroizing::new(Vec::new());
+        password_first.extend_from_slice(b"P");
+        password_first.extend_from_slice(&kf);
+        let params =
+            argon2::Params::new(ARGON2_MEM_KIB, ARGON2_TIME, ARGON2_LANES, Some(KEY_SIZE)).unwrap();
+        let argon2 =
+            argon2::Argon2::new(argon2::Algorithm::Argon2id, argon2::Version::V0x13, params);
+        let mut alt = [0u8; KEY_SIZE];
+        argon2
+            .hash_password_into(&password_first, &salt, &mut alt)
+            .unwrap();
+        assert_ne!(normal, alt);
+    }
+
+    #[test]
+    fn structured_keyfile_survives_line_ending_mangling() {
+        // F2: a generated keyfile must digest identically after CRLF, BOM, and
+        // trailing-newline mangling (FTP ASCII mode / editors / email).
+        let clean = generate_keyfile_v1();
+        let d_clean = keyfile_digest_from_file(clean.as_bytes()).unwrap();
+
+        // CRLF + extra trailing newline.
+        let crlf = clean.replace('\n', "\r\n") + "\r\n";
+        assert_eq!(keyfile_digest_from_file(crlf.as_bytes()).unwrap(), d_clean);
+
+        // Leading UTF-8 BOM + leading/trailing whitespace on lines.
+        let mut bom = vec![0xEF, 0xBB, 0xBF];
+        bom.extend_from_slice(clean.replace('\n', "  \n\t").as_bytes());
+        assert_eq!(keyfile_digest_from_file(&bom).unwrap(), d_clean);
+    }
+
+    #[test]
+    fn raw_keyfile_is_hashed_verbatim() {
+        // A non-structured file is hashed as-is; changing one byte changes the
+        // digest (so binary keyfiles work, with the documented fragility caveat).
+        let raw = [0x42u8; 64];
+        let d = keyfile_digest_from_file(&raw).unwrap();
+        assert_eq!(d, keyfile_digest(&raw));
+        let mut raw2 = raw;
+        raw2[0] = 0x43;
+        assert_ne!(keyfile_digest_from_file(&raw2).unwrap(), d);
+    }
+
+    #[test]
+    fn malformed_structured_keyfile_is_rejected() {
+        // Looks structured (header present) but the payload is not valid: hard
+        // error, never a silent raw fallback that would produce a wrong key.
+        let bad_hex = format!("{KEYFILE_HEADER}\nnot-hex-at-all\n");
+        assert!(keyfile_digest_from_file(bad_hex.as_bytes()).is_err());
+        let wrong_len = format!("{KEYFILE_HEADER}\n{}\n", "ab".repeat(8)); // 8 bytes, not 32
+        assert!(keyfile_digest_from_file(wrong_len.as_bytes()).is_err());
     }
 }
