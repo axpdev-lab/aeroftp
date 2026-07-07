@@ -114,11 +114,24 @@ impl ConnectionPool {
         // secret returns Err and the raw provider is never pooled.
         let connected = match resolve_overlay_secrets(server_query, "") {
             Ok(Some((params, password, salt))) => {
+                // Tier 1 keyfile second factor: resolve the profile's stored
+                // keyfile path to its digest, fail-closed (a keyfile vault is
+                // never unlocked password-only).
+                let store = CredentialStore::from_cache()
+                    .ok_or_else(|| "Vault not open. Cannot resolve crypt overlay.".to_string())?;
+                let keyfile_digest = crate::crypt_overlay_provider::resolve_profile_keyfile_digest(
+                    &store,
+                    &profile_id,
+                )
+                .map_err(|e| {
+                    format!("Crypt overlay unlock failed for '{}': {}", server_query, e)
+                })?;
                 crate::crypt_overlay_provider::wrap_provider_with_overlay_if_bound(
                     connected,
                     Some(&params),
                     &password,
                     &salt,
+                    keyfile_digest.as_ref(),
                 )
                 .await
                 .map_err(|e| format!("Crypt overlay unlock failed for '{}': {}", server_query, e))?

@@ -23843,6 +23843,32 @@ async fn cli_apply_crypt_overlay(
     let salt = read_server_cred(&store, uid, &format!("aerocrypt_overlay_salt_{}", id))
         .or_else(|| std::env::var("AEROFTP_CRYPT_OVERLAY_SALT").ok())
         .unwrap_or_default();
+    // Tier 1 keyfile second factor: the profile-bound keyfile path (same
+    // per-profile vault key the GUI stores, honoring --user scoping like the
+    // pw/salt reads) resolved fail-closed to its digest. A stored-but-unreadable
+    // keyfile refuses the connection; a keyfile vault never unlocks
+    // password-only.
+    let keyfile_path = read_server_cred(
+        &store,
+        uid,
+        &format!("aerocrypt_overlay_keyfile_path_{}", id),
+    )
+    .filter(|s| !s.is_empty())
+    .or_else(|| {
+        std::env::var("AEROFTP_CRYPT_OVERLAY_KEYFILE")
+            .ok()
+            .filter(|s| !s.is_empty())
+    });
+    let keyfile_digest = match keyfile_path {
+        None => None,
+        Some(p) => match ftp_client_gui_lib::crypt_overlay_provider::keyfile_digest_from_path(&p) {
+            Ok(d) => Some(d),
+            Err(e) => {
+                print_error(format, &format!("Crypt overlay unlock failed: {}", e), 6);
+                return Err(6);
+            }
+        },
+    };
 
     let params = ftp_client_gui_lib::crypt_compare::OverlayUnlockParams {
         kind,
@@ -23856,6 +23882,7 @@ async fn cli_apply_crypt_overlay(
         Some(&params),
         &password,
         &salt,
+        keyfile_digest.as_ref(),
     )
     .await
     {
@@ -44909,6 +44936,7 @@ async fn cmd_crypt_ls(
     0
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn cmd_crypt_put(
     url: &str,
     local_file: &str,

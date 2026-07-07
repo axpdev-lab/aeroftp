@@ -1270,11 +1270,15 @@ pub async fn provider_apply_crypt_overlay(
     let salt = params.salt.unwrap_or_default();
     let scope = {
         let mut guard = state.provider.lock().await;
+        // Keyfile second factor: not yet supplied by the interactive unlock UI
+        // (the frontend keyfile picker lands with Tier 1 phase 2); a keyfile
+        // vault fails closed here with a clear "requires a keyfile" error.
         crate::crypt_overlay_provider::apply_overlay_in_place(
             &mut guard,
             &binding,
             &params.password,
             &salt,
+            None,
         )
         .await?
     };
