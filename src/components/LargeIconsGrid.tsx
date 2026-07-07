@@ -10,9 +10,13 @@
 
 import React, { useCallback, useRef } from 'react';
 import { VirtuosoGrid } from 'react-virtuoso';
+import { Lock, LockOpen } from 'lucide-react';
 import { ImageThumbnail } from './ImageThumbnail';
 import { DecryptingText } from './DecryptingText';
 import type { LocalFile } from '../types';
+
+/** Encryption lock state for an archive card icon, shared with the list-view padlock. */
+export type ArchiveLock = { encrypted: boolean; weak: boolean } | null;
 
 const IMAGE_EXTENSIONS = /\.(jpg|jpeg|png|gif|svg|webp|bmp|ico)$/i;
 
@@ -45,6 +49,11 @@ interface LargeIconsGridProps {
   // Formatters
   formatBytes: (bytes: number) => string;
   showFileExtensions?: boolean;
+  // Proactive encrypted-archive lock overlay (local panel): per-file lock state,
+  // reusing the same detection cache as the list-view padlock. Null disables it.
+  archiveLockOf?: (file: LocalFile) => ArchiveLock;
+  lockedLabel?: string;
+  unlockedLabel?: string;
   // AeroCrypt overlay decryption animation (remote panel only): scramble names
   // while unlocking, then reveal. `revealing` keeps the cards animated through
   // the brief reveal window after `decrypting` flips false.
@@ -77,6 +86,9 @@ interface LargeIconCardProps {
   decrypting?: boolean;
   revealing?: boolean;
   cardIndex?: number;
+  lock?: ArchiveLock;
+  lockedLabel?: string;
+  unlockedLabel?: string;
 }
 
 const LargeIconCard = React.memo<LargeIconCardProps>(({
@@ -102,6 +114,9 @@ const LargeIconCard = React.memo<LargeIconCardProps>(({
   decrypting = false,
   revealing = false,
   cardIndex = 0,
+  lock = null,
+  lockedLabel,
+  unlockedLabel,
 }) => {
   const renameRef = useRef<HTMLInputElement>(null);
   const isRenaming = inlineRename?.path === file.path;
@@ -198,8 +213,17 @@ const LargeIconCard = React.memo<LargeIconCardProps>(({
       onDragEnd={onDragEnd}
     >
       {/* Icon / Thumbnail */}
-      <div className={`flex items-center justify-center ${isImage && !file.is_dir ? 'w-24 h-24' : 'w-16 h-16'}`}>
+      <div className={`relative flex items-center justify-center ${isImage && !file.is_dir ? 'w-24 h-24' : 'w-16 h-16'}`}>
         {renderIcon()}
+        {lock && (
+          <span className="absolute bottom-0 right-0 rounded-full bg-white/90 dark:bg-gray-900/90 p-0.5 shadow-sm ring-1 ring-black/5 dark:ring-white/10">
+            {lock.encrypted ? (
+              <Lock size={13} className={lock.weak ? 'text-amber-500' : 'text-emerald-600 dark:text-emerald-400'} aria-label={lockedLabel} />
+            ) : (
+              <LockOpen size={13} className="text-gray-400" aria-label={unlockedLabel} />
+            )}
+          </span>
+        )}
       </div>
 
       {/* Filename / Inline rename */}
@@ -271,6 +295,9 @@ export function LargeIconsGrid({
   showFileExtensions = true,
   decrypting = false,
   revealing = false,
+  archiveLockOf,
+  lockedLabel,
+  unlockedLabel,
 }: LargeIconsGridProps) {
   const handleNavigateUp = useCallback(() => {
     if (!isAtRoot) onNavigateUp();
@@ -320,12 +347,16 @@ export function LargeIconsGrid({
         decrypting={decrypting}
         revealing={revealing}
         cardIndex={index}
+        lock={archiveLockOf ? archiveLockOf(file) : null}
+        lockedLabel={lockedLabel}
+        unlockedLabel={unlockedLabel}
       />
     );
   }, [files, selectedFiles, dragOverTarget, currentPath, getFileIcon, onFileClick,
     onFileDoubleClick, onContextMenu, onDragStart, onDragOver, onDrop, onDragLeave,
     onDragEnd, inlineRename, onInlineRenameChange, onInlineRenameCommit,
-    onInlineRenameCancel, formatBytes, showFileExtensions, decrypting, revealing]);
+    onInlineRenameCancel, formatBytes, showFileExtensions, decrypting, revealing,
+    archiveLockOf, lockedLabel, unlockedLabel]);
 
   // Non-virtualized path for small directories (<=100 items)
   if (!shouldVirtualize) {

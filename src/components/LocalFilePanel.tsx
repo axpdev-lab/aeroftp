@@ -322,11 +322,44 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
   t,
   notify,
 }) => {
-  // Proactive encrypted-archive detection for the Type-column padlock and the
-  // optional Encryption column. Runs (reads archive headers) only when one of
-  // those columns is visible, so it costs nothing in the default layout.
-  const archiveMetaEnabled = !!(localColumns.config.visibility.type || localColumns.config.visibility.encryption);
+  // Proactive encrypted-archive detection for the Type-column padlock, the
+  // optional Encryption column, and the grid / large-icons lock overlays. Runs
+  // (reads archive headers) only when a surface that shows a lock is visible, so
+  // it costs nothing in the plain list layout with those columns hidden.
+  const archiveMetaEnabled = !!(
+    localColumns.config.visibility.type ||
+    localColumns.config.visibility.encryption ||
+    viewMode === 'grid' ||
+    viewMode === 'large'
+  );
   const archiveMetaOf = useArchiveMeta(sortedFiles, archiveMetaEnabled);
+
+  // Encryption lock state for an archive icon in the grid / large-icons views,
+  // reusing the same detection cache as the list-view padlock. Null while the
+  // header read is still in flight or for files we do not proactively detect.
+  const archiveLockOf = (file: LocalFile): { encrypted: boolean; weak: boolean } | null => {
+    const meta = archiveMetaOf(file);
+    if (!meta || meta.status !== 'done') return null;
+    const weak = meta.encrypted && meta.cipher ? !formatArchiveCipher(meta.cipher).strong : false;
+    return { encrypted: meta.encrypted, weak };
+  };
+
+  // Small lock badge overlaid on a card icon (grid view). Emerald closed for a
+  // strong cipher, amber closed for weak ZipCrypto, gray open for a detectable
+  // but unprotected archive.
+  const renderCardLock = (file: LocalFile): React.ReactNode => {
+    const lock = archiveLockOf(file);
+    if (!lock) return null;
+    const cls = lock.encrypted
+      ? (lock.weak ? 'text-amber-500' : 'text-emerald-600 dark:text-emerald-400')
+      : 'text-gray-400';
+    const Icon = lock.encrypted ? Lock : LockOpen;
+    return (
+      <span className="absolute -bottom-0.5 -right-0.5 rounded-full bg-white/90 dark:bg-gray-900/90 p-0.5 shadow-sm ring-1 ring-black/5 dark:ring-white/10">
+        <Icon size={11} className={cls} aria-label={lock.encrypted ? t('browser.encrypted') : t('browser.notEncrypted')} />
+      </span>
+    );
+  };
 
   // AeroFile: render the bridge-config badge for a recognized client config.
   const bridgeBadge = (file: LocalFile): React.ReactNode => {
@@ -1021,6 +1054,7 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
                 ) : (
                   <div className="file-grid-icon">
                     {iconProvider.getFileIcon(file.name).icon}
+                    {renderCardLock(file)}
                   </div>
                 )}
                 {inlineRename?.path === file.path && !inlineRename?.isRemote ? (
@@ -1112,6 +1146,9 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
             onInlineRenameCancel={onInlineRenameCancel}
             formatBytes={formatBytes}
             showFileExtensions={showFileExtensions}
+            archiveLockOf={archiveLockOf}
+            lockedLabel={t('browser.encrypted')}
+            unlockedLabel={t('browser.notEncrypted')}
           />
         )}
         </div>
