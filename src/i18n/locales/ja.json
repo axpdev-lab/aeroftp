@@ -329,7 +329,10 @@
             "locked": "ロック",
             "notConnected": "未接続",
             "permsHeader": "権限",
-            "syncPathMismatch": "パスが同期されていません - 一致するフォルダに移動するか、同期ナビゲーションを無効にしてください"
+            "syncPathMismatch": "パスが同期されていません - 一致するフォルダに移動するか、同期ナビゲーションを無効にしてください",
+            "encryption": "暗号化",
+            "encrypted": "暗号化済み",
+            "notEncrypted": "暗号化なし"
         },
         "contextMenu": {
             "askAeroAgent": "AeroAgentに質問...",

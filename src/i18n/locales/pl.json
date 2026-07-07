@@ -329,7 +329,10 @@
             "locked": "Zablokowany",
             "notConnected": "Nie połączono",
             "permsHeader": "Upraw.",
-            "syncPathMismatch": "Sciezki nie sa zsynchronizowane - przejdz do pasujacych folderow lub wylacz synchronizowana nawigacje"
+            "syncPathMismatch": "Sciezki nie sa zsynchronizowane - przejdz do pasujacych folderow lub wylacz synchronizowana nawigacje",
+            "encryption": "Szyfrowanie",
+            "encrypted": "Zaszyfrowano",
+            "notEncrypted": "Niezaszyfrowano"
         },
         "contextMenu": {
             "askAeroAgent": "Zapytaj AeroAgent...",

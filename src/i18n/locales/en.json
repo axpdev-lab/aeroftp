@@ -930,6 +930,9 @@
             "size": "Size",
             "sortBy": "Sort by",
             "type": "Type",
+            "encryption": "Encryption",
+            "encrypted": "Encrypted",
+            "notEncrypted": "Not encrypted",
             "uploadFiles": "Upload Files",
             "uploadFolder": "Upload Folder"
         },

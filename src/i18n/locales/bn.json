@@ -329,7 +329,10 @@
             "locked": "লক করা",
             "notConnected": "সংযুক্ত নয়",
             "permsHeader": "অনুমতি",
-            "syncPathMismatch": "পাথগুলো সিঙ্কে নেই - মিলে যাওয়া ফোল্ডারে যান অথবা সিঙ্ক নেভিগেশন বন্ধ করুন"
+            "syncPathMismatch": "পাথগুলো সিঙ্কে নেই - মিলে যাওয়া ফোল্ডারে যান অথবা সিঙ্ক নেভিগেশন বন্ধ করুন",
+            "encryption": "এনক্রিপশন",
+            "encrypted": "এনক্রিপ্ট করা",
+            "notEncrypted": "এনক্রিপ্ট করা নয়"
         },
         "contextMenu": {
             "askAeroAgent": "AeroAgent-কে জিজ্ঞাসা করুন...",

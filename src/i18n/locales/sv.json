@@ -329,7 +329,10 @@
             "locked": "Låst",
             "notConnected": "Inte ansluten",
             "permsHeader": "Rättigheter",
-            "syncPathMismatch": "Sokvagarna ar inte synkroniserade - navigera till matchande mappar eller inaktivera synkroniserad navigering"
+            "syncPathMismatch": "Sokvagarna ar inte synkroniserade - navigera till matchande mappar eller inaktivera synkroniserad navigering",
+            "encryption": "Kryptering",
+            "encrypted": "Krypterad",
+            "notEncrypted": "Inte krypterad"
         },
         "contextMenu": {
             "askAeroAgent": "Fråga AeroAgent...",

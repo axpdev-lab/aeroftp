@@ -329,7 +329,10 @@
             "locked": "Lukustatud",
             "notConnected": "Pole ühendatud",
             "permsHeader": "Õigused",
-            "syncPathMismatch": "Teed ei ole sünkroonis - navigeerige vastavatesse kaustadesse või keelake sünkroonitud navigeerimine"
+            "syncPathMismatch": "Teed ei ole sünkroonis - navigeerige vastavatesse kaustadesse või keelake sünkroonitud navigeerimine",
+            "encryption": "Krüpteering",
+            "encrypted": "Krüpteeritud",
+            "notEncrypted": "Krüpteerimata"
         },
         "contextMenu": {
             "askAeroAgent": "Küsi AeroAgent-ilt...",

@@ -329,7 +329,10 @@
             "locked": "Zárolt",
             "notConnected": "Nincs Csatlakozva",
             "permsHeader": "Jogosultságok",
-            "syncPathMismatch": "Az utvonalak nincsenek szinkronban - navigaljon egyezo mappakhoz, vagy tiltsa le a szinkron navigaciot"
+            "syncPathMismatch": "Az utvonalak nincsenek szinkronban - navigaljon egyezo mappakhoz, vagy tiltsa le a szinkron navigaciot",
+            "encryption": "Titkosítás",
+            "encrypted": "Titkosítva",
+            "notEncrypted": "Nincs titkosítva"
         },
         "contextMenu": {
             "askAeroAgent": "Kérdezd meg AeroAgent...",

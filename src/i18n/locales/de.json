@@ -329,7 +329,10 @@
             "locked": "Gesperrt",
             "notConnected": "Nicht verbunden",
             "permsHeader": "Ber.",
-            "syncPathMismatch": "Pfade sind nicht synchron - navigieren Sie zu übereinstimmenden Ordnern oder deaktivieren Sie die synchronisierte Navigation"
+            "syncPathMismatch": "Pfade sind nicht synchron - navigieren Sie zu übereinstimmenden Ordnern oder deaktivieren Sie die synchronisierte Navigation",
+            "encryption": "Verschlüsselung",
+            "encrypted": "Verschlüsselt",
+            "notEncrypted": "Nicht verschlüsselt"
         },
         "contextMenu": {
             "askAeroAgent": "AeroAgent fragen...",

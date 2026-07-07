@@ -329,7 +329,10 @@
             "locked": "Nakakandado",
             "notConnected": "Hindi Nakakonekta",
             "permsHeader": "Pahintulot",
-            "syncPathMismatch": "Hindi magkatugma ang mga path - mag-navigate sa magkatugmang mga folder o i-disable ang sync na pag-navigate"
+            "syncPathMismatch": "Hindi magkatugma ang mga path - mag-navigate sa magkatugmang mga folder o i-disable ang sync na pag-navigate",
+            "encryption": "Pag-encrypt",
+            "encrypted": "Naka-encrypt",
+            "notEncrypted": "Hindi naka-encrypt"
         },
         "contextMenu": {
             "askAeroAgent": "Itanong sa AeroAgent...",

@@ -329,7 +329,10 @@
             "locked": "Imefungwa",
             "notConnected": "Haijaunganishwa",
             "permsHeader": "Ruhusa",
-            "syncPathMismatch": "Njia haziko sawa - nenda kwenye folda zinazolingana au zima urambazaji uliosawazishwa"
+            "syncPathMismatch": "Njia haziko sawa - nenda kwenye folda zinazolingana au zima urambazaji uliosawazishwa",
+            "encryption": "Usimbaji",
+            "encrypted": "Imesimbwa",
+            "notEncrypted": "Haijasimbwa"
         },
         "contextMenu": {
             "askAeroAgent": "Uliza AeroAgent...",

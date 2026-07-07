@@ -329,7 +329,10 @@
             "locked": "Blokeatuta",
             "notConnected": "Konektatu gabe",
             "permsHeader": "Baim.",
-            "syncPathMismatch": "Bideak ez daude sinkronizatuta - bat datozen karpetetara nabigatu edo desgaitu sinkronizazio-nabigazioa"
+            "syncPathMismatch": "Bideak ez daude sinkronizatuta - bat datozen karpetetara nabigatu edo desgaitu sinkronizazio-nabigazioa",
+            "encryption": "Enkriptatzea",
+            "encrypted": "Enkriptatuta",
+            "notEncrypted": "Enkriptatu gabe"
         },
         "contextMenu": {
             "askAeroAgent": "Galdetu AeroAgent-i...",

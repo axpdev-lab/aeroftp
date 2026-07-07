@@ -329,7 +329,10 @@
             "locked": "Læst",
             "notConnected": "Ekki tengt",
             "permsHeader": "Heimildir",
-            "syncPathMismatch": "Slodirnar eru ekki samstilltar - fardu i samsvurandi moppur eda slakktu a samstilltri leidsogu"
+            "syncPathMismatch": "Slodirnar eru ekki samstilltar - fardu i samsvurandi moppur eda slakktu a samstilltri leidsogu",
+            "encryption": "Dulkóðun",
+            "encrypted": "Dulkóðað",
+            "notEncrypted": "Ekki dulkóðað"
         },
         "contextMenu": {
             "askAeroAgent": "Spyrja AeroAgent...",

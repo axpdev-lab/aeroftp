@@ -329,7 +329,10 @@
             "locked": "Vergrendeld",
             "notConnected": "Niet verbonden",
             "permsHeader": "Rechten",
-            "syncPathMismatch": "Paden zijn niet gesynchroniseerd - navigeer naar overeenkomende mappen of schakel synchrone navigatie uit"
+            "syncPathMismatch": "Paden zijn niet gesynchroniseerd - navigeer naar overeenkomende mappen of schakel synchrone navigatie uit",
+            "encryption": "Versleuteling",
+            "encrypted": "Versleuteld",
+            "notEncrypted": "Niet versleuteld"
         },
         "contextMenu": {
             "askAeroAgent": "Vraag AeroAgent...",

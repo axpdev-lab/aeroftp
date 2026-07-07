@@ -329,7 +329,10 @@
             "locked": "Terkunci",
             "notConnected": "Tidak Tersambung",
             "permsHeader": "Izin",
-            "syncPathMismatch": "Jalur tidak sinkron - navigasi ke folder yang sesuai atau nonaktifkan navigasi sinkron"
+            "syncPathMismatch": "Jalur tidak sinkron - navigasi ke folder yang sesuai atau nonaktifkan navigasi sinkron",
+            "encryption": "Enkripsi",
+            "encrypted": "Terenkripsi",
+            "notEncrypted": "Tidak terenkripsi"
         },
         "contextMenu": {
             "askAeroAgent": "Tanya AeroAgent...",

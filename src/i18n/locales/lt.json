@@ -329,7 +329,10 @@
             "locked": "Užrakinta",
             "notConnected": "Neprisijungta",
             "permsHeader": "Leidimai",
-            "syncPathMismatch": "Keliai nesinchronizuoti - pereikite i atitinkamus aplankus arba isijunkite sinchronizuota navigacija"
+            "syncPathMismatch": "Keliai nesinchronizuoti - pereikite i atitinkamus aplankus arba isijunkite sinchronizuota navigacija",
+            "encryption": "Šifravimas",
+            "encrypted": "Užšifruota",
+            "notEncrypted": "Nešifruota"
         },
         "contextMenu": {
             "askAeroAgent": "Klausti AeroAgent...",

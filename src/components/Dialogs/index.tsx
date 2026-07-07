@@ -11,6 +11,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { useTranslation } from '../../i18n';
 import { Folder, FileText, Copy, X, HardDrive, Calendar, Shield, ShieldCheck, Hash, FileType, Eye, EyeOff, AlertTriangle, Info, ShieldAlert, KeyRound, Lock, Clock, Link as LinkIcon, User, Users, Loader2, Files as FilesIcon } from 'lucide-react';
 import { formatBytes } from '../../utils/formatters';
+import { formatArchiveCipher } from '../../utils/archiveCipher';
 import { getMimeType, getFileExtension } from '../Preview/utils/fileTypes';
 import { useDraggableModal } from '../../hooks/useDraggableModal';
 import { PROFILES_CHANGED_EVENT } from '../../utils/serverProfileStore';
@@ -225,17 +226,6 @@ interface ArchivePasswordDialogProps {
      *  Error whose message is shown inline so the user retries without a flash. */
     onSubmit: (password: string) => Promise<void>;
     onClose: () => void;
-}
-
-/** Format a detected cipher token for the badge, adding "-bit" where it applies
- *  (AES variants) and flagging legacy ZipCrypto as weak so it reads amber, not
- *  green. Keeps the house "256-bit" wording consistent with the provider badges. */
-function formatArchiveCipher(cipher: string): { label: string; strong: boolean } {
-    const aes = /^AES-(\d+)$/.exec(cipher);
-    if (aes) return { label: `AES ${aes[1]}-bit`, strong: true };
-    if (cipher === 'AES') return { label: 'AES', strong: true };
-    if (cipher.toLowerCase() === 'zipcrypto') return { label: 'ZipCrypto', strong: false };
-    return { label: cipher, strong: true };
 }
 
 export const ArchivePasswordDialog: React.FC<ArchivePasswordDialogProps> = ({ archiveName, format, cipher, onSubmit, onClose }) => {

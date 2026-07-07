@@ -15,7 +15,7 @@ import React, { useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import {
   RefreshCw, Search, HardDrive, AlertTriangle, X, ClipboardList, FolderUp, Loader2,
-  Copy, ArrowRightLeft,
+  Copy, ArrowRightLeft, Lock, LockOpen,
 } from 'lucide-react';
 import { useMarqueeSelection } from '../hooks/useMarqueeSelection';
 import { BreadcrumbBar } from './BreadcrumbBar';
@@ -32,6 +32,8 @@ import { LocalFile } from '../types';
 import type { ServerProfile } from '../types';
 import type { TrashItem, FileTag, PanelEndpoint } from '../types/aerofile';
 import { FileTagBadge } from './FileTagBadge';
+import { useArchiveMeta } from '../hooks/useArchiveMeta';
+import { formatArchiveCipher } from '../utils/archiveCipher';
 import { BridgeConfigBadge } from './BridgeConfigBadge';
 import type { BridgeSourceDescriptor } from './bridge/bridgeSources';
 import type { PanelKey } from '../hooks/useDragAndDrop';
@@ -320,6 +322,12 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
   t,
   notify,
 }) => {
+  // Proactive encrypted-archive detection for the Type-column padlock and the
+  // optional Encryption column. Runs (reads archive headers) only when one of
+  // those columns is visible, so it costs nothing in the default layout.
+  const archiveMetaEnabled = !!(localColumns.config.visibility.type || localColumns.config.visibility.encryption);
+  const archiveMetaOf = useArchiveMeta(sortedFiles, archiveMetaEnabled);
+
   // AeroFile: render the bridge-config badge for a recognized client config.
   const bridgeBadge = (file: LocalFile): React.ReactNode => {
     if (!getBridgeConfig || file.is_dir) return null;
@@ -836,12 +844,36 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
               const cls = id === 'type' ? 'hidden xl:table-cell px-3 py-2 text-sm text-gray-400' : 'px-4 py-2 text-sm text-gray-400';
               return <td key={id} className={cls}>-</td>;
             };
+            // At-a-glance lock next to the format: closed when the archive is
+            // encrypted (amber for weak ZipCrypto), open when it is a detectable
+            // archive but not protected. Nothing for non-archives or while the
+            // header read is still in flight.
+            const renderPadlock = (file: LocalFile): React.ReactNode => {
+              const meta = archiveMetaOf(file);
+              if (!meta || meta.status !== 'done') return null;
+              if (meta.encrypted) {
+                const weak = meta.cipher ? !formatArchiveCipher(meta.cipher).strong : false;
+                return <Lock size={12} className={`shrink-0 ${weak ? 'text-amber-500' : 'text-emerald-600 dark:text-emerald-400'}`} aria-label={t('browser.encrypted')} />;
+              }
+              return <LockOpen size={12} className="shrink-0 text-gray-400" aria-label={t('browser.notEncrypted')} />;
+            };
             const renderFileExtra = (id: AeroFileLocalColId, file: LocalFile) => {
               switch (id) {
                 case 'size':
                   return <td key="size" className="px-4 py-2 text-sm text-gray-500">{file.size !== null ? (!file.is_dir && file.size === 0 ? <span title={t('toast.zeroByteWarning')}>&#9888; 0 B</span> : formatBytes(file.size)) : '-'}</td>;
                 case 'type':
-                  return <td key="type" className="hidden xl:table-cell px-3 py-2 text-xs text-gray-500 uppercase">{file.is_dir ? t('browser.folderType') : (file.name.includes('.') ? file.name.split('.').pop() : '-')}</td>;
+                  return <td key="type" className="hidden xl:table-cell px-3 py-2 text-xs text-gray-500 uppercase"><span className="flex items-center gap-1">{renderPadlock(file)}<span className="truncate">{file.is_dir ? t('browser.folderType') : (file.name.includes('.') ? file.name.split('.').pop() : '-')}</span></span></td>;
+                case 'encryption': {
+                  const meta = file.is_dir ? undefined : archiveMetaOf(file);
+                  let content: React.ReactNode = <span className="text-gray-400">-</span>;
+                  if (meta?.status === 'loading') {
+                    content = <Loader2 size={12} className="animate-spin text-gray-400" />;
+                  } else if (meta?.status === 'done' && meta.encrypted && meta.cipher) {
+                    const c = formatArchiveCipher(meta.cipher);
+                    content = <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold tracking-wide ${c.strong ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300' : 'bg-amber-500/15 text-amber-700 dark:text-amber-300'}`} title={c.strong ? undefined : t('contextMenu.zipCryptoLegacy')}>{c.label}</span>;
+                  }
+                  return <td key="encryption" className="px-4 py-2 text-xs">{content}</td>;
+                }
                 case 'modified':
                   return <td key="modified" className="px-4 py-2 text-xs text-gray-500 whitespace-nowrap">{formatDate(file.modified)}</td>;
                 default:

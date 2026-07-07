@@ -329,7 +329,10 @@
             "locked": "Wedi'i gloi",
             "notConnected": "Heb gysylltu",
             "permsHeader": "Hawl.",
-            "syncPathMismatch": "Nid yw'r llwybrau wedi'u cydweddu - ewch i ffolderi cyfatebol neu analluogwch lywio cydweddu"
+            "syncPathMismatch": "Nid yw'r llwybrau wedi'u cydweddu - ewch i ffolderi cyfatebol neu analluogwch lywio cydweddu",
+            "encryption": "Amgryptio",
+            "encrypted": "Wedi'i amgryptio",
+            "notEncrypted": "Heb ei amgryptio"
         },
         "contextMenu": {
             "askAeroAgent": "Gofyn i AeroAgent...",

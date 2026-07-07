@@ -329,7 +329,10 @@
             "locked": "लॉक किया गया",
             "notConnected": "कनेक्ट नहीं है",
             "permsHeader": "अनुमतियाँ",
-            "syncPathMismatch": "पथ सिंक में नहीं हैं - मिलते-जुलते फ़ोल्डर पर जाएं या सिंक नेविगेशन अक्षम करें"
+            "syncPathMismatch": "पथ सिंक में नहीं हैं - मिलते-जुलते फ़ोल्डर पर जाएं या सिंक नेविगेशन अक्षम करें",
+            "encryption": "एन्क्रिप्शन",
+            "encrypted": "एन्क्रिप्टेड",
+            "notEncrypted": "एन्क्रिप्टेड नहीं"
         },
         "contextMenu": {
             "askAeroAgent": "AeroAgent से पूछें...",

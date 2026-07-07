@@ -329,7 +329,10 @@
             "locked": "Bloķēts",
             "notConnected": "Nav savienots",
             "permsHeader": "Atļaujas",
-            "syncPathMismatch": "Celi nav sinhronizeti - parejiet uz atbilstosam mapem vai atspejojiet sinhronizeto navigaciju"
+            "syncPathMismatch": "Celi nav sinhronizeti - parejiet uz atbilstosam mapem vai atspejojiet sinhronizeto navigaciju",
+            "encryption": "Šifrēšana",
+            "encrypted": "Šifrēts",
+            "notEncrypted": "Nešifrēts"
         },
         "contextMenu": {
             "askAeroAgent": "Jautāt AeroAgent...",

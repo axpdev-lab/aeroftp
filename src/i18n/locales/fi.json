@@ -329,7 +329,10 @@
             "locked": "Lukittu",
             "notConnected": "Ei yhdistetty",
             "permsHeader": "Oikeudet",
-            "syncPathMismatch": "Polut eivät ole synkronoituja - siirry vastaaviin kansioihin tai poista synkronoitu navigointi käytöstä"
+            "syncPathMismatch": "Polut eivät ole synkronoituja - siirry vastaaviin kansioihin tai poista synkronoitu navigointi käytöstä",
+            "encryption": "Salaus",
+            "encrypted": "Salattu",
+            "notEncrypted": "Ei salattu"
         },
         "contextMenu": {
             "askAeroAgent": "Kysy AeroAgent-ilta...",

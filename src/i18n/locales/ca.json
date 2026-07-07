@@ -329,7 +329,10 @@
             "locked": "Bloquejat",
             "notConnected": "No connectat",
             "permsHeader": "Perms",
-            "syncPathMismatch": "Els camins no estan sincronitzats - navegueu a carpetes coincidents o desactiveu la navegació sincronitzada"
+            "syncPathMismatch": "Els camins no estan sincronitzats - navegueu a carpetes coincidents o desactiveu la navegació sincronitzada",
+            "encryption": "Xifratge",
+            "encrypted": "Xifrat",
+            "notEncrypted": "No xifrat"
         },
         "contextMenu": {
             "askAeroAgent": "Pregunta a AeroAgent...",

@@ -329,7 +329,10 @@
             "locked": "ล็อค",
             "notConnected": "ไม่ได้เชื่อมต่อ",
             "permsHeader": "สิทธิ์",
-            "syncPathMismatch": "เส้นทางไม่ตรงกัน - ไปยังโฟลเดอร์ที่ตรงกันหรือปิดการนำทางแบบซิงค์"
+            "syncPathMismatch": "เส้นทางไม่ตรงกัน - ไปยังโฟลเดอร์ที่ตรงกันหรือปิดการนำทางแบบซิงค์",
+            "encryption": "การเข้ารหัส",
+            "encrypted": "เข้ารหัสแล้ว",
+            "notEncrypted": "ไม่ได้เข้ารหัส"
         },
         "contextMenu": {
             "askAeroAgent": "ถาม AeroAgent...",

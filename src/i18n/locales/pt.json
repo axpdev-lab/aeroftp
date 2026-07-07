@@ -329,7 +329,10 @@
             "locked": "Bloqueado",
             "notConnected": "Não ligado",
             "permsHeader": "Perms",
-            "syncPathMismatch": "Os caminhos estão dessincronizados - navegue para pastas correspondentes ou desative a navegação sincronizada"
+            "syncPathMismatch": "Os caminhos estão dessincronizados - navegue para pastas correspondentes ou desative a navegação sincronizada",
+            "encryption": "Criptografia",
+            "encrypted": "Criptografado",
+            "notEncrypted": "Não criptografado"
         },
         "contextMenu": {
             "askAeroAgent": "Perguntar ao AeroAgent...",

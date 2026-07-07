@@ -329,7 +329,10 @@
             "locked": "Verrouillé",
             "notConnected": "Non connecté",
             "permsHeader": "Perms",
-            "syncPathMismatch": "Les chemins ne sont pas synchronisés - naviguez vers des dossiers correspondants ou désactivez la navigation synchronisée"
+            "syncPathMismatch": "Les chemins ne sont pas synchronisés - naviguez vers des dossiers correspondants ou désactivez la navigation synchronisée",
+            "encryption": "Chiffrement",
+            "encrypted": "Chiffré",
+            "notEncrypted": "Non chiffré"
         },
         "contextMenu": {
             "askAeroAgent": "Demander à AeroAgent...",

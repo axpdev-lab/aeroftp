@@ -329,7 +329,10 @@
             "locked": "ជាប់សោ",
             "notConnected": "មិនបានភ្ជាប់",
             "permsHeader": "សិទ្ធិ",
-            "syncPathMismatch": "ផ្លូវមិនត្រូវគ្នា - រុករកទៅថតដែលត្រូវគ្នា ឬបិទការរុករកសមកាលកម្ម"
+            "syncPathMismatch": "ផ្លូវមិនត្រូវគ្នា - រុករកទៅថតដែលត្រូវគ្នា ឬបិទការរុករកសមកាលកម្ម",
+            "encryption": "ការអ៊ិនគ្រីប",
+            "encrypted": "បានអ៊ិនគ្រីប",
+            "notEncrypted": "មិនបានអ៊ិនគ្រីប"
         },
         "contextMenu": {
             "askAeroAgent": "សួរ AeroAgent...",

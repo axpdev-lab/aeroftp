@@ -329,7 +329,10 @@
             "locked": "已锁定",
             "notConnected": "未连接",
             "permsHeader": "权限",
-            "syncPathMismatch": "路径不同步 - 请导航到匹配的文件夹或禁用同步导航"
+            "syncPathMismatch": "路径不同步 - 请导航到匹配的文件夹或禁用同步导航",
+            "encryption": "加密",
+            "encrypted": "已加密",
+            "notEncrypted": "未加密"
         },
         "contextMenu": {
             "askAeroAgent": "询问 AeroAgent...",

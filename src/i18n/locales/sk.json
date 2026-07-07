@@ -329,7 +329,10 @@
             "locked": "Uzamknuté",
             "notConnected": "Nepripojené",
             "permsHeader": "Práva",
-            "syncPathMismatch": "Cesty nie su synchronizovane - prejdite do zodpovedajucich priecinkov alebo vypnite synchronizovanu navigaciu"
+            "syncPathMismatch": "Cesty nie su synchronizovane - prejdite do zodpovedajucich priecinkov alebo vypnite synchronizovanu navigaciu",
+            "encryption": "Šifrovanie",
+            "encrypted": "Šifrované",
+            "notEncrypted": "Nešifrované"
         },
         "contextMenu": {
             "askAeroAgent": "Opýtať sa AeroAgent...",

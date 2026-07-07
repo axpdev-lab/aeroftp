@@ -329,7 +329,10 @@
             "locked": "Zaključano",
             "notConnected": "Nije povezano",
             "permsHeader": "Dozvole",
-            "syncPathMismatch": "Putanje nisu sinkronizirane - navigirajte do odgovarajucih mapa ili onemogucite sinkroniziranu navigaciju"
+            "syncPathMismatch": "Putanje nisu sinkronizirane - navigirajte do odgovarajucih mapa ili onemogucite sinkroniziranu navigaciju",
+            "encryption": "Šifriranje",
+            "encrypted": "Šifrirano",
+            "notEncrypted": "Nije šifrirano"
         },
         "contextMenu": {
             "askAeroAgent": "Pitaj AeroAgent...",

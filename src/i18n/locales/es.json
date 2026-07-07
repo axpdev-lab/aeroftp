@@ -329,7 +329,10 @@
             "locked": "Bloqueado",
             "notConnected": "No conectado",
             "permsHeader": "Perms",
-            "syncPathMismatch": "Las rutas no están sincronizadas - navegue a carpetas coincidentes o desactive la navegación sincronizada"
+            "syncPathMismatch": "Las rutas no están sincronizadas - navegue a carpetas coincidentes o desactive la navegación sincronizada",
+            "encryption": "Cifrado",
+            "encrypted": "Cifrado",
+            "notEncrypted": "Sin cifrar"
         },
         "contextMenu": {
             "askAeroAgent": "Preguntar a AeroAgent...",

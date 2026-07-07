@@ -329,7 +329,10 @@
             "locked": "Blocat",
             "notConnected": "Neconectat",
             "permsHeader": "Permisiuni",
-            "syncPathMismatch": "Caile sunt desincronizate - navigati la foldere corespondente sau dezactivati navigarea sincronizata"
+            "syncPathMismatch": "Caile sunt desincronizate - navigati la foldere corespondente sau dezactivati navigarea sincronizata",
+            "encryption": "Criptare",
+            "encrypted": "Criptat",
+            "notEncrypted": "Necriptat"
         },
         "contextMenu": {
             "askAeroAgent": "Întreabă AeroAgent...",

@@ -329,7 +329,10 @@
             "locked": "Kilitli",
             "notConnected": "Bağlı Değil",
             "permsHeader": "İzinler",
-            "syncPathMismatch": "Yollar senkronize degil - eslesen klasorlere gidin veya senkronize gezintiyi devre disi birakin"
+            "syncPathMismatch": "Yollar senkronize degil - eslesen klasorlere gidin veya senkronize gezintiyi devre disi birakin",
+            "encryption": "Şifreleme",
+            "encrypted": "Şifreli",
+            "notEncrypted": "Şifresiz"
         },
         "contextMenu": {
             "askAeroAgent": "AeroAgent'a sor...",

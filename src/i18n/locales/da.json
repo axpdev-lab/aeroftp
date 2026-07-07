@@ -329,7 +329,10 @@
             "locked": "Låst",
             "notConnected": "Ikke forbundet",
             "permsHeader": "Rettigheder",
-            "syncPathMismatch": "Stierne er ikke synkroniserede - naviger til matchende mapper eller deaktiver synkroniseret navigation"
+            "syncPathMismatch": "Stierne er ikke synkroniserede - naviger til matchende mapper eller deaktiver synkroniseret navigation",
+            "encryption": "Kryptering",
+            "encrypted": "Krypteret",
+            "notEncrypted": "Ikke krypteret"
         },
         "contextMenu": {
             "askAeroAgent": "Spørg AeroAgent...",
