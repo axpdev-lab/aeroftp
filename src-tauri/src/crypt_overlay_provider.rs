@@ -411,6 +411,81 @@ impl CryptOverlayProvider {
             .map_err(ProviderError::InvalidPath)
     }
 
+    /// #390 fail-closed guard. When a write into `plain_target` lands on an
+    /// encrypted parent that is missing on the wire, distinguish two cases:
+    ///
+    /// - #385 genuine: the encrypted parent chain simply does not exist yet (a
+    ///   fresh encrypted tree). The caller should create it (`ensure_parent_dirs`)
+    ///   and retry.
+    /// - #390 phantom: a PLAINTEXT-named folder exists on the wire at that
+    ///   location because it was created while the overlay was off. It has no
+    ///   ciphertext preimage, so encrypting the path would spawn a divergent
+    ///   `enc(name)` folder ALONGSIDE the plaintext one and silently misplace the
+    ///   file (the folder the user is standing in stays empty).
+    ///
+    /// Returns `Some(on-wire plaintext parent)` for the #390 case, where the write
+    /// must fail closed instead of materializing the phantom; `None` when it is
+    /// safe to create the encrypted parent (the #385 case) or the guard does not
+    /// apply. Only reached on the missing-parent retry path, so it costs one
+    /// `exists` probe on failure and nothing on the success path.
+    async fn phantom_plaintext_parent(&mut self, plain_target: &str) -> Option<String> {
+        // A relative target resolves against the current on-wire dir, which is not
+        // known here without a round trip; the frontend cwd re-read on overlay-arm
+        // covers that seam. Absolute targets are what the upload UI actually sends.
+        if !plain_target.starts_with('/') {
+            return None;
+        }
+        let t = norm_abs(plain_target);
+        let parent = match t.rsplit_once('/') {
+            Some((p, _)) if !p.is_empty() => p.to_string(),
+            _ => return None, // leaf directly at the root: no below-anchor parent
+        };
+        // Only a parent strictly BELOW the anchor can phantom. At or above the
+        // anchor the path passes through as cleartext and the anchor itself
+        // legitimately exists, so an `exists` hit there is not a phantom.
+        let strictly_below = if self.scope.is_empty() {
+            true
+        } else {
+            parent.starts_with(&format!("{}/", self.scope))
+        };
+        if !strictly_below {
+            return None;
+        }
+        match self.inner.exists(&parent).await {
+            Ok(true) => Some(parent),
+            _ => None,
+        }
+    }
+
+    /// #390 smart re-anchor support: is the wrapped provider's CURRENT on-wire
+    /// cwd a valid location inside the encrypted view? True when the cwd is the
+    /// anchor itself or a below-anchor path whose every component decodes as real
+    /// ciphertext (so the overlay can render it decrypted in place); false when the
+    /// cwd is outside the anchor, or a below-anchor path with a plaintext component
+    /// that has no ciphertext preimage (a folder navigated to while the overlay was
+    /// off, hidden once armed). Lets the UI keep the user where they are on arm when
+    /// the folder is a genuine encrypted folder, and re-anchor to the scope/root
+    /// only when the current folder would otherwise be hidden.
+    pub async fn cwd_in_encrypted_view(&mut self) -> Result<bool, ProviderError> {
+        let enc_cwd = norm_abs(&self.inner.pwd().await?);
+        let below = if self.scope.is_empty() {
+            enc_cwd.trim_start_matches('/').to_string()
+        } else if enc_cwd == self.scope {
+            return Ok(true); // the cleartext anchor root itself
+        } else if let Some(b) = enc_cwd.strip_prefix(&format!("{}/", self.scope)) {
+            b.to_string()
+        } else {
+            return Ok(false); // outside / above the anchor: not in the encrypted view
+        };
+        // Every below-anchor component must decode as valid ciphertext (directory
+        // semantics). An empty tail (the anchor / remote root) is vacuously valid.
+        let all_decode = below
+            .split('/')
+            .filter(|c| !c.is_empty() && *c != ".")
+            .all(|c| self.keys.decode_name(c, true).is_some());
+        Ok(all_decode)
+    }
+
     fn crypt_err(context: &str, e: String) -> ProviderError {
         ProviderError::TransferFailed(format!("{context}: {e}"))
     }
@@ -752,6 +827,23 @@ impl StorageProvider for CryptOverlayProvider {
             result,
             Err(ProviderError::NotFound(_)) | Err(ProviderError::InvalidPath(_))
         ) {
+            // #390 (option 1, strict): before creating the encrypted parent chain,
+            // refuse if the on-wire parent is a plaintext-named folder created while
+            // the overlay was off. Creating enc(name) there would spawn a divergent
+            // phantom folder and silently misplace the file. Fail closed with a clear
+            // message instead. A genuinely-missing encrypted parent (#385) still
+            // creates and retries.
+            if let Some(plain_parent) = self.phantom_plaintext_parent(remote_path).await {
+                let _ = tokio::fs::remove_file(&temp_path).await;
+                return Err(ProviderError::InvalidPath(format!(
+                    "the current folder {:?} is a plaintext folder created with the crypt \
+                     overlay off, so it is not part of the encrypted view. AeroFTP will not \
+                     create a second encrypted folder here and silently misplace the file. Turn \
+                     the overlay off to use this folder, or move into an encrypted folder before \
+                     uploading (see issue #390).",
+                    plain_parent
+                )));
+            }
             ensure_parent_dirs(&mut self.inner, &enc).await;
             result = self
                 .inner
@@ -2324,5 +2416,236 @@ mod tests {
                 .and_then(|v| v.as_str()),
             Some("real")
         );
+    }
+
+    // ── #390 strict fail-closed guard ────────────────────────────────────────
+
+    /// A strict-parent provider (models WebDAV / OpenDrive): a PUT into a
+    /// collection whose parent directory does not exist fails `NotFound`, so the
+    /// decorator's #385 retry path (`ensure_parent_dirs`) is exercised. Directories
+    /// must be created explicitly with `mkdir`; `exists` sees both files and dirs.
+    struct StrictMemProvider {
+        files: Mutex<HashMap<String, Vec<u8>>>,
+        dirs: Mutex<Vec<String>>,
+    }
+
+    impl StrictMemProvider {
+        fn with_dirs(seed: &[&str]) -> Self {
+            Self {
+                files: Mutex::new(HashMap::new()),
+                dirs: Mutex::new(seed.iter().map(|s| s.to_string()).collect()),
+            }
+        }
+        fn parent_of(p: &str) -> String {
+            match p.trim_end_matches('/').rsplit_once('/') {
+                Some((parent, _)) if !parent.is_empty() => parent.to_string(),
+                _ => "/".to_string(),
+            }
+        }
+        fn dir_list(&self) -> Vec<String> {
+            self.dirs.lock().unwrap().clone()
+        }
+        fn file_paths(&self) -> Vec<String> {
+            self.files.lock().unwrap().keys().cloned().collect()
+        }
+    }
+
+    #[async_trait]
+    impl StorageProvider for StrictMemProvider {
+        fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+            self
+        }
+        fn provider_type(&self) -> ProviderType {
+            ProviderType::WebDav
+        }
+        fn display_name(&self) -> String {
+            "strict-mem".into()
+        }
+        async fn connect(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn disconnect(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        fn is_connected(&self) -> bool {
+            true
+        }
+        async fn list(&mut self, _path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+            Ok(Vec::new())
+        }
+        async fn pwd(&mut self) -> Result<String, ProviderError> {
+            Ok("/".into())
+        }
+        async fn cd(&mut self, _p: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn cd_up(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn download(
+            &mut self,
+            _remote: &str,
+            _local: &str,
+            _cb: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn download_to_bytes(&mut self, _remote: &str) -> Result<Vec<u8>, ProviderError> {
+            Ok(Vec::new())
+        }
+        async fn upload(
+            &mut self,
+            local: &str,
+            remote: &str,
+            _cb: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            let parent = Self::parent_of(remote);
+            if parent != "/" && !self.dirs.lock().unwrap().iter().any(|d| d == &parent) {
+                // Strict provider: no implicit parent creation.
+                return Err(ProviderError::NotFound(parent));
+            }
+            let data = std::fs::read(local).map_err(ProviderError::IoError)?;
+            self.files.lock().unwrap().insert(remote.to_string(), data);
+            Ok(())
+        }
+        async fn mkdir(&mut self, p: &str) -> Result<(), ProviderError> {
+            let mut dirs = self.dirs.lock().unwrap();
+            if !dirs.iter().any(|d| d == p) {
+                dirs.push(p.to_string());
+            }
+            Ok(())
+        }
+        async fn delete(&mut self, p: &str) -> Result<(), ProviderError> {
+            self.files.lock().unwrap().remove(p);
+            Ok(())
+        }
+        async fn rmdir(&mut self, _p: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn rmdir_recursive(&mut self, _p: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn rename(&mut self, _from: &str, _to: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn stat(&mut self, p: &str) -> Result<RemoteEntry, ProviderError> {
+            Err(ProviderError::NotFound(p.to_string()))
+        }
+        async fn size(&mut self, p: &str) -> Result<u64, ProviderError> {
+            Err(ProviderError::NotFound(p.to_string()))
+        }
+        async fn exists(&mut self, p: &str) -> Result<bool, ProviderError> {
+            Ok(self.files.lock().unwrap().contains_key(p)
+                || self.dirs.lock().unwrap().iter().any(|d| d == p))
+        }
+        async fn keep_alive(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn server_info(&mut self) -> Result<String, ProviderError> {
+            Ok("strict-mem".into())
+        }
+    }
+
+    async fn write_temp(payload: &[u8]) -> (std::path::PathBuf, String) {
+        let dir = std::env::temp_dir().join(format!("crypt390_{}", uuid::Uuid::new_v4()));
+        tokio::fs::create_dir_all(&dir).await.unwrap();
+        let local = dir.join("hello390.txt");
+        tokio::fs::write(&local, payload).await.unwrap();
+        let s = local.to_string_lossy().to_string();
+        (dir, s)
+    }
+
+    /// #390 option 1 (strict): uploading with the overlay on into a plaintext-named
+    /// folder that already exists on the wire (created while the overlay was off)
+    /// must FAIL CLOSED with a clear message, and must NOT materialize a phantom
+    /// `enc(name)` folder or store the file anywhere.
+    #[tokio::test]
+    async fn upload_into_plaintext_folder_fails_closed_no_phantom() {
+        // Anchor plus the plaintext folder the user created with the overlay off.
+        let inner = Box::new(StrictMemProvider::with_dirs(&[
+            "/AeroCryptTest",
+            "/AeroCryptTest/CryptPlain",
+        ]));
+        let keys = rclone_keys(FilenameEncryption::Standard, true, ".bin");
+        let mut provider = CryptOverlayProvider::new(inner, keys, "/AeroCryptTest");
+
+        let (dir, local) = write_temp(b"secret payload for 390").await;
+        let err = provider
+            .upload(&local, "/AeroCryptTest/CryptPlain/hello390.txt", None)
+            .await
+            .expect_err("must refuse writing into a plaintext folder");
+        match &err {
+            ProviderError::InvalidPath(msg) => {
+                assert!(msg.contains("#390"), "message must reference #390: {msg}");
+                assert!(
+                    msg.contains("plaintext folder"),
+                    "message must explain the plaintext folder: {msg}"
+                );
+            }
+            other => panic!("expected InvalidPath refusal, got {other:?}"),
+        }
+
+        let mem = provider
+            .as_any_mut()
+            .downcast_mut::<CryptOverlayProvider>()
+            .unwrap()
+            .inner
+            .as_any_mut()
+            .downcast_mut::<StrictMemProvider>()
+            .unwrap();
+        assert!(
+            mem.file_paths().is_empty(),
+            "no file may be stored on refusal: {:?}",
+            mem.file_paths()
+        );
+        assert_eq!(
+            mem.dir_list(),
+            vec![
+                "/AeroCryptTest".to_string(),
+                "/AeroCryptTest/CryptPlain".to_string()
+            ],
+            "no phantom encrypted folder may be created"
+        );
+        let _ = tokio::fs::remove_dir_all(&dir).await;
+    }
+
+    /// #385 must still work: uploading into a genuinely-new encrypted subtree (no
+    /// plaintext folder exists on the wire) creates the encrypted parent chain and
+    /// stores the file under an encrypted path, without any plaintext folder name
+    /// leaking onto the wire.
+    #[tokio::test]
+    async fn upload_into_new_encrypted_subtree_still_creates_and_stores() {
+        // Only the anchor exists; the target subfolder is brand new.
+        let inner = Box::new(StrictMemProvider::with_dirs(&["/AeroCryptTest"]));
+        let keys = rclone_keys(FilenameEncryption::Standard, true, ".bin");
+        let mut provider = CryptOverlayProvider::new(inner, keys, "/AeroCryptTest");
+
+        let (dir, local) = write_temp(b"payload for a fresh crypt folder").await;
+        provider
+            .upload(&local, "/AeroCryptTest/FreshFolder/hello390.txt", None)
+            .await
+            .expect("a genuinely new encrypted subtree must be created and stored");
+
+        let mem = provider
+            .as_any_mut()
+            .downcast_mut::<CryptOverlayProvider>()
+            .unwrap()
+            .inner
+            .as_any_mut()
+            .downcast_mut::<StrictMemProvider>()
+            .unwrap();
+        let files = mem.file_paths();
+        assert_eq!(files.len(), 1, "exactly one object stored: {files:?}");
+        assert!(
+            !files[0].contains("FreshFolder") && !files[0].contains("hello390"),
+            "stored path must be encrypted: {}",
+            files[0]
+        );
+        assert!(
+            mem.dir_list().iter().all(|d| !d.contains("FreshFolder")),
+            "no plaintext folder name may leak onto the wire: {:?}",
+            mem.dir_list()
+        );
+        let _ = tokio::fs::remove_dir_all(&dir).await;
     }
 }

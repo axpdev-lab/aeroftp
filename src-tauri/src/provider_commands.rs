@@ -1312,6 +1312,29 @@ pub async fn provider_clear_crypt_overlay(
     Ok(removed)
 }
 
+/// #390 smart re-anchor probe. After arming the overlay, report whether the
+/// current on-wire cwd is a valid location inside the encrypted view (so the UI
+/// keeps the user in place) or a hidden/outside location (so the UI re-anchors to
+/// the scope/root). Returns `true` when nothing is wrapped, so a raw session is
+/// never yanked.
+#[tauri::command]
+pub async fn provider_crypt_cwd_in_view(state: State<'_, ProviderState>) -> Result<bool, String> {
+    let mut guard = state.provider.lock().await;
+    let Some(provider) = guard.as_mut() else {
+        return Ok(true);
+    };
+    match provider
+        .as_any_mut()
+        .downcast_mut::<crate::crypt_overlay_provider::CryptOverlayProvider>()
+    {
+        Some(overlay) => overlay
+            .cwd_in_encrypted_view()
+            .await
+            .map_err(|e| e.to_string()),
+        None => Ok(true),
+    }
+}
+
 /// Check if connected to a provider
 #[tauri::command]
 pub async fn provider_check_connection(

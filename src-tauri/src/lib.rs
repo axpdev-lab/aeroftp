@@ -17303,6 +17303,7 @@ pub fn run() {
             provider_commands::provider_disconnect,
             provider_commands::provider_apply_crypt_overlay,
             provider_commands::provider_clear_crypt_overlay,
+            provider_commands::provider_crypt_cwd_in_view,
             provider_commands::provider_check_connection,
             provider_commands::provider_probe_alive,
             provider_commands::provider_list_files,

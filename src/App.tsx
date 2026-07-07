@@ -4476,13 +4476,35 @@ interface UpdateVerificationInfo {
     }
   };
 
+  // #390 smart re-anchor: after arming the overlay, keep the user where they are
+  // when the current folder is a genuine encrypted folder (so toggling on/off in a
+  // subfolder to compare cifrato/decifrato keeps position), and re-anchor to a
+  // valid entry point ONLY when the current folder would be hidden under the
+  // overlay (a plaintext folder navigated to while it was off, or a spot outside
+  // the scope). The backend has the keys to decide; a whole-remote overlay whose
+  // scope is empty re-anchors to the remote root.
+  const smartReanchorOverlay = async (appliedScope: string | null | undefined): Promise<void> => {
+    const cwdInView = await invoke<boolean>('provider_crypt_cwd_in_view').catch(() => false);
+    if (cwdInView) return; // valid encrypted folder: keep the user in place
+    await positionWrappedProviderAtScope(appliedScope);
+    if (normCryptScope(appliedScope) === '') {
+      await invoke('provider_change_dir', { path: '/' }).catch(() => undefined);
+    }
+  };
+
   const activateProviderCryptOverlay = async (
     match: { savedServerId?: string; sessionId?: string },
     params: ProviderCryptOverlayApply,
     sentinelOwner?: string | null,
   ): Promise<{ vaultId: string; scope: string }> => {
     const appliedScope = await applyProviderCryptOverlay(params);
-    await positionWrappedProviderAtScope(appliedScope);
+    // #390 (option 1, strict): after arming, re-anchor to a valid encrypted-view
+    // location ONLY when the current folder would be hidden under the overlay (a
+    // plaintext folder navigated to while it was off, or a spot outside the scope),
+    // so the user is never left standing inside a hidden folder that lists empty
+    // and where an upload would be refused by the backend guard. When the current
+    // folder is a genuine encrypted folder, the user keeps their position.
+    await smartReanchorOverlay(appliedScope);
     const vaultId = cryptOverlaySentinel(params.kind, sentinelOwner);
     if (params.kind === 'rclone-crypt') {
       setAeroCryptVaultId(null);
@@ -4674,15 +4696,14 @@ interface UpdateVerificationInfo {
     const reloadScope = sessions.find((s) => s.id === activeSessionId)?.cryptOverlay?.remoteScope || null;
     void (async () => {
       try {
-        if (reloadScope) {
-          await positionWrappedProviderAtScope(reloadScope);
-        }
+        // #390 smart re-anchor: open at the Remote Path on connect (cwd outside the
+        // scope re-anchors in), but keep position when re-arming inside a valid
+        // encrypted subfolder instead of bouncing to the scope root every time.
+        await smartReanchorOverlay(reloadScope);
         let reloaded = await loadRemoteFiles(undefined, undefined, undefined, null);
         if (!reloaded && !cancelled) {
           await new Promise((res) => setTimeout(res, 1500));
-          if (reloadScope) {
-            await positionWrappedProviderAtScope(reloadScope);
-          }
+          await smartReanchorOverlay(reloadScope);
           reloaded = await loadRemoteFiles(undefined, undefined, undefined, null);
         }
         // Rewrite the connect-time listing line to the overlay-anchored display
