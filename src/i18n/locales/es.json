@@ -4949,7 +4949,12 @@
             "noOverlayFound": "No se ha encontrado ninguna superposición AeroCrypt en la carpeta remota actual. Cambia a «Crear nueva» para crear una.",
             "remoteUnlocked": "Remoto desbloqueado (ID {id})",
             "versionLabel": "AECR v{version}",
-            "lock": "Bloquear superposición"
+            "lock": "Bloquear superposición",
+            "keyfileLabel": "Archivo de clave (opcional)",
+            "keyfilePlaceholder": "Sin archivo de clave: solo contraseña",
+            "keyfileHint": "Segundo factor opcional mezclado en la clave de cifrado: la superposición solo se abre con la contraseña Y este archivo. Haga una copia de seguridad del archivo de clave.",
+            "keyfileChoose": "Elegir",
+            "keyfileClear": "Quitar archivo de clave"
         },
         "aerocryptProfile": {
             "enable": "Crypt (Cifrado)",
@@ -4969,7 +4974,14 @@
             "hintNative": "Formato AeroCrypt nativo: legible solo desde AeroFTP con esta contraseña.",
             "hintRclone": "Formato rclone crypt estándar: también legible por rclone con esta contraseña.",
             "passwordLabel": "Contraseña",
-            "saltLabel": "Salt (opcional)"
+            "saltLabel": "Salt (opcional)",
+            "keyfileLabel": "Archivo de clave (opcional)",
+            "keyfilePlaceholder": "Sin archivo de clave: solo contraseña",
+            "keyfileHint": "Segundo factor opcional mezclado en la clave de cifrado: la bóveda solo se abre con la contraseña Y este archivo. Haga una copia: perderlo deja la bóveda inaccesible.",
+            "keyfileChoose": "Elegir...",
+            "keyfileGenerate": "Generar...",
+            "keyfileGeneratedBackup": "Archivo de clave generado. Haga una copia ahora: perderlo deja la bóveda inaccesible para siempre.",
+            "keyfileRepointHint": "Esta ruta solo indica dónde está el archivo de clave; cambiarla no vuelve a cifrar la bóveda. Un archivo de clave erróneo o ausente rechaza el desbloqueo."
         },
         "modalGuard": {
             "busyTitle": "Operación en curso",

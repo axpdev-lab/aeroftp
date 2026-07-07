@@ -4949,7 +4949,12 @@
             "noOverlayFound": "Pašreizējā attālajā mapē netika atrasts AeroCrypt pārklājums. Pārslēdzies uz \"Izveidot jaunu\", lai to izveidotu.",
             "remoteUnlocked": "Attālais serveris atbloķēts (ID {id})",
             "versionLabel": "AECR v{version}",
-            "lock": "Bloķēt pārklājumu"
+            "lock": "Bloķēt pārklājumu",
+            "keyfileLabel": "Atslēgas fails (neobligāts)",
+            "keyfilePlaceholder": "Nav atslēgas faila: tikai parole",
+            "keyfileHint": "Neobligāts otrs faktors, ko iejauc šifrēšanas atslēgā: pārklājums atveras tikai ar paroli UN šo failu. Izveidojiet atslēgas faila rezerves kopiju.",
+            "keyfileChoose": "Izvēlēties",
+            "keyfileClear": "Noņemt atslēgas failu"
         },
         "aerocryptProfile": {
             "enable": "Crypt (Šifrēšana)",
@@ -4969,7 +4974,14 @@
             "hintNative": "Vietējais AeroCrypt formāts: lasāms tikai no AeroFTP ar šo paroli.",
             "hintRclone": "Standarta rclone crypt formāts: lasāms arī ar rclone, izmantojot šo paroli.",
             "passwordLabel": "Parole",
-            "saltLabel": "Salt (neobligāts)"
+            "saltLabel": "Salt (neobligāts)",
+            "keyfileLabel": "Atslēgas fails (neobligāts)",
+            "keyfilePlaceholder": "Nav atslēgas faila: tikai parole",
+            "keyfileHint": "Neobligāts otrs faktors, ko iejauc šifrēšanas atslēgā: seifs atveras tikai ar paroli UN šo failu. Izveidojiet kopiju: tā zaudēšana padara seifu neatveramu.",
+            "keyfileChoose": "Izvēlēties...",
+            "keyfileGenerate": "Ģenerēt...",
+            "keyfileGeneratedBackup": "Atslēgas fails izveidots. Izveidojiet kopiju tūlīt: tā zaudēšana uz visiem laikiem aizslēgs seifu.",
+            "keyfileRepointHint": "Šis ceļš tikai norāda, kur atrodas atslēgas fails; tā maiņa nepāršifrē seifu. Nepareizs vai trūkstošs atslēgas fails noraida atslēgšanu."
         },
         "modalGuard": {
             "busyTitle": "Notiek darbība",

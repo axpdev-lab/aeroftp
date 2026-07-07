@@ -4949,7 +4949,12 @@
             "noOverlayFound": "Geçerli uzak klasörde AeroCrypt katmanı bulunamadı. Bir tane oluşturmak için \"Yeni oluştur\" seçeneğine geçin.",
             "remoteUnlocked": "Uzak kilidi açıldı (ID {id})",
             "versionLabel": "AECR v{version}",
-            "lock": "Katmanı kilitle"
+            "lock": "Katmanı kilitle",
+            "keyfileLabel": "Anahtar dosyası (isteğe bağlı)",
+            "keyfilePlaceholder": "Anahtar dosyası yok: yalnızca parola",
+            "keyfileHint": "Şifreleme anahtarına karıştırılan isteğe bağlı ikinci faktör: katman yalnızca parola VE bu dosya ile açılır. Anahtar dosyasını yedekleyin.",
+            "keyfileChoose": "Seç",
+            "keyfileClear": "Anahtar dosyasını kaldır"
         },
         "aerocryptProfile": {
             "enable": "Crypt (Şifreleme)",
@@ -4969,7 +4974,14 @@
             "hintNative": "Yerel AeroCrypt biçimi: bu parolayla yalnızca AeroFTP'den okunabilir.",
             "hintRclone": "Standart rclone crypt biçimi: bu parolayla rclone tarafından da okunabilir.",
             "passwordLabel": "Parola",
-            "saltLabel": "Salt (isteğe bağlı)"
+            "saltLabel": "Salt (isteğe bağlı)",
+            "keyfileLabel": "Anahtar dosyası (isteğe bağlı)",
+            "keyfilePlaceholder": "Anahtar dosyası yok: yalnızca parola",
+            "keyfileHint": "Şifreleme anahtarına karıştırılan isteğe bağlı ikinci faktör: kasa yalnızca parola VE bu dosya ile açılır. Yedekleyin: kaybı kasayı açılamaz hale getirir.",
+            "keyfileChoose": "Seç...",
+            "keyfileGenerate": "Oluştur...",
+            "keyfileGeneratedBackup": "Anahtar dosyası oluşturuldu. Hemen yedekleyin: kaybı kasayı sonsuza dek kilitler.",
+            "keyfileRepointHint": "Bu yol yalnızca anahtar dosyasının nerede olduğunu gösterir; değiştirmek kasanın anahtarını değiştirmez. Yanlış veya eksik anahtar dosyası kilit açmayı reddeder."
         },
         "modalGuard": {
             "busyTitle": "İşlem sürüyor",

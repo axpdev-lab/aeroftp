@@ -4968,7 +4968,12 @@
             "noOverlayFound": "Ni chafwyd troshaen AeroCrypt yn y ffolder bell gyfredol. Newidiwch i \"Creu un newydd\" i wneud un.",
             "remoteUnlocked": "Gweinydd pell wedi'i ddatgloi (ID {id})",
             "versionLabel": "AECR v{version}",
-            "lock": "Cloi'r troshaen"
+            "lock": "Cloi'r troshaen",
+            "keyfileLabel": "Ffeil allwedd (dewisol)",
+            "keyfilePlaceholder": "Dim ffeil allwedd: cyfrinair yn unig",
+            "keyfileHint": "Ail ffactor dewisol wedi'i gymysgu i'r allwedd amgryptio: dim ond gyda'r cyfrinair A'r ffeil hon y bydd yr haen yn agor. Cadwch gopi wrth gefn o'r ffeil allwedd.",
+            "keyfileChoose": "Dewis",
+            "keyfileClear": "Tynnu'r ffeil allwedd"
         },
         "aerocryptProfile": {
             "enable": "Crypt (Amgryptio)",
@@ -4988,7 +4993,14 @@
             "hintNative": "Fformat AeroCrypt brodorol: darllenadwy o AeroFTP yn unig gyda'r cyfrinair hwn.",
             "hintRclone": "Fformat rclone crypt safonol: darllenadwy gan rclone hefyd gyda'r cyfrinair hwn.",
             "passwordLabel": "Cyfrinair",
-            "saltLabel": "Salt (dewisol)"
+            "saltLabel": "Salt (dewisol)",
+            "keyfileLabel": "Ffeil allwedd (dewisol)",
+            "keyfilePlaceholder": "Dim ffeil allwedd: cyfrinair yn unig",
+            "keyfileHint": "Ail ffactor dewisol wedi'i gymysgu i'r allwedd amgryptio: dim ond gyda'r cyfrinair A'r ffeil hon y bydd y gladdgell yn agor. Cadwch gopi wrth gefn: mae ei cholli yn gwneud y gladdgell yn amhosibl ei hagor.",
+            "keyfileChoose": "Dewis...",
+            "keyfileGenerate": "Cynhyrchu...",
+            "keyfileGeneratedBackup": "Ffeil allwedd wedi'i chynhyrchu. Cadwch gopi wrth gefn nawr: mae ei cholli yn cloi'r gladdgell am byth.",
+            "keyfileRepointHint": "Dim ond dangos lle mae'r ffeil allwedd y mae'r llwybr hwn; nid yw ei newid yn ail-allweddu'r gladdgell. Bydd ffeil allwedd anghywir neu goll yn gwrthod datgloi."
         },
         "modalGuard": {
             "busyTitle": "Gweithrediad ar y gweill",

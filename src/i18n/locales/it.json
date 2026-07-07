@@ -3232,7 +3232,12 @@
             "noOverlayFound": "Nessun overlay AeroCrypt trovato nella cartella remota corrente. Passa a \"Crea nuovo\" per crearne uno.",
             "remoteUnlocked": "Remoto sbloccato (ID {id})",
             "versionLabel": "AECR v{version}",
-            "lock": "Blocca overlay"
+            "lock": "Blocca overlay",
+            "keyfileLabel": "File chiave (opzionale)",
+            "keyfilePlaceholder": "Nessun file chiave: solo password",
+            "keyfileHint": "Secondo fattore opzionale miscelato nella chiave di cifratura: l'overlay si apre solo con la password E questo file. Fai un backup del file chiave.",
+            "keyfileChoose": "Scegli",
+            "keyfileClear": "Rimuovi file chiave"
         },
         "cryptomator": {
             "confirmPassword": "Conferma Password",
@@ -4977,7 +4982,14 @@
             "lockedNote": "Tipo di cifratura e credenziali bloccati: questo overlay contiene gia dati cifrati.",
             "addToExistingWarn": "Stai attivando un overlay su un profilo esistente: gli eventuali file in chiaro gia presenti su questo remoto restano non cifrati e appariranno come un insieme indecifrabile. Usa un remoto vuoto.",
             "scopeHint": "I percorsi Remoto e Locale qui sopra definiscono l'ambito cifrato (lascia Remoto vuoto per cifrare l'intera root).",
-            "remotePathLockedNote": "Il percorso Remoto è bloccato: è la radice dell'overlay cifrato e non può cambiare una volta che l'overlay contiene dati."
+            "remotePathLockedNote": "Il percorso Remoto è bloccato: è la radice dell'overlay cifrato e non può cambiare una volta che l'overlay contiene dati.",
+            "keyfileLabel": "File chiave (opzionale)",
+            "keyfilePlaceholder": "Nessun file chiave: solo password",
+            "keyfileHint": "Secondo fattore opzionale miscelato nella chiave di cifratura: la cassaforte si apre solo con la password E questo file. Fanne un backup: perderlo rende la cassaforte inapribile.",
+            "keyfileChoose": "Scegli...",
+            "keyfileGenerate": "Genera...",
+            "keyfileGeneratedBackup": "File chiave generato. Fai subito un backup: perderlo rende la cassaforte inapribile per sempre.",
+            "keyfileRepointHint": "Questo percorso indica solo dove si trova il file chiave; cambiarlo non ricifra la cassaforte. Un file chiave errato o assente rifiuta lo sblocco."
         },
         "modalGuard": {
             "busyTitle": "Operazione in corso",

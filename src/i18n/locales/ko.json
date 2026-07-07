@@ -4949,7 +4949,12 @@
             "noOverlayFound": "현재 원격 폴더에서 AeroCrypt 오버레이를 찾을 수 없습니다. \"새로 만들기\"로 전환하여 만드세요.",
             "remoteUnlocked": "원격 잠금이 해제되었습니다(ID {id})",
             "versionLabel": "AECR v{version}",
-            "lock": "오버레이 잠금"
+            "lock": "오버레이 잠금",
+            "keyfileLabel": "키파일 (선택)",
+            "keyfilePlaceholder": "키파일 없음: 비밀번호만",
+            "keyfileHint": "암호화 키에 혼합되는 선택적 2차 요소: 오버레이는 비밀번호와 이 파일이 모두 있어야 열립니다. 키파일을 백업하세요.",
+            "keyfileChoose": "선택",
+            "keyfileClear": "키파일 제거"
         },
         "aerocryptProfile": {
             "enable": "Crypt (암호화)",
@@ -4969,7 +4974,14 @@
             "hintNative": "네이티브 AeroCrypt 형식: 이 비밀번호로 AeroFTP에서만 읽을 수 있습니다.",
             "hintRclone": "표준 rclone crypt 형식: 이 비밀번호로 rclone에서도 읽을 수 있습니다.",
             "passwordLabel": "비밀번호",
-            "saltLabel": "Salt (선택)"
+            "saltLabel": "Salt (선택)",
+            "keyfileLabel": "키파일 (선택)",
+            "keyfilePlaceholder": "키파일 없음: 비밀번호만",
+            "keyfileHint": "암호화 키에 혼합되는 선택적 2차 요소: 볼트는 비밀번호와 이 파일이 모두 있어야 열립니다. 백업하세요: 분실하면 볼트를 열 수 없습니다.",
+            "keyfileChoose": "선택...",
+            "keyfileGenerate": "생성...",
+            "keyfileGeneratedBackup": "키파일이 생성되었습니다. 지금 백업하세요: 분실하면 볼트는 영구히 열 수 없습니다.",
+            "keyfileRepointHint": "이 경로는 키파일의 위치만 가리키며, 변경해도 볼트의 키는 바뀌지 않습니다. 잘못되었거나 없는 키파일은 잠금 해제가 거부됩니다."
         },
         "modalGuard": {
             "busyTitle": "작업 진행 중",

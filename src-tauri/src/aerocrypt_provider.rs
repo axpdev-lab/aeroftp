@@ -44,16 +44,30 @@ const CONFIG_NAME: &str = ".aeroftp-crypt.json";
 const CONFIG_MAX_BYTES: u64 = 1024 * 1024;
 
 /// Derive the overlay master key off the async executor (Argon2id 128 MiB / t4
-/// is CPU/memory heavy and must not block a Tokio worker).
+/// is CPU/memory heavy and must not block a Tokio worker). `keyfile_digest` is
+/// the OPTIONAL AeroCrypt Tier 1 second factor, mixed into the KDF secret.
 async fn derive_master_key_async(
     config: &OverlayConfig,
     password: &str,
+    keyfile_digest: Option<[u8; KEY_SIZE]>,
 ) -> Result<[u8; KEY_SIZE], String> {
     let cfg = config.clone();
     let pw = Zeroizing::new(password.to_string());
-    tokio::task::spawn_blocking(move || overlay::derive_master_key(&cfg, &pw))
-        .await
-        .map_err(|e| format!("Key derivation task failed: {e}"))?
+    tokio::task::spawn_blocking(move || {
+        overlay::derive_master_key_with_keyfile(&cfg, &pw, keyfile_digest.as_ref())
+    })
+    .await
+    .map_err(|e| format!("Key derivation task failed: {e}"))?
+}
+
+/// Resolve an optional keyfile path from the unlock UI to its digest,
+/// fail-closed (an unreadable path is an error, never a silent password-only
+/// derivation). Empty/whitespace paths mean "no keyfile".
+fn resolve_ui_keyfile_digest(keyfile_path: Option<&str>) -> Result<Option<[u8; KEY_SIZE]>, String> {
+    match keyfile_path.map(str::trim).filter(|s| !s.is_empty()) {
+        Some(p) => crate::crypt_overlay_provider::keyfile_digest_from_path(p).map(Some),
+        None => Ok(None),
+    }
 }
 
 // ── State ────────────────────────────────────────────────────────────────────
@@ -119,14 +133,34 @@ pub async fn aerocrypt_unlock(
     state: State<'_, AeroCryptState>,
     password: String,
     config_json: Option<String>,
+    keyfile_path: Option<String>,
 ) -> Result<AeroCryptVaultInfo, String> {
     let secret_pwd = secrecy::SecretString::from(password);
     let pw = secrecy::ExposeSecret::expose_secret(&secret_pwd);
+    let keyfile_digest = resolve_ui_keyfile_digest(keyfile_path.as_deref())?;
 
     let (config, master_key, config_json_out) = match config_json {
         Some(json) => {
             let config = overlay::parse_config(&json)?;
-            let master_key = derive_master_key_async(&config, pw).await?;
+            // Tier 1: reconcile the supplied keyfile against what the config
+            // requires BEFORE the expensive KDF, so a missing or spurious
+            // keyfile is a clear error instead of a confusing "wrong password".
+            let keyfile_digest = match (config.requires_keyfile(), keyfile_digest) {
+                (true, None) => {
+                    return Err(
+                        "this AeroCrypt overlay requires a keyfile (none was provided)".to_string(),
+                    )
+                }
+                (false, Some(_)) => {
+                    return Err(
+                        "this AeroCrypt overlay was not created with a keyfile (remove the keyfile to unlock)"
+                            .to_string(),
+                    )
+                }
+                (true, kd) => kd,
+                (false, _) => None,
+            };
+            let master_key = derive_master_key_async(&config, pw, keyfile_digest).await?;
             // F1: reject a wrong password or a tampered version/salt before use.
             overlay::verify_config_mac(&config, &master_key)?;
             (config, master_key, json)
@@ -134,8 +168,19 @@ pub async fn aerocrypt_unlock(
         None => {
             let salt = overlay::random_salt_v3();
             let tmp = OverlayConfig::v3_bootstrap(salt);
-            let master_key = derive_master_key_async(&tmp, pw).await?;
-            let json = overlay::init_config_v3(&salt, &master_key)?;
+            let master_key = derive_master_key_async(&tmp, pw, keyfile_digest).await?;
+            // With a keyfile the config records kdf_inputs + a fresh vault_id
+            // and omits keyfile_hint by default (F5), mirroring the CLI init.
+            let json = if keyfile_digest.is_some() {
+                overlay::init_config_v3_with_keyfile(
+                    &salt,
+                    &master_key,
+                    &overlay::random_vault_id(),
+                    None,
+                )?
+            } else {
+                overlay::init_config_v3(&salt, &master_key)?
+            };
             let config = overlay::parse_config(&json)?;
             (config, master_key, json)
         }
@@ -250,15 +295,26 @@ pub async fn aerocrypt_provider_create_remote(
     password: String,
     target_subpath: Option<String>,
     force: Option<bool>,
+    keyfile_path: Option<String>,
 ) -> Result<AeroCryptVaultInfo, String> {
     let secret_pwd = secrecy::SecretString::from(password);
     let force = force.unwrap_or(false);
+    let keyfile_digest = resolve_ui_keyfile_digest(keyfile_path.as_deref())?;
     let salt = overlay::random_salt_v3();
     let tmp_cfg = OverlayConfig::v3_bootstrap(salt);
-    let master_key =
-        derive_master_key_async(&tmp_cfg, secrecy::ExposeSecret::expose_secret(&secret_pwd))
-            .await?;
-    let config_json = overlay::init_config_v3(&salt, &master_key)?;
+    let master_key = derive_master_key_async(
+        &tmp_cfg,
+        secrecy::ExposeSecret::expose_secret(&secret_pwd),
+        keyfile_digest,
+    )
+    .await?;
+    // Keyfile vaults record kdf_inputs + a fresh vault_id (no keyfile_hint by
+    // default, F5), so any client knows the second factor is required.
+    let config_json = if keyfile_digest.is_some() {
+        overlay::init_config_v3_with_keyfile(&salt, &master_key, &overlay::random_vault_id(), None)?
+    } else {
+        overlay::init_config_v3(&salt, &master_key)?
+    };
     let config = overlay::parse_config(&config_json)?;
 
     {

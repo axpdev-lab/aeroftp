@@ -105,6 +105,8 @@ interface ProviderCryptOverlayApply {
   directoryNameEncryption?: boolean | null;
   password: string;
   salt?: string | null;
+  /** AeroCrypt Tier 1 optional keyfile second factor (local path, resolved to a digest backend-side). */
+  keyfilePath?: string | null;
 }
 
 interface ImportedServerProfile {
@@ -4464,6 +4466,7 @@ interface UpdateVerificationInfo {
         directoryNameEncryption: params.directoryNameEncryption ?? true,
         password: params.password,
         salt: params.salt || null,
+        keyfilePath: params.keyfilePath || null,
       },
     });
     return normCryptScope(appliedScope);
@@ -4531,7 +4534,11 @@ interface UpdateVerificationInfo {
       const profiles = await loadSavedServerProfiles();
       const profile = profiles.find((p) => p.id === savedServerId);
       const binding = profile?.aeroCryptOverlay;
-      if (!binding?.enabled || !profile?.hasStoredAeroCryptPassword) return null;
+      // Empty-password + keyfile vaults are legal (Tier 1): a stored keyfile
+      // path is as good an unlock promise as a stored password.
+      const hasUnlockFactor = profile?.hasStoredAeroCryptPassword
+        || (binding?.kind === 'aerocrypt' && profile?.hasStoredAeroCryptKeyfilePath);
+      if (!binding?.enabled || !hasUnlockFactor) return null;
       const scope = binding.remoteScope?.trim() || profile.initialPath?.trim() || '';
       return { kind: binding.kind, anchor: scope && scope !== '/' ? scope : null };
     } catch {
@@ -4558,9 +4565,15 @@ interface UpdateVerificationInfo {
       const profile = profiles.find((p) => p.id === savedServerId);
       const binding = profile?.aeroCryptOverlay;
       if (!binding?.enabled) return null;
-      if (!profile?.hasStoredAeroCryptPassword) return null;
+      // Tier 1: an aerocrypt vault may be keyfile-only (empty password is legal
+      // by design), so a stored keyfile path also arms the auto-unlock.
+      const keyfileEligible = binding.kind === 'aerocrypt' && profile?.hasStoredAeroCryptKeyfilePath;
+      if (!profile?.hasStoredAeroCryptPassword && !keyfileEligible) return null;
       const password = await invoke<string>('get_credential', { account: `aerocrypt_overlay_pw_${savedServerId}` }).catch(() => '');
-      if (!password) return null;
+      const keyfilePath = keyfileEligible
+        ? await invoke<string>('get_credential', { account: `aerocrypt_overlay_keyfile_path_${savedServerId}` }).catch(() => '')
+        : '';
+      if (!password && !keyfilePath) return null;
 
       // Only NOW that a real overlay binding is confirmed do we arm the
       // decryption animation and bind the overlay owner. Doing it speculatively
@@ -4596,6 +4609,7 @@ interface UpdateVerificationInfo {
             directoryNameEncryption: binding.directoryNameEncryption ?? true,
             password,
             salt: salt || null,
+            keyfilePath: keyfilePath || null,
           },
           savedServerId,
         );
@@ -4613,6 +4627,12 @@ interface UpdateVerificationInfo {
       }
     } catch (e) {
       logger.debug('[maybeAutoUnlockProfileOverlay] failed', e);
+      // Tier 1 import re-point: a stored-but-unreadable keyfile (moved,
+      // deleted, or a profile imported on another machine) fails closed;
+      // surface how to fix it instead of a silent locked overlay.
+      if (String(e).includes('cannot read AeroCrypt keyfile')) {
+        notify.error('AeroCrypt', `${String(e)}. ${t('aerocryptProfile.keyfileRepointHint')}`);
+      }
     }
     return null;
   };
@@ -13942,6 +13962,7 @@ interface UpdateVerificationInfo {
                       kind: 'aerocrypt',
                       remoteScope: details.remoteScope ?? '',
                       password: details.password,
+                      keyfilePath: details.keyfilePath || null,
                     },
                     activeSessionId,
                   );

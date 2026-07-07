@@ -4949,7 +4949,12 @@
             "noOverlayFound": "Nykyisestä etäkansiosta ei löytynyt AeroCrypt-peittokerrosta. Vaihda kohtaan \"Luo uusi\" luodaksesi sellaisen.",
             "remoteUnlocked": "Etäpalvelimen lukitus avattu (tunnus {id})",
             "versionLabel": "AECR v{version}",
-            "lock": "Lukitse peittokerros"
+            "lock": "Lukitse peittokerros",
+            "keyfileLabel": "Avaintiedosto (valinnainen)",
+            "keyfilePlaceholder": "Ei avaintiedostoa: vain salasana",
+            "keyfileHint": "Valinnainen toinen tekijä, joka sekoitetaan salausavaimeen: peittokerros aukeaa vain salasanalla JA tällä tiedostolla. Varmuuskopioi avaintiedosto.",
+            "keyfileChoose": "Valitse",
+            "keyfileClear": "Poista avaintiedosto"
         },
         "aerocryptProfile": {
             "enable": "Crypt (Salaus)",
@@ -4969,7 +4974,14 @@
             "hintNative": "Natiivi AeroCrypt-muoto: luettavissa vain AeroFTP:stä tällä salasanalla.",
             "hintRclone": "Vakiomuotoinen rclone crypt: luettavissa myös rclonella tällä salasanalla.",
             "passwordLabel": "Salasana",
-            "saltLabel": "Salt (valinnainen)"
+            "saltLabel": "Salt (valinnainen)",
+            "keyfileLabel": "Avaintiedosto (valinnainen)",
+            "keyfilePlaceholder": "Ei avaintiedostoa: vain salasana",
+            "keyfileHint": "Valinnainen toinen tekijä, joka sekoitetaan salausavaimeen: holvi aukeaa vain salasanalla JA tällä tiedostolla. Varmuuskopioi se: sen katoaminen tekee holvista avaamattoman.",
+            "keyfileChoose": "Valitse...",
+            "keyfileGenerate": "Luo...",
+            "keyfileGeneratedBackup": "Avaintiedosto luotu. Varmuuskopioi se heti: sen katoaminen lukitsee holvin pysyvästi.",
+            "keyfileRepointHint": "Tämä polku vain osoittaa, missä avaintiedosto sijaitsee; sen muuttaminen ei vaihda holvin avainta. Väärä tai puuttuva avaintiedosto estää avauksen."
         },
         "modalGuard": {
             "busyTitle": "Toiminto käynnissä",

@@ -4949,7 +4949,12 @@
             "noOverlayFound": "Geen AeroCrypt-overlay gevonden in de huidige externe map. Schakel over naar 'Nieuwe maken' om er een te maken.",
             "remoteUnlocked": "Extern ontgrendeld (ID {id})",
             "versionLabel": "AECR v{version}",
-            "lock": "Overlay vergrendelen"
+            "lock": "Overlay vergrendelen",
+            "keyfileLabel": "Sleutelbestand (optioneel)",
+            "keyfilePlaceholder": "Geen sleutelbestand: alleen wachtwoord",
+            "keyfileHint": "Optionele tweede factor die in de encryptiesleutel wordt gemengd: de overlay opent alleen met het wachtwoord EN dit bestand. Maak een back-up van het sleutelbestand.",
+            "keyfileChoose": "Kiezen",
+            "keyfileClear": "Sleutelbestand verwijderen"
         },
         "aerocryptProfile": {
             "enable": "Crypt (Versleuteling)",
@@ -4969,7 +4974,14 @@
             "hintNative": "Native AeroCrypt-formaat: alleen leesbaar vanuit AeroFTP met dit wachtwoord.",
             "hintRclone": "Standaard rclone crypt-formaat: ook leesbaar door rclone met dit wachtwoord.",
             "passwordLabel": "Wachtwoord",
-            "saltLabel": "Salt (optioneel)"
+            "saltLabel": "Salt (optioneel)",
+            "keyfileLabel": "Sleutelbestand (optioneel)",
+            "keyfilePlaceholder": "Geen sleutelbestand: alleen wachtwoord",
+            "keyfileHint": "Optionele tweede factor die in de encryptiesleutel wordt gemengd: de kluis opent alleen met het wachtwoord EN dit bestand. Maak een back-up: verlies maakt de kluis onopenbaar.",
+            "keyfileChoose": "Kiezen...",
+            "keyfileGenerate": "Genereren...",
+            "keyfileGeneratedBackup": "Sleutelbestand gegenereerd. Maak nu een back-up: verlies maakt de kluis voorgoed onopenbaar.",
+            "keyfileRepointHint": "Dit pad wijst alleen aan waar het sleutelbestand staat; het wijzigen versleutelt de kluis niet opnieuw. Een verkeerd of ontbrekend sleutelbestand weigert het ontgrendelen."
         },
         "modalGuard": {
             "busyTitle": "Bewerking bezig",

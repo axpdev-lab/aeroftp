@@ -4968,7 +4968,12 @@
             "noOverlayFound": "Fant ikke noe AeroCrypt-overlegg i den gjeldende fjernmappen. Bytt til \"Opprett ny\" for å lage et.",
             "remoteUnlocked": "Fjernserver låst opp (ID {id})",
             "versionLabel": "AECR v{version}",
-            "lock": "Lås overlegg"
+            "lock": "Lås overlegg",
+            "keyfileLabel": "Nøkkelfil (valgfri)",
+            "keyfilePlaceholder": "Ingen nøkkelfil: kun passord",
+            "keyfileHint": "Valgfri andre faktor blandet inn i krypteringsnøkkelen: overlegget åpner kun med passordet OG denne filen. Ta sikkerhetskopi av nøkkelfilen.",
+            "keyfileChoose": "Velg",
+            "keyfileClear": "Fjern nøkkelfil"
         },
         "aerocryptProfile": {
             "enable": "Crypt (Kryptering)",
@@ -4988,7 +4993,14 @@
             "hintNative": "Native AeroCrypt-format: kan bare leses fra AeroFTP med dette passordet.",
             "hintRclone": "Standard rclone crypt-format: kan også leses av rclone med dette passordet.",
             "passwordLabel": "Passord",
-            "saltLabel": "Salt (valgfritt)"
+            "saltLabel": "Salt (valgfritt)",
+            "keyfileLabel": "Nøkkelfil (valgfri)",
+            "keyfilePlaceholder": "Ingen nøkkelfil: kun passord",
+            "keyfileHint": "Valgfri andre faktor blandet inn i krypteringsnøkkelen: hvelvet åpner kun med passordet OG denne filen. Ta sikkerhetskopi: mistes den, kan hvelvet ikke åpnes.",
+            "keyfileChoose": "Velg...",
+            "keyfileGenerate": "Generer...",
+            "keyfileGeneratedBackup": "Nøkkelfil generert. Ta sikkerhetskopi nå: mistes den, låses hvelvet for alltid.",
+            "keyfileRepointHint": "Denne stien peker bare på hvor nøkkelfilen ligger; å endre den bytter ikke hvelvets nøkkel. En feil eller manglende nøkkelfil avviser opplåsingen."
         },
         "modalGuard": {
             "busyTitle": "Operasjon pågår",

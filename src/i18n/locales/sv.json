@@ -4949,7 +4949,12 @@
             "noOverlayFound": "Inget AeroCrypt-överlägg hittades i den aktuella fjärrmappen. Växla till \"Skapa nytt\" för att skapa ett.",
             "remoteUnlocked": "Fjärrserver upplåst (ID {id})",
             "versionLabel": "AECR v{version}",
-            "lock": "Lås överlägg"
+            "lock": "Lås överlägg",
+            "keyfileLabel": "Nyckelfil (valfri)",
+            "keyfilePlaceholder": "Ingen nyckelfil: endast lösenord",
+            "keyfileHint": "Valfri andra faktor som blandas in i krypteringsnyckeln: overlayet öppnas bara med lösenordet OCH denna fil. Säkerhetskopiera nyckelfilen.",
+            "keyfileChoose": "Välj",
+            "keyfileClear": "Ta bort nyckelfil"
         },
         "aerocryptProfile": {
             "enable": "Crypt (Kryptering)",
@@ -4969,7 +4974,14 @@
             "hintNative": "Inbyggt AeroCrypt-format: läsbart endast från AeroFTP med detta lösenord.",
             "hintRclone": "Standardformatet rclone crypt: läsbart även av rclone med detta lösenord.",
             "passwordLabel": "Lösenord",
-            "saltLabel": "Salt (valfritt)"
+            "saltLabel": "Salt (valfritt)",
+            "keyfileLabel": "Nyckelfil (valfri)",
+            "keyfilePlaceholder": "Ingen nyckelfil: endast lösenord",
+            "keyfileHint": "Valfri andra faktor som blandas in i krypteringsnyckeln: valvet öppnas bara med lösenordet OCH denna fil. Säkerhetskopiera den: förlust gör valvet oöppningsbart.",
+            "keyfileChoose": "Välj...",
+            "keyfileGenerate": "Generera...",
+            "keyfileGeneratedBackup": "Nyckelfil genererad. Säkerhetskopiera nu: förlust låser valvet för alltid.",
+            "keyfileRepointHint": "Denna sökväg pekar bara på var nyckelfilen ligger; att ändra den byter inte valvets nyckel. En fel eller saknad nyckelfil nekar upplåsningen."
         },
         "modalGuard": {
             "busyTitle": "Åtgärd pågår",

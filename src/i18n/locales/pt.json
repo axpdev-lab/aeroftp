@@ -4949,7 +4949,12 @@
             "noOverlayFound": "Nenhuma sobreposição AeroCrypt encontrada na pasta remota atual. Mude para «Criar nova» para criar uma.",
             "remoteUnlocked": "Remoto desbloqueado (ID {id})",
             "versionLabel": "AECR v{version}",
-            "lock": "Bloquear sobreposição"
+            "lock": "Bloquear sobreposição",
+            "keyfileLabel": "Ficheiro de chave (opcional)",
+            "keyfilePlaceholder": "Sem ficheiro de chave: apenas palavra-passe",
+            "keyfileHint": "Segundo fator opcional misturado na chave de cifragem: a sobreposição só abre com a palavra-passe E este ficheiro. Faça uma cópia de segurança do ficheiro de chave.",
+            "keyfileChoose": "Escolher",
+            "keyfileClear": "Remover ficheiro de chave"
         },
         "aerocryptProfile": {
             "enable": "Crypt (Encriptação)",
@@ -4969,7 +4974,14 @@
             "hintNative": "Formato AeroCrypt nativo: legível apenas a partir do AeroFTP com esta palavra-passe.",
             "hintRclone": "Formato rclone crypt padrão: também legível pelo rclone com esta palavra-passe.",
             "passwordLabel": "Palavra-passe",
-            "saltLabel": "Salt (opcional)"
+            "saltLabel": "Salt (opcional)",
+            "keyfileLabel": "Ficheiro de chave (opcional)",
+            "keyfilePlaceholder": "Sem ficheiro de chave: apenas palavra-passe",
+            "keyfileHint": "Segundo fator opcional misturado na chave de cifragem: o cofre só abre com a palavra-passe E este ficheiro. Faça uma cópia: perdê-lo torna o cofre inabrível.",
+            "keyfileChoose": "Escolher...",
+            "keyfileGenerate": "Gerar...",
+            "keyfileGeneratedBackup": "Ficheiro de chave gerado. Faça uma cópia agora: perdê-lo torna o cofre inabrível para sempre.",
+            "keyfileRepointHint": "Este caminho apenas indica onde está o ficheiro de chave; alterá-lo não recifra o cofre. Um ficheiro de chave errado ou ausente recusa o desbloqueio."
         },
         "modalGuard": {
             "busyTitle": "Operação em curso",

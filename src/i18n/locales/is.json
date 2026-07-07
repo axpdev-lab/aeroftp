@@ -4968,7 +4968,12 @@
             "noOverlayFound": "Ekkert AeroCrypt-yfirlag fannst í núverandi fjarmöppu. Skiptu yfir í „Búa til nýtt“ til að búa eitt til.",
             "remoteUnlocked": "Fjartenging aflæst (auðkenni {id})",
             "versionLabel": "AECR v{version}",
-            "lock": "Læsa yfirlagi"
+            "lock": "Læsa yfirlagi",
+            "keyfileLabel": "Lykilskrá (valfrjálst)",
+            "keyfilePlaceholder": "Engin lykilskrá: aðeins lykilorð",
+            "keyfileHint": "Valfrjáls annar þáttur sem blandast í dulritunarlykilinn: yfirlagið opnast aðeins með lykilorðinu OG þessari skrá. Taktu öryggisafrit af lykilskránni.",
+            "keyfileChoose": "Velja",
+            "keyfileClear": "Fjarlægja lykilskrá"
         },
         "aerocryptProfile": {
             "enable": "Crypt (Dulkóðun)",
@@ -4988,7 +4993,14 @@
             "hintNative": "Innbyggt AeroCrypt-snið: aðeins læsilegt úr AeroFTP með þessu lykilorði.",
             "hintRclone": "Staðlað rclone crypt-snið: einnig læsilegt af rclone með þessu lykilorði.",
             "passwordLabel": "Lykilorð",
-            "saltLabel": "Salt (valfrjálst)"
+            "saltLabel": "Salt (valfrjálst)",
+            "keyfileLabel": "Lykilskrá (valfrjálst)",
+            "keyfilePlaceholder": "Engin lykilskrá: aðeins lykilorð",
+            "keyfileHint": "Valfrjáls annar þáttur sem blandast í dulritunarlykilinn: hirslan opnast aðeins með lykilorðinu OG þessari skrá. Taktu afrit: glatist hún verður hirslan óopnanleg.",
+            "keyfileChoose": "Velja...",
+            "keyfileGenerate": "Búa til...",
+            "keyfileGeneratedBackup": "Lykilskrá búin til. Taktu afrit núna: glatist hún læsist hirslan að eilífu.",
+            "keyfileRepointHint": "Þessi slóð bendir aðeins á hvar lykilskráin liggur; að breyta henni endurlyklar ekki hirsluna. Röng eða vantandi lykilskrá hafnar aflæsingu."
         },
         "modalGuard": {
             "busyTitle": "Aðgerð í gangi",

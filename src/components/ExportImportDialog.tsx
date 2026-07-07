@@ -50,6 +50,9 @@ interface ImportedServer {
     aeroCryptOverlay?: ServerProfile['aeroCryptOverlay'];
     hasStoredAeroCryptPassword?: boolean;
     hasStoredAeroCryptSalt?: boolean;
+    // Tier 1: keyfile PATH presence flag (the path travels in the encrypted
+    // export like the other secrets; the keyfile itself never leaves the disk).
+    hasStoredAeroCryptKeyfilePath?: boolean;
     // #215 Caveat A: the per-protocol "remember credentials" opt-in, round-tripped
     // so an imported profile re-hydrates its server_modes_<id> snapshots.
     persistModeCredentials?: boolean;
@@ -239,6 +242,7 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
                     aeroCryptOverlay: s.aeroCryptOverlay,
                     hasStoredAeroCryptPassword: s.hasStoredAeroCryptPassword || false,
                     hasStoredAeroCryptSalt: s.hasStoredAeroCryptSalt || false,
+                    hasStoredAeroCryptKeyfilePath: s.hasStoredAeroCryptKeyfilePath || false,
                     // #215 Caveat A: preserve the per-protocol "remember credentials"
                     // opt-in so the imported profile loads its restored snapshots.
                     persistModeCredentials: s.persistModeCredentials,

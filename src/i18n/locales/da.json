@@ -4949,7 +4949,12 @@
             "noOverlayFound": "Intet AeroCrypt-overlay fundet i den aktuelle fjernmappe. Skift til \"Opret ny\" for at lave et.",
             "remoteUnlocked": "Fjernserver låst op (ID {id})",
             "versionLabel": "AECR v{version}",
-            "lock": "Lås overlay"
+            "lock": "Lås overlay",
+            "keyfileLabel": "Nøglefil (valgfri)",
+            "keyfilePlaceholder": "Ingen nøglefil: kun adgangskode",
+            "keyfileHint": "Valgfri anden faktor blandet ind i krypteringsnøglen: overlayet åbner kun med adgangskoden OG denne fil. Tag backup af nøglefilen.",
+            "keyfileChoose": "Vælg",
+            "keyfileClear": "Fjern nøglefil"
         },
         "aerocryptProfile": {
             "enable": "Crypt (Kryptering)",
@@ -4969,7 +4974,14 @@
             "hintNative": "Native AeroCrypt-format: kan kun læses fra AeroFTP med denne adgangskode.",
             "hintRclone": "Standard rclone crypt-format: kan også læses af rclone med denne adgangskode.",
             "passwordLabel": "Adgangskode",
-            "saltLabel": "Salt (valgfrit)"
+            "saltLabel": "Salt (valgfrit)",
+            "keyfileLabel": "Nøglefil (valgfri)",
+            "keyfilePlaceholder": "Ingen nøglefil: kun adgangskode",
+            "keyfileHint": "Valgfri anden faktor blandet ind i krypteringsnøglen: boksen åbner kun med adgangskoden OG denne fil. Tag backup: mistes den, kan boksen ikke åbnes.",
+            "keyfileChoose": "Vælg...",
+            "keyfileGenerate": "Generér...",
+            "keyfileGeneratedBackup": "Nøglefil genereret. Tag backup nu: mistes den, kan boksen aldrig åbnes igen.",
+            "keyfileRepointHint": "Denne sti peger kun på, hvor nøglefilen ligger; at ændre den omnøgler ikke boksen. En forkert eller manglende nøglefil afviser oplåsningen."
         },
         "modalGuard": {
             "busyTitle": "Handling i gang",

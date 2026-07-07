@@ -4949,7 +4949,12 @@
             "noOverlayFound": "Hakuna tabaka la AeroCrypt lililopatikana katika folda ya sasa ya mbali. Badilisha hadi \"Unda jipya\" ili kuunda moja.",
             "remoteUnlocked": "Mbali limefunguliwa (ID {id})",
             "versionLabel": "AECR v{version}",
-            "lock": "Funga tabaka"
+            "lock": "Funga tabaka",
+            "keyfileLabel": "Faili ya ufunguo (hiari)",
+            "keyfilePlaceholder": "Hakuna faili ya ufunguo: nenosiri pekee",
+            "keyfileHint": "Kipengele cha pili cha hiari kinachochanganywa katika ufunguo wa usimbaji: tabaka hufunguka tu kwa nenosiri NA faili hii. Hifadhi nakala ya faili ya ufunguo.",
+            "keyfileChoose": "Chagua",
+            "keyfileClear": "Ondoa faili ya ufunguo"
         },
         "aerocryptProfile": {
             "enable": "Crypt (Usimbaji fiche)",
@@ -4969,7 +4974,14 @@
             "hintNative": "Muundo asili wa AeroCrypt: husomeka tu kutoka AeroFTP kwa nenosiri hili.",
             "hintRclone": "Muundo wa kawaida wa rclone crypt: husomeka pia na rclone kwa nenosiri hili.",
             "passwordLabel": "Nenosiri",
-            "saltLabel": "Salt (hiari)"
+            "saltLabel": "Salt (hiari)",
+            "keyfileLabel": "Faili ya ufunguo (hiari)",
+            "keyfilePlaceholder": "Hakuna faili ya ufunguo: nenosiri pekee",
+            "keyfileHint": "Kipengele cha pili cha hiari kinachochanganywa katika ufunguo wa usimbaji: kasha hufunguka tu kwa nenosiri NA faili hii. Hifadhi nakala: kuipoteza hufanya kasha lisifunguke.",
+            "keyfileChoose": "Chagua...",
+            "keyfileGenerate": "Tengeneza...",
+            "keyfileGeneratedBackup": "Faili ya ufunguo imetengenezwa. Hifadhi nakala sasa: kuipoteza hufunga kasha milele.",
+            "keyfileRepointHint": "Njia hii inaonyesha tu mahali faili ya ufunguo ilipo; kuibadilisha hakubadilishi ufunguo wa kasha. Faili ya ufunguo isiyo sahihi au isiyopo hukataa kufungua."
         },
         "modalGuard": {
             "busyTitle": "Operesheni inaendelea",

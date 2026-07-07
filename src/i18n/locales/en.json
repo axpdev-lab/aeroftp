@@ -1551,7 +1551,12 @@
             "noOverlayFound": "No AeroCrypt overlay found in the current remote folder. Switch to \"Create new\" to make one.",
             "remoteUnlocked": "Remote unlocked (ID {id})",
             "versionLabel": "AECR v{version}",
-            "lock": "Lock overlay"
+            "lock": "Lock overlay",
+            "keyfileLabel": "Keyfile (optional)",
+            "keyfilePlaceholder": "No keyfile: password only",
+            "keyfileHint": "Optional second factor mixed into the encryption key: the overlay opens only with the password AND this file. Back the keyfile up.",
+            "keyfileChoose": "Choose",
+            "keyfileClear": "Remove keyfile"
         },
         "cryptomator": {
             "confirmPassword": "Confirm Password",
@@ -4987,7 +4992,14 @@
             "lockedNote": "Encryption type and credentials are locked: this overlay already holds encrypted data.",
             "addToExistingWarn": "Enabling an overlay on an existing profile: any plaintext files already on this remote stay unencrypted and will show as an undecryptable mix. Use an empty remote.",
             "scopeHint": "The Remote and Local paths above define the encrypted scope (leave Remote empty to encrypt the whole root).",
-            "remotePathLockedNote": "The Remote path is locked: it is the encrypted overlay root and cannot change once the overlay holds data."
+            "remotePathLockedNote": "The Remote path is locked: it is the encrypted overlay root and cannot change once the overlay holds data.",
+            "keyfileLabel": "Keyfile (optional)",
+            "keyfilePlaceholder": "No keyfile: password only",
+            "keyfileHint": "Optional second factor mixed into the encryption key: the vault opens only with the password AND this file. Back it up: losing it makes the vault unopenable.",
+            "keyfileChoose": "Choose...",
+            "keyfileGenerate": "Generate...",
+            "keyfileGeneratedBackup": "Keyfile generated. Back it up now: losing it makes the vault permanently unopenable.",
+            "keyfileRepointHint": "This path only points to where the keyfile lives; changing it does not re-key the vault. A wrong or missing keyfile fails closed at unlock."
         },
         "modalView": {
             "listView": "List view",

@@ -15,7 +15,8 @@
 import * as React from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { Lock, Unlock, Loader2, X } from 'lucide-react';
+import { open } from '@tauri-apps/plugin-dialog';
+import { Lock, Unlock, Loader2, X, FileKey } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { PasswordInput } from './common/PasswordInput';
 import { PasswordMatchHint } from './common/PasswordMatchHint';
@@ -27,6 +28,8 @@ interface AeroCryptUnlockProps {
         vaultId: string;
         password: string;
         remoteScope?: string;
+        /** AeroCrypt Tier 1 optional keyfile second factor (local path). */
+        keyfilePath?: string;
     }) => void;
     onLocked?: () => void;
     activeVaultId?: string | null;
@@ -43,6 +46,7 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({ onClose, onUnl
     const [mode, setMode] = useState<'open' | 'create'>('open');
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
+    const [keyfilePath, setKeyfilePath] = useState('');
     const [createSubpath, setCreateSubpath] = useState('');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -71,7 +75,8 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({ onClose, onUnl
     }, []);
 
     const handleUnlock = async () => {
-        if (!password) return;
+        // Tier 1: an empty password is legal when a keyfile is the (only) factor.
+        if (!password && !keyfilePath) return;
         setLoading(true);
         setError(null);
         try {
@@ -85,12 +90,14 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({ onClose, onUnl
             const info = await invoke<AeroCryptVaultInfo>('aerocrypt_unlock', {
                 password,
                 configJson,
+                keyfilePath: keyfilePath || null,
             });
             setVaultInfo(info);
             onUnlocked?.({
                 vaultId: info.vault_id,
                 password,
                 remoteScope: '',
+                keyfilePath: keyfilePath || undefined,
             });
             setPassword('');
             setSuccess(t('aerocryptNative.unlocked'));
@@ -102,19 +109,22 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({ onClose, onUnl
     };
 
     const handleCreate = async () => {
-        if (!password || password !== confirmPassword) return;
+        // Tier 1: keyfile-only vaults (empty password) are legal by design.
+        if ((!password && !keyfilePath) || password !== confirmPassword) return;
         setLoading(true);
         setError(null);
         try {
             const info = await invoke<AeroCryptVaultInfo>('aerocrypt_provider_create_remote', {
                 password,
                 targetSubpath: createSubpath.trim() ? createSubpath.trim() : null,
+                keyfilePath: keyfilePath || null,
             });
             setVaultInfo(info);
             onUnlocked?.({
                 vaultId: info.vault_id,
                 password,
                 remoteScope: '',
+                keyfilePath: keyfilePath || undefined,
             });
             setPassword('');
             setConfirmPassword('');
@@ -124,6 +134,15 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({ onClose, onUnl
             setError(String(e));
         } finally {
             setLoading(false);
+        }
+    };
+
+    const chooseKeyfile = async () => {
+        try {
+            const picked = await open({ multiple: false });
+            if (typeof picked === 'string' && picked) setKeyfilePath(picked);
+        } catch (_) {
+            // Dialog cancelled or unavailable: keep the current selection.
         }
     };
 
@@ -234,6 +253,44 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({ onClose, onUnl
                                 </div>
                             )}
 
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                    {t('aerocryptNative.keyfileLabel')}
+                                </label>
+                                <div className="flex gap-2">
+                                    <input
+                                        type="text"
+                                        value={keyfilePath}
+                                        readOnly
+                                        className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white text-sm"
+                                        placeholder={t('aerocryptNative.keyfilePlaceholder')}
+                                        aria-label={t('aerocryptNative.keyfileLabel')}
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={chooseKeyfile}
+                                        className="flex items-center gap-1 px-3 py-2 rounded text-sm font-medium bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600"
+                                    >
+                                        <FileKey className="w-4 h-4" />
+                                        {t('aerocryptNative.keyfileChoose')}
+                                    </button>
+                                    {keyfilePath && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setKeyfilePath('')}
+                                            className="px-2 py-2 rounded text-sm bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-300 dark:hover:bg-gray-600"
+                                            aria-label={t('aerocryptNative.keyfileClear')}
+                                            title={t('aerocryptNative.keyfileClear')}
+                                        >
+                                            <X className="w-4 h-4" />
+                                        </button>
+                                    )}
+                                </div>
+                                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                                    {t('aerocryptNative.keyfileHint')}
+                                </p>
+                            </div>
+
                             {mode === 'create' && (
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -255,7 +312,7 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({ onClose, onUnl
                             {mode === 'open' ? (
                                 <button
                                     onClick={handleUnlock}
-                                    disabled={!password || loading}
+                                    disabled={(!password && !keyfilePath) || loading}
                                     className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
                                     {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Unlock className="w-4 h-4" />}
@@ -264,7 +321,7 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({ onClose, onUnl
                             ) : (
                                 <button
                                     onClick={handleCreate}
-                                    disabled={!password || password !== confirmPassword || loading}
+                                    disabled={(!password && !keyfilePath) || password !== confirmPassword || loading}
                                     className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
                                     {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Lock className="w-4 h-4" />}

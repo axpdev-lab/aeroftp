@@ -4949,7 +4949,12 @@
             "noOverlayFound": "Kein AeroCrypt-Overlay im aktuellen Remote-Ordner gefunden. Wechseln Sie zu „Neu erstellen“, um eines anzulegen.",
             "remoteUnlocked": "Remote entsperrt (ID {id})",
             "versionLabel": "AECR v{version}",
-            "lock": "Overlay sperren"
+            "lock": "Overlay sperren",
+            "keyfileLabel": "Schlüsseldatei (optional)",
+            "keyfilePlaceholder": "Keine Schlüsseldatei: nur Passwort",
+            "keyfileHint": "Optionaler zweiter Faktor, der in den Verschlüsselungsschlüssel einfließt: das Overlay öffnet sich nur mit dem Passwort UND dieser Datei. Sichern Sie die Schlüsseldatei.",
+            "keyfileChoose": "Auswählen",
+            "keyfileClear": "Schlüsseldatei entfernen"
         },
         "aerocryptProfile": {
             "enable": "Crypt (Verschlüsselung)",
@@ -4969,7 +4974,14 @@
             "hintNative": "Natives AeroCrypt-Format: nur aus AeroFTP mit diesem Passwort lesbar.",
             "hintRclone": "Standard-rclone-crypt-Format: auch von rclone mit diesem Passwort lesbar.",
             "passwordLabel": "Passwort",
-            "saltLabel": "Salt (optional)"
+            "saltLabel": "Salt (optional)",
+            "keyfileLabel": "Schlüsseldatei (optional)",
+            "keyfilePlaceholder": "Keine Schlüsseldatei: nur Passwort",
+            "keyfileHint": "Optionaler zweiter Faktor, der in den Verschlüsselungsschlüssel einfließt: der Tresor öffnet sich nur mit dem Passwort UND dieser Datei. Sichern Sie sie: ihr Verlust macht den Tresor unöffenbar.",
+            "keyfileChoose": "Auswählen...",
+            "keyfileGenerate": "Generieren...",
+            "keyfileGeneratedBackup": "Schlüsseldatei erzeugt. Sichern Sie sie jetzt: ihr Verlust macht den Tresor dauerhaft unöffenbar.",
+            "keyfileRepointHint": "Dieser Pfad zeigt nur, wo die Schlüsseldatei liegt; ihn zu ändern verschlüsselt den Tresor nicht neu. Eine falsche oder fehlende Schlüsseldatei verweigert das Entsperren."
         },
         "modalGuard": {
             "busyTitle": "Vorgang läuft",

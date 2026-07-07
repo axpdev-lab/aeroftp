@@ -4949,7 +4949,12 @@
             "noOverlayFound": "Praegusest kaugkaustast ei leitud AeroCrypti kattekihti. Selle loomiseks vaheta valikule \"Loo uus\".",
             "remoteUnlocked": "Kaugserver avatud (ID {id})",
             "versionLabel": "AECR v{version}",
-            "lock": "Lukusta kattekiht"
+            "lock": "Lukusta kattekiht",
+            "keyfileLabel": "Võtmefail (valikuline)",
+            "keyfilePlaceholder": "Võtmefaili pole: ainult parool",
+            "keyfileHint": "Valikuline teine tegur, mis segatakse krüpteerimisvõtmesse: ülekate avaneb ainult parooli JA selle failiga. Tehke võtmefailist varukoopia.",
+            "keyfileChoose": "Vali",
+            "keyfileClear": "Eemalda võtmefail"
         },
         "aerocryptProfile": {
             "enable": "Crypt (Krüptimine)",
@@ -4969,7 +4974,14 @@
             "hintNative": "Natiivne AeroCrypt-vorming: loetav ainult AeroFTP-st selle parooliga.",
             "hintRclone": "Standardne rclone crypt -vorming: loetav ka rclone'iga selle parooliga.",
             "passwordLabel": "Parool",
-            "saltLabel": "Salt (valikuline)"
+            "saltLabel": "Salt (valikuline)",
+            "keyfileLabel": "Võtmefail (valikuline)",
+            "keyfilePlaceholder": "Võtmefaili pole: ainult parool",
+            "keyfileHint": "Valikuline teine tegur, mis segatakse krüpteerimisvõtmesse: hoidla avaneb ainult parooli JA selle failiga. Tehke varukoopia: selle kaotamine muudab hoidla avamatuks.",
+            "keyfileChoose": "Vali...",
+            "keyfileGenerate": "Genereeri...",
+            "keyfileGeneratedBackup": "Võtmefail genereeritud. Tehke varukoopia kohe: selle kaotamine muudab hoidla jäädavalt avamatuks.",
+            "keyfileRepointHint": "See tee näitab vaid, kus võtmefail asub; selle muutmine hoidlat ümber ei võtmesta. Vale või puuduv võtmefail keelab avamise."
         },
         "modalGuard": {
             "busyTitle": "Toiming käib",

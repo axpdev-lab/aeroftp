@@ -4968,7 +4968,12 @@
             "noOverlayFound": "No s'ha trobat cap superposició AeroCrypt a la carpeta remota actual. Canvia a «Crea'n una de nova» per crear-ne una.",
             "remoteUnlocked": "Remot desbloquejat (ID {id})",
             "versionLabel": "AECR v{version}",
-            "lock": "Bloqueja la superposició"
+            "lock": "Bloqueja la superposició",
+            "keyfileLabel": "Fitxer de clau (opcional)",
+            "keyfilePlaceholder": "Sense fitxer de clau: només contrasenya",
+            "keyfileHint": "Segon factor opcional barrejat a la clau de xifratge: la superposició només s'obre amb la contrasenya I aquest fitxer. Feu una còpia de seguretat del fitxer de clau.",
+            "keyfileChoose": "Tria",
+            "keyfileClear": "Elimina el fitxer de clau"
         },
         "aerocryptProfile": {
             "enable": "Crypt (Xifratge)",
@@ -4988,7 +4993,14 @@
             "hintNative": "Format AeroCrypt natiu: només llegible des d'AeroFTP amb aquesta contrasenya.",
             "hintRclone": "Format rclone crypt estàndard: també llegible per rclone amb aquesta contrasenya.",
             "passwordLabel": "Contrasenya",
-            "saltLabel": "Salt (opcional)"
+            "saltLabel": "Salt (opcional)",
+            "keyfileLabel": "Fitxer de clau (opcional)",
+            "keyfilePlaceholder": "Sense fitxer de clau: només contrasenya",
+            "keyfileHint": "Segon factor opcional barrejat a la clau de xifratge: la caixa forta només s'obre amb la contrasenya I aquest fitxer. Feu-ne una còpia: perdre'l fa la caixa forta inaccessible.",
+            "keyfileChoose": "Tria...",
+            "keyfileGenerate": "Genera...",
+            "keyfileGeneratedBackup": "Fitxer de clau generat. Feu-ne una còpia ara: perdre'l fa la caixa forta inaccessible per sempre.",
+            "keyfileRepointHint": "Aquest camí només indica on és el fitxer de clau; canviar-lo no torna a xifrar la caixa forta. Un fitxer de clau erroni o absent bloqueja el desbloqueig."
         },
         "modalGuard": {
             "busyTitle": "Operació en curs",

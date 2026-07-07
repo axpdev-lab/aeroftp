@@ -4949,7 +4949,12 @@
             "noOverlayFound": "Dabartiniame nuotoliniame aplanke AeroCrypt perdangos nerasta. Norėdami ją sukurti, perjunkite į \"Sukurti naują\".",
             "remoteUnlocked": "Nuotolinis serveris atrakintas (ID {id})",
             "versionLabel": "AECR v{version}",
-            "lock": "Užrakinti perdangą"
+            "lock": "Užrakinti perdangą",
+            "keyfileLabel": "Rakto failas (nebūtina)",
+            "keyfilePlaceholder": "Be rakto failo: tik slaptažodis",
+            "keyfileHint": "Neprivalomas antras veiksnys, įmaišomas į šifravimo raktą: perdanga atsidaro tik su slaptažodžiu IR šiuo failu. Pasidarykite rakto failo atsarginę kopiją.",
+            "keyfileChoose": "Pasirinkti",
+            "keyfileClear": "Pašalinti rakto failą"
         },
         "aerocryptProfile": {
             "enable": "Crypt (Šifravimas)",
@@ -4969,7 +4974,14 @@
             "hintNative": "Savasis AeroCrypt formatas: skaitomas tik iš AeroFTP su šiuo slaptažodžiu.",
             "hintRclone": "Standartinis rclone crypt formatas: taip pat skaitomas rclone su šiuo slaptažodžiu.",
             "passwordLabel": "Slaptažodis",
-            "saltLabel": "Salt (nebūtina)"
+            "saltLabel": "Salt (nebūtina)",
+            "keyfileLabel": "Rakto failas (nebūtina)",
+            "keyfilePlaceholder": "Be rakto failo: tik slaptažodis",
+            "keyfileHint": "Neprivalomas antras veiksnys, įmaišomas į šifravimo raktą: saugykla atsidaro tik su slaptažodžiu IR šiuo failu. Pasidarykite kopiją: jį praradus saugyklos atidaryti nebepavyks.",
+            "keyfileChoose": "Pasirinkti...",
+            "keyfileGenerate": "Generuoti...",
+            "keyfileGeneratedBackup": "Rakto failas sugeneruotas. Tuoj pat pasidarykite kopiją: jį praradus saugykla užsirakins visam laikui.",
+            "keyfileRepointHint": "Šis kelias tik nurodo, kur yra rakto failas; jo keitimas saugyklos rakto nekeičia. Neteisingas ar trūkstamas rakto failas atrakinimą atmeta."
         },
         "modalGuard": {
             "busyTitle": "Vykdoma operacija",

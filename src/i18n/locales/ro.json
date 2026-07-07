@@ -4949,7 +4949,12 @@
             "noOverlayFound": "Nu a fost găsit niciun strat AeroCrypt în folderul la distanță curent. Comutați la „Creează nou” pentru a crea unul.",
             "remoteUnlocked": "Server la distanță deblocat (ID {id})",
             "versionLabel": "AECR v{version}",
-            "lock": "Blochează stratul"
+            "lock": "Blochează stratul",
+            "keyfileLabel": "Fișier de cheie (opțional)",
+            "keyfilePlaceholder": "Fără fișier de cheie: doar parolă",
+            "keyfileHint": "Al doilea factor opțional amestecat în cheia de criptare: suprapunerea se deschide doar cu parola ȘI acest fișier. Faceți o copie de rezervă a fișierului de cheie.",
+            "keyfileChoose": "Alege",
+            "keyfileClear": "Elimină fișierul de cheie"
         },
         "aerocryptProfile": {
             "enable": "Crypt (Criptare)",
@@ -4969,7 +4974,14 @@
             "hintNative": "Format AeroCrypt nativ: lizibil doar din AeroFTP cu această parolă.",
             "hintRclone": "Format rclone crypt standard: lizibil și de rclone cu această parolă.",
             "passwordLabel": "Parolă",
-            "saltLabel": "Salt (opțional)"
+            "saltLabel": "Salt (opțional)",
+            "keyfileLabel": "Fișier de cheie (opțional)",
+            "keyfilePlaceholder": "Fără fișier de cheie: doar parolă",
+            "keyfileHint": "Al doilea factor opțional amestecat în cheia de criptare: seiful se deschide doar cu parola ȘI acest fișier. Faceți o copie: pierderea lui face seiful de nedeschis.",
+            "keyfileChoose": "Alege...",
+            "keyfileGenerate": "Generează...",
+            "keyfileGeneratedBackup": "Fișier de cheie generat. Faceți o copie acum: pierderea lui blochează seiful pentru totdeauna.",
+            "keyfileRepointHint": "Această cale doar indică unde se află fișierul de cheie; schimbarea ei nu recriptează seiful. Un fișier de cheie greșit sau lipsă refuză deblocarea."
         },
         "modalGuard": {
             "busyTitle": "Operațiune în curs",

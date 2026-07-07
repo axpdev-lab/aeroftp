@@ -4968,7 +4968,12 @@
             "noOverlayFound": "Non se atopou ningunha superposición AeroCrypt no cartafol remoto actual. Cambia a «Crear nova» para crear unha.",
             "remoteUnlocked": "Remoto desbloqueado (ID {id})",
             "versionLabel": "AECR v{version}",
-            "lock": "Bloquear superposición"
+            "lock": "Bloquear superposición",
+            "keyfileLabel": "Ficheiro de clave (opcional)",
+            "keyfilePlaceholder": "Sen ficheiro de clave: só contrasinal",
+            "keyfileHint": "Segundo factor opcional mesturado na clave de cifrado: a superposición só se abre co contrasinal E este ficheiro. Faga unha copia de seguridade do ficheiro de clave.",
+            "keyfileChoose": "Escoller",
+            "keyfileClear": "Quitar o ficheiro de clave"
         },
         "aerocryptProfile": {
             "enable": "Crypt (Cifrado)",
@@ -4988,7 +4993,14 @@
             "hintNative": "Formato AeroCrypt nativo: lexible só desde AeroFTP con este contrasinal.",
             "hintRclone": "Formato rclone crypt estándar: tamén lexible por rclone con este contrasinal.",
             "passwordLabel": "Contrasinal",
-            "saltLabel": "Salt (opcional)"
+            "saltLabel": "Salt (opcional)",
+            "keyfileLabel": "Ficheiro de clave (opcional)",
+            "keyfilePlaceholder": "Sen ficheiro de clave: só contrasinal",
+            "keyfileHint": "Segundo factor opcional mesturado na clave de cifrado: a caixa forte só se abre co contrasinal E este ficheiro. Faga unha copia: perdelo deixa a caixa forte inaccesible.",
+            "keyfileChoose": "Escoller...",
+            "keyfileGenerate": "Xerar...",
+            "keyfileGeneratedBackup": "Ficheiro de clave xerado. Faga unha copia agora: perdelo deixa a caixa forte inaccesible para sempre.",
+            "keyfileRepointHint": "Esta ruta só indica onde está o ficheiro de clave; cambiala non volve cifrar a caixa forte. Un ficheiro de clave errado ou ausente rexeita o desbloqueo."
         },
         "modalGuard": {
             "busyTitle": "Operación en curso",

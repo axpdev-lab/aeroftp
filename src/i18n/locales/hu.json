@@ -4949,7 +4949,12 @@
             "noOverlayFound": "Nem található AeroCrypt réteg az aktuális távoli mappában. Váltson az „Új létrehozása” lehetőségre egy létrehozásához.",
             "remoteUnlocked": "Távoli kiszolgáló feloldva (azonosító: {id})",
             "versionLabel": "AECR v{version}",
-            "lock": "Réteg zárolása"
+            "lock": "Réteg zárolása",
+            "keyfileLabel": "Kulcsfájl (opcionális)",
+            "keyfilePlaceholder": "Nincs kulcsfájl: csak jelszó",
+            "keyfileHint": "A titkosítási kulcsba kevert opcionális második faktor: a fedvény csak a jelszóval ÉS ezzel a fájllal nyílik. Készítsen biztonsági másolatot a kulcsfájlról.",
+            "keyfileChoose": "Kiválasztás",
+            "keyfileClear": "Kulcsfájl eltávolítása"
         },
         "aerocryptProfile": {
             "enable": "Crypt (Titkosítás)",
@@ -4969,7 +4974,14 @@
             "hintNative": "Natív AeroCrypt formátum: csak az AeroFTP-ből olvasható ezzel a jelszóval.",
             "hintRclone": "Szabványos rclone crypt formátum: az rclone is olvassa ezzel a jelszóval.",
             "passwordLabel": "Jelszó",
-            "saltLabel": "Salt (opcionális)"
+            "saltLabel": "Salt (opcionális)",
+            "keyfileLabel": "Kulcsfájl (opcionális)",
+            "keyfilePlaceholder": "Nincs kulcsfájl: csak jelszó",
+            "keyfileHint": "A titkosítási kulcsba kevert opcionális második faktor: a széf csak a jelszóval ÉS ezzel a fájllal nyílik. Készítsen másolatot: elvesztése a széfet megnyithatatlanná teszi.",
+            "keyfileChoose": "Kiválasztás...",
+            "keyfileGenerate": "Generálás...",
+            "keyfileGeneratedBackup": "Kulcsfájl létrehozva. Készítsen másolatot most: elvesztése a széfet végleg megnyithatatlanná teszi.",
+            "keyfileRepointHint": "Ez az útvonal csak azt mutatja, hol van a kulcsfájl; módosítása nem kulcsolja újra a széfet. Hibás vagy hiányzó kulcsfájl esetén a feloldás megtagadva."
         },
         "modalGuard": {
             "busyTitle": "Művelet folyamatban",

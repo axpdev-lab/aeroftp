@@ -4949,7 +4949,12 @@
             "noOverlayFound": "在当前远程文件夹中未找到 AeroCrypt 叠加层。切换到“新建”来创建一个。",
             "remoteUnlocked": "远程已解锁（ID {id}）",
             "versionLabel": "AECR v{version}",
-            "lock": "锁定叠加层"
+            "lock": "锁定叠加层",
+            "keyfileLabel": "密钥文件 (可选)",
+            "keyfilePlaceholder": "无密钥文件: 仅密码",
+            "keyfileHint": "混入加密密钥的可选第二因子: 叠加层只有同时提供密码和此文件才能打开。请备份密钥文件。",
+            "keyfileChoose": "选择",
+            "keyfileClear": "移除密钥文件"
         },
         "aerocryptProfile": {
             "enable": "Crypt (加密)",
@@ -4969,7 +4974,14 @@
             "hintNative": "原生 AeroCrypt 格式：使用此密码仅可从 AeroFTP 读取。",
             "hintRclone": "标准 rclone crypt 格式：使用此密码也可由 rclone 读取。",
             "passwordLabel": "密码",
-            "saltLabel": "Salt (可选)"
+            "saltLabel": "Salt (可选)",
+            "keyfileLabel": "密钥文件 (可选)",
+            "keyfilePlaceholder": "无密钥文件: 仅密码",
+            "keyfileHint": "混入加密密钥的可选第二因子: 保险库只有同时提供密码和此文件才能打开。请备份: 丢失它将导致保险库无法打开。",
+            "keyfileChoose": "选择...",
+            "keyfileGenerate": "生成...",
+            "keyfileGeneratedBackup": "密钥文件已生成。请立即备份: 丢失它将导致保险库永久无法打开。",
+            "keyfileRepointHint": "此路径只指向密钥文件所在位置; 更改它不会更换保险库的密钥。错误或缺失的密钥文件将被拒绝解锁。"
         },
         "modalGuard": {
             "busyTitle": "操作进行中",

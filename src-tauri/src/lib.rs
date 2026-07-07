@@ -17331,6 +17331,7 @@ pub fn run() {
             provider_commands::cancel_connection,
             provider_commands::provider_disconnect,
             provider_commands::provider_apply_crypt_overlay,
+            provider_commands::crypt_generate_keyfile,
             provider_commands::provider_clear_crypt_overlay,
             provider_commands::provider_crypt_cwd_in_view,
             provider_commands::provider_check_connection,

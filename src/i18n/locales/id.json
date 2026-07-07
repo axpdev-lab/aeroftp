@@ -4949,7 +4949,12 @@
             "noOverlayFound": "Tidak ada overlay AeroCrypt yang ditemukan di folder jarak jauh saat ini. Beralih ke \"Buat baru\" untuk membuatnya.",
             "remoteUnlocked": "Jarak jauh terbuka kuncinya (ID {id})",
             "versionLabel": "AECR v{version}",
-            "lock": "Kunci overlay"
+            "lock": "Kunci overlay",
+            "keyfileLabel": "Berkas kunci (opsional)",
+            "keyfilePlaceholder": "Tanpa berkas kunci: hanya kata sandi",
+            "keyfileHint": "Faktor kedua opsional yang dicampur ke kunci enkripsi: overlay hanya terbuka dengan kata sandi DAN berkas ini. Cadangkan berkas kunci.",
+            "keyfileChoose": "Pilih",
+            "keyfileClear": "Hapus berkas kunci"
         },
         "aerocryptProfile": {
             "enable": "Crypt (Enkripsi)",
@@ -4969,7 +4974,14 @@
             "hintNative": "Format AeroCrypt asli: hanya dapat dibaca dari AeroFTP dengan kata sandi ini.",
             "hintRclone": "Format rclone crypt standar: juga dapat dibaca oleh rclone dengan kata sandi ini.",
             "passwordLabel": "Kata sandi",
-            "saltLabel": "Salt (opsional)"
+            "saltLabel": "Salt (opsional)",
+            "keyfileLabel": "Berkas kunci (opsional)",
+            "keyfilePlaceholder": "Tanpa berkas kunci: hanya kata sandi",
+            "keyfileHint": "Faktor kedua opsional yang dicampur ke kunci enkripsi: brankas hanya terbuka dengan kata sandi DAN berkas ini. Cadangkan: kehilangannya membuat brankas tak bisa dibuka.",
+            "keyfileChoose": "Pilih...",
+            "keyfileGenerate": "Buat...",
+            "keyfileGeneratedBackup": "Berkas kunci dibuat. Cadangkan sekarang: kehilangannya membuat brankas terkunci selamanya.",
+            "keyfileRepointHint": "Jalur ini hanya menunjuk lokasi berkas kunci; mengubahnya tidak mengganti kunci brankas. Berkas kunci yang salah atau hilang menolak pembukaan."
         },
         "modalGuard": {
             "busyTitle": "Operasi berlangsung",

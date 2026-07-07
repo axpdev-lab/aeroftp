@@ -1243,6 +1243,11 @@ pub struct ApplyCryptOverlayParams {
     pub password: String,
     /// rclone-crypt salt (ignored by aerocrypt, which reads its remote config).
     pub salt: Option<String>,
+    /// Optional AeroCrypt keyfile path (Tier 1 second factor). Resolved to its
+    /// digest here, fail-closed: an unreadable file is an error, never a silent
+    /// password-only unlock.
+    #[serde(default)]
+    pub keyfile_path: Option<String>,
 }
 
 /// Apply a crypt overlay (rclone-crypt or AeroCrypt) to the live connection in
@@ -1268,17 +1273,21 @@ pub async fn provider_apply_crypt_overlay(
         off_suffix: None,
     };
     let salt = params.salt.unwrap_or_default();
+    // Keyfile second factor: resolve the picked path to its digest before
+    // touching the connection; a keyfile vault with no keyfile fails closed
+    // inside the unlock with a clear "requires a keyfile" error.
+    let keyfile_digest = match params.keyfile_path.as_deref().filter(|s| !s.is_empty()) {
+        Some(p) => Some(crate::crypt_overlay_provider::keyfile_digest_from_path(p)?),
+        None => None,
+    };
     let scope = {
         let mut guard = state.provider.lock().await;
-        // Keyfile second factor: not yet supplied by the interactive unlock UI
-        // (the frontend keyfile picker lands with Tier 1 phase 2); a keyfile
-        // vault fails closed here with a clear "requires a keyfile" error.
         crate::crypt_overlay_provider::apply_overlay_in_place(
             &mut guard,
             &binding,
             &params.password,
             &salt,
-            None,
+            keyfile_digest.as_ref(),
         )
         .await?
     };
@@ -1291,6 +1300,28 @@ pub async fn provider_apply_crypt_overlay(
         scope
     );
     Ok(scope)
+}
+
+/// Generate a fresh transfer-safe AeroCrypt keyfile (AEROFTP-KEYFILE-V1) at
+/// `path`. Refuses to overwrite an existing file (a keyfile is a factor: losing
+/// the original makes its vaults unopenable, so clobbering one is never OK).
+/// Mode 0600 on unix. Mirrors the CLI `crypt init --keyfile-gen` path.
+#[tauri::command]
+pub async fn crypt_generate_keyfile(path: String) -> Result<(), String> {
+    if std::path::Path::new(&path).exists() {
+        return Err(format!(
+            "keyfile '{path}' already exists; refusing to overwrite"
+        ));
+    }
+    let content = crate::aerocrypt::generate_keyfile_v1();
+    std::fs::write(&path, content.as_bytes())
+        .map_err(|e| format!("cannot write keyfile '{path}': {e}"))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
+    }
+    Ok(())
 }
 
 /// Revert the live connection to its raw provider, removing any crypt overlay

@@ -4949,7 +4949,12 @@
             "noOverlayFound": "Nie znaleziono nakładki AeroCrypt w bieżącym folderze zdalnym. Przełącz na „Utwórz nową”, aby ją utworzyć.",
             "remoteUnlocked": "Serwer zdalny odblokowany (ID {id})",
             "versionLabel": "AECR v{version}",
-            "lock": "Zablokuj nakładkę"
+            "lock": "Zablokuj nakładkę",
+            "keyfileLabel": "Plik klucza (opcjonalnie)",
+            "keyfilePlaceholder": "Brak pliku klucza: tylko hasło",
+            "keyfileHint": "Opcjonalny drugi składnik domieszany do klucza szyfrowania: nakładka otwiera się tylko z hasłem I tym plikiem. Zrób kopię zapasową pliku klucza.",
+            "keyfileChoose": "Wybierz",
+            "keyfileClear": "Usuń plik klucza"
         },
         "aerocryptProfile": {
             "enable": "Crypt (Szyfrowanie)",
@@ -4969,7 +4974,14 @@
             "hintNative": "Natywny format AeroCrypt: czytelny tylko z AeroFTP przy tym haśle.",
             "hintRclone": "Standardowy format rclone crypt: czytelny także przez rclone przy tym haśle.",
             "passwordLabel": "Hasło",
-            "saltLabel": "Salt (opcjonalnie)"
+            "saltLabel": "Salt (opcjonalnie)",
+            "keyfileLabel": "Plik klucza (opcjonalnie)",
+            "keyfilePlaceholder": "Brak pliku klucza: tylko hasło",
+            "keyfileHint": "Opcjonalny drugi składnik domieszany do klucza szyfrowania: sejf otwiera się tylko z hasłem I tym plikiem. Zrób kopię: jego utrata czyni sejf nieotwieralnym.",
+            "keyfileChoose": "Wybierz...",
+            "keyfileGenerate": "Generuj...",
+            "keyfileGeneratedBackup": "Wygenerowano plik klucza. Zrób kopię teraz: jego utrata zamknie sejf na zawsze.",
+            "keyfileRepointHint": "Ta ścieżka wskazuje tylko, gdzie leży plik klucza; jej zmiana nie zmienia klucza sejfu. Błędny lub brakujący plik klucza odmawia odblokowania."
         },
         "modalGuard": {
             "busyTitle": "Operacja w toku",

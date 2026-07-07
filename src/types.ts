@@ -567,6 +567,7 @@ export interface ServerProfile {
   aeroCryptOverlay?: AeroCryptOverlayBinding; // P3: encrypted-overlay binding (transparent dual-panel). Spec: master plan §3.3
   hasStoredAeroCryptPassword?: boolean; // true if the overlay password is stored in the vault under aerocrypt_overlay_pw_<id>
   hasStoredAeroCryptSalt?: boolean; // rclone-crypt only (P3.3b): true if the overlay salt/password2 is stored in the vault under aerocrypt_overlay_salt_<id>
+  hasStoredAeroCryptKeyfilePath?: boolean; // AeroCrypt Tier 1: true if a keyfile path is stored in the vault under aerocrypt_overlay_keyfile_path_<id> (the path is a pointer, not a secret)
   providerId?: string; // Registry provider ID (e.g. 'cloudflare-r2', 'koofr')
   faviconUrl?: string; // Base64 data URL of detected project favicon
   customIconUrl?: string; // User-chosen custom icon (base64 data URL, highest priority)

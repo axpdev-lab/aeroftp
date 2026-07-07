@@ -4949,7 +4949,12 @@
             "noOverlayFound": "Không tìm thấy lớp phủ AeroCrypt trong thư mục từ xa hiện tại. Chuyển sang \"Tạo mới\" để tạo một lớp phủ.",
             "remoteUnlocked": "Đã mở khóa từ xa (ID {id})",
             "versionLabel": "AECR v{version}",
-            "lock": "Khóa lớp phủ"
+            "lock": "Khóa lớp phủ",
+            "keyfileLabel": "Tệp khóa (tùy chọn)",
+            "keyfilePlaceholder": "Không có tệp khóa: chỉ mật khẩu",
+            "keyfileHint": "Yếu tố thứ hai tùy chọn được trộn vào khóa mã hóa: lớp phủ chỉ mở với mật khẩu VÀ tệp này. Hãy sao lưu tệp khóa.",
+            "keyfileChoose": "Chọn",
+            "keyfileClear": "Gỡ tệp khóa"
         },
         "aerocryptProfile": {
             "enable": "Crypt (Mã hóa)",
@@ -4969,7 +4974,14 @@
             "hintNative": "Định dạng AeroCrypt gốc: chỉ đọc được từ AeroFTP với mật khẩu này.",
             "hintRclone": "Định dạng rclone crypt tiêu chuẩn: cũng đọc được bằng rclone với mật khẩu này.",
             "passwordLabel": "Mật khẩu",
-            "saltLabel": "Salt (tùy chọn)"
+            "saltLabel": "Salt (tùy chọn)",
+            "keyfileLabel": "Tệp khóa (tùy chọn)",
+            "keyfilePlaceholder": "Không có tệp khóa: chỉ mật khẩu",
+            "keyfileHint": "Yếu tố thứ hai tùy chọn được trộn vào khóa mã hóa: két chỉ mở với mật khẩu VÀ tệp này. Hãy sao lưu: mất nó khiến két không thể mở.",
+            "keyfileChoose": "Chọn...",
+            "keyfileGenerate": "Tạo...",
+            "keyfileGeneratedBackup": "Đã tạo tệp khóa. Hãy sao lưu ngay: mất nó khiến két bị khóa vĩnh viễn.",
+            "keyfileRepointHint": "Đường dẫn này chỉ trỏ tới nơi tệp khóa nằm; thay đổi nó không đổi khóa của két. Tệp khóa sai hoặc thiếu sẽ bị từ chối mở khóa."
         },
         "modalGuard": {
             "busyTitle": "Đang thực hiện thao tác",

@@ -4949,7 +4949,12 @@
             "noOverlayFound": "V aktuálnom vzdialenom priečinku sa nenašla žiadna vrstva AeroCrypt. Prepnite na „Vytvoriť novú“ a vytvorte ju.",
             "remoteUnlocked": "Vzdialený server odomknutý (ID {id})",
             "versionLabel": "AECR v{version}",
-            "lock": "Uzamknúť vrstvu"
+            "lock": "Uzamknúť vrstvu",
+            "keyfileLabel": "Súbor kľúča (voliteľné)",
+            "keyfilePlaceholder": "Bez súboru kľúča: iba heslo",
+            "keyfileHint": "Voliteľný druhý faktor primiešaný do šifrovacieho kľúča: prekrytie sa otvorí iba s heslom A týmto súborom. Súbor kľúča si zálohujte.",
+            "keyfileChoose": "Vybrať",
+            "keyfileClear": "Odstrániť súbor kľúča"
         },
         "aerocryptProfile": {
             "enable": "Crypt (Šifrovanie)",
@@ -4969,7 +4974,14 @@
             "hintNative": "Natívny formát AeroCrypt: čitateľný iba z AeroFTP s týmto heslom.",
             "hintRclone": "Štandardný formát rclone crypt: čitateľný aj cez rclone s týmto heslom.",
             "passwordLabel": "Heslo",
-            "saltLabel": "Salt (voliteľné)"
+            "saltLabel": "Salt (voliteľné)",
+            "keyfileLabel": "Súbor kľúča (voliteľné)",
+            "keyfilePlaceholder": "Bez súboru kľúča: iba heslo",
+            "keyfileHint": "Voliteľný druhý faktor primiešaný do šifrovacieho kľúča: trezor sa otvorí iba s heslom A týmto súborom. Zálohujte ho: jeho strata trezor natrvalo uzamkne.",
+            "keyfileChoose": "Vybrať...",
+            "keyfileGenerate": "Generovať...",
+            "keyfileGeneratedBackup": "Súbor kľúča vygenerovaný. Ihneď ho zálohujte: jeho strata trezor navždy uzamkne.",
+            "keyfileRepointHint": "Táto cesta iba ukazuje, kde súbor kľúča leží; jej zmena trezor neprekľúčuje. Nesprávny alebo chýbajúci súbor kľúča odomknutie odmietne."
         },
         "modalGuard": {
             "busyTitle": "Prebieha operácia",

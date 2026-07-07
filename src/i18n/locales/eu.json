@@ -4968,7 +4968,12 @@
             "noOverlayFound": "Ez da AeroCrypt gainjartzerik aurkitu uneko urruneko karpetan. Aldatu «Sortu berria» aukerara bat sortzeko.",
             "remoteUnlocked": "Urrunekoa desblokeatuta ({id} IDa)",
             "versionLabel": "AECR v{version}",
-            "lock": "Blokeatu gainjartzea"
+            "lock": "Blokeatu gainjartzea",
+            "keyfileLabel": "Gako-fitxategia (aukerakoa)",
+            "keyfilePlaceholder": "Gako-fitxategirik ez: pasahitza soilik",
+            "keyfileHint": "Zifratze-gakoan nahasten den bigarren faktore aukerakoa: gainjartzea pasahitzarekin ETA fitxategi honekin soilik irekitzen da. Egin gako-fitxategiaren babeskopia.",
+            "keyfileChoose": "Aukeratu",
+            "keyfileClear": "Kendu gako-fitxategia"
         },
         "aerocryptProfile": {
             "enable": "Crypt (Zifratzea)",
@@ -4988,7 +4993,14 @@
             "hintNative": "AeroCrypt formatu natiboa: AeroFTP-tik soilik irakur daiteke pasahitz honekin.",
             "hintRclone": "rclone crypt formatu estandarra: rclone-k ere irakur dezake pasahitz honekin.",
             "passwordLabel": "Pasahitza",
-            "saltLabel": "Salt (aukerakoa)"
+            "saltLabel": "Salt (aukerakoa)",
+            "keyfileLabel": "Gako-fitxategia (aukerakoa)",
+            "keyfilePlaceholder": "Gako-fitxategirik ez: pasahitza soilik",
+            "keyfileHint": "Zifratze-gakoan nahasten den bigarren faktore aukerakoa: kutxa gotorra pasahitzarekin ETA fitxategi honekin soilik irekitzen da. Egin babeskopia: galtzen bada, kutxa ezin da ireki.",
+            "keyfileChoose": "Aukeratu...",
+            "keyfileGenerate": "Sortu...",
+            "keyfileGeneratedBackup": "Gako-fitxategia sortu da. Egin babeskopia orain: galtzen bada, kutxa betiko itxita geratuko da.",
+            "keyfileRepointHint": "Bide honek gako-fitxategia non dagoen baino ez du adierazten; aldatzeak ez du kutxa berriro zifratzen. Gako-fitxategi oker edo faltak desblokeoa ukatzen du."
         },
         "modalGuard": {
             "busyTitle": "Eragiketa abian",

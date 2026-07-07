@@ -8,7 +8,7 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { open } from '@tauri-apps/plugin-dialog';
+import { open, save } from '@tauri-apps/plugin-dialog';
 import { readFile } from '@tauri-apps/plugin-fs';
 import { FolderOpen, HardDrive, ChevronRight, ChevronDown, Save, Copy, Cloud, Check, Settings, Clock, Folder, X, Lock, ArrowLeft, Eye, EyeOff, ExternalLink, Shield, ShieldCheck, KeyRound, Loader2, Image, Info, Pencil, Link2, ArrowRightLeft, RefreshCw } from 'lucide-react';
 import { ConnectionParams, ProviderType, ProviderOptions, isOAuthProvider, isAeroCloudProvider, isFourSharedProvider, isNativeApiProtocol, isNonFtpProvider, providerServesQuota, providerSupportsCryptOverlay, ServerProfile } from '../types';
@@ -628,6 +628,14 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     // modal. Native AeroCrypt ignores these (config lives in .aeroftp-crypt.json).
     const [aeroCryptSalt, setAeroCryptSalt] = useState('');
     const [showAeroCryptSalt, setShowAeroCryptSalt] = useState(false);
+    // AeroCrypt Tier 1 keyfile second factor: the PATH is a pointer, not a
+    // secret, so unlike the password it is hydrated into the form on edit and
+    // stays editable even when the binding is locked (re-pointing after an
+    // import moves where the file lives, not the factor itself; a mismatched
+    // keyfile fails closed at unlock, the remote config decides).
+    const [aeroCryptKeyfilePath, setAeroCryptKeyfilePath] = useState('');
+    const [keyfileJustGenerated, setKeyfileJustGenerated] = useState(false);
+    const [keyfileError, setKeyfileError] = useState<string | null>(null);
     const [aeroCryptFilenameEnc, setAeroCryptFilenameEnc] = useState<'standard' | 'obfuscate' | 'off'>('standard');
     const [aeroCryptDirNameEnc, setAeroCryptDirNameEnc] = useState(true);
 
@@ -982,11 +990,11 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     // in the vault under aerocrypt_overlay_pw_<id> (mirrors stashFilenApiKey).
     // Always returns explicit values so disabling the toggle on an existing
     // profile clears the binding. The password is never written to the JSON.
-    const aeroCryptOverlayFields = async (profileId: string, hadStored?: boolean, hadStoredSalt?: boolean): Promise<Partial<ServerProfile>> => {
+    const aeroCryptOverlayFields = async (profileId: string, hadStored?: boolean, hadStoredSalt?: boolean, hadStoredKeyfile?: boolean): Promise<Partial<ServerProfile>> => {
         // No kind chosen yet means the overlay was enabled but not actively
         // configured: build no binding (fail to plaintext, never a default cipher).
         if (!aeroCryptEnabled || !overlayEligible || !aeroCryptKind) {
-            return { aeroCryptOverlay: undefined, hasStoredAeroCryptPassword: false, hasStoredAeroCryptSalt: false };
+            return { aeroCryptOverlay: undefined, hasStoredAeroCryptPassword: false, hasStoredAeroCryptSalt: false, hasStoredAeroCryptKeyfilePath: false };
         }
         const isRclone = aeroCryptKind === 'rclone-crypt';
         let pwStored = !!hadStored;
@@ -998,6 +1006,13 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         let saltStored = isRclone ? !!hadStoredSalt : false;
         if (isRclone && aeroCryptSalt && aeroCryptSalt.trim()) {
             saltStored = await tryStoreCredential(`aerocrypt_overlay_salt_${profileId}`, aeroCryptSalt);
+        }
+        // AeroCrypt Tier 1 keyfile: only the PATH is stored (pointer, not secret),
+        // under aerocrypt_overlay_keyfile_path_<id>. A blank field keeps the
+        // stored path (same convention as the password field).
+        let keyfileStored = !isRclone ? !!hadStoredKeyfile : false;
+        if (!isRclone && aeroCryptKeyfilePath.trim()) {
+            keyfileStored = await tryStoreCredential(`aerocrypt_overlay_keyfile_path_${profileId}`, aeroCryptKeyfilePath.trim());
         }
         return {
             aeroCryptOverlay: {
@@ -1011,6 +1026,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             },
             hasStoredAeroCryptPassword: pwStored,
             hasStoredAeroCryptSalt: saltStored,
+            hasStoredAeroCryptKeyfilePath: keyfileStored,
         };
     };
 
@@ -1026,17 +1042,49 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     const migrateCryptCredentials = async (
         oldId: string | null | undefined,
         newId: string,
-    ): Promise<{ hadStored: boolean; hadStoredSalt: boolean }> => {
+    ): Promise<{ hadStored: boolean; hadStoredSalt: boolean; hadStoredKeyfile: boolean }> => {
         let hadStored = false;
         let hadStoredSalt = false;
-        if (!oldId || oldId === newId) return { hadStored, hadStoredSalt };
+        let hadStoredKeyfile = false;
+        if (!oldId || oldId === newId) return { hadStored, hadStoredSalt, hadStoredKeyfile };
         try {
             const pw = await invoke<string>('get_credential', { account: `aerocrypt_overlay_pw_${oldId}` }).catch(() => '');
             if (pw) hadStored = await tryStoreCredential(`aerocrypt_overlay_pw_${newId}`, pw);
             const salt = await invoke<string>('get_credential', { account: `aerocrypt_overlay_salt_${oldId}` }).catch(() => '');
             if (salt) hadStoredSalt = await tryStoreCredential(`aerocrypt_overlay_salt_${newId}`, salt);
+            const kf = await invoke<string>('get_credential', { account: `aerocrypt_overlay_keyfile_path_${oldId}` }).catch(() => '');
+            if (kf) hadStoredKeyfile = await tryStoreCredential(`aerocrypt_overlay_keyfile_path_${newId}`, kf);
         } catch { /* best-effort; a missing secret just leaves the field to re-enter */ }
-        return { hadStored, hadStoredSalt };
+        return { hadStored, hadStoredSalt, hadStoredKeyfile };
+    };
+
+    // Tier 1 keyfile pickers. Choose re-points to an existing file; Generate
+    // creates a fresh transfer-safe keyfile via the crypt_generate_keyfile
+    // command (refuses overwrite, 0600 on unix) and shows the back-it-up
+    // warning: losing the keyfile makes its vaults unopenable.
+    const handleChooseKeyfile = async () => {
+        try {
+            const picked = await open({ multiple: false });
+            if (typeof picked === 'string' && picked) {
+                setAeroCryptKeyfilePath(picked);
+                setKeyfileJustGenerated(false);
+                setKeyfileError(null);
+            }
+        } catch {
+            // Dialog cancelled or unavailable: keep the current selection.
+        }
+    };
+    const handleGenerateKeyfile = async () => {
+        try {
+            const target = await save({ defaultPath: 'aeroftp.keyfile' });
+            if (!target) return;
+            await invoke('crypt_generate_keyfile', { path: target });
+            setAeroCryptKeyfilePath(target);
+            setKeyfileJustGenerated(true);
+            setKeyfileError(null);
+        } catch (err) {
+            setKeyfileError(String(err));
+        }
     };
 
     // Resolved label of the active target mode (for the "Convert to X"
@@ -1220,7 +1268,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                 );
             }
 
-            const aeroFieldsEdit = await aeroCryptOverlayFields(editingProfileId, prevProfile?.hasStoredAeroCryptPassword, prevProfile?.hasStoredAeroCryptSalt);
+            const aeroFieldsEdit = await aeroCryptOverlayFields(editingProfileId, prevProfile?.hasStoredAeroCryptPassword, prevProfile?.hasStoredAeroCryptSalt, prevProfile?.hasStoredAeroCryptKeyfilePath);
             const updatedServers = existingServers.map((s: ServerProfile) => {
                 if (s.id === editingProfileId) {
                     return {
@@ -1527,8 +1575,8 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         // new id so the converted/duplicated profile can auto-unlock its overlay.
         const migratedCrypt = aeroCryptEnabled
             ? await migrateCryptCredentials(editingProfileId, newId)
-            : { hadStored: false, hadStoredSalt: false };
-        const aeroFields = await aeroCryptOverlayFields(newId, migratedCrypt.hadStored, migratedCrypt.hadStoredSalt);
+            : { hadStored: false, hadStoredSalt: false, hadStoredKeyfile: false };
+        const aeroFields = await aeroCryptOverlayFields(newId, migratedCrypt.hadStored, migratedCrypt.hadStoredSalt, migratedCrypt.hadStoredKeyfile);
         // Carry-over from the original profile when present: visual color
         // tag + favicon (sort position is handled by the insert index
         // below). Custom icon URL is already in component state via
@@ -1656,8 +1704,8 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         // new id so the converted/duplicated profile can auto-unlock its overlay.
         const migratedCrypt = aeroCryptEnabled
             ? await migrateCryptCredentials(editingProfileId, newId)
-            : { hadStored: false, hadStoredSalt: false };
-        const aeroFields = await aeroCryptOverlayFields(newId, migratedCrypt.hadStored, migratedCrypt.hadStoredSalt);
+            : { hadStored: false, hadStoredSalt: false, hadStoredKeyfile: false };
+        const aeroFields = await aeroCryptOverlayFields(newId, migratedCrypt.hadStored, migratedCrypt.hadStoredSalt, migratedCrypt.hadStoredKeyfile);
         const newServer: ServerProfile = {
             id: newId,
             name: finalName,
@@ -1861,6 +1909,12 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         setAeroCryptSalt('');
         setAeroCryptFilenameEnc(overlayBinding?.filenameEncryption || 'standard');
         setAeroCryptDirNameEnc(overlayBinding?.directoryNameEncryption ?? true);
+        // Tier 1 keyfile PATH: a pointer, not a secret, so unlike the password
+        // it IS hydrated for display and stays re-pointable (hydrated async
+        // below, race-guarded like the other vault reads).
+        setAeroCryptKeyfilePath('');
+        setKeyfileJustGenerated(false);
+        setKeyfileError(null);
 
         // Then hydrate vaulted secrets (password + Filen API key) asynchronously.
         // Both reads target the same profile id; we resolve them up front and apply
@@ -1913,6 +1967,20 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             });
         }
 
+        // Tier 1: hydrate the stored keyfile PATH for display (it is a pointer,
+        // not a secret), so the operator can see and re-point it after an
+        // import. Race-guarded like the password load above.
+        if (profile.hasStoredAeroCryptKeyfilePath) {
+            try {
+                const storedKeyfile = await invoke<string>('get_credential', { account: `aerocrypt_overlay_keyfile_path_${targetProfileId}` });
+                if (storedKeyfile && editingProfileIdRef.current === targetProfileId) {
+                    setAeroCryptKeyfilePath(storedKeyfile);
+                }
+            } catch {
+                // Path not retrievable: field stays blank, re-point as needed.
+            }
+        }
+
         // Issue #215: when the profile opted into persistent per-mode
         // credentials, hydrate the in-memory snapshot map from the vault so a
         // tab switch in handleProtocolChange restores each mode's saved
@@ -1949,6 +2017,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         setAeroCryptSalt('');
         setAeroCryptFilenameEnc('standard');
         setAeroCryptDirNameEnc(true);
+        setAeroCryptKeyfilePath('');
+        setKeyfileJustGenerated(false);
+        setKeyfileError(null);
         modeCredentialSnapshotsRef.current = {};
         // Reset params
         onConnectionParamsChange({ ...connectionParams, server: '', username: '', password: '', options: {} });
@@ -2725,6 +2796,48 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                         <PasswordMatchHint password={aeroCryptPassword} confirm={aeroCryptConfirm} />
                                     </div>
                                 )}
+                                {/* AeroCrypt Tier 1 keyfile (optional second factor). The PATH
+                                    stays editable even when the binding is locked: set-once
+                                    applies to the FACTOR, not to where the file lives (re-point
+                                    after import needs this). A mismatch fails closed at unlock. */}
+                                {aeroCryptKind === 'aerocrypt' && (
+                                    <div>
+                                        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">{t('aerocryptProfile.keyfileLabel')}</label>
+                                        <div className="flex gap-2">
+                                            <input
+                                                type="text"
+                                                value={aeroCryptKeyfilePath}
+                                                readOnly
+                                                placeholder={t('aerocryptProfile.keyfilePlaceholder')}
+                                                className="flex-1 px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
+                                                aria-label={t('aerocryptProfile.keyfileLabel')}
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={handleChooseKeyfile}
+                                                className="px-3 py-2 rounded-lg text-xs font-medium border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+                                            >
+                                                {t('aerocryptProfile.keyfileChoose')}
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={handleGenerateKeyfile}
+                                                className="px-3 py-2 rounded-lg text-xs font-medium border border-emerald-400/60 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/10"
+                                            >
+                                                {t('aerocryptProfile.keyfileGenerate')}
+                                            </button>
+                                        </div>
+                                        {keyfileError && (
+                                            <p className="mt-1 text-xs text-red-600 dark:text-red-400 break-words">{keyfileError}</p>
+                                        )}
+                                        {keyfileJustGenerated && (
+                                            <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">{t('aerocryptProfile.keyfileGeneratedBackup')}</p>
+                                        )}
+                                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                                            {overlayFieldsLocked ? t('aerocryptProfile.keyfileRepointHint') : t('aerocryptProfile.keyfileHint')}
+                                        </p>
+                                    </div>
+                                )}
                                 {/* rclone-crypt interop (P3.3b): salt + filename/dir-name
                                     encryption so the bound profile auto-unlocks like native.
                                     Native AeroCrypt reads these from .aeroftp-crypt.json. */}
@@ -3353,7 +3466,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             await storeSavedServerProfiles(newServers).catch(() => { });
                                             connectedSavedId = newId;
                                         } else {
-                                            const overlayFields = await aeroCryptOverlayFields(duplicate.id, duplicate.hasStoredAeroCryptPassword, duplicate.hasStoredAeroCryptSalt);
+                                            const overlayFields = await aeroCryptOverlayFields(duplicate.id, duplicate.hasStoredAeroCryptPassword, duplicate.hasStoredAeroCryptSalt, duplicate.hasStoredAeroCryptKeyfilePath);
                                             const updated = existingServers.map(s =>
                                                 s.id === duplicate.id ? {
                                                     ...s,

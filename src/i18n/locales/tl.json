@@ -4968,7 +4968,12 @@
             "noOverlayFound": "Walang nakitang AeroCrypt overlay sa kasalukuyang remote folder. Lumipat sa \"Gumawa ng bago\" para gumawa ng isa.",
             "remoteUnlocked": "Na-unlock ang remote (ID {id})",
             "versionLabel": "AECR v{version}",
-            "lock": "I-lock ang overlay"
+            "lock": "I-lock ang overlay",
+            "keyfileLabel": "Keyfile (opsyonal)",
+            "keyfilePlaceholder": "Walang keyfile: password lamang",
+            "keyfileHint": "Opsyonal na pangalawang factor na hinahalo sa encryption key: bubukas lang ang overlay gamit ang password AT ang file na ito. Mag-backup ng keyfile.",
+            "keyfileChoose": "Pumili",
+            "keyfileClear": "Alisin ang keyfile"
         },
         "aerocryptProfile": {
             "enable": "Crypt (Pag-encrypt)",
@@ -4988,7 +4993,14 @@
             "hintNative": "Native na format ng AeroCrypt: mababasa lamang mula sa AeroFTP gamit ang password na ito.",
             "hintRclone": "Standard na format ng rclone crypt: mababasa rin ng rclone gamit ang password na ito.",
             "passwordLabel": "Password",
-            "saltLabel": "Salt (opsyonal)"
+            "saltLabel": "Salt (opsyonal)",
+            "keyfileLabel": "Keyfile (opsyonal)",
+            "keyfilePlaceholder": "Walang keyfile: password lamang",
+            "keyfileHint": "Opsyonal na pangalawang factor na hinahalo sa encryption key: bubukas lang ang vault gamit ang password AT ang file na ito. Mag-backup: kapag nawala ito, hindi na mabubuksan ang vault.",
+            "keyfileChoose": "Pumili...",
+            "keyfileGenerate": "Bumuo...",
+            "keyfileGeneratedBackup": "Nabuo ang keyfile. Mag-backup na ngayon: kapag nawala ito, tuluyang hindi mabubuksan ang vault.",
+            "keyfileRepointHint": "Ang path na ito ay tumutukoy lang kung nasaan ang keyfile; ang pagpalit nito ay hindi nagpapalit ng susi ng vault. Ang mali o nawawalang keyfile ay tatanggihan sa pag-unlock."
         },
         "modalGuard": {
             "busyTitle": "May isinasagawang operasyon",

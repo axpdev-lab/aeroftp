@@ -4949,7 +4949,12 @@
             "noOverlayFound": "Aucune superposition AeroCrypt trouvée dans le dossier distant actuel. Passez à « En créer une » pour en créer une.",
             "remoteUnlocked": "Distant déverrouillé (ID {id})",
             "versionLabel": "AECR v{version}",
-            "lock": "Verrouiller la superposition"
+            "lock": "Verrouiller la superposition",
+            "keyfileLabel": "Fichier de clé (facultatif)",
+            "keyfilePlaceholder": "Aucun fichier de clé : mot de passe seul",
+            "keyfileHint": "Second facteur facultatif mélangé à la clé de chiffrement : la surcouche ne s'ouvre qu'avec le mot de passe ET ce fichier. Sauvegardez le fichier de clé.",
+            "keyfileChoose": "Choisir",
+            "keyfileClear": "Retirer le fichier de clé"
         },
         "aerocryptProfile": {
             "enable": "Crypt (Chiffrement)",
@@ -4969,7 +4974,14 @@
             "hintNative": "Format AeroCrypt natif : lisible uniquement depuis AeroFTP avec ce mot de passe.",
             "hintRclone": "Format rclone crypt standard : également lisible par rclone avec ce mot de passe.",
             "passwordLabel": "Mot de passe",
-            "saltLabel": "Salt (facultatif)"
+            "saltLabel": "Salt (facultatif)",
+            "keyfileLabel": "Fichier de clé (facultatif)",
+            "keyfilePlaceholder": "Aucun fichier de clé : mot de passe seul",
+            "keyfileHint": "Second facteur facultatif mélangé à la clé de chiffrement : le coffre ne s'ouvre qu'avec le mot de passe ET ce fichier. Sauvegardez-le : sa perte rend le coffre inouvrable.",
+            "keyfileChoose": "Choisir...",
+            "keyfileGenerate": "Générer...",
+            "keyfileGeneratedBackup": "Fichier de clé généré. Sauvegardez-le maintenant : sa perte rend le coffre définitivement inouvrable.",
+            "keyfileRepointHint": "Ce chemin indique seulement où se trouve le fichier de clé ; le modifier ne rechiffre pas le coffre. Un fichier de clé erroné ou absent refuse le déverrouillage."
         },
         "modalGuard": {
             "busyTitle": "Opération en cours",

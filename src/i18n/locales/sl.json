@@ -4949,7 +4949,12 @@
             "noOverlayFound": "V trenutni oddaljeni mapi ni bilo najdenega sloja AeroCrypt. Preklopite na „Ustvari novega“, da ga ustvarite.",
             "remoteUnlocked": "Oddaljeni strežnik odklenjen (ID {id})",
             "versionLabel": "AECR v{version}",
-            "lock": "Zakleni sloj"
+            "lock": "Zakleni sloj",
+            "keyfileLabel": "Datoteka ključa (izbirno)",
+            "keyfilePlaceholder": "Brez datoteke ključa: samo geslo",
+            "keyfileHint": "Izbirni drugi faktor, primešan v šifrirni ključ: prekrivka se odpre samo z geslom IN to datoteko. Naredite varnostno kopijo datoteke ključa.",
+            "keyfileChoose": "Izberi",
+            "keyfileClear": "Odstrani datoteko ključa"
         },
         "aerocryptProfile": {
             "enable": "Crypt (Šifriranje)",
@@ -4969,7 +4974,14 @@
             "hintNative": "Izvorni format AeroCrypt: berljiv samo iz AeroFTP s tem geslom.",
             "hintRclone": "Standardni format rclone crypt: berljiv tudi z rclone s tem geslom.",
             "passwordLabel": "Geslo",
-            "saltLabel": "Salt (neobvezno)"
+            "saltLabel": "Salt (neobvezno)",
+            "keyfileLabel": "Datoteka ključa (izbirno)",
+            "keyfilePlaceholder": "Brez datoteke ključa: samo geslo",
+            "keyfileHint": "Izbirni drugi faktor, primešan v šifrirni ključ: trezor se odpre samo z geslom IN to datoteko. Naredite kopijo: njena izguba naredi trezor neodprljiv.",
+            "keyfileChoose": "Izberi...",
+            "keyfileGenerate": "Ustvari...",
+            "keyfileGeneratedBackup": "Datoteka ključa ustvarjena. Takoj naredite kopijo: njena izguba trezor za vedno zaklene.",
+            "keyfileRepointHint": "Ta pot samo kaže, kje leži datoteka ključa; njena sprememba ne prešifrira trezorja. Napačna ali manjkajoča datoteka ključa odklepanje zavrne."
         },
         "modalGuard": {
             "busyTitle": "Operacija poteka",

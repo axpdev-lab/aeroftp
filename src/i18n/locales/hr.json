@@ -4949,7 +4949,12 @@
             "noOverlayFound": "U trenutnoj udaljenoj mapi nije pronađen AeroCrypt sloj. Prijeđite na „Stvori novi“ da biste ga izradili.",
             "remoteUnlocked": "Udaljeni poslužitelj otključan (ID {id})",
             "versionLabel": "AECR v{version}",
-            "lock": "Zaključaj sloj"
+            "lock": "Zaključaj sloj",
+            "keyfileLabel": "Datoteka ključa (neobavezno)",
+            "keyfilePlaceholder": "Bez datoteke ključa: samo lozinka",
+            "keyfileHint": "Neobavezan drugi faktor umiješan u ključ šifriranja: prekrivač se otvara samo s lozinkom I ovom datotekom. Napravite sigurnosnu kopiju datoteke ključa.",
+            "keyfileChoose": "Odaberi",
+            "keyfileClear": "Ukloni datoteku ključa"
         },
         "aerocryptProfile": {
             "enable": "Crypt (Šifriranje)",
@@ -4969,7 +4974,14 @@
             "hintNative": "Izvorni AeroCrypt format: čitljiv samo iz AeroFTP-a s ovom lozinkom.",
             "hintRclone": "Standardni rclone crypt format: čitljiv i pomoću rclone s ovom lozinkom.",
             "passwordLabel": "Lozinka",
-            "saltLabel": "Salt (neobavezno)"
+            "saltLabel": "Salt (neobavezno)",
+            "keyfileLabel": "Datoteka ključa (neobavezno)",
+            "keyfilePlaceholder": "Bez datoteke ključa: samo lozinka",
+            "keyfileHint": "Neobavezan drugi faktor umiješan u ključ šifriranja: trezor se otvara samo s lozinkom I ovom datotekom. Napravite kopiju: njezin gubitak čini trezor neotvorivim.",
+            "keyfileChoose": "Odaberi...",
+            "keyfileGenerate": "Generiraj...",
+            "keyfileGeneratedBackup": "Datoteka ključa generirana. Odmah napravite kopiju: njezin gubitak trajno zaključava trezor.",
+            "keyfileRepointHint": "Ova putanja samo pokazuje gdje se datoteka ključa nalazi; njezina promjena ne mijenja ključ trezora. Pogrešna ili nedostajuća datoteka ključa odbija otključavanje."
         },
         "modalGuard": {
             "busyTitle": "Operacija u tijeku",

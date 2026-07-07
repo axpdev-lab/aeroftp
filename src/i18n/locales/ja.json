@@ -4949,7 +4949,12 @@
             "noOverlayFound": "現在のリモートフォルダーに AeroCrypt オーバーレイが見つかりません。「新規作成」に切り替えて作成してください。",
             "remoteUnlocked": "リモートのロックを解除しました（ID {id}）",
             "versionLabel": "AECR v{version}",
-            "lock": "オーバーレイをロック"
+            "lock": "オーバーレイをロック",
+            "keyfileLabel": "キーファイル (任意)",
+            "keyfilePlaceholder": "キーファイルなし: パスワードのみ",
+            "keyfileHint": "暗号鍵に混合される任意の第2要素: オーバーレイはパスワードとこのファイルの両方でのみ開きます。キーファイルをバックアップしてください。",
+            "keyfileChoose": "選択",
+            "keyfileClear": "キーファイルを外す"
         },
         "aerocryptProfile": {
             "enable": "Crypt (暗号化)",
@@ -4969,7 +4974,14 @@
             "hintNative": "ネイティブ AeroCrypt 形式: このパスワードで AeroFTP からのみ読み取れます。",
             "hintRclone": "標準 rclone crypt 形式: このパスワードで rclone でも読み取れます。",
             "passwordLabel": "パスワード",
-            "saltLabel": "Salt (任意)"
+            "saltLabel": "Salt (任意)",
+            "keyfileLabel": "キーファイル (任意)",
+            "keyfilePlaceholder": "キーファイルなし: パスワードのみ",
+            "keyfileHint": "暗号鍵に混合される任意の第2要素: ボールトはパスワードとこのファイルの両方でのみ開きます。バックアップを取ってください: 紛失するとボールトは開けなくなります。",
+            "keyfileChoose": "選択...",
+            "keyfileGenerate": "生成...",
+            "keyfileGeneratedBackup": "キーファイルを生成しました。今すぐバックアップしてください: 紛失するとボールトは二度と開けません。",
+            "keyfileRepointHint": "このパスはキーファイルの場所を指すだけで、変更してもボールトの鍵は変わりません。誤った、または見つからないキーファイルではロック解除は拒否されます。"
         },
         "modalGuard": {
             "busyTitle": "操作の実行中",
