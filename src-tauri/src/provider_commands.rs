@@ -2174,18 +2174,24 @@ async fn detect_zip_meta_remote(
     // The central directory may already be inside the tail we fetched (small
     // archives, or one whose whole tail we read): parse in place. Otherwise a
     // single extra ranged read of exactly the central directory.
-    if cd_off >= tail_start {
+    let mut meta = if cd_off >= tail_start {
         let start = (cd_off - tail_start) as usize;
         let end = (start + cd_size as usize).min(tail.len());
         let cd = tail.get(start..end).ok_or("cd offset outside tail")?;
-        Ok(crate::parse_zip_central_dir(cd, entries))
+        crate::parse_zip_central_dir(cd, entries)
     } else {
         let cd = provider
             .read_range(path, cd_off, cd_size)
             .await
             .map_err(|e| format!("remote zip central-dir read: {e}"))?;
-        Ok(crate::parse_zip_central_dir(&cd, entries))
-    }
+        crate::parse_zip_central_dir(&cd, entries)
+    };
+    // Remote surfacing is encryption-only, matching the 7z remote path and the
+    // frontend contract: the per-entry compression method, though present in the
+    // ZIP central directory, is not surfaced on remote (the Compression column
+    // stays blank there; it is a local-only column).
+    meta.compression = None;
+    Ok(meta)
 }
 
 /// Fetch a 7z's 32-byte start header and its next-header region via ranged reads
