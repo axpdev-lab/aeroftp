@@ -75,11 +75,12 @@ type DetectPlan =
 function detectionPlan(name: string, remote = false): DetectPlan | null {
     const kind = archiveKindForName(name);
     if (kind === 'zip' || kind === 'sevenz' || kind === 'rar') {
-        // Third-party ZIP/7z/RAR live-detection on a remote needs head+tail ranged
-        // reads (their index is at the file tail) and is a later phase; on remote we
-        // surface only our own head-magic container formats for now. Locally it is
-        // the full path-based detector.
-        return remote ? null : { via: 'archive', kind };
+        // Third-party archives: ZIP + 7z live-detect on a remote via head+tail ranged
+        // reads (their index is at the file tail) through provider_detect_archive_meta_remote
+        // (encryption badge only, no whole-file download). RAR stays local-only: unrar
+        // is path-bound, so on remote we cannot read its header without the whole file.
+        if (remote) return kind === 'rar' ? null : { via: 'archive', kind };
+        return { via: 'archive', kind };
     }
     const lower = name.toLowerCase();
     if (lower.endsWith('.aerovault') || lower.endsWith('.aerozip')) return { via: 'aero' };
@@ -102,8 +103,19 @@ type DetectResult = {
  *  file) instead of the local filesystem detector. */
 function runDetection(plan: DetectPlan, path: string, remote: boolean): Promise<DetectResult> {
     if (plan.via === 'archive') {
-        // Remote plans never carry `via: 'archive'` (detectionPlan gates it), so this
-        // is always the local filesystem detector.
+        if (remote) {
+            // Third-party ZIP / 7z on a range-capable remote: head+tail ranged reads
+            // parse the archive index (EOCD + central directory, or the 7z next-header)
+            // for the encryption badge, never a whole-file download. Compression stays
+            // null on remote (the method needs the full archive). A NotSupported
+            // provider rejects -> cached as unknown -> no badge. RAR is gated out of
+            // remote plans by detectionPlan, so plan.kind is only ever 'zip'/'sevenz'.
+            return invoke<{ encrypted: boolean; cipher: string | null; compression: string | null }>(
+                'provider_detect_archive_meta_remote',
+                { remotePath: path, kind: plan.kind },
+            ).then((m) => ({ ...m, vaultVersion: null }));
+        }
+        // Local filesystem detector: reads only the header regions, never the payload.
         return invoke<{ encrypted: boolean; cipher: string | null; compression: string | null }>(
             'detect_archive_meta',
             { archivePath: path, kind: plan.kind },

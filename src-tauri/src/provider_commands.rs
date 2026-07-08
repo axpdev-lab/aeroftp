@@ -2038,6 +2038,196 @@ pub async fn provider_detect_aero_remote(
     Ok(AeroRemoteMeta { container, version })
 }
 
+/// Widest tail window a ZIP End-Of-Central-Directory record can sit in: the 22-byte
+/// EOCD plus the maximum 64 KiB archive comment. Reading this tail is enough to
+/// locate the EOCD (and, for a normal archive, the ZIP64 EOCD record + locator that
+/// precede it) without a whole-file download.
+const ZIP_EOCD_WINDOW: u64 = 65_557;
+
+/// Hard cap on how much central directory / 7z next-header we will range-read. The
+/// central directory is metadata (tiny next to the payload) but a hostile or
+/// corrupt archive could claim a huge size; refuse rather than stream it.
+const REMOTE_ARCHIVE_INDEX_CAP: u64 = 64 * 1024 * 1024;
+
+/// Remote counterpart of `detect_archive_meta` for third-party **ZIP** and **7z**.
+///
+/// A ZIP's central directory lives at the file TAIL and a 7z's next-header at an
+/// offset near the tail, so a head-only read (unlike our own container formats)
+/// cannot classify them. This fetches only the byte ranges the format's index
+/// occupies via the provider's ranged read (`read_range`) and feeds them to the
+/// same byte-slice parsers the local detector uses (`zip_find_eocd`,
+/// `parse_zip_central_dir`, and the 7z AES-coder scan), so a password-protected
+/// `.zip` / `.7z` on a range-capable remote (SFTP, FTP/FTPS, S3, WebDAV, Backblaze
+/// B2, Koofr) shows the same padlock + cipher badge as a local file, with no
+/// whole-file download.
+///
+/// **Encryption only.** The compression method needs the whole archive on remote
+/// (the ZIP per-entry method is in the central directory we do read, but 7z / RAR
+/// method resolution wants the full container), so `compression` stays `None` here
+/// and the remote Compression column stays blank by design. RAR is `unrar`
+/// path-only and is not handled; it degrades to no badge on remote.
+///
+/// Providers that cannot range-read (E2EE like MEGA/Filen/Internxt, the crypt
+/// overlay, a not-yet-wired HTTP backend) return `NotSupported` from `read_range`,
+/// which surfaces as an `Err` the caller catches and degrades to "no badge".
+#[tauri::command]
+pub async fn provider_detect_archive_meta_remote(
+    state: State<'_, ProviderState>,
+    remote_path: String,
+    kind: String,
+) -> Result<crate::ArchiveMeta, String> {
+    let mut provider_lock = state.provider.lock().await;
+    let provider = provider_lock
+        .as_mut()
+        .ok_or("Not connected to any provider")?;
+    let size = provider.size(&remote_path).await.unwrap_or(0);
+    match kind.as_str() {
+        "zip" => detect_zip_meta_remote(provider.as_mut(), &remote_path, size).await,
+        "sevenz" => detect_7z_meta_remote(provider.as_mut(), &remote_path, size).await,
+        other => Err(format!("unsupported remote archive kind: {other}")),
+    }
+}
+
+/// Fetch a ZIP's tail (EOCD window) and central directory via ranged reads and
+/// reuse the local byte-slice parser. Handles the ZIP64 `0xFFFF_FFFF` sentinel by
+/// resolving the real 64-bit central-directory offset from the ZIP64 EOCD record
+/// that sits in the same tail window; if that record precedes the window (a
+/// pathologically large comment) we degrade to no badge rather than widen into a
+/// whole-file read.
+async fn detect_zip_meta_remote(
+    provider: &mut dyn StorageProvider,
+    path: &str,
+    size: u64,
+) -> Result<crate::ArchiveMeta, String> {
+    if size < 22 {
+        return Err("remote size too small / unknown for ZIP".to_string());
+    }
+    let want = size.min(ZIP_EOCD_WINDOW);
+    let tail_start = size - want;
+    let tail = provider
+        .read_range(path, tail_start, want)
+        .await
+        .map_err(|e| format!("remote zip tail read: {e}"))?;
+    let eocd = crate::zip_find_eocd(&tail).ok_or("no end-of-central-directory record")?;
+    if eocd + 20 > tail.len() {
+        return Err("truncated EOCD".to_string());
+    }
+    let entries16 = u16::from_le_bytes([tail[eocd + 10], tail[eocd + 11]]);
+    let cd_size32 = u32::from_le_bytes([
+        tail[eocd + 12],
+        tail[eocd + 13],
+        tail[eocd + 14],
+        tail[eocd + 15],
+    ]);
+    let cd_off32 = u32::from_le_bytes([
+        tail[eocd + 16],
+        tail[eocd + 17],
+        tail[eocd + 18],
+        tail[eocd + 19],
+    ]);
+
+    // Resolve the true (entries, cd offset, cd size), widening to 64-bit for ZIP64.
+    let (entries, cd_off, cd_size) =
+        if cd_off32 == 0xFFFF_FFFF || cd_size32 == 0xFFFF_FFFF || entries16 == 0xFFFF {
+            // The ZIP64 EOCD locator (PK\x06\x07, 20 bytes) precedes the EOCD; its
+            // bytes 8..16 hold the absolute offset of the ZIP64 EOCD record
+            // (PK\x06\x06), which carries the real 64-bit entry count, cd size and
+            // cd offset. Both records normally sit within a few dozen bytes of the
+            // EOCD, i.e. inside our tail window.
+            let loc = tail[..eocd]
+                .windows(4)
+                .rposition(|w| w == [0x50, 0x4B, 0x06, 0x07])
+                .ok_or("no zip64 eocd locator")?;
+            if loc + 16 > tail.len() {
+                return Err("truncated zip64 locator".to_string());
+            }
+            let z64_off = u64::from_le_bytes(tail[loc + 8..loc + 16].try_into().unwrap());
+            if z64_off < tail_start {
+                // Record precedes our tail window; resolving it would need another
+                // ranged read of an unknown span. Degrade to no badge instead.
+                return Err("zip64 eocd record outside tail window".to_string());
+            }
+            let rec = (z64_off - tail_start) as usize;
+            if rec + 56 > tail.len() || tail[rec..rec + 4] != [0x50, 0x4B, 0x06, 0x06] {
+                return Err("bad zip64 eocd record".to_string());
+            }
+            let entries = u64::from_le_bytes(tail[rec + 32..rec + 40].try_into().unwrap()) as usize;
+            let cd_size = u64::from_le_bytes(tail[rec + 40..rec + 48].try_into().unwrap());
+            let cd_off = u64::from_le_bytes(tail[rec + 48..rec + 56].try_into().unwrap());
+            (entries, cd_off, cd_size)
+        } else {
+            (entries16 as usize, cd_off32 as u64, cd_size32 as u64)
+        };
+
+    if cd_size == 0 {
+        return Err("empty central directory".to_string());
+    }
+    if cd_size > REMOTE_ARCHIVE_INDEX_CAP {
+        return Err("central directory too large to range-read".to_string());
+    }
+
+    // The central directory may already be inside the tail we fetched (small
+    // archives, or one whose whole tail we read): parse in place. Otherwise a
+    // single extra ranged read of exactly the central directory.
+    if cd_off >= tail_start {
+        let start = (cd_off - tail_start) as usize;
+        let end = (start + cd_size as usize).min(tail.len());
+        let cd = tail.get(start..end).ok_or("cd offset outside tail")?;
+        Ok(crate::parse_zip_central_dir(cd, entries))
+    } else {
+        let cd = provider
+            .read_range(path, cd_off, cd_size)
+            .await
+            .map_err(|e| format!("remote zip central-dir read: {e}"))?;
+        Ok(crate::parse_zip_central_dir(&cd, entries))
+    }
+}
+
+/// Fetch a 7z's 32-byte start header and its next-header region via ranged reads
+/// and scan for the AES coder id, mirroring the local `detect_7z_meta`. Encryption
+/// only: the compression method needs the whole archive, so `compression` is
+/// `None`.
+async fn detect_7z_meta_remote(
+    provider: &mut dyn StorageProvider,
+    path: &str,
+    size: u64,
+) -> Result<crate::ArchiveMeta, String> {
+    if size < 32 {
+        return Err("remote size too small / unknown for 7z".to_string());
+    }
+    let start = provider
+        .read_range(path, 0, 32)
+        .await
+        .map_err(|e| format!("remote 7z start-header read: {e}"))?;
+    if start.len() < 32 {
+        return Err("short 7z start header".to_string());
+    }
+    const SIG: [u8; 6] = [0x37, 0x7A, 0xBC, 0xAF, 0x27, 0x1C];
+    if start[..6] != SIG {
+        return Err("not a 7z archive".to_string());
+    }
+    let nh_off = u64::from_le_bytes(start[12..20].try_into().unwrap());
+    let nh_size = u64::from_le_bytes(start[20..28].try_into().unwrap());
+    if nh_size == 0 || nh_size > REMOTE_ARCHIVE_INDEX_CAP {
+        return Ok(crate::ArchiveMeta {
+            encrypted: false,
+            cipher: None,
+            compression: None,
+        });
+    }
+    let hdr = provider
+        .read_range(path, 32 + nh_off, nh_size)
+        .await
+        .map_err(|e| format!("remote 7z next-header read: {e}"))?;
+    const AES_CODER_ID: [u8; 4] = [0x06, 0xF1, 0x07, 0x01];
+    let encrypted = hdr.windows(4).any(|w| w == AES_CODER_ID);
+    Ok(crate::ArchiveMeta {
+        encrypted,
+        cipher: encrypted.then(|| "AES-256".to_string()),
+        compression: None,
+    })
+}
+
 /// Download a file from the remote server
 #[allow(clippy::too_many_arguments)]
 #[tauri::command]

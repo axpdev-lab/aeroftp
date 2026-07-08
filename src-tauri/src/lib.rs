@@ -8188,17 +8188,17 @@ async fn detect_archive_cipher(archive_path: String, kind: String) -> Result<Str
 /// wrong badge.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct ArchiveMeta {
+pub(crate) struct ArchiveMeta {
     /// True when at least one entry (or the header) is encrypted.
-    encrypted: bool,
+    pub(crate) encrypted: bool,
     /// Canonical cipher token when encrypted: `AES-256` / `AES-192` / `AES-128`
     /// / `AES` / `ZipCrypto`. `None` when not encrypted or undetermined.
-    cipher: Option<String>,
+    pub(crate) cipher: Option<String>,
     /// Representative compression method token for the Compression column, e.g.
     /// `Deflate` / `LZMA2` / `BZip2` / `Zstd` / `PPMd` / `RAR`, or `Store` for an
     /// uncompressed archive. `None` only when the method cannot be read (an
     /// unknown method, or a 7z / RAR with an encrypted header).
-    compression: Option<String>,
+    pub(crate) compression: Option<String>,
 }
 
 /// Proactively detect whether an archive is encrypted, with which cipher, and
@@ -8300,7 +8300,7 @@ fn detect_zip_meta(path: &str) -> Result<ArchiveMeta, String> {
 
 /// Parse a ZIP central directory (a slice starting at the first central-directory
 /// file header) and return the encryption metadata of the first encrypted entry.
-fn parse_zip_central_dir(cd: &[u8], entries: usize) -> ArchiveMeta {
+pub(crate) fn parse_zip_central_dir(cd: &[u8], entries: usize) -> ArchiveMeta {
     let mut p = 0usize;
     let mut encrypted = false;
     let mut cipher: Option<String> = None;
@@ -8603,7 +8603,7 @@ fn detect_zip_cipher(path: &str) -> Result<String, String> {
 }
 
 /// Scan backward (max 64 KiB + 22) for the End Of Central Directory signature.
-fn zip_find_eocd(data: &[u8]) -> Option<usize> {
+pub(crate) fn zip_find_eocd(data: &[u8]) -> Option<usize> {
     if data.len() < 22 {
         return None;
     }
@@ -17819,6 +17819,7 @@ pub fn run() {
             provider_commands::provider_pwd,
             provider_commands::provider_download_file,
             provider_commands::provider_detect_aero_remote,
+            provider_commands::provider_detect_archive_meta_remote,
             provider_commands::provider_download_folder,
             provider_commands::provider_upload_folder,
             provider_commands::provider_upload_file,
