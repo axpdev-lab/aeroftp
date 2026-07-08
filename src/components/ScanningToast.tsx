@@ -20,6 +20,9 @@ const INITIAL_STATE: ScanningState = {
 interface ScanningToastProps {
   state: ScanningState;
   t: (key: string, params?: Record<string, string | number>) => string;
+  // When provided, renders a Cancel button so an operation stalled on an
+  // external/network problem never traps the user behind the spinner.
+  onCancel?: () => void;
 }
 
 const operationIcons: Record<string, string> = {
@@ -28,7 +31,7 @@ const operationIcons: Record<string, string> = {
   upload: 'M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12',
 };
 
-export const ScanningToast: React.FC<ScanningToastProps> = React.memo(({ state, t }) => {
+export const ScanningToast: React.FC<ScanningToastProps> = React.memo(({ state, t, onCancel }) => {
   if (!state.active) return null;
 
   const iconPath = operationIcons[state.operation] || operationIcons.download;
@@ -73,6 +76,16 @@ export const ScanningToast: React.FC<ScanningToastProps> = React.memo(({ state, 
             {state.message || t('scanning.preparing')}
           </p>
         </div>
+
+        {/* Cancel: aborts the in-flight batch op so an external stall never traps the user */}
+        {onCancel && (
+          <button
+            onClick={onCancel}
+            className="flex-shrink-0 px-2.5 py-1 rounded-md text-xs font-medium border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+          >
+            {t('common.cancel')}
+          </button>
+        )}
       </div>
     </div>
   );
