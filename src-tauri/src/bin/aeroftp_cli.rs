@@ -2411,6 +2411,22 @@ enum Commands {
         #[arg(long)]
         protocols: bool,
     },
+    /// Print the authoritative inventory of every CLI subcommand and MCP tool
+    ///
+    /// Read straight from the in-code registries (the clap command table,
+    /// `mcp::tools::tool_definitions`, the CLI agent-tool set), so the counts
+    /// can never drift from a hand-maintained list. Purely local: no vault, no
+    /// network. Default output is JSON; `--markdown` prints a human table;
+    /// `--check FILE` exits non-zero if the live counts differ from a committed
+    /// snapshot (the CI drift gate).
+    Inventory {
+        /// Print a human-readable Markdown table instead of JSON.
+        #[arg(long)]
+        markdown: bool,
+        /// Compare live counts against a snapshot JSON file; exit non-zero on drift.
+        #[arg(long, value_name = "FILE")]
+        check: Option<String>,
+    },
     /// Open the interactive terminal UI
     Tui,
     /// List saved server profiles from the encrypted vault
@@ -22069,7 +22085,7 @@ fn cmd_agent_info(cli: &Cli, redact_identifiers: bool) -> i32 {
             ]
         },
         "capabilities": {
-            "main_command_groups": 38,
+            "main_command_groups": collect_cli_subcommands().len(),
             "agent_native_tools": cli_tool_definitions().len(),
             "hash_algorithms": ["md5", "sha1", "sha256", "sha512", "blake3"],
             "serve_protocols": ["http", "webdav", "ftp", "sftp"],
@@ -50724,6 +50740,264 @@ fn tool_danger_name(tool: &str) -> &'static str {
 
 /// Build native tool definitions for the AI API (JSON Schema format).
 /// These are sent as `tools` in the AIRequest so the model can generate tool_calls.
+/// Collect every top-level CLI subcommand (name, first-line about) straight from
+/// the clap command table, so the count can never drift from a hand-maintained
+/// list. The auto-generated `help` subcommand is excluded; sorted by name.
+fn collect_cli_subcommands() -> Vec<(String, String)> {
+    let cmd = Cli::command();
+    let mut out: Vec<(String, String)> = cmd
+        .get_subcommands()
+        .filter(|c| c.get_name() != "help")
+        .map(|c| {
+            let about = c.get_about().map(|s| s.to_string()).unwrap_or_default();
+            let about = about.lines().next().unwrap_or("").trim().to_string();
+            (c.get_name().to_string(), about)
+        })
+        .collect();
+    out.sort_by(|a, b| a.0.cmp(&b.0));
+    out
+}
+
+/// Namespace bucket for an MCP tool name: the canonical `aeroftp_*` operations,
+/// their `remote_*`/`server_*` alias mirrors, or `other` (e.g. `server_exec`).
+fn inventory_namespace(name: &str) -> &'static str {
+    if name.starts_with("aeroftp_") {
+        "aeroftp_"
+    } else if name.starts_with("remote_") {
+        "remote_"
+    } else if name.starts_with("server_") {
+        "server_"
+    } else {
+        "other"
+    }
+}
+
+/// Build the authoritative command/tool inventory document from the in-code
+/// registries: the clap command table, `mcp::tools::tool_definitions`, and the
+/// CLI agent-tool set. Purely local; no vault, no network.
+fn build_inventory_doc() -> serde_json::Value {
+    use serde_json::json;
+    let subs = collect_cli_subcommands();
+    let mcp = ftp_client_gui_lib::mcp::tools::tool_definitions();
+    let agent = cli_tool_definitions();
+
+    let (mut ns_aeroftp, mut ns_remote, mut ns_server, mut ns_other) =
+        (0usize, 0usize, 0usize, 0usize);
+    for t in &mcp {
+        match inventory_namespace(t.name) {
+            "aeroftp_" => ns_aeroftp += 1,
+            "remote_" => ns_remote += 1,
+            "server_" => ns_server += 1,
+            _ => ns_other += 1,
+        }
+    }
+    // Namespace-based split: the canonical `aeroftp_*` set plus any non-prefixed
+    // `other` tool count as primary; the `remote_*`/`server_*` mirror namespaces
+    // count as aliases. This is a namespace heuristic, not a semantic grouping
+    // (the registry has no alias links); the exact per-namespace tallies live in
+    // `mcp_by_namespace` for full transparency.
+    let mcp_primary = ns_aeroftp + ns_other;
+    let mcp_aliases = ns_remote + ns_server;
+
+    json!({
+        "schema_version": 1,
+        "app_version": env!("CARGO_PKG_VERSION"),
+        "counts": {
+            "cli_subcommands": subs.len(),
+            "mcp_tools_total": mcp.len(),
+            "mcp_tools_primary": mcp_primary,
+            "mcp_tools_aliases": mcp_aliases,
+            "mcp_by_namespace": {
+                "aeroftp_": ns_aeroftp,
+                "remote_": ns_remote,
+                "server_": ns_server,
+                "other": ns_other
+            },
+            "agent_tools": agent.len()
+        },
+        "cli": {
+            "count": subs.len(),
+            "subcommands": subs
+                .iter()
+                .map(|(n, a)| json!({ "name": n, "about": a }))
+                .collect::<Vec<_>>()
+        },
+        "mcp": {
+            "count": mcp.len(),
+            "tools": mcp
+                .iter()
+                .map(|t| json!({
+                    "name": t.name,
+                    "description": t.description,
+                    "namespace": inventory_namespace(t.name)
+                }))
+                .collect::<Vec<_>>()
+        },
+        "agent": {
+            "count": agent.len(),
+            "tools": agent
+                .iter()
+                .map(|t| json!({ "name": t.name, "description": t.description }))
+                .collect::<Vec<_>>()
+        }
+    })
+}
+
+/// Render the inventory document as a human-readable Markdown table + lists.
+fn inventory_markdown(doc: &serde_json::Value) -> String {
+    let c = &doc["counts"];
+    let mut s = String::new();
+    s.push_str(&format!(
+        "# AeroFTP command inventory (v{})\n\n",
+        doc["app_version"].as_str().unwrap_or("")
+    ));
+    s.push_str("| Surface | Count |\n|---|---|\n");
+    s.push_str(&format!("| CLI subcommands | {} |\n", c["cli_subcommands"]));
+    s.push_str(&format!(
+        "| MCP tools (total) | {} |\n",
+        c["mcp_tools_total"]
+    ));
+    s.push_str(&format!(
+        "| MCP primary operations | {} |\n",
+        c["mcp_tools_primary"]
+    ));
+    s.push_str(&format!(
+        "| MCP aliases (remote_/server_) | {} |\n",
+        c["mcp_tools_aliases"]
+    ));
+    s.push_str(&format!("| Agent tools | {} |\n\n", c["agent_tools"]));
+
+    s.push_str("## CLI subcommands\n\n");
+    if let Some(arr) = doc["cli"]["subcommands"].as_array() {
+        for t in arr {
+            s.push_str(&format!(
+                "- `{}` - {}\n",
+                t["name"].as_str().unwrap_or(""),
+                t["about"].as_str().unwrap_or("")
+            ));
+        }
+    }
+    s.push_str("\n## MCP tools\n\n");
+    if let Some(arr) = doc["mcp"]["tools"].as_array() {
+        for t in arr {
+            s.push_str(&format!(
+                "- `{}` - {}\n",
+                t["name"].as_str().unwrap_or(""),
+                t["description"].as_str().unwrap_or("")
+            ));
+        }
+    }
+    s
+}
+
+/// Print the inventory (JSON default, Markdown with `--markdown`), or with
+/// `--check FILE` compare the live counts against a committed snapshot and exit
+/// non-zero on drift (the CI drift gate).
+fn cmd_inventory(markdown: bool, check: Option<&str>) -> i32 {
+    let doc = build_inventory_doc();
+
+    if let Some(path) = check {
+        let snapshot = match std::fs::read_to_string(path) {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("inventory --check: cannot read {path}: {e}");
+                return 11;
+            }
+        };
+        let snap: serde_json::Value = match serde_json::from_str(&snapshot) {
+            Ok(v) => v,
+            Err(e) => {
+                eprintln!("inventory --check: invalid JSON in {path}: {e}");
+                return 10;
+            }
+        };
+        if snap.get("counts") == doc.get("counts") {
+            println!("inventory --check: OK (counts match {path})");
+            return 0;
+        }
+        eprintln!("inventory --check: DRIFT detected in {path}");
+        eprintln!(
+            "  snapshot: {}",
+            snap.get("counts")
+                .map(|c| c.to_string())
+                .unwrap_or_default()
+        );
+        eprintln!(
+            "  live:     {}",
+            doc.get("counts").map(|c| c.to_string()).unwrap_or_default()
+        );
+        eprintln!("Regenerate: aeroftp-cli inventory > docs/COMMAND-INVENTORY.json");
+        return 1;
+    }
+
+    if markdown {
+        print!("{}", inventory_markdown(&doc));
+    } else {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&doc).unwrap_or_else(|_| "{}".to_string())
+        );
+    }
+    0
+}
+
+#[cfg(test)]
+mod inventory_tests {
+    use super::build_inventory_doc;
+
+    #[test]
+    fn inventory_counts_are_internally_consistent() {
+        // `build_inventory_doc` calls `Cli::command()`, and clap building the
+        // full command tree for this large enum overflows the default 2 MB test
+        // stack (same reason `dispatcher_allowlist_matches_clap_subcommands`
+        // spawns a wide-stack thread). Run the body on a 32 MB stack.
+        std::thread::Builder::new()
+            .name("inventory-consistency".to_string())
+            .stack_size(32 * 1024 * 1024)
+            .spawn(|| {
+                let doc = build_inventory_doc();
+                let c = &doc["counts"];
+
+                // CLI list length matches the reported subcommand count.
+                assert_eq!(
+                    c["cli_subcommands"].as_u64().unwrap(),
+                    doc["cli"]["subcommands"].as_array().unwrap().len() as u64
+                );
+
+                // The MCP namespace buckets sum to the total, and the
+                // primary/alias split partitions the same total (no tool
+                // counted twice or dropped).
+                let total = c["mcp_tools_total"].as_u64().unwrap();
+                let ns = &c["mcp_by_namespace"];
+                let ns_sum = ns["aeroftp_"].as_u64().unwrap()
+                    + ns["remote_"].as_u64().unwrap()
+                    + ns["server_"].as_u64().unwrap()
+                    + ns["other"].as_u64().unwrap();
+                assert_eq!(ns_sum, total, "namespace buckets must sum to the MCP total");
+                assert_eq!(
+                    c["mcp_tools_primary"].as_u64().unwrap()
+                        + c["mcp_tools_aliases"].as_u64().unwrap(),
+                    total,
+                    "primary + aliases must partition the MCP total"
+                );
+                assert_eq!(
+                    total,
+                    doc["mcp"]["tools"].as_array().unwrap().len() as u64,
+                    "MCP tool list length must match the total"
+                );
+
+                // Agent list length matches its count.
+                assert_eq!(
+                    c["agent_tools"].as_u64().unwrap(),
+                    doc["agent"]["tools"].as_array().unwrap().len() as u64
+                );
+            })
+            .expect("spawn inventory consistency test")
+            .join()
+            .expect("inventory consistency test panicked");
+    }
+}
+
 fn cli_tool_definitions() -> Vec<ftp_client_gui_lib::ai::AIToolDefinition> {
     use ftp_client_gui_lib::ai::AIToolDefinition;
     use serde_json::json;
@@ -56504,6 +56778,7 @@ async fn main() {
             paid,
             protocols,
         } => cmd_catalog(query, category.as_deref(), *free, *paid, *protocols, format),
+        Commands::Inventory { markdown, check } => cmd_inventory(*markdown, check.as_deref()),
         Commands::Tui => unreachable!("TUI is handled before the regular dispatcher"),
         Commands::Profiles {
             _ignored: _,

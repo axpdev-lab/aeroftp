@@ -1,0 +1,913 @@
+{
+  "agent": {
+    "count": 39,
+    "tools": [
+      {
+        "description": "List files and folders in a local directory",
+        "name": "local_list"
+      },
+      {
+        "description": "Read a local text file (max 5KB)",
+        "name": "local_read"
+      },
+      {
+        "description": "Search for files by name pattern in a local directory",
+        "name": "local_search"
+      },
+      {
+        "description": "Get detailed file properties: size, permissions, timestamps",
+        "name": "local_file_info"
+      },
+      {
+        "description": "Calculate total size of a directory (recursive)",
+        "name": "local_disk_usage"
+      },
+      {
+        "description": "Find duplicate files using MD5 hash comparison",
+        "name": "local_find_duplicates"
+      },
+      {
+        "description": "Compare two local files and show unified diff",
+        "name": "local_diff"
+      },
+      {
+        "description": "Search file contents using regex pattern recursively",
+        "name": "local_grep"
+      },
+      {
+        "description": "Read the first N lines of a file (default: 20)",
+        "name": "local_head"
+      },
+      {
+        "description": "Read the last N lines of a file (default: 20)",
+        "name": "local_tail"
+      },
+      {
+        "description": "Get file metadata for multiple paths at once",
+        "name": "local_stat_batch"
+      },
+      {
+        "description": "Display a recursive directory tree with file sizes",
+        "name": "local_tree"
+      },
+      {
+        "description": "Compute cryptographic hash (MD5, SHA-1, SHA-256, SHA-512, BLAKE3)",
+        "name": "hash_file"
+      },
+      {
+        "description": "Get CLI application state: version, platform, working directory",
+        "name": "app_info"
+      },
+      {
+        "description": "Write content to a local text file",
+        "name": "local_write"
+      },
+      {
+        "description": "Create a local directory (including parents)",
+        "name": "local_mkdir"
+      },
+      {
+        "description": "Find and replace text in a local file",
+        "name": "local_edit"
+      },
+      {
+        "description": "Rename/move a local file or folder",
+        "name": "local_rename"
+      },
+      {
+        "description": "Move multiple local files into a destination directory",
+        "name": "local_move_files"
+      },
+      {
+        "description": "Copy multiple local files into a destination directory",
+        "name": "local_copy_files"
+      },
+      {
+        "description": "Rename multiple files using patterns",
+        "name": "local_batch_rename"
+      },
+      {
+        "description": "Compress files into an archive (ZIP, 7z, TAR, etc.)",
+        "name": "archive_compress"
+      },
+      {
+        "description": "Extract an archive",
+        "name": "archive_decompress"
+      },
+      {
+        "description": "Write text to the system clipboard",
+        "name": "clipboard_write"
+      },
+      {
+        "description": "Save a note to persistent project memory",
+        "name": "agent_memory_write"
+      },
+      {
+        "description": "Delete a local file or directory",
+        "name": "local_delete"
+      },
+      {
+        "description": "Move files to system trash (safe alternative to delete)",
+        "name": "local_trash"
+      },
+      {
+        "description": "Execute a shell command and capture output",
+        "name": "shell_execute"
+      },
+      {
+        "description": "List all saved server profiles from the encrypted vault. Returns names, protocols, hosts. Passwords are never exposed. Use this to discover which servers are available before using server_exec.",
+        "name": "server_list_saved"
+      },
+      {
+        "description": "List files on a saved remote server profile.",
+        "name": "remote_list"
+      },
+      {
+        "description": "Read a remote text file from a saved server profile (truncated for safety).",
+        "name": "remote_read"
+      },
+      {
+        "description": "Get metadata for a remote file or directory from a saved server profile.",
+        "name": "remote_info"
+      },
+      {
+        "description": "Search a saved remote server profile by path and pattern.",
+        "name": "remote_search"
+      },
+      {
+        "description": "Upload content or a local file to a saved remote server profile.",
+        "name": "remote_upload"
+      },
+      {
+        "description": "Download a file from a saved remote server profile to a local path.",
+        "name": "remote_download"
+      },
+      {
+        "description": "Create a directory on a saved remote server profile.",
+        "name": "remote_mkdir"
+      },
+      {
+        "description": "Delete a file or directory on a saved remote server profile.",
+        "name": "remote_delete"
+      },
+      {
+        "description": "Rename or move a path on a saved remote server profile.",
+        "name": "remote_rename"
+      },
+      {
+        "description": "Execute a file operation on a saved server. Creates a temporary connection using credentials from the vault, executes the operation, then disconnects. Passwords are resolved internally and never exposed. Operations: ls (list files), cat (read file content), stat (file metadata), find (search by pattern), df (disk usage/quota).",
+        "name": "server_exec"
+      }
+    ]
+  },
+  "app_version": "4.1.2",
+  "cli": {
+    "count": 90,
+    "subcommands": [
+      {
+        "about": "Show detailed server info, account, and storage quota",
+        "name": "about"
+      },
+      {
+        "about": "Issue #252: set the privacy level of an EXISTING file or folder on providers that model access (OpenDrive). The CLI counterpart of the GUI Properties > Permissions tab; file-vs-folder is detected via `stat`",
+        "name": "access"
+      },
+      {
+        "about": "AeroRsync delta engine: configuration and live diagnostics",
+        "name": "aerorsync"
+      },
+      {
+        "about": "AeroAgent - AI-powered interactive agent with tool execution",
+        "name": "agent"
+      },
+      {
+        "about": "Show the canonical task-oriented quick-start for AI agents",
+        "name": "agent-bootstrap"
+      },
+      {
+        "about": "Single-shot connect surface for agents: returns per-block status (connect/capabilities/quota/path) in one JSON call. Replaces the boilerplate `connect → about → df → ls /` sequence",
+        "name": "agent-connect"
+      },
+      {
+        "about": "Show CLI capabilities for AI agent discovery (always JSON)",
+        "name": "agent-info"
+      },
+      {
+        "about": "List configured AI providers and models from the encrypted vault",
+        "name": "ai-models"
+      },
+      {
+        "about": "Manage CLI aliases stored in config.toml",
+        "name": "alias"
+      },
+      {
+        "about": "Toggle an opt-in shell alias (default: aero) on or off",
+        "name": "alias-toggle"
+      },
+      {
+        "about": "Plaintext archive operations for `.aerozip` (application/x-aerozip)",
+        "name": "archive"
+      },
+      {
+        "about": "Run autonomous server audits across saved profiles (M3)",
+        "name": "audit"
+      },
+      {
+        "about": "Execute commands from a batch script (.aeroftp-script file). The `.aeroftp` extension is reserved for profile-export backups and is rejected here with a rename hint (issue #225)",
+        "name": "batch"
+      },
+      {
+        "about": "Run a community-driven benchmark across upload/download/list/stat operations. Output is sanitized: no hostnames, paths, credentials, or bucket names are recorded. Schema v1 contract in `docs/dev/roadmap/APPENDIX-BENCHMARK/01_JSON-Schema-v1.md`",
+        "name": "benchmark"
+      },
+      {
+        "about": "Print remote file to stdout (for piping)",
+        "name": "cat"
+      },
+      {
+        "about": "Browse the supported provider catalog (companies, protocols, free tier, regions)",
+        "name": "catalog"
+      },
+      {
+        "about": "Verify local and remote directories are identical",
+        "name": "check"
+      },
+      {
+        "about": "Remove orphaned .aerotmp files from interrupted downloads",
+        "name": "cleanup"
+      },
+      {
+        "about": "Generate shell completions (bash, zsh, fish, elvish, powershell)",
+        "name": "completions"
+      },
+      {
+        "about": "Compress files/folders into an archive (zip, 7z, tar, tar.gz, tar.xz, tar.bz2, gz, xz, bz2)",
+        "name": "compress"
+      },
+      {
+        "about": "Test connection to a remote server",
+        "name": "connect"
+      },
+      {
+        "about": "Error-correct any standalone file with a detached `.aerocorrect` sidecar (par2-style). Generate parity, verify integrity, or repair corruption. The same format protects vault containers and synced files; binding is by content SHA-256. Windowed streaming keeps memory bounded on large files",
+        "name": "correct"
+      },
+      {
+        "about": "Copy a remote file on the server side when supported",
+        "name": "cp"
+      },
+      {
+        "about": "Encrypted overlay - zero-knowledge storage on any provider",
+        "name": "crypt"
+      },
+      {
+        "about": "Cryptcheck integrity against encrypted rclone remote",
+        "name": "cryptcheck"
+      },
+      {
+        "about": "Background daemon for persistent mounts, jobs, and watch",
+        "name": "daemon"
+      },
+      {
+        "about": "Find duplicate files on a remote by content hash and optionally remove them",
+        "name": "dedupe"
+      },
+      {
+        "about": "Show storage quota/usage",
+        "name": "df"
+      },
+      {
+        "about": "Find and replace text in a remote UTF-8 file",
+        "name": "edit"
+      },
+      {
+        "about": "Export saved server profiles to external configuration formats",
+        "name": "export"
+      },
+      {
+        "about": "Extract an archive (zip, 7z, tar, tar.gz, tar.xz, tar.bz2, gz, xz, bz2, rar)",
+        "name": "extract"
+      },
+      {
+        "about": "Search for files by pattern",
+        "name": "find"
+      },
+      {
+        "about": "Download file(s) from remote server",
+        "name": "get"
+      },
+      {
+        "about": "List and manage server-profile groups (the My Servers group chips)",
+        "name": "groups"
+      },
+      {
+        "about": "Compute hash of remote file(s)",
+        "name": "hashsum"
+      },
+      {
+        "about": "Print first N lines of a remote file",
+        "name": "head"
+      },
+      {
+        "about": "Import server profiles from external sources",
+        "name": "import"
+      },
+      {
+        "about": "Print the authoritative inventory of every CLI subcommand and MCP tool",
+        "name": "inventory"
+      },
+      {
+        "about": "Manage background transfer jobs (requires daemon running)",
+        "name": "jobs"
+      },
+      {
+        "about": "Encrypted full-state backup of the AeroFTP installation (vault entries, SQLite databases, plugins, sync snapshots, UI preferences). The on-disk format is the same `.aeroftp-keystore` envelope produced by the GUI, so files created via the CLI can be imported through Settings > Backup and vice versa",
+        "name": "keystore"
+      },
+      {
+        "about": "Create a share link for a remote file when supported",
+        "name": "link"
+      },
+      {
+        "about": "List files on a remote server",
+        "name": "ls"
+      },
+      {
+        "about": "List directories only (rclone-style `lsd`)",
+        "name": "lsd"
+      },
+      {
+        "about": "Flat machine-parsable listing, one entry per line (rclone-style `lsf`)",
+        "name": "lsf"
+      },
+      {
+        "about": "Machine-readable JSON listing with a stable record schema",
+        "name": "lsjson"
+      },
+      {
+        "about": "Long listing: permissions, size, date, name (rclone-style `lsl`)",
+        "name": "lsl"
+      },
+      {
+        "about": "Start the Model Context Protocol server (JSON-RPC 2.0 over stdio)",
+        "name": "mcp"
+      },
+      {
+        "about": "Create a remote directory",
+        "name": "mkdir"
+      },
+      {
+        "about": "Mount a remote as a local filesystem (FUSE on Linux/macOS, WebDAV drive on Windows)",
+        "name": "mount"
+      },
+      {
+        "about": "Mount an UNLOCKED vault (Cryptomator or .aerovault/.aerozip) as a read-only local filesystem (AeroMount for unlocked vaults, #322)",
+        "name": "mount-vault"
+      },
+      {
+        "about": "Rename/move a remote file",
+        "name": "mv"
+      },
+      {
+        "about": "Interactive disk usage explorer (ncdu-style TUI)",
+        "name": "ncdu"
+      },
+      {
+        "about": "Quick preview of a remote file (smart default: first 20 lines)",
+        "name": "peek"
+      },
+      {
+        "about": "User-to-user P2P encrypted drives (identity, contacts, grant/import, publish/replicate)",
+        "name": "peer"
+      },
+      {
+        "about": "Segmented parallel download (alias for `get` with --segments preset)",
+        "name": "pget"
+      },
+      {
+        "about": "Create a new server profile in the vault",
+        "name": "profile-add"
+      },
+      {
+        "about": "Convert a profile to a different mode (replaces the original, issue #215)",
+        "name": "profile-convert-mode"
+      },
+      {
+        "about": "Copy a saved server profile into ANOTHER user account (#270)",
+        "name": "profile-copy-user"
+      },
+      {
+        "about": "Delete a saved server profile from the vault",
+        "name": "profile-delete"
+      },
+      {
+        "about": "Duplicate a saved server profile inside the vault",
+        "name": "profile-duplicate"
+      },
+      {
+        "about": "Duplicate a profile into a different mode of the same provider group (issue #215)",
+        "name": "profile-duplicate-mode"
+      },
+      {
+        "about": "Export saved server profiles to an encrypted `.aeroftp` file",
+        "name": "profile-export"
+      },
+      {
+        "about": "Import server profiles from an encrypted `.aeroftp` file",
+        "name": "profile-import"
+      },
+      {
+        "about": "Move a saved server profile into ANOTHER user account (#270)",
+        "name": "profile-move-user"
+      },
+      {
+        "about": "Set or update the credential blob for a saved server profile",
+        "name": "profile-set-password"
+      },
+      {
+        "about": "List saved server profiles from the encrypted vault",
+        "name": "profiles"
+      },
+      {
+        "about": "Remove a path and all of its contents (recursive delete)",
+        "name": "purge"
+      },
+      {
+        "about": "Upload file(s) to remote server (supports glob patterns like \"*.csv\")",
+        "name": "put"
+      },
+      {
+        "about": "Upload stdin directly to a remote file",
+        "name": "rcat"
+      },
+      {
+        "about": "rclone-crypt compatible operations (separate from `crypt` overlay)",
+        "name": "rclone-crypt"
+      },
+      {
+        "about": "Reconcile local and remote trees with categorized diff output",
+        "name": "reconcile"
+      },
+      {
+        "about": "Delete a remote file or directory",
+        "name": "rm"
+      },
+      {
+        "about": "Remove a single empty directory (fails if not empty)",
+        "name": "rmdir"
+      },
+      {
+        "about": "Recursively remove EMPTY directories under a path (files and non-empty directories are left untouched; the path itself is never removed). Dry-run by default; --force to delete",
+        "name": "rmdirs"
+      },
+      {
+        "about": "Serve a remote over a local protocol",
+        "name": "serve"
+      },
+      {
+        "about": "Show total size and object count under a path (recursive scan)",
+        "name": "size"
+      },
+      {
+        "about": "Measure upload/download throughput against a writable remote",
+        "name": "speed"
+      },
+      {
+        "about": "Benchmark and rank multiple servers side-by-side",
+        "name": "speed-compare"
+      },
+      {
+        "about": "Show file/directory metadata",
+        "name": "stat"
+      },
+      {
+        "about": "Synchronize local and remote directories",
+        "name": "sync"
+      },
+      {
+        "about": "Preflight checks and risk summary before sync",
+        "name": "sync-doctor"
+      },
+      {
+        "about": "Print last N lines of a remote file",
+        "name": "tail"
+      },
+      {
+        "about": "Create empty file or update timestamp",
+        "name": "touch"
+      },
+      {
+        "about": "Transfer files between two saved profiles (cross-profile copy)",
+        "name": "transfer"
+      },
+      {
+        "about": "Preflight checks and risk summary before cross-profile transfer",
+        "name": "transfer-doctor"
+      },
+      {
+        "about": "Display remote directory tree",
+        "name": "tree"
+      },
+      {
+        "about": "Open the interactive terminal UI",
+        "name": "tui"
+      },
+      {
+        "about": "Manage local AeroFTP user partitions",
+        "name": "users"
+      },
+      {
+        "about": "AeroVault encrypted container operations (.aerovault), all formats",
+        "name": "vault"
+      },
+      {
+        "about": "List, download, or restore previous versions of a file",
+        "name": "versions"
+      }
+    ]
+  },
+  "counts": {
+    "agent_tools": 39,
+    "cli_subcommands": 90,
+    "mcp_by_namespace": {
+      "aeroftp_": 37,
+      "other": 1,
+      "remote_": 33,
+      "server_": 2
+    },
+    "mcp_tools_aliases": 35,
+    "mcp_tools_primary": 38,
+    "mcp_tools_total": 73
+  },
+  "mcp": {
+    "count": 73,
+    "tools": [
+      {
+        "description": "Return diagnostics about the running MCP process itself...",
+        "name": "aeroftp_mcp_info",
+        "namespace": "aeroftp_"
+      },
+      {
+        "description": "Close a pooled server connection explicitly...",
+        "name": "aeroftp_close_connection",
+        "namespace": "aeroftp_"
+      },
+      {
+        "description": "Compare a local directory against a remote directory and report differences...",
+        "name": "aeroftp_check_tree",
+        "namespace": "aeroftp_"
+      },
+      {
+        "description": "Synchronize a local directory with a remote directory. Direction: upload, download, or both. Supports dry_run, delete_orphans (upload/download only), conflict resolution (larger/newer/skip), explicit delta_policy (disabled/size_only/mtime/hash/delta), and glob excludes. Emits progress notifications when the caller supplies a progressToken. Output shape: dry_run=true returns {plan, plan_by_op, plan_by_op_totals, plan_total, planned, scan_stats, errors}; dry_run=false returns {summary (with summary.totals), errors}. The two fields never coexist. Each plan/error entry reports the per-file `decision_policy` actually used by the core. `plan_by_op` groups the plan per operation (upload/download/delete/skip) with per-bucket caps of 250 so an agent can see every candidate of a given type even when the total plan is huge. Set summary_only=true to drop the per-entry plan/plan_by_op/errors arrays when the response would otherwise exceed MCP size limits. When at least one file traveled through the rsync delta path, `summary.delta_savings` is added with {files_using_delta, total_bytes_sent, total_size, bytes_saved, average_speedup}; the block is OMITTED entirely when no file used the delta path. `bytes_saved` can be negative when rsync overhead exceeds the savings on small-file runs. `average_speedup` is omitted when `total_bytes_sent==0`. Alongside `delta_savings`, `summary.delta_files` carries a per-file breakdown as an array of `{path, bytes_sent, total_size, speedup}`, capped at 500 entries; on runs above the cap, `summary.delta_files_truncated: true` is added and the `delta_savings` aggregate keeps counting past the cap. Both keys are OMITTED on classic-only runs.",
+        "name": "aeroftp_sync_tree",
+        "namespace": "aeroftp_"
+      },
+      {
+        "description": "Upload multiple local files to a remote server in a single batch. Each item may specify its own `create_parents` and `no_clobber` flags. Applies a server-friendly backoff between operations (same contract as aeroftp_delete_many) and returns per-item results plus summary.totals. Serial-per-connection: one item at a time on the pooled connection, since most protocols (FTP, SFTP) do not parallelize uploads on a single session. Set continue_on_error=false to stop at the first failure.",
+        "name": "aeroftp_upload_many",
+        "namespace": "aeroftp_"
+      },
+      {
+        "description": "Find-and-replace on a remote UTF-8 text file without downloading it locally. Replaces all occurrences by default, or only the first when `first=true`. Returns the number of replacements and bytes before/after. If no match is found, the file is NOT re-uploaded (no-op). Rejects binary files, files larger than 10 MB, and directories.",
+        "name": "aeroftp_edit",
+        "namespace": "aeroftp_"
+      },
+      {
+        "description": "Return a static diagnostic snapshot for triage: host/runtime info plus the last N redacted lines of aeroftp.log. Sensitive data (API keys, Bearer tokens, JWTs, inline-URL passwords, emails, non-loopback IPv4, home directories, 32+ char hex blobs) is replaced with ***REDACTED*** markers before return. Read-only, no external I/O. Use to triage a user-reported issue without asking them to attach files.",
+        "name": "aeroftp_debug_snapshot",
+        "namespace": "aeroftp_"
+      },
+      {
+        "description": "Execute one self-contained diagnostic probe and return its result. Available test_id values: 'known_hosts' (parse ~/.ssh/known_hosts and count entries), 'aerovault_roundtrip' (full AeroVault v2 codec create+open in tempdir, validates the encryption stack end-to-end), 'vault_roundtrip' (credential store write+read+delete on a unique temp key, requires the user's vault to be unlocked). All probes are local, idempotent, and never overwrite the user's real data. Use to validate a specific subsystem after a suspected change.",
+        "name": "aeroftp_debug_run_test",
+        "namespace": "aeroftp_"
+      },
+      {
+        "description": "Run the AeroFTP community benchmark suite against a saved profile and return the schema-v1 JSON report. Wraps the `aeroftp-cli benchmark` subcommand. The report is fully anonymized (no hostnames, paths, credentials, or bucket names). Use to compare a provider against the community baseline or to capture a before/after measurement after a configuration change. Long-running: 'quick' ~30s, 'standard' ~5min, 'deep' ~30min.",
+        "name": "aeroftp_benchmark",
+        "namespace": "aeroftp_"
+      },
+      {
+        "description": "List saved server profiles from the encrypted vault. Passwords are never exposed. Returns lean identity fields by default; pass include_capabilities:true to embed the per-profile transfer_capabilities block.",
+        "name": "aeroftp_list_servers",
+        "namespace": "aeroftp_"
+      },
+      {
+        "description": "Alias of aeroftp_list_servers.",
+        "name": "remote_list_servers",
+        "namespace": "remote_"
+      },
+      {
+        "description": "Alias of aeroftp_list_servers (legacy GUI/CLI name).",
+        "name": "server_list_saved",
+        "namespace": "server_"
+      },
+      {
+        "description": "List files and directories on a remote server. Supports pagination (limit/offset), sort (name|size|mtime), reverse, files_only/dirs_only filters, and size/mtime range filters. Default limit: 200, hard cap: 5000.",
+        "name": "aeroftp_list_files",
+        "namespace": "aeroftp_"
+      },
+      {
+        "description": "Legacy alias of aeroftp_list_files.",
+        "name": "remote_list",
+        "namespace": "remote_"
+      },
+      {
+        "description": "Alias of aeroftp_list_files.",
+        "name": "remote_list_files",
+        "namespace": "remote_"
+      },
+      {
+        "description": "Read a remote text file preview.",
+        "name": "aeroftp_read_file",
+        "namespace": "aeroftp_"
+      },
+      {
+        "description": "Legacy alias of aeroftp_read_file.",
+        "name": "remote_read",
+        "namespace": "remote_"
+      },
+      {
+        "description": "Alias of aeroftp_read_file.",
+        "name": "remote_read_file",
+        "namespace": "remote_"
+      },
+      {
+        "description": "Get metadata for a remote file or directory.",
+        "name": "aeroftp_file_info",
+        "namespace": "aeroftp_"
+      },
+      {
+        "description": "Legacy alias of aeroftp_file_info.",
+        "name": "remote_info",
+        "namespace": "remote_"
+      },
+      {
+        "description": "Alias of aeroftp_file_info.",
+        "name": "remote_file_info",
+        "namespace": "remote_"
+      },
+      {
+        "description": "Alias of aeroftp_file_info.",
+        "name": "remote_stat",
+        "namespace": "remote_"
+      },
+      {
+        "description": "Search for files matching a glob pattern on a remote server. Supports pagination (limit/offset), sort (name|size|mtime), reverse, files_only/dirs_only filters, and size/mtime range filters. Default limit: 100, hard cap: 5000.",
+        "name": "aeroftp_search_files",
+        "namespace": "aeroftp_"
+      },
+      {
+        "description": "Legacy alias of aeroftp_search_files.",
+        "name": "remote_search",
+        "namespace": "remote_"
+      },
+      {
+        "description": "Alias of aeroftp_search_files.",
+        "name": "remote_search_files",
+        "namespace": "remote_"
+      },
+      {
+        "description": "Upload a local file or inline text content to a remote server.",
+        "name": "aeroftp_upload_file",
+        "namespace": "aeroftp_"
+      },
+      {
+        "description": "Legacy alias of aeroftp_upload_file.",
+        "name": "remote_upload",
+        "namespace": "remote_"
+      },
+      {
+        "description": "Alias of aeroftp_upload_file.",
+        "name": "remote_upload_file",
+        "namespace": "remote_"
+      },
+      {
+        "description": "Alias of aeroftp_upload_many.",
+        "name": "remote_upload_many",
+        "namespace": "remote_"
+      },
+      {
+        "description": "Download a remote file to a local path.",
+        "name": "aeroftp_download_file",
+        "namespace": "aeroftp_"
+      },
+      {
+        "description": "Legacy alias of aeroftp_download_file.",
+        "name": "remote_download",
+        "namespace": "remote_"
+      },
+      {
+        "description": "Alias of aeroftp_download_file.",
+        "name": "remote_download_file",
+        "namespace": "remote_"
+      },
+      {
+        "description": "Create a directory on a remote server.",
+        "name": "aeroftp_create_directory",
+        "namespace": "aeroftp_"
+      },
+      {
+        "description": "Legacy alias of aeroftp_create_directory.",
+        "name": "remote_mkdir",
+        "namespace": "remote_"
+      },
+      {
+        "description": "Alias of aeroftp_create_directory.",
+        "name": "remote_create_directory",
+        "namespace": "remote_"
+      },
+      {
+        "description": "Delete one or more remote entries.",
+        "name": "aeroftp_delete",
+        "namespace": "aeroftp_"
+      },
+      {
+        "description": "Alias of aeroftp_delete_many.",
+        "name": "remote_delete_many",
+        "namespace": "remote_"
+      },
+      {
+        "description": "Legacy alias of aeroftp_delete.",
+        "name": "remote_delete",
+        "namespace": "remote_"
+      },
+      {
+        "description": "Batch delete remote entries.",
+        "name": "aeroftp_delete_many",
+        "namespace": "aeroftp_"
+      },
+      {
+        "description": "Rename or move a file/directory on a remote server.",
+        "name": "aeroftp_rename",
+        "namespace": "aeroftp_"
+      },
+      {
+        "description": "Legacy alias of aeroftp_rename.",
+        "name": "remote_rename",
+        "namespace": "remote_"
+      },
+      {
+        "description": "Get storage usage and quota for a remote server. By default returns the provider's reported quota (fast, one API call). For backends with no quota API (raw FTP/FTPS, most S3/WebDAV) set scan:true to recursively sum file sizes and get a real used figure (mirrors CLI `df --scan`); combined with a provider total it yields used/total/used_percent. The scan is bounded (depth 100, 500k entries; scan_truncated:true when a cap is hit) and never runs unless you opt in. Use full:true to scan from the account root, or path to scan a specific subtree (default '/').",
+        "name": "aeroftp_storage_quota",
+        "namespace": "aeroftp_"
+      },
+      {
+        "description": "Alias of aeroftp_storage_quota (supports the same scan/full/path arguments).",
+        "name": "remote_storage_quota",
+        "namespace": "remote_"
+      },
+      {
+        "description": "Compute a cryptographic hash of a remote file by streaming it through the chosen algorithm. Mirrors `aeroftp hashsum --download` from the CLI. Useful for verifying integrity after upload, comparing files across profiles, or producing checksums for audit. Hard cap: 256 MB per file (returns `error: file_too_large` above the cap). Algorithms: sha256 (default), sha1, sha512, md5, blake3.",
+        "name": "aeroftp_hashsum",
+        "namespace": "aeroftp_"
+      },
+      {
+        "description": "Alias of aeroftp_hashsum.",
+        "name": "remote_hashsum",
+        "namespace": "remote_"
+      },
+      {
+        "description": "Return the first N lines of a remote UTF-8 text file (default 50, cap 10000). Mirrors `aeroftp head` from the CLI. Streams the file through `download_to_bytes` then splits on newlines, so non-UTF-8 bytes are replaced with U+FFFD. Hard cap on file size: 16 MB. Use aeroftp_download_file + local processing for larger files.",
+        "name": "aeroftp_head",
+        "namespace": "aeroftp_"
+      },
+      {
+        "description": "Alias of aeroftp_head.",
+        "name": "remote_head",
+        "namespace": "remote_"
+      },
+      {
+        "description": "Return the last N lines of a remote UTF-8 text file (default 50, cap 10000). Mirrors `aeroftp tail` from the CLI. Useful for log inspection without downloading the full file. Streams the file through `download_to_bytes`. Hard cap on file size: 16 MB. Note: this is NOT a streaming `tail -f`: it is a one-shot read. For continuous follow, use the local CLI on a downloaded copy.",
+        "name": "aeroftp_tail",
+        "namespace": "aeroftp_"
+      },
+      {
+        "description": "Alias of aeroftp_tail.",
+        "name": "remote_tail",
+        "namespace": "remote_"
+      },
+      {
+        "description": "Recursively list the contents of a remote directory as a flat JSON array, bounded by max_depth and max_entries. Mirrors `aeroftp tree` from the CLI. Output is flat (each entry includes `path` and `depth`) rather than nested: agents reconstruct hierarchy from `path` if needed, which is cheaper than deep nested JSON on large trees. Defaults: max_depth=3, max_entries=500. Hard caps: max_depth=20, max_entries=5000. Use this instead of N sequential aeroftp_list_files calls when exploring a layout.",
+        "name": "aeroftp_tree",
+        "namespace": "aeroftp_"
+      },
+      {
+        "description": "Alias of aeroftp_tree.",
+        "name": "remote_tree",
+        "namespace": "remote_"
+      },
+      {
+        "description": "Cross-profile single-file transfer between two saved server profiles. Streams source -> temp -> dest without exposing local paths to the agent. Refuses identical src/dst profiles. Mirrors `cross_profile_transfer` in the GUI; uses delta upload when the destination is SFTP key-based with rsync helper.",
+        "name": "aeroftp_transfer",
+        "namespace": "aeroftp_"
+      },
+      {
+        "description": "Alias of aeroftp_transfer.",
+        "name": "remote_transfer",
+        "namespace": "remote_"
+      },
+      {
+        "description": "Cross-profile recursive directory transfer between two saved server profiles. Plans the full file set first, then copies one file at a time reusing the same source/destination connection across the whole batch. Default cap: 1000 files per call, hard cap 10000. With `dry_run=true` returns the planned file list (or summary if `summary_only=true`).",
+        "name": "aeroftp_transfer_tree",
+        "namespace": "aeroftp_"
+      },
+      {
+        "description": "Alias of aeroftp_transfer_tree.",
+        "name": "remote_transfer_tree",
+        "namespace": "remote_"
+      },
+      {
+        "description": "Create an empty file or report an existing one. If the path exists, the call is a no-op (`action=\"exists\"`); otherwise an empty zero-byte file is uploaded (`action=\"created\"`). Useful for cache-bust triggers, lock files, `.maintenance` markers, opcache reset markers. Mtime-bump on existing files is NOT supported (most providers lack a portable utime API): `touch` on existing files reports the state without modifying it.",
+        "name": "aeroftp_touch",
+        "namespace": "aeroftp_"
+      },
+      {
+        "description": "Alias of aeroftp_touch.",
+        "name": "remote_touch",
+        "namespace": "remote_"
+      },
+      {
+        "description": "Find and optionally remove orphan `.aerotmp` files left by interrupted uploads (proftpd / sftp atomic-write pattern). With `dry_run=true` (default) returns the list of orphan paths and total bytes; with `dry_run=false` deletes them and reports `cleaned`/`bytes_freed`. Hard cap: 100k entries scanned. Mirrors `aeroftp cleanup` from the CLI.",
+        "name": "aeroftp_cleanup",
+        "namespace": "aeroftp_"
+      },
+      {
+        "description": "Alias of aeroftp_cleanup.",
+        "name": "remote_cleanup",
+        "namespace": "remote_"
+      },
+      {
+        "description": "Throughput benchmark for a saved profile: uploads a random payload, downloads it back, optionally verifies SHA-256 integrity, then deletes the test artifact. Returns upload/download bps + Mbps, integrity_verified, cleanup_ok. Default size 4 MiB, max 64 MiB (MCP cap), iterations clamped 1..3 (vs CLI 1..10): agent-grade fast probe rather than long benchmark. Mirrors `aeroftp speed` from the CLI but tighter caps.",
+        "name": "aeroftp_speed",
+        "namespace": "aeroftp_"
+      },
+      {
+        "description": "Alias of aeroftp_speed.",
+        "name": "remote_speed",
+        "namespace": "remote_"
+      },
+      {
+        "description": "Preflight risk summary for a sync between a local directory and a remote one. Lighter than `aeroftp_sync_tree dry_run=true`: counts files+bytes on both sides and emits a list of human-readable risk strings (delete enabled, bidirectional with no track-renames, remote unreachable, ...) plus a `suggested_next_command` agent can echo to the user. NO file-level plan. Hard cap on remote scan: 500k entries / depth 100. Mirrors `aeroftp sync-doctor` from the CLI.",
+        "name": "aeroftp_sync_doctor",
+        "namespace": "aeroftp_"
+      },
+      {
+        "description": "Alias of aeroftp_sync_doctor.",
+        "name": "remote_sync_doctor",
+        "namespace": "remote_"
+      },
+      {
+        "description": "Detect duplicate files on a remote tree by SHA-256 hashing files that share the same size. Returns groups of duplicates, the keeper for each group (selected by `mode`), total wasted bytes. With `dry_run=true` (default) returns the report; with `dry_run=false` and `mode != list` deletes the non-keeper duplicates. Hard caps: 100k file scan, 256 MiB per file (oversize files are skipped with `hash_errors++`). Modes: `newest` (keep latest mtime), `oldest` (keep earliest), `largest`, `smallest`, `list` (report only, never delete). Mirrors `aeroftp dedupe` from the CLI but with conservative caps for agent use.",
+        "name": "aeroftp_dedupe",
+        "namespace": "aeroftp_"
+      },
+      {
+        "description": "Alias of aeroftp_dedupe.",
+        "name": "remote_dedupe",
+        "namespace": "remote_"
+      },
+      {
+        "description": "Categorized diff superset of `aeroftp_check_tree`: reports the same 4 buckets (match, differ, missing_local, missing_remote) plus elapsed time and a `suggested_next_command` (CLI-style `aeroftp-cli sync` invocation). Mirrors `aeroftp reconcile` from the CLI. Use `aeroftp_check_tree` when you want the same diff with per-group caps and `summary_only` short-circuit; use `aeroftp_reconcile` when you want elapsed-time + next-command for an end-to-end agent report. NOT capped by max_entries_reported: full lists returned.",
+        "name": "aeroftp_reconcile",
+        "namespace": "aeroftp_"
+      },
+      {
+        "description": "Alias of aeroftp_reconcile.",
+        "name": "remote_reconcile",
+        "namespace": "remote_"
+      },
+      {
+        "description": "Single-shot agent connect surface. Returns one JSON payload with per-block status (`connect`, `capabilities`, `quota`, `path`) so the agent can decide go/no-go and gracefully degrade. Replaces the boilerplate sequence of `connect → about → df → ls /`. `connect.status` is the critical signal; `unsupported`/`unavailable`/`error` on other blocks are non-fatal.",
+        "name": "aeroftp_agent_connect",
+        "namespace": "aeroftp_"
+      },
+      {
+        "description": "Alias of aeroftp_agent_connect.",
+        "name": "agent_connect",
+        "namespace": "other"
+      },
+      {
+        "description": "Execute a vault-backed server operation without exposing credentials.",
+        "name": "server_exec",
+        "namespace": "server_"
+      },
+      {
+        "description": "Generate a detached .aerocorrect Reed-Solomon recovery sidecar for a local file (par2-style). Writes <file>.aerocorrect by default. Use this to protect a file against bit rot before storing or transferring it.",
+        "name": "aeroftp_correct_gen",
+        "namespace": "aeroftp_"
+      },
+      {
+        "description": "Verify a local file against its .aerocorrect sidecar (read-only, never mutates the file). Returns verified=true if intact or status=needs_repair if corruption is detected.",
+        "name": "aeroftp_correct_verify",
+        "namespace": "aeroftp_"
+      },
+      {
+        "description": "Repair a corrupted local file in place from its .aerocorrect sidecar (atomic, all-or-nothing; rebuilt bytes are re-verified against the bound content hash before replacing the original, so a bad sidecar can only fail, never corrupt). An already-intact file is reported verified with no write.",
+        "name": "aeroftp_correct_repair",
+        "namespace": "aeroftp_"
+      }
+    ]
+  },
+  "schema_version": 1
+}
