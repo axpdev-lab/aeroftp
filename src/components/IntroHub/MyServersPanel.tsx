@@ -1274,7 +1274,10 @@ export function MyServersPanel({
         dup.hasStoredFilenApiKey = copiedSecrets.filen_api_key;
         dup.hasStoredAeroCryptPassword = copiedSecrets.aerocrypt_overlay_pw;
         dup.hasStoredAeroCryptSalt = copiedSecrets.aerocrypt_overlay_salt;
-        const updated = [dup, ...servers];
+        // Append the copy at the tail, consistent with add/import and the
+        // SavedServers duplicate handler. The list has no id/order sort (array
+        // position IS the order), so prepending made the copy jump to the top.
+        const updated = [...servers, dup];
         setServers(updated);
         storeSavedServerProfiles(updated).catch(() => {});
         // Log the same two entries as an edit that overlaps an existing profile,
