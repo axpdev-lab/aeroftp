@@ -6043,16 +6043,35 @@ interface UpdateVerificationInfo {
       } else {
         oauthResponse = await loadRemoteFiles(protocol);
       }
-      // Navigate to initial local directory if specified
-      if (quickConnectDirs.localDir) {
-        await changeLocalDirectory(quickConnectDirs.localDir);
+      // The saved profile is the source of truth for the tab title and the local
+      // directory when this connect is linked to one (savedServerId). An edit-mode
+      // rename or local-path change must take effect on the LIVE session, not only
+      // after a later reconnect from the saved card: the form-tab handoff carries a
+      // stale global quickConnectDirs and the generic provider name, so read the
+      // fresh values off the profile here. Unsaved connect keeps the old behaviour.
+      let oauthTabName = providerName;
+      let oauthLocalDir = quickConnectDirs.localDir;
+      if (effectiveParams.savedServerId) {
+        try {
+          const linkedProfile = (await loadSavedServerProfiles()).find(
+            (p) => p.id === effectiveParams.savedServerId,
+          );
+          if (linkedProfile) {
+            if (linkedProfile.name) oauthTabName = linkedProfile.name;
+            if (linkedProfile.localInitialPath) oauthLocalDir = linkedProfile.localInitialPath;
+          }
+        } catch { /* best-effort: keep the generic name / global dir */ }
       }
-      // Create session with provider name: pass fresh files to avoid stale closure
+      // Navigate to initial local directory if specified
+      if (oauthLocalDir) {
+        await changeLocalDirectory(oauthLocalDir);
+      }
+      // Create session: profile name titles the tab, fresh files avoid stale closure
       await createSession(
-        providerName,
+        oauthTabName,
         effectiveParams,
         oauthResponse?.current_path || '/',
-        quickConnectDirs.localDir || currentLocalPath,
+        oauthLocalDir || currentLocalPath,
         overlayHint ? [] : oauthResponse?.files
       );
       // Defer the overlay auto-unlock to the post-connect effect (inline unlock
