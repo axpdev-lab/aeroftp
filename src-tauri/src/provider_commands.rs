@@ -2148,7 +2148,12 @@ async fn detect_zip_meta_remote(
                 return Err("zip64 eocd record outside tail window".to_string());
             }
             let rec = (z64_off - tail_start) as usize;
-            if rec + 56 > tail.len() || tail[rec..rec + 4] != [0x50, 0x4B, 0x06, 0x06] {
+            // `rec` derives from an attacker-controlled 64-bit offset; guard the 56-byte
+            // window with checked_add so it cannot wrap (overflow-checks are off in
+            // release) and slip a huge index past the bound into an OOB slice panic.
+            if rec.checked_add(56).is_none_or(|e| e > tail.len())
+                || tail[rec..rec + 4] != [0x50, 0x4B, 0x06, 0x06]
+            {
                 return Err("bad zip64 eocd record".to_string());
             }
             let entries = u64::from_le_bytes(tail[rec + 32..rec + 40].try_into().unwrap()) as usize;
@@ -2208,7 +2213,11 @@ async fn detect_7z_meta_remote(
     }
     let nh_off = u64::from_le_bytes(start[12..20].try_into().unwrap());
     let nh_size = u64::from_le_bytes(start[20..28].try_into().unwrap());
-    if nh_size == 0 || nh_size > REMOTE_ARCHIVE_INDEX_CAP {
+    // `nh_off` is attacker-controlled; if the header start (32 + nh_off) would wrap
+    // or the size is out of range, degrade to no badge rather than range-read a
+    // bogus window (never a wrong badge).
+    let nh_start = 32u64.checked_add(nh_off);
+    if nh_size == 0 || nh_size > REMOTE_ARCHIVE_INDEX_CAP || nh_start.is_none() {
         return Ok(crate::ArchiveMeta {
             encrypted: false,
             cipher: None,
@@ -2216,7 +2225,7 @@ async fn detect_7z_meta_remote(
         });
     }
     let hdr = provider
-        .read_range(path, 32 + nh_off, nh_size)
+        .read_range(path, nh_start.unwrap(), nh_size)
         .await
         .map_err(|e| format!("remote 7z next-header read: {e}"))?;
     const AES_CODER_ID: [u8; 4] = [0x06, 0xF1, 0x07, 0x01];
