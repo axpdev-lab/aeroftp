@@ -14,9 +14,6 @@ import { archiveKindForName } from '../utils/archiveCipher';
  * archive-type files, capped per directory, with limited concurrency to avoid an
  * IPC storm. Results are cached module-wide keyed by path + size + mtime, so
  * revisiting a directory is instant and an edited file re-detects.
- *
- * RAR is intentionally excluded: the backend defers proactive RAR detection, so
- * the lookup returns an "unknown" state (no padlock) rather than a wrong badge.
  */
 
 export type ArchiveMetaState =
@@ -62,22 +59,20 @@ function cacheKey(f: FileLike): string {
 
 /**
  * How a given file's encryption metadata is obtained. Third-party archives
- * (zip/7z) go through the header-parsing `detect_archive_meta`; our own
- * container formats go through the cheap `detect_aero_container` magic sniff
- * (.aerovault = encrypted AES-256, .aerozip = the plaintext Zip lane); our
- * exported bundles (.aeroftp-keystore keystore, .aeroftp profile backup) are
- * AES-256-GCM encrypted by construction, so they need no read at all. RAR is
- * intentionally excluded (no proactive detection), so it gets no badge rather
- * than a wrong one.
+ * (zip/7z/rar) go through `detect_archive_meta`; our own container formats go
+ * through the cheap `detect_aero_container` magic sniff (.aerovault = encrypted
+ * AES-256, .aerozip = the plaintext Zip lane); our exported bundles
+ * (.aeroftp-keystore keystore, .aeroftp profile backup) are AES-256-GCM
+ * encrypted by construction, so they need no read at all.
  */
 type DetectPlan =
-    | { via: 'archive'; kind: 'zip' | 'sevenz' }
+    | { via: 'archive'; kind: 'zip' | 'sevenz' | 'rar' }
     | { via: 'aero' }
     | { via: 'sealed' };
 
 function detectionPlan(name: string): DetectPlan | null {
     const kind = archiveKindForName(name);
-    if (kind === 'zip' || kind === 'sevenz') return { via: 'archive', kind };
+    if (kind === 'zip' || kind === 'sevenz' || kind === 'rar') return { via: 'archive', kind };
     const lower = name.toLowerCase();
     if (lower.endsWith('.aerovault') || lower.endsWith('.aerozip')) return { via: 'aero' };
     // Our exported bundles are always AES-256-GCM encrypted (order matters:

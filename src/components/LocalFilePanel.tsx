@@ -917,16 +917,19 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
                   return <td key="encryption" className="px-4 py-2 text-xs">{content}</td>;
                 }
                 case 'compression': {
-                  // Compression method for compressed archives (and AeroVault v3
-                  // containers, which are always Zstd). Stored/uncompressed
-                  // archives and non-archives show nothing; a neutral slate badge
-                  // keeps it distinct from the emerald/amber encryption column.
+                  // Compression method for archives (and AeroVault v3 containers,
+                  // which are always Zstd): a neutral slate badge, distinct from
+                  // the emerald/amber encryption column. Actually-compressed
+                  // methods carry a clamp glyph; an uncompressed archive reads
+                  // "Store" without it. Non-archives and unreadable methods show
+                  // nothing.
                   const meta = file.is_dir ? undefined : archiveMetaOf(file);
                   let content: React.ReactNode = <span className="text-gray-400">-</span>;
                   if (meta?.status === 'loading') {
                     content = <Loader2 size={12} className="animate-spin text-gray-400" />;
                   } else if (meta?.status === 'done' && meta.compression) {
-                    content = <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold tracking-wide bg-slate-500/15 text-slate-600 dark:text-slate-300">{meta.compression}</span>;
+                    const stored = meta.compression === 'Store';
+                    content = <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold tracking-wide bg-slate-500/15 text-slate-600 dark:text-slate-300">{!stored && <span aria-hidden className="text-[9px] leading-none">&#128476;&#65039;</span>}{meta.compression}</span>;
                   }
                   return <td key="compression" className="px-4 py-2 text-xs">{content}</td>;
                 }

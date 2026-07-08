@@ -8195,21 +8195,22 @@ struct ArchiveMeta {
     /// / `AES` / `ZipCrypto`. `None` when not encrypted or undetermined.
     cipher: Option<String>,
     /// Representative compression method token for the Compression column, e.g.
-    /// `Deflate` / `LZMA2` / `BZip2` / `Zstd` / `PPMd`. `None` for a stored
-    /// (uncompressed) archive or when the method cannot be read (e.g. a 7z with
-    /// an encrypted header). Only compressed archives get a badge.
+    /// `Deflate` / `LZMA2` / `BZip2` / `Zstd` / `PPMd` / `RAR`, or `Store` for an
+    /// uncompressed archive. `None` only when the method cannot be read (an
+    /// unknown method, or a 7z / RAR with an encrypted header).
     compression: Option<String>,
 }
 
-/// Proactively detect whether an archive is encrypted, and with which cipher,
-/// for the list-view badges. ZIP and 7z are supported; RAR proactive detection
-/// is deferred (the unlock dialog still uses `detect_archive_cipher`
-/// reactively). Reads only the header regions, not the whole file.
+/// Proactively detect whether an archive is encrypted, with which cipher, and
+/// its representative compression method for the list-view badges. ZIP, 7z and
+/// RAR are supported. Reads only the header regions (ZIP/7z) or lists the RAR
+/// directory, never the whole payload.
 #[tauri::command]
 async fn detect_archive_meta(archive_path: String, kind: String) -> Result<ArchiveMeta, String> {
     match kind.as_str() {
         "sevenz" => detect_7z_meta(&archive_path),
         "zip" => detect_zip_meta(&archive_path),
+        "rar" => detect_rar_meta(&archive_path),
         other => Err(format!(
             "unsupported archive kind for meta detection: {other}"
         )),
@@ -8303,7 +8304,11 @@ fn parse_zip_central_dir(cd: &[u8], entries: usize) -> ArchiveMeta {
     let mut p = 0usize;
     let mut encrypted = false;
     let mut cipher: Option<String> = None;
-    let mut compression: Option<String> = None;
+    // Compression: prefer the first real compressed method; only fall back to
+    // "Store" when every entry is stored (so a leading directory entry does not
+    // mask a compressed file). An unreadable/unknown method leaves both unset.
+    let mut method_label: Option<String> = None;
+    let mut saw_store = false;
     for _ in 0..entries {
         if p + 46 > cd.len() || cd[p..p + 4] != [0x50, 0x4B, 0x01, 0x02] {
             break;
@@ -8314,17 +8319,19 @@ fn parse_zip_central_dir(cd: &[u8], entries: usize) -> ArchiveMeta {
         let extralen = u16::from_le_bytes([cd[p + 30], cd[p + 31]]) as usize;
         let commentlen = u16::from_le_bytes([cd[p + 32], cd[p + 33]]) as usize;
         let extra_start = p + 46 + fnlen;
-        // Compression: report the first compressed entry's method. A WinZip AES
-        // entry (method 99) stores its real method inside the 0x9901 extra field;
-        // a stored (uncompressed) entry maps to None so we keep scanning for a
-        // compressed one and, if there is none, show no badge.
-        if compression.is_none() {
+        if method_label.is_none() {
+            // A WinZip AES entry (method 99) carries its real method in the
+            // 0x9901 extra field.
             let eff_method = if method == 99 {
                 zip_aes_inner_method(cd, extra_start, extralen).unwrap_or(99)
             } else {
                 method
             };
-            compression = zip_method_label(eff_method);
+            match zip_method_label(eff_method).as_deref() {
+                Some("Store") => saw_store = true,
+                Some(m) => method_label = Some(m.to_string()),
+                None => {}
+            }
         }
         // Encryption: first encrypted entry wins the cipher token.
         if !encrypted && flags & 0x0001 != 0 {
@@ -8343,15 +8350,17 @@ fn parse_zip_central_dir(cd: &[u8], entries: usize) -> ArchiveMeta {
     ArchiveMeta {
         encrypted,
         cipher,
-        compression,
+        compression: method_label.or_else(|| saw_store.then(|| "Store".to_string())),
     }
 }
 
-/// Map a ZIP compression method id to a display token, or `None` for a stored
-/// (method 0) entry or one we do not label. The WinZip AES wrapper (method 99)
-/// is resolved to its inner method by the caller before this is called.
+/// Map a ZIP compression method id to a display token: `Store` for an
+/// uncompressed (method 0) entry, the named method for a compressed one, or
+/// `None` for a method we do not recognize (so we never mislabel it). The WinZip
+/// AES wrapper (method 99) is resolved to its inner method by the caller first.
 fn zip_method_label(method: u16) -> Option<String> {
     let label = match method {
+        0 => "Store",
         8 => "Deflate",
         9 => "Deflate64",
         12 => "BZip2",
@@ -8360,7 +8369,7 @@ fn zip_method_label(method: u16) -> Option<String> {
         95 => "XZ",
         96 => "Jpeg",
         98 => "PPMd",
-        _ => return None, // 0 = Store (uncompressed), or unknown -> no badge
+        _ => return None, // unknown method -> undetermined, no badge
     };
     Some(label.to_string())
 }
@@ -8423,32 +8432,39 @@ fn detect_7z_meta(path: &str) -> Result<ArchiveMeta, String> {
 }
 
 /// Best-effort 7z compression method for the Compression column. Parses the
-/// archive header via `sevenz-rust2` (metadata only, no extraction) and returns
-/// the first block's real compression coder, skipping filters (BCJ/Delta) and
-/// the AES coder. Reading the header with an empty password succeeds only for a
-/// plaintext header; an `-mhe` encrypted-header archive errors out here, so we
-/// return `None` (no method badge) rather than guessing.
+/// archive header via `sevenz-rust2` (metadata only, no extraction), preferring
+/// a real compression coder and falling back to "Store" only when every coder is
+/// COPY (filters like BCJ/Delta and the AES coder are skipped). Reading the
+/// header with an empty password succeeds only for a plaintext header; an `-mhe`
+/// encrypted-header archive errors out here, so we return `None` (unknown, no
+/// badge) rather than guessing.
 fn detect_7z_compression(path: &str) -> Option<String> {
     use sevenz_rust2::{Archive, Password};
     let mut f = std::fs::File::open(path).ok()?;
     let archive = Archive::read(&mut f, &Password::empty()).ok()?;
+    let mut saw_store = false;
     for block in &archive.blocks {
         for coder in &block.coders {
-            if let Some(label) = sevenz_rust2::EncoderMethod::by_id(coder.encoder_method_id())
+            match sevenz_rust2::EncoderMethod::by_id(coder.encoder_method_id())
                 .and_then(sevenz_method_label)
+                .as_deref()
             {
-                return Some(label);
+                Some("Store") => saw_store = true,
+                Some(m) => return Some(m.to_string()),
+                None => {}
             }
         }
     }
-    None
+    saw_store.then(|| "Store".to_string())
 }
 
-/// Map a `sevenz-rust2` coder to a display token, or `None` for a stored (COPY)
-/// stream, a chained filter (BCJ/Delta), or AES encryption, so only a real
-/// compression method surfaces in the Compression column.
+/// Map a `sevenz-rust2` coder to a display token: the named compression method,
+/// "Store" for a COPY (uncompressed) stream, or `None` for a chained filter
+/// (BCJ/Delta) or AES encryption, so only a compression status surfaces in the
+/// Compression column.
 fn sevenz_method_label(m: sevenz_rust2::EncoderMethod) -> Option<String> {
     let label = match m.name() {
+        "COPY" => "Store",
         "LZMA2" => "LZMA2",
         "LZMA" => "LZMA",
         "PPMD" => "PPMd",
@@ -8460,7 +8476,7 @@ fn sevenz_method_label(m: sevenz_rust2::EncoderMethod) -> Option<String> {
         "LIZARD" => "Lizard",
         "DEFLATE" => "Deflate",
         "DEFLATE64" => "Deflate64",
-        _ => return None, // COPY (store), filters, AES -> not a compression badge
+        _ => return None, // filters (BCJ/Delta), AES -> not a compression badge
     };
     Some(label.to_string())
 }
@@ -8482,6 +8498,98 @@ fn detect_rar_cipher(path: &str) -> Result<String, String> {
         // Unknown RAR variant: still AES, do not claim a strength we did not read.
         Ok("AES".to_string())
     }
+}
+
+/// Map the unrar `FileHeader::method` (RARHeaderDataEx.Method: 0x30 = Store,
+/// 0x31..0x35 = the RAR compression levels) to a Compression-column token. RAR
+/// uses one proprietary algorithm, so a compressed entry reads simply "RAR"; a
+/// stored entry reads "Store".
+fn rar_method_label(method: u32) -> String {
+    if method == 0x30 || method == 0 {
+        "Store".to_string()
+    } else {
+        "RAR".to_string()
+    }
+}
+
+/// RAR cipher token from the archive signature, or `None` when the file is not a
+/// real RAR (wrong/short magic). Unlike `detect_rar_cipher` (which assumes an
+/// already-encrypted RAR and falls back to a bare "AES"), this returns `None` so
+/// a corrupt or misnamed `.rar` gets no badge instead of a false padlock. RAR5 =
+/// AES-256, RAR4 = AES-128.
+fn rar_signature_cipher(path: &str) -> Result<Option<String>, String> {
+    use std::io::Read;
+    let mut f = std::fs::File::open(path).map_err(|e| format!("open: {e}"))?;
+    let mut sig = [0u8; 8];
+    if f.read_exact(&mut sig).is_err() {
+        return Ok(None);
+    }
+    const RAR5: [u8; 7] = [0x52, 0x61, 0x72, 0x21, 0x1A, 0x07, 0x01];
+    const RAR4: [u8; 7] = [0x52, 0x61, 0x72, 0x21, 0x1A, 0x07, 0x00];
+    Ok(if sig[..7] == RAR5 {
+        Some("AES-256".to_string())
+    } else if sig[..7] == RAR4 {
+        Some("AES-128".to_string())
+    } else {
+        None
+    })
+}
+
+/// Proactive RAR metadata: encryption, cipher and compression method, without a
+/// password. Confirms a real RAR signature first (a corrupt or misnamed `.rar`
+/// reads as undetectable, never a false padlock), then lists the RAR directory
+/// (never extracts): an entry flagged encrypted, or a listing that fails part-
+/// way, means encrypted; a header-encrypted (`-hp`) archive cannot be listed at
+/// all without the password, so it reads as encrypted with an unknown method.
+/// Cipher follows the version (RAR5 = AES-256, RAR4 = AES-128). Compression
+/// prefers the first real compressed entry ("RAR"), falling back to "Store" only
+/// when every entry is stored.
+fn detect_rar_meta(path: &str) -> Result<ArchiveMeta, String> {
+    let cipher_token = match rar_signature_cipher(path)? {
+        Some(c) => c,
+        None => return Err("not a RAR archive".to_string()),
+    };
+    let listing = match unrar::Archive::new(path).open_for_listing() {
+        Ok(list) => list,
+        // Valid RAR magic but the header stream will not open without a
+        // password: a header-encrypted (-hp) archive. Encrypted, method unknown.
+        Err(_) => {
+            return Ok(ArchiveMeta {
+                encrypted: true,
+                cipher: Some(cipher_token),
+                compression: None,
+            });
+        }
+    };
+    let mut encrypted = false;
+    let mut method_label: Option<String> = None;
+    let mut saw_store = false;
+    for entry in listing {
+        match entry {
+            Ok(e) => {
+                if e.is_encrypted() {
+                    encrypted = true;
+                }
+                if method_label.is_none() {
+                    match rar_method_label(e.method).as_str() {
+                        "Store" => saw_store = true,
+                        other => method_label = Some(other.to_string()),
+                    }
+                }
+            }
+            // A header read failing part-way through listing indicates header
+            // encryption; stop and report encrypted.
+            Err(_) => {
+                encrypted = true;
+                break;
+            }
+        }
+    }
+    Ok(ArchiveMeta {
+        encrypted,
+        cipher: encrypted.then(|| cipher_token.clone()),
+        compression: method_label.or_else(|| saw_store.then(|| "Store".to_string())),
+    })
 }
 
 /// ZIP cipher for the unlock dialog badge of an archive already known to be
@@ -19532,10 +19640,10 @@ mod archive_meta_tests {
     }
 
     #[test]
-    fn compression_store_is_none() {
+    fn compression_store_is_reported() {
         let cd = cdfh(0x0000, 0, b"a.txt", &[]);
         let meta = super::parse_zip_central_dir(&cd, 1);
-        assert!(meta.compression.is_none());
+        assert_eq!(meta.compression.as_deref(), Some("Store"));
     }
 
     #[test]
@@ -19555,5 +19663,14 @@ mod archive_meta_tests {
         cd.extend_from_slice(&cdfh(0x0000, 14, b"data.txt", &[]));
         let meta = super::parse_zip_central_dir(&cd, 2);
         assert_eq!(meta.compression.as_deref(), Some("LZMA"));
+    }
+
+    #[test]
+    fn rar_method_label_store_vs_compressed() {
+        // unrar Method: 0x30 = Store, 0x31..0x35 = the RAR compression levels.
+        assert_eq!(super::rar_method_label(0x30), "Store");
+        assert_eq!(super::rar_method_label(0), "Store");
+        assert_eq!(super::rar_method_label(0x31), "RAR");
+        assert_eq!(super::rar_method_label(0x35), "RAR");
     }
 }
