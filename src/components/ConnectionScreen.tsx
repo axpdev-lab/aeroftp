@@ -1513,6 +1513,86 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         onConnect();
     };
 
+    // Persist a name / local-path (and remote path / icon) edit to an existing
+    // OAuth or API profile WITHOUT re-running the OAuth sign-in. The shared footer
+    // Save is hidden for OAuth providers (renderRightColumn hideSaveButton), so
+    // without this the only way to save a rename was to sign in again. Mirrors the
+    // OAuth-shaped merge in the sign-in success handler (keeps host/username from
+    // the stored profile, never clobbers them from empty connectionParams) but
+    // does not connect.
+    const handleOAuthMetadataSave = async () => {
+        if (!editingProfileId) return;
+        const existingServers = await loadSavedServerProfiles();
+        const prevProfile = existingServers.find((s) => s.id === editingProfileId);
+        if (!prevProfile) return;
+        const saveName = connectionName || prevProfile.name;
+        const overlayFields = await aeroCryptOverlayFields(
+            editingProfileId,
+            prevProfile.hasStoredAeroCryptPassword,
+            prevProfile.hasStoredAeroCryptSalt,
+            prevProfile.hasStoredAeroCryptKeyfilePath,
+        );
+        const updated = existingServers.map((s) =>
+            s.id === editingProfileId
+                ? {
+                    ...s,
+                    name: saveName || s.name,
+                    initialPath: quickConnectDirs.remoteDir || s.initialPath,
+                    localInitialPath: quickConnectDirs.localDir,
+                    customIconUrl: customIconForSave !== undefined ? customIconForSave : s.customIconUrl,
+                    ...overlayFields,
+                }
+                : s,
+        );
+        await storeSavedServerProfiles(updated).catch(() => { });
+        setSavedServersUpdate(Date.now());
+        const savedServer = updated.find((s) => s.id === editingProfileId);
+        if (savedServer) {
+            logActivity(
+                'PROFILE_SAVE',
+                `Profile updated: "${savedServer.name}"`,
+                'success',
+                `dedupKey=${getStorageDedupKey(savedServer)}`,
+            );
+        }
+        // Close the IntroHub form tab after saving (the renamed profile shows in My
+        // Servers); on the main screen there is no tab, so exit edit and confirm.
+        if (onFormSaved) {
+            onFormSaved();
+        } else {
+            handleCancelEdit();
+            setGitHubAlert({
+                title: t('common.save'),
+                message: saveName,
+                type: 'info',
+            });
+        }
+    };
+
+    // Cancel the OAuth/API edit: discard form state and close the IntroHub form
+    // tab (or just exit edit mode on the main screen). Paired with the edit-mode
+    // Save so the footer is not a lone Save button.
+    const handleOAuthCancel = () => {
+        handleCancelEdit();
+        onFormSaved?.();
+    };
+
+    // Whether the OAuth/API edit form has an unsaved change to a metadata field
+    // (name, local path, remote path, icon) relative to the stored profile. Used
+    // to keep the edit-mode Save button disabled until something actually changed.
+    // An empty connection name means "keep the stored name", so it is not a change.
+    const oauthEditHasChanges = (): boolean => {
+        if (!editingProfileId) return false;
+        const ep = servers.find((s) => s.id === editingProfileId);
+        if (!ep) return false;
+        return (
+            (connectionName || ep.name) !== ep.name ||
+            (quickConnectDirs.localDir || '') !== (ep.localInitialPath || '') ||
+            (quickConnectDirs.remoteDir || '') !== (ep.initialPath || '') ||
+            (customIconForSave !== undefined && customIconForSave !== ep.customIconUrl)
+        );
+    };
+
     const handleSaveAsNew = async () => {
         if (!protocol || !editingProfileId) return;
         // Validate name is different
@@ -2548,6 +2628,14 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         showIconPicker?: boolean;
         showCancelSaveAsNew?: boolean;
         hideSaveButton?: boolean;
+        // When set, the footer button persists metadata via this handler instead of
+        // connecting (used to save a name / local-path edit on an OAuth profile
+        // without re-running the sign-in). The button honours the `disabled` opt so
+        // callers can gate it on a dirty check.
+        saveOverride?: () => void | Promise<void>;
+        // Paired Cancel next to a `saveOverride` Save, so the footer is not a lone
+        // Save button (closes the form tab / exits edit mode).
+        cancelOverride?: () => void;
     }) => {
         const {
             disabled: btnDisabled,
@@ -2559,6 +2647,8 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             showIconPicker: showIcon = true,
             showCancelSaveAsNew = false,
             hideSaveButton = false,
+            saveOverride,
+            cancelOverride,
         } = opts;
         const isSourceForge = selectedProviderId === 'sourceforge';
         const sfPrefix = '/home/frs/project/';
@@ -3000,7 +3090,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                 {hideSaveButton ? null : modeChanged && editingProfileId ? (
                     renderModeChangedFooter()
                 ) : (
-                    <div className={showCancelSaveAsNew ? 'flex gap-2' : 'pt-2'}>
+                    <div className={(showCancelSaveAsNew || cancelOverride) ? 'flex gap-2' : 'pt-2'}>
                         {showCancelSaveAsNew && editingProfileId && (
                             <button onClick={handleCancelEdit} className="px-4 py-3 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 font-medium rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors" title={t('connection.cancelEditing')}>
                                 <X size={20} />
@@ -3011,10 +3101,15 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                 <Copy size={18} />
                             </button>
                         )}
+                        {cancelOverride && (
+                            <button onClick={cancelOverride} className="px-4 py-3 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 font-medium rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors flex items-center gap-2" title={t('common.cancel')}>
+                                <X size={20} /> {t('common.cancel')}
+                            </button>
+                        )}
                         <button
-                            onClick={handleConnectAndSave}
-                            disabled={loading || btnDisabled || aeroCryptConfirmMismatch}
-                            className={`${showCancelSaveAsNew ? 'flex-1' : 'w-full'} py-3 rounded-lg font-medium text-white cursor-pointer active:scale-[0.98] transition-all flex items-center justify-center gap-2 shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.3)] disabled:opacity-50 ${loading ? 'bg-gray-400 !cursor-not-allowed' : buttonColorClass}`}
+                            onClick={saveOverride || handleConnectAndSave}
+                            disabled={saveOverride ? (loading || btnDisabled) : (loading || btnDisabled || aeroCryptConfirmMismatch)}
+                            className={`${(showCancelSaveAsNew || cancelOverride) ? 'flex-1' : 'w-full'} py-3 rounded-lg font-medium text-white cursor-pointer active:scale-[0.98] transition-all flex items-center justify-center gap-2 shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.3)] disabled:opacity-50 ${loading ? 'bg-gray-400 !cursor-not-allowed' : buttonColorClass}`}
                         >
                             {loading ? (
                                 <><div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> {t('connection.connecting')}</>
@@ -3423,7 +3518,18 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                 provider={protocol as 'googledrive' | 'googlephotos' | 'dropbox' | 'onedrive' | 'box' | 'pcloud' | 'zohoworkdrive' | 'yandexdisk'}
                                 initialLocalPath={quickConnectDirs.localDir}
                                 onLocalPathChange={(path) => onQuickConnectDirsChange({ ...quickConnectDirs, localDir: path })}
-                                rightColumn={renderRightColumn({ disabled: false, buttonColorClass: '', hideSaveButton: true })}
+                                rightColumn={renderRightColumn(
+                                    editingProfileId
+                                        ? {
+                                            disabled: !oauthEditHasChanges(),
+                                            buttonColorClass: 'bg-green-600 hover:bg-green-700',
+                                            hideSaveButton: false,
+                                            saveOverride: handleOAuthMetadataSave,
+                                            cancelOverride: handleOAuthCancel,
+                                            buttonText: (<><Save size={18} /> {t('common.save')}</>),
+                                        }
+                                        : { disabled: false, buttonColorClass: '', hideSaveButton: true },
+                                )}
                                 saveConnection={saveConnection}
                                 onSaveConnectionChange={setSaveConnection}
                                 connectionName={connectionName}

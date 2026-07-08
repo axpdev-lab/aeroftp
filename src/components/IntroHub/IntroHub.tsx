@@ -451,11 +451,15 @@ export function IntroHub(props: IntroHubProps) {
                             onQuickConnectDirsChange={(dirs) => updateFormTabDirs(activeFormTab.id, dirs)}
                             onTabLabelChange={(name) => updateFormTabLabel(activeFormTab.id, name)}
                             editingProfile={activeFormTab.editingProfile}
-                            onConnect={() => {
-                                // Pass params directly to avoid stale React state (#81)
+                            onConnect={(overrideParams) => {
+                                // Pass params directly to avoid stale React state (#81).
+                                // Forward the override ConnectionScreen hands us (it carries
+                                // savedServerId for a linked OAuth connect) so connectToFtp can
+                                // title the tab and set the local dir from the saved profile
+                                // (profile = source of truth); fall back to the form-tab params.
                                 onConnectionParamsChange(activeFormTab.connectionParams);
                                 onQuickConnectDirsChange(activeFormTab.quickConnectDirs);
-                                onConnect(activeFormTab.connectionParams);
+                                onConnect(overrideParams || activeFormTab.connectionParams);
                                 handleCloseFormTab(activeFormTab.id);
                             }}
                             onSavedServerConnect={async (params, initialPath, localInitialPath) => {

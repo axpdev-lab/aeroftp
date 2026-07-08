@@ -104,7 +104,11 @@ export const PROVIDER_MODE_GROUPS: ProviderModeGroup[] = [
         headerLabel: 'FileLu Modes',
         modes: [
             {
-                providerId: 'filelu',
+                // Preset-less like every other group's native mode (Filen, Koofr,
+                // OpenDrive, MEGA): matched by protocol so the FILELU MODES tabs also
+                // appear when entering via the Native API discover preset (which sets
+                // no providerId). Declaring providerId:'filelu' here forced the strict
+                // providerId match, which never fired on the native entry point.
                 protocol: 'filelu',
                 icon: <Key size={14} />,
                 activeColor: 'text-sky-500',
