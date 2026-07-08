@@ -17818,6 +17818,7 @@ pub fn run() {
             provider_commands::provider_go_up,
             provider_commands::provider_pwd,
             provider_commands::provider_download_file,
+            provider_commands::provider_detect_aero_remote,
             provider_commands::provider_download_folder,
             provider_commands::provider_upload_folder,
             provider_commands::provider_upload_file,

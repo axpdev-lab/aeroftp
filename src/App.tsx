@@ -275,7 +275,7 @@ import {
   Folder, FileText, Globe, HardDrive, Settings, Search, Eye, Link2, Unlink, Shield, ShieldOff, Cloud,
   Archive, Image, Video, Music, FileType, Code, Database, Clock,
   Copy, Clipboard, ClipboardPaste, ClipboardList, Scissors, ExternalLink, List, LayoutGrid, CheckCircle2, AlertTriangle, Share2, Send, Info,
-  Lock, Unlock, Server, XCircle, History, Users, FolderSync, Replace, LogOut, PanelLeft, Rows3, Zap,
+  Lock, LockOpen, Unlock, Server, XCircle, History, Users, FolderSync, Replace, LogOut, PanelLeft, Rows3, Zap,
   MoreHorizontal, Tag, Bot, Terminal, Star, MessageSquare, Package, FileSpreadsheet, Presentation, LinkIcon, GitCommit, ArrowRight, ArrowRightLeft, Columns2
 } from 'lucide-react';
 
@@ -385,6 +385,8 @@ import type { TrashItem, FolderSizeResult, LocalTab } from './types/aerofile';
 
 // Utilities
 import { formatBytes, formatSpeed, formatETA, formatDate } from './utils';
+import { useArchiveMeta } from './hooks/useArchiveMeta';
+import { formatArchiveCipher } from './utils/archiveCipher';
 import { useIconTheme, getDefaultIconTheme } from './hooks/useIconTheme';
 import { getIconThemeProvider } from './utils/iconThemes';
 import { logger } from './utils/logger';
@@ -933,6 +935,14 @@ const App: React.FC = () => {
     },
     disabled: inlineRename?.isRemote === true,
   });
+  // Snap the remote list back to the top when navigating into a different remote
+  // folder (same persistent-scroll-container issue as the local panel): without
+  // this, entering a shorter folder while scrolled down lands past the rows and
+  // shows blank until you scroll up. Keyed on the remote path so a refresh keeps
+  // your position and only a real navigation resets it.
+  useEffect(() => {
+    if (remoteFileScrollRef.current) remoteFileScrollRef.current.scrollTop = 0;
+  }, [currentRemotePath]);
   const [propertiesDialog, setPropertiesDialog] = useState<FileProperties | null>(null);
   const [multiPropertiesDialog, setMultiPropertiesDialog] = useState<MultiFileProperties | null>(null);
   const [showAboutDialog, setShowAboutDialog] = useState(false);
@@ -5180,6 +5190,47 @@ interface UpdateVerificationInfo {
     ? TRANSFER_SPEED_PRESETS[effectiveTransferSpeedPreset].channels
     : 1;
   const effectiveTransferSpeedLabel = `${transferPresetLabelMap[effectiveTransferSpeedPreset]} ${TRANSFER_SPEED_PRESETS[effectiveTransferSpeedPreset].channels}x`;
+
+  // Proactive archive/encryption surfacing for the REMOTE panel, mirroring the
+  // local file browser's padlock + Encryption column + AeroVault generation chip.
+  // Phase A detects only our own head-magic container formats (.aerovault,
+  // .aerozip, sealed .aeroftp bundles) on a remote, and only on transports that can
+  // range-read the header without downloading the whole file (SFTP, FTP/FTPS, S3,
+  // WebDAV, Backblaze B2, Koofr); every other provider degrades to no badge.
+  // Gated on a lock-bearing surface being visible so the plain list costs nothing.
+  const remoteArchiveCapable = !!activeTransferProtocol
+    && ['sftp', 'ftp', 'ftps', 's3', 'webdav', 'backblaze', 'koofr'].includes(activeTransferProtocol);
+  const remoteArchiveMetaEnabled = remoteArchiveCapable && !!(
+    remoteColumns.config.visibility.type ||
+    remoteColumns.config.visibility.encryption ||
+    viewMode === 'grid' ||
+    viewMode === 'large'
+  );
+  const archiveMetaOfRemote = useArchiveMeta(sortedRemoteFiles, remoteArchiveMetaEnabled, true);
+  // Lock state for a remote archive icon in the grid / large-icons views, reusing
+  // the same detection cache as the remote list-view padlock.
+  const remoteArchiveLockOf = (file: RemoteFile): { encrypted: boolean; weak: boolean } | null => {
+    const meta = archiveMetaOfRemote(file);
+    if (!meta || meta.status !== 'done') return null;
+    const weak = meta.encrypted && meta.cipher ? !formatArchiveCipher(meta.cipher).strong : false;
+    return { encrypted: meta.encrypted, weak };
+  };
+  // Small lock badge overlaid on a remote card icon (grid view), mirroring the
+  // local renderCardLock: emerald closed for a strong cipher, amber for weak
+  // ZipCrypto, gray open for a detectable but unprotected archive.
+  const renderRemoteCardLock = (file: RemoteFile): React.ReactNode => {
+    const lock = remoteArchiveLockOf(file);
+    if (!lock) return null;
+    const cls = lock.encrypted
+      ? (lock.weak ? 'text-amber-500' : 'text-emerald-600 dark:text-emerald-400')
+      : 'text-gray-400';
+    const Icon = lock.encrypted ? Lock : LockOpen;
+    return (
+      <span className="absolute -bottom-0.5 -right-0.5 rounded-full bg-white/90 dark:bg-gray-900/90 p-0.5 shadow-sm ring-1 ring-black/5 dark:ring-white/10">
+        <Icon size={11} className={cls} aria-label={lock.encrypted ? t('browser.encrypted') : t('browser.notEncrypted')} />
+      </span>
+    );
+  };
 
   const cycleTransferSpeedPreset = useCallback(() => {
     if (!supportsParallelTransferPresets) {
@@ -15577,8 +15628,29 @@ interface UpdateVerificationInfo {
                                 switch (c.id) {
                                   case 'size':
                                     return <td key="size" className="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">{file.size ? formatBytes(file.size) : (!file.is_dir && file.size === 0 ? <span title={t('toast.zeroByteWarning')}>&#9888; 0 B</span> : '-')}</td>;
-                                  case 'type':
-                                    return <td key="type" className="hidden xl:table-cell px-3 py-2 text-xs text-gray-500 uppercase">{file.is_dir ? t('browser.folderType') : (file.name.includes('.') ? file.name.split('.').pop() : '-')}</td>;
+                                  case 'type': {
+                                    const meta = file.is_dir ? undefined : archiveMetaOfRemote(file);
+                                    const padlock = meta?.status === 'done'
+                                      ? (meta.encrypted
+                                          ? <Lock size={12} className={`shrink-0 ${meta.cipher && !formatArchiveCipher(meta.cipher).strong ? 'text-amber-500' : 'text-emerald-600 dark:text-emerald-400'}`} aria-label={t('browser.encrypted')} />
+                                          : <LockOpen size={12} className="shrink-0 text-gray-400" aria-label={t('browser.notEncrypted')} />)
+                                      : null;
+                                    const vaultChip = meta?.status === 'done' && meta.vaultVersion
+                                      ? <span className="shrink-0 px-1 py-0.5 rounded text-[9px] font-semibold leading-none bg-violet-500/15 text-violet-700 dark:text-violet-300 normal-case">{meta.vaultVersion}</span>
+                                      : null;
+                                    return <td key="type" className="hidden xl:table-cell px-3 py-2 text-xs text-gray-500 uppercase"><span className="flex items-center gap-1">{padlock}<span className="truncate">{file.is_dir ? t('browser.folderType') : (file.name.includes('.') ? file.name.split('.').pop() : '-')}</span>{vaultChip}</span></td>;
+                                  }
+                                  case 'encryption': {
+                                    const meta = file.is_dir ? undefined : archiveMetaOfRemote(file);
+                                    let content: React.ReactNode = <span className="text-gray-400">-</span>;
+                                    if (meta?.status === 'loading') {
+                                      content = <Loader2 size={12} className="animate-spin text-gray-400" />;
+                                    } else if (meta?.status === 'done' && meta.encrypted && meta.cipher) {
+                                      const c = formatArchiveCipher(meta.cipher);
+                                      content = <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold tracking-wide ${c.strong ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300' : 'bg-amber-500/15 text-amber-700 dark:text-amber-300'}`} title={c.strong ? undefined : t('contextMenu.zipCryptoLegacy')}>{c.label}</span>;
+                                    }
+                                    return <td key="encryption" className="px-4 py-2 text-xs">{content}</td>;
+                                  }
                                   case 'permissions':
                                     return <td key="permissions" className="hidden xl:table-cell px-3 py-2"><FeatureBadge value={file.permissions} locked={isPasswordProtectedFile(file)} watermarked={file.metadata?.watermarked === 'true'} /></td>;
                                   case 'modified':
@@ -15597,6 +15669,7 @@ interface UpdateVerificationInfo {
                       /* Large Icons View */
                       <LargeIconsGrid
                         files={sortedRemoteFiles as any}
+                        archiveLockOf={remoteArchiveLockOf as any}
                         selectedFiles={selectedRemoteFiles}
                         currentPath={currentRemotePath}
                         onFileClick={(file, e) => {
@@ -15741,6 +15814,7 @@ interface UpdateVerificationInfo {
                             ) : (
                               <div className="file-grid-icon">
                                 {iconProvider.getFileIcon(file.name).icon}
+                                {renderRemoteCardLock(file)}
                               </div>
                             )}
                             {inlineRename?.path === file.path && inlineRename?.isRemote ? (

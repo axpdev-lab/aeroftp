@@ -11,7 +11,7 @@
  * a pure rendering extraction for maintainability.
  */
 
-import React, { useRef } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import {
   RefreshCw, Search, HardDrive, AlertTriangle, X, ClipboardList, FolderUp, Loader2,
@@ -445,6 +445,16 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
     },
     disabled: isTrashView || inlineRename !== null,
   });
+
+  // Reset the scroll position to the top when navigating into a different folder.
+  // The scroll container is a persistent DOM element reused across navigations, so
+  // without this it keeps the previous folder's scrollTop: entering a shorter folder
+  // while scrolled down lands the view past the (now fewer) rows, showing blank until
+  // you scroll up. Keyed on the folder path so a plain refresh of the same folder
+  // keeps your position; only a real navigation snaps back to the top.
+  useEffect(() => {
+    if (fileScrollRef.current) fileScrollRef.current.scrollTop = 0;
+  }, [currentPath]);
 
   const handleFileClick = (e: React.MouseEvent, file: LocalFile, index: number) => {
     if (file.name === '..') return;

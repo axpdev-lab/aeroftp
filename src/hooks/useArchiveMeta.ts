@@ -53,8 +53,10 @@ const CACHE = new Map<string, CachedMeta>();
 const MAX_DETECT = 400;
 const CONCURRENCY = 8;
 
-function cacheKey(f: FileLike): string {
-    return `${f.path}|${f.size ?? ''}|${f.modified ?? ''}`;
+function cacheKey(f: FileLike, remote: boolean): string {
+    // Scope by local/remote so a local path and a remote path that happen to
+    // collide (e.g. both "/foo/bar.aerovault") never share a cache entry.
+    return `${remote ? 'r' : 'l'}|${f.path}|${f.size ?? ''}|${f.modified ?? ''}`;
 }
 
 /**
@@ -70,9 +72,15 @@ type DetectPlan =
     | { via: 'aero' }
     | { via: 'sealed' };
 
-function detectionPlan(name: string): DetectPlan | null {
+function detectionPlan(name: string, remote = false): DetectPlan | null {
     const kind = archiveKindForName(name);
-    if (kind === 'zip' || kind === 'sevenz' || kind === 'rar') return { via: 'archive', kind };
+    if (kind === 'zip' || kind === 'sevenz' || kind === 'rar') {
+        // Third-party ZIP/7z/RAR live-detection on a remote needs head+tail ranged
+        // reads (their index is at the file tail) and is a later phase; on remote we
+        // surface only our own head-magic container formats for now. Locally it is
+        // the full path-based detector.
+        return remote ? null : { via: 'archive', kind };
+    }
     const lower = name.toLowerCase();
     if (lower.endsWith('.aerovault') || lower.endsWith('.aerozip')) return { via: 'aero' };
     // Our exported bundles are always AES-256-GCM encrypted (order matters:
@@ -89,15 +97,36 @@ type DetectResult = {
 };
 
 /** Resolve one file's encryption + compression (+ AeroVault version) metadata via
- *  the backend path its plan selects. */
-function runDetection(plan: DetectPlan, path: string): Promise<DetectResult> {
+ *  the backend path its plan selects. `remote` routes the container sniff through
+ *  the provider ranged-read command (which fetches only the header, never the whole
+ *  file) instead of the local filesystem detector. */
+function runDetection(plan: DetectPlan, path: string, remote: boolean): Promise<DetectResult> {
     if (plan.via === 'archive') {
+        // Remote plans never carry `via: 'archive'` (detectionPlan gates it), so this
+        // is always the local filesystem detector.
         return invoke<{ encrypted: boolean; cipher: string | null; compression: string | null }>(
             'detect_archive_meta',
             { archivePath: path, kind: plan.kind },
         ).then((m) => ({ ...m, vaultVersion: null }));
     }
     if (plan.via === 'aero') {
+        if (remote) {
+            // Ranged header sniff over the provider: same classification as the local
+            // detect_aero_container + detect_aero_vault_version, no whole-file fetch.
+            // A NotSupported provider rejects -> cached as unknown -> no badge.
+            return invoke<{ container: string | null; version: string | null }>(
+                'provider_detect_aero_remote',
+                { remotePath: path },
+            ).then(({ container, version }) => {
+                if (container === 'zip') {
+                    return { encrypted: false, cipher: null, compression: 'Zstd', vaultVersion: null };
+                }
+                if (container === 'vault') {
+                    return { encrypted: true, cipher: 'AES-256', compression: 'Zstd', vaultVersion: version ?? null };
+                }
+                throw new Error('not an aero container');
+            });
+        }
         // detect_aero_container sniffs the AeroVault family header: "vault" is an
         // encrypted AES-256 container, "zip" is the plaintext .aerozip lane, null
         // is not one of ours (renamed/corrupt) -> undetectable, no badge. Both
@@ -124,7 +153,7 @@ function runDetection(plan: DetectPlan, path: string): Promise<DetectResult> {
     return Promise.resolve({ encrypted: true, cipher: 'AES-256', compression: null, vaultVersion: null });
 }
 
-export function useArchiveMeta(files: FileLike[], enabled: boolean) {
+export function useArchiveMeta(files: FileLike[], enabled: boolean, remote = false) {
     const [version, setVersion] = useState(0);
     const inflight = useRef<Set<string>>(new Set());
 
@@ -132,10 +161,10 @@ export function useArchiveMeta(files: FileLike[], enabled: boolean) {
         if (!enabled) return;
         let cancelled = false;
         const targets = files
-            .filter((f) => !f.is_dir && detectionPlan(f.name))
+            .filter((f) => !f.is_dir && detectionPlan(f.name, remote))
             .slice(0, MAX_DETECT)
             .filter((f) => {
-                const k = cacheKey(f);
+                const k = cacheKey(f, remote);
                 return !CACHE.has(k) && !inflight.current.has(k);
             });
         if (targets.length === 0) return;
@@ -148,11 +177,11 @@ export function useArchiveMeta(files: FileLike[], enabled: boolean) {
         const pump = () => {
             while (active < CONCURRENCY && idx < targets.length) {
                 const f = targets[idx++];
-                const k = cacheKey(f);
-                const plan = detectionPlan(f.name)!;
+                const k = cacheKey(f, remote);
+                const plan = detectionPlan(f.name, remote)!;
                 inflight.current.add(k);
                 active++;
-                runDetection(plan, f.path)
+                runDetection(plan, f.path, remote)
                     .then((meta) => {
                         CACHE.set(k, {
                             encrypted: !!meta.encrypted,
@@ -187,12 +216,12 @@ export function useArchiveMeta(files: FileLike[], enabled: boolean) {
         return () => {
             cancelled = true;
         };
-    }, [files, enabled]);
+    }, [files, enabled, remote]);
 
     return useCallback(
         (f: FileLike): ArchiveMetaState | undefined => {
-            if (!enabled || f.is_dir || !detectionPlan(f.name)) return undefined;
-            const hit = CACHE.get(cacheKey(f));
+            if (!enabled || f.is_dir || !detectionPlan(f.name, remote)) return undefined;
+            const hit = CACHE.get(cacheKey(f, remote));
             if (!hit) return { status: 'loading' };
             if (!hit.known) return { status: 'unknown' };
             return {
@@ -205,6 +234,6 @@ export function useArchiveMeta(files: FileLike[], enabled: boolean) {
         },
         // version bumps as results land, giving the lookup a fresh identity so
         // consumers re-render and read the newly-cached entries.
-        [enabled, version],
+        [enabled, version, remote],
     );
 }

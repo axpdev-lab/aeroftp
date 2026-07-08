@@ -1956,6 +1956,88 @@ async fn run_dag_upload_leaf(
     }
 }
 
+/// Result of a remote AeroVault-family header sniff: `container` is `"vault"`
+/// (encrypted AES-256) / `"zip"` (plaintext .aerozip lane) / `None`, and
+/// `version` is the AeroVault generation `"v2"`/`"v3"`/`"v4"`/`None`. Mirrors what
+/// the local `detect_aero_container` + `detect_aero_vault_version` return so the
+/// frontend maps it exactly like a local file.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AeroRemoteMeta {
+    pub container: Option<String>,
+    pub version: Option<String>,
+}
+
+/// Header window fetched to sniff our own container formats on a remote. Their
+/// magic/version live in the first bytes, so this stays tiny relative to the file;
+/// it is generous enough to also cover a typical AeroVault v3 header plus its
+/// embedded Error-Correction extension directory so the `v4` chip still resolves.
+/// If the EC directory sits beyond this window the version simply degrades to
+/// `v3` on remote (the encryption badge only needs the first 12 bytes).
+const AERO_REMOTE_HEADER_BYTES: u64 = 256 * 1024;
+
+/// Remote counterpart of `detect_aero_container` + `detect_aero_vault_version`.
+///
+/// Fetches only the file header via the provider's ranged read (`read_range`,
+/// offset 0), writes it to a temp copy, and reuses the existing, tested path-based
+/// detectors, so an `.aerovault` / `.aerozip` / renamed AeroVault on a
+/// range-capable remote (SFTP, FTP/FTPS, S3, WebDAV, Backblaze B2, Koofr) shows the
+/// same padlock + generation chip as a local file, with no whole-file download.
+///
+/// Providers that cannot range-read (E2EE like MEGA/Filen/Internxt, the crypt
+/// overlay, or a not-yet-wired HTTP backend) return `NotSupported` from
+/// `read_range`; this surfaces as an `Err` that the caller catches and degrades to
+/// "no badge". Never downloads the whole file.
+#[tauri::command]
+pub async fn provider_detect_aero_remote(
+    state: State<'_, ProviderState>,
+    remote_path: String,
+) -> Result<AeroRemoteMeta, String> {
+    let bytes = {
+        let mut provider_lock = state.provider.lock().await;
+        let provider = provider_lock
+            .as_mut()
+            .ok_or("Not connected to any provider")?;
+        // Cap the header read at the real file size so we never over-ask on a tiny
+        // container; size(0) (unknown) falls back to the full header window.
+        let size = provider.size(&remote_path).await.unwrap_or(0);
+        let want = if size > 0 {
+            size.min(AERO_REMOTE_HEADER_BYTES)
+        } else {
+            AERO_REMOTE_HEADER_BYTES
+        };
+        provider
+            .read_range(&remote_path, 0, want)
+            .await
+            .map_err(|e| format!("remote header read: {e}"))?
+    };
+
+    // Reuse the path-based detectors verbatim on a temp copy of the header.
+    let tmp = std::env::temp_dir().join(format!(
+        "aeroftp-hdr-{}-{}.bin",
+        std::process::id(),
+        chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
+    ));
+    tokio::fs::write(&tmp, &bytes)
+        .await
+        .map_err(|e| format!("temp header write: {e}"))?;
+    let tmp_str = tmp.to_string_lossy().to_string();
+
+    let container = crate::aerovault_v3::detect_aero_container(tmp_str.clone())
+        .await
+        .unwrap_or(None);
+    let version = if container.as_deref() == Some("vault") {
+        crate::aerovault_v3::detect_aero_vault_version(tmp_str.clone())
+            .await
+            .unwrap_or(None)
+    } else {
+        None
+    };
+    let _ = tokio::fs::remove_file(&tmp).await;
+
+    Ok(AeroRemoteMeta { container, version })
+}
+
 /// Download a file from the remote server
 #[allow(clippy::too_many_arguments)]
 #[tauri::command]
