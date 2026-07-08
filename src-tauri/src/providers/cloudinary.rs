@@ -808,6 +808,60 @@ impl StorageProvider for CloudinaryProvider {
         response_bytes_with_limit(resp, MAX_DOWNLOAD_TO_BYTES).await
     }
 
+    /// Ranged read for remote archive/encryption surfacing (header/tail windows).
+    /// Cloudinary's delivery CDN serves byte ranges over a plain HTTP `Range`
+    /// header; if a range is ever ignored (200 OK), slice the full body locally.
+    async fn read_range(
+        &mut self,
+        remote_path: &str,
+        offset: u64,
+        len: u64,
+    ) -> Result<Vec<u8>, ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+        if len == 0 {
+            return Ok(Vec::new());
+        }
+        let entry = self.stat(remote_path).await?;
+        if entry.is_dir {
+            return Err(ProviderError::InvalidPath(
+                "Cannot read a range from a directory".to_string(),
+            ));
+        }
+        let url = entry.metadata.get("secure_url").cloned().ok_or_else(|| {
+            ProviderError::NotFound("Cloudinary delivery URL missing".to_string())
+        })?;
+        validate_download_url(&url)?;
+        let end = offset + len - 1; // HTTP Range is inclusive
+        let resp = self
+            .client
+            .get(&url)
+            .header("Range", format!("bytes={}-{}", offset, end))
+            .send()
+            .await
+            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+        let status = resp.status();
+        if !status.is_success() {
+            return Err(ProviderError::TransferFailed(format!(
+                "Range download failed: HTTP {}",
+                status
+            )));
+        }
+        let bytes = response_bytes_with_limit(resp, MAX_DOWNLOAD_TO_BYTES).await?;
+        if status == StatusCode::OK {
+            if offset >= bytes.len() as u64 {
+                Ok(Vec::new())
+            } else {
+                let start = offset as usize;
+                let stop = std::cmp::min(start.saturating_add(len as usize), bytes.len());
+                Ok(bytes[start..stop].to_vec())
+            }
+        } else {
+            Ok(bytes)
+        }
+    }
+
     async fn upload(
         &mut self,
         local_path: &str,

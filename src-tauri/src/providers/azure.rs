@@ -1318,6 +1318,66 @@ impl StorageProvider for AzureProvider {
         super::response_bytes_with_limit(resp, super::MAX_DOWNLOAD_TO_BYTES).await
     }
 
+    /// Ranged read for remote archive/encryption surfacing (header/tail windows).
+    /// Azure Blob honours the range via the signed `x-ms-range` header: because
+    /// `build_canonical_headers` folds every `x-ms-*` header into the SharedKey
+    /// signature, no separate signing step is needed. Falls back to a local slice
+    /// if the service ever returns the whole blob (200 OK) instead of 206.
+    async fn read_range(
+        &mut self,
+        remote_path: &str,
+        offset: u64,
+        len: u64,
+    ) -> Result<Vec<u8>, ProviderError> {
+        if len == 0 {
+            return Ok(Vec::new());
+        }
+        let blob_path = self.resolve_blob_path(remote_path);
+        let url = self.blob_url(&blob_path);
+
+        let mut headers = HeaderMap::new();
+        let now = chrono::Utc::now()
+            .format("%a, %d %b %Y %H:%M:%S GMT")
+            .to_string();
+        headers.insert(
+            "x-ms-date",
+            HeaderValue::from_str(&now)
+                .map_err(|e| ProviderError::Other(format!("Invalid header value: {}", e)))?,
+        );
+        headers.insert("x-ms-version", HeaderValue::from_static(API_VERSION));
+        let end = offset + len - 1; // HTTP Range is inclusive
+        headers.insert(
+            "x-ms-range",
+            HeaderValue::from_str(&format!("bytes={}-{}", offset, end))
+                .map_err(|e| ProviderError::Other(format!("Invalid range header: {}", e)))?,
+        );
+
+        let resp = self
+            .send_with_auth_and_retry(reqwest::Method::GET, &url, headers, 0, None)
+            .await?;
+
+        let status = resp.status();
+        if !status.is_success() {
+            return Err(ProviderError::TransferFailed(format!(
+                "Range download failed: {}",
+                status
+            )));
+        }
+        let bytes = super::response_bytes_with_limit(resp, super::MAX_DOWNLOAD_TO_BYTES).await?;
+        if status == reqwest::StatusCode::OK {
+            // Server ignored the range and returned the full blob: slice locally.
+            if offset >= bytes.len() as u64 {
+                Ok(Vec::new())
+            } else {
+                let start = offset as usize;
+                let stop = std::cmp::min(start.saturating_add(len as usize), bytes.len());
+                Ok(bytes[start..stop].to_vec())
+            }
+        } else {
+            Ok(bytes)
+        }
+    }
+
     /// AZ-001: Upload with block upload support for files >100MB.
     /// AZ-003: Reports upload progress.
     /// - Files <= 100MB: Single Put Blob (streaming)
