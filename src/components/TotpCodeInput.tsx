@@ -59,8 +59,11 @@ export const TotpCodeInput: React.FC<TotpCodeInputProps> = ({
       onChange(arr.join('').replace(/\D/g, '').slice(0, length));
       return;
     }
+    // fillFrom returns the next box index (p advanced past the written digit),
+    // so focus it directly. Same as handlePaste; adding +1 here double-advanced
+    // and skipped a box on every single-digit keystroke.
     const landed = fillFrom(idx, only);
-    if (only.length >= 1) focusBox(landed + (only.length === 1 ? 1 : 0));
+    focusBox(landed);
   };
 
   const handleKeyDown = (idx: number, e: React.KeyboardEvent<HTMLInputElement>) => {
