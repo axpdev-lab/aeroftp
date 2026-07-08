@@ -226,7 +226,20 @@ struct CacheEntry {
     cached_at: Instant,
 }
 
-const CACHE_TTL: Duration = Duration::from_secs(300); // 5 min
+/// TTL for a POSITIVE capability (rsync present): re-probe occasionally so a
+/// server that gains/loses rsync is eventually re-evaluated.
+const CACHE_TTL_OK: Duration = Duration::from_secs(300); // 5 min
+/// TTL for a NEGATIVE result (rsync absent / probe failed or timed out). Kept far
+/// longer than a single probe can cost so a remote without rsync is not re-probed
+/// on every transfer. #398: an SFTP-only server accepts the exec channel but never
+/// returns, so the probe used to hang ~10 min per transfer; a bounded, long-cached
+/// negative verdict makes it a one-time few-second cost per session.
+const CACHE_TTL_ERR: Duration = Duration::from_secs(1800); // 30 min
+/// Hard bound on a single remote capability probe. Without it the russh exec probe
+/// (whose inactivity timeout is defeated by the keepalive) blocks until the remote
+/// tears the connection, minutes later. On elapse we cache a negative result so the
+/// transfer falls back to plain SFTP immediately and stays fast (#398).
+const PROBE_TIMEOUT: Duration = Duration::from_secs(8);
 
 static PROBE_CACHE: LazyLock<TokioMutex<HashMap<String, CacheEntry>>> =
     LazyLock::new(|| TokioMutex::new(HashMap::new()));
@@ -245,7 +258,12 @@ async fn probe_capability_cached(
     {
         let cache = PROBE_CACHE.lock().await;
         if let Some(entry) = cache.get(session_key) {
-            if now.duration_since(entry.cached_at) < CACHE_TTL {
+            let ttl = if entry.capability.is_ok() {
+                CACHE_TTL_OK
+            } else {
+                CACHE_TTL_ERR
+            };
+            if now.duration_since(entry.cached_at) < ttl {
                 return match &entry.capability {
                     Ok(cap) => Ok(cap.clone()),
                     Err(e) => Err(e.to_string()),
@@ -254,7 +272,16 @@ async fn probe_capability_cached(
         }
     }
 
-    let fresh = transport.probe_remote().await;
+    // Bound the probe so a non-responding remote (SFTP-only, no rsync) cannot stall
+    // the transfer; a timeout is cached as a negative result (below) exactly like a
+    // real "rsync not available", so the fallback is immediate on every later file.
+    let fresh = match timeout(PROBE_TIMEOUT, transport.probe_remote()).await {
+        Ok(res) => res,
+        Err(_) => Err(RsyncError::ProbeFailed(format!(
+            "rsync capability probe timed out after {}s (remote likely has no rsync)",
+            PROBE_TIMEOUT.as_secs()
+        ))),
+    };
     let report = match &fresh {
         Ok(cap) => Ok(cap.clone()),
         Err(e) => Err(e.to_string()),
@@ -707,6 +734,12 @@ pub async fn invalidate_session_cache(session_key: &str) {
 mod tests {
     use super::*;
 
+    // The probe cache is a process-global static; tests that clear it and assert
+    // on its contents must not interleave, or one test's `clear_probe_cache()`
+    // wipes another's mid-test entry. Every cache-touching test acquires this
+    // guard first so they run serially with respect to the cache.
+    static PROBE_CACHE_TEST_GUARD: LazyLock<TokioMutex<()>> = LazyLock::new(|| TokioMutex::new(()));
+
     #[test]
     fn hard_rejection_transport_drop_demotes_to_classic_fallback() {
         // The live WD MyCloud case: the remote closed the exec channel during
@@ -818,6 +851,7 @@ mod tests {
             }
         }
 
+        let _cache_guard = PROBE_CACHE_TEST_GUARD.lock().await;
         clear_probe_cache().await;
         let transport = HardRejectingTransport;
         let r = transfer_with_delta(
@@ -873,6 +907,7 @@ mod tests {
 
     #[tokio::test]
     async fn probe_cache_isolates_sessions() {
+        let _cache_guard = PROBE_CACHE_TEST_GUARD.lock().await;
         clear_probe_cache().await;
         // We can't run a real probe without an SSH handle; this test just verifies
         // the cache map enforces per-key isolation (invalidate one, other keeps state).
@@ -894,6 +929,7 @@ mod tests {
         };
         let transport = RsyncBinaryTransport::new(cfg, None);
         // Fresh cache for isolation (other tests may have touched it).
+        let _cache_guard = PROBE_CACHE_TEST_GUARD.lock().await;
         clear_probe_cache().await;
 
         let r = transfer_with_delta(
@@ -947,6 +983,7 @@ mod tests {
             }
         }
 
+        let _cache_guard = PROBE_CACHE_TEST_GUARD.lock().await;
         clear_probe_cache().await;
         let status =
             check_delta_eligibility_with_transport(&ReadyTransport, "test-eligibility-ready").await;
@@ -986,6 +1023,7 @@ mod tests {
             }
         }
 
+        let _cache_guard = PROBE_CACHE_TEST_GUARD.lock().await;
         clear_probe_cache().await;
         let status = check_delta_eligibility_with_transport(
             &MissingRemoteTransport,
@@ -997,5 +1035,71 @@ mod tests {
         assert!(reason.contains("remote delta unavailable"));
         assert!(!reason.contains("/home/alice"));
         assert!(reason.contains("<redacted>"));
+    }
+
+    // #398: a rsync-less remote must be probed at most once per session, not on
+    // every transfer. The failed probe is cached (negative TTL), so a second
+    // transfer through the same session key falls back immediately without a
+    // second probe (which, on the real russh path, was the ~10-minute hang).
+    #[tokio::test]
+    async fn probe_failure_is_cached_and_not_reprobed() {
+        use crate::delta_transport::DeltaTransport;
+        use async_trait::async_trait;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        struct CountingFailTransport {
+            probes: AtomicUsize,
+        }
+
+        #[async_trait]
+        impl DeltaTransport for CountingFailTransport {
+            fn name(&self) -> &'static str {
+                "counting-fail-transport"
+            }
+            async fn probe_remote(&self) -> Result<RsyncCapability, RsyncError> {
+                self.probes.fetch_add(1, Ordering::SeqCst);
+                Err(RsyncError::RemoteNotAvailable)
+            }
+            async fn probe_local(&self) -> Result<(), RsyncError> {
+                Ok(())
+            }
+            async fn download(
+                &self,
+                _remote: &str,
+                _local: &Path,
+            ) -> Result<RsyncStats, RsyncError> {
+                unreachable!("no transfer on a failed probe")
+            }
+            async fn upload(&self, _local: &Path, _remote: &str) -> Result<RsyncStats, RsyncError> {
+                unreachable!("no transfer on a failed probe")
+            }
+        }
+
+        let _cache_guard = PROBE_CACHE_TEST_GUARD.lock().await;
+        clear_probe_cache().await;
+        let transport = CountingFailTransport {
+            probes: AtomicUsize::new(0),
+        };
+        let key = "test-negative-cache-reuse";
+
+        for _ in 0..2 {
+            let r = transfer_with_delta(
+                &transport,
+                SyncDirection::Upload,
+                Path::new("/tmp/nope"),
+                "/remote/nope",
+                key,
+                None,
+            )
+            .await
+            .expect("must succeed with fallback");
+            assert!(!r.used_delta);
+        }
+
+        assert_eq!(
+            transport.probes.load(Ordering::SeqCst),
+            1,
+            "a failed remote probe must be cached, not re-run on the next transfer"
+        );
     }
 }
