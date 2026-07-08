@@ -173,6 +173,24 @@ export const formatDate = (dateStr: string | Date | null): string => {
 
     if (isNaN(date.getTime())) return String(dateStr);
 
+    // User-selectable date format (Settings > General). The pref is mirrored to
+    // `<html data-date-format>` app-wide (see App.tsx), so this plain function can
+    // read it without React state. Default 'localized' keeps the Intl path.
+    const fmt = (typeof document !== 'undefined' && document.documentElement.dataset.dateFormat) || 'localized';
+
+    if (fmt === 'iso' || fmt === 'dmy' || fmt === 'mdy') {
+        const p = (n: number) => String(n).padStart(2, '0');
+        const Y = date.getFullYear();
+        const M = p(date.getMonth() + 1);
+        const D = p(date.getDate());
+        const h = p(date.getHours());
+        const mi = p(date.getMinutes());
+        const s = p(date.getSeconds());
+        if (fmt === 'iso') return `${Y}-${M}-${D} ${h}:${mi}:${s}`;
+        if (fmt === 'dmy') return `${D}/${M}/${Y} ${h}:${mi}:${s}`;
+        return `${M}/${D}/${Y} ${h}:${mi}:${s}`; // mdy
+    }
+
     return new Intl.DateTimeFormat(getUiLocale(), {
         day: '2-digit',
         month: 'short',

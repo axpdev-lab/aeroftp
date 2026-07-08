@@ -9,6 +9,7 @@ import {
     Globe, Server, Lock, Zap, ChevronDown, ChevronRight, Copy, Check,
 } from 'lucide-react';
 import { useTranslation } from '../i18n';
+import { formatDate } from '../utils';
 import { ServerProfile, isOAuthProvider, isFourSharedProvider } from '../types';
 import { useDraggableModal } from '../hooks/useDraggableModal';
 
@@ -305,7 +306,7 @@ export const ServerHealthCheck: React.FC<ServerHealthCheckProps> = ({ servers, o
     // Copy results to clipboard
     const copyResults = useCallback(() => {
         const lines: string[] = [];
-        const date = new Date().toLocaleString();
+        const date = formatDate(new Date());
         lines.push(`AeroFTP Server Health Check: ${date}`);
         lines.push('='.repeat(60));
         lines.push('');

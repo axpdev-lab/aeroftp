@@ -10,6 +10,7 @@ import {
   Hash, Check
 } from 'lucide-react';
 import { useTranslation } from '../i18n';
+import { formatDate as formatDateFull } from '../utils';
 import { useHumanizedLog } from '../hooks/useHumanizedLog';
 
 // ─── Types ───
@@ -472,13 +473,7 @@ export function FilenNotesPanel({ isOpen, onClose }: FilenNotesPanelProps) {
 
   const formatDate = useCallback((ts: number) => {
     if (!ts) return '';
-    return new Date(ts * 1000).toLocaleDateString(undefined, {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
+    return formatDateFull(new Date(ts * 1000));
   }, []);
 
   if (!isOpen) return null;

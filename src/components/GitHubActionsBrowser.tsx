@@ -14,6 +14,7 @@ import {
 import { invoke } from '@tauri-apps/api/core';
 import { open as shellOpen } from '@tauri-apps/plugin-shell';
 import { useTranslation } from '../i18n';
+import { formatDate } from '../utils';
 import { GitHubActionsIcon } from './icons/GitHubActionsIcon';
 import { useHumanizedLog } from '../hooks/useHumanizedLog';
 import { useDraggableModal } from '../hooks/useDraggableModal';
@@ -75,7 +76,7 @@ function formatRelativeTime(dateStr: string, t: ReturnType<typeof useTranslation
   if (diff < 60) return t('cloud.justNow');
   if (diff < 3600) return t('cloud.minutesAgo', { count: Math.floor(diff / 60) });
   if (diff < 86400) return t('cloud.hoursAgo', { count: Math.floor(diff / 3600) });
-  return new Date(dateStr).toLocaleDateString();
+  return formatDate(dateStr);
 }
 
 export const GitHubActionsBrowser: React.FC<GitHubActionsBrowserProps> = ({

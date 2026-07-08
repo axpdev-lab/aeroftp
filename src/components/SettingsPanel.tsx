@@ -144,6 +144,9 @@ interface AppSettings {
     confirmBeforeDelete: boolean;
     rememberLastFolder: boolean;
     doubleClickAction: 'preview' | 'download';
+    /** How dates render app-wide (Modified column and every formatDate call).
+     *  'localized' follows the app language; the rest are fixed patterns. */
+    dateFormat: 'localized' | 'iso' | 'dmy' | 'mdy';
     // Connection
     timeoutSeconds: number;
     tlsVersion: 'auto' | '1.2' | '1.3';
@@ -217,6 +220,7 @@ const defaultSettings: AppSettings = {
     confirmBeforeDelete: true,
     rememberLastFolder: true,
     doubleClickAction: 'preview',
+    dateFormat: 'localized',
     timeoutSeconds: 30,
     tlsVersion: 'auto',
     reconnectAttempts: 3,
@@ -1116,6 +1120,17 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                 </label>
                                             </div>
                                             <p className="text-xs text-gray-500 mt-1">{t('settings.doubleClickDesc')}</p>
+                                        </div>
+
+                                        <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
+                                            <label className="block text-sm font-medium mb-2">{t('settings.dateFormat')}</label>
+                                            <select value={settings.dateFormat} onChange={(e) => updateSetting('dateFormat', e.target.value as AppSettings['dateFormat'])} className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm">
+                                                <option value="localized">{t('settings.dateFormatLocalized')}</option>
+                                                <option value="iso">2026-07-08 23:03:05</option>
+                                                <option value="dmy">08/07/2026 23:03:05</option>
+                                                <option value="mdy">07/08/2026 23:03:05</option>
+                                            </select>
+                                            <p className="text-xs text-gray-500 mt-1">{t('settings.dateFormatDesc')}</p>
                                         </div>
 
                                         <div className="pt-4 border-t border-gray-200 dark:border-gray-700">

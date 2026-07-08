@@ -600,6 +600,7 @@ const App: React.FC = () => {
     cardLayout,
     setCardLayout,
     disableUpdateChecks,
+    dateFormat,
     SETTINGS_KEY,
   } = settings;
   const fontSizeIndicator = useFontSizeShortcuts(fontSize, setFontSize);
@@ -614,6 +615,14 @@ const App: React.FC = () => {
     root.style.setProperty('--app-font-size', `${effectiveSize}px`);
     root.style.setProperty('--app-font-family', fontFamily);
   }, [fontSize, fontFamily, compactMode]);
+
+  // Mirror the user's date-format preference to <html data-date-format> so the
+  // plain formatDate() helper (no React access) can read it. Keying the effect
+  // on the `dateFormat` state also re-renders every formatDate consumer live
+  // when the pref changes (e.g. the file browser Modified column), no restart.
+  useEffect(() => {
+    document.documentElement.dataset.dateFormat = dateFormat;
+  }, [dateFormat]);
 
   const toggleSwapPanels = useCallback(async () => {
     const next = !swapPanels;

@@ -107,6 +107,11 @@ export interface AppSettings {
    *  table. 'star' = ★ (default), 'heart' = ♥ (red in the GUI). Persisted in the
    *  shared `app_settings` vault key so the CLI renders the same marker (#270). */
   favoriteMarker: 'star' | 'heart';
+  /** How dates render app-wide (file browser Modified column and everywhere
+   *  formatDate is used). 'localized' follows the app language (default), the
+   *  rest are fixed language-neutral patterns. Mirrored to
+   *  `<html data-date-format>` by App.tsx so the plain formatDate() can read it. */
+  dateFormat: 'localized' | 'iso' | 'dmy' | 'mdy';
 }
 
 export const ALL_COLUMNS = ['name', 'size', 'type', 'permissions', 'modified'];
@@ -143,6 +148,7 @@ const DEFAULTS: AppSettings = {
   discoverHealthCheck: true,
   autoStartTransfers: true,
   favoriteMarker: 'star',
+  dateFormat: 'localized',
 };
 
 export const useSettings = () => {
@@ -177,6 +183,7 @@ export const useSettings = () => {
   const [discoverHealthCheck, setDiscoverHealthCheck] = useState(DEFAULTS.discoverHealthCheck);
   const [autoStartTransfers, setAutoStartTransfers] = useState(DEFAULTS.autoStartTransfers);
   const [favoriteMarker, setFavoriteMarker] = useState<AppSettings['favoriteMarker']>(DEFAULTS.favoriteMarker);
+  const [dateFormat, setDateFormat] = useState<AppSettings['dateFormat']>(DEFAULTS.dateFormat);
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
 
   const applySettings = useCallback((parsed: Record<string, unknown>) => {
@@ -223,6 +230,9 @@ export const useSettings = () => {
     if (typeof parsed.autoStartTransfers === 'boolean') setAutoStartTransfers(parsed.autoStartTransfers);
     if (parsed.favoriteMarker === 'star' || parsed.favoriteMarker === 'heart') {
       setFavoriteMarker(parsed.favoriteMarker);
+    }
+    if (parsed.dateFormat === 'localized' || parsed.dateFormat === 'iso' || parsed.dateFormat === 'dmy' || parsed.dateFormat === 'mdy') {
+      setDateFormat(parsed.dateFormat);
     }
   }, []);
 
@@ -315,6 +325,7 @@ export const useSettings = () => {
     discoverHealthCheck,
     autoStartTransfers,
     favoriteMarker,
+    dateFormat,
     showSettingsPanel,
 
     // Setters
@@ -349,6 +360,7 @@ export const useSettings = () => {
     setDiscoverHealthCheck,
     setAutoStartTransfers,
     setFavoriteMarker,
+    setDateFormat,
     setShowSettingsPanel,
 
     // Constants

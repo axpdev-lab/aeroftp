@@ -14,6 +14,7 @@ import {
 import { invoke } from '@tauri-apps/api/core';
 import { open as shellOpen } from '@tauri-apps/plugin-shell';
 import { useTranslation } from '../i18n';
+import { formatDate as formatDateFull } from '../utils';
 import { GitHubPagesIcon } from './icons/GitHubPagesIcon';
 import { useHumanizedLog } from '../hooks/useHumanizedLog';
 import { useDraggableModal } from '../hooks/useDraggableModal';
@@ -147,7 +148,7 @@ export const GitHubPagesBrowser: React.FC<GitHubPagesBrowserProps> = ({
     if (diff < 60000) return t('cloud.justNow');
     if (diff < 3600000) return t('cloud.minutesAgo', { count: Math.floor(diff / 60000) });
     if (diff < 86400000) return t('cloud.hoursAgo', { count: Math.floor(diff / 3600000) });
-    return d.toLocaleDateString();
+    return formatDateFull(d);
   };
 
   return (
