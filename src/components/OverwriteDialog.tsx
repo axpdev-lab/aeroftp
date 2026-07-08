@@ -11,7 +11,7 @@ import * as React from 'react';
 import { useState, useEffect } from 'react';
 import { AlertTriangle, File, Clock, HardDrive, ArrowRight, X, Check, SkipForward, Edit3, PlayCircle } from 'lucide-react';
 import { useTranslation } from '../i18n';
-import { formatBytes } from '../utils/formatters';
+import { formatBytes, getUiLocale } from '../utils/formatters';
 import { Checkbox } from './ui/Checkbox';
 import { useDraggableModal } from '../hooks/useDraggableModal';
 
@@ -42,7 +42,7 @@ const formatDate = (date: Date | string | number | undefined): string => {
     if (!date) return 'Unknown';
     const d = date instanceof Date ? date : new Date(date);
     if (isNaN(d.getTime())) return 'Unknown';
-    return d.toLocaleString();
+    return d.toLocaleString(getUiLocale());
 };
 
 // Compare dates and return status

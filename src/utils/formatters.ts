@@ -90,6 +90,16 @@ export const formatETA = (seconds: number): string => {
  *   - Date object
  * Output: locale-formatted date like "17 dic 2025, 00:36" (IT) or "Dec 17, 2025, 12:36 AM" (US)
  */
+/**
+ * The app's chosen UI locale, for any user-facing date or number formatting so
+ * it follows the selected language, not the OS locale: switching the app to
+ * English must render dates in English too (e.g. "Jul" not "lug"). The i18n
+ * provider keeps `<html lang>` in sync with the selected language, so it is the
+ * live source; falls back to the browser locale before it is set (first paint).
+ */
+export const getUiLocale = (): string =>
+    (typeof document !== 'undefined' && document.documentElement.lang) || navigator.language;
+
 export const formatDate = (dateStr: string | Date | null): string => {
     if (!dateStr) return '';
 
@@ -163,8 +173,7 @@ export const formatDate = (dateStr: string | Date | null): string => {
 
     if (isNaN(date.getTime())) return String(dateStr);
 
-    // Use browser locale for formatting
-    return new Intl.DateTimeFormat(navigator.language, {
+    return new Intl.DateTimeFormat(getUiLocale(), {
         day: '2-digit',
         month: 'short',
         year: 'numeric',

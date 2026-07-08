@@ -10,6 +10,7 @@ import { PasswordInput } from './common/PasswordInput';
 import { useDraggableModal } from '../hooks/useDraggableModal';
 import { useHumanizedLog } from '../hooks/useHumanizedLog';
 import type { ProviderType } from '../types';
+import { getUiLocale } from '../utils/formatters';
 
 /** Backend response from provider_create_share_link */
 interface ShareLinkResult {
@@ -437,12 +438,12 @@ export function ShareLinkModal({ path, fileName, providerName, providerType, pro
                       {/* Metadata row */}
                       <div className="flex items-center gap-3 text-[10px] text-gray-500 dark:text-gray-400">
                         {link.created_at && (
-                          <span>{t('shareLinkModal.manageCreated')}: {new Date(link.created_at).toLocaleDateString()}</span>
+                          <span>{t('shareLinkModal.manageCreated')}: {new Date(link.created_at).toLocaleDateString(getUiLocale())}</span>
                         )}
                         {link.expires_at ? (
                           <span className="flex items-center gap-0.5">
                             <Clock size={9} />
-                            {t('shareLinkModal.manageExpires')}: {new Date(link.expires_at).toLocaleDateString()}
+                            {t('shareLinkModal.manageExpires')}: {new Date(link.expires_at).toLocaleDateString(getUiLocale())}
                           </span>
                         ) : (
                           <span className="text-green-600 dark:text-green-500">{t('shareLinkModal.manageNeverExpires')}</span>
