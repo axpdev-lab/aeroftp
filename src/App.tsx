@@ -855,6 +855,16 @@ const App: React.FC = () => {
   const remoteNavInFlightRef = useRef(false);
   const localNavInFlightRef = useRef(false);
 
+  // Batch-op freeze latch: mirrors the scanning spinner so the batch
+  // delete/upload/download triggers no-op on re-entry while an op is in flight
+  // (prevents a second click firing a duplicate op before the selection clears).
+  // Kept in sync with scanningState.active so it never sticks; the spinner's
+  // Cancel raises batchCancelledRef, the loops break, and the latch auto-clears.
+  const batchOpInFlightRef = useRef(false);
+  useEffect(() => {
+    batchOpInFlightRef.current = scanningState.active;
+  }, [scanningState.active]);
+
   // Dialogs
   const [confirmDialog, setConfirmDialog] = useState<{ message: string; onConfirm: () => void; onCancel?: () => void } | null>(null);
   const [pendingUnifiedTransferPlan, setPendingUnifiedTransferPlan] = useState<{
@@ -9614,6 +9624,7 @@ interface UpdateVerificationInfo {
   // Upload files (Selected or Dialog)
   const uploadMultipleFiles = async (filesOverride?: string[]) => {
     if (!isConnected) return;
+    if (batchOpInFlightRef.current) return; // freeze: a batch op is already in flight
 
     // Reset apply-to-all for new batch
     resetOverwriteSettings();
@@ -10175,6 +10186,7 @@ interface UpdateVerificationInfo {
   // === Bulk Operations ===
   const downloadMultipleFiles = async (filesOverride?: string[]) => {
     if (!isConnected) return;
+    if (batchOpInFlightRef.current) return; // freeze: a batch op is already in flight
     const names = filesOverride || Array.from(selectedRemoteFiles);
     if (names.length === 0) return;
 
@@ -10505,6 +10517,7 @@ interface UpdateVerificationInfo {
   };
 
   const deleteMultipleRemoteFiles = (filesOverride?: string[]) => {
+    if (batchOpInFlightRef.current) return; // freeze: a batch op is already in flight
     const names = filesOverride || Array.from(selectedRemoteFiles);
     if (names.length === 0) return;
 
@@ -10679,6 +10692,7 @@ interface UpdateVerificationInfo {
   };
 
   const deleteMultipleLocalFiles = (filesOverride?: string[], localPanelId: 'local' | 'local2' = activeLocalPanelId) => {
+    if (batchOpInFlightRef.current) return; // freeze: a batch op is already in flight
     const panel = getActiveLocalState(localPanelId);
     const names = filesOverride || Array.from(panel.selection);
     if (names.length === 0) return;
@@ -13234,7 +13248,7 @@ interface UpdateVerificationInfo {
             dialog + session inbox + its own toasts. Mounted only while the flag
             is on; unmount stops the receive loop. */}
         {aeroShareEnabled && <AeroShareHub />}
-        <ScanningToast state={scanningState} t={t} />
+        <ScanningToast state={scanningState} t={t} onCancel={() => { batchCancelledRef.current = true; }} />
         <FontSizeIndicator indicator={fontSizeIndicator} />
 
         {/* Update Available Toast with inline download */}
@@ -14935,8 +14949,8 @@ interface UpdateVerificationInfo {
                   {isConnected && showRemotePanel && (
                     <button
                       onClick={() => activePanel === 'local' ? uploadMultipleFiles() : downloadMultipleFiles()}
-                      disabled={(activePanel === 'local' ? selectedLocalFiles.size : selectedRemoteFiles.size) === 0}
-                      className={`relative px-3 py-1.5 rounded-lg text-sm flex items-center gap-1.5 transition-all ${(activePanel === 'local' ? selectedLocalFiles.size : selectedRemoteFiles.size) > 0
+                      disabled={(activePanel === 'local' ? selectedLocalFiles.size : selectedRemoteFiles.size) === 0 || scanningState.active}
+                      className={`relative px-3 py-1.5 rounded-lg text-sm flex items-center gap-1.5 transition-all ${(activePanel === 'local' ? selectedLocalFiles.size : selectedRemoteFiles.size) > 0 && !scanningState.active
                         ? 'bg-green-500 hover:bg-green-600 text-white shadow-sm hover:shadow-md'
                         : 'bg-gray-200 dark:bg-gray-600 text-gray-400 dark:text-gray-500 cursor-not-allowed'
                         }`}
@@ -14963,8 +14977,8 @@ interface UpdateVerificationInfo {
                         deleteMultipleLocalFiles(Array.from(selectedLocalFiles));
                       }
                     }}
-                    disabled={(activePanel === 'remote' ? selectedRemoteFiles.size : selectedLocalFiles.size) === 0}
-                    className={`relative px-3 py-1.5 rounded-lg text-sm flex items-center gap-1.5 transition-all ${(activePanel === 'remote' ? selectedRemoteFiles.size : selectedLocalFiles.size) > 0
+                    disabled={(activePanel === 'remote' ? selectedRemoteFiles.size : selectedLocalFiles.size) === 0 || scanningState.active}
+                    className={`relative px-3 py-1.5 rounded-lg text-sm flex items-center gap-1.5 transition-all ${(activePanel === 'remote' ? selectedRemoteFiles.size : selectedLocalFiles.size) > 0 && !scanningState.active
                       ? 'bg-red-500 hover:bg-red-600 text-white shadow-sm hover:shadow-md'
                       : 'bg-gray-200 dark:bg-gray-600 text-gray-400 dark:text-gray-500 cursor-not-allowed'
                       }`}
