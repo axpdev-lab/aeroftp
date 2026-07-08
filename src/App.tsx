@@ -847,6 +847,13 @@ const App: React.FC = () => {
   const [permissionsDialog, setPermissionsDialog] = useState<{ file: RemoteFile, visible: boolean } | null>(null);
   // Navigation counter to discard stale async responses from previous navigations
   const remoteNavCounter = useRef(0);
+  // #401: synchronous in-flight latches. A second double-click (e.g. on "Parent
+  // folder") used to stack a second navigation before the async loading state
+  // updated, overshooting the target. These refs block re-entry the instant a
+  // navigation starts; the remote spinner exposes a Cancel that clears the latch
+  // so a navigation stalled on an external/network problem never traps the user.
+  const remoteNavInFlightRef = useRef(false);
+  const localNavInFlightRef = useRef(false);
 
   // Dialogs
   const [confirmDialog, setConfirmDialog] = useState<{ message: string; onConfirm: () => void; onCancel?: () => void } | null>(null);
@@ -7430,6 +7437,12 @@ interface UpdateVerificationInfo {
       const norm = (p: string) => p.endsWith('/') && p.length > 1 ? p.slice(0, -1) : p;
       if (norm(currentRemotePath) === norm(syncBasePaths.remote)) return;
     }
+    // #401: ignore a re-entrant navigation while one is already in flight, so a
+    // second double-click cannot stack a second cd and overshoot (relative ".."
+    // on FTP would go up twice). A ref, not the async loading state, so two
+    // clicks in the same tick are both caught.
+    if (remoteNavInFlightRef.current) return;
+    remoteNavInFlightRef.current = true;
     // Increment navigation counter: used to discard stale async responses
     const navId = ++remoteNavCounter.current;
     setRemoteListLoading(true);
@@ -7531,9 +7544,24 @@ interface UpdateVerificationInfo {
       notify.error(t('common.error'), t('toast.changeDirFailed', { error: String(error) }));
     } finally {
       // Only clear if this is still the latest navigation; otherwise a faster
-      // follow-up navigation would have its spinner cleared early.
-      if (navId === remoteNavCounter.current) setRemoteListLoading(false);
+      // follow-up navigation (or a Cancel, which bumps the counter) would have
+      // its spinner and latch cleared early. Tying both to navId also means a
+      // navigation cancelled mid-flight never releases the latch on our behalf.
+      if (navId === remoteNavCounter.current) {
+        setRemoteListLoading(false);
+        remoteNavInFlightRef.current = false;
+      }
     }
+  };
+
+  // #401: escape hatch for a remote navigation that stalls (unreachable host,
+  // hung backend). Discards the in-flight result (via the counter), clears the
+  // spinner and releases the latch so the user can navigate again without
+  // waiting for the stuck call to return.
+  const cancelRemoteNavigation = () => {
+    remoteNavCounter.current += 1;
+    remoteNavInFlightRef.current = false;
+    setRemoteListLoading(false);
   };
 
   const changeLocalDirectory = async (path: string) => {
@@ -7545,12 +7573,16 @@ interface UpdateVerificationInfo {
       // Block if target is a proper ancestor of the base path
       if (normTarget !== normBase && (normTarget === '/' || normBase.startsWith(normTarget + '/'))) return;
     }
+    // #401: block a re-entrant local navigation the same way as remote.
+    if (localNavInFlightRef.current) return;
+    localNavInFlightRef.current = true;
     setLocalListLoading(true);
     let success = false;
     try {
       success = await loadLocalFiles(path);
     } finally {
       setLocalListLoading(false);
+      localNavInFlightRef.current = false;
     }
     if (!success) return; // Don't record failed navigations
     humanLog.logNavigate(path, false);
@@ -15079,10 +15111,21 @@ interface UpdateVerificationInfo {
                       avoid flicker on fast listings. Soft background, no blur. */}
                   {remoteListLoading && (
                     <div
-                      className="absolute inset-0 z-20 flex items-center justify-center bg-white/10 dark:bg-gray-900/10 pointer-events-none animate-fade-in-delayed"
-                      aria-hidden="true"
+                      className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 bg-white/10 dark:bg-gray-900/10 pointer-events-none animate-fade-in-delayed"
                     >
                       <Loader2 size={20} className="animate-spin text-blue-500/80" />
+                      {/* #401: escape hatch so a navigation stalled on an
+                          external/network problem never traps the user. The
+                          backdrop stays click-through (re-entry is already
+                          blocked by the in-flight latch); only this button is
+                          interactive. */}
+                      <button
+                        onClick={cancelRemoteNavigation}
+                        className="pointer-events-auto px-3 py-1.5 text-xs font-medium rounded-md bg-white/90 dark:bg-gray-800/90 text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 shadow-sm flex items-center gap-1.5"
+                        title={t('common.cancel')}
+                      >
+                        <X size={14} /> {t('common.cancel')}
+                      </button>
                     </div>
                   )}
                   <div className="flex-shrink-0 px-3 py-1.5 bg-gray-100 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600 text-sm font-medium flex items-center gap-2">
