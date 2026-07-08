@@ -507,6 +507,33 @@ impl CryptOverlayProvider {
     pub fn take_inner(&mut self) -> Box<dyn StorageProvider> {
         std::mem::replace(&mut self.inner, Box::new(DetachedProvider))
     }
+
+    /// Non-destructive mutable borrow of the wrapped transport, for callers that
+    /// must invoke provider-specific operations (trash/restore/empty and every
+    /// other `downcast_mut::<ConcreteProvider>()` command) on the real backend
+    /// while the overlay stays live. Unlike [`take_inner`](Self::take_inner) this
+    /// does not detach the inner provider. Reach it through the free function
+    /// [`concrete_provider_mut`], which no-ops when Crypt is off.
+    pub fn inner_mut(&mut self) -> &mut dyn StorageProvider {
+        &mut *self.inner
+    }
+
+    /// Rewrite the DISPLAY name of each trash entry to plaintext for entries that
+    /// belong to this overlay's scope, leaving `path`/metadata untouched. See the
+    /// free function [`decode_overlay_trash_names`] for the full contract.
+    fn decode_trash_names(&self, entries: &mut [RemoteEntry]) {
+        for entry in entries.iter_mut() {
+            if self.keys.is_sentinel(&entry.name) {
+                continue;
+            }
+            if let Some(plain) = self.keys.decode_name(&entry.name, entry.is_dir) {
+                entry.name = plain;
+                if !entry.is_dir {
+                    entry.size = self.keys.decrypted_size(entry.size);
+                }
+            }
+        }
+    }
 }
 
 /// Inert placeholder swapped into a [`CryptOverlayProvider`] husk by
@@ -1158,6 +1185,69 @@ pub async fn wrap_provider_with_overlay_if_bound(
 /// time after the CLI/MCP provider resolver has already wrapped the transport.
 pub fn is_crypt_overlay_provider(provider: &mut dyn StorageProvider) -> bool {
     provider.as_any_mut().is::<CryptOverlayProvider>()
+}
+
+/// Peel a live provider box down to the concrete transport, past any crypt
+/// overlay decorator, so provider-specific operations (trash/restore/empty and
+/// every other command that must `downcast_mut::<ConcreteProvider>()`) can reach
+/// the real backend when Crypt is on.
+///
+/// When Crypt is off (no overlay) this is a no-op returning the provider itself,
+/// so it is safe to apply unconditionally at every downcast site, including
+/// providers that never carry a crypt scope.
+///
+/// Note the overlay's `as_any_mut()` deliberately returns the decorator itself
+/// (an honest downcast target), so a raw `downcast_mut::<ConcreteProvider>()` on
+/// a wrapped box yields `None`; callers must peel first via this helper.
+pub fn concrete_provider_mut(provider: &mut dyn StorageProvider) -> &mut dyn StorageProvider {
+    if provider.as_any_mut().is::<CryptOverlayProvider>() {
+        provider
+            .as_any_mut()
+            .downcast_mut::<CryptOverlayProvider>()
+            .expect("just checked is::<CryptOverlayProvider>()")
+            .inner_mut()
+    } else {
+        provider
+    }
+}
+
+/// Decode the DISPLAY names of trash entries in place when `provider` is a live
+/// crypt overlay, so a "View Trash" listing shows plaintext names instead of
+/// ciphertext for items that live inside the encrypted scope. A no-op when Crypt
+/// is off.
+///
+/// ONLY the human-facing `name` (and, for a file, the decrypted `size`) is
+/// rewritten. The `path` and every provider `metadata` token are left byte-for-
+/// byte as returned by the backend, because restore/permanent-delete round-trip
+/// those raw tokens; rewriting them would break the round-trip. The one provider
+/// whose restore keys off the NAME (MEGA) must therefore NOT be passed here (it
+/// stays ciphertext until the frontend can carry a separate display name).
+///
+/// Decode-or-passthrough: a name that is not valid ciphertext for this overlay
+/// (a foreign / out-of-scope item in a globally shared trash) is left verbatim,
+/// never dropped, so the trash view stays complete.
+pub fn decode_overlay_trash_names(provider: &mut dyn StorageProvider, entries: &mut [RemoteEntry]) {
+    if let Some(overlay) = provider.as_any_mut().downcast_mut::<CryptOverlayProvider>() {
+        overlay.decode_trash_names(entries);
+    }
+}
+
+/// Decode a single trash entry's DISPLAY name when `provider` is a live crypt
+/// overlay, returning the plaintext name, or `None` to keep the original. For
+/// trash listers whose entry type is not [`RemoteEntry`] (e.g. Koofr). Same
+/// decode-or-passthrough contract as [`decode_overlay_trash_names`].
+pub fn decode_overlay_trash_name(
+    provider: &mut dyn StorageProvider,
+    name: &str,
+    is_dir: bool,
+) -> Option<String> {
+    let overlay = provider
+        .as_any_mut()
+        .downcast_mut::<CryptOverlayProvider>()?;
+    if overlay.keys.is_sentinel(name) {
+        return None;
+    }
+    overlay.keys.decode_name(name, is_dir)
 }
 
 /// Read a keyfile from `path` and return its AeroCrypt KDF digest (F1 + F2
@@ -2884,5 +2974,80 @@ mod tests {
             mem.dir_list()
         );
         let _ = tokio::fs::remove_dir_all(&dir).await;
+    }
+
+    fn trash_entry(name: &str) -> RemoteEntry {
+        RemoteEntry {
+            name: name.to_string(),
+            path: format!("/trash/{name}"),
+            is_dir: false,
+            size: 4096,
+            modified: None,
+            permissions: None,
+            owner: None,
+            group: None,
+            is_symlink: false,
+            link_target: None,
+            mime_type: None,
+            metadata: HashMap::new(),
+        }
+    }
+
+    // Regression for #397: a provider-specific command (trash/restore/empty, and
+    // every other `downcast_mut::<ConcreteProvider>()`) must peel the crypt
+    // overlay to reach the transport, instead of downcasting the wrapper.
+    #[test]
+    fn concrete_provider_mut_peels_overlay_to_inner_transport() {
+        // No-op when Crypt is off: a bare provider is returned unchanged.
+        let mut bare: Box<dyn StorageProvider> = Box::new(MemProvider::new());
+        assert!(concrete_provider_mut(&mut *bare)
+            .as_any_mut()
+            .downcast_mut::<MemProvider>()
+            .is_some());
+
+        // Wrapped: the raw downcast fails (the honest target is the decorator
+        // itself, which is what broke every trash handler under Crypt), but
+        // peeling reaches the inner MemProvider.
+        let mut wrapped: Box<dyn StorageProvider> = Box::new(CryptOverlayProvider::new(
+            Box::new(MemProvider::new()),
+            aerocrypt_keys(),
+            "/vault",
+        ));
+        assert!(
+            wrapped.as_any_mut().downcast_mut::<MemProvider>().is_none(),
+            "raw downcast through the overlay must fail"
+        );
+        assert!(
+            concrete_provider_mut(&mut *wrapped)
+                .as_any_mut()
+                .downcast_mut::<MemProvider>()
+                .is_some(),
+            "peel must reach the concrete transport"
+        );
+    }
+
+    #[test]
+    fn decode_overlay_trash_names_decodes_in_scope_and_passes_foreign() {
+        let overlay =
+            CryptOverlayProvider::new(Box::new(MemProvider::new()), aerocrypt_keys(), "/vault");
+        let enc = overlay.keys.encode_name("secret.txt", false).unwrap();
+        let mut boxed: Box<dyn StorageProvider> = Box::new(overlay);
+
+        let mut entries = vec![trash_entry(&enc), trash_entry("foreign.txt")];
+        let raw_path_0 = entries[0].path.clone();
+        decode_overlay_trash_names(&mut *boxed, &mut entries);
+
+        // In-scope ciphertext name is decoded to plaintext for display...
+        assert_eq!(entries[0].name, "secret.txt");
+        // ...while the raw path/token is left untouched for the restore round-trip.
+        assert_eq!(entries[0].path, raw_path_0);
+        // A foreign / out-of-scope plaintext entry (global trash) passes through.
+        assert_eq!(entries[1].name, "foreign.txt");
+
+        // No-op on a bare provider (Crypt off).
+        let mut bare: Box<dyn StorageProvider> = Box::new(MemProvider::new());
+        let mut plain = vec![trash_entry("plain.txt")];
+        decode_overlay_trash_names(&mut *bare, &mut plain);
+        assert_eq!(plain[0].name, "plain.txt");
     }
 }

@@ -4058,7 +4058,7 @@ pub async fn webdav_list_trash(
 ) -> Result<Vec<NextcloudTrashEntry>, String> {
     let mut guard = state.provider.lock().await;
     let provider = guard.as_mut().ok_or("Not connected")?;
-    let webdav = provider
+    let webdav = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<WebDavProvider>()
         .ok_or("Not a WebDAV connection")?;
@@ -4075,7 +4075,7 @@ pub async fn webdav_restore_trash(
 ) -> Result<(), String> {
     let mut guard = state.provider.lock().await;
     let provider = guard.as_mut().ok_or("Not connected")?;
-    let webdav = provider
+    let webdav = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<WebDavProvider>()
         .ok_or("Not a WebDAV connection")?;
@@ -4095,7 +4095,7 @@ pub async fn webdav_delete_trash(
 ) -> Result<(), String> {
     let mut guard = state.provider.lock().await;
     let provider = guard.as_mut().ok_or("Not connected")?;
-    let webdav = provider
+    let webdav = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<WebDavProvider>()
         .ok_or("Not a WebDAV connection")?;
@@ -4114,7 +4114,7 @@ pub async fn webdav_empty_trash(
 ) -> Result<(), String> {
     let mut guard = state.provider.lock().await;
     let provider = guard.as_mut().ok_or("Not connected")?;
-    let webdav = provider
+    let webdav = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<WebDavProvider>()
         .ok_or("Not a WebDAV connection")?;

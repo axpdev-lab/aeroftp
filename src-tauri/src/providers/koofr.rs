@@ -1820,14 +1820,14 @@ pub async fn koofr_list_trash(
 ) -> Result<Vec<KoofrTrashEntry>, String> {
     let mut guard = state.provider.lock().await;
     let provider = guard.as_mut().ok_or("Not connected")?;
-    let koofr = provider
+    let koofr = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<KoofrProvider>()
         .ok_or("Not a Koofr connection")?;
 
     let default_mount = koofr.mount_id.clone();
     let files = koofr.list_trash().await.map_err(|e| e.to_string())?;
-    Ok(files
+    let mut entries: Vec<KoofrTrashEntry> = files
         .into_iter()
         .map(|f| KoofrTrashEntry {
             name: f.name,
@@ -1837,7 +1837,23 @@ pub async fn koofr_list_trash(
             content_type: f.content_type,
             mount_id: f.mount_id.unwrap_or_else(|| default_mount.clone()),
         })
-        .collect())
+        .collect();
+    // Decode only the display name when a crypt overlay is live; path/mount_id are
+    // kept raw so restore round-trips the exact tokens. No-op when Crypt is off.
+    for entry in &mut entries {
+        // The Koofr trash API does not report entry type, so decode as a file leaf
+        // (is_dir = false): correct for standard/AeroCrypt names (type-agnostic) and
+        // for rclone off-mode file leaves; an off-mode directory simply fails the
+        // suffix decode and is left verbatim (decode-or-passthrough), never garbled.
+        if let Some(plain) = crate::crypt_overlay_provider::decode_overlay_trash_name(
+            &mut **provider,
+            &entry.name,
+            false,
+        ) {
+            entry.name = plain;
+        }
+    }
+    Ok(entries)
 }
 
 #[tauri::command]
@@ -1847,7 +1863,7 @@ pub async fn koofr_restore_trash(
 ) -> Result<(), String> {
     let mut guard = state.provider.lock().await;
     let provider = guard.as_mut().ok_or("Not connected")?;
-    let koofr = provider
+    let koofr = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<KoofrProvider>()
         .ok_or("Not a Koofr connection")?;
@@ -1864,7 +1880,7 @@ pub async fn koofr_empty_trash(
 ) -> Result<(), String> {
     let mut guard = state.provider.lock().await;
     let provider = guard.as_mut().ok_or("Not connected")?;
-    let koofr = provider
+    let koofr = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<KoofrProvider>()
         .ok_or("Not a Koofr connection")?;

@@ -3383,7 +3383,7 @@ async fn provider_upload_folder_inner(
             .ok_or("Not connected to any provider")?;
 
         if is_plain_github_provider(provider.as_mut()) {
-            let github = provider
+            let github = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
                 .as_any_mut()
                 .downcast_mut::<crate::providers::github::GitHubProvider>()
                 .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
@@ -3529,7 +3529,7 @@ async fn provider_upload_folder_inner(
             .ok_or("Not connected to any provider")?;
 
         let mkdir_result = if is_plain_github_provider(provider.as_mut()) {
-            let github = provider
+            let github = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
                 .as_any_mut()
                 .downcast_mut::<crate::providers::github::GitHubProvider>()
                 .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
@@ -4123,7 +4123,7 @@ pub async fn provider_upload_file(
     let result = {
         let work = async {
             if is_plain_github_provider(provider.as_mut()) {
-                let github = provider
+                let github = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
                     .as_any_mut()
                     .downcast_mut::<crate::providers::github::GitHubProvider>()
                     .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
@@ -4235,7 +4235,7 @@ pub async fn provider_mkdir(
         .map_err(|e| e.to_string())?;
 
     if is_plain_github_provider(provider.as_mut()) {
-        let github = provider
+        let github = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
             .as_any_mut()
             .downcast_mut::<crate::providers::github::GitHubProvider>()
             .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
@@ -4273,7 +4273,7 @@ pub async fn provider_delete_file(
     info!("Deleting file: {}", path);
 
     if is_plain_github_provider(provider.as_mut()) {
-        let github = provider
+        let github = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
             .as_any_mut()
             .downcast_mut::<crate::providers::github::GitHubProvider>()
             .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
@@ -4336,7 +4336,7 @@ pub async fn provider_delete_dir(
 
     if is_plain_github_provider(provider.as_mut()) {
         // QA-GH-006: GitHub always needs recursive delete (no empty dirs in git)
-        let github = provider
+        let github = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
             .as_any_mut()
             .downcast_mut::<crate::providers::github::GitHubProvider>()
             .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
@@ -6581,14 +6581,17 @@ pub async fn zoho_list_trash(state: State<'_, ProviderState>) -> Result<Vec<Remo
     }
 
     // Downcast to ZohoWorkdriveProvider
-    let zoho = provider
+    let zoho = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::zoho_workdrive::ZohoWorkdriveProvider>()
         .ok_or_else(|| "Failed to access Zoho WorkDrive provider".to_string())?;
 
-    zoho.list_trash()
+    let mut entries = zoho
+        .list_trash()
         .await
-        .map_err(|e| format!("Failed to list trash: {}", e))
+        .map_err(|e| format!("Failed to list trash: {}", e))?;
+    crate::crypt_overlay_provider::decode_overlay_trash_names(&mut **provider, &mut entries);
+    Ok(entries)
 }
 
 /// Permanently delete files/folders from Zoho WorkDrive trash
@@ -6606,7 +6609,7 @@ pub async fn zoho_permanent_delete(
         return Err("This operation is only available for Zoho WorkDrive".to_string());
     }
 
-    let zoho = provider
+    let zoho = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::zoho_workdrive::ZohoWorkdriveProvider>()
         .ok_or_else(|| "Failed to access Zoho WorkDrive provider".to_string())?;
@@ -6637,7 +6640,7 @@ pub async fn zoho_restore_from_trash(
         return Err("This operation is only available for Zoho WorkDrive".to_string());
     }
 
-    let zoho = provider
+    let zoho = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::zoho_workdrive::ZohoWorkdriveProvider>()
         .ok_or_else(|| "Failed to access Zoho WorkDrive provider".to_string())?;
@@ -6669,7 +6672,7 @@ pub async fn zoho_list_team_labels(
         return Err("This operation is only available for Zoho WorkDrive".to_string());
     }
 
-    let zoho = provider
+    let zoho = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::zoho_workdrive::ZohoWorkdriveProvider>()
         .ok_or_else(|| "Failed to access Zoho WorkDrive provider".to_string())?;
@@ -6700,7 +6703,7 @@ pub async fn zoho_get_file_labels(
         return Err("This operation is only available for Zoho WorkDrive".to_string());
     }
 
-    let zoho = provider
+    let zoho = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::zoho_workdrive::ZohoWorkdriveProvider>()
         .ok_or_else(|| "Failed to access Zoho WorkDrive provider".to_string())?;
@@ -6732,7 +6735,7 @@ pub async fn zoho_add_file_label(
         return Err("This operation is only available for Zoho WorkDrive".to_string());
     }
 
-    let zoho = provider
+    let zoho = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::zoho_workdrive::ZohoWorkdriveProvider>()
         .ok_or_else(|| "Failed to access Zoho WorkDrive provider".to_string())?;
@@ -6758,7 +6761,7 @@ pub async fn zoho_create_label(
         return Err("This operation is only available for Zoho WorkDrive".to_string());
     }
 
-    let zoho = provider
+    let zoho = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::zoho_workdrive::ZohoWorkdriveProvider>()
         .ok_or_else(|| "Failed to access Zoho WorkDrive provider".to_string())?;
@@ -6787,7 +6790,7 @@ pub async fn zoho_remove_file_label(
         return Err("This operation is only available for Zoho WorkDrive".to_string());
     }
 
-    let zoho = provider
+    let zoho = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::zoho_workdrive::ZohoWorkdriveProvider>()
         .ok_or_else(|| "Failed to access Zoho WorkDrive provider".to_string())?;
@@ -6813,7 +6816,7 @@ pub async fn zoho_get_user_info(
         return Err("This operation is only available for Zoho WorkDrive".to_string());
     }
 
-    let zoho = provider
+    let zoho = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::zoho_workdrive::ZohoWorkdriveProvider>()
         .ok_or_else(|| "Failed to access Zoho WorkDrive provider".to_string())?;
@@ -6841,7 +6844,7 @@ pub async fn zoho_get_file_share_links(
         return Err("This operation is only available for Zoho WorkDrive".to_string());
     }
 
-    let zoho = provider
+    let zoho = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::zoho_workdrive::ZohoWorkdriveProvider>()
         .ok_or_else(|| "Failed to access Zoho WorkDrive provider".to_string())?;
@@ -6872,7 +6875,7 @@ pub async fn zoho_delete_share_link(
         return Err("This operation is only available for Zoho WorkDrive".to_string());
     }
 
-    let zoho = provider
+    let zoho = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::zoho_workdrive::ZohoWorkdriveProvider>()
         .ok_or_else(|| "Failed to access Zoho WorkDrive provider".to_string())?;
@@ -6900,7 +6903,7 @@ pub async fn zoho_create_native_document(
         return Err("This operation is only available for Zoho WorkDrive".to_string());
     }
 
-    let zoho = provider
+    let zoho = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::zoho_workdrive::ZohoWorkdriveProvider>()
         .ok_or_else(|| "Failed to access Zoho WorkDrive provider".to_string())?;
@@ -6927,7 +6930,7 @@ pub async fn jottacloud_move_to_trash(
         return Err("This operation is only available for Jottacloud".to_string());
     }
 
-    let jotta = provider
+    let jotta = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::jottacloud::JottacloudProvider>()
         .ok_or_else(|| "Failed to access Jottacloud provider".to_string())?;
@@ -6955,15 +6958,17 @@ pub async fn jottacloud_list_trash(
         return Err("This operation is only available for Jottacloud".to_string());
     }
 
-    let jotta = provider
+    let jotta = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::jottacloud::JottacloudProvider>()
         .ok_or_else(|| "Failed to access Jottacloud provider".to_string())?;
 
-    jotta
+    let mut entries = jotta
         .list_trash()
         .await
-        .map_err(|e| format!("Failed to list trash: {}", e))
+        .map_err(|e| format!("Failed to list trash: {}", e))?;
+    crate::crypt_overlay_provider::decode_overlay_trash_names(&mut **provider, &mut entries);
+    Ok(entries)
 }
 
 /// Restore files from Jottacloud Trash to their original location
@@ -6981,7 +6986,7 @@ pub async fn jottacloud_restore_from_trash(
         return Err("This operation is only available for Jottacloud".to_string());
     }
 
-    let jotta = provider
+    let jotta = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::jottacloud::JottacloudProvider>()
         .ok_or_else(|| "Failed to access Jottacloud provider".to_string())?;
@@ -7010,7 +7015,7 @@ pub async fn jottacloud_permanent_delete(
         return Err("This operation is only available for Jottacloud".to_string());
     }
 
-    let jotta = provider
+    let jotta = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::jottacloud::JottacloudProvider>()
         .ok_or_else(|| "Failed to access Jottacloud provider".to_string())?;
@@ -7042,7 +7047,7 @@ pub async fn mega_move_to_trash(
     }
 
     // Try native provider first, then MEGAcmd
-    if let Some(native) = provider
+    if let Some(native) = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::mega_native::MegaNativeProvider>()
     {
@@ -7055,7 +7060,7 @@ pub async fn mega_move_to_trash(
         return Ok(());
     }
 
-    let mega = provider
+    let mega = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::mega::MegaCmdProvider>()
         .ok_or_else(|| "Failed to access MEGA provider".to_string())?;
@@ -7080,7 +7085,7 @@ pub async fn mega_list_trash(state: State<'_, ProviderState>) -> Result<Vec<Remo
         return Err("This operation is only available for MEGA".to_string());
     }
 
-    if let Some(native) = provider
+    if let Some(native) = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::mega_native::MegaNativeProvider>()
     {
@@ -7090,7 +7095,7 @@ pub async fn mega_list_trash(state: State<'_, ProviderState>) -> Result<Vec<Remo
             .map_err(|e| format!("Failed to list trash: {}", e));
     }
 
-    let mega = provider
+    let mega = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::mega::MegaCmdProvider>()
         .ok_or_else(|| "Failed to access MEGA provider".to_string())?;
@@ -7115,7 +7120,7 @@ pub async fn mega_restore_from_trash(
         return Err("This operation is only available for MEGA".to_string());
     }
 
-    if let Some(native) = provider
+    if let Some(native) = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::mega_native::MegaNativeProvider>()
     {
@@ -7129,7 +7134,7 @@ pub async fn mega_restore_from_trash(
         return Ok(());
     }
 
-    let mega = provider
+    let mega = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::mega::MegaCmdProvider>()
         .ok_or_else(|| "Failed to access MEGA provider".to_string())?;
@@ -7158,7 +7163,7 @@ pub async fn mega_permanent_delete(
         return Err("This operation is only available for MEGA".to_string());
     }
 
-    if let Some(native) = provider
+    if let Some(native) = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::mega_native::MegaNativeProvider>()
     {
@@ -7171,7 +7176,7 @@ pub async fn mega_permanent_delete(
         return Ok(());
     }
 
-    let mega = provider
+    let mega = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::mega::MegaCmdProvider>()
         .ok_or_else(|| "Failed to access MEGA provider".to_string())?;
@@ -7201,7 +7206,7 @@ pub async fn google_drive_trash_file(
         return Err("This operation is only available for Google Drive".to_string());
     }
 
-    let gdrive = provider
+    let gdrive = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::google_drive::GoogleDriveProvider>()
         .ok_or_else(|| "Failed to access Google Drive provider".to_string())?;
@@ -7229,15 +7234,17 @@ pub async fn google_drive_list_trash(
         return Err("This operation is only available for Google Drive".to_string());
     }
 
-    let gdrive = provider
+    let gdrive = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::google_drive::GoogleDriveProvider>()
         .ok_or_else(|| "Failed to access Google Drive provider".to_string())?;
 
-    gdrive
+    let mut entries = gdrive
         .list_trash()
         .await
-        .map_err(|e| format!("Failed to list trash: {}", e))
+        .map_err(|e| format!("Failed to list trash: {}", e))?;
+    crate::crypt_overlay_provider::decode_overlay_trash_names(&mut **provider, &mut entries);
+    Ok(entries)
 }
 
 /// Restore files from Google Drive Trash
@@ -7255,7 +7262,7 @@ pub async fn google_drive_restore_from_trash(
         return Err("This operation is only available for Google Drive".to_string());
     }
 
-    let gdrive = provider
+    let gdrive = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::google_drive::GoogleDriveProvider>()
         .ok_or_else(|| "Failed to access Google Drive provider".to_string())?;
@@ -7284,7 +7291,7 @@ pub async fn google_drive_permanent_delete(
         return Err("This operation is only available for Google Drive".to_string());
     }
 
-    let gdrive = provider
+    let gdrive = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::google_drive::GoogleDriveProvider>()
         .ok_or_else(|| "Failed to access Google Drive provider".to_string())?;
@@ -7314,15 +7321,17 @@ pub async fn opendrive_list_trash(
         return Err("This operation is only available for OpenDrive".to_string());
     }
 
-    let opendrive = provider
+    let opendrive = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::opendrive::OpenDriveProvider>()
         .ok_or_else(|| "Failed to access OpenDrive provider".to_string())?;
 
-    opendrive
+    let mut entries = opendrive
         .list_trash()
         .await
-        .map_err(|e| format!("Failed to list trash: {}", e))
+        .map_err(|e| format!("Failed to list trash: {}", e))?;
+    crate::crypt_overlay_provider::decode_overlay_trash_names(&mut **provider, &mut entries);
+    Ok(entries)
 }
 
 /// Restore items from OpenDrive Trash.
@@ -7340,7 +7349,7 @@ pub async fn opendrive_restore_from_trash(
         return Err("This operation is only available for OpenDrive".to_string());
     }
 
-    let opendrive = provider
+    let opendrive = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::opendrive::OpenDriveProvider>()
         .ok_or_else(|| "Failed to access OpenDrive provider".to_string())?;
@@ -7369,7 +7378,7 @@ pub async fn opendrive_permanent_delete(
         return Err("This operation is only available for OpenDrive".to_string());
     }
 
-    let opendrive = provider
+    let opendrive = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::opendrive::OpenDriveProvider>()
         .ok_or_else(|| "Failed to access OpenDrive provider".to_string())?;
@@ -7395,7 +7404,7 @@ pub async fn opendrive_empty_trash(state: State<'_, ProviderState>) -> Result<()
         return Err("This operation is only available for OpenDrive".to_string());
     }
 
-    let opendrive = provider
+    let opendrive = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::opendrive::OpenDriveProvider>()
         .ok_or_else(|| "Failed to access OpenDrive provider".to_string())?;
@@ -7424,7 +7433,7 @@ pub async fn opendrive_set_path_privacy(
         return Err("This operation is only available for OpenDrive".to_string());
     }
 
-    let opendrive = provider
+    let opendrive = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::opendrive::OpenDriveProvider>()
         .ok_or_else(|| "Failed to access OpenDrive provider".to_string())?;
@@ -7468,7 +7477,7 @@ pub async fn opendrive_set_path_access(
         return Err("This operation is only available for OpenDrive".to_string());
     }
 
-    let opendrive = provider
+    let opendrive = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::opendrive::OpenDriveProvider>()
         .ok_or_else(|| "Failed to access OpenDrive provider".to_string())?;
@@ -7504,7 +7513,7 @@ pub async fn fourshared_set_path_privacy(
         return Err("This operation is only available for FourShared".to_string());
     }
 
-    let fourshared = provider
+    let fourshared = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::fourshared::FourSharedProvider>()
         .ok_or_else(|| "Failed to access FourShared provider".to_string())?;
@@ -7538,15 +7547,17 @@ pub async fn yandex_list_trash(
         return Err("This operation is only available for Yandex Disk".to_string());
     }
 
-    let yandex = provider
+    let yandex = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::yandex_disk::YandexDiskProvider>()
         .ok_or_else(|| "Failed to access Yandex Disk provider".to_string())?;
 
-    yandex
+    let mut entries = yandex
         .list_trash()
         .await
-        .map_err(|e| format!("Failed to list trash: {}", e))
+        .map_err(|e| format!("Failed to list trash: {}", e))?;
+    crate::crypt_overlay_provider::decode_overlay_trash_names(&mut **provider, &mut entries);
+    Ok(entries)
 }
 
 /// Restore items from Yandex Disk trash
@@ -7564,7 +7575,7 @@ pub async fn yandex_restore_from_trash(
         return Err("This operation is only available for Yandex Disk".to_string());
     }
 
-    let yandex = provider
+    let yandex = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::yandex_disk::YandexDiskProvider>()
         .ok_or_else(|| "Failed to access Yandex Disk provider".to_string())?;
@@ -7593,7 +7604,7 @@ pub async fn yandex_permanent_delete(
         return Err("This operation is only available for Yandex Disk".to_string());
     }
 
-    let yandex = provider
+    let yandex = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::yandex_disk::YandexDiskProvider>()
         .ok_or_else(|| "Failed to access Yandex Disk provider".to_string())?;
@@ -7619,7 +7630,7 @@ pub async fn yandex_empty_trash(state: State<'_, ProviderState>) -> Result<(), S
         return Err("This operation is only available for Yandex Disk".to_string());
     }
 
-    let yandex = provider
+    let yandex = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::yandex_disk::YandexDiskProvider>()
         .ok_or_else(|| "Failed to access Yandex Disk provider".to_string())?;
@@ -7640,13 +7651,16 @@ pub async fn box_list_trash(state: State<'_, ProviderState>) -> Result<Vec<Remot
     if provider.provider_type() != ProviderType::Box {
         return Err("Only available for Box".to_string());
     }
-    let bx = provider
+    let bx = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::box_provider::BoxProvider>()
         .ok_or_else(|| "Box downcast failed".to_string())?;
-    bx.list_trash()
+    let mut entries = bx
+        .list_trash()
         .await
-        .map_err(|e| format!("List trash failed: {}", e))
+        .map_err(|e| format!("List trash failed: {}", e))?;
+    crate::crypt_overlay_provider::decode_overlay_trash_names(&mut **provider, &mut entries);
+    Ok(entries)
 }
 
 /// Move files/folders to Box trash (soft delete)
@@ -7660,7 +7674,7 @@ pub async fn box_trash_files(
     if provider.provider_type() != ProviderType::Box {
         return Err("Only available for Box".to_string());
     }
-    let bx = provider
+    let bx = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::box_provider::BoxProvider>()
         .ok_or_else(|| "Box downcast failed".to_string())?;
@@ -7681,7 +7695,7 @@ pub async fn box_restore_from_trash(
     if provider.provider_type() != ProviderType::Box {
         return Err("Only available for Box".to_string());
     }
-    let bx = provider
+    let bx = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::box_provider::BoxProvider>()
         .ok_or_else(|| "Box downcast failed".to_string())?;
@@ -7702,7 +7716,7 @@ pub async fn box_permanent_delete(
     if provider.provider_type() != ProviderType::Box {
         return Err("Only available for Box".to_string());
     }
-    let bx = provider
+    let bx = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::box_provider::BoxProvider>()
         .ok_or_else(|| "Box downcast failed".to_string())?;
@@ -7723,7 +7737,7 @@ pub async fn box_move_file(
     if provider.provider_type() != ProviderType::Box {
         return Err("Only available for Box".to_string());
     }
-    let bx = provider
+    let bx = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::box_provider::BoxProvider>()
         .ok_or_else(|| "Box downcast failed".to_string())?;
@@ -7743,7 +7757,7 @@ pub async fn box_list_comments(
     if provider.provider_type() != ProviderType::Box {
         return Err("Only available for Box".to_string());
     }
-    let bx = provider
+    let bx = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::box_provider::BoxProvider>()
         .ok_or_else(|| "Box downcast failed".to_string())?;
@@ -7768,7 +7782,7 @@ pub async fn box_add_comment(
     if provider.provider_type() != ProviderType::Box {
         return Err("Only available for Box".to_string());
     }
-    let bx = provider
+    let bx = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::box_provider::BoxProvider>()
         .ok_or_else(|| "Box downcast failed".to_string())?;
@@ -7788,7 +7802,7 @@ pub async fn box_delete_comment(
     if provider.provider_type() != ProviderType::Box {
         return Err("Only available for Box".to_string());
     }
-    let bx = provider
+    let bx = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::box_provider::BoxProvider>()
         .ok_or_else(|| "Box downcast failed".to_string())?;
@@ -7810,7 +7824,7 @@ pub async fn box_add_collaboration(
     if provider.provider_type() != ProviderType::Box {
         return Err("Only available for Box".to_string());
     }
-    let bx = provider
+    let bx = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::box_provider::BoxProvider>()
         .ok_or_else(|| "Box downcast failed".to_string())?;
@@ -7830,7 +7844,7 @@ pub async fn box_remove_collaboration(
     if provider.provider_type() != ProviderType::Box {
         return Err("Only available for Box".to_string());
     }
-    let bx = provider
+    let bx = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::box_provider::BoxProvider>()
         .ok_or_else(|| "Box downcast failed".to_string())?;
@@ -7850,7 +7864,7 @@ pub async fn box_set_watermark(
     if provider.provider_type() != ProviderType::Box {
         return Err("Only available for Box".to_string());
     }
-    let bx = provider
+    let bx = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::box_provider::BoxProvider>()
         .ok_or_else(|| "Box downcast failed".to_string())?;
@@ -7870,7 +7884,7 @@ pub async fn box_remove_watermark(
     if provider.provider_type() != ProviderType::Box {
         return Err("Only available for Box".to_string());
     }
-    let bx = provider
+    let bx = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::box_provider::BoxProvider>()
         .ok_or_else(|| "Box downcast failed".to_string())?;
@@ -7891,7 +7905,7 @@ pub async fn box_set_tags(
     if provider.provider_type() != ProviderType::Box {
         return Err("Only available for Box".to_string());
     }
-    let bx = provider
+    let bx = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::box_provider::BoxProvider>()
         .ok_or_else(|| "Box downcast failed".to_string())?;
@@ -7908,7 +7922,7 @@ pub async fn box_lock_folder(state: State<'_, ProviderState>, path: String) -> R
     if provider.provider_type() != ProviderType::Box {
         return Err("Only available for Box".to_string());
     }
-    let bx = provider
+    let bx = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::box_provider::BoxProvider>()
         .ok_or_else(|| "Box downcast failed".to_string())?;
@@ -7928,7 +7942,7 @@ pub async fn box_unlock_folder(
     if provider.provider_type() != ProviderType::Box {
         return Err("Only available for Box".to_string());
     }
-    let bx = provider
+    let bx = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::box_provider::BoxProvider>()
         .ok_or_else(|| "Box downcast failed".to_string())?;
@@ -7948,7 +7962,7 @@ pub async fn box_list_collaborations(
     if provider.provider_type() != ProviderType::Box {
         return Err("Only available for Box".to_string());
     }
-    let bx = provider
+    let bx = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::box_provider::BoxProvider>()
         .ok_or_else(|| "Box downcast failed".to_string())?;
@@ -7972,7 +7986,7 @@ pub async fn box_list_folder_locks(
     if provider.provider_type() != ProviderType::Box {
         return Err("Only available for Box".to_string());
     }
-    let bx = provider
+    let bx = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::box_provider::BoxProvider>()
         .ok_or_else(|| "Box downcast failed".to_string())?;
@@ -8016,7 +8030,7 @@ pub async fn filelu_set_file_password(
     if provider.provider_type() != ProviderType::FileLu {
         return Err("Only available for FileLu".to_string());
     }
-    let fl = provider
+    let fl = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::filelu::FileLuProvider>()
         .ok_or_else(|| "FileLu downcast failed".to_string())?;
@@ -8037,7 +8051,7 @@ pub async fn filelu_set_file_privacy(
     if provider.provider_type() != ProviderType::FileLu {
         return Err("Only available for FileLu".to_string());
     }
-    let fl = provider
+    let fl = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::filelu::FileLuProvider>()
         .ok_or_else(|| "FileLu downcast failed".to_string())?;
@@ -8057,7 +8071,7 @@ pub async fn filelu_clone_file(
     if provider.provider_type() != ProviderType::FileLu {
         return Err("Only available for FileLu".to_string());
     }
-    let fl = provider
+    let fl = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::filelu::FileLuProvider>()
         .ok_or_else(|| "FileLu downcast failed".to_string())?;
@@ -8076,7 +8090,7 @@ pub async fn filelu_set_folder_password(
     if provider.provider_type() != ProviderType::FileLu {
         return Err("Only available for FileLu".to_string());
     }
-    let fl = provider
+    let fl = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::filelu::FileLuProvider>()
         .ok_or_else(|| "FileLu downcast failed".to_string())?;
@@ -8098,7 +8112,7 @@ pub async fn filelu_set_folder_settings(
     if provider.provider_type() != ProviderType::FileLu {
         return Err("Only available for FileLu".to_string());
     }
-    let fl = provider
+    let fl = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::filelu::FileLuProvider>()
         .ok_or_else(|| "FileLu downcast failed".to_string())?;
@@ -8117,7 +8131,7 @@ pub async fn filelu_list_deleted(
     if provider.provider_type() != ProviderType::FileLu {
         return Err("Only available for FileLu".to_string());
     }
-    let fl = provider
+    let fl = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::filelu::FileLuProvider>()
         .ok_or_else(|| "FileLu downcast failed".to_string())?;
@@ -8135,7 +8149,7 @@ pub async fn filelu_restore_file(
     if provider.provider_type() != ProviderType::FileLu {
         return Err("Only available for FileLu".to_string());
     }
-    let fl = provider
+    let fl = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::filelu::FileLuProvider>()
         .ok_or_else(|| "FileLu downcast failed".to_string())?;
@@ -8155,7 +8169,7 @@ pub async fn filelu_permanent_delete(
     if provider.provider_type() != ProviderType::FileLu {
         return Err("Only available for FileLu".to_string());
     }
-    let fl = provider
+    let fl = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::filelu::FileLuProvider>()
         .ok_or_else(|| "FileLu downcast failed".to_string())?;
@@ -8176,7 +8190,7 @@ pub async fn filelu_remote_url_upload(
     if provider.provider_type() != ProviderType::FileLu {
         return Err("Only available for FileLu".to_string());
     }
-    let fl = provider
+    let fl = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::filelu::FileLuProvider>()
         .ok_or_else(|| "FileLu downcast failed".to_string())?;
@@ -8196,7 +8210,7 @@ pub async fn filelu_restore_folder(
     if provider.provider_type() != ProviderType::FileLu {
         return Err("Only available for FileLu".to_string());
     }
-    let fl = provider
+    let fl = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::filelu::FileLuProvider>()
         .ok_or_else(|| "FileLu downcast failed".to_string())?;
@@ -8219,7 +8233,7 @@ pub async fn google_drive_set_starred(
     if provider.provider_type() != ProviderType::GoogleDrive {
         return Err("Only available for Google Drive".to_string());
     }
-    let gd = provider
+    let gd = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::google_drive::GoogleDriveProvider>()
         .ok_or_else(|| "Google Drive downcast failed".to_string())?;
@@ -8242,7 +8256,7 @@ pub async fn google_drive_list_comments(
     if provider.provider_type() != ProviderType::GoogleDrive {
         return Err("Only available for Google Drive".to_string());
     }
-    let gd = provider
+    let gd = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::google_drive::GoogleDriveProvider>()
         .ok_or_else(|| "Google Drive downcast failed".to_string())?;
@@ -8261,7 +8275,7 @@ pub async fn google_drive_add_comment(
     if provider.provider_type() != ProviderType::GoogleDrive {
         return Err("Only available for Google Drive".to_string());
     }
-    let gd = provider
+    let gd = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::google_drive::GoogleDriveProvider>()
         .ok_or_else(|| "Google Drive downcast failed".to_string())?;
@@ -8282,7 +8296,7 @@ pub async fn google_drive_delete_comment(
     if provider.provider_type() != ProviderType::GoogleDrive {
         return Err("Only available for Google Drive".to_string());
     }
-    let gd = provider
+    let gd = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::google_drive::GoogleDriveProvider>()
         .ok_or_else(|| "Google Drive downcast failed".to_string())?;
@@ -8303,7 +8317,7 @@ pub async fn google_drive_set_properties(
     if provider.provider_type() != ProviderType::GoogleDrive {
         return Err("Only available for Google Drive".to_string());
     }
-    let gd = provider
+    let gd = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::google_drive::GoogleDriveProvider>()
         .ok_or_else(|| "Google Drive downcast failed".to_string())?;
@@ -8324,7 +8338,7 @@ pub async fn google_drive_set_description(
     if provider.provider_type() != ProviderType::GoogleDrive {
         return Err("Only available for Google Drive".to_string());
     }
-    let gd = provider
+    let gd = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::google_drive::GoogleDriveProvider>()
         .ok_or_else(|| "Google Drive downcast failed".to_string())?;
@@ -8346,11 +8360,13 @@ pub async fn dropbox_list_trash(
     if provider.provider_type() != ProviderType::Dropbox {
         return Err("Only available for Dropbox".to_string());
     }
-    let db = provider
+    let db = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::dropbox::DropboxProvider>()
         .ok_or_else(|| "Dropbox downcast failed".to_string())?;
-    db.list_deleted(&path).await.map_err(|e| e.to_string())
+    let mut entries = db.list_deleted(&path).await.map_err(|e| e.to_string())?;
+    crate::crypt_overlay_provider::decode_overlay_trash_names(&mut **provider, &mut entries);
+    Ok(entries)
 }
 
 /// Restore a file from Dropbox trash
@@ -8365,7 +8381,7 @@ pub async fn dropbox_restore_from_trash(
     if provider.provider_type() != ProviderType::Dropbox {
         return Err("Only available for Dropbox".to_string());
     }
-    let db = provider
+    let db = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::dropbox::DropboxProvider>()
         .ok_or_else(|| "Dropbox downcast failed".to_string())?;
@@ -8385,7 +8401,7 @@ pub async fn dropbox_permanent_delete(
     if provider.provider_type() != ProviderType::Dropbox {
         return Err("Only available for Dropbox".to_string());
     }
-    let db = provider
+    let db = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::dropbox::DropboxProvider>()
         .ok_or_else(|| "Dropbox downcast failed".to_string())?;
@@ -8404,7 +8420,7 @@ pub async fn dropbox_set_tags(
     if provider.provider_type() != ProviderType::Dropbox {
         return Err("Only available for Dropbox".to_string());
     }
-    let db = provider
+    let db = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::dropbox::DropboxProvider>()
         .ok_or_else(|| "Dropbox downcast failed".to_string())?;
@@ -8422,7 +8438,7 @@ pub async fn dropbox_get_tags(
     if provider.provider_type() != ProviderType::Dropbox {
         return Err("Only available for Dropbox".to_string());
     }
-    let db = provider
+    let db = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::dropbox::DropboxProvider>()
         .ok_or_else(|| "Dropbox downcast failed".to_string())?;
@@ -8441,11 +8457,13 @@ pub async fn onedrive_list_trash(
     if provider.provider_type() != ProviderType::OneDrive {
         return Err("Only available for OneDrive".to_string());
     }
-    let od = provider
+    let od = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::onedrive::OneDriveProvider>()
         .ok_or_else(|| "OneDrive downcast failed".to_string())?;
-    od.list_trash().await.map_err(|e| e.to_string())
+    let mut entries = od.list_trash().await.map_err(|e| e.to_string())?;
+    crate::crypt_overlay_provider::decode_overlay_trash_names(&mut **provider, &mut entries);
+    Ok(entries)
 }
 
 /// Move files to OneDrive recycle bin (soft delete)
@@ -8459,7 +8477,7 @@ pub async fn onedrive_trash_files(
     if provider.provider_type() != ProviderType::OneDrive {
         return Err("Only available for OneDrive".to_string());
     }
-    let od = provider
+    let od = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::onedrive::OneDriveProvider>()
         .ok_or_else(|| "OneDrive downcast failed".to_string())?;
@@ -8482,7 +8500,7 @@ pub async fn onedrive_restore_from_trash(
     if provider.provider_type() != ProviderType::OneDrive {
         return Err("Only available for OneDrive".to_string());
     }
-    let od = provider
+    let od = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::onedrive::OneDriveProvider>()
         .ok_or_else(|| "OneDrive downcast failed".to_string())?;
@@ -8502,7 +8520,7 @@ pub async fn onedrive_permanent_delete(
     if provider.provider_type() != ProviderType::OneDrive {
         return Err("Only available for OneDrive".to_string());
     }
-    let od = provider
+    let od = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::onedrive::OneDriveProvider>()
         .ok_or_else(|| "OneDrive downcast failed".to_string())?;
@@ -8813,7 +8831,7 @@ pub async fn github_list_branches(
         return Err("This operation is only available for GitHub".to_string());
     }
 
-    let github = provider
+    let github = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::github::GitHubProvider>()
         .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
@@ -8836,7 +8854,7 @@ pub async fn github_get_info(state: State<'_, ProviderState>) -> Result<serde_js
         return Err("This operation is only available for GitHub".to_string());
     }
 
-    let github = provider
+    let github = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::github::GitHubProvider>()
         .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
@@ -8874,7 +8892,7 @@ pub async fn gitlab_list_branches(
         return Err("This operation is only available for GitLab".to_string());
     }
 
-    let gitlab = provider
+    let gitlab = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::gitlab::GitLabProvider>()
         .ok_or_else(|| "Failed to access GitLab provider".to_string())?;
@@ -8909,7 +8927,7 @@ pub async fn gitlab_get_info(state: State<'_, ProviderState>) -> Result<serde_js
         return Err("This operation is only available for GitLab".to_string());
     }
 
-    let gitlab = provider
+    let gitlab = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::gitlab::GitLabProvider>()
         .ok_or_else(|| "Failed to access GitLab provider".to_string())?;
@@ -8954,7 +8972,7 @@ pub async fn gitlab_switch_branch(
         return Err("This operation is only available for GitLab".to_string());
     }
 
-    let gitlab = provider
+    let gitlab = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::gitlab::GitLabProvider>()
         .ok_or_else(|| "Failed to access GitLab provider".to_string())?;
@@ -8979,7 +8997,7 @@ pub async fn gitlab_batch_upload(
     if provider.provider_type() != ProviderType::GitLab {
         return Err("This operation is only available for GitLab".to_string());
     }
-    let gitlab = provider
+    let gitlab = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::gitlab::GitLabProvider>()
         .ok_or_else(|| "Failed to access GitLab provider".to_string())?;
@@ -9038,7 +9056,7 @@ pub async fn gitlab_batch_delete(
     if provider.provider_type() != ProviderType::GitLab {
         return Err("This operation is only available for GitLab".to_string());
     }
-    let gitlab = provider
+    let gitlab = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::gitlab::GitLabProvider>()
         .ok_or_else(|| "Failed to access GitLab provider".to_string())?;
@@ -9078,7 +9096,7 @@ pub async fn gitlab_list_releases(
     if provider.provider_type() != ProviderType::GitLab {
         return Err("This operation is only available for GitLab".to_string());
     }
-    let gitlab = provider
+    let gitlab = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::gitlab::GitLabProvider>()
         .ok_or_else(|| "Failed to access GitLab provider".to_string())?;
@@ -9121,7 +9139,7 @@ pub async fn gitlab_list_release_assets(
     if provider.provider_type() != ProviderType::GitLab {
         return Err("This operation is only available for GitLab".to_string());
     }
-    let gitlab = provider
+    let gitlab = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::gitlab::GitLabProvider>()
         .ok_or_else(|| "Failed to access GitLab provider".to_string())?;
@@ -9161,7 +9179,7 @@ pub async fn gitlab_create_release(
     if provider.provider_type() != ProviderType::GitLab {
         return Err("This operation is only available for GitLab".to_string());
     }
-    let gitlab = provider
+    let gitlab = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::gitlab::GitLabProvider>()
         .ok_or_else(|| "Failed to access GitLab provider".to_string())?;
@@ -9190,7 +9208,7 @@ pub async fn gitlab_delete_release(
     if provider.provider_type() != ProviderType::GitLab {
         return Err("This operation is only available for GitLab".to_string());
     }
-    let gitlab = provider
+    let gitlab = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::gitlab::GitLabProvider>()
         .ok_or_else(|| "Failed to access GitLab provider".to_string())?;
@@ -9218,7 +9236,7 @@ pub async fn gitlab_upload_release_asset(
     if provider.provider_type() != ProviderType::GitLab {
         return Err("This operation is only available for GitLab".to_string());
     }
-    let gitlab = provider
+    let gitlab = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::gitlab::GitLabProvider>()
         .ok_or_else(|| "Failed to access GitLab provider".to_string())?;
@@ -9250,7 +9268,7 @@ pub async fn gitlab_delete_release_asset(
     if provider.provider_type() != ProviderType::GitLab {
         return Err("This operation is only available for GitLab".to_string());
     }
-    let gitlab = provider
+    let gitlab = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::gitlab::GitLabProvider>()
         .ok_or_else(|| "Failed to access GitLab provider".to_string())?;
@@ -9274,7 +9292,7 @@ pub async fn gitlab_read_file(
     if provider.provider_type() != ProviderType::GitLab {
         return Err("This operation is only available for GitLab".to_string());
     }
-    let gitlab = provider
+    let gitlab = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::gitlab::GitLabProvider>()
         .ok_or_else(|| "Failed to access GitLab provider".to_string())?;
@@ -9299,7 +9317,7 @@ pub async fn gitlab_download_release_asset(
     if provider.provider_type() != ProviderType::GitLab {
         return Err("This operation is only available for GitLab".to_string());
     }
-    let gitlab = provider
+    let gitlab = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::gitlab::GitLabProvider>()
         .ok_or_else(|| "Failed to access GitLab provider".to_string())?;
@@ -9326,7 +9344,7 @@ pub async fn gitlab_create_merge_request(
     if provider.provider_type() != ProviderType::GitLab {
         return Err("This operation is only available for GitLab".to_string());
     }
-    let gitlab = provider
+    let gitlab = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::gitlab::GitLabProvider>()
         .ok_or_else(|| "Failed to access GitLab provider".to_string())?;
@@ -9353,7 +9371,7 @@ pub async fn gitlab_get_web_url(
     if provider.provider_type() != ProviderType::GitLab {
         return Err("This operation is only available for GitLab".to_string());
     }
-    let gitlab = provider
+    let gitlab = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::gitlab::GitLabProvider>()
         .ok_or_else(|| "Failed to access GitLab provider".to_string())?;
@@ -9377,7 +9395,7 @@ pub async fn github_create_pr(
         return Err("This operation is only available for GitHub".to_string());
     }
 
-    let github = provider
+    let github = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::github::GitHubProvider>()
         .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
@@ -9694,7 +9712,7 @@ pub async fn github_list_releases(
         return Err("This operation is only available for GitHub".to_string());
     }
 
-    let github = provider
+    let github = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::github::GitHubProvider>()
         .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
@@ -9737,7 +9755,7 @@ pub async fn github_list_release_assets(
         return Err("This operation is only available for GitHub".to_string());
     }
 
-    let github = provider
+    let github = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::github::GitHubProvider>()
         .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
@@ -9783,7 +9801,7 @@ pub async fn github_create_release(
         return Err("This operation is only available for GitHub".to_string());
     }
 
-    let github = provider
+    let github = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::github::GitHubProvider>()
         .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
@@ -9844,7 +9862,7 @@ pub async fn github_get_pages(
     if !is_plain_github_provider(provider.as_mut()) {
         return Err("This operation is only available for GitHub".to_string());
     }
-    let github = provider
+    let github = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::github::GitHubProvider>()
         .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
@@ -9868,7 +9886,7 @@ pub async fn github_list_pages_builds(
     if !is_plain_github_provider(provider.as_mut()) {
         return Err("This operation is only available for GitHub".to_string());
     }
-    let github = provider
+    let github = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::github::GitHubProvider>()
         .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
@@ -9892,7 +9910,7 @@ pub async fn github_trigger_pages_build(
     if !is_plain_github_provider(provider.as_mut()) {
         return Err("This operation is only available for GitHub".to_string());
     }
-    let github = provider
+    let github = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::github::GitHubProvider>()
         .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
@@ -9920,7 +9938,7 @@ pub async fn github_update_pages(
     if !is_plain_github_provider(provider.as_mut()) {
         return Err("This operation is only available for GitHub".to_string());
     }
-    let github = provider
+    let github = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::github::GitHubProvider>()
         .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
@@ -9948,7 +9966,7 @@ pub async fn github_pages_health(
     if !is_plain_github_provider(provider.as_mut()) {
         return Err("This operation is only available for GitHub".to_string());
     }
-    let github = provider
+    let github = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::github::GitHubProvider>()
         .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
@@ -9977,7 +9995,7 @@ pub async fn github_upload_release_asset(
         return Err("This operation is only available for GitHub".to_string());
     }
 
-    let github = provider
+    let github = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::github::GitHubProvider>()
         .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
@@ -10009,7 +10027,7 @@ pub async fn github_delete_release(
         return Err("This operation is only available for GitHub".to_string());
     }
 
-    let github = provider
+    let github = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::github::GitHubProvider>()
         .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
@@ -10038,7 +10056,7 @@ pub async fn github_delete_release_asset(
         return Err("This operation is only available for GitHub".to_string());
     }
 
-    let github = provider
+    let github = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::github::GitHubProvider>()
         .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
@@ -10068,7 +10086,7 @@ pub async fn github_download_release_asset(
         return Err("This operation is only available for GitHub".to_string());
     }
 
-    let github = provider
+    let github = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::github::GitHubProvider>()
         .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
@@ -10098,7 +10116,7 @@ pub async fn github_get_release(
         return Err("This operation is only available for GitHub".to_string());
     }
 
-    let github = provider
+    let github = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::github::GitHubProvider>()
         .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
@@ -10156,7 +10174,7 @@ pub async fn github_batch_commit(
         return Err("This operation is only available for GitHub".to_string());
     }
 
-    let github = provider
+    let github = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::github::GitHubProvider>()
         .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
@@ -10205,7 +10223,7 @@ pub async fn github_batch_upload(
     if !is_plain_github_provider(provider.as_mut()) {
         return Err("This operation is only available for GitHub".to_string());
     }
-    let github = provider
+    let github = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::github::GitHubProvider>()
         .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
@@ -10251,7 +10269,7 @@ pub async fn github_batch_delete(
     if !is_plain_github_provider(provider.as_mut()) {
         return Err("This operation is only available for GitHub".to_string());
     }
-    let github = provider
+    let github = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::github::GitHubProvider>()
         .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
@@ -10337,7 +10355,7 @@ pub async fn github_check_local_sync(
     if !is_plain_github_provider(provider.as_mut()) {
         return Ok(serde_json::json!({"is_local_repo": false}));
     }
-    let github = provider
+    let github = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::github::GitHubProvider>()
         .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
@@ -10455,7 +10473,7 @@ pub async fn github_push_local(
             .as_mut()
             .ok_or_else(|| "Not connected to any provider".to_string())?;
         if is_plain_github_provider(provider.as_mut()) {
-            let github = provider
+            let github = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
                 .as_any_mut()
                 .downcast_mut::<crate::providers::github::GitHubProvider>()
                 .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
@@ -10505,7 +10523,7 @@ pub async fn github_list_actions_runs(
     if !is_plain_github_provider(provider.as_mut()) {
         return Err("This operation is only available for GitHub".to_string());
     }
-    let github = provider
+    let github = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::github::GitHubProvider>()
         .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
@@ -10530,7 +10548,7 @@ pub async fn github_rerun_workflow(
     if !is_plain_github_provider(provider.as_mut()) {
         return Err("This operation is only available for GitHub".to_string());
     }
-    let github = provider
+    let github = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::github::GitHubProvider>()
         .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
@@ -10554,7 +10572,7 @@ pub async fn github_rerun_failed_jobs(
     if !is_plain_github_provider(provider.as_mut()) {
         return Err("This operation is only available for GitHub".to_string());
     }
-    let github = provider
+    let github = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::github::GitHubProvider>()
         .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
@@ -10578,7 +10596,7 @@ pub async fn github_cancel_workflow(
     if !is_plain_github_provider(provider.as_mut()) {
         return Err("This operation is only available for GitHub".to_string());
     }
-    let github = provider
+    let github = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::github::GitHubProvider>()
         .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
@@ -10601,7 +10619,7 @@ pub async fn filen_notes_list(
     if provider.provider_type() != ProviderType::Filen {
         return Err("Only available for Filen".into());
     }
-    let filen = provider
+    let filen = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::filen::FilenProvider>()
         .ok_or("Failed to access Filen provider")?;
@@ -10621,7 +10639,7 @@ pub async fn filen_notes_create(
     if provider.provider_type() != ProviderType::Filen {
         return Err("Only available for Filen".into());
     }
-    let filen = provider
+    let filen = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::filen::FilenProvider>()
         .ok_or("Failed to access Filen provider")?;
@@ -10643,7 +10661,7 @@ pub async fn filen_notes_get_content(
     if provider.provider_type() != ProviderType::Filen {
         return Err("Only available for Filen".into());
     }
-    let filen = provider
+    let filen = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::filen::FilenProvider>()
         .ok_or("Failed to access Filen provider")?;
@@ -10666,7 +10684,7 @@ pub async fn filen_notes_edit_content(
     if provider.provider_type() != ProviderType::Filen {
         return Err("Only available for Filen".into());
     }
-    let filen = provider
+    let filen = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::filen::FilenProvider>()
         .ok_or("Failed to access Filen provider")?;
@@ -10689,7 +10707,7 @@ pub async fn filen_notes_edit_title(
     if provider.provider_type() != ProviderType::Filen {
         return Err("Only available for Filen".into());
     }
-    let filen = provider
+    let filen = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::filen::FilenProvider>()
         .ok_or("Failed to access Filen provider")?;
@@ -10711,7 +10729,7 @@ pub async fn filen_notes_change_type(
     if provider.provider_type() != ProviderType::Filen {
         return Err("Only available for Filen".into());
     }
-    let filen = provider
+    let filen = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::filen::FilenProvider>()
         .ok_or("Failed to access Filen provider")?;
@@ -10733,7 +10751,7 @@ pub async fn filen_notes_trash(
     if provider.provider_type() != ProviderType::Filen {
         return Err("Only available for Filen".into());
     }
-    let filen = provider
+    let filen = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::filen::FilenProvider>()
         .ok_or("Failed to access Filen provider")?;
@@ -10751,7 +10769,7 @@ pub async fn filen_notes_archive(
     if provider.provider_type() != ProviderType::Filen {
         return Err("Only available for Filen".into());
     }
-    let filen = provider
+    let filen = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::filen::FilenProvider>()
         .ok_or("Failed to access Filen provider")?;
@@ -10769,7 +10787,7 @@ pub async fn filen_notes_restore(
     if provider.provider_type() != ProviderType::Filen {
         return Err("Only available for Filen".into());
     }
-    let filen = provider
+    let filen = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::filen::FilenProvider>()
         .ok_or("Failed to access Filen provider")?;
@@ -10787,7 +10805,7 @@ pub async fn filen_notes_delete(
     if provider.provider_type() != ProviderType::Filen {
         return Err("Only available for Filen".into());
     }
-    let filen = provider
+    let filen = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::filen::FilenProvider>()
         .ok_or("Failed to access Filen provider")?;
@@ -10804,7 +10822,7 @@ pub async fn filen_get_auth_version(
     if provider.provider_type() != ProviderType::Filen {
         return Err("Only available for Filen".into());
     }
-    let filen = provider
+    let filen = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::filen::FilenProvider>()
         .ok_or("Failed to access Filen provider")?;
@@ -10823,7 +10841,7 @@ pub async fn filen_notes_toggle_favorite(
     if provider.provider_type() != ProviderType::Filen {
         return Err("Only available for Filen".into());
     }
-    let filen = provider
+    let filen = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::filen::FilenProvider>()
         .ok_or("Failed to access Filen provider")?;
@@ -10845,7 +10863,7 @@ pub async fn filen_notes_toggle_pinned(
     if provider.provider_type() != ProviderType::Filen {
         return Err("Only available for Filen".into());
     }
-    let filen = provider
+    let filen = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::filen::FilenProvider>()
         .ok_or("Failed to access Filen provider")?;
@@ -10866,7 +10884,7 @@ pub async fn filen_notes_history(
     if provider.provider_type() != ProviderType::Filen {
         return Err("Only available for Filen".into());
     }
-    let filen = provider
+    let filen = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::filen::FilenProvider>()
         .ok_or("Failed to access Filen provider")?;
@@ -10888,7 +10906,7 @@ pub async fn filen_notes_history_restore(
     if provider.provider_type() != ProviderType::Filen {
         return Err("Only available for Filen".into());
     }
-    let filen = provider
+    let filen = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::filen::FilenProvider>()
         .ok_or("Failed to access Filen provider")?;
@@ -10908,7 +10926,7 @@ pub async fn filen_notes_tags_list(
     if provider.provider_type() != ProviderType::Filen {
         return Err("Only available for Filen".into());
     }
-    let filen = provider
+    let filen = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::filen::FilenProvider>()
         .ok_or("Failed to access Filen provider")?;
@@ -10926,7 +10944,7 @@ pub async fn filen_notes_tags_create(
     if provider.provider_type() != ProviderType::Filen {
         return Err("Only available for Filen".into());
     }
-    let filen = provider
+    let filen = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::filen::FilenProvider>()
         .ok_or("Failed to access Filen provider")?;
@@ -10948,7 +10966,7 @@ pub async fn filen_notes_tags_rename(
     if provider.provider_type() != ProviderType::Filen {
         return Err("Only available for Filen".into());
     }
-    let filen = provider
+    let filen = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::filen::FilenProvider>()
         .ok_or("Failed to access Filen provider")?;
@@ -10969,7 +10987,7 @@ pub async fn filen_notes_tags_delete(
     if provider.provider_type() != ProviderType::Filen {
         return Err("Only available for Filen".into());
     }
-    let filen = provider
+    let filen = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::filen::FilenProvider>()
         .ok_or("Failed to access Filen provider")?;
@@ -10991,7 +11009,7 @@ pub async fn filen_notes_tag_note(
     if provider.provider_type() != ProviderType::Filen {
         return Err("Only available for Filen".into());
     }
-    let filen = provider
+    let filen = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::filen::FilenProvider>()
         .ok_or("Failed to access Filen provider")?;
@@ -11013,7 +11031,7 @@ pub async fn filen_notes_untag_note(
     if provider.provider_type() != ProviderType::Filen {
         return Err("Only available for Filen".into());
     }
-    let filen = provider
+    let filen = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::filen::FilenProvider>()
         .ok_or("Failed to access Filen provider")?;
@@ -11042,7 +11060,7 @@ pub async fn s3_change_storage_class(
     if provider.provider_type() != ProviderType::S3 {
         return Err("Only available for S3".into());
     }
-    let s3 = provider
+    let s3 = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::s3::S3Provider>()
         .ok_or("Failed to access S3 provider")?;
@@ -11064,7 +11082,7 @@ pub async fn s3_glacier_restore(
     if provider.provider_type() != ProviderType::S3 {
         return Err("Only available for S3".into());
     }
-    let s3 = provider
+    let s3 = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::s3::S3Provider>()
         .ok_or("Failed to access S3 provider")?;
@@ -11084,7 +11102,7 @@ pub async fn s3_get_object_tags(
     if provider.provider_type() != ProviderType::S3 {
         return Err("Only available for S3".into());
     }
-    let s3 = provider
+    let s3 = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::s3::S3Provider>()
         .ok_or("Failed to access S3 provider")?;
@@ -11103,7 +11121,7 @@ pub async fn s3_set_object_tags(
     if provider.provider_type() != ProviderType::S3 {
         return Err("Only available for S3".into());
     }
-    let s3 = provider
+    let s3 = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::s3::S3Provider>()
         .ok_or("Failed to access S3 provider")?;
@@ -11123,7 +11141,7 @@ pub async fn s3_delete_object_tags(
     if provider.provider_type() != ProviderType::S3 {
         return Err("Only available for S3".into());
     }
-    let s3 = provider
+    let s3 = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::s3::S3Provider>()
         .ok_or("Failed to access S3 provider")?;
@@ -11146,7 +11164,7 @@ pub async fn azure_set_blob_tier(
     if provider.provider_type() != ProviderType::Azure {
         return Err("Only available for Azure".into());
     }
-    let azure = provider
+    let azure = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::azure::AzureProvider>()
         .ok_or("Failed to access Azure provider")?;
@@ -11166,7 +11184,7 @@ pub async fn azure_list_deleted_blobs(
     if provider.provider_type() != ProviderType::Azure {
         return Err("Only available for Azure".into());
     }
-    let azure = provider
+    let azure = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::azure::AzureProvider>()
         .ok_or("Failed to access Azure provider")?;
@@ -11185,7 +11203,7 @@ pub async fn azure_undelete_blob(
     if provider.provider_type() != ProviderType::Azure {
         return Err("Only available for Azure".into());
     }
-    let azure = provider
+    let azure = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::azure::AzureProvider>()
         .ok_or("Failed to access Azure provider")?;
@@ -11210,11 +11228,13 @@ pub async fn internxt_list_trash(
     if provider.provider_type() != ProviderType::Internxt {
         return Err("Only available for Internxt".into());
     }
-    let internxt = provider
+    let internxt = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::internxt::InternxtProvider>()
         .ok_or("Failed to access Internxt provider")?;
-    internxt.list_trash().await.map_err(|e| e.to_string())
+    let mut entries = internxt.list_trash().await.map_err(|e| e.to_string())?;
+    crate::crypt_overlay_provider::decode_overlay_trash_names(&mut **provider, &mut entries);
+    Ok(entries)
 }
 
 /// List items in the pCloud trash
@@ -11227,11 +11247,13 @@ pub async fn pcloud_list_trash(
     if provider.provider_type() != ProviderType::PCloud {
         return Err("Only available for pCloud".into());
     }
-    let pcloud = provider
+    let pcloud = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::pcloud::PCloudProvider>()
         .ok_or("Failed to access pCloud provider")?;
-    pcloud.list_trash().await.map_err(|e| e.to_string())
+    let mut entries = pcloud.list_trash().await.map_err(|e| e.to_string())?;
+    crate::crypt_overlay_provider::decode_overlay_trash_names(&mut **provider, &mut entries);
+    Ok(entries)
 }
 
 /// Restore item from pCloud trash
@@ -11246,7 +11268,7 @@ pub async fn pcloud_restore_from_trash(
     if provider.provider_type() != ProviderType::PCloud {
         return Err("Only available for pCloud".into());
     }
-    let pcloud = provider
+    let pcloud = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::pcloud::PCloudProvider>()
         .ok_or("Failed to access pCloud provider")?;
@@ -11264,7 +11286,7 @@ pub async fn pcloud_empty_trash(state: State<'_, ProviderState>) -> Result<(), S
     if provider.provider_type() != ProviderType::PCloud {
         return Err("Only available for pCloud".into());
     }
-    let pcloud = provider
+    let pcloud = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::pcloud::PCloudProvider>()
         .ok_or("Failed to access pCloud provider")?;
@@ -11283,7 +11305,7 @@ pub async fn pcloud_permanently_delete_trash(
     if provider.provider_type() != ProviderType::PCloud {
         return Err("Only available for pCloud".into());
     }
-    let pcloud = provider
+    let pcloud = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::pcloud::PCloudProvider>()
         .ok_or("Failed to access pCloud provider")?;
@@ -11305,11 +11327,13 @@ pub async fn kdrive_list_trash(
     if provider.provider_type() != ProviderType::KDrive {
         return Err("Only available for kDrive".into());
     }
-    let kdrive = provider
+    let kdrive = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::kdrive::KDriveProvider>()
         .ok_or("Failed to access kDrive provider")?;
-    kdrive.list_trash().await.map_err(|e| e.to_string())
+    let mut entries = kdrive.list_trash().await.map_err(|e| e.to_string())?;
+    crate::crypt_overlay_provider::decode_overlay_trash_names(&mut **provider, &mut entries);
+    Ok(entries)
 }
 
 /// Restore item from kDrive trash
@@ -11323,7 +11347,7 @@ pub async fn kdrive_restore_from_trash(
     if provider.provider_type() != ProviderType::KDrive {
         return Err("Only available for kDrive".into());
     }
-    let kdrive = provider
+    let kdrive = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::kdrive::KDriveProvider>()
         .ok_or("Failed to access kDrive provider")?;
@@ -11344,7 +11368,7 @@ pub async fn kdrive_permanently_delete_trash(
     if provider.provider_type() != ProviderType::KDrive {
         return Err("Only available for kDrive".into());
     }
-    let kdrive = provider
+    let kdrive = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::kdrive::KDriveProvider>()
         .ok_or("Failed to access kDrive provider")?;
@@ -11362,7 +11386,7 @@ pub async fn kdrive_empty_trash(state: State<'_, ProviderState>) -> Result<(), S
     if provider.provider_type() != ProviderType::KDrive {
         return Err("Only available for kDrive".into());
     }
-    let kdrive = provider
+    let kdrive = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::kdrive::KDriveProvider>()
         .ok_or("Failed to access kDrive provider")?;
@@ -11391,7 +11415,7 @@ pub async fn b2_list_hidden(
     if provider.provider_type() != ProviderType::Backblaze {
         return Err("Only available for Backblaze B2".to_string());
     }
-    let b2 = provider
+    let b2 = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::B2Provider>()
         .ok_or_else(|| "B2 downcast failed".to_string())?;
@@ -11411,7 +11435,7 @@ pub async fn b2_restore_hidden(
     if provider.provider_type() != ProviderType::Backblaze {
         return Err("Only available for Backblaze B2".to_string());
     }
-    let b2 = provider
+    let b2 = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::B2Provider>()
         .ok_or_else(|| "B2 downcast failed".to_string())?;
@@ -11433,7 +11457,7 @@ pub async fn b2_permanent_delete(
     if provider.provider_type() != ProviderType::Backblaze {
         return Err("Only available for Backblaze B2".to_string());
     }
-    let b2 = provider
+    let b2 = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::B2Provider>()
         .ok_or_else(|| "B2 downcast failed".to_string())?;
