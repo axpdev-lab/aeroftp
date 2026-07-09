@@ -1469,7 +1469,7 @@ export const PROVIDERS: ProviderConfig[] = [
         },
         healthCheckUrl: 'https://infini-cloud.net',
         helpUrl: 'https://infini-cloud.net/en/developer_webdav.html',
-        signupUrl: 'https://account.teracloud.jp/RegistForm.php/index/',
+        signupUrl: 'https://sso.infinicloud.com/realms/one/account/mypage',
     },
     {
         id: 'seafile',

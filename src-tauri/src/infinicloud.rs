@@ -112,7 +112,10 @@ async fn discover(
     let resp = client
         .get(format!("{}/ba/user", API_BASE))
         .header("Authorization", &auth)
+        // Legacy header still accepted; the current docs specify the
+        // InfiniCLOUD-branded name, so send both for forward compatibility.
         .header("X-TeraCLOUD-API-KEY", api_key)
+        .header("X-InfiniCLOUD-API-KEY", api_key)
         .header("Accept", "application/json")
         .send()
         .await
@@ -174,6 +177,7 @@ async fn get_quota(
         .get(&url)
         .header("Authorization", &auth)
         .header("X-TeraCLOUD-API-KEY", api_key)
+        .header("X-InfiniCLOUD-API-KEY", api_key)
         .header("Accept", "application/json")
         .send()
         .await
