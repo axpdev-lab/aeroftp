@@ -335,7 +335,8 @@
             "encrypted": "暗号化済み",
             "notEncrypted": "暗号化なし",
             "listingDirectory": "ディレクトリを一覧表示しています...",
-            "listingPath": "{path} を一覧表示しています..."
+            "listingPath": "{path} を一覧表示しています...",
+            "pleaseWait": "しばらくお待ちください..."
         },
         "contextMenu": {
             "askAeroAgent": "AeroAgentに質問...",
@@ -1309,7 +1310,8 @@
             "keepWaiting": "待機を続ける",
             "cancelConnection": "接続をキャンセル",
             "dropImported": "{count}件の項目をこのフォルダーにインポートしました",
-            "dropFailed": "{count}件の項目のインポートに失敗しました"
+            "dropFailed": "{count}件の項目のインポートに失敗しました",
+            "connectionCancelledHint": "一覧の取得を中止し、接続を閉じました。"
         },
         "about": {
             "tagline": "FTPを超えて。完全な開発者ツールキット。",
@@ -1499,7 +1501,8 @@
             "overlay_opening": "暗号化オーバーレイを開いています。名前を復号しています",
             "overlay_unlocked": "暗号化オーバーレイのロックを解除しました",
             "overlay_failed": "暗号化オーバーレイのロックを解除できませんでした",
-            "session_resumed": "{server} のアクティブなセッションを再開しました"
+            "session_resumed": "{server} のアクティブなセッションを再開しました",
+            "connect_cancelled": "ユーザーによる中止: 一覧の取得を停止し、サーバーから切断しました"
         },
         "protocol": {
             "selectProtocol": "プロトコルを選択...",

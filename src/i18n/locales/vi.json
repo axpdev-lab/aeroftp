@@ -335,7 +335,8 @@
             "encrypted": "Đã mã hóa",
             "notEncrypted": "Chưa mã hóa",
             "listingDirectory": "Đang liệt kê thư mục...",
-            "listingPath": "Đang liệt kê {path}..."
+            "listingPath": "Đang liệt kê {path}...",
+            "pleaseWait": "Vui lòng đợi..."
         },
         "contextMenu": {
             "askAeroAgent": "Hỏi AeroAgent...",
@@ -1309,7 +1310,8 @@
             "keepWaiting": "Tiếp tục chờ",
             "cancelConnection": "Hủy kết nối",
             "dropImported": "Đã nhập {count} mục vào thư mục này",
-            "dropFailed": "Không thể nhập {count} mục"
+            "dropFailed": "Không thể nhập {count} mục",
+            "connectionCancelledHint": "Đã dừng liệt kê và đóng kết nối."
         },
         "about": {
             "tagline": "Hơn cả FTP. Bộ công cụ hoàn chỉnh cho nhà phát triển.",
@@ -1499,7 +1501,8 @@
             "overlay_opening": "Đang mở lớp phủ mã hóa, đang giải mã tên",
             "overlay_unlocked": "Đã mở khóa lớp phủ mã hóa",
             "overlay_failed": "Không thể mở khóa lớp phủ mã hóa",
-            "session_resumed": "Đã tiếp tục phiên đang hoạt động tới {server}"
+            "session_resumed": "Đã tiếp tục phiên đang hoạt động tới {server}",
+            "connect_cancelled": "Người dùng đã hủy: dừng liệt kê, ngắt kết nối khỏi máy chủ"
         },
         "protocol": {
             "selectProtocol": "Chọn giao thức...",

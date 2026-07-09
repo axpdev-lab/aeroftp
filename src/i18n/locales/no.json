@@ -335,7 +335,8 @@
             "encrypted": "Kryptert",
             "notEncrypted": "Ikke kryptert",
             "listingDirectory": "Viser katalog...",
-            "listingPath": "Viser {path}..."
+            "listingPath": "Viser {path}...",
+            "pleaseWait": "Vennligst vent..."
         },
         "contextMenu": {
             "askAeroAgent": "Spør AeroAgent...",
@@ -1309,7 +1310,8 @@
             "keepWaiting": "Fortsett å vente",
             "cancelConnection": "Avbryt tilkobling",
             "dropImported": "Importerte {count} elementer til denne mappen",
-            "dropFailed": "Kunne ikke importere {count} elementer"
+            "dropFailed": "Kunne ikke importere {count} elementer",
+            "connectionCancelledHint": "Opplistingen ble stoppet og tilkoblingen lukket."
         },
         "about": {
             "tagline": "Mer enn FTP. Et komplett utviklerverktøy.",
@@ -1499,7 +1501,8 @@
             "overlay_opening": "Åpner kryptert lag, dekrypterer navn",
             "overlay_unlocked": "Kryptert lag låst opp",
             "overlay_failed": "Kunne ikke låse opp det krypterte laget",
-            "session_resumed": "Gjenopptok aktiv økt til {server}"
+            "session_resumed": "Gjenopptok aktiv økt til {server}",
+            "connect_cancelled": "Avbrutt av brukeren: opplisting stoppet, koblet fra serveren"
         },
         "protocol": {
             "selectProtocol": "Velg protokoll...",

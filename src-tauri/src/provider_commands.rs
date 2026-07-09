@@ -290,6 +290,147 @@ where
     }
 }
 
+/// Marker returned by a foreground listing (`provider_list_files`,
+/// `provider_change_dir`) that the user aborted with the remote panel's Cancel
+/// button. The frontend matches on it to stay silent: an abort the user asked
+/// for is not an error, so no "listing failed" toast, and the connect flow that
+/// issued the listing must bail out instead of painting the late result.
+pub const LISTING_CANCELLED: &str = "LISTING_CANCELLED";
+
+/// Cancellation handle for the foreground remote listing currently in flight.
+///
+/// The panel spinner's Cancel button used to be cosmetic: it hid the spinner
+/// while `provider_list_files` kept running, and the connect flow then painted
+/// the late result anyway. A cancel cannot be honoured from the frontend alone,
+/// because the listing holds `ProviderState::provider` for its whole duration:
+/// a `provider_disconnect` issued to force the point would simply queue behind
+/// the stuck listing on that very mutex. So the abort has to happen inside the
+/// listing command, and the cancel signal has to reach it without touching any
+/// provider lock. This state is exactly that signal, and `cancel_remote_listing`
+/// is deliberately the one command that takes it and nothing else.
+///
+/// Aborting is safe because every provider's `list()` is pure async (no
+/// `spawn_blocking`, verified across `providers/`), so dropping the future on
+/// the cancel branch of `tokio::select!` tears down the in-flight request and
+/// releases the provider mutex, which is what lets the follow-up disconnect run
+/// immediately rather than inheriting the stall.
+///
+/// The slot holds the latest armed listing plus a generation id, so a guard can
+/// disarm only its own token and never clear a newer listing's. A replaced token
+/// is left uncancelled on purpose: a superseding listing is not a user cancel,
+/// and the frontend already discards the stale response by generation.
+#[derive(Default)]
+pub struct ListingCancelState {
+    slot: std::sync::Mutex<Option<(u64, CancellationToken)>>,
+    next_id: AtomicU64,
+}
+
+impl ListingCancelState {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Arm a fresh token for a listing that is about to start, superseding any
+    /// token left in the slot. Returns the generation id (for the drop guard)
+    /// and the token to `select!` on.
+    fn arm(&self) -> (u64, CancellationToken) {
+        let id = self.next_id.fetch_add(1, Ordering::SeqCst);
+        let token = CancellationToken::new();
+        *self.lock() = Some((id, token.clone()));
+        (id, token)
+    }
+
+    /// Clear the slot when it still holds generation `id`. A no-op once a newer
+    /// listing has taken it over, so a resolving listing can never disarm the
+    /// cancel of the one that replaced it.
+    fn disarm(&self, id: u64) {
+        let mut slot = self.lock();
+        if slot.as_ref().is_some_and(|(current, _)| *current == id) {
+            *slot = None;
+        }
+    }
+
+    /// Signal the in-flight foreground listing. Idempotent: `false` means there
+    /// was nothing to cancel (it resolved before the click landed), which the UI
+    /// treats as success, since the outcome the user asked for already holds.
+    pub fn cancel(&self) -> bool {
+        match self.lock().as_ref() {
+            Some((_, token)) => {
+                token.cancel();
+                true
+            }
+            None => false,
+        }
+    }
+
+    fn lock(&self) -> std::sync::MutexGuard<'_, Option<(u64, CancellationToken)>> {
+        self.slot
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    #[cfg(test)]
+    pub fn is_armed(&self) -> bool {
+        self.lock().is_some()
+    }
+}
+
+/// RAII guard that disarms a listing token on every exit path of the listing
+/// command, including early `?` returns and the cancel branch, so a later Cancel
+/// click can never signal a token whose listing already resolved.
+struct ListingTokenGuard<'a> {
+    state: &'a ListingCancelState,
+    id: u64,
+}
+
+impl<'a> ListingTokenGuard<'a> {
+    fn new(state: &'a ListingCancelState, id: u64) -> Self {
+        Self { state, id }
+    }
+}
+
+impl Drop for ListingTokenGuard<'_> {
+    fn drop(&mut self) {
+        self.state.disarm(self.id);
+    }
+}
+
+/// Run a foreground listing future, abortable from the panel spinner's Cancel
+/// button, returning [`LISTING_CANCELLED`] when the user aborts first.
+///
+/// `fut` must include the `state.provider.lock().await` acquisition, not just
+/// the listing call: a listing queued behind another stuck provider operation
+/// looks identical to the user (a frozen panel) and must be just as cancellable.
+pub(crate) async fn run_cancellable_listing<T, F>(
+    listing_cancel: &ListingCancelState,
+    fut: F,
+) -> Result<T, String>
+where
+    F: std::future::Future<Output = Result<T, String>>,
+{
+    let (id, token) = listing_cancel.arm();
+    let _guard = ListingTokenGuard::new(listing_cancel, id);
+    tokio::select! {
+        res = fut => res,
+        _ = token.cancelled() => Err(LISTING_CANCELLED.to_string()),
+    }
+}
+
+/// Abort the foreground remote listing in flight (panel spinner Cancel). Takes
+/// only [`ListingCancelState`], never `ProviderState`, so it cannot itself
+/// block on the provider mutex the stuck listing is holding. Idempotent, and
+/// reports whether a live listing was actually signalled.
+#[tauri::command]
+pub async fn cancel_remote_listing(
+    listing_cancel: State<'_, ListingCancelState>,
+) -> Result<bool, String> {
+    let signalled = listing_cancel.cancel();
+    if signalled {
+        info!("cancel_remote_listing: signalled cancel for in-flight listing");
+    }
+    Ok(signalled)
+}
+
 /// RAII guard around `ProviderState::in_flight_transfers`. Acquired by the
 /// command-level entry points before they hand a `SharedProvider` clone to
 /// a spawned DAG transfer task and dropped only when that task returns,
@@ -1447,11 +1588,27 @@ pub async fn provider_probe_alive(
     Ok(provider.list(".").await.is_ok())
 }
 
-/// List files in the specified path
+/// List files in the specified path.
+///
+/// Abortable from the remote panel's Cancel button: the whole body, provider
+/// mutex acquisition included, runs under [`run_cancellable_listing`].
 #[tauri::command]
 pub async fn provider_list_files(
     app: AppHandle,
     state: State<'_, ProviderState>,
+    listing_cancel: State<'_, ListingCancelState>,
+    path: Option<String>,
+) -> Result<ProviderListResponse, String> {
+    run_cancellable_listing(
+        &listing_cancel,
+        provider_list_files_inner(&app, &state, path),
+    )
+    .await
+}
+
+async fn provider_list_files_inner(
+    app: &AppHandle,
+    state: &ProviderState,
     path: Option<String>,
 ) -> Result<ProviderListResponse, String> {
     let mut provider_lock = state.provider.lock().await;
@@ -1470,15 +1627,15 @@ pub async fn provider_list_files(
     let files = match provider.list(list_path).await {
         Ok(files) => files,
         Err(e) if e.is_connection_lost() => {
-            emit_session_event(&app, SessionEventKind::Lost, e.to_string());
-            try_silent_reconnect(&app, provider)
+            emit_session_event(app, SessionEventKind::Lost, e.to_string());
+            try_silent_reconnect(app, provider)
                 .await
                 .map_err(|err| format!("Failed to reconnect: {}", err))?;
             let files = provider
                 .list(list_path)
                 .await
                 .map_err(|err| format!("Failed to list files after reconnect: {}", err))?;
-            emit_session_event(&app, SessionEventKind::Reconnected, "");
+            emit_session_event(app, SessionEventKind::Reconnected, "");
             files
         }
         Err(e) => return Err(format!("Failed to list files: {}", e)),
@@ -1492,11 +1649,28 @@ pub async fn provider_list_files(
     })
 }
 
-/// Change to the specified directory
+/// Change to the specified directory.
+///
+/// Abortable from the remote panel's Cancel button, exactly like
+/// `provider_list_files`: a drill-in that stalls on a slow server is the other
+/// half of the same freeze.
 #[tauri::command]
 pub async fn provider_change_dir(
     app: AppHandle,
     state: State<'_, ProviderState>,
+    listing_cancel: State<'_, ListingCancelState>,
+    path: String,
+) -> Result<ProviderListResponse, String> {
+    run_cancellable_listing(
+        &listing_cancel,
+        provider_change_dir_inner(&app, &state, path),
+    )
+    .await
+}
+
+async fn provider_change_dir_inner(
+    app: &AppHandle,
+    state: &ProviderState,
     path: String,
 ) -> Result<ProviderListResponse, String> {
     let mut provider_lock = state.provider.lock().await;
@@ -1524,8 +1698,8 @@ pub async fn provider_change_dir(
                 format!("Failed to change directory: {}", e)
             });
         }
-        emit_session_event(&app, SessionEventKind::Lost, e.to_string());
-        try_silent_reconnect(&app, provider)
+        emit_session_event(app, SessionEventKind::Lost, e.to_string());
+        try_silent_reconnect(app, provider)
             .await
             .map_err(|err| format!("Failed to reconnect: {}", err))?;
         let retry = if path == ".." {
@@ -1540,7 +1714,7 @@ pub async fn provider_change_dir(
                 format!("Failed to change directory after reconnect: {}", err)
             }
         })?;
-        emit_session_event(&app, SessionEventKind::Reconnected, "");
+        emit_session_event(app, SessionEventKind::Reconnected, "");
     }
 
     let files = provider
@@ -11471,9 +11645,10 @@ mod tests {
     use super::{
         decrypt_rel_aerocrypt, decrypt_rel_rclone, drain_in_flight_transfers,
         normalize_aerocrypt_remote_files_for_compare, normalize_rclone_remote_files_for_compare,
-        rclone_decrypted_size, remote_matches_repo, run_cancellable_connect, ConnectTokenGuard,
-        ConnectionCancelRegistry, ProviderConnectionParams, ProviderState, TransferOperationGuard,
-        CONNECT_CANCELLED,
+        rclone_decrypted_size, remote_matches_repo, run_cancellable_connect,
+        run_cancellable_listing, ConnectTokenGuard, ConnectionCancelRegistry, ListingCancelState,
+        ProviderConnectionParams, ProviderState, TransferOperationGuard, CONNECT_CANCELLED,
+        LISTING_CANCELLED,
     };
     use crate::rclone_crypt::{
         derive_keys, derive_keys_with_tweak, encrypt_file_content, encrypt_name,
@@ -11481,7 +11656,7 @@ mod tests {
     };
     use crate::sync::FileInfo;
     use std::collections::HashMap;
-    use std::sync::atomic::Ordering;
+    use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Arc;
     use std::time::{Duration, Instant};
 
@@ -11777,6 +11952,68 @@ mod tests {
         assert!(registry.cancel(key));
         assert_eq!(fut.await.unwrap_err(), CONNECT_CANCELLED);
         assert_eq!(registry.active_count(), 0, "guard must de-register on drop");
+    }
+
+    #[tokio::test]
+    async fn test_run_cancellable_listing_cancel_returns_marker_and_drops_future() {
+        // The panel spinner's Cancel must abort a listing that never resolves,
+        // and dropping the future is what releases the provider mutex the stuck
+        // listing was holding, so the follow-up disconnect does not queue behind
+        // it. Assert both: the marker comes back, and the future was dropped.
+        struct DropFlag(Arc<AtomicBool>);
+        impl Drop for DropFlag {
+            fn drop(&mut self) {
+                self.0.store(true, Ordering::SeqCst);
+            }
+        }
+
+        let state = ListingCancelState::new();
+        let dropped = Arc::new(AtomicBool::new(false));
+        let flag = DropFlag(Arc::clone(&dropped));
+        let fut = run_cancellable_listing::<(), _>(&state, async move {
+            let _guard = flag;
+            std::future::pending::<Result<(), String>>().await
+        });
+        tokio::pin!(fut);
+        tokio::select! {
+            _ = &mut fut => panic!("listing must not resolve before cancel"),
+            _ = tokio::task::yield_now() => {}
+        }
+        assert!(state.is_armed(), "an in-flight listing must be cancellable");
+        assert!(state.cancel(), "cancel must find the armed token");
+        assert_eq!(fut.await.unwrap_err(), LISTING_CANCELLED);
+        assert!(
+            dropped.load(Ordering::SeqCst),
+            "the aborted listing future must be dropped, freeing the provider lock"
+        );
+        assert!(!state.is_armed(), "guard must disarm the token on drop");
+    }
+
+    #[tokio::test]
+    async fn test_run_cancellable_listing_passes_result_through_and_disarms() {
+        let state = ListingCancelState::new();
+        let outcome = run_cancellable_listing(&state, async { Ok::<u32, String>(7) }).await;
+        assert_eq!(outcome.unwrap(), 7);
+        assert!(!state.is_armed());
+        // Nothing in flight: a Cancel click that lands late is a no-op, never an
+        // error the UI has to special-case.
+        assert!(!state.cancel());
+    }
+
+    #[tokio::test]
+    async fn test_listing_cancel_state_stale_guard_never_disarms_newer_listing() {
+        // A listing that resolves after a newer one took the slot must not clear
+        // the newer one's token: the Cancel button would then signal nothing.
+        let state = ListingCancelState::new();
+        let (stale_id, _stale_token) = state.arm();
+        let (_fresh_id, fresh_token) = state.arm();
+        state.disarm(stale_id);
+        assert!(
+            state.is_armed(),
+            "stale disarm must not clear the live token"
+        );
+        assert!(state.cancel());
+        assert!(fresh_token.is_cancelled());
     }
 
     #[tokio::test]

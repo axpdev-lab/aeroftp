@@ -17334,6 +17334,7 @@ pub fn run() {
         .manage(AppState::new())
         .manage(provider_commands::ProviderState::new())
         .manage(provider_commands::ConnectionCancelRegistry::new())
+        .manage(provider_commands::ListingCancelState::new())
         // AeroShare: registry of the background drive sync tasks consumed by
         // provider_connect for protocol="peer" (lifecycle per D-GUI-1:
         // open-or-tray = serving, Quit = stop).
@@ -17806,6 +17807,7 @@ pub fn run() {
             // Multi-protocol provider commands
             provider_commands::provider_connect,
             provider_commands::cancel_connection,
+            provider_commands::cancel_remote_listing,
             provider_commands::provider_disconnect,
             provider_commands::provider_apply_crypt_overlay,
             provider_commands::crypt_generate_keyfile,

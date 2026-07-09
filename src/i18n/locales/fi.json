@@ -335,7 +335,8 @@
             "encrypted": "Salattu",
             "notEncrypted": "Ei salattu",
             "listingDirectory": "Luetellaan hakemistoa...",
-            "listingPath": "Luetellaan {path}..."
+            "listingPath": "Luetellaan {path}...",
+            "pleaseWait": "Odota..."
         },
         "contextMenu": {
             "askAeroAgent": "Kysy AeroAgent-ilta...",
@@ -1309,7 +1310,8 @@
             "keepWaiting": "Jatka odottamista",
             "cancelConnection": "Peruuta yhteys",
             "dropImported": "Tuotiin {count} kohdetta tähän kansioon",
-            "dropFailed": "{count} kohteen tuonti epäonnistui"
+            "dropFailed": "{count} kohteen tuonti epäonnistui",
+            "connectionCancelledHint": "Listaus pysäytettiin ja yhteys suljettiin."
         },
         "about": {
             "tagline": "Enemmän kuin FTP. Täydellinen kehittäjän työkalupakki.",
@@ -1499,7 +1501,8 @@
             "overlay_opening": "Avataan salattua kerrosta, puretaan nimien salaus",
             "overlay_unlocked": "Salattu kerros avattu",
             "overlay_failed": "Salatun kerroksen avaaminen epäonnistui",
-            "session_resumed": "Jatkettiin aktiivista istuntoa: {server}"
+            "session_resumed": "Jatkettiin aktiivista istuntoa: {server}",
+            "connect_cancelled": "Käyttäjä peruutti: listaus pysäytetty, yhteys palvelimeen katkaistu"
         },
         "protocol": {
             "selectProtocol": "Valitse protokolla...",

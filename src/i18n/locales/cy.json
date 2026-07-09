@@ -335,7 +335,8 @@
             "encrypted": "Wedi'i amgryptio",
             "notEncrypted": "Heb ei amgryptio",
             "listingDirectory": "Wrthi'n rhestru'r cyfeiriadur...",
-            "listingPath": "Wrthi'n rhestru {path}..."
+            "listingPath": "Wrthi'n rhestru {path}...",
+            "pleaseWait": "Arhoswch..."
         },
         "contextMenu": {
             "askAeroAgent": "Gofyn i AeroAgent...",
@@ -1309,7 +1310,8 @@
             "keepWaiting": "Dal i aros",
             "cancelConnection": "Canslo'r cysylltiad",
             "dropImported": "Mewnforiwyd {count} eitem i'r ffolder hwn",
-            "dropFailed": "Methwyd â mewnforio {count} eitem"
+            "dropFailed": "Methwyd â mewnforio {count} eitem",
+            "connectionCancelledHint": "Cafodd y rhestru ei atal a'r cysylltiad ei gau."
         },
         "about": {
             "tagline": "Mwy na FTP. Pecyn datblygu cyflawn.",
@@ -1499,7 +1501,8 @@
             "overlay_opening": "Agor yr haen wedi'i hamgryptio, dadgryptio'r enwau",
             "overlay_unlocked": "Datglowyd yr haen wedi'i hamgryptio",
             "overlay_failed": "Methwyd datgloi'r haen wedi'i hamgryptio",
-            "session_resumed": "Ailddechreuwyd sesiwn fyw i {server}"
+            "session_resumed": "Ailddechreuwyd sesiwn fyw i {server}",
+            "connect_cancelled": "Canslwyd gan y defnyddiwr: rhestru wedi'i atal, datgysylltwyd o'r gweinydd"
         },
         "protocol": {
             "selectProtocol": "Dewis protocol...",

@@ -335,7 +335,8 @@
             "encrypted": "Krüpteeritud",
             "notEncrypted": "Krüpteerimata",
             "listingDirectory": "Kataloogi loendamine...",
-            "listingPath": "{path} loendamine..."
+            "listingPath": "{path} loendamine...",
+            "pleaseWait": "Palun oodake..."
         },
         "contextMenu": {
             "askAeroAgent": "Küsi AeroAgent-ilt...",
@@ -1309,7 +1310,8 @@
             "keepWaiting": "Oota edasi",
             "cancelConnection": "Tühista ühendus",
             "dropImported": "{count} üksust imporditi sellesse kausta",
-            "dropFailed": "{count} üksuse importimine ebaõnnestus"
+            "dropFailed": "{count} üksuse importimine ebaõnnestus",
+            "connectionCancelledHint": "Loend peatati ja ühendus suleti."
         },
         "about": {
             "tagline": "Rohkem kui FTP. Täielik arendustööriistade komplekt.",
@@ -1499,7 +1501,8 @@
             "overlay_opening": "Krüpteeritud kihi avamine, nimede dekrüpteerimine",
             "overlay_unlocked": "Krüpteeritud kiht avati",
             "overlay_failed": "Krüpteeritud kihti ei õnnestunud avada",
-            "session_resumed": "Aktiivne seanss taastatud: {server}"
+            "session_resumed": "Aktiivne seanss taastatud: {server}",
+            "connect_cancelled": "Kasutaja tühistas: loend peatatud, serverist lahti ühendatud"
         },
         "protocol": {
             "selectProtocol": "Vali protokoll...",

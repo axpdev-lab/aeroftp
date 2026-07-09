@@ -335,7 +335,8 @@
             "encrypted": "Enkriptatuta",
             "notEncrypted": "Enkriptatu gabe",
             "listingDirectory": "Direktorioa zerrendatzen...",
-            "listingPath": "{path} zerrendatzen..."
+            "listingPath": "{path} zerrendatzen...",
+            "pleaseWait": "Itxaron mesedez..."
         },
         "contextMenu": {
             "askAeroAgent": "Galdetu AeroAgent-i...",
@@ -1309,7 +1310,8 @@
             "keepWaiting": "Itxaroten jarraitu",
             "cancelConnection": "Utzi konexioa",
             "dropImported": "{count} elementu inportatu dira karpeta honetara",
-            "dropFailed": "Ezin izan dira {count} elementu inportatu"
+            "dropFailed": "Ezin izan dira {count} elementu inportatu",
+            "connectionCancelledHint": "Zerrendatzea gelditu da eta konexioa itxi da."
         },
         "about": {
             "tagline": "FTP baino gehiago. Garatzaileentzako tresna-sorta osoa.",
@@ -1499,7 +1501,8 @@
             "overlay_opening": "Zifratutako geruza irekitzen, izenak deszifratzen",
             "overlay_unlocked": "Zifratutako geruza desblokeatuta",
             "overlay_failed": "Ezin izan da zifratutako geruza desblokeatu",
-            "session_resumed": "{server}(e)rako saio aktiboa berrekin da"
+            "session_resumed": "{server}(e)rako saio aktiboa berrekin da",
+            "connect_cancelled": "Erabiltzaileak bertan behera utzi du: zerrendatzea gelditua, zerbitzaritik deskonektatuta"
         },
         "protocol": {
             "selectProtocol": "Aukeratu protokoloa...",

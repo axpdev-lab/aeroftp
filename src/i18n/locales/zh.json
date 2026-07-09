@@ -335,7 +335,8 @@
             "encrypted": "已加密",
             "notEncrypted": "未加密",
             "listingDirectory": "正在列出目录...",
-            "listingPath": "正在列出 {path}..."
+            "listingPath": "正在列出 {path}...",
+            "pleaseWait": "请稍候..."
         },
         "contextMenu": {
             "askAeroAgent": "询问 AeroAgent...",
@@ -1309,7 +1310,8 @@
             "keepWaiting": "继续等待",
             "cancelConnection": "取消连接",
             "dropImported": "已将 {count} 个项目导入此文件夹",
-            "dropFailed": "导入 {count} 个项目失败"
+            "dropFailed": "导入 {count} 个项目失败",
+            "connectionCancelledHint": "已停止列出目录并关闭连接。"
         },
         "about": {
             "tagline": "不仅仅是 FTP。完整的开发者工具包。",
@@ -1499,7 +1501,8 @@
             "overlay_opening": "正在打开加密叠加层，正在解密名称",
             "overlay_unlocked": "加密叠加层已解锁",
             "overlay_failed": "无法解锁加密叠加层",
-            "session_resumed": "已恢复到 {server} 的活动会话"
+            "session_resumed": "已恢复到 {server} 的活动会话",
+            "connect_cancelled": "用户已取消：停止列出目录，已断开与服务器的连接"
         },
         "protocol": {
             "selectProtocol": "选择协议...",

@@ -335,7 +335,8 @@
             "encrypted": "Šifrirano",
             "notEncrypted": "Nije šifrirano",
             "listingDirectory": "Popisivanje direktorija...",
-            "listingPath": "Popisivanje {path}..."
+            "listingPath": "Popisivanje {path}...",
+            "pleaseWait": "Pričekajte..."
         },
         "contextMenu": {
             "askAeroAgent": "Pitaj AeroAgent...",
@@ -1309,7 +1310,8 @@
             "keepWaiting": "Nastavi čekati",
             "cancelConnection": "Otkaži vezu",
             "dropImported": "Uvezeno {count} stavki u ovu mapu",
-            "dropFailed": "Uvoz {count} stavki nije uspio"
+            "dropFailed": "Uvoz {count} stavki nije uspio",
+            "connectionCancelledHint": "Ispis je zaustavljen, a veza zatvorena."
         },
         "about": {
             "tagline": "Više od FTP-a. Potpuni alat za programere.",
@@ -1499,7 +1501,8 @@
             "overlay_opening": "Otvaranje šifriranog sloja, dešifriranje naziva",
             "overlay_unlocked": "Šifrirani sloj otključan",
             "overlay_failed": "Šifrirani sloj nije moguće otključati",
-            "session_resumed": "Nastavljena aktivna sesija na {server}"
+            "session_resumed": "Nastavljena aktivna sesija na {server}",
+            "connect_cancelled": "Korisnik je otkazao: ispis zaustavljen, veza sa poslužiteljem prekinuta"
         },
         "protocol": {
             "selectProtocol": "Odaberi protokol...",

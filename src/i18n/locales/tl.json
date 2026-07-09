@@ -335,7 +335,8 @@
             "encrypted": "Naka-encrypt",
             "notEncrypted": "Hindi naka-encrypt",
             "listingDirectory": "Nililista ang direktoryo...",
-            "listingPath": "Nililista ang {path}..."
+            "listingPath": "Nililista ang {path}...",
+            "pleaseWait": "Mangyaring maghintay..."
         },
         "contextMenu": {
             "askAeroAgent": "Itanong sa AeroAgent...",
@@ -1309,7 +1310,8 @@
             "keepWaiting": "Magpatuloy sa paghihintay",
             "cancelConnection": "Kanselahin ang koneksyon",
             "dropImported": "Na-import ang {count} item sa folder na ito",
-            "dropFailed": "Nabigong i-import ang {count} item"
+            "dropFailed": "Nabigong i-import ang {count} item",
+            "connectionCancelledHint": "Itinigil ang paglilista at isinara ang koneksyon."
         },
         "about": {
             "tagline": "Higit pa sa FTP. Isang kumpletong developer toolkit.",
@@ -1499,7 +1501,8 @@
             "overlay_opening": "Binubuksan ang naka-encrypt na overlay, dini-decrypt ang mga pangalan",
             "overlay_unlocked": "Na-unlock ang naka-encrypt na overlay",
             "overlay_failed": "Hindi ma-unlock ang naka-encrypt na overlay",
-            "session_resumed": "Ipinagpatuloy ang aktibong session sa {server}"
+            "session_resumed": "Ipinagpatuloy ang aktibong session sa {server}",
+            "connect_cancelled": "Kinansela ng user: itinigil ang paglilista, nadiskonekta sa server"
         },
         "protocol": {
             "selectProtocol": "Pumili ng protocol...",

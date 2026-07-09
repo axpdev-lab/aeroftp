@@ -335,7 +335,8 @@
             "encrypted": "Криптиран",
             "notEncrypted": "Некриптиран",
             "listingDirectory": "Изброяване на директорията...",
-            "listingPath": "Изброяване на {path}..."
+            "listingPath": "Изброяване на {path}...",
+            "pleaseWait": "Моля, изчакайте..."
         },
         "contextMenu": {
             "askAeroAgent": "Питай AeroAgent...",
@@ -1309,7 +1310,8 @@
             "keepWaiting": "Продължи да чакаш",
             "cancelConnection": "Отмени връзката",
             "dropImported": "Импортирани са {count} елемента в тази папка",
-            "dropFailed": "Неуспешно импортиране на {count} елемента"
+            "dropFailed": "Неуспешно импортиране на {count} елемента",
+            "connectionCancelledHint": "Извеждането на списъка беше спряно и връзката затворена."
         },
         "about": {
             "tagline": "Повече от FTP. Пълен набор инструменти за разработчици.",
@@ -1499,7 +1501,8 @@
             "overlay_opening": "Отваряне на шифрования слой, дешифриране на имената",
             "overlay_unlocked": "Шифрованият слой е отключен",
             "overlay_failed": "Шифрованият слой не може да бъде отключен",
-            "session_resumed": "Възобновена активна сесия към {server}"
+            "session_resumed": "Възобновена активна сесия към {server}",
+            "connect_cancelled": "Отменено от потребителя: списъкът е спрян, връзката е прекъсната"
         },
         "protocol": {
             "selectProtocol": "Избери протокол...",

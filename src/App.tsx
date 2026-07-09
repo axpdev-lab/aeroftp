@@ -491,6 +491,15 @@ function makeConnectToken(): string {
 // unreachable until the email-confirmation step.
 const STILL_CONNECTING_DELAY_MS = 8000;
 
+// Marker the backend returns from `provider_list_files` / `provider_change_dir`
+// when the remote panel's Cancel button aborted the listing (see
+// `LISTING_CANCELLED` in provider_commands.rs). An abort the user asked for is
+// not a failure: every call site matches on it to stay silent (no error toast,
+// no connect-failure marker) and to stop instead of painting a dead result.
+const LISTING_CANCELLED = 'LISTING_CANCELLED';
+const isListingCancelled = (error: unknown): boolean =>
+  String(error).includes(LISTING_CANCELLED);
+
 // ============================================================================
 // Main App Component
 // ============================================================================
@@ -864,6 +873,20 @@ const App: React.FC = () => {
   // owner's latch (which would either trap the user or reopen the double-click).
   const remoteNavInFlightRef = useRef(0);
   const localNavInFlightRef = useRef(false);
+  // True while a connect flow (fresh connect, saved-server connect, session
+  // switch, cloud tab) owns the remote panel. It decides what the spinner's
+  // Cancel means: cancelling the listing that a connect is waiting on leaves a
+  // half-open session nobody asked for, so that cancel also tears the session
+  // down and returns to My Servers. Cancelling a drill-in inside a session that
+  // is already usable must not cost the user the session: it just aborts the
+  // listing and leaves them in the directory they were in.
+  const remoteConnectPhaseRef = useRef(false);
+  // Bumped the instant a Cancel decides to abort a connect. A connect flow is a
+  // long chain of awaits that paints the panel, names the tab and registers the
+  // session; the aborted listing only unwinds the await it was blocked on, so
+  // every connect captures this epoch on entry and stops as soon as it changes.
+  // Without it a connect could quietly rebuild the session we just tore down.
+  const connectAbortEpochRef = useRef(0);
 
   // Batch-op freeze latch: mirrors the scanning spinner so the batch
   // delete/upload/download triggers no-op on re-entry while an op is in flight
@@ -4818,12 +4841,34 @@ interface UpdateVerificationInfo {
   // the latest. Cancel (which bumps the counter) therefore releases a stalled connect
   // listing too. Without this, a connect over a slow link left the mounted remote
   // panel completely silent for the whole wait.
+  // Mark a connect entry point so remoteConnectPhaseRef covers its WHOLE run,
+  // every early return and every throw included. A connect has many exits, and
+  // re-indenting each one into a try/finally would bury the change in
+  // whitespace, so the flag is carried by a wrapper instead of by the body.
+  const asConnectPhase = <A extends unknown[], R>(fn: (...args: A) => Promise<R>) =>
+    async (...args: A): Promise<R> => {
+      remoteConnectPhaseRef.current = true;
+      try {
+        return await fn(...args);
+      } finally {
+        remoteConnectPhaseRef.current = false;
+      }
+    };
+
   const withRemoteListSpinner = async <T,>(fn: () => Promise<T>, reason?: string): Promise<T> => {
     const navId = ++remoteNavCounter.current;
     setRemoteListLoading(true);
     setRemoteListReason(reason ?? null);
     try {
-      return await fn();
+      const result = await fn();
+      // The user cancelled (or a newer listing superseded us) while we awaited.
+      // The backend abort normally rejects this call first, but a listing that
+      // resolved in the same tick would otherwise be handed back to a caller
+      // that must no longer paint it: the connect it belonged to has already
+      // been torn down. Refuse to return it, and let the caller bail out on the
+      // cancelled marker like it does for a backend-side abort.
+      if (navId !== remoteNavCounter.current) throw new Error(LISTING_CANCELLED);
+      return result;
     } finally {
       if (navId === remoteNavCounter.current) {
         setRemoteListLoading(false);
@@ -4906,6 +4951,8 @@ interface UpdateVerificationInfo {
     } catch (error) {
       // A superseded listing must not surface its (now irrelevant) error toast.
       if (showBusy && navId !== remoteNavCounter.current) return null;
+      // Neither must a listing the user aborted from the spinner's Cancel.
+      if (isListingCancelled(error)) return null;
       if (String(error).toLowerCase().includes('vault not unlocked')) {
         setRcloneCryptVaultId(null);
         setAeroCryptVaultId(null);
@@ -5635,17 +5682,25 @@ interface UpdateVerificationInfo {
     };
 
     setLoading(true);
+    // A branch switch disconnects and logs in again, so it is a connect: a
+    // Cancel on its listing leaves no session to fall back to.
+    remoteConnectPhaseRef.current = true;
     try {
       const { effectiveParams, providerParams } = await buildProviderParams(nextParams, currentRemotePath || null);
       await invoke('provider_disconnect').catch(() => {});
       await runConnect('provider_connect', providerParams);
 
-      let response: FileListResponse;
-      try {
-        response = await invoke<FileListResponse>('provider_list_files', { path: currentRemotePath || null });
-      } catch {
-        response = await invoke<FileListResponse>('provider_list_files', { path: null });
-      }
+      // One spinner over both attempts: the retry at the provider root is the
+      // same wait to the user, and it must not fire when the first attempt was
+      // aborted rather than failed.
+      const response = await withRemoteListSpinner(async () => {
+        try {
+          return await invoke<FileListResponse>('provider_list_files', { path: currentRemotePath || null });
+        } catch (error) {
+          if (isListingCancelled(error)) throw error;
+          return await invoke<FileListResponse>('provider_list_files', { path: null });
+        }
+      }, listingReason(currentRemotePath));
 
       setConnectionParams(effectiveParams);
       setRemoteFiles(response.files);
@@ -5668,8 +5723,10 @@ interface UpdateVerificationInfo {
     } catch (error) {
       // W3.1: user-cancelled branch-switch reconnect, not an error.
       if (isConnectCancelledError(error)) return;
+      if (isListingCancelled(error)) return;
       notify.error(t('common.error'), String(error));
     } finally {
+      remoteConnectPhaseRef.current = false;
       setLoading(false);
     }
   }, [activeSessionId, connectionParams, currentRemotePath, notify, refreshGitHubContext, sessions, t]);
@@ -5993,10 +6050,14 @@ interface UpdateVerificationInfo {
   }, []);
 
   // FTP operations
-  const connectToFtp = async (
+  const connectToFtpImpl = async (
     overrideParams?: ConnectionParams,
     opts?: { isAutoRetry?: boolean; existingLogId?: string },
   ) => {
+    // Snapshot the abort epoch: a Cancel on the connect listing bumps it, and
+    // the branches below that swallow a failed listing (rather than throwing out
+    // of here) test it before they go on to build the session.
+    const connectEpoch = connectAbortEpochRef.current;
     // #128 item E: a user-initiated connect cancels any pending saved-secret 2FA
     // auto-retry. Without this, entering the API key (or any manual reconnect)
     // mid-countdown leaves the bottom-right countdown popup up and its 1s timer
@@ -6111,7 +6172,11 @@ interface UpdateVerificationInfo {
         // arm the overlay and let the deferred decrypted reload anchor the path.
         try {
           oauthResponse = await withRemoteListSpinner(() => invoke<FileListResponse>('provider_list_files', { path: null }));
-        } catch {
+        } catch (error) {
+          // A Cancel is the one listing failure this probe must not swallow:
+          // arming the overlay on a session the user just tore down would paint
+          // a decrypting panel over My Servers.
+          if (isListingCancelled(error)) return;
           oauthResponse = null;
         }
         const overlayAnchor = overlayHint.anchor || oauthResponse?.current_path || '/';
@@ -6126,6 +6191,10 @@ interface UpdateVerificationInfo {
       } else {
         oauthResponse = await loadRemoteFiles(protocol);
       }
+      // loadRemoteFiles reports an aborted listing as a null response, the same
+      // shape it uses for a transient error it means to swallow. Only the epoch
+      // tells the two apart, and only one of them must stop the connect.
+      if (connectEpoch !== connectAbortEpochRef.current) return;
       // The saved profile is the source of truth for the tab title and the local
       // directory when this connect is linked to one (savedServerId). An edit-mode
       // rename or local-path change must take effect on the LIVE session, not only
@@ -6432,6 +6501,11 @@ interface UpdateVerificationInfo {
         // showed the calm "cancelled" toast; skip the error path and the
         // connect-failure marker. finally still re-enables the form.
         if (isConnectCancelledError(error)) return;
+        // Same for a listing aborted from the panel spinner's Cancel: the login
+        // itself succeeded, so a "connection failed" toast and a failure marker
+        // on the saved-server card would both be lies. cancelRemoteNavigation is
+        // already tearing the half-open session down and toasting the cancel.
+        if (isListingCancelled(error)) return;
         // Issue #128: if the server is asking for a 2FA TOTP, surface the
         // dedicated prompt instead of a generic "connection failed" toast.
         // Replace the "Check credentials" log line with a 2FA-specific one
@@ -6497,6 +6571,10 @@ interface UpdateVerificationInfo {
       } else {
         ftpResponse = await loadRemoteFiles();
       }
+      // Both branches absorb an aborted listing (changeRemoteDirectory returns
+      // void, loadRemoteFiles returns null), so the epoch is what stops us from
+      // creating a session tab for a connect the user cancelled.
+      if (connectEpoch !== connectAbortEpochRef.current) return;
       if (ftpResponse) {
         logListingComplete(ftpResponse.current_path || '/', ftpResponse.files?.length || 0);
       }
@@ -6515,6 +6593,8 @@ interface UpdateVerificationInfo {
     } catch (error) {
       // W3.1: user-cancelled connect, not a failure (see runConnect).
       if (isConnectCancelledError(error)) return;
+      // Nor is a listing the user aborted from the panel spinner's Cancel.
+      if (isListingCancelled(error)) return;
       humanLog.logError('CONNECT', { server: effectiveParams.server }, logId);
       notify.error(t('connection.connectionFailed'), String(error));
       // #180 / 4486730822: stamp the standalone connect-failure marker so
@@ -6526,6 +6606,11 @@ interface UpdateVerificationInfo {
     }
     finally { setLoading(false); }
   };
+
+  // A connect owns the remote panel from its first byte to its last setState, so
+  // the spinner's Cancel knows that aborting its listing must tear the session
+  // down rather than leave it half-open.
+  const connectToFtp = asConnectPhase(connectToFtpImpl);
 
   const disconnectFromFtp = async (reason?: 'button' | 'tab-close' | 'close-all') => {
     const logId = humanLog.logStart('DISCONNECT', { server: connectionParams.server });
@@ -6728,6 +6813,15 @@ interface UpdateVerificationInfo {
     const protocolLabel = (protocol || 'FTP').toUpperCase();
     const reconnectLogId = humanLog.logRaw('activity.reconnect_start', 'CONNECT', { server: targetSession.serverName }, 'running');
 
+    // Switching tab reconnects: on every branch below the remote panel sits on
+    // the old session's files while a fresh login and listing run. That wait was
+    // completely silent, which on a slow server reads as a frozen app. Every
+    // listing here now raises the spinner, and a Cancel tears the half-switched
+    // session down rather than leaving the user staring at stale files.
+    remoteConnectPhaseRef.current = true;
+    const listWithSpinner = <T,>(fn: () => Promise<T>): Promise<T> =>
+      withRemoteListSpinner(fn, listingReason(targetSession.remotePath));
+
     try {
       let response: FileListResponse;
 
@@ -6754,9 +6848,15 @@ interface UpdateVerificationInfo {
       if (stillAlive) {
         logger.debug('[switchSession] #128-C: backend session still alive, reusing without reconnect (no 2FA)');
         if (!targetSession.cryptOverlay && targetSession.remotePath && targetSession.remotePath !== '/') {
-          try { await invoke('provider_change_dir', { path: targetSession.remotePath }); } catch { /* keep the backend cwd */ }
+          try {
+            await listWithSpinner(() => invoke('provider_change_dir', { path: targetSession.remotePath }));
+          } catch (error) {
+            // A cancel must unwind the switch; any other cd failure just keeps
+            // the backend cwd and lists from wherever we are.
+            if (isListingCancelled(error)) throw error;
+          }
         }
-        response = await invoke('provider_list_files', { path: null });
+        response = await listWithSpinner(() => invoke('provider_list_files', { path: null }));
       } else if (isOAuth) {
         // OAuth providers - need to reconnect because ProviderState may have a different provider
         logger.debug('[switchSession] OAuth provider, reconnecting...');
@@ -6860,9 +6960,9 @@ interface UpdateVerificationInfo {
 
         // Now navigate to the session's path, unless a crypt overlay must be
         // re-applied first because the saved path is plaintext-domain.
-        response = targetSession.cryptOverlay
-          ? await invoke('provider_list_files', { path: null })
-          : await invoke('provider_change_dir', { path: targetSession.remotePath || '/' });
+        response = await listWithSpinner(() => targetSession.cryptOverlay
+          ? invoke<FileListResponse>('provider_list_files', { path: null })
+          : invoke<FileListResponse>('provider_change_dir', { path: targetSession.remotePath || '/' }));
       } else if (usesProviderApiForSession) {
         logger.debug('[switchSession] Provider (S3/WebDAV), reconnecting...');
 
@@ -6900,9 +7000,14 @@ interface UpdateVerificationInfo {
         }
         await runConnect('provider_connect', providerParams);
         if (!targetSession.cryptOverlay && targetSession.remotePath && targetSession.remotePath !== '/') {
-          try { await invoke('provider_change_dir', { path: targetSession.remotePath }); } catch (e) { console.warn('Restore path failed', e); }
+          try {
+            await listWithSpinner(() => invoke('provider_change_dir', { path: targetSession.remotePath }));
+          } catch (e) {
+            if (isListingCancelled(e)) throw e;
+            console.warn('Restore path failed', e);
+          }
         }
-        response = await invoke('provider_list_files', { path: null });
+        response = await listWithSpinner(() => invoke('provider_list_files', { path: null }));
       } else {
         // FTP/FTPS - reconnect and navigate
         logger.debug('[switchSession] FTP provider, reconnecting...');
@@ -6924,13 +7029,14 @@ interface UpdateVerificationInfo {
 
         if (isValidFtpPath) {
           try {
-            await invoke('change_directory', { path: savedPath });
+            await listWithSpinner(() => invoke('change_directory', { path: savedPath }));
           } catch (pathError) {
+            if (isListingCancelled(pathError)) throw pathError;
             console.warn('[switchSession] Could not restore FTP path, using home:', pathError);
             // Path doesn't exist on this server, stay at login home directory
           }
         }
-        response = await invoke('list_files');
+        response = await listWithSpinner(() => invoke('list_files'));
       }
 
       // Per-session overlay restore. The command layer no longer routes lists
@@ -6961,15 +7067,18 @@ interface UpdateVerificationInfo {
             setRcloneCryptVaultId(targetOverlay.kind === 'rclone-crypt' ? sentinel : null);
             setAeroCryptVaultId(targetOverlay.kind === 'aerocrypt' ? sentinel : null);
             bindSessionCryptOverlay({ sessionId }, sentinel, targetOverlay.kind, targetOverlay.remoteScope);
-            response = restorePath && restorePath !== '/'
-              ? await invoke('provider_change_dir', { path: restorePath })
-              : await invoke('provider_list_files', { path: null });
+            response = await listWithSpinner(() => restorePath && restorePath !== '/'
+              ? invoke<FileListResponse>('provider_change_dir', { path: restorePath })
+              : invoke<FileListResponse>('provider_list_files', { path: null }));
             if (overlayLogIdRef.current) {
               humanLog.updateEntry(overlayLogIdRef.current, { status: 'success', message: t('activity.overlay_unlocked') });
               overlayLogIdRef.current = null;
             }
             recovered = true;
           } catch (overlayErr) {
+            // A cancelled listing is not a failed overlay re-apply: rethrow so
+            // the switch unwinds instead of tearing the overlay binding down.
+            if (isListingCancelled(overlayErr)) throw overlayErr;
             logger.warn('[switchSession] overlay re-apply failed:', overlayErr);
           } finally {
             setOverlayDecrypting(false);
@@ -6984,9 +7093,9 @@ interface UpdateVerificationInfo {
           }
         } else {
           await invoke('provider_clear_crypt_overlay', { full: false }).catch(() => undefined);
-          response = restorePath && restorePath !== '/'
-            ? await invoke('provider_change_dir', { path: restorePath })
-            : await invoke('provider_list_files', { path: null });
+          response = await listWithSpinner(() => restorePath && restorePath !== '/'
+            ? invoke<FileListResponse>('provider_change_dir', { path: restorePath })
+            : invoke<FileListResponse>('provider_list_files', { path: null }));
         }
       } else {
         setRcloneCryptVaultId(null);
@@ -7030,6 +7139,16 @@ interface UpdateVerificationInfo {
       setCurrentLocalPath(targetSession.localPath);
 
     } catch (e) {
+      // The user cancelled the listing from the panel spinner:
+      // cancelRemoteNavigation is already closing every session and returning to
+      // My Servers, so close the activity entry and touch nothing else.
+      if (isListingCancelled(e)) {
+        activityLog.updateEntry(reconnectLogId, {
+          status: 'success',
+          message: t('toast.connectionCancelled'),
+        });
+        return;
+      }
       // W3.1: user-cancelled reconnect. Mark the session cached (not errored)
       // and close the activity entry cleanly; runConnect already toasted.
       if (isConnectCancelledError(e)) {
@@ -7053,6 +7172,8 @@ interface UpdateVerificationInfo {
       // and the provider now wants a fresh TOTP, surface the 2FA prompt so
       // the user can supply the code without re-opening Edit on the profile.
       tryShowTwoFactorPrompt(e, targetSession.connectionParams, targetSession.serverName, reconnectLogId);
+    } finally {
+      remoteConnectPhaseRef.current = false;
     }
   };
 
@@ -7250,6 +7371,9 @@ interface UpdateVerificationInfo {
   const handleCloudTabClick = async () => {
     logger.debug('Cloud Tab clicked');
 
+    // AeroCloud opens (or re-points) a connection before it lists, so a Cancel
+    // on its listing has no usable session to fall back to either.
+    remoteConnectPhaseRef.current = true;
     try {
       // Get cloud config to know which server profile and folders
       const cloudConfig = await invoke<{
@@ -7351,10 +7475,15 @@ interface UpdateVerificationInfo {
         }
       };
 
-      // Helper: navigate to remote folder using correct API
+      // Helper: navigate to remote folder using correct API. Both arms are a
+      // foreground listing on a freshly connected server, so both raise the
+      // spinner and name the folder they are waiting on.
       const navigateToRemoteFolder = async (folder: string): Promise<void> => {
         if (isProvider) {
-          const response = await invoke<{ files: any[]; current_path: string }>('provider_list_files', { path: folder || null });
+          const response = await withRemoteListSpinner(
+            () => invoke<{ files: any[]; current_path: string }>('provider_list_files', { path: folder || null }),
+            listingReason(folder),
+          );
           const files = response.files.map((f: any) => ({
             name: f.name, path: f.path || f.name, size: f.size, is_dir: f.is_dir,
             modified: f.modified, permissions: f.permissions || null,
@@ -7362,7 +7491,10 @@ interface UpdateVerificationInfo {
           setRemoteFiles(files);
           setCurrentRemotePath(response.current_path);
         } else {
-          const response: FileListResponse = await invoke('change_directory', { path: folder });
+          const response = await withRemoteListSpinner(
+            () => invoke<FileListResponse>('change_directory', { path: folder }),
+            listingReason(folder),
+          );
           setRemoteFiles(response.files);
           setCurrentRemotePath(response.current_path);
         }
@@ -7462,6 +7594,9 @@ interface UpdateVerificationInfo {
             humanLog.logRaw('activity.connect_success', 'CONNECT', { server: `AeroCloud (${cloudServerName})`, protocol: protocolLabel }, 'success');
           }
         } catch (navError) {
+          // A cancelled listing already tore the session down: no error toast,
+          // and no cloud sync to trigger on a connection that no longer exists.
+          if (isListingCancelled(navError)) return;
           logger.error('Cloud navigation error:', navError);
           notify.error('AeroCloud', t('toast.navigationFailed', { error: String(navError) }));
         }
@@ -7519,10 +7654,14 @@ interface UpdateVerificationInfo {
         setShowCloudPanel(true);
         return;
       }
+      // A Cancel on the listing lands the user on My Servers by design; do not
+      // pull the cloud panel over it, and do not call the connect failed.
+      if (isListingCancelled(error)) return;
       logger.error('Cloud tab click error:', error);
       notify.error(t('connection.connectionFailed'), String(error));
       setShowCloudPanel(true);
     } finally {
+      remoteConnectPhaseRef.current = false;
       setLoading(false);
     }
   };
@@ -7630,6 +7769,8 @@ interface UpdateVerificationInfo {
       }
     } catch (error) {
       if (navId !== remoteNavCounter.current) return;
+      // A listing the user aborted is not a failed navigation: stay silent.
+      if (isListingCancelled(error)) return;
       if (String(error).toLowerCase().includes('overlay session')) {
         setAeroVaultOverlaySession(null);
         if (activeSessionId) {
@@ -7655,15 +7796,87 @@ interface UpdateVerificationInfo {
     }
   };
 
-  // #401: escape hatch for a remote navigation that stalls (unreachable host,
-  // hung backend). Discards the in-flight result (via the counter), clears the
-  // spinner and releases the latch so the user can navigate again without
-  // waiting for the stuck call to return.
+  // Tear the session down after a Cancel that aborted the listing a CONNECT was
+  // waiting on. The session never became usable, so leaving it half-open (remote
+  // panel mounted on an empty directory, backend still logged in) would be worse
+  // than not connecting at all: return the user to My Servers. Mirrors
+  // disconnectFromFtp's crypt-overlay teardown (#386), minus its DISCONNECT log
+  // and toast, because from the user's side this is a connect that never
+  // happened, not a disconnect they asked for.
+  const abortConnectAfterCancel = async () => {
+    remoteConnectPhaseRef.current = false;
+    const overlaySessionId = aeroVaultOverlaySession?.sessionId;
+    if (overlaySessionId) {
+      try { await invoke('aerovault_overlay_lock', { sessionId: overlaySessionId }); } catch { }
+    }
+    if (aeroCryptVaultId) {
+      try { await invoke('aerocrypt_lock', { vaultId: aeroCryptVaultId }); } catch { }
+    }
+    if (rcloneCryptVaultId) {
+      try { await invoke('rclone_crypt_lock', { vaultId: rcloneCryptVaultId }); } catch { }
+    }
+    await invoke('provider_clear_crypt_overlay', { full: true }).catch(() => undefined);
+    // The listing is already aborted, so neither disconnect can inherit its
+    // stall on the provider mutex. Both are best-effort: the point of a Cancel
+    // is to land the user back on My Servers, never to trade one stuck call for
+    // another. Which one applies depends on the protocol, so issue both.
+    try { await invoke('provider_disconnect'); } catch { }
+    try { await invoke('disconnect_ftp'); } catch { }
+    setAeroCryptVaultId(null);
+    setRcloneCryptVaultId(null);
+    setCryptOverlayOwner(null);
+    setPendingOverlayUnlock(null);
+    setOverlayDecrypting(false);
+    overlayReloadedVaultRef.current = null;
+    overlayUnlockInFlightRef.current = false;
+    setIsConnected(false);
+    setLoading(false);
+    setActivePanel('local');
+    setRemoteFiles([]);
+    setCurrentRemotePath('/');
+    setSessions([]);
+    setActiveSessionId(null);
+    setAeroVaultOverlaySession(null);
+    setShowConnectionScreen(true);
+    setShowRemotePanel(false);
+    // Close the story in the Activity Log too. The log had the connect succeed
+    // and then went quiet while the user was bounced back to My Servers, which
+    // reads as an app that lost the session on its own. Say who ended it and why.
+    humanLog.logRaw('activity.connect_cancelled', 'DISCONNECT', {}, 'success');
+    if (showToastNotifications) {
+      toast.info(t('toast.connectionCancelled'), t('toast.connectionCancelledHint'));
+    }
+  };
+
+  // #401: escape hatch for a remote listing that stalls (unreachable host, server
+  // paused mid-response). It used to only hide the spinner and bump the
+  // generation counter, which discarded a drill-in's result but left a connect's
+  // listing running: the panel went quiet, then filled itself with folders the
+  // user had just cancelled. A Cancel that does not cancel anything is worse
+  // than no Cancel at all, so it now aborts the work for real.
+  //
+  // Three steps, in this order. Free the UI first (the counter discards whatever
+  // lands late, and the latch release lets the user act again immediately). Then
+  // signal the backend, which drops the in-flight listing future and releases the
+  // provider mutex. Only then, if a CONNECT was what we interrupted, tear the
+  // session down: that disconnect needs the mutex the abort just freed.
   const cancelRemoteNavigation = () => {
+    const abortsConnect = remoteConnectPhaseRef.current;
     remoteNavCounter.current += 1;
     remoteNavInFlightRef.current = 0;
+    // Synchronously, before any await: the connect flow must observe the abort
+    // on its very next resumption, not once the backend round trip returns.
+    if (abortsConnect) connectAbortEpochRef.current += 1;
     setRemoteListLoading(false);
     setRemoteListReason(null);
+    void (async () => {
+      try {
+        await invoke('cancel_remote_listing');
+      } catch (error) {
+        logger.debug('[cancelRemoteNavigation] backend abort failed:', error);
+      }
+      if (abortsConnect) await abortConnectAfterCancel();
+    })();
   };
 
   const changeLocalDirectory = async (path: string) => {
@@ -14587,11 +14800,14 @@ interface UpdateVerificationInfo {
               onAeroFile={handleToggleAeroFile}
               onOpenCrossProfile={(opts) => setShowCrossProfilePanel(opts ?? {})}
               onOpenMountManager={() => setShowMountManager({})}
-              onSavedServerConnect={async (params, initialPath, localInitialPath) => {
+              onSavedServerConnect={asConnectPhase(async (params, initialPath, localInitialPath) => {
                 // NOTE: Do NOT set connectionParams here - that would show the form
                 // The form should only appear when clicking Edit, not when connecting
 
                 const normalizedParams = normalizeProviderConnectionParams(params);
+                // See connectToFtpImpl: the branches that swallow a failed
+                // listing need the epoch to tell an abort from a soft failure.
+                const connectEpoch = connectAbortEpochRef.current;
 
                 // Check if this is an OAuth provider
                 const isOAuth = normalizedParams.protocol && (isOAuthProvider(normalizedParams.protocol) || isFourSharedProvider(normalizedParams.protocol));
@@ -14623,7 +14839,10 @@ interface UpdateVerificationInfo {
                     // anchor the path on failure.
                     try {
                       savedOauthResp = await withRemoteListSpinner(() => invoke<FileListResponse>('provider_list_files', { path: null }));
-                    } catch {
+                    } catch (error) {
+                      // A Cancel is the one failure not to swallow: the session
+                      // it would arm the overlay on is already being torn down.
+                      if (isListingCancelled(error)) return;
                       savedOauthResp = null;
                     }
                     const savedOverlayAnchor = savedOverlayHint.anchor || savedOauthResp?.current_path || '/';
@@ -14638,6 +14857,9 @@ interface UpdateVerificationInfo {
                   } else {
                     savedOauthResp = await loadRemoteFiles(normalizedParams.protocol);
                   }
+                  // loadRemoteFiles reports an aborted listing as a null response,
+                  // exactly like a swallowed error; only the epoch separates them.
+                  if (connectEpoch !== connectAbortEpochRef.current) return;
                   // Navigate to initial local directory if specified (with fallback for invalid paths)
                   let resolvedLocalPath = currentLocalPath;
                   if (localInitialPath) {
@@ -14830,6 +15052,8 @@ interface UpdateVerificationInfo {
                     // W3.1: user-cancelled connect, not a failure (runConnect
                     // already toasted). finally re-enables the form.
                     if (isConnectCancelledError(error)) return;
+                    // Nor is a listing aborted from the panel spinner's Cancel.
+                    if (isListingCancelled(error)) return;
                     // Issue #128: surface dedicated 2FA prompt for MEGA / Filen / Internxt.
                     // Check for the 2FA challenge BEFORE emitting the failure log so the
                     // activity panel shows the "enter 2FA hint" line instead of the misleading
@@ -14915,6 +15139,9 @@ interface UpdateVerificationInfo {
                   // W3.1: user-cancelled connect, not a failure (runConnect
                   // already toasted). finally re-enables the form.
                   if (isConnectCancelledError(error)) return;
+                  // Nor is a listing the user aborted from the panel spinner:
+                  // the login worked, so no failure marker on the card.
+                  if (isListingCancelled(error)) return;
                   humanLog.logError('CONNECT', { server: params.server }, logId);
                   notify.error(t('connection.connectionFailed'), String(error));
                   // #180 / 4486730822: stamp the standalone connect-failure
@@ -14925,7 +15152,7 @@ interface UpdateVerificationInfo {
                 } finally {
                   setLoading(false);
                 }
-              }}
+              })}
               onSkipToFileManager={async () => {
                 // If there are existing sessions, switch back to the last active one
                 if (sessions.length > 0) {
@@ -15237,11 +15464,19 @@ interface UpdateVerificationInfo {
                           {remoteListReason}
                         </span>
                       )}
+                      {/* The reason names the wait; this names the ask. A user
+                          staring at a slow server needs to be told the app is
+                          not stuck before they reach for the Cancel. */}
+                      <span className="text-xs text-gray-500 dark:text-gray-400">
+                        {t('browser.pleaseWait')}
+                      </span>
                       {/* #401: escape hatch so a navigation stalled on an
                           external/network problem never traps the user. The
                           backdrop stays click-through (re-entry is already
                           blocked by the in-flight latch); only this button is
-                          interactive. */}
+                          interactive. It aborts the listing in the backend, and
+                          when the listing belonged to a connect it also closes
+                          the half-open session and returns to My Servers. */}
                       <button
                         onClick={cancelRemoteNavigation}
                         className="pointer-events-auto px-3 py-1.5 text-xs font-medium rounded-md bg-white/90 dark:bg-gray-800/90 text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 shadow-sm flex items-center gap-1.5"

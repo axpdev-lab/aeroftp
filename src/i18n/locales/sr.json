@@ -335,7 +335,8 @@
             "encrypted": "Шифровано",
             "notEncrypted": "Није шифровано",
             "listingDirectory": "Излиставање директоријума...",
-            "listingPath": "Излиставање {path}..."
+            "listingPath": "Излиставање {path}...",
+            "pleaseWait": "Молимо сачекајте..."
         },
         "contextMenu": {
             "askAeroAgent": "Питај AeroAgent...",
@@ -1309,7 +1310,8 @@
             "keepWaiting": "Настави да чекаш",
             "cancelConnection": "Откажи везу",
             "dropImported": "Увезено {count} ставки у ову фасциклу",
-            "dropFailed": "Увоз {count} ставки није успео"
+            "dropFailed": "Увоз {count} ставки није успео",
+            "connectionCancelledHint": "Излиставање је заустављено, а веза затворена."
         },
         "about": {
             "tagline": "Више од FTP-а. Комплетан развојни алат.",
@@ -1499,7 +1501,8 @@
             "overlay_opening": "Отварање шифрованог слоја, дешифровање имена",
             "overlay_unlocked": "Шифровани слој откључан",
             "overlay_failed": "Шифровани слој није могуће откључати",
-            "session_resumed": "Настављена активна сесија ка {server}"
+            "session_resumed": "Настављена активна сесија ка {server}",
+            "connect_cancelled": "Корисник је отказао: излиставање заустављено, веза са сервером прекинута"
         },
         "protocol": {
             "selectProtocol": "Izaberi protokol...",

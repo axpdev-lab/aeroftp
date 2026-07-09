@@ -335,7 +335,8 @@
             "encrypted": "एन्क्रिप्टेड",
             "notEncrypted": "एन्क्रिप्टेड नहीं",
             "listingDirectory": "निर्देशिका सूचीबद्ध की जा रही है...",
-            "listingPath": "{path} सूचीबद्ध किया जा रहा है..."
+            "listingPath": "{path} सूचीबद्ध किया जा रहा है...",
+            "pleaseWait": "कृपया प्रतीक्षा करें..."
         },
         "contextMenu": {
             "askAeroAgent": "AeroAgent से पूछें...",
@@ -1309,7 +1310,8 @@
             "keepWaiting": "प्रतीक्षा करते रहें",
             "cancelConnection": "कनेक्शन रद्द करें",
             "dropImported": "इस फ़ोल्डर में {count} आइटम आयात किए गए",
-            "dropFailed": "{count} आइटम आयात करने में विफल"
+            "dropFailed": "{count} आइटम आयात करने में विफल",
+            "connectionCancelledHint": "सूची बनाना रोक दिया गया और कनेक्शन बंद कर दिया गया।"
         },
         "about": {
             "tagline": "FTP से अधिक। एक पूर्ण डेवलपर टूलकिट।",
@@ -1499,7 +1501,8 @@
             "overlay_opening": "एन्क्रिप्टेड ओवरले खोला जा रहा है, नाम डिक्रिप्ट किए जा रहे हैं",
             "overlay_unlocked": "एन्क्रिप्टेड ओवरले अनलॉक किया गया",
             "overlay_failed": "एन्क्रिप्टेड ओवरले अनलॉक नहीं किया जा सका",
-            "session_resumed": "{server} के लिए सक्रिय सत्र फिर से शुरू हुआ"
+            "session_resumed": "{server} के लिए सक्रिय सत्र फिर से शुरू हुआ",
+            "connect_cancelled": "उपयोगकर्ता द्वारा रद्द: सूची रोकी गई, सर्वर से डिस्कनेक्ट"
         },
         "protocol": {
             "selectProtocol": "प्रोटोकॉल चुनें...",

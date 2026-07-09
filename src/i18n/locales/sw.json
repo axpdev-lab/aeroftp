@@ -335,7 +335,8 @@
             "encrypted": "Imesimbwa",
             "notEncrypted": "Haijasimbwa",
             "listingDirectory": "Inaorodhesha saraka...",
-            "listingPath": "Inaorodhesha {path}..."
+            "listingPath": "Inaorodhesha {path}...",
+            "pleaseWait": "Tafadhali subiri..."
         },
         "contextMenu": {
             "askAeroAgent": "Uliza AeroAgent...",
@@ -1309,7 +1310,8 @@
             "keepWaiting": "Endelea kusubiri",
             "cancelConnection": "Ghairi muunganisho",
             "dropImported": "Vimeingizwa vipengele {count} kwenye folda hii",
-            "dropFailed": "Imeshindwa kuingiza vipengele {count}"
+            "dropFailed": "Imeshindwa kuingiza vipengele {count}",
+            "connectionCancelledHint": "Uorodheshaji ulisimamishwa na muunganisho ukafungwa."
         },
         "about": {
             "tagline": "Zaidi ya FTP. Zana kamili za msanidi.",
@@ -1499,7 +1501,8 @@
             "overlay_opening": "Inafungua safu iliyosimbwa, inasimbua majina",
             "overlay_unlocked": "Safu iliyosimbwa imefunguliwa",
             "overlay_failed": "Safu iliyosimbwa haikuweza kufunguliwa",
-            "session_resumed": "Imeendelea kipindi kinachoendelea hadi {server}"
+            "session_resumed": "Imeendelea kipindi kinachoendelea hadi {server}",
+            "connect_cancelled": "Imeghairiwa na mtumiaji: uorodheshaji umesimamishwa, umetenganishwa na seva"
         },
         "protocol": {
             "selectProtocol": "Chagua itifaki...",

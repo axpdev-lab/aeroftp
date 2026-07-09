@@ -335,7 +335,8 @@
             "encrypted": "Titkosítva",
             "notEncrypted": "Nincs titkosítva",
             "listingDirectory": "Könyvtár listázása...",
-            "listingPath": "{path} listázása..."
+            "listingPath": "{path} listázása...",
+            "pleaseWait": "Kérjük, várjon..."
         },
         "contextMenu": {
             "askAeroAgent": "Kérdezd meg AeroAgent...",
@@ -1309,7 +1310,8 @@
             "keepWaiting": "Várakozás folytatása",
             "cancelConnection": "Kapcsolat megszakítása",
             "dropImported": "{count} elem importálva ebbe a mappába",
-            "dropFailed": "{count} elem importálása sikertelen"
+            "dropFailed": "{count} elem importálása sikertelen",
+            "connectionCancelledHint": "A listázás leállt, a kapcsolat bezárult."
         },
         "about": {
             "tagline": "Több mint FTP. Teljes fejlesztői eszközkészlet.",
@@ -1499,7 +1501,8 @@
             "overlay_opening": "Titkosított réteg megnyitása, nevek visszafejtése",
             "overlay_unlocked": "Titkosított réteg feloldva",
             "overlay_failed": "A titkosított réteget nem sikerült feloldani",
-            "session_resumed": "Aktív munkamenet folytatva: {server}"
+            "session_resumed": "Aktív munkamenet folytatva: {server}",
+            "connect_cancelled": "A felhasználó megszakította: listázás leállt, kapcsolat bontva"
         },
         "protocol": {
             "selectProtocol": "Protokoll kiválasztása...",

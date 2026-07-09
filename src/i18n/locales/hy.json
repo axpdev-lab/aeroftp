@@ -335,7 +335,8 @@
             "encrypted": "Գաղտնագրված",
             "notEncrypted": "Չգաղտնագրված",
             "listingDirectory": "Թղթապանակի ցուցակագրում...",
-            "listingPath": "{path}-ի ցուցակագրում..."
+            "listingPath": "{path}-ի ցուցակագրում...",
+            "pleaseWait": "Խնդրում ենք սպասել..."
         },
         "contextMenu": {
             "askAeroAgent": "Հարցնել AeroAgent...",
@@ -1302,7 +1303,8 @@
             "keepWaiting": "Շարունակել սպասել",
             "cancelConnection": "Չեղարկել կապը",
             "dropImported": "{count} տարր ներմուծվեց այս թղթապանակ",
-            "dropFailed": "Չհաջողվեց ներմուծել {count} տարր"
+            "dropFailed": "Չհաջողվեց ներմուծել {count} տարր",
+            "connectionCancelledHint": "Ցանկի ստացումը դադարեցվեց, և կապը փակվեց։"
         },
         "about": {
             "tagline": "Ավելին քան FTP: Ամբողջական գործիքակազմ մշակողների համար:",
@@ -1492,7 +1494,8 @@
             "overlay_opening": "Գաղտնագրված շերտի բացում, անունների վերծանում",
             "overlay_unlocked": "Գաղտնագրված շերտը ապակողպվեց",
             "overlay_failed": "Չհաջողվեց ապակողպել գաղտնագրված շերտը",
-            "session_resumed": "{server}-ի ակտիվ նիստը վերսկսվեց"
+            "session_resumed": "{server}-ի ակտիվ նիստը վերսկսվեց",
+            "connect_cancelled": "Չեղարկվել է օգտատիրոջ կողմից՝ ցանկը դադարեցվեց, կապը սերվերի հետ խզվեց"
         },
         "protocol": {
             "selectProtocol": "Ընտրեք արձանագրություն...",

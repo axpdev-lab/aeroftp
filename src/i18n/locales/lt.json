@@ -335,7 +335,8 @@
             "encrypted": "Užšifruota",
             "notEncrypted": "Nešifruota",
             "listingDirectory": "Sudaromas katalogo sąrašas...",
-            "listingPath": "Sudaromas {path} sąrašas..."
+            "listingPath": "Sudaromas {path} sąrašas...",
+            "pleaseWait": "Palaukite..."
         },
         "contextMenu": {
             "askAeroAgent": "Klausti AeroAgent...",
@@ -1309,7 +1310,8 @@
             "keepWaiting": "Toliau laukti",
             "cancelConnection": "Atšaukti ryšį",
             "dropImported": "Į šį aplanką importuota {count} elementų",
-            "dropFailed": "Nepavyko importuoti {count} elementų"
+            "dropFailed": "Nepavyko importuoti {count} elementų",
+            "connectionCancelledHint": "Sąrašo sudarymas sustabdytas, ryšys uždarytas."
         },
         "about": {
             "tagline": "Daugiau nei FTP. Pilnas kureju irankiu rinkinys.",
@@ -1499,7 +1501,8 @@
             "overlay_opening": "Atveriamas šifruotas sluoksnis, iššifruojami pavadinimai",
             "overlay_unlocked": "Šifruotas sluoksnis atrakintas",
             "overlay_failed": "Nepavyko atrakinti šifruoto sluoksnio",
-            "session_resumed": "Atnaujinta aktyvi sesija su {server}"
+            "session_resumed": "Atnaujinta aktyvi sesija su {server}",
+            "connect_cancelled": "Naudotojas atšaukė: sąrašo sudarymas sustabdytas, atsijungta nuo serverio"
         },
         "protocol": {
             "selectProtocol": "Pasirinkti protokolą...",

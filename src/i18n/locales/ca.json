@@ -335,7 +335,8 @@
             "encrypted": "Xifrat",
             "notEncrypted": "No xifrat",
             "listingDirectory": "S'està llistant el directori...",
-            "listingPath": "S'està llistant {path}..."
+            "listingPath": "S'està llistant {path}...",
+            "pleaseWait": "Espereu..."
         },
         "contextMenu": {
             "askAeroAgent": "Pregunta a AeroAgent...",
@@ -1309,7 +1310,8 @@
             "keepWaiting": "Continua esperant",
             "cancelConnection": "Cancel·la la connexió",
             "dropImported": "S'han importat {count} elements en aquesta carpeta",
-            "dropFailed": "No s'han pogut importar {count} elements"
+            "dropFailed": "No s'han pogut importar {count} elements",
+            "connectionCancelledHint": "S'ha aturat el llistat i s'ha tancat la connexió."
         },
         "about": {
             "tagline": "Mes que FTP. Un conjunt complet d'eines per a desenvolupadors.",
@@ -1499,7 +1501,8 @@
             "overlay_opening": "Obrint la capa xifrada, desxifrant els noms",
             "overlay_unlocked": "Capa xifrada desbloquejada",
             "overlay_failed": "No s'ha pogut desbloquejar la capa xifrada",
-            "session_resumed": "Sessió activa represa a {server}"
+            "session_resumed": "Sessió activa represa a {server}",
+            "connect_cancelled": "Cancel·lat per l'usuari: llistat aturat, desconnectat del servidor"
         },
         "protocol": {
             "selectProtocol": "Seleccioneu protocol...",

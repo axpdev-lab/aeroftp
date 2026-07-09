@@ -335,7 +335,8 @@
             "encrypted": "Dulkóðað",
             "notEncrypted": "Ekki dulkóðað",
             "listingDirectory": "Skrái möppu...",
-            "listingPath": "Skrái {path}..."
+            "listingPath": "Skrái {path}...",
+            "pleaseWait": "Vinsamlegast bíðið..."
         },
         "contextMenu": {
             "askAeroAgent": "Spyrja AeroAgent...",
@@ -1309,7 +1310,8 @@
             "keepWaiting": "Halda áfram að bíða",
             "cancelConnection": "Hætta við tengingu",
             "dropImported": "Flutti inn {count} atriði í þessa möppu",
-            "dropFailed": "Mistókst að flytja inn {count} atriði"
+            "dropFailed": "Mistókst að flytja inn {count} atriði",
+            "connectionCancelledHint": "Skráningin var stöðvuð og tengingunni lokað."
         },
         "about": {
             "tagline": "Meira en FTP. Heildarverkfærapakki fyrir þróunaraðila.",
@@ -1499,7 +1501,8 @@
             "overlay_opening": "Opna dulkóðað yfirlag, afkóða nöfn",
             "overlay_unlocked": "Dulkóðað yfirlag aflæst",
             "overlay_failed": "Ekki tókst að aflæsa dulkóðaða yfirlaginu",
-            "session_resumed": "Hélt áfram virkri lotu við {server}"
+            "session_resumed": "Hélt áfram virkri lotu við {server}",
+            "connect_cancelled": "Notandi hætti við: skráning stöðvuð, aftengt frá netþjóni"
         },
         "protocol": {
             "selectProtocol": "Select protocol...",

@@ -335,7 +335,8 @@
             "encrypted": "Zaszyfrowano",
             "notEncrypted": "Niezaszyfrowano",
             "listingDirectory": "Wyświetlanie katalogu...",
-            "listingPath": "Wyświetlanie {path}..."
+            "listingPath": "Wyświetlanie {path}...",
+            "pleaseWait": "Proszę czekać..."
         },
         "contextMenu": {
             "askAeroAgent": "Zapytaj AeroAgent...",
@@ -1309,7 +1310,8 @@
             "keepWaiting": "Czekaj dalej",
             "cancelConnection": "Anuluj połączenie",
             "dropImported": "Zaimportowano {count} elementów do tego folderu",
-            "dropFailed": "Nie udało się zaimportować {count} elementów"
+            "dropFailed": "Nie udało się zaimportować {count} elementów",
+            "connectionCancelledHint": "Listowanie zostało zatrzymane, a połączenie zamknięte."
         },
         "about": {
             "tagline": "Więcej niż FTP. Kompletny zestaw narzędzi dla deweloperów.",
@@ -1499,7 +1501,8 @@
             "overlay_opening": "Otwieranie zaszyfrowanej warstwy, odszyfrowywanie nazw",
             "overlay_unlocked": "Zaszyfrowana warstwa odblokowana",
             "overlay_failed": "Nie można odblokować zaszyfrowanej warstwy",
-            "session_resumed": "Wznowiono aktywną sesję z {server}"
+            "session_resumed": "Wznowiono aktywną sesję z {server}",
+            "connect_cancelled": "Anulowane przez użytkownika: listowanie zatrzymane, rozłączono z serwerem"
         },
         "protocol": {
             "selectProtocol": "Wybierz protokół...",

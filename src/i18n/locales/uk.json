@@ -335,7 +335,8 @@
             "encrypted": "Зашифровано",
             "notEncrypted": "Не зашифровано",
             "listingDirectory": "Отримання списку каталогу...",
-            "listingPath": "Отримання списку {path}..."
+            "listingPath": "Отримання списку {path}...",
+            "pleaseWait": "Будь ласка, зачекайте..."
         },
         "contextMenu": {
             "askAeroAgent": "Запитати AeroAgent...",
@@ -1309,7 +1310,8 @@
             "keepWaiting": "Продовжити очікування",
             "cancelConnection": "Скасувати підключення",
             "dropImported": "Імпортовано {count} елементів до цієї папки",
-            "dropFailed": "Не вдалося імпортувати {count} елементів"
+            "dropFailed": "Не вдалося імпортувати {count} елементів",
+            "connectionCancelledHint": "Отримання списку зупинено, з'єднання закрито."
         },
         "about": {
             "tagline": "Більше ніж FTP. Повний набір інструментів розробника.",
@@ -1499,7 +1501,8 @@
             "overlay_opening": "Відкриття шифрованого шару, розшифрування імен",
             "overlay_unlocked": "Шифрований шар розблоковано",
             "overlay_failed": "Не вдалося розблокувати шифрований шар",
-            "session_resumed": "Відновлено активну сесію з {server}"
+            "session_resumed": "Відновлено активну сесію з {server}",
+            "connect_cancelled": "Скасовано користувачем: отримання списку зупинено, з'єднання із сервером закрито"
         },
         "protocol": {
             "selectProtocol": "Виберіть протокол...",

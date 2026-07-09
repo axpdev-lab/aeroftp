@@ -81,6 +81,7 @@
             "disconnect_error": "Disconnection issue",
             "disconnect_start": "Disconnecting from server...",
             "disconnect_success": "Disconnected from server",
+            "connect_cancelled": "Cancelled by user: listing stopped, disconnected from server",
             "download_error": "[Local] Download of {filename} failed",
             "download_overwrite": "[Local] Overwriting: {filename}",
             "download_skipped": "[Local] Skipped (file exists): {filename}",
@@ -901,6 +902,7 @@
             "editPathHint": "Click to edit path, Enter to navigate",
             "listingDirectory": "Listing directory...",
             "listingPath": "Listing {path}...",
+            "pleaseWait": "Please wait...",
             "emptyFolder": "This folder is empty",
             "files": "files",
             "folderType": "Folder",
@@ -3742,6 +3744,7 @@
             "stillConnecting": "Still connecting...",
             "stillConnectingHint": "The server is taking longer than usual to respond. Keep waiting, or cancel the connection (you can also press Esc).",
             "connectionCancelled": "Connection cancelled",
+            "connectionCancelledHint": "The listing was stopped and the connection closed.",
             "keepWaiting": "Keep waiting",
             "cancelConnection": "Cancel connection"
         },

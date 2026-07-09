@@ -335,7 +335,8 @@
             "encrypted": "Šifrirano",
             "notEncrypted": "Ni šifrirano",
             "listingDirectory": "Izpisovanje imenika...",
-            "listingPath": "Izpisovanje {path}..."
+            "listingPath": "Izpisovanje {path}...",
+            "pleaseWait": "Počakajte..."
         },
         "contextMenu": {
             "askAeroAgent": "Vprašaj AeroAgent...",
@@ -1309,7 +1310,8 @@
             "keepWaiting": "Še naprej čakaj",
             "cancelConnection": "Prekliči povezavo",
             "dropImported": "V to mapo je bilo uvoženih {count} elementov",
-            "dropFailed": "Uvoz {count} elementov ni uspel"
+            "dropFailed": "Uvoz {count} elementov ni uspel",
+            "connectionCancelledHint": "Izpis je bil ustavljen in povezava zaprta."
         },
         "about": {
             "tagline": "Več kot FTP. Popolno razvojno orodje.",
@@ -1499,7 +1501,8 @@
             "overlay_opening": "Odpiranje šifrirane plasti, dešifriranje imen",
             "overlay_unlocked": "Šifrirana plast odklenjena",
             "overlay_failed": "Šifrirane plasti ni bilo mogoče odkleniti",
-            "session_resumed": "Obnovljena aktivna seja s {server}"
+            "session_resumed": "Obnovljena aktivna seja s {server}",
+            "connect_cancelled": "Uporabnik je preklical: izpis ustavljen, povezava s strežnikom prekinjena"
         },
         "protocol": {
             "selectProtocol": "Izberi protokol...",

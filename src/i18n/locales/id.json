@@ -335,7 +335,8 @@
             "encrypted": "Terenkripsi",
             "notEncrypted": "Tidak terenkripsi",
             "listingDirectory": "Menampilkan daftar direktori...",
-            "listingPath": "Menampilkan daftar {path}..."
+            "listingPath": "Menampilkan daftar {path}...",
+            "pleaseWait": "Harap tunggu..."
         },
         "contextMenu": {
             "askAeroAgent": "Tanya AeroAgent...",
@@ -1309,7 +1310,8 @@
             "keepWaiting": "Terus tunggu",
             "cancelConnection": "Batalkan koneksi",
             "dropImported": "Mengimpor {count} item ke folder ini",
-            "dropFailed": "Gagal mengimpor {count} item"
+            "dropFailed": "Gagal mengimpor {count} item",
+            "connectionCancelledHint": "Pendaftaran dihentikan dan koneksi ditutup."
         },
         "about": {
             "tagline": "Lebih dari FTP. Perangkat lengkap untuk pengembang.",
@@ -1499,7 +1501,8 @@
             "overlay_opening": "Membuka lapisan terenkripsi, mendekripsi nama",
             "overlay_unlocked": "Lapisan terenkripsi terbuka",
             "overlay_failed": "Lapisan terenkripsi tidak dapat dibuka",
-            "session_resumed": "Melanjutkan sesi aktif ke {server}"
+            "session_resumed": "Melanjutkan sesi aktif ke {server}",
+            "connect_cancelled": "Dibatalkan oleh pengguna: pendaftaran dihentikan, terputus dari server"
         },
         "protocol": {
             "selectProtocol": "Pilih protokol...",

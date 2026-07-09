@@ -335,7 +335,8 @@
             "encrypted": "Criptat",
             "notEncrypted": "Necriptat",
             "listingDirectory": "Se listează directorul...",
-            "listingPath": "Se listează {path}..."
+            "listingPath": "Se listează {path}...",
+            "pleaseWait": "Vă rugăm să așteptați..."
         },
         "contextMenu": {
             "askAeroAgent": "Întreabă AeroAgent...",
@@ -1309,7 +1310,8 @@
             "keepWaiting": "Continuă să aștepți",
             "cancelConnection": "Anulează conexiunea",
             "dropImported": "{count} elemente importate în acest folder",
-            "dropFailed": "Importul a {count} elemente a eșuat"
+            "dropFailed": "Importul a {count} elemente a eșuat",
+            "connectionCancelledHint": "Listarea a fost oprită și conexiunea închisă."
         },
         "about": {
             "tagline": "Mai mult decât FTP. Un set complet de instrumente pentru dezvoltatori.",
@@ -1499,7 +1501,8 @@
             "overlay_opening": "Se deschide stratul criptat, se decriptează numele",
             "overlay_unlocked": "Strat criptat deblocat",
             "overlay_failed": "Stratul criptat nu a putut fi deblocat",
-            "session_resumed": "Sesiune activă reluată la {server}"
+            "session_resumed": "Sesiune activă reluată la {server}",
+            "connect_cancelled": "Anulat de utilizator: listare oprită, deconectat de la server"
         },
         "protocol": {
             "selectProtocol": "Selectare protocol...",

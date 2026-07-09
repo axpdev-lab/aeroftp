@@ -335,7 +335,8 @@
             "encrypted": "Criptografado",
             "notEncrypted": "Não criptografado",
             "listingDirectory": "Listando diretório...",
-            "listingPath": "Listando {path}..."
+            "listingPath": "Listando {path}...",
+            "pleaseWait": "Aguarde..."
         },
         "contextMenu": {
             "askAeroAgent": "Perguntar ao AeroAgent...",
@@ -1309,7 +1310,8 @@
             "keepWaiting": "Continuar a aguardar",
             "cancelConnection": "Cancelar ligação",
             "dropImported": "{count} itens importados para esta pasta",
-            "dropFailed": "Falha ao importar {count} itens"
+            "dropFailed": "Falha ao importar {count} itens",
+            "connectionCancelledHint": "A listagem foi interrompida e a ligação fechada."
         },
         "about": {
             "tagline": "Mais que FTP. Um kit de ferramentas completo para desenvolvedores.",
@@ -1499,7 +1501,8 @@
             "overlay_opening": "A abrir a camada cifrada, a decifrar os nomes",
             "overlay_unlocked": "Camada cifrada desbloqueada",
             "overlay_failed": "Não foi possível desbloquear a camada cifrada",
-            "session_resumed": "Sessão ativa retomada para {server}"
+            "session_resumed": "Sessão ativa retomada para {server}",
+            "connect_cancelled": "Cancelado pelo utilizador: listagem interrompida, desligado do servidor"
         },
         "protocol": {
             "selectProtocol": "Selecionar protocolo...",

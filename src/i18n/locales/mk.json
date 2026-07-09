@@ -335,7 +335,8 @@
             "encrypted": "Шифрирано",
             "notEncrypted": "Нешифрирано",
             "listingDirectory": "Се прикажува директориумот...",
-            "listingPath": "Се прикажува {path}..."
+            "listingPath": "Се прикажува {path}...",
+            "pleaseWait": "Ве молиме почекајте..."
         },
         "contextMenu": {
             "askAeroAgent": "Прашај AeroAgent...",
@@ -1309,7 +1310,8 @@
             "keepWaiting": "Продолжи да чекаш",
             "cancelConnection": "Откажи ја врската",
             "dropImported": "Внесени се {count} ставки во оваа папка",
-            "dropFailed": "Не успеа внесувањето на {count} ставки"
+            "dropFailed": "Не успеа внесувањето на {count} ставки",
+            "connectionCancelledHint": "Прикажувањето на списокот е запрено и врската е затворена."
         },
         "about": {
             "tagline": "Повеќе од FTP. Комплетна развојна алатка.",
@@ -1499,7 +1501,8 @@
             "overlay_opening": "Се отвора шифрираниот слој, се дешифрираат имињата",
             "overlay_unlocked": "Шифрираниот слој е отклучен",
             "overlay_failed": "Шифрираниот слој не може да се отклучи",
-            "session_resumed": "Продолжена активна сесија кон {server}"
+            "session_resumed": "Продолжена активна сесија кон {server}",
+            "connect_cancelled": "Откажано од корисникот: списокот е запрен, врската со серверот е прекината"
         },
         "protocol": {
             "selectProtocol": "Избери протокол...",

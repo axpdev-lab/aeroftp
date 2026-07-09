@@ -335,7 +335,8 @@
             "encrypted": "Versleuteld",
             "notEncrypted": "Niet versleuteld",
             "listingDirectory": "Map wordt weergegeven...",
-            "listingPath": "{path} wordt weergegeven..."
+            "listingPath": "{path} wordt weergegeven...",
+            "pleaseWait": "Even geduld..."
         },
         "contextMenu": {
             "askAeroAgent": "Vraag AeroAgent...",
@@ -1309,7 +1310,8 @@
             "keepWaiting": "Blijf wachten",
             "cancelConnection": "Verbinding annuleren",
             "dropImported": "{count} items geïmporteerd in deze map",
-            "dropFailed": "Kan {count} items niet importeren"
+            "dropFailed": "Kan {count} items niet importeren",
+            "connectionCancelledHint": "Het ophalen van de lijst is gestopt en de verbinding is gesloten."
         },
         "about": {
             "tagline": "Meer dan FTP. Een complete ontwikkelaarstoolkit.",
@@ -1499,7 +1501,8 @@
             "overlay_opening": "Versleutelde laag openen, namen ontsleutelen",
             "overlay_unlocked": "Versleutelde laag ontgrendeld",
             "overlay_failed": "Versleutelde laag kon niet worden ontgrendeld",
-            "session_resumed": "Actieve sessie naar {server} hervat"
+            "session_resumed": "Actieve sessie naar {server} hervat",
+            "connect_cancelled": "Geannuleerd door de gebruiker: lijst gestopt, verbinding met server verbroken"
         },
         "protocol": {
             "selectProtocol": "Selecteer protocol...",

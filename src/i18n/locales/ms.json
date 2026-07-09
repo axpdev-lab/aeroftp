@@ -335,7 +335,8 @@
             "encrypted": "Disulitkan",
             "notEncrypted": "Tidak disulitkan",
             "listingDirectory": "Menyenaraikan direktori...",
-            "listingPath": "Menyenaraikan {path}..."
+            "listingPath": "Menyenaraikan {path}...",
+            "pleaseWait": "Sila tunggu..."
         },
         "contextMenu": {
             "askAeroAgent": "Tanya AeroAgent...",
@@ -1309,7 +1310,8 @@
             "keepWaiting": "Teruskan menunggu",
             "cancelConnection": "Batalkan sambungan",
             "dropImported": "Mengimport {count} item ke dalam folder ini",
-            "dropFailed": "Gagal mengimport {count} item"
+            "dropFailed": "Gagal mengimport {count} item",
+            "connectionCancelledHint": "Penyenaraian dihentikan dan sambungan ditutup."
         },
         "about": {
             "tagline": "Lebih daripada FTP. Kit alat lengkap untuk pembangun.",
@@ -1499,7 +1501,8 @@
             "overlay_opening": "Membuka lapisan tersulit, menyahsulit nama",
             "overlay_unlocked": "Lapisan tersulit dibuka kunci",
             "overlay_failed": "Lapisan tersulit tidak dapat dibuka kunci",
-            "session_resumed": "Menyambung semula sesi aktif ke {server}"
+            "session_resumed": "Menyambung semula sesi aktif ke {server}",
+            "connect_cancelled": "Dibatalkan oleh pengguna: penyenaraian dihentikan, diputuskan daripada pelayan"
         },
         "protocol": {
             "selectProtocol": "Pilih protokol...",

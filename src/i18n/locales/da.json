@@ -335,7 +335,8 @@
             "encrypted": "Krypteret",
             "notEncrypted": "Ikke krypteret",
             "listingDirectory": "Viser mappe...",
-            "listingPath": "Viser {path}..."
+            "listingPath": "Viser {path}...",
+            "pleaseWait": "Vent venligst..."
         },
         "contextMenu": {
             "askAeroAgent": "Spørg AeroAgent...",
@@ -1309,7 +1310,8 @@
             "keepWaiting": "Bliv ved med at vente",
             "cancelConnection": "Annuller forbindelse",
             "dropImported": "Importerede {count} elementer til denne mappe",
-            "dropFailed": "Kunne ikke importere {count} elementer"
+            "dropFailed": "Kunne ikke importere {count} elementer",
+            "connectionCancelledHint": "Listningen blev stoppet, og forbindelsen blev lukket."
         },
         "about": {
             "tagline": "Mere end FTP. Et komplet udviklingsværktøj.",
@@ -1499,7 +1501,8 @@
             "overlay_opening": "Åbner krypteret lag, dekrypterer navne",
             "overlay_unlocked": "Krypteret lag låst op",
             "overlay_failed": "Det krypterede lag kunne ikke låses op",
-            "session_resumed": "Genoptog aktiv session til {server}"
+            "session_resumed": "Genoptog aktiv session til {server}",
+            "connect_cancelled": "Annulleret af brugeren: listning stoppet, afbrudt fra serveren"
         },
         "protocol": {
             "selectProtocol": "Vælg protokol...",

@@ -335,7 +335,8 @@
             "encrypted": "Šifrēts",
             "notEncrypted": "Nešifrēts",
             "listingDirectory": "Tiek uzskaitīts direktorijs...",
-            "listingPath": "Tiek uzskaitīts {path}..."
+            "listingPath": "Tiek uzskaitīts {path}...",
+            "pleaseWait": "Lūdzu, uzgaidiet..."
         },
         "contextMenu": {
             "askAeroAgent": "Jautāt AeroAgent...",
@@ -1309,7 +1310,8 @@
             "keepWaiting": "Turpināt gaidīt",
             "cancelConnection": "Atcelt savienojumu",
             "dropImported": "Šajā mapē importēti {count} vienumi",
-            "dropFailed": "Neizdevās importēt {count} vienumus"
+            "dropFailed": "Neizdevās importēt {count} vienumus",
+            "connectionCancelledHint": "Saraksta izveide tika apturēta un savienojums slēgts."
         },
         "about": {
             "tagline": "Vairāk nekā FTP. Pilns izstrādātāja rīku komplekts.",
@@ -1499,7 +1501,8 @@
             "overlay_opening": "Atver šifrēto slāni, atšifrē nosaukumus",
             "overlay_unlocked": "Šifrētais slānis atbloķēts",
             "overlay_failed": "Neizdevās atbloķēt šifrēto slāni",
-            "session_resumed": "Atsākta aktīvā sesija ar {server}"
+            "session_resumed": "Atsākta aktīvā sesija ar {server}",
+            "connect_cancelled": "Lietotājs atcēla: saraksta izveide apturēta, atvienots no servera"
         },
         "protocol": {
             "selectProtocol": "Izvēlēties protokolu...",

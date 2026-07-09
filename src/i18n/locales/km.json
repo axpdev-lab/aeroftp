@@ -335,7 +335,8 @@
             "encrypted": "បានអ៊ិនគ្រីប",
             "notEncrypted": "មិនបានអ៊ិនគ្រីប",
             "listingDirectory": "កំពុងរាយបញ្ជីថត...",
-            "listingPath": "កំពុងរាយបញ្ជី {path}..."
+            "listingPath": "កំពុងរាយបញ្ជី {path}...",
+            "pleaseWait": "សូមរង់ចាំ..."
         },
         "contextMenu": {
             "askAeroAgent": "សួរ AeroAgent...",
@@ -1309,7 +1310,8 @@
             "keepWaiting": "បន្តរង់ចាំ",
             "cancelConnection": "បោះបង់ការតភ្ជាប់",
             "dropImported": "បាននាំចូល {count} ធាតុទៅក្នុងថតនេះ",
-            "dropFailed": "បរាជ័យក្នុងការនាំចូល {count} ធាតុ"
+            "dropFailed": "បរាជ័យក្នុងការនាំចូល {count} ធាតុ",
+            "connectionCancelledHint": "ការរាយបញ្ជីត្រូវបានបញ្ឈប់ ហើយការតភ្ជាប់ត្រូវបានបិទ។"
         },
         "about": {
             "tagline": "លើសពី FTP។ ប្រអប់ឧបករណ៍អ្នកអភិវឌ្ឍន៍ពេញលេញ។",
@@ -1499,7 +1501,8 @@
             "overlay_opening": "កំពុងបើកស្រទាប់អ៊ិនគ្រីប កំពុងឌិគ្រីបឈ្មោះ",
             "overlay_unlocked": "បានដោះសោស្រទាប់អ៊ិនគ្រីប",
             "overlay_failed": "មិនអាចដោះសោស្រទាប់អ៊ិនគ្រីបបានទេ",
-            "session_resumed": "បានបន្តវគ្គសកម្មទៅ {server}"
+            "session_resumed": "បានបន្តវគ្គសកម្មទៅ {server}",
+            "connect_cancelled": "បានបោះបង់ដោយអ្នកប្រើ៖ ការរាយបញ្ជីត្រូវបានបញ្ឈប់ បានផ្តាច់ពីម៉ាស៊ីនមេ"
         },
         "protocol": {
             "selectProtocol": "ជ្រើសរើសពិធីការ...",

@@ -335,7 +335,8 @@
             "encrypted": "Krypterad",
             "notEncrypted": "Inte krypterad",
             "listingDirectory": "Listar katalog...",
-            "listingPath": "Listar {path}..."
+            "listingPath": "Listar {path}...",
+            "pleaseWait": "Vänta..."
         },
         "contextMenu": {
             "askAeroAgent": "Fråga AeroAgent...",
@@ -1309,7 +1310,8 @@
             "keepWaiting": "Fortsätt vänta",
             "cancelConnection": "Avbryt anslutning",
             "dropImported": "Importerade {count} objekt till den här mappen",
-            "dropFailed": "Det gick inte att importera {count} objekt"
+            "dropFailed": "Det gick inte att importera {count} objekt",
+            "connectionCancelledHint": "Listningen stoppades och anslutningen stängdes."
         },
         "about": {
             "tagline": "Mer än FTP. En komplett utvecklarverktygslåda.",
@@ -1499,7 +1501,8 @@
             "overlay_opening": "Öppnar krypterat lager, dekrypterar namn",
             "overlay_unlocked": "Krypterat lager upplåst",
             "overlay_failed": "Det krypterade lagret kunde inte låsas upp",
-            "session_resumed": "Återupptog aktiv session till {server}"
+            "session_resumed": "Återupptog aktiv session till {server}",
+            "connect_cancelled": "Avbruten av användaren: listning stoppad, frånkopplad från servern"
         },
         "protocol": {
             "selectProtocol": "Välj protokoll...",

@@ -335,7 +335,8 @@
             "encrypted": "Şifreli",
             "notEncrypted": "Şifresiz",
             "listingDirectory": "Dizin listeleniyor...",
-            "listingPath": "{path} listeleniyor..."
+            "listingPath": "{path} listeleniyor...",
+            "pleaseWait": "Lütfen bekleyin..."
         },
         "contextMenu": {
             "askAeroAgent": "AeroAgent'a sor...",
@@ -1309,7 +1310,8 @@
             "keepWaiting": "Beklemeye devam et",
             "cancelConnection": "Bağlantıyı iptal et",
             "dropImported": "Bu klasöre {count} öğe içe aktarıldı",
-            "dropFailed": "{count} öğe içe aktarılamadı"
+            "dropFailed": "{count} öğe içe aktarılamadı",
+            "connectionCancelledHint": "Listeleme durduruldu ve bağlantı kapatıldı."
         },
         "about": {
             "tagline": "FTP'den fazlası. Tam bir geliştirici araç seti.",
@@ -1499,7 +1501,8 @@
             "overlay_opening": "Şifreli katman açılıyor, adlar şifresi çözülüyor",
             "overlay_unlocked": "Şifreli katman kilidi açıldı",
             "overlay_failed": "Şifreli katmanın kilidi açılamadı",
-            "session_resumed": "{server} için etkin oturuma dönüldü"
+            "session_resumed": "{server} için etkin oturuma dönüldü",
+            "connect_cancelled": "Kullanıcı iptal etti: listeleme durduruldu, sunucu bağlantısı kesildi"
         },
         "protocol": {
             "selectProtocol": "Protokol seç...",

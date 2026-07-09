@@ -335,7 +335,8 @@
             "encrypted": "დაშიფრული",
             "notEncrypted": "დაუშიფრავი",
             "listingDirectory": "დირექტორიის ჩამონათვალი...",
-            "listingPath": "{path}-ის ჩამონათვალი..."
+            "listingPath": "{path}-ის ჩამონათვალი...",
+            "pleaseWait": "გთხოვთ, დაელოდოთ..."
         },
         "contextMenu": {
             "askAeroAgent": "ჰკითხე AeroAgent-ს...",
@@ -1309,7 +1310,8 @@
             "keepWaiting": "ლოდინის გაგრძელება",
             "cancelConnection": "კავშირის გაუქმება",
             "dropImported": "{count} ერთეული იმპორტირებულია ამ საქაღალდეში",
-            "dropFailed": "{count} ერთეულის იმპორტი ვერ მოხერხდა"
+            "dropFailed": "{count} ერთეულის იმპორტი ვერ მოხერხდა",
+            "connectionCancelledHint": "სიის მიღება შეჩერდა და კავშირი დაიხურა."
         },
         "about": {
             "tagline": "მეტი ვიდრე FTP. სრული დეველოპერის ინსტრუმენტარიუმი.",
@@ -1499,7 +1501,8 @@
             "overlay_opening": "დაშიფრული შრის გახსნა, სახელების გაშიფვრა",
             "overlay_unlocked": "დაშიფრული შრე განბლოკილია",
             "overlay_failed": "დაშიფრული შრის განბლოკვა ვერ მოხერხდა",
-            "session_resumed": "განახლდა აქტიური სესია: {server}"
+            "session_resumed": "განახლდა აქტიური სესია: {server}",
+            "connect_cancelled": "გაუქმებულია მომხმარებლის მიერ: სია შეჩერდა, სერვერთან კავშირი გაწყდა"
         },
         "protocol": {
             "selectProtocol": "აირჩიეთ პროტოკოლი...",

@@ -335,7 +335,8 @@
             "encrypted": "Chiffré",
             "notEncrypted": "Non chiffré",
             "listingDirectory": "Listage du répertoire...",
-            "listingPath": "Listage de {path}..."
+            "listingPath": "Listage de {path}...",
+            "pleaseWait": "Veuillez patienter..."
         },
         "contextMenu": {
             "askAeroAgent": "Demander à AeroAgent...",
@@ -1309,7 +1310,8 @@
             "keepWaiting": "Continuer à attendre",
             "cancelConnection": "Annuler la connexion",
             "dropImported": "{count} éléments importés dans ce dossier",
-            "dropFailed": "Échec de l'importation de {count} éléments"
+            "dropFailed": "Échec de l'importation de {count} éléments",
+            "connectionCancelledHint": "Le listage a été arrêté et la connexion fermée."
         },
         "about": {
             "tagline": "Plus que FTP. Une boîte à outils complète pour développeurs.",
@@ -1499,7 +1501,8 @@
             "overlay_opening": "Ouverture de la surcouche chiffrée, déchiffrement des noms",
             "overlay_unlocked": "Surcouche chiffrée déverrouillée",
             "overlay_failed": "Impossible de déverrouiller la surcouche chiffrée",
-            "session_resumed": "Session active reprise vers {server}"
+            "session_resumed": "Session active reprise vers {server}",
+            "connect_cancelled": "Annulé par l'utilisateur : listage arrêté, déconnecté du serveur"
         },
         "protocol": {
             "selectProtocol": "Sélectionner un protocole...",

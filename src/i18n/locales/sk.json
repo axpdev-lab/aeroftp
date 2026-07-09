@@ -335,7 +335,8 @@
             "encrypted": "Šifrované",
             "notEncrypted": "Nešifrované",
             "listingDirectory": "Načítava sa adresár...",
-            "listingPath": "Načítava sa {path}..."
+            "listingPath": "Načítava sa {path}...",
+            "pleaseWait": "Čakajte prosím..."
         },
         "contextMenu": {
             "askAeroAgent": "Opýtať sa AeroAgent...",
@@ -1309,7 +1310,8 @@
             "keepWaiting": "Pokračovať v čakaní",
             "cancelConnection": "Zrušiť pripojenie",
             "dropImported": "Importovaných {count} položiek do tohto priečinka",
-            "dropFailed": "Nepodarilo sa importovať {count} položiek"
+            "dropFailed": "Nepodarilo sa importovať {count} položiek",
+            "connectionCancelledHint": "Výpis bol zastavený a pripojenie zatvorené."
         },
         "about": {
             "tagline": "Viac ako FTP. Kompletná sada nástrojov pre vývojárov.",
@@ -1499,7 +1501,8 @@
             "overlay_opening": "Otvára sa šifrovaná vrstva, dešifrujú sa názvy",
             "overlay_unlocked": "Šifrovaná vrstva odomknutá",
             "overlay_failed": "Šifrovanú vrstvu sa nepodarilo odomknúť",
-            "session_resumed": "Obnovené aktívne pripojenie k {server}"
+            "session_resumed": "Obnovené aktívne pripojenie k {server}",
+            "connect_cancelled": "Zrušené používateľom: výpis zastavený, odpojené od servera"
         },
         "protocol": {
             "selectProtocol": "Vybrať protokol...",

@@ -335,7 +335,8 @@
             "encrypted": "เข้ารหัสแล้ว",
             "notEncrypted": "ไม่ได้เข้ารหัส",
             "listingDirectory": "กำลังแสดงรายการไดเรกทอรี...",
-            "listingPath": "กำลังแสดงรายการ {path}..."
+            "listingPath": "กำลังแสดงรายการ {path}...",
+            "pleaseWait": "โปรดรอสักครู่..."
         },
         "contextMenu": {
             "askAeroAgent": "ถาม AeroAgent...",
@@ -1309,7 +1310,8 @@
             "keepWaiting": "รอต่อไป",
             "cancelConnection": "ยกเลิกการเชื่อมต่อ",
             "dropImported": "นำเข้า {count} รายการไปยังโฟลเดอร์นี้แล้ว",
-            "dropFailed": "นำเข้า {count} รายการไม่สำเร็จ"
+            "dropFailed": "นำเข้า {count} รายการไม่สำเร็จ",
+            "connectionCancelledHint": "หยุดการแสดงรายการและปิดการเชื่อมต่อแล้ว"
         },
         "about": {
             "tagline": "มากกว่า FTP ชุดเครื่องมือครบวงจรสำหรับนักพัฒนา",
@@ -1499,7 +1501,8 @@
             "overlay_opening": "กำลังเปิดเลเยอร์ที่เข้ารหัส กำลังถอดรหัสชื่อ",
             "overlay_unlocked": "ปลดล็อกเลเยอร์ที่เข้ารหัสแล้ว",
             "overlay_failed": "ไม่สามารถปลดล็อกเลเยอร์ที่เข้ารหัสได้",
-            "session_resumed": "กลับสู่เซสชันที่ใช้งานอยู่ของ {server}"
+            "session_resumed": "กลับสู่เซสชันที่ใช้งานอยู่ของ {server}",
+            "connect_cancelled": "ผู้ใช้ยกเลิก: หยุดการแสดงรายการ และตัดการเชื่อมต่อจากเซิร์ฟเวอร์"
         },
         "protocol": {
             "selectProtocol": "เลือกโปรโตคอล...",

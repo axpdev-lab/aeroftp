@@ -335,7 +335,8 @@
             "encrypted": "Verschlüsselt",
             "notEncrypted": "Nicht verschlüsselt",
             "listingDirectory": "Verzeichnis wird aufgelistet...",
-            "listingPath": "{path} wird aufgelistet..."
+            "listingPath": "{path} wird aufgelistet...",
+            "pleaseWait": "Bitte warten..."
         },
         "contextMenu": {
             "askAeroAgent": "AeroAgent fragen...",
@@ -1309,7 +1310,8 @@
             "keepWaiting": "Weiter warten",
             "cancelConnection": "Verbindung abbrechen",
             "dropImported": "{count} Elemente in diesen Ordner importiert",
-            "dropFailed": "{count} Elemente konnten nicht importiert werden"
+            "dropFailed": "{count} Elemente konnten nicht importiert werden",
+            "connectionCancelledHint": "Die Auflistung wurde gestoppt und die Verbindung geschlossen."
         },
         "about": {
             "tagline": "Mehr als FTP. Ein komplettes Entwickler-Toolkit.",
@@ -1499,7 +1501,8 @@
             "overlay_opening": "Verschlüsselte Ebene wird geöffnet, Namen werden entschlüsselt",
             "overlay_unlocked": "Verschlüsselte Ebene entsperrt",
             "overlay_failed": "Verschlüsselte Ebene konnte nicht entsperrt werden",
-            "session_resumed": "Aktive Sitzung zu {server} fortgesetzt"
+            "session_resumed": "Aktive Sitzung zu {server} fortgesetzt",
+            "connect_cancelled": "Vom Benutzer abgebrochen: Auflistung gestoppt, Verbindung getrennt"
         },
         "protocol": {
             "selectProtocol": "Protokoll auswählen...",
