@@ -679,14 +679,8 @@ fn try_detect_dotnet(base: &Path, ctx: &mut ProjectContext) -> bool {
 /// Parse a simple TOML key = "value" line
 fn parse_toml_value(line: &str, key: &str) -> Option<String> {
     let trimmed = line.trim();
-    let after_key = match trimmed.strip_prefix(key) {
-        Some(rest) => rest.trim_start(),
-        None => return None,
-    };
-    let after_eq = match after_key.strip_prefix('=') {
-        Some(rest) => rest.trim_start(),
-        None => return None,
-    };
+    let after_key = trimmed.strip_prefix(key)?.trim_start();
+    let after_eq = after_key.strip_prefix('=')?.trim_start();
     let inner = after_eq.strip_prefix('"')?;
     let end = inner.find('"')?;
     Some(inner[..end].to_string())

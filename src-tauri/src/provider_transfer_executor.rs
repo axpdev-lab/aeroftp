@@ -666,7 +666,7 @@ impl ProviderDownloadExecutor {
         let cancel_token = self.cancel_token.clone();
         let dl_start = std::time::Instant::now();
 
-        let tmp_path = format!("{}.aerotmp", &local_path);
+        let tmp_path = format!("{}.aerotmp", local_path);
         let partial_offset = if attempt > 0 && provider.supports_resume() {
             tokio::fs::metadata(&tmp_path)
                 .await
