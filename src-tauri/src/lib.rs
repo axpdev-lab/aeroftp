@@ -7205,6 +7205,22 @@ impl Drop for ArchiveTempFile {
     }
 }
 
+/// Map a user-facing DEFLATE level to the backend level actually encoded.
+///
+/// flate2 resolves to the zlib-rs backend in this build (pulled in by the zip
+/// crate's `deflate` feature), and zlib-rs maps level 1 to its `deflate_quick`
+/// algorithm: a speed-first preset whose output is ~40% larger than `gzip -1`
+/// on text, while backend level 2 is already both smaller and faster than
+/// `gzip -1` (#406). Pin user level 1 to backend level 2 so every user level
+/// stays in the native tools' size band; other levels pass through unchanged.
+fn deflate_effective_level(level: i64) -> i64 {
+    if level == 1 {
+        2
+    } else {
+        level
+    }
+}
+
 /// Decide whether a ZIP entry should be stored rather than deflated, so that
 /// incompressible data never gets larger from compression (#276, store-if-larger).
 /// Returns true when a deflate pass at `level` would not shrink `data`.
@@ -7470,7 +7486,7 @@ fn compress_sample(buf: &[u8], codec: &str, level: i32) -> Result<usize, String>
         "store" => Ok(buf.len()),
         // zip and tar.gz both deflate; the few-byte gzip header is immaterial here.
         "deflate" | "gzip" => {
-            let lvl = level.clamp(0, 9) as u32;
+            let lvl = deflate_effective_level(level.clamp(0, 9) as i64) as u32;
             let mut e =
                 flate2::write::DeflateEncoder::new(Vec::new(), flate2::Compression::new(lvl));
             e.write_all(buf).map_err(|e| e.to_string())?;
@@ -7596,7 +7612,7 @@ async fn compress_files_impl(
         File::create(temp.path()).map_err(|e| format!("Failed to create ZIP file: {}", e))?;
 
     let mut zip = ZipWriter::new(file);
-    let level = compression_level.unwrap_or(5);
+    let level = deflate_effective_level(compression_level.unwrap_or(5));
     // Level 0 means "store" (no deflate). The zip crate rejects a numeric
     // compression_level on the Stored method, so only attach the level when
     // we are actually deflating.
@@ -8825,7 +8841,9 @@ async fn compress_tar_impl(
         "tar.gz" => {
             let gz = flate2::write::GzEncoder::new(
                 file,
-                flate2::Compression::new(compression_level.unwrap_or(5) as u32),
+                flate2::Compression::new(
+                    deflate_effective_level(compression_level.unwrap_or(5)) as u32
+                ),
             );
             let mut archive = tar::Builder::new(gz);
             for (abs_path, rel_path) in &entries {
@@ -8940,7 +8958,10 @@ async fn compress_single_impl(
 
     match format.as_str() {
         "gz" => {
-            let mut enc = flate2::write::GzEncoder::new(out, flate2::Compression::new(level));
+            let mut enc = flate2::write::GzEncoder::new(
+                out,
+                flate2::Compression::new(deflate_effective_level(level as i64) as u32),
+            );
             std::io::copy(&mut reader, &mut enc).map_err(|e| format!("gzip: {}", e))?;
             enc.finish().map_err(|e| format!("gzip finish: {}", e))?;
         }
@@ -18541,6 +18562,17 @@ mod compress_store_tests {
         assert!(!zip_entry_should_store(&[], 6));
     }
 
+    #[test]
+    fn deflate_level_mapping_pins_only_level_1() {
+        // Level 0 keeps its store semantics, level 1 lands on the backend fast
+        // slot instead of zlib-rs deflate_quick, everything else is identity.
+        assert_eq!(deflate_effective_level(0), 0);
+        assert_eq!(deflate_effective_level(1), 2);
+        for lvl in 2..=9 {
+            assert_eq!(deflate_effective_level(lvl), lvl);
+        }
+    }
+
     #[tokio::test]
     async fn compress_files_stores_incompressible_deflates_compressible() {
         use std::io::Read;
@@ -19044,6 +19076,65 @@ mod sevenz_mhe_tests {
 mod standalone_stream_tests {
     use super::{compress_single_core, extract_single_as_core, extract_single_core};
     use std::io::Read;
+
+    // User-facing DEFLATE level 1 is pinned to backend level 2 because zlib-rs
+    // maps backend level 1 to deflate_quick, ~40% larger than `gzip -1` on
+    // text (#406). Byte equality with level 2 proves the pin reaches the
+    // encoder; beating a raw backend-level-1 stream on the same corpus proves
+    // the pin actually changes the emitted bytes for the better.
+    #[tokio::test]
+    async fn deflate_level_1_pinned_to_backend_level_2() {
+        use std::io::Write;
+        let dir = tempfile::tempdir().unwrap();
+
+        // Deterministic word salad (the corpus family the +40% showed on):
+        // repetitive enough to compress, varied enough that quick != fast.
+        let words = [
+            "the", "quick", "brown", "fox", "jumps", "over", "lazy", "dog", "packet", "bytes",
+            "tunnel", "vault", "stream", "archive",
+        ];
+        let mut state: u64 = 0xb3c0_de01;
+        let mut text = String::new();
+        while text.len() < 2 * 1024 * 1024 {
+            state ^= state >> 12;
+            state ^= state << 25;
+            state ^= state >> 27;
+            let pick = (state.wrapping_mul(0x2545_F491_4F6C_DD1D) >> 56) as usize;
+            text.push_str(words[pick % words.len()]);
+            text.push(' ');
+        }
+        let src = dir.path().join("corpus.txt");
+        std::fs::write(&src, text.as_bytes()).unwrap();
+        let src = src.to_string_lossy().to_string();
+
+        let gz_at = |level: i64, name: &str| {
+            let out = dir.path().join(name).to_string_lossy().to_string();
+            let src = src.clone();
+            async move {
+                compress_single_core(src, out.clone(), "gz".to_string(), Some(level))
+                    .await
+                    .unwrap_or_else(|e| panic!("compress gz L{level}: {e}"));
+                std::fs::read(&out).unwrap()
+            }
+        };
+        let l1 = gz_at(1, "l1.gz").await;
+        let l2 = gz_at(2, "l2.gz").await;
+        assert_eq!(
+            l1, l2,
+            "user level 1 must emit the backend level 2 stream, byte for byte"
+        );
+
+        // The raw backend level 1 (deflate_quick) stream on the same corpus.
+        let mut quick = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::new(1));
+        quick.write_all(text.as_bytes()).unwrap();
+        let quick = quick.finish().unwrap();
+        assert!(
+            l1.len() < quick.len(),
+            "pinned level 1 ({} B) must beat deflate_quick ({} B) on text",
+            l1.len(),
+            quick.len()
+        );
+    }
 
     // gz/xz/bz2 as standalone single-file streams: each must shrink a
     // compressible payload and round-trip back to the exact original bytes. If
