@@ -11,26 +11,11 @@ use secrecy::{ExposeSecret, SecretString};
 use serde::Serialize;
 
 /// M16: Validate archive entry paths to prevent path traversal attacks (ZipSlip).
-/// Rejects entries containing ".." components, absolute paths, or Windows drive prefixes.
-fn is_safe_archive_entry(entry_name: &str) -> bool {
-    // Reject entries with path traversal sequences
-    if entry_name.contains("..") {
-        return false;
-    }
-    // Reject absolute Unix paths
-    if entry_name.starts_with('/') {
-        return false;
-    }
-    // Reject absolute Windows paths (C:\, D:\, etc.)
-    if entry_name.len() >= 2 && entry_name.as_bytes()[1] == b':' {
-        return false;
-    }
-    // Reject backslash-prefixed paths
-    if entry_name.starts_with('\\') {
-        return false;
-    }
-    true
-}
+/// Delegates to the single shared guard in `lib.rs` so the check never drifts. The
+/// old local copy used a substring `contains("..")` test that also rejected legit
+/// names like `a..b.txt`; the shared guard splits on `/` and `\` and matches the
+/// `..` component precisely. (CLAUDE-AV-B1-03)
+use crate::is_safe_archive_entry;
 
 /// Metadata for a single entry inside an archive
 #[derive(Serialize, Clone)]
@@ -171,10 +156,19 @@ pub(crate) async fn extract_zip_entry_impl(
         fs::create_dir_all(parent).map_err(|e| format!("Failed to create directory: {}", e))?;
     }
 
-    // Atomic write: extract to .tmp then rename to prevent partial files on failure
-    let tmp_path = out_path.with_extension("aerotmp");
-    let mut outfile =
-        File::create(&tmp_path).map_err(|e| format!("Failed to create output file: {}", e))?;
+    // Atomic write via a uniquely-named temp file in the destination directory,
+    // then persist onto the target. A fixed `.aerotmp` sibling (out_path with the
+    // extension swapped) could collide with and clobber a real user file of that
+    // name; a randomized temp name cannot, and NamedTempFile auto-removes on every
+    // error path. (CLAUDE-AV-B1-09)
+    let parent = out_path
+        .parent()
+        .unwrap_or_else(|| std::path::Path::new("."));
+    let mut tmp = tempfile::Builder::new()
+        .prefix(".aeroftp-extract-")
+        .suffix(".aerotmp")
+        .tempfile_in(parent)
+        .map_err(|e| format!("Failed to create temp file: {}", e))?;
     // Bound extraction to the entry's declared uncompressed size (+1 to detect a
     // stream that expands past what it declared), defusing a deflate bomb that
     // would otherwise stream unbounded data to disk (CLAUDE-AV-015).
@@ -183,23 +177,16 @@ pub(crate) async fn extract_zip_entry_impl(
     let written = {
         let mut limited = entry.by_ref().take(declared + 1);
         let mut counted = ProgressReader::new(&mut limited, &mut progress);
-        match std::io::copy(&mut counted, &mut outfile) {
-            Ok(n) => n,
-            Err(e) => {
-                let _ = fs::remove_file(&tmp_path);
-                return Err(format!("Failed to extract entry: {}", e));
-            }
-        }
+        std::io::copy(&mut counted, tmp.as_file_mut())
+            .map_err(|e| format!("Failed to extract entry: {}", e))?
     };
     if written > declared {
-        let _ = fs::remove_file(&tmp_path);
         return Err(format!(
             "Archive entry '{}' expands past its declared size (compression bomb?)",
             entry_name
         ));
     }
-    drop(outfile);
-    fs::rename(&tmp_path, out_path)
+    tmp.persist(out_path)
         .map_err(|e| format!("Failed to finalize extracted file: {}", e))?;
     progress.finish();
 

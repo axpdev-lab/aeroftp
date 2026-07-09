@@ -20,33 +20,23 @@ import { LocalFile, RemoteFile } from '../types';
 import { PreviewFile } from '../components/DevTools';
 import { PreviewFileData, getPreviewCategory } from '../components/Preview';
 import { logger } from '../utils/logger';
+import DOMPurify from 'dompurify';
 
 /** Max file size (in bytes) for base64 media preview: 25 MB */
 const MAX_PREVIEW_SIZE_BYTES = 25 * 1024 * 1024;
 
 /**
- * Sanitize SVG content by removing dangerous elements and attributes.
- * Even though <img> tags block script execution, defense-in-depth
- * removes <script>, <foreignObject>, and inline event handlers.
+ * Sanitize SVG content before it is rendered (as an <img>/blob data URL).
+ * A regex "sanitizer" is trivially evaded by nested or oddly-cased tags,
+ * entity tricks, and unquoted attributes; DOMPurify parses the SVG namespace
+ * and removes <script>, <foreignObject>, event handlers, and javascript:
+ * hrefs reliably. This keeps the defense correct if a consumer ever renders
+ * the SVG inline instead of through <img>. (audit B-F03)
  */
 function sanitizeSvg(svgContent: string): string {
-  // Remove <script> tags and their content
-  let clean = svgContent.replace(/<script[\s\S]*?<\/script>/gi, '');
-  // Remove self-closing <script /> tags
-  clean = clean.replace(/<script[^>]*\/>/gi, '');
-  // Remove <foreignObject> tags and their content
-  clean = clean.replace(/<foreignObject[\s\S]*?<\/foreignObject>/gi, '');
-  // Remove self-closing <foreignObject /> tags
-  clean = clean.replace(/<foreignObject[^>]*\/>/gi, '');
-  // Remove event handler attributes (on*)
-  clean = clean.replace(/\s+on\w+\s*=\s*["'][^"']*["']/gi, '');
-  // Remove event handler attributes with unquoted values
-  clean = clean.replace(/\s+on\w+\s*=\s*\S+/gi, '');
-  // Remove href="javascript:..." attributes
-  clean = clean.replace(/\s+href\s*=\s*["']javascript:[^"']*["']/gi, '');
-  // Remove xlink:href="javascript:..." attributes
-  clean = clean.replace(/\s+xlink:href\s*=\s*["']javascript:[^"']*["']/gi, '');
-  return clean;
+  return DOMPurify.sanitize(svgContent, {
+    USE_PROFILES: { svg: true, svgFilters: true },
+  });
 }
 
 interface UsePreviewProps {

@@ -97,15 +97,30 @@ function resolveAndValidatePath(href: string, baseDir: string): string | null {
 
     const resolvedPath = resolved.join('/');
 
-    // Ensure the resolved path stays within the base directory
+    // Ensure the resolved path stays within the base directory. Compare against
+    // the base WITH its trailing slash: a bare-prefix check (`/base/sub`) also
+    // matched a sibling like `/base/subEVIL/...`, letting a crafted stylesheet
+    // href escape into an adjacent directory. (audit B-F02)
     const normalizedBase = baseDir.replace(/\/+$/, '') + '/';
-    if (!resolvedPath.startsWith(normalizedBase.slice(0, -1))) return null;
+    if (!resolvedPath.startsWith(normalizedBase)) return null;
 
     // Must end with .css extension
     if (!resolvedPath.toLowerCase().endsWith('.css')) return null;
 
     return resolvedPath;
 }
+
+/**
+ * Per-frame CSP for the HTML "render" preview. The preview iframe already runs
+ * without `allow-scripts`, so no script executes; this additionally blocks every
+ * network subresource (img/media/font/connect to http(s)), so attacker markup in
+ * a previewed .html file cannot beacon out the viewer's IP or the open event.
+ * Only inline styles and data: images are permitted. (audit B-F01)
+ */
+const PREVIEW_FRAME_CSP =
+    "default-src 'none'; style-src 'unsafe-inline'; img-src data:; media-src data:; font-src data:;";
+const withPreviewCsp = (html: string): string =>
+    `<meta http-equiv="Content-Security-Policy" content="${PREVIEW_FRAME_CSP}">\n${html}`;
 
 /**
  * For HTML files: inline local <link rel="stylesheet"> as <style> blocks
@@ -135,7 +150,11 @@ async function inlineLocalStyles(html: string, filePath: string): Promise<string
 
         try {
             const cssContent = await invoke<string>('read_local_file', { path: cssPath });
-            processed = processed.replace(fullMatch, `<style>/* ${href} */\n${cssContent}</style>`);
+            // Neutralize a `</style>` breakout: raw CSS bytes concatenated into a
+            // <style> block could close the element early and inject markup into
+            // the (sandboxed, script-less) preview frame. (audit B-F02)
+            const safeCss = cssContent.replace(/<\/style/gi, '<\\/style');
+            processed = processed.replace(fullMatch, `<style>/* ${href} */\n${safeCss}</style>`);
         } catch {
             // CSS file not found: keep original link tag
         }
@@ -297,7 +316,7 @@ export const TextViewer: React.FC<TextViewerProps> = ({
             if (!cancelled) {
                 setProcessedHtml(result);
                 // Use blob URL instead of srcdoc for better WebKitGTK compatibility
-                const blob = new Blob([result], { type: 'text/html;charset=utf-8' });
+                const blob = new Blob([withPreviewCsp(result)], { type: 'text/html;charset=utf-8' });
                 const url = URL.createObjectURL(blob);
                 setHtmlBlobUrl(prev => {
                     if (prev) URL.revokeObjectURL(prev);
@@ -602,10 +621,13 @@ export const TextViewer: React.FC<TextViewerProps> = ({
                     >
                         <iframe
                             ref={iframeRef}
-                            sandbox="allow-same-origin"
+                            // Fully sandboxed (no allow-scripts, no allow-same-origin):
+                            // opaque origin, no script execution, plus the per-frame CSP
+                            // below blocks outbound subresource beacons. (audit B-F01)
+                            sandbox=""
                             referrerPolicy="no-referrer"
                             src={htmlBlobUrl || undefined}
-                            srcDoc={!htmlBlobUrl ? (processedHtml || content) : undefined}
+                            srcDoc={!htmlBlobUrl ? withPreviewCsp(processedHtml || content) : undefined}
                             className="w-full h-full bg-white border border-gray-700 rounded"
                             title="HTML Preview"
                         />

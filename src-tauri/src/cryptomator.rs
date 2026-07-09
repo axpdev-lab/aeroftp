@@ -882,12 +882,27 @@ fn is_safe_segment(name: &str) -> bool {
 /// Recursively collect the decrypted tree under `dir_id` (prefixed by
 /// `rel_prefix`). Best-effort: an unreadable/undecryptable subdirectory is
 /// skipped rather than aborting the whole walk, and unsafe names are dropped.
+/// Hard cap on directory nesting during the recursive walk: a defense against a
+/// crafted vault whose `dir.c9r` graph is deeper than any real filesystem, on top
+/// of the `visited` cycle guard below. (CLAUDE-AV-B1-07)
+const COLLECT_TREE_MAX_DEPTH: usize = 512;
+
 fn collect_tree(
     vault: &UnlockedVault,
     dir_id: &str,
     rel_prefix: &str,
     out: &mut Vec<crate::readable_vault::ReadableEntry>,
+    visited: &mut std::collections::HashSet<String>,
+    depth: usize,
 ) {
+    // A vault's directory graph is attacker-authored even when the recipient knows
+    // the password: the `dir_id` of each child is read from an on-disk `dir.c9r`.
+    // Without a cycle guard a crafted vault whose child points back at an ancestor
+    // recurses forever -> stack overflow. Stop on re-visit or excessive depth.
+    // (CLAUDE-AV-B1-07)
+    if depth >= COLLECT_TREE_MAX_DEPTH || !visited.insert(dir_id.to_string()) {
+        return;
+    }
     let entries = match list_dir_inner(vault, dir_id) {
         Ok(e) => e,
         Err(_) => return,
@@ -909,7 +924,7 @@ fn collect_tree(
                 handle: String::new(),
             });
             if let Some(child) = e.dir_id {
-                collect_tree(vault, &child, &rel, out);
+                collect_tree(vault, &child, &rel, out, visited, depth + 1);
             }
         } else {
             // `list_dir_inner` reports the ENCRYPTED on-disk length; the readable
@@ -932,7 +947,14 @@ fn collect_tree(
 impl crate::readable_vault::ReadableVault for CryptomatorReadable<'_> {
     fn walk(&self) -> Result<Vec<crate::readable_vault::ReadableEntry>, String> {
         let mut out = Vec::new();
-        collect_tree(self.vault, "", "", &mut out);
+        collect_tree(
+            self.vault,
+            "",
+            "",
+            &mut out,
+            &mut std::collections::HashSet::new(),
+            0,
+        );
         Ok(out)
     }
 
@@ -974,7 +996,14 @@ pub struct OwnedCryptomatorReadable {
 impl crate::readable_vault::ReadableVault for OwnedCryptomatorReadable {
     fn walk(&self) -> Result<Vec<crate::readable_vault::ReadableEntry>, String> {
         let mut out = Vec::new();
-        collect_tree(&self.vault, "", "", &mut out);
+        collect_tree(
+            &self.vault,
+            "",
+            "",
+            &mut out,
+            &mut std::collections::HashSet::new(),
+            0,
+        );
         Ok(out)
     }
 

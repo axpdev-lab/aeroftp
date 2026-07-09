@@ -6910,8 +6910,18 @@ async fn chmod_remote_file(
         .map_err(|e| e.to_string())
 }
 
+/// Sentinel prefix returned when a local rename/copy would clobber an existing
+/// destination and the caller passed `overwrite: Some(false)`. The frontend
+/// matches this prefix to raise its overwrite confirmation instead of silently
+/// destroying the target. (CLAUDE-AV-B1-10)
+pub(crate) const DEST_EXISTS_MARKER: &str = "DEST_EXISTS";
+
 #[tauri::command]
-async fn rename_local_file(from: String, to: String) -> Result<(), String> {
+async fn rename_local_file(
+    from: String,
+    to: String,
+    overwrite: Option<bool>,
+) -> Result<(), String> {
     validate_path(&from)?;
     validate_path(&to)?;
     // Check for Windows reserved filenames
@@ -6929,6 +6939,15 @@ async fn rename_local_file(from: String, to: String) -> Result<(), String> {
         }
     }
 
+    // `tokio::fs::rename` overwrites an existing destination atomically and
+    // irreversibly (no trash). When the caller explicitly opts out of clobbering
+    // (cross-panel move, inline/batch rename), refuse if `to` already exists so
+    // the frontend can prompt. Existing callers omit the flag -> None -> preserve
+    // the historical overwrite behavior. (CLAUDE-AV-B1-10)
+    if overwrite == Some(false) && std::path::Path::new(&to).exists() {
+        return Err(format!("{DEST_EXISTS_MARKER}: {to}"));
+    }
+
     tokio::fs::rename(&from, &to)
         .await
         .map_err(|e| format!("Failed to rename: {}", e))?;
@@ -6937,12 +6956,17 @@ async fn rename_local_file(from: String, to: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-async fn copy_local_file(from: String, to: String) -> Result<(), String> {
+async fn copy_local_file(from: String, to: String, overwrite: Option<bool>) -> Result<(), String> {
     validate_path(&from)?;
     validate_path(&to)?;
     let from_path = std::path::Path::new(&from);
     if !from_path.exists() {
         return Err(format!("Source does not exist: {}", from));
+    }
+    // See rename_local_file: refuse a silent overwrite when the caller opts out.
+    // (CLAUDE-AV-B1-10)
+    if overwrite == Some(false) && std::path::Path::new(&to).exists() {
+        return Err(format!("{DEST_EXISTS_MARKER}: {to}"));
     }
     if from_path.is_dir() {
         // Recursive directory copy
@@ -7709,16 +7733,11 @@ async fn extract_archive(
                 .map_err(|e| format!("Failed to read file from archive: {}", e))?
         };
 
-        // ZIP Slip protection: reject entries with traversal or absolute paths
+        // ZIP Slip protection: use the single shared guard (rejects traversal,
+        // absolute paths, drive prefixes, empty names and null bytes) instead of a
+        // divergent inline copy. (CLAUDE-AV-B1-03)
         let entry_name = file.name().to_string();
-        if entry_name
-            .split('/')
-            .chain(entry_name.split('\\'))
-            .any(|c| c == "..")
-            || entry_name.starts_with('/')
-            || entry_name.starts_with('\\')
-            || (entry_name.len() > 2 && entry_name.as_bytes().get(1) == Some(&b':'))
-        {
+        if !is_safe_archive_entry(&entry_name) {
             continue;
         }
         let outpath = std::path::Path::new(&actual_output).join(&entry_name);
@@ -7737,7 +7756,8 @@ async fn extract_archive(
             let mut outfile =
                 File::create(&outpath).map_err(|e| format!("Failed to create file: {}", e))?;
 
-            std::io::copy(&mut file, &mut outfile)
+            let declared = file.size();
+            copy_entry_bounded(&mut file, &mut outfile, declared)
                 .map_err(|e| format!("Failed to extract file: {}", e))?;
         }
     }
@@ -7973,7 +7993,7 @@ async fn compress_7z_impl(
 /// Validate that an archive entry name is safe for extraction.
 /// Rejects absolute paths, Windows drive letters, path traversal (`..`),
 /// and entries that would escape the destination directory.
-fn is_safe_archive_entry(entry_name: &str) -> bool {
+pub(crate) fn is_safe_archive_entry(entry_name: &str) -> bool {
     // Reject empty names
     if entry_name.is_empty() {
         return false;
@@ -8000,6 +8020,35 @@ fn is_safe_archive_entry(entry_name: &str) -> bool {
     }
     true
 }
+
+/// Copy an archive entry into `writer` but never write more than the entry's
+/// declared uncompressed size: a stream that expands past what its header claims
+/// is a decompression bomb (or a corrupt archive) and is rejected. Mirrors the
+/// single-entry browse path (archive_browse.rs, CLAUDE-AV-015) so the
+/// whole-archive extractors get the same defense the preview path already had.
+/// (CLAUDE-AV-B1-04)
+fn copy_entry_bounded<R: std::io::Read + ?Sized, W: std::io::Write>(
+    reader: &mut R,
+    writer: &mut W,
+    declared: u64,
+) -> std::io::Result<u64> {
+    let mut limited = std::io::Read::take(&mut *reader, declared.saturating_add(1));
+    let written = std::io::copy(&mut limited, writer)?;
+    if written > declared {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "archive entry expands past its declared size (compression bomb?)",
+        ));
+    }
+    Ok(written)
+}
+
+/// Absolute floor for a single-stream (gz/xz/bz2) decompression cap: a raw codec
+/// stream carries no reliable declared size, so we cap the plaintext at
+/// `max(compressed_len * ratio, this)`. A tiny bomb still cannot exceed this;
+/// a genuinely large file scales with its own compressed size. (CLAUDE-AV-B1-05)
+const SINGLE_STREAM_ABS_FLOOR: u64 = 1024 * 1024 * 1024; // 1 GiB
+const SINGLE_STREAM_MAX_RATIO: u64 = 1000;
 
 /// Extract a 7z archive with optional password (AES-256 decryption)
 #[tauri::command]
@@ -8070,7 +8119,8 @@ async fn extract_7z(
                 fs::create_dir_all(&out_path)?;
             } else {
                 let mut outfile = File::create(&out_path)?;
-                std::io::copy(reader, &mut outfile)?;
+                let declared = entry.size();
+                copy_entry_bounded(reader, &mut outfile, declared)?;
             }
 
             Ok(true) // continue
@@ -8291,6 +8341,16 @@ fn detect_zip_meta(path: &str) -> Result<ArchiveMeta, String> {
         let cd = data.get(cd_off..).unwrap_or(&[]);
         return Ok(parse_zip_central_dir(cd, entries));
     }
+    // Clamp the attacker-controlled central-directory size to what the file can
+    // actually hold before allocating: a crafted EOCD can declare cd_size up to
+    // ~4 GiB, and `vec![0u8; cd_size]` would reserve that much RAM (a passive OOM
+    // spike triggered merely by listing a directory containing the malicious zip)
+    // even though `read_exact` then fails on the short file. (CLAUDE-AV-B1-01)
+    if cd_off as u64 >= flen {
+        return Err("central directory offset past end of file".to_string());
+    }
+    let remaining = (flen - cd_off as u64) as usize;
+    let cd_size = cd_size.min(remaining);
     f.seek(SeekFrom::Start(cd_off as u64))
         .map_err(|e| format!("seek cd: {e}"))?;
     let mut cd = vec![0u8; cd_size];
@@ -8417,7 +8477,21 @@ fn detect_7z_meta(path: &str) -> Result<ArchiveMeta, String> {
             compression: None,
         });
     }
-    f.seek(SeekFrom::Start(32 + nh_off))
+    // `nh_off` is an attacker-controlled u64 from the 32-byte start header. `32 +
+    // nh_off` overflows (debug panic, release wrap) and is never bounded to the
+    // file length; validate both before seeking. (CLAUDE-AV-B1-02)
+    let flen = f.metadata().map(|m| m.len()).unwrap_or(0);
+    let abs_off = match 32u64.checked_add(nh_off) {
+        Some(o) if o <= flen => o,
+        _ => {
+            return Ok(ArchiveMeta {
+                encrypted: false,
+                cipher: None,
+                compression: None,
+            })
+        }
+    };
+    f.seek(SeekFrom::Start(abs_off))
         .map_err(|e| format!("seek: {e}"))?;
     let mut hdr = vec![0u8; nh_size as usize];
     f.read_exact(&mut hdr)
@@ -8967,6 +9041,16 @@ async fn extract_single_impl(
         .map_err(|e| format!("Failed to create output directory: {}", e))?;
     let out_path = dest_dir.join(&member_name);
 
+    let compressed_len = std::fs::metadata(&archive_path)
+        .map(|m| m.len())
+        .unwrap_or(0);
+    // A raw gz/xz/bz2 stream has no reliable declared uncompressed size, so cap the
+    // plaintext at max(compressed * ratio, floor): a few-KB bomb cannot exceed the
+    // floor, while a legit large file scales with its own compressed size.
+    // (CLAUDE-AV-B1-05)
+    let cap = compressed_len
+        .saturating_mul(SINGLE_STREAM_MAX_RATIO)
+        .max(SINGLE_STREAM_ABS_FLOOR);
     let infile = File::open(&archive_path).map_err(|e| format!("Failed to open archive: {}", e))?;
     let mut reader: Box<dyn std::io::Read> = match codec.as_str() {
         "gz" => Box::new(flate2::read::GzDecoder::new(infile)),
@@ -8976,7 +9060,15 @@ async fn extract_single_impl(
     };
     let mut outfile =
         File::create(&out_path).map_err(|e| format!("Failed to create output file: {}", e))?;
-    std::io::copy(&mut reader, &mut outfile).map_err(|e| format!("Failed to decompress: {}", e))?;
+    let written = {
+        let mut limited = std::io::Read::take(&mut *reader, cap.saturating_add(1));
+        std::io::copy(&mut limited, &mut outfile)
+            .map_err(|e| format!("Failed to decompress: {}", e))?
+    };
+    if written > cap {
+        let _ = std::fs::remove_file(&out_path);
+        return Err("Decompressed stream exceeds the size limit (compression bomb?)".to_string());
+    }
 
     Ok(dest_dir.to_string_lossy().to_string())
 }
@@ -9178,7 +9270,8 @@ fn tar_unpack(
 
             let mut outfile = File::create(&out_path)
                 .map_err(|e| format!("Failed to create file '{}': {}", entry_path, e))?;
-            std::io::copy(&mut entry, &mut outfile)
+            let declared = entry.header().size().unwrap_or(0);
+            copy_entry_bounded(&mut entry, &mut outfile, declared)
                 .map_err(|e| format!("Failed to extract '{}': {}", entry_path, e))?;
         }
     }
@@ -9263,6 +9356,21 @@ async fn extract_rar(
             archive = header
                 .skip()
                 .map_err(|e| format!("Failed to skip RAR entry: {}", e))?;
+            continue;
+        }
+
+        // Defense in depth: the `unrar` crate does not expose a symlink target
+        // before extraction, so we cannot validate it the way `tar_unpack` does.
+        // Skip symlink entries entirely (Unix host attributes carry S_IFLNK in the
+        // low mode bits) rather than trusting the bundled UnRAR library's own
+        // traversal guard as the only barrier. zip/7z likewise never materialize
+        // symlinks, so this keeps RAR consistent. (CLAUDE-AV-B1-06)
+        const S_IFMT: u32 = 0o170000;
+        const S_IFLNK: u32 = 0o120000;
+        if header.entry().file_attr & S_IFMT == S_IFLNK {
+            archive = header
+                .skip()
+                .map_err(|e| format!("Failed to skip RAR symlink entry: {}", e))?;
             continue;
         }
 
@@ -13854,7 +13962,7 @@ async fn ai_execute_tool(
             validate_tool_path(new_path, "new_path")?;
 
             if location == "local" {
-                rename_local_file(old_path.to_string(), new_path.to_string())
+                rename_local_file(old_path.to_string(), new_path.to_string(), None)
                     .await
                     .map_err(|e| e.to_string())?;
             } else {
@@ -19336,6 +19444,58 @@ mod standalone_stream_tests {
             report.contains("skipped (unsafe link target)") && report.contains("evil"),
             "skip must be reported, got: {report}"
         );
+    }
+
+    // A stream that expands past its declared size (a decompression bomb, or a
+    // corrupt entry) must be rejected, and a truthful stream must pass through
+    // unchanged. Guards the whole-archive extract paths (zip/7z/tar). (audit A-F1)
+    #[test]
+    fn copy_entry_bounded_rejects_overrun_and_passes_truthful() {
+        use super::copy_entry_bounded;
+
+        // Truthful: declared == actual.
+        let src = b"exactly ten".to_vec(); // 11 bytes
+        let mut out = Vec::new();
+        let n = copy_entry_bounded(&mut &src[..], &mut out, src.len() as u64)
+            .expect("a truthful stream must copy");
+        assert_eq!(n, src.len() as u64);
+        assert_eq!(out, src);
+
+        // Bomb: the stream carries more than it declared -> rejected, no unbounded write.
+        let big = vec![0u8; 4096];
+        let mut out2 = Vec::new();
+        let err = copy_entry_bounded(&mut &big[..], &mut out2, 8)
+            .expect_err("an over-declared stream must be rejected");
+        assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
+    }
+
+    // The single consolidated guard rejects traversal/absolute/drive/null/empty
+    // but accepts a legitimate name that merely CONTAINS ".." as a substring
+    // (the old archive_browse copy over-rejected `a..b.txt`). (audit A-F4)
+    #[test]
+    fn is_safe_archive_entry_component_precise() {
+        use super::is_safe_archive_entry;
+        // Rejected
+        for bad in [
+            "../etc/passwd",
+            "a/../../b",
+            "/abs/path",
+            "\\abs\\path",
+            "C:\\x",
+            "with\0null",
+            "",
+        ] {
+            assert!(!is_safe_archive_entry(bad), "must reject: {bad:?}");
+        }
+        // Accepted (".." only as a substring, not a path component)
+        for ok in [
+            "a..b.txt",
+            "v1..2/report.txt",
+            "normal/name.txt",
+            "file.txt",
+        ] {
+            assert!(is_safe_archive_entry(ok), "must accept: {ok:?}");
+        }
     }
 }
 

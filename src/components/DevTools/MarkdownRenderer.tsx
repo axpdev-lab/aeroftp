@@ -372,6 +372,14 @@ function useMarkdownComponents(editorFilePath?: string, editorFileName?: string)
                 </a>
             );
         },
+        // Images: validate the src scheme independently of the library default,
+        // mirroring the `a` guard so both surfaces stay protected even if
+        // react-markdown's urlTransform config changes. (audit B-F05)
+        img({ src, alt }) {
+            const safeSrc = typeof src === 'string' && /^(https?:|data:image\/|blob:)/.test(src) ? src : undefined;
+            if (!safeSrc) return <>{alt || ''}</>;
+            return <img src={safeSrc} alt={alt || ''} className="max-w-full h-auto" />;
+        },
         // Tables
         table({ children }) {
             return (

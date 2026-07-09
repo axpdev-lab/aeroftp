@@ -422,7 +422,7 @@ import { useTranslation } from './i18n';
 import { ConfirmDialog, InputDialog, ArchivePasswordDialog, SyncNavDialog, PropertiesDialog, FileProperties, MultiFilePropertiesDialog, MultiFileProperties, MasterPasswordSetupDialog } from './components/Dialogs';
 import { TransferToastContainer, dispatchTransferToast, reopenTransferToast } from './components/Transfer/TransferToastContainer';
 import { runExtractWithToast } from './utils/extractToast';
-import { dispatchGeneralExtract, isWrongPasswordError } from './utils/extractOrchestrator';
+import { dispatchGeneralExtract, isWrongPasswordError, resolveUniqueExtractDir } from './utils/extractOrchestrator';
 import { formatExtractDetails, formatCompressDetails } from './utils/archiveSizeReport';
 import { GlobalTooltip } from './components/GlobalTooltip';
 import { TransferProgressBar } from './components/TransferProgressBar';
@@ -4391,7 +4391,9 @@ interface UpdateVerificationInfo {
         if (!base) continue;
         const to = `${dest.replace(/\/+$/, '')}/${base}`;
         try {
-          await invoke('copy_local_file', { from: src, to });
+          // Safe-fail rather than silently overwriting a same-named file already
+          // in the drop target (irreversible, no trash). (audit C-F01)
+          await invoke('copy_local_file', { from: src, to, overwrite: false });
           copied++;
         } catch {
           failures.push(base);
@@ -8644,7 +8646,27 @@ interface UpdateVerificationInfo {
     const selected = sourceFiles.filter(f => names.includes(f.name) && f.name !== '..');
     if (selected.length === 0) return;
 
-    let ok = 0, failed = 0;
+    // Data-loss guard: the backend copy/rename overwrites a same-named file in the
+    // target panel atomically and irreversibly (no trash). Detect collisions
+    // against the destination panel's listing and ask ONCE before overwriting;
+    // skip the colliding entries if the user declines. Non-colliding files are
+    // still sent with overwrite:false so a race that creates the file meanwhile
+    // fails safe rather than clobbering. (CLAUDE-AV-B1-11 / audit C-F01)
+    const targetListing = targetId === 'local2' ? localFiles2 : localFiles;
+    const targetNames = new Set(targetListing.filter(f => !f.is_dir && f.name !== '..').map(f => f.name));
+    const collisions = selected.filter(f => targetNames.has(f.name));
+    let overwriteAll = false;
+    if (collisions.length > 0) {
+      overwriteAll = await new Promise<boolean>((resolve) => {
+        setConfirmDialog({
+          message: `${t('overwrite.title') || 'File Already Exists'} (${collisions.length})`,
+          onConfirm: () => { setConfirmDialog(null); resolve(true); },
+          onCancel: () => { setConfirmDialog(null); resolve(false); },
+        });
+      });
+    }
+
+    let ok = 0, failed = 0, skipped = 0;
     const okNames: string[] = [];
     let nextIndex = 0;
     const runOne = async (file: LocalFile) => {
@@ -8654,10 +8676,16 @@ interface UpdateVerificationInfo {
         failed++;
         return;
       }
+      // Declined collision: leave the target file untouched.
+      if (targetNames.has(file.name) && !overwriteAll) {
+        skipped++;
+        return;
+      }
       try {
         await invoke(mode === 'copy' ? 'copy_local_file' : 'rename_local_file', {
           from: file.path,
           to: destPath,
+          overwrite: overwriteAll,
         });
         ok++;
         okNames.push(file.name);
@@ -8685,13 +8713,16 @@ interface UpdateVerificationInfo {
       const summary = okNames.length === 1
         ? okNames[0]
         : `${okNames.length} ${t('aerofile.itemsLower') || 'items'}`;
+      const suffix = `${failed > 0 ? ` (${failed} failed)` : ''}${skipped > 0 ? ` (${skipped} skipped)` : ''}`;
       const detail = sourceDir
-        ? `${summary}: ${sourceDir} → ${targetDir}${failed > 0 ? ` (${failed} failed)` : ''}`
-        : `${summary} → ${targetDir}${failed > 0 ? ` (${failed} failed)` : ''}`;
+        ? `${summary}: ${sourceDir} → ${targetDir}${suffix}`
+        : `${summary} → ${targetDir}${suffix}`;
       notify.success(
         mode === 'copy' ? t('aerofile.copiedToOtherPanel') || 'Copied to other panel' : t('aerofile.movedToOtherPanel') || 'Moved to other panel',
         detail,
       );
+    } else if (skipped > 0) {
+      notify.info(t('overwrite.title') || 'File Already Exists', `${skipped} skipped`);
     }
   }, [activeLocalPanelId, selectedLocalFiles, selectedLocalFiles2, localFiles, localFiles2, currentLocalPath, currentLocalPath2, loadLocalFiles, loadLocalFiles2, notify, t]);
   // Keep the F5/F6 forward ref pointing at the latest closure so the keyboard
@@ -9834,7 +9865,9 @@ interface UpdateVerificationInfo {
                 await invoke('rename_remote_file', { from: file.path, to: destPath });
               }
             } else {
-              await invoke('rename_local_file', { from: file.path, to: destPath });
+              // Safe-fail instead of silently overwriting a same-named file in
+              // the target directory (irreversible, no trash). (audit C-F01)
+              await invoke('rename_local_file', { from: file.path, to: destPath, overwrite: false });
             }
           } catch (e) {
             notify.error(t('toast.renameFailed', { error: `${file.name}: ${String(e)}` }));
@@ -9862,7 +9895,9 @@ interface UpdateVerificationInfo {
               }
             } else {
               try {
-                await invoke('copy_local_file', { from: file.path, to: destPath });
+                // Safe-fail instead of silently overwriting an existing file in
+                // the target directory. (audit C-F01)
+                await invoke('copy_local_file', { from: file.path, to: destPath, overwrite: false });
               } catch (e) {
                 notify.error(t('toast.copyFailed'), `${file.name}: ${String(e)}`);
               }
@@ -11205,7 +11240,25 @@ interface UpdateVerificationInfo {
             }
             await loadRemoteFiles(undefined, true);
           } else {
-            await invoke('rename_local_file', { from: path, to: newPath });
+            // Refuse a silent overwrite of an existing sibling (irreversible, no
+            // trash); on collision confirm, then retry with overwrite. (audit C-F04)
+            try {
+              await invoke('rename_local_file', { from: path, to: newPath, overwrite: false });
+            } catch (err) {
+              if (String(err).includes('DEST_EXISTS')) {
+                const ow = await new Promise<boolean>((resolve) => {
+                  setConfirmDialog({
+                    message: `${t('overwrite.title') || 'File Already Exists'}: ${newName}`,
+                    onConfirm: () => { setConfirmDialog(null); resolve(true); },
+                    onCancel: () => { setConfirmDialog(null); resolve(false); },
+                  });
+                });
+                if (!ow) { humanLog.logError('RENAME', { oldname: currentName, newname: newName, isRemote }, logId); return; }
+                await invoke('rename_local_file', { from: path, to: newPath, overwrite: true });
+              } else {
+                throw err;
+              }
+            }
             await loadLocalFiles(currentLocalPath);
           }
           humanLog.logSuccess('RENAME', { oldname: currentName, newname: newName, isRemote }, logId);
@@ -11282,7 +11335,24 @@ interface UpdateVerificationInfo {
         }
         await loadRemoteFiles(undefined, true);
       } else {
-        await invoke('rename_local_file', { from: path, to: newPath });
+        // Refuse a silent overwrite of an existing sibling; confirm then retry. (audit C-F04)
+        try {
+          await invoke('rename_local_file', { from: path, to: newPath, overwrite: false });
+        } catch (err) {
+          if (String(err).includes('DEST_EXISTS')) {
+            const ow = await new Promise<boolean>((resolve) => {
+              setConfirmDialog({
+                message: `${t('overwrite.title') || 'File Already Exists'}: ${newName}`,
+                onConfirm: () => { setConfirmDialog(null); resolve(true); },
+                onCancel: () => { setConfirmDialog(null); resolve(false); },
+              });
+            });
+            if (!ow) { humanLog.logError('RENAME', { oldname: name, newname: newName, isRemote }, logId); return; }
+            await invoke('rename_local_file', { from: path, to: newPath, overwrite: true });
+          } else {
+            throw err;
+          }
+        }
         // Refresh whichever local panel(s) actually list this directory.
         // The previous unconditional `loadLocalFiles(currentLocalPath)`
         // missed renames that originated in panel 2, leaving the new
@@ -11365,7 +11435,11 @@ interface UpdateVerificationInfo {
             await invoke('rename_remote_file', { from: oldPath, to: newPath });
           }
         } else {
-          await invoke('rename_local_file', { from: oldPath, to: newPath });
+          // Never silently clobber an existing sibling that is not part of this
+          // batch: a DEST_EXISTS collision is surfaced as a failed rename rather
+          // than an irreversible overwrite. The dialog also pre-flags these.
+          // (audit C-F02)
+          await invoke('rename_local_file', { from: oldPath, to: newPath, overwrite: false });
         }
         successCount++;
       } catch (error) {
@@ -12887,6 +12961,19 @@ interface UpdateVerificationInfo {
     if (isArchive && count === 1) {
       const doExtract = async (createSubfolder: boolean) => {
         try {
+          // "Extract to folder" must never clobber: resolve a unique stem
+          // subfolder (stem, stem (2), ...) up front and extract into it with
+          // createSubfolder:false, exactly like the OS "Extract to folder" verb
+          // window does. The in-app menu previously passed createSubfolder:true
+          // with a bare stem, merging into and overwriting a pre-existing folder.
+          // (audit C-F03)
+          // Pre-resolved: we always extract directly INTO extractOutputDir, so the
+          // backend never builds its own (non-unique) subfolder.
+          const extractCreateSubfolder = false;
+          let extractOutputDir = currentLocalPath;
+          if (createSubfolder) {
+            extractOutputDir = await resolveUniqueExtractDir(currentLocalPath, file.name);
+          }
           // Check encryption for 7z, ZIP, and RAR archives
           const isEncrypted = is7zArchive
             ? await invoke<boolean>('is_7z_encrypted', { archivePath: file.path })
@@ -12912,7 +12999,7 @@ interface UpdateVerificationInfo {
                 const logId = activityLog.log('INFO', `Extracting ${file.name}${createSubfolder ? ` → ${dest}` : ''}...`, 'running');
                 const toastOpts = { filename: file.name, archiveBytes: file.size };
                 try {
-                  const { extractedTotal } = await dispatchGeneralExtract({ kind: generalKind, archivePath: file.path, outputDir: currentLocalPath, createSubfolder, password, toastOpts });
+                  const { extractedTotal } = await dispatchGeneralExtract({ kind: generalKind, archivePath: file.path, outputDir: extractOutputDir, createSubfolder: extractCreateSubfolder, password, toastOpts });
                   activityLog.updateEntry(logId, { status: 'success', message: `Extracted ${file.name}${createSubfolder ? ` → ${dest}` : ''}`, details: formatExtractDetails(file.size ?? 0, extractedTotal) });
                   notify.success(t('toast.extracted'), t('toast.extractedTo', { dest }));
                   await loadLocalFiles(currentLocalPath);
@@ -12936,7 +13023,7 @@ interface UpdateVerificationInfo {
           const logId = activityLog.log('INFO', `Extracting ${file.name}${createSubfolder ? ` → ${dest}` : ''}...`, 'running');
           const toastOpts = { filename: file.name, archiveBytes: file.size };
           const generalKind = is7zArchive ? 'sevenz' : isRarArchive ? 'rar' : isTarArchive ? 'tar' : isSingleArchive ? 'single' : 'zip';
-          const { extractedTotal } = await dispatchGeneralExtract({ kind: generalKind, archivePath: file.path, outputDir: currentLocalPath, createSubfolder, password: null, toastOpts });
+          const { extractedTotal } = await dispatchGeneralExtract({ kind: generalKind, archivePath: file.path, outputDir: extractOutputDir, createSubfolder: extractCreateSubfolder, password: null, toastOpts });
           activityLog.updateEntry(logId, { status: 'success', message: `Extracted ${file.name}${createSubfolder ? ` → ${dest}` : ''}`, details: formatExtractDetails(file.size ?? 0, extractedTotal) });
           notify.success(t('toast.extracted'), t('toast.extractedTo', { dest }));
           await loadLocalFiles(currentLocalPath);

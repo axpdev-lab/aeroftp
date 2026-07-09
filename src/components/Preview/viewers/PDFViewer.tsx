@@ -24,8 +24,12 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
     const { t } = useI18n();
     const [downloading, setDownloading] = useState(false);
 
-    // PDF source URL
-    const pdfSrc = file.blobUrl || file.content as string || '';
+    // PDF source URL. Guard the scheme before it ever reaches window.open / an
+    // anchor href: the preview wiring only ever produces blob:/data: URLs, but a
+    // future path routing an attacker string (javascript:, data:text/html) into
+    // `content` would otherwise navigate in an app-origin context. (audit B-F04)
+    const rawPdfSrc = file.blobUrl || (file.content as string) || '';
+    const pdfSrc = /^(blob:|data:application\/pdf)/.test(rawPdfSrc) ? rawPdfSrc : '';
 
     // Download PDF and open
     const downloadAndOpen = async () => {

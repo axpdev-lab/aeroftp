@@ -91,8 +91,24 @@ pub async fn process_image(
     let quality = jpeg_quality.unwrap_or(90).clamp(1, 100);
 
     let result = tokio::task::spawn_blocking(move || -> Result<ImageResult, String> {
-        let mut img: DynamicImage =
-            image::open(&input).map_err(|e| format!("Failed to open image: {e}"))?;
+        // Cap the decode dimensions up front: a tiny file can declare enormous
+        // dimensions (e.g. a 4 KB PNG claiming 60000x60000), and `image::open`
+        // leans solely on the crate's default 512 MiB alloc ceiling. Bound width
+        // and height to the same 16384 the resize path enforces so an oversized
+        // image is rejected before allocation rather than spiking memory.
+        // (CLAUDE-AV-B1-08)
+        const MAX_DECODE_DIMENSION: u32 = 16384;
+        let mut reader = image::ImageReader::open(&input)
+            .map_err(|e| format!("Failed to open image: {e}"))?
+            .with_guessed_format()
+            .map_err(|e| format!("Failed to read image format: {e}"))?;
+        let mut limits = image::Limits::default();
+        limits.max_image_width = Some(MAX_DECODE_DIMENSION);
+        limits.max_image_height = Some(MAX_DECODE_DIMENSION);
+        reader.limits(limits);
+        let mut img: DynamicImage = reader
+            .decode()
+            .map_err(|e| format!("Failed to open image: {e}"))?;
 
         // Apply operations in order
         for op in &operations {
