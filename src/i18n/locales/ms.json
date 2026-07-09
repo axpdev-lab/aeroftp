@@ -446,7 +446,22 @@
             "importToAeroFTP": "Import ke AeroFTP",
             "permissionsEllipsis": "Kebenaran...",
             "decrypt": "Nyahsulit",
-            "zipCryptoLegacy": "ZipCrypto lama: penyulitan lemah, dikekalkan untuk keserasian."
+            "zipCryptoLegacy": "ZipCrypto lama: penyulitan lemah, dikekalkan untuk keserasian.",
+            "s3TrashTitle": "Tong Sampah S3 / Versi",
+            "s3TrashShowAllVersions": "Tunjukkan semua versi",
+            "s3TrashKind": "Jenis",
+            "s3TrashEmptyOrVersioningOff": "Tong sampah kosong (atau versioning bucket dimatikan)",
+            "s3TrashDeleteMarker": "Dipadam",
+            "s3TrashVersion": "Versi",
+            "s3TrashLatest": "Terkini",
+            "s3TrashUndelete": "Buat asal pemadaman",
+            "s3TrashUndeleteHint": "Alih keluar penanda pemadaman ini supaya objek muncul semula",
+            "s3TrashCopyForward": "Pulihkan",
+            "s3TrashCopyForwardHint": "Salin versi lama ini ke hadapan supaya menjadi versi semasa",
+            "s3TrashPurge": "Padam secara kekal",
+            "s3TrashPurgeHint": "Padam versi ini secara kekal (tidak boleh dibatalkan)",
+            "s3TrashPurgeConfirm": "Padam versi ini secara kekal? Tindakan ini tidak boleh dibuat asal.",
+            "s3TrashEmptySummary": "Ini akan memadam secara kekal {count} objek ({bytes}). Tindakan ini tidak boleh dibuat asal."
         },
         "transfer": {
             "transferring": "Memindahkan...",
@@ -1891,7 +1906,9 @@
             "current": "Semasa",
             "download": "Muat turun versi ini",
             "restore": "Pulihkan versi ini",
-            "none": "Tiada versi tersedia"
+            "none": "Tiada versi tersedia",
+            "purge": "Padam versi ini secara kekal",
+            "purgeConfirm": "Padam versi ini secara kekal? Tindakan ini tidak boleh dibuat asal."
         },
         "sharing": {
             "title": "Perkongsian",

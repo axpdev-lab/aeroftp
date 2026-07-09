@@ -446,7 +446,22 @@
             "importToAeroFTP": "Importuj do AeroFTP",
             "permissionsEllipsis": "Uprawnienia...",
             "decrypt": "Odszyfruj",
-            "zipCryptoLegacy": "Starsze ZipCrypto: słabe szyfrowanie, zachowane dla zgodności."
+            "zipCryptoLegacy": "Starsze ZipCrypto: słabe szyfrowanie, zachowane dla zgodności.",
+            "s3TrashTitle": "Kosz S3 / Wersje",
+            "s3TrashShowAllVersions": "Pokaż wszystkie wersje",
+            "s3TrashKind": "Rodzaj",
+            "s3TrashEmptyOrVersioningOff": "Kosz jest pusty (lub versioning bucketa jest wyłączony)",
+            "s3TrashDeleteMarker": "Usunięto",
+            "s3TrashVersion": "Wersja",
+            "s3TrashLatest": "Najnowsza",
+            "s3TrashUndelete": "Cofnij usunięcie",
+            "s3TrashUndeleteHint": "Usuń ten znacznik usunięcia, aby obiekt pojawił się ponownie",
+            "s3TrashCopyForward": "Przywróć",
+            "s3TrashCopyForwardHint": "Skopiuj tę starszą wersję do przodu, aby stała się bieżącą",
+            "s3TrashPurge": "Usuń trwale",
+            "s3TrashPurgeHint": "Usuń trwale tę wersję (nieodwracalne)",
+            "s3TrashPurgeConfirm": "Usunąć trwale tę wersję? Tej operacji nie można cofnąć.",
+            "s3TrashEmptySummary": "Spowoduje to trwałe usunięcie {count} obiektów ({bytes}). Tej operacji nie można cofnąć."
         },
         "transfer": {
             "transferring": "Przesyłanie...",
@@ -1891,7 +1906,9 @@
             "current": "Bieżąca",
             "download": "Pobierz tę wersję",
             "restore": "Przywróć tę wersję",
-            "none": "Brak dostępnych wersji"
+            "none": "Brak dostępnych wersji",
+            "purge": "Usuń trwale tę wersję",
+            "purgeConfirm": "Usunąć trwale tę wersję? Tej operacji nie można cofnąć."
         },
         "sharing": {
             "title": "Udostępnianie",

@@ -446,7 +446,22 @@
             "importToAeroFTP": "Importovať do AeroFTP",
             "permissionsEllipsis": "Oprávnenia...",
             "decrypt": "Dešifrovať",
-            "zipCryptoLegacy": "Staršie ZipCrypto: slabé šifrovanie, zachované kvôli kompatibilite."
+            "zipCryptoLegacy": "Staršie ZipCrypto: slabé šifrovanie, zachované kvôli kompatibilite.",
+            "s3TrashTitle": "Kôš S3 / Verzie",
+            "s3TrashShowAllVersions": "Zobraziť všetky verzie",
+            "s3TrashKind": "Druh",
+            "s3TrashEmptyOrVersioningOff": "Kôš je prázdny (alebo je versioning bucketu vypnutý)",
+            "s3TrashDeleteMarker": "Odstránené",
+            "s3TrashVersion": "Verzia",
+            "s3TrashLatest": "Najnovšia",
+            "s3TrashUndelete": "Vrátiť odstránenie",
+            "s3TrashUndeleteHint": "Odstrániť túto značku odstránenia, aby sa objekt znova objavil",
+            "s3TrashCopyForward": "Obnoviť",
+            "s3TrashCopyForwardHint": "Skopírovať túto staršiu verziu dopredu, aby sa stala aktuálnou",
+            "s3TrashPurge": "Natrvalo odstrániť",
+            "s3TrashPurgeHint": "Natrvalo odstrániť túto verziu (nezvratné)",
+            "s3TrashPurgeConfirm": "Natrvalo odstrániť túto verziu? Túto akciu nie je možné vrátiť späť.",
+            "s3TrashEmptySummary": "Týmto sa natrvalo odstráni {count} objektov ({bytes}). Túto akciu nie je možné vrátiť späť."
         },
         "transfer": {
             "transferring": "Prenáša sa...",
@@ -1891,7 +1906,9 @@
             "current": "Aktualna",
             "download": "Stiahnut tuto verziu",
             "restore": "Obnovit tuto verziu",
-            "none": "Ziadne dostupne verzie"
+            "none": "Ziadne dostupne verzie",
+            "purge": "Natrvalo odstrániť túto verziu",
+            "purgeConfirm": "Natrvalo odstrániť túto verziu? Túto akciu nie je možné vrátiť späť."
         },
         "sharing": {
             "title": "Zdielanie",

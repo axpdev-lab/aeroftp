@@ -446,7 +446,22 @@
             "importToAeroFTP": "Mewnforio i AeroFTP",
             "permissionsEllipsis": "Caniatâdau...",
             "decrypt": "Dadgryptio",
-            "zipCryptoLegacy": "ZipCrypto etifeddol: amgryptio gwan, wedi'i gadw ar gyfer cydnawsedd."
+            "zipCryptoLegacy": "ZipCrypto etifeddol: amgryptio gwan, wedi'i gadw ar gyfer cydnawsedd.",
+            "s3TrashTitle": "Sbwriel S3 / Fersiynau",
+            "s3TrashShowAllVersions": "Dangos pob fersiwn",
+            "s3TrashKind": "Math",
+            "s3TrashEmptyOrVersioningOff": "Mae'r sbwriel yn wag (neu mae versioning y bucket wedi'i ddiffodd)",
+            "s3TrashDeleteMarker": "Wedi dileu",
+            "s3TrashVersion": "Fersiwn",
+            "s3TrashLatest": "Diweddaraf",
+            "s3TrashUndelete": "Dadwneud dileu",
+            "s3TrashUndeleteHint": "Tynnwch y marc dileu hwn fel bod y gwrthrych yn ymddangos eto",
+            "s3TrashCopyForward": "Adfer",
+            "s3TrashCopyForwardHint": "Copïwch y fersiwn hŷn hon ymlaen fel ei bod yn dod yn gyfredol",
+            "s3TrashPurge": "Dileu'n barhaol",
+            "s3TrashPurgeHint": "Dileu'r fersiwn hon yn barhaol (di-droi'n-ôl)",
+            "s3TrashPurgeConfirm": "Dileu'r fersiwn hon yn barhaol? Ni ellir dadwneud hyn.",
+            "s3TrashEmptySummary": "Bydd hyn yn dileu {count} gwrthrych ({bytes}) yn barhaol. Ni ellir dadwneud hyn."
         },
         "transfer": {
             "transferring": "Yn trosglwyddo...",
@@ -1891,7 +1906,9 @@
             "current": "Presennol",
             "download": "Lawrlwytho'r fersiwn hon",
             "restore": "Adfer y fersiwn hon",
-            "none": "Dim fersiynau ar gael"
+            "none": "Dim fersiynau ar gael",
+            "purge": "Dileu'r fersiwn hon yn barhaol",
+            "purgeConfirm": "Dileu'r fersiwn hon yn barhaol? Ni ellir dadwneud hyn."
         },
         "sharing": {
             "title": "Rhannu",

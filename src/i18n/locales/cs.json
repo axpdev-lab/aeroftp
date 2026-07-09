@@ -446,7 +446,22 @@
             "importToAeroFTP": "Importovat do AeroFTP",
             "permissionsEllipsis": "Oprávnění...",
             "decrypt": "Dešifrovat",
-            "zipCryptoLegacy": "Starší ZipCrypto: slabé šifrování, zachováno kvůli kompatibilitě."
+            "zipCryptoLegacy": "Starší ZipCrypto: slabé šifrování, zachováno kvůli kompatibilitě.",
+            "s3TrashTitle": "Koš S3 / Verze",
+            "s3TrashShowAllVersions": "Zobrazit všechny verze",
+            "s3TrashKind": "Druh",
+            "s3TrashEmptyOrVersioningOff": "Koš je prázdný (nebo je versioning bucketu vypnutý)",
+            "s3TrashDeleteMarker": "Smazáno",
+            "s3TrashVersion": "Verze",
+            "s3TrashLatest": "Nejnovější",
+            "s3TrashUndelete": "Vrátit smazání",
+            "s3TrashUndeleteHint": "Odstranit tuto značku smazání, aby se objekt znovu objevil",
+            "s3TrashCopyForward": "Obnovit",
+            "s3TrashCopyForwardHint": "Zkopírovat tuto starší verzi dopředu, aby se stala aktuální",
+            "s3TrashPurge": "Trvale smazat",
+            "s3TrashPurgeHint": "Trvale smazat tuto verzi (nevratné)",
+            "s3TrashPurgeConfirm": "Trvale smazat tuto verzi? Tuto akci nelze vrátit zpět.",
+            "s3TrashEmptySummary": "Tímto se trvale smaže {count} objektů ({bytes}). Tuto akci nelze vrátit zpět."
         },
         "transfer": {
             "transferring": "Přenášení...",
@@ -1891,7 +1906,9 @@
             "current": "Aktualni",
             "download": "Stahnout tuto verzi",
             "restore": "Obnovit tuto verzi",
-            "none": "Zadne dostupne verze"
+            "none": "Zadne dostupne verze",
+            "purge": "Trvale smazat tuto verzi",
+            "purgeConfirm": "Trvale smazat tuto verzi? Tuto akci nelze vrátit zpět."
         },
         "sharing": {
             "title": "Sdileni",

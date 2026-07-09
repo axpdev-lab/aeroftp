@@ -446,7 +446,22 @@
             "importToAeroFTP": "Nhập vào AeroFTP",
             "permissionsEllipsis": "Quyền...",
             "decrypt": "Giải mã",
-            "zipCryptoLegacy": "ZipCrypto cũ: mã hóa yếu, được giữ lại để tương thích."
+            "zipCryptoLegacy": "ZipCrypto cũ: mã hóa yếu, được giữ lại để tương thích.",
+            "s3TrashTitle": "Thùng rác S3 / Phiên bản",
+            "s3TrashShowAllVersions": "Hiển thị tất cả phiên bản",
+            "s3TrashKind": "Loại",
+            "s3TrashEmptyOrVersioningOff": "Thùng rác trống (hoặc versioning của bucket đang tắt)",
+            "s3TrashDeleteMarker": "Đã xóa",
+            "s3TrashVersion": "Phiên bản",
+            "s3TrashLatest": "Mới nhất",
+            "s3TrashUndelete": "Hoàn tác xóa",
+            "s3TrashUndeleteHint": "Xóa dấu xóa này để đối tượng xuất hiện lại",
+            "s3TrashCopyForward": "Khôi phục",
+            "s3TrashCopyForwardHint": "Sao chép phiên bản cũ này về phía trước để trở thành hiện tại",
+            "s3TrashPurge": "Xóa vĩnh viễn",
+            "s3TrashPurgeHint": "Xóa vĩnh viễn phiên bản này (không thể hoàn tác)",
+            "s3TrashPurgeConfirm": "Xóa vĩnh viễn phiên bản này? Thao tác này không thể hoàn tác.",
+            "s3TrashEmptySummary": "Thao tác này sẽ xóa vĩnh viễn {count} đối tượng ({bytes}). Thao tác này không thể hoàn tác."
         },
         "transfer": {
             "transferring": "Đang truyền...",
@@ -1891,7 +1906,9 @@
             "current": "Hiện tại",
             "download": "Tải phiên bản này",
             "restore": "Khôi phục phiên bản này",
-            "none": "Không có phiên bản nào"
+            "none": "Không có phiên bản nào",
+            "purge": "Xóa vĩnh viễn phiên bản này",
+            "purgeConfirm": "Xóa vĩnh viễn phiên bản này? Thao tác này không thể hoàn tác."
         },
         "sharing": {
             "title": "Chia sẻ",

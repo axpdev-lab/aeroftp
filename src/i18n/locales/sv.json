@@ -446,7 +446,22 @@
             "importToAeroFTP": "Importera till AeroFTP",
             "permissionsEllipsis": "Behörigheter...",
             "decrypt": "Dekryptera",
-            "zipCryptoLegacy": "Äldre ZipCrypto: svag kryptering, behålls för kompatibilitet."
+            "zipCryptoLegacy": "Äldre ZipCrypto: svag kryptering, behålls för kompatibilitet.",
+            "s3TrashTitle": "S3 papperskorg / Versioner",
+            "s3TrashShowAllVersions": "Visa alla versioner",
+            "s3TrashKind": "Typ",
+            "s3TrashEmptyOrVersioningOff": "Papperskorgen är tom (eller så är bucket-versionering avstängd)",
+            "s3TrashDeleteMarker": "Borttagen",
+            "s3TrashVersion": "Version",
+            "s3TrashLatest": "Senaste",
+            "s3TrashUndelete": "Ångra borttagning",
+            "s3TrashUndeleteHint": "Ta bort den här borttagningsmarkeringen så att objektet visas igen",
+            "s3TrashCopyForward": "Återställ",
+            "s3TrashCopyForwardHint": "Kopiera den här äldre versionen framåt så att den blir aktuell",
+            "s3TrashPurge": "Ta bort permanent",
+            "s3TrashPurgeHint": "Ta bort den här versionen permanent (oåterkalleligt)",
+            "s3TrashPurgeConfirm": "Ta bort den här versionen permanent? Detta kan inte ångras.",
+            "s3TrashEmptySummary": "Detta tar permanent bort {count} objekt ({bytes}). Detta kan inte ångras."
         },
         "transfer": {
             "transferring": "Överför...",
@@ -1891,7 +1906,9 @@
             "current": "Aktuell",
             "download": "Ladda ner denna version",
             "restore": "Återställ denna version",
-            "none": "Inga versioner tillgängliga"
+            "none": "Inga versioner tillgängliga",
+            "purge": "Ta bort den här versionen permanent",
+            "purgeConfirm": "Ta bort den här versionen permanent? Detta kan inte ångras."
         },
         "sharing": {
             "title": "Delning",

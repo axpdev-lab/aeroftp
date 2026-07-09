@@ -446,7 +446,22 @@
             "importToAeroFTP": "Імпортувати в AeroFTP",
             "permissionsEllipsis": "Дозволи...",
             "decrypt": "Розшифрувати",
-            "zipCryptoLegacy": "Застарілий ZipCrypto: слабке шифрування, збережено для сумісності."
+            "zipCryptoLegacy": "Застарілий ZipCrypto: слабке шифрування, збережено для сумісності.",
+            "s3TrashTitle": "Кошик S3 / Версії",
+            "s3TrashShowAllVersions": "Показати всі версії",
+            "s3TrashKind": "Тип",
+            "s3TrashEmptyOrVersioningOff": "Кошик порожній (або versioning для bucket вимкнено)",
+            "s3TrashDeleteMarker": "Видалено",
+            "s3TrashVersion": "Версія",
+            "s3TrashLatest": "Найновіша",
+            "s3TrashUndelete": "Скасувати видалення",
+            "s3TrashUndeleteHint": "Видалити цей маркер видалення, щоб об'єкт знову з'явився",
+            "s3TrashCopyForward": "Відновити",
+            "s3TrashCopyForwardHint": "Скопіювати цю стару версію вперед, щоб вона стала поточною",
+            "s3TrashPurge": "Видалити назавжди",
+            "s3TrashPurgeHint": "Видалити цю версію назавжди (незворотно)",
+            "s3TrashPurgeConfirm": "Видалити цю версію назавжди? Цю дію неможливо скасувати.",
+            "s3TrashEmptySummary": "Це назавжди видалить {count} об'єкт(ів) ({bytes}). Цю дію неможливо скасувати."
         },
         "transfer": {
             "transferring": "Передача...",
@@ -1891,7 +1906,9 @@
             "current": "Поточна",
             "download": "Завантажити цю версію",
             "restore": "Відновити цю версію",
-            "none": "Версії недоступні"
+            "none": "Версії недоступні",
+            "purge": "Видалити цю версію назавжди",
+            "purgeConfirm": "Видалити цю версію назавжди? Цю дію неможливо скасувати."
         },
         "sharing": {
             "title": "Спільний доступ",

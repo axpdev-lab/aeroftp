@@ -446,7 +446,22 @@
             "importToAeroFTP": "Importa a AeroFTP",
             "permissionsEllipsis": "Permisos...",
             "decrypt": "Desxifra",
-            "zipCryptoLegacy": "ZipCrypto antic: xifratge feble, mantingut per compatibilitat."
+            "zipCryptoLegacy": "ZipCrypto antic: xifratge feble, mantingut per compatibilitat.",
+            "s3TrashTitle": "Paperera S3 / Versions",
+            "s3TrashShowAllVersions": "Mostra totes les versions",
+            "s3TrashKind": "Tipus",
+            "s3TrashEmptyOrVersioningOff": "Paperera buida (o el versioning del bucket està desactivat)",
+            "s3TrashDeleteMarker": "Eliminat",
+            "s3TrashVersion": "Versió",
+            "s3TrashLatest": "Més recent",
+            "s3TrashUndelete": "Desfés l'eliminació",
+            "s3TrashUndeleteHint": "Elimina aquest marcador d'eliminació perquè l'objecte torni a aparèixer",
+            "s3TrashCopyForward": "Restaura",
+            "s3TrashCopyForwardHint": "Copia aquesta versió anterior cap endavant perquè esdevingui l'actual",
+            "s3TrashPurge": "Elimina permanentment",
+            "s3TrashPurgeHint": "Elimina permanentment aquesta versió (irreversible)",
+            "s3TrashPurgeConfirm": "Voleu eliminar permanentment aquesta versió? Aquesta acció no es pot desfer.",
+            "s3TrashEmptySummary": "Això eliminarà permanentment {count} element(s) ({bytes}). Aquesta acció no es pot desfer."
         },
         "transfer": {
             "transferring": "Transferint...",
@@ -1891,7 +1906,9 @@
             "current": "Actual",
             "download": "Descarregar aquesta versió",
             "restore": "Restaurar aquesta versió",
-            "none": "No hi ha versions disponibles"
+            "none": "No hi ha versions disponibles",
+            "purge": "Elimina permanentment aquesta versió",
+            "purgeConfirm": "Voleu eliminar permanentment aquesta versió? Aquesta acció no es pot desfer."
         },
         "sharing": {
             "title": "Compartir",

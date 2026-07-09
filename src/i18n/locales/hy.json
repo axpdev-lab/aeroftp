@@ -446,7 +446,22 @@
             "importToAeroFTP": "Ներմուծել AeroFTP",
             "permissionsEllipsis": "Թույլտվություններ...",
             "decrypt": "Վերծանել",
-            "zipCryptoLegacy": "Հին ZipCrypto. թույլ գաղտնագրում, պահպանված համատեղելիության համար։"
+            "zipCryptoLegacy": "Հին ZipCrypto. թույլ գաղտնագրում, պահպանված համատեղելիության համար։",
+            "s3TrashTitle": "S3 Աղբաման / Տարբերակներ",
+            "s3TrashShowAllVersions": "Ցույց տալ բոլոր տարբերակները",
+            "s3TrashKind": "Տեսակ",
+            "s3TrashEmptyOrVersioningOff": "Աղբամանը դատարկ է (կամ bucket-ի versioning-ն անջատված է)",
+            "s3TrashDeleteMarker": "Ջնջված",
+            "s3TrashVersion": "Տարբերակ",
+            "s3TrashLatest": "Վերջին",
+            "s3TrashUndelete": "Չեղարկել ջնջումը",
+            "s3TrashUndeleteHint": "Հեռացրեք այս ջնջման նշիչը, որպեսզի օբյեկտը նորից հայտնվի",
+            "s3TrashCopyForward": "Վերականգնել",
+            "s3TrashCopyForwardHint": "Պատճենեք այս հին տարբերակն առաջ, որպեսզի այն դառնա ընթացիկ",
+            "s3TrashPurge": "Ջնջել ընդմիշտ",
+            "s3TrashPurgeHint": "Ջնջել այս տարբերակն ընդմիշտ (անշրջելի)",
+            "s3TrashPurgeConfirm": "Ջնջե՞լ այս տարբերակն ընդմիշտ։ Այս գործողությունը հնարավոր չէ հետ վերածել։",
+            "s3TrashEmptySummary": "Սա ընդմիշտ կջնջի {count} օբյեկտ ({bytes})։ Այս գործողությունը հնարավոր չէ հետ վերածել։"
         },
         "transfer": {
             "transferring": "Փոխանցում...",
@@ -1884,7 +1899,9 @@
             "current": "Ընթացիկ",
             "download": "Ներբեռնել այս տարբերակը",
             "restore": "Վերականգնել այս տարբերակը",
-            "none": "Տարբերակներ հասանելի չեն"
+            "none": "Տարբերակներ հասանելի չեն",
+            "purge": "Ջնջել այս տարբերակն ընդմիշտ",
+            "purgeConfirm": "Ջնջե՞լ այս տարբերակն ընդմիշտ։ Այս գործողությունը հնարավոր չէ հետ վերածել։"
         },
         "sharing": {
             "title": "Կիսվել",

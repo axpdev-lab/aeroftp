@@ -446,7 +446,22 @@
             "importToAeroFTP": "Увези у AeroFTP",
             "permissionsEllipsis": "Дозволе...",
             "decrypt": "Дешифруј",
-            "zipCryptoLegacy": "Наслеђени ZipCrypto: слабо шифровање, задржано ради компатибилности."
+            "zipCryptoLegacy": "Наслеђени ZipCrypto: слабо шифровање, задржано ради компатибилности.",
+            "s3TrashTitle": "S3 Корпа / Верзије",
+            "s3TrashShowAllVersions": "Прикажи све верзије",
+            "s3TrashKind": "Врста",
+            "s3TrashEmptyOrVersioningOff": "Корпа је празна (или је versioning bucket-а искључен)",
+            "s3TrashDeleteMarker": "Обрисано",
+            "s3TrashVersion": "Верзија",
+            "s3TrashLatest": "Најновија",
+            "s3TrashUndelete": "Опозови брисање",
+            "s3TrashUndeleteHint": "Уклони ову ознаку брисања да би се објекат поново појавио",
+            "s3TrashCopyForward": "Врати",
+            "s3TrashCopyForwardHint": "Копирај ову старију верзију унапред да постане тренутна",
+            "s3TrashPurge": "Трајно обриши",
+            "s3TrashPurgeHint": "Трајно обриши ову верзију (неповратно)",
+            "s3TrashPurgeConfirm": "Трајно обрисати ову верзију? Ова радња се не може опозвати.",
+            "s3TrashEmptySummary": "Ово ће трајно обрисати {count} објекат(а) ({bytes}). Ова радња се не може опозвати."
         },
         "transfer": {
             "transferring": "Пренос...",
@@ -1891,7 +1906,9 @@
             "current": "Trenutna",
             "download": "Preuzmi ovu verziju",
             "restore": "Vrati ovu verziju",
-            "none": "Nema dostupnih verzija"
+            "none": "Nema dostupnih verzija",
+            "purge": "Trajno obriši ovu verziju",
+            "purgeConfirm": "Trajno obrisati ovu verziju? Ova radnja se ne može opozvati."
         },
         "sharing": {
             "title": "Deljenje",

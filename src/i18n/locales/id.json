@@ -446,7 +446,22 @@
             "importToAeroFTP": "Impor ke AeroFTP",
             "permissionsEllipsis": "Izin...",
             "decrypt": "Dekripsi",
-            "zipCryptoLegacy": "ZipCrypto lama: enkripsi lemah, dipertahankan demi kompatibilitas."
+            "zipCryptoLegacy": "ZipCrypto lama: enkripsi lemah, dipertahankan demi kompatibilitas.",
+            "s3TrashTitle": "Sampah S3 / Versi",
+            "s3TrashShowAllVersions": "Tampilkan semua versi",
+            "s3TrashKind": "Jenis",
+            "s3TrashEmptyOrVersioningOff": "Sampah kosong (atau versioning bucket dinonaktifkan)",
+            "s3TrashDeleteMarker": "Dihapus",
+            "s3TrashVersion": "Versi",
+            "s3TrashLatest": "Terbaru",
+            "s3TrashUndelete": "Batalkan penghapusan",
+            "s3TrashUndeleteHint": "Hapus penanda penghapusan ini agar objek muncul kembali",
+            "s3TrashCopyForward": "Pulihkan",
+            "s3TrashCopyForwardHint": "Salin versi lama ini ke depan agar menjadi versi saat ini",
+            "s3TrashPurge": "Hapus permanen",
+            "s3TrashPurgeHint": "Hapus versi ini secara permanen (tidak dapat dibatalkan)",
+            "s3TrashPurgeConfirm": "Hapus versi ini secara permanen? Tindakan ini tidak dapat dibatalkan.",
+            "s3TrashEmptySummary": "Ini akan menghapus permanen {count} objek ({bytes}). Tindakan ini tidak dapat dibatalkan."
         },
         "transfer": {
             "transferring": "Mentransfer...",
@@ -1891,7 +1906,9 @@
             "current": "Saat Ini",
             "download": "Unduh versi ini",
             "restore": "Pulihkan versi ini",
-            "none": "Tidak ada versi yang tersedia"
+            "none": "Tidak ada versi yang tersedia",
+            "purge": "Hapus versi ini secara permanen",
+            "purgeConfirm": "Hapus versi ini secara permanen? Tindakan ini tidak dapat dibatalkan."
         },
         "sharing": {
             "title": "Berbagi",

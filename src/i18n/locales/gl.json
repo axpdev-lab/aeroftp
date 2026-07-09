@@ -446,7 +446,22 @@
             "importToAeroFTP": "Importar a AeroFTP",
             "permissionsEllipsis": "Permisos...",
             "decrypt": "Descifrar",
-            "zipCryptoLegacy": "ZipCrypto antigo: cifrado feble, mantido por compatibilidade."
+            "zipCryptoLegacy": "ZipCrypto antigo: cifrado feble, mantido por compatibilidade.",
+            "s3TrashTitle": "Papeleira S3 / Versións",
+            "s3TrashShowAllVersions": "Amosar todas as versións",
+            "s3TrashKind": "Tipo",
+            "s3TrashEmptyOrVersioningOff": "Papeleira baleira (ou o versioning do bucket está desactivado)",
+            "s3TrashDeleteMarker": "Eliminado",
+            "s3TrashVersion": "Versión",
+            "s3TrashLatest": "Máis recente",
+            "s3TrashUndelete": "Desfacer eliminación",
+            "s3TrashUndeleteHint": "Eliminar este marcador de eliminación para que o obxecto reapareza",
+            "s3TrashCopyForward": "Restaurar",
+            "s3TrashCopyForwardHint": "Copiar esta versión anterior cara adiante para que sexa a actual",
+            "s3TrashPurge": "Eliminar permanentemente",
+            "s3TrashPurgeHint": "Eliminar permanentemente esta versión (irreversible)",
+            "s3TrashPurgeConfirm": "Eliminar permanentemente esta versión? Esta acción non se pode desfacer.",
+            "s3TrashEmptySummary": "Isto eliminará permanentemente {count} obxecto(s) ({bytes}). Esta acción non se pode desfacer."
         },
         "transfer": {
             "transferring": "Transferindo...",
@@ -1891,7 +1906,9 @@
             "current": "Actual",
             "download": "Descargar esta versión",
             "restore": "Restaurar esta versión",
-            "none": "Non hai versións dispoñibles"
+            "none": "Non hai versións dispoñibles",
+            "purge": "Eliminar permanentemente esta versión",
+            "purgeConfirm": "Eliminar permanentemente esta versión? Esta acción non se pode desfacer."
         },
         "sharing": {
             "title": "Compartir",

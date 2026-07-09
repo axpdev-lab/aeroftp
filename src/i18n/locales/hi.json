@@ -446,7 +446,22 @@
             "importToAeroFTP": "AeroFTP में आयात करें",
             "permissionsEllipsis": "अनुमतियाँ...",
             "decrypt": "डिक्रिप्ट करें",
-            "zipCryptoLegacy": "लीगेसी ZipCrypto: कमज़ोर एन्क्रिप्शन, संगतता के लिए रखा गया।"
+            "zipCryptoLegacy": "लीगेसी ZipCrypto: कमज़ोर एन्क्रिप्शन, संगतता के लिए रखा गया।",
+            "s3TrashTitle": "S3 ट्रैश / संस्करण",
+            "s3TrashShowAllVersions": "सभी संस्करण दिखाएं",
+            "s3TrashKind": "प्रकार",
+            "s3TrashEmptyOrVersioningOff": "ट्रैश खाली है (या bucket versioning बंद है)",
+            "s3TrashDeleteMarker": "हटाया गया",
+            "s3TrashVersion": "संस्करण",
+            "s3TrashLatest": "नवीनतम",
+            "s3TrashUndelete": "हटाना पूर्ववत करें",
+            "s3TrashUndeleteHint": "इस डिलीट मार्कर को हटाएं ताकि ऑब्जेक्ट फिर से दिखे",
+            "s3TrashCopyForward": "पुनर्स्थापित करें",
+            "s3TrashCopyForwardHint": "इस पुराने संस्करण को आगे कॉपी करें ताकि यह वर्तमान बन जाए",
+            "s3TrashPurge": "स्थायी रूप से हटाएं",
+            "s3TrashPurgeHint": "इस संस्करण को स्थायी रूप से हटाएं (अपरिवर्तनीय)",
+            "s3TrashPurgeConfirm": "इस संस्करण को स्थायी रूप से हटाएं? यह क्रिया वापस नहीं की जा सकती।",
+            "s3TrashEmptySummary": "इससे {count} ऑब्जेक्ट ({bytes}) स्थायी रूप से हट जाएंगे। यह क्रिया वापस नहीं की जा सकती।"
         },
         "transfer": {
             "transferring": "स्थानांतरित हो रहा है...",
@@ -1891,7 +1906,9 @@
             "current": "वर्तमान",
             "download": "इस संस्करण को डाउनलोड करें",
             "restore": "इस संस्करण को पुनर्स्थापित करें",
-            "none": "कोई संस्करण उपलब्ध नहीं"
+            "none": "कोई संस्करण उपलब्ध नहीं",
+            "purge": "इस संस्करण को स्थायी रूप से हटाएं",
+            "purgeConfirm": "इस संस्करण को स्थायी रूप से हटाएं? यह क्रिया वापस नहीं की जा सकती।"
         },
         "sharing": {
             "title": "साझाकरण",

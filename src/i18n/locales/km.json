@@ -446,7 +446,22 @@
             "importToAeroFTP": "នាំចូលទៅ AeroFTP",
             "permissionsEllipsis": "ការអនុញ្ញាត...",
             "decrypt": "ឌិគ្រីប",
-            "zipCryptoLegacy": "ZipCrypto ចាស់៖ ការអ៊ិនគ្រីបខ្សោយ រក្សាទុកសម្រាប់ភាពឆបគ្នា។"
+            "zipCryptoLegacy": "ZipCrypto ចាស់៖ ការអ៊ិនគ្រីបខ្សោយ រក្សាទុកសម្រាប់ភាពឆបគ្នា។",
+            "s3TrashTitle": "ធុងសំរាម S3 / កំណែ",
+            "s3TrashShowAllVersions": "បង្ហាញកំណែទាំងអស់",
+            "s3TrashKind": "ប្រភេទ",
+            "s3TrashEmptyOrVersioningOff": "ធុងសំរាមទទេ (ឬ versioning របស់ bucket ត្រូវបានបិទ)",
+            "s3TrashDeleteMarker": "បានលុប",
+            "s3TrashVersion": "កំណែ",
+            "s3TrashLatest": "ថ្មីបំផុត",
+            "s3TrashUndelete": "មិនលុប",
+            "s3TrashUndeleteHint": "លុបសញ្ញាសម្គាល់ការលុបនេះ ដើម្បីឱ្យវត្ថុលេចឡើងវិញ",
+            "s3TrashCopyForward": "ស្តារ",
+            "s3TrashCopyForwardHint": "ចម្លងកំណែចាស់នេះទៅមុខ ដើម្បីឱ្យក្លាយជាកំណែបច្ចុប្បន្ន",
+            "s3TrashPurge": "លុបជាអចិន្ត្រៃយ៍",
+            "s3TrashPurgeHint": "លុបកំណែនេះជាអចិន្ត្រៃយ៍ (មិនអាចត្រឡប់វិញបាន)",
+            "s3TrashPurgeConfirm": "លុបកំណែនេះជាអចិន្ត្រៃយ៍? សកម្មភាពនេះមិនអាចត្រឡប់វិញបានទេ។",
+            "s3TrashEmptySummary": "សកម្មភាពនេះនឹងលុប {count} វត្ថុ ({bytes}) ជាអចិន្ត្រៃយ៍។ សកម្មភាពនេះមិនអាចត្រឡប់វិញបានទេ។"
         },
         "transfer": {
             "transferring": "កំពុងផ្ទេរ...",
@@ -1891,7 +1906,9 @@
             "current": "បច្ចុប្បន្ន",
             "download": "ទាញយកកំណែនេះ",
             "restore": "ស្តារកំណែនេះ",
-            "none": "គ្មានកំណែដែលអាចប្រើបាន"
+            "none": "គ្មានកំណែដែលអាចប្រើបាន",
+            "purge": "លុបកំណែនេះជាអចិន្ត្រៃយ៍",
+            "purgeConfirm": "លុបកំណែនេះជាអចិន្ត្រៃយ៍? សកម្មភាពនេះមិនអាចត្រឡប់វិញបានទេ។"
         },
         "sharing": {
             "title": "ការចែករំលែក",

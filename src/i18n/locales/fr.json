@@ -446,7 +446,22 @@
             "importToAeroFTP": "Importer dans AeroFTP",
             "permissionsEllipsis": "Autorisations...",
             "decrypt": "Déchiffrer",
-            "zipCryptoLegacy": "ZipCrypto hérité : chiffrement faible, conservé pour compatibilité."
+            "zipCryptoLegacy": "ZipCrypto hérité : chiffrement faible, conservé pour compatibilité.",
+            "s3TrashTitle": "Corbeille S3 / Versions",
+            "s3TrashShowAllVersions": "Afficher toutes les versions",
+            "s3TrashKind": "Type",
+            "s3TrashEmptyOrVersioningOff": "Corbeille vide (ou le versioning du bucket est désactivé)",
+            "s3TrashDeleteMarker": "Supprimé",
+            "s3TrashVersion": "Version",
+            "s3TrashLatest": "La plus récente",
+            "s3TrashUndelete": "Annuler la suppression",
+            "s3TrashUndeleteHint": "Supprimer ce marqueur de suppression pour que l'objet réapparaisse",
+            "s3TrashCopyForward": "Restaurer",
+            "s3TrashCopyForwardHint": "Copier cette version antérieure en avant pour qu'elle devienne actuelle",
+            "s3TrashPurge": "Supprimer définitivement",
+            "s3TrashPurgeHint": "Supprimer définitivement cette version (irréversible)",
+            "s3TrashPurgeConfirm": "Supprimer définitivement cette version ? Cette action est irréversible.",
+            "s3TrashEmptySummary": "Cela supprimera définitivement {count} objet(s) ({bytes}). Cette action est irréversible."
         },
         "transfer": {
             "transferring": "Transfert en cours...",
@@ -1891,7 +1906,9 @@
             "current": "Actuelle",
             "download": "Telecharger cette version",
             "restore": "Restaurer cette version",
-            "none": "Aucune version disponible"
+            "none": "Aucune version disponible",
+            "purge": "Supprimer définitivement cette version",
+            "purgeConfirm": "Supprimer définitivement cette version ? Cette action est irréversible."
         },
         "sharing": {
             "title": "Partage",

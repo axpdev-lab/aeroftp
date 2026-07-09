@@ -446,7 +446,22 @@
             "importToAeroFTP": "Импортиране в AeroFTP",
             "permissionsEllipsis": "Разрешения...",
             "decrypt": "Дешифриране",
-            "zipCryptoLegacy": "Наследен ZipCrypto: слабо шифроване, запазено за съвместимост."
+            "zipCryptoLegacy": "Наследен ZipCrypto: слабо шифроване, запазено за съвместимост.",
+            "s3TrashTitle": "Кошче S3 / Версии",
+            "s3TrashShowAllVersions": "Показване на всички версии",
+            "s3TrashKind": "Вид",
+            "s3TrashEmptyOrVersioningOff": "Кошчето е празно (или versioning на bucket е изключен)",
+            "s3TrashDeleteMarker": "Изтрито",
+            "s3TrashVersion": "Версия",
+            "s3TrashLatest": "Най-нова",
+            "s3TrashUndelete": "Отмяна на изтриването",
+            "s3TrashUndeleteHint": "Премахване на този маркер за изтриване, за да се появи обектът отново",
+            "s3TrashCopyForward": "Възстановяване",
+            "s3TrashCopyForwardHint": "Копиране на тази по-стара версия напред, за да стане текуща",
+            "s3TrashPurge": "Изтриване завинаги",
+            "s3TrashPurgeHint": "Изтриване на тази версия завинаги (необратимо)",
+            "s3TrashPurgeConfirm": "Да се изтрие ли тази версия завинаги? Това действие не може да бъде отменено.",
+            "s3TrashEmptySummary": "Това ще изтрие завинаги {count} обект(а) ({bytes}). Това действие не може да бъде отменено."
         },
         "transfer": {
             "transferring": "Прехвърляне...",
@@ -1891,7 +1906,9 @@
             "current": "Текуща",
             "download": "Изтегляне на тази версия",
             "restore": "Възстановяване на тази версия",
-            "none": "Няма налични версии"
+            "none": "Няма налични версии",
+            "purge": "Изтриване на тази версия завинаги",
+            "purgeConfirm": "Да се изтрие ли тази версия завинаги? Това действие не може да бъде отменено."
         },
         "sharing": {
             "title": "Споделяне",

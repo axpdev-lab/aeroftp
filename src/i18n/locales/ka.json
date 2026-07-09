@@ -446,7 +446,22 @@
             "importToAeroFTP": "AeroFTP-ში იმპორტი",
             "permissionsEllipsis": "ნებართვები...",
             "decrypt": "გაშიფვრა",
-            "zipCryptoLegacy": "მოძველებული ZipCrypto: სუსტი დაშიფვრა, შენარჩუნებულია თავსებადობისთვის."
+            "zipCryptoLegacy": "მოძველებული ZipCrypto: სუსტი დაშიფვრა, შენარჩუნებულია თავსებადობისთვის.",
+            "s3TrashTitle": "S3 ნაგავი / ვერსიები",
+            "s3TrashShowAllVersions": "ყველა ვერსიის ჩვენება",
+            "s3TrashKind": "სახეობა",
+            "s3TrashEmptyOrVersioningOff": "ნაგავი ცარიელია (ან bucket-ის versioning გამორთულია)",
+            "s3TrashDeleteMarker": "წაშლილი",
+            "s3TrashVersion": "ვერსია",
+            "s3TrashLatest": "უახლესი",
+            "s3TrashUndelete": "წაშლის გაუქმება",
+            "s3TrashUndeleteHint": "წაშალეთ ეს წაშლის მარკერი, რომ ობიექტი ხელახლა გამოჩნდეს",
+            "s3TrashCopyForward": "აღდგენა",
+            "s3TrashCopyForwardHint": "დააკოპირეთ ეს ძველი ვერსია წინ, რომ გახდეს მიმდინარე",
+            "s3TrashPurge": "სამუდამოდ წაშლა",
+            "s3TrashPurgeHint": "ამ ვერსიის სამუდამოდ წაშლა (შეუქცევადი)",
+            "s3TrashPurgeConfirm": "სამუდამოდ წავშალოთ ეს ვერსია? ეს მოქმედება ვერ გაუქმდება.",
+            "s3TrashEmptySummary": "ეს სამუდამოდ წაშლის {count} ობიექტს ({bytes}). ეს მოქმედება ვერ გაუქმდება."
         },
         "transfer": {
             "transferring": "გადაცემა...",
@@ -1891,7 +1906,9 @@
             "current": "მიმდინარე",
             "download": "ამ ვერსიის ჩამოტვირთვა",
             "restore": "ამ ვერსიის აღდგენა",
-            "none": "ვერსიები ხელმისაწვდომი არ არის"
+            "none": "ვერსიები ხელმისაწვდომი არ არის",
+            "purge": "ამ ვერსიის სამუდამოდ წაშლა",
+            "purgeConfirm": "სამუდამოდ წავშალოთ ეს ვერსია? ეს მოქმედება ვერ გაუქმდება."
         },
         "sharing": {
             "title": "გაზიარება",

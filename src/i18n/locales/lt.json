@@ -446,7 +446,22 @@
             "importToAeroFTP": "Importuoti į AeroFTP",
             "permissionsEllipsis": "Leidimai...",
             "decrypt": "Iššifruoti",
-            "zipCryptoLegacy": "Senasis ZipCrypto: silpnas šifravimas, paliktas dėl suderinamumo."
+            "zipCryptoLegacy": "Senasis ZipCrypto: silpnas šifravimas, paliktas dėl suderinamumo.",
+            "s3TrashTitle": "S3 šiukšliadėžė / Versijos",
+            "s3TrashShowAllVersions": "Rodyti visas versijas",
+            "s3TrashKind": "Rūšis",
+            "s3TrashEmptyOrVersioningOff": "Šiukšliadėžė tuščia (arba bucket versijavimas išjungtas)",
+            "s3TrashDeleteMarker": "Ištrinta",
+            "s3TrashVersion": "Versija",
+            "s3TrashLatest": "Naujausia",
+            "s3TrashUndelete": "Atšaukti ištrynimą",
+            "s3TrashUndeleteHint": "Pašalinti šį ištrynimo žymeklį, kad objektas vėl pasirodytų",
+            "s3TrashCopyForward": "Atkurti",
+            "s3TrashCopyForwardHint": "Kopijuoti šią senesnę versiją į priekį, kad ji taptų dabartine",
+            "s3TrashPurge": "Ištrinti visam laikui",
+            "s3TrashPurgeHint": "Ištrinti šią versiją visam laikui (negrįžtama)",
+            "s3TrashPurgeConfirm": "Ištrinti šią versiją visam laikui? Šio veiksmo anuliuoti negalima.",
+            "s3TrashEmptySummary": "Tai visam laikui ištrins {count} objektų ({bytes}). Šio veiksmo anuliuoti negalima."
         },
         "transfer": {
             "transferring": "Perduodama...",
@@ -1891,7 +1906,9 @@
             "current": "Dabartinis",
             "download": "Atsisiųsti šią versiją",
             "restore": "Atkurti šią versiją",
-            "none": "Versijų nėra"
+            "none": "Versijų nėra",
+            "purge": "Ištrinti šią versiją visam laikui",
+            "purgeConfirm": "Ištrinti šią versiją visam laikui? Šio veiksmo anuliuoti negalima."
         },
         "sharing": {
             "title": "Bendrinimas",

@@ -446,7 +446,22 @@
             "importToAeroFTP": "Flytja inn í AeroFTP",
             "permissionsEllipsis": "Heimildir...",
             "decrypt": "Afkóða",
-            "zipCryptoLegacy": "Eldra ZipCrypto: veik dulkóðun, haldið eftir vegna samhæfni."
+            "zipCryptoLegacy": "Eldra ZipCrypto: veik dulkóðun, haldið eftir vegna samhæfni.",
+            "s3TrashTitle": "S3 rusl / Útgáfur",
+            "s3TrashShowAllVersions": "Sýna allar útgáfur",
+            "s3TrashKind": "Tegund",
+            "s3TrashEmptyOrVersioningOff": "Ruslafatan er tóm (eða bucket-útgáfustýring er slökkt)",
+            "s3TrashDeleteMarker": "Eytt",
+            "s3TrashVersion": "Útgáfa",
+            "s3TrashLatest": "Nýjasta",
+            "s3TrashUndelete": "Afturkalla eyðingu",
+            "s3TrashUndeleteHint": "Fjarlægðu þetta eyðingarmerki svo hluturinn birtist aftur",
+            "s3TrashCopyForward": "Endurheimta",
+            "s3TrashCopyForwardHint": "Afrita þessa eldri útgáfu áfram svo hún verði núverandi",
+            "s3TrashPurge": "Eyða varanlega",
+            "s3TrashPurgeHint": "Eyða þessari útgáfu varanlega (óafturkræft)",
+            "s3TrashPurgeConfirm": "Eyða þessari útgáfu varanlega? Þetta er ekki hægt að afturkalla.",
+            "s3TrashEmptySummary": "Þetta eyðir varanlega {count} hlut(um) ({bytes}). Þetta er ekki hægt að afturkalla."
         },
         "transfer": {
             "transferring": "Flytur...",
@@ -1891,7 +1906,9 @@
             "current": "Núverandi",
             "download": "Sækja þessa útgáfu",
             "restore": "Endurheimta þessa útgáfu",
-            "none": "Engar útgáfur tiltækar"
+            "none": "Engar útgáfur tiltækar",
+            "purge": "Eyða þessari útgáfu varanlega",
+            "purgeConfirm": "Eyða þessari útgáfu varanlega? Þetta er ekki hægt að afturkalla."
         },
         "sharing": {
             "title": "Deiling",

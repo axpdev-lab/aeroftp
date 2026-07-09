@@ -446,7 +446,22 @@
             "importToAeroFTP": "Importă în AeroFTP",
             "permissionsEllipsis": "Permisiuni...",
             "decrypt": "Decriptează",
-            "zipCryptoLegacy": "ZipCrypto vechi: criptare slabă, păstrată pentru compatibilitate."
+            "zipCryptoLegacy": "ZipCrypto vechi: criptare slabă, păstrată pentru compatibilitate.",
+            "s3TrashTitle": "Coș de gunoi S3 / Versiuni",
+            "s3TrashShowAllVersions": "Afișează toate versiunile",
+            "s3TrashKind": "Tip",
+            "s3TrashEmptyOrVersioningOff": "Coșul de gunoi este gol (sau versionarea bucket-ului este dezactivată)",
+            "s3TrashDeleteMarker": "Șters",
+            "s3TrashVersion": "Versiune",
+            "s3TrashLatest": "Cea mai recentă",
+            "s3TrashUndelete": "Anulează ștergerea",
+            "s3TrashUndeleteHint": "Elimină acest marcaj de ștergere pentru ca obiectul să reapară",
+            "s3TrashCopyForward": "Restaurează",
+            "s3TrashCopyForwardHint": "Copiază această versiune mai veche înainte pentru a deveni cea curentă",
+            "s3TrashPurge": "Șterge definitiv",
+            "s3TrashPurgeHint": "Șterge definitiv această versiune (ireversibil)",
+            "s3TrashPurgeConfirm": "Ștergeți definitiv această versiune? Această acțiune nu poate fi anulată.",
+            "s3TrashEmptySummary": "Aceasta va șterge definitiv {count} obiect(e) ({bytes}). Această acțiune nu poate fi anulată."
         },
         "transfer": {
             "transferring": "Se transferă...",
@@ -1891,7 +1906,9 @@
             "current": "Curent",
             "download": "Descarcă această versiune",
             "restore": "Restaurează această versiune",
-            "none": "Nicio versiune disponibilă"
+            "none": "Nicio versiune disponibilă",
+            "purge": "Șterge definitiv această versiune",
+            "purgeConfirm": "Ștergeți definitiv această versiune? Această acțiune nu poate fi anulată."
         },
         "sharing": {
             "title": "Partajare",

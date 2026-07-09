@@ -446,7 +446,22 @@
             "importToAeroFTP": "I-import sa AeroFTP",
             "permissionsEllipsis": "Mga pahintulot...",
             "decrypt": "I-decrypt",
-            "zipCryptoLegacy": "Lumang ZipCrypto: mahinang pag-encrypt, itinago para sa pagkakatugma."
+            "zipCryptoLegacy": "Lumang ZipCrypto: mahinang pag-encrypt, itinago para sa pagkakatugma.",
+            "s3TrashTitle": "S3 Basurahan / Mga Bersyon",
+            "s3TrashShowAllVersions": "Ipakita ang lahat ng bersyon",
+            "s3TrashKind": "Uri",
+            "s3TrashEmptyOrVersioningOff": "Walang laman ang basurahan (o naka-off ang versioning ng bucket)",
+            "s3TrashDeleteMarker": "Tinanggal",
+            "s3TrashVersion": "Bersyon",
+            "s3TrashLatest": "Pinakabago",
+            "s3TrashUndelete": "I-undo ang pagtanggal",
+            "s3TrashUndeleteHint": "Alisin ang delete marker na ito para muling lumabas ang object",
+            "s3TrashCopyForward": "Ibalik",
+            "s3TrashCopyForwardHint": "Kopyahin pasulong ang mas lumang bersyon na ito para maging kasalukuyan",
+            "s3TrashPurge": "Permanenteng burahin",
+            "s3TrashPurgeHint": "Permanenteng burahin ang bersyon na ito (hindi na maibabalik)",
+            "s3TrashPurgeConfirm": "Permanenteng burahin ang bersyon na ito? Hindi na ito maaaring i-undo.",
+            "s3TrashEmptySummary": "Permanenteng buburahin nito ang {count} object ({bytes}). Hindi na ito maaaring i-undo."
         },
         "transfer": {
             "transferring": "Naglilipat...",
@@ -1891,7 +1906,9 @@
             "current": "Kasalukuyan",
             "download": "I-download ang bersyon na ito",
             "restore": "Ibalik ang bersyon na ito",
-            "none": "Walang available na bersyon"
+            "none": "Walang available na bersyon",
+            "purge": "Permanenteng burahin ang bersyon na ito",
+            "purgeConfirm": "Permanenteng burahin ang bersyon na ito? Hindi na ito maaaring i-undo."
         },
         "sharing": {
             "title": "Pagbabahagi",

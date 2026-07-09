@@ -446,7 +446,22 @@
             "importToAeroFTP": "Importar para o AeroFTP",
             "permissionsEllipsis": "Permissões...",
             "decrypt": "Descriptografar",
-            "zipCryptoLegacy": "ZipCrypto legado: criptografia fraca, mantida por compatibilidade."
+            "zipCryptoLegacy": "ZipCrypto legado: criptografia fraca, mantida por compatibilidade.",
+            "s3TrashTitle": "Lixeira S3 / Versões",
+            "s3TrashShowAllVersions": "Mostrar todas as versões",
+            "s3TrashKind": "Tipo",
+            "s3TrashEmptyOrVersioningOff": "Lixeira vazia (ou o versioning do bucket está desativado)",
+            "s3TrashDeleteMarker": "Eliminado",
+            "s3TrashVersion": "Versão",
+            "s3TrashLatest": "Mais recente",
+            "s3TrashUndelete": "Anular eliminação",
+            "s3TrashUndeleteHint": "Remover este marcador de eliminação para que o objeto reapareça",
+            "s3TrashCopyForward": "Restaurar",
+            "s3TrashCopyForwardHint": "Copiar esta versão anterior para a frente para que se torne a atual",
+            "s3TrashPurge": "Eliminar permanentemente",
+            "s3TrashPurgeHint": "Eliminar permanentemente esta versão (irreversível)",
+            "s3TrashPurgeConfirm": "Eliminar permanentemente esta versão? Esta ação não pode ser desfeita.",
+            "s3TrashEmptySummary": "Isto eliminará permanentemente {count} objeto(s) ({bytes}). Esta ação não pode ser desfeita."
         },
         "transfer": {
             "transferring": "Transferindo...",
@@ -1891,7 +1906,9 @@
             "current": "Atual",
             "download": "Baixar esta versão",
             "restore": "Restaurar esta versão",
-            "none": "Nenhuma versão disponível"
+            "none": "Nenhuma versão disponível",
+            "purge": "Eliminar permanentemente esta versão",
+            "purgeConfirm": "Eliminar permanentemente esta versão? Esta ação não pode ser desfeita."
         },
         "sharing": {
             "title": "Compartilhamento",

@@ -446,7 +446,22 @@
             "importToAeroFTP": "Impordi AeroFTP-sse",
             "permissionsEllipsis": "Õigused...",
             "decrypt": "Dekrüpti",
-            "zipCryptoLegacy": "Pärand-ZipCrypto: nõrk krüpteering, säilitatud ühilduvuse huvides."
+            "zipCryptoLegacy": "Pärand-ZipCrypto: nõrk krüpteering, säilitatud ühilduvuse huvides.",
+            "s3TrashTitle": "S3 prügikast / Versioonid",
+            "s3TrashShowAllVersions": "Näita kõiki versioone",
+            "s3TrashKind": "Liik",
+            "s3TrashEmptyOrVersioningOff": "Prügikast on tühi (või bucketi versioonimine on välja lülitatud)",
+            "s3TrashDeleteMarker": "Kustutatud",
+            "s3TrashVersion": "Versioon",
+            "s3TrashLatest": "Uusim",
+            "s3TrashUndelete": "Võta kustutamine tagasi",
+            "s3TrashUndeleteHint": "Eemalda see kustutusmärk, et objekt uuesti ilmuks",
+            "s3TrashCopyForward": "Taasta",
+            "s3TrashCopyForwardHint": "Kopeeri see vanem versioon ettepoole, et sellest saaks praegune",
+            "s3TrashPurge": "Kustuta jäädavalt",
+            "s3TrashPurgeHint": "Kustuta see versioon jäädavalt (pöördumatu)",
+            "s3TrashPurgeConfirm": "Kas kustutada see versioon jäädavalt? Seda toimingut ei saa tagasi võtta.",
+            "s3TrashEmptySummary": "See kustutab jäädavalt {count} objekti ({bytes}). Seda toimingut ei saa tagasi võtta."
         },
         "transfer": {
             "transferring": "Ülekanne...",
@@ -1891,7 +1906,9 @@
             "current": "Praegune",
             "download": "Laadi see versioon alla",
             "restore": "Taasta see versioon",
-            "none": "Ühtegi versiooni pole saadaval"
+            "none": "Ühtegi versiooni pole saadaval",
+            "purge": "Kustuta see versioon jäädavalt",
+            "purgeConfirm": "Kas kustutada see versioon jäädavalt? Seda toimingut ei saa tagasi võtta."
         },
         "sharing": {
             "title": "Jagamine",

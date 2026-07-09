@@ -446,7 +446,22 @@
             "importToAeroFTP": "Ingiza kwenye AeroFTP",
             "permissionsEllipsis": "Ruhusa...",
             "decrypt": "Simbua",
-            "zipCryptoLegacy": "ZipCrypto ya zamani: usimbaji dhaifu, umehifadhiwa kwa uoanifu."
+            "zipCryptoLegacy": "ZipCrypto ya zamani: usimbaji dhaifu, umehifadhiwa kwa uoanifu.",
+            "s3TrashTitle": "Tupio la S3 / Matoleo",
+            "s3TrashShowAllVersions": "Onyesha matoleo yote",
+            "s3TrashKind": "Aina",
+            "s3TrashEmptyOrVersioningOff": "Tupio ni tupu (au versioning ya bucket imezimwa)",
+            "s3TrashDeleteMarker": "Imefutwa",
+            "s3TrashVersion": "Toleo",
+            "s3TrashLatest": "Jipya zaidi",
+            "s3TrashUndelete": "Tendua ufutaji",
+            "s3TrashUndeleteHint": "Ondoa alama hii ya kufuta ili kitu kionekane tena",
+            "s3TrashCopyForward": "Rejesha",
+            "s3TrashCopyForwardHint": "Nakili toleo hili la zamani mbele ili liwe la sasa",
+            "s3TrashPurge": "Futa kabisa",
+            "s3TrashPurgeHint": "Futa toleo hili kabisa (haiwezi kutenduliwa)",
+            "s3TrashPurgeConfirm": "Futa toleo hili kabisa? Kitendo hiki hakiwezi kutenduliwa.",
+            "s3TrashEmptySummary": "Hii itafuta kabisa vitu {count} ({bytes}). Kitendo hiki hakiwezi kutenduliwa."
         },
         "transfer": {
             "transferring": "Inahamisha...",
@@ -1891,7 +1906,9 @@
             "current": "Sasa",
             "download": "Pakua toleo hili",
             "restore": "Rejesha toleo hili",
-            "none": "Hakuna matoleo yanayopatikana"
+            "none": "Hakuna matoleo yanayopatikana",
+            "purge": "Futa toleo hili kabisa",
+            "purgeConfirm": "Futa toleo hili kabisa? Kitendo hiki hakiwezi kutenduliwa."
         },
         "sharing": {
             "title": "Kushiriki",

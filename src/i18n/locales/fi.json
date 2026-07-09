@@ -446,7 +446,22 @@
             "importToAeroFTP": "Tuo AeroFTP:hen",
             "permissionsEllipsis": "Käyttöoikeudet...",
             "decrypt": "Pura salaus",
-            "zipCryptoLegacy": "Vanha ZipCrypto: heikko salaus, säilytetty yhteensopivuuden vuoksi."
+            "zipCryptoLegacy": "Vanha ZipCrypto: heikko salaus, säilytetty yhteensopivuuden vuoksi.",
+            "s3TrashTitle": "S3 roskakori / Versiot",
+            "s3TrashShowAllVersions": "Näytä kaikki versiot",
+            "s3TrashKind": "Tyyppi",
+            "s3TrashEmptyOrVersioningOff": "Roskakori tyhjä (tai bucketin versiointi on pois käytöstä)",
+            "s3TrashDeleteMarker": "Poistettu",
+            "s3TrashVersion": "Versio",
+            "s3TrashLatest": "Uusin",
+            "s3TrashUndelete": "Kumoa poisto",
+            "s3TrashUndeleteHint": "Poista tämä poistomerkintä, jotta objekti tulee taas näkyviin",
+            "s3TrashCopyForward": "Palauta",
+            "s3TrashCopyForwardHint": "Kopioi tämä vanhempi versio eteenpäin nykyiseksi",
+            "s3TrashPurge": "Poista pysyvästi",
+            "s3TrashPurgeHint": "Poista tämä versio pysyvästi (peruuttamaton)",
+            "s3TrashPurgeConfirm": "Poistetaanko tämä versio pysyvästi? Tätä toimintoa ei voi kumota.",
+            "s3TrashEmptySummary": "Tämä poistaa pysyvästi {count} objektia ({bytes}). Tätä toimintoa ei voi kumota."
         },
         "transfer": {
             "transferring": "Siirretään...",
@@ -1891,7 +1906,9 @@
             "current": "Nykyinen",
             "download": "Lataa tämä versio",
             "restore": "Palauta tämä versio",
-            "none": "Ei versioita saatavilla"
+            "none": "Ei versioita saatavilla",
+            "purge": "Poista tämä versio pysyvästi",
+            "purgeConfirm": "Poistetaanko tämä versio pysyvästi? Tätä toimintoa ei voi kumota."
         },
         "sharing": {
             "title": "Jakaminen",

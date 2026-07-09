@@ -446,7 +446,22 @@
             "importToAeroFTP": "Importeren in AeroFTP",
             "permissionsEllipsis": "Machtigingen...",
             "decrypt": "Ontsleutelen",
-            "zipCryptoLegacy": "Verouderde ZipCrypto: zwakke versleuteling, behouden voor compatibiliteit."
+            "zipCryptoLegacy": "Verouderde ZipCrypto: zwakke versleuteling, behouden voor compatibiliteit.",
+            "s3TrashTitle": "S3 Prullenbak / Versies",
+            "s3TrashShowAllVersions": "Alle versies tonen",
+            "s3TrashKind": "Soort",
+            "s3TrashEmptyOrVersioningOff": "Prullenbak leeg (of bucket-versioning is uitgeschakeld)",
+            "s3TrashDeleteMarker": "Verwijderd",
+            "s3TrashVersion": "Versie",
+            "s3TrashLatest": "Nieuwste",
+            "s3TrashUndelete": "Verwijderen ongedaan maken",
+            "s3TrashUndeleteHint": "Deze verwijdermarkering weghalen zodat het object weer verschijnt",
+            "s3TrashCopyForward": "Herstellen",
+            "s3TrashCopyForwardHint": "Deze oudere versie naar voren kopiëren zodat deze de huidige wordt",
+            "s3TrashPurge": "Permanent verwijderen",
+            "s3TrashPurgeHint": "Deze versie permanent verwijderen (onomkeerbaar)",
+            "s3TrashPurgeConfirm": "Deze versie permanent verwijderen? Dit kan niet ongedaan worden gemaakt.",
+            "s3TrashEmptySummary": "Hiermee worden {count} object(en) ({bytes}) permanent verwijderd. Dit kan niet ongedaan worden gemaakt."
         },
         "transfer": {
             "transferring": "Overdragen...",
@@ -1891,7 +1906,9 @@
             "current": "Huidig",
             "download": "Deze versie downloaden",
             "restore": "Deze versie herstellen",
-            "none": "Geen versies beschikbaar"
+            "none": "Geen versies beschikbaar",
+            "purge": "Deze versie permanent verwijderen",
+            "purgeConfirm": "Deze versie permanent verwijderen? Dit kan niet ongedaan worden gemaakt."
         },
         "sharing": {
             "title": "Delen",

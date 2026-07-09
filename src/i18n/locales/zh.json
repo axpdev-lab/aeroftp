@@ -446,7 +446,22 @@
             "importToAeroFTP": "导入到 AeroFTP",
             "permissionsEllipsis": "权限…",
             "decrypt": "解密",
-            "zipCryptoLegacy": "旧版 ZipCrypto：加密强度弱，为兼容性保留。"
+            "zipCryptoLegacy": "旧版 ZipCrypto：加密强度弱，为兼容性保留。",
+            "s3TrashTitle": "S3 回收站 / 版本",
+            "s3TrashShowAllVersions": "显示所有版本",
+            "s3TrashKind": "类型",
+            "s3TrashEmptyOrVersioningOff": "回收站为空 (或存储桶版本控制已关闭)",
+            "s3TrashDeleteMarker": "已删除",
+            "s3TrashVersion": "版本",
+            "s3TrashLatest": "最新",
+            "s3TrashUndelete": "撤消删除",
+            "s3TrashUndeleteHint": "移除此删除标记, 使对象重新出现",
+            "s3TrashCopyForward": "还原",
+            "s3TrashCopyForwardHint": "将此旧版本向前复制, 使其成为当前版本",
+            "s3TrashPurge": "永久删除",
+            "s3TrashPurgeHint": "永久删除此版本 (不可逆)",
+            "s3TrashPurgeConfirm": "永久删除此版本? 此操作无法撤消。",
+            "s3TrashEmptySummary": "这将永久删除 {count} 个对象 ({bytes})。此操作无法撤消。"
         },
         "transfer": {
             "transferring": "传输中...",
@@ -1891,7 +1906,9 @@
             "current": "当前",
             "download": "下载此版本",
             "restore": "还原此版本",
-            "none": "没有可用的版本"
+            "none": "没有可用的版本",
+            "purge": "永久删除此版本",
+            "purgeConfirm": "永久删除此版本? 此操作无法撤消。"
         },
         "sharing": {
             "title": "共享",

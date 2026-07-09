@@ -446,7 +446,22 @@
             "importToAeroFTP": "In AeroFTP importieren",
             "permissionsEllipsis": "Berechtigungen...",
             "decrypt": "Entschlüsseln",
-            "zipCryptoLegacy": "Veraltetes ZipCrypto: schwache Verschlüsselung, aus Kompatibilitätsgründen beibehalten."
+            "zipCryptoLegacy": "Veraltetes ZipCrypto: schwache Verschlüsselung, aus Kompatibilitätsgründen beibehalten.",
+            "s3TrashTitle": "S3 Papierkorb / Versionen",
+            "s3TrashShowAllVersions": "Alle Versionen anzeigen",
+            "s3TrashKind": "Art",
+            "s3TrashEmptyOrVersioningOff": "Papierkorb leer (oder Bucket-Versioning ist deaktiviert)",
+            "s3TrashDeleteMarker": "Gelöscht",
+            "s3TrashVersion": "Version",
+            "s3TrashLatest": "Neueste",
+            "s3TrashUndelete": "Löschen rückgängig machen",
+            "s3TrashUndeleteHint": "Diese Löschmarkierung entfernen, damit das Objekt wieder erscheint",
+            "s3TrashCopyForward": "Wiederherstellen",
+            "s3TrashCopyForwardHint": "Diese ältere Version nach vorne kopieren, um sie zur aktuellen zu machen",
+            "s3TrashPurge": "Endgültig löschen",
+            "s3TrashPurgeHint": "Diese Version endgültig löschen (unwiderruflich)",
+            "s3TrashPurgeConfirm": "Diese Version endgültig löschen? Diese Aktion kann nicht rückgängig gemacht werden.",
+            "s3TrashEmptySummary": "Dadurch werden {count} Objekt(e) ({bytes}) endgültig gelöscht. Diese Aktion kann nicht rückgängig gemacht werden."
         },
         "transfer": {
             "transferring": "Übertragung...",
@@ -1891,7 +1906,9 @@
             "current": "Aktuell",
             "download": "Diese Version herunterladen",
             "restore": "Diese Version wiederherstellen",
-            "none": "Keine Versionen verfügbar"
+            "none": "Keine Versionen verfügbar",
+            "purge": "Diese Version endgültig löschen",
+            "purgeConfirm": "Diese Version endgültig löschen? Diese Aktion kann nicht rückgängig gemacht werden."
         },
         "sharing": {
             "title": "Freigabe",

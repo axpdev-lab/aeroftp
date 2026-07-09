@@ -446,7 +446,22 @@
             "importToAeroFTP": "AeroFTP-তে ইম্পোর্ট করুন",
             "permissionsEllipsis": "অনুমতি...",
             "decrypt": "ডিক্রিপ্ট করুন",
-            "zipCryptoLegacy": "লিগ্যাসি ZipCrypto: দুর্বল এনক্রিপশন, সামঞ্জস্যের জন্য রাখা হয়েছে।"
+            "zipCryptoLegacy": "লিগ্যাসি ZipCrypto: দুর্বল এনক্রিপশন, সামঞ্জস্যের জন্য রাখা হয়েছে।",
+            "s3TrashTitle": "S3 ট্র্যাশ / সংস্করণ",
+            "s3TrashShowAllVersions": "সব সংস্করণ দেখান",
+            "s3TrashKind": "ধরন",
+            "s3TrashEmptyOrVersioningOff": "ট্র্যাশ খালি (অথবা bucket versioning বন্ধ)",
+            "s3TrashDeleteMarker": "মুছে ফেলা হয়েছে",
+            "s3TrashVersion": "সংস্করণ",
+            "s3TrashLatest": "সর্বশেষ",
+            "s3TrashUndelete": "মুছে ফেলা বাতিল করুন",
+            "s3TrashUndeleteHint": "অবজেক্টটি পুনরায় দেখাতে এই ডিলিট মার্কারটি সরান",
+            "s3TrashCopyForward": "পুনরুদ্ধার করুন",
+            "s3TrashCopyForwardHint": "এই পুরনো সংস্করণটিকে বর্তমান করতে সামনে কপি করুন",
+            "s3TrashPurge": "স্থায়ীভাবে মুছুন",
+            "s3TrashPurgeHint": "এই সংস্করণটি স্থায়ীভাবে মুছুন (অপরিবর্তনীয়)",
+            "s3TrashPurgeConfirm": "এই সংস্করণটি স্থায়ীভাবে মুছবেন? এটি পূর্বাবস্থায় ফেরানো যাবে না।",
+            "s3TrashEmptySummary": "এটি স্থায়ীভাবে {count}টি অবজেক্ট ({bytes}) মুছে ফেলবে। এটি পূর্বাবস্থায় ফেরানো যাবে না।"
         },
         "transfer": {
             "transferring": "স্থানান্তর করা হচ্ছে...",
@@ -1891,7 +1906,9 @@
             "current": "বর্তমান",
             "download": "এই সংস্করণ ডাউনলোড করুন",
             "restore": "এই সংস্করণ পুনরুদ্ধার করুন",
-            "none": "কোনো সংস্করণ উপলব্ধ নেই"
+            "none": "কোনো সংস্করণ উপলব্ধ নেই",
+            "purge": "এই সংস্করণটি স্থায়ীভাবে মুছুন",
+            "purgeConfirm": "এই সংস্করণটি স্থায়ীভাবে মুছবেন? এটি পূর্বাবস্থায় ফেরানো যাবে না।"
         },
         "sharing": {
             "title": "শেয়ারিং",

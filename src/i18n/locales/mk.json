@@ -446,7 +446,22 @@
             "importToAeroFTP": "Увези во AeroFTP",
             "permissionsEllipsis": "Дозволи...",
             "decrypt": "Дешифрирај",
-            "zipCryptoLegacy": "Наследен ZipCrypto: слаба енкрипција, задржана заради компатибилност."
+            "zipCryptoLegacy": "Наследен ZipCrypto: слаба енкрипција, задржана заради компатибилност.",
+            "s3TrashTitle": "S3 корпа / Верзии",
+            "s3TrashShowAllVersions": "Прикажи ги сите верзии",
+            "s3TrashKind": "Вид",
+            "s3TrashEmptyOrVersioningOff": "Корпата е празна (или versioning на bucket е исклучен)",
+            "s3TrashDeleteMarker": "Избришано",
+            "s3TrashVersion": "Верзија",
+            "s3TrashLatest": "Најнова",
+            "s3TrashUndelete": "Врати го бришењето",
+            "s3TrashUndeleteHint": "Отстрани го овој маркер за бришење за повторно да се појави објектот",
+            "s3TrashCopyForward": "Врати",
+            "s3TrashCopyForwardHint": "Копирај ја оваа постара верзија напред за да стане тековна",
+            "s3TrashPurge": "Трајно избриши",
+            "s3TrashPurgeHint": "Трајно избриши ја оваа верзија (неповратно)",
+            "s3TrashPurgeConfirm": "Трајно да се избрише оваа верзија? Ова дејство не може да се поништи.",
+            "s3TrashEmptySummary": "Ова трајно ќе избрише {count} објект(и) ({bytes}). Ова дејство не може да се поништи."
         },
         "transfer": {
             "transferring": "Се пренесува...",
@@ -1891,7 +1906,9 @@
             "current": "Тековна",
             "download": "Преземи ја оваа верзија",
             "restore": "Врати ја оваа верзија",
-            "none": "Нема достапни верзии"
+            "none": "Нема достапни верзии",
+            "purge": "Трајно избриши ја оваа верзија",
+            "purgeConfirm": "Трајно да се избрише оваа верзија? Ова дејство не може да се поништи."
         },
         "sharing": {
             "title": "Споделување",

@@ -446,7 +446,22 @@
             "importToAeroFTP": "AeroFTP로 가져오기",
             "permissionsEllipsis": "권한...",
             "decrypt": "복호화",
-            "zipCryptoLegacy": "레거시 ZipCrypto: 약한 암호화, 호환성을 위해 유지됩니다."
+            "zipCryptoLegacy": "레거시 ZipCrypto: 약한 암호화, 호환성을 위해 유지됩니다.",
+            "s3TrashTitle": "S3 휴지통 / 버전",
+            "s3TrashShowAllVersions": "모든 버전 표시",
+            "s3TrashKind": "종류",
+            "s3TrashEmptyOrVersioningOff": "휴지통이 비어 있습니다 (또는 버킷 버전 관리가 꺼져 있음)",
+            "s3TrashDeleteMarker": "삭제됨",
+            "s3TrashVersion": "버전",
+            "s3TrashLatest": "최신",
+            "s3TrashUndelete": "삭제 취소",
+            "s3TrashUndeleteHint": "이 삭제 표식을 제거하여 개체가 다시 나타나도록 합니다",
+            "s3TrashCopyForward": "복원",
+            "s3TrashCopyForwardHint": "이 이전 버전을 앞으로 복사하여 현재 버전으로 만듭니다",
+            "s3TrashPurge": "영구 삭제",
+            "s3TrashPurgeHint": "이 버전을 영구적으로 삭제합니다 (되돌릴 수 없음)",
+            "s3TrashPurgeConfirm": "이 버전을 영구적으로 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.",
+            "s3TrashEmptySummary": "{count}개의 개체 ({bytes})가 영구적으로 삭제됩니다. 이 작업은 되돌릴 수 없습니다."
         },
         "transfer": {
             "transferring": "전송 중...",
@@ -1891,7 +1906,9 @@
             "current": "현재",
             "download": "이 버전 다운로드",
             "restore": "이 버전 복원",
-            "none": "사용 가능한 버전이 없습니다"
+            "none": "사용 가능한 버전이 없습니다",
+            "purge": "이 버전을 영구적으로 삭제",
+            "purgeConfirm": "이 버전을 영구적으로 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다."
         },
         "sharing": {
             "title": "공유",

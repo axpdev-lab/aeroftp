@@ -446,7 +446,22 @@
             "importToAeroFTP": "Importer til AeroFTP",
             "permissionsEllipsis": "Tilladelser...",
             "decrypt": "Dekryptér",
-            "zipCryptoLegacy": "Ældre ZipCrypto: svag kryptering, bevaret af hensyn til kompatibilitet."
+            "zipCryptoLegacy": "Ældre ZipCrypto: svag kryptering, bevaret af hensyn til kompatibilitet.",
+            "s3TrashTitle": "S3 papirkurv / Versioner",
+            "s3TrashShowAllVersions": "Vis alle versioner",
+            "s3TrashKind": "Type",
+            "s3TrashEmptyOrVersioningOff": "Papirkurven er tom (eller bucket-versionering er slået fra)",
+            "s3TrashDeleteMarker": "Slettet",
+            "s3TrashVersion": "Version",
+            "s3TrashLatest": "Nyeste",
+            "s3TrashUndelete": "Fortryd sletning",
+            "s3TrashUndeleteHint": "Fjern denne sletningsmarkering, så objektet vises igen",
+            "s3TrashCopyForward": "Gendan",
+            "s3TrashCopyForwardHint": "Kopier denne ældre version fremad, så den bliver den aktuelle",
+            "s3TrashPurge": "Slet permanent",
+            "s3TrashPurgeHint": "Slet denne version permanent (uigenkaldeligt)",
+            "s3TrashPurgeConfirm": "Slet denne version permanent? Denne handling kan ikke fortrydes.",
+            "s3TrashEmptySummary": "Dette sletter permanent {count} objekt(er) ({bytes}). Denne handling kan ikke fortrydes."
         },
         "transfer": {
             "transferring": "Overfører...",
@@ -1891,7 +1906,9 @@
             "current": "Aktuel",
             "download": "Download denne version",
             "restore": "Gendan denne version",
-            "none": "Ingen versioner tilgængelige"
+            "none": "Ingen versioner tilgængelige",
+            "purge": "Slet denne version permanent",
+            "purgeConfirm": "Slet denne version permanent? Denne handling kan ikke fortrydes."
         },
         "sharing": {
             "title": "Deling",

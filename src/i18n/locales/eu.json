@@ -446,7 +446,22 @@
             "importToAeroFTP": "Inportatu AeroFTPra",
             "permissionsEllipsis": "Baimenak...",
             "decrypt": "Deszifratu",
-            "zipCryptoLegacy": "ZipCrypto zaharra: enkriptatze ahula, bateragarritasunerako mantendua."
+            "zipCryptoLegacy": "ZipCrypto zaharra: enkriptatze ahula, bateragarritasunerako mantendua.",
+            "s3TrashTitle": "S3 zakarrontzia / Bertsioak",
+            "s3TrashShowAllVersions": "Erakutsi bertsio guztiak",
+            "s3TrashKind": "Mota",
+            "s3TrashEmptyOrVersioningOff": "Zakarrontzia hutsik (edo bucket-aren versioning-a desaktibatuta dago)",
+            "s3TrashDeleteMarker": "Ezabatuta",
+            "s3TrashVersion": "Bertsioa",
+            "s3TrashLatest": "Berriena",
+            "s3TrashUndelete": "Desegin ezabatzea",
+            "s3TrashUndeleteHint": "Kendu ezabatze-marka hau objektua berriro ager dadin",
+            "s3TrashCopyForward": "Leheneratu",
+            "s3TrashCopyForwardHint": "Kopiatu bertsio zahar hau aurrera oraingoa bihurtzeko",
+            "s3TrashPurge": "Ezabatu behin betiko",
+            "s3TrashPurgeHint": "Ezabatu bertsio hau behin betiko (itzulezina)",
+            "s3TrashPurgeConfirm": "Bertsio hau behin betiko ezabatu? Ekintza hau ezin da desegin.",
+            "s3TrashEmptySummary": "Honek {count} objektu ({bytes}) behin betiko ezabatuko ditu. Ekintza hau ezin da desegin."
         },
         "transfer": {
             "transferring": "Transferitzen...",
@@ -1891,7 +1906,9 @@
             "current": "Unekoa",
             "download": "Deskargatu bertsio hau",
             "restore": "Lehengoratu bertsio hau",
-            "none": "Ez dago bertsiorik eskuragarri"
+            "none": "Ez dago bertsiorik eskuragarri",
+            "purge": "Ezabatu bertsio hau behin betiko",
+            "purgeConfirm": "Bertsio hau behin betiko ezabatu? Ekintza hau ezin da desegin."
         },
         "sharing": {
             "title": "Partekatu",

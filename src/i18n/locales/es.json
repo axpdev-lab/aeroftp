@@ -446,7 +446,22 @@
             "importToAeroFTP": "Importar a AeroFTP",
             "permissionsEllipsis": "Permisos...",
             "decrypt": "Descifrar",
-            "zipCryptoLegacy": "ZipCrypto heredado: cifrado débil, conservado por compatibilidad."
+            "zipCryptoLegacy": "ZipCrypto heredado: cifrado débil, conservado por compatibilidad.",
+            "s3TrashTitle": "Papelera S3 / Versiones",
+            "s3TrashShowAllVersions": "Mostrar todas las versiones",
+            "s3TrashKind": "Tipo",
+            "s3TrashEmptyOrVersioningOff": "Papelera vacía (o el versioning del bucket está desactivado)",
+            "s3TrashDeleteMarker": "Eliminado",
+            "s3TrashVersion": "Versión",
+            "s3TrashLatest": "Más reciente",
+            "s3TrashUndelete": "Deshacer eliminación",
+            "s3TrashUndeleteHint": "Quitar este marcador de eliminación para que el objeto vuelva a aparecer",
+            "s3TrashCopyForward": "Restaurar",
+            "s3TrashCopyForwardHint": "Copiar esta versión anterior hacia adelante para que sea la actual",
+            "s3TrashPurge": "Eliminar permanentemente",
+            "s3TrashPurgeHint": "Eliminar permanentemente esta versión (irreversible)",
+            "s3TrashPurgeConfirm": "¿Eliminar permanentemente esta versión? Esta acción no se puede deshacer.",
+            "s3TrashEmptySummary": "Esto eliminará permanentemente {count} objeto(s) ({bytes}). Esta acción no se puede deshacer."
         },
         "transfer": {
             "transferring": "Transfiriendo...",
@@ -1891,7 +1906,9 @@
             "current": "Actual",
             "download": "Descargar esta versión",
             "restore": "Restaurar esta versión",
-            "none": "No hay versiones disponibles"
+            "none": "No hay versiones disponibles",
+            "purge": "Eliminar permanentemente esta versión",
+            "purgeConfirm": "¿Eliminar permanentemente esta versión? Esta acción no se puede deshacer."
         },
         "sharing": {
             "title": "Compartir",

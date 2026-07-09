@@ -446,7 +446,22 @@
             "importToAeroFTP": "นำเข้าไปยัง AeroFTP",
             "permissionsEllipsis": "สิทธิ์...",
             "decrypt": "ถอดรหัส",
-            "zipCryptoLegacy": "ZipCrypto รุ่นเก่า: การเข้ารหัสที่อ่อนแอ เก็บไว้เพื่อความเข้ากันได้"
+            "zipCryptoLegacy": "ZipCrypto รุ่นเก่า: การเข้ารหัสที่อ่อนแอ เก็บไว้เพื่อความเข้ากันได้",
+            "s3TrashTitle": "ถังขยะ S3 / เวอร์ชัน",
+            "s3TrashShowAllVersions": "แสดงทุกเวอร์ชัน",
+            "s3TrashKind": "ชนิด",
+            "s3TrashEmptyOrVersioningOff": "ถังขยะว่างเปล่า (หรือปิด versioning ของ bucket)",
+            "s3TrashDeleteMarker": "ลบแล้ว",
+            "s3TrashVersion": "เวอร์ชัน",
+            "s3TrashLatest": "ล่าสุด",
+            "s3TrashUndelete": "เลิกทำการลบ",
+            "s3TrashUndeleteHint": "ลบเครื่องหมายการลบนี้เพื่อให้ออบเจกต์ปรากฏอีกครั้ง",
+            "s3TrashCopyForward": "กู้คืน",
+            "s3TrashCopyForwardHint": "คัดลอกเวอร์ชันเก่านี้ไปข้างหน้าเพื่อให้เป็นเวอร์ชันปัจจุบัน",
+            "s3TrashPurge": "ลบถาวร",
+            "s3TrashPurgeHint": "ลบเวอร์ชันนี้อย่างถาวร (ย้อนกลับไม่ได้)",
+            "s3TrashPurgeConfirm": "ลบเวอร์ชันนี้อย่างถาวรหรือไม่? การดำเนินการนี้ไม่สามารถย้อนกลับได้",
+            "s3TrashEmptySummary": "การดำเนินการนี้จะลบ {count} ออบเจกต์ ({bytes}) อย่างถาวร การดำเนินการนี้ไม่สามารถย้อนกลับได้"
         },
         "transfer": {
             "transferring": "กำลังถ่ายโอน...",
@@ -1891,7 +1906,9 @@
             "current": "ปัจจุบัน",
             "download": "ดาวน์โหลดเวอร์ชันนี้",
             "restore": "กู้คืนเวอร์ชันนี้",
-            "none": "ไม่มีเวอร์ชันที่ใช้ได้"
+            "none": "ไม่มีเวอร์ชันที่ใช้ได้",
+            "purge": "ลบเวอร์ชันนี้อย่างถาวร",
+            "purgeConfirm": "ลบเวอร์ชันนี้อย่างถาวรหรือไม่? การดำเนินการนี้ไม่สามารถย้อนกลับได้"
         },
         "sharing": {
             "title": "การแชร์",

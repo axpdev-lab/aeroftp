@@ -446,7 +446,22 @@
             "importToAeroFTP": "Импортировать в AeroFTP",
             "permissionsEllipsis": "Разрешения...",
             "decrypt": "Расшифровать",
-            "zipCryptoLegacy": "Устаревший ZipCrypto: слабое шифрование, сохранено для совместимости."
+            "zipCryptoLegacy": "Устаревший ZipCrypto: слабое шифрование, сохранено для совместимости.",
+            "s3TrashTitle": "Корзина S3 / Версии",
+            "s3TrashShowAllVersions": "Показать все версии",
+            "s3TrashKind": "Тип",
+            "s3TrashEmptyOrVersioningOff": "Корзина пуста (или versioning для bucket отключён)",
+            "s3TrashDeleteMarker": "Удалено",
+            "s3TrashVersion": "Версия",
+            "s3TrashLatest": "Последняя",
+            "s3TrashUndelete": "Отменить удаление",
+            "s3TrashUndeleteHint": "Удалить этот маркер удаления, чтобы объект снова появился",
+            "s3TrashCopyForward": "Восстановить",
+            "s3TrashCopyForwardHint": "Скопировать эту старую версию вперёд, чтобы она стала текущей",
+            "s3TrashPurge": "Удалить навсегда",
+            "s3TrashPurgeHint": "Удалить эту версию навсегда (необратимо)",
+            "s3TrashPurgeConfirm": "Удалить эту версию навсегда? Это действие нельзя отменить.",
+            "s3TrashEmptySummary": "Это навсегда удалит {count} объект(ов) ({bytes}). Это действие нельзя отменить."
         },
         "transfer": {
             "transferring": "Передача...",
@@ -1891,7 +1906,9 @@
             "current": "Текущая",
             "download": "Скачать эту версию",
             "restore": "Восстановить эту версию",
-            "none": "Версии недоступны"
+            "none": "Версии недоступны",
+            "purge": "Удалить эту версию навсегда",
+            "purgeConfirm": "Удалить эту версию навсегда? Это действие нельзя отменить."
         },
         "sharing": {
             "title": "Общий доступ",

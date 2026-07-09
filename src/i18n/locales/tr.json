@@ -446,7 +446,22 @@
             "importToAeroFTP": "AeroFTP'ye içe aktar",
             "permissionsEllipsis": "İzinler...",
             "decrypt": "Şifre Çöz",
-            "zipCryptoLegacy": "Eski ZipCrypto: zayıf şifreleme, uyumluluk için korundu."
+            "zipCryptoLegacy": "Eski ZipCrypto: zayıf şifreleme, uyumluluk için korundu.",
+            "s3TrashTitle": "S3 Çöp Kutusu / Sürümler",
+            "s3TrashShowAllVersions": "Tüm sürümleri göster",
+            "s3TrashKind": "Tür",
+            "s3TrashEmptyOrVersioningOff": "Çöp kutusu boş (veya bucket sürümlemesi kapalı)",
+            "s3TrashDeleteMarker": "Silindi",
+            "s3TrashVersion": "Sürüm",
+            "s3TrashLatest": "En son",
+            "s3TrashUndelete": "Silmeyi geri al",
+            "s3TrashUndeleteHint": "Nesnenin yeniden görünmesi için bu silme işaretçisini kaldırın",
+            "s3TrashCopyForward": "Geri yükle",
+            "s3TrashCopyForwardHint": "Bu eski sürümü ileriye kopyalayarak güncel hale getirin",
+            "s3TrashPurge": "Kalıcı olarak sil",
+            "s3TrashPurgeHint": "Bu sürümü kalıcı olarak sil (geri alınamaz)",
+            "s3TrashPurgeConfirm": "Bu sürüm kalıcı olarak silinsin mi? Bu işlem geri alınamaz.",
+            "s3TrashEmptySummary": "Bu, {count} nesneyi ({bytes}) kalıcı olarak silecek. Bu işlem geri alınamaz."
         },
         "transfer": {
             "transferring": "Aktarılıyor...",
@@ -1891,7 +1906,9 @@
             "current": "Güncel",
             "download": "Bu sürümü indir",
             "restore": "Bu sürümü geri yükle",
-            "none": "Sürüm mevcut değil"
+            "none": "Sürüm mevcut değil",
+            "purge": "Bu sürümü kalıcı olarak sil",
+            "purgeConfirm": "Bu sürüm kalıcı olarak silinsin mi? Bu işlem geri alınamaz."
         },
         "sharing": {
             "title": "Paylaşım",

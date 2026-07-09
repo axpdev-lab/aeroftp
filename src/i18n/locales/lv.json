@@ -446,7 +446,22 @@
             "importToAeroFTP": "Importēt uz AeroFTP",
             "permissionsEllipsis": "Atļaujas...",
             "decrypt": "Atšifrēt",
-            "zipCryptoLegacy": "Mantotais ZipCrypto: vāja šifrēšana, saglabāta saderības dēļ."
+            "zipCryptoLegacy": "Mantotais ZipCrypto: vāja šifrēšana, saglabāta saderības dēļ.",
+            "s3TrashTitle": "S3 atkritne / Versijas",
+            "s3TrashShowAllVersions": "Rādīt visas versijas",
+            "s3TrashKind": "Veids",
+            "s3TrashEmptyOrVersioningOff": "Atkritne ir tukša (vai bucket versionēšana ir izslēgta)",
+            "s3TrashDeleteMarker": "Dzēsts",
+            "s3TrashVersion": "Versija",
+            "s3TrashLatest": "Jaunākā",
+            "s3TrashUndelete": "Atsaukt dzēšanu",
+            "s3TrashUndeleteHint": "Noņemt šo dzēšanas atzīmi, lai objekts atkal parādītos",
+            "s3TrashCopyForward": "Atjaunot",
+            "s3TrashCopyForwardHint": "Kopēt šo vecāko versiju uz priekšu, lai tā kļūtu par pašreizējo",
+            "s3TrashPurge": "Dzēst neatgriezeniski",
+            "s3TrashPurgeHint": "Dzēst šo versiju neatgriezeniski (nav atgriezeniski)",
+            "s3TrashPurgeConfirm": "Vai neatgriezeniski dzēst šo versiju? Šo darbību nevar atsaukt.",
+            "s3TrashEmptySummary": "Tas neatgriezeniski dzēsīs {count} objektu(s) ({bytes}). Šo darbību nevar atsaukt."
         },
         "transfer": {
             "transferring": "Pārsūta...",
@@ -1891,7 +1906,9 @@
             "current": "Pašreizējais",
             "download": "Lejupielādēt šo versiju",
             "restore": "Atjaunot šo versiju",
-            "none": "Versijas nav pieejamas"
+            "none": "Versijas nav pieejamas",
+            "purge": "Dzēst šo versiju neatgriezeniski",
+            "purgeConfirm": "Vai neatgriezeniski dzēst šo versiju? Šo darbību nevar atsaukt."
         },
         "sharing": {
             "title": "Koplietojums",

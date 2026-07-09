@@ -849,7 +849,22 @@
             "openAsAeroVaultOverlay": "Apri come AeroVault Overlay",
             "openWithAeroVaultZip": "Apri con AeroVault Zip",
             "importToAeroFTP": "Importa in AeroFTP",
-            "permissionsEllipsis": "Permessi..."
+            "permissionsEllipsis": "Permessi...",
+            "s3TrashTitle": "Cestino S3 / Versioni",
+            "s3TrashShowAllVersions": "Mostra tutte le versioni",
+            "s3TrashKind": "Tipo",
+            "s3TrashEmptyOrVersioningOff": "Cestino vuoto (o versioning del bucket disattivato)",
+            "s3TrashDeleteMarker": "Eliminato",
+            "s3TrashVersion": "Versione",
+            "s3TrashLatest": "Più recente",
+            "s3TrashUndelete": "Annulla eliminazione",
+            "s3TrashUndeleteHint": "Rimuovi questo marcatore di eliminazione per far riapparire l'oggetto",
+            "s3TrashCopyForward": "Ripristina",
+            "s3TrashCopyForwardHint": "Copia questa versione precedente in avanti per renderla corrente",
+            "s3TrashPurge": "Elimina definitivamente",
+            "s3TrashPurgeHint": "Elimina definitivamente questa versione (irreversibile)",
+            "s3TrashPurgeConfirm": "Eliminare definitivamente questa versione? Questa operazione non può essere annullata.",
+            "s3TrashEmptySummary": "Verranno eliminati definitivamente {count} oggetti ({bytes}). Questa operazione non può essere annullata."
         },
         "transfer": {
             "transferring": "Trasferimento in corso...",
@@ -2083,7 +2098,9 @@
             "current": "Corrente",
             "download": "Scarica questa versione",
             "restore": "Ripristina questa versione",
-            "none": "Nessuna versione disponibile"
+            "none": "Nessuna versione disponibile",
+            "purge": "Elimina definitivamente questa versione",
+            "purgeConfirm": "Eliminare definitivamente questa versione? Questa operazione non può essere annullata."
         },
         "sharing": {
             "title": "Condivisione",

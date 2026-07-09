@@ -446,7 +446,22 @@
             "importToAeroFTP": "Importálás az AeroFTP-be",
             "permissionsEllipsis": "Engedélyek...",
             "decrypt": "Visszafejtés",
-            "zipCryptoLegacy": "Régi ZipCrypto: gyenge titkosítás, kompatibilitás miatt megtartva."
+            "zipCryptoLegacy": "Régi ZipCrypto: gyenge titkosítás, kompatibilitás miatt megtartva.",
+            "s3TrashTitle": "S3 lomtár / Verziók",
+            "s3TrashShowAllVersions": "Összes verzió megjelenítése",
+            "s3TrashKind": "Fajta",
+            "s3TrashEmptyOrVersioningOff": "A lomtár üres (vagy a bucket verziókezelése ki van kapcsolva)",
+            "s3TrashDeleteMarker": "Törölve",
+            "s3TrashVersion": "Verzió",
+            "s3TrashLatest": "Legújabb",
+            "s3TrashUndelete": "Törlés visszavonása",
+            "s3TrashUndeleteHint": "Távolítsa el ezt a törlési jelölőt, hogy az objektum újra megjelenjen",
+            "s3TrashCopyForward": "Visszaállítás",
+            "s3TrashCopyForwardHint": "Másolja előre ezt a régebbi verziót, hogy az legyen a jelenlegi",
+            "s3TrashPurge": "Végleges törlés",
+            "s3TrashPurgeHint": "A verzió végleges törlése (visszavonhatatlan)",
+            "s3TrashPurgeConfirm": "Véglegesen törli ezt a verziót? Ez a művelet nem vonható vissza.",
+            "s3TrashEmptySummary": "Ez véglegesen töröl {count} objektumot ({bytes}). Ez a művelet nem vonható vissza."
         },
         "transfer": {
             "transferring": "Átvitel...",
@@ -1891,7 +1906,9 @@
             "current": "Jelenlegi",
             "download": "Verzió letöltése",
             "restore": "Verzió visszaállítása",
-            "none": "Nincsenek elérhető verziók"
+            "none": "Nincsenek elérhető verziók",
+            "purge": "A verzió végleges törlése",
+            "purgeConfirm": "Véglegesen törli ezt a verziót? Ez a művelet nem vonható vissza."
         },
         "sharing": {
             "title": "Megosztás",
