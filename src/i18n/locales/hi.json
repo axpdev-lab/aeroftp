@@ -333,7 +333,9 @@
             "encryption": "एन्क्रिप्शन",
             "compression": "संपीड़न",
             "encrypted": "एन्क्रिप्टेड",
-            "notEncrypted": "एन्क्रिप्टेड नहीं"
+            "notEncrypted": "एन्क्रिप्टेड नहीं",
+            "listingDirectory": "निर्देशिका सूचीबद्ध की जा रही है...",
+            "listingPath": "{path} सूचीबद्ध किया जा रहा है..."
         },
         "contextMenu": {
             "askAeroAgent": "AeroAgent से पूछें...",

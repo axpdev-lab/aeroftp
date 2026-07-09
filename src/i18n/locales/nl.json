@@ -333,7 +333,9 @@
             "encryption": "Versleuteling",
             "compression": "Compressie",
             "encrypted": "Versleuteld",
-            "notEncrypted": "Niet versleuteld"
+            "notEncrypted": "Niet versleuteld",
+            "listingDirectory": "Map wordt weergegeven...",
+            "listingPath": "{path} wordt weergegeven..."
         },
         "contextMenu": {
             "askAeroAgent": "Vraag AeroAgent...",

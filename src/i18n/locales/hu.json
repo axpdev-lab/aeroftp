@@ -333,7 +333,9 @@
             "encryption": "Titkosítás",
             "compression": "Tömörítés",
             "encrypted": "Titkosítva",
-            "notEncrypted": "Nincs titkosítva"
+            "notEncrypted": "Nincs titkosítva",
+            "listingDirectory": "Könyvtár listázása...",
+            "listingPath": "{path} listázása..."
         },
         "contextMenu": {
             "askAeroAgent": "Kérdezd meg AeroAgent...",

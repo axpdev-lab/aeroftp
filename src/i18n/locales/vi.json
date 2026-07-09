@@ -333,7 +333,9 @@
             "encryption": "Mã hóa",
             "compression": "Nén",
             "encrypted": "Đã mã hóa",
-            "notEncrypted": "Chưa mã hóa"
+            "notEncrypted": "Chưa mã hóa",
+            "listingDirectory": "Đang liệt kê thư mục...",
+            "listingPath": "Đang liệt kê {path}..."
         },
         "contextMenu": {
             "askAeroAgent": "Hỏi AeroAgent...",

@@ -333,7 +333,9 @@
             "encryption": "Kryptering",
             "compression": "Komprimering",
             "encrypted": "Krypterad",
-            "notEncrypted": "Inte krypterad"
+            "notEncrypted": "Inte krypterad",
+            "listingDirectory": "Listar katalog...",
+            "listingPath": "Listar {path}..."
         },
         "contextMenu": {
             "askAeroAgent": "Fråga AeroAgent...",

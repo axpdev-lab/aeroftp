@@ -333,7 +333,9 @@
             "encryption": "Salaus",
             "compression": "Pakkaus",
             "encrypted": "Salattu",
-            "notEncrypted": "Ei salattu"
+            "notEncrypted": "Ei salattu",
+            "listingDirectory": "Luetellaan hakemistoa...",
+            "listingPath": "Luetellaan {path}..."
         },
         "contextMenu": {
             "askAeroAgent": "Kysy AeroAgent-ilta...",

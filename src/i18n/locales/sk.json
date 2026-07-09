@@ -333,7 +333,9 @@
             "encryption": "Šifrovanie",
             "compression": "Kompresia",
             "encrypted": "Šifrované",
-            "notEncrypted": "Nešifrované"
+            "notEncrypted": "Nešifrované",
+            "listingDirectory": "Načítava sa adresár...",
+            "listingPath": "Načítava sa {path}..."
         },
         "contextMenu": {
             "askAeroAgent": "Opýtať sa AeroAgent...",

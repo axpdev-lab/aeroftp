@@ -333,7 +333,9 @@
             "encryption": "Şifreleme",
             "compression": "Sıkıştırma",
             "encrypted": "Şifreli",
-            "notEncrypted": "Şifresiz"
+            "notEncrypted": "Şifresiz",
+            "listingDirectory": "Dizin listeleniyor...",
+            "listingPath": "{path} listeleniyor..."
         },
         "contextMenu": {
             "askAeroAgent": "AeroAgent'a sor...",

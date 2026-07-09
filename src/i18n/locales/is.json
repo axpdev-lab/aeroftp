@@ -333,7 +333,9 @@
             "encryption": "Dulkóðun",
             "compression": "Þjöppun",
             "encrypted": "Dulkóðað",
-            "notEncrypted": "Ekki dulkóðað"
+            "notEncrypted": "Ekki dulkóðað",
+            "listingDirectory": "Skrái möppu...",
+            "listingPath": "Skrái {path}..."
         },
         "contextMenu": {
             "askAeroAgent": "Spyrja AeroAgent...",

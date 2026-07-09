@@ -333,7 +333,9 @@
             "encryption": "Usimbaji",
             "compression": "Mgandamizo",
             "encrypted": "Imesimbwa",
-            "notEncrypted": "Haijasimbwa"
+            "notEncrypted": "Haijasimbwa",
+            "listingDirectory": "Inaorodhesha saraka...",
+            "listingPath": "Inaorodhesha {path}..."
         },
         "contextMenu": {
             "askAeroAgent": "Uliza AeroAgent...",

@@ -333,7 +333,9 @@
             "encryption": "Cifrado",
             "compression": "Compresión",
             "encrypted": "Cifrado",
-            "notEncrypted": "Sen cifrar"
+            "notEncrypted": "Sen cifrar",
+            "listingDirectory": "Listando o directorio...",
+            "listingPath": "Listando {path}..."
         },
         "contextMenu": {
             "askAeroAgent": "Preguntar a AeroAgent...",

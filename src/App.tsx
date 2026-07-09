@@ -813,6 +813,10 @@ const App: React.FC = () => {
   // Per-panel directory-listing loading flags. Drive the overlay spinner that
   // appears while a folder drill-in is fetching its contents (issue #178 #2).
   const [remoteListLoading, setRemoteListLoading] = useState(false);
+  // A spinner says "wait"; it does not say what for. Every foreground remote
+  // listing declares the path it is reading, shown as one small line under the
+  // spinner, so a stall on a slow provider is legible instead of mysterious.
+  const [remoteListReason, setRemoteListReason] = useState<string | null>(null);
   const [localListLoading, setLocalListLoading] = useState(false);
   // Transfer progress: ref holds data (no re-renders), boolean state only changes on start/complete
   const activeTransferRef = useRef<TransferProgress | null>(null);
@@ -852,7 +856,13 @@ const App: React.FC = () => {
   // updated, overshooting the target. These refs block re-entry the instant a
   // navigation starts; the remote spinner exposes a Cancel that clears the latch
   // so a navigation stalled on an external/network problem never traps the user.
-  const remoteNavInFlightRef = useRef(false);
+  // remoteNavInFlightRef holds the owning navId (0 = free), not a bare boolean:
+  // now that loadRemoteFiles (connect/refresh) also shares remoteNavCounter for
+  // its spinner, a foreground refresh can supersede an in-flight navigation by
+  // bumping the counter. The nav releases the latch only if the token is still
+  // ITS navId, so a supersede or a Cancel-then-new-nav never frees the wrong
+  // owner's latch (which would either trap the user or reopen the double-click).
+  const remoteNavInFlightRef = useRef(0);
   const localNavInFlightRef = useRef(false);
 
   // Batch-op freeze latch: mirrors the scanning spinner so the batch
@@ -4799,7 +4809,51 @@ interface UpdateVerificationInfo {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingOverlayUnlock, aeroCryptVaultId, rcloneCryptVaultId]);
 
+  // Every FOREGROUND remote listing must show the spinner + freeze, no matter which
+  // call site issues it. The connect handlers cannot go through loadRemoteFiles: they
+  // need the raw provider response in hand to decide about the crypt overlay before
+  // any listing is painted. So they wrap their own listing call in this helper, which
+  // applies the same generation + spinner discipline: share remoteNavCounter so a
+  // newer listing supersedes this one, and clear the spinner only if we are still
+  // the latest. Cancel (which bumps the counter) therefore releases a stalled connect
+  // listing too. Without this, a connect over a slow link left the mounted remote
+  // panel completely silent for the whole wait.
+  const withRemoteListSpinner = async <T,>(fn: () => Promise<T>, reason?: string): Promise<T> => {
+    const navId = ++remoteNavCounter.current;
+    setRemoteListLoading(true);
+    setRemoteListReason(reason ?? null);
+    try {
+      return await fn();
+    } finally {
+      if (navId === remoteNavCounter.current) {
+        setRemoteListLoading(false);
+        setRemoteListReason(null);
+      }
+    }
+  };
+
+  // One phrasing for every foreground listing, so connect, refresh and drill-in
+  // all read the same. Falls back to the generic line when the target path is
+  // not known yet (a connect that has not resolved its initial directory).
+  const listingReason = (path?: string | null): string =>
+    path ? t('browser.listingPath', { path }) : t('browser.listingDirectory');
+
   const loadRemoteFiles = async (overrideProtocol?: string, silent?: boolean, ignoreRcloneCrypt?: boolean, overrideScopePath?: string | null): Promise<FileListResponse | null> => {
+    // Cover every FOREGROUND listing (connect, manual refresh, provider re-list)
+    // with the same spinner + freeze the drill-in navigation already uses, so a
+    // slow terminal/provider never leaves the panel silent with nothing happening
+    // on screen. We share remoteNavCounter so a newer listing supersedes this one,
+    // and the delayed-reveal CSS (animate-fade-in-delayed, ~270ms) keeps genuinely
+    // fast listings flicker-free: the spinner element only becomes visible if the
+    // wait actually crosses the threshold. Silent background refreshes (the
+    // post-mutation reloads after rename/delete/transfer) stay quiet and never
+    // touch the generation, so they can never race an in-flight user navigation.
+    const showBusy = !silent;
+    const navId = showBusy ? ++remoteNavCounter.current : remoteNavCounter.current;
+    if (showBusy) {
+      setRemoteListLoading(true);
+      setRemoteListReason(listingReason(overrideScopePath || currentRemotePath));
+    }
     try {
       // Check if we're connected to a Provider (OAuth, S3, WebDAV)
       // Use override protocol if provided, then connectionParams, then active session (most robust)
@@ -4844,9 +4898,14 @@ interface UpdateVerificationInfo {
         // Use FTP API
         response = await invoke('list_files');
       }
+      // Discard our result if a newer foreground listing already took over, so a
+      // slow response never overwrites the directory the user has since moved to.
+      if (showBusy && navId !== remoteNavCounter.current) return null;
       applyRemoteFileList(response as FileListResponse & { display_current_path?: string });
       return response;
     } catch (error) {
+      // A superseded listing must not surface its (now irrelevant) error toast.
+      if (showBusy && navId !== remoteNavCounter.current) return null;
       if (String(error).toLowerCase().includes('vault not unlocked')) {
         setRcloneCryptVaultId(null);
         setAeroCryptVaultId(null);
@@ -4876,6 +4935,13 @@ interface UpdateVerificationInfo {
       activityLog.log('ERROR', `Failed to list files: ${error}`, 'error');
       notify.error(t('common.error'), `Failed to list files: ${error}`);
       return null;
+    } finally {
+      // Clear the spinner only if we are still the latest listing; a newer op that
+      // took over the counter keeps its own spinner running until it finishes.
+      if (showBusy && navId === remoteNavCounter.current) {
+        setRemoteListLoading(false);
+        setRemoteListReason(null);
+      }
     }
   };
 
@@ -6044,7 +6110,7 @@ interface UpdateVerificationInfo {
         // swallows such errors, so this direct probe must too. On failure we still
         // arm the overlay and let the deferred decrypted reload anchor the path.
         try {
-          oauthResponse = await invoke<FileListResponse>('provider_list_files', { path: null });
+          oauthResponse = await withRemoteListSpinner(() => invoke<FileListResponse>('provider_list_files', { path: null }));
         } catch {
           oauthResponse = null;
         }
@@ -6288,9 +6354,9 @@ interface UpdateVerificationInfo {
         // `/remote.php/dav/files/{username}/` doesn't reach the backend
         // with the placeholder unresolved (would 404 on the literal path).
         logger.debug('[connectToFtp] Calling provider_list_files for:', protocol);
-        const response = await invoke<{ files: any[]; current_path: string }>('provider_list_files', {
+        const response = await withRemoteListSpinner(() => invoke<{ files: any[]; current_path: string }>('provider_list_files', {
           path: resolvedRemoteDir || null
-        });
+        }), listingReason(resolvedRemoteDir));
         logger.debug('[connectToFtp] provider_list_files response:', {
           fileCount: response.files?.length ?? 0,
           currentPath: response.current_path,
@@ -7471,10 +7537,14 @@ interface UpdateVerificationInfo {
     // on FTP would go up twice). A ref, not the async loading state, so two
     // clicks in the same tick are both caught.
     if (remoteNavInFlightRef.current) return;
-    remoteNavInFlightRef.current = true;
-    // Increment navigation counter: used to discard stale async responses
+    // Bump the shared remote-listing generation: used to discard stale async
+    // responses. loadRemoteFiles shares this counter, so any newer listing (a
+    // navigation, a connect, or a manual refresh) supersedes an older one and the
+    // latest owner is the one that clears the spinner.
     const navId = ++remoteNavCounter.current;
+    remoteNavInFlightRef.current = navId;
     setRemoteListLoading(true);
+    setRemoteListReason(listingReason(resolveTargetDisplayPath(currentRemoteDisplayPath, path, plainPath)));
     try {
       // Check if we're connected to a Provider (OAuth, S3, WebDAV)
       // Use override protocol if provided, then connectionParams, then active session (most robust)
@@ -7572,13 +7642,15 @@ interface UpdateVerificationInfo {
       }
       notify.error(t('common.error'), t('toast.changeDirFailed', { error: String(error) }));
     } finally {
-      // Only clear if this is still the latest navigation; otherwise a faster
-      // follow-up navigation (or a Cancel, which bumps the counter) would have
-      // its spinner and latch cleared early. Tying both to navId also means a
-      // navigation cancelled mid-flight never releases the latch on our behalf.
+      // Release OUR latch only if we still own it (token === our navId): a Cancel
+      // or a superseding refresh may have already handed the latch to someone else
+      // (or freed it), and clobbering that would trap the user or reopen the
+      // double-click. Clear the spinner only if we are still the latest listing,
+      // so a newer op that took over the counter keeps its own spinner running.
+      if (remoteNavInFlightRef.current === navId) remoteNavInFlightRef.current = 0;
       if (navId === remoteNavCounter.current) {
         setRemoteListLoading(false);
-        remoteNavInFlightRef.current = false;
+        setRemoteListReason(null);
       }
     }
   };
@@ -7589,8 +7661,9 @@ interface UpdateVerificationInfo {
   // waiting for the stuck call to return.
   const cancelRemoteNavigation = () => {
     remoteNavCounter.current += 1;
-    remoteNavInFlightRef.current = false;
+    remoteNavInFlightRef.current = 0;
     setRemoteListLoading(false);
+    setRemoteListReason(null);
   };
 
   const changeLocalDirectory = async (path: string) => {
@@ -7642,8 +7715,13 @@ interface UpdateVerificationInfo {
       const relPath = relativePath.startsWith('/') ? relativePath : '/' + relativePath;
       const newRemotePath = (relativePath ? basePath + relPath : basePath) || '/';
 
-      // Check if remote path exists
+      // Check if remote path exists. This sync-mirror shares remoteNavCounter, so
+      // it must also drive the spinner: otherwise, when it supersedes an in-flight
+      // navigation, that nav would no longer be the latest and would never clear
+      // the spinner, leaving it stuck. Set on entry, clear in finally when latest.
       const navId = ++remoteNavCounter.current;
+      setRemoteListLoading(true);
+      setRemoteListReason(listingReason(newRemotePath));
       try {
         const response: FileListResponse = isProvider
           ? await invoke('provider_change_dir', { path: newRemotePath })
@@ -7657,6 +7735,8 @@ interface UpdateVerificationInfo {
         // Remote directory doesn't exist - show dialog
         if (navId !== remoteNavCounter.current) return;
         setSyncNavDialog({ missingPath: newRemotePath, isRemote: true, targetPath: newRemotePath });
+      } finally {
+        if (navId === remoteNavCounter.current) setRemoteListLoading(false);
       }
     }
   };
@@ -14542,7 +14622,7 @@ interface UpdateVerificationInfo {
                     // errors); still arm the overlay and let the deferred reload
                     // anchor the path on failure.
                     try {
-                      savedOauthResp = await invoke<FileListResponse>('provider_list_files', { path: null });
+                      savedOauthResp = await withRemoteListSpinner(() => invoke<FileListResponse>('provider_list_files', { path: null }));
                     } catch {
                       savedOauthResp = null;
                     }
@@ -14684,9 +14764,9 @@ interface UpdateVerificationInfo {
                     // path computed above so a Nextcloud-based saved profile's
                     // initialPath (e.g. `/remote.php/dav/files/{username}/`) does
                     // not reach the backend with the placeholder unresolved.
-                    const response = await invoke<{ files: any[]; current_path: string }>('provider_list_files', {
+                    const response = await withRemoteListSpinner(() => invoke<{ files: any[]; current_path: string }>('provider_list_files', {
                       path: resolvedSavedInitialPath || null
-                    });
+                    }), listingReason(resolvedSavedInitialPath));
 
                     const files = response.files.map(f => ({
                       name: f.name,
@@ -15147,6 +15227,16 @@ interface UpdateVerificationInfo {
                       className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 bg-white/10 dark:bg-gray-900/10 pointer-events-none animate-fade-in-delayed"
                     >
                       <Loader2 size={20} className="animate-spin text-blue-500/80" />
+                      {/* Name the wait. A bare spinner tells the user to hold on but
+                          not what for; on a slow provider that reads as a freeze. */}
+                      {remoteListReason && (
+                        <span
+                          className="max-w-[80%] truncate text-xs text-gray-600 dark:text-gray-300"
+                          title={remoteListReason}
+                        >
+                          {remoteListReason}
+                        </span>
+                      )}
                       {/* #401: escape hatch so a navigation stalled on an
                           external/network problem never traps the user. The
                           backdrop stays click-through (re-entry is already

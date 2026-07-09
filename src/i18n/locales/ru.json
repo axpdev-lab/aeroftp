@@ -333,7 +333,9 @@
             "encryption": "Шифрование",
             "compression": "Сжатие",
             "encrypted": "Зашифровано",
-            "notEncrypted": "Не зашифровано"
+            "notEncrypted": "Не зашифровано",
+            "listingDirectory": "Получение списка каталога...",
+            "listingPath": "Получение списка {path}..."
         },
         "contextMenu": {
             "askAeroAgent": "Спросить AeroAgent...",

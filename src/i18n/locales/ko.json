@@ -333,7 +333,9 @@
             "encryption": "암호화",
             "compression": "압축",
             "encrypted": "암호화됨",
-            "notEncrypted": "암호화 안 됨"
+            "notEncrypted": "암호화 안 됨",
+            "listingDirectory": "디렉터리 목록을 불러오는 중...",
+            "listingPath": "{path} 목록을 불러오는 중..."
         },
         "contextMenu": {
             "askAeroAgent": "AeroAgent에게 질문...",

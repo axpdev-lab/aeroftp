@@ -715,7 +715,9 @@
             "encryption": "Cifratura",
             "compression": "Compressione",
             "encrypted": "Cifrato",
-            "notEncrypted": "Non cifrato"
+            "notEncrypted": "Non cifrato",
+            "listingDirectory": "Lettura della directory...",
+            "listingPath": "Lettura di {path}..."
         },
         "commandPalette": {
             "category": {

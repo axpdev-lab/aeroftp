@@ -333,7 +333,9 @@
             "encryption": "Enkriptatzea",
             "compression": "Konpresioa",
             "encrypted": "Enkriptatuta",
-            "notEncrypted": "Enkriptatu gabe"
+            "notEncrypted": "Enkriptatu gabe",
+            "listingDirectory": "Direktorioa zerrendatzen...",
+            "listingPath": "{path} zerrendatzen..."
         },
         "contextMenu": {
             "askAeroAgent": "Galdetu AeroAgent-i...",

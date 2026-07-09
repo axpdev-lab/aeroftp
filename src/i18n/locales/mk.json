@@ -333,7 +333,9 @@
             "encryption": "Шифрирање",
             "compression": "Компресија",
             "encrypted": "Шифрирано",
-            "notEncrypted": "Нешифрирано"
+            "notEncrypted": "Нешифрирано",
+            "listingDirectory": "Се прикажува директориумот...",
+            "listingPath": "Се прикажува {path}..."
         },
         "contextMenu": {
             "askAeroAgent": "Прашај AeroAgent...",

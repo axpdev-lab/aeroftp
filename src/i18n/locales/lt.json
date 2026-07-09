@@ -333,7 +333,9 @@
             "encryption": "Šifravimas",
             "compression": "Glaudinimas",
             "encrypted": "Užšifruota",
-            "notEncrypted": "Nešifruota"
+            "notEncrypted": "Nešifruota",
+            "listingDirectory": "Sudaromas katalogo sąrašas...",
+            "listingPath": "Sudaromas {path} sąrašas..."
         },
         "contextMenu": {
             "askAeroAgent": "Klausti AeroAgent...",

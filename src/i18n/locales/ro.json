@@ -333,7 +333,9 @@
             "encryption": "Criptare",
             "compression": "Compresie",
             "encrypted": "Criptat",
-            "notEncrypted": "Necriptat"
+            "notEncrypted": "Necriptat",
+            "listingDirectory": "Se listează directorul...",
+            "listingPath": "Se listează {path}..."
         },
         "contextMenu": {
             "askAeroAgent": "Întreabă AeroAgent...",

@@ -333,7 +333,9 @@
             "encryption": "এনক্রিপশন",
             "compression": "কম্প্রেশন",
             "encrypted": "এনক্রিপ্ট করা",
-            "notEncrypted": "এনক্রিপ্ট করা নয়"
+            "notEncrypted": "এনক্রিপ্ট করা নয়",
+            "listingDirectory": "ডিরেক্টরি তালিকাভুক্ত করা হচ্ছে...",
+            "listingPath": "{path} তালিকাভুক্ত করা হচ্ছে..."
         },
         "contextMenu": {
             "askAeroAgent": "AeroAgent-কে জিজ্ঞাসা করুন...",

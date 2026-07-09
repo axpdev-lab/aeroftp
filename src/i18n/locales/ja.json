@@ -333,7 +333,9 @@
             "encryption": "暗号化",
             "compression": "圧縮",
             "encrypted": "暗号化済み",
-            "notEncrypted": "暗号化なし"
+            "notEncrypted": "暗号化なし",
+            "listingDirectory": "ディレクトリを一覧表示しています...",
+            "listingPath": "{path} を一覧表示しています..."
         },
         "contextMenu": {
             "askAeroAgent": "AeroAgentに質問...",

@@ -333,7 +333,9 @@
             "encryption": "Amgryptio",
             "compression": "Cywasgu",
             "encrypted": "Wedi'i amgryptio",
-            "notEncrypted": "Heb ei amgryptio"
+            "notEncrypted": "Heb ei amgryptio",
+            "listingDirectory": "Wrthi'n rhestru'r cyfeiriadur...",
+            "listingPath": "Wrthi'n rhestru {path}..."
         },
         "contextMenu": {
             "askAeroAgent": "Gofyn i AeroAgent...",

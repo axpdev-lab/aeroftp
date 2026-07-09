@@ -333,7 +333,9 @@
             "encryption": "Penyulitan",
             "compression": "Pemampatan",
             "encrypted": "Disulitkan",
-            "notEncrypted": "Tidak disulitkan"
+            "notEncrypted": "Tidak disulitkan",
+            "listingDirectory": "Menyenaraikan direktori...",
+            "listingPath": "Menyenaraikan {path}..."
         },
         "contextMenu": {
             "askAeroAgent": "Tanya AeroAgent...",

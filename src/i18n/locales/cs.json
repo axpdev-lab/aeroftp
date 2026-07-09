@@ -333,7 +333,9 @@
             "encryption": "Šifrování",
             "compression": "Komprese",
             "encrypted": "Šifrováno",
-            "notEncrypted": "Nešifrováno"
+            "notEncrypted": "Nešifrováno",
+            "listingDirectory": "Načítání adresáře...",
+            "listingPath": "Načítání {path}..."
         },
         "contextMenu": {
             "askAeroAgent": "Zeptat se AeroAgent...",

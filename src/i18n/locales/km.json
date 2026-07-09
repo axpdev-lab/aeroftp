@@ -333,7 +333,9 @@
             "encryption": "ការអ៊ិនគ្រីប",
             "compression": "បង្ហាប់",
             "encrypted": "បានអ៊ិនគ្រីប",
-            "notEncrypted": "មិនបានអ៊ិនគ្រីប"
+            "notEncrypted": "មិនបានអ៊ិនគ្រីប",
+            "listingDirectory": "កំពុងរាយបញ្ជីថត...",
+            "listingPath": "កំពុងរាយបញ្ជី {path}..."
         },
         "contextMenu": {
             "askAeroAgent": "សួរ AeroAgent...",

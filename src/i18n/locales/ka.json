@@ -333,7 +333,9 @@
             "encryption": "დაშიფვრა",
             "compression": "შეკუმშვა",
             "encrypted": "დაშიფრული",
-            "notEncrypted": "დაუშიფრავი"
+            "notEncrypted": "დაუშიფრავი",
+            "listingDirectory": "დირექტორიის ჩამონათვალი...",
+            "listingPath": "{path}-ის ჩამონათვალი..."
         },
         "contextMenu": {
             "askAeroAgent": "ჰკითხე AeroAgent-ს...",

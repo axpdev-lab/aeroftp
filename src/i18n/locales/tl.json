@@ -333,7 +333,9 @@
             "encryption": "Pag-encrypt",
             "compression": "Compression",
             "encrypted": "Naka-encrypt",
-            "notEncrypted": "Hindi naka-encrypt"
+            "notEncrypted": "Hindi naka-encrypt",
+            "listingDirectory": "Nililista ang direktoryo...",
+            "listingPath": "Nililista ang {path}..."
         },
         "contextMenu": {
             "askAeroAgent": "Itanong sa AeroAgent...",

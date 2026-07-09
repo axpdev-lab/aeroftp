@@ -333,7 +333,9 @@
             "encryption": "加密",
             "compression": "压缩",
             "encrypted": "已加密",
-            "notEncrypted": "未加密"
+            "notEncrypted": "未加密",
+            "listingDirectory": "正在列出目录...",
+            "listingPath": "正在列出 {path}..."
         },
         "contextMenu": {
             "askAeroAgent": "询问 AeroAgent...",

@@ -333,7 +333,9 @@
             "encryption": "Xifratge",
             "compression": "Compressió",
             "encrypted": "Xifrat",
-            "notEncrypted": "No xifrat"
+            "notEncrypted": "No xifrat",
+            "listingDirectory": "S'està llistant el directori...",
+            "listingPath": "S'està llistant {path}..."
         },
         "contextMenu": {
             "askAeroAgent": "Pregunta a AeroAgent...",

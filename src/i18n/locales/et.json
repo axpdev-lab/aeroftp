@@ -333,7 +333,9 @@
             "encryption": "Krüpteering",
             "compression": "Tihendus",
             "encrypted": "Krüpteeritud",
-            "notEncrypted": "Krüpteerimata"
+            "notEncrypted": "Krüpteerimata",
+            "listingDirectory": "Kataloogi loendamine...",
+            "listingPath": "{path} loendamine..."
         },
         "contextMenu": {
             "askAeroAgent": "Küsi AeroAgent-ilt...",

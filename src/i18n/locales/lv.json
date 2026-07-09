@@ -333,7 +333,9 @@
             "encryption": "Šifrēšana",
             "compression": "Saspiešana",
             "encrypted": "Šifrēts",
-            "notEncrypted": "Nešifrēts"
+            "notEncrypted": "Nešifrēts",
+            "listingDirectory": "Tiek uzskaitīts direktorijs...",
+            "listingPath": "Tiek uzskaitīts {path}..."
         },
         "contextMenu": {
             "askAeroAgent": "Jautāt AeroAgent...",

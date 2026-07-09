@@ -333,7 +333,9 @@
             "encryption": "Kryptering",
             "compression": "Komprimering",
             "encrypted": "Kryptert",
-            "notEncrypted": "Ikke kryptert"
+            "notEncrypted": "Ikke kryptert",
+            "listingDirectory": "Viser katalog...",
+            "listingPath": "Viser {path}..."
         },
         "contextMenu": {
             "askAeroAgent": "Spør AeroAgent...",

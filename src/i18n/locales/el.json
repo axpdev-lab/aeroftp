@@ -333,7 +333,9 @@
             "encryption": "Κρυπτογράφηση",
             "compression": "Συμπίεση",
             "encrypted": "Κρυπτογραφημένο",
-            "notEncrypted": "Μη κρυπτογραφημένο"
+            "notEncrypted": "Μη κρυπτογραφημένο",
+            "listingDirectory": "Ανάγνωση καταλόγου...",
+            "listingPath": "Ανάγνωση του {path}..."
         },
         "contextMenu": {
             "askAeroAgent": "Ρωτήστε το AeroAgent...",

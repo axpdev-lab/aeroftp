@@ -333,7 +333,9 @@
             "encryption": "Szyfrowanie",
             "compression": "Kompresja",
             "encrypted": "Zaszyfrowano",
-            "notEncrypted": "Niezaszyfrowano"
+            "notEncrypted": "Niezaszyfrowano",
+            "listingDirectory": "Wyświetlanie katalogu...",
+            "listingPath": "Wyświetlanie {path}..."
         },
         "contextMenu": {
             "askAeroAgent": "Zapytaj AeroAgent...",

@@ -899,6 +899,8 @@
             "deselectAll": "Deselect All",
             "downloadFiles": "Download Files",
             "editPathHint": "Click to edit path, Enter to navigate",
+            "listingDirectory": "Listing directory...",
+            "listingPath": "Listing {path}...",
             "emptyFolder": "This folder is empty",
             "files": "files",
             "folderType": "Folder",

@@ -333,7 +333,9 @@
             "encryption": "การเข้ารหัส",
             "compression": "การบีบอัด",
             "encrypted": "เข้ารหัสแล้ว",
-            "notEncrypted": "ไม่ได้เข้ารหัส"
+            "notEncrypted": "ไม่ได้เข้ารหัส",
+            "listingDirectory": "กำลังแสดงรายการไดเรกทอรี...",
+            "listingPath": "กำลังแสดงรายการ {path}..."
         },
         "contextMenu": {
             "askAeroAgent": "ถาม AeroAgent...",
