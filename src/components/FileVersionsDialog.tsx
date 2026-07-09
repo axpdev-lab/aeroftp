@@ -4,7 +4,7 @@
 import { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { save } from '@tauri-apps/plugin-dialog';
-import { X, Download, RotateCcw, History, RefreshCw } from 'lucide-react';
+import { X, Download, RotateCcw, History, RefreshCw, Trash2, AlertTriangle } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { formatBytes } from '../utils/formatters';
 import { useDraggableModal } from '../hooks/useDraggableModal';
@@ -30,6 +30,7 @@ export function FileVersionsDialog({ filePath, fileName, onClose, onRestore }: P
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionInProgress, setActionInProgress] = useState<string | null>(null);
+  const [pendingPurge, setPendingPurge] = useState<FileVersion | null>(null);
 
   useEffect(() => {
     loadVersions();
@@ -78,6 +79,23 @@ export function FileVersionsDialog({ filePath, fileName, onClose, onRestore }: P
       onRestore?.();
     } catch (err) {
       console.error('Restore version failed:', err);
+    } finally {
+      setActionInProgress(null);
+    }
+  };
+
+  const handlePurge = async (version: FileVersion) => {
+    setPendingPurge(null);
+    setActionInProgress(version.id);
+    try {
+      await invoke('provider_delete_version', {
+        path: filePath,
+        versionId: version.id,
+      });
+      await loadVersions();
+    } catch (err) {
+      console.error('Purge version failed:', err);
+      setError(String(err));
     } finally {
       setActionInProgress(null);
     }
@@ -155,6 +173,14 @@ export function FileVersionsDialog({ filePath, fileName, onClose, onRestore }: P
                             <RotateCcw size={13} />
                           </button>
                         )}
+                        <button
+                          onClick={() => setPendingPurge(v)}
+                          disabled={actionInProgress === v.id}
+                          className="p-1 text-gray-400 hover:text-red-500 disabled:opacity-50"
+                          title={t('versions.purge') || 'Permanently delete this version'}
+                        >
+                          <Trash2 size={13} />
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -164,6 +190,34 @@ export function FileVersionsDialog({ filePath, fileName, onClose, onRestore }: P
           )}
         </div>
       </div>
+
+      {/* Per-version purge confirmation (irreversible) */}
+      {pendingPurge && (
+        <div className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center" role="dialog" aria-modal="true" onClick={(e) => { e.stopPropagation(); setPendingPurge(null); }}>
+          <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-6 shadow-2xl max-w-sm animate-scale-in" onClick={e => e.stopPropagation()}>
+            <div className="flex items-start gap-2 mb-4">
+              <AlertTriangle size={18} className="text-red-500 shrink-0 mt-0.5" />
+              <p className="text-gray-900 dark:text-gray-100 text-sm">
+                {t('versions.purgeConfirm') || 'Permanently delete this version? This cannot be undone.'}
+              </p>
+            </div>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setPendingPurge(null)}
+                className="px-3 py-1.5 text-sm rounded bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-900 dark:text-gray-100"
+              >
+                {t('common.cancel')}
+              </button>
+              <button
+                onClick={() => handlePurge(pendingPurge)}
+                className="px-3 py-1.5 text-sm rounded bg-red-600 hover:bg-red-700 text-white"
+              >
+                {t('versions.purge') || 'Purge'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

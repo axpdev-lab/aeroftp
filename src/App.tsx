@@ -229,6 +229,7 @@ import { NextcloudTrashManager } from './components/NextcloudTrashManager';
 import { OpenDriveTrashManager } from './components/OpenDriveTrashManager';
 import { YandexTrashManager } from './components/YandexTrashManager';
 import { PCloudTrashManager } from './components/PCloudTrashManager';
+import { S3TrashManager } from './components/S3TrashManager';
 import { KDriveTrashManager } from './components/KDriveTrashManager';
 import { AzureTrashManager } from './components/AzureTrashManager';
 import { FilenNotesPanel } from './components/FilenNotesPanel';
@@ -1250,6 +1251,7 @@ const App: React.FC = () => {
   const [showOpenDriveTrash, setShowOpenDriveTrash] = useState(false);
   const [showYandexTrash, setShowYandexTrash] = useState(false);
   const [showPCloudTrash, setShowPCloudTrash] = useState(false);
+  const [showS3Trash, setShowS3Trash] = useState(false);
   const [showKDriveTrash, setShowKDriveTrash] = useState(false);
   const [showAzureTrash, setShowAzureTrash] = useState(false);
   const [showNextcloudTrash, setShowNextcloudTrash] = useState(false);
@@ -14603,6 +14605,12 @@ interface UpdateVerificationInfo {
             onRefreshFiles={() => loadRemoteFiles(undefined, true)}
           />
         )}
+        {showS3Trash && (
+          <S3TrashManager
+            onClose={() => setShowS3Trash(false)}
+            onRefreshFiles={() => loadRemoteFiles(undefined, true)}
+          />
+        )}
         {showKDriveTrash && (
           <KDriveTrashManager
             onClose={() => setShowKDriveTrash(false)}
@@ -15700,9 +15708,12 @@ interface UpdateVerificationInfo {
                         pcloud: () => setShowPCloudTrash(true),
                         onedrive: () => setShowOneDriveTrash(true),
                         backblaze: () => setShowB2Hidden(true),
+                        s3: () => setShowS3Trash(true),
                       };
                       let handler = trashMap[proto || ''];
-                      if (!handler && isAzure) {
+                      // Azure rides on the s3 protocol key: its own trash view wins
+                      // over the generic S3 version/trash browser.
+                      if (isAzure) {
                         handler = () => setShowAzureTrash(true);
                       }
                       // Nextcloud trash API only works on Nextcloud/FeliCloud WebDAV servers
