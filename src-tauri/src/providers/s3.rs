@@ -27,7 +27,7 @@ use super::sts;
 use super::{
     sanitize_api_error, FileVersion, MultipartHandle, ProviderError, ProviderTransferExecutorKind,
     ProviderType, RemoteEntry, S3Config, ShareLinkCapabilities, ShareLinkOptions, ShareLinkResult,
-    StorageProvider, UploadedPart,
+    StorageProvider, TrashEntry, UploadedPart,
 };
 
 /// Returns true when the S3 endpoint targets a loopback address or a known
@@ -3052,70 +3052,10 @@ impl StorageProvider for S3Provider {
             prefix
         );
 
-        // DELETE-01: Use S3 batch delete (POST /?delete) for up to 1000 keys per request
-        for chunk in keys.chunks(1000) {
-            // A large multi-chunk delete can outrun the STS credential lifetime;
-            // re-check freshness per chunk (no-op when not near expiry / no role).
-            self.ensure_fresh_credentials().await?;
-            let mut xml = String::from("<Delete><Quiet>true</Quiet>");
-            for key in chunk {
-                xml.push_str(&format!(
-                    "<Object><Key>{}</Key></Object>",
-                    quick_xml::escape::escape(key)
-                ));
-            }
-            xml.push_str("</Delete>");
-
-            let xml_bytes = xml.into_bytes();
-
-            // S3 batch delete requires Content-MD5
-            let md5_digest = {
-                use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
-                use md5::{Digest, Md5};
-                let mut hasher = Md5::new();
-                hasher.update(&xml_bytes);
-                BASE64.encode(hasher.finalize())
-            };
-
-            // Build signed request manually (need custom Content-MD5 header)
-            let url = format!("{}?delete", self.build_url(""));
-            let payload_hash = {
-                use sha2::{Digest, Sha256};
-                let mut hasher = Sha256::new();
-                hasher.update(&xml_bytes);
-                hex::encode(hasher.finalize())
-            };
-
-            let mut headers = HashMap::new();
-            headers.insert("content-md5".to_string(), md5_digest);
-            let authorization = self.sign_request("POST", &url, &mut headers, &payload_hash)?;
-
-            let mut request = self.client.post(&url);
-            for (k, v) in headers.iter() {
-                request = request.header(k, v);
-            }
-            request = request.header("Authorization", &authorization);
-            request = request.header("Content-Length", xml_bytes.len().to_string());
-            request = request.body(xml_bytes);
-
-            let response = request
-                .send()
-                .await
-                .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
-
-            if !response.status().is_success() {
-                // Fall back to sequential delete if batch fails
-                tracing::warn!(
-                    "S3 batch delete failed ({}), falling back to sequential",
-                    response.status()
-                );
-                for key in chunk {
-                    let _ = self.s3_request(Method::DELETE, key, None, None).await;
-                }
-            }
-        }
-
-        Ok(())
+        // DELETE-01: Use S3 batch delete (POST /?delete) for up to 1000 keys per
+        // request. Delete the current version of each key (no version id).
+        let objects: Vec<(String, Option<String>)> = keys.into_iter().map(|k| (k, None)).collect();
+        self.batch_delete_objects(&objects).await
     }
 
     async fn rename(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
@@ -4230,6 +4170,121 @@ impl StorageProvider for S3Provider {
             }
         }
     }
+
+    /// Hard-delete a single version or delete marker: `DELETE /{key}?versionId={id}`.
+    ///
+    /// With a delete marker's own version id this "undeletes" a soft-deleted
+    /// object (makes the prior version current again with no data copy); with a
+    /// content version's id it permanently purges that version.
+    async fn delete_version(&mut self, path: &str, version_id: &str) -> Result<(), ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+        self.ensure_fresh_credentials().await?;
+
+        let key = path.trim_start_matches('/');
+        let response = self
+            .s3_request(
+                Method::DELETE,
+                key,
+                Some(&[("versionId", version_id)]),
+                None,
+            )
+            .await?;
+
+        match response.status() {
+            StatusCode::OK | StatusCode::NO_CONTENT => {
+                info!("Purged version '{}' of '{}'", version_id, key);
+                Ok(())
+            }
+            status => {
+                let body = response.text().await.unwrap_or_default();
+                Err(ProviderError::ServerError(format!(
+                    "Delete version failed ({}): {}",
+                    status,
+                    sanitize_api_error(&body)
+                )))
+            }
+        }
+    }
+
+    /// List every version AND delete marker under `prefix`, grouped by key
+    /// (powers the trash browse). Unlike `list_versions` (per-key, drops
+    /// markers), this keeps `<DeleteMarker>` elements and does not filter to an
+    /// exact key. When `include_noncurrent` is false, only delete markers and
+    /// the latest version of each key are returned.
+    async fn list_object_versions(
+        &mut self,
+        prefix: &str,
+        include_noncurrent: bool,
+    ) -> Result<Vec<TrashEntry>, ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+
+        let prefix = prefix.trim_start_matches('/');
+        let mut all_entries: Vec<TrashEntry> = Vec::new();
+        let mut key_marker: Option<String> = None;
+        let mut version_id_marker: Option<String> = None;
+
+        loop {
+            let mut params: Vec<(&str, &str)> = vec![("versions", ""), ("prefix", prefix)];
+
+            let km_str: String;
+            let vm_str: String;
+            if let Some(ref km) = key_marker {
+                km_str = km.clone();
+                params.push(("key-marker", &km_str));
+            }
+            if let Some(ref vm) = version_id_marker {
+                vm_str = vm.clone();
+                params.push(("version-id-marker", &vm_str));
+            }
+
+            let response = self
+                .s3_request(Method::GET, "", Some(&params), None)
+                .await?;
+
+            let status = response.status();
+            if !status.is_success() {
+                let body = response.text().await.unwrap_or_default();
+                return Err(ProviderError::ServerError(format!(
+                    "ListObjectVersions failed ({}): {}",
+                    status,
+                    sanitize_api_error(&body)
+                )));
+            }
+
+            let xml_str = response
+                .text()
+                .await
+                .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+
+            let (entries, is_truncated, next_key_marker, next_version_id_marker) =
+                parse_object_versions_page(&xml_str)?;
+            all_entries.extend(entries);
+
+            if is_truncated {
+                key_marker = next_key_marker;
+                version_id_marker = next_version_id_marker;
+            } else {
+                break;
+            }
+        }
+
+        if !include_noncurrent {
+            // Trash view: only delete markers and the current version of each key.
+            all_entries.retain(|e| e.is_delete_marker || e.is_latest);
+        }
+
+        info!(
+            "S3 ListObjectVersions: {} entries under prefix '{}' (include_noncurrent={})",
+            all_entries.len(),
+            prefix,
+            include_noncurrent
+        );
+        Ok(all_entries)
+    }
 }
 
 // =============================================================================
@@ -4237,6 +4292,77 @@ impl StorageProvider for S3Provider {
 // =============================================================================
 
 impl S3Provider {
+    /// Batch-delete objects via `POST /?delete`, in chunks of 1000.
+    ///
+    /// Each entry is `(key, Option<version_id>)`: `None` deletes the current
+    /// version (recursive delete), `Some(id)` deletes that specific version or
+    /// delete marker (version-aware purge / empty-trash sweep). Reuses the
+    /// Content-MD5 + SigV4 signed path; a failed chunk falls back to sequential
+    /// deletes so a single bad key does not abort the whole sweep.
+    pub async fn batch_delete_objects(
+        &self,
+        objects: &[(String, Option<String>)],
+    ) -> Result<(), ProviderError> {
+        for chunk in objects.chunks(1000) {
+            // A large multi-chunk delete can outrun the STS credential lifetime;
+            // re-check freshness per chunk (no-op when not near expiry / no role).
+            self.ensure_fresh_credentials().await?;
+
+            let xml_bytes = build_batch_delete_xml(chunk);
+
+            // S3 batch delete requires Content-MD5
+            let md5_digest = {
+                use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
+                use md5::{Digest, Md5};
+                let mut hasher = Md5::new();
+                hasher.update(&xml_bytes);
+                BASE64.encode(hasher.finalize())
+            };
+
+            // Build signed request manually (need custom Content-MD5 header)
+            let url = format!("{}?delete", self.build_url(""));
+            let payload_hash = {
+                use sha2::{Digest, Sha256};
+                let mut hasher = Sha256::new();
+                hasher.update(&xml_bytes);
+                hex::encode(hasher.finalize())
+            };
+
+            let mut headers = HashMap::new();
+            headers.insert("content-md5".to_string(), md5_digest);
+            let authorization = self.sign_request("POST", &url, &mut headers, &payload_hash)?;
+
+            let mut request = self.client.post(&url);
+            for (k, v) in headers.iter() {
+                request = request.header(k, v);
+            }
+            request = request.header("Authorization", &authorization);
+            request = request.header("Content-Length", xml_bytes.len().to_string());
+            request = request.body(xml_bytes);
+
+            let response = request
+                .send()
+                .await
+                .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+
+            if !response.status().is_success() {
+                // Fall back to sequential delete if batch fails
+                tracing::warn!(
+                    "S3 batch delete failed ({}), falling back to sequential",
+                    response.status()
+                );
+                for (key, version_id) in chunk {
+                    let params = version_id.as_ref().map(|v| vec![("versionId", v.as_str())]);
+                    let _ = self
+                        .s3_request(Method::DELETE, key, params.as_deref(), None)
+                        .await;
+                }
+            }
+        }
+
+        Ok(())
+    }
+
     /// Change the storage class of an existing object via server-side copy.
     /// Uses CopyObject with x-amz-storage-class to change class in-place.
     pub async fn change_storage_class(
@@ -4715,6 +4841,167 @@ async fn download_range_to_offset(
     file.flush().await.map_err(ProviderError::IoError)?;
     file.sync_all().await.map_err(ProviderError::IoError)?;
     Ok(())
+}
+
+/// Build the `<Delete>` request body for one chunk of a multi-object delete.
+///
+/// Each object may carry an optional version id: `Some(id)` targets that
+/// specific version or delete marker (version-aware purge / empty-trash),
+/// `None` targets the current version (plain recursive delete).
+fn build_batch_delete_xml(chunk: &[(String, Option<String>)]) -> Vec<u8> {
+    let mut xml = String::from("<Delete><Quiet>true</Quiet>");
+    for (key, version_id) in chunk {
+        xml.push_str("<Object><Key>");
+        xml.push_str(&quick_xml::escape::escape(key));
+        xml.push_str("</Key>");
+        if let Some(vid) = version_id {
+            xml.push_str("<VersionId>");
+            xml.push_str(&quick_xml::escape::escape(vid));
+            xml.push_str("</VersionId>");
+        }
+        xml.push_str("</Object>");
+    }
+    xml.push_str("</Delete>");
+    xml.into_bytes()
+}
+
+/// One parsed page of a ListObjectVersions response: the entries plus the
+/// pagination markers `(entries, is_truncated, next_key_marker, next_version_id_marker)`.
+type VersionsPage = (Vec<TrashEntry>, bool, Option<String>, Option<String>);
+
+/// Parse one page of a ListVersionsResult document into `TrashEntry` rows.
+///
+/// Captures both `<Version>` and `<DeleteMarker>` elements across every key (no
+/// exact-key filter), so it powers the prefix-wide trash browse. Delete markers
+/// report `size` 0. Returns the page entries plus the pagination markers.
+fn parse_object_versions_page(xml_str: &str) -> Result<VersionsPage, ProviderError> {
+    #[derive(PartialEq)]
+    enum Elem {
+        None,
+        Version,
+        DeleteMarker,
+    }
+
+    let mut reader = Reader::from_str(xml_str);
+    reader.config_mut().trim_text(true);
+    let mut buf = Vec::new();
+
+    let mut entries: Vec<TrashEntry> = Vec::new();
+    let mut elem = Elem::None;
+    let mut current_tag = String::new();
+
+    // Fields for the current <Version> / <DeleteMarker> element
+    let mut e_key: Option<String> = None;
+    let mut e_version_id: Option<String> = None;
+    let mut e_is_latest: Option<String> = None;
+    let mut e_last_modified: Option<String> = None;
+    let mut e_size: Option<String> = None;
+
+    // Pagination fields
+    let mut is_truncated = false;
+    let mut next_key_marker: Option<String> = None;
+    let mut next_version_id_marker: Option<String> = None;
+    let mut in_is_truncated = false;
+    let mut in_next_key_marker = false;
+    let mut in_next_version_id_marker = false;
+
+    loop {
+        match reader.read_event_into(&mut buf) {
+            Ok(Event::Start(ref e)) => {
+                let tag_name = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                match tag_name.as_str() {
+                    "Version" | "DeleteMarker" => {
+                        elem = if tag_name == "Version" {
+                            Elem::Version
+                        } else {
+                            Elem::DeleteMarker
+                        };
+                        e_key = None;
+                        e_version_id = None;
+                        e_is_latest = None;
+                        e_last_modified = None;
+                        e_size = None;
+                    }
+                    "IsTruncated" => in_is_truncated = true,
+                    "NextKeyMarker" => in_next_key_marker = true,
+                    "NextVersionIdMarker" => in_next_version_id_marker = true,
+                    _ => {
+                        current_tag = tag_name;
+                    }
+                }
+            }
+            Ok(Event::Text(ref e)) => {
+                let text = String::from_utf8_lossy(e.as_ref()).trim().to_string();
+                if text.is_empty() {
+                    buf.clear();
+                    continue;
+                }
+
+                if in_is_truncated {
+                    is_truncated = text == "true";
+                }
+                if in_next_key_marker {
+                    next_key_marker = Some(text.clone());
+                }
+                if in_next_version_id_marker {
+                    next_version_id_marker = Some(text.clone());
+                }
+
+                if elem != Elem::None {
+                    match current_tag.as_str() {
+                        "Key" => e_key = Some(text),
+                        "VersionId" => e_version_id = Some(text),
+                        "IsLatest" => e_is_latest = Some(text),
+                        "LastModified" => e_last_modified = Some(text),
+                        "Size" => e_size = Some(text),
+                        _ => {}
+                    }
+                }
+            }
+            Ok(Event::End(ref e)) => {
+                let tag_name = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                match tag_name.as_str() {
+                    "Version" | "DeleteMarker" => {
+                        let is_delete_marker = tag_name == "DeleteMarker";
+                        if let Some(key) = e_key.take() {
+                            let size = if is_delete_marker {
+                                0
+                            } else {
+                                e_size.as_ref().and_then(|s| s.parse().ok()).unwrap_or(0)
+                            };
+                            entries.push(TrashEntry {
+                                key,
+                                version_id: e_version_id.clone().unwrap_or_default(),
+                                is_delete_marker,
+                                is_latest: e_is_latest.as_deref() == Some("true"),
+                                size,
+                                last_modified: e_last_modified.clone(),
+                            });
+                        }
+                        elem = Elem::None;
+                    }
+                    "IsTruncated" => in_is_truncated = false,
+                    "NextKeyMarker" => in_next_key_marker = false,
+                    "NextVersionIdMarker" => in_next_version_id_marker = false,
+                    _ => {}
+                }
+                current_tag.clear();
+            }
+            Ok(Event::Eof) => break,
+            Err(e) => {
+                return Err(ProviderError::ParseError(format!("XML parse error: {}", e)));
+            }
+            _ => {}
+        }
+        buf.clear();
+    }
+
+    Ok((
+        entries,
+        is_truncated,
+        next_key_marker,
+        next_version_id_marker,
+    ))
 }
 
 #[cfg(test)]
@@ -5687,5 +5974,109 @@ mod tests {
             headers.get("x-amz-storage-class"),
             Some(&"STANDARD_IA".to_string())
         );
+    }
+
+    /// Trash-01: `parse_object_versions_page` captures both `<Version>` and
+    /// `<DeleteMarker>` elements across several keys, preserving grouping,
+    /// `is_delete_marker`, `is_latest`, and sizes (0 for markers), plus the
+    /// pagination markers.
+    #[test]
+    fn parse_object_versions_page_captures_versions_and_markers() {
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<ListVersionsResult>
+    <IsTruncated>true</IsTruncated>
+    <NextKeyMarker>docs/report.pdf</NextKeyMarker>
+    <NextVersionIdMarker>v-next-999</NextVersionIdMarker>
+    <DeleteMarker>
+        <Key>docs/report.pdf</Key>
+        <VersionId>del-marker-001</VersionId>
+        <IsLatest>true</IsLatest>
+        <LastModified>2026-07-09T10:00:00.000Z</LastModified>
+    </DeleteMarker>
+    <Version>
+        <Key>docs/report.pdf</Key>
+        <VersionId>v-002</VersionId>
+        <IsLatest>false</IsLatest>
+        <LastModified>2026-07-08T09:00:00.000Z</LastModified>
+        <Size>2048</Size>
+    </Version>
+    <Version>
+        <Key>photos/cat.jpg</Key>
+        <VersionId>v-100</VersionId>
+        <IsLatest>true</IsLatest>
+        <LastModified>2026-07-07T08:00:00.000Z</LastModified>
+        <Size>512000</Size>
+    </Version>
+</ListVersionsResult>"#;
+
+        let (entries, is_truncated, next_key_marker, next_version_id_marker) =
+            parse_object_versions_page(xml).expect("parse should succeed");
+
+        assert_eq!(entries.len(), 3, "one marker + two versions");
+        assert!(is_truncated);
+        assert_eq!(next_key_marker.as_deref(), Some("docs/report.pdf"));
+        assert_eq!(next_version_id_marker.as_deref(), Some("v-next-999"));
+
+        // Row 0: the delete marker (latest state of docs/report.pdf), size 0.
+        let marker = &entries[0];
+        assert_eq!(marker.key, "docs/report.pdf");
+        assert_eq!(marker.version_id, "del-marker-001");
+        assert!(marker.is_delete_marker);
+        assert!(marker.is_latest);
+        assert_eq!(marker.size, 0);
+        assert_eq!(
+            marker.last_modified.as_deref(),
+            Some("2026-07-09T10:00:00.000Z")
+        );
+
+        // Row 1: a recoverable non-current version of the same key.
+        let old = &entries[1];
+        assert_eq!(old.key, "docs/report.pdf");
+        assert_eq!(old.version_id, "v-002");
+        assert!(!old.is_delete_marker);
+        assert!(!old.is_latest);
+        assert_eq!(old.size, 2048);
+
+        // Row 2: a different key's current version.
+        let cat = &entries[2];
+        assert_eq!(cat.key, "photos/cat.jpg");
+        assert!(!cat.is_delete_marker);
+        assert!(cat.is_latest);
+        assert_eq!(cat.size, 512000);
+    }
+
+    /// Trash-02: `build_batch_delete_xml` emits `<VersionId>` for version-aware
+    /// entries (and omits it for current-version entries), escapes special
+    /// characters, and the batch helper chunks at 1000 objects per request.
+    #[test]
+    fn build_batch_delete_xml_carries_version_id_and_chunks() {
+        // Mixed: one version-specific object, one current-version object with an
+        // XML-sensitive key.
+        let chunk = vec![
+            (
+                "docs/report.pdf".to_string(),
+                Some("del-marker-001".to_string()),
+            ),
+            ("a&b/<c>.txt".to_string(), None),
+        ];
+        let xml = String::from_utf8(build_batch_delete_xml(&chunk)).unwrap();
+
+        assert!(xml.starts_with("<Delete><Quiet>true</Quiet>"));
+        assert!(xml.ends_with("</Delete>"));
+        assert!(xml.contains(
+            "<Object><Key>docs/report.pdf</Key><VersionId>del-marker-001</VersionId></Object>"
+        ));
+        // The current-version object carries no <VersionId>.
+        assert!(xml.contains("<Object><Key>a&amp;b/&lt;c&gt;.txt</Key></Object>"));
+        assert!(!xml.contains("<VersionId>del-marker-001</VersionId><VersionId>"));
+
+        // Exactly one <VersionId> across the two objects.
+        assert_eq!(xml.matches("<VersionId>").count(), 1);
+
+        // Chunking: 2500 objects split into 1000 / 1000 / 500.
+        let many: Vec<(String, Option<String>)> =
+            (0..2500).map(|i| (format!("k{i}"), None)).collect();
+        let chunk_sizes: Vec<usize> = many.chunks(1000).map(|c| c.len()).collect();
+        assert_eq!(chunk_sizes, vec![1000, 1000, 500]);
     }
 }

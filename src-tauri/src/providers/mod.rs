@@ -826,6 +826,20 @@ pub trait StorageProvider: Send + Sync {
         Err(ProviderError::NotSupported("list_versions".to_string()))
     }
 
+    /// List every version AND delete marker under a prefix (powers the trash browse).
+    ///
+    /// When `include_noncurrent` is false, emit only delete markers and the
+    /// latest version of each key; when true, emit all non-current versions too.
+    async fn list_object_versions(
+        &mut self,
+        _prefix: &str,
+        _include_noncurrent: bool,
+    ) -> Result<Vec<TrashEntry>, ProviderError> {
+        Err(ProviderError::NotSupported(
+            "list_object_versions".to_string(),
+        ))
+    }
+
     /// Download a specific version of a file
     async fn download_version(
         &mut self,
@@ -843,6 +857,15 @@ pub trait StorageProvider: Send + Sync {
         _version_id: &str,
     ) -> Result<(), ProviderError> {
         Err(ProviderError::NotSupported("restore_version".to_string()))
+    }
+
+    /// Permanently delete a single version or delete marker (hard-delete).
+    async fn delete_version(
+        &mut self,
+        _path: &str,
+        _version_id: &str,
+    ) -> Result<(), ProviderError> {
+        Err(ProviderError::NotSupported("delete_version".to_string()))
     }
 
     /// Check if provider supports file locking

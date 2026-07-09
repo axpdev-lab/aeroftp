@@ -1775,6 +1775,27 @@ pub struct FileVersion {
     pub modified_by: Option<String>,
 }
 
+/// One row in the S3-family trash / version view (from ListObjectVersions).
+///
+/// Unlike [`FileVersion`] (per-key history, drops delete markers), a
+/// `TrashEntry` captures every version AND delete marker under a prefix, so the
+/// trash browse can show soft-deleted objects and offer restore/purge.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TrashEntry {
+    /// Original object key (decrypted for display under a crypt overlay)
+    pub key: String,
+    /// S3 version identifier of this version or delete marker
+    pub version_id: String,
+    /// True when this row is a delete marker, false for a recoverable version
+    pub is_delete_marker: bool,
+    /// True when this is the latest version/marker for its key
+    pub is_latest: bool,
+    /// Size in bytes (0 for a delete marker)
+    pub size: u64,
+    /// Last modified timestamp (ISO 8601)
+    pub last_modified: Option<String>,
+}
+
 /// Lock information for WebDAV locking
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LockInfo {
