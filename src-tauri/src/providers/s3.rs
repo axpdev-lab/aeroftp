@@ -2980,25 +2980,16 @@ impl StorageProvider for S3Provider {
         }
     }
 
-    async fn mkdir(&mut self, path: &str) -> Result<(), ProviderError> {
+    async fn mkdir(&mut self, _path: &str) -> Result<(), ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
 
-        // S3 doesn't have real directories, but we can create a zero-byte object with trailing /
-        let key = format!("{}/", path.trim_matches('/'));
-
-        let response = self
-            .s3_request(Method::PUT, &key, None, Some(Vec::new()))
-            .await?;
-
-        match response.status() {
-            StatusCode::OK | StatusCode::CREATED | StatusCode::NO_CONTENT => Ok(()),
-            status => Err(ProviderError::ServerError(format!(
-                "mkdir failed with status: {}",
-                status
-            ))),
-        }
+        // S3 has no real directories; rclone-style, we do not persist an
+        // empty-folder marker object (owner decision #266, see
+        // docs/dev/DECISION-s3-marker-266.md). A prefix comes into existence
+        // once it holds an object, so mkdir is a no-op.
+        Ok(())
     }
 
     async fn delete(&mut self, path: &str) -> Result<(), ProviderError> {
