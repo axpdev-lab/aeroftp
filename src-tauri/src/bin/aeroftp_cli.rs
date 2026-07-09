@@ -51438,7 +51438,7 @@ fn cli_tool_definitions() -> Vec<ftp_client_gui_lib::ai::AIToolDefinition> {
             "output_path" => ("string", "Output archive file path", true),
             "format" => ("string", "Archive format: zip, 7z, tar, tar.gz, tar.bz2, tar.xz", false),
             "password" => ("string", "Encryption password", false),
-            "compression_level" => ("number", "Compression level 0-9 (default: 6)", false)
+            "compression_level" => ("number", "Compression level 0-9 (default: 5)", false)
         }),
         tool!("archive_decompress", "Extract an archive", {
             "archive_path" => ("string", "Path to the archive file", true),
