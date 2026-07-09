@@ -319,6 +319,61 @@ impl RemoteBackend for McpRemoteBackend {
             .await
             .map(Some)
     }
+
+    async fn list_versions(
+        &self,
+        path: &str,
+    ) -> Result<Vec<crate::providers::FileVersion>, String> {
+        let path = path.to_string();
+        self.with_provider(move |p| Box::pin(async move { p.list_versions(&path).await }))
+            .await
+    }
+
+    async fn restore_version(&self, path: &str, version_id: &str) -> Result<(), String> {
+        let path = path.to_string();
+        let version_id = version_id.to_string();
+        self.with_provider(move |p| {
+            Box::pin(async move { p.restore_version(&path, &version_id).await })
+        })
+        .await
+    }
+
+    async fn delete_version(&self, path: &str, version_id: &str) -> Result<(), String> {
+        let path = path.to_string();
+        let version_id = version_id.to_string();
+        self.with_provider(move |p| {
+            Box::pin(async move { p.delete_version(&path, &version_id).await })
+        })
+        .await
+    }
+
+    async fn list_object_versions(
+        &self,
+        prefix: &str,
+        include_noncurrent: bool,
+    ) -> Result<Vec<crate::providers::TrashEntry>, String> {
+        let prefix = prefix.to_string();
+        self.with_provider(move |p| {
+            Box::pin(async move { p.list_object_versions(&prefix, include_noncurrent).await })
+        })
+        .await
+    }
+
+    async fn empty_object_versions(
+        &self,
+        prefix: &str,
+        include_noncurrent: bool,
+        dry_run: bool,
+    ) -> Result<(u64, u64), String> {
+        let prefix = prefix.to_string();
+        self.with_provider(move |p| {
+            Box::pin(async move {
+                p.empty_object_versions(&prefix, include_noncurrent, dry_run)
+                    .await
+            })
+        })
+        .await
+    }
 }
 
 #[cfg(test)]

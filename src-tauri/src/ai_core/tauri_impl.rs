@@ -572,6 +572,115 @@ impl RemoteBackend for TauriRemoteBackend {
             }
         }
     }
+
+    async fn list_versions(
+        &self,
+        path: &str,
+    ) -> Result<Vec<crate::providers::FileVersion>, String> {
+        match self {
+            TauriRemoteBackend::Active { app } => {
+                if let Some(ref mut p) = *Self::active_provider(app).lock().await {
+                    return p.list_versions(path).await.map_err(|e| e.to_string());
+                }
+                Err("versions require an active provider connection".to_string())
+            }
+            TauriRemoteBackend::Temp { provider } => provider
+                .lock()
+                .await
+                .list_versions(path)
+                .await
+                .map_err(|e| e.to_string()),
+        }
+    }
+
+    async fn restore_version(&self, path: &str, version_id: &str) -> Result<(), String> {
+        match self {
+            TauriRemoteBackend::Active { app } => {
+                if let Some(ref mut p) = *Self::active_provider(app).lock().await {
+                    return p
+                        .restore_version(path, version_id)
+                        .await
+                        .map_err(|e| e.to_string());
+                }
+                Err("versions require an active provider connection".to_string())
+            }
+            TauriRemoteBackend::Temp { provider } => provider
+                .lock()
+                .await
+                .restore_version(path, version_id)
+                .await
+                .map_err(|e| e.to_string()),
+        }
+    }
+
+    async fn delete_version(&self, path: &str, version_id: &str) -> Result<(), String> {
+        match self {
+            TauriRemoteBackend::Active { app } => {
+                if let Some(ref mut p) = *Self::active_provider(app).lock().await {
+                    return p
+                        .delete_version(path, version_id)
+                        .await
+                        .map_err(|e| e.to_string());
+                }
+                Err("versions require an active provider connection".to_string())
+            }
+            TauriRemoteBackend::Temp { provider } => provider
+                .lock()
+                .await
+                .delete_version(path, version_id)
+                .await
+                .map_err(|e| e.to_string()),
+        }
+    }
+
+    async fn list_object_versions(
+        &self,
+        prefix: &str,
+        include_noncurrent: bool,
+    ) -> Result<Vec<crate::providers::TrashEntry>, String> {
+        match self {
+            TauriRemoteBackend::Active { app } => {
+                if let Some(ref mut p) = *Self::active_provider(app).lock().await {
+                    return p
+                        .list_object_versions(prefix, include_noncurrent)
+                        .await
+                        .map_err(|e| e.to_string());
+                }
+                Err("trash browse requires an active provider connection".to_string())
+            }
+            TauriRemoteBackend::Temp { provider } => provider
+                .lock()
+                .await
+                .list_object_versions(prefix, include_noncurrent)
+                .await
+                .map_err(|e| e.to_string()),
+        }
+    }
+
+    async fn empty_object_versions(
+        &self,
+        prefix: &str,
+        include_noncurrent: bool,
+        dry_run: bool,
+    ) -> Result<(u64, u64), String> {
+        match self {
+            TauriRemoteBackend::Active { app } => {
+                if let Some(ref mut p) = *Self::active_provider(app).lock().await {
+                    return p
+                        .empty_object_versions(prefix, include_noncurrent, dry_run)
+                        .await
+                        .map_err(|e| e.to_string());
+                }
+                Err("trash empty requires an active provider connection".to_string())
+            }
+            TauriRemoteBackend::Temp { provider } => provider
+                .lock()
+                .await
+                .empty_object_versions(prefix, include_noncurrent, dry_run)
+                .await
+                .map_err(|e| e.to_string()),
+        }
+    }
 }
 
 fn temp_upload_path() -> std::path::PathBuf {

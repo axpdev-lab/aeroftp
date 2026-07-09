@@ -1782,8 +1782,14 @@ pub struct FileVersion {
 /// trash browse can show soft-deleted objects and offer restore/purge.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TrashEntry {
-    /// Original object key (decrypted for display under a crypt overlay)
+    /// Raw object key exactly as returned by the backend. Restore and purge
+    /// round-trip this token verbatim, so it stays byte-for-byte raw (ciphertext
+    /// under a crypt overlay); the UI shows [`display_key`](Self::display_key).
     pub key: String,
+    /// Human-facing key: equal to [`key`](Self::key) normally, and the decrypted
+    /// plaintext key when a crypt overlay is live. Display only, never sent back
+    /// for restore/purge (that uses the raw `key`), mirroring the #399 contract.
+    pub display_key: String,
     /// S3 version identifier of this version or delete marker
     pub version_id: String,
     /// True when this row is a delete marker, false for a recoverable version

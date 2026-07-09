@@ -1295,6 +1295,41 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             surfaces: remote_surfaces,
         },
         ToolDef {
+            name: "remote_versions",
+            description: "Browse and manage a remote file's version history (S3-family and other version-aware providers). action=list returns versions newest-first ({version_id, modified, size, modified_by}); action=restore copies an older version forward to a new current version (needs version_id); action=purge permanently deletes one version (needs version_id, irreversible). Defaults to list.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "server": {"type": "string"},
+                    "path": {"type": "string", "description": "Remote file path"},
+                    "action": {"type": "string", "enum": ["list", "restore", "purge"], "description": "Default: list"},
+                    "version_id": {"type": "string", "description": "Required for restore and purge (from action=list)"},
+                },
+                "required": ["path"],
+            }),
+            danger: DangerLevel::High,
+            surfaces: remote_surfaces,
+        },
+        ToolDef {
+            name: "remote_trash",
+            description: "Browse and manage the S3-family soft-delete trash under a prefix (every version and delete marker from ListObjectVersions). action=list returns entries ({key, display_key, version_id, is_delete_marker, is_latest, size, last_modified}); set include_noncurrent=true to also list older versions. action=undelete drops a delete marker so the object reappears (needs key+version_id); action=restore copies an older version forward (needs key+version_id); action=purge permanently removes one version or marker (needs key+version_id); action=empty purges the whole trash under the prefix (set dry_run=true to preview the count/bytes without deleting). All destructive actions are irreversible. S3 only. Defaults to list.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "server": {"type": "string"},
+                    "prefix": {"type": "string", "description": "Key prefix to scope the trash (default: whole bucket)"},
+                    "action": {"type": "string", "enum": ["list", "undelete", "restore", "purge", "empty"], "description": "Default: list"},
+                    "key": {"type": "string", "description": "Raw object key from action=list; required for undelete, restore, purge"},
+                    "version_id": {"type": "string", "description": "Required for undelete, restore, purge"},
+                    "include_noncurrent": {"type": "boolean", "description": "List older (non-current) versions too. Default false."},
+                    "dry_run": {"type": "boolean", "description": "For action=empty: preview only, delete nothing. Default false."},
+                },
+                "required": [],
+            }),
+            danger: DangerLevel::High,
+            surfaces: remote_surfaces,
+        },
+        ToolDef {
             name: "aeroftp_storage_quota",
             description: "Get storage usage and quota for a remote server. By default returns the provider's reported quota (fast, one API call). For backends with no quota API (raw FTP/FTPS, most S3/WebDAV) set scan:true to recursively sum file sizes and get a real used figure (mirrors CLI `df --scan`); combined with a provider total it yields used/total/used_percent. The scan is bounded (depth 100, 500k entries; scan_truncated:true when a cap is hit) and never runs unless you opt in. Use full:true to scan from the account root, or path to scan a specific subtree (default '/').",
             input_schema: json!({
@@ -2096,7 +2131,9 @@ pub async fn dispatch_tool(
         | "aeroftp_agent_connect"
         | "agent_connect"
         | "remote_agent_connect"
-        | "server_exec" => remote_tools::dispatch_remote_tool(ctx, tool_name, args).await,
+        | "server_exec"
+        | "remote_versions"
+        | "remote_trash" => remote_tools::dispatch_remote_tool(ctx, tool_name, args).await,
         // ─── Area D: rag_*, agent_memory_* ──────────────────────────────────
         "rag_index" => agent_tools::rag_index(ctx, args).await,
         "rag_search" => agent_tools::rag_search(ctx, args).await,

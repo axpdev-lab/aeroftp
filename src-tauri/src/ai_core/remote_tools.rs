@@ -375,6 +375,8 @@ pub async fn dispatch_remote_tool(
         "aeroftp_reconcile" => reconcile(ctx, args).await,
         "aeroftp_agent_connect" => agent_connect(ctx, args).await,
         "server_exec" => server_exec(ctx, args).await,
+        "remote_versions" => remote_versions(ctx, args).await,
+        "remote_trash" => remote_trash(ctx, args).await,
         _ => Err(ToolError::NotMigrated(tool_name.to_string())),
     }
 }
@@ -829,6 +831,156 @@ async fn rename(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
     let backend = ctx.remote_backend(&server).await.map_err(backend_error)?;
     backend.rename(&from, &to).await.map_err(ToolError::Exec)?;
     Ok(json!({ "server": server, "from": from, "to": to, "renamed": true }))
+}
+
+/// `remote_versions`: browse and manage a file's version history.
+/// action=list returns the versions (newest first); restore copies an older
+/// version forward to a new current version; purge permanently removes one
+/// version (irreversible). restore/purge require `version_id`.
+async fn remote_versions(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
+    let server = normalize_server(args)?;
+    let action = get_str_opt(args, "action").unwrap_or_else(|| "list".to_string());
+    let path = get_str(args, "path")?;
+    validate_remote_path(&path, "path")?;
+    let backend = ctx.remote_backend(&server).await.map_err(backend_error)?;
+    match action.as_str() {
+        "list" => {
+            let versions = backend
+                .list_versions(&path)
+                .await
+                .map_err(ToolError::Exec)?;
+            let items: Vec<Value> = versions
+                .iter()
+                .map(|v| {
+                    json!({
+                        "version_id": v.id,
+                        "modified": v.modified,
+                        "size": v.size,
+                        "modified_by": v.modified_by,
+                    })
+                })
+                .collect();
+            Ok(json!({
+                "server": server,
+                "path": path,
+                "count": items.len(),
+                "versions": items,
+            }))
+        }
+        "restore" => {
+            let version_id = get_str(args, "version_id")?;
+            backend
+                .restore_version(&path, &version_id)
+                .await
+                .map_err(ToolError::Exec)?;
+            Ok(
+                json!({ "server": server, "path": path, "version_id": version_id, "restored": true }),
+            )
+        }
+        "purge" => {
+            let version_id = get_str(args, "version_id")?;
+            backend
+                .delete_version(&path, &version_id)
+                .await
+                .map_err(ToolError::Exec)?;
+            Ok(json!({ "server": server, "path": path, "version_id": version_id, "purged": true }))
+        }
+        other => Err(ToolError::InvalidArgs {
+            tool: "remote_versions".to_string(),
+            reason: format!("unknown action '{}' (expected list, restore, purge)", other),
+        }),
+    }
+}
+
+/// `remote_trash`: browse and manage the S3-family soft-delete trash under a
+/// prefix. action=list returns every version and delete marker (with
+/// include_noncurrent to include older versions); undelete drops a delete marker
+/// so the object reappears; restore copies an older version forward; purge
+/// permanently removes one version or marker; empty purges the whole trash under
+/// the prefix (dry_run previews the count/bytes without deleting). All destructive
+/// actions are irreversible.
+async fn remote_trash(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
+    let server = normalize_server(args)?;
+    let action = get_str_opt(args, "action").unwrap_or_else(|| "list".to_string());
+    let prefix = normalize_path_arg(args, "prefix", "");
+    let include_noncurrent = get_bool_opt(args, "include_noncurrent").unwrap_or(false);
+    let backend = ctx.remote_backend(&server).await.map_err(backend_error)?;
+    match action.as_str() {
+        "list" => {
+            let entries = backend
+                .list_object_versions(&prefix, include_noncurrent)
+                .await
+                .map_err(ToolError::Exec)?;
+            let items: Vec<Value> = entries
+                .iter()
+                .map(|e| {
+                    json!({
+                        "key": e.key,
+                        "display_key": e.display_key,
+                        "version_id": e.version_id,
+                        "is_delete_marker": e.is_delete_marker,
+                        "is_latest": e.is_latest,
+                        "size": e.size,
+                        "last_modified": e.last_modified,
+                    })
+                })
+                .collect();
+            Ok(json!({
+                "server": server,
+                "prefix": prefix,
+                "count": items.len(),
+                "entries": items,
+            }))
+        }
+        "undelete" => {
+            let key = get_str(args, "key")?;
+            let version_id = get_str(args, "version_id")?;
+            backend
+                .delete_version(&key, &version_id)
+                .await
+                .map_err(ToolError::Exec)?;
+            Ok(json!({ "server": server, "key": key, "version_id": version_id, "undeleted": true }))
+        }
+        "restore" => {
+            let key = get_str(args, "key")?;
+            let version_id = get_str(args, "version_id")?;
+            backend
+                .restore_version(&key, &version_id)
+                .await
+                .map_err(ToolError::Exec)?;
+            Ok(json!({ "server": server, "key": key, "version_id": version_id, "restored": true }))
+        }
+        "purge" => {
+            let key = get_str(args, "key")?;
+            let version_id = get_str(args, "version_id")?;
+            backend
+                .delete_version(&key, &version_id)
+                .await
+                .map_err(ToolError::Exec)?;
+            Ok(json!({ "server": server, "key": key, "version_id": version_id, "purged": true }))
+        }
+        "empty" => {
+            let dry_run = get_bool_opt(args, "dry_run").unwrap_or(false);
+            let (count, bytes) = backend
+                .empty_object_versions(&prefix, include_noncurrent, dry_run)
+                .await
+                .map_err(ToolError::Exec)?;
+            Ok(json!({
+                "server": server,
+                "prefix": prefix,
+                "dry_run": dry_run,
+                "count": count,
+                "bytes": bytes,
+            }))
+        }
+        other => Err(ToolError::InvalidArgs {
+            tool: "remote_trash".to_string(),
+            reason: format!(
+                "unknown action '{}' (expected list, undelete, restore, purge, empty)",
+                other
+            ),
+        }),
+    }
 }
 
 /// Depth / entry caps for the optional `scan` mode of `aeroftp_storage_quota`.

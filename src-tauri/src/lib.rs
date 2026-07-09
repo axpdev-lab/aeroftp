@@ -18036,6 +18036,7 @@ pub fn run() {
             provider_commands::provider_list_versions,
             provider_commands::provider_download_version,
             provider_commands::provider_restore_version,
+            provider_commands::provider_delete_version,
             // File locking
             provider_commands::provider_supports_locking,
             provider_commands::provider_lock_file,
@@ -18049,6 +18050,10 @@ pub fn run() {
             provider_commands::s3_get_object_tags,
             provider_commands::s3_set_object_tags,
             provider_commands::s3_delete_object_tags,
+            // S3 trash / version management (#266)
+            provider_commands::s3_list_trash,
+            provider_commands::s3_restore_from_trash,
+            provider_commands::s3_empty_trash,
             // Azure Enterprise features
             provider_commands::azure_set_blob_tier,
             provider_commands::azure_list_deleted_blobs,

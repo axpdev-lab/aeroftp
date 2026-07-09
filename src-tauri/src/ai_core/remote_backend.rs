@@ -6,7 +6,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
-use crate::providers::RemoteEntry;
+use crate::providers::{FileVersion, RemoteEntry, TrashEntry};
 use crate::transfer_dag::TransferCapabilities;
 use async_trait::async_trait;
 
@@ -61,5 +61,45 @@ pub trait RemoteBackend: Send + Sync {
     /// backend can expose them without credentials leaving the surface.
     async fn transfer_capabilities(&self) -> Result<Option<TransferCapabilities>, String> {
         Ok(None)
+    }
+
+    /// List previous versions of a file, newest first (empty when the provider
+    /// has no version history). Defaults to unsupported for backends without a
+    /// live provider.
+    async fn list_versions(&self, _path: &str) -> Result<Vec<FileVersion>, String> {
+        Err("version operations are not available on this backend".to_string())
+    }
+
+    /// Restore a file to a previous version (copy-forward, keeping history).
+    async fn restore_version(&self, _path: &str, _version_id: &str) -> Result<(), String> {
+        Err("version operations are not available on this backend".to_string())
+    }
+
+    /// Permanently delete (purge) one version or delete marker of a file.
+    /// Irreversible.
+    async fn delete_version(&self, _path: &str, _version_id: &str) -> Result<(), String> {
+        Err("version operations are not available on this backend".to_string())
+    }
+
+    /// Browse the soft-delete trash: every version and delete marker under a
+    /// prefix. With `include_noncurrent` false, only delete markers and each
+    /// key's current version. S3-family only.
+    async fn list_object_versions(
+        &self,
+        _prefix: &str,
+        _include_noncurrent: bool,
+    ) -> Result<Vec<TrashEntry>, String> {
+        Err("trash operations are not available on this backend".to_string())
+    }
+
+    /// Empty the trash under a prefix, returning `(count, bytes)` of what was
+    /// (or, with `dry_run`, would be) purged. Irreversible when executed.
+    async fn empty_object_versions(
+        &self,
+        _prefix: &str,
+        _include_noncurrent: bool,
+        _dry_run: bool,
+    ) -> Result<(u64, u64), String> {
+        Err("trash operations are not available on this backend".to_string())
     }
 }

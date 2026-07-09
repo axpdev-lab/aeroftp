@@ -532,15 +532,15 @@
     "mcp_by_namespace": {
       "aeroftp_": 37,
       "other": 1,
-      "remote_": 33,
+      "remote_": 35,
       "server_": 2
     },
-    "mcp_tools_aliases": 35,
+    "mcp_tools_aliases": 37,
     "mcp_tools_primary": 38,
-    "mcp_tools_total": 73
+    "mcp_tools_total": 75
   },
   "mcp": {
-    "count": 73,
+    "count": 75,
     "tools": [
       {
         "description": "Return diagnostics about the running MCP process itself...",
@@ -745,6 +745,16 @@
       {
         "description": "Legacy alias of aeroftp_rename.",
         "name": "remote_rename",
+        "namespace": "remote_"
+      },
+      {
+        "description": "Browse and manage a remote file's version history (S3-family and other version-aware providers). action=list returns versions newest-first ({version_id, modified, size, modified_by}); action=restore copies an older version forward to a new current version (needs version_id); action=purge permanently deletes one version (needs version_id, irreversible). Defaults to list.",
+        "name": "remote_versions",
+        "namespace": "remote_"
+      },
+      {
+        "description": "Browse and manage the S3-family soft-delete trash under a prefix (every version and delete marker from ListObjectVersions). action=list returns entries ({key, display_key, version_id, is_delete_marker, is_latest, size, last_modified}); set include_noncurrent=true to also list older versions. action=undelete drops a delete marker so the object reappears (needs key+version_id); action=restore copies an older version forward (needs key+version_id); action=purge permanently removes one version or marker (needs key+version_id); action=empty purges the whole trash under the prefix (set dry_run=true to preview the count/bytes without deleting). All destructive actions are irreversible. S3 only. Defaults to list.",
+        "name": "remote_trash",
         "namespace": "remote_"
       },
       {

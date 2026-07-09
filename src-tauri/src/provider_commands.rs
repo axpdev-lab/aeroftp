@@ -5702,6 +5702,27 @@ pub async fn provider_restore_version(
         .map_err(|e| format!("Restore version failed: {}", e))
 }
 
+/// Permanently delete (purge) one version or delete marker of a file. Routes
+/// through the trait, so a live crypt overlay maps the plaintext path to
+/// ciphertext (mirroring `provider_restore_version`). For a soft-deleted S3
+/// object, purging its delete marker's `version_id` "undeletes" it; purging a
+/// content version removes that version for good. Irreversible.
+#[tauri::command]
+pub async fn provider_delete_version(
+    state: State<'_, ProviderState>,
+    path: String,
+    version_id: String,
+) -> Result<(), String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard
+        .as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+    provider
+        .delete_version(&path, &version_id)
+        .await
+        .map_err(|e| format!("Delete version failed: {}", e))
+}
+
 // --- File Locking ---
 
 #[tauri::command]
@@ -11322,6 +11343,107 @@ pub async fn s3_delete_object_tags(
     s3.delete_object_tags(&path)
         .await
         .map_err(|e| e.to_string())
+}
+
+// ============ S3 Trash / Version Management (#266) ============
+
+/// Result of an `s3_empty_trash` sweep (or its dry-run preview).
+#[derive(serde::Serialize)]
+pub struct S3EmptyTrashSummary {
+    /// Number of versions + delete markers that were (or would be) purged.
+    pub count: u64,
+    /// Total bytes across those objects (delete markers count as 0).
+    pub bytes: u64,
+    /// True when nothing was deleted (preview only).
+    pub dry_run: bool,
+}
+
+/// Browse the S3 soft-delete trash: every version and delete marker under
+/// `prefix`. With `include_noncurrent` false, only delete markers and each key's
+/// current version are returned (the classic trash view); true also lists older
+/// versions. Peels past a crypt overlay to the concrete S3 transport and fills
+/// each entry's decrypted `display_key` (a no-op when Crypt is off).
+#[tauri::command]
+pub async fn s3_list_trash(
+    state: State<'_, ProviderState>,
+    prefix: String,
+    include_noncurrent: bool,
+) -> Result<Vec<crate::providers::TrashEntry>, String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or("Not connected")?;
+    if provider.provider_type() != ProviderType::S3 {
+        return Err("Trash browse is only available for S3".into());
+    }
+    let mut entries = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
+        .list_object_versions(&prefix, include_noncurrent)
+        .await
+        .map_err(|e| format!("List trash failed: {}", e))?;
+    crate::crypt_overlay_provider::decode_overlay_trash_keys(&mut **provider, &mut entries);
+    Ok(entries)
+}
+
+/// Act on one trash entry (identified by its raw `key` + `version_id`):
+/// - `undelete`: drop a delete marker so the prior version becomes current
+///   again (no data copy).
+/// - `copy_forward`: copy an older version forward to a new current version,
+///   keeping history intact.
+/// - `purge`: permanently remove that specific version or marker (irreversible).
+///
+/// `key` is the raw backend token from `s3_list_trash` (ciphertext under a crypt
+/// overlay), so this peels to the concrete S3 transport and passes it verbatim.
+#[tauri::command]
+pub async fn s3_restore_from_trash(
+    state: State<'_, ProviderState>,
+    key: String,
+    version_id: String,
+    mode: String,
+) -> Result<(), String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or("Not connected")?;
+    if provider.provider_type() != ProviderType::S3 {
+        return Err("Trash restore is only available for S3".into());
+    }
+    let s3 = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider);
+    match mode.as_str() {
+        "copy_forward" => s3
+            .restore_version(&key, &version_id)
+            .await
+            .map_err(|e| format!("Restore from trash failed: {}", e)),
+        "undelete" | "purge" => s3
+            .delete_version(&key, &version_id)
+            .await
+            .map_err(|e| format!("Restore from trash failed: {}", e)),
+        other => Err(format!(
+            "Unknown trash mode '{}' (expected 'undelete', 'copy_forward', or 'purge')",
+            other
+        )),
+    }
+}
+
+/// Empty the S3 trash under `prefix`, purging every version and delete marker in
+/// batches of 1000. With `dry_run` true, nothing is deleted and the returned
+/// summary is a preview of what would be purged. Irreversible when executed.
+#[tauri::command]
+pub async fn s3_empty_trash(
+    state: State<'_, ProviderState>,
+    prefix: String,
+    include_noncurrent: bool,
+    dry_run: bool,
+) -> Result<S3EmptyTrashSummary, String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or("Not connected")?;
+    if provider.provider_type() != ProviderType::S3 {
+        return Err("Empty trash is only available for S3".into());
+    }
+    let (count, bytes) = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
+        .empty_object_versions(&prefix, include_noncurrent, dry_run)
+        .await
+        .map_err(|e| format!("Empty trash failed: {}", e))?;
+    Ok(S3EmptyTrashSummary {
+        count,
+        bytes,
+        dry_run,
+    })
 }
 
 // ============ Azure Enterprise Commands ============

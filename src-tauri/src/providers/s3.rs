@@ -4285,6 +4285,31 @@ impl StorageProvider for S3Provider {
         );
         Ok(all_entries)
     }
+
+    /// Empty the S3 trash under `prefix` using the batch delete path (chunks of
+    /// 1000) instead of the per-object default. Enumerates via
+    /// `list_object_versions`, totals `(count, bytes)`, and, unless `dry_run`,
+    /// hard-deletes every version and delete marker via `batch_delete_objects`.
+    async fn empty_object_versions(
+        &mut self,
+        prefix: &str,
+        include_noncurrent: bool,
+        dry_run: bool,
+    ) -> Result<(u64, u64), ProviderError> {
+        let entries = self
+            .list_object_versions(prefix, include_noncurrent)
+            .await?;
+        let count = entries.len() as u64;
+        let bytes: u64 = entries.iter().map(|e| e.size).sum();
+        if !dry_run && !entries.is_empty() {
+            let targets: Vec<(String, Option<String>)> = entries
+                .into_iter()
+                .map(|e| (e.key, Some(e.version_id)))
+                .collect();
+            self.batch_delete_objects(&targets).await?;
+        }
+        Ok((count, bytes))
+    }
 }
 
 // =============================================================================
@@ -4970,6 +4995,7 @@ fn parse_object_versions_page(xml_str: &str) -> Result<VersionsPage, ProviderErr
                                 e_size.as_ref().and_then(|s| s.parse().ok()).unwrap_or(0)
                             };
                             entries.push(TrashEntry {
+                                display_key: key.clone(),
                                 key,
                                 version_id: e_version_id.clone().unwrap_or_default(),
                                 is_delete_marker,

@@ -74,7 +74,7 @@ use ftp_client_gui_lib::profile_loader::{
 };
 use ftp_client_gui_lib::providers::{
     FileVersion, ProviderConfig, ProviderError, ProviderFactory, ProviderType, RemoteEntry,
-    ShareLinkOptions, StorageProvider, MAX_DOWNLOAD_TO_BYTES,
+    ShareLinkOptions, StorageProvider, TrashEntry, MAX_DOWNLOAD_TO_BYTES,
 };
 use ftp_client_gui_lib::user_partitions;
 use ftp_client_gui_lib::util::shutdown_signal;
@@ -4295,6 +4295,51 @@ enum VersionCommands {
         /// Version id (from `versions list`)
         #[arg(default_value = "")]
         version_id: String,
+    },
+    /// Permanently delete (purge) one version or delete marker of a file
+    Purge {
+        /// Server URL (omit when using --profile)
+        #[arg(default_value = "_", hide_default_value = true)]
+        url: String,
+        /// Remote file path
+        #[arg(default_value = "")]
+        path: String,
+        /// Version id (from `versions list`)
+        #[arg(default_value = "")]
+        version_id: String,
+        /// Skip the interactive confirmation prompt
+        #[arg(long)]
+        yes: bool,
+    },
+    /// List the S3 trash: soft-deleted objects and delete markers under a prefix
+    Trash {
+        /// Server URL (omit when using --profile)
+        #[arg(default_value = "_", hide_default_value = true)]
+        url: String,
+        /// Key prefix to scope the trash (default: whole bucket)
+        #[arg(default_value = "")]
+        prefix: String,
+        /// Include older, non-current versions (not just delete markers + latest)
+        #[arg(long)]
+        all: bool,
+    },
+    /// Empty the S3 trash under a prefix (purge every version and delete marker)
+    EmptyTrash {
+        /// Server URL (omit when using --profile)
+        #[arg(default_value = "_", hide_default_value = true)]
+        url: String,
+        /// Key prefix to scope the trash (default: whole bucket)
+        #[arg(default_value = "")]
+        prefix: String,
+        /// Include older, non-current versions in the sweep
+        #[arg(long)]
+        all: bool,
+        /// Preview the count and bytes without deleting anything
+        #[arg(long)]
+        dry_run: bool,
+        /// Skip the interactive confirmation prompt
+        #[arg(long)]
+        yes: bool,
     },
 }
 
@@ -30054,6 +30099,255 @@ async fn cmd_versions_restore(
             print_error(
                 format,
                 &format!("versions restore failed: {}", e),
+                provider_error_to_exit_code(&e),
+            );
+            provider_error_to_exit_code(&e)
+        }
+    };
+    let _ = provider.disconnect().await;
+    code
+}
+
+/// `versions purge`: permanently delete one version or delete marker of a file.
+/// Irreversible; prompts for confirmation on a TTY unless `--yes` is given.
+async fn cmd_versions_purge(
+    url: &str,
+    path: &str,
+    version_id: &str,
+    yes: bool,
+    cli: &Cli,
+    format: OutputFormat,
+) -> i32 {
+    if path.trim().is_empty() {
+        print_error(format, "Missing remote file path for 'versions purge'", 5);
+        return 5;
+    }
+    if version_id.trim().is_empty() {
+        print_error(
+            format,
+            "Missing version id for 'versions purge' (run 'versions list' first)",
+            5,
+        );
+        return 5;
+    }
+    // Confirm the irreversible purge before connecting.
+    use std::io::IsTerminal;
+    if !yes && std::io::stdin().is_terminal() {
+        eprintln!(
+            "Permanently delete version '{}' of '{}'? This cannot be undone. [y/N]",
+            version_id, path
+        );
+        let mut buf = String::new();
+        if std::io::stdin().read_line(&mut buf).is_err() {
+            print_error(format, "Aborted (stdin error).", 5);
+            return 5;
+        }
+        let ans = buf.trim().to_lowercase();
+        if ans != "y" && ans != "yes" {
+            print_error(format, "Aborted by user.", 0);
+            return 0;
+        }
+    }
+    let (mut provider, initial_path) = match create_and_connect(url, cli, format).await {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
+    if !provider.supports_versions() {
+        let _ = provider.disconnect().await;
+        return versions_unsupported(format);
+    }
+    let rpath = resolve_cli_remote_path(&initial_path, path);
+    let code = match provider.delete_version(&rpath, version_id).await {
+        Ok(()) => {
+            let msg = format!("Purged version {} of {}", version_id, rpath);
+            match format {
+                OutputFormat::Json => print_json(&CliOk {
+                    status: "ok",
+                    message: msg,
+                }),
+                OutputFormat::Text => println!("{}", msg),
+            }
+            0
+        }
+        Err(e) => {
+            print_error(
+                format,
+                &format!("versions purge failed: {}", e),
+                provider_error_to_exit_code(&e),
+            );
+            provider_error_to_exit_code(&e)
+        }
+    };
+    let _ = provider.disconnect().await;
+    code
+}
+
+/// Render an S3 trash listing (versions + delete markers) as text or JSON.
+fn print_trash(entries: &[TrashEntry], prefix: &str, format: OutputFormat) {
+    match format {
+        OutputFormat::Json => {
+            #[derive(Serialize)]
+            struct TrashResult<'a> {
+                status: &'static str,
+                prefix: &'a str,
+                count: usize,
+                entries: &'a [TrashEntry],
+            }
+            print_json(&TrashResult {
+                status: "ok",
+                prefix,
+                count: entries.len(),
+                entries,
+            });
+        }
+        OutputFormat::Text => {
+            if entries.is_empty() {
+                println!("Trash is empty under '{}'", prefix);
+                return;
+            }
+            println!(
+                "{} trash entr{} under '{}':",
+                entries.len(),
+                if entries.len() == 1 { "y" } else { "ies" },
+                prefix
+            );
+            for e in entries {
+                let kind = if e.is_delete_marker {
+                    "delete-marker"
+                } else {
+                    "version"
+                };
+                let latest = if e.is_latest { " (latest)" } else { "" };
+                let modified = e.last_modified.as_deref().unwrap_or("-");
+                println!(
+                    "  {} [{}]{} {}  {}  vid={}",
+                    e.display_key,
+                    kind,
+                    latest,
+                    format_size(e.size),
+                    modified,
+                    e.version_id
+                );
+            }
+        }
+    }
+}
+
+/// `versions trash`: list soft-deleted objects and delete markers under a prefix.
+async fn cmd_versions_trash(
+    url: &str,
+    prefix: &str,
+    all: bool,
+    cli: &Cli,
+    format: OutputFormat,
+) -> i32 {
+    let (mut provider, _initial_path) = match create_and_connect(url, cli, format).await {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
+    let rprefix = prefix.trim().to_string();
+    let code = match provider.list_object_versions(&rprefix, all).await {
+        Ok(entries) => {
+            print_trash(&entries, &rprefix, format);
+            0
+        }
+        Err(e) => {
+            print_error(
+                format,
+                &format!("versions trash failed: {}", e),
+                provider_error_to_exit_code(&e),
+            );
+            provider_error_to_exit_code(&e)
+        }
+    };
+    let _ = provider.disconnect().await;
+    code
+}
+
+/// `versions empty-trash`: purge every trashed version and delete marker under a
+/// prefix. Irreversible; `--dry-run` previews the count and bytes, and without
+/// `--yes` a real sweep prompts for confirmation on a TTY.
+async fn cmd_versions_empty_trash(
+    url: &str,
+    prefix: &str,
+    all: bool,
+    dry_run: bool,
+    yes: bool,
+    cli: &Cli,
+    format: OutputFormat,
+) -> i32 {
+    let rprefix = prefix.trim().to_string();
+    // Confirm the irreversible sweep before connecting (dry runs never prompt).
+    if !dry_run {
+        use std::io::IsTerminal;
+        if !yes && std::io::stdin().is_terminal() {
+            let scope = if rprefix.is_empty() {
+                "the entire bucket".to_string()
+            } else {
+                format!("prefix '{}'", rprefix)
+            };
+            eprintln!(
+                "Permanently purge ALL trashed versions under {}? This cannot be undone. [y/N]",
+                scope
+            );
+            let mut buf = String::new();
+            if std::io::stdin().read_line(&mut buf).is_err() {
+                print_error(format, "Aborted (stdin error).", 5);
+                return 5;
+            }
+            let ans = buf.trim().to_lowercase();
+            if ans != "y" && ans != "yes" {
+                print_error(format, "Aborted by user.", 0);
+                return 0;
+            }
+        }
+    }
+    let (mut provider, _initial_path) = match create_and_connect(url, cli, format).await {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
+    let code = match provider.empty_object_versions(&rprefix, all, dry_run).await {
+        Ok((count, bytes)) => {
+            #[derive(Serialize)]
+            struct EmptyTrashResult<'a> {
+                status: &'static str,
+                dry_run: bool,
+                prefix: &'a str,
+                count: u64,
+                bytes: u64,
+            }
+            match format {
+                OutputFormat::Json => print_json(&EmptyTrashResult {
+                    status: "ok",
+                    dry_run,
+                    prefix: &rprefix,
+                    count,
+                    bytes,
+                }),
+                OutputFormat::Text => {
+                    if dry_run {
+                        println!(
+                            "Dry run: {} trashed object(s) ({}) would be purged under '{}'",
+                            count,
+                            format_size(bytes),
+                            rprefix
+                        );
+                    } else {
+                        println!(
+                            "Purged {} trashed object(s) ({}) under '{}'",
+                            count,
+                            format_size(bytes),
+                            rprefix
+                        );
+                    }
+                }
+            }
+            0
+        }
+        Err(e) => {
+            print_error(
+                format,
+                &format!("versions empty-trash failed: {}", e),
                 provider_error_to_exit_code(&e),
             );
             provider_error_to_exit_code(&e)
@@ -57002,6 +57296,41 @@ async fn main() {
                     (url.as_str(), path.as_str(), version_id.as_str())
                 };
                 cmd_versions_restore(u, p, v, &cli, format).await
+            }
+            VersionCommands::Purge {
+                url,
+                path,
+                version_id,
+                yes,
+            } => {
+                let (u, p, v) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
+                    ("_", url.as_str(), path.as_str())
+                } else {
+                    (url.as_str(), path.as_str(), version_id.as_str())
+                };
+                cmd_versions_purge(u, p, v, *yes, &cli, format).await
+            }
+            VersionCommands::Trash { url, prefix, all } => {
+                let (u, pfx) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
+                    ("_", url.as_str())
+                } else {
+                    (url.as_str(), prefix.as_str())
+                };
+                cmd_versions_trash(u, pfx, *all, &cli, format).await
+            }
+            VersionCommands::EmptyTrash {
+                url,
+                prefix,
+                all,
+                dry_run,
+                yes,
+            } => {
+                let (u, pfx) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
+                    ("_", url.as_str())
+                } else {
+                    (url.as_str(), prefix.as_str())
+                };
+                cmd_versions_empty_trash(u, pfx, *all, *dry_run, *yes, &cli, format).await
             }
         },
         Commands::Crypt { command } => {

@@ -868,6 +868,34 @@ pub trait StorageProvider: Send + Sync {
         Err(ProviderError::NotSupported("delete_version".to_string()))
     }
 
+    /// Empty the trash under `prefix`: enumerate every version and delete marker
+    /// via [`list_object_versions`](Self::list_object_versions) and hard-delete
+    /// each one. Returns `(count, bytes)` of what was (or, with `dry_run`, would
+    /// be) purged.
+    ///
+    /// The default implementation loops [`delete_version`](Self::delete_version)
+    /// one object at a time; a provider with a batch delete API (S3) overrides
+    /// this to purge in chunks. `dry_run` only enumerates and totals, deleting
+    /// nothing. Irreversible when `dry_run` is false.
+    async fn empty_object_versions(
+        &mut self,
+        prefix: &str,
+        include_noncurrent: bool,
+        dry_run: bool,
+    ) -> Result<(u64, u64), ProviderError> {
+        let entries = self
+            .list_object_versions(prefix, include_noncurrent)
+            .await?;
+        let count = entries.len() as u64;
+        let bytes: u64 = entries.iter().map(|e| e.size).sum();
+        if !dry_run {
+            for entry in &entries {
+                self.delete_version(&entry.key, &entry.version_id).await?;
+            }
+        }
+        Ok((count, bytes))
+    }
+
     /// Check if provider supports file locking
     fn supports_locking(&self) -> bool {
         false

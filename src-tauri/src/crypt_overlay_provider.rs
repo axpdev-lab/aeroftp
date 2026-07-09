@@ -78,7 +78,9 @@ use zeroize::Zeroize;
 use crate::aerocrypt::overlay::{self, OverlayConfig};
 use crate::aerocrypt::{names, KEY_SIZE};
 use crate::crypt_compare::{rclone_decrypted_size, OverlayUnlockParams};
-use crate::providers::{FileVersion, ProviderError, ProviderType, RemoteEntry, StorageProvider};
+use crate::providers::{
+    FileVersion, ProviderError, ProviderType, RemoteEntry, StorageProvider, TrashEntry,
+};
 use crate::rclone_crypt::{self, FilenameEncryption, RcloneCryptKeys};
 
 /// AeroCrypt overlay config filename, written at the scope root by `crypt init`.
@@ -1062,6 +1064,17 @@ impl StorageProvider for CryptOverlayProvider {
         self.inner.restore_version(&enc, version_id).await
     }
 
+    async fn delete_version(&mut self, path: &str, version_id: &str) -> Result<(), ProviderError> {
+        let enc = self.map(path, false)?;
+        self.inner.delete_version(&enc, version_id).await
+    }
+
+    // NOTE: `list_object_versions` / `empty_object_versions` are deliberately NOT
+    // overridden. The trash browse works on raw ciphertext keys and decrypts a
+    // separate display field, so the command layer reaches the concrete provider
+    // via `concrete_provider_mut` (the #399 peel) instead of routing through the
+    // overlay; through the overlay they keep the trait NotSupported default.
+
     // ── Conservatively disabled surfaces (see module docs) ───────────────────
     //
     // Each is advertised unsupported so the runner/caller falls back to a
@@ -1248,6 +1261,24 @@ pub fn decode_overlay_trash_name(
         return None;
     }
     overlay.keys.decode_name(name, is_dir)
+}
+
+/// Decrypt the `display_key` of each S3 [`TrashEntry`] in place when `provider`
+/// is a live crypt overlay, so the trash browse shows plaintext keys. A no-op
+/// when Crypt is off (the command layer already seeds `display_key == key`).
+///
+/// Only `display_key` is rewritten; `key`, `version_id` and every other field
+/// stay byte-for-byte raw so restore and purge round-trip the exact backend
+/// tokens (the #399 contract). A key whose components are not valid ciphertext
+/// for this overlay (a foreign / out-of-scope object) is left verbatim.
+pub fn decode_overlay_trash_keys(provider: &mut dyn StorageProvider, entries: &mut [TrashEntry]) {
+    let Some(overlay) = provider.as_any_mut().downcast_mut::<CryptOverlayProvider>() else {
+        return;
+    };
+    for entry in entries.iter_mut() {
+        // A trash row is always an object (file) leaf, never a directory.
+        entry.display_key = decode_entry_path(&overlay.keys, &entry.key, false);
+    }
 }
 
 /// Read a keyfile from `path` and return its AeroCrypt KDF digest (F1 + F2
@@ -3049,5 +3080,47 @@ mod tests {
         let mut plain = vec![trash_entry("plain.txt")];
         decode_overlay_trash_names(&mut *bare, &mut plain);
         assert_eq!(plain[0].name, "plain.txt");
+    }
+
+    fn s3_trash_entry(key: &str) -> TrashEntry {
+        TrashEntry {
+            key: key.to_string(),
+            display_key: key.to_string(),
+            version_id: "vid-1".to_string(),
+            is_delete_marker: false,
+            is_latest: true,
+            size: 10,
+            last_modified: None,
+        }
+    }
+
+    // #266 / #399: the S3 trash view must decrypt only the display key and keep
+    // `key` + `version_id` byte-for-byte raw, so restore/purge round-trip the
+    // exact backend tokens.
+    #[test]
+    fn decode_overlay_trash_keys_decodes_display_and_keeps_key_raw() {
+        let overlay =
+            CryptOverlayProvider::new(Box::new(MemProvider::new()), aerocrypt_keys(), "/vault");
+        let enc = overlay.keys.encode_name("secret.txt", false).unwrap();
+        let mut boxed: Box<dyn StorageProvider> = Box::new(overlay);
+
+        let mut entries = vec![s3_trash_entry(&enc), s3_trash_entry("foreign.txt")];
+        decode_overlay_trash_keys(&mut *boxed, &mut entries);
+
+        // In-scope ciphertext key: display decrypted...
+        assert_eq!(entries[0].display_key, "secret.txt");
+        // ...raw key + version_id untouched for the restore round-trip.
+        assert_eq!(entries[0].key, enc);
+        assert_eq!(entries[0].version_id, "vid-1");
+        // Foreign / out-of-scope plaintext key passes through on both fields.
+        assert_eq!(entries[1].display_key, "foreign.txt");
+        assert_eq!(entries[1].key, "foreign.txt");
+
+        // No-op on a bare provider (Crypt off): display_key stays as seeded.
+        let mut bare: Box<dyn StorageProvider> = Box::new(MemProvider::new());
+        let mut plain = vec![s3_trash_entry("plain.txt")];
+        decode_overlay_trash_keys(&mut *bare, &mut plain);
+        assert_eq!(plain[0].display_key, "plain.txt");
+        assert_eq!(plain[0].key, "plain.txt");
     }
 }

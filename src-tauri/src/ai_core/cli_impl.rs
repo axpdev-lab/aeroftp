@@ -442,6 +442,56 @@ impl RemoteBackend for CliRemoteBackend {
         let _info = p.server_info().await.map_err(|e| e.to_string())?;
         Err("Storage quota extraction not yet implemented for this provider".to_string())
     }
+
+    async fn list_versions(
+        &self,
+        path: &str,
+    ) -> Result<Vec<crate::providers::FileVersion>, String> {
+        let mut guard = self.provider.lock().await;
+        let p = guard.as_mut().ok_or("Not connected")?;
+        p.list_versions(path).await.map_err(|e| e.to_string())
+    }
+
+    async fn restore_version(&self, path: &str, version_id: &str) -> Result<(), String> {
+        let mut guard = self.provider.lock().await;
+        let p = guard.as_mut().ok_or("Not connected")?;
+        p.restore_version(path, version_id)
+            .await
+            .map_err(|e| e.to_string())
+    }
+
+    async fn delete_version(&self, path: &str, version_id: &str) -> Result<(), String> {
+        let mut guard = self.provider.lock().await;
+        let p = guard.as_mut().ok_or("Not connected")?;
+        p.delete_version(path, version_id)
+            .await
+            .map_err(|e| e.to_string())
+    }
+
+    async fn list_object_versions(
+        &self,
+        prefix: &str,
+        include_noncurrent: bool,
+    ) -> Result<Vec<crate::providers::TrashEntry>, String> {
+        let mut guard = self.provider.lock().await;
+        let p = guard.as_mut().ok_or("Not connected")?;
+        p.list_object_versions(prefix, include_noncurrent)
+            .await
+            .map_err(|e| e.to_string())
+    }
+
+    async fn empty_object_versions(
+        &self,
+        prefix: &str,
+        include_noncurrent: bool,
+        dry_run: bool,
+    ) -> Result<(u64, u64), String> {
+        let mut guard = self.provider.lock().await;
+        let p = guard.as_mut().ok_or("Not connected")?;
+        p.empty_object_versions(prefix, include_noncurrent, dry_run)
+            .await
+            .map_err(|e| e.to_string())
+    }
 }
 
 // ─── CliToolCtx ───────────────────────────────────────────────────────
