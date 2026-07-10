@@ -52,6 +52,18 @@ while IFS= read -r -d '' desktop; do
     else
         echo 'Exec=aeroftp %U' >> "$desktop"
     fi
+
+    # Tauri's bundle category enum maps to Categories=Utility;. A transfer client
+    # belongs under Network;FileTransfer;. The AppImage has no postinstall, so set
+    # it here at build time (mirrors deb-postinst.sh for .deb/.rpm).
+    if grep -q '^Categories=' "$desktop"; then
+        sed -i 's|^Categories=.*|Categories=Network;FileTransfer;|' "$desktop"
+    else
+        echo 'Categories=Network;FileTransfer;' >> "$desktop"
+    fi
+    if ! grep -q '^Keywords=' "$desktop"; then
+        echo 'Keywords=ftp;sftp;ftps;webdav;s3;transfer;file;sync;cloud;encryption;' >> "$desktop"
+    fi
 done
 
 echo "AppImage dispatcher layout installed:"

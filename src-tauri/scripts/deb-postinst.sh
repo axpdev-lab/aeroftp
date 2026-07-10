@@ -104,6 +104,20 @@ do
     if ! grep -q '^MimeType=' "$DESKTOP_FILE"; then
         echo 'MimeType=application/x-aerovault;application/x-aeroftp;application/x-aeroftp-keystore;application/x-aerozip;application/x-aeroftp-script;x-scheme-handler/ftp;x-scheme-handler/ftps;x-scheme-handler/sftp;' >> "$DESKTOP_FILE"
     fi
+
+    # Tauri's bundle category is a fixed macOS-style enum (Utility is the closest
+    # value), so the generated desktop file ships Categories=Utility;. A transfer
+    # client belongs under Network;FileTransfer;. Rewrite it here (last word for
+    # installed .deb/.rpm, since both share this postinstall) rather than
+    # reintroducing a hand-maintained desktop file.
+    if grep -q '^Categories=' "$DESKTOP_FILE"; then
+        sed -i 's|^Categories=.*|Categories=Network;FileTransfer;|' "$DESKTOP_FILE"
+    else
+        echo 'Categories=Network;FileTransfer;' >> "$DESKTOP_FILE"
+    fi
+    if ! grep -q '^Keywords=' "$DESKTOP_FILE"; then
+        echo 'Keywords=ftp;sftp;ftps;webdav;s3;transfer;file;sync;cloud;encryption;' >> "$DESKTOP_FILE"
+    fi
 done
 
 if [ -z "$ROOT" ]; then
