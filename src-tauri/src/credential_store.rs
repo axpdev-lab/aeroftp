@@ -48,23 +48,55 @@ const MODE_AUTO_KEYRING: u8 = 0x02;
 const PASSPHRASE_LEN: usize = 64;
 const KEYRING_SERVICE: &str = "com.aeroftp.AeroFTP";
 
-/// Keyring account name. Portable builds use a separate slot so a portable
-/// AeroFTP instance launched on a machine that already has an installed
-/// AeroFTP can never overwrite the installed app's vault passphrase. Debug
-/// builds use their own slot too, so a dev vault init cannot replace the
-/// release passphrase. All variants share `KEYRING_SERVICE`, so Credential
-/// Manager / Keychain / libsecret still groups AeroFTP entries together.
-fn keyring_account_for(portable: bool, debug: bool) -> &'static str {
-    match (portable, debug) {
-        (true, true) => "vault-passphrase-portable-dev",
-        (true, false) => "vault-passphrase-portable",
-        (false, true) => "vault-passphrase-dev",
-        (false, false) => "vault-passphrase",
+/// Which install's keyring slot to use. An install with its OWN config
+/// directory (portable, Flatpak, Snap) keeps its own vault.db, so it must NOT
+/// share the passphrase slot with a native install: the vault passphrase is
+/// auto-generated (AutoKeyring mode) and lives only in the OS keyring, so a
+/// fresh vault in one install would overwrite the other's passphrase in the
+/// shared slot and permanently lock its vault. The slot therefore follows the
+/// same isolation boundary as the config directory. `.deb`, `.rpm` and AppImage
+/// all share `~/.config/aeroftp`, so they legitimately share the native slot.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum KeyringScope {
+    Native,
+    Portable,
+    Flatpak,
+    Snap,
+}
+
+fn keyring_scope() -> KeyringScope {
+    if crate::portable::is_portable() {
+        KeyringScope::Portable
+    } else if crate::portable::is_flatpak() {
+        KeyringScope::Flatpak
+    } else if std::env::var_os("SNAP").is_some() {
+        KeyringScope::Snap
+    } else {
+        KeyringScope::Native
+    }
+}
+
+/// Keyring account name. Each isolated install scope gets its own slot so it can
+/// never overwrite another install's vault passphrase; debug builds get their
+/// own slot too, so a dev vault init cannot replace the release passphrase. All
+/// variants share `KEYRING_SERVICE`, so Credential Manager / Keychain / libsecret
+/// still groups AeroFTP entries together.
+fn keyring_account_for(scope: KeyringScope, debug: bool) -> &'static str {
+    use KeyringScope::*;
+    match (scope, debug) {
+        (Portable, true) => "vault-passphrase-portable-dev",
+        (Portable, false) => "vault-passphrase-portable",
+        (Flatpak, true) => "vault-passphrase-flatpak-dev",
+        (Flatpak, false) => "vault-passphrase-flatpak",
+        (Snap, true) => "vault-passphrase-snap-dev",
+        (Snap, false) => "vault-passphrase-snap",
+        (Native, true) => "vault-passphrase-dev",
+        (Native, false) => "vault-passphrase",
     }
 }
 
 fn keyring_account() -> &'static str {
-    keyring_account_for(crate::portable::is_portable(), cfg!(debug_assertions))
+    keyring_account_for(keyring_scope(), cfg!(debug_assertions))
 }
 
 // ============ Error Types ============
@@ -326,12 +358,19 @@ impl VaultKeyFile {
     }
 }
 
-fn keyring_entry() -> Result<keyring::Entry, CredentialError> {
-    keyring::Entry::new(KEYRING_SERVICE, keyring_account())
+fn keyring_entry_for(account: &str) -> Result<keyring::Entry, CredentialError> {
+    keyring::Entry::new(KEYRING_SERVICE, account)
         .map_err(|e| CredentialError::Encryption(format!("Failed to access system keyring: {}", e)))
 }
 
+fn keyring_entry() -> Result<keyring::Entry, CredentialError> {
+    keyring_entry_for(keyring_account())
+}
+
 fn store_passphrase_in_keyring(passphrase: &[u8; PASSPHRASE_LEN]) -> Result<(), CredentialError> {
+    // Always writes THIS scope's slot (keyring_account()). A Flatpak/Snap must
+    // never write the native slot, which is what corrupted a native vault when
+    // a sandboxed install initialised a fresh vault over the shared slot.
     let entry = keyring_entry()?;
     let mut encoded = BASE64.encode(passphrase);
     let result = entry.set_password(&encoded);
@@ -344,8 +383,8 @@ fn store_passphrase_in_keyring(passphrase: &[u8; PASSPHRASE_LEN]) -> Result<(), 
     })
 }
 
-fn load_passphrase_from_keyring() -> Result<[u8; PASSPHRASE_LEN], CredentialError> {
-    let entry = keyring_entry()?;
+fn load_passphrase_from_slot(account: &str) -> Result<[u8; PASSPHRASE_LEN], CredentialError> {
+    let entry = keyring_entry_for(account)?;
     let mut encoded = entry.get_password().map_err(|e| {
         CredentialError::Encryption(format!("Vault key missing from system keyring: {}", e))
     })?;
@@ -368,6 +407,31 @@ fn load_passphrase_from_keyring() -> Result<[u8; PASSPHRASE_LEN], CredentialErro
     passphrase.copy_from_slice(&decoded);
     decoded.zeroize();
     Ok(passphrase)
+}
+
+fn load_passphrase_from_keyring() -> Result<[u8; PASSPHRASE_LEN], CredentialError> {
+    let scoped = keyring_account();
+    match load_passphrase_from_slot(scoped) {
+        Ok(p) => Ok(p),
+        Err(primary_err) => {
+            // Migration for a Flatpak/Snap install created BEFORE per-scope slots
+            // existed: its passphrase is still in the shared native slot. Read it
+            // (reading never corrupts anything) and adopt it into this scope's own
+            // slot so subsequent loads are isolated. We never WRITE the native
+            // slot from a sandbox, so this cannot damage a native install.
+            let scope = keyring_scope();
+            if matches!(scope, KeyringScope::Flatpak | KeyringScope::Snap) {
+                let legacy = keyring_account_for(KeyringScope::Native, cfg!(debug_assertions));
+                if legacy != scoped {
+                    if let Ok(p) = load_passphrase_from_slot(legacy) {
+                        let _ = store_passphrase_in_keyring(&p);
+                        return Ok(p);
+                    }
+                }
+            }
+            Err(primary_err)
+        }
+    }
 }
 
 fn delete_passphrase_from_keyring() {
@@ -1505,16 +1569,45 @@ mod tests {
     }
 
     #[test]
-    fn keyring_account_splits_portable_and_debug_slots() {
-        assert_eq!(keyring_account_for(false, false), "vault-passphrase");
-        assert_eq!(keyring_account_for(false, true), "vault-passphrase-dev");
+    fn keyring_account_splits_scope_and_debug_slots() {
+        use super::KeyringScope::*;
+        assert_eq!(keyring_account_for(Native, false), "vault-passphrase");
+        assert_eq!(keyring_account_for(Native, true), "vault-passphrase-dev");
         assert_eq!(
-            keyring_account_for(true, false),
+            keyring_account_for(Portable, false),
             "vault-passphrase-portable"
         );
         assert_eq!(
-            keyring_account_for(true, true),
+            keyring_account_for(Portable, true),
             "vault-passphrase-portable-dev"
         );
+    }
+
+    /// The core data-safety guarantee: an install with its own config directory
+    /// (Flatpak, Snap, portable) must resolve to a DIFFERENT keyring slot than a
+    /// native install, so a fresh vault in one can never overwrite the other's
+    /// auto-generated passphrase in the shared OS keyring. Every slot must be
+    /// unique.
+    #[test]
+    fn every_scope_has_a_distinct_keyring_slot() {
+        use super::KeyringScope::*;
+        let mut slots = std::collections::HashSet::new();
+        for scope in [Native, Portable, Flatpak, Snap] {
+            for debug in [false, true] {
+                let slot = keyring_account_for(scope, debug);
+                assert!(
+                    slots.insert(slot),
+                    "duplicate keyring slot {slot:?} for {scope:?} debug={debug}"
+                );
+            }
+        }
+        // The native release slot name is frozen: changing it would orphan every
+        // existing native vault. Guard it explicitly.
+        assert_eq!(keyring_account_for(Native, false), "vault-passphrase");
+        assert_eq!(
+            keyring_account_for(Flatpak, false),
+            "vault-passphrase-flatpak"
+        );
+        assert_eq!(keyring_account_for(Snap, false), "vault-passphrase-snap");
     }
 }
