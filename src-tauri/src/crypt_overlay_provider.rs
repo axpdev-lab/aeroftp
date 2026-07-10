@@ -311,9 +311,22 @@ fn encode_rel_path(keys: &OverlayKeys, rel: &str, is_dir_leaf: bool) -> Result<S
     }
 }
 
+/// Access kind for path mapping through a scoped overlay.
+/// Read allows pass-through for targets at/above/outside the anchor (used by
+/// non-mutating ops like list, stat, download so plaintext areas remain
+/// visible and listable). Write keeps the strict refusal (fail-closed) for
+/// all mutating ops.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum AccessKind {
+    Read,
+    Write,
+}
+
 /// Map a caller plaintext target to the on-wire encrypted path, keeping the
-/// cleartext anchor prefix and encrypting only the tail below it. FAIL-CLOSED:
-/// an absolute target that is not at/under the anchor is refused.
+/// cleartext anchor prefix and encrypting only the tail below it.
+/// For Write (mutating callers) an absolute target that is not at/under the
+/// anchor is refused (fail-closed).
+/// For Read (non-mutating callers) such targets return the raw path verbatim.
 ///
 /// `scope` is the already-normalized anchor (`""` = whole remote). A relative
 /// target is encrypted in full (it resolves against the current in-scope dir).
@@ -322,6 +335,7 @@ fn encode_plain_target(
     scope: &str,
     target: &str,
     is_dir_leaf: bool,
+    kind: AccessKind,
 ) -> Result<String, String> {
     if !target.starts_with('/') {
         return encode_rel_path(keys, target, is_dir_leaf);
@@ -337,6 +351,9 @@ fn encode_plain_target(
     if let Some(below) = t.strip_prefix(&format!("{}/", scope)) {
         let enc_below = encode_rel_path(keys, below, is_dir_leaf)?;
         return Ok(format!("{}/{}", scope, enc_below));
+    }
+    if kind == AccessKind::Read {
+        return Ok(norm_abs(target));
     }
     Err(format!(
         "crypt target {:?} is outside the overlay scope {:?}",
@@ -406,10 +423,16 @@ impl CryptOverlayProvider {
         }
     }
 
-    /// Map a caller plaintext path to the on-wire encrypted path (fail-closed on
-    /// an out-of-scope target).
-    fn map(&self, plain: &str, is_dir_leaf: bool) -> Result<String, ProviderError> {
-        encode_plain_target(&self.keys, &self.scope, plain, is_dir_leaf)
+    /// Map a caller plaintext path to the on-wire encrypted path.
+    /// Write mode: fail-closed on out-of-scope (mutating ops).
+    /// Read mode: pass-through raw for out-of-scope (non-mutating ops: list etc).
+    fn map(
+        &self,
+        plain: &str,
+        is_dir_leaf: bool,
+        kind: AccessKind,
+    ) -> Result<String, ProviderError> {
+        encode_plain_target(&self.keys, &self.scope, plain, is_dir_leaf, kind)
             .map_err(ProviderError::InvalidPath)
     }
 
@@ -486,6 +509,31 @@ impl CryptOverlayProvider {
             .filter(|c| !c.is_empty() && *c != ".")
             .all(|c| self.keys.decode_name(c, true).is_some());
         Ok(all_decode)
+    }
+
+    /// True when an on-wire entry path is STRICTLY BELOW the cleartext anchor, so
+    /// its name is ciphertext to decrypt. The anchor itself and anything at/above/
+    /// outside it is cleartext pass-through. Whole-remote scope => everything.
+    fn wire_path_is_encrypted(&self, wire_path: &str) -> bool {
+        if self.scope.is_empty() {
+            return true;
+        }
+        norm_abs(wire_path).starts_with(&format!("{}/", self.scope))
+    }
+
+    /// True for a caller plaintext target that is STRICTLY BELOW the anchor:
+    /// its bytes on the wire (and in provider calls) are ciphertext and need
+    /// decrypt / decrypted_size. Anchor itself and outside/above are plaintext
+    /// pass-through (no decrypt step).
+    fn target_is_encrypted(&self, plain_target: &str) -> bool {
+        if self.scope.is_empty() {
+            return true;
+        }
+        let t = norm_abs(plain_target);
+        if t == self.scope {
+            return false;
+        }
+        t.starts_with(&format!("{}/", self.scope))
     }
 
     fn crypt_err(context: &str, e: String) -> ProviderError {
@@ -727,7 +775,7 @@ impl StorageProvider for CryptOverlayProvider {
         let enc_path = if path.is_empty() || path == "." {
             path.to_string()
         } else {
-            self.map(path, true)?
+            self.map(path, true, AccessKind::Read)?
         };
         let raw = self.inner.list(&enc_path).await?;
         let mut out = Vec::with_capacity(raw.len());
@@ -735,23 +783,26 @@ impl StorageProvider for CryptOverlayProvider {
             if self.keys.is_sentinel(&entry.name) {
                 continue;
             }
-            // Drop foreign / undecryptable rows rather than surface ciphertext as
-            // if it were a plaintext name.
-            let Some(plain_name) = self.keys.decode_name(&entry.name, entry.is_dir) else {
-                continue;
-            };
-            let plain_path = decode_entry_path(&self.keys, &entry.path, entry.is_dir);
-            let size = if entry.is_dir {
-                0
+            if self.wire_path_is_encrypted(&entry.path) {
+                // inside the encrypted subtree: decrypt (a real foreign/corrupt row still drops)
+                let Some(plain_name) = self.keys.decode_name(&entry.name, entry.is_dir) else {
+                    continue;
+                };
+                let plain_path = decode_entry_path(&self.keys, &entry.path, entry.is_dir);
+                let size = if entry.is_dir {
+                    0
+                } else {
+                    self.keys.decrypted_size(entry.size)
+                };
+                out.push(RemoteEntry {
+                    name: plain_name,
+                    path: plain_path,
+                    size,
+                    ..entry
+                });
             } else {
-                self.keys.decrypted_size(entry.size)
-            };
-            out.push(RemoteEntry {
-                name: plain_name,
-                path: plain_path,
-                size,
-                ..entry
-            });
+                out.push(entry); // outside/at/above anchor: raw plaintext row, unchanged
+            }
         }
         Ok(out)
     }
@@ -765,7 +816,7 @@ impl StorageProvider for CryptOverlayProvider {
         if path == ".." {
             return self.inner.cd_up().await;
         }
-        let enc = self.map(path, true)?;
+        let enc = self.map(path, true, AccessKind::Read)?;
         self.inner.cd(&enc).await
     }
 
@@ -779,9 +830,9 @@ impl StorageProvider for CryptOverlayProvider {
         local_path: &str,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
-        let enc = self.map(remote_path, false)?;
-        // Stage the ciphertext to a temp file (streaming the network leg with the
-        // caller's progress callback), then decrypt into the final plaintext path.
+        let enc = self.map(remote_path, false, AccessKind::Read)?;
+        let is_enc = self.target_is_encrypted(remote_path);
+        // Stage (for outside this holds plaintext; for inside: ciphertext).
         let temp_path = std::env::temp_dir().join(format!(
             "aeroftp_crypt_overlay_dl_{}_{}.bin",
             chrono::Utc::now().timestamp_millis(),
@@ -792,23 +843,30 @@ impl StorageProvider for CryptOverlayProvider {
             let _ = tokio::fs::remove_file(&temp_path).await;
             return Err(e);
         }
-        let ciphertext = tokio::fs::read(&temp_path)
+        let staged = tokio::fs::read(&temp_path)
             .await
             .map_err(ProviderError::IoError)?;
         let _ = tokio::fs::remove_file(&temp_path).await;
-        let plaintext = self
-            .keys
-            .decrypt_content(&ciphertext)
-            .map_err(|e| Self::crypt_err("content decrypt", e))?;
-        write_plaintext_atomic(local_path, &plaintext).await
+        let content = if is_enc {
+            self.keys
+                .decrypt_content(&staged)
+                .map_err(|e| Self::crypt_err("content decrypt", e))?
+        } else {
+            staged
+        };
+        write_plaintext_atomic(local_path, &content).await
     }
 
     async fn download_to_bytes(&mut self, remote_path: &str) -> Result<Vec<u8>, ProviderError> {
-        let enc = self.map(remote_path, false)?;
-        let ciphertext = self.inner.download_to_bytes(&enc).await?;
-        self.keys
-            .decrypt_content(&ciphertext)
-            .map_err(|e| Self::crypt_err("content decrypt", e))
+        let enc = self.map(remote_path, false, AccessKind::Read)?;
+        let data = self.inner.download_to_bytes(&enc).await?;
+        if self.target_is_encrypted(remote_path) {
+            self.keys
+                .decrypt_content(&data)
+                .map_err(|e| Self::crypt_err("content decrypt", e))
+        } else {
+            Ok(data)
+        }
     }
 
     async fn upload(
@@ -835,7 +893,7 @@ impl StorageProvider for CryptOverlayProvider {
                 let _ = filetime::set_file_mtime(&temp_path, ft);
             }
         }
-        let enc = match self.map(remote_path, false) {
+        let enc = match self.map(remote_path, false, AccessKind::Write) {
             Ok(p) => p,
             Err(e) => {
                 let _ = tokio::fs::remove_file(&temp_path).await;
@@ -884,22 +942,22 @@ impl StorageProvider for CryptOverlayProvider {
     }
 
     async fn mkdir(&mut self, path: &str) -> Result<(), ProviderError> {
-        let enc = self.map(path, true)?;
+        let enc = self.map(path, true, AccessKind::Write)?;
         self.inner.mkdir(&enc).await
     }
 
     async fn delete(&mut self, path: &str) -> Result<(), ProviderError> {
-        let enc = self.map(path, false)?;
+        let enc = self.map(path, false, AccessKind::Write)?;
         self.inner.delete(&enc).await
     }
 
     async fn rmdir(&mut self, path: &str) -> Result<(), ProviderError> {
-        let enc = self.map(path, true)?;
+        let enc = self.map(path, true, AccessKind::Write)?;
         self.inner.rmdir(&enc).await
     }
 
     async fn rmdir_recursive(&mut self, path: &str) -> Result<(), ProviderError> {
-        let enc = self.map(path, true)?;
+        let enc = self.map(path, true, AccessKind::Write)?;
         self.inner.rmdir_recursive(&enc).await
     }
 
@@ -907,23 +965,33 @@ impl StorageProvider for CryptOverlayProvider {
         // is_dir is unknown for a bare rename; encode with file-leaf semantics.
         // Exact for rclone standard/obfuscate and AeroCrypt (is_dir-independent);
         // a directory rename under rclone `off`-suffix mode is a known edge.
-        let enc_from = self.map(from, false)?;
-        let enc_to = self.map(to, false)?;
+        let enc_from = self.map(from, false, AccessKind::Write)?;
+        let enc_to = self.map(to, false, AccessKind::Write)?;
         self.inner.rename(&enc_from, &enc_to).await
     }
 
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
-        let enc = self.map(path, false)?;
+        let enc = self.map(path, false, AccessKind::Read)?;
         let mut entry = self.inner.stat(&enc).await?;
-        let plain_name = self
-            .keys
-            .decode_name(&entry.name, entry.is_dir)
-            .unwrap_or(entry.name);
-        let plain_path = decode_entry_path(&self.keys, &entry.path, entry.is_dir);
+        let is_enc = self.target_is_encrypted(path);
+        let plain_name = if is_enc {
+            self.keys
+                .decode_name(&entry.name, entry.is_dir)
+                .unwrap_or(entry.name)
+        } else {
+            entry.name
+        };
+        let plain_path = if is_enc {
+            decode_entry_path(&self.keys, &entry.path, entry.is_dir)
+        } else {
+            entry.path
+        };
         let size = if entry.is_dir {
             0
-        } else {
+        } else if is_enc {
             self.keys.decrypted_size(entry.size)
+        } else {
+            entry.size
         };
         entry.name = plain_name;
         entry.path = plain_path;
@@ -932,13 +1000,17 @@ impl StorageProvider for CryptOverlayProvider {
     }
 
     async fn size(&mut self, path: &str) -> Result<u64, ProviderError> {
-        let enc = self.map(path, false)?;
-        let enc_size = self.inner.size(&enc).await?;
-        Ok(self.keys.decrypted_size(enc_size))
+        let enc = self.map(path, false, AccessKind::Read)?;
+        let s = self.inner.size(&enc).await?;
+        if self.target_is_encrypted(path) {
+            Ok(self.keys.decrypted_size(s))
+        } else {
+            Ok(s)
+        }
     }
 
     async fn exists(&mut self, path: &str) -> Result<bool, ProviderError> {
-        let enc = self.map(path, false)?;
+        let enc = self.map(path, false, AccessKind::Read)?;
         self.inner.exists(&enc).await
     }
 
@@ -951,7 +1023,7 @@ impl StorageProvider for CryptOverlayProvider {
     }
 
     async fn delete_permanent(&mut self, path: &str) -> Result<bool, ProviderError> {
-        let enc = self.map(path, false)?;
+        let enc = self.map(path, false, AccessKind::Write)?;
         self.inner.delete_permanent(&enc).await
     }
 
@@ -960,7 +1032,7 @@ impl StorageProvider for CryptOverlayProvider {
     }
 
     async fn chmod(&mut self, path: &str, mode: u32) -> Result<(), ProviderError> {
-        let enc = self.map(path, false)?;
+        let enc = self.map(path, false, AccessKind::Write)?;
         self.inner.chmod(&enc, mode).await
     }
 
@@ -980,14 +1052,14 @@ impl StorageProvider for CryptOverlayProvider {
         // The ciphertext blob is self-contained (the content nonce is embedded,
         // not derived from the name), so copying it verbatim to a new encrypted
         // name stays decryptable. Map both ends; the content is untouched.
-        let enc_from = self.map(from, false)?;
-        let enc_to = self.map(to, false)?;
+        let enc_from = self.map(from, false, AccessKind::Write)?;
+        let enc_to = self.map(to, false, AccessKind::Write)?;
         self.inner.server_copy(&enc_from, &enc_to).await
     }
 
     async fn server_side_copy(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
-        let enc_from = self.map(from, false)?;
-        let enc_to = self.map(to, false)?;
+        let enc_from = self.map(from, false, AccessKind::Write)?;
+        let enc_to = self.map(to, false, AccessKind::Write)?;
         self.inner.server_side_copy(&enc_from, &enc_to).await
     }
 
@@ -998,7 +1070,7 @@ impl StorageProvider for CryptOverlayProvider {
     }
 
     async fn disk_usage(&mut self, path: &str) -> Result<u64, ProviderError> {
-        let enc = self.map(path, true)?;
+        let enc = self.map(path, true, AccessKind::Read)?;
         self.inner.disk_usage(&enc).await
     }
 
@@ -1019,10 +1091,12 @@ impl StorageProvider for CryptOverlayProvider {
     }
 
     async fn list_versions(&mut self, path: &str) -> Result<Vec<FileVersion>, ProviderError> {
-        let enc = self.map(path, false)?;
+        let enc = self.map(path, false, AccessKind::Read)?;
         let mut versions = self.inner.list_versions(&enc).await?;
-        for v in &mut versions {
-            v.size = self.keys.decrypted_size(v.size);
+        if self.target_is_encrypted(path) {
+            for v in &mut versions {
+                v.size = self.keys.decrypted_size(v.size);
+            }
         }
         Ok(versions)
     }
@@ -1033,7 +1107,8 @@ impl StorageProvider for CryptOverlayProvider {
         version_id: &str,
         local_path: &str,
     ) -> Result<(), ProviderError> {
-        let enc = self.map(path, false)?;
+        let enc = self.map(path, false, AccessKind::Read)?;
+        let is_enc = self.target_is_encrypted(path);
         let temp_path = std::env::temp_dir().join(format!(
             "aeroftp_crypt_overlay_ver_{}_{}.bin",
             chrono::Utc::now().timestamp_millis(),
@@ -1048,24 +1123,27 @@ impl StorageProvider for CryptOverlayProvider {
             let _ = tokio::fs::remove_file(&temp_path).await;
             return Err(e);
         }
-        let ciphertext = tokio::fs::read(&temp_path)
+        let staged = tokio::fs::read(&temp_path)
             .await
             .map_err(ProviderError::IoError)?;
         let _ = tokio::fs::remove_file(&temp_path).await;
-        let plaintext = self
-            .keys
-            .decrypt_content(&ciphertext)
-            .map_err(|e| Self::crypt_err("version decrypt", e))?;
-        write_plaintext_atomic(local_path, &plaintext).await
+        let content = if is_enc {
+            self.keys
+                .decrypt_content(&staged)
+                .map_err(|e| Self::crypt_err("version decrypt", e))?
+        } else {
+            staged
+        };
+        write_plaintext_atomic(local_path, &content).await
     }
 
     async fn restore_version(&mut self, path: &str, version_id: &str) -> Result<(), ProviderError> {
-        let enc = self.map(path, false)?;
+        let enc = self.map(path, false, AccessKind::Write)?;
         self.inner.restore_version(&enc, version_id).await
     }
 
     async fn delete_version(&mut self, path: &str, version_id: &str) -> Result<(), ProviderError> {
-        let enc = self.map(path, false)?;
+        let enc = self.map(path, false, AccessKind::Write)?;
         self.inner.delete_version(&enc, version_id).await
     }
 
@@ -1781,7 +1859,8 @@ mod tests {
     #[test]
     fn encode_plain_target_relative_encrypts_full() {
         for (label, keys) in both_kinds() {
-            let enc = encode_plain_target(&keys, "", "sub/file.txt", false).unwrap();
+            let enc =
+                encode_plain_target(&keys, "", "sub/file.txt", false, AccessKind::Write).unwrap();
             assert!(!enc.starts_with('/'), "{label}: relative stays relative");
             let parts: Vec<&str> = enc.split('/').collect();
             assert_eq!(parts.len(), 2, "{label}: two encoded segments");
@@ -1801,7 +1880,14 @@ mod tests {
     #[test]
     fn encode_plain_target_absolute_keeps_anchor_cleartext() {
         for (label, keys) in both_kinds() {
-            let enc = encode_plain_target(&keys, "/Vault", "/Vault/dir/note.md", false).unwrap();
+            let enc = encode_plain_target(
+                &keys,
+                "/Vault",
+                "/Vault/dir/note.md",
+                false,
+                AccessKind::Write,
+            )
+            .unwrap();
             assert!(
                 enc.starts_with("/Vault/"),
                 "{label}: anchor stays cleartext, got {enc}"
@@ -1816,9 +1902,11 @@ mod tests {
     #[test]
     fn encode_plain_target_anchor_root_is_cleartext() {
         for (_label, keys) in both_kinds() {
-            let enc = encode_plain_target(&keys, "/Vault", "/Vault", true).unwrap();
+            let enc =
+                encode_plain_target(&keys, "/Vault", "/Vault", true, AccessKind::Write).unwrap();
             assert_eq!(enc, "/Vault");
-            let enc2 = encode_plain_target(&keys, "/Vault", "/Vault/", true).unwrap();
+            let enc2 =
+                encode_plain_target(&keys, "/Vault", "/Vault/", true, AccessKind::Write).unwrap();
             assert_eq!(enc2, "/Vault");
         }
     }
@@ -1826,15 +1914,24 @@ mod tests {
     #[test]
     fn encode_plain_target_outside_anchor_is_refused() {
         for (label, keys) in both_kinds() {
-            let res = encode_plain_target(&keys, "/Vault", "/Other/secret.txt", false);
-            assert!(res.is_err(), "{label}: out-of-scope must fail closed");
+            let res = encode_plain_target(
+                &keys,
+                "/Vault",
+                "/Other/secret.txt",
+                false,
+                AccessKind::Write,
+            );
+            assert!(
+                res.is_err(),
+                "{label}: out-of-scope must fail closed (Write)"
+            );
         }
     }
 
     #[test]
     fn encode_plain_target_whole_remote_encrypts_all() {
         for (label, keys) in both_kinds() {
-            let enc = encode_plain_target(&keys, "", "/a/b.txt", false).unwrap();
+            let enc = encode_plain_target(&keys, "", "/a/b.txt", false, AccessKind::Write).unwrap();
             assert!(enc.starts_with('/'), "{label}: absolute preserved");
             let parts: Vec<&str> = enc.trim_start_matches('/').split('/').collect();
             assert_eq!(keys.decode_name(parts[0], true).unwrap(), "a");
@@ -1853,13 +1950,130 @@ mod tests {
     #[test]
     fn decode_path_roundtrips_and_passes_undecryptable() {
         for (_label, keys) in both_kinds() {
-            let enc = encode_plain_target(&keys, "/Vault", "/Vault/x/y", true).unwrap();
+            let enc = encode_plain_target(&keys, "/Vault", "/Vault/x/y", true, AccessKind::Write)
+                .unwrap();
             let dec = decode_path(&keys, &enc);
             assert_eq!(dec, "/Vault/x/y");
             // A foreign component is left verbatim, not dropped, in display paths.
             let mixed = format!("{}/foreign", enc);
             let dec_mixed = decode_path(&keys, &mixed);
             assert!(dec_mixed.starts_with("/Vault/x/y/"));
+        }
+    }
+
+    // ── Scope-aware listing (CWP-20C) ────────────────────────────────────────
+
+    /// list must pass through plaintext siblings that live outside the anchor
+    /// (Model B: plaintext outside, decrypted inside).
+    #[tokio::test]
+    async fn list_passes_through_plaintext_sibling_outside_scope() {
+        let keys = rclone_keys(FilenameEncryption::Standard, true, ".bin");
+        let mut mem = MemProvider::new();
+        // plaintext sibling outside
+        mem.seed_raw_dir("/sibling_plain");
+        mem.seed_raw_file("/sibling_plain/outside.txt", b"outside data");
+        // anchor dir
+        mem.seed_raw_dir("/AeroCryptTest");
+        let mut provider = CryptOverlayProvider::new(Box::new(mem), keys, "/AeroCryptTest");
+
+        let listed = provider.list("/").await.unwrap();
+        let names: Vec<_> = listed.iter().map(|e| e.name.as_str()).collect();
+        assert!(
+            names.contains(&"sibling_plain"),
+            "sibling plaintext dir must be visible: {names:?}"
+        );
+        assert!(names.contains(&"AeroCryptTest"), "anchor must be visible");
+        // the outside file's parent dir is sibling_plain, but when listing root we see the dirs
+    }
+
+    /// When listing the parent of the anchor, the anchor folder's own plaintext
+    /// name must be kept (not dropped by a failed decode).
+    #[tokio::test]
+    async fn list_keeps_anchor_folder_visible_when_listing_parent() {
+        let keys = aerocrypt_keys();
+        let mut mem = MemProvider::new();
+        mem.seed_raw_dir("/AeroCryptTest");
+        mem.seed_raw_dir("/AeroCryptTest/inside_enc");
+        // note: inside dir name here is placeholder; the list will see it as child
+        // but since we did not encrypt its name, the inside one will be dropped by decode
+        // (correct, only real below get decrypted). We only care anchor survives.
+        let mut provider = CryptOverlayProvider::new(Box::new(mem), keys, "/AeroCryptTest");
+
+        let listed = provider.list("/").await.unwrap();
+        let names: Vec<_> = listed.iter().map(|e| (&e.name, e.is_dir)).collect();
+        assert!(
+            names.iter().any(|(n, d)| *n == "AeroCryptTest" && *d),
+            "anchor folder must survive listing parent as plaintext dir"
+        );
+    }
+
+    /// Strictly-below entries are decrypted; sentinels are hidden; plaintext at
+    /// anchor level would pass but we test inside decrypt path.
+    #[tokio::test]
+    async fn list_decrypts_strictly_below_anchor_and_hides_sentinels() {
+        let keys = rclone_keys(FilenameEncryption::Standard, true, ".bin");
+        let mut mem = MemProvider::new();
+        mem.seed_raw_dir("/AeroCryptTest");
+        // seed an encrypted-name child by computing it
+        let enc_child = keys.encode_name("secret.txt", false).unwrap();
+        let enc_path = format!("/AeroCryptTest/{}", enc_child);
+        mem.seed_raw_file(&enc_path, b"cipher data");
+        // seed a sentinel that must be hidden (for rclone)
+        mem.seed_raw_file("/AeroCryptTest/dirIV", b"sentinel");
+        let mut provider = CryptOverlayProvider::new(Box::new(mem), keys, "/AeroCryptTest");
+
+        let listed = provider.list("/AeroCryptTest").await.unwrap();
+        let names: Vec<_> = listed.iter().map(|e| e.name.as_str()).collect();
+        assert!(
+            names.contains(&"secret.txt"),
+            "below-anchor must decrypt: {names:?}"
+        );
+        assert!(!names.contains(&"dirIV"), "sentinel must be hidden");
+        // ensure no raw ciphertext name leaks
+        assert!(
+            !names.iter().any(|n| n == &enc_child),
+            "cipher name must not surface"
+        );
+    }
+
+    /// Whole-remote (scope="") must behave byte-identical to pre-CWP-20C
+    /// (everything decrypted, no pass-through logic changes output).
+    #[tokio::test]
+    async fn list_whole_remote_scope_byte_identical() {
+        // populate via upload (which does full-encrypt path for scope="")
+        let inner = Box::new(MemProvider::new());
+        let mut provider = CryptOverlayProvider::new(inner, aerocrypt_keys(), "");
+        let dir = std::env::temp_dir().join(format!("cwp20c_whole_{}", uuid::Uuid::new_v4()));
+        tokio::fs::create_dir_all(&dir).await.unwrap();
+        let local = dir.join("rootfile.txt");
+        tokio::fs::write(&local, b"root content").await.unwrap();
+        provider
+            .upload(local.to_str().unwrap(), "/rootfile.txt", None)
+            .await
+            .unwrap();
+
+        let listed = provider.list("/").await.unwrap();
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].name, "rootfile.txt");
+        let _ = tokio::fs::remove_dir_all(&dir).await;
+    }
+
+    #[test]
+    fn encode_plain_target_read_passes_through_out_of_scope() {
+        for (label, keys) in both_kinds() {
+            let res = encode_plain_target(
+                &keys,
+                "/Vault",
+                "/Other/secret.txt",
+                false,
+                AccessKind::Read,
+            );
+            assert!(res.is_ok(), "{label}: Read must pass through outside");
+            assert_eq!(res.unwrap(), "/Other/secret.txt");
+            // also at-anchor sibling
+            let res2 =
+                encode_plain_target(&keys, "/Vault", "/sibling", true, AccessKind::Read).unwrap();
+            assert_eq!(res2, "/sibling");
         }
     }
 
@@ -1941,7 +2155,8 @@ mod tests {
     #[test]
     fn rclone_off_mode_path_suffixes_only_leaf() {
         let keys = rclone_keys(FilenameEncryption::Off, true, ".bin");
-        let enc = encode_plain_target(&keys, "", "dir/sub/file.txt", false).unwrap();
+        let enc =
+            encode_plain_target(&keys, "", "dir/sub/file.txt", false, AccessKind::Write).unwrap();
         assert_eq!(enc, "dir/sub/file.txt.bin");
     }
 
@@ -1980,7 +2195,8 @@ mod tests {
         assert_ne!(file, "img.jpg");
         assert_eq!(keys.decode_name(&file, false).unwrap(), "img.jpg");
         // A full path: cleartext dir + encrypted leaf.
-        let enc = encode_plain_target(&keys, "", "Photos/img.jpg", false).unwrap();
+        let enc =
+            encode_plain_target(&keys, "", "Photos/img.jpg", false, AccessKind::Write).unwrap();
         let parts: Vec<&str> = enc.split('/').collect();
         assert_eq!(parts[0], "Photos");
         assert_eq!(keys.decode_name(parts[1], false).unwrap(), "img.jpg");
@@ -2009,6 +2225,22 @@ mod tests {
         }
         fn raw_bytes(&self, path: &str) -> Option<Vec<u8>> {
             self.files.lock().unwrap().get(path).cloned()
+        }
+        /// Seed a raw on-wire file (used in scope tests to place plaintext
+        /// siblings outside the anchor without going through write-map).
+        fn seed_raw_file(&mut self, wire_path: &str, data: &[u8]) {
+            self.files
+                .lock()
+                .unwrap()
+                .insert(wire_path.to_string(), data.to_vec());
+        }
+        /// Seed a raw on-wire dir entry (for listing anchor/sibling dirs).
+        fn seed_raw_dir(&mut self, wire_path: &str) {
+            let mut ds = self.dirs.lock().unwrap();
+            let s = wire_path.to_string();
+            if !ds.iter().any(|d| d == &s) {
+                ds.push(s);
+            }
         }
     }
 
@@ -2048,6 +2280,28 @@ mod tests {
                             path: p.clone(),
                             is_dir: false,
                             size: data.len() as u64,
+                            modified: None,
+                            permissions: None,
+                            owner: None,
+                            group: None,
+                            is_symlink: false,
+                            link_target: None,
+                            mime_type: None,
+                            metadata: HashMap::new(),
+                        });
+                    }
+                }
+            }
+            // Also surface seeded/created dirs as directory entries.
+            let dirs = self.dirs.lock().unwrap();
+            for d in dirs.iter() {
+                if let Some(rest) = d.strip_prefix(&prefix) {
+                    if !rest.contains('/') && !rest.is_empty() {
+                        out.push(RemoteEntry {
+                            name: rest.to_string(),
+                            path: d.clone(),
+                            is_dir: true,
+                            size: 0,
                             modified: None,
                             permissions: None,
                             owner: None,
@@ -2343,8 +2597,9 @@ mod tests {
     async fn out_of_scope_operation_fails_closed() {
         let inner = Box::new(MemProvider::new());
         let mut provider = CryptOverlayProvider::new(inner, aerocrypt_keys(), "/Vault");
-        // A path outside the bound anchor is refused, never re-encrypted blindly.
-        let err = provider.download_to_bytes("/Elsewhere/x.txt").await;
+        // Write path outside the bound anchor must still refuse (fail-closed).
+        // (Read paths outside now pass through for Model-B plaintext areas.)
+        let err = provider.mkdir("/Elsewhere/newdir").await;
         assert!(matches!(err, Err(ProviderError::InvalidPath(_))));
     }
 
