@@ -1534,14 +1534,17 @@ async fn tree(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
             let drop_for_dirs_only = dirs_only && !entry.is_dir;
             let keep = !drop_for_files_only && !drop_for_dirs_only;
             if keep {
-                entries.push(json!({
-                    "name": entry.name,
-                    "path": entry.path,
-                    "is_dir": entry.is_dir,
-                    "size": entry.size,
-                    "modified": entry.modified,
-                    "depth": depth + 1,
-                }));
+                // A6/A7b: route through the same `entry_json` chokepoint as
+                // `list_files` and `search_files` so the MCP listing surfaces
+                // emit one entry shape, then layer the tree-only `depth` on top.
+                // `entry_json` already emits name/path/is_dir/size/modified in
+                // this order, so this stays byte-identical to the old inline
+                // `json!`; the unification is a pure refactor, not a contract change.
+                let mut entry_v = entry_json(&entry, false);
+                if let Some(obj) = entry_v.as_object_mut() {
+                    obj.insert("depth".to_string(), json!(depth + 1));
+                }
+                entries.push(entry_v);
             }
             // Reported with `is_dir: true`, but a symlink-to-dir is never
             // walked (GAP-A02): a link to `..` would never terminate.
@@ -3134,6 +3137,46 @@ mod tests {
         async fn storage_info(&self) -> Result<StorageQuota, String> {
             Err("unused".into())
         }
+    }
+
+    #[test]
+    fn entry_json_is_the_one_shared_listing_shape() {
+        // A6/A7b: `list_files`, `search_files` and `tree` must all serialize a
+        // remote entry through this single chokepoint. `tree` layers only
+        // `depth` on top. If a key here is renamed or dropped, three MCP
+        // surfaces drift at once, so lock the exact key set.
+        let e = entry("/root/sub/c.txt", false, 300);
+
+        let v = entry_json(&e, false);
+        let obj = v.as_object().unwrap();
+        let mut keys: Vec<&str> = obj.keys().map(String::as_str).collect();
+        keys.sort_unstable();
+        assert_eq!(keys, ["is_dir", "modified", "name", "path", "size"]);
+        assert_eq!(obj["path"], json!("/root/sub/c.txt"));
+        assert_eq!(obj["is_dir"], json!(false));
+        assert_eq!(obj["size"], json!(300));
+        assert!(
+            !obj.contains_key("permissions"),
+            "permissions/owner are omitted unless include_permissions is set"
+        );
+
+        // include_permissions adds exactly the CLI `file_info` extras.
+        let vp = entry_json(&e, true);
+        let objp = vp.as_object().unwrap();
+        assert!(objp.contains_key("permissions") && objp.contains_key("owner"));
+
+        // The `tree` entry is this shape plus `depth`. Assert the union matches
+        // what the BFS at `tree()` now produces.
+        let mut tv = entry_json(&e, false);
+        tv.as_object_mut()
+            .unwrap()
+            .insert("depth".to_string(), json!(2));
+        let mut tkeys: Vec<&str> = tv.as_object().unwrap().keys().map(String::as_str).collect();
+        tkeys.sort_unstable();
+        assert_eq!(
+            tkeys,
+            ["depth", "is_dir", "modified", "name", "path", "size"]
+        );
     }
 
     #[tokio::test]

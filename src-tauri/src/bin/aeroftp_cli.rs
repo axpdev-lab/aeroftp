@@ -36086,16 +36086,26 @@ async fn cmd_rmdirs(url: &str, path: &str, force: bool, cli: &Cli, format: Outpu
     }
 }
 
-/// One record of the `lsjson` output. Field names and order are a stable
-/// public contract (scripts/CI parse this): keep them as declared. Optional
-/// fields are skipped entirely (not emitted as empty) when their flag is set.
+/// One record of the `lsjson` output. This is a FROZEN rclone-compatibility
+/// surface, deliberately NOT the app's internal listing shape.
+///
+/// The PascalCase field names (`Path`, `Name`, `Size`, `IsDir`, ...), the
+/// scan-root-relative paths under `-R`, and the `Size: -1` directory sentinel
+/// all mirror rclone's `lsjson` contract on purpose: users pipe our output into
+/// tooling (and our own CI) that expects rclone's exact field names and values.
+/// Do NOT "tidy" these to snake_case, absolute paths, or `Size: 0` for
+/// directories: that is a public break and belongs in a release-note-gated
+/// change, not a cleanup. The unified, provider-native, snake_case shape lives
+/// on the MCP/`ls`/`find` surfaces instead (see `ai_core::remote_tools::entry_json`).
+/// Optional fields are skipped entirely (not emitted as empty) when their flag is set.
 #[derive(Serialize)]
 struct LsjsonEntry {
     #[serde(rename = "Path")]
     path: String,
     #[serde(rename = "Name")]
     name: String,
-    /// Byte size; directories are reported as `-1` by convention.
+    /// Byte size. Directories are reported as `-1`, matching rclone's `lsjson`
+    /// sentinel (never `0`); consumers branch on it. Frozen, see the type doc.
     #[serde(rename = "Size")]
     size: i64,
     #[serde(rename = "MimeType", skip_serializing_if = "Option::is_none")]
@@ -36227,6 +36237,7 @@ async fn cmd_lsjson(
                 let entry = LsjsonEntry {
                     path: leaf.clone(),
                     name: leaf,
+                    // rclone `lsjson` dir sentinel, frozen; see LsjsonEntry.
                     size: if e.is_dir { -1 } else { e.size as i64 },
                     mime_type,
                     mod_time,
@@ -36380,6 +36391,7 @@ async fn cmd_lsjson(
                             e.name.clone()
                         },
                         name: e.name.clone(),
+                        // rclone `lsjson` dir sentinel, frozen; see LsjsonEntry.
                         size: if e.is_dir { -1 } else { e.size as i64 },
                         mime_type,
                         mod_time,

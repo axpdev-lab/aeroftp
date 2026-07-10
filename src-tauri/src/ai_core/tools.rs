@@ -788,7 +788,7 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
         },
         ToolDef {
             name: "aeroftp_list_files",
-            description: "List files and directories on a remote server. Supports pagination (limit/offset), sort (name|size|mtime), reverse, files_only/dirs_only filters, and size/mtime range filters. Default limit: 200, hard cap: 5000.",
+            description: "List one level of a remote directory (non-recursive). Supports pagination (limit/offset), sort (name|size|mtime), reverse, files_only/dirs_only filters, and size/mtime range filters. Default limit: 200, hard cap: 5000. For a recursive listing use aeroftp_tree, which emits the same entry shape plus a `depth` field; do not issue N sequential calls here to walk a subtree.",
             input_schema: json!({
                 "type": "object",
                 "properties": {
