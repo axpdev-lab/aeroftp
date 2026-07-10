@@ -1396,6 +1396,7 @@
             "connect_start": "Ansluter till {server} ({protocol})...",
             "connect_success": "Ansluten! Jag är kopplad till {server} via {protocol}",
             "connect_error": "Kunde inte ansluta till {server}. Jag kontrollerar mina inloggningsuppgifter.",
+            "connect_error_path_not_found": "Inloggad på {server}, men fjärrsökvägen '{path}' hittades inte. Redigera profilens Fjärrsökväg eller töm den för att använda serverns hemmapp.",
             "disconnect_start": "Kopplar ifrån servern...",
             "disconnect_success": "Jag har kopplat ifrån servern",
             "disconnect_error": "Kunde inte koppla ifrån servern",

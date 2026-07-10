@@ -1396,6 +1396,7 @@
             "connect_start": "Kobler til {server} ({protocol})...",
             "connect_success": "Tilkoblet {server} via {protocol}",
             "connect_error": "Tilkobling til {server} mislyktes. Sjekk legitimasjon.",
+            "connect_error_path_not_found": "Logget inn på {server}, men den eksterne stien '{path}' ble ikke funnet. Rediger profilens Eksterne sti, eller tøm den for å bruke serverens hjemmemappe.",
             "disconnect_start": "Kobler fra server...",
             "disconnect_success": "Frakoblet server",
             "disconnect_error": "Problem med frakobling",

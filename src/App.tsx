@@ -509,6 +509,20 @@ const LISTING_CANCELLED = 'LISTING_CANCELLED';
 const isListingCancelled = (error: unknown): boolean =>
   String(error).includes(LISTING_CANCELLED);
 
+// A connect that reaches a 550 has ALREADY logged in: the server accepted the
+// credentials and then rejected the initial-path navigation (a CWD/LIST of the
+// profile's Remote Path). This is common on chroot FTP accounts (cPanel / Plesk
+// shared hosting) whose home is the site root, so a configured path like
+// "/mysite.it" answers 550 even though the site is right there at "/". Such a
+// failure must NOT be reported as "Check credentials": the credentials are fine.
+// A real authentication failure is a 530, which this predicate deliberately
+// excludes so it stays a credentials error.
+const isRemotePathNotFoundOnConnect = (error: unknown): boolean => {
+  const msg = String((error as { message?: unknown })?.message ?? error ?? '');
+  if (/\b530\b/.test(msg)) return false;
+  return /\b550\b/.test(msg) || /invalid path/i.test(msg);
+};
+
 // ============================================================================
 // Main App Component
 // ============================================================================
@@ -6687,8 +6701,17 @@ interface UpdateVerificationInfo {
       if (isConnectCancelledError(error)) return;
       // Nor is a listing the user aborted from the panel spinner's Cancel.
       if (isListingCancelled(error)) return;
-      humanLog.logError('CONNECT', { server: effectiveParams.server }, logId);
-      notify.error(t('connection.connectionFailed'), String(error));
+      // A 550 after a successful login is a Remote Path problem, not a
+      // credentials one (see isRemotePathNotFoundOnConnect): report it honestly.
+      if (isRemotePathNotFoundOnConnect(error)) {
+        const badPath = quickConnectDirs.remoteDir || '/';
+        const pathMsg = t('activity.connect_error_path_not_found', { server: effectiveParams.server, path: badPath });
+        humanLog.updateEntry(logId, { status: 'error', message: pathMsg });
+        notify.error(t('connection.connectionFailed'), pathMsg);
+      } else {
+        humanLog.logError('CONNECT', { server: effectiveParams.server }, logId);
+        notify.error(t('connection.connectionFailed'), String(error));
+      }
       // #180 / 4486730822: stamp the standalone connect-failure marker so
       // the My Servers card surfaces a failed FTP/SFTP login even when
       // the Activity Log is closed.
@@ -15392,8 +15415,18 @@ interface UpdateVerificationInfo {
                   // Nor is a listing the user aborted from the panel spinner:
                   // the login worked, so no failure marker on the card.
                   if (isListingCancelled(error)) return;
-                  humanLog.logError('CONNECT', { server: params.server }, logId);
-                  notify.error(t('connection.connectionFailed'), String(error));
+                  // A logged-in session whose Remote Path answers 550 is a path
+                  // problem, not a credentials one: say so instead of the
+                  // misleading "Check credentials".
+                  if (isRemotePathNotFoundOnConnect(error)) {
+                    const badPath = resolveUsernameTemplate(initialPath, params.username) || initialPath || '/';
+                    const pathMsg = t('activity.connect_error_path_not_found', { server: params.server, path: badPath });
+                    humanLog.updateEntry(logId, { status: 'error', message: pathMsg });
+                    notify.error(t('connection.connectionFailed'), pathMsg);
+                  } else {
+                    humanLog.logError('CONNECT', { server: params.server }, logId);
+                    notify.error(t('connection.connectionFailed'), String(error));
+                  }
                   // #180 / 4486730822: stamp the standalone connect-failure
                   // marker on the saved-server card.
                   if (params.savedServerId) {

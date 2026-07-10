@@ -1396,6 +1396,7 @@
             "connect_start": "Conectando a {server} ({protocol})...",
             "connect_success": "Conectado a {server} via {protocol}",
             "connect_error": "Conexão com {server} falhou. Verifique as credenciais.",
+            "connect_error_path_not_found": "Sessão iniciada em {server}, mas o caminho remoto '{path}' não foi encontrado. Edite o Caminho remoto do perfil ou limpe-o para usar a pasta inicial do servidor.",
             "disconnect_start": "Desconectando do servidor...",
             "disconnect_success": "Desconectado do servidor",
             "disconnect_error": "Problema na desconexão",

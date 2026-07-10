@@ -1396,6 +1396,7 @@
             "connect_start": "{server} ({protocol})に接続中...",
             "connect_success": "{protocol}経由で{server}に接続しました",
             "connect_error": "{server}への接続に失敗しました。認証情報を確認してください。",
+            "connect_error_path_not_found": "{server} にログインしましたが、リモートパス '{path}' が見つかりませんでした。プロファイルのリモートパスを編集するか、空にしてサーバーのホームを使用してください。",
             "disconnect_start": "サーバーから切断中...",
             "disconnect_success": "サーバーから切断しました",
             "disconnect_error": "切断の問題",

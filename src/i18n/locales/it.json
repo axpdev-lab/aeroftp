@@ -1901,6 +1901,7 @@
             "connect_start": "Connessione a {server} ({protocol})...",
             "connect_success": "Connesso a {server} via {protocol}",
             "connect_error": "Connessione a {server} fallita. Verifica le credenziali.",
+            "connect_error_path_not_found": "Accesso a {server} riuscito, ma il percorso remoto '{path}' non esiste. Modifica il Remote Path del profilo o lascialo vuoto per usare la home del server.",
             "disconnect_start": "Disconnessione in corso...",
             "disconnect_success": "Disconnesso dal server",
             "disconnect_error": "Errore durante la disconnessione",

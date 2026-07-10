@@ -1396,6 +1396,7 @@
             "connect_start": "{server} ({protocol}) से कनेक्ट हो रहा है...",
             "connect_success": "{protocol} के माध्यम से {server} से जुड़ा",
             "connect_error": "{server} से कनेक्शन विफल। क्रेडेंशियल जांचें।",
+            "connect_error_path_not_found": "{server} में लॉग इन हो गया, लेकिन रिमोट पथ '{path}' नहीं मिला। प्रोफ़ाइल का रिमोट पथ संपादित करें या सर्वर होम उपयोग करने के लिए इसे खाली करें।",
             "disconnect_start": "सर्वर से डिस्कनेक्ट हो रहा है...",
             "disconnect_success": "सर्वर से डिस्कनेक्ट हो गया",
             "disconnect_error": "डिस्कनेक्शन समस्या",

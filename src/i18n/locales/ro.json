@@ -1396,6 +1396,7 @@
             "connect_start": "Deschid conexiunea cu {server} ({protocol})...",
             "connect_success": "Conexiunea e gata: sunt conectat la {server} prin {protocol}",
             "connect_error": "Nu am putut să mă conectez la {server}. Voi verifica datele de autentificare și setările.",
+            "connect_error_path_not_found": "Autentificare reușită la {server}, dar calea la distanță '{path}' nu a fost găsită. Editați câmpul Cale la distanță din profil sau goliți-l pentru a folosi folderul de pornire al serverului.",
             "disconnect_start": "Închid conexiunea cu serverul...",
             "disconnect_success": "Am închis conexiunea cu serverul",
             "disconnect_error": "Nu am putut închide conexiunea cu serverul",

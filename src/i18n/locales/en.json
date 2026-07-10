@@ -65,6 +65,7 @@
         },
         "activity": {
             "connect_error": "Connection to {server} failed. Check credentials.",
+            "connect_error_path_not_found": "Logged in to {server}, but the remote path '{path}' was not found. Edit the profile's Remote Path or clear it to use the server home.",
             "delete_scanning": "Deleting items...",
             "connect_start": "Connecting to {server} ({protocol})...",
             "connect_success": "Connected to {server} via {protocol}",

@@ -1396,6 +1396,7 @@
             "connect_start": "{server} ({protocol})에 연결 중...",
             "connect_success": "{protocol}을 통해 {server}에 연결됨",
             "connect_error": "{server} 연결 실패. 자격 증명을 확인하세요.",
+            "connect_error_path_not_found": "{server}에 로그인했지만 원격 경로 '{path}'를 찾을 수 없습니다. 프로필의 원격 경로를 편집하거나 비워서 서버 홈을 사용하세요.",
             "disconnect_start": "서버에서 연결 끊는 중...",
             "disconnect_success": "서버에서 연결 끊김",
             "disconnect_error": "연결 끊기 문제",

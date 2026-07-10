@@ -1396,6 +1396,7 @@
             "connect_start": "Ühendamine {server} ({protocol})...",
             "connect_success": "Ühendatud {server} kaudu {protocol}",
             "connect_error": "Ühendamine {server} ebaõnnestus. Kontrollige mandaate.",
+            "connect_error_path_not_found": "Sisselogimine serverisse {server} õnnestus, kuid kaugteed '{path}' ei leitud. Muutke profiili välja Kaugtee või tühjendage see, et kasutada serveri kodukausta.",
             "disconnect_start": "Ühenduse katkestamine serveriga...",
             "disconnect_success": "Ühendus serveriga katkestatud",
             "disconnect_error": "Ühenduse katkestamise probleem",

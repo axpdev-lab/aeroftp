@@ -1396,6 +1396,7 @@
             "connect_start": "Otváram pripojenie k {server} ({protocol})...",
             "connect_success": "Pripojenie pripravené: som pripojený k {server} cez {protocol}",
             "connect_error": "Nemohol som sa pripojiť k {server}. Skontrolujem moje prihlasovacie údaje a nastavenia.",
+            "connect_error_path_not_found": "Prihlásenie na {server} úspešné, ale vzdialená cesta '{path}' sa nenašla. Upravte v profile pole Vzdialená cesta alebo ho vymažte, aby sa použil domovský priečinok servera.",
             "disconnect_start": "Zatváram pripojenie k serveru...",
             "disconnect_success": "Zavrel som pripojenie k serveru",
             "disconnect_error": "Nemohol som zavrieť pripojenie k serveru",

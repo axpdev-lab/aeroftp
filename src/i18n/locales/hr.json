@@ -1396,6 +1396,7 @@
             "connect_start": "Povezivanje s {server} ({protocol})...",
             "connect_success": "Povezano s {server} putem {protocol}",
             "connect_error": "Povezivanje s {server} nije uspjelo. Provjerite vjerodajnice.",
+            "connect_error_path_not_found": "Prijava na {server} uspjela, ali udaljena putanja '{path}' nije pronađena. Uredite polje Udaljena putanja u profilu ili ga ostavite prazno za korištenje početne mape poslužitelja.",
             "disconnect_start": "Odspajanje s poslužitelja...",
             "disconnect_success": "Odspojeno s poslužitelja",
             "disconnect_error": "Problem s odspajanjem",

@@ -1396,6 +1396,7 @@
             "connect_start": "Menyambung ke {server} ({protocol})...",
             "connect_success": "Disambung ke {server} melalui {protocol}",
             "connect_error": "Sambungan ke {server} gagal. Semak kelayakan.",
+            "connect_error_path_not_found": "Log masuk ke {server} berjaya, tetapi laluan jauh '{path}' tidak dijumpai. Edit Laluan Jauh profil atau kosongkan untuk menggunakan laman utama pelayan.",
             "disconnect_start": "Memutuskan sambungan dari pelayan...",
             "disconnect_success": "Diputuskan dari pelayan",
             "disconnect_error": "Masalah pemutusan",

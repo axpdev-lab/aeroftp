@@ -1396,6 +1396,7 @@
             "connect_start": "{server} sunucusuna bağlanıyorum ({protocol})...",
             "connect_success": "Bağlandım! {server} sunucusuna {protocol} üzerinden bağlandım",
             "connect_error": "{server} sunucusuna bağlanamadım. Kimlik bilgilerimi kontrol edeceğim.",
+            "connect_error_path_not_found": "{server} sunucusunda oturum açıldı, ancak '{path}' uzak yolu bulunamadı. Profilin Uzak Yol alanını düzenleyin veya sunucunun ana dizinini kullanmak için temizleyin.",
             "disconnect_start": "Sunucudan bağlantıyı kesiyorum...",
             "disconnect_success": "Sunucudan bağlantıyı kestim",
             "disconnect_error": "Sunucudan bağlantıyı kesemedim",

@@ -1396,6 +1396,7 @@
             "connect_start": "Connectant a {server} ({protocol})...",
             "connect_success": "Connectat a {server} via {protocol}",
             "connect_error": "Connexio a {server} fallida. Comprova les credencials.",
+            "connect_error_path_not_found": "S'ha iniciat sessio a {server}, pero no s'ha trobat la ruta remota '{path}'. Edita la Ruta remota del perfil o buida-la per usar la carpeta inicial del servidor.",
             "disconnect_start": "Desconnectant del servidor...",
             "disconnect_success": "Desconnectat del servidor",
             "disconnect_error": "Problema de desconnexio",

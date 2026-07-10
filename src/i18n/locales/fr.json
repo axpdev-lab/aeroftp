@@ -1396,6 +1396,7 @@
             "connect_start": "Connexion à {server}... ({protocol})",
             "connect_success": "Connecté à {server} avec succès ({protocol})",
             "connect_error": "Échec de la connexion à {server}. Vérifiez vos identifiants.",
+            "connect_error_path_not_found": "Connecté à {server}, mais le chemin distant '{path}' est introuvable. Modifiez le Chemin distant du profil ou videz-le pour utiliser le dossier racine du serveur.",
             "disconnect_start": "Déconnexion en cours...",
             "disconnect_success": "Déconnecté du serveur",
             "disconnect_error": "Erreur lors de la déconnexion",

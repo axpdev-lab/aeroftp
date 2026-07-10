@@ -1396,6 +1396,7 @@
             "connect_start": "Jungiamasi prie {server} ({protocol})...",
             "connect_success": "Prisijungta prie {server} per {protocol}",
             "connect_error": "Nepavyko prisijungti prie {server}. Patikrinkite kredencialus.",
+            "connect_error_path_not_found": "Prisijungta prie {server}, bet nuotolinis kelias '{path}' nerastas. Redaguokite profilio lauką Nuotolinis kelias arba jį išvalykite, kad būtų naudojamas serverio pradinis aplankas.",
             "disconnect_start": "Atsijungiama nuo serverio...",
             "disconnect_success": "Atsijungta nuo serverio",
             "disconnect_error": "Atsijungimo problema",

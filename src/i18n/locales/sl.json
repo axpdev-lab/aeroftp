@@ -1396,6 +1396,7 @@
             "connect_start": "Odpiram povezavo s {server} ({protocol})...",
             "connect_success": "Povezava pripravljena: povezan sem s {server} prek {protocol}",
             "connect_error": "Nisem se mogel povezati s {server}. Preveril bom moje poverilnice in nastavitve.",
+            "connect_error_path_not_found": "Prijava na {server} je uspela, vendar oddaljena pot '{path}' ni bila najdena. Uredite polje Oddaljena pot v profilu ali ga počistite za uporabo začetne mape strežnika.",
             "disconnect_start": "Zapiram povezavo s strežnikom...",
             "disconnect_success": "Zaprl sem povezavo s strežnikom",
             "disconnect_error": "Nisem mogel zapreti povezave s strežnikom",

@@ -1396,6 +1396,7 @@
             "connect_start": "Konektatzen: {server} ({protocol})...",
             "connect_success": "Konektatuta: {server} ({protocol})",
             "connect_error": "Huts konexioan: {server}. Egiaztatu kredentzialak.",
+            "connect_error_path_not_found": "{server}-en saioa hasi da, baina ez da '{path}' urruneko bidea aurkitu. Editatu profilaren Urruneko bidea edo hustu ezazu zerbitzariaren hasierako karpeta erabiltzeko.",
             "disconnect_start": "Zerbitzaritik deskonektatzen...",
             "disconnect_success": "Zerbitzaritik deskonektatuta",
             "disconnect_error": "Arazoa deskonektatzean",

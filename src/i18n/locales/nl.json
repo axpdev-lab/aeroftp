@@ -1396,6 +1396,7 @@
             "connect_start": "Verbinden met {server} ({protocol})...",
             "connect_success": "Verbonden met {server} via {protocol}",
             "connect_error": "Verbinding met {server} mislukt. Controleer inloggegevens.",
+            "connect_error_path_not_found": "Aangemeld bij {server}, maar het externe pad '{path}' is niet gevonden. Bewerk het Externe pad van het profiel of maak het leeg om de thuismap van de server te gebruiken.",
             "disconnect_start": "Verbinding met server verbreken...",
             "disconnect_success": "Verbinding met server verbroken",
             "disconnect_error": "Verbindingsprobleem",

@@ -1396,6 +1396,7 @@
             "connect_start": "Verbinde mit {server} ({protocol})...",
             "connect_success": "Verbunden mit {server} über {protocol}",
             "connect_error": "Verbindung zu {server} fehlgeschlagen. Anmeldedaten prüfen.",
+            "connect_error_path_not_found": "Bei {server} angemeldet, aber der Remote-Pfad '{path}' wurde nicht gefunden. Bearbeiten Sie den Remote-Pfad des Profils oder leeren Sie ihn, um das Home-Verzeichnis des Servers zu verwenden.",
             "disconnect_start": "Trenne vom Server...",
             "disconnect_success": "Vom Server getrennt",
             "disconnect_error": "Trennungsproblem",

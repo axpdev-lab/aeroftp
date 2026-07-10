@@ -1396,6 +1396,7 @@
             "connect_start": "Savienojas ar {server} ({protocol})...",
             "connect_success": "Savienots ar {server} caur {protocol}",
             "connect_error": "Savienojums ar {server} neizdevās. Pārbaudiet akreditācijas datus.",
+            "connect_error_path_not_found": "Pieteikšanās serverī {server} izdevās, taču attālais ceļš '{path}' netika atrasts. Rediģējiet profila lauku Attālais ceļš vai notīriet to, lai izmantotu servera sākuma mapi.",
             "disconnect_start": "Atvienojas no servera...",
             "disconnect_success": "Atvienots no servera",
             "disconnect_error": "Atvienošanas problēma",

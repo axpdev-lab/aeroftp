@@ -1396,6 +1396,7 @@
             "connect_start": "Yhdistetään palvelimeen {server} ({protocol})...",
             "connect_success": "Yhdistetty palvelimeen {server} protokollalla {protocol}",
             "connect_error": "Yhteys palvelimeen {server} epäonnistui. Tarkista tunnukset.",
+            "connect_error_path_not_found": "Kirjautuminen palvelimeen {server} onnistui, mutta etäpolkua '{path}' ei löytynyt. Muokkaa profiilin Etäpolku-kenttää tai tyhjennä se käyttääksesi palvelimen kotihakemistoa.",
             "disconnect_start": "Katkaistaan yhteyttä palvelimeen...",
             "disconnect_success": "Yhteys palvelimeen katkaistu",
             "disconnect_error": "Ongelma yhteyden katkaisussa",

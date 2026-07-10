@@ -1396,6 +1396,7 @@
             "connect_start": "Kumokonekta sa {server} ({protocol})...",
             "connect_success": "Nakakonekta na! Nakakonekta ako sa {server} sa pamamagitan ng {protocol}",
             "connect_error": "Hindi makakonekta sa {server}. Titingnan ko ang aking mga kredensyal.",
+            "connect_error_path_not_found": "Naka-log in sa {server}, ngunit hindi natagpuan ang malayong landas na '{path}'. I-edit ang Malayong Landas ng profile o burahin ito upang gamitin ang home ng server.",
             "disconnect_start": "Nadidiskonekta mula sa server...",
             "disconnect_success": "Nadiskonekta ko na mula sa server",
             "disconnect_error": "Hindi madiskonekta mula sa server",

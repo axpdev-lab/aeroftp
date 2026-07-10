@@ -1389,6 +1389,7 @@
             "connect_start": "Միանում եմ {server}-ին ({protocol})...",
             "connect_success": "Միացած եմ {server}-ին ({protocol})",
             "connect_error": "Չկարողացա միանալ {server}-ին։ Ստուգեք հավատարմագրերը։",
+            "connect_error_path_not_found": "Մուտք գործեցիք {server}, բայց '{path}' հեռավոր ուղին չգտնվեց։ Խմբագրեք պրոֆիլի Հեռավոր ուղին կամ մաքրեք այն՝ սերվերի գլխավոր պանակն օգտագործելու համար։",
             "disconnect_start": "Անջատվում եմ սերվերից...",
             "disconnect_success": "Անջատված եմ սերվերից",
             "disconnect_error": "Անջատման սխալ",

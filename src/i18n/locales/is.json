@@ -1396,6 +1396,7 @@
             "connect_start": "Tengist {server} ({protocol})...",
             "connect_success": "Tengt við {server} með {protocol}",
             "connect_error": "Tenging við {server} mistókst. Athugaðu auðkenni.",
+            "connect_error_path_not_found": "Skráður inn á {server}, en fjarslóðin '{path}' fannst ekki. Breyttu Fjarslóð sniðsins eða hreinsaðu hana til að nota heimamöppu netþjónsins.",
             "disconnect_start": "Aftengir frá þjóni...",
             "disconnect_success": "Aftengt frá þjóni",
             "disconnect_error": "Vandamál við aftengingu",

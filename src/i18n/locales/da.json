@@ -1396,6 +1396,7 @@
             "connect_start": "Forbinder til {server} ({protocol})...",
             "connect_success": "Forbundet til {server} via {protocol}",
             "connect_error": "Forbindelse til {server} mislykkedes. Tjek legitimationsoplysninger.",
+            "connect_error_path_not_found": "Logget ind på {server}, men fjernstien '{path}' blev ikke fundet. Rediger profilens Fjernsti, eller ryd den for at bruge serverens hjemmemappe.",
             "disconnect_start": "Afbryder forbindelse til server...",
             "disconnect_success": "Afbrudt fra server",
             "disconnect_error": "Problem med afbrydelse",

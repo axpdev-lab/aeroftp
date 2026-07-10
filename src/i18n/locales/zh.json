@@ -1396,6 +1396,7 @@
             "connect_start": "正在连接到 {server} ({protocol})...",
             "connect_success": "已连接！我已通过 {protocol} 连接到 {server}",
             "connect_error": "无法连接到 {server}。我会检查我的凭据。",
+            "connect_error_path_not_found": "已登录到 {server}，但未找到远程路径 '{path}'。请编辑配置文件的远程路径，或将其清空以使用服务器主目录。",
             "disconnect_start": "正在断开与服务器的连接...",
             "disconnect_success": "我已断开与服务器的连接",
             "disconnect_error": "无法断开与服务器的连接",

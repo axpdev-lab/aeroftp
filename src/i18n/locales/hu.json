@@ -1396,6 +1396,7 @@
             "connect_start": "Csatlakozás {server} ({protocol})...",
             "connect_success": "Csatlakozva {server} {protocol} protokollon",
             "connect_error": "Csatlakozás {server} szerverhez sikertelen. Ellenőrizze a bejelentkezési adatokat.",
+            "connect_error_path_not_found": "Bejelentkezés a(z) {server} kiszolgálóra sikeres, de a(z) '{path}' távoli útvonal nem található. Szerkessze a profil Távoli útvonal mezőjét, vagy törölje azt a kiszolgáló kezdőmappájának használatához.",
             "disconnect_start": "Lecsatlakozás a szerverről...",
             "disconnect_success": "Lecsatlakozva a szerverről",
             "disconnect_error": "Lecsatlakozási probléma",

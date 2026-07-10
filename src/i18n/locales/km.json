@@ -1396,6 +1396,7 @@
             "connect_start": "កំពុងតភ្ជាប់ទៅ {server} តាមរយៈ {protocol}...",
             "connect_success": "បានតភ្ជាប់ទៅ {server} ({protocol})",
             "connect_error": "ការតភ្ជាប់ទៅ {server} បានបរាជ័យ",
+            "connect_error_path_not_found": "បានចូលទៅ {server} ប៉ុន្តែរកមិនឃើញផ្លូវពីចម្ងាយ '{path}' ទេ។ កែសម្រួលផ្លូវពីចម្ងាយរបស់ប្រវត្តិរូប ឬសម្អាតវាដើម្បីប្រើថតដើមរបស់ម៉ាស៊ីនមេ។",
             "disconnect_start": "កំពុងផ្តាច់...",
             "disconnect_success": "បានផ្តាច់",
             "disconnect_error": "កំហុសក្នុងការផ្តាច់",
