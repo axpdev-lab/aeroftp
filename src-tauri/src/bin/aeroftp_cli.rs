@@ -18629,7 +18629,7 @@ fn resolve_profile_selector(
         }
         return n
             .checked_sub(1)
-            .and_then(|z| if z < profiles.len() { Some(z) } else { None })
+            .filter(|&z| z < profiles.len())
             .ok_or_else(|| format!("no profile at index {} (range 1..={})", n, profiles.len()));
     }
     let lower = selector.to_lowercase();
@@ -42570,6 +42570,12 @@ async fn cmd_ncdu(
 // ── FUSE Mount (Linux + macOS) ───────────────────────────────────
 
 #[cfg(target_os = "linux")]
+// Several FUSE helpers and cache fields are reachable only from `fn main`
+// (the live mount path). When the crate is compiled with `--all-targets`, the
+// bin's test harness replaces `main`, so those items look unreachable and
+// clippy's dead_code lint fires under `-D warnings` even though the shipping
+// binary uses them all. Allow it at the module boundary.
+#[allow(dead_code)]
 mod fuse_mount {
     use super::*;
     // T-DEBT-13c: fuser 0.17 newtype migration. The integer args used in
