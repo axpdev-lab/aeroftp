@@ -15331,6 +15331,34 @@ async fn bootstrap_master_credential_store(
     Ok(())
 }
 
+/// B3: whether to offer the first-run Flatpak host-config import, and the paths.
+/// `available` is true only inside a Flatpak sandbox, when a native
+/// `~/.config/aeroftp` exists, and when the user has not already decided.
+#[tauri::command]
+fn flatpak_config_import_status() -> serde_json::Value {
+    let status = portable::flatpak_host_import_status();
+    serde_json::json!({
+        "available": status.available,
+        "source": status.source.map(|p| p.to_string_lossy().into_owned()),
+        "target": status.target.map(|p| p.to_string_lossy().into_owned()),
+    })
+}
+
+/// B3: apply (`accept = true`) or decline (`accept = false`) the host-config
+/// import. Accept copies the native config into the sandbox with copy-only,
+/// never-overwrite semantics; either way the decision is recorded so the prompt
+/// is shown once. The vault is copied encrypted and still needs the master
+/// password to unlock.
+#[tauri::command]
+fn flatpak_config_import_apply(accept: bool) -> Result<serde_json::Value, String> {
+    let report = portable::flatpak_host_import_apply(accept)?;
+    Ok(serde_json::json!({
+        "imported": report.imported,
+        "source": report.source.map(|p| p.to_string_lossy().into_owned()),
+        "target": report.target.map(|p| p.to_string_lossy().into_owned()),
+    }))
+}
+
 #[tauri::command]
 async fn get_credential_store_status(
     state: State<'_, master_password::MasterPasswordState>,
@@ -17671,6 +17699,8 @@ pub fn run() {
             unlock_auto_keyring_credential_store,
             bootstrap_master_credential_store,
             get_credential_store_status,
+            flatpak_config_import_status,
+            flatpak_config_import_apply,
             store_credential,
             get_credential,
             delete_credential,

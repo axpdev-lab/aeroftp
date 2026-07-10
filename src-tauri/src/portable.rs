@@ -219,6 +219,155 @@ pub fn cli_app_config_dir() -> Option<PathBuf> {
     Some(dir)
 }
 
+// ===========================================================================
+// Flatpak host-config import (B3)
+// ===========================================================================
+//
+// A Flatpak install redirects XDG_CONFIG_HOME into ~/.var/app/<id>/config, so a
+// user moving from the .deb gets a brand-new, empty data root: their saved
+// servers and encrypted vault become invisible (not lost, not corrupted). For an
+// encrypted-credential app a fresh data root reads as "I lost my passwords",
+// which is the trap we must not spring.
+//
+// With --filesystem=home (granted by the Flatpak manifest for the local pane
+// anyway) the sandbox can still read the real ~/.config/aeroftp. We offer a
+// one-time, consent-gated import that copies only what is missing and never
+// overwrites, rather than a silent copy: relocating an encrypted vault should be
+// the user's explicit choice, and a user who deliberately wanted a clean
+// sandboxed install should not be surprised. A marker records the decision so
+// the offer is made exactly once.
+
+const FLATPAK_IMPORT_DECIDED_MARKER: &str = ".flatpak-host-import-decided";
+
+/// True when running inside a Flatpak sandbox. Mirrors the `FLATPAK_ID` signal
+/// used by `detect_install_format()` in `lib.rs`; do not invent a second one.
+pub fn is_flatpak() -> bool {
+    std::env::var_os("FLATPAK_ID").is_some()
+}
+
+/// Testable core of [`host_config_dir_under_flatpak`]. Kept pure (no env, no
+/// implicit filesystem beyond the `is_dir` probe passed in) so the branch logic
+/// is unit-tested without a real sandbox.
+fn host_config_dir_impl(
+    is_flatpak: bool,
+    home: Option<PathBuf>,
+    leaf: &str,
+    current: Option<PathBuf>,
+    is_dir: impl Fn(&Path) -> bool,
+) -> Option<PathBuf> {
+    if !is_flatpak {
+        return None;
+    }
+    let candidate = home?.join(".config").join(leaf);
+    // A no-op (candidate == data root) or a non-existent host config is nothing
+    // to import; bail so the caller never offers an empty or self-referential
+    // migration.
+    if current.as_deref() == Some(candidate.as_path()) || !is_dir(&candidate) {
+        return None;
+    }
+    Some(candidate)
+}
+
+/// The real host `~/.config/<leaf>` as seen from inside a Flatpak sandbox
+/// (visible thanks to `--filesystem=home`). `None` when not under Flatpak, when
+/// that directory does not exist, or when it resolves to the current data root.
+///
+/// `$HOME` inside the sandbox is the real host home, while `dirs::config_dir()`
+/// is redirected into the sandbox, so the host path is built from `$HOME`
+/// directly rather than from the redirected XDG base.
+pub fn host_config_dir_under_flatpak() -> Option<PathBuf> {
+    host_config_dir_impl(
+        is_flatpak(),
+        dirs::home_dir(),
+        aeroftp_data_leaf(),
+        aeroftp_data_root(),
+        |p| p.is_dir(),
+    )
+}
+
+/// Whether a first-run host-config import should be offered, and the paths.
+#[derive(Debug, Clone)]
+pub struct FlatpakImportStatus {
+    /// True when the offer should be shown: under Flatpak, host config present,
+    /// and the user has not already accepted or declined.
+    pub available: bool,
+    pub source: Option<PathBuf>,
+    pub target: Option<PathBuf>,
+}
+
+/// Outcome of an import decision.
+#[derive(Debug, Clone)]
+pub struct FlatpakImportReport {
+    pub imported: bool,
+    pub source: Option<PathBuf>,
+    pub target: Option<PathBuf>,
+}
+
+fn flatpak_import_marker_path() -> Option<PathBuf> {
+    aeroftp_data_root().map(|d| d.join(FLATPAK_IMPORT_DECIDED_MARKER))
+}
+
+fn flatpak_import_decided() -> bool {
+    flatpak_import_marker_path()
+        .map(|m| m.exists())
+        .unwrap_or(false)
+}
+
+fn write_flatpak_import_marker() {
+    if let Some(marker) = flatpak_import_marker_path() {
+        if let Some(parent) = marker.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let _ = std::fs::write(&marker, b"decided\n");
+    }
+}
+
+/// Should the first-run host-config import prompt be shown, and from/to where.
+pub fn flatpak_host_import_status() -> FlatpakImportStatus {
+    let source = host_config_dir_under_flatpak();
+    let target = aeroftp_data_root();
+    FlatpakImportStatus {
+        available: source.is_some() && !flatpak_import_decided(),
+        source,
+        target,
+    }
+}
+
+/// Apply (`accept = true`) or decline (`accept = false`) the host-config import.
+///
+/// On accept, copy the host config into the sandbox data root with
+/// `copy_missing_tree`, which copies only absent files and never overwrites, so
+/// re-running it is safe and a partially set-up sandbox is preserved. Either way
+/// the decision is recorded so the prompt is not shown again. The vault is
+/// copied as an encrypted blob: it unlocks only with the master password, and
+/// the import moves the blob, it does not unlock anything.
+pub fn flatpak_host_import_apply(accept: bool) -> Result<FlatpakImportReport, String> {
+    let source = host_config_dir_under_flatpak();
+    let target = aeroftp_data_root();
+    let mut report = FlatpakImportReport {
+        imported: false,
+        source: source.clone(),
+        target: target.clone(),
+    };
+    if accept {
+        match (source.as_ref(), target.as_ref()) {
+            (Some(src), Some(dst)) => {
+                copy_missing_tree(src, dst).map_err(|e| {
+                    format!(
+                        "Import host config from {} to {}: {e}",
+                        src.display(),
+                        dst.display()
+                    )
+                })?;
+                report.imported = true;
+            }
+            _ => return Err("No host configuration available to import".to_string()),
+        }
+    }
+    write_flatpak_import_marker();
+    Ok(report)
+}
+
 /// The Tauri identifier hard-coded in `tauri.conf.json`. Kept for legacy
 /// migration from the old identifier-scoped config directory.
 pub const TAURI_APP_IDENTIFIER: &str = "com.aeroftp.AeroFTP";
@@ -464,5 +613,89 @@ mod tests {
         };
         let expected = aeroftp_data_leaf_for_debug(cfg!(debug_assertions));
         assert_eq!(root.file_name().and_then(|s| s.to_str()), Some(expected));
+    }
+
+    // ---- Flatpak host-config import (B3) ----
+
+    /// Outside a Flatpak sandbox there is nothing to import, no matter what the
+    /// host looks like. This is the guard that keeps native, portable, Snap and
+    /// AppImage installs untouched.
+    #[test]
+    fn host_config_absent_when_not_flatpak() {
+        let got = host_config_dir_impl(
+            false,
+            Some(PathBuf::from("/home/user")),
+            "aeroftp",
+            Some(PathBuf::from("/whatever")),
+            |_| true,
+        );
+        assert!(got.is_none());
+    }
+
+    /// Under Flatpak with a real host config present, resolve `$HOME/.config/<leaf>`.
+    #[test]
+    fn host_config_resolved_under_flatpak() {
+        let home = PathBuf::from("/home/user");
+        let got = host_config_dir_impl(
+            true,
+            Some(home.clone()),
+            "aeroftp",
+            Some(PathBuf::from(
+                "/home/user/.var/app/com.aeroftp.AeroFTP/config/aeroftp",
+            )),
+            |p| p == home.join(".config").join("aeroftp"),
+        );
+        assert_eq!(got, Some(home.join(".config").join("aeroftp")));
+    }
+
+    /// A host config that does not exist on disk is not offered.
+    #[test]
+    fn host_config_skipped_when_dir_missing() {
+        let got = host_config_dir_impl(
+            true,
+            Some(PathBuf::from("/home/user")),
+            "aeroftp",
+            Some(PathBuf::from("/sandbox/aeroftp")),
+            |_| false,
+        );
+        assert!(got.is_none());
+    }
+
+    /// If the resolved host path equals the current data root, importing would be
+    /// a self-referential no-op, so it must be refused (guards a misconfigured or
+    /// non-redirected environment from copying a tree onto itself).
+    #[test]
+    fn host_config_skipped_when_equal_to_data_root() {
+        let home = PathBuf::from("/home/user");
+        let same = home.join(".config").join("aeroftp");
+        let got = host_config_dir_impl(true, Some(home), "aeroftp", Some(same), |_| true);
+        assert!(got.is_none());
+    }
+
+    /// The import copies only what is absent and never overwrites an existing
+    /// file in the sandbox, so a partially set-up install is preserved.
+    #[test]
+    fn copy_missing_tree_never_overwrites() {
+        let tmp = tempfile::tempdir().unwrap();
+        let src = tmp.path().join("src");
+        let dst = tmp.path().join("dst");
+        std::fs::create_dir_all(src.join("sub")).unwrap();
+        std::fs::create_dir_all(&dst).unwrap();
+        std::fs::write(src.join("vault.bin"), b"HOST-VAULT").unwrap();
+        std::fs::write(src.join("sub/servers.json"), b"HOST-SERVERS").unwrap();
+        // A file the sandbox already has must NOT be clobbered.
+        std::fs::write(dst.join("vault.bin"), b"SANDBOX-VAULT").unwrap();
+
+        copy_missing_tree(&src, &dst).unwrap();
+
+        // Existing file preserved, missing file copied over.
+        assert_eq!(
+            std::fs::read(dst.join("vault.bin")).unwrap(),
+            b"SANDBOX-VAULT"
+        );
+        assert_eq!(
+            std::fs::read(dst.join("sub/servers.json")).unwrap(),
+            b"HOST-SERVERS"
+        );
     }
 }
