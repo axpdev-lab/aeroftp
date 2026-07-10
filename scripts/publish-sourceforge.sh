@@ -91,7 +91,7 @@ if [ "$FORCE" -eq 1 ]; then
 
 ---
 
-_This release was published to SourceForge through AeroFTP's own SFTP integration. The artifacts on this page were uploaded with `aeroftp-cli`, the same secure file-transfer engine that AeroFTP provides to its users._
+_This release was published to SourceForge through AeroFTP's own SFTP integration. The artifacts on this page were uploaded with `aeroftp-cli`, the same secure file-transfer engine that AeroFTP provides to its users. See the [SourceForge provider guide](https://docs.aeroftp.app/providers/sourceforge.html) to connect AeroFTP to SourceForge yourself._
 SFNOTE
   for a in "${ASSETS[@]}"; do
     gh release download "$TAG" --repo "$REPO" --dir "$STAGE" --pattern "$a" --skip-existing
