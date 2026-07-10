@@ -2878,6 +2878,12 @@ enum Commands {
         /// Output a JSON import-result summary on stdout
         #[arg(long)]
         json: bool,
+        /// Preview only: decrypt the file and print which profiles would be
+        /// added, skipped as duplicates, or resemble an existing profile, then
+        /// exit 0 without touching the vault or the keyring. A duplicate (same
+        /// profile id) is skipped, never overwritten.
+        #[arg(long)]
+        dry_run: bool,
     },
     /// List configured AI providers and models from the encrypted vault
     AiModels,
@@ -3775,6 +3781,30 @@ enum ExportCommands {
         #[arg(long)]
         json: bool,
     },
+    /// Export profiles to AeroFTP's own encrypted `.aeroftp` bundle
+    /// (the format `My Servers > Export` writes). Unlike the foreign
+    /// formats above this one is encrypted and round-trips every
+    /// AeroFTP-specific setting; it is an alias for `profile-export`.
+    Aeroftp {
+        /// Output `.aeroftp` path
+        #[arg(long, short = 'o', value_name = "PATH")]
+        output: String,
+        /// Encryption password (visible in `ps`; prefer --password-stdin or env)
+        #[arg(long)]
+        password: Option<String>,
+        /// Read one password line from stdin
+        #[arg(long = "password-stdin")]
+        password_stdin: bool,
+        /// Bundle saved secrets into the encrypted file (OFF by default)
+        #[arg(long = "include-credentials")]
+        include_credentials: bool,
+        /// Export only these profiles (comma-separated ids or names)
+        #[arg(long, value_name = "IDS")]
+        ids: Option<String>,
+        /// Output a JSON summary
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 /// Selectivity for `aeroftp-cli keystore export`.
@@ -4255,6 +4285,26 @@ enum ImportCommands {
         /// Output as JSON
         #[arg(long)]
         json: bool,
+    },
+    /// Import profiles from AeroFTP's own encrypted `.aeroftp` bundle
+    /// (the format `My Servers > Import` reads). It is an alias for
+    /// `profile-import`, including its `--dry-run` preview.
+    Aeroftp {
+        /// Input `.aeroftp` path
+        #[arg(long, short = 'i', value_name = "PATH")]
+        input: String,
+        /// Decryption password (same resolution order as `profile-export`)
+        #[arg(long)]
+        password: Option<String>,
+        /// Read one password line from stdin
+        #[arg(long = "password-stdin")]
+        password_stdin: bool,
+        /// Output a JSON import-result summary
+        #[arg(long)]
+        json: bool,
+        /// Preview only: print what would be added or skipped, touch nothing
+        #[arg(long)]
+        dry_run: bool,
     },
 }
 
@@ -32564,6 +32614,7 @@ async fn cmd_profile_import(
     cli_password: &Option<String>,
     password_stdin: bool,
     json: bool,
+    dry_run: bool,
     format: OutputFormat,
 ) -> i32 {
     use zeroize::Zeroize;
@@ -32623,6 +32674,70 @@ async fn cmd_profile_import(
     let added = decision.add_indices.len();
     let skipped = decision.skipped;
     let similar = decision.similar;
+
+    // --dry-run: phase 1 already decrypted the file and decide_import_merge
+    // computed the exact plan, both without touching the vault or the keyring.
+    // Print that plan and stop before phase 2 (credential restore) and the
+    // save. Mirrors the delete verbs' --dry-run: the plan goes to stdout, the
+    // notices to stderr, and nothing is moved. A duplicate is skipped, never
+    // overwritten, so there is no "would overwrite" case to report.
+    if dry_run {
+        password.zeroize();
+        let name_of = |idx: usize| -> String {
+            let p = &imported[idx];
+            p.get("name")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty())
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| {
+                    let host = p.get("host").and_then(|v| v.as_str()).unwrap_or("?");
+                    format!("({host})")
+                })
+        };
+        let would_add: Vec<String> = decision.add_indices.iter().map(|&i| name_of(i)).collect();
+        let would_skip: Vec<String> = decision
+            .skipped_indices
+            .iter()
+            .map(|&i| name_of(i))
+            .collect();
+        if json {
+            println!(
+                "{}",
+                serde_json::json!({
+                    "status": "ok",
+                    "dry_run": true,
+                    "would_import": added,
+                    "would_skip": skipped,
+                    "similar": similar,
+                    "total_in_file": imported.len(),
+                    "added": would_add,
+                    "skipped": would_skip,
+                    "metadata": value
+                        .get("metadata")
+                        .cloned()
+                        .unwrap_or(serde_json::Value::Null),
+                })
+            );
+        } else if matches!(format, OutputFormat::Text) {
+            eprintln!("DRY RUN: no profiles were imported.");
+            for n in &would_add {
+                println!("+ would add   {n}");
+            }
+            for n in &would_skip {
+                println!("= would skip  {n} (already present)");
+            }
+            let tail = if similar > 0 {
+                format!(", {similar} resemble an existing profile")
+            } else {
+                String::new()
+            };
+            eprintln!(
+                "Would add {added} profile(s), skip {skipped} (already present){tail} from {input}"
+            );
+        }
+        return 0;
+    }
+
     // Ids of the profiles we actually add: only these get their credentials
     // restored in phase 2.
     let mut restore_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
@@ -32763,6 +32878,9 @@ fn profile_account_key(p: &serde_json::Value) -> String {
 struct ImportMergeDecision {
     /// Indices into `imported` of the profiles to add.
     add_indices: Vec<usize>,
+    /// Indices into `imported` of the true re-imports skipped (same stable
+    /// `id`). `skipped` is its length; the indices let `--dry-run` name them.
+    skipped_indices: Vec<usize>,
     /// True re-imports skipped because their stable `id` already exists.
     skipped: usize,
     /// Added profiles that share an account with an existing profile.
@@ -32787,12 +32905,12 @@ fn decide_import_merge(
         current.iter().map(profile_account_key).collect();
 
     let mut add_indices = Vec::new();
-    let mut skipped = 0usize;
+    let mut skipped_indices = Vec::new();
     let mut similar = 0usize;
     for (idx, p) in imported.iter().enumerate() {
         let id = p.get("id").and_then(|v| v.as_str()).unwrap_or("");
         if !id.is_empty() && existing_ids.contains(id) {
-            skipped += 1;
+            skipped_indices.push(idx);
             continue;
         }
         if existing_accounts.contains(&profile_account_key(p)) {
@@ -32802,7 +32920,8 @@ fn decide_import_merge(
     }
     ImportMergeDecision {
         add_indices,
-        skipped,
+        skipped: skipped_indices.len(),
+        skipped_indices,
         similar,
     }
 }
@@ -58067,7 +58186,19 @@ async fn main() {
             password,
             password_stdin,
             json,
-        } => cmd_profile_import(&cli, input, password, *password_stdin, *json, format).await,
+            dry_run,
+        } => {
+            cmd_profile_import(
+                &cli,
+                input,
+                password,
+                *password_stdin,
+                *json,
+                *dry_run,
+                format,
+            )
+            .await
+        }
         Commands::AiModels => list_ai_models(&cli, format),
         Commands::AgentBootstrap {
             task,
@@ -58444,6 +58575,26 @@ async fn main() {
             ImportCommands::Restic { path, json } => {
                 cmd_import_bridge("restic", path.clone(), *json).await
             }
+            // Native `.aeroftp` bundle: alias for `profile-import`, one shared
+            // handler so the family discovers our own format too (A10).
+            ImportCommands::Aeroftp {
+                input,
+                password,
+                password_stdin,
+                json,
+                dry_run,
+            } => {
+                cmd_profile_import(
+                    &cli,
+                    input,
+                    password,
+                    *password_stdin,
+                    *json,
+                    *dry_run,
+                    format,
+                )
+                .await
+            }
         },
         Commands::Export { command } => match command {
             ExportCommands::Rclone {
@@ -58615,6 +58766,28 @@ async fn main() {
                     profiles.clone(),
                     *json,
                     &cli,
+                    format,
+                )
+                .await
+            }
+            // Native `.aeroftp` bundle: alias for `profile-export`, one shared
+            // handler so the family discovers our own format too (A10).
+            ExportCommands::Aeroftp {
+                output,
+                password,
+                password_stdin,
+                include_credentials,
+                ids,
+                json,
+            } => {
+                cmd_profile_export(
+                    &cli,
+                    output,
+                    password,
+                    *password_stdin,
+                    *include_credentials,
+                    ids,
+                    *json,
                     format,
                 )
                 .await
@@ -58818,6 +58991,28 @@ mod tests {
     use super::*;
     use ftp_client_gui_lib::profile_loader::insert_profile_option;
     use serde_json::json;
+
+    #[test]
+    fn test_decide_import_merge_reports_skipped_indices() {
+        // The dry-run lists skipped profiles by name, so the decision must
+        // expose WHICH imported entries were skipped, not just the count. A
+        // same-id profile is skipped (never overwritten); a new id is added,
+        // and flagged `similar` when it shares host:port:username.
+        let current = vec![json!({
+            "id": "a", "name": "Kept", "host": "h", "port": 22, "username": "u"
+        })];
+        let imported = vec![
+            json!({"id": "a", "name": "Dup", "host": "h", "port": 22, "username": "u"}),
+            json!({"id": "b", "name": "New", "host": "h", "port": 22, "username": "u"}),
+            json!({"id": "c", "name": "Fresh", "host": "other", "port": 21, "username": "x"}),
+        ];
+        let d = decide_import_merge(&imported, &current);
+        assert_eq!(d.add_indices, vec![1, 2]);
+        assert_eq!(d.skipped_indices, vec![0]);
+        assert_eq!(d.skipped, 1);
+        // index 1 shares the account of the kept profile, index 2 does not.
+        assert_eq!(d.similar, 1);
+    }
 
     #[test]
     fn test_lsjson_ndjson_line_is_single_line_compact_json() {
