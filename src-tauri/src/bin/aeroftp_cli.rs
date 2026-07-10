@@ -1715,6 +1715,14 @@ enum Commands {
         /// Hash algorithm used by --hash
         #[arg(long, value_enum, default_value = "sha256")]
         hash_type: HashAlgorithm,
+        /// Stream one JSON object per line as each entry is discovered,
+        /// instead of buffering the whole listing into one sorted array.
+        /// Output is UNSORTED (streaming and a global sort are mutually
+        /// exclusive) and is not a JSON array: it is newline-delimited JSON
+        /// (NDJSON), one record per line. Use it to start consuming a long
+        /// recursive listing immediately, or to pipe into a line-based tool.
+        #[arg(long, conflicts_with = "stat")]
+        ndjson: bool,
     },
     /// Remove a path and all of its contents (recursive delete)
     ///
@@ -36058,6 +36066,7 @@ async fn cmd_lsjson(
     no_mimetype: bool,
     hash: bool,
     hash_type: HashAlgorithm,
+    ndjson: bool,
     cli: &Cli,
     format: OutputFormat,
 ) -> i32 {
@@ -36130,6 +36139,20 @@ async fn cmd_lsjson(
         let mut stack: Vec<(String, String, usize)> = vec![(resolved.clone(), String::new(), 1)];
         let mut is_root_list = true;
 
+        // Progress spinner on stderr, naming the directory being listed. Only
+        // when stderr is a TTY and --quiet is unset, so it never touches stdout
+        // (which stays pure JSON, buffered array or NDJSON) and never appears in
+        // a redirect or a pipe. `\r\x1b[2K` returns to column 0 and clears the
+        // line, so a long recursive walk no longer stares back in silence.
+        let show_spinner = !cli.quiet && std::io::stderr().is_terminal();
+        const SPINNER_FRAMES: [char; 4] = ['|', '/', '-', '\\'];
+        let mut spin_i: usize = 0;
+        let erase_spinner = || {
+            let mut err = std::io::stderr();
+            let _ = err.write_all(b"\r\x1b[2K");
+            let _ = err.flush();
+        };
+
         while let Some((dir_path, rel_prefix, depth)) = stack.pop() {
             if entry_count >= MAX_SCAN_ENTRIES {
                 truncated = true;
@@ -36137,6 +36160,17 @@ async fn cmd_lsjson(
             }
             if !visited.insert(dir_path.clone()) {
                 continue;
+            }
+            if show_spinner {
+                let mut err = std::io::stderr();
+                let _ = write!(
+                    err,
+                    "\r\x1b[2K{} listing {}",
+                    SPINNER_FRAMES[spin_i % SPINNER_FRAMES.len()],
+                    dir_path
+                );
+                let _ = err.flush();
+                spin_i += 1;
             }
             let entries = match provider.list(&dir_path).await {
                 Ok(e) => e,
@@ -36220,7 +36254,7 @@ async fn cmd_lsjson(
                     } else {
                         None
                     };
-                    out.push(LsjsonEntry {
+                    let entry = LsjsonEntry {
                         path: if recursive {
                             rel.clone()
                         } else {
@@ -36232,7 +36266,33 @@ async fn cmd_lsjson(
                         mod_time,
                         is_dir: e.is_dir,
                         hashes,
-                    });
+                    };
+                    if ndjson {
+                        // Stream one compact JSON object per line, unsorted, as
+                        // discovered. Erase the spinner first so a TTY reader
+                        // never sees it smear into the streamed line; stdout
+                        // itself carries only the JSON.
+                        if show_spinner {
+                            erase_spinner();
+                        }
+                        match serde_json::to_string(&entry) {
+                            Ok(line) => println!("{}", line),
+                            Err(err) => {
+                                if show_spinner {
+                                    erase_spinner();
+                                }
+                                print_error(
+                                    format,
+                                    &format!("lsjson: failed to serialize entry: {}", err),
+                                    1,
+                                );
+                                let _ = provider.disconnect().await;
+                                return 1;
+                            }
+                        }
+                    } else {
+                        out.push(entry);
+                    }
                 }
                 if descend {
                     stack.push((e.path.clone(), rel, depth + 1));
@@ -36240,8 +36300,9 @@ async fn cmd_lsjson(
             }
         }
 
-        // Deterministic, stable order so script/CI diffs are reproducible.
-        out.sort_by(|a, b| a.path.cmp(&b.path).then(a.name.cmp(&b.name)));
+        if show_spinner {
+            erase_spinner();
+        }
 
         if truncated && !cli.quiet {
             eprintln!(
@@ -36249,7 +36310,13 @@ async fn cmd_lsjson(
                 MAX_SCAN_ENTRIES
             );
         }
-        print_json(&out);
+
+        // NDJSON already streamed each entry as it was found; the buffered
+        // path sorts for a deterministic, script/CI-reproducible array.
+        if !ndjson {
+            out.sort_by(|a, b| a.path.cmp(&b.path).then(a.name.cmp(&b.name)));
+            print_json(&out);
+        }
         let _ = provider.disconnect().await;
         0
     }
@@ -55804,6 +55871,7 @@ async fn main() {
             no_mimetype,
             hash,
             hash_type,
+            ndjson,
         } => {
             let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
                 ("_", url.as_str())
@@ -55821,6 +55889,7 @@ async fn main() {
                 *no_mimetype,
                 *hash,
                 *hash_type,
+                *ndjson,
                 &cli,
                 format,
             )
@@ -58749,6 +58818,30 @@ mod tests {
     use super::*;
     use ftp_client_gui_lib::profile_loader::insert_profile_option;
     use serde_json::json;
+
+    #[test]
+    fn test_lsjson_ndjson_line_is_single_line_compact_json() {
+        // The NDJSON path emits `serde_json::to_string(&entry)` per line, so a
+        // record must serialise to exactly one line (no embedded newline) and
+        // parse back to the same object. This pins the contract that a
+        // line-based consumer can split on '\n'.
+        let entry = LsjsonEntry {
+            path: "dir/file.txt".to_string(),
+            name: "file.txt".to_string(),
+            size: 42,
+            mime_type: Some("text/plain".to_string()),
+            mod_time: Some("2026-07-10 12:00:00Z".to_string()),
+            is_dir: false,
+            hashes: None,
+        };
+        let line = serde_json::to_string(&entry).expect("serialize");
+        assert!(!line.contains('\n'), "NDJSON record must be one line");
+        let back: serde_json::Value = serde_json::from_str(&line).expect("parse");
+        assert_eq!(back["Path"], "dir/file.txt");
+        assert_eq!(back["Name"], "file.txt");
+        assert_eq!(back["Size"], 42);
+        assert_eq!(back["IsDir"], false);
+    }
 
     /// One directory of a walk, as `build_rm_dry_run_plan` would have recorded it.
     fn walk_dir(
