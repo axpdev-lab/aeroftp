@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { ConnectionParams, ServerProfile } from '../../types';
 import { IntroHubHeader, FormTab } from './IntroHubHeader';
 import { MyServersPanel } from './MyServersPanel';
@@ -117,6 +117,18 @@ export function IntroHub(props: IntroHubProps) {
         const stored = localStorage.getItem(TAB_STATE_KEY);
         return stored === 'discover' ? 'discover' : 'my-servers';
     });
+
+    // The My Servers list, Discover and the profile Edit form all render inside
+    // ONE scroll container (see the content wrapper below). A profile Edit form
+    // is tall enough that reaching its Save button scrolls that shared container
+    // down; on Save we return to the My Servers tab but the container keeps the
+    // form's scroll offset, so the card grid lands scrolled under the header and
+    // reads as "scroll is stuck". Reset the shared scroller to the top on every
+    // tab change so each tab starts where it should.
+    const contentScrollRef = useRef<HTMLDivElement | null>(null);
+    useEffect(() => {
+        if (contentScrollRef.current) contentScrollRef.current.scrollTop = 0;
+    }, [activeTab]);
 
     // Dynamic form tabs
     const [formTabs, setFormTabs] = useState<FormTabState[]>([]);
@@ -394,7 +406,7 @@ export function IntroHub(props: IntroHubProps) {
                 the empty "Get started" state when the user comes back from
                 Discover or from a connected session. DiscoverPanel still mounts
                 on demand: it owns the catalog of 67 services and is heavier. */}
-            <div className="flex-1 min-h-0 overflow-auto p-6">
+            <div ref={contentScrollRef} className="flex-1 min-h-0 overflow-auto p-6">
                 {/* Tab: My Servers (always mounted) */}
                 <div className={activeTab === 'my-servers' ? 'h-full' : 'hidden'}>
                     <MyServersPanel
