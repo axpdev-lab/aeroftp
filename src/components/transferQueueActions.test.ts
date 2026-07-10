@@ -13,6 +13,7 @@ import {
     startAll,
     startStaged,
     statusCounts,
+    updateTransferStatus,
 } from './transferQueueActions';
 
 const makeItem = (
@@ -45,6 +46,42 @@ describe('addItem', () => {
         expect(next).not.toBe(input);
         expect(input).toHaveLength(1);
         expect(next).toHaveLength(2);
+    });
+});
+
+describe('completion guard', () => {
+    it('does not turn an errored same-name item into a completed transfer', () => {
+        const input = [
+            makeItem('failed', 'error', {
+                filename: 'report.csv',
+                path: '/first/report.csv',
+                error: 'Permission denied',
+            }),
+            makeItem('active', 'transferring', {
+                filename: 'report.csv',
+                path: '/second/report.csv',
+            }),
+        ];
+
+        const next = updateTransferStatus(input, 'failed', 'completed', 100);
+        expect(next.find(item => item.id === 'failed')?.status).toBe('error');
+        expect(next.find(item => item.id === 'active')?.status).toBe('transferring');
+    });
+
+    it('completes the tracked active item without changing an errored namesake', () => {
+        const input = [
+            makeItem('failed', 'error', {
+                filename: 'report.csv',
+                error: 'Permission denied',
+            }),
+            makeItem('active', 'transferring', {
+                filename: 'report.csv',
+            }),
+        ];
+
+        const next = updateTransferStatus(input, 'active', 'completed', 100);
+        expect(next.find(item => item.id === 'failed')?.status).toBe('error');
+        expect(next.find(item => item.id === 'active')?.status).toBe('completed');
     });
 });
 

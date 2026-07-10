@@ -15,6 +15,7 @@ import {
     startAll as startAllHelper,
     startStaged as startStagedHelper,
     computeFooterPercentage,
+    updateTransferStatus,
     type AddItemOptions,
 } from './transferQueueActions';
 
@@ -783,20 +784,7 @@ export const useTransferQueue = () => {
     };
 
     const updateStatus = (id: string, status: TransferStatus, progress?: number, error?: string) => {
-        setItems(prev => prev.map(item =>
-            item.id === id
-                ? {
-                    ...item,
-                    status,
-                    progress,
-                    error,
-                    // Speed is only meaningful while transferring; setProgress sets it.
-                    // Any other transition (start/complete/fail) clears the stale value.
-                    speedBps: undefined,
-                    endTime: status === 'completed' || status === 'error' ? Date.now() : item.endTime
-                }
-                : item
-        ));
+        setItems(prev => updateTransferStatus(prev, id, status, progress, error));
     };
 
     const startTransfer = (id: string) => updateStatus(id, 'transferring', 0);

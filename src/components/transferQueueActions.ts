@@ -35,6 +35,32 @@ export interface AddItemOptions {
     id?: string;
 }
 
+/** Apply a queue status transition. Kept pure so event-order races can be
+ *  reproduced against the same transition used by the React hook. */
+export function updateTransferStatus(
+    items: TransferItem[],
+    id: string,
+    status: TransferStatus,
+    progress?: number,
+    error?: string,
+): TransferItem[] {
+    if (status === 'completed' && items.some(item => item.id === id && item.status === 'error')) {
+        return items;
+    }
+    return items.map(item =>
+        item.id === id
+            ? {
+                ...item,
+                status,
+                progress,
+                error,
+                speedBps: undefined,
+                endTime: status === 'completed' || status === 'error' ? Date.now() : item.endTime,
+            }
+            : item,
+    );
+}
+
 /** Push a new item to the queue. Pure: returns a fresh array; never mutates
  *  the input. */
 export function addItem(
