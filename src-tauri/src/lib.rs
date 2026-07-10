@@ -16485,17 +16485,55 @@ async fn mount_open_quick(id: String) -> Result<(), String> {
 
 // ============ App Entry Point ============
 
+/// Install the process-wide rustls `CryptoProvider` for THIS binary.
+///
+/// Both `aws-lc-rs` and `ring` are pulled into the dependency tree (via
+/// different crates: our own choice and `noq-proto`), so rustls cannot
+/// auto-select a provider and panics on the first TLS handshake (FTPS, WebDAV
+/// over https, ...) unless one is pinned. Each binary target runs in its own
+/// process, so each must call this once before any TLS connector is built.
+/// Regression `c15ee3f38`: the GUI binary forgot to, so every FTPS connect
+/// panicked into an infinite spinner. Centralised here so every binary shares
+/// ONE code path and the `crypto_provider_guard` test can guard the class of bug
+/// at the root.
+///
+/// Idempotent: a second call is a no-op (rustls returns `Err` when a provider is
+/// already installed, which we ignore). Returns whether a provider is installed
+/// after the call, so callers/tests can assert the process is TLS-ready.
+pub fn install_crypto_provider() -> bool {
+    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+    rustls::crypto::CryptoProvider::get_default().is_some()
+}
+
+#[cfg(test)]
+mod crypto_provider_guard {
+    //! Root-cause guard for the FTPS-hang class of bug (`c15ee3f38`): a binary
+    //! that does TLS without installing a rustls provider panics on the first
+    //! handshake. Every binary must route through `install_crypto_provider`;
+    //! this proves the helper actually leaves the process with a provider
+    //! installed and globally visible (so a fresh TLS connector can build).
+    #[test]
+    fn install_crypto_provider_makes_process_tls_ready() {
+        assert!(
+            super::install_crypto_provider(),
+            "install_crypto_provider must leave a rustls CryptoProvider installed"
+        );
+        assert!(rustls::crypto::CryptoProvider::get_default().is_some());
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
 
-    // Install the process-wide rustls CryptoProvider explicitly. Both
-    // `aws-lc-rs` and `ring` are pulled into the dependency tree (via
-    // different crates), so rustls cannot auto-select a provider and panics
-    // on the first TLS handshake (FTPS, WebDAV over https, ...). Pin our
-    // chosen backend once, before any TLS connector is built. `aeroftp_cli`
-    // does the same in its own `main`; every binary needs its own call.
-    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+    // Pin the rustls CryptoProvider for this (GUI) process before any TLS
+    // connector is built. See `install_crypto_provider`.
+    debug_assert!(
+        install_crypto_provider(),
+        "rustls CryptoProvider must be installed before TLS is used"
+    );
+    #[cfg(not(debug_assertions))]
+    let _ = install_crypto_provider();
 
     // Fix WebKitGTK rendering issues on Linux: disable DMA-BUF renderer
     // which causes canvas/WebGL artifacts in Monaco and xterm.js.
