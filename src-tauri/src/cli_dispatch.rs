@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 
 pub const CLI_SUBCOMMANDS: &[&str] = &[
     "connect",
+    "flatpak-import",
     "ls",
     "get",
     "pget",
