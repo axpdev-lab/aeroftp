@@ -5279,6 +5279,12 @@
             "modes": {
                 "lockedInEdit": "Režim sa vyberá pri vytváraní pripojenia a zostáva nezmenený počas úpravy uloženého profilu. Ak chcete použiť iný režim, vytvorte nové pripojenie."
             }
+        },
+        "flatpak": {
+            "importBody": "AeroFTP našiel existujúcu konfiguráciu vo vašom domovskom priečinku. Táto inštalácia cez Flatpak používa vlastné oddelené úložisko, takže vaše uložené servery a šifrovaný trezor tu zatiaľ nie sú viditeľné. Chcete ich teraz importovať? Súbory sa iba skopírujú, nič sa neprepíše a na odomknutie trezora je stále potrebné vaše heslo.",
+            "importAccept": "Importovať",
+            "importedBody": "Vaša konfigurácia bola importovaná. Reštartujte AeroFTP, aby sa načítali vaše servery a trezor.",
+            "restartNow": "Reštartovať teraz"
         }
     }
 }

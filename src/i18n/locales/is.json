@@ -5298,6 +5298,12 @@
             "modes": {
                 "lockedInEdit": "Hamurinn er valinn þegar tengingin er stofnuð og helst óbreyttur meðan vistuðu sniði er breytt. Til að nota annan ham skaltu stofna nýja tengingu."
             }
+        },
+        "flatpak": {
+            "importBody": "AeroFTP fann fyrirliggjandi stillingar í heimamöppunni þinni. Þessi Flatpak-uppsetning notar sína eigin aðskildu geymslu, svo vistuðu þjónarnir þínir og dulkóðaða hirslan sjást ekki hér enn. Flytja þau inn núna? Skrárnar eru aðeins afritaðar, engu er skrifað yfir, og hirslan þarf enn lykilorðið þitt til að opnast.",
+            "importAccept": "Flytja inn",
+            "importedBody": "Stillingarnar þínar voru fluttar inn. Endurræstu AeroFTP til að hlaða inn þjónunum þínum og hirslunni.",
+            "restartNow": "Endurræsa núna"
         }
     }
 }

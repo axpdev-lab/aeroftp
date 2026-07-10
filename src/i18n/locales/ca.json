@@ -5298,6 +5298,12 @@
             "modes": {
                 "lockedInEdit": "El mode es tria en crear la connexió i es manté fix mentre s'edita un perfil desat. Per utilitzar un mode diferent, crea una connexió nova."
             }
+        },
+        "flatpak": {
+            "importBody": "AeroFTP ha trobat una configuració existent a la vostra carpeta personal. Aquesta instal·lació de Flatpak utilitza el seu propi emmagatzematge separat, de manera que els servidors desats i la caixa forta xifrada encara no es veuen aquí. Els voleu importar ara? Els fitxers només es copien, no se sobreescriu res, i la caixa forta encara necessita la vostra contrasenya per desbloquejar-se.",
+            "importAccept": "Importa",
+            "importedBody": "S'ha importat la configuració. Reinicieu AeroFTP per carregar els servidors i la caixa forta.",
+            "restartNow": "Reinicia ara"
         }
     }
 }

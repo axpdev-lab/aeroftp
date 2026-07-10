@@ -5279,6 +5279,12 @@
             "modes": {
                 "lockedInEdit": "Režiim valitakse ühenduse loomisel ja jääb salvestatud profiili muutmise ajal muutumatuks. Teistsuguse režiimi kasutamiseks looge uus ühendus."
             }
+        },
+        "flatpak": {
+            "importBody": "AeroFTP leidis teie kodukaustast olemasoleva konfiguratsiooni. See Flatpaki paigaldus kasutab oma eraldi salvestusruumi, seega pole teie salvestatud serverid ja krüptitud hoidla siin veel nähtavad. Kas importida need kohe? Failid ainult kopeeritakse, midagi ei kirjutata üle ning hoidla avamiseks on endiselt vaja teie parooli.",
+            "importAccept": "Impordi",
+            "importedBody": "Teie konfiguratsioon imporditi. Taaskäivitage AeroFTP, et laadida oma serverid ja hoidla.",
+            "restartNow": "Taaskäivita kohe"
         }
     }
 }

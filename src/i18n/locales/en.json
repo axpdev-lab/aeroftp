@@ -5279,6 +5279,12 @@
             "modes": {
                 "lockedInEdit": "Mode is chosen when the connection is created and stays fixed while editing a saved profile. To use a different mode, create a new connection."
             }
+        },
+        "flatpak": {
+            "importBody": "AeroFTP found an existing configuration in your home folder. This Flatpak install uses its own separate storage, so your saved servers and encrypted vault are not visible here yet. Import them now? Files are only copied, nothing is overwritten, and the vault still needs your password to unlock.",
+            "importAccept": "Import",
+            "importedBody": "Your configuration was imported. Restart AeroFTP to load your servers and vault.",
+            "restartNow": "Restart now"
         }
     }
 }

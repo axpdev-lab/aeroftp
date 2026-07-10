@@ -5279,6 +5279,12 @@
             "modes": {
                 "lockedInEdit": "Tilstanden vælges, når forbindelsen oprettes, og forbliver fast, mens du redigerer en gemt profil. Opret en ny forbindelse for at bruge en anden tilstand."
             }
+        },
+        "flatpak": {
+            "importBody": "AeroFTP fandt en eksisterende konfiguration i din hjemmemappe. Denne Flatpak-installation bruger sit eget separate lager, så dine gemte servere og krypterede boks er ikke synlige her endnu. Vil du importere dem nu? Filerne kopieres kun, intet overskrives, og boksen kræver stadig din adgangskode for at låse op.",
+            "importAccept": "Importér",
+            "importedBody": "Din konfiguration blev importeret. Genstart AeroFTP for at indlæse dine servere og din boks.",
+            "restartNow": "Genstart nu"
         }
     }
 }

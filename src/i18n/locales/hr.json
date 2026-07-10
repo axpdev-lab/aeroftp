@@ -5279,6 +5279,12 @@
             "modes": {
                 "lockedInEdit": "Način se odabire pri stvaranju veze i ostaje nepromijenjen tijekom uređivanja spremljenog profila. Za korištenje drugog načina stvorite novu vezu."
             }
+        },
+        "flatpak": {
+            "importBody": "AeroFTP je pronašao postojeću konfiguraciju u vašoj početnoj mapi. Ova Flatpak instalacija koristi vlastitu odvojenu pohranu, pa vaši spremljeni poslužitelji i šifrirani trezor ovdje još nisu vidljivi. Želite li ih sada uvesti? Datoteke se samo kopiraju, ništa se ne prepisuje, a za otključavanje trezora i dalje je potrebna vaša lozinka.",
+            "importAccept": "Uvezi",
+            "importedBody": "Vaša je konfiguracija uvezena. Ponovno pokrenite AeroFTP da učitate svoje poslužitelje i trezor.",
+            "restartNow": "Ponovno pokreni sada"
         }
     }
 }

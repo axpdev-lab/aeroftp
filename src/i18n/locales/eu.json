@@ -5298,6 +5298,12 @@
             "modes": {
                 "lockedInEdit": "Modua konexioa sortzean aukeratzen da eta finko mantentzen da gordetako profil bat editatzean. Beste modu bat erabiltzeko, sortu konexio berri bat."
             }
+        },
+        "flatpak": {
+            "importBody": "AeroFTP-k lehendik dagoen konfigurazio bat aurkitu du zure karpeta pertsonalean. Flatpak instalazio honek bere biltegiratze bereizia erabiltzen du, beraz, gordetako zerbitzariak eta zifratutako kutxa gotorra ez dira oraindik hemen ikusten. Orain inportatu nahi dituzu? Fitxategiak kopiatu baino ez dira egiten, ez da ezer gainidazten, eta kutxa gotorra desblokeatzeko zure pasahitza behar da oraindik.",
+            "importAccept": "Inportatu",
+            "importedBody": "Zure konfigurazioa inportatu da. Berrabiarazi AeroFTP zure zerbitzariak eta kutxa gotorra kargatzeko.",
+            "restartNow": "Berrabiarazi orain"
         }
     }
 }

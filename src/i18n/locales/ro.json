@@ -5279,6 +5279,12 @@
             "modes": {
                 "lockedInEdit": "Modul este ales la crearea conexiunii și rămâne fix în timpul editării unui profil salvat. Pentru a folosi un alt mod, creați o conexiune nouă."
             }
+        },
+        "flatpak": {
+            "importBody": "AeroFTP a găsit o configurație existentă în folderul dumneavoastră personal. Această instalare Flatpak folosește propriul spațiu de stocare separat, așa că serverele salvate și seiful criptat nu sunt încă vizibile aici. Le importați acum? Fișierele sunt doar copiate, nimic nu este suprascris, iar seiful are nevoie în continuare de parola dumneavoastră pentru a fi deblocat.",
+            "importAccept": "Importă",
+            "importedBody": "Configurația dumneavoastră a fost importată. Reporniți AeroFTP pentru a încărca serverele și seiful.",
+            "restartNow": "Repornește acum"
         }
     }
 }

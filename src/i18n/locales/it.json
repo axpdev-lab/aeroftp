@@ -5279,6 +5279,12 @@
             "modes": {
                 "lockedInEdit": "La modalità viene scelta quando si crea la connessione e resta fissa durante la modifica di un profilo salvato. Per usare una modalità diversa, crea una nuova connessione."
             }
+        },
+        "flatpak": {
+            "importBody": "AeroFTP ha trovato una configurazione esistente nella tua cartella home. Questa installazione Flatpak usa un proprio spazio di archiviazione separato, quindi i server salvati e la cassaforte cifrata non sono ancora visibili qui. Importarli ora? I file vengono solo copiati, nulla viene sovrascritto e la cassaforte richiede ancora la tua password per essere sbloccata.",
+            "importAccept": "Importa",
+            "importedBody": "La tua configurazione è stata importata. Riavvia AeroFTP per caricare i tuoi server e la cassaforte.",
+            "restartNow": "Riavvia ora"
         }
     }
 }

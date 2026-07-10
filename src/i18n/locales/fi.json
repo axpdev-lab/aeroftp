@@ -5279,6 +5279,12 @@
             "modes": {
                 "lockedInEdit": "Tila valitaan yhteyttä luotaessa ja pysyy muuttumattomana tallennettua profiilia muokattaessa. Käytä eri tilaa luomalla uusi yhteys."
             }
+        },
+        "flatpak": {
+            "importBody": "AeroFTP löysi olemassa olevan määrityksen kotikansiostasi. Tämä Flatpak-asennus käyttää omaa erillistä tallennustilaansa, joten tallennetut palvelimesi ja salattu holvi eivät näy täällä vielä. Tuodaanko ne nyt? Tiedostot vain kopioidaan, mitään ei korvata, ja holvin avaaminen vaatii edelleen salasanasi.",
+            "importAccept": "Tuo",
+            "importedBody": "Määrityksesi tuotiin. Käynnistä AeroFTP uudelleen ladataksesi palvelimesi ja holvisi.",
+            "restartNow": "Käynnistä uudelleen nyt"
         }
     }
 }

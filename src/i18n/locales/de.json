@@ -5279,6 +5279,12 @@
             "modes": {
                 "lockedInEdit": "Der Modus wird beim Erstellen der Verbindung gewählt und bleibt beim Bearbeiten eines gespeicherten Profils unverändert. Erstellen Sie eine neue Verbindung, um einen anderen Modus zu verwenden."
             }
+        },
+        "flatpak": {
+            "importBody": "AeroFTP hat eine vorhandene Konfiguration in Ihrem Persönlichen Ordner gefunden. Diese Flatpak-Installation verwendet ihren eigenen getrennten Speicher, daher sind Ihre gespeicherten Server und der verschlüsselte Tresor hier noch nicht sichtbar. Jetzt importieren? Die Dateien werden nur kopiert, nichts wird überschrieben, und der Tresor benötigt weiterhin Ihr Passwort zum Entsperren.",
+            "importAccept": "Importieren",
+            "importedBody": "Ihre Konfiguration wurde importiert. Starten Sie AeroFTP neu, um Ihre Server und den Tresor zu laden.",
+            "restartNow": "Jetzt neu starten"
         }
     }
 }

@@ -5279,6 +5279,12 @@
             "modes": {
                 "lockedInEdit": "Läget väljs när anslutningen skapas och förblir oförändrat när en sparad profil redigeras. Skapa en ny anslutning för att använda ett annat läge."
             }
+        },
+        "flatpak": {
+            "importBody": "AeroFTP hittade en befintlig konfiguration i din hemmapp. Den här Flatpak-installationen använder sitt eget separata lagringsutrymme, så dina sparade servrar och det krypterade valvet syns inte här ännu. Vill du importera dem nu? Filerna kopieras bara, inget skrivs över, och valvet kräver fortfarande ditt lösenord för att låsas upp.",
+            "importAccept": "Importera",
+            "importedBody": "Din konfiguration importerades. Starta om AeroFTP för att läsa in dina servrar och ditt valv.",
+            "restartNow": "Starta om nu"
         }
     }
 }

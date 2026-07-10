@@ -1760,6 +1760,55 @@ const App: React.FC = () => {
     return () => { cancelled = true; };
   }, [vaultBootComplete, isAppLocked]);
 
+  // B3: offer the first-run Flatpak host-config import (native ~/.config/aeroftp
+  // -> the sandbox's private storage). The backend is consent-gated and writes a
+  // one-time decision marker, so `available` is true only inside a Flatpak, when a
+  // native config exists, and when the user has not decided yet. We wait for
+  // `vaultBootComplete` and skip while a lock/setup dialog is up so the import
+  // offer never fights the first-run master-password flow; on a genuinely fresh
+  // sandbox (default AutoKeyring, no master password) neither is up, so the offer
+  // wins and brings the real vault in. `hasOfferedRef` guards StrictMode.
+  const flatpakImportOfferedRef = useRef(false);
+  useEffect(() => {
+    if (!vaultBootComplete || isAppLocked || showMasterPasswordSetup) return;
+    if (flatpakImportOfferedRef.current) return;
+    flatpakImportOfferedRef.current = true;
+    (async () => {
+      try {
+        const st = await invoke<{ available: boolean; source: string | null }>(
+          'flatpak_config_import_status'
+        );
+        if (!st?.available) return;
+        setConfirmDialog({
+          message: t('flatpak.importBody'),
+          confirmLabel: t('flatpak.importAccept'),
+          confirmColor: 'blue',
+          onConfirm: async () => {
+            try {
+              await invoke('flatpak_config_import_apply', { accept: true });
+            } catch (e) {
+              console.warn('flatpak import failed', e);
+            }
+            setConfirmDialog({
+              message: t('flatpak.importedBody'),
+              confirmLabel: t('flatpak.restartNow'),
+              confirmColor: 'blue',
+              onConfirm: () => { invoke('restart_app'); },
+              onCancel: () => setConfirmDialog(null),
+            });
+          },
+          onCancel: async () => {
+            try { await invoke('flatpak_config_import_apply', { accept: false }); } catch { /* ignore */ }
+            setConfirmDialog(null);
+          },
+        });
+      } catch {
+        // Not in a Flatpak, or backend not ready: silently ignore.
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vaultBootComplete, isAppLocked, showMasterPasswordSetup]);
+
   // Keystore Migration Wizard: auto-trigger if legacy localStorage data exists
   useEffect(() => {
     // CSP Phase 2: register violation reporter (debug-gated, no-op in production)

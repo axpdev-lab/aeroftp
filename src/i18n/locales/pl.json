@@ -5279,6 +5279,12 @@
             "modes": {
                 "lockedInEdit": "Tryb jest wybierany podczas tworzenia połączenia i pozostaje niezmienny podczas edycji zapisanego profilu. Aby użyć innego trybu, utwórz nowe połączenie."
             }
+        },
+        "flatpak": {
+            "importBody": "AeroFTP znalazł istniejącą konfigurację w Twoim folderze domowym. Ta instalacja Flatpak korzysta z własnej, oddzielnej pamięci, więc zapisane serwery i zaszyfrowany sejf nie są tu jeszcze widoczne. Zaimportować je teraz? Pliki są tylko kopiowane, nic nie jest nadpisywane, a do odblokowania sejfu nadal potrzebne jest Twoje hasło.",
+            "importAccept": "Importuj",
+            "importedBody": "Twoja konfiguracja została zaimportowana. Uruchom ponownie AeroFTP, aby wczytać serwery i sejf.",
+            "restartNow": "Uruchom ponownie teraz"
         }
     }
 }

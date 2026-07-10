@@ -5279,6 +5279,12 @@
             "modes": {
                 "lockedInEdit": "De modus wordt gekozen bij het maken van de verbinding en blijft vast tijdens het bewerken van een opgeslagen profiel. Maak een nieuwe verbinding om een andere modus te gebruiken."
             }
+        },
+        "flatpak": {
+            "importBody": "AeroFTP heeft een bestaande configuratie in uw persoonlijke map gevonden. Deze Flatpak-installatie gebruikt zijn eigen aparte opslag, dus uw opgeslagen servers en versleutelde kluis zijn hier nog niet zichtbaar. Nu importeren? Bestanden worden alleen gekopieerd, er wordt niets overschreven, en de kluis heeft nog steeds uw wachtwoord nodig om te ontgrendelen.",
+            "importAccept": "Importeren",
+            "importedBody": "Uw configuratie is geïmporteerd. Start AeroFTP opnieuw op om uw servers en kluis te laden.",
+            "restartNow": "Nu opnieuw opstarten"
         }
     }
 }

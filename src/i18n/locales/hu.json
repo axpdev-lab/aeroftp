@@ -5279,6 +5279,12 @@
             "modes": {
                 "lockedInEdit": "A mód a kapcsolat létrehozásakor kerül kiválasztásra, és mentett profil szerkesztése közben változatlan marad. Másik mód használatához hozzon létre új kapcsolatot."
             }
+        },
+        "flatpak": {
+            "importBody": "Az AeroFTP meglévő konfigurációt talált a saját mappájában. Ez a Flatpak-telepítés saját, külön tárolót használ, ezért a mentett kiszolgálói és a titkosított széf itt még nem láthatók. Importálja őket most? A fájlok csak másolódnak, semmi sem íródik felül, és a széf feloldásához továbbra is szükség van a jelszavára.",
+            "importAccept": "Importálás",
+            "importedBody": "A konfigurációja importálva lett. Indítsa újra az AeroFTP-t a kiszolgálói és a széf betöltéséhez.",
+            "restartNow": "Újraindítás most"
         }
     }
 }

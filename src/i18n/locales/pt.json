@@ -5279,6 +5279,12 @@
             "modes": {
                 "lockedInEdit": "O modo é escolhido ao criar a conexão e permanece fixo ao editar um perfil salvo. Para usar um modo diferente, crie uma nova conexão."
             }
+        },
+        "flatpak": {
+            "importBody": "O AeroFTP encontrou uma configuração existente na sua pasta pessoal. Esta instalação Flatpak usa o seu próprio armazenamento separado, por isso os seus servidores guardados e o cofre cifrado ainda não são visíveis aqui. Importá-los agora? Os ficheiros são apenas copiados, nada é substituído, e o cofre continua a precisar da sua palavra-passe para ser desbloqueado.",
+            "importAccept": "Importar",
+            "importedBody": "A sua configuração foi importada. Reinicie o AeroFTP para carregar os seus servidores e o cofre.",
+            "restartNow": "Reiniciar agora"
         }
     }
 }

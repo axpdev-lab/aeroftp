@@ -5279,6 +5279,12 @@
             "modes": {
                 "lockedInEdit": "Režimas pasirenkamas kuriant ryšį ir lieka nepakitęs redaguojant išsaugotą profilį. Norėdami naudoti kitą režimą, sukurkite naują ryšį."
             }
+        },
+        "flatpak": {
+            "importBody": "„AeroFTP“ rado esamą konfigūraciją jūsų namų aplanke. Šis „Flatpak“ diegimas naudoja atskirą savo saugyklą, todėl jūsų įrašyti serveriai ir šifruotas seifas čia dar nematomi. Importuoti juos dabar? Failai tik nukopijuojami, niekas neperrašoma, o seifui atrakinti vis tiek reikia jūsų slaptažodžio.",
+            "importAccept": "Importuoti",
+            "importedBody": "Jūsų konfigūracija importuota. Iš naujo paleiskite „AeroFTP“, kad įkeltumėte savo serverius ir seifą.",
+            "restartNow": "Paleisti iš naujo dabar"
         }
     }
 }

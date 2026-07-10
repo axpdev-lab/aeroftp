@@ -5279,6 +5279,12 @@
             "modes": {
                 "lockedInEdit": "Režīms tiek izvēlēts, veidojot savienojumu, un paliek nemainīgs, rediģējot saglabātu profilu. Lai izmantotu citu režīmu, izveidojiet jaunu savienojumu."
             }
+        },
+        "flatpak": {
+            "importBody": "AeroFTP atrada esošu konfigurāciju jūsu mājas mapē. Šī Flatpak instalācija izmanto savu atsevišķu krātuvi, tāpēc jūsu saglabātie serveri un šifrētais seifs šeit vēl nav redzami. Vai importēt tos tagad? Faili tiek tikai kopēti, nekas netiek pārrakstīts, un seifa atbloķēšanai joprojām ir nepieciešama jūsu parole.",
+            "importAccept": "Importēt",
+            "importedBody": "Jūsu konfigurācija tika importēta. Restartējiet AeroFTP, lai ielādētu savus serverus un seifu.",
+            "restartNow": "Restartēt tagad"
         }
     }
 }

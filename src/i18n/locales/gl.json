@@ -5298,6 +5298,12 @@
             "modes": {
                 "lockedInEdit": "O modo escóllese ao crear a conexión e mantense fixo mentres se edita un perfil gardado. Para usar un modo diferente, crea unha nova conexión."
             }
+        },
+        "flatpak": {
+            "importBody": "AeroFTP atopou unha configuración existente no teu cartafol persoal. Esta instalación de Flatpak usa o seu propio almacenamento separado, polo que os teus servidores gardados e a caixa forte cifrada aínda non se ven aquí. Queres importalos agora? Os ficheiros só se copian, non se sobrescribe nada, e a caixa forte segue precisando o teu contrasinal para desbloquearse.",
+            "importAccept": "Importar",
+            "importedBody": "Importouse a túa configuración. Reinicia AeroFTP para cargar os teus servidores e a caixa forte.",
+            "restartNow": "Reiniciar agora"
         }
     }
 }
