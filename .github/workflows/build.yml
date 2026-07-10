@@ -464,7 +464,11 @@ jobs:
               ARTIFACTS+=(src-tauri/target/release/bundle/AeroFTP-*-portable-*.zip)
               ;;
             macos)
-              ARTIFACTS+=(src-tauri/target/release/bundle/dmg/*-beta.dmg)
+              # Sign the dmg under its real name: the "-beta" rename runs in a
+              # later step, so globbing *-beta.dmg here matched nothing and the
+              # dmg shipped unsigned. The rename step moves the .sigstore.json
+              # alongside the dmg, so signing *.dmg now yields a *-beta.dmg bundle.
+              ARTIFACTS+=(src-tauri/target/release/bundle/dmg/*.dmg)
               ;;
           esac
 
