@@ -1185,6 +1185,18 @@ enum Commands {
         #[arg(default_value = "_", hide_default_value = true)]
         url: String,
     },
+    /// Import a native install's configuration into this Flatpak sandbox.
+    ///
+    /// A Flatpak install keeps its own sandboxed config, so it does not see the
+    /// servers and encrypted vault of a native (.deb/.rpm/AppImage) install.
+    /// Run inside a Flatpak with a native `~/.config/aeroftp` present, this
+    /// copies it into the sandbox (copy-only, never overwriting). Outside a
+    /// Flatpak it is a no-op. Restart AeroFTP afterwards to load the import.
+    FlatpakImport {
+        /// Only report whether an import is available; do not apply it.
+        #[arg(long)]
+        status: bool,
+    },
     /// List files on a remote server
     Ls {
         /// Server URL (omit when using --profile)
@@ -33039,6 +33051,80 @@ async fn cmd_keystore_import(
     0
 }
 
+/// B3: import a native install's config into this Flatpak sandbox, or report
+/// whether an import is available. Mirrors the GUI first-run prompt so the
+/// feature is reachable from the CLI (house rule).
+fn cmd_flatpak_import(status_only: bool, format: OutputFormat) -> i32 {
+    use ftp_client_gui_lib::portable;
+
+    if !portable::is_flatpak() {
+        match format {
+            OutputFormat::Json => println!(
+                "{}",
+                serde_json::json!({"flatpak": false, "available": false})
+            ),
+            OutputFormat::Text => {
+                println!("Not running inside a Flatpak; there is nothing to import.")
+            }
+        }
+        return 0;
+    }
+
+    let path_str = |p: Option<std::path::PathBuf>| p.map(|p| p.display().to_string());
+
+    if status_only {
+        let st = portable::flatpak_host_import_status();
+        match format {
+            OutputFormat::Json => println!(
+                "{}",
+                serde_json::json!({
+                    "flatpak": true,
+                    "available": st.available,
+                    "source": path_str(st.source),
+                    "target": path_str(st.target),
+                })
+            ),
+            OutputFormat::Text => match (st.available, st.source) {
+                (true, Some(src)) => println!("Import available from {}", src.display()),
+                _ => {
+                    println!("No host configuration to import (none present, or already decided).")
+                }
+            },
+        }
+        return 0;
+    }
+
+    match portable::flatpak_host_import_apply(true) {
+        Ok(report) => {
+            match format {
+                OutputFormat::Json => println!(
+                    "{}",
+                    serde_json::json!({
+                        "imported": report.imported,
+                        "source": path_str(report.source),
+                        "target": path_str(report.target),
+                        "requires_restart": report.imported,
+                    })
+                ),
+                OutputFormat::Text => {
+                    if report.imported {
+                        println!(
+                            "Imported host configuration into the sandbox. Restart AeroFTP to load it."
+                        );
+                    } else {
+                        println!("Nothing to import.");
+                    }
+                }
+            }
+            0
+        }
+        Err(e) => {
+            print_error(format, &format!("flatpak-import failed: {e}"), 1);
+            1
+        }
+    }
+}
+
 fn cmd_keystore_info(input: &str, json: bool, format: OutputFormat) -> i32 {
     if !std::path::Path::new(input).is_file() {
         print_error(format, &format!("Backup file not found: {input}"), 2);
@@ -55096,6 +55182,7 @@ async fn main() {
 
     let exit_code = match &cli.command {
         Commands::Connect { url } => cmd_connect(url, &cli, format).await,
+        Commands::FlatpakImport { status } => cmd_flatpak_import(*status, format),
         // Profile-aware positional shift: when --profile is set, the "url" positional
         // is actually the first real argument (path, remote, etc.). We detect this by
         // checking if url doesn't look like a URL (no "://") and shift args accordingly.
