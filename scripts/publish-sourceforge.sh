@@ -85,13 +85,13 @@ if [ "$FORCE" -eq 1 ]; then
   # Release notes become the folder README that SourceForge renders under the file list.
   # The webhook used to do this for us.
   gh release view "$TAG" --repo "$REPO" --json body -q .body > "$STAGE/README.md"
-  # A small footer, rendered only on the SourceForge file page: this release was
-  # uploaded by AeroFTP's own CLI over SFTP. A nice touch, the app publishing itself.
+  # A footer rendered only on the SourceForge file page, recording that the
+  # release was uploaded through the application's own SFTP integration.
   cat >> "$STAGE/README.md" <<'SFNOTE'
 
 ---
 
-_Published to SourceForge using AeroFTP itself: this release was uploaded with `aeroftp-cli` over SFTP, the built-in AeroFTP SFTP integration. An app that publishes itself._
+_This release was published to SourceForge through AeroFTP's own SFTP integration. The artifacts on this page were uploaded with `aeroftp-cli`, the same secure file-transfer engine that AeroFTP provides to its users._
 SFNOTE
   for a in "${ASSETS[@]}"; do
     gh release download "$TAG" --repo "$REPO" --dir "$STAGE" --pattern "$a" --skip-existing
