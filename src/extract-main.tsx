@@ -13,6 +13,7 @@ import ExtractWindow from './components/ExtractWindow';
 import { I18nProvider } from './i18n';
 import { AVAILABLE_LANGUAGES, type Language } from './i18n';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import type { Theme } from './hooks/useTheme';
 import './styles.css';
 
 // Match the OS language (injected by the Rust open_extract_window payload), so the
@@ -23,6 +24,15 @@ const desktopLang = (window as { __AEROFTP_EXTRACT__?: { lang?: string } }).__AE
 const initialLanguage = AVAILABLE_LANGUAGES.some((l) => l.code === desktopLang)
   ? (desktopLang as Language)
   : undefined;
+
+const savedTheme = (localStorage.getItem('aeroftp-theme') as Theme | null) ?? 'auto';
+const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+const isDark = savedTheme === 'auto'
+  ? prefersDark
+  : ['dark', 'truedark', 'tokyo', 'cyber', 'green', 'redhorse'].includes(savedTheme);
+
+document.documentElement.classList.toggle('dark', isDark);
+document.documentElement.classList.toggle('truedark', savedTheme === 'truedark');
 
 ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
   <React.StrictMode>
