@@ -1744,7 +1744,19 @@ aeroftp-cli profile-add \
     --username myuser
 ```
 
-Scriptable equivalent of the GUI **New Server** flow and of the interactive shell's `n` action. Writes only the configuration entry; credentials live in a separate vault key set with `profile-set-password` (below) or via the GUI Edit modal.
+Scriptable equivalent of the GUI **New Server** flow and of the interactive shell's `n` action. Can seed the credential in the same step so the new profile is immediately connectable: pass the global `--password-stdin` for a plain secret, or `--credential-json` / `--credential-json-file` for a structured blob (OAuth tokens, API keys). These go into the same `server_<id>` vault key the GUI Edit modal and `profile-set-password` write to, and are mutually exclusive (at most one). Omit them and the profile is created credential-free, exactly as before, to be finished later with `profile-set-password` (below) or the GUI Edit modal. The credential source is read and JSON-validated before the profile is persisted, so a malformed blob fails fast without leaving an orphan profile.
+
+```bash
+# Seed a plain password while creating an FTP/SFTP/WebDAV profile
+printf '%s\n' "$FTP_PASSWORD" | aeroftp-cli profile-add \
+    --name "My NAS" --protocol sftp --host nas.local --username admin \
+    --password-stdin
+
+# Seed a structured credential (token / API key providers)
+aeroftp-cli profile-add \
+    --name "My S3" --protocol s3 \
+    --credential-json '{"accessKeyId":"AKIA...","secretAccessKey":"..."}'
+```
 
 `--protocol` accepts the lowercase protocol identifier: `ftp`, `ftps`, `sftp`, `webdav`, `webdavs`, `s3`, `mega`, `dropbox`, `googledrive`, `onedrive`, `box`, `pcloud`, `zohoworkdrive`, `fourshared`, `filen`, `internxt`, `kdrive`, `koofr`, `drime`, `filelu`, `yandexdisk`, `opendrive`, `jottacloud`, `azure`, `b2`, `backblaze`, `imagekit`, `uploadcare`, `cloudinary`, `tabdigital`, `felicloud`, `github`, `gitlab`, `immich`, `pixelunion`, `blomp`. Cloud providers that resolve their endpoint from the protocol alone do not require `--host`.
 

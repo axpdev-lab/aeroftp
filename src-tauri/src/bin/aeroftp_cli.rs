@@ -2575,9 +2575,12 @@ enum Commands {
     ///
     /// Scriptable alternative to the GUI's New Server flow and to the
     /// interactive shell's `n` action: useful for CI setups that seed
-    /// throwaway profiles. Credentials still live in the GUI Edit modal
-    /// or the per-protocol vault keys, so this only writes the
-    /// configuration entry itself.
+    /// throwaway profiles. Pass the global `--password-stdin` (or a
+    /// subcommand `--credential-json` / `--credential-json-file` blob for
+    /// token/API-key providers) to seed the credential in the same step, so
+    /// the new profile is immediately connectable; omit them and the profile
+    /// is created credential-free (finish it later in the GUI Edit modal or
+    /// with `profile-set-password`).
     ProfileAdd {
         /// Display name. Required, must be non-empty.
         #[arg(long, value_name = "NAME")]
@@ -2618,6 +2621,17 @@ enum Commands {
         /// `profiles` can show used/total/% (item 4a).
         #[arg(long, value_name = "SIZE")]
         manual_total: Option<String>,
+        /// Seed a JSON credential blob (string) into `server_<id>` as part of
+        /// creating the profile, matching the GUI Edit modal. Use for OAuth
+        /// tokens, API keys, or any structured credential. For a plain
+        /// password use the global `--password-stdin`. Mutually exclusive with
+        /// --credential-json-file and --password-stdin.
+        #[arg(long, value_name = "JSON")]
+        credential_json: Option<String>,
+        /// Seed a JSON credential blob read from a file into `server_<id>`.
+        /// Mutually exclusive with --credential-json and --password-stdin.
+        #[arg(long, value_name = "PATH")]
+        credential_json_file: Option<String>,
     },
     /// Duplicate a saved server profile inside the vault
     ///
@@ -19640,6 +19654,9 @@ fn cmd_profile_add(
     color: Option<&str>,
     provider_id: Option<&str>,
     manual_total: Option<&str>,
+    password_stdin: bool,
+    credential_json: Option<&str>,
+    credential_json_file: Option<&str>,
 ) -> i32 {
     let trimmed_name = name.trim();
     if trimmed_name.is_empty() {
@@ -19720,6 +19737,22 @@ fn cmd_profile_add(
         },
         None => None,
     };
+    // Optional credential seeding (L1 0165 Finding 1): read at-most-one source
+    // BEFORE persisting, so an invalid --credential-json fails fast without
+    // leaving an orphan profile behind. `--password-stdin` is the global flag;
+    // --credential-json[-file] cover token/API-key providers whose credential is
+    // a JSON blob. No source given => Ok(None) => profile stays credential-free.
+    let credential_value = match read_credential_source(
+        format,
+        None,
+        None,
+        password_stdin,
+        credential_json,
+        credential_json_file,
+    ) {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
     let resolved_port = port.unwrap_or(match proto_lower.as_str() {
         "ftp" | "ftps" => 21,
         "sftp" => 22,
@@ -19760,6 +19793,28 @@ fn cmd_profile_add(
         }
     };
 
+    // Seed the credential into `server_<id>` exactly like the GUI Edit modal and
+    // `profile-set-password`, so a CLI-created profile is immediately
+    // connectable instead of landing `auth_state: no_credentials` (L1 0165
+    // Finding 1). A vault write failure is a hard error: the profile exists but
+    // is unusable, and swallowing it would hide that.
+    let seeded_credential = credential_value.is_some();
+    if let Some(cred) = credential_value {
+        let key = format!("server_{}", new_id);
+        let scoped_uid = scoped_credential_user_id(cli, &store);
+        if let Err(e) = dual_store_server_cred_checked(&store, scoped_uid, &key, &cred) {
+            print_error(
+                format,
+                &format!(
+                    "Profile '{}' created (id={}) but credential write failed: {}",
+                    trimmed_name, new_id, e
+                ),
+                5,
+            );
+            return 5;
+        }
+    }
+
     match format {
         OutputFormat::Json => {
             let out = serde_json::json!({
@@ -19767,13 +19822,22 @@ fn cmd_profile_add(
                 "name": trimmed_name,
                 "protocol": proto_lower,
                 "port": resolved_port,
+                "credential_seeded": seeded_credential,
             });
             println!("{}", serde_json::to_string_pretty(&out).unwrap_or_default());
         }
         _ => {
             println!(
-                "Created profile '{}' ({}, port {}) with id={}",
-                trimmed_name, proto_lower, resolved_port, new_id
+                "Created profile '{}' ({}, port {}) with id={}{}",
+                trimmed_name,
+                proto_lower,
+                resolved_port,
+                new_id,
+                if seeded_credential {
+                    " (credential seeded)"
+                } else {
+                    ""
+                }
             );
         }
     }
@@ -19782,10 +19846,12 @@ fn cmd_profile_add(
 
 /// Build and persist a new profile entry for the active user from already-resolved
 /// fields, prepending it so it surfaces at the top of the table, and returning the
-/// new id. The credential is NOT set here (it is added later in the GUI Edit modal),
-/// matching the CLI `profile-add` contract. Shared by `cmd_profile_add` and the
-/// interactive `profiles -i` New(N) verb (#311 row 1, Phase B). Errors are returned
-/// as messages so each caller maps them to its own exit code / rendering.
+/// new id. This writes only the config entry; the credential is seeded
+/// separately by the caller (`cmd_profile_add` now does so when a credential
+/// source is given, otherwise the profile stays credential-free). Shared by
+/// `cmd_profile_add` and the interactive `profiles -i` New(N) verb (#311 row 1,
+/// Phase B). Errors are returned as messages so each caller maps them to its
+/// own exit code / rendering.
 #[allow(clippy::too_many_arguments)]
 fn persist_new_profile_entry(
     cli: &Cli,
@@ -21220,23 +21286,29 @@ fn cmd_profile_delete(cli: &Cli, format: OutputFormat, selector: &str, skip_conf
     }
 }
 
-/// `aeroftp profile-set-password <SELECTOR> [--password... | --credential-json...]`
-/// — write the per-profile credential blob into the vault key
-/// `server_<id>`. Mirrors the GUI Edit modal save path. Mutually
-/// exclusive sources: pick exactly one of --password / --password-env /
-/// --password-stdin / --credential-json / --credential-json-file.
-#[allow(clippy::too_many_arguments)]
-fn cmd_profile_set_password(
-    cli: &Cli,
+/// Read the credential value from at most one of the mutually exclusive
+/// credential sources (`--password` / `--password-env` / `--password-stdin` /
+/// `--credential-json` / `--credential-json-file`). Shared by
+/// `profile-set-password` (which additionally requires at least one source) and
+/// `profile-add` (for which the credential is optional). Returns:
+///
+/// - `Ok(None)` when no source was given,
+/// - `Ok(Some(value))` with the resolved credential (JSON blobs are shape
+///   validated up front),
+/// - `Err(code)` when a source-specific error was already printed; the caller
+///   just returns this exit code.
+///
+/// The mutual-exclusion (>1 source) check lives here; the "at least one"
+/// requirement stays with `profile-set-password` so `profile-add` can treat
+/// no-source as "create the profile without a credential".
+fn read_credential_source(
     format: OutputFormat,
-    selector: &str,
     password: Option<&str>,
     password_env: Option<&str>,
     password_stdin: bool,
     credential_json: Option<&str>,
     credential_json_file: Option<&str>,
-) -> i32 {
-    // Mutex on credential sources: exactly one MUST be set.
+) -> Result<Option<String>, i32> {
     let sources_count = [
         password.is_some(),
         password_env.is_some(),
@@ -21248,12 +21320,7 @@ fn cmd_profile_set_password(
     .filter(|s| **s)
     .count();
     if sources_count == 0 {
-        print_error(
-            format,
-            "no credential source: pass exactly one of --password, --password-env, --password-stdin, --credential-json, --credential-json-file",
-            5,
-        );
-        return 5;
+        return Ok(None);
     }
     if sources_count > 1 {
         print_error(
@@ -21261,7 +21328,7 @@ fn cmd_profile_set_password(
             "multiple credential sources: pass exactly one of --password, --password-env, --password-stdin, --credential-json, --credential-json-file",
             5,
         );
-        return 5;
+        return Err(5);
     }
 
     if password.is_some() {
@@ -21281,11 +21348,11 @@ fn cmd_profile_set_password(
                     &format!("environment variable {var} is set but empty"),
                     5,
                 );
-                return 5;
+                return Err(5);
             }
             Err(_) => {
                 print_error(format, &format!("environment variable {var} is not set"), 5);
-                return 5;
+                return Err(5);
             }
         }
     } else if password_stdin {
@@ -21293,12 +21360,12 @@ fn cmd_profile_set_password(
         let mut buf = String::new();
         if std::io::stdin().lock().read_line(&mut buf).is_err() {
             print_error(format, "failed to read password from stdin", 5);
-            return 5;
+            return Err(5);
         }
         let trimmed = buf.trim_end_matches(['\r', '\n']);
         if trimmed.is_empty() {
             print_error(format, "empty password on stdin", 5);
-            return 5;
+            return Err(5);
         }
         trimmed.to_string()
     } else if let Some(json_str) = credential_json {
@@ -21309,7 +21376,7 @@ fn cmd_profile_set_password(
                 &format!("--credential-json is not valid JSON: {e}"),
                 5,
             );
-            return 5;
+            return Err(5);
         }
         json_str.to_string()
     } else if let Some(path) = credential_json_file {
@@ -21321,7 +21388,7 @@ fn cmd_profile_set_password(
                     &format!("Cannot read credential file '{}': {}", path, e),
                     2,
                 );
-                return 2;
+                return Err(2);
             }
         };
         if let Err(e) = serde_json::from_str::<serde_json::Value>(&raw) {
@@ -21330,11 +21397,53 @@ fn cmd_profile_set_password(
                 &format!("File '{}' is not valid JSON: {}", path, e),
                 5,
             );
-            return 5;
+            return Err(5);
         }
         raw
     } else {
         unreachable!("checked sources_count above");
+    };
+
+    Ok(Some(credential_value))
+}
+
+/// `aeroftp profile-set-password <SELECTOR> [--password... | --credential-json...]`
+/// — write the per-profile credential blob into the vault key
+/// `server_<id>`. Mirrors the GUI Edit modal save path. Mutually
+/// exclusive sources: pick exactly one of --password / --password-env /
+/// --password-stdin / --credential-json / --credential-json-file.
+#[allow(clippy::too_many_arguments)]
+fn cmd_profile_set_password(
+    cli: &Cli,
+    format: OutputFormat,
+    selector: &str,
+    password: Option<&str>,
+    password_env: Option<&str>,
+    password_stdin: bool,
+    credential_json: Option<&str>,
+    credential_json_file: Option<&str>,
+) -> i32 {
+    // Exactly one credential source MUST be set. The shared reader enforces the
+    // mutual exclusion and reads/validates the value; the "at least one" rule is
+    // ours (profile-add treats no-source as "no credential").
+    let credential_value = match read_credential_source(
+        format,
+        password,
+        password_env,
+        password_stdin,
+        credential_json,
+        credential_json_file,
+    ) {
+        Ok(Some(v)) => v,
+        Ok(None) => {
+            print_error(
+                format,
+                "no credential source: pass exactly one of --password, --password-env, --password-stdin, --credential-json, --credential-json-file",
+                5,
+            );
+            return 5;
+        }
+        Err(code) => return code,
     };
 
     let store = match open_vault(cli) {
@@ -58086,6 +58195,8 @@ async fn main() {
             color,
             provider_id,
             manual_total,
+            credential_json,
+            credential_json_file,
         } => cmd_profile_add(
             &cli,
             format,
@@ -58099,6 +58210,9 @@ async fn main() {
             color.as_deref(),
             provider_id.as_deref(),
             manual_total.as_deref(),
+            cli.password_stdin,
+            credential_json.as_deref(),
+            credential_json_file.as_deref(),
         ),
         Commands::ProfileDuplicate {
             selector,
@@ -63326,5 +63440,99 @@ mod tests {
                 "--health".to_string(),
             ]
         );
+    }
+
+    // ---- read_credential_source (shared by profile-set-password and the new
+    // profile-add credential seeding, L1 0165 Finding 1) -------------------
+
+    #[test]
+    fn test_read_credential_source_none_is_ok_none() {
+        // profile-add's optional path: no source given => no credential, no error.
+        let got = read_credential_source(OutputFormat::Text, None, None, false, None, None);
+        assert_eq!(got, Ok(None));
+    }
+
+    #[test]
+    fn test_read_credential_source_credential_json_valid() {
+        let json = r#"{"apiKey":"abc123"}"#;
+        let got = read_credential_source(OutputFormat::Text, None, None, false, Some(json), None);
+        assert_eq!(got, Ok(Some(json.to_string())));
+    }
+
+    #[test]
+    fn test_read_credential_source_credential_json_invalid_is_err5() {
+        // Malformed JSON is caught before any vault write.
+        let got = read_credential_source(
+            OutputFormat::Text,
+            None,
+            None,
+            false,
+            Some("{not json"),
+            None,
+        );
+        assert_eq!(got, Err(5));
+    }
+
+    #[test]
+    fn test_read_credential_source_credential_json_file_valid() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("cred.json");
+        let body = r#"{"token":"t-42"}"#;
+        std::fs::write(&path, body).unwrap();
+        let got = read_credential_source(
+            OutputFormat::Text,
+            None,
+            None,
+            false,
+            None,
+            Some(path.to_str().unwrap()),
+        );
+        assert_eq!(got, Ok(Some(body.to_string())));
+    }
+
+    #[test]
+    fn test_read_credential_source_credential_json_file_missing_is_err2() {
+        let got = read_credential_source(
+            OutputFormat::Text,
+            None,
+            None,
+            false,
+            None,
+            Some("/no/such/cred/file.json"),
+        );
+        assert_eq!(got, Err(2));
+    }
+
+    #[test]
+    fn test_read_credential_source_multiple_sources_is_err5() {
+        // At-most-one is enforced here, so profile-add rejects e.g.
+        // --password-stdin together with --credential-json.
+        let got = read_credential_source(
+            OutputFormat::Text,
+            None,
+            None,
+            true,
+            Some(r#"{"a":1}"#),
+            None,
+        );
+        assert_eq!(got, Err(5));
+    }
+
+    #[test]
+    fn test_read_credential_source_password_env_empty_is_err5() {
+        // Use a process-unique var name so the test does not race others.
+        let var = "AEROFTP_TEST_CRED_SRC_EMPTY";
+        std::env::set_var(var, "");
+        let got = read_credential_source(OutputFormat::Text, None, Some(var), false, None, None);
+        std::env::remove_var(var);
+        assert_eq!(got, Err(5));
+    }
+
+    #[test]
+    fn test_read_credential_source_inline_password_passthrough() {
+        // Plain-secret shape (profile-set-password's --password): value returned verbatim.
+        let got =
+            read_credential_source(OutputFormat::Text, Some("hunter2"), None, false, None, None);
+        assert_eq!(got, Ok(Some("hunter2".to_string())));
     }
 }
