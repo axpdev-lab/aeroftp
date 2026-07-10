@@ -1327,7 +1327,8 @@
             "cancelConnection": "Tühista ühendus",
             "dropImported": "{count} üksust imporditi sellesse kausta",
             "dropFailed": "{count} üksuse importimine ebaõnnestus",
-            "connectionCancelledHint": "Loend peatati ja ühendus suleti."
+            "connectionCancelledHint": "Loend peatati ja ühendus suleti.",
+            "connectTimedOut": "Ühenduse ajalimiit ületati. Server ei vastanud kunagi ja katse katkestati."
         },
         "about": {
             "tagline": "Rohkem kui FTP. Täielik arendustööriistade komplekt.",

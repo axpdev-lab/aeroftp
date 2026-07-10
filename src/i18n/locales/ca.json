@@ -1327,7 +1327,8 @@
             "cancelConnection": "Cancel·la la connexió",
             "dropImported": "S'han importat {count} elements en aquesta carpeta",
             "dropFailed": "No s'han pogut importar {count} elements",
-            "connectionCancelledHint": "S'ha aturat el llistat i s'ha tancat la connexió."
+            "connectionCancelledHint": "S'ha aturat el llistat i s'ha tancat la connexió.",
+            "connectTimedOut": "S'ha esgotat el temps d'espera de la connexió. El servidor no ha respost mai i l'intent s'ha cancel·lat."
         },
         "about": {
             "tagline": "Mes que FTP. Un conjunt complet d'eines per a desenvolupadors.",

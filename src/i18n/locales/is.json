@@ -1327,7 +1327,8 @@
             "cancelConnection": "Hætta við tengingu",
             "dropImported": "Flutti inn {count} atriði í þessa möppu",
             "dropFailed": "Mistókst að flytja inn {count} atriði",
-            "connectionCancelledHint": "Skráningin var stöðvuð og tengingunni lokað."
+            "connectionCancelledHint": "Skráningin var stöðvuð og tengingunni lokað.",
+            "connectTimedOut": "Tíminn fyrir tengingu rann út. Þjónninn svaraði aldrei og tilraunin var stöðvuð."
         },
         "about": {
             "tagline": "Meira en FTP. Heildarverkfærapakki fyrir þróunaraðila.",

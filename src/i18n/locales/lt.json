@@ -1327,7 +1327,8 @@
             "cancelConnection": "Atšaukti ryšį",
             "dropImported": "Į šį aplanką importuota {count} elementų",
             "dropFailed": "Nepavyko importuoti {count} elementų",
-            "connectionCancelledHint": "Sąrašo sudarymas sustabdytas, ryšys uždarytas."
+            "connectionCancelledHint": "Sąrašo sudarymas sustabdytas, ryšys uždarytas.",
+            "connectTimedOut": "Baigėsi ryšio skirtasis laikas. Serveris taip ir neatsakė, o bandymas buvo nutrauktas."
         },
         "about": {
             "tagline": "Daugiau nei FTP. Pilnas kureju irankiu rinkinys.",

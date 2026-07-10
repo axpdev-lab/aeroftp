@@ -1327,7 +1327,8 @@
             "cancelConnection": "Anulează conexiunea",
             "dropImported": "{count} elemente importate în acest folder",
             "dropFailed": "Importul a {count} elemente a eșuat",
-            "connectionCancelledHint": "Listarea a fost oprită și conexiunea închisă."
+            "connectionCancelledHint": "Listarea a fost oprită și conexiunea închisă.",
+            "connectTimedOut": "Timpul de conectare a expirat. Serverul nu a răspuns niciodată și încercarea a fost anulată."
         },
         "about": {
             "tagline": "Mai mult decât FTP. Un set complet de instrumente pentru dezvoltatori.",

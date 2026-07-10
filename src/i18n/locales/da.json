@@ -1327,7 +1327,8 @@
             "cancelConnection": "Annuller forbindelse",
             "dropImported": "Importerede {count} elementer til denne mappe",
             "dropFailed": "Kunne ikke importere {count} elementer",
-            "connectionCancelledHint": "Listningen blev stoppet, og forbindelsen blev lukket."
+            "connectionCancelledHint": "Listningen blev stoppet, og forbindelsen blev lukket.",
+            "connectTimedOut": "Forbindelsen fik timeout. Serveren svarede aldrig, og forsøget blev afbrudt."
         },
         "about": {
             "tagline": "Mere end FTP. Et komplet udviklingsværktøj.",

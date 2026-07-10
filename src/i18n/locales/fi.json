@@ -1327,7 +1327,8 @@
             "cancelConnection": "Peruuta yhteys",
             "dropImported": "Tuotiin {count} kohdetta tähän kansioon",
             "dropFailed": "{count} kohteen tuonti epäonnistui",
-            "connectionCancelledHint": "Listaus pysäytettiin ja yhteys suljettiin."
+            "connectionCancelledHint": "Listaus pysäytettiin ja yhteys suljettiin.",
+            "connectTimedOut": "Yhteyden aikakatkaisu. Palvelin ei koskaan vastannut ja yritys keskeytettiin."
         },
         "about": {
             "tagline": "Enemmän kuin FTP. Täydellinen kehittäjän työkalupakki.",

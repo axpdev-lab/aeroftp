@@ -1327,7 +1327,8 @@
             "cancelConnection": "Bağlantıyı iptal et",
             "dropImported": "Bu klasöre {count} öğe içe aktarıldı",
             "dropFailed": "{count} öğe içe aktarılamadı",
-            "connectionCancelledHint": "Listeleme durduruldu ve bağlantı kapatıldı."
+            "connectionCancelledHint": "Listeleme durduruldu ve bağlantı kapatıldı.",
+            "connectTimedOut": "Bağlantı zaman aşımına uğradı. Sunucu hiç yanıt vermedi ve deneme iptal edildi."
         },
         "about": {
             "tagline": "FTP'den fazlası. Tam bir geliştirici araç seti.",

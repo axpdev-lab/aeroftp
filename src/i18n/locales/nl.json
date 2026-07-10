@@ -1327,7 +1327,8 @@
             "cancelConnection": "Verbinding annuleren",
             "dropImported": "{count} items geïmporteerd in deze map",
             "dropFailed": "Kan {count} items niet importeren",
-            "connectionCancelledHint": "Het ophalen van de lijst is gestopt en de verbinding is gesloten."
+            "connectionCancelledHint": "Het ophalen van de lijst is gestopt en de verbinding is gesloten.",
+            "connectTimedOut": "Time-out van de verbinding. De server heeft nooit gereageerd en de poging is afgebroken."
         },
         "about": {
             "tagline": "Meer dan FTP. Een complete ontwikkelaarstoolkit.",

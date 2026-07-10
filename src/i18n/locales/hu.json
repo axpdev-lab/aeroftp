@@ -1327,7 +1327,8 @@
             "cancelConnection": "Kapcsolat megszakítása",
             "dropImported": "{count} elem importálva ebbe a mappába",
             "dropFailed": "{count} elem importálása sikertelen",
-            "connectionCancelledHint": "A listázás leállt, a kapcsolat bezárult."
+            "connectionCancelledHint": "A listázás leállt, a kapcsolat bezárult.",
+            "connectTimedOut": "A kapcsolat időtúllépés miatt megszakadt. A kiszolgáló soha nem válaszolt, és a próbálkozás megszakadt."
         },
         "about": {
             "tagline": "Több mint FTP. Teljes fejlesztői eszközkészlet.",

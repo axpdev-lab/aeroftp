@@ -1327,7 +1327,8 @@
             "cancelConnection": "Batalkan koneksi",
             "dropImported": "Mengimpor {count} item ke folder ini",
             "dropFailed": "Gagal mengimpor {count} item",
-            "connectionCancelledHint": "Pendaftaran dihentikan dan koneksi ditutup."
+            "connectionCancelledHint": "Pendaftaran dihentikan dan koneksi ditutup.",
+            "connectTimedOut": "Waktu koneksi habis. Server tidak pernah merespons dan upaya dibatalkan."
         },
         "about": {
             "tagline": "Lebih dari FTP. Perangkat lengkap untuk pengembang.",

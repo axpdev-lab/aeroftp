@@ -90,6 +90,7 @@ pub mod kopia_import;
 pub mod lftp_import;
 pub mod local_bridge;
 pub mod mobaxterm_import;
+pub mod panic_safe;
 pub mod putty_import;
 pub mod readable_vault;
 pub mod s3cmd_import;
@@ -2934,8 +2935,24 @@ async fn install_windows_update(
 
 // ============ FTP Commands ============
 
+// IPC panic safety net: the real work runs in `connect_ftp_inner`, wrapped by
+// `panic_safe::catch` so a panic on the connect/login path (a rustls provider
+// panic, a suppaftp bug, ...) becomes an `Err` the UI renders instead of a
+// promise that hangs forever. See `panic_safe`.
 #[tauri::command]
 async fn connect_ftp(
+    state: State<'_, AppState>,
+    cancel_registry: State<'_, provider_commands::ConnectionCancelRegistry>,
+    params: ConnectionParams,
+) -> Result<(), String> {
+    panic_safe::catch(
+        "connect_ftp",
+        connect_ftp_inner(state, cancel_registry, params),
+    )
+    .await
+}
+
+async fn connect_ftp_inner(
     state: State<'_, AppState>,
     cancel_registry: State<'_, provider_commands::ConnectionCancelRegistry>,
     params: ConnectionParams,
@@ -17554,6 +17571,8 @@ pub fn run() {
             local_panel_watcher::local_panel_watch,
             local_panel_watcher::local_panel_watch_stop,
             resolve_hostname,
+            #[cfg(debug_assertions)]
+            panic_safe::debug_panic_command,
             connect_ftp,
             disconnect_ftp,
             check_connection,

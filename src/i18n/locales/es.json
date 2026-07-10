@@ -1327,7 +1327,8 @@
             "cancelConnection": "Cancelar conexión",
             "dropImported": "Se importaron {count} elementos a esta carpeta",
             "dropFailed": "No se pudieron importar {count} elementos",
-            "connectionCancelledHint": "Se detuvo el listado y se cerró la conexión."
+            "connectionCancelledHint": "Se detuvo el listado y se cerró la conexión.",
+            "connectTimedOut": "Se agotó el tiempo de espera de la conexión. El servidor nunca respondió y el intento se canceló."
         },
         "about": {
             "tagline": "Más que FTP. Un toolkit completo para desarrolladores.",

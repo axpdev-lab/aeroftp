@@ -1182,9 +1182,28 @@ pub struct ProviderConnectionInfo {
 
 // ============ Tauri Commands ============
 
-/// Connect to a storage provider using the specified protocol
+/// Connect to a storage provider using the specified protocol.
+///
+/// IPC panic safety net: the real work runs in [`provider_connect_inner`],
+/// wrapped by [`crate::panic_safe::catch`] so a panic in the connect path (a
+/// misconfigured crypto provider, a provider factory bug, ...) becomes an `Err`
+/// the UI can render instead of a promise that hangs forever. See `panic_safe`.
 #[tauri::command]
 pub async fn provider_connect(
+    app: tauri::AppHandle,
+    state: State<'_, ProviderState>,
+    cancel_registry: State<'_, ConnectionCancelRegistry>,
+    peer_runtime: State<'_, crate::peer::runtime::PeerRuntime>,
+    params: ProviderConnectionParams,
+) -> Result<String, String> {
+    crate::panic_safe::catch(
+        "provider_connect",
+        provider_connect_inner(app, state, cancel_registry, peer_runtime, params),
+    )
+    .await
+}
+
+async fn provider_connect_inner(
     app: tauri::AppHandle,
     state: State<'_, ProviderState>,
     cancel_registry: State<'_, ConnectionCancelRegistry>,
@@ -1599,9 +1618,12 @@ pub async fn provider_list_files(
     listing_cancel: State<'_, ListingCancelState>,
     path: Option<String>,
 ) -> Result<ProviderListResponse, String> {
-    run_cancellable_listing(
-        &listing_cancel,
-        provider_list_files_inner(&app, &state, path),
+    crate::panic_safe::catch(
+        "provider_list_files",
+        run_cancellable_listing(
+            &listing_cancel,
+            provider_list_files_inner(&app, &state, path),
+        ),
     )
     .await
 }

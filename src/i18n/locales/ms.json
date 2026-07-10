@@ -1327,7 +1327,8 @@
             "cancelConnection": "Batalkan sambungan",
             "dropImported": "Mengimport {count} item ke dalam folder ini",
             "dropFailed": "Gagal mengimport {count} item",
-            "connectionCancelledHint": "Penyenaraian dihentikan dan sambungan ditutup."
+            "connectionCancelledHint": "Penyenaraian dihentikan dan sambungan ditutup.",
+            "connectTimedOut": "Sambungan tamat masa. Pelayan tidak pernah membalas dan percubaan telah dibatalkan."
         },
         "about": {
             "tagline": "Lebih daripada FTP. Kit alat lengkap untuk pembangun.",

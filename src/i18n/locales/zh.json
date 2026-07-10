@@ -1327,7 +1327,8 @@
             "cancelConnection": "取消连接",
             "dropImported": "已将 {count} 个项目导入此文件夹",
             "dropFailed": "导入 {count} 个项目失败",
-            "connectionCancelledHint": "已停止列出目录并关闭连接。"
+            "connectionCancelledHint": "已停止列出目录并关闭连接。",
+            "connectTimedOut": "连接超时。服务器始终没有响应，尝试已中止。"
         },
         "about": {
             "tagline": "不仅仅是 FTP。完整的开发者工具包。",

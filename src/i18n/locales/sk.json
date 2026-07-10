@@ -1327,7 +1327,8 @@
             "cancelConnection": "Zrušiť pripojenie",
             "dropImported": "Importovaných {count} položiek do tohto priečinka",
             "dropFailed": "Nepodarilo sa importovať {count} položiek",
-            "connectionCancelledHint": "Výpis bol zastavený a pripojenie zatvorené."
+            "connectionCancelledHint": "Výpis bol zastavený a pripojenie zatvorené.",
+            "connectTimedOut": "Vypršal časový limit pripojenia. Server nikdy neodpovedal a pokus bol prerušený."
         },
         "about": {
             "tagline": "Viac ako FTP. Kompletná sada nástrojov pre vývojárov.",

@@ -1832,7 +1832,8 @@
             "connectionCancelled": "Connessione annullata",
             "keepWaiting": "Continua ad attendere",
             "cancelConnection": "Annulla connessione",
-            "connectionCancelledHint": "L'elenco e' stato interrotto e la connessione chiusa."
+            "connectionCancelledHint": "L'elenco e' stato interrotto e la connessione chiusa.",
+            "connectTimedOut": "Timeout della connessione. Il server non ha mai risposto e il tentativo è stato annullato."
         },
         "about": {
             "tagline": "Più che FTP. Un toolkit completo per sviluppatori.",

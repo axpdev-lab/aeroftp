@@ -1327,7 +1327,8 @@
             "cancelConnection": "Verbindung abbrechen",
             "dropImported": "{count} Elemente in diesen Ordner importiert",
             "dropFailed": "{count} Elemente konnten nicht importiert werden",
-            "connectionCancelledHint": "Die Auflistung wurde gestoppt und die Verbindung geschlossen."
+            "connectionCancelledHint": "Die Auflistung wurde gestoppt und die Verbindung geschlossen.",
+            "connectTimedOut": "Zeitüberschreitung der Verbindung. Der Server hat nie geantwortet und der Versuch wurde abgebrochen."
         },
         "about": {
             "tagline": "Mehr als FTP. Ein komplettes Entwickler-Toolkit.",

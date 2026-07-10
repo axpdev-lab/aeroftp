@@ -1327,7 +1327,8 @@
             "cancelConnection": "Avbryt tilkobling",
             "dropImported": "Importerte {count} elementer til denne mappen",
             "dropFailed": "Kunne ikke importere {count} elementer",
-            "connectionCancelledHint": "Opplistingen ble stoppet og tilkoblingen lukket."
+            "connectionCancelledHint": "Opplistingen ble stoppet og tilkoblingen lukket.",
+            "connectTimedOut": "Tidsavbrudd for tilkoblingen. Serveren svarte aldri, og forsøket ble avbrutt."
         },
         "about": {
             "tagline": "Mer enn FTP. Et komplett utviklerverktøy.",

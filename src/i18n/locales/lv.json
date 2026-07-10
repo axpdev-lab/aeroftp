@@ -1327,7 +1327,8 @@
             "cancelConnection": "Atcelt savienojumu",
             "dropImported": "Šajā mapē importēti {count} vienumi",
             "dropFailed": "Neizdevās importēt {count} vienumus",
-            "connectionCancelledHint": "Saraksta izveide tika apturēta un savienojums slēgts."
+            "connectionCancelledHint": "Saraksta izveide tika apturēta un savienojums slēgts.",
+            "connectTimedOut": "Iestājās savienojuma noildze. Serveris nekad neatbildēja, un mēģinājums tika pārtraukts."
         },
         "about": {
             "tagline": "Vairāk nekā FTP. Pilns izstrādātāja rīku komplekts.",

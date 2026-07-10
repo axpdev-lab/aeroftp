@@ -3763,6 +3763,7 @@
             "stillConnectingHint": "The server is taking longer than usual to respond. Keep waiting, or cancel the connection (you can also press Esc).",
             "connectionCancelled": "Connection cancelled",
             "connectionCancelledHint": "The listing was stopped and the connection closed.",
+            "connectTimedOut": "Connection timed out. The server never responded and the attempt was aborted.",
             "keepWaiting": "Keep waiting",
             "cancelConnection": "Cancel connection"
         },

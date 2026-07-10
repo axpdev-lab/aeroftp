@@ -178,7 +178,7 @@ import { useCircuitBreaker } from './hooks/useCircuitBreaker';
 import { RECONNECT_ERROR_KINDS, getErrorKindI18nKey } from './utils/transferErrorClassifier';
 import { normalizeMegaOptions } from './utils/providerConnectionMeta';
 import { localizeRestrictedCharError } from './utils/restrictedCharError';
-import { CONNECT_CANCELLED_MARKER, isConnectCancelledError } from './utils/connectCancel';
+import { CONNECT_CANCELLED_MARKER, CONNECT_HARD_TIMEOUT_MARKER, isConnectCancelledError, isConnectHardTimeoutError } from './utils/connectCancel';
 import { safePickerStartDir } from './utils/safePickerDir';
 import { migrateFilenApiKeysToVault } from './utils/filenApiKeyMigration';
 import { CustomTitlebar } from './components/CustomTitlebar';
@@ -491,6 +491,14 @@ function makeConnectToken(): string {
 // (W3.2 #275.9). Covers MEGAcmd cold-daemon warmup and pCloud-WebDAV hosts
 // unreachable until the email-confirmation step.
 const STILL_CONNECTING_DELAY_MS = 8000;
+// IPC panic safety net (v4.1.3). A Tauri command that dies by panic never sends
+// an IPC response (tauri has no catch_unwind on the resolver), so the connect
+// `invoke` promise would stay pending forever: an endless spinner and a Cancel
+// that does nothing. `cancellableConnect` races the connect against this hard
+// deadline so the UI ALWAYS resolves even for an unanswerable command. It is a
+// backstop well above any legitimate slow login (real logins are seconds), not
+// a policy timeout; the "Keep waiting" button re-arms it for another window.
+const CONNECT_HARD_TIMEOUT_MS = 120000;
 
 // Marker the backend returns from `provider_list_files` / `provider_change_dir`
 // when the remote panel's Cancel button aborted the listing (see
@@ -2119,6 +2127,11 @@ interface UpdateVerificationInfo {
   const activeConnectTokenRef = useRef<string | null>(null);
   const connectCancelledRef = useRef(false);
   const stillConnectingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Re-arm hook for the hard-timeout backstop of the live connect attempt.
+  // `cancellableConnect` installs it for the duration of an attempt so the
+  // "Keep waiting" button can extend the deadline instead of having the wait cut
+  // from under the user; null when no connect is in flight.
+  const extendHardTimeoutRef = useRef<(() => void) | null>(null);
   const [stillConnecting, setStillConnecting] = useState(false);
 
   // Cancel the in-progress connection (Esc key or modal Cancel button). Signals
@@ -2176,9 +2189,33 @@ interface UpdateVerificationInfo {
     run: (connectToken: string) => Promise<T>,
   ): Promise<T> => {
     const token = beginConnectAttempt();
+    let hardTimer: ReturnType<typeof setTimeout> | null = null;
     try {
-      return await run(token);
+      // Race the connect against a hard-timeout deadline so even a backend
+      // command that can never answer (a panic strands the IPC resolver) still
+      // resolves the UI. The deadline is re-armable so "Keep waiting" extends it.
+      return await new Promise<T>((resolve, reject) => {
+        const armHardTimeout = () => {
+          if (hardTimer) clearTimeout(hardTimer);
+          hardTimer = setTimeout(() => {
+            reject(new Error(CONNECT_HARD_TIMEOUT_MARKER));
+          }, CONNECT_HARD_TIMEOUT_MS);
+        };
+        extendHardTimeoutRef.current = armHardTimeout;
+        armHardTimeout();
+        run(token).then(resolve, reject);
+      });
     } catch (error) {
+      // Hard-timeout backstop: the connect never answered. This is a real
+      // failure, not a user cancel, so signal a best-effort backend cancel and
+      // re-throw a clean error string that the per-flow catch surfaces via its
+      // FAILURE path (an error toast + saved-server failure marker), NOT the
+      // calm "cancelled" path. Detect it before the cancel check because the
+      // best-effort cancel below flips connectCancelledRef.
+      if (isConnectHardTimeoutError(error)) {
+        void cancelActiveConnect();
+        throw t('toast.connectTimedOut');
+      }
       // A user cancel surfaces a calm toast here (single point), then re-throws
       // so the connect flow's success path is aborted. The per-flow catch sees
       // the CONNECT_CANCELLED marker and skips its "connection failed" report.
@@ -2188,9 +2225,11 @@ interface UpdateVerificationInfo {
       }
       throw error;
     } finally {
+      if (hardTimer) clearTimeout(hardTimer);
+      extendHardTimeoutRef.current = null;
       endConnectAttempt(token);
     }
-  }, [beginConnectAttempt, endConnectAttempt, notify, t]);
+  }, [beginConnectAttempt, cancelActiveConnect, endConnectAttempt, notify, t]);
 
   // Thin wrapper for the common single-invoke connect (`provider_connect` /
   // `connect_ftp`): runs it under a cancel token via `cancellableConnect`.
@@ -14410,7 +14449,12 @@ interface UpdateVerificationInfo {
               <p className="text-sm text-gray-600 dark:text-gray-300 mb-5">{t('toast.stillConnectingHint')}</p>
               <div className="flex justify-end gap-2">
                 <button
-                  onClick={() => setStillConnecting(false)}
+                  onClick={() => {
+                    // Re-arm the hard-timeout deadline: the user chose to wait,
+                    // so the backstop must not cut the wait from under them.
+                    extendHardTimeoutRef.current?.();
+                    setStillConnecting(false);
+                  }}
                   className="px-3 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                 >
                   {t('toast.keepWaiting')}

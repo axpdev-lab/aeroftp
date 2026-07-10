@@ -1327,7 +1327,8 @@
             "cancelConnection": "Anuluj połączenie",
             "dropImported": "Zaimportowano {count} elementów do tego folderu",
             "dropFailed": "Nie udało się zaimportować {count} elementów",
-            "connectionCancelledHint": "Listowanie zostało zatrzymane, a połączenie zamknięte."
+            "connectionCancelledHint": "Listowanie zostało zatrzymane, a połączenie zamknięte.",
+            "connectTimedOut": "Przekroczono limit czasu połączenia. Serwer nie odpowiedział, a próba została przerwana."
         },
         "about": {
             "tagline": "Więcej niż FTP. Kompletny zestaw narzędzi dla deweloperów.",

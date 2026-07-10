@@ -1327,7 +1327,8 @@
             "cancelConnection": "Cancelar conexión",
             "dropImported": "Importáronse {count} elementos a este cartafol",
             "dropFailed": "Non se puideron importar {count} elementos",
-            "connectionCancelledHint": "Detívose a listaxe e pechouse a conexión."
+            "connectionCancelledHint": "Detívose a listaxe e pechouse a conexión.",
+            "connectTimedOut": "Esgotouse o tempo de conexión. O servidor nunca respondeu e o intento foi cancelado."
         },
         "about": {
             "tagline": "Máis que FTP. Unha caixa de ferramentas completa para desenvolvedores.",

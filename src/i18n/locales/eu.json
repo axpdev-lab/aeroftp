@@ -1327,7 +1327,8 @@
             "cancelConnection": "Utzi konexioa",
             "dropImported": "{count} elementu inportatu dira karpeta honetara",
             "dropFailed": "Ezin izan dira {count} elementu inportatu",
-            "connectionCancelledHint": "Zerrendatzea gelditu da eta konexioa itxi da."
+            "connectionCancelledHint": "Zerrendatzea gelditu da eta konexioa itxi da.",
+            "connectTimedOut": "Konexioaren denbora-muga gainditu da. Zerbitzariak ez du inoiz erantzun eta saiakera bertan behera utzi da."
         },
         "about": {
             "tagline": "FTP baino gehiago. Garatzaileentzako tresna-sorta osoa.",

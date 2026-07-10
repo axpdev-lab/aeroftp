@@ -1327,7 +1327,8 @@
             "cancelConnection": "Avbryt anslutning",
             "dropImported": "Importerade {count} objekt till den här mappen",
             "dropFailed": "Det gick inte att importera {count} objekt",
-            "connectionCancelledHint": "Listningen stoppades och anslutningen stängdes."
+            "connectionCancelledHint": "Listningen stoppades och anslutningen stängdes.",
+            "connectTimedOut": "Anslutningen fick timeout. Servern svarade aldrig och försöket avbröts."
         },
         "about": {
             "tagline": "Mer än FTP. En komplett utvecklarverktygslåda.",

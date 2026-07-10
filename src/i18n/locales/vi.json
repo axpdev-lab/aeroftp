@@ -1327,7 +1327,8 @@
             "cancelConnection": "Hủy kết nối",
             "dropImported": "Đã nhập {count} mục vào thư mục này",
             "dropFailed": "Không thể nhập {count} mục",
-            "connectionCancelledHint": "Đã dừng liệt kê và đóng kết nối."
+            "connectionCancelledHint": "Đã dừng liệt kê và đóng kết nối.",
+            "connectTimedOut": "Kết nối đã hết thời gian chờ. Máy chủ không bao giờ phản hồi và nỗ lực đã bị hủy bỏ."
         },
         "about": {
             "tagline": "Hơn cả FTP. Bộ công cụ hoàn chỉnh cho nhà phát triển.",

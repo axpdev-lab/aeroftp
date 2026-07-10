@@ -1327,7 +1327,8 @@
             "cancelConnection": "Canslo'r cysylltiad",
             "dropImported": "Mewnforiwyd {count} eitem i'r ffolder hwn",
             "dropFailed": "Methwyd â mewnforio {count} eitem",
-            "connectionCancelledHint": "Cafodd y rhestru ei atal a'r cysylltiad ei gau."
+            "connectionCancelledHint": "Cafodd y rhestru ei atal a'r cysylltiad ei gau.",
+            "connectTimedOut": "Cyrhaeddwyd terfyn amser y cysylltiad. Ni wnaeth y gweinydd ymateb erioed a chafodd y cais ei ddiddymu."
         },
         "about": {
             "tagline": "Mwy na FTP. Pecyn datblygu cyflawn.",

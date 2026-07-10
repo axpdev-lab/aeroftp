@@ -1327,7 +1327,8 @@
             "cancelConnection": "Ghairi muunganisho",
             "dropImported": "Vimeingizwa vipengele {count} kwenye folda hii",
             "dropFailed": "Imeshindwa kuingiza vipengele {count}",
-            "connectionCancelledHint": "Uorodheshaji ulisimamishwa na muunganisho ukafungwa."
+            "connectionCancelledHint": "Uorodheshaji ulisimamishwa na muunganisho ukafungwa.",
+            "connectTimedOut": "Muda wa muunganisho umeisha. Seva haikujibu kamwe na jaribio limeghairiwa."
         },
         "about": {
             "tagline": "Zaidi ya FTP. Zana kamili za msanidi.",

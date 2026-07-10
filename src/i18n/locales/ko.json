@@ -1327,7 +1327,8 @@
             "cancelConnection": "연결 취소",
             "dropImported": "이 폴더에 {count}개 항목을 가져왔습니다",
             "dropFailed": "{count}개 항목을 가져오지 못했습니다",
-            "connectionCancelledHint": "목록 조회를 중지하고 연결을 닫았습니다."
+            "connectionCancelledHint": "목록 조회를 중지하고 연결을 닫았습니다.",
+            "connectTimedOut": "연결 시간이 초과되었습니다. 서버가 응답하지 않아 시도가 중단되었습니다."
         },
         "about": {
             "tagline": "FTP 그 이상. 완벽한 개발자 툴킷.",

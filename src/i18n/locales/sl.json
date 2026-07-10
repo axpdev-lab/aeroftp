@@ -1327,7 +1327,8 @@
             "cancelConnection": "Prekliči povezavo",
             "dropImported": "V to mapo je bilo uvoženih {count} elementov",
             "dropFailed": "Uvoz {count} elementov ni uspel",
-            "connectionCancelledHint": "Izpis je bil ustavljen in povezava zaprta."
+            "connectionCancelledHint": "Izpis je bil ustavljen in povezava zaprta.",
+            "connectTimedOut": "Časovna omejitev povezave je potekla. Strežnik se ni nikoli odzval in poskus je bil prekinjen."
         },
         "about": {
             "tagline": "Več kot FTP. Popolno razvojno orodje.",

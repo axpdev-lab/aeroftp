@@ -1327,7 +1327,8 @@
             "cancelConnection": "接続をキャンセル",
             "dropImported": "{count}件の項目をこのフォルダーにインポートしました",
             "dropFailed": "{count}件の項目のインポートに失敗しました",
-            "connectionCancelledHint": "一覧の取得を中止し、接続を閉じました。"
+            "connectionCancelledHint": "一覧の取得を中止し、接続を閉じました。",
+            "connectTimedOut": "接続がタイムアウトしました。サーバーが応答しなかったため、試行は中止されました。"
         },
         "about": {
             "tagline": "FTPを超えて。完全な開発者ツールキット。",

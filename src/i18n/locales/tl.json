@@ -1327,7 +1327,8 @@
             "cancelConnection": "Kanselahin ang koneksyon",
             "dropImported": "Na-import ang {count} item sa folder na ito",
             "dropFailed": "Nabigong i-import ang {count} item",
-            "connectionCancelledHint": "Itinigil ang paglilista at isinara ang koneksyon."
+            "connectionCancelledHint": "Itinigil ang paglilista at isinara ang koneksyon.",
+            "connectTimedOut": "Nag-timeout ang koneksyon. Hindi kailanman tumugon ang server at ikinansela ang pagtatangka."
         },
         "about": {
             "tagline": "Higit pa sa FTP. Isang kumpletong developer toolkit.",

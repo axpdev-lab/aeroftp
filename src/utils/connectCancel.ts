@@ -15,3 +15,17 @@ export function isConnectCancelledError(error: unknown): boolean {
   if (error instanceof Error) return error.message.includes(CONNECT_CANCELLED_MARKER);
   return String(error).includes(CONNECT_CANCELLED_MARKER);
 }
+
+// IPC panic safety net (v4.1.3): a panicking Tauri command never answers its
+// invoke, so the connect promise would hang forever. `cancellableConnect` races
+// the connect against a hard-timeout deadline that rejects with this marker.
+// Unlike a user cancel, a hard timeout is a real failure: the connect flow's
+// catch should run its failure path (surface an error, mark the saved server),
+// not the calm "cancelled" path, so this is kept distinct from the cancel marker.
+export const CONNECT_HARD_TIMEOUT_MARKER = 'CONNECT_HARD_TIMEOUT';
+
+export function isConnectHardTimeoutError(error: unknown): boolean {
+  if (error == null) return false;
+  if (error instanceof Error) return error.message.includes(CONNECT_HARD_TIMEOUT_MARKER);
+  return String(error).includes(CONNECT_HARD_TIMEOUT_MARKER);
+}

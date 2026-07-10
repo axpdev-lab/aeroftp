@@ -1327,7 +1327,8 @@
             "cancelConnection": "Otkaži vezu",
             "dropImported": "Uvezeno {count} stavki u ovu mapu",
             "dropFailed": "Uvoz {count} stavki nije uspio",
-            "connectionCancelledHint": "Ispis je zaustavljen, a veza zatvorena."
+            "connectionCancelledHint": "Ispis je zaustavljen, a veza zatvorena.",
+            "connectTimedOut": "Isteklo je vrijeme za povezivanje. Poslužitelj nikada nije odgovorio i pokušaj je prekinut."
         },
         "about": {
             "tagline": "Više od FTP-a. Potpuni alat za programere.",
