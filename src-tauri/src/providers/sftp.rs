@@ -942,6 +942,29 @@ pub(crate) fn plan_resume_upload(
     }
 }
 
+/// File-type mask and the symlink type of a POSIX mode word.
+const S_IFMT: u32 = 0o170000;
+const S_IFLNK: u32 = 0o120000;
+
+/// Test `S_IFLNK` on a raw SFTP mode word.
+///
+/// `SSH_FXP_READDIR` replies carry each entry's own attributes with `lstat`
+/// semantics, so the symlink bit is already in hand and the listing needs no
+/// extra `SSH_FXP_LSTAT` per entry. This is the same assumption rclone's sftp
+/// backend makes.
+///
+/// Returns `None` when the mode carries no file-type bits at all. Some
+/// embedded firmware sends permission bits only, and an unknown type must be
+/// probed rather than silently read as "not a symlink": `list` would then
+/// hand a symlink-to-directory to callers as a real directory, and every
+/// recursive walk would follow it (`GAP-A02`).
+fn symlink_bit(mode: u32) -> Option<bool> {
+    match mode & S_IFMT {
+        0 => None,
+        file_type => Some(file_type == S_IFLNK),
+    }
+}
+
 /// Format Unix permissions as rwx string
 fn format_permissions(mode: u32, is_dir: bool) -> String {
     let user = format!(
@@ -1223,8 +1246,9 @@ impl StorageProvider for SftpProvider {
                 format!("{}/{}", full_path.trim_end_matches('/'), name)
             };
 
+            let readdir_attrs = entry.metadata();
             let mut remote_entry =
-                self.metadata_to_entry(name.clone(), entry_path.clone(), &entry.metadata());
+                self.metadata_to_entry(name.clone(), entry_path.clone(), &readdir_attrs);
 
             // Minimal/embedded SFTP servers (some NAS firmware) omit file
             // attributes in READDIR replies. Without permission bits neither
@@ -1241,26 +1265,38 @@ impl StorageProvider for SftpProvider {
                 }
             }
 
-            // Check if it's a symlink
-            if let Ok(link_meta) = sftp.symlink_metadata(&entry_path).await {
-                if let Some(perms) = link_meta.permissions {
-                    // S_IFLNK = 0o120000
-                    if (perms & 0o170000) == 0o120000 {
-                        remote_entry.is_symlink = true;
-                        if let Ok(target) = sftp.read_link(&entry_path).await {
-                            remote_entry.link_target = Some(target);
-                        }
-                        // Follow the symlink to determine the real type (file vs directory)
-                        // metadata() follows symlinks, unlike symlink_metadata()
-                        if let Ok(target_meta) = sftp.metadata(&entry_path).await {
-                            if let Some(target_perms) = target_meta.permissions {
-                                remote_entry.is_dir = (target_perms & 0o40000) != 0;
-                            }
-                            // Update size from target if available
-                            if let Some(target_size) = target_meta.size {
-                                remote_entry.size = target_size;
-                            }
-                        }
+            // Check if it's a symlink. The READDIR attributes above already
+            // carry the entry's own mode (lstat semantics), so a well-behaved
+            // server answers this for free. Only when the server sent no
+            // file-type bits do we spend an SSH_FXP_LSTAT: note that
+            // `remote_entry` may by then hold the recovered STAT attributes,
+            // which follow the link and so can never show S_IFLNK. Paying one
+            // round-trip per entry here used to dominate every recursive walk.
+            let is_symlink = match readdir_attrs.permissions.and_then(symlink_bit) {
+                Some(flag) => flag,
+                None => sftp
+                    .symlink_metadata(&entry_path)
+                    .await
+                    .ok()
+                    .and_then(|link_meta| link_meta.permissions)
+                    .and_then(symlink_bit)
+                    .unwrap_or(false),
+            };
+
+            if is_symlink {
+                remote_entry.is_symlink = true;
+                if let Ok(target) = sftp.read_link(&entry_path).await {
+                    remote_entry.link_target = Some(target);
+                }
+                // Follow the symlink to determine the real type (file vs directory)
+                // metadata() follows symlinks, unlike symlink_metadata()
+                if let Ok(target_meta) = sftp.metadata(&entry_path).await {
+                    if let Some(target_perms) = target_meta.permissions {
+                        remote_entry.is_dir = (target_perms & 0o40000) != 0;
+                    }
+                    // Update size from target if available
+                    if let Some(target_size) = target_meta.size {
+                        remote_entry.size = target_size;
                     }
                 }
             }
@@ -2981,6 +3017,27 @@ mod tests {
         assert_eq!(format_permissions(0o644, false), "-rw-r--r--");
         assert_eq!(format_permissions(0o777, true), "drwxrwxrwx");
         assert_eq!(format_permissions(0o600, false), "-rw-------");
+    }
+
+    #[test]
+    fn test_symlink_bit_reads_the_readdir_mode() {
+        // A mode word carrying file-type bits answers on its own, which is
+        // what lets `list` skip one SSH_FXP_LSTAT per directory entry.
+        assert_eq!(symlink_bit(0o120777), Some(true)); // symlink
+        assert_eq!(symlink_bit(0o100644), Some(false)); // regular file
+        assert_eq!(symlink_bit(0o040755), Some(false)); // directory
+        assert_eq!(symlink_bit(0o140755), Some(false)); // socket
+        assert_eq!(symlink_bit(0o060660), Some(false)); // block device
+    }
+
+    #[test]
+    fn test_symlink_bit_is_unknown_without_file_type_bits() {
+        // Firmware that sends permission bits only must not be read as
+        // "not a symlink": the caller has to fall back to an LSTAT probe,
+        // otherwise a symlink-to-directory is walked into (GAP-A02).
+        assert_eq!(symlink_bit(0o755), None);
+        assert_eq!(symlink_bit(0o644), None);
+        assert_eq!(symlink_bit(0), None);
     }
 
     #[test]
