@@ -41,7 +41,7 @@
   <img src="https://img.shields.io/badge/typescript-strict-3178C6?logo=typescript&logoColor=white" alt="TypeScript" />
   <img src="https://img.shields.io/badge/Linux-stable-brightgreen?logo=linux&logoColor=black" alt="Linux - Stable" />
   <img src="https://img.shields.io/badge/Windows-stable-brightgreen?logoColor=white" alt="Windows - Stable" />
-  <img src="https://img.shields.io/badge/macOS-beta-F5A623?logo=apple&logoColor=white" alt="macOS - Beta" />
+  <img src="https://img.shields.io/badge/macOS-stable-brightgreen?logo=apple&logoColor=white" alt="macOS - Stable" />
 </p>
 
 <!-- Row 3: Package Managers -->
@@ -69,7 +69,7 @@
 |----------|--------|----------|-------|
 | **Linux** | Stable | `.deb`, `.rpm`, `.snap`, `.AppImage`, AUR | GNOME, KDE Plasma, XFCE, Hyprland, Sway, i3 (X11 & Wayland) |
 | **Windows** | Stable | `.msi`, `.exe`, `.zip` portable, winget | Fully tested, not Microsoft Store signed |
-| **macOS (Intel & Apple Silicon)** | Beta | `.dmg` (aarch64), `.dmg` (x64) | Not code-signed, requires `xattr` workaround |
+| **macOS (Intel & Apple Silicon)** | Stable | `.dmg` (aarch64), `.dmg` (x64) | Not Apple code-signed, requires `xattr` workaround |
 
 > **macOS note:** The `.dmg` is not yet signed with an Apple Developer ID certificate. macOS Gatekeeper will block it. After installing, run: `sudo xattr -rd com.apple.quarantine /Applications/AeroFTP.app`
 
@@ -842,7 +842,7 @@ GPL-3.0 - See [LICENSE](LICENSE) for details.
 <p align="center">
   <img src="https://img.shields.io/badge/Linux-stable-brightgreen?logo=linux&logoColor=black" alt="Linux - Stable" />
   <img src="https://img.shields.io/badge/Windows-stable-brightgreen?logoColor=white" alt="Windows - Stable" />
-  <img src="https://img.shields.io/badge/macOS-beta-F5A623?logo=apple&logoColor=white" alt="macOS - Beta" />
+  <img src="https://img.shields.io/badge/macOS-stable-brightgreen?logo=apple&logoColor=white" alt="macOS - Stable" />
   <img src="https://img.shields.io/badge/macOS_signing-pending-lightgrey?logo=apple&logoColor=white" alt="macOS Signing - Pending" />
   <img src="https://img.shields.io/badge/MS_Store-not_signed-lightgrey?logoColor=white" alt="MS Store - Not Signed" />
 </p>

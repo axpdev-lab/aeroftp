@@ -218,7 +218,7 @@ jobs:
 
       # The Intel cross build emits its bundle under the target-triple dir.
       # Stage the DMG at the conventional path so every downstream step
-      # (artifact upload, Sigstore signing, beta rename, release upload)
+      # (artifact upload, Sigstore signing, release upload)
       # keeps working unchanged. The arm64 leg already builds there.
       - name: Stage Intel DMG at conventional path
         if: matrix.target == 'macos' && matrix.arch == 'x64'
@@ -464,10 +464,6 @@ jobs:
               ARTIFACTS+=(src-tauri/target/release/bundle/AeroFTP-*-portable-*.zip)
               ;;
             macos)
-              # Sign the dmg under its real name: the "-beta" rename runs in a
-              # later step, so globbing *-beta.dmg here matched nothing and the
-              # dmg shipped unsigned. The rename step moves the .sigstore.json
-              # alongside the dmg, so signing *.dmg now yields a *-beta.dmg bundle.
               ARTIFACTS+=(src-tauri/target/release/bundle/dmg/*.dmg)
               ;;
           esac
@@ -537,27 +533,13 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Rename macOS DMG to beta
-        if: matrix.target == 'macos'
-        shell: bash
-        run: |
-          DMG_DIR="src-tauri/target/release/bundle/dmg"
-          for f in "$DMG_DIR"/*.dmg; do
-            [ -f "$f" ] || continue
-            NEWNAME=$(echo "$f" | sed 's/\.dmg$/-beta.dmg/')
-            mv "$f" "$NEWNAME"
-            # Also rename sigstore bundle if present
-            [ -f "${f}.sigstore.json" ] && mv "${f}.sigstore.json" "${NEWNAME}.sigstore.json"
-            echo "Renamed: $(basename "$f") -> $(basename "$NEWNAME")"
-          done
-
       - name: Upload macOS binaries to Release
         if: startsWith(github.ref, 'refs/tags/') && matrix.target == 'macos'
         uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b # v3.0.1
         with:
           files: |
-            src-tauri/target/release/bundle/dmg/*-beta.dmg
-            src-tauri/target/release/bundle/dmg/*-beta.dmg.sigstore.json
+            src-tauri/target/release/bundle/dmg/*.dmg
+            src-tauri/target/release/bundle/dmg/*.dmg.sigstore.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
