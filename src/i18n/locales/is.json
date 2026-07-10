@@ -461,7 +461,8 @@
             "s3TrashPurge": "Eyða varanlega",
             "s3TrashPurgeHint": "Eyða þessari útgáfu varanlega (óafturkræft)",
             "s3TrashPurgeConfirm": "Eyða þessari útgáfu varanlega? Þetta er ekki hægt að afturkalla.",
-            "s3TrashEmptySummary": "Þetta eyðir varanlega {count} hlut(um) ({bytes}). Þetta er ekki hægt að afturkalla."
+            "s3TrashEmptySummary": "Þetta eyðir varanlega {count} hlut(um) ({bytes}). Þetta er ekki hægt að afturkalla.",
+            "extractOverwriteConfirm": "Að afþjappa hér skrifar yfir {count} fyrirliggjandi atriði: {names}. Halda áfram?"
         },
         "transfer": {
             "transferring": "Flytur...",
@@ -3037,7 +3038,9 @@
             "newName": "Nýtt Nafn",
             "noChange": "(engin breyting)",
             "conflictWarning": "Sumar skrár munu hafa sama nafn. Vinsamlegast lagaðu mynstrið.",
-            "apply": "Nota"
+            "apply": "Nota",
+            "existingCollision": "Sum ný heiti passa við skrár sem eru þegar í þessari möppu; þeim skrám verður ekki skrifað yfir og endurnefning þeirra er sleppt.",
+            "existingCollisionHint": "(er þegar til)"
         },
         "lockScreen": {
             "locked": "Forrit Læst",

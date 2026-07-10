@@ -461,7 +461,8 @@
             "s3TrashPurge": "Permanenteng burahin",
             "s3TrashPurgeHint": "Permanenteng burahin ang bersyon na ito (hindi na maibabalik)",
             "s3TrashPurgeConfirm": "Permanenteng burahin ang bersyon na ito? Hindi na ito maaaring i-undo.",
-            "s3TrashEmptySummary": "Permanenteng buburahin nito ang {count} object ({bytes}). Hindi na ito maaaring i-undo."
+            "s3TrashEmptySummary": "Permanenteng buburahin nito ang {count} object ({bytes}). Hindi na ito maaaring i-undo.",
+            "extractOverwriteConfirm": "Ang pag-extract dito ay magpapatong sa {count} umiiral na item: {names}. Magpatuloy?"
         },
         "transfer": {
             "transferring": "Naglilipat...",
@@ -3037,7 +3038,9 @@
             "newName": "Bagong Pangalan",
             "noChange": "(walang pagbabago)",
             "conflictWarning": "Ang ilang file ay magkakaroon ng parehong pangalan. Pakiayos ang pattern.",
-            "apply": "Ilapat"
+            "apply": "Ilapat",
+            "existingCollision": "May ilang bagong pangalan na tumutugma sa mga file na nasa folder na ito; hindi mao-overwrite ang mga file na iyon at laktawan ang pagpapalit ng pangalan ng mga ito.",
+            "existingCollisionHint": "(mayroon na)"
         },
         "lockScreen": {
             "locked": "Naka-lock ang App",

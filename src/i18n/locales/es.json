@@ -461,7 +461,8 @@
             "s3TrashPurge": "Eliminar permanentemente",
             "s3TrashPurgeHint": "Eliminar permanentemente esta versión (irreversible)",
             "s3TrashPurgeConfirm": "¿Eliminar permanentemente esta versión? Esta acción no se puede deshacer.",
-            "s3TrashEmptySummary": "Esto eliminará permanentemente {count} objeto(s) ({bytes}). Esta acción no se puede deshacer."
+            "s3TrashEmptySummary": "Esto eliminará permanentemente {count} objeto(s) ({bytes}). Esta acción no se puede deshacer.",
+            "extractOverwriteConfirm": "Extraer aquí sobrescribirá {count} elemento(s) existente(s): {names}. ¿Continuar?"
         },
         "transfer": {
             "transferring": "Transfiriendo...",
@@ -3037,7 +3038,9 @@
             "newName": "Nombre nuevo",
             "noChange": "(sin cambios)",
             "conflictWarning": "Algunos archivos tendrían el mismo nombre. Ajusta el patrón.",
-            "apply": "Aplicar"
+            "apply": "Aplicar",
+            "existingCollision": "Algunos nombres nuevos coinciden con archivos que ya están en esta carpeta; esos archivos no se sobrescribirán y se omitirá su cambio de nombre.",
+            "existingCollisionHint": "(ya existe)"
         },
         "lockScreen": {
             "locked": "Aplicación bloqueada",

@@ -461,7 +461,8 @@
             "s3TrashPurge": "Șterge definitiv",
             "s3TrashPurgeHint": "Șterge definitiv această versiune (ireversibil)",
             "s3TrashPurgeConfirm": "Ștergeți definitiv această versiune? Această acțiune nu poate fi anulată.",
-            "s3TrashEmptySummary": "Aceasta va șterge definitiv {count} obiect(e) ({bytes}). Această acțiune nu poate fi anulată."
+            "s3TrashEmptySummary": "Aceasta va șterge definitiv {count} obiect(e) ({bytes}). Această acțiune nu poate fi anulată.",
+            "extractOverwriteConfirm": "Extragerea aici va suprascrie {count} element(e) existent(e): {names}. Continuați?"
         },
         "transfer": {
             "transferring": "Se transferă...",
@@ -3037,7 +3038,9 @@
             "newName": "Numele nou",
             "noChange": "(fără modificare)",
             "conflictWarning": "Unele fișiere ar avea același nume. Vă rugăm ajustați modelul.",
-            "apply": "Aplică"
+            "apply": "Aplică",
+            "existingCollision": "Unele nume noi corespund unor fișiere aflate deja în acest folder; acele fișiere nu vor fi suprascrise, iar redenumirea lor este omisă.",
+            "existingCollisionHint": "(există deja)"
         },
         "lockScreen": {
             "locked": "Aplicație blocată",

@@ -422,7 +422,7 @@ import { useTranslation } from './i18n';
 import { ConfirmDialog, InputDialog, ArchivePasswordDialog, SyncNavDialog, PropertiesDialog, FileProperties, MultiFilePropertiesDialog, MultiFileProperties, MasterPasswordSetupDialog } from './components/Dialogs';
 import { TransferToastContainer, dispatchTransferToast, reopenTransferToast } from './components/Transfer/TransferToastContainer';
 import { runExtractWithToast } from './utils/extractToast';
-import { dispatchGeneralExtract, isWrongPasswordError, resolveUniqueExtractDir } from './utils/extractOrchestrator';
+import { archiveStem, dispatchGeneralExtract, isWrongPasswordError, resolveUniqueExtractDir } from './utils/extractOrchestrator';
 import { formatExtractDetails, formatCompressDetails } from './utils/archiveSizeReport';
 import { GlobalTooltip } from './components/GlobalTooltip';
 import { TransferProgressBar } from './components/TransferProgressBar';
@@ -900,7 +900,7 @@ const App: React.FC = () => {
   }, [scanningState.active]);
 
   // Dialogs
-  const [confirmDialog, setConfirmDialog] = useState<{ message: string; onConfirm: () => void; onCancel?: () => void } | null>(null);
+  const [confirmDialog, setConfirmDialog] = useState<{ message: string; onConfirm: () => void; onCancel?: () => void; confirmLabel?: string; confirmColor?: 'red' | 'blue' | 'green' } | null>(null);
   const [pendingUnifiedTransferPlan, setPendingUnifiedTransferPlan] = useState<{
     plan: UnifiedTransferPlan;
     sourceLocalPanelId?: 'local' | 'local2';
@@ -962,7 +962,7 @@ const App: React.FC = () => {
     onCommit: (message: string) => void;
     onCancel?: () => void;
   } | null>(null);
-  const [batchRenameDialog, setBatchRenameDialog] = useState<{ files: BatchRenameFile[]; isRemote: boolean } | null>(null);
+  const [batchRenameDialog, setBatchRenameDialog] = useState<{ files: BatchRenameFile[]; isRemote: boolean; siblings: string[] } | null>(null);
   // Inline rename state: tracks which file is being renamed directly in the list
   const [inlineRename, setInlineRename] = useState<{ path: string; name: string; isRemote: boolean; isDir?: boolean } | null>(null);
   const [inlineRenameValue, setInlineRenameValue] = useState('');
@@ -11584,7 +11584,10 @@ interface UpdateVerificationInfo {
           const selectedFiles = remoteFiles
             .filter(f => selection.has(f.name))
             .map(f => ({ name: f.name, path: f.path, isDir: f.is_dir }));
-          setBatchRenameDialog({ files: selectedFiles, isRemote: true });
+          // C-F02: pre-existing siblings NOT in this batch, captured at open time,
+          // so the dialog can pre-flag a rename target that would collide with one.
+          const siblings = remoteFiles.filter(f => !selection.has(f.name)).map(f => f.name);
+          setBatchRenameDialog({ files: selectedFiles, isRemote: true, siblings });
         }
       }] : []),
       ...(!currentProtocol || !isNonFtpProvider(currentProtocol) || currentProtocol === 'sftp' ? [{ label: t('contextMenu.permissions'), icon: <Shield size={14} />, action: () => setPermissionsDialog({ file, visible: true }), disabled: count > 1 }] : []),
@@ -12816,7 +12819,10 @@ interface UpdateVerificationInfo {
           const selectedFiles = localFiles
             .filter(f => selection.has(f.name))
             .map(f => ({ name: f.name, path: f.path, isDir: f.is_dir }));
-          setBatchRenameDialog({ files: selectedFiles, isRemote: false });
+          // C-F02: pre-existing siblings NOT in this batch (same listing source),
+          // captured at open time for the dialog's external-collision pre-flag.
+          const siblings = localFiles.filter(f => !selection.has(f.name)).map(f => f.name);
+          setBatchRenameDialog({ files: selectedFiles, isRemote: false, siblings });
         }
       }] : []),
       {
@@ -12959,8 +12965,63 @@ interface UpdateVerificationInfo {
     const isArchive = isZipArchive || is7zArchive || isRarArchive || isTarArchive || isSingleArchive;
 
     if (isArchive && count === 1) {
+      // C-F03: top-level entry names an "Extract here" would write into the
+      // current folder, intersected with what is already there, so we can warn
+      // before silently overwriting. Best-effort: listing an encrypted-header
+      // archive needs a password we do not have yet, so any listing failure
+      // returns [] and the extraction proceeds exactly as before (no regression).
+      const detectExtractHereCollisions = async (): Promise<string[]> => {
+        const destNames = new Set(localFiles.map(f => f.name));
+        const topLevel = (entry: string): string => {
+          const norm = entry.replace(/\\/g, '/').replace(/^\/+/, '');
+          const slash = norm.indexOf('/');
+          return slash === -1 ? norm : norm.slice(0, slash);
+        };
+        const targets = new Set<string>();
+        try {
+          if (isSingleArchive) {
+            // gz/xz/bz2: one output member, named by the codec-stripped stem.
+            targets.add(archiveStem(file.name));
+          } else {
+            let entries: Array<{ name: string }> = [];
+            if (isZipArchive) entries = await invoke('list_zip', { archivePath: file.path });
+            else if (is7zArchive) entries = await invoke('list_7z', { archivePath: file.path });
+            else if (isTarArchive) entries = await invoke('list_tar', { archivePath: file.path });
+            else if (isRarArchive) entries = await invoke('list_rar', { archivePath: file.path });
+            for (const e of entries) {
+              const tl = topLevel(e.name);
+              if (tl) targets.add(tl);
+            }
+          }
+        } catch {
+          // Encrypted headers or a read error: skip the pre-check, do not block.
+          return [];
+        }
+        return Array.from(targets).filter(name => destNames.has(name));
+      };
+
       const doExtract = async (createSubfolder: boolean) => {
         try {
+          // C-F03: "Extract here" merges archive contents into the current folder
+          // and could silently overwrite existing files. Require confirmation on
+          // any top-level collision first. "Extract to folder" (below) is already
+          // collision-free via resolveUniqueExtractDir, so it is not pre-checked.
+          if (!createSubfolder) {
+            const collisions = await detectExtractHereCollisions();
+            if (collisions.length > 0) {
+              const names = collisions.slice(0, 5).join(', ') + (collisions.length > 5 ? `, +${collisions.length - 5}` : '');
+              const proceed = await new Promise<boolean>((resolve) => {
+                setConfirmDialog({
+                  message: t('contextMenu.extractOverwriteConfirm', { count: collisions.length, names }),
+                  confirmLabel: t('overwrite.overwrite'),
+                  confirmColor: 'red',
+                  onConfirm: () => { setConfirmDialog(null); resolve(true); },
+                  onCancel: () => { setConfirmDialog(null); resolve(false); },
+                });
+              });
+              if (!proceed) return;
+            }
+          }
           // "Extract to folder" must never clobber: resolve a unique stem
           // subfolder (stem, stem (2), ...) up front and extract into it with
           // createSubfolder:false, exactly like the OS "Extract to folder" verb
@@ -13875,7 +13936,7 @@ interface UpdateVerificationInfo {
         {contextMenu.state.visible && <ContextMenu x={contextMenu.state.x} y={contextMenu.state.y} items={contextMenu.state.items} onClose={contextMenu.hide} />}
         {settings.showTransferProgress !== false && <TransferToastContainer onOpen={transferQueue.show} />}
         <GlobalTooltip />
-        {confirmDialog && <ConfirmDialog message={confirmDialog.message} onConfirm={confirmDialog.onConfirm} onCancel={confirmDialog.onCancel || (() => setConfirmDialog(null))} />}
+        {confirmDialog && <ConfirmDialog message={confirmDialog.message} onConfirm={confirmDialog.onConfirm} onCancel={confirmDialog.onCancel || (() => setConfirmDialog(null))} confirmLabel={confirmDialog.confirmLabel} confirmColor={confirmDialog.confirmColor} />}
         {pendingUnifiedTransferPlan && (
           <UnifiedTransferPlanDialog
             plan={pendingUnifiedTransferPlan.plan}
@@ -14052,6 +14113,7 @@ interface UpdateVerificationInfo {
             isOpen={true}
             files={batchRenameDialog.files}
             isRemote={batchRenameDialog.isRemote}
+            existingSiblings={batchRenameDialog.siblings}
             onConfirm={handleBatchRename}
             onClose={() => setBatchRenameDialog(null)}
           />

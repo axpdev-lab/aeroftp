@@ -461,7 +461,8 @@
             "s3TrashPurge": "Endgültig löschen",
             "s3TrashPurgeHint": "Diese Version endgültig löschen (unwiderruflich)",
             "s3TrashPurgeConfirm": "Diese Version endgültig löschen? Diese Aktion kann nicht rückgängig gemacht werden.",
-            "s3TrashEmptySummary": "Dadurch werden {count} Objekt(e) ({bytes}) endgültig gelöscht. Diese Aktion kann nicht rückgängig gemacht werden."
+            "s3TrashEmptySummary": "Dadurch werden {count} Objekt(e) ({bytes}) endgültig gelöscht. Diese Aktion kann nicht rückgängig gemacht werden.",
+            "extractOverwriteConfirm": "Das Extrahieren hierher überschreibt {count} vorhandene(s) Element(e): {names}. Fortfahren?"
         },
         "transfer": {
             "transferring": "Übertragung...",
@@ -3037,7 +3038,9 @@
             "newName": "Neuer Name",
             "noChange": "(keine Änderung)",
             "conflictWarning": "Einige Dateien hätten denselben Namen. Bitte passen Sie das Muster an.",
-            "apply": "Anwenden"
+            "apply": "Anwenden",
+            "existingCollision": "Einige neue Namen stimmen mit Dateien überein, die bereits in diesem Ordner vorhanden sind; diese Dateien werden nicht überschrieben und ihre Umbenennung wird übersprungen.",
+            "existingCollisionHint": "(existiert bereits)"
         },
         "lockScreen": {
             "locked": "App gesperrt",

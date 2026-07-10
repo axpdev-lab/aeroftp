@@ -461,7 +461,8 @@
             "s3TrashPurge": "Poista pysyvästi",
             "s3TrashPurgeHint": "Poista tämä versio pysyvästi (peruuttamaton)",
             "s3TrashPurgeConfirm": "Poistetaanko tämä versio pysyvästi? Tätä toimintoa ei voi kumota.",
-            "s3TrashEmptySummary": "Tämä poistaa pysyvästi {count} objektia ({bytes}). Tätä toimintoa ei voi kumota."
+            "s3TrashEmptySummary": "Tämä poistaa pysyvästi {count} objektia ({bytes}). Tätä toimintoa ei voi kumota.",
+            "extractOverwriteConfirm": "Tänne purkaminen korvaa {count} olemassa olevaa kohdetta: {names}. Jatketaanko?"
         },
         "transfer": {
             "transferring": "Siirretään...",
@@ -3037,7 +3038,9 @@
             "newName": "Uusi nimi",
             "noChange": "(ei muutosta)",
             "conflictWarning": "Joillakin tiedostoilla olisi sama nimi. Muokkaa kaavaa.",
-            "apply": "Käytä"
+            "apply": "Käytä",
+            "existingCollision": "Jotkin uudet nimet vastaavat tiedostoja, jotka ovat jo tässä kansiossa; näitä tiedostoja ei korvata ja niiden uudelleennimeäminen ohitetaan.",
+            "existingCollisionHint": "(on jo olemassa)"
         },
         "lockScreen": {
             "locked": "Sovellus lukittu",

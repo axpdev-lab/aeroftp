@@ -461,7 +461,8 @@
             "s3TrashPurge": "Xóa vĩnh viễn",
             "s3TrashPurgeHint": "Xóa vĩnh viễn phiên bản này (không thể hoàn tác)",
             "s3TrashPurgeConfirm": "Xóa vĩnh viễn phiên bản này? Thao tác này không thể hoàn tác.",
-            "s3TrashEmptySummary": "Thao tác này sẽ xóa vĩnh viễn {count} đối tượng ({bytes}). Thao tác này không thể hoàn tác."
+            "s3TrashEmptySummary": "Thao tác này sẽ xóa vĩnh viễn {count} đối tượng ({bytes}). Thao tác này không thể hoàn tác.",
+            "extractOverwriteConfirm": "Giải nén tại đây sẽ ghi đè {count} mục hiện có: {names}. Tiếp tục?"
         },
         "transfer": {
             "transferring": "Đang truyền...",
@@ -3037,7 +3038,9 @@
             "newName": "Tên mới",
             "noChange": "(không thay đổi)",
             "conflictWarning": "Một số tệp sẽ có cùng tên. Vui lòng điều chỉnh mẫu.",
-            "apply": "Áp dụng"
+            "apply": "Áp dụng",
+            "existingCollision": "Một số tên mới trùng với các tệp đã có trong thư mục này; những tệp đó sẽ không bị ghi đè và việc đổi tên chúng sẽ bị bỏ qua.",
+            "existingCollisionHint": "(đã tồn tại)"
         },
         "lockScreen": {
             "locked": "Ứng dụng đã khóa",

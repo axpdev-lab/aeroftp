@@ -461,7 +461,8 @@
             "s3TrashPurge": "Padam secara kekal",
             "s3TrashPurgeHint": "Padam versi ini secara kekal (tidak boleh dibatalkan)",
             "s3TrashPurgeConfirm": "Padam versi ini secara kekal? Tindakan ini tidak boleh dibuat asal.",
-            "s3TrashEmptySummary": "Ini akan memadam secara kekal {count} objek ({bytes}). Tindakan ini tidak boleh dibuat asal."
+            "s3TrashEmptySummary": "Ini akan memadam secara kekal {count} objek ({bytes}). Tindakan ini tidak boleh dibuat asal.",
+            "extractOverwriteConfirm": "Mengekstrak di sini akan menulis ganti {count} item sedia ada: {names}. Teruskan?"
         },
         "transfer": {
             "transferring": "Memindahkan...",
@@ -3037,7 +3038,9 @@
             "newName": "Nama Baharu",
             "noChange": "(tiada perubahan)",
             "conflictWarning": "Beberapa fail akan mempunyai nama yang sama. Sila laraskan corak.",
-            "apply": "Guna"
+            "apply": "Guna",
+            "existingCollision": "Sesetengah nama baharu sepadan dengan fail yang sudah ada dalam folder ini; fail tersebut tidak akan ditulis ganti dan penamaan semulanya dilangkau.",
+            "existingCollisionHint": "(sudah wujud)"
         },
         "lockScreen": {
             "locked": "Aplikasi Dikunci",

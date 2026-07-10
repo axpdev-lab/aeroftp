@@ -461,7 +461,8 @@
             "s3TrashPurge": "Futa kabisa",
             "s3TrashPurgeHint": "Futa toleo hili kabisa (haiwezi kutenduliwa)",
             "s3TrashPurgeConfirm": "Futa toleo hili kabisa? Kitendo hiki hakiwezi kutenduliwa.",
-            "s3TrashEmptySummary": "Hii itafuta kabisa vitu {count} ({bytes}). Kitendo hiki hakiwezi kutenduliwa."
+            "s3TrashEmptySummary": "Hii itafuta kabisa vitu {count} ({bytes}). Kitendo hiki hakiwezi kutenduliwa.",
+            "extractOverwriteConfirm": "Kuchambua hapa kutaandika juu ya vipengele {count} vilivyopo: {names}. Kuendelea?"
         },
         "transfer": {
             "transferring": "Inahamisha...",
@@ -3037,7 +3038,9 @@
             "newName": "Jina Jipya",
             "noChange": "(hakuna mabadiliko)",
             "conflictWarning": "Baadhi ya faili zitakuwa na jina moja. Tafadhali rekebisha muundo.",
-            "apply": "Tumia"
+            "apply": "Tumia",
+            "existingCollision": "Baadhi ya majina mapya yanalingana na faili ambazo tayari zipo katika folda hii; faili hizo hazitaandikwa juu na kubadilishwa jina kwazo kutarukwa.",
+            "existingCollisionHint": "(tayari ipo)"
         },
         "lockScreen": {
             "locked": "Programu Imefungwa",

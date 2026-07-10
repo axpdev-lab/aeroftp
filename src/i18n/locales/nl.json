@@ -461,7 +461,8 @@
             "s3TrashPurge": "Permanent verwijderen",
             "s3TrashPurgeHint": "Deze versie permanent verwijderen (onomkeerbaar)",
             "s3TrashPurgeConfirm": "Deze versie permanent verwijderen? Dit kan niet ongedaan worden gemaakt.",
-            "s3TrashEmptySummary": "Hiermee worden {count} object(en) ({bytes}) permanent verwijderd. Dit kan niet ongedaan worden gemaakt."
+            "s3TrashEmptySummary": "Hiermee worden {count} object(en) ({bytes}) permanent verwijderd. Dit kan niet ongedaan worden gemaakt.",
+            "extractOverwriteConfirm": "Hier uitpakken overschrijft {count} bestaand(e) item(s): {names}. Doorgaan?"
         },
         "transfer": {
             "transferring": "Overdragen...",
@@ -3037,7 +3038,9 @@
             "newName": "Nieuwe naam",
             "noChange": "(geen wijziging)",
             "conflictWarning": "Sommige bestanden zouden dezelfde naam krijgen. Pas het patroon aan.",
-            "apply": "Toepassen"
+            "apply": "Toepassen",
+            "existingCollision": "Sommige nieuwe namen komen overeen met bestanden die al in deze map staan; die bestanden worden niet overschreven en hun naamswijziging wordt overgeslagen.",
+            "existingCollisionHint": "(bestaat al)"
         },
         "lockScreen": {
             "locked": "App vergrendeld",

@@ -461,7 +461,8 @@
             "s3TrashPurge": "Végleges törlés",
             "s3TrashPurgeHint": "A verzió végleges törlése (visszavonhatatlan)",
             "s3TrashPurgeConfirm": "Véglegesen törli ezt a verziót? Ez a művelet nem vonható vissza.",
-            "s3TrashEmptySummary": "Ez véglegesen töröl {count} objektumot ({bytes}). Ez a művelet nem vonható vissza."
+            "s3TrashEmptySummary": "Ez véglegesen töröl {count} objektumot ({bytes}). Ez a művelet nem vonható vissza.",
+            "extractOverwriteConfirm": "Az ide való kibontás felülír {count} meglévő elemet: {names}. Folytatja?"
         },
         "transfer": {
             "transferring": "Átvitel...",
@@ -3037,7 +3038,9 @@
             "newName": "Új név",
             "noChange": "(nincs változás)",
             "conflictWarning": "Néhány fájlnak azonos neve lenne. Módosítsa a mintát.",
-            "apply": "Alkalmazás"
+            "apply": "Alkalmazás",
+            "existingCollision": "Néhány új név megegyezik a mappában már meglévő fájlokkal; ezek a fájlok nem lesznek felülírva, és átnevezésük kimarad.",
+            "existingCollisionHint": "(már létezik)"
         },
         "lockScreen": {
             "locked": "Alkalmazás zárolva",

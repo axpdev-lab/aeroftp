@@ -461,7 +461,8 @@
             "s3TrashPurge": "Elimina permanentment",
             "s3TrashPurgeHint": "Elimina permanentment aquesta versió (irreversible)",
             "s3TrashPurgeConfirm": "Voleu eliminar permanentment aquesta versió? Aquesta acció no es pot desfer.",
-            "s3TrashEmptySummary": "Això eliminarà permanentment {count} element(s) ({bytes}). Aquesta acció no es pot desfer."
+            "s3TrashEmptySummary": "Això eliminarà permanentment {count} element(s) ({bytes}). Aquesta acció no es pot desfer.",
+            "extractOverwriteConfirm": "Extreure aquí sobreescriurà {count} element(s) existent(s): {names}. Voleu continuar?"
         },
         "transfer": {
             "transferring": "Transferint...",
@@ -3037,7 +3038,9 @@
             "newName": "Nom nou",
             "noChange": "(sense canvis)",
             "conflictWarning": "Alguns fitxers tindrien el mateix nom. Si us plau, ajusteu el patró.",
-            "apply": "Aplicar"
+            "apply": "Aplicar",
+            "existingCollision": "Alguns noms nous coincideixen amb fitxers que ja hi ha en aquesta carpeta; aquests fitxers no se sobreescriuran i se n'ometrà el canvi de nom.",
+            "existingCollisionHint": "(ja existeix)"
         },
         "lockScreen": {
             "locked": "Aplicació bloquejada",

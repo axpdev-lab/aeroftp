@@ -461,7 +461,8 @@
             "s3TrashPurge": "Supprimer définitivement",
             "s3TrashPurgeHint": "Supprimer définitivement cette version (irréversible)",
             "s3TrashPurgeConfirm": "Supprimer définitivement cette version ? Cette action est irréversible.",
-            "s3TrashEmptySummary": "Cela supprimera définitivement {count} objet(s) ({bytes}). Cette action est irréversible."
+            "s3TrashEmptySummary": "Cela supprimera définitivement {count} objet(s) ({bytes}). Cette action est irréversible.",
+            "extractOverwriteConfirm": "Extraire ici écrasera {count} élément(s) existant(s) : {names}. Continuer ?"
         },
         "transfer": {
             "transferring": "Transfert en cours...",
@@ -3037,7 +3038,9 @@
             "newName": "Nouveau nom",
             "noChange": "(aucun changement)",
             "conflictWarning": "Certains fichiers auraient le meme nom. Veuillez ajuster le motif.",
-            "apply": "Appliquer"
+            "apply": "Appliquer",
+            "existingCollision": "Certains nouveaux noms correspondent à des fichiers déjà présents dans ce dossier ; ces fichiers ne seront pas écrasés et leur renommage est ignoré.",
+            "existingCollisionHint": "(existe déjà)"
         },
         "lockScreen": {
             "locked": "Application verrouillee",

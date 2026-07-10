@@ -461,7 +461,8 @@
             "s3TrashPurge": "Trvale smazat",
             "s3TrashPurgeHint": "Trvale smazat tuto verzi (nevratné)",
             "s3TrashPurgeConfirm": "Trvale smazat tuto verzi? Tuto akci nelze vrátit zpět.",
-            "s3TrashEmptySummary": "Tímto se trvale smaže {count} objektů ({bytes}). Tuto akci nelze vrátit zpět."
+            "s3TrashEmptySummary": "Tímto se trvale smaže {count} objektů ({bytes}). Tuto akci nelze vrátit zpět.",
+            "extractOverwriteConfirm": "Rozbalení sem přepíše {count} existujících položek: {names}. Pokračovat?"
         },
         "transfer": {
             "transferring": "Přenášení...",
@@ -3037,7 +3038,9 @@
             "newName": "Novy nazev",
             "noChange": "(beze zmen)",
             "conflictWarning": "Nektere soubory budou mit stejne nazvy. Upravte vzor.",
-            "apply": "Pouzit"
+            "apply": "Pouzit",
+            "existingCollision": "Některé nové názvy odpovídají souborům, které v této složce již existují; tyto soubory nebudou přepsány a jejich přejmenování se přeskočí.",
+            "existingCollisionHint": "(již existuje)"
         },
         "lockScreen": {
             "locked": "Aplikace zamknuta",

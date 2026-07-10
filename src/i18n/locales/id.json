@@ -461,7 +461,8 @@
             "s3TrashPurge": "Hapus permanen",
             "s3TrashPurgeHint": "Hapus versi ini secara permanen (tidak dapat dibatalkan)",
             "s3TrashPurgeConfirm": "Hapus versi ini secara permanen? Tindakan ini tidak dapat dibatalkan.",
-            "s3TrashEmptySummary": "Ini akan menghapus permanen {count} objek ({bytes}). Tindakan ini tidak dapat dibatalkan."
+            "s3TrashEmptySummary": "Ini akan menghapus permanen {count} objek ({bytes}). Tindakan ini tidak dapat dibatalkan.",
+            "extractOverwriteConfirm": "Mengekstrak di sini akan menimpa {count} item yang ada: {names}. Lanjutkan?"
         },
         "transfer": {
             "transferring": "Mentransfer...",
@@ -3037,7 +3038,9 @@
             "newName": "Nama Baru",
             "noChange": "(tidak ada perubahan)",
             "conflictWarning": "Beberapa file akan memiliki nama yang sama. Harap sesuaikan pola.",
-            "apply": "Terapkan"
+            "apply": "Terapkan",
+            "existingCollision": "Beberapa nama baru cocok dengan berkas yang sudah ada di folder ini; berkas tersebut tidak akan ditimpa dan penggantian namanya dilewati.",
+            "existingCollisionHint": "(sudah ada)"
         },
         "lockScreen": {
             "locked": "Aplikasi Terkunci",

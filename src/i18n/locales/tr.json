@@ -461,7 +461,8 @@
             "s3TrashPurge": "Kalıcı olarak sil",
             "s3TrashPurgeHint": "Bu sürümü kalıcı olarak sil (geri alınamaz)",
             "s3TrashPurgeConfirm": "Bu sürüm kalıcı olarak silinsin mi? Bu işlem geri alınamaz.",
-            "s3TrashEmptySummary": "Bu, {count} nesneyi ({bytes}) kalıcı olarak silecek. Bu işlem geri alınamaz."
+            "s3TrashEmptySummary": "Bu, {count} nesneyi ({bytes}) kalıcı olarak silecek. Bu işlem geri alınamaz.",
+            "extractOverwriteConfirm": "Buraya çıkarmak mevcut {count} öğenin üzerine yazacak: {names}. Devam edilsin mi?"
         },
         "transfer": {
             "transferring": "Aktarılıyor...",
@@ -3037,7 +3038,9 @@
             "newName": "Yeni Ad",
             "noChange": "(değişiklik yok)",
             "conflictWarning": "Bazı dosyalar aynı ada sahip olacak. Lütfen deseni düzeltin.",
-            "apply": "Uygula"
+            "apply": "Uygula",
+            "existingCollision": "Bazı yeni adlar bu klasörde zaten bulunan dosyalarla eşleşiyor; bu dosyaların üzerine yazılmayacak ve yeniden adlandırılmaları atlanacak.",
+            "existingCollisionHint": "(zaten var)"
         },
         "lockScreen": {
             "locked": "Uygulama Kilitli",

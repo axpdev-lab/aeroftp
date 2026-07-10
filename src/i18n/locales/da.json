@@ -461,7 +461,8 @@
             "s3TrashPurge": "Slet permanent",
             "s3TrashPurgeHint": "Slet denne version permanent (uigenkaldeligt)",
             "s3TrashPurgeConfirm": "Slet denne version permanent? Denne handling kan ikke fortrydes.",
-            "s3TrashEmptySummary": "Dette sletter permanent {count} objekt(er) ({bytes}). Denne handling kan ikke fortrydes."
+            "s3TrashEmptySummary": "Dette sletter permanent {count} objekt(er) ({bytes}). Denne handling kan ikke fortrydes.",
+            "extractOverwriteConfirm": "Udpakning her overskriver {count} eksisterende element(er): {names}. Fortsæt?"
         },
         "transfer": {
             "transferring": "Overfører...",
@@ -3037,7 +3038,9 @@
             "newName": "Nyt navn",
             "noChange": "(ingen ændring)",
             "conflictWarning": "Nogle filer ville få det samme navn. Juster venligst mønsteret.",
-            "apply": "Anvend"
+            "apply": "Anvend",
+            "existingCollision": "Nogle nye navne matcher filer, der allerede er i denne mappe; disse filer overskrives ikke, og deres omdøbning springes over.",
+            "existingCollisionHint": "(findes allerede)"
         },
         "lockScreen": {
             "locked": "App låst",

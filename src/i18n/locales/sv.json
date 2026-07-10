@@ -461,7 +461,8 @@
             "s3TrashPurge": "Ta bort permanent",
             "s3TrashPurgeHint": "Ta bort den här versionen permanent (oåterkalleligt)",
             "s3TrashPurgeConfirm": "Ta bort den här versionen permanent? Detta kan inte ångras.",
-            "s3TrashEmptySummary": "Detta tar permanent bort {count} objekt ({bytes}). Detta kan inte ångras."
+            "s3TrashEmptySummary": "Detta tar permanent bort {count} objekt ({bytes}). Detta kan inte ångras.",
+            "extractOverwriteConfirm": "Att extrahera här skriver över {count} befintliga objekt: {names}. Fortsätta?"
         },
         "transfer": {
             "transferring": "Överför...",
@@ -3037,7 +3038,9 @@
             "newName": "Nytt namn",
             "noChange": "(ingen ändring)",
             "conflictWarning": "Vissa filer skulle få samma namn. Justera mönstret.",
-            "apply": "Tillämpa"
+            "apply": "Tillämpa",
+            "existingCollision": "Vissa nya namn matchar filer som redan finns i den här mappen; dessa filer skrivs inte över och deras namnbyte hoppas över.",
+            "existingCollisionHint": "(finns redan)"
         },
         "lockScreen": {
             "locked": "Appen är låst",

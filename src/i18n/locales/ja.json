@@ -461,7 +461,8 @@
             "s3TrashPurge": "完全に削除",
             "s3TrashPurgeHint": "このバージョンを完全に削除します (取り消せません)",
             "s3TrashPurgeConfirm": "このバージョンを完全に削除しますか？この操作は元に戻せません。",
-            "s3TrashEmptySummary": "{count} 個のオブジェクト ({bytes}) を完全に削除します。この操作は元に戻せません。"
+            "s3TrashEmptySummary": "{count} 個のオブジェクト ({bytes}) を完全に削除します。この操作は元に戻せません。",
+            "extractOverwriteConfirm": "ここに展開すると、既存の {count} 個の項目が上書きされます: {names}。続行しますか?"
         },
         "transfer": {
             "transferring": "転送中...",
@@ -3002,7 +3003,9 @@
             "newName": "新しい名前",
             "noChange": "（変更なし）",
             "conflictWarning": "同じ名前になるファイルがあります。パターンを調整してください。",
-            "apply": "適用"
+            "apply": "適用",
+            "existingCollision": "一部の新しい名前がこのフォルダー内の既存ファイルと一致します。それらのファイルは上書きされず、名前の変更はスキップされます。",
+            "existingCollisionHint": "(既に存在します)"
         },
         "lockScreen": {
             "locked": "アプリがロックされました",

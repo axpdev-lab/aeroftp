@@ -461,7 +461,8 @@
             "s3TrashPurge": "Kustuta jäädavalt",
             "s3TrashPurgeHint": "Kustuta see versioon jäädavalt (pöördumatu)",
             "s3TrashPurgeConfirm": "Kas kustutada see versioon jäädavalt? Seda toimingut ei saa tagasi võtta.",
-            "s3TrashEmptySummary": "See kustutab jäädavalt {count} objekti ({bytes}). Seda toimingut ei saa tagasi võtta."
+            "s3TrashEmptySummary": "See kustutab jäädavalt {count} objekti ({bytes}). Seda toimingut ei saa tagasi võtta.",
+            "extractOverwriteConfirm": "Siia lahtipakkimine kirjutab üle {count} olemasolevat üksust: {names}. Kas jätkata?"
         },
         "transfer": {
             "transferring": "Ülekanne...",
@@ -3037,7 +3038,9 @@
             "newName": "Uus nimi",
             "noChange": "(muutuseta)",
             "conflictWarning": "Mõnel failil oleks sama nimi. Palun kohandage mustrit.",
-            "apply": "Rakenda"
+            "apply": "Rakenda",
+            "existingCollision": "Mõned uued nimed langevad kokku failidega, mis on juba selles kaustas; neid faile üle ei kirjutata ja nende ümbernimetamine jäetakse vahele.",
+            "existingCollisionHint": "(on juba olemas)"
         },
         "lockScreen": {
             "locked": "Rakendus lukustatud",

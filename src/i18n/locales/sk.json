@@ -461,7 +461,8 @@
             "s3TrashPurge": "Natrvalo odstrániť",
             "s3TrashPurgeHint": "Natrvalo odstrániť túto verziu (nezvratné)",
             "s3TrashPurgeConfirm": "Natrvalo odstrániť túto verziu? Túto akciu nie je možné vrátiť späť.",
-            "s3TrashEmptySummary": "Týmto sa natrvalo odstráni {count} objektov ({bytes}). Túto akciu nie je možné vrátiť späť."
+            "s3TrashEmptySummary": "Týmto sa natrvalo odstráni {count} objektov ({bytes}). Túto akciu nie je možné vrátiť späť.",
+            "extractOverwriteConfirm": "Rozbalenie sem prepíše {count} existujúce položky: {names}. Pokračovať?"
         },
         "transfer": {
             "transferring": "Prenáša sa...",
@@ -3037,7 +3038,9 @@
             "newName": "Novy nazov",
             "noChange": "(bez zmien)",
             "conflictWarning": "Niektore subory budu mat rovnake nazvy. Upravte vzor.",
-            "apply": "Aplikovat"
+            "apply": "Aplikovat",
+            "existingCollision": "Niektoré nové názvy sa zhodujú so súbormi, ktoré sa už nachádzajú v tomto priečinku; tieto súbory nebudú prepísané a ich premenovanie sa preskočí.",
+            "existingCollisionHint": "(už existuje)"
         },
         "lockScreen": {
             "locked": "Aplikacia zamknuta",

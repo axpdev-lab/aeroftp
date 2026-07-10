@@ -461,7 +461,8 @@
             "s3TrashPurge": "Dileu'n barhaol",
             "s3TrashPurgeHint": "Dileu'r fersiwn hon yn barhaol (di-droi'n-ôl)",
             "s3TrashPurgeConfirm": "Dileu'r fersiwn hon yn barhaol? Ni ellir dadwneud hyn.",
-            "s3TrashEmptySummary": "Bydd hyn yn dileu {count} gwrthrych ({bytes}) yn barhaol. Ni ellir dadwneud hyn."
+            "s3TrashEmptySummary": "Bydd hyn yn dileu {count} gwrthrych ({bytes}) yn barhaol. Ni ellir dadwneud hyn.",
+            "extractOverwriteConfirm": "Bydd echdynnu yma yn trosysgrifo {count} eitem sy'n bodoli eisoes: {names}. Parhau?"
         },
         "transfer": {
             "transferring": "Yn trosglwyddo...",
@@ -3037,7 +3038,9 @@
             "newName": "Enw Newydd",
             "noChange": "(dim newid)",
             "conflictWarning": "Byddai rhai ffeiliau'n cael yr un enw. Addaswch y patrwm os gwelwch yn dda.",
-            "apply": "Cymhwyso"
+            "apply": "Cymhwyso",
+            "existingCollision": "Mae rhai enwau newydd yn cyfateb i ffeiliau sydd eisoes yn y ffolder hwn; ni chaiff y ffeiliau hynny eu trosysgrifo a chaiff eu hail-enwi ei hepgor.",
+            "existingCollisionHint": "(yn bodoli eisoes)"
         },
         "lockScreen": {
             "locked": "Ap Wedi'i Gloi",

@@ -461,7 +461,8 @@
             "s3TrashPurge": "Trajno izbriši",
             "s3TrashPurgeHint": "Trajno izbriši ovu verziju (nepovratno)",
             "s3TrashPurgeConfirm": "Trajno izbrisati ovu verziju? Ova radnja se ne može poništiti.",
-            "s3TrashEmptySummary": "Ovo će trajno izbrisati {count} objekt(a) ({bytes}). Ova radnja se ne može poništiti."
+            "s3TrashEmptySummary": "Ovo će trajno izbrisati {count} objekt(a) ({bytes}). Ova radnja se ne može poništiti.",
+            "extractOverwriteConfirm": "Izdvajanje ovdje prepisat će {count} postojeće stavke: {names}. Nastaviti?"
         },
         "transfer": {
             "transferring": "Prijenos...",
@@ -3037,7 +3038,9 @@
             "oldName": "Stari naziv",
             "newName": "Novi naziv",
             "noChange": "(bez promjene)",
-            "conflictWarning": "Neke datoteke bi imale isti naziv. Molimo prilagodite obrazac."
+            "conflictWarning": "Neke datoteke bi imale isti naziv. Molimo prilagodite obrazac.",
+            "existingCollision": "Neki novi nazivi podudaraju se s datotekama koje već postoje u ovoj mapi; te datoteke neće biti prepisane, a njihovo preimenovanje se preskače.",
+            "existingCollisionHint": "(već postoji)"
         },
         "lockScreen": {
             "locked": "Aplikacija zaključana",

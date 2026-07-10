@@ -33,6 +33,9 @@ export interface BatchRenameDialogProps {
   isOpen: boolean;
   files: BatchRenameFile[];
   isRemote: boolean;
+  /** C-F02: names already present in the listing that are NOT part of this batch,
+   *  used to pre-flag a rename target that would collide with an existing file. */
+  existingSiblings?: string[];
   onConfirm: (renames: Map<string, string>) => Promise<void>;
   onClose: () => void;
 }
@@ -49,6 +52,7 @@ export const BatchRenameDialog: React.FC<BatchRenameDialogProps> = ({
   isOpen,
   files,
   isRemote,
+  existingSiblings = [],
   onConfirm,
   onClose,
 }) => {
@@ -184,8 +188,26 @@ export const BatchRenameDialog: React.FC<BatchRenameDialogProps> = ({
     return duplicates;
   }, [renames]);
 
+  // C-F02: detect rename targets that collide with a file already in the folder
+  // but NOT part of this batch. Two sources occupy a name: a pre-existing sibling,
+  // or a batch row whose own name does not change (so it is absent from `renames`
+  // and still holds its old name). Non-blocking: the backend safe-fails with
+  // overwrite:false, so we warn (amber) and keep Apply enabled rather than block.
+  const externalCollisions = useMemo(() => {
+    const occupied = new Set(existingSiblings);
+    files.forEach(file => {
+      if (!renames.has(file.path)) occupied.add(file.name);
+    });
+    const collisions = new Set<string>();
+    renames.forEach(newName => {
+      if (occupied.has(newName)) collisions.add(newName);
+    });
+    return collisions;
+  }, [files, renames, existingSiblings]);
+
   const hasConflicts = conflicts.size > 0;
   const hasInvalidNames = invalidNames.size > 0;
+  const hasExternalCollisions = externalCollisions.size > 0;
   const hasChanges = renames.size > 0;
 
   const handleConfirm = async () => {
@@ -395,15 +417,22 @@ export const BatchRenameDialog: React.FC<BatchRenameDialogProps> = ({
                   {files.map(file => {
                     const newName = renames.get(file.path);
                     const invalidName = invalidNames.get(file.path);
-                    const isConflict = newName && conflicts.has(newName);
+                    const isConflict = !!newName && conflicts.has(newName);
                     const isInvalid = !!invalidName;
+                    // C-F02: amber (non-blocking) only when the target is otherwise
+                    // valid and unique within the batch but hits an existing sibling.
+                    const isExternalCollision = !!newName && !isConflict && !isInvalid && externalCollisions.has(newName);
                     const hasChange = !!newName;
 
                     return (
                       <tr
                         key={file.path}
                         className={`border-t border-gray-100 dark:border-gray-700 ${
-                          isConflict || isInvalid ? 'bg-red-50 dark:bg-red-900/20' : ''
+                          isConflict || isInvalid
+                            ? 'bg-red-50 dark:bg-red-900/20'
+                            : isExternalCollision
+                              ? 'bg-amber-50 dark:bg-amber-900/20'
+                              : ''
                         }`}
                       >
                         <td className="px-2 py-1 text-gray-700 dark:text-gray-300 truncate max-w-[200px]" title={file.name}>
@@ -412,15 +441,26 @@ export const BatchRenameDialog: React.FC<BatchRenameDialogProps> = ({
                         <td className={`px-2 py-1 truncate max-w-[200px] ${
                           isConflict || isInvalid
                             ? 'text-red-600 dark:text-red-400'
-                            : hasChange
-                              ? 'text-green-600 dark:text-green-400'
-                              : 'text-gray-400'
+                            : isExternalCollision
+                              ? 'text-amber-600 dark:text-amber-400'
+                              : hasChange
+                                ? 'text-green-600 dark:text-green-400'
+                                : 'text-gray-400'
                         }`} title={invalidName || newName || file.name}>
                           <span className="flex items-center gap-1">
-                            {(isConflict || isInvalid) && <AlertTriangle size={12} />}
-                            {isInvalid
-                              ? <span className="italic">{invalidName} (invalid)</span>
-                              : newName || <span className="italic">{t('batchRename.noChange') || '(no change)'}</span>}
+                            {(isConflict || isInvalid || isExternalCollision) && <AlertTriangle size={12} />}
+                            {isInvalid ? (
+                              <span className="italic">{invalidName} (invalid)</span>
+                            ) : newName ? (
+                              <>
+                                {newName}
+                                {isExternalCollision && (
+                                  <span className="italic opacity-80"> {t('batchRename.existingCollisionHint') || '(already exists)'}</span>
+                                )}
+                              </>
+                            ) : (
+                              <span className="italic">{t('batchRename.noChange') || '(no change)'}</span>
+                            )}
                           </span>
                         </td>
                       </tr>
@@ -436,6 +476,15 @@ export const BatchRenameDialog: React.FC<BatchRenameDialogProps> = ({
             <div className="flex items-center gap-2 px-3 py-2 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded text-xs text-red-700 dark:text-red-300">
               <AlertTriangle size={14} />
               {t('batchRename.conflictWarning') || 'Some files would have the same name. Please adjust the pattern.'}
+            </div>
+          )}
+
+          {/* C-F02: existing-sibling collision warning (non-blocking: backend
+              refuses to overwrite, so the colliding rename is simply skipped) */}
+          {hasExternalCollisions && (
+            <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 rounded text-xs text-amber-700 dark:text-amber-300">
+              <AlertTriangle size={14} />
+              {t('batchRename.existingCollision') || 'Some new names match files already in this folder; those files will not be overwritten and their rename is skipped.'}
             </div>
           )}
         </div>

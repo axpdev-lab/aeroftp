@@ -461,7 +461,8 @@
             "s3TrashPurge": "Ištrinti visam laikui",
             "s3TrashPurgeHint": "Ištrinti šią versiją visam laikui (negrįžtama)",
             "s3TrashPurgeConfirm": "Ištrinti šią versiją visam laikui? Šio veiksmo anuliuoti negalima.",
-            "s3TrashEmptySummary": "Tai visam laikui ištrins {count} objektų ({bytes}). Šio veiksmo anuliuoti negalima."
+            "s3TrashEmptySummary": "Tai visam laikui ištrins {count} objektų ({bytes}). Šio veiksmo anuliuoti negalima.",
+            "extractOverwriteConfirm": "Išskleidus čia bus perrašyta {count} esamų elementų: {names}. Tęsti?"
         },
         "transfer": {
             "transferring": "Perduodama...",
@@ -3037,7 +3038,9 @@
             "newName": "Naujas pavadinimas",
             "noChange": "(be pakeitimų)",
             "conflictWarning": "Kai kurie failai turėtų tą patį pavadinimą. Prašome pakoreguoti šabloną.",
-            "apply": "Taikyti"
+            "apply": "Taikyti",
+            "existingCollision": "Kai kurie nauji pavadinimai sutampa su failais, kurie jau yra šiame aplanke; tie failai nebus perrašyti, o jų pervadinimas praleidžiamas.",
+            "existingCollisionHint": "(jau yra)"
         },
         "lockScreen": {
             "locked": "Programa užrakinta",

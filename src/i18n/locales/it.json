@@ -864,7 +864,8 @@
             "s3TrashPurge": "Elimina definitivamente",
             "s3TrashPurgeHint": "Elimina definitivamente questa versione (irreversibile)",
             "s3TrashPurgeConfirm": "Eliminare definitivamente questa versione? Questa operazione non può essere annullata.",
-            "s3TrashEmptySummary": "Verranno eliminati definitivamente {count} oggetti ({bytes}). Questa operazione non può essere annullata."
+            "s3TrashEmptySummary": "Verranno eliminati definitivamente {count} oggetti ({bytes}). Questa operazione non può essere annullata.",
+            "extractOverwriteConfirm": "L'estrazione qui sovrascriverà {count} elemento/i esistente/i: {names}. Continuare?"
         },
         "transfer": {
             "transferring": "Trasferimento in corso...",
@@ -3325,7 +3326,9 @@
             "newName": "Nuovo Nome",
             "noChange": "(nessuna modifica)",
             "conflictWarning": "Alcuni file avrebbero lo stesso nome. Modifica il pattern.",
-            "apply": "Applica"
+            "apply": "Applica",
+            "existingCollision": "Alcuni nuovi nomi coincidono con file già presenti in questa cartella; quei file non verranno sovrascritti e la loro rinomina viene saltata.",
+            "existingCollisionHint": "(esiste già)"
         },
         "compress": {
             "title": "Comprimi File",
