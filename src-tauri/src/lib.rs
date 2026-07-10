@@ -2135,6 +2135,16 @@ fn verify_sigstore_bundle(
     }
 }
 
+/// True on Arch and its pacman-based derivatives. `/etc/arch-release` covers
+/// Arch, Manjaro and EndeavourOS; `/etc/pacman.conf` also catches Artix and
+/// Parabola, which do not ship the former. Debian and Fedora have neither.
+///
+/// Takes the existence check as a parameter so the branch is unit-testable
+/// without touching the real filesystem.
+fn is_pacman_system(path_exists: impl Fn(&str) -> bool) -> bool {
+    path_exists("/etc/arch-release") || path_exists("/etc/pacman.conf")
+}
+
 /// Detect how the app was installed (deb, appimage, snap, flatpak, rpm, exe, dmg)
 fn detect_install_format() -> String {
     let os = std::env::consts::OS;
@@ -2161,6 +2171,14 @@ fn detect_install_format() -> String {
                 || std::path::Path::new("/etc/fedora-release").exists()
             {
                 return "rpm".to_string();
+            }
+            // Check for Arch and its derivatives (Manjaro, EndeavourOS, Artix).
+            // The AUR package is installed by pacman, and the in-app updater can
+            // only install a .deb through pkexec. Report a format that
+            // `update_download_supported` excludes so the updater degrades to
+            // notify-only, exactly as it already does for Snap and Flatpak.
+            if is_pacman_system(|path| std::path::Path::new(path).exists()) {
+                return "pacman".to_string();
             }
             // Default to DEB for Debian/Ubuntu based
             "deb".to_string()
@@ -19940,5 +19958,97 @@ mod archive_meta_tests {
         assert_eq!(super::rar_method_label(0), "Store");
         assert_eq!(super::rar_method_label(0x31), "RAR");
         assert_eq!(super::rar_method_label(0x35), "RAR");
+    }
+}
+
+#[cfg(test)]
+mod arch_install_format_tests {
+    use super::{
+        asset_matches_install_format, is_pacman_system, select_release_asset,
+        update_download_supported, GitHubAsset, GitHubRelease,
+    };
+
+    /// Arch itself, and the derivatives that ship `/etc/arch-release`.
+    #[test]
+    fn arch_release_marks_a_pacman_system() {
+        assert!(is_pacman_system(|path| path == "/etc/arch-release"));
+    }
+
+    /// Artix and Parabola ship `pacman.conf` without `/etc/arch-release`.
+    #[test]
+    fn pacman_conf_alone_marks_a_pacman_system() {
+        assert!(is_pacman_system(|path| path == "/etc/pacman.conf"));
+    }
+
+    /// The regression this guards: a Debian or Ubuntu box has neither marker and
+    /// must keep falling through to the `deb` default.
+    #[test]
+    fn debian_is_not_a_pacman_system() {
+        assert!(!is_pacman_system(|path| path == "/etc/debian_version"));
+        assert!(!is_pacman_system(|_| false));
+    }
+
+    fn release_with_signed_deb() -> GitHubRelease {
+        GitHubRelease {
+            tag_name: "4.1.3".to_string(),
+            assets: vec![
+                GitHubAsset {
+                    name: "AeroFTP_4.1.3_amd64.deb".to_string(),
+                    browser_download_url: "https://example.invalid/AeroFTP_4.1.3_amd64.deb"
+                        .to_string(),
+                },
+                GitHubAsset {
+                    name: "AeroFTP_4.1.3_amd64.deb.sigstore.json".to_string(),
+                    browser_download_url:
+                        "https://example.invalid/AeroFTP_4.1.3_amd64.deb.sigstore.json".to_string(),
+                },
+            ],
+        }
+    }
+
+    /// The in-app updater installs a `.deb` through pkexec. On a pacman system
+    /// dpkg does not exist, so `pacman` must never be download-supported.
+    #[test]
+    fn pacman_is_not_download_supported() {
+        assert!(!update_download_supported("pacman"));
+    }
+
+    /// Discriminating guard: the very same fixture must still resolve for `deb`.
+    /// Without this, `pacman_selects_no_release_asset` could pass because the
+    /// fixture is malformed rather than because `pacman` is excluded.
+    #[test]
+    fn deb_still_resolves_a_signed_asset() {
+        assert!(select_release_asset(&release_with_signed_deb(), "deb").is_some());
+    }
+
+    /// On Arch the updater must find nothing to install and fall through to the
+    /// notify-only path.
+    #[test]
+    fn pacman_selects_no_release_asset() {
+        assert!(select_release_asset(&release_with_signed_deb(), "pacman").is_none());
+    }
+
+    #[test]
+    fn pacman_never_matches_a_deb_asset() {
+        assert!(!asset_matches_install_format(
+            "AeroFTP_4.1.3_amd64.deb",
+            "pacman"
+        ));
+    }
+
+    /// `snap` and `flatpak` already degrade to notify-only. `pacman` joins them,
+    /// and must behave identically on both halves of the contract.
+    #[test]
+    fn pacman_honours_the_snap_and_flatpak_contract() {
+        for format in ["snap", "flatpak", "pacman"] {
+            assert!(
+                !update_download_supported(format),
+                "{format} must not be download-supported"
+            );
+            assert!(
+                select_release_asset(&release_with_signed_deb(), format).is_none(),
+                "{format} must select no release asset"
+            );
+        }
     }
 }
