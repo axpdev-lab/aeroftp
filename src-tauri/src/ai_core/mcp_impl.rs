@@ -272,11 +272,25 @@ impl RemoteBackend for McpRemoteBackend {
             Box::pin(async move {
                 let entry = p.stat(&path).await?;
                 if entry.is_dir {
-                    p.rmdir_recursive(&path).await
+                    // `rmdir`, NOT `rmdir_recursive`: this used to recurse
+                    // unconditionally, so an `aeroftp_delete` on a directory
+                    // wiped the whole subtree even though the caller never
+                    // passed `recursive`. Recursion is now opt-in and lands
+                    // in `delete_recursive`.
+                    p.rmdir(&path).await
                 } else {
                     p.delete(&path).await
                 }
             })
+        })
+        .await
+    }
+
+    async fn delete_recursive(&self, path: &str) -> Result<(), String> {
+        let path = path.to_string();
+        self.with_provider(move |p| {
+            let path = path.clone();
+            Box::pin(async move { p.rmdir_recursive(&path).await })
         })
         .await
     }

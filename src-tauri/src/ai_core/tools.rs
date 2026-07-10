@@ -1203,14 +1203,15 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
         },
         ToolDef {
             name: "aeroftp_delete",
-            description: "Delete one or more remote entries.",
+            description: "Delete one or more remote entries. Deleting a directory requires `recursive=true`; without it a non-empty directory is refused. With `dry_run=true` nothing is deleted and every entry reports `would_delete: true` plus the bytes that would be reclaimed, so a dry-run can be diffed against the real run.",
             input_schema: json!({
                 "type": "object",
                 "properties": {
                     "server": {"type": "string"},
                     "path": {"type": "string"},
                     "paths": {"type": "array", "items": {"type": "string"}},
-                    "recursive": {"type": "boolean"},
+                    "recursive": {"type": "boolean", "description": "Required to delete a directory and everything under it (default: false)"},
+                    "dry_run": {"type": "boolean", "description": "Preview only: delete nothing, report what would go (default: false)"},
                     "continue_on_error": {"type": "boolean"},
                 },
                 "required": ["server"],
@@ -1226,7 +1227,8 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
                 "properties": {
                     "server": {"type": "string"},
                     "paths": {"type": "array", "items": {"type": "string"}},
-                    "recursive": {"type": "boolean"},
+                    "recursive": {"type": "boolean", "description": "Required to delete a directory and everything under it (default: false)"},
+                    "dry_run": {"type": "boolean", "description": "Preview only: delete nothing, report what would go (default: false)"},
                     "continue_on_error": {"type": "boolean"},
                 },
                 "required": ["server", "paths"],
@@ -1242,6 +1244,8 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
                 "properties": {
                     "server": {"type": "string"},
                     "path": {"type": "string"},
+                    "recursive": {"type": "boolean", "description": "Required to delete a directory and everything under it (default: false)"},
+                    "dry_run": {"type": "boolean", "description": "Preview only: delete nothing, report what would go (default: false)"},
                 },
                 "required": ["server", "path"],
             }),
@@ -1250,13 +1254,14 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
         },
         ToolDef {
             name: "aeroftp_delete_many",
-            description: "Batch delete remote entries.",
+            description: "Batch delete remote entries. Deleting a directory requires `recursive=true`; without it a non-empty directory is refused. With `dry_run=true` nothing is deleted: every result carries `deleted: false` and `would_delete: true` plus `bytes`, in the same results/summary envelope the real run returns, so the two can be diffed.",
             input_schema: json!({
                 "type": "object",
                 "properties": {
                     "server": {"type": "string"},
                     "paths": {"type": "array", "items": {"type": "string"}},
-                    "recursive": {"type": "boolean"},
+                    "recursive": {"type": "boolean", "description": "Required to delete a directory and everything under it (default: false)"},
+                    "dry_run": {"type": "boolean", "description": "Preview only: delete nothing, report what would go (default: false)"},
                     "continue_on_error": {"type": "boolean"},
                 },
                 "required": ["server", "paths"],

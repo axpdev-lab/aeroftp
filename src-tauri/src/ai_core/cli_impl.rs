@@ -300,6 +300,9 @@ impl RemoteBackend for NullRemoteBackend {
     async fn delete(&self, _path: &str) -> Result<(), String> {
         Err("Not connected".into())
     }
+    async fn delete_recursive(&self, _path: &str) -> Result<(), String> {
+        Err("Not connected".into())
+    }
     async fn mkdir(&self, _path: &str) -> Result<(), String> {
         Err("Not connected".into())
     }
@@ -416,6 +419,12 @@ impl RemoteBackend for CliRemoteBackend {
         let mut guard = self.provider.lock().await;
         let p = guard.as_mut().ok_or("Not connected")?;
         p.delete(path).await.map_err(|e| e.to_string())
+    }
+
+    async fn delete_recursive(&self, path: &str) -> Result<(), String> {
+        let mut guard = self.provider.lock().await;
+        let p = guard.as_mut().ok_or("Not connected")?;
+        p.rmdir_recursive(path).await.map_err(|e| e.to_string())
     }
 
     async fn mkdir(&self, path: &str) -> Result<(), String> {

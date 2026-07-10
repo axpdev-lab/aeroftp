@@ -9,6 +9,7 @@
 
 use serde_json::{json, Value};
 
+use crate::ai_core::remote_backend::RemoteBackend;
 use crate::ai_core::tools::{ToolCtx, ToolError};
 
 const MAX_READ_PREVIEW_BYTES: usize = 1_048_576;
@@ -747,6 +748,151 @@ async fn create_directory(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, Tool
     Ok(json!({ "server": server, "path": path, "created": true }))
 }
 
+/// Caps for the `dry_run` walk. A preview must never become the most
+/// expensive call in the session, and it must never run unbounded on a
+/// hostile tree.
+const DELETE_PREVIEW_MAX_ENTRIES: usize = 100_000;
+const DELETE_PREVIEW_MAX_DEPTH: usize = 100;
+
+/// What a real delete of `path` would remove.
+#[derive(Debug)]
+struct DeletePreview {
+    files: u64,
+    directories: u64,
+    bytes: u64,
+    /// The walk hit a cap, so `bytes`/`files` are a LOWER BOUND.
+    truncated: bool,
+}
+
+/// Walk `path` and total up what a real delete would remove, deleting
+/// nothing. The recursive delete removes as it walks, so the byte figure has
+/// to come from a separate pre-pass.
+async fn preview_delete(
+    backend: &dyn RemoteBackend,
+    path: &str,
+    recursive: bool,
+) -> Result<DeletePreview, ToolError> {
+    let root = backend.stat(path).await.map_err(ToolError::Exec)?;
+    if !root.is_dir {
+        return Ok(DeletePreview {
+            files: 1,
+            directories: 0,
+            bytes: root.size,
+            truncated: false,
+        });
+    }
+
+    if !recursive {
+        let children = backend.list(path).await.map_err(ToolError::Exec)?;
+        if !children.is_empty() {
+            return Err(ToolError::InvalidArgs {
+                tool: "aeroftp_delete".to_string(),
+                reason: format!(
+                    "'{}' is a directory with {} entries; pass recursive=true to delete it",
+                    path,
+                    children.len()
+                ),
+            });
+        }
+        return Ok(DeletePreview {
+            files: 0,
+            directories: 1,
+            bytes: 0,
+            truncated: false,
+        });
+    }
+
+    let mut files = 0u64;
+    let mut directories = 1u64; // the root itself
+    let mut bytes = 0u64;
+    let mut truncated = false;
+    let mut queue: Vec<(String, usize)> = vec![(path.to_string(), 0)];
+
+    while let Some((dir, depth)) = queue.pop() {
+        if depth >= DELETE_PREVIEW_MAX_DEPTH
+            || (files + directories) as usize >= DELETE_PREVIEW_MAX_ENTRIES
+        {
+            truncated = true;
+            continue;
+        }
+        for entry in backend.list(&dir).await.map_err(ToolError::Exec)? {
+            if (files + directories) as usize >= DELETE_PREVIEW_MAX_ENTRIES {
+                truncated = true;
+                break;
+            }
+            // A symlink is unlinked, never followed: following a
+            // symlink-to-dir would open a cur/parent cycle and inflate the
+            // total.
+            if entry.is_symlink {
+                files += 1;
+                continue;
+            }
+            if entry.is_dir {
+                directories += 1;
+                queue.push((entry.path, depth + 1));
+            } else {
+                files += 1;
+                bytes = bytes.saturating_add(entry.size);
+            }
+        }
+    }
+
+    Ok(DeletePreview {
+        files,
+        directories,
+        bytes,
+        truncated,
+    })
+}
+
+/// Delete one path, or preview it when `dry_run` is set. `Ok(Some(preview))`
+/// means nothing was touched.
+async fn delete_one(
+    backend: &dyn RemoteBackend,
+    path: &str,
+    recursive: bool,
+    dry_run: bool,
+) -> Result<Option<DeletePreview>, ToolError> {
+    if dry_run {
+        return preview_delete(backend, path, recursive).await.map(Some);
+    }
+    if recursive {
+        return backend
+            .delete_recursive(path)
+            .await
+            .map_err(ToolError::Exec)
+            .map(|()| None);
+    }
+    match backend.delete(path).await {
+        Ok(()) => Ok(None),
+        Err(e) => {
+            // A non-recursive delete of a non-empty directory surfaces as the
+            // provider's raw rmdir error ("Failure: Failure" on SFTP), which
+            // tells an agent nothing. Pay a stat+list on the failure path only
+            // to turn it into an actionable message. An EMPTY directory that
+            // fails for some other reason (permissions) must keep its original
+            // error: suggesting `recursive=true` there would be a lie.
+            let is_non_empty_dir = match backend.stat(path).await {
+                Ok(entry) if entry.is_dir => backend
+                    .list(path)
+                    .await
+                    .map(|children| !children.is_empty())
+                    .unwrap_or(false),
+                _ => false,
+            };
+            if is_non_empty_dir {
+                return Err(ToolError::InvalidArgs {
+                    tool: "aeroftp_delete".to_string(),
+                    reason: format!(
+                        "'{path}' is a non-empty directory; pass recursive=true to delete it and everything under it (underlying error: {e})"
+                    ),
+                });
+            }
+            Err(ToolError::Exec(e))
+        }
+    }
+}
+
 async fn delete(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
     if args.get("paths").is_some() {
         return delete_many(ctx, args).await;
@@ -754,9 +900,25 @@ async fn delete(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
     let server = normalize_server(args)?;
     let path = get_str(args, "path")?;
     validate_remote_path(&path, "path")?;
+    let recursive = get_bool_opt(args, "recursive").unwrap_or(false);
+    let dry_run = get_bool_opt(args, "dry_run").unwrap_or(false);
     let backend = ctx.remote_backend(&server).await.map_err(backend_error)?;
-    backend.delete(&path).await.map_err(ToolError::Exec)?;
-    Ok(json!({ "server": server, "path": path, "deleted": true }))
+
+    match delete_one(backend.as_ref(), &path, recursive, dry_run).await? {
+        Some(preview) => Ok(json!({
+            "server": server,
+            "path": path,
+            "recursive": recursive,
+            "dry_run": true,
+            "deleted": false,
+            "would_delete": true,
+            "files": preview.files,
+            "directories": preview.directories,
+            "bytes": preview.bytes,
+            "truncated": preview.truncated,
+        })),
+        None => Ok(json!({ "server": server, "path": path, "deleted": true })),
+    }
 }
 
 async fn delete_many(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
@@ -775,10 +937,15 @@ async fn delete_many(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError
         });
     }
     let continue_on_error = get_bool_opt(args, "continue_on_error").unwrap_or(true);
+    let recursive = get_bool_opt(args, "recursive").unwrap_or(false);
+    let dry_run = get_bool_opt(args, "dry_run").unwrap_or(false);
     let backend = ctx.remote_backend(&server).await.map_err(backend_error)?;
     let mut results = Vec::with_capacity(paths.len());
     let mut deleted = 0u32;
+    let mut would_delete = 0u32;
     let mut errors = 0u32;
+    let mut bytes = 0u64;
+    let mut truncated = false;
     let started = std::time::Instant::now();
     for path in paths {
         let Some(path) = path.as_str() else {
@@ -788,14 +955,32 @@ async fn delete_many(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError
             });
         };
         validate_remote_path(path, "path")?;
-        match backend.delete(path).await {
-            Ok(()) => {
+        match delete_one(backend.as_ref(), path, recursive, dry_run).await {
+            Ok(Some(preview)) => {
+                would_delete += 1;
+                bytes = bytes.saturating_add(preview.bytes);
+                truncated |= preview.truncated;
+                results.push(json!({
+                    "path": path,
+                    "deleted": false,
+                    "would_delete": true,
+                    "files": preview.files,
+                    "directories": preview.directories,
+                    "bytes": preview.bytes,
+                    "truncated": preview.truncated,
+                }));
+            }
+            Ok(None) => {
                 deleted += 1;
                 results.push(json!({"path": path, "deleted": true}));
             }
             Err(e) => {
                 errors += 1;
-                results.push(json!({"path": path, "deleted": false, "error": e}));
+                let message = match e {
+                    ToolError::InvalidArgs { ref reason, .. } => reason.clone(),
+                    ref other => other.to_string(),
+                };
+                results.push(json!({"path": path, "deleted": false, "error": message}));
                 if !continue_on_error {
                     break;
                 }
@@ -803,17 +988,25 @@ async fn delete_many(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError
         }
     }
     let elapsed_secs = started.elapsed().as_secs();
+    // Same envelope for both modes so an agent can diff a dry-run against the
+    // real run: only `deleted` vs `would_delete` move.
+    let succeeded = if dry_run { would_delete } else { deleted };
     Ok(json!({
         "server": server,
+        "dry_run": dry_run,
+        "recursive": recursive,
         "results": results,
         "summary": {
             "planned": paths.len(),
             "processed": results.len(),
             "deleted": deleted,
+            "would_delete": would_delete,
+            "bytes": bytes,
+            "truncated": truncated,
             "errors": errors,
             "totals": {
                 "requested": paths.len(),
-                "succeeded": deleted,
+                "succeeded": succeeded,
                 "failed": errors,
                 "skipped": 0u32,
                 "elapsed_secs": elapsed_secs,
@@ -2798,5 +2991,227 @@ mod tests {
         let a = server("id-a", "Alpha");
         let b = server("id-b", "Beta");
         assert!(ensure_distinct_profiles(&a, &b).is_ok());
+    }
+
+    // --- dry_run / recursive contract for the delete verbs ----------------
+
+    use crate::ai_core::remote_backend::StorageQuota;
+    use crate::providers::RemoteEntry;
+    use std::sync::Mutex;
+
+    fn entry(path: &str, is_dir: bool, size: u64) -> RemoteEntry {
+        RemoteEntry {
+            name: path.rsplit('/').next().unwrap_or(path).to_string(),
+            path: path.to_string(),
+            is_dir,
+            size,
+            modified: None,
+            permissions: None,
+            owner: None,
+            group: None,
+            is_symlink: false,
+            link_target: None,
+            mime_type: None,
+            metadata: std::collections::HashMap::new(),
+        }
+    }
+
+    /// In-memory tree that records every destructive call, so a test can
+    /// assert that a dry-run touched nothing.
+    struct FakeBackend {
+        /// dir path -> children
+        tree: std::collections::HashMap<String, Vec<RemoteEntry>>,
+        /// path -> (is_dir, size)
+        stats: std::collections::HashMap<String, (bool, u64)>,
+        deleted: Mutex<Vec<String>>,
+        deleted_recursive: Mutex<Vec<String>>,
+        /// When set, `delete` fails with this message, the way a provider's
+        /// `rmdir` fails on a non-empty directory.
+        delete_fails_with: Option<String>,
+    }
+
+    impl FakeBackend {
+        /// `/root` holds `a.txt` (100 B), `b.txt` (200 B) and `sub/`, which
+        /// holds `c.txt` (300 B). Total 600 B over 3 files and 2 dirs.
+        fn sample() -> Self {
+            let mut tree = std::collections::HashMap::new();
+            tree.insert(
+                "/root".to_string(),
+                vec![
+                    entry("/root/a.txt", false, 100),
+                    entry("/root/b.txt", false, 200),
+                    entry("/root/sub", true, 0),
+                ],
+            );
+            tree.insert(
+                "/root/sub".to_string(),
+                vec![entry("/root/sub/c.txt", false, 300)],
+            );
+            tree.insert("/empty".to_string(), vec![]);
+            let mut stats = std::collections::HashMap::new();
+            stats.insert("/root".to_string(), (true, 0));
+            stats.insert("/root/sub".to_string(), (true, 0));
+            stats.insert("/empty".to_string(), (true, 0));
+            stats.insert("/root/a.txt".to_string(), (false, 100));
+            Self {
+                tree,
+                stats,
+                deleted: Mutex::new(Vec::new()),
+                deleted_recursive: Mutex::new(Vec::new()),
+                delete_fails_with: None,
+            }
+        }
+
+        fn touched_anything(&self) -> bool {
+            !self.deleted.lock().unwrap().is_empty()
+                || !self.deleted_recursive.lock().unwrap().is_empty()
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl RemoteBackend for FakeBackend {
+        async fn is_connected(&self) -> bool {
+            true
+        }
+        async fn list(&self, path: &str) -> Result<Vec<RemoteEntry>, String> {
+            self.tree
+                .get(path)
+                .cloned()
+                .ok_or_else(|| format!("not found: {path}"))
+        }
+        async fn stat(&self, path: &str) -> Result<RemoteEntry, String> {
+            let (is_dir, size) = *self
+                .stats
+                .get(path)
+                .ok_or_else(|| format!("not found: {path}"))?;
+            Ok(entry(path, is_dir, size))
+        }
+        async fn download_to_bytes(&self, _path: &str) -> Result<Vec<u8>, String> {
+            Err("unused".into())
+        }
+        async fn upload_from_bytes(&self, _data: &[u8], _path: &str) -> Result<(), String> {
+            Err("unused".into())
+        }
+        async fn download(&self, _remote: &str, _local: &str) -> Result<(), String> {
+            Err("unused".into())
+        }
+        async fn upload(&self, _local: &str, _remote: &str) -> Result<(), String> {
+            Err("unused".into())
+        }
+        async fn delete(&self, path: &str) -> Result<(), String> {
+            if let Some(msg) = &self.delete_fails_with {
+                return Err(msg.clone());
+            }
+            self.deleted.lock().unwrap().push(path.to_string());
+            Ok(())
+        }
+        async fn delete_recursive(&self, path: &str) -> Result<(), String> {
+            self.deleted_recursive
+                .lock()
+                .unwrap()
+                .push(path.to_string());
+            Ok(())
+        }
+        async fn mkdir(&self, _path: &str) -> Result<(), String> {
+            Err("unused".into())
+        }
+        async fn rename(&self, _from: &str, _to: &str) -> Result<(), String> {
+            Err("unused".into())
+        }
+        async fn search(&self, _path: &str, _pattern: &str) -> Result<Vec<RemoteEntry>, String> {
+            Err("unused".into())
+        }
+        async fn storage_info(&self) -> Result<StorageQuota, String> {
+            Err("unused".into())
+        }
+    }
+
+    #[tokio::test]
+    async fn dry_run_totals_the_whole_subtree_and_deletes_nothing() {
+        let backend = FakeBackend::sample();
+        let preview = preview_delete(&backend, "/root", true).await.unwrap();
+        assert_eq!(preview.files, 3);
+        assert_eq!(preview.directories, 2, "/root plus /root/sub");
+        assert_eq!(preview.bytes, 600);
+        assert!(!preview.truncated);
+        assert!(!backend.touched_anything(), "a dry-run must delete nothing");
+    }
+
+    #[tokio::test]
+    async fn dry_run_on_a_single_file_reports_its_size() {
+        let backend = FakeBackend::sample();
+        let preview = preview_delete(&backend, "/root/a.txt", false)
+            .await
+            .unwrap();
+        assert_eq!(
+            (preview.files, preview.directories, preview.bytes),
+            (1, 0, 100)
+        );
+        assert!(!backend.touched_anything());
+    }
+
+    #[tokio::test]
+    async fn dry_run_refuses_a_non_empty_directory_without_recursive() {
+        let backend = FakeBackend::sample();
+        let err = preview_delete(&backend, "/root", false).await.unwrap_err();
+        assert!(
+            err.to_string().contains("recursive=true"),
+            "the error must name the fix, got: {err}"
+        );
+        assert!(!backend.touched_anything());
+    }
+
+    #[tokio::test]
+    async fn dry_run_accepts_an_empty_directory_without_recursive() {
+        let backend = FakeBackend::sample();
+        let preview = preview_delete(&backend, "/empty", false).await.unwrap();
+        assert_eq!(
+            (preview.files, preview.directories, preview.bytes),
+            (0, 1, 0)
+        );
+    }
+
+    #[tokio::test]
+    async fn recursive_flag_selects_the_recursive_backend_call() {
+        // Regression guard: `recursive` used to be ignored, and the MCP
+        // backend recursed unconditionally on any directory.
+        let backend = FakeBackend::sample();
+        delete_one(&backend, "/root", true, false).await.unwrap();
+        assert_eq!(&*backend.deleted_recursive.lock().unwrap(), &["/root"]);
+        assert!(backend.deleted.lock().unwrap().is_empty());
+
+        let backend = FakeBackend::sample();
+        delete_one(&backend, "/root/a.txt", false, false)
+            .await
+            .unwrap();
+        assert_eq!(&*backend.deleted.lock().unwrap(), &["/root/a.txt"]);
+        assert!(backend.deleted_recursive.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_failed_delete_of_a_non_empty_dir_names_the_fix() {
+        // SFTP answers a non-empty `rmdir` with "Failure: Failure", which
+        // tells an agent nothing about how to proceed.
+        let mut backend = FakeBackend::sample();
+        backend.delete_fails_with = Some("Failure: Failure".to_string());
+        let err = delete_one(&backend, "/root", false, false)
+            .await
+            .unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("recursive=true"), "got: {msg}");
+        assert!(msg.contains("Failure: Failure"), "keep the cause: {msg}");
+    }
+
+    #[tokio::test]
+    async fn a_failed_delete_of_an_empty_dir_keeps_its_own_error() {
+        // Suggesting `recursive=true` for a permission failure would be a lie.
+        let mut backend = FakeBackend::sample();
+        backend.delete_fails_with = Some("Permission denied".to_string());
+        let err = delete_one(&backend, "/empty", false, false)
+            .await
+            .unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("Permission denied"), "got: {msg}");
+        assert!(!msg.contains("recursive=true"), "must not mislead: {msg}");
     }
 }

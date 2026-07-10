@@ -42,8 +42,16 @@ pub trait RemoteBackend: Send + Sync {
     /// Upload a local file to remote path.
     async fn upload(&self, local: &str, remote: &str) -> Result<(), String>;
 
-    /// Delete a remote file or directory.
+    /// Delete a remote file, or an EMPTY directory. A non-empty directory
+    /// must fail here: recursion is opt-in through `delete_recursive`.
     async fn delete(&self, path: &str) -> Result<(), String>;
+
+    /// Delete a directory and everything under it. The default refuses, so a
+    /// backend that cannot recurse says so instead of silently deleting one
+    /// entry and reporting success.
+    async fn delete_recursive(&self, _path: &str) -> Result<(), String> {
+        Err("recursive delete is not supported by this backend".to_string())
+    }
 
     /// Create a remote directory.
     async fn mkdir(&self, path: &str) -> Result<(), String>;

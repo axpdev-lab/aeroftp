@@ -1334,6 +1334,10 @@ enum Commands {
         /// Force (no confirmation for recursive)
         #[arg(short, long)]
         force: bool,
+        /// Preview only: list what would be deleted and the bytes reclaimed,
+        /// delete nothing. Never prompts.
+        #[arg(long)]
+        dry_run: bool,
     },
     /// Rename/move a remote file
     Mv {
@@ -1703,6 +1707,10 @@ enum Commands {
         /// Skip the confirmation prompt
         #[arg(short, long)]
         force: bool,
+        /// Preview only: list what would be deleted and the bytes reclaimed,
+        /// delete nothing. Never prompts.
+        #[arg(long)]
+        dry_run: bool,
     },
     /// Remove a single empty directory (fails if not empty)
     Rmdir {
@@ -29371,11 +29379,267 @@ async fn cmd_mkdir(
     }
 }
 
+/// Maximum number of paths `rm --dry-run` prints in text mode before it
+/// truncates the list. `--format json` always carries the full plan.
+const DRY_RUN_TEXT_LIST_CAP: usize = 1000;
+
+/// One entry of an `rm --dry-run` / `purge --dry-run` plan.
+#[derive(Serialize)]
+struct DryRunEntry {
+    path: String,
+    size: u64,
+    is_dir: bool,
+}
+
+/// The `--format json` envelope of a dry-run plan.
+#[derive(Serialize)]
+struct DryRunPlan<'a> {
+    status: &'static str,
+    dry_run: bool,
+    path: &'a str,
+    recursive: bool,
+    file_count: usize,
+    dir_count: usize,
+    bytes: u64,
+    truncated: bool,
+    entries: Vec<DryRunEntry>,
+}
+
+/// What a dry-run walk concluded about the target path.
+enum DryRunOutcome {
+    /// The real run would delete these entries (files first, then the
+    /// directories that hold them, deepest last).
+    Plan {
+        entries: Vec<DryRunEntry>,
+        truncated: bool,
+    },
+    /// The target is a non-empty directory and `--recursive` was not passed,
+    /// so the real run's `rmdir` would fail.
+    NeedsRecursive { children: usize },
+}
+
+/// Some providers (FTP, WebDAV) answer a missing path with `ServerError`
+/// instead of `NotFound`, so the message has to be sniffed too. Shared by the
+/// real delete and by `--dry-run`, which must agree on what "absent" means.
+fn is_not_found_error(e: &ProviderError) -> bool {
+    matches!(e, ProviderError::NotFound(_))
+        || (matches!(e, ProviderError::ServerError(_) | ProviderError::Other(_)) && {
+            let msg = e.to_string().to_ascii_lowercase();
+            msg.contains("not found")
+                || msg.contains("no such file")
+                || msg.contains("doesn't exist")
+                || msg.contains("does not exist")
+                || msg.contains("404")
+        })
+}
+
+/// Enumerate exactly what a real `rm`/`purge` would remove, without removing
+/// anything. `rmdir_recursive` deletes as it walks, so the byte total needs
+/// this separate pre-pass; it cannot be recovered from the delete itself.
+async fn build_rm_dry_run_plan(
+    provider: &mut Box<dyn StorageProvider>,
+    path: &str,
+    recursive: bool,
+) -> Result<DryRunOutcome, ProviderError> {
+    let root = provider.stat(path).await?;
+    if !root.is_dir {
+        return Ok(DryRunOutcome::Plan {
+            entries: vec![DryRunEntry {
+                path: path.to_string(),
+                size: root.size,
+                is_dir: false,
+            }],
+            truncated: false,
+        });
+    }
+
+    if !recursive {
+        // The real run tries `delete()` then falls back to `rmdir()`, which
+        // only succeeds on an empty directory.
+        let children = provider.list(path).await?;
+        if !children.is_empty() {
+            return Ok(DryRunOutcome::NeedsRecursive {
+                children: children.len(),
+            });
+        }
+        return Ok(DryRunOutcome::Plan {
+            entries: vec![DryRunEntry {
+                path: path.to_string(),
+                size: 0,
+                is_dir: true,
+            }],
+            truncated: false,
+        });
+    }
+
+    let mut files: Vec<DryRunEntry> = Vec::new();
+    let mut dirs: Vec<DryRunEntry> = vec![DryRunEntry {
+        path: path.to_string(),
+        size: 0,
+        is_dir: true,
+    }];
+    let mut truncated = false;
+    let mut queue: Vec<(String, usize)> = vec![(path.to_string(), 0)];
+
+    while let Some((dir, depth)) = queue.pop() {
+        if depth >= MAX_SCAN_DEPTH || files.len() + dirs.len() >= MAX_SCAN_ENTRIES {
+            truncated = true;
+            continue;
+        }
+        for entry in provider.list(&dir).await? {
+            if files.len() + dirs.len() >= MAX_SCAN_ENTRIES {
+                truncated = true;
+                break;
+            }
+            // A symlink is unlinked, never followed: `rmdir_recursive` skips
+            // them (sftp.rs GAP-A02) and so does the used-bytes scan, because
+            // a symlink-to-dir would otherwise open a cur/parent cycle.
+            if entry.is_symlink {
+                files.push(DryRunEntry {
+                    path: entry.path,
+                    size: 0,
+                    is_dir: false,
+                });
+                continue;
+            }
+            if entry.is_dir {
+                queue.push((entry.path.clone(), depth + 1));
+                dirs.push(DryRunEntry {
+                    path: entry.path,
+                    size: 0,
+                    is_dir: true,
+                });
+            } else {
+                files.push(DryRunEntry {
+                    path: entry.path,
+                    size: entry.size,
+                    is_dir: false,
+                });
+            }
+        }
+    }
+
+    // Files first, then their directories: the order a real recursive delete
+    // has to follow, so the plan doubles as a review of the delete sequence.
+    files.extend(dirs);
+    Ok(DryRunOutcome::Plan {
+        entries: files,
+        truncated,
+    })
+}
+
+/// Print the plan for `rm --dry-run` / `purge --dry-run` and delete nothing.
+async fn run_rm_dry_run(
+    provider: &mut Box<dyn StorageProvider>,
+    path: &str,
+    recursive: bool,
+    force: bool,
+    cli: &Cli,
+    format: OutputFormat,
+) -> i32 {
+    let spinner = if recursive {
+        Some(create_spinner(&format!("Scanning {} ...", path)))
+    } else {
+        None
+    };
+    let outcome = build_rm_dry_run_plan(provider, path, recursive).await;
+    if let Some(s) = spinner {
+        s.finish_and_clear();
+    }
+
+    let (entries, truncated) = match outcome {
+        Ok(DryRunOutcome::Plan { entries, truncated }) => (entries, truncated),
+        Ok(DryRunOutcome::NeedsRecursive { children }) => {
+            print_error(
+                format,
+                &format!(
+                    "'{}' is a directory with {} entries; the real run would fail. Use --recursive (or `purge`).",
+                    path, children
+                ),
+                1,
+            );
+            return 1;
+        }
+        Err(e) => {
+            // `--force` makes the real delete idempotent over a missing path;
+            // the dry-run reports the same non-failure.
+            if force && is_not_found_error(&e) {
+                let message = format!("Would delete: {} (not found, ignored with --force)", path);
+                match format {
+                    OutputFormat::Text => {
+                        if !cli.quiet {
+                            eprintln!("DRY RUN: no data was deleted.");
+                            eprintln!("{}", message);
+                        }
+                    }
+                    OutputFormat::Json => print_json(&CliOk {
+                        status: "ok",
+                        message,
+                    }),
+                }
+                return 0;
+            }
+            let code = provider_error_to_exit_code(&e);
+            print_error(format, &format!("rm --dry-run failed: {}", e), code);
+            return code;
+        }
+    };
+
+    let bytes: u64 = entries.iter().map(|e| e.size).sum();
+    let file_count = entries.iter().filter(|e| !e.is_dir).count();
+    let dir_count = entries.len() - file_count;
+
+    match format {
+        OutputFormat::Text => {
+            if !cli.quiet {
+                eprintln!("DRY RUN: no data was deleted.");
+                for entry in entries.iter().take(DRY_RUN_TEXT_LIST_CAP) {
+                    if entry.is_dir {
+                        println!("{}/", entry.path);
+                    } else {
+                        println!("{}\t{}", entry.path, format_size(entry.size));
+                    }
+                }
+                if entries.len() > DRY_RUN_TEXT_LIST_CAP {
+                    eprintln!(
+                        "... and {} more (use --format json for the full plan)",
+                        entries.len() - DRY_RUN_TEXT_LIST_CAP
+                    );
+                }
+                eprintln!(
+                    "Would delete {} files and {} directories, reclaiming {}",
+                    file_count,
+                    dir_count,
+                    format_size(bytes)
+                );
+                if truncated {
+                    eprintln!(
+                        "WARNING: the scan hit a depth/entry cap, so this plan is a LOWER BOUND. The real run would delete more."
+                    );
+                }
+            }
+        }
+        OutputFormat::Json => print_json(&DryRunPlan {
+            status: "ok",
+            dry_run: true,
+            path,
+            recursive,
+            file_count,
+            dir_count,
+            bytes,
+            truncated,
+            entries,
+        }),
+    }
+    0
+}
+
 async fn cmd_rm(
     url: &str,
     path: &str,
     recursive: bool,
     force: bool,
+    dry_run: bool,
     cli: &Cli,
     format: OutputFormat,
 ) -> i32 {
@@ -29395,6 +29659,15 @@ async fn cmd_rm(
         );
         let _ = provider.disconnect().await;
         return 1;
+    }
+
+    // A dry-run runs the root guard above (so `--dry-run` against '/' still
+    // refuses) but never prompts and never blocks on a non-TTY: previewing a
+    // delete is not a delete, and it has to stay usable from a script.
+    if dry_run {
+        let code = run_rm_dry_run(&mut provider, path, recursive, force, cli, format).await;
+        let _ = provider.disconnect().await;
+        return code;
     }
 
     // Confirmation for recursive delete (unless --force).
@@ -29454,18 +29727,7 @@ async fn cmd_rm(
         }
         Err(e) => {
             // --force suppresses NotFound errors (idempotent delete).
-            // Some providers (FTP, WebDAV) return ServerError instead of NotFound
-            // for missing files, so we also check the error message.
-            let is_not_found = matches!(e, ProviderError::NotFound(_))
-                || (matches!(e, ProviderError::ServerError(_) | ProviderError::Other(_)) && {
-                    let msg = e.to_string().to_ascii_lowercase();
-                    msg.contains("not found")
-                        || msg.contains("no such file")
-                        || msg.contains("doesn't exist")
-                        || msg.contains("does not exist")
-                        || msg.contains("404")
-                });
-            if force && is_not_found {
+            if force && is_not_found_error(&e) {
                 match format {
                     OutputFormat::Text => {
                         if !cli.quiet {
@@ -50227,7 +50489,7 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                     return 5;
                 }
                 let recursive = parts.contains(&"-r") || parts.contains(&"-rf");
-                exit_code = cmd_rm(&url, parts[1], recursive, true, cli, format).await;
+                exit_code = cmd_rm(&url, parts[1], recursive, true, false, cli, format).await;
                 if let Some(code) = check_exit(
                     exit_code,
                     line_num,
@@ -54636,13 +54898,14 @@ async fn main() {
             path,
             recursive,
             force,
+            dry_run,
         } => {
             let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
                 ("_", url.as_str())
             } else {
                 (url.as_str(), path.as_str())
             };
-            cmd_rm(u, p, *recursive, *force, &cli, format).await
+            cmd_rm(u, p, *recursive, *force, *dry_run, &cli, format).await
         }
         Commands::Mv { url, from, to } => {
             let (u, f, t) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
@@ -55070,7 +55333,12 @@ async fn main() {
             )
             .await
         }
-        Commands::Purge { url, path, force } => {
+        Commands::Purge {
+            url,
+            path,
+            force,
+            dry_run,
+        } => {
             let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
                 ("_", url.as_str())
             } else {
@@ -55079,7 +55347,7 @@ async fn main() {
             // rclone `purge`: recursive delete of the path and everything
             // under it. Routes through cmd_rm so the root guard, the
             // confirmation prompt and the error/exit mapping stay shared.
-            cmd_rm(u, p, true, *force, &cli, format).await
+            cmd_rm(u, p, true, *force, *dry_run, &cli, format).await
         }
         Commands::Rmdir { url, path } => {
             let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
