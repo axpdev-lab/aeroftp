@@ -1543,7 +1543,9 @@ async fn tree(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
                     "depth": depth + 1,
                 }));
             }
-            if entry.is_dir && depth + 1 < max_depth + 1 {
+            // Reported with `is_dir: true`, but a symlink-to-dir is never
+            // walked (GAP-A02): a link to `..` would never terminate.
+            if entry.is_walkable_dir() && depth + 1 < max_depth + 1 {
                 queue.push_back((entry.path, depth + 1));
             }
         }
@@ -2197,7 +2199,9 @@ async fn cleanup(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
             Ok(entries) => {
                 for entry in entries {
                     if entry.is_dir {
-                        dirs.push((entry.path.clone(), depth + 1));
+                        if entry.is_walkable_dir() {
+                            dirs.push((entry.path.clone(), depth + 1));
+                        }
                     } else if entry.name.ends_with(".aerotmp") || entry.path.ends_with(".aerotmp") {
                         orphans.push((entry.path.clone(), entry.size));
                     }
@@ -2418,7 +2422,9 @@ async fn sync_doctor(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError
             if let Ok(entries) = backend.list(&dir).await {
                 for e in entries {
                     if e.is_dir {
-                        queue.push((e.path.clone(), depth + 1));
+                        if e.is_walkable_dir() {
+                            queue.push((e.path.clone(), depth + 1));
+                        }
                     } else {
                         let relative = e
                             .path
@@ -2531,7 +2537,9 @@ async fn dedupe(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
             Ok(entries) => {
                 for e in entries {
                     if e.is_dir {
-                        dirs.push((e.path, depth + 1));
+                        if e.is_walkable_dir() {
+                            dirs.push((e.path, depth + 1));
+                        }
                     } else {
                         files.push((e.path, e.size, e.modified));
                     }
@@ -2763,7 +2771,9 @@ async fn reconcile(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> 
         };
         for e in entries {
             if e.is_dir {
-                queue.push((e.path.clone(), depth + 1));
+                if e.is_walkable_dir() {
+                    queue.push((e.path.clone(), depth + 1));
+                }
             } else {
                 let rel = e
                     .path

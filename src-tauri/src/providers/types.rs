@@ -1573,6 +1573,21 @@ impl RemoteEntry {
         }
     }
 
+    /// Whether a recursive walk may descend into this entry.
+    ///
+    /// A symlink is unlinked, never followed (`sftp.rs` GAP-A02). `list`
+    /// resolves a symlink-to-directory and reports `is_dir = true`, which is
+    /// what callers need to render it, but descending into one opens a
+    /// cur/parent cycle: a link to `..` makes the walk revisit its own parent
+    /// under an ever longer path, so a `visited` set keyed on the path never
+    /// catches it.
+    ///
+    /// Every recursive walk over `StorageProvider::list` must gate its descent
+    /// on this, never on `is_dir` alone.
+    pub fn is_walkable_dir(&self) -> bool {
+        self.is_dir && !self.is_symlink
+    }
+
     /// Get file extension (used in tests and MIME type detection)
     #[allow(dead_code)]
     pub fn extension(&self) -> Option<&str> {
@@ -2192,5 +2207,24 @@ mod s3_config_assume_role_tests {
         let cfg = s3_cfg(extra);
         assert!(cfg.role_mfa_serial.is_none());
         assert!(cfg.role_mfa_token_code.is_none());
+    }
+
+    #[test]
+    fn test_is_walkable_dir_refuses_symlinks() {
+        // A plain directory is walkable.
+        let mut dir = RemoteEntry::directory("d".into(), "/d".into());
+        assert!(dir.is_walkable_dir());
+
+        // A symlink-to-directory is reported as a directory (callers render
+        // it) but must never be descended into: a link to `..` cycles.
+        dir.is_symlink = true;
+        assert!(dir.is_dir);
+        assert!(!dir.is_walkable_dir());
+
+        // Files are never walkable, symlink or not.
+        let mut file = RemoteEntry::file("f".into(), "/f".into(), 10);
+        assert!(!file.is_walkable_dir());
+        file.is_symlink = true;
+        assert!(!file.is_walkable_dir());
     }
 }

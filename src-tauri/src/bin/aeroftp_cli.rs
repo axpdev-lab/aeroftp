@@ -7452,7 +7452,12 @@ async fn scan_remote_tree_with_progress(
                         format!("{}/{}", rel_prefix, entry.name)
                     };
                     if entry.is_dir {
-                        queue.push((entry.path.clone(), entry_rel, current_depth + 1));
+                        // A symlink-to-directory is listed but never walked
+                        // (GAP-A02): syncing through one would duplicate the
+                        // target's tree, and a link to `..` never terminates.
+                        if entry.is_walkable_dir() {
+                            queue.push((entry.path.clone(), entry_rel, current_depth + 1));
+                        }
                         continue;
                     }
                     if opts.skip_filenames.iter().any(|name| name == &entry.name) {
@@ -13787,7 +13792,9 @@ async fn size_remote_dir(
                 entry.path.clone()
             };
             if entry.is_dir {
-                stack.push(child);
+                if entry.is_walkable_dir() {
+                    stack.push(child);
+                }
             } else {
                 total_bytes += entry.size;
                 files += 1;
@@ -28102,8 +28109,12 @@ async fn cmd_get_recursive(
             Ok(entries) => {
                 for e in entries {
                     if e.is_dir {
-                        queue.push((e.path.clone(), depth + 1));
-                        dirs.push(e.path);
+                        // Never walk (nor recreate locally) a symlink-to-dir:
+                        // it would copy the target's tree twice, or cycle.
+                        if e.is_walkable_dir() {
+                            queue.push((e.path.clone(), depth + 1));
+                            dirs.push(e.path);
+                        }
                     } else {
                         let relative = e
                             .path
@@ -35095,7 +35106,7 @@ async fn cmd_find(
                             }
                             break;
                         }
-                        if e.is_dir {
+                        if e.is_walkable_dir() {
                             queue.push((e.path.clone(), depth + 1));
                         }
                         if matcher.is_match(&e.name) {
@@ -35742,7 +35753,11 @@ async fn cmd_rmdirs(url: &str, path: &str, force: bool, cli: &Cli, format: Outpu
         match provider.list(&dir).await {
             Ok(entries) => {
                 for entry in entries {
-                    if !entry.is_dir {
+                    // A symlink-to-directory is neither descended into nor
+                    // offered as an empty-directory candidate (GAP-A02):
+                    // SSH_FXP_RMDIR does not follow links, and removing the
+                    // link because its target looks empty is not our call.
+                    if !entry.is_walkable_dir() {
                         continue;
                     }
                     let rel = entry.path.strip_prefix(&root_norm).unwrap_or(&entry.path);
@@ -36090,7 +36105,9 @@ async fn cmd_lsjson(
                 };
                 // Directories are still descended even when filtered out of
                 // the output, so `--files-only -R` still finds nested files.
-                let descend = recursive && e.is_dir && depth < max_depth;
+                // A symlink-to-directory is reported but never descended into
+                // (GAP-A02): it is still emitted with `IsDir: true`.
+                let descend = recursive && e.is_walkable_dir() && depth < max_depth;
                 let emit = if files_only {
                     !e.is_dir
                 } else if dirs_only {
@@ -39484,7 +39501,9 @@ async fn cmd_cleanup(
                 for entry in entries {
                     scanned_entries += 1;
                     if entry.is_dir {
-                        dirs.push((entry.path.clone(), depth + 1));
+                        if entry.is_walkable_dir() {
+                            dirs.push((entry.path.clone(), depth + 1));
+                        }
                     } else if entry.name.ends_with(".aerotmp") || entry.path.ends_with(".aerotmp") {
                         orphans.push((entry.path.clone(), entry.size, entry.modified.clone()));
                     }
@@ -39730,7 +39749,9 @@ async fn cmd_dedupe(
             Ok(entries) => {
                 for entry in entries {
                     if entry.is_dir {
-                        dirs.push((entry.path.clone(), depth + 1));
+                        if entry.is_walkable_dir() {
+                            dirs.push((entry.path.clone(), depth + 1));
+                        }
                     } else {
                         files.push((entry.path.clone(), entry.size, entry.modified.clone()));
                     }
@@ -41117,7 +41138,9 @@ async fn cmd_sync(
                                     format!("{}/{}", rel_prefix, e.name)
                                 };
                                 if e.is_dir {
-                                    queue.push((e.path.clone(), entry_rel, depth + 1));
+                                    if e.is_walkable_dir() {
+                                        queue.push((e.path.clone(), entry_rel, depth + 1));
+                                    }
                                 } else {
                                     let relative = entry_rel;
                                     if !relative.is_empty() && relative != BISYNC_SNAPSHOT_FILE {
@@ -42468,6 +42491,10 @@ async fn cmd_tree(url: &str, path: &str, max_depth: usize, cli: &Cli, format: Ou
         name: String,
         depth: usize,
         prefix: String,
+        /// Whether the walk may list this entry's children. Carried explicitly
+        /// rather than sniffed back out of the rendered `name`, which cannot
+        /// tell a real directory from a symlink-to-directory (GAP-A02).
+        walkable: bool,
     }
 
     let mut file_count: usize = 0;
@@ -42485,7 +42512,10 @@ async fn cmd_tree(url: &str, path: &str, max_depth: usize, cli: &Cli, format: Ou
         if depth >= max_depth || *entry_count >= MAX_SCAN_ENTRIES {
             return Vec::new();
         }
-        // Symlink loop detection: skip already-visited paths
+        // Re-entry guard: skip a path we already expanded. This does NOT catch
+        // a symlink loop, because every pass through `sub/loop -> ..` yields a
+        // longer, distinct path string. Loops are prevented by refusing to
+        // descend into symlinks at all (see `is_walkable_dir` below).
         if !visited.insert(path.to_string()) {
             return Vec::new();
         }
@@ -42499,7 +42529,7 @@ async fn cmd_tree(url: &str, path: &str, max_depth: usize, cli: &Cli, format: Ou
                 break;
             }
             *entry_count += 1;
-            let children = if e.is_dir {
+            let children = if e.is_walkable_dir() {
                 Box::pin(build_tree(
                     provider,
                     &e.path,
@@ -42649,6 +42679,7 @@ async fn cmd_tree(url: &str, path: &str, max_depth: usize, cli: &Cli, format: Ou
                     ),
                     depth: 1,
                     prefix: child_prefix.to_string(),
+                    walkable: e.is_walkable_dir(),
                 });
                 if e.is_dir {
                     dir_count += 1;
@@ -42670,8 +42701,10 @@ async fn cmd_tree(url: &str, path: &str, max_depth: usize, cli: &Cli, format: Ou
                 println!("{}", item.name);
 
                 if item.depth < max_depth {
-                    // Check if this is a directory by checking the trailing /
-                    if item.name.ends_with('/') && tree_visited.insert(item.path.clone()) {
+                    // A symlink-to-directory renders with a trailing `/` like any
+                    // other directory, so the descent is gated on `walkable`, not
+                    // on the rendered name.
+                    if item.walkable && tree_visited.insert(item.path.clone()) {
                         if let Ok(children) = provider.list(&item.path).await {
                             let mut sorted: Vec<_> = children.into_iter().collect();
                             sorted.sort_by(|a, b| match (a.is_dir, b.is_dir) {
@@ -42699,6 +42732,7 @@ async fn cmd_tree(url: &str, path: &str, max_depth: usize, cli: &Cli, format: Ou
                                     ),
                                     depth: item.depth + 1,
                                     prefix: format!("{}{}", item.prefix, child_prefix),
+                                    walkable: e.is_walkable_dir(),
                                 });
                                 if e.is_dir {
                                     dir_count += 1;
@@ -45780,7 +45814,10 @@ async fn cmd_crypt_ls(
                 };
                 if entry.is_dir {
                     rows.push((rel.clone(), true, 0));
-                    stack.push((entry.path.clone(), rel, depth + 1));
+                    // Listed, never walked (GAP-A02).
+                    if entry.is_walkable_dir() {
+                        stack.push((entry.path.clone(), rel, depth + 1));
+                    }
                 } else {
                     rows.push((rel, false, entry.size));
                 }
@@ -46350,7 +46387,11 @@ async fn cmd_crypt_get(
                 entries_seen += 1;
                 let ltarget = ldir.join(crypt_sanitize_component(&plain));
                 if entry.is_dir {
-                    stack.push((entry.path.clone(), ltarget, depth + 1));
+                    // Never follow a symlink-to-dir into the local tree: the
+                    // target's plaintext would be written twice (GAP-A02).
+                    if entry.is_walkable_dir() {
+                        stack.push((entry.path.clone(), ltarget, depth + 1));
+                    }
                     continue;
                 }
                 let ciphertext = match provider.download_to_bytes(&entry.path).await {
@@ -47576,7 +47617,9 @@ async fn cmd_sync_doctor(
             if let Ok(entries) = provider.list(&dir).await {
                 for e in entries {
                     if e.is_dir {
-                        queue.push((e.path.clone(), depth + 1));
+                        if e.is_walkable_dir() {
+                            queue.push((e.path.clone(), depth + 1));
+                        }
                     } else {
                         let relative = e
                             .path
@@ -52895,6 +52938,11 @@ async fn execute_cli_tool(
                         }
                         let meta = entry.metadata().ok();
                         let is_dir = meta.as_ref().map(|m| m.is_dir()).unwrap_or(false);
+                        // `file_type()` does not follow the link, unlike
+                        // `metadata()` above: a symlink-to-directory is still
+                        // rendered as a directory, but never descended into,
+                        // or a link to `..` walks its own parent forever.
+                        let is_symlink = entry.file_type().map(|t| t.is_symlink()).unwrap_or(false);
                         if !is_dir {
                             if let Some(ref glob) = glob_filter {
                                 let pattern = glob.trim_start_matches('*').to_lowercase();
@@ -52908,7 +52956,7 @@ async fn execute_cli_tool(
                             "is_dir": is_dir,
                             "size": meta.as_ref().map(|m| m.len()).unwrap_or(0),
                         });
-                        if is_dir {
+                        if is_dir && !is_symlink {
                             let children = build_tree(
                                 &entry.path(),
                                 depth + 1,
