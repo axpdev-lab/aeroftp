@@ -228,13 +228,27 @@ impl FtpProvider {
     /// connection resumes the *same* session as the control connection.
     /// This matches the behaviour of FileZilla, WinSCP, and CyberDuck.
     fn make_tls_connector(&self) -> Result<AsyncRustlsConnector, ProviderError> {
+        // Name the crypto backend explicitly rather than relying on rustls'
+        // process-level default. Both `aws-lc-rs` and `ring` are in the
+        // dependency tree, so the implicit lookup cannot disambiguate and
+        // panics unless some earlier code installed a default. A panic here
+        // leaves the `provider_connect` IPC call unanswered (endless spinner,
+        // dead Cancel), so this must not depend on process-wide state.
+        let versions = || {
+            rustls::ClientConfig::builder_with_provider(Arc::new(
+                rustls::crypto::aws_lc_rs::default_provider(),
+            ))
+            .with_protocol_versions(&[&rustls::version::TLS12])
+            .map_err(|e| ProviderError::ConnectionFailed(format!("TLS setup failed: {e}")))
+        };
+
         let config = if !self.config.verify_cert {
             // M6: Log a warning when TLS certificate verification is disabled.
             tracing::warn!(
                 "[FTP] TLS certificate verification DISABLED for {}:{}: connection is vulnerable to MITM attacks",
                 self.config.host, self.config.port
             );
-            rustls::ClientConfig::builder_with_protocol_versions(&[&rustls::version::TLS12])
+            versions()?
                 .dangerous()
                 .with_custom_certificate_verifier(Arc::new(danger::NoVerifier))
                 .with_no_client_auth()
@@ -263,7 +277,7 @@ impl FtpProvider {
             if count > 0 {
                 tracing::debug!("[FTP] Loaded {added}/{count} native root certificates");
             }
-            rustls::ClientConfig::builder_with_protocol_versions(&[&rustls::version::TLS12])
+            versions()?
                 .with_root_certificates(root_store)
                 .with_no_client_auth()
         };
@@ -1954,6 +1968,31 @@ async fn ftp_download_one_range(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The TLS connector must build without a process-level rustls
+    /// `CryptoProvider` installed. `aws-lc-rs` and `ring` are both in the
+    /// dependency tree, so the implicit `builder_with_protocol_versions()`
+    /// panics here, which strands every FTPS connect: the `provider_connect`
+    /// IPC call never answers, the spinner never stops, and Cancel is dead
+    /// because the panic already de-registered the connect token.
+    #[test]
+    fn tls_connector_builds_without_a_process_default_crypto_provider() {
+        for verify_cert in [true, false] {
+            let provider = FtpProvider::new(FtpConfig {
+                host: "example.invalid".to_string(),
+                port: 21,
+                username: "user".to_string(),
+                password: "pass".to_string().into(),
+                tls_mode: FtpTlsMode::Explicit,
+                verify_cert,
+                initial_path: None,
+            });
+            assert!(
+                provider.make_tls_connector().is_ok(),
+                "make_tls_connector must not panic or fail (verify_cert={verify_cert})"
+            );
+        }
+    }
 
     #[test]
     fn stale_control_connection_error_is_detected_for_reconnect() {

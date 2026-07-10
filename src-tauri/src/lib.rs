@@ -16426,6 +16426,14 @@ async fn mount_open_quick(id: String) -> Result<(), String> {
 pub fn run() {
     use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
 
+    // Install the process-wide rustls CryptoProvider explicitly. Both
+    // `aws-lc-rs` and `ring` are pulled into the dependency tree (via
+    // different crates), so rustls cannot auto-select a provider and panics
+    // on the first TLS handshake (FTPS, WebDAV over https, ...). Pin our
+    // chosen backend once, before any TLS connector is built. `aeroftp_cli`
+    // does the same in its own `main`; every binary needs its own call.
+    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+
     // Fix WebKitGTK rendering issues on Linux: disable DMA-BUF renderer
     // which causes canvas/WebGL artifacts in Monaco and xterm.js.
     // Must be set BEFORE any WebKit initialization.
