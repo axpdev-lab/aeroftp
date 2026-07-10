@@ -52,7 +52,12 @@ jobs:
   integration:
     name: SFTP rsync fixture + live test (key-auth)
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # 15 minutes was under the job's own runtime, so it died wherever the wall
+    # happened to fall: on the integration test at 4df30affc and 45880d0a2, on
+    # the post-job cache save at 8b39ed171, always reported as "cancelled"
+    # rather than a failure. The sibling fallback-fixture job does comparable
+    # work, is allowed 25, and takes about 16. Match it.
+    timeout-minutes: 25
 
     steps:
       - name: Checkout
