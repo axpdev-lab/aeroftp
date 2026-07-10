@@ -317,6 +317,36 @@ fn decrypt_filename(
     String::from_utf8(plaintext).map_err(|e| format!("UTF-8 decode: {}", e))
 }
 
+/// Hard cap on the size of any Cryptomator metadata file we read into memory
+/// (`dir.c9r`, `name.c9s`, `masterkey.cryptomator`, `vault.cryptomator`).
+/// Legitimate values are tiny: a 36-byte UUID, a single encrypted filename, a
+/// small JSON or JWT. A vault's metadata is attacker-authored even when the
+/// recipient knows the password (the CLAUDE-AV-B1-07 threat model), so reading
+/// one uncapped with `fs::read_to_string` lets a crafted multi-GB file exhaust
+/// memory during list, walk, mount or unlock. 64 KiB is orders of magnitude
+/// above any real value while still rejecting a hostile file. (CLAUDE-AV-B1-11)
+const MAX_VAULT_METADATA_BYTES: u64 = 64 * 1024;
+
+/// Read a small vault metadata file as UTF-8 with a hard size cap, erroring
+/// instead of allocating unboundedly for a hostile oversized file. Reads at most
+/// `MAX_VAULT_METADATA_BYTES + 1` bytes so an over-limit file is detected without
+/// ever materializing more than that in memory.
+fn read_vault_metadata_string(path: &Path) -> Result<String, String> {
+    use std::io::Read;
+    let file = fs::File::open(path).map_err(|e| format!("open {:?}: {}", path, e))?;
+    let mut buf = Vec::new();
+    file.take(MAX_VAULT_METADATA_BYTES + 1)
+        .read_to_end(&mut buf)
+        .map_err(|e| format!("read {:?}: {}", path, e))?;
+    if buf.len() as u64 > MAX_VAULT_METADATA_BYTES {
+        return Err(format!(
+            "vault metadata file exceeds {} bytes (hostile vault?): {:?}",
+            MAX_VAULT_METADATA_BYTES, path
+        ));
+    }
+    String::from_utf8(buf).map_err(|e| format!("invalid UTF-8 in {:?}: {}", path, e))
+}
+
 /// Unlock a Cryptomator vault
 fn unlock_vault_inner(
     vault_path: &Path,
@@ -327,14 +357,14 @@ fn unlock_vault_inner(
 
     // Read masterkey.cryptomator
     let masterkey_path = vault_path.join("masterkey.cryptomator");
-    let masterkey_json = fs::read_to_string(&masterkey_path)
+    let masterkey_json = read_vault_metadata_string(&masterkey_path)
         .map_err(|e| format!("Failed to read masterkey.cryptomator: {}", e))?;
     let masterkey: MasterkeyFile = serde_json::from_str(&masterkey_json)
         .map_err(|e| format!("Invalid masterkey format: {}", e))?;
 
     // Read vault.cryptomator (JWT)
     let vault_config_path = vault_path.join("vault.cryptomator");
-    let jwt_str = fs::read_to_string(&vault_config_path)
+    let jwt_str = read_vault_metadata_string(&vault_config_path)
         .map_err(|e| format!("Failed to read vault.cryptomator: {}", e))?;
 
     // Decode the JWT payload for the config fields. The HS256 signature is
@@ -476,7 +506,7 @@ fn list_dir_inner(vault: &UnlockedVault, dir_id: &str) -> Result<Vec<Cryptomator
                 // It's a directory: read dir.c9r to get the child dir_id
                 let dir_c9r_path = entry_path.join("dir.c9r");
                 let child_dir_id = if dir_c9r_path.exists() {
-                    fs::read_to_string(&dir_c9r_path)
+                    read_vault_metadata_string(&dir_c9r_path)
                         .map_err(|e| format!("Failed to read dir.c9r: {}", e))?
                         .trim()
                         .to_string()
@@ -514,7 +544,7 @@ fn list_dir_inner(vault: &UnlockedVault, dir_id: &str) -> Result<Vec<Cryptomator
             if entry_path.is_dir() {
                 let name_path = entry_path.join("name.c9s");
                 if name_path.exists() {
-                    let full_encrypted = fs::read_to_string(&name_path)
+                    let full_encrypted = read_vault_metadata_string(&name_path)
                         .map_err(|e| format!("Failed to read name.c9s: {}", e))?;
                     let full_name = full_encrypted.trim();
 
@@ -523,7 +553,7 @@ fn list_dir_inner(vault: &UnlockedVault, dir_id: &str) -> Result<Vec<Cryptomator
                     let is_dir = contents_dir.is_dir() && contents_dir.join("dir.c9r").exists();
 
                     let child_dir_id = if is_dir {
-                        fs::read_to_string(contents_dir.join("dir.c9r"))
+                        read_vault_metadata_string(&contents_dir.join("dir.c9r"))
                             .unwrap_or_default()
                             .trim()
                             .to_string()
@@ -2036,5 +2066,33 @@ mod tests {
                 "window (offset={off}, len={len}) mismatch"
             );
         }
+    }
+
+    /// A vault's metadata (`dir.c9r`, `name.c9s`, `masterkey.cryptomator`, ...) is
+    /// attacker-authored even when the password is known, so an oversized one must
+    /// error rather than be read unboundedly into memory (deeper Cryptomator pass
+    /// beyond the CLAUDE-AV-B1-07 cycle guard). A legitimate small file still reads.
+    #[test]
+    fn vault_metadata_read_is_size_capped() {
+        let tmp = tempfile::tempdir().unwrap();
+
+        // A legitimate dir.c9r (a UUID) reads back verbatim.
+        let ok = tmp.path().join("dir.c9r");
+        fs::write(&ok, "b3c0de01-0000-4000-8000-000000000000").unwrap();
+        assert_eq!(
+            read_vault_metadata_string(&ok).unwrap(),
+            "b3c0de01-0000-4000-8000-000000000000"
+        );
+
+        // A file exactly at the cap is still accepted.
+        let at_cap = tmp.path().join("at_cap.c9r");
+        fs::write(&at_cap, vec![b'a'; MAX_VAULT_METADATA_BYTES as usize]).unwrap();
+        assert!(read_vault_metadata_string(&at_cap).is_ok());
+
+        // One byte over the cap is rejected (bounds the allocation for a hostile vault).
+        let over = tmp.path().join("hostile.c9r");
+        fs::write(&over, vec![b'a'; MAX_VAULT_METADATA_BYTES as usize + 1]).unwrap();
+        let err = read_vault_metadata_string(&over).unwrap_err();
+        assert!(err.contains("exceeds"), "unexpected error: {err}");
     }
 }
