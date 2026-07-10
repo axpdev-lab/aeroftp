@@ -605,6 +605,22 @@ impl FtpProvider {
             .to_string();
 
         if self.mlsd_supported {
+            // Anti-hang probe: an MLSD issued against a directory that does not
+            // exist makes some servers (Plesk / ProFTPD on shared hosting) open a
+            // PASV data connection they then never service, wedging the listing
+            // forever behind an unresolved "Listing ..." spinner. A control-only
+            // MLST answers 550 for a missing path instantly (no data channel), so
+            // we fail fast with a clear NotFound instead of hanging. Only probe an
+            // explicit target; a current-directory listing is known to exist.
+            if let Some(ref target) = list_path {
+                let probe = {
+                    let stream = self.stream_mut()?;
+                    stream.mlst(Some(target.as_str())).await
+                };
+                if let Err(e) = probe {
+                    return Err(ProviderError::InvalidPath(e.to_string()));
+                }
+            }
             let mlsd_result = {
                 let stream = self.stream_mut()?;
                 stream.mlsd(list_path.as_deref()).await
