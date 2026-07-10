@@ -1321,6 +1321,14 @@ enum Commands {
         to: CliAccessLevel,
     },
     /// Delete a remote file or directory
+    ///
+    /// The global filters narrow what goes: --include/--exclude-global (and
+    /// their -from files), --min-size/--max-size, --min-age/--max-age and
+    /// --files-from. Include and exclude globs are matched against the FILE
+    /// NAME, not the path, so `--include "*.snap"` works while
+    /// `--include "v3.*/**"` matches nothing; --files-from lists paths relative
+    /// to the deleted directory. A filtered recursive delete removes only the
+    /// matching files, and only the directories it empties in doing so.
     Rm {
         /// Server URL (omit when using --profile)
         #[arg(default_value = "_", hide_default_value = true)]
@@ -1697,6 +1705,12 @@ enum Commands {
         hash_type: HashAlgorithm,
     },
     /// Remove a path and all of its contents (recursive delete)
+    ///
+    /// Same global filters as `rm`: --include/--exclude-global (and their -from
+    /// files), --min-size/--max-size, --min-age/--max-age and --files-from.
+    /// Include and exclude globs match the FILE NAME, not the path. With any
+    /// of them active, `purge` deletes only the matching files and only the
+    /// directories left empty afterwards; without them it removes everything.
     Purge {
         /// Server URL (omit when using --profile)
         #[arg(default_value = "_", hide_default_value = true)]
@@ -29398,6 +29412,8 @@ struct DryRunPlan<'a> {
     dry_run: bool,
     path: &'a str,
     recursive: bool,
+    /// True when the global filter flags narrowed the plan below the whole tree.
+    filtered: bool,
     file_count: usize,
     dir_count: usize,
     bytes: u64,
@@ -29433,16 +29449,110 @@ fn is_not_found_error(e: &ProviderError) -> bool {
         })
 }
 
+/// The delete scope of `rm`/`purge`, assembled from the GLOBAL filter flags:
+/// `--include`, `--exclude`, `--include-from`, `--exclude-from`, `--min-size`,
+/// `--max-size`, `--min-age`, `--max-age` and `--files-from`.
+///
+/// `has_filters()` deliberately does not cover `--files-from`, so the two
+/// sources are loaded separately here and ANDed: a file is in scope when it
+/// passes the pattern/size/age predicate AND, if a list was given, appears in
+/// that list.
+struct RmFilter {
+    /// Basename/size/mtime predicate. `None` when no pattern/size/age flag is set.
+    predicate: Option<FilterFn>,
+    /// `--files-from` paths, relative to the delete root, no leading slash.
+    files_from: Option<std::collections::HashSet<String>>,
+    /// The delete root, used to relativise entry paths for `files_from`.
+    root: String,
+}
+
+impl RmFilter {
+    fn new(cli: &Cli, root: &str) -> Self {
+        Self {
+            predicate: has_filters(cli).then(|| build_filter(cli)),
+            files_from: load_files_from(cli),
+            root: root.to_string(),
+        }
+    }
+
+    /// True when the user narrowed the delete. This is what picks between the
+    /// single-shot `rmdir_recursive` fast path and the filtered walk.
+    fn is_active(&self) -> bool {
+        self.predicate.is_some() || self.files_from.is_some()
+    }
+
+    /// Is this file in scope for deletion?
+    ///
+    /// `name` is the BASENAME, never the path: `build_filter`'s globs are matched
+    /// against a bare file name, so `--include "*.snap"` selects and
+    /// `--include "v3.*/**"` matches nothing. `--files-from`, in contrast, is
+    /// matched on the path relative to the delete root, exactly like the
+    /// download walk does.
+    fn matches_file(&self, name: &str, path: &str, size: u64, modified: Option<&str>) -> bool {
+        if let Some(ref predicate) = self.predicate {
+            let mtime = modified
+                .and_then(parse_iso8601_to_unix)
+                .and_then(|ts| u64::try_from(ts).ok());
+            if !predicate(name, size, mtime) {
+                return false;
+            }
+        }
+        if let Some(ref set) = self.files_from {
+            let relative = path
+                .strip_prefix(self.root.as_str())
+                .unwrap_or(path)
+                .trim_start_matches('/');
+            let Some(relative) = validate_relative_path(relative) else {
+                return false;
+            };
+            if !set.contains(relative) {
+                return false;
+            }
+        }
+        true
+    }
+}
+
+/// A directory met by the delete walk, with the bookkeeping that decides
+/// whether it survives: a filtered delete may only remove a directory it has
+/// emptied.
+struct RmWalkDir {
+    path: String,
+    /// Index into the walk's directory list. `None` for the delete root.
+    parent: Option<usize>,
+    depth: usize,
+    /// Entries listed inside it (files, symlinks and subdirectories).
+    children_total: usize,
+    /// How many of those the plan removes.
+    children_removed: usize,
+    /// False when a depth/entry cap cut this directory's listing short, which
+    /// makes `children_total` a lower bound and the directory unsafe to remove.
+    listing_complete: bool,
+}
+
 /// Enumerate exactly what a real `rm`/`purge` would remove, without removing
 /// anything. `rmdir_recursive` deletes as it walks, so the byte total needs
 /// this separate pre-pass; it cannot be recovered from the delete itself.
+///
+/// With `filter` active the result is also the execution plan: `cmd_rm` deletes
+/// precisely these entries, in this order, so a preview and the real run cannot
+/// disagree about what goes.
 async fn build_rm_dry_run_plan(
     provider: &mut Box<dyn StorageProvider>,
     path: &str,
     recursive: bool,
+    filter: &RmFilter,
 ) -> Result<DryRunOutcome, ProviderError> {
     let root = provider.stat(path).await?;
     if !root.is_dir {
+        // `stat` carries no name on every provider; the basename is in the path.
+        let name = path.rsplit('/').next().unwrap_or(path);
+        if !filter.matches_file(name, path, root.size, root.modified.as_deref()) {
+            return Ok(DryRunOutcome::Plan {
+                entries: Vec::new(),
+                truncated: false,
+            });
+        }
         return Ok(DryRunOutcome::Plan {
             entries: vec![DryRunEntry {
                 path: path.to_string(),
@@ -29455,7 +29565,8 @@ async fn build_rm_dry_run_plan(
 
     if !recursive {
         // The real run tries `delete()` then falls back to `rmdir()`, which
-        // only succeeds on an empty directory.
+        // only succeeds on an empty directory. Filters select files, so they
+        // have nothing to say about removing one directory.
         let children = provider.list(path).await?;
         if !children.is_empty() {
             return Ok(DryRunOutcome::NeedsRecursive {
@@ -29473,59 +29584,157 @@ async fn build_rm_dry_run_plan(
     }
 
     let mut files: Vec<DryRunEntry> = Vec::new();
-    let mut dirs: Vec<DryRunEntry> = vec![DryRunEntry {
+    let mut dirs: Vec<RmWalkDir> = vec![RmWalkDir {
         path: path.to_string(),
-        size: 0,
-        is_dir: true,
+        parent: None,
+        depth: 0,
+        children_total: 0,
+        children_removed: 0,
+        listing_complete: true,
     }];
+    let mut seen = 0usize;
     let mut truncated = false;
-    let mut queue: Vec<(String, usize)> = vec![(path.to_string(), 0)];
+    let mut queue: Vec<usize> = vec![0];
 
-    while let Some((dir, depth)) = queue.pop() {
-        if depth >= MAX_SCAN_DEPTH || files.len() + dirs.len() >= MAX_SCAN_ENTRIES {
+    while let Some(idx) = queue.pop() {
+        if dirs[idx].depth >= MAX_SCAN_DEPTH || seen >= MAX_SCAN_ENTRIES {
             truncated = true;
+            dirs[idx].listing_complete = false;
             continue;
         }
+        let dir = dirs[idx].path.clone();
         for entry in provider.list(&dir).await? {
-            if files.len() + dirs.len() >= MAX_SCAN_ENTRIES {
+            if seen >= MAX_SCAN_ENTRIES {
                 truncated = true;
+                dirs[idx].listing_complete = false;
                 break;
             }
+            seen += 1;
+            dirs[idx].children_total += 1;
+
             // A symlink is unlinked, never followed: `rmdir_recursive` skips
             // them (sftp.rs GAP-A02) and so does the used-bytes scan, because
-            // a symlink-to-dir would otherwise open a cur/parent cycle.
-            if entry.is_symlink {
+            // a symlink-to-dir would otherwise open a cur/parent cycle. It is
+            // filtered by name, like the plain file it is deleted as.
+            if entry.is_symlink || !entry.is_dir {
+                let size = if entry.is_symlink { 0 } else { entry.size };
+                if !filter.matches_file(&entry.name, &entry.path, size, entry.modified.as_deref()) {
+                    continue;
+                }
+                dirs[idx].children_removed += 1;
                 files.push(DryRunEntry {
                     path: entry.path,
-                    size: 0,
+                    size,
                     is_dir: false,
                 });
                 continue;
             }
-            if entry.is_dir {
-                queue.push((entry.path.clone(), depth + 1));
-                dirs.push(DryRunEntry {
-                    path: entry.path,
-                    size: 0,
-                    is_dir: true,
-                });
-            } else {
-                files.push(DryRunEntry {
-                    path: entry.path,
-                    size: entry.size,
-                    is_dir: false,
-                });
-            }
+
+            let child = dirs.len();
+            dirs.push(RmWalkDir {
+                path: entry.path,
+                parent: Some(idx),
+                depth: dirs[idx].depth + 1,
+                children_total: 0,
+                children_removed: 0,
+                listing_complete: true,
+            });
+            queue.push(child);
         }
     }
 
     // Files first, then their directories: the order a real recursive delete
     // has to follow, so the plan doubles as a review of the delete sequence.
-    files.extend(dirs);
+    files.extend(plan_dir_entries(&mut dirs, filter.is_active()));
     Ok(DryRunOutcome::Plan {
         entries: files,
         truncated,
     })
+}
+
+/// Decide which of the walked directories the plan removes, and in which order.
+///
+/// Unfiltered, nothing is spared: the whole tree goes, root included, listed in
+/// discovery order. Filtered, a directory goes only when the walk saw all of it,
+/// everything in it is going, and something in it actually matched. That last
+/// clause is what stops `--include "*.snap"` from also sweeping away
+/// directories that merely happened to be empty already.
+///
+/// `dirs` must be in discovery order (a child after its parent), which is what
+/// lets one backwards pass settle the whole tree bottom-up.
+fn plan_dir_entries(dirs: &mut [RmWalkDir], filtered: bool) -> Vec<DryRunEntry> {
+    if !filtered {
+        return dirs
+            .iter()
+            .map(|d| DryRunEntry {
+                path: d.path.clone(),
+                size: 0,
+                is_dir: true,
+            })
+            .collect();
+    }
+
+    let mut removable: Vec<(usize, DryRunEntry)> = Vec::new();
+    for i in (0..dirs.len()).rev() {
+        let goes = dirs[i].listing_complete
+            && dirs[i].children_total == dirs[i].children_removed
+            && dirs[i].children_removed > 0;
+        if !goes {
+            continue;
+        }
+        removable.push((
+            dirs[i].depth,
+            DryRunEntry {
+                path: dirs[i].path.clone(),
+                size: 0,
+                is_dir: true,
+            },
+        ));
+        if let Some(parent) = dirs[i].parent {
+            dirs[parent].children_removed += 1;
+        }
+    }
+    // Deepest first: `rmdir` refuses a directory that still has contents.
+    removable.sort_by_key(|(depth, _)| std::cmp::Reverse(*depth));
+    removable.into_iter().map(|(_, entry)| entry).collect()
+}
+
+/// Delete precisely the entries of a plan built by `build_rm_dry_run_plan`:
+/// files first, then the directories the plan proved it had emptied, deepest
+/// first. Returns `(files, directories, bytes)` actually removed.
+///
+/// Used only for a filtered recursive delete. Without filters the provider's
+/// single-shot `rmdir_recursive` is both faster and fewer round trips.
+async fn execute_rm_plan(
+    provider: &mut Box<dyn StorageProvider>,
+    entries: &[DryRunEntry],
+    force: bool,
+) -> Result<(usize, usize, u64), ProviderError> {
+    let mut removed_files = 0usize;
+    let mut removed_dirs = 0usize;
+    let mut bytes = 0u64;
+    for entry in entries {
+        let result = if entry.is_dir {
+            provider.rmdir(&entry.path).await
+        } else {
+            provider.delete(&entry.path).await
+        };
+        match result {
+            Ok(()) => {
+                if entry.is_dir {
+                    removed_dirs += 1;
+                } else {
+                    removed_files += 1;
+                    bytes += entry.size;
+                }
+            }
+            // `--force` makes the delete idempotent: something else already
+            // removed this entry between the scan and now.
+            Err(e) if force && is_not_found_error(&e) => {}
+            Err(e) => return Err(e),
+        }
+    }
+    Ok((removed_files, removed_dirs, bytes))
 }
 
 /// Print the plan for `rm --dry-run` / `purge --dry-run` and delete nothing.
@@ -29534,6 +29743,7 @@ async fn run_rm_dry_run(
     path: &str,
     recursive: bool,
     force: bool,
+    filter: &RmFilter,
     cli: &Cli,
     format: OutputFormat,
 ) -> i32 {
@@ -29542,7 +29752,7 @@ async fn run_rm_dry_run(
     } else {
         None
     };
-    let outcome = build_rm_dry_run_plan(provider, path, recursive).await;
+    let outcome = build_rm_dry_run_plan(provider, path, recursive, filter).await;
     if let Some(s) = spinner {
         s.finish_and_clear();
     }
@@ -29593,6 +29803,9 @@ async fn run_rm_dry_run(
         OutputFormat::Text => {
             if !cli.quiet {
                 eprintln!("DRY RUN: no data was deleted.");
+                if entries.is_empty() && filter.is_active() {
+                    eprintln!("No entry matched the active filters.");
+                }
                 for entry in entries.iter().take(DRY_RUN_TEXT_LIST_CAP) {
                     if entry.is_dir {
                         println!("{}/", entry.path);
@@ -29624,6 +29837,7 @@ async fn run_rm_dry_run(
             dry_run: true,
             path,
             recursive,
+            filtered: filter.is_active(),
             file_count,
             dir_count,
             bytes,
@@ -29632,6 +29846,127 @@ async fn run_rm_dry_run(
         }),
     }
     0
+}
+
+/// The real `rm`/`purge` when the global filter flags narrow the delete.
+///
+/// It runs the same walk `--dry-run` prints and then deletes exactly that plan,
+/// so `--dry-run` is a faithful preview rather than a second implementation.
+/// Directories holding entries the filters spared are left in place.
+async fn run_filtered_rm(
+    provider: &mut Box<dyn StorageProvider>,
+    path: &str,
+    recursive: bool,
+    force: bool,
+    filter: &RmFilter,
+    cli: &Cli,
+    format: OutputFormat,
+) -> i32 {
+    let spinner = if recursive {
+        Some(create_spinner(&format!("Scanning {} ...", path)))
+    } else {
+        None
+    };
+    let outcome = build_rm_dry_run_plan(provider, path, recursive, filter).await;
+    if let Some(s) = spinner {
+        s.finish_and_clear();
+    }
+
+    let (entries, truncated) = match outcome {
+        Ok(DryRunOutcome::Plan { entries, truncated }) => (entries, truncated),
+        Ok(DryRunOutcome::NeedsRecursive { children }) => {
+            print_error(
+                format,
+                &format!(
+                    "'{}' is a directory with {} entries. Use --recursive (or `purge`).",
+                    path, children
+                ),
+                1,
+            );
+            return 1;
+        }
+        Err(e) => {
+            // `--force` keeps the delete idempotent over a missing path.
+            if force && is_not_found_error(&e) {
+                let message = format!("Deleted: {} (not found, ignored with --force)", path);
+                match format {
+                    OutputFormat::Text => {
+                        if !cli.quiet {
+                            eprintln!("{}", message);
+                        }
+                    }
+                    OutputFormat::Json => print_json(&CliOk {
+                        status: "ok",
+                        message,
+                    }),
+                }
+                return 0;
+            }
+            let code = provider_error_to_exit_code(&e);
+            print_error(format, &format!("rm failed: {}", e), code);
+            return code;
+        }
+    };
+
+    if truncated && !cli.quiet {
+        eprintln!(
+            "WARNING: the scan hit a depth/entry cap, so this delete covers only the part of the tree it saw."
+        );
+    }
+
+    if entries.is_empty() {
+        let message = format!(
+            "No entry under '{}' matched the active filters; nothing was deleted.",
+            path
+        );
+        match format {
+            OutputFormat::Text => {
+                if !cli.quiet {
+                    eprintln!("{}", message);
+                }
+            }
+            OutputFormat::Json => print_json(&CliOk {
+                status: "ok",
+                message,
+            }),
+        }
+        return 0;
+    }
+
+    match execute_rm_plan(provider, &entries, force).await {
+        Ok((files, dirs, bytes)) => {
+            let message = format!(
+                "Deleted {} files and {} directories under '{}', reclaiming {}",
+                files,
+                dirs,
+                path,
+                format_size(bytes)
+            );
+            match format {
+                OutputFormat::Text => {
+                    if !cli.quiet {
+                        eprintln!("{}", message);
+                    }
+                }
+                OutputFormat::Json => print_json(&CliOk {
+                    status: "ok",
+                    message,
+                }),
+            }
+            0
+        }
+        Err(e) => {
+            let code = provider_error_to_exit_code(&e);
+            // The walk deletes as it goes, so an error here leaves the tree
+            // partway through the plan. Say so instead of implying nothing moved.
+            print_error(
+                format,
+                &format!("rm failed part way through the plan: {}", e),
+                code,
+            );
+            code
+        }
+    }
 }
 
 async fn cmd_rm(
@@ -29649,7 +29984,9 @@ async fn cmd_rm(
     };
 
     let path = &resolve_cli_remote_path(&initial_path, path);
-    // Block recursive delete on root: prevents wiping entire bucket/account
+    // Block recursive delete on root: prevents wiping entire bucket/account.
+    // Filters do not unlock it: a mistyped `--include` would still be a
+    // whole-remote sweep, and the blast radius is what this guard is about.
     let normalized = path.trim_matches('/');
     if recursive && normalized.is_empty() {
         print_error(
@@ -29661,11 +29998,14 @@ async fn cmd_rm(
         return 1;
     }
 
+    let filter = RmFilter::new(cli, path);
+
     // A dry-run runs the root guard above (so `--dry-run` against '/' still
     // refuses) but never prompts and never blocks on a non-TTY: previewing a
     // delete is not a delete, and it has to stay usable from a script.
     if dry_run {
-        let code = run_rm_dry_run(&mut provider, path, recursive, force, cli, format).await;
+        let code =
+            run_rm_dry_run(&mut provider, path, recursive, force, &filter, cli, format).await;
         let _ = provider.disconnect().await;
         return code;
     }
@@ -29673,7 +30013,14 @@ async fn cmd_rm(
     // Confirmation for recursive delete (unless --force).
     if recursive && !force {
         if std::io::stdin().is_terminal() {
-            eprint!("Recursively delete '{}'? [y/N]: ", path);
+            if filter.is_active() {
+                eprint!(
+                    "Recursively delete the entries matching the filters under '{}'? [y/N]: ",
+                    path
+                );
+            } else {
+                eprint!("Recursively delete '{}'? [y/N]: ", path);
+            }
             let _ = io::stderr().flush();
             let mut input = String::new();
             let _ = io::stdin().read_line(&mut input);
@@ -29697,6 +30044,17 @@ async fn cmd_rm(
             let _ = provider.disconnect().await;
             return 5;
         }
+    }
+
+    // A filtered delete cannot go through `rmdir_recursive`: the provider takes
+    // one path and erases everything under it, with no notion of scope. Build
+    // the very plan `--dry-run` would print, then execute exactly that, so the
+    // preview and the real run can never drift apart.
+    if filter.is_active() {
+        let code =
+            run_filtered_rm(&mut provider, path, recursive, force, &filter, cli, format).await;
+        let _ = provider.disconnect().await;
+        return code;
     }
 
     let result = if recursive {
@@ -58256,6 +58614,132 @@ mod tests {
     use super::*;
     use ftp_client_gui_lib::profile_loader::insert_profile_option;
     use serde_json::json;
+
+    /// One directory of a walk, as `build_rm_dry_run_plan` would have recorded it.
+    fn walk_dir(
+        path: &str,
+        parent: Option<usize>,
+        depth: usize,
+        children_total: usize,
+        children_removed: usize,
+    ) -> RmWalkDir {
+        RmWalkDir {
+            path: path.to_string(),
+            parent,
+            depth,
+            children_total,
+            children_removed,
+            listing_complete: true,
+        }
+    }
+
+    fn dir_paths(entries: &[DryRunEntry]) -> Vec<&str> {
+        entries.iter().map(|e| e.path.as_str()).collect()
+    }
+
+    #[test]
+    fn unfiltered_plan_removes_every_directory_in_discovery_order() {
+        let mut dirs = vec![
+            walk_dir("/root", None, 0, 1, 0),
+            walk_dir("/root/keep", Some(0), 1, 0, 0),
+        ];
+        let entries = plan_dir_entries(&mut dirs, false);
+        assert_eq!(dir_paths(&entries), vec!["/root", "/root/keep"]);
+        assert!(entries.iter().all(|e| e.is_dir));
+    }
+
+    #[test]
+    fn filtered_plan_spares_a_directory_that_still_holds_unmatched_files() {
+        // /root holds one matched file and one directory that keeps a file.
+        let mut dirs = vec![
+            walk_dir("/root", None, 0, 2, 1),
+            walk_dir("/root/mixed", Some(0), 1, 2, 1),
+        ];
+        let entries = plan_dir_entries(&mut dirs, true);
+        assert!(
+            entries.is_empty(),
+            "no directory may go: /root/mixed keeps a file, so /root keeps /root/mixed"
+        );
+    }
+
+    #[test]
+    fn filtered_plan_removes_emptied_directories_deepest_first() {
+        // Everything under /root matched, so the emptied tree collapses upward.
+        let mut dirs = vec![
+            walk_dir("/root", None, 0, 1, 0),
+            walk_dir("/root/a", Some(0), 1, 1, 0),
+            walk_dir("/root/a/b", Some(1), 2, 3, 3),
+        ];
+        let entries = plan_dir_entries(&mut dirs, true);
+        assert_eq!(dir_paths(&entries), vec!["/root/a/b", "/root/a", "/root"]);
+    }
+
+    #[test]
+    fn filtered_plan_leaves_an_already_empty_directory_alone() {
+        // Nothing in it matched because nothing was in it. `rm --include "*.snap"`
+        // was not an invitation to prune empty directories.
+        let mut dirs = vec![walk_dir("/root", None, 0, 0, 0)];
+        assert!(plan_dir_entries(&mut dirs, true).is_empty());
+    }
+
+    #[test]
+    fn filtered_plan_keeps_a_directory_whose_listing_was_truncated() {
+        // The cap cut the listing short, so children_total is a lower bound and
+        // "everything in it is going" cannot be trusted.
+        let mut dirs = vec![walk_dir("/root", None, 0, 2, 2)];
+        dirs[0].listing_complete = false;
+        assert!(plan_dir_entries(&mut dirs, true).is_empty());
+    }
+
+    #[test]
+    fn rm_filter_is_inactive_without_flags_and_matches_everything() {
+        let filter = RmFilter {
+            predicate: None,
+            files_from: None,
+            root: "/root".to_string(),
+        };
+        assert!(!filter.is_active());
+        assert!(filter.matches_file("anything.txt", "/root/anything.txt", 1, None));
+    }
+
+    #[test]
+    fn rm_filter_matches_globs_on_the_basename_not_the_path() {
+        let filter = RmFilter {
+            predicate: Some(Box::new(|name, _size, _mtime| name.ends_with(".snap"))),
+            files_from: None,
+            root: "/root".to_string(),
+        };
+        assert!(filter.is_active());
+        assert!(filter.matches_file("app.snap", "/root/v3/app.snap", 10, None));
+        assert!(!filter.matches_file("app.deb", "/root/v3/app.deb", 10, None));
+    }
+
+    #[test]
+    fn rm_filter_ands_files_from_with_the_predicate() {
+        let mut list = std::collections::HashSet::new();
+        list.insert("v3/app.snap".to_string());
+        let filter = RmFilter {
+            predicate: Some(Box::new(|name, _size, _mtime| name.ends_with(".snap"))),
+            files_from: Some(list),
+            root: "/root".to_string(),
+        };
+        // In the list and matching the glob.
+        assert!(filter.matches_file("app.snap", "/root/v3/app.snap", 10, None));
+        // Matches the glob but is not in the list.
+        assert!(!filter.matches_file("other.snap", "/root/v3/other.snap", 10, None));
+    }
+
+    #[test]
+    fn rm_filter_rejects_a_files_from_path_that_escapes_the_root() {
+        let mut list = std::collections::HashSet::new();
+        list.insert("../outside.txt".to_string());
+        let filter = RmFilter {
+            predicate: None,
+            files_from: Some(list),
+            root: "/root".to_string(),
+        };
+        assert!(!filter.matches_file("outside.txt", "/root/../outside.txt", 1, None));
+    }
 
     fn argv(parts: &[&str]) -> Vec<String> {
         std::iter::once("aeroftp-cli".to_string())
