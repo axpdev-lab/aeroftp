@@ -16,7 +16,7 @@ use quick_xml::events::Event;
 use quick_xml::Reader;
 use reqwest::{Client, Method, StatusCode};
 use secrecy::ExposeSecret;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
@@ -4211,8 +4211,14 @@ impl StorageProvider for S3Provider {
     /// List every version AND delete marker under `prefix`, grouped by key
     /// (powers the trash browse). Unlike `list_versions` (per-key, drops
     /// markers), this keeps `<DeleteMarker>` elements and does not filter to an
-    /// exact key. When `include_noncurrent` is false, only delete markers and
-    /// the latest version of each key are returned.
+    /// exact key.
+    ///
+    /// A key is *soft-deleted* when its current version is a delete marker. The
+    /// trash is that set: the markers plus the older versions still recoverable
+    /// underneath them. With `include_noncurrent` the sweep widens to the older
+    /// versions of live keys too. The live current version of a key is never
+    /// returned either way, because `empty_object_versions` hard-deletes every
+    /// entry from this list.
     async fn list_object_versions(
         &mut self,
         prefix: &str,
@@ -4272,10 +4278,7 @@ impl StorageProvider for S3Provider {
             }
         }
 
-        if !include_noncurrent {
-            // Trash view: only delete markers and the current version of each key.
-            all_entries.retain(|e| e.is_delete_marker || e.is_latest);
-        }
+        retain_trash_entries(&mut all_entries, include_noncurrent);
 
         info!(
             "S3 ListObjectVersions: {} entries under prefix '{}' (include_noncurrent={})",
@@ -4893,6 +4896,30 @@ fn build_batch_delete_xml(chunk: &[(String, Option<String>)]) -> Vec<u8> {
 /// One parsed page of a ListObjectVersions response: the entries plus the
 /// pagination markers `(entries, is_truncated, next_key_marker, next_version_id_marker)`.
 type VersionsPage = (Vec<TrashEntry>, bool, Option<String>, Option<String>);
+
+/// Narrow a raw ListObjectVersions listing down to the trash.
+///
+/// A key is soft-deleted when its current version is a delete marker; the trash
+/// is those markers plus the older versions recoverable underneath them.
+/// `include_noncurrent` widens the sweep to the older versions of live keys.
+///
+/// The live current version of a key is dropped in both modes: callers purge
+/// every surviving entry by version id, so keeping one would destroy a file
+/// nobody deleted.
+fn retain_trash_entries(entries: &mut Vec<TrashEntry>, include_noncurrent: bool) {
+    let soft_deleted: HashSet<String> = entries
+        .iter()
+        .filter(|e| e.is_latest && e.is_delete_marker)
+        .map(|e| e.key.clone())
+        .collect();
+
+    entries.retain(|e| {
+        if e.is_latest && !e.is_delete_marker {
+            return false;
+        }
+        include_noncurrent || soft_deleted.contains(&e.key)
+    });
+}
 
 /// Parse one page of a ListVersionsResult document into `TrashEntry` rows.
 ///
@@ -6069,6 +6096,67 @@ mod tests {
         assert!(!cat.is_delete_marker);
         assert!(cat.is_latest);
         assert_eq!(cat.size, 512000);
+    }
+
+    /// Trash-01b: the trash never carries a live current version. Whatever
+    /// survives `retain_trash_entries` is hard-deleted by version id, so a live
+    /// `photos/cat.jpg` reaching the sweep would destroy a file nobody deleted.
+    #[test]
+    fn retain_trash_entries_never_yields_a_live_current_version() {
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<ListVersionsResult>
+    <IsTruncated>false</IsTruncated>
+    <DeleteMarker>
+        <Key>docs/report.pdf</Key>
+        <VersionId>del-marker-001</VersionId>
+        <IsLatest>true</IsLatest>
+        <LastModified>2026-07-09T10:00:00.000Z</LastModified>
+    </DeleteMarker>
+    <Version>
+        <Key>docs/report.pdf</Key>
+        <VersionId>v-002</VersionId>
+        <IsLatest>false</IsLatest>
+        <LastModified>2026-07-08T09:00:00.000Z</LastModified>
+        <Size>2048</Size>
+    </Version>
+    <Version>
+        <Key>photos/cat.jpg</Key>
+        <VersionId>v-100</VersionId>
+        <IsLatest>true</IsLatest>
+        <LastModified>2026-07-07T08:00:00.000Z</LastModified>
+        <Size>512000</Size>
+    </Version>
+    <Version>
+        <Key>photos/cat.jpg</Key>
+        <VersionId>v-099</VersionId>
+        <IsLatest>false</IsLatest>
+        <LastModified>2026-07-06T08:00:00.000Z</LastModified>
+        <Size>499000</Size>
+    </Version>
+</ListVersionsResult>"#;
+        let (raw, _, _, _) = parse_object_versions_page(xml).expect("parse should succeed");
+        assert_eq!(raw.len(), 4);
+
+        // Default trash: the soft-deleted key only (its marker + recoverable body).
+        let mut trash = raw.clone();
+        retain_trash_entries(&mut trash, false);
+        let ids: Vec<&str> = trash.iter().map(|e| e.version_id.as_str()).collect();
+        assert_eq!(ids, vec!["del-marker-001", "v-002"]);
+
+        // Widened sweep: the older version of the live key joins, the live one never does.
+        let mut all = raw.clone();
+        retain_trash_entries(&mut all, true);
+        let ids: Vec<&str> = all.iter().map(|e| e.version_id.as_str()).collect();
+        assert_eq!(ids, vec!["del-marker-001", "v-002", "v-099"]);
+
+        for include_noncurrent in [false, true] {
+            let mut entries = raw.clone();
+            retain_trash_entries(&mut entries, include_noncurrent);
+            assert!(
+                !entries.iter().any(|e| e.version_id == "v-100"),
+                "live current version leaked into the trash (include_noncurrent={include_noncurrent})"
+            );
+        }
     }
 
     /// Trash-02: `build_batch_delete_xml` emits `<VersionId>` for version-aware

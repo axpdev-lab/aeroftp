@@ -4327,7 +4327,7 @@ enum VersionCommands {
         /// Key prefix to scope the trash (default: whole bucket)
         #[arg(default_value = "")]
         prefix: String,
-        /// Include older, non-current versions (not just delete markers + latest)
+        /// Also list older versions of files that are still live
         #[arg(long)]
         all: bool,
     },
@@ -4339,7 +4339,7 @@ enum VersionCommands {
         /// Key prefix to scope the trash (default: whole bucket)
         #[arg(default_value = "")]
         prefix: String,
-        /// Include older, non-current versions in the sweep
+        /// Also purge older versions of files that are still live (their current version is kept)
         #[arg(long)]
         all: bool,
         /// Preview the count and bytes without deleting anything
