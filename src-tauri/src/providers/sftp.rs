@@ -725,9 +725,11 @@ impl SftpProvider {
         self.sftp.as_mut().ok_or(ProviderError::NotConnected)
     }
 
-    /// Convert russh-sftp metadata to RemoteEntry
+    /// Convert russh-sftp metadata to RemoteEntry.
+    ///
+    /// Free of `&self` so `list` can call it from inside the concurrent
+    /// per-entry futures without capturing the provider.
     fn metadata_to_entry(
-        &self,
         name: String,
         path: String,
         metadata: &russh_sftp::protocol::FileAttributes,
@@ -1217,8 +1219,14 @@ impl StorageProvider for SftpProvider {
             })
         })?;
 
-        let mut result = Vec::new();
-
+        // Build the work list from the READDIR reply without any further I/O.
+        // Every entry's own attributes are already in hand; a follow-up request
+        // is needed only for the attr-less-server recovery and for real
+        // symlinks. Collect them first, then resolve those follow-ups
+        // concurrently over the one SFTP channel below instead of awaiting one
+        // entry at a time (lever 2). `entry.metadata()` returns owned, Copy
+        // attributes, so nothing borrows the directory reader past this loop.
+        let mut pending = Vec::new();
         for entry in entries {
             let name = entry.file_name();
 
@@ -1246,69 +1254,95 @@ impl StorageProvider for SftpProvider {
                 format!("{}/{}", full_path.trim_end_matches('/'), name)
             };
 
-            let readdir_attrs = entry.metadata();
-            let mut remote_entry =
-                self.metadata_to_entry(name.clone(), entry_path.clone(), &readdir_attrs);
-
-            // Minimal/embedded SFTP servers (some NAS firmware) omit file
-            // attributes in READDIR replies. Without permission bits neither
-            // our code nor russh-sftp's file_type() can tell a directory from
-            // a file, so metadata_to_entry reports it as a file and the
-            // directory becomes unenterable. Recover with an explicit STAT,
-            // which these servers answer with full attributes (FileZilla
-            // fzssh 1.2.1 / rclone sftp behaviour for capability-poor
-            // servers). Bounded to the attr-less case so well-behaved
-            // servers pay no extra round-trip.
-            if remote_entry.permissions.is_none() {
-                if let Ok(stat) = sftp.metadata(&entry_path).await {
-                    remote_entry = self.metadata_to_entry(name.clone(), entry_path.clone(), &stat);
-                }
-            }
-
-            // Check if it's a symlink. The READDIR attributes above already
-            // carry the entry's own mode (lstat semantics), so a well-behaved
-            // server answers this for free. Only when the server sent no
-            // file-type bits do we spend an SSH_FXP_LSTAT: note that
-            // `remote_entry` may by then hold the recovered STAT attributes,
-            // which follow the link and so can never show S_IFLNK. Paying one
-            // round-trip per entry here used to dominate every recursive walk.
-            let is_symlink = match readdir_attrs.permissions.and_then(symlink_bit) {
-                Some(flag) => flag,
-                None => sftp
-                    .symlink_metadata(&entry_path)
-                    .await
-                    .ok()
-                    .and_then(|link_meta| link_meta.permissions)
-                    .and_then(symlink_bit)
-                    .unwrap_or(false),
-            };
-
-            if is_symlink {
-                remote_entry.is_symlink = true;
-                if let Ok(target) = sftp.read_link(&entry_path).await {
-                    remote_entry.link_target = Some(target);
-                }
-                // Follow the symlink to determine the real type (file vs directory)
-                // metadata() follows symlinks, unlike symlink_metadata()
-                if let Ok(target_meta) = sftp.metadata(&entry_path).await {
-                    if let Some(target_perms) = target_meta.permissions {
-                        remote_entry.is_dir = (target_perms & 0o40000) != 0;
-                    }
-                    // Update size from target if available
-                    if let Some(target_size) = target_meta.size {
-                        remote_entry.size = target_size;
-                    }
-                }
-            }
-
-            result.push(remote_entry);
+            pending.push((name, entry_path, entry.metadata()));
         }
 
-        // Sort: directories first, then alphabetically
+        // Max metadata follow-ups in flight over the single SFTP channel.
+        // russh-sftp tags each request with an id from an atomic counter and
+        // demultiplexes replies by id, and every SftpSession method takes
+        // &self, so these pipeline on one connection with no extra sockets and
+        // no trait change. 48 matches rclone's sftp backend default. After
+        // lever 1 a well-behaved server issues no follow-up at all for a plain
+        // file or directory, so this only bites for symlink-heavy trees and
+        // for capability-poor servers, which is exactly where the serial walk
+        // used to stall.
+        const LIST_FOLLOWUP_CONCURRENCY: usize = 48;
+
+        use futures_util::stream::StreamExt;
+        let mut result: Vec<RemoteEntry> = futures_util::stream::iter(pending)
+            .map(|(name, entry_path, readdir_attrs)| async move {
+                let mut remote_entry =
+                    Self::metadata_to_entry(name.clone(), entry_path.clone(), &readdir_attrs);
+
+                // Minimal/embedded SFTP servers (some NAS firmware) omit file
+                // attributes in READDIR replies. Without permission bits neither
+                // our code nor russh-sftp's file_type() can tell a directory
+                // from a file, so metadata_to_entry reports it as a file and the
+                // directory becomes unenterable. Recover with an explicit STAT,
+                // which these servers answer with full attributes (FileZilla
+                // fzssh 1.2.1 / rclone sftp behaviour for capability-poor
+                // servers). Bounded to the attr-less case so well-behaved
+                // servers pay no extra round-trip.
+                if remote_entry.permissions.is_none() {
+                    if let Ok(stat) = sftp.metadata(&entry_path).await {
+                        remote_entry =
+                            Self::metadata_to_entry(name.clone(), entry_path.clone(), &stat);
+                    }
+                }
+
+                // Check if it's a symlink. The READDIR attributes already carry
+                // the entry's own mode (lstat semantics), so a well-behaved
+                // server answers this for free. Only when the server sent no
+                // file-type bits do we spend an SSH_FXP_LSTAT: note that
+                // `remote_entry` may by then hold the recovered STAT attributes,
+                // which follow the link and so can never show S_IFLNK.
+                let is_symlink = match readdir_attrs.permissions.and_then(symlink_bit) {
+                    Some(flag) => flag,
+                    None => sftp
+                        .symlink_metadata(&entry_path)
+                        .await
+                        .ok()
+                        .and_then(|link_meta| link_meta.permissions)
+                        .and_then(symlink_bit)
+                        .unwrap_or(false),
+                };
+
+                if is_symlink {
+                    remote_entry.is_symlink = true;
+                    if let Ok(target) = sftp.read_link(&entry_path).await {
+                        remote_entry.link_target = Some(target);
+                    }
+                    // Follow the symlink to determine the real type (file vs directory)
+                    // metadata() follows symlinks, unlike symlink_metadata()
+                    if let Ok(target_meta) = sftp.metadata(&entry_path).await {
+                        if let Some(target_perms) = target_meta.permissions {
+                            remote_entry.is_dir = (target_perms & 0o40000) != 0;
+                        }
+                        // Update size from target if available
+                        if let Some(target_size) = target_meta.size {
+                            remote_entry.size = target_size;
+                        }
+                    }
+                }
+
+                remote_entry
+            })
+            .buffer_unordered(LIST_FOLLOWUP_CONCURRENCY)
+            .collect()
+            .await;
+
+        // Sort: directories first, then by name. buffer_unordered yields in
+        // completion order, so the tiebreak on the exact name (not only the
+        // lowercased one) keeps the output fully deterministic no matter which
+        // follow-up finished first.
         result.sort_by(|a, b| match (a.is_dir, b.is_dir) {
             (true, false) => std::cmp::Ordering::Less,
             (false, true) => std::cmp::Ordering::Greater,
-            _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
+            _ => a
+                .name
+                .to_lowercase()
+                .cmp(&b.name.to_lowercase())
+                .then_with(|| a.name.cmp(&b.name)),
         });
 
         tracing::debug!("SFTP: Listed {} entries", result.len());
@@ -1939,7 +1973,7 @@ impl StorageProvider for SftpProvider {
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_else(|| full_path.clone());
 
-        let mut entry = self.metadata_to_entry(name, full_path.clone(), &metadata);
+        let mut entry = Self::metadata_to_entry(name, full_path.clone(), &metadata);
 
         // Check for symlink
         if let Ok(link_meta) = sftp.symlink_metadata(&full_path).await {
@@ -2117,7 +2151,7 @@ impl StorageProvider for SftpProvider {
                 };
 
                 let remote_entry =
-                    self.metadata_to_entry(name.clone(), entry_path.clone(), &entry.metadata());
+                    Self::metadata_to_entry(name.clone(), entry_path.clone(), &entry.metadata());
 
                 if remote_entry.is_dir {
                     dirs_to_scan.push(entry_path.clone());
