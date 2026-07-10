@@ -148,7 +148,7 @@ jobs:
       # to run (no build, just text parsing). Linux-only because the
       # source files are identical across the matrix; one check covers
       # the whole release.
-      - name: R10 manifest version match (Cargo.toml, package.json, tauri.conf.json, snapcraft.yaml)
+      - name: R10 manifest version match (Cargo.toml, package.json, tauri.conf.json, snapcraft.yaml, and the tag on tag builds)
         if: matrix.target == 'linux'
         shell: bash
         run: |
@@ -163,6 +163,19 @@ jobs:
           if [ "$CARGO" != "$PKG" ] || [ "$CARGO" != "$TAURI" ] || [ "$CARGO" != "$SNAP" ]; then
             echo "::error::R10 version drift: cargo=$CARGO package.json=$PKG tauri.conf.json=$TAURI snapcraft.yaml=$SNAP"
             exit 1
+          fi
+          # On a tag build the four manifests must also equal the tag itself. R10
+          # previously compared them only to each other, so a release tagged vX.Y.Z
+          # with every manifest left at the prior version passed in silence and
+          # shipped artifacts labelled with the wrong version. The manifests are
+          # already proven equal above, so comparing one of them to the tag suffices.
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            TAG="${GITHUB_REF_NAME#v}"
+            echo "tag:               $TAG"
+            if [ "$CARGO" != "$TAG" ]; then
+              echo "::error::R10 tag drift: manifests=$CARGO but tag=$TAG"
+              exit 1
+            fi
           fi
 
       # Quality gates: run on Linux only to avoid duplicating work across platforms
@@ -572,6 +585,36 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+
+      # Guard the snap version BEFORE any build. This job has no `needs:` and runs
+      # in parallel with the R10 gate in build-and-release, so an R10 failure there
+      # cannot stop this job from having already built and uploaded a snap. That is
+      # exactly how v4.0.9 shipped: snapcraft.yaml was left at 4.0.8 and a
+      # Sigstore-signed 4.0.8 snap was published as an asset of the 4.0.9 release.
+      # A `needs: build-and-release` would fix it but serialize the whole pipeline
+      # (the snap would wait for every platform) to pay for a one-second check, so
+      # the guard lives here and fails in a second instead. No node yet (this runs
+      # before Setup Node.js), so both versions are parsed with grep/sed.
+      - name: R10-snap version guard (snapcraft.yaml vs tag)
+        shell: bash
+        run: |
+          SNAP=$(grep -m1 '^version:' snap/snapcraft.yaml | sed "s/.*['\"]\(.*\)['\"].*/\1/")
+          echo "snapcraft.yaml: $SNAP"
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            TAG="${GITHUB_REF_NAME#v}"
+            echo "tag:            $TAG"
+            if [ "$SNAP" != "$TAG" ]; then
+              echo "::error::snap version drift: snapcraft.yaml=$SNAP does not match tag=$TAG"
+              exit 1
+            fi
+          else
+            PKG=$(grep -m1 '^  "version"' package.json | sed 's/.*: *"\([^"]*\)".*/\1/')
+            echo "package.json:   $PKG"
+            if [ -n "$PKG" ] && [ "$SNAP" != "$PKG" ]; then
+              echo "::error::snap version drift: snapcraft.yaml=$SNAP does not match package.json=$PKG"
+              exit 1
+            fi
+          fi
 
       - name: Setup Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
