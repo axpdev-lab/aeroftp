@@ -3590,7 +3590,10 @@
                     "losslessHint": "Reversibil: pixelii sunt pastrati exact la salvarea intr-un format fara pierderi",
                     "lossyHint": "Modifica pixelii: modificarea nu poate fi anulata exact",
                     "formatLosslessNote": "Format fara pierderi: pixelii sunt stocati exact. Editarile cu pierderi de mai sus modifica totusi imaginea.",
-                    "formatLossyNote": "Format cu pierderi: recodificarea elimina unele date din imagine, inclusiv editarile fara pierderi."
+                    "formatLossyNote": "Format cu pierderi: recodificarea elimina unele date din imagine, inclusiv editarile fara pierderi.",
+                    "reencodeWarnTitle": "Conversie dintr-un format cu pierderi în altul cu pierderi",
+                    "reencodeWarnNote": "Convertirea unui format cu pierderi în altul recodifică imaginea și adaugă o a doua generație permanentă de pierdere a calității. Păstrarea formatului original o evită.",
+                    "reencodeAck": "Înțeleg și vreau să recodific oricum"
                 },
                 "toggleTransparencyBg": "Fundal de transparență (comută)"
             },

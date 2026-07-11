@@ -3590,7 +3590,10 @@
                     "losslessHint": "Reversibel: piksler bevares noyaktig nar de lagres i et tapsfritt format",
                     "lossyHint": "Endrer piksler: endringen kan ikke angres noyaktig",
                     "formatLosslessNote": "Tapsfritt format: piksler lagres noyaktig. Redigeringer med tap ovenfor endrer likevel bildet.",
-                    "formatLossyNote": "Format med tap: omkoding forkaster noen bildedata, ogsa tapsfrie redigeringer."
+                    "formatLossyNote": "Format med tap: omkoding forkaster noen bildedata, ogsa tapsfrie redigeringer.",
+                    "reencodeWarnTitle": "Konvertering fra tapsformat til tapsformat",
+                    "reencodeWarnNote": "Å konvertere ett tapsformat til et annet omkoder bildet og legger til enda en permanent generasjon med kvalitetstap. Å beholde originalformatet unngår det.",
+                    "reencodeAck": "Jeg forstår og vil omkode likevel"
                 },
                 "toggleTransparencyBg": "Gjennomsiktighetsbakgrunn (veksle)"
             },

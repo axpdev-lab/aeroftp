@@ -3590,7 +3590,10 @@
                     "losslessHint": "Obratimo: pikselite se zapazvat tochno pri zapazvane vuv format bez zaguba",
                     "lossyHint": "Promenya pikselite: promyanata ne mozhe da se otmeni tochno",
                     "formatLosslessNote": "Format bez zaguba: pikselite se suhranyavat tochno. Redakciite sus zaguba po-gore vse pak promenyat izobrazhenieto.",
-                    "formatLossyNote": "Format sus zaguba: povtornoto kodirane othvurlya chast ot dannite na izobrazhenieto, vklyuchitelno redakciite bez zaguba."
+                    "formatLossyNote": "Format sus zaguba: povtornoto kodirane othvurlya chast ot dannite na izobrazhenieto, vklyuchitelno redakciite bez zaguba.",
+                    "reencodeWarnTitle": "Преобразуване от загубен към загубен формат",
+                    "reencodeWarnNote": "Преобразуването от един формат със загуби към друг прекодира изображението и добавя второ, необратимо поколение загуба на качество. Запазването на оригиналния формат го избягва.",
+                    "reencodeAck": "Разбирам и въпреки това искам да прекодирам"
                 },
                 "toggleTransparencyBg": "Фон за прозрачност (превключване)"
             },

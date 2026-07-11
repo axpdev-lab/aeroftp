@@ -3590,7 +3590,10 @@
                     "losslessHint": "Boleh balik: piksel dikekalkan tepat apabila disimpan ke format tanpa kehilangan",
                     "lossyHint": "Mengubah piksel: perubahan tidak boleh dibuat asal dengan tepat",
                     "formatLosslessNote": "Format tanpa kehilangan: piksel disimpan tepat. Suntingan dengan kehilangan di atas tetap mengubah imej.",
-                    "formatLossyNote": "Format dengan kehilangan: pengekodan semula membuang sebahagian data imej, termasuk suntingan tanpa kehilangan."
+                    "formatLossyNote": "Format dengan kehilangan: pengekodan semula membuang sebahagian data imej, termasuk suntingan tanpa kehilangan.",
+                    "reencodeWarnTitle": "Penukaran lossy ke lossy",
+                    "reencodeWarnNote": "Menukar satu format lossy kepada format lossy lain akan mengekod semula imej dan menambah generasi kehilangan kualiti kedua yang kekal. Mengekalkan format asal mengelakkannya.",
+                    "reencodeAck": "Saya faham dan tetap mahu mengekod semula"
                 },
                 "toggleTransparencyBg": "Latar kelutsinaran (kitar)"
             },

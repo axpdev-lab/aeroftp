@@ -235,6 +235,18 @@ export function formatLossKind(format: string): LossKind {
     return FORMAT_LOSS[format.toLowerCase()] ?? 'lossy';
 }
 
+/** True when saving a lossy source as a DIFFERENT lossy format stacks a
+ * second generation of loss (the guarded lossy->lossy re-encode). Pass-through
+ * (same format) and any lossless target add no new loss; a lossless source only
+ * ever earns an informational note, never this guard. */
+export function isLossyReencode(sourceFormat: string, targetFormat: string): boolean {
+    const src = sourceFormat.toLowerCase();
+    const tgt = targetFormat.toLowerCase();
+    if (src === tgt) return false; // pass-through, no conversion
+    if (formatLossKind(tgt) === 'lossless') return false; // lossless target: no NEW loss
+    return formatLossKind(src) === 'lossy'; // lossy -> lossy re-encode
+}
+
 // Individual operations. Geometry permutations (rotate by a right angle, flip)
 // and a colour inversion are bijective, so they preserve every pixel value;
 // resampling (resize) and colour math (brightness/contrast/hue/blur/sharpen/

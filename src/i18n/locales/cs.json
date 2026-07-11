@@ -3590,7 +3590,10 @@
                     "losslessHint": "Vratne: pixely zustanou presne zachovany pri ulozeni do bezztratoveho formatu",
                     "lossyHint": "Meni pixely: zmenu nelze presne vratit",
                     "formatLosslessNote": "Bezztratovy format: pixely se ukladaji presne. Ztratove upravy vyse obraz presto zmeni.",
-                    "formatLossyNote": "Ztratovy format: opetovne kodovani zahodi cast obrazovych dat, i bezztratove upravy."
+                    "formatLossyNote": "Ztratovy format: opetovne kodovani zahodi cast obrazovych dat, i bezztratove upravy.",
+                    "reencodeWarnTitle": "Převod ze ztrátového na ztrátový formát",
+                    "reencodeWarnNote": "Převod jednoho ztrátového formátu na jiný obrázek znovu zakóduje a přidá druhou, trvalou generaci ztráty kvality. Zachování původního formátu tomu předejde.",
+                    "reencodeAck": "Rozumím a přesto chci znovu zakódovat"
                 },
                 "toggleTransparencyBg": "Pozadí průhlednosti (přepnout)"
             },

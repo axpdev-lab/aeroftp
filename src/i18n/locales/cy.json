@@ -3590,7 +3590,10 @@
                     "losslessHint": "Cildroadwy: cedwir picseli yn union wrth gadw mewn fformat di-golled",
                     "lossyHint": "Yn newid picseli: ni ellir dadwneud y newid yn union",
                     "formatLosslessNote": "Fformat di-golled: cedwir picseli yn union. Mae golygiadau colledus uchod yn dal i newid y ddelwedd.",
-                    "formatLossyNote": "Fformat colledus: mae ail-amgodio yn taflu rhywfaint o ddata'r ddelwedd, gan gynnwys golygiadau di-golled."
+                    "formatLossyNote": "Fformat colledus: mae ail-amgodio yn taflu rhywfaint o ddata'r ddelwedd, gan gynnwys golygiadau di-golled.",
+                    "reencodeWarnTitle": "Trosi colledus i colledus",
+                    "reencodeWarnNote": "Mae trosi un fformat colledus i un arall yn ail-amgodio'r ddelwedd ac yn ychwanegu ail genhedlaeth barhaol o golled. Mae cadw'r fformat gwreiddiol yn ei osgoi.",
+                    "reencodeAck": "Rwy'n deall ac eisiau ail-amgodio beth bynnag"
                 },
                 "toggleTransparencyBg": "Cefndir tryloywder (cylchdroi)"
             },

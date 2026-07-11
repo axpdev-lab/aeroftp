@@ -3590,7 +3590,10 @@
                     "losslessHint": "Inaweza kutenduliwa: pikseli huhifadhiwa sawasawa zinapohifadhiwa katika muundo bila hasara",
                     "lossyHint": "Hubadilisha pikseli: badiliko haliwezi kutenduliwa kwa usahihi",
                     "formatLosslessNote": "Muundo bila hasara: pikseli huhifadhiwa sawasawa. Mahariri yenye hasara hapo juu bado hubadilisha picha.",
-                    "formatLossyNote": "Muundo wenye hasara: kusimba upya hutupa baadhi ya data ya picha, ikijumuisha mahariri bila hasara."
+                    "formatLossyNote": "Muundo wenye hasara: kusimba upya hutupa baadhi ya data ya picha, ikijumuisha mahariri bila hasara.",
+                    "reencodeWarnTitle": "Ubadilishaji kutoka lossy hadi lossy",
+                    "reencodeWarnNote": "Kubadilisha muundo mmoja wa lossy hadi mwingine husimbua upya picha na kuongeza kizazi cha pili cha kudumu cha upotevu wa ubora. Kuhifadhi muundo asili huepuka hilo.",
+                    "reencodeAck": "Naelewa na bado nataka kusimba upya"
                 },
                 "toggleTransparencyBg": "Mandharinyuma ya uwazi (zungusha)"
             },

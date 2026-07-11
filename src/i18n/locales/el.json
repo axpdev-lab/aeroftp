@@ -3590,7 +3590,10 @@
                     "losslessHint": "Anastrepsimo: ta pixel diatirountai akrivos otan apothikevontai se morfi xoris apoleies",
                     "lossyHint": "Allazei ta pixel: i allagi den mporei na anairethei me akriveia",
                     "formatLosslessNote": "Morfi xoris apoleies: ta pixel apothikevontai akrivos. Oi epexergasies me apoleies parapano allazoun ostoso tin eikona.",
-                    "formatLossyNote": "Morfi me apoleies: i epanakodikopoiisi aporriptei orismena dedomena tis eikonas, kai tis epexergasies xoris apoleies."
+                    "formatLossyNote": "Morfi me apoleies: i epanakodikopoiisi aporriptei orismena dedomena tis eikonas, kai tis epexergasies xoris apoleies.",
+                    "reencodeWarnTitle": "Μετατροπή από απωλεστική σε απωλεστική",
+                    "reencodeWarnNote": "Η μετατροπή μιας απωλεστικής μορφής σε άλλη επανακωδικοποιεί την εικόνα και προσθέτει μια δεύτερη, μόνιμη γενιά απώλειας ποιότητας. Η διατήρηση της αρχικής μορφής το αποφεύγει.",
+                    "reencodeAck": "Το κατάλαβα και θέλω να επανακωδικοποιήσω ούτως ή άλλως"
                 },
                 "toggleTransparencyBg": "Φόντο διαφάνειας (εναλλαγή)"
             },

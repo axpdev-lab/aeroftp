@@ -3590,7 +3590,10 @@
                     "losslessHint": "Odwracalne: piksele sa zachowywane dokladnie przy zapisie w formacie bezstratnym",
                     "lossyHint": "Zmienia piksele: zmiany nie mozna dokladnie cofnac",
                     "formatLosslessNote": "Format bezstratny: piksele sa przechowywane dokladnie. Stratne edycje powyzej i tak zmieniaja obraz.",
-                    "formatLossyNote": "Format stratny: ponowne kodowanie odrzuca czesc danych obrazu, takze edycje bezstratne."
+                    "formatLossyNote": "Format stratny: ponowne kodowanie odrzuca czesc danych obrazu, takze edycje bezstratne.",
+                    "reencodeWarnTitle": "Konwersja z formatu stratnego na stratny",
+                    "reencodeWarnNote": "Konwersja jednego formatu stratnego na inny ponownie koduje obraz i dodaje drugą, trwałą generację utraty jakości. Zachowanie oryginalnego formatu pozwala tego uniknąć.",
+                    "reencodeAck": "Rozumiem i mimo to chcę ponownie zakodować"
                 },
                 "toggleTransparencyBg": "Tło przezroczystości (przełącz)"
             },

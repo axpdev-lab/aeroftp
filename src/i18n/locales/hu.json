@@ -3590,7 +3590,10 @@
                     "losslessHint": "Visszafordithato: a keppontok pontosan megmaradnak vesztesegmentes formatumba mentve",
                     "lossyHint": "Modositja a keppontokat: a valtozas nem vonhato vissza pontosan",
                     "formatLosslessNote": "Vesztesegmentes formatum: a keppontok pontosan tarolodnak. A fenti veszteseges szerkesztesek ettol meg modositjak a kepet.",
-                    "formatLossyNote": "Veszteseges formatum: az ujrakodolas eldob nehany kepadatot, a vesztesegmentes szerkeszteseket is."
+                    "formatLossyNote": "Veszteseges formatum: az ujrakodolas eldob nehany kepadatot, a vesztesegmentes szerkeszteseket is.",
+                    "reencodeWarnTitle": "Veszteséges formátumból veszteségesbe alakítás",
+                    "reencodeWarnNote": "Egy veszteséges formátum másikká alakítása újrakódolja a képet, és egy második, végleges minőségromlási réteget ad hozzá. Az eredeti formátum megtartása elkerüli ezt.",
+                    "reencodeAck": "Megértettem, és mindenképp újra akarom kódolni"
                 },
                 "toggleTransparencyBg": "Átlátszósági háttér (váltás)"
             },

@@ -3590,7 +3590,10 @@
                     "losslessHint": "Geri alinabilir: kayipsiz bir bicimde kaydedildiginde pikseller tam olarak korunur",
                     "lossyHint": "Pikselleri degistirir: degisiklik tam olarak geri alinamaz",
                     "formatLosslessNote": "Kayipsiz bicim: pikseller tam olarak saklanir. Yukaridaki kayipli duzenlemeler yine de goruntuyu degistirir.",
-                    "formatLossyNote": "Kayipli bicim: yeniden kodlama bazi goruntu verilerini, kayipsiz duzenlemeler dahil, atar."
+                    "formatLossyNote": "Kayipli bicim: yeniden kodlama bazi goruntu verilerini, kayipsiz duzenlemeler dahil, atar.",
+                    "reencodeWarnTitle": "Kayıplı biçimden kayıplı biçime dönüştürme",
+                    "reencodeWarnNote": "Bir kayıplı biçimi başka bir kayıplı biçime dönüştürmek görüntüyü yeniden kodlar ve ikinci, kalıcı bir kalite kaybı katmanı ekler. Özgün biçimi korumak bunu önler.",
+                    "reencodeAck": "Anlıyorum ve yine de yeniden kodlamak istiyorum"
                 },
                 "toggleTransparencyBg": "Saydamlık arka planı (değiştir)"
             },

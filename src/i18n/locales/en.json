@@ -2352,7 +2352,10 @@
                     "losslessHint": "Reversible: pixels are preserved exactly when saved to a lossless format",
                     "lossyHint": "Alters pixels: the change cannot be perfectly undone",
                     "formatLosslessNote": "Lossless format: pixels are stored exactly. Lossy edits above still change the image.",
-                    "formatLossyNote": "Lossy format: re-encoding discards some image data, including any lossless edits."
+                    "formatLossyNote": "Lossy format: re-encoding discards some image data, including any lossless edits.",
+                    "reencodeWarnTitle": "Lossy to lossy conversion",
+                    "reencodeWarnNote": "Converting one lossy format to another re-encodes the image and adds a second, permanent generation of loss. Keeping the original format avoids it.",
+                    "reencodeAck": "I understand and want to re-encode anyway"
                 }
             },
             "mixer": {

@@ -3590,7 +3590,10 @@
                     "losslessHint": "Omkeerbaar: pixels blijven exact behouden bij opslaan in een verliesvrij formaat",
                     "lossyHint": "Wijzigt pixels: de wijziging kan niet exact ongedaan worden gemaakt",
                     "formatLosslessNote": "Verliesvrij formaat: pixels worden exact opgeslagen. Bewerkingen met verlies hierboven veranderen de afbeelding alsnog.",
-                    "formatLossyNote": "Formaat met verlies: bij hercoderen gaan sommige beeldgegevens verloren, ook verliesvrije bewerkingen."
+                    "formatLossyNote": "Formaat met verlies: bij hercoderen gaan sommige beeldgegevens verloren, ook verliesvrije bewerkingen.",
+                    "reencodeWarnTitle": "Conversie van lossy naar lossy",
+                    "reencodeWarnNote": "Het converteren van het ene lossy-formaat naar het andere codeert de afbeelding opnieuw en voegt een tweede, permanente generatie kwaliteitsverlies toe. Het oorspronkelijke formaat behouden voorkomt dit.",
+                    "reencodeAck": "Ik begrijp het en wil toch opnieuw coderen"
                 },
                 "toggleTransparencyBg": "Transparantieachtergrond (wisselen)"
             },

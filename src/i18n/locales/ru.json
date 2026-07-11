@@ -3590,7 +3590,10 @@
                     "losslessHint": "Obratimo: pikseli sohranyayutsya tochno pri sohranenii v format bez poter",
                     "lossyHint": "Izmenyaet pikseli: izmenenie nelzya tochno otmenit",
                     "formatLosslessNote": "Format bez poter: pikseli sohranyayutsya tochno. Izmeneniya s poteryami vyshe vse ravno menyayut izobrazhenie.",
-                    "formatLossyNote": "Format s poteryami: pri perekodirovanii teryaetsya chast dannyh izobrazheniya, vklyuchaya izmeneniya bez poter."
+                    "formatLossyNote": "Format s poteryami: pri perekodirovanii teryaetsya chast dannyh izobrazheniya, vklyuchaya izmeneniya bez poter.",
+                    "reencodeWarnTitle": "Преобразование из формата с потерями в формат с потерями",
+                    "reencodeWarnNote": "Преобразование одного формата с потерями в другой заново кодирует изображение и добавляет второе, необратимое поколение потери качества. Сохранение исходного формата позволяет этого избежать.",
+                    "reencodeAck": "Я понимаю и всё равно хочу перекодировать"
                 },
                 "toggleTransparencyBg": "Фон прозрачности (переключить)"
             },

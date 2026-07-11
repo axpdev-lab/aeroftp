@@ -3590,7 +3590,10 @@
                     "losslessHint": "Umkehrbar: Pixel bleiben exakt erhalten, wenn in einem verlustfreien Format gespeichert wird",
                     "lossyHint": "Verandert Pixel: Die Anderung kann nicht exakt ruckgangig gemacht werden",
                     "formatLosslessNote": "Verlustfreies Format: Pixel werden exakt gespeichert. Verlustbehaftete Bearbeitungen oben verandern das Bild dennoch.",
-                    "formatLossyNote": "Verlustbehaftetes Format: Beim erneuten Kodieren gehen einige Bilddaten verloren, auch verlustfreie Bearbeitungen."
+                    "formatLossyNote": "Verlustbehaftetes Format: Beim erneuten Kodieren gehen einige Bilddaten verloren, auch verlustfreie Bearbeitungen.",
+                    "reencodeWarnTitle": "Umwandlung von verlustbehaftet zu verlustbehaftet",
+                    "reencodeWarnNote": "Das Umwandeln eines verlustbehafteten Formats in ein anderes kodiert das Bild neu und fügt einen zweiten, dauerhaften Qualitätsverlust hinzu. Wird das Originalformat beibehalten, wird dies vermieden.",
+                    "reencodeAck": "Ich verstehe und möchte trotzdem neu kodieren"
                 },
                 "toggleTransparencyBg": "Transparenz-Hintergrund (wechseln)"
             },

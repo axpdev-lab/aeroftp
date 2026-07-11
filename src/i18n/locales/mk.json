@@ -3590,7 +3590,10 @@
                     "losslessHint": "Povratno: pikselite se zacuvuvaat tocno pri zacuvuvanje vo format bez zaguba",
                     "lossyHint": "Gi menuva pikselite: promenata ne moze tocno da se vrati",
                     "formatLosslessNote": "Format bez zaguba: pikselite se zacuvuvaat tocno. Ubraduvanjata so zaguba pogore sepak ja menuvaat slikata.",
-                    "formatLossyNote": "Format so zaguba: povtornoto kodiranje otfrla del od podatocite na slikata, i uraduvanjata bez zaguba."
+                    "formatLossyNote": "Format so zaguba: povtornoto kodiranje otfrla del od podatocite na slikata, i uraduvanjata bez zaguba.",
+                    "reencodeWarnTitle": "Претворање од формат со загуба во формат со загуба",
+                    "reencodeWarnNote": "Претворањето на еден формат со загуба во друг повторно ја кодира сликата и додава втора, трајна генерација на загуба на квалитет. Задржувањето на оригиналниот формат го избегнува тоа.",
+                    "reencodeAck": "Разбирам и сепак сакам повторно да кодирам"
                 },
                 "toggleTransparencyBg": "Позадина на проѕирност (менувај)"
             },

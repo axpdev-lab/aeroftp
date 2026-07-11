@@ -3590,7 +3590,10 @@
                     "losslessHint": "Reversibel: pixlar bevaras exakt nar de sparas i ett forlustfritt format",
                     "lossyHint": "Andrar pixlar: andringen kan inte angras exakt",
                     "formatLosslessNote": "Forlustfritt format: pixlar lagras exakt. Forlustbehaftade redigeringar ovan andrar anda bilden.",
-                    "formatLossyNote": "Forlustbehaftat format: omkodning kastar bort en del bilddata, aven forlustfria redigeringar."
+                    "formatLossyNote": "Forlustbehaftat format: omkodning kastar bort en del bilddata, aven forlustfria redigeringar.",
+                    "reencodeWarnTitle": "Konvertering från förstörande till förstörande format",
+                    "reencodeWarnNote": "Att konvertera ett förstörande format till ett annat omkodar bilden och lägger till ännu en permanent generation av kvalitetsförlust. Att behålla originalformatet undviker det.",
+                    "reencodeAck": "Jag förstår och vill omkoda ändå"
                 },
                 "toggleTransparencyBg": "Genomskinlighetsbakgrund (växla)"
             },

@@ -3590,7 +3590,10 @@
                     "losslessHint": "Pooratav: pikslid sailivad tapselt, kui salvestada kadudeta vormingusse",
                     "lossyHint": "Muudab piksleid: muudatust ei saa tapselt tagasi votta",
                     "formatLosslessNote": "Kadudeta vorming: pikslid salvestatakse tapselt. Ulal olevad kadudega muudatused muudavad siiski pilti.",
-                    "formatLossyNote": "Kadudega vorming: uuesti kodeerimine kaotab osa pildiandmeid, ka kadudeta muudatused."
+                    "formatLossyNote": "Kadudega vorming: uuesti kodeerimine kaotab osa pildiandmeid, ka kadudeta muudatused.",
+                    "reencodeWarnTitle": "Teisendus kadudega vormingust kadudega vormingusse",
+                    "reencodeWarnNote": "Ühe kadudega vormingu teisendamine teiseks kodeerib pildi uuesti ja lisab teise püsiva kvaliteedikao põlvkonna. Algse vormingu säilitamine hoiab selle ära.",
+                    "reencodeAck": "Saan aru ja soovin siiski uuesti kodeerida"
                 },
                 "toggleTransparencyBg": "Läbipaistvuse taust (vaheta)"
             },

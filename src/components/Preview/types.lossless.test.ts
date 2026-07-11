@@ -6,6 +6,7 @@ import {
   formatLossKind,
   operationLossKind,
   activeEditLoss,
+  isLossyReencode,
   INITIAL_EDIT_STATE,
   type EditState,
 } from './types';
@@ -56,5 +57,30 @@ describe('activeEditLoss', () => {
       grayscale: true, // lossy
     };
     expect(activeEditLoss(state)).toEqual({ lossless: 2, lossy: 2 });
+  });
+});
+
+describe('isLossyReencode', () => {
+  it('guards a lossy source re-encoded into a different lossy format', () => {
+    expect(isLossyReencode('jpg', 'gif')).toBe(true);
+    expect(isLossyReencode('gif', 'jpg')).toBe(true);
+    expect(isLossyReencode('jpeg', 'gif')).toBe(true);
+  });
+
+  it('does not guard a pass-through save to the same format', () => {
+    expect(isLossyReencode('jpg', 'jpg')).toBe(false);
+    expect(isLossyReencode('JPG', 'jpg')).toBe(false); // case-insensitive
+    expect(isLossyReencode('gif', 'gif')).toBe(false);
+  });
+
+  it('does not guard a lossless target (no new loss)', () => {
+    expect(isLossyReencode('jpg', 'png')).toBe(false);
+    expect(isLossyReencode('gif', 'webp')).toBe(false);
+    expect(isLossyReencode('webp', 'bmp')).toBe(false);
+  });
+
+  it('does not guard a lossless source (informational note only, per scope)', () => {
+    expect(isLossyReencode('png', 'jpg')).toBe(false);
+    expect(isLossyReencode('bmp', 'gif')).toBe(false);
   });
 });

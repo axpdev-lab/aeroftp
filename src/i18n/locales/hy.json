@@ -3583,7 +3583,10 @@
                     "losslessHint": "Hetadardzeli. piqselnery cshgrit pahpanvum en aranc korsti dzevachapov pahelis",
                     "lossyHint": "Poxum e piqselnery. popoxutyuny hnaravor che cshgrit chexarkel",
                     "formatLosslessNote": "Aranc korsti dzevachap. piqselnery pahvum en cshgrit. Verevi korstov xmbagrumnery mievnuyn e poxum en patkery.",
-                    "formatLossyNote": "Korstov dzevachap. verakodavorumy heracnum e patkeri vorosh tvyalner, ayd tvum aranc korsti xmbagrumnery."
+                    "formatLossyNote": "Korstov dzevachap. verakodavorumy heracnum e patkeri vorosh tvyalner, ayd tvum aranc korsti xmbagrumnery.",
+                    "reencodeWarnTitle": "Կորստով ձևաչափից կորստով ձևաչափ փոխակերպում",
+                    "reencodeWarnNote": "Կորստով մի ձևաչափը մյուսին փոխակերպելը վերակոդավորում է պատկերը և ավելացնում որակի կորստի երկրորդ, մշտական սերունդ։ Սկզբնական ձևաչափը պահպանելը խուսափում է դրանից։",
+                    "reencodeAck": "Հասկանում եմ և այնուամենայնիվ ուզում եմ վերակոդավորել"
                 },
                 "toggleTransparencyBg": "Թափանցիկության ֆոն (փոխել)"
             },

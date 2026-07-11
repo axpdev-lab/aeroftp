@@ -3590,7 +3590,10 @@
                     "losslessHint": "Griztama: pikseliai issaugomi tiksliai, kai irasoma i be nuostoliu formata",
                     "lossyHint": "Keicia pikselius: pakeitimo negalima tiksliai atsaukti",
                     "formatLosslessNote": "Formatas be nuostoliu: pikseliai saugomi tiksliai. Auksciau atlikti su nuostoliais keitimai vis tiek pakeicia vaizda.",
-                    "formatLossyNote": "Formatas su nuostoliais: perkoduojant prarandama dalis vaizdo duomenu, taip pat ir be nuostoliu keitimai."
+                    "formatLossyNote": "Formatas su nuostoliais: perkoduojant prarandama dalis vaizdo duomenu, taip pat ir be nuostoliu keitimai.",
+                    "reencodeWarnTitle": "Konvertavimas iš nuostolingo į nuostolingą formatą",
+                    "reencodeWarnNote": "Konvertuojant vieną nuostolingą formatą į kitą, vaizdas užkoduojamas iš naujo ir pridedama antra, nuolatinė kokybės praradimo karta. Išsaugant pradinį formatą to išvengiama.",
+                    "reencodeAck": "Suprantu ir vis tiek noriu užkoduoti iš naujo"
                 },
                 "toggleTransparencyBg": "Skaidrumo fonas (perjungti)"
             },

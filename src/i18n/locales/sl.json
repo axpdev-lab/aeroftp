@@ -3590,7 +3590,10 @@
                     "losslessHint": "Povratno: slikovne pike se ohranijo natancno pri shranjevanju v obliki brez izgub",
                     "lossyHint": "Spremeni slikovne pike: spremembe ni mogoce natancno razveljaviti",
                     "formatLosslessNote": "Oblika brez izgub: slikovne pike se shranijo natancno. Zgornja urejanja z izgubo kljub temu spremenijo sliko.",
-                    "formatLossyNote": "Oblika z izgubo: ponovno kodiranje zavrze nekaj slikovnih podatkov, tudi urejanja brez izgub."
+                    "formatLossyNote": "Oblika z izgubo: ponovno kodiranje zavrze nekaj slikovnih podatkov, tudi urejanja brez izgub.",
+                    "reencodeWarnTitle": "Pretvorba iz izgubnega v izgubni format",
+                    "reencodeWarnNote": "Pretvorba enega izgubnega formata v drugega sliko znova kodira in doda drugo, trajno generacijo izgube kakovosti. Ohranitev izvirnega formata se temu izogne.",
+                    "reencodeAck": "Razumem in vseeno želim znova kodirati"
                 },
                 "toggleTransparencyBg": "Ozadje prosojnosti (preklopi)"
             },

@@ -3590,7 +3590,10 @@
                     "losslessHint": "Naibabalik: tumpak na napapanatili ang mga pixel kapag ini-save sa format na walang lugi",
                     "lossyHint": "Binabago ang mga pixel: hindi tumpak na maibabalik ang pagbabago",
                     "formatLosslessNote": "Format na walang lugi: tumpak na naiimbak ang mga pixel. Binabago pa rin ng mga lossy na pag-edit sa itaas ang larawan.",
-                    "formatLossyNote": "Format na may lugi: ang muling pag-encode ay nagtatapon ng ilang data ng larawan, kasama ang mga pag-edit na walang lugi."
+                    "formatLossyNote": "Format na may lugi: ang muling pag-encode ay nagtatapon ng ilang data ng larawan, kasama ang mga pag-edit na walang lugi.",
+                    "reencodeWarnTitle": "Pag-convert mula lossy patungong lossy",
+                    "reencodeWarnNote": "Ang pag-convert ng isang lossy na format patungo sa iba ay muling nag-e-encode ng larawan at nagdaragdag ng pangalawa at permanenteng henerasyon ng pagkawala ng kalidad. Naiiwasan ito kung pananatilihin ang orihinal na format.",
+                    "reencodeAck": "Naiintindihan ko at gusto ko pa ring i-encode muli"
                 },
                 "toggleTransparencyBg": "Background ng transparency (i-cycle)"
             },

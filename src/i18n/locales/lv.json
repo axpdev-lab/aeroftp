@@ -3590,7 +3590,10 @@
                     "losslessHint": "Atgriezeniski: pikseli tiek saglabati precizi, ja saglaba formata bez zudumiem",
                     "lossyHint": "Maina pikselus: izmainu nevar precizi atsaukt",
                     "formatLosslessNote": "Formats bez zudumiem: pikseli tiek saglabati precizi. Augstak veiktas izmainas ar zudumiem tomer maina attelu.",
-                    "formatLossyNote": "Formats ar zudumiem: parkodesana atmet dalu attela datu, ari izmainas bez zudumiem."
+                    "formatLossyNote": "Formats ar zudumiem: parkodesana atmet dalu attela datu, ari izmainas bez zudumiem.",
+                    "reencodeWarnTitle": "Pārveidošana no zudumiem pakļauta uz zudumiem pakļautu formātu",
+                    "reencodeWarnNote": "Viena zudumiem pakļauta formāta pārveidošana par citu atkārtoti kodē attēlu un pievieno otru, pastāvīgu kvalitātes zuduma paaudzi. Sākotnējā formāta saglabāšana no tā izvairās.",
+                    "reencodeAck": "Es saprotu un tomēr vēlos kodēt atkārtoti"
                 },
                 "toggleTransparencyBg": "Caurspīdīguma fons (pārslēgt)"
             },

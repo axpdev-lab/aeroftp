@@ -3590,7 +3590,10 @@
                     "losslessHint": "Reversible: os pixeles conservanse exactamente ao gardar nun formato sen perda",
                     "lossyHint": "Altera os pixeles: o cambio non se pode desfacer con exactitude",
                     "formatLosslessNote": "Formato sen perda: os pixeles almacenanse exactamente. As edicions con perda de arriba cambian a imaxe igualmente.",
-                    "formatLossyNote": "Formato con perda: a recodificacion descarta alguns datos da imaxe, incluidas as edicions sen perda."
+                    "formatLossyNote": "Formato con perda: a recodificacion descarta alguns datos da imaxe, incluidas as edicions sen perda.",
+                    "reencodeWarnTitle": "Conversión con perda a con perda",
+                    "reencodeWarnNote": "Converter un formato con perda noutro recodifica a imaxe e engade unha segunda xeración permanente de perda de calidade. Manter o formato orixinal evítao.",
+                    "reencodeAck": "Enténdoo e quero recodificar de todos os xeitos"
                 },
                 "toggleTransparencyBg": "Fondo de transparencia (alterna)"
             },

@@ -3590,7 +3590,10 @@
                     "losslessHint": "Itzulgarria: pixelak zehazki gordetzen dira galerarik gabeko formatu batean gordetzean",
                     "lossyHint": "Pixelak aldatzen ditu: aldaketa ezin da zehazki desegin",
                     "formatLosslessNote": "Galerarik gabeko formatua: pixelak zehazki gordetzen dira. Goiko galera-edizioek irudia aldatzen dute hala ere.",
-                    "formatLossyNote": "Galeradun formatua: berriro kodetzean irudiaren datu batzuk galtzen dira, baita galerarik gabeko edizioak ere."
+                    "formatLossyNote": "Galeradun formatua: berriro kodetzean irudiaren datu batzuk galtzen dira, baita galerarik gabeko edizioak ere.",
+                    "reencodeWarnTitle": "Galeradun formatutik galeradunerako bihurketa",
+                    "reencodeWarnNote": "Galeradun formatu bat beste batera bihurtzeak irudia berriro kodetzen du eta kalitate-galeraren bigarren belaunaldi iraunkorra gehitzen dio. Jatorrizko formatua mantentzeak saihesten du.",
+                    "reencodeAck": "Ulertzen dut eta hala ere berriro kodetu nahi dut"
                 },
                 "toggleTransparencyBg": "Gardentasun atzeko planoa (txandakatu)"
             },

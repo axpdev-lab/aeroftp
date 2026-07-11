@@ -3590,7 +3590,10 @@
                     "losslessHint": "Reversible: els pixels es conserven exactament en desar en un format sense perdua",
                     "lossyHint": "Altera els pixels: el canvi no es pot desfer amb exactitud",
                     "formatLosslessNote": "Format sense perdua: els pixels s'emmagatzemen exactament. Les edicions amb perdua de dalt canvien la imatge igualment.",
-                    "formatLossyNote": "Format amb perdua: la recodificacio descarta algunes dades de la imatge, incloses les edicions sense perdua."
+                    "formatLossyNote": "Format amb perdua: la recodificacio descarta algunes dades de la imatge, incloses les edicions sense perdua.",
+                    "reencodeWarnTitle": "Conversió amb pèrdua a amb pèrdua",
+                    "reencodeWarnNote": "Convertir un format amb pèrdua a un altre torna a codificar la imatge i afegeix una segona generació permanent de pèrdua. Mantenir el format original ho evita.",
+                    "reencodeAck": "Ho entenc i vull tornar a codificar igualment"
                 },
                 "toggleTransparencyBg": "Fons de transparència (alterna)"
             },

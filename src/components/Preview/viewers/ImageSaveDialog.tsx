@@ -11,7 +11,7 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { X, Loader2 } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
-import { EditState, ImageResult, OUTPUT_FORMATS, buildOperations, formatLossKind } from '../types';
+import { EditState, ImageResult, OUTPUT_FORMATS, buildOperations, formatLossKind, isLossyReencode } from '../types';
 import { useI18n } from '../../../i18n';
 import { useDraggableModal } from '../../../hooks/useDraggableModal';
 
@@ -55,6 +55,7 @@ export const ImageSaveDialog: React.FC<ImageSaveDialogProps> = ({
     const [quality, setQuality] = useState(90);
     const [saving, setSaving] = useState<'copy' | 'replace' | null>(null);
     const [error, setError] = useState<string | null>(null);
+    const [ackReencode, setAckReencode] = useState(false);
 
     // Reset state when dialog opens with a new file
     useEffect(() => {
@@ -64,8 +65,14 @@ export const ImageSaveDialog: React.FC<ImageSaveDialogProps> = ({
             setQuality(90);
             setSaving(null);
             setError(null);
+            setAckReencode(false);
         }
     }, [isOpen, baseName, defaultFormat]);
+
+    // A change of target format invalidates any prior acknowledgement.
+    useEffect(() => {
+        setAckReencode(false);
+    }, [format]);
 
     // Escape key handler
     useEffect(() => {
@@ -105,6 +112,10 @@ export const ImageSaveDialog: React.FC<ImageSaveDialogProps> = ({
 
     const label = (key: string, fallback: string) =>
         t(`preview.image.edit.${key}` as never) || fallback;
+
+    // Lossy source re-encoded into a different lossy format stacks a second
+    // generation of loss: gate the save behind an explicit acknowledgement.
+    const lossyReencode = isLossyReencode(originalExt, format);
 
     return (
         <div
@@ -184,6 +195,30 @@ export const ImageSaveDialog: React.FC<ImageSaveDialogProps> = ({
                     );
                 })()}
 
+                {/* Lossy -> lossy re-encode: require an explicit acknowledgement */}
+                {lossyReencode && (
+                    <div className="flex flex-col gap-2 mb-3 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2">
+                        <p className="text-xs text-amber-300 font-semibold leading-snug">
+                            {label('reencodeWarnTitle', 'Lossy to lossy conversion')}
+                        </p>
+                        <p className="text-xs text-[var(--color-text-secondary)] leading-snug">
+                            {label(
+                                'reencodeWarnNote',
+                                'Converting one lossy format to another re-encodes the image and adds a second, permanent generation of loss. Keeping the original format avoids it.',
+                            )}
+                        </p>
+                        <label className="flex items-start gap-2 cursor-pointer text-xs text-[var(--color-text-primary)]">
+                            <input
+                                type="checkbox"
+                                checked={ackReencode}
+                                onChange={e => setAckReencode(e.target.checked)}
+                                className="mt-0.5 accent-amber-500"
+                            />
+                            <span>{label('reencodeAck', 'I understand and want to re-encode anyway')}</span>
+                        </label>
+                    </div>
+                )}
+
                 {/* Quality (JPEG only) */}
                 {format === 'jpg' && (
                     <div className="flex items-center gap-2 mb-3">
@@ -206,7 +241,7 @@ export const ImageSaveDialog: React.FC<ImageSaveDialogProps> = ({
                 <div className="flex gap-3 mb-2">
                     <button
                         onClick={() => save('copy')}
-                        disabled={saving !== null || !name.trim()}
+                        disabled={saving !== null || !name.trim() || (lossyReencode && !ackReencode)}
                         className="flex-1 flex items-center justify-center gap-2 bg-[var(--color-accent)] hover:bg-[var(--color-accent-hover)] disabled:opacity-50 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
                     >
                         {saving === 'copy' && <Loader2 size={14} className="animate-spin" />}
@@ -214,7 +249,7 @@ export const ImageSaveDialog: React.FC<ImageSaveDialogProps> = ({
                     </button>
                     <button
                         onClick={() => save('replace')}
-                        disabled={saving !== null}
+                        disabled={saving !== null || (lossyReencode && !ackReencode)}
                         className="flex-1 flex items-center justify-center gap-2 bg-[var(--color-bg-tertiary)] hover:bg-[var(--color-surface-hover)] disabled:opacity-50 text-[var(--color-text-primary)] px-4 py-2 rounded-lg text-sm font-medium transition-colors"
                     >
                         {saving === 'replace' && <Loader2 size={14} className="animate-spin" />}

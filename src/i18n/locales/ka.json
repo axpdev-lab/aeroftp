@@ -3590,7 +3590,10 @@
                     "losslessHint": "Sheqcevadi: piqselebi zustad narchundeba udanakargo formatshi shenakhvisas",
                     "lossyHint": "Cvlis piqselebs: cvlilebis zustad gauqmeba sheudzlebelia",
                     "formatLosslessNote": "Udanakargo formati: piqselebi zustad inakheba. Zemot mititebuli danakargiani redaqtirebebi mainc cvlis surats.",
-                    "formatLossyNote": "Danakargiani formati: khelakhali kodireba ashorebs suratis zogiert monacems, mat shoris udanakargo redaqtirebebs."
+                    "formatLossyNote": "Danakargiani formati: khelakhali kodireba ashorebs suratis zogiert monacems, mat shoris udanakargo redaqtirebebs.",
+                    "reencodeWarnTitle": "დანაკარგიანიდან დანაკარგიან ფორმატში გადაყვანა",
+                    "reencodeWarnNote": "ერთი დანაკარგიანი ფორმატის მეორეში გადაყვანა ხელახლა აკოდირებს გამოსახულებას და ამატებს ხარისხის დანაკარგის მეორე, მუდმივ თაობას. საწყისი ფორმატის შენარჩუნება ამას გამორიცხავს.",
+                    "reencodeAck": "მესმის და მაინც მინდა ხელახლა დაკოდირება"
                 },
                 "toggleTransparencyBg": "გამჭვირვალობის ფონი (გადართვა)"
             },

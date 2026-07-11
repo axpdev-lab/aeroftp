@@ -3590,7 +3590,10 @@
                     "losslessHint": "Palautuva: pikselit sailyvat tarkalleen, kun tallennetaan haviottomaan muotoon",
                     "lossyHint": "Muuttaa pikseleita: muutosta ei voi perua tarkalleen",
                     "formatLosslessNote": "Haviotonmuoto: pikselit tallennetaan tarkalleen. Yllaolevat haviolliset muokkaukset muuttavat silti kuvaa.",
-                    "formatLossyNote": "Haviollinen muoto: uudelleenkoodaus hylkaa osan kuvatiedoista, myos haviottomat muokkaukset."
+                    "formatLossyNote": "Haviollinen muoto: uudelleenkoodaus hylkaa osan kuvatiedoista, myos haviottomat muokkaukset.",
+                    "reencodeWarnTitle": "Muunnos häviöllisestä häviölliseen",
+                    "reencodeWarnNote": "Yhden häviöllisen muodon muuntaminen toiseksi koodaa kuvan uudelleen ja lisää toisen, pysyvän laatuhäviöiden sukupolven. Alkuperäisen muodon säilyttäminen välttää sen.",
+                    "reencodeAck": "Ymmärrän ja haluan silti koodata uudelleen"
                 },
                 "toggleTransparencyBg": "Läpinäkyvyyden tausta (vaihda)"
             },

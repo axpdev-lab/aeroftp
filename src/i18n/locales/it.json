@@ -3923,7 +3923,10 @@
                     "losslessHint": "Reversibile: i pixel sono preservati esattamente se salvati in un formato senza perdita",
                     "lossyHint": "Altera i pixel: la modifica non puo essere annullata perfettamente",
                     "formatLosslessNote": "Formato senza perdita: i pixel sono memorizzati esattamente. Le modifiche con perdita qui sopra cambiano comunque l'immagine.",
-                    "formatLossyNote": "Formato con perdita: la ricodifica scarta parte dei dati dell'immagine, incluse le modifiche senza perdita."
+                    "formatLossyNote": "Formato con perdita: la ricodifica scarta parte dei dati dell'immagine, incluse le modifiche senza perdita.",
+                    "reencodeWarnTitle": "Conversione da formato con perdita a formato con perdita",
+                    "reencodeWarnNote": "Convertire un formato con perdita in un altro ricodifica l'immagine e aggiunge una seconda generazione di perdita di qualità permanente. Mantenere il formato originale lo evita.",
+                    "reencodeAck": "Ho capito e voglio ricodificare comunque"
                 }
             },
             "video": {

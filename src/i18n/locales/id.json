@@ -3590,7 +3590,10 @@
                     "losslessHint": "Dapat dibalik: piksel dipertahankan persis saat disimpan ke format tanpa kehilangan",
                     "lossyHint": "Mengubah piksel: perubahan tidak dapat dibatalkan secara persis",
                     "formatLosslessNote": "Format tanpa kehilangan: piksel disimpan persis. Penyuntingan dengan kehilangan di atas tetap mengubah gambar.",
-                    "formatLossyNote": "Format dengan kehilangan: pengodean ulang membuang sebagian data gambar, termasuk penyuntingan tanpa kehilangan."
+                    "formatLossyNote": "Format dengan kehilangan: pengodean ulang membuang sebagian data gambar, termasuk penyuntingan tanpa kehilangan.",
+                    "reencodeWarnTitle": "Konversi lossy ke lossy",
+                    "reencodeWarnNote": "Mengonversi satu format lossy ke format lossy lain akan menyandikan ulang gambar dan menambahkan generasi kehilangan kualitas kedua yang permanen. Mempertahankan format asli menghindarinya.",
+                    "reencodeAck": "Saya mengerti dan tetap ingin menyandikan ulang"
                 },
                 "toggleTransparencyBg": "Latar transparansi (ganti)"
             },

@@ -3590,7 +3590,10 @@
                     "losslessHint": "Oborotno: pikseli zberigayutsya tochno pri zberezhenni u formati bez vtrat",
                     "lossyHint": "Zminyuye pikseli: zminu nemozhlyvo tochno skasuvaty",
                     "formatLosslessNote": "Format bez vtrat: pikseli zberigayutsya tochno. Zminy z vtratamy vyshche vse odno zminyuyut zobrazhennya.",
-                    "formatLossyNote": "Format iz vtratamy: povtorne koduvannya vidkydaye chastynu danyh zobrazhennya, zokrema zminy bez vtrat."
+                    "formatLossyNote": "Format iz vtratamy: povtorne koduvannya vidkydaye chastynu danyh zobrazhennya, zokrema zminy bez vtrat.",
+                    "reencodeWarnTitle": "Перетворення з формату з втратами у формат з втратами",
+                    "reencodeWarnNote": "Перетворення одного формату з втратами на інший заново кодує зображення й додає друге, незворотне покоління втрати якості. Збереження початкового формату дає змогу цього уникнути.",
+                    "reencodeAck": "Я розумію і все одно хочу перекодувати"
                 },
                 "toggleTransparencyBg": "Тло прозорості (перемкнути)"
             },

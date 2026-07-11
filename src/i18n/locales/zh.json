@@ -3590,7 +3590,10 @@
                     "losslessHint": "可逆：以无损格式保存时像素被精确保留",
                     "lossyHint": "改变像素：此更改无法被精确撤销",
                     "formatLosslessNote": "无损格式：像素被精确存储。上方的有损编辑仍会改变图像。",
-                    "formatLossyNote": "有损格式：重新编码会丢弃部分图像数据，包括无损编辑。"
+                    "formatLossyNote": "有损格式：重新编码会丢弃部分图像数据，包括无损编辑。",
+                    "reencodeWarnTitle": "有损格式转有损格式",
+                    "reencodeWarnNote": "将一种有损格式转换为另一种有损格式会重新编码图像，并叠加第二次永久性的质量损失。保留原始格式即可避免。",
+                    "reencodeAck": "我已了解，仍要重新编码"
                 },
                 "toggleTransparencyBg": "透明背景（循环切换）"
             },

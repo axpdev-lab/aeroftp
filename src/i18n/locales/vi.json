@@ -3590,7 +3590,10 @@
                     "losslessHint": "Co the dao nguoc: pixel duoc giu nguyen chinh xac khi luu o dinh dang khong mat du lieu",
                     "lossyHint": "Thay doi pixel: khong the hoan tac thay doi mot cach chinh xac",
                     "formatLosslessNote": "Dinh dang khong mat du lieu: pixel duoc luu chinh xac. Cac chinh sua mat du lieu o tren van thay doi hinh anh.",
-                    "formatLossyNote": "Dinh dang mat du lieu: viec ma hoa lai loai bo mot so du lieu hinh anh, ke ca cac chinh sua khong mat du lieu."
+                    "formatLossyNote": "Dinh dang mat du lieu: viec ma hoa lai loai bo mot so du lieu hinh anh, ke ca cac chinh sua khong mat du lieu.",
+                    "reencodeWarnTitle": "Chuyển đổi từ định dạng mất dữ liệu sang mất dữ liệu",
+                    "reencodeWarnNote": "Chuyển một định dạng mất dữ liệu sang định dạng khác sẽ mã hóa lại ảnh và thêm một thế hệ giảm chất lượng thứ hai vĩnh viễn. Giữ nguyên định dạng gốc sẽ tránh được điều này.",
+                    "reencodeAck": "Tôi hiểu và vẫn muốn mã hóa lại"
                 },
                 "toggleTransparencyBg": "Nền trong suốt (xoay vòng)"
             },

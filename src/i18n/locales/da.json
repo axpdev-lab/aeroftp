@@ -3590,7 +3590,10 @@
                     "losslessHint": "Reversibel: pixels bevares praecist, nar der gemmes i et tabsfrit format",
                     "lossyHint": "Aendrer pixels: aendringen kan ikke fortrydes praecist",
                     "formatLosslessNote": "Tabsfrit format: pixels gemmes praecist. Tabsgivende redigeringer ovenfor aendrer stadig billedet.",
-                    "formatLossyNote": "Tabsgivende format: omkodning kasserer nogle billeddata, ogsa tabsfrie redigeringer."
+                    "formatLossyNote": "Tabsgivende format: omkodning kasserer nogle billeddata, ogsa tabsfrie redigeringer.",
+                    "reencodeWarnTitle": "Konvertering fra tabsgivende til tabsgivende",
+                    "reencodeWarnNote": "Konvertering af ét tabsgivende format til et andet omkoder billedet og tilføjer endnu en permanent generation af kvalitetstab. Ved at beholde det originale format undgår du det.",
+                    "reencodeAck": "Jeg forstår og vil omkode alligevel"
                 },
                 "toggleTransparencyBg": "Gennemsigtighedsbaggrund (skift)"
             },

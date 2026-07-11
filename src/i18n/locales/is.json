@@ -3590,7 +3590,10 @@
                     "losslessHint": "Afturkraeft: pixlar vardveitast nakvaemlega thegar vistad er a taplausu snidi",
                     "lossyHint": "Breytir pixlum: ekki er haegt ad afturkalla breytinguna nakvaemlega",
                     "formatLosslessNote": "Taplaust snid: pixlar eru vistadir nakvaemlega. Tapsbreytingar ad ofan breyta myndinni samt.",
-                    "formatLossyNote": "Snid med tapi: endurkodun hendir hluta myndgagna, einnig taplausum breytingum."
+                    "formatLossyNote": "Snid med tapi: endurkodun hendir hluta myndgagna, einnig taplausum breytingum.",
+                    "reencodeWarnTitle": "Umbreyting úr tapssniði í tapssnið",
+                    "reencodeWarnNote": "Að umbreyta einu tapssniði í annað endurkótar myndina og bætir við annarri, varanlegri kynslóð gæðataps. Að halda upprunalega sniðinu forðast það.",
+                    "reencodeAck": "Ég skil þetta og vil endurkóta samt"
                 },
                 "toggleTransparencyBg": "Bakgrunnur gegnsæis (skipta)"
             },

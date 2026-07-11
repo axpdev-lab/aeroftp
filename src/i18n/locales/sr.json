@@ -3590,7 +3590,10 @@
                     "losslessHint": "Povratno: pikseli se tacno cuvaju pri cuvanju u formatu bez gubitaka",
                     "lossyHint": "Menja piksele: promena ne moze tacno da se ponisti",
                     "formatLosslessNote": "Format bez gubitaka: pikseli se cuvaju tacno. Izmene sa gubitkom iznad ipak menjaju sliku.",
-                    "formatLossyNote": "Format sa gubitkom: ponovno kodiranje odbacuje deo podataka slike, i izmene bez gubitaka."
+                    "formatLossyNote": "Format sa gubitkom: ponovno kodiranje odbacuje deo podataka slike, i izmene bez gubitaka.",
+                    "reencodeWarnTitle": "Претварање из формата са губицима у формат са губицима",
+                    "reencodeWarnNote": "Претварање једног формата са губицима у други поново кодира слику и додаје другу, трајну генерацију губитка квалитета. Задржавање изворног формата то избегава.",
+                    "reencodeAck": "Разумем и свеједно желим поново да кодирам"
                 },
                 "toggleTransparencyBg": "Позадина провидности (кружи)"
             },

@@ -3590,7 +3590,10 @@
                     "losslessHint": "Vratne: pixely zostanu presne zachovane pri ulozeni do bezstratoveho formatu",
                     "lossyHint": "Meni pixely: zmenu nemozno presne vratit",
                     "formatLosslessNote": "Bezstratovy format: pixely sa ukladaju presne. Stratove upravy vyssie obraz napriek tomu zmenia.",
-                    "formatLossyNote": "Stratovy format: opatovne kodovanie zahodi cast obrazovych udajov, aj bezstratove upravy."
+                    "formatLossyNote": "Stratovy format: opatovne kodovanie zahodi cast obrazovych udajov, aj bezstratove upravy.",
+                    "reencodeWarnTitle": "Prevod zo stratového na stratový formát",
+                    "reencodeWarnNote": "Prevod jedného stratového formátu na iný obrázok znova zakóduje a pridá druhú, trvalú generáciu straty kvality. Zachovanie pôvodného formátu tomu predíde.",
+                    "reencodeAck": "Rozumiem a napriek tomu chcem znova zakódovať"
                 },
                 "toggleTransparencyBg": "Pozadie priehľadnosti (prepnúť)"
             },
