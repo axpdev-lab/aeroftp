@@ -2356,6 +2356,14 @@ async fn detect_zip_meta_remote(
     if cd_size > REMOTE_ARCHIVE_INDEX_CAP {
         return Err("central directory too large to range-read".to_string());
     }
+    // The central directory must land inside the file. `cd_off`/`cd_size` are
+    // attacker-controlled; if `cd_off + cd_size` overflows or runs past `size`
+    // we degrade (an Err here yields no badge upstream, like the other Errs)
+    // rather than issue a ranged read of a bogus window. Covers both the in-tail
+    // and the ranged branch below (mirrors the 7z path and local detect twins).
+    if cd_off.checked_add(cd_size).is_none_or(|end| end > size) {
+        return Err("central directory outside the file".to_string());
+    }
 
     // The central directory may already be inside the tail we fetched (small
     // archives, or one whose whole tail we read): parse in place. Otherwise a
@@ -2407,9 +2415,14 @@ async fn detect_7z_meta_remote(
     let nh_size = u64::from_le_bytes(start[20..28].try_into().unwrap());
     // `nh_off` is attacker-controlled; if the header start (32 + nh_off) would wrap
     // or the size is out of range, degrade to no badge rather than range-read a
-    // bogus window (never a wrong badge).
+    // bogus window (never a wrong badge). The window must also land inside the
+    // file: `nh_start > size`, or `nh_start + nh_size` overflowing or exceeding
+    // `size`, degrades the same way (mirrors the local `detect_7z_meta`,
+    // CLAUDE-AV-B1-02).
     let nh_start = 32u64.checked_add(nh_off);
-    if nh_size == 0 || nh_size > REMOTE_ARCHIVE_INDEX_CAP || nh_start.is_none() {
+    let within_file =
+        nh_start.is_some_and(|s| s <= size && s.checked_add(nh_size).is_some_and(|e| e <= size));
+    if nh_size == 0 || nh_size > REMOTE_ARCHIVE_INDEX_CAP || !within_file {
         return Ok(crate::ArchiveMeta {
             encrypted: false,
             cipher: None,

@@ -324,8 +324,25 @@ pub async fn extract_7z_entry(
         fs::create_dir_all(parent).map_err(|e| format!("Failed to create directory: {}", e))?;
     }
 
+    // Atomic write via a uniquely-named temp file in the destination directory,
+    // then persist onto the target. A fixed `.aerotmp` sibling (out_path with the
+    // extension swapped) could collide with and clobber -- or, on the error/not-found
+    // path, delete -- a real user file of that name; a randomized temp name cannot,
+    // and NamedTempFile auto-removes on every early return. (CLAUDE-AV-B1-09 parity)
+    let parent = out_path
+        .parent()
+        .unwrap_or_else(|| std::path::Path::new("."));
+    let mut tmp = tempfile::Builder::new()
+        .prefix(".aeroftp-extract-")
+        .suffix(".aerotmp")
+        .tempfile_in(parent)
+        .map_err(|e| format!("Failed to create temp file: {}", e))?;
+
+    // Take the temp file out as a `&mut File` up front: `for_each_entries` borrows the
+    // closure (and its captures) only until it returns, so the borrow of `tmp` clears
+    // before we persist it below.
     let mut found = false;
-    let tmp_path = out_path.with_extension("aerotmp");
+    let tmp_file = tmp.as_file_mut();
     archive
         .for_each_entries(|entry, reader| {
             if entry.name() == entry_name {
@@ -334,10 +351,9 @@ pub async fn extract_7z_entry(
                 // emitter here where it is known, count bytes streamed to disk.
                 let mut progress =
                     ArchiveProgress::for_app(app.clone(), phase::EXTRACTING, entry.size());
-                let mut outfile = File::create(&tmp_path)?;
                 {
                     let mut counted = ProgressReader::new(reader, &mut progress);
-                    std::io::copy(&mut counted, &mut outfile)?;
+                    std::io::copy(&mut counted, tmp_file)?;
                 }
                 progress.finish();
                 // Stop iterating once our entry is extracted: continuing would keep
@@ -347,21 +363,15 @@ pub async fn extract_7z_entry(
             }
             Ok(true)
         })
-        .map_err(|e| {
-            let _ = fs::remove_file(&tmp_path);
-            format!("Failed to extract: {}", e)
-        })?;
-
-    if found {
-        fs::rename(&tmp_path, out_path)
-            .map_err(|e| format!("Failed to finalize extracted file: {}", e))?;
-    } else {
-        let _ = fs::remove_file(&tmp_path);
-    }
+        .map_err(|e| format!("Failed to extract: {}", e))?;
 
     if !found {
+        // Entry never matched: drop `tmp` (auto-removed) and report not found.
         return Err(format!("Entry '{}' not found in archive", entry_name));
     }
+
+    tmp.persist(out_path)
+        .map_err(|e| format!("Failed to finalize extracted file: {}", e))?;
 
     Ok(output_path)
 }
@@ -431,7 +441,7 @@ pub async fn extract_tar_entry(
     output_path: String,
     app: tauri::AppHandle,
 ) -> Result<String, String> {
-    use std::fs::{self, File};
+    use std::fs;
 
     // M16: Validate entry name before extraction to prevent path traversal
     if !is_safe_archive_entry(&entry_name) {
@@ -461,21 +471,27 @@ pub async fn extract_tar_entry(
             .to_string();
 
         if path == entry_name {
-            // Atomic write: extract to .tmp then rename to prevent partial files
+            // Atomic write via a uniquely-named temp file in the destination directory,
+            // then persist onto the target. A fixed `.aerotmp` sibling (out_path with the
+            // extension swapped) could collide with and clobber -- or, on the copy-error
+            // path, delete -- a real user file of that name; a randomized temp name cannot,
+            // and NamedTempFile auto-removes on error. (CLAUDE-AV-B1-09 parity)
             let total = entry.header().size().unwrap_or(0);
             let mut progress = ArchiveProgress::for_app(app, phase::EXTRACTING, total);
-            let tmp_path = out_path.with_extension("aerotmp");
-            let mut outfile =
-                File::create(&tmp_path).map_err(|e| format!("Failed to create file: {}", e))?;
+            let parent = out_path
+                .parent()
+                .unwrap_or_else(|| std::path::Path::new("."));
+            let mut tmp = tempfile::Builder::new()
+                .prefix(".aeroftp-extract-")
+                .suffix(".aerotmp")
+                .tempfile_in(parent)
+                .map_err(|e| format!("Failed to create temp file: {}", e))?;
             {
                 let mut counted = ProgressReader::new(&mut entry, &mut progress);
-                if let Err(e) = std::io::copy(&mut counted, &mut outfile) {
-                    let _ = fs::remove_file(&tmp_path);
-                    return Err(format!("Failed to extract: {}", e));
-                }
+                std::io::copy(&mut counted, tmp.as_file_mut())
+                    .map_err(|e| format!("Failed to extract: {}", e))?;
             }
-            drop(outfile);
-            fs::rename(&tmp_path, out_path)
+            tmp.persist(out_path)
                 .map_err(|e| format!("Failed to finalize extracted file: {}", e))?;
             progress.finish();
             return Ok(output_path);
