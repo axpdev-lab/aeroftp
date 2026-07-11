@@ -56,7 +56,7 @@ const KEY_DEPENDENCY_LABELS: { name: string; description: string }[] = [
     { name: 'aes-gcm', description: 'AES-256-GCM' },
     { name: 'argon2', description: 'KDF' },
     { name: 'zip', description: 'ZIP archives' },
-    { name: 'sevenz-rust', description: '7z AES-256' },
+    { name: 'sevenz-rust2', description: '7z AES-256' },
     { name: 'quick-xml', description: 'WebDAV' },
     { name: 'oauth2', description: 'OAuth2' },
 ];
