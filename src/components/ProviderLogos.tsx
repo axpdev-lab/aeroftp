@@ -256,17 +256,40 @@ export const GoogleCloudStorageLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     </svg>
 );
 
-// Google Drive: multicolor triangle
-export const GoogleDriveLogo: React.FC<LogoProps> = ({ size = 24 }) => (
-    <svg width={size} height={size} viewBox="0 0 87.3 78">
-        <path fill="#0066da" d="M6.6 66.85l3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8H0c0 1.55.4 3.1 1.2 4.5l5.4 9.35z" />
-        <path fill="#00ac47" d="M43.65 25L29.9 1.2c-1.35.8-2.5 1.9-3.3 3.3L1.2 52.35c-.8 1.4-1.2 2.95-1.2 4.5h27.5L43.65 25z" />
-        <path fill="#ea4335" d="M73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5H59.85L73.55 76.8z" />
-        <path fill="#00832d" d="M43.65 25L57.4 1.2c-1.35-.8-2.9-1.2-4.5-1.2H34.35c-1.6 0-3.15.45-4.45 1.2L43.65 25z" />
-        <path fill="#2684fc" d="M59.85 53H27.5L13.75 76.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.45 4.5-1.2L59.85 53z" />
-        <path fill="#ffba00" d="M73.4 26.5l-12.7-22c-.8-1.4-1.95-2.5-3.3-3.3L43.65 25l16.2 28h27.45c0-1.55-.4-3.1-1.2-4.5l-12.7-22z" />
-    </svg>
-);
+// Google Drive: official 2026 gradient triangle (from workspace.google.com brand assets)
+export const GoogleDriveLogo: React.FC<LogoProps> = ({ size = 24 }) => {
+    const maskId = useId();
+    const g1 = useId();
+    const g2 = useId();
+    const g3 = useId();
+    return (
+        <svg width={size} height={size} viewBox="0 0 192 192" fill="none">
+            <mask id={maskId} width="168" height="154" x="12" y="18" maskUnits="userSpaceOnUse" style={{ maskType: 'alpha' }}>
+                <path fill="#b43333" d="M63.09 37c14.626-25.333 51.193-25.334 65.819 0l45.033 78c14.626 25.334-3.657 57.001-32.91 57.001H50.967c-29.253 0-47.536-31.667-32.91-57.001z" />
+            </mask>
+            <g mask={`url(#${maskId})`}>
+                <path fill={`url(#${g1})`} d="M206.905 172.02h-91.888l-19.015-32.934 45.944-79.578z" />
+                <path fill={`url(#${g2})`} d="M-14.919 172.006 50.04 59.494v.002L31.032 92.422h38.02L115 172.004l-129.918.001z" />
+                <path fill={`url(#${g3})`} d="M96.007-20.085 141.954 59.5l-19.011 32.928H31.048z" />
+            </g>
+            <defs>
+                <linearGradient id={g1} x1="193.6" x2="103.09" y1="165.6" y2="111.21" gradientUnits="userSpaceOnUse">
+                    <stop offset=".09" stopColor="#ffe921" />
+                    <stop offset="1" stopColor="#fec700" />
+                </linearGradient>
+                <linearGradient id={g2} x1="114.4" x2="15.53" y1="181.61" y2="121.8" gradientUnits="userSpaceOnUse">
+                    <stop offset=".15" stopColor="#a9a8ff" />
+                    <stop offset=".33" stopColor="#6d97ff" />
+                    <stop offset=".48" stopColor="#3186ff" />
+                </linearGradient>
+                <linearGradient id={g3} x1="128.88" x2="28.7" y1="37.88" y2="84.64" gradientUnits="userSpaceOnUse">
+                    <stop offset=".55" stopColor="#0ebc5f" />
+                    <stop offset=".85" stopColor="#78c9ff" />
+                </linearGradient>
+            </defs>
+        </svg>
+    );
+};
 
 // PixelUnion: PNG logo (scaled up 1.4x like other PNG logos)
 export const PixelUnionLogo: React.FC<LogoProps> = ({ size = 24 }) => (
@@ -318,13 +341,10 @@ export const DriveHQLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     />
 );
 
-// OneDrive: Microsoft cloud (4-cloud composition)
+// OneDrive: official Microsoft cloud mark (2025-present brand)
 export const OneDriveLogo: React.FC<LogoProps> = ({ size = 24 }) => (
-    <svg width={size} height={size} viewBox="0 0 32 24" xmlns="http://www.w3.org/2000/svg">
-        <path fill="#0364b8" d="M19.6 9.5c-.55-3-3.18-5.25-6.34-5.25-2.97 0-5.49 1.99-6.27 4.71.46-.1.94-.16 1.42-.16 1.97 0 3.74.78 5.05 2.05a4.99 4.99 0 0 1 4.55-1.6c.55.05 1.06.18 1.59.25z" />
-        <path fill="#0078d4" d="M13.46 10.85a6.46 6.46 0 0 0-5.05-2.05c-.48 0-.96.06-1.42.16C4.13 9.5 2 11.99 2 14.97c0 .49.07.97.18 1.43h11.84a4.5 4.5 0 0 1-.56-5.55z" />
-        <path fill="#1490df" d="M19.6 9.5c-.53-.07-1.04-.2-1.59-.25a4.99 4.99 0 0 0-4.55 1.6 4.5 4.5 0 0 0 .56 5.55h9.55a3.97 3.97 0 0 0 3.93-4c0-2.04-1.5-3.74-3.45-3.97a5 5 0 0 0-4.45 1.07z" />
-        <path fill="#28a8ea" d="M14.02 16.4H2.18A4.5 4.5 0 0 0 6.5 19.75h17a3.97 3.97 0 0 0 3.97-3.4 3.97 3.97 0 0 1-3.85 3.05h-9.55a4.5 4.5 0 0 1-.05-3z" />
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="#0078D4">
+        <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.61 5.64 5.36 8.04 2.35 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z" />
     </svg>
 );
 
