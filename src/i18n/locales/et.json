@@ -2133,7 +2133,15 @@
             "openInstaller": "Ava paigaldaja",
             "skipForNow": "Hiljem, mitte praegu",
             "installing": "Värskenduse paigaldamine...",
-            "installingDesc": "Rakendus taaskäivitub automaatselt mõne sekundi pärast"
+            "installingDesc": "Rakendus taaskäivitub automaatselt mõne sekundi pärast",
+            "installAuth": "Õiguste autentimine...",
+            "installRestarting": "AeroFTP taaskäivitamine...",
+            "installRunning": "Paketi värskenduse installimine...",
+            "verifyShaOnly": "SHA-256 kinnitatud ({hash}...)",
+            "verifySignatureFailed": "Allkirja kontrollimine ebaõnnestus",
+            "verifySignedByCi": "Allkirjastanud axpdev-lab/aeroftp CI",
+            "verifyUnverified": "Allkiri pole kontrollitud (ainult SHA-256)",
+            "verifyingIntegrity": "Terviklikkuse kontrollimine..."
         },
         "ai": {
             "aeroAgent": "AeroAgent",

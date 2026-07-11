@@ -2133,7 +2133,15 @@
             "openInstaller": "Yükleyiciyi Aç",
             "skipForNow": "Sonra, şimdi değil",
             "installing": "Güncelleme yükleniyor...",
-            "installingDesc": "Uygulama birkaç saniye içinde otomatik olarak yeniden başlatilacak"
+            "installingDesc": "Uygulama birkaç saniye içinde otomatik olarak yeniden başlatilacak",
+            "installAuth": "Ayrıcalıklar doğrulanıyor...",
+            "installRestarting": "AeroFTP yeniden başlatılıyor...",
+            "installRunning": "Paket güncellemesi yükleniyor...",
+            "verifyShaOnly": "SHA-256 doğrulandı ({hash}...)",
+            "verifySignatureFailed": "İmza doğrulaması başarısız oldu",
+            "verifySignedByCi": "axpdev-lab/aeroftp CI tarafından imzalandı",
+            "verifyUnverified": "İmza doğrulanmadı (yalnızca SHA-256)",
+            "verifyingIntegrity": "Bütünlük doğrulanıyor..."
         },
         "ai": {
             "aeroAgent": "AeroAgent",

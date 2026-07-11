@@ -2133,7 +2133,15 @@
             "openInstaller": "Opna uppsetningarforrit",
             "skipForNow": "Síðar, ekki núna",
             "installing": "Uppfærsla verður sett upp...",
-            "installingDesc": "Forritið mun endurræsast sjálfkrafa eftir nokkrar sekúndur"
+            "installingDesc": "Forritið mun endurræsast sjálfkrafa eftir nokkrar sekúndur",
+            "installAuth": "Auðkenni réttindi...",
+            "installRestarting": "Endurræsi AeroFTP...",
+            "installRunning": "Set upp pakkauppfærslu...",
+            "verifyShaOnly": "SHA-256 staðfest ({hash}...)",
+            "verifySignatureFailed": "Staðfesting undirskriftar mistókst",
+            "verifySignedByCi": "Undirritað af axpdev-lab/aeroftp CI",
+            "verifyUnverified": "Undirskrift óstaðfest (aðeins SHA-256)",
+            "verifyingIntegrity": "Staðfesti heilleika..."
         },
         "ai": {
             "aeroAgent": "AeroAgent",

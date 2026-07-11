@@ -2133,7 +2133,15 @@
             "openInstaller": "Buka Pemasang",
             "skipForNow": "Nanti, bukan sekarang",
             "installing": "Memasang kemas kini...",
-            "installingDesc": "Aplikasi akan dimulakan semula secara automatik dalam beberapa saat"
+            "installingDesc": "Aplikasi akan dimulakan semula secara automatik dalam beberapa saat",
+            "installAuth": "Mengesahkan keistimewaan...",
+            "installRestarting": "Memulakan semula AeroFTP...",
+            "installRunning": "Memasang kemas kini pakej...",
+            "verifyShaOnly": "SHA-256 disahkan ({hash}...)",
+            "verifySignatureFailed": "Pengesahan tandatangan gagal",
+            "verifySignedByCi": "Ditandatangani oleh axpdev-lab/aeroftp CI",
+            "verifyUnverified": "Tandatangan tidak disahkan (SHA-256 sahaja)",
+            "verifyingIntegrity": "Mengesahkan integriti..."
         },
         "ai": {
             "aeroAgent": "AeroAgent",

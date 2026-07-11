@@ -2098,7 +2098,15 @@
             "openInstaller": "インストーラーを開く",
             "skipForNow": "後で、今はしない",
             "installing": "アップデートをインストール中...",
-            "installingDesc": "数秒後にアプリが自動的に再起動します"
+            "installingDesc": "数秒後にアプリが自動的に再起動します",
+            "installAuth": "権限を認証しています...",
+            "installRestarting": "AeroFTP を再起動しています...",
+            "installRunning": "パッケージの更新をインストールしています...",
+            "verifyShaOnly": "SHA-256 を検証しました ({hash}...)",
+            "verifySignatureFailed": "署名の検証に失敗しました",
+            "verifySignedByCi": "axpdev-lab/aeroftp CI により署名済み",
+            "verifyUnverified": "署名は未検証です (SHA-256 のみ)",
+            "verifyingIntegrity": "整合性を検証しています..."
         },
         "ai": {
             "aeroAgent": "AeroAgent",

@@ -2126,7 +2126,15 @@
             "openInstaller": "Բացել տեղադրիչը",
             "skipForNow": "Հետո, ոչ հիմա",
             "installing": "Թարմացման տեղադրում...",
-            "installingDesc": "Հավելվածը ինքնաբերաբար կվերագործարկվի մի քանի վայրկյանից հետո"
+            "installingDesc": "Հավելվածը ինքնաբերաբար կվերագործարկվի մի քանի վայրկյանից հետո",
+            "installAuth": "Արտոնությունների նույնականացում...",
+            "installRestarting": "AeroFTP-ի վերագործարկում...",
+            "installRunning": "Փաթեթի թարմացման տեղադրում...",
+            "verifyShaOnly": "SHA-256-ը հաստատված է ({hash}...)",
+            "verifySignatureFailed": "Ստորագրության ստուգումը ձախողվեց",
+            "verifySignedByCi": "Ստորագրված է axpdev-lab/aeroftp CI-ի կողմից",
+            "verifyUnverified": "Ստորագրությունը հաստատված չէ (միայն SHA-256)",
+            "verifyingIntegrity": "Ամբողջականության ստուգում..."
         },
         "ai": {
             "aeroAgent": "AeroAgent",

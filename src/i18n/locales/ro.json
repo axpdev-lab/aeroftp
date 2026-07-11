@@ -2133,7 +2133,15 @@
             "openInstaller": "Deschide instalatorul",
             "skipForNow": "Mai târziu, nu acum",
             "installing": "Se instalează actualizarea...",
-            "installingDesc": "Aplicația se va reporni automat în câteva secunde"
+            "installingDesc": "Aplicația se va reporni automat în câteva secunde",
+            "installAuth": "Se autentifică privilegiile...",
+            "installRestarting": "Se repornește AeroFTP...",
+            "installRunning": "Se instalează actualizarea pachetului...",
+            "verifyShaOnly": "SHA-256 verificat ({hash}...)",
+            "verifySignatureFailed": "Verificarea semnăturii a eșuat",
+            "verifySignedByCi": "Semnat de axpdev-lab/aeroftp CI",
+            "verifyUnverified": "Semnătură neverificată (doar SHA-256)",
+            "verifyingIntegrity": "Se verifică integritatea..."
         },
         "ai": {
             "aeroAgent": "AeroAgent",

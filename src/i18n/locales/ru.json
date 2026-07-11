@@ -2133,7 +2133,15 @@
             "openInstaller": "Открыть установщик",
             "skipForNow": "Позже, не сейчас",
             "installing": "Установка обновления...",
-            "installingDesc": "Приложение автоматически перезапустится через несколько секунд"
+            "installingDesc": "Приложение автоматически перезапустится через несколько секунд",
+            "installAuth": "Аутентификация привилегий...",
+            "installRestarting": "Перезапуск AeroFTP...",
+            "installRunning": "Установка обновления пакета...",
+            "verifyShaOnly": "SHA-256 проверен ({hash}...)",
+            "verifySignatureFailed": "Не удалось проверить подпись",
+            "verifySignedByCi": "Подписано axpdev-lab/aeroftp CI",
+            "verifyUnverified": "Подпись не проверена (только SHA-256)",
+            "verifyingIntegrity": "Проверка целостности..."
         },
         "ai": {
             "aeroAgent": "AeroAgent",

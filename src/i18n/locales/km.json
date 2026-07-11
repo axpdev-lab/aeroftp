@@ -2133,7 +2133,15 @@
             "openInstaller": "បើកកម្មវិធីដំឡើង",
             "skipForNow": "ពេលក្រោយ មិនមែនឥឡូវទេ",
             "installing": "កំពុងដំឡើងបច្ចុប្បន្នភាព...",
-            "installingDesc": "កម្មវិធីនឹងចាប់ផ្ដើមឡើងវិញដោយស្វ័យប្រវត្តិក្នុងរយៈពេលប៉ុន្មានវិនាទី"
+            "installingDesc": "កម្មវិធីនឹងចាប់ផ្ដើមឡើងវិញដោយស្វ័យប្រវត្តិក្នុងរយៈពេលប៉ុន្មានវិនាទី",
+            "installAuth": "កំពុងផ្ទៀងផ្ទាត់សិទ្ធិ...",
+            "installRestarting": "កំពុងចាប់ផ្ដើម AeroFTP ឡើងវិញ...",
+            "installRunning": "កំពុងដំឡើងបច្ចុប្បន្នភាពកញ្ចប់...",
+            "verifyShaOnly": "បានផ្ទៀងផ្ទាត់ SHA-256 ({hash}...)",
+            "verifySignatureFailed": "ការផ្ទៀងផ្ទាត់ហត្ថលេខាបានបរាជ័យ",
+            "verifySignedByCi": "ចុះហត្ថលេខាដោយ axpdev-lab/aeroftp CI",
+            "verifyUnverified": "ហត្ថលេខាមិនបានផ្ទៀងផ្ទាត់ (តែ SHA-256 ប៉ុណ្ណោះ)",
+            "verifyingIntegrity": "កំពុងផ្ទៀងផ្ទាត់ភាពត្រឹមត្រូវ..."
         },
         "ai": {
             "aeroAgent": "AeroAgent",

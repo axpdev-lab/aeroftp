@@ -2133,7 +2133,15 @@
             "openInstaller": "Ireki instalatzailea",
             "skipForNow": "Geroago, orain ez",
             "installing": "Eguneratzea instalatzen...",
-            "installingDesc": "Aplikazioa automatikoki berrabiaraziko da segundo gutxi barru"
+            "installingDesc": "Aplikazioa automatikoki berrabiaraziko da segundo gutxi barru",
+            "installAuth": "Pribilegioak autentifikatzen...",
+            "installRestarting": "AeroFTP berrabiarazten...",
+            "installRunning": "Paketearen eguneratzea instalatzen...",
+            "verifyShaOnly": "SHA-256 egiaztatuta ({hash}...)",
+            "verifySignatureFailed": "Sinaduraren egiaztapenak huts egin du",
+            "verifySignedByCi": "axpdev-lab/aeroftp CI-k sinatuta",
+            "verifyUnverified": "Sinadura egiaztatu gabe (SHA-256 soilik)",
+            "verifyingIntegrity": "Osotasuna egiaztatzen..."
         },
         "ai": {
             "aeroAgent": "AeroAgent",

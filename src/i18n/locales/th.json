@@ -2133,7 +2133,15 @@
             "openInstaller": "เปิดตัวติดตั้ง",
             "skipForNow": "ภายหลัง ไม่ใช่ตอนนี้",
             "installing": "กำลังติดตั้งการอัปเดต...",
-            "installingDesc": "แอปจะรีสตาร์ทโดยอัตโนมัติในอีกไม่กี่วินาที"
+            "installingDesc": "แอปจะรีสตาร์ทโดยอัตโนมัติในอีกไม่กี่วินาที",
+            "installAuth": "กำลังตรวจสอบสิทธิ์...",
+            "installRestarting": "กำลังรีสตาร์ท AeroFTP...",
+            "installRunning": "กำลังติดตั้งการอัปเดตแพ็กเกจ...",
+            "verifyShaOnly": "ตรวจสอบ SHA-256 แล้ว ({hash}...)",
+            "verifySignatureFailed": "การตรวจสอบลายเซ็นล้มเหลว",
+            "verifySignedByCi": "ลงนามโดย axpdev-lab/aeroftp CI",
+            "verifyUnverified": "ลายเซ็นยังไม่ได้รับการตรวจสอบ (เฉพาะ SHA-256)",
+            "verifyingIntegrity": "กำลังตรวจสอบความสมบูรณ์..."
         },
         "ai": {
             "aeroAgent": "AeroAgent",

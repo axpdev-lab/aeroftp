@@ -2133,7 +2133,15 @@
             "openInstaller": "Avaa asennusohjelma",
             "skipForNow": "Myöhemmin, ei nyt",
             "installing": "Asennetaan päivitystä...",
-            "installingDesc": "Sovellus käynnistyy uudelleen automaattisesti muutaman sekunnin kuluttua"
+            "installingDesc": "Sovellus käynnistyy uudelleen automaattisesti muutaman sekunnin kuluttua",
+            "installAuth": "Todennetaan oikeuksia...",
+            "installRestarting": "Käynnistetään AeroFTP uudelleen...",
+            "installRunning": "Asennetaan pakettipäivitystä...",
+            "verifyShaOnly": "SHA-256 vahvistettu ({hash}...)",
+            "verifySignatureFailed": "Allekirjoituksen vahvistus epäonnistui",
+            "verifySignedByCi": "Allekirjoittanut axpdev-lab/aeroftp CI",
+            "verifyUnverified": "Allekirjoitusta ei vahvistettu (vain SHA-256)",
+            "verifyingIntegrity": "Tarkistetaan eheyttä..."
         },
         "ai": {
             "aeroAgent": "AeroAgent",

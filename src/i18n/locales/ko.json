@@ -2133,7 +2133,15 @@
             "openInstaller": "설치 프로그램 열기",
             "skipForNow": "나중에, 지금은 안 할래요",
             "installing": "업데이트 설치 중...",
-            "installingDesc": "몇 초 후에 앱이 자동으로 다시 시작됩니다"
+            "installingDesc": "몇 초 후에 앱이 자동으로 다시 시작됩니다",
+            "installAuth": "권한을 인증하는 중...",
+            "installRestarting": "AeroFTP를 다시 시작하는 중...",
+            "installRunning": "패키지 업데이트를 설치하는 중...",
+            "verifyShaOnly": "SHA-256 확인됨 ({hash}...)",
+            "verifySignatureFailed": "서명 확인에 실패했습니다",
+            "verifySignedByCi": "axpdev-lab/aeroftp CI에서 서명함",
+            "verifyUnverified": "서명이 확인되지 않음 (SHA-256만)",
+            "verifyingIntegrity": "무결성을 확인하는 중..."
         },
         "ai": {
             "aeroAgent": "AeroAgent",

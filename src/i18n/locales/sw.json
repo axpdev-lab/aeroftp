@@ -2133,7 +2133,15 @@
             "openInstaller": "Fungua Kisakinishi",
             "skipForNow": "Baadaye, si sasa",
             "installing": "Inasakinisha sasisho...",
-            "installingDesc": "Programu itaanza upya moja kwa moja baada ya sekunde chache"
+            "installingDesc": "Programu itaanza upya moja kwa moja baada ya sekunde chache",
+            "installAuth": "Inathibitisha ruhusa...",
+            "installRestarting": "Inaanzisha upya AeroFTP...",
+            "installRunning": "Inasakinisha sasisho la kifurushi...",
+            "verifyShaOnly": "SHA-256 imethibitishwa ({hash}...)",
+            "verifySignatureFailed": "Uthibitishaji wa saini umeshindwa",
+            "verifySignedByCi": "Imetiwa saini na axpdev-lab/aeroftp CI",
+            "verifyUnverified": "Saini haijathibitishwa (SHA-256 pekee)",
+            "verifyingIntegrity": "Inathibitisha uadilifu..."
         },
         "ai": {
             "aeroAgent": "AeroAgent",

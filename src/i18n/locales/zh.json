@@ -2133,7 +2133,15 @@
             "openInstaller": "打开安装程序",
             "skipForNow": "稍后再说",
             "installing": "正在安装更新...",
-            "installingDesc": "应用程序将在几秒后自动重新启动"
+            "installingDesc": "应用程序将在几秒后自动重新启动",
+            "installAuth": "正在验证权限...",
+            "installRestarting": "正在重启 AeroFTP...",
+            "installRunning": "正在安装软件包更新...",
+            "verifyShaOnly": "已验证 SHA-256 ({hash}...)",
+            "verifySignatureFailed": "签名验证失败",
+            "verifySignedByCi": "由 axpdev-lab/aeroftp CI 签名",
+            "verifyUnverified": "签名未验证 (仅 SHA-256)",
+            "verifyingIntegrity": "正在验证完整性..."
         },
         "ai": {
             "aeroAgent": "AeroAgent",

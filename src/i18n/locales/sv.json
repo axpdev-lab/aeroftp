@@ -2133,7 +2133,15 @@
             "openInstaller": "Öppna installeraren",
             "skipForNow": "Senare, inte nu",
             "installing": "Installerar uppdatering...",
-            "installingDesc": "Appen startar om automatiskt om några sekunder"
+            "installingDesc": "Appen startar om automatiskt om några sekunder",
+            "installAuth": "Autentiserar behörigheter...",
+            "installRestarting": "Startar om AeroFTP...",
+            "installRunning": "Installerar paketuppdatering...",
+            "verifyShaOnly": "SHA-256 verifierad ({hash}...)",
+            "verifySignatureFailed": "Verifiering av signatur misslyckades",
+            "verifySignedByCi": "Signerad av axpdev-lab/aeroftp CI",
+            "verifyUnverified": "Signatur inte verifierad (endast SHA-256)",
+            "verifyingIntegrity": "Verifierar integritet..."
         },
         "ai": {
             "aeroAgent": "AeroAgent",

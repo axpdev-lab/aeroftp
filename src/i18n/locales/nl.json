@@ -2133,7 +2133,15 @@
             "openInstaller": "Installatieprogramma openen",
             "skipForNow": "Later, niet nu",
             "installing": "Update wordt geïnstalleerd...",
-            "installingDesc": "De app wordt automatisch opnieuw gestart over enkele seconden"
+            "installingDesc": "De app wordt automatisch opnieuw gestart over enkele seconden",
+            "installAuth": "Rechten verifiëren...",
+            "installRestarting": "AeroFTP opnieuw opstarten...",
+            "installRunning": "Pakketupdate installeren...",
+            "verifyShaOnly": "SHA-256 geverifieerd ({hash}...)",
+            "verifySignatureFailed": "Verificatie van handtekening mislukt",
+            "verifySignedByCi": "Ondertekend door axpdev-lab/aeroftp CI",
+            "verifyUnverified": "Handtekening niet geverifieerd (alleen SHA-256)",
+            "verifyingIntegrity": "Integriteit verifiëren..."
         },
         "ai": {
             "aeroAgent": "AeroAgent",

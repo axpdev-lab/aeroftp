@@ -2133,7 +2133,15 @@
             "openInstaller": "Agor y Gosodwr",
             "skipForNow": "Yn nes ymlaen, dim nawr",
             "installing": "Yn gosod y diweddariad...",
-            "installingDesc": "Bydd yr ap yn ailgychwyn yn awtomatig mewn ychydig eiliadau"
+            "installingDesc": "Bydd yr ap yn ailgychwyn yn awtomatig mewn ychydig eiliadau",
+            "installAuth": "Dilysu breintiau...",
+            "installRestarting": "Ailgychwyn AeroFTP...",
+            "installRunning": "Gosod diweddariad y pecyn...",
+            "verifyShaOnly": "SHA-256 wedi'i wirio ({hash}...)",
+            "verifySignatureFailed": "Methodd dilysu'r llofnod",
+            "verifySignedByCi": "Llofnodwyd gan axpdev-lab/aeroftp CI",
+            "verifyUnverified": "Llofnod heb ei ddilysu (SHA-256 yn unig)",
+            "verifyingIntegrity": "Gwirio cywirdeb..."
         },
         "ai": {
             "aeroAgent": "AeroAgent",

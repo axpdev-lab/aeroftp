@@ -3954,14 +3954,22 @@
         "update": {
             "downloadComplete": "Download complete!",
             "downloadNow": "Download Now",
+            "installAuth": "Authenticating privileges...",
             "installRestart": "Install & Restart",
+            "installRestarting": "Restarting AeroFTP...",
+            "installRunning": "Installing package update...",
             "installing": "Installing update...",
             "installingDesc": "The app will restart automatically in a few seconds",
             "openFolder": "Open in File Manager",
             "openInstaller": "Open Installer",
             "retry": "Retry Download",
             "skipForNow": "Later, not now",
-            "starting": "Starting..."
+            "starting": "Starting...",
+            "verifyShaOnly": "SHA-256 verified ({hash}...)",
+            "verifySignatureFailed": "Signature verification failed",
+            "verifySignedByCi": "Signed by axpdev-lab/aeroftp CI",
+            "verifyUnverified": "Signature not verified (SHA-256 only)",
+            "verifyingIntegrity": "Verifying integrity..."
         },
         "cyberTools": {
             "title": "Security Tools",

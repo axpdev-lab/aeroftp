@@ -2133,7 +2133,15 @@
             "openInstaller": "ინსტალატორის გახსნა",
             "skipForNow": "მოგვიანებით, ახლა არა",
             "installing": "განახლების ინსტალაცია...",
-            "installingDesc": "აპლიკაცია ავტომატურად გადაიტვირთება რამდენიმე წამში"
+            "installingDesc": "აპლიკაცია ავტომატურად გადაიტვირთება რამდენიმე წამში",
+            "installAuth": "პრივილეგიების ავთენტიფიკაცია...",
+            "installRestarting": "AeroFTP-ის გადატვირთვა...",
+            "installRunning": "პაკეტის განახლების ინსტალაცია...",
+            "verifyShaOnly": "SHA-256 დადასტურებულია ({hash}...)",
+            "verifySignatureFailed": "ხელმოწერის შემოწმება ვერ მოხერხდა",
+            "verifySignedByCi": "ხელმოწერილია axpdev-lab/aeroftp CI-ის მიერ",
+            "verifyUnverified": "ხელმოწერა დაუდასტურებელია (მხოლოდ SHA-256)",
+            "verifyingIntegrity": "მთლიანობის შემოწმება..."
         },
         "ai": {
             "aeroAgent": "AeroAgent",

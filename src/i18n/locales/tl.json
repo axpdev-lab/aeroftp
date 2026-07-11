@@ -2133,7 +2133,15 @@
             "openInstaller": "Buksan ang Installer",
             "skipForNow": "Mamaya na lang",
             "installing": "Ini-install ang update...",
-            "installingDesc": "Awtomatikong magre-restart ang app sa loob ng ilang segundo"
+            "installingDesc": "Awtomatikong magre-restart ang app sa loob ng ilang segundo",
+            "installAuth": "Nagpapatotoo ng mga pribilehiyo...",
+            "installRestarting": "Nire-restart ang AeroFTP...",
+            "installRunning": "Ini-install ang update ng package...",
+            "verifyShaOnly": "Na-verify ang SHA-256 ({hash}...)",
+            "verifySignatureFailed": "Nabigo ang pag-verify ng lagda",
+            "verifySignedByCi": "Nilagdaan ng axpdev-lab/aeroftp CI",
+            "verifyUnverified": "Hindi na-verify ang lagda (SHA-256 lamang)",
+            "verifyingIntegrity": "Bina-verify ang integridad..."
         },
         "ai": {
             "aeroAgent": "AeroAgent",

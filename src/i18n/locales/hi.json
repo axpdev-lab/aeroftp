@@ -2133,7 +2133,15 @@
             "openInstaller": "इंस्टॉलर खोलें",
             "skipForNow": "बाद में, अभी नहीं",
             "installing": "अपडेट इंस्टॉल हो रहा है...",
-            "installingDesc": "ऐप कुछ सेकंड में स्वचालित रूप से पुनः आरंभ होगा"
+            "installingDesc": "ऐप कुछ सेकंड में स्वचालित रूप से पुनः आरंभ होगा",
+            "installAuth": "विशेषाधिकारों को प्रमाणित किया जा रहा है...",
+            "installRestarting": "AeroFTP पुनः आरंभ हो रहा है...",
+            "installRunning": "पैकेज अपडेट इंस्टॉल हो रहा है...",
+            "verifyShaOnly": "SHA-256 सत्यापित ({hash}...)",
+            "verifySignatureFailed": "हस्ताक्षर सत्यापन विफल",
+            "verifySignedByCi": "axpdev-lab/aeroftp CI द्वारा हस्ताक्षरित",
+            "verifyUnverified": "हस्ताक्षर सत्यापित नहीं (केवल SHA-256)",
+            "verifyingIntegrity": "अखंडता की पुष्टि की जा रही है..."
         },
         "ai": {
             "aeroAgent": "AeroAgent",

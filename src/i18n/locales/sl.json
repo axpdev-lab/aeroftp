@@ -2133,7 +2133,15 @@
             "openInstaller": "Odpri namestitveni program",
             "skipForNow": "Pozneje, ne zdaj",
             "installing": "Nameščanje posodobitve...",
-            "installingDesc": "Aplikacija se bo samodejno znova zagnala čez nekaj sekund"
+            "installingDesc": "Aplikacija se bo samodejno znova zagnala čez nekaj sekund",
+            "installAuth": "Preverjanje pravic...",
+            "installRestarting": "Ponovni zagon AeroFTP...",
+            "installRunning": "Nameščanje posodobitve paketa...",
+            "verifyShaOnly": "SHA-256 preverjen ({hash}...)",
+            "verifySignatureFailed": "Preverjanje podpisa ni uspelo",
+            "verifySignedByCi": "Podpisal axpdev-lab/aeroftp CI",
+            "verifyUnverified": "Podpis ni preverjen (samo SHA-256)",
+            "verifyingIntegrity": "Preverjanje celovitosti..."
         },
         "ai": {
             "aeroAgent": "AeroAgent",

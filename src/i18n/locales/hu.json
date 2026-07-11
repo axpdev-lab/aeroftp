@@ -2133,7 +2133,15 @@
             "openInstaller": "Telepítő megnyitása",
             "skipForNow": "Később, most nem",
             "installing": "Frissítés telepítése...",
-            "installingDesc": "Az alkalmazás néhány másodpercen belül automatikusan újraindul"
+            "installingDesc": "Az alkalmazás néhány másodpercen belül automatikusan újraindul",
+            "installAuth": "Jogosultságok hitelesítése...",
+            "installRestarting": "Az AeroFTP újraindítása...",
+            "installRunning": "Csomagfrissítés telepítése...",
+            "verifyShaOnly": "SHA-256 ellenőrizve ({hash}...)",
+            "verifySignatureFailed": "Az aláírás ellenőrzése sikertelen",
+            "verifySignedByCi": "Aláírta: axpdev-lab/aeroftp CI",
+            "verifyUnverified": "Aláírás nincs ellenőrizve (csak SHA-256)",
+            "verifyingIntegrity": "Integritás ellenőrzése..."
         },
         "ai": {
             "aeroAgent": "AeroAgent",

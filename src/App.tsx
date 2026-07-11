@@ -179,6 +179,7 @@ import { RECONNECT_ERROR_KINDS, getErrorKindI18nKey } from './utils/transferErro
 import { normalizeMegaOptions } from './utils/providerConnectionMeta';
 import { localizeRestrictedCharError } from './utils/restrictedCharError';
 import { CONNECT_CANCELLED_MARKER, CONNECT_HARD_TIMEOUT_MARKER, isConnectCancelledError, isConnectHardTimeoutError } from './utils/connectCancel';
+import { classifyUpdateVerification } from './utils/updateVerification';
 import { safePickerStartDir } from './utils/safePickerDir';
 import { migrateFilenApiKeysToVault } from './utils/filenApiKeyMigration';
 import { CustomTitlebar } from './components/CustomTitlebar';
@@ -13905,11 +13906,12 @@ interface UpdateVerificationInfo {
                   etaSeconds={updateDownload.downloading ? updateDownload.eta_seconds : undefined}
                   size="lg"
                   variant="gradient"
+                  tone={(updateDownload.downloading ? updateDownload.percentage : 100) >= 100 ? 'success' : 'default'}
                 />
                 {!updateDownload.downloading && (
                   <div className="mt-1.5 text-xs text-blue-200/70 flex items-center gap-1.5">
                     <Loader2 size={11} className="animate-spin" />
-                    Verifying integrity...
+                    {t('update.verifyingIntegrity')}
                   </div>
                 )}
               </div>
@@ -13925,24 +13927,41 @@ interface UpdateVerificationInfo {
                   {updateDownload.completedPath}
                 </span>
 
-                {/* Sigstore Badge */}
-                {updateDownload.verification && (
-                  <div className={`mt-1 flex flex-col gap-1 text-xs border rounded-lg p-2 ${
-                    updateDownload.verification.mode === 'VerificationFailed' ? 'bg-red-500/10 border-red-500/20 text-red-300' :
-                    'bg-green-500/10 border-green-500/20 text-green-300'
-                  }`}>
-                    <div className="flex items-center justify-between font-medium">
-                      <div className="flex items-center gap-1.5 truncate">
-                        {updateDownload.verification.mode === 'VerificationFailed' ? <ShieldAlert size={14} className="flex-shrink-0" /> : <ShieldCheck size={14} className="flex-shrink-0" />}
-                        <span className="truncate">
-                          {updateDownload.verification.mode === 'SigstoreVerified' && 'Signed by axpdev-lab/aeroftp CI'}
-                          {updateDownload.verification.mode === 'VerificationUnavailable' && `SHA-256 verified (${updateDownload.verification.artifact_sha256.slice(0, 12)}...)`}
-                          {updateDownload.verification.mode === 'VerificationFailed' && 'Signature verification failed'}
-                        </span>
+                {/* Sigstore / SHA-256 verification badge. Three visible states:
+                    green = sigstore verified, OR no signature bundle present (SHA-256 only);
+                    amber = a signature bundle WAS present and parsed but sigstore verification
+                            failed -> advisory in v4.1.3: still installable, but no longer
+                            masquerades as a green "verified" badge;
+                    red   = VerificationFailed, hides Install (reserved for the v4.1.4 hard gate).
+                    Classified purely from backend-provided fields; the Rust verify path is
+                    untouched so the working verified path cannot regress. */}
+                {updateDownload.verification && (() => {
+                  const v = updateDownload.verification;
+                  const tone = classifyUpdateVerification(v);
+                  const boxClass = tone === 'failed'
+                    ? 'bg-red-500/10 border-red-500/20 text-red-300'
+                    : tone === 'unverified'
+                      ? 'bg-amber-500/10 border-amber-500/20 text-amber-300'
+                      : 'bg-green-500/10 border-green-500/20 text-green-300';
+                  const VIcon = tone === 'failed' ? ShieldAlert : tone === 'unverified' ? ShieldQuestion : ShieldCheck;
+                  const label = tone === 'failed'
+                    ? t('update.verifySignatureFailed')
+                    : tone === 'verified'
+                      ? t('update.verifySignedByCi')
+                      : tone === 'unverified'
+                        ? t('update.verifyUnverified')
+                        : t('update.verifyShaOnly', { hash: v.artifact_sha256.slice(0, 12) });
+                  return (
+                    <div className={`mt-1 flex flex-col gap-1 text-xs border rounded-lg p-2 ${boxClass}`}>
+                      <div className="flex items-center justify-between font-medium">
+                        <div className="flex items-center gap-1.5 truncate">
+                          <VIcon size={14} className="flex-shrink-0" />
+                          <span className="truncate">{label}</span>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                )}
+                  );
+                })()}
 
                 {/* Install & Restart: platform-aware, block if VerificationFailed.
                     Linux (appimage/deb/rpm): per-format install command + auto-restart.
@@ -14050,9 +14069,9 @@ interface UpdateVerificationInfo {
             <Loader2 className="w-12 h-12 animate-spin text-blue-400" />
             <div className="text-center">
               <p className="text-white text-lg font-semibold">
-                {updateDownload.installPhase === 'auth' && 'Authenticating privileges...'}
-                {updateDownload.installPhase === 'running' && 'Installing package update...'}
-                {updateDownload.installPhase === 'restart' && 'Restarting AeroFTP...'}
+                {updateDownload.installPhase === 'auth' && t('update.installAuth')}
+                {updateDownload.installPhase === 'running' && t('update.installRunning')}
+                {updateDownload.installPhase === 'restart' && t('update.installRestarting')}
                 {!updateDownload.installPhase && t('update.installing')}
               </p>
               <p className="text-white/60 text-sm mt-1">{t('update.installingDesc')}</p>
@@ -14060,16 +14079,28 @@ interface UpdateVerificationInfo {
                 <p className="text-white/40 text-xs mt-2">AeroFTP v{updateAvailable.latest_version}</p>
               )}
             </div>
-            {/* Verification hash: shown plainly in overlay, badge is in download toast */}
-            {updateDownload.verification && (
-              <p className={`text-xs mt-2 ${updateDownload.verification.mode === 'VerificationFailed' ? 'text-red-400' : 'text-white/40'}`}>
-                {updateDownload.verification.mode === 'VerificationFailed'
-                  ? 'Verification Error'
-                  : updateDownload.verification.artifact_sha256
-                    ? `SHA-256: ${updateDownload.verification.artifact_sha256.slice(0, 16)}...`
-                    : ''}
-              </p>
-            )}
+            {/* Verification result echoed in the centered overlay (not only the
+                top-right toast), so the outcome is visible while installing. Same
+                classification as the toast badge. */}
+            {updateDownload.verification && (() => {
+              const v = updateDownload.verification;
+              const tone = classifyUpdateVerification(v);
+              const VIcon = tone === 'failed' ? ShieldAlert : tone === 'unverified' ? ShieldQuestion : ShieldCheck;
+              const color = tone === 'failed' ? 'text-red-400' : tone === 'unverified' ? 'text-amber-400' : 'text-green-400';
+              const label = tone === 'failed'
+                ? t('update.verifySignatureFailed')
+                : tone === 'verified'
+                  ? t('update.verifySignedByCi')
+                  : tone === 'unverified'
+                    ? t('update.verifyUnverified')
+                    : t('update.verifyShaOnly', { hash: v.artifact_sha256.slice(0, 12) });
+              return (
+                <div className={`flex items-center gap-1.5 text-xs mt-2 ${color}`}>
+                  <VIcon size={13} className="flex-shrink-0" />
+                  <span>{label}</span>
+                </div>
+              );
+            })()}
           </div>
         )}
 

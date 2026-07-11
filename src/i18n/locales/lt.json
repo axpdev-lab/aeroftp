@@ -2133,7 +2133,15 @@
             "openInstaller": "Atidaryti diegimo programą",
             "skipForNow": "Vėliau, ne dabar",
             "installing": "Diegiamas naujinimas...",
-            "installingDesc": "Programa automatiškai persikraus po kelių sekundžių"
+            "installingDesc": "Programa automatiškai persikraus po kelių sekundžių",
+            "installAuth": "Autentifikuojamos teisės...",
+            "installRestarting": "Iš naujo paleidžiama AeroFTP...",
+            "installRunning": "Diegiamas paketo naujinys...",
+            "verifyShaOnly": "SHA-256 patvirtinta ({hash}...)",
+            "verifySignatureFailed": "Nepavyko patvirtinti parašo",
+            "verifySignedByCi": "Pasirašė axpdev-lab/aeroftp CI",
+            "verifyUnverified": "Parašas nepatvirtintas (tik SHA-256)",
+            "verifyingIntegrity": "Tikrinamas vientisumas..."
         },
         "ai": {
             "aeroAgent": "AeroAgent",

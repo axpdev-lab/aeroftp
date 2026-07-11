@@ -2133,7 +2133,15 @@
             "openInstaller": "ইনস্টলার খুলুন",
             "skipForNow": "পরে, এখন নয়",
             "installing": "আপডেট ইনস্টল হচ্ছে...",
-            "installingDesc": "অ্যাপটি কয়েক সেকেন্ডের মধ্যে স্বয়ংক্রিয়ভাবে পুনরায় চালু হবে"
+            "installingDesc": "অ্যাপটি কয়েক সেকেন্ডের মধ্যে স্বয়ংক্রিয়ভাবে পুনরায় চালু হবে",
+            "installAuth": "সুবিধাগুলি প্রমাণীকরণ করা হচ্ছে...",
+            "installRestarting": "AeroFTP পুনরায় চালু হচ্ছে...",
+            "installRunning": "প্যাকেজ আপডেট ইনস্টল করা হচ্ছে...",
+            "verifyShaOnly": "SHA-256 যাচাই করা হয়েছে ({hash}...)",
+            "verifySignatureFailed": "স্বাক্ষর যাচাই ব্যর্থ হয়েছে",
+            "verifySignedByCi": "axpdev-lab/aeroftp CI দ্বারা স্বাক্ষরিত",
+            "verifyUnverified": "স্বাক্ষর যাচাই করা হয়নি (শুধুমাত্র SHA-256)",
+            "verifyingIntegrity": "অখণ্ডতা যাচাই করা হচ্ছে..."
         },
         "ai": {
             "aeroAgent": "AeroAgent",

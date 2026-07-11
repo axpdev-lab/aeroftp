@@ -2133,7 +2133,15 @@
             "openInstaller": "Otevřít instalátor",
             "skipForNow": "Později, teď ne",
             "installing": "Instalace aktualizace...",
-            "installingDesc": "Aplikace se automaticky restartuje za několik sekund"
+            "installingDesc": "Aplikace se automaticky restartuje za několik sekund",
+            "installAuth": "Ověřování oprávnění...",
+            "installRestarting": "Restartování AeroFTP...",
+            "installRunning": "Instalace aktualizace balíčku...",
+            "verifyShaOnly": "SHA-256 ověřeno ({hash}...)",
+            "verifySignatureFailed": "Ověření podpisu se nezdařilo",
+            "verifySignedByCi": "Podepsáno pomocí axpdev-lab/aeroftp CI",
+            "verifyUnverified": "Podpis neověřen (pouze SHA-256)",
+            "verifyingIntegrity": "Ověřování integrity..."
         },
         "ai": {
             "aeroAgent": "AeroAgent",

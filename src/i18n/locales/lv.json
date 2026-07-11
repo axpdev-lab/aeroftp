@@ -2133,7 +2133,15 @@
             "openInstaller": "Atvērt instalētāju",
             "skipForNow": "Vēlāk, ne tagad",
             "installing": "Atjauninājuma instalēšana...",
-            "installingDesc": "Lietotne automātiski restartēsies pēc dažām sekundēm"
+            "installingDesc": "Lietotne automātiski restartēsies pēc dažām sekundēm",
+            "installAuth": "Notiek privilēģiju autentifikācija...",
+            "installRestarting": "Notiek AeroFTP restartēšana...",
+            "installRunning": "Notiek pakotnes atjauninājuma instalēšana...",
+            "verifyShaOnly": "SHA-256 pārbaudīts ({hash}...)",
+            "verifySignatureFailed": "Neizdevās pārbaudīt parakstu",
+            "verifySignedByCi": "Parakstījis axpdev-lab/aeroftp CI",
+            "verifyUnverified": "Paraksts nav pārbaudīts (tikai SHA-256)",
+            "verifyingIntegrity": "Notiek integritātes pārbaude..."
         },
         "ai": {
             "aeroAgent": "AeroAgent",

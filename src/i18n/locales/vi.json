@@ -2133,7 +2133,15 @@
             "openInstaller": "Mở trình cài đặt",
             "skipForNow": "Để sau, không phải bây giờ",
             "installing": "Đang cài đặt bản cập nhật...",
-            "installingDesc": "Ứng dụng sẽ tự động khởi động lại sau vài giây"
+            "installingDesc": "Ứng dụng sẽ tự động khởi động lại sau vài giây",
+            "installAuth": "Đang xác thực quyền...",
+            "installRestarting": "Đang khởi động lại AeroFTP...",
+            "installRunning": "Đang cài đặt bản cập nhật gói...",
+            "verifyShaOnly": "Đã xác minh SHA-256 ({hash}...)",
+            "verifySignatureFailed": "Xác minh chữ ký thất bại",
+            "verifySignedByCi": "Được ký bởi axpdev-lab/aeroftp CI",
+            "verifyUnverified": "Chữ ký chưa được xác minh (chỉ SHA-256)",
+            "verifyingIntegrity": "Đang xác minh tính toàn vẹn..."
         },
         "ai": {
             "aeroAgent": "AeroAgent",
