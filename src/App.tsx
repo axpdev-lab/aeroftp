@@ -2059,6 +2059,7 @@ interface UpdateVerificationInfo {
   artifact_sha256: string;
   bundle_present: boolean;
   bundle_parsed: boolean;
+  bundle_fetch_failed: boolean;
   message: string;
 }
 
@@ -11177,11 +11178,11 @@ interface UpdateVerificationInfo {
           : t('dialog.deleteFiles', { count: names.length }),
         onConfirm: async () => {
           setConfirmDialog(null);
-          await performDelete();
+          await withBatchLatch(performDelete)();
         }
       });
     } else {
-      performDelete();
+      return performDelete();
     }
   });
 
@@ -11257,11 +11258,11 @@ interface UpdateVerificationInfo {
           : t('dialog.deleteFiles', { count: names.length }),
         onConfirm: async () => {
           setConfirmDialog(null);
-          await performDelete();
+          await withBatchLatch(performDelete)();
         }
       });
     } else {
-      performDelete();
+      return performDelete();
     }
   });
 
@@ -13929,8 +13930,8 @@ interface UpdateVerificationInfo {
 
                 {/* Sigstore / SHA-256 verification badge. Three visible states:
                     green = sigstore verified, OR no signature bundle present (SHA-256 only);
-                    amber = a signature bundle WAS present and parsed but sigstore verification
-                            failed -> advisory in v4.1.3: still installable, but no longer
+                    amber = a signature bundle was present but parsing/verification failed, or
+                            its download failed -> advisory in v4.1.3: still installable, but no longer
                             masquerades as a green "verified" badge;
                     red   = VerificationFailed, hides Install (reserved for the v4.1.4 hard gate).
                     Classified purely from backend-provided fields; the Rust verify path is

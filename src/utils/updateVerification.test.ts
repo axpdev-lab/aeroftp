@@ -16,14 +16,23 @@ describe('classifyUpdateVerification', () => {
             .toBe('sha-only');
     });
 
-    it('bundle present but unparseable -> sha-only', () => {
+    it('bundle present but unparseable -> unverified (amber, never green)', () => {
         expect(classifyUpdateVerification({ mode: 'VerificationUnavailable', bundle_present: true, bundle_parsed: false }))
-            .toBe('sha-only');
+            .toBe('unverified');
     });
 
     it('bundle present + parsed but sigstore verification failed -> unverified (amber advisory, NOT green)', () => {
         expect(classifyUpdateVerification({ mode: 'VerificationUnavailable', bundle_present: true, bundle_parsed: true }))
             .toBe('unverified');
+    });
+
+    it('bundle fetch infrastructure failure -> unverified (amber, never green)', () => {
+        expect(classifyUpdateVerification({
+            mode: 'VerificationUnavailable',
+            bundle_present: false,
+            bundle_parsed: false,
+            bundle_fetch_failed: true,
+        })).toBe('unverified');
     });
 
     it('VerificationFailed -> failed (red, blocks install; reserved for the v4.1.4 hard gate)', () => {

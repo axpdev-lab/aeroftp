@@ -1940,18 +1940,22 @@ fn parse_release_download_url(download_url: &str) -> Result<ReleaseAssetSelectio
     })
 }
 
-async fn download_file_to_path(
+async fn download_optional_file_to_path(
     client: &HttpClient,
     url: &str,
     destination: &Path,
     user_agent: &str,
-) -> Result<(), String> {
+) -> Result<bool, String> {
     let response = client
         .get(url)
         .header("User-Agent", user_agent)
         .send()
         .await
         .map_err(|error| format!("Failed to download {}: {}", url, error))?;
+
+    if response.status() == reqwest::StatusCode::NOT_FOUND {
+        return Ok(false);
+    }
 
     if !response.status().is_success() {
         return Err(format!(
@@ -1966,9 +1970,20 @@ async fn download_file_to_path(
         .await
         .map_err(|error| format!("Failed to read {}: {}", url, error))?;
 
-    tokio::fs::write(destination, bytes)
+    let mut file = tokio::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(destination)
         .await
-        .map_err(|error| format!("Failed to write {}: {}", destination.display(), error))
+        .map_err(|error| format!("Failed to create {}: {}", destination.display(), error))?;
+    file.write_all(&bytes)
+        .await
+        .map_err(|error| format!("Failed to write {}: {}", destination.display(), error))?;
+    file.flush()
+        .await
+        .map_err(|error| format!("Failed to flush {}: {}", destination.display(), error))?;
+
+    Ok(true)
 }
 
 async fn download_update_artifact(
@@ -1994,7 +2009,13 @@ async fn download_update_artifact(
 
     let total = response.content_length().unwrap_or(0);
     let mut stream = response.bytes_stream();
-    let mut file = tokio::fs::File::create(destination)
+    // Open exclusively: unique_download_path picks a friendly candidate, but
+    // create_new is the actual TOCTOU/symlink boundary if another process
+    // creates that path between selection and open.
+    let mut file = tokio::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(destination)
         .await
         .map_err(|error| format!("Failed to create update file: {}", error))?;
 
@@ -2043,6 +2064,7 @@ struct UpdateVerificationInfo {
     artifact_sha256: String,
     bundle_present: bool,
     bundle_parsed: bool,
+    bundle_fetch_failed: bool,
     message: String,
 }
 
@@ -2080,6 +2102,7 @@ fn verify_sigstore_bundle(
                 artifact_sha256,
                 bundle_present: false,
                 bundle_parsed: false,
+                bundle_fetch_failed: false,
                 message: "Sigstore bundle not found on GitHub Release".to_string(),
             });
         }
@@ -2095,6 +2118,7 @@ fn verify_sigstore_bundle(
                 artifact_sha256,
                 bundle_present: true,
                 bundle_parsed: false,
+                bundle_fetch_failed: false,
                 message: format!("Sigstore bundle unparseable: {}", e),
             });
         }
@@ -2116,6 +2140,7 @@ fn verify_sigstore_bundle(
             artifact_sha256,
             bundle_present: true,
             bundle_parsed: true,
+            bundle_fetch_failed: false,
             message: "Successfully verified against GitHub Actions Sigstore transparency log"
                 .to_string(),
         }),
@@ -2130,6 +2155,7 @@ fn verify_sigstore_bundle(
                 artifact_sha256,
                 bundle_present: true,
                 bundle_parsed: true,
+                bundle_fetch_failed: false,
                 message: format!("Signature verification unavailable: {}", e),
             })
         }
@@ -2498,7 +2524,14 @@ async fn download_update(app: AppHandle, url: String) -> Result<DownloadUpdateRe
         .map_err(|error| format!("Failed to prepare download directory: {}", error))?;
 
     let destination = unique_download_path(&download_directory, &asset.asset_name);
-    let bundle_path = destination.with_file_name(format!("{}.sigstore.json", asset.asset_name));
+    let bundle_file_name = format!(
+        "{}.sigstore.json",
+        destination
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or(&asset.asset_name)
+    );
+    let bundle_path = destination.with_file_name(bundle_file_name);
     let client = HttpClient::new();
 
     download_update_artifact(
@@ -2509,18 +2542,27 @@ async fn download_update(app: AppHandle, url: String) -> Result<DownloadUpdateRe
         &asset.asset_name,
     )
     .await?;
-    download_file_to_path(&client, &asset.bundle_url, &bundle_path, "AeroFTP")
-        .await
-        .ok(); // Ignore missing bundle here, verification checks it later
+    // A missing optional bundle (404) is a legitimate SHA-only release. Any
+    // other fetch failure must remain visible to the verifier/UI instead of
+    // masquerading as "no signature published".
+    let bundle_fetch_error =
+        download_optional_file_to_path(&client, &asset.bundle_url, &bundle_path, "AeroFTP")
+            .await
+            .err();
 
     let verify_destination = destination.clone();
     let verify_bundle = bundle_path.clone();
     let verify_tag = asset.tag.clone();
-    let verification_info = tokio::task::spawn_blocking(move || {
+    let mut verification_info = tokio::task::spawn_blocking(move || {
         verify_sigstore_bundle(&verify_destination, &verify_bundle, &verify_tag)
     })
     .await
     .map_err(|error| format!("Sigstore verification task failed: {}", error))??;
+
+    if let Some(error) = bundle_fetch_error {
+        verification_info.bundle_fetch_failed = true;
+        verification_info.message = format!("Sigstore bundle download failed: {error}");
+    }
 
     if matches!(verification_info.mode, VerificationMode::VerificationFailed) {
         let _ = tokio::fs::remove_file(&destination).await;

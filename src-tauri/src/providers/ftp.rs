@@ -13,6 +13,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use suppaftp::tokio::{AsyncRustlsConnector, AsyncRustlsFtpStream};
 use suppaftp::types::FileType;
+use suppaftp::{FtpError, Status};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio_util::sync::CancellationToken;
 
@@ -47,6 +48,10 @@ pub struct FtpProvider {
     current_path: String,
     /// Whether server supports MLSD/MLST (RFC 3659)
     mlsd_supported: bool,
+    // Whether the server specifically advertises the control-only MLST verb.
+    // Some compatible servers advertise MLSD alone; probing those with MLST
+    // must not turn a working listing into a hard failure.
+    mlst_supported: bool,
     /// Once MLSD proves unreliable, keep using LIST for the lifetime of this provider.
     mlsd_broken: bool,
     /// Whether server supports MFMT (RFC 3659) for setting remote file mtime
@@ -83,6 +88,7 @@ impl FtpProvider {
             stream: None,
             current_path: "/".to_string(),
             mlsd_supported: false,
+            mlst_supported: false,
             mlsd_broken: false,
             mfmt_supported: false,
             hash_supported: None,
@@ -612,13 +618,28 @@ impl FtpProvider {
             // MLST answers 550 for a missing path instantly (no data channel), so
             // we fail fast with a clear NotFound instead of hanging. Only probe an
             // explicit target; a current-directory listing is known to exist.
-            if let Some(ref target) = list_path {
-                let probe = {
-                    let stream = self.stream_mut()?;
-                    stream.mlst(Some(target.as_str())).await
-                };
-                if let Err(e) = probe {
-                    return Err(ProviderError::InvalidPath(e.to_string()));
+            if self.mlst_supported {
+                if let Some(ref target) = list_path {
+                    let probe = {
+                        let stream = self.stream_mut()?;
+                        stream.mlst(Some(target.as_str())).await
+                    };
+                    match probe {
+                        Ok(_) => {}
+                        Err(FtpError::UnexpectedResponse(response))
+                            if response.status == Status::FileUnavailable =>
+                        {
+                            return Err(ProviderError::InvalidPath(response.to_string()));
+                        }
+                        // MLST is only an anti-hang preflight. A transient failure
+                        // (or a server that falsely advertises it) must not replace
+                        // MLSD's existing error/fallback/reconnect behaviour.
+                        Err(error) => tracing::debug!(
+                            "[FTP] MLST preflight failed for {}: {}; trying MLSD",
+                            target,
+                            error
+                        ),
+                    }
                 }
             }
             let mlsd_result = {
@@ -858,6 +879,7 @@ impl StorageProvider for FtpProvider {
                 let server_supports_mlsd =
                     features.contains_key("MLST") || features.contains_key("MLSD");
                 self.mlsd_supported = server_supports_mlsd && !self.mlsd_broken;
+                self.mlst_supported = features.contains_key("MLST");
                 self.mfmt_supported = features.contains_key("MFMT");
                 // B3: Detect hash/checksum commands (prefer HASH > XMD5 > XCRC > XSHA1)
                 self.hash_supported = if features.contains_key("HASH") {
@@ -880,6 +902,7 @@ impl StorageProvider for FtpProvider {
             }
             Err(_) => {
                 self.mlsd_supported = false;
+                self.mlst_supported = false;
                 self.mfmt_supported = false;
                 self.hash_supported = None;
             }

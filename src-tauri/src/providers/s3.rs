@@ -4951,6 +4951,9 @@ fn parse_batch_delete_errors(xml_str: &str) -> Vec<(String, String)> {
     let mut buf = Vec::new();
 
     let mut errors: Vec<(String, String)> = Vec::new();
+    let mut saw_delete_result = false;
+    let mut delete_result_closed = false;
+    let mut parse_invalid = false;
     let mut in_error = false;
     let mut current_tag = String::new();
     let mut e_key: Option<String> = None;
@@ -4961,6 +4964,12 @@ fn parse_batch_delete_errors(xml_str: &str) -> Vec<(String, String)> {
         match reader.read_event_into(&mut buf) {
             Ok(Event::Start(ref e)) => {
                 let tag_name = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                if tag_name == "DeleteResult" {
+                    if saw_delete_result {
+                        parse_invalid = true;
+                    }
+                    saw_delete_result = true;
+                }
                 if tag_name == "Error" {
                     in_error = true;
                     e_key = None;
@@ -4989,6 +4998,9 @@ fn parse_batch_delete_errors(xml_str: &str) -> Vec<(String, String)> {
             }
             Ok(Event::End(ref e)) => {
                 let tag_name = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                if tag_name == "DeleteResult" {
+                    delete_result_closed = true;
+                }
                 if tag_name == "Error" {
                     let key = e_key.take().unwrap_or_default();
                     let reason = e_code
@@ -5000,14 +5012,33 @@ fn parse_batch_delete_errors(xml_str: &str) -> Vec<(String, String)> {
                 }
                 current_tag.clear();
             }
+            Ok(Event::Empty(ref e)) => {
+                let tag_name = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                if tag_name == "DeleteResult" {
+                    if saw_delete_result {
+                        parse_invalid = true;
+                    }
+                    saw_delete_result = true;
+                    delete_result_closed = true;
+                } else if tag_name == "Error" {
+                    errors.push((String::new(), "unknown".to_string()));
+                }
+            }
             Ok(Event::Eof) => break,
-            // A malformed body yields whatever errors parsed so far: this is a
-            // fail-closed probe, so parse trouble must never be swallowed into
-            // a false success.
-            Err(_) => break,
+            Err(_) => {
+                parse_invalid = true;
+                break;
+            }
             _ => {}
         }
         buf.clear();
+    }
+
+    if parse_invalid || !saw_delete_result || !delete_result_closed || in_error {
+        errors.push((
+            String::new(),
+            "malformed or truncated DeleteResult response".to_string(),
+        ));
     }
 
     errors
@@ -6372,5 +6403,23 @@ mod tests {
             errors,
             vec![("x/y.txt".to_string(), "slow down".to_string())]
         );
+    }
+
+    #[test]
+    fn parse_batch_delete_errors_rejects_malformed_or_unexpected_success_body() {
+        for body in [
+            "",
+            "<html>ok</html>",
+            "<DeleteResult><Error><Key>x</Key>",
+            "<DeleteResult>",
+        ] {
+            let errors = parse_batch_delete_errors(body);
+            assert!(
+                errors
+                    .iter()
+                    .any(|(_, reason)| reason.contains("malformed")),
+                "body was incorrectly accepted: {body:?}"
+            );
+        }
     }
 }
