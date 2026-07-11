@@ -46192,14 +46192,14 @@ fn read_headerless_config_from_store(
     profile_id: &str,
 ) -> Result<Option<String>, String> {
     let config_key = format!("aerocrypt_overlay_config_{}", profile_id);
-    let Some(config_json) = read_server_cred(&store, uid, &config_key).filter(|s| !s.is_empty())
+    let Some(config_json) = read_server_cred(store, uid, &config_key).filter(|s| !s.is_empty())
     else {
         return Ok(None);
     };
     let salt_key = format!("aerocrypt_overlay_salt_{}", profile_id);
-    let salt = read_server_cred(&store, uid, &salt_key);
+    let salt = read_server_cred(store, uid, &salt_key);
     ftp_client_gui_lib::crypt_overlay_provider::validate_headerless_config_salt(
-        &profile_id,
+        profile_id,
         &config_json,
         salt.as_deref(),
     )?;
