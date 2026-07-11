@@ -45967,19 +45967,13 @@ fn resolve_init_keyfile(
     keyfile_gen: &Option<String>,
 ) -> Result<Option<[u8; 32]>, String> {
     if let Some(path) = keyfile_gen {
-        if std::path::Path::new(path).exists() {
-            return Err(format!(
-                "keyfile '{path}' already exists; refusing to overwrite"
-            ));
-        }
+        // Exclusive create with mode 0600 at open time: no world-readable window,
+        // no symlink redirect, no exists()+write TOCTOU (see write_keyfile_new).
         let content = ftp_client_gui_lib::aerocrypt::generate_keyfile_v1();
-        std::fs::write(path, content.as_bytes())
-            .map_err(|e| format!("cannot write keyfile '{path}': {e}"))?;
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600));
-        }
+        ftp_client_gui_lib::aerocrypt::write_keyfile_new(
+            std::path::Path::new(path),
+            content.as_bytes(),
+        )?;
         eprintln!(
             "Generated keyfile at '{path}'. Back it up: losing it makes the vault unopenable."
         );

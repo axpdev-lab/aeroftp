@@ -1468,20 +1468,10 @@ pub async fn provider_apply_crypt_overlay(
 /// Mode 0600 on unix. Mirrors the CLI `crypt init --keyfile-gen` path.
 #[tauri::command]
 pub async fn crypt_generate_keyfile(path: String) -> Result<(), String> {
-    if std::path::Path::new(&path).exists() {
-        return Err(format!(
-            "keyfile '{path}' already exists; refusing to overwrite"
-        ));
-    }
+    // Exclusive create with mode 0600 at open time: no world-readable window, no
+    // symlink redirect, no exists()+write TOCTOU (see write_keyfile_new).
     let content = crate::aerocrypt::generate_keyfile_v1();
-    std::fs::write(&path, content.as_bytes())
-        .map_err(|e| format!("cannot write keyfile '{path}': {e}"))?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
-    }
-    Ok(())
+    crate::aerocrypt::write_keyfile_new(std::path::Path::new(&path), content.as_bytes())
 }
 
 /// Revert the live connection to its raw provider, removing any crypt overlay

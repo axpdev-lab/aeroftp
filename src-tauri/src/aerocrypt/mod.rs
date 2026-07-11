@@ -189,6 +189,44 @@ pub fn generate_keyfile_v1() -> String {
     format!("{}\n{}\n", KEYFILE_HEADER, hex::encode(raw))
 }
 
+/// Create a brand-new keyfile at `path`, private from the first byte and never
+/// clobbering anything already there.
+///
+/// A keyfile is a key factor whose 32 bytes are secret: overwriting one makes
+/// its vaults unopenable, and even a brief world-readable window leaks the key.
+/// We open with `create_new(true)` so creation is exclusive: it fails if the
+/// path exists and, crucially, never follows a symlink pre-planted at the target
+/// to clobber a victim file. That closes the TOCTOU gap an `exists()` pre-check
+/// leaves open. On unix `.mode(0o600)` sets owner-only permissions at open time,
+/// so the file is never born world-readable under the process umask (0644 under
+/// umask 022) and no follow-up chmod (which could also fail silently) is needed.
+/// Every byte is written and `sync_all()`d before we report success.
+pub fn write_keyfile_new(path: &std::path::Path, content: &[u8]) -> Result<(), String> {
+    use std::io::Write;
+    let mut opts = std::fs::OpenOptions::new();
+    opts.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        opts.mode(0o600);
+    }
+    let mut f = opts.open(path).map_err(|e| {
+        if e.kind() == std::io::ErrorKind::AlreadyExists {
+            format!(
+                "keyfile '{}' already exists; refusing to overwrite",
+                path.display()
+            )
+        } else {
+            format!("cannot write keyfile '{}': {e}", path.display())
+        }
+    })?;
+    f.write_all(content)
+        .map_err(|e| format!("cannot write keyfile '{}': {e}", path.display()))?;
+    f.sync_all()
+        .map_err(|e| format!("cannot flush keyfile '{}': {e}", path.display()))?;
+    Ok(())
+}
+
 /// Derive the base KEK from a password and an OPTIONAL keyfile digest via a
 /// single Argon2id (F4: `keyfile_digest || password_bytes`). With `None` this is
 /// byte-identical to [`derive_base_kek`], so existing password-only vaults are
@@ -437,5 +475,70 @@ mod tests {
         assert!(keyfile_digest_from_file(bad_hex.as_bytes()).is_err());
         let wrong_len = format!("{KEYFILE_HEADER}\n{}\n", "ab".repeat(8)); // 8 bytes, not 32
         assert!(keyfile_digest_from_file(wrong_len.as_bytes()).is_err());
+    }
+
+    /// Build a unique path under the OS temp dir (no external uuid dependency):
+    /// pid + a nanosecond stamp + a process-local counter keep parallel tests
+    /// from colliding.
+    fn unique_temp_path(tag: &str) -> std::path::PathBuf {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static COUNTER: AtomicU64 = AtomicU64::new(0);
+        let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        std::env::temp_dir().join(format!(
+            "aerocrypt-{tag}-{}-{nanos}-{n}",
+            std::process::id()
+        ))
+    }
+
+    #[test]
+    fn write_keyfile_new_creates_private_file() {
+        let path = unique_temp_path("kf-create");
+        let content = generate_keyfile_v1();
+        write_keyfile_new(&path, content.as_bytes()).unwrap();
+        // Content round-trips verbatim.
+        assert_eq!(std::fs::read(&path).unwrap(), content.as_bytes());
+        // Born owner-only (0600), never world-readable.
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(&path).unwrap().permissions().mode();
+            assert_eq!(mode & 0o777, 0o600);
+        }
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn write_keyfile_new_refuses_to_overwrite() {
+        let path = unique_temp_path("kf-nooverwrite");
+        let original = b"AEROFTP-KEYFILE-V1 original-material\n";
+        write_keyfile_new(&path, original).unwrap();
+        // A second call must error and leave the original intact.
+        let err = write_keyfile_new(&path, b"attacker replacement").unwrap_err();
+        assert!(err.contains("already exists"), "got: {err}");
+        assert_eq!(std::fs::read(&path).unwrap(), original);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn write_keyfile_new_does_not_follow_symlink() {
+        // A symlink pre-planted at the target must not be followed: exclusive
+        // create fails (EEXIST) and the victim it points at is untouched, so the
+        // TOCTOU symlink-swap that an exists()+write pattern is vulnerable to
+        // cannot clobber another file.
+        let victim = unique_temp_path("kf-victim");
+        let victim_content = b"precious victim bytes";
+        std::fs::write(&victim, victim_content).unwrap();
+        let link = unique_temp_path("kf-symlink");
+        std::os::unix::fs::symlink(&victim, &link).unwrap();
+        let err = write_keyfile_new(&link, b"malicious keyfile").unwrap_err();
+        assert!(err.contains("already exists"), "got: {err}");
+        assert_eq!(std::fs::read(&victim).unwrap(), victim_content);
+        let _ = std::fs::remove_file(&link);
+        let _ = std::fs::remove_file(&victim);
     }
 }
