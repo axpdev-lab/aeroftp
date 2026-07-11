@@ -1431,6 +1431,9 @@ pub async fn provider_apply_crypt_overlay(
             .unwrap_or_else(|| "standard".to_string()),
         directory_name_encryption: params.directory_name_encryption.unwrap_or(true),
         off_suffix: None,
+        profile_id: None,
+        local_config_json: None,
+        local_config_salt: None,
     };
     let salt = params.salt.unwrap_or_default();
     // Keyfile second factor: resolve the picked path to its digest before

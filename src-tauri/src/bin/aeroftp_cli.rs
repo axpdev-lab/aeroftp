@@ -4474,6 +4474,11 @@ enum CryptCommands {
         /// the new overlay. Mutually exclusive with --keyfile.
         #[arg(long, conflicts_with = "keyfile")]
         keyfile_gen: Option<String>,
+        /// Write the AeroCrypt config marker to the remote, preserving the
+        /// pre-v4.1.4 headed overlay behavior. By default, init is headerless
+        /// and stores public overlay metadata in the local keystore.
+        #[arg(long)]
+        with_header: bool,
         /// Overwrite an existing overlay config at the target. DESTRUCTIVE:
         /// rotates the salt, making every file already in the overlay
         /// permanently undecryptable.
@@ -24143,6 +24148,9 @@ async fn cli_apply_crypt_overlay(
     let salt = read_server_cred(&store, uid, &format!("aerocrypt_overlay_salt_{}", id))
         .or_else(|| std::env::var("AEROFTP_CRYPT_OVERLAY_SALT").ok())
         .unwrap_or_default();
+    let local_config_json =
+        read_server_cred(&store, uid, &format!("aerocrypt_overlay_config_{}", id))
+            .filter(|s| !s.is_empty());
 
     let params = ftp_client_gui_lib::crypt_compare::OverlayUnlockParams {
         kind,
@@ -24150,6 +24158,13 @@ async fn cli_apply_crypt_overlay(
         filename_encryption,
         directory_name_encryption,
         off_suffix: None,
+        profile_id: Some(id.to_string()),
+        local_config_json,
+        local_config_salt: if salt.is_empty() {
+            None
+        } else {
+            Some(salt.clone())
+        },
     };
     match ftp_client_gui_lib::crypt_overlay_provider::wrap_provider_with_overlay_if_bound(
         provider,
@@ -45983,11 +45998,215 @@ fn resolve_init_keyfile(
     read_keyfile_digest(keyfile)
 }
 
+fn headerless_init_missing_profile_message() -> &'static str {
+    "Headerless crypt init requires a saved profile id. Pass --profile <name-or-index>, or use --with-header for URL mode."
+}
+
+fn ensure_headerless_init_profile_selector(
+    profile: Option<&str>,
+    with_header: bool,
+) -> Result<(), &'static str> {
+    if !with_header && profile.is_none() {
+        Err(headerless_init_missing_profile_message())
+    } else {
+        Ok(())
+    }
+}
+
+fn resolve_profile_id_for_query(
+    cli: &Cli,
+    store: &ftp_client_gui_lib::credential_store::CredentialStore,
+    profile_query: &str,
+    format: OutputFormat,
+) -> Result<String, i32> {
+    let profiles = match load_active_user_profiles(cli, store) {
+        Ok(p) if !p.is_empty() => p,
+        Ok(_) => {
+            print_error(
+                format,
+                "No saved profiles found in vault. Pass --profile <name-or-index>, or use --with-header for URL mode.",
+                5,
+            );
+            return Err(5);
+        }
+        Err(e) => {
+            print_error(format, &format!("Failed to read profiles: {}", e), 5);
+            return Err(5);
+        }
+    };
+    let profile = match match_profile_by_query(&profiles, profile_query) {
+        ProfileMatch::One(p) => p,
+        ProfileMatch::Ambiguous(names) => {
+            print_error(
+                format,
+                &format!(
+                    "Ambiguous profile '{}'. Matches: {}. Use exact name or index number.",
+                    profile_query,
+                    names.join(", ")
+                ),
+                5,
+            );
+            return Err(5);
+        }
+        ProfileMatch::None => {
+            print_error(
+                format,
+                &format!(
+                    "Profile not found: '{}'. Run 'aeroftp-cli profiles' to list.",
+                    profile_query
+                ),
+                5,
+            );
+            return Err(5);
+        }
+    };
+    let id = profile.get("id").and_then(|v| v.as_str()).unwrap_or("");
+    if id.is_empty() {
+        print_error(
+            format,
+            &format!(
+                "Profile '{}' has no id. Headerless crypt init needs a saved profile id; use --with-header for URL mode.",
+                profile_query
+            ),
+            5,
+        );
+        return Err(5);
+    }
+    Ok(id.to_string())
+}
+
+fn resolve_headerless_init_target(
+    cli: &Cli,
+    format: OutputFormat,
+) -> Result<
+    (
+        ftp_client_gui_lib::credential_store::CredentialStore,
+        Option<i64>,
+        String,
+    ),
+    i32,
+> {
+    ensure_headerless_init_profile_selector(cli.profile.as_deref(), false).map_err(|msg| {
+        print_error(format, msg, 5);
+        5
+    })?;
+    let profile_query = cli.profile.as_deref().expect("checked above");
+    let store = match open_vault(cli) {
+        Ok(s) => s,
+        Err(e) => {
+            print_error(format, &e, 5);
+            return Err(5);
+        }
+    };
+    let profile_id = resolve_profile_id_for_query(cli, &store, profile_query, format)?;
+    let uid = scoped_credential_user_id(cli, &store);
+    Ok((store, uid, profile_id))
+}
+
+fn read_cli_headerless_config(cli: &Cli, format: OutputFormat) -> Result<Option<String>, i32> {
+    let Some(profile_query) = cli.profile.as_deref() else {
+        return Ok(None);
+    };
+    let store = match open_vault(cli) {
+        Ok(s) => s,
+        Err(e) => {
+            print_error(format, &e, 5);
+            return Err(5);
+        }
+    };
+    let profile_id = resolve_profile_id_for_query(cli, &store, profile_query, format)?;
+    let uid = scoped_credential_user_id(cli, &store);
+    let config_key = format!("aerocrypt_overlay_config_{}", profile_id);
+    let Some(config_json) = read_server_cred(&store, uid, &config_key).filter(|s| !s.is_empty())
+    else {
+        return Ok(None);
+    };
+    let salt_key = format!("aerocrypt_overlay_salt_{}", profile_id);
+    let salt = read_server_cred(&store, uid, &salt_key);
+    if let Err(e) = ftp_client_gui_lib::crypt_overlay_provider::validate_headerless_config_salt(
+        &profile_id,
+        &config_json,
+        salt.as_deref(),
+    ) {
+        print_error(format, &e, 5);
+        return Err(5);
+    }
+    Ok(Some(config_json))
+}
+
+async fn load_crypt_config_json(
+    provider: &mut dyn StorageProvider,
+    base_path: &str,
+    cli: &Cli,
+    format: OutputFormat,
+    missing_message: &str,
+) -> Result<String, i32> {
+    let config_path = format!("{}/.aeroftp-crypt.json", base_path.trim_end_matches('/'));
+    let present = match provider.exists(&config_path).await {
+        Ok(v) => v,
+        Err(e) => {
+            let code = provider_error_to_exit_code(&e);
+            print_error(
+                format,
+                &format!("Cannot probe crypt overlay config: {}", e),
+                code,
+            );
+            return Err(code);
+        }
+    };
+    if present {
+        let config_data = match provider.download_to_bytes(&config_path).await {
+            Ok(d) => d,
+            Err(e) => {
+                let code = provider_error_to_exit_code(&e);
+                print_error(
+                    format,
+                    &format!("Cannot read crypt overlay config: {}", e),
+                    code,
+                );
+                return Err(code);
+            }
+        };
+        return Ok(String::from_utf8_lossy(&config_data).into_owned());
+    }
+    match read_cli_headerless_config(cli, format)? {
+        Some(config_json) => Ok(config_json),
+        None => {
+            print_error(format, missing_message, 5);
+            Err(5)
+        }
+    }
+}
+
+fn store_headerless_init_config(
+    store: &ftp_client_gui_lib::credential_store::CredentialStore,
+    uid: Option<i64>,
+    profile_id: &str,
+    config_json: &str,
+    salt_b64: &str,
+) -> Result<(), String> {
+    let config_key = format!("aerocrypt_overlay_config_{}", profile_id);
+    let salt_key = format!("aerocrypt_overlay_salt_{}", profile_id);
+    let old_config = read_server_cred(store, uid, &config_key);
+    dual_store_server_cred_checked(store, uid, &config_key, config_json)?;
+    if let Err(e) = dual_store_server_cred_checked(store, uid, &salt_key, salt_b64) {
+        if let Some(old) = old_config {
+            dual_store_server_cred(store, uid, &config_key, &old);
+        } else {
+            dual_delete_server_cred(store, uid, &config_key);
+        }
+        return Err(e);
+    }
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
 async fn cmd_crypt_init(
     url: &str,
     path: &str,
     password: &str,
     keyfile_digest: Option<&[u8; 32]>,
+    with_header: bool,
     force: bool,
     cli: &Cli,
     format: OutputFormat,
@@ -46026,6 +46245,15 @@ async fn cmd_crypt_init(
         }
     };
 
+    let headerless_target = if with_header {
+        None
+    } else {
+        match resolve_headerless_init_target(cli, format) {
+            Ok(target) => Some(target),
+            Err(code) => return code,
+        }
+    };
+
     let (mut provider, initial_path) = match create_and_connect(url, cli, format).await {
         Ok(v) => v,
         Err(code) => return code,
@@ -46033,6 +46261,56 @@ async fn cmd_crypt_init(
 
     let base_path = normalize_remote_path(&resolve_cli_remote_path(&initial_path, path));
     let config_path = format!("{}/.aeroftp-crypt.json", base_path.trim_end_matches('/'));
+
+    if !with_header {
+        let (store, uid, profile_id) = headerless_target.expect("resolved above");
+        let config_key = format!("aerocrypt_overlay_config_{}", profile_id);
+        if !force && read_server_cred(&store, uid, &config_key).is_some_and(|s| !s.is_empty()) {
+            print_error(
+                format,
+                &format!(
+                    "an AeroCrypt headerless config already exists for profile {} (existing files would become permanently undecryptable). Re-run with --force to overwrite.",
+                    profile_id
+                ),
+                9,
+            );
+            return 9;
+        }
+        let salt_b64 = base64::engine::general_purpose::STANDARD.encode(salt);
+        match store_headerless_init_config(&store, uid, &profile_id, &config_json, &salt_b64) {
+            Ok(()) => {
+                if matches!(format, OutputFormat::Json) {
+                    print_json(&serde_json::json!({
+                        "status": "ok",
+                        "path": base_path,
+                        "headerless": true,
+                        "config_key": config_key,
+                    }));
+                } else if !cli.quiet {
+                    println!("Crypt overlay initialized at {}", base_path);
+                    println!("Config: local keystore {}", config_key);
+                    println!(
+                        "Cipher: AES-256-GCM-SIV (content) + AES-256-KW (key wrap) + AES-256-SIV (filenames)"
+                    );
+                    println!("KDF: Argon2id (128 MB, 4 iterations)");
+                    if keyfile_digest.is_some() {
+                        println!(
+                            "Second factor: keyfile required (keep both the password and the keyfile)"
+                        );
+                    }
+                }
+                return 0;
+            }
+            Err(e) => {
+                print_error(
+                    format,
+                    &format!("Failed to store headerless crypt config: {}", e),
+                    11,
+                );
+                return 11;
+            }
+        }
+    }
 
     // C4: never silently clobber an existing overlay. Re-init rotates the salt,
     // which permanently orphans every file already encrypted under it.
@@ -46125,16 +46403,18 @@ async fn cmd_crypt_ls(
 
     let base_path = normalize_remote_path(&resolve_cli_remote_path(&initial_path, path));
 
-    // Read crypt config
-    let config_path = format!("{}/.aeroftp-crypt.json", base_path.trim_end_matches('/'));
-    let config_data = match provider.download_to_bytes(&config_path).await {
-        Ok(d) => d,
-        Err(_) => {
-            print_error(format, "No crypt overlay found. Run 'crypt init' first.", 5);
-            return 5;
-        }
+    let config_str = match load_crypt_config_json(
+        &mut *provider,
+        &base_path,
+        cli,
+        format,
+        "No crypt overlay found. Run 'crypt init' first.",
+    )
+    .await
+    {
+        Ok(s) => s,
+        Err(code) => return code,
     };
-    let config_str = String::from_utf8_lossy(&config_data);
     let cfg = match overlay::parse_config(&config_str) {
         Ok(c) => c,
         Err(e) => {
@@ -46320,16 +46600,19 @@ async fn cmd_crypt_put(
 
     let base_path = normalize_remote_path(&resolve_cli_remote_path(&initial_path, remote_path));
 
-    // Read crypt config
-    let config_path = format!("{}/.aeroftp-crypt.json", base_path.trim_end_matches('/'));
-    let config_data = match provider.download_to_bytes(&config_path).await {
-        Ok(d) => d,
-        Err(_) => {
-            print_error(format, "No crypt overlay found. Run 'crypt init' first.", 5);
-            return 5;
-        }
+    let config_str = match load_crypt_config_json(
+        &mut *provider,
+        &base_path,
+        cli,
+        format,
+        "No crypt overlay found. Run 'crypt init' first.",
+    )
+    .await
+    {
+        Ok(s) => s,
+        Err(code) => return code,
     };
-    let cfg = match overlay::parse_config(&String::from_utf8_lossy(&config_data)) {
+    let cfg = match overlay::parse_config(&config_str) {
         Ok(c) => c,
         Err(e) => {
             print_error(format, &e, 5);
@@ -46657,16 +46940,19 @@ async fn cmd_crypt_get(
 
     let base_path = normalize_remote_path(&resolve_cli_remote_path(&initial_path, path));
 
-    // Read crypt config
-    let config_path = format!("{}/.aeroftp-crypt.json", base_path.trim_end_matches('/'));
-    let config_data = match provider.download_to_bytes(&config_path).await {
-        Ok(d) => d,
-        Err(_) => {
-            print_error(format, "No crypt overlay found.", 5);
-            return 5;
-        }
+    let config_str = match load_crypt_config_json(
+        &mut *provider,
+        &base_path,
+        cli,
+        format,
+        "No crypt overlay found.",
+    )
+    .await
+    {
+        Ok(s) => s,
+        Err(code) => return code,
     };
-    let cfg = match overlay::parse_config(&String::from_utf8_lossy(&config_data)) {
+    let cfg = match overlay::parse_config(&config_str) {
         Ok(c) => c,
         Err(e) => {
             print_error(format, &e, 5);
@@ -48642,6 +48928,9 @@ async fn cli_unlock_crypt_compare_keys(
     let salt = read_server_cred(&store, uid, &format!("aerocrypt_overlay_salt_{}", id))
         .or_else(|| std::env::var("AEROFTP_CRYPT_OVERLAY_SALT").ok())
         .unwrap_or_default();
+    let local_config_json =
+        read_server_cred(&store, uid, &format!("aerocrypt_overlay_config_{}", id))
+            .filter(|s| !s.is_empty());
 
     let params = ftp_client_gui_lib::crypt_compare::OverlayUnlockParams {
         kind,
@@ -48649,6 +48938,13 @@ async fn cli_unlock_crypt_compare_keys(
         filename_encryption,
         directory_name_encryption,
         off_suffix: None,
+        profile_id: Some(id.to_string()),
+        local_config_json,
+        local_config_salt: if salt.is_empty() {
+            None
+        } else {
+            Some(salt.clone())
+        },
     };
     match ftp_client_gui_lib::crypt_compare::unlock_overlay_keys(
         provider,
@@ -58454,27 +58750,48 @@ async fn main() {
                     password,
                     keyfile,
                     keyfile_gen,
+                    with_header,
                     force,
-                } => match resolve_init_keyfile(keyfile, keyfile_gen) {
-                    Err(e) => {
-                        print_error(format, &e, 5);
+                } => {
+                    if let Err(msg) = ensure_headerless_init_profile_selector(
+                        cli.profile.as_deref(),
+                        *with_header,
+                    ) {
+                        print_error(format, msg, 5);
                         5
-                    }
-                    Ok(kf) => {
-                        let pw = resolve_crypt_password(password).unwrap_or_default();
-                        if !require_secret(&pw, kf.as_ref(), "init") {
-                            5
-                        } else {
-                            let (u, dir) = resolve_profile_crypt_positionals(
-                                cli.profile.is_some(),
-                                url,
-                                path,
-                                "/",
-                            );
-                            cmd_crypt_init(&u, &dir, &pw, kf.as_ref(), *force, &cli, format).await
+                    } else {
+                        match resolve_init_keyfile(keyfile, keyfile_gen) {
+                            Err(e) => {
+                                print_error(format, &e, 5);
+                                5
+                            }
+                            Ok(kf) => {
+                                let pw = resolve_crypt_password(password).unwrap_or_default();
+                                if !require_secret(&pw, kf.as_ref(), "init") {
+                                    5
+                                } else {
+                                    let (u, dir) = resolve_profile_crypt_positionals(
+                                        cli.profile.is_some(),
+                                        url,
+                                        path,
+                                        "/",
+                                    );
+                                    cmd_crypt_init(
+                                        &u,
+                                        &dir,
+                                        &pw,
+                                        kf.as_ref(),
+                                        *with_header,
+                                        *force,
+                                        &cli,
+                                        format,
+                                    )
+                                    .await
+                                }
+                            }
                         }
                     }
-                },
+                }
                 CryptCommands::Ls {
                     url,
                     path,
@@ -63004,6 +63321,16 @@ mod tests {
             "aeroCryptOverlay": { "enabled": true, "kind": "aerocrypt", "remoteScope": "/enc" }
         });
         assert!(profile_has_crypt_overlay(&enabled));
+    }
+
+    #[test]
+    fn headerless_init_requires_profile_unless_with_header() {
+        assert_eq!(
+            ensure_headerless_init_profile_selector(None, false),
+            Err(headerless_init_missing_profile_message())
+        );
+        assert!(ensure_headerless_init_profile_selector(Some("lab"), false).is_ok());
+        assert!(ensure_headerless_init_profile_selector(None, true).is_ok());
     }
 
     #[test]

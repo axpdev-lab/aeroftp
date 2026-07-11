@@ -1450,6 +1450,108 @@ pub fn resolve_profile_keyfile_digest(
     }
 }
 
+/// Validate that a headerless AeroCrypt config JSON matches the per-profile
+/// salt of record (`aerocrypt_overlay_salt_<id>`). The config blob intentionally
+/// stores the complete public `OverlayConfig` JSON so the same parser and
+/// config-MAC verifier are used for headed and headerless vaults. The separate
+/// salt key remains the local keystore's salt of record; a mismatch is treated
+/// as local tampering or a partial restore and fails closed.
+pub fn validate_headerless_config_salt(
+    profile_id: &str,
+    config_json: &str,
+    stored_salt: Option<&str>,
+) -> Result<(), String> {
+    let value: serde_json::Value = serde_json::from_str(config_json)
+        .map_err(|e| format!("Invalid headerless AeroCrypt config JSON: {e}"))?;
+    let config_salt = value
+        .get("salt")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| "Headerless AeroCrypt config is missing salt".to_string())?;
+    let stored_salt = stored_salt.filter(|s| !s.is_empty()).ok_or_else(|| {
+        if profile_id.is_empty() {
+            "Headerless AeroCrypt config is missing its local salt of record".to_string()
+        } else {
+            format!(
+                "Headerless AeroCrypt config for profile {profile_id} is missing aerocrypt_overlay_salt_{profile_id}"
+            )
+        }
+    })?;
+    if config_salt != stored_salt {
+        return Err(if profile_id.is_empty() {
+            "Headerless AeroCrypt config salt does not match its local salt of record".to_string()
+        } else {
+            format!(
+                "Headerless AeroCrypt config for profile {profile_id} does not match aerocrypt_overlay_salt_{profile_id}"
+            )
+        });
+    }
+    Ok(())
+}
+
+fn local_headerless_config_from_params(
+    params: &OverlayUnlockParams,
+) -> Result<Option<String>, String> {
+    if let Some(config_json) = params
+        .local_config_json
+        .as_deref()
+        .filter(|s| !s.is_empty())
+    {
+        validate_headerless_config_salt(
+            params.profile_id.as_deref().unwrap_or(""),
+            config_json,
+            params.local_config_salt.as_deref(),
+        )?;
+        return Ok(Some(config_json.to_string()));
+    }
+
+    let Some(profile_id) = params.profile_id.as_deref().filter(|s| !s.is_empty()) else {
+        return Ok(None);
+    };
+    let Some(store) = crate::credential_store::CredentialStore::from_cache() else {
+        return Ok(None);
+    };
+    let key = format!("aerocrypt_overlay_config_{profile_id}");
+    let Some(config_json) = crate::user_partitions::resolve_active_credential(&store, &key)
+        .map_err(|e| format!("Cannot read local AeroCrypt overlay config: {e}"))?
+        .map(|s| s.to_string())
+        .filter(|s| !s.is_empty())
+    else {
+        return Ok(None);
+    };
+    let salt_key = format!("aerocrypt_overlay_salt_{profile_id}");
+    let salt = crate::user_partitions::resolve_active_credential(&store, &salt_key)
+        .map_err(|e| format!("Cannot read local AeroCrypt overlay salt: {e}"))?
+        .map(|s| s.to_string());
+    validate_headerless_config_salt(profile_id, &config_json, salt.as_deref())?;
+    Ok(Some(config_json))
+}
+
+fn derive_aerocrypt_overlay_keys_from_config(
+    config_json: &str,
+    password: &str,
+    keyfile_digest: Option<&[u8; 32]>,
+) -> Result<(OverlayConfig, [u8; KEY_SIZE]), String> {
+    let config = overlay::parse_config(config_json)
+        .map_err(|e| format!("Invalid AeroCrypt overlay config: {e}"))?;
+    let keyfile_digest = match (config.requires_keyfile(), keyfile_digest) {
+        (true, None) => {
+            return Err("this AeroCrypt overlay requires a keyfile (none was provided)".to_string())
+        }
+        (false, Some(_)) => return Err(
+            "this AeroCrypt overlay was not created with a keyfile (remove the keyfile to unlock)"
+                .to_string(),
+        ),
+        (true, kd) => kd,
+        (false, _) => None,
+    };
+    let master_key = overlay::derive_master_key_with_keyfile(&config, password, keyfile_digest)
+        .map_err(|e| format!("AeroCrypt key derivation failed: {e}"))?;
+    overlay::verify_config_mac(&config, &master_key)
+        .map_err(|e| format!("AeroCrypt unlock failed: {e}"))?;
+    Ok((config, master_key))
+}
+
 /// Resolve a saved profile's `aeroCryptOverlay` binding (+ its per-profile vault
 /// secrets) and wrap a freshly-connected provider via
 /// [`wrap_provider_with_overlay_if_bound`]. Shared by the cross-profile / agent
@@ -1515,6 +1617,23 @@ pub async fn wrap_connected_provider_for_profile(
     .map(|s| s.to_string())
     .or_else(|| std::env::var("AEROFTP_CRYPT_OVERLAY_SALT").ok())
     .unwrap_or_default();
+    let local_config_json = crate::user_partitions::resolve_active_credential(
+        store,
+        &format!("aerocrypt_overlay_config_{}", id),
+    )
+    .ok()
+    .flatten()
+    .map(|s| s.to_string())
+    .filter(|s| !s.is_empty());
+    let params = OverlayUnlockParams {
+        local_config_json,
+        local_config_salt: if salt.is_empty() {
+            None
+        } else {
+            Some(salt.clone())
+        },
+        ..params
+    };
 
     wrap_provider_with_overlay_if_bound(
         inner,
@@ -1613,6 +1732,12 @@ pub(crate) fn overlay_binding_from_profile(
             .and_then(|v| v.as_bool())
             .unwrap_or(true),
         off_suffix: None,
+        profile_id: profile
+            .get("id")
+            .and_then(|v| v.as_str())
+            .map(str::to_string),
+        local_config_json: None,
+        local_config_salt: None,
     })
 }
 
@@ -1681,32 +1806,9 @@ async fn unlock_overlay_keys_encrypting(
                     .await
                     .map_err(|e| format!("Cannot read AeroCrypt overlay config: {e}"))?;
                 let config_str = String::from_utf8_lossy(&config_bytes);
-                let config = overlay::parse_config(&config_str)
-                    .map_err(|e| format!("Invalid AeroCrypt overlay config: {e}"))?;
-                // Reconcile the supplied keyfile against what the config requires
-                // (v1/v2 never require one) before deriving.
-                let keyfile_digest = match (config.requires_keyfile(), keyfile_digest) {
-                    (true, None) => {
-                        return Err(
-                            "this AeroCrypt overlay requires a keyfile (none was provided)"
-                                .to_string(),
-                        )
-                    }
-                    (false, Some(_)) => {
-                        return Err(
-                            "this AeroCrypt overlay was not created with a keyfile (remove the keyfile to unlock)"
-                                .to_string(),
-                        )
-                    }
-                    (true, kd) => kd,
-                    (false, _) => None,
-                };
-                let master_key =
-                    overlay::derive_master_key_with_keyfile(&config, password, keyfile_digest)
-                        .map_err(|e| format!("AeroCrypt key derivation failed: {e}"))?;
-                overlay::verify_config_mac(&config, &master_key)
-                    .map_err(|e| format!("AeroCrypt unlock failed: {e}"))?;
-                (config, master_key)
+                derive_aerocrypt_overlay_keys_from_config(&config_str, password, keyfile_digest)?
+            } else if let Some(config_json) = local_headerless_config_from_params(params)? {
+                derive_aerocrypt_overlay_keys_from_config(&config_json, password, keyfile_digest)?
             } else if allow_init {
                 // Bootstrap a fresh AECR v3 overlay and persist its config so the
                 // empty folder becomes a self-describing crypt store on first
@@ -2729,6 +2831,51 @@ mod tests {
         roundtrip_through_decorator(aerocrypt_keys(), "/Vault").await;
     }
 
+    #[tokio::test]
+    async fn wrap_aerocrypt_uses_local_headerless_config_when_marker_absent() {
+        use base64::Engine as _;
+
+        let salt = overlay::random_salt_v3();
+        let tmp = OverlayConfig::v3_bootstrap(salt);
+        let master_key = overlay::derive_master_key(&tmp, "overlay-pass").unwrap();
+        let config_json = overlay::init_config_v3(&salt, &master_key).unwrap();
+        let salt_b64 = base64::engine::general_purpose::STANDARD.encode(salt);
+        let binding = OverlayUnlockParams {
+            kind: "aerocrypt".to_string(),
+            remote_scope: "/Vault".to_string(),
+            filename_encryption: "standard".to_string(),
+            directory_name_encryption: true,
+            off_suffix: None,
+            profile_id: Some("profile-headerless".to_string()),
+            local_config_json: Some(config_json),
+            local_config_salt: Some(salt_b64),
+        };
+
+        let inner = Box::new(MemProvider::new());
+        let mut provider =
+            wrap_provider_with_overlay_if_bound(inner, Some(&binding), "overlay-pass", "", None)
+                .await
+                .unwrap();
+
+        let dir =
+            std::env::temp_dir().join(format!("crypt_headerless_test_{}", uuid::Uuid::new_v4()));
+        tokio::fs::create_dir_all(&dir).await.unwrap();
+        let local = dir.join("plain.txt");
+        let payload = b"headerless local config unlock";
+        tokio::fs::write(&local, payload).await.unwrap();
+
+        provider
+            .upload(local.to_str().unwrap(), "/Vault/plain.txt", None)
+            .await
+            .unwrap();
+        let got = provider
+            .download_to_bytes("/Vault/plain.txt")
+            .await
+            .unwrap();
+        assert_eq!(got, payload);
+        let _ = tokio::fs::remove_dir_all(&dir).await;
+    }
+
     /// Phase 3 on-demand model: applying an overlay to a live slot wraps the raw
     /// provider (writes become encrypted), clearing reverts it to the SAME raw
     /// provider (showing the encrypted store verbatim), and a re-apply never
@@ -2742,6 +2889,9 @@ mod tests {
             filename_encryption: "standard".to_string(),
             directory_name_encryption: true,
             off_suffix: None,
+            profile_id: None,
+            local_config_json: None,
+            local_config_salt: None,
         };
 
         // No-op on a raw slot.
@@ -2834,6 +2984,9 @@ mod tests {
             filename_encryption: "standard".to_string(),
             directory_name_encryption: true,
             off_suffix: None,
+            profile_id: None,
+            local_config_json: None,
+            local_config_salt: None,
         };
         let mut wrapped =
             wrap_provider_with_overlay_if_bound(inner, Some(&binding), "pw", "salt", None)
@@ -2855,6 +3008,9 @@ mod tests {
             filename_encryption: String::new(),
             directory_name_encryption: true,
             off_suffix: None,
+            profile_id: None,
+            local_config_json: None,
+            local_config_salt: None,
         };
         // No config on the (empty) remote -> unlock fails, no raw provider handed
         // back.
@@ -2875,6 +3031,9 @@ mod tests {
             filename_encryption: String::new(),
             directory_name_encryption: true,
             off_suffix: None,
+            profile_id: None,
+            local_config_json: None,
+            local_config_salt: None,
         };
         // Bootstrap a real v3 config under the CORRECT password.
         let mut mem = MemProvider::new();
@@ -2905,6 +3064,9 @@ mod tests {
             filename_encryption: String::new(),
             directory_name_encryption: true,
             off_suffix: None,
+            profile_id: None,
+            local_config_json: None,
+            local_config_salt: None,
         };
         let mut mem = MemProvider::new();
         unlock_overlay_keys_encrypting(&mut mem, &binding, "pw", "", None, true)
@@ -2937,6 +3099,9 @@ mod tests {
             filename_encryption: String::new(),
             directory_name_encryption: true,
             off_suffix: None,
+            profile_id: None,
+            local_config_json: None,
+            local_config_salt: None,
         };
 
         let keys = unlock_overlay_keys_encrypting(&mut mem, &binding, "pw", "", None, true)
@@ -2975,6 +3140,9 @@ mod tests {
             filename_encryption: String::new(),
             directory_name_encryption: true,
             off_suffix: None,
+            profile_id: None,
+            local_config_json: None,
+            local_config_salt: None,
         };
         let res = unlock_overlay_keys_encrypting(&mut mem, &other, "pw", "", None, false).await;
         assert!(
@@ -3011,6 +3179,9 @@ mod tests {
             filename_encryption: String::new(),
             directory_name_encryption: true,
             off_suffix: None,
+            profile_id: None,
+            local_config_json: None,
+            local_config_salt: None,
         };
         let digest = crate::aerocrypt::keyfile_digest_from_file(
             crate::aerocrypt::generate_keyfile_v1().as_bytes(),
@@ -3056,6 +3227,9 @@ mod tests {
             filename_encryption: String::new(),
             directory_name_encryption: true,
             off_suffix: None,
+            profile_id: None,
+            local_config_json: None,
+            local_config_salt: None,
         };
         unlock_overlay_keys_encrypting(&mut mem, &pw_only, "pw", "", None, true)
             .await
@@ -3082,6 +3256,9 @@ mod tests {
             filename_encryption: "standard".to_string(),
             directory_name_encryption: true,
             off_suffix: None,
+            profile_id: None,
+            local_config_json: None,
+            local_config_salt: None,
         };
         let digest = crate::aerocrypt::keyfile_digest(b"kf");
         let err = unlock_err(

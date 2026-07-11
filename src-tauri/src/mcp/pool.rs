@@ -474,6 +474,14 @@ pub fn resolve_overlay_secrets(
     .map(|s| s.to_string())
     .or_else(|| std::env::var("AEROFTP_CRYPT_OVERLAY_SALT").ok())
     .unwrap_or_default();
+    let local_config_json = crate::user_partitions::resolve_active_credential(
+        &store,
+        &format!("aerocrypt_overlay_config_{}", id),
+    )
+    .ok()
+    .flatten()
+    .map(|s| s.to_string())
+    .filter(|s| !s.is_empty());
 
     let params = crate::crypt_compare::OverlayUnlockParams {
         kind,
@@ -481,6 +489,13 @@ pub fn resolve_overlay_secrets(
         filename_encryption,
         directory_name_encryption,
         off_suffix: None,
+        profile_id: Some(id.to_string()),
+        local_config_json,
+        local_config_salt: if salt.is_empty() {
+            None
+        } else {
+            Some(salt.clone())
+        },
     };
     Ok(Some((params, password, salt, keyfile_digest)))
 }
