@@ -5029,7 +5029,9 @@
             "keyfileGenerate": "Generar...",
             "keyfileGeneratedBackup": "Archivo de clave generado. Haga una copia ahora: perderlo deja la bóveda inaccesible para siempre.",
             "keyfileRepointHint": "Esta ruta solo indica dónde está el archivo de clave; cambiarla no vuelve a cifrar la bóveda. Un archivo de clave erróneo o ausente rechaza el desbloqueo.",
-            "keyfileStorageHint": "Guárdalo en un disco local o una unidad USB, separado del remoto que estás cifrando, y conserva una copia de seguridad."
+            "keyfileStorageHint": "Guárdalo en un disco local o una unidad USB, separado del remoto que estás cifrando, y conserva una copia de seguridad.",
+            "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
+            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore."
         },
         "modalGuard": {
             "busyTitle": "Operación en curso",

@@ -5029,7 +5029,9 @@
             "keyfileGenerate": "Генериши...",
             "keyfileGeneratedBackup": "Датотека кључа је генерисана. Одмах направите копију: њен губитак заувек закључава трезор.",
             "keyfileRepointHint": "Ова путања само показује где се датотека кључа налази; њена промена не мења кључ трезора. Погрешна или недостајућа датотека кључа одбија откључавање.",
-            "keyfileStorageHint": "Сачувајте га на локалном диску или USB уређају, одвојено од удаљеног сервера који шифрујете, и чувајте резервну копију."
+            "keyfileStorageHint": "Сачувајте га на локалном диску или USB уређају, одвојено од удаљеног сервера који шифрујете, и чувајте резервну копију.",
+            "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
+            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore."
         },
         "modalGuard": {
             "busyTitle": "Операција у току",

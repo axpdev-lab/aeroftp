@@ -5029,7 +5029,9 @@
             "keyfileGenerate": "Generează...",
             "keyfileGeneratedBackup": "Fișier de cheie generat. Faceți o copie acum: pierderea lui blochează seiful pentru totdeauna.",
             "keyfileRepointHint": "Această cale doar indică unde se află fișierul de cheie; schimbarea ei nu recriptează seiful. Un fișier de cheie greșit sau lipsă refuză deblocarea.",
-            "keyfileStorageHint": "Salvați-l pe un disc local sau pe o unitate USB, separat de serverul la distanță pe care îl criptați, și păstrați o copie de rezervă."
+            "keyfileStorageHint": "Salvați-l pe un disc local sau pe o unitate USB, separat de serverul la distanță pe care îl criptați, și păstrați o copie de rezervă.",
+            "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
+            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore."
         },
         "modalGuard": {
             "busyTitle": "Operațiune în curs",

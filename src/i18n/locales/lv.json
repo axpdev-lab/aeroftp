@@ -5029,7 +5029,9 @@
             "keyfileGenerate": "Ģenerēt...",
             "keyfileGeneratedBackup": "Atslēgas fails izveidots. Izveidojiet kopiju tūlīt: tā zaudēšana uz visiem laikiem aizslēgs seifu.",
             "keyfileRepointHint": "Šis ceļš tikai norāda, kur atrodas atslēgas fails; tā maiņa nepāršifrē seifu. Nepareizs vai trūkstošs atslēgas fails noraida atslēgšanu.",
-            "keyfileStorageHint": "Saglabājiet to lokālajā diskā vai USB diskā, atsevišķi no attālā servera, ko šifrējat, un saglabājiet dublējumkopiju."
+            "keyfileStorageHint": "Saglabājiet to lokālajā diskā vai USB diskā, atsevišķi no attālā servera, ko šifrējat, un saglabājiet dublējumkopiju.",
+            "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
+            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore."
         },
         "modalGuard": {
             "busyTitle": "Notiek darbība",

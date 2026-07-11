@@ -5029,7 +5029,9 @@
             "keyfileGenerate": "जनरेट करें...",
             "keyfileGeneratedBackup": "की-फ़ाइल जनरेट हुई। अभी बैकअप लें: इसे खोने पर वॉल्ट हमेशा के लिए बंद हो जाएगा।",
             "keyfileRepointHint": "यह पथ केवल बताता है कि की-फ़ाइल कहाँ है; इसे बदलने से वॉल्ट की कुंजी नहीं बदलती। गलत या अनुपलब्ध की-फ़ाइल पर अनलॉक अस्वीकृत होता है।",
-            "keyfileStorageHint": "इसे स्थानीय डिस्क या USB ड्राइव पर सहेजें, जिस रिमोट को आप एन्क्रिप्ट कर रहे हैं उससे अलग रखें, और एक बैकअप प्रति रखें।"
+            "keyfileStorageHint": "इसे स्थानीय डिस्क या USB ड्राइव पर सहेजें, जिस रिमोट को आप एन्क्रिप्ट कर रहे हैं उससे अलग रखें, और एक बैकअप प्रति रखें।",
+            "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
+            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore."
         },
         "modalGuard": {
             "busyTitle": "ऑपरेशन जारी है",

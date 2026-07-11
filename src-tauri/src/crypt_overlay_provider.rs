@@ -1311,9 +1311,16 @@ pub async fn wrap_provider_with_overlay_if_bound(
     };
     // Non-interactive factory (CLI / cross-profile / MCP): fail-closed, never
     // bootstrap an overlay on a folder that has no config.
-    let keys =
-        unlock_overlay_keys_encrypting(&mut *inner, params, password, salt, keyfile_digest, false)
-            .await?;
+    let keys = unlock_overlay_keys_encrypting(
+        &mut *inner,
+        params,
+        password,
+        salt,
+        keyfile_digest,
+        false,
+        false,
+    )
+    .await?;
     let provider = CryptOverlayProvider::new(inner, keys, &params.remote_scope);
     Ok(Box::new(provider))
 }
@@ -1759,6 +1766,7 @@ async fn unlock_overlay_keys_encrypting(
     salt: &str,
     keyfile_digest: Option<&[u8; 32]>,
     allow_init: bool,
+    with_header: bool,
 ) -> Result<OverlayKeys, String> {
     match params.kind.as_str() {
         "rclone-crypt" => {
@@ -1810,6 +1818,19 @@ async fn unlock_overlay_keys_encrypting(
             } else if let Some(config_json) = local_headerless_config_from_params(params)? {
                 derive_aerocrypt_overlay_keys_from_config(&config_json, password, keyfile_digest)?
             } else if allow_init {
+                // Clobber guard (audit FINDING 1): a configured profile (profile_id is Some)
+                // MUST have its keystore config if it's headerless. Falling through to bootstrap
+                // would silently mint a new random salt and upload a new marker, permanently
+                // orphaning the existing files. Fail closed instead.
+                if params.profile_id.is_some() {
+                    return Err(
+                        "Cannot unlock AeroCrypt vault: no remote header found and local keystore \
+                         metadata is missing. If this is a headerless vault, you must recover it \
+                         using your Emergency Kit."
+                            .to_string(),
+                    );
+                }
+
                 // Bootstrap a fresh AECR v3 overlay and persist its config so the
                 // empty folder becomes a self-describing crypt store on first
                 // activation (length-bound content + key-bound config MAC). Only the
@@ -1860,10 +1881,38 @@ async fn unlock_overlay_keys_encrypting(
                     .map_err(|e| format!("Cannot stage AeroCrypt overlay config: {e}"))?;
                 std::fs::write(staged.path(), json.as_bytes())
                     .map_err(|e| format!("Cannot stage AeroCrypt overlay config: {e}"))?;
-                provider
-                    .upload(&staged.path().to_string_lossy(), &config_path, None)
-                    .await
-                    .map_err(|e| format!("Cannot write AeroCrypt overlay config: {e}"))?;
+
+                if with_header {
+                    provider
+                        .upload(&staged.path().to_string_lossy(), &config_path, None)
+                        .await
+                        .map_err(|e| format!("Cannot write AeroCrypt overlay config: {e}"))?;
+                }
+
+                if let Some(id) = &params.profile_id {
+                    if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
+                        use base64::Engine as _;
+                        let _ = crate::user_partitions::store_active_credential_typed_dual(
+                            &store,
+                            &format!("aerocrypt_overlay_salt_{}", id),
+                            &base64::engine::general_purpose::STANDARD.encode(salt),
+                            "aerocrypt_overlay_salt",
+                        );
+                        let _ = crate::user_partitions::store_active_credential_typed_dual(
+                            &store,
+                            &format!("aerocrypt_overlay_config_{}", id),
+                            &json,
+                            "aerocrypt_overlay_config",
+                        );
+                    }
+                } else if !with_header {
+                    return Err(
+                        "Cannot create a headerless vault without a profile ID to store the metadata. \
+                         Please save the profile first."
+                            .to_string(),
+                    );
+                }
+
                 let config = overlay::parse_config(&json)
                     .map_err(|e| format!("Invalid AeroCrypt overlay config: {e}"))?;
                 (config, master_key)
@@ -1903,6 +1952,7 @@ pub async fn apply_overlay_in_place(
     password: &str,
     salt: &str,
     keyfile_digest: Option<&[u8; 32]>,
+    with_header: bool,
 ) -> Result<String, String> {
     // Revert any prior overlay so a re-apply (re-anchor / scope change) can never
     // stack a second decorator on top of the first.
@@ -1924,6 +1974,7 @@ pub async fn apply_overlay_in_place(
         salt,
         keyfile_digest,
         true,
+        with_header,
     )
     .await?;
     let raw = slot
@@ -2922,7 +2973,7 @@ mod tests {
         );
 
         // Apply: the slot now holds a decorator.
-        let scope = apply_overlay_in_place(&mut slot, &binding, "pw", "salt", None)
+        let scope = apply_overlay_in_place(&mut slot, &binding, "pw", "salt", None, true)
             .await
             .unwrap();
         assert_eq!(scope, "");
@@ -2936,7 +2987,7 @@ mod tests {
         );
 
         // Re-apply (re-anchor): must revert the prior overlay first, never stack.
-        apply_overlay_in_place(&mut slot, &binding, "pw", "salt", None)
+        apply_overlay_in_place(&mut slot, &binding, "pw", "salt", None, true)
             .await
             .unwrap();
 
@@ -3058,7 +3109,7 @@ mod tests {
         };
         // Bootstrap a real v3 config under the CORRECT password.
         let mut mem = MemProvider::new();
-        unlock_overlay_keys_encrypting(&mut mem, &binding, "correct-pw", "", None, true)
+        unlock_overlay_keys_encrypting(&mut mem, &binding, "correct-pw", "", None, true, true)
             .await
             .expect("bootstrap v3 config");
 
@@ -3090,7 +3141,7 @@ mod tests {
             local_config_salt: None,
         };
         let mut mem = MemProvider::new();
-        unlock_overlay_keys_encrypting(&mut mem, &binding, "pw", "", None, true)
+        unlock_overlay_keys_encrypting(&mut mem, &binding, "pw", "", None, true, true)
             .await
             .expect("bootstrap v3 config");
         let inner: Box<dyn StorageProvider> = Box::new(mem);
@@ -3134,7 +3185,8 @@ mod tests {
             local_config_json: None,
             local_config_salt: None,
         };
-        let res = unlock_overlay_keys_encrypting(&mut mem, &binding, "pw", "", None, true).await;
+        let res =
+            unlock_overlay_keys_encrypting(&mut mem, &binding, "pw", "", None, true, true).await;
         assert!(
             res.is_err(),
             "activation must refuse to bootstrap over a non-empty folder (would orphan existing files)"
@@ -3165,7 +3217,7 @@ mod tests {
             local_config_salt: None,
         };
 
-        let keys = unlock_overlay_keys_encrypting(&mut mem, &binding, "pw", "", None, true)
+        let keys = unlock_overlay_keys_encrypting(&mut mem, &binding, "pw", "", None, true, true)
             .await
             .expect("empty folder must bootstrap a v3 overlay");
         assert!(matches!(keys, OverlayKeys::AeroCrypt { .. }));
@@ -3178,7 +3230,7 @@ mod tests {
         assert_eq!(v["version"], serde_json::json!(3));
 
         // Re-activation reads the existing config (no second bootstrap, no clobber).
-        let keys2 = unlock_overlay_keys_encrypting(&mut mem, &binding, "pw", "", None, true)
+        let keys2 = unlock_overlay_keys_encrypting(&mut mem, &binding, "pw", "", None, true, true)
             .await
             .expect("re-activation must read the existing config");
         assert!(matches!(keys2, OverlayKeys::AeroCrypt { .. }));
@@ -3205,7 +3257,8 @@ mod tests {
             local_config_json: None,
             local_config_salt: None,
         };
-        let res = unlock_overlay_keys_encrypting(&mut mem, &other, "pw", "", None, false).await;
+        let res =
+            unlock_overlay_keys_encrypting(&mut mem, &other, "pw", "", None, false, true).await;
         assert!(
             res.is_err(),
             "non-interactive empty folder must fail closed"
@@ -3249,7 +3302,7 @@ mod tests {
         )
         .unwrap();
 
-        unlock_overlay_keys_encrypting(&mut mem, &binding, "pw", "", Some(&digest), true)
+        unlock_overlay_keys_encrypting(&mut mem, &binding, "pw", "", Some(&digest), true, true)
             .await
             .expect("bootstrap a keyfile vault");
         let cfg = mem.raw_bytes("/KfVault/.aeroftp-crypt.json").unwrap();
@@ -3264,12 +3317,12 @@ mod tests {
             "no keyfile_hint by default (F5)"
         );
 
-        unlock_overlay_keys_encrypting(&mut mem, &binding, "pw", "", Some(&digest), false)
+        unlock_overlay_keys_encrypting(&mut mem, &binding, "pw", "", Some(&digest), false, true)
             .await
             .expect("correct password + keyfile must unlock");
 
         let err = unlock_err(
-            unlock_overlay_keys_encrypting(&mut mem, &binding, "pw", "", None, false).await,
+            unlock_overlay_keys_encrypting(&mut mem, &binding, "pw", "", None, false, true).await,
             "password-only on a keyfile vault must fail closed",
         );
         assert!(
@@ -3279,7 +3332,8 @@ mod tests {
 
         let wrong = crate::aerocrypt::keyfile_digest(b"not the keyfile");
         let res =
-            unlock_overlay_keys_encrypting(&mut mem, &binding, "pw", "", Some(&wrong), false).await;
+            unlock_overlay_keys_encrypting(&mut mem, &binding, "pw", "", Some(&wrong), false, true)
+                .await;
         assert!(res.is_err(), "a wrong keyfile must fail closed");
 
         let pw_only = OverlayUnlockParams {
@@ -3292,12 +3346,20 @@ mod tests {
             local_config_json: None,
             local_config_salt: None,
         };
-        unlock_overlay_keys_encrypting(&mut mem, &pw_only, "pw", "", None, true)
+        unlock_overlay_keys_encrypting(&mut mem, &pw_only, "pw", "", None, true, true)
             .await
             .expect("bootstrap a password-only vault");
         let err = unlock_err(
-            unlock_overlay_keys_encrypting(&mut mem, &pw_only, "pw", "", Some(&digest), false)
-                .await,
+            unlock_overlay_keys_encrypting(
+                &mut mem,
+                &pw_only,
+                "pw",
+                "",
+                Some(&digest),
+                false,
+                true,
+            )
+            .await,
             "a spurious keyfile on a password-only vault must be rejected",
         );
         assert!(
@@ -3323,8 +3385,16 @@ mod tests {
         };
         let digest = crate::aerocrypt::keyfile_digest(b"kf");
         let err = unlock_err(
-            unlock_overlay_keys_encrypting(&mut mem, &binding, "pw", "", Some(&digest), false)
-                .await,
+            unlock_overlay_keys_encrypting(
+                &mut mem,
+                &binding,
+                "pw",
+                "",
+                Some(&digest),
+                false,
+                true,
+            )
+            .await,
             "rclone-crypt must reject a keyfile",
         );
         assert!(err.contains("AeroCrypt feature"), "clear error: {err}");

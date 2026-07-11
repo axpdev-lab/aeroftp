@@ -5048,7 +5048,9 @@
             "keyfileGenerate": "Bumuo...",
             "keyfileGeneratedBackup": "Nabuo ang keyfile. Mag-backup na ngayon: kapag nawala ito, tuluyang hindi mabubuksan ang vault.",
             "keyfileRepointHint": "Ang path na ito ay tumutukoy lang kung nasaan ang keyfile; ang pagpalit nito ay hindi nagpapalit ng susi ng vault. Ang mali o nawawalang keyfile ay tatanggihan sa pag-unlock.",
-            "keyfileStorageHint": "Itago ito sa lokal na disk o USB drive, hiwalay sa remote na ini-encrypt mo, at mag-ingat ng backup na kopya."
+            "keyfileStorageHint": "Itago ito sa lokal na disk o USB drive, hiwalay sa remote na ini-encrypt mo, at mag-ingat ng backup na kopya.",
+            "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
+            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore."
         },
         "modalGuard": {
             "busyTitle": "May isinasagawang operasyon",

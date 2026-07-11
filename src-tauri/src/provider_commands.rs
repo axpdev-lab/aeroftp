@@ -1408,6 +1408,11 @@ pub struct ApplyCryptOverlayParams {
     /// password-only unlock.
     #[serde(default)]
     pub keyfile_path: Option<String>,
+    /// Profile ID, used to load headerless vault config from the keystore.
+    #[serde(default)]
+    pub profile_id: Option<String>,
+    #[serde(default)]
+    pub with_header: Option<bool>,
 }
 
 /// Apply a crypt overlay (rclone-crypt or AeroCrypt) to the live connection in
@@ -1423,6 +1428,34 @@ pub async fn provider_apply_crypt_overlay(
     state: State<'_, ProviderState>,
     params: ApplyCryptOverlayParams,
 ) -> Result<String, String> {
+    let (local_config_json, local_config_salt) = if let Some(id) = &params.profile_id {
+        if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
+            let json = crate::user_partitions::resolve_active_credential(
+                &store,
+                &format!("aerocrypt_overlay_config_{}", id),
+            )
+            .ok()
+            .flatten()
+            .map(|s| s.to_string())
+            .filter(|s| !s.is_empty());
+
+            let salt = crate::user_partitions::resolve_active_credential(
+                &store,
+                &format!("aerocrypt_overlay_salt_{}", id),
+            )
+            .ok()
+            .flatten()
+            .map(|s| s.to_string())
+            .filter(|s| !s.is_empty());
+
+            (json, salt)
+        } else {
+            (None, None)
+        }
+    } else {
+        (None, None)
+    };
+
     let binding = crate::crypt_compare::OverlayUnlockParams {
         kind: params.kind,
         remote_scope: params.remote_scope,
@@ -1431,11 +1464,12 @@ pub async fn provider_apply_crypt_overlay(
             .unwrap_or_else(|| "standard".to_string()),
         directory_name_encryption: params.directory_name_encryption.unwrap_or(true),
         off_suffix: None,
-        profile_id: None,
-        local_config_json: None,
-        local_config_salt: None,
+        profile_id: params.profile_id,
+        local_config_json,
+        local_config_salt,
     };
     let salt = params.salt.unwrap_or_default();
+    let with_header = params.with_header.unwrap_or(false);
     // Keyfile second factor: resolve the picked path to its digest before
     // touching the connection; a keyfile vault with no keyfile fails closed
     // inside the unlock with a clear "requires a keyfile" error.
@@ -1451,6 +1485,7 @@ pub async fn provider_apply_crypt_overlay(
             &params.password,
             &salt,
             keyfile_digest.as_ref(),
+            with_header,
         )
         .await?
     };

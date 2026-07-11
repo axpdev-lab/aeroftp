@@ -5047,7 +5047,9 @@
             "keyfileChoose": "Choose...",
             "keyfileGenerate": "Generate...",
             "keyfileGeneratedBackup": "Keyfile generated. Back it up now: losing it makes the vault permanently unopenable.",
-            "keyfileRepointHint": "This path only points to where the keyfile lives; changing it does not re-key the vault. A wrong or missing keyfile fails closed at unlock."
+            "keyfileRepointHint": "This path only points to where the keyfile lives; changing it does not re-key the vault. A wrong or missing keyfile fails closed at unlock.",
+            "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
+            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore."
         },
         "modalView": {
             "listView": "List view",

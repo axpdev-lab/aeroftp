@@ -5029,7 +5029,9 @@
             "keyfileGenerate": "Сгенерировать...",
             "keyfileGeneratedBackup": "Файл-ключ создан. Сделайте копию сейчас: его потеря навсегда заблокирует хранилище.",
             "keyfileRepointHint": "Этот путь лишь указывает, где лежит файл-ключ; его изменение не меняет ключ хранилища. Неверный или отсутствующий файл-ключ отклоняет разблокировку.",
-            "keyfileStorageHint": "Храните его на локальном диске или USB-накопителе, отдельно от удалённого хранилища, которое вы шифруете, и сохраните резервную копию."
+            "keyfileStorageHint": "Храните его на локальном диске или USB-накопителе, отдельно от удалённого хранилища, которое вы шифруете, и сохраните резервную копию.",
+            "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
+            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore."
         },
         "modalGuard": {
             "busyTitle": "Выполняется операция",

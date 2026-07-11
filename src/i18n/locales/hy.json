@@ -5029,7 +5029,9 @@
             "keyfileGenerate": "Ստեղծել...",
             "keyfileGeneratedBackup": "Բանալի ֆայլը ստեղծված է: Հիմա պահեք կրկնօրինակը. այն կորցնելը պահոցը ընդմիշտ կփակի:",
             "keyfileRepointHint": "Այս ուղին միայն ցույց է տալիս, թե որտեղ է բանալի ֆայլը. այն փոխելը պահոցի բանալին չի փոխում: Սխալ կամ բացակայող բանալի ֆայլը մերժում է ապակողպումը:",
-            "keyfileStorageHint": "Պահեք այն տեղական սկավառակի կամ USB կրիչի վրա՝ առանձին այն հեռավոր սերվերից, որը գաղտնագրում եք, և պահեք պահուստային պատճեն։"
+            "keyfileStorageHint": "Պահեք այն տեղական սկավառակի կամ USB կրիչի վրա՝ առանձին այն հեռավոր սերվերից, որը գաղտնագրում եք, և պահեք պահուստային պատճեն։",
+            "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
+            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore."
         },
         "modalGuard": {
             "busyTitle": "Գործողությունն ընթացքի մեջ է",

@@ -5029,7 +5029,9 @@
             "keyfileGenerate": "Genereeri...",
             "keyfileGeneratedBackup": "Võtmefail genereeritud. Tehke varukoopia kohe: selle kaotamine muudab hoidla jäädavalt avamatuks.",
             "keyfileRepointHint": "See tee näitab vaid, kus võtmefail asub; selle muutmine hoidlat ümber ei võtmesta. Vale või puuduv võtmefail keelab avamise.",
-            "keyfileStorageHint": "Salvestage see kohalikule kettale või USB-mälupulgale, eraldi kaugserverist, mida krüpteerite, ja hoidke alles varukoopia."
+            "keyfileStorageHint": "Salvestage see kohalikule kettale või USB-mälupulgale, eraldi kaugserverist, mida krüpteerite, ja hoidke alles varukoopia.",
+            "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
+            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore."
         },
         "modalGuard": {
             "busyTitle": "Toiming käib",

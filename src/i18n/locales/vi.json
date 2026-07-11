@@ -5029,7 +5029,9 @@
             "keyfileGenerate": "Tạo...",
             "keyfileGeneratedBackup": "Đã tạo tệp khóa. Hãy sao lưu ngay: mất nó khiến két bị khóa vĩnh viễn.",
             "keyfileRepointHint": "Đường dẫn này chỉ trỏ tới nơi tệp khóa nằm; thay đổi nó không đổi khóa của két. Tệp khóa sai hoặc thiếu sẽ bị từ chối mở khóa.",
-            "keyfileStorageHint": "Lưu nó trên ổ đĩa cục bộ hoặc ổ USB, tách biệt với máy chủ từ xa mà bạn đang mã hóa, và giữ một bản sao lưu."
+            "keyfileStorageHint": "Lưu nó trên ổ đĩa cục bộ hoặc ổ USB, tách biệt với máy chủ từ xa mà bạn đang mã hóa, và giữ một bản sao lưu.",
+            "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
+            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore."
         },
         "modalGuard": {
             "busyTitle": "Đang thực hiện thao tác",

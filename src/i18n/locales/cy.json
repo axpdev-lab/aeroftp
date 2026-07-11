@@ -5048,7 +5048,9 @@
             "keyfileGenerate": "Cynhyrchu...",
             "keyfileGeneratedBackup": "Ffeil allwedd wedi'i chynhyrchu. Cadwch gopi wrth gefn nawr: mae ei cholli yn cloi'r gladdgell am byth.",
             "keyfileRepointHint": "Dim ond dangos lle mae'r ffeil allwedd y mae'r llwybr hwn; nid yw ei newid yn ail-allweddu'r gladdgell. Bydd ffeil allwedd anghywir neu goll yn gwrthod datgloi.",
-            "keyfileStorageHint": "Cadwch ef ar ddisg lleol neu yriant USB, ar wahân i'r pell rydych chi'n ei amgryptio, a chadwch gopi wrth gefn."
+            "keyfileStorageHint": "Cadwch ef ar ddisg lleol neu yriant USB, ar wahân i'r pell rydych chi'n ei amgryptio, a chadwch gopi wrth gefn.",
+            "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
+            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore."
         },
         "modalGuard": {
             "busyTitle": "Gweithrediad ar y gweill",

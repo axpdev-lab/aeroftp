@@ -5029,7 +5029,9 @@
             "keyfileGenerate": "生成...",
             "keyfileGeneratedBackup": "キーファイルを生成しました。今すぐバックアップしてください: 紛失するとボールトは二度と開けません。",
             "keyfileRepointHint": "このパスはキーファイルの場所を指すだけで、変更してもボールトの鍵は変わりません。誤った、または見つからないキーファイルではロック解除は拒否されます。",
-            "keyfileStorageHint": "暗号化するリモートとは別に、ローカルディスクまたは USB ドライブに保存し、バックアップコピーを保管してください。"
+            "keyfileStorageHint": "暗号化するリモートとは別に、ローカルディスクまたは USB ドライブに保存し、バックアップコピーを保管してください。",
+            "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
+            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore."
         },
         "modalGuard": {
             "busyTitle": "操作の実行中",

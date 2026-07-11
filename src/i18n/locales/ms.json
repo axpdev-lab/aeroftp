@@ -5029,7 +5029,9 @@
             "keyfileGenerate": "Jana...",
             "keyfileGeneratedBackup": "Fail kunci dijana. Sandarkan sekarang: kehilangannya mengunci bilik kebal selama-lamanya.",
             "keyfileRepointHint": "Laluan ini hanya menunjuk lokasi fail kunci; mengubahnya tidak menukar kunci bilik kebal. Fail kunci yang salah atau tiada akan menolak buka kunci.",
-            "keyfileStorageHint": "Simpan pada cakera setempat atau pemacu USB, berasingan daripada peranti jauh yang anda sulitkan, dan simpan salinan sandaran."
+            "keyfileStorageHint": "Simpan pada cakera setempat atau pemacu USB, berasingan daripada peranti jauh yang anda sulitkan, dan simpan salinan sandaran.",
+            "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
+            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore."
         },
         "modalGuard": {
             "busyTitle": "Operasi sedang berjalan",

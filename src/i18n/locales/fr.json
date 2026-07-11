@@ -5029,7 +5029,9 @@
             "keyfileGenerate": "Générer...",
             "keyfileGeneratedBackup": "Fichier de clé généré. Sauvegardez-le maintenant : sa perte rend le coffre définitivement inouvrable.",
             "keyfileRepointHint": "Ce chemin indique seulement où se trouve le fichier de clé ; le modifier ne rechiffre pas le coffre. Un fichier de clé erroné ou absent refuse le déverrouillage.",
-            "keyfileStorageHint": "Conservez-le sur un disque local ou une clé USB, séparé du serveur distant que vous chiffrez, et gardez une copie de sauvegarde."
+            "keyfileStorageHint": "Conservez-le sur un disque local ou une clé USB, séparé du serveur distant que vous chiffrez, et gardez une copie de sauvegarde.",
+            "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
+            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore."
         },
         "modalGuard": {
             "busyTitle": "Opération en cours",

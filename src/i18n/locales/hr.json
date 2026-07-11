@@ -5029,7 +5029,9 @@
             "keyfileGenerate": "Generiraj...",
             "keyfileGeneratedBackup": "Datoteka ključa generirana. Odmah napravite kopiju: njezin gubitak trajno zaključava trezor.",
             "keyfileRepointHint": "Ova putanja samo pokazuje gdje se datoteka ključa nalazi; njezina promjena ne mijenja ključ trezora. Pogrešna ili nedostajuća datoteka ključa odbija otključavanje.",
-            "keyfileStorageHint": "Spremite ga na lokalni disk ili USB pogon, odvojeno od udaljenog poslužitelja koji šifrirate, i čuvajte sigurnosnu kopiju."
+            "keyfileStorageHint": "Spremite ga na lokalni disk ili USB pogon, odvojeno od udaljenog poslužitelja koji šifrirate, i čuvajte sigurnosnu kopiju.",
+            "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
+            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore."
         },
         "modalGuard": {
             "busyTitle": "Operacija u tijeku",

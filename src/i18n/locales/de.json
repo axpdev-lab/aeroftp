@@ -5029,7 +5029,9 @@
             "keyfileGenerate": "Generieren...",
             "keyfileGeneratedBackup": "Schlüsseldatei erzeugt. Sichern Sie sie jetzt: ihr Verlust macht den Tresor dauerhaft unöffenbar.",
             "keyfileRepointHint": "Dieser Pfad zeigt nur, wo die Schlüsseldatei liegt; ihn zu ändern verschlüsselt den Tresor nicht neu. Eine falsche oder fehlende Schlüsseldatei verweigert das Entsperren.",
-            "keyfileStorageHint": "Speichern Sie sie auf einer lokalen Festplatte oder einem USB-Stick, getrennt von dem Remote, das Sie verschlüsseln, und bewahren Sie eine Sicherungskopie auf."
+            "keyfileStorageHint": "Speichern Sie sie auf einer lokalen Festplatte oder einem USB-Stick, getrennt von dem Remote, das Sie verschlüsseln, und bewahren Sie eine Sicherungskopie auf.",
+            "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
+            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore."
         },
         "modalGuard": {
             "busyTitle": "Vorgang läuft",

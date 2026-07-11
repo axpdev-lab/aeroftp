@@ -5048,7 +5048,9 @@
             "keyfileGenerate": "Xerar...",
             "keyfileGeneratedBackup": "Ficheiro de clave xerado. Faga unha copia agora: perdelo deixa a caixa forte inaccesible para sempre.",
             "keyfileRepointHint": "Esta ruta só indica onde está o ficheiro de clave; cambiala non volve cifrar a caixa forte. Un ficheiro de clave errado ou ausente rexeita o desbloqueo.",
-            "keyfileStorageHint": "Gárdao nun disco local ou nunha unidade USB, separado do remoto que estás cifrando, e conserva unha copia de seguranza."
+            "keyfileStorageHint": "Gárdao nun disco local ou nunha unidade USB, separado do remoto que estás cifrando, e conserva unha copia de seguranza.",
+            "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
+            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore."
         },
         "modalGuard": {
             "busyTitle": "Operación en curso",

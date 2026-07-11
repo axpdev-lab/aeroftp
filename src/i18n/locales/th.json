@@ -5029,7 +5029,9 @@
             "keyfileGenerate": "สร้าง...",
             "keyfileGeneratedBackup": "สร้างไฟล์กุญแจแล้ว โปรดสำรองทันที: หากสูญหาย ตู้นิรภัยจะเปิดไม่ได้ตลอดไป",
             "keyfileRepointHint": "พาธนี้เพียงชี้ตำแหน่งของไฟล์กุญแจ การเปลี่ยนพาธไม่ได้เปลี่ยนกุญแจของตู้นิรภัย ไฟล์กุญแจที่ผิดหรือหายไปจะถูกปฏิเสธการปลดล็อก",
-            "keyfileStorageHint": "จัดเก็บไว้ในดิสก์ภายในเครื่องหรือไดรฟ์ USB แยกจากรีโมทที่คุณกำลังเข้ารหัส และเก็บสำเนาสำรองไว้"
+            "keyfileStorageHint": "จัดเก็บไว้ในดิสก์ภายในเครื่องหรือไดรฟ์ USB แยกจากรีโมทที่คุณกำลังเข้ารหัส และเก็บสำเนาสำรองไว้",
+            "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
+            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore."
         },
         "modalGuard": {
             "busyTitle": "กำลังดำเนินการ",

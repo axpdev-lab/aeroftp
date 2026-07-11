@@ -5048,7 +5048,9 @@
             "keyfileGenerate": "Búa til...",
             "keyfileGeneratedBackup": "Lykilskrá búin til. Taktu afrit núna: glatist hún læsist hirslan að eilífu.",
             "keyfileRepointHint": "Þessi slóð bendir aðeins á hvar lykilskráin liggur; að breyta henni endurlyklar ekki hirsluna. Röng eða vantandi lykilskrá hafnar aflæsingu.",
-            "keyfileStorageHint": "Vistaðu það á staðbundnum diski eða USB-drifi, aðskilið frá fjartengingunni sem þú ert að dulkóða, og geymdu öryggisafrit."
+            "keyfileStorageHint": "Vistaðu það á staðbundnum diski eða USB-drifi, aðskilið frá fjartengingunni sem þú ert að dulkóða, og geymdu öryggisafrit.",
+            "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
+            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore."
         },
         "modalGuard": {
             "busyTitle": "Aðgerð í gangi",

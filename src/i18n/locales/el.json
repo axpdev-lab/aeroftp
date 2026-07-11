@@ -5029,7 +5029,9 @@
             "keyfileGenerate": "Δημιουργία...",
             "keyfileGeneratedBackup": "Το αρχείο κλειδιού δημιουργήθηκε. Κρατήστε αντίγραφο τώρα: αν χαθεί, η κρύπτη κλειδώνει για πάντα.",
             "keyfileRepointHint": "Αυτή η διαδρομή δείχνει μόνο πού βρίσκεται το αρχείο κλειδιού; η αλλαγή της δεν αλλάζει το κλειδί της κρύπτης. Λάθος ή απόν αρχείο κλειδιού απορρίπτει το ξεκλείδωμα.",
-            "keyfileStorageHint": "Αποθηκεύστε το σε τοπικό δίσκο ή μονάδα USB, ξεχωριστά από τον απομακρυσμένο διακομιστή που κρυπτογραφείτε, και κρατήστε ένα αντίγραφο ασφαλείας."
+            "keyfileStorageHint": "Αποθηκεύστε το σε τοπικό δίσκο ή μονάδα USB, ξεχωριστά από τον απομακρυσμένο διακομιστή που κρυπτογραφείτε, και κρατήστε ένα αντίγραφο ασφαλείας.",
+            "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
+            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore."
         },
         "modalGuard": {
             "busyTitle": "Λειτουργία σε εξέλιξη",

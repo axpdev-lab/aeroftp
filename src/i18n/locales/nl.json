@@ -5029,7 +5029,9 @@
             "keyfileGenerate": "Genereren...",
             "keyfileGeneratedBackup": "Sleutelbestand gegenereerd. Maak nu een back-up: verlies maakt de kluis voorgoed onopenbaar.",
             "keyfileRepointHint": "Dit pad wijst alleen aan waar het sleutelbestand staat; het wijzigen versleutelt de kluis niet opnieuw. Een verkeerd of ontbrekend sleutelbestand weigert het ontgrendelen.",
-            "keyfileStorageHint": "Bewaar het op een lokale schijf of USB-stick, gescheiden van de externe locatie die u versleutelt, en bewaar een back-up."
+            "keyfileStorageHint": "Bewaar het op een lokale schijf of USB-stick, gescheiden van de externe locatie die u versleutelt, en bewaar een back-up.",
+            "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
+            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore."
         },
         "modalGuard": {
             "busyTitle": "Bewerking bezig",

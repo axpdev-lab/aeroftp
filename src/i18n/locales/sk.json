@@ -5029,7 +5029,9 @@
             "keyfileGenerate": "Generovať...",
             "keyfileGeneratedBackup": "Súbor kľúča vygenerovaný. Ihneď ho zálohujte: jeho strata trezor navždy uzamkne.",
             "keyfileRepointHint": "Táto cesta iba ukazuje, kde súbor kľúča leží; jej zmena trezor neprekľúčuje. Nesprávny alebo chýbajúci súbor kľúča odomknutie odmietne.",
-            "keyfileStorageHint": "Uložte ho na lokálny disk alebo USB kľúč, oddelene od vzdialeného úložiska, ktoré šifrujete, a uchovajte si záložnú kópiu."
+            "keyfileStorageHint": "Uložte ho na lokálny disk alebo USB kľúč, oddelene od vzdialeného úložiska, ktoré šifrujete, a uchovajte si záložnú kópiu.",
+            "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
+            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore."
         },
         "modalGuard": {
             "busyTitle": "Prebieha operácia",

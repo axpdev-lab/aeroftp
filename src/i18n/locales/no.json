@@ -5048,7 +5048,9 @@
             "keyfileGenerate": "Generer...",
             "keyfileGeneratedBackup": "Nøkkelfil generert. Ta sikkerhetskopi nå: mistes den, låses hvelvet for alltid.",
             "keyfileRepointHint": "Denne stien peker bare på hvor nøkkelfilen ligger; å endre den bytter ikke hvelvets nøkkel. En feil eller manglende nøkkelfil avviser opplåsingen.",
-            "keyfileStorageHint": "Lagre den på en lokal disk eller USB-enhet, atskilt fra fjernlageret du krypterer, og oppbevar en sikkerhetskopi."
+            "keyfileStorageHint": "Lagre den på en lokal disk eller USB-enhet, atskilt fra fjernlageret du krypterer, og oppbevar en sikkerhetskopi.",
+            "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
+            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore."
         },
         "modalGuard": {
             "busyTitle": "Operasjon pågår",

@@ -5048,7 +5048,9 @@
             "keyfileGenerate": "Генерирај...",
             "keyfileGeneratedBackup": "Клучната датотека е генерирана. Направете копија сега: нејзиното губење засекогаш го заклучува трезорот.",
             "keyfileRepointHint": "Оваа патека само покажува каде се наоѓа клучната датотека; нејзината промена не го менува клучот на трезорот. Погрешна или отсутна клучна датотека го одбива отклучувањето.",
-            "keyfileStorageHint": "Зачувајте го на локален диск или USB уред, одвоено од далечниот сервер што го шифрирате, и чувајте резервна копија."
+            "keyfileStorageHint": "Зачувајте го на локален диск или USB уред, одвоено од далечниот сервер што го шифрирате, и чувајте резервна копија.",
+            "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
+            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore."
         },
         "modalGuard": {
             "busyTitle": "Операција во тек",

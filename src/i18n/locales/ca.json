@@ -5048,7 +5048,9 @@
             "keyfileGenerate": "Genera...",
             "keyfileGeneratedBackup": "Fitxer de clau generat. Feu-ne una còpia ara: perdre'l fa la caixa forta inaccessible per sempre.",
             "keyfileRepointHint": "Aquest camí només indica on és el fitxer de clau; canviar-lo no torna a xifrar la caixa forta. Un fitxer de clau erroni o absent bloqueja el desbloqueig.",
-            "keyfileStorageHint": "Deseu-lo en un disc local o una unitat USB, separat del remot que esteu xifrant, i conserveu-ne una còpia de seguretat."
+            "keyfileStorageHint": "Deseu-lo en un disc local o una unitat USB, separat del remot que esteu xifrant, i conserveu-ne una còpia de seguretat.",
+            "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
+            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore."
         },
         "modalGuard": {
             "busyTitle": "Operació en curs",
