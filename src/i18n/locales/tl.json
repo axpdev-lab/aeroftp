@@ -5302,7 +5302,7 @@
             }
         },
         "flatpak": {
-            "importBody": "May natagpuang umiiral na configuration ang AeroFTP sa iyong home folder. Ang Flatpak install na ito ay gumagamit ng sarili nitong hiwalay na storage, kaya hindi pa nakikita rito ang iyong mga na-save na server at naka-encrypt na vault. Iimport ba ang mga ito ngayon? Kinokopya lang ang mga file, walang na-o-overwrite, at kailangan pa rin ng vault ang iyong password para ma-unlock.",
+            "importBody": "May natagpuang umiiral na configuration ang AeroFTP sa iyong home folder. Ang Flatpak install na ito ay gumagamit ng sarili nitong hiwalay na storage, kaya hindi pa nakikita rito ang iyong mga na-save na server at naka-encrypt na vault. Iimport ba ang mga ito ngayon? Kinokopya lang ang mga file, walang na-o-overwrite, at na-a-unlock ang iyong vault dito sa parehong paraan tulad ngayon.",
             "importAccept": "Import",
             "importedBody": "Na-import ang iyong configuration. I-restart ang AeroFTP para i-load ang iyong mga server at vault.",
             "restartNow": "I-restart ngayon"

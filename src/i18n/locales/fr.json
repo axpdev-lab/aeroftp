@@ -5283,7 +5283,7 @@
             }
         },
         "flatpak": {
-            "importBody": "AeroFTP a trouvé une configuration existante dans votre dossier personnel. Cette installation Flatpak utilise son propre stockage séparé, donc vos serveurs enregistrés et votre coffre-fort chiffré ne sont pas encore visibles ici. Les importer maintenant ? Les fichiers sont seulement copiés, rien n'est écrasé, et le coffre-fort nécessite toujours votre mot de passe pour être déverrouillé.",
+            "importBody": "AeroFTP a trouvé une configuration existante dans votre dossier personnel. Cette installation Flatpak utilise son propre stockage séparé, donc vos serveurs enregistrés et votre coffre-fort chiffré ne sont pas encore visibles ici. Les importer maintenant ? Les fichiers sont seulement copiés, rien n'est écrasé, et le coffre-fort se déverrouille ici de la même manière qu'aujourd'hui.",
             "importAccept": "Importer",
             "importedBody": "Votre configuration a été importée. Redémarrez AeroFTP pour charger vos serveurs et votre coffre-fort.",
             "restartNow": "Redémarrer maintenant"

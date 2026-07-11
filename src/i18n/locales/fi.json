@@ -5283,7 +5283,7 @@
             }
         },
         "flatpak": {
-            "importBody": "AeroFTP löysi olemassa olevan määrityksen kotikansiostasi. Tämä Flatpak-asennus käyttää omaa erillistä tallennustilaansa, joten tallennetut palvelimesi ja salattu holvi eivät näy täällä vielä. Tuodaanko ne nyt? Tiedostot vain kopioidaan, mitään ei korvata, ja holvin avaaminen vaatii edelleen salasanasi.",
+            "importBody": "AeroFTP löysi olemassa olevan määrityksen kotikansiostasi. Tämä Flatpak-asennus käyttää omaa erillistä tallennustilaansa, joten tallennetut palvelimesi ja salattu holvi eivät näy täällä vielä. Tuodaanko ne nyt? Tiedostot vain kopioidaan, mitään ei korvata, ja holvi avautuu täällä samalla tavalla kuin nyt.",
             "importAccept": "Tuo",
             "importedBody": "Määrityksesi tuotiin. Käynnistä AeroFTP uudelleen ladataksesi palvelimesi ja holvisi.",
             "restartNow": "Käynnistä uudelleen nyt"

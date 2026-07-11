@@ -5283,7 +5283,7 @@
             }
         },
         "flatpak": {
-            "importBody": "O AeroFTP encontrou uma configuração existente na sua pasta pessoal. Esta instalação Flatpak usa o seu próprio armazenamento separado, por isso os seus servidores guardados e o cofre cifrado ainda não são visíveis aqui. Importá-los agora? Os ficheiros são apenas copiados, nada é substituído, e o cofre continua a precisar da sua palavra-passe para ser desbloqueado.",
+            "importBody": "O AeroFTP encontrou uma configuração existente na sua pasta pessoal. Esta instalação Flatpak usa o seu próprio armazenamento separado, por isso os seus servidores guardados e o cofre cifrado ainda não são visíveis aqui. Importá-los agora? Os ficheiros são apenas copiados, nada é substituído, e o cofre é desbloqueado aqui da mesma forma que agora.",
             "importAccept": "Importar",
             "importedBody": "A sua configuração foi importada. Reinicie o AeroFTP para carregar os seus servidores e o cofre.",
             "restartNow": "Reiniciar agora"

@@ -5283,7 +5283,7 @@
             }
         },
         "flatpak": {
-            "importBody": "AeroFTP menemui konfigurasi sedia ada dalam folder rumah anda. Pemasangan Flatpak ini menggunakan storan berasingannya sendiri, jadi pelayan tersimpan dan bilik kebal tersulit anda belum kelihatan di sini. Import sekarang? Fail hanya disalin, tiada apa-apa ditulis ganti, dan bilik kebal masih memerlukan kata laluan anda untuk dibuka.",
+            "importBody": "AeroFTP menemui konfigurasi sedia ada dalam folder rumah anda. Pemasangan Flatpak ini menggunakan storan berasingannya sendiri, jadi pelayan tersimpan dan bilik kebal tersulit anda belum kelihatan di sini. Import sekarang? Fail hanya disalin, tiada apa-apa ditulis ganti, dan bilik kebal dibuka di sini dengan cara yang sama seperti sekarang.",
             "importAccept": "Import",
             "importedBody": "Konfigurasi anda telah diimport. Mulakan semula AeroFTP untuk memuatkan pelayan dan bilik kebal anda.",
             "restartNow": "Mula semula sekarang"

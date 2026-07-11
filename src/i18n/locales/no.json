@@ -5302,7 +5302,7 @@
             }
         },
         "flatpak": {
-            "importBody": "AeroFTP fant et eksisterende oppsett i hjemmemappen din. Denne Flatpak-installasjonen bruker sitt eget separate lager, så de lagrede serverne dine og det krypterte hvelvet er ikke synlige her ennå. Vil du importere dem nå? Filene bare kopieres, ingenting overskrives, og hvelvet krever fortsatt passordet ditt for å låses opp.",
+            "importBody": "AeroFTP fant et eksisterende oppsett i hjemmemappen din. Denne Flatpak-installasjonen bruker sitt eget separate lager, så de lagrede serverne dine og det krypterte hvelvet er ikke synlige her ennå. Vil du importere dem nå? Filene bare kopieres, ingenting overskrives, og hvelvet låses opp her på samme måte som nå.",
             "importAccept": "Importer",
             "importedBody": "Oppsettet ditt ble importert. Start AeroFTP på nytt for å laste inn serverne og hvelvet ditt.",
             "restartNow": "Start på nytt nå"

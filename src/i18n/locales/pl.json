@@ -5283,7 +5283,7 @@
             }
         },
         "flatpak": {
-            "importBody": "AeroFTP znalazł istniejącą konfigurację w Twoim folderze domowym. Ta instalacja Flatpak korzysta z własnej, oddzielnej pamięci, więc zapisane serwery i zaszyfrowany sejf nie są tu jeszcze widoczne. Zaimportować je teraz? Pliki są tylko kopiowane, nic nie jest nadpisywane, a do odblokowania sejfu nadal potrzebne jest Twoje hasło.",
+            "importBody": "AeroFTP znalazł istniejącą konfigurację w Twoim folderze domowym. Ta instalacja Flatpak korzysta z własnej, oddzielnej pamięci, więc zapisane serwery i zaszyfrowany sejf nie są tu jeszcze widoczne. Zaimportować je teraz? Pliki są tylko kopiowane, nic nie jest nadpisywane, a sejf odblokowuje się tutaj w taki sam sposób jak teraz.",
             "importAccept": "Importuj",
             "importedBody": "Twoja konfiguracja została zaimportowana. Uruchom ponownie AeroFTP, aby wczytać serwery i sejf.",
             "restartNow": "Uruchom ponownie teraz"

@@ -5283,7 +5283,7 @@
             }
         },
         "flatpak": {
-            "importBody": "AeroFTP je pronašao postojeću konfiguraciju u vašoj početnoj mapi. Ova Flatpak instalacija koristi vlastitu odvojenu pohranu, pa vaši spremljeni poslužitelji i šifrirani trezor ovdje još nisu vidljivi. Želite li ih sada uvesti? Datoteke se samo kopiraju, ništa se ne prepisuje, a za otključavanje trezora i dalje je potrebna vaša lozinka.",
+            "importBody": "AeroFTP je pronašao postojeću konfiguraciju u vašoj početnoj mapi. Ova Flatpak instalacija koristi vlastitu odvojenu pohranu, pa vaši spremljeni poslužitelji i šifrirani trezor ovdje još nisu vidljivi. Želite li ih sada uvesti? Datoteke se samo kopiraju, ništa se ne prepisuje, a trezor se ovdje otključava na isti način kao i sada.",
             "importAccept": "Uvezi",
             "importedBody": "Vaša je konfiguracija uvezena. Ponovno pokrenite AeroFTP da učitate svoje poslužitelje i trezor.",
             "restartNow": "Ponovno pokreni sada"

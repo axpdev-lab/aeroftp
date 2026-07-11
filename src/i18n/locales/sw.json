@@ -5283,7 +5283,7 @@
             }
         },
         "flatpak": {
-            "importBody": "AeroFTP imepata usanidi uliopo katika folda yako ya nyumbani. Usakinishaji huu wa Flatpak hutumia hifadhi yake tofauti, kwa hivyo seva zako zilizohifadhiwa na kasha lililosimbwa hazionekani hapa bado. Uziingize sasa? Faili hunakiliwa tu, hakuna kinachoandikwa juu, na kasha bado linahitaji nenosiri lako ili kufunguliwa.",
+            "importBody": "AeroFTP imepata usanidi uliopo katika folda yako ya nyumbani. Usakinishaji huu wa Flatpak hutumia hifadhi yake tofauti, kwa hivyo seva zako zilizohifadhiwa na kasha lililosimbwa hazionekani hapa bado. Uziingize sasa? Faili hunakiliwa tu, hakuna kinachoandikwa juu, na kasha lako hufunguliwa hapa kwa njia ile ile kama sasa.",
             "importAccept": "Ingiza",
             "importedBody": "Usanidi wako umeingizwa. Anzisha upya AeroFTP ili kupakia seva zako na kasha lako.",
             "restartNow": "Anzisha upya sasa"

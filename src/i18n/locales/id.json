@@ -5283,7 +5283,7 @@
             }
         },
         "flatpak": {
-            "importBody": "AeroFTP menemukan konfigurasi yang ada di folder beranda Anda. Pemasangan Flatpak ini menggunakan penyimpanannya sendiri yang terpisah, jadi server tersimpan dan brankas terenkripsi Anda belum terlihat di sini. Impor sekarang? File hanya disalin, tidak ada yang ditimpa, dan brankas masih memerlukan kata sandi Anda untuk membukanya.",
+            "importBody": "AeroFTP menemukan konfigurasi yang ada di folder beranda Anda. Pemasangan Flatpak ini menggunakan penyimpanannya sendiri yang terpisah, jadi server tersimpan dan brankas terenkripsi Anda belum terlihat di sini. Impor sekarang? File hanya disalin, tidak ada yang ditimpa, dan brankas terbuka di sini dengan cara yang sama seperti sekarang.",
             "importAccept": "Impor",
             "importedBody": "Konfigurasi Anda telah diimpor. Mulai ulang AeroFTP untuk memuat server dan brankas Anda.",
             "restartNow": "Mulai ulang sekarang"

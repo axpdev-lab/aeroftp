@@ -5283,7 +5283,7 @@
             }
         },
         "flatpak": {
-            "importBody": "AeroFTP đã tìm thấy một cấu hình hiện có trong thư mục chính của bạn. Bản cài đặt Flatpak này sử dụng bộ lưu trữ riêng biệt của nó, vì vậy các máy chủ đã lưu và két an toàn được mã hóa của bạn chưa hiển thị ở đây. Nhập chúng ngay bây giờ? Các tệp chỉ được sao chép, không có gì bị ghi đè, và két an toàn vẫn cần mật khẩu của bạn để mở khóa.",
+            "importBody": "AeroFTP đã tìm thấy một cấu hình hiện có trong thư mục chính của bạn. Bản cài đặt Flatpak này sử dụng bộ lưu trữ riêng biệt của nó, vì vậy các máy chủ đã lưu và két an toàn được mã hóa của bạn chưa hiển thị ở đây. Nhập chúng ngay bây giờ? Các tệp chỉ được sao chép, không có gì bị ghi đè, và két an toàn của bạn được mở khóa ở đây theo cùng cách như hiện tại.",
             "importAccept": "Nhập",
             "importedBody": "Cấu hình của bạn đã được nhập. Khởi động lại AeroFTP để tải các máy chủ và két an toàn của bạn.",
             "restartNow": "Khởi động lại ngay"

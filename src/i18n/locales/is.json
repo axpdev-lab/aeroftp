@@ -5302,7 +5302,7 @@
             }
         },
         "flatpak": {
-            "importBody": "AeroFTP fann fyrirliggjandi stillingar í heimamöppunni þinni. Þessi Flatpak-uppsetning notar sína eigin aðskildu geymslu, svo vistuðu þjónarnir þínir og dulkóðaða hirslan sjást ekki hér enn. Flytja þau inn núna? Skrárnar eru aðeins afritaðar, engu er skrifað yfir, og hirslan þarf enn lykilorðið þitt til að opnast.",
+            "importBody": "AeroFTP fann fyrirliggjandi stillingar í heimamöppunni þinni. Þessi Flatpak-uppsetning notar sína eigin aðskildu geymslu, svo vistuðu þjónarnir þínir og dulkóðaða hirslan sjást ekki hér enn. Flytja þau inn núna? Skrárnar eru aðeins afritaðar, engu er skrifað yfir, og hirslan opnast hér á sama hátt og hún gerir núna.",
             "importAccept": "Flytja inn",
             "importedBody": "Stillingarnar þínar voru fluttar inn. Endurræstu AeroFTP til að hlaða inn þjónunum þínum og hirslunni.",
             "restartNow": "Endurræsa núna"

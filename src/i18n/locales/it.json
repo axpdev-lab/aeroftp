@@ -5283,7 +5283,7 @@
             }
         },
         "flatpak": {
-            "importBody": "AeroFTP ha trovato una configurazione esistente nella tua cartella home. Questa installazione Flatpak usa un proprio spazio di archiviazione separato, quindi i server salvati e la cassaforte cifrata non sono ancora visibili qui. Importarli ora? I file vengono solo copiati, nulla viene sovrascritto e la cassaforte richiede ancora la tua password per essere sbloccata.",
+            "importBody": "AeroFTP ha trovato una configurazione esistente nella tua cartella home. Questa installazione Flatpak usa un proprio spazio di archiviazione separato, quindi i server salvati e la cassaforte cifrata non sono ancora visibili qui. Importarli ora? I file vengono solo copiati, nulla viene sovrascritto e la cassaforte si sblocca qui nello stesso modo in cui si sblocca ora.",
             "importAccept": "Importa",
             "importedBody": "La tua configurazione è stata importata. Riavvia AeroFTP per caricare i tuoi server e la cassaforte.",
             "restartNow": "Riavvia ora"

@@ -5283,7 +5283,7 @@
             }
         },
         "flatpak": {
-            "importBody": "AeroFTP encontró una configuración existente en tu carpeta personal. Esta instalación de Flatpak usa su propio almacenamiento separado, por lo que tus servidores guardados y la bóveda cifrada aún no se ven aquí. ¿Importarlos ahora? Los archivos solo se copian, no se sobrescribe nada, y la bóveda todavía necesita tu contraseña para desbloquearse.",
+            "importBody": "AeroFTP encontró una configuración existente en tu carpeta personal. Esta instalación de Flatpak usa su propio almacenamiento separado, por lo que tus servidores guardados y la bóveda cifrada aún no se ven aquí. ¿Importarlos ahora? Los archivos solo se copian, no se sobrescribe nada, y la bóveda se desbloquea aquí de la misma forma que ahora.",
             "importAccept": "Importar",
             "importedBody": "Se importó tu configuración. Reinicia AeroFTP para cargar tus servidores y la bóveda.",
             "restartNow": "Reiniciar ahora"

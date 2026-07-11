@@ -5283,7 +5283,7 @@
             }
         },
         "flatpak": {
-            "importBody": "AeroFTP je našel obstoječo konfiguracijo v vaši domači mapi. Ta namestitev Flatpak uporablja svojo ločeno shrambo, zato vaši shranjeni strežniki in šifrirani trezor tukaj še niso vidni. Jih želite zdaj uvoziti? Datoteke se samo kopirajo, nič se ne prepiše, za odklepanje trezorja pa je še vedno potrebno vaše geslo.",
+            "importBody": "AeroFTP je našel obstoječo konfiguracijo v vaši domači mapi. Ta namestitev Flatpak uporablja svojo ločeno shrambo, zato vaši shranjeni strežniki in šifrirani trezor tukaj še niso vidni. Jih želite zdaj uvoziti? Datoteke se samo kopirajo, nič se ne prepiše, trezor pa se tukaj odklene na enak način kot zdaj.",
             "importAccept": "Uvozi",
             "importedBody": "Vaša konfiguracija je bila uvožena. Znova zaženite AeroFTP, da naložite svoje strežnike in trezor.",
             "restartNow": "Znova zaženi zdaj"

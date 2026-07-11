@@ -5302,7 +5302,7 @@
             }
         },
         "flatpak": {
-            "importBody": "Mae AeroFTP wedi canfod ffurfweddiad presennol yn eich ffolder cartref. Mae'r gosodiad Flatpak hwn yn defnyddio ei storfa ar wahân ei hun, felly nid yw eich gweinyddwyr wedi'u cadw a'ch cell ddiogel wedi'i hamgryptio i'w gweld yma eto. A hoffech eu mewnforio nawr? Dim ond copïo'r ffeiliau a wneir, ni chaiff dim ei drosysgrifo, ac mae angen eich cyfrinair o hyd i ddatgloi'r gell ddiogel.",
+            "importBody": "Mae AeroFTP wedi canfod ffurfweddiad presennol yn eich ffolder cartref. Mae'r gosodiad Flatpak hwn yn defnyddio ei storfa ar wahân ei hun, felly nid yw eich gweinyddwyr wedi'u cadw a'ch cell ddiogel wedi'i hamgryptio i'w gweld yma eto. A hoffech eu mewnforio nawr? Dim ond copïo'r ffeiliau a wneir, ni chaiff dim ei drosysgrifo, ac mae eich cell ddiogel yn datgloi yma yn union fel y mae'n ei wneud nawr.",
             "importAccept": "Mewnforio",
             "importedBody": "Mewnforiwyd eich ffurfweddiad. Ailgychwynnwch AeroFTP i lwytho eich gweinyddwyr a'ch cell ddiogel.",
             "restartNow": "Ailgychwyn nawr"

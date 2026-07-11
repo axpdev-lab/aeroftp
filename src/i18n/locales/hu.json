@@ -5283,7 +5283,7 @@
             }
         },
         "flatpak": {
-            "importBody": "Az AeroFTP meglévő konfigurációt talált a saját mappájában. Ez a Flatpak-telepítés saját, külön tárolót használ, ezért a mentett kiszolgálói és a titkosított széf itt még nem láthatók. Importálja őket most? A fájlok csak másolódnak, semmi sem íródik felül, és a széf feloldásához továbbra is szükség van a jelszavára.",
+            "importBody": "Az AeroFTP meglévő konfigurációt talált a saját mappájában. Ez a Flatpak-telepítés saját, külön tárolót használ, ezért a mentett kiszolgálói és a titkosított széf itt még nem láthatók. Importálja őket most? A fájlok csak másolódnak, semmi sem íródik felül, és a széf itt ugyanúgy oldódik fel, ahogy most.",
             "importAccept": "Importálás",
             "importedBody": "A konfigurációja importálva lett. Indítsa újra az AeroFTP-t a kiszolgálói és a széf betöltéséhez.",
             "restartNow": "Újraindítás most"

@@ -5283,7 +5283,7 @@
             }
         },
         "flatpak": {
-            "importBody": "AeroFTP a găsit o configurație existentă în folderul dumneavoastră personal. Această instalare Flatpak folosește propriul spațiu de stocare separat, așa că serverele salvate și seiful criptat nu sunt încă vizibile aici. Le importați acum? Fișierele sunt doar copiate, nimic nu este suprascris, iar seiful are nevoie în continuare de parola dumneavoastră pentru a fi deblocat.",
+            "importBody": "AeroFTP a găsit o configurație existentă în folderul dumneavoastră personal. Această instalare Flatpak folosește propriul spațiu de stocare separat, așa că serverele salvate și seiful criptat nu sunt încă vizibile aici. Le importați acum? Fișierele sunt doar copiate, nimic nu este suprascris, iar seiful se deblochează aici la fel ca acum.",
             "importAccept": "Importă",
             "importedBody": "Configurația dumneavoastră a fost importată. Reporniți AeroFTP pentru a încărca serverele și seiful.",
             "restartNow": "Repornește acum"

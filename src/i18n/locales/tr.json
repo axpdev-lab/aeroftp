@@ -5283,7 +5283,7 @@
             }
         },
         "flatpak": {
-            "importBody": "AeroFTP, ev klasörünüzde mevcut bir yapılandırma buldu. Bu Flatpak kurulumu kendi ayrı depolamasını kullandığından, kayıtlı sunucularınız ve şifreli kasanız burada henüz görünmüyor. Şimdi içe aktarılsın mı? Dosyalar yalnızca kopyalanır, hiçbir şeyin üzerine yazılmaz ve kasanın kilidini açmak için hâlâ parolanız gerekir.",
+            "importBody": "AeroFTP, ev klasörünüzde mevcut bir yapılandırma buldu. Bu Flatpak kurulumu kendi ayrı depolamasını kullandığından, kayıtlı sunucularınız ve şifreli kasanız burada henüz görünmüyor. Şimdi içe aktarılsın mı? Dosyalar yalnızca kopyalanır, hiçbir şeyin üzerine yazılmaz ve kasanız burada şu anki ile aynı şekilde açılır.",
             "importAccept": "İçe aktar",
             "importedBody": "Yapılandırmanız içe aktarıldı. Sunucularınızı ve kasanızı yüklemek için AeroFTP'yi yeniden başlatın.",
             "restartNow": "Şimdi yeniden başlat"

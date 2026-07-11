@@ -5283,7 +5283,7 @@
             }
         },
         "flatpak": {
-            "importBody": "AeroFTP hittade en befintlig konfiguration i din hemmapp. Den här Flatpak-installationen använder sitt eget separata lagringsutrymme, så dina sparade servrar och det krypterade valvet syns inte här ännu. Vill du importera dem nu? Filerna kopieras bara, inget skrivs över, och valvet kräver fortfarande ditt lösenord för att låsas upp.",
+            "importBody": "AeroFTP hittade en befintlig konfiguration i din hemmapp. Den här Flatpak-installationen använder sitt eget separata lagringsutrymme, så dina sparade servrar och det krypterade valvet syns inte här ännu. Vill du importera dem nu? Filerna kopieras bara, inget skrivs över, och valvet låses upp här på samma sätt som nu.",
             "importAccept": "Importera",
             "importedBody": "Din konfiguration importerades. Starta om AeroFTP för att läsa in dina servrar och ditt valv.",
             "restartNow": "Starta om nu"

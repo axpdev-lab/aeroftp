@@ -5283,7 +5283,7 @@
             }
         },
         "flatpak": {
-            "importBody": "AeroFTP našiel existujúcu konfiguráciu vo vašom domovskom priečinku. Táto inštalácia cez Flatpak používa vlastné oddelené úložisko, takže vaše uložené servery a šifrovaný trezor tu zatiaľ nie sú viditeľné. Chcete ich teraz importovať? Súbory sa iba skopírujú, nič sa neprepíše a na odomknutie trezora je stále potrebné vaše heslo.",
+            "importBody": "AeroFTP našiel existujúcu konfiguráciu vo vašom domovskom priečinku. Táto inštalácia cez Flatpak používa vlastné oddelené úložisko, takže vaše uložené servery a šifrovaný trezor tu zatiaľ nie sú viditeľné. Chcete ich teraz importovať? Súbory sa iba skopírujú, nič sa neprepíše a trezor sa tu odomyká rovnako ako teraz.",
             "importAccept": "Importovať",
             "importedBody": "Vaša konfigurácia bola importovaná. Reštartujte AeroFTP, aby sa načítali vaše servery a trezor.",
             "restartNow": "Reštartovať teraz"
