@@ -1816,6 +1816,27 @@ async fn unlock_overlay_keys_encrypting(
                 // interactive GUI activation path opts in; the non-interactive
                 // factory (CLI / cross-profile / MCP) passes allow_init=false and
                 // stays fail-closed below.
+                //
+                // Clobber guard (audit FINDING 1): bootstrap means "activate on a
+                // fresh EMPTY location" only. A headerless vault carries no remote
+                // marker, so without this a re-activation on a populated scope (or
+                // a headerless vault whose local keystore metadata was lost) would
+                // mint a new random salt and permanently orphan every existing
+                // object. Refuse to bootstrap over a non-empty location. Bias:
+                // only a SUCCESSFUL, non-empty listing blocks; a listing error
+                // (e.g. the directory does not exist yet) is a genuine first
+                // activation and proceeds.
+                let list_dir = if scope.is_empty() { "/" } else { scope };
+                if let Ok(entries) = provider.list(list_dir).await {
+                    if entries.iter().any(|e| e.name != AEROCRYPT_CONFIG_NAME) {
+                        return Err(format!(
+                            "Refusing to initialize a new AeroCrypt overlay at {list_dir}: it \
+                             already contains files. Unlock it with its existing credentials, or \
+                             recover a headerless vault from its Emergency Kit. Re-initializing \
+                             would rotate the salt and permanently orphan the existing files."
+                        ));
+                    }
+                }
                 let salt = overlay::random_salt_v3();
                 let tmp = OverlayConfig::v3_bootstrap(salt);
                 let master_key =
@@ -3083,6 +3104,46 @@ mod tests {
                 .downcast_mut::<CryptOverlayProvider>()
                 .is_some(),
             "a bound aerocrypt profile must resolve to the crypt decorator, never the raw inner"
+        );
+    }
+
+    #[tokio::test]
+    async fn aerocrypt_activation_refuses_bootstrap_on_nonempty_folder() {
+        // Audit FINDING 1: interactive activation (allow_init=true) must NOT
+        // bootstrap a fresh overlay over a location that already holds files.
+        // Headerless vaults carry no remote marker, so bootstrapping there would
+        // rotate the salt and permanently orphan the existing (possibly
+        // headerless) vault. It must fail closed and write nothing instead.
+        let mut mem = MemProvider::new();
+        let seed = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(seed.path(), b"existing ciphertext").unwrap();
+        mem.upload(
+            &seed.path().to_string_lossy(),
+            "/Vault/already-here.bin",
+            None,
+        )
+        .await
+        .expect("seed an existing object under the scope");
+        let binding = OverlayUnlockParams {
+            kind: "aerocrypt".to_string(),
+            remote_scope: "/Vault".to_string(),
+            filename_encryption: String::new(),
+            directory_name_encryption: true,
+            off_suffix: None,
+            profile_id: None,
+            local_config_json: None,
+            local_config_salt: None,
+        };
+        let res = unlock_overlay_keys_encrypting(&mut mem, &binding, "pw", "", None, true).await;
+        assert!(
+            res.is_err(),
+            "activation must refuse to bootstrap over a non-empty folder (would orphan existing files)"
+        );
+        assert!(
+            !mem.exists("/Vault/.aeroftp-crypt.json")
+                .await
+                .expect("probe config marker"),
+            "no overlay config may be written when bootstrap is refused"
         );
     }
 
