@@ -525,7 +525,17 @@ impl CryptOverlayProvider {
     /// its bytes on the wire (and in provider calls) are ciphertext and need
     /// decrypt / decrypted_size. Anchor itself and outside/above are plaintext
     /// pass-through (no decrypt step).
+    ///
+    /// Must mirror [`encode_plain_target`] decision-for-decision: whatever the
+    /// mapper encrypts, this classifier must call encrypted, or a fetch decrypts
+    /// the wrong side. In particular a RELATIVE target is encrypted in full by
+    /// the mapper (it resolves against the current in-scope dir), so it is
+    /// encrypted here too; absolutizing it first would compare a fake `/name`
+    /// against the anchor and hand ciphertext back as plaintext.
     fn target_is_encrypted(&self, plain_target: &str) -> bool {
+        if !plain_target.starts_with('/') {
+            return true;
+        }
         if self.scope.is_empty() {
             return true;
         }
@@ -534,6 +544,34 @@ impl CryptOverlayProvider {
             return false;
         }
         t.starts_with(&format!("{}/", self.scope))
+    }
+
+    /// Map a type-agnostic caller target (stat/rename/chmod take no is_dir) to
+    /// its on-wire path. The file-form and dir-form encodings are identical in
+    /// every mode except rclone `off` with a name suffix; when they differ,
+    /// probe the file form and fall back to the directory form, so a directory
+    /// target stops being addressed as `name.bin`. Returns the resolved on-wire
+    /// path and whether the directory form was the one that resolved. Costs an
+    /// extra `exists` round trip only in the off+suffix mode.
+    async fn map_existing(
+        &mut self,
+        plain: &str,
+        kind: AccessKind,
+    ) -> Result<(String, bool), ProviderError> {
+        let enc_file = self.map(plain, false, kind)?;
+        let enc_dir = self.map(plain, true, kind)?;
+        if enc_dir == enc_file {
+            return Ok((enc_file, false));
+        }
+        match self.inner.exists(&enc_file).await {
+            Ok(true) => Ok((enc_file, false)),
+            _ => match self.inner.exists(&enc_dir).await {
+                Ok(true) => Ok((enc_dir, true)),
+                // Neither form exists (or the probe errored): keep the file
+                // form so the caller surfaces the provider's own error.
+                _ => Ok((enc_file, false)),
+            },
+        }
     }
 
     fn crypt_err(context: &str, e: String) -> ProviderError {
@@ -962,16 +1000,17 @@ impl StorageProvider for CryptOverlayProvider {
     }
 
     async fn rename(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
-        // is_dir is unknown for a bare rename; encode with file-leaf semantics.
-        // Exact for rclone standard/obfuscate and AeroCrypt (is_dir-independent);
-        // a directory rename under rclone `off`-suffix mode is a known edge.
-        let enc_from = self.map(from, false, AccessKind::Write)?;
-        let enc_to = self.map(to, false, AccessKind::Write)?;
+        // is_dir is unknown for a bare rename. The two leaf encodings differ
+        // only under rclone `off`+suffix mode; `map_existing` resolves the
+        // source's real kind there, so a directory rename maps both ends in
+        // directory form instead of targeting a nonexistent `name.bin`.
+        let (enc_from, from_is_dir) = self.map_existing(from, AccessKind::Write).await?;
+        let enc_to = self.map(to, from_is_dir, AccessKind::Write)?;
         self.inner.rename(&enc_from, &enc_to).await
     }
 
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
-        let enc = self.map(path, false, AccessKind::Read)?;
+        let (enc, _) = self.map_existing(path, AccessKind::Read).await?;
         let mut entry = self.inner.stat(&enc).await?;
         let is_enc = self.target_is_encrypted(path);
         let plain_name = if is_enc {
@@ -1011,7 +1050,16 @@ impl StorageProvider for CryptOverlayProvider {
 
     async fn exists(&mut self, path: &str) -> Result<bool, ProviderError> {
         let enc = self.map(path, false, AccessKind::Read)?;
-        self.inner.exists(&enc).await
+        if self.inner.exists(&enc).await? {
+            return Ok(true);
+        }
+        // Off+suffix mode only: the directory form differs; a directory target
+        // must not false-negative because it was probed as `name.bin`.
+        let enc_dir = self.map(path, true, AccessKind::Read)?;
+        if enc_dir != enc {
+            return self.inner.exists(&enc_dir).await;
+        }
+        Ok(false)
     }
 
     async fn keep_alive(&mut self) -> Result<(), ProviderError> {
@@ -1032,7 +1080,7 @@ impl StorageProvider for CryptOverlayProvider {
     }
 
     async fn chmod(&mut self, path: &str, mode: u32) -> Result<(), ProviderError> {
-        let enc = self.map(path, false, AccessKind::Write)?;
+        let (enc, _) = self.map_existing(path, AccessKind::Write).await?;
         self.inner.chmod(&enc, mode).await
     }
 
@@ -1939,6 +1987,125 @@ mod tests {
         }
     }
 
+    /// V1 regression (pre-tag audit): the fetch-side classifier must mirror
+    /// `encode_plain_target` decision-for-decision. A RELATIVE target under a
+    /// bound scope is encrypted in full by the mapper, so it must classify as
+    /// encrypted; absolutizing it first compared a fake `/name` against the
+    /// anchor and made download/stat skip the decrypt step.
+    #[test]
+    fn target_is_encrypted_mirrors_mapper_for_relative_targets() {
+        for (label, keys) in both_kinds() {
+            let provider = CryptOverlayProvider::new(Box::new(MemProvider::new()), keys, "/Vault");
+            assert!(
+                provider.target_is_encrypted("notes/r.txt"),
+                "{label}: relative multi-segment target is encrypted"
+            );
+            assert!(
+                provider.target_is_encrypted("r.txt"),
+                "{label}: relative bare name is encrypted"
+            );
+            assert!(
+                !provider.target_is_encrypted("/Vault"),
+                "{label}: the anchor itself is cleartext"
+            );
+            assert!(
+                provider.target_is_encrypted("/Vault/x"),
+                "{label}: below-anchor absolute target is encrypted"
+            );
+            assert!(
+                !provider.target_is_encrypted("/Other/x"),
+                "{label}: outside-anchor absolute target is plaintext pass-through"
+            );
+        }
+    }
+
+    /// V1 regression, end to end: standing inside a bound scope and fetching by
+    /// a RELATIVE plaintext name (the MCP/AI caller shape) must return decrypted
+    /// bytes and decrypted stat metadata, never the raw ciphertext.
+    #[tokio::test]
+    async fn scoped_overlay_decrypts_relative_target() {
+        for (label, keys) in both_kinds() {
+            let mut mem = MemProvider::new();
+            mem.seed_raw_dir("/Vault");
+            let mut provider = CryptOverlayProvider::new(Box::new(mem), keys, "/Vault");
+
+            let dir = std::env::temp_dir().join(format!("crypt_rel_{}", uuid::Uuid::new_v4()));
+            tokio::fs::create_dir_all(&dir).await.unwrap();
+            let local = dir.join("r.txt");
+            let payload = b"relative fetch must decrypt";
+            tokio::fs::write(&local, payload).await.unwrap();
+            provider
+                .upload(local.to_str().unwrap(), "/Vault/notes/r.txt", None)
+                .await
+                .unwrap();
+
+            // Stand inside the scope like a live session, then fetch relative.
+            provider.cd("/Vault").await.unwrap();
+            let got = provider.download_to_bytes("notes/r.txt").await.unwrap();
+            assert_eq!(
+                got, payload,
+                "{label}: relative in-scope fetch returns plaintext"
+            );
+
+            let st = provider.stat("notes/r.txt").await.unwrap();
+            assert_eq!(st.name, "r.txt", "{label}: stat name is decrypted");
+            assert_eq!(
+                st.size,
+                payload.len() as u64,
+                "{label}: stat size is the decrypted size"
+            );
+
+            let _ = tokio::fs::remove_dir_all(&dir).await;
+        }
+    }
+
+    /// V8 regression (pre-tag audit): rclone `off`+suffix encodes file leaves
+    /// as `name.bin` and directories as `name`; the type-agnostic ops
+    /// (stat/exists/rename/chmod) must resolve the directory form instead of
+    /// addressing directories as files.
+    #[tokio::test]
+    async fn off_mode_type_agnostic_ops_resolve_directories() {
+        let keys = rclone_keys(FilenameEncryption::Off, true, ".bin");
+        let mut mem = MemProvider::new();
+        mem.seed_raw_dir("/Vault");
+        mem.seed_raw_dir("/Vault/photos");
+        mem.seed_raw_file("/Vault/report.txt.bin", b"opaque ciphertext blob");
+        let mut provider = CryptOverlayProvider::new(Box::new(mem), keys, "/Vault");
+
+        assert!(
+            provider.exists("/Vault/photos").await.unwrap(),
+            "directory found via the dir form"
+        );
+        assert!(
+            provider.exists("/Vault/report.txt").await.unwrap(),
+            "file found via the suffixed form"
+        );
+        assert!(!provider.exists("/Vault/nope").await.unwrap());
+
+        let st = provider.stat("/Vault/photos").await.unwrap();
+        assert!(st.is_dir, "stat resolves the directory form");
+        assert_eq!(st.name, "photos");
+        let st = provider.stat("/Vault/report.txt").await.unwrap();
+        assert!(!st.is_dir);
+        assert_eq!(st.name, "report.txt", "file leaf suffix stripped");
+
+        provider
+            .rename("/Vault/photos", "/Vault/pics")
+            .await
+            .unwrap();
+        let mem = provider
+            .inner
+            .as_any_mut()
+            .downcast_mut::<MemProvider>()
+            .unwrap();
+        let dirs = mem.raw_dirs();
+        assert!(
+            dirs.iter().any(|d| d == "/Vault/pics"),
+            "directory renamed in dir form, no .bin: {dirs:?}"
+        );
+        assert!(!dirs.iter().any(|d| d == "/Vault/photos"));
+    }
+
     #[test]
     fn encode_rel_path_rejects_dotdot() {
         for (_label, keys) in both_kinds() {
@@ -2211,6 +2378,7 @@ mod tests {
     struct MemProvider {
         files: Mutex<HashMap<String, Vec<u8>>>,
         dirs: Mutex<Vec<String>>,
+        cwd: Mutex<String>,
     }
 
     impl MemProvider {
@@ -2218,10 +2386,24 @@ mod tests {
             Self {
                 files: Mutex::new(HashMap::new()),
                 dirs: Mutex::new(Vec::new()),
+                cwd: Mutex::new("/".to_string()),
             }
+        }
+        /// Resolve a relative wire path against the current dir, like a real
+        /// session-oriented provider (FTP/SFTP) does. Absolute paths pass
+        /// through, so every pre-existing absolute-path test is unchanged.
+        fn resolve(&self, p: &str) -> String {
+            if p.starts_with('/') {
+                return p.to_string();
+            }
+            let cwd = self.cwd.lock().unwrap();
+            format!("{}/{}", cwd.trim_end_matches('/'), p)
         }
         fn raw_paths(&self) -> Vec<String> {
             self.files.lock().unwrap().keys().cloned().collect()
+        }
+        fn raw_dirs(&self) -> Vec<String> {
+            self.dirs.lock().unwrap().clone()
         }
         fn raw_bytes(&self, path: &str) -> Option<Vec<u8>> {
             self.files.lock().unwrap().get(path).cloned()
@@ -2317,9 +2499,11 @@ mod tests {
             Ok(out)
         }
         async fn pwd(&mut self) -> Result<String, ProviderError> {
-            Ok("/".into())
+            Ok(self.cwd.lock().unwrap().clone())
         }
-        async fn cd(&mut self, _p: &str) -> Result<(), ProviderError> {
+        async fn cd(&mut self, p: &str) -> Result<(), ProviderError> {
+            let resolved = self.resolve(p);
+            *self.cwd.lock().unwrap() = resolved;
             Ok(())
         }
         async fn cd_up(&mut self) -> Result<(), ProviderError> {
@@ -2331,21 +2515,23 @@ mod tests {
             local: &str,
             _cb: Option<Box<dyn Fn(u64, u64) + Send>>,
         ) -> Result<(), ProviderError> {
+            let remote = self.resolve(remote);
             let data = self
                 .files
                 .lock()
                 .unwrap()
-                .get(remote)
+                .get(&remote)
                 .cloned()
                 .ok_or_else(|| ProviderError::NotFound(remote.to_string()))?;
             std::fs::write(local, &data).map_err(ProviderError::IoError)?;
             Ok(())
         }
         async fn download_to_bytes(&mut self, remote: &str) -> Result<Vec<u8>, ProviderError> {
+            let remote = self.resolve(remote);
             self.files
                 .lock()
                 .unwrap()
-                .get(remote)
+                .get(&remote)
                 .cloned()
                 .ok_or_else(|| ProviderError::NotFound(remote.to_string()))
         }
@@ -2355,8 +2541,9 @@ mod tests {
             remote: &str,
             _cb: Option<Box<dyn Fn(u64, u64) + Send>>,
         ) -> Result<(), ProviderError> {
+            let remote = self.resolve(remote);
             let data = std::fs::read(local).map_err(ProviderError::IoError)?;
-            self.files.lock().unwrap().insert(remote.to_string(), data);
+            self.files.lock().unwrap().insert(remote, data);
             Ok(())
         }
         async fn mkdir(&mut self, p: &str) -> Result<(), ProviderError> {
@@ -2374,46 +2561,71 @@ mod tests {
             Ok(())
         }
         async fn rename(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
-            let mut files = self.files.lock().unwrap();
-            if let Some(data) = files.remove(from) {
-                files.insert(to.to_string(), data);
+            let from = self.resolve(from);
+            let to = self.resolve(to);
+            {
+                let mut files = self.files.lock().unwrap();
+                if let Some(data) = files.remove(&from) {
+                    files.insert(to, data);
+                    return Ok(());
+                }
+            }
+            let mut dirs = self.dirs.lock().unwrap();
+            if let Some(d) = dirs.iter_mut().find(|d| **d == from) {
+                *d = to;
             }
             Ok(())
         }
         async fn stat(&mut self, p: &str) -> Result<RemoteEntry, ProviderError> {
-            let data = self
-                .files
-                .lock()
-                .unwrap()
-                .get(p)
-                .cloned()
-                .ok_or_else(|| ProviderError::NotFound(p.to_string()))?;
-            let name = p.rsplit('/').next().unwrap_or(p).to_string();
-            Ok(RemoteEntry {
-                name,
-                path: p.to_string(),
-                is_dir: false,
-                size: data.len() as u64,
-                modified: None,
-                permissions: None,
-                owner: None,
-                group: None,
-                is_symlink: false,
-                link_target: None,
-                mime_type: None,
-                metadata: HashMap::new(),
-            })
+            let p = self.resolve(p);
+            let name = p.rsplit('/').next().unwrap_or(&p).to_string();
+            if let Some(data) = self.files.lock().unwrap().get(&p).cloned() {
+                return Ok(RemoteEntry {
+                    name,
+                    path: p.to_string(),
+                    is_dir: false,
+                    size: data.len() as u64,
+                    modified: None,
+                    permissions: None,
+                    owner: None,
+                    group: None,
+                    is_symlink: false,
+                    link_target: None,
+                    mime_type: None,
+                    metadata: HashMap::new(),
+                });
+            }
+            if self.dirs.lock().unwrap().contains(&p) {
+                return Ok(RemoteEntry {
+                    name,
+                    path: p.to_string(),
+                    is_dir: true,
+                    size: 0,
+                    modified: None,
+                    permissions: None,
+                    owner: None,
+                    group: None,
+                    is_symlink: false,
+                    link_target: None,
+                    mime_type: None,
+                    metadata: HashMap::new(),
+                });
+            }
+            Err(ProviderError::NotFound(p))
         }
         async fn size(&mut self, p: &str) -> Result<u64, ProviderError> {
+            let p = self.resolve(p);
             self.files
                 .lock()
                 .unwrap()
-                .get(p)
+                .get(&p)
                 .map(|d| d.len() as u64)
                 .ok_or_else(|| ProviderError::NotFound(p.to_string()))
         }
         async fn exists(&mut self, p: &str) -> Result<bool, ProviderError> {
-            Ok(self.files.lock().unwrap().contains_key(p))
+            let p = self.resolve(p);
+            Ok(self.files.lock().unwrap().contains_key(&p)
+                || self.dirs.lock().unwrap().contains(&p))
         }
         async fn keep_alive(&mut self) -> Result<(), ProviderError> {
             Ok(())
