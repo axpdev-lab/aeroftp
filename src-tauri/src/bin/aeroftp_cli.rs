@@ -456,11 +456,14 @@ struct Cli {
     tpslimit_burst: f64,
 
     /// KE-A2: Concurrency cap for metadata-only operations during sync
-    /// (rclone `--checkers`). Used by the `--no-traverse` stat sweep
-    /// and future parallel-listing paths. Default `8`, range 1-64.
-    /// Distinct from `--transfers` (which caps the actual data
-    /// transfer pool): a single sync can run 8 stat probes in parallel
-    /// while still streaming uploads with 4 workers.
+    /// (rclone `--checkers`). Default `8`, range 1-64. NOTE: today this
+    /// only bounds and labels the `--no-traverse` stat sweep, which still
+    /// runs sequentially: `StorageProvider::stat` takes `&mut self`, so a
+    /// single provider handle serialises the probes. The value is honoured
+    /// semantically (reported in the sweep's summary note) but does not yet
+    /// parallelise anything; it becomes a real concurrency gate with the
+    /// provider pool refactor (Sprint K2). Distinct from `--transfers`,
+    /// which caps the actual data-transfer pool.
     #[arg(long, global = true, default_value_t = 8)]
     checkers: usize,
 
