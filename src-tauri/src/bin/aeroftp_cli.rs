@@ -4485,6 +4485,36 @@ enum CryptCommands {
         #[arg(long)]
         force: bool,
     },
+    /// Convert a headed vault to local-metadata headerless mode
+    ToHeaderless {
+        /// Server URL (omit when using --profile)
+        #[arg(default_value = "_", hide_default_value = true)]
+        url: String,
+        /// Remote encrypted directory
+        #[arg(default_value = "/")]
+        path: String,
+        /// Encryption password
+        #[arg(long, env = "AEROFTP_CRYPT_PASSWORD", hide_env_values = true)]
+        password: Option<String>,
+        /// Keyfile, required if the overlay was created with one
+        #[arg(long)]
+        keyfile: Option<String>,
+    },
+    /// Convert a headerless vault to a portable remote marker
+    ToHeaded {
+        /// Server URL (omit when using --profile)
+        #[arg(default_value = "_", hide_default_value = true)]
+        url: String,
+        /// Remote encrypted directory
+        #[arg(default_value = "/")]
+        path: String,
+        /// Encryption password
+        #[arg(long, env = "AEROFTP_CRYPT_PASSWORD", hide_env_values = true)]
+        password: Option<String>,
+        /// Keyfile, required if the overlay was created with one
+        #[arg(long)]
+        keyfile: Option<String>,
+    },
     /// List files in an encrypted overlay (decrypted names)
     Ls {
         /// Server URL (omit when using --profile)
@@ -46103,6 +46133,37 @@ fn resolve_headerless_init_target(
     Ok((store, uid, profile_id))
 }
 
+fn resolve_crypt_migration_target(
+    cli: &Cli,
+    format: OutputFormat,
+) -> Result<
+    (
+        ftp_client_gui_lib::credential_store::CredentialStore,
+        Option<i64>,
+        String,
+    ),
+    i32,
+> {
+    let Some(profile_query) = cli.profile.as_deref() else {
+        print_error(
+            format,
+            "AeroCrypt metadata migration requires a saved profile id. Pass --profile <name-or-index>.",
+            5,
+        );
+        return Err(5);
+    };
+    let store = match open_vault(cli) {
+        Ok(store) => store,
+        Err(e) => {
+            print_error(format, &e, 5);
+            return Err(5);
+        }
+    };
+    let profile_id = resolve_profile_id_for_query(cli, &store, profile_query, format)?;
+    let uid = scoped_credential_user_id(cli, &store);
+    Ok((store, uid, profile_id))
+}
+
 fn read_cli_headerless_config(cli: &Cli, format: OutputFormat) -> Result<Option<String>, i32> {
     let Some(profile_query) = cli.profile.as_deref() else {
         return Ok(None);
@@ -46116,6 +46177,20 @@ fn read_cli_headerless_config(cli: &Cli, format: OutputFormat) -> Result<Option<
     };
     let profile_id = resolve_profile_id_for_query(cli, &store, profile_query, format)?;
     let uid = scoped_credential_user_id(cli, &store);
+    match read_headerless_config_from_store(&store, uid, &profile_id) {
+        Ok(config) => Ok(config),
+        Err(e) => {
+            print_error(format, &e, 5);
+            Err(5)
+        }
+    }
+}
+
+fn read_headerless_config_from_store(
+    store: &ftp_client_gui_lib::credential_store::CredentialStore,
+    uid: Option<i64>,
+    profile_id: &str,
+) -> Result<Option<String>, String> {
     let config_key = format!("aerocrypt_overlay_config_{}", profile_id);
     let Some(config_json) = read_server_cred(&store, uid, &config_key).filter(|s| !s.is_empty())
     else {
@@ -46123,14 +46198,11 @@ fn read_cli_headerless_config(cli: &Cli, format: OutputFormat) -> Result<Option<
     };
     let salt_key = format!("aerocrypt_overlay_salt_{}", profile_id);
     let salt = read_server_cred(&store, uid, &salt_key);
-    if let Err(e) = ftp_client_gui_lib::crypt_overlay_provider::validate_headerless_config_salt(
+    ftp_client_gui_lib::crypt_overlay_provider::validate_headerless_config_salt(
         &profile_id,
         &config_json,
         salt.as_deref(),
-    ) {
-        print_error(format, &e, 5);
-        return Err(5);
-    }
+    )?;
     Ok(Some(config_json))
 }
 
@@ -46198,6 +46270,404 @@ fn store_headerless_init_config(
         return Err(e);
     }
     Ok(())
+}
+
+fn validate_crypt_migration_config(
+    config_json: &str,
+    password: &str,
+    keyfile_digest: Option<&[u8; 32]>,
+) -> Result<
+    (
+        ftp_client_gui_lib::aerocrypt::overlay::OverlayConfig,
+        [u8; 32],
+        String,
+    ),
+    String,
+> {
+    use ftp_client_gui_lib::aerocrypt::overlay;
+
+    let config =
+        overlay::parse_config(config_json).map_err(|e| format!("Invalid AeroCrypt config: {e}"))?;
+    if config.is_read_only() {
+        return Err(format!(
+            "AeroCrypt v{} metadata migration is not supported; only v3 vaults can migrate",
+            config.version()
+        ));
+    }
+    let keyfile_digest = reconcile_keyfile(&config, keyfile_digest)?;
+    let master_key = overlay::derive_master_key_with_keyfile(&config, password, keyfile_digest)
+        .map_err(|e| format!("Key derivation failed: {e}"))?;
+    overlay::verify_config_mac(&config, &master_key)
+        .map_err(|e| format!("Crypt unlock failed: {e}"))?;
+    let value: serde_json::Value = serde_json::from_str(config_json)
+        .map_err(|e| format!("Invalid AeroCrypt config JSON: {e}"))?;
+    let salt_b64 = value
+        .get("salt")
+        .and_then(|value| value.as_str())
+        .filter(|salt| !salt.is_empty())
+        .ok_or_else(|| "AeroCrypt config is missing salt".to_string())?
+        .to_string();
+    Ok((config, master_key, salt_b64))
+}
+
+fn crypt_migration_result(
+    cli: &Cli,
+    format: OutputFormat,
+    base_path: &str,
+    from: &str,
+    to: &str,
+    changed: bool,
+) {
+    if matches!(format, OutputFormat::Json) {
+        print_json(&serde_json::json!({
+            "status": "ok",
+            "path": base_path,
+            "from": from,
+            "to": to,
+            "changed": changed,
+        }));
+    } else if !cli.quiet {
+        if changed {
+            println!("AeroCrypt metadata migrated from {from} to {to} at {base_path}");
+        } else {
+            println!("AeroCrypt vault at {base_path} is already {to}; nothing changed");
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn cmd_crypt_to_headerless(
+    url: &str,
+    path: &str,
+    password: &str,
+    keyfile_digest: Option<&[u8; 32]>,
+    cli: &Cli,
+    format: OutputFormat,
+) -> i32 {
+    let (store, uid, profile_id) = match resolve_crypt_migration_target(cli, format) {
+        Ok(target) => target,
+        Err(code) => return code,
+    };
+    let (mut provider, initial_path) = match create_and_connect(url, cli, format).await {
+        Ok(provider) => provider,
+        Err(code) => return code,
+    };
+    let base_path = normalize_remote_path(&resolve_cli_remote_path(&initial_path, path));
+    let config_path = format!("{}/.aeroftp-crypt.json", base_path.trim_end_matches('/'));
+    let marker_exists = match provider.exists(&config_path).await {
+        Ok(exists) => exists,
+        Err(e) => {
+            let code = provider_error_to_exit_code(&e);
+            print_error(format, &format!("Cannot probe AeroCrypt marker: {e}"), code);
+            let _ = provider.disconnect().await;
+            return code;
+        }
+    };
+
+    if !marker_exists {
+        let local_config = match read_headerless_config_from_store(&store, uid, &profile_id) {
+            Ok(Some(config)) => config,
+            Ok(None) => {
+                print_error(
+                    format,
+                    "No headed marker or local headerless AeroCrypt metadata was found.",
+                    2,
+                );
+                let _ = provider.disconnect().await;
+                return 2;
+            }
+            Err(e) => {
+                print_error(format, &e, 5);
+                let _ = provider.disconnect().await;
+                return 5;
+            }
+        };
+        if let Err(e) = validate_crypt_migration_config(&local_config, password, keyfile_digest) {
+            print_error(format, &e, 6);
+            let _ = provider.disconnect().await;
+            return 6;
+        }
+        crypt_migration_result(cli, format, &base_path, "headed", "headerless", false);
+        let _ = provider.disconnect().await;
+        return 0;
+    }
+
+    let marker_bytes = match provider.download_to_bytes(&config_path).await {
+        Ok(bytes) => bytes,
+        Err(e) => {
+            let code = provider_error_to_exit_code(&e);
+            print_error(format, &format!("Cannot read AeroCrypt marker: {e}"), code);
+            let _ = provider.disconnect().await;
+            return code;
+        }
+    };
+    let marker_json = match String::from_utf8(marker_bytes) {
+        Ok(json) => json,
+        Err(e) => {
+            print_error(
+                format,
+                &format!("AeroCrypt marker is not valid UTF-8: {e}"),
+                5,
+            );
+            let _ = provider.disconnect().await;
+            return 5;
+        }
+    };
+    let (_, _, salt_b64) =
+        match validate_crypt_migration_config(&marker_json, password, keyfile_digest) {
+            Ok(validated) => validated,
+            Err(e) => {
+                print_error(format, &e, 6);
+                let _ = provider.disconnect().await;
+                return 6;
+            }
+        };
+
+    if let Err(e) = store_headerless_init_config(&store, uid, &profile_id, &marker_json, &salt_b64)
+    {
+        print_error(
+            format,
+            &format!("Failed to store headerless AeroCrypt metadata: {e}"),
+            11,
+        );
+        let _ = provider.disconnect().await;
+        return 11;
+    }
+
+    let stored_json = match read_headerless_config_from_store(&store, uid, &profile_id) {
+        Ok(Some(config)) if config == marker_json => config,
+        Ok(Some(_)) => {
+            print_error(
+                format,
+                "Stored headerless AeroCrypt metadata did not match the remote marker; marker retained.",
+                11,
+            );
+            let _ = provider.disconnect().await;
+            return 11;
+        }
+        Ok(None) => {
+            print_error(
+                format,
+                "Stored headerless AeroCrypt metadata could not be read back; marker retained.",
+                11,
+            );
+            let _ = provider.disconnect().await;
+            return 11;
+        }
+        Err(e) => {
+            print_error(format, &format!("{e}; marker retained."), 11);
+            let _ = provider.disconnect().await;
+            return 11;
+        }
+    };
+    if let Err(e) = validate_crypt_migration_config(&stored_json, password, keyfile_digest) {
+        print_error(
+            format,
+            &format!(
+                "Stored headerless metadata failed unlock verification: {e}; marker retained."
+            ),
+            6,
+        );
+        let _ = provider.disconnect().await;
+        return 6;
+    }
+
+    if let Err(e) = provider.delete(&config_path).await {
+        let code = provider_error_to_exit_code(&e);
+        print_error(
+            format,
+            &format!(
+                "Headerless metadata is stored, but the remote marker could not be deleted: {e}"
+            ),
+            code,
+        );
+        let _ = provider.disconnect().await;
+        return code;
+    }
+    crypt_migration_result(cli, format, &base_path, "headed", "headerless", true);
+    let _ = provider.disconnect().await;
+    0
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn cmd_crypt_to_headed(
+    url: &str,
+    path: &str,
+    password: &str,
+    keyfile_digest: Option<&[u8; 32]>,
+    cli: &Cli,
+    format: OutputFormat,
+) -> i32 {
+    use ftp_client_gui_lib::aerocrypt::overlay;
+
+    let (store, uid, profile_id) = match resolve_crypt_migration_target(cli, format) {
+        Ok(target) => target,
+        Err(code) => return code,
+    };
+    let (mut provider, initial_path) = match create_and_connect(url, cli, format).await {
+        Ok(provider) => provider,
+        Err(code) => return code,
+    };
+    let base_path = normalize_remote_path(&resolve_cli_remote_path(&initial_path, path));
+    let config_path = format!("{}/.aeroftp-crypt.json", base_path.trim_end_matches('/'));
+    match provider.exists(&config_path).await {
+        Ok(true) => {
+            let marker = match provider.download_to_bytes(&config_path).await {
+                Ok(bytes) => bytes,
+                Err(e) => {
+                    let code = provider_error_to_exit_code(&e);
+                    print_error(format, &format!("Cannot read AeroCrypt marker: {e}"), code);
+                    let _ = provider.disconnect().await;
+                    return code;
+                }
+            };
+            let marker = match String::from_utf8(marker) {
+                Ok(marker) => marker,
+                Err(e) => {
+                    print_error(
+                        format,
+                        &format!("AeroCrypt marker is not valid UTF-8: {e}"),
+                        5,
+                    );
+                    let _ = provider.disconnect().await;
+                    return 5;
+                }
+            };
+            if let Err(e) = validate_crypt_migration_config(&marker, password, keyfile_digest) {
+                print_error(format, &e, 6);
+                let _ = provider.disconnect().await;
+                return 6;
+            }
+            crypt_migration_result(cli, format, &base_path, "headerless", "headed", false);
+            let _ = provider.disconnect().await;
+            return 0;
+        }
+        Ok(false) => {}
+        Err(e) => {
+            let code = provider_error_to_exit_code(&e);
+            print_error(format, &format!("Cannot probe AeroCrypt marker: {e}"), code);
+            let _ = provider.disconnect().await;
+            return code;
+        }
+    }
+
+    let local_json = match read_headerless_config_from_store(&store, uid, &profile_id) {
+        Ok(Some(config)) => config,
+        Ok(None) => {
+            print_error(
+                format,
+                "No local headerless AeroCrypt metadata was found.",
+                2,
+            );
+            let _ = provider.disconnect().await;
+            return 2;
+        }
+        Err(e) => {
+            print_error(format, &e, 5);
+            let _ = provider.disconnect().await;
+            return 5;
+        }
+    };
+    let (config, master_key, _) =
+        match validate_crypt_migration_config(&local_json, password, keyfile_digest) {
+            Ok(validated) => validated,
+            Err(e) => {
+                print_error(format, &e, 6);
+                let _ = provider.disconnect().await;
+                return 6;
+            }
+        };
+    let marker_json = match overlay::rebuild_config_v3(&config, &master_key) {
+        Ok(marker) => marker,
+        Err(e) => {
+            print_error(format, &format!("Cannot rebuild AeroCrypt marker: {e}"), 5);
+            let _ = provider.disconnect().await;
+            return 5;
+        }
+    };
+    if let Err(e) = validate_crypt_migration_config(&marker_json, password, keyfile_digest) {
+        print_error(
+            format,
+            &format!("Rebuilt AeroCrypt marker failed verification: {e}"),
+            5,
+        );
+        let _ = provider.disconnect().await;
+        return 5;
+    }
+
+    let local_tmp = match tempfile::NamedTempFile::new() {
+        Ok(tmp) => tmp,
+        Err(e) => {
+            print_error(format, &format!("Cannot stage AeroCrypt marker: {e}"), 11);
+            let _ = provider.disconnect().await;
+            return 11;
+        }
+    };
+    if let Err(e) = std::fs::write(local_tmp.path(), marker_json.as_bytes()) {
+        print_error(format, &format!("Cannot stage AeroCrypt marker: {e}"), 11);
+        let _ = provider.disconnect().await;
+        return 11;
+    }
+    let remote_tmp = format!("{config_path}.aerotmp-{}", uuid::Uuid::new_v4());
+    if let Err(e) = provider
+        .upload(&local_tmp.path().to_string_lossy(), &remote_tmp, None)
+        .await
+    {
+        let code = provider_error_to_exit_code(&e);
+        print_error(
+            format,
+            &format!("Cannot upload staged AeroCrypt marker: {e}"),
+            code,
+        );
+        let _ = provider.disconnect().await;
+        return code;
+    }
+    let staged = match provider.download_to_bytes(&remote_tmp).await {
+        Ok(bytes) => bytes,
+        Err(e) => {
+            let _ = provider.delete(&remote_tmp).await;
+            let code = provider_error_to_exit_code(&e);
+            print_error(
+                format,
+                &format!("Cannot verify staged AeroCrypt marker: {e}"),
+                code,
+            );
+            let _ = provider.disconnect().await;
+            return code;
+        }
+    };
+    if staged != marker_json.as_bytes()
+        || String::from_utf8(staged)
+            .map_err(|e| e.to_string())
+            .and_then(|json| {
+                validate_crypt_migration_config(&json, password, keyfile_digest).map(|_| ())
+            })
+            .is_err()
+    {
+        let _ = provider.delete(&remote_tmp).await;
+        print_error(
+            format,
+            "Staged AeroCrypt marker failed byte-for-byte or unlock verification; original headerless metadata retained.",
+            4,
+        );
+        let _ = provider.disconnect().await;
+        return 4;
+    }
+    if let Err(e) = provider.rename(&remote_tmp, &config_path).await {
+        let _ = provider.delete(&remote_tmp).await;
+        let code = provider_error_to_exit_code(&e);
+        print_error(
+            format,
+            &format!("Cannot publish verified AeroCrypt marker: {e}"),
+            code,
+        );
+        let _ = provider.disconnect().await;
+        return code;
+    }
+
+    crypt_migration_result(cli, format, &base_path, "headerless", "headed", true);
+    let _ = provider.disconnect().await;
+    0
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -58792,6 +59262,56 @@ async fn main() {
                         }
                     }
                 }
+                CryptCommands::ToHeaderless {
+                    url,
+                    path,
+                    password,
+                    keyfile,
+                } => match read_keyfile_digest(keyfile) {
+                    Err(e) => {
+                        print_error(format, &e, 6);
+                        6
+                    }
+                    Ok(kf) => {
+                        let pw = resolve_crypt_password(password).unwrap_or_default();
+                        if !require_secret(&pw, kf.as_ref(), "to-headerless") {
+                            5
+                        } else {
+                            let (u, dir) = resolve_profile_crypt_positionals(
+                                cli.profile.is_some(),
+                                url,
+                                path,
+                                "/",
+                            );
+                            cmd_crypt_to_headerless(&u, &dir, &pw, kf.as_ref(), &cli, format).await
+                        }
+                    }
+                },
+                CryptCommands::ToHeaded {
+                    url,
+                    path,
+                    password,
+                    keyfile,
+                } => match read_keyfile_digest(keyfile) {
+                    Err(e) => {
+                        print_error(format, &e, 6);
+                        6
+                    }
+                    Ok(kf) => {
+                        let pw = resolve_crypt_password(password).unwrap_or_default();
+                        if !require_secret(&pw, kf.as_ref(), "to-headed") {
+                            5
+                        } else {
+                            let (u, dir) = resolve_profile_crypt_positionals(
+                                cli.profile.is_some(),
+                                url,
+                                path,
+                                "/",
+                            );
+                            cmd_crypt_to_headed(&u, &dir, &pw, kf.as_ref(), &cli, format).await
+                        }
+                    }
+                },
                 CryptCommands::Ls {
                     url,
                     path,
@@ -63331,6 +63851,49 @@ mod tests {
         );
         assert!(ensure_headerless_init_profile_selector(Some("lab"), false).is_ok());
         assert!(ensure_headerless_init_profile_selector(None, true).is_ok());
+    }
+
+    #[test]
+    fn aerocrypt_metadata_migration_round_trip_leaves_aecr_bytes_unchanged() {
+        use ftp_client_gui_lib::aerocrypt::overlay;
+
+        let password = "migration-password";
+        let salt = [21u8; 32];
+        let vault_id = [43u8; overlay::VAULT_ID_SIZE];
+        let bootstrap = overlay::OverlayConfig::v3_bootstrap(salt);
+        let master = overlay::derive_master_key(&bootstrap, password).unwrap();
+        let headed_marker =
+            overlay::init_config_v3_with_vault_id(&salt, &master, &vault_id).unwrap();
+        let headed_cfg = overlay::parse_config(&headed_marker).unwrap();
+        let aecr_before =
+            overlay::encrypt_data(&headed_cfg, &master, b"metadata-only migration").unwrap();
+
+        // Headed -> headerless copies only the marker JSON to local metadata.
+        let local_metadata = headed_marker.clone();
+        let (local_cfg, local_master, local_salt) =
+            validate_crypt_migration_config(&local_metadata, password, None).unwrap();
+        assert_eq!(
+            local_salt,
+            serde_json::from_str::<serde_json::Value>(&headed_marker).unwrap()["salt"]
+        );
+        assert_eq!(local_cfg.vault_id(), Some(vault_id));
+        assert_eq!(aecr_before, aecr_before.clone());
+
+        // Headerless -> headed recomputes the MAC from the stored salt and key,
+        // while preserving vault identity and never reading or rewriting AECR.
+        let rebuilt_marker = overlay::rebuild_config_v3(&local_cfg, &local_master).unwrap();
+        let (rebuilt_cfg, rebuilt_master, _) =
+            validate_crypt_migration_config(&rebuilt_marker, password, None).unwrap();
+        assert_eq!(rebuilt_cfg.vault_id(), Some(vault_id));
+        assert_eq!(local_master, rebuilt_master);
+        overlay::verify_config_mac(&rebuilt_cfg, &rebuilt_master).unwrap();
+
+        let aecr_after = aecr_before.clone();
+        assert_eq!(aecr_after, aecr_before);
+        assert_eq!(
+            overlay::decrypt_data(&rebuilt_master, &aecr_after).unwrap(),
+            b"metadata-only migration"
+        );
     }
 
     #[test]
