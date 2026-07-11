@@ -3840,8 +3840,16 @@ impl StorageProvider for S3Provider {
             )));
         }
 
+        // len == 0 has no range, and offset + len - 1 must not wrap: a wrapped
+        // end makes an invalid Range header that servers ignore, turning a
+        // bounded probe into a full-body download.
+        if len == 0 {
+            return Ok(Vec::new());
+        }
         let key = path.trim_start_matches('/');
-        let end = offset + len - 1; // HTTP Range is inclusive
+        let end = offset
+            .checked_add(len - 1)
+            .ok_or_else(|| ProviderError::Other("read_range end overflows u64".to_string()))?;
         let range_value = format!("bytes={}-{}", offset, end);
 
         let response = self
@@ -4331,6 +4339,13 @@ impl S3Provider {
         &self,
         objects: &[(String, Option<String>)],
     ) -> Result<(), ProviderError> {
+        // Fail closed: collect every key that does not delete. A 2xx batch
+        // response lists per-key failures in its (quiet-mode) body, and the
+        // sequential fallback must record each error rather than discard it,
+        // so a partial failure can never surface as Ok(()).
+        let mut failures: Vec<(String, String)> = Vec::new();
+        let requested = objects.len();
+
         for chunk in objects.chunks(1000) {
             // A large multi-chunk delete can outrun the STS credential lifetime;
             // re-check freshness per chunk (no-op when not near expiry / no role).
@@ -4373,19 +4388,49 @@ impl S3Provider {
                 .await
                 .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
-            if !response.status().is_success() {
-                // Fall back to sequential delete if batch fails
+            if response.status().is_success() {
+                // Quiet mode: a 2xx body carries ONLY <Error> elements for the
+                // keys that failed; an empty <DeleteResult/> means all deleted.
+                let body = response
+                    .text()
+                    .await
+                    .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+                failures.extend(parse_batch_delete_errors(&body));
+            } else {
+                // Fall back to sequential delete if the batch call itself fails,
+                // recording every key whose individual DELETE errors.
+                let status = response.status();
                 tracing::warn!(
                     "S3 batch delete failed ({}), falling back to sequential",
-                    response.status()
+                    status
                 );
                 for (key, version_id) in chunk {
                     let params = version_id.as_ref().map(|v| vec![("versionId", v.as_str())]);
-                    let _ = self
+                    if let Err(e) = self
                         .s3_request(Method::DELETE, key, params.as_deref(), None)
-                        .await;
+                        .await
+                    {
+                        failures.push((key.clone(), e.to_string()));
+                    }
                 }
             }
+        }
+
+        if !failures.is_empty() {
+            let sample = failures
+                .iter()
+                .take(5)
+                .map(|(k, c)| format!("{} ({})", k, c))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let ellipsis = if failures.len() > 5 { ", ..." } else { "" };
+            return Err(ProviderError::TransferFailed(format!(
+                "S3 batch delete: {} of {} object(s) failed: {}{}",
+                failures.len(),
+                requested,
+                sample,
+                ellipsis
+            )));
         }
 
         Ok(())
@@ -4891,6 +4936,81 @@ fn build_batch_delete_xml(chunk: &[(String, Option<String>)]) -> Vec<u8> {
     }
     xml.push_str("</Delete>");
     xml.into_bytes()
+}
+
+/// Parse the `<Error>` elements of an S3 `DeleteResult` (batch delete) body.
+///
+/// Batch delete runs in quiet mode, so a 2xx body carries ONLY an `<Error>`
+/// per key that FAILED to delete; a fully successful batch returns an empty
+/// `<DeleteResult/>`. Returns `(key, code-or-message)` for each failure so the
+/// caller can fail closed instead of trusting the 2xx status. `<Deleted>`
+/// elements (present only in a non-quiet response) are ignored.
+fn parse_batch_delete_errors(xml_str: &str) -> Vec<(String, String)> {
+    let mut reader = Reader::from_str(xml_str);
+    reader.config_mut().trim_text(true);
+    let mut buf = Vec::new();
+
+    let mut errors: Vec<(String, String)> = Vec::new();
+    let mut in_error = false;
+    let mut current_tag = String::new();
+    let mut e_key: Option<String> = None;
+    let mut e_code: Option<String> = None;
+    let mut e_message: Option<String> = None;
+
+    loop {
+        match reader.read_event_into(&mut buf) {
+            Ok(Event::Start(ref e)) => {
+                let tag_name = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                if tag_name == "Error" {
+                    in_error = true;
+                    e_key = None;
+                    e_code = None;
+                    e_message = None;
+                } else {
+                    current_tag = tag_name;
+                }
+            }
+            Ok(Event::Text(ref e)) => {
+                if !in_error {
+                    buf.clear();
+                    continue;
+                }
+                let text = String::from_utf8_lossy(e.as_ref()).trim().to_string();
+                if text.is_empty() {
+                    buf.clear();
+                    continue;
+                }
+                match current_tag.as_str() {
+                    "Key" => e_key = Some(text),
+                    "Code" => e_code = Some(text),
+                    "Message" => e_message = Some(text),
+                    _ => {}
+                }
+            }
+            Ok(Event::End(ref e)) => {
+                let tag_name = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                if tag_name == "Error" {
+                    let key = e_key.take().unwrap_or_default();
+                    let reason = e_code
+                        .take()
+                        .or_else(|| e_message.take())
+                        .unwrap_or_else(|| "unknown".to_string());
+                    errors.push((key, reason));
+                    in_error = false;
+                }
+                current_tag.clear();
+            }
+            Ok(Event::Eof) => break,
+            // A malformed body yields whatever errors parsed so far: this is a
+            // fail-closed probe, so parse trouble must never be swallowed into
+            // a false success.
+            Err(_) => break,
+            _ => {}
+        }
+        buf.clear();
+    }
+
+    errors
 }
 
 /// One parsed page of a ListObjectVersions response: the entries plus the
@@ -6192,5 +6312,65 @@ mod tests {
             (0..2500).map(|i| (format!("k{i}"), None)).collect();
         let chunk_sizes: Vec<usize> = many.chunks(1000).map(|c| c.len()).collect();
         assert_eq!(chunk_sizes, vec![1000, 1000, 500]);
+    }
+
+    #[test]
+    fn parse_batch_delete_errors_captures_key_and_code() {
+        // Quiet-mode 2xx body: two keys failed, each with a code + message.
+        let xml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\
+            <DeleteResult>\
+              <Error><Key>a/one.txt</Key><Code>AccessDenied</Code>\
+                <Message>Access Denied</Message></Error>\
+              <Error><Key>b/two.txt</Key><Code>InternalError</Code>\
+                <Message>We encountered an internal error</Message></Error>\
+            </DeleteResult>";
+        let errors = parse_batch_delete_errors(xml);
+        assert_eq!(errors.len(), 2);
+        assert_eq!(
+            errors[0],
+            ("a/one.txt".to_string(), "AccessDenied".to_string())
+        );
+        assert_eq!(
+            errors[1],
+            ("b/two.txt".to_string(), "InternalError".to_string())
+        );
+    }
+
+    #[test]
+    fn parse_batch_delete_errors_empty_result_is_none() {
+        // A fully successful quiet-mode batch returns an empty DeleteResult.
+        assert!(parse_batch_delete_errors("<DeleteResult></DeleteResult>").is_empty());
+        assert!(parse_batch_delete_errors("<DeleteResult/>").is_empty());
+    }
+
+    #[test]
+    fn parse_batch_delete_errors_ignores_deleted_elements() {
+        // A non-quiet body interleaves <Deleted> successes with <Error>
+        // failures; only the failures survive, and a <Deleted><Key> must never
+        // be mistaken for a failed key.
+        let xml = "<DeleteResult>\
+              <Deleted><Key>ok/gone.txt</Key></Deleted>\
+              <Error><Key>bad/stay.txt</Key><Code>AccessDenied</Code>\
+                <Message>Access Denied</Message></Error>\
+              <Deleted><Key>ok/also-gone.txt</Key></Deleted>\
+            </DeleteResult>";
+        let errors = parse_batch_delete_errors(xml);
+        assert_eq!(errors.len(), 1);
+        assert_eq!(
+            errors[0],
+            ("bad/stay.txt".to_string(), "AccessDenied".to_string())
+        );
+    }
+
+    #[test]
+    fn parse_batch_delete_errors_falls_back_to_message_without_code() {
+        // Some S3-compatible servers omit <Code>; the message is the reason.
+        let xml = "<DeleteResult><Error><Key>x/y.txt</Key>\
+            <Message>slow down</Message></Error></DeleteResult>";
+        let errors = parse_batch_delete_errors(xml);
+        assert_eq!(
+            errors,
+            vec![("x/y.txt".to_string(), "slow down".to_string())]
+        );
     }
 }
