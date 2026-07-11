@@ -250,7 +250,7 @@
     ]
   },
   {
-    "company": "pCloud",
+    "company": "pCloud Drive",
     "logoId": "pcloud",
     "country": "CH",
     "freeGb": 10,
@@ -825,7 +825,7 @@
     ]
   },
   {
-    "company": "Amazon S3",
+    "company": "Amazon Web Services (AWS)",
     "logoId": "amazon-s3",
     "country": "US",
     "freeGb": 5,

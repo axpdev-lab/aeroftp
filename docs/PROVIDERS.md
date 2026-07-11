@@ -19,7 +19,7 @@ aeroftp.app / docs.aeroftp.app provider tables mirror this list.
 | --- | --- | --- | --- |
 | 4shared | VG | 15 GB | OAuth, WebDAV |
 | Alibaba OSS | CN | 5 GB (overseas only, card req.) | S3* |
-| Amazon S3 | US | 5 GB (always-free, card req.) | S3* |
+| Amazon Web Services (AWS) | US | 5 GB (always-free, card req.) | S3* |
 | Backblaze B2 | US | 10 GB | API, S3 |
 | Box | US | 10 GB | OAuth |
 | Cloudflare R2 | US | 10 GB (egress-free, card req.) | S3* |
@@ -54,7 +54,7 @@ aeroftp.app / docs.aeroftp.app provider tables mirror this list.
 | Nextcloud | - | self-hosted | WebDAV |
 | OpenDrive | US | 5 GB | API, WebDAV |
 | Oracle Cloud | US | 20 GB (always-free, card req.) | S3* |
-| pCloud | CH | 10 GB | OAuth, WebDAV* |
+| pCloud Drive | CH | 10 GB | OAuth, WebDAV* |
 | PixelUnion | EU | 16 GB (managed Immich) | API |
 | Seafile | - | self-hosted | WebDAV |
 | SourceForge | US | OSS hosting | SFTP |

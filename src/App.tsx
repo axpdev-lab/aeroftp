@@ -6263,7 +6263,7 @@ interface UpdateVerificationInfo {
       setIsConnected(true); setShowRemotePanel(true); setShowLocalPreview(false);
       setLoading(false);
       setShowConnectionScreen(false);
-      const providerNames: Record<string, string> = { googledrive: 'Google Drive', dropbox: 'Dropbox', onedrive: 'OneDrive', box: 'Box', pcloud: 'pCloud', fourshared: '4shared' };
+      const providerNames: Record<string, string> = { googledrive: 'Google Drive', dropbox: 'Dropbox', onedrive: 'OneDrive', box: 'Box', pcloud: 'pCloud Drive', fourshared: '4shared' };
       const providerName = providerNames[protocol] || protocol;
       notify.success(t('toast.connected'), t('toast.connectedTo', { server: providerName }));
       // Load remote files for OAuth provider - pass protocol explicitly. When the
@@ -12192,7 +12192,7 @@ interface UpdateVerificationInfo {
               case 'onedrive': return 'OneDrive';
               case 'mega': return 'MEGA';
               case 'box': return 'Box';
-              case 'pcloud': return 'pCloud';
+              case 'pcloud': return 'pCloud Drive';
               case 'filen': return 'Filen';
               case 'opendrive': return 'OpenDrive';
               case 'github': return 'GitHub';
@@ -15175,7 +15175,7 @@ interface UpdateVerificationInfo {
                   // Just switch to file manager view
                   setIsConnected(true); setShowRemotePanel(true); setShowLocalPreview(false);
                   setShowConnectionScreen(false);
-                  const providerNames: Record<string, string> = { googledrive: 'Google Drive', dropbox: 'Dropbox', onedrive: 'OneDrive', box: 'Box', pcloud: 'pCloud', fourshared: '4shared' };
+                  const providerNames: Record<string, string> = { googledrive: 'Google Drive', dropbox: 'Dropbox', onedrive: 'OneDrive', box: 'Box', pcloud: 'pCloud Drive', fourshared: '4shared' };
                   const providerName = normalizedParams.displayName || (normalizedParams.protocol && providerNames[normalizedParams.protocol]) || normalizedParams.protocol || 'Unknown';
                   notify.success(t('toast.connected'), t('toast.connectedTo', { server: providerName }));
                   // Load remote files for OAuth provider - pass protocol explicitly.
@@ -15858,7 +15858,7 @@ interface UpdateVerificationInfo {
                       <div className="flex-shrink-0 pl-2.5 pr-1 flex items-center" title={(() => {
                         const protocol = connectionParams.protocol || 'ftp';
                         switch (protocol) {
-                          case 's3': return 'Amazon S3';
+                          case 's3': return 'Amazon Web Services (AWS)';
                           case 'webdav': return 'WebDAV';
                           case 'sftp': return 'SFTP (Secure)';
                           case 'ftps': return 'FTPS (Secure)';
@@ -15866,7 +15866,7 @@ interface UpdateVerificationInfo {
                           case 'dropbox': return 'Dropbox';
                           case 'onedrive': return 'OneDrive';
                           case 'box': return 'Box';
-                          case 'pcloud': return 'pCloud';
+                          case 'pcloud': return 'pCloud Drive';
                           case 'azure': return 'Azure Blob';
                           case 'filen': return 'Filen';
                           case 'mega': return 'MEGA';
@@ -17180,7 +17180,7 @@ interface UpdateVerificationInfo {
               if (protocol === 'dropbox') return 'Dropbox';
               if (protocol === 'onedrive') return 'OneDrive';
               if (protocol === 'box') return 'Box';
-              if (protocol === 'pcloud') return 'pCloud';
+              if (protocol === 'pcloud') return 'pCloud Drive';
               if (protocol === 'azure') return 'Azure Blob';
               if (protocol === 'filen') return 'Filen';
               if (protocol === 'mega') return 'MEGA';

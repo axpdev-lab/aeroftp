@@ -430,7 +430,7 @@ const getProtocols = (t: (key: string, params?: Record<string, string>) => strin
     },
     {
         type: 'pcloud',
-        name: 'pCloud',
+        name: 'pCloud Drive',
         icon: <PCloudLogo size={18} />,
         description: t('protocol.pcloudDesc'),
         defaultPort: 443,
@@ -481,7 +481,7 @@ const PROTOCOLS_FALLBACK: ProtocolInfo[] = [
     { type: 'yandexdisk', name: 'Yandex Disk', icon: <YandexDiskLogo size={18} />, description: 'Yandex Disk (5 GB free)', defaultPort: 443, badge: 'OAuth', color: 'text-yellow-500', isCloudStorage: true, tooltip: 'Yandex Disk: OAuth2 token auth' },
     { type: 'github', name: 'GitHub', icon: <GitHubLogo size={18} />, description: 'GitHub Repository (filesystem)', defaultPort: 443, badge: 'API', color: 'text-gray-400', isCloudStorage: true, tooltip: 'Browse GitHub repos as filesystem. Uploads create commits.' },
     { type: 'internxt', name: 'Internxt', icon: <InternxtLogo size={18} />, description: 'Zero-Knowledge Cloud (1 GB free)', defaultPort: 443, badge: 'E2E 256-bit', color: 'text-blue-600', isCloudStorage: true, tooltip: 'Internxt zero-knowledge encryption' },
-    { type: 'pcloud', name: 'pCloud', icon: <PCloudLogo size={18} />, description: 'pCloud (10 GB free)', defaultPort: 443, badge: 'OAuth', isOAuth: true, isCloudStorage: true, tooltip: 'pCloud OAuth2' },
+    { type: 'pcloud', name: 'pCloud Drive', icon: <PCloudLogo size={18} />, description: 'pCloud Drive (10 GB free)', defaultPort: 443, badge: 'OAuth', isOAuth: true, isCloudStorage: true, tooltip: 'pCloud Drive OAuth2' },
     { type: 'webdav', name: 'Felicloud', icon: <FeliCloudLogo size={18} />, description: 'Felicloud (10 GB free, EU/GDPR)', defaultPort: 443, badge: 'API OCS', color: 'text-orange-500', isCloudStorage: true, tooltip: 'Felicloud: Nextcloud-based EU cloud, 10GB free, GDPR compliant', providerId: 'felicloud' },
     { type: 'webdav', name: 'Tab.digital', icon: <TabDigitalLogo size={18} />, description: 'Tab.digital (8 GB free, Nextcloud-based, EU)', defaultPort: 443, badge: 'API OCS', color: 'text-emerald-500', isCloudStorage: true, tooltip: 'Tab.digital: Nextcloud-as-a-service, 8GB free, regional subdomains (fie.nl, fie.de, ...)', providerId: 'tabdigital' },
     { type: 'immich', name: 'Immich', icon: <ImmichLogo size={18} />, description: 'Self-hosted photo management', defaultPort: 443, badge: 'API', color: 'text-indigo-500', isCloudStorage: true, tooltip: 'Immich: Self-hosted photo/video management, API key auth' },

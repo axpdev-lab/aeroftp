@@ -3209,7 +3209,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                 // consistently (MEGA stays all-caps because that is its real style).
                                 const PROTOCOL_FALLBACK_NAMES: Record<string, string> = {
                                     dropbox: 'Dropbox', onedrive: 'OneDrive', googledrive: 'Google Drive',
-                                    googlephotos: 'Google Photos', box: 'Box', pcloud: 'pCloud',
+                                    googlephotos: 'Google Photos', box: 'Box', pcloud: 'pCloud Drive',
                                     jottacloud: 'Jottacloud', filen: 'Filen', internxt: 'Internxt',
                                     kdrive: 'kDrive', zohoworkdrive: 'Zoho WorkDrive', yandexdisk: 'Yandex Disk',
                                     drime: 'Drime', mega: 'MEGA', backblaze: 'Backblaze B2', fourshared: '4shared',
@@ -6371,7 +6371,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         {/* Provider independence disclaimer: outside formOnlyMaxW container */}
         {(() => {
             const disclaimerProvider = selectedProvider ?? (protocol ? getProviderById(protocol) : null);
-            const nameMap: Record<string, string> = { googledrive: 'Google Drive', dropbox: 'Dropbox', onedrive: 'OneDrive', box: 'Box', pcloud: 'pCloud', zohoworkdrive: 'Zoho WorkDrive', yandexdisk: 'Yandex Disk', filen: 'Filen', internxt: 'Internxt', kdrive: 'kDrive', jottacloud: 'Jottacloud', drime: 'Drime Cloud', koofr: 'Koofr', opendrive: 'OpenDrive', github: 'GitHub', gitlab: 'GitLab', pixelunion: 'PixelUnion' };
+            const nameMap: Record<string, string> = { googledrive: 'Google Drive', dropbox: 'Dropbox', onedrive: 'OneDrive', box: 'Box', pcloud: 'pCloud Drive', zohoworkdrive: 'Zoho WorkDrive', yandexdisk: 'Yandex Disk', filen: 'Filen', internxt: 'Internxt', kdrive: 'kDrive', jottacloud: 'Jottacloud', drime: 'Drime Cloud', koofr: 'Koofr', opendrive: 'OpenDrive', github: 'GitHub', gitlab: 'GitLab', pixelunion: 'PixelUnion' };
             const providerName = disclaimerProvider?.name
                 || nameMap[connectionParams.providerId || ''] || nameMap[protocol || ''];
             if (!providerName || (disclaimerProvider?.isGeneric && !connectionParams.providerId)) return null;

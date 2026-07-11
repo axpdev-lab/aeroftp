@@ -251,7 +251,7 @@ export function DiscoverPanel({ onSelectProvider }: DiscoverPanelProps) {
         const q = gridQuery.trim().toLowerCase();
         if (!q) return activeItems;
         return activeItems.filter(item =>
-            [item.name, item.description, item.badge, item.protocol, item.providerId, item.id]
+            [item.name, item.description, item.badge, item.protocol, item.providerId, item.id, ...(item.searchAliases ?? [])]
                 .filter(Boolean).join(' ').toLowerCase().includes(q));
     }, [activeItems, gridQuery]);
 

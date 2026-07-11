@@ -65,7 +65,7 @@ const providerNames: Record<string, string> = {
   dropbox: 'Dropbox',
   onedrive: 'OneDrive',
   box: 'Box',
-  pcloud: 'pCloud',
+  pcloud: 'pCloud Drive',
   zohoworkdrive: 'Zoho WorkDrive',
   yandexdisk: 'Yandex Disk',
 };

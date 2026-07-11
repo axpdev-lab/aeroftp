@@ -402,7 +402,7 @@ export const SavedServers: React.FC<SavedServersProps> = ({
             credentials = await loadOAuthCredentials(server.protocol);
 
             if (!credentials) {
-                const providerNames: Record<string, string> = { googledrive: 'Google Drive', dropbox: 'Dropbox', onedrive: 'OneDrive', box: 'Box', pcloud: 'pCloud', zohoworkdrive: 'Zoho WorkDrive' };
+                const providerNames: Record<string, string> = { googledrive: 'Google Drive', dropbox: 'Dropbox', onedrive: 'OneDrive', box: 'Box', pcloud: 'pCloud Drive', zohoworkdrive: 'Zoho WorkDrive' };
                 setOauthError(t('savedServers.oauthConfigError', { provider: providerNames[server.protocol] || server.protocol }));
                 return;
             }
@@ -838,7 +838,7 @@ export const SavedServers: React.FC<SavedServersProps> = ({
                                     {(() => {
                                         const mu = (v: string) => credentialsMasked ? maskCredential(v) : v;
                                         if (isOAuthProvider(server.protocol || 'ftp') || isFourSharedProvider(server.protocol || 'ftp')) {
-                                            return t('savedServers.oauthError', { username: mu(server.username || ({ googledrive: 'Google Drive', dropbox: 'Dropbox', onedrive: 'OneDrive', box: 'Box', pcloud: 'pCloud', fourshared: '4shared', zohoworkdrive: 'Zoho WorkDrive' } as Record<string, string>)[server.protocol || ''] || server.protocol || '') });
+                                            return t('savedServers.oauthError', { username: mu(server.username || ({ googledrive: 'Google Drive', dropbox: 'Dropbox', onedrive: 'OneDrive', box: 'Box', pcloud: 'pCloud Drive', fourshared: '4shared', zohoworkdrive: 'Zoho WorkDrive' } as Record<string, string>)[server.protocol || ''] || server.protocol || '') });
                                         }
                                         if (server.protocol === 'filen' || server.protocol === 'internxt') return t('savedServers.e2eAes256', { username: mu(server.username || '') });
                                         if (server.protocol === 'kdrive') return `kDrive ${server.options?.bucket || ''}`;

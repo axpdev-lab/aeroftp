@@ -28,6 +28,9 @@ export interface DiscoverItem {
     signupUrl?: string;
     healthCheckUrl?: string;
     source: 'registry' | 'protocol';
+    /** Extra lowercase terms the Add Services search matches beyond the visible
+     *  fields (e.g. 'aws' for Amazon Web Services). */
+    searchAliases?: string[];
     /** Pre-filled demo credentials (read-only test servers) */
     demo?: {
         server: string;
@@ -44,7 +47,7 @@ const CLOUD_SERVICES: DiscoverItem[] = [
     { id: 'dropbox', name: 'Dropbox', description: 'File sync and sharing (2 GB free)', protocol: 'dropbox', badge: 'OAuth', signupUrl: 'https://www.dropbox.com', healthCheckUrl: 'https://api.dropboxapi.com', source: 'protocol' },
     { id: 'mega', name: 'MEGA', description: 'Secure cloud with client-side encryption (20 GB free)', protocol: 'mega', badge: 'E2E 128-bit', signupUrl: 'https://mega.nz/register', healthCheckUrl: 'https://g.api.mega.co.nz', source: 'protocol' },
     { id: 'box', name: 'Box', description: 'Enterprise cloud content management (10 GB free)', protocol: 'box', badge: 'OAuth', signupUrl: 'https://www.box.com/pricing/individual', healthCheckUrl: 'https://api.box.com', source: 'protocol' },
-    { id: 'pcloud', name: 'pCloud', description: 'Swiss cloud storage (10 GB free)', protocol: 'pcloud', badge: 'OAuth', signupUrl: 'https://www.pcloud.com', healthCheckUrl: 'https://api.pcloud.com', source: 'protocol' },
+    { id: 'pcloud', name: 'pCloud Drive', description: 'Swiss cloud storage (10 GB free)', protocol: 'pcloud', badge: 'OAuth', signupUrl: 'https://www.pcloud.com', healthCheckUrl: 'https://api.pcloud.com', source: 'protocol' },
     { id: 'filen', name: 'Filen', description: 'Zero-knowledge encrypted cloud (10 GB free)', protocol: 'filen', badge: 'E2E 256-bit', signupUrl: 'https://filen.io', healthCheckUrl: 'https://gateway.filen.io', source: 'protocol' },
     { id: 'internxt', name: 'Internxt', description: 'Privacy-focused encrypted cloud (1 GB free)', protocol: 'internxt', badge: 'E2E 256-bit', signupUrl: 'https://internxt.com', healthCheckUrl: 'https://api.internxt.com', source: 'protocol' },
     { id: 'koofr-cloud', name: 'Koofr', description: 'EU-based privacy-friendly cloud (10 GB free)', protocol: 'koofr', badge: 'API', signupUrl: 'https://koofr.eu', healthCheckUrl: 'https://app.koofr.net', source: 'protocol' },
@@ -207,6 +210,12 @@ const BADGE_OVERRIDES: Record<string, string> = {
     'nextcloud': 'OCS',       // Self-hosted Nextcloud, OCS REST API
 };
 
+/** Extra lowercase search terms per registry provider id, matched by the Add
+ *  Services search on top of name/description/badge/protocol/id. */
+const SEARCH_ALIASES_OVERRIDES: Record<string, string[]> = {
+    'amazon-s3': ['aws', 'amazon web services', 's3', 'amazon'],
+};
+
 function registryToDiscoverItem(p: ProviderConfig): DiscoverItem {
     const autoBadge = p.protocol === 'sftp' ? 'SSH'
         : p.protocol === 's3' ? 'HMAC'
@@ -226,6 +235,7 @@ function registryToDiscoverItem(p: ProviderConfig): DiscoverItem {
         signupUrl: p.signupUrl,
         healthCheckUrl: p.healthCheckUrl,
         source: 'registry',
+        searchAliases: SEARCH_ALIASES_OVERRIDES[p.id],
     };
 }
 

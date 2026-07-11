@@ -141,7 +141,7 @@ const PROTOCOL_CATEGORIES = [
             { id: 'dropbox', label: 'Dropbox' },
             { id: 'onedrive', label: 'OneDrive' },
             { id: 'box', label: 'Box' },
-            { id: 'pcloud', label: 'pCloud' },
+            { id: 'pcloud', label: 'pCloud Drive' },
             { id: 'zohoworkdrive', label: 'Zoho WorkDrive' },
             { id: 'fourshared', label: '4shared' },
         ],

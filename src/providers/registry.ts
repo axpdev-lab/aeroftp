@@ -334,7 +334,7 @@ export const PROVIDERS: ProviderConfig[] = [
     // =========================================================================
     {
         id: 'amazon-s3',
-        name: 'Amazon S3',
+        name: 'Amazon Web Services (AWS)',
         description: 'Amazon Web Services S3 cloud object storage',
         protocol: 's3',
         category: 's3',
@@ -1343,7 +1343,7 @@ export const PROVIDERS: ProviderConfig[] = [
     },
     {
         id: 'pcloud-webdav',
-        name: 'pCloud (WebDAV)',
+        name: 'pCloud Drive (WebDAV)',
         description: 'Swiss cloud storage via WebDAV',
         protocol: 'webdav',
         category: 'webdav',

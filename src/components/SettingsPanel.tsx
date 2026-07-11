@@ -1678,7 +1678,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                             <div className="flex items-center gap-2">
                                                 <div className="w-8 h-8 bg-white dark:bg-gray-600 border border-gray-200 dark:border-gray-500 rounded-lg flex items-center justify-center">{PROVIDER_LOGOS.pcloud ? <PROVIDER_LOGOS.pcloud size={18} /> : <Cloud size={16} />}</div>
                                                 <div>
-                                                    <h4 className="font-medium">pCloud</h4>
+                                                    <h4 className="font-medium">pCloud Drive</h4>
                                                     <p className="text-xs text-gray-500">{t('settings.connectWithPcloud')}</p>
                                                 </div>
                                             </div>

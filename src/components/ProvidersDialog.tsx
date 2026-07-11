@@ -94,7 +94,7 @@ const ALL_PROVIDERS: ProviderFeatures[] = [
   { name: 'Zoho WorkDrive', logoId: 'zohoworkdrive',
     base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search', 'shareLink', 'trash', 'versioning'],
     advanced: [] },
-  { name: 'pCloud', logoId: 'pcloud',
+  { name: 'pCloud Drive', logoId: 'pcloud',
     base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search', 'shareLink', 'trash', 'versioning'],
     advanced: ['checksum'] },
   { name: 'MEGA (API)', logoId: 'mega',
@@ -158,7 +158,7 @@ const ALL_PROVIDERS: ProviderFeatures[] = [
     advanced: [] },
 
   // ── S3 Compatible ──
-  { name: 'Amazon S3', logoId: 'amazon-s3', section: 'S3 Compatible',
+  { name: 'Amazon Web Services (AWS)', logoId: 'amazon-s3', section: 'S3 Compatible',
     base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search', 'shareLink', 'versioning'],
     advanced: ['storageClass', 'objectTagging', 'sse', 'checksum'] },
   { name: 'Backblaze B2', logoId: 'backblaze',

@@ -48,7 +48,7 @@ const SORTABLE: CatalogColId[] = ['company', 'region', 'freeGb'];
 
 /** Tokens a company is searchable by (name, regions, note, protocol labels). */
 function searchText(c: CatalogCompany): string {
-    return [c.company, c.countryCode, c.freeNote, ...companyRegions(c), ...c.protocols.map(p => p.label)]
+    return [c.company, c.countryCode, c.freeNote, ...companyRegions(c), ...c.protocols.map(p => p.label), ...(c.searchAliases ?? [])]
         .filter(Boolean)
         .join(' ')
         .toLowerCase();

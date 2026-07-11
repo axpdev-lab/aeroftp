@@ -78,7 +78,7 @@ export function PCloudTrashManager({ onClose, onRefreshFiles }: PCloudTrashManag
     const sel = getSelectedItems();
     if (sel.length === 0) return;
     const selectedCount = sel.length;
-    const logId = humanLog.logRaw('activity.trash_restore_start', 'INFO', { provider: 'pCloud', count: selectedCount });
+    const logId = humanLog.logRaw('activity.trash_restore_start', 'INFO', { provider: 'pCloud Drive', count: selectedCount });
     setActionLoading('restore');
     setError(null);
     try {
@@ -86,11 +86,11 @@ export function PCloudTrashManager({ onClose, onRefreshFiles }: PCloudTrashManag
         const id = item.metadata?.fileid ?? item.metadata?.folderid ?? '';
         await invoke('pcloud_restore_from_trash', { id, isFolder: item.is_dir });
       }
-      humanLog.updateEntry(logId, { status: 'success', message: `[pCloud] Restored ${selectedCount} item(s) from trash` });
+      humanLog.updateEntry(logId, { status: 'success', message: `[pCloud Drive] Restored ${selectedCount} item(s) from trash` });
       await loadTrash();
       onRefreshFiles?.();
     } catch (err) {
-      humanLog.updateEntry(logId, { status: 'error', message: `[pCloud] Failed to restore from trash` });
+      humanLog.updateEntry(logId, { status: 'error', message: `[pCloud Drive] Failed to restore from trash` });
       setError(String(err));
     } finally {
       setActionLoading(null);
@@ -101,7 +101,7 @@ export function PCloudTrashManager({ onClose, onRefreshFiles }: PCloudTrashManag
     const sel = getSelectedItems();
     if (sel.length === 0) return;
     const selectedCount = sel.length;
-    const logId = humanLog.logRaw('activity.trash_delete_start', 'INFO', { provider: 'pCloud', count: selectedCount });
+    const logId = humanLog.logRaw('activity.trash_delete_start', 'INFO', { provider: 'pCloud Drive', count: selectedCount });
     setActionLoading('delete');
     setError(null);
     try {
@@ -109,10 +109,10 @@ export function PCloudTrashManager({ onClose, onRefreshFiles }: PCloudTrashManag
         const id = item.metadata?.fileid ?? item.metadata?.folderid ?? '';
         await invoke('pcloud_permanently_delete_trash', { id, isFolder: item.is_dir });
       }
-      humanLog.updateEntry(logId, { status: 'success', message: `[pCloud] Permanently deleted ${selectedCount} item(s) from trash` });
+      humanLog.updateEntry(logId, { status: 'success', message: `[pCloud Drive] Permanently deleted ${selectedCount} item(s) from trash` });
       await loadTrash();
     } catch (err) {
-      humanLog.updateEntry(logId, { status: 'error', message: `[pCloud] Failed to permanently delete from trash` });
+      humanLog.updateEntry(logId, { status: 'error', message: `[pCloud Drive] Failed to permanently delete from trash` });
       setError(String(err));
     } finally {
       setActionLoading(null);
@@ -122,16 +122,16 @@ export function PCloudTrashManager({ onClose, onRefreshFiles }: PCloudTrashManag
   const confirmEmptyTrash = async () => {
     setPendingEmptyConfirm(false);
     const totalCount = items.length;
-    const logId = humanLog.logRaw('activity.trash_empty_start', 'INFO', { provider: 'pCloud', count: totalCount });
+    const logId = humanLog.logRaw('activity.trash_empty_start', 'INFO', { provider: 'pCloud Drive', count: totalCount });
     setActionLoading('empty');
     setError(null);
     try {
       await invoke('pcloud_empty_trash');
-      humanLog.updateEntry(logId, { status: 'success', message: `[pCloud] Emptied trash (${totalCount} item(s))` });
+      humanLog.updateEntry(logId, { status: 'success', message: `[pCloud Drive] Emptied trash (${totalCount} item(s))` });
       await loadTrash();
       onRefreshFiles?.();
     } catch (err) {
-      humanLog.updateEntry(logId, { status: 'error', message: `[pCloud] Failed to empty trash` });
+      humanLog.updateEntry(logId, { status: 'error', message: `[pCloud Drive] Failed to empty trash` });
       setError(String(err));
     } finally {
       setActionLoading(null);

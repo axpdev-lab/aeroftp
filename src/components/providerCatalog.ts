@@ -89,6 +89,9 @@ export interface CatalogCompany {
     /** Ordered connection methods. `protocols[0]` is the company default
      *  used when the user clicks the row (rather than a specific badge). */
     protocols: CatalogProtocolRef[];
+    /** Extra lowercase search terms the Add Services search should match on top
+     *  of the display name (e.g. 'aws' for Amazon Web Services). */
+    searchAliases?: string[];
 }
 
 /**
@@ -145,7 +148,7 @@ export const PROVIDER_CATALOG: CatalogCompany[] = [
     { company: 'Box', logoId: 'box', countryCode: 'US', freeStorageGb: 10,
       healthCheckUrl: 'https://api.box.com',
       protocols: [{ label: 'OAuth', protocol: 'box', category: 'cloud-storage' }] },
-    { company: 'pCloud', logoId: 'pcloud', countryCode: 'CH', freeStorageGb: 10,
+    { company: 'pCloud Drive', logoId: 'pcloud', countryCode: 'CH', freeStorageGb: 10,
       healthCheckUrl: 'https://api.pcloud.com',
       protocols: [
           { label: 'OAuth', protocol: 'pcloud', category: 'cloud-storage' },
@@ -235,8 +238,9 @@ export const PROVIDER_CATALOG: CatalogCompany[] = [
     { company: 'Cloudinary', logoId: 'cloudinary', countryCode: 'US', freeStorageGb: null,
       freeNote: 'credit-based', healthCheckUrl: 'https://api.cloudinary.com',
       protocols: [{ label: 'API', protocol: 'cloudinary', providerId: 'cloudinary', category: 'media-services' }] },
-    { company: 'Amazon S3', logoId: 'amazon-s3', countryCode: 'US', freeStorageGb: 5,
+    { company: 'Amazon Web Services (AWS)', logoId: 'amazon-s3', countryCode: 'US', freeStorageGb: 5,
       freeNote: 'always-free, card req.', freeRequiresCard: true, healthCheckUrl: 'https://s3.amazonaws.com',
+      searchAliases: ['aws', 'amazon web services', 's3', 'amazon'],
       protocols: [{ label: 'S3', protocol: 's3', providerId: 'amazon-s3', category: 'object-storage', paid: true }] },
     { company: 'Wasabi', logoId: 'wasabi', countryCode: 'US', freeStorageGb: null,
       freeNote: '30-day trial',
