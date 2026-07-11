@@ -896,14 +896,17 @@ const App: React.FC = () => {
   // owner's latch (which would either trap the user or reopen the double-click).
   const remoteNavInFlightRef = useRef(0);
   const localNavInFlightRef = useRef(false);
-  // True while a connect flow (fresh connect, saved-server connect, session
-  // switch, cloud tab) owns the remote panel. It decides what the spinner's
-  // Cancel means: cancelling the listing that a connect is waiting on leaves a
-  // half-open session nobody asked for, so that cancel also tears the session
-  // down and returns to My Servers. Cancelling a drill-in inside a session that
-  // is already usable must not cost the user the session: it just aborts the
-  // listing and leaves them in the directory they were in.
-  const remoteConnectPhaseRef = useRef(false);
+  // Non-false while a connect flow (fresh connect, saved-server connect, cloud
+  // tab) or a session SWITCH owns the remote panel. It decides what the
+  // spinner's Cancel means, and the KIND matters: cancelling a fresh CONNECT's
+  // listing leaves a half-open session nobody asked for, so that cancel tears
+  // the session down and returns to My Servers ('connect'); cancelling a tab
+  // SWITCH's listing must NOT destroy the workspace, so it only unwinds the
+  // half-switched backend and marks the target tab cached, leaving every other
+  // healthy tab intact ('switch'). Cancelling a drill-in inside a session that
+  // is already usable (false) must not cost the user the session: it just
+  // aborts the listing and leaves them in the directory they were in.
+  const remoteConnectPhaseRef = useRef<false | 'connect' | 'switch'>(false);
   // Bumped the instant a Cancel decides to abort a connect. A connect flow is a
   // long chain of awaits that paints the panel, names the tab and registers the
   // session; the aborted listing only unwinds the await it was blocked on, so
@@ -4953,7 +4956,7 @@ interface UpdateVerificationInfo {
   // whitespace, so the flag is carried by a wrapper instead of by the body.
   const asConnectPhase = <A extends unknown[], R>(fn: (...args: A) => Promise<R>) =>
     async (...args: A): Promise<R> => {
-      remoteConnectPhaseRef.current = true;
+      remoteConnectPhaseRef.current = 'connect';
       try {
         return await fn(...args);
       } finally {
@@ -5790,7 +5793,7 @@ interface UpdateVerificationInfo {
     setLoading(true);
     // A branch switch disconnects and logs in again, so it is a connect: a
     // Cancel on its listing leaves no session to fall back to.
-    remoteConnectPhaseRef.current = true;
+    remoteConnectPhaseRef.current = 'connect';
     try {
       const { effectiveParams, providerParams } = await buildProviderParams(nextParams, currentRemotePath || null);
       await invoke('provider_disconnect').catch(() => {});
@@ -6933,7 +6936,7 @@ interface UpdateVerificationInfo {
     // completely silent, which on a slow server reads as a frozen app. Every
     // listing here now raises the spinner, and a Cancel tears the half-switched
     // session down rather than leaving the user staring at stale files.
-    remoteConnectPhaseRef.current = true;
+    remoteConnectPhaseRef.current = 'switch';
     const listWithSpinner = <T,>(fn: () => Promise<T>): Promise<T> =>
       withRemoteListSpinner(fn, listingReason(targetSession.remotePath));
 
@@ -7254,14 +7257,18 @@ interface UpdateVerificationInfo {
       setCurrentLocalPath(targetSession.localPath);
 
     } catch (e) {
-      // The user cancelled the listing from the panel spinner:
-      // cancelRemoteNavigation is already closing every session and returning to
-      // My Servers, so close the activity entry and touch nothing else.
+      // V2: the user cancelled the switch listing from the panel spinner.
+      // cancelRemoteNavigation runs abortSwitchAfterCancel, which unwinds only
+      // the half-switched backend, so keep the workspace: mark just THIS target
+      // tab `cached` (not errored) and restore its local path, exactly like the
+      // W3.1 branch below. Never wipe the session list here.
       if (isListingCancelled(e)) {
         activityLog.updateEntry(reconnectLogId, {
           status: 'success',
           message: t('toast.connectionCancelled'),
         });
+        setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, status: 'cached' } : s));
+        setCurrentLocalPath(targetSession.localPath);
         return;
       }
       // W3.1: user-cancelled reconnect. Mark the session cached (not errored)
@@ -7488,7 +7495,7 @@ interface UpdateVerificationInfo {
 
     // AeroCloud opens (or re-points) a connection before it lists, so a Cancel
     // on its listing has no usable session to fall back to either.
-    remoteConnectPhaseRef.current = true;
+    remoteConnectPhaseRef.current = 'connect';
     try {
       // Get cloud config to know which server profile and folders
       const cloudConfig = await invoke<{
@@ -7918,8 +7925,14 @@ interface UpdateVerificationInfo {
   // disconnectFromFtp's crypt-overlay teardown (#386), minus its DISCONNECT log
   // and toast, because from the user's side this is a connect that never
   // happened, not a disconnect they asked for.
-  const abortConnectAfterCancel = async () => {
-    remoteConnectPhaseRef.current = false;
+  // The backend half of a cancelled connect OR switch: lock every crypt overlay,
+  // drop the provider's crypt-overlay mount, and disconnect. The listing is
+  // already aborted, so neither disconnect can inherit its stall on the provider
+  // mutex. Both are best-effort: the point of a Cancel is never to trade one
+  // stuck call for another, and which disconnect applies depends on the
+  // protocol, so issue both. Shared by the connect abort (which then wipes the
+  // whole workspace) and the switch abort (which keeps every healthy tab).
+  const lockAndDropBackendConnection = async () => {
     const overlaySessionId = aeroVaultOverlaySession?.sessionId;
     if (overlaySessionId) {
       try { await invoke('aerovault_overlay_lock', { sessionId: overlaySessionId }); } catch { }
@@ -7931,12 +7944,14 @@ interface UpdateVerificationInfo {
       try { await invoke('rclone_crypt_lock', { vaultId: rcloneCryptVaultId }); } catch { }
     }
     await invoke('provider_clear_crypt_overlay', { full: true }).catch(() => undefined);
-    // The listing is already aborted, so neither disconnect can inherit its
-    // stall on the provider mutex. Both are best-effort: the point of a Cancel
-    // is to land the user back on My Servers, never to trade one stuck call for
-    // another. Which one applies depends on the protocol, so issue both.
     try { await invoke('provider_disconnect'); } catch { }
     try { await invoke('disconnect_ftp'); } catch { }
+  };
+
+  // The crypt/overlay VIEW state a cancelled connect or switch leaves behind.
+  // Kept as one helper so the connect abort (which also wipes the workspace) and
+  // the switch abort (which clears ONLY this) can never drift apart.
+  const clearCryptOverlayState = () => {
     setAeroCryptVaultId(null);
     setRcloneCryptVaultId(null);
     setCryptOverlayOwner(null);
@@ -7944,6 +7959,13 @@ interface UpdateVerificationInfo {
     setOverlayDecrypting(false);
     overlayReloadedVaultRef.current = null;
     overlayUnlockInFlightRef.current = false;
+    setAeroVaultOverlaySession(null);
+  };
+
+  const abortConnectAfterCancel = async () => {
+    remoteConnectPhaseRef.current = false;
+    await lockAndDropBackendConnection();
+    clearCryptOverlayState();
     setIsConnected(false);
     setLoading(false);
     setActivePanel('local');
@@ -7951,7 +7973,6 @@ interface UpdateVerificationInfo {
     setCurrentRemotePath('/');
     setSessions([]);
     setActiveSessionId(null);
-    setAeroVaultOverlaySession(null);
     setShowConnectionScreen(true);
     setShowRemotePanel(false);
     // Close the story in the Activity Log too. The log had the connect succeed
@@ -7961,6 +7982,18 @@ interface UpdateVerificationInfo {
     if (showToastNotifications) {
       toast.info(t('toast.connectionCancelled'), t('toast.connectionCancelledHint'));
     }
+  };
+
+  // V2: a cancelled tab SWITCH must not wipe the workspace the way a cancelled
+  // fresh connect does. Unwind only the half-switched backend and its crypt
+  // overlay; leave the session list, active tab, connected flag, remote panel,
+  // remote files and remote path untouched. switchSession's cancel branch then
+  // marks just the target tab `cached`, so the user stays in a live workspace
+  // with every other healthy tab intact.
+  const abortSwitchAfterCancel = async () => {
+    remoteConnectPhaseRef.current = false;
+    await lockAndDropBackendConnection();
+    clearCryptOverlayState();
   };
 
   // #401: escape hatch for a remote listing that stalls (unreachable host, server
@@ -7976,12 +8009,12 @@ interface UpdateVerificationInfo {
   // provider mutex. Only then, if a CONNECT was what we interrupted, tear the
   // session down: that disconnect needs the mutex the abort just freed.
   const cancelRemoteNavigation = () => {
-    const abortsConnect = remoteConnectPhaseRef.current;
+    const kind = remoteConnectPhaseRef.current;
     remoteNavCounter.current += 1;
     remoteNavInFlightRef.current = 0;
-    // Synchronously, before any await: the connect flow must observe the abort
-    // on its very next resumption, not once the backend round trip returns.
-    if (abortsConnect) connectAbortEpochRef.current += 1;
+    // Synchronously, before any await: the connect/switch flow must observe the
+    // abort on its very next resumption, not once the backend round trip returns.
+    if (kind) connectAbortEpochRef.current += 1;
     setRemoteListLoading(false);
     setRemoteListReason(null);
     void (async () => {
@@ -7990,7 +8023,12 @@ interface UpdateVerificationInfo {
       } catch (error) {
         logger.debug('[cancelRemoteNavigation] backend abort failed:', error);
       }
-      if (abortsConnect) await abortConnectAfterCancel();
+      // A cancelled fresh connect has no session to keep, so tear the whole
+      // workspace down and return to My Servers. A cancelled tab SWITCH keeps
+      // every healthy tab: unwind only the half-switched backend and let
+      // switchSession's cancel branch mark the target tab cached.
+      if (kind === 'switch') await abortSwitchAfterCancel();
+      else if (kind) await abortConnectAfterCancel();
     })();
   };
 
