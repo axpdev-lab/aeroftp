@@ -4008,7 +4008,15 @@ impl StorageProvider for WebDavProvider {
             )));
         }
 
-        let end = offset + len - 1; // HTTP Range is inclusive
+        // len == 0 has no range, and offset + len - 1 must not wrap: a wrapped
+        // end makes an invalid Range header that servers ignore, turning a
+        // bounded probe into a full-body download.
+        if len == 0 {
+            return Ok(Vec::new());
+        }
+        let end = offset
+            .checked_add(len - 1)
+            .ok_or_else(|| ProviderError::Other("read_range end overflows u64".to_string()))?;
         let range_header = format!("bytes={}-{}", offset, end);
 
         let response = self

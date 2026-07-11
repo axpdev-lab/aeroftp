@@ -1345,7 +1345,12 @@ impl StorageProvider for AzureProvider {
                 .map_err(|e| ProviderError::Other(format!("Invalid header value: {}", e)))?,
         );
         headers.insert("x-ms-version", HeaderValue::from_static(API_VERSION));
-        let end = offset + len - 1; // HTTP Range is inclusive
+        // offset + len - 1 must not wrap: a wrapped end makes an invalid Range
+        // header that servers ignore, turning a bounded probe into a full-body
+        // download. (len == 0 already returned above.)
+        let end = offset
+            .checked_add(len - 1)
+            .ok_or_else(|| ProviderError::Other("read_range end overflows u64".to_string()))?;
         headers.insert(
             "x-ms-range",
             HeaderValue::from_str(&format!("bytes={}-{}", offset, end))
