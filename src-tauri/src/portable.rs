@@ -117,6 +117,18 @@ fn legacy_cli_app_config_dir() -> Option<PathBuf> {
 }
 
 fn copy_missing_tree(src: &Path, dst: &Path) -> std::io::Result<()> {
+    // The tree we import here is a config tree the user consented to copy, but a
+    // symlink inside it can point anywhere: outside the consented tree (dragging
+    // in foreign secrets like ~/.ssh) or at an ancestor, forming a cycle that
+    // would recurse until path-length exhaustion. So we never follow links, we
+    // skip them; skipping also kills the cycle recursion. `symlink_metadata`
+    // never follows the link; a metadata error means the path is gone, and the
+    // `is_dir`/`is_file` checks below already no-op on a missing path.
+    if let Ok(meta) = src.symlink_metadata() {
+        if meta.file_type().is_symlink() {
+            return Ok(());
+        }
+    }
     if src.is_dir() {
         std::fs::create_dir_all(dst)?;
         #[cfg(unix)]
@@ -697,5 +709,80 @@ mod tests {
             std::fs::read(dst.join("sub/servers.json")).unwrap(),
             b"HOST-SERVERS"
         );
+    }
+
+    /// Recursively check whether any regular file under `dir` contains `needle`.
+    /// Uses `symlink_metadata` so the walk itself never chases a link into the
+    /// tree it is verifying against.
+    #[cfg(unix)]
+    fn tree_contains_bytes(dir: &Path, needle: &[u8]) -> bool {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return false;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let Ok(meta) = path.symlink_metadata() else {
+                continue;
+            };
+            if meta.file_type().is_symlink() {
+                continue;
+            }
+            if meta.is_dir() {
+                if tree_contains_bytes(&path, needle) {
+                    return true;
+                }
+            } else if let Ok(bytes) = std::fs::read(&path) {
+                if bytes.windows(needle.len()).any(|w| w == needle) {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    /// A symlink inside the consented tree can point outside it (foreign secrets
+    /// like ~/.ssh) or at an ancestor (a cycle). The import must never follow one:
+    /// real files are still copied, but no symlink is materialised and no target
+    /// content ever lands under the destination.
+    #[cfg(unix)]
+    #[test]
+    fn copy_missing_tree_skips_symlinks() {
+        use std::os::unix::fs::symlink;
+
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        let src = root.join("src");
+        let dst = root.join("dst");
+
+        // Foreign content that lives OUTSIDE the consented tree. A followed
+        // symlink would drag it into the sandbox; a correct import must not.
+        let secret = b"OUTSIDE-SECRET-MUST-NOT-BE-COPIED";
+        let outside_dir = root.join("outside");
+        std::fs::create_dir_all(&outside_dir).unwrap();
+        std::fs::write(outside_dir.join("secret.txt"), secret).unwrap();
+        let outside_file = root.join("outside-file.txt");
+        std::fs::write(&outside_file, secret).unwrap();
+
+        std::fs::create_dir_all(&src).unwrap();
+        // (a) a real file we DO want copied.
+        std::fs::write(src.join("real.txt"), b"REAL").unwrap();
+        // (b) a symlink to a file outside the tree.
+        symlink(&outside_file, src.join("link-to-file")).unwrap();
+        // (c) a symlink to a directory outside the tree holding a secret.
+        symlink(&outside_dir, src.join("link-to-dir")).unwrap();
+        // (d) a self-referencing directory symlink: following it would recurse
+        //     until path-length exhaustion.
+        symlink(&src, src.join("loop")).unwrap();
+
+        copy_missing_tree(&src, &dst).unwrap();
+
+        // The real file is copied.
+        assert_eq!(std::fs::read(dst.join("real.txt")).unwrap(), b"REAL");
+        // The symlinks were skipped, not materialised in the destination.
+        assert!(!dst.join("link-to-file").exists());
+        assert!(!dst.join("link-to-dir").exists());
+        assert!(!dst.join("loop").exists());
+        // The foreign secret appears nowhere under the destination.
+        assert!(!tree_contains_bytes(&dst, secret));
     }
 }
