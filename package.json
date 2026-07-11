@@ -13,6 +13,7 @@
     "test": "cd src-tauri && cargo test",
     "test:unit": "vitest run",
     "test:unit:watch": "vitest",
+    "smoke": "node scripts/smoke.mjs",
     "typecheck": "tsc --noEmit",
     "security:regression": "node .github/scripts/security-regression.cjs",
     "security:report": "node scripts/security-report.cjs",

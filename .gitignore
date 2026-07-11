@@ -107,6 +107,8 @@ run-clean.sh
 !/scripts/publish-sourceforge.sh
 # Exception: regenerates the providers table from the GUI SSOT (#270 17104681)
 !/scripts/gen-providers-table.ts
+# Exception: single pre-release smoke entrypoint (`npm run smoke`, #408 row 1)
+!/scripts/smoke.mjs
 
 # Security reports: keep latest snapshot in repo, ignore dated copies
 /docs/security/security-report-20*.html

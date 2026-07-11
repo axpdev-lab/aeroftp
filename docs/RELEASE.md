@@ -59,6 +59,22 @@ cd src-tauri && cargo clippy --all-targets -- -D warnings
 npm run build
 ```
 
+### Pre-tag Smoke (single entrypoint)
+
+```bash
+# One command: runs the deterministic suites (cargo test + vitest run) and the
+# lab-backed #[ignore] integration lanes. Integration lanes clean-SKIP when their
+# enabler is absent (no Docker fixture up / no vault creds); a SKIP never fails the
+# run. Prints a PASS/SKIP/FAIL matrix to stdout. Exits non-zero only on a real FAIL.
+npm run smoke
+```
+
+The deterministic PASS lines must be green before tagging. To exercise the
+integration lanes too (optional, before a big release): bring the Docker fixtures up
+(`src-tauri/tests/fixtures/sftp-rsync` and `.../ftp`), export the vault-backed creds
+(`AEROFTP_MASTER_PASSWORD`, `AEROFTP_TEST_B2_*`), then re-run `npm run smoke`; those
+lanes flip from SKIP to PASS/FAIL.
+
 ### Commit, Tag & Push
 
 ```bash
