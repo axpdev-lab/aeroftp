@@ -10062,10 +10062,26 @@ interface UpdateVerificationInfo {
 
   // openDevToolsPreview, openUniversalPreview, closeUniversalPreview provided by usePreview hook
 
+  // V10: the batch-op latch was set ONLY by the effect mirror of
+  // scanningState.active, which commits a render later, so two triggers fired in
+  // the same tick both passed the guard and dispatched a duplicate batch. This
+  // wrapper sets the latch SYNCHRONOUSLY on entry and clears it in `finally`, so
+  // a second dispatch is refused immediately (returns undefined). The effect
+  // mirror stays as belt-and-braces for the mid-scan cancel paths.
+  const withBatchLatch = <A extends unknown[], R>(fn: (...args: A) => R | Promise<R>) =>
+    async (...args: A): Promise<Awaited<R> | undefined> => {
+      if (batchOpInFlightRef.current) return undefined;
+      batchOpInFlightRef.current = true;
+      try {
+        return await fn(...args);
+      } finally {
+        batchOpInFlightRef.current = false;
+      }
+    };
+
   // Upload files (Selected or Dialog)
-  const uploadMultipleFiles = async (filesOverride?: string[]) => {
+  const uploadMultipleFiles = withBatchLatch(async (filesOverride?: string[]) => {
     if (!isConnected) return;
-    if (batchOpInFlightRef.current) return; // freeze: a batch op is already in flight
 
     // Reset apply-to-all for new batch
     resetOverwriteSettings();
@@ -10622,12 +10638,11 @@ interface UpdateVerificationInfo {
         notify.info(t('toast.fileSkipped', { count: skippedCount }));
       }
     }
-  };
+  });
 
   // === Bulk Operations ===
-  const downloadMultipleFiles = async (filesOverride?: string[]) => {
+  const downloadMultipleFiles = withBatchLatch(async (filesOverride?: string[]) => {
     if (!isConnected) return;
-    if (batchOpInFlightRef.current) return; // freeze: a batch op is already in flight
     const names = filesOverride || Array.from(selectedRemoteFiles);
     if (names.length === 0) return;
 
@@ -10924,7 +10939,7 @@ interface UpdateVerificationInfo {
       setSelectedRemoteFiles(new Set());
       await loadLocalFiles(currentLocalPath);  // Refresh local panel
     }
-  };
+  });
 
   // Wire cross-panel drag & drop callback now that upload/download are defined
   crossPanelDropRef.current = async (files, fromRemote, _targetDir) => {
@@ -10957,8 +10972,7 @@ interface UpdateVerificationInfo {
     return t('dialog.deleteFiles', { count: fileCount });
   };
 
-  const deleteMultipleRemoteFiles = (filesOverride?: string[]) => {
-    if (batchOpInFlightRef.current) return; // freeze: a batch op is already in flight
+  const deleteMultipleRemoteFiles = withBatchLatch((filesOverride?: string[]) => {
     const names = filesOverride || Array.from(selectedRemoteFiles);
     if (names.length === 0) return;
 
@@ -11130,10 +11144,9 @@ interface UpdateVerificationInfo {
     } else {
       performDelete();
     }
-  };
+  });
 
-  const deleteMultipleLocalFiles = (filesOverride?: string[], localPanelId: 'local' | 'local2' = activeLocalPanelId) => {
-    if (batchOpInFlightRef.current) return; // freeze: a batch op is already in flight
+  const deleteMultipleLocalFiles = withBatchLatch((filesOverride?: string[], localPanelId: 'local' | 'local2' = activeLocalPanelId) => {
     const panel = getActiveLocalState(localPanelId);
     const names = filesOverride || Array.from(panel.selection);
     if (names.length === 0) return;
@@ -11211,7 +11224,7 @@ interface UpdateVerificationInfo {
     } else {
       performDelete();
     }
-  };
+  });
 
   // File operations with proper confirm BEFORE action (respects confirmBeforeDelete setting)
   const deleteRemoteFile = (path: string, isDir: boolean, commitMessage?: string) => {
