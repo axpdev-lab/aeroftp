@@ -1,4 +1,4 @@
-app-id: com.aeroftp.AeroFTP
+app-id: app.aeroftp.AeroFTP
 runtime: org.gnome.Platform
 runtime-version: '49'
 sdk: org.gnome.Sdk
@@ -100,15 +100,15 @@ modules:
       - install -Dm755 src-tauri/target/release/aeroftp /app/bin/aeroftp
       
       # Install icons at multiple sizes
-      - install -Dm644 src-tauri/icons/32x32.png /app/share/icons/hicolor/32x32/apps/com.aeroftp.AeroFTP.png
-      - install -Dm644 src-tauri/icons/128x128.png /app/share/icons/hicolor/128x128/apps/com.aeroftp.AeroFTP.png
-      - install -Dm644 icons/AeroFTP_simbol_color_512x512.png /app/share/icons/hicolor/512x512/apps/com.aeroftp.AeroFTP.png
+      - install -Dm644 src-tauri/icons/32x32.png /app/share/icons/hicolor/32x32/apps/app.aeroftp.AeroFTP.png
+      - install -Dm644 src-tauri/icons/128x128.png /app/share/icons/hicolor/128x128/apps/app.aeroftp.AeroFTP.png
+      - install -Dm644 icons/AeroFTP_simbol_color_512x512.png /app/share/icons/hicolor/512x512/apps/app.aeroftp.AeroFTP.png
       
       # Install desktop file
-      - install -Dm644 com.aeroftp.AeroFTP.desktop /app/share/applications/com.aeroftp.AeroFTP.desktop
+      - install -Dm644 app.aeroftp.AeroFTP.desktop /app/share/applications/app.aeroftp.AeroFTP.desktop
       
       # Install AppStream metadata
-      - install -Dm644 com.aeroftp.AeroFTP.metainfo.xml /app/share/metainfo/com.aeroftp.AeroFTP.metainfo.xml
+      - install -Dm644 app.aeroftp.AeroFTP.metainfo.xml /app/share/metainfo/app.aeroftp.AeroFTP.metainfo.xml
     
     sources:
       # Source code from tagged release

@@ -14,7 +14,7 @@
     </array>
     <key>com.apple.security.application-groups</key>
     <array>
-        <string>$(TeamIdentifierPrefix)com.aeroftp.AeroFTP</string>
+        <string>$(TeamIdentifierPrefix)app.aeroftp.AeroFTP</string>
     </array>
 </dict>
 </plist>

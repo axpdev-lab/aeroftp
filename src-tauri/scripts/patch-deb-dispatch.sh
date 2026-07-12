@@ -54,7 +54,7 @@ ln -sfn aeroftp "$BIN_DIR/aeroftp-cli"
 
 for desktop in \
     "$WORK/pkg/usr/share/applications/AeroFTP.desktop" \
-    "$WORK/pkg/usr/share/applications/com.aeroftp.AeroFTP.desktop" \
+    "$WORK/pkg/usr/share/applications/app.aeroftp.AeroFTP.desktop" \
     "$WORK/pkg/usr/share/applications/aeroftp.desktop"
 do
     [ -f "$desktop" ] || continue
