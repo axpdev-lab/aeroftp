@@ -1825,15 +1825,22 @@ async fn unlock_overlay_keys_encrypting(
                 // factory (CLI / cross-profile / MCP) passes allow_init=false and
                 // stays fail-closed below.
                 //
-                // Clobber guard (audit FINDING 1): bootstrap means "activate on a
-                // fresh EMPTY location" only. A headerless vault carries no remote
-                // marker, so without this a re-activation on a populated scope (or
-                // a headerless vault whose local keystore metadata was lost) would
-                // mint a new random salt and permanently orphan every existing
-                // object. Refuse to bootstrap unless the scope is affirmatively
-                // absent. A degraded provider can report an inaccessible scope as
-                // an empty list; `exists(scope) == false` is the required
-                // clobber-safe signal for a fresh virtual prefix.
+                // Clobber guard (audit FINDING 1): a headerless vault carries no
+                // remote marker, so re-activating over a scope that already holds
+                // ciphertext would mint a new random salt and permanently orphan
+                // every existing object. Refuse when the scope LISTS a non-config
+                // entry. This keeps the frictionless headerless flow intact: an
+                // empty scope (an empty existing folder, or the whole remote whose
+                // root always exists) still bootstraps, and a not-yet-created
+                // subfolder still bootstraps on first write.
+                //
+                // NOTE (v4.1.4 pre-tag audit A-F3, hardening deferred to 4.1.5):
+                // the subtle case where a provider reports an INACCESSIBLE scope as
+                // an empty or errored listing is not distinguished here (an
+                // unconditional `exists()==false` gate was tried and reverted
+                // because it wrongly refused the whole-remote and empty-existing
+                // create). A robust per-provider empty-vs-inaccessible signal is
+                // tracked for a later release.
                 let list_dir = if scope.is_empty() { "/" } else { scope };
                 if let Ok(entries) = provider.list(list_dir).await {
                     if entries.iter().any(|e| e.name != AEROCRYPT_CONFIG_NAME) {
@@ -1844,17 +1851,6 @@ async fn unlock_overlay_keys_encrypting(
                              would rotate the salt and permanently orphan the existing files."
                         ));
                     }
-                }
-                let scope_exists = provider
-                    .exists(list_dir)
-                    .await
-                    .map_err(|e| format!("Cannot probe AeroCrypt overlay scope {list_dir}: {e}"))?;
-                if scope_exists {
-                    return Err(format!(
-                        "Refusing to initialize a new AeroCrypt overlay at {list_dir}: the scope \
-                         already exists but has no readable overlay config. Unlock it with its \
-                         existing credentials, or recover a headerless vault from its Emergency Kit."
-                    ));
                 }
                 let salt = overlay::random_salt_v3();
                 let tmp = OverlayConfig::v3_bootstrap(salt);
@@ -3238,7 +3234,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn aerocrypt_activation_refuses_bootstrap_on_existing_empty_scope() {
+    async fn aerocrypt_activation_bootstraps_on_existing_empty_scope() {
+        // Frictionless headerless (v4.1.4 pre-tag audit A-F3): pointing a vault at
+        // an EMPTY existing folder (or the whole remote, whose root always exists)
+        // must BOOTSTRAP, not refuse. Only a scope that LISTS existing content is
+        // refused (re-init would rotate the salt and orphan it). An earlier
+        // `exists()==false` gate wrongly refused this case and was reverted.
         let mut mem = MemProvider::new();
         mem.seed_raw_dir("/Vault");
         let binding = OverlayUnlockParams {
@@ -3252,17 +3253,15 @@ mod tests {
             local_config_salt: None,
         };
 
-        let res =
-            unlock_overlay_keys_encrypting(&mut mem, &binding, "pw", "", None, true, true).await;
+        let keys = unlock_overlay_keys_encrypting(&mut mem, &binding, "pw", "", None, true, true)
+            .await
+            .expect("an empty existing scope must bootstrap a v3 overlay");
+        assert!(matches!(keys, OverlayKeys::AeroCrypt { .. }));
         assert!(
-            res.is_err(),
-            "activation must refuse to bootstrap when the scope already exists"
-        );
-        assert!(
-            !mem.exists("/Vault/.aeroftp-crypt.json")
+            mem.exists("/Vault/.aeroftp-crypt.json")
                 .await
                 .expect("probe config marker"),
-            "no overlay config may be written when bootstrap is refused"
+            "bootstrap over an empty existing scope must write the overlay config"
         );
     }
 
