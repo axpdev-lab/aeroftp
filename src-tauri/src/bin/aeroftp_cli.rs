@@ -753,10 +753,6 @@ impl Cli {
             self.format
         }
     }
-
-    fn is_machine_mode(&self) -> bool {
-        self.machine || self.json
-    }
 }
 
 #[derive(Copy, Clone, Debug, ValueEnum)]
@@ -29820,7 +29816,7 @@ async fn cmd_mkdir(
             Ok(()) => {
                 match format {
                     OutputFormat::Text => {
-                        if !cli.quiet && !cli.is_machine_mode() {
+                        if !cli.quiet {
                             eprintln!("Created directory: {}", path);
                         }
                     }
@@ -30819,6 +30815,31 @@ async fn probe_share_link(url: &str) -> Result<u16, String> {
     Ok(resp.status().as_u16())
 }
 
+const MAX_CLI_EDIT_BYTES: u64 = 10 * 1024 * 1024;
+
+fn reject_uneditable_cli_entry(entry: &RemoteEntry) -> Result<(), String> {
+    if entry.is_dir {
+        return Err("edit cannot modify a directory".to_string());
+    }
+    if entry.size > MAX_CLI_EDIT_BYTES {
+        return Err(format!(
+            "edit file too large ({} bytes). Limit: 10 MB",
+            entry.size
+        ));
+    }
+    Ok(())
+}
+
+fn reject_oversize_cli_edit_download(data_len: usize) -> Result<(), String> {
+    if data_len as u64 > MAX_CLI_EDIT_BYTES {
+        return Err(format!(
+            "edit download exceeded the 10 MB limit ({} bytes)",
+            data_len
+        ));
+    }
+    Ok(())
+}
+
 async fn cmd_edit(
     url: &str,
     path: &str,
@@ -30843,6 +30864,24 @@ async fn cmd_edit(
     };
 
     let path = &resolve_cli_remote_path(&initial_path, path);
+    match provider.stat(path).await {
+        Ok(entry) => {
+            if let Err(message) = reject_uneditable_cli_entry(&entry) {
+                print_error(format, &message, 5);
+                let _ = provider.disconnect().await;
+                return 5;
+            }
+        }
+        Err(e) => {
+            print_error(
+                format,
+                &format!("edit failed: {}", e),
+                provider_error_to_exit_code(&e),
+            );
+            let _ = provider.disconnect().await;
+            return provider_error_to_exit_code(&e);
+        }
+    }
     let data = match provider.download_to_bytes(path).await {
         Ok(data) => data,
         Err(e) => {
@@ -30855,6 +30894,11 @@ async fn cmd_edit(
             return provider_error_to_exit_code(&e);
         }
     };
+    if let Err(message) = reject_oversize_cli_edit_download(data.len()) {
+        print_error(format, &message, 5);
+        let _ = provider.disconnect().await;
+        return 5;
+    }
 
     let mut content = match String::from_utf8(data) {
         Ok(content) => content,
@@ -30873,7 +30917,7 @@ async fn cmd_edit(
     if occurrences == 0 {
         match format {
             OutputFormat::Text => {
-                if !cli.quiet && !cli.is_machine_mode() {
+                if !cli.quiet {
                     eprintln!("No matches found in {}", path);
                 }
             }
@@ -65183,5 +65227,43 @@ mod tests {
         let got =
             read_credential_source(OutputFormat::Text, Some("hunter2"), None, false, None, None);
         assert_eq!(got, Ok(Some("hunter2".to_string())));
+    }
+
+    fn cli_edit_entry(is_dir: bool, size: u64) -> RemoteEntry {
+        RemoteEntry {
+            name: "target.txt".to_string(),
+            path: "/target.txt".to_string(),
+            is_dir,
+            size,
+            modified: None,
+            permissions: None,
+            owner: None,
+            group: None,
+            is_symlink: false,
+            link_target: None,
+            mime_type: None,
+            metadata: HashMap::new(),
+        }
+    }
+
+    #[test]
+    fn cli_edit_guard_rejects_directories() {
+        let err = reject_uneditable_cli_entry(&cli_edit_entry(true, 0)).unwrap_err();
+        assert!(err.contains("directory"), "got: {err}");
+    }
+
+    #[test]
+    fn cli_edit_guard_rejects_stat_oversize() {
+        let err = reject_uneditable_cli_entry(&cli_edit_entry(false, MAX_CLI_EDIT_BYTES + 1))
+            .unwrap_err();
+        assert!(err.contains("too large"), "got: {err}");
+        assert!(reject_uneditable_cli_entry(&cli_edit_entry(false, MAX_CLI_EDIT_BYTES)).is_ok());
+    }
+
+    #[test]
+    fn cli_edit_guard_rejects_download_oversize_after_stat_lie() {
+        let err = reject_oversize_cli_edit_download((MAX_CLI_EDIT_BYTES + 1) as usize).unwrap_err();
+        assert!(err.contains("10 MB limit"), "got: {err}");
+        assert!(reject_oversize_cli_edit_download(MAX_CLI_EDIT_BYTES as usize).is_ok());
     }
 }

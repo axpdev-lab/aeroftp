@@ -1054,6 +1054,29 @@ async fn rename(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
 
 const MAX_EDIT_BYTES: u64 = 10 * 1024 * 1024;
 
+fn reject_uneditable_entry(entry: &crate::providers::RemoteEntry) -> Result<(), ToolError> {
+    if entry.is_dir {
+        return Err(ToolError::Exec("Cannot edit a directory.".to_string()));
+    }
+    if entry.size > MAX_EDIT_BYTES {
+        return Err(ToolError::Exec(format!(
+            "File too large ({} bytes). Limit: 10 MB. Use aeroftp_download_file + local edit for larger files.",
+            entry.size
+        )));
+    }
+    Ok(())
+}
+
+fn reject_oversize_edit_download(data_len: usize) -> Result<(), ToolError> {
+    if data_len as u64 > MAX_EDIT_BYTES {
+        return Err(ToolError::Exec(format!(
+            "Downloaded file exceeded the edit limit ({} bytes). Limit: 10 MB.",
+            data_len
+        )));
+    }
+    Ok(())
+}
+
 /// Find-and-replace on a remote UTF-8 text file (MCP/CLI surface).
 /// In-memory for files <= 10 MiB. Rejects directories and non-UTF8 (binary).
 /// If no match for `find`, returns no_op and does not re-upload.
@@ -1067,20 +1090,13 @@ async fn edit(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
 
     let backend = ctx.remote_backend(&server).await.map_err(backend_error)?;
     let entry = backend.stat(&path).await.map_err(ToolError::Exec)?;
-    if entry.is_dir {
-        return Err(ToolError::Exec("Cannot edit a directory.".to_string()));
-    }
-    if entry.size > MAX_EDIT_BYTES {
-        return Err(ToolError::Exec(format!(
-            "File too large ({} bytes). Limit: 10 MB. Use aeroftp_download_file + local edit for larger files.",
-            entry.size
-        )));
-    }
+    reject_uneditable_entry(&entry)?;
 
     let data = backend
         .download_to_bytes(&path)
         .await
         .map_err(ToolError::Exec)?;
+    reject_oversize_edit_download(data.len())?;
     let original = match String::from_utf8(data) {
         Ok(s) => s,
         Err(_) => {
@@ -3124,9 +3140,12 @@ mod tests {
 
     // --- dry_run / recursive contract for the delete verbs ----------------
 
+    use crate::ai_core::credential_provider::ProviderExtraOptions;
     use crate::ai_core::remote_backend::StorageQuota;
+    use crate::ai_core::{CredentialProvider, EventSink, ServerCredentials, ServerProfile};
+    use crate::ai_stream::StreamChunk;
     use crate::providers::RemoteEntry;
-    use std::sync::Mutex;
+    use std::sync::{Arc, Mutex};
 
     fn entry(path: &str, is_dir: bool, size: u64) -> RemoteEntry {
         RemoteEntry {
@@ -3152,6 +3171,8 @@ mod tests {
         tree: std::collections::HashMap<String, Vec<RemoteEntry>>,
         /// path -> (is_dir, size)
         stats: std::collections::HashMap<String, (bool, u64)>,
+        downloads: std::collections::HashMap<String, Vec<u8>>,
+        uploads: Mutex<Vec<(String, Vec<u8>)>>,
         deleted: Mutex<Vec<String>>,
         deleted_recursive: Mutex<Vec<String>>,
         /// When set, `delete` fails with this message, the way a provider's
@@ -3185,6 +3206,8 @@ mod tests {
             Self {
                 tree,
                 stats,
+                downloads: std::collections::HashMap::new(),
+                uploads: Mutex::new(Vec::new()),
                 deleted: Mutex::new(Vec::new()),
                 deleted_recursive: Mutex::new(Vec::new()),
                 delete_fails_with: None,
@@ -3216,10 +3239,17 @@ mod tests {
             Ok(entry(path, is_dir, size))
         }
         async fn download_to_bytes(&self, _path: &str) -> Result<Vec<u8>, String> {
-            Err("unused".into())
+            self.downloads
+                .get(_path)
+                .cloned()
+                .ok_or_else(|| format!("unused download: {_path}"))
         }
-        async fn upload_from_bytes(&self, _data: &[u8], _path: &str) -> Result<(), String> {
-            Err("unused".into())
+        async fn upload_from_bytes(&self, data: &[u8], path: &str) -> Result<(), String> {
+            self.uploads
+                .lock()
+                .unwrap()
+                .push((path.to_string(), data.to_vec()));
+            Ok(())
         }
         async fn download(&self, _remote: &str, _local: &str) -> Result<(), String> {
             Err("unused".into())
@@ -3253,6 +3283,135 @@ mod tests {
         async fn storage_info(&self) -> Result<StorageQuota, String> {
             Err("unused".into())
         }
+    }
+
+    struct NoopSink;
+
+    impl EventSink for NoopSink {
+        fn emit_stream_chunk(&self, _stream_id: &str, _chunk: &StreamChunk) {}
+        fn emit_tool_progress(&self, _progress: &crate::ai_core::event_sink::ToolProgress) {}
+        fn emit_app_control(&self, _event_name: &str, _payload: &serde_json::Value) {}
+    }
+
+    struct NoopCreds;
+
+    impl CredentialProvider for NoopCreds {
+        fn list_servers(&self) -> Result<Vec<ServerProfile>, String> {
+            Ok(Vec::new())
+        }
+
+        fn get_credentials(&self, _server_id: &str) -> Result<ServerCredentials, String> {
+            Err("unused".to_string())
+        }
+
+        fn get_extra_options(&self, _server_id: &str) -> Result<ProviderExtraOptions, String> {
+            Ok(ProviderExtraOptions::new())
+        }
+    }
+
+    struct TestCtx {
+        backend: Arc<dyn RemoteBackend>,
+        sink: NoopSink,
+        creds: NoopCreds,
+    }
+
+    #[async_trait::async_trait]
+    impl ToolCtx for TestCtx {
+        fn event_sink(&self) -> &dyn EventSink {
+            &self.sink
+        }
+
+        fn credentials(&self) -> &dyn CredentialProvider {
+            &self.creds
+        }
+
+        async fn remote_backend(&self, _server_id: &str) -> Result<Arc<dyn RemoteBackend>, String> {
+            Ok(Arc::clone(&self.backend))
+        }
+
+        fn surface(&self) -> crate::ai_core::tools::Surfaces {
+            crate::ai_core::tools::Surfaces::MCP
+        }
+    }
+
+    fn test_ctx(backend: Arc<FakeBackend>) -> TestCtx {
+        let backend: Arc<dyn RemoteBackend> = backend;
+        TestCtx {
+            backend,
+            sink: NoopSink,
+            creds: NoopCreds,
+        }
+    }
+
+    #[tokio::test]
+    async fn edit_rejects_directory_before_download() {
+        let backend = Arc::new(FakeBackend::sample());
+        let ctx = test_ctx(Arc::clone(&backend));
+        let err = edit(
+            &ctx,
+            &json!({
+                "server": "s",
+                "path": "/root",
+                "find": "old",
+                "replace": "new",
+            }),
+        )
+        .await
+        .unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("directory"), "got: {msg}");
+        assert!(backend.uploads.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn edit_rejects_stat_oversize_before_download() {
+        let mut fake = FakeBackend::sample();
+        fake.stats
+            .insert("/root/large.txt".to_string(), (false, MAX_EDIT_BYTES + 1));
+        fake.downloads
+            .insert("/root/large.txt".to_string(), b"old".to_vec());
+        let backend = Arc::new(fake);
+        let ctx = test_ctx(Arc::clone(&backend));
+        let err = edit(
+            &ctx,
+            &json!({
+                "server": "s",
+                "path": "/root/large.txt",
+                "find": "old",
+                "replace": "new",
+            }),
+        )
+        .await
+        .unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("File too large"), "got: {msg}");
+        assert!(backend.uploads.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn edit_rejects_download_that_exceeds_cap_after_stat_lie() {
+        let mut fake = FakeBackend::sample();
+        fake.stats.insert("/root/lie.txt".to_string(), (false, 3));
+        fake.downloads.insert(
+            "/root/lie.txt".to_string(),
+            vec![b'a'; (MAX_EDIT_BYTES + 1) as usize],
+        );
+        let backend = Arc::new(fake);
+        let ctx = test_ctx(Arc::clone(&backend));
+        let err = edit(
+            &ctx,
+            &json!({
+                "server": "s",
+                "path": "/root/lie.txt",
+                "find": "a",
+                "replace": "b",
+            }),
+        )
+        .await
+        .unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("exceeded the edit limit"), "got: {msg}");
+        assert!(backend.uploads.lock().unwrap().is_empty());
     }
 
     #[test]

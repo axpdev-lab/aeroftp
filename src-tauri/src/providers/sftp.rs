@@ -1679,17 +1679,8 @@ impl StorageProvider for SftpProvider {
             })
         })?;
 
-        // Verify upload size
-        if let Err(error) = self
-            .verify_remote_upload_size(sftp, &full_path, total_size)
-            .await
-        {
-            tracing::warn!(
-                "SFTP: Upload size verification warning for {}: {}",
-                full_path,
-                error
-            );
-        }
+        self.verify_remote_upload_size(sftp, &full_path, total_size)
+            .await?;
 
         // Keep remote mtime aligned with the local source so repeated sync
         // scans don't re-upload unchanged files just because the server stamped
@@ -1853,16 +1844,8 @@ impl StorageProvider for SftpProvider {
                     })
                 })?;
 
-                if let Err(error) = self
-                    .verify_remote_upload_size(sftp, &full_path, total_size)
-                    .await
-                {
-                    tracing::warn!(
-                        "SFTP: Resume upload size verification warning for {}: {}",
-                        full_path,
-                        error
-                    );
-                }
+                self.verify_remote_upload_size(sftp, &full_path, total_size)
+                    .await?;
 
                 self.preserve_remote_mtime(sftp, &full_path, local_path)
                     .await;
