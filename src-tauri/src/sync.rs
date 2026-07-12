@@ -2786,13 +2786,16 @@ pub fn build_comparison_results_with_index(
         // Check if we can use the index for conflict detection
         let status = if let (Some(idx), Some(l), Some(r)) = (index, local, remote) {
             if let Some(cached) = idx.files.get(&path) {
-                // When cached timestamp is None (provider didn't return mtime),
-                // fall back to size-only comparison to avoid false conflicts.
-                let local_changed = l.size != cached.size
+                // Honor compare_size: a deferred-size crypt overlay reports
+                // compare_size=false (plaintext local size never equals on-wire
+                // ciphertext size), so size is not a reliable change signal for
+                // it and comparing it would flag every file as changed every
+                // cycle. Such providers fall back to timestamp only.
+                let local_changed = (options.compare_size && l.size != cached.size)
                     || (l.modified.is_some()
                         && cached.modified.is_some()
                         && !timestamps_equal(l.modified, cached.modified));
-                let remote_changed = r.size != cached.size
+                let remote_changed = (options.compare_size && r.size != cached.size)
                     || (r.modified.is_some()
                         && cached.modified.is_some()
                         && !timestamps_equal(r.modified, cached.modified));

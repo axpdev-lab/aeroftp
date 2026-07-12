@@ -186,7 +186,7 @@ impl CloudService {
         conflicts.clear();
     }
 
-    // --- Task 1 helpers: index-aware sync + safety gate + post-sync save ---
+    // --- Task 1/2 helpers: index-aware sync + safety gate + post-sync baseline ---
 
     fn load_index(&self, config: &CloudConfig) -> Option<SyncIndex> {
         let local = config.local_folder.to_string_lossy().to_string();
@@ -194,36 +194,117 @@ impl CloudService {
         load_sync_index(&local, &remote).ok().flatten()
     }
 
+    /// Resolve the action for a comparison EXACTLY as the executor does, so the
+    /// post-sync baseline is derived from the same decision that actually ran.
+    /// Conflicts/size mismatches go through the configured conflict strategy;
+    /// every other status goes through the central `decide_sync_action`.
+    /// Directory deletes are downgraded to `Skip`: AeroCloud removes files, not
+    /// directories, so counting or executing a dir delete would inflate the
+    /// report and orphan the tree.
+    fn resolve_action(&self, config: &CloudConfig, comparison: &FileComparison) -> SyncAction {
+        let action = match &comparison.status {
+            SyncStatus::Conflict | SyncStatus::SizeMismatch => match config.conflict_strategy {
+                ConflictStrategy::AskUser => SyncAction::AskUser,
+                ConflictStrategy::KeepBoth => SyncAction::KeepBoth,
+                ConflictStrategy::PreferLocal => SyncAction::Upload,
+                ConflictStrategy::PreferRemote => SyncAction::Download,
+                ConflictStrategy::PreferNewer => {
+                    let local_time = comparison.local_info.as_ref().and_then(|i| i.modified);
+                    let remote_time = comparison.remote_info.as_ref().and_then(|i| i.modified);
+                    match (local_time, remote_time) {
+                        (Some(l), Some(r)) if l > r => SyncAction::Upload,
+                        (Some(l), Some(r)) if r > l => SyncAction::Download,
+                        _ => SyncAction::AskUser,
+                    }
+                }
+            },
+            _ => decide_sync_action(
+                &comparison.status,
+                &config.sync_direction,
+                comparison.previously_synced,
+                config.preserve_remote_deletes,
+            ),
+        };
+        if comparison.is_dir && matches!(action, SyncAction::DeleteLocal | SyncAction::DeleteRemote)
+        {
+            return SyncAction::Skip;
+        }
+        action
+    }
+
+    /// How many files would have a delete propagated this cycle.
+    fn count_pending_deletes(&self, config: &CloudConfig, comparisons: &[FileComparison]) -> usize {
+        comparisons
+            .iter()
+            .filter(|c| {
+                matches!(
+                    self.resolve_action(config, c),
+                    SyncAction::DeleteLocal | SyncAction::DeleteRemote
+                )
+            })
+            .count()
+    }
+
+    /// Whether the delete-propagation safety gate should trip this cycle. Trips
+    /// when a prior baseline existed AND either a whole side is empty, or the
+    /// pending deletes exceed half of the prior baseline: a mass disappearance
+    /// is far more likely a transient/partial listing failure than a deliberate
+    /// user delete. The floor keeps tiny folders from tripping on a legitimate
+    /// "delete most of a 3-file folder".
+    fn delete_safety_trips(
+        prior_count: usize,
+        local_empty: bool,
+        remote_empty: bool,
+        pending_deletes: usize,
+    ) -> bool {
+        const MASS_DELETE_FLOOR: usize = 10;
+        if prior_count == 0 {
+            return false;
+        }
+        if local_empty || remote_empty {
+            return true;
+        }
+        prior_count >= MASS_DELETE_FLOOR && pending_deletes * 2 > prior_count
+    }
+
+    /// Persist the post-sync baseline so the NEXT cycle can tell a deleted file
+    /// (was baselined, now gone on one side) from a genuinely new file (never
+    /// baselined). The comparator OMITS Identical files, so the baseline is
+    /// carried FORWARD from the prior index and only the changed files (the
+    /// `comparisons`) are applied as deltas: deletes remove the entry, synced
+    /// files upsert the source-of-truth side, and unresolved conflicts are left
+    /// untouched so they stay conflicts. Rebuilding from `comparisons` alone
+    /// would drop every Identical file and silently wipe the baseline.
     fn save_post_sync_index(
         &self,
         local: &str,
         remote: &str,
         comparisons: &[FileComparison],
         result: &SyncOperationResult,
-        direction: CompareDirection,
-        preserve_remote_deletes: bool,
+        config: &CloudConfig,
+        prior_index: Option<&SyncIndex>,
     ) {
-        // Only persist baseline on clean successful run (no errors) to avoid
-        // advancing the "last known good" snapshot on a partial/broken cycle.
+        // Only persist on a clean run (no errors) to avoid advancing the
+        // "last known good" snapshot on a partial/broken cycle.
         if !result.errors.is_empty() {
             return;
         }
-        let mut index_files: HashMap<String, SyncIndexEntry> = HashMap::new();
+        let mut index_files: HashMap<String, SyncIndexEntry> =
+            prior_index.map(|i| i.files.clone()).unwrap_or_default();
         for c in comparisons {
-            let action = decide_sync_action(
-                &c.status,
-                &direction,
-                c.previously_synced,
-                preserve_remote_deletes,
-            );
-            if let Some(entry) = Self::baseline_entry_for(
+            let action = self.resolve_action(config, c);
+            if matches!(action, SyncAction::DeleteLocal | SyncAction::DeleteRemote) {
+                index_files.remove(&c.relative_path);
+            } else if let Some(entry) = Self::baseline_entry_for(
                 &action,
+                config.sync_direction,
                 c.local_info.as_ref(),
                 c.remote_info.as_ref(),
                 c.is_dir,
             ) {
                 index_files.insert(c.relative_path.clone(), entry);
             }
+            // AskUser / KeepBoth: leave the prior entry untouched (do not advance).
         }
         let idx = SyncIndex {
             version: 1,
@@ -242,20 +323,23 @@ impl CloudService {
         }
     }
 
-    /// Pick the baseline `SyncIndexEntry` to record for a file after a sync
-    /// cycle, keyed on the action that was actually applied. This must record
-    /// the SOURCE-of-truth side so the next cycle sees the file as unchanged:
-    /// an `Upload` converges remote onto local (record local), a `Download`
-    /// converges local onto remote (record remote). Recording the pre-transfer
-    /// local side for a download would make BOTH sides differ from the baseline
-    /// next cycle and surface a spurious `Conflict`.
+    /// Pick the baseline `SyncIndexEntry` for a file that stayed in sync this
+    /// cycle, recording the SOURCE-of-truth side so the next cycle sees it
+    /// unchanged instead of a spurious conflict:
+    /// - `Upload` converged remote onto local  -> record local
+    /// - `Download` converged local onto remote -> record remote
+    /// - `Skip` records the AUTHORITATIVE side for the direction: local for
+    ///   send-only (LocalToRemote), remote for receive-only (RemoteToLocal),
+    ///   either for Bidirectional (Skip there means Identical). Recording the
+    ///   authoritative side is what makes a tolerated one-sided edit in a
+    ///   directional folder stay tolerated across cycles instead of being
+    ///   reverted the following cycle by baseline bookkeeping.
     ///
-    /// Destructive or unresolved actions do NOT advance the baseline:
-    /// `DeleteLocal`/`DeleteRemote` (the file is gone), `AskUser` (unresolved
-    /// conflict, must stay a conflict) and `KeepBoth` (fork, re-evaluated next
-    /// cycle once the two copies settle).
+    /// Returns `None` for actions that must not advance the baseline
+    /// (`AskUser`, `KeepBoth`); deletes are handled by the caller.
     fn baseline_entry_for(
         action: &SyncAction,
+        direction: CompareDirection,
         local_info: Option<&FileInfo>,
         remote_info: Option<&FileInfo>,
         is_dir: bool,
@@ -263,7 +347,10 @@ impl CloudService {
         let info = match action {
             SyncAction::Upload => local_info,
             SyncAction::Download => remote_info,
-            SyncAction::Skip => local_info.or(remote_info),
+            SyncAction::Skip => match direction {
+                CompareDirection::RemoteToLocal => remote_info.or(local_info),
+                _ => local_info.or(remote_info),
+            },
             _ => None,
         };
         match info {
@@ -272,8 +359,8 @@ impl CloudService {
                 modified: fi.modified,
                 is_dir,
             }),
-            // A kept directory carries no file size/mtime but should still be
-            // tracked so it is not treated as new every cycle.
+            // A kept directory carries no size/mtime but must stay tracked so it
+            // is not treated as new (and re-created) every cycle.
             None if is_dir && matches!(action, SyncAction::Skip) => Some(SyncIndexEntry {
                 size: 0,
                 modified: None,
@@ -314,15 +401,9 @@ impl CloudService {
 
         // Load prior sync index (if any) for delete propagation + conflict detection.
         let index = self.load_index(&config);
-        let had_prior = index.as_ref().map_or(0, |i| i.files.len()) > 0;
-        let safety_trip = had_prior && (local_files.is_empty() || remote_files.is_empty());
-        if safety_trip {
-            tracing::warn!(
-                "AeroCloud safety gate (FTP): one side empty (L:{} R:{}) while prior index had entries. Disabling delete propagation this cycle to prevent accidental wipe.",
-                local_files.len(),
-                remote_files.len()
-            );
-        }
+        let prior_count = index.as_ref().map_or(0, |i| i.files.len());
+        let local_len = local_files.len();
+        let remote_len = remote_files.len();
 
         // Build comparison (index-aware for delete detection)
         let options = CompareOptions {
@@ -340,7 +421,24 @@ impl CloudService {
             &options,
             index.as_ref(),
         );
-        if safety_trip {
+
+        // Safety gate: refuse to propagate deletes when a mass disappearance
+        // looks like a transient/partial listing failure (a whole side empty,
+        // or deletes exceeding half the baseline) rather than a real user delete.
+        let pending_deletes = self.count_pending_deletes(&config, &comparisons);
+        if Self::delete_safety_trips(
+            prior_count,
+            local_len == 0,
+            remote_len == 0,
+            pending_deletes,
+        ) {
+            tracing::warn!(
+                "AeroCloud safety gate (FTP): {} pending deletes vs {} baselined (L:{} R:{}). Disabling delete propagation this cycle to prevent accidental wipe.",
+                pending_deletes,
+                prior_count,
+                local_len,
+                remote_len
+            );
             for c in &mut comparisons {
                 if c.status == SyncStatus::LocalOnly || c.status == SyncStatus::RemoteOnly {
                     c.previously_synced = false;
@@ -437,8 +535,8 @@ impl CloudService {
             &remote_str,
             &comparisons,
             &result,
-            config.sync_direction,
-            config.preserve_remote_deletes,
+            &config,
+            index.as_ref(),
         );
 
         // Update status
@@ -524,15 +622,9 @@ impl CloudService {
 
         // Load prior sync index (if any) for delete propagation + conflict detection.
         let index = self.load_index(&config);
-        let had_prior = index.as_ref().map_or(0, |i| i.files.len()) > 0;
-        let safety_trip = had_prior && (local_files.is_empty() || remote_files.is_empty());
-        if safety_trip {
-            tracing::warn!(
-                "AeroCloud safety gate (provider): one side empty (L:{} R:{}) while prior index had entries. Disabling delete propagation this cycle to prevent accidental wipe.",
-                local_files.len(),
-                remote_files.len()
-            );
-        }
+        let prior_count = index.as_ref().map_or(0, |i| i.files.len());
+        let local_len = local_files.len();
+        let remote_len = remote_files.len();
 
         // Enable checksum comparison when provider supplies content hashes (e.g. FileLu)
         let has_checksums = remote_files.values().any(|f| f.checksum.is_some());
@@ -559,7 +651,24 @@ impl CloudService {
             &options,
             index.as_ref(),
         );
-        if safety_trip {
+
+        // Safety gate: refuse to propagate deletes when a mass disappearance
+        // looks like a transient/partial listing failure (a whole side empty,
+        // or deletes exceeding half the baseline) rather than a real user delete.
+        let pending_deletes = self.count_pending_deletes(&config, &comparisons);
+        if Self::delete_safety_trips(
+            prior_count,
+            local_len == 0,
+            remote_len == 0,
+            pending_deletes,
+        ) {
+            tracing::warn!(
+                "AeroCloud safety gate (provider): {} pending deletes vs {} baselined (L:{} R:{}). Disabling delete propagation this cycle to prevent accidental wipe.",
+                pending_deletes,
+                prior_count,
+                local_len,
+                remote_len
+            );
             for c in &mut comparisons {
                 if c.status == SyncStatus::LocalOnly || c.status == SyncStatus::RemoteOnly {
                     c.previously_synced = false;
@@ -665,8 +774,8 @@ impl CloudService {
             &remote_str,
             &comparisons,
             &result,
-            config.sync_direction,
-            config.preserve_remote_deletes,
+            &config,
+            index.as_ref(),
         );
 
         // Update status
@@ -973,35 +1082,9 @@ impl CloudService {
         // Validate relative_path against traversal attacks (CF-004)
         validate_relative_path(&comparison.relative_path)?;
 
-        // Determine action based on status and conflict strategy.
-        // Non-conflict cases (incl. LocalOnly/RemoteOnly delete prop) go through
-        // the central decide_sync_action (index-aware).
-        let action = match &comparison.status {
-            SyncStatus::Conflict | SyncStatus::SizeMismatch => {
-                match config.conflict_strategy {
-                    ConflictStrategy::AskUser => SyncAction::AskUser,
-                    ConflictStrategy::KeepBoth => SyncAction::KeepBoth,
-                    ConflictStrategy::PreferLocal => SyncAction::Upload,
-                    ConflictStrategy::PreferRemote => SyncAction::Download,
-                    ConflictStrategy::PreferNewer => {
-                        // Compare timestamps
-                        let local_time = comparison.local_info.as_ref().and_then(|i| i.modified);
-                        let remote_time = comparison.remote_info.as_ref().and_then(|i| i.modified);
-                        match (local_time, remote_time) {
-                            (Some(l), Some(r)) if l > r => SyncAction::Upload,
-                            (Some(l), Some(r)) if r > l => SyncAction::Download,
-                            _ => SyncAction::AskUser,
-                        }
-                    }
-                }
-            }
-            _ => decide_sync_action(
-                &comparison.status,
-                &config.sync_direction,
-                comparison.previously_synced,
-                config.preserve_remote_deletes,
-            ),
-        };
+        // Resolve via the shared decision so the executed action and the
+        // recorded post-sync baseline are always derived the same way.
+        let action = self.resolve_action(config, comparison);
 
         // Execute action
         match &action {
@@ -1280,35 +1363,9 @@ impl CloudService {
         // Validate relative_path against traversal attacks (CF-004)
         validate_relative_path(&comparison.relative_path)?;
 
-        // Determine action based on status and conflict strategy.
-        // Non-conflict cases (incl. LocalOnly/RemoteOnly delete prop) go through
-        // the central decide_sync_action (index-aware).
-        let action = match &comparison.status {
-            SyncStatus::Conflict | SyncStatus::SizeMismatch => {
-                match config.conflict_strategy {
-                    ConflictStrategy::AskUser => SyncAction::AskUser,
-                    ConflictStrategy::KeepBoth => SyncAction::KeepBoth,
-                    ConflictStrategy::PreferLocal => SyncAction::Upload,
-                    ConflictStrategy::PreferRemote => SyncAction::Download,
-                    ConflictStrategy::PreferNewer => {
-                        // Compare timestamps
-                        let local_time = comparison.local_info.as_ref().and_then(|i| i.modified);
-                        let remote_time = comparison.remote_info.as_ref().and_then(|i| i.modified);
-                        match (local_time, remote_time) {
-                            (Some(l), Some(r)) if l > r => SyncAction::Upload,
-                            (Some(l), Some(r)) if r > l => SyncAction::Download,
-                            _ => SyncAction::AskUser,
-                        }
-                    }
-                }
-            }
-            _ => decide_sync_action(
-                &comparison.status,
-                &config.sync_direction,
-                comparison.previously_synced,
-                config.preserve_remote_deletes,
-            ),
-        };
+        // Resolve via the shared decision so the executed action and the
+        // recorded post-sync baseline are always derived the same way.
+        let action = self.resolve_action(config, comparison);
 
         // Execute action using provider methods
         match &action {
@@ -1516,15 +1573,51 @@ mod baseline_tests {
         }
     }
 
+    fn dir_info() -> FileInfo {
+        let mut d = fi(0, 0);
+        d.is_dir = true;
+        d
+    }
+
+    fn cmp(
+        status: SyncStatus,
+        local: Option<FileInfo>,
+        remote: Option<FileInfo>,
+        previously_synced: bool,
+        is_dir: bool,
+    ) -> FileComparison {
+        FileComparison {
+            relative_path: "f.txt".to_string(),
+            status,
+            local_info: local,
+            remote_info: remote,
+            is_dir,
+            sync_reason: String::new(),
+            previously_synced,
+        }
+    }
+
+    fn cfg(direction: CompareDirection, preserve: bool, strategy: ConflictStrategy) -> CloudConfig {
+        CloudConfig {
+            sync_direction: direction,
+            preserve_remote_deletes: preserve,
+            conflict_strategy: strategy,
+            ..Default::default()
+        }
+    }
+
+    // ---- baseline_entry_for: record the source-of-truth side ----
+
     // Download must record the REMOTE side (the content that landed locally),
-    // not the pre-download local side. Recording local here is the bug that
-    // makes the next cycle see a spurious Conflict.
+    // not the pre-download local side, else next cycle both sides differ from
+    // the baseline and the file surfaces as a spurious Conflict.
     #[test]
     fn download_records_remote_side_not_stale_local() {
-        let local = fi(10, 1000); // old local, about to be overwritten
-        let remote = fi(20, 2000); // new remote content pulled down
+        let local = fi(10, 1000);
+        let remote = fi(20, 2000);
         let entry = CloudService::baseline_entry_for(
             &SyncAction::Download,
+            CompareDirection::Bidirectional,
             Some(&local),
             Some(&remote),
             false,
@@ -1543,6 +1636,7 @@ mod baseline_tests {
         let remote = fi(10, 1000);
         let entry = CloudService::baseline_entry_for(
             &SyncAction::Upload,
+            CompareDirection::Bidirectional,
             Some(&local),
             Some(&remote),
             false,
@@ -1551,17 +1645,44 @@ mod baseline_tests {
         assert_eq!(entry.size, 30);
     }
 
+    // Receive-only Skip (a tolerated local edit) must follow the REMOTE
+    // authoritative side, so the local edit stays tolerated next cycle instead
+    // of being reverted by baseline bookkeeping.
     #[test]
-    fn skip_records_present_side() {
-        let remote = fi(7, 700);
-        let entry = CloudService::baseline_entry_for(&SyncAction::Skip, None, Some(&remote), false)
-            .unwrap();
-        assert_eq!(entry.size, 7);
+    fn skip_receive_only_records_remote_authoritative_side() {
+        let local = fi(30, 3000);
+        let remote = fi(10, 1000);
+        let entry = CloudService::baseline_entry_for(
+            &SyncAction::Skip,
+            CompareDirection::RemoteToLocal,
+            Some(&local),
+            Some(&remote),
+            false,
+        )
+        .unwrap();
+        assert_eq!(
+            entry.size, 10,
+            "receive-only baseline follows the remote side"
+        );
     }
 
-    // Unresolved / destructive actions must NOT advance the baseline.
     #[test]
-    fn conflict_and_keepboth_and_deletes_do_not_advance_baseline() {
+    fn skip_send_only_records_local_authoritative_side() {
+        let local = fi(30, 3000);
+        let remote = fi(99, 9000);
+        let entry = CloudService::baseline_entry_for(
+            &SyncAction::Skip,
+            CompareDirection::LocalToRemote,
+            Some(&local),
+            Some(&remote),
+            false,
+        )
+        .unwrap();
+        assert_eq!(entry.size, 30, "send-only baseline follows the local side");
+    }
+
+    #[test]
+    fn askuser_keepboth_deletes_do_not_advance_baseline() {
         let local = fi(1, 1);
         let remote = fi(2, 2);
         for action in [
@@ -1571,9 +1692,15 @@ mod baseline_tests {
             SyncAction::DeleteRemote,
         ] {
             assert!(
-                CloudService::baseline_entry_for(&action, Some(&local), Some(&remote), false)
-                    .is_none(),
-                "action {:?} must not record a baseline entry",
+                CloudService::baseline_entry_for(
+                    &action,
+                    CompareDirection::Bidirectional,
+                    Some(&local),
+                    Some(&remote),
+                    false
+                )
+                .is_none(),
+                "action {:?} must not advance baseline",
                 action
             );
         }
@@ -1581,7 +1708,78 @@ mod baseline_tests {
 
     #[test]
     fn kept_directory_is_tracked() {
-        let entry = CloudService::baseline_entry_for(&SyncAction::Skip, None, None, true).unwrap();
+        let entry = CloudService::baseline_entry_for(
+            &SyncAction::Skip,
+            CompareDirection::Bidirectional,
+            None,
+            None,
+            true,
+        )
+        .unwrap();
         assert!(entry.is_dir);
+    }
+
+    // ---- resolve_action: executor / baseline consistency ----
+
+    // Finding 4: in a directional folder a Conflict must follow the configured
+    // conflict strategy (AskUser here), NOT decide_sync_action's "local wins".
+    #[test]
+    fn resolve_action_conflict_uses_strategy_not_directional_upload() {
+        let svc = CloudService::new();
+        let c = cmp(
+            SyncStatus::Conflict,
+            Some(fi(1, 1)),
+            Some(fi(2, 2)),
+            true,
+            false,
+        );
+        let config = cfg(
+            CompareDirection::LocalToRemote,
+            true,
+            ConflictStrategy::AskUser,
+        );
+        assert_eq!(svc.resolve_action(&config, &c), SyncAction::AskUser);
+    }
+
+    // Finding 5: a directory that would be delete-propagated is downgraded to
+    // Skip so it is neither executed nor counted as a delete.
+    #[test]
+    fn resolve_action_directory_delete_downgraded_to_skip() {
+        let svc = CloudService::new();
+        let c = cmp(SyncStatus::RemoteOnly, None, Some(dir_info()), true, true);
+        let config = cfg(
+            CompareDirection::Bidirectional,
+            true,
+            ConflictStrategy::AskUser,
+        );
+        assert_eq!(svc.resolve_action(&config, &c), SyncAction::Skip);
+    }
+
+    #[test]
+    fn resolve_action_file_delete_still_propagates() {
+        let svc = CloudService::new();
+        let c = cmp(SyncStatus::RemoteOnly, None, Some(fi(5, 5)), true, false);
+        let config = cfg(
+            CompareDirection::Bidirectional,
+            true,
+            ConflictStrategy::AskUser,
+        );
+        assert_eq!(svc.resolve_action(&config, &c), SyncAction::DeleteRemote);
+    }
+
+    // ---- delete_safety_trips: mass-wipe guard ----
+
+    #[test]
+    fn safety_trips_on_empty_side_and_mass_delete_but_not_normal() {
+        // Whole side empty with a prior baseline -> trip.
+        assert!(CloudService::delete_safety_trips(20, true, false, 0));
+        // More than half of a >= floor baseline pending delete -> trip.
+        assert!(CloudService::delete_safety_trips(20, false, false, 11));
+        // A few deletes out of many -> no trip.
+        assert!(!CloudService::delete_safety_trips(20, false, false, 3));
+        // Tiny folder below the floor deleting most -> no trip (deliberate).
+        assert!(!CloudService::delete_safety_trips(3, false, false, 3));
+        // No prior baseline (first sync) -> never trip.
+        assert!(!CloudService::delete_safety_trips(0, true, true, 0));
     }
 }
