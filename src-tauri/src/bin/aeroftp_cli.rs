@@ -11141,17 +11141,8 @@ async fn cmd_aerocloud_sync(cli: &Cli, dry_run: bool, format: OutputFormat) -> i
         cloud_config, cloud_provider_factory, cloud_service, crypt_overlay_provider,
     };
 
-    // Vault must be open: the provider needs profile credentials, and the
-    // fail-closed crypt overlay depends on the decrypted profile list. Running
-    // without it would fail-open a crypt-bound profile, so refuse up front.
-    let store = match open_vault(cli) {
-        Ok(store) => store,
-        Err(err) => {
-            print_error(format, &err, 5);
-            return 5;
-        }
-    };
-
+    // Cheap config checks first, so a disabled / unconfigured AeroCloud fails
+    // fast WITHOUT forcing an unnecessary vault unlock prompt.
     let config = cloud_config::load_cloud_config();
     if !config.enabled {
         print_error(
@@ -11169,6 +11160,17 @@ async fn cmd_aerocloud_sync(cli: &Cli, dry_run: bool, format: OutputFormat) -> i
         );
         return 5;
     }
+
+    // Vault must be open: the provider needs profile credentials, and the
+    // fail-closed crypt overlay depends on the decrypted profile list. Running
+    // without it would fail-open a crypt-bound profile, so refuse up front.
+    let store = match open_vault(cli) {
+        Ok(store) => store,
+        Err(err) => {
+            print_error(format, &err, 5);
+            return 5;
+        }
+    };
 
     // Connect the provider via the multi-protocol factory.
     let mut provider = match cloud_provider_factory::create_cloud_provider(&config).await {
@@ -11207,6 +11209,9 @@ async fn cmd_aerocloud_sync(cli: &Cli, dry_run: bool, format: OutputFormat) -> i
     } else {
         svc.perform_full_sync_with_provider(&mut *provider).await
     };
+
+    // Provider-side cleanup (e.g. FTP logout), mirroring the background worker.
+    let _ = provider.disconnect().await;
 
     match result {
         Ok(r) => {

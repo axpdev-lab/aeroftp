@@ -584,10 +584,14 @@ impl CloudService {
         &self,
         provider: &mut P,
         config: &CloudConfig,
+        ensure_remote: bool,
     ) -> Result<SyncPlan, String> {
-        // Ensure remote folder exists before scanning (check first: some providers
-        // like FileLu create duplicates if mkdir is called on an existing folder)
-        if provider.cd(&config.remote_folder).await.is_err() {
+        // Probe the remote folder. A real run creates it if missing (check first:
+        // some providers like FileLu create duplicates if mkdir is called on an
+        // existing folder). A preview (`ensure_remote == false`) must NOT mutate
+        // the target: if the folder is absent it is treated as empty instead.
+        let remote_present = provider.cd(&config.remote_folder).await.is_ok();
+        if !remote_present && ensure_remote {
             if let Err(e) = provider.mkdir(&config.remote_folder).await {
                 tracing::warn!(
                     "Failed to create remote folder {}: {}",
@@ -599,18 +603,24 @@ impl CloudService {
 
         // Get file listings
         let local_files = self.scan_local_folder(config).await?;
-        let remote_files = match self
-            .scan_remote_folder_with_provider(provider, config)
-            .await
-        {
-            Ok(files) => files,
-            Err(e) => {
-                // Propagate OAuth 1.0a token revocation to the UI before returning.
-                // Without this, 4shared failures during scan only surface as a generic
-                // sync error with no actionable recovery path.
-                self.notify_reauth_if_token_revoked(&config.protocol_type, &e);
-                return Err(e);
+        let remote_files = if remote_present || ensure_remote {
+            match self
+                .scan_remote_folder_with_provider(provider, config)
+                .await
+            {
+                Ok(files) => files,
+                Err(e) => {
+                    // Propagate OAuth 1.0a token revocation to the UI before returning.
+                    // Without this, 4shared failures during scan only surface as a generic
+                    // sync error with no actionable recovery path.
+                    self.notify_reauth_if_token_revoked(&config.protocol_type, &e);
+                    return Err(e);
+                }
             }
+        } else {
+            // Preview against a not-yet-created remote: nothing is there, so every
+            // local file reads as new. No mkdir, no scan, no mutation.
+            HashMap::new()
         };
 
         let local_str = config.local_folder.to_string_lossy().to_string();
@@ -698,7 +708,7 @@ impl CloudService {
         let start_time = std::time::Instant::now();
 
         let SyncPlan { comparisons, .. } = self
-            .build_sync_plan_with_provider(provider, &config)
+            .build_sync_plan_with_provider(provider, &config, false)
             .await?;
 
         let mut result = SyncOperationResult {
@@ -713,6 +723,15 @@ impl CloudService {
         };
 
         for comparison in &comparisons {
+            // Mirror the executor: a traversal-crafted path is an error there, so
+            // the preview reports it as one rather than tallying its intended action.
+            if validate_relative_path(&comparison.relative_path).is_err() {
+                result.errors.push(format!(
+                    "{}: invalid relative path",
+                    comparison.relative_path
+                ));
+                continue;
+            }
             match self.resolve_action(&config, comparison) {
                 SyncAction::AskUser => result.conflicts += 1,
                 action => Self::record_sync_action(&mut result, comparison, &action),
@@ -755,7 +774,7 @@ impl CloudService {
             local_str,
             remote_str,
         } = self
-            .build_sync_plan_with_provider(provider, &config)
+            .build_sync_plan_with_provider(provider, &config, true)
             .await?;
 
         let total_files = comparisons.len() as u32;
