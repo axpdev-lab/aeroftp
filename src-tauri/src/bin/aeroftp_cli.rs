@@ -3179,6 +3179,18 @@ enum Commands {
         #[command(subcommand)]
         command: cli_aerovz::ArchiveCommands,
     },
+    /// AeroCloud folder sync: configure and run the always-on cloud folder from the CLI.
+    ///
+    /// AeroCloud keeps one local folder mirrored with a remote folder on a saved
+    /// profile (like Dropbox/Drive). The GUI configures it and a background worker
+    /// runs it on a schedule; these subcommands expose the same config plus a
+    /// one-shot `sync` so it is scriptable and headless-testable. `sync` needs
+    /// the vault open (see `--master-password` / AEROFTP_MASTER_PASSWORD).
+    #[command(name = "aerocloud")]
+    AeroCloud {
+        #[command(subcommand)]
+        command: AeroCloudCommands,
+    },
 }
 
 #[cfg(test)]
@@ -3213,6 +3225,51 @@ mod cli_dispatch_tests {
             .join()
             .expect("allowlist sync test panicked");
     }
+}
+
+/// `aeroftp aerocloud <sub>`: configure and run the AeroCloud folder sync.
+#[derive(Subcommand)]
+enum AeroCloudCommands {
+    /// Print the current AeroCloud configuration (folders, profile, direction,
+    /// interval, enabled, versioning, last sync).
+    Show,
+    /// Mutate the AeroCloud configuration. Only the flags you pass are changed;
+    /// everything else is preserved. Writes the config to disk on success.
+    Set {
+        /// Local folder to sync (absolute path recommended)
+        #[arg(long, value_name = "PATH")]
+        local: Option<String>,
+        /// Remote folder on the server (absolute path for FTP/SFTP/WebDAV)
+        #[arg(long, value_name = "PATH")]
+        remote: Option<String>,
+        /// Saved server profile name providing the connection + credentials
+        #[arg(long, value_name = "NAME")]
+        profile: Option<String>,
+        /// Sync direction: bidirectional | send-only | receive-only
+        #[arg(long, value_name = "DIR")]
+        direction: Option<String>,
+        /// Keep deletes from propagating to the read side (additive backup).
+        /// false makes the folder a mirror that deletes on the target side.
+        #[arg(long, value_name = "BOOL")]
+        preserve_remote_deletes: Option<bool>,
+        /// Background sync interval in seconds (0 disables the timer)
+        #[arg(long, value_name = "SECS")]
+        interval: Option<u64>,
+    },
+    /// Enable AeroCloud (sets enabled=true and saves).
+    Enable,
+    /// Disable AeroCloud (sets enabled=false and saves).
+    Disable,
+    /// Synthetic, machine-friendly status: enabled, last sync, folder pair, direction.
+    Status,
+    /// Run one synchronization cycle now (the same path the background worker uses).
+    /// Requires the vault open and AeroCloud enabled.
+    Sync {
+        /// Preview only: scan and report what would happen without transferring
+        /// or deleting anything, and without updating the sync baseline.
+        #[arg(long)]
+        dry_run: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -10906,6 +10963,361 @@ async fn peer_publish_flow(
             print_error(format, &format!("publish failed: {e}"), 1);
             1
         }
+    }
+}
+
+/// Map the CLI `--direction` string onto the serde `CompareDirection` used by
+/// the AeroCloud config. Pure so it can be unit-tested; returns `None` for an
+/// unrecognized value so the caller can emit a clear error.
+fn aerocloud_parse_direction(s: &str) -> Option<ftp_client_gui_lib::sync::CompareDirection> {
+    use ftp_client_gui_lib::sync::CompareDirection;
+    match s.trim().to_ascii_lowercase().as_str() {
+        "bidirectional" | "both" => Some(CompareDirection::Bidirectional),
+        "send-only" | "send_only" | "sendonly" => Some(CompareDirection::LocalToRemote),
+        "receive-only" | "receive_only" | "receiveonly" => Some(CompareDirection::RemoteToLocal),
+        _ => None,
+    }
+}
+
+/// Reverse of [`aerocloud_parse_direction`]: the stable CLI label for a stored
+/// direction, so `show`/`status` print the same vocabulary `set` accepts.
+fn aerocloud_direction_label(dir: ftp_client_gui_lib::sync::CompareDirection) -> &'static str {
+    use ftp_client_gui_lib::sync::CompareDirection;
+    match dir {
+        CompareDirection::Bidirectional => "bidirectional",
+        CompareDirection::LocalToRemote => "send-only",
+        CompareDirection::RemoteToLocal => "receive-only",
+    }
+}
+
+/// Print the full AeroCloud config (`aerocloud show`), machine-friendly on JSON.
+fn aerocloud_print_show(
+    config: &ftp_client_gui_lib::cloud_config::CloudConfig,
+    format: OutputFormat,
+) {
+    let direction = aerocloud_direction_label(config.sync_direction);
+    let last_sync = config.last_sync.map(|t| t.to_rfc3339());
+    if matches!(format, OutputFormat::Json) {
+        print_json(&serde_json::json!({
+            "enabled": config.enabled,
+            "paused": config.paused,
+            "localFolder": config.local_folder.to_string_lossy(),
+            "remoteFolder": config.remote_folder,
+            "serverProfile": config.server_profile,
+            "protocolType": config.protocol_type,
+            "direction": direction,
+            "preserveRemoteDeletes": config.preserve_remote_deletes,
+            "syncIntervalSecs": config.sync_interval_secs,
+            "syncOnChange": config.sync_on_change,
+            "syncOnStartup": config.sync_on_startup,
+            "versioningStrategy": config.versioning_strategy,
+            "lastSync": last_sync,
+        }));
+    } else {
+        let profile = if config.server_profile.is_empty() {
+            "(none)"
+        } else {
+            &config.server_profile
+        };
+        println!("AeroCloud configuration:");
+        println!("  enabled:                 {}", config.enabled);
+        println!(
+            "  local folder:            {}",
+            config.local_folder.display()
+        );
+        println!("  remote folder:           {}", config.remote_folder);
+        println!("  server profile:          {profile}");
+        println!("  protocol:                {}", config.protocol_type);
+        println!("  direction:               {direction}");
+        println!(
+            "  preserve remote deletes: {}",
+            config.preserve_remote_deletes
+        );
+        println!("  sync interval (secs):    {}", config.sync_interval_secs);
+        println!(
+            "  last sync:               {}",
+            last_sync.as_deref().unwrap_or("never")
+        );
+    }
+}
+
+/// Print the synthetic AeroCloud status (`aerocloud status`).
+fn aerocloud_print_status(
+    config: &ftp_client_gui_lib::cloud_config::CloudConfig,
+    format: OutputFormat,
+) {
+    let direction = aerocloud_direction_label(config.sync_direction);
+    let last_sync = config.last_sync.map(|t| t.to_rfc3339());
+    if matches!(format, OutputFormat::Json) {
+        print_json(&serde_json::json!({
+            "enabled": config.enabled,
+            "lastSync": last_sync,
+            "localFolder": config.local_folder.to_string_lossy(),
+            "remoteFolder": config.remote_folder,
+            "serverProfile": config.server_profile,
+            "direction": direction,
+        }));
+    } else {
+        println!(
+            "AeroCloud: {} | last sync: {} | {} <-> {} | {}",
+            if config.enabled {
+                "enabled"
+            } else {
+                "disabled"
+            },
+            last_sync.as_deref().unwrap_or("never"),
+            config.local_folder.display(),
+            config.remote_folder,
+            direction,
+        );
+    }
+}
+
+/// Print the result of a one-shot sync (`aerocloud sync`).
+fn aerocloud_print_sync_result(
+    r: &ftp_client_gui_lib::cloud_service::SyncOperationResult,
+    dry_run: bool,
+    format: OutputFormat,
+) {
+    if matches!(format, OutputFormat::Json) {
+        print_json(&serde_json::json!({
+            "status": "ok",
+            "dryRun": dry_run,
+            "uploaded": r.uploaded,
+            "downloaded": r.downloaded,
+            "deleted": r.deleted,
+            "skipped": r.skipped,
+            "conflicts": r.conflicts,
+            "errors": r.errors,
+            "durationSecs": r.duration_secs,
+        }));
+    } else {
+        if dry_run {
+            println!("AeroCloud dry-run (no changes made):");
+        } else {
+            println!("AeroCloud sync complete:");
+        }
+        println!("  uploaded:   {}", r.uploaded);
+        println!("  downloaded: {}", r.downloaded);
+        println!("  deleted:    {}", r.deleted);
+        println!("  skipped:    {}", r.skipped);
+        println!("  conflicts:  {}", r.conflicts);
+        println!("  errors:     {}", r.errors.len());
+        for e in &r.errors {
+            eprintln!("  error: {e}");
+        }
+        if !dry_run {
+            println!("  duration:   {}s", r.duration_secs);
+        }
+    }
+}
+
+/// Toggle `enabled` on the persisted AeroCloud config (`aerocloud enable|disable`).
+fn aerocloud_set_enabled(enabled: bool, format: OutputFormat) -> i32 {
+    use ftp_client_gui_lib::cloud_config;
+    let mut config = cloud_config::load_cloud_config();
+    config.enabled = enabled;
+    match cloud_config::save_cloud_config(&config) {
+        Ok(()) => {
+            if matches!(format, OutputFormat::Json) {
+                print_json(&serde_json::json!({ "status": "ok", "enabled": enabled }));
+            } else {
+                println!("AeroCloud {}", if enabled { "enabled" } else { "disabled" });
+            }
+            0
+        }
+        Err(e) => {
+            print_error(format, &e, 11);
+            11
+        }
+    }
+}
+
+/// One-shot AeroCloud sync. Replicates `perform_background_sync_inner`: connect
+/// the provider, apply the fail-closed crypt overlay, then run a full sync (or a
+/// read-only `--dry-run` preview) via `CloudService`. Requires the vault open.
+async fn cmd_aerocloud_sync(cli: &Cli, dry_run: bool, format: OutputFormat) -> i32 {
+    use ftp_client_gui_lib::{
+        cloud_config, cloud_provider_factory, cloud_service, crypt_overlay_provider,
+    };
+
+    // Vault must be open: the provider needs profile credentials, and the
+    // fail-closed crypt overlay depends on the decrypted profile list. Running
+    // without it would fail-open a crypt-bound profile, so refuse up front.
+    let store = match open_vault(cli) {
+        Ok(store) => store,
+        Err(err) => {
+            print_error(format, &err, 5);
+            return 5;
+        }
+    };
+
+    let config = cloud_config::load_cloud_config();
+    if !config.enabled {
+        print_error(
+            format,
+            "AeroCloud is not enabled. Configure it with `aeroftp aerocloud set ...` then `aeroftp aerocloud enable`.",
+            5,
+        );
+        return 5;
+    }
+    if config.server_profile.is_empty() {
+        print_error(
+            format,
+            "AeroCloud has no server profile. Set one with `aeroftp aerocloud set --profile <name>`.",
+            5,
+        );
+        return 5;
+    }
+
+    // Connect the provider via the multi-protocol factory.
+    let mut provider = match cloud_provider_factory::create_cloud_provider(&config).await {
+        Ok(provider) => provider,
+        Err(e) => {
+            print_error(format, &format!("failed to connect provider: {e}"), 1);
+            return 1;
+        }
+    };
+
+    // Crypt-overlay chokepoint (fail-closed), identical to the background sync:
+    // a crypt-bound profile speaks plaintext locally while the wire stays
+    // encrypted; a bound-but-locked vault refuses rather than running raw; a
+    // non-crypt profile is returned unchanged.
+    provider = match crypt_overlay_provider::wrap_connected_provider_for_profile_named(
+        provider,
+        &config.server_profile,
+        &store,
+    )
+    .await
+    {
+        Ok(provider) => provider,
+        Err(e) => {
+            print_error(format, &format!("crypt overlay refused the sync: {e}"), 6);
+            return 6;
+        }
+    };
+
+    // CloudService drives the scan/compare/execute. app_handle is None: emits
+    // are guarded, so it runs headless. `perform_*` ensures the remote folder.
+    let svc = cloud_service::CloudService::new();
+    svc.init(config.clone()).await;
+
+    let result = if dry_run {
+        svc.preview_full_sync_with_provider(&mut *provider).await
+    } else {
+        svc.perform_full_sync_with_provider(&mut *provider).await
+    };
+
+    match result {
+        Ok(r) => {
+            aerocloud_print_sync_result(&r, dry_run, format);
+            if r.errors.is_empty() {
+                0
+            } else {
+                4
+            }
+        }
+        Err(e) => {
+            print_error(format, &format!("sync failed: {e}"), 4);
+            4
+        }
+    }
+}
+
+/// Dispatcher for `aeroftp aerocloud ...`. `show`/`status`/`set`/`enable`/
+/// `disable` are pure config-file operations (no vault needed); `sync` connects
+/// and requires the vault open.
+async fn cmd_aerocloud(cli: &Cli, command: &AeroCloudCommands, format: OutputFormat) -> i32 {
+    use ftp_client_gui_lib::cloud_config;
+
+    match command {
+        AeroCloudCommands::Show => {
+            let config = cloud_config::load_cloud_config();
+            aerocloud_print_show(&config, format);
+            0
+        }
+        AeroCloudCommands::Status => {
+            let config = cloud_config::load_cloud_config();
+            aerocloud_print_status(&config, format);
+            0
+        }
+        AeroCloudCommands::Enable => aerocloud_set_enabled(true, format),
+        AeroCloudCommands::Disable => aerocloud_set_enabled(false, format),
+        AeroCloudCommands::Set {
+            local,
+            remote,
+            profile,
+            direction,
+            preserve_remote_deletes,
+            interval,
+        } => {
+            // Validate the direction BEFORE mutating anything so a typo never
+            // writes a partial config.
+            let parsed_direction = match direction {
+                Some(d) => match aerocloud_parse_direction(d) {
+                    Some(cd) => Some(cd),
+                    None => {
+                        print_error(
+                            format,
+                            &format!(
+                                "invalid --direction '{d}': expected bidirectional | send-only | receive-only"
+                            ),
+                            5,
+                        );
+                        return 5;
+                    }
+                },
+                None => None,
+            };
+
+            let mut config = cloud_config::load_cloud_config();
+            let mut changed = false;
+            if let Some(local) = local {
+                config.local_folder = std::path::PathBuf::from(local);
+                changed = true;
+            }
+            if let Some(remote) = remote {
+                config.remote_folder = remote.clone();
+                changed = true;
+            }
+            if let Some(profile) = profile {
+                config.server_profile = profile.clone();
+                changed = true;
+            }
+            if let Some(direction) = parsed_direction {
+                config.sync_direction = direction;
+                changed = true;
+            }
+            if let Some(preserve) = preserve_remote_deletes {
+                config.preserve_remote_deletes = *preserve;
+                changed = true;
+            }
+            if let Some(interval) = interval {
+                config.sync_interval_secs = *interval;
+                changed = true;
+            }
+
+            if !changed {
+                print_error(
+                    format,
+                    "no changes: pass at least one of --local/--remote/--profile/--direction/--preserve-remote-deletes/--interval",
+                    5,
+                );
+                return 5;
+            }
+
+            match cloud_config::save_cloud_config(&config) {
+                Ok(()) => {
+                    aerocloud_print_show(&config, format);
+                    0
+                }
+                Err(e) => {
+                    print_error(format, &e, 11);
+                    11
+                }
+            }
+        }
+        AeroCloudCommands::Sync { dry_run } => cmd_aerocloud_sync(cli, *dry_run, format).await,
     }
 }
 
@@ -58296,6 +58708,7 @@ async fn main() {
             .await
         }
         Commands::Archive { command } => cli_aerovz::cmd_archive(command, &cli, format),
+        Commands::AeroCloud { command } => cmd_aerocloud(&cli, command, format).await,
         Commands::Vault { command } => 'vault_command: {
             if let Some(message) = cli_aerovz::vault_plaintext_lane_rejection(command) {
                 print_error(format, &message, 5);
@@ -60753,6 +61166,160 @@ mod tests {
     use super::*;
     use ftp_client_gui_lib::profile_loader::insert_profile_option;
     use serde_json::json;
+
+    #[test]
+    fn aerocloud_direction_maps_cli_to_serde() {
+        use ftp_client_gui_lib::sync::CompareDirection;
+        assert_eq!(
+            aerocloud_parse_direction("bidirectional"),
+            Some(CompareDirection::Bidirectional)
+        );
+        assert_eq!(
+            aerocloud_parse_direction("send-only"),
+            Some(CompareDirection::LocalToRemote)
+        );
+        assert_eq!(
+            aerocloud_parse_direction("receive-only"),
+            Some(CompareDirection::RemoteToLocal)
+        );
+        // Tolerant of case, surrounding whitespace, and underscore spelling.
+        assert_eq!(
+            aerocloud_parse_direction("  Send_Only "),
+            Some(CompareDirection::LocalToRemote)
+        );
+        assert_eq!(
+            aerocloud_parse_direction("both"),
+            Some(CompareDirection::Bidirectional)
+        );
+    }
+
+    #[test]
+    fn aerocloud_direction_rejects_invalid() {
+        assert_eq!(aerocloud_parse_direction("upload"), None);
+        assert_eq!(aerocloud_parse_direction("push"), None);
+        assert_eq!(aerocloud_parse_direction(""), None);
+        assert_eq!(aerocloud_parse_direction("sideways"), None);
+    }
+
+    #[test]
+    fn aerocloud_direction_label_roundtrips() {
+        use ftp_client_gui_lib::sync::CompareDirection;
+        for dir in [
+            CompareDirection::Bidirectional,
+            CompareDirection::LocalToRemote,
+            CompareDirection::RemoteToLocal,
+        ] {
+            let label = aerocloud_direction_label(dir);
+            assert_eq!(
+                aerocloud_parse_direction(label),
+                Some(dir),
+                "label {label} must parse back to {dir:?}"
+            );
+        }
+    }
+
+    /// Building the full `Cli` clap command tree overflows the 2MB default test
+    /// stack (the tree is enormous), so run clap-parsing assertions on a 32MB
+    /// thread exactly like `dispatcher_allowlist_matches_clap_subcommands`.
+    fn on_big_stack<F: FnOnce() + Send + 'static>(f: F) {
+        std::thread::Builder::new()
+            .stack_size(32 * 1024 * 1024)
+            .spawn(f)
+            .expect("spawn big-stack test thread")
+            .join()
+            .expect("big-stack test body panicked");
+    }
+
+    #[test]
+    fn aerocloud_set_flags_parse_via_clap() {
+        on_big_stack(|| {
+            // The `set` subcommand must accept each documented flag and leave
+            // unspecified flags as None (so a partial `set` preserves the rest).
+            let cli = Cli::try_parse_from([
+                "aeroftp",
+                "aerocloud",
+                "set",
+                "--local",
+                "/home/me/Cloud",
+                "--remote",
+                "/srv/cloud/",
+                "--profile",
+                "NAS",
+                "--direction",
+                "send-only",
+                "--preserve-remote-deletes",
+                "false",
+                "--interval",
+                "300",
+            ])
+            .expect("set flags must parse");
+            match cli.command {
+                Commands::AeroCloud {
+                    command:
+                        AeroCloudCommands::Set {
+                            local,
+                            remote,
+                            profile,
+                            direction,
+                            preserve_remote_deletes,
+                            interval,
+                        },
+                } => {
+                    assert_eq!(local.as_deref(), Some("/home/me/Cloud"));
+                    assert_eq!(remote.as_deref(), Some("/srv/cloud/"));
+                    assert_eq!(profile.as_deref(), Some("NAS"));
+                    assert_eq!(direction.as_deref(), Some("send-only"));
+                    assert_eq!(preserve_remote_deletes, Some(false));
+                    assert_eq!(interval, Some(300));
+                }
+                _ => panic!("expected aerocloud set subcommand"),
+            }
+        });
+    }
+
+    #[test]
+    fn aerocloud_set_defaults_are_none() {
+        on_big_stack(|| {
+            // A bare `set` leaves every field None so nothing is mutated.
+            let cli =
+                Cli::try_parse_from(["aeroftp", "aerocloud", "set"]).expect("bare set must parse");
+            match cli.command {
+                Commands::AeroCloud {
+                    command:
+                        AeroCloudCommands::Set {
+                            local,
+                            remote,
+                            profile,
+                            direction,
+                            preserve_remote_deletes,
+                            interval,
+                        },
+                } => {
+                    assert!(local.is_none());
+                    assert!(remote.is_none());
+                    assert!(profile.is_none());
+                    assert!(direction.is_none());
+                    assert!(preserve_remote_deletes.is_none());
+                    assert!(interval.is_none());
+                }
+                _ => panic!("expected aerocloud set subcommand"),
+            }
+        });
+    }
+
+    #[test]
+    fn aerocloud_sync_dry_run_flag_parses() {
+        on_big_stack(|| {
+            let cli = Cli::try_parse_from(["aeroftp", "aerocloud", "sync", "--dry-run"])
+                .expect("sync --dry-run must parse");
+            assert!(matches!(
+                cli.command,
+                Commands::AeroCloud {
+                    command: AeroCloudCommands::Sync { dry_run: true }
+                }
+            ));
+        });
+    }
 
     #[test]
     fn test_decide_import_merge_reports_skipped_indices() {

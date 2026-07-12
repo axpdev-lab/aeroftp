@@ -93,6 +93,7 @@ pub const CLI_SUBCOMMANDS: &[&str] = &[
     "compress",
     "extract",
     "archive",
+    "aerocloud",
 ];
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

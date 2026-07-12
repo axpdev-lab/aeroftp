@@ -86,6 +86,15 @@ pub struct SyncOperationResult {
     pub file_details: Vec<SyncedFileDetail>,
 }
 
+/// The scanned + compared sync plan produced by `build_sync_plan_with_provider`.
+/// Internal seam shared by the real executor and the `--dry-run` preview.
+struct SyncPlan {
+    comparisons: Vec<FileComparison>,
+    index: Option<SyncIndex>,
+    local_str: String,
+    remote_str: String,
+}
+
 /// A file conflict that needs resolution
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FileConflict {
@@ -566,29 +575,16 @@ impl CloudService {
         Ok(result)
     }
 
-    /// Perform a full sync using any StorageProvider (multi-protocol support)
-    /// This is the new unified sync method that works with FTP, WebDAV, S3, etc.
-    pub async fn perform_full_sync_with_provider<P: StorageProvider + ?Sized>(
+    /// Scan both sides, load the prior index, build the index-aware comparison
+    /// set, and apply the mass-delete safety gate. Shared source of truth for
+    /// the real executor ([`Self::perform_full_sync_with_provider`]) and the
+    /// read-only preview ([`Self::preview_full_sync_with_provider`]) so a
+    /// `--dry-run` plan is derived from byte-identical inputs to a real run.
+    async fn build_sync_plan_with_provider<P: StorageProvider + ?Sized>(
         &self,
         provider: &mut P,
-    ) -> Result<SyncOperationResult, String> {
-        let config = self.config.read().await.clone();
-
-        if !config.enabled {
-            return Err("AeroCloud is not enabled".to_string());
-        }
-
-        let start_time = std::time::Instant::now();
-
-        // Update status to syncing
-        self.set_status(CloudSyncStatus::Syncing {
-            current_file: "Scanning files...".to_string(),
-            progress: 0.0,
-            files_done: 0,
-            files_total: 0,
-        })
-        .await;
-
+        config: &CloudConfig,
+    ) -> Result<SyncPlan, String> {
         // Ensure remote folder exists before scanning (check first: some providers
         // like FileLu create duplicates if mkdir is called on an existing folder)
         if provider.cd(&config.remote_folder).await.is_err() {
@@ -602,9 +598,9 @@ impl CloudService {
         }
 
         // Get file listings
-        let local_files = self.scan_local_folder(&config).await?;
+        let local_files = self.scan_local_folder(config).await?;
         let remote_files = match self
-            .scan_remote_folder_with_provider(provider, &config)
+            .scan_remote_folder_with_provider(provider, config)
             .await
         {
             Ok(files) => files,
@@ -621,7 +617,7 @@ impl CloudService {
         let remote_str = config.remote_folder.clone();
 
         // Load prior sync index (if any) for delete propagation + conflict detection.
-        let index = self.load_index(&config);
+        let index = self.load_index(config);
         let prior_count = index.as_ref().map_or(0, |i| i.files.len());
         let local_len = local_files.len();
         let remote_len = remote_files.len();
@@ -655,7 +651,7 @@ impl CloudService {
         // Safety gate: refuse to propagate deletes when a mass disappearance
         // looks like a transient/partial listing failure (a whole side empty,
         // or deletes exceeding half the baseline) rather than a real user delete.
-        let pending_deletes = self.count_pending_deletes(&config, &comparisons);
+        let pending_deletes = self.count_pending_deletes(config, &comparisons);
         if Self::delete_safety_trips(
             prior_count,
             local_len == 0,
@@ -675,6 +671,92 @@ impl CloudService {
                 }
             }
         }
+
+        Ok(SyncPlan {
+            comparisons,
+            index,
+            local_str,
+            remote_str,
+        })
+    }
+
+    /// Read-only `--dry-run` preview: scan and compare both sides exactly like a
+    /// real run, then tally the action each file WOULD receive without touching
+    /// the provider (no upload/download/delete) and without persisting the index.
+    /// Reuses [`Self::resolve_action`], the same decision the executor runs, so
+    /// the preview and a subsequent real sync agree.
+    pub async fn preview_full_sync_with_provider<P: StorageProvider + ?Sized>(
+        &self,
+        provider: &mut P,
+    ) -> Result<SyncOperationResult, String> {
+        let config = self.config.read().await.clone();
+
+        if !config.enabled {
+            return Err("AeroCloud is not enabled".to_string());
+        }
+
+        let start_time = std::time::Instant::now();
+
+        let SyncPlan { comparisons, .. } = self
+            .build_sync_plan_with_provider(provider, &config)
+            .await?;
+
+        let mut result = SyncOperationResult {
+            uploaded: 0,
+            downloaded: 0,
+            deleted: 0,
+            skipped: 0,
+            conflicts: 0,
+            errors: Vec::new(),
+            duration_secs: 0,
+            file_details: Vec::new(),
+        };
+
+        for comparison in &comparisons {
+            match self.resolve_action(&config, comparison) {
+                SyncAction::AskUser => result.conflicts += 1,
+                action => Self::record_sync_action(&mut result, comparison, &action),
+            }
+        }
+
+        result.duration_secs = start_time.elapsed().as_secs();
+        Ok(result)
+    }
+
+    /// Perform a full sync using any StorageProvider (multi-protocol support)
+    /// This is the new unified sync method that works with FTP, WebDAV, S3, etc.
+    pub async fn perform_full_sync_with_provider<P: StorageProvider + ?Sized>(
+        &self,
+        provider: &mut P,
+    ) -> Result<SyncOperationResult, String> {
+        let config = self.config.read().await.clone();
+
+        if !config.enabled {
+            return Err("AeroCloud is not enabled".to_string());
+        }
+
+        let start_time = std::time::Instant::now();
+
+        // Update status to syncing
+        self.set_status(CloudSyncStatus::Syncing {
+            current_file: "Scanning files...".to_string(),
+            progress: 0.0,
+            files_done: 0,
+            files_total: 0,
+        })
+        .await;
+
+        // Scan both sides, build the index-aware comparison set, and apply the
+        // mass-delete safety gate (shared with the `--dry-run` preview so both
+        // derive from byte-identical inputs).
+        let SyncPlan {
+            comparisons,
+            index,
+            local_str,
+            remote_str,
+        } = self
+            .build_sync_plan_with_provider(provider, &config)
+            .await?;
 
         let total_files = comparisons.len() as u32;
         let mut result = SyncOperationResult {
