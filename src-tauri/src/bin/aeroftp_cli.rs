@@ -29813,10 +29813,8 @@ async fn cmd_mkdir(
             Ok(()) => {
                 match format {
                     OutputFormat::Text => {
-                        if !cli.quiet {
-                            if !cli.is_machine_mode() {
+                        if !cli.quiet && !cli.is_machine_mode() {
                             eprintln!("Created directory: {}", path);
-                        }
                         }
                     }
                     OutputFormat::Json => print_json(&serde_json::json!({
@@ -30868,10 +30866,8 @@ async fn cmd_edit(
     if occurrences == 0 {
         match format {
             OutputFormat::Text => {
-                if !cli.quiet {
-                    if !cli.is_machine_mode() {
-                        eprintln!("No matches found in {}", path);
-                    }
+                if !cli.quiet && !cli.is_machine_mode() {
+                    eprintln!("No matches found in {}", path);
                 }
             }
             OutputFormat::Json => {
@@ -61865,6 +61861,7 @@ mod tests {
             format: OutputFormat::Text,
             json: false,
             json_fields: None,
+            machine: false,
             no_banner: false,
             password_stdin: false,
             key: None,

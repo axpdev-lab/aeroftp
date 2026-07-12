@@ -3024,6 +3024,7 @@ impl StorageProvider for WebDavProvider {
             .request(webdav_methods::move_method(), from)
             .header("Destination", destination)
             .header("Overwrite", "F") // Don't overwrite existing
+            .header("Depth", "0")
             .send()
             .await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;

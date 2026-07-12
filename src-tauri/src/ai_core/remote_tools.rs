@@ -279,6 +279,7 @@ fn alias_name(tool_name: &str) -> &str {
         "remote_delete_many" => "aeroftp_delete_many",
         "remote_mkdir" | "remote_create_directory" => "aeroftp_create_directory",
         "remote_rename" => "aeroftp_rename",
+        "remote_edit" => "aeroftp_edit",
         "remote_stat" | "remote_info" | "remote_file_info" => "aeroftp_file_info",
         "remote_search" | "remote_search_files" => "aeroftp_search_files",
         "remote_storage_quota" => "aeroftp_storage_quota",
@@ -361,6 +362,7 @@ pub async fn dispatch_remote_tool(
         "aeroftp_delete" => delete(ctx, args).await,
         "aeroftp_delete_many" => delete_many(ctx, args).await,
         "aeroftp_rename" => rename(ctx, args).await,
+        "aeroftp_edit" => edit(ctx, args).await,
         "aeroftp_storage_quota" => storage_quota(ctx, args).await,
         "aeroftp_hashsum" => hashsum(ctx, args).await,
         "aeroftp_head" => head_file(ctx, args).await,
@@ -772,12 +774,36 @@ async fn preview_delete(
     path: &str,
     recursive: bool,
 ) -> Result<DeletePreview, ToolError> {
-    let root = backend.stat(path).await.map_err(ToolError::Exec)?;
-    if !root.is_dir {
+    // S3/MinIO (and similar) use pseudo-directories: a prefix like "/dir"
+    // may have children under "/dir/..." but no object at the exact "/dir" key.
+    // stat() then fails with "not found", but recursive delete and list(prefix)
+    // succeed. Tolerate the not-found for recursive dir previews so dry-run
+    // is predictive (addresses Codex finding 2026-07-12).
+    let (is_dir, root_size): (bool, u64) = match backend.stat(path).await {
+        Ok(r) => (r.is_dir, r.size),
+        Err(e) => {
+            let em = e.to_lowercase();
+            if recursive
+                && (em.contains("not found")
+                    || em.contains("path not found")
+                    || em.contains("404")
+                    || em.contains("no such")
+                    || em.contains("does not exist"))
+            {
+                // Assume pseudo-directory for recursive preview; contents will
+                // be discovered by list below.
+                (true, 0)
+            } else {
+                return Err(ToolError::Exec(e));
+            }
+        }
+    };
+
+    if !is_dir {
         return Ok(DeletePreview {
             files: 1,
             directories: 0,
-            bytes: root.size,
+            bytes: root_size,
             truncated: false,
         });
     }
@@ -803,7 +829,7 @@ async fn preview_delete(
     }
 
     let mut files = 0u64;
-    let mut directories = 1u64; // the root itself
+    let mut directories = 1u64; // the root itself (even for pseudo-dir)
     let mut bytes = 0u64;
     let mut truncated = false;
     let mut queue: Vec<(String, usize)> = vec![(path.to_string(), 0)];
@@ -1024,6 +1050,96 @@ async fn rename(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
     let backend = ctx.remote_backend(&server).await.map_err(backend_error)?;
     backend.rename(&from, &to).await.map_err(ToolError::Exec)?;
     Ok(json!({ "server": server, "from": from, "to": to, "renamed": true }))
+}
+
+const MAX_EDIT_BYTES: u64 = 10 * 1024 * 1024;
+
+/// Find-and-replace on a remote UTF-8 text file (MCP/CLI surface).
+/// In-memory for files <= 10 MiB. Rejects directories and non-UTF8 (binary).
+/// If no match for `find`, returns no_op and does not re-upload.
+async fn edit(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
+    let server = normalize_server(args)?;
+    let path = get_str(args, "path")?;
+    validate_remote_path(&path, "path")?;
+    let find = get_str(args, "find")?;
+    let replace = get_str(args, "replace")?;
+    let first_only = get_bool_opt(args, "first").unwrap_or(false);
+
+    let backend = ctx.remote_backend(&server).await.map_err(backend_error)?;
+    let entry = backend.stat(&path).await.map_err(ToolError::Exec)?;
+    if entry.is_dir {
+        return Err(ToolError::Exec("Cannot edit a directory.".to_string()));
+    }
+    if entry.size > MAX_EDIT_BYTES {
+        return Err(ToolError::Exec(format!(
+            "File too large ({} bytes). Limit: 10 MB. Use aeroftp_download_file + local edit for larger files.",
+            entry.size
+        )));
+    }
+
+    let data = backend
+        .download_to_bytes(&path)
+        .await
+        .map_err(ToolError::Exec)?;
+    let original = match String::from_utf8(data) {
+        Ok(s) => s,
+        Err(_) => {
+            return Err(ToolError::Exec(
+                "File appears binary (non-UTF-8). aeroftp_edit supports UTF-8 text only."
+                    .to_string(),
+            ))
+        }
+    };
+
+    let bytes_before = original.len() as u64;
+
+    let (new_text, replacements) = if find.is_empty() {
+        // Empty find: treat as no-op (or could insert at start, but spec implies search).
+        (original.clone(), 0usize)
+    } else if first_only {
+        if let Some(pos) = original.find(&find) {
+            let mut s = original.clone();
+            let end = pos + find.len();
+            s.replace_range(pos..end, &replace);
+            (s, 1)
+        } else {
+            (original.clone(), 0)
+        }
+    } else {
+        let count = original.matches(&find).count();
+        if count == 0 {
+            (original.clone(), 0)
+        } else {
+            (original.replace(&find, &replace), count)
+        }
+    };
+
+    let bytes_after = new_text.len() as u64;
+
+    if replacements == 0 {
+        return Ok(json!({
+            "server": server,
+            "path": path,
+            "replacements": 0,
+            "bytes_before": bytes_before,
+            "bytes_after": bytes_before,
+            "no_op": true,
+            "reason": "no match for find string"
+        }));
+    }
+
+    backend
+        .upload_from_bytes(new_text.as_bytes(), &path)
+        .await
+        .map_err(ToolError::Exec)?;
+
+    Ok(json!({
+        "server": server,
+        "path": path,
+        "replacements": replacements,
+        "bytes_before": bytes_before,
+        "bytes_after": bytes_after
+    }))
 }
 
 /// `remote_versions`: browse and manage a file's version history.

@@ -1300,6 +1300,32 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             surfaces: remote_surfaces,
         },
         ToolDef {
+            name: "aeroftp_edit",
+            description: "Find-and-replace on a remote UTF-8 text file without downloading it locally. Replaces all occurrences by default, or only the first when `first=true`. Returns the number of replacements and bytes before/after. If no match is found, the file is NOT re-uploaded (no-op). Rejects binary files, files larger than 10 MB, and directories.",
+            input_schema: json!({ "type": "object", "properties": {
+                "server": { "type": "string", "description": "Server name or ID" },
+                "path": { "type": "string", "description": "Remote file path (UTF-8 text)" },
+                "find": { "type": "string", "description": "Literal string to search for (not a regex)" },
+                "replace": { "type": "string", "description": "Replacement string" },
+                "first": { "type": "boolean", "description": "Replace only the first occurrence (default: false: replace all)" }
+            }, "required": ["server", "path", "find", "replace"] }),
+            danger: DangerLevel::Medium,
+            surfaces: remote_surfaces,
+        },
+        ToolDef {
+            name: "remote_edit",
+            description: "Legacy alias of aeroftp_edit (GUI surface uses a different implementation).",
+            input_schema: json!({ "type": "object", "properties": {
+                "server": { "type": "string" },
+                "path": { "type": "string" },
+                "find": { "type": "string" },
+                "replace": { "type": "string" },
+                "first": { "type": "boolean" }
+            }, "required": ["server", "path", "find", "replace"] }),
+            danger: DangerLevel::Medium,
+            surfaces: remote_surfaces,
+        },
+        ToolDef {
             name: "remote_versions",
             description: "Browse and manage a remote file's version history (S3-family and other version-aware providers). action=list returns versions newest-first ({version_id, modified, size, modified_by}); action=restore copies an older version forward to a new current version (needs version_id); action=purge permanently deletes one version (needs version_id, irreversible). Defaults to list.",
             input_schema: json!({
@@ -1938,13 +1964,6 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             danger: DangerLevel::Safe,
             surfaces: Surfaces::GUI,
         },
-        ToolDef {
-            name: "remote_edit",
-            description: "Edit a remote file by finding and replacing a string.",
-            input_schema: json!({ "type": "object" }),
-            danger: DangerLevel::Medium,
-            surfaces: Surfaces::GUI,
-        },
         // ─── Error correction: detached .aerocorrect sidecars (MCP) ──────────
         ToolDef {
             name: "aeroftp_correct_gen",
@@ -2107,6 +2126,7 @@ pub async fn dispatch_tool(
         | "remote_delete_many"
         | "aeroftp_rename"
         | "remote_rename"
+        | "aeroftp_edit"
         | "aeroftp_storage_quota"
         | "remote_storage_quota"
         | "aeroftp_hashsum"
