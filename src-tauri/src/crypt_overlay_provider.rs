@@ -1818,19 +1818,6 @@ async fn unlock_overlay_keys_encrypting(
             } else if let Some(config_json) = local_headerless_config_from_params(params)? {
                 derive_aerocrypt_overlay_keys_from_config(&config_json, password, keyfile_digest)?
             } else if allow_init {
-                // Clobber guard (audit FINDING 1): a configured profile (profile_id is Some)
-                // MUST have its keystore config if it's headerless. Falling through to bootstrap
-                // would silently mint a new random salt and upload a new marker, permanently
-                // orphaning the existing files. Fail closed instead.
-                if params.profile_id.is_some() {
-                    return Err(
-                        "Cannot unlock AeroCrypt vault: no remote header found and local keystore \
-                         metadata is missing. If this is a headerless vault, you must recover it \
-                         using your Emergency Kit."
-                            .to_string(),
-                    );
-                }
-
                 // Bootstrap a fresh AECR v3 overlay and persist its config so the
                 // empty folder becomes a self-describing crypt store on first
                 // activation (length-bound content + key-bound config MAC). Only the
@@ -1883,34 +1870,74 @@ async fn unlock_overlay_keys_encrypting(
                     .map_err(|e| format!("Cannot stage AeroCrypt overlay config: {e}"))?;
 
                 if with_header {
+                    // Headed vault: the on-remote marker is the source of truth,
+                    // exactly like the CLI `crypt init --with-header`. No keystore
+                    // metadata is written (connect reads the marker).
                     provider
                         .upload(&staged.path().to_string_lossy(), &config_path, None)
                         .await
                         .map_err(|e| format!("Cannot write AeroCrypt overlay config: {e}"))?;
-                }
-
-                if let Some(id) = &params.profile_id {
-                    if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
-                        use base64::Engine as _;
-                        let _ = crate::user_partitions::store_active_credential_typed_dual(
-                            &store,
-                            &format!("aerocrypt_overlay_salt_{}", id),
-                            &base64::engine::general_purpose::STANDARD.encode(salt),
-                            "aerocrypt_overlay_salt",
-                        );
-                        let _ = crate::user_partitions::store_active_credential_typed_dual(
-                            &store,
-                            &format!("aerocrypt_overlay_config_{}", id),
-                            &json,
-                            "aerocrypt_overlay_config",
-                        );
+                } else {
+                    // Headerless (default): persist the complete public config in the
+                    // local keystore keyed by profile id, so connect-time unlock finds
+                    // the metadata with no remote marker (mirrors the CLI headerless
+                    // `crypt init`). This MUST be durable and fail-closed: a swallowed
+                    // write would hand back a usable overlay whose metadata was never
+                    // saved, permanently orphaning every file encrypted under it.
+                    let id = params.profile_id.as_deref().ok_or_else(|| {
+                        "Cannot create a headerless AeroCrypt vault without a saved profile to store \
+                         its metadata. Save the profile first, or enable the on-remote header."
+                            .to_string()
+                    })?;
+                    let store = crate::credential_store::CredentialStore::from_cache().ok_or_else(
+                        || {
+                            "Cannot persist AeroCrypt overlay metadata: the local keystore is \
+                             unavailable."
+                                .to_string()
+                        },
+                    )?;
+                    use base64::Engine as _;
+                    let config_key = format!("aerocrypt_overlay_config_{id}");
+                    let salt_key = format!("aerocrypt_overlay_salt_{id}");
+                    let salt_b64 = base64::engine::general_purpose::STANDARD.encode(salt);
+                    // Transactional: write the config, then the salt of record; roll
+                    // the config back if the salt write fails, so a half-written
+                    // keystore never masquerades as a complete headerless vault.
+                    let prior_config =
+                        crate::user_partitions::resolve_active_credential(&store, &config_key)
+                            .ok()
+                            .flatten()
+                            .map(|s| s.to_string());
+                    crate::user_partitions::store_active_credential_dual(
+                        &store,
+                        &config_key,
+                        &json,
+                    )
+                    .map_err(|e| {
+                        format!("Cannot persist AeroCrypt overlay config to the keystore: {e}")
+                    })?;
+                    if let Err(e) = crate::user_partitions::store_active_credential_dual(
+                        &store, &salt_key, &salt_b64,
+                    ) {
+                        match prior_config {
+                            Some(prev) => {
+                                let _ = crate::user_partitions::store_active_credential_dual(
+                                    &store,
+                                    &config_key,
+                                    &prev,
+                                );
+                            }
+                            None => {
+                                let _ = crate::user_partitions::delete_active_credential_dual(
+                                    &store,
+                                    &config_key,
+                                );
+                            }
+                        }
+                        return Err(format!(
+                            "Cannot persist AeroCrypt overlay salt to the keystore: {e}"
+                        ));
                     }
-                } else if !with_header {
-                    return Err(
-                        "Cannot create a headerless vault without a profile ID to store the metadata. \
-                         Please save the profile first."
-                            .to_string(),
-                    );
                 }
 
                 let config = overlay::parse_config(&json)
@@ -3196,6 +3223,39 @@ mod tests {
                 .await
                 .expect("probe config marker"),
             "no overlay config may be written when bootstrap is refused"
+        );
+    }
+
+    #[tokio::test]
+    async fn aerocrypt_headerless_activation_requires_a_profile_id() {
+        // Headerless creation via interactive activation must REQUIRE a saved
+        // profile to persist the public config in the keystore. Without one it
+        // fails closed, never handing back a usable overlay whose metadata was
+        // never stored (which would orphan every file encrypted under it), and
+        // it writes nothing to the remote.
+        let mut mem = MemProvider::new();
+        let binding = OverlayUnlockParams {
+            kind: "aerocrypt".to_string(),
+            remote_scope: "/Vault".to_string(),
+            filename_encryption: String::new(),
+            directory_name_encryption: true,
+            off_suffix: None,
+            profile_id: None,
+            local_config_json: None,
+            local_config_salt: None,
+        };
+        // allow_init=true (interactive), with_header=false (headerless), empty folder.
+        let res =
+            unlock_overlay_keys_encrypting(&mut mem, &binding, "pw", "", None, true, false).await;
+        assert!(
+            res.is_err(),
+            "headerless activation without a profile id must fail closed"
+        );
+        assert!(
+            !mem.exists("/Vault/.aeroftp-crypt.json")
+                .await
+                .expect("probe marker"),
+            "a refused headerless activation must not write a remote marker"
         );
     }
 
