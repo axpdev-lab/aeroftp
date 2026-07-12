@@ -1830,10 +1830,10 @@ async fn unlock_overlay_keys_encrypting(
                 // marker, so without this a re-activation on a populated scope (or
                 // a headerless vault whose local keystore metadata was lost) would
                 // mint a new random salt and permanently orphan every existing
-                // object. Refuse to bootstrap over a non-empty location. Bias:
-                // only a SUCCESSFUL, non-empty listing blocks; a listing error
-                // (e.g. the directory does not exist yet) is a genuine first
-                // activation and proceeds.
+                // object. Refuse to bootstrap unless the scope is affirmatively
+                // absent. A degraded provider can report an inaccessible scope as
+                // an empty list; `exists(scope) == false` is the required
+                // clobber-safe signal for a fresh virtual prefix.
                 let list_dir = if scope.is_empty() { "/" } else { scope };
                 if let Ok(entries) = provider.list(list_dir).await {
                     if entries.iter().any(|e| e.name != AEROCRYPT_CONFIG_NAME) {
@@ -1844,6 +1844,17 @@ async fn unlock_overlay_keys_encrypting(
                              would rotate the salt and permanently orphan the existing files."
                         ));
                     }
+                }
+                let scope_exists = provider
+                    .exists(list_dir)
+                    .await
+                    .map_err(|e| format!("Cannot probe AeroCrypt overlay scope {list_dir}: {e}"))?;
+                if scope_exists {
+                    return Err(format!(
+                        "Refusing to initialize a new AeroCrypt overlay at {list_dir}: the scope \
+                         already exists but has no readable overlay config. Unlock it with its \
+                         existing credentials, or recover a headerless vault from its Emergency Kit."
+                    ));
                 }
                 let salt = overlay::random_salt_v3();
                 let tmp = OverlayConfig::v3_bootstrap(salt);
@@ -3217,6 +3228,35 @@ mod tests {
         assert!(
             res.is_err(),
             "activation must refuse to bootstrap over a non-empty folder (would orphan existing files)"
+        );
+        assert!(
+            !mem.exists("/Vault/.aeroftp-crypt.json")
+                .await
+                .expect("probe config marker"),
+            "no overlay config may be written when bootstrap is refused"
+        );
+    }
+
+    #[tokio::test]
+    async fn aerocrypt_activation_refuses_bootstrap_on_existing_empty_scope() {
+        let mut mem = MemProvider::new();
+        mem.seed_raw_dir("/Vault");
+        let binding = OverlayUnlockParams {
+            kind: "aerocrypt".to_string(),
+            remote_scope: "/Vault".to_string(),
+            filename_encryption: String::new(),
+            directory_name_encryption: true,
+            off_suffix: None,
+            profile_id: None,
+            local_config_json: None,
+            local_config_salt: None,
+        };
+
+        let res =
+            unlock_overlay_keys_encrypting(&mut mem, &binding, "pw", "", None, true, true).await;
+        assert!(
+            res.is_err(),
+            "activation must refuse to bootstrap when the scope already exists"
         );
         assert!(
             !mem.exists("/Vault/.aeroftp-crypt.json")

@@ -1,9 +1,23 @@
-// Normalize an absolute remote path: trim, collapse duplicate slashes, strip the
-// trailing slash; '' or '/' both mean the remote root.
+const normalizeSegments = (value: string): string[] => {
+    const segments: string[] = [];
+    for (const part of value.split('/')) {
+        if (!part || part === '.') continue;
+        if (part === '..') {
+            segments.pop();
+            continue;
+        }
+        segments.push(part);
+    }
+    return segments;
+};
+
+// Normalize an absolute remote path: trim, collapse duplicate slashes, resolve
+// dot segments, strip the trailing slash; '' or '/' both mean the remote root.
 export const normalizeRemotePath = (p: string): string => {
-    const s = (p || '').trim().replace(/\/+/g, '/');
+    const s = (p || '').trim();
     if (s === '' || s === '/') return '';
-    return (s.startsWith('/') ? s : '/' + s).replace(/\/$/, '');
+    const normalized = normalizeSegments(s).join('/');
+    return normalized ? '/' + normalized : '';
 };
 
 // The overlays scope must equal the profile Remote Path or be a strict descendant.
@@ -35,6 +49,6 @@ export const resolveOverlayScope = (input: string, remotePath: string): string =
     if (r === '') return normalizeRemotePath(raw);     // remote is root: any folder is absolute
     const s = normalizeRemotePath(raw);
     if (s === r || s.startsWith(r + '/')) return s;    // already absolute and in scope
-    const rel = raw.replace(/^\/+/, '');               // strip leading slashes -> subfolder name
+    const rel = normalizeSegments(raw.replace(/^\/+/, '')).join('/');
     return normalizeRemotePath(r + '/' + rel);         // nest under the Remote Path
 };

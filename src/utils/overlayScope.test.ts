@@ -13,6 +13,12 @@ describe('normalizeRemotePath', () => {
         expect(normalizeRemotePath('/data//vault/')).toBe('/data/vault');
         expect(normalizeRemotePath('data/vault')).toBe('/data/vault');
     });
+
+    it('resolves dot segments without escaping above root', () => {
+        expect(normalizeRemotePath('/data/vault/../sibling')).toBe('/data/sibling');
+        expect(normalizeRemotePath('/data/./vault')).toBe('/data/vault');
+        expect(normalizeRemotePath('../../vault')).toBe('/vault');
+    });
 });
 
 describe('isValidOverlayScope', () => {
@@ -56,6 +62,10 @@ describe('isValidOverlayScope', () => {
         expect(isValidOverlayScope('/other', '/data')).toBe(false);
     });
 
+    it('rejects dot-segment traversal outside the Remote Path', () => {
+        expect(isValidOverlayScope('/data/vault/../sibling', '/data/vault')).toBe(false);
+    });
+
     it('rejects prefix trap (/database vs /data)', () => {
         expect(isValidOverlayScope('/database', '/data')).toBe(false);
         expect(isValidOverlayScope('/data2', '/data')).toBe(false);
@@ -84,6 +94,11 @@ describe('resolveOverlayScope (#369 relative UX)', () => {
         // The old field rejected "/folder-try"; now it is treated as a subfolder.
         expect(resolveOverlayScope('/folder-try', '/data')).toBe('/data/folder-try');
         expect(resolveOverlayScope('/other', '/data')).toBe('/data/other');
+    });
+
+    it('neutralizes dot-segment traversal by treating it as relative input', () => {
+        expect(resolveOverlayScope('../sibling', '/data/vault')).toBe('/data/vault/sibling');
+        expect(resolveOverlayScope('/data/vault/../sibling', '/data/vault')).toBe('/data/vault/data/sibling');
     });
 
     it('keeps an already-absolute in-scope path verbatim', () => {

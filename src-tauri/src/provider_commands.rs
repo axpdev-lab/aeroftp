@@ -157,6 +157,11 @@ impl ProviderState {
         }
         Ok(())
     }
+
+    pub fn arm_crypt_capability(&self) {
+        self.active_crypt_overlay.store(true, Ordering::SeqCst);
+        self.overlay_wrapped.store(false, Ordering::SeqCst);
+    }
 }
 
 impl Default for ProviderState {
@@ -1380,6 +1385,17 @@ pub async fn provider_disconnect(
     state.active_crypt_overlay.store(false, Ordering::SeqCst);
     state.overlay_wrapped.store(false, Ordering::SeqCst);
 
+    Ok(())
+}
+
+/// Arm crypt capability before a saved-profile auto-unlock attempt.
+///
+/// If the unlock succeeds, `provider_apply_crypt_overlay` marks the session
+/// wrapped. If it fails, the raw-write guard remains active and refuses direct
+/// writes into the still-raw encrypted store until disconnect or retry.
+#[tauri::command]
+pub fn provider_arm_crypt_capability(state: State<'_, ProviderState>) -> Result<(), String> {
+    state.arm_crypt_capability();
     Ok(())
 }
 
@@ -12019,6 +12035,25 @@ mod tests {
 
         // Clearing capability re-opens the raw path (e.g. after disconnect).
         state.active_crypt_overlay.store(false, Ordering::SeqCst);
+        assert!(state.guard_no_raw_crypt_write("Upload").is_ok());
+    }
+
+    #[test]
+    fn arm_crypt_capability_fails_closed_until_wrapped() {
+        let state = ProviderState::new();
+
+        assert!(state.guard_no_raw_crypt_write("Upload").is_ok());
+
+        state.arm_crypt_capability();
+        let err = state
+            .guard_no_raw_crypt_write("Upload")
+            .expect_err("armed crypt-capable session must refuse raw writes until wrapped");
+        assert!(
+            err.contains("crypt overlay"),
+            "guard error should explain the crypt overlay block, got: {err}"
+        );
+
+        state.overlay_wrapped.store(true, Ordering::SeqCst);
         assert!(state.guard_no_raw_crypt_write("Upload").is_ok());
     }
 

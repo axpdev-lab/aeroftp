@@ -18331,6 +18331,7 @@ pub fn run() {
             provider_commands::cancel_connection,
             provider_commands::cancel_remote_listing,
             provider_commands::provider_disconnect,
+            provider_commands::provider_arm_crypt_capability,
             provider_commands::provider_apply_crypt_overlay,
             provider_commands::aerocrypt_profile_recovery_kit,
             provider_commands::crypt_generate_keyfile,

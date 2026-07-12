@@ -4830,6 +4830,7 @@ interface UpdateVerificationInfo {
       const overlayScope = binding.remoteScope?.trim() || profile.initialPath?.trim() || '';
 
       try {
+        await invoke('provider_arm_crypt_capability');
         const salt = binding.kind === 'rclone-crypt'
           ? await invoke<string>('get_credential', { account: `aerocrypt_overlay_salt_${savedServerId}` }).catch(() => '')
           : '';
