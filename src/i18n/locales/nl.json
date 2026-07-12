@@ -1186,7 +1186,14 @@
             "versioningStaggered": "Gefaseerd (1/uur, 1/dag, 1/week)",
             "browseVersions": "Gearchiveerde versies bekijken",
             "sectionConnection": "Verbinding en locatie",
-            "sectionSync": "Synchronisatie en versies"
+            "sectionSync": "Synchronisatie en versies",
+            "syncDirection": "Maptype",
+            "syncDirectionDesc": "Kies of deze map in beide richtingen synchroniseert, alleen naar de externe locatie stuurt of alleen ervan ontvangt.",
+            "directionBidirectional": "Verzenden en ontvangen (tweerichtingssynchronisatie)",
+            "directionSendOnly": "Alleen verzenden (back-up naar de externe locatie)",
+            "directionReceiveOnly": "Alleen ontvangen (spiegel van de externe locatie)",
+            "preserveRemoteDeletes": "Aan de andere kant verwijderde bestanden behouden (toevoegende back-up)",
+            "preserveRemoteDeletesDesc": "Wanneer ingeschakeld, verwijdert het wissen van een bestand aan de leeskant het nooit aan de schrijfkant. Schakel uit om van deze map een strikte spiegel te maken."
         },
         "statusBar": {
             "connected": "Verbonden",

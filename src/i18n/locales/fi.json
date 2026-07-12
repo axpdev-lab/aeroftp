@@ -1186,7 +1186,14 @@
             "versioningStaggered": "Porrastettu (1/tunti, 1/päivä, 1/viikko)",
             "browseVersions": "Selaa arkistoituja versioita",
             "sectionConnection": "Yhteys ja sijainti",
-            "sectionSync": "Synkronointi ja versiointi"
+            "sectionSync": "Synkronointi ja versiointi",
+            "syncDirection": "Kansion tyyppi",
+            "syncDirectionDesc": "Valitse, synkronoidaanko tämä kansio molempiin suuntiin, lähetetäänkö vain etäkohteeseen vai vastaanotetaanko vain siitä.",
+            "directionBidirectional": "Lähetä ja vastaanota (kaksisuuntainen synkronointi)",
+            "directionSendOnly": "Vain lähetys (varmuuskopio etäkohteeseen)",
+            "directionReceiveOnly": "Vain vastaanotto (peilaus etäkohteesta)",
+            "preserveRemoteDeletes": "Säilytä toisella puolella poistetut tiedostot (lisäävä varmuuskopio)",
+            "preserveRemoteDeletesDesc": "Kun käytössä, tiedoston poistaminen lukupuolella ei koskaan poista sitä kirjoituspuolelta. Poista käytöstä tehdäksesi tästä kansiosta tiukan peilin."
         },
         "statusBar": {
             "connected": "Yhdistetty",

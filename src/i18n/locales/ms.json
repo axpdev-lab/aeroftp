@@ -1186,7 +1186,14 @@
             "versioningStaggered": "Berperingkat (1/jam, 1/hari, 1/minggu)",
             "browseVersions": "Layari versi yang diarkibkan",
             "sectionConnection": "Sambungan & Lokasi",
-            "sectionSync": "Penyegerakan & Versi"
+            "sectionSync": "Penyegerakan & Versi",
+            "syncDirection": "Jenis folder",
+            "syncDirectionDesc": "Pilih sama ada folder ini disegerakkan dua hala, hanya menghantar ke jauh, atau hanya menerima daripadanya.",
+            "directionBidirectional": "Hantar & Terima (penyegerakan dua hala)",
+            "directionSendOnly": "Hantar Sahaja (sandarkan ke jauh)",
+            "directionReceiveOnly": "Terima Sahaja (cerminkan dari jauh)",
+            "preserveRemoteDeletes": "Simpan fail yang dipadam di sebelah lain (sandaran tambahan)",
+            "preserveRemoteDeletesDesc": "Apabila hidup, memadam fail di sebelah baca tidak pernah mengeluarkannya di sebelah tulis. Matikan untuk menjadikan folder ini cermin ketat."
         },
         "statusBar": {
             "connected": "Disambung",

@@ -1186,7 +1186,14 @@
             "versioningStaggered": "Gestaffelt (1/Stunde, 1/Tag, 1/Woche)",
             "browseVersions": "Archivierte Versionen durchsuchen",
             "sectionConnection": "Verbindung und Speicherort",
-            "sectionSync": "Synchronisierung und Versionierung"
+            "sectionSync": "Synchronisierung und Versionierung",
+            "syncDirection": "Ordnertyp",
+            "syncDirectionDesc": "Wählen Sie, ob dieser Ordner in beide Richtungen synchronisiert, nur an die Gegenstelle sendet oder nur von ihr empfängt.",
+            "directionBidirectional": "Senden und Empfangen (Zwei-Wege-Synchronisierung)",
+            "directionSendOnly": "Nur senden (Sicherung an die Gegenstelle)",
+            "directionReceiveOnly": "Nur empfangen (Spiegel von der Gegenstelle)",
+            "preserveRemoteDeletes": "Auf der anderen Seite gelöschte Dateien behalten (additive Sicherung)",
+            "preserveRemoteDeletesDesc": "Wenn aktiviert, entfernt das Löschen einer Datei auf der Leseseite sie nie auf der Schreibseite. Deaktivieren, um diesen Ordner zu einem strikten Spiegel zu machen."
         },
         "statusBar": {
             "connected": "Verbunden",

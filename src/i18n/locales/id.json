@@ -1186,7 +1186,14 @@
             "versioningStaggered": "Bertahap (1/jam, 1/hari, 1/minggu)",
             "browseVersions": "Jelajahi versi yang diarsipkan",
             "sectionConnection": "Koneksi & Lokasi",
-            "sectionSync": "Sinkronisasi & Pembuatan Versi"
+            "sectionSync": "Sinkronisasi & Pembuatan Versi",
+            "syncDirection": "Jenis folder",
+            "syncDirectionDesc": "Pilih apakah folder ini disinkronkan dua arah, hanya mengirim ke remote, atau hanya menerima darinya.",
+            "directionBidirectional": "Kirim & Terima (sinkronisasi dua arah)",
+            "directionSendOnly": "Hanya Kirim (cadangkan ke remote)",
+            "directionReceiveOnly": "Hanya Terima (cerminkan dari remote)",
+            "preserveRemoteDeletes": "Simpan berkas yang dihapus di sisi lain (cadangan aditif)",
+            "preserveRemoteDeletesDesc": "Saat aktif, menghapus berkas di sisi baca tidak pernah menghapusnya di sisi tulis. Matikan untuk menjadikan folder ini cermin ketat."
         },
         "statusBar": {
             "connected": "Terhubung",

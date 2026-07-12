@@ -1186,7 +1186,14 @@
             "versioningStaggered": "Esglaonat (1/hora, 1/dia, 1/setmana)",
             "browseVersions": "Explora les versions arxivades",
             "sectionConnection": "Connexió i ubicació",
-            "sectionSync": "Sincronització i versions"
+            "sectionSync": "Sincronització i versions",
+            "syncDirection": "Tipus de carpeta",
+            "syncDirectionDesc": "Trieu si aquesta carpeta se sincronitza en tots dos sentits, només envia al remot o només rep d'ell.",
+            "directionBidirectional": "Enviar i rebre (sincronització bidireccional)",
+            "directionSendOnly": "Només enviar (còpia de seguretat al remot)",
+            "directionReceiveOnly": "Només rebre (mirall des del remot)",
+            "preserveRemoteDeletes": "Conserva els fitxers esborrats a l'altra banda (còpia additiva)",
+            "preserveRemoteDeletesDesc": "Quan està activat, esborrar un fitxer al costat de lectura mai no l'elimina al costat d'escriptura. Desactiva-ho per fer d'aquesta carpeta un mirall estricte."
         },
         "statusBar": {
             "connected": "Connectat",

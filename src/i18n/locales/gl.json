@@ -1186,7 +1186,14 @@
             "versioningStaggered": "Escalonado (1/hora, 1/día, 1/semana)",
             "browseVersions": "Explorar versións arquivadas",
             "sectionConnection": "Conexión e localización",
-            "sectionSync": "Sincronización e versións"
+            "sectionSync": "Sincronización e versións",
+            "syncDirection": "Tipo de cartafol",
+            "syncDirectionDesc": "Escolle se este cartafol se sincroniza nos dous sentidos, só envía ao remoto ou só recibe del.",
+            "directionBidirectional": "Enviar e recibir (sincronización bidireccional)",
+            "directionSendOnly": "Só enviar (copia de seguranza ao remoto)",
+            "directionReceiveOnly": "Só recibir (espello desde o remoto)",
+            "preserveRemoteDeletes": "Conservar os ficheiros eliminados no outro lado (copia aditiva)",
+            "preserveRemoteDeletesDesc": "Cando está activado, eliminar un ficheiro no lado de lectura nunca o quita no lado de escritura. Desactívao para facer deste cartafol un espello estrito."
         },
         "statusBar": {
             "connected": "Conectado",

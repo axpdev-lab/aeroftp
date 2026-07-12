@@ -1186,7 +1186,14 @@
             "versioningStaggered": "Escalonado (1/hora, 1/día, 1/semana)",
             "browseVersions": "Explorar versiones archivadas",
             "sectionConnection": "Conexión y ubicación",
-            "sectionSync": "Sincronización y versiones"
+            "sectionSync": "Sincronización y versiones",
+            "syncDirection": "Tipo de carpeta",
+            "syncDirectionDesc": "Elige si esta carpeta se sincroniza en ambos sentidos, solo envía al remoto o solo recibe de él.",
+            "directionBidirectional": "Enviar y recibir (sincronización bidireccional)",
+            "directionSendOnly": "Solo enviar (copia de seguridad en el remoto)",
+            "directionReceiveOnly": "Solo recibir (espejo desde el remoto)",
+            "preserveRemoteDeletes": "Conservar archivos eliminados en el otro lado (copia aditiva)",
+            "preserveRemoteDeletesDesc": "Cuando está activado, eliminar un archivo en el lado de lectura nunca lo quita en el lado de escritura. Desactívalo para que esta carpeta sea un espejo estricto."
         },
         "statusBar": {
             "connected": "Conectado",

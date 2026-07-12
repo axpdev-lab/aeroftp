@@ -1186,7 +1186,14 @@
             "versioningStaggered": "Lépcsőzetes (1/óra, 1/nap, 1/hét)",
             "browseVersions": "Archivált verziók böngészése",
             "sectionConnection": "Kapcsolat és hely",
-            "sectionSync": "Szinkronizálás és verziózás"
+            "sectionSync": "Szinkronizálás és verziózás",
+            "syncDirection": "Mappa típusa",
+            "syncDirectionDesc": "Válassza ki, hogy ez a mappa mindkét irányban szinkronizál, csak a távoli helyre küld, vagy csak onnan fogad.",
+            "directionBidirectional": "Küldés és fogadás (kétirányú szinkronizálás)",
+            "directionSendOnly": "Csak küldés (biztonsági mentés a távoli helyre)",
+            "directionReceiveOnly": "Csak fogadás (tükrözés a távoli helyről)",
+            "preserveRemoteDeletes": "A másik oldalon törölt fájlok megtartása (hozzáadó biztonsági mentés)",
+            "preserveRemoteDeletesDesc": "Ha be van kapcsolva, egy fájl törlése az olvasási oldalon soha nem távolítja el az írási oldalon. Kapcsolja ki, hogy ez a mappa szigorú tükör legyen."
         },
         "statusBar": {
             "connected": "Csatlakozva",

@@ -1186,7 +1186,14 @@
             "versioningStaggered": "Stopenjsko (1/uro, 1/dan, 1/teden)",
             "browseVersions": "Prebrskaj arhivirane različice",
             "sectionConnection": "Povezava in lokacija",
-            "sectionSync": "Sinhronizacija in različice"
+            "sectionSync": "Sinhronizacija in različice",
+            "syncDirection": "Vrsta mape",
+            "syncDirectionDesc": "Izberite, ali se ta mapa sinhronizira v obe smeri, samo pošilja na oddaljeno mesto ali samo prejema z njega.",
+            "directionBidirectional": "Pošiljanje in prejemanje (dvosmerna sinhronizacija)",
+            "directionSendOnly": "Samo pošiljanje (varnostna kopija na oddaljeno mesto)",
+            "directionReceiveOnly": "Samo prejemanje (zrcaljenje z oddaljenega mesta)",
+            "preserveRemoteDeletes": "Ohrani datoteke, izbrisane na drugi strani (dodajalna varnostna kopija)",
+            "preserveRemoteDeletesDesc": "Ko je vklopljeno, brisanje datoteke na bralni strani je nikoli ne odstrani na pisalni strani. Izklopite, da postane ta mapa strogo zrcalo."
         },
         "statusBar": {
             "connected": "Povezano",

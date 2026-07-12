@@ -1609,7 +1609,14 @@
             "protocol": "Protocollo",
             "idle": "Inattivo",
             "neverSynced": "Mai sincronizzato",
-            "openDashboard": "Dashboard"
+            "openDashboard": "Dashboard",
+            "syncDirection": "Tipo di cartella",
+            "syncDirectionDesc": "Scegli se questa cartella si sincronizza in entrambe le direzioni, invia solo al remoto o riceve solo da esso.",
+            "directionBidirectional": "Invia e ricevi (sincronizzazione bidirezionale)",
+            "directionSendOnly": "Solo invio (backup sul remoto)",
+            "directionReceiveOnly": "Solo ricezione (copia speculare dal remoto)",
+            "preserveRemoteDeletes": "Mantieni i file eliminati dall'altra parte (backup additivo)",
+            "preserveRemoteDeletesDesc": "Quando è attivo, eliminare un file sul lato di lettura non lo rimuove mai sul lato di scrittura. Disattiva per rendere questa cartella una copia speculare rigida."
         },
         "statusBar": {
             "connected": "Connesso",

@@ -1186,7 +1186,14 @@
             "versioningStaggered": "Stegvis (1/timme, 1/dag, 1/vecka)",
             "browseVersions": "Bläddra bland arkiverade versioner",
             "sectionConnection": "Anslutning och plats",
-            "sectionSync": "Synkronisering och versionering"
+            "sectionSync": "Synkronisering och versionering",
+            "syncDirection": "Mapptyp",
+            "syncDirectionDesc": "Välj om denna mapp synkroniseras åt båda hållen, bara skickar till fjärrplatsen eller bara tar emot från den.",
+            "directionBidirectional": "Skicka och ta emot (tvåvägssynkronisering)",
+            "directionSendOnly": "Endast skicka (säkerhetskopia till fjärrplatsen)",
+            "directionReceiveOnly": "Endast ta emot (spegel från fjärrplatsen)",
+            "preserveRemoteDeletes": "Behåll filer som raderats på andra sidan (additiv säkerhetskopia)",
+            "preserveRemoteDeletesDesc": "När det är på tar radering av en fil på lässidan aldrig bort den på skrivsidan. Stäng av för att göra denna mapp till en strikt spegel."
         },
         "statusBar": {
             "connected": "Ansluten",

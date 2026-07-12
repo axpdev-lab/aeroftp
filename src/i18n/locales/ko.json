@@ -1186,7 +1186,14 @@
             "versioningStaggered": "단계별 (1/시간, 1/일, 1/주)",
             "browseVersions": "보관된 버전 찾아보기",
             "sectionConnection": "연결 및 위치",
-            "sectionSync": "동기화 및 버전 관리"
+            "sectionSync": "동기화 및 버전 관리",
+            "syncDirection": "폴더 유형",
+            "syncDirectionDesc": "이 폴더를 양방향으로 동기화할지, 원격으로 보내기만 할지, 원격에서 받기만 할지 선택하세요.",
+            "directionBidirectional": "보내기 및 받기(양방향 동기화)",
+            "directionSendOnly": "보내기 전용(원격에 백업)",
+            "directionReceiveOnly": "받기 전용(원격에서 미러링)",
+            "preserveRemoteDeletes": "다른 쪽에서 삭제된 파일 유지(추가형 백업)",
+            "preserveRemoteDeletesDesc": "켜면 읽기 쪽에서 파일을 삭제해도 쓰기 쪽에서는 절대 제거되지 않습니다. 이 폴더를 엄격한 미러로 만들려면 끄세요."
         },
         "statusBar": {
             "connected": "연결됨",

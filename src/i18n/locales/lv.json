@@ -1186,7 +1186,14 @@
             "versioningStaggered": "Pakāpenisks (1/stundā, 1/dienā, 1/nedēļā)",
             "browseVersions": "Pārlūkot arhivētās versijas",
             "sectionConnection": "Savienojums un atrašanās vieta",
-            "sectionSync": "Sinhronizācija un versijas"
+            "sectionSync": "Sinhronizācija un versijas",
+            "syncDirection": "Mapes tips",
+            "syncDirectionDesc": "Izvēlieties, vai šī mape sinhronizējas abos virzienos, tikai sūta uz attālo vai tikai saņem no tā.",
+            "directionBidirectional": "Sūtīt un saņemt (divvirzienu sinhronizācija)",
+            "directionSendOnly": "Tikai sūtīt (dublējums uz attālo)",
+            "directionReceiveOnly": "Tikai saņemt (spogulis no attālā)",
+            "preserveRemoteDeletes": "Saglabāt otrā pusē dzēstos failus (papildinošs dublējums)",
+            "preserveRemoteDeletesDesc": "Kad ieslēgts, faila dzēšana lasīšanas pusē to nekad neizņem rakstīšanas pusē. Izslēdziet, lai padarītu šo mapi par stingru spoguli."
         },
         "statusBar": {
             "connected": "Savienots",

@@ -46,6 +46,11 @@ interface CloudConfig {
     connection_params: Record<string, unknown>;
     excluded_folders: string[];
     versioning_strategy: CloudVersioningStrategy;
+    // Folder type (Task 2): matches Rust CompareDirection (snake_case).
+    sync_direction?: 'bidirectional' | 'local_to_remote' | 'remote_to_local';
+    // Send-only / receive-only additive backup: when true (default) deletes on
+    // the read side are not mirrored to the write side.
+    preserve_remote_deletes?: boolean;
 }
 
 type CloudVersioningStrategy =
@@ -1613,6 +1618,35 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose }) => {
                                     </select>
                                 </div>
                                 <p className="text-xs text-gray-400 mt-1">{t('cloud.syncIntervalDesc')}</p>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium mb-2">{t('cloud.syncDirection')}</label>
+                                <select
+                                    className="w-full px-3 py-2 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm"
+                                    value={config?.sync_direction || 'bidirectional'}
+                                    onChange={(e) => {
+                                        setConfig(prev => prev ? { ...prev, sync_direction: e.target.value as CloudConfig['sync_direction'] } : null);
+                                    }}
+                                >
+                                    <option value="bidirectional">{t('cloud.directionBidirectional')}</option>
+                                    <option value="local_to_remote">{t('cloud.directionSendOnly')}</option>
+                                    <option value="remote_to_local">{t('cloud.directionReceiveOnly')}</option>
+                                </select>
+                                <p className="text-xs text-gray-400 mt-1">{t('cloud.syncDirectionDesc')}</p>
+                                {config?.sync_direction && config.sync_direction !== 'bidirectional' && (
+                                    <>
+                                        <label className="flex items-center gap-2 mt-2 text-sm">
+                                            <input
+                                                type="checkbox"
+                                                checked={config?.preserve_remote_deletes ?? true}
+                                                onChange={(e) => setConfig(prev => prev ? { ...prev, preserve_remote_deletes: e.target.checked } : null)}
+                                            />
+                                            {t('cloud.preserveRemoteDeletes')}
+                                        </label>
+                                        <p className="text-xs text-gray-400 mt-1">{t('cloud.preserveRemoteDeletesDesc')}</p>
+                                    </>
+                                )}
                             </div>
 
                             <div>

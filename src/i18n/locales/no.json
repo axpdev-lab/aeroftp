@@ -1186,7 +1186,14 @@
             "versioningStaggered": "Trinnvis (1/time, 1/dag, 1/uke)",
             "browseVersions": "Bla gjennom arkiverte versjoner",
             "sectionConnection": "Tilkobling og plassering",
-            "sectionSync": "Synkronisering og versjonering"
+            "sectionSync": "Synkronisering og versjonering",
+            "syncDirection": "Mappetype",
+            "syncDirectionDesc": "Velg om denne mappen synkroniseres begge veier, bare sender til den eksterne eller bare mottar fra den.",
+            "directionBidirectional": "Send og motta (toveis synkronisering)",
+            "directionSendOnly": "Bare send (sikkerhetskopi til den eksterne)",
+            "directionReceiveOnly": "Bare motta (speil fra den eksterne)",
+            "preserveRemoteDeletes": "Behold filer slettet på den andre siden (additiv sikkerhetskopi)",
+            "preserveRemoteDeletesDesc": "Når på, fjerner sletting av en fil på lesesiden den aldri på skrivesiden. Slå av for å gjøre denne mappen til et strengt speil."
         },
         "statusBar": {
             "connected": "Tilkoblet",

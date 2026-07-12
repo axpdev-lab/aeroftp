@@ -1186,7 +1186,14 @@
             "versioningStaggered": "Escalonado (1/hora, 1/dia, 1/semana)",
             "browseVersions": "Navegar pelas versões arquivadas",
             "sectionConnection": "Conexão e localização",
-            "sectionSync": "Sincronização e versionamento"
+            "sectionSync": "Sincronização e versionamento",
+            "syncDirection": "Tipo de pasta",
+            "syncDirectionDesc": "Escolha se esta pasta sincroniza nos dois sentidos, apenas envia para o remoto ou apenas recebe dele.",
+            "directionBidirectional": "Enviar e receber (sincronização bidirecional)",
+            "directionSendOnly": "Apenas enviar (backup para o remoto)",
+            "directionReceiveOnly": "Apenas receber (espelho a partir do remoto)",
+            "preserveRemoteDeletes": "Manter arquivos excluídos do outro lado (backup aditivo)",
+            "preserveRemoteDeletesDesc": "Quando ativado, excluir um arquivo no lado de leitura nunca o remove no lado de gravação. Desative para tornar esta pasta um espelho rígido."
         },
         "statusBar": {
             "connected": "Conectado",

@@ -1186,7 +1186,14 @@
             "versioningStaggered": "Mailakatua (1/ordu, 1/egun, 1/aste)",
             "browseVersions": "Arakatu artxibatutako bertsioak",
             "sectionConnection": "Konexioa eta kokalekua",
-            "sectionSync": "Sinkronizazioa eta bertsioak"
+            "sectionSync": "Sinkronizazioa eta bertsioak",
+            "syncDirection": "Karpeta mota",
+            "syncDirectionDesc": "Aukeratu karpeta hau bi noranzkoetan sinkronizatzen den, urrunekora bakarrik bidaltzen duen edo hartatik bakarrik jasotzen duen.",
+            "directionBidirectional": "Bidali eta jaso (bi noranzkoko sinkronizazioa)",
+            "directionSendOnly": "Bidali soilik (babeskopia urrunekora)",
+            "directionReceiveOnly": "Jaso soilik (ispilua urrunekotik)",
+            "preserveRemoteDeletes": "Gorde beste aldean ezabatutako fitxategiak (babeskopia gehigarria)",
+            "preserveRemoteDeletesDesc": "Aktibatuta dagoenean, irakurketa aldean fitxategi bat ezabatzeak ez du inoiz idazketa aldetik kentzen. Desaktibatu karpeta hau ispilu zorrotza izan dadin."
         },
         "statusBar": {
             "connected": "Konektatuta",

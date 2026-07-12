@@ -1186,7 +1186,14 @@
             "versioningStaggered": "ধাপে ধাপে (১/ঘণ্টা, ১/দিন, ১/সপ্তাহ)",
             "browseVersions": "সংরক্ষিত সংস্করণগুলি ব্রাউজ করুন",
             "sectionConnection": "সংযোগ ও অবস্থান",
-            "sectionSync": "সিঙ্ক ও সংস্করণ"
+            "sectionSync": "সিঙ্ক ও সংস্করণ",
+            "syncDirection": "ফোল্ডারের ধরন",
+            "syncDirectionDesc": "এই ফোল্ডারটি উভয় দিকে সিঙ্ক হবে, শুধু রিমোটে পাঠাবে, নাকি শুধু রিমোট থেকে গ্রহণ করবে তা বেছে নিন।",
+            "directionBidirectional": "পাঠানো ও গ্রহণ (দ্বিমুখী সিঙ্ক)",
+            "directionSendOnly": "শুধু পাঠানো (রিমোটে ব্যাকআপ)",
+            "directionReceiveOnly": "শুধু গ্রহণ (রিমোট থেকে মিরর)",
+            "preserveRemoteDeletes": "অন্য পাশে মুছে ফেলা ফাইল রাখুন (সংযোজনমূলক ব্যাকআপ)",
+            "preserveRemoteDeletesDesc": "চালু থাকলে, পড়ার দিকে একটি ফাইল মোছা লেখার দিকে সেটি কখনও সরায় না। এই ফোল্ডারটিকে কঠোর মিরর করতে বন্ধ করুন।"
         },
         "statusBar": {
             "connected": "সংযুক্ত",

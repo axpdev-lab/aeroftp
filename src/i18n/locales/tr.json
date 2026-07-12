@@ -1186,7 +1186,14 @@
             "versioningStaggered": "Kademeli (1/saat, 1/gün, 1/hafta)",
             "browseVersions": "Arşivlenmiş sürümlere göz at",
             "sectionConnection": "Bağlantı ve Konum",
-            "sectionSync": "Eşitleme ve Sürümleme"
+            "sectionSync": "Eşitleme ve Sürümleme",
+            "syncDirection": "Klasör türü",
+            "syncDirectionDesc": "Bu klasörün her iki yönde eşitlenmesini, yalnızca uzak konuma göndermesini ya da yalnızca ondan almasını seçin.",
+            "directionBidirectional": "Gönder ve Al (iki yönlü eşitleme)",
+            "directionSendOnly": "Yalnızca Gönder (uzak konuma yedekle)",
+            "directionReceiveOnly": "Yalnızca Al (uzak konumdan yansıt)",
+            "preserveRemoteDeletes": "Diğer tarafta silinen dosyaları koru (eklemeli yedekleme)",
+            "preserveRemoteDeletesDesc": "Açıkken, okuma tarafında bir dosyayı silmek onu yazma tarafından asla kaldırmaz. Bu klasörü katı bir yansıma yapmak için kapatın."
         },
         "statusBar": {
             "connected": "Bağlı",

@@ -1186,7 +1186,14 @@
             "versioningStaggered": "Þrepaskipt (1/klst., 1/dag, 1/viku)",
             "browseVersions": "Skoða geymdar útgáfur",
             "sectionConnection": "Tenging og staðsetning",
-            "sectionSync": "Samstilling og útgáfur"
+            "sectionSync": "Samstilling og útgáfur",
+            "syncDirection": "Tegund möppu",
+            "syncDirectionDesc": "Veldu hvort þessi mappa samstillist í báðar áttir, sendir aðeins á fjartengda staðinn eða tekur aðeins á móti frá honum.",
+            "directionBidirectional": "Senda og taka á móti (tvíátta samstilling)",
+            "directionSendOnly": "Aðeins senda (afrit á fjartengda staðinn)",
+            "directionReceiveOnly": "Aðeins taka á móti (spegil frá fjartengda staðnum)",
+            "preserveRemoteDeletes": "Halda skrám sem eytt var hinum megin (viðbótarafrit)",
+            "preserveRemoteDeletesDesc": "Þegar kveikt er fjarlægir eyðing skráar á lestrarhliðinni hana aldrei á skrifhliðinni. Slökktu til að gera þessa möppu að ströngum spegli."
         },
         "statusBar": {
             "connected": "Tengt",

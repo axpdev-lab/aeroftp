@@ -1186,7 +1186,14 @@
             "versioningStaggered": "Astmeline (1/tund, 1/päev, 1/nädal)",
             "browseVersions": "Sirvi arhiveeritud versioone",
             "sectionConnection": "Ühendus ja asukoht",
-            "sectionSync": "Sünkroonimine ja versioonimine"
+            "sectionSync": "Sünkroonimine ja versioonimine",
+            "syncDirection": "Kausta tüüp",
+            "syncDirectionDesc": "Vali, kas see kaust sünkroonitakse mõlemas suunas, ainult saadab kaugsalvestisse või ainult võtab sealt vastu.",
+            "directionBidirectional": "Saada ja võta vastu (kahesuunaline sünkroonimine)",
+            "directionSendOnly": "Ainult saada (varundus kaugsalvestisse)",
+            "directionReceiveOnly": "Ainult võta vastu (peegeldus kaugsalvestisest)",
+            "preserveRemoteDeletes": "Säilita teisel poolel kustutatud failid (lisav varundus)",
+            "preserveRemoteDeletesDesc": "Kui sees, ei eemalda faili kustutamine lugemispoolel seda kunagi kirjutamispoolel. Lülita välja, et muuta see kaust rangeks peegliks."
         },
         "statusBar": {
             "connected": "Ühendatud",

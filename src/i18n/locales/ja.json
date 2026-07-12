@@ -1186,7 +1186,14 @@
             "versioningStaggered": "段階的 (1/時間、1/日、1/週)",
             "browseVersions": "アーカイブされたバージョンを参照",
             "sectionConnection": "接続と場所",
-            "sectionSync": "同期とバージョン管理"
+            "sectionSync": "同期とバージョン管理",
+            "syncDirection": "フォルダーの種類",
+            "syncDirectionDesc": "このフォルダーを双方向で同期するか、リモートへ送信のみするか、リモートから受信のみするかを選択します。",
+            "directionBidirectional": "送信と受信（双方向同期）",
+            "directionSendOnly": "送信のみ（リモートへバックアップ）",
+            "directionReceiveOnly": "受信のみ（リモートからミラー）",
+            "preserveRemoteDeletes": "反対側で削除されたファイルを保持（追加型バックアップ）",
+            "preserveRemoteDeletesDesc": "オンにすると、読み取り側でファイルを削除しても書き込み側からは削除されません。このフォルダーを厳密なミラーにするにはオフにします。"
         },
         "statusBar": {
             "connected": "接続済み",

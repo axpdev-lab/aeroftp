@@ -1186,7 +1186,14 @@
             "versioningStaggered": "Pakopinis (1/val., 1/dieną, 1/savaitę)",
             "browseVersions": "Naršyti archyvuotas versijas",
             "sectionConnection": "Ryšys ir vieta",
-            "sectionSync": "Sinchronizavimas ir versijos"
+            "sectionSync": "Sinchronizavimas ir versijos",
+            "syncDirection": "Aplanko tipas",
+            "syncDirectionDesc": "Pasirinkite, ar šis aplankas sinchronizuojamas abiem kryptimis, tik siunčia į nuotolinį, ar tik gauna iš jo.",
+            "directionBidirectional": "Siųsti ir gauti (dvipusė sinchronizacija)",
+            "directionSendOnly": "Tik siųsti (atsarginė kopija į nuotolinį)",
+            "directionReceiveOnly": "Tik gauti (veidrodis iš nuotolinio)",
+            "preserveRemoteDeletes": "Išsaugoti kitoje pusėje ištrintus failus (papildoma atsarginė kopija)",
+            "preserveRemoteDeletesDesc": "Kai įjungta, failo ištrynimas skaitymo pusėje niekada jo nepašalina rašymo pusėje. Išjunkite, kad šis aplankas taptų griežtu veidrodžiu."
         },
         "statusBar": {
             "connected": "Prisijungta",

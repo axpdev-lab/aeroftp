@@ -1186,7 +1186,14 @@
             "versioningStaggered": "Phân tầng (1/giờ, 1/ngày, 1/tuần)",
             "browseVersions": "Duyệt các phiên bản đã lưu trữ",
             "sectionConnection": "Kết nối và vị trí",
-            "sectionSync": "Đồng bộ và phiên bản"
+            "sectionSync": "Đồng bộ và phiên bản",
+            "syncDirection": "Loại thư mục",
+            "syncDirectionDesc": "Chọn xem thư mục này đồng bộ hai chiều, chỉ gửi lên máy từ xa, hay chỉ nhận từ đó.",
+            "directionBidirectional": "Gửi và Nhận (đồng bộ hai chiều)",
+            "directionSendOnly": "Chỉ Gửi (sao lưu lên máy từ xa)",
+            "directionReceiveOnly": "Chỉ Nhận (phản chiếu từ máy từ xa)",
+            "preserveRemoteDeletes": "Giữ các tệp đã xóa ở phía bên kia (sao lưu bổ sung)",
+            "preserveRemoteDeletesDesc": "Khi bật, việc xóa một tệp ở phía đọc không bao giờ xóa nó ở phía ghi. Tắt để biến thư mục này thành bản phản chiếu nghiêm ngặt."
         },
         "statusBar": {
             "connected": "Đã kết nối",

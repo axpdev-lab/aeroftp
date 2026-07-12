@@ -1186,7 +1186,14 @@
             "versioningStaggered": "Eșalonat (1/oră, 1/zi, 1/săptămână)",
             "browseVersions": "Răsfoiește versiunile arhivate",
             "sectionConnection": "Conexiune și locație",
-            "sectionSync": "Sincronizare și versionare"
+            "sectionSync": "Sincronizare și versionare",
+            "syncDirection": "Tip de folder",
+            "syncDirectionDesc": "Alegeți dacă acest folder se sincronizează în ambele sensuri, doar trimite către locația la distanță sau doar primește de la ea.",
+            "directionBidirectional": "Trimitere și primire (sincronizare bidirecțională)",
+            "directionSendOnly": "Doar trimitere (copie de rezervă către locația la distanță)",
+            "directionReceiveOnly": "Doar primire (oglindire de la locația la distanță)",
+            "preserveRemoteDeletes": "Păstrează fișierele șterse pe cealaltă parte (copie de rezervă aditivă)",
+            "preserveRemoteDeletesDesc": "Când este activat, ștergerea unui fișier pe partea de citire nu îl elimină niciodată pe partea de scriere. Dezactivați pentru a face din acest folder o oglindire strictă."
         },
         "statusBar": {
             "connected": "Conectat",

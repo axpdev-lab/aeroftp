@@ -1186,7 +1186,14 @@
             "versioningStaggered": "Stopniowe (1/godz., 1/dzień, 1/tydzień)",
             "browseVersions": "Przeglądaj zarchiwizowane wersje",
             "sectionConnection": "Połączenie i lokalizacja",
-            "sectionSync": "Synchronizacja i wersjonowanie"
+            "sectionSync": "Synchronizacja i wersjonowanie",
+            "syncDirection": "Typ folderu",
+            "syncDirectionDesc": "Wybierz, czy ten folder synchronizuje się w obie strony, tylko wysyła do zdalnego, czy tylko odbiera z niego.",
+            "directionBidirectional": "Wysyłanie i odbieranie (synchronizacja dwukierunkowa)",
+            "directionSendOnly": "Tylko wysyłanie (kopia zapasowa do zdalnego)",
+            "directionReceiveOnly": "Tylko odbieranie (lustro ze zdalnego)",
+            "preserveRemoteDeletes": "Zachowaj pliki usunięte po drugiej stronie (kopia przyrostowa)",
+            "preserveRemoteDeletesDesc": "Gdy włączone, usunięcie pliku po stronie odczytu nigdy nie usuwa go po stronie zapisu. Wyłącz, aby ten folder stał się ścisłym lustrem."
         },
         "statusBar": {
             "connected": "Połączono",

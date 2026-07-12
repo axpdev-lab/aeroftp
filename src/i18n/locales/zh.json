@@ -1186,7 +1186,14 @@
             "versioningStaggered": "分级（每小时 1 个/每天 1 个/每周 1 个）",
             "browseVersions": "浏览已归档的版本",
             "sectionConnection": "连接与位置",
-            "sectionSync": "同步与版本管理"
+            "sectionSync": "同步与版本管理",
+            "syncDirection": "文件夹类型",
+            "syncDirectionDesc": "选择此文件夹是双向同步、仅发送到远程，还是仅从远程接收。",
+            "directionBidirectional": "发送和接收（双向同步）",
+            "directionSendOnly": "仅发送（备份到远程）",
+            "directionReceiveOnly": "仅接收（从远程镜像）",
+            "preserveRemoteDeletes": "保留在另一端删除的文件（增量备份）",
+            "preserveRemoteDeletesDesc": "开启后，在读取端删除文件绝不会将其从写入端移除。关闭可使此文件夹成为严格镜像。"
         },
         "statusBar": {
             "connected": "已连接",

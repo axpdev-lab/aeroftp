@@ -1186,7 +1186,14 @@
             "versioningStaggered": "Graddedig (1/awr, 1/diwrnod, 1/wythnos)",
             "browseVersions": "Pori fersiynau wedi'u harchifo",
             "sectionConnection": "Cysylltiad a lleoliad",
-            "sectionSync": "Cydweddu a fersiynau"
+            "sectionSync": "Cydweddu a fersiynau",
+            "syncDirection": "Math o ffolder",
+            "syncDirectionDesc": "Dewiswch a yw'r ffolder hwn yn cydweddu'r ddwy ffordd, dim ond yn anfon i'r pell, neu dim ond yn derbyn ohono.",
+            "directionBidirectional": "Anfon a Derbyn (cydweddu dwyffordd)",
+            "directionSendOnly": "Anfon yn Unig (wrth gefn i'r pell)",
+            "directionReceiveOnly": "Derbyn yn Unig (drych o'r pell)",
+            "preserveRemoteDeletes": "Cadw ffeiliau a ddilëwyd ar yr ochr arall (wrth gefn ychwanegol)",
+            "preserveRemoteDeletesDesc": "Pan fydd ymlaen, nid yw dileu ffeil ar yr ochr ddarllen byth yn ei thynnu ar yr ochr ysgrifennu. Diffoddwch i wneud y ffolder hwn yn ddrych llym."
         },
         "statusBar": {
             "connected": "Wedi cysylltu",

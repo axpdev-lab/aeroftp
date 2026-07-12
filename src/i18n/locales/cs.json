@@ -1186,7 +1186,14 @@
             "versioningStaggered": "Stupňované (1/hodinu, 1/den, 1/týden)",
             "browseVersions": "Procházet archivované verze",
             "sectionConnection": "Připojení a umístění",
-            "sectionSync": "Synchronizace a verzování"
+            "sectionSync": "Synchronizace a verzování",
+            "syncDirection": "Typ složky",
+            "syncDirectionDesc": "Zvolte, zda se tato složka synchronizuje oběma směry, jen odesílá do vzdáleného úložiště, nebo z něj jen přijímá.",
+            "directionBidirectional": "Odesílat a přijímat (obousměrná synchronizace)",
+            "directionSendOnly": "Jen odesílat (záloha do vzdáleného úložiště)",
+            "directionReceiveOnly": "Jen přijímat (zrcadlo ze vzdáleného úložiště)",
+            "preserveRemoteDeletes": "Zachovat soubory smazané na druhé straně (přírůstková záloha)",
+            "preserveRemoteDeletesDesc": "Když je zapnuto, smazání souboru na čtecí straně jej nikdy neodstraní na zapisovací straně. Vypněte, aby byla tato složka přísným zrcadlem."
         },
         "statusBar": {
             "connected": "Připojeno",
