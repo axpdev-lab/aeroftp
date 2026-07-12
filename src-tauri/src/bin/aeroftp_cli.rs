@@ -9700,11 +9700,18 @@ fn dual_delete_server_cred(
 ) {
     match uid {
         Some(uid) => {
-            let _ = ftp_client_gui_lib::user_partitions::delete_credential_for_user_dual(
+            if ftp_client_gui_lib::user_partitions::delete_credential_for_user_dual(
                 store,
                 uid,
                 credential_id,
-            );
+            )
+            .is_ok()
+            {
+                ftp_client_gui_lib::user_partitions::unmirror_credential_for_user_best_effort_any(
+                    uid,
+                    credential_id,
+                );
+            }
         }
         None => {
             let _ = store.delete(credential_id);

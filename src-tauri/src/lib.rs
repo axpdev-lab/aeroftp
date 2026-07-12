@@ -15508,16 +15508,40 @@ async fn purge_profile_secrets(
 ) -> Result<Vec<String>, String> {
     let store = credential_store::CredentialStore::from_cache()
         .ok_or_else(|| "STORE_NOT_READY".to_string())?;
+    Ok(purge_profile_secret_keys(
+        &profile_id,
+        protocol.as_deref(),
+        |key| store.get(key).map(|v| !v.is_empty()).unwrap_or(false),
+        |key| user_partitions::delete_active_credential_dual(&store, key).is_ok(),
+        user_partitions::unmirror_active_credential,
+    ))
+}
+
+fn purge_profile_secret_keys<Exists, Delete, Unmirror>(
+    profile_id: &str,
+    protocol: Option<&str>,
+    mut exists: Exists,
+    mut delete: Delete,
+    mut unmirror: Unmirror,
+) -> Vec<String>
+where
+    Exists: FnMut(&str) -> bool,
+    Delete: FnMut(&str) -> bool,
+    Unmirror: FnMut(&str),
+{
     let mut removed = Vec::new();
-    for key in per_profile_vault_keys(&profile_id, protocol.as_deref()) {
+    for key in per_profile_vault_keys(profile_id, protocol) {
         // Only report keys that existed; delete is idempotent and a missing key
         // is expected for most profile kinds.
-        let existed = store.get(&key).map(|v| !v.is_empty()).unwrap_or(false);
-        if user_partitions::delete_active_credential_dual(&store, &key).is_ok() && existed {
-            removed.push(key);
+        let existed = exists(&key);
+        if delete(&key) {
+            unmirror(&key);
+            if existed {
+                removed.push(key);
+            }
         }
     }
-    Ok(removed)
+    removed
 }
 
 /// Copy EVERY vault secret scoped to `source_id` onto `target_id`, so
@@ -16779,6 +16803,49 @@ mod per_profile_vault_keys_tests {
         // No slug -> no oauth key (the token key must not be fabricated).
         let none = per_profile_vault_keys("srv_1_abc", None);
         assert!(!none.iter().any(|k| k.starts_with("oauth_")));
+    }
+}
+
+#[cfg(test)]
+mod profile_secret_purge_tests {
+    use super::purge_profile_secret_keys;
+    use std::cell::RefCell;
+    use std::collections::HashSet;
+
+    #[test]
+    fn profile_purge_forces_unmirror_for_oauth_without_touching_app_globals() {
+        let vault = RefCell::new(HashSet::from([
+            "server_profile-1".to_string(),
+            "oauth_dropbox_profile-1".to_string(),
+        ]));
+        let partition = RefCell::new(HashSet::from([
+            "server_profile-1".to_string(),
+            "oauth_dropbox_profile-1".to_string(),
+            "oauth_dropbox_client_id".to_string(),
+        ]));
+
+        let removed = purge_profile_secret_keys(
+            "profile-1",
+            Some("dropbox"),
+            |key| vault.borrow().contains(key),
+            |key| {
+                vault.borrow_mut().remove(key);
+                true
+            },
+            |key| {
+                partition.borrow_mut().remove(key);
+            },
+        );
+
+        assert!(removed.contains(&"oauth_dropbox_profile-1".to_string()));
+        assert!(
+            !partition.borrow().contains("oauth_dropbox_profile-1"),
+            "per-profile OAuth token must be unmirrored even though the classifier excludes oauth_*"
+        );
+        assert!(
+            partition.borrow().contains("oauth_dropbox_client_id"),
+            "app-global OAuth client config must stay out of per-profile purge"
+        );
     }
 }
 

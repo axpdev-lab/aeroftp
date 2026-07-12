@@ -144,8 +144,10 @@ pub struct ProviderSecrets {
 pub struct ServerProfileExport {
     pub id: String,
     pub name: String,
+    #[serde(default)]
     pub host: String,
     pub port: u32,
+    #[serde(default)]
     pub username: String,
     pub protocol: Option<String>,
     pub initial_path: Option<String>,
@@ -728,6 +730,41 @@ mod tests {
             secrets.is_empty(),
             "files exported without provider_secrets must yield an empty map"
         );
+
+        let _ = std::fs::remove_file(&tmp);
+    }
+
+    /// v4.1.4 pre-tag audit: legacy/provider-backed profiles can be hostless,
+    /// so one missing `host` or `username` field must not sink the whole import.
+    #[test]
+    fn legacy_hostless_profile_defaults_host_and_username() {
+        let payload = serde_json::json!({
+            "servers": [{
+                "id": "legacy-drive",
+                "name": "Legacy Drive",
+                "port": 0,
+                "protocol": "googledrive"
+            }]
+        });
+        let decoded: ExportPayload =
+            serde_json::from_value(payload).expect("hostless payload should deserialize");
+        assert_eq!(decoded.servers.len(), 1);
+        assert_eq!(decoded.servers[0].host, "");
+        assert_eq!(decoded.servers[0].username, "");
+
+        let tmp = std::env::temp_dir().join(format!(
+            "aeroftp_export_hostless_{}_{}.aeroftp",
+            std::process::id(),
+            chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
+        ));
+        let metadata = export_profiles(decoded.servers, HashMap::new(), "pw-12345678", &tmp)
+            .expect("export metadata should tolerate hostless profile");
+        assert_eq!(metadata.server_count, 1);
+
+        let (servers, _secrets, _meta) =
+            import_profiles(&tmp, "pw-12345678").expect("hostless import should round-trip");
+        assert_eq!(servers[0].host, "");
+        assert_eq!(servers[0].username, "");
 
         let _ = std::fs::remove_file(&tmp);
     }

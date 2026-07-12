@@ -2327,7 +2327,7 @@ fn unmirror_credential_for_user_best_effort(user_id: i64, credential_id: &str) {
 /// Like [`unmirror_credential_for_user_best_effort`] but without the prefix
 /// classifier gate. For explicitly-typed call-sites (OAuth/Jottacloud, MUV-4)
 /// that already know the key is in scope.
-fn unmirror_credential_for_user_best_effort_any(user_id: i64, credential_id: &str) {
+pub fn unmirror_credential_for_user_best_effort_any(user_id: i64, credential_id: &str) {
     if let Ok(conn) = open_or_init_cli() {
         let _ = delete_user_credential_for(&conn, user_id, credential_id);
     }
@@ -7262,6 +7262,68 @@ mod tests {
         assert!(ids
             .iter()
             .any(|(k, t)| k == "jottacloud_refresh_42" && t == "jottacloud_refresh"));
+    }
+
+    #[test]
+    fn forced_unmirror_removes_per_profile_oauth_without_classifying_app_globals() {
+        let _guard = test_lock();
+        let conn = migrated_conn(0);
+        let root = test_root();
+        let default = get_active_user(&conn)
+            .expect("active read")
+            .expect("default active");
+
+        set_user_credential_for(
+            &conn,
+            &root,
+            default.id,
+            "oauth_dropbox_profile-1",
+            "oauth",
+            "partition-token",
+        )
+        .expect("store per-profile oauth");
+        set_user_credential_for(
+            &conn,
+            &root,
+            default.id,
+            "oauth_dropbox_client_id",
+            "oauth_config",
+            "app-client-id",
+        )
+        .expect("store app-global oauth config");
+
+        assert_eq!(muv3_credential_type("oauth_dropbox_profile-1"), None);
+        assert_eq!(muv3_credential_type("oauth_dropbox_client_id"), None);
+
+        delete_user_credential_for(&conn, default.id, "oauth_dropbox_profile-1")
+            .expect("forced per-profile unmirror");
+        assert!(
+            get_user_credential_for(&conn, &root, default.id, "oauth_dropbox_profile-1")
+                .expect("read per-profile oauth")
+                .is_none(),
+            "the per-profile OAuth token must be gone from the partition"
+        );
+        assert_eq!(
+            get_user_credential_for(&conn, &root, default.id, "oauth_dropbox_client_id")
+                .expect("read app-global config")
+                .expect("app-global config remains")
+                .as_str(),
+            "app-client-id"
+        );
+
+        let empty_vault = |_key: &str| Ok(None);
+        assert!(
+            read_credential_with_fallback_inner(
+                &conn,
+                &root,
+                default.id,
+                "oauth_dropbox_profile-1",
+                &empty_vault,
+            )
+            .expect("resolve deleted oauth")
+            .is_none(),
+            "after partition unmirror and vault delete, fallback must resolve None"
+        );
     }
 
     // --- MUV-5: ai_apikey + github cutover, transport portability ---------
