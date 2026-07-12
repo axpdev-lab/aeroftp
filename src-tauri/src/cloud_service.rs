@@ -200,6 +200,8 @@ impl CloudService {
         remote: &str,
         comparisons: &[FileComparison],
         result: &SyncOperationResult,
+        direction: CompareDirection,
+        preserve_remote_deletes: bool,
     ) {
         // Only persist baseline on clean successful run (no errors) to avoid
         // advancing the "last known good" snapshot on a partial/broken cycle.
@@ -207,9 +209,13 @@ impl CloudService {
             return;
         }
         let mut index_files: HashMap<String, SyncIndexEntry> = HashMap::new();
-        let direction = CompareDirection::Bidirectional;
         for c in comparisons {
-            let action = decide_sync_action(&c.status, &direction, c.previously_synced);
+            let action = decide_sync_action(
+                &c.status,
+                &direction,
+                c.previously_synced,
+                preserve_remote_deletes,
+            );
             if !matches!(action, SyncAction::DeleteLocal | SyncAction::DeleteRemote) {
                 if let Some(info) = c.local_info.as_ref().or(c.remote_info.as_ref()) {
                     index_files.insert(
@@ -296,7 +302,7 @@ impl CloudService {
             compare_size: true,
             compare_checksum: false,
             exclude_patterns: config.exclude_patterns.clone(),
-            direction: CompareDirection::Bidirectional,
+            direction: config.sync_direction,
             ..Default::default()
         };
 
@@ -398,7 +404,14 @@ impl CloudService {
         }
 
         // Persist the post-sync baseline (index) for delete propagation on next cycles.
-        self.save_post_sync_index(&local_str, &remote_str, &comparisons, &result);
+        self.save_post_sync_index(
+            &local_str,
+            &remote_str,
+            &comparisons,
+            &result,
+            config.sync_direction,
+            config.preserve_remote_deletes,
+        );
 
         // Update status
         if result.conflicts > 0 {
@@ -508,7 +521,7 @@ impl CloudService {
             compare_size: provider.reports_exact_size(),
             compare_checksum: has_checksums,
             exclude_patterns: config.exclude_patterns.clone(),
-            direction: CompareDirection::Bidirectional,
+            direction: config.sync_direction,
             ..Default::default()
         };
 
@@ -619,7 +632,14 @@ impl CloudService {
         }
 
         // Persist the post-sync baseline (index) for delete propagation on next cycles.
-        self.save_post_sync_index(&local_str, &remote_str, &comparisons, &result);
+        self.save_post_sync_index(
+            &local_str,
+            &remote_str,
+            &comparisons,
+            &result,
+            config.sync_direction,
+            config.preserve_remote_deletes,
+        );
 
         // Update status
         if result.conflicts > 0 {
@@ -949,8 +969,9 @@ impl CloudService {
             }
             _ => decide_sync_action(
                 &comparison.status,
-                &CompareDirection::Bidirectional,
+                &config.sync_direction,
                 comparison.previously_synced,
+                config.preserve_remote_deletes,
             ),
         };
 
@@ -1255,8 +1276,9 @@ impl CloudService {
             }
             _ => decide_sync_action(
                 &comparison.status,
-                &CompareDirection::Bidirectional,
+                &config.sync_direction,
                 comparison.previously_synced,
+                config.preserve_remote_deletes,
             ),
         };
 

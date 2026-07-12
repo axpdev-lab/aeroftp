@@ -269,7 +269,7 @@ pub(crate) fn scan_options_for_sync(opts: &SyncOptions) -> ScanOptions {
 }
 
 /// Direction of synchronization
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum CompareDirection {
     /// Local -> Remote (upload changes)
@@ -277,6 +277,7 @@ pub enum CompareDirection {
     /// Remote -> Local (download changes)
     RemoteToLocal,
     /// Both directions (full sync)
+    #[default]
     Bidirectional,
 }
 
@@ -1076,9 +1077,10 @@ pub fn decide_sync_action(
     status: &SyncStatus,
     direction: &CompareDirection,
     previously_synced: bool,
+    preserve_remote_deletes: bool,
 ) -> SyncAction {
     match (status, direction) {
-        // Bidirectional: the key change for delete propagation (Task 1)
+        // === Bidirectional (Task 1 delete propagation) ===
         (SyncStatus::LocalOnly, CompareDirection::Bidirectional) => {
             if previously_synced {
                 SyncAction::DeleteLocal
@@ -1093,30 +1095,43 @@ pub fn decide_sync_action(
                 SyncAction::Download
             }
         }
-
-        // Bidirectional non-Only cases (unchanged)
         (SyncStatus::Identical, CompareDirection::Bidirectional) => SyncAction::Skip,
         (SyncStatus::LocalNewer, CompareDirection::Bidirectional) => SyncAction::Upload,
         (SyncStatus::RemoteNewer, CompareDirection::Bidirectional) => SyncAction::Download,
         (SyncStatus::Conflict, CompareDirection::Bidirectional) => SyncAction::AskUser,
         (SyncStatus::SizeMismatch, CompareDirection::Bidirectional) => SyncAction::AskUser,
 
-        // Local to Remote (preserve prior delete logic on RemoteOnly)
+        // === Send-only: LocalToRemote (additive backup default) ===
+        // Push local changes/new; never pull; for RemoteOnly: delete only if !preserve (mirror mode)
         (SyncStatus::LocalNewer, CompareDirection::LocalToRemote) => SyncAction::Upload,
         (SyncStatus::LocalOnly, CompareDirection::LocalToRemote) => SyncAction::Upload,
         (SyncStatus::RemoteNewer, CompareDirection::LocalToRemote) => SyncAction::Skip,
-        (SyncStatus::RemoteOnly, CompareDirection::LocalToRemote) => SyncAction::DeleteRemote,
+        (SyncStatus::RemoteOnly, CompareDirection::LocalToRemote) => {
+            if !preserve_remote_deletes && previously_synced {
+                SyncAction::DeleteRemote
+            } else {
+                SyncAction::Skip
+            }
+        }
+        (SyncStatus::Identical, CompareDirection::LocalToRemote) => SyncAction::Skip,
+        (SyncStatus::Conflict, CompareDirection::LocalToRemote) => SyncAction::Upload, // local wins
+        (SyncStatus::SizeMismatch, CompareDirection::LocalToRemote) => SyncAction::Upload,
 
-        // Remote to Local (preserve prior delete logic on LocalOnly)
+        // === Receive-only: RemoteToLocal (symmetric) ===
         (SyncStatus::RemoteNewer, CompareDirection::RemoteToLocal) => SyncAction::Download,
         (SyncStatus::RemoteOnly, CompareDirection::RemoteToLocal) => SyncAction::Download,
         (SyncStatus::LocalNewer, CompareDirection::RemoteToLocal) => SyncAction::Skip,
-        (SyncStatus::LocalOnly, CompareDirection::RemoteToLocal) => SyncAction::DeleteLocal,
-
-        // Fallbacks for other combos (conflict/size/identical)
-        (SyncStatus::Identical, _) => SyncAction::Skip,
-        (SyncStatus::Conflict, _) => SyncAction::AskUser,
-        (SyncStatus::SizeMismatch, _) => SyncAction::AskUser,
+        (SyncStatus::LocalOnly, CompareDirection::RemoteToLocal) => {
+            if !preserve_remote_deletes && previously_synced {
+                SyncAction::DeleteLocal
+            } else {
+                SyncAction::Skip
+            }
+        }
+        (SyncStatus::Identical, CompareDirection::RemoteToLocal) => SyncAction::Skip,
+        (SyncStatus::Conflict, CompareDirection::RemoteToLocal) => SyncAction::Download,
+        (SyncStatus::SizeMismatch, CompareDirection::RemoteToLocal) => SyncAction::Download,
+        // No more fallbacks: all (status, direction) combos are covered above.
     }
 }
 
@@ -1125,7 +1140,7 @@ pub fn decide_sync_action(
 /// legacy call sites (still dead_code).
 #[allow(dead_code)]
 pub fn get_recommended_action(status: &SyncStatus, direction: &CompareDirection) -> SyncAction {
-    decide_sync_action(status, direction, false)
+    decide_sync_action(status, direction, false, true)
 }
 
 /// Run a sync between `local_root` and `remote_root` using `provider` and
@@ -5461,6 +5476,7 @@ mod tests {
             &SyncStatus::LocalOnly,
             &CompareDirection::Bidirectional,
             true, // previously_synced
+            true,
         );
         assert_eq!(action, SyncAction::DeleteLocal);
     }
@@ -5472,6 +5488,7 @@ mod tests {
             &SyncStatus::LocalOnly,
             &CompareDirection::Bidirectional,
             false,
+            true,
         );
         assert_eq!(action, SyncAction::Upload);
     }
@@ -5481,6 +5498,7 @@ mod tests {
         let action = decide_sync_action(
             &SyncStatus::RemoteOnly,
             &CompareDirection::Bidirectional,
+            true,
             true,
         );
         assert_eq!(action, SyncAction::DeleteRemote);
@@ -5494,6 +5512,7 @@ mod tests {
             &SyncStatus::RemoteOnly,
             &CompareDirection::Bidirectional,
             false,
+            true,
         );
         assert_eq!(action, SyncAction::Download);
     }
@@ -5532,7 +5551,8 @@ mod tests {
             decide_sync_action(
                 &f.status,
                 &CompareDirection::Bidirectional,
-                f.previously_synced
+                f.previously_synced,
+                true,
             ),
             SyncAction::DeleteLocal
         );
@@ -5559,7 +5579,8 @@ mod tests {
             decide_sync_action(
                 &c.status,
                 &CompareDirection::Bidirectional,
-                c.previously_synced
+                c.previously_synced,
+                true,
             ),
             SyncAction::Upload
         );
@@ -5598,7 +5619,8 @@ mod tests {
             decide_sync_action(
                 &c.status,
                 &CompareDirection::Bidirectional,
-                c.previously_synced
+                c.previously_synced,
+                true,
             ),
             SyncAction::Upload
         );

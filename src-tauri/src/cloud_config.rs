@@ -47,6 +47,15 @@ pub struct CloudConfig {
     /// If set, enables "Share Link" functionality
     #[serde(default)]
     pub public_url_base: Option<String>,
+    /// Sync direction for this AeroCloud folder (Task 2).
+    /// Default Bidirectional for back-compat with existing configs.
+    #[serde(default)]
+    pub sync_direction: crate::sync::CompareDirection,
+    /// For send-only / receive-only: when true (default), do not propagate
+    /// deletes toward the read side (additive backup semantics). When false
+    /// the folder acts as a mirror and will delete on the target side.
+    #[serde(default = "default_preserve_remote_deletes")]
+    pub preserve_remote_deletes: bool,
     /// Protocol type for the cloud connection (e.g., "ftp", "sftp", "googledrive", "s3")
     /// Default: "ftp" for backward compatibility with existing configs
     #[serde(default = "default_protocol_type")]
@@ -68,6 +77,10 @@ pub struct CloudConfig {
 
 fn default_protocol_type() -> String {
     "ftp".to_string()
+}
+
+fn default_preserve_remote_deletes() -> bool {
+    true
 }
 
 /// How to handle file conflicts
@@ -126,6 +139,8 @@ impl Default for CloudConfig {
             public_url_base: None,
             protocol_type: default_protocol_type(),
             connection_params: serde_json::Value::Null,
+            sync_direction: crate::sync::CompareDirection::Bidirectional,
+            preserve_remote_deletes: default_preserve_remote_deletes(),
         }
     }
 }
