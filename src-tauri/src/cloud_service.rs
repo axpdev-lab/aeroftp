@@ -12,8 +12,9 @@ use crate::cloud_config::{CloudConfig, CloudSyncStatus, ConflictStrategy};
 use crate::ftp::FtpManager;
 use crate::providers::{ProviderError, RemoteEntry as ProviderRemoteEntry, StorageProvider};
 use crate::sync::{
-    build_comparison_results, validate_relative_path, CompareDirection, CompareOptions,
-    FileComparison, FileInfo, SyncAction, SyncStatus,
+    build_comparison_results_with_index, decide_sync_action, load_sync_index, save_sync_index,
+    validate_relative_path, CompareDirection, CompareOptions, FileComparison, FileInfo, SyncAction,
+    SyncIndex, SyncIndexEntry, SyncStatus,
 };
 // file_watcher module available for Phase 3A+ watcher integration
 use chrono::{DateTime, Utc};
@@ -185,6 +186,69 @@ impl CloudService {
         conflicts.clear();
     }
 
+    // --- Task 1 helpers: index-aware sync + safety gate + post-sync save ---
+
+    fn load_index(&self, config: &CloudConfig) -> Option<SyncIndex> {
+        let local = config.local_folder.to_string_lossy().to_string();
+        let remote = config.remote_folder.clone();
+        load_sync_index(&local, &remote).ok().flatten()
+    }
+
+    fn save_post_sync_index(
+        &self,
+        local: &str,
+        remote: &str,
+        comparisons: &[FileComparison],
+        result: &SyncOperationResult,
+    ) {
+        // Only persist baseline on clean successful run (no errors) to avoid
+        // advancing the "last known good" snapshot on a partial/broken cycle.
+        if !result.errors.is_empty() {
+            return;
+        }
+        let mut index_files: HashMap<String, SyncIndexEntry> = HashMap::new();
+        let direction = CompareDirection::Bidirectional;
+        for c in comparisons {
+            let action = decide_sync_action(&c.status, &direction, c.previously_synced);
+            if !matches!(action, SyncAction::DeleteLocal | SyncAction::DeleteRemote) {
+                if let Some(info) = c.local_info.as_ref().or(c.remote_info.as_ref()) {
+                    index_files.insert(
+                        c.relative_path.clone(),
+                        SyncIndexEntry {
+                            size: info.size,
+                            modified: info.modified,
+                            is_dir: c.is_dir,
+                        },
+                    );
+                } else if c.is_dir {
+                    index_files.insert(
+                        c.relative_path.clone(),
+                        SyncIndexEntry {
+                            size: 0,
+                            modified: None,
+                            is_dir: true,
+                        },
+                    );
+                }
+            }
+        }
+        let idx = SyncIndex {
+            version: 1,
+            last_sync: Utc::now(),
+            local_path: local.to_string(),
+            remote_path: remote.to_string(),
+            files: index_files,
+        };
+        if let Err(e) = save_sync_index(&idx) {
+            tracing::warn!("Failed to save AeroCloud sync index: {}", e);
+        } else {
+            tracing::debug!(
+                "Saved AeroCloud sync index for pair ({} tracked files)",
+                idx.files.len()
+            );
+        }
+    }
+
     /// Perform a full sync between local and remote folders
     pub async fn perform_full_sync(
         &self,
@@ -211,7 +275,22 @@ impl CloudService {
         let local_files = self.scan_local_folder(&config).await?;
         let remote_files = self.scan_remote_folder(ftp_manager, &config).await?;
 
-        // Build comparison
+        let local_str = config.local_folder.to_string_lossy().to_string();
+        let remote_str = config.remote_folder.clone();
+
+        // Load prior sync index (if any) for delete propagation + conflict detection.
+        let index = self.load_index(&config);
+        let had_prior = index.as_ref().map_or(0, |i| i.files.len()) > 0;
+        let safety_trip = had_prior && (local_files.is_empty() || remote_files.is_empty());
+        if safety_trip {
+            tracing::warn!(
+                "AeroCloud safety gate (FTP): one side empty (L:{} R:{}) while prior index had entries. Disabling delete propagation this cycle to prevent accidental wipe.",
+                local_files.len(),
+                remote_files.len()
+            );
+        }
+
+        // Build comparison (index-aware for delete detection)
         let options = CompareOptions {
             compare_timestamp: true,
             compare_size: true,
@@ -221,7 +300,19 @@ impl CloudService {
             ..Default::default()
         };
 
-        let comparisons = build_comparison_results(local_files, remote_files, &options);
+        let mut comparisons = build_comparison_results_with_index(
+            local_files,
+            remote_files,
+            &options,
+            index.as_ref(),
+        );
+        if safety_trip {
+            for c in &mut comparisons {
+                if c.status == SyncStatus::LocalOnly || c.status == SyncStatus::RemoteOnly {
+                    c.previously_synced = false;
+                }
+            }
+        }
 
         let total_files = comparisons.len() as u32;
         let mut result = SyncOperationResult {
@@ -306,6 +397,9 @@ impl CloudService {
             let _ = crate::cloud_config::save_cloud_config(&cfg);
         }
 
+        // Persist the post-sync baseline (index) for delete propagation on next cycles.
+        self.save_post_sync_index(&local_str, &remote_str, &comparisons, &result);
+
         // Update status
         if result.conflicts > 0 {
             self.set_status(CloudSyncStatus::HasConflicts {
@@ -384,10 +478,25 @@ impl CloudService {
             }
         };
 
+        let local_str = config.local_folder.to_string_lossy().to_string();
+        let remote_str = config.remote_folder.clone();
+
+        // Load prior sync index (if any) for delete propagation + conflict detection.
+        let index = self.load_index(&config);
+        let had_prior = index.as_ref().map_or(0, |i| i.files.len()) > 0;
+        let safety_trip = had_prior && (local_files.is_empty() || remote_files.is_empty());
+        if safety_trip {
+            tracing::warn!(
+                "AeroCloud safety gate (provider): one side empty (L:{} R:{}) while prior index had entries. Disabling delete propagation this cycle to prevent accidental wipe.",
+                local_files.len(),
+                remote_files.len()
+            );
+        }
+
         // Enable checksum comparison when provider supplies content hashes (e.g. FileLu)
         let has_checksums = remote_files.values().any(|f| f.checksum.is_some());
 
-        // Build comparison. Skip size comparison when the provider does NOT
+        // Build comparison (index-aware). Skip size comparison when the provider does NOT
         // report an exact logical size (a deferred-size crypt overlay, e.g.
         // legacy AeroCrypt v1/v2): the local plaintext size never equals the
         // on-wire ciphertext size, so comparing them would flag every unchanged
@@ -403,7 +512,19 @@ impl CloudService {
             ..Default::default()
         };
 
-        let comparisons = build_comparison_results(local_files, remote_files, &options);
+        let mut comparisons = build_comparison_results_with_index(
+            local_files,
+            remote_files,
+            &options,
+            index.as_ref(),
+        );
+        if safety_trip {
+            for c in &mut comparisons {
+                if c.status == SyncStatus::LocalOnly || c.status == SyncStatus::RemoteOnly {
+                    c.previously_synced = false;
+                }
+            }
+        }
 
         let total_files = comparisons.len() as u32;
         let mut result = SyncOperationResult {
@@ -496,6 +617,9 @@ impl CloudService {
             cfg.last_sync = Some(Utc::now());
             let _ = crate::cloud_config::save_cloud_config(&cfg);
         }
+
+        // Persist the post-sync baseline (index) for delete propagation on next cycles.
+        self.save_post_sync_index(&local_str, &remote_str, &comparisons, &result);
 
         // Update status
         if result.conflicts > 0 {
@@ -801,13 +925,10 @@ impl CloudService {
         // Validate relative_path against traversal attacks (CF-004)
         validate_relative_path(&comparison.relative_path)?;
 
-        // Determine action based on status and conflict strategy
+        // Determine action based on status and conflict strategy.
+        // Non-conflict cases (incl. LocalOnly/RemoteOnly delete prop) go through
+        // the central decide_sync_action (index-aware).
         let action = match &comparison.status {
-            SyncStatus::Identical => SyncAction::Skip,
-            SyncStatus::LocalNewer => SyncAction::Upload,
-            SyncStatus::RemoteNewer => SyncAction::Download,
-            SyncStatus::LocalOnly => SyncAction::Upload,
-            SyncStatus::RemoteOnly => SyncAction::Download,
             SyncStatus::Conflict | SyncStatus::SizeMismatch => {
                 match config.conflict_strategy {
                     ConflictStrategy::AskUser => SyncAction::AskUser,
@@ -826,6 +947,11 @@ impl CloudService {
                     }
                 }
             }
+            _ => decide_sync_action(
+                &comparison.status,
+                &CompareDirection::Bidirectional,
+                comparison.previously_synced,
+            ),
         };
 
         // Execute action
@@ -947,6 +1073,29 @@ impl CloudService {
                         )
                         .await
                         .map_err(|e| format!("KeepBoth download failed: {}", e))?;
+                }
+            }
+            SyncAction::DeleteRemote if !comparison.is_dir => {
+                let remote_path = format!(
+                    "{}/{}",
+                    config.remote_folder.trim_end_matches('/'),
+                    comparison.relative_path
+                );
+                ftp_manager
+                    .remove(&remote_path)
+                    .await
+                    .map_err(|e| format!("Delete propagation (remote) failed: {}", e))?;
+                tracing::info!("AeroCloud: delete propagated to remote '{}'", remote_path);
+            }
+            SyncAction::DeleteLocal if !comparison.is_dir => {
+                let local_path = config.local_folder.join(&comparison.relative_path);
+                if local_path.exists() {
+                    std::fs::remove_file(&local_path)
+                        .map_err(|e| format!("Delete propagation (local) failed: {}", e))?;
+                    tracing::info!(
+                        "AeroCloud: delete propagated to local '{}'",
+                        local_path.display()
+                    );
                 }
             }
             _ => {}
@@ -1082,13 +1231,10 @@ impl CloudService {
         // Validate relative_path against traversal attacks (CF-004)
         validate_relative_path(&comparison.relative_path)?;
 
-        // Determine action based on status and conflict strategy
+        // Determine action based on status and conflict strategy.
+        // Non-conflict cases (incl. LocalOnly/RemoteOnly delete prop) go through
+        // the central decide_sync_action (index-aware).
         let action = match &comparison.status {
-            SyncStatus::Identical => SyncAction::Skip,
-            SyncStatus::LocalNewer => SyncAction::Upload,
-            SyncStatus::RemoteNewer => SyncAction::Download,
-            SyncStatus::LocalOnly => SyncAction::Upload,
-            SyncStatus::RemoteOnly => SyncAction::Download,
             SyncStatus::Conflict | SyncStatus::SizeMismatch => {
                 match config.conflict_strategy {
                     ConflictStrategy::AskUser => SyncAction::AskUser,
@@ -1107,6 +1253,11 @@ impl CloudService {
                     }
                 }
             }
+            _ => decide_sync_action(
+                &comparison.status,
+                &CompareDirection::Bidirectional,
+                comparison.previously_synced,
+            ),
         };
 
         // Execute action using provider methods
@@ -1261,6 +1412,29 @@ impl CloudService {
                         .download(&remote_info.path, &local_path.to_string_lossy(), None)
                         .await
                         .map_err(|e| format!("KeepBoth download failed: {}", e))?;
+                }
+            }
+            SyncAction::DeleteRemote if !comparison.is_dir => {
+                let remote_path = format!(
+                    "{}/{}",
+                    config.remote_folder.trim_end_matches('/'),
+                    comparison.relative_path
+                );
+                provider
+                    .delete(&remote_path)
+                    .await
+                    .map_err(|e| format!("Delete propagation (remote) failed: {}", e))?;
+                tracing::info!("AeroCloud: delete propagated to remote '{}'", remote_path);
+            }
+            SyncAction::DeleteLocal if !comparison.is_dir => {
+                let local_path = config.local_folder.join(&comparison.relative_path);
+                if local_path.exists() {
+                    std::fs::remove_file(&local_path)
+                        .map_err(|e| format!("Delete propagation (local) failed: {}", e))?;
+                    tracing::info!(
+                        "AeroCloud: delete propagated to local '{}'",
+                        local_path.display()
+                    );
                 }
             }
             _ => {}

@@ -630,7 +630,7 @@ pub(crate) struct SyncTransferSpec<'a> {
 
 /// Action to perform during sync
 #[allow(dead_code)]
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SyncAction {
     Upload,
@@ -1068,33 +1068,64 @@ pub fn build_comparison_results(
     results
 }
 
-/// Determine the recommended action based on comparison status and direction
-#[allow(dead_code)]
-pub fn get_recommended_action(status: &SyncStatus, direction: &CompareDirection) -> SyncAction {
+/// Central decision function for sync actions (Task 1+2).
+/// Consumes `previously_synced` (from index) to distinguish "new on one side"
+/// from "deleted on the other side" for Bidirectional.
+/// Non-bidirectional cases keep their prior semantics for now; Task 2 will extend.
+pub fn decide_sync_action(
+    status: &SyncStatus,
+    direction: &CompareDirection,
+    previously_synced: bool,
+) -> SyncAction {
     match (status, direction) {
-        // Bidirectional
+        // Bidirectional: the key change for delete propagation (Task 1)
+        (SyncStatus::LocalOnly, CompareDirection::Bidirectional) => {
+            if previously_synced {
+                SyncAction::DeleteLocal
+            } else {
+                SyncAction::Upload
+            }
+        }
+        (SyncStatus::RemoteOnly, CompareDirection::Bidirectional) => {
+            if previously_synced {
+                SyncAction::DeleteRemote
+            } else {
+                SyncAction::Download
+            }
+        }
+
+        // Bidirectional non-Only cases (unchanged)
+        (SyncStatus::Identical, CompareDirection::Bidirectional) => SyncAction::Skip,
         (SyncStatus::LocalNewer, CompareDirection::Bidirectional) => SyncAction::Upload,
         (SyncStatus::RemoteNewer, CompareDirection::Bidirectional) => SyncAction::Download,
-        (SyncStatus::LocalOnly, CompareDirection::Bidirectional) => SyncAction::Upload,
-        (SyncStatus::RemoteOnly, CompareDirection::Bidirectional) => SyncAction::Download,
-        (SyncStatus::Conflict, _) => SyncAction::AskUser,
-        (SyncStatus::SizeMismatch, _) => SyncAction::AskUser,
+        (SyncStatus::Conflict, CompareDirection::Bidirectional) => SyncAction::AskUser,
+        (SyncStatus::SizeMismatch, CompareDirection::Bidirectional) => SyncAction::AskUser,
 
-        // Local to Remote
+        // Local to Remote (preserve prior delete logic on RemoteOnly)
         (SyncStatus::LocalNewer, CompareDirection::LocalToRemote) => SyncAction::Upload,
         (SyncStatus::LocalOnly, CompareDirection::LocalToRemote) => SyncAction::Upload,
         (SyncStatus::RemoteNewer, CompareDirection::LocalToRemote) => SyncAction::Skip,
         (SyncStatus::RemoteOnly, CompareDirection::LocalToRemote) => SyncAction::DeleteRemote,
 
-        // Remote to Local
+        // Remote to Local (preserve prior delete logic on LocalOnly)
         (SyncStatus::RemoteNewer, CompareDirection::RemoteToLocal) => SyncAction::Download,
         (SyncStatus::RemoteOnly, CompareDirection::RemoteToLocal) => SyncAction::Download,
         (SyncStatus::LocalNewer, CompareDirection::RemoteToLocal) => SyncAction::Skip,
         (SyncStatus::LocalOnly, CompareDirection::RemoteToLocal) => SyncAction::DeleteLocal,
 
-        // Identical - no action needed
+        // Fallbacks for other combos (conflict/size/identical)
         (SyncStatus::Identical, _) => SyncAction::Skip,
+        (SyncStatus::Conflict, _) => SyncAction::AskUser,
+        (SyncStatus::SizeMismatch, _) => SyncAction::AskUser,
     }
+}
+
+/// Determine the recommended action based on comparison status and direction.
+/// Delegates to decide_sync_action with previously_synced=false to preserve
+/// legacy call sites (still dead_code).
+#[allow(dead_code)]
+pub fn get_recommended_action(status: &SyncStatus, direction: &CompareDirection) -> SyncAction {
+    decide_sync_action(status, direction, false)
 }
 
 /// Run a sync between `local_root` and `remote_root` using `provider` and
@@ -5392,5 +5423,184 @@ mod tests {
         assert_eq!(spec.requested_policy, DeltaPolicy::Delta);
         assert_eq!(spec.decision_policy, DeltaPolicy::Mtime);
         assert_ne!(spec.requested_policy, spec.decision_policy);
+    }
+
+    // ============================================================
+    // Task 1: Delete propagation tests (index-aware decision)
+    // ============================================================
+
+    fn mk_file_info(name: &str, size: u64, modified: Option<DateTime<Utc>>) -> FileInfo {
+        FileInfo {
+            name: name.to_string(),
+            path: format!("/tmp/{}", name),
+            size,
+            modified,
+            is_dir: false,
+            checksum: None,
+            checksum_alg: None,
+        }
+    }
+
+    #[allow(dead_code)]
+    fn mk_dir_info(name: &str) -> FileInfo {
+        FileInfo {
+            name: name.to_string(),
+            path: format!("/tmp/{}", name),
+            size: 0,
+            modified: None,
+            is_dir: true,
+            checksum: None,
+            checksum_alg: None,
+        }
+    }
+
+    #[test]
+    fn test_decide_delete_local_when_previously_synced_remote_deleted() {
+        // Resurrection fix: file was in index, now only local -> DeleteLocal
+        let action = decide_sync_action(
+            &SyncStatus::LocalOnly,
+            &CompareDirection::Bidirectional,
+            true, // previously_synced
+        );
+        assert_eq!(action, SyncAction::DeleteLocal);
+    }
+
+    #[test]
+    fn test_decide_upload_when_local_only_not_previously_synced() {
+        // New file: not in index -> Upload (must not be eaten by delete logic)
+        let action = decide_sync_action(
+            &SyncStatus::LocalOnly,
+            &CompareDirection::Bidirectional,
+            false,
+        );
+        assert_eq!(action, SyncAction::Upload);
+    }
+
+    #[test]
+    fn test_decide_delete_remote_when_previously_synced_local_deleted() {
+        let action = decide_sync_action(
+            &SyncStatus::RemoteOnly,
+            &CompareDirection::Bidirectional,
+            true,
+        );
+        assert_eq!(action, SyncAction::DeleteRemote);
+    }
+
+    // (note: the build test below uses mut locals as needed)
+
+    #[test]
+    fn test_decide_download_when_remote_only_not_previously_synced() {
+        let action = decide_sync_action(
+            &SyncStatus::RemoteOnly,
+            &CompareDirection::Bidirectional,
+            false,
+        );
+        assert_eq!(action, SyncAction::Download);
+    }
+
+    #[test]
+    fn test_build_comparison_with_index_sets_previously_synced_for_missing_side() {
+        let mut local: HashMap<String, FileInfo> = HashMap::new();
+        let remote: HashMap<String, FileInfo> = HashMap::new();
+        let now = Utc::now();
+
+        // F was synced before, remote deleted it
+        local.insert("f.txt".to_string(), mk_file_info("f.txt", 123, Some(now)));
+
+        let mut idx = SyncIndex::new("/local".into(), "/remote".into());
+        idx.files.insert(
+            "f.txt".to_string(),
+            SyncIndexEntry {
+                size: 123,
+                modified: Some(now),
+                is_dir: false,
+            },
+        );
+
+        let opts = CompareOptions {
+            compare_timestamp: true,
+            compare_size: true,
+            ..Default::default()
+        };
+        let results = build_comparison_results_with_index(local, remote, &opts, Some(&idx));
+
+        // Should produce a LocalOnly with previously_synced=true
+        let f = results.iter().find(|c| c.relative_path == "f.txt").unwrap();
+        assert_eq!(f.status, SyncStatus::LocalOnly);
+        assert!(f.previously_synced);
+        assert_eq!(
+            decide_sync_action(
+                &f.status,
+                &CompareDirection::Bidirectional,
+                f.previously_synced
+            ),
+            SyncAction::DeleteLocal
+        );
+    }
+
+    #[test]
+    fn test_index_absent_treats_only_as_new_no_delete() {
+        // Safety + first-sync: no index -> previously=false, Only -> Upload/Download
+        let mut local: HashMap<String, FileInfo> = HashMap::new();
+        local.insert(
+            "new.txt".to_string(),
+            mk_file_info("new.txt", 42, Some(Utc::now())),
+        );
+
+        let opts = CompareOptions::default();
+        let results = build_comparison_results_with_index(local, HashMap::new(), &opts, None);
+
+        let c = results
+            .iter()
+            .find(|c| c.relative_path == "new.txt")
+            .unwrap();
+        assert!(!c.previously_synced);
+        assert_eq!(
+            decide_sync_action(
+                &c.status,
+                &CompareDirection::Bidirectional,
+                c.previously_synced
+            ),
+            SyncAction::Upload
+        );
+    }
+
+    #[test]
+    fn test_non_regression_bidir_newer_still_uploads() {
+        // A changed file (LocalNewer) must still Upload even with index present
+        let mut local: HashMap<String, FileInfo> = HashMap::new();
+        let mut remote: HashMap<String, FileInfo> = HashMap::new();
+        let t1 = Utc::now();
+        let t2 = t1 + chrono::Duration::seconds(100);
+
+        local.insert("a.txt".to_string(), mk_file_info("a.txt", 100, Some(t2)));
+        remote.insert("a.txt".to_string(), mk_file_info("a.txt", 100, Some(t1)));
+
+        let mut idx = SyncIndex::new("/l".into(), "/r".into());
+        idx.files.insert(
+            "a.txt".to_string(),
+            SyncIndexEntry {
+                size: 100,
+                modified: Some(t1),
+                is_dir: false,
+            },
+        );
+
+        let opts = CompareOptions {
+            compare_timestamp: true,
+            compare_size: true,
+            ..Default::default()
+        };
+        let results = build_comparison_results_with_index(local, remote, &opts, Some(&idx));
+        let c = results.iter().find(|c| c.relative_path == "a.txt").unwrap();
+        assert_eq!(c.status, SyncStatus::LocalNewer);
+        assert_eq!(
+            decide_sync_action(
+                &c.status,
+                &CompareDirection::Bidirectional,
+                c.previously_synced
+            ),
+            SyncAction::Upload
+        );
     }
 }
