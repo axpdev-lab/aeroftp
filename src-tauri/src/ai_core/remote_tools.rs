@@ -1077,6 +1077,10 @@ fn reject_oversize_edit_download(data_len: usize) -> Result<(), ToolError> {
     Ok(())
 }
 
+fn edit_temp_path(path: &str) -> String {
+    format!("{path}.aeroedit-{}.tmp", uuid::Uuid::new_v4())
+}
+
 /// Find-and-replace on a remote UTF-8 text file (MCP/CLI surface).
 /// In-memory for files <= 10 MiB. Rejects directories and non-UTF8 (binary).
 /// If no match for `find`, returns no_op and does not re-upload.
@@ -1144,10 +1148,20 @@ async fn edit(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
         }));
     }
 
-    backend
-        .upload_from_bytes(new_text.as_bytes(), &path)
+    let temp_path = edit_temp_path(&path);
+    if let Err(e) = backend
+        .upload_from_bytes(new_text.as_bytes(), &temp_path)
         .await
-        .map_err(ToolError::Exec)?;
+    {
+        let _ = backend.delete(&temp_path).await;
+        return Err(ToolError::Exec(e));
+    }
+    // Rename atomicity depends on the backend, but this avoids direct target
+    // truncation before the replacement bytes are fully uploaded.
+    if let Err(e) = backend.rename(&temp_path, &path).await {
+        let _ = backend.delete(&temp_path).await;
+        return Err(ToolError::Exec(e));
+    }
 
     Ok(json!({
         "server": server,
@@ -3172,12 +3186,15 @@ mod tests {
         /// path -> (is_dir, size)
         stats: std::collections::HashMap<String, (bool, u64)>,
         downloads: std::collections::HashMap<String, Vec<u8>>,
+        remote_files: Mutex<std::collections::HashMap<String, Vec<u8>>>,
         uploads: Mutex<Vec<(String, Vec<u8>)>>,
+        renames: Mutex<Vec<(String, String)>>,
         deleted: Mutex<Vec<String>>,
         deleted_recursive: Mutex<Vec<String>>,
         /// When set, `delete` fails with this message, the way a provider's
         /// `rmdir` fails on a non-empty directory.
         delete_fails_with: Option<String>,
+        rename_fails_with: Option<String>,
     }
 
     impl FakeBackend {
@@ -3207,10 +3224,13 @@ mod tests {
                 tree,
                 stats,
                 downloads: std::collections::HashMap::new(),
+                remote_files: Mutex::new(std::collections::HashMap::new()),
                 uploads: Mutex::new(Vec::new()),
+                renames: Mutex::new(Vec::new()),
                 deleted: Mutex::new(Vec::new()),
                 deleted_recursive: Mutex::new(Vec::new()),
                 delete_fails_with: None,
+                rename_fails_with: None,
             }
         }
 
@@ -3249,6 +3269,10 @@ mod tests {
                 .lock()
                 .unwrap()
                 .push((path.to_string(), data.to_vec()));
+            self.remote_files
+                .lock()
+                .unwrap()
+                .insert(path.to_string(), data.to_vec());
             Ok(())
         }
         async fn download(&self, _remote: &str, _local: &str) -> Result<(), String> {
@@ -3261,6 +3285,7 @@ mod tests {
             if let Some(msg) = &self.delete_fails_with {
                 return Err(msg.clone());
             }
+            self.remote_files.lock().unwrap().remove(path);
             self.deleted.lock().unwrap().push(path.to_string());
             Ok(())
         }
@@ -3274,8 +3299,25 @@ mod tests {
         async fn mkdir(&self, _path: &str) -> Result<(), String> {
             Err("unused".into())
         }
-        async fn rename(&self, _from: &str, _to: &str) -> Result<(), String> {
-            Err("unused".into())
+        async fn rename(&self, from: &str, to: &str) -> Result<(), String> {
+            if let Some(msg) = &self.rename_fails_with {
+                return Err(msg.clone());
+            }
+            let data = self
+                .remote_files
+                .lock()
+                .unwrap()
+                .remove(from)
+                .ok_or_else(|| format!("not found: {from}"))?;
+            self.remote_files
+                .lock()
+                .unwrap()
+                .insert(to.to_string(), data);
+            self.renames
+                .lock()
+                .unwrap()
+                .push((from.to_string(), to.to_string()));
+            Ok(())
         }
         async fn search(&self, _path: &str, _pattern: &str) -> Result<Vec<RemoteEntry>, String> {
             Err("unused".into())
@@ -3412,6 +3454,94 @@ mod tests {
         let msg = err.to_string();
         assert!(msg.contains("exceeded the edit limit"), "got: {msg}");
         assert!(backend.uploads.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn edit_uploads_to_temp_then_renames_over_target() {
+        let mut fake = FakeBackend::sample();
+        fake.downloads
+            .insert("/root/a.txt".to_string(), b"old text".to_vec());
+        let backend = Arc::new(fake);
+        let ctx = test_ctx(Arc::clone(&backend));
+
+        let value = edit(
+            &ctx,
+            &json!({
+                "server": "s",
+                "path": "/root/a.txt",
+                "find": "old",
+                "replace": "new",
+            }),
+        )
+        .await
+        .expect("edit should publish via temp+rename");
+
+        assert_eq!(value["replacements"], json!(1));
+        let uploads = backend.uploads.lock().unwrap();
+        assert_eq!(uploads.len(), 1, "one staged upload expected: {uploads:?}");
+        let temp_path = uploads[0].0.clone();
+        assert!(
+            temp_path.starts_with("/root/a.txt.aeroedit-") && temp_path.ends_with(".tmp"),
+            "unexpected edit temp path: {temp_path}"
+        );
+        assert_ne!(
+            temp_path, "/root/a.txt",
+            "edit must never upload replacement bytes directly to the target"
+        );
+        drop(uploads);
+
+        assert_eq!(
+            backend.renames.lock().unwrap().as_slice(),
+            &[(temp_path.clone(), "/root/a.txt".to_string())]
+        );
+        let remote_files = backend.remote_files.lock().unwrap();
+        assert_eq!(
+            remote_files.get("/root/a.txt").map(Vec::as_slice),
+            Some(b"new text".as_slice())
+        );
+        assert!(
+            !remote_files.contains_key(&temp_path),
+            "temp path must be gone after successful rename"
+        );
+        assert!(backend.deleted.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn edit_deletes_staged_temp_when_rename_fails() {
+        let mut fake = FakeBackend::sample();
+        fake.downloads
+            .insert("/root/a.txt".to_string(), b"old text".to_vec());
+        fake.rename_fails_with = Some("rename failed".to_string());
+        let backend = Arc::new(fake);
+        let ctx = test_ctx(Arc::clone(&backend));
+
+        let err = edit(
+            &ctx,
+            &json!({
+                "server": "s",
+                "path": "/root/a.txt",
+                "find": "old",
+                "replace": "new",
+            }),
+        )
+        .await
+        .unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("rename failed"), "got: {msg}");
+
+        let temp_path = backend.uploads.lock().unwrap()[0].0.clone();
+        assert_eq!(
+            backend.deleted.lock().unwrap().as_slice(),
+            std::slice::from_ref(&temp_path)
+        );
+        assert!(
+            !backend
+                .remote_files
+                .lock()
+                .unwrap()
+                .contains_key(&temp_path),
+            "rename failure cleanup must remove the staged temp"
+        );
     }
 
     #[test]

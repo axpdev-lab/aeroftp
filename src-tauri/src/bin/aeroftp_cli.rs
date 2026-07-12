@@ -30840,6 +30840,32 @@ fn reject_oversize_cli_edit_download(data_len: usize) -> Result<(), String> {
     Ok(())
 }
 
+fn cli_edit_temp_path(path: &str) -> String {
+    format!("{path}.aeroedit-{}.tmp", uuid::Uuid::new_v4())
+}
+
+async fn publish_cli_edit_via_temp_rename(
+    provider: &mut dyn StorageProvider,
+    local_temp_path: &str,
+    remote_path: &str,
+) -> Result<(), ProviderError> {
+    let remote_temp_path = cli_edit_temp_path(remote_path);
+    if let Err(e) = provider
+        .upload(local_temp_path, &remote_temp_path, None)
+        .await
+    {
+        let _ = provider.delete(&remote_temp_path).await;
+        return Err(e);
+    }
+    // Rename atomicity depends on the backend, but temp+rename avoids direct
+    // target truncation before replacement bytes are fully uploaded.
+    if let Err(e) = provider.rename(&remote_temp_path, remote_path).await {
+        let _ = provider.delete(&remote_temp_path).await;
+        return Err(e);
+    }
+    Ok(())
+}
+
 async fn cmd_edit(
     url: &str,
     path: &str,
@@ -30966,7 +30992,7 @@ async fn cmd_edit(
     }
 
     let temp_path = temp_file.path().to_string_lossy().to_string();
-    match provider.upload(&temp_path, path, None).await {
+    match publish_cli_edit_via_temp_rename(provider.as_mut(), &temp_path, path).await {
         Ok(()) => {
             match format {
                 OutputFormat::Text => {
@@ -65246,6 +65272,160 @@ mod tests {
         }
     }
 
+    struct CliEditFakeProvider {
+        remote_files: HashMap<String, Vec<u8>>,
+        uploads: Vec<(String, Vec<u8>)>,
+        renames: Vec<(String, String)>,
+        deleted: Vec<String>,
+        rename_fails_with: Option<String>,
+    }
+
+    impl CliEditFakeProvider {
+        fn new() -> Self {
+            Self {
+                remote_files: HashMap::new(),
+                uploads: Vec::new(),
+                renames: Vec::new(),
+                deleted: Vec::new(),
+                rename_fails_with: None,
+            }
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl StorageProvider for CliEditFakeProvider {
+        fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+            self
+        }
+
+        fn provider_type(&self) -> ProviderType {
+            ProviderType::Sftp
+        }
+
+        fn display_name(&self) -> String {
+            "cli-edit-fake".to_string()
+        }
+
+        async fn connect(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+
+        async fn disconnect(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+
+        fn is_connected(&self) -> bool {
+            true
+        }
+
+        async fn list(&mut self, _path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+            Ok(Vec::new())
+        }
+
+        async fn pwd(&mut self) -> Result<String, ProviderError> {
+            Ok("/".to_string())
+        }
+
+        async fn cd(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+
+        async fn cd_up(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+
+        async fn download(
+            &mut self,
+            remote_path: &str,
+            local_path: &str,
+            _on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            let data = self
+                .remote_files
+                .get(remote_path)
+                .ok_or_else(|| ProviderError::NotFound(remote_path.to_string()))?;
+            std::fs::write(local_path, data).map_err(ProviderError::IoError)
+        }
+
+        async fn download_to_bytes(&mut self, remote_path: &str) -> Result<Vec<u8>, ProviderError> {
+            self.remote_files
+                .get(remote_path)
+                .cloned()
+                .ok_or_else(|| ProviderError::NotFound(remote_path.to_string()))
+        }
+
+        async fn upload(
+            &mut self,
+            local_path: &str,
+            remote_path: &str,
+            _on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            let data = std::fs::read(local_path).map_err(ProviderError::IoError)?;
+            self.uploads.push((remote_path.to_string(), data.clone()));
+            self.remote_files.insert(remote_path.to_string(), data);
+            Ok(())
+        }
+
+        async fn mkdir(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+
+        async fn delete(&mut self, path: &str) -> Result<(), ProviderError> {
+            self.remote_files.remove(path);
+            self.deleted.push(path.to_string());
+            Ok(())
+        }
+
+        async fn rmdir(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+
+        async fn rmdir_recursive(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+
+        async fn rename(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+            if let Some(msg) = &self.rename_fails_with {
+                return Err(ProviderError::TransferFailed(msg.clone()));
+            }
+            let data = self
+                .remote_files
+                .remove(from)
+                .ok_or_else(|| ProviderError::NotFound(from.to_string()))?;
+            self.remote_files.insert(to.to_string(), data);
+            self.renames.push((from.to_string(), to.to_string()));
+            Ok(())
+        }
+
+        async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
+            self.remote_files
+                .get(path)
+                .map(|data| {
+                    RemoteEntry::file(path.to_string(), path.to_string(), data.len() as u64)
+                })
+                .ok_or_else(|| ProviderError::NotFound(path.to_string()))
+        }
+
+        async fn size(&mut self, path: &str) -> Result<u64, ProviderError> {
+            self.remote_files
+                .get(path)
+                .map(|data| data.len() as u64)
+                .ok_or_else(|| ProviderError::NotFound(path.to_string()))
+        }
+
+        async fn exists(&mut self, path: &str) -> Result<bool, ProviderError> {
+            Ok(self.remote_files.contains_key(path))
+        }
+
+        async fn keep_alive(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+
+        async fn server_info(&mut self) -> Result<String, ProviderError> {
+            Ok("cli-edit-fake".to_string())
+        }
+    }
+
     #[test]
     fn cli_edit_guard_rejects_directories() {
         let err = reject_uneditable_cli_entry(&cli_edit_entry(true, 0)).unwrap_err();
@@ -65265,5 +65445,72 @@ mod tests {
         let err = reject_oversize_cli_edit_download((MAX_CLI_EDIT_BYTES + 1) as usize).unwrap_err();
         assert!(err.contains("10 MB limit"), "got: {err}");
         assert!(reject_oversize_cli_edit_download(MAX_CLI_EDIT_BYTES as usize).is_ok());
+    }
+
+    #[tokio::test]
+    async fn cli_edit_publish_uploads_to_temp_then_renames_over_target() {
+        let local = NamedTempFile::new().expect("temp file");
+        std::fs::write(local.path(), b"new text").expect("write replacement");
+        let local_path = local.path().to_string_lossy().to_string();
+        let mut provider = CliEditFakeProvider::new();
+        provider
+            .remote_files
+            .insert("/target.txt".to_string(), b"old text".to_vec());
+
+        publish_cli_edit_via_temp_rename(&mut provider, &local_path, "/target.txt")
+            .await
+            .expect("publish should succeed");
+
+        assert_eq!(provider.uploads.len(), 1);
+        let temp_path = provider.uploads[0].0.clone();
+        assert!(
+            temp_path.starts_with("/target.txt.aeroedit-") && temp_path.ends_with(".tmp"),
+            "unexpected edit temp path: {temp_path}"
+        );
+        assert_ne!(
+            temp_path, "/target.txt",
+            "edit must never upload replacement bytes directly to the target"
+        );
+        assert_eq!(
+            provider.renames,
+            vec![(temp_path.clone(), "/target.txt".to_string())]
+        );
+        assert_eq!(
+            provider.remote_files.get("/target.txt").map(Vec::as_slice),
+            Some(b"new text".as_slice())
+        );
+        assert!(
+            !provider.remote_files.contains_key(&temp_path),
+            "temp path must be gone after successful rename"
+        );
+        assert!(provider.deleted.is_empty());
+    }
+
+    #[tokio::test]
+    async fn cli_edit_publish_deletes_staged_temp_when_rename_fails() {
+        let local = NamedTempFile::new().expect("temp file");
+        std::fs::write(local.path(), b"new text").expect("write replacement");
+        let local_path = local.path().to_string_lossy().to_string();
+        let mut provider = CliEditFakeProvider::new();
+        provider
+            .remote_files
+            .insert("/target.txt".to_string(), b"old text".to_vec());
+        provider.rename_fails_with = Some("rename failed".to_string());
+
+        let err = publish_cli_edit_via_temp_rename(&mut provider, &local_path, "/target.txt")
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("rename failed"), "got: {err}");
+
+        let temp_path = provider.uploads[0].0.clone();
+        assert_eq!(provider.deleted, vec![temp_path.clone()]);
+        assert!(
+            !provider.remote_files.contains_key(&temp_path),
+            "rename failure cleanup must remove the staged temp"
+        );
+        assert_eq!(
+            provider.remote_files.get("/target.txt").map(Vec::as_slice),
+            Some(b"old text".as_slice())
+        );
     }
 }
