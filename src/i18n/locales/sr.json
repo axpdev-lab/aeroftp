@@ -5042,7 +5042,10 @@
             "keyfileRepointHint": "Ова путања само показује где се датотека кључа налази; њена промена не мења кључ трезора. Погрешна или недостајућа датотека кључа одбија откључавање.",
             "keyfileStorageHint": "Сачувајте га на локалном диску или USB уређају, одвојено од удаљеног сервера који шифрујете, и чувајте резервну копију.",
             "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
-            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore."
+            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
+            "overlaysRemotePath": "Удаљена путања преклопа",
+            "overlaysRemotePathHint": "Потфасцикла Remote Path-а у којој је преклоп усидрен. Оставите празно да користите Remote Path или унесите само име потфасцикле (креира се унутар Remote Path-а).",
+            "overlaysRemotePathInvalid": "Мора бити Удаљена путања или њена подфасцикла"
         },
         "modalGuard": {
             "busyTitle": "Операција у току",

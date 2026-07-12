@@ -1269,7 +1269,7 @@ export function MyServersPanel({
             hasStoredAeroCryptPassword: false,
             hasStoredAeroCryptSalt: false,
         };
-        const copiedSecrets = await copyProfileVaultSecrets(server.id, newId);
+        const copiedSecrets = await copyProfileVaultSecrets(server.id, newId, server.protocol);
         dup.hasStoredCredential = copiedSecrets.server;
         dup.hasStoredFilenApiKey = copiedSecrets.filen_api_key;
         dup.hasStoredAeroCryptPassword = copiedSecrets.aerocrypt_overlay_pw;
@@ -1376,7 +1376,7 @@ export function MyServersPanel({
         const updated = servers.filter(s => s.id !== deleteTarget.id);
         setServers(updated);
         storeSavedServerProfiles(updated).catch(() => {});
-        deleteProfileVaultSecrets(deleteTarget.id).catch(() => {});
+        deleteProfileVaultSecrets(deleteTarget.id, deleteTarget.protocol).catch(() => {});
         // Drop the deleted profile from any group it belonged to (#320).
         pruneServerFromGroups(deleteTarget.id).catch(() => {});
         setGroups(prev => prev.map(g => (

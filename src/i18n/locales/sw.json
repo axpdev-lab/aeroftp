@@ -5042,7 +5042,10 @@
             "keyfileRepointHint": "Njia hii inaonyesha tu mahali faili ya ufunguo ilipo; kuibadilisha hakubadilishi ufunguo wa kasha. Faili ya ufunguo isiyo sahihi au isiyopo hukataa kufungua.",
             "keyfileStorageHint": "Ihifadhi kwenye diski ya ndani au kiendeshi cha USB, tofauti na seva ya mbali unayosimba, na uweke nakala rudufu.",
             "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
-            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore."
+            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
+            "overlaysRemotePath": "Njia ya Mbali ya Uwekeleaji",
+            "overlaysRemotePathHint": "Kijifolda cha Remote Path ambapo tabaka limetiwa nanga. Acha wazi ili kutumia Remote Path, au andika jina la kijifolda tu (kinaundwa chini ya Remote Path).",
+            "overlaysRemotePathInvalid": "Lazima iwe Njia ya Mbali au folda ndogo yake"
         },
         "modalGuard": {
             "busyTitle": "Operesheni inaendelea",

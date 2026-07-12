@@ -5061,7 +5061,10 @@
             "keyfileRepointHint": "Esta ruta só indica onde está o ficheiro de clave; cambiala non volve cifrar a caixa forte. Un ficheiro de clave errado ou ausente rexeita o desbloqueo.",
             "keyfileStorageHint": "Gárdao nun disco local ou nunha unidade USB, separado do remoto que estás cifrando, e conserva unha copia de seguranza.",
             "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
-            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore."
+            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
+            "overlaysRemotePath": "Ruta remota da superposición",
+            "overlaysRemotePathHint": "Subcartafol do Remote Path onde se ancora a superposición. Déixao baleiro para usar o Remote Path, ou escribe só un nome de subcartafol (créase baixo o Remote Path).",
+            "overlaysRemotePathInvalid": "Debe ser a Ruta remota ou un subcartafol dela"
         },
         "modalGuard": {
             "busyTitle": "Operación en curso",

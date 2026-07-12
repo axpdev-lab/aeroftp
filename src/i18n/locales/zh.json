@@ -5042,7 +5042,10 @@
             "keyfileRepointHint": "此路径只指向密钥文件所在位置; 更改它不会更换保险库的密钥。错误或缺失的密钥文件将被拒绝解锁。",
             "keyfileStorageHint": "请将其保存在本地磁盘或 U 盘上，与您正在加密的远程存储分开，并保留一份备份。",
             "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
-            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore."
+            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
+            "overlaysRemotePath": "叠加层远程路径",
+            "overlaysRemotePathHint": "叠加层锚定所在的 Remote Path 子文件夹。留空以使用 Remote Path，或仅输入一个子文件夹名称（将在 Remote Path 下创建）。",
+            "overlaysRemotePathInvalid": "必须是远程路径或其子文件夹"
         },
         "modalGuard": {
             "busyTitle": "操作进行中",

@@ -5061,7 +5061,10 @@
             "keyfileRepointHint": "Bide honek gako-fitxategia non dagoen baino ez du adierazten; aldatzeak ez du kutxa berriro zifratzen. Gako-fitxategi oker edo faltak desblokeoa ukatzen du.",
             "keyfileStorageHint": "Gorde ezazu tokiko disko batean edo USB unitate batean, enkriptatzen ari zaren urrunekotik bereizita, eta gorde segurtasun-kopia bat.",
             "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
-            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore."
+            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
+            "overlaysRemotePath": "Gainjarriaren urruneko bidea",
+            "overlaysRemotePathHint": "Gainjartzea ainguratzen den Remote Path-eko azpikarpeta. Utzi hutsik Remote Path erabiltzeko, edo idatzi azpikarpeta baten izena soilik (Remote Path-en azpian sortzen da).",
+            "overlaysRemotePathInvalid": "Urruneko bidea edo horren azpikarpeta bat izan behar da"
         },
         "modalGuard": {
             "busyTitle": "Eragiketa abian",

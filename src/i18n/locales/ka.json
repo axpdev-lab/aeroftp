@@ -5042,7 +5042,10 @@
             "keyfileRepointHint": "ეს გზა მხოლოდ მიუთითებს, სად დევს გასაღების ფაილი; მისი შეცვლა საცავის გასაღებს არ ცვლის. არასწორი ან დაკარგული გასაღების ფაილი განბლოკვას უარყოფს.",
             "keyfileStorageHint": "შეინახეთ ის ლოკალურ დისკზე ან USB მოწყობილობაზე, იმ დაშიფრული დისტანციური სერვერისგან ცალკე, და შეინახეთ სარეზერვო ასლი.",
             "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
-            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore."
+            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
+            "overlaysRemotePath": "გადაფარვის დისტანციური გზა",
+            "overlaysRemotePathHint": "Remote Path-ის ქვესაქაღალდე, სადაც ოვერლეი მიმაგრებულია. დატოვეთ ცარიელი Remote Path-ის გამოსაყენებლად, ან აკრიფეთ მხოლოდ ქვესაქაღალდის სახელი (ის იქმნება Remote Path-ის ქვეშ).",
+            "overlaysRemotePathInvalid": "უნდა იყოს დისტანციური გზა ან მისი ქვესაქაღალდე"
         },
         "modalGuard": {
             "busyTitle": "მიმდინარეობს ოპერაცია",

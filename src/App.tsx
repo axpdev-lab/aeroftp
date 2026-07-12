@@ -130,6 +130,18 @@ interface ImportedServerProfile {
   aeroCryptOverlay?: ServerProfile['aeroCryptOverlay'];
   hasStoredAeroCryptPassword?: boolean;
   hasStoredAeroCryptSalt?: boolean;
+  hasStoredAeroCryptKeyfilePath?: boolean;
+  // Issue #230: true when the Filen CLI API key was restored into the vault on
+  // import (skips the TOTP window on reconnect).
+  hasStoredFilenApiKey?: boolean;
+  // Top-level ServerProfile fields carried outside `options` (GAP 2/3/4 of the
+  // v4.1.4 export audit): share-link base, custom/detected icons, the silenced
+  // classic-fallback modal preference, and the #215 per-mode credential opt-in.
+  publicUrlBase?: string;
+  customIconUrl?: string;
+  faviconUrl?: string;
+  skipDeltaEligibilityPrompt?: boolean;
+  persistModeCredentials?: boolean;
 }
 
 interface ServerProfilesImportResult {
@@ -12520,6 +12532,17 @@ interface UpdateVerificationInfo {
         aeroCryptOverlay: s.aeroCryptOverlay,
         hasStoredAeroCryptPassword: s.hasStoredAeroCryptPassword || false,
         hasStoredAeroCryptSalt: s.hasStoredAeroCryptSalt || false,
+        hasStoredAeroCryptKeyfilePath: s.hasStoredAeroCryptKeyfilePath || false,
+        hasStoredFilenApiKey: s.hasStoredFilenApiKey || false,
+        // v4.1.4 export audit: carry the top-level ServerProfile fields that live
+        // outside `options` (share-link base, custom/detected icons, the silenced
+        // classic-fallback modal, and the #215 per-mode credential opt-in) so an
+        // imported profile is not silently degraded on this merge.
+        publicUrlBase: s.publicUrlBase,
+        customIconUrl: s.customIconUrl,
+        faviconUrl: s.faviconUrl,
+        skipDeltaEligibilityPrompt: s.skipDeltaEligibilityPrompt,
+        persistModeCredentials: s.persistModeCredentials,
       }));
 
     if (newServers.length > 0) {

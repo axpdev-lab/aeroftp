@@ -5042,7 +5042,10 @@
             "keyfileRepointHint": "Tämä polku vain osoittaa, missä avaintiedosto sijaitsee; sen muuttaminen ei vaihda holvin avainta. Väärä tai puuttuva avaintiedosto estää avauksen.",
             "keyfileStorageHint": "Tallenna se paikalliselle levylle tai USB-asemalle, erilleen etäpalvelimesta, jota salaat, ja säilytä varmuuskopio.",
             "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
-            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore."
+            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
+            "overlaysRemotePath": "Peittokerroksen etäpolku",
+            "overlaysRemotePathHint": "Remote Pathin alikansio, johon peite ankkuroidaan. Jätä tyhjäksi käyttääksesi Remote Pathia, tai kirjoita vain alikansion nimi (se luodaan Remote Pathin alle).",
+            "overlaysRemotePathInvalid": "Sen on oltava Etäpolku tai sen alikansio"
         },
         "modalGuard": {
             "busyTitle": "Toiminto käynnissä",

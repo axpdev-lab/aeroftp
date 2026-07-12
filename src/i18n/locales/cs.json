@@ -5042,7 +5042,10 @@
             "keyfileRepointHint": "Tato cesta pouze ukazuje, kde soubor klíče leží; její změna trezor nepřeklíčuje. Špatný nebo chybějící soubor klíče odemčení odmítne.",
             "keyfileStorageHint": "Uložte jej na místní disk nebo USB disk, odděleně od vzdáleného úložiště, které šifrujete, a uchovejte si záložní kopii.",
             "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
-            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore."
+            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
+            "overlaysRemotePath": "Vzdálená cesta překryvu",
+            "overlaysRemotePathHint": "Podsložka Remote Path, kde je vrstva ukotvena. Ponechte prázdné pro použití Remote Path, nebo zadejte jen název podsložky (vytvoří se pod Remote Path).",
+            "overlaysRemotePathInvalid": "Musí to být Vzdálená cesta nebo její podsložka"
         },
         "modalGuard": {
             "busyTitle": "Probíhá operace",

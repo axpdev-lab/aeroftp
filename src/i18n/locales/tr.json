@@ -5042,7 +5042,10 @@
             "keyfileRepointHint": "Bu yol yalnızca anahtar dosyasının nerede olduğunu gösterir; değiştirmek kasanın anahtarını değiştirmez. Yanlış veya eksik anahtar dosyası kilit açmayı reddeder.",
             "keyfileStorageHint": "Şifrelediğiniz uzak sunucudan ayrı olarak yerel diskte veya USB sürücüde saklayın ve bir yedek kopyasını tutun.",
             "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
-            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore."
+            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
+            "overlaysRemotePath": "Yer Paylaşımı Uzak Yolu",
+            "overlaysRemotePathHint": "Yer paylaşımının sabitlendiği Remote Path alt klasörü. Remote Path'i kullanmak için boş bırakın veya yalnızca bir alt klasör adı yazın (Remote Path altında oluşturulur).",
+            "overlaysRemotePathInvalid": "Uzak Yol veya onun bir alt klasörü olmalıdır"
         },
         "modalGuard": {
             "busyTitle": "İşlem sürüyor",

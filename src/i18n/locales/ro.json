@@ -5042,7 +5042,10 @@
             "keyfileRepointHint": "Această cale doar indică unde se află fișierul de cheie; schimbarea ei nu recriptează seiful. Un fișier de cheie greșit sau lipsă refuză deblocarea.",
             "keyfileStorageHint": "Salvați-l pe un disc local sau pe o unitate USB, separat de serverul la distanță pe care îl criptați, și păstrați o copie de rezervă.",
             "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
-            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore."
+            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
+            "overlaysRemotePath": "Cale la distanță a suprapunerii",
+            "overlaysRemotePathHint": "Subfolder al Remote Path unde este ancorată suprapunerea. Lăsați gol pentru a folosi Remote Path sau introduceți doar un nume de subfolder (se creează sub Remote Path).",
+            "overlaysRemotePathInvalid": "Trebuie să fie Calea la distanță sau un subfolder al acesteia"
         },
         "modalGuard": {
             "busyTitle": "Operațiune în curs",

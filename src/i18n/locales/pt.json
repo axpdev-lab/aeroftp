@@ -5042,7 +5042,10 @@
             "keyfileRepointHint": "Este caminho apenas indica onde está o ficheiro de chave; alterá-lo não recifra o cofre. Um ficheiro de chave errado ou ausente recusa o desbloqueio.",
             "keyfileStorageHint": "Guarde-o em um disco local ou em uma unidade USB, separado do remoto que você está criptografando, e mantenha uma cópia de backup.",
             "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
-            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore."
+            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
+            "overlaysRemotePath": "Caminho remoto da sobreposição",
+            "overlaysRemotePathHint": "Subpasta do Remote Path onde a sobreposição fica ancorada. Deixe vazio para usar o Remote Path, ou digite apenas um nome de subpasta (é criada dentro do Remote Path).",
+            "overlaysRemotePathInvalid": "Deve ser o Caminho remoto ou uma subpasta dele"
         },
         "modalGuard": {
             "busyTitle": "Operação em curso",

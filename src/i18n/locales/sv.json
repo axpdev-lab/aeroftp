@@ -5042,7 +5042,10 @@
             "keyfileRepointHint": "Denna sökväg pekar bara på var nyckelfilen ligger; att ändra den byter inte valvets nyckel. En fel eller saknad nyckelfil nekar upplåsningen.",
             "keyfileStorageHint": "Spara den på en lokal disk eller ett USB-minne, åtskild från fjärrservern du krypterar, och behåll en säkerhetskopia.",
             "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
-            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore."
+            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
+            "overlaysRemotePath": "Fjärrsökväg för överlägg",
+            "overlaysRemotePathHint": "Undermapp till Remote Path där överlägget är förankrat. Lämna tomt för att använda Remote Path, eller skriv bara ett undermappsnamn (det skapas under Remote Path).",
+            "overlaysRemotePathInvalid": "Måste vara Fjärrsökvägen eller en undermapp till den"
         },
         "modalGuard": {
             "busyTitle": "Åtgärd pågår",

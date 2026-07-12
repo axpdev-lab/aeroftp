@@ -15495,6 +15495,66 @@ async fn delete_credential(account: String) -> Result<(), String> {
         .map_err(|e| format!("Failed to delete credential: {}", e))
 }
 
+/// Remove EVERY vault secret scoped to a saved profile id, so deleting a profile
+/// leaves nothing behind (the user action is complete, no residue). Enumerates
+/// the keys from [`per_profile_vault_keys`] (the single source of truth shared
+/// with export and duplicate). Best-effort per key: a key absent for this
+/// profile kind is a no-op, never an error. Returns the keys that were actually
+/// present and removed. `protocol` lets the OAuth-token key be derived.
+#[tauri::command]
+async fn purge_profile_secrets(
+    profile_id: String,
+    protocol: Option<String>,
+) -> Result<Vec<String>, String> {
+    let store = credential_store::CredentialStore::from_cache()
+        .ok_or_else(|| "STORE_NOT_READY".to_string())?;
+    let mut removed = Vec::new();
+    for key in per_profile_vault_keys(&profile_id, protocol.as_deref()) {
+        // Only report keys that existed; delete is idempotent and a missing key
+        // is expected for most profile kinds.
+        let existed = store.get(&key).map(|v| !v.is_empty()).unwrap_or(false);
+        if user_partitions::delete_active_credential_dual(&store, &key).is_ok() && existed {
+            removed.push(key);
+        }
+    }
+    Ok(removed)
+}
+
+/// Copy EVERY vault secret scoped to `source_id` onto `target_id`, so
+/// duplicating a profile carries all of its credentials (the copy is complete,
+/// not just the password). Same [`per_profile_vault_keys`] source of truth as
+/// delete/export. Returns a map `base_prefix -> bool` of which secrets were
+/// copied, so the caller can set the duplicate's `hasStored*` flags. Best-effort
+/// per key.
+#[tauri::command]
+async fn copy_profile_secrets(
+    source_id: String,
+    target_id: String,
+    protocol: Option<String>,
+) -> Result<std::collections::HashMap<String, bool>, String> {
+    let store = credential_store::CredentialStore::from_cache()
+        .ok_or_else(|| "STORE_NOT_READY".to_string())?;
+    let mut copied = std::collections::HashMap::new();
+    let source_suffix = format!("_{}", source_id);
+    for source_key in per_profile_vault_keys(&source_id, protocol.as_deref()) {
+        // Derive the base prefix (everything before the trailing `_<source_id>`)
+        // and rebuild the target key for the same base under the new id.
+        let base = match source_key.strip_suffix(&source_suffix) {
+            Some(b) => b,
+            None => continue,
+        };
+        let target_key = format!("{}_{}", base, target_id);
+        if let Ok(Some(value)) = user_partitions::resolve_active_credential(&store, &source_key) {
+            let ok =
+                user_partitions::store_active_credential_dual(&store, &target_key, &value).is_ok();
+            copied.insert(base.to_string(), ok);
+        } else {
+            copied.entry(base.to_string()).or_insert(false);
+        }
+    }
+    Ok(copied)
+}
+
 #[tauri::command]
 async fn unlock_credential_store(
     password: String,
@@ -15689,6 +15749,43 @@ pub(crate) fn oauth_vault_slug_for_protocol(protocol: &str) -> Option<&'static s
     }
 }
 
+/// THE single source of truth for every vault key scoped to one saved profile
+/// id. Export-collect, delete/purge and duplicate all derive their key set from
+/// here so the three operations can never drift: what a profile can store, what
+/// its `.aeroftp` export carries, and what its delete removes are the same list.
+/// When a user deletes a profile NOTHING must remain; when a user copies one
+/// EVERYTHING must come along; when a user exports one EVERYTHING must travel.
+///
+/// Included: the main credential, the #215 per-mode snapshots, the OAuth token
+/// (protocol-derived slug) and Jottacloud refresh, all four AeroCrypt overlay
+/// secrets, the Filen CLI API key, and the OneDrive drive id/type captured at
+/// connect. NON-per-profile keys are deliberately excluded: `oauth_<slug>_client_id`
+/// / `_client_secret` are app-global (shared by every profile of a provider, so a
+/// single delete must not remove them), and `ai_apikey_*` / `peer_*` are not
+/// server-profile scoped. The non-slug keys are always emitted even for the wrong
+/// provider: a delete of a non-existent key is a harmless no-op, and always
+/// listing them means a profile that switched provider mode leaves no residue.
+pub fn per_profile_vault_keys(profile_id: &str, protocol: Option<&str>) -> Vec<String> {
+    let mut keys = vec![
+        format!("server_{}", profile_id),
+        format!("server_modes_{}", profile_id),
+        format!("jottacloud_refresh_{}", profile_id),
+        format!("aerocrypt_overlay_pw_{}", profile_id),
+        format!("aerocrypt_overlay_salt_{}", profile_id),
+        format!("aerocrypt_overlay_keyfile_path_{}", profile_id),
+        format!("aerocrypt_overlay_config_{}", profile_id),
+        format!("filen_api_key_{}", profile_id),
+        format!("onedrive_drive_id_{}", profile_id),
+        format!("onedrive_drive_type_{}", profile_id),
+    ];
+    // The per-profile OAuth token lives under `oauth_<slug>_<id>`; the slug is
+    // provider-specific, so it is only added when the protocol maps to one.
+    if let Some(slug) = protocol.and_then(oauth_vault_slug_for_protocol) {
+        keys.push(format!("oauth_{}_{}", slug, profile_id));
+    }
+    keys
+}
+
 /// Read the per-profile OAuth or Jotta token blob for a server profile, with
 /// a one-shot fallback to the legacy singleton key. The export bundle copies
 /// the value verbatim so the destination device can write it back without
@@ -15790,6 +15887,32 @@ fn collect_provider_secrets_for_server(
         out.mode_credentials = Some(modes.to_string());
     }
 
+    // Issue #230: bundle the per-profile Filen CLI API key (`filen_api_key_<id>`).
+    // It is a long-lived secret kept only in the vault (never on the saved
+    // profile's `options`), so without this the `.aeroftp` export dropped it and a
+    // re-imported Filen profile fell back to password + TOTP.
+    if let Ok(Some(api_key)) =
+        user_partitions::resolve_active_credential(store, &format!("filen_api_key_{}", server.id))
+    {
+        out.filen_api_key = Some(api_key.to_string());
+    }
+
+    // OneDrive drive id/type captured at connect (`onedrive_drive_id_<id>` /
+    // `onedrive_drive_type_<id>`). Vault-only like the Filen key, so the export
+    // dropped them; carried so a re-import is a complete snapshot.
+    if let Ok(Some(v)) = user_partitions::resolve_active_credential(
+        store,
+        &format!("onedrive_drive_id_{}", server.id),
+    ) {
+        out.onedrive_drive_id = Some(v.to_string());
+    }
+    if let Ok(Some(v)) = user_partitions::resolve_active_credential(
+        store,
+        &format!("onedrive_drive_type_{}", server.id),
+    ) {
+        out.onedrive_drive_type = Some(v.to_string());
+    }
+
     out
 }
 
@@ -15846,6 +15969,9 @@ pub async fn export_server_profiles_core(
                         || secrets.mode_credentials.is_some()
                         || secrets.oauth_client_id.is_some()
                         || secrets.oauth_client_secret.is_some()
+                        || secrets.filen_api_key.is_some()
+                        || secrets.onedrive_drive_id.is_some()
+                        || secrets.onedrive_drive_type.is_some()
                     {
                         provider_secrets.insert(server.id.clone(), secrets);
                     }
@@ -15918,6 +16044,10 @@ pub async fn import_server_profiles_core_filtered(
     let mut restored_aerocrypt_keyfile_path: std::collections::HashSet<String> =
         std::collections::HashSet::new();
     let mut restored_aerocrypt_config: std::collections::HashSet<String> =
+        std::collections::HashSet::new();
+    // Issue #230: track which profiles had their Filen CLI API key restored so
+    // the `hasStoredFilenApiKey` flag returned to the UI reflects reality.
+    let mut restored_filen_api_key: std::collections::HashSet<String> =
         std::collections::HashSet::new();
     match credential_store::CredentialStore::from_cache() {
         Some(store) => {
@@ -16080,6 +16210,32 @@ pub async fn import_server_profiles_core_filtered(
                         cred_errors.push(format!("{} mode creds: {}", profile_id, e));
                     }
                 }
+                // Issue #230: restore the Filen CLI API key under the same
+                // `filen_api_key_<id>` vault key the connect path reads, so an
+                // imported Filen profile skips the /v3/login + TOTP window again.
+                if let Some(ref api_key) = secrets.filen_api_key {
+                    let key = format!("filen_api_key_{}", profile_id);
+                    match user_partitions::store_active_credential_dual(&store, &key, api_key) {
+                        Ok(()) => {
+                            restored_filen_api_key.insert(profile_id.clone());
+                        }
+                        Err(e) => cred_errors.push(format!("{} filen api key: {}", profile_id, e)),
+                    }
+                }
+                // OneDrive drive id/type: vault-only reconnect hints, restored
+                // under the same keys the connect path reads/writes.
+                if let Some(ref v) = secrets.onedrive_drive_id {
+                    let key = format!("onedrive_drive_id_{}", profile_id);
+                    if let Err(e) = user_partitions::store_active_credential_dual(&store, &key, v) {
+                        cred_errors.push(format!("{} onedrive drive_id: {}", profile_id, e));
+                    }
+                }
+                if let Some(ref v) = secrets.onedrive_drive_type {
+                    let key = format!("onedrive_drive_type_{}", profile_id);
+                    if let Err(e) = user_partitions::store_active_credential_dual(&store, &key, v) {
+                        cred_errors.push(format!("{} onedrive drive_type: {}", profile_id, e));
+                    }
+                }
             }
         }
         None => {
@@ -16125,7 +16281,19 @@ pub async fn import_server_profiles_core_filtered(
                 "lastConnected": s.last_connected,
                 "options": s.options,
                 "providerId": s.provider_id,
+                // Top-level ServerProfile fields that live OUTSIDE `options` and
+                // so must be re-emitted explicitly or the import drops them:
+                // the share-link base (GAP 2), the custom/detected icons (GAP 3)
+                // and the silenced classic-fallback modal preference (GAP 4).
+                "publicUrlBase": s.public_url_base,
+                "customIconUrl": s.custom_icon_url,
+                "faviconUrl": s.favicon_url,
+                "skipDeltaEligibilityPrompt": s.skip_delta_eligibility_prompt,
                 "hasStoredCredential": s.credential.is_some(),
+                // Issue #230: reflect whether the Filen CLI API key was actually
+                // restored so the profile reconnects via the key (skipping the
+                // TOTP window) instead of falling back to password + 2FA.
+                "hasStoredFilenApiKey": restored_filen_api_key.contains(&s.id),
                 // CWP-20B: re-import a Crypt profile AS a Crypt profile (both
                 // kinds). The flags reflect what was actually restored, not the
                 // source state, so the UI prompts for the overlay password only
@@ -16566,6 +16734,52 @@ async fn mount_open_quick(id: String) -> Result<(), String> {
 pub fn install_crypto_provider() -> bool {
     let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
     rustls::crypto::CryptoProvider::get_default().is_some()
+}
+
+#[cfg(test)]
+mod per_profile_vault_keys_tests {
+    //! Pins the COMPLETE per-profile vault key set so delete/copy/export can
+    //! never silently drop a key again (the Filen-key class of debt). If a new
+    //! per-profile secret is added, this test forces updating the single source
+    //! of truth `per_profile_vault_keys` in the same change.
+    use super::per_profile_vault_keys;
+
+    #[test]
+    fn non_oauth_profile_lists_every_persistent_key() {
+        let keys = per_profile_vault_keys("srv_1_abc", Some("sftp"));
+        let expected = [
+            "server_srv_1_abc",
+            "server_modes_srv_1_abc",
+            "jottacloud_refresh_srv_1_abc",
+            "aerocrypt_overlay_pw_srv_1_abc",
+            "aerocrypt_overlay_salt_srv_1_abc",
+            "aerocrypt_overlay_keyfile_path_srv_1_abc",
+            "aerocrypt_overlay_config_srv_1_abc",
+            "filen_api_key_srv_1_abc",
+            "onedrive_drive_id_srv_1_abc",
+            "onedrive_drive_type_srv_1_abc",
+        ];
+        assert_eq!(keys, expected, "the complete non-oauth key set must match");
+        // No app-global key ever leaks into the per-profile delete/copy set.
+        assert!(!keys
+            .iter()
+            .any(|k| k.contains("client_id") || k.contains("client_secret")));
+    }
+
+    #[test]
+    fn oauth_profile_adds_the_slugged_token_key() {
+        let keys = per_profile_vault_keys("srv_1_abc", Some("googledrive"));
+        assert!(
+            keys.contains(&"oauth_google_srv_1_abc".to_string()),
+            "an OAuth profile must include its `oauth_<slug>_<id>` token key"
+        );
+        // The non-oauth base set is still fully present.
+        assert!(keys.contains(&"server_srv_1_abc".to_string()));
+        assert!(keys.contains(&"filen_api_key_srv_1_abc".to_string()));
+        // No slug -> no oauth key (the token key must not be fabricated).
+        let none = per_profile_vault_keys("srv_1_abc", None);
+        assert!(!none.iter().any(|k| k.starts_with("oauth_")));
+    }
 }
 
 #[cfg(test)]
@@ -17824,6 +18038,8 @@ pub fn run() {
             store_credential,
             get_credential,
             delete_credential,
+            purge_profile_secrets,
+            copy_profile_secrets,
             unlock_credential_store,
             lock_credential_store,
             enable_master_password,

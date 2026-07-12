@@ -29,6 +29,7 @@ import { findActiveMode, findActiveModeGroup, modeGroupProviderIds, resolveModeH
 import { loadModeCredentials, storeModeCredentials, deleteModeCredentials, type ModeCredentialMap } from '../utils/modeCredentialStore';
 import { openUrl } from '../utils/openUrl';
 import { safePickerStartDir } from '../utils/safePickerDir';
+import { isValidOverlayScope, resolveOverlayScope } from '../utils/overlayScope';
 import { OAuthConnect } from './OAuthConnect';
 import { ProviderSelector } from './ProviderSelector';
 import { AlertDialog } from './Dialogs';
@@ -639,6 +640,26 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     const [keyfileError, setKeyfileError] = useState<string | null>(null);
     const [aeroCryptFilenameEnc, setAeroCryptFilenameEnc] = useState<'standard' | 'obfuscate' | 'off'>('standard');
     const [aeroCryptDirNameEnc, setAeroCryptDirNameEnc] = useState(true);
+    // P3 follow-up (#369): optional user-pinned remote anchor for the overlay.
+    // Empty means "use the profile Remote Path" (preserves today's behavior and
+    // all existing profiles). A non-empty value is interpreted RELATIVE to the
+    // Remote Path (#369): a bare subfolder name is nested under it, so the prefix
+    // is never re-typed and the anchor can never escape the Remote Path. Resolved
+    // via resolveOverlayScope() and persisted into aeroCryptOverlay.remoteScope.
+    const [overlaysRemotePath, setOverlaysRemotePath] = useState('');
+    const [overlaysRemotePathError, setOverlaysRemotePathError] = useState<string | null>(null);
+
+    // Re-validate overlays remote path whenever the baseline remoteDir changes
+    // (user edits Remote Path after typing a scope, or on hydration).
+    useEffect(() => {
+        if (!overlaysRemotePath && !overlaysRemotePathError) return;
+        // Validate the RESOLVED scope: a bare subfolder name is nested under the
+        // Remote Path (#369 relative UX), so it is always in scope and the error
+        // never fires for normal input; the guard only survives as a safety net.
+        const valid = isValidOverlayScope(resolveOverlayScope(overlaysRemotePath, quickConnectDirs.remoteDir), quickConnectDirs.remoteDir);
+        setOverlaysRemotePathError(valid ? null : t('aerocryptProfile.overlaysRemotePathInvalid'));
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [overlaysRemotePath, quickConnectDirs.remoteDir, t]);
 
     // Issue #215: MEGAcmd WebDAV endpoint auto-fetch state. Running
     // `mega-webdav /` (same idempotent call that warms the bridge for the
@@ -1020,7 +1041,11 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                 enabled: true,
                 kind: aeroCryptKind,
                 withHeader: aeroCryptWithHeader,
-                remoteScope: quickConnectDirs.remoteDir || '',
+                // Normalize the pinned anchor (strip trailing/duplicate slashes)
+                // so it persists identically to how the backend reads it. A blank
+                // or "/" scope collapses to '' and falls back to the Remote Path,
+                // preserving today's behavior and every existing profile (#369).
+                remoteScope: resolveOverlayScope(overlaysRemotePath, quickConnectDirs.remoteDir),
                 localScope: quickConnectDirs.localDir || '',
                 filenameEncryption: isRclone ? aeroCryptFilenameEnc : 'standard',
                 ...(isRclone ? { directoryNameEncryption: aeroCryptDirNameEnc } : {}),
@@ -1142,6 +1167,11 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         // encrypted blobs forever). The save button is already disabled on
         // mismatch (aeroCryptConfirmMismatch); this is defense-in-depth.
         if (aeroCryptConfirmMismatch) return;
+
+        // #369: block save if the overlays remote path is invalid. The field
+        // already shows the translated error and the button is disabled while
+        // invalid; this is defense-in-depth (same pattern as the password confirm).
+        if (overlaysRemotePathError) return;
 
         // #128: saving a Quick Connect profile (typically to add the Filen API
         // key so a 2FA login is no longer needed) must cancel any pending
@@ -1720,6 +1750,8 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         setOriginalEditMode(null);
         setConnectionName('');
         setSaveConnection(false);
+        setOverlaysRemotePath('');
+        setOverlaysRemotePathError(null);
         onConnectionParamsChange({ server: '', username: '', password: '' });
         onQuickConnectDirsChange({ remoteDir: '', localDir: '' });
         onFormSaved?.();
@@ -1872,6 +1904,8 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         setOriginalEditMode(null);
         setConnectionName('');
         setSaveConnection(false);
+        setOverlaysRemotePath('');
+        setOverlaysRemotePathError(null);
         onConnectionParamsChange({ server: '', username: '', password: '' });
         onQuickConnectDirsChange({ remoteDir: '', localDir: '' });
         onFormSaved?.();
@@ -1992,6 +2026,15 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         setAeroCryptFilenameEnc(overlayBinding?.filenameEncryption || 'standard');
         setAeroCryptDirNameEnc(overlayBinding?.directoryNameEncryption ?? true);
         setAeroCryptWithHeader(!!overlayBinding?.withHeader);
+        // P3 follow-up (#369): hydrate the pinned overlaysRemotePath, but only if
+        // it differs from the profile's Remote Path; otherwise keep '' which means
+        // "same as Remote Path" (so an unchanged profile round-trips unchanged).
+        {
+            const savedScope = overlayBinding?.enabled ? (overlayBinding.remoteScope || '') : '';
+            const profileRemote = profile.initialPath || '';
+            setOverlaysRemotePath(savedScope && savedScope !== profileRemote ? savedScope : '');
+            setOverlaysRemotePathError(null);
+        }
         // Tier 1 keyfile PATH: a pointer, not a secret, so unlike the password
         // it IS hydrated for display and stays re-pointable (hydrated async
         // below, race-guarded like the other vault reads).
@@ -2104,6 +2147,8 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         setAeroCryptKeyfilePath('');
         setKeyfileJustGenerated(false);
         setKeyfileError(null);
+        setOverlaysRemotePath('');
+        setOverlaysRemotePathError(null);
         modeCredentialSnapshotsRef.current = {};
         // Reset params
         onConnectionParamsChange({ ...connectionParams, server: '', username: '', password: '', options: {} });
@@ -2799,6 +2844,39 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                         </button>
                         {overlaysExpanded && (
                         <div className="p-3 border-t border-gray-200 dark:border-gray-700">
+                        {/* #369: Overlays Remote Path field (one for all overlays).
+                            Placed outside the emerald box per design. Empty value means
+                            "same as Remote Path" (no schema change; re-uses remoteScope). */}
+                        <div className="mb-3">
+                            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                                {t('aerocryptProfile.overlaysRemotePath')}
+                            </label>
+                            <input
+                                type="text"
+                                value={overlaysRemotePath}
+                                disabled={overlayFieldsLocked}
+                                onChange={(e) => {
+                                    const v = e.target.value;
+                                    setOverlaysRemotePath(v);
+                                    const valid = isValidOverlayScope(resolveOverlayScope(v, quickConnectDirs.remoteDir), quickConnectDirs.remoteDir);
+                                    setOverlaysRemotePathError(valid ? null : t('aerocryptProfile.overlaysRemotePathInvalid'));
+                                }}
+                                className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm disabled:opacity-60 disabled:cursor-not-allowed"
+                                placeholder={quickConnectDirs.remoteDir || '/'}
+                            />
+                            <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                                {t('aerocryptProfile.overlaysRemotePathHint')}
+                            </p>
+                            {/* #369 F5: the scope is the encryption anchor, immutable once the
+                                overlay is bound (like the Remote Path and the other crypt fields);
+                                editing it on an existing vault would orphan the encrypted data. */}
+                            {overlayFieldsLocked && (
+                                <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">{t('aerocryptProfile.remotePathLockedNote')}</p>
+                            )}
+                            {overlaysRemotePathError && (
+                                <p className="mt-1 text-xs text-red-600 dark:text-red-400">{overlaysRemotePathError}</p>
+                            )}
+                        </div>
                         <div className="rounded-lg border border-emerald-300/60 dark:border-emerald-700/50 bg-emerald-50/50 dark:bg-emerald-900/20 p-3 space-y-2">
                         <Checkbox
                             checked={aeroCryptEnabled}
@@ -3136,7 +3214,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                         )}
                         <button
                             onClick={saveOverride || handleConnectAndSave}
-                            disabled={saveOverride ? (loading || btnDisabled) : (loading || btnDisabled || aeroCryptConfirmMismatch)}
+                            disabled={saveOverride ? (loading || btnDisabled) : (loading || btnDisabled || aeroCryptConfirmMismatch || !!overlaysRemotePathError)}
                             className={`${(showCancelSaveAsNew || cancelOverride) ? 'flex-1' : 'w-full'} py-3 rounded-lg font-medium text-white cursor-pointer active:scale-[0.98] transition-all flex items-center justify-center gap-2 shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.3)] disabled:opacity-50 ${loading ? 'bg-gray-400 !cursor-not-allowed' : buttonColorClass}`}
                         >
                             {loading ? (

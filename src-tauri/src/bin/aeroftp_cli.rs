@@ -2635,6 +2635,34 @@ enum Commands {
         /// Mutually exclusive with --credential-json and --password-stdin.
         #[arg(long, value_name = "PATH")]
         credential_json_file: Option<String>,
+        /// HTTP base URL used to build share links for this profile (the GUI's
+        /// "Public URL base", e.g. `https://www.example.com/`). Top-level
+        /// profile field; without it share links must be re-entered after an
+        /// import.
+        #[arg(long, value_name = "URL")]
+        public_url_base: Option<String>,
+        /// User-chosen custom icon for the My Servers card, as a data URL
+        /// (`data:image/png;base64,...`). Top-level profile field mirroring the
+        /// GUI Edit modal icon picker.
+        #[arg(long, value_name = "DATA_URL")]
+        custom_icon_url: Option<String>,
+        /// Auto-detected project favicon, as a data URL. Top-level profile field
+        /// (normally set by the GUI on connect); exposed here for CLI-driven
+        /// test fixtures.
+        #[arg(long, value_name = "DATA_URL")]
+        favicon_url: Option<String>,
+        /// Suppress the classic-fallback (delta-eligibility) modal for this
+        /// saved server, matching the GUI checkbox. Top-level profile
+        /// preference.
+        #[arg(long)]
+        skip_delta_eligibility_prompt: bool,
+        /// Filen CLI API key (issue #230). Stored in the vault under
+        /// `filen_api_key_<id>` (NOT on the saved profile) and flags
+        /// `hasStoredFilenApiKey`, exactly like the GUI Edit modal, so the
+        /// profile connects via the key and skips the /v3/login + TOTP window.
+        /// Only valid for `--protocol filen`. Inline value is visible in `ps`.
+        #[arg(long, value_name = "KEY")]
+        filen_api_key: Option<String>,
     },
     /// Duplicate a saved server profile inside the vault
     ///
@@ -4489,7 +4517,32 @@ enum CryptCommands {
         /// omitting it prints the kit and requires an explicit YES acknowledgement before init succeeds.
         #[arg(long)]
         emergency_kit: Option<String>,
+        /// Do NOT bind the overlay to the saved profile. By default, `crypt init
+        /// --profile X` binds X so the whole app (CLI ls/get/sync, MCP, GUI)
+        /// transparently decrypts it on connect; --no-bind keeps X plain and
+        /// leaves the overlay reachable only via the standalone `crypt` commands.
+        #[arg(long)]
+        no_bind: bool,
     },
+    /// Bind an existing crypt overlay to a saved profile so the whole app
+    /// (CLI ls/get/sync, MCP, GUI) transparently decrypts it on connect.
+    Bind {
+        /// Remote encrypted directory the overlay covers (the scope). Defaults
+        /// to the profile's initial path.
+        #[arg(default_value = "/")]
+        path: String,
+        /// Overlay password to store for transparent unlock (or set
+        /// AEROFTP_CRYPT_PASSWORD). Omit for a keyfile-only vault.
+        #[arg(long, env = "AEROFTP_CRYPT_PASSWORD", hide_env_values = true)]
+        password: Option<String>,
+        /// Keyfile path to store for transparent unlock (keyfile vaults only).
+        #[arg(long)]
+        keyfile: Option<String>,
+    },
+    /// Remove the crypt-overlay binding from a saved profile (the overlay
+    /// itself and its remote data are untouched; standalone `crypt` commands
+    /// keep working).
+    Unbind,
     /// Convert a headed vault to local-metadata headerless mode
     ToHeaderless {
         /// Server URL (omit when using --profile)
@@ -19700,6 +19753,11 @@ fn cmd_profile_add(
     password_stdin: bool,
     credential_json: Option<&str>,
     credential_json_file: Option<&str>,
+    public_url_base: Option<&str>,
+    custom_icon_url: Option<&str>,
+    favicon_url: Option<&str>,
+    skip_delta_eligibility_prompt: bool,
+    filen_api_key: Option<&str>,
 ) -> i32 {
     let trimmed_name = name.trim();
     if trimmed_name.is_empty() {
@@ -19766,6 +19824,18 @@ fn cmd_profile_add(
         );
         return 5;
     }
+    // Issue #230: the Filen CLI API key is a Filen-only credential. Reject it on
+    // any other protocol so a mistyped profile does not silently carry a dead
+    // vault entry.
+    let filen_api_key = filen_api_key.map(|k| k.trim()).filter(|k| !k.is_empty());
+    if filen_api_key.is_some() && proto_lower != "filen" {
+        print_error(
+            format,
+            "--filen-api-key is only valid for --protocol filen",
+            5,
+        );
+        return 5;
+    }
     let manual_total_bytes = match manual_total {
         Some(s) => match parse_manual_total_size(s) {
             Ok(b) if b > 0 => Some(b),
@@ -19823,6 +19893,11 @@ fn cmd_profile_add(
         color,
         provider_id,
         manual_total_bytes,
+        public_url_base,
+        custom_icon_url,
+        favicon_url,
+        skip_delta_eligibility_prompt,
+        filen_api_key.is_some(),
     ) {
         Ok(id) => id,
         Err(e) => {
@@ -19858,6 +19933,28 @@ fn cmd_profile_add(
         }
     }
 
+    // Issue #230: seed the Filen CLI API key into its own vault slot
+    // (`filen_api_key_<id>`), exactly where the GUI Edit modal writes it and
+    // where `collect_provider_secrets_for_server` reads it for the profile
+    // export. Same hard-error contract as the main credential.
+    let seeded_filen_api_key = filen_api_key.is_some();
+    if let Some(key) = filen_api_key {
+        let vault_key = format!("filen_api_key_{}", new_id);
+        if let Err(e) = ftp_client_gui_lib::user_partitions::store_active_credential_dual(
+            &store, &vault_key, key,
+        ) {
+            print_error(
+                format,
+                &format!(
+                    "Profile '{}' created (id={}) but Filen API key write failed: {}",
+                    trimmed_name, new_id, e
+                ),
+                5,
+            );
+            return 5;
+        }
+    }
+
     match format {
         OutputFormat::Json => {
             let out = serde_json::json!({
@@ -19866,6 +19963,7 @@ fn cmd_profile_add(
                 "protocol": proto_lower,
                 "port": resolved_port,
                 "credential_seeded": seeded_credential,
+                "filen_api_key_seeded": seeded_filen_api_key,
             });
             println!("{}", serde_json::to_string_pretty(&out).unwrap_or_default());
         }
@@ -19909,6 +20007,11 @@ fn persist_new_profile_entry(
     color: Option<&str>,
     provider_id: Option<&str>,
     manual_total_bytes: Option<u64>,
+    public_url_base: Option<&str>,
+    custom_icon_url: Option<&str>,
+    favicon_url: Option<&str>,
+    skip_delta_eligibility_prompt: bool,
+    has_filen_api_key: bool,
 ) -> Result<String, String> {
     let mut profiles: Vec<serde_json::Value> = match load_active_user_profiles(cli, store) {
         Ok(p) => p,
@@ -19942,13 +20045,19 @@ fn persist_new_profile_entry(
         "protocol".into(),
         serde_json::Value::String(protocol.to_string()),
     );
-    if let Some(h) = host {
-        entry.insert("host".into(), serde_json::Value::String(h.to_string()));
-    }
+    // Always write `host` and `username` (empty string when not provided).
+    // The GUI stores them unconditionally and `ServerProfileExport` requires
+    // both as non-optional strings, so omitting them made a cloud profile
+    // (no host/user) fail `profile-export` with "missing field `host`".
+    entry.insert(
+        "host".into(),
+        serde_json::Value::String(host.unwrap_or("").to_string()),
+    );
     entry.insert("port".into(), serde_json::json!(port));
-    if let Some(u) = username {
-        entry.insert("username".into(), serde_json::Value::String(u.to_string()));
-    }
+    entry.insert(
+        "username".into(),
+        serde_json::Value::String(username.unwrap_or("").to_string()),
+    );
     entry.insert(
         "initialPath".into(),
         serde_json::Value::String(initial_path.to_string()),
@@ -19972,6 +20081,36 @@ fn persist_new_profile_entry(
         let mut options = serde_json::Map::new();
         options.insert("manualTotalBytes".into(), serde_json::json!(mtb));
         entry.insert("options".into(), serde_json::Value::Object(options));
+    }
+    // Top-level ServerProfile fields (outside `options`) that the GUI Edit modal
+    // sets; carried here so a CLI-created profile is a faithful fixture and its
+    // `.aeroftp` export/import round-trips them (v4.1.4 export audit GAP 2/3/4).
+    if let Some(u) = public_url_base {
+        entry.insert(
+            "publicUrlBase".into(),
+            serde_json::Value::String(u.to_string()),
+        );
+    }
+    if let Some(u) = custom_icon_url {
+        entry.insert(
+            "customIconUrl".into(),
+            serde_json::Value::String(u.to_string()),
+        );
+    }
+    if let Some(u) = favicon_url {
+        entry.insert(
+            "faviconUrl".into(),
+            serde_json::Value::String(u.to_string()),
+        );
+    }
+    if skip_delta_eligibility_prompt {
+        entry.insert("skipDeltaEligibilityPrompt".into(), serde_json::json!(true));
+    }
+    // Issue #230: mirror the GUI flag so the My Servers card and the export know
+    // a Filen CLI API key lives in the vault under `filen_api_key_<id>` (the key
+    // itself is written separately by the caller, never onto the profile).
+    if has_filen_api_key {
+        entry.insert("hasStoredFilenApiKey".into(), serde_json::json!(true));
     }
 
     profiles.insert(0, serde_json::Value::Object(entry));
@@ -20229,6 +20368,11 @@ fn interactive_new_profile(
         None,
         provider_id.as_deref(),
         None,
+        None,
+        None,
+        None,
+        false,
+        false,
     )?;
     eprintln!(
         "{}",
@@ -20404,13 +20548,23 @@ fn cmd_profile_duplicate(
         return 5;
     }
 
-    // Best-effort credential clone. Missing credentials are valid for many
-    // protocols (OAuth, GitHub PAT-only flows) so we don't fail when the
-    // source key isn't present. MUV-3: same scoped user, dual-write.
+    // Best-effort clone of EVERY vault secret scoped to the source profile so a
+    // duplicate is a complete working copy, not just the password (crypt overlay,
+    // Filen key, OAuth/Jotta token, per-mode snapshots, OneDrive hints). Same
+    // single source of truth (`per_profile_vault_keys`) the GUI copy command and
+    // delete/export use. Missing keys are valid for many protocols, so a missing
+    // source key is skipped, never an error. MUV-3: same scoped user, dual-write.
     if !source_id.is_empty() {
         let scoped_uid = scoped_credential_user_id(cli, &store);
-        if let Some(cred) = read_server_cred(&store, scoped_uid, &format!("server_{}", source_id)) {
-            dual_store_server_cred(&store, scoped_uid, &format!("server_{}", new_id), &cred);
+        let protocol = source.get("protocol").and_then(|v| v.as_str());
+        let source_suffix = format!("_{}", source_id);
+        for source_key in ftp_client_gui_lib::per_profile_vault_keys(&source_id, protocol) {
+            if let Some(base) = source_key.strip_suffix(&source_suffix) {
+                if let Some(value) = read_server_cred(&store, scoped_uid, &source_key) {
+                    let target_key = format!("{}_{}", base, new_id);
+                    dual_store_server_cred(&store, scoped_uid, &target_key, &value);
+                }
+            }
         }
     }
 
@@ -21179,6 +21333,13 @@ fn delete_profile_in_vault(
     let mut profiles: Vec<serde_json::Value> = load_active_user_profiles(cli, store)
         .map_err(|e| format!("Failed to read profiles: {}", e))?;
     let before = profiles.len();
+    // Capture the protocol before removing the entry, so the OAuth-token key can
+    // be derived for the orphan cleanup below.
+    let protocol = profiles
+        .iter()
+        .find(|p| p.get("id").and_then(|v| v.as_str()) == Some(profile_id))
+        .and_then(|p| p.get("protocol").and_then(|v| v.as_str()))
+        .map(|s| s.to_string());
     profiles.retain(|p| p.get("id").and_then(|v| v.as_str()) != Some(profile_id));
     if profiles.len() == before {
         return Err(format!("Profile id '{}' not found in vault", profile_id));
@@ -21186,13 +21347,16 @@ fn delete_profile_in_vault(
     save_active_user_profiles(cli, store, &profiles)
         .map_err(|e| format!("Failed to write profiles: {}", e))?;
 
-    // Orphan credential cleanup (matches MyServersPanel.tsx confirmDelete).
-    // MUV-3: dual-delete from vault + the scoped user's partition.
-    dual_delete_server_cred(
-        store,
-        scoped_credential_user_id(cli, store),
-        &format!("server_{}", profile_id),
-    );
+    // Orphan credential cleanup: remove EVERY vault secret scoped to this profile
+    // so a delete leaves nothing behind. Same single source of truth
+    // (`per_profile_vault_keys`) the GUI `purge_profile_secrets` command and the
+    // export-collect path use, so the CLI and GUI can never diverge. MUV-3:
+    // dual-delete from the vault + the scoped user's partition; best-effort per
+    // key (a key absent for this profile kind is a no-op).
+    let scoped_uid = scoped_credential_user_id(cli, store);
+    for key in ftp_client_gui_lib::per_profile_vault_keys(profile_id, protocol.as_deref()) {
+        dual_delete_server_cred(store, scoped_uid, &key);
+    }
 
     // Drop the id from the favourites set if present. Best-effort: a missing
     // or malformed entry leaves the favourites list untouched.
@@ -24231,17 +24395,33 @@ async fn create_and_connect(
     cli: &Cli,
     format: OutputFormat,
 ) -> Result<(Box<dyn StorageProvider>, String), i32> {
-    create_and_connect_with(url, cli, cli.profile.as_deref(), format).await
+    create_and_connect_with(url, cli, cli.profile.as_deref(), format, true).await
+}
+
+/// Connect WITHOUT applying a bound profile's transparent crypt overlay. The
+/// standalone `crypt` subcommands (init/ls/put/get + the migrations) are the
+/// crypt layer themselves, so wrapping them in the bound overlay would
+/// double-encrypt (F4). They always drive the raw provider and manage the
+/// encryption explicitly with the password/keyfile passed on the command line.
+async fn create_and_connect_raw(
+    url: &str,
+    cli: &Cli,
+    format: OutputFormat,
+) -> Result<(Box<dyn StorageProvider>, String), i32> {
+    create_and_connect_with(url, cli, cli.profile.as_deref(), format, false).await
 }
 
 /// Like `create_and_connect` but with an explicit profile-name override instead
 /// of relying on the global `--profile`. Used by multi-profile benchmark
 /// compare, which connects each profile by name while `--profile` stays unset.
+/// `apply_overlay` wraps a bound profile in its transparent crypt overlay; the
+/// standalone `crypt` commands pass `false` so they see the raw ciphertext.
 async fn create_and_connect_with(
     url: &str,
     cli: &Cli,
     profile_override: Option<&str>,
     format: OutputFormat,
+    apply_overlay: bool,
 ) -> Result<(Box<dyn StorageProvider>, String), i32> {
     // Check if the selected profile points to an OAuth provider - handle separately
     // Uses the same strict matching as profile_to_provider_config (exact → ID → disambiguated substring)
@@ -24329,9 +24509,15 @@ async fn create_and_connect_with(
                                 apply_google_drive_runtime_knobs(&mut p, cli);
                                 // Crypt-overlay chokepoint: an OAuth backend can
                                 // carry a crypt binding too (overlay is
-                                // protocol-agnostic). Wrap before returning.
-                                let p = cli_apply_crypt_overlay(p, cli, profile_override, format)
-                                    .await?;
+                                // protocol-agnostic). Wrap before returning
+                                // unless the caller wants the raw provider (the
+                                // standalone `crypt` commands, F4).
+                                let p = if apply_overlay {
+                                    cli_apply_crypt_overlay(p, cli, profile_override, format)
+                                        .await?
+                                } else {
+                                    p
+                                };
                                 return Ok((p, path));
                             } else {
                                 return result;
@@ -24481,7 +24667,13 @@ async fn create_and_connect_with(
     // applied to the inner provider before wrapping; the decorator advertises
     // the byte-inexact surfaces (resume/multipart/range/checksum) as disabled so
     // callers fall back to whole-file paths. Fail-closed on a bound profile.
-    let provider = cli_apply_crypt_overlay(provider, cli, profile_override, format).await?;
+    // Skipped (raw provider) for the standalone `crypt` commands, which are the
+    // crypt layer themselves and would otherwise double-encrypt (F4).
+    let provider = if apply_overlay {
+        cli_apply_crypt_overlay(provider, cli, profile_override, format).await?
+    } else {
+        provider
+    };
 
     Ok((provider, path))
 }
@@ -38388,7 +38580,7 @@ async fn cmd_benchmark(
     // the global --profile (which stays unset across the whole compare run).
     let profile_for_connect = compare_label.or(cli.profile.as_deref());
     let (mut provider, initial_path) =
-        match create_and_connect_with("_", cli, profile_for_connect, format).await {
+        match create_and_connect_with("_", cli, profile_for_connect, format, true).await {
             Ok(v) => v,
             Err(code) => return code,
         };
@@ -46353,7 +46545,7 @@ async fn cmd_crypt_to_headerless(
         Ok(target) => target,
         Err(code) => return code,
     };
-    let (mut provider, initial_path) = match create_and_connect(url, cli, format).await {
+    let (mut provider, initial_path) = match create_and_connect_raw(url, cli, format).await {
         Ok(provider) => provider,
         Err(code) => return code,
     };
@@ -46509,7 +46701,7 @@ async fn cmd_crypt_to_headed(
         Ok(target) => target,
         Err(code) => return code,
     };
-    let (mut provider, initial_path) = match create_and_connect(url, cli, format).await {
+    let (mut provider, initial_path) = match create_and_connect_raw(url, cli, format).await {
         Ok(provider) => provider,
         Err(code) => return code,
     };
@@ -46713,6 +46905,246 @@ fn handle_emergency_kit_emission(
     }
 }
 
+/// Validate an overlay scope against the profile Remote Path (#369): the scope
+/// must EQUAL the Remote Path or be a strict DESCENDANT of it. A blank scope is
+/// valid (it means "same as the Remote Path"). When the Remote Path is the root
+/// (`/`), any folder is a descendant. Rejects ancestors (scope `/` under a
+/// subfolder Remote Path), siblings, the `/database` vs `/data` prefix trap, and
+/// unrelated paths. Mirrors the GUI's `isValidOverlayScope` in overlayScope.ts.
+fn is_valid_overlay_scope(scope: &str, remote_path: &str) -> bool {
+    if scope.trim().is_empty() {
+        return true;
+    }
+    let r = normalize_remote_path(remote_path);
+    if r == "/" {
+        return true; // remote path is the root: any folder is a descendant
+    }
+    let s = normalize_remote_path(scope);
+    if s == "/" {
+        return false; // scope is "/" but the remote path is a subfolder: ancestor
+    }
+    s == r || s.starts_with(&format!("{}/", r))
+}
+
+/// Read a saved profile's `initialPath` (the GUI's remote landing path), used
+/// as the default overlay scope for `crypt bind` when no path is given.
+fn profile_initial_path(cli: &Cli, store: &CredentialStore, profile_id: &str) -> Option<String> {
+    let profiles = load_active_user_profiles(cli, store).ok()?;
+    profiles
+        .iter()
+        .find(|p| p.get("id").and_then(|v| v.as_str()) == Some(profile_id))
+        .and_then(|p| p.get("initialPath").and_then(|v| v.as_str()))
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+}
+
+/// Bind a native AeroCrypt overlay to a saved profile so the whole app (the CLI
+/// transparent chokepoint `cli_apply_crypt_overlay`, the MCP pool resolver, the
+/// GUI file panel, sync) auto-decrypts it on connect. Writes the profile's
+/// `aeroCryptOverlay` JSON and stores the per-profile overlay password (+ keyfile
+/// path when supplied). Idempotent: re-binding overwrites the previous binding.
+fn bind_crypt_overlay_to_profile(
+    cli: &Cli,
+    store: &CredentialStore,
+    uid: Option<i64>,
+    profile_id: &str,
+    remote_scope: &str,
+    password: &str,
+    keyfile_path: Option<&str>,
+) -> Result<(), String> {
+    let binding = serde_json::json!({
+        "enabled": true,
+        "kind": "aerocrypt",
+        "remoteScope": remote_scope,
+        "filenameEncryption": "standard",
+        "directoryNameEncryption": true,
+    });
+    update_profile_field_in_vault(cli, store, profile_id, "aeroCryptOverlay", binding)?;
+    if !password.is_empty() {
+        dual_store_server_cred(
+            store,
+            uid,
+            &format!("aerocrypt_overlay_pw_{}", profile_id),
+            password,
+        );
+    }
+    if let Some(path) = keyfile_path.filter(|p| !p.is_empty()) {
+        dual_store_server_cred(
+            store,
+            uid,
+            &format!("aerocrypt_overlay_keyfile_path_{}", profile_id),
+            path,
+        );
+    }
+    Ok(())
+}
+
+/// Best-effort bind after a successful `crypt init --profile` (non-fatal: the
+/// overlay was already created, so a binding hiccup must not fail the whole
+/// init). Prints a one-line confirmation on success, a warning on failure.
+#[allow(clippy::too_many_arguments)]
+fn bind_after_init(
+    cli: &Cli,
+    format: OutputFormat,
+    store: &CredentialStore,
+    uid: Option<i64>,
+    profile_id: &str,
+    remote_scope: &str,
+    password: &str,
+    keyfile_path: Option<&str>,
+) {
+    match bind_crypt_overlay_to_profile(
+        cli,
+        store,
+        uid,
+        profile_id,
+        remote_scope,
+        password,
+        keyfile_path,
+    ) {
+        Ok(()) => {
+            if !cli.quiet && !matches!(format, OutputFormat::Json) {
+                println!(
+                    "Bound overlay to profile (transparent decrypt on connect; use --raw to bypass, 'crypt unbind' to remove)"
+                );
+            }
+        }
+        Err(e) => {
+            eprintln!("Warning: overlay created but profile binding failed: {e}");
+        }
+    }
+}
+
+/// `crypt bind`: attach an existing overlay to a saved profile.
+async fn cmd_crypt_bind(
+    path: &str,
+    password: &str,
+    keyfile_path: Option<&str>,
+    cli: &Cli,
+    format: OutputFormat,
+) -> i32 {
+    let profile_query = match cli.profile.as_deref() {
+        Some(p) => p,
+        None => {
+            print_error(
+                format,
+                "crypt bind requires a saved profile: pass --profile <name-or-index>.",
+                5,
+            );
+            return 5;
+        }
+    };
+    let store = match open_vault(cli) {
+        Ok(s) => s,
+        Err(e) => {
+            print_error(format, &e, 5);
+            return 5;
+        }
+    };
+    let profile_id = match resolve_profile_id_for_query(cli, &store, profile_query, format) {
+        Ok(id) => id,
+        Err(code) => return code,
+    };
+    let uid = scoped_credential_user_id(cli, &store);
+    let remote_path =
+        profile_initial_path(cli, &store, &profile_id).unwrap_or_else(|| "/".to_string());
+    // Resolve the scope: an explicit non-root path wins, else the profile's
+    // Remote Path, else "/".
+    let scope = if path != "/" && !path.is_empty() {
+        path.to_string()
+    } else {
+        remote_path.clone()
+    };
+    // #369: the overlay scope must equal the profile Remote Path or be a strict
+    // descendant of it. Pinning the anchor above the vault (an ancestor) or to a
+    // sibling produces the empty-listing misconfiguration; reject it up front.
+    if !is_valid_overlay_scope(&scope, &remote_path) {
+        print_error(
+            format,
+            &format!(
+                "Overlay scope {:?} must be the profile Remote Path {:?} or a folder inside it.",
+                scope, remote_path
+            ),
+            5,
+        );
+        return 5;
+    }
+    let scope = normalize_remote_path(&scope);
+    if let Err(e) = bind_crypt_overlay_to_profile(
+        cli,
+        &store,
+        uid,
+        &profile_id,
+        scope.trim_end_matches('/'),
+        password,
+        keyfile_path,
+    ) {
+        print_error(format, &format!("Failed to bind overlay: {}", e), 5);
+        return 5;
+    }
+    if matches!(format, OutputFormat::Json) {
+        print_json(&serde_json::json!({
+            "status": "ok",
+            "bound": true,
+            "profile": profile_query,
+            "remoteScope": scope,
+        }));
+    } else if !cli.quiet {
+        println!(
+            "Bound crypt overlay to profile '{}' at {} (transparent decrypt on connect; use --raw to bypass).",
+            profile_query, scope
+        );
+    }
+    0
+}
+
+/// `crypt unbind`: remove the overlay binding from a saved profile. The remote
+/// data and the keystore config are left intact so standalone `crypt` commands
+/// and a later re-bind keep working.
+async fn cmd_crypt_unbind(cli: &Cli, format: OutputFormat) -> i32 {
+    let profile_query = match cli.profile.as_deref() {
+        Some(p) => p,
+        None => {
+            print_error(
+                format,
+                "crypt unbind requires a saved profile: pass --profile <name-or-index>.",
+                5,
+            );
+            return 5;
+        }
+    };
+    let store = match open_vault(cli) {
+        Ok(s) => s,
+        Err(e) => {
+            print_error(format, &e, 5);
+            return 5;
+        }
+    };
+    let profile_id = match resolve_profile_id_for_query(cli, &store, profile_query, format) {
+        Ok(id) => id,
+        Err(code) => return code,
+    };
+    if let Err(e) = update_profile_field_in_vault(
+        cli,
+        &store,
+        &profile_id,
+        "aeroCryptOverlay",
+        serde_json::Value::Null,
+    ) {
+        print_error(format, &format!("Failed to unbind overlay: {}", e), 5);
+        return 5;
+    }
+    if matches!(format, OutputFormat::Json) {
+        print_json(&serde_json::json!({"status": "ok", "bound": false, "profile": profile_query}));
+    } else if !cli.quiet {
+        println!(
+            "Removed crypt-overlay binding from profile '{}' (remote data and keystore config untouched).",
+            profile_query
+        );
+    }
+    0
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn cmd_crypt_init(
     url: &str,
@@ -46722,6 +47154,8 @@ async fn cmd_crypt_init(
     with_header: bool,
     force: bool,
     emergency_kit: Option<&str>,
+    no_bind: bool,
+    keyfile_path: Option<&str>,
     cli: &Cli,
     format: OutputFormat,
 ) -> i32 {
@@ -46768,13 +47202,28 @@ async fn cmd_crypt_init(
         }
     };
 
-    let (mut provider, initial_path) = match create_and_connect(url, cli, format).await {
+    let (mut provider, initial_path) = match create_and_connect_raw(url, cli, format).await {
         Ok(v) => v,
         Err(code) => return code,
     };
 
     let base_path = normalize_remote_path(&resolve_cli_remote_path(&initial_path, path));
     let config_path = format!("{}/.aeroftp-crypt.json", base_path.trim_end_matches('/'));
+
+    // Ensure the remote scope directory exists so `crypt init /a/b/c` prepares
+    // the vault immediately: the headed marker upload writes into it, and the
+    // first headerless `crypt put` expects it to be there. Best-effort, one
+    // component at a time (mkdir on an existing dir is ignored); a genuine
+    // failure still surfaces at the marker upload (headed) or first put.
+    {
+        let scope = base_path.trim_end_matches('/');
+        let mut acc = String::new();
+        for part in scope.split('/').filter(|s| !s.is_empty()) {
+            acc.push('/');
+            acc.push_str(part);
+            let _ = provider.mkdir(&acc).await;
+        }
+    }
 
     if !with_header {
         let (store, uid, profile_id) = headerless_target.expect("resolved above");
@@ -46854,12 +47303,28 @@ async fn cmd_crypt_init(
                     return 5;
                 }
 
+                // Bind the profile by default so the whole app decrypts it
+                // transparently on connect (--no-bind opts out). Non-fatal.
+                if !no_bind {
+                    bind_after_init(
+                        cli,
+                        format,
+                        &store,
+                        uid,
+                        &profile_id,
+                        base_path.trim_end_matches('/'),
+                        password,
+                        keyfile_path,
+                    );
+                }
+
                 if matches!(format, OutputFormat::Json) {
                     print_json(&serde_json::json!({
                         "status": "ok",
                         "path": base_path,
                         "headerless": true,
                         "config_key": config_key,
+                        "bound": !no_bind,
                     }));
                 } else if !cli.quiet {
                     println!("Crypt overlay initialized at {}", base_path);
@@ -46968,8 +47433,43 @@ async fn cmd_crypt_init(
                 return 5;
             }
 
+            // Bind the profile by default so the whole app decrypts it
+            // transparently on connect (--no-bind opts out; URL mode has no
+            // profile to bind). Non-fatal: the headed marker already exists.
+            let mut bound = false;
+            if !no_bind {
+                if let Some(profile_q) = cli.profile.as_deref() {
+                    match open_vault(cli) {
+                        Ok(store) => {
+                            match resolve_profile_id_for_query(cli, &store, profile_q, format) {
+                                Ok(pid) => {
+                                    let uid = scoped_credential_user_id(cli, &store);
+                                    bind_after_init(
+                                        cli,
+                                        format,
+                                        &store,
+                                        uid,
+                                        &pid,
+                                        base_path.trim_end_matches('/'),
+                                        password,
+                                        keyfile_path,
+                                    );
+                                    bound = true;
+                                }
+                                Err(_) => { /* error already printed; leave unbound */ }
+                            }
+                        }
+                        Err(e) => {
+                            eprintln!("Warning: cannot open vault to bind profile: {e}");
+                        }
+                    }
+                }
+            }
+
             if matches!(format, OutputFormat::Json) {
-                print_json(&serde_json::json!({"status": "ok", "path": config_path}));
+                print_json(
+                    &serde_json::json!({"status": "ok", "path": config_path, "bound": bound}),
+                );
             } else if !cli.quiet {
                 println!("Crypt overlay initialized at {}", base_path);
                 println!("Config: {}", config_path);
@@ -47019,7 +47519,7 @@ async fn cmd_crypt_ls(
     format: OutputFormat,
 ) -> i32 {
     use ftp_client_gui_lib::aerocrypt::{names, overlay};
-    let (mut provider, initial_path) = match create_and_connect(url, cli, format).await {
+    let (mut provider, initial_path) = match create_and_connect_raw(url, cli, format).await {
         Ok(v) => v,
         Err(code) => return code,
     };
@@ -47216,7 +47716,7 @@ async fn cmd_crypt_put(
     format: OutputFormat,
 ) -> i32 {
     use ftp_client_gui_lib::aerocrypt::{names, overlay};
-    let (mut provider, initial_path) = match create_and_connect(url, cli, format).await {
+    let (mut provider, initial_path) = match create_and_connect_raw(url, cli, format).await {
         Ok(v) => v,
         Err(code) => return code,
     };
@@ -47556,7 +48056,7 @@ async fn cmd_crypt_get(
     format: OutputFormat,
 ) -> i32 {
     use ftp_client_gui_lib::aerocrypt::{names, overlay};
-    let (mut provider, initial_path) = match create_and_connect(url, cli, format).await {
+    let (mut provider, initial_path) = match create_and_connect_raw(url, cli, format).await {
         Ok(v) => v,
         Err(code) => return code,
     };
@@ -47786,14 +48286,39 @@ async fn cmd_crypt_get(
         }
     };
 
+    // The decrypted original basename, used when the destination is omitted or
+    // is a directory (so `crypt get secret.txt <dir>/` lands as `<dir>/secret.txt`).
+    let enc_basename = remote_file.rsplit('/').next().unwrap_or("decrypted");
+    let decrypted_basename = names::decrypt_filename(&master_key, enc_basename)
+        .unwrap_or_else(|| "decrypted".to_string());
+
     // Write to local file
     let dest = if local_dest.is_empty() || local_dest == "." {
-        // Use decrypted original filename
-        let enc_basename = remote_file.rsplit('/').next().unwrap_or("decrypted");
-        names::decrypt_filename(&master_key, enc_basename)
-            .unwrap_or_else(|| "decrypted".to_string())
+        decrypted_basename.clone()
     } else {
-        local_dest.to_string()
+        // scp/cp semantics: an existing directory, or a path with a trailing
+        // separator, means "write the decrypted file inside this directory"
+        // rather than treating the directory path itself as the file name.
+        let dest_path = std::path::Path::new(local_dest);
+        let treat_as_dir = dest_path.is_dir()
+            || local_dest.ends_with('/')
+            || local_dest.ends_with(std::path::MAIN_SEPARATOR);
+        if treat_as_dir {
+            if let Err(e) = std::fs::create_dir_all(dest_path) {
+                print_error(
+                    format,
+                    &format!("Cannot create directory '{}': {}", local_dest, e),
+                    4,
+                );
+                return 4;
+            }
+            dest_path
+                .join(&decrypted_basename)
+                .to_string_lossy()
+                .into_owned()
+        } else {
+            local_dest.to_string()
+        }
     };
 
     if let Err(e) = std::fs::write(&dest, &plaintext) {
@@ -59113,6 +59638,11 @@ async fn main() {
             manual_total,
             credential_json,
             credential_json_file,
+            public_url_base,
+            custom_icon_url,
+            favicon_url,
+            skip_delta_eligibility_prompt,
+            filen_api_key,
         } => cmd_profile_add(
             &cli,
             format,
@@ -59129,6 +59659,11 @@ async fn main() {
             cli.password_stdin,
             credential_json.as_deref(),
             credential_json_file.as_deref(),
+            public_url_base.as_deref(),
+            custom_icon_url.as_deref(),
+            favicon_url.as_deref(),
+            *skip_delta_eligibility_prompt,
+            filen_api_key.as_deref(),
         ),
         Commands::ProfileDuplicate {
             selector,
@@ -59376,6 +59911,7 @@ async fn main() {
                     with_header,
                     force,
                     emergency_kit,
+                    no_bind,
                 } => {
                     if let Err(msg) = ensure_headerless_init_profile_selector(
                         cli.profile.as_deref(),
@@ -59400,6 +59936,8 @@ async fn main() {
                                         path,
                                         "/",
                                     );
+                                    let keyfile_path =
+                                        keyfile_gen.as_deref().or(keyfile.as_deref());
                                     cmd_crypt_init(
                                         &u,
                                         &dir,
@@ -59408,6 +59946,8 @@ async fn main() {
                                         *with_header,
                                         *force,
                                         emergency_kit.as_deref(),
+                                        *no_bind,
+                                        keyfile_path,
                                         &cli,
                                         format,
                                     )
@@ -59417,6 +59957,15 @@ async fn main() {
                         }
                     }
                 }
+                CryptCommands::Bind {
+                    path,
+                    password,
+                    keyfile,
+                } => {
+                    let pw = resolve_crypt_password(password).unwrap_or_default();
+                    cmd_crypt_bind(path, &pw, keyfile.as_deref(), &cli, format).await
+                }
+                CryptCommands::Unbind => cmd_crypt_unbind(&cli, format).await,
                 CryptCommands::ToHeaderless {
                     url,
                     path,
@@ -63996,6 +64545,33 @@ mod tests {
             "aeroCryptOverlay": { "enabled": true, "kind": "aerocrypt", "remoteScope": "/enc" }
         });
         assert!(profile_has_crypt_overlay(&enabled));
+    }
+
+    #[test]
+    fn overlay_scope_must_equal_or_descend_remote_path() {
+        // Blank scope = "same as Remote Path" = always valid.
+        assert!(is_valid_overlay_scope("", "/data"));
+        assert!(is_valid_overlay_scope("   ", "/data"));
+        // Remote Path is the root: any folder is a descendant.
+        assert!(is_valid_overlay_scope("/anything/here", "/"));
+        assert!(is_valid_overlay_scope("/anything/here", ""));
+        // Exact match and strict descendant are valid.
+        assert!(is_valid_overlay_scope("/data", "/data"));
+        assert!(is_valid_overlay_scope("/data/vault", "/data"));
+        assert!(is_valid_overlay_scope("/data/a/b/c", "/data"));
+        // Trailing-slash and duplicate-slash normalization.
+        assert!(is_valid_overlay_scope("/data/vault/", "/data"));
+        assert!(is_valid_overlay_scope("//data//vault", "/data"));
+        // Ancestor is rejected: scope "/" under a subfolder Remote Path pins the
+        // anchor above the vault (the empty-listing misconfiguration).
+        assert!(!is_valid_overlay_scope("/", "/data"));
+        assert!(!is_valid_overlay_scope("/data", "/data/vault"));
+        // Sibling and unrelated are rejected.
+        assert!(!is_valid_overlay_scope("/other", "/data"));
+        assert!(!is_valid_overlay_scope("/data2", "/data"));
+        // The /database vs /data prefix trap must be rejected.
+        assert!(!is_valid_overlay_scope("/database", "/data"));
+        assert!(!is_valid_overlay_scope("/data-backup/x", "/data"));
     }
 
     #[test]

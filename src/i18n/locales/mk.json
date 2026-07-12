@@ -5061,7 +5061,10 @@
             "keyfileRepointHint": "Оваа патека само покажува каде се наоѓа клучната датотека; нејзината промена не го менува клучот на трезорот. Погрешна или отсутна клучна датотека го одбива отклучувањето.",
             "keyfileStorageHint": "Зачувајте го на локален диск или USB уред, одвоено од далечниот сервер што го шифрирате, и чувајте резервна копија.",
             "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
-            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore."
+            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
+            "overlaysRemotePath": "Оддалечена патека на прекривката",
+            "overlaysRemotePathHint": "Потпапка на Remote Path каде што е закотвен слојот. Оставете празно за да го користите Remote Path, или внесете само име на потпапка (се создава под Remote Path).",
+            "overlaysRemotePathInvalid": "Мора да биде Оддалечената патека или нејзина потпапка"
         },
         "modalGuard": {
             "busyTitle": "Операција во тек",

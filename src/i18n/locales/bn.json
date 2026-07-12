@@ -5042,7 +5042,10 @@
             "keyfileRepointHint": "এই পাথ শুধু কী-ফাইলটি কোথায় আছে তা নির্দেশ করে; এটি বদলালে ভল্টের কী বদলায় না। ভুল বা অনুপস্থিত কী-ফাইল হলে আনলক প্রত্যাখ্যাত হয়।",
             "keyfileStorageHint": "এটি স্থানীয় ডিস্ক বা USB ড্রাইভে সংরক্ষণ করুন, আপনি যে রিমোট এনক্রিপ্ট করছেন তা থেকে আলাদা রাখুন এবং একটি ব্যাকআপ কপি রাখুন।",
             "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
-            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore."
+            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
+            "overlaysRemotePath": "ওভারলে রিমোট পাথ",
+            "overlaysRemotePathHint": "Remote Path-এর একটি সাবফোল্ডার যেখানে ওভারলে নোঙর করা হয়। Remote Path ব্যবহার করতে খালি রাখুন, অথবা শুধু একটি সাবফোল্ডারের নাম লিখুন (এটি Remote Path-এর অধীনে তৈরি হয়)।",
+            "overlaysRemotePathInvalid": "অবশ্যই রিমোট পাথ বা তার একটি সাবফোল্ডার হতে হবে"
         },
         "modalGuard": {
             "busyTitle": "অপারেশন চলছে",

@@ -5042,7 +5042,10 @@
             "keyfileRepointHint": "Αυτή η διαδρομή δείχνει μόνο πού βρίσκεται το αρχείο κλειδιού; η αλλαγή της δεν αλλάζει το κλειδί της κρύπτης. Λάθος ή απόν αρχείο κλειδιού απορρίπτει το ξεκλείδωμα.",
             "keyfileStorageHint": "Αποθηκεύστε το σε τοπικό δίσκο ή μονάδα USB, ξεχωριστά από τον απομακρυσμένο διακομιστή που κρυπτογραφείτε, και κρατήστε ένα αντίγραφο ασφαλείας.",
             "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
-            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore."
+            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
+            "overlaysRemotePath": "Απομακρυσμένη διαδρομή επικάλυψης",
+            "overlaysRemotePathHint": "Υποφάκελος του Remote Path όπου αγκυρώνεται η επικάλυψη. Αφήστε το κενό για να χρησιμοποιήσετε το Remote Path ή πληκτρολογήστε μόνο ένα όνομα υποφακέλου (δημιουργείται κάτω από το Remote Path).",
+            "overlaysRemotePathInvalid": "Πρέπει να είναι η Απομακρυσμένη διαδρομή ή ένας υποφάκελός της"
         },
         "modalGuard": {
             "busyTitle": "Λειτουργία σε εξέλιξη",

@@ -5042,7 +5042,10 @@
             "keyfileRepointHint": "Ce chemin indique seulement où se trouve le fichier de clé ; le modifier ne rechiffre pas le coffre. Un fichier de clé erroné ou absent refuse le déverrouillage.",
             "keyfileStorageHint": "Conservez-le sur un disque local ou une clé USB, séparé du serveur distant que vous chiffrez, et gardez une copie de sauvegarde.",
             "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
-            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore."
+            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
+            "overlaysRemotePath": "Chemin distant de la superposition",
+            "overlaysRemotePathHint": "Sous-dossier du Remote Path où la superposition est ancrée. Laissez vide pour utiliser le Remote Path, ou saisissez uniquement un nom de sous-dossier (il est créé sous le Remote Path).",
+            "overlaysRemotePathInvalid": "Doit être le Chemin distant ou un de ses sous-dossiers"
         },
         "modalGuard": {
             "busyTitle": "Opération en cours",

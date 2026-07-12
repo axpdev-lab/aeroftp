@@ -5042,7 +5042,10 @@
             "keyfileRepointHint": "Šis kelias tik nurodo, kur yra rakto failas; jo keitimas saugyklos rakto nekeičia. Neteisingas ar trūkstamas rakto failas atrakinimą atmeta.",
             "keyfileStorageHint": "Išsaugokite jį vietiniame diske arba USB atmintinėje, atskirai nuo šifruojamo nuotolinio serverio, ir laikykite atsarginę kopiją.",
             "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
-            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore."
+            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
+            "overlaysRemotePath": "Perdangos nuotolinis kelias",
+            "overlaysRemotePathHint": "Remote Path poaplankis, kuriame pritvirtinamas perdangos sluoksnis. Palikite tuščią, kad būtų naudojamas Remote Path, arba įveskite tik poaplankio pavadinimą (jis sukuriamas po Remote Path).",
+            "overlaysRemotePathInvalid": "Tai turi būti Nuotolinis kelias arba jo poaplankis"
         },
         "modalGuard": {
             "busyTitle": "Vykdoma operacija",

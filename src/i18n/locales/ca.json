@@ -5061,7 +5061,10 @@
             "keyfileRepointHint": "Aquest camí només indica on és el fitxer de clau; canviar-lo no torna a xifrar la caixa forta. Un fitxer de clau erroni o absent bloqueja el desbloqueig.",
             "keyfileStorageHint": "Deseu-lo en un disc local o una unitat USB, separat del remot que esteu xifrant, i conserveu-ne una còpia de seguretat.",
             "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
-            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore."
+            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
+            "overlaysRemotePath": "Ruta remota de la superposició",
+            "overlaysRemotePathHint": "Subcarpeta del Remote Path on s'ancora la superposició. Deixeu-ho buit per fer servir el Remote Path, o escriviu només un nom de subcarpeta (es crea sota el Remote Path).",
+            "overlaysRemotePathInvalid": "Ha de ser la Ruta remota o una subcarpeta d'aquesta"
         },
         "modalGuard": {
             "busyTitle": "Operació en curs",

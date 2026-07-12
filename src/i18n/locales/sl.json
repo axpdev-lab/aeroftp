@@ -5042,7 +5042,10 @@
             "keyfileRepointHint": "Ta pot samo kaže, kje leži datoteka ključa; njena sprememba ne prešifrira trezorja. Napačna ali manjkajoča datoteka ključa odklepanje zavrne.",
             "keyfileStorageHint": "Shranite ga na lokalni disk ali USB ključ, ločeno od oddaljenega strežnika, ki ga šifrirate, in hranite varnostno kopijo.",
             "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
-            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore."
+            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
+            "overlaysRemotePath": "Oddaljena pot prekrivne plasti",
+            "overlaysRemotePathHint": "Podmapa poti Remote Path, kjer je prekrivni sloj zasidran. Pustite prazno za uporabo Remote Path ali vnesite le ime podmape (ustvari se pod Remote Path).",
+            "overlaysRemotePathInvalid": "Biti mora Oddaljena pot ali njena podmapa"
         },
         "modalGuard": {
             "busyTitle": "Operacija poteka",

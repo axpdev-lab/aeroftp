@@ -5061,7 +5061,10 @@
             "keyfileRepointHint": "Dim ond dangos lle mae'r ffeil allwedd y mae'r llwybr hwn; nid yw ei newid yn ail-allweddu'r gladdgell. Bydd ffeil allwedd anghywir neu goll yn gwrthod datgloi.",
             "keyfileStorageHint": "Cadwch ef ar ddisg lleol neu yriant USB, ar wahân i'r pell rydych chi'n ei amgryptio, a chadwch gopi wrth gefn.",
             "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
-            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore."
+            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
+            "overlaysRemotePath": "Llwybr Pell yr Troshaen",
+            "overlaysRemotePathHint": "Is-ffolder o'r Remote Path lle mae'r troshaen wedi'i angori. Gadewch yn wag i ddefnyddio'r Remote Path, neu teipiwch enw is-ffolder yn unig (caiff ei greu o dan y Remote Path).",
+            "overlaysRemotePathInvalid": "Rhaid iddo fod y Llwybr Pell neu is-ffolder ohono"
         },
         "modalGuard": {
             "busyTitle": "Gweithrediad ar y gweill",

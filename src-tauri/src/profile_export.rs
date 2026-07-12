@@ -121,6 +121,22 @@ pub struct ProviderSecrets {
     /// rclone remote (`oauth_<provider>_client_secret` vault singleton).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub oauth_client_secret: Option<String>,
+    /// Issue #230: the per-profile Filen CLI API key (`filen_api_key_<id>` vault
+    /// entry). This long-lived secret is NEVER persisted on the saved profile
+    /// (`options.filen_api_key` is transient, stripped to the vault on save), so
+    /// the `.aeroftp` profile export dropped it before this field: a re-imported
+    /// Filen profile silently fell back to password + TOTP. Absent for non-Filen
+    /// profiles or when credentials are excluded from the export.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub filen_api_key: Option<String>,
+    /// OneDrive Graph drive id captured at connect (`onedrive_drive_id_<id>`).
+    /// Like the Filen key it lives only in the vault, not on the profile, so the
+    /// export dropped it; carried here so a re-import is a complete snapshot.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub onedrive_drive_id: Option<String>,
+    /// OneDrive Graph drive type captured at connect (`onedrive_drive_type_<id>`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub onedrive_drive_type: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Default)]
@@ -142,6 +158,20 @@ pub struct ServerProfileExport {
     pub has_stored_credential: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub public_url_base: Option<String>,
+    /// User-chosen custom icon (base64 data URL). Top-level `ServerProfile`
+    /// field (NOT inside `options`), so it needs an explicit slot here or the
+    /// export drops it. Cosmetic; `#[serde(default)]` keeps older files loading.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub custom_icon_url: Option<String>,
+    /// Auto-detected project favicon (base64 data URL). Same top-level story as
+    /// `custom_icon_url`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub favicon_url: Option<String>,
+    /// Suppress the classic-fallback (delta-eligibility) modal for this saved
+    /// server. Top-level `ServerProfile` preference; without this slot the user
+    /// is re-prompted after an import for a modal they had silenced.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub skip_delta_eligibility_prompt: Option<bool>,
     /// CWP-20B round-trip: the crypt-overlay binding (`AeroCryptOverlayBinding`:
     /// kind + remoteScope + filename/dir settings). Without this an exported
     /// Crypt profile silently re-imported as plaintext (the binding lived only in
@@ -192,6 +222,9 @@ pub fn export_profiles(
             || s.aerocrypt_overlay_keyfile_path.is_some()
             || s.aerocrypt_overlay_config.is_some()
             || s.mode_credentials.is_some()
+            || s.filen_api_key.is_some()
+            || s.onedrive_drive_id.is_some()
+            || s.onedrive_drive_type.is_some()
     });
     let metadata = ExportMetadata {
         export_date: chrono::Utc::now().to_rfc3339(),
@@ -310,6 +343,9 @@ mod tests {
             credential: None,
             has_stored_credential: None,
             public_url_base: None,
+            custom_icon_url: None,
+            favicon_url: None,
+            skip_delta_eligibility_prompt: None,
             aero_crypt_overlay: None,
             has_stored_aero_crypt_password: None,
             has_stored_aero_crypt_salt: None,
@@ -515,6 +551,89 @@ mod tests {
                 .get("crypt-rclone")
                 .and_then(|s| s.aerocrypt_overlay_salt.clone()),
             Some("rclone-pw2-salt".to_string()),
+        );
+
+        let _ = std::fs::remove_file(&tmp);
+    }
+
+    /// v4.1.4 export audit: four persistent fields that live at the TOP LEVEL of
+    /// `ServerProfile` (outside the opaque `options` blob) were silently dropped
+    /// by the `.aeroftp` profile export because `ServerProfileExport` had no slot
+    /// for them: `publicUrlBase` (share links), `customIconUrl`/`faviconUrl`
+    /// (icons), `skipDeltaEligibilityPrompt` (silenced classic-fallback modal),
+    /// plus the per-profile Filen CLI API key secret (`filen_api_key_<id>`, kept
+    /// only in the vault). All must survive export -> import.
+    #[test]
+    fn round_trip_preserves_top_level_profile_fields_and_filen_api_key() {
+        let tmp = std::env::temp_dir().join(format!(
+            "aeroftp_export_toplevel_{}_{}.aeroftp",
+            std::process::id(),
+            chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
+        ));
+
+        let mut server = sample_server("filen-profile", "filen");
+        server.public_url_base = Some("https://share.example.com/".to_string());
+        server.custom_icon_url = Some("data:image/png;base64,CUSTOMICON".to_string());
+        server.favicon_url = Some("data:image/png;base64,FAVICON".to_string());
+        server.skip_delta_eligibility_prompt = Some(true);
+
+        let mut secrets = HashMap::new();
+        secrets.insert(
+            "filen-profile".to_string(),
+            ProviderSecrets {
+                filen_api_key: Some("filen-cli-api-key-secret".to_string()),
+                onedrive_drive_id: Some("b!driveid123".to_string()),
+                onedrive_drive_type: Some("business".to_string()),
+                ..Default::default()
+            },
+        );
+
+        export_profiles(vec![server], secrets, "pw-12345678", &tmp).expect("export should succeed");
+
+        let (servers, restored_secrets, _meta) =
+            import_profiles(&tmp, "pw-12345678").expect("import should succeed");
+
+        let out = servers.iter().find(|s| s.id == "filen-profile").unwrap();
+        assert_eq!(
+            out.public_url_base.as_deref(),
+            Some("https://share.example.com/"),
+            "publicUrlBase must survive (share links)"
+        );
+        assert_eq!(
+            out.custom_icon_url.as_deref(),
+            Some("data:image/png;base64,CUSTOMICON"),
+            "customIconUrl must survive"
+        );
+        assert_eq!(
+            out.favicon_url.as_deref(),
+            Some("data:image/png;base64,FAVICON"),
+            "faviconUrl must survive"
+        );
+        assert_eq!(
+            out.skip_delta_eligibility_prompt,
+            Some(true),
+            "skipDeltaEligibilityPrompt must survive"
+        );
+        assert_eq!(
+            restored_secrets
+                .get("filen-profile")
+                .and_then(|s| s.filen_api_key.clone()),
+            Some("filen-cli-api-key-secret".to_string()),
+            "Filen CLI API key must survive as a provider secret"
+        );
+        assert_eq!(
+            restored_secrets
+                .get("filen-profile")
+                .and_then(|s| s.onedrive_drive_id.clone()),
+            Some("b!driveid123".to_string()),
+            "OneDrive drive id must survive"
+        );
+        assert_eq!(
+            restored_secrets
+                .get("filen-profile")
+                .and_then(|s| s.onedrive_drive_type.clone()),
+            Some("business".to_string()),
+            "OneDrive drive type must survive"
         );
 
         let _ = std::fs::remove_file(&tmp);
