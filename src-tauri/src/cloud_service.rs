@@ -216,26 +216,13 @@ impl CloudService {
                 c.previously_synced,
                 preserve_remote_deletes,
             );
-            if !matches!(action, SyncAction::DeleteLocal | SyncAction::DeleteRemote) {
-                if let Some(info) = c.local_info.as_ref().or(c.remote_info.as_ref()) {
-                    index_files.insert(
-                        c.relative_path.clone(),
-                        SyncIndexEntry {
-                            size: info.size,
-                            modified: info.modified,
-                            is_dir: c.is_dir,
-                        },
-                    );
-                } else if c.is_dir {
-                    index_files.insert(
-                        c.relative_path.clone(),
-                        SyncIndexEntry {
-                            size: 0,
-                            modified: None,
-                            is_dir: true,
-                        },
-                    );
-                }
+            if let Some(entry) = Self::baseline_entry_for(
+                &action,
+                c.local_info.as_ref(),
+                c.remote_info.as_ref(),
+                c.is_dir,
+            ) {
+                index_files.insert(c.relative_path.clone(), entry);
             }
         }
         let idx = SyncIndex {
@@ -252,6 +239,47 @@ impl CloudService {
                 "Saved AeroCloud sync index for pair ({} tracked files)",
                 idx.files.len()
             );
+        }
+    }
+
+    /// Pick the baseline `SyncIndexEntry` to record for a file after a sync
+    /// cycle, keyed on the action that was actually applied. This must record
+    /// the SOURCE-of-truth side so the next cycle sees the file as unchanged:
+    /// an `Upload` converges remote onto local (record local), a `Download`
+    /// converges local onto remote (record remote). Recording the pre-transfer
+    /// local side for a download would make BOTH sides differ from the baseline
+    /// next cycle and surface a spurious `Conflict`.
+    ///
+    /// Destructive or unresolved actions do NOT advance the baseline:
+    /// `DeleteLocal`/`DeleteRemote` (the file is gone), `AskUser` (unresolved
+    /// conflict, must stay a conflict) and `KeepBoth` (fork, re-evaluated next
+    /// cycle once the two copies settle).
+    fn baseline_entry_for(
+        action: &SyncAction,
+        local_info: Option<&FileInfo>,
+        remote_info: Option<&FileInfo>,
+        is_dir: bool,
+    ) -> Option<SyncIndexEntry> {
+        let info = match action {
+            SyncAction::Upload => local_info,
+            SyncAction::Download => remote_info,
+            SyncAction::Skip => local_info.or(remote_info),
+            _ => None,
+        };
+        match info {
+            Some(fi) => Some(SyncIndexEntry {
+                size: fi.size,
+                modified: fi.modified,
+                is_dir,
+            }),
+            // A kept directory carries no file size/mtime but should still be
+            // tracked so it is not treated as new every cycle.
+            None if is_dir && matches!(action, SyncAction::Skip) => Some(SyncIndexEntry {
+                size: 0,
+                modified: None,
+                is_dir: true,
+            }),
+            None => None,
         }
     }
 
@@ -1469,5 +1497,91 @@ impl CloudService {
 impl Default for CloudService {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod baseline_tests {
+    use super::*;
+
+    fn fi(size: u64, mtime_secs: i64) -> FileInfo {
+        FileInfo {
+            name: "f".to_string(),
+            path: "/f".to_string(),
+            size,
+            modified: Some(DateTime::<Utc>::from_timestamp(mtime_secs, 0).unwrap()),
+            is_dir: false,
+            checksum: None,
+            checksum_alg: None,
+        }
+    }
+
+    // Download must record the REMOTE side (the content that landed locally),
+    // not the pre-download local side. Recording local here is the bug that
+    // makes the next cycle see a spurious Conflict.
+    #[test]
+    fn download_records_remote_side_not_stale_local() {
+        let local = fi(10, 1000); // old local, about to be overwritten
+        let remote = fi(20, 2000); // new remote content pulled down
+        let entry = CloudService::baseline_entry_for(
+            &SyncAction::Download,
+            Some(&local),
+            Some(&remote),
+            false,
+        )
+        .expect("download should record a baseline");
+        assert_eq!(entry.size, 20);
+        assert_eq!(
+            entry.modified,
+            Some(DateTime::<Utc>::from_timestamp(2000, 0).unwrap())
+        );
+    }
+
+    #[test]
+    fn upload_records_local_side() {
+        let local = fi(30, 3000);
+        let remote = fi(10, 1000);
+        let entry = CloudService::baseline_entry_for(
+            &SyncAction::Upload,
+            Some(&local),
+            Some(&remote),
+            false,
+        )
+        .expect("upload should record a baseline");
+        assert_eq!(entry.size, 30);
+    }
+
+    #[test]
+    fn skip_records_present_side() {
+        let remote = fi(7, 700);
+        let entry = CloudService::baseline_entry_for(&SyncAction::Skip, None, Some(&remote), false)
+            .unwrap();
+        assert_eq!(entry.size, 7);
+    }
+
+    // Unresolved / destructive actions must NOT advance the baseline.
+    #[test]
+    fn conflict_and_keepboth_and_deletes_do_not_advance_baseline() {
+        let local = fi(1, 1);
+        let remote = fi(2, 2);
+        for action in [
+            SyncAction::AskUser,
+            SyncAction::KeepBoth,
+            SyncAction::DeleteLocal,
+            SyncAction::DeleteRemote,
+        ] {
+            assert!(
+                CloudService::baseline_entry_for(&action, Some(&local), Some(&remote), false)
+                    .is_none(),
+                "action {:?} must not record a baseline entry",
+                action
+            );
+        }
+    }
+
+    #[test]
+    fn kept_directory_is_tracked() {
+        let entry = CloudService::baseline_entry_for(&SyncAction::Skip, None, None, true).unwrap();
+        assert!(entry.is_dir);
     }
 }
