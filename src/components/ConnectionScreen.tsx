@@ -2849,18 +2849,25 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                             <input
                                 type="text"
                                 value={overlaysRemotePath}
+                                disabled={overlayFieldsLocked}
                                 onChange={(e) => {
                                     const v = e.target.value;
                                     setOverlaysRemotePath(v);
                                     const valid = isValidOverlayScope(v, quickConnectDirs.remoteDir);
                                     setOverlaysRemotePathError(valid ? null : t('aerocryptProfile.overlaysRemotePathInvalid'));
                                 }}
-                                className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
+                                className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm disabled:opacity-60 disabled:cursor-not-allowed"
                                 placeholder={quickConnectDirs.remoteDir || '/'}
                             />
                             <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
                                 {t('aerocryptProfile.overlaysRemotePathHint')}
                             </p>
+                            {/* #369 F5: the scope is the encryption anchor, immutable once the
+                                overlay is bound (like the Remote Path and the other crypt fields);
+                                editing it on an existing vault would orphan the encrypted data. */}
+                            {overlayFieldsLocked && (
+                                <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">{t('aerocryptProfile.remotePathLockedNote')}</p>
+                            )}
                             {overlaysRemotePathError && (
                                 <p className="mt-1 text-xs text-red-600 dark:text-red-400">{overlaysRemotePathError}</p>
                             )}
