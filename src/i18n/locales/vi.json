@@ -5044,7 +5044,7 @@
             "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "Đường dẫn từ xa của lớp phủ",
-            "overlaysRemotePathHint": "Thư mục từ xa nơi lớp phủ được neo. Để trống để dùng Đường dẫn từ xa. Phải là chính Đường dẫn từ xa hoặc một thư mục bên trong nó.",
+            "overlaysRemotePathHint": "Thư mục con của Remote Path nơi lớp phủ được neo. Để trống để dùng Remote Path, hoặc chỉ nhập tên thư mục con (nó được tạo bên trong Remote Path).",
             "overlaysRemotePathInvalid": "Phải là Đường dẫn từ xa hoặc thư mục con của nó"
         },
         "modalGuard": {

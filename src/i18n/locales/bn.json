@@ -5044,7 +5044,7 @@
             "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "ওভারলে রিমোট পাথ",
-            "overlaysRemotePathHint": "যে দূরবর্তী ফোল্ডারে ওভারলে নোঙর করা হয়। রিমোট পাথ ব্যবহার করতে খালি রাখুন। এটি অবশ্যই রিমোট পাথ নিজেই বা তার ভিতরের একটি ফোল্ডার হতে হবে।",
+            "overlaysRemotePathHint": "Remote Path-এর একটি সাবফোল্ডার যেখানে ওভারলে নোঙর করা হয়। Remote Path ব্যবহার করতে খালি রাখুন, অথবা শুধু একটি সাবফোল্ডারের নাম লিখুন (এটি Remote Path-এর অধীনে তৈরি হয়)।",
             "overlaysRemotePathInvalid": "অবশ্যই রিমোট পাথ বা তার একটি সাবফোল্ডার হতে হবে"
         },
         "modalGuard": {

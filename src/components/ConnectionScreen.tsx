@@ -29,7 +29,7 @@ import { findActiveMode, findActiveModeGroup, modeGroupProviderIds, resolveModeH
 import { loadModeCredentials, storeModeCredentials, deleteModeCredentials, type ModeCredentialMap } from '../utils/modeCredentialStore';
 import { openUrl } from '../utils/openUrl';
 import { safePickerStartDir } from '../utils/safePickerDir';
-import { normalizeRemotePath, isValidOverlayScope } from '../utils/overlayScope';
+import { isValidOverlayScope, resolveOverlayScope } from '../utils/overlayScope';
 import { OAuthConnect } from './OAuthConnect';
 import { ProviderSelector } from './ProviderSelector';
 import { AlertDialog } from './Dialogs';
@@ -642,8 +642,10 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     const [aeroCryptDirNameEnc, setAeroCryptDirNameEnc] = useState(true);
     // P3 follow-up (#369): optional user-pinned remote anchor for the overlay.
     // Empty means "use the profile Remote Path" (preserves today's behavior and
-    // all existing profiles). When non-empty it must be the Remote Path or a
-    // strict descendant (validated live). Persisted into aeroCryptOverlay.remoteScope.
+    // all existing profiles). A non-empty value is interpreted RELATIVE to the
+    // Remote Path (#369): a bare subfolder name is nested under it, so the prefix
+    // is never re-typed and the anchor can never escape the Remote Path. Resolved
+    // via resolveOverlayScope() and persisted into aeroCryptOverlay.remoteScope.
     const [overlaysRemotePath, setOverlaysRemotePath] = useState('');
     const [overlaysRemotePathError, setOverlaysRemotePathError] = useState<string | null>(null);
 
@@ -651,7 +653,10 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     // (user edits Remote Path after typing a scope, or on hydration).
     useEffect(() => {
         if (!overlaysRemotePath && !overlaysRemotePathError) return;
-        const valid = isValidOverlayScope(overlaysRemotePath, quickConnectDirs.remoteDir);
+        // Validate the RESOLVED scope: a bare subfolder name is nested under the
+        // Remote Path (#369 relative UX), so it is always in scope and the error
+        // never fires for normal input; the guard only survives as a safety net.
+        const valid = isValidOverlayScope(resolveOverlayScope(overlaysRemotePath, quickConnectDirs.remoteDir), quickConnectDirs.remoteDir);
         setOverlaysRemotePathError(valid ? null : t('aerocryptProfile.overlaysRemotePathInvalid'));
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [overlaysRemotePath, quickConnectDirs.remoteDir, t]);
@@ -1040,7 +1045,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                 // so it persists identically to how the backend reads it. A blank
                 // or "/" scope collapses to '' and falls back to the Remote Path,
                 // preserving today's behavior and every existing profile (#369).
-                remoteScope: (normalizeRemotePath(overlaysRemotePath) || quickConnectDirs.remoteDir || ''),
+                remoteScope: resolveOverlayScope(overlaysRemotePath, quickConnectDirs.remoteDir),
                 localScope: quickConnectDirs.localDir || '',
                 filenameEncryption: isRclone ? aeroCryptFilenameEnc : 'standard',
                 ...(isRclone ? { directoryNameEncryption: aeroCryptDirNameEnc } : {}),
@@ -2853,7 +2858,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                 onChange={(e) => {
                                     const v = e.target.value;
                                     setOverlaysRemotePath(v);
-                                    const valid = isValidOverlayScope(v, quickConnectDirs.remoteDir);
+                                    const valid = isValidOverlayScope(resolveOverlayScope(v, quickConnectDirs.remoteDir), quickConnectDirs.remoteDir);
                                     setOverlaysRemotePathError(valid ? null : t('aerocryptProfile.overlaysRemotePathInvalid'));
                                 }}
                                 className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm disabled:opacity-60 disabled:cursor-not-allowed"

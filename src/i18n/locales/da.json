@@ -5044,7 +5044,7 @@
             "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "Fjernsti for overlay",
-            "overlaysRemotePathHint": "Fjernmappe hvor overlayet er forankret. Lad stå tomt for at bruge Fjernstien. Det skal være selve Fjernstien eller en mappe i den.",
+            "overlaysRemotePathHint": "Undermappe af Remote Path, hvor overlayet er forankret. Lad feltet stå tomt for at bruge Remote Path, eller skriv blot et undermappenavn (det oprettes under Remote Path).",
             "overlaysRemotePathInvalid": "Skal være Fjernstien eller en undermappe af den"
         },
         "modalGuard": {

@@ -5044,7 +5044,7 @@
             "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "เส้นทางระยะไกลของโอเวอร์เลย์",
-            "overlaysRemotePathHint": "โฟลเดอร์ระยะไกลที่ยึดโอเวอร์เลย์ไว้ เว้นว่างไว้เพื่อใช้เส้นทางระยะไกล ต้องเป็นเส้นทางระยะไกลนั้นเองหรือโฟลเดอร์ภายในนั้น",
+            "overlaysRemotePathHint": "โฟลเดอร์ย่อยของ Remote Path ที่ใช้ยึดโอเวอร์เลย์ ปล่อยว่างไว้เพื่อใช้ Remote Path หรือพิมพ์เพียงชื่อโฟลเดอร์ย่อย (ระบบจะสร้างไว้ภายใต้ Remote Path)",
             "overlaysRemotePathInvalid": "ต้องเป็นเส้นทางระยะไกลหรือโฟลเดอร์ย่อยของมัน"
         },
         "modalGuard": {

@@ -5044,7 +5044,7 @@
             "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "Caminho remoto da sobreposição",
-            "overlaysRemotePathHint": "Pasta remota onde a sobreposição está ancorada. Deixe vazio para usar o Caminho remoto. Deve ser o próprio Caminho remoto ou uma pasta dentro dele.",
+            "overlaysRemotePathHint": "Subpasta do Remote Path onde a sobreposição fica ancorada. Deixe vazio para usar o Remote Path, ou digite apenas um nome de subpasta (é criada dentro do Remote Path).",
             "overlaysRemotePathInvalid": "Deve ser o Caminho remoto ou uma subpasta dele"
         },
         "modalGuard": {

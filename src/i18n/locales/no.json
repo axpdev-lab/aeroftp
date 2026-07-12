@@ -5063,7 +5063,7 @@
             "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "Ekstern sti for overlegg",
-            "overlaysRemotePathHint": "Ekstern mappe der overlegget er forankret. La stå tomt for å bruke Ekstern sti. Må være Ekstern sti selv eller en mappe inne i den.",
+            "overlaysRemotePathHint": "Undermappe av Remote Path der overlegget er forankret. La feltet stå tomt for å bruke Remote Path, eller skriv bare et undermappenavn (det opprettes under Remote Path).",
             "overlaysRemotePathInvalid": "Må være Ekstern sti eller en undermappe av den"
         },
         "modalGuard": {

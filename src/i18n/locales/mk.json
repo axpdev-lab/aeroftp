@@ -5063,7 +5063,7 @@
             "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "Оддалечена патека на прекривката",
-            "overlaysRemotePathHint": "Оддалечена папка каде што е закотвена прекривката. Оставете празно за да се користи Оддалечената патека. Мора да биде самата Оддалечена патека или папка во неа.",
+            "overlaysRemotePathHint": "Потпапка на Remote Path каде што е закотвен слојот. Оставете празно за да го користите Remote Path, или внесете само име на потпапка (се создава под Remote Path).",
             "overlaysRemotePathInvalid": "Мора да биде Оддалечената патека или нејзина потпапка"
         },
         "modalGuard": {

@@ -5044,7 +5044,7 @@
             "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "Cale la distanță a suprapunerii",
-            "overlaysRemotePathHint": "Folder la distanță unde este ancorată suprapunerea. Lăsați gol pentru a folosi Calea la distanță. Trebuie să fie chiar Calea la distanță sau un folder din interiorul ei.",
+            "overlaysRemotePathHint": "Subfolder al Remote Path unde este ancorată suprapunerea. Lăsați gol pentru a folosi Remote Path sau introduceți doar un nume de subfolder (se creează sub Remote Path).",
             "overlaysRemotePathInvalid": "Trebuie să fie Calea la distanță sau un subfolder al acesteia"
         },
         "modalGuard": {

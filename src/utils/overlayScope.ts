@@ -19,3 +19,22 @@ export const isValidOverlayScope = (scope: string, remotePath: string): boolean 
     if (s === '') return false;           // scope is "/" but remote is a subfolder: ancestor
     return s === r || s.startsWith(r + '/');
 };
+
+// Resolve the operator's overlays-scope input into the absolute path we persist,
+// interpreting it RELATIVE to the Remote Path so the prefix is never re-typed
+// (#369 UX). Blank or "/" means "the Remote Path itself". A value already equal
+// to or under the Remote Path is kept verbatim (an operator may still paste the
+// full absolute path). Anything else is treated as a subfolder name and nested
+// under the Remote Path, so the anchor can never escape the Remote Path by
+// construction and isValidOverlayScope(resolveOverlayScope(x, r), r) is always
+// true. The returned value is normalized (the exact form the backend reads).
+export const resolveOverlayScope = (input: string, remotePath: string): string => {
+    const r = normalizeRemotePath(remotePath);
+    const raw = (input || '').trim();
+    if (raw === '' || raw === '/') return r;           // same as the Remote Path
+    if (r === '') return normalizeRemotePath(raw);     // remote is root: any folder is absolute
+    const s = normalizeRemotePath(raw);
+    if (s === r || s.startsWith(r + '/')) return s;    // already absolute and in scope
+    const rel = raw.replace(/^\/+/, '');               // strip leading slashes -> subfolder name
+    return normalizeRemotePath(r + '/' + rel);         // nest under the Remote Path
+};

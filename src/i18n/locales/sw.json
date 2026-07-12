@@ -5044,7 +5044,7 @@
             "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "Njia ya Mbali ya Uwekeleaji",
-            "overlaysRemotePathHint": "Folda ya mbali ambapo uwekeleaji umenaswa. Acha wazi ili kutumia Njia ya Mbali. Lazima iwe Njia ya Mbali yenyewe au folda iliyo ndani yake.",
+            "overlaysRemotePathHint": "Kijifolda cha Remote Path ambapo tabaka limetiwa nanga. Acha wazi ili kutumia Remote Path, au andika jina la kijifolda tu (kinaundwa chini ya Remote Path).",
             "overlaysRemotePathInvalid": "Lazima iwe Njia ya Mbali au folda ndogo yake"
         },
         "modalGuard": {

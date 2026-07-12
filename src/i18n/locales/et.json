@@ -5044,7 +5044,7 @@
             "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "Ülekatte kaugtee",
-            "overlaysRemotePathHint": "Kaugkaust, kuhu ülekate on ankurdatud. Kaugtee kasutamiseks jätke tühjaks. Peab olema Kaugtee ise või selle sees olev kaust.",
+            "overlaysRemotePathHint": "Remote Path'i alamkaust, kuhu ülekate ankurdatakse. Jäta tühjaks, et kasutada Remote Path'i, või sisesta ainult alamkausta nimi (see luuakse Remote Path'i alla).",
             "overlaysRemotePathInvalid": "Peab olema Kaugtee või selle alamkaust"
         },
         "modalGuard": {

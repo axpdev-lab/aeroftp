@@ -5044,7 +5044,7 @@
             "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "Perdangos nuotolinis kelias",
-            "overlaysRemotePathHint": "Nuotolinis aplankas, prie kurio pritvirtinta perdanga. Palikite tuščią, kad būtų naudojamas Nuotolinis kelias. Tai turi būti pats Nuotolinis kelias arba jame esantis aplankas.",
+            "overlaysRemotePathHint": "Remote Path poaplankis, kuriame pritvirtinamas perdangos sluoksnis. Palikite tuščią, kad būtų naudojamas Remote Path, arba įveskite tik poaplankio pavadinimą (jis sukuriamas po Remote Path).",
             "overlaysRemotePathInvalid": "Tai turi būti Nuotolinis kelias arba jo poaplankis"
         },
         "modalGuard": {

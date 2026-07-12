@@ -5044,7 +5044,7 @@
             "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "Удаљена путања преклопа",
-            "overlaysRemotePathHint": "Удаљена фасцикла у којој је преклоп усидрен. Оставите празно да бисте користили Удаљену путању. Мора бити сама Удаљена путања или фасцикла унутар ње.",
+            "overlaysRemotePathHint": "Потфасцикла Remote Path-а у којој је преклоп усидрен. Оставите празно да користите Remote Path или унесите само име потфасцикле (креира се унутар Remote Path-а).",
             "overlaysRemotePathInvalid": "Мора бити Удаљена путања или њена подфасцикла"
         },
         "modalGuard": {

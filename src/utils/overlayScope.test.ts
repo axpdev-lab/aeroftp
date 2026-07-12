@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { normalizeRemotePath, isValidOverlayScope } from './overlayScope';
+import { normalizeRemotePath, isValidOverlayScope, resolveOverlayScope } from './overlayScope';
 
 describe('normalizeRemotePath', () => {
     it('normalizes root variants to empty', () => {
@@ -63,5 +63,48 @@ describe('isValidOverlayScope', () => {
 
     it('rejects unrelated', () => {
         expect(isValidOverlayScope('/foo/bar', '/baz')).toBe(false);
+    });
+});
+
+describe('resolveOverlayScope (#369 relative UX)', () => {
+    it('blank or "/" resolves to the Remote Path itself', () => {
+        expect(resolveOverlayScope('', '/data')).toBe('/data');
+        expect(resolveOverlayScope('   ', '/data')).toBe('/data');
+        expect(resolveOverlayScope('/', '/data')).toBe('/data');
+        expect(resolveOverlayScope('/', '/data/')).toBe('/data');
+    });
+
+    it('nests a bare subfolder name under the Remote Path (no prefix re-typing)', () => {
+        expect(resolveOverlayScope('folder-try', '/data')).toBe('/data/folder-try');
+        expect(resolveOverlayScope('sub/deep', '/data')).toBe('/data/sub/deep');
+        expect(resolveOverlayScope('vault', '/data/')).toBe('/data/vault');
+    });
+
+    it('nests instead of erroring when the input looks like a sibling absolute path', () => {
+        // The old field rejected "/folder-try"; now it is treated as a subfolder.
+        expect(resolveOverlayScope('/folder-try', '/data')).toBe('/data/folder-try');
+        expect(resolveOverlayScope('/other', '/data')).toBe('/data/other');
+    });
+
+    it('keeps an already-absolute in-scope path verbatim', () => {
+        expect(resolveOverlayScope('/data', '/data')).toBe('/data');
+        expect(resolveOverlayScope('/data/vault', '/data')).toBe('/data/vault');
+        expect(resolveOverlayScope('/data/vault/sub', '/data')).toBe('/data/vault/sub');
+    });
+
+    it('treats input as absolute when the Remote Path is the root', () => {
+        expect(resolveOverlayScope('vault', '/')).toBe('/vault');
+        expect(resolveOverlayScope('/a/b', '')).toBe('/a/b');
+        expect(resolveOverlayScope('', '/')).toBe('');
+    });
+
+    it('always yields an in-scope result (never fails validation)', () => {
+        const remotes = ['/data', '/data/vault', '/', ''];
+        const inputs = ['', '/', 'sub', 'a/b/c', '/other', '/data', '/data/x', '  spaced  '];
+        for (const r of remotes) {
+            for (const i of inputs) {
+                expect(isValidOverlayScope(resolveOverlayScope(i, r), r)).toBe(true);
+            }
+        }
     });
 });

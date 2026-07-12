@@ -5044,7 +5044,7 @@
             "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "Extern pad van overlay",
-            "overlaysRemotePathHint": "Externe map waaraan de overlay is verankerd. Laat leeg om het Externe pad te gebruiken. Moet het Externe pad zelf zijn of een map daarin.",
+            "overlaysRemotePathHint": "Submap van het Remote Path waar de overlay is verankerd. Laat leeg om het Remote Path te gebruiken, of typ alleen een submapnaam (deze wordt onder het Remote Path aangemaakt).",
             "overlaysRemotePathInvalid": "Moet het Externe pad of een submap ervan zijn"
         },
         "modalGuard": {

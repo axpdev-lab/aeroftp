@@ -5044,7 +5044,7 @@
             "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "Ścieżka zdalna nakładki",
-            "overlaysRemotePathHint": "Folder zdalny, do którego zakotwiczona jest nakładka. Pozostaw puste, aby użyć Ścieżki zdalnej. Musi to być sama Ścieżka zdalna lub folder w jej obrębie.",
+            "overlaysRemotePathHint": "Podfolder Remote Path, w którym zakotwiczona jest nakładka. Pozostaw puste, aby użyć Remote Path, lub wpisz tylko nazwę podfolderu (zostanie utworzony w Remote Path).",
             "overlaysRemotePathInvalid": "Musi to być Ścieżka zdalna lub jej podfolder"
         },
         "modalGuard": {

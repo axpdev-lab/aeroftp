@@ -5044,7 +5044,7 @@
             "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "Laluan Jauh Tindanan",
-            "overlaysRemotePathHint": "Folder jauh tempat tindanan disauhkan. Biarkan kosong untuk menggunakan Laluan Jauh. Mestilah Laluan Jauh itu sendiri atau folder di dalamnya.",
+            "overlaysRemotePathHint": "Subfolder Remote Path tempat tindihan disauh. Biarkan kosong untuk menggunakan Remote Path, atau taip hanya nama subfolder (ia dicipta di bawah Remote Path).",
             "overlaysRemotePathInvalid": "Mestilah Laluan Jauh atau subfolder daripadanya"
         },
         "modalGuard": {

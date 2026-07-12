@@ -5044,7 +5044,7 @@
             "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "Վերադրման հեռավոր ուղի",
-            "overlaysRemotePathHint": "Հեռավոր թղթապանակ, որտեղ ամրացված է վերադրումը։ Թողեք դատարկ՝ Հեռավոր ուղին օգտագործելու համար։ Պետք է լինի հենց Հեռավոր ուղին կամ դրա ներսում գտնվող թղթապանակ։",
+            "overlaysRemotePathHint": "Remote Path-ի ենթապանակը, որտեղ ամրագրվում է վերադրումը։ Թողեք դատարկ՝ Remote Path-ն օգտագործելու համար, կամ մուտքագրեք միայն ենթապանակի անուն (այն ստեղծվում է Remote Path-ի ներքո)։",
             "overlaysRemotePathInvalid": "Պետք է լինի Հեռավոր ուղին կամ դրա ենթաթղթապանակը"
         },
         "modalGuard": {

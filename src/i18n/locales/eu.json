@@ -5063,7 +5063,7 @@
             "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "Gainjarriaren urruneko bidea",
-            "overlaysRemotePathHint": "Gainjarria ainguratuta dagoen urruneko karpeta. Utzi hutsik Urruneko bidea erabiltzeko. Urruneko bidea bera edo bertako karpeta bat izan behar da.",
+            "overlaysRemotePathHint": "Gainjartzea ainguratzen den Remote Path-eko azpikarpeta. Utzi hutsik Remote Path erabiltzeko, edo idatzi azpikarpeta baten izena soilik (Remote Path-en azpian sortzen da).",
             "overlaysRemotePathInvalid": "Urruneko bidea edo horren azpikarpeta bat izan behar da"
         },
         "modalGuard": {

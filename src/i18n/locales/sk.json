@@ -5044,7 +5044,7 @@
             "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "Vzdialená cesta prekrytia",
-            "overlaysRemotePathHint": "Vzdialený priečinok, ku ktorému je prekrytie ukotvené. Ponechajte prázdne na použitie Vzdialenej cesty. Musí to byť samotná Vzdialená cesta alebo priečinok v nej.",
+            "overlaysRemotePathHint": "Podpriečinok Remote Path, kde je vrstva ukotvená. Ponechajte prázdne na použitie Remote Path alebo zadajte len názov podpriečinka (vytvorí sa v Remote Path).",
             "overlaysRemotePathInvalid": "Musí to byť Vzdialená cesta alebo jej podpriečinok"
         },
         "modalGuard": {

@@ -5044,7 +5044,7 @@
             "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "გადაფარვის დისტანციური გზა",
-            "overlaysRemotePathHint": "დისტანციური საქაღალდე, სადაც გადაფარვა არის მიმაგრებული. დატოვეთ ცარიელი დისტანციური გზის გამოსაყენებლად. უნდა იყოს თავად დისტანციური გზა ან მის შიგნით არსებული საქაღალდე.",
+            "overlaysRemotePathHint": "Remote Path-ის ქვესაქაღალდე, სადაც ოვერლეი მიმაგრებულია. დატოვეთ ცარიელი Remote Path-ის გამოსაყენებლად, ან აკრიფეთ მხოლოდ ქვესაქაღალდის სახელი (ის იქმნება Remote Path-ის ქვეშ).",
             "overlaysRemotePathInvalid": "უნდა იყოს დისტანციური გზა ან მისი ქვესაქაღალდე"
         },
         "modalGuard": {

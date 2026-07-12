@@ -5044,7 +5044,7 @@
             "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "Peittokerroksen etäpolku",
-            "overlaysRemotePathHint": "Etäkansio, johon peittokerros on ankkuroitu. Jätä tyhjäksi käyttääksesi Etäpolkua. Sen on oltava Etäpolku itse tai sen sisällä oleva kansio.",
+            "overlaysRemotePathHint": "Remote Pathin alikansio, johon peite ankkuroidaan. Jätä tyhjäksi käyttääksesi Remote Pathia, tai kirjoita vain alikansion nimi (se luodaan Remote Pathin alle).",
             "overlaysRemotePathInvalid": "Sen on oltava Etäpolku tai sen alikansio"
         },
         "modalGuard": {

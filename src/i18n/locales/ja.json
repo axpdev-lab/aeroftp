@@ -5044,7 +5044,7 @@
             "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "オーバーレイのリモートパス",
-            "overlaysRemotePathHint": "オーバーレイを固定するリモートフォルダー。空欄にするとリモートパスを使用します。リモートパス自体か、その中のフォルダーである必要があります。",
+            "overlaysRemotePathHint": "オーバーレイをアンカーする Remote Path のサブフォルダーです。Remote Path をそのまま使うには空のままにするか、サブフォルダー名だけを入力してください（Remote Path の下に作成されます）。",
             "overlaysRemotePathInvalid": "リモートパス自体か、そのサブフォルダーである必要があります"
         },
         "modalGuard": {

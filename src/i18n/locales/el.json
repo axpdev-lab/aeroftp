@@ -5044,7 +5044,7 @@
             "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "Απομακρυσμένη διαδρομή επικάλυψης",
-            "overlaysRemotePathHint": "Απομακρυσμένος φάκελος όπου αγκυρώνεται η επικάλυψη. Αφήστε το κενό για χρήση της Απομακρυσμένης διαδρομής. Πρέπει να είναι η ίδια η Απομακρυσμένη διαδρομή ή ένας φάκελος μέσα της.",
+            "overlaysRemotePathHint": "Υποφάκελος του Remote Path όπου αγκυρώνεται η επικάλυψη. Αφήστε το κενό για να χρησιμοποιήσετε το Remote Path ή πληκτρολογήστε μόνο ένα όνομα υποφακέλου (δημιουργείται κάτω από το Remote Path).",
             "overlaysRemotePathInvalid": "Πρέπει να είναι η Απομακρυσμένη διαδρομή ή ένας υποφάκελός της"
         },
         "modalGuard": {

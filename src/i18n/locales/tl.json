@@ -5063,7 +5063,7 @@
             "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "Remote Path ng Overlay",
-            "overlaysRemotePathHint": "Remote na folder kung saan naka-angkla ang overlay. Iwanang blangko upang gamitin ang Remote Path. Dapat itong ang mismong Remote Path o isang folder sa loob nito.",
+            "overlaysRemotePathHint": "Subfolder ng Remote Path kung saan naka-angkla ang overlay. Iwanang blangko para gamitin ang Remote Path, o mag-type lang ng pangalan ng subfolder (gagawin ito sa ilalim ng Remote Path).",
             "overlaysRemotePathInvalid": "Dapat itong ang Remote Path o isang subfolder nito"
         },
         "modalGuard": {

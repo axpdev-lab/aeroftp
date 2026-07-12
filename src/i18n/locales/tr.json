@@ -5044,7 +5044,7 @@
             "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "Yer Paylaşımı Uzak Yolu",
-            "overlaysRemotePathHint": "Yer paylaşımının sabitlendiği uzak klasör. Uzak Yolu kullanmak için boş bırakın. Uzak Yolun kendisi veya içindeki bir klasör olmalıdır.",
+            "overlaysRemotePathHint": "Yer paylaşımının sabitlendiği Remote Path alt klasörü. Remote Path'i kullanmak için boş bırakın veya yalnızca bir alt klasör adı yazın (Remote Path altında oluşturulur).",
             "overlaysRemotePathInvalid": "Uzak Yol veya onun bir alt klasörü olmalıdır"
         },
         "modalGuard": {

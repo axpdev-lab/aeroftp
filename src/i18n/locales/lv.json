@@ -5044,7 +5044,7 @@
             "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "Pārklājuma attālais ceļš",
-            "overlaysRemotePathHint": "Attālā mape, kurā ir noenkurots pārklājums. Atstājiet tukšu, lai izmantotu Attālo ceļu. Tam jābūt pašam Attālajam ceļam vai mapei tajā.",
+            "overlaysRemotePathHint": "Remote Path apakšmape, kurā pārklājums ir noenkurots. Atstājiet tukšu, lai izmantotu Remote Path, vai ievadiet tikai apakšmapes nosaukumu (tā tiek izveidota zem Remote Path).",
             "overlaysRemotePathInvalid": "Tam jābūt Attālajam ceļam vai tā apakšmapei"
         },
         "modalGuard": {

@@ -5063,7 +5063,7 @@
             "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "ផ្លូវពីចម្ងាយនៃការត្រួតលើ",
-            "overlaysRemotePathHint": "ថតពីចម្ងាយដែលការត្រួតលើត្រូវបានចងភ្ជាប់។ ទុកឱ្យទទេដើម្បីប្រើផ្លូវពីចម្ងាយ។ ត្រូវតែជាផ្លូវពីចម្ងាយខ្លួនឯង ឬថតនៅខាងក្នុងវា។",
+            "overlaysRemotePathHint": "ថតរងនៃ Remote Path ដែលការត្រួតលើត្រូវបានចងភ្ជាប់។ ទុកឲ្យទទេដើម្បីប្រើ Remote Path ឬវាយបញ្ចូលតែឈ្មោះថតរង (វាត្រូវបានបង្កើតនៅក្រោម Remote Path)។",
             "overlaysRemotePathInvalid": "ត្រូវតែជាផ្លូវពីចម្ងាយ ឬថតរងរបស់វា"
         },
         "modalGuard": {

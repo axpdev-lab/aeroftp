@@ -5063,7 +5063,7 @@
             "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "Ruta remota de la superposició",
-            "overlaysRemotePathHint": "Carpeta remota on s'ancora la superposició. Deixeu-ho buit per utilitzar la Ruta remota. Ha de ser la Ruta remota mateixa o una carpeta dins seu.",
+            "overlaysRemotePathHint": "Subcarpeta del Remote Path on s'ancora la superposició. Deixeu-ho buit per fer servir el Remote Path, o escriviu només un nom de subcarpeta (es crea sota el Remote Path).",
             "overlaysRemotePathInvalid": "Ha de ser la Ruta remota o una subcarpeta d'aquesta"
         },
         "modalGuard": {
