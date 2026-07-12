@@ -1520,7 +1520,8 @@
             "overlay_unlocked": "Šifruotas sluoksnis atrakintas",
             "overlay_failed": "Nepavyko atrakinti šifruoto sluoksnio",
             "session_resumed": "Atnaujinta aktyvi sesija su {server}",
-            "connect_cancelled": "Naudotojas atšaukė: sąrašo sudarymas sustabdytas, atsijungta nuo serverio"
+            "connect_cancelled": "Naudotojas atšaukė: sąrašo sudarymas sustabdytas, atsijungta nuo serverio",
+            "overlay_locked": "Šifruotas sluoksnis užrakintas"
         },
         "protocol": {
             "selectProtocol": "Pasirinkti protokolą...",

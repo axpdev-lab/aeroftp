@@ -1520,7 +1520,8 @@
             "overlay_unlocked": "暗号化オーバーレイのロックを解除しました",
             "overlay_failed": "暗号化オーバーレイのロックを解除できませんでした",
             "session_resumed": "{server} のアクティブなセッションを再開しました",
-            "connect_cancelled": "ユーザーによる中止: 一覧の取得を停止し、サーバーから切断しました"
+            "connect_cancelled": "ユーザーによる中止: 一覧の取得を停止し、サーバーから切断しました",
+            "overlay_locked": "暗号化オーバーレイをロックしました"
         },
         "protocol": {
             "selectProtocol": "プロトコルを選択...",

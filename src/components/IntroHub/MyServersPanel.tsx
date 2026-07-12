@@ -2,7 +2,8 @@ import * as React from 'react';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { invoke } from '@tauri-apps/api/core';
-import { Plus, Server as ServerIcon, Play, Edit2, Copy, Trash2, Activity, Star, PencilLine, ArrowUpRight, ArrowDownLeft, Database, Globe, Cloud, Camera, Code, Gauge, HardDrive, LogOut, Scissors, Folder, FolderPlus, Check, UserPlus } from 'lucide-react';
+import { Plus, Server as ServerIcon, Play, Edit2, Copy, Trash2, Activity, Star, PencilLine, ArrowUpRight, ArrowDownLeft, Database, Globe, Cloud, Camera, Code, Gauge, HardDrive, LogOut, Scissors, Folder, FolderPlus, Check, UserPlus, FileKey } from 'lucide-react';
+import { AeroCryptRecoveryKitModal } from '../AeroCryptRecoveryKitModal';
 import { ServerProfile, ConnectionParams, ProviderType, getE2EBits, getProtocolClass, isOAuthProvider, isFourSharedProvider, isNativeApiProtocol, getServerCryptOverlay } from '../../types';
 import { MyServersViewMode, MyServersFilterBy, FILTER_CHIPS, CatalogCategoryId } from '../../types/catalog';
 import { MyServersToolbar } from './MyServersToolbar';
@@ -81,6 +82,7 @@ const MENU_ICON_GROUP        = <Folder size={14} />;
 const MENU_ICON_GROUP_NEW    = <FolderPlus size={14} />;
 const MENU_ICON_GROUP_CHECK  = <Check size={14} className="text-emerald-500" />;
 const MENU_ICON_GROUP_BLANK  = <Folder size={14} className="opacity-40" />;
+const MENU_ICON_KIT          = <FileKey size={14} className="text-emerald-500" />;
 
 /** Load credential from vault with retry if store not ready */
 const getCredentialWithRetry = async (account: string, maxRetries = 3): Promise<string> => {
@@ -398,6 +400,8 @@ export function MyServersPanel({
     }, [peerStates]);
     const [healthCheckTarget, setHealthCheckTarget] = useState<string | false>(false);
     const [speedTestTarget, setSpeedTestTarget] = useState<string | undefined | false>(false);
+    // On-demand Recovery Kit viewer (native headerless AeroCrypt profiles only).
+    const [recoveryKitTarget, setRecoveryKitTarget] = useState<ServerProfile | null>(null);
     const [deleteTarget, setDeleteTarget] = useState<ServerProfile | null>(null);
     // N4 (#270): cross-user copy/move. Gated on at least one OTHER account.
     const [relocateState, setRelocateState] = useState<{ profile: ServerProfile; mode: 'copy' | 'move' } | null>(null);
@@ -1482,6 +1486,16 @@ export function MyServersPanel({
                 action: () => setAsCrossProfileDestination(server.id),
             });
         }
+        // Native headerless AeroCrypt profiles: view/save the OPTIONAL recovery
+        // kit any time (public config only, no secrets), without connecting.
+        if (server.aeroCryptOverlay?.enabled && server.aeroCryptOverlay?.kind === 'aerocrypt') {
+            items.push({
+                label: t('aerocryptNative.showKit'),
+                icon: MENU_ICON_KIT,
+                action: () => setRecoveryKitTarget(server),
+                divider: true,
+            });
+        }
         items.push(
             { label: t('healthCheck.title'), icon: MENU_ICON_HEALTH, action: () => setHealthCheckTarget(server.id), divider: true },
             {
@@ -1832,6 +1846,13 @@ export function MyServersPanel({
                     servers={servers}
                     initialServerId={speedTestTarget || undefined}
                     onClose={() => setSpeedTestTarget(false)}
+                />
+            )}
+            {recoveryKitTarget && (
+                <AeroCryptRecoveryKitModal
+                    profileId={recoveryKitTarget.id}
+                    profileName={recoveryKitTarget.name}
+                    onClose={() => setRecoveryKitTarget(null)}
                 />
             )}
             {deleteTarget && (

@@ -1520,7 +1520,8 @@
             "overlay_unlocked": "Capa xifrada desbloquejada",
             "overlay_failed": "No s'ha pogut desbloquejar la capa xifrada",
             "session_resumed": "Sessió activa represa a {server}",
-            "connect_cancelled": "Cancel·lat per l'usuari: llistat aturat, desconnectat del servidor"
+            "connect_cancelled": "Cancel·lat per l'usuari: llistat aturat, desconnectat del servidor",
+            "overlay_locked": "Capa xifrada bloquejada"
         },
         "protocol": {
             "selectProtocol": "Seleccioneu protocol...",

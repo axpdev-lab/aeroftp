@@ -1520,7 +1520,8 @@
             "overlay_unlocked": "Šifrovaná vrstva odemčena",
             "overlay_failed": "Šifrovanou vrstvu se nepodařilo odemknout",
             "session_resumed": "Obnoveno aktivní připojení k {server}",
-            "connect_cancelled": "Zrušeno uživatelem: výpis zastaven, odpojeno od serveru"
+            "connect_cancelled": "Zrušeno uživatelem: výpis zastaven, odpojeno od serveru",
+            "overlay_locked": "Šifrovaná vrstva uzamčena"
         },
         "protocol": {
             "selectProtocol": "Vybrat protokol...",

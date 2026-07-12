@@ -1520,7 +1520,8 @@
             "overlay_unlocked": "加密叠加层已解锁",
             "overlay_failed": "无法解锁加密叠加层",
             "session_resumed": "已恢复到 {server} 的活动会话",
-            "connect_cancelled": "用户已取消：停止列出目录，已断开与服务器的连接"
+            "connect_cancelled": "用户已取消：停止列出目录，已断开与服务器的连接",
+            "overlay_locked": "已锁定加密叠加层"
         },
         "protocol": {
             "selectProtocol": "选择协议...",

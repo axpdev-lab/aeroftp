@@ -1520,7 +1520,8 @@
             "overlay_unlocked": "Strat criptat deblocat",
             "overlay_failed": "Stratul criptat nu a putut fi deblocat",
             "session_resumed": "Sesiune activă reluată la {server}",
-            "connect_cancelled": "Anulat de utilizator: listare oprită, deconectat de la server"
+            "connect_cancelled": "Anulat de utilizator: listare oprită, deconectat de la server",
+            "overlay_locked": "Strat criptat blocat"
         },
         "protocol": {
             "selectProtocol": "Selectare protocol...",

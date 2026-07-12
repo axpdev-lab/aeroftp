@@ -1520,7 +1520,8 @@
             "overlay_unlocked": "Şifreli katman kilidi açıldı",
             "overlay_failed": "Şifreli katmanın kilidi açılamadı",
             "session_resumed": "{server} için etkin oturuma dönüldü",
-            "connect_cancelled": "Kullanıcı iptal etti: listeleme durduruldu, sunucu bağlantısı kesildi"
+            "connect_cancelled": "Kullanıcı iptal etti: listeleme durduruldu, sunucu bağlantısı kesildi",
+            "overlay_locked": "Şifreli katman kilitlendi"
         },
         "protocol": {
             "selectProtocol": "Protokol seç...",

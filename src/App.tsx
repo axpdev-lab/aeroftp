@@ -213,6 +213,7 @@ import { VaultPanel } from './components/VaultPanel';
 import { CryptomatorBrowser } from './components/CryptomatorBrowser';
 import { RcloneCryptUnlock } from './components/RcloneCryptUnlock';
 import { AeroCryptUnlock } from './components/AeroCryptUnlock';
+import { AeroCryptRecoveryKitModal } from './components/AeroCryptRecoveryKitModal';
 import { CrossProfilePanel } from './components/CrossProfile/CrossProfilePanel';
 import { ArchiveBrowser } from './components/ArchiveBrowser';
 import { ZohoTrashManager } from './components/ZohoTrashManager';
@@ -291,7 +292,7 @@ import {
   Archive, Image, Video, Music, FileType, Code, Database, Clock,
   Copy, Clipboard, ClipboardPaste, ClipboardList, Scissors, ExternalLink, List, LayoutGrid, CheckCircle2, AlertTriangle, Share2, Send, Info,
   Lock, LockOpen, Unlock, Server, XCircle, History, Users, FolderSync, Replace, LogOut, PanelLeft, Rows3, Zap,
-  MoreHorizontal, Tag, Bot, Terminal, Star, MessageSquare, Package, FileSpreadsheet, Presentation, LinkIcon, GitCommit, ArrowRight, ArrowRightLeft, Columns2
+  MoreHorizontal, Tag, Bot, Terminal, Star, MessageSquare, Package, FileSpreadsheet, Presentation, LinkIcon, GitCommit, ArrowRight, ArrowRightLeft, Columns2, FileKey
 } from 'lucide-react';
 
 /**
@@ -1173,6 +1174,9 @@ const App: React.FC = () => {
   // active); Phase 3 wraps the live provider instead of routing each operation
   // through per-kind commands.
   const [showAeroCryptUnlock, setShowAeroCryptUnlock] = useState(false);
+  // Recovery kit viewer opened from the crypt badge right-click menu (connected
+  // native AeroCrypt profile). Same modal as the saved-server context menu.
+  const [badgeRecoveryKit, setBadgeRecoveryKit] = useState<{ id: string; name: string } | null>(null);
   const [aeroCryptVaultId, setAeroCryptVaultId] = useState<string | null>(null);
   // P3.3: deferred overlay auto-unlock (runs in a post-connect effect at settled
   // state) + flag that drives the name-decryption animation while unlocking.
@@ -3696,6 +3700,9 @@ interface UpdateVerificationInfo {
       setRcloneCryptVaultId(null);
       setCryptOverlayOwner(null);
       lockSessionCryptOverlay({ sessionId: activeSessionId ?? undefined });
+      // Toggling the overlay OFF is a real state change the user should see in
+      // the Activity Log (it was previously silent: only unlock/failure logged).
+      humanLog.logRaw('activity.overlay_locked', 'CONNECT', {}, 'success');
       void (async () => {
         try {
           await invoke('provider_clear_crypt_overlay', { full: true });
@@ -3715,6 +3722,32 @@ interface UpdateVerificationInfo {
     } else {
       setShowRcloneCryptUnlock(true);
     }
+  };
+
+  // Right-click the crypt overlay badge: a small menu to toggle the overlay
+  // on/off and, for native AeroCrypt, view/save its recovery kit any time.
+  // rclone-crypt gets toggle only (it is stateless and has no recovery kit).
+  const showCryptBadgeMenu = (e: React.MouseEvent) => {
+    const sess = sessions.find((s) => s.id === activeSessionId);
+    const kind = sess?.cryptOverlayKind;
+    if (!kind || overlayBadgeDecrypting) return;
+    const lit = !!(rcloneCryptVaultId || aeroCryptVaultId);
+    const items: ContextMenuItem[] = [
+      {
+        label: lit ? t('aerocrypt.lock') : t('aerocrypt.unlock'),
+        icon: <Lock size={14} />,
+        action: () => toggleActiveCryptOverlay(),
+      },
+    ];
+    if (kind === 'aerocrypt' && sess?.savedServerId) {
+      items.push({
+        label: t('aerocryptNative.showKit'),
+        icon: <FileKey size={14} />,
+        action: () => setBadgeRecoveryKit({ id: sess.savedServerId as string, name: sess.serverName || '' }),
+        divider: true,
+      });
+    }
+    contextMenu.show(e, items);
   };
 
   const activeUnifiedRemoteProfile = useMemo(() => {
@@ -4662,6 +4695,11 @@ interface UpdateVerificationInfo {
         password: params.password,
         salt: params.salt || null,
         keyfilePath: params.keyfilePath || null,
+        // Headerless AeroCrypt REQUIRES the profile id to persist/read its vault
+        // config in the keystore (no remote marker). Every caller sets it; not
+        // forwarding it here made the backend see profile_id=None and fail closed
+        // with "Cannot create a headerless AeroCrypt vault without a saved profile".
+        profileId: params.profileId ?? null,
       },
     });
     return normCryptScope(appliedScope);
@@ -14787,6 +14825,13 @@ interface UpdateVerificationInfo {
             }}
           />
         )}
+        {badgeRecoveryKit && (
+          <AeroCryptRecoveryKitModal
+            profileId={badgeRecoveryKit.id}
+            profileName={badgeRecoveryKit.name}
+            onClose={() => setBadgeRecoveryKit(null)}
+          />
+        )}
         {rcloneCryptImportBanner && !rcloneCryptVaultId && (
           <div className="fixed bottom-12 right-6 z-40 max-w-sm rounded-lg border border-blue-400/40 bg-blue-500/10 dark:bg-blue-500/15 backdrop-blur shadow-xl p-4 flex flex-col gap-2 animate-scale-in">
             <div className="flex items-start gap-2">
@@ -16003,6 +16048,7 @@ interface UpdateVerificationInfo {
                           type="button"
                           disabled={overlayBadgeState === 'decrypting'}
                           onClick={toggleActiveCryptOverlay}
+                          onContextMenu={showCryptBadgeMenu}
                           className={`flex-shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border transition-colors ${stateCls}`}
                           title={title}
                           aria-label={title}

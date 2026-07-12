@@ -1520,7 +1520,8 @@
             "overlay_unlocked": "Zaszyfrowana warstwa odblokowana",
             "overlay_failed": "Nie można odblokować zaszyfrowanej warstwy",
             "session_resumed": "Wznowiono aktywną sesję z {server}",
-            "connect_cancelled": "Anulowane przez użytkownika: listowanie zatrzymane, rozłączono z serwerem"
+            "connect_cancelled": "Anulowane przez użytkownika: listowanie zatrzymane, rozłączono z serwerem",
+            "overlay_locked": "Zaszyfrowana nakładka zablokowana"
         },
         "protocol": {
             "selectProtocol": "Wybierz protokół...",

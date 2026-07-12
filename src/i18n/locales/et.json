@@ -1520,7 +1520,8 @@
             "overlay_unlocked": "Krüpteeritud kiht avati",
             "overlay_failed": "Krüpteeritud kihti ei õnnestunud avada",
             "session_resumed": "Aktiivne seanss taastatud: {server}",
-            "connect_cancelled": "Kasutaja tühistas: loend peatatud, serverist lahti ühendatud"
+            "connect_cancelled": "Kasutaja tühistas: loend peatatud, serverist lahti ühendatud",
+            "overlay_locked": "Krüpteeritud kiht lukustatud"
         },
         "protocol": {
             "selectProtocol": "Vali protokoll...",

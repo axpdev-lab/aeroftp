@@ -1520,7 +1520,8 @@
             "overlay_unlocked": "Šifrirana plast odklenjena",
             "overlay_failed": "Šifrirane plasti ni bilo mogoče odkleniti",
             "session_resumed": "Obnovljena aktivna seja s {server}",
-            "connect_cancelled": "Uporabnik je preklical: izpis ustavljen, povezava s strežnikom prekinjena"
+            "connect_cancelled": "Uporabnik je preklical: izpis ustavljen, povezava s strežnikom prekinjena",
+            "overlay_locked": "Šifrirana plast zaklenjena"
         },
         "protocol": {
             "selectProtocol": "Izberi protokol...",

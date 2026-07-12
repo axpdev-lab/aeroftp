@@ -1520,7 +1520,8 @@
             "overlay_unlocked": "Safu iliyosimbwa imefunguliwa",
             "overlay_failed": "Safu iliyosimbwa haikuweza kufunguliwa",
             "session_resumed": "Imeendelea kipindi kinachoendelea hadi {server}",
-            "connect_cancelled": "Imeghairiwa na mtumiaji: uorodheshaji umesimamishwa, umetenganishwa na seva"
+            "connect_cancelled": "Imeghairiwa na mtumiaji: uorodheshaji umesimamishwa, umetenganishwa na seva",
+            "overlay_locked": "Safu iliyosimbwa imefungwa"
         },
         "protocol": {
             "selectProtocol": "Chagua itifaki...",

@@ -1520,7 +1520,8 @@
             "overlay_unlocked": "Na-unlock ang naka-encrypt na overlay",
             "overlay_failed": "Hindi ma-unlock ang naka-encrypt na overlay",
             "session_resumed": "Ipinagpatuloy ang aktibong session sa {server}",
-            "connect_cancelled": "Kinansela ng user: itinigil ang paglilista, nadiskonekta sa server"
+            "connect_cancelled": "Kinansela ng user: itinigil ang paglilista, nadiskonekta sa server",
+            "overlay_locked": "Naka-lock ang naka-encrypt na overlay"
         },
         "protocol": {
             "selectProtocol": "Pumili ng protocol...",

@@ -1520,7 +1520,8 @@
             "overlay_unlocked": "Lapisan tersulit dibuka kunci",
             "overlay_failed": "Lapisan tersulit tidak dapat dibuka kunci",
             "session_resumed": "Menyambung semula sesi aktif ke {server}",
-            "connect_cancelled": "Dibatalkan oleh pengguna: penyenaraian dihentikan, diputuskan daripada pelayan"
+            "connect_cancelled": "Dibatalkan oleh pengguna: penyenaraian dihentikan, diputuskan daripada pelayan",
+            "overlay_locked": "Lapisan tersulit dikunci"
         },
         "protocol": {
             "selectProtocol": "Pilih protokol...",

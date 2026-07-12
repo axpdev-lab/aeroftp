@@ -1520,7 +1520,8 @@
             "overlay_unlocked": "Zifratutako geruza desblokeatuta",
             "overlay_failed": "Ezin izan da zifratutako geruza desblokeatu",
             "session_resumed": "{server}(e)rako saio aktiboa berrekin da",
-            "connect_cancelled": "Erabiltzaileak bertan behera utzi du: zerrendatzea gelditua, zerbitzaritik deskonektatuta"
+            "connect_cancelled": "Erabiltzaileak bertan behera utzi du: zerrendatzea gelditua, zerbitzaritik deskonektatuta",
+            "overlay_locked": "Zifratutako geruza blokeatuta"
         },
         "protocol": {
             "selectProtocol": "Aukeratu protokoloa...",

@@ -1520,7 +1520,8 @@
             "overlay_unlocked": "Camada cifrada desbloqueada",
             "overlay_failed": "Não foi possível desbloquear a camada cifrada",
             "session_resumed": "Sessão ativa retomada para {server}",
-            "connect_cancelled": "Cancelado pelo utilizador: listagem interrompida, desligado do servidor"
+            "connect_cancelled": "Cancelado pelo utilizador: listagem interrompida, desligado do servidor",
+            "overlay_locked": "Sobreposição cifrada bloqueada"
         },
         "protocol": {
             "selectProtocol": "Selecionar protocolo...",

@@ -1520,7 +1520,8 @@
             "overlay_unlocked": "Dulkóðað yfirlag aflæst",
             "overlay_failed": "Ekki tókst að aflæsa dulkóðaða yfirlaginu",
             "session_resumed": "Hélt áfram virkri lotu við {server}",
-            "connect_cancelled": "Notandi hætti við: skráning stöðvuð, aftengt frá netþjóni"
+            "connect_cancelled": "Notandi hætti við: skráning stöðvuð, aftengt frá netþjóni",
+            "overlay_locked": "Dulkóðað yfirlag læst"
         },
         "protocol": {
             "selectProtocol": "Select protocol...",

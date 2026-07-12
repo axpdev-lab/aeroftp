@@ -1520,7 +1520,8 @@
             "overlay_unlocked": "Verschlüsselte Ebene entsperrt",
             "overlay_failed": "Verschlüsselte Ebene konnte nicht entsperrt werden",
             "session_resumed": "Aktive Sitzung zu {server} fortgesetzt",
-            "connect_cancelled": "Vom Benutzer abgebrochen: Auflistung gestoppt, Verbindung getrennt"
+            "connect_cancelled": "Vom Benutzer abgebrochen: Auflistung gestoppt, Verbindung getrennt",
+            "overlay_locked": "Verschlüsselte Überlagerung gesperrt"
         },
         "protocol": {
             "selectProtocol": "Protokoll auswählen...",

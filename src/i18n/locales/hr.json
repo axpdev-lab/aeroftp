@@ -1520,7 +1520,8 @@
             "overlay_unlocked": "Šifrirani sloj otključan",
             "overlay_failed": "Šifrirani sloj nije moguće otključati",
             "session_resumed": "Nastavljena aktivna sesija na {server}",
-            "connect_cancelled": "Korisnik je otkazao: ispis zaustavljen, veza sa poslužiteljem prekinuta"
+            "connect_cancelled": "Korisnik je otkazao: ispis zaustavljen, veza sa poslužiteljem prekinuta",
+            "overlay_locked": "Šifrirani sloj zaključan"
         },
         "protocol": {
             "selectProtocol": "Odaberi protokol...",

@@ -1520,7 +1520,8 @@
             "overlay_unlocked": "Salattu kerros avattu",
             "overlay_failed": "Salatun kerroksen avaaminen epäonnistui",
             "session_resumed": "Jatkettiin aktiivista istuntoa: {server}",
-            "connect_cancelled": "Käyttäjä peruutti: listaus pysäytetty, yhteys palvelimeen katkaistu"
+            "connect_cancelled": "Käyttäjä peruutti: listaus pysäytetty, yhteys palvelimeen katkaistu",
+            "overlay_locked": "Salattu peittokerros lukittu"
         },
         "protocol": {
             "selectProtocol": "Valitse protokolla...",

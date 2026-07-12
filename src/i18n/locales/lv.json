@@ -1520,7 +1520,8 @@
             "overlay_unlocked": "Šifrētais slānis atbloķēts",
             "overlay_failed": "Neizdevās atbloķēt šifrēto slāni",
             "session_resumed": "Atsākta aktīvā sesija ar {server}",
-            "connect_cancelled": "Lietotājs atcēla: saraksta izveide apturēta, atvienots no servera"
+            "connect_cancelled": "Lietotājs atcēla: saraksta izveide apturēta, atvienots no servera",
+            "overlay_locked": "Šifrētais slānis bloķēts"
         },
         "protocol": {
             "selectProtocol": "Izvēlēties protokolu...",

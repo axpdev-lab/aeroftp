@@ -1520,7 +1520,8 @@
             "overlay_unlocked": "Capa cifrada desbloqueada",
             "overlay_failed": "Non se puido desbloquear a capa cifrada",
             "session_resumed": "Sesión activa retomada con {server}",
-            "connect_cancelled": "Cancelado polo usuario: listaxe detida, desconectado do servidor"
+            "connect_cancelled": "Cancelado polo usuario: listaxe detida, desconectado do servidor",
+            "overlay_locked": "Capa cifrada bloqueada"
         },
         "protocol": {
             "selectProtocol": "Seleccionar protocolo...",

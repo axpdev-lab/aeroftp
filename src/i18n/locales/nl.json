@@ -1520,7 +1520,8 @@
             "overlay_unlocked": "Versleutelde laag ontgrendeld",
             "overlay_failed": "Versleutelde laag kon niet worden ontgrendeld",
             "session_resumed": "Actieve sessie naar {server} hervat",
-            "connect_cancelled": "Geannuleerd door de gebruiker: lijst gestopt, verbinding met server verbroken"
+            "connect_cancelled": "Geannuleerd door de gebruiker: lijst gestopt, verbinding met server verbroken",
+            "overlay_locked": "Versleutelde overlay vergrendeld"
         },
         "protocol": {
             "selectProtocol": "Selecteer protocol...",

@@ -1520,7 +1520,8 @@
             "overlay_unlocked": "Surcouche chiffrée déverrouillée",
             "overlay_failed": "Impossible de déverrouiller la surcouche chiffrée",
             "session_resumed": "Session active reprise vers {server}",
-            "connect_cancelled": "Annulé par l'utilisateur : listage arrêté, déconnecté du serveur"
+            "connect_cancelled": "Annulé par l'utilisateur : listage arrêté, déconnecté du serveur",
+            "overlay_locked": "Superposition chiffrée verrouillée"
         },
         "protocol": {
             "selectProtocol": "Sélectionner un protocole...",

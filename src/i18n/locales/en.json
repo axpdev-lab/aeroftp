@@ -92,6 +92,7 @@
             "loaded_items": "Loaded {count} items from {provider}",
             "overlay_opening": "Opening encrypted overlay, decrypting names",
             "overlay_unlocked": "Encrypted overlay unlocked",
+            "overlay_locked": "Encrypted overlay locked",
             "overlay_failed": "Encrypted overlay could not be unlocked",
             "mkdir_error": "[{location}] Could not create folder: {foldername}",
             "mkdir_start": "[{location}] Creating folder {foldername}...",

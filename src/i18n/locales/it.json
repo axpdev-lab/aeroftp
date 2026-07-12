@@ -2025,7 +2025,8 @@
             "release_asset_download_success": "[{provider}] Release asset scaricato {filename}",
             "release_asset_download_error": "[{provider}] Scaricamento release asset fallito {filename}",
             "session_resumed": "Sessione attiva ripresa su {server}",
-            "connect_cancelled": "Annullato dall'utente: elenco interrotto, disconnesso dal server"
+            "connect_cancelled": "Annullato dall'utente: elenco interrotto, disconnesso dal server",
+            "overlay_locked": "Overlay cifrato bloccato"
         },
         "folderOverwrite": {
             "title": "Cartella già esistente",

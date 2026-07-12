@@ -1520,7 +1520,8 @@
             "overlay_unlocked": "Krypteret lag låst op",
             "overlay_failed": "Det krypterede lag kunne ikke låses op",
             "session_resumed": "Genoptog aktiv session til {server}",
-            "connect_cancelled": "Annulleret af brugeren: listning stoppet, afbrudt fra serveren"
+            "connect_cancelled": "Annulleret af brugeren: listning stoppet, afbrudt fra serveren",
+            "overlay_locked": "Krypteret overlay låst"
         },
         "protocol": {
             "selectProtocol": "Vælg protokol...",

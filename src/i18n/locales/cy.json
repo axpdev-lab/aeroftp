@@ -1520,7 +1520,8 @@
             "overlay_unlocked": "Datglowyd yr haen wedi'i hamgryptio",
             "overlay_failed": "Methwyd datgloi'r haen wedi'i hamgryptio",
             "session_resumed": "Ailddechreuwyd sesiwn fyw i {server}",
-            "connect_cancelled": "Canslwyd gan y defnyddiwr: rhestru wedi'i atal, datgysylltwyd o'r gweinydd"
+            "connect_cancelled": "Canslwyd gan y defnyddiwr: rhestru wedi'i atal, datgysylltwyd o'r gweinydd",
+            "overlay_locked": "Haen wedi'i hamgryptio wedi'i chloi"
         },
         "protocol": {
             "selectProtocol": "Dewis protocol...",

@@ -1520,7 +1520,8 @@
             "overlay_unlocked": "Krypterat lager upplåst",
             "overlay_failed": "Det krypterade lagret kunde inte låsas upp",
             "session_resumed": "Återupptog aktiv session till {server}",
-            "connect_cancelled": "Avbruten av användaren: listning stoppad, frånkopplad från servern"
+            "connect_cancelled": "Avbruten av användaren: listning stoppad, frånkopplad från servern",
+            "overlay_locked": "Krypterat överlägg låst"
         },
         "protocol": {
             "selectProtocol": "Välj protokoll...",

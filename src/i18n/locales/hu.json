@@ -1520,7 +1520,8 @@
             "overlay_unlocked": "Titkosított réteg feloldva",
             "overlay_failed": "A titkosított réteget nem sikerült feloldani",
             "session_resumed": "Aktív munkamenet folytatva: {server}",
-            "connect_cancelled": "A felhasználó megszakította: listázás leállt, kapcsolat bontva"
+            "connect_cancelled": "A felhasználó megszakította: listázás leállt, kapcsolat bontva",
+            "overlay_locked": "Titkosított réteg zárolva"
         },
         "protocol": {
             "selectProtocol": "Protokoll kiválasztása...",
