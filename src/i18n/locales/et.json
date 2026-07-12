@@ -1520,7 +1520,8 @@
             "overlay_unlocked": "Krüpteeritud kiht avati",
             "overlay_failed": "Krüpteeritud kihti ei õnnestunud avada",
             "session_resumed": "Aktiivne seanss taastatud: {server}",
-            "connect_cancelled": "Kasutaja tühistas: loend peatatud, serverist lahti ühendatud"
+            "connect_cancelled": "Kasutaja tühistas: loend peatatud, serverist lahti ühendatud",
+            "overlay_locked": "Krüpteeritud kiht lukustatud"
         },
         "protocol": {
             "selectProtocol": "Vali protokoll...",
@@ -5002,17 +5003,16 @@
             "keyfileHint": "Valikuline teine tegur, mis segatakse krüpteerimisvõtmesse: ülekate avaneb ainult parooli JA selle failiga. Tehke võtmefailist varukoopia.",
             "keyfileChoose": "Vali",
             "keyfileClear": "Eemalda võtmefail",
-            "emergencyKitTitle": "Hädaabikomplekt (taastamiseks kohustuslik)",
-            "emergencyKitIntro": "See komplekt sisaldab ainult avalikku konfiguratsiooni (vault ID, salt, KDF parameetrid). Hoidke seda võrguühenduseta koos oma parooliga. See on ainus viis päiseta hoidla taastamiseks pärast kohaliku võtmehoidla kaotamist (taasinstallimine või uus masin).",
             "vaultIdLabel": "Vault ID (base64)",
             "saltLabel": "Salt (base64)",
             "kdfLabel": "KDF parameetrid",
             "saveKit": "Salvesta komplekt faili",
             "printKit": "Prindi",
-            "ackCheckbox": "Olen selle hädaabikomplekti salvestanud või välja printinud ja mõistan, et see on hoidla taastamiseks vajalik.",
-            "ackHint": "Enne ülekatte kasutamist on vajalik kinnitus.",
-            "confirmAndUnlock": "Kinnita komplekti salvestamine - Loo ja ava",
-            "kitRequiredError": "Enne ülekatte kasutamist peate kinnitama hädaabikomplekti salvestamise."
+            "recoveryKitTitle": "Taastekomplekt (valikuline varukoopia)",
+            "recoveryKitIntro": "Valikuline. See komplekt sisaldab ainult avalikku konfiguratsiooni (vault ID, salt, KDF parameetrid), mitte kunagi saladusi. Selle salvestamine võrguühenduseta koos parooliga võimaldab taastada päiseta hoidla pärast kohaliku võtmehoidla kaotust (uuesti installimine või uus arvuti). Saate selle igal ajal uuesti avada ja salvestada.",
+            "showKit": "Taastekomplekt",
+            "hideKit": "Sulge",
+            "kitUnavailable": "Taastekomplekt pole selle hoidla jaoks veel saadaval."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Krüptimine)",

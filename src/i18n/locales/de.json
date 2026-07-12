@@ -1520,7 +1520,8 @@
             "overlay_unlocked": "Verschlüsselte Ebene entsperrt",
             "overlay_failed": "Verschlüsselte Ebene konnte nicht entsperrt werden",
             "session_resumed": "Aktive Sitzung zu {server} fortgesetzt",
-            "connect_cancelled": "Vom Benutzer abgebrochen: Auflistung gestoppt, Verbindung getrennt"
+            "connect_cancelled": "Vom Benutzer abgebrochen: Auflistung gestoppt, Verbindung getrennt",
+            "overlay_locked": "Verschlüsselte Überlagerung gesperrt"
         },
         "protocol": {
             "selectProtocol": "Protokoll auswählen...",
@@ -5002,17 +5003,16 @@
             "keyfileHint": "Optionaler zweiter Faktor, der in den Verschlüsselungsschlüssel einfließt: das Overlay öffnet sich nur mit dem Passwort UND dieser Datei. Sichern Sie die Schlüsseldatei.",
             "keyfileChoose": "Auswählen",
             "keyfileClear": "Schlüsseldatei entfernen",
-            "emergencyKitTitle": "Notfall-Kit (für die Wiederherstellung erforderlich)",
-            "emergencyKitIntro": "Dieses Kit enthält nur öffentliche Konfigurationsdaten (vault ID, Salt, KDF-Parameter). Bewahren Sie es offline zusammen mit Ihrem Passwort auf. Es ist die einzige Möglichkeit, einen Tresor ohne Header nach dem Verlust des lokalen Schlüsselspeichers (Neuinstallation oder neuer Rechner) wiederherzustellen.",
             "vaultIdLabel": "Vault ID (base64)",
             "saltLabel": "Salt (base64)",
             "kdfLabel": "KDF-Parameter",
             "saveKit": "Kit in Datei speichern",
             "printKit": "Drucken",
-            "ackCheckbox": "Ich habe dieses Notfall-Kit gespeichert oder ausgedruckt und verstehe, dass es zur Wiederherstellung des Tresors erforderlich ist.",
-            "ackHint": "Eine Bestätigung ist erforderlich, bevor das Overlay verwendet werden kann.",
-            "confirmAndUnlock": "Speichern des Kits bestätigen - Erstellen und entsperren",
-            "kitRequiredError": "Sie müssen das Speichern des Notfall-Kits bestätigen, bevor das Overlay verwendet werden kann."
+            "recoveryKitTitle": "Wiederherstellungskit (optionale Sicherung)",
+            "recoveryKitIntro": "Optional. Dieses Kit enthält nur öffentliche Konfiguration (vault ID, salt, KDF-Parameter), niemals Geheimnisse. Wenn Sie es zusammen mit Ihrem Passwort offline speichern, können Sie einen Tresor ohne Header nach dem Verlust des lokalen Schlüsselspeichers (Neuinstallation oder neuer Rechner) wiederherstellen. Sie können es jederzeit erneut öffnen und speichern.",
+            "showKit": "Wiederherstellungskit",
+            "hideKit": "Schließen",
+            "kitUnavailable": "Das Wiederherstellungskit ist für diesen Tresor noch nicht verfügbar."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Verschlüsselung)",

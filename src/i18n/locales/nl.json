@@ -1520,7 +1520,8 @@
             "overlay_unlocked": "Versleutelde laag ontgrendeld",
             "overlay_failed": "Versleutelde laag kon niet worden ontgrendeld",
             "session_resumed": "Actieve sessie naar {server} hervat",
-            "connect_cancelled": "Geannuleerd door de gebruiker: lijst gestopt, verbinding met server verbroken"
+            "connect_cancelled": "Geannuleerd door de gebruiker: lijst gestopt, verbinding met server verbroken",
+            "overlay_locked": "Versleutelde overlay vergrendeld"
         },
         "protocol": {
             "selectProtocol": "Selecteer protocol...",
@@ -5002,17 +5003,16 @@
             "keyfileHint": "Optionele tweede factor die in de encryptiesleutel wordt gemengd: de overlay opent alleen met het wachtwoord EN dit bestand. Maak een back-up van het sleutelbestand.",
             "keyfileChoose": "Kiezen",
             "keyfileClear": "Sleutelbestand verwijderen",
-            "emergencyKitTitle": "Noodkit (verplicht voor herstel)",
-            "emergencyKitIntro": "Deze kit bevat alleen openbare configuratie (vault ID, salt, KDF-parameters). Bewaar deze offline samen met uw wachtwoord. Het is de enige manier om een kluis zonder header te herstellen na verlies van de lokale sleutelopslag (herinstallatie of nieuwe machine).",
             "vaultIdLabel": "Vault ID (base64)",
             "saltLabel": "Salt (base64)",
             "kdfLabel": "KDF-parameters",
             "saveKit": "Kit opslaan naar bestand",
             "printKit": "Afdrukken",
-            "ackCheckbox": "Ik heb deze noodkit opgeslagen of afgedrukt en begrijp dat deze nodig is om de kluis te herstellen.",
-            "ackHint": "Bevestiging is vereist voordat de overlay kan worden gebruikt.",
-            "confirmAndUnlock": "Bevestig kit opgeslagen - Maken en ontgrendelen",
-            "kitRequiredError": "U moet het opslaan van de noodkit bevestigen voordat de overlay bruikbaar is."
+            "recoveryKitTitle": "Herstelkit (optionele back-up)",
+            "recoveryKitIntro": "Optioneel. Deze kit bevat alleen openbare configuratie (vault ID, salt, KDF-parameters), nooit geheimen. Door deze offline samen met je wachtwoord op te slaan, kun je een kluis zonder header herstellen na verlies van de lokale sleutelopslag (herinstallatie of nieuwe machine). Je kunt de kit op elk moment opnieuw openen en opslaan.",
+            "showKit": "Herstelkit",
+            "hideKit": "Sluiten",
+            "kitUnavailable": "De herstelkit is nog niet beschikbaar voor deze kluis."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Versleuteling)",

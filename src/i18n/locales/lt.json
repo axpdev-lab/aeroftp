@@ -1520,7 +1520,8 @@
             "overlay_unlocked": "Šifruotas sluoksnis atrakintas",
             "overlay_failed": "Nepavyko atrakinti šifruoto sluoksnio",
             "session_resumed": "Atnaujinta aktyvi sesija su {server}",
-            "connect_cancelled": "Naudotojas atšaukė: sąrašo sudarymas sustabdytas, atsijungta nuo serverio"
+            "connect_cancelled": "Naudotojas atšaukė: sąrašo sudarymas sustabdytas, atsijungta nuo serverio",
+            "overlay_locked": "Šifruotas sluoksnis užrakintas"
         },
         "protocol": {
             "selectProtocol": "Pasirinkti protokolą...",
@@ -5002,17 +5003,16 @@
             "keyfileHint": "Neprivalomas antras veiksnys, įmaišomas į šifravimo raktą: perdanga atsidaro tik su slaptažodžiu IR šiuo failu. Pasidarykite rakto failo atsarginę kopiją.",
             "keyfileChoose": "Pasirinkti",
             "keyfileClear": "Pašalinti rakto failą",
-            "emergencyKitTitle": "Avarinis rinkinys (privalomas atkūrimui)",
-            "emergencyKitIntro": "Šiame rinkinyje yra tik vieša konfigūracija (vault ID, salt, KDF parametrai). Laikykite jį neprisijungę kartu su slaptažodžiu. Tai vienintelis būdas atkurti seifą be antraštės praradus vietinę raktų saugyklą (perinstaliavus arba naujame įrenginyje).",
             "vaultIdLabel": "Vault ID (base64)",
             "saltLabel": "Salt (base64)",
             "kdfLabel": "KDF parametrai",
             "saveKit": "Įrašyti rinkinį į failą",
             "printKit": "Spausdinti",
-            "ackCheckbox": "Įrašiau arba atsispausdinau šį avarinį rinkinį ir suprantu, kad jis būtinas seifui atkurti.",
-            "ackHint": "Prieš naudojant perdangą, būtinas patvirtinimas.",
-            "confirmAndUnlock": "Patvirtinti, kad rinkinys įrašytas - Sukurti ir atrakinti",
-            "kitRequiredError": "Prieš naudojant perdangą turite patvirtinti, kad įrašėte avarinį rinkinį."
+            "recoveryKitTitle": "Atkūrimo rinkinys (nebūtina atsarginė kopija)",
+            "recoveryKitIntro": "Nebūtina. Šiame rinkinyje yra tik vieša konfigūracija (vault ID, salt, KDF parametrai), niekada nėra paslapčių. Įrašius jį neprisijungus kartu su slaptažodžiu, galėsite atkurti saugyklą be antraštės praradę vietinę raktų saugyklą (perdiegus ar naujame kompiuteryje). Galite bet kada jį vėl atidaryti ir įrašyti.",
+            "showKit": "Atkūrimo rinkinys",
+            "hideKit": "Uždaryti",
+            "kitUnavailable": "Atkūrimo rinkinys šiai saugyklai dar neprieinamas."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Šifravimas)",

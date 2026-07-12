@@ -131,8 +131,8 @@ const SUPPORTED_URL_SCHEMES: &[&str] = &[
     name = "aeroftp",
     about = "AeroFTP CLI - Multi-protocol file transfer client",
     version,
-    long_about = "Direct URL schemes: FTP, FTPS, SFTP, WebDAV(S), S3, MEGA, Azure, Filen, Internxt, Jottacloud, FileLu, Koofr, OpenDrive, Yandex Disk, GitHub.\nSaved profiles additionally cover Google Drive, Dropbox, OneDrive, Box, pCloud, Zoho WorkDrive, 4shared, and Drime.\n\nConnect via saved profiles (--profile) or URL (protocol://user@host:port/path).\nAI agents: run 'aeroftp agent-bootstrap --json' for canonical task workflows and 'aeroftp agent-info --json' for full capability discovery.",
-    after_help = "EXAMPLES (profiles - no credentials needed):\n  aeroftp-cli profiles                                      List saved servers\n  aeroftp-cli ls --profile \"My Server\" /var/www/ -l          List files\n  aeroftp-cli put --profile \"Production\" ./app.js /www/      Upload file\n  aeroftp-cli get --profile \"NAS\" /backups/db.sql ./         Download file\n  aeroftp-cli sync --profile \"Staging\" ./build/ /www/ --dry-run\n  aeroftp-cli agent-bootstrap                                AI quick-start playbook\n  aeroftp-cli agent-info --json                              AI capability discovery\n\nEXAMPLES (URL mode):\n  aeroftp-cli connect sftp://user@myserver.com\n  aeroftp-cli ls sftp://user@myserver.com /var/www/ -l\n  aeroftp-cli get sftp://user@host \"/data/*.csv\"\n  aeroftp-cli cat sftp://user@host /config.ini | grep DB_HOST\n  aeroftp-cli batch deploy.aeroftp-script\n\nEXIT CODES:\n  0  Success                    5  Invalid config/usage\n  1  Connection/network error   6  Authentication failed\n  2  Not found                  7  Not supported\n  3  Permission denied          8  Timeout\n  4  Transfer failed/partial    9  Already exists / directory not empty\n 10  Server or parse error     11  Local I/O error\n 99  Unknown error            130  Interrupted (SIGINT)"
+    long_about = "Direct URL schemes: FTP, FTPS, SFTP, WebDAV(S), S3, MEGA, Azure, Filen, Internxt, Jottacloud, FileLu, Koofr, OpenDrive, Yandex Disk, GitHub.\nSaved profiles additionally cover Google Drive, Dropbox, OneDrive, Box, pCloud, Zoho WorkDrive, 4shared, and Drime.\n\nConnect via saved profiles (--profile) or URL (protocol://user@host:port/path).\n\nAI agents: use --machine (recommended) or --format json.\n  'aeroftp --machine --profile NAME ls /path --json'   → pure data on stdout\n  'aeroftp agent-info --json'                        → capability discovery\n  'aeroftp agent-bootstrap --json'                   → canonical workflows",
+    after_help = "EXAMPLES (profiles - no credentials needed):\n  aeroftp-cli profiles                                      List saved servers\n  aeroftp-cli ls --profile \"My Server\" /var/www/ -l          List files\n  aeroftp-cli put --profile \"Production\" ./app.js /www/      Upload file\n  aeroftp-cli get --profile \"NAS\" /backups/db.sql ./         Download file\n  aeroftp-cli sync --profile \"Staging\" ./build/ /www/ --dry-run\n  aeroftp-cli --machine --profile \"My Server\" ls /path --json   (recommended for agents)\n  aeroftp-cli agent-bootstrap --json                         AI quick-start playbook\n  aeroftp-cli agent-info --json                              AI capability discovery\n\nEXAMPLES (URL mode):\n  aeroftp-cli connect sftp://user@myserver.com\n  aeroftp-cli ls sftp://user@myserver.com /var/www/ -l\n  aeroftp-cli get sftp://user@host \"/data/*.csv\"\n  aeroftp-cli cat sftp://user@host /config.ini | grep DB_HOST\n  aeroftp-cli batch deploy.aeroftp-script\n\nEXIT CODES:\n  0  Success                    5  Invalid config/usage\n  1  Connection/network error   6  Authentication failed\n  2  Not found                  7  Not supported\n  3  Permission denied          8  Timeout\n  4  Transfer failed/partial    9  Already exists / directory not empty\n 10  Server or parse error     11  Local I/O error\n 99  Unknown error            130  Interrupted (SIGINT)"
 )]
 struct Cli {
     /// Output format
@@ -142,6 +142,14 @@ struct Cli {
     /// Shorthand for --format json
     #[arg(long, global = true, help_heading = "Output options")]
     json: bool,
+
+    /// Machine / agent mode (implies --json --no-banner --quiet).
+    /// Guarantees that stdout contains *only* structured result data.
+    /// All human diagnostics, "Using profile", path notes, connection chatter,
+    /// "Connected successfully", "Next: ..." etc. go to stderr (or are suppressed).
+    /// This is the recommended flag for robust agent/LLM/tool-calling use.
+    #[arg(long, global = true, help_heading = "Output options")]
+    machine: bool,
 
     /// Suppress the startup banner (also via AEROFTP_NO_BANNER env var)
     #[arg(long, global = true, help_heading = "Output options")]
@@ -739,11 +747,15 @@ struct Cli {
 
 impl Cli {
     fn output_format(&self) -> OutputFormat {
-        if self.json {
+        if self.json || self.machine {
             OutputFormat::Json
         } else {
             self.format
         }
+    }
+
+    fn is_machine_mode(&self) -> bool {
+        self.machine || self.json
     }
 }
 
@@ -22566,9 +22578,11 @@ fn cmd_agent_info(cli: &Cli, redact_identifiers: bool) -> i32 {
         },
         "output": {
             "json_flag": "--json",
-            "stdout": "data only (file listings, file content, JSON)",
-            "stderr": "status messages, progress, warnings",
-            "tip": "Use --json 2>/dev/null for clean machine-readable output"
+            "machine_flag": "--machine (recommended for agents; implies --json --no-banner --quiet)",
+            "stdout": "In --json/--machine: ONLY the structured result data (object/array). No leading human text.",
+            "stderr": "All diagnostics, connection logs, 'Using profile', 'Note: path resolved', progress, warnings. In --machine mode chatter is minimized.",
+            "contract": "With --machine (or --format json) agents can safely parse stdout as JSON. All human scaffolding goes to stderr.",
+            "tip": "For robust agents: use --machine. Fallback: --format json 2>/dev/null"
         },
         "exit_codes": {
             "0": "success",
@@ -29799,7 +29813,7 @@ async fn cmd_mkdir(
             Ok(()) => {
                 match format {
                     OutputFormat::Text => {
-                        if !cli.quiet {
+                        if !cli.quiet && !cli.is_machine_mode() {
                             eprintln!("Created directory: {}", path);
                         }
                     }
@@ -30852,7 +30866,7 @@ async fn cmd_edit(
     if occurrences == 0 {
         match format {
             OutputFormat::Text => {
-                if !cli.quiet {
+                if !cli.quiet && !cli.is_machine_mode() {
                     eprintln!("No matches found in {}", path);
                 }
             }
@@ -56822,11 +56836,16 @@ async fn main() {
     let mut cli = Cli::parse_from(args);
     let format = cli.output_format();
 
-    // Stash JSON-mode globally so banner-emitting helpers far down
-    // the stack can suppress without threading `format` through every
-    // call site. Set BEFORE any vault open or connect can fire.
-    if matches!(format, OutputFormat::Json) {
+    // Stash JSON-mode + machine mode globally.
+    // --machine is the strong "agent" mode: implies --json + extra suppression.
+    if matches!(format, OutputFormat::Json) || cli.machine {
         JSON_MODE.store(true, Ordering::Relaxed);
+    }
+    if cli.machine {
+        // Force other agent-friendly defaults so agents don't have to remember
+        // the exact combination.
+        cli.no_banner = true;
+        cli.quiet = true;
     }
 
     // Strict-mode gate: refuse safety-relaxing flags before anything connects
@@ -56874,7 +56893,11 @@ async fn main() {
     // Without the env-filter feature we still honor the common RUST_LOG
     // levels globally, so `RUST_LOG=warn` does not accidentally enable the
     // very chatty russh DEBUG stream during transfer benchmarks.
-    let level = if cli.verbose >= 2 {
+    let level = if cli.machine || cli.json {
+        // In machine/agent mode we want very little chatter on stderr.
+        // Agents can still use RUST_LOG=debug if they really need it.
+        Some(tracing::Level::WARN)
+    } else if cli.verbose >= 2 {
         Some(tracing::Level::TRACE)
     } else if cli.verbose == 1 {
         Some(tracing::Level::DEBUG)
@@ -61838,6 +61861,7 @@ mod tests {
             format: OutputFormat::Text,
             json: false,
             json_fields: None,
+            machine: false,
             no_banner: false,
             password_stdin: false,
             key: None,

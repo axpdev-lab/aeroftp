@@ -1278,11 +1278,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                 editingProfileId,
             );
             if (duplicate) {
-                setGitHubAlert({
-                    title: 'Potential duplicate profile',
-                    message: `This profile matches ${duplicate.name} by name or endpoint+username.`,
-                    type: 'warning',
-                });
+                // The duplicate is recorded in the Activity Log only. A blocking/
+                // flashing alert on save was pure friction (it appeared for a flash
+                // during a legitimate save, e.g. duplicating + re-pathing a profile).
                 const dedupKey = getStorageDedupKey({
                     id: editingProfileId,
                     name: editedName,
@@ -1349,11 +1347,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                 null,
             );
             if (duplicate) {
-                setGitHubAlert({
-                    title: 'Potential duplicate profile',
-                    message: `This new profile overlaps with ${duplicate.name} (same name or endpoint+username).`,
-                    type: 'warning',
-                });
+                // Activity-Log only (no flashing alert on save); see the edit path.
                 const dedupKey = getStorageDedupKey({
                     id: newId,
                     name: newName,
@@ -2862,7 +2856,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                     setOverlaysRemotePathError(valid ? null : t('aerocryptProfile.overlaysRemotePathInvalid'));
                                 }}
                                 className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm disabled:opacity-60 disabled:cursor-not-allowed"
-                                placeholder={quickConnectDirs.remoteDir || '/'}
+                                placeholder="/"
                             />
                             <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
                                 {t('aerocryptProfile.overlaysRemotePathHint')}

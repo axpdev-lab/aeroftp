@@ -1479,7 +1479,7 @@ pub async fn provider_apply_crypt_overlay(
     };
     let scope = {
         let mut guard = state.provider.lock().await;
-        crate::crypt_overlay_provider::apply_overlay_in_place(
+        match crate::crypt_overlay_provider::apply_overlay_in_place(
             &mut guard,
             &binding,
             &params.password,
@@ -1487,7 +1487,18 @@ pub async fn provider_apply_crypt_overlay(
             keyfile_digest.as_ref(),
             with_header,
         )
-        .await?
+        .await
+        {
+            Ok(s) => s,
+            Err(e) => {
+                // The unlock reason is otherwise swallowed by the generic frontend
+                // "could not be unlocked" message. Log it (kind only, no path or
+                // secrets) so a support session can tell a wrong password from a
+                // config gap from a missing profile id.
+                warn!("crypt overlay unlock failed (kind={}): {}", binding.kind, e);
+                return Err(e);
+            }
+        }
     };
     // Sticky capability + currently-wrapped: the agent raw-write guard is now
     // satisfied (writes route through the decorator).
@@ -1498,6 +1509,50 @@ pub async fn provider_apply_crypt_overlay(
         scope
     );
     Ok(scope)
+}
+
+/// Build the OPTIONAL recovery kit for a saved headerless AeroCrypt profile, on
+/// demand and WITHOUT connecting: reads the public config persisted in the local
+/// keystore (`aerocrypt_overlay_config_<id>` + its salt of record) and returns
+/// the public-only kit (vault_id, salt, KDF params, never secrets). This backs
+/// the "Recovery kit" action in the saved-server context menu, so a user can
+/// re-view and re-save the kit any time. Errors clearly when the profile has no
+/// headerless vault yet (never created, or it uses an on-remote header).
+#[tauri::command]
+pub fn aerocrypt_profile_recovery_kit(
+    profile_id: String,
+) -> Result<crate::aerocrypt::emergency_kit::EmergencyKit, String> {
+    let store = crate::credential_store::CredentialStore::from_cache()
+        .ok_or_else(|| "The local keystore is unavailable.".to_string())?;
+    let config_json = crate::user_partitions::resolve_active_credential(
+        &store,
+        &format!("aerocrypt_overlay_config_{profile_id}"),
+    )
+    .ok()
+    .flatten()
+    .map(|s| s.to_string())
+    .filter(|s| !s.is_empty())
+    .ok_or_else(|| {
+        "No recovery kit for this profile yet: its headerless vault has not been created \
+         (connect once to create it), or it uses an on-remote header."
+            .to_string()
+    })?;
+    let salt = crate::user_partitions::resolve_active_credential(
+        &store,
+        &format!("aerocrypt_overlay_salt_{profile_id}"),
+    )
+    .ok()
+    .flatten()
+    .map(|s| s.to_string());
+    // Same salt-of-record integrity check the unlock path uses: a mismatch means
+    // a partial restore or local tampering, so fail closed rather than hand back
+    // a kit that would not actually reconstruct the vault.
+    crate::crypt_overlay_provider::validate_headerless_config_salt(
+        &profile_id,
+        &config_json,
+        salt.as_deref(),
+    )?;
+    crate::aerocrypt::emergency_kit::build_from_config_json(&config_json)
 }
 
 /// Generate a fresh transfer-safe AeroCrypt keyfile (AEROFTP-KEYFILE-V1) at

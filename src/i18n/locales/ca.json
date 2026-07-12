@@ -1520,7 +1520,8 @@
             "overlay_unlocked": "Capa xifrada desbloquejada",
             "overlay_failed": "No s'ha pogut desbloquejar la capa xifrada",
             "session_resumed": "Sessió activa represa a {server}",
-            "connect_cancelled": "Cancel·lat per l'usuari: llistat aturat, desconnectat del servidor"
+            "connect_cancelled": "Cancel·lat per l'usuari: llistat aturat, desconnectat del servidor",
+            "overlay_locked": "Capa xifrada bloquejada"
         },
         "protocol": {
             "selectProtocol": "Seleccioneu protocol...",
@@ -5021,17 +5022,16 @@
             "keyfileHint": "Segon factor opcional barrejat a la clau de xifratge: la superposició només s'obre amb la contrasenya I aquest fitxer. Feu una còpia de seguretat del fitxer de clau.",
             "keyfileChoose": "Tria",
             "keyfileClear": "Elimina el fitxer de clau",
-            "emergencyKitTitle": "Kit d'emergència (obligatori per a la recuperació)",
-            "emergencyKitIntro": "Aquest kit conté només configuració pública (vault ID, salt, paràmetres KDF). Deseu-lo fora de línia juntament amb la vostra contrasenya. És l'única manera de recuperar una caixa forta sense capçalera després de perdre el magatzem de claus local (reinstal·lació o màquina nova).",
             "vaultIdLabel": "Vault ID (base64)",
             "saltLabel": "Salt (base64)",
             "kdfLabel": "Paràmetres KDF",
             "saveKit": "Desa el kit en un fitxer",
             "printKit": "Imprimeix",
-            "ackCheckbox": "He desat o imprès aquest kit d'emergència i entenc que és necessari per recuperar la caixa forta.",
-            "ackHint": "Cal confirmar-ho abans de poder utilitzar la superposició.",
-            "confirmAndUnlock": "Confirma el kit desat - Crea i desbloqueja",
-            "kitRequiredError": "Heu de confirmar que heu desat el kit d'emergència abans que la superposició es pugui utilitzar."
+            "recoveryKitTitle": "Kit de recuperació (còpia de seguretat opcional)",
+            "recoveryKitIntro": "Opcional. Aquest kit només conté configuració pública (vault ID, salt, paràmetres KDF), mai secrets. Desar-lo fora de línia juntament amb la contrasenya permet restaurar un magatzem sense capçalera després de perdre el magatzem de claus local (reinstal·lació o màquina nova). El podeu tornar a obrir i desar en qualsevol moment.",
+            "showKit": "Kit de recuperació",
+            "hideKit": "Tanca",
+            "kitUnavailable": "El kit de recuperació encara no està disponible per a aquest magatzem."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Xifratge)",

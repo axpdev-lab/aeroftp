@@ -1520,7 +1520,8 @@
             "overlay_unlocked": "Datglowyd yr haen wedi'i hamgryptio",
             "overlay_failed": "Methwyd datgloi'r haen wedi'i hamgryptio",
             "session_resumed": "Ailddechreuwyd sesiwn fyw i {server}",
-            "connect_cancelled": "Canslwyd gan y defnyddiwr: rhestru wedi'i atal, datgysylltwyd o'r gweinydd"
+            "connect_cancelled": "Canslwyd gan y defnyddiwr: rhestru wedi'i atal, datgysylltwyd o'r gweinydd",
+            "overlay_locked": "Haen wedi'i hamgryptio wedi'i chloi"
         },
         "protocol": {
             "selectProtocol": "Dewis protocol...",
@@ -5021,17 +5022,16 @@
             "keyfileHint": "Ail ffactor dewisol wedi'i gymysgu i'r allwedd amgryptio: dim ond gyda'r cyfrinair A'r ffeil hon y bydd yr haen yn agor. Cadwch gopi wrth gefn o'r ffeil allwedd.",
             "keyfileChoose": "Dewis",
             "keyfileClear": "Tynnu'r ffeil allwedd",
-            "emergencyKitTitle": "Pecyn Argyfwng (gorfodol ar gyfer adfer)",
-            "emergencyKitIntro": "Mae'r pecyn hwn yn cynnwys ffurfweddiad cyhoeddus yn unig (vault ID, salt, paramedrau KDF). Cadwch ef all-lein gyda'ch cyfrinair. Dyma'r unig ffordd i adfer cell heb bennawd ar ôl colli'r storfa allweddi leol (ailosod neu beiriant newydd).",
             "vaultIdLabel": "Vault ID (base64)",
             "saltLabel": "Salt (base64)",
             "kdfLabel": "Paramedrau KDF",
             "saveKit": "Cadw'r pecyn i ffeil",
             "printKit": "Argraffu",
-            "ackCheckbox": "Rwyf wedi cadw neu argraffu'r Pecyn Argyfwng hwn ac yn deall ei fod yn ofynnol i adfer y gell.",
-            "ackHint": "Mae angen cydnabyddiaeth cyn y gellir defnyddio'r troshaen.",
-            "confirmAndUnlock": "Cadarnhau bod y pecyn wedi'i gadw - Creu a datgloi",
-            "kitRequiredError": "Rhaid i chi gydnabod eich bod wedi cadw'r Pecyn Argyfwng cyn y gellir defnyddio'r troshaen."
+            "recoveryKitTitle": "Pecyn adfer (copi wrth gefn dewisol)",
+            "recoveryKitIntro": "Dewisol. Dim ond ffurfweddiad cyhoeddus (vault ID, salt, paramedrau KDF) sydd yn y pecyn hwn, byth cyfrinachau. Mae ei gadw all-lein ynghyd â'ch cyfrinair yn caniatáu adfer cell heb bennawd ar ôl colli'r storfa allweddi leol (ailosod neu beiriant newydd). Gallwch ei ailagor a'i gadw eto unrhyw bryd.",
+            "showKit": "Pecyn adfer",
+            "hideKit": "Cau",
+            "kitUnavailable": "Nid yw'r pecyn adfer ar gael ar gyfer y gell hon eto."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Amgryptio)",

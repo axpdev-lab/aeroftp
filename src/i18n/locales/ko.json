@@ -1520,7 +1520,8 @@
             "overlay_unlocked": "암호화 오버레이 잠금 해제됨",
             "overlay_failed": "암호화 오버레이의 잠금을 해제할 수 없습니다",
             "session_resumed": "{server}의 활성 세션을 다시 시작했습니다",
-            "connect_cancelled": "사용자가 취소함: 목록 조회 중지, 서버 연결 해제"
+            "connect_cancelled": "사용자가 취소함: 목록 조회 중지, 서버 연결 해제",
+            "overlay_locked": "암호화 오버레이 잠김"
         },
         "protocol": {
             "selectProtocol": "프로토콜 선택...",
@@ -5002,17 +5003,16 @@
             "keyfileHint": "암호화 키에 혼합되는 선택적 2차 요소: 오버레이는 비밀번호와 이 파일이 모두 있어야 열립니다. 키파일을 백업하세요.",
             "keyfileChoose": "선택",
             "keyfileClear": "키파일 제거",
-            "emergencyKitTitle": "긴급 키트 (복구에 필수)",
-            "emergencyKitIntro": "이 키트에는 공개 구성만 포함됩니다(vault ID, salt, KDF 매개변수). 비밀번호와 함께 오프라인으로 보관하세요. 로컬 키 저장소를 잃은 후(재설치 또는 새 기기) 헤더 없는 볼트를 복구하는 유일한 방법입니다.",
             "vaultIdLabel": "Vault ID (base64)",
             "saltLabel": "Salt (base64)",
             "kdfLabel": "KDF 매개변수",
             "saveKit": "키트를 파일로 저장",
             "printKit": "인쇄",
-            "ackCheckbox": "이 긴급 키트를 저장하거나 인쇄했으며 볼트를 복구하는 데 필요하다는 것을 이해합니다.",
-            "ackHint": "오버레이를 사용하기 전에 확인이 필요합니다.",
-            "confirmAndUnlock": "키트 저장 확인 - 생성 및 잠금 해제",
-            "kitRequiredError": "오버레이를 사용할 수 있으려면 먼저 긴급 키트 저장을 확인해야 합니다."
+            "recoveryKitTitle": "복구 키트 (선택적 백업)",
+            "recoveryKitIntro": "선택 사항입니다. 이 키트에는 공개 구성(vault ID, salt, KDF 매개변수)만 포함되며 비밀 정보는 절대 포함되지 않습니다. 비밀번호와 함께 오프라인으로 저장하면 로컬 키 저장소를 잃은 후(재설치 또는 새 컴퓨터)에도 헤더 없는 볼트를 복원할 수 있습니다. 언제든지 다시 열어 저장할 수 있습니다.",
+            "showKit": "복구 키트",
+            "hideKit": "닫기",
+            "kitUnavailable": "이 볼트에 대한 복구 키트는 아직 사용할 수 없습니다."
         },
         "aerocryptProfile": {
             "enable": "Crypt (암호화)",

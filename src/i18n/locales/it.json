@@ -2025,7 +2025,8 @@
             "release_asset_download_success": "[{provider}] Release asset scaricato {filename}",
             "release_asset_download_error": "[{provider}] Scaricamento release asset fallito {filename}",
             "session_resumed": "Sessione attiva ripresa su {server}",
-            "connect_cancelled": "Annullato dall'utente: elenco interrotto, disconnesso dal server"
+            "connect_cancelled": "Annullato dall'utente: elenco interrotto, disconnesso dal server",
+            "overlay_locked": "Overlay cifrato bloccato"
         },
         "folderOverwrite": {
             "title": "Cartella già esistente",
@@ -3280,17 +3281,16 @@
             "keyfileHint": "Secondo fattore opzionale miscelato nella chiave di cifratura: l'overlay si apre solo con la password E questo file. Fai un backup del file chiave.",
             "keyfileChoose": "Scegli",
             "keyfileClear": "Rimuovi file chiave",
-            "emergencyKitTitle": "Kit di emergenza (obbligatorio per il ripristino)",
-            "emergencyKitIntro": "Questo kit contiene solo la configurazione pubblica (vault ID, salt, parametri KDF). Conservalo offline insieme alla tua password. È l'unico modo per ripristinare una cassaforte senza intestazione dopo la perdita dell'archivio chiavi locale (reinstallazione o nuova macchina).",
             "vaultIdLabel": "Vault ID (base64)",
             "saltLabel": "Salt (base64)",
             "kdfLabel": "Parametri KDF",
             "saveKit": "Salva kit su file",
             "printKit": "Stampa",
-            "ackCheckbox": "Ho salvato o stampato questo kit di emergenza e capisco che è necessario per ripristinare la cassaforte.",
-            "ackHint": "La conferma è richiesta prima di poter utilizzare l'overlay.",
-            "confirmAndUnlock": "Conferma kit salvato - Crea e sblocca",
-            "kitRequiredError": "Devi confermare il salvataggio del kit di emergenza prima che l'overlay sia utilizzabile."
+            "recoveryKitTitle": "Kit di ripristino (backup facoltativo)",
+            "recoveryKitIntro": "Facoltativo. Questo kit contiene solo la configurazione pubblica (vault ID, salt, parametri KDF), mai segreti. Salvarlo offline insieme alla password ti permette di ripristinare una cassaforte senza intestazione dopo aver perso l'archivio chiavi locale (reinstallazione o nuova macchina). Puoi riaprirlo e salvarlo di nuovo in qualsiasi momento.",
+            "showKit": "Kit di ripristino",
+            "hideKit": "Chiudi",
+            "kitUnavailable": "Il kit di ripristino non è ancora disponibile per questa cassaforte."
         },
         "cryptomator": {
             "confirmPassword": "Conferma Password",

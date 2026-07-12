@@ -1520,7 +1520,8 @@
             "overlay_unlocked": "Šifrirana plast odklenjena",
             "overlay_failed": "Šifrirane plasti ni bilo mogoče odkleniti",
             "session_resumed": "Obnovljena aktivna seja s {server}",
-            "connect_cancelled": "Uporabnik je preklical: izpis ustavljen, povezava s strežnikom prekinjena"
+            "connect_cancelled": "Uporabnik je preklical: izpis ustavljen, povezava s strežnikom prekinjena",
+            "overlay_locked": "Šifrirana plast zaklenjena"
         },
         "protocol": {
             "selectProtocol": "Izberi protokol...",
@@ -5002,17 +5003,16 @@
             "keyfileHint": "Izbirni drugi faktor, primešan v šifrirni ključ: prekrivka se odpre samo z geslom IN to datoteko. Naredite varnostno kopijo datoteke ključa.",
             "keyfileChoose": "Izberi",
             "keyfileClear": "Odstrani datoteko ključa",
-            "emergencyKitTitle": "Komplet za nujne primere (obvezen za obnovitev)",
-            "emergencyKitIntro": "Ta komplet vsebuje samo javno konfiguracijo (vault ID, salt, parametri KDF). Shranite ga brez povezave skupaj z geslom. To je edini način za obnovitev trezorja brez glave po izgubi lokalne shrambe ključev (ponovna namestitev ali nova naprava).",
             "vaultIdLabel": "Vault ID (base64)",
             "saltLabel": "Salt (base64)",
             "kdfLabel": "Parametri KDF",
             "saveKit": "Shrani komplet v datoteko",
             "printKit": "Natisni",
-            "ackCheckbox": "Ta komplet za nujne primere sem shranil ali natisnil in razumem, da je potreben za obnovitev trezorja.",
-            "ackHint": "Pred uporabo prekrivnega sloja je potrebna potrditev.",
-            "confirmAndUnlock": "Potrdi shranjen komplet - Ustvari in odkleni",
-            "kitRequiredError": "Pred uporabo prekrivnega sloja morate potrditi shranjevanje kompleta za nujne primere."
+            "recoveryKitTitle": "Komplet za obnovitev (izbirna varnostna kopija)",
+            "recoveryKitIntro": "Izbirno. Ta komplet vsebuje samo javno konfiguracijo (vault ID, salt, parametri KDF), nikoli skrivnosti. Če ga shranite brez povezave skupaj z geslom, lahko obnovite trezor brez glave po izgubi lokalne shrambe ključev (ponovna namestitev ali nova naprava). Kadar koli ga lahko znova odprete in shranite.",
+            "showKit": "Komplet za obnovitev",
+            "hideKit": "Zapri",
+            "kitUnavailable": "Komplet za obnovitev za ta trezor še ni na voljo."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Šifriranje)",

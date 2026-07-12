@@ -1520,7 +1520,8 @@
             "overlay_unlocked": "Zifratutako geruza desblokeatuta",
             "overlay_failed": "Ezin izan da zifratutako geruza desblokeatu",
             "session_resumed": "{server}(e)rako saio aktiboa berrekin da",
-            "connect_cancelled": "Erabiltzaileak bertan behera utzi du: zerrendatzea gelditua, zerbitzaritik deskonektatuta"
+            "connect_cancelled": "Erabiltzaileak bertan behera utzi du: zerrendatzea gelditua, zerbitzaritik deskonektatuta",
+            "overlay_locked": "Zifratutako geruza blokeatuta"
         },
         "protocol": {
             "selectProtocol": "Aukeratu protokoloa...",
@@ -5021,17 +5022,16 @@
             "keyfileHint": "Zifratze-gakoan nahasten den bigarren faktore aukerakoa: gainjartzea pasahitzarekin ETA fitxategi honekin soilik irekitzen da. Egin gako-fitxategiaren babeskopia.",
             "keyfileChoose": "Aukeratu",
             "keyfileClear": "Kendu gako-fitxategia",
-            "emergencyKitTitle": "Larrialdi-kita (berreskuratzeko nahitaezkoa)",
-            "emergencyKitIntro": "Kit honek konfigurazio publikoa baino ez du (vault ID, salt, KDF parametroak). Gorde ezazu lineaz kanpo zure pasahitzarekin batera. Hori da goibururik gabeko kutxa gotorra berreskuratzeko modu bakarra tokiko gako-biltegia galdu ondoren (berrinstalazioa edo makina berria).",
             "vaultIdLabel": "Vault ID (base64)",
             "saltLabel": "Salt (base64)",
             "kdfLabel": "KDF parametroak",
             "saveKit": "Gorde kita fitxategi batean",
             "printKit": "Inprimatu",
-            "ackCheckbox": "Larrialdi-kit hau gorde edo inprimatu dut, eta ulertzen dut kutxa gotorra berreskuratzeko beharrezkoa dela.",
-            "ackHint": "Berrespena beharrezkoa da gainjartzea erabili aurretik.",
-            "confirmAndUnlock": "Berretsi kita gordeta - Sortu eta desblokeatu",
-            "kitRequiredError": "Larrialdi-kita gorde duzula berretsi behar duzu gainjartzea erabilgarri egon aurretik."
+            "recoveryKitTitle": "Berreskuratze-kita (aukerako babeskopia)",
+            "recoveryKitIntro": "Aukerakoa. Kit honek konfigurazio publikoa baino ez du gordetzen (vault ID, salt, KDF parametroak), inoiz ez sekretuak. Lineaz kanpo zure pasahitzarekin batera gordetzeak goibururik gabeko kutxa gotor bat berreskuratzeko aukera ematen dizu tokiko gako-biltegia galdu ondoren (berrinstalazioa edo makina berria). Edozein unetan ireki eta berriro gorde dezakezu.",
+            "showKit": "Berreskuratze-kita",
+            "hideKit": "Itxi",
+            "kitUnavailable": "Berreskuratze-kita ez dago oraindik erabilgarri kutxa gotor honetarako."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Zifratzea)",

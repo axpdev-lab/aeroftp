@@ -64,7 +64,6 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({ onClose, onUnl
     const [vaultInfo, setVaultInfo] = useState<AeroCryptVaultInfo | null>(null);
     const [success, setSuccess] = useState<string | null>(null);
     const [kitData, setKitData] = useState<AerocryptEmergencyKit | null>(null);
-    const [kitAck, setKitAck] = useState(false);
     const vaultInfoRef = useRef<AeroCryptVaultInfo | null>(null);
 
     useEffect(() => {
@@ -82,7 +81,6 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({ onClose, onUnl
         setConfirmPassword('');
         setSuccess(null);
         setKitData(null);
-        setKitAck(false);
     }, []);
 
     const lockVault = useCallback(async (vaultId: string) => {
@@ -134,20 +132,23 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({ onClose, onUnl
                 targetSubpath: createSubpath.trim() ? createSubpath.trim() : null,
                 keyfilePath: keyfilePath || null,
             });
-            // Fetch the mandatory Emergency Kit (builder is the single impl shared with CLI).
-            // The backend create already persisted; we read the returned config_json
-            // (in real headerless GUI flows the caller would re-read from keystore).
-            const kit = await invoke<AerocryptEmergencyKit>('aerocrypt_build_emergency_kit', {
-                configJson: info.config_json,
-            });
+            // Non-blocking recovery model (owner decision, v4.1.4): creating a
+            // headerless vault must be as frictionless as rclone-crypt. The vault
+            // is usable immediately; the recovery kit is NOT forced here. It stays
+            // available on demand via the "Recovery kit" button in the unlocked
+            // view (rebuilt from the persisted config, re-viewable and re-savable
+            // any time), so the create+connect flow is never interrupted.
             setVaultInfo(info);
-            setKitData(kit);
-            setKitAck(false);
             setCreateSubpath('');
-            // Keep the password in component state (not cleared here) so the
-            // mandatory kit-ack step can pass it to onUnlocked. Do NOT call
-            // onUnlocked yet: the kit dialog + explicit ack is mandatory before
-            // the vault is considered usable.
+            onUnlocked?.({
+                vaultId: info.vault_id,
+                password,
+                remoteScope: '',
+                keyfilePath: keyfilePath || undefined,
+            });
+            setPassword('');
+            setConfirmPassword('');
+            setSuccess(t('aerocryptNative.initialised'));
         } catch (e) {
             setError(String(e));
         } finally {
@@ -155,17 +156,29 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({ onClose, onUnl
         }
     };
 
-    const finalizeAfterKitAck = () => {
-        if (!vaultInfo || !kitAck) return;
-        onUnlocked?.({
-            vaultId: vaultInfo.vault_id,
-            password,
-            remoteScope: '',
-            keyfilePath: keyfilePath || undefined,
-        });
-        setPassword('');
-        setConfirmPassword('');
-        setSuccess(t('aerocryptNative.initialised'));
+    // On-demand recovery kit: rebuild the public kit from the vault's config at
+    // any time (never forced). For a freshly created or opened vault the
+    // config_json is already in vaultInfo; for a vault re-entered via
+    // activeVaultId we read the live overlay config. Public-only (vault_id, salt,
+    // KDF params), never secrets. Re-viewable and re-savable as often as wanted.
+    const showRecoveryKit = async () => {
+        setError(null);
+        try {
+            let configJson = vaultInfo?.config_json || '';
+            if (!configJson) {
+                configJson = (await invoke<string | null>('aerocrypt_provider_read_config', {})) || '';
+            }
+            if (!configJson) {
+                setError(t('aerocryptNative.kitUnavailable'));
+                return;
+            }
+            const kit = await invoke<AerocryptEmergencyKit>('aerocrypt_build_emergency_kit', {
+                configJson,
+            });
+            setKitData(kit);
+        } catch (e) {
+            setError(String(e));
+        }
     };
 
     const saveKitToFile = () => {
@@ -250,7 +263,7 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({ onClose, onUnl
                         </div>
                     )}
 
-                    {!vaultInfo && !kitData ? (
+                    {!vaultInfo ? (
                         <>
                             <div className="flex gap-2">
                                 <button
@@ -384,35 +397,6 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({ onClose, onUnl
                                 </button>
                             )}
                         </>
-                    ) : kitData && !kitAck ? (
-                        // MANDATORY Emergency Kit step after create (non-skippable ack)
-                        <div className="space-y-3">
-                            <div className="p-3 bg-amber-50 dark:bg-amber-900/30 border border-amber-300 dark:border-amber-700 rounded text-sm">
-                                <div className="font-semibold text-amber-700 dark:text-amber-300 mb-1">{t('aerocryptNative.emergencyKitTitle')}</div>
-                                <p className="text-gray-700 dark:text-gray-200 text-xs">
-                                    {t('aerocryptNative.emergencyKitIntro')}
-                                </p>
-                            </div>
-                            <div className="bg-gray-50 dark:bg-gray-900 rounded p-2 text-xs font-mono whitespace-pre-wrap break-all max-h-48 overflow-auto">
-                                {kitData.text}
-                            </div>
-                            <div className="flex gap-2">
-                                <button onClick={saveKitToFile} className="flex-1 px-3 py-1.5 text-sm rounded bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">{t('aerocryptNative.saveKit')}</button>
-                                <button onClick={printKit} className="flex-1 px-3 py-1.5 text-sm rounded bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">{t('aerocryptNative.printKit')}</button>
-                            </div>
-                            <label className="flex items-start gap-2 text-sm cursor-pointer select-none">
-                                <input type="checkbox" checked={kitAck} onChange={(e) => setKitAck(e.target.checked)} className="mt-1" />
-                                <span>{t('aerocryptNative.ackCheckbox')}</span>
-                            </label>
-                            <button
-                                onClick={finalizeAfterKitAck}
-                                disabled={!kitAck}
-                                className="w-full px-4 py-2 bg-emerald-600 text-white rounded hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                                {t('aerocryptNative.confirmAndUnlock')}
-                            </button>
-                            <p className="text-[10px] text-gray-500">{t('aerocryptNative.ackHint')}</p>
-                        </div>
                     ) : (
                         <>
                             <div className="flex items-center gap-2 p-3 bg-green-50 dark:bg-green-900/30 rounded">
@@ -424,6 +408,35 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({ onClose, onUnl
                                     {t('aerocryptNative.versionLabel', { version: vaultInfo ? vaultInfo.version : (kitData?.version || 3) })}
                                 </span>
                             </div>
+
+                            {/* Recovery kit is OPTIONAL and non-blocking: shown only on
+                                demand, re-viewable and re-savable any time, never gating use. */}
+                            {kitData ? (
+                                <div className="space-y-2">
+                                    <div className="p-3 bg-amber-50 dark:bg-amber-900/30 border border-amber-300 dark:border-amber-700 rounded text-sm">
+                                        <div className="font-semibold text-amber-700 dark:text-amber-300 mb-1">{t('aerocryptNative.recoveryKitTitle')}</div>
+                                        <p className="text-gray-700 dark:text-gray-200 text-xs">
+                                            {t('aerocryptNative.recoveryKitIntro')}
+                                        </p>
+                                    </div>
+                                    <div className="bg-gray-50 dark:bg-gray-900 rounded p-2 text-xs font-mono whitespace-pre-wrap break-all max-h-48 overflow-auto">
+                                        {kitData.text}
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <button onClick={saveKitToFile} className="flex-1 px-3 py-1.5 text-sm rounded bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">{t('aerocryptNative.saveKit')}</button>
+                                        <button onClick={printKit} className="flex-1 px-3 py-1.5 text-sm rounded bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">{t('aerocryptNative.printKit')}</button>
+                                        <button onClick={() => setKitData(null)} className="px-3 py-1.5 text-sm rounded bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">{t('aerocryptNative.hideKit')}</button>
+                                    </div>
+                                </div>
+                            ) : (
+                                <button
+                                    onClick={showRecoveryKit}
+                                    className="w-full flex items-center justify-center gap-2 px-4 py-2 border border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300 rounded hover:bg-amber-50 dark:hover:bg-amber-900/30"
+                                >
+                                    <FileKey className="w-4 h-4" />
+                                    {t('aerocryptNative.showKit')}
+                                </button>
+                            )}
 
                             <button
                                 onClick={handleLock}

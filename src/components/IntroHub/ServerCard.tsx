@@ -280,7 +280,7 @@ export function ServerBadges({ server, cryptDetailed = false, peerState }: { ser
         const baseTitle = cryptIsRclone ? t('introHub.cryptBadge.rcloneTitle') : t('introHub.cryptBadge.aerocryptTitle');
         // Compact (card) keeps the cipher in the identity tooltip; detailed
         // (list) shows it on the dedicated strength badge instead.
-        const identityTitle = cryptDetailed ? baseTitle : `${cryptCipher} — ${baseTitle}`;
+        const identityTitle = cryptDetailed ? baseTitle : `${cryptCipher}: ${baseTitle}`;
         return (
             <div className="flex items-center gap-1">
                 <span

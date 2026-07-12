@@ -1520,7 +1520,8 @@
             "overlay_unlocked": "Salattu kerros avattu",
             "overlay_failed": "Salatun kerroksen avaaminen epäonnistui",
             "session_resumed": "Jatkettiin aktiivista istuntoa: {server}",
-            "connect_cancelled": "Käyttäjä peruutti: listaus pysäytetty, yhteys palvelimeen katkaistu"
+            "connect_cancelled": "Käyttäjä peruutti: listaus pysäytetty, yhteys palvelimeen katkaistu",
+            "overlay_locked": "Salattu peittokerros lukittu"
         },
         "protocol": {
             "selectProtocol": "Valitse protokolla...",
@@ -5002,17 +5003,16 @@
             "keyfileHint": "Valinnainen toinen tekijä, joka sekoitetaan salausavaimeen: peittokerros aukeaa vain salasanalla JA tällä tiedostolla. Varmuuskopioi avaintiedosto.",
             "keyfileChoose": "Valitse",
             "keyfileClear": "Poista avaintiedosto",
-            "emergencyKitTitle": "Hätäpakkaus (pakollinen palautusta varten)",
-            "emergencyKitIntro": "Tämä pakkaus sisältää vain julkisen määrityksen (vault ID, salt, KDF-parametrit). Säilytä se offline-tilassa yhdessä salasanasi kanssa. Se on ainoa tapa palauttaa otsikoton holvi paikallisen avainvaraston menettämisen jälkeen (uudelleenasennus tai uusi kone).",
             "vaultIdLabel": "Vault ID (base64)",
             "saltLabel": "Salt (base64)",
             "kdfLabel": "KDF-parametrit",
             "saveKit": "Tallenna pakkaus tiedostoon",
             "printKit": "Tulosta",
-            "ackCheckbox": "Olen tallentanut tai tulostanut tämän hätäpakkauksen ja ymmärrän, että se vaaditaan holvin palauttamiseen.",
-            "ackHint": "Vahvistus vaaditaan ennen kuin peittokuvaa voidaan käyttää.",
-            "confirmAndUnlock": "Vahvista pakkaus tallennettu - Luo ja avaa",
-            "kitRequiredError": "Sinun on vahvistettava hätäpakkauksen tallentaminen ennen kuin peittokuva on käytettävissä."
+            "recoveryKitTitle": "Palautuspaketti (valinnainen varmuuskopio)",
+            "recoveryKitIntro": "Valinnainen. Tämä paketti sisältää vain julkisen määrityksen (vault ID, salt, KDF-parametrit), ei koskaan salaisuuksia. Sen tallentaminen offline-tilassa yhdessä salasanan kanssa mahdollistaa otsikottoman holvin palauttamisen paikallisen avainsäilön menetyksen jälkeen (uudelleenasennus tai uusi kone). Voit avata ja tallentaa sen uudelleen milloin tahansa.",
+            "showKit": "Palautuspaketti",
+            "hideKit": "Sulje",
+            "kitUnavailable": "Palautuspaketti ei ole vielä käytettävissä tälle holville."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Salaus)",

@@ -1520,7 +1520,8 @@
             "overlay_unlocked": "Capa cifrada desbloqueada",
             "overlay_failed": "Non se puido desbloquear a capa cifrada",
             "session_resumed": "Sesión activa retomada con {server}",
-            "connect_cancelled": "Cancelado polo usuario: listaxe detida, desconectado do servidor"
+            "connect_cancelled": "Cancelado polo usuario: listaxe detida, desconectado do servidor",
+            "overlay_locked": "Capa cifrada bloqueada"
         },
         "protocol": {
             "selectProtocol": "Seleccionar protocolo...",
@@ -5021,17 +5022,16 @@
             "keyfileHint": "Segundo factor opcional mesturado na clave de cifrado: a superposición só se abre co contrasinal E este ficheiro. Faga unha copia de seguridade do ficheiro de clave.",
             "keyfileChoose": "Escoller",
             "keyfileClear": "Quitar o ficheiro de clave",
-            "emergencyKitTitle": "Kit de emerxencia (obrigatorio para a recuperación)",
-            "emergencyKitIntro": "Este kit contén só configuración pública (vault ID, salt, parámetros KDF). Gárdao sen conexión xunto co teu contrasinal. É a única forma de recuperar unha caixa forte sen cabeceira tras perder o almacén de claves local (reinstalación ou máquina nova).",
             "vaultIdLabel": "Vault ID (base64)",
             "saltLabel": "Salt (base64)",
             "kdfLabel": "Parámetros KDF",
             "saveKit": "Gardar o kit nun ficheiro",
             "printKit": "Imprimir",
-            "ackCheckbox": "Gardei ou imprimín este kit de emerxencia e entendo que é necesario para recuperar a caixa forte.",
-            "ackHint": "Requírese unha confirmación antes de poder usar a superposición.",
-            "confirmAndUnlock": "Confirmar kit gardado - Crear e desbloquear",
-            "kitRequiredError": "Debes confirmar que gardaches o kit de emerxencia antes de que a superposición sexa usable."
+            "recoveryKitTitle": "Kit de recuperación (copia de seguridade opcional)",
+            "recoveryKitIntro": "Opcional. Este kit só contén configuración pública (vault ID, salt, parámetros KDF), nunca segredos. Gardalo sen conexión xunto co teu contrasinal permíteche restaurar unha caixa forte sen cabeceira tras perder o almacén de claves local (reinstalación ou máquina nova). Podes reabrilo e gardalo de novo en calquera momento.",
+            "showKit": "Kit de recuperación",
+            "hideKit": "Pechar",
+            "kitUnavailable": "O kit de recuperación aínda non está dispoñible para esta caixa forte."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Cifrado)",
