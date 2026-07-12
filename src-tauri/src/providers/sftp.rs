@@ -1597,6 +1597,66 @@ impl StorageProvider for SftpProvider {
         Ok(data)
     }
 
+    async fn download_to_bytes_capped(
+        &mut self,
+        remote_path: &str,
+        max_bytes: u64,
+    ) -> Result<Vec<u8>, ProviderError> {
+        use tokio::io::AsyncReadExt;
+
+        let sftp = self.get_sftp()?;
+        let full_path = self.normalize_path(remote_path);
+
+        tracing::debug!(
+            "SFTP: Reading file to bytes (cap {} B): {}",
+            max_bytes,
+            full_path
+        );
+
+        // Honest servers get rejected up front. A server that under-reports
+        // `size` here is NOT trusted: the streaming loop below refuses before
+        // the buffer crosses `max_bytes`, so the lying body is never fully read.
+        if let Ok(metadata) = sftp.metadata(&full_path).await {
+            if metadata.size.unwrap_or(0) > max_bytes {
+                return Err(ProviderError::TransferFailed(format!(
+                    "File too large for in-memory download ({:.1} MB). Cap is {:.0} MB.",
+                    metadata.size.unwrap_or(0) as f64 / 1_048_576.0,
+                    max_bytes as f64 / 1_048_576.0,
+                )));
+            }
+        }
+
+        let mut remote_file = sftp.open(&full_path).await.map_err(|e| {
+            classify_russh_err(e, |s| {
+                ProviderError::TransferFailed(format!("Failed to open remote file: {}", s))
+            })
+        })?;
+
+        // Bound the accumulator to `max_bytes`: refuse a chunk that would push
+        // it over the cap instead of `read`-ing the whole file into memory.
+        let mut data: Vec<u8> = Vec::new();
+        let mut buffer = vec![0u8; self.buffer_size.max(4096)];
+        loop {
+            let bytes_read = remote_file.read(&mut buffer).await.map_err(|e| {
+                classify_russh_err(e, |s| {
+                    ProviderError::TransferFailed(format!("Read error: {}", s))
+                })
+            })?;
+            if bytes_read == 0 {
+                break;
+            }
+            if data.len() as u64 + bytes_read as u64 > max_bytes {
+                return Err(ProviderError::TransferFailed(format!(
+                    "Download exceeded the {:.0} MB cap (server under-reported size). Use streaming download for larger files.",
+                    max_bytes as f64 / 1_048_576.0,
+                )));
+            }
+            data.extend_from_slice(&buffer[..bytes_read]);
+        }
+
+        Ok(data)
+    }
+
     async fn upload(
         &mut self,
         local_path: &str,

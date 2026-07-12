@@ -33,6 +33,27 @@ pub trait RemoteBackend: Send + Sync {
     /// Download a file to bytes (with 50MB guard).
     async fn download_to_bytes(&self, path: &str) -> Result<Vec<u8>, String>;
 
+    /// Download a file to bytes, refusing before the buffer would exceed
+    /// `max_bytes`. The `edit` tool uses this with a 10 MB cap so an oversized
+    /// (or size-lying) file is rejected mid-stream, not after a full in-memory
+    /// download through the general 500 MB path. The default is a safe fallback
+    /// (full read, then cap-check); the real backends override it to route
+    /// through the provider's streaming-capped download.
+    async fn download_to_bytes_capped(
+        &self,
+        path: &str,
+        max_bytes: u64,
+    ) -> Result<Vec<u8>, String> {
+        let data = self.download_to_bytes(path).await?;
+        if data.len() as u64 > max_bytes {
+            return Err(format!(
+                "Download exceeded the {:.0} MB cap.",
+                max_bytes as f64 / 1_048_576.0,
+            ));
+        }
+        Ok(data)
+    }
+
     /// Upload bytes to remote path.
     async fn upload_from_bytes(&self, data: &[u8], path: &str) -> Result<(), String>;
 

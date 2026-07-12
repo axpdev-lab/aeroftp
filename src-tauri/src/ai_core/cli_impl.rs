@@ -381,6 +381,18 @@ impl RemoteBackend for CliRemoteBackend {
         p.download_to_bytes(path).await.map_err(|e| e.to_string())
     }
 
+    async fn download_to_bytes_capped(
+        &self,
+        path: &str,
+        max_bytes: u64,
+    ) -> Result<Vec<u8>, String> {
+        let mut guard = self.provider.lock().await;
+        let p = guard.as_mut().ok_or("Not connected")?;
+        p.download_to_bytes_capped(path, max_bytes)
+            .await
+            .map_err(|e| e.to_string())
+    }
+
     async fn upload_from_bytes(&self, data: &[u8], path: &str) -> Result<(), String> {
         let mut guard = self.provider.lock().await;
         let p = guard.as_mut().ok_or("Not connected")?;

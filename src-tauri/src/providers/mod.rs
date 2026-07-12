@@ -503,6 +503,30 @@ pub trait StorageProvider: Send + Sync {
     /// Download a file to memory (returns bytes)
     async fn download_to_bytes(&mut self, remote_path: &str) -> Result<Vec<u8>, ProviderError>;
 
+    /// Download a file to memory, refusing before the in-memory buffer would
+    /// exceed `max_bytes`. Small-cap callers (the MCP/CLI `edit` tool caps at
+    /// 10 MB) use this so a server that under-reports its size cannot force a
+    /// full materialization up to the general 500 MB `download_to_bytes` limit.
+    ///
+    /// The default here is a safe fallback: it performs the full read and then
+    /// enforces the cap. Streaming-capable providers (SFTP, HTTP) override it to
+    /// stop reading as soon as the accumulated bytes would exceed `max_bytes`,
+    /// so the oversized body is never fully held in memory.
+    async fn download_to_bytes_capped(
+        &mut self,
+        remote_path: &str,
+        max_bytes: u64,
+    ) -> Result<Vec<u8>, ProviderError> {
+        let data = self.download_to_bytes(remote_path).await?;
+        if data.len() as u64 > max_bytes {
+            return Err(ProviderError::TransferFailed(format!(
+                "Download exceeded the {:.0} MB cap.",
+                max_bytes as f64 / 1_048_576.0,
+            )));
+        }
+        Ok(data)
+    }
+
     /// Upload a file from local path
     async fn upload(
         &mut self,

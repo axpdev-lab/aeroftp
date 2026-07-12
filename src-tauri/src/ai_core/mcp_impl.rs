@@ -229,6 +229,18 @@ impl RemoteBackend for McpRemoteBackend {
             .await
     }
 
+    async fn download_to_bytes_capped(
+        &self,
+        path: &str,
+        max_bytes: u64,
+    ) -> Result<Vec<u8>, String> {
+        let path = path.to_string();
+        self.with_provider(move |p| {
+            Box::pin(async move { p.download_to_bytes_capped(&path, max_bytes).await })
+        })
+        .await
+    }
+
     async fn upload_from_bytes(&self, data: &[u8], path: &str) -> Result<(), String> {
         use std::io::Write;
 

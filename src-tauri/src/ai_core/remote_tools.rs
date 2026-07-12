@@ -1096,10 +1096,15 @@ async fn edit(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
     let entry = backend.stat(&path).await.map_err(ToolError::Exec)?;
     reject_uneditable_entry(&entry)?;
 
+    // Capped, streaming download: the backend refuses mid-read once the buffer
+    // would cross MAX_EDIT_BYTES, so a server that under-reports its size in
+    // `stat` cannot force a full 500 MB in-memory materialization here.
     let data = backend
-        .download_to_bytes(&path)
+        .download_to_bytes_capped(&path, MAX_EDIT_BYTES)
         .await
         .map_err(ToolError::Exec)?;
+    // Backstop for any backend that ignores the cap (default fallbacks read
+    // fully): reject before we allocate the String / parse UTF-8.
     reject_oversize_edit_download(data.len())?;
     let original = match String::from_utf8(data) {
         Ok(s) => s,
@@ -3186,6 +3191,10 @@ mod tests {
         /// path -> (is_dir, size)
         stats: std::collections::HashMap<String, (bool, u64)>,
         downloads: std::collections::HashMap<String, Vec<u8>>,
+        /// High-water mark of bytes materialized by the last
+        /// `download_to_bytes_capped` call, so a test can prove the streaming
+        /// cap never held the full (size-lying) body in memory.
+        capped_high_water: Mutex<usize>,
         remote_files: Mutex<std::collections::HashMap<String, Vec<u8>>>,
         uploads: Mutex<Vec<(String, Vec<u8>)>>,
         renames: Mutex<Vec<(String, String)>>,
@@ -3224,6 +3233,7 @@ mod tests {
                 tree,
                 stats,
                 downloads: std::collections::HashMap::new(),
+                capped_high_water: Mutex::new(0),
                 remote_files: Mutex::new(std::collections::HashMap::new()),
                 uploads: Mutex::new(Vec::new()),
                 renames: Mutex::new(Vec::new()),
@@ -3263,6 +3273,34 @@ mod tests {
                 .get(_path)
                 .cloned()
                 .ok_or_else(|| format!("unused download: {_path}"))
+        }
+        async fn download_to_bytes_capped(
+            &self,
+            path: &str,
+            max_bytes: u64,
+        ) -> Result<Vec<u8>, String> {
+            // Simulate a streaming reader: append fixed-size chunks and refuse
+            // BEFORE the accumulator would cross `max_bytes`, exactly like the
+            // real SFTP override. Record the high-water mark so a test can prove
+            // the full (size-lying) body was never materialized.
+            const CHUNK: usize = 64 * 1024;
+            let full = self
+                .downloads
+                .get(path)
+                .ok_or_else(|| format!("unused download: {path}"))?;
+            let mut data: Vec<u8> = Vec::new();
+            for chunk in full.chunks(CHUNK) {
+                if data.len() as u64 + chunk.len() as u64 > max_bytes {
+                    *self.capped_high_water.lock().unwrap() = data.len();
+                    return Err(format!(
+                        "Download exceeded the {:.0} MB cap.",
+                        max_bytes as f64 / 1_048_576.0,
+                    ));
+                }
+                data.extend_from_slice(chunk);
+            }
+            *self.capped_high_water.lock().unwrap() = data.len();
+            Ok(data)
         }
         async fn upload_from_bytes(&self, data: &[u8], path: &str) -> Result<(), String> {
             self.uploads
@@ -3452,7 +3490,52 @@ mod tests {
         .await
         .unwrap_err();
         let msg = err.to_string();
-        assert!(msg.contains("exceeded the edit limit"), "got: {msg}");
+        // The streaming cap now refuses mid-read; the message names the 10 MB cap.
+        assert!(msg.contains("cap") && msg.contains("10 MB"), "got: {msg}");
+        assert!(backend.uploads.lock().unwrap().is_empty());
+    }
+
+    /// Proves the edit download is a TRUE streaming cap: given a server that
+    /// lies (`stat` says 3 B) but serves a body far past the 10 MB edit cap,
+    /// edit must refuse WITHOUT ever materializing the full body in memory.
+    #[tokio::test]
+    async fn edit_streaming_cap_never_materializes_lying_body() {
+        let mut fake = FakeBackend::sample();
+        // Server under-reports: stat claims 3 bytes...
+        fake.stats.insert("/root/lie.txt".to_string(), (false, 3));
+        // ...but the real body is 15 MB, well past the 10 MB edit cap.
+        let real_size = (MAX_EDIT_BYTES + 5 * 1024 * 1024) as usize;
+        fake.downloads
+            .insert("/root/lie.txt".to_string(), vec![b'a'; real_size]);
+        let backend = Arc::new(fake);
+        let ctx = test_ctx(Arc::clone(&backend));
+
+        let err = edit(
+            &ctx,
+            &json!({
+                "server": "s",
+                "path": "/root/lie.txt",
+                "find": "a",
+                "replace": "b",
+            }),
+        )
+        .await
+        .unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("cap") && msg.contains("10 MB"), "got: {msg}");
+
+        // The core guarantee: the accumulator never held the full 15 MB body.
+        // It stops within one chunk of the cap, never near `real_size`.
+        let high_water = *backend.capped_high_water.lock().unwrap();
+        assert!(
+            (high_water as u64) <= MAX_EDIT_BYTES,
+            "materialized {high_water} bytes, above the {MAX_EDIT_BYTES}-byte cap"
+        );
+        assert!(
+            high_water < real_size,
+            "the full lying body was materialized ({high_water} of {real_size} bytes)"
+        );
+        // Nothing was uploaded: the edit aborted before touching the remote.
         assert!(backend.uploads.lock().unwrap().is_empty());
     }
 

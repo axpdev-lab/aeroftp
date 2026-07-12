@@ -396,6 +396,44 @@ impl RemoteBackend for TauriRemoteBackend {
         }
     }
 
+    async fn download_to_bytes_capped(
+        &self,
+        path: &str,
+        max_bytes: u64,
+    ) -> Result<Vec<u8>, String> {
+        match self {
+            TauriRemoteBackend::Active { app } => {
+                if let Some(ref mut p) = *Self::active_provider(app).lock().await {
+                    return p
+                        .download_to_bytes_capped(path, max_bytes)
+                        .await
+                        .map_err(|e| e.to_string());
+                }
+                // Legacy FTP-manager fallback has no streaming-capped read;
+                // enforce the cap after the read so the limit is still honest.
+                let app_state = app.state::<AppState>();
+                let mut mgr = app_state.ftp_manager.lock().await;
+                let data = mgr
+                    .download_to_bytes(path)
+                    .await
+                    .map_err(|e| e.to_string())?;
+                if data.len() as u64 > max_bytes {
+                    return Err(format!(
+                        "Download exceeded the {:.0} MB cap.",
+                        max_bytes as f64 / 1_048_576.0,
+                    ));
+                }
+                Ok(data)
+            }
+            TauriRemoteBackend::Temp { provider } => provider
+                .lock()
+                .await
+                .download_to_bytes_capped(path, max_bytes)
+                .await
+                .map_err(|e| e.to_string()),
+        }
+    }
+
     async fn upload_from_bytes(&self, data: &[u8], path: &str) -> Result<(), String> {
         match self {
             TauriRemoteBackend::Active { app } => {
