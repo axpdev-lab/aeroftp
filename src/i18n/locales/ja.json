@@ -5002,17 +5002,16 @@
             "keyfileHint": "暗号鍵に混合される任意の第2要素: オーバーレイはパスワードとこのファイルの両方でのみ開きます。キーファイルをバックアップしてください。",
             "keyfileChoose": "選択",
             "keyfileClear": "キーファイルを外す",
-            "emergencyKitTitle": "緊急キット（復旧に必須）",
-            "emergencyKitIntro": "このキットには公開設定のみが含まれます（vault ID、salt、KDF パラメータ）。パスワードと一緒にオフラインで保管してください。ローカルのキーストアを失った後（再インストールや新しいマシン）に、ヘッダーのないボルトを復旧する唯一の方法です。",
             "vaultIdLabel": "Vault ID（base64）",
             "saltLabel": "Salt（base64）",
             "kdfLabel": "KDF パラメータ",
             "saveKit": "キットをファイルに保存",
             "printKit": "印刷",
-            "ackCheckbox": "この緊急キットを保存または印刷し、ボルトの復旧に必要であることを理解しました。",
-            "ackHint": "オーバーレイを使用する前に確認が必要です。",
-            "confirmAndUnlock": "キット保存を確認 - 作成してロック解除",
-            "kitRequiredError": "オーバーレイを使用可能にする前に、緊急キットを保存したことを確認する必要があります。"
+            "recoveryKitTitle": "リカバリキット（任意のバックアップ）",
+            "recoveryKitIntro": "任意です。このキットには公開設定（vault ID、salt、KDF パラメータ）のみが含まれ、秘密情報は一切含まれません。パスワードと一緒にオフラインで保存しておくと、ローカルのキーストアを失った後（再インストールや新しいマシン）でもヘッダーレスのボルトを復元できます。いつでも再度開いて保存できます。",
+            "showKit": "リカバリキット",
+            "hideKit": "閉じる",
+            "kitUnavailable": "このボルトのリカバリキットはまだ利用できません。"
         },
         "aerocryptProfile": {
             "enable": "Crypt (暗号化)",

@@ -5002,17 +5002,16 @@
             "keyfileHint": "Segundo fator opcional misturado na chave de cifragem: a sobreposição só abre com a palavra-passe E este ficheiro. Faça uma cópia de segurança do ficheiro de chave.",
             "keyfileChoose": "Escolher",
             "keyfileClear": "Remover ficheiro de chave",
-            "emergencyKitTitle": "Kit de emergência (obrigatório para a recuperação)",
-            "emergencyKitIntro": "Este kit contém apenas configuração pública (vault ID, salt, parâmetros KDF). Guarde-o offline junto com a sua senha. É a única forma de recuperar um cofre sem cabeçalho após perder o armazenamento de chaves local (reinstalação ou nova máquina).",
             "vaultIdLabel": "Vault ID (base64)",
             "saltLabel": "Salt (base64)",
             "kdfLabel": "Parâmetros KDF",
             "saveKit": "Salvar kit em arquivo",
             "printKit": "Imprimir",
-            "ackCheckbox": "Salvei ou imprimi este kit de emergência e entendo que ele é necessário para recuperar o cofre.",
-            "ackHint": "A confirmação é necessária antes que a sobreposição possa ser usada.",
-            "confirmAndUnlock": "Confirmar kit salvo - Criar e desbloquear",
-            "kitRequiredError": "Você deve confirmar que salvou o kit de emergência antes que a sobreposição possa ser usada."
+            "recoveryKitTitle": "Kit de recuperação (backup opcional)",
+            "recoveryKitIntro": "Opcional. Este kit contém apenas configuração pública (vault ID, salt, parâmetros KDF), nunca segredos. Guardá-lo offline junto com a sua palavra-passe permite restaurar um cofre sem cabeçalho após perder o armazenamento de chaves local (reinstalação ou máquina nova). Pode reabri-lo e guardá-lo novamente a qualquer momento.",
+            "showKit": "Kit de recuperação",
+            "hideKit": "Fechar",
+            "kitUnavailable": "O kit de recuperação ainda não está disponível para este cofre."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Encriptação)",

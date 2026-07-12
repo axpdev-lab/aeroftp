@@ -5002,17 +5002,16 @@
             "keyfileHint": "Al doilea factor opțional amestecat în cheia de criptare: suprapunerea se deschide doar cu parola ȘI acest fișier. Faceți o copie de rezervă a fișierului de cheie.",
             "keyfileChoose": "Alege",
             "keyfileClear": "Elimină fișierul de cheie",
-            "emergencyKitTitle": "Kit de urgență (obligatoriu pentru recuperare)",
-            "emergencyKitIntro": "Acest kit conține doar configurația publică (vault ID, salt, parametri KDF). Păstrați-l offline împreună cu parola. Este singura modalitate de a recupera un seif fără antet după pierderea depozitului local de chei (reinstalare sau mașină nouă).",
             "vaultIdLabel": "Vault ID (base64)",
             "saltLabel": "Salt (base64)",
             "kdfLabel": "Parametri KDF",
             "saveKit": "Salvează kitul într-un fișier",
             "printKit": "Tipărește",
-            "ackCheckbox": "Am salvat sau tipărit acest kit de urgență și înțeleg că este necesar pentru recuperarea seifului.",
-            "ackHint": "Confirmarea este necesară înainte ca suprapunerea să poată fi utilizată.",
-            "confirmAndUnlock": "Confirmă kitul salvat - Creează și deblochează",
-            "kitRequiredError": "Trebuie să confirmați salvarea kitului de urgență înainte ca suprapunerea să poată fi utilizată."
+            "recoveryKitTitle": "Kit de recuperare (backup opțional)",
+            "recoveryKitIntro": "Opțional. Acest kit conține doar configurație publică (vault ID, salt, parametri KDF), niciodată secrete. Salvarea sa offline împreună cu parola vă permite să restaurați un seif fără antet după pierderea depozitului de chei local (reinstalare sau mașină nouă). Îl puteți redeschide și salva din nou oricând.",
+            "showKit": "Kit de recuperare",
+            "hideKit": "Închide",
+            "kitUnavailable": "Kitul de recuperare nu este încă disponibil pentru acest seif."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Criptare)",

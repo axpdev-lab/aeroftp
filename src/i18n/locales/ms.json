@@ -5002,17 +5002,16 @@
             "keyfileHint": "Faktor kedua pilihan yang dicampur ke dalam kunci penyulitan: tindanan hanya dibuka dengan kata laluan DAN fail ini. Sandarkan fail kunci.",
             "keyfileChoose": "Pilih",
             "keyfileClear": "Buang fail kunci",
-            "emergencyKitTitle": "Kit Kecemasan (wajib untuk pemulihan)",
-            "emergencyKitIntro": "Kit ini hanya mengandungi konfigurasi awam (vault ID, salt, parameter KDF). Simpan ia luar talian bersama kata laluan anda. Ia adalah satu-satunya cara untuk memulihkan bilik kebal tanpa pengepala selepas kehilangan simpanan kunci tempatan (pasang semula atau mesin baharu).",
             "vaultIdLabel": "Vault ID (base64)",
             "saltLabel": "Salt (base64)",
             "kdfLabel": "Parameter KDF",
             "saveKit": "Simpan kit ke fail",
             "printKit": "Cetak",
-            "ackCheckbox": "Saya telah menyimpan atau mencetak Kit Kecemasan ini dan memahami bahawa ia diperlukan untuk memulihkan bilik kebal.",
-            "ackHint": "Pengesahan diperlukan sebelum tindanan boleh digunakan.",
-            "confirmAndUnlock": "Sahkan kit disimpan - Cipta dan buka kunci",
-            "kitRequiredError": "Anda mesti mengesahkan penyimpanan Kit Kecemasan sebelum tindanan boleh digunakan."
+            "recoveryKitTitle": "Kit pemulihan (sandaran pilihan)",
+            "recoveryKitIntro": "Pilihan. Kit ini hanya mengandungi konfigurasi awam (vault ID, salt, parameter KDF), tidak sekali-kali rahsia. Menyimpannya di luar talian bersama kata laluan anda membolehkan anda memulihkan bilik kebal tanpa pengepala selepas kehilangan stor kunci setempat (pasang semula atau mesin baharu). Anda boleh membukanya semula dan menyimpannya pada bila-bila masa.",
+            "showKit": "Kit pemulihan",
+            "hideKit": "Tutup",
+            "kitUnavailable": "Kit pemulihan belum tersedia untuk bilik kebal ini lagi."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Penyulitan)",

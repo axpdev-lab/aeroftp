@@ -5021,17 +5021,16 @@
             "keyfileHint": "Valgfri andre faktor blandet inn i krypteringsnøkkelen: overlegget åpner kun med passordet OG denne filen. Ta sikkerhetskopi av nøkkelfilen.",
             "keyfileChoose": "Velg",
             "keyfileClear": "Fjern nøkkelfil",
-            "emergencyKitTitle": "Nødsett (obligatorisk for gjenoppretting)",
-            "emergencyKitIntro": "Dette settet inneholder kun offentlig konfigurasjon (vault ID, salt, KDF-parametere). Oppbevar det frakoblet sammen med passordet ditt. Det er den eneste måten å gjenopprette et hvelv uten header etter tap av det lokale nøkkellageret (ominstallering eller ny maskin).",
             "vaultIdLabel": "Vault ID (base64)",
             "saltLabel": "Salt (base64)",
             "kdfLabel": "KDF-parametere",
             "saveKit": "Lagre sett til fil",
             "printKit": "Skriv ut",
-            "ackCheckbox": "Jeg har lagret eller skrevet ut dette nødsettet og forstår at det kreves for å gjenopprette hvelvet.",
-            "ackHint": "Bekreftelse kreves før overlegget kan brukes.",
-            "confirmAndUnlock": "Bekreft sett lagret - Opprett og lås opp",
-            "kitRequiredError": "Du må bekrefte at nødsettet er lagret før overlegget kan brukes."
+            "recoveryKitTitle": "Gjenopprettingssett (valgfri sikkerhetskopi)",
+            "recoveryKitIntro": "Valgfritt. Dette settet inneholder kun offentlig konfigurasjon (vault ID, salt, KDF-parametere), aldri hemmeligheter. Ved å lagre det frakoblet sammen med passordet ditt kan du gjenopprette et hvelv uten header etter tap av det lokale nøkkellageret (reinstallasjon eller ny maskin). Du kan åpne og lagre det på nytt når som helst.",
+            "showKit": "Gjenopprettingssett",
+            "hideKit": "Lukk",
+            "kitUnavailable": "Gjenopprettingssettet er ennå ikke tilgjengelig for dette hvelvet."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Kryptering)",

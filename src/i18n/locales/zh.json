@@ -5002,17 +5002,16 @@
             "keyfileHint": "混入加密密钥的可选第二因子: 叠加层只有同时提供密码和此文件才能打开。请备份密钥文件。",
             "keyfileChoose": "选择",
             "keyfileClear": "移除密钥文件",
-            "emergencyKitTitle": "应急工具包（恢复必备）",
-            "emergencyKitIntro": "此工具包仅包含公开配置（vault ID、salt、KDF 参数）。请将其与密码一起离线保存。这是在丢失本地密钥库（重装或更换设备）后恢复无头保险库的唯一方法。",
             "vaultIdLabel": "Vault ID（base64）",
             "saltLabel": "Salt（base64）",
             "kdfLabel": "KDF 参数",
             "saveKit": "将工具包保存到文件",
             "printKit": "打印",
-            "ackCheckbox": "我已保存或打印此应急工具包，并了解它是恢复保险库所必需的。",
-            "ackHint": "使用叠加层之前需要确认。",
-            "confirmAndUnlock": "确认已保存工具包 - 创建并解锁",
-            "kitRequiredError": "在叠加层可用之前，您必须确认已保存应急工具包。"
+            "recoveryKitTitle": "恢复套件（可选备份）",
+            "recoveryKitIntro": "可选。此套件仅包含公开配置（vault ID、salt、KDF 参数），绝不包含任何机密信息。将其与密码一起离线保存，可让您在丢失本地密钥库后（重新安装或更换新设备）恢复无头保险库。您可以随时重新打开并再次保存。",
+            "showKit": "恢复套件",
+            "hideKit": "关闭",
+            "kitUnavailable": "此保险库的恢复套件尚不可用。"
         },
         "aerocryptProfile": {
             "enable": "Crypt (加密)",

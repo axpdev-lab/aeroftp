@@ -5002,17 +5002,16 @@
             "keyfileHint": "Kipengele cha pili cha hiari kinachochanganywa katika ufunguo wa usimbaji: tabaka hufunguka tu kwa nenosiri NA faili hii. Hifadhi nakala ya faili ya ufunguo.",
             "keyfileChoose": "Chagua",
             "keyfileClear": "Ondoa faili ya ufunguo",
-            "emergencyKitTitle": "Kifurushi cha Dharura (lazima kwa urejeshaji)",
-            "emergencyKitIntro": "Kifurushi hiki kina usanidi wa umma pekee (vault ID, salt, vigezo vya KDF). Kihifadhi nje ya mtandao pamoja na nenosiri lako. Ndio njia pekee ya kurejesha hazina isiyo na kichwa baada ya kupoteza hifadhi ya funguo za ndani (kusakinisha upya au mashine mpya).",
             "vaultIdLabel": "Vault ID (base64)",
             "saltLabel": "Salt (base64)",
             "kdfLabel": "Vigezo vya KDF",
             "saveKit": "Hifadhi kifurushi kwenye faili",
             "printKit": "Chapisha",
-            "ackCheckbox": "Nimehifadhi au kuchapisha Kifurushi hiki cha Dharura na ninaelewa kuwa kinahitajika kurejesha hazina.",
-            "ackHint": "Uthibitisho unahitajika kabla ya kutumia kifuniko.",
-            "confirmAndUnlock": "Thibitisha kifurushi kimehifadhiwa - Unda na fungua",
-            "kitRequiredError": "Lazima uthibitishe kuhifadhi Kifurushi cha Dharura kabla kifuniko hakijaweza kutumika."
+            "recoveryKitTitle": "Kifurushi cha kurejesha (nakala rudufu ya hiari)",
+            "recoveryKitIntro": "Ya hiari. Kifurushi hiki kina usanidi wa umma pekee (vault ID, salt, vigezo vya KDF), kamwe si siri. Kukihifadhi nje ya mtandao pamoja na nenosiri lako hukuwezesha kurejesha hazina isiyo na kichwa baada ya kupoteza hifadhi ya funguo za ndani (kusakinisha upya au mashine mpya). Unaweza kukifungua na kukihifadhi tena wakati wowote.",
+            "showKit": "Kifurushi cha kurejesha",
+            "hideKit": "Funga",
+            "kitUnavailable": "Kifurushi cha kurejesha bado hakipatikani kwa hazina hii."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Usimbaji fiche)",

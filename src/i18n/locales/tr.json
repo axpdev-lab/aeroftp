@@ -5002,17 +5002,16 @@
             "keyfileHint": "Şifreleme anahtarına karıştırılan isteğe bağlı ikinci faktör: katman yalnızca parola VE bu dosya ile açılır. Anahtar dosyasını yedekleyin.",
             "keyfileChoose": "Seç",
             "keyfileClear": "Anahtar dosyasını kaldır",
-            "emergencyKitTitle": "Acil Durum Kiti (kurtarma için zorunlu)",
-            "emergencyKitIntro": "Bu kit yalnızca genel yapılandırmayı içerir (vault ID, salt, KDF parametreleri). Parolanızla birlikte çevrimdışı saklayın. Yerel anahtar deposunu kaybettikten sonra (yeniden kurulum veya yeni makine) başlıksız bir kasayı kurtarmanın tek yoludur.",
             "vaultIdLabel": "Vault ID (base64)",
             "saltLabel": "Salt (base64)",
             "kdfLabel": "KDF parametreleri",
             "saveKit": "Kiti dosyaya kaydet",
             "printKit": "Yazdır",
-            "ackCheckbox": "Bu Acil Durum Kitini kaydettim veya yazdırdım ve kasayı kurtarmak için gerekli olduğunu anlıyorum.",
-            "ackHint": "Yer paylaşımı kullanılabilmeden önce onay gereklidir.",
-            "confirmAndUnlock": "Kitin kaydedildiğini onayla - Oluştur ve kilidi aç",
-            "kitRequiredError": "Yer paylaşımı kullanılabilir hale gelmeden önce Acil Durum Kitini kaydettiğinizi onaylamanız gerekir."
+            "recoveryKitTitle": "Kurtarma kiti (isteğe bağlı yedek)",
+            "recoveryKitIntro": "İsteğe bağlı. Bu kit yalnızca genel yapılandırma (vault ID, salt, KDF parametreleri) içerir, asla gizli bilgiler içermez. Onu parolanızla birlikte çevrimdışı olarak kaydetmek, yerel anahtar deposunu kaybettikten sonra (yeniden kurulum veya yeni makine) başlıksız bir kasayı geri yüklemenizi sağlar. İstediğiniz zaman yeniden açıp kaydedebilirsiniz.",
+            "showKit": "Kurtarma kiti",
+            "hideKit": "Kapat",
+            "kitUnavailable": "Kurtarma kiti bu kasa için henüz kullanılamıyor."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Şifreleme)",

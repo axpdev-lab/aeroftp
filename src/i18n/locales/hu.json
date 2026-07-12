@@ -5002,17 +5002,16 @@
             "keyfileHint": "A titkosítási kulcsba kevert opcionális második faktor: a fedvény csak a jelszóval ÉS ezzel a fájllal nyílik. Készítsen biztonsági másolatot a kulcsfájlról.",
             "keyfileChoose": "Kiválasztás",
             "keyfileClear": "Kulcsfájl eltávolítása",
-            "emergencyKitTitle": "Vészhelyzeti csomag (helyreállításhoz kötelező)",
-            "emergencyKitIntro": "Ez a csomag csak nyilvános konfigurációt tartalmaz (vault ID, salt, KDF paraméterek). Tárolja offline a jelszavával együtt. Ez az egyetlen módja egy fejléc nélküli széf helyreállításának a helyi kulcstároló elvesztése után (újratelepítés vagy új gép).",
             "vaultIdLabel": "Vault ID (base64)",
             "saltLabel": "Salt (base64)",
             "kdfLabel": "KDF paraméterek",
             "saveKit": "Csomag mentése fájlba",
             "printKit": "Nyomtatás",
-            "ackCheckbox": "Elmentettem vagy kinyomtattam ezt a vészhelyzeti csomagot, és tudom, hogy szükséges a széf helyreállításához.",
-            "ackHint": "A megerősítés kötelező, mielőtt az átfedés használható lenne.",
-            "confirmAndUnlock": "Csomag mentésének megerősítése - Létrehozás és feloldás",
-            "kitRequiredError": "Meg kell erősítenie a vészhelyzeti csomag mentését, mielőtt az átfedés használhatóvá válik."
+            "recoveryKitTitle": "Helyreállítási készlet (opcionális biztonsági mentés)",
+            "recoveryKitIntro": "Opcionális. Ez a készlet csak nyilvános konfigurációt tartalmaz (vault ID, salt, KDF paraméterek), soha nem titkokat. Ha offline elmenti a jelszavával együtt, akkor a helyi kulcstároló elvesztése után (újratelepítés vagy új gép) visszaállíthat egy fejléc nélküli széfet. Bármikor újra megnyithatja és elmentheti.",
+            "showKit": "Helyreállítási készlet",
+            "hideKit": "Bezárás",
+            "kitUnavailable": "A helyreállítási készlet még nem érhető el ehhez a széfhez."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Titkosítás)",

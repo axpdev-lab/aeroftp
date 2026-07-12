@@ -5002,17 +5002,16 @@
             "keyfileHint": "Voliteľný druhý faktor primiešaný do šifrovacieho kľúča: prekrytie sa otvorí iba s heslom A týmto súborom. Súbor kľúča si zálohujte.",
             "keyfileChoose": "Vybrať",
             "keyfileClear": "Odstrániť súbor kľúča",
-            "emergencyKitTitle": "Núdzová sada (povinná na obnovu)",
-            "emergencyKitIntro": "Táto sada obsahuje iba verejnú konfiguráciu (vault ID, salt, parametre KDF). Uložte ju offline spolu s heslom. Je to jediný spôsob, ako obnoviť trezor bez hlavičky po strate lokálneho úložiska kľúčov (preinštalovanie alebo nový počítač).",
             "vaultIdLabel": "Vault ID (base64)",
             "saltLabel": "Salt (base64)",
             "kdfLabel": "Parametre KDF",
             "saveKit": "Uložiť sadu do súboru",
             "printKit": "Tlačiť",
-            "ackCheckbox": "Uložil(a) alebo vytlačil(a) som túto núdzovú sadu a chápem, že je potrebná na obnovu trezoru.",
-            "ackHint": "Pred použitím prekrytia sa vyžaduje potvrdenie.",
-            "confirmAndUnlock": "Potvrdiť uloženie sady - Vytvoriť a odomknúť",
-            "kitRequiredError": "Pred použitím prekrytia musíte potvrdiť uloženie núdzovej sady."
+            "recoveryKitTitle": "Súprava na obnovenie (voliteľná záloha)",
+            "recoveryKitIntro": "Voliteľné. Táto súprava obsahuje iba verejnú konfiguráciu (vault ID, salt, parametre KDF), nikdy tajomstvá. Jej uloženie offline spolu s heslom vám umožňuje obnoviť trezor bez hlavičky po strate lokálneho úložiska kľúčov (preinštalovanie alebo nový počítač). Kedykoľvek ju môžete znova otvoriť a uložiť.",
+            "showKit": "Súprava na obnovenie",
+            "hideKit": "Zavrieť",
+            "kitUnavailable": "Súprava na obnovenie zatiaľ nie je pre tento trezor k dispozícii."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Šifrovanie)",

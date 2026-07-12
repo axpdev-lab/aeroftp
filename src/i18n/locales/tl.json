@@ -5021,17 +5021,16 @@
             "keyfileHint": "Opsyonal na pangalawang factor na hinahalo sa encryption key: bubukas lang ang overlay gamit ang password AT ang file na ito. Mag-backup ng keyfile.",
             "keyfileChoose": "Pumili",
             "keyfileClear": "Alisin ang keyfile",
-            "emergencyKitTitle": "Emergency Kit (kinakailangan para sa pagbawi)",
-            "emergencyKitIntro": "Ang kit na ito ay naglalaman lamang ng pampublikong configuration (vault ID, salt, mga parameter ng KDF). Itago ito offline kasama ng iyong password. Ito lamang ang paraan upang mabawi ang isang vault na walang header pagkatapos mawala ang lokal na keystore (muling pag-install o bagong makina).",
             "vaultIdLabel": "Vault ID (base64)",
             "saltLabel": "Salt (base64)",
             "kdfLabel": "Mga parameter ng KDF",
             "saveKit": "I-save ang kit sa file",
             "printKit": "I-print",
-            "ackCheckbox": "Na-save o na-print ko ang Emergency Kit na ito at nauunawaan kong kinakailangan ito upang mabawi ang vault.",
-            "ackHint": "Kinakailangan ang pagkilala bago magamit ang overlay.",
-            "confirmAndUnlock": "Kumpirmahin na na-save ang kit - Gumawa at i-unlock",
-            "kitRequiredError": "Dapat mong kilalanin ang pag-save ng Emergency Kit bago magamit ang overlay."
+            "recoveryKitTitle": "Recovery kit (opsyonal na backup)",
+            "recoveryKitIntro": "Opsyonal. Ang kit na ito ay naglalaman lamang ng pampublikong configuration (vault ID, salt, mga parameter ng KDF), hindi kailanman mga sikreto. Ang pag-save nito offline kasama ang iyong password ay nagbibigay-daan sa iyong ibalik ang isang vault na walang header pagkatapos mawala ang lokal na keystore (muling pag-install o bagong makina). Maaari mo itong muling buksan at i-save anumang oras.",
+            "showKit": "Recovery kit",
+            "hideKit": "Isara",
+            "kitUnavailable": "Hindi pa available ang recovery kit para sa vault na ito."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Pag-encrypt)",
