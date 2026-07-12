@@ -13,7 +13,7 @@ import {
 
 describe('formatLossKind', () => {
   it('marks pixel-exact containers as lossless', () => {
-    for (const f of ['png', 'PNG', 'webp', 'bmp', 'tiff']) {
+    for (const f of ['png', 'PNG', 'webp', 'bmp', 'tiff', 'tif', 'TIF']) {
       expect(formatLossKind(f)).toBe('lossless');
     }
   });
@@ -70,6 +70,8 @@ describe('isLossyReencode', () => {
   it('does not guard a pass-through save to the same format', () => {
     expect(isLossyReencode('jpg', 'jpg')).toBe(false);
     expect(isLossyReencode('JPG', 'jpg')).toBe(false); // case-insensitive
+    expect(isLossyReencode('jpeg', 'jpg')).toBe(false);
+    expect(isLossyReencode('jpg', 'jpeg')).toBe(false);
     expect(isLossyReencode('gif', 'gif')).toBe(false);
   });
 

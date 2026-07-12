@@ -3019,12 +3019,16 @@ impl StorageProvider for WebDavProvider {
         }
 
         let destination = self.build_url(to);
+        let move_depth = match self.stat(from).await {
+            Ok(entry) => webdav_move_depth_header(Some(&entry)),
+            Err(_) => webdav_move_depth_header(None),
+        };
 
         let response = self
             .request(webdav_methods::move_method(), from)
             .header("Destination", destination)
             .header("Overwrite", "F") // Don't overwrite existing
-            .header("Depth", "0")
+            .header("Depth", move_depth)
             .send()
             .await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
@@ -4158,6 +4162,13 @@ fn upload_failure_error(status: StatusCode) -> ProviderError {
     }
 }
 
+fn webdav_move_depth_header(entry: Option<&RemoteEntry>) -> &'static str {
+    match entry {
+        Some(entry) if !entry.is_dir => "0",
+        _ => "infinity",
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -4564,6 +4575,19 @@ mod tests {
 
         let via_legacy = p.server_copy("/src.txt", "/dst.txt").await;
         assert!(matches!(via_legacy, Err(ProviderError::NotConnected)));
+    }
+
+    #[test]
+    fn webdav_move_depth_header_keeps_file_move_bounded() {
+        let file = RemoteEntry::file("a.txt".to_string(), "/a.txt".to_string(), 1);
+        assert_eq!(webdav_move_depth_header(Some(&file)), "0");
+    }
+
+    #[test]
+    fn webdav_move_depth_header_uses_infinity_for_directories_and_unknowns() {
+        let dir = RemoteEntry::directory("docs".to_string(), "/docs".to_string());
+        assert_eq!(webdav_move_depth_header(Some(&dir)), "infinity");
+        assert_eq!(webdav_move_depth_header(None), "infinity");
     }
 
     // ─── T-DEBT-07: Nextcloud chunked upload v2 gating + wire ─────────

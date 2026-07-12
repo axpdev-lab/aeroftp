@@ -230,9 +230,16 @@ const FORMAT_LOSS: Record<string, LossKind> = {
     gif: 'lossy',
 };
 
+function canonicalImageFormat(format: string): string {
+    const lower = format.toLowerCase();
+    if (lower === 'jpeg') return 'jpg';
+    if (lower === 'tif') return 'tiff';
+    return lower;
+}
+
 /** Lossless/lossy nature of an output container (defaults to lossy when unknown). */
 export function formatLossKind(format: string): LossKind {
-    return FORMAT_LOSS[format.toLowerCase()] ?? 'lossy';
+    return FORMAT_LOSS[canonicalImageFormat(format)] ?? 'lossy';
 }
 
 /** True when saving a lossy source as a DIFFERENT lossy format stacks a
@@ -240,8 +247,8 @@ export function formatLossKind(format: string): LossKind {
  * (same format) and any lossless target add no new loss; a lossless source only
  * ever earns an informational note, never this guard. */
 export function isLossyReencode(sourceFormat: string, targetFormat: string): boolean {
-    const src = sourceFormat.toLowerCase();
-    const tgt = targetFormat.toLowerCase();
+    const src = canonicalImageFormat(sourceFormat);
+    const tgt = canonicalImageFormat(targetFormat);
     if (src === tgt) return false; // pass-through, no conversion
     if (formatLossKind(tgt) === 'lossless') return false; // lossless target: no NEW loss
     return formatLossKind(src) === 'lossy'; // lossy -> lossy re-encode
