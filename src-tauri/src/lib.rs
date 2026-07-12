@@ -18083,6 +18083,7 @@ pub fn run() {
             aerocrypt_provider::aerocrypt_lock,
             aerocrypt_provider::aerocrypt_provider_read_config,
             aerocrypt_provider::aerocrypt_provider_create_remote,
+            aerocrypt_provider::aerocrypt_build_emergency_kit,
             aerovault_overlay_unlock,
             aerovault_overlay_lock,
             aerovault_overlay_list,

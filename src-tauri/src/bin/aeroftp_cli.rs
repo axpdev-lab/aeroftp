@@ -4484,6 +4484,11 @@ enum CryptCommands {
         /// permanently undecryptable.
         #[arg(long)]
         force: bool,
+        /// Write the mandatory Emergency Kit (vault_id + public config: salt, KDF params, version)
+        /// to this path. Required for non-interactive and JSON runs. In an interactive TTY,
+        /// omitting it prints the kit and requires an explicit YES acknowledgement before init succeeds.
+        #[arg(long)]
+        emergency_kit: Option<String>,
     },
     /// Convert a headed vault to local-metadata headerless mode
     ToHeaderless {
@@ -46670,6 +46675,44 @@ async fn cmd_crypt_to_headed(
     0
 }
 
+/// Emit (write or print) the Emergency Kit and, when required, obtain explicit
+/// acknowledgement. This is the single implementation used by both success
+/// branches of crypt init. Returns Ok(()) on success/ack; Err(msg) otherwise.
+/// In JSON/non-TTY mode the path is mandatory. Never emits secrets.
+fn handle_emergency_kit_emission(
+    kit: &ftp_client_gui_lib::aerocrypt::emergency_kit::EmergencyKit,
+    out_path: Option<&str>,
+    format: OutputFormat,
+    quiet: bool,
+) -> Result<(), String> {
+    if let Some(p) = out_path {
+        std::fs::write(p, &kit.text)
+            .map_err(|e| format!("Failed to write Emergency Kit to {}: {}", p, e))?;
+        if !matches!(format, OutputFormat::Json) && !quiet {
+            eprintln!("Emergency Kit written to {}", p);
+        }
+        return Ok(());
+    }
+    if matches!(format, OutputFormat::Json) || !std::io::stdin().is_terminal() {
+        return Err(
+            "--emergency-kit <path> is required in JSON or non-interactive mode. Provide a writable path for the public recovery material.".to_string(),
+        );
+    }
+    // Interactive TTY, no path: print kit then require ack (non-skippable).
+    println!("{}", kit.text);
+    eprint!("Type YES to confirm you have saved or printed the Emergency Kit: ");
+    let _ = std::io::stderr().flush();
+    let mut line = String::new();
+    std::io::stdin()
+        .read_line(&mut line)
+        .map_err(|e| format!("Failed to read kit acknowledgement: {}", e))?;
+    if line.trim() == "YES" {
+        Ok(())
+    } else {
+        Err("Emergency Kit acknowledgement aborted by user".to_string())
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn cmd_crypt_init(
     url: &str,
@@ -46678,10 +46721,11 @@ async fn cmd_crypt_init(
     keyfile_digest: Option<&[u8; 32]>,
     with_header: bool,
     force: bool,
+    emergency_kit: Option<&str>,
     cli: &Cli,
     format: OutputFormat,
 ) -> i32 {
-    use ftp_client_gui_lib::aerocrypt::overlay;
+    use ftp_client_gui_lib::aerocrypt::{emergency_kit, overlay};
     // New overlays are created as AECR v3 (length-bound content + key-bound
     // config MAC). Derive the master key first so we can both validate the
     // password and bind the config MAC. An optional keyfile is mixed into the
@@ -46749,6 +46793,67 @@ async fn cmd_crypt_init(
         let salt_b64 = base64::engine::general_purpose::STANDARD.encode(salt);
         match store_headerless_init_config(&store, uid, &profile_id, &config_json, &salt_b64) {
             Ok(()) => {
+                // Gate on the Emergency Kit (MANDATORY, non-skippable).
+                // READ the persisted config from keystore (do not reuse in-memory before store),
+                // validate with the headerless path, parse, then build kit from it.
+                let persisted = read_server_cred(&store, uid, &config_key)
+                    .filter(|s| !s.is_empty())
+                    .ok_or_else(|| "headerless config missing immediately after store".to_string());
+                let persisted = match persisted {
+                    Ok(c) => c,
+                    Err(e) => {
+                        print_error(
+                            format,
+                            &format!("Failed to read back headerless config: {}", e),
+                            11,
+                        );
+                        return 11;
+                    }
+                };
+                let salt_read = read_server_cred(
+                    &store,
+                    uid,
+                    &format!("aerocrypt_overlay_salt_{}", profile_id),
+                );
+                if let Err(e) =
+                    ftp_client_gui_lib::crypt_overlay_provider::validate_headerless_config_salt(
+                        &profile_id,
+                        &persisted,
+                        salt_read.as_deref(),
+                    )
+                {
+                    print_error(
+                        format,
+                        &format!("Headerless config validation failed for kit: {}", e),
+                        11,
+                    );
+                    return 11;
+                }
+                let cfg = match overlay::parse_config(&persisted) {
+                    Ok(c) => c,
+                    Err(e) => {
+                        print_error(
+                            format,
+                            &format!("Failed to parse headerless config for kit: {}", e),
+                            5,
+                        );
+                        return 5;
+                    }
+                };
+                let kit = match emergency_kit::build_from_overlay_config(&cfg) {
+                    Ok(k) => k,
+                    Err(e) => {
+                        print_error(format, &format!("Failed to build Emergency Kit: {}", e), 5);
+                        return 5;
+                    }
+                };
+                if let Err(e) =
+                    handle_emergency_kit_emission(&kit, emergency_kit, format, cli.quiet)
+                {
+                    print_error(format, &e, 5);
+                    return 5;
+                }
+
                 if matches!(format, OutputFormat::Json) {
                     print_json(&serde_json::json!({
                         "status": "ok",
@@ -46815,6 +46920,54 @@ async fn cmd_crypt_init(
         .await
     {
         Ok(()) => {
+            // Gate on the Emergency Kit (MANDATORY). READ the persisted marker
+            // from the remote (do not trust only the pre-upload buffer).
+            let persisted_bytes = match provider.download_to_bytes(&config_path).await {
+                Ok(b) => b,
+                Err(e) => {
+                    print_error(
+                        format,
+                        &format!("Failed to re-read persisted marker for kit: {}", e),
+                        4,
+                    );
+                    let _ = provider.delete(&config_path).await; // best effort cleanup on failure to read back
+                    return 4;
+                }
+            };
+            let persisted = match String::from_utf8(persisted_bytes) {
+                Ok(s) => s,
+                Err(e) => {
+                    print_error(
+                        format,
+                        &format!("Persisted marker is not valid UTF-8: {}", e),
+                        5,
+                    );
+                    return 5;
+                }
+            };
+            let cfg = match overlay::parse_config(&persisted) {
+                Ok(c) => c,
+                Err(e) => {
+                    print_error(
+                        format,
+                        &format!("Failed to parse headed marker for kit: {}", e),
+                        5,
+                    );
+                    return 5;
+                }
+            };
+            let kit = match emergency_kit::build_from_overlay_config(&cfg) {
+                Ok(k) => k,
+                Err(e) => {
+                    print_error(format, &format!("Failed to build Emergency Kit: {}", e), 5);
+                    return 5;
+                }
+            };
+            if let Err(e) = handle_emergency_kit_emission(&kit, emergency_kit, format, cli.quiet) {
+                print_error(format, &e, 5);
+                return 5;
+            }
+
             if matches!(format, OutputFormat::Json) {
                 print_json(&serde_json::json!({"status": "ok", "path": config_path}));
             } else if !cli.quiet {
@@ -59222,6 +59375,7 @@ async fn main() {
                     keyfile_gen,
                     with_header,
                     force,
+                    emergency_kit,
                 } => {
                     if let Err(msg) = ensure_headerless_init_profile_selector(
                         cli.profile.as_deref(),
@@ -59253,6 +59407,7 @@ async fn main() {
                                         kf.as_ref(),
                                         *with_header,
                                         *force,
+                                        emergency_kit.as_deref(),
                                         &cli,
                                         format,
                                     )
