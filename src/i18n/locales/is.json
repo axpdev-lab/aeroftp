@@ -1564,7 +1564,7 @@
             "encryptionExplicitIfAvailable": "Notaðu skýrt FTP yfir TLS ef í boði",
             "acceptInvalidCerts": "Samþykkja ógild eða sjálfundirrituð vottorð",
             "boxDesc": "Tengjast við Box reikning",
-            "pcloudDesc": "Tengjast við pCloud Drive reikning",
+            "pcloudDesc": "pCloud Drive (10 GB ókeypis)",
             "azureDesc": "Microsoft Azure geymsla",
             "filenDesc": "E2E dulkóðað ský",
             "selectRegion": "Veldu svæði...",

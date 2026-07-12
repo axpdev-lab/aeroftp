@@ -1564,7 +1564,7 @@
             "encryptionExplicitIfAvailable": "Utilitzar FTP explícit sobre TLS si està disponible",
             "acceptInvalidCerts": "Acceptar certificats no vàlids o autofirmats",
             "boxDesc": "Connectar amb un compte Box",
-            "pcloudDesc": "Connectar amb un compte pCloud Drive",
+            "pcloudDesc": "pCloud Drive (10 GB gratuïts)",
             "azureDesc": "Emmagatzematge Microsoft Azure",
             "filenDesc": "Núvol amb xifratge E2E",
             "selectRegion": "Seleccionar regió...",

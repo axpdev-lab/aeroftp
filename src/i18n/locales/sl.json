@@ -1565,7 +1565,7 @@
             "acceptInvalidCerts": "Sprejmi neveljavna ali samopodpisana potrdila",
             "insecureCertConfirmFirst": "Sprejemanje neveljavnih ali samopodpisanih potrdil slabša varnost povezave. Omogocite to le, ce zaupate strežniku in razumete tveganja.",
             "boxDesc": "Poveži se z računom Box",
-            "pcloudDesc": "Poveži se z računom pCloud Drive",
+            "pcloudDesc": "pCloud Drive (10 GB brezplačno)",
             "azureDesc": "Shramba Microsoft Azure",
             "filenDesc": "Oblak s šifriranjem E2E",
             "selectRegion": "Izberite regijo...",

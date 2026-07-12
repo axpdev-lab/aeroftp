@@ -1564,7 +1564,7 @@
             "encryptionExplicitIfAvailable": "Naudoti aiškų FTP per TLS, jei prieinama",
             "acceptInvalidCerts": "Priimti negaliojančius arba savarankiškai pasirašytus sertifikatus",
             "boxDesc": "Prisijungti su Box paskyra",
-            "pcloudDesc": "Prisijungti su pCloud Drive paskyra",
+            "pcloudDesc": "pCloud Drive (10 GB nemokamai)",
             "azureDesc": "Microsoft Azure saugykla",
             "filenDesc": "Ištisinis užšifruotas debesis",
             "selectRegion": "Pasirinkite regioną...",

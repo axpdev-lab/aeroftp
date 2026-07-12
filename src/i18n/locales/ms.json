@@ -1564,7 +1564,7 @@
             "encryptionExplicitIfAvailable": "Gunakan FTP eksplisit melalui TLS jika tersedia",
             "acceptInvalidCerts": "Terima sijil tidak sah atau ditandatangani sendiri",
             "boxDesc": "Sambung dengan Akaun Box",
-            "pcloudDesc": "Sambung dengan Akaun pCloud Drive",
+            "pcloudDesc": "pCloud Drive (10 GB percuma)",
             "azureDesc": "Storan Microsoft Azure",
             "filenDesc": "Awan Disulitkan E2E",
             "selectRegion": "Pilih rantau...",

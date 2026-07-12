@@ -1564,7 +1564,7 @@
             "encryptionExplicitIfAvailable": "Користи експлицитен FTP преку TLS ако е достапен",
             "acceptInvalidCerts": "Прифати невалидни или самопотпишани сертификати",
             "boxDesc": "Поврзете се со Box сметка",
-            "pcloudDesc": "Поврзете се со pCloud Drive сметка",
+            "pcloudDesc": "pCloud Drive (10 GB бесплатно)",
             "azureDesc": "Microsoft Azure складирање",
             "filenDesc": "E2E шифриран облак",
             "selectRegion": "Изберете регион...",

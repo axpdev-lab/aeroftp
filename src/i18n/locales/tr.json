@@ -1564,7 +1564,7 @@
             "encryptionExplicitIfAvailable": "Varsa TLS üzerinden açık FTP kullan",
             "acceptInvalidCerts": "Geçersiz veya kendinden imzalı sertifikaları kabul et",
             "boxDesc": "Box Hesabıyla Bağlan",
-            "pcloudDesc": "pCloud Drive Hesabıyla Bağlan",
+            "pcloudDesc": "pCloud Drive (10 GB ücretsiz)",
             "azureDesc": "Microsoft Azure Depolama",
             "filenDesc": "E2E Şifreli Bulut",
             "selectRegion": "Bölge seçin...",

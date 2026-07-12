@@ -1565,7 +1565,7 @@
             "acceptInvalidCerts": "Prijat neplatne alebo samopodpisane certifikaty",
             "insecureCertConfirmFirst": "Prijatie neplatnych alebo samopodpisanych certifikatov oslabuje bezpecnost pripojenia. Povolte to len ak doverujete serveru a chape rizika.",
             "boxDesc": "Pripojit sa uctom Box",
-            "pcloudDesc": "Pripojit sa uctom pCloud Drive",
+            "pcloudDesc": "pCloud Drive (10 GB zadarmo)",
             "azureDesc": "Ulozisko Microsoft Azure",
             "filenDesc": "Cloud s koncovym sifrovanim",
             "selectRegion": "Vyberte region...",

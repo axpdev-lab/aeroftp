@@ -1564,7 +1564,7 @@
             "encryptionExplicitIfAvailable": "Izmantot tiešu FTP pār TLS, ja pieejams",
             "acceptInvalidCerts": "Pieņemt nederīgus vai pašparakstītus sertifikātus",
             "boxDesc": "Pieslēgties ar Box kontu",
-            "pcloudDesc": "Pieslēgties ar pCloud Drive kontu",
+            "pcloudDesc": "pCloud Drive (10 GB bez maksas)",
             "azureDesc": "Microsoft Azure krātuve",
             "filenDesc": "Pilni šifrēts mākonis",
             "selectRegion": "Izvēlieties reģionu...",

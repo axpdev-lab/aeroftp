@@ -1564,7 +1564,7 @@
             "encryptionExplicitIfAvailable": "Використовувати явний FTP поверх TLS, якщо доступно",
             "acceptInvalidCerts": "Приймати недійсні або самопідписані сертифікати",
             "boxDesc": "Підключитися через обліковий запис Box",
-            "pcloudDesc": "Підключитися через обліковий запис pCloud Drive",
+            "pcloudDesc": "pCloud Drive (10 ГБ безкоштовно)",
             "azureDesc": "Сховище Microsoft Azure",
             "filenDesc": "Хмара з наскрізним шифруванням",
             "selectRegion": "Виберіть регіон...",

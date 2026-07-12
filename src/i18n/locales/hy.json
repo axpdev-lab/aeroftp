@@ -1557,7 +1557,7 @@
             "encryptionExplicitIfAvailable": "Օգտագործել բացահայտ FTP TLS-ի միջոցով, եթե հասանելի է",
             "acceptInvalidCerts": "Ընդունել անվավեր կամ ինքնաստորագրված վկայագրեր",
             "boxDesc": "Միանալ Box հաշվով",
-            "pcloudDesc": "Միանալ pCloud Drive հաշվով",
+            "pcloudDesc": "pCloud Drive (10 ԳԲ անվճար)",
             "azureDesc": "Microsoft Azure Storage",
             "filenDesc": "E2E Գաղտնագրված ամպ",
             "selectRegion": "Ընտրեք տարածաշրջան...",

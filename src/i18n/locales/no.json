@@ -1564,7 +1564,7 @@
             "encryptionExplicitIfAvailable": "Bruk eksplisitt FTP over TLS hvis tilgjengelig",
             "acceptInvalidCerts": "Godta ugyldige eller selvsignerte sertifikater",
             "boxDesc": "Koble til med Box-konto",
-            "pcloudDesc": "Koble til med pCloud Drive-konto",
+            "pcloudDesc": "pCloud Drive (10 GB gratis)",
             "azureDesc": "Microsoft Azure-lagring",
             "filenDesc": "E2E-kryptert sky",
             "selectRegion": "Velg region...",

@@ -1564,7 +1564,7 @@
             "encryptionExplicitIfAvailable": "Kasuta eksplitsiitset FTP üle TLS-i, kui saadaval",
             "acceptInvalidCerts": "Nõustu kehtetute või ise allkirjastatud sertifikaatidega",
             "boxDesc": "Ühendage Box kontoga",
-            "pcloudDesc": "Ühendage pCloud Drive kontoga",
+            "pcloudDesc": "pCloud Drive (10 GB tasuta)",
             "azureDesc": "Microsoft Azure salvestusruum",
             "filenDesc": "Läbivalt krüpteeritud pilv",
             "selectRegion": "Valige piirkond...",

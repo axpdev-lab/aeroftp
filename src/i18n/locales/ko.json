@@ -1564,7 +1564,7 @@
             "encryptionExplicitIfAvailable": "가능한 경우 명시적 FTP over TLS 사용",
             "acceptInvalidCerts": "유효하지 않은 인증서 또는 자체 서명 인증서 허용",
             "boxDesc": "Box 계정으로 연결",
-            "pcloudDesc": "pCloud Drive 계정으로 연결",
+            "pcloudDesc": "pCloud Drive (10GB 무료)",
             "azureDesc": "Microsoft Azure Storage",
             "filenDesc": "E2E 암호화 클라우드",
             "selectRegion": "리전 선택...",

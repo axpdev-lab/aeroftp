@@ -1564,7 +1564,7 @@
             "encryptionExplicitIfAvailable": "উপলব্ধ হলে TLS-এর মাধ্যমে স্পষ্ট FTP ব্যবহার করুন",
             "acceptInvalidCerts": "অবৈধ বা সেলফ-সাইন করা সার্টিফিকেট গ্রহণ করুন",
             "boxDesc": "Box অ্যাকাউন্টে সংযোগ করুন",
-            "pcloudDesc": "pCloud Drive অ্যাকাউন্টে সংযোগ করুন",
+            "pcloudDesc": "pCloud Drive (১০ GB ফ্রি)",
             "azureDesc": "Microsoft Azure Storage",
             "filenDesc": "E2E এনক্রিপ্ট করা ক্লাউড",
             "selectRegion": "অঞ্চল নির্বাচন করুন...",

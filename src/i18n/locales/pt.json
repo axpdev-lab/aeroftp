@@ -1565,7 +1565,7 @@
             "acceptInvalidCerts": "Aceitar certificados inválidos ou autoassinados",
             "insecureCertConfirmFirst": "Aceitar certificados invalidos ou autoassinados enfraquece a seguranca da conexao. Ative isso apenas se confiar no servidor e entender os riscos.",
             "boxDesc": "Conectar com conta Box",
-            "pcloudDesc": "Conectar com conta pCloud Drive",
+            "pcloudDesc": "pCloud Drive (10 GB grátis)",
             "azureDesc": "Armazenamento Microsoft Azure",
             "filenDesc": "Nuvem com Criptografia E2E",
             "selectRegion": "Selecionar região...",

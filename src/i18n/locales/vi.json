@@ -1564,7 +1564,7 @@
             "encryptionExplicitIfAvailable": "Sử dụng FTP qua TLS rõ ràng nếu có sẵn",
             "acceptInvalidCerts": "Chấp nhận chứng chỉ không hợp lệ hoặc tự ký",
             "boxDesc": "Kết nối với tài khoản Box",
-            "pcloudDesc": "Kết nối với tài khoản pCloud Drive",
+            "pcloudDesc": "pCloud Drive (10 GB miễn phí)",
             "azureDesc": "Lưu trữ Microsoft Azure",
             "filenDesc": "Đám mây mã hóa E2E",
             "selectRegion": "Chọn khu vực...",

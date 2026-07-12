@@ -1564,7 +1564,7 @@
             "encryptionExplicitIfAvailable": "Utiliser FTP explicite sur TLS si disponible",
             "acceptInvalidCerts": "Accepter les certificats invalides ou auto-signes",
             "boxDesc": "Se connecter avec un compte Box",
-            "pcloudDesc": "Se connecter avec un compte pCloud Drive",
+            "pcloudDesc": "pCloud Drive (10 Go gratuits)",
             "azureDesc": "Stockage Microsoft Azure",
             "filenDesc": "Cloud chiffre de bout en bout",
             "selectRegion": "Selectionner une region...",

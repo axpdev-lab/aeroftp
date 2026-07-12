@@ -1564,7 +1564,7 @@
             "encryptionExplicitIfAvailable": "ប្រើ FTP ច្បាស់លាស់លើ TLS ប្រសិនបើមាន",
             "acceptInvalidCerts": "ទទួលយកវិញ្ញាបនបត្រមិនត្រឹមត្រូវឬចុះហត្ថលេខាដោយខ្លួនឯង",
             "boxDesc": "តភ្ជាប់ទៅគណនី Box",
-            "pcloudDesc": "តភ្ជាប់ទៅគណនី pCloud Drive",
+            "pcloudDesc": "pCloud Drive (ឥតគិតថ្លៃ 10 GB)",
             "azureDesc": "Microsoft Azure Storage",
             "filenDesc": "ពពកដែលបានអ៊ិនគ្រីប E2E",
             "selectRegion": "ជ្រើសរើសតំបន់...",

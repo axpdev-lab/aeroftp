@@ -1564,7 +1564,7 @@
             "encryptionExplicitIfAvailable": "Explizites FTP über TLS verwenden, falls verfügbar",
             "acceptInvalidCerts": "Ungültige oder selbstsignierte Zertifikate akzeptieren",
             "boxDesc": "Mit Box-Konto verbinden",
-            "pcloudDesc": "Mit pCloud Drive-Konto verbinden",
+            "pcloudDesc": "pCloud Drive (10 GB kostenlos)",
             "azureDesc": "Microsoft Azure Storage",
             "filenDesc": "E2E-verschlüsselte Cloud",
             "selectRegion": "Region auswählen...",

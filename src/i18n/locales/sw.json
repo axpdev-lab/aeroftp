@@ -1564,7 +1564,7 @@
             "encryptionExplicitIfAvailable": "Tumia FTP dhahiri juu ya TLS ikipatikana",
             "acceptInvalidCerts": "Kubali vyeti batili au vilivyotiwa saini binafsi",
             "boxDesc": "Unganisha na Akaunti ya Box",
-            "pcloudDesc": "Unganisha na Akaunti ya pCloud Drive",
+            "pcloudDesc": "pCloud Drive (10 GB bure)",
             "azureDesc": "Hifadhi ya Microsoft Azure",
             "filenDesc": "Wingu Lenye Usimbaji E2E",
             "selectRegion": "Chagua eneo...",

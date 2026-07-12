@@ -1564,7 +1564,7 @@
             "encryptionExplicitIfAvailable": "FTP esplizitua TLS bidez erabili erabilgarri badago",
             "acceptInvalidCerts": "Baliogabeko edo auto-sinatutako ziurtagiriak onartu",
             "boxDesc": "Box kontuarekin konektatu",
-            "pcloudDesc": "pCloud Drive kontuarekin konektatu",
+            "pcloudDesc": "pCloud Drive (10 GB doan)",
             "azureDesc": "Microsoft Azure biltegiratzea",
             "filenDesc": "Muturretik muturrera enkriptatutako hodeia",
             "selectRegion": "Eskualdea hautatu...",

@@ -1564,7 +1564,7 @@
             "encryptionExplicitIfAvailable": "Pouzit explicitni FTP pres TLS, pokud je dostupne",
             "acceptInvalidCerts": "Prijmout neplatne nebo samo-podepsane certifikaty",
             "boxDesc": "Pripojit se uctem Box",
-            "pcloudDesc": "Pripojit se uctem pCloud Drive",
+            "pcloudDesc": "pCloud Drive (10 GB zdarma)",
             "azureDesc": "Uloziste Microsoft Azure",
             "filenDesc": "Cloud s koncovym sifrovani",
             "selectRegion": "Vyberte region...",

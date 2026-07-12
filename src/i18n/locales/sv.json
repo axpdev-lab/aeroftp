@@ -1565,7 +1565,7 @@
             "insecureCertConfirmFirst": "Att acceptera ogiltiga eller sjalvsignerade certifikat forsvagar anslutningens sakerhet. Aktivera detta endast om du litar pa servern och forstar riskerna.",
             "acceptInvalidCerts": "Acceptera ogiltiga eller självsignerade certifikat",
             "boxDesc": "Anslut med Box-konto",
-            "pcloudDesc": "Anslut med pCloud Drive-konto",
+            "pcloudDesc": "pCloud Drive (10 GB gratis)",
             "azureDesc": "Microsoft Azure Storage",
             "filenDesc": "E2E-krypterat moln",
             "selectRegion": "Välj region...",

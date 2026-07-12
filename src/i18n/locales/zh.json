@@ -1564,7 +1564,7 @@
             "encryptionExplicitIfAvailable": "如可用则使用显式 FTP over TLS",
             "acceptInvalidCerts": "接受无效或自签名证书",
             "boxDesc": "使用 Box 账户连接",
-            "pcloudDesc": "使用 pCloud Drive 账户连接",
+            "pcloudDesc": "pCloud Drive (10 GB 免费)",
             "azureDesc": "Microsoft Azure 存储",
             "filenDesc": "端到端加密云盘",
             "selectRegion": "选择区域...",

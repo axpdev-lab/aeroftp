@@ -1564,7 +1564,7 @@
             "encryptionExplicitIfAvailable": "Gumamit ng explicit FTP over TLS kung available",
             "acceptInvalidCerts": "Tanggapin ang hindi wasto o self-signed na mga sertipiko",
             "boxDesc": "Kumonekta gamit ang Box Account",
-            "pcloudDesc": "Kumonekta gamit ang pCloud Drive Account",
+            "pcloudDesc": "pCloud Drive (10 GB libre)",
             "azureDesc": "Microsoft Azure Storage",
             "filenDesc": "E2E Encrypted Cloud",
             "selectRegion": "Pumili ng rehiyon...",

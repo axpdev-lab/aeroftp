@@ -1565,7 +1565,7 @@
             "acceptInvalidCerts": "Acceptă certificatele invalide sau auto-semnate",
             "insecureCertConfirmFirst": "Acceptarea certificatelor invalide sau autosemnate slăbește securitatea conexiunii. Activați aceasta doar dacă aveți încredere în server și înțelegeți riscurile.",
             "boxDesc": "Conectare cu cont Box",
-            "pcloudDesc": "Conectare cu cont pCloud Drive",
+            "pcloudDesc": "pCloud Drive (10 GB gratuit)",
             "azureDesc": "Microsoft Azure Storage",
             "filenDesc": "Cloud criptat E2E",
             "selectRegion": "Selectați regiunea...",

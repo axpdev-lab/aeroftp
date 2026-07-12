@@ -1564,7 +1564,7 @@
             "encryptionExplicitIfAvailable": "利用可能ならTLS上の明示的FTPを使用",
             "acceptInvalidCerts": "無効または自己署名証明書を許可",
             "boxDesc": "Boxアカウントで接続",
-            "pcloudDesc": "pCloud Driveアカウントで接続",
+            "pcloudDesc": "pCloud Drive (10GB無料)",
             "azureDesc": "Microsoft Azure Storage",
             "filenDesc": "E2E暗号化クラウド",
             "selectRegion": "リージョンを選択...",

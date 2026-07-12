@@ -1564,7 +1564,7 @@
             "encryptionExplicitIfAvailable": "Χρήση ρητού FTP μέσω TLS αν είναι διαθέσιμο",
             "acceptInvalidCerts": "Αποδοχή μη έγκυρων ή αυτο-υπογεγραμμένων πιστοποιητικών",
             "boxDesc": "Σύνδεση με λογαριασμό Box",
-            "pcloudDesc": "Σύνδεση με λογαριασμό pCloud Drive",
+            "pcloudDesc": "pCloud Drive (10 GB δωρεάν)",
             "azureDesc": "Αποθήκευση Microsoft Azure",
             "filenDesc": "E2E Κρυπτογραφημένο Cloud",
             "selectRegion": "Επιλέξτε περιοχή...",

@@ -1564,7 +1564,7 @@
             "encryptionExplicitIfAvailable": "Explicit FTP használata TLS-en ha elérhető",
             "acceptInvalidCerts": "Érvénytelen vagy önaláírt tanúsítványok elfogadása",
             "boxDesc": "Csatlakozás Box fiókkal",
-            "pcloudDesc": "Csatlakozás pCloud Drive fiókkal",
+            "pcloudDesc": "pCloud Drive (10 GB ingyenes)",
             "azureDesc": "Microsoft Azure tárhely",
             "filenDesc": "E2E titkosított felhő",
             "selectRegion": "Régió választása...",

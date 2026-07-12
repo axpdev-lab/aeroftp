@@ -1564,7 +1564,7 @@
             "encryptionExplicitIfAvailable": "Defnyddio FTP pendant dros TLS os ar gael",
             "acceptInvalidCerts": "Derbyn tystysgrifau annilys neu hunan-lofnodedig",
             "boxDesc": "Cysylltu gyda Chyfrif Box",
-            "pcloudDesc": "Cysylltu gyda Chyfrif pCloud Drive",
+            "pcloudDesc": "pCloud Drive (10 GB am ddim)",
             "azureDesc": "Storfa Microsoft Azure",
             "filenDesc": "Cwmwl Amgryptiedig E2E",
             "selectRegion": "Dewiswch ranbarth...",

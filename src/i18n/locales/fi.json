@@ -1564,7 +1564,7 @@
             "encryptionExplicitIfAvailable": "Käytä eksplisiittistä FTP:tä TLS:n yli jos saatavilla",
             "acceptInvalidCerts": "Hyväksy virheelliset tai itse allekirjoitetut varmenteet",
             "boxDesc": "Yhdistä Box-tilillä",
-            "pcloudDesc": "Yhdistä pCloud Drive-tilillä",
+            "pcloudDesc": "pCloud Drive (10 GB ilmaiseksi)",
             "azureDesc": "Microsoft Azure -tallennus",
             "filenDesc": "E2E-salattu pilvi",
             "selectRegion": "Valitse alue...",

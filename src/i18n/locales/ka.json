@@ -1564,7 +1564,7 @@
             "encryptionExplicitIfAvailable": "შესაძლებლობის შემთხვევაში გამოიყენე TLS-ზე აშკარა FTP",
             "acceptInvalidCerts": "არავალიდური ან თვითხელმოწერილი სერტიფიკატების მიღება",
             "boxDesc": "Box ანგარიშით დაკავშირება",
-            "pcloudDesc": "pCloud Drive ანგარიშით დაკავშირება",
+            "pcloudDesc": "pCloud Drive (10 გბ უფასოდ)",
             "azureDesc": "Microsoft Azure Storage",
             "filenDesc": "E2E დაშიფრული ღრუბელი",
             "selectRegion": "აირჩიეთ რეგიონი...",
