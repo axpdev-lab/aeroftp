@@ -5042,7 +5042,10 @@
             "keyfileRepointHint": "Dit pad wijst alleen aan waar het sleutelbestand staat; het wijzigen versleutelt de kluis niet opnieuw. Een verkeerd of ontbrekend sleutelbestand weigert het ontgrendelen.",
             "keyfileStorageHint": "Bewaar het op een lokale schijf of USB-stick, gescheiden van de externe locatie die u versleutelt, en bewaar een back-up.",
             "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
-            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore."
+            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
+            "overlaysRemotePath": "Extern pad van overlay",
+            "overlaysRemotePathHint": "Externe map waaraan de overlay is verankerd. Laat leeg om het Externe pad te gebruiken. Moet het Externe pad zelf zijn of een map daarin.",
+            "overlaysRemotePathInvalid": "Moet het Externe pad of een submap ervan zijn"
         },
         "modalGuard": {
             "busyTitle": "Bewerking bezig",

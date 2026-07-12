@@ -5042,7 +5042,10 @@
             "keyfileRepointHint": "Этот путь лишь указывает, где лежит файл-ключ; его изменение не меняет ключ хранилища. Неверный или отсутствующий файл-ключ отклоняет разблокировку.",
             "keyfileStorageHint": "Храните его на локальном диске или USB-накопителе, отдельно от удалённого хранилища, которое вы шифруете, и сохраните резервную копию.",
             "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
-            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore."
+            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
+            "overlaysRemotePath": "Удалённый путь наложения",
+            "overlaysRemotePathHint": "Удалённая папка, к которой привязано наложение. Оставьте пустым, чтобы использовать Удалённый путь. Должен быть самим Удалённым путём или папкой внутри него.",
+            "overlaysRemotePathInvalid": "Должен быть Удалённым путём или его подпапкой"
         },
         "modalGuard": {
             "busyTitle": "Выполняется операция",

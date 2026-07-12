@@ -5042,7 +5042,10 @@
             "keyfileRepointHint": "Jalur ini hanya menunjuk lokasi berkas kunci; mengubahnya tidak mengganti kunci brankas. Berkas kunci yang salah atau hilang menolak pembukaan.",
             "keyfileStorageHint": "Simpan di disk lokal atau drive USB, terpisah dari remote yang Anda enkripsi, dan simpan salinan cadangan.",
             "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
-            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore."
+            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
+            "overlaysRemotePath": "Jalur Jarak Jauh Overlay",
+            "overlaysRemotePathHint": "Folder jarak jauh tempat overlay ditambatkan. Biarkan kosong untuk menggunakan Jalur Jarak Jauh. Harus berupa Jalur Jarak Jauh itu sendiri atau folder di dalamnya.",
+            "overlaysRemotePathInvalid": "Harus berupa Jalur Jarak Jauh atau subfolder darinya"
         },
         "modalGuard": {
             "busyTitle": "Operasi berlangsung",

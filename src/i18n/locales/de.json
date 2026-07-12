@@ -5042,7 +5042,10 @@
             "keyfileRepointHint": "Dieser Pfad zeigt nur, wo die Schlüsseldatei liegt; ihn zu ändern verschlüsselt den Tresor nicht neu. Eine falsche oder fehlende Schlüsseldatei verweigert das Entsperren.",
             "keyfileStorageHint": "Speichern Sie sie auf einer lokalen Festplatte oder einem USB-Stick, getrennt von dem Remote, das Sie verschlüsseln, und bewahren Sie eine Sicherungskopie auf.",
             "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
-            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore."
+            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
+            "overlaysRemotePath": "Remote-Pfad des Overlays",
+            "overlaysRemotePathHint": "Remote-Ordner, an dem das Overlay verankert ist. Leer lassen, um den Remote-Pfad zu verwenden. Muss der Remote-Pfad selbst oder ein Ordner darin sein.",
+            "overlaysRemotePathInvalid": "Muss der Remote-Pfad oder ein Unterordner davon sein"
         },
         "modalGuard": {
             "busyTitle": "Vorgang läuft",

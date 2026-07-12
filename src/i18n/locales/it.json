@@ -5050,7 +5050,10 @@
             "keyfileGeneratedBackup": "File chiave generato. Fai subito un backup: perderlo rende la cassaforte inapribile per sempre.",
             "keyfileRepointHint": "Questo percorso indica solo dove si trova il file chiave; cambiarlo non ricifra la cassaforte. Un file chiave errato o assente rifiuta lo sblocco.",
             "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
-            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore."
+            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
+            "overlaysRemotePath": "Percorso remoto dell'overlay",
+            "overlaysRemotePathHint": "Cartella remota a cui è ancorato l'overlay. Lascia vuoto per usare il Percorso remoto. Deve essere il Percorso remoto stesso o una cartella al suo interno.",
+            "overlaysRemotePathInvalid": "Deve essere il Percorso remoto o una sua sottocartella"
         },
         "modalGuard": {
             "busyTitle": "Operazione in corso",

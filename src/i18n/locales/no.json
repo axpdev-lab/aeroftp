@@ -5061,7 +5061,10 @@
             "keyfileRepointHint": "Denne stien peker bare på hvor nøkkelfilen ligger; å endre den bytter ikke hvelvets nøkkel. En feil eller manglende nøkkelfil avviser opplåsingen.",
             "keyfileStorageHint": "Lagre den på en lokal disk eller USB-enhet, atskilt fra fjernlageret du krypterer, og oppbevar en sikkerhetskopi.",
             "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
-            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore."
+            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
+            "overlaysRemotePath": "Ekstern sti for overlegg",
+            "overlaysRemotePathHint": "Ekstern mappe der overlegget er forankret. La stå tomt for å bruke Ekstern sti. Må være Ekstern sti selv eller en mappe inne i den.",
+            "overlaysRemotePathInvalid": "Må være Ekstern sti eller en undermappe av den"
         },
         "modalGuard": {
             "busyTitle": "Operasjon pågår",

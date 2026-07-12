@@ -5042,7 +5042,10 @@
             "keyfileRepointHint": "Ez az útvonal csak azt mutatja, hol van a kulcsfájl; módosítása nem kulcsolja újra a széfet. Hibás vagy hiányzó kulcsfájl esetén a feloldás megtagadva.",
             "keyfileStorageHint": "Mentse el helyi lemezre vagy USB-meghajtóra, a titkosított távoli tárhelytől elkülönítve, és őrizzen meg egy biztonsági másolatot.",
             "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
-            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore."
+            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
+            "overlaysRemotePath": "Az átfedés távoli útvonala",
+            "overlaysRemotePathHint": "Távoli mappa, amelyhez az átfedés rögzítve van. Hagyja üresen a Távoli útvonal használatához. A Távoli útvonalnak magának vagy egy benne lévő mappának kell lennie.",
+            "overlaysRemotePathInvalid": "A Távoli útvonalnak vagy annak almappájának kell lennie"
         },
         "modalGuard": {
             "busyTitle": "Művelet folyamatban",

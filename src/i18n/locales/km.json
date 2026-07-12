@@ -5061,7 +5061,10 @@
             "keyfileRepointHint": "ផ្លូវនេះគ្រាន់តែចង្អុលទៅកន្លែងឯកសារកូនសោស្ថិតនៅ។ ការផ្លាស់ប្ដូរវាមិនផ្លាស់ប្ដូរកូនសោឃ្លាំងទេ។ ឯកសារកូនសោខុសឬបាត់ នឹងបដិសេធការដោះសោ។",
             "keyfileStorageHint": "រក្សាទុកវានៅលើថាសមូលដ្ឋាន ឬ USB ដ្រាយ ដោយឡែកពីម៉ាស៊ីនពីចម្ងាយដែលអ្នកកំពុងអ៊ិនគ្រីប ហើយរក្សាទុកច្បាប់ចម្លងបម្រុងទុក។",
             "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
-            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore."
+            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
+            "overlaysRemotePath": "ផ្លូវពីចម្ងាយនៃការត្រួតលើ",
+            "overlaysRemotePathHint": "ថតពីចម្ងាយដែលការត្រួតលើត្រូវបានចងភ្ជាប់។ ទុកឱ្យទទេដើម្បីប្រើផ្លូវពីចម្ងាយ។ ត្រូវតែជាផ្លូវពីចម្ងាយខ្លួនឯង ឬថតនៅខាងក្នុងវា។",
+            "overlaysRemotePathInvalid": "ត្រូវតែជាផ្លូវពីចម្ងាយ ឬថតរងរបស់វា"
         },
         "modalGuard": {
             "busyTitle": "ប្រតិបត្តិការកំពុងដំណើរការ",

@@ -5042,7 +5042,10 @@
             "keyfileRepointHint": "이 경로는 키파일의 위치만 가리키며, 변경해도 볼트의 키는 바뀌지 않습니다. 잘못되었거나 없는 키파일은 잠금 해제가 거부됩니다.",
             "keyfileStorageHint": "암호화하는 원격 저장소와 분리하여 로컬 디스크나 USB 드라이브에 저장하고 백업 사본을 보관하세요.",
             "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
-            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore."
+            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
+            "overlaysRemotePath": "오버레이 원격 경로",
+            "overlaysRemotePathHint": "오버레이가 고정되는 원격 폴더입니다. 원격 경로를 사용하려면 비워 두세요. 원격 경로 자체이거나 그 안의 폴더여야 합니다.",
+            "overlaysRemotePathInvalid": "원격 경로이거나 그 하위 폴더여야 합니다"
         },
         "modalGuard": {
             "busyTitle": "작업 진행 중",

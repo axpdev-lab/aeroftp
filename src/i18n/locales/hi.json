@@ -5042,7 +5042,10 @@
             "keyfileRepointHint": "यह पथ केवल बताता है कि की-फ़ाइल कहाँ है; इसे बदलने से वॉल्ट की कुंजी नहीं बदलती। गलत या अनुपलब्ध की-फ़ाइल पर अनलॉक अस्वीकृत होता है।",
             "keyfileStorageHint": "इसे स्थानीय डिस्क या USB ड्राइव पर सहेजें, जिस रिमोट को आप एन्क्रिप्ट कर रहे हैं उससे अलग रखें, और एक बैकअप प्रति रखें।",
             "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
-            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore."
+            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
+            "overlaysRemotePath": "ओवरले रिमोट पथ",
+            "overlaysRemotePathHint": "वह दूरस्थ फ़ोल्डर जहाँ ओवरले लंगर डाला गया है। रिमोट पथ का उपयोग करने के लिए खाली छोड़ें। यह रिमोट पथ स्वयं या उसके भीतर का कोई फ़ोल्डर होना चाहिए।",
+            "overlaysRemotePathInvalid": "यह रिमोट पथ या उसका उपफ़ोल्डर होना चाहिए"
         },
         "modalGuard": {
             "busyTitle": "ऑपरेशन जारी है",

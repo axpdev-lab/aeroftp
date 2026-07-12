@@ -5061,7 +5061,10 @@
             "keyfileRepointHint": "Ang path na ito ay tumutukoy lang kung nasaan ang keyfile; ang pagpalit nito ay hindi nagpapalit ng susi ng vault. Ang mali o nawawalang keyfile ay tatanggihan sa pag-unlock.",
             "keyfileStorageHint": "Itago ito sa lokal na disk o USB drive, hiwalay sa remote na ini-encrypt mo, at mag-ingat ng backup na kopya.",
             "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
-            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore."
+            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
+            "overlaysRemotePath": "Remote Path ng Overlay",
+            "overlaysRemotePathHint": "Remote na folder kung saan naka-angkla ang overlay. Iwanang blangko upang gamitin ang Remote Path. Dapat itong ang mismong Remote Path o isang folder sa loob nito.",
+            "overlaysRemotePathInvalid": "Dapat itong ang Remote Path o isang subfolder nito"
         },
         "modalGuard": {
             "busyTitle": "May isinasagawang operasyon",

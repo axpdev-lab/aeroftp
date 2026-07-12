@@ -5035,6 +5035,9 @@
         "aerocryptProfile": {
             "overlaysSection": "Wrappers / Overlays",
             "overlaysActiveBadge": "On",
+            "overlaysRemotePath": "Overlays Remote Path",
+            "overlaysRemotePathHint": "Remote folder where the overlay is anchored. Leave empty to use the Remote Path. Must be the Remote Path itself or a folder inside it.",
+            "overlaysRemotePathInvalid": "Must be the Remote Path or a subfolder of it",
             "enable": "Crypt (Encryption)",
             "hint": "Encrypt this connection transparently: the dual-panel shows clear names, uploads encrypt, downloads decrypt.",
             "hintNative": "Native AeroCrypt format: readable only from AeroFTP with this password.",

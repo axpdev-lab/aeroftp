@@ -5042,7 +5042,10 @@
             "keyfileRepointHint": "Този път само сочи къде се намира ключовият файл; промяната му не сменя ключа на трезора. Грешен или липсващ ключов файл отказва отключването.",
             "keyfileStorageHint": "Съхранявайте го на локален диск или USB устройство, отделно от отдалеченото хранилище, което шифровате, и пазете резервно копие.",
             "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
-            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore."
+            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
+            "overlaysRemotePath": "Отдалечен път на слоя",
+            "overlaysRemotePathHint": "Отдалечена папка, към която е закачен слоят. Оставете празно, за да се използва Отдалеченият път. Трябва да е самият Отдалечен път или папка в него.",
+            "overlaysRemotePathInvalid": "Трябва да е Отдалеченият път или негова подпапка"
         },
         "modalGuard": {
             "busyTitle": "Операция в ход",

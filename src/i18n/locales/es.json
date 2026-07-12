@@ -5042,7 +5042,10 @@
             "keyfileRepointHint": "Esta ruta solo indica dónde está el archivo de clave; cambiarla no vuelve a cifrar la bóveda. Un archivo de clave erróneo o ausente rechaza el desbloqueo.",
             "keyfileStorageHint": "Guárdalo en un disco local o una unidad USB, separado del remoto que estás cifrando, y conserva una copia de seguridad.",
             "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
-            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore."
+            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
+            "overlaysRemotePath": "Ruta remota de la superposición",
+            "overlaysRemotePathHint": "Carpeta remota donde se ancla la superposición. Déjelo vacío para usar la Ruta remota. Debe ser la Ruta remota en sí o una carpeta dentro de ella.",
+            "overlaysRemotePathInvalid": "Debe ser la Ruta remota o una subcarpeta de ella"
         },
         "modalGuard": {
             "busyTitle": "Operación en curso",

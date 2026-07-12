@@ -5042,7 +5042,10 @@
             "keyfileRepointHint": "พาธนี้เพียงชี้ตำแหน่งของไฟล์กุญแจ การเปลี่ยนพาธไม่ได้เปลี่ยนกุญแจของตู้นิรภัย ไฟล์กุญแจที่ผิดหรือหายไปจะถูกปฏิเสธการปลดล็อก",
             "keyfileStorageHint": "จัดเก็บไว้ในดิสก์ภายในเครื่องหรือไดรฟ์ USB แยกจากรีโมทที่คุณกำลังเข้ารหัส และเก็บสำเนาสำรองไว้",
             "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
-            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore."
+            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
+            "overlaysRemotePath": "เส้นทางระยะไกลของโอเวอร์เลย์",
+            "overlaysRemotePathHint": "โฟลเดอร์ระยะไกลที่ยึดโอเวอร์เลย์ไว้ เว้นว่างไว้เพื่อใช้เส้นทางระยะไกล ต้องเป็นเส้นทางระยะไกลนั้นเองหรือโฟลเดอร์ภายในนั้น",
+            "overlaysRemotePathInvalid": "ต้องเป็นเส้นทางระยะไกลหรือโฟลเดอร์ย่อยของมัน"
         },
         "modalGuard": {
             "busyTitle": "กำลังดำเนินการ",

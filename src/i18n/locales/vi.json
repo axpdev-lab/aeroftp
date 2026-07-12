@@ -5042,7 +5042,10 @@
             "keyfileRepointHint": "Đường dẫn này chỉ trỏ tới nơi tệp khóa nằm; thay đổi nó không đổi khóa của két. Tệp khóa sai hoặc thiếu sẽ bị từ chối mở khóa.",
             "keyfileStorageHint": "Lưu nó trên ổ đĩa cục bộ hoặc ổ USB, tách biệt với máy chủ từ xa mà bạn đang mã hóa, và giữ một bản sao lưu.",
             "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
-            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore."
+            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
+            "overlaysRemotePath": "Đường dẫn từ xa của lớp phủ",
+            "overlaysRemotePathHint": "Thư mục từ xa nơi lớp phủ được neo. Để trống để dùng Đường dẫn từ xa. Phải là chính Đường dẫn từ xa hoặc một thư mục bên trong nó.",
+            "overlaysRemotePathInvalid": "Phải là Đường dẫn từ xa hoặc thư mục con của nó"
         },
         "modalGuard": {
             "busyTitle": "Đang thực hiện thao tác",

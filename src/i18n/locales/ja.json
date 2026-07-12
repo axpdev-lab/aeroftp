@@ -5042,7 +5042,10 @@
             "keyfileRepointHint": "このパスはキーファイルの場所を指すだけで、変更してもボールトの鍵は変わりません。誤った、または見つからないキーファイルではロック解除は拒否されます。",
             "keyfileStorageHint": "暗号化するリモートとは別に、ローカルディスクまたは USB ドライブに保存し、バックアップコピーを保管してください。",
             "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
-            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore."
+            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
+            "overlaysRemotePath": "オーバーレイのリモートパス",
+            "overlaysRemotePathHint": "オーバーレイを固定するリモートフォルダー。空欄にするとリモートパスを使用します。リモートパス自体か、その中のフォルダーである必要があります。",
+            "overlaysRemotePathInvalid": "リモートパス自体か、そのサブフォルダーである必要があります"
         },
         "modalGuard": {
             "busyTitle": "操作の実行中",

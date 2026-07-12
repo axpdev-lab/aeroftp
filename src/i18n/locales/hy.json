@@ -5042,7 +5042,10 @@
             "keyfileRepointHint": "Այս ուղին միայն ցույց է տալիս, թե որտեղ է բանալի ֆայլը. այն փոխելը պահոցի բանալին չի փոխում: Սխալ կամ բացակայող բանալի ֆայլը մերժում է ապակողպումը:",
             "keyfileStorageHint": "Պահեք այն տեղական սկավառակի կամ USB կրիչի վրա՝ առանձին այն հեռավոր սերվերից, որը գաղտնագրում եք, և պահեք պահուստային պատճեն։",
             "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
-            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore."
+            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
+            "overlaysRemotePath": "Վերադրման հեռավոր ուղի",
+            "overlaysRemotePathHint": "Հեռավոր թղթապանակ, որտեղ ամրացված է վերադրումը։ Թողեք դատարկ՝ Հեռավոր ուղին օգտագործելու համար։ Պետք է լինի հենց Հեռավոր ուղին կամ դրա ներսում գտնվող թղթապանակ։",
+            "overlaysRemotePathInvalid": "Պետք է լինի Հեռավոր ուղին կամ դրա ենթաթղթապանակը"
         },
         "modalGuard": {
             "busyTitle": "Գործողությունն ընթացքի մեջ է",

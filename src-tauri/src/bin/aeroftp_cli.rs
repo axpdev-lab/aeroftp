@@ -4489,7 +4489,32 @@ enum CryptCommands {
         /// omitting it prints the kit and requires an explicit YES acknowledgement before init succeeds.
         #[arg(long)]
         emergency_kit: Option<String>,
+        /// Do NOT bind the overlay to the saved profile. By default, `crypt init
+        /// --profile X` binds X so the whole app (CLI ls/get/sync, MCP, GUI)
+        /// transparently decrypts it on connect; --no-bind keeps X plain and
+        /// leaves the overlay reachable only via the standalone `crypt` commands.
+        #[arg(long)]
+        no_bind: bool,
     },
+    /// Bind an existing crypt overlay to a saved profile so the whole app
+    /// (CLI ls/get/sync, MCP, GUI) transparently decrypts it on connect.
+    Bind {
+        /// Remote encrypted directory the overlay covers (the scope). Defaults
+        /// to the profile's initial path.
+        #[arg(default_value = "/")]
+        path: String,
+        /// Overlay password to store for transparent unlock (or set
+        /// AEROFTP_CRYPT_PASSWORD). Omit for a keyfile-only vault.
+        #[arg(long, env = "AEROFTP_CRYPT_PASSWORD", hide_env_values = true)]
+        password: Option<String>,
+        /// Keyfile path to store for transparent unlock (keyfile vaults only).
+        #[arg(long)]
+        keyfile: Option<String>,
+    },
+    /// Remove the crypt-overlay binding from a saved profile (the overlay
+    /// itself and its remote data are untouched; standalone `crypt` commands
+    /// keep working).
+    Unbind,
     /// Convert a headed vault to local-metadata headerless mode
     ToHeaderless {
         /// Server URL (omit when using --profile)
@@ -24231,17 +24256,33 @@ async fn create_and_connect(
     cli: &Cli,
     format: OutputFormat,
 ) -> Result<(Box<dyn StorageProvider>, String), i32> {
-    create_and_connect_with(url, cli, cli.profile.as_deref(), format).await
+    create_and_connect_with(url, cli, cli.profile.as_deref(), format, true).await
+}
+
+/// Connect WITHOUT applying a bound profile's transparent crypt overlay. The
+/// standalone `crypt` subcommands (init/ls/put/get + the migrations) are the
+/// crypt layer themselves, so wrapping them in the bound overlay would
+/// double-encrypt (F4). They always drive the raw provider and manage the
+/// encryption explicitly with the password/keyfile passed on the command line.
+async fn create_and_connect_raw(
+    url: &str,
+    cli: &Cli,
+    format: OutputFormat,
+) -> Result<(Box<dyn StorageProvider>, String), i32> {
+    create_and_connect_with(url, cli, cli.profile.as_deref(), format, false).await
 }
 
 /// Like `create_and_connect` but with an explicit profile-name override instead
 /// of relying on the global `--profile`. Used by multi-profile benchmark
 /// compare, which connects each profile by name while `--profile` stays unset.
+/// `apply_overlay` wraps a bound profile in its transparent crypt overlay; the
+/// standalone `crypt` commands pass `false` so they see the raw ciphertext.
 async fn create_and_connect_with(
     url: &str,
     cli: &Cli,
     profile_override: Option<&str>,
     format: OutputFormat,
+    apply_overlay: bool,
 ) -> Result<(Box<dyn StorageProvider>, String), i32> {
     // Check if the selected profile points to an OAuth provider - handle separately
     // Uses the same strict matching as profile_to_provider_config (exact → ID → disambiguated substring)
@@ -24329,9 +24370,15 @@ async fn create_and_connect_with(
                                 apply_google_drive_runtime_knobs(&mut p, cli);
                                 // Crypt-overlay chokepoint: an OAuth backend can
                                 // carry a crypt binding too (overlay is
-                                // protocol-agnostic). Wrap before returning.
-                                let p = cli_apply_crypt_overlay(p, cli, profile_override, format)
-                                    .await?;
+                                // protocol-agnostic). Wrap before returning
+                                // unless the caller wants the raw provider (the
+                                // standalone `crypt` commands, F4).
+                                let p = if apply_overlay {
+                                    cli_apply_crypt_overlay(p, cli, profile_override, format)
+                                        .await?
+                                } else {
+                                    p
+                                };
                                 return Ok((p, path));
                             } else {
                                 return result;
@@ -24481,7 +24528,13 @@ async fn create_and_connect_with(
     // applied to the inner provider before wrapping; the decorator advertises
     // the byte-inexact surfaces (resume/multipart/range/checksum) as disabled so
     // callers fall back to whole-file paths. Fail-closed on a bound profile.
-    let provider = cli_apply_crypt_overlay(provider, cli, profile_override, format).await?;
+    // Skipped (raw provider) for the standalone `crypt` commands, which are the
+    // crypt layer themselves and would otherwise double-encrypt (F4).
+    let provider = if apply_overlay {
+        cli_apply_crypt_overlay(provider, cli, profile_override, format).await?
+    } else {
+        provider
+    };
 
     Ok((provider, path))
 }
@@ -38388,7 +38441,7 @@ async fn cmd_benchmark(
     // the global --profile (which stays unset across the whole compare run).
     let profile_for_connect = compare_label.or(cli.profile.as_deref());
     let (mut provider, initial_path) =
-        match create_and_connect_with("_", cli, profile_for_connect, format).await {
+        match create_and_connect_with("_", cli, profile_for_connect, format, true).await {
             Ok(v) => v,
             Err(code) => return code,
         };
@@ -46353,7 +46406,7 @@ async fn cmd_crypt_to_headerless(
         Ok(target) => target,
         Err(code) => return code,
     };
-    let (mut provider, initial_path) = match create_and_connect(url, cli, format).await {
+    let (mut provider, initial_path) = match create_and_connect_raw(url, cli, format).await {
         Ok(provider) => provider,
         Err(code) => return code,
     };
@@ -46509,7 +46562,7 @@ async fn cmd_crypt_to_headed(
         Ok(target) => target,
         Err(code) => return code,
     };
-    let (mut provider, initial_path) = match create_and_connect(url, cli, format).await {
+    let (mut provider, initial_path) = match create_and_connect_raw(url, cli, format).await {
         Ok(provider) => provider,
         Err(code) => return code,
     };
@@ -46713,6 +46766,246 @@ fn handle_emergency_kit_emission(
     }
 }
 
+/// Validate an overlay scope against the profile Remote Path (#369): the scope
+/// must EQUAL the Remote Path or be a strict DESCENDANT of it. A blank scope is
+/// valid (it means "same as the Remote Path"). When the Remote Path is the root
+/// (`/`), any folder is a descendant. Rejects ancestors (scope `/` under a
+/// subfolder Remote Path), siblings, the `/database` vs `/data` prefix trap, and
+/// unrelated paths. Mirrors the GUI's `isValidOverlayScope` in overlayScope.ts.
+fn is_valid_overlay_scope(scope: &str, remote_path: &str) -> bool {
+    if scope.trim().is_empty() {
+        return true;
+    }
+    let r = normalize_remote_path(remote_path);
+    if r == "/" {
+        return true; // remote path is the root: any folder is a descendant
+    }
+    let s = normalize_remote_path(scope);
+    if s == "/" {
+        return false; // scope is "/" but the remote path is a subfolder: ancestor
+    }
+    s == r || s.starts_with(&format!("{}/", r))
+}
+
+/// Read a saved profile's `initialPath` (the GUI's remote landing path), used
+/// as the default overlay scope for `crypt bind` when no path is given.
+fn profile_initial_path(cli: &Cli, store: &CredentialStore, profile_id: &str) -> Option<String> {
+    let profiles = load_active_user_profiles(cli, store).ok()?;
+    profiles
+        .iter()
+        .find(|p| p.get("id").and_then(|v| v.as_str()) == Some(profile_id))
+        .and_then(|p| p.get("initialPath").and_then(|v| v.as_str()))
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+}
+
+/// Bind a native AeroCrypt overlay to a saved profile so the whole app (the CLI
+/// transparent chokepoint `cli_apply_crypt_overlay`, the MCP pool resolver, the
+/// GUI file panel, sync) auto-decrypts it on connect. Writes the profile's
+/// `aeroCryptOverlay` JSON and stores the per-profile overlay password (+ keyfile
+/// path when supplied). Idempotent: re-binding overwrites the previous binding.
+fn bind_crypt_overlay_to_profile(
+    cli: &Cli,
+    store: &CredentialStore,
+    uid: Option<i64>,
+    profile_id: &str,
+    remote_scope: &str,
+    password: &str,
+    keyfile_path: Option<&str>,
+) -> Result<(), String> {
+    let binding = serde_json::json!({
+        "enabled": true,
+        "kind": "aerocrypt",
+        "remoteScope": remote_scope,
+        "filenameEncryption": "standard",
+        "directoryNameEncryption": true,
+    });
+    update_profile_field_in_vault(cli, store, profile_id, "aeroCryptOverlay", binding)?;
+    if !password.is_empty() {
+        dual_store_server_cred(
+            store,
+            uid,
+            &format!("aerocrypt_overlay_pw_{}", profile_id),
+            password,
+        );
+    }
+    if let Some(path) = keyfile_path.filter(|p| !p.is_empty()) {
+        dual_store_server_cred(
+            store,
+            uid,
+            &format!("aerocrypt_overlay_keyfile_path_{}", profile_id),
+            path,
+        );
+    }
+    Ok(())
+}
+
+/// Best-effort bind after a successful `crypt init --profile` (non-fatal: the
+/// overlay was already created, so a binding hiccup must not fail the whole
+/// init). Prints a one-line confirmation on success, a warning on failure.
+#[allow(clippy::too_many_arguments)]
+fn bind_after_init(
+    cli: &Cli,
+    format: OutputFormat,
+    store: &CredentialStore,
+    uid: Option<i64>,
+    profile_id: &str,
+    remote_scope: &str,
+    password: &str,
+    keyfile_path: Option<&str>,
+) {
+    match bind_crypt_overlay_to_profile(
+        cli,
+        store,
+        uid,
+        profile_id,
+        remote_scope,
+        password,
+        keyfile_path,
+    ) {
+        Ok(()) => {
+            if !cli.quiet && !matches!(format, OutputFormat::Json) {
+                println!(
+                    "Bound overlay to profile (transparent decrypt on connect; use --raw to bypass, 'crypt unbind' to remove)"
+                );
+            }
+        }
+        Err(e) => {
+            eprintln!("Warning: overlay created but profile binding failed: {e}");
+        }
+    }
+}
+
+/// `crypt bind`: attach an existing overlay to a saved profile.
+async fn cmd_crypt_bind(
+    path: &str,
+    password: &str,
+    keyfile_path: Option<&str>,
+    cli: &Cli,
+    format: OutputFormat,
+) -> i32 {
+    let profile_query = match cli.profile.as_deref() {
+        Some(p) => p,
+        None => {
+            print_error(
+                format,
+                "crypt bind requires a saved profile: pass --profile <name-or-index>.",
+                5,
+            );
+            return 5;
+        }
+    };
+    let store = match open_vault(cli) {
+        Ok(s) => s,
+        Err(e) => {
+            print_error(format, &e, 5);
+            return 5;
+        }
+    };
+    let profile_id = match resolve_profile_id_for_query(cli, &store, profile_query, format) {
+        Ok(id) => id,
+        Err(code) => return code,
+    };
+    let uid = scoped_credential_user_id(cli, &store);
+    let remote_path =
+        profile_initial_path(cli, &store, &profile_id).unwrap_or_else(|| "/".to_string());
+    // Resolve the scope: an explicit non-root path wins, else the profile's
+    // Remote Path, else "/".
+    let scope = if path != "/" && !path.is_empty() {
+        path.to_string()
+    } else {
+        remote_path.clone()
+    };
+    // #369: the overlay scope must equal the profile Remote Path or be a strict
+    // descendant of it. Pinning the anchor above the vault (an ancestor) or to a
+    // sibling produces the empty-listing misconfiguration; reject it up front.
+    if !is_valid_overlay_scope(&scope, &remote_path) {
+        print_error(
+            format,
+            &format!(
+                "Overlay scope {:?} must be the profile Remote Path {:?} or a folder inside it.",
+                scope, remote_path
+            ),
+            5,
+        );
+        return 5;
+    }
+    let scope = normalize_remote_path(&scope);
+    if let Err(e) = bind_crypt_overlay_to_profile(
+        cli,
+        &store,
+        uid,
+        &profile_id,
+        scope.trim_end_matches('/'),
+        password,
+        keyfile_path,
+    ) {
+        print_error(format, &format!("Failed to bind overlay: {}", e), 5);
+        return 5;
+    }
+    if matches!(format, OutputFormat::Json) {
+        print_json(&serde_json::json!({
+            "status": "ok",
+            "bound": true,
+            "profile": profile_query,
+            "remoteScope": scope,
+        }));
+    } else if !cli.quiet {
+        println!(
+            "Bound crypt overlay to profile '{}' at {} (transparent decrypt on connect; use --raw to bypass).",
+            profile_query, scope
+        );
+    }
+    0
+}
+
+/// `crypt unbind`: remove the overlay binding from a saved profile. The remote
+/// data and the keystore config are left intact so standalone `crypt` commands
+/// and a later re-bind keep working.
+async fn cmd_crypt_unbind(cli: &Cli, format: OutputFormat) -> i32 {
+    let profile_query = match cli.profile.as_deref() {
+        Some(p) => p,
+        None => {
+            print_error(
+                format,
+                "crypt unbind requires a saved profile: pass --profile <name-or-index>.",
+                5,
+            );
+            return 5;
+        }
+    };
+    let store = match open_vault(cli) {
+        Ok(s) => s,
+        Err(e) => {
+            print_error(format, &e, 5);
+            return 5;
+        }
+    };
+    let profile_id = match resolve_profile_id_for_query(cli, &store, profile_query, format) {
+        Ok(id) => id,
+        Err(code) => return code,
+    };
+    if let Err(e) = update_profile_field_in_vault(
+        cli,
+        &store,
+        &profile_id,
+        "aeroCryptOverlay",
+        serde_json::Value::Null,
+    ) {
+        print_error(format, &format!("Failed to unbind overlay: {}", e), 5);
+        return 5;
+    }
+    if matches!(format, OutputFormat::Json) {
+        print_json(&serde_json::json!({"status": "ok", "bound": false, "profile": profile_query}));
+    } else if !cli.quiet {
+        println!(
+            "Removed crypt-overlay binding from profile '{}' (remote data and keystore config untouched).",
+            profile_query
+        );
+    }
+    0
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn cmd_crypt_init(
     url: &str,
@@ -46722,6 +47015,8 @@ async fn cmd_crypt_init(
     with_header: bool,
     force: bool,
     emergency_kit: Option<&str>,
+    no_bind: bool,
+    keyfile_path: Option<&str>,
     cli: &Cli,
     format: OutputFormat,
 ) -> i32 {
@@ -46768,13 +47063,28 @@ async fn cmd_crypt_init(
         }
     };
 
-    let (mut provider, initial_path) = match create_and_connect(url, cli, format).await {
+    let (mut provider, initial_path) = match create_and_connect_raw(url, cli, format).await {
         Ok(v) => v,
         Err(code) => return code,
     };
 
     let base_path = normalize_remote_path(&resolve_cli_remote_path(&initial_path, path));
     let config_path = format!("{}/.aeroftp-crypt.json", base_path.trim_end_matches('/'));
+
+    // Ensure the remote scope directory exists so `crypt init /a/b/c` prepares
+    // the vault immediately: the headed marker upload writes into it, and the
+    // first headerless `crypt put` expects it to be there. Best-effort, one
+    // component at a time (mkdir on an existing dir is ignored); a genuine
+    // failure still surfaces at the marker upload (headed) or first put.
+    {
+        let scope = base_path.trim_end_matches('/');
+        let mut acc = String::new();
+        for part in scope.split('/').filter(|s| !s.is_empty()) {
+            acc.push('/');
+            acc.push_str(part);
+            let _ = provider.mkdir(&acc).await;
+        }
+    }
 
     if !with_header {
         let (store, uid, profile_id) = headerless_target.expect("resolved above");
@@ -46854,12 +47164,28 @@ async fn cmd_crypt_init(
                     return 5;
                 }
 
+                // Bind the profile by default so the whole app decrypts it
+                // transparently on connect (--no-bind opts out). Non-fatal.
+                if !no_bind {
+                    bind_after_init(
+                        cli,
+                        format,
+                        &store,
+                        uid,
+                        &profile_id,
+                        base_path.trim_end_matches('/'),
+                        password,
+                        keyfile_path,
+                    );
+                }
+
                 if matches!(format, OutputFormat::Json) {
                     print_json(&serde_json::json!({
                         "status": "ok",
                         "path": base_path,
                         "headerless": true,
                         "config_key": config_key,
+                        "bound": !no_bind,
                     }));
                 } else if !cli.quiet {
                     println!("Crypt overlay initialized at {}", base_path);
@@ -46968,8 +47294,43 @@ async fn cmd_crypt_init(
                 return 5;
             }
 
+            // Bind the profile by default so the whole app decrypts it
+            // transparently on connect (--no-bind opts out; URL mode has no
+            // profile to bind). Non-fatal: the headed marker already exists.
+            let mut bound = false;
+            if !no_bind {
+                if let Some(profile_q) = cli.profile.as_deref() {
+                    match open_vault(cli) {
+                        Ok(store) => {
+                            match resolve_profile_id_for_query(cli, &store, profile_q, format) {
+                                Ok(pid) => {
+                                    let uid = scoped_credential_user_id(cli, &store);
+                                    bind_after_init(
+                                        cli,
+                                        format,
+                                        &store,
+                                        uid,
+                                        &pid,
+                                        base_path.trim_end_matches('/'),
+                                        password,
+                                        keyfile_path,
+                                    );
+                                    bound = true;
+                                }
+                                Err(_) => { /* error already printed; leave unbound */ }
+                            }
+                        }
+                        Err(e) => {
+                            eprintln!("Warning: cannot open vault to bind profile: {e}");
+                        }
+                    }
+                }
+            }
+
             if matches!(format, OutputFormat::Json) {
-                print_json(&serde_json::json!({"status": "ok", "path": config_path}));
+                print_json(
+                    &serde_json::json!({"status": "ok", "path": config_path, "bound": bound}),
+                );
             } else if !cli.quiet {
                 println!("Crypt overlay initialized at {}", base_path);
                 println!("Config: {}", config_path);
@@ -47019,7 +47380,7 @@ async fn cmd_crypt_ls(
     format: OutputFormat,
 ) -> i32 {
     use ftp_client_gui_lib::aerocrypt::{names, overlay};
-    let (mut provider, initial_path) = match create_and_connect(url, cli, format).await {
+    let (mut provider, initial_path) = match create_and_connect_raw(url, cli, format).await {
         Ok(v) => v,
         Err(code) => return code,
     };
@@ -47216,7 +47577,7 @@ async fn cmd_crypt_put(
     format: OutputFormat,
 ) -> i32 {
     use ftp_client_gui_lib::aerocrypt::{names, overlay};
-    let (mut provider, initial_path) = match create_and_connect(url, cli, format).await {
+    let (mut provider, initial_path) = match create_and_connect_raw(url, cli, format).await {
         Ok(v) => v,
         Err(code) => return code,
     };
@@ -47556,7 +47917,7 @@ async fn cmd_crypt_get(
     format: OutputFormat,
 ) -> i32 {
     use ftp_client_gui_lib::aerocrypt::{names, overlay};
-    let (mut provider, initial_path) = match create_and_connect(url, cli, format).await {
+    let (mut provider, initial_path) = match create_and_connect_raw(url, cli, format).await {
         Ok(v) => v,
         Err(code) => return code,
     };
@@ -47786,14 +48147,39 @@ async fn cmd_crypt_get(
         }
     };
 
+    // The decrypted original basename, used when the destination is omitted or
+    // is a directory (so `crypt get secret.txt <dir>/` lands as `<dir>/secret.txt`).
+    let enc_basename = remote_file.rsplit('/').next().unwrap_or("decrypted");
+    let decrypted_basename = names::decrypt_filename(&master_key, enc_basename)
+        .unwrap_or_else(|| "decrypted".to_string());
+
     // Write to local file
     let dest = if local_dest.is_empty() || local_dest == "." {
-        // Use decrypted original filename
-        let enc_basename = remote_file.rsplit('/').next().unwrap_or("decrypted");
-        names::decrypt_filename(&master_key, enc_basename)
-            .unwrap_or_else(|| "decrypted".to_string())
+        decrypted_basename.clone()
     } else {
-        local_dest.to_string()
+        // scp/cp semantics: an existing directory, or a path with a trailing
+        // separator, means "write the decrypted file inside this directory"
+        // rather than treating the directory path itself as the file name.
+        let dest_path = std::path::Path::new(local_dest);
+        let treat_as_dir = dest_path.is_dir()
+            || local_dest.ends_with('/')
+            || local_dest.ends_with(std::path::MAIN_SEPARATOR);
+        if treat_as_dir {
+            if let Err(e) = std::fs::create_dir_all(dest_path) {
+                print_error(
+                    format,
+                    &format!("Cannot create directory '{}': {}", local_dest, e),
+                    4,
+                );
+                return 4;
+            }
+            dest_path
+                .join(&decrypted_basename)
+                .to_string_lossy()
+                .into_owned()
+        } else {
+            local_dest.to_string()
+        }
     };
 
     if let Err(e) = std::fs::write(&dest, &plaintext) {
@@ -59376,6 +59762,7 @@ async fn main() {
                     with_header,
                     force,
                     emergency_kit,
+                    no_bind,
                 } => {
                     if let Err(msg) = ensure_headerless_init_profile_selector(
                         cli.profile.as_deref(),
@@ -59400,6 +59787,8 @@ async fn main() {
                                         path,
                                         "/",
                                     );
+                                    let keyfile_path =
+                                        keyfile_gen.as_deref().or(keyfile.as_deref());
                                     cmd_crypt_init(
                                         &u,
                                         &dir,
@@ -59408,6 +59797,8 @@ async fn main() {
                                         *with_header,
                                         *force,
                                         emergency_kit.as_deref(),
+                                        *no_bind,
+                                        keyfile_path,
                                         &cli,
                                         format,
                                     )
@@ -59417,6 +59808,15 @@ async fn main() {
                         }
                     }
                 }
+                CryptCommands::Bind {
+                    path,
+                    password,
+                    keyfile,
+                } => {
+                    let pw = resolve_crypt_password(password).unwrap_or_default();
+                    cmd_crypt_bind(path, &pw, keyfile.as_deref(), &cli, format).await
+                }
+                CryptCommands::Unbind => cmd_crypt_unbind(&cli, format).await,
                 CryptCommands::ToHeaderless {
                     url,
                     path,
@@ -63996,6 +64396,33 @@ mod tests {
             "aeroCryptOverlay": { "enabled": true, "kind": "aerocrypt", "remoteScope": "/enc" }
         });
         assert!(profile_has_crypt_overlay(&enabled));
+    }
+
+    #[test]
+    fn overlay_scope_must_equal_or_descend_remote_path() {
+        // Blank scope = "same as Remote Path" = always valid.
+        assert!(is_valid_overlay_scope("", "/data"));
+        assert!(is_valid_overlay_scope("   ", "/data"));
+        // Remote Path is the root: any folder is a descendant.
+        assert!(is_valid_overlay_scope("/anything/here", "/"));
+        assert!(is_valid_overlay_scope("/anything/here", ""));
+        // Exact match and strict descendant are valid.
+        assert!(is_valid_overlay_scope("/data", "/data"));
+        assert!(is_valid_overlay_scope("/data/vault", "/data"));
+        assert!(is_valid_overlay_scope("/data/a/b/c", "/data"));
+        // Trailing-slash and duplicate-slash normalization.
+        assert!(is_valid_overlay_scope("/data/vault/", "/data"));
+        assert!(is_valid_overlay_scope("//data//vault", "/data"));
+        // Ancestor is rejected: scope "/" under a subfolder Remote Path pins the
+        // anchor above the vault (the empty-listing misconfiguration).
+        assert!(!is_valid_overlay_scope("/", "/data"));
+        assert!(!is_valid_overlay_scope("/data", "/data/vault"));
+        // Sibling and unrelated are rejected.
+        assert!(!is_valid_overlay_scope("/other", "/data"));
+        assert!(!is_valid_overlay_scope("/data2", "/data"));
+        // The /database vs /data prefix trap must be rejected.
+        assert!(!is_valid_overlay_scope("/database", "/data"));
+        assert!(!is_valid_overlay_scope("/data-backup/x", "/data"));
     }
 
     #[test]

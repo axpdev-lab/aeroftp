@@ -5042,7 +5042,10 @@
             "keyfileRepointHint": "Denne sti peger kun på, hvor nøglefilen ligger; at ændre den omnøgler ikke boksen. En forkert eller manglende nøglefil afviser oplåsningen.",
             "keyfileStorageHint": "Gem den på en lokal disk eller et USB-drev, adskilt fra det fjernlager, du krypterer, og opbevar en sikkerhedskopi.",
             "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
-            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore."
+            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
+            "overlaysRemotePath": "Fjernsti for overlay",
+            "overlaysRemotePathHint": "Fjernmappe hvor overlayet er forankret. Lad stå tomt for at bruge Fjernstien. Det skal være selve Fjernstien eller en mappe i den.",
+            "overlaysRemotePathInvalid": "Skal være Fjernstien eller en undermappe af den"
         },
         "modalGuard": {
             "busyTitle": "Handling i gang",
