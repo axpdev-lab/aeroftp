@@ -293,7 +293,7 @@ export const SavedServers: React.FC<SavedServersProps> = ({
         const updated = servers.filter(s => s.id !== deleteTarget.id);
         setServers(updated);
         saveServers(updated);
-        deleteProfileVaultSecrets(deleteTarget.id).catch(() => {});
+        deleteProfileVaultSecrets(deleteTarget.id, deleteTarget.protocol).catch(() => {});
         setDeleteTarget(null);
     };
 
@@ -324,7 +324,7 @@ export const SavedServers: React.FC<SavedServersProps> = ({
         // profile synced from another machine (per-machine keyring). The helper
         // copies every profile-scoped secret key and reports which ones actually
         // existed so the duplicate's flags match the new vault state.
-        const copiedSecrets = await copyProfileVaultSecrets(server.id, newId);
+        const copiedSecrets = await copyProfileVaultSecrets(server.id, newId, server.protocol);
         const credentialCopied = copiedSecrets.server;
         cloned.hasStoredCredential = copiedSecrets.server;
         // server_modes_<id> is copied by the helper; persistModeCredentials is a

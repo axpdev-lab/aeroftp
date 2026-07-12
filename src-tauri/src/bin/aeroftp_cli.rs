@@ -20548,13 +20548,23 @@ fn cmd_profile_duplicate(
         return 5;
     }
 
-    // Best-effort credential clone. Missing credentials are valid for many
-    // protocols (OAuth, GitHub PAT-only flows) so we don't fail when the
-    // source key isn't present. MUV-3: same scoped user, dual-write.
+    // Best-effort clone of EVERY vault secret scoped to the source profile so a
+    // duplicate is a complete working copy, not just the password (crypt overlay,
+    // Filen key, OAuth/Jotta token, per-mode snapshots, OneDrive hints). Same
+    // single source of truth (`per_profile_vault_keys`) the GUI copy command and
+    // delete/export use. Missing keys are valid for many protocols, so a missing
+    // source key is skipped, never an error. MUV-3: same scoped user, dual-write.
     if !source_id.is_empty() {
         let scoped_uid = scoped_credential_user_id(cli, &store);
-        if let Some(cred) = read_server_cred(&store, scoped_uid, &format!("server_{}", source_id)) {
-            dual_store_server_cred(&store, scoped_uid, &format!("server_{}", new_id), &cred);
+        let protocol = source.get("protocol").and_then(|v| v.as_str());
+        let source_suffix = format!("_{}", source_id);
+        for source_key in ftp_client_gui_lib::per_profile_vault_keys(&source_id, protocol) {
+            if let Some(base) = source_key.strip_suffix(&source_suffix) {
+                if let Some(value) = read_server_cred(&store, scoped_uid, &source_key) {
+                    let target_key = format!("{}_{}", base, new_id);
+                    dual_store_server_cred(&store, scoped_uid, &target_key, &value);
+                }
+            }
         }
     }
 
@@ -21323,6 +21333,13 @@ fn delete_profile_in_vault(
     let mut profiles: Vec<serde_json::Value> = load_active_user_profiles(cli, store)
         .map_err(|e| format!("Failed to read profiles: {}", e))?;
     let before = profiles.len();
+    // Capture the protocol before removing the entry, so the OAuth-token key can
+    // be derived for the orphan cleanup below.
+    let protocol = profiles
+        .iter()
+        .find(|p| p.get("id").and_then(|v| v.as_str()) == Some(profile_id))
+        .and_then(|p| p.get("protocol").and_then(|v| v.as_str()))
+        .map(|s| s.to_string());
     profiles.retain(|p| p.get("id").and_then(|v| v.as_str()) != Some(profile_id));
     if profiles.len() == before {
         return Err(format!("Profile id '{}' not found in vault", profile_id));
@@ -21330,13 +21347,16 @@ fn delete_profile_in_vault(
     save_active_user_profiles(cli, store, &profiles)
         .map_err(|e| format!("Failed to write profiles: {}", e))?;
 
-    // Orphan credential cleanup (matches MyServersPanel.tsx confirmDelete).
-    // MUV-3: dual-delete from vault + the scoped user's partition.
-    dual_delete_server_cred(
-        store,
-        scoped_credential_user_id(cli, store),
-        &format!("server_{}", profile_id),
-    );
+    // Orphan credential cleanup: remove EVERY vault secret scoped to this profile
+    // so a delete leaves nothing behind. Same single source of truth
+    // (`per_profile_vault_keys`) the GUI `purge_profile_secrets` command and the
+    // export-collect path use, so the CLI and GUI can never diverge. MUV-3:
+    // dual-delete from the vault + the scoped user's partition; best-effort per
+    // key (a key absent for this profile kind is a no-op).
+    let scoped_uid = scoped_credential_user_id(cli, store);
+    for key in ftp_client_gui_lib::per_profile_vault_keys(profile_id, protocol.as_deref()) {
+        dual_delete_server_cred(store, scoped_uid, &key);
+    }
 
     // Drop the id from the favourites set if present. Best-effort: a missing
     // or malformed entry leaves the favourites list untouched.

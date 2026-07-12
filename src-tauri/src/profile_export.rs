@@ -129,6 +129,14 @@ pub struct ProviderSecrets {
     /// profiles or when credentials are excluded from the export.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub filen_api_key: Option<String>,
+    /// OneDrive Graph drive id captured at connect (`onedrive_drive_id_<id>`).
+    /// Like the Filen key it lives only in the vault, not on the profile, so the
+    /// export dropped it; carried here so a re-import is a complete snapshot.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub onedrive_drive_id: Option<String>,
+    /// OneDrive Graph drive type captured at connect (`onedrive_drive_type_<id>`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub onedrive_drive_type: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Default)]
@@ -215,6 +223,8 @@ pub fn export_profiles(
             || s.aerocrypt_overlay_config.is_some()
             || s.mode_credentials.is_some()
             || s.filen_api_key.is_some()
+            || s.onedrive_drive_id.is_some()
+            || s.onedrive_drive_type.is_some()
     });
     let metadata = ExportMetadata {
         export_date: chrono::Utc::now().to_rfc3339(),
@@ -572,6 +582,8 @@ mod tests {
             "filen-profile".to_string(),
             ProviderSecrets {
                 filen_api_key: Some("filen-cli-api-key-secret".to_string()),
+                onedrive_drive_id: Some("b!driveid123".to_string()),
+                onedrive_drive_type: Some("business".to_string()),
                 ..Default::default()
             },
         );
@@ -608,6 +620,20 @@ mod tests {
                 .and_then(|s| s.filen_api_key.clone()),
             Some("filen-cli-api-key-secret".to_string()),
             "Filen CLI API key must survive as a provider secret"
+        );
+        assert_eq!(
+            restored_secrets
+                .get("filen-profile")
+                .and_then(|s| s.onedrive_drive_id.clone()),
+            Some("b!driveid123".to_string()),
+            "OneDrive drive id must survive"
+        );
+        assert_eq!(
+            restored_secrets
+                .get("filen-profile")
+                .and_then(|s| s.onedrive_drive_type.clone()),
+            Some("business".to_string()),
+            "OneDrive drive type must survive"
         );
 
         let _ = std::fs::remove_file(&tmp);

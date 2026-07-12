@@ -3,16 +3,27 @@
 
 import { invoke } from '@tauri-apps/api/core';
 
+// Base prefixes of the per-profile vault keys, kept for reference and for the
+// copy-result flag lookups below. The AUTHORITATIVE enumeration now lives in the
+// Rust `per_profile_vault_keys` (single source of truth shared by delete,
+// duplicate and export), reached through the `purge_profile_secrets` /
+// `copy_profile_secrets` commands so the GUI and CLI can never drift. Do not
+// delete/copy by iterating this list on the frontend: call the commands.
 export const PROFILE_VAULT_SECRET_PREFIXES = [
   'server',
   'server_modes',
-  'filen_api_key',
+  'jottacloud_refresh',
   'aerocrypt_overlay_pw',
   'aerocrypt_overlay_salt',
+  'aerocrypt_overlay_keyfile_path',
+  'aerocrypt_overlay_config',
+  'filen_api_key',
+  'onedrive_drive_id',
+  'onedrive_drive_type',
+  // OAuth token key is `oauth_<slug>_<id>`; the backend derives the slug.
 ] as const;
 
-export type ProfileVaultSecretPrefix = typeof PROFILE_VAULT_SECRET_PREFIXES[number];
-export type ProfileVaultSecretCopyResult = Record<ProfileVaultSecretPrefix, boolean>;
+export type ProfileVaultSecretCopyResult = Record<string, boolean>;
 
 export const getCredentialWithRetry = async (account: string, maxRetries = 3): Promise<string> => {
   for (let attempt = 0; attempt < maxRetries; attempt++) {
@@ -30,38 +41,45 @@ export const getCredentialWithRetry = async (account: string, maxRetries = 3): P
   throw new Error('Failed to get credential after retries');
 };
 
+/**
+ * Copy EVERY vault secret scoped to `sourceProfileId` onto `targetProfileId` so
+ * a duplicated profile is a complete working copy (crypt overlay, Filen key,
+ * OAuth/Jotta token, per-mode snapshots, OneDrive hints), not just the password.
+ * Delegates to the Rust `copy_profile_secrets` single source of truth. Returns a
+ * map `base_prefix -> bool` of what was copied so the caller can set the
+ * duplicate's `hasStored*` flags. `protocol` lets the backend derive the OAuth
+ * token key.
+ */
 export const copyProfileVaultSecrets = async (
   sourceProfileId: string,
   targetProfileId: string,
+  protocol?: string,
 ): Promise<ProfileVaultSecretCopyResult> => {
-  const result = Object.fromEntries(
-    PROFILE_VAULT_SECRET_PREFIXES.map(prefix => [prefix, false]),
-  ) as ProfileVaultSecretCopyResult;
-
-  for (const prefix of PROFILE_VAULT_SECRET_PREFIXES) {
-    try {
-      const value = await getCredentialWithRetry(`${prefix}_${sourceProfileId}`);
-      if (value) {
-        await invoke('store_credential', {
-          account: `${prefix}_${targetProfileId}`,
-          password: value,
-        });
-        result[prefix] = true;
-      }
-    } catch {
-      // Missing source keys are expected for many profile kinds.
-    }
+  try {
+    return await invoke<ProfileVaultSecretCopyResult>('copy_profile_secrets', {
+      sourceId: sourceProfileId,
+      targetId: targetProfileId,
+      protocol: protocol ?? null,
+    });
+  } catch {
+    // Best-effort: a copy failure leaves the duplicate credential-free, exactly
+    // as before this helper existed.
+    return {};
   }
-
-  return result;
 };
 
-export const deleteProfileVaultSecrets = async (profileId: string): Promise<void> => {
-  await Promise.all(PROFILE_VAULT_SECRET_PREFIXES.map(async (prefix) => {
-    try {
-      await invoke('delete_credential', { account: `${prefix}_${profileId}` });
-    } catch {
-      // Best-effort cleanup: missing keys are expected for many profile kinds.
-    }
-  }));
+/**
+ * Remove EVERY vault secret scoped to a profile id so deleting a profile leaves
+ * nothing behind. Delegates to the Rust `purge_profile_secrets` single source of
+ * truth. `protocol` lets the backend derive the OAuth token key.
+ */
+export const deleteProfileVaultSecrets = async (
+  profileId: string,
+  protocol?: string,
+): Promise<void> => {
+  try {
+    await invoke('purge_profile_secrets', { profileId, protocol: protocol ?? null });
+  } catch {
+    // Best-effort cleanup: a purge failure must not block the profile removal.
+  }
 };
