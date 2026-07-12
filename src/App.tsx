@@ -107,6 +107,7 @@ interface ProviderCryptOverlayApply {
   salt?: string | null;
   /** AeroCrypt Tier 1 optional keyfile second factor (local path, resolved to a digest backend-side). */
   keyfilePath?: string | null;
+  profileId?: string | null;
 }
 
 interface ImportedServerProfile {
@@ -4792,6 +4793,7 @@ interface UpdateVerificationInfo {
             password,
             salt: salt || null,
             keyfilePath: keyfilePath || null,
+            profileId: savedServerId,
           },
           savedServerId,
         );
@@ -14705,6 +14707,7 @@ interface UpdateVerificationInfo {
                       directoryNameEncryption: details.directoryNameEncryption,
                       password: details.password,
                       salt: details.salt || null,
+                      profileId: sessions.find(s => s.id === activeSessionId)?.savedServerId ?? null,
                     },
                     activeSessionId,
                   );
@@ -14740,6 +14743,7 @@ interface UpdateVerificationInfo {
                       remoteScope: details.remoteScope ?? '',
                       password: details.password,
                       keyfilePath: details.keyfilePath || null,
+                      profileId: sessions.find(s => s.id === activeSessionId)?.savedServerId ?? null,
                     },
                     activeSessionId,
                   );

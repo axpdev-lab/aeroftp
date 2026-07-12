@@ -5001,7 +5001,18 @@
             "keyfilePlaceholder": "কোনো কী-ফাইল নেই: শুধু পাসওয়ার্ড",
             "keyfileHint": "এনক্রিপশন কী-তে মেশানো ঐচ্ছিক দ্বিতীয় ফ্যাক্টর: ওভারলে শুধু পাসওয়ার্ড এবং এই ফাইল দুটো দিয়েই খোলে। কী-ফাইলের ব্যাকআপ রাখুন।",
             "keyfileChoose": "বেছে নিন",
-            "keyfileClear": "কী-ফাইল সরান"
+            "keyfileClear": "কী-ফাইল সরান",
+            "emergencyKitTitle": "জরুরি কিট (পুনরুদ্ধারের জন্য বাধ্যতামূলক)",
+            "emergencyKitIntro": "এই কিটে শুধুমাত্র পাবলিক কনফিগারেশন রয়েছে (vault ID, salt, KDF প্যারামিটার)। এটি আপনার পাসওয়ার্ডের সাথে অফলাইনে সংরক্ষণ করুন। স্থানীয় কীস্টোর হারানোর পরে (পুনরায় ইনস্টল বা নতুন মেশিন) হেডারবিহীন ভল্ট পুনরুদ্ধার করার এটিই একমাত্র উপায়।",
+            "vaultIdLabel": "Vault ID (base64)",
+            "saltLabel": "Salt (base64)",
+            "kdfLabel": "KDF প্যারামিটার",
+            "saveKit": "কিট ফাইলে সংরক্ষণ করুন",
+            "printKit": "প্রিন্ট",
+            "ackCheckbox": "আমি এই জরুরি কিট সংরক্ষণ বা প্রিন্ট করেছি এবং বুঝি যে ভল্ট পুনরুদ্ধারের জন্য এটি প্রয়োজন।",
+            "ackHint": "overlay ব্যবহার করার আগে স্বীকৃতি আবশ্যক।",
+            "confirmAndUnlock": "কিট সংরক্ষণ নিশ্চিত করুন - তৈরি ও আনলক করুন",
+            "kitRequiredError": "overlay ব্যবহারযোগ্য হওয়ার আগে আপনাকে জরুরি কিট সংরক্ষণের বিষয়টি স্বীকার করতে হবে।"
         },
         "aerocryptProfile": {
             "enable": "Crypt (এনক্রিপশন)",
@@ -5029,7 +5040,9 @@
             "keyfileGenerate": "তৈরি করুন...",
             "keyfileGeneratedBackup": "কী-ফাইল তৈরি হয়েছে। এখনই ব্যাকআপ নিন: এটি হারালে ভল্ট চিরতরে বন্ধ হয়ে যাবে।",
             "keyfileRepointHint": "এই পাথ শুধু কী-ফাইলটি কোথায় আছে তা নির্দেশ করে; এটি বদলালে ভল্টের কী বদলায় না। ভুল বা অনুপস্থিত কী-ফাইল হলে আনলক প্রত্যাখ্যাত হয়।",
-            "keyfileStorageHint": "এটি স্থানীয় ডিস্ক বা USB ড্রাইভে সংরক্ষণ করুন, আপনি যে রিমোট এনক্রিপ্ট করছেন তা থেকে আলাদা রাখুন এবং একটি ব্যাকআপ কপি রাখুন।"
+            "keyfileStorageHint": "এটি স্থানীয় ডিস্ক বা USB ড্রাইভে সংরক্ষণ করুন, আপনি যে রিমোট এনক্রিপ্ট করছেন তা থেকে আলাদা রাখুন এবং একটি ব্যাকআপ কপি রাখুন।",
+            "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
+            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore."
         },
         "modalGuard": {
             "busyTitle": "অপারেশন চলছে",

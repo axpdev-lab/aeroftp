@@ -41,6 +41,17 @@ interface AeroCryptVaultInfo {
     config_json: string;
 }
 
+interface AerocryptEmergencyKit {
+    vault_id: string;
+    version: number;
+    salt: string;
+    kdf_algorithm: string;
+    kdf_mem_kib: number;
+    kdf_time: number;
+    kdf_lanes: number;
+    text: string;
+}
+
 export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({ onClose, onUnlocked, onLocked, activeVaultId }) => {
     const t = useTranslation();
     const [mode, setMode] = useState<'open' | 'create'>('open');
@@ -52,6 +63,8 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({ onClose, onUnl
     const [error, setError] = useState<string | null>(null);
     const [vaultInfo, setVaultInfo] = useState<AeroCryptVaultInfo | null>(null);
     const [success, setSuccess] = useState<string | null>(null);
+    const [kitData, setKitData] = useState<AerocryptEmergencyKit | null>(null);
+    const [kitAck, setKitAck] = useState(false);
     const vaultInfoRef = useRef<AeroCryptVaultInfo | null>(null);
 
     useEffect(() => {
@@ -68,6 +81,8 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({ onClose, onUnl
         setPassword('');
         setConfirmPassword('');
         setSuccess(null);
+        setKitData(null);
+        setKitAck(false);
     }, []);
 
     const lockVault = useCallback(async (vaultId: string) => {
@@ -119,21 +134,61 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({ onClose, onUnl
                 targetSubpath: createSubpath.trim() ? createSubpath.trim() : null,
                 keyfilePath: keyfilePath || null,
             });
-            setVaultInfo(info);
-            onUnlocked?.({
-                vaultId: info.vault_id,
-                password,
-                remoteScope: '',
-                keyfilePath: keyfilePath || undefined,
+            // Fetch the mandatory Emergency Kit (builder is the single impl shared with CLI).
+            // The backend create already persisted; we read the returned config_json
+            // (in real headerless GUI flows the caller would re-read from keystore).
+            const kit = await invoke<AerocryptEmergencyKit>('aerocrypt_build_emergency_kit', {
+                configJson: info.config_json,
             });
-            setPassword('');
-            setConfirmPassword('');
+            setVaultInfo(info);
+            setKitData(kit);
+            setKitAck(false);
             setCreateSubpath('');
-            setSuccess(t('aerocryptNative.initialised'));
+            // Keep the password in component state (not cleared here) so the
+            // mandatory kit-ack step can pass it to onUnlocked. Do NOT call
+            // onUnlocked yet: the kit dialog + explicit ack is mandatory before
+            // the vault is considered usable.
         } catch (e) {
             setError(String(e));
         } finally {
             setLoading(false);
+        }
+    };
+
+    const finalizeAfterKitAck = () => {
+        if (!vaultInfo || !kitAck) return;
+        onUnlocked?.({
+            vaultId: vaultInfo.vault_id,
+            password,
+            remoteScope: '',
+            keyfilePath: keyfilePath || undefined,
+        });
+        setPassword('');
+        setConfirmPassword('');
+        setSuccess(t('aerocryptNative.initialised'));
+    };
+
+    const saveKitToFile = () => {
+        if (!kitData) return;
+        const blob = new Blob([kitData.text], { type: 'text/plain;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'aerocrypt-emergency-kit.txt';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    };
+
+    const printKit = () => {
+        if (!kitData) return;
+        const w = window.open('', '_blank');
+        if (w) {
+            w.document.write('<pre style="font-family: monospace; white-space: pre-wrap;">' + kitData.text.replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</pre>');
+            w.document.close();
+            w.focus();
+            w.print();
         }
     };
 
@@ -195,7 +250,7 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({ onClose, onUnl
                         </div>
                     )}
 
-                    {!vaultInfo ? (
+                    {!vaultInfo && !kitData ? (
                         <>
                             <div className="flex gap-2">
                                 <button
@@ -329,15 +384,44 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({ onClose, onUnl
                                 </button>
                             )}
                         </>
+                    ) : kitData && !kitAck ? (
+                        // MANDATORY Emergency Kit step after create (non-skippable ack)
+                        <div className="space-y-3">
+                            <div className="p-3 bg-amber-50 dark:bg-amber-900/30 border border-amber-300 dark:border-amber-700 rounded text-sm">
+                                <div className="font-semibold text-amber-700 dark:text-amber-300 mb-1">{t('aerocryptNative.emergencyKitTitle')}</div>
+                                <p className="text-gray-700 dark:text-gray-200 text-xs">
+                                    {t('aerocryptNative.emergencyKitIntro')}
+                                </p>
+                            </div>
+                            <div className="bg-gray-50 dark:bg-gray-900 rounded p-2 text-xs font-mono whitespace-pre-wrap break-all max-h-48 overflow-auto">
+                                {kitData.text}
+                            </div>
+                            <div className="flex gap-2">
+                                <button onClick={saveKitToFile} className="flex-1 px-3 py-1.5 text-sm rounded bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">{t('aerocryptNative.saveKit')}</button>
+                                <button onClick={printKit} className="flex-1 px-3 py-1.5 text-sm rounded bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">{t('aerocryptNative.printKit')}</button>
+                            </div>
+                            <label className="flex items-start gap-2 text-sm cursor-pointer select-none">
+                                <input type="checkbox" checked={kitAck} onChange={(e) => setKitAck(e.target.checked)} className="mt-1" />
+                                <span>{t('aerocryptNative.ackCheckbox')}</span>
+                            </label>
+                            <button
+                                onClick={finalizeAfterKitAck}
+                                disabled={!kitAck}
+                                className="w-full px-4 py-2 bg-emerald-600 text-white rounded hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                {t('aerocryptNative.confirmAndUnlock')}
+                            </button>
+                            <p className="text-[10px] text-gray-500">{t('aerocryptNative.ackHint')}</p>
+                        </div>
                     ) : (
                         <>
                             <div className="flex items-center gap-2 p-3 bg-green-50 dark:bg-green-900/30 rounded">
                                 <Unlock className="w-5 h-5 text-green-600 dark:text-green-400" />
                                 <span className="text-sm text-green-700 dark:text-green-300">
-                                    {t('aerocryptNative.remoteUnlocked', { id: vaultInfo.vault_id.slice(0, 8) })}
+                                    {t('aerocryptNative.remoteUnlocked', { id: (vaultInfo?.vault_id || '').slice(0, 8) })}
                                 </span>
                                 <span className="ml-auto text-[11px] text-gray-500 dark:text-gray-400">
-                                    {t('aerocryptNative.versionLabel', { version: vaultInfo.version })}
+                                    {t('aerocryptNative.versionLabel', { version: vaultInfo ? vaultInfo.version : (kitData?.version || 3) })}
                                 </span>
                             </div>
 

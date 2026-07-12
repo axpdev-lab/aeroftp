@@ -5001,7 +5001,18 @@
             "keyfilePlaceholder": "Tiada fail kunci: kata laluan sahaja",
             "keyfileHint": "Faktor kedua pilihan yang dicampur ke dalam kunci penyulitan: tindanan hanya dibuka dengan kata laluan DAN fail ini. Sandarkan fail kunci.",
             "keyfileChoose": "Pilih",
-            "keyfileClear": "Buang fail kunci"
+            "keyfileClear": "Buang fail kunci",
+            "emergencyKitTitle": "Kit Kecemasan (wajib untuk pemulihan)",
+            "emergencyKitIntro": "Kit ini hanya mengandungi konfigurasi awam (vault ID, salt, parameter KDF). Simpan ia luar talian bersama kata laluan anda. Ia adalah satu-satunya cara untuk memulihkan bilik kebal tanpa pengepala selepas kehilangan simpanan kunci tempatan (pasang semula atau mesin baharu).",
+            "vaultIdLabel": "Vault ID (base64)",
+            "saltLabel": "Salt (base64)",
+            "kdfLabel": "Parameter KDF",
+            "saveKit": "Simpan kit ke fail",
+            "printKit": "Cetak",
+            "ackCheckbox": "Saya telah menyimpan atau mencetak Kit Kecemasan ini dan memahami bahawa ia diperlukan untuk memulihkan bilik kebal.",
+            "ackHint": "Pengesahan diperlukan sebelum tindanan boleh digunakan.",
+            "confirmAndUnlock": "Sahkan kit disimpan - Cipta dan buka kunci",
+            "kitRequiredError": "Anda mesti mengesahkan penyimpanan Kit Kecemasan sebelum tindanan boleh digunakan."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Penyulitan)",
@@ -5029,7 +5040,9 @@
             "keyfileGenerate": "Jana...",
             "keyfileGeneratedBackup": "Fail kunci dijana. Sandarkan sekarang: kehilangannya mengunci bilik kebal selama-lamanya.",
             "keyfileRepointHint": "Laluan ini hanya menunjuk lokasi fail kunci; mengubahnya tidak menukar kunci bilik kebal. Fail kunci yang salah atau tiada akan menolak buka kunci.",
-            "keyfileStorageHint": "Simpan pada cakera setempat atau pemacu USB, berasingan daripada peranti jauh yang anda sulitkan, dan simpan salinan sandaran."
+            "keyfileStorageHint": "Simpan pada cakera setempat atau pemacu USB, berasingan daripada peranti jauh yang anda sulitkan, dan simpan salinan sandaran.",
+            "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
+            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore."
         },
         "modalGuard": {
             "busyTitle": "Operasi sedang berjalan",

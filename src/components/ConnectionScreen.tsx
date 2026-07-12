@@ -623,6 +623,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     // locks the encrypted blobs, so a live match check is worth the extra field.
     const [aeroCryptConfirm, setAeroCryptConfirm] = useState('');
     const [showAeroCryptPassword, setShowAeroCryptPassword] = useState(false);
+    const [aeroCryptWithHeader, setAeroCryptWithHeader] = useState(false);
     // P3.3b: rclone-crypt interop needs salt (password2) + filename/dir-name
     // encryption mode to auto-unlock on connect, mirroring the RcloneCryptUnlock
     // modal. Native AeroCrypt ignores these (config lives in .aeroftp-crypt.json).
@@ -1018,6 +1019,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             aeroCryptOverlay: {
                 enabled: true,
                 kind: aeroCryptKind,
+                withHeader: aeroCryptWithHeader,
                 remoteScope: quickConnectDirs.remoteDir || '',
                 localScope: quickConnectDirs.localDir || '',
                 filenameEncryption: isRclone ? aeroCryptFilenameEnc : 'standard',
@@ -1989,6 +1991,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         setAeroCryptSalt('');
         setAeroCryptFilenameEnc(overlayBinding?.filenameEncryption || 'standard');
         setAeroCryptDirNameEnc(overlayBinding?.directoryNameEncryption ?? true);
+        setAeroCryptWithHeader(!!overlayBinding?.withHeader);
         // Tier 1 keyfile PATH: a pointer, not a secret, so unlike the password
         // it IS hydrated for display and stays re-pointable (hydrated async
         // below, race-guarded like the other vault reads).
@@ -2097,6 +2100,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         setAeroCryptSalt('');
         setAeroCryptFilenameEnc('standard');
         setAeroCryptDirNameEnc(true);
+        setAeroCryptWithHeader(false);
         setAeroCryptKeyfilePath('');
         setKeyfileJustGenerated(false);
         setKeyfileError(null);
@@ -2891,7 +2895,30 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                     applies to the FACTOR, not to where the file lives (re-point
                                     after import needs this). A mismatch fails closed at unlock. */}
                                 {aeroCryptKind === 'aerocrypt' && (
-                                    <div>
+                                    <>
+                                        <div className="flex flex-col gap-1.5 mt-2 mb-4">
+                                            <label className="flex items-start gap-3 cursor-pointer group">
+                                                <div className="relative flex items-center h-5 mt-0.5">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={aeroCryptWithHeader}
+                                                        onChange={(e) => setAeroCryptWithHeader(e.target.checked)}
+                                                        disabled={overlayFieldsLocked}
+                                                        className="peer sr-only"
+                                                    />
+                                                    <div className="w-9 h-5 bg-gray-200 dark:bg-gray-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-emerald-500/30 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-500 disabled:opacity-50 transition-colors"></div>
+                                                </div>
+                                                <div className="flex flex-col text-sm">
+                                                    <span className={`font-medium transition-colors ${overlayFieldsLocked ? 'text-gray-400 dark:text-gray-500' : 'text-gray-700 dark:text-gray-300 group-hover:text-gray-900 dark:group-hover:text-gray-100'}`}>
+                                                        {t('aerocryptProfile.headerToggle')}
+                                                    </span>
+                                                    <span className={`text-xs mt-0.5 leading-relaxed ${overlayFieldsLocked ? 'text-gray-400/80 dark:text-gray-500/80' : 'text-gray-500 dark:text-gray-400'}`}>
+                                                        {t('aerocryptProfile.headerToggleHint')}
+                                                    </span>
+                                                </div>
+                                            </label>
+                                        </div>
+                                        <div>
                                         <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">{t('aerocryptProfile.keyfileLabel')}</label>
                                         <div className="flex gap-2">
                                             <input
@@ -2928,7 +2955,8 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                         <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                                             {overlayFieldsLocked ? t('aerocryptProfile.keyfileRepointHint') : t('aerocryptProfile.keyfileHint')}
                                         </p>
-                                    </div>
+                                        </div>
+                                    </>
                                 )}
                                 {/* rclone-crypt interop (P3.3b): salt + filename/dir-name
                                     encryption so the bound profile auto-unlocks like native.

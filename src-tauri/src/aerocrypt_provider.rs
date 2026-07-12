@@ -31,7 +31,7 @@ use tokio::sync::Mutex;
 use zeroize::{Zeroize, Zeroizing};
 
 use crate::aerocrypt::overlay::{self, OverlayConfig};
-use crate::aerocrypt::KEY_SIZE;
+use crate::aerocrypt::{emergency_kit, KEY_SIZE};
 use crate::join_remote_path;
 use crate::provider_commands::ProviderState;
 
@@ -394,6 +394,18 @@ pub async fn aerocrypt_provider_create_remote(
         .await
         .insert(vault_id, AeroCryptKeys { master_key, config });
     Ok(info)
+}
+
+/// Build and return the mandatory Emergency Kit from a (persisted) config JSON.
+/// This is the single builder implementation also used by the CLI.
+/// The caller (GUI create flow) is expected to have already persisted the
+/// config (via headerless keystore store or remote marker) and now reads it
+/// back before calling, exactly as the CLI does.
+#[tauri::command]
+pub fn aerocrypt_build_emergency_kit(
+    config_json: String,
+) -> Result<emergency_kit::EmergencyKit, String> {
+    emergency_kit::build_from_config_json(&config_json)
 }
 
 #[cfg(test)]

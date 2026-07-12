@@ -5001,7 +5001,18 @@
             "keyfilePlaceholder": "Nav atslēgas faila: tikai parole",
             "keyfileHint": "Neobligāts otrs faktors, ko iejauc šifrēšanas atslēgā: pārklājums atveras tikai ar paroli UN šo failu. Izveidojiet atslēgas faila rezerves kopiju.",
             "keyfileChoose": "Izvēlēties",
-            "keyfileClear": "Noņemt atslēgas failu"
+            "keyfileClear": "Noņemt atslēgas failu",
+            "emergencyKitTitle": "Ārkārtas komplekts (obligāts atkopšanai)",
+            "emergencyKitIntro": "Šis komplekts satur tikai publisko konfigurāciju (vault ID, salt, KDF parametri). Glabājiet to bezsaistē kopā ar savu paroli. Tas ir vienīgais veids, kā atkopt seifu bez galvenes pēc lokālās atslēgu krātuves zaudēšanas (pārinstalēšana vai jauna ierīce).",
+            "vaultIdLabel": "Vault ID (base64)",
+            "saltLabel": "Salt (base64)",
+            "kdfLabel": "KDF parametri",
+            "saveKit": "Saglabāt komplektu failā",
+            "printKit": "Drukāt",
+            "ackCheckbox": "Esmu saglabājis vai izdrukājis šo ārkārtas komplektu un saprotu, ka tas ir nepieciešams seifa atkopšanai.",
+            "ackHint": "Pirms pārklājuma izmantošanas ir nepieciešams apstiprinājums.",
+            "confirmAndUnlock": "Apstiprināt komplekta saglabāšanu - Izveidot un atbloķēt",
+            "kitRequiredError": "Pirms pārklājums kļūst lietojams, jums jāapstiprina ārkārtas komplekta saglabāšana."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Šifrēšana)",
@@ -5029,7 +5040,9 @@
             "keyfileGenerate": "Ģenerēt...",
             "keyfileGeneratedBackup": "Atslēgas fails izveidots. Izveidojiet kopiju tūlīt: tā zaudēšana uz visiem laikiem aizslēgs seifu.",
             "keyfileRepointHint": "Šis ceļš tikai norāda, kur atrodas atslēgas fails; tā maiņa nepāršifrē seifu. Nepareizs vai trūkstošs atslēgas fails noraida atslēgšanu.",
-            "keyfileStorageHint": "Saglabājiet to lokālajā diskā vai USB diskā, atsevišķi no attālā servera, ko šifrējat, un saglabājiet dublējumkopiju."
+            "keyfileStorageHint": "Saglabājiet to lokālajā diskā vai USB diskā, atsevišķi no attālā servera, ko šifrējat, un saglabājiet dublējumkopiju.",
+            "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
+            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore."
         },
         "modalGuard": {
             "busyTitle": "Notiek darbība",

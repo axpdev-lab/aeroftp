@@ -23,6 +23,7 @@ use aes_kw::Kek;
 use rand::RngCore;
 use zeroize::Zeroizing;
 
+pub mod emergency_kit;
 pub mod names;
 pub mod overlay;
 

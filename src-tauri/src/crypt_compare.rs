@@ -191,6 +191,17 @@ pub struct OverlayUnlockParams {
     pub directory_name_encryption: bool,
     /// rclone-crypt name-off suffix override (`None` = rclone default ".bin").
     pub off_suffix: Option<String>,
+    /// Saved profile id that owns the AeroCrypt metadata, when a profile-backed
+    /// caller can identify it. Headerless AeroCrypt stores its public config
+    /// under `aerocrypt_overlay_config_<id>` instead of on the remote.
+    pub profile_id: Option<String>,
+    /// Scoped, preloaded headerless AeroCrypt config JSON from
+    /// `aerocrypt_overlay_config_<id>`. Callers that support per-user
+    /// credential partitions pass this so unlock honors their selected user.
+    pub local_config_json: Option<String>,
+    /// Scoped salt of record from `aerocrypt_overlay_salt_<id>`, used to detect
+    /// local keystore divergence before deriving from `local_config_json`.
+    pub local_config_salt: Option<String>,
 }
 
 /// AeroCrypt overlay config filename, written at the scope root by `crypt init`.
@@ -247,11 +258,32 @@ pub async fn unlock_overlay_keys(
             use crate::aerocrypt::overlay;
             let scope = params.remote_scope.trim_end_matches('/');
             let config_path = format!("{}/{}", scope, AEROCRYPT_CONFIG_FILENAME);
-            let config_bytes = provider
-                .download_to_bytes(&config_path)
+            let present = provider
+                .exists(&config_path)
                 .await
-                .map_err(|e| format!("Cannot read AeroCrypt overlay config: {}", e))?;
-            let config_str = String::from_utf8_lossy(&config_bytes);
+                .map_err(|e| format!("Cannot probe AeroCrypt overlay config: {}", e))?;
+            let config_str = if present {
+                let config_bytes = provider
+                    .download_to_bytes(&config_path)
+                    .await
+                    .map_err(|e| format!("Cannot read AeroCrypt overlay config: {}", e))?;
+                String::from_utf8_lossy(&config_bytes).into_owned()
+            } else {
+                let local = params
+                    .local_config_json
+                    .as_deref()
+                    .filter(|s| !s.is_empty())
+                    .map(str::to_string)
+                    .ok_or_else(|| {
+                        format!("Cannot read AeroCrypt overlay config: no overlay at {config_path}")
+                    })?;
+                crate::crypt_overlay_provider::validate_headerless_config_salt(
+                    params.profile_id.as_deref().unwrap_or(""),
+                    &local,
+                    params.local_config_salt.as_deref(),
+                )?;
+                local
+            };
             let cfg = overlay::parse_config(&config_str)
                 .map_err(|e| format!("Invalid AeroCrypt overlay config: {}", e))?;
             // Reconcile the supplied keyfile against what the config requires
@@ -563,6 +595,9 @@ mod tests {
             filename_encryption: String::new(),
             directory_name_encryption: true,
             off_suffix: None,
+            profile_id: None,
+            local_config_json: None,
+            local_config_salt: None,
         }
     }
 
@@ -644,6 +679,9 @@ mod tests {
             filename_encryption: "standard".to_string(),
             directory_name_encryption: true,
             off_suffix: None,
+            profile_id: None,
+            local_config_json: None,
+            local_config_salt: None,
         };
         let digest = crate::aerocrypt::keyfile_digest(b"kf");
         let err = unlock_err(

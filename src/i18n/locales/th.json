@@ -5001,7 +5001,18 @@
             "keyfilePlaceholder": "ไม่มีไฟล์กุญแจ: ใช้รหัสผ่านอย่างเดียว",
             "keyfileHint": "ปัจจัยที่สองแบบเลือกได้ซึ่งผสมเข้าไปในกุญแจเข้ารหัส: เลเยอร์จะเปิดได้ก็ต่อเมื่อมีทั้งรหัสผ่านและไฟล์นี้ โปรดสำรองไฟล์กุญแจไว้",
             "keyfileChoose": "เลือก",
-            "keyfileClear": "นำไฟล์กุญแจออก"
+            "keyfileClear": "นำไฟล์กุญแจออก",
+            "emergencyKitTitle": "ชุดฉุกเฉิน (จำเป็นสำหรับการกู้คืน)",
+            "emergencyKitIntro": "ชุดนี้มีเฉพาะการกำหนดค่าสาธารณะเท่านั้น (vault ID, salt, พารามิเตอร์ KDF) จัดเก็บแบบออฟไลน์พร้อมกับรหัสผ่านของคุณ เป็นวิธีเดียวในการกู้คืนตู้นิรภัยที่ไม่มีส่วนหัวหลังจากสูญเสียที่เก็บคีย์ในเครื่อง (ติดตั้งใหม่หรือเครื่องใหม่)",
+            "vaultIdLabel": "Vault ID (base64)",
+            "saltLabel": "Salt (base64)",
+            "kdfLabel": "พารามิเตอร์ KDF",
+            "saveKit": "บันทึกชุดลงไฟล์",
+            "printKit": "พิมพ์",
+            "ackCheckbox": "ฉันได้บันทึกหรือพิมพ์ชุดฉุกเฉินนี้แล้ว และเข้าใจว่าจำเป็นสำหรับการกู้คืนตู้นิรภัย",
+            "ackHint": "ต้องมีการยืนยันก่อนจึงจะสามารถใช้ overlay ได้",
+            "confirmAndUnlock": "ยืนยันการบันทึกชุด - สร้างและปลดล็อก",
+            "kitRequiredError": "คุณต้องยืนยันการบันทึกชุดฉุกเฉินก่อนจึงจะสามารถใช้ overlay ได้"
         },
         "aerocryptProfile": {
             "enable": "Crypt (การเข้ารหัส)",
@@ -5029,7 +5040,9 @@
             "keyfileGenerate": "สร้าง...",
             "keyfileGeneratedBackup": "สร้างไฟล์กุญแจแล้ว โปรดสำรองทันที: หากสูญหาย ตู้นิรภัยจะเปิดไม่ได้ตลอดไป",
             "keyfileRepointHint": "พาธนี้เพียงชี้ตำแหน่งของไฟล์กุญแจ การเปลี่ยนพาธไม่ได้เปลี่ยนกุญแจของตู้นิรภัย ไฟล์กุญแจที่ผิดหรือหายไปจะถูกปฏิเสธการปลดล็อก",
-            "keyfileStorageHint": "จัดเก็บไว้ในดิสก์ภายในเครื่องหรือไดรฟ์ USB แยกจากรีโมทที่คุณกำลังเข้ารหัส และเก็บสำเนาสำรองไว้"
+            "keyfileStorageHint": "จัดเก็บไว้ในดิสก์ภายในเครื่องหรือไดรฟ์ USB แยกจากรีโมทที่คุณกำลังเข้ารหัส และเก็บสำเนาสำรองไว้",
+            "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
+            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore."
         },
         "modalGuard": {
             "busyTitle": "กำลังดำเนินการ",

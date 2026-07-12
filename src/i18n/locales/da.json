@@ -5001,7 +5001,18 @@
             "keyfilePlaceholder": "Ingen nøglefil: kun adgangskode",
             "keyfileHint": "Valgfri anden faktor blandet ind i krypteringsnøglen: overlayet åbner kun med adgangskoden OG denne fil. Tag backup af nøglefilen.",
             "keyfileChoose": "Vælg",
-            "keyfileClear": "Fjern nøglefil"
+            "keyfileClear": "Fjern nøglefil",
+            "emergencyKitTitle": "Nødkit (obligatorisk til gendannelse)",
+            "emergencyKitIntro": "Dette kit indeholder kun offentlig konfiguration (vault ID, salt, KDF-parametre). Opbevar det offline sammen med din adgangskode. Det er den eneste måde at gendanne et boks uden header på efter tab af det lokale nøglelager (geninstallation eller ny maskine).",
+            "vaultIdLabel": "Vault ID (base64)",
+            "saltLabel": "Salt (base64)",
+            "kdfLabel": "KDF-parametre",
+            "saveKit": "Gem kit til fil",
+            "printKit": "Udskriv",
+            "ackCheckbox": "Jeg har gemt eller udskrevet dette nødkit og forstår, at det kræves for at gendanne boksen.",
+            "ackHint": "Bekræftelse er påkrævet, før overlayet kan bruges.",
+            "confirmAndUnlock": "Bekræft kit gemt - Opret og lås op",
+            "kitRequiredError": "Du skal bekræfte, at du har gemt nødkittet, før overlayet kan bruges."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Kryptering)",
@@ -5029,7 +5040,9 @@
             "keyfileGenerate": "Generér...",
             "keyfileGeneratedBackup": "Nøglefil genereret. Tag backup nu: mistes den, kan boksen aldrig åbnes igen.",
             "keyfileRepointHint": "Denne sti peger kun på, hvor nøglefilen ligger; at ændre den omnøgler ikke boksen. En forkert eller manglende nøglefil afviser oplåsningen.",
-            "keyfileStorageHint": "Gem den på en lokal disk eller et USB-drev, adskilt fra det fjernlager, du krypterer, og opbevar en sikkerhedskopi."
+            "keyfileStorageHint": "Gem den på en lokal disk eller et USB-drev, adskilt fra det fjernlager, du krypterer, og opbevar en sikkerhedskopi.",
+            "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
+            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore."
         },
         "modalGuard": {
             "busyTitle": "Handling i gang",

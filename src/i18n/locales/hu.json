@@ -5001,7 +5001,18 @@
             "keyfilePlaceholder": "Nincs kulcsfájl: csak jelszó",
             "keyfileHint": "A titkosítási kulcsba kevert opcionális második faktor: a fedvény csak a jelszóval ÉS ezzel a fájllal nyílik. Készítsen biztonsági másolatot a kulcsfájlról.",
             "keyfileChoose": "Kiválasztás",
-            "keyfileClear": "Kulcsfájl eltávolítása"
+            "keyfileClear": "Kulcsfájl eltávolítása",
+            "emergencyKitTitle": "Vészhelyzeti csomag (helyreállításhoz kötelező)",
+            "emergencyKitIntro": "Ez a csomag csak nyilvános konfigurációt tartalmaz (vault ID, salt, KDF paraméterek). Tárolja offline a jelszavával együtt. Ez az egyetlen módja egy fejléc nélküli széf helyreállításának a helyi kulcstároló elvesztése után (újratelepítés vagy új gép).",
+            "vaultIdLabel": "Vault ID (base64)",
+            "saltLabel": "Salt (base64)",
+            "kdfLabel": "KDF paraméterek",
+            "saveKit": "Csomag mentése fájlba",
+            "printKit": "Nyomtatás",
+            "ackCheckbox": "Elmentettem vagy kinyomtattam ezt a vészhelyzeti csomagot, és tudom, hogy szükséges a széf helyreállításához.",
+            "ackHint": "A megerősítés kötelező, mielőtt az átfedés használható lenne.",
+            "confirmAndUnlock": "Csomag mentésének megerősítése - Létrehozás és feloldás",
+            "kitRequiredError": "Meg kell erősítenie a vészhelyzeti csomag mentését, mielőtt az átfedés használhatóvá válik."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Titkosítás)",
@@ -5029,7 +5040,9 @@
             "keyfileGenerate": "Generálás...",
             "keyfileGeneratedBackup": "Kulcsfájl létrehozva. Készítsen másolatot most: elvesztése a széfet végleg megnyithatatlanná teszi.",
             "keyfileRepointHint": "Ez az útvonal csak azt mutatja, hol van a kulcsfájl; módosítása nem kulcsolja újra a széfet. Hibás vagy hiányzó kulcsfájl esetén a feloldás megtagadva.",
-            "keyfileStorageHint": "Mentse el helyi lemezre vagy USB-meghajtóra, a titkosított távoli tárhelytől elkülönítve, és őrizzen meg egy biztonsági másolatot."
+            "keyfileStorageHint": "Mentse el helyi lemezre vagy USB-meghajtóra, a titkosított távoli tárhelytől elkülönítve, és őrizzen meg egy biztonsági másolatot.",
+            "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
+            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore."
         },
         "modalGuard": {
             "busyTitle": "Művelet folyamatban",

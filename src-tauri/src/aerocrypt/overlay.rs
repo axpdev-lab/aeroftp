@@ -496,7 +496,18 @@ pub fn init_config_v3(
     salt: &[u8; SALT_V3_SIZE],
     master_key: &[u8; KEY_SIZE],
 ) -> Result<String, String> {
-    build_config_v3_json(salt, master_key, &random_vault_id(), false, None)
+    init_config_v3_with_vault_id(salt, master_key, &random_vault_id())
+}
+
+/// Build a password-only v3 config while preserving an existing vault id.
+/// Used by headed/headerless metadata migration, where changing vault identity
+/// would make an otherwise reversible conversion lossy.
+pub fn init_config_v3_with_vault_id(
+    salt: &[u8; SALT_V3_SIZE],
+    master_key: &[u8; KEY_SIZE],
+    vault_id: &[u8; VAULT_ID_SIZE],
+) -> Result<String, String> {
+    build_config_v3_json(salt, master_key, vault_id, false, None)
 }
 
 /// Build the v3 config JSON for a KEYFILE overlay. The caller supplies the
@@ -511,6 +522,35 @@ pub fn init_config_v3_with_keyfile(
     keyfile_hint: Option<&str>,
 ) -> Result<String, String> {
     build_config_v3_json(salt, master_key, vault_id, true, keyfile_hint)
+}
+
+/// Rebuild a headed v3 marker from parsed local metadata and a verified key.
+/// The salt, keyfile requirement, and vault id are preserved. Older v3
+/// password-only configs without a vault id receive one because current marker
+/// writers always emit it; keyfile configs already require one at parse time.
+pub fn rebuild_config_v3(
+    config: &OverlayConfig,
+    master_key: &[u8; KEY_SIZE],
+) -> Result<String, String> {
+    match config {
+        OverlayConfig::V3 {
+            salt,
+            vault_id,
+            requires_keyfile,
+            ..
+        } => {
+            let vault_id = vault_id.unwrap_or_else(random_vault_id);
+            if *requires_keyfile {
+                init_config_v3_with_keyfile(salt, master_key, &vault_id, None)
+            } else {
+                init_config_v3_with_vault_id(salt, master_key, &vault_id)
+            }
+        }
+        other => Err(format!(
+            "AeroCrypt v{} metadata migration is not supported; only v3 vaults can migrate",
+            other.version()
+        )),
+    }
 }
 
 fn build_config_v3_json(
@@ -906,6 +946,49 @@ mod tests {
         let with_vid = compute_config_mac_v3(&master, &salt, false, Some(&[7u8; VAULT_ID_SIZE]));
         let without = compute_config_mac_v3(&master, &salt, false, None);
         assert_eq!(with_vid.unwrap(), without.unwrap());
+    }
+
+    #[test]
+    fn rebuild_config_v3_preserves_password_vault_identity_and_mac() {
+        let salt = [12u8; SALT_V3_SIZE];
+        let vault_id = [34u8; VAULT_ID_SIZE];
+        let master = derive_base_kek("migration-password", &salt).unwrap();
+        let original = init_config_v3_with_vault_id(&salt, &master, &vault_id).unwrap();
+        let original_cfg = parse_config(&original).unwrap();
+
+        let rebuilt = rebuild_config_v3(&original_cfg, &master).unwrap();
+        let rebuilt_cfg = parse_config(&rebuilt).unwrap();
+
+        assert_eq!(rebuilt_cfg.vault_id(), Some(vault_id));
+        assert!(!rebuilt_cfg.requires_keyfile());
+        verify_config_mac(&rebuilt_cfg, &master).unwrap();
+    }
+
+    #[test]
+    fn rebuild_config_v3_preserves_keyfile_requirement_identity_and_mac() {
+        let salt = [56u8; SALT_V3_SIZE];
+        let vault_id = [78u8; VAULT_ID_SIZE];
+        let keyfile = super::super::keyfile_digest(b"migration-keyfile");
+        let bootstrap = OverlayConfig::v3_bootstrap(salt);
+        let master =
+            derive_master_key_with_keyfile(&bootstrap, "migration-password", Some(&keyfile))
+                .unwrap();
+        let original =
+            init_config_v3_with_keyfile(&salt, &master, &vault_id, Some("not-preserved")).unwrap();
+        let original_cfg = parse_config(&original).unwrap();
+
+        let rebuilt = rebuild_config_v3(&original_cfg, &master).unwrap();
+        let rebuilt_cfg = parse_config(&rebuilt).unwrap();
+
+        assert_eq!(rebuilt_cfg.vault_id(), Some(vault_id));
+        assert!(rebuilt_cfg.requires_keyfile());
+        verify_config_mac(&rebuilt_cfg, &master).unwrap();
+        let value: serde_json::Value = serde_json::from_str(&rebuilt).unwrap();
+        assert_eq!(
+            value["kdf_inputs"],
+            serde_json::json!(["password", "keyfile"])
+        );
+        assert!(value.get("keyfile_hint").is_none());
     }
 
     #[test]

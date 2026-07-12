@@ -5001,7 +5001,18 @@
             "keyfilePlaceholder": "Brez datoteke ključa: samo geslo",
             "keyfileHint": "Izbirni drugi faktor, primešan v šifrirni ključ: prekrivka se odpre samo z geslom IN to datoteko. Naredite varnostno kopijo datoteke ključa.",
             "keyfileChoose": "Izberi",
-            "keyfileClear": "Odstrani datoteko ključa"
+            "keyfileClear": "Odstrani datoteko ključa",
+            "emergencyKitTitle": "Komplet za nujne primere (obvezen za obnovitev)",
+            "emergencyKitIntro": "Ta komplet vsebuje samo javno konfiguracijo (vault ID, salt, parametri KDF). Shranite ga brez povezave skupaj z geslom. To je edini način za obnovitev trezorja brez glave po izgubi lokalne shrambe ključev (ponovna namestitev ali nova naprava).",
+            "vaultIdLabel": "Vault ID (base64)",
+            "saltLabel": "Salt (base64)",
+            "kdfLabel": "Parametri KDF",
+            "saveKit": "Shrani komplet v datoteko",
+            "printKit": "Natisni",
+            "ackCheckbox": "Ta komplet za nujne primere sem shranil ali natisnil in razumem, da je potreben za obnovitev trezorja.",
+            "ackHint": "Pred uporabo prekrivnega sloja je potrebna potrditev.",
+            "confirmAndUnlock": "Potrdi shranjen komplet - Ustvari in odkleni",
+            "kitRequiredError": "Pred uporabo prekrivnega sloja morate potrditi shranjevanje kompleta za nujne primere."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Šifriranje)",
@@ -5029,7 +5040,9 @@
             "keyfileGenerate": "Ustvari...",
             "keyfileGeneratedBackup": "Datoteka ključa ustvarjena. Takoj naredite kopijo: njena izguba trezor za vedno zaklene.",
             "keyfileRepointHint": "Ta pot samo kaže, kje leži datoteka ključa; njena sprememba ne prešifrira trezorja. Napačna ali manjkajoča datoteka ključa odklepanje zavrne.",
-            "keyfileStorageHint": "Shranite ga na lokalni disk ali USB ključ, ločeno od oddaljenega strežnika, ki ga šifrirate, in hranite varnostno kopijo."
+            "keyfileStorageHint": "Shranite ga na lokalni disk ali USB ključ, ločeno od oddaljenega strežnika, ki ga šifrirate, in hranite varnostno kopijo.",
+            "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
+            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore."
         },
         "modalGuard": {
             "busyTitle": "Operacija poteka",

@@ -5001,7 +5001,18 @@
             "keyfilePlaceholder": "Geen sleutelbestand: alleen wachtwoord",
             "keyfileHint": "Optionele tweede factor die in de encryptiesleutel wordt gemengd: de overlay opent alleen met het wachtwoord EN dit bestand. Maak een back-up van het sleutelbestand.",
             "keyfileChoose": "Kiezen",
-            "keyfileClear": "Sleutelbestand verwijderen"
+            "keyfileClear": "Sleutelbestand verwijderen",
+            "emergencyKitTitle": "Noodkit (verplicht voor herstel)",
+            "emergencyKitIntro": "Deze kit bevat alleen openbare configuratie (vault ID, salt, KDF-parameters). Bewaar deze offline samen met uw wachtwoord. Het is de enige manier om een kluis zonder header te herstellen na verlies van de lokale sleutelopslag (herinstallatie of nieuwe machine).",
+            "vaultIdLabel": "Vault ID (base64)",
+            "saltLabel": "Salt (base64)",
+            "kdfLabel": "KDF-parameters",
+            "saveKit": "Kit opslaan naar bestand",
+            "printKit": "Afdrukken",
+            "ackCheckbox": "Ik heb deze noodkit opgeslagen of afgedrukt en begrijp dat deze nodig is om de kluis te herstellen.",
+            "ackHint": "Bevestiging is vereist voordat de overlay kan worden gebruikt.",
+            "confirmAndUnlock": "Bevestig kit opgeslagen - Maken en ontgrendelen",
+            "kitRequiredError": "U moet het opslaan van de noodkit bevestigen voordat de overlay bruikbaar is."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Versleuteling)",
@@ -5029,7 +5040,9 @@
             "keyfileGenerate": "Genereren...",
             "keyfileGeneratedBackup": "Sleutelbestand gegenereerd. Maak nu een back-up: verlies maakt de kluis voorgoed onopenbaar.",
             "keyfileRepointHint": "Dit pad wijst alleen aan waar het sleutelbestand staat; het wijzigen versleutelt de kluis niet opnieuw. Een verkeerd of ontbrekend sleutelbestand weigert het ontgrendelen.",
-            "keyfileStorageHint": "Bewaar het op een lokale schijf of USB-stick, gescheiden van de externe locatie die u versleutelt, en bewaar een back-up."
+            "keyfileStorageHint": "Bewaar het op een lokale schijf of USB-stick, gescheiden van de externe locatie die u versleutelt, en bewaar een back-up.",
+            "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
+            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore."
         },
         "modalGuard": {
             "busyTitle": "Bewerking bezig",

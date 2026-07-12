@@ -5001,7 +5001,18 @@
             "keyfilePlaceholder": "Fără fișier de cheie: doar parolă",
             "keyfileHint": "Al doilea factor opțional amestecat în cheia de criptare: suprapunerea se deschide doar cu parola ȘI acest fișier. Faceți o copie de rezervă a fișierului de cheie.",
             "keyfileChoose": "Alege",
-            "keyfileClear": "Elimină fișierul de cheie"
+            "keyfileClear": "Elimină fișierul de cheie",
+            "emergencyKitTitle": "Kit de urgență (obligatoriu pentru recuperare)",
+            "emergencyKitIntro": "Acest kit conține doar configurația publică (vault ID, salt, parametri KDF). Păstrați-l offline împreună cu parola. Este singura modalitate de a recupera un seif fără antet după pierderea depozitului local de chei (reinstalare sau mașină nouă).",
+            "vaultIdLabel": "Vault ID (base64)",
+            "saltLabel": "Salt (base64)",
+            "kdfLabel": "Parametri KDF",
+            "saveKit": "Salvează kitul într-un fișier",
+            "printKit": "Tipărește",
+            "ackCheckbox": "Am salvat sau tipărit acest kit de urgență și înțeleg că este necesar pentru recuperarea seifului.",
+            "ackHint": "Confirmarea este necesară înainte ca suprapunerea să poată fi utilizată.",
+            "confirmAndUnlock": "Confirmă kitul salvat - Creează și deblochează",
+            "kitRequiredError": "Trebuie să confirmați salvarea kitului de urgență înainte ca suprapunerea să poată fi utilizată."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Criptare)",
@@ -5029,7 +5040,9 @@
             "keyfileGenerate": "Generează...",
             "keyfileGeneratedBackup": "Fișier de cheie generat. Faceți o copie acum: pierderea lui blochează seiful pentru totdeauna.",
             "keyfileRepointHint": "Această cale doar indică unde se află fișierul de cheie; schimbarea ei nu recriptează seiful. Un fișier de cheie greșit sau lipsă refuză deblocarea.",
-            "keyfileStorageHint": "Salvați-l pe un disc local sau pe o unitate USB, separat de serverul la distanță pe care îl criptați, și păstrați o copie de rezervă."
+            "keyfileStorageHint": "Salvați-l pe un disc local sau pe o unitate USB, separat de serverul la distanță pe care îl criptați, și păstrați o copie de rezervă.",
+            "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
+            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore."
         },
         "modalGuard": {
             "busyTitle": "Operațiune în curs",

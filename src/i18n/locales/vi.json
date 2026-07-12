@@ -5001,7 +5001,18 @@
             "keyfilePlaceholder": "Không có tệp khóa: chỉ mật khẩu",
             "keyfileHint": "Yếu tố thứ hai tùy chọn được trộn vào khóa mã hóa: lớp phủ chỉ mở với mật khẩu VÀ tệp này. Hãy sao lưu tệp khóa.",
             "keyfileChoose": "Chọn",
-            "keyfileClear": "Gỡ tệp khóa"
+            "keyfileClear": "Gỡ tệp khóa",
+            "emergencyKitTitle": "Bộ công cụ khẩn cấp (bắt buộc để khôi phục)",
+            "emergencyKitIntro": "Bộ công cụ này chỉ chứa cấu hình công khai (vault ID, salt, tham số KDF). Hãy lưu trữ ngoại tuyến cùng với mật khẩu của bạn. Đây là cách duy nhất để khôi phục một két không có header sau khi mất kho khóa cục bộ (cài đặt lại hoặc máy mới).",
+            "vaultIdLabel": "Vault ID (base64)",
+            "saltLabel": "Salt (base64)",
+            "kdfLabel": "Tham số KDF",
+            "saveKit": "Lưu bộ công cụ vào tệp",
+            "printKit": "In",
+            "ackCheckbox": "Tôi đã lưu hoặc in Bộ công cụ khẩn cấp này và hiểu rằng nó cần thiết để khôi phục két.",
+            "ackHint": "Cần xác nhận trước khi có thể sử dụng lớp phủ.",
+            "confirmAndUnlock": "Xác nhận đã lưu bộ công cụ - Tạo và mở khóa",
+            "kitRequiredError": "Bạn phải xác nhận việc lưu Bộ công cụ khẩn cấp trước khi lớp phủ có thể sử dụng được."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Mã hóa)",
@@ -5029,7 +5040,9 @@
             "keyfileGenerate": "Tạo...",
             "keyfileGeneratedBackup": "Đã tạo tệp khóa. Hãy sao lưu ngay: mất nó khiến két bị khóa vĩnh viễn.",
             "keyfileRepointHint": "Đường dẫn này chỉ trỏ tới nơi tệp khóa nằm; thay đổi nó không đổi khóa của két. Tệp khóa sai hoặc thiếu sẽ bị từ chối mở khóa.",
-            "keyfileStorageHint": "Lưu nó trên ổ đĩa cục bộ hoặc ổ USB, tách biệt với máy chủ từ xa mà bạn đang mã hóa, và giữ một bản sao lưu."
+            "keyfileStorageHint": "Lưu nó trên ổ đĩa cục bộ hoặc ổ USB, tách biệt với máy chủ từ xa mà bạn đang mã hóa, và giữ một bản sao lưu.",
+            "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
+            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore."
         },
         "modalGuard": {
             "busyTitle": "Đang thực hiện thao tác",
