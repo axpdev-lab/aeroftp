@@ -5001,7 +5001,18 @@
             "keyfilePlaceholder": "Be rakto failo: tik slaptažodis",
             "keyfileHint": "Neprivalomas antras veiksnys, įmaišomas į šifravimo raktą: perdanga atsidaro tik su slaptažodžiu IR šiuo failu. Pasidarykite rakto failo atsarginę kopiją.",
             "keyfileChoose": "Pasirinkti",
-            "keyfileClear": "Pašalinti rakto failą"
+            "keyfileClear": "Pašalinti rakto failą",
+            "emergencyKitTitle": "Avarinis rinkinys (privalomas atkūrimui)",
+            "emergencyKitIntro": "Šiame rinkinyje yra tik vieša konfigūracija (vault ID, salt, KDF parametrai). Laikykite jį neprisijungę kartu su slaptažodžiu. Tai vienintelis būdas atkurti seifą be antraštės praradus vietinę raktų saugyklą (perinstaliavus arba naujame įrenginyje).",
+            "vaultIdLabel": "Vault ID (base64)",
+            "saltLabel": "Salt (base64)",
+            "kdfLabel": "KDF parametrai",
+            "saveKit": "Įrašyti rinkinį į failą",
+            "printKit": "Spausdinti",
+            "ackCheckbox": "Įrašiau arba atsispausdinau šį avarinį rinkinį ir suprantu, kad jis būtinas seifui atkurti.",
+            "ackHint": "Prieš naudojant perdangą, būtinas patvirtinimas.",
+            "confirmAndUnlock": "Patvirtinti, kad rinkinys įrašytas - Sukurti ir atrakinti",
+            "kitRequiredError": "Prieš naudojant perdangą turite patvirtinti, kad įrašėte avarinį rinkinį."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Šifravimas)",

@@ -5001,7 +5001,18 @@
             "keyfilePlaceholder": "Ingen nyckelfil: endast lösenord",
             "keyfileHint": "Valfri andra faktor som blandas in i krypteringsnyckeln: overlayet öppnas bara med lösenordet OCH denna fil. Säkerhetskopiera nyckelfilen.",
             "keyfileChoose": "Välj",
-            "keyfileClear": "Ta bort nyckelfil"
+            "keyfileClear": "Ta bort nyckelfil",
+            "emergencyKitTitle": "Nödkit (obligatoriskt för återställning)",
+            "emergencyKitIntro": "Detta kit innehåller endast offentlig konfiguration (vault ID, salt, KDF-parametrar). Förvara det offline tillsammans med ditt lösenord. Det är det enda sättet att återställa ett valv utan header efter förlust av det lokala nyckellagret (ominstallation eller ny dator).",
+            "vaultIdLabel": "Vault ID (base64)",
+            "saltLabel": "Salt (base64)",
+            "kdfLabel": "KDF-parametrar",
+            "saveKit": "Spara kit till fil",
+            "printKit": "Skriv ut",
+            "ackCheckbox": "Jag har sparat eller skrivit ut detta nödkit och förstår att det krävs för att återställa valvet.",
+            "ackHint": "Bekräftelse krävs innan överlägget kan användas.",
+            "confirmAndUnlock": "Bekräfta att kit sparats - Skapa och lås upp",
+            "kitRequiredError": "Du måste bekräfta att nödkitet sparats innan överlägget kan användas."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Kryptering)",

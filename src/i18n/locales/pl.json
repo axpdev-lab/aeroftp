@@ -5001,7 +5001,18 @@
             "keyfilePlaceholder": "Brak pliku klucza: tylko hasło",
             "keyfileHint": "Opcjonalny drugi składnik domieszany do klucza szyfrowania: nakładka otwiera się tylko z hasłem I tym plikiem. Zrób kopię zapasową pliku klucza.",
             "keyfileChoose": "Wybierz",
-            "keyfileClear": "Usuń plik klucza"
+            "keyfileClear": "Usuń plik klucza",
+            "emergencyKitTitle": "Zestaw awaryjny (wymagany do odzyskiwania)",
+            "emergencyKitIntro": "Ten zestaw zawiera tylko konfigurację publiczną (vault ID, salt, parametry KDF). Przechowuj go offline razem z hasłem. To jedyny sposób na odzyskanie sejfu bez nagłówka po utracie lokalnego magazynu kluczy (ponowna instalacja lub nowe urządzenie).",
+            "vaultIdLabel": "Vault ID (base64)",
+            "saltLabel": "Salt (base64)",
+            "kdfLabel": "Parametry KDF",
+            "saveKit": "Zapisz zestaw do pliku",
+            "printKit": "Drukuj",
+            "ackCheckbox": "Zapisałem lub wydrukowałem ten zestaw awaryjny i rozumiem, że jest wymagany do odzyskania sejfu.",
+            "ackHint": "Potwierdzenie jest wymagane, zanim nakładka będzie mogła być użyta.",
+            "confirmAndUnlock": "Potwierdź zapisanie zestawu - Utwórz i odblokuj",
+            "kitRequiredError": "Musisz potwierdzić zapisanie zestawu awaryjnego, zanim nakładka będzie mogła być używana."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Szyfrowanie)",

@@ -5001,7 +5001,18 @@
             "keyfilePlaceholder": "Bez datoteke ključa: samo lozinka",
             "keyfileHint": "Neobavezan drugi faktor umiješan u ključ šifriranja: prekrivač se otvara samo s lozinkom I ovom datotekom. Napravite sigurnosnu kopiju datoteke ključa.",
             "keyfileChoose": "Odaberi",
-            "keyfileClear": "Ukloni datoteku ključa"
+            "keyfileClear": "Ukloni datoteku ključa",
+            "emergencyKitTitle": "Komplet za hitne slučajeve (obavezan za oporavak)",
+            "emergencyKitIntro": "Ovaj komplet sadrži samo javnu konfiguraciju (vault ID, salt, KDF parametri). Pohranite ga izvan mreže zajedno sa svojom lozinkom. To je jedini način za oporavak trezora bez zaglavlja nakon gubitka lokalne pohrane ključeva (ponovna instalacija ili novo računalo).",
+            "vaultIdLabel": "Vault ID (base64)",
+            "saltLabel": "Salt (base64)",
+            "kdfLabel": "KDF parametri",
+            "saveKit": "Spremi komplet u datoteku",
+            "printKit": "Ispis",
+            "ackCheckbox": "Spremio/la sam ili ispisao/la ovaj komplet za hitne slučajeve i razumijem da je potreban za oporavak trezora.",
+            "ackHint": "Potvrda je potrebna prije nego što se preklapanje može koristiti.",
+            "confirmAndUnlock": "Potvrdi spremanje kompleta - Stvori i otključaj",
+            "kitRequiredError": "Morate potvrditi spremanje kompleta za hitne slučajeve prije nego što preklapanje postane upotrebljivo."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Šifriranje)",

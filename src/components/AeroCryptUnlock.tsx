@@ -140,16 +140,14 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({ onClose, onUnl
             const kit = await invoke<AerocryptEmergencyKit>('aerocrypt_build_emergency_kit', {
                 configJson: info.config_json,
             });
-            const pwForUnlock = password;
             setVaultInfo(info);
             setKitData(kit);
             setKitAck(false);
             setCreateSubpath('');
-            // Keep password in state only until ack; do not clear here so finalize can pass it.
-            // Do NOT call onUnlocked yet: the kit dialog + explicit ack is mandatory
-            // before the vault is considered usable.
-            // Stash the pw via closure capture for finalize.
-            (window as any).__aerocryptCreatePw = pwForUnlock;
+            // Keep the password in component state (not cleared here) so the
+            // mandatory kit-ack step can pass it to onUnlocked. Do NOT call
+            // onUnlocked yet: the kit dialog + explicit ack is mandatory before
+            // the vault is considered usable.
         } catch (e) {
             setError(String(e));
         } finally {
@@ -159,14 +157,12 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({ onClose, onUnl
 
     const finalizeAfterKitAck = () => {
         if (!vaultInfo || !kitAck) return;
-        const pwForUnlock = (window as any).__aerocryptCreatePw || password || '';
         onUnlocked?.({
             vaultId: vaultInfo.vault_id,
-            password: pwForUnlock,
+            password,
             remoteScope: '',
             keyfilePath: keyfilePath || undefined,
         });
-        try { delete (window as any).__aerocryptCreatePw; } catch (_) {}
         setPassword('');
         setConfirmPassword('');
         setSuccess(t('aerocryptNative.initialised'));
@@ -392,30 +388,30 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({ onClose, onUnl
                         // MANDATORY Emergency Kit step after create (non-skippable ack)
                         <div className="space-y-3">
                             <div className="p-3 bg-amber-50 dark:bg-amber-900/30 border border-amber-300 dark:border-amber-700 rounded text-sm">
-                                <div className="font-semibold text-amber-700 dark:text-amber-300 mb-1">Emergency Kit (mandatory)</div>
+                                <div className="font-semibold text-amber-700 dark:text-amber-300 mb-1">{t('aerocryptNative.emergencyKitTitle')}</div>
                                 <p className="text-gray-700 dark:text-gray-200 text-xs">
-                                    This kit holds the public config (vault ID, salt, KDF params). Save or print it now. You will need the password + this kit to recover after losing the local keystore.
+                                    {t('aerocryptNative.emergencyKitIntro')}
                                 </p>
                             </div>
                             <div className="bg-gray-50 dark:bg-gray-900 rounded p-2 text-xs font-mono whitespace-pre-wrap break-all max-h-48 overflow-auto">
                                 {kitData.text}
                             </div>
                             <div className="flex gap-2">
-                                <button onClick={saveKitToFile} className="flex-1 px-3 py-1.5 text-sm rounded bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">Save kit</button>
-                                <button onClick={printKit} className="flex-1 px-3 py-1.5 text-sm rounded bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">Print</button>
+                                <button onClick={saveKitToFile} className="flex-1 px-3 py-1.5 text-sm rounded bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">{t('aerocryptNative.saveKit')}</button>
+                                <button onClick={printKit} className="flex-1 px-3 py-1.5 text-sm rounded bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">{t('aerocryptNative.printKit')}</button>
                             </div>
                             <label className="flex items-start gap-2 text-sm cursor-pointer select-none">
                                 <input type="checkbox" checked={kitAck} onChange={(e) => setKitAck(e.target.checked)} className="mt-1" />
-                                <span>I have saved or printed this Emergency Kit and understand it is required for recovery.</span>
+                                <span>{t('aerocryptNative.ackCheckbox')}</span>
                             </label>
                             <button
                                 onClick={finalizeAfterKitAck}
                                 disabled={!kitAck}
                                 className="w-full px-4 py-2 bg-emerald-600 text-white rounded hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed"
                             >
-                                Confirm kit saved - Create &amp; unlock
+                                {t('aerocryptNative.confirmAndUnlock')}
                             </button>
-                            <p className="text-[10px] text-gray-500">The overlay was persisted. Acknowledgement is required before the session can use it.</p>
+                            <p className="text-[10px] text-gray-500">{t('aerocryptNative.ackHint')}</p>
                         </div>
                     ) : (
                         <>

@@ -5001,7 +5001,18 @@
             "keyfilePlaceholder": "Aucun fichier de clé : mot de passe seul",
             "keyfileHint": "Second facteur facultatif mélangé à la clé de chiffrement : la surcouche ne s'ouvre qu'avec le mot de passe ET ce fichier. Sauvegardez le fichier de clé.",
             "keyfileChoose": "Choisir",
-            "keyfileClear": "Retirer le fichier de clé"
+            "keyfileClear": "Retirer le fichier de clé",
+            "emergencyKitTitle": "Kit d'urgence (obligatoire pour la récupération)",
+            "emergencyKitIntro": "Ce kit ne contient que la configuration publique (vault ID, salt, paramètres KDF). Conservez-le hors ligne avec votre mot de passe. C'est le seul moyen de récupérer un coffre sans en-tête après la perte du magasin de clés local (réinstallation ou nouvelle machine).",
+            "vaultIdLabel": "Vault ID (base64)",
+            "saltLabel": "Salt (base64)",
+            "kdfLabel": "Paramètres KDF",
+            "saveKit": "Enregistrer le kit dans un fichier",
+            "printKit": "Imprimer",
+            "ackCheckbox": "J'ai enregistré ou imprimé ce kit d'urgence et je comprends qu'il est nécessaire pour récupérer le coffre.",
+            "ackHint": "Une confirmation est requise avant de pouvoir utiliser la superposition.",
+            "confirmAndUnlock": "Confirmer l'enregistrement du kit - Créer et déverrouiller",
+            "kitRequiredError": "Vous devez confirmer l'enregistrement du kit d'urgence avant que la superposition soit utilisable."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Chiffrement)",

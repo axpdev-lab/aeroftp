@@ -3279,7 +3279,18 @@
             "keyfilePlaceholder": "Nessun file chiave: solo password",
             "keyfileHint": "Secondo fattore opzionale miscelato nella chiave di cifratura: l'overlay si apre solo con la password E questo file. Fai un backup del file chiave.",
             "keyfileChoose": "Scegli",
-            "keyfileClear": "Rimuovi file chiave"
+            "keyfileClear": "Rimuovi file chiave",
+            "emergencyKitTitle": "Kit di emergenza (obbligatorio per il ripristino)",
+            "emergencyKitIntro": "Questo kit contiene solo la configurazione pubblica (vault ID, salt, parametri KDF). Conservalo offline insieme alla tua password. È l'unico modo per ripristinare una cassaforte senza intestazione dopo la perdita dell'archivio chiavi locale (reinstallazione o nuova macchina).",
+            "vaultIdLabel": "Vault ID (base64)",
+            "saltLabel": "Salt (base64)",
+            "kdfLabel": "Parametri KDF",
+            "saveKit": "Salva kit su file",
+            "printKit": "Stampa",
+            "ackCheckbox": "Ho salvato o stampato questo kit di emergenza e capisco che è necessario per ripristinare la cassaforte.",
+            "ackHint": "La conferma è richiesta prima di poter utilizzare l'overlay.",
+            "confirmAndUnlock": "Conferma kit salvato - Crea e sblocca",
+            "kitRequiredError": "Devi confermare il salvataggio del kit di emergenza prima che l'overlay sia utilizzabile."
         },
         "cryptomator": {
             "confirmPassword": "Conferma Password",

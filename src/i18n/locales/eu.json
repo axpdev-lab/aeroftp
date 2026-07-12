@@ -5020,7 +5020,18 @@
             "keyfilePlaceholder": "Gako-fitxategirik ez: pasahitza soilik",
             "keyfileHint": "Zifratze-gakoan nahasten den bigarren faktore aukerakoa: gainjartzea pasahitzarekin ETA fitxategi honekin soilik irekitzen da. Egin gako-fitxategiaren babeskopia.",
             "keyfileChoose": "Aukeratu",
-            "keyfileClear": "Kendu gako-fitxategia"
+            "keyfileClear": "Kendu gako-fitxategia",
+            "emergencyKitTitle": "Larrialdi-kita (berreskuratzeko nahitaezkoa)",
+            "emergencyKitIntro": "Kit honek konfigurazio publikoa baino ez du (vault ID, salt, KDF parametroak). Gorde ezazu lineaz kanpo zure pasahitzarekin batera. Hori da goibururik gabeko kutxa gotorra berreskuratzeko modu bakarra tokiko gako-biltegia galdu ondoren (berrinstalazioa edo makina berria).",
+            "vaultIdLabel": "Vault ID (base64)",
+            "saltLabel": "Salt (base64)",
+            "kdfLabel": "KDF parametroak",
+            "saveKit": "Gorde kita fitxategi batean",
+            "printKit": "Inprimatu",
+            "ackCheckbox": "Larrialdi-kit hau gorde edo inprimatu dut, eta ulertzen dut kutxa gotorra berreskuratzeko beharrezkoa dela.",
+            "ackHint": "Berrespena beharrezkoa da gainjartzea erabili aurretik.",
+            "confirmAndUnlock": "Berretsi kita gordeta - Sortu eta desblokeatu",
+            "kitRequiredError": "Larrialdi-kita gorde duzula berretsi behar duzu gainjartzea erabilgarri egon aurretik."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Zifratzea)",

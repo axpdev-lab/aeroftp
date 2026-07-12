@@ -5001,7 +5001,18 @@
             "keyfilePlaceholder": "Võtmefaili pole: ainult parool",
             "keyfileHint": "Valikuline teine tegur, mis segatakse krüpteerimisvõtmesse: ülekate avaneb ainult parooli JA selle failiga. Tehke võtmefailist varukoopia.",
             "keyfileChoose": "Vali",
-            "keyfileClear": "Eemalda võtmefail"
+            "keyfileClear": "Eemalda võtmefail",
+            "emergencyKitTitle": "Hädaabikomplekt (taastamiseks kohustuslik)",
+            "emergencyKitIntro": "See komplekt sisaldab ainult avalikku konfiguratsiooni (vault ID, salt, KDF parameetrid). Hoidke seda võrguühenduseta koos oma parooliga. See on ainus viis päiseta hoidla taastamiseks pärast kohaliku võtmehoidla kaotamist (taasinstallimine või uus masin).",
+            "vaultIdLabel": "Vault ID (base64)",
+            "saltLabel": "Salt (base64)",
+            "kdfLabel": "KDF parameetrid",
+            "saveKit": "Salvesta komplekt faili",
+            "printKit": "Prindi",
+            "ackCheckbox": "Olen selle hädaabikomplekti salvestanud või välja printinud ja mõistan, et see on hoidla taastamiseks vajalik.",
+            "ackHint": "Enne ülekatte kasutamist on vajalik kinnitus.",
+            "confirmAndUnlock": "Kinnita komplekti salvestamine - Loo ja ava",
+            "kitRequiredError": "Enne ülekatte kasutamist peate kinnitama hädaabikomplekti salvestamise."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Krüptimine)",

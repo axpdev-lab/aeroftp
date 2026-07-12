@@ -5001,7 +5001,18 @@
             "keyfilePlaceholder": "Ingen nøglefil: kun adgangskode",
             "keyfileHint": "Valgfri anden faktor blandet ind i krypteringsnøglen: overlayet åbner kun med adgangskoden OG denne fil. Tag backup af nøglefilen.",
             "keyfileChoose": "Vælg",
-            "keyfileClear": "Fjern nøglefil"
+            "keyfileClear": "Fjern nøglefil",
+            "emergencyKitTitle": "Nødkit (obligatorisk til gendannelse)",
+            "emergencyKitIntro": "Dette kit indeholder kun offentlig konfiguration (vault ID, salt, KDF-parametre). Opbevar det offline sammen med din adgangskode. Det er den eneste måde at gendanne et boks uden header på efter tab af det lokale nøglelager (geninstallation eller ny maskine).",
+            "vaultIdLabel": "Vault ID (base64)",
+            "saltLabel": "Salt (base64)",
+            "kdfLabel": "KDF-parametre",
+            "saveKit": "Gem kit til fil",
+            "printKit": "Udskriv",
+            "ackCheckbox": "Jeg har gemt eller udskrevet dette nødkit og forstår, at det kræves for at gendanne boksen.",
+            "ackHint": "Bekræftelse er påkrævet, før overlayet kan bruges.",
+            "confirmAndUnlock": "Bekræft kit gemt - Opret og lås op",
+            "kitRequiredError": "Du skal bekræfte, at du har gemt nødkittet, før overlayet kan bruges."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Kryptering)",

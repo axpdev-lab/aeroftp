@@ -5020,7 +5020,18 @@
             "keyfilePlaceholder": "Engin lykilskrá: aðeins lykilorð",
             "keyfileHint": "Valfrjáls annar þáttur sem blandast í dulritunarlykilinn: yfirlagið opnast aðeins með lykilorðinu OG þessari skrá. Taktu öryggisafrit af lykilskránni.",
             "keyfileChoose": "Velja",
-            "keyfileClear": "Fjarlægja lykilskrá"
+            "keyfileClear": "Fjarlægja lykilskrá",
+            "emergencyKitTitle": "Neyðarbúnaður (nauðsynlegur fyrir endurheimt)",
+            "emergencyKitIntro": "Þessi búnaður inniheldur aðeins opinbera uppsetningu (vault ID, salt, KDF breytur). Geymdu hann án nettengingar ásamt lykilorðinu þínu. Þetta er eina leiðin til að endurheimta hvelfingu án hauss eftir að hafa tapað staðbundnu lyklageymslunni (enduruppsetning eða ný vél).",
+            "vaultIdLabel": "Vault ID (base64)",
+            "saltLabel": "Salt (base64)",
+            "kdfLabel": "KDF breytur",
+            "saveKit": "Vista búnað í skrá",
+            "printKit": "Prenta",
+            "ackCheckbox": "Ég hef vistað eða prentað þennan neyðarbúnað og skil að hann er nauðsynlegur til að endurheimta hvelfinguna.",
+            "ackHint": "Staðfesting er nauðsynleg áður en hægt er að nota yfirlagið.",
+            "confirmAndUnlock": "Staðfesta að búnaður sé vistaður - Búa til og aflæsa",
+            "kitRequiredError": "Þú verður að staðfesta vistun neyðarbúnaðarins áður en hægt er að nota yfirlagið."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Dulkóðun)",

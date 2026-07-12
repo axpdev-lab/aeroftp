@@ -5001,7 +5001,18 @@
             "keyfilePlaceholder": "Không có tệp khóa: chỉ mật khẩu",
             "keyfileHint": "Yếu tố thứ hai tùy chọn được trộn vào khóa mã hóa: lớp phủ chỉ mở với mật khẩu VÀ tệp này. Hãy sao lưu tệp khóa.",
             "keyfileChoose": "Chọn",
-            "keyfileClear": "Gỡ tệp khóa"
+            "keyfileClear": "Gỡ tệp khóa",
+            "emergencyKitTitle": "Bộ công cụ khẩn cấp (bắt buộc để khôi phục)",
+            "emergencyKitIntro": "Bộ công cụ này chỉ chứa cấu hình công khai (vault ID, salt, tham số KDF). Hãy lưu trữ ngoại tuyến cùng với mật khẩu của bạn. Đây là cách duy nhất để khôi phục một két không có header sau khi mất kho khóa cục bộ (cài đặt lại hoặc máy mới).",
+            "vaultIdLabel": "Vault ID (base64)",
+            "saltLabel": "Salt (base64)",
+            "kdfLabel": "Tham số KDF",
+            "saveKit": "Lưu bộ công cụ vào tệp",
+            "printKit": "In",
+            "ackCheckbox": "Tôi đã lưu hoặc in Bộ công cụ khẩn cấp này và hiểu rằng nó cần thiết để khôi phục két.",
+            "ackHint": "Cần xác nhận trước khi có thể sử dụng lớp phủ.",
+            "confirmAndUnlock": "Xác nhận đã lưu bộ công cụ - Tạo và mở khóa",
+            "kitRequiredError": "Bạn phải xác nhận việc lưu Bộ công cụ khẩn cấp trước khi lớp phủ có thể sử dụng được."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Mã hóa)",

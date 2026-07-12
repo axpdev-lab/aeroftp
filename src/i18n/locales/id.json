@@ -5001,7 +5001,18 @@
             "keyfilePlaceholder": "Tanpa berkas kunci: hanya kata sandi",
             "keyfileHint": "Faktor kedua opsional yang dicampur ke kunci enkripsi: overlay hanya terbuka dengan kata sandi DAN berkas ini. Cadangkan berkas kunci.",
             "keyfileChoose": "Pilih",
-            "keyfileClear": "Hapus berkas kunci"
+            "keyfileClear": "Hapus berkas kunci",
+            "emergencyKitTitle": "Kit Darurat (wajib untuk pemulihan)",
+            "emergencyKitIntro": "Kit ini hanya berisi konfigurasi publik (vault ID, salt, parameter KDF). Simpan secara offline bersama kata sandi Anda. Ini adalah satu-satunya cara untuk memulihkan vault tanpa header setelah kehilangan penyimpanan kunci lokal (instal ulang atau mesin baru).",
+            "vaultIdLabel": "Vault ID (base64)",
+            "saltLabel": "Salt (base64)",
+            "kdfLabel": "Parameter KDF",
+            "saveKit": "Simpan kit ke file",
+            "printKit": "Cetak",
+            "ackCheckbox": "Saya telah menyimpan atau mencetak Kit Darurat ini dan memahami bahwa kit ini diperlukan untuk memulihkan vault.",
+            "ackHint": "Konfirmasi diperlukan sebelum overlay dapat digunakan.",
+            "confirmAndUnlock": "Konfirmasi kit tersimpan - Buat dan buka kunci",
+            "kitRequiredError": "Anda harus mengonfirmasi penyimpanan Kit Darurat sebelum overlay dapat digunakan."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Enkripsi)",

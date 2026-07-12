@@ -5001,7 +5001,18 @@
             "keyfilePlaceholder": "Sin archivo de clave: solo contraseña",
             "keyfileHint": "Segundo factor opcional mezclado en la clave de cifrado: la superposición solo se abre con la contraseña Y este archivo. Haga una copia de seguridad del archivo de clave.",
             "keyfileChoose": "Elegir",
-            "keyfileClear": "Quitar archivo de clave"
+            "keyfileClear": "Quitar archivo de clave",
+            "emergencyKitTitle": "Kit de emergencia (obligatorio para la recuperación)",
+            "emergencyKitIntro": "Este kit contiene solo configuración pública (vault ID, salt, parámetros KDF). Guárdelo sin conexión junto con su contraseña. Es la única forma de recuperar una caja fuerte sin encabezado tras perder el almacén de claves local (reinstalación o equipo nuevo).",
+            "vaultIdLabel": "Vault ID (base64)",
+            "saltLabel": "Salt (base64)",
+            "kdfLabel": "Parámetros KDF",
+            "saveKit": "Guardar kit en un archivo",
+            "printKit": "Imprimir",
+            "ackCheckbox": "He guardado o impreso este kit de emergencia y entiendo que es necesario para recuperar la caja fuerte.",
+            "ackHint": "Se requiere confirmación antes de poder usar la superposición.",
+            "confirmAndUnlock": "Confirmar kit guardado - Crear y desbloquear",
+            "kitRequiredError": "Debe confirmar que guardó el kit de emergencia antes de que la superposición sea utilizable."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Cifrado)",

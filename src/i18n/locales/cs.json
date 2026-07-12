@@ -5001,7 +5001,18 @@
             "keyfilePlaceholder": "Bez souboru klíče: pouze heslo",
             "keyfileHint": "Volitelný druhý faktor přimíchaný do šifrovacího klíče: překrytí se otevře pouze s heslem A tímto souborem. Soubor klíče si zálohujte.",
             "keyfileChoose": "Vybrat",
-            "keyfileClear": "Odebrat soubor klíče"
+            "keyfileClear": "Odebrat soubor klíče",
+            "emergencyKitTitle": "Nouzová sada (povinná pro obnovu)",
+            "emergencyKitIntro": "Tato sada obsahuje pouze veřejnou konfiguraci (vault ID, salt, parametry KDF). Uložte ji offline společně s heslem. Je to jediný způsob, jak obnovit trezor bez hlavičky po ztrátě místního úložiště klíčů (přeinstalace nebo nový počítač).",
+            "vaultIdLabel": "Vault ID (base64)",
+            "saltLabel": "Salt (base64)",
+            "kdfLabel": "Parametry KDF",
+            "saveKit": "Uložit sadu do souboru",
+            "printKit": "Tisk",
+            "ackCheckbox": "Uložil(a) nebo vytiskl(a) jsem tuto nouzovou sadu a chápu, že je nutná k obnově trezoru.",
+            "ackHint": "Před použitím překryvné vrstvy je vyžadováno potvrzení.",
+            "confirmAndUnlock": "Potvrdit uložení sady - Vytvořit a odemknout",
+            "kitRequiredError": "Před použitím překryvné vrstvy musíte potvrdit uložení nouzové sady."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Šifrování)",

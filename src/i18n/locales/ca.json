@@ -5020,7 +5020,18 @@
             "keyfilePlaceholder": "Sense fitxer de clau: només contrasenya",
             "keyfileHint": "Segon factor opcional barrejat a la clau de xifratge: la superposició només s'obre amb la contrasenya I aquest fitxer. Feu una còpia de seguretat del fitxer de clau.",
             "keyfileChoose": "Tria",
-            "keyfileClear": "Elimina el fitxer de clau"
+            "keyfileClear": "Elimina el fitxer de clau",
+            "emergencyKitTitle": "Kit d'emergència (obligatori per a la recuperació)",
+            "emergencyKitIntro": "Aquest kit conté només configuració pública (vault ID, salt, paràmetres KDF). Deseu-lo fora de línia juntament amb la vostra contrasenya. És l'única manera de recuperar una caixa forta sense capçalera després de perdre el magatzem de claus local (reinstal·lació o màquina nova).",
+            "vaultIdLabel": "Vault ID (base64)",
+            "saltLabel": "Salt (base64)",
+            "kdfLabel": "Paràmetres KDF",
+            "saveKit": "Desa el kit en un fitxer",
+            "printKit": "Imprimeix",
+            "ackCheckbox": "He desat o imprès aquest kit d'emergència i entenc que és necessari per recuperar la caixa forta.",
+            "ackHint": "Cal confirmar-ho abans de poder utilitzar la superposició.",
+            "confirmAndUnlock": "Confirma el kit desat - Crea i desbloqueja",
+            "kitRequiredError": "Heu de confirmar que heu desat el kit d'emergència abans que la superposició es pugui utilitzar."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Xifratge)",
