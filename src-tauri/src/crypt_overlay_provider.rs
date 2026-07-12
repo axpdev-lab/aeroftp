@@ -1834,23 +1834,32 @@ async fn unlock_overlay_keys_encrypting(
                 // root always exists) still bootstraps, and a not-yet-created
                 // subfolder still bootstraps on first write.
                 //
-                // NOTE (v4.1.4 pre-tag audit A-F3, hardening deferred to 4.1.5):
-                // the subtle case where a provider reports an INACCESSIBLE scope as
-                // an empty or errored listing is not distinguished here (an
-                // unconditional `exists()==false` gate was tried and reverted
-                // because it wrongly refused the whole-remote and empty-existing
-                // create). A robust per-provider empty-vs-inaccessible signal is
-                // tracked for a later release.
+                // A permission-denied listing is not proof of emptiness: it could
+                // hide existing ciphertext under a headerless vault. Other listing
+                // failures stay permissive so fresh/not-yet-created locations keep
+                // the same frictionless bootstrap behavior as v4.1.3.
                 let list_dir = if scope.is_empty() { "/" } else { scope };
-                if let Ok(entries) = provider.list(list_dir).await {
-                    if entries.iter().any(|e| e.name != AEROCRYPT_CONFIG_NAME) {
+                match provider.list(list_dir).await {
+                    Ok(entries) => {
+                        if entries.iter().any(|e| e.name != AEROCRYPT_CONFIG_NAME) {
+                            return Err(format!(
+                                "Refusing to initialize a new AeroCrypt overlay at {list_dir}: it \
+                                 already contains files. Unlock it with its existing credentials, or \
+                                 recover a headerless vault from its Emergency Kit. Re-initializing \
+                                 would rotate the salt and permanently orphan the existing files."
+                            ));
+                        }
+                    }
+                    Err(ProviderError::PermissionDenied(msg)) => {
                         return Err(format!(
                             "Refusing to initialize a new AeroCrypt overlay at {list_dir}: it \
-                             already contains files. Unlock it with its existing credentials, or \
-                             recover a headerless vault from its Emergency Kit. Re-initializing \
-                             would rotate the salt and permanently orphan the existing files."
+                             cannot be listed due to permission denial ({msg}). Unlock it with \
+                             its existing credentials, or recover a headerless vault from its \
+                             Emergency Kit. Re-initializing would rotate the salt and permanently \
+                             orphan any existing files."
                         ));
                     }
+                    Err(_) => {}
                 }
                 let salt = overlay::random_salt_v3();
                 let tmp = OverlayConfig::v3_bootstrap(salt);
@@ -3234,6 +3243,45 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn aerocrypt_activation_refuses_bootstrap_when_scope_listing_permission_denied() {
+        // A-F3: a permission-denied list cannot prove the headerless scope is
+        // empty. Refuse before writing a new config, but keep the successful
+        // empty-listing bootstrap covered by the adjacent regression test.
+        let mut mem = StrictMemProvider::with_permission_denied_list(&["/Vault"]);
+        let binding = OverlayUnlockParams {
+            kind: "aerocrypt".to_string(),
+            remote_scope: "/Vault".to_string(),
+            filename_encryption: String::new(),
+            directory_name_encryption: true,
+            off_suffix: None,
+            profile_id: None,
+            local_config_json: None,
+            local_config_salt: None,
+        };
+
+        let res =
+            unlock_overlay_keys_encrypting(&mut mem, &binding, "pw", "", None, true, true).await;
+        let err = res
+            .err()
+            .expect("activation must refuse a permission-denied scope listing");
+        assert!(
+            err.contains("cannot be listed due to permission denial"),
+            "refusal should explain the inaccessible scope: {err}"
+        );
+        assert!(
+            !mem.exists("/Vault/.aeroftp-crypt.json")
+                .await
+                .expect("probe config marker"),
+            "no overlay config may be written when bootstrap is refused"
+        );
+        assert!(
+            mem.file_paths().is_empty(),
+            "no remote file may be written on refusal: {:?}",
+            mem.file_paths()
+        );
+    }
+
+    #[tokio::test]
     async fn aerocrypt_activation_bootstraps_on_existing_empty_scope() {
         // Frictionless headerless (v4.1.4 pre-tag audit A-F3): pointing a vault at
         // an EMPTY existing folder (or the whole remote, whose root always exists)
@@ -3659,6 +3707,7 @@ mod tests {
     struct StrictMemProvider {
         files: Mutex<HashMap<String, Vec<u8>>>,
         dirs: Mutex<Vec<String>>,
+        fail_list_permission: bool,
     }
 
     impl StrictMemProvider {
@@ -3666,6 +3715,13 @@ mod tests {
             Self {
                 files: Mutex::new(HashMap::new()),
                 dirs: Mutex::new(seed.iter().map(|s| s.to_string()).collect()),
+                fail_list_permission: false,
+            }
+        }
+        fn with_permission_denied_list(seed: &[&str]) -> Self {
+            Self {
+                fail_list_permission: true,
+                ..Self::with_dirs(seed)
             }
         }
         fn parent_of(p: &str) -> String {
@@ -3702,7 +3758,10 @@ mod tests {
         fn is_connected(&self) -> bool {
             true
         }
-        async fn list(&mut self, _path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+        async fn list(&mut self, path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+            if self.fail_list_permission {
+                return Err(ProviderError::PermissionDenied(path.to_string()));
+            }
             Ok(Vec::new())
         }
         async fn pwd(&mut self) -> Result<String, ProviderError> {
