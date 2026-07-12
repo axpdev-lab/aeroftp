@@ -2635,6 +2635,34 @@ enum Commands {
         /// Mutually exclusive with --credential-json and --password-stdin.
         #[arg(long, value_name = "PATH")]
         credential_json_file: Option<String>,
+        /// HTTP base URL used to build share links for this profile (the GUI's
+        /// "Public URL base", e.g. `https://www.example.com/`). Top-level
+        /// profile field; without it share links must be re-entered after an
+        /// import.
+        #[arg(long, value_name = "URL")]
+        public_url_base: Option<String>,
+        /// User-chosen custom icon for the My Servers card, as a data URL
+        /// (`data:image/png;base64,...`). Top-level profile field mirroring the
+        /// GUI Edit modal icon picker.
+        #[arg(long, value_name = "DATA_URL")]
+        custom_icon_url: Option<String>,
+        /// Auto-detected project favicon, as a data URL. Top-level profile field
+        /// (normally set by the GUI on connect); exposed here for CLI-driven
+        /// test fixtures.
+        #[arg(long, value_name = "DATA_URL")]
+        favicon_url: Option<String>,
+        /// Suppress the classic-fallback (delta-eligibility) modal for this
+        /// saved server, matching the GUI checkbox. Top-level profile
+        /// preference.
+        #[arg(long)]
+        skip_delta_eligibility_prompt: bool,
+        /// Filen CLI API key (issue #230). Stored in the vault under
+        /// `filen_api_key_<id>` (NOT on the saved profile) and flags
+        /// `hasStoredFilenApiKey`, exactly like the GUI Edit modal, so the
+        /// profile connects via the key and skips the /v3/login + TOTP window.
+        /// Only valid for `--protocol filen`. Inline value is visible in `ps`.
+        #[arg(long, value_name = "KEY")]
+        filen_api_key: Option<String>,
     },
     /// Duplicate a saved server profile inside the vault
     ///
@@ -19725,6 +19753,11 @@ fn cmd_profile_add(
     password_stdin: bool,
     credential_json: Option<&str>,
     credential_json_file: Option<&str>,
+    public_url_base: Option<&str>,
+    custom_icon_url: Option<&str>,
+    favicon_url: Option<&str>,
+    skip_delta_eligibility_prompt: bool,
+    filen_api_key: Option<&str>,
 ) -> i32 {
     let trimmed_name = name.trim();
     if trimmed_name.is_empty() {
@@ -19791,6 +19824,18 @@ fn cmd_profile_add(
         );
         return 5;
     }
+    // Issue #230: the Filen CLI API key is a Filen-only credential. Reject it on
+    // any other protocol so a mistyped profile does not silently carry a dead
+    // vault entry.
+    let filen_api_key = filen_api_key.map(|k| k.trim()).filter(|k| !k.is_empty());
+    if filen_api_key.is_some() && proto_lower != "filen" {
+        print_error(
+            format,
+            "--filen-api-key is only valid for --protocol filen",
+            5,
+        );
+        return 5;
+    }
     let manual_total_bytes = match manual_total {
         Some(s) => match parse_manual_total_size(s) {
             Ok(b) if b > 0 => Some(b),
@@ -19848,6 +19893,11 @@ fn cmd_profile_add(
         color,
         provider_id,
         manual_total_bytes,
+        public_url_base,
+        custom_icon_url,
+        favicon_url,
+        skip_delta_eligibility_prompt,
+        filen_api_key.is_some(),
     ) {
         Ok(id) => id,
         Err(e) => {
@@ -19883,6 +19933,28 @@ fn cmd_profile_add(
         }
     }
 
+    // Issue #230: seed the Filen CLI API key into its own vault slot
+    // (`filen_api_key_<id>`), exactly where the GUI Edit modal writes it and
+    // where `collect_provider_secrets_for_server` reads it for the profile
+    // export. Same hard-error contract as the main credential.
+    let seeded_filen_api_key = filen_api_key.is_some();
+    if let Some(key) = filen_api_key {
+        let vault_key = format!("filen_api_key_{}", new_id);
+        if let Err(e) = ftp_client_gui_lib::user_partitions::store_active_credential_dual(
+            &store, &vault_key, key,
+        ) {
+            print_error(
+                format,
+                &format!(
+                    "Profile '{}' created (id={}) but Filen API key write failed: {}",
+                    trimmed_name, new_id, e
+                ),
+                5,
+            );
+            return 5;
+        }
+    }
+
     match format {
         OutputFormat::Json => {
             let out = serde_json::json!({
@@ -19891,6 +19963,7 @@ fn cmd_profile_add(
                 "protocol": proto_lower,
                 "port": resolved_port,
                 "credential_seeded": seeded_credential,
+                "filen_api_key_seeded": seeded_filen_api_key,
             });
             println!("{}", serde_json::to_string_pretty(&out).unwrap_or_default());
         }
@@ -19934,6 +20007,11 @@ fn persist_new_profile_entry(
     color: Option<&str>,
     provider_id: Option<&str>,
     manual_total_bytes: Option<u64>,
+    public_url_base: Option<&str>,
+    custom_icon_url: Option<&str>,
+    favicon_url: Option<&str>,
+    skip_delta_eligibility_prompt: bool,
+    has_filen_api_key: bool,
 ) -> Result<String, String> {
     let mut profiles: Vec<serde_json::Value> = match load_active_user_profiles(cli, store) {
         Ok(p) => p,
@@ -19967,13 +20045,19 @@ fn persist_new_profile_entry(
         "protocol".into(),
         serde_json::Value::String(protocol.to_string()),
     );
-    if let Some(h) = host {
-        entry.insert("host".into(), serde_json::Value::String(h.to_string()));
-    }
+    // Always write `host` and `username` (empty string when not provided).
+    // The GUI stores them unconditionally and `ServerProfileExport` requires
+    // both as non-optional strings, so omitting them made a cloud profile
+    // (no host/user) fail `profile-export` with "missing field `host`".
+    entry.insert(
+        "host".into(),
+        serde_json::Value::String(host.unwrap_or("").to_string()),
+    );
     entry.insert("port".into(), serde_json::json!(port));
-    if let Some(u) = username {
-        entry.insert("username".into(), serde_json::Value::String(u.to_string()));
-    }
+    entry.insert(
+        "username".into(),
+        serde_json::Value::String(username.unwrap_or("").to_string()),
+    );
     entry.insert(
         "initialPath".into(),
         serde_json::Value::String(initial_path.to_string()),
@@ -19997,6 +20081,36 @@ fn persist_new_profile_entry(
         let mut options = serde_json::Map::new();
         options.insert("manualTotalBytes".into(), serde_json::json!(mtb));
         entry.insert("options".into(), serde_json::Value::Object(options));
+    }
+    // Top-level ServerProfile fields (outside `options`) that the GUI Edit modal
+    // sets; carried here so a CLI-created profile is a faithful fixture and its
+    // `.aeroftp` export/import round-trips them (v4.1.4 export audit GAP 2/3/4).
+    if let Some(u) = public_url_base {
+        entry.insert(
+            "publicUrlBase".into(),
+            serde_json::Value::String(u.to_string()),
+        );
+    }
+    if let Some(u) = custom_icon_url {
+        entry.insert(
+            "customIconUrl".into(),
+            serde_json::Value::String(u.to_string()),
+        );
+    }
+    if let Some(u) = favicon_url {
+        entry.insert(
+            "faviconUrl".into(),
+            serde_json::Value::String(u.to_string()),
+        );
+    }
+    if skip_delta_eligibility_prompt {
+        entry.insert("skipDeltaEligibilityPrompt".into(), serde_json::json!(true));
+    }
+    // Issue #230: mirror the GUI flag so the My Servers card and the export know
+    // a Filen CLI API key lives in the vault under `filen_api_key_<id>` (the key
+    // itself is written separately by the caller, never onto the profile).
+    if has_filen_api_key {
+        entry.insert("hasStoredFilenApiKey".into(), serde_json::json!(true));
     }
 
     profiles.insert(0, serde_json::Value::Object(entry));
@@ -20254,6 +20368,11 @@ fn interactive_new_profile(
         None,
         provider_id.as_deref(),
         None,
+        None,
+        None,
+        None,
+        false,
+        false,
     )?;
     eprintln!(
         "{}",
@@ -59499,6 +59618,11 @@ async fn main() {
             manual_total,
             credential_json,
             credential_json_file,
+            public_url_base,
+            custom_icon_url,
+            favicon_url,
+            skip_delta_eligibility_prompt,
+            filen_api_key,
         } => cmd_profile_add(
             &cli,
             format,
@@ -59515,6 +59639,11 @@ async fn main() {
             cli.password_stdin,
             credential_json.as_deref(),
             credential_json_file.as_deref(),
+            public_url_base.as_deref(),
+            custom_icon_url.as_deref(),
+            favicon_url.as_deref(),
+            *skip_delta_eligibility_prompt,
+            filen_api_key.as_deref(),
         ),
         Commands::ProfileDuplicate {
             selector,

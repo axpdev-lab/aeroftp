@@ -15790,6 +15790,16 @@ fn collect_provider_secrets_for_server(
         out.mode_credentials = Some(modes.to_string());
     }
 
+    // Issue #230: bundle the per-profile Filen CLI API key (`filen_api_key_<id>`).
+    // It is a long-lived secret kept only in the vault (never on the saved
+    // profile's `options`), so without this the `.aeroftp` export dropped it and a
+    // re-imported Filen profile fell back to password + TOTP.
+    if let Ok(Some(api_key)) =
+        user_partitions::resolve_active_credential(store, &format!("filen_api_key_{}", server.id))
+    {
+        out.filen_api_key = Some(api_key.to_string());
+    }
+
     out
 }
 
@@ -15846,6 +15856,7 @@ pub async fn export_server_profiles_core(
                         || secrets.mode_credentials.is_some()
                         || secrets.oauth_client_id.is_some()
                         || secrets.oauth_client_secret.is_some()
+                        || secrets.filen_api_key.is_some()
                     {
                         provider_secrets.insert(server.id.clone(), secrets);
                     }
@@ -15918,6 +15929,10 @@ pub async fn import_server_profiles_core_filtered(
     let mut restored_aerocrypt_keyfile_path: std::collections::HashSet<String> =
         std::collections::HashSet::new();
     let mut restored_aerocrypt_config: std::collections::HashSet<String> =
+        std::collections::HashSet::new();
+    // Issue #230: track which profiles had their Filen CLI API key restored so
+    // the `hasStoredFilenApiKey` flag returned to the UI reflects reality.
+    let mut restored_filen_api_key: std::collections::HashSet<String> =
         std::collections::HashSet::new();
     match credential_store::CredentialStore::from_cache() {
         Some(store) => {
@@ -16080,6 +16095,18 @@ pub async fn import_server_profiles_core_filtered(
                         cred_errors.push(format!("{} mode creds: {}", profile_id, e));
                     }
                 }
+                // Issue #230: restore the Filen CLI API key under the same
+                // `filen_api_key_<id>` vault key the connect path reads, so an
+                // imported Filen profile skips the /v3/login + TOTP window again.
+                if let Some(ref api_key) = secrets.filen_api_key {
+                    let key = format!("filen_api_key_{}", profile_id);
+                    match user_partitions::store_active_credential_dual(&store, &key, api_key) {
+                        Ok(()) => {
+                            restored_filen_api_key.insert(profile_id.clone());
+                        }
+                        Err(e) => cred_errors.push(format!("{} filen api key: {}", profile_id, e)),
+                    }
+                }
             }
         }
         None => {
@@ -16125,7 +16152,19 @@ pub async fn import_server_profiles_core_filtered(
                 "lastConnected": s.last_connected,
                 "options": s.options,
                 "providerId": s.provider_id,
+                // Top-level ServerProfile fields that live OUTSIDE `options` and
+                // so must be re-emitted explicitly or the import drops them:
+                // the share-link base (GAP 2), the custom/detected icons (GAP 3)
+                // and the silenced classic-fallback modal preference (GAP 4).
+                "publicUrlBase": s.public_url_base,
+                "customIconUrl": s.custom_icon_url,
+                "faviconUrl": s.favicon_url,
+                "skipDeltaEligibilityPrompt": s.skip_delta_eligibility_prompt,
                 "hasStoredCredential": s.credential.is_some(),
+                // Issue #230: reflect whether the Filen CLI API key was actually
+                // restored so the profile reconnects via the key (skipping the
+                // TOTP window) instead of falling back to password + 2FA.
+                "hasStoredFilenApiKey": restored_filen_api_key.contains(&s.id),
                 // CWP-20B: re-import a Crypt profile AS a Crypt profile (both
                 // kinds). The flags reflect what was actually restored, not the
                 // source state, so the UI prompts for the overlay password only
