@@ -690,4 +690,72 @@ mod tests {
         );
         assert!(err.contains("AeroCrypt feature"), "clear error: {err}");
     }
+
+    /// Headerless AeroCrypt parity (v4.1.4 headerless-default flip): the MCP /
+    /// Compare unlock must open a headerless overlay from the local keystore
+    /// config alone, with NO remote marker on the wire, and stay fail-closed.
+    /// The marker-PRESENT branch is covered by the tests above; this exercises
+    /// the `local_config_json` fallback branch (`exists()` false) end to end.
+    #[tokio::test]
+    async fn unlock_overlay_keys_headerless_from_local_config() {
+        use crate::aerocrypt::overlay;
+
+        // Build a valid v3 config JSON the way `provider_with_v3_config` does,
+        // but keep it OUT of the provider so `exists()` returns false: this is a
+        // headerless overlay whose config lives only in the local keystore.
+        let salt = overlay::random_salt_v3();
+        let tmp = overlay::OverlayConfig::v3_bootstrap(salt);
+        let master_key =
+            overlay::derive_master_key_with_keyfile(&tmp, "pw", None).expect("derive master key");
+        let json = overlay::init_config_v3(&salt, &master_key).expect("build headerless config");
+        let config_salt = serde_json::from_str::<serde_json::Value>(&json)
+            .expect("config json parses")
+            .get("salt")
+            .and_then(|v| v.as_str())
+            .expect("config carries a salt")
+            .to_string();
+
+        // Empty provider -> the marker `<scope>/.aeroftp-crypt.json` is absent.
+        let empty = || ConfigProvider {
+            files: std::collections::HashMap::new(),
+        };
+
+        // 1) Headerless unlock succeeds from the local config alone.
+        let mut params = aerocrypt_params("/Headerless");
+        params.local_config_json = Some(json.clone());
+        params.local_config_salt = Some(config_salt.clone());
+        params.profile_id = Some("srv_headerless_test".to_string());
+        let mut prov = empty();
+        let keys = unlock_overlay_keys(&mut prov, &params, "pw", "", None)
+            .await
+            .expect("headerless overlay must unlock from local_config_json");
+        assert!(matches!(keys, CryptCompareKeys::AeroCrypt(_)));
+        // The unlock must NOT have written a marker (headerless stays headerless).
+        assert!(
+            prov.files.is_empty(),
+            "headerless unlock must leave no remote footprint"
+        );
+
+        // 2) No config anywhere -> fail-closed with the frozen "no overlay at".
+        let mut params_none = aerocrypt_params("/Headerless");
+        params_none.profile_id = Some("srv_headerless_test".to_string());
+        let mut prov_none = empty();
+        let err = unlock_err(
+            unlock_overlay_keys(&mut prov_none, &params_none, "pw", "", None).await,
+            "missing config everywhere must fail closed",
+        );
+        assert!(err.contains("no overlay at"), "fail-closed error: {err}");
+
+        // 3) Salt mismatch -> fail-closed (a divergent keystore never unlocks).
+        let mut params_bad = aerocrypt_params("/Headerless");
+        params_bad.local_config_json = Some(json);
+        params_bad.local_config_salt = Some("deadbeef-not-the-config-salt".to_string());
+        params_bad.profile_id = Some("srv_headerless_test".to_string());
+        let mut prov_bad = empty();
+        let err = unlock_err(
+            unlock_overlay_keys(&mut prov_bad, &params_bad, "pw", "", None).await,
+            "a config/salt divergence must fail closed",
+        );
+        assert!(err.contains("does not match"), "salt-mismatch error: {err}");
+    }
 }
