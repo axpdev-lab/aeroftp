@@ -1607,7 +1607,7 @@
             "keyfileChoose": "Choose",
             "keyfileClear": "Remove keyfile",
             "recoveryKitTitle": "Recovery Kit (optional backup)",
-            "recoveryKitIntro": "Optional. This kit holds only public configuration (vault ID, salt, KDF parameters), never secrets. Saving it offline together with your password lets you restore a headerless vault after losing the local keystore (reinstall or new machine). You can reopen and save it again any time.",
+            "recoveryKitIntro": "Optional. This kit holds only public configuration (vault ID, salt, KDF parameters), never secrets. Saving it offline together with your password lets you restore your vault after losing the local keystore (reinstall or new machine). You can reopen and save it again any time.",
             "vaultIdLabel": "Vault ID (base64)",
             "saltLabel": "Salt (base64)",
             "kdfLabel": "KDF parameters",

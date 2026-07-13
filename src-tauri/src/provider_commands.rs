@@ -1549,8 +1549,9 @@ pub fn aerocrypt_profile_recovery_kit(
     .map(|s| s.to_string())
     .filter(|s| !s.is_empty())
     .ok_or_else(|| {
-        "No recovery kit for this profile yet: its headerless vault has not been created \
-         (connect once to create it), or it uses an on-remote header."
+        "No recovery kit cached for this profile yet. Connect to its vault once so its \
+         public configuration is stored locally (this happens automatically on connect \
+         for headerless, headed and keyfile vaults), then reopen the recovery kit."
             .to_string()
     })?;
     let salt = crate::user_partitions::resolve_active_credential(

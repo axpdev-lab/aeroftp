@@ -5,8 +5,11 @@
 //!
 //! The kit carries only public, non-secret fields from a persisted
 //! OverlayConfig: vault_id, version, salt, and the KDF parameters.
-//! It is mandatory and non-skippable at `crypt init` (both headerless
-//! and --with-header paths) and in the GUI overlay create flow.
+//! It is an OPTIONAL, on-demand recovery kit available in every mode
+//! (headerless, headed, keyfile): in the GUI it never gates create or
+//! connect (owner decision, v4.1.4) and is re-viewable any time from the
+//! crypt toggle; the CLI `crypt init` still shows it once for an explicit
+//! acknowledgement.
 //!
 //! Never includes password, master key, keyfile material, or config_mac.
 //! The builder always reads the persisted config (via caller using
@@ -52,18 +55,26 @@ impl EmergencyKit {
         mem: u32,
         time: u32,
         lanes: u32,
+        requires_keyfile: bool,
     ) -> String {
+        let keyfile_line = if requires_keyfile {
+            "This vault also requires its keyfile: this kit and your password are not\n\
+             enough on their own, keep the keyfile safe too.\n"
+        } else {
+            ""
+        };
         format!(
             "AEROCRYPT EMERGENCY KIT\n\n\
              Store this with your password. This public configuration is required\n\
-             to recover a headerless vault after losing the local keystore\n\
+             to recover your vault after losing the local keystore\n\
              (reinstall, new machine, lost credentials store).\n\n\
              Vault ID: {}\n\
              Version: {}\n\
              Salt (base64): {}\n\
-             KDF: {} (mem={} KiB, t={}, p={})\n\n\
+             KDF: {} (mem={} KiB, t={}, p={})\n\
+             {}\n\
              NEVER store the password alongside this kit.\n",
-            vault_id, version, salt, "Argon2id", mem, time, lanes
+            vault_id, version, salt, "Argon2id", mem, time, lanes, keyfile_line
         )
     }
 }
@@ -80,6 +91,7 @@ pub fn build_from_config_json(config_json: &str) -> Result<EmergencyKit, String>
 /// Build directly from a parsed OverlayConfig (v3 only for Tier-1 kit).
 /// Extracts vault_id (required), salt and KDF params from the live profile.
 pub fn build_from_overlay_config(cfg: &OverlayConfig) -> Result<EmergencyKit, String> {
+    let requires_keyfile = cfg.requires_keyfile();
     match cfg {
         OverlayConfig::V3 { salt, vault_id, .. } => {
             let vid = vault_id.ok_or_else(|| {
@@ -94,7 +106,15 @@ pub fn build_from_overlay_config(cfg: &OverlayConfig) -> Result<EmergencyKit, St
             let mem = argon2_mem_kib();
             let t = argon2_time();
             let p = argon2_lanes();
-            let text = EmergencyKit::render_text(&vid_b64, VERSION_V3, &salt_b64, mem, t, p);
+            let text = EmergencyKit::render_text(
+                &vid_b64,
+                VERSION_V3,
+                &salt_b64,
+                mem,
+                t,
+                p,
+                requires_keyfile,
+            );
             Ok(EmergencyKit {
                 vault_id: vid_b64,
                 version: VERSION_V3,
@@ -174,6 +194,23 @@ mod tests {
         assert!(kit.text.contains("mem=131072 KiB"));
         // The kit text legitimately mentions the word "password" in instructions ("with your password");
         // the important guarantee is that it never contains secret material (tested via field extraction and controlled render).
+    }
+
+    #[test]
+    fn kit_notes_keyfile_requirement_only_for_keyfile_vaults() {
+        let salt = [0x11u8; 32];
+        let vid = [0x22u8; 16];
+
+        // Password-only vault: no keyfile note.
+        let pw_only = build_from_config_json(&make_v3_json_with_vid(&salt, &vid, false)).unwrap();
+        assert!(!pw_only.text.to_lowercase().contains("keyfile"));
+
+        // Keyfile vault: the kit spells out that the keyfile is also required, so
+        // a user does not think the paper alone can reopen it.
+        let kf = build_from_config_json(&make_v3_json_with_vid(&salt, &vid, true)).unwrap();
+        assert!(kf.text.contains("also requires its keyfile"));
+        // Still public-only: never the keyfile material itself.
+        assert!(kf.text.contains("AEROCRYPT EMERGENCY KIT"));
     }
 
     #[test]

@@ -1515,6 +1515,91 @@ pub fn validate_headerless_config_salt(
     Ok(())
 }
 
+/// Persist the PUBLIC AeroCrypt overlay config JSON plus its salt of record into
+/// the local keystore for `id`, transactionally: write the config, then the
+/// salt; roll the config back if the salt write fails, so a half-written keystore
+/// never masquerades as a complete vault. The stored blob is public-only (salt,
+/// KDF params, vault_id, config MAC), never a secret.
+///
+/// Shared by headerless init (where it MUST succeed, since the remote carries no
+/// marker), and by headed init / connect-time backfill (where it is a best-effort
+/// convenience copy so the on-demand Recovery Kit works in every mode without
+/// connecting; there the remote marker stays the source of truth, so callers
+/// treat a failure as non-fatal).
+fn persist_public_overlay_config(
+    store: &crate::credential_store::CredentialStore,
+    id: &str,
+    config_json: &str,
+    salt_b64: &str,
+) -> Result<(), String> {
+    let config_key = format!("aerocrypt_overlay_config_{id}");
+    let salt_key = format!("aerocrypt_overlay_salt_{id}");
+    let prior_config = crate::user_partitions::resolve_active_credential(store, &config_key)
+        .ok()
+        .flatten()
+        .map(|s| s.to_string());
+    crate::user_partitions::store_active_credential_dual(store, &config_key, config_json)
+        .map_err(|e| format!("Cannot persist AeroCrypt overlay config to the keystore: {e}"))?;
+    if let Err(e) = crate::user_partitions::store_active_credential_dual(store, &salt_key, salt_b64)
+    {
+        // Roll the config back to its prior value (or remove it) so a config
+        // without its matching salt of record never lingers.
+        match prior_config {
+            Some(prev) => {
+                let _ =
+                    crate::user_partitions::store_active_credential_dual(store, &config_key, &prev);
+            }
+            None => {
+                let _ = crate::user_partitions::delete_active_credential_dual(store, &config_key);
+            }
+        }
+        return Err(format!(
+            "Cannot persist AeroCrypt overlay salt to the keystore: {e}"
+        ));
+    }
+    Ok(())
+}
+
+/// Best-effort: cache a HEADED vault's PUBLIC config in the local keystore so the
+/// on-demand Recovery Kit (T3) works without connecting, for headed vaults
+/// created before this build too. Idempotent: fills the per-profile config/salt
+/// entries only when nothing is stored yet, so it never clobbers an existing
+/// (possibly headerless) salt of record. No-op without a saved profile id or a
+/// keystore. Never fails the unlock: the remote marker is authoritative.
+fn backfill_headed_overlay_config(params: &OverlayUnlockParams, config_json: &str) {
+    let Some(id) = params.profile_id.as_deref().filter(|s| !s.is_empty()) else {
+        return;
+    };
+    let Some(store) = crate::credential_store::CredentialStore::from_cache() else {
+        return;
+    };
+    let config_key = format!("aerocrypt_overlay_config_{id}");
+    let already = crate::user_partitions::resolve_active_credential(&store, &config_key)
+        .ok()
+        .flatten()
+        .map(|s| !s.to_string().is_empty())
+        .unwrap_or(false);
+    if already {
+        return;
+    }
+    // The config JSON carries the salt (base64) directly; reuse it as the salt of
+    // record so validate_headerless_config_salt stays consistent.
+    let Some(salt_b64) = serde_json::from_str::<serde_json::Value>(config_json)
+        .ok()
+        .and_then(|v| {
+            v.get("salt")
+                .and_then(|s| s.as_str())
+                .map(|s| s.to_string())
+        })
+        .filter(|s| !s.is_empty())
+    else {
+        return;
+    };
+    if let Err(e) = persist_public_overlay_config(&store, id, config_json, &salt_b64) {
+        eprintln!("[aerocrypt] headed overlay config backfill skipped for {id}: {e}");
+    }
+}
+
 fn local_headerless_config_from_params(
     params: &OverlayUnlockParams,
 ) -> Result<Option<String>, String> {
@@ -1854,7 +1939,18 @@ async fn unlock_overlay_keys_encrypting(
                     .await
                     .map_err(|e| format!("Cannot read AeroCrypt overlay config: {e}"))?;
                 let config_str = String::from_utf8_lossy(&config_bytes);
-                derive_aerocrypt_overlay_keys_from_config(&config_str, password, keyfile_digest)?
+                let derived = derive_aerocrypt_overlay_keys_from_config(
+                    &config_str,
+                    password,
+                    keyfile_digest,
+                )?;
+                // T3: cache this headed vault's PUBLIC config in the local keystore
+                // so the on-demand Recovery Kit works without connecting, for headed
+                // vaults created before this build too. Best-effort and idempotent
+                // (only fills a missing entry); the remote marker stays the source of
+                // truth, so a cache miss never fails the unlock.
+                backfill_headed_overlay_config(params, &config_str);
+                derived
             } else if let Some(config_json) = local_headerless_config_from_params(params)? {
                 derive_aerocrypt_overlay_keys_from_config(&config_json, password, keyfile_digest)?
             } else if allow_init {
@@ -1942,12 +2038,29 @@ async fn unlock_overlay_keys_encrypting(
 
                 if with_header {
                     // Headed vault: the on-remote marker is the source of truth,
-                    // exactly like the CLI `crypt init --with-header`. No keystore
-                    // metadata is written (connect reads the marker).
+                    // exactly like the CLI `crypt init --with-header`. Upload it, then
+                    // ALSO cache the PUBLIC config in the local keystore (best-effort,
+                    // T3) so the on-demand Recovery Kit works in every mode without a
+                    // connection. The marker stays authoritative, so a cache-write
+                    // failure is logged and never fails the create.
                     provider
                         .upload(&staged.path().to_string_lossy(), &config_path, None)
                         .await
                         .map_err(|e| format!("Cannot write AeroCrypt overlay config: {e}"))?;
+                    if let Some(id) = params.profile_id.as_deref().filter(|s| !s.is_empty()) {
+                        if let Some(store) = crate::credential_store::CredentialStore::from_cache()
+                        {
+                            use base64::Engine as _;
+                            let salt_b64 = base64::engine::general_purpose::STANDARD.encode(salt);
+                            if let Err(e) =
+                                persist_public_overlay_config(&store, id, &json, &salt_b64)
+                            {
+                                eprintln!(
+                                    "[aerocrypt] headed overlay config cache skipped for {id}: {e}"
+                                );
+                            }
+                        }
+                    }
                 } else {
                     // Headerless (default): persist the complete public config in the
                     // local keystore keyed by profile id, so connect-time unlock finds
@@ -1968,47 +2081,11 @@ async fn unlock_overlay_keys_encrypting(
                         },
                     )?;
                     use base64::Engine as _;
-                    let config_key = format!("aerocrypt_overlay_config_{id}");
-                    let salt_key = format!("aerocrypt_overlay_salt_{id}");
                     let salt_b64 = base64::engine::general_purpose::STANDARD.encode(salt);
-                    // Transactional: write the config, then the salt of record; roll
-                    // the config back if the salt write fails, so a half-written
-                    // keystore never masquerades as a complete headerless vault.
-                    let prior_config =
-                        crate::user_partitions::resolve_active_credential(&store, &config_key)
-                            .ok()
-                            .flatten()
-                            .map(|s| s.to_string());
-                    crate::user_partitions::store_active_credential_dual(
-                        &store,
-                        &config_key,
-                        &json,
-                    )
-                    .map_err(|e| {
-                        format!("Cannot persist AeroCrypt overlay config to the keystore: {e}")
-                    })?;
-                    if let Err(e) = crate::user_partitions::store_active_credential_dual(
-                        &store, &salt_key, &salt_b64,
-                    ) {
-                        match prior_config {
-                            Some(prev) => {
-                                let _ = crate::user_partitions::store_active_credential_dual(
-                                    &store,
-                                    &config_key,
-                                    &prev,
-                                );
-                            }
-                            None => {
-                                let _ = crate::user_partitions::delete_active_credential_dual(
-                                    &store,
-                                    &config_key,
-                                );
-                            }
-                        }
-                        return Err(format!(
-                            "Cannot persist AeroCrypt overlay salt to the keystore: {e}"
-                        ));
-                    }
+                    // Durable and fail-closed: a swallowed write here would orphan
+                    // every file encrypted under this headerless vault, so the error
+                    // propagates (unlike the best-effort headed cache above).
+                    persist_public_overlay_config(&store, id, &json, &salt_b64)?;
                 }
 
                 let config = overlay::parse_config(&json)
