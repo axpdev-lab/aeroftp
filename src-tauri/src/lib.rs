@@ -14698,6 +14698,13 @@ async fn trigger_cloud_sync(
         return Err("AeroCloud is not configured. Please set it up first.".to_string());
     }
 
+    // Acquire guard (swap true) after enabled check. If already in progress, bail.
+    // The guard ensures store(false) on EVERY return path (Ok and Err) via Drop.
+    let _guard = match CloudSyncGuard::acquire() {
+        Some(g) => g,
+        None => return Err("A sync is already in progress".to_string()),
+    };
+
     // Resolve protocol (in case legacy single config) and delegate directly to the
     // unified helper (dead perform_background_* wrappers removed per FIX-4).
     let store = credential_store::CredentialStore::from_cache();
@@ -14749,13 +14756,40 @@ async fn trigger_cloud_sync(
             Err(format!("Sync failed: {}", e))
         }
     }
+    // _guard drops here on both arms -> store(false). No early return after acquire
+    // without clearing.
 }
 // ============ Background Sync & Tray Commands ============
 
 use std::time::Duration;
 
-/// Prevents concurrent syncs (manual + watcher firing at the same time)
+/// Prevents concurrent syncs (manual + watcher firing at the same time).
+/// Restored in B.3: trigger_cloud_sync and background batch both use it for
+/// mutual exclusion. Cleared via RAII guard on all paths (no permanent lock).
 static SYNC_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
+
+/// RAII guard ensuring SYNC_IN_PROGRESS is always reset to false when the
+/// owning scope ends (success, error return, or panic unwind). Acquire via
+/// `acquire()` which returns None (and does nothing) if already held.
+struct CloudSyncGuard(());
+
+impl CloudSyncGuard {
+    /// Swap true and take ownership if it was previously false.
+    /// Returns Some(guard) iff we set the flag (previous value was false).
+    fn acquire() -> Option<Self> {
+        if SYNC_IN_PROGRESS.swap(true, Ordering::SeqCst) {
+            None
+        } else {
+            Some(CloudSyncGuard(()))
+        }
+    }
+}
+
+impl Drop for CloudSyncGuard {
+    fn drop(&mut self) {
+        SYNC_IN_PROGRESS.store(false, Ordering::SeqCst);
+    }
+}
 
 // Global flag to control background sync
 pub(crate) static BACKGROUND_SYNC_RUNNING: AtomicBool = AtomicBool::new(false);
@@ -15048,9 +15082,10 @@ async fn background_sync_worker(app: AppHandle) {
                     duration_secs: 0,
                     file_details: vec![],
                 })
-            } else {
-                // Protect the whole batch with the in-progress flag (serial).
-                let _was = SYNC_IN_PROGRESS.swap(true, Ordering::SeqCst);
+            } else if let Some(_guard) = CloudSyncGuard::acquire() {
+                // We acquired (previous was false): run the batch under guard.
+                // Guard Drop will store(false) after the batch on success or any
+                // error path inside the loop. No manual store.
                 let mut agg = cloud_service::SyncOperationResult {
                     uploaded: 0,
                     downloaded: 0,
@@ -15086,8 +15121,23 @@ async fn background_sync_worker(app: AppHandle) {
                         }
                     }
                 }
-                SYNC_IN_PROGRESS.store(false, Ordering::SeqCst);
                 Ok(agg)
+                // _guard drops here -> store(false)
+            } else {
+                // Respect previous value: a sync (manual or other) is in progress.
+                // Skip the pair batch this cycle; next tick will retry.
+                // We did not acquire so we do not clear (owner will).
+                info!("Batch sync skipped: a sync is already in progress");
+                Ok(cloud_service::SyncOperationResult {
+                    uploaded: 0,
+                    downloaded: 0,
+                    deleted: 0,
+                    skipped: 0,
+                    conflicts: 0,
+                    errors: vec![],
+                    duration_secs: 0,
+                    file_details: vec![],
+                })
             };
 
         // batch_result is always Ok(agg) with errors collected inside for multi/legacy
