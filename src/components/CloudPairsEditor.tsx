@@ -175,6 +175,13 @@ export const CloudPairsEditor: React.FC<CloudPairsEditorProps> = ({ isOpen, onCl
 
     const handleProfileChange = (pairId: string, profile: string) => {
         updatePairField(pairId, 'server_profile', profile);
+        // FIX-1: also capture the real protocol from the saved server so the
+        // pair is persisted with correct protocol_type (not default 'ftp').
+        // Worker will still defensively resolve, but this makes stored data correct.
+        const server = savedServers.find((s: any) => (s.name || s.host) === profile);
+        if (server && server.protocol) {
+            updatePairField(pairId, 'protocol_type', server.protocol);
+        }
     };
 
     const handleVersioningChange = (pairId: string, val: VersioningSelectValue) => {

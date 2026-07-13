@@ -14698,8 +14698,22 @@ async fn trigger_cloud_sync(
         return Err("AeroCloud is not configured. Please set it up first.".to_string());
     }
 
-    // Use multi-protocol factory (same as background sync): supports FTP, SFTP, S3, etc.
-    let result = perform_background_sync_with_app(&config, Some(&app)).await;
+    // Resolve protocol (in case legacy single config) and delegate directly to the
+    // unified helper (dead perform_background_* wrappers removed per FIX-4).
+    let store = credential_store::CredentialStore::from_cache();
+    let mut cfg = config;
+    if let Some(ref s) = store {
+        if let Ok(profiles) = user_partitions::mcp_list_active_server_profiles(s) {
+            if let Some(proto) = profiles
+                .iter()
+                .find(|p| p.get("name").and_then(|v| v.as_str()) == Some(cfg.server_profile.as_str()))
+                .and_then(|p| p.get("protocol").and_then(|v| v.as_str()))
+            {
+                cfg.protocol_type = proto.to_string();
+            }
+        }
+    }
+    let result = cloud_service::sync_one_config(cfg, store.as_ref(), Some(app.clone()), false).await;
 
     match result {
         Ok(result) => {
@@ -14980,9 +14994,31 @@ async fn background_sync_worker(app: AppHandle) {
 
         // Multi-pair support (Task 2): if cloud_pairs.json has entries use them (enabled only);
         // empty/absent => legacy single CloudConfig back-compat.
+        // FIX-1: resolve protocol_type per-pair from vault (same as CLI pair sync)
+        // before to_cloud_config(), so non-FTP pairs (SFTP/MEGA/S3/...) work in
+        // GUI background worker (not only explicit `aerocloud pair sync`).
+        let store_for_resolution = credential_store::CredentialStore::from_cache();
         let pair_cfgs: Vec<cloud_config::CloudConfig> = {
-            let pc = cloud_pairs::load_cloud_pairs_config();
+            let mut pc = cloud_pairs::load_cloud_pairs_config();
             if !pc.pairs.is_empty() {
+                if let Some(ref store) = store_for_resolution {
+                    if let Ok(profiles) =
+                        user_partitions::mcp_list_active_server_profiles(store)
+                    {
+                        for p in &mut pc.pairs {
+                            if let Some(proto) = profiles
+                                .iter()
+                                .find(|pr| {
+                                    pr.get("name").and_then(|v| v.as_str())
+                                        == Some(p.server_profile.as_str())
+                                })
+                                .and_then(|pr| pr.get("protocol").and_then(|v| v.as_str()))
+                            {
+                                p.protocol_type = proto.to_string();
+                            }
+                        }
+                    }
+                }
                 pc.pairs
                     .iter()
                     .filter(|p| p.enabled)
@@ -15128,12 +15164,8 @@ async fn background_sync_worker(app: AppHandle) {
             let _ = app.emit("cloud_sync_complete", &result);
         }
 
-        // Small cooldown on error batch to avoid tight spin (mirrors old per-err path)
-        if
-        /* had errors in last batch? */
-        false {
-            // (kept simple; the select sleep below is only on stop)
-        }
+        // (no per-batch error backoff block; the tokio::select sleep on the
+        // stop channel or schedule already prevents tight loops)
     }
 
     // --- Cleanup ---
@@ -15151,56 +15183,9 @@ async fn background_sync_worker(app: AppHandle) {
     info!("Background sync worker exited");
 }
 
-/// Perform a sync cycle with a dedicated provider connection.
-/// Creates the appropriate provider based on config.protocol_type (FTP, SFTP, S3, Google Drive, etc.)
-/// and uses the generic perform_full_sync_with_provider method.
-#[allow(dead_code)]
-async fn perform_background_sync(
-    config: &cloud_config::CloudConfig,
-) -> Result<cloud_service::SyncOperationResult, String> {
-    perform_background_sync_with_app(config, None).await
-}
-
-async fn perform_background_sync_with_app(
-    config: &cloud_config::CloudConfig,
-    app: Option<&AppHandle>,
-) -> Result<cloud_service::SyncOperationResult, String> {
-    // Prevent concurrent syncs: if one is already running, skip
-    if SYNC_IN_PROGRESS.swap(true, Ordering::SeqCst) {
-        info!("Sync skipped: another sync is already in progress");
-        return Ok(cloud_service::SyncOperationResult {
-            uploaded: 0,
-            downloaded: 0,
-            deleted: 0,
-            skipped: 0,
-            conflicts: 0,
-            errors: Vec::new(),
-            duration_secs: 0,
-            file_details: Vec::new(),
-        });
-    }
-
-    let result = perform_background_sync_inner(config, app).await;
-    SYNC_IN_PROGRESS.store(false, Ordering::SeqCst);
-    result
-}
-
-async fn perform_background_sync_inner(
-    config: &cloud_config::CloudConfig,
-    app: Option<&AppHandle>,
-) -> Result<cloud_service::SyncOperationResult, String> {
-    info!(
-        "Background sync: creating {} provider for profile '{}'",
-        config.protocol_type, config.server_profile
-    );
-
-    let store = credential_store::CredentialStore::from_cache();
-
-    // Delegate the rest (create + wrap + ensure remote + perform + disconnect)
-    // to the unified helper. The pre-cd block is no longer duplicated here;
-    // build_sync_plan_with_provider centralizes remote folder ensure.
-    cloud_service::sync_one_config(config.clone(), store.as_ref(), app.cloned(), false).await
-}
+// (dead single-config background wrappers removed; trigger and worker now use
+// the unified cloud_service::sync_one_config + pair resolution path directly.
+// See FIX-4.)
 
 #[tauri::command]
 async fn start_background_sync(

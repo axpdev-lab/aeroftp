@@ -11480,14 +11480,23 @@ async fn cmd_aerocloud_pair(cli: &Cli, command: &PairCommands, format: OutputFor
                     .unwrap_or_else(|| "pair".to_string())
             });
 
+            // FIX-2: use UUID for pair id (avoids collision after remove+add when len()
+            // re-uses a previous suffix). GUI already does randomUUID(); CLI now matches.
             let mut new_pair = cloud_pairs::new_cloud_path_pair(
-                format!("p{}", pairs_cfg.pairs.len()),
+                uuid::Uuid::new_v4().to_string(),
                 pair_name,
                 local_path,
                 remote.clone(),
                 profile.clone(),
             );
             new_pair.sync_direction = parsed_dir;
+
+            // FIX-1 (partial): pair add is intentionally vault-less (profile name is just a
+            // string label at this point). Protocol resolution for non-FTP happens in the
+            // worker (see lib.rs batch builder using mcp_list_active_server_profiles) and
+            // in explicit `pair sync` (which does open the vault). This keeps `add` usable
+            // in scripts without forcing unlock. Stored protocol may be the default 'ftp'
+            // until first resolution; the worker always corrects it before dispatch.
 
             pairs_cfg.pairs.push(new_pair);
             if let Err(e) = cloud_pairs::save_cloud_pairs_config(&pairs_cfg) {
@@ -11581,6 +11590,11 @@ async fn cmd_aerocloud_pair(cli: &Cli, command: &PairCommands, format: OutputFor
                 return 5;
             }
 
+            // FIX-3: when an explicit --id is given, the user's intent is to sync that
+            // specific pair even if currently disabled in the store. Force enabled for the
+            // duration of this sync (the stored flag is not mutated).
+            let explicit_id = id.is_some();
+
             let mut total = cloud_service::SyncOperationResult {
                 uploaded: 0,
                 downloaded: 0,
@@ -11593,7 +11607,10 @@ async fn cmd_aerocloud_pair(cli: &Cli, command: &PairCommands, format: OutputFor
             };
             for pair in targets {
                 // Build a CloudConfig from the (protocol-resolved) pair.
-                let cfg = pair.to_cloud_config();
+                let mut cfg = pair.to_cloud_config();
+                if explicit_id {
+                    cfg.enabled = true;
+                }
                 // also carry last_sync? already in to_
                 // sync
                 match cloud_service::sync_one_config(cfg, Some(&store), None, *dry_run).await {

@@ -5,8 +5,6 @@
 // cloud_pairs.json + CloudPairsConfig + CloudPathPair
 // Never reuses MultiPathConfig / PathPair / multi_path.json (owned by AeroSync).
 
-#![allow(dead_code)]
-
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -228,5 +226,90 @@ pub fn new_cloud_path_pair(
         excluded_folders: Vec::new(),
         exclude_patterns: Vec::new(),
         last_sync: None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_pair_exists_guard() {
+        let p1 = CloudPathPair {
+            id: "1".into(),
+            name: "a".into(),
+            local_path: "/tmp/l1".into(),
+            remote_path: "/r1".into(),
+            enabled: true,
+            server_profile: "p".into(),
+            protocol_type: "ftp".into(),
+            connection_params: serde_json::Value::Null,
+            sync_direction: CompareDirection::Bidirectional,
+            preserve_remote_deletes: true,
+            conflict_strategy: ConflictStrategy::default(),
+            versioning_strategy: VersioningStrategy::default(),
+            excluded_folders: vec![],
+            exclude_patterns: vec![],
+            last_sync: None,
+        };
+        let mut cfg = CloudPairsConfig {
+            pairs: vec![p1.clone()],
+            parallel_pairs: false,
+        };
+        assert!(pair_exists(&p1.local_path, &p1.remote_path, &cfg.pairs));
+        cfg.pairs.clear();
+        assert!(!pair_exists(&p1.local_path, &p1.remote_path, &cfg.pairs));
+    }
+
+    #[test]
+    fn test_from_legacy_and_to_cloud_config_roundtrip() {
+        let leg = CloudConfig {
+            enabled: true,
+            local_folder: "/tmp/leg".into(),
+            remote_folder: "/rleg".into(),
+            server_profile: "legprof".into(),
+            protocol_type: "sftp".into(),
+            sync_direction: CompareDirection::LocalToRemote,
+            preserve_remote_deletes: false,
+            exclude_patterns: vec!["*.tmp".into()],
+            ..CloudConfig::default()
+        };
+        let pair = CloudPathPair::from_legacy(&leg);
+        assert_eq!(pair.server_profile, "legprof");
+        assert_eq!(pair.protocol_type, "sftp");
+        assert_eq!(pair.sync_direction, CompareDirection::LocalToRemote);
+        assert!(!pair.preserve_remote_deletes);
+        assert_eq!(pair.exclude_patterns, vec!["*.tmp".to_string()]);
+
+        let back = pair.to_cloud_config();
+        assert!(back.enabled);
+        assert_eq!(back.server_profile, "legprof");
+        assert_eq!(back.protocol_type, "sftp");
+        // exclude fallback exercised
+        assert!(!back.exclude_patterns.is_empty());
+    }
+
+    #[test]
+    fn test_new_cloud_path_pair_defaults() {
+        let p = new_cloud_path_pair(
+            "id1".into(),
+            "n".into(),
+            "/l".into(),
+            "/r".into(),
+            "prof".into(),
+        );
+        assert_eq!(p.protocol_type, "ftp");
+        assert!(p.enabled);
+        assert_eq!(p.sync_direction, CompareDirection::Bidirectional);
+    }
+
+    #[test]
+    fn test_to_cloud_config_exclude_fallback() {
+        let mut p =
+            new_cloud_path_pair("x".into(), "x".into(), "/l".into(), "/r".into(), "p".into());
+        p.exclude_patterns.clear();
+        let c = p.to_cloud_config();
+        // should have fallen back to CloudConfig default excludes (non empty)
+        assert!(!c.exclude_patterns.is_empty());
     }
 }
