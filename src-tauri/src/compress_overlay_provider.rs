@@ -39,6 +39,9 @@ const COMPRESS_HEADER_LEN: usize = 4 + 1 + 8;
 const MODE_ZSTD: u8 = 0;
 /// raw (stored) payload follows the header (zstd did not shrink it).
 const MODE_STORED: u8 = 1;
+/// Standard zstd frame magic (little-endian 0xFD2FB528). Used to disambiguate a
+/// real AECP-zstd payload from a legacy blob that collided on the `AECP` magic.
+const ZSTD_FRAME_MAGIC: [u8; 4] = [0x28, 0xB5, 0x2F, 0xFD];
 
 /// Build the on-wire header.
 fn make_header(mode: u8, plain_len: u64) -> Vec<u8> {
@@ -60,8 +63,19 @@ enum WirePlan {
     Zstd(u64),
 }
 
-/// Classify a wire prefix (at least the header, or the whole small blob).
-fn parse_header_prefix(prefix: &[u8]) -> WirePlan {
+/// Classify a wire prefix. `prefix` is at least the 13-byte header (the streaming
+/// download reads exactly that) or the whole blob (download_to_bytes); `total_len`
+/// is the full wire object length.
+///
+/// A legacy plaintext object whose first bytes coincidentally equal the `AECP`
+/// magic (about 2^-32 per file) used to be misclassified and silently truncated
+/// to a bogus `plain_len` (audit A-L3). It is now disambiguated: the mode byte
+/// must be one we actually write; a `Stored` payload must be exactly `plain_len`
+/// raw bytes (`total_len == header + plain_len`); and a `Zstd` payload must begin
+/// with the zstd frame magic (verified when the whole blob is in hand, deferred to
+/// the decoder — which fails loudly, never silently — when only the streaming
+/// prefix is available). Any mismatch falls back to `Legacy` pass-through.
+fn parse_header_prefix(prefix: &[u8], total_len: u64) -> WirePlan {
     if prefix.len() < COMPRESS_HEADER_LEN || &prefix[0..4] != COMPRESS_HEADER_MAGIC {
         return WirePlan::Legacy;
     }
@@ -72,8 +86,31 @@ fn parse_header_prefix(prefix: &[u8]) -> WirePlan {
             .expect("13-byte prefix guaranteed above"),
     );
     match mode {
-        MODE_STORED => WirePlan::Stored(plain_len),
-        _ => WirePlan::Zstd(plain_len),
+        MODE_STORED => {
+            if total_len == COMPRESS_HEADER_LEN as u64 + plain_len {
+                WirePlan::Stored(plain_len)
+            } else {
+                WirePlan::Legacy
+            }
+        }
+        MODE_ZSTD => {
+            let have_whole_blob = prefix.len() as u64 >= total_len;
+            if have_whole_blob {
+                let frame = &prefix[COMPRESS_HEADER_LEN..];
+                if frame.len() >= 4 && frame[0..4] == ZSTD_FRAME_MAGIC {
+                    WirePlan::Zstd(plain_len)
+                } else {
+                    WirePlan::Legacy
+                }
+            } else {
+                // Streaming prefix: the frame magic is not in hand yet. The bounded
+                // decoder validates it and errors on a non-frame, so a collision
+                // surfaces as a loud failure, never silent corruption.
+                WirePlan::Zstd(plain_len)
+            }
+        }
+        // A mode byte we never emit: the AECP magic collided by chance.
+        _ => WirePlan::Legacy,
     }
 }
 
@@ -151,12 +188,16 @@ impl StorageProvider for CompressOverlayProvider {
 
         let mut wire = std::fs::File::open(&tmp_path)
             .map_err(|e| ProviderError::TransferFailed(format!("open tmp: {e}")))?;
+        let wire_len = wire
+            .metadata()
+            .map_err(|e| ProviderError::TransferFailed(format!("stat tmp: {e}")))?
+            .len();
         let mut prefix = Vec::with_capacity(COMPRESS_HEADER_LEN);
         std::io::Read::by_ref(&mut wire)
             .take(COMPRESS_HEADER_LEN as u64)
             .read_to_end(&mut prefix)
             .map_err(|e| ProviderError::TransferFailed(format!("read header: {e}")))?;
-        let plan = parse_header_prefix(&prefix);
+        let plan = parse_header_prefix(&prefix, wire_len);
 
         let mut out = std::fs::File::create(local_path)
             .map_err(|e| ProviderError::TransferFailed(format!("create local: {e}")))?;
@@ -188,7 +229,8 @@ impl StorageProvider for CompressOverlayProvider {
 
     async fn download_to_bytes(&mut self, remote_path: &str) -> Result<Vec<u8>, ProviderError> {
         let wire = self.inner.download_to_bytes(remote_path).await?;
-        match parse_header_prefix(&wire) {
+        let wire_len = wire.len() as u64;
+        match parse_header_prefix(&wire, wire_len) {
             WirePlan::Legacy => Ok(wire),
             WirePlan::Stored(plain_len) => {
                 let start = COMPRESS_HEADER_LEN;
@@ -336,7 +378,8 @@ mod tests {
         let comp = zstd_compress(plain, 3).expect("compress");
         let mut wire = make_header(MODE_ZSTD, plain.len() as u64);
         wire.extend_from_slice(&comp);
-        match parse_header_prefix(&wire) {
+        let wire_len = wire.len() as u64;
+        match parse_header_prefix(&wire, wire_len) {
             WirePlan::Zstd(len) => {
                 assert_eq!(len, plain.len() as u64);
                 let out =
@@ -352,7 +395,8 @@ mod tests {
         let plain = b"already-compressed-ish bytes";
         let mut wire = make_header(MODE_STORED, plain.len() as u64);
         wire.extend_from_slice(plain);
-        match parse_header_prefix(&wire) {
+        let wire_len = wire.len() as u64;
+        match parse_header_prefix(&wire, wire_len) {
             WirePlan::Stored(len) => {
                 assert_eq!(len, plain.len() as u64);
                 assert_eq!(&wire[COMPRESS_HEADER_LEN..], plain);
@@ -365,14 +409,58 @@ mod tests {
     fn legacy_passthrough_on_absent_magic() {
         // F1: a blob without the AECP magic (pre-compression object, foreign client)
         // is classified Legacy and passed through, not rejected.
-        assert_eq!(parse_header_prefix(b"NOPE"), WirePlan::Legacy);
-        assert_eq!(parse_header_prefix(b""), WirePlan::Legacy);
+        assert_eq!(parse_header_prefix(b"NOPE", 4), WirePlan::Legacy);
+        assert_eq!(parse_header_prefix(b"", 0), WirePlan::Legacy);
+        let sentence = b"plain text file contents with no header";
         assert_eq!(
-            parse_header_prefix(b"plain text file contents with no header"),
+            parse_header_prefix(sentence, sentence.len() as u64),
             WirePlan::Legacy
         );
         // A short blob that happens to start with the magic but lacks a full header
         // is Legacy (we require the full 13-byte header).
-        assert_eq!(parse_header_prefix(b"AECP"), WirePlan::Legacy);
+        assert_eq!(parse_header_prefix(b"AECP", 4), WirePlan::Legacy);
+    }
+
+    #[test]
+    fn legacy_passthrough_on_magic_collision() {
+        // A-L3: a legacy plaintext object that coincidentally opens with the AECP
+        // magic must NOT be silently truncated or fed to the zstd decoder.
+        // Stored with a size that does not match total_len == header + plain_len:
+        let mut stored_mismatch = make_header(MODE_STORED, 9999);
+        stored_mismatch.extend_from_slice(b"only-a-few-bytes-follow");
+        let n = stored_mismatch.len() as u64;
+        assert_eq!(
+            parse_header_prefix(&stored_mismatch, n),
+            WirePlan::Legacy,
+            "stored payload not exactly plain_len bytes must fall back to Legacy"
+        );
+        // Zstd mode but the payload does not begin with the zstd frame magic
+        // (whole blob in hand, so the magic is verified):
+        let mut zstd_no_magic = make_header(MODE_ZSTD, 10);
+        zstd_no_magic.extend_from_slice(b"not-a-real-zstd-frame");
+        let n = zstd_no_magic.len() as u64;
+        assert_eq!(
+            parse_header_prefix(&zstd_no_magic, n),
+            WirePlan::Legacy,
+            "zstd payload without the frame magic must fall back to Legacy"
+        );
+        // A mode byte we never emit is a chance collision -> Legacy:
+        let mut unknown_mode = make_header(7, 5);
+        unknown_mode.extend_from_slice(b"xxxxx");
+        let n = unknown_mode.len() as u64;
+        assert_eq!(parse_header_prefix(&unknown_mode, n), WirePlan::Legacy);
+    }
+
+    #[test]
+    fn streaming_prefix_defers_zstd_magic_to_decoder() {
+        // Streaming download passes only the 13-byte header (prefix.len() <
+        // total_len): the zstd magic is not in hand, so classification defers to
+        // the bounded decoder (which fails loudly, never silently) instead of
+        // misfiring Legacy on a genuine compressed object.
+        let header = make_header(MODE_ZSTD, 4096);
+        assert_eq!(
+            parse_header_prefix(&header, 4096 + COMPRESS_HEADER_LEN as u64),
+            WirePlan::Zstd(4096)
+        );
     }
 }
