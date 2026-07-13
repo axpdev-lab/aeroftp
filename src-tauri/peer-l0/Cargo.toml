@@ -60,7 +60,9 @@ clap = { version = "4", features = ["derive"] }
 
 # Encryption for L0 "vault-encrypted" blob (stand-in until full integration with main user_crypto).
 # These are isolated to this spike crate.
-aes-gcm = "0.10"
+# Step 0: match the app AES-GCM pin. noq-proto 1.0.1 still depends on
+# aes-gcm 0.10.3, so bumping only this crate creates duplicate cohorts.
+aes-gcm = "=0.10.3"
 hkdf = "0.12"
 sha2 = "0.10"
 rand = "0.8"

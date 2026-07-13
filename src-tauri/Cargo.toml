@@ -124,9 +124,14 @@ sigstore = { version = "0.14", default-features = false, features = ["verify", "
 
 # Secure Credential Storage (v1.3.2 hotfix)
 argon2 = "0.5"
-aes-gcm = "0.10"
-aes = "0.8"                                                            # AES block cipher (Internxt)
-cbc = "0.1"                                                            # AES-CBC mode (Internxt mnemonic decryption)
+# Step 0 RustCrypto 0.11 audit, 2026-07-13:
+# Keep AES-GCM on 0.10.3 until noq-proto moves off aes-gcm 0.10.3. Bumping only
+# AeroFTP's direct dependency leaves both aes-gcm 0.10 and 0.11 in Cargo.lock.
+aes-gcm = "=0.10.3"
+# Keep CBC with the same cohort in this pass. cbc 0.2 requires the cipher 0.5
+# AES stack, and cbc 0.1.2 remains transitive via keyring/pkcs5.
+aes = "=0.8.4"                                                         # AES block cipher (Internxt)
+cbc = "=0.1.2"                                                         # AES-CBC mode (Internxt mnemonic decryption)
 ctr = "0.9"                                                            # AES-CTR mode (Internxt file encryption)
 crypto_secretbox = "0.1"                                               # XSalsa20-Poly1305 NaCl secretbox (rclone crypt)
 
@@ -172,7 +177,9 @@ jsonwebtoken = { version = "10.4", default-features = false, features = ["aws_lc
 # the vault_v3_* handlers are thin wrappers over it (see src/aerovault_v3.rs).
 aerovault = "0.6.3"                                                    # M7: converged AEROVAULT3 core + standalone/AeroSync EC engine (published on crates.io)
 aes-gcm-siv = "0.11"                                                   # AeroVault v3 AEAD content encryption
-chacha20poly1305 = "0.10"                                              # ChaCha20-Poly1305 (used by CryptoLab in cyber_tools)
+# Keep on 0.10.1 until aerovault publishes a release that accepts
+# chacha20poly1305 0.11; aerovault 0.6.3 depends on 0.10.
+chacha20poly1305 = "=0.10.1"                                           # ChaCha20-Poly1305 (used by CryptoLab in cyber_tools)
 hkdf = "0.12"                                                          # HKDF key derivation (used by crypto.rs keystore)
 
 # Security Toolkit - Cyber Tools (v2.1.0)
