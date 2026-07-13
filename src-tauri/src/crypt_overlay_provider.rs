@@ -3726,10 +3726,11 @@ mod tests {
         // We pin the public seam fn + reuse the exact-name select (already tested).
         // Full async round requires CredentialStore + profile vault; the logical seam
         // is covered by delegation + existing wrap_connected..._named tests.
-        let _ = build_aerocloud_overlay_stack; // existence + type of the P1 seam entry point
-                                               // When select returns None the named wrap (and thus builder) returns Ok(inner).
-                                               // See select_profile_by_name_is_exact and wrap impl for the identity contract.
-        assert!(true);
+        // Pin the public seam fn (existence + type) at compile time. When select
+        // returns None the named wrap (and thus the builder) returns Ok(inner);
+        // see select_profile_by_name_is_exact and the wrap impl for the identity
+        // contract. No runtime assert needed: this compiling IS the check.
+        let _ = build_aerocloud_overlay_stack;
     }
 
     #[test]

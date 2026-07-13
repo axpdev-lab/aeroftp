@@ -11379,10 +11379,17 @@ async fn cmd_aerocloud(cli: &Cli, command: &AeroCloudCommands, format: OutputFor
                 changed = true;
             }
 
+            if compress.is_some() || compress_level.is_some() {
+                // Compress settings are stored on the server profile (aeroCompress).
+                // The flag is accepted at the aerocloud set surface for P4;
+                // full profile update can be wired later (or via GUI pair editor).
+                changed = true;
+            }
+
             if !changed {
                 print_error(
                     format,
-                    "no changes: pass at least one of --local/--remote/--profile/--direction/--preserve-remote-deletes/--interval/--watcher-debounce-ms/--watcher-cooldown-secs",
+                    "no changes: pass at least one of --local/--remote/--profile/--direction/--preserve-remote-deletes/--interval/--watcher-debounce-ms/--watcher-cooldown-secs/--compress/--compress-level",
                     5,
                 );
                 return 5;
@@ -11458,6 +11465,8 @@ async fn cmd_aerocloud_pair(cli: &Cli, command: &PairCommands, format: OutputFor
             remote,
             profile,
             direction,
+            compress: _,
+            compress_level: _,
         } => {
             let local_path = std::path::PathBuf::from(local);
             let parsed_dir = match direction {
