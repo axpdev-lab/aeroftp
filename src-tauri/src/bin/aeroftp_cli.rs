@@ -3278,6 +3278,57 @@ enum AeroCloudCommands {
         #[arg(long)]
         dry_run: bool,
     },
+    /// Subcommands for multiple AeroCloud pairs (cloud_pairs.json store).
+    /// Each pair is independent (own profile, direction, excludes).
+    #[command(subcommand)]
+    Pair(PairCommands),
+}
+
+/// Subcommands under `aeroftp aerocloud pair`
+#[derive(Subcommand)]
+enum PairCommands {
+    /// List configured AeroCloud pairs (from cloud_pairs.json).
+    List,
+    /// Add a new pair. Rejects duplicate (local,remote) to protect sync index.
+    Add {
+        /// Short name for the pair (for display / logs)
+        #[arg(long)]
+        name: Option<String>,
+        /// Local folder
+        #[arg(long, value_name = "PATH")]
+        local: String,
+        /// Remote folder
+        #[arg(long, value_name = "PATH")]
+        remote: String,
+        /// Server profile name (from vault)
+        #[arg(long, value_name = "NAME")]
+        profile: String,
+        /// bidirectional | send-only | receive-only (default bidirectional)
+        #[arg(long)]
+        direction: Option<String>,
+    },
+    /// Remove a pair by id (from `pair list`).
+    Remove {
+        #[arg(value_name = "ID")]
+        id: String,
+    },
+    /// Enable/disable a pair (by id).
+    Enable {
+        #[arg(value_name = "ID")]
+        id: String,
+    },
+    Disable {
+        #[arg(value_name = "ID")]
+        id: String,
+    },
+    /// Sync one or all enabled pairs now (serial). Uses shared sync_one_config.
+    Sync {
+        /// Optional: sync only this pair id. If omitted, syncs all enabled.
+        #[arg(long)]
+        id: Option<String>,
+        #[arg(long)]
+        dry_run: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -11152,9 +11203,7 @@ fn aerocloud_set_enabled(enabled: bool, format: OutputFormat) -> i32 {
 /// the provider, apply the fail-closed crypt overlay, then run a full sync (or a
 /// read-only `--dry-run` preview) via `CloudService`. Requires the vault open.
 async fn cmd_aerocloud_sync(cli: &Cli, dry_run: bool, format: OutputFormat) -> i32 {
-    use ftp_client_gui_lib::{
-        cloud_config, cloud_provider_factory, cloud_service, crypt_overlay_provider,
-    };
+    use ftp_client_gui_lib::{cloud_config, cloud_service};
 
     // Cheap config checks first, so a disabled / unconfigured AeroCloud fails
     // fast WITHOUT forcing an unnecessary vault unlock prompt.
@@ -11208,46 +11257,10 @@ async fn cmd_aerocloud_sync(cli: &Cli, dry_run: bool, format: OutputFormat) -> i
         }
     }
 
-    // Connect the provider via the multi-protocol factory.
-    let mut provider = match cloud_provider_factory::create_cloud_provider(&config).await {
-        Ok(provider) => provider,
-        Err(e) => {
-            print_error(format, &format!("failed to connect provider: {e}"), 1);
-            return 1;
-        }
-    };
-
-    // Crypt-overlay chokepoint (fail-closed), identical to the background sync:
-    // a crypt-bound profile speaks plaintext locally while the wire stays
-    // encrypted; a bound-but-locked vault refuses rather than running raw; a
-    // non-crypt profile is returned unchanged.
-    provider = match crypt_overlay_provider::wrap_connected_provider_for_profile_named(
-        provider,
-        &config.server_profile,
-        &store,
-    )
-    .await
-    {
-        Ok(provider) => provider,
-        Err(e) => {
-            print_error(format, &format!("crypt overlay refused the sync: {e}"), 6);
-            return 6;
-        }
-    };
-
-    // CloudService drives the scan/compare/execute. app_handle is None: emits
-    // are guarded, so it runs headless. `perform_*` ensures the remote folder.
-    let svc = cloud_service::CloudService::new();
-    svc.init(config.clone()).await;
-
-    let result = if dry_run {
-        svc.preview_full_sync_with_provider(&mut *provider).await
-    } else {
-        svc.perform_full_sync_with_provider(&mut *provider).await
-    };
-
-    // Provider-side cleanup (e.g. FTP logout), mirroring the background worker.
-    let _ = provider.disconnect().await;
+    // Delegate the connect->wrap->sync to the single shared helper
+    // (cloud_service::sync_one_config). This removes the duplication with
+    // perform_background_sync_inner and prepares for multi-pair.
+    let result = cloud_service::sync_one_config(config, Some(&store), None, dry_run).await;
 
     match result {
         Ok(r) => {
@@ -11369,6 +11382,258 @@ async fn cmd_aerocloud(cli: &Cli, command: &AeroCloudCommands, format: OutputFor
             }
         }
         AeroCloudCommands::Sync { dry_run } => cmd_aerocloud_sync(cli, *dry_run, format).await,
+        AeroCloudCommands::Pair(pair_cmd) => cmd_aerocloud_pair(cli, pair_cmd, format).await,
+    }
+}
+
+/// Handle `aerocloud pair ...` subcommands (list/add/remove/enable/sync etc).
+/// Reuses open_vault + protocol resolve pattern, then cloud_pairs + sync_one_config.
+async fn cmd_aerocloud_pair(cli: &Cli, command: &PairCommands, format: OutputFormat) -> i32 {
+    use ftp_client_gui_lib::{cloud_pairs, cloud_service, sync::CompareDirection};
+
+    match command {
+        PairCommands::List => {
+            let cfg = cloud_pairs::load_cloud_pairs_config();
+            if matches!(format, OutputFormat::Json) {
+                let pairs: Vec<_> = cfg
+                    .pairs
+                    .iter()
+                    .map(|p| {
+                        serde_json::json!({
+                            "id": p.id,
+                            "name": p.name,
+                            "local": p.local_path.to_string_lossy(),
+                            "remote": p.remote_path,
+                            "enabled": p.enabled,
+                            "profile": p.server_profile,
+                            "direction": aerocloud_direction_label(p.sync_direction),
+                        })
+                    })
+                    .collect();
+                print_json(&serde_json::json!({ "pairs": pairs, "parallel": cfg.parallel_pairs }));
+            } else {
+                if cfg.pairs.is_empty() {
+                    println!("No AeroCloud pairs configured (cloud_pairs.json empty or absent).");
+                    println!("Use `aeroftp aerocloud pair add ...` or the GUI.");
+                } else {
+                    println!("AeroCloud pairs ({}):", cfg.pairs.len());
+                    for p in &cfg.pairs {
+                        let dir_label = aerocloud_direction_label(p.sync_direction);
+                        println!(
+                            "  [{}] {} | {} <-> {} | profile={} | enabled={} | dir={}",
+                            p.id,
+                            p.name,
+                            p.local_path.display(),
+                            p.remote_path,
+                            p.server_profile,
+                            p.enabled,
+                            dir_label
+                        );
+                    }
+                }
+            }
+            0
+        }
+        PairCommands::Add {
+            name,
+            local,
+            remote,
+            profile,
+            direction,
+        } => {
+            let local_path = std::path::PathBuf::from(local);
+            let parsed_dir = match direction {
+                Some(d) => match aerocloud_parse_direction(d) {
+                    Some(cd) => cd,
+                    None => {
+                        print_error(format, &format!("invalid --direction '{d}'"), 5);
+                        return 5;
+                    }
+                },
+                None => CompareDirection::Bidirectional,
+            };
+
+            let mut pairs_cfg = cloud_pairs::load_cloud_pairs_config();
+            if cloud_pairs::pair_exists(&local_path, remote, &pairs_cfg.pairs) {
+                print_error(
+                    format,
+                    &format!("pair already exists for local={} remote={}", local, remote),
+                    5,
+                );
+                return 5;
+            }
+
+            // Basic sanity: local should exist or be creatable, but we allow future paths.
+            if !local_path.exists() {
+                if let Err(e) = std::fs::create_dir_all(&local_path) {
+                    // non fatal for add, just warn in non json
+                    if !matches!(format, OutputFormat::Json) {
+                        eprintln!("note: local dir did not exist and create failed: {e}");
+                    }
+                }
+            }
+
+            let pair_name = name.clone().unwrap_or_else(|| {
+                local_path
+                    .file_name()
+                    .map(|s| s.to_string_lossy().to_string())
+                    .unwrap_or_else(|| "pair".to_string())
+            });
+
+            let mut new_pair = cloud_pairs::new_cloud_path_pair(
+                format!("p{}", pairs_cfg.pairs.len()),
+                pair_name,
+                local_path,
+                remote.clone(),
+                profile.clone(),
+            );
+            new_pair.sync_direction = parsed_dir;
+
+            pairs_cfg.pairs.push(new_pair);
+            if let Err(e) = cloud_pairs::save_cloud_pairs_config(&pairs_cfg) {
+                print_error(format, &e, 11);
+                return 11;
+            }
+            if matches!(format, OutputFormat::Json) {
+                print_json(&serde_json::json!({"status": "ok", "added": pairs_cfg.pairs.last()}));
+            } else {
+                println!("Added AeroCloud pair.");
+            }
+            0
+        }
+        PairCommands::Remove { id } => {
+            let mut cfg = cloud_pairs::load_cloud_pairs_config();
+            let before = cfg.pairs.len();
+            cfg.pairs.retain(|p| p.id != *id);
+            if cfg.pairs.len() == before {
+                print_error(format, &format!("no pair with id '{id}'"), 5);
+                return 5;
+            }
+            if let Err(e) = cloud_pairs::save_cloud_pairs_config(&cfg) {
+                print_error(format, &e, 11);
+                return 11;
+            }
+            println!("Removed pair {id}");
+            0
+        }
+        PairCommands::Enable { id } | PairCommands::Disable { id } => {
+            let enable = matches!(command, PairCommands::Enable { .. });
+            let mut cfg = cloud_pairs::load_cloud_pairs_config();
+            if let Some(p) = cfg.pairs.iter_mut().find(|p| p.id == *id) {
+                p.enabled = enable;
+                if let Err(e) = cloud_pairs::save_cloud_pairs_config(&cfg) {
+                    print_error(format, &e, 11);
+                    return 11;
+                }
+                println!(
+                    "Pair {} {}",
+                    id,
+                    if enable { "enabled" } else { "disabled" }
+                );
+                0
+            } else {
+                print_error(format, &format!("no pair with id '{id}'"), 5);
+                5
+            }
+        }
+        PairCommands::Sync { id, dry_run } => {
+            // Vault open once for all pairs in this invocation (crypt wrap).
+            let store = match open_vault(cli) {
+                Ok(s) => s,
+                Err(err) => {
+                    print_error(format, &err, 5);
+                    return 5;
+                }
+            };
+
+            let mut pairs_cfg = cloud_pairs::load_cloud_pairs_config();
+
+            // Resolve protocol_type for each (same logic as single aerocloud sync).
+            if let Ok(profiles) =
+                ftp_client_gui_lib::user_partitions::mcp_list_active_server_profiles(&store)
+            {
+                for p in &mut pairs_cfg.pairs {
+                    if let Some(proto) = profiles
+                        .iter()
+                        .find(|pr| {
+                            pr.get("name").and_then(|v| v.as_str())
+                                == Some(p.server_profile.as_str())
+                        })
+                        .and_then(|pr| pr.get("protocol").and_then(|v| v.as_str()))
+                    {
+                        p.protocol_type = proto.to_string();
+                    }
+                }
+            }
+
+            let targets: Vec<_> = if let Some(only_id) = id {
+                pairs_cfg
+                    .pairs
+                    .into_iter()
+                    .filter(|p| p.id == *only_id)
+                    .collect()
+            } else {
+                pairs_cfg.pairs.into_iter().filter(|p| p.enabled).collect()
+            };
+
+            if targets.is_empty() {
+                print_error(format, "no matching enabled pairs to sync", 5);
+                return 5;
+            }
+
+            let mut total = cloud_service::SyncOperationResult {
+                uploaded: 0,
+                downloaded: 0,
+                deleted: 0,
+                skipped: 0,
+                conflicts: 0,
+                errors: Vec::new(),
+                duration_secs: 0,
+                file_details: Vec::new(),
+            };
+            for pair in targets {
+                // Build a CloudConfig from the (protocol-resolved) pair.
+                let cfg = pair.to_cloud_config();
+                // also carry last_sync? already in to_
+                // sync
+                match cloud_service::sync_one_config(cfg, Some(&store), None, *dry_run).await {
+                    Ok(r) => {
+                        let err_count = r.errors.len();
+                        // aggregate
+                        total.uploaded += r.uploaded;
+                        total.downloaded += r.downloaded;
+                        total.deleted += r.deleted;
+                        total.skipped += r.skipped;
+                        total.conflicts += r.conflicts;
+                        total.errors.extend(r.errors);
+                        total.duration_secs += r.duration_secs;
+                        total.file_details.extend(r.file_details);
+                        if !matches!(format, OutputFormat::Json) {
+                            println!(
+                                "pair {}: up={} down={} del={} skip={} conf={} err={}",
+                                pair.id,
+                                r.uploaded,
+                                r.downloaded,
+                                r.deleted,
+                                r.skipped,
+                                r.conflicts,
+                                err_count
+                            );
+                        }
+                    }
+                    Err(e) => {
+                        total.errors.push(format!("{}: {}", pair.id, e));
+                    }
+                }
+            }
+
+            aerocloud_print_sync_result(&total, *dry_run, format);
+            if total.errors.is_empty() {
+                0
+            } else {
+                4
+            }
+        }
     }
 }
 
