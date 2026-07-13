@@ -18,6 +18,7 @@ use crate::providers::{
     ProviderConfig, ProviderFactory, StorageProvider,
 };
 use secrecy::SecretString;
+use std::collections::HashMap;
 use tracing::info;
 
 /// Parse a server field that may contain an embedded port.
@@ -200,6 +201,24 @@ fn resolve_profile_creds_by_name(
     })
 }
 
+fn merge_sftp_key_options(extra: &mut HashMap<String, String>, profile: &serde_json::Value) {
+    let Some(options) = profile.get("options").and_then(|v| v.as_object()) else {
+        return;
+    };
+
+    for key in ["private_key_path", "key_passphrase"] {
+        if let Some(value) = options
+            .get(key)
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
+        {
+            extra
+                .entry(key.to_string())
+                .or_insert_with(|| value.to_string());
+        }
+    }
+}
+
 async fn create_via_factory(
     config: &CloudConfig,
     provider_type: ProviderType,
@@ -231,7 +250,7 @@ async fn create_via_factory(
     let (parsed_host, embedded_port) = parse_server_field(&creds.server);
 
     // Merge connection_params into extra map
-    let mut extra = std::collections::HashMap::new();
+    let mut extra = HashMap::new();
     if let Some(obj) = config.connection_params.as_object() {
         for (k, v) in obj {
             if let Some(s) = v.as_str() {
@@ -240,6 +259,15 @@ async fn create_via_factory(
                 extra.insert(k.clone(), n.to_string());
             } else if let Some(b) = v.as_bool() {
                 extra.insert(k.clone(), b.to_string());
+            }
+        }
+    }
+    if provider_type == ProviderType::Sftp {
+        if let Ok(profiles) = crate::user_partitions::mcp_list_active_server_profiles(&store) {
+            if let Some(profile) = profiles.iter().find(|p| {
+                p.get("name").and_then(|v| v.as_str()) == Some(config.server_profile.as_str())
+            }) {
+                merge_sftp_key_options(&mut extra, profile);
             }
         }
     }
@@ -473,5 +501,97 @@ mod tests {
         let (host, port) = parse_server_field("[fe80::1%25eth0]:8080");
         assert_eq!(host, "fe80::1%25eth0");
         assert_eq!(port, Some(8080));
+    }
+
+    #[test]
+    fn test_merge_sftp_key_options_inserts_key_path_and_passphrase() {
+        let profile = serde_json::json!({
+            "options": {
+                "private_key_path": "~/.ssh/aerocloud_ed25519",
+                "key_passphrase": "secret"
+            }
+        });
+        let mut extra = HashMap::new();
+
+        merge_sftp_key_options(&mut extra, &profile);
+
+        assert_eq!(
+            extra.get("private_key_path").map(String::as_str),
+            Some("~/.ssh/aerocloud_ed25519")
+        );
+        assert_eq!(
+            extra.get("key_passphrase").map(String::as_str),
+            Some("secret")
+        );
+    }
+
+    #[test]
+    fn test_merge_sftp_key_options_skips_empty_strings() {
+        let profile = serde_json::json!({
+            "options": {
+                "private_key_path": "",
+                "key_passphrase": ""
+            }
+        });
+        let mut extra = HashMap::new();
+
+        merge_sftp_key_options(&mut extra, &profile);
+
+        assert!(!extra.contains_key("private_key_path"));
+        assert!(!extra.contains_key("key_passphrase"));
+    }
+
+    #[test]
+    fn test_merge_sftp_key_options_without_options_leaves_extra_unchanged() {
+        let profile = serde_json::json!({ "name": "Plain SFTP" });
+        let mut extra = HashMap::from([("port".to_string(), "2222".to_string())]);
+
+        merge_sftp_key_options(&mut extra, &profile);
+
+        assert_eq!(extra.len(), 1);
+        assert_eq!(extra.get("port").map(String::as_str), Some("2222"));
+    }
+
+    #[test]
+    fn test_merge_sftp_key_options_does_not_clobber_connection_params() {
+        let profile = serde_json::json!({
+            "options": {
+                "private_key_path": "~/.ssh/profile_key",
+                "key_passphrase": "profile-secret"
+            }
+        });
+        let mut extra = HashMap::from([
+            (
+                "private_key_path".to_string(),
+                "/tmp/explicit_key".to_string(),
+            ),
+            ("key_passphrase".to_string(), "explicit-secret".to_string()),
+        ]);
+
+        merge_sftp_key_options(&mut extra, &profile);
+
+        assert_eq!(
+            extra.get("private_key_path").map(String::as_str),
+            Some("/tmp/explicit_key")
+        );
+        assert_eq!(
+            extra.get("key_passphrase").map(String::as_str),
+            Some("explicit-secret")
+        );
+    }
+
+    #[test]
+    fn test_merge_sftp_key_options_password_auth_profile_unchanged() {
+        let profile = serde_json::json!({
+            "options": {
+                "timeout": "30"
+            }
+        });
+        let mut extra = HashMap::from([("mode".to_string(), "password".to_string())]);
+
+        merge_sftp_key_options(&mut extra, &profile);
+
+        assert_eq!(extra.len(), 1);
+        assert_eq!(extra.get("mode").map(String::as_str), Some("password"));
     }
 }
