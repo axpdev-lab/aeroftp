@@ -150,8 +150,7 @@ impl StorageProvider for CompressOverlayProvider {
             .await?;
         let wire = std::fs::read(&tmp_path)
             .map_err(|e| ProviderError::TransferFailed(format!("read tmp: {e}")))?;
-        let (plain_len, comp) =
-            parse_header(&wire).map_err(|e| ProviderError::TransferFailed(e))?;
+        let (plain_len, comp) = parse_header(&wire).map_err(ProviderError::TransferFailed)?;
         let plain = zstd_decompress_bounded(comp, plain_len)
             .map_err(|e| ProviderError::TransferFailed(format!("decompress: {e}")))?;
         std::fs::write(local_path, plain)
@@ -162,8 +161,7 @@ impl StorageProvider for CompressOverlayProvider {
 
     async fn download_to_bytes(&mut self, remote_path: &str) -> Result<Vec<u8>, ProviderError> {
         let wire = self.inner.download_to_bytes(remote_path).await?;
-        let (plain_len, comp) =
-            parse_header(&wire).map_err(|e| ProviderError::TransferFailed(e))?;
+        let (plain_len, comp) = parse_header(&wire).map_err(ProviderError::TransferFailed)?;
         zstd_decompress_bounded(comp, plain_len)
             .map_err(|e| ProviderError::TransferFailed(format!("decompress: {e}")))
     }
@@ -180,8 +178,7 @@ impl StorageProvider for CompressOverlayProvider {
         let plain = std::fs::read(local_path)
             .map_err(|e| ProviderError::TransferFailed(format!("read local: {e}")))?;
         let plain_len = plain.len() as u64;
-        let comp =
-            zstd_compress(&plain, self.level).map_err(|e| ProviderError::TransferFailed(e))?;
+        let comp = zstd_compress(&plain, self.level).map_err(ProviderError::TransferFailed)?;
         let mut wire = make_header(plain_len);
         wire.extend_from_slice(&comp);
         let tmp = tempfile::NamedTempFile::new()
