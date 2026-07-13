@@ -13193,6 +13193,33 @@ fn active_user_group_count_no_seed(store: &CredentialStore) -> Option<usize> {
     Some(groups.len())
 }
 
+/// Non-seeding group count for *any* user (active or not). For the active user
+/// reuses the existing peek logic (legacy read-only when no row). For other
+/// users: direct `cli_get_user_setting`; absent row -> Some(0) (no legacy seed
+/// ever for non-active); locked/unreadable -> None ("-").
+fn user_group_count_no_seed(
+    store: &CredentialStore,
+    user_id: i64,
+    is_active: bool,
+) -> Option<usize> {
+    if is_active {
+        return active_user_group_count_no_seed(store);
+    }
+    let raw = match user_partitions::cli_get_user_setting(store, user_id, "server_groups") {
+        Ok(Some(v)) => v
+            .as_str()
+            .map(str::to_string)
+            .unwrap_or_else(|| v.to_string()),
+        Ok(None) => return Some(0),
+        Err(_) => return None,
+    };
+    if raw.is_empty() {
+        return Some(0);
+    }
+    let groups: Vec<CliServerGroup> = serde_json::from_str(&raw).unwrap_or_default();
+    Some(groups.len())
+}
+
 // --- Per-user server groups + favourites (Ehud #311) ------------------------
 //
 // Groups and favourites predate the multi-user partitions, so they originally
@@ -13265,6 +13292,70 @@ fn favs_blob_put(store: &CredentialStore, payload: &str) -> Result<(), String> {
     let value: serde_json::Value =
         serde_json::from_str(payload).unwrap_or_else(|_| serde_json::Value::Array(Vec::new()));
     user_partitions::cli_set_active_setting(store, "favorite_servers", &value)
+}
+
+// --- Per-user group blob access (users -i #408 / #311) -----------------------
+//
+// These route `server_groups` through a concrete user id so `users -i` can
+// edit the *selected* user's partition without switching the active user and
+// without touching the legacy global `config_server_groups` for non-active
+// users. Active path delegates to the existing helpers so the one-time seed
+// and "first read mutates" behaviour for the active user is unchanged.
+
+/// Read the `server_groups` blob for a concrete user. When `is_active` we
+/// delegate to the existing `groups_blob_get` (seed + swallow on lock) so
+/// legacy behaviour for the real active user is untouched. For a non-active
+/// user we use the direct user-id setting read and return empty string (no
+/// row) or the raw value; `USER_LOCKED` and other errors are propagated.
+fn groups_blob_get_for_user(
+    store: &CredentialStore,
+    user_id: i64,
+    is_active: bool,
+) -> Result<String, String> {
+    if is_active {
+        return Ok(groups_blob_get(store));
+    }
+    match user_partitions::cli_get_user_setting(store, user_id, "server_groups") {
+        Ok(Some(v)) => Ok(v
+            .as_str()
+            .map(str::to_string)
+            .unwrap_or_else(|| v.to_string())),
+        Ok(None) => Ok(String::new()), // non-active, no row: empty; do NOT seed legacy
+        Err(e) => Err(e),
+    }
+}
+
+/// Write `server_groups` for a concrete user. Delegates for active so the
+/// put path (and any side effects) stay identical for the active user.
+fn groups_blob_put_for_user(
+    store: &CredentialStore,
+    user_id: i64,
+    is_active: bool,
+    payload: &str,
+) -> Result<(), String> {
+    if is_active {
+        return groups_blob_put(store, payload);
+    }
+    let value: serde_json::Value =
+        serde_json::from_str(payload).unwrap_or_else(|_| serde_json::Value::Array(Vec::new()));
+    user_partitions::cli_set_user_setting(store, user_id, "server_groups", &value)
+}
+
+/// Load + sort the groups for a specific user id. Mirrors `load_server_groups`
+/// but works for any readable user. For locked users the caller sees the
+/// `USER_LOCKED` error instead of a silent empty list.
+fn load_server_groups_for_user(
+    store: &CredentialStore,
+    user_id: i64,
+    is_active: bool,
+) -> Result<Vec<CliServerGroup>, String> {
+    let raw = groups_blob_get_for_user(store, user_id, is_active)?;
+    if raw.is_empty() {
+        return Ok(Vec::new());
+    }
+    let mut groups: Vec<CliServerGroup> = serde_json::from_str(&raw).unwrap_or_default();
+    groups.sort_by_key(|g| g.order);
+    Ok(groups)
 }
 
 /// Names of the groups a profile belongs to, in `order`. Empty when ungrouped.
@@ -13344,6 +13435,19 @@ enum MembershipOutcome {
     NotMember,
 }
 
+/// What an explicit add/remove of a group *label* (the row in server_groups)
+/// did for `users -i`. Pure so unit-testable; the vault write only happens on
+/// Created/Removed. Add is idempotent (AlreadyExists); remove of a non-existent
+/// is NotFound. Removing the label never touches saved profiles (their ids may
+/// still be referenced elsewhere or not).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum UserGroupOutcome {
+    Created,
+    AlreadyExists,
+    Removed,
+    NotFound,
+}
+
 /// Apply an explicit (non-toggle) membership change to a group's member-id list,
 /// reporting what actually happened. Pure (no vault), so the add/already/remove/
 /// not-member logic is unit-tested directly; `set_group_membership_in_vault`
@@ -13366,6 +13470,95 @@ fn apply_membership_change(
         }
         (false, None) => MembershipOutcome::NotMember,
     }
+}
+
+/// Pure helper: fabricate a new empty CliServerGroup with a fresh id.
+/// Order is supplied by caller (typically max+1). Name is already trimmed.
+/// This eliminates the duplicated id-generation expression between
+/// `create_empty_group_in_vault` and `apply_user_group_change`.
+fn make_new_cli_server_group(name: &str, order: i64) -> CliServerGroup {
+    let trimmed = name.trim();
+    CliServerGroup {
+        id: format!(
+            "grp_{}_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_millis())
+                .unwrap_or(0),
+            trimmed
+                .chars()
+                .filter(|c| c.is_ascii_alphanumeric())
+                .take(6)
+                .collect::<String>()
+                .to_lowercase()
+        ),
+        name: trimmed.to_string(),
+        color: None,
+        order,
+        members: Vec::new(),
+    }
+}
+
+/// Pure (no vault) add/remove of a *group label* itself inside a user's
+/// server_groups Vec. Powers the `users -i a/x` verbs. Empty name must be
+/// rejected by the caller. Case-insensitive match for presence. On Created we
+/// allocate a fresh id and next order here so the logic is self-contained and
+/// testable. The caller decides whether and when to serialize+put.
+fn apply_user_group_change(
+    groups: &mut Vec<CliServerGroup>,
+    name: &str,
+    adding: bool,
+) -> UserGroupOutcome {
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        // Defensive: caller must guard; treat as no-op not-found for safety.
+        return UserGroupOutcome::NotFound;
+    }
+    let pos = groups
+        .iter()
+        .position(|g| g.name.eq_ignore_ascii_case(trimmed));
+    match (adding, pos) {
+        (true, Some(_)) => UserGroupOutcome::AlreadyExists,
+        (true, None) => {
+            let order = groups.iter().map(|g| g.order).max().unwrap_or(-1) + 1;
+            groups.push(make_new_cli_server_group(trimmed, order));
+            UserGroupOutcome::Created
+        }
+        (false, Some(p)) => {
+            groups.remove(p);
+            UserGroupOutcome::Removed
+        }
+        (false, None) => UserGroupOutcome::NotFound,
+    }
+}
+
+/// Persist (or no-op) an add/remove of a group label for a concrete user id.
+/// Delegates persistence to the per-user blob helpers. Only writes on
+/// Created/Removed. Returns the (trimmed) name and the honest outcome so the
+/// interactive loop can print Created / AlreadyExists / Removed / NotFound
+/// (and locked errors bubble from the load inside).
+fn set_group_label_in_vault_for_user(
+    store: &CredentialStore,
+    user_id: i64,
+    is_active: bool,
+    name: &str,
+    adding: bool,
+) -> Result<(String, UserGroupOutcome), String> {
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        return Err("Group name cannot be empty".to_string());
+    }
+    let mut groups = load_server_groups_for_user(store, user_id, is_active)?;
+    let outcome = apply_user_group_change(&mut groups, trimmed, adding);
+    if matches!(
+        outcome,
+        UserGroupOutcome::Created | UserGroupOutcome::Removed
+    ) {
+        let payload = serde_json::to_string(&groups)
+            .map_err(|e| format!("Failed to serialize groups: {}", e))?;
+        groups_blob_put_for_user(store, user_id, is_active, &payload)?;
+    }
+    Ok((trimmed.to_string(), outcome))
 }
 
 /// Explicitly set (not toggle, not create) whether a profile is a member of an
@@ -13422,25 +13615,7 @@ fn create_empty_group_in_vault(store: &CredentialStore, name: &str) -> Result<St
         return Err(format!("a group named '{}' already exists", trimmed));
     }
     let order = groups.iter().map(|g| g.order).max().unwrap_or(-1) + 1;
-    groups.push(CliServerGroup {
-        id: format!(
-            "grp_{}_{}",
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_millis())
-                .unwrap_or(0),
-            trimmed
-                .chars()
-                .filter(|c| c.is_ascii_alphanumeric())
-                .take(6)
-                .collect::<String>()
-                .to_lowercase()
-        ),
-        name: trimmed.to_string(),
-        color: None,
-        order,
-        members: Vec::new(),
-    });
+    groups.push(make_new_cli_server_group(trimmed, order));
     let payload =
         serde_json::to_string(&groups).map_err(|e| format!("Failed to serialize groups: {}", e))?;
     groups_blob_put(store, &payload).map_err(|e| format!("Failed to write groups: {}", e))?;
@@ -17361,6 +17536,8 @@ fn users_section_verbs(fav_marker: &str) -> Vec<SectionVerb> {
         SectionVerb::new("New", "N"),
         SectionVerb::new("Rename", "R"),
         SectionVerb::new("Copy", "C"),
+        SectionVerb::new("Add", "A"),
+        SectionVerb::new("Remove", "X"),
         SectionVerb::new(format!("Fav{}", fav_marker), "F"),
         SectionVerb::new("re-index", "#"),
         SectionVerb::new("Delete", "D"),
@@ -17368,15 +17545,18 @@ fn users_section_verbs(fav_marker: &str) -> Vec<SectionVerb> {
     ]
 }
 
-/// Per-user counts for the users table (#311): a `user_id -> profile_count` map
-/// from `cli_storage_stats` (a row count, so no unlock is needed for any user),
-/// plus the ACTIVE user's group count. Groups live in each user's encrypted
-/// partition, so only the active (unlocked) user's count is readable; the others
-/// render "-". Best-effort: a stats error yields empty counts (the table still
-/// renders), and the active group count is the cosmetic `load_server_groups` len.
+/// Per-user counts for the users table (#311, #408): a `user_id -> profile_count`
+/// map from `cli_storage_stats` (no unlock needed), plus a `user_id ->
+/// Option<group_count>` map. Each readable user's group count is read directly
+/// from their `server_groups` (no legacy seed for non-active; active uses the
+/// no-seed peek). Locked users get `None` (renders as "-"). Plain `users` never
+/// writes.
 fn users_table_counts(
     store: &CredentialStore,
-) -> (std::collections::HashMap<i64, i64>, Option<usize>) {
+) -> (
+    std::collections::HashMap<i64, i64>,
+    std::collections::HashMap<i64, Option<usize>>,
+) {
     let profile_counts = user_partitions::cli_storage_stats(store)
         .map(|stats| {
             stats
@@ -17385,24 +17565,32 @@ fn users_table_counts(
                 .collect()
         })
         .unwrap_or_default();
-    // Non-seeding count (audit F2): listing users must not trigger the legacy
-    // groups seed `load_server_groups` would.
-    let active_group_count = active_user_group_count_no_seed(store);
-    (profile_counts, active_group_count)
+    // Build per-user group counts by listing metadata users (cheap) and using
+    // the no-seed reader for each. This lets non-active readable users show a
+    // real count (or 0) while locked ones show "-". Active remains non-seeding.
+    let users_meta = user_partitions::cli_list_users(store).unwrap_or_default();
+    let group_counts: std::collections::HashMap<i64, Option<usize>> = users_meta
+        .into_iter()
+        .map(|u| {
+            let c = user_group_count_no_seed(store, u.id, u.is_active);
+            (u.id, c)
+        })
+        .collect();
+    (profile_counts, group_counts)
 }
 
 /// Render the user table as a string (shared by the plain `users` listing and
 /// the `users -i` loop). Columns: 1-based index, name, numeric id, per-user
-/// `Profiles` and `Groups` counts (#311), and a flag summary (active / admin /
+/// `Profiles` and `Groups` counts (#311, #408), and a flag summary (active / admin /
 /// password / default). `marker` annotates the default account so the favourite
-/// glyph matches the rest of the app. `profile_counts` / `active_group_count`
-/// come from [`users_table_counts`]; an absent profile count renders 0 and a
-/// non-active user's group count renders "-" (its partition is encrypted).
+/// glyph matches the rest of the app. `profile_counts` / `group_counts` come
+/// from [`users_table_counts`]; readable users (incl. non-active) show real
+/// count or 0; locked/unreadable render "-".
 fn format_users_table(
     users: &[user_partitions::UserMetadata],
     marker: &str,
     profile_counts: &std::collections::HashMap<i64, i64>,
-    active_group_count: Option<usize>,
+    group_counts: &std::collections::HashMap<i64, Option<usize>>,
 ) -> String {
     if users.is_empty() {
         return "No AeroFTP users found.".to_string();
@@ -17441,12 +17629,9 @@ fn format_users_table(
             flags.join(", ")
         };
         let prof = profile_counts.get(&u.id).copied().unwrap_or(0);
-        let grps = if u.is_active {
-            active_group_count
-                .map(|c| c.to_string())
-                .unwrap_or_else(|| "-".to_string())
-        } else {
-            "-".to_string()
+        let grps = match group_counts.get(&u.id).copied().flatten() {
+            Some(c) => c.to_string(),
+            None => "-".to_string(),
         };
         out.push_str(&format!(
             "  {:<2} {:<37}{:<6}{:<10}{:<8}{}\n",
@@ -17538,13 +17723,21 @@ fn print_users_help() {
         "  c <N|name> [new]  copy a user: duplicate its servers into a new user (no passwords)"
     );
     eprintln!(
+        "  a <N|name> <g>    add a group label to the user's partition (idempotent; creates if absent)"
+    );
+    eprintln!(
+        "  x <N|name> <g|N>  remove a group label from the user's partition (does not delete profiles)"
+    );
+    eprintln!(
         "  d <N|name>        delete a user (prompts to confirm; not the active or last user)"
     );
     eprintln!(
         "  f <N|name>        toggle the default user (auto-unlocked on launch; password-free only)"
     );
     eprintln!("  # <N|name> <pos>  move a user to position <pos> (re-index, persisted)");
-    eprintln!("  t / tree          users -> their servers (with group tags)");
+    eprintln!(
+        "  t / tree          users -> their servers (with group tags from *that* user's groups)"
+    );
     eprintln!("  cls / . / refresh reload + reprint the table");
     eprintln!("  clear             wipe the screen only (no reprint)");
     eprintln!("  h / help / ?      show this help");
@@ -17554,6 +17747,7 @@ fn print_users_help() {
         "  Users are shared with the GUI Manage Users surface; changes round-trip both ways."
     );
     eprintln!("  Selectors: a table number (1-based) or the user name (quote names with spaces).");
+    eprintln!("  Group names with spaces: a 1 \"My Group\"   (use quotes for add/remove).");
 }
 
 /// `aeroftp-cli users [-i]`: list and (interactively) manage local AeroFTP
@@ -17588,7 +17782,7 @@ fn cmd_users_section(cli: &Cli, format: OutputFormat, interactive: bool) -> i32 
     }
 
     let marker = load_favorite_marker(&store);
-    let (prof_counts, active_groups) = users_table_counts(&store);
+    let (prof_counts, group_counts) = users_table_counts(&store);
 
     if interactive {
         if !std::io::stdin().is_terminal() {
@@ -17596,7 +17790,7 @@ fn cmd_users_section(cli: &Cli, format: OutputFormat, interactive: bool) -> i32 
             // prompt nobody can answer.
             println!(
                 "{}",
-                format_users_table(&users, marker, &prof_counts, active_groups)
+                format_users_table(&users, marker, &prof_counts, &group_counts)
             );
             eprintln!("`users -i` needs an interactive terminal; printed the listing instead.");
             return 0;
@@ -17606,7 +17800,7 @@ fn cmd_users_section(cli: &Cli, format: OutputFormat, interactive: bool) -> i32 
 
     println!(
         "{}",
-        format_users_table(&users, marker, &prof_counts, active_groups)
+        format_users_table(&users, marker, &prof_counts, &group_counts)
     );
     0
 }
@@ -17622,7 +17816,7 @@ fn users_summary_rows(
     users: &[user_partitions::UserMetadata],
     marker: &str,
     profile_counts: &std::collections::HashMap<i64, i64>,
-    active_group_count: Option<usize>,
+    group_counts: &std::collections::HashMap<i64, Option<usize>>,
 ) -> Vec<Vec<String>> {
     users
         .iter()
@@ -17646,12 +17840,9 @@ fn users_summary_rows(
                 flags.join(", ")
             };
             let prof = profile_counts.get(&u.id).copied().unwrap_or(0);
-            let grps = if u.is_active {
-                active_group_count
-                    .map(|c| c.to_string())
-                    .unwrap_or_else(|| "-".to_string())
-            } else {
-                "-".to_string()
+            let grps = match group_counts.get(&u.id).copied().flatten() {
+                Some(c) => c.to_string(),
+                None => "-".to_string(),
             };
             vec![
                 u.name.clone(),
@@ -17683,14 +17874,14 @@ fn interactive_users_loop(cli: &Cli, store: &CredentialStore) -> i32 {
                 return 5;
             }
         };
-        let (prof_counts, active_groups) = users_table_counts(store);
+        let (prof_counts, group_counts) = users_table_counts(store);
         match pending.take() {
             Some(SectionPending::Tombstones { stones }) => {
                 eprintln!(
                     "{}",
                     format_section_summary_with_tombstones(
                         USERS_SUMMARY_HEADERS,
-                        &users_summary_rows(&users, marker, &prof_counts, active_groups),
+                        &users_summary_rows(&users, marker, &prof_counts, &group_counts),
                         &stones,
                         use_color(),
                     )
@@ -17701,7 +17892,7 @@ fn interactive_users_loop(cli: &Cli, store: &CredentialStore) -> i32 {
                     "{}",
                     format_section_summary_with_reorder(
                         USERS_SUMMARY_HEADERS,
-                        &users_summary_rows(&users, marker, &prof_counts, active_groups),
+                        &users_summary_rows(&users, marker, &prof_counts, &group_counts),
                         src,
                         dst,
                         use_color(),
@@ -17711,12 +17902,12 @@ fn interactive_users_loop(cli: &Cli, store: &CredentialStore) -> i32 {
             Some(SectionPending::PlainClear) => {}
             None => eprintln!(
                 "{}",
-                format_users_table(&users, marker, &prof_counts, active_groups)
+                format_users_table(&users, marker, &prof_counts, &group_counts)
             ),
         }
         eprintln!("\nActions: {}", render_section_actions(&verbs));
         eprintln!(
-            "Interactive: n [name] new user  \u{00b7}  r/c/d/f <N|name>  \u{00b7}  # <N|name> <pos> reorder  \u{00b7}  l [N|name ...] servers  \u{00b7}  t tree  \u{00b7}  cls/. reprint  \u{00b7}  clear wipe  \u{00b7}  h help  \u{00b7}  0/q quit"
+            "Interactive: n [name] new user  \u{00b7}  r/c <N|name>  \u{00b7}  a/x <N|name> <group>  \u{00b7}  d/f <N|name>  \u{00b7}  # <N|name> <pos>  \u{00b7}  l [..]  t  \u{00b7}  cls/.  clear  h  0/q"
         );
 
         let line = match section_prompt_line("users> ") {
@@ -17889,7 +18080,7 @@ fn interactive_users_loop(cli: &Cli, store: &CredentialStore) -> i32 {
                 if tokens.len() < 2 {
                     eprintln!(
                         "{}",
-                        format_users_table(&users, marker, &prof_counts, active_groups)
+                        format_users_table(&users, marker, &prof_counts, &group_counts)
                     );
                     continue;
                 }
@@ -17930,7 +18121,8 @@ fn interactive_users_loop(cli: &Cli, store: &CredentialStore) -> i32 {
                 }
             }
             "t" | "tree" => {
-                let groups = load_server_groups(store);
+                // Per-user groups (#408): each user's tree uses *its own* server_groups
+                // so group tags are correct and there is no leakage from the active user.
                 for u in &users {
                     let active = if u.is_active { " *" } else { "" };
                     let default_tag = if u.is_default {
@@ -17939,6 +18131,17 @@ fn interactive_users_loop(cli: &Cli, store: &CredentialStore) -> i32 {
                         String::new()
                     };
                     eprintln!("\n{}{}{}", u.name, active, default_tag);
+                    let ugroups = match load_server_groups_for_user(store, u.id, u.is_active) {
+                        Ok(g) => g,
+                        Err(e) if e == "USER_LOCKED" => {
+                            eprintln!("  (password-protected; switch to view)");
+                            continue;
+                        }
+                        Err(e) => {
+                            eprintln!("  (unavailable: {})", e);
+                            continue;
+                        }
+                    };
                     match user_partitions::cli_list_server_profiles_for_user(store, u.id) {
                         Ok(profiles) => {
                             if profiles.is_empty() {
@@ -17951,7 +18154,7 @@ fn interactive_users_loop(cli: &Cli, store: &CredentialStore) -> i32 {
                                     .and_then(|v| v.as_str())
                                     .filter(|s| !s.is_empty())
                                     .unwrap_or("(unnamed)");
-                                let tags: Vec<&str> = groups
+                                let tags: Vec<&str> = ugroups
                                     .iter()
                                     .filter(|g| g.members.iter().any(|m| m == pid))
                                     .map(|g| g.name.as_str())
@@ -18142,6 +18345,116 @@ fn interactive_users_loop(cli: &Cli, store: &CredentialStore) -> i32 {
                     ),
                 }
             }
+            "a" | "add" | "x" | "remove" => {
+                let adding = matches!(verb.as_str(), "a" | "add");
+                if tokens.len() < 3 {
+                    if adding {
+                        eprintln!("Usage: a <N|name> <group name>   (add a group label to a user)");
+                    } else {
+                        eprintln!(
+                            "Usage: x <N|name> <group N|name> (remove a group label from a user)"
+                        );
+                    }
+                    continue;
+                }
+                let uidx = match resolve_user_selector(&users, &tokens[1]) {
+                    Ok(i) => i,
+                    Err(e) => {
+                        eprintln!("Selector '{}' skipped: {}", tokens[1], e);
+                        continue;
+                    }
+                };
+                let u = &users[uidx];
+                // Join the rest as group name so "a 1 My Group With Spaces" works (common case).
+                // Caller can quote if needed for the tokenizer.
+                let gname = tokens[2..].join(" ");
+                if gname.trim().is_empty() {
+                    eprintln!("Group name required after user selector.");
+                    continue;
+                }
+                // For remove, if the group token (first after user) is numeric, resolve it
+                // against *this user's* groups list (not the active user's). Otherwise treat
+                // as case-insensitive name.
+                let effective_g = if !adding {
+                    match load_server_groups_for_user(store, u.id, u.is_active) {
+                        Ok(glist) => {
+                            let gtok = &tokens[2];
+                            if gtok.trim().parse::<usize>().is_ok() {
+                                match resolve_group_selector(&glist, gtok) {
+                                    Ok(gi) => glist[gi].name.clone(),
+                                    Err(_) => gname.clone(), // fall back to literal (unlikely)
+                                }
+                            } else {
+                                gname.clone()
+                            }
+                        }
+                        Err(e) if e == "USER_LOCKED" => {
+                            eprintln!(
+                                "{}",
+                                paint_red(&format!(
+                                    "User '{}' is password-protected; switch/unlock first to edit its groups.",
+                                    u.name
+                                ))
+                            );
+                            continue;
+                        }
+                        Err(e) => {
+                            eprintln!(
+                                "{}",
+                                paint_red(&format!(
+                                    "Failed to load groups for '{}': {}",
+                                    u.name, e
+                                ))
+                            );
+                            continue;
+                        }
+                    }
+                } else {
+                    gname.clone()
+                };
+                match set_group_label_in_vault_for_user(
+                    store,
+                    u.id,
+                    u.is_active,
+                    &effective_g,
+                    adding,
+                ) {
+                    Ok((name, UserGroupOutcome::Created)) => {
+                        eprintln!(
+                            "{}",
+                            paint_green(&format!(
+                                "Group '{}' created for user '{}'.",
+                                name, u.name
+                            ))
+                        );
+                    }
+                    Ok((name, UserGroupOutcome::AlreadyExists)) => {
+                        eprintln!("Group '{}' already exists for user '{}'.", name, u.name);
+                    }
+                    Ok((name, UserGroupOutcome::Removed)) => {
+                        eprintln!(
+                            "{}",
+                            paint_yellow(&format!(
+                                "Group '{}' removed from user '{}'.",
+                                name, u.name
+                            ))
+                        );
+                    }
+                    Ok((name, UserGroupOutcome::NotFound)) => {
+                        eprintln!("Group '{}' not found for user '{}'.", name, u.name);
+                    }
+                    Err(e) if e == "USER_LOCKED" => {
+                        eprintln!(
+                            "{}",
+                            paint_red(&format!(
+                                "User '{}' is password-protected; switch/unlock first.",
+                                u.name
+                            ))
+                        );
+                    }
+                    Err(e) => eprintln!("{}", paint_red(&format!("Group change failed: {}", e))),
+                }
+            }
             "d" | "delete" | "del" | "rm" => {
                 if tokens.len() < 2 {
                     eprintln!("Usage: d <N|name>");
@@ -18221,7 +18534,7 @@ fn interactive_users_loop(cli: &Cli, store: &CredentialStore) -> i32 {
                         std::slice::from_ref(&user),
                         marker,
                         &prof_counts,
-                        active_groups,
+                        &group_counts,
                     )
                     .into_iter()
                     .next()
@@ -62303,6 +62616,61 @@ mod tests {
         assert_eq!(members, vec!["srv_b".to_string()]);
     }
 
+    #[test]
+    fn apply_user_group_change_is_idempotent_and_handles_empty() {
+        // Pure core for users -i a/x (#408 Requested #3): must cover all four
+        // outcomes + reject/guard empty. No I/O.
+        let mut groups: Vec<CliServerGroup> = vec![];
+
+        // Add to empty -> Created, now has one.
+        assert_eq!(
+            apply_user_group_change(&mut groups, "  Alpha  ", true),
+            UserGroupOutcome::Created
+        );
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0].name, "Alpha");
+        assert_eq!(groups[0].members.len(), 0);
+        let first_order = groups[0].order;
+
+        // Add same (case-insens) -> AlreadyExists, no dup, order unchanged.
+        assert_eq!(
+            apply_user_group_change(&mut groups, "alpha", true),
+            UserGroupOutcome::AlreadyExists
+        );
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0].order, first_order);
+
+        // Add different -> Created with higher order.
+        assert_eq!(
+            apply_user_group_change(&mut groups, "Beta", true),
+            UserGroupOutcome::Created
+        );
+        assert_eq!(groups.len(), 2);
+        assert!(groups[1].order > first_order);
+
+        // Remove present -> Removed.
+        assert_eq!(
+            apply_user_group_change(&mut groups, "Alpha", false),
+            UserGroupOutcome::Removed
+        );
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0].name, "Beta");
+
+        // Remove absent -> NotFound, unchanged.
+        assert_eq!(
+            apply_user_group_change(&mut groups, "ghost", false),
+            UserGroupOutcome::NotFound
+        );
+        assert_eq!(groups.len(), 1);
+
+        // Empty name guarded by caller, but fn is defensive -> NotFound.
+        assert_eq!(
+            apply_user_group_change(&mut groups, "   ", true),
+            UserGroupOutcome::NotFound
+        );
+        assert_eq!(groups.len(), 1);
+    }
+
     fn usr(id: i64, name: &str, default: bool) -> user_partitions::UserMetadata {
         user_partitions::UserMetadata {
             id,
@@ -62368,36 +62736,86 @@ mod tests {
     #[test]
     fn users_table_renders_header_and_default_marker() {
         use std::collections::HashMap;
-        let empty: HashMap<i64, i64> = HashMap::new();
-        assert!(format_users_table(&[], "\u{2605}", &empty, None).contains("No AeroFTP users"));
+        let empty_prof: HashMap<i64, i64> = HashMap::new();
+        let empty_grps: HashMap<i64, Option<usize>> = HashMap::new();
+        assert!(
+            format_users_table(&[], "\u{2605}", &empty_prof, &empty_grps)
+                .contains("No AeroFTP users")
+        );
         let mut alice = usr(2, "alice", true);
         alice.is_active = true;
-        // Profile counts per user id; the active user (alice) also has a group count.
-        let counts: HashMap<i64, i64> = [(2, 3), (5, 1)].into_iter().collect();
-        let table =
-            format_users_table(&[alice, usr(5, "bob", false)], "\u{2605}", &counts, Some(2));
+        // Profile counts per user id.
+        let prof_counts: HashMap<i64, i64> = [(2, 3), (5, 1)].into_iter().collect();
+        // Group counts: now a map of Option; alice (active+readable) has 2, bob non-active locked/unreadable has None -> "-"
+        let group_counts: HashMap<i64, Option<usize>> =
+            [(2, Some(2)), (5, None)].into_iter().collect();
+        let table = format_users_table(
+            &[alice, usr(5, "bob", false)],
+            "\u{2605}",
+            &prof_counts,
+            &group_counts,
+        );
         assert!(table.contains("User"));
         assert!(table.contains("ID"));
         assert!(table.contains("Flags"));
-        // The new per-user count columns (#311).
+        // The per-user count columns (#311/#408).
         assert!(table.contains("Profiles"));
         assert!(table.contains("Groups"));
         // 1-based row numbering, the numeric id, and the default star.
         assert!(table
             .lines()
             .any(|l| l.contains("alice") && l.contains("active") && l.contains("default\u{2605}")));
-        // bob is non-active, so his Groups count renders "-"; the row still ends
-        // with the (empty) Flags column "-".
+        // bob non-active with None group count renders "-"
         assert!(table
             .lines()
             .any(|l| l.contains("bob") && l.trim_end().ends_with('-')));
     }
 
     #[test]
+    fn users_table_renders_group_count_for_readable_non_active_users() {
+        // #408: after wiring per-user, a non-active *readable* user must render
+        // a real group count (here 0 or N), while locked/unreadable render "-".
+        // We pass the map explicitly; no vault in this unit test.
+        use std::collections::HashMap;
+        let mut active = usr(10, "active", true);
+        active.is_active = true;
+        let mut locked = usr(20, "locked", false);
+        locked.has_passphrase = true; // signals intent, count comes from map anyway
+        let other = usr(30, "other", false); // readable non-active
+
+        let profs: HashMap<i64, i64> = [(10, 4), (20, 1), (30, 0)].into_iter().collect();
+        // active has 2, other (non-active readable) has 0 -> shows "0", locked has None -> "-"
+        let gcounts: HashMap<i64, Option<usize>> = [(10, Some(2)), (20, None), (30, Some(0))]
+            .into_iter()
+            .collect();
+
+        let table = format_users_table(&[active, locked, other], "\u{2605}", &profs, &gcounts);
+        // other shows explicit 0 (readable with no groups row)
+        assert!(
+            table
+                .lines()
+                .any(|l| l.contains("other") && l.contains("0")),
+            "readable non-active must show 0, got:\n{}",
+            table
+        );
+        // active shows 2
+        assert!(table
+            .lines()
+            .any(|l| l.contains("active") && l.contains("2")));
+        // locked shows - for groups (as before)
+        let locked_line = table.lines().find(|l| l.contains("locked")).unwrap();
+        assert!(
+            locked_line.contains(" - ") || locked_line.trim_end().ends_with('-'),
+            "locked user groups column must render -: {}",
+            locked_line
+        );
+    }
+
+    #[test]
     fn users_action_bar_matches_d1_vocabulary() {
         assert_eq!(
             render_section_actions(&users_section_verbs("\u{2605}")),
-            "Help(H/?) \u{00b7} List/ls(L) \u{00b7} Tree(T) \u{00b7} Refresh(.) \u{00b7} New(N) \u{00b7} Rename(R) \u{00b7} Copy(C) \u{00b7} Fav\u{2605}(F) \u{00b7} re-index(#) \u{00b7} Delete(D) \u{00b7} Quit(Q/0)"
+            "Help(H/?) \u{00b7} List/ls(L) \u{00b7} Tree(T) \u{00b7} Refresh(.) \u{00b7} New(N) \u{00b7} Rename(R) \u{00b7} Copy(C) \u{00b7} Add(A) \u{00b7} Remove(X) \u{00b7} Fav\u{2605}(F) \u{00b7} re-index(#) \u{00b7} Delete(D) \u{00b7} Quit(Q/0)"
         );
         // The Fav glyph follows the user's chosen favourite marker (#270).
         assert!(render_section_actions(&users_section_verbs("\u{2665}")).contains("Fav\u{2665}(F)"));

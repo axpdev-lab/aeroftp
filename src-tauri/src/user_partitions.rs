@@ -3642,6 +3642,48 @@ pub fn cli_set_active_setting(
     result
 }
 
+/// CLI counterpart of [`get_user_setting_for`]: read a per-user `user_settings`
+/// scope for the given `user_id` without changing `active_user_id`. Rejects
+/// `__`-reserved scopes (same rule as the active wrappers). Returns `Ok(None)`
+/// when no row exists for that (user, scope). A passphrase-protected user that
+/// is not the active session yields `Err("USER_LOCKED")`; the caller decides
+/// how to surface it.
+pub fn cli_get_user_setting(
+    store: &CredentialStore,
+    user_id: i64,
+    scope: &str,
+) -> Result<Option<Value>, String> {
+    if scope.starts_with("__") {
+        return Err("USER_SETTING_RESERVED_SCOPE".to_string());
+    }
+    init_or_migrate_cli(store)?;
+    let conn = open_or_init_cli()?;
+    let mut root_key = store.derive_user_partition_wrapping_key();
+    let result = get_user_setting_for(&conn, &root_key, user_id, scope);
+    root_key.zeroize();
+    result
+}
+
+/// CLI counterpart of [`set_user_setting_for`]: upsert a per-user
+/// `user_settings` scope for the given `user_id` without touching
+/// `active_user_id`. Same reserved-scope guard as the active path.
+pub fn cli_set_user_setting(
+    store: &CredentialStore,
+    user_id: i64,
+    scope: &str,
+    value: &Value,
+) -> Result<(), String> {
+    if scope.starts_with("__") {
+        return Err("USER_SETTING_RESERVED_SCOPE".to_string());
+    }
+    init_or_migrate_cli(store)?;
+    let conn = open_or_init_cli()?;
+    let mut root_key = store.derive_user_partition_wrapping_key();
+    let result = set_user_setting_for(&conn, &root_key, user_id, scope, value);
+    root_key.zeroize();
+    result
+}
+
 /// MUV-5: resolve the active user's server profiles for the MCP subprocess.
 ///
 /// The MCP server runs headless and must scope to the persisted active user
