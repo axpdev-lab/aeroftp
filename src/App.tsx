@@ -4368,6 +4368,30 @@ interface UpdateVerificationInfo {
     }
   });
 
+  // OS file association / "Open with AeroFTP": general compressed archives
+  // via the shared AeroFTP.Archive ProgID (Deliverable G). Opens the in-app
+  // ArchiveBrowser (with encryption probe) instead of a bare window.
+  useTauriListener<string>('archive-open-file', async (event) => {
+    const archivePath = event.payload;
+    if (!archivePath) return;
+    const lower = archivePath.toLowerCase();
+    let archType: import('./types').ArchiveType = 'zip';
+    if (lower.endsWith('.7z')) archType = '7z';
+    else if (lower.endsWith('.rar')) archType = 'rar';
+    else if (lower.endsWith('.tar') || lower.endsWith('.tgz') || lower.endsWith('.tar.gz') || lower.endsWith('.tar.xz') || lower.endsWith('.tar.bz2')) archType = 'tar';
+    // Probe encryption (best-effort; non-fatal)
+    let encrypted = false;
+    try {
+      if (archType === 'zip') encrypted = await invoke<boolean>('is_zip_encrypted', { archivePath });
+      else if (archType === '7z') encrypted = await invoke<boolean>('is_7z_encrypted', { archivePath });
+      else if (archType === 'rar') encrypted = await invoke<boolean>('is_rar_encrypted', { archivePath });
+      // tar family: unencrypted by definition for our purposes
+    } catch {
+      /* ignore probe failure; open browser anyway */
+    }
+    setArchiveBrowserState({ path: archivePath, type: archType, encrypted });
+  });
+
   // Auto-enable debug mode when Cyber theme is active, disable when switching away
   useEffect(() => {
     const isCyber = getEffectiveTheme(theme, isDark) === 'cyber';

@@ -76,6 +76,67 @@ Var AeroFTPAppDataPresentPre
     DeleteRegKey HKCU "${BASEKEY}\shell\AeroFTPExtractToFolder"
 !macroend
 
+; ── Deliverable G: Windows available-opener registration ──
+; Shared ProgID "AeroFTP.Archive" + OpenWithProgids + Capabilities + RegisteredApplications
+; + SupportedTypes so AeroFTP appears (with archive icon) in Open-with / Default apps
+; for general compressed formats. Never takes default handler; double-click stays
+; with whatever the user had. The "open" command launches the main GUI (user browses
+; inside via ArchiveBrowser); "Extract here/to" remain separate additive verbs.
+!macro AeroFTPWriteArchiveOpener
+    ; Wholly-owned ProgID (friendly name + icon + open verb)
+    WriteRegStr HKCU "Software\Classes\AeroFTP.Archive" "" "Compressed Archive"
+    WriteRegStr HKCU "Software\Classes\AeroFTP.Archive\DefaultIcon" "" "$INSTDIR\icons\mimetypes\aeroftp-archive.ico,0"
+    WriteRegStr HKCU "Software\Classes\AeroFTP.Archive\shell\open" "" "Open with AeroFTP"
+    WriteRegStr HKCU "Software\Classes\AeroFTP.Archive\shell\open\command" "" '"$INSTDIR\AeroFTP.exe" "%1"'
+
+    ; SupportedTypes under Applications (helps discovery in some surfaces)
+    WriteRegStr HKCU "Software\Classes\Applications\AeroFTP.exe\SupportedTypes" ".zip" ""
+    WriteRegStr HKCU "Software\Classes\Applications\AeroFTP.exe\SupportedTypes" ".7z" ""
+    WriteRegStr HKCU "Software\Classes\Applications\AeroFTP.exe\SupportedTypes" ".rar" ""
+    WriteRegStr HKCU "Software\Classes\Applications\AeroFTP.exe\SupportedTypes" ".tar" ""
+    WriteRegStr HKCU "Software\Classes\Applications\AeroFTP.exe\SupportedTypes" ".tgz" ""
+    WriteRegStr HKCU "Software\Classes\Applications\AeroFTP.exe\SupportedTypes" ".gz" ""
+    WriteRegStr HKCU "Software\Classes\Applications\AeroFTP.exe\SupportedTypes" ".xz" ""
+    WriteRegStr HKCU "Software\Classes\Applications\AeroFTP.exe\SupportedTypes" ".bz2" ""
+
+    ; Capabilities (the surface Default Apps enumerates)
+    WriteRegStr HKCU "Software\AeroFTP\Capabilities" "ApplicationName" "AeroFTP"
+    WriteRegStr HKCU "Software\AeroFTP\Capabilities" "ApplicationDescription" "AeroFTP archive browser and extractor"
+    WriteRegStr HKCU "Software\AeroFTP\Capabilities" "ApplicationIcon" "$INSTDIR\icons\mimetypes\aeroftp-archive.ico,0"
+
+    WriteRegStr HKCU "Software\AeroFTP\Capabilities\FileAssociations" ".zip" "AeroFTP.Archive"
+    WriteRegStr HKCU "Software\AeroFTP\Capabilities\FileAssociations" ".7z" "AeroFTP.Archive"
+    WriteRegStr HKCU "Software\AeroFTP\Capabilities\FileAssociations" ".rar" "AeroFTP.Archive"
+    WriteRegStr HKCU "Software\AeroFTP\Capabilities\FileAssociations" ".tar" "AeroFTP.Archive"
+    WriteRegStr HKCU "Software\AeroFTP\Capabilities\FileAssociations" ".tgz" "AeroFTP.Archive"
+    WriteRegStr HKCU "Software\AeroFTP\Capabilities\FileAssociations" ".gz" "AeroFTP.Archive"
+    WriteRegStr HKCU "Software\AeroFTP\Capabilities\FileAssociations" ".xz" "AeroFTP.Archive"
+    WriteRegStr HKCU "Software\AeroFTP\Capabilities\FileAssociations" ".bz2" "AeroFTP.Archive"
+
+    ; Makes "AeroFTP" appear in the list of apps that can be chosen for these file types
+    WriteRegStr HKCU "Software\RegisteredApplications" "AeroFTP" "Software\AeroFTP\Capabilities"
+!macroend
+
+!macro AeroFTPWriteArchiveOpenWith EXT
+    ; OpenWithProgids value (name = ProgID, data empty) lets Explorer list AeroFTP
+    ; under "Open with" for that extension, without setting it as default.
+    WriteRegStr HKCU "${EXT}\OpenWithProgids" "AeroFTP.Archive" ""
+!macroend
+
+!macro AeroFTPDeleteArchiveOpener
+    ; Delete wholly-owned keys we created. Do not touch .ext owner keys themselves.
+    DeleteRegKey HKCU "Software\Classes\AeroFTP.Archive"
+    DeleteRegKey HKCU "Software\AeroFTP\Capabilities"
+    DeleteRegValue HKCU "Software\RegisteredApplications" "AeroFTP"
+    ; Applications\AeroFTP.exe (which holds SupportedTypes + DefaultIcon) is
+    ; deleted wholesale by the existing generic cleanup below.
+!macroend
+
+!macro AeroFTPDeleteArchiveOpenWith EXT
+    ; Only remove our value; other apps may have written their own ProgIDs here.
+    DeleteRegValue HKCU "${EXT}\OpenWithProgids" "AeroFTP.Archive"
+!macroend
+
 !macro NSIS_HOOK_PREINSTALL
     StrCpy $AeroFTPWasInstalled "no"
     StrCpy $AeroFTPHadDesktopShortcut "no"
@@ -282,6 +343,19 @@ Var AeroFTPAppDataPresentPre
     !insertmacro AeroFTPWriteExtractVerbs "Software\Classes\AeroFTP.AeroVault"
     !insertmacro AeroFTPWriteExtractVerbs "Software\Classes\AeroFTP.AeroZip"
 
+    ; --- Archive available-opener registration (Deliverable G Windows #3) ---
+    ; ProgID + OpenWithProgids + Capabilities + SupportedTypes. Uses the dedicated
+    ; archive mimetype icon. Does not touch defaults or existing extract verbs.
+    !insertmacro AeroFTPWriteArchiveOpener
+    !insertmacro AeroFTPWriteArchiveOpenWith "Software\Classes\.zip"
+    !insertmacro AeroFTPWriteArchiveOpenWith "Software\Classes\.7z"
+    !insertmacro AeroFTPWriteArchiveOpenWith "Software\Classes\.rar"
+    !insertmacro AeroFTPWriteArchiveOpenWith "Software\Classes\.tar"
+    !insertmacro AeroFTPWriteArchiveOpenWith "Software\Classes\.tgz"
+    !insertmacro AeroFTPWriteArchiveOpenWith "Software\Classes\.gz"
+    !insertmacro AeroFTPWriteArchiveOpenWith "Software\Classes\.xz"
+    !insertmacro AeroFTPWriteArchiveOpenWith "Software\Classes\.bz2"
+
     ; Flush Explorer's icon cache so the doc-style MIME icons are
     ; rendered immediately after install (otherwise users would have
     ; to log out / restart Explorer to see the change). The cache file
@@ -386,6 +460,24 @@ Var AeroFTPAppDataPresentPre
     !insertmacro AeroFTPDeleteExtractVerbs "Software\Classes\SystemFileAssociations\.bz2"
     !insertmacro AeroFTPDeleteExtractVerbs "Software\Classes\AeroFTP.AeroVault"
     !insertmacro AeroFTPDeleteExtractVerbs "Software\Classes\AeroFTP.AeroZip"
+
+    ; Remove archive opener registration (Deliverable G). Only owned data.
+    ; OpenWithProgids values are removed value-by-value; wholly-owned keys are
+    ; deleted. The Applications\AeroFTP.exe wholesale delete below covers SupportedTypes.
+    !insertmacro AeroFTPDeleteArchiveOpener
+    !insertmacro AeroFTPDeleteArchiveOpenWith "Software\Classes\.zip"
+    !insertmacro AeroFTPDeleteArchiveOpenWith "Software\Classes\.7z"
+    !insertmacro AeroFTPDeleteArchiveOpenWith "Software\Classes\.rar"
+    !insertmacro AeroFTPDeleteArchiveOpenWith "Software\Classes\.tar"
+    !insertmacro AeroFTPDeleteArchiveOpenWith "Software\Classes\.tgz"
+    !insertmacro AeroFTPDeleteArchiveOpenWith "Software\Classes\.gz"
+    !insertmacro AeroFTPDeleteArchiveOpenWith "Software\Classes\.xz"
+    !insertmacro AeroFTPDeleteArchiveOpenWith "Software\Classes\.bz2"
+
+    ; Also clean HKLM copies in case of legacy or per-machine registrations
+    DeleteRegKey HKLM "Software\Classes\AeroFTP.Archive"
+    DeleteRegKey HKLM "Software\AeroFTP\Capabilities"
+    DeleteRegValue HKLM "Software\RegisteredApplications" "AeroFTP"
 
     ; SHCNE_ASSOCCHANGED (0x08000000) — notify Explorer to refresh file associations and icons
     System::Call 'shell32::SHChangeNotify(i 0x08000000, i 0x0000, p 0, p 0)'

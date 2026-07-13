@@ -215,6 +215,97 @@
             </Component>
 
             <!-- ============================================================= -->
+            <!-- Deliverable G: Archive opener (ProgID + OpenWith + Caps)     -->
+            <!-- Shared AeroFTP.Archive ProgID for .zip/.7z/.rar/.tar* etc.   -->
+            <!-- Makes AeroFTP appear in Open with / Default apps with the    -->
+            <!-- archive mimetype icon. Never claims default handler.         -->
+            <!-- ============================================================= -->
+
+            <!-- Shared ProgID (wholly owned, ForceDeleteOnUninstall) -->
+            <Component Id="AeroFTPArchiveProgId" Guid="C42F5865-15D9-4A5E-BABD-4D5E055063B5" Win64="$(var.Win64)">
+                <RegistryKey Root="HKMU" Key="Software\Classes\AeroFTP.Archive" ForceDeleteOnUninstall="yes">
+                    <RegistryValue Type="string" Value="Compressed Archive" KeyPath="yes" />
+                    <RegistryKey Key="DefaultIcon">
+                        <RegistryValue Type="string" Value="[INSTALLDIR]icons\mimetypes\aeroftp-archive.ico,0" />
+                    </RegistryKey>
+                    <RegistryKey Key="shell\open">
+                        <RegistryValue Type="string" Value="Open with AeroFTP" />
+                        <RegistryKey Key="command">
+                            <RegistryValue Type="string" Value="&quot;[INSTALLDIR]aeroftp.exe&quot; &quot;%1&quot;" />
+                        </RegistryKey>
+                    </RegistryKey>
+                </RegistryKey>
+            </Component>
+
+            <!-- SupportedTypes (under the Applications key already used for DefaultIcon) -->
+            <Component Id="AeroFTPArchiveSupportedTypes" Guid="95769758-E722-4567-9114-AA9B057D0B5F" Win64="$(var.Win64)">
+                <RegistryKey Root="HKMU" Key="Software\Classes\Applications\aeroftp.exe\SupportedTypes" ForceDeleteOnUninstall="yes">
+                    <RegistryValue Name=".zip" Type="string" Value="" KeyPath="yes" />
+                    <RegistryValue Name=".7z" Type="string" Value="" />
+                    <RegistryValue Name=".rar" Type="string" Value="" />
+                    <RegistryValue Name=".tar" Type="string" Value="" />
+                    <RegistryValue Name=".tgz" Type="string" Value="" />
+                    <RegistryValue Name=".gz" Type="string" Value="" />
+                    <RegistryValue Name=".xz" Type="string" Value="" />
+                    <RegistryValue Name=".bz2" Type="string" Value="" />
+                </RegistryKey>
+            </Component>
+
+            <!-- Capabilities + FileAssociations (wholly owned by AeroFTP) -->
+            <Component Id="AeroFTPArchiveCapabilities" Guid="B474CE34-D285-4F22-95D7-C8E6A64D01A7" Win64="$(var.Win64)">
+                <RegistryKey Root="HKMU" Key="Software\AeroFTP\Capabilities" ForceDeleteOnUninstall="yes">
+                    <RegistryValue Name="ApplicationName" Type="string" Value="AeroFTP" KeyPath="yes" />
+                    <RegistryValue Name="ApplicationDescription" Type="string" Value="AeroFTP archive browser and extractor" />
+                    <RegistryValue Name="ApplicationIcon" Type="string" Value="[INSTALLDIR]icons\mimetypes\aeroftp-archive.ico,0" />
+                    <RegistryKey Key="FileAssociations">
+                        <RegistryValue Name=".zip" Type="string" Value="AeroFTP.Archive" />
+                        <RegistryValue Name=".7z" Type="string" Value="AeroFTP.Archive" />
+                        <RegistryValue Name=".rar" Type="string" Value="AeroFTP.Archive" />
+                        <RegistryValue Name=".tar" Type="string" Value="AeroFTP.Archive" />
+                        <RegistryValue Name=".tgz" Type="string" Value="AeroFTP.Archive" />
+                        <RegistryValue Name=".gz" Type="string" Value="AeroFTP.Archive" />
+                        <RegistryValue Name=".xz" Type="string" Value="AeroFTP.Archive" />
+                        <RegistryValue Name=".bz2" Type="string" Value="AeroFTP.Archive" />
+                    </RegistryKey>
+                </RegistryKey>
+            </Component>
+
+            <!-- RegisteredApplications entry (value only) -->
+            <Component Id="AeroFTPRegisteredApp" Guid="DAC938BF-06A2-4CBF-B335-D070E5DE6359" Win64="$(var.Win64)">
+                <RegistryKey Root="HKMU" Key="Software\RegisteredApplications">
+                    <RegistryValue Name="AeroFTP" Type="string" Value="Software\AeroFTP\Capabilities" KeyPath="yes" />
+                </RegistryKey>
+            </Component>
+
+            <!-- OpenWithProgids values (one per ext; value-managed, no ForceDelete on parent keys) -->
+            <Component Id="AeroFTPArchiveOpenWith" Guid="818490AA-795E-46E5-A5ED-26B70AFA7719" Win64="$(var.Win64)">
+                <RegistryKey Root="HKMU" Key="Software\Classes\.zip\OpenWithProgids">
+                    <RegistryValue Name="AeroFTP.Archive" Type="string" Value="" KeyPath="yes" />
+                </RegistryKey>
+                <RegistryKey Root="HKMU" Key="Software\Classes\.7z\OpenWithProgids">
+                    <RegistryValue Name="AeroFTP.Archive" Type="string" Value="" />
+                </RegistryKey>
+                <RegistryKey Root="HKMU" Key="Software\Classes\.rar\OpenWithProgids">
+                    <RegistryValue Name="AeroFTP.Archive" Type="string" Value="" />
+                </RegistryKey>
+                <RegistryKey Root="HKMU" Key="Software\Classes\.tar\OpenWithProgids">
+                    <RegistryValue Name="AeroFTP.Archive" Type="string" Value="" />
+                </RegistryKey>
+                <RegistryKey Root="HKMU" Key="Software\Classes\.tgz\OpenWithProgids">
+                    <RegistryValue Name="AeroFTP.Archive" Type="string" Value="" />
+                </RegistryKey>
+                <RegistryKey Root="HKMU" Key="Software\Classes\.gz\OpenWithProgids">
+                    <RegistryValue Name="AeroFTP.Archive" Type="string" Value="" />
+                </RegistryKey>
+                <RegistryKey Root="HKMU" Key="Software\Classes\.xz\OpenWithProgids">
+                    <RegistryValue Name="AeroFTP.Archive" Type="string" Value="" />
+                </RegistryKey>
+                <RegistryKey Root="HKMU" Key="Software\Classes\.bz2\OpenWithProgids">
+                    <RegistryValue Name="AeroFTP.Archive" Type="string" Value="" />
+                </RegistryKey>
+            </Component>
+
+            <!-- ============================================================= -->
             <!-- aero archive ProgIDs: DefaultIcon + extract verbs              -->
             <!-- (alongside Tauri's auto-generated advertised "open" verb)      -->
             <!-- ============================================================= -->

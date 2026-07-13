@@ -17174,6 +17174,31 @@ pub fn run() {
                     }
                 }
             }
+            // Forward general compressed archive opened via the AeroFTP.Archive
+            // ProgID (Deliverable G Windows opener registration). This lets
+            // "Open with AeroFTP" (and Default Apps choice) actually surface the
+            // in-app ArchiveBrowser instead of a bare main window.
+            if let Some(arch_arg) = argv.iter().skip(1).find(|a| {
+                let lower = a.to_ascii_lowercase();
+                lower.ends_with(".zip")
+                    || lower.ends_with(".7z")
+                    || lower.ends_with(".rar")
+                    || lower.ends_with(".tar")
+                    || lower.ends_with(".tgz")
+                    || lower.ends_with(".tar.gz")
+                    || lower.ends_with(".tar.xz")
+                    || lower.ends_with(".tar.bz2")
+            }) {
+                if let Ok(canonical) = std::fs::canonicalize(arch_arg) {
+                    let meta = std::fs::symlink_metadata(&canonical);
+                    if meta.map(|m| m.is_file()).unwrap_or(false) {
+                        if let Some(window) = app.get_webview_window("main") {
+                            let _ = window
+                                .emit("archive-open-file", canonical.to_string_lossy().to_string());
+                        }
+                    }
+                }
+            }
         }))
         .plugin(
             tauri_plugin_window_state::Builder::new()
@@ -17983,6 +18008,32 @@ pub fn run() {
                                 std::thread::sleep(std::time::Duration::from_millis(1500));
                                 if let Some(window) = app_handle.get_webview_window("main") {
                                     let _ = window.emit("servers-open-file", sp_path);
+                                }
+                            });
+                        }
+                    }
+                }
+                // Same for general archive on first launch (opener registration)
+                if let Some(arch_arg) = args.iter().skip(1).find(|a| {
+                    let lower = a.to_ascii_lowercase();
+                    lower.ends_with(".zip")
+                        || lower.ends_with(".7z")
+                        || lower.ends_with(".rar")
+                        || lower.ends_with(".tar")
+                        || lower.ends_with(".tgz")
+                        || lower.ends_with(".tar.gz")
+                        || lower.ends_with(".tar.xz")
+                        || lower.ends_with(".tar.bz2")
+                }) {
+                    if let Ok(canonical) = std::fs::canonicalize(arch_arg) {
+                        let meta = std::fs::symlink_metadata(&canonical);
+                        if meta.map(|m| m.is_file()).unwrap_or(false) {
+                            let arch_path = canonical.to_string_lossy().to_string();
+                            let app_handle = app.handle().clone();
+                            std::thread::spawn(move || {
+                                std::thread::sleep(std::time::Duration::from_millis(1500));
+                                if let Some(window) = app_handle.get_webview_window("main") {
+                                    let _ = window.emit("archive-open-file", arch_path);
                                 }
                             });
                         }
