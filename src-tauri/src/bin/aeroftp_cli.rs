@@ -1352,6 +1352,7 @@ enum Commands {
     /// `--include "v3.*/**"` matches nothing; --files-from lists paths relative
     /// to the deleted directory. A filtered recursive delete removes only the
     /// matching files, and only the directories it empties in doing so.
+    #[command(visible_aliases = ["delete", "del"])]
     Rm {
         /// Server URL (omit when using --profile)
         #[arg(default_value = "_", hide_default_value = true)]
