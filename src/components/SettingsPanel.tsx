@@ -31,6 +31,7 @@ import { TotpSetup } from './TotpSetup';
 import { PasswordStrengthBar } from './vault/PasswordStrengthBar';
 import { PasswordMatchHint } from './common/PasswordMatchHint';
 import { SettingsAeroCloudTab } from './settings/SettingsAeroCloudTab';
+import { FileAssociationsPanel } from './settings/FileAssociationsPanel';
 import { Checkbox } from './ui/Checkbox';
 import { CustomIconsManager } from './CustomIconsManager';
 import { useTranslation } from '../i18n';
@@ -1415,6 +1416,11 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                 </div>
                                             }
                                         />
+                                    </div>
+
+                                    {/* Deliverable G #3: in-app File associations (compact, OS-backed) */}
+                                    <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
+                                        <FileAssociationsPanel compact />
                                     </div>
                                 </div>
                             )}

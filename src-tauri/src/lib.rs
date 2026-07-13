@@ -139,6 +139,7 @@ pub mod util;
 #[cfg(feature = "aerorsync")]
 pub mod aerorsync;
 pub mod agent_session;
+mod file_associations;
 mod file_tags;
 mod file_watcher;
 mod filesystem;
@@ -18179,6 +18180,10 @@ pub fn run() {
             extract_single,
             extract_probe,
             resolve_unique_extract_dir,
+            // File associations panel (Deliverable G #3)
+            file_associations::file_associations_status,
+            file_associations::file_associations_set_default,
+            file_associations::file_associations_open_settings,
             ftp_read_file_base64,
             read_local_file,
             read_local_file_base64,

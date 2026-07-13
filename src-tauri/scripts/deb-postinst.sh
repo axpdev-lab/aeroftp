@@ -100,9 +100,9 @@ do
         echo 'Exec=/usr/bin/aeroftp %U' >> "$DESKTOP_FILE"
     fi
 
-    # Add MimeType if missing (covers all 5 AeroFTP file formats + URL schemes)
+    # Add MimeType if missing (covers AeroFTP-owned formats + archive formats for File associations panel + URL schemes)
     if ! grep -q '^MimeType=' "$DESKTOP_FILE"; then
-        echo 'MimeType=application/x-aerovault;application/x-aeroftp;application/x-aeroftp-keystore;application/x-aerozip;application/x-aeroftp-script;x-scheme-handler/ftp;x-scheme-handler/ftps;x-scheme-handler/sftp;' >> "$DESKTOP_FILE"
+        echo 'MimeType=application/x-aerovault;application/x-aeroftp;application/x-aeroftp-keystore;application/x-aerozip;application/x-aeroftp-script;application/zip;application/x-7z-compressed;application/vnd.rar;application/x-rar-compressed;application/x-tar;application/x-compressed-tar;application/gzip;application/x-xz;application/x-bzip2;x-scheme-handler/ftp;x-scheme-handler/ftps;x-scheme-handler/sftp;' >> "$DESKTOP_FILE"
     fi
 
     # Tauri's bundle category is a fixed macOS-style enum (Utility is the closest

@@ -8,6 +8,6 @@ Terminal=false
 Type=Application
 Categories=Network;FileTransfer;
 Keywords=ftp;sftp;ftps;webdav;s3;transfer;file;sync;cloud;encryption;
-MimeType=application/x-aerovault;application/x-aeroftp;application/x-aeroftp-keystore;application/x-aerozip;application/x-aeroftp-script;x-scheme-handler/ftp;x-scheme-handler/ftps;x-scheme-handler/sftp;
+MimeType=application/x-aerovault;application/x-aeroftp;application/x-aeroftp-keystore;application/x-aerozip;application/x-aeroftp-script;application/zip;application/x-7z-compressed;application/vnd.rar;application/x-rar-compressed;application/x-tar;application/x-compressed-tar;application/gzip;application/x-xz;application/x-bzip2;x-scheme-handler/ftp;x-scheme-handler/ftps;x-scheme-handler/sftp;
 StartupNotify=true
 StartupWMClass=AeroFTP
