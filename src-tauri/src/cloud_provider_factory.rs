@@ -135,6 +135,71 @@ pub async fn create_cloud_provider(
 // ── Direct auth providers ──────────────────────────────────────────
 
 /// Load credentials from vault, build ProviderConfig, create via factory, connect
+/// Connection credentials for a StorageProvider as AeroCloud stores them.
+#[derive(serde::Deserialize)]
+struct SavedCreds {
+    #[serde(default)]
+    server: String,
+    #[serde(default)]
+    username: String,
+    #[serde(default)]
+    password: String,
+}
+
+/// Reconstruct AeroCloud connection credentials from a saved profile looked up
+/// by NAME: host/username come from the profile record and the password from the
+/// canonical `server_{id}` credential (or a legacy inline password). Mirrors the
+/// normal connect path so AeroCloud works with any profile without a separate
+/// AeroCloud-specific credential blob (the CLI `aerocloud set --profile` path).
+fn resolve_profile_creds_by_name(
+    store: &credential_store::CredentialStore,
+    name: &str,
+) -> Result<SavedCreds, String> {
+    let profiles = crate::user_partitions::mcp_list_active_server_profiles(store)?;
+    let profile = profiles
+        .iter()
+        .find(|p| p.get("name").and_then(|v| v.as_str()) == Some(name))
+        .ok_or_else(|| format!("No credentials for profile '{}'", name))?;
+    let id = profile
+        .get("id")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| format!("Profile '{}' has no id", name))?;
+    let password =
+        crate::user_partitions::resolve_active_credential(store, &format!("server_{}", id))
+            .ok()
+            .flatten()
+            .map(|z| z.to_string())
+            .or_else(|| {
+                profile
+                    .get("password")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string())
+            })
+            .unwrap_or_default();
+    let host = profile
+        .get("server")
+        .or_else(|| profile.get("host"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    // Embed the profile port so parse_server_field picks it up (the host field
+    // usually carries no port of its own).
+    let server = match profile.get("port").and_then(|v| v.as_u64()) {
+        Some(port) if !host.is_empty() && !host.contains(':') => format!("{}:{}", host, port),
+        _ => host,
+    };
+    let username = profile
+        .get("username")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    Ok(SavedCreds {
+        server,
+        username,
+        password,
+    })
+}
+
 async fn create_via_factory(
     config: &CloudConfig,
     provider_type: ProviderType,
@@ -142,33 +207,24 @@ async fn create_via_factory(
     let store = credential_store::CredentialStore::from_cache()
         .ok_or_else(|| "Credential vault not open".to_string())?;
 
-    // MUV-3: prefer the active user's per-user store, fall back to the legacy
-    // vault. Shared by GUI and CLI; under CLI `--user X` this resolves against
-    // the active user and falls back to the (dual-written) vault.
-    let creds_json = crate::user_partitions::resolve_active_credential(
+    // Prefer the AeroCloud-native credential blob (`server_{name}`, written by the
+    // GUI's save_server_credentials). Fall back to the canonical profile record
+    // (host/username from the profile, password from `server_{id}`) so AeroCloud
+    // connects using any saved profile even when configured from the CLI, which
+    // never writes the `server_{name}` blob.
+    // MUV-3: resolve_active_credential prefers the active user's per-user store
+    // and falls back to the legacy (dual-written) vault.
+    let creds = match crate::user_partitions::resolve_active_credential(
         &store,
         &format!("server_{}", config.server_profile),
     )
-    .map_err(|e| {
-        format!(
-            "No credentials for profile '{}': {}",
-            config.server_profile, e
-        )
-    })?
-    .ok_or_else(|| format!("No credentials for profile '{}'", config.server_profile))?;
-
-    #[derive(serde::Deserialize)]
-    struct SavedCreds {
-        #[serde(default)]
-        server: String,
-        #[serde(default)]
-        username: String,
-        #[serde(default)]
-        password: String,
-    }
-
-    let creds: SavedCreds = serde_json::from_str(&creds_json)
-        .map_err(|e| format!("Failed to parse credentials: {}", e))?;
+    .ok()
+    .flatten()
+    {
+        Some(json) => serde_json::from_str::<SavedCreds>(&json)
+            .map_err(|e| format!("Failed to parse credentials: {}", e))?,
+        None => resolve_profile_creds_by_name(&store, &config.server_profile)?,
+    };
 
     // Parse host and embedded port from server field
     // CloudPanel may save "host:port" or "host/path:port" concatenated

@@ -11143,7 +11143,7 @@ async fn cmd_aerocloud_sync(cli: &Cli, dry_run: bool, format: OutputFormat) -> i
 
     // Cheap config checks first, so a disabled / unconfigured AeroCloud fails
     // fast WITHOUT forcing an unnecessary vault unlock prompt.
-    let config = cloud_config::load_cloud_config();
+    let mut config = cloud_config::load_cloud_config();
     if !config.enabled {
         print_error(
             format,
@@ -11171,6 +11171,27 @@ async fn cmd_aerocloud_sync(cli: &Cli, dry_run: bool, format: OutputFormat) -> i
             return 5;
         }
     };
+
+    // Resolve the selected profile's real protocol from the (now-open) vault and
+    // override protocol_type. `aerocloud set --profile` runs without the vault so
+    // it cannot read the encrypted profile; the stored protocol_type would
+    // otherwise stay at its default and make create_cloud_provider dispatch the
+    // wrong provider (e.g. FTP against an SFTP profile). Host and credentials
+    // already come from the vault by profile name, so only the protocol is
+    // derived here.
+    if let Ok(profiles) =
+        ftp_client_gui_lib::user_partitions::mcp_list_active_server_profiles(&store)
+    {
+        if let Some(proto) = profiles
+            .iter()
+            .find(|p| {
+                p.get("name").and_then(|v| v.as_str()) == Some(config.server_profile.as_str())
+            })
+            .and_then(|p| p.get("protocol").and_then(|v| v.as_str()))
+        {
+            config.protocol_type = proto.to_string();
+        }
+    }
 
     // Connect the provider via the multi-protocol factory.
     let mut provider = match cloud_provider_factory::create_cloud_provider(&config).await {
