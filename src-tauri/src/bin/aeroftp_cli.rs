@@ -3210,17 +3210,31 @@ mod cli_dispatch_tests {
             .name("dispatcher-allowlist-clap-sync".to_string())
             .stack_size(32 * 1024 * 1024)
             .spawn(|| {
-                let clap_names: Vec<_> = Cli::command()
+                use std::collections::BTreeSet;
+                // Every token clap will accept as a first argument must route to
+                // the CLI: each visible subcommand's canonical name AND all of its
+                // aliases. A missing alias silently routes a real CLI command to
+                // the GUI (audit C-F2, `aeroftp delete <x>`); a stale allowlist
+                // entry is caught by the reverse direction of the set equality.
+                let mut clap_tokens: BTreeSet<String> = BTreeSet::new();
+                for subcommand in Cli::command()
                     .get_subcommands()
                     .filter(|subcommand| !subcommand.is_hide_set())
-                    .map(|subcommand| subcommand.get_name().to_string())
-                    .collect();
-                let allowlist_names: Vec<_> = cli_dispatch::CLI_SUBCOMMANDS
+                {
+                    clap_tokens.insert(subcommand.get_name().to_string());
+                    for alias in subcommand.get_all_aliases() {
+                        clap_tokens.insert(alias.to_string());
+                    }
+                }
+                let allowlist: BTreeSet<String> = cli_dispatch::CLI_SUBCOMMANDS
                     .iter()
                     .map(|name| (*name).to_string())
                     .collect();
 
-                assert_eq!(allowlist_names, clap_names);
+                assert_eq!(
+                    allowlist, clap_tokens,
+                    "CLI_SUBCOMMANDS must equal clap subcommand names + aliases"
+                );
             })
             .expect("spawn allowlist sync test")
             .join()
@@ -25887,6 +25901,30 @@ fn normalize_remote_path(path: &str) -> String {
     normalized
 }
 
+/// Like `normalize_remote_path` but also RESOLVES `.`/`..` segments (collapsing a
+/// parent reference) so the returned path never contains `..`. Used for the crypt
+/// overlay scope anchor (audit B-F1): `normalize_remote_path` keeps `..`, which
+/// let `is_valid_overlay_scope("/vault/../etc", "/vault")` pass and stored an
+/// anchor that voids the connect-time scope check. Mirrors the frontend
+/// `normalizeSegments` in `src/utils/overlayScope.ts`.
+fn resolve_remote_path(path: &str) -> String {
+    let mut segs: Vec<&str> = Vec::new();
+    for part in path.split('/') {
+        match part {
+            "" | "." => continue,
+            ".." => {
+                segs.pop();
+            }
+            other => segs.push(other),
+        }
+    }
+    if segs.is_empty() {
+        "/".to_string()
+    } else {
+        format!("/{}", segs.join("/"))
+    }
+}
+
 fn sanitize_served_relative_path(path: &str) -> Result<String, StatusCode> {
     let decoded = urlencoding::decode(path)
         .map_err(|_| StatusCode::BAD_REQUEST)?
@@ -32020,7 +32058,15 @@ async fn cmd_edit(
             return provider_error_to_exit_code(&e);
         }
     }
-    let data = match provider.download_to_bytes(path).await {
+    // Cap the download while streaming (audit C-F1): a server that under-reports
+    // its size must not be able to force a full materialization up to the general
+    // 500 MB `download_to_bytes` ceiling. SFTP/HTTP stop reading past the cap; the
+    // `reject_oversize_cli_edit_download` backstop below still guards the default
+    // full-read fallback for non-streaming providers.
+    let data = match provider
+        .download_to_bytes_capped(path, MAX_CLI_EDIT_BYTES)
+        .await
+    {
         Ok(data) => data,
         Err(e) => {
             print_error(
@@ -48118,11 +48164,14 @@ fn is_valid_overlay_scope(scope: &str, remote_path: &str) -> bool {
     if scope.trim().is_empty() {
         return true;
     }
-    let r = normalize_remote_path(remote_path);
+    // Resolve `..` so an anchor that escapes the Remote Path is rejected here
+    // rather than stored verbatim (audit B-F1). `normalize_remote_path` keeps
+    // `..`, which made `/vault/../etc` pass as if it were under `/vault`.
+    let r = resolve_remote_path(remote_path);
     if r == "/" {
         return true; // remote path is the root: any folder is a descendant
     }
-    let s = normalize_remote_path(scope);
+    let s = resolve_remote_path(scope);
     if s == "/" {
         return false; // scope is "/" but the remote path is a subfolder: ancestor
     }
@@ -48272,7 +48321,7 @@ async fn cmd_crypt_bind(
         );
         return 5;
     }
-    let scope = normalize_remote_path(&scope);
+    let scope = resolve_remote_path(&scope);
     if let Err(e) = bind_crypt_overlay_to_profile(
         cli,
         &store,

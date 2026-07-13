@@ -11,6 +11,11 @@ pub const CLI_SUBCOMMANDS: &[&str] = &[
     "mkdir",
     "access",
     "rm",
+    // visible aliases of `rm` (audit C-F2): the dispatcher routes purely on the
+    // first token, so an alias absent here would send `aeroftp delete <x>` to the
+    // GUI. Kept in sync with clap by `dispatcher_allowlist_matches_clap_subcommands`.
+    "delete",
+    "del",
     "mv",
     "cp",
     "link",
