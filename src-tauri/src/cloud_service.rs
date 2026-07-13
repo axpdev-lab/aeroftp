@@ -1655,7 +1655,7 @@ impl CloudService {
     }
 }
 
-/// Unified helper for one AeroCloud config sync (connect + optional crypt wrap +
+/// Unified helper for one AeroCloud config sync (connect + optional overlay stack +
 /// ensure remote + full or preview sync + disconnect).
 ///
 /// This is the single implementation of the previously duplicated sequence:
@@ -1665,6 +1665,9 @@ impl CloudService {
 /// Later multi-pair (and overlay stack work) will call this once per pair.
 /// cd/mkdir/ensure is handled inside the plan builders; callers no longer
 /// duplicate it.
+///
+/// The overlay stack (P1: crypt seam; P2+: compress + crypt in fixed order) replaces
+/// the prior single crypt wrap. `build_aerocloud_overlay_stack` is the chokepoint.
 ///
 /// `store` is passed explicitly (from_cache() or opened vault) so CLI and GUI
 /// paths both work. `config` must have protocol_type resolved (CLI does the
@@ -1690,13 +1693,13 @@ pub async fn sync_one_config(
         .map_err(|e| format!("failed to connect provider: {e}"))?;
 
     if let Some(s) = store {
-        provider = crypt_overlay_provider::wrap_connected_provider_for_profile_named(
+        provider = crypt_overlay_provider::build_aerocloud_overlay_stack(
             provider,
             &config.server_profile,
             s,
         )
         .await
-        .map_err(|e| format!("crypt overlay refused the sync: {e}"))?;
+        .map_err(|e| format!("overlay stack refused the sync: {e}"))?;
     }
 
     // NOTE: explicit cd/mkdir that used to sit between wrap and service here
