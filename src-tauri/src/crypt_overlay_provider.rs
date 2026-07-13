@@ -262,13 +262,32 @@ impl OverlayKeys {
 // ── Path mapping (generic over the overlay kind) ─────────────────────────────
 
 /// Normalize a plaintext crypt anchor: `""`/`"/"` => whole-remote scope; else an
-/// absolute, slash-trimmed `/Foo/Bar`.
+/// absolute `/Foo/Bar` with `.`/`..` segments resolved.
+///
+/// Resolving `..` is a security boundary (audit B-F1): a stored anchor that still
+/// contains `..` (a CLI-crafted or legacy `/vault/../etc`) would never match the
+/// literal scope-prefix test against real, already-normalized provider paths, so
+/// the whole vault would be treated as out-of-scope and writes would fall through
+/// to the raw provider as plaintext. Mirrors the frontend `normalizeSegments`.
 fn norm_anchor(scope: &str) -> String {
     let s = scope.trim();
     if s.is_empty() || s == "/" {
         return String::new();
     }
-    format!("/{}", s.trim_matches('/'))
+    let mut segs: Vec<&str> = Vec::new();
+    for part in s.split('/') {
+        match part {
+            "" | "." => continue,
+            ".." => {
+                segs.pop();
+            }
+            other => segs.push(other),
+        }
+    }
+    if segs.is_empty() {
+        return String::new();
+    }
+    format!("/{}", segs.join("/"))
 }
 
 /// Normalize an absolute path: leading slash, no trailing slash.
@@ -1855,10 +1874,15 @@ async fn unlock_overlay_keys_encrypting(
                 // root always exists) still bootstraps, and a not-yet-created
                 // subfolder still bootstraps on first write.
                 //
-                // A permission-denied listing is not proof of emptiness: it could
-                // hide existing ciphertext under a headerless vault. Other listing
-                // failures stay permissive so fresh/not-yet-created locations keep
-                // the same frictionless bootstrap behavior as v4.1.3.
+                // Only a positively-verified-empty scope may bootstrap. A
+                // not-yet-created location (NotFound) is safe (nothing to orphan);
+                // EVERY other listing failure (permission denial, network, timeout,
+                // server error) is NOT proof of emptiness and could hide existing
+                // ciphertext under a headerless vault, so it fails closed rather
+                // than rotating the salt over data it could not see (audit B-F2).
+                // The frictionless flow is intact: an empty existing folder / the
+                // whole remote root (Ok(empty)) and a not-yet-created subfolder
+                // (NotFound) both still bootstrap.
                 let list_dir = if scope.is_empty() { "/" } else { scope };
                 match provider.list(list_dir).await {
                     Ok(entries) => {
@@ -1871,6 +1895,8 @@ async fn unlock_overlay_keys_encrypting(
                             ));
                         }
                     }
+                    // Scope does not exist yet: frictionless first-write bootstrap.
+                    Err(ProviderError::NotFound(_)) => {}
                     Err(ProviderError::PermissionDenied(msg)) => {
                         return Err(format!(
                             "Refusing to initialize a new AeroCrypt overlay at {list_dir}: it \
@@ -1880,7 +1906,15 @@ async fn unlock_overlay_keys_encrypting(
                              orphan any existing files."
                         ));
                     }
-                    Err(_) => {}
+                    Err(e) => {
+                        return Err(format!(
+                            "Refusing to initialize a new AeroCrypt overlay at {list_dir}: its \
+                             contents could not be verified ({e}). Unlock it with its existing \
+                             credentials, or recover a headerless vault from its Emergency Kit. \
+                             Re-initializing would rotate the salt and permanently orphan any \
+                             existing files."
+                        ));
+                    }
                 }
                 let salt = overlay::random_salt_v3();
                 let tmp = OverlayConfig::v3_bootstrap(salt);
