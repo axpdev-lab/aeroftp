@@ -3333,7 +3333,7 @@
             "saveKit": "Salva kit su file",
             "printKit": "Stampa",
             "recoveryKitTitle": "Kit di ripristino (backup facoltativo)",
-            "recoveryKitIntro": "Facoltativo. Questo kit contiene solo la configurazione pubblica (vault ID, salt, parametri KDF), mai segreti. Salvarlo offline insieme alla password ti permette di ripristinare una cassaforte senza intestazione dopo aver perso l'archivio chiavi locale (reinstallazione o nuova macchina). Puoi riaprirlo e salvarlo di nuovo in qualsiasi momento.",
+            "recoveryKitIntro": "Facoltativo. Questo kit contiene solo configurazione pubblica (vault ID, salt, parametri KDF), mai segreti. Salvandolo offline insieme alla tua password potrai ripristinare la tua cassaforte dopo la perdita dell'archivio chiavi locale (reinstallazione o nuovo computer). Puoi riaprirlo e salvarlo di nuovo in qualsiasi momento.",
             "showKit": "Kit di ripristino",
             "hideKit": "Chiudi",
             "kitUnavailable": "Il kit di ripristino non è ancora disponibile per questa cassaforte."

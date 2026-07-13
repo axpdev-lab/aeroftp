@@ -5055,7 +5055,7 @@
             "saveKit": "Lưu bộ công cụ vào tệp",
             "printKit": "In",
             "recoveryKitTitle": "Bộ khôi phục (bản sao lưu tùy chọn)",
-            "recoveryKitIntro": "Tùy chọn. Bộ này chỉ chứa cấu hình công khai (vault ID, salt, tham số KDF), không bao giờ chứa thông tin bí mật. Lưu nó ngoại tuyến cùng với mật khẩu của bạn cho phép bạn khôi phục kho không có tiêu đề sau khi mất kho khóa cục bộ (cài đặt lại hoặc máy mới). Bạn có thể mở lại và lưu nó bất cứ lúc nào.",
+            "recoveryKitIntro": "Tùy chọn. Bộ công cụ này chỉ chứa cấu hình công khai (vault ID, salt, tham số KDF), không bao giờ chứa bí mật. Lưu nó ngoại tuyến cùng với mật khẩu của bạn cho phép bạn khôi phục kho lưu trữ sau khi mất kho khóa cục bộ (cài đặt lại hoặc máy mới). Bạn có thể mở và lưu lại bất cứ lúc nào.",
             "showKit": "Bộ khôi phục",
             "hideKit": "Đóng",
             "kitUnavailable": "Bộ khôi phục chưa khả dụng cho kho này."

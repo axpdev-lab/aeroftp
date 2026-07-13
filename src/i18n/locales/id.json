@@ -5055,7 +5055,7 @@
             "saveKit": "Simpan kit ke file",
             "printKit": "Cetak",
             "recoveryKitTitle": "Kit pemulihan (cadangan opsional)",
-            "recoveryKitIntro": "Opsional. Kit ini hanya berisi konfigurasi publik (vault ID, salt, parameter KDF), tidak pernah rahasia. Menyimpannya secara offline bersama kata sandi Anda memungkinkan Anda memulihkan brankas tanpa header setelah kehilangan penyimpanan kunci lokal (instal ulang atau mesin baru). Anda dapat membukanya kembali dan menyimpannya kapan saja.",
+            "recoveryKitIntro": "Opsional. Kit ini hanya berisi konfigurasi publik (vault ID, salt, parameter KDF), tidak pernah rahasia. Menyimpannya secara luring bersama kata sandi Anda memungkinkan Anda memulihkan brankas setelah kehilangan penyimpanan kunci lokal (pemasangan ulang atau mesin baru). Anda dapat membukanya kembali dan menyimpannya lagi kapan saja.",
             "showKit": "Kit pemulihan",
             "hideKit": "Tutup",
             "kitUnavailable": "Kit pemulihan belum tersedia untuk brankas ini."

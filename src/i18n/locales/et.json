@@ -5055,7 +5055,7 @@
             "saveKit": "Salvesta komplekt faili",
             "printKit": "Prindi",
             "recoveryKitTitle": "Taastekomplekt (valikuline varukoopia)",
-            "recoveryKitIntro": "Valikuline. See komplekt sisaldab ainult avalikku konfiguratsiooni (vault ID, salt, KDF parameetrid), mitte kunagi saladusi. Selle salvestamine võrguühenduseta koos parooliga võimaldab taastada päiseta hoidla pärast kohaliku võtmehoidla kaotust (uuesti installimine või uus arvuti). Saate selle igal ajal uuesti avada ja salvestada.",
+            "recoveryKitIntro": "Valikuline. See komplekt sisaldab ainult avalikku konfiguratsiooni (vault ID, salt, KDF parameetrid), mitte kunagi saladusi. Selle salvestamine võrguühenduseta koos parooliga võimaldab taastada oma hoidla pärast kohaliku võtmehoidla kaotamist (uuesti installimine või uus masin). Saate selle igal ajal uuesti avada ja salvestada.",
             "showKit": "Taastekomplekt",
             "hideKit": "Sulge",
             "kitUnavailable": "Taastekomplekt pole selle hoidla jaoks veel saadaval."

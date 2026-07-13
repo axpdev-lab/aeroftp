@@ -5055,7 +5055,7 @@
             "saveKit": "Simpan kit ke fail",
             "printKit": "Cetak",
             "recoveryKitTitle": "Kit pemulihan (sandaran pilihan)",
-            "recoveryKitIntro": "Pilihan. Kit ini hanya mengandungi konfigurasi awam (vault ID, salt, parameter KDF), tidak sekali-kali rahsia. Menyimpannya di luar talian bersama kata laluan anda membolehkan anda memulihkan bilik kebal tanpa pengepala selepas kehilangan stor kunci setempat (pasang semula atau mesin baharu). Anda boleh membukanya semula dan menyimpannya pada bila-bila masa.",
+            "recoveryKitIntro": "Pilihan. Kit ini hanya mengandungi konfigurasi awam (vault ID, salt, parameter KDF), tidak pernah rahsia. Menyimpannya luar talian bersama kata laluan anda membolehkan anda memulihkan peti kebal selepas kehilangan storan kunci setempat (pemasangan semula atau mesin baharu). Anda boleh membukanya semula dan menyimpannya bila-bila masa.",
             "showKit": "Kit pemulihan",
             "hideKit": "Tutup",
             "kitUnavailable": "Kit pemulihan belum tersedia untuk bilik kebal ini lagi."

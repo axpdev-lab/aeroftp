@@ -5055,7 +5055,7 @@
             "saveKit": "Enregistrer le kit dans un fichier",
             "printKit": "Imprimer",
             "recoveryKitTitle": "Kit de récupération (sauvegarde facultative)",
-            "recoveryKitIntro": "Facultatif. Ce kit ne contient que la configuration publique (vault ID, salt, paramètres KDF), jamais de secrets. L'enregistrer hors ligne avec votre mot de passe vous permet de restaurer un coffre sans en-tête après la perte du magasin de clés local (réinstallation ou nouvelle machine). Vous pouvez le rouvrir et l'enregistrer à tout moment.",
+            "recoveryKitIntro": "Facultatif. Ce kit ne contient que la configuration publique (vault ID, salt, paramètres KDF), jamais de secrets. En l'enregistrant hors ligne avec votre mot de passe, vous pourrez restaurer votre coffre après la perte du magasin de clés local (réinstallation ou nouvelle machine). Vous pouvez le rouvrir et l'enregistrer à tout moment.",
             "showKit": "Kit de récupération",
             "hideKit": "Fermer",
             "kitUnavailable": "Le kit de récupération n'est pas encore disponible pour ce coffre."

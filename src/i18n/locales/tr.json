@@ -5055,7 +5055,7 @@
             "saveKit": "Kiti dosyaya kaydet",
             "printKit": "Yazdır",
             "recoveryKitTitle": "Kurtarma kiti (isteğe bağlı yedek)",
-            "recoveryKitIntro": "İsteğe bağlı. Bu kit yalnızca genel yapılandırma (vault ID, salt, KDF parametreleri) içerir, asla gizli bilgiler içermez. Onu parolanızla birlikte çevrimdışı olarak kaydetmek, yerel anahtar deposunu kaybettikten sonra (yeniden kurulum veya yeni makine) başlıksız bir kasayı geri yüklemenizi sağlar. İstediğiniz zaman yeniden açıp kaydedebilirsiniz.",
+            "recoveryKitIntro": "İsteğe bağlı. Bu kit yalnızca genel yapılandırmayı içerir (vault ID, salt, KDF parametreleri), asla gizli bilgileri değil. Parolanızla birlikte çevrimdışı kaydetmeniz, yerel anahtar deposunu kaybettikten sonra (yeniden kurulum veya yeni makine) kasanızı geri yüklemenizi sağlar. Onu istediğiniz zaman yeniden açıp kaydedebilirsiniz.",
             "showKit": "Kurtarma kiti",
             "hideKit": "Kapat",
             "kitUnavailable": "Kurtarma kiti bu kasa için henüz kullanılamıyor."

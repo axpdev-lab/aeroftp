@@ -5055,7 +5055,7 @@
             "saveKit": "Spara kit till fil",
             "printKit": "Skriv ut",
             "recoveryKitTitle": "Återställningskit (valfri säkerhetskopia)",
-            "recoveryKitIntro": "Valfritt. Detta kit innehåller endast offentlig konfiguration (vault ID, salt, KDF-parametrar), aldrig hemligheter. Genom att spara det offline tillsammans med ditt lösenord kan du återställa ett valv utan header efter förlust av det lokala nyckellagret (ominstallation eller ny dator). Du kan öppna och spara det igen när som helst.",
+            "recoveryKitIntro": "Valfritt. Det här paketet innehåller endast offentlig konfiguration (vault ID, salt, KDF-parametrar), aldrig hemligheter. Genom att spara det offline tillsammans med ditt lösenord kan du återställa ditt valv efter att ha förlorat den lokala nyckellagringen (ominstallation eller ny dator). Du kan öppna och spara det igen när som helst.",
             "showKit": "Återställningskit",
             "hideKit": "Stäng",
             "kitUnavailable": "Återställningskitet är ännu inte tillgängligt för detta valv."

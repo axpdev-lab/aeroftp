@@ -5074,7 +5074,7 @@
             "saveKit": "Cadw'r pecyn i ffeil",
             "printKit": "Argraffu",
             "recoveryKitTitle": "Pecyn adfer (copi wrth gefn dewisol)",
-            "recoveryKitIntro": "Dewisol. Dim ond ffurfweddiad cyhoeddus (vault ID, salt, paramedrau KDF) sydd yn y pecyn hwn, byth cyfrinachau. Mae ei gadw all-lein ynghyd â'ch cyfrinair yn caniatáu adfer cell heb bennawd ar ôl colli'r storfa allweddi leol (ailosod neu beiriant newydd). Gallwch ei ailagor a'i gadw eto unrhyw bryd.",
+            "recoveryKitIntro": "Dewisol. Dim ond ffurfweddiad cyhoeddus y mae'r pecyn hwn yn ei gynnwys (vault ID, salt, paramedrau KDF), byth cyfrinachau. Mae ei gadw all-lein ynghyd â'ch cyfrinair yn caniatáu ichi adfer eich cell ddiogel ar ôl colli'r storfa allweddi lleol (ailosod neu beiriant newydd). Gallwch ei ailagor a'i gadw eto unrhyw bryd.",
             "showKit": "Pecyn adfer",
             "hideKit": "Cau",
             "kitUnavailable": "Nid yw'r pecyn adfer ar gael ar gyfer y gell hon eto."

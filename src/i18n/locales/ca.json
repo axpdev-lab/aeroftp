@@ -5074,7 +5074,7 @@
             "saveKit": "Desa el kit en un fitxer",
             "printKit": "Imprimeix",
             "recoveryKitTitle": "Kit de recuperació (còpia de seguretat opcional)",
-            "recoveryKitIntro": "Opcional. Aquest kit només conté configuració pública (vault ID, salt, paràmetres KDF), mai secrets. Desar-lo fora de línia juntament amb la contrasenya permet restaurar un magatzem sense capçalera després de perdre el magatzem de claus local (reinstal·lació o màquina nova). El podeu tornar a obrir i desar en qualsevol moment.",
+            "recoveryKitIntro": "Opcional. Aquest kit només conté configuració pública (vault ID, salt, paràmetres KDF), mai secrets. Desar-lo fora de línia juntament amb la vostra contrasenya us permet restaurar la caixa forta després de perdre el magatzem de claus local (reinstal·lació o màquina nova). Podeu tornar-lo a obrir i desar en qualsevol moment.",
             "showKit": "Kit de recuperació",
             "hideKit": "Tanca",
             "kitUnavailable": "El kit de recuperació encara no està disponible per a aquest magatzem."

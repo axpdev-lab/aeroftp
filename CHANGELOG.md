@@ -47,6 +47,9 @@ AeroCloud grows from a single GUI-only folder into a real multi-pair sync engine
 - **WebDAV rename on strict servers**: the MOVE request now sends `Depth: 0` for servers that require it, and the delete preview is more robust on stat-less pseudo-directories.
 - **About > Technical archive crate version resolves**: the Technical tab keyed the crate as `sevenz-rust` but the backend reports `sevenz-rust2`, so the update check queried a deprecated crate and showed an error; aligned so the version resolves.
 
+#### Security
+- **Pre-tag commit audit: PASS.** A final adversarial commit audit ran over the cycle with three parallel reviewers (the universal recovery kit, the same-name privacy hint, and the AeroCloud / CLI / profile bulk) and confirmed no security or correctness defects: the recovery-kit config cached for headed vaults is public-only and its write is fail-closed for headerless and best-effort for headed, the same-name tracker is keyed to the live vault and cannot bleed across vaults, and AeroCloud delete propagation is gated against a mass-delete wipe. Two cosmetic follow-ups were fixed in the same release: a stale set of recovery-kit intro translations, and a defensive skip of `.` and `..` in the same-name tracker. The dependency review was clean (cargo audit reported no advisories; the RustCrypto core crates stay on documented convergence pins).
+
 #### Contributors
 [<img src="https://github.com/EhudKirsh.png?size=48" width="48" height="48" alt="@EhudKirsh" />](https://github.com/EhudKirsh)
 

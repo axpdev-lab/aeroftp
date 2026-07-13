@@ -5074,7 +5074,7 @@
             "saveKit": "Gardar o kit nun ficheiro",
             "printKit": "Imprimir",
             "recoveryKitTitle": "Kit de recuperación (copia de seguridade opcional)",
-            "recoveryKitIntro": "Opcional. Este kit só contén configuración pública (vault ID, salt, parámetros KDF), nunca segredos. Gardalo sen conexión xunto co teu contrasinal permíteche restaurar unha caixa forte sen cabeceira tras perder o almacén de claves local (reinstalación ou máquina nova). Podes reabrilo e gardalo de novo en calquera momento.",
+            "recoveryKitIntro": "Opcional. Este kit só contén configuración pública (vault ID, salt, parámetros KDF), nunca segredos. Gardalo sen conexión xunto co teu contrasinal permíteche restaurar a túa caixa forte tras perder o almacén de chaves local (reinstalación ou máquina nova). Podes reabrilo e gardalo de novo en calquera momento.",
             "showKit": "Kit de recuperación",
             "hideKit": "Pechar",
             "kitUnavailable": "O kit de recuperación aínda non está dispoñible para esta caixa forte."

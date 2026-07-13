@@ -3717,7 +3717,7 @@ interface UpdateVerificationInfo {
     const index = sameNameIndexRef.current;
     const parent = currentRemoteDisplayPath || '/';
     for (const f of remoteFiles) {
-      if (!f.name) continue;
+      if (!f.name || f.name === '.' || f.name === '..') continue;
       let set = index.get(f.name);
       if (!set) {
         set = new Set();

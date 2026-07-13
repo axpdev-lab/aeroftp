@@ -5055,7 +5055,7 @@
             "saveKit": "Gem kit til fil",
             "printKit": "Udskriv",
             "recoveryKitTitle": "Gendannelsessæt (valgfri sikkerhedskopi)",
-            "recoveryKitIntro": "Valgfrit. Dette sæt indeholder kun offentlig konfiguration (vault ID, salt, KDF-parametre), aldrig hemmeligheder. Ved at gemme det offline sammen med din adgangskode kan du gendanne et boks uden header efter tab af det lokale nøglelager (geninstallation eller ny maskine). Du kan åbne og gemme det igen når som helst.",
+            "recoveryKitIntro": "Valgfrit. Dette sæt indeholder kun offentlig konfiguration (vault ID, salt, KDF-parametre), aldrig hemmeligheder. Ved at gemme det offline sammen med din adgangskode kan du gendanne din boks efter tab af det lokale nøglelager (geninstallation eller ny maskine). Du kan når som helst åbne og gemme det igen.",
             "showKit": "Gendannelsessæt",
             "hideKit": "Luk",
             "kitUnavailable": "Gendannelsessættet er endnu ikke tilgængeligt for denne boks."

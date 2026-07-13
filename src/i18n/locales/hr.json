@@ -5055,7 +5055,7 @@
             "saveKit": "Spremi komplet u datoteku",
             "printKit": "Ispis",
             "recoveryKitTitle": "Komplet za oporavak (neobavezna sigurnosna kopija)",
-            "recoveryKitIntro": "Neobavezno. Ovaj komplet sadrži samo javnu konfiguraciju (vault ID, salt, KDF parametri), nikada tajne. Njegovo spremanje izvan mreže zajedno s lozinkom omogućuje vam vraćanje trezora bez zaglavlja nakon gubitka lokalne pohrane ključeva (ponovna instalacija ili novo računalo). Možete ga ponovno otvoriti i spremiti u bilo kojem trenutku.",
+            "recoveryKitIntro": "Neobavezno. Ovaj komplet sadrži samo javnu konfiguraciju (vault ID, salt, KDF parametri), nikada tajne. Spremanjem izvan mreže zajedno s lozinkom omogućuje vam vraćanje trezora nakon gubitka lokalne pohrane ključeva (ponovna instalacija ili novo računalo). Možete ga ponovno otvoriti i spremiti u bilo kojem trenutku.",
             "showKit": "Komplet za oporavak",
             "hideKit": "Zatvori",
             "kitUnavailable": "Komplet za oporavak još nije dostupan za ovaj trezor."

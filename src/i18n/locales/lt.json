@@ -5055,7 +5055,7 @@
             "saveKit": "Įrašyti rinkinį į failą",
             "printKit": "Spausdinti",
             "recoveryKitTitle": "Atkūrimo rinkinys (nebūtina atsarginė kopija)",
-            "recoveryKitIntro": "Nebūtina. Šiame rinkinyje yra tik vieša konfigūracija (vault ID, salt, KDF parametrai), niekada nėra paslapčių. Įrašius jį neprisijungus kartu su slaptažodžiu, galėsite atkurti saugyklą be antraštės praradę vietinę raktų saugyklą (perdiegus ar naujame kompiuteryje). Galite bet kada jį vėl atidaryti ir įrašyti.",
+            "recoveryKitIntro": "Neprivaloma. Šiame rinkinyje yra tik vieša konfigūracija (vault ID, salt, KDF parametrai), niekada ne paslaptys. Įrašę jį neprisijungę kartu su slaptažodžiu galėsite atkurti saugyklą praradę vietinę raktų saugyklą (perinstaliavus arba naujame kompiuteryje). Bet kada galite jį vėl atidaryti ir įrašyti.",
             "showKit": "Atkūrimo rinkinys",
             "hideKit": "Uždaryti",
             "kitUnavailable": "Atkūrimo rinkinys šiai saugyklai dar neprieinamas."
