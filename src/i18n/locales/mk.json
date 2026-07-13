@@ -336,7 +336,9 @@
             "notEncrypted": "Нешифрирано",
             "listingDirectory": "Се прикажува директориумот...",
             "listingPath": "Се прикажува {path}...",
-            "pleaseWait": "Ве молиме почекајте..."
+            "pleaseWait": "Ве молиме почекајте...",
+            "sameNameLeakChip": "исто име",
+            "sameNameLeakTooltip": "Ова име се појавува и на друга патека во овој шифриран трезор. Бидејќи имињата се шифрираат детерминистички, набљудувач на шифрираното складиште може да утврди дека двете делат исто име."
         },
         "contextMenu": {
             "askAeroAgent": "Прашај AeroAgent...",
@@ -1067,7 +1069,10 @@
             "fileAssociationLinuxApplied": "Применето преку xdg-mime.",
             "fileAssociationApplyFailed": "Неуспешно применување на асоцијација",
             "fileAssociationStatusFailed": "Неуспешно читање на статусот на асоцијација",
-            "fileAssociationCurrentHandler": "Тековен ракувач"
+            "fileAssociationCurrentHandler": "Тековен ракувач",
+            "encryptionPrivacyTitle": "Приватност на шифрирањето",
+            "warnSameNameEncrypted": "Означи ставки со исто име во шифрирани трезори",
+            "warnSameNameEncryptedDesc": "Стандардно исклучено. Во активна AeroCrypt или rclone-crypt преклопка, означи ги датотеките и папките чие име се појавува и на друга патека што ја посетувате. Имињата се шифрираат детерминистички, па идентичните имиња се видливи како идентични за набљудувач на шифрираното складиште (истиот компромис како кај rclone-crypt и Cryptomator)."
         },
         "devtools": {
             "title": "AeroTools",

@@ -336,7 +336,9 @@
             "notEncrypted": "Heb ei amgryptio",
             "listingDirectory": "Wrthi'n rhestru'r cyfeiriadur...",
             "listingPath": "Wrthi'n rhestru {path}...",
-            "pleaseWait": "Arhoswch..."
+            "pleaseWait": "Arhoswch...",
+            "sameNameLeakChip": "enw'r un",
+            "sameNameLeakTooltip": "Mae'r enw hwn hefyd yn ymddangos ar lwybr arall yn y gladdgell wedi'i hamgryptio hon. Gan fod enwau'n cael eu hamgryptio'n benderfyniadol, gall arsylwr o'r storfa wedi'i hamgryptio ganfod bod y ddau'n rhannu enw."
         },
         "contextMenu": {
             "askAeroAgent": "Gofyn i AeroAgent...",
@@ -1067,7 +1069,10 @@
             "fileAssociationLinuxApplied": "Wedi'i gymhwyso trwy xdg-mime.",
             "fileAssociationApplyFailed": "Methwyd â chymhwyso cysylltiad",
             "fileAssociationStatusFailed": "Methwyd â darllen statws cysylltiad",
-            "fileAssociationCurrentHandler": "Trinydd cyfredol"
+            "fileAssociationCurrentHandler": "Trinydd cyfredol",
+            "encryptionPrivacyTitle": "Preifatrwydd amgryptio",
+            "warnSameNameEncrypted": "Nodi cofnodion â'r un enw mewn claddgelloedd wedi'u hamgryptio",
+            "warnSameNameEncryptedDesc": "Wedi'i ddiffodd yn ddiofyn. O fewn troshaen AeroCrypt neu rclone-crypt gweithredol, marciwch ffeiliau a ffolderi y mae eu henw hefyd yn ymddangos ar lwybr arall rydych chi'n ymweld ag ef. Mae enwau'n cael eu hamgryptio'n benderfyniadol, felly mae enwau union yr un fath yn weladwy fel rhai union i arsylwr o'r storfa wedi'i hamgryptio (yr un cyfaddawd â rclone-crypt a Cryptomator)."
         },
         "devtools": {
             "title": "AeroTools",

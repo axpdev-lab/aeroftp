@@ -336,7 +336,9 @@
             "notEncrypted": "Nešifrēts",
             "listingDirectory": "Tiek uzskaitīts direktorijs...",
             "listingPath": "Tiek uzskaitīts {path}...",
-            "pleaseWait": "Lūdzu, uzgaidiet..."
+            "pleaseWait": "Lūdzu, uzgaidiet...",
+            "sameNameLeakChip": "tāds pats nosaukums",
+            "sameNameLeakTooltip": "Šis nosaukums parādās arī citā ceļā šajā šifrētajā glabātavā. Tā kā nosaukumi tiek šifrēti deterministiski, šifrētās krātuves novērotājs var noteikt, ka abi dala vienu nosaukumu."
         },
         "contextMenu": {
             "askAeroAgent": "Jautāt AeroAgent...",
@@ -1067,7 +1069,10 @@
             "fileAssociationLinuxApplied": "Lietots caur xdg-mime.",
             "fileAssociationApplyFailed": "Neizdevās lietot asociāciju",
             "fileAssociationStatusFailed": "Neizdevās nolasīt asociācijas statusu",
-            "fileAssociationCurrentHandler": "Pašreizējais apstrādātājs"
+            "fileAssociationCurrentHandler": "Pašreizējais apstrādātājs",
+            "encryptionPrivacyTitle": "Šifrēšanas konfidencialitāte",
+            "warnSameNameEncrypted": "Atzīmēt ierakstus ar tādu pašu nosaukumu šifrētās glabātavās",
+            "warnSameNameEncryptedDesc": "Pēc noklusējuma izslēgts. Aktīvā AeroCrypt vai rclone-crypt pārklājumā atzīmējiet failus un mapes, kuru nosaukums parādās arī citā apmeklētajā ceļā. Nosaukumi tiek šifrēti deterministiski, tāpēc identiski nosaukumi šifrētās krātuves novērotājam ir redzami kā identiski (tāds pats kompromiss kā rclone-crypt un Cryptomator)."
         },
         "devtools": {
             "title": "AeroTools",

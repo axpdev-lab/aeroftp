@@ -336,7 +336,9 @@
             "notEncrypted": "Haijasimbwa",
             "listingDirectory": "Inaorodhesha saraka...",
             "listingPath": "Inaorodhesha {path}...",
-            "pleaseWait": "Tafadhali subiri..."
+            "pleaseWait": "Tafadhali subiri...",
+            "sameNameLeakChip": "jina moja",
+            "sameNameLeakTooltip": "Jina hili pia linaonekana kwenye njia nyingine katika hifadhi hii iliyosimbwa. Kwa kuwa majina yanasimbwa kwa njia ya kubainika, mtazamaji wa hifadhi iliyosimbwa anaweza kubaini kuwa vyote viwili vinashiriki jina."
         },
         "contextMenu": {
             "askAeroAgent": "Uliza AeroAgent...",
@@ -1067,7 +1069,10 @@
             "fileAssociationLinuxApplied": "Imetumika kupitia xdg-mime.",
             "fileAssociationApplyFailed": "Imeshindwa kutumia uhusiano",
             "fileAssociationStatusFailed": "Imeshindwa kusoma hali ya uhusiano",
-            "fileAssociationCurrentHandler": "Kishughulikia cha sasa"
+            "fileAssociationCurrentHandler": "Kishughulikia cha sasa",
+            "encryptionPrivacyTitle": "Faragha ya usimbaji",
+            "warnSameNameEncrypted": "Weka alama kwenye vipengele venye jina moja katika hifadhi zilizosimbwa",
+            "warnSameNameEncryptedDesc": "Imezimwa kwa chaguomsingi. Ndani ya safu amilifu ya AeroCrypt au rclone-crypt, weka alama kwenye faili na folda ambazo jina lake pia linaonekana kwenye njia nyingine unayotembelea. Majina yanasimbwa kwa njia ya kubainika, hivyo majina yanayofanana yanaonekana yakifanana kwa mtazamaji wa hifadhi iliyosimbwa (mbadala uleule kama rclone-crypt na Cryptomator)."
         },
         "devtools": {
             "title": "AeroTools",

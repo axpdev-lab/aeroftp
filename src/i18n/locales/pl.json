@@ -336,7 +336,9 @@
             "notEncrypted": "Niezaszyfrowano",
             "listingDirectory": "Wyświetlanie katalogu...",
             "listingPath": "Wyświetlanie {path}...",
-            "pleaseWait": "Proszę czekać..."
+            "pleaseWait": "Proszę czekać...",
+            "sameNameLeakChip": "ta sama nazwa",
+            "sameNameLeakTooltip": "Ta nazwa pojawia się również na innej ścieżce w tym zaszyfrowanym sejfie. Ponieważ nazwy są szyfrowane deterministycznie, obserwator zaszyfrowanego magazynu może stwierdzić, że oba mają wspólną nazwę."
         },
         "contextMenu": {
             "askAeroAgent": "Zapytaj AeroAgent...",
@@ -1067,7 +1069,10 @@
             "fileAssociationLinuxApplied": "Zastosowano przez xdg-mime.",
             "fileAssociationApplyFailed": "Nie udało się zastosować skojarzenia",
             "fileAssociationStatusFailed": "Nie udało się odczytać stanu skojarzenia",
-            "fileAssociationCurrentHandler": "Bieżący program obsługi"
+            "fileAssociationCurrentHandler": "Bieżący program obsługi",
+            "encryptionPrivacyTitle": "Prywatność szyfrowania",
+            "warnSameNameEncrypted": "Oznaczaj wpisy o tej samej nazwie w zaszyfrowanych sejfach",
+            "warnSameNameEncryptedDesc": "Domyślnie wyłączone. Wewnątrz aktywnej nakładki AeroCrypt lub rclone-crypt oznaczaj pliki i foldery, których nazwa pojawia się również na innej odwiedzanej ścieżce. Nazwy są szyfrowane deterministycznie, więc identyczne nazwy są widoczne jako identyczne dla obserwatora zaszyfrowanego magazynu (ten sam kompromis co w rclone-crypt i Cryptomator)."
         },
         "devtools": {
             "title": "AeroTools",

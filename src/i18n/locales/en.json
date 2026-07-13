@@ -942,6 +942,8 @@
             "compression": "Compression",
             "encrypted": "Encrypted",
             "notEncrypted": "Not encrypted",
+            "sameNameLeakChip": "same name",
+            "sameNameLeakTooltip": "This name also appears at another path in this encrypted vault. Because names are encrypted deterministically, an observer of the encrypted store can tell the two share a name.",
             "uploadFiles": "Upload Files",
             "uploadFolder": "Upload Folder"
         },
@@ -3288,6 +3290,9 @@
             "securityNoSend": "No credentials are ever sent to external servers",
             "securityOAuth": "OAuth tokens use secure file storage",
             "securityTitle": "How your data is protected",
+            "encryptionPrivacyTitle": "Encryption privacy",
+            "warnSameNameEncrypted": "Flag same-name entries in encrypted vaults",
+            "warnSameNameEncryptedDesc": "Off by default. Inside an active AeroCrypt or rclone-crypt overlay, mark files and folders whose name also appears at another path you visit. Names are encrypted deterministically, so identical names are visible as identical to an observer of the encrypted store (the same tradeoff as rclone-crypt and Cryptomator).",
             "securityTLS": "All connections use encryption when available",
             "securityZeroize": "Automatic memory zeroization on lock",
             "selectDefaultFolder": "Select Default Local Folder",

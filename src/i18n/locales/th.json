@@ -336,7 +336,9 @@
             "notEncrypted": "ไม่ได้เข้ารหัส",
             "listingDirectory": "กำลังแสดงรายการไดเรกทอรี...",
             "listingPath": "กำลังแสดงรายการ {path}...",
-            "pleaseWait": "โปรดรอสักครู่..."
+            "pleaseWait": "โปรดรอสักครู่...",
+            "sameNameLeakChip": "ชื่อซ้ำ",
+            "sameNameLeakTooltip": "ชื่อนี้ยังปรากฏในอีกเส้นทางหนึ่งภายในห้องนิรภัยที่เข้ารหัสนี้ด้วย เนื่องจากชื่อถูกเข้ารหัสแบบกำหนดค่าตายตัว ผู้สังเกตการณ์ที่เข้าถึงที่จัดเก็บที่เข้ารหัสจึงสามารถบอกได้ว่าทั้งสองมีชื่อเดียวกัน"
         },
         "contextMenu": {
             "askAeroAgent": "ถาม AeroAgent...",
@@ -1067,7 +1069,10 @@
             "fileAssociationLinuxApplied": "นำไปใช้ผ่าน xdg-mime",
             "fileAssociationApplyFailed": "ล้มเหลวในการใช้การเชื่อมโยง",
             "fileAssociationStatusFailed": "ล้มเหลวในการอ่านสถานะการเชื่อมโยง",
-            "fileAssociationCurrentHandler": "ตัวจัดการปัจจุบัน"
+            "fileAssociationCurrentHandler": "ตัวจัดการปัจจุบัน",
+            "encryptionPrivacyTitle": "ความเป็นส่วนตัวของการเข้ารหัส",
+            "warnSameNameEncrypted": "ทำเครื่องหมายรายการที่มีชื่อซ้ำในห้องนิรภัยที่เข้ารหัส",
+            "warnSameNameEncryptedDesc": "ปิดโดยค่าเริ่มต้น ภายในโอเวอร์เลย์ AeroCrypt หรือ rclone-crypt ที่กำลังใช้งาน ให้ทำเครื่องหมายไฟล์และโฟลเดอร์ที่มีชื่อปรากฏในอีกเส้นทางหนึ่งที่คุณเข้าชมด้วย ชื่อถูกเข้ารหัสแบบกำหนดค่าตายตัว ดังนั้นชื่อที่เหมือนกันจึงปรากฏเหมือนกันต่อผู้สังเกตการณ์ที่เข้าถึงที่จัดเก็บที่เข้ารหัส (การแลกเปลี่ยนแบบเดียวกับ rclone-crypt และ Cryptomator)"
         },
         "devtools": {
             "title": "AeroTools",

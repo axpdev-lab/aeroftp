@@ -336,7 +336,9 @@
             "notEncrypted": "Niet versleuteld",
             "listingDirectory": "Map wordt weergegeven...",
             "listingPath": "{path} wordt weergegeven...",
-            "pleaseWait": "Even geduld..."
+            "pleaseWait": "Even geduld...",
+            "sameNameLeakChip": "zelfde naam",
+            "sameNameLeakTooltip": "Deze naam komt ook voor op een ander pad in deze versleutelde kluis. Omdat namen deterministisch worden versleuteld, kan een waarnemer van de versleutelde opslag zien dat beide een naam delen."
         },
         "contextMenu": {
             "askAeroAgent": "Vraag AeroAgent...",
@@ -1067,7 +1069,10 @@
             "fileAssociationLinuxApplied": "Toegepast via xdg-mime.",
             "fileAssociationApplyFailed": "Kan associatie niet toepassen",
             "fileAssociationStatusFailed": "Kan associatiestatus niet lezen",
-            "fileAssociationCurrentHandler": "Huidige handler"
+            "fileAssociationCurrentHandler": "Huidige handler",
+            "encryptionPrivacyTitle": "Privacy van versleuteling",
+            "warnSameNameEncrypted": "Markeer items met dezelfde naam in versleutelde kluizen",
+            "warnSameNameEncryptedDesc": "Standaard uit. Markeer binnen een actieve AeroCrypt- of rclone-crypt-overlay bestanden en mappen waarvan de naam ook voorkomt op een ander pad dat je bezoekt. Namen worden deterministisch versleuteld, dus identieke namen zijn zichtbaar als identiek voor een waarnemer van de versleutelde opslag (dezelfde afweging als rclone-crypt en Cryptomator)."
         },
         "devtools": {
             "title": "AeroTools",

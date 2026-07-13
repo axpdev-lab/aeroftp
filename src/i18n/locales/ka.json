@@ -336,7 +336,9 @@
             "notEncrypted": "დაუშიფრავი",
             "listingDirectory": "დირექტორიის ჩამონათვალი...",
             "listingPath": "{path}-ის ჩამონათვალი...",
-            "pleaseWait": "გთხოვთ, დაელოდოთ..."
+            "pleaseWait": "გთხოვთ, დაელოდოთ...",
+            "sameNameLeakChip": "იგივე სახელი",
+            "sameNameLeakTooltip": "ეს სახელი ასევე ჩნდება ამ დაშიფრულ საცავში სხვა გზაზე. რადგან სახელები დაშიფრულია დეტერმინისტულად, დაშიფრული საცავის დამკვირვებელს შეუძლია დაადგინოს, რომ ორივე ერთსა და იმავე სახელს იზიარებს."
         },
         "contextMenu": {
             "askAeroAgent": "ჰკითხე AeroAgent-ს...",
@@ -1067,7 +1069,10 @@
             "fileAssociationLinuxApplied": "გამოყენებულია xdg-mime-ით.",
             "fileAssociationApplyFailed": "ასოციაციის გამოყენება ვერ მოხერხდა",
             "fileAssociationStatusFailed": "ასოციაციის სტატუსის წაკითხვა ვერ მოხერხდა",
-            "fileAssociationCurrentHandler": "მიმდინარე დამმუშავებელი"
+            "fileAssociationCurrentHandler": "მიმდინარე დამმუშავებელი",
+            "encryptionPrivacyTitle": "დაშიფვრის კონფიდენციალურობა",
+            "warnSameNameEncrypted": "მონიშნე ერთი და იმავე სახელის ჩანაწერები დაშიფრულ საცავებში",
+            "warnSameNameEncryptedDesc": "ნაგულისხმევად გამორთულია. აქტიური AeroCrypt ან rclone-crypt გადაფარვის შიგნით მონიშნე ფაილები და საქაღალდეები, რომელთა სახელიც ასევე ჩნდება თქვენ მიერ მონახულებულ სხვა გზაზე. სახელები დაშიფრულია დეტერმინისტულად, ამიტომ იდენტური სახელები დაშიფრული საცავის დამკვირვებელს იდენტურად ეჩვენება (იგივე კომპრომისი, რაც rclone-crypt-სა და Cryptomator-ს აქვს)."
         },
         "devtools": {
             "title": "AeroTools",

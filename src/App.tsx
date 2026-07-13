@@ -636,6 +636,7 @@ const App: React.FC = () => {
   const settings = useSettings();
   const {
     compactMode, showHiddenFiles, showToastNotifications, confirmBeforeDelete,
+    warnSameNameEncrypted,
     showStatusBar, defaultLocalPath, fontSize, fontFamily, doubleClickAction, rememberLastFolder, visibleColumns,
     sortFoldersFirst, showFileExtensions, timeoutSeconds, maxConcurrentTransfers, retryCount,
     downloadSegments,
@@ -3689,6 +3690,49 @@ interface UpdateVerificationInfo {
       : overlayVaultLit
         ? (overlayInScope ? 'active' : 'outside')
         : 'locked';
+
+  // Same-name privacy hint (opt-in, off by default). Filename/folder encryption
+  // is deterministic (AeroCrypt AES-256-SIV, rclone-crypt AES-EME), so two items
+  // with the same plaintext name produce identical ciphertext: an observer of the
+  // encrypted store can tell they share a name. Within one directory names are
+  // already unique, so the leak is a name recurring across DIFFERENT paths. We
+  // track plaintext-name -> parent-paths across the session (while an overlay is
+  // active and in scope) and flag any name seen in 2+ distinct directories. The
+  // index is keyed to the live vault id and reset when the vault changes, so it
+  // never bleeds across vaults. Same tradeoff exists in rclone-crypt / Cryptomator.
+  const sameNameIndexRef = useRef<Map<string, Set<string>>>(new Map());
+  const sameNameVaultRef = useRef<string | null>(null);
+  const [sameNameRepeats, setSameNameRepeats] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    const vaultId = aeroCryptVaultId || rcloneCryptVaultId;
+    if (!warnSameNameEncrypted || !overlayVaultLit || !overlayInScope || !vaultId) {
+      setSameNameRepeats((prev) => (prev.size ? new Set() : prev));
+      return;
+    }
+    // Reset the index whenever the active vault changes.
+    if (sameNameVaultRef.current !== vaultId) {
+      sameNameVaultRef.current = vaultId;
+      sameNameIndexRef.current = new Map();
+    }
+    const index = sameNameIndexRef.current;
+    const parent = currentRemoteDisplayPath || '/';
+    for (const f of remoteFiles) {
+      if (!f.name) continue;
+      let set = index.get(f.name);
+      if (!set) {
+        set = new Set();
+        index.set(f.name, set);
+      }
+      set.add(parent);
+    }
+    const repeats = new Set<string>();
+    for (const f of remoteFiles) {
+      const set = f.name ? index.get(f.name) : undefined;
+      if (set && set.size >= 2) repeats.add(f.name);
+    }
+    setSameNameRepeats(repeats);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [remoteFiles, currentRemoteDisplayPath, overlayVaultLit, overlayInScope, aeroCryptVaultId, rcloneCryptVaultId, warnSameNameEncrypted]);
 
   const toggleActiveCryptOverlay = () => {
     const sess = sessions.find((s) => s.id === activeSessionId);
@@ -16464,6 +16508,14 @@ interface UpdateVerificationInfo {
                                   </span>
                                 )}
                                 {file.metadata?.starred === 'true' && <Star size={12} className="text-yellow-400 fill-yellow-400" />}
+                                {sameNameRepeats.has(file.name) && (
+                                  <span
+                                    className="inline-flex items-center px-1.5 py-0 text-[9px] rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 leading-tight"
+                                    title={t('browser.sameNameLeakTooltip')}
+                                  >
+                                    {t('browser.sameNameLeakChip')}
+                                  </span>
+                                )}
                                 {file.metadata?.box_tags && file.metadata.box_tags.split(',').slice(0, 3).map(tag => (
                                   <span key={tag} className="inline-block px-1.5 py-0 text-[9px] rounded-full bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-300 leading-tight">{tag}</span>
                                 ))}
@@ -16538,6 +16590,9 @@ interface UpdateVerificationInfo {
                       <LargeIconsGrid
                         files={sortedRemoteFiles as any}
                         archiveLockOf={remoteArchiveLockOf as any}
+                        sameNameLeakOf={(file) => sameNameRepeats.has(file.name)}
+                        sameNameLeakLabel={t('browser.sameNameLeakChip')}
+                        sameNameLeakTooltip={t('browser.sameNameLeakTooltip')}
                         selectedFiles={selectedRemoteFiles}
                         currentPath={currentRemotePath}
                         onFileClick={(file, e) => {
@@ -16721,6 +16776,14 @@ interface UpdateVerificationInfo {
                             )}
                             {!file.is_dir && file.size === 0 && (
                               <span className="file-grid-size" title={t('toast.zeroByteWarning')}>&#9888; 0 B</span>
+                            )}
+                            {sameNameRepeats.has(file.name) && (
+                              <span
+                                className="inline-flex items-center px-1.5 py-0 mt-0.5 text-[9px] rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 leading-tight"
+                                title={t('browser.sameNameLeakTooltip')}
+                              >
+                                {t('browser.sameNameLeakChip')}
+                              </span>
                             )}
                           </div>
                         ))}

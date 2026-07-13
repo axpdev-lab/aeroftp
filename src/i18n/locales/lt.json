@@ -336,7 +336,9 @@
             "notEncrypted": "Nešifruota",
             "listingDirectory": "Sudaromas katalogo sąrašas...",
             "listingPath": "Sudaromas {path} sąrašas...",
-            "pleaseWait": "Palaukite..."
+            "pleaseWait": "Palaukite...",
+            "sameNameLeakChip": "tas pats vardas",
+            "sameNameLeakTooltip": "Šis pavadinimas taip pat pasirodo kitame šio šifruoto saugyklos kelyje. Kadangi pavadinimai šifruojami deterministiškai, šifruotos saugyklos stebėtojas gali nustatyti, kad abu dalijasi tuo pačiu pavadinimu."
         },
         "contextMenu": {
             "askAeroAgent": "Klausti AeroAgent...",
@@ -1067,7 +1069,10 @@
             "fileAssociationLinuxApplied": "Taikoma per xdg-mime.",
             "fileAssociationApplyFailed": "Nepavyko pritaikyti susiejimo",
             "fileAssociationStatusFailed": "Nepavyko perskaityti susiejimo būsenos",
-            "fileAssociationCurrentHandler": "Dabartinis doroklis"
+            "fileAssociationCurrentHandler": "Dabartinis doroklis",
+            "encryptionPrivacyTitle": "Šifravimo privatumas",
+            "warnSameNameEncrypted": "Pažymėti to paties pavadinimo įrašus šifruotose saugyklose",
+            "warnSameNameEncryptedDesc": "Pagal numatytuosius nustatymus išjungta. Aktyviame AeroCrypt arba rclone-crypt sluoksnyje pažymėkite failus ir aplankus, kurių pavadinimas taip pat pasirodo kitame jūsų lankomame kelyje. Pavadinimai šifruojami deterministiškai, todėl vienodi pavadinimai šifruotos saugyklos stebėtojui matomi kaip vienodi (tas pats kompromisas kaip rclone-crypt ir Cryptomator)."
         },
         "devtools": {
             "title": "AeroTools",

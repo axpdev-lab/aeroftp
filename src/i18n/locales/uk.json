@@ -336,7 +336,9 @@
             "notEncrypted": "Не зашифровано",
             "listingDirectory": "Отримання списку каталогу...",
             "listingPath": "Отримання списку {path}...",
-            "pleaseWait": "Будь ласка, зачекайте..."
+            "pleaseWait": "Будь ласка, зачекайте...",
+            "sameNameLeakChip": "та сама назва",
+            "sameNameLeakTooltip": "Ця назва також трапляється за іншим шляхом у цьому зашифрованому сховищі. Оскільки назви шифруються детерміновано, спостерігач зашифрованого сховища може визначити, що обидва мають однакову назву."
         },
         "contextMenu": {
             "askAeroAgent": "Запитати AeroAgent...",
@@ -1067,7 +1069,10 @@
             "fileAssociationLinuxApplied": "Застосовано через xdg-mime.",
             "fileAssociationApplyFailed": "Не вдалося застосувати асоціацію",
             "fileAssociationStatusFailed": "Не вдалося прочитати стан асоціації",
-            "fileAssociationCurrentHandler": "Поточний обробник"
+            "fileAssociationCurrentHandler": "Поточний обробник",
+            "encryptionPrivacyTitle": "Конфіденційність шифрування",
+            "warnSameNameEncrypted": "Позначати однойменні записи в зашифрованих сховищах",
+            "warnSameNameEncryptedDesc": "Типово вимкнено. Усередині активного накладення AeroCrypt або rclone-crypt позначайте файли та теки, назва яких також трапляється за іншим шляхом, який ви відвідуєте. Назви шифруються детерміновано, тож однакові назви видно як однакові спостерігачеві зашифрованого сховища (той самий компроміс, що й у rclone-crypt та Cryptomator)."
         },
         "devtools": {
             "title": "AeroTools",

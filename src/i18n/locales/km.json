@@ -336,7 +336,9 @@
             "notEncrypted": "មិនបានអ៊ិនគ្រីប",
             "listingDirectory": "កំពុងរាយបញ្ជីថត...",
             "listingPath": "កំពុងរាយបញ្ជី {path}...",
-            "pleaseWait": "សូមរង់ចាំ..."
+            "pleaseWait": "សូមរង់ចាំ...",
+            "sameNameLeakChip": "ឈ្មោះដូចគ្នា",
+            "sameNameLeakTooltip": "ឈ្មោះនេះក៏បង្ហាញនៅផ្លូវផ្សេងទៀតក្នុងឃ្លាំងសម្ងាត់ដែលបានអ៊ិនគ្រីបនេះផងដែរ។ ដោយសារឈ្មោះត្រូវបានអ៊ិនគ្រីបតាមរបៀបកំណត់ជាក់លាក់ អ្នកសង្កេតការណ៍នៃឃ្លាំងផ្ទុកដែលបានអ៊ិនគ្រីបអាចដឹងថាទាំងពីរចែករំលែកឈ្មោះមួយ។"
         },
         "contextMenu": {
             "askAeroAgent": "សួរ AeroAgent...",
@@ -1067,7 +1069,10 @@
             "fileAssociationLinuxApplied": "បានអនុវត្តតាមរយៈ xdg-mime ។",
             "fileAssociationApplyFailed": "បរាជ័យក្នុងការអនុវត្តការភ្ជាប់",
             "fileAssociationStatusFailed": "បរាជ័យក្នុងការអានស្ថានភាពការភ្ជាប់",
-            "fileAssociationCurrentHandler": "អ្នកដោះស្រាយបច្ចុប្បន្ន"
+            "fileAssociationCurrentHandler": "អ្នកដោះស្រាយបច្ចុប្បន្ន",
+            "encryptionPrivacyTitle": "ភាពឯកជននៃការអ៊ិនគ្រីប",
+            "warnSameNameEncrypted": "សម្គាល់ធាតុដែលមានឈ្មោះដូចគ្នាក្នុងឃ្លាំងសម្ងាត់ដែលបានអ៊ិនគ្រីប",
+            "warnSameNameEncryptedDesc": "បិទតាមលំនាំដើម។ នៅក្នុងស្រទាប់ AeroCrypt ឬ rclone-crypt ដែលកំពុងសកម្ម សូមសម្គាល់ឯកសារ និងថតដែលឈ្មោះរបស់វាក៏បង្ហាញនៅផ្លូវផ្សេងទៀតដែលអ្នកចូលមើលផងដែរ។ ឈ្មោះត្រូវបានអ៊ិនគ្រីបតាមរបៀបកំណត់ជាក់លាក់ ដូច្នេះឈ្មោះដូចគ្នាបេះបិទអាចមើលឃើញថាដូចគ្នាចំពោះអ្នកសង្កេតការណ៍នៃឃ្លាំងផ្ទុកដែលបានអ៊ិនគ្រីប (ការជួញដូរដូចគ្នានឹង rclone-crypt និង Cryptomator)។"
         },
         "devtools": {
             "title": "AeroTools",

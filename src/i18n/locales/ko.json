@@ -336,7 +336,9 @@
             "notEncrypted": "암호화 안 됨",
             "listingDirectory": "디렉터리 목록을 불러오는 중...",
             "listingPath": "{path} 목록을 불러오는 중...",
-            "pleaseWait": "잠시만 기다려 주세요..."
+            "pleaseWait": "잠시만 기다려 주세요...",
+            "sameNameLeakChip": "같은 이름",
+            "sameNameLeakTooltip": "이 이름은 이 암호화된 볼트의 다른 경로에도 나타납니다. 이름은 결정론적으로 암호화되므로, 암호화된 저장소의 관찰자는 두 항목이 같은 이름을 공유한다는 것을 알 수 있습니다."
         },
         "contextMenu": {
             "askAeroAgent": "AeroAgent에게 질문...",
@@ -1067,7 +1069,10 @@
             "fileAssociationLinuxApplied": "xdg-mime을 통해 적용됨.",
             "fileAssociationApplyFailed": "연결 적용 실패",
             "fileAssociationStatusFailed": "연결 상태 읽기 실패",
-            "fileAssociationCurrentHandler": "현재 처리기"
+            "fileAssociationCurrentHandler": "현재 처리기",
+            "encryptionPrivacyTitle": "암호화 개인정보 보호",
+            "warnSameNameEncrypted": "암호화된 볼트에서 같은 이름의 항목 표시",
+            "warnSameNameEncryptedDesc": "기본적으로 꺼짐. 활성화된 AeroCrypt 또는 rclone-crypt 오버레이 내에서 방문한 다른 경로에도 이름이 나타나는 파일과 폴더를 표시합니다. 이름은 결정론적으로 암호화되므로 동일한 이름은 암호화된 저장소의 관찰자에게 동일하게 보입니다(rclone-crypt 및 Cryptomator와 동일한 절충안)."
         },
         "devtools": {
             "title": "AeroTools",

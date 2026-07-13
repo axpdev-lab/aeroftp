@@ -336,7 +336,9 @@
             "notEncrypted": "Nešifrováno",
             "listingDirectory": "Načítání adresáře...",
             "listingPath": "Načítání {path}...",
-            "pleaseWait": "Čekejte prosím..."
+            "pleaseWait": "Čekejte prosím...",
+            "sameNameLeakChip": "stejný název",
+            "sameNameLeakTooltip": "Tento název se objevuje i na jiné cestě v tomto šifrovaném trezoru. Protože se názvy šifrují deterministicky, pozorovatel šifrovaného úložiště pozná, že oba sdílejí stejný název."
         },
         "contextMenu": {
             "askAeroAgent": "Zeptat se AeroAgent...",
@@ -1067,7 +1069,10 @@
             "fileAssociationLinuxApplied": "Aplikováno přes xdg-mime.",
             "fileAssociationApplyFailed": "Nepodařilo se použít asociaci",
             "fileAssociationStatusFailed": "Nepodařilo se načíst stav asociace",
-            "fileAssociationCurrentHandler": "Aktuální obsluha"
+            "fileAssociationCurrentHandler": "Aktuální obsluha",
+            "encryptionPrivacyTitle": "Soukromí šifrování",
+            "warnSameNameEncrypted": "Označit položky se stejným názvem v šifrovaných trezorech",
+            "warnSameNameEncryptedDesc": "Ve výchozím nastavení vypnuto. Uvnitř aktivní vrstvy AeroCrypt nebo rclone-crypt označuj soubory a složky, jejichž název se objevuje i na jiné cestě, kterou navštívíte. Názvy se šifrují deterministicky, takže shodné názvy jsou pro pozorovatele šifrovaného úložiště viditelné jako shodné (stejný kompromis jako u rclone-crypt a Cryptomator)."
         },
         "devtools": {
             "title": "AeroTools",

@@ -54,6 +54,11 @@ interface LargeIconsGridProps {
   archiveLockOf?: (file: LocalFile) => ArchiveLock;
   lockedLabel?: string;
   unlockedLabel?: string;
+  // Opt-in same-name privacy hint (remote crypt panel): true when this entry's
+  // plaintext name recurs at another path in the active encrypted vault.
+  sameNameLeakOf?: (file: LocalFile) => boolean;
+  sameNameLeakLabel?: string;
+  sameNameLeakTooltip?: string;
   // AeroCrypt overlay decryption animation (remote panel only): scramble names
   // while unlocking, then reveal. `revealing` keeps the cards animated through
   // the brief reveal window after `decrypting` flips false.
@@ -89,6 +94,9 @@ interface LargeIconCardProps {
   lock?: ArchiveLock;
   lockedLabel?: string;
   unlockedLabel?: string;
+  sameNameLeak?: boolean;
+  sameNameLeakLabel?: string;
+  sameNameLeakTooltip?: string;
 }
 
 const LargeIconCard = React.memo<LargeIconCardProps>(({
@@ -117,6 +125,9 @@ const LargeIconCard = React.memo<LargeIconCardProps>(({
   lock = null,
   lockedLabel,
   unlockedLabel,
+  sameNameLeak = false,
+  sameNameLeakLabel,
+  sameNameLeakTooltip,
 }) => {
   const renameRef = useRef<HTMLInputElement>(null);
   const isRenaming = inlineRename?.path === file.path;
@@ -262,6 +273,15 @@ const LargeIconCard = React.memo<LargeIconCardProps>(({
           {formatBytes(file.size)}
         </span>
       )}
+
+      {sameNameLeak && (
+        <span
+          className="inline-flex items-center px-1.5 py-0 mt-0.5 text-[9px] rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 leading-tight"
+          title={sameNameLeakTooltip}
+        >
+          {sameNameLeakLabel}
+        </span>
+      )}
     </div>
   );
 });
@@ -298,6 +318,9 @@ export function LargeIconsGrid({
   archiveLockOf,
   lockedLabel,
   unlockedLabel,
+  sameNameLeakOf,
+  sameNameLeakLabel,
+  sameNameLeakTooltip,
 }: LargeIconsGridProps) {
   const handleNavigateUp = useCallback(() => {
     if (!isAtRoot) onNavigateUp();
@@ -350,13 +373,17 @@ export function LargeIconsGrid({
         lock={archiveLockOf ? archiveLockOf(file) : null}
         lockedLabel={lockedLabel}
         unlockedLabel={unlockedLabel}
+        sameNameLeak={sameNameLeakOf ? sameNameLeakOf(file) : false}
+        sameNameLeakLabel={sameNameLeakLabel}
+        sameNameLeakTooltip={sameNameLeakTooltip}
       />
     );
   }, [files, selectedFiles, dragOverTarget, currentPath, getFileIcon, onFileClick,
     onFileDoubleClick, onContextMenu, onDragStart, onDragOver, onDrop, onDragLeave,
     onDragEnd, inlineRename, onInlineRenameChange, onInlineRenameCommit,
     onInlineRenameCancel, formatBytes, showFileExtensions, decrypting, revealing,
-    archiveLockOf, lockedLabel, unlockedLabel]);
+    archiveLockOf, lockedLabel, unlockedLabel,
+    sameNameLeakOf, sameNameLeakLabel, sameNameLeakTooltip]);
 
   // Non-virtualized path for small directories (<=100 items)
   if (!shouldVirtualize) {

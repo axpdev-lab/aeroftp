@@ -336,7 +336,9 @@
             "notEncrypted": "Nicht verschlüsselt",
             "listingDirectory": "Verzeichnis wird aufgelistet...",
             "listingPath": "{path} wird aufgelistet...",
-            "pleaseWait": "Bitte warten..."
+            "pleaseWait": "Bitte warten...",
+            "sameNameLeakChip": "gleicher Name",
+            "sameNameLeakTooltip": "Dieser Name erscheint auch an einem anderen Pfad in diesem verschlüsselten Tresor. Da Namen deterministisch verschlüsselt werden, kann ein Beobachter des verschlüsselten Speichers erkennen, dass beide denselben Namen teilen."
         },
         "contextMenu": {
             "askAeroAgent": "AeroAgent fragen...",
@@ -1067,7 +1069,10 @@
             "fileAssociationLinuxApplied": "Über xdg-mime angewendet.",
             "fileAssociationApplyFailed": "Zuordnung konnte nicht angewendet werden",
             "fileAssociationStatusFailed": "Status der Zuordnung konnte nicht gelesen werden",
-            "fileAssociationCurrentHandler": "Aktueller Handler"
+            "fileAssociationCurrentHandler": "Aktueller Handler",
+            "encryptionPrivacyTitle": "Verschlüsselungsdatenschutz",
+            "warnSameNameEncrypted": "Einträge mit gleichem Namen in verschlüsselten Tresoren markieren",
+            "warnSameNameEncryptedDesc": "Standardmäßig aus. Innerhalb eines aktiven AeroCrypt- oder rclone-crypt-Overlays werden Dateien und Ordner markiert, deren Name auch an einem anderen von Ihnen besuchten Pfad erscheint. Namen werden deterministisch verschlüsselt, sodass identische Namen für einen Beobachter des verschlüsselten Speichers als identisch sichtbar sind (derselbe Kompromiss wie bei rclone-crypt und Cryptomator)."
         },
         "devtools": {
             "title": "AeroTools",

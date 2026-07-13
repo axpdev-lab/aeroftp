@@ -718,7 +718,9 @@
             "notEncrypted": "Non cifrato",
             "listingDirectory": "Lettura della directory...",
             "listingPath": "Lettura di {path}...",
-            "pleaseWait": "Attendere..."
+            "pleaseWait": "Attendere...",
+            "sameNameLeakChip": "stesso nome",
+            "sameNameLeakTooltip": "Questo nome compare anche in un altro percorso in questa cassaforte cifrata. Poiché i nomi sono cifrati in modo deterministico, un osservatore dell'archivio cifrato può capire che i due condividono un nome."
         },
         "commandPalette": {
             "category": {
@@ -1476,7 +1478,10 @@
             "fileAssociationLinuxApplied": "Applicato tramite xdg-mime.",
             "fileAssociationApplyFailed": "Impossibile applicare l'associazione",
             "fileAssociationStatusFailed": "Impossibile leggere lo stato dell'associazione",
-            "fileAssociationCurrentHandler": "Gestore attuale"
+            "fileAssociationCurrentHandler": "Gestore attuale",
+            "encryptionPrivacyTitle": "Privacy della cifratura",
+            "warnSameNameEncrypted": "Segnala le voci con lo stesso nome nelle casseforti cifrate",
+            "warnSameNameEncryptedDesc": "Disattivato per impostazione predefinita. All'interno di una sovrapposizione AeroCrypt o rclone-crypt attiva, contrassegna i file e le cartelle il cui nome compare anche in un altro percorso che visiti. I nomi sono cifrati in modo deterministico, quindi i nomi identici risultano identici a un osservatore dell'archivio cifrato (lo stesso compromesso di rclone-crypt e Cryptomator)."
         },
         "appearance": {
             "patternCross": "Croce",

@@ -336,7 +336,9 @@
             "notEncrypted": "Non chiffré",
             "listingDirectory": "Listage du répertoire...",
             "listingPath": "Listage de {path}...",
-            "pleaseWait": "Veuillez patienter..."
+            "pleaseWait": "Veuillez patienter...",
+            "sameNameLeakChip": "même nom",
+            "sameNameLeakTooltip": "Ce nom apparaît également sur un autre chemin dans ce coffre chiffré. Comme les noms sont chiffrés de manière déterministe, un observateur du stockage chiffré peut constater que les deux partagent un nom."
         },
         "contextMenu": {
             "askAeroAgent": "Demander à AeroAgent...",
@@ -1067,7 +1069,10 @@
             "fileAssociationLinuxApplied": "Appliqué via xdg-mime.",
             "fileAssociationApplyFailed": "Échec de l'application de l'association",
             "fileAssociationStatusFailed": "Échec de la lecture du statut de l'association",
-            "fileAssociationCurrentHandler": "Gestionnaire actuel"
+            "fileAssociationCurrentHandler": "Gestionnaire actuel",
+            "encryptionPrivacyTitle": "Confidentialité du chiffrement",
+            "warnSameNameEncrypted": "Signaler les entrées de même nom dans les coffres chiffrés",
+            "warnSameNameEncryptedDesc": "Désactivé par défaut. Dans une superposition AeroCrypt ou rclone-crypt active, marquez les fichiers et dossiers dont le nom apparaît également sur un autre chemin que vous visitez. Les noms sont chiffrés de manière déterministe, de sorte que les noms identiques sont visibles comme identiques pour un observateur du stockage chiffré (le même compromis que rclone-crypt et Cryptomator)."
         },
         "devtools": {
             "title": "AeroTools",

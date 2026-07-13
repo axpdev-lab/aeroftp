@@ -336,7 +336,9 @@
             "notEncrypted": "एन्क्रिप्टेड नहीं",
             "listingDirectory": "निर्देशिका सूचीबद्ध की जा रही है...",
             "listingPath": "{path} सूचीबद्ध किया जा रहा है...",
-            "pleaseWait": "कृपया प्रतीक्षा करें..."
+            "pleaseWait": "कृपया प्रतीक्षा करें...",
+            "sameNameLeakChip": "समान नाम",
+            "sameNameLeakTooltip": "यह नाम इस एन्क्रिप्टेड वॉल्ट में किसी अन्य पथ पर भी दिखाई देता है। चूँकि नाम नियतात्मक रूप से एन्क्रिप्ट किए जाते हैं, एन्क्रिप्टेड स्टोर का एक पर्यवेक्षक बता सकता है कि दोनों एक नाम साझा करते हैं।"
         },
         "contextMenu": {
             "askAeroAgent": "AeroAgent से पूछें...",
@@ -1067,7 +1069,10 @@
             "fileAssociationLinuxApplied": "xdg-mime के माध्यम से लागू किया गया।",
             "fileAssociationApplyFailed": "संबद्धता लागू करने में विफल",
             "fileAssociationStatusFailed": "संबद्धता स्थिति पढ़ने में विफल",
-            "fileAssociationCurrentHandler": "वर्तमान हैंडलर"
+            "fileAssociationCurrentHandler": "वर्तमान हैंडलर",
+            "encryptionPrivacyTitle": "एन्क्रिप्शन गोपनीयता",
+            "warnSameNameEncrypted": "एन्क्रिप्टेड वॉल्ट में समान नाम वाली प्रविष्टियाँ चिह्नित करें",
+            "warnSameNameEncryptedDesc": "डिफ़ॉल्ट रूप से बंद। किसी सक्रिय AeroCrypt या rclone-crypt ओवरले के भीतर, उन फ़ाइलों और फ़ोल्डरों को चिह्नित करें जिनका नाम आपके द्वारा देखे गए किसी अन्य पथ पर भी दिखाई देता है। नाम नियतात्मक रूप से एन्क्रिप्ट किए जाते हैं, इसलिए एन्क्रिप्टेड स्टोर के पर्यवेक्षक को समान नाम समान रूप से दिखाई देते हैं (rclone-crypt और Cryptomator जैसा ही समझौता)।"
         },
         "devtools": {
             "title": "AeroTools",

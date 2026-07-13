@@ -336,7 +336,9 @@
             "notEncrypted": "Sin cifrar",
             "listingDirectory": "Listando directorio...",
             "listingPath": "Listando {path}...",
-            "pleaseWait": "Espere..."
+            "pleaseWait": "Espere...",
+            "sameNameLeakChip": "mismo nombre",
+            "sameNameLeakTooltip": "Este nombre también aparece en otra ruta de esta caja fuerte cifrada. Como los nombres se cifran de forma determinista, un observador del almacén cifrado puede saber que ambos comparten un nombre."
         },
         "contextMenu": {
             "askAeroAgent": "Preguntar a AeroAgent...",
@@ -1067,7 +1069,10 @@
             "fileAssociationLinuxApplied": "Aplicado mediante xdg-mime.",
             "fileAssociationApplyFailed": "Error al aplicar la asociación",
             "fileAssociationStatusFailed": "Error al leer el estado de la asociación",
-            "fileAssociationCurrentHandler": "Gestor actual"
+            "fileAssociationCurrentHandler": "Gestor actual",
+            "encryptionPrivacyTitle": "Privacidad del cifrado",
+            "warnSameNameEncrypted": "Marcar entradas con el mismo nombre en cajas fuertes cifradas",
+            "warnSameNameEncryptedDesc": "Desactivado de forma predeterminada. Dentro de una superposición AeroCrypt o rclone-crypt activa, marca los archivos y carpetas cuyo nombre también aparece en otra ruta que visitas. Los nombres se cifran de forma determinista, por lo que los nombres idénticos son visibles como idénticos para un observador del almacén cifrado (el mismo compromiso que rclone-crypt y Cryptomator)."
         },
         "devtools": {
             "title": "AeroTools",

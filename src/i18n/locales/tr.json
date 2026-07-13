@@ -336,7 +336,9 @@
             "notEncrypted": "Şifresiz",
             "listingDirectory": "Dizin listeleniyor...",
             "listingPath": "{path} listeleniyor...",
-            "pleaseWait": "Lütfen bekleyin..."
+            "pleaseWait": "Lütfen bekleyin...",
+            "sameNameLeakChip": "aynı ad",
+            "sameNameLeakTooltip": "Bu ad, bu şifreli kasadaki başka bir yolda da görünüyor. Adlar deterministik olarak şifrelendiğinden, şifreli deponun bir gözlemcisi ikisinin aynı adı paylaştığını anlayabilir."
         },
         "contextMenu": {
             "askAeroAgent": "AeroAgent'a sor...",
@@ -1067,7 +1069,10 @@
             "fileAssociationLinuxApplied": "xdg-mime aracılığıyla uygulandı.",
             "fileAssociationApplyFailed": "İlişkilendirme uygulanamadı",
             "fileAssociationStatusFailed": "İlişkilendirme durumu okunamadı",
-            "fileAssociationCurrentHandler": "Geçerli işleyici"
+            "fileAssociationCurrentHandler": "Geçerli işleyici",
+            "encryptionPrivacyTitle": "Şifreleme gizliliği",
+            "warnSameNameEncrypted": "Şifreli kasalarda aynı adlı girişleri işaretle",
+            "warnSameNameEncryptedDesc": "Varsayılan olarak kapalı. Etkin bir AeroCrypt veya rclone-crypt katmanı içinde, adı ziyaret ettiğiniz başka bir yolda da görünen dosya ve klasörleri işaretleyin. Adlar deterministik olarak şifrelenir, bu nedenle özdeş adlar şifreli deponun bir gözlemcisine özdeş olarak görünür (rclone-crypt ve Cryptomator ile aynı ödünleşim)."
         },
         "devtools": {
             "title": "AeroTools",

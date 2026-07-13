@@ -336,7 +336,9 @@
             "notEncrypted": "এনক্রিপ্ট করা নয়",
             "listingDirectory": "ডিরেক্টরি তালিকাভুক্ত করা হচ্ছে...",
             "listingPath": "{path} তালিকাভুক্ত করা হচ্ছে...",
-            "pleaseWait": "অনুগ্রহ করে অপেক্ষা করুন..."
+            "pleaseWait": "অনুগ্রহ করে অপেক্ষা করুন...",
+            "sameNameLeakChip": "একই নাম",
+            "sameNameLeakTooltip": "এই নামটি এই এনক্রিপ্ট করা ভল্টের অন্য একটি পথেও দেখা যায়। যেহেতু নামগুলি নির্ধারণমূলকভাবে এনক্রিপ্ট করা হয়, এনক্রিপ্ট করা স্টোরের একজন পর্যবেক্ষক বুঝতে পারেন যে দুটি একই নাম ভাগ করে।"
         },
         "contextMenu": {
             "askAeroAgent": "AeroAgent-কে জিজ্ঞাসা করুন...",
@@ -1067,7 +1069,10 @@
             "fileAssociationLinuxApplied": "xdg-mime এর মাধ্যমে প্রয়োগ করা হয়েছে।",
             "fileAssociationApplyFailed": "অ্যাসোসিয়েশন প্রয়োগ করতে ব্যর্থ",
             "fileAssociationStatusFailed": "অ্যাসোসিয়েশন স্ট্যাটাস পড়তে ব্যর্থ",
-            "fileAssociationCurrentHandler": "বর্তমান হ্যান্ডলার"
+            "fileAssociationCurrentHandler": "বর্তমান হ্যান্ডলার",
+            "encryptionPrivacyTitle": "এনক্রিপশন গোপনীয়তা",
+            "warnSameNameEncrypted": "এনক্রিপ্ট করা ভল্টে একই নামের এন্ট্রি চিহ্নিত করুন",
+            "warnSameNameEncryptedDesc": "ডিফল্টভাবে বন্ধ। সক্রিয় AeroCrypt বা rclone-crypt ওভারলের ভিতরে, এমন ফাইল ও ফোল্ডার চিহ্নিত করুন যাদের নাম আপনি ভিজিট করা অন্য একটি পথেও দেখা যায়। নামগুলি নির্ধারণমূলকভাবে এনক্রিপ্ট করা হয়, তাই একই নাম এনক্রিপ্ট করা স্টোরের একজন পর্যবেক্ষকের কাছে অভিন্ন হিসেবে দৃশ্যমান হয় (rclone-crypt ও Cryptomator-এর মতো একই বিনিময়)।"
         },
         "devtools": {
             "title": "AeroTools",

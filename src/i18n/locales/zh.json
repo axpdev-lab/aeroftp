@@ -336,7 +336,9 @@
             "notEncrypted": "未加密",
             "listingDirectory": "正在列出目录...",
             "listingPath": "正在列出 {path}...",
-            "pleaseWait": "请稍候..."
+            "pleaseWait": "请稍候...",
+            "sameNameLeakChip": "同名",
+            "sameNameLeakTooltip": "此名称也出现在该加密保险库的另一个路径中。由于名称采用确定性加密，加密存储的观察者可以判断两者共享同一个名称。"
         },
         "contextMenu": {
             "askAeroAgent": "询问 AeroAgent...",
@@ -1067,7 +1069,10 @@
             "fileAssociationLinuxApplied": "通过 xdg-mime 应用。",
             "fileAssociationApplyFailed": "应用关联失败",
             "fileAssociationStatusFailed": "读取关联状态失败",
-            "fileAssociationCurrentHandler": "当前处理程序"
+            "fileAssociationCurrentHandler": "当前处理程序",
+            "encryptionPrivacyTitle": "加密隐私",
+            "warnSameNameEncrypted": "在加密保险库中标记同名条目",
+            "warnSameNameEncryptedDesc": "默认关闭。在活动的 AeroCrypt 或 rclone-crypt 覆盖层中，标记名称也出现在你访问的另一个路径中的文件和文件夹。名称采用确定性加密，因此相同的名称对加密存储的观察者来说显示为相同（与 rclone-crypt 和 Cryptomator 相同的权衡）。"
         },
         "devtools": {
             "title": "AeroTools",

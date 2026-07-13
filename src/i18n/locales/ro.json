@@ -336,7 +336,9 @@
             "notEncrypted": "Necriptat",
             "listingDirectory": "Se listează directorul...",
             "listingPath": "Se listează {path}...",
-            "pleaseWait": "Vă rugăm să așteptați..."
+            "pleaseWait": "Vă rugăm să așteptați...",
+            "sameNameLeakChip": "același nume",
+            "sameNameLeakTooltip": "Acest nume apare și pe altă cale în acest seif criptat. Deoarece numele sunt criptate determinist, un observator al stocării criptate poate constata că ambele au același nume."
         },
         "contextMenu": {
             "askAeroAgent": "Întreabă AeroAgent...",
@@ -1067,7 +1069,10 @@
             "fileAssociationLinuxApplied": "Aplicat prin xdg-mime.",
             "fileAssociationApplyFailed": "Eșec la aplicarea asocierii",
             "fileAssociationStatusFailed": "Eșec la citirea stării asocierii",
-            "fileAssociationCurrentHandler": "Gestionar actual"
+            "fileAssociationCurrentHandler": "Gestionar actual",
+            "encryptionPrivacyTitle": "Confidențialitatea criptării",
+            "warnSameNameEncrypted": "Semnalează intrările cu același nume din seifurile criptate",
+            "warnSameNameEncryptedDesc": "Dezactivat implicit. În interiorul unui strat AeroCrypt sau rclone-crypt activ, marchează fișierele și folderele al căror nume apare și pe altă cale pe care o vizitezi. Numele sunt criptate determinist, așa că numele identice sunt vizibile ca identice pentru un observator al stocării criptate (același compromis ca la rclone-crypt și Cryptomator)."
         },
         "devtools": {
             "title": "AeroTools",

@@ -336,7 +336,9 @@
             "notEncrypted": "Tidak disulitkan",
             "listingDirectory": "Menyenaraikan direktori...",
             "listingPath": "Menyenaraikan {path}...",
-            "pleaseWait": "Sila tunggu..."
+            "pleaseWait": "Sila tunggu...",
+            "sameNameLeakChip": "nama sama",
+            "sameNameLeakTooltip": "Nama ini juga muncul di laluan lain dalam bilik kebal tersulit ini. Oleh sebab nama disulitkan secara deterministik, pemerhati storan tersulit boleh mengetahui bahawa kedua-duanya berkongsi nama."
         },
         "contextMenu": {
             "askAeroAgent": "Tanya AeroAgent...",
@@ -1067,7 +1069,10 @@
             "fileAssociationLinuxApplied": "Digunakan melalui xdg-mime.",
             "fileAssociationApplyFailed": "Gagal menggunakan perkaitan",
             "fileAssociationStatusFailed": "Gagal membaca status perkaitan",
-            "fileAssociationCurrentHandler": "Pengendali semasa"
+            "fileAssociationCurrentHandler": "Pengendali semasa",
+            "encryptionPrivacyTitle": "Privasi penyulitan",
+            "warnSameNameEncrypted": "Tandakan entri bernama sama dalam bilik kebal tersulit",
+            "warnSameNameEncryptedDesc": "Dimatikan secara lalai. Di dalam tindanan AeroCrypt atau rclone-crypt yang aktif, tandakan fail dan folder yang namanya juga muncul di laluan lain yang anda lawati. Nama disulitkan secara deterministik, jadi nama yang serupa kelihatan serupa kepada pemerhati storan tersulit (pertukaran yang sama seperti rclone-crypt dan Cryptomator)."
         },
         "devtools": {
             "title": "AeroTools",

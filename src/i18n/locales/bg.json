@@ -336,7 +336,9 @@
             "notEncrypted": "Некриптиран",
             "listingDirectory": "Изброяване на директорията...",
             "listingPath": "Изброяване на {path}...",
-            "pleaseWait": "Моля, изчакайте..."
+            "pleaseWait": "Моля, изчакайте...",
+            "sameNameLeakChip": "същото име",
+            "sameNameLeakTooltip": "Това име се появява и на друг път в това криптирано хранилище. Тъй като имената се криптират детерминистично, наблюдател на криптираното хранилище може да разбере, че двете споделят едно име."
         },
         "contextMenu": {
             "askAeroAgent": "Питай AeroAgent...",
@@ -1067,7 +1069,10 @@
             "fileAssociationLinuxApplied": "Приложено чрез xdg-mime.",
             "fileAssociationApplyFailed": "Неуспешно прилагане на асоциацията",
             "fileAssociationStatusFailed": "Неуспешно четене на статуса на асоциацията",
-            "fileAssociationCurrentHandler": "Текущ обработчик"
+            "fileAssociationCurrentHandler": "Текущ обработчик",
+            "encryptionPrivacyTitle": "Поверителност на криптирането",
+            "warnSameNameEncrypted": "Отбелязвай записи с еднакво име в криптирани хранилища",
+            "warnSameNameEncryptedDesc": "Изключено по подразбиране. В активно наслагване AeroCrypt или rclone-crypt отбелязвай файлове и папки, чието име се появява и на друг път, който посещавате. Имената се криптират детерминистично, затова еднаквите имена изглеждат еднакви за наблюдател на криптираното хранилище (същият компромис като при rclone-crypt и Cryptomator)."
         },
         "devtools": {
             "title": "AeroTools",

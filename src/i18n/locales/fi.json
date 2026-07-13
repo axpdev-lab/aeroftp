@@ -336,7 +336,9 @@
             "notEncrypted": "Ei salattu",
             "listingDirectory": "Luetellaan hakemistoa...",
             "listingPath": "Luetellaan {path}...",
-            "pleaseWait": "Odota..."
+            "pleaseWait": "Odota...",
+            "sameNameLeakChip": "sama nimi",
+            "sameNameLeakTooltip": "Tämä nimi esiintyy myös toisessa polussa tässä salatussa holvissa. Koska nimet salataan deterministisesti, salatun tallennustilan tarkkailija voi havaita, että molemmat jakavat saman nimen."
         },
         "contextMenu": {
             "askAeroAgent": "Kysy AeroAgent-ilta...",
@@ -1067,7 +1069,10 @@
             "fileAssociationLinuxApplied": "Käytetty xdg-mime:n kautta.",
             "fileAssociationApplyFailed": "Yhdistämisen soveltaminen epäonnistui",
             "fileAssociationStatusFailed": "Yhdistämisen tilan lukeminen epäonnistui",
-            "fileAssociationCurrentHandler": "Nykyinen käsittelijä"
+            "fileAssociationCurrentHandler": "Nykyinen käsittelijä",
+            "encryptionPrivacyTitle": "Salauksen tietosuoja",
+            "warnSameNameEncrypted": "Merkitse samannimiset kohteet salatuissa holveissa",
+            "warnSameNameEncryptedDesc": "Oletuksena pois päältä. Aktiivisen AeroCrypt- tai rclone-crypt-peiton sisällä merkitse tiedostot ja kansiot, joiden nimi esiintyy myös toisessa polussa, jolla käyt. Nimet salataan deterministisesti, joten identtiset nimet näkyvät identtisinä salatun tallennustilan tarkkailijalle (sama kompromissi kuin rclone-crypt ja Cryptomator)."
         },
         "devtools": {
             "title": "AeroTools",

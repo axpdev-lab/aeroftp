@@ -336,7 +336,9 @@
             "notEncrypted": "暗号化なし",
             "listingDirectory": "ディレクトリを一覧表示しています...",
             "listingPath": "{path} を一覧表示しています...",
-            "pleaseWait": "しばらくお待ちください..."
+            "pleaseWait": "しばらくお待ちください...",
+            "sameNameLeakChip": "同名",
+            "sameNameLeakTooltip": "この名前は、この暗号化ボールト内の別のパスにも表示されています。名前は決定論的に暗号化されるため、暗号化ストアの観察者は両者が同じ名前を共有していることを判別できます。"
         },
         "contextMenu": {
             "askAeroAgent": "AeroAgentに質問...",
@@ -1067,7 +1069,10 @@
             "fileAssociationLinuxApplied": "xdg-mime を介して適用されました。",
             "fileAssociationApplyFailed": "関連付けの適用に失敗しました",
             "fileAssociationStatusFailed": "関連付けのステータスの読み取りに失敗しました",
-            "fileAssociationCurrentHandler": "現在のハンドラー"
+            "fileAssociationCurrentHandler": "現在のハンドラー",
+            "encryptionPrivacyTitle": "暗号化のプライバシー",
+            "warnSameNameEncrypted": "暗号化ボールト内の同名項目にフラグを付ける",
+            "warnSameNameEncryptedDesc": "既定ではオフ。アクティブな AeroCrypt または rclone-crypt オーバーレイ内で、あなたが訪れた別のパスにも名前が表示されるファイルやフォルダーをマークします。名前は決定論的に暗号化されるため、同一の名前は暗号化ストアの観察者には同一のものとして見えます（rclone-crypt や Cryptomator と同じトレードオフです）。"
         },
         "devtools": {
             "title": "AeroTools",

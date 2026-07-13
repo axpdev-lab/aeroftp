@@ -336,7 +336,9 @@
             "notEncrypted": "Enkriptatu gabe",
             "listingDirectory": "Direktorioa zerrendatzen...",
             "listingPath": "{path} zerrendatzen...",
-            "pleaseWait": "Itxaron mesedez..."
+            "pleaseWait": "Itxaron mesedez...",
+            "sameNameLeakChip": "izen bera",
+            "sameNameLeakTooltip": "Izen hau enkriptatutako gordailu honetako beste bide batean ere agertzen da. Izenak modu deterministikoan enkriptatzen direnez, enkriptatutako biltegiaren behatzaile batek jakin dezake biek izen bat partekatzen dutela."
         },
         "contextMenu": {
             "askAeroAgent": "Galdetu AeroAgent-i...",
@@ -1067,7 +1069,10 @@
             "fileAssociationLinuxApplied": "xdg-mime bidez aplikatua.",
             "fileAssociationApplyFailed": "Ezin izan da elkarketa aplikatu",
             "fileAssociationStatusFailed": "Ezin izan da elkarketaren egoera irakurri",
-            "fileAssociationCurrentHandler": "Uneko kudeatzailea"
+            "fileAssociationCurrentHandler": "Uneko kudeatzailea",
+            "encryptionPrivacyTitle": "Enkriptazio-pribatutasuna",
+            "warnSameNameEncrypted": "Markatu izen bereko sarrerak enkriptatutako gordailuetan",
+            "warnSameNameEncryptedDesc": "Lehenetsita itzalita. AeroCrypt edo rclone-crypt gainjartze aktibo baten barruan, markatu izena bisitatzen duzun beste bide batean ere agertzen den fitxategiak eta karpetak. Izenak modu deterministikoan enkriptatzen dira, beraz, izen berdinak berdin ikusten dira enkriptatutako biltegiaren behatzaile batentzat (rclone-crypt eta Cryptomator-en truke bera)."
         },
         "devtools": {
             "title": "AeroTools",

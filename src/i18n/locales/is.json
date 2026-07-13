@@ -336,7 +336,9 @@
             "notEncrypted": "Ekki dulkóðað",
             "listingDirectory": "Skrái möppu...",
             "listingPath": "Skrái {path}...",
-            "pleaseWait": "Vinsamlegast bíðið..."
+            "pleaseWait": "Vinsamlegast bíðið...",
+            "sameNameLeakChip": "sama nafn",
+            "sameNameLeakTooltip": "Þetta nafn birtist einnig á annarri slóð í þessum dulkóðaða hvelfingu. Þar sem nöfn eru dulkóðuð með ákveðnum hætti getur áhorfandi dulkóðaða geymslunnar séð að þau tvö deila nafni."
         },
         "contextMenu": {
             "askAeroAgent": "Spyrja AeroAgent...",
@@ -1067,7 +1069,10 @@
             "fileAssociationLinuxApplied": "Beitt í gegnum xdg-mime.",
             "fileAssociationApplyFailed": "Mistókst að beita tengslum",
             "fileAssociationStatusFailed": "Mistókst að lesa stöðu tengsla",
-            "fileAssociationCurrentHandler": "Núverandi meðhöndlun"
+            "fileAssociationCurrentHandler": "Núverandi meðhöndlun",
+            "encryptionPrivacyTitle": "Persónuvernd dulkóðunar",
+            "warnSameNameEncrypted": "Merkja færslur með sama nafni í dulkóðuðum hvelfingum",
+            "warnSameNameEncryptedDesc": "Sjálfgefið slökkt. Innan virks AeroCrypt eða rclone-crypt yfirlags skaltu merkja skrár og möppur sem bera nafn sem einnig birtist á annarri slóð sem þú heimsækir. Nöfn eru dulkóðuð með ákveðnum hætti, þannig að eins nöfn eru sýnileg sem eins fyrir áhorfanda dulkóðuðu geymslunnar (sama málamiðlun og rclone-crypt og Cryptomator)."
         },
         "devtools": {
             "title": "AeroTools",

@@ -336,7 +336,9 @@
             "notEncrypted": "Não criptografado",
             "listingDirectory": "Listando diretório...",
             "listingPath": "Listando {path}...",
-            "pleaseWait": "Aguarde..."
+            "pleaseWait": "Aguarde...",
+            "sameNameLeakChip": "mesmo nome",
+            "sameNameLeakTooltip": "Este nome também aparece noutro caminho neste cofre encriptado. Como os nomes são encriptados de forma determinista, um observador do armazenamento encriptado pode perceber que ambos partilham um nome."
         },
         "contextMenu": {
             "askAeroAgent": "Perguntar ao AeroAgent...",
@@ -1067,7 +1069,10 @@
             "fileAssociationLinuxApplied": "Aplicado via xdg-mime.",
             "fileAssociationApplyFailed": "Falha ao aplicar associação",
             "fileAssociationStatusFailed": "Falha ao ler status da associação",
-            "fileAssociationCurrentHandler": "Manipulador atual"
+            "fileAssociationCurrentHandler": "Manipulador atual",
+            "encryptionPrivacyTitle": "Privacidade da encriptação",
+            "warnSameNameEncrypted": "Sinalizar entradas com o mesmo nome em cofres encriptados",
+            "warnSameNameEncryptedDesc": "Desativado por predefinição. Dentro de uma sobreposição AeroCrypt ou rclone-crypt ativa, marque os ficheiros e pastas cujo nome também aparece noutro caminho que visita. Os nomes são encriptados de forma determinista, pelo que nomes idênticos são visíveis como idênticos para um observador do armazenamento encriptado (o mesmo compromisso que rclone-crypt e Cryptomator)."
         },
         "devtools": {
             "title": "AeroTools",

@@ -336,7 +336,9 @@
             "notEncrypted": "No xifrat",
             "listingDirectory": "S'està llistant el directori...",
             "listingPath": "S'està llistant {path}...",
-            "pleaseWait": "Espereu..."
+            "pleaseWait": "Espereu...",
+            "sameNameLeakChip": "mateix nom",
+            "sameNameLeakTooltip": "Aquest nom també apareix en una altra ruta d'aquesta bústia xifrada. Com que els noms es xifren de manera determinista, un observador del magatzem xifrat pot saber que tots dos comparteixen un nom."
         },
         "contextMenu": {
             "askAeroAgent": "Pregunta a AeroAgent...",
@@ -1067,7 +1069,10 @@
             "fileAssociationLinuxApplied": "Aplicat mitjançant xdg-mime.",
             "fileAssociationApplyFailed": "Ha fallat en aplicar l'associació",
             "fileAssociationStatusFailed": "Ha fallat en llegir l'estat de l'associació",
-            "fileAssociationCurrentHandler": "Gestor actual"
+            "fileAssociationCurrentHandler": "Gestor actual",
+            "encryptionPrivacyTitle": "Privadesa del xifratge",
+            "warnSameNameEncrypted": "Marca les entrades amb el mateix nom a les bústies xifrades",
+            "warnSameNameEncryptedDesc": "Desactivat per defecte. Dins d'una superposició AeroCrypt o rclone-crypt activa, marca els fitxers i les carpetes el nom dels quals també apareix en una altra ruta que visites. Els noms es xifren de manera determinista, de manera que els noms idèntics són visibles com a idèntics per a un observador del magatzem xifrat (el mateix compromís que rclone-crypt i Cryptomator)."
         },
         "devtools": {
             "title": "AeroTools",

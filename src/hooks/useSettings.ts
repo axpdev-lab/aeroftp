@@ -63,6 +63,14 @@ export interface AppSettings {
   showHiddenFiles: boolean;
   showToastNotifications: boolean;
   confirmBeforeDelete: boolean;
+  /**
+   * Opt-in privacy hint (off by default): inside an active AeroCrypt overlay,
+   * flag file/folder entries whose plaintext name also appears at a different
+   * path visited this session. Deterministic name encryption means identical
+   * names produce identical ciphertext, so an observer of the encrypted store
+   * can tell two items share a name. Same tradeoff as rclone-crypt / Cryptomator.
+   */
+  warnSameNameEncrypted: boolean;
   showStatusBar: boolean;
   /** Show the floating transfer progress card (AeroProgress). Default on. */
   showTransferProgress: boolean;
@@ -121,6 +129,7 @@ const DEFAULTS: AppSettings = {
   showHiddenFiles: true,
   showToastNotifications: false,
   confirmBeforeDelete: true,
+  warnSameNameEncrypted: false,
   showStatusBar: true,
   showTransferProgress: true,
   defaultLocalPath: '',
@@ -156,6 +165,7 @@ export const useSettings = () => {
   const [showHiddenFiles, setShowHiddenFiles] = useState(DEFAULTS.showHiddenFiles);
   const [showToastNotifications, setShowToastNotifications] = useState(DEFAULTS.showToastNotifications);
   const [confirmBeforeDelete, setConfirmBeforeDelete] = useState(DEFAULTS.confirmBeforeDelete);
+  const [warnSameNameEncrypted, setWarnSameNameEncrypted] = useState(DEFAULTS.warnSameNameEncrypted);
   const [showStatusBar, setShowStatusBar] = useState(DEFAULTS.showStatusBar);
   const [showTransferProgress, setShowTransferProgress] = useState(DEFAULTS.showTransferProgress);
   const [defaultLocalPath, setDefaultLocalPath] = useState(DEFAULTS.defaultLocalPath);
@@ -191,6 +201,7 @@ export const useSettings = () => {
     if (typeof parsed.showHiddenFiles === 'boolean') setShowHiddenFiles(parsed.showHiddenFiles);
     if (typeof parsed.showToastNotifications === 'boolean') setShowToastNotifications(parsed.showToastNotifications);
     if (typeof parsed.confirmBeforeDelete === 'boolean') setConfirmBeforeDelete(parsed.confirmBeforeDelete);
+    if (typeof parsed.warnSameNameEncrypted === 'boolean') setWarnSameNameEncrypted(parsed.warnSameNameEncrypted);
     if (typeof parsed.showStatusBar === 'boolean') setShowStatusBar(parsed.showStatusBar);
     if (typeof parsed.showTransferProgress === 'boolean') setShowTransferProgress(parsed.showTransferProgress);
     if (typeof parsed.defaultLocalPath === 'string') setDefaultLocalPath(parsed.defaultLocalPath);
@@ -298,6 +309,7 @@ export const useSettings = () => {
     showHiddenFiles,
     showToastNotifications,
     confirmBeforeDelete,
+    warnSameNameEncrypted,
     showStatusBar,
     showTransferProgress,
     defaultLocalPath,
@@ -333,6 +345,7 @@ export const useSettings = () => {
     setShowHiddenFiles,
     setShowToastNotifications,
     setConfirmBeforeDelete,
+    setWarnSameNameEncrypted,
     setShowStatusBar,
     setShowTransferProgress,
     setDefaultLocalPath,

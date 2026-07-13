@@ -336,7 +336,9 @@
             "notEncrypted": "Ikke kryptert",
             "listingDirectory": "Viser katalog...",
             "listingPath": "Viser {path}...",
-            "pleaseWait": "Vennligst vent..."
+            "pleaseWait": "Vennligst vent...",
+            "sameNameLeakChip": "samme navn",
+            "sameNameLeakTooltip": "Dette navnet vises også på en annen sti i dette krypterte hvelvet. Fordi navn krypteres deterministisk, kan en observatør av det krypterte lageret se at de to deler et navn."
         },
         "contextMenu": {
             "askAeroAgent": "Spør AeroAgent...",
@@ -1067,7 +1069,10 @@
             "fileAssociationLinuxApplied": "Brukt via xdg-mime.",
             "fileAssociationApplyFailed": "Kunne ikke bruke tilknytning",
             "fileAssociationStatusFailed": "Kunne ikke lese tilknytningsstatus",
-            "fileAssociationCurrentHandler": "Gjeldende behandler"
+            "fileAssociationCurrentHandler": "Gjeldende behandler",
+            "encryptionPrivacyTitle": "Krypteringspersonvern",
+            "warnSameNameEncrypted": "Merk oppføringer med samme navn i krypterte hvelv",
+            "warnSameNameEncryptedDesc": "Av som standard. Inne i et aktivt AeroCrypt- eller rclone-crypt-overlegg merkes filer og mapper hvis navn også vises på en annen sti du besøker. Navn krypteres deterministisk, så identiske navn er synlige som identiske for en observatør av det krypterte lageret (den samme avveiningen som rclone-crypt og Cryptomator)."
         },
         "devtools": {
             "title": "AeroTools",

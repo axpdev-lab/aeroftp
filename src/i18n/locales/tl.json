@@ -336,7 +336,9 @@
             "notEncrypted": "Hindi naka-encrypt",
             "listingDirectory": "Nililista ang direktoryo...",
             "listingPath": "Nililista ang {path}...",
-            "pleaseWait": "Mangyaring maghintay..."
+            "pleaseWait": "Mangyaring maghintay...",
+            "sameNameLeakChip": "parehong pangalan",
+            "sameNameLeakTooltip": "Lumalabas din ang pangalang ito sa ibang landas sa naka-encrypt na vault na ito. Dahil deterministikong naka-encrypt ang mga pangalan, malalaman ng isang tagamasid ng naka-encrypt na imbakan na parehong may isang pangalan ang dalawa."
         },
         "contextMenu": {
             "askAeroAgent": "Itanong sa AeroAgent...",
@@ -1067,7 +1069,10 @@
             "fileAssociationLinuxApplied": "Inilapat sa pamamagitan ng xdg-mime.",
             "fileAssociationApplyFailed": "Nabigong ilapat ang pag-uugnay",
             "fileAssociationStatusFailed": "Nabigong basahin ang katayuan ng pag-uugnay",
-            "fileAssociationCurrentHandler": "Kasalukuyang handler"
+            "fileAssociationCurrentHandler": "Kasalukuyang handler",
+            "encryptionPrivacyTitle": "Privacy ng pag-encrypt",
+            "warnSameNameEncrypted": "Markahan ang mga entry na parehong pangalan sa mga naka-encrypt na vault",
+            "warnSameNameEncryptedDesc": "Naka-off bilang default. Sa loob ng aktibong AeroCrypt o rclone-crypt overlay, markahan ang mga file at folder na ang pangalan ay lumalabas din sa ibang landas na binibisita mo. Deterministikong naka-encrypt ang mga pangalan, kaya ang magkaparehong pangalan ay nakikitang magkapareho ng isang tagamasid ng naka-encrypt na imbakan (ang parehong trade-off gaya ng rclone-crypt at Cryptomator)."
         },
         "devtools": {
             "title": "AeroTools",

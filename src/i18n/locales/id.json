@@ -336,7 +336,9 @@
             "notEncrypted": "Tidak terenkripsi",
             "listingDirectory": "Menampilkan daftar direktori...",
             "listingPath": "Menampilkan daftar {path}...",
-            "pleaseWait": "Harap tunggu..."
+            "pleaseWait": "Harap tunggu...",
+            "sameNameLeakChip": "nama sama",
+            "sameNameLeakTooltip": "Nama ini juga muncul di jalur lain dalam brankas terenkripsi ini. Karena nama dienkripsi secara deterministik, pengamat penyimpanan terenkripsi dapat mengetahui bahwa keduanya berbagi nama."
         },
         "contextMenu": {
             "askAeroAgent": "Tanya AeroAgent...",
@@ -1067,7 +1069,10 @@
             "fileAssociationLinuxApplied": "Diterapkan melalui xdg-mime.",
             "fileAssociationApplyFailed": "Gagal menerapkan asosiasi",
             "fileAssociationStatusFailed": "Gagal membaca status asosiasi",
-            "fileAssociationCurrentHandler": "Penangan saat ini"
+            "fileAssociationCurrentHandler": "Penangan saat ini",
+            "encryptionPrivacyTitle": "Privasi enkripsi",
+            "warnSameNameEncrypted": "Tandai entri bernama sama di brankas terenkripsi",
+            "warnSameNameEncryptedDesc": "Nonaktif secara default. Di dalam lapisan AeroCrypt atau rclone-crypt yang aktif, tandai berkas dan folder yang namanya juga muncul di jalur lain yang Anda kunjungi. Nama dienkripsi secara deterministik, sehingga nama yang identik terlihat identik bagi pengamat penyimpanan terenkripsi (kompromi yang sama seperti rclone-crypt dan Cryptomator)."
         },
         "devtools": {
             "title": "AeroTools",

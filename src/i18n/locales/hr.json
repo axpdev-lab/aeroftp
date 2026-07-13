@@ -336,7 +336,9 @@
             "notEncrypted": "Nije šifrirano",
             "listingDirectory": "Popisivanje direktorija...",
             "listingPath": "Popisivanje {path}...",
-            "pleaseWait": "Pričekajte..."
+            "pleaseWait": "Pričekajte...",
+            "sameNameLeakChip": "isti naziv",
+            "sameNameLeakTooltip": "Ovaj se naziv pojavljuje i na drugoj putanji u ovom šifriranom trezoru. Budući da se nazivi šifriraju deterministički, promatrač šifrirane pohrane može utvrditi da oba dijele isti naziv."
         },
         "contextMenu": {
             "askAeroAgent": "Pitaj AeroAgent...",
@@ -1067,7 +1069,10 @@
             "fileAssociationLinuxApplied": "Primijenjeno putem xdg-mime.",
             "fileAssociationApplyFailed": "Primjena povezivanja nije uspjela",
             "fileAssociationStatusFailed": "Čitanje statusa povezivanja nije uspjelo",
-            "fileAssociationCurrentHandler": "Trenutni rukovatelj"
+            "fileAssociationCurrentHandler": "Trenutni rukovatelj",
+            "encryptionPrivacyTitle": "Privatnost šifriranja",
+            "warnSameNameEncrypted": "Označi stavke istog naziva u šifriranim trezorima",
+            "warnSameNameEncryptedDesc": "Prema zadanim postavkama isključeno. Unutar aktivnog AeroCrypt ili rclone-crypt sloja označi datoteke i mape čiji se naziv pojavljuje i na drugoj putanji koju posjetite. Nazivi se šifriraju deterministički, pa su identični nazivi vidljivi kao identični promatraču šifrirane pohrane (isti kompromis kao kod rclone-crypt i Cryptomator)."
         },
         "devtools": {
             "title": "AeroTools",

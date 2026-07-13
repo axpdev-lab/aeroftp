@@ -336,7 +336,9 @@
             "notEncrypted": "Chưa mã hóa",
             "listingDirectory": "Đang liệt kê thư mục...",
             "listingPath": "Đang liệt kê {path}...",
-            "pleaseWait": "Vui lòng đợi..."
+            "pleaseWait": "Vui lòng đợi...",
+            "sameNameLeakChip": "trùng tên",
+            "sameNameLeakTooltip": "Tên này cũng xuất hiện ở một đường dẫn khác trong kho mã hóa này. Vì tên được mã hóa theo cách xác định, người quan sát kho lưu trữ đã mã hóa có thể nhận ra rằng cả hai cùng chia sẻ một tên."
         },
         "contextMenu": {
             "askAeroAgent": "Hỏi AeroAgent...",
@@ -1067,7 +1069,10 @@
             "fileAssociationLinuxApplied": "Áp dụng qua xdg-mime.",
             "fileAssociationApplyFailed": "Không áp dụng được liên kết",
             "fileAssociationStatusFailed": "Không đọc được trạng thái liên kết",
-            "fileAssociationCurrentHandler": "Trình xử lý hiện tại"
+            "fileAssociationCurrentHandler": "Trình xử lý hiện tại",
+            "encryptionPrivacyTitle": "Quyền riêng tư mã hóa",
+            "warnSameNameEncrypted": "Đánh dấu các mục trùng tên trong kho mã hóa",
+            "warnSameNameEncryptedDesc": "Tắt theo mặc định. Bên trong lớp phủ AeroCrypt hoặc rclone-crypt đang hoạt động, hãy đánh dấu các tệp và thư mục có tên cũng xuất hiện ở một đường dẫn khác mà bạn truy cập. Tên được mã hóa theo cách xác định, nên các tên giống hệt nhau hiển thị giống hệt nhau đối với người quan sát kho lưu trữ đã mã hóa (cùng sự đánh đổi như rclone-crypt và Cryptomator)."
         },
         "devtools": {
             "title": "AeroTools",

@@ -336,7 +336,9 @@
             "notEncrypted": "Nincs titkosítva",
             "listingDirectory": "Könyvtár listázása...",
             "listingPath": "{path} listázása...",
-            "pleaseWait": "Kérjük, várjon..."
+            "pleaseWait": "Kérjük, várjon...",
+            "sameNameLeakChip": "azonos név",
+            "sameNameLeakTooltip": "Ez a név egy másik útvonalon is megjelenik ebben a titkosított széfben. Mivel a nevek determinisztikusan vannak titkosítva, a titkosított tároló megfigyelője megállapíthatja, hogy a kettő azonos nevet oszt meg."
         },
         "contextMenu": {
             "askAeroAgent": "Kérdezd meg AeroAgent...",
@@ -1067,7 +1069,10 @@
             "fileAssociationLinuxApplied": "Alkalmazva xdg-mime-en keresztül.",
             "fileAssociationApplyFailed": "Nem sikerült alkalmazni a társítást",
             "fileAssociationStatusFailed": "Nem sikerült olvasni a társítás állapotát",
-            "fileAssociationCurrentHandler": "Jelenlegi kezelő"
+            "fileAssociationCurrentHandler": "Jelenlegi kezelő",
+            "encryptionPrivacyTitle": "Titkosítási adatvédelem",
+            "warnSameNameEncrypted": "Azonos nevű bejegyzések megjelölése titkosított széfekben",
+            "warnSameNameEncryptedDesc": "Alapértelmezetten kikapcsolva. Aktív AeroCrypt vagy rclone-crypt átfedésen belül jelölje meg azokat a fájlokat és mappákat, amelyek neve egy másik meglátogatott útvonalon is megjelenik. A nevek determinisztikusan vannak titkosítva, így az azonos nevek azonosként láthatók a titkosított tároló megfigyelője számára (ugyanaz a kompromisszum, mint a rclone-crypt és a Cryptomator esetében)."
         },
         "devtools": {
             "title": "AeroTools",

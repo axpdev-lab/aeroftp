@@ -336,7 +336,9 @@
             "notEncrypted": "Krüpteerimata",
             "listingDirectory": "Kataloogi loendamine...",
             "listingPath": "{path} loendamine...",
-            "pleaseWait": "Palun oodake..."
+            "pleaseWait": "Palun oodake...",
+            "sameNameLeakChip": "sama nimi",
+            "sameNameLeakTooltip": "See nimi esineb ka teisel teel selles krüpteeritud hoidlas. Kuna nimed krüpteeritakse deterministlikult, saab krüpteeritud salvestusruumi vaatleja aru, et kaks jagavad sama nime."
         },
         "contextMenu": {
             "askAeroAgent": "Küsi AeroAgent-ilt...",
@@ -1067,7 +1069,10 @@
             "fileAssociationLinuxApplied": "Rakendatud xdg-mime kaudu.",
             "fileAssociationApplyFailed": "Seose rakendamine ebaõnnestus",
             "fileAssociationStatusFailed": "Seose oleku lugemine ebaõnnestus",
-            "fileAssociationCurrentHandler": "Praegune käitleja"
+            "fileAssociationCurrentHandler": "Praegune käitleja",
+            "encryptionPrivacyTitle": "Krüpteerimise privaatsus",
+            "warnSameNameEncrypted": "Märgi sama nimega kirjed krüpteeritud hoidlates",
+            "warnSameNameEncryptedDesc": "Vaikimisi väljas. Aktiivse AeroCrypt või rclone-crypt kihi sees märgi failid ja kaustad, mille nimi esineb ka teisel teel, mida külastad. Nimed krüpteeritakse deterministlikult, seega on identsed nimed krüpteeritud salvestusruumi vaatlejale nähtavad identsetena (sama kompromiss nagu rclone-crypt ja Cryptomator puhul)."
         },
         "devtools": {
             "title": "AeroTools",

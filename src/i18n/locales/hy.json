@@ -336,7 +336,9 @@
             "notEncrypted": "Չգաղտնագրված",
             "listingDirectory": "Թղթապանակի ցուցակագրում...",
             "listingPath": "{path}-ի ցուցակագրում...",
-            "pleaseWait": "Խնդրում ենք սպասել..."
+            "pleaseWait": "Խնդրում ենք սպասել...",
+            "sameNameLeakChip": "նույն անունը",
+            "sameNameLeakTooltip": "Այս անունը հայտնվում է նաև այս գաղտնագրված պահոցի մեկ այլ ուղու վրա։ Քանի որ անունները գաղտնագրվում են դետերմինիստական կերպով, գաղտնագրված պահեստի դիտորդը կարող է հասկանալ, որ երկուսն ունեն նույն անունը։"
         },
         "contextMenu": {
             "askAeroAgent": "Հարցնել AeroAgent...",
@@ -1067,7 +1069,10 @@
             "fileAssociationLinuxApplied": "Կիրառվել է xdg-mime-ի միջոցով։",
             "fileAssociationApplyFailed": "Չհաջողվեց կիրառել ասոցիացիան",
             "fileAssociationStatusFailed": "Չհաջողվեց կարդալ ասոցիացիայի կարգավիճակը",
-            "fileAssociationCurrentHandler": "Ընթացիկ կարգավորիչ"
+            "fileAssociationCurrentHandler": "Ընթացիկ կարգավորիչ",
+            "encryptionPrivacyTitle": "Գաղտնագրման գաղտնիություն",
+            "warnSameNameEncrypted": "Նշել նույն անունով գրառումները գաղտնագրված պահոցներում",
+            "warnSameNameEncryptedDesc": "Լռելյայն անջատված է։ Ակտիվ AeroCrypt կամ rclone-crypt շերտի ներսում նշեք ֆայլերն ու թղթապանակները, որոնց անունը հայտնվում է նաև ձեր այցելած մեկ այլ ուղու վրա։ Անունները գաղտնագրվում են դետերմինիստական կերպով, ուստի նույնական անունները գաղտնագրված պահեստի դիտորդին տեսանելի են որպես նույնական (նույն փոխզիջումը, ինչ rclone-crypt-ի և Cryptomator-ի դեպքում)։"
         },
         "devtools": {
             "title": "AeroTools",
