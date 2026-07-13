@@ -14,8 +14,6 @@
 //! timestamp primarily and avoids churn from "plain size != wire compressed size".
 //! Content round-trips are authoritative.
 
-use std::io::{Read, Write};
-
 use async_trait::async_trait;
 
 use crate::providers::{ProviderError, ProviderType, RemoteEntry, StorageProvider};
