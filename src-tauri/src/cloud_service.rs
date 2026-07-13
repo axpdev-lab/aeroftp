@@ -9,6 +9,9 @@
 #![allow(unused_imports)]
 
 use crate::cloud_config::{CloudConfig, CloudSyncStatus, ConflictStrategy};
+use crate::cloud_provider_factory;
+use crate::credential_store;
+use crate::crypt_overlay_provider;
 use crate::ftp::FtpManager;
 use crate::providers::{ProviderError, RemoteEntry as ProviderRemoteEntry, StorageProvider};
 use crate::sync::{
@@ -1650,6 +1653,71 @@ impl CloudService {
 
         Ok(action)
     }
+}
+
+/// Unified helper for one AeroCloud config sync (connect + optional crypt wrap +
+/// ensure remote + full or preview sync + disconnect).
+///
+/// This is the single implementation of the previously duplicated sequence:
+/// - `lib.rs:perform_background_sync_inner` (background/manual)
+/// - `bin/aeroftp_cli.rs:cmd_aerocloud_sync` (one-shot CLI)
+///
+/// Later multi-pair (and overlay stack work) will call this once per pair.
+/// cd/mkdir/ensure is handled inside the plan builders; callers no longer
+/// duplicate it.
+///
+/// `store` is passed explicitly (from_cache() or opened vault) so CLI and GUI
+/// paths both work. `config` must have protocol_type resolved (CLI does the
+/// vault lookup before calling because `set` can run vault-less).
+pub async fn sync_one_config(
+    config: CloudConfig,
+    store: Option<&credential_store::CredentialStore>,
+    app: Option<AppHandle>,
+    dry_run: bool,
+) -> Result<SyncOperationResult, String> {
+    if !config.enabled {
+        return Err("AeroCloud is not enabled".to_string());
+    }
+    if config.server_profile.is_empty() {
+        return Err(
+            "AeroCloud has no server profile. Set one with the GUI or `aeroftp aerocloud set --profile <name>`."
+                .to_string(),
+        );
+    }
+
+    let mut provider = cloud_provider_factory::create_cloud_provider(&config)
+        .await
+        .map_err(|e| format!("failed to connect provider: {e}"))?;
+
+    if let Some(s) = store {
+        provider = crypt_overlay_provider::wrap_connected_provider_for_profile_named(
+            provider,
+            &config.server_profile,
+            s,
+        )
+        .await
+        .map_err(|e| format!("crypt overlay refused the sync: {e}"))?;
+    }
+
+    // NOTE: explicit cd/mkdir that used to sit between wrap and service here
+    // (and in the old inner) has been removed: build_sync_plan_with_provider
+    // (used by both preview and perform) centralizes ensure_remote.
+
+    let mut svc = CloudService::new();
+    if let Some(handle) = app {
+        svc.set_app_handle(handle);
+    }
+    svc.init(config.clone()).await;
+
+    let sync_result = if dry_run {
+        svc.preview_full_sync_with_provider(&mut *provider).await
+    } else {
+        svc.perform_full_sync_with_provider(&mut *provider).await
+    }?;
+
+    let _ = provider.disconnect().await;
+
+    Ok(sync_result)
 }
 
 impl Default for CloudService {
