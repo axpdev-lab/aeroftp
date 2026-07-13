@@ -1454,7 +1454,12 @@
             "backupRowBridge": "Bridge",
             "backupRowBridgeDesc": "Importa & esporta con altri {count} strumenti",
             "bridgeSearchApps": "Cerca app...",
-            "bridgeNoApps": "Nessuna app corrisponde alla ricerca"
+            "bridgeNoApps": "Nessuna app corrisponde alla ricerca",
+            "aerocloudCompress": "Enable compression (AeroCompress zstd)",
+            "aerocloudCompressLevel": "Compression level (1-22, 3 balanced)",
+            "aerocloudCompressA1": "A1: compression + crypt (profile has encryption)",
+            "aerocloudCompressA2": "A2: compression only (no encryption on profile)",
+            "aerocloudOverlayStack": "Overlay stack (compress before crypt)"
         },
         "appearance": {
             "patternCross": "Croce",

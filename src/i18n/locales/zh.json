@@ -1045,7 +1045,12 @@
             "imagePreviewBgLight": "浅色",
             "imagePreviewBgCustom": "自定义",
             "showTransferProgress": "显示传输进度条",
-            "similarToExisting": "与现有配置文件相似"
+            "similarToExisting": "与现有配置文件相似",
+            "aerocloudCompress": "Enable compression (AeroCompress zstd)",
+            "aerocloudCompressLevel": "Compression level (1-22, 3 balanced)",
+            "aerocloudCompressA1": "A1: compression + crypt (profile has encryption)",
+            "aerocloudCompressA2": "A2: compression only (no encryption on profile)",
+            "aerocloudOverlayStack": "Overlay stack (compress before crypt)"
         },
         "devtools": {
             "title": "AeroTools",

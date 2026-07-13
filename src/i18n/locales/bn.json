@@ -1045,7 +1045,12 @@
             "imagePreviewBgLight": "হালকা",
             "imagePreviewBgCustom": "কাস্টম",
             "showTransferProgress": "স্থানান্তর অগ্রগতি বার দেখান",
-            "similarToExisting": "একটি বিদ্যমান প্রোফাইলের অনুরূপ"
+            "similarToExisting": "একটি বিদ্যমান প্রোফাইলের অনুরূপ",
+            "aerocloudCompress": "Enable compression (AeroCompress zstd)",
+            "aerocloudCompressLevel": "Compression level (1-22, 3 balanced)",
+            "aerocloudCompressA1": "A1: compression + crypt (profile has encryption)",
+            "aerocloudCompressA2": "A2: compression only (no encryption on profile)",
+            "aerocloudOverlayStack": "Overlay stack (compress before crypt)"
         },
         "devtools": {
             "title": "AeroTools",

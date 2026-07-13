@@ -1102,6 +1102,11 @@ export interface CloudPairsConfig {
   parallel_pairs: boolean;
 }
 
+// P4 surface note: AeroCloud overlay stack (compress + optional crypt) is configured on the
+// referenced server profile (aeroCompress / aeroCryptOverlay). CLI/GUI aerocloud pair
+// expose --compress / toggles that should patch the profile (future) or document A1/A2.
+
+
 // Sync Script Export (T-AEROSYNC-SCRIPT-EXPORT)
 export type SyncScriptFormat = "bash" | "pwsh";
 

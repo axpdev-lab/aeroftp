@@ -1045,7 +1045,12 @@
             "imagePreviewBgLight": "Šviesus",
             "imagePreviewBgCustom": "Pasirinktinis",
             "showTransferProgress": "Rodyti perdavimo eigos juostą",
-            "similarToExisting": "panašūs į esamą profilį"
+            "similarToExisting": "panašūs į esamą profilį",
+            "aerocloudCompress": "Enable compression (AeroCompress zstd)",
+            "aerocloudCompressLevel": "Compression level (1-22, 3 balanced)",
+            "aerocloudCompressA1": "A1: compression + crypt (profile has encryption)",
+            "aerocloudCompressA2": "A2: compression only (no encryption on profile)",
+            "aerocloudOverlayStack": "Overlay stack (compress before crypt)"
         },
         "devtools": {
             "title": "AeroTools",

@@ -1045,7 +1045,12 @@
             "imagePreviewBgLight": "Clair",
             "imagePreviewBgCustom": "Personnalisé",
             "showTransferProgress": "Afficher la barre de progression du transfert",
-            "similarToExisting": "ressemblent à un profil existant"
+            "similarToExisting": "ressemblent à un profil existant",
+            "aerocloudCompress": "Enable compression (AeroCompress zstd)",
+            "aerocloudCompressLevel": "Compression level (1-22, 3 balanced)",
+            "aerocloudCompressA1": "A1: compression + crypt (profile has encryption)",
+            "aerocloudCompressA2": "A2: compression only (no encryption on profile)",
+            "aerocloudOverlayStack": "Overlay stack (compress before crypt)"
         },
         "devtools": {
             "title": "AeroTools",

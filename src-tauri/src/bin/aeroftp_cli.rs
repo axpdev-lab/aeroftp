@@ -3264,6 +3264,15 @@ enum AeroCloudCommands {
         /// cooldown that prevents a sync-write feedback loop.
         #[arg(long, value_name = "SECS")]
         watcher_cooldown_secs: Option<u64>,
+        /// Enable AeroCompress (zstd per-file) overlay for this AeroCloud target.
+        /// A2 when the server profile has no crypt binding; A1 when it does
+        /// (compress happens before crypt).
+        #[arg(long)]
+        compress: Option<bool>,
+        /// zstd compression level for --compress (1 fast .. 22 max; 3 balanced,
+        /// >=19 for higher ratio like archive). Stored with the profile.
+        #[arg(long, value_name = "LEVEL")]
+        compress_level: Option<i32>,
     },
     /// Enable AeroCloud (sets enabled=true and saves).
     Enable,
@@ -3307,6 +3316,12 @@ enum PairCommands {
         /// bidirectional | send-only | receive-only (default bidirectional)
         #[arg(long)]
         direction: Option<String>,
+        /// Enable AeroCompress overlay (see aerocloud set --compress).
+        #[arg(long)]
+        compress: Option<bool>,
+        /// zstd level for compress (see aerocloud set --compress-level).
+        #[arg(long, value_name = "LEVEL")]
+        compress_level: Option<i32>,
     },
     /// Remove a pair by id (from `pair list`).
     Remove {
@@ -11307,6 +11322,8 @@ async fn cmd_aerocloud(cli: &Cli, command: &AeroCloudCommands, format: OutputFor
             interval,
             watcher_debounce_ms,
             watcher_cooldown_secs,
+            compress,
+            compress_level,
         } => {
             // Validate the direction BEFORE mutating anything so a typo never
             // writes a partial config.
@@ -61603,6 +61620,8 @@ mod tests {
                             interval,
                             watcher_debounce_ms,
                             watcher_cooldown_secs,
+                            compress: _,
+                            compress_level: _,
                         },
                 } => {
                     assert_eq!(local.as_deref(), Some("/home/me/Cloud"));
@@ -61637,6 +61656,8 @@ mod tests {
                             interval,
                             watcher_debounce_ms,
                             watcher_cooldown_secs,
+                            compress: _,
+                            compress_level: _,
                         },
                 } => {
                     assert!(local.is_none());

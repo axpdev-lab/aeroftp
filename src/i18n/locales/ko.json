@@ -1045,7 +1045,12 @@
             "imagePreviewBgLight": "밝게",
             "imagePreviewBgCustom": "사용자 지정",
             "showTransferProgress": "전송 진행률 표시줄 표시",
-            "similarToExisting": "기존 프로필과 유사함"
+            "similarToExisting": "기존 프로필과 유사함",
+            "aerocloudCompress": "Enable compression (AeroCompress zstd)",
+            "aerocloudCompressLevel": "Compression level (1-22, 3 balanced)",
+            "aerocloudCompressA1": "A1: compression + crypt (profile has encryption)",
+            "aerocloudCompressA2": "A2: compression only (no encryption on profile)",
+            "aerocloudOverlayStack": "Overlay stack (compress before crypt)"
         },
         "devtools": {
             "title": "AeroTools",
