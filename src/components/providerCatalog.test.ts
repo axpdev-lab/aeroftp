@@ -106,6 +106,17 @@ describe('provider catalog category model (issue #224)', () => {
         const yandexDisk = PROVIDER_CATALOG.find(c => c.company === 'Yandex Disk')!;
         expect(yandexDisk.protocols.some(p => p.providerId === 'yandex-storage')).toBe(false);
     });
+
+    it('Yandex Disk WebDAV is paid (Yandex 360 subscription) while its OAuth stays free, mirroring pCloud Drive', () => {
+        const yandexDisk = PROVIDER_CATALOG.find(c => c.company === 'Yandex Disk')!;
+        const webdav = yandexDisk.protocols.find(p => p.providerId === 'yandexdisk-webdav')!;
+        const oauth = yandexDisk.protocols.find(p => p.protocol === 'yandexdisk')!;
+        expect(webdav.paid).toBe(true);
+        expect(oauth.paid).toBeFalsy();
+        // Same free-OAuth + paid-WebDAV shape as pCloud Drive.
+        const pcloud = PROVIDER_CATALOG.find(c => c.company === 'pCloud Drive')!;
+        expect(pcloud.protocols.find(p => p.providerId === 'pcloud-webdav')!.paid).toBe(true);
+    });
 });
 
 describe('commercial tier model: free / free-card / paid', () => {

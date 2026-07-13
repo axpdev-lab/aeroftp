@@ -567,9 +567,9 @@
         "label": "WebDAV",
         "protocol": "webdav",
         "providerId": "yandexdisk-webdav",
-        "paid": false,
+        "paid": true,
         "category": "webdav",
-        "note": null
+        "note": "Yandex 360 subscription"
       }
     ]
   },

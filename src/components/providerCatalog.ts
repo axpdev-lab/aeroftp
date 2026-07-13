@@ -201,7 +201,7 @@ export const PROVIDER_CATALOG: CatalogCompany[] = [
       healthCheckUrl: 'https://cloud-api.yandex.net',
       protocols: [
           { label: 'OAuth', protocol: 'yandexdisk', category: 'cloud-storage' },
-          { label: 'WebDAV', protocol: 'webdav', providerId: 'yandexdisk-webdav', category: 'webdav' },
+          { label: 'WebDAV', protocol: 'webdav', providerId: 'yandexdisk-webdav', category: 'webdav', paid: true, note: 'Yandex 360 subscription' },
       ] },
     { company: 'Yandex Object Storage', logoId: 'yandex-storage', countryCode: 'RU', freeStorageGb: 1,
       freeNote: 'always-free, card req.', freeRequiresCard: true,
