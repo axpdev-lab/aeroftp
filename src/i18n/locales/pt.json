@@ -1193,7 +1193,11 @@
             "directionSendOnly": "Apenas enviar (backup para o remoto)",
             "directionReceiveOnly": "Apenas receber (espelho a partir do remoto)",
             "preserveRemoteDeletes": "Manter arquivos excluídos do outro lado (backup aditivo)",
-            "preserveRemoteDeletesDesc": "Quando ativado, excluir um arquivo no lado de leitura nunca o remove no lado de gravação. Desative para tornar esta pasta um espelho rígido."
+            "preserveRemoteDeletesDesc": "Quando ativado, excluir um arquivo no lado de leitura nunca o remove no lado de gravação. Desative para tornar esta pasta um espelho rígido.",
+            "watcherDebounce": "Atraso em tempo real (ms)",
+            "watcherDebounceDesc": "Quanto tempo aguardar até as alterações dos ficheiros estabilizarem antes de iniciar uma sincronização em tempo real. Um valor mais alto agrupa edições rápidas numa só sincronização; um mais baixo reage mais depressa. Aplica-se quando Sincronizar ao alterar um ficheiro está ativado e tem efeito no próximo arranque. Intervalo 100 to 60000.",
+            "watcherCooldown": "Tempo de espera do observador (s)",
+            "watcherCooldownDesc": "Tempo mínimo entre duas sincronizações em tempo real, para evitar um ciclo em que uma sincronização escreve ficheiros que o observador volta a detetar. Defina 0 para desativar o tempo de espera."
         },
         "statusBar": {
             "connected": "Conectado",

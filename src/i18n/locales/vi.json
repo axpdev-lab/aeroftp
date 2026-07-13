@@ -1193,7 +1193,11 @@
             "directionSendOnly": "Chỉ Gửi (sao lưu lên máy từ xa)",
             "directionReceiveOnly": "Chỉ Nhận (phản chiếu từ máy từ xa)",
             "preserveRemoteDeletes": "Giữ các tệp đã xóa ở phía bên kia (sao lưu bổ sung)",
-            "preserveRemoteDeletesDesc": "Khi bật, việc xóa một tệp ở phía đọc không bao giờ xóa nó ở phía ghi. Tắt để biến thư mục này thành bản phản chiếu nghiêm ngặt."
+            "preserveRemoteDeletesDesc": "Khi bật, việc xóa một tệp ở phía đọc không bao giờ xóa nó ở phía ghi. Tắt để biến thư mục này thành bản phản chiếu nghiêm ngặt.",
+            "watcherDebounce": "Độ trễ thời gian thực (ms)",
+            "watcherDebounceDesc": "Thời gian chờ các thay đổi tệp ổn định trước khi một lần đồng bộ thời gian thực bắt đầu. Giá trị cao hơn gộp các chỉnh sửa nhanh vào một lần đồng bộ; giá trị thấp hơn phản ứng nhanh hơn. Áp dụng khi Đồng bộ khi tệp thay đổi được bật và có hiệu lực ở lần khởi động tiếp theo. Phạm vi 100 to 60000.",
+            "watcherCooldown": "Thời gian nghỉ của trình theo dõi (s)",
+            "watcherCooldownDesc": "Thời gian tối thiểu giữa hai lần đồng bộ thời gian thực, để ngăn vòng lặp trong đó một lần đồng bộ ghi các tệp mà trình theo dõi sau đó phát hiện lại. Đặt 0 để tắt thời gian nghỉ."
         },
         "statusBar": {
             "connected": "Đã kết nối",

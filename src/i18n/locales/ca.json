@@ -1193,7 +1193,11 @@
             "directionSendOnly": "Només enviar (còpia de seguretat al remot)",
             "directionReceiveOnly": "Només rebre (mirall des del remot)",
             "preserveRemoteDeletes": "Conserva els fitxers esborrats a l'altra banda (còpia additiva)",
-            "preserveRemoteDeletesDesc": "Quan està activat, esborrar un fitxer al costat de lectura mai no l'elimina al costat d'escriptura. Desactiva-ho per fer d'aquesta carpeta un mirall estricte."
+            "preserveRemoteDeletesDesc": "Quan està activat, esborrar un fitxer al costat de lectura mai no l'elimina al costat d'escriptura. Desactiva-ho per fer d'aquesta carpeta un mirall estricte.",
+            "watcherDebounce": "Retard en temps real (ms)",
+            "watcherDebounceDesc": "Quant de temps cal esperar que els canvis dels fitxers s'estabilitzin abans d'iniciar una sincronització en temps real. Un valor més alt agrupa les edicions ràpides en una sola sincronització; un de més baix reacciona més de pressa. S'aplica quan Sincronitza en canviar un fitxer està activat i té efecte al següent inici. Interval 100 to 60000.",
+            "watcherCooldown": "Temps d'espera del vigilant (s)",
+            "watcherCooldownDesc": "Temps mínim entre dues sincronitzacions en temps real, per evitar un bucle on una sincronització escriu fitxers que el vigilant torna a detectar. Poseu 0 per desactivar el temps d'espera."
         },
         "statusBar": {
             "connected": "Connectat",

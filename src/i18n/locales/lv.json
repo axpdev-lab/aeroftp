@@ -1193,7 +1193,11 @@
             "directionSendOnly": "Tikai sūtīt (dublējums uz attālo)",
             "directionReceiveOnly": "Tikai saņemt (spogulis no attālā)",
             "preserveRemoteDeletes": "Saglabāt otrā pusē dzēstos failus (papildinošs dublējums)",
-            "preserveRemoteDeletesDesc": "Kad ieslēgts, faila dzēšana lasīšanas pusē to nekad neizņem rakstīšanas pusē. Izslēdziet, lai padarītu šo mapi par stingru spoguli."
+            "preserveRemoteDeletesDesc": "Kad ieslēgts, faila dzēšana lasīšanas pusē to nekad neizņem rakstīšanas pusē. Izslēdziet, lai padarītu šo mapi par stingru spoguli.",
+            "watcherDebounce": "Reāllaika aizture (ms)",
+            "watcherDebounceDesc": "Cik ilgi gaidīt, līdz failu izmaiņas nostabilizējas, pirms tiek palaista reāllaika sinhronizācija. Lielāka vērtība apvieno ātras izmaiņas vienā sinhronizācijā; mazāka reaģē ātrāk. Attiecas, kad ir ieslēgts Sinhronizēt, mainot failu, un stājas spēkā nākamajā palaišanā. Diapazons 100 to 60000.",
+            "watcherCooldown": "Novērotāja atdzišanas laiks (s)",
+            "watcherCooldownDesc": "Minimālais laiks starp divām reāllaika sinhronizācijām, lai novērstu cilpu, kurā sinhronizācija ieraksta failus, ko novērotājs pēc tam atkal atklāj. Iestatiet 0, lai atspējotu atdzišanas laiku."
         },
         "statusBar": {
             "connected": "Savienots",

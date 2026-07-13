@@ -1193,7 +1193,11 @@
             "directionSendOnly": "Alleen verzenden (back-up naar de externe locatie)",
             "directionReceiveOnly": "Alleen ontvangen (spiegel van de externe locatie)",
             "preserveRemoteDeletes": "Aan de andere kant verwijderde bestanden behouden (toevoegende back-up)",
-            "preserveRemoteDeletesDesc": "Wanneer ingeschakeld, verwijdert het wissen van een bestand aan de leeskant het nooit aan de schrijfkant. Schakel uit om van deze map een strikte spiegel te maken."
+            "preserveRemoteDeletesDesc": "Wanneer ingeschakeld, verwijdert het wissen van een bestand aan de leeskant het nooit aan de schrijfkant. Schakel uit om van deze map een strikte spiegel te maken.",
+            "watcherDebounce": "Realtime-ontdendering (ms)",
+            "watcherDebounceDesc": "Hoelang wordt gewacht tot bestandswijzigingen tot rust komen voordat een realtime-synchronisatie start. Een hogere waarde bundelt snelle bewerkingen tot één synchronisatie; een lagere reageert sneller. Van toepassing wanneer Synchroniseren bij bestandswijziging aan staat, en gaat in bij de volgende start. Bereik 100 to 60000.",
+            "watcherCooldown": "Afkoeltijd van bewaker (s)",
+            "watcherCooldownDesc": "Minimale tijd tussen twee realtime-synchronisaties, om een lus te voorkomen waarbij een synchronisatie bestanden schrijft die de bewaker daarna opnieuw detecteert. Stel 0 in om de afkoeltijd uit te schakelen."
         },
         "statusBar": {
             "connected": "Verbonden",

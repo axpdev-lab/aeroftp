@@ -1193,7 +1193,11 @@
             "directionSendOnly": "仅发送（备份到远程）",
             "directionReceiveOnly": "仅接收（从远程镜像）",
             "preserveRemoteDeletes": "保留在另一端删除的文件（增量备份）",
-            "preserveRemoteDeletesDesc": "开启后，在读取端删除文件绝不会将其从写入端移除。关闭可使此文件夹成为严格镜像。"
+            "preserveRemoteDeletesDesc": "开启后，在读取端删除文件绝不会将其从写入端移除。关闭可使此文件夹成为严格镜像。",
+            "watcherDebounce": "实时防抖 (ms)",
+            "watcherDebounceDesc": "在触发实时同步之前，等待文件更改稳定的时长。数值越高，将快速的编辑合并为一次同步；数值越低，反应越快。在开启文件更改时同步后适用，并在下次启动时生效。范围 100 to 60000。",
+            "watcherCooldown": "监视器冷却时间 (s)",
+            "watcherCooldownDesc": "两次实时同步之间的最短间隔，以防止同步写入的文件被监视器再次检测到而形成循环。设为 0 可禁用冷却时间。"
         },
         "statusBar": {
             "connected": "已连接",

@@ -1193,7 +1193,11 @@
             "directionSendOnly": "Anfon yn Unig (wrth gefn i'r pell)",
             "directionReceiveOnly": "Derbyn yn Unig (drych o'r pell)",
             "preserveRemoteDeletes": "Cadw ffeiliau a ddilëwyd ar yr ochr arall (wrth gefn ychwanegol)",
-            "preserveRemoteDeletesDesc": "Pan fydd ymlaen, nid yw dileu ffeil ar yr ochr ddarllen byth yn ei thynnu ar yr ochr ysgrifennu. Diffoddwch i wneud y ffolder hwn yn ddrych llym."
+            "preserveRemoteDeletesDesc": "Pan fydd ymlaen, nid yw dileu ffeil ar yr ochr ddarllen byth yn ei thynnu ar yr ochr ysgrifennu. Diffoddwch i wneud y ffolder hwn yn ddrych llym.",
+            "watcherDebounce": "Oedi amser real (ms)",
+            "watcherDebounceDesc": "Pa mor hir i aros i newidiadau ffeiliau sefydlogi cyn i gydweddiad amser real danio. Mae gwerth uwch yn cyfuno golygiadau cyflym yn un cydweddiad; mae un is yn ymateb yn gyflymach. Mae'n berthnasol pan fo Cydweddu wrth newid ffeil ymlaen, ac yn cael effaith ar y cychwyn nesaf. Ystod 100 to 60000.",
+            "watcherCooldown": "Cyfnod oeri'r gwyliwr (s)",
+            "watcherCooldownDesc": "Yr amser lleiaf rhwng dau gydweddiad amser real, i atal dolen lle mae cydweddiad yn ysgrifennu ffeiliau y mae'r gwyliwr yna'n eu hailganfod. Gosodwch 0 i analluogi'r cyfnod oeri."
         },
         "statusBar": {
             "connected": "Wedi cysylltu",

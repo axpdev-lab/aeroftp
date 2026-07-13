@@ -1193,7 +1193,11 @@
             "directionSendOnly": "Bare send (sikkerhetskopi til den eksterne)",
             "directionReceiveOnly": "Bare motta (speil fra den eksterne)",
             "preserveRemoteDeletes": "Behold filer slettet på den andre siden (additiv sikkerhetskopi)",
-            "preserveRemoteDeletesDesc": "Når på, fjerner sletting av en fil på lesesiden den aldri på skrivesiden. Slå av for å gjøre denne mappen til et strengt speil."
+            "preserveRemoteDeletesDesc": "Når på, fjerner sletting av en fil på lesesiden den aldri på skrivesiden. Slå av for å gjøre denne mappen til et strengt speil.",
+            "watcherDebounce": "Sanntidsforsinkelse (ms)",
+            "watcherDebounceDesc": "Hvor lenge det ventes på at filendringer roer seg før en sanntidssynkronisering utløses. En høyere verdi samler raske endringer i én synkronisering; en lavere reagerer raskere. Gjelder når Synkroniser ved filendring er på, og trer i kraft ved neste oppstart. Område 100 to 60000.",
+            "watcherCooldown": "Overvåkerpause (s)",
+            "watcherCooldownDesc": "Minste tid mellom to sanntidssynkroniseringer, for å hindre en løkke der en synkronisering skriver filer som overvåkeren så oppdager på nytt. Sett 0 for å slå av pausen."
         },
         "statusBar": {
             "connected": "Tilkoblet",

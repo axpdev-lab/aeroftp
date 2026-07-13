@@ -1193,7 +1193,11 @@
             "directionSendOnly": "Magpadala Lang (i-back up sa remote)",
             "directionReceiveOnly": "Tumanggap Lang (i-mirror mula sa remote)",
             "preserveRemoteDeletes": "Panatilihin ang mga file na tinanggal sa kabilang panig (additive na backup)",
-            "preserveRemoteDeletesDesc": "Kapag naka-on, ang pagtanggal ng file sa panig na binabasa ay hindi kailanman nag-aalis nito sa panig na sinusulatan. I-off para gawing mahigpit na mirror ang folder na ito."
+            "preserveRemoteDeletesDesc": "Kapag naka-on, ang pagtanggal ng file sa panig na binabasa ay hindi kailanman nag-aalis nito sa panig na sinusulatan. I-off para gawing mahigpit na mirror ang folder na ito.",
+            "watcherDebounce": "Debounce sa real-time (ms)",
+            "watcherDebounceDesc": "Gaano katagal maghihintay na tumahimik ang mga pagbabago sa file bago mag-trigger ang real-time na sync. Ang mas mataas na halaga ay pinagsasama ang mabilis na mga pag-edit sa isang sync; ang mas mababa ay mas mabilis tumugon. Nalalapat kapag naka-on ang Mag-sync kapag nagbago ang file, at magkakabisa sa susunod na pagsisimula. Saklaw 100 to 60000.",
+            "watcherCooldown": "Cooldown ng watcher (s)",
+            "watcherCooldownDesc": "Pinakamababang oras sa pagitan ng dalawang real-time na sync, upang maiwasan ang loop kung saan nagsusulat ang sync ng mga file na muling natutukoy ng watcher. Itakda sa 0 upang huwag paganahin ang cooldown."
         },
         "statusBar": {
             "connected": "Nakakonekta",

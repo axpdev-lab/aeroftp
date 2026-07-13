@@ -1193,7 +1193,11 @@
             "directionSendOnly": "Doar trimitere (copie de rezervă către locația la distanță)",
             "directionReceiveOnly": "Doar primire (oglindire de la locația la distanță)",
             "preserveRemoteDeletes": "Păstrează fișierele șterse pe cealaltă parte (copie de rezervă aditivă)",
-            "preserveRemoteDeletesDesc": "Când este activat, ștergerea unui fișier pe partea de citire nu îl elimină niciodată pe partea de scriere. Dezactivați pentru a face din acest folder o oglindire strictă."
+            "preserveRemoteDeletesDesc": "Când este activat, ștergerea unui fișier pe partea de citire nu îl elimină niciodată pe partea de scriere. Dezactivați pentru a face din acest folder o oglindire strictă.",
+            "watcherDebounce": "Întârziere în timp real (ms)",
+            "watcherDebounceDesc": "Cât timp să se aștepte stabilizarea modificărilor fișierelor înainte de a declanșa o sincronizare în timp real. O valoare mai mare grupează modificările rapide într-o singură sincronizare; una mai mică reacționează mai repede. Se aplică atunci când Sincronizează la modificarea unui fișier este activat și intră în vigoare la următoarea pornire. Interval 100 to 60000.",
+            "watcherCooldown": "Timp de așteptare al monitorului (s)",
+            "watcherCooldownDesc": "Timpul minim între două sincronizări în timp real, pentru a preveni o buclă în care o sincronizare scrie fișiere pe care monitorul le detectează din nou. Setați 0 pentru a dezactiva timpul de așteptare."
         },
         "statusBar": {
             "connected": "Conectat",

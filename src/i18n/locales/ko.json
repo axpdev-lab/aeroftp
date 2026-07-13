@@ -1193,7 +1193,11 @@
             "directionSendOnly": "보내기 전용(원격에 백업)",
             "directionReceiveOnly": "받기 전용(원격에서 미러링)",
             "preserveRemoteDeletes": "다른 쪽에서 삭제된 파일 유지(추가형 백업)",
-            "preserveRemoteDeletesDesc": "켜면 읽기 쪽에서 파일을 삭제해도 쓰기 쪽에서는 절대 제거되지 않습니다. 이 폴더를 엄격한 미러로 만들려면 끄세요."
+            "preserveRemoteDeletesDesc": "켜면 읽기 쪽에서 파일을 삭제해도 쓰기 쪽에서는 절대 제거되지 않습니다. 이 폴더를 엄격한 미러로 만들려면 끄세요.",
+            "watcherDebounce": "실시간 디바운스 (ms)",
+            "watcherDebounceDesc": "실시간 동기화가 실행되기 전에 파일 변경이 안정될 때까지 기다리는 시간입니다. 값이 클수록 빠른 편집을 하나의 동기화로 묶고, 작을수록 더 빠르게 반응합니다. 파일 변경 시 동기화가 켜져 있을 때 적용되며, 다음 시작 시 적용됩니다. 범위 100 to 60000.",
+            "watcherCooldown": "감시기 대기 시간 (s)",
+            "watcherCooldownDesc": "두 실시간 동기화 사이의 최소 시간으로, 동기화가 기록한 파일을 감시기가 다시 감지하는 루프를 방지합니다. 대기 시간을 끄려면 0으로 설정하세요."
         },
         "statusBar": {
             "connected": "연결됨",

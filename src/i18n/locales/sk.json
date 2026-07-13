@@ -1193,7 +1193,11 @@
             "directionSendOnly": "Len odosielať (záloha do vzdialeného úložiska)",
             "directionReceiveOnly": "Len prijímať (zrkadlo zo vzdialeného úložiska)",
             "preserveRemoteDeletes": "Zachovať súbory odstránené na druhej strane (prírastková záloha)",
-            "preserveRemoteDeletesDesc": "Keď je zapnuté, odstránenie súboru na strane čítania ho nikdy neodstráni na strane zápisu. Vypnite, aby bol tento priečinok prísnym zrkadlom."
+            "preserveRemoteDeletesDesc": "Keď je zapnuté, odstránenie súboru na strane čítania ho nikdy neodstráni na strane zápisu. Vypnite, aby bol tento priečinok prísnym zrkadlom.",
+            "watcherDebounce": "Oneskorenie v reálnom čase (ms)",
+            "watcherDebounceDesc": "Ako dlho čakať na ustálenie zmien súborov, kým sa spustí synchronizácia v reálnom čase. Vyššia hodnota zlúči rýchle úpravy do jednej synchronizácie; nižšia reaguje rýchlejšie. Platí, keď je zapnuté Synchronizovať pri zmene súboru, a prejaví sa pri ďalšom spustení. Rozsah 100 to 60000.",
+            "watcherCooldown": "Čas pokoja sledovača (s)",
+            "watcherCooldownDesc": "Minimálny čas medzi dvoma synchronizáciami v reálnom čase, aby sa predišlo slučke, keď synchronizácia zapíše súbory, ktoré sledovač potom znova zistí. Nastavte 0 na vypnutie času pokoja."
         },
         "statusBar": {
             "connected": "Pripojený",

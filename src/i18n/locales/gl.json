@@ -1193,7 +1193,11 @@
             "directionSendOnly": "Só enviar (copia de seguranza ao remoto)",
             "directionReceiveOnly": "Só recibir (espello desde o remoto)",
             "preserveRemoteDeletes": "Conservar os ficheiros eliminados no outro lado (copia aditiva)",
-            "preserveRemoteDeletesDesc": "Cando está activado, eliminar un ficheiro no lado de lectura nunca o quita no lado de escritura. Desactívao para facer deste cartafol un espello estrito."
+            "preserveRemoteDeletesDesc": "Cando está activado, eliminar un ficheiro no lado de lectura nunca o quita no lado de escritura. Desactívao para facer deste cartafol un espello estrito.",
+            "watcherDebounce": "Atraso en tempo real (ms)",
+            "watcherDebounceDesc": "Canto tempo agardar a que os cambios dos ficheiros se estabilicen antes de iniciar unha sincronización en tempo real. Un valor máis alto agrupa as edicións rápidas nunha soa sincronización; un máis baixo reacciona máis rápido. Aplícase cando Sincronizar ao cambiar un ficheiro está activado e ten efecto no seguinte inicio. Intervalo 100 to 60000.",
+            "watcherCooldown": "Tempo de espera do vixiante (s)",
+            "watcherCooldownDesc": "Tempo mínimo entre dúas sincronizacións en tempo real, para evitar un bucle no que unha sincronización escribe ficheiros que o vixiante volve detectar. Estabelece 0 para desactivar o tempo de espera."
         },
         "statusBar": {
             "connected": "Conectado",

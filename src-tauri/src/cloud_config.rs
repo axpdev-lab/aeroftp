@@ -73,6 +73,17 @@ pub struct CloudConfig {
     /// File versioning strategy for pre-overwrite/pre-delete archiving.
     #[serde(default)]
     pub versioning_strategy: crate::sync_versioning::VersioningStrategy,
+    /// Real-time watcher debounce quiet period, in milliseconds. Filesystem
+    /// events are batched until no new events arrive for this long before a
+    /// watcher-triggered sync fires. Default 1500ms. Applied when the watcher
+    /// (re)starts; clamped to [100, 60000] at use.
+    #[serde(default = "default_watcher_debounce_ms")]
+    pub watcher_debounce_ms: u64,
+    /// Minimum seconds between two watcher-triggered syncs (cooldown). Prevents
+    /// a feedback loop where a sync writes files the watcher then re-detects.
+    /// Default 30s. 0 disables the cooldown. Read fresh each sync cycle.
+    #[serde(default = "default_watcher_cooldown_secs")]
+    pub watcher_cooldown_secs: u64,
 }
 
 fn default_protocol_type() -> String {
@@ -81,6 +92,14 @@ fn default_protocol_type() -> String {
 
 fn default_preserve_remote_deletes() -> bool {
     true
+}
+
+fn default_watcher_debounce_ms() -> u64 {
+    1500
+}
+
+fn default_watcher_cooldown_secs() -> u64 {
+    30
 }
 
 /// How to handle file conflicts
@@ -141,6 +160,8 @@ impl Default for CloudConfig {
             connection_params: serde_json::Value::Null,
             sync_direction: crate::sync::CompareDirection::Bidirectional,
             preserve_remote_deletes: default_preserve_remote_deletes(),
+            watcher_debounce_ms: default_watcher_debounce_ms(),
+            watcher_cooldown_secs: default_watcher_cooldown_secs(),
         }
     }
 }
@@ -378,5 +399,37 @@ mod tests {
         let config: CloudConfig = serde_json::from_str(json).unwrap();
         assert_eq!(config.protocol_type, "ftp");
         assert!(config.connection_params.is_null());
+    }
+
+    #[test]
+    fn test_watcher_knobs_default() {
+        let config = CloudConfig::default();
+        assert_eq!(config.watcher_debounce_ms, 1500);
+        assert_eq!(config.watcher_cooldown_secs, 30);
+    }
+
+    #[test]
+    fn test_watcher_knobs_backward_compat() {
+        // An old config predating the watcher knobs must deserialize with the
+        // documented defaults, not fail or zero them out.
+        let json = r#"{"enabled":true,"local_folder":"/tmp","remote_folder":"/cloud/","server_profile":"MyFTP","sync_interval_secs":3600,"sync_on_change":true,"sync_on_startup":false,"exclude_patterns":[],"conflict_strategy":"ask_user"}"#;
+        let config: CloudConfig = serde_json::from_str(json).unwrap();
+        assert_eq!(config.watcher_debounce_ms, 1500);
+        assert_eq!(config.watcher_cooldown_secs, 30);
+    }
+
+    #[test]
+    fn test_watcher_knobs_explicit_roundtrip() {
+        // Explicit values (including a 0 cooldown, meaning "no cooldown") survive
+        // a serialize/deserialize round-trip unchanged.
+        let config = CloudConfig {
+            watcher_debounce_ms: 3000,
+            watcher_cooldown_secs: 0,
+            ..Default::default()
+        };
+        let json = serde_json::to_string(&config).unwrap();
+        let parsed: CloudConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.watcher_debounce_ms, 3000);
+        assert_eq!(parsed.watcher_cooldown_secs, 0);
     }
 }

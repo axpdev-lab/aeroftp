@@ -1616,7 +1616,11 @@
             "directionSendOnly": "Solo invio (backup sul remoto)",
             "directionReceiveOnly": "Solo ricezione (copia speculare dal remoto)",
             "preserveRemoteDeletes": "Mantieni i file eliminati dall'altra parte (backup additivo)",
-            "preserveRemoteDeletesDesc": "Quando è attivo, eliminare un file sul lato di lettura non lo rimuove mai sul lato di scrittura. Disattiva per rendere questa cartella una copia speculare rigida."
+            "preserveRemoteDeletesDesc": "Quando è attivo, eliminare un file sul lato di lettura non lo rimuove mai sul lato di scrittura. Disattiva per rendere questa cartella una copia speculare rigida.",
+            "watcherDebounce": "Ritardo in tempo reale (ms)",
+            "watcherDebounceDesc": "Quanto attendere che le modifiche ai file si stabilizzino prima di avviare una sincronizzazione in tempo reale. Un valore più alto raggruppa le modifiche rapide in un'unica sincronizzazione; uno più basso reagisce più in fretta. Si applica quando Sincronizza alla modifica di un file è attivo e ha effetto al prossimo avvio. Intervallo 100 to 60000.",
+            "watcherCooldown": "Attesa del monitoraggio (s)",
+            "watcherCooldownDesc": "Tempo minimo tra due sincronizzazioni in tempo reale, per evitare un ciclo in cui una sincronizzazione scrive file che il monitoraggio rileva di nuovo. Imposta 0 per disattivare l'attesa."
         },
         "statusBar": {
             "connected": "Connesso",

@@ -3255,6 +3255,14 @@ enum AeroCloudCommands {
         /// Background sync interval in seconds (0 disables the timer)
         #[arg(long, value_name = "SECS")]
         interval: Option<u64>,
+        /// Real-time watcher debounce in milliseconds: batches rapid edits
+        /// before a watcher-triggered sync. Clamped to 100..=60000.
+        #[arg(long, value_name = "MS")]
+        watcher_debounce_ms: Option<u64>,
+        /// Minimum seconds between watcher-triggered syncs. 0 disables the
+        /// cooldown that prevents a sync-write feedback loop.
+        #[arg(long, value_name = "SECS")]
+        watcher_cooldown_secs: Option<u64>,
     },
     /// Enable AeroCloud (sets enabled=true and saves).
     Enable,
@@ -11008,6 +11016,8 @@ fn aerocloud_print_show(
             "direction": direction,
             "preserveRemoteDeletes": config.preserve_remote_deletes,
             "syncIntervalSecs": config.sync_interval_secs,
+            "watcherDebounceMs": config.watcher_debounce_ms,
+            "watcherCooldownSecs": config.watcher_cooldown_secs,
             "syncOnChange": config.sync_on_change,
             "syncOnStartup": config.sync_on_startup,
             "versioningStrategy": config.versioning_strategy,
@@ -11034,6 +11044,11 @@ fn aerocloud_print_show(
             config.preserve_remote_deletes
         );
         println!("  sync interval (secs):    {}", config.sync_interval_secs);
+        println!("  watcher debounce (ms):   {}", config.watcher_debounce_ms);
+        println!(
+            "  watcher cooldown (secs): {}",
+            config.watcher_cooldown_secs
+        );
         println!(
             "  last sync:               {}",
             last_sync.as_deref().unwrap_or("never")
@@ -11276,6 +11291,8 @@ async fn cmd_aerocloud(cli: &Cli, command: &AeroCloudCommands, format: OutputFor
             direction,
             preserve_remote_deletes,
             interval,
+            watcher_debounce_ms,
+            watcher_cooldown_secs,
         } => {
             // Validate the direction BEFORE mutating anything so a typo never
             // writes a partial config.
@@ -11322,11 +11339,19 @@ async fn cmd_aerocloud(cli: &Cli, command: &AeroCloudCommands, format: OutputFor
                 config.sync_interval_secs = *interval;
                 changed = true;
             }
+            if let Some(ms) = watcher_debounce_ms {
+                config.watcher_debounce_ms = *ms;
+                changed = true;
+            }
+            if let Some(secs) = watcher_cooldown_secs {
+                config.watcher_cooldown_secs = *secs;
+                changed = true;
+            }
 
             if !changed {
                 print_error(
                     format,
-                    "no changes: pass at least one of --local/--remote/--profile/--direction/--preserve-remote-deletes/--interval",
+                    "no changes: pass at least one of --local/--remote/--profile/--direction/--preserve-remote-deletes/--interval/--watcher-debounce-ms/--watcher-cooldown-secs",
                     5,
                 );
                 return 5;
@@ -61277,6 +61302,10 @@ mod tests {
                 "false",
                 "--interval",
                 "300",
+                "--watcher-debounce-ms",
+                "3000",
+                "--watcher-cooldown-secs",
+                "10",
             ])
             .expect("set flags must parse");
             match cli.command {
@@ -61289,6 +61318,8 @@ mod tests {
                             direction,
                             preserve_remote_deletes,
                             interval,
+                            watcher_debounce_ms,
+                            watcher_cooldown_secs,
                         },
                 } => {
                     assert_eq!(local.as_deref(), Some("/home/me/Cloud"));
@@ -61297,6 +61328,8 @@ mod tests {
                     assert_eq!(direction.as_deref(), Some("send-only"));
                     assert_eq!(preserve_remote_deletes, Some(false));
                     assert_eq!(interval, Some(300));
+                    assert_eq!(watcher_debounce_ms, Some(3000));
+                    assert_eq!(watcher_cooldown_secs, Some(10));
                 }
                 _ => panic!("expected aerocloud set subcommand"),
             }
@@ -61319,6 +61352,8 @@ mod tests {
                             direction,
                             preserve_remote_deletes,
                             interval,
+                            watcher_debounce_ms,
+                            watcher_cooldown_secs,
                         },
                 } => {
                     assert!(local.is_none());
@@ -61327,6 +61362,8 @@ mod tests {
                     assert!(direction.is_none());
                     assert!(preserve_remote_deletes.is_none());
                     assert!(interval.is_none());
+                    assert!(watcher_debounce_ms.is_none());
+                    assert!(watcher_cooldown_secs.is_none());
                 }
                 _ => panic!("expected aerocloud set subcommand"),
             }

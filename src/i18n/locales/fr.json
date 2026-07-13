@@ -1193,7 +1193,11 @@
             "directionSendOnly": "Envoyer uniquement (sauvegarde vers le distant)",
             "directionReceiveOnly": "Recevoir uniquement (miroir depuis le distant)",
             "preserveRemoteDeletes": "Conserver les fichiers supprimés de l'autre côté (sauvegarde additive)",
-            "preserveRemoteDeletesDesc": "Lorsque activé, supprimer un fichier du côté lecture ne le supprime jamais du côté écriture. Désactivez pour faire de ce dossier un miroir strict."
+            "preserveRemoteDeletesDesc": "Lorsque activé, supprimer un fichier du côté lecture ne le supprime jamais du côté écriture. Désactivez pour faire de ce dossier un miroir strict.",
+            "watcherDebounce": "Anti-rebond en temps réel (ms)",
+            "watcherDebounceDesc": "Combien de temps attendre que les modifications de fichiers se stabilisent avant de déclencher une synchronisation en temps réel. Une valeur plus élevée regroupe les modifications rapides en une seule synchronisation ; une valeur plus basse réagit plus vite. S'applique lorsque Synchroniser à la modification d'un fichier est activé, et prend effet au prochain démarrage. Plage 100 to 60000.",
+            "watcherCooldown": "Délai du surveillant (s)",
+            "watcherCooldownDesc": "Temps minimal entre deux synchronisations en temps réel, pour éviter une boucle où une synchronisation écrit des fichiers que le surveillant redétecte ensuite. Mettez 0 pour désactiver le délai."
         },
         "statusBar": {
             "connected": "Connecté",

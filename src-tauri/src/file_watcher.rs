@@ -291,6 +291,9 @@ pub struct FileWatcher {
     last_event_at: Arc<std::sync::Mutex<Option<Instant>>>,
     /// Running flag
     running: Arc<AtomicBool>,
+    /// Debounce quiet period for the native debouncer (configurable via
+    /// `with_debounce_ms`; defaults to `DEBOUNCE_TIMEOUT`).
+    debounce_timeout: Duration,
 }
 
 impl FileWatcher {
@@ -308,7 +311,15 @@ impl FileWatcher {
             events_received: Arc::new(std::sync::atomic::AtomicU64::new(0)),
             last_event_at: Arc::new(std::sync::Mutex::new(None)),
             running: Arc::new(AtomicBool::new(false)),
+            debounce_timeout: DEBOUNCE_TIMEOUT,
         }
+    }
+
+    /// Override the native debouncer's quiet period. Clamped to [100, 60000] ms.
+    /// Takes effect at the next `start()`.
+    pub fn with_debounce_ms(mut self, ms: u64) -> Self {
+        self.debounce_timeout = Duration::from_millis(ms.clamp(100, 60_000));
+        self
     }
 
     /// Start watching a directory.
@@ -370,8 +381,9 @@ impl FileWatcher {
         let events_received = self.events_received.clone();
         let last_event_at = self.last_event_at.clone();
 
+        let debounce_timeout = self.debounce_timeout;
         let mut debouncer = new_debouncer(
-            DEBOUNCE_TIMEOUT,
+            debounce_timeout,
             Some(DEBOUNCE_TICK_RATE),
             move |result: DebounceEventResult| {
                 match result {
@@ -657,5 +669,22 @@ mod tests {
         assert_eq!(status.events_received, 0);
 
         watcher.stop(); // Should not panic on double-stop
+    }
+
+    #[test]
+    fn test_with_debounce_ms_clamps() {
+        let (tx, _rx) = mpsc::channel(100);
+        // Default (no override) keeps the compile-time default.
+        let w = FileWatcher::new(tx.clone());
+        assert_eq!(w.debounce_timeout, DEBOUNCE_TIMEOUT);
+        // A normal value passes through unchanged.
+        let w = FileWatcher::new(tx.clone()).with_debounce_ms(3000);
+        assert_eq!(w.debounce_timeout, Duration::from_millis(3000));
+        // Below the floor clamps up to 100ms (never a busy 0/1ms debouncer).
+        let w = FileWatcher::new(tx.clone()).with_debounce_ms(0);
+        assert_eq!(w.debounce_timeout, Duration::from_millis(100));
+        // Above the ceiling clamps down to 60s.
+        let w = FileWatcher::new(tx).with_debounce_ms(999_999);
+        assert_eq!(w.debounce_timeout, Duration::from_millis(60_000));
     }
 }

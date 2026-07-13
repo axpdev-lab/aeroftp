@@ -1193,7 +1193,11 @@
             "directionSendOnly": "Yalnızca Gönder (uzak konuma yedekle)",
             "directionReceiveOnly": "Yalnızca Al (uzak konumdan yansıt)",
             "preserveRemoteDeletes": "Diğer tarafta silinen dosyaları koru (eklemeli yedekleme)",
-            "preserveRemoteDeletesDesc": "Açıkken, okuma tarafında bir dosyayı silmek onu yazma tarafından asla kaldırmaz. Bu klasörü katı bir yansıma yapmak için kapatın."
+            "preserveRemoteDeletesDesc": "Açıkken, okuma tarafında bir dosyayı silmek onu yazma tarafından asla kaldırmaz. Bu klasörü katı bir yansıma yapmak için kapatın.",
+            "watcherDebounce": "Gerçek zamanlı geciktirme (ms)",
+            "watcherDebounceDesc": "Gerçek zamanlı eşitleme başlamadan önce dosya değişikliklerinin durulması için ne kadar bekleneceği. Daha yüksek değer hızlı düzenlemeleri tek bir eşitlemede toplar; daha düşük değer daha hızlı tepki verir. Dosya değiştiğinde eşitle açıkken geçerlidir ve bir sonraki başlangıçta etkinleşir. Aralık 100 to 60000.",
+            "watcherCooldown": "İzleyici bekleme süresi (s)",
+            "watcherCooldownDesc": "İki gerçek zamanlı eşitleme arasındaki en kısa süre; eşitlemenin yazdığı dosyaları izleyicinin yeniden algıladığı bir döngüyü önler. Bekleme süresini devre dışı bırakmak için 0 olarak ayarlayın."
         },
         "statusBar": {
             "connected": "Bağlı",

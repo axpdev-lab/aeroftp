@@ -1193,7 +1193,11 @@
             "directionSendOnly": "Aðeins senda (afrit á fjartengda staðinn)",
             "directionReceiveOnly": "Aðeins taka á móti (spegil frá fjartengda staðnum)",
             "preserveRemoteDeletes": "Halda skrám sem eytt var hinum megin (viðbótarafrit)",
-            "preserveRemoteDeletesDesc": "Þegar kveikt er fjarlægir eyðing skráar á lestrarhliðinni hana aldrei á skrifhliðinni. Slökktu til að gera þessa möppu að ströngum spegli."
+            "preserveRemoteDeletesDesc": "Þegar kveikt er fjarlægir eyðing skráar á lestrarhliðinni hana aldrei á skrifhliðinni. Slökktu til að gera þessa möppu að ströngum spegli.",
+            "watcherDebounce": "Rauntímatöf (ms)",
+            "watcherDebounceDesc": "Hversu lengi á að bíða eftir að skráabreytingar róist áður en rauntímasamstilling fer af stað. Hærra gildi sameinar hraðar breytingar í eina samstillingu; lægra bregst hraðar við. Gildir þegar Samstilla við skráabreytingu er kveikt og tekur gildi við næstu ræsingu. Bil 100 to 60000.",
+            "watcherCooldown": "Biðtími vaktara (s)",
+            "watcherCooldownDesc": "Lágmarkstími milli tveggja rauntímasamstillinga til að koma í veg fyrir lykkju þar sem samstilling skrifar skrár sem vaktarinn greinir svo aftur. Stilltu á 0 til að slökkva á biðtímanum."
         },
         "statusBar": {
             "connected": "Tengt",

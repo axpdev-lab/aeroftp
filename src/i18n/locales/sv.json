@@ -1193,7 +1193,11 @@
             "directionSendOnly": "Endast skicka (säkerhetskopia till fjärrplatsen)",
             "directionReceiveOnly": "Endast ta emot (spegel från fjärrplatsen)",
             "preserveRemoteDeletes": "Behåll filer som raderats på andra sidan (additiv säkerhetskopia)",
-            "preserveRemoteDeletesDesc": "När det är på tar radering av en fil på lässidan aldrig bort den på skrivsidan. Stäng av för att göra denna mapp till en strikt spegel."
+            "preserveRemoteDeletesDesc": "När det är på tar radering av en fil på lässidan aldrig bort den på skrivsidan. Stäng av för att göra denna mapp till en strikt spegel.",
+            "watcherDebounce": "Realtidsfördröjning (ms)",
+            "watcherDebounceDesc": "Hur länge det väntas på att filändringar ska lugna sig innan en realtidssynkronisering utlöses. Ett högre värde samlar snabba ändringar i en synkronisering; ett lägre reagerar snabbare. Gäller när Synkronisera vid filändring är på och träder i kraft vid nästa start. Intervall 100 to 60000.",
+            "watcherCooldown": "Bevakarens vilotid (s)",
+            "watcherCooldownDesc": "Minsta tid mellan två realtidssynkroniseringar, för att förhindra en slinga där en synkronisering skriver filer som bevakaren sedan upptäcker på nytt. Ange 0 för att inaktivera vilotiden."
         },
         "statusBar": {
             "connected": "Ansluten",

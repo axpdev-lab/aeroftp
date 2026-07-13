@@ -1193,7 +1193,11 @@
             "directionSendOnly": "Kun send (sikkerhedskopi til fjernlageret)",
             "directionReceiveOnly": "Kun modtag (spejl fra fjernlageret)",
             "preserveRemoteDeletes": "Behold filer slettet på den anden side (additiv sikkerhedskopi)",
-            "preserveRemoteDeletesDesc": "Når det er slået til, fjerner sletning af en fil på læsesiden den aldrig på skrivesiden. Slå fra for at gøre denne mappe til et strengt spejl."
+            "preserveRemoteDeletesDesc": "Når det er slået til, fjerner sletning af en fil på læsesiden den aldrig på skrivesiden. Slå fra for at gøre denne mappe til et strengt spejl.",
+            "watcherDebounce": "Realtidsforsinkelse (ms)",
+            "watcherDebounceDesc": "Hvor længe der ventes på, at filændringer falder til ro, før en realtidssynkronisering udløses. En højere værdi samler hurtige redigeringer i én synkronisering; en lavere reagerer hurtigere. Gælder, når Synkronisér ved filændring er slået til, og træder i kraft ved næste start. Interval 100 to 60000.",
+            "watcherCooldown": "Overvågerpause (s)",
+            "watcherCooldownDesc": "Mindste tid mellem to realtidssynkroniseringer for at forhindre en løkke, hvor en synkronisering skriver filer, som overvågeren derefter genregistrerer. Sæt 0 for at slå pausen fra."
         },
         "statusBar": {
             "connected": "Forbundet",

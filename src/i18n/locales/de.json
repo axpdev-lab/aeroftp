@@ -1193,7 +1193,11 @@
             "directionSendOnly": "Nur senden (Sicherung an die Gegenstelle)",
             "directionReceiveOnly": "Nur empfangen (Spiegel von der Gegenstelle)",
             "preserveRemoteDeletes": "Auf der anderen Seite gelöschte Dateien behalten (additive Sicherung)",
-            "preserveRemoteDeletesDesc": "Wenn aktiviert, entfernt das Löschen einer Datei auf der Leseseite sie nie auf der Schreibseite. Deaktivieren, um diesen Ordner zu einem strikten Spiegel zu machen."
+            "preserveRemoteDeletesDesc": "Wenn aktiviert, entfernt das Löschen einer Datei auf der Leseseite sie nie auf der Schreibseite. Deaktivieren, um diesen Ordner zu einem strikten Spiegel zu machen.",
+            "watcherDebounce": "Echtzeit-Entprellung (ms)",
+            "watcherDebounceDesc": "Wie lange gewartet wird, bis sich Dateiänderungen beruhigt haben, bevor eine Echtzeitsynchronisierung startet. Ein höherer Wert bündelt schnelle Änderungen in einer Synchronisierung; ein niedrigerer reagiert schneller. Gilt, wenn Bei Dateiänderung synchronisieren aktiviert ist, und wird beim nächsten Start wirksam. Bereich 100 to 60000.",
+            "watcherCooldown": "Watcher-Abkühlzeit (s)",
+            "watcherCooldownDesc": "Mindestzeit zwischen zwei Echtzeitsynchronisierungen, um eine Schleife zu verhindern, in der eine Synchronisierung Dateien schreibt, die der Watcher danach erneut erkennt. Auf 0 setzen, um die Abkühlzeit zu deaktivieren."
         },
         "statusBar": {
             "connected": "Verbunden",

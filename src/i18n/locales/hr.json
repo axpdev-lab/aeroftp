@@ -1193,7 +1193,11 @@
             "directionSendOnly": "Samo slanje (sigurnosna kopija na udaljeno mjesto)",
             "directionReceiveOnly": "Samo primanje (zrcaljenje s udaljenog mjesta)",
             "preserveRemoteDeletes": "Zadrži datoteke izbrisane na drugoj strani (aditivna sigurnosna kopija)",
-            "preserveRemoteDeletesDesc": "Kada je uključeno, brisanje datoteke na strani čitanja nikada je ne uklanja na strani pisanja. Isključite da ova mapa postane strogo zrcalo."
+            "preserveRemoteDeletesDesc": "Kada je uključeno, brisanje datoteke na strani čitanja nikada je ne uklanja na strani pisanja. Isključite da ova mapa postane strogo zrcalo.",
+            "watcherDebounce": "Odgoda u stvarnom vremenu (ms)",
+            "watcherDebounceDesc": "Koliko dugo čekati da se promjene datoteka smire prije nego što se pokrene sinkronizacija u stvarnom vremenu. Viša vrijednost objedinjuje brze izmjene u jednu sinkronizaciju; niža reagira brže. Primjenjuje se kad je uključeno Sinkroniziraj pri promjeni datoteke i stupa na snagu pri sljedećem pokretanju. Raspon 100 to 60000.",
+            "watcherCooldown": "Vrijeme mirovanja nadzornika (s)",
+            "watcherCooldownDesc": "Najmanje vrijeme između dviju sinkronizacija u stvarnom vremenu, radi sprječavanja petlje u kojoj sinkronizacija zapisuje datoteke koje nadzornik zatim ponovno otkrije. Postavite 0 za onemogućavanje vremena mirovanja."
         },
         "statusBar": {
             "connected": "Povezano",

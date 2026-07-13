@@ -1193,7 +1193,11 @@
             "directionSendOnly": "Vain lähetys (varmuuskopio etäkohteeseen)",
             "directionReceiveOnly": "Vain vastaanotto (peilaus etäkohteesta)",
             "preserveRemoteDeletes": "Säilytä toisella puolella poistetut tiedostot (lisäävä varmuuskopio)",
-            "preserveRemoteDeletesDesc": "Kun käytössä, tiedoston poistaminen lukupuolella ei koskaan poista sitä kirjoituspuolelta. Poista käytöstä tehdäksesi tästä kansiosta tiukan peilin."
+            "preserveRemoteDeletesDesc": "Kun käytössä, tiedoston poistaminen lukupuolella ei koskaan poista sitä kirjoituspuolelta. Poista käytöstä tehdäksesi tästä kansiosta tiukan peilin.",
+            "watcherDebounce": "Reaaliaikaviive (ms)",
+            "watcherDebounceDesc": "Kuinka kauan odotetaan tiedostomuutosten asettumista ennen reaaliaikaisen synkronoinnin käynnistymistä. Suurempi arvo niputtaa nopeat muokkaukset yhdeksi synkronoinniksi; pienempi reagoi nopeammin. Koskee, kun Synkronoi tiedoston muuttuessa on käytössä, ja tulee voimaan seuraavalla käynnistyksellä. Alue 100 to 60000.",
+            "watcherCooldown": "Valvojan jäähtymisaika (s)",
+            "watcherCooldownDesc": "Vähimmäisaika kahden reaaliaikaisen synkronoinnin välillä, jotta estetään silmukka, jossa synkronointi kirjoittaa tiedostoja, jotka valvoja havaitsee uudelleen. Aseta 0 poistaaksesi jäähtymisajan käytöstä."
         },
         "statusBar": {
             "connected": "Yhdistetty",

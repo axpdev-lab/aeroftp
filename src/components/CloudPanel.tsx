@@ -51,6 +51,10 @@ interface CloudConfig {
     // Send-only / receive-only additive backup: when true (default) deletes on
     // the read side are not mirrored to the write side.
     preserve_remote_deletes?: boolean;
+    // Real-time watcher tuning (item 1). Debounce quiet period in ms (default
+    // 1500) and cooldown between watcher-triggered syncs in seconds (default 30).
+    watcher_debounce_ms?: number;
+    watcher_cooldown_secs?: number;
 }
 
 type CloudVersioningStrategy =
@@ -1618,6 +1622,40 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose }) => {
                                     </select>
                                 </div>
                                 <p className="text-xs text-gray-400 mt-1">{t('cloud.syncIntervalDesc')}</p>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium mb-1">{t('cloud.watcherDebounce')}</label>
+                                <input
+                                    type="number"
+                                    min="100"
+                                    max="60000"
+                                    step="100"
+                                    value={config?.watcher_debounce_ms ?? 1500}
+                                    onChange={e => {
+                                        const val = Math.min(60000, Math.max(100, parseInt(e.target.value) || 1500));
+                                        setConfig(prev => prev ? { ...prev, watcher_debounce_ms: val } : null);
+                                    }}
+                                    className="w-24 px-3 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-center"
+                                />
+                                <p className="text-xs text-gray-400 mt-1">{t('cloud.watcherDebounceDesc')}</p>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium mb-1">{t('cloud.watcherCooldown')}</label>
+                                <input
+                                    type="number"
+                                    min="0"
+                                    max="3600"
+                                    step="5"
+                                    value={config?.watcher_cooldown_secs ?? 30}
+                                    onChange={e => {
+                                        const val = Math.min(3600, Math.max(0, parseInt(e.target.value) || 0));
+                                        setConfig(prev => prev ? { ...prev, watcher_cooldown_secs: val } : null);
+                                    }}
+                                    className="w-24 px-3 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-center"
+                                />
+                                <p className="text-xs text-gray-400 mt-1">{t('cloud.watcherCooldownDesc')}</p>
                             </div>
 
                             <div>

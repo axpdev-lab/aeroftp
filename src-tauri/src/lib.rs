@@ -14744,7 +14744,8 @@ async fn background_sync_worker(app: AppHandle) {
         let config = cloud_config::load_cloud_config();
         if config.sync_on_change {
             let local_path = config.local_folder.clone();
-            let mut fw = file_watcher::FileWatcher::new(watcher_tx.clone());
+            let mut fw = file_watcher::FileWatcher::new(watcher_tx.clone())
+                .with_debounce_ms(config.watcher_debounce_ms);
             match fw.start(&local_path, file_watcher::WatcherMode::Auto) {
                 Ok(()) => {
                     info!("Filesystem watcher active on {}", local_path.display());
@@ -14767,7 +14768,6 @@ async fn background_sync_worker(app: AppHandle) {
     // --- Main event loop ---
     let mut is_first_run = true;
     let mut last_sync_completed = tokio::time::Instant::now() - Duration::from_secs(120); // allow first sync immediately
-    const WATCHER_COOLDOWN_SECS: u64 = 30; // min seconds between watcher-triggered syncs
 
     loop {
         // Check global stop flag
@@ -14868,9 +14868,9 @@ async fn background_sync_worker(app: AppHandle) {
                         }
                     };
                     let effective_elapsed = elapsed.min(global_elapsed);
-                    if effective_elapsed < WATCHER_COOLDOWN_SECS {
+                    if effective_elapsed < config.watcher_cooldown_secs {
                         info!("Watcher trigger suppressed: {}s since last sync (cooldown {}s)",
-                            effective_elapsed, WATCHER_COOLDOWN_SECS);
+                            effective_elapsed, config.watcher_cooldown_secs);
                         // Drain any queued watcher events
                         while watcher_rx.try_recv().is_ok() {}
                         continue;

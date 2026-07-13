@@ -1193,7 +1193,11 @@
             "directionSendOnly": "Tuma Pekee (hifadhi nakala kwa seva ya mbali)",
             "directionReceiveOnly": "Pokea Pekee (nakili kutoka seva ya mbali)",
             "preserveRemoteDeletes": "Hifadhi faili zilizofutwa upande mwingine (hifadhi nakala ya nyongeza)",
-            "preserveRemoteDeletesDesc": "Ikiwashwa, kufuta faili upande wa kusoma hakuiondoi kamwe upande wa kuandika. Zima ili kuifanya folda hii kuwa nakala kamili kali."
+            "preserveRemoteDeletesDesc": "Ikiwashwa, kufuta faili upande wa kusoma hakuiondoi kamwe upande wa kuandika. Zima ili kuifanya folda hii kuwa nakala kamili kali.",
+            "watcherDebounce": "Ucheleweshaji wa wakati halisi (ms)",
+            "watcherDebounceDesc": "Muda wa kusubiri mabadiliko ya faili yatulie kabla ya usawazishaji wa wakati halisi kuanza. Thamani kubwa zaidi huunganisha mahariri ya haraka kuwa usawazishaji mmoja; ndogo zaidi hujibu haraka. Hutumika wakati Sawazisha faili inapobadilika imewashwa, na huanza kutumika wakati wa kuanza kwingine. Kipimo 100 to 60000.",
+            "watcherCooldown": "Muda wa kupumzika wa mfuatiliaji (s)",
+            "watcherCooldownDesc": "Muda wa chini kabisa kati ya usawazishaji miwili ya wakati halisi, ili kuzuia kitanzi ambapo usawazishaji huandika faili ambazo mfuatiliaji hugundua tena. Weka 0 kuzima muda wa kupumzika."
         },
         "statusBar": {
             "connected": "Imeunganishwa",

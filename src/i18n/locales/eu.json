@@ -1193,7 +1193,11 @@
             "directionSendOnly": "Bidali soilik (babeskopia urrunekora)",
             "directionReceiveOnly": "Jaso soilik (ispilua urrunekotik)",
             "preserveRemoteDeletes": "Gorde beste aldean ezabatutako fitxategiak (babeskopia gehigarria)",
-            "preserveRemoteDeletesDesc": "Aktibatuta dagoenean, irakurketa aldean fitxategi bat ezabatzeak ez du inoiz idazketa aldetik kentzen. Desaktibatu karpeta hau ispilu zorrotza izan dadin."
+            "preserveRemoteDeletesDesc": "Aktibatuta dagoenean, irakurketa aldean fitxategi bat ezabatzeak ez du inoiz idazketa aldetik kentzen. Desaktibatu karpeta hau ispilu zorrotza izan dadin.",
+            "watcherDebounce": "Denbora errealeko atzerapena (ms)",
+            "watcherDebounceDesc": "Zenbat denbora itxaron behar den fitxategi-aldaketak egonkortu arte, denbora errealeko sinkronizazioa abiarazi aurretik. Balio handiago batek edizio azkarrak sinkronizazio bakarrean biltzen ditu; txikiago batek azkarrago erantzuten du. Fitxategia aldatzean sinkronizatu aktibatuta dagoenean aplikatzen da, eta hurrengo abioan izango du eragina. Tartea 100 to 60000.",
+            "watcherCooldown": "Behatzailearen atsedenaldia (s)",
+            "watcherCooldownDesc": "Denbora errealeko bi sinkronizazioren arteko gutxieneko denbora, sinkronizazio batek behatzaileak gero berriz detektatzen dituen fitxategiak idazten dituen begizta bat saihesteko. Ezarri 0 atsedenaldia desgaitzeko."
         },
         "statusBar": {
             "connected": "Konektatuta",

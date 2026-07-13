@@ -1193,7 +1193,11 @@
             "directionSendOnly": "Jen odesílat (záloha do vzdáleného úložiště)",
             "directionReceiveOnly": "Jen přijímat (zrcadlo ze vzdáleného úložiště)",
             "preserveRemoteDeletes": "Zachovat soubory smazané na druhé straně (přírůstková záloha)",
-            "preserveRemoteDeletesDesc": "Když je zapnuto, smazání souboru na čtecí straně jej nikdy neodstraní na zapisovací straně. Vypněte, aby byla tato složka přísným zrcadlem."
+            "preserveRemoteDeletesDesc": "Když je zapnuto, smazání souboru na čtecí straně jej nikdy neodstraní na zapisovací straně. Vypněte, aby byla tato složka přísným zrcadlem.",
+            "watcherDebounce": "Prodleva v reálném čase (ms)",
+            "watcherDebounceDesc": "Jak dlouho čekat na ustálení změn souborů, než se spustí synchronizace v reálném čase. Vyšší hodnota sloučí rychlé úpravy do jedné synchronizace; nižší reaguje rychleji. Platí, když je zapnuto Synchronizovat při změně souboru, a projeví se při příštím spuštění. Rozsah 100 to 60000.",
+            "watcherCooldown": "Prodleva hlídače (s)",
+            "watcherCooldownDesc": "Minimální čas mezi dvěma synchronizacemi v reálném čase, aby se předešlo smyčce, kdy synchronizace zapíše soubory, které hlídač poté znovu zaznamená. Nastavte 0 pro vypnutí prodlevy."
         },
         "statusBar": {
             "connected": "Připojeno",
