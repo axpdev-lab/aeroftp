@@ -14706,14 +14706,17 @@ async fn trigger_cloud_sync(
         if let Ok(profiles) = user_partitions::mcp_list_active_server_profiles(s) {
             if let Some(proto) = profiles
                 .iter()
-                .find(|p| p.get("name").and_then(|v| v.as_str()) == Some(cfg.server_profile.as_str()))
+                .find(|p| {
+                    p.get("name").and_then(|v| v.as_str()) == Some(cfg.server_profile.as_str())
+                })
                 .and_then(|p| p.get("protocol").and_then(|v| v.as_str()))
             {
                 cfg.protocol_type = proto.to_string();
             }
         }
     }
-    let result = cloud_service::sync_one_config(cfg, store.as_ref(), Some(app.clone()), false).await;
+    let result =
+        cloud_service::sync_one_config(cfg, store.as_ref(), Some(app.clone()), false).await;
 
     match result {
         Ok(result) => {
@@ -15002,9 +15005,7 @@ async fn background_sync_worker(app: AppHandle) {
             let mut pc = cloud_pairs::load_cloud_pairs_config();
             if !pc.pairs.is_empty() {
                 if let Some(ref store) = store_for_resolution {
-                    if let Ok(profiles) =
-                        user_partitions::mcp_list_active_server_profiles(store)
-                    {
+                    if let Ok(profiles) = user_partitions::mcp_list_active_server_profiles(store) {
                         for p in &mut pc.pairs {
                             if let Some(proto) = profiles
                                 .iter()
