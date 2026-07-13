@@ -1692,19 +1692,32 @@ pub async fn sync_one_config(
         );
     }
 
+    // Fail-closed on a locked vault (audit A-H1). The per-profile crypt-overlay
+    // binding lives in the credential store; without it we cannot prove the
+    // profile is not bound to a zero-knowledge overlay. Proceeding would skip
+    // the crypt wrap while the compress layer (gated only on config) still runs,
+    // uploading AECP-wrapped plaintext to a remote the user configured for
+    // encryption and mis-reading prior ciphertext back as legacy. Direct-auth
+    // providers already fail without the vault; OAuth providers can connect from
+    // the token cache, so this guard is the one place that closes the gap. Refuse
+    // before connecting so a locked vault never opens a session at all.
+    let store = store.ok_or_else(|| {
+        "vault is locked: refusing AeroCloud sync (cannot verify the profile's \
+         encryption binding). Unlock the vault and retry."
+            .to_string()
+    })?;
+
     let mut provider = cloud_provider_factory::create_cloud_provider(&config)
         .await
         .map_err(|e| format!("failed to connect provider: {e}"))?;
 
-    if let Some(s) = store {
-        provider = crypt_overlay_provider::build_aerocloud_overlay_stack(
-            provider,
-            &config.server_profile,
-            s,
-        )
-        .await
-        .map_err(|e| format!("overlay stack refused the sync: {e}"))?;
-    }
+    provider = crypt_overlay_provider::build_aerocloud_overlay_stack(
+        provider,
+        &config.server_profile,
+        store,
+    )
+    .await
+    .map_err(|e| format!("overlay stack refused the sync: {e}"))?;
     if config.compress_enabled {
         validate_compress_level(config.compress_level)?;
         provider = Box::new(CompressOverlayProvider::new(

@@ -293,6 +293,15 @@ async fn create_via_factory(
         .map_err(|e| format!("Failed to create provider: {}", e))?;
     // A3-05: Zeroize password after it has been consumed by the provider
     provider_config.zeroize_password();
+    // A-L2: the SFTP key passphrase is copied into `extra` (merge_sftp_key_options)
+    // and is NOT covered by `zeroize_password`, which only clears the password
+    // field. Scrub it here so the "something you have" secret does not linger in
+    // this config's memory after the provider has consumed it. `private_key_path`
+    // is a filesystem path, not secret material, so it is left as-is.
+    if let Some(passphrase) = provider_config.extra.get_mut("key_passphrase") {
+        use zeroize::Zeroize;
+        passphrase.zeroize();
+    }
 
     info!(
         "AeroCloud: connecting via {:?} to {}",

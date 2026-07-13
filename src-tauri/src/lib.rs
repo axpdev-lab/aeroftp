@@ -15099,7 +15099,13 @@ async fn background_sync_worker(app: AppHandle) {
                     file_details: vec![],
                 };
                 let store = credential_store::CredentialStore::from_cache();
-                for cfg in pair_cfgs {
+                // Vault locked: sync_one_config now fail-closes per pair (audit
+                // A-H1), so skip the whole batch quietly here to avoid one error
+                // per pair every cycle. Background sync resumes once unlocked.
+                if store.is_none() {
+                    debug!("Background AeroCloud sync skipped: vault is locked");
+                }
+                for cfg in pair_cfgs.iter().filter(|_| store.is_some()) {
                     match cloud_service::sync_one_config(
                         cfg.clone(),
                         store.as_ref(),
