@@ -8,8 +8,11 @@
 #![allow(dead_code)]
 #![allow(unused_imports)]
 
-use crate::cloud_config::{CloudConfig, CloudSyncStatus, ConflictStrategy};
+use crate::cloud_config::{
+    validate_compress_level, CloudConfig, CloudSyncStatus, ConflictStrategy,
+};
 use crate::cloud_provider_factory;
+use crate::compress_overlay_provider::CompressOverlayProvider;
 use crate::credential_store;
 use crate::crypt_overlay_provider;
 use crate::ftp::FtpManager;
@@ -1666,8 +1669,9 @@ impl CloudService {
 /// cd/mkdir/ensure is handled inside the plan builders; callers no longer
 /// duplicate it.
 ///
-/// The overlay stack (P1: crypt seam; P2+: compress + crypt in fixed order) replaces
-/// the prior single crypt wrap. `build_aerocloud_overlay_stack` is the chokepoint.
+/// The overlay stack is composed here from config state: crypt is resolved from
+/// the saved profile first, then AeroCompress wraps it as the outer layer when
+/// `config.compress_enabled` is true.
 ///
 /// `store` is passed explicitly (from_cache() or opened vault) so CLI and GUI
 /// paths both work. `config` must have protocol_type resolved (CLI does the
@@ -1700,6 +1704,13 @@ pub async fn sync_one_config(
         )
         .await
         .map_err(|e| format!("overlay stack refused the sync: {e}"))?;
+    }
+    if config.compress_enabled {
+        validate_compress_level(config.compress_level)?;
+        provider = Box::new(CompressOverlayProvider::new(
+            provider,
+            config.compress_level,
+        ));
     }
 
     // NOTE: explicit cd/mkdir that used to sit between wrap and service here

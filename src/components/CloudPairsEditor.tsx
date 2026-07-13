@@ -11,7 +11,7 @@ import React, { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import {
     X, Plus, Trash2, Folder, Globe, ToggleLeft, ToggleRight, Server, Edit2,
-    ArrowLeftRight, ArrowRight, ArrowLeft, Shield
+    ArrowLeftRight, ArrowRight, ArrowLeft, Shield, Shrink
 } from 'lucide-react';
 import { CloudPathPair, CloudPairsConfig, CloudSyncDirection } from '../types';
 import { useTranslation } from '../i18n';
@@ -58,6 +58,20 @@ function fromVersioningSelectValue(v: VersioningSelectValue): any {
     }
 }
 
+function normalizeCompressLevel(value: unknown): number {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return 3;
+    return Math.min(22, Math.max(1, Math.round(n)));
+}
+
+function normalizePair(pair: CloudPathPair): CloudPathPair {
+    return {
+        ...pair,
+        compress_enabled: pair.compress_enabled === true,
+        compress_level: normalizeCompressLevel(pair.compress_level ?? 3),
+    };
+}
+
 export const CloudPairsEditor: React.FC<CloudPairsEditorProps> = ({ isOpen, onClose }) => {
     const t = useTranslation();
     const [pairs, setPairs] = useState<CloudPathPair[]>([]);
@@ -81,7 +95,7 @@ export const CloudPairsEditor: React.FC<CloudPairsEditorProps> = ({ isOpen, onCl
             try {
                 // Load pairs
                 const cfg = await invoke<CloudPairsConfig>('get_cloud_pairs_config').catch(() => ({ pairs: [], parallel_pairs: false } as CloudPairsConfig));
-                setPairs(cfg.pairs || []);
+                setPairs((cfg.pairs || []).map(normalizePair));
 
                 // Load saved servers for profile picker
                 const servers = await loadSavedServerProfiles().catch(() => []);
@@ -119,6 +133,8 @@ export const CloudPairsEditor: React.FC<CloudPairsEditorProps> = ({ isOpen, onCl
             connection_params: base.connection_params || {},
             sync_direction: (base.sync_direction as CloudSyncDirection) || 'bidirectional',
             preserve_remote_deletes: base.preserve_remote_deletes !== false,
+            compress_enabled: base.compress_enabled === true,
+            compress_level: normalizeCompressLevel(base.compress_level ?? 3),
             conflict_strategy: base.conflict_strategy || 'ask_user',
             versioning_strategy: base.versioning_strategy || { type: 'trash_can', max_age_days: 30 },
             excluded_folders: base.excluded_folders || [],
@@ -229,6 +245,8 @@ export const CloudPairsEditor: React.FC<CloudPairsEditorProps> = ({ isOpen, onCl
             connection_params: legacyConfig.connection_params || {},
             sync_direction: (legacyConfig.sync_direction as CloudSyncDirection) || 'bidirectional',
             preserve_remote_deletes: legacyConfig.preserve_remote_deletes !== false,
+            compress_enabled: legacyConfig.compress_enabled === true,
+            compress_level: normalizeCompressLevel(legacyConfig.compress_level ?? 3),
             conflict_strategy: legacyConfig.conflict_strategy || 'ask_user',
             versioning_strategy: legacyConfig.versioning_strategy || { type: 'trash_can', max_age_days: 30 },
             excluded_folders: legacyConfig.excluded_folders || [],
@@ -396,6 +414,35 @@ export const CloudPairsEditor: React.FC<CloudPairsEditorProps> = ({ isOpen, onCl
                                                 </span>
                                             </label>
                                         </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-2">
+                                        <label className="flex items-center gap-2 text-xs cursor-pointer select-none bg-gray-100 dark:bg-gray-700 rounded px-2 py-1.5">
+                                            <input
+                                                type="checkbox"
+                                                checked={pair.compress_enabled === true}
+                                                onChange={e => updatePairField(pair.id, 'compress_enabled', e.target.checked)}
+                                            />
+                                            <span className="inline-flex items-center gap-1 min-w-0">
+                                                <Shrink size={12} /> <span className="truncate">{t('settings.aerocloudCompress') || 'AeroCompress'}</span>
+                                            </span>
+                                        </label>
+
+                                        <label className="flex items-center gap-2 text-xs bg-gray-100 dark:bg-gray-700 rounded px-2 py-1.5">
+                                            <span className="inline-flex items-center gap-1 text-gray-500 dark:text-gray-400 min-w-0">
+                                                <Shrink size={12} /> <span className="truncate">{t('settings.aerocloudCompressLevel') || 'Compression level'}</span>
+                                            </span>
+                                            <input
+                                                type="number"
+                                                min={1}
+                                                max={22}
+                                                step={1}
+                                                disabled={pair.compress_enabled !== true}
+                                                className="w-16 text-xs bg-white dark:bg-gray-800 rounded px-2 py-1 tabular-nums disabled:opacity-50"
+                                                value={normalizeCompressLevel(pair.compress_level ?? 3)}
+                                                onChange={e => updatePairField(pair.id, 'compress_level', normalizeCompressLevel(e.target.value))}
+                                            />
+                                        </label>
                                     </div>
 
                                     {/* Advanced: conflict + versioning + excludes */}

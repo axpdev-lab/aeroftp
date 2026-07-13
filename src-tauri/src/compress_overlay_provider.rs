@@ -77,35 +77,6 @@ fn parse_header_prefix(prefix: &[u8]) -> WirePlan {
     }
 }
 
-/// Lightweight config for the compress layer (parsed from saved profile).
-#[derive(Clone, Debug, Default)]
-pub struct CompressConfig {
-    pub enabled: bool,
-    pub level: i32,
-}
-
-/// Extract `aeroCompress` from a saved profile JSON (parallel to aeroCryptOverlay).
-/// Absent or disabled => enabled:false (level ignored). Default level 3 when enabled without level.
-pub fn compress_config_from_profile(profile: &serde_json::Value) -> CompressConfig {
-    let Some(c) = profile.get("aeroCompress") else {
-        return CompressConfig {
-            enabled: false,
-            level: 3,
-        };
-    };
-    if !c.get("enabled").and_then(|v| v.as_bool()).unwrap_or(false) {
-        return CompressConfig {
-            enabled: false,
-            level: 3,
-        };
-    }
-    let level = c.get("level").and_then(|v| v.as_i64()).unwrap_or(3) as i32;
-    CompressConfig {
-        enabled: true,
-        level,
-    }
-}
-
 /// The decorator.
 pub struct CompressOverlayProvider {
     inner: Box<dyn StorageProvider>,
@@ -403,28 +374,5 @@ mod tests {
         // A short blob that happens to start with the magic but lacks a full header
         // is Legacy (we require the full 13-byte header).
         assert_eq!(parse_header_prefix(b"AECP"), WirePlan::Legacy);
-    }
-
-    #[test]
-    fn p3_a2_compress_only_config_from_profile() {
-        // A2: crypt flag OFF (absent or disabled) + aeroCompress enabled = compress-only transparent overlay.
-        let prof = serde_json::json!({
-            "name": "dev-a2",
-            "aeroCompress": { "enabled": true, "level": 5 }
-        });
-        let c = compress_config_from_profile(&prof);
-        assert!(c.enabled);
-        assert_eq!(c.level, 5);
-
-        let prof_off = serde_json::json!({
-            "aeroCompress": { "enabled": false }
-        });
-        assert!(!compress_config_from_profile(&prof_off).enabled);
-
-        let prof_a1 = serde_json::json!({
-            "aeroCryptOverlay": { "enabled": true, "kind": "aerocrypt" },
-            "aeroCompress": { "enabled": true, "level": 3 }
-        });
-        assert!(compress_config_from_profile(&prof_a1).enabled);
     }
 }

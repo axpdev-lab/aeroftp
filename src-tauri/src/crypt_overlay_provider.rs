@@ -77,7 +77,6 @@ use zeroize::Zeroize;
 
 use crate::aerocrypt::overlay::{self, OverlayConfig};
 use crate::aerocrypt::{names, KEY_SIZE};
-use crate::compress_overlay_provider::{compress_config_from_profile, CompressOverlayProvider};
 use crate::crypt_compare::{rclone_decrypted_size, OverlayUnlockParams};
 use crate::providers::{
     FileVersion, ProviderError, ProviderType, RemoteEntry, StorageProvider, TrashEntry,
@@ -1687,38 +1686,25 @@ pub async fn wrap_connected_provider_for_profile_named(
     wrap_connected_provider_for_profile(inner, profile, store).await
 }
 
-/// Ordered AeroCloud (and future drive) overlay stack builder.
-/// P1 (this phase): crypt-only seam, byte-identical to the single wrap that
-/// used to live at cloud_service.rs:1693. Behavior is unchanged for both
-/// crypt-bound and plain profiles.
+/// AeroCrypt overlay builder for the AeroCloud stack.
+/// This is byte-identical to the single crypt wrap that used to live at
+/// cloud_service.rs:1693. Behavior is unchanged for both crypt-bound and plain
+/// profiles.
 ///
-/// Future phases (P2+) will read compression (and later chunk/EC) config from
-/// the profile and compose decorators in canonical fixed order:
-///   compress (outer, first on plaintext) -> crypt (inner, closest to wire)
-/// Each layer that is enabled wraps the previous; any layer refusing (e.g.
-/// unlock fail) aborts the whole stack (fail-closed).
+/// Compression is intentionally not resolved here anymore: it is per-AeroCloud
+/// config/pair state, so `sync_one_config` wraps `CompressOverlayProvider`
+/// around this crypt-only builder when `CloudConfig.compress_enabled` is true.
+/// Any layer refusing (e.g. unlock fail or invalid compression config) aborts
+/// the whole stack (fail-closed).
 ///
-/// The builder is the single chokepoint; call sites (cloud sync, resolvers)
-/// no longer hardcode a single layer.
+/// Keep this builder crypt-only; the caller owns higher layers whose settings
+/// live in `CloudConfig` or `CloudPathPair`.
 pub async fn build_aerocloud_overlay_stack(
     inner: Box<dyn StorageProvider>,
     profile_name: &str,
     store: &crate::credential_store::CredentialStore,
 ) -> Result<Box<dyn StorageProvider>, String> {
-    // Resolve crypt (if bound) first -> this is the "inner" for compress.
-    let mut p = wrap_connected_provider_for_profile_named(inner, profile_name, store).await?;
-
-    // P2+: read optional compress config from the SAME profile (A2 = crypt absent + compress on).
-    // Resolve profiles again (cheap) to obtain the JSON for compress flags. If profile absent
-    // or compress disabled, p is unchanged (plain or crypt-only).
-    let profiles = crate::user_partitions::mcp_list_active_server_profiles(store)?;
-    if let Some(profile) = select_profile_by_name(&profiles, profile_name) {
-        let comp = compress_config_from_profile(profile);
-        if comp.enabled {
-            p = Box::new(CompressOverlayProvider::new(p, comp.level));
-        }
-    }
-    Ok(p)
+    wrap_connected_provider_for_profile_named(inner, profile_name, store).await
 }
 
 /// Select the profile named `name` from a decrypted profile list by EXACT

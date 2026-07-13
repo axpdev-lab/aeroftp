@@ -11,7 +11,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::{LazyLock, Mutex};
 
-use crate::cloud_config::{CloudConfig, ConflictStrategy};
+use crate::cloud_config::{default_compress_level, CloudConfig, ConflictStrategy};
 use crate::sync::CompareDirection;
 use crate::sync_versioning::VersioningStrategy;
 
@@ -46,6 +46,12 @@ pub struct CloudPathPair {
 
     #[serde(default = "default_preserve_remote_deletes")]
     pub preserve_remote_deletes: bool,
+
+    #[serde(default)]
+    pub compress_enabled: bool,
+
+    #[serde(default = "default_compress_level")]
+    pub compress_level: i32,
 
     #[serde(default)]
     pub conflict_strategy: ConflictStrategy,
@@ -93,6 +99,8 @@ impl CloudPathPair {
             connection_params: legacy.connection_params.clone(),
             sync_direction: legacy.sync_direction,
             preserve_remote_deletes: legacy.preserve_remote_deletes,
+            compress_enabled: legacy.compress_enabled,
+            compress_level: legacy.compress_level,
             conflict_strategy: legacy.conflict_strategy.clone(),
             versioning_strategy: legacy.versioning_strategy.clone(),
             excluded_folders: legacy.excluded_folders.clone(),
@@ -126,6 +134,8 @@ impl CloudPathPair {
             public_url_base: None,
             sync_direction: self.sync_direction,
             preserve_remote_deletes: self.preserve_remote_deletes,
+            compress_enabled: self.compress_enabled,
+            compress_level: self.compress_level,
             protocol_type: self.protocol_type.clone(),
             connection_params: self.connection_params.clone(),
             excluded_folders: self.excluded_folders.clone(),
@@ -221,6 +231,8 @@ pub fn new_cloud_path_pair(
         connection_params: serde_json::Value::Null,
         sync_direction: CompareDirection::Bidirectional,
         preserve_remote_deletes: default_preserve_remote_deletes(),
+        compress_enabled: false,
+        compress_level: default_compress_level(),
         conflict_strategy: ConflictStrategy::default(),
         versioning_strategy: VersioningStrategy::default(),
         excluded_folders: Vec::new(),
@@ -246,6 +258,8 @@ mod tests {
             connection_params: serde_json::Value::Null,
             sync_direction: CompareDirection::Bidirectional,
             preserve_remote_deletes: true,
+            compress_enabled: false,
+            compress_level: default_compress_level(),
             conflict_strategy: ConflictStrategy::default(),
             versioning_strategy: VersioningStrategy::default(),
             excluded_folders: vec![],
@@ -271,6 +285,8 @@ mod tests {
             protocol_type: "sftp".into(),
             sync_direction: CompareDirection::LocalToRemote,
             preserve_remote_deletes: false,
+            compress_enabled: true,
+            compress_level: 9,
             exclude_patterns: vec!["*.tmp".into()],
             ..CloudConfig::default()
         };
@@ -279,12 +295,16 @@ mod tests {
         assert_eq!(pair.protocol_type, "sftp");
         assert_eq!(pair.sync_direction, CompareDirection::LocalToRemote);
         assert!(!pair.preserve_remote_deletes);
+        assert!(pair.compress_enabled);
+        assert_eq!(pair.compress_level, 9);
         assert_eq!(pair.exclude_patterns, vec!["*.tmp".to_string()]);
 
         let back = pair.to_cloud_config();
         assert!(back.enabled);
         assert_eq!(back.server_profile, "legprof");
         assert_eq!(back.protocol_type, "sftp");
+        assert!(back.compress_enabled);
+        assert_eq!(back.compress_level, 9);
         // exclude fallback exercised
         assert!(!back.exclude_patterns.is_empty());
     }
@@ -301,6 +321,8 @@ mod tests {
         assert_eq!(p.protocol_type, "ftp");
         assert!(p.enabled);
         assert_eq!(p.sync_direction, CompareDirection::Bidirectional);
+        assert!(!p.compress_enabled);
+        assert_eq!(p.compress_level, 3);
     }
 
     #[test]
@@ -311,5 +333,17 @@ mod tests {
         let c = p.to_cloud_config();
         // should have fallen back to CloudConfig default excludes (non empty)
         assert!(!c.exclude_patterns.is_empty());
+    }
+
+    #[test]
+    fn test_to_cloud_config_carries_compress_overlay_fields() {
+        let mut p =
+            new_cloud_path_pair("x".into(), "x".into(), "/l".into(), "/r".into(), "p".into());
+        p.compress_enabled = true;
+        p.compress_level = 11;
+
+        let c = p.to_cloud_config();
+        assert!(c.compress_enabled);
+        assert_eq!(c.compress_level, 11);
     }
 }

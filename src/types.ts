@@ -1090,6 +1090,8 @@ export interface CloudPathPair {
   connection_params: Record<string, unknown>;
   sync_direction: CloudSyncDirection;
   preserve_remote_deletes: boolean;
+  compress_enabled: boolean;
+  compress_level: number;
   conflict_strategy: string;
   versioning_strategy: CloudVersioningStrategy;
   excluded_folders: string[];
@@ -1102,9 +1104,8 @@ export interface CloudPairsConfig {
   parallel_pairs: boolean;
 }
 
-// P4 surface note: AeroCloud overlay stack (compress + optional crypt) is configured on the
-// referenced server profile (aeroCompress / aeroCryptOverlay). CLI/GUI aerocloud pair
-// expose --compress / toggles that should patch the profile (future) or document A1/A2.
+// AeroCloud overlay stack: per-config/pair AeroCompress wraps the optional
+// profile-bound AeroCrypt layer at sync time.
 
 
 // Sync Script Export (T-AEROSYNC-SCRIPT-EXPORT)

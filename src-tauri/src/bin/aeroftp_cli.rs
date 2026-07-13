@@ -3270,7 +3270,7 @@ enum AeroCloudCommands {
         #[arg(long)]
         compress: Option<bool>,
         /// zstd compression level for --compress (1 fast .. 22 max; 3 balanced,
-        /// >=19 for higher ratio like archive). Stored with the profile.
+        /// >=19 for higher ratio like archive). Stored with the AeroCloud config.
         #[arg(long, value_name = "LEVEL")]
         compress_level: Option<i32>,
     },
@@ -3319,7 +3319,7 @@ enum PairCommands {
         /// Enable AeroCompress overlay (see aerocloud set --compress).
         #[arg(long)]
         compress: Option<bool>,
-        /// zstd level for compress (see aerocloud set --compress-level).
+        /// zstd level for compress (stored with this pair).
         #[arg(long, value_name = "LEVEL")]
         compress_level: Option<i32>,
     },
@@ -11082,6 +11082,8 @@ fn aerocloud_print_show(
             "protocolType": config.protocol_type,
             "direction": direction,
             "preserveRemoteDeletes": config.preserve_remote_deletes,
+            "compressEnabled": config.compress_enabled,
+            "compressLevel": config.compress_level,
             "syncIntervalSecs": config.sync_interval_secs,
             "watcherDebounceMs": config.watcher_debounce_ms,
             "watcherCooldownSecs": config.watcher_cooldown_secs,
@@ -11110,6 +11112,8 @@ fn aerocloud_print_show(
             "  preserve remote deletes: {}",
             config.preserve_remote_deletes
         );
+        println!("  compress enabled:        {}", config.compress_enabled);
+        println!("  compress level:          {}", config.compress_level);
         println!("  sync interval (secs):    {}", config.sync_interval_secs);
         println!("  watcher debounce (ms):   {}", config.watcher_debounce_ms);
         println!(
@@ -11343,6 +11347,12 @@ async fn cmd_aerocloud(cli: &Cli, command: &AeroCloudCommands, format: OutputFor
                 },
                 None => None,
             };
+            if let Some(level) = compress_level {
+                if let Err(e) = cloud_config::validate_compress_level(*level) {
+                    print_error(format, &e, 5);
+                    return 5;
+                }
+            }
 
             let mut config = cloud_config::load_cloud_config();
             let mut changed = false;
@@ -11378,11 +11388,12 @@ async fn cmd_aerocloud(cli: &Cli, command: &AeroCloudCommands, format: OutputFor
                 config.watcher_cooldown_secs = *secs;
                 changed = true;
             }
-
-            if compress.is_some() || compress_level.is_some() {
-                // Compress settings are stored on the server profile (aeroCompress).
-                // The flag is accepted at the aerocloud set surface for P4;
-                // full profile update can be wired later (or via GUI pair editor).
+            if let Some(c) = compress {
+                config.compress_enabled = *c;
+                changed = true;
+            }
+            if let Some(level) = compress_level {
+                config.compress_level = *level;
                 changed = true;
             }
 
@@ -11432,6 +11443,8 @@ async fn cmd_aerocloud_pair(cli: &Cli, command: &PairCommands, format: OutputFor
                             "enabled": p.enabled,
                             "profile": p.server_profile,
                             "direction": aerocloud_direction_label(p.sync_direction),
+                            "compressEnabled": p.compress_enabled,
+                            "compressLevel": p.compress_level,
                         })
                     })
                     .collect();
@@ -11445,14 +11458,16 @@ async fn cmd_aerocloud_pair(cli: &Cli, command: &PairCommands, format: OutputFor
                     for p in &cfg.pairs {
                         let dir_label = aerocloud_direction_label(p.sync_direction);
                         println!(
-                            "  [{}] {} | {} <-> {} | profile={} | enabled={} | dir={}",
+                            "  [{}] {} | {} <-> {} | profile={} | enabled={} | dir={} | compress={} level={}",
                             p.id,
                             p.name,
                             p.local_path.display(),
                             p.remote_path,
                             p.server_profile,
                             p.enabled,
-                            dir_label
+                            dir_label,
+                            p.compress_enabled,
+                            p.compress_level
                         );
                     }
                 }
@@ -11465,9 +11480,15 @@ async fn cmd_aerocloud_pair(cli: &Cli, command: &PairCommands, format: OutputFor
             remote,
             profile,
             direction,
-            compress: _,
-            compress_level: _,
+            compress,
+            compress_level,
         } => {
+            if let Some(level) = compress_level {
+                if let Err(e) = ftp_client_gui_lib::cloud_config::validate_compress_level(*level) {
+                    print_error(format, &e, 5);
+                    return 5;
+                }
+            }
             let local_path = std::path::PathBuf::from(local);
             let parsed_dir = match direction {
                 Some(d) => match aerocloud_parse_direction(d) {
@@ -11517,6 +11538,12 @@ async fn cmd_aerocloud_pair(cli: &Cli, command: &PairCommands, format: OutputFor
                 profile.clone(),
             );
             new_pair.sync_direction = parsed_dir;
+            if let Some(c) = compress {
+                new_pair.compress_enabled = *c;
+            }
+            if let Some(level) = compress_level {
+                new_pair.compress_level = *level;
+            }
 
             // FIX-1 (partial): pair add is intentionally vault-less (profile name is just a
             // string label at this point). Protocol resolution for non-FTP happens in the
@@ -61615,6 +61642,10 @@ mod tests {
                 "3000",
                 "--watcher-cooldown-secs",
                 "10",
+                "--compress",
+                "true",
+                "--compress-level",
+                "7",
             ])
             .expect("set flags must parse");
             match cli.command {
@@ -61629,8 +61660,8 @@ mod tests {
                             interval,
                             watcher_debounce_ms,
                             watcher_cooldown_secs,
-                            compress: _,
-                            compress_level: _,
+                            compress,
+                            compress_level,
                         },
                 } => {
                     assert_eq!(local.as_deref(), Some("/home/me/Cloud"));
@@ -61641,6 +61672,8 @@ mod tests {
                     assert_eq!(interval, Some(300));
                     assert_eq!(watcher_debounce_ms, Some(3000));
                     assert_eq!(watcher_cooldown_secs, Some(10));
+                    assert_eq!(compress, Some(true));
+                    assert_eq!(compress_level, Some(7));
                 }
                 _ => panic!("expected aerocloud set subcommand"),
             }
@@ -61665,8 +61698,8 @@ mod tests {
                             interval,
                             watcher_debounce_ms,
                             watcher_cooldown_secs,
-                            compress: _,
-                            compress_level: _,
+                            compress,
+                            compress_level,
                         },
                 } => {
                     assert!(local.is_none());
@@ -61677,6 +61710,8 @@ mod tests {
                     assert!(interval.is_none());
                     assert!(watcher_debounce_ms.is_none());
                     assert!(watcher_cooldown_secs.is_none());
+                    assert!(compress.is_none());
+                    assert!(compress_level.is_none());
                 }
                 _ => panic!("expected aerocloud set subcommand"),
             }

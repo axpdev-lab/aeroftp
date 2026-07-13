@@ -56,6 +56,14 @@ pub struct CloudConfig {
     /// the folder acts as a mirror and will delete on the target side.
     #[serde(default = "default_preserve_remote_deletes")]
     pub preserve_remote_deletes: bool,
+    /// Enable the AeroCompress overlay for this AeroCloud target.
+    /// When combined with an AeroCrypt-bound profile, compression is applied
+    /// before encryption. Without crypt, this is the transparent A2 overlay.
+    #[serde(default)]
+    pub compress_enabled: bool,
+    /// zstd compression level for AeroCompress. Defaults to balanced level 3.
+    #[serde(default = "default_compress_level")]
+    pub compress_level: i32,
     /// Protocol type for the cloud connection (e.g., "ftp", "sftp", "googledrive", "s3")
     /// Default: "ftp" for backward compatibility with existing configs
     #[serde(default = "default_protocol_type")]
@@ -92,6 +100,20 @@ fn default_protocol_type() -> String {
 
 fn default_preserve_remote_deletes() -> bool {
     true
+}
+
+pub fn default_compress_level() -> i32 {
+    3
+}
+
+pub fn validate_compress_level(level: i32) -> Result<(), String> {
+    if (1..=22).contains(&level) {
+        Ok(())
+    } else {
+        Err(format!(
+            "invalid compression level {level}: expected an integer in 1..=22"
+        ))
+    }
 }
 
 fn default_watcher_debounce_ms() -> u64 {
@@ -160,6 +182,8 @@ impl Default for CloudConfig {
             connection_params: serde_json::Value::Null,
             sync_direction: crate::sync::CompareDirection::Bidirectional,
             preserve_remote_deletes: default_preserve_remote_deletes(),
+            compress_enabled: false,
+            compress_level: default_compress_level(),
             watcher_debounce_ms: default_watcher_debounce_ms(),
             watcher_cooldown_secs: default_watcher_cooldown_secs(),
         }
@@ -406,6 +430,26 @@ mod tests {
         let config = CloudConfig::default();
         assert_eq!(config.watcher_debounce_ms, 1500);
         assert_eq!(config.watcher_cooldown_secs, 30);
+    }
+
+    #[test]
+    fn test_compress_fields_default_and_backward_compat() {
+        let config = CloudConfig::default();
+        assert!(!config.compress_enabled);
+        assert_eq!(config.compress_level, 3);
+
+        let json = r#"{"enabled":true,"local_folder":"/tmp","remote_folder":"/cloud/","server_profile":"MyFTP","sync_interval_secs":3600,"sync_on_change":true,"sync_on_startup":false,"exclude_patterns":[],"conflict_strategy":"ask_user"}"#;
+        let parsed: CloudConfig = serde_json::from_str(json).unwrap();
+        assert!(!parsed.compress_enabled);
+        assert_eq!(parsed.compress_level, 3);
+    }
+
+    #[test]
+    fn test_validate_compress_level() {
+        assert!(validate_compress_level(1).is_ok());
+        assert!(validate_compress_level(22).is_ok());
+        assert!(validate_compress_level(0).is_err());
+        assert!(validate_compress_level(23).is_err());
     }
 
     #[test]
