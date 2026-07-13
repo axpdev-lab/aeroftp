@@ -77,6 +77,7 @@ use zeroize::Zeroize;
 
 use crate::aerocrypt::overlay::{self, OverlayConfig};
 use crate::aerocrypt::{names, KEY_SIZE};
+use crate::compress_overlay_provider::{compress_config_from_profile, CompressOverlayProvider};
 use crate::crypt_compare::{rclone_decrypted_size, OverlayUnlockParams};
 use crate::providers::{
     FileVersion, ProviderError, ProviderType, RemoteEntry, StorageProvider, TrashEntry,
@@ -1704,9 +1705,20 @@ pub async fn build_aerocloud_overlay_stack(
     profile_name: &str,
     store: &crate::credential_store::CredentialStore,
 ) -> Result<Box<dyn StorageProvider>, String> {
-    // P1 seam: delegate 1:1 to existing crypt logic. No new behavior.
-    // P2 will extend here to optionally wrap CompressOverlayProvider around it.
-    wrap_connected_provider_for_profile_named(inner, profile_name, store).await
+    // Resolve crypt (if bound) first -> this is the "inner" for compress.
+    let mut p = wrap_connected_provider_for_profile_named(inner, profile_name, store).await?;
+
+    // P2+: read optional compress config from the SAME profile (A2 = crypt absent + compress on).
+    // Resolve profiles again (cheap) to obtain the JSON for compress flags. If profile absent
+    // or compress disabled, p is unchanged (plain or crypt-only).
+    let profiles = crate::user_partitions::mcp_list_active_server_profiles(store)?;
+    if let Some(profile) = select_profile_by_name(&profiles, profile_name) {
+        let comp = compress_config_from_profile(profile);
+        if comp.enabled {
+            p = Box::new(CompressOverlayProvider::new(p, comp.level));
+        }
+    }
+    Ok(p)
 }
 
 /// Select the profile named `name` from a decrypted profile list by EXACT
@@ -1715,7 +1727,7 @@ pub async fn build_aerocloud_overlay_stack(
 /// could resolve the WRONG profile and thereby fail-open a crypt binding (wrap
 /// with the wrong keys, or skip the wrap on a bound profile). Exact `name`
 /// mirrors the credential key `server_<name>` the background sync connects with.
-fn select_profile_by_name<'a>(
+pub(crate) fn select_profile_by_name<'a>(
     profiles: &'a [serde_json::Value],
     name: &str,
 ) -> Option<&'a serde_json::Value> {

@@ -72,6 +72,7 @@ mod coding_git;
 mod coding_patches;
 mod coding_rules;
 mod coding_search;
+pub mod compress_overlay_provider;
 mod context_intelligence;
 pub mod credential_store;
 mod cross_profile_commands;
