@@ -22,6 +22,7 @@ import { WatcherStatus } from './WatcherStatus';
 import { Checkbox } from './ui/Checkbox';
 import { SelectiveSyncTree } from './Sync/SelectiveSyncTree';
 import { VersionBrowser } from './Sync/VersionBrowser';
+import { CloudPairsEditor } from './CloudPairsEditor';
 import { useTranslation } from '../i18n';
 import { logger } from '../utils/logger';
 import { loadSavedServerProfiles } from '../utils/serverProfileStore';
@@ -1114,7 +1115,8 @@ const CloudDashboard: React.FC<{
     onDisable: () => void;
     onOpenFolder: () => void;
     onSettings: () => void;
-}> = ({ config, status, onSyncNow, onPause, onResume, onDisable, onOpenFolder, onSettings }) => {
+    onManagePairs: () => void;
+}> = ({ config, status, onSyncNow, onPause, onResume, onDisable, onOpenFolder, onSettings, onManagePairs }) => {
     const t = useTranslation();
     const [countdown, setCountdown] = useState<string>('');
 
@@ -1201,6 +1203,9 @@ const CloudDashboard: React.FC<{
                 </div>
                 <button onClick={onSettings} className="btn-icon" title={t('common.settings')}>
                     <Settings size={20} />
+                </button>
+                <button onClick={onManagePairs} className="btn-icon" title={t('cloud.managePairs') || 'Manage pairs'} style={{ marginLeft: 4 }}>
+                    <Server size={20} />
                 </button>
             </div>
 
@@ -1310,6 +1315,7 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose }) => {
     const [isLoading, setIsLoading] = useState(true);
     const [showSettings, setShowSettings] = useState(false);
     const [showVersionBrowser, setShowVersionBrowser] = useState(false);
+    const [showCloudPairs, setShowCloudPairs] = useState(false);
     const [reauthRequired, setReauthRequired] = useState<{ provider: string; message: string } | null>(null);
 
     // Use modular tray sync hook. Pause/Resume/Disable now go through the
@@ -1812,11 +1818,16 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose }) => {
                     onDisable={handleDisable}
                     onOpenFolder={handleOpenFolder}
                     onSettings={() => setShowSettings(true)}
+                    onManagePairs={() => setShowCloudPairs(true)}
                 />
             </div>
             {showVersionBrowser && (
                 <VersionBrowser onClose={() => setShowVersionBrowser(false)} />
             )}
+            <CloudPairsEditor
+                isOpen={showCloudPairs}
+                onClose={() => setShowCloudPairs(false)}
+            />
         </div>
     );
 };

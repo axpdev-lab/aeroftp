@@ -1197,7 +1197,15 @@
             "watcherDebounce": "Denbora errealeko atzerapena (ms)",
             "watcherDebounceDesc": "Zenbat denbora itxaron behar den fitxategi-aldaketak egonkortu arte, denbora errealeko sinkronizazioa abiarazi aurretik. Balio handiago batek edizio azkarrak sinkronizazio bakarrean biltzen ditu; txikiago batek azkarrago erantzuten du. Fitxategia aldatzean sinkronizatu aktibatuta dagoenean aplikatzen da, eta hurrengo abioan izango du eragina. Tartea 100 to 60000.",
             "watcherCooldown": "Behatzailearen atsedenaldia (s)",
-            "watcherCooldownDesc": "Denbora errealeko bi sinkronizazioren arteko gutxieneko denbora, sinkronizazio batek behatzaileak gero berriz detektatzen dituen fitxategiak idazten dituen begizta bat saihesteko. Ezarri 0 atsedenaldia desgaitzeko."
+            "watcherCooldownDesc": "Denbora errealeko bi sinkronizazioren arteko gutxieneko denbora, sinkronizazio batek behatzaileak gero berriz detektatzen dituen fitxategiak idazten dituen begizta bat saihesteko. Ezarri 0 atsedenaldia desgaitzeko.",
+            "pairsTitle": "AeroCloud pareak",
+            "pairsAdd": "Gehitu parea",
+            "pairsEmpty": "Ez da AeroCloud parearik konfiguratu oraindik.",
+            "pairsEmptyHint": "Gehitu pareak sinkronizazio independenteetarako (bakoitza bere profila, norabidea, bazterketekin).",
+            "pairNamePlaceholder": "Parearen izena",
+            "managePairs": "Kudeatu pareak",
+            "importLegacy": "Inportatu unekoa parea gisa",
+            "importLegacyHint": "Inportatu zure AeroCloud konfigurazio bakarra lehen parea gisa (atzerako bateragarritasuna mantentzen du)."
         },
         "statusBar": {
             "connected": "Konektatuta",

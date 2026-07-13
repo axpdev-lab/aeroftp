@@ -1197,7 +1197,15 @@
             "watcherDebounce": "Reaalaja viivitus (ms)",
             "watcherDebounceDesc": "Kui kaua oodata failimuudatuste rahunemist, enne kui reaalajas sünkroonimine käivitub. Suurem väärtus koondab kiired muudatused üheks sünkroonimiseks; väiksem reageerib kiiremini. Kehtib, kui Sünkrooni faili muutmisel on sees, ja jõustub järgmisel käivitusel. Vahemik 100 to 60000.",
             "watcherCooldown": "Jälgija jahtumisaeg (s)",
-            "watcherCooldownDesc": "Minimaalne aeg kahe reaalajas sünkroonimise vahel, et vältida tsüklit, kus sünkroonimine kirjutab faile, mille jälgija seejärel uuesti tuvastab. Määra jahtumisaja keelamiseks 0."
+            "watcherCooldownDesc": "Minimaalne aeg kahe reaalajas sünkroonimise vahel, et vältida tsüklit, kus sünkroonimine kirjutab faile, mille jälgija seejärel uuesti tuvastab. Määra jahtumisaja keelamiseks 0.",
+            "pairsTitle": "AeroCloud paarid",
+            "pairsAdd": "Lisa paar",
+            "pairsEmpty": "AeroCloud paare pole veel seadistatud.",
+            "pairsEmptyHint": "Lisa paare sõltumatute sünkroonimiste jaoks (igaühel oma profiil, suund, välistused).",
+            "pairNamePlaceholder": "Paari nimi",
+            "managePairs": "Halda paare",
+            "importLegacy": "Impordi praegune paarina",
+            "importLegacyHint": "Impordi oma olemasolev üksik AeroCloud seadistus esimese paarina (säilitab tagasiühilduvuse)."
         },
         "statusBar": {
             "connected": "Ühendatud",

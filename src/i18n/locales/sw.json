@@ -1197,7 +1197,15 @@
             "watcherDebounce": "Ucheleweshaji wa wakati halisi (ms)",
             "watcherDebounceDesc": "Muda wa kusubiri mabadiliko ya faili yatulie kabla ya usawazishaji wa wakati halisi kuanza. Thamani kubwa zaidi huunganisha mahariri ya haraka kuwa usawazishaji mmoja; ndogo zaidi hujibu haraka. Hutumika wakati Sawazisha faili inapobadilika imewashwa, na huanza kutumika wakati wa kuanza kwingine. Kipimo 100 to 60000.",
             "watcherCooldown": "Muda wa kupumzika wa mfuatiliaji (s)",
-            "watcherCooldownDesc": "Muda wa chini kabisa kati ya usawazishaji miwili ya wakati halisi, ili kuzuia kitanzi ambapo usawazishaji huandika faili ambazo mfuatiliaji hugundua tena. Weka 0 kuzima muda wa kupumzika."
+            "watcherCooldownDesc": "Muda wa chini kabisa kati ya usawazishaji miwili ya wakati halisi, ili kuzuia kitanzi ambapo usawazishaji huandika faili ambazo mfuatiliaji hugundua tena. Weka 0 kuzima muda wa kupumzika.",
+            "pairsTitle": "Jozi za AeroCloud",
+            "pairsAdd": "Ongeza jozi",
+            "pairsEmpty": "Hakuna jozi za AeroCloud zilizosanidiwa bado.",
+            "pairsEmptyHint": "Ongeza jozi kwa ajili ya usawazishaji huru (kila moja ikiwa na wasifu wake, mwelekeo, visio).",
+            "pairNamePlaceholder": "Jina la jozi",
+            "managePairs": "Dhibiti jozi",
+            "importLegacy": "Leta ya sasa kama jozi",
+            "importLegacyHint": "Leta usanidi wako wa AeroCloud mmoja uliopo kama jozi ya kwanza (hudumisha utangamano wa nyuma)."
         },
         "statusBar": {
             "connected": "Imeunganishwa",

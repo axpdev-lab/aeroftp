@@ -1197,7 +1197,15 @@
             "watcherDebounce": "Echtzeit-Entprellung (ms)",
             "watcherDebounceDesc": "Wie lange gewartet wird, bis sich Dateiänderungen beruhigt haben, bevor eine Echtzeitsynchronisierung startet. Ein höherer Wert bündelt schnelle Änderungen in einer Synchronisierung; ein niedrigerer reagiert schneller. Gilt, wenn Bei Dateiänderung synchronisieren aktiviert ist, und wird beim nächsten Start wirksam. Bereich 100 to 60000.",
             "watcherCooldown": "Watcher-Abkühlzeit (s)",
-            "watcherCooldownDesc": "Mindestzeit zwischen zwei Echtzeitsynchronisierungen, um eine Schleife zu verhindern, in der eine Synchronisierung Dateien schreibt, die der Watcher danach erneut erkennt. Auf 0 setzen, um die Abkühlzeit zu deaktivieren."
+            "watcherCooldownDesc": "Mindestzeit zwischen zwei Echtzeitsynchronisierungen, um eine Schleife zu verhindern, in der eine Synchronisierung Dateien schreibt, die der Watcher danach erneut erkennt. Auf 0 setzen, um die Abkühlzeit zu deaktivieren.",
+            "pairsTitle": "AeroCloud-Paare",
+            "pairsAdd": "Paar hinzufügen",
+            "pairsEmpty": "Noch keine AeroCloud-Paare konfiguriert.",
+            "pairsEmptyHint": "Fügen Sie Paare für unabhängige Synchronisationen hinzu (jedes mit eigenem Profil, Richtung, Ausschlüssen).",
+            "pairNamePlaceholder": "Paarname",
+            "managePairs": "Paare verwalten",
+            "importLegacy": "Aktuelles als Paar importieren",
+            "importLegacyHint": "Importieren Sie Ihre bestehende einzelne AeroCloud-Konfiguration als erstes Paar (erhält Abwärtskompatibilität)."
         },
         "statusBar": {
             "connected": "Verbunden",

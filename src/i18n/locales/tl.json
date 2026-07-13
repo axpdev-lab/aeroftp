@@ -1197,7 +1197,15 @@
             "watcherDebounce": "Debounce sa real-time (ms)",
             "watcherDebounceDesc": "Gaano katagal maghihintay na tumahimik ang mga pagbabago sa file bago mag-trigger ang real-time na sync. Ang mas mataas na halaga ay pinagsasama ang mabilis na mga pag-edit sa isang sync; ang mas mababa ay mas mabilis tumugon. Nalalapat kapag naka-on ang Mag-sync kapag nagbago ang file, at magkakabisa sa susunod na pagsisimula. Saklaw 100 to 60000.",
             "watcherCooldown": "Cooldown ng watcher (s)",
-            "watcherCooldownDesc": "Pinakamababang oras sa pagitan ng dalawang real-time na sync, upang maiwasan ang loop kung saan nagsusulat ang sync ng mga file na muling natutukoy ng watcher. Itakda sa 0 upang huwag paganahin ang cooldown."
+            "watcherCooldownDesc": "Pinakamababang oras sa pagitan ng dalawang real-time na sync, upang maiwasan ang loop kung saan nagsusulat ang sync ng mga file na muling natutukoy ng watcher. Itakda sa 0 upang huwag paganahin ang cooldown.",
+            "pairsTitle": "Mga pares ng AeroCloud",
+            "pairsAdd": "Magdagdag ng pares",
+            "pairsEmpty": "Wala pang mga pares ng AeroCloud na na-configure.",
+            "pairsEmptyHint": "Magdagdag ng mga pares para sa mga independiyenteng pag-sync (bawat isa ay may sariling profile, direksyon, hindi isasama).",
+            "pairNamePlaceholder": "Pangalan ng pares",
+            "managePairs": "Pamahalaan ang mga pares",
+            "importLegacy": "I-import ang kasalukuyan bilang pares",
+            "importLegacyHint": "I-import ang iyong umiiral na solong AeroCloud config bilang unang pares (pinapanatili ang back-compat)."
         },
         "statusBar": {
             "connected": "Nakakonekta",

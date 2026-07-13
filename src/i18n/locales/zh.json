@@ -1197,7 +1197,15 @@
             "watcherDebounce": "实时防抖 (ms)",
             "watcherDebounceDesc": "在触发实时同步之前，等待文件更改稳定的时长。数值越高，将快速的编辑合并为一次同步；数值越低，反应越快。在开启文件更改时同步后适用，并在下次启动时生效。范围 100 to 60000。",
             "watcherCooldown": "监视器冷却时间 (s)",
-            "watcherCooldownDesc": "两次实时同步之间的最短间隔，以防止同步写入的文件被监视器再次检测到而形成循环。设为 0 可禁用冷却时间。"
+            "watcherCooldownDesc": "两次实时同步之间的最短间隔，以防止同步写入的文件被监视器再次检测到而形成循环。设为 0 可禁用冷却时间。",
+            "pairsTitle": "AeroCloud 配对",
+            "pairsAdd": "添加配对",
+            "pairsEmpty": "尚未配置 AeroCloud 配对。",
+            "pairsEmptyHint": "为独立同步添加配对（每个都有自己的配置文件、方向和排除项）。",
+            "pairNamePlaceholder": "配对名称",
+            "managePairs": "管理配对",
+            "importLegacy": "将当前导入为配对",
+            "importLegacyHint": "将您现有的单个 AeroCloud 配置作为第一个配对导入（保持向后兼容）。"
         },
         "statusBar": {
             "connected": "已连接",

@@ -1197,7 +1197,15 @@
             "watcherDebounce": "Oneskorenie v reálnom čase (ms)",
             "watcherDebounceDesc": "Ako dlho čakať na ustálenie zmien súborov, kým sa spustí synchronizácia v reálnom čase. Vyššia hodnota zlúči rýchle úpravy do jednej synchronizácie; nižšia reaguje rýchlejšie. Platí, keď je zapnuté Synchronizovať pri zmene súboru, a prejaví sa pri ďalšom spustení. Rozsah 100 to 60000.",
             "watcherCooldown": "Čas pokoja sledovača (s)",
-            "watcherCooldownDesc": "Minimálny čas medzi dvoma synchronizáciami v reálnom čase, aby sa predišlo slučke, keď synchronizácia zapíše súbory, ktoré sledovač potom znova zistí. Nastavte 0 na vypnutie času pokoja."
+            "watcherCooldownDesc": "Minimálny čas medzi dvoma synchronizáciami v reálnom čase, aby sa predišlo slučke, keď synchronizácia zapíše súbory, ktoré sledovač potom znova zistí. Nastavte 0 na vypnutie času pokoja.",
+            "pairsTitle": "Páry AeroCloud",
+            "pairsAdd": "Pridať pár",
+            "pairsEmpty": "Zatiaľ nie sú nakonfigurované žiadne páry AeroCloud.",
+            "pairsEmptyHint": "Pridajte páry pre nezávislé synchronizácie (každý s vlastným profilom, smerom, vylúčeniami).",
+            "pairNamePlaceholder": "Názov páru",
+            "managePairs": "Spravovať páry",
+            "importLegacy": "Importovať aktuálne ako pár",
+            "importLegacyHint": "Importujte svoju existujúcu jedinú konfiguráciu AeroCloud ako prvý pár (zachováva spätnú kompatibilitu)."
         },
         "statusBar": {
             "connected": "Pripojený",

@@ -1197,7 +1197,15 @@
             "watcherDebounce": "Valós idejű késleltetés (ms)",
             "watcherDebounceDesc": "Mennyi ideig várjon a fájlmódosítások elüléséig, mielőtt valós idejű szinkronizálás indul. A magasabb érték egy szinkronizálásba vonja össze a gyors szerkesztéseket; az alacsonyabb gyorsabban reagál. Akkor érvényes, ha a Szinkronizálás fájlmódosításkor be van kapcsolva, és a következő indításkor lép életbe. Tartomány 100 to 60000.",
             "watcherCooldown": "Figyelő várakozási ideje (s)",
-            "watcherCooldownDesc": "Két valós idejű szinkronizálás közötti legrövidebb idő, hogy elkerülhető legyen az a hurok, amelyben egy szinkronizálás olyan fájlokat ír, amelyeket a figyelő ezután újra észlel. Állítsa 0 értékre a várakozási idő kikapcsolásához."
+            "watcherCooldownDesc": "Két valós idejű szinkronizálás közötti legrövidebb idő, hogy elkerülhető legyen az a hurok, amelyben egy szinkronizálás olyan fájlokat ír, amelyeket a figyelő ezután újra észlel. Állítsa 0 értékre a várakozási idő kikapcsolásához.",
+            "pairsTitle": "AeroCloud párok",
+            "pairsAdd": "Pár hozzáadása",
+            "pairsEmpty": "Még nincsenek AeroCloud párok konfigurálva.",
+            "pairsEmptyHint": "Adjon hozzá párokat független szinkronizálásokhoz (mindegyiknek saját profilja, iránya, kizárásai).",
+            "pairNamePlaceholder": "Pár neve",
+            "managePairs": "Párok kezelése",
+            "importLegacy": "Aktuális importálása párként",
+            "importLegacyHint": "Importálja meglévő egyetlen AeroCloud konfigurációját első párként (megtartja a visszafelé kompatibilitást)."
         },
         "statusBar": {
             "connected": "Csatlakozva",

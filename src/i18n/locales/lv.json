@@ -1197,7 +1197,15 @@
             "watcherDebounce": "Reāllaika aizture (ms)",
             "watcherDebounceDesc": "Cik ilgi gaidīt, līdz failu izmaiņas nostabilizējas, pirms tiek palaista reāllaika sinhronizācija. Lielāka vērtība apvieno ātras izmaiņas vienā sinhronizācijā; mazāka reaģē ātrāk. Attiecas, kad ir ieslēgts Sinhronizēt, mainot failu, un stājas spēkā nākamajā palaišanā. Diapazons 100 to 60000.",
             "watcherCooldown": "Novērotāja atdzišanas laiks (s)",
-            "watcherCooldownDesc": "Minimālais laiks starp divām reāllaika sinhronizācijām, lai novērstu cilpu, kurā sinhronizācija ieraksta failus, ko novērotājs pēc tam atkal atklāj. Iestatiet 0, lai atspējotu atdzišanas laiku."
+            "watcherCooldownDesc": "Minimālais laiks starp divām reāllaika sinhronizācijām, lai novērstu cilpu, kurā sinhronizācija ieraksta failus, ko novērotājs pēc tam atkal atklāj. Iestatiet 0, lai atspējotu atdzišanas laiku.",
+            "pairsTitle": "AeroCloud pāri",
+            "pairsAdd": "Pievienot pāri",
+            "pairsEmpty": "Vēl nav konfigurētu AeroCloud pāru.",
+            "pairsEmptyHint": "Pievienojiet pārus neatkarīgām sinhronizācijām (katram savs profils, virziens, izslēgumi).",
+            "pairNamePlaceholder": "Pāra nosaukums",
+            "managePairs": "Pārvaldīt pārus",
+            "importLegacy": "Importēt pašreizējo kā pāri",
+            "importLegacyHint": "Importējiet savu esošo vienoto AeroCloud konfigurāciju kā pirmo pāri (saglabā atpakaļsaderību)."
         },
         "statusBar": {
             "connected": "Savienots",

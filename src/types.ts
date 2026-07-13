@@ -1070,6 +1070,38 @@ export interface MultiPathConfig {
   parallel_pairs: boolean;
 }
 
+// AeroCloud multiple pairs (separate store cloud_pairs.json; do not share with AeroSync PathPair)
+export type CloudSyncDirection = 'bidirectional' | 'local_to_remote' | 'remote_to_local';
+
+export interface CloudVersioningStrategy {
+  type: 'disabled' | 'trash_can' | 'simple' | 'staggered';
+  max_age_days?: number;
+  max_copies?: number;
+}
+
+export interface CloudPathPair {
+  id: string;
+  name: string;
+  local_path: string;
+  remote_path: string;
+  enabled: boolean;
+  server_profile: string;
+  protocol_type: string;
+  connection_params: Record<string, unknown>;
+  sync_direction: CloudSyncDirection;
+  preserve_remote_deletes: boolean;
+  conflict_strategy: string;
+  versioning_strategy: CloudVersioningStrategy;
+  excluded_folders: string[];
+  exclude_patterns: string[];
+  last_sync: string | null;
+}
+
+export interface CloudPairsConfig {
+  pairs: CloudPathPair[];
+  parallel_pairs: boolean;
+}
+
 // Sync Script Export (T-AEROSYNC-SCRIPT-EXPORT)
 export type SyncScriptFormat = "bash" | "pwsh";
 

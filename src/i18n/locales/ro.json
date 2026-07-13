@@ -1197,7 +1197,15 @@
             "watcherDebounce": "Întârziere în timp real (ms)",
             "watcherDebounceDesc": "Cât timp să se aștepte stabilizarea modificărilor fișierelor înainte de a declanșa o sincronizare în timp real. O valoare mai mare grupează modificările rapide într-o singură sincronizare; una mai mică reacționează mai repede. Se aplică atunci când Sincronizează la modificarea unui fișier este activat și intră în vigoare la următoarea pornire. Interval 100 to 60000.",
             "watcherCooldown": "Timp de așteptare al monitorului (s)",
-            "watcherCooldownDesc": "Timpul minim între două sincronizări în timp real, pentru a preveni o buclă în care o sincronizare scrie fișiere pe care monitorul le detectează din nou. Setați 0 pentru a dezactiva timpul de așteptare."
+            "watcherCooldownDesc": "Timpul minim între două sincronizări în timp real, pentru a preveni o buclă în care o sincronizare scrie fișiere pe care monitorul le detectează din nou. Setați 0 pentru a dezactiva timpul de așteptare.",
+            "pairsTitle": "Perechi AeroCloud",
+            "pairsAdd": "Adaugă pereche",
+            "pairsEmpty": "Nu sunt perechi AeroCloud configurate încă.",
+            "pairsEmptyHint": "Adăugați perechi pentru sincronizări independente (fiecare cu propriul profil, direcție, excluderi).",
+            "pairNamePlaceholder": "Nume pereche",
+            "managePairs": "Gestionați perechile",
+            "importLegacy": "Importați curentul ca pereche",
+            "importLegacyHint": "Importați configurația unică AeroCloud existentă ca prima pereche (păstrează compatibilitatea înapoi)."
         },
         "statusBar": {
             "connected": "Conectat",

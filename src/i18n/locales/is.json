@@ -1197,7 +1197,15 @@
             "watcherDebounce": "Rauntímatöf (ms)",
             "watcherDebounceDesc": "Hversu lengi á að bíða eftir að skráabreytingar róist áður en rauntímasamstilling fer af stað. Hærra gildi sameinar hraðar breytingar í eina samstillingu; lægra bregst hraðar við. Gildir þegar Samstilla við skráabreytingu er kveikt og tekur gildi við næstu ræsingu. Bil 100 to 60000.",
             "watcherCooldown": "Biðtími vaktara (s)",
-            "watcherCooldownDesc": "Lágmarkstími milli tveggja rauntímasamstillinga til að koma í veg fyrir lykkju þar sem samstilling skrifar skrár sem vaktarinn greinir svo aftur. Stilltu á 0 til að slökkva á biðtímanum."
+            "watcherCooldownDesc": "Lágmarkstími milli tveggja rauntímasamstillinga til að koma í veg fyrir lykkju þar sem samstilling skrifar skrár sem vaktarinn greinir svo aftur. Stilltu á 0 til að slökkva á biðtímanum.",
+            "pairsTitle": "AeroCloud pör",
+            "pairsAdd": "Bæta við pari",
+            "pairsEmpty": "Engin AeroCloud pör ennþá stillt.",
+            "pairsEmptyHint": "Bættu við pörum fyrir sjálfstæðar samstillingar (hvert með sínu prófíli, stefnu, útilokunum).",
+            "pairNamePlaceholder": "Nafn pars",
+            "managePairs": "Stjórna pörum",
+            "importLegacy": "Flytja inn núverandi sem par",
+            "importLegacyHint": "Flyttu inn núverandi staka AeroCloud stillinguna þína sem fyrsta parið (heldur afturábak samrýmanleika)."
         },
         "statusBar": {
             "connected": "Tengt",

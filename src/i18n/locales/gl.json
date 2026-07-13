@@ -1197,7 +1197,15 @@
             "watcherDebounce": "Atraso en tempo real (ms)",
             "watcherDebounceDesc": "Canto tempo agardar a que os cambios dos ficheiros se estabilicen antes de iniciar unha sincronización en tempo real. Un valor máis alto agrupa as edicións rápidas nunha soa sincronización; un máis baixo reacciona máis rápido. Aplícase cando Sincronizar ao cambiar un ficheiro está activado e ten efecto no seguinte inicio. Intervalo 100 to 60000.",
             "watcherCooldown": "Tempo de espera do vixiante (s)",
-            "watcherCooldownDesc": "Tempo mínimo entre dúas sincronizacións en tempo real, para evitar un bucle no que unha sincronización escribe ficheiros que o vixiante volve detectar. Estabelece 0 para desactivar o tempo de espera."
+            "watcherCooldownDesc": "Tempo mínimo entre dúas sincronizacións en tempo real, para evitar un bucle no que unha sincronización escribe ficheiros que o vixiante volve detectar. Estabelece 0 para desactivar o tempo de espera.",
+            "pairsTitle": "Pares AeroCloud",
+            "pairsAdd": "Engadir par",
+            "pairsEmpty": "Aínda non hai pares AeroCloud configurados.",
+            "pairsEmptyHint": "Engada pares para sincronizacións independentes (cada un co seu propio perfil, dirección, exclusións).",
+            "pairNamePlaceholder": "Nome do par",
+            "managePairs": "Xestionar pares",
+            "importLegacy": "Importar actual como par",
+            "importLegacyHint": "Importe a súa configuración única actual de AeroCloud como primeiro par (mantén a compatibilidade cara atrás)."
         },
         "statusBar": {
             "connected": "Conectado",

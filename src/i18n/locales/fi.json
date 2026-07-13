@@ -1197,7 +1197,15 @@
             "watcherDebounce": "Reaaliaikaviive (ms)",
             "watcherDebounceDesc": "Kuinka kauan odotetaan tiedostomuutosten asettumista ennen reaaliaikaisen synkronoinnin käynnistymistä. Suurempi arvo niputtaa nopeat muokkaukset yhdeksi synkronoinniksi; pienempi reagoi nopeammin. Koskee, kun Synkronoi tiedoston muuttuessa on käytössä, ja tulee voimaan seuraavalla käynnistyksellä. Alue 100 to 60000.",
             "watcherCooldown": "Valvojan jäähtymisaika (s)",
-            "watcherCooldownDesc": "Vähimmäisaika kahden reaaliaikaisen synkronoinnin välillä, jotta estetään silmukka, jossa synkronointi kirjoittaa tiedostoja, jotka valvoja havaitsee uudelleen. Aseta 0 poistaaksesi jäähtymisajan käytöstä."
+            "watcherCooldownDesc": "Vähimmäisaika kahden reaaliaikaisen synkronoinnin välillä, jotta estetään silmukka, jossa synkronointi kirjoittaa tiedostoja, jotka valvoja havaitsee uudelleen. Aseta 0 poistaaksesi jäähtymisajan käytöstä.",
+            "pairsTitle": "AeroCloud-parit",
+            "pairsAdd": "Lisää pari",
+            "pairsEmpty": "Ei AeroCloud-pareja vielä määritetty.",
+            "pairsEmptyHint": "Lisää pareja itsenäisille synkronoinneille (kullakin oma profiili, suunta, poissulkemiset).",
+            "pairNamePlaceholder": "Parin nimi",
+            "managePairs": "Hallitse pareja",
+            "importLegacy": "Tuo nykyinen parina",
+            "importLegacyHint": "Tuo olemassa oleva yksittäinen AeroCloud-asetuksesi ensimmäisenä parina (säilyttää taaksepäin yhteensopivuuden)."
         },
         "statusBar": {
             "connected": "Yhdistetty",

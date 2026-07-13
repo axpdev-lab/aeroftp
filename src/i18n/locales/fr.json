@@ -1197,7 +1197,15 @@
             "watcherDebounce": "Anti-rebond en temps réel (ms)",
             "watcherDebounceDesc": "Combien de temps attendre que les modifications de fichiers se stabilisent avant de déclencher une synchronisation en temps réel. Une valeur plus élevée regroupe les modifications rapides en une seule synchronisation ; une valeur plus basse réagit plus vite. S'applique lorsque Synchroniser à la modification d'un fichier est activé, et prend effet au prochain démarrage. Plage 100 to 60000.",
             "watcherCooldown": "Délai du surveillant (s)",
-            "watcherCooldownDesc": "Temps minimal entre deux synchronisations en temps réel, pour éviter une boucle où une synchronisation écrit des fichiers que le surveillant redétecte ensuite. Mettez 0 pour désactiver le délai."
+            "watcherCooldownDesc": "Temps minimal entre deux synchronisations en temps réel, pour éviter une boucle où une synchronisation écrit des fichiers que le surveillant redétecte ensuite. Mettez 0 pour désactiver le délai.",
+            "pairsTitle": "Paires AeroCloud",
+            "pairsAdd": "Ajouter une paire",
+            "pairsEmpty": "Aucune paire AeroCloud n'est encore configurée.",
+            "pairsEmptyHint": "Ajoutez des paires pour des synchronisations indépendantes (chacune avec son propre profil, direction, exclusions).",
+            "pairNamePlaceholder": "Nom de la paire",
+            "managePairs": "Gérer les paires",
+            "importLegacy": "Importer l'actuel comme paire",
+            "importLegacyHint": "Importez votre configuration AeroCloud unique existante comme première paire (maintient la rétrocompatibilité)."
         },
         "statusBar": {
             "connected": "Connecté",

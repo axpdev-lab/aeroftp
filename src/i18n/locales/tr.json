@@ -1197,7 +1197,15 @@
             "watcherDebounce": "Gerçek zamanlı geciktirme (ms)",
             "watcherDebounceDesc": "Gerçek zamanlı eşitleme başlamadan önce dosya değişikliklerinin durulması için ne kadar bekleneceği. Daha yüksek değer hızlı düzenlemeleri tek bir eşitlemede toplar; daha düşük değer daha hızlı tepki verir. Dosya değiştiğinde eşitle açıkken geçerlidir ve bir sonraki başlangıçta etkinleşir. Aralık 100 to 60000.",
             "watcherCooldown": "İzleyici bekleme süresi (s)",
-            "watcherCooldownDesc": "İki gerçek zamanlı eşitleme arasındaki en kısa süre; eşitlemenin yazdığı dosyaları izleyicinin yeniden algıladığı bir döngüyü önler. Bekleme süresini devre dışı bırakmak için 0 olarak ayarlayın."
+            "watcherCooldownDesc": "İki gerçek zamanlı eşitleme arasındaki en kısa süre; eşitlemenin yazdığı dosyaları izleyicinin yeniden algıladığı bir döngüyü önler. Bekleme süresini devre dışı bırakmak için 0 olarak ayarlayın.",
+            "pairsTitle": "AeroCloud Çiftleri",
+            "pairsAdd": "Çift ekle",
+            "pairsEmpty": "Henüz AeroCloud çifti yapılandırılmadı.",
+            "pairsEmptyHint": "Bağımsız senkronizasyonlar için çiftler ekleyin (her birinin kendi profili, yönü, dışlamaları).",
+            "pairNamePlaceholder": "Çift adı",
+            "managePairs": "Çiftleri yönet",
+            "importLegacy": "Mevcut olanı çift olarak içe aktar",
+            "importLegacyHint": "Mevcut tek AeroCloud yapılandırmanızı ilk çift olarak içe aktarın (geriye uyumluluğu korur)."
         },
         "statusBar": {
             "connected": "Bağlı",

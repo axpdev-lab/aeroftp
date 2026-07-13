@@ -14166,6 +14166,58 @@ fn save_cloud_config_cmd(config: CloudConfig) -> Result<(), String> {
     cloud_config::save_cloud_config(&config)
 }
 
+// AeroCloud Pairs (Task 4 GUI): CRUD on the separate cloud_pairs.json store.
+// Mirrors the style of multi-path commands but targets CloudPathPair / CloudPairsConfig.
+// Seeding from legacy happens on first add via GUI (or CLI already supports).
+#[tauri::command]
+fn get_cloud_pairs_config() -> cloud_pairs::CloudPairsConfig {
+    cloud_pairs::load_cloud_pairs_config()
+}
+
+#[tauri::command]
+fn save_cloud_pairs_config_cmd(config: cloud_pairs::CloudPairsConfig) -> Result<(), String> {
+    cloud_pairs::save_cloud_pairs_config(&config)
+}
+
+#[tauri::command]
+fn add_cloud_pair(
+    pair: cloud_pairs::CloudPathPair,
+) -> Result<cloud_pairs::CloudPairsConfig, String> {
+    let mut config = cloud_pairs::load_cloud_pairs_config();
+    if cloud_pairs::pair_exists(&pair.local_path, &pair.remote_path, &config.pairs) {
+        return Err("A pair with the same local and remote path already exists".to_string());
+    }
+    config.pairs.push(pair);
+    cloud_pairs::save_cloud_pairs_config(&config)?;
+    Ok(config)
+}
+
+#[tauri::command]
+fn remove_cloud_pair(pair_id: String) -> Result<cloud_pairs::CloudPairsConfig, String> {
+    let mut config = cloud_pairs::load_cloud_pairs_config();
+    let before = config.pairs.len();
+    config.pairs.retain(|p| p.id != pair_id);
+    if config.pairs.len() == before {
+        return Err("Pair not found".to_string());
+    }
+    cloud_pairs::save_cloud_pairs_config(&config)?;
+    Ok(config)
+}
+
+#[tauri::command]
+fn update_cloud_pair(
+    pair: cloud_pairs::CloudPathPair,
+) -> Result<cloud_pairs::CloudPairsConfig, String> {
+    let mut config = cloud_pairs::load_cloud_pairs_config();
+    if let Some(existing) = config.pairs.iter_mut().find(|p| p.id == pair.id) {
+        *existing = pair;
+    } else {
+        return Err("Pair not found".to_string());
+    }
+    cloud_pairs::save_cloud_pairs_config(&config)?;
+    Ok(config)
+}
+
 /// Update excluded folders for selective sync
 #[tauri::command]
 fn update_excluded_folders(excluded_folders: Vec<String>) -> Result<(), String> {
@@ -18103,6 +18155,12 @@ pub fn run() {
             // AeroCloud commands
             get_cloud_config,
             save_cloud_config_cmd,
+            // AeroCloud pairs (Task 4)
+            get_cloud_pairs_config,
+            save_cloud_pairs_config_cmd,
+            add_cloud_pair,
+            remove_cloud_pair,
+            update_cloud_pair,
             setup_aerocloud,
             get_cloud_status,
             enable_aerocloud,

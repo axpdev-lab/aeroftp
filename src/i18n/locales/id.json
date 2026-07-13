@@ -1197,7 +1197,15 @@
             "watcherDebounce": "Debounce waktu nyata (ms)",
             "watcherDebounceDesc": "Berapa lama menunggu perubahan berkas mereda sebelum sinkronisasi waktu nyata dijalankan. Nilai lebih tinggi menggabungkan suntingan cepat menjadi satu sinkronisasi; nilai lebih rendah bereaksi lebih cepat. Berlaku saat Sinkronkan saat berkas berubah aktif, dan berlaku pada mulai berikutnya. Rentang 100 to 60000.",
             "watcherCooldown": "Waktu jeda pemantau (s)",
-            "watcherCooldownDesc": "Waktu minimum antara dua sinkronisasi waktu nyata, untuk mencegah putaran di mana sinkronisasi menulis berkas yang kemudian dideteksi ulang oleh pemantau. Setel 0 untuk menonaktifkan waktu jeda."
+            "watcherCooldownDesc": "Waktu minimum antara dua sinkronisasi waktu nyata, untuk mencegah putaran di mana sinkronisasi menulis berkas yang kemudian dideteksi ulang oleh pemantau. Setel 0 untuk menonaktifkan waktu jeda.",
+            "pairsTitle": "Pasangan AeroCloud",
+            "pairsAdd": "Tambah pasangan",
+            "pairsEmpty": "Belum ada pasangan AeroCloud yang dikonfigurasi.",
+            "pairsEmptyHint": "Tambahkan pasangan untuk sinkronisasi independen (masing-masing dengan profil, arah, pengecualian sendiri).",
+            "pairNamePlaceholder": "Nama pasangan",
+            "managePairs": "Kelola pasangan",
+            "importLegacy": "Impor saat ini sebagai pasangan",
+            "importLegacyHint": "Impor konfigurasi AeroCloud tunggal Anda yang ada sebagai pasangan pertama (menjaga kompatibilitas ke belakang)."
         },
         "statusBar": {
             "connected": "Terhubung",

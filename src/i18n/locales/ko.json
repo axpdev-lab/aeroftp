@@ -1197,7 +1197,15 @@
             "watcherDebounce": "실시간 디바운스 (ms)",
             "watcherDebounceDesc": "실시간 동기화가 실행되기 전에 파일 변경이 안정될 때까지 기다리는 시간입니다. 값이 클수록 빠른 편집을 하나의 동기화로 묶고, 작을수록 더 빠르게 반응합니다. 파일 변경 시 동기화가 켜져 있을 때 적용되며, 다음 시작 시 적용됩니다. 범위 100 to 60000.",
             "watcherCooldown": "감시기 대기 시간 (s)",
-            "watcherCooldownDesc": "두 실시간 동기화 사이의 최소 시간으로, 동기화가 기록한 파일을 감시기가 다시 감지하는 루프를 방지합니다. 대기 시간을 끄려면 0으로 설정하세요."
+            "watcherCooldownDesc": "두 실시간 동기화 사이의 최소 시간으로, 동기화가 기록한 파일을 감시기가 다시 감지하는 루프를 방지합니다. 대기 시간을 끄려면 0으로 설정하세요.",
+            "pairsTitle": "AeroCloud 쌍",
+            "pairsAdd": "쌍 추가",
+            "pairsEmpty": "아직 구성된 AeroCloud 쌍이 없습니다.",
+            "pairsEmptyHint": "독립적인 동기화를 위한 쌍을 추가하세요 (각각 고유한 프로필, 방향, 제외).",
+            "pairNamePlaceholder": "쌍 이름",
+            "managePairs": "쌍 관리",
+            "importLegacy": "현재를 쌍으로 가져오기",
+            "importLegacyHint": "기존 단일 AeroCloud 구성을 첫 번째 쌍으로 가져옵니다 (하위 호환성 유지)."
         },
         "statusBar": {
             "connected": "연결됨",

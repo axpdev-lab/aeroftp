@@ -1197,7 +1197,15 @@
             "watcherDebounce": "Prodleva v reálném čase (ms)",
             "watcherDebounceDesc": "Jak dlouho čekat na ustálení změn souborů, než se spustí synchronizace v reálném čase. Vyšší hodnota sloučí rychlé úpravy do jedné synchronizace; nižší reaguje rychleji. Platí, když je zapnuto Synchronizovat při změně souboru, a projeví se při příštím spuštění. Rozsah 100 to 60000.",
             "watcherCooldown": "Prodleva hlídače (s)",
-            "watcherCooldownDesc": "Minimální čas mezi dvěma synchronizacemi v reálném čase, aby se předešlo smyčce, kdy synchronizace zapíše soubory, které hlídač poté znovu zaznamená. Nastavte 0 pro vypnutí prodlevy."
+            "watcherCooldownDesc": "Minimální čas mezi dvěma synchronizacemi v reálném čase, aby se předešlo smyčce, kdy synchronizace zapíše soubory, které hlídač poté znovu zaznamená. Nastavte 0 pro vypnutí prodlevy.",
+            "pairsTitle": "Páry AeroCloud",
+            "pairsAdd": "Přidat pár",
+            "pairsEmpty": "Zatím nejsou nakonfigurovány žádné páry AeroCloud.",
+            "pairsEmptyHint": "Přidejte páry pro nezávislé synchronizace (každý s vlastním profilem, směrem, vyloučeními).",
+            "pairNamePlaceholder": "Název páru",
+            "managePairs": "Spravovat páry",
+            "importLegacy": "Importovat aktuální jako pár",
+            "importLegacyHint": "Importujte vaši stávající jedinou konfiguraci AeroCloud jako první pár (zachovává zpětnou kompatibilitu)."
         },
         "statusBar": {
             "connected": "Připojeno",

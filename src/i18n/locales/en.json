@@ -1042,7 +1042,15 @@
             "authorize": "Authorize",
             "authorized": "Authorized",
             "reauthorize": "Re-authorize",
-            "protocolType": "Protocol"
+            "protocolType": "Protocol",
+            "pairsTitle": "AeroCloud Pairs",
+            "pairsAdd": "Add pair",
+            "pairsEmpty": "No AeroCloud pairs configured yet.",
+            "pairsEmptyHint": "Add pairs for independent syncs (each with own profile, direction, excludes).",
+            "pairNamePlaceholder": "Pair name",
+            "managePairs": "Manage pairs",
+            "importLegacy": "Import current as pair",
+            "importLegacyHint": "Import your existing single AeroCloud config as the first pair (keeps back-compat)."
         },
         "common": {
             "about": "About",

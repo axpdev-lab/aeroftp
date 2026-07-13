@@ -1620,7 +1620,15 @@
             "watcherDebounce": "Ritardo in tempo reale (ms)",
             "watcherDebounceDesc": "Quanto attendere che le modifiche ai file si stabilizzino prima di avviare una sincronizzazione in tempo reale. Un valore più alto raggruppa le modifiche rapide in un'unica sincronizzazione; uno più basso reagisce più in fretta. Si applica quando Sincronizza alla modifica di un file è attivo e ha effetto al prossimo avvio. Intervallo 100 to 60000.",
             "watcherCooldown": "Attesa del monitoraggio (s)",
-            "watcherCooldownDesc": "Tempo minimo tra due sincronizzazioni in tempo reale, per evitare un ciclo in cui una sincronizzazione scrive file che il monitoraggio rileva di nuovo. Imposta 0 per disattivare l'attesa."
+            "watcherCooldownDesc": "Tempo minimo tra due sincronizzazioni in tempo reale, per evitare un ciclo in cui una sincronizzazione scrive file che il monitoraggio rileva di nuovo. Imposta 0 per disattivare l'attesa.",
+            "pairsTitle": "Coppie AeroCloud",
+            "pairsAdd": "Aggiungi coppia",
+            "pairsEmpty": "Nessuna coppia AeroCloud configurata ancora.",
+            "pairsEmptyHint": "Aggiungi coppie per sincronizzazioni indipendenti (ciascuna con proprio profilo, direzione, esclusioni).",
+            "pairNamePlaceholder": "Nome coppia",
+            "managePairs": "Gestisci coppie",
+            "importLegacy": "Importa attuale come coppia",
+            "importLegacyHint": "Importa la tua configurazione AeroCloud singola esistente come prima coppia (mantiene retrocompatibilità)."
         },
         "statusBar": {
             "connected": "Connesso",

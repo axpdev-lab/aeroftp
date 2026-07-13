@@ -1197,7 +1197,15 @@
             "watcherDebounce": "Realtidsforsinkelse (ms)",
             "watcherDebounceDesc": "Hvor længe der ventes på, at filændringer falder til ro, før en realtidssynkronisering udløses. En højere værdi samler hurtige redigeringer i én synkronisering; en lavere reagerer hurtigere. Gælder, når Synkronisér ved filændring er slået til, og træder i kraft ved næste start. Interval 100 to 60000.",
             "watcherCooldown": "Overvågerpause (s)",
-            "watcherCooldownDesc": "Mindste tid mellem to realtidssynkroniseringer for at forhindre en løkke, hvor en synkronisering skriver filer, som overvågeren derefter genregistrerer. Sæt 0 for at slå pausen fra."
+            "watcherCooldownDesc": "Mindste tid mellem to realtidssynkroniseringer for at forhindre en løkke, hvor en synkronisering skriver filer, som overvågeren derefter genregistrerer. Sæt 0 for at slå pausen fra.",
+            "pairsTitle": "AeroCloud-par",
+            "pairsAdd": "Tilføj par",
+            "pairsEmpty": "Ingen AeroCloud-par konfigureret endnu.",
+            "pairsEmptyHint": "Tilføj par til uafhængige synkroniseringer (hver med eget profil, retning, ekskluderinger).",
+            "pairNamePlaceholder": "Parnavn",
+            "managePairs": "Administrer par",
+            "importLegacy": "Importer nuværende som par",
+            "importLegacyHint": "Importer din eksisterende enkelt AeroCloud-konfiguration som det første par (bevarer bagudkompatibilitet)."
         },
         "statusBar": {
             "connected": "Forbundet",

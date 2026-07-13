@@ -1197,7 +1197,15 @@
             "watcherDebounce": "Nyahlantun masa nyata (ms)",
             "watcherDebounceDesc": "Berapa lama menunggu perubahan fail reda sebelum penyegerakan masa nyata dicetuskan. Nilai lebih tinggi menggabungkan suntingan pantas menjadi satu penyegerakan; nilai lebih rendah bertindak balas lebih pantas. Terpakai apabila Segerak apabila fail berubah dihidupkan, dan berkuat kuasa pada permulaan seterusnya. Julat 100 to 60000.",
             "watcherCooldown": "Masa henti pemantau (s)",
-            "watcherCooldownDesc": "Masa minimum antara dua penyegerakan masa nyata, untuk mengelakkan gelung di mana penyegerakan menulis fail yang kemudian dikesan semula oleh pemantau. Tetapkan 0 untuk melumpuhkan masa henti."
+            "watcherCooldownDesc": "Masa minimum antara dua penyegerakan masa nyata, untuk mengelakkan gelung di mana penyegerakan menulis fail yang kemudian dikesan semula oleh pemantau. Tetapkan 0 untuk melumpuhkan masa henti.",
+            "pairsTitle": "Pasangan AeroCloud",
+            "pairsAdd": "Tambah pasangan",
+            "pairsEmpty": "Belum ada pasangan AeroCloud yang dikonfigurasikan lagi.",
+            "pairsEmptyHint": "Tambahkan pasangan untuk penyegerakan bebas (setiap satu dengan profil, arah, pengecualian sendiri).",
+            "pairNamePlaceholder": "Nama pasangan",
+            "managePairs": "Urus pasangan",
+            "importLegacy": "Import semasa sebagai pasangan",
+            "importLegacyHint": "Import konfigurasi AeroCloud tunggal sedia ada anda sebagai pasangan pertama (mengekalkan keserasian belakang)."
         },
         "statusBar": {
             "connected": "Disambung",

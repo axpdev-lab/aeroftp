@@ -1197,7 +1197,15 @@
             "watcherDebounce": "Độ trễ thời gian thực (ms)",
             "watcherDebounceDesc": "Thời gian chờ các thay đổi tệp ổn định trước khi một lần đồng bộ thời gian thực bắt đầu. Giá trị cao hơn gộp các chỉnh sửa nhanh vào một lần đồng bộ; giá trị thấp hơn phản ứng nhanh hơn. Áp dụng khi Đồng bộ khi tệp thay đổi được bật và có hiệu lực ở lần khởi động tiếp theo. Phạm vi 100 to 60000.",
             "watcherCooldown": "Thời gian nghỉ của trình theo dõi (s)",
-            "watcherCooldownDesc": "Thời gian tối thiểu giữa hai lần đồng bộ thời gian thực, để ngăn vòng lặp trong đó một lần đồng bộ ghi các tệp mà trình theo dõi sau đó phát hiện lại. Đặt 0 để tắt thời gian nghỉ."
+            "watcherCooldownDesc": "Thời gian tối thiểu giữa hai lần đồng bộ thời gian thực, để ngăn vòng lặp trong đó một lần đồng bộ ghi các tệp mà trình theo dõi sau đó phát hiện lại. Đặt 0 để tắt thời gian nghỉ.",
+            "pairsTitle": "Cặp AeroCloud",
+            "pairsAdd": "Thêm cặp",
+            "pairsEmpty": "Chưa có cặp AeroCloud nào được cấu hình.",
+            "pairsEmptyHint": "Thêm cặp cho các đồng bộ độc lập (mỗi cái có profile, hướng, loại trừ riêng).",
+            "pairNamePlaceholder": "Tên cặp",
+            "managePairs": "Quản lý cặp",
+            "importLegacy": "Nhập hiện tại làm cặp",
+            "importLegacyHint": "Nhập cấu hình AeroCloud đơn lẻ hiện có của bạn làm cặp đầu tiên (giữ tương thích ngược)."
         },
         "statusBar": {
             "connected": "Đã kết nối",

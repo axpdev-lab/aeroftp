@@ -1197,7 +1197,15 @@
             "watcherDebounce": "Oedi amser real (ms)",
             "watcherDebounceDesc": "Pa mor hir i aros i newidiadau ffeiliau sefydlogi cyn i gydweddiad amser real danio. Mae gwerth uwch yn cyfuno golygiadau cyflym yn un cydweddiad; mae un is yn ymateb yn gyflymach. Mae'n berthnasol pan fo Cydweddu wrth newid ffeil ymlaen, ac yn cael effaith ar y cychwyn nesaf. Ystod 100 to 60000.",
             "watcherCooldown": "Cyfnod oeri'r gwyliwr (s)",
-            "watcherCooldownDesc": "Yr amser lleiaf rhwng dau gydweddiad amser real, i atal dolen lle mae cydweddiad yn ysgrifennu ffeiliau y mae'r gwyliwr yna'n eu hailganfod. Gosodwch 0 i analluogi'r cyfnod oeri."
+            "watcherCooldownDesc": "Yr amser lleiaf rhwng dau gydweddiad amser real, i atal dolen lle mae cydweddiad yn ysgrifennu ffeiliau y mae'r gwyliwr yna'n eu hailganfod. Gosodwch 0 i analluogi'r cyfnod oeri.",
+            "pairsTitle": "Paraau AeroCloud",
+            "pairsAdd": "Ychwanegu pâr",
+            "pairsEmpty": "Dim parau AeroCloud wedi'u ffurfweddu eto.",
+            "pairsEmptyHint": "Ychwanegwch barau ar gyfer cydamseriadau annibynnol (bob un â'i broffil ei hun, cyfeiriad, eithriadau).",
+            "pairNamePlaceholder": "Enw pâr",
+            "managePairs": "Rheoli parau",
+            "importLegacy": "Mewnforio'r presennol fel pâr",
+            "importLegacyHint": "Mewnforiwch eich ffurfwedd AeroCloud sengl presennol fel y pâr cyntaf (yn cadw cydweddu cefn)."
         },
         "statusBar": {
             "connected": "Wedi cysylltu",

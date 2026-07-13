@@ -1197,7 +1197,15 @@
             "watcherDebounce": "Retard en temps real (ms)",
             "watcherDebounceDesc": "Quant de temps cal esperar que els canvis dels fitxers s'estabilitzin abans d'iniciar una sincronització en temps real. Un valor més alt agrupa les edicions ràpides en una sola sincronització; un de més baix reacciona més de pressa. S'aplica quan Sincronitza en canviar un fitxer està activat i té efecte al següent inici. Interval 100 to 60000.",
             "watcherCooldown": "Temps d'espera del vigilant (s)",
-            "watcherCooldownDesc": "Temps mínim entre dues sincronitzacions en temps real, per evitar un bucle on una sincronització escriu fitxers que el vigilant torna a detectar. Poseu 0 per desactivar el temps d'espera."
+            "watcherCooldownDesc": "Temps mínim entre dues sincronitzacions en temps real, per evitar un bucle on una sincronització escriu fitxers que el vigilant torna a detectar. Poseu 0 per desactivar el temps d'espera.",
+            "pairsTitle": "Parells AeroCloud",
+            "pairsAdd": "Afegir parell",
+            "pairsEmpty": "Encara no hi ha parells AeroCloud configurats.",
+            "pairsEmptyHint": "Afegiu parells per a sincronitzacions independents (cadascun amb el seu propi perfil, direcció, exclusions).",
+            "pairNamePlaceholder": "Nom del parell",
+            "managePairs": "Gestionar parells",
+            "importLegacy": "Importar actual com a parell",
+            "importLegacyHint": "Importeu la vostra configuració única actual d'AeroCloud com a primer parell (manté la compatibilitat cap enrere)."
         },
         "statusBar": {
             "connected": "Connectat",

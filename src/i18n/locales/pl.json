@@ -1197,7 +1197,15 @@
             "watcherDebounce": "Opóźnienie w czasie rzeczywistym (ms)",
             "watcherDebounceDesc": "Jak długo czekać na ustabilizowanie się zmian w plikach przed uruchomieniem synchronizacji w czasie rzeczywistym. Wyższa wartość łączy szybkie edycje w jedną synchronizację; niższa reaguje szybciej. Obowiązuje, gdy włączona jest Synchronizacja przy zmianie pliku, i zaczyna działać przy następnym uruchomieniu. Zakres 100 to 60000.",
             "watcherCooldown": "Czas oczekiwania obserwatora (s)",
-            "watcherCooldownDesc": "Minimalny czas między dwiema synchronizacjami w czasie rzeczywistym, aby zapobiec pętli, w której synchronizacja zapisuje pliki ponownie wykrywane przez obserwatora. Ustaw 0, aby wyłączyć czas oczekiwania."
+            "watcherCooldownDesc": "Minimalny czas między dwiema synchronizacjami w czasie rzeczywistym, aby zapobiec pętli, w której synchronizacja zapisuje pliki ponownie wykrywane przez obserwatora. Ustaw 0, aby wyłączyć czas oczekiwania.",
+            "pairsTitle": "Pary AeroCloud",
+            "pairsAdd": "Dodaj parę",
+            "pairsEmpty": "Nie skonfigurowano jeszcze żadnych par AeroCloud.",
+            "pairsEmptyHint": "Dodaj pary dla niezależnych synchronizacji (każda z własnym profilem, kierunkiem, wykluczeniami).",
+            "pairNamePlaceholder": "Nazwa pary",
+            "managePairs": "Zarządzaj parami",
+            "importLegacy": "Importuj bieżącą jako parę",
+            "importLegacyHint": "Zaimportuj istniejącą pojedynczą konfigurację AeroCloud jako pierwszą parę (zachowuje kompatybilność wsteczną)."
         },
         "statusBar": {
             "connected": "Połączono",

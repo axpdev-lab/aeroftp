@@ -1197,7 +1197,15 @@
             "watcherDebounce": "Odgoda u stvarnom vremenu (ms)",
             "watcherDebounceDesc": "Koliko dugo čekati da se promjene datoteka smire prije nego što se pokrene sinkronizacija u stvarnom vremenu. Viša vrijednost objedinjuje brze izmjene u jednu sinkronizaciju; niža reagira brže. Primjenjuje se kad je uključeno Sinkroniziraj pri promjeni datoteke i stupa na snagu pri sljedećem pokretanju. Raspon 100 to 60000.",
             "watcherCooldown": "Vrijeme mirovanja nadzornika (s)",
-            "watcherCooldownDesc": "Najmanje vrijeme između dviju sinkronizacija u stvarnom vremenu, radi sprječavanja petlje u kojoj sinkronizacija zapisuje datoteke koje nadzornik zatim ponovno otkrije. Postavite 0 za onemogućavanje vremena mirovanja."
+            "watcherCooldownDesc": "Najmanje vrijeme između dviju sinkronizacija u stvarnom vremenu, radi sprječavanja petlje u kojoj sinkronizacija zapisuje datoteke koje nadzornik zatim ponovno otkrije. Postavite 0 za onemogućavanje vremena mirovanja.",
+            "pairsTitle": "AeroCloud parovi",
+            "pairsAdd": "Dodaj par",
+            "pairsEmpty": "Još nema konfiguriranih AeroCloud parova.",
+            "pairsEmptyHint": "Dodajte parove za neovisne sinkronizacije (svaki sa vlastitim profilom, smjerom, isključenjima).",
+            "pairNamePlaceholder": "Naziv para",
+            "managePairs": "Upravljaj parovima",
+            "importLegacy": "Uvezi trenutno kao par",
+            "importLegacyHint": "Uvezite svoju postojeću jedinstvenu AeroCloud konfiguraciju kao prvi par (zadržava povratnu kompatibilnost)."
         },
         "statusBar": {
             "connected": "Povezano",

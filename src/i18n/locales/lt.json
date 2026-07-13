@@ -1197,7 +1197,15 @@
             "watcherDebounce": "Tikralaikis atidėjimas (ms)",
             "watcherDebounceDesc": "Kiek laukti, kol failų pakeitimai nusistovės, prieš paleidžiant tikralaikį sinchronizavimą. Didesnė reikšmė sujungia greitus redagavimus į vieną sinchronizavimą; mažesnė reaguoja greičiau. Taikoma, kai įjungta Sinchronizuoti pakeitus failą, ir įsigalioja kito paleidimo metu. Diapazonas 100 to 60000.",
             "watcherCooldown": "Stebėtojo atvėsimo laikas (s)",
-            "watcherCooldownDesc": "Mažiausias laikas tarp dviejų tikralaikių sinchronizavimų, kad būtų išvengta ciklo, kai sinchronizavimas įrašo failus, kuriuos stebėtojas paskui vėl aptinka. Nustatykite 0, kad išjungtumėte atvėsimo laiką."
+            "watcherCooldownDesc": "Mažiausias laikas tarp dviejų tikralaikių sinchronizavimų, kad būtų išvengta ciklo, kai sinchronizavimas įrašo failus, kuriuos stebėtojas paskui vėl aptinka. Nustatykite 0, kad išjungtumėte atvėsimo laiką.",
+            "pairsTitle": "AeroCloud poros",
+            "pairsAdd": "Pridėti porą",
+            "pairsEmpty": "Dar nėra sukonfigūruotų AeroCloud porų.",
+            "pairsEmptyHint": "Pridėkite poras nepriklausomiems sinchronizavimams (kiekviena su savo profiliu, kryptimi, išimtimis).",
+            "pairNamePlaceholder": "Poros pavadinimas",
+            "managePairs": "Tvarkyti poras",
+            "importLegacy": "Importuoti esamą kaip porą",
+            "importLegacyHint": "Importuokite esamą vienintelę AeroCloud konfigūraciją kaip pirmąją porą (išlaiko atgalinį suderinamumą)."
         },
         "statusBar": {
             "connected": "Prisijungta",
