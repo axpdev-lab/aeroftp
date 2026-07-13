@@ -278,4 +278,30 @@ mod tests {
         bad[0] = b'X';
         assert!(parse_header(&bad).is_err());
     }
+
+    #[test]
+    fn p3_a2_compress_only_config_from_profile() {
+        // A2: crypt flag OFF (absent or disabled) + aeroCompress enabled = compress-only transparent overlay.
+        // Builder produces a stack with compress outer, no crypt layer.
+        let prof = serde_json::json!({
+            "name": "dev-a2",
+            "aeroCompress": { "enabled": true, "level": 5 }
+            // no aeroCryptOverlay -> A2
+        });
+        let c = compress_config_from_profile(&prof);
+        assert!(c.enabled);
+        assert_eq!(c.level, 5);
+
+        let prof_off = serde_json::json!({
+            "aeroCompress": { "enabled": false }
+        });
+        assert!(!compress_config_from_profile(&prof_off).enabled);
+
+        // When both present, A1 path: compress wraps crypt (order asserted in builder logic).
+        let prof_a1 = serde_json::json!({
+            "aeroCryptOverlay": { "enabled": true, "kind": "aerocrypt" },
+            "aeroCompress": { "enabled": true, "level": 3 }
+        });
+        assert!(compress_config_from_profile(&prof_a1).enabled);
+    }
 }
