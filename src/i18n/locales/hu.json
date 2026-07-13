@@ -5055,7 +5055,7 @@
             "saveKit": "Csomag mentése fájlba",
             "printKit": "Nyomtatás",
             "recoveryKitTitle": "Helyreállítási készlet (opcionális biztonsági mentés)",
-            "recoveryKitIntro": "Opcionális. Ez a csomag csak nyilvános konfigurációt tartalmaz (vault ID, salt, KDF paraméterek), soha nem titkokat. Ha offline elmenti a jelszavával együtt, visszaállíthatja a széfet a helyi kulcstároló elvesztése után (újratelepítés vagy új gép). Bármikor újra megnyithatja és elmentheti.",
+            "recoveryKitIntro": "Választható. Ez a készlet csak nyilvános konfigurációt tartalmaz (vault ID, salt, KDF paraméterek), titkokat soha. A készlet és a jelszó együtt szükségesek a széf helyreállításához a helyi kulcstároló elvesztése után (újratelepítés vagy új gép), de tartsa őket külön helyen: egyik sem tudja önmagában megnyitni a széfet. Bármikor újra megnyithatja és újra mentheti.",
             "showKit": "Helyreállítási készlet",
             "hideKit": "Bezárás",
             "kitUnavailable": "A helyreállítási készlet még nem érhető el ehhez a széfhez."

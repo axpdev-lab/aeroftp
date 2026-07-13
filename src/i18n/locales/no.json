@@ -5074,7 +5074,7 @@
             "saveKit": "Lagre sett til fil",
             "printKit": "Skriv ut",
             "recoveryKitTitle": "Gjenopprettingssett (valgfri sikkerhetskopi)",
-            "recoveryKitIntro": "Valgfritt. Dette settet inneholder bare offentlig konfigurasjon (vault ID, salt, KDF-parametere), aldri hemmeligheter. Ved å lagre det frakoblet sammen med passordet ditt kan du gjenopprette hvelvet etter tap av det lokale nøkkellageret (ny installasjon eller ny maskin). Du kan når som helst åpne og lagre det på nytt.",
+            "recoveryKitIntro": "Valgfritt. Dette settet inneholder bare offentlig konfigurasjon (vault ID, salt, KDF-parametere), aldri hemmeligheter. Både settet og passordet ditt trengs for å gjenopprette hvelvet etter tap av det lokale nøkkellageret (ny installasjon eller ny maskin), men oppbevar dem på atskilte steder: ingen av dem kan åpne hvelvet alene. Du kan når som helst åpne det igjen og lagre det på nytt.",
             "showKit": "Gjenopprettingssett",
             "hideKit": "Lukk",
             "kitUnavailable": "Gjenopprettingssettet er ennå ikke tilgjengelig for dette hvelvet."

@@ -5055,7 +5055,7 @@
             "saveKit": "Tallenna pakkaus tiedostoon",
             "printKit": "Tulosta",
             "recoveryKitTitle": "Palautuspaketti (valinnainen varmuuskopio)",
-            "recoveryKitIntro": "Valinnainen. Tämä paketti sisältää vain julkisen määrityksen (vault ID, salt, KDF-parametrit), ei koskaan salaisuuksia. Kun tallennat sen offline-tilassa salasanasi kanssa, voit palauttaa holvisi paikallisen avainsäilön menetyksen jälkeen (uudelleenasennus tai uusi laite). Voit avata ja tallentaa sen uudelleen milloin tahansa.",
+            "recoveryKitIntro": "Valinnainen. Tämä paketti sisältää vain julkisen määrityksen (vault ID, salt, KDF-parametrit), ei koskaan salaisuuksia. Sekä paketti että salasana tarvitaan holvin palauttamiseen paikallisen avainsäilön menetyksen jälkeen (uudelleenasennus tai uusi kone), mutta säilytä ne erillisissä paikoissa: kumpikaan yksin ei avaa holvia. Voit avata sen uudelleen ja tallentaa sen milloin tahansa.",
             "showKit": "Palautuspaketti",
             "hideKit": "Sulje",
             "kitUnavailable": "Palautuspaketti ei ole vielä käytettävissä tälle holville."

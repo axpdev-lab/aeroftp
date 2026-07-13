@@ -65,15 +65,17 @@ impl EmergencyKit {
         };
         format!(
             "AEROCRYPT EMERGENCY KIT\n\n\
-             Store this with your password. This public configuration is required\n\
-             to recover your vault after losing the local keystore\n\
-             (reinstall, new machine, lost credentials store).\n\n\
+             Keep this in a safe place. You will need it TOGETHER WITH your\n\
+             password to recover your vault after losing the local keystore\n\
+             (reinstall, new machine, lost credentials store).\n\
+             This kit holds only public configuration, never a secret.\n\n\
              Vault ID: {}\n\
              Version: {}\n\
              Salt (base64): {}\n\
              KDF: {} (mem={} KiB, t={}, p={})\n\
              {}\n\
-             NEVER store the password alongside this kit.\n",
+             SECURITY: NEVER keep this kit and your password in the same place.\n\
+             Both are required to open the vault; neither one alone can.\n",
             vault_id, version, salt, "Argon2id", mem, time, lanes, keyfile_line
         )
     }
@@ -243,7 +245,7 @@ mod tests {
         assert!(t.contains("Vault ID:"));
         assert!(t.contains("Salt (base64):"));
         assert!(t.contains("KDF:"));
-        assert!(t.contains("NEVER store the password"));
+        assert!(t.contains("NEVER keep this kit and your password in the same place"));
         // keyfile requirement is in config but not leaked as secret in kit
         assert!(t.contains("AEROCRYPT EMERGENCY KIT"));
     }

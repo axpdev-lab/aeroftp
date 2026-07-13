@@ -5055,7 +5055,7 @@
             "saveKit": "Saglabāt komplektu failā",
             "printKit": "Drukāt",
             "recoveryKitTitle": "Atkopšanas komplekts (neobligāta dublējumkopija)",
-            "recoveryKitIntro": "Neobligāti. Šis komplekts satur tikai publisku konfigurāciju (vault ID, salt, KDF parametri), nekad noslēpumus. Saglabājot to bezsaistē kopā ar paroli, varēsiet atjaunot savu seifu pēc lokālās atslēgu krātuves zaudēšanas (pārinstalēšana vai jauna ierīce). Jūs varat to atkārtoti atvērt un saglabāt jebkurā laikā.",
+            "recoveryKitIntro": "Neobligāti. Šis komplekts satur tikai publisko konfigurāciju (vault ID, salt, KDF parametri), nekad noslēpumus. Komplekts un jūsu parole abi ir nepieciešami, lai atjaunotu glabātavu pēc vietējās atslēgu krātuves zaudēšanas (pārinstalēšana vai jauns dators), taču glabājiet tos atsevišķās vietās: neviens no tiem atsevišķi nevar atvērt glabātavu. Jūs varat to atkārtoti atvērt un saglabāt jebkurā laikā.",
             "showKit": "Atkopšanas komplekts",
             "hideKit": "Aizvērt",
             "kitUnavailable": "Atkopšanas komplekts šai glabātavai vēl nav pieejams."

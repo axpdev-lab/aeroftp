@@ -5055,7 +5055,7 @@
             "saveKit": "Kit in Datei speichern",
             "printKit": "Drucken",
             "recoveryKitTitle": "Wiederherstellungskit (optionale Sicherung)",
-            "recoveryKitIntro": "Optional. Dieses Kit enthält nur öffentliche Konfiguration (vault ID, salt, KDF-Parameter), niemals Geheimnisse. Wenn Sie es zusammen mit Ihrem Passwort offline speichern, können Sie Ihren Tresor nach dem Verlust des lokalen Schlüsselspeichers (Neuinstallation oder neuer Rechner) wiederherstellen. Sie können es jederzeit erneut öffnen und speichern.",
+            "recoveryKitIntro": "Optional. Dieses Kit enthält nur öffentliche Konfiguration (vault ID, salt, KDF-Parameter), niemals Geheimnisse. Kit und Passwort werden beide benötigt, um Ihren Tresor nach Verlust des lokalen Schlüsselspeichers (Neuinstallation oder neuer Rechner) wiederherzustellen, bewahren Sie sie jedoch getrennt auf: keines von beiden kann den Tresor allein öffnen. Sie können ihn jederzeit erneut öffnen und wieder speichern.",
             "showKit": "Wiederherstellungskit",
             "hideKit": "Schließen",
             "kitUnavailable": "Das Wiederherstellungskit ist für diesen Tresor noch nicht verfügbar."

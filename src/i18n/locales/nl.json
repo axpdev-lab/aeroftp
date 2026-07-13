@@ -5055,7 +5055,7 @@
             "saveKit": "Kit opslaan naar bestand",
             "printKit": "Afdrukken",
             "recoveryKitTitle": "Herstelkit (optionele back-up)",
-            "recoveryKitIntro": "Optioneel. Deze kit bevat alleen openbare configuratie (vault ID, salt, KDF-parameters), nooit geheimen. Door het offline samen met uw wachtwoord op te slaan, kunt u uw kluis herstellen na verlies van de lokale sleutelopslag (herinstallatie of nieuwe machine). U kunt het op elk moment opnieuw openen en opslaan.",
+            "recoveryKitIntro": "Optioneel. Deze kit bevat alleen openbare configuratie (vault ID, salt, KDF-parameters), nooit geheimen. De kit en uw wachtwoord zijn beide vereist om uw kluis te herstellen na verlies van de lokale sleutelopslag (herinstallatie of nieuwe machine), maar bewaar ze op gescheiden plaatsen: geen van beide kan de kluis alleen openen. U kunt hem op elk moment opnieuw openen en opnieuw opslaan.",
             "showKit": "Herstelkit",
             "hideKit": "Sluiten",
             "kitUnavailable": "De herstelkit is nog niet beschikbaar voor deze kluis."

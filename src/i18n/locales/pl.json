@@ -5055,7 +5055,7 @@
             "saveKit": "Zapisz zestaw do pliku",
             "printKit": "Drukuj",
             "recoveryKitTitle": "Zestaw odzyskiwania (opcjonalna kopia zapasowa)",
-            "recoveryKitIntro": "Opcjonalnie. Ten zestaw zawiera tylko konfigurację publiczną (vault ID, salt, parametry KDF), nigdy sekrety. Zapisanie go w trybie offline wraz z hasłem pozwala odzyskać sejf po utracie lokalnego magazynu kluczy (ponowna instalacja lub nowy komputer). Możesz go ponownie otworzyć i zapisać w dowolnym momencie.",
+            "recoveryKitIntro": "Opcjonalnie. Ten zestaw zawiera tylko konfigurację publiczną (vault ID, salt, parametry KDF), nigdy sekrety. Zestaw i hasło są oba potrzebne do odzyskania sejfu po utracie lokalnego magazynu kluczy (ponowna instalacja lub nowy komputer), ale przechowuj je w osobnych miejscach: żaden z nich samodzielnie nie otworzy sejfu. Możesz go w każdej chwili ponownie otworzyć i zapisać na nowo.",
             "showKit": "Zestaw odzyskiwania",
             "hideKit": "Zamknij",
             "kitUnavailable": "Zestaw odzyskiwania nie jest jeszcze dostępny dla tego skarbca."

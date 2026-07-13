@@ -5055,7 +5055,7 @@
             "saveKit": "Uložiť sadu do súboru",
             "printKit": "Tlačiť",
             "recoveryKitTitle": "Súprava na obnovenie (voliteľná záloha)",
-            "recoveryKitIntro": "Voliteľné. Táto súprava obsahuje iba verejnú konfiguráciu (vault ID, salt, parametre KDF), nikdy tajomstvá. Jej uloženie offline spolu s vaším heslom vám umožní obnoviť trezor po strate miestneho úložiska kľúčov (preinštalovanie alebo nový počítač). Kedykoľvek ju môžete znova otvoriť a uložiť.",
+            "recoveryKitIntro": "Voliteľné. Táto súprava obsahuje iba verejnú konfiguráciu (vault ID, salt, parametre KDF), nikdy tajomstvá. Súprava aj vaše heslo sú potrebné oboje na obnovenie trezora po strate lokálneho úložiska kľúčov (preinštalovanie alebo nový počítač), ale uchovávajte ich na oddelených miestach: ani jedno z nich samo trezor neotvorí. Kedykoľvek ho môžete znova otvoriť a znova uložiť.",
             "showKit": "Súprava na obnovenie",
             "hideKit": "Zavrieť",
             "kitUnavailable": "Súprava na obnovenie zatiaľ nie je pre tento trezor k dispozícii."

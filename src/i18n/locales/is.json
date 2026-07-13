@@ -5074,7 +5074,7 @@
             "saveKit": "Vista búnað í skrá",
             "printKit": "Prenta",
             "recoveryKitTitle": "Endurheimtarsett (valfrjáls afrit)",
-            "recoveryKitIntro": "Valfrjálst. Þetta sett inniheldur aðeins opinbera stillingu (vault ID, salt, KDF-viðföng), aldrei leyndarmál. Að vista það án nettengingar ásamt lykilorðinu þínu gerir þér kleift að endurheimta hvelfinguna þína eftir að hafa tapað staðbundnu lyklageymslunni (enduruppsetning eða ný vél). Þú getur opnað það og vistað aftur hvenær sem er.",
+            "recoveryKitIntro": "Valfrjálst. Þetta sett inniheldur aðeins opinbera uppsetningu (vault ID, salt, KDF færibreytur), aldrei leyndarmál. Bæði settið og lykilorðið þitt eru nauðsynleg til að endurheimta hvelfinguna eftir að hafa tapað staðbundnu lyklageymslunni (enduruppsetning eða ný tölva), en geymdu þau á aðskildum stöðum: hvorugt eitt og sér getur opnað hvelfinguna. Þú getur opnað hana aftur og vistað hana á ný hvenær sem er.",
             "showKit": "Endurheimtarsett",
             "hideKit": "Loka",
             "kitUnavailable": "Endurheimtarsettið er ekki enn tiltækt fyrir þessa hvelfingu."

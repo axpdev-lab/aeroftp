@@ -5055,7 +5055,7 @@
             "saveKit": "Salvează kitul într-un fișier",
             "printKit": "Tipărește",
             "recoveryKitTitle": "Kit de recuperare (backup opțional)",
-            "recoveryKitIntro": "Opțional. Acest kit conține doar configurație publică (vault ID, salt, parametri KDF), niciodată secrete. Salvarea lui offline împreună cu parola vă permite să vă restaurați seiful după pierderea depozitului local de chei (reinstalare sau mașină nouă). Îl puteți redeschide și salva din nou oricând.",
+            "recoveryKitIntro": "Opțional. Acest kit conține doar configurație publică (vault ID, salt, parametri KDF), niciodată secrete. Kitul și parola sunt amândouă necesare pentru a restaura seiful după pierderea depozitului de chei local (reinstalare sau mașină nouă), dar păstrați-le în locuri separate: niciunul singur nu poate deschide seiful. Îl puteți redeschide și salva din nou oricând.",
             "showKit": "Kit de recuperare",
             "hideKit": "Închide",
             "kitUnavailable": "Kitul de recuperare nu este încă disponibil pentru acest seif."

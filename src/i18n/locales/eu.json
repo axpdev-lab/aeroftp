@@ -5074,7 +5074,7 @@
             "saveKit": "Gorde kita fitxategi batean",
             "printKit": "Inprimatu",
             "recoveryKitTitle": "Berreskuratze-kita (aukerako babeskopia)",
-            "recoveryKitIntro": "Aukerakoa. Kit honek konfigurazio publikoa baino ez du gordetzen (vault ID, salt, KDF parametroak), inoiz ez sekretuak. Lineaz kanpo zure pasahitzarekin batera gordetzeak zure kutxa gotorra berreskuratzeko aukera ematen dizu tokiko gako-biltegia galdu ondoren (berrinstalazioa edo makina berria). Edozein unetan berriro ireki eta gorde dezakezu.",
+            "recoveryKitIntro": "Aukerakoa. Kit honek konfigurazio publikoa baino ez du (vault ID, salt, KDF parametroak), inoiz ez sekretuak. Kita eta zure pasahitza biak behar dira zure ganga berreskuratzeko tokiko gako-biltegia galdu ondoren (berrinstalazioa edo makina berria), baina toki bereizietan gorde itzazu: bakoitzak berak ezin du ganga ireki. Edozein unetan ireki eta berriro gorde dezakezu.",
             "showKit": "Berreskuratze-kita",
             "hideKit": "Itxi",
             "kitUnavailable": "Berreskuratze-kita ez dago oraindik erabilgarri kutxa gotor honetarako."

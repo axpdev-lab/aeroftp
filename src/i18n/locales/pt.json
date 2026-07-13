@@ -5055,7 +5055,7 @@
             "saveKit": "Salvar kit em arquivo",
             "printKit": "Imprimir",
             "recoveryKitTitle": "Kit de recuperação (backup opcional)",
-            "recoveryKitIntro": "Opcional. Este kit contém apenas configuração pública (vault ID, salt, parâmetros KDF), nunca segredos. Guardá-lo offline juntamente com a sua palavra-passe permite restaurar o seu cofre após perder o armazenamento de chaves local (reinstalação ou nova máquina). Pode reabri-lo e guardá-lo novamente a qualquer momento.",
+            "recoveryKitIntro": "Opcional. Este kit contém apenas configuração pública (vault ID, salt, parâmetros KDF), nunca segredos. O kit e a sua palavra-passe são ambos necessários para restaurar o seu cofre após perder o armazenamento de chaves local (reinstalação ou nova máquina), mas guarde-os em locais separados: nenhum deles sozinho consegue abrir o cofre. Pode reabri-lo e guardá-lo novamente a qualquer momento.",
             "showKit": "Kit de recuperação",
             "hideKit": "Fechar",
             "kitUnavailable": "O kit de recuperação ainda não está disponível para este cofre."
