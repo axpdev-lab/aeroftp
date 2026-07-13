@@ -54,6 +54,7 @@ done
 HICOLOR="$(root_path /usr/share/icons/hicolor)"
 ICON_NAMES="application-x-aerovault application-x-aeroftp application-x-aeroftp-keystore application-x-aerozip application-x-aeroftp-script"
 SIZES="16x16 24x24 32x32 48x48 64x64 128x128 256x256 512x512"
+REQUIRED_DESKTOP_MIMES="application/x-aerovault application/x-aeroftp application/x-aeroftp-keystore application/x-aerozip application/x-aeroftp-script application/zip application/x-7z-compressed application/vnd.rar application/x-rar-compressed application/x-tar application/x-compressed-tar application/gzip application/x-xz application/x-bzip2 x-scheme-handler/ftp x-scheme-handler/ftps x-scheme-handler/sftp"
 
 # Detect active icon themes from all user accounts
 copy_to_theme() {
@@ -100,9 +101,25 @@ do
         echo 'Exec=/usr/bin/aeroftp %U' >> "$DESKTOP_FILE"
     fi
 
-    # Add MimeType if missing (covers AeroFTP-owned formats + archive formats for File associations panel + URL schemes)
-    if ! grep -q '^MimeType=' "$DESKTOP_FILE"; then
-        echo 'MimeType=application/x-aerovault;application/x-aeroftp;application/x-aeroftp-keystore;application/x-aerozip;application/x-aeroftp-script;application/zip;application/x-7z-compressed;application/vnd.rar;application/x-rar-compressed;application/x-tar;application/x-compressed-tar;application/gzip;application/x-xz;application/x-bzip2;x-scheme-handler/ftp;x-scheme-handler/ftps;x-scheme-handler/sftp;' >> "$DESKTOP_FILE"
+    # Merge required MimeType entries (AeroFTP-owned formats + archive formats
+    # for the File associations panel + URL schemes). Tauri-generated desktop
+    # files may already carry a partial MimeType line, so append missing tokens
+    # instead of only handling the completely-absent case.
+    if grep -q '^MimeType=' "$DESKTOP_FILE"; then
+        MIME_LINE="$(grep -m1 '^MimeType=' "$DESKTOP_FILE" | sed 's/^MimeType=//; s/;*$//')"
+        for MIME in $REQUIRED_DESKTOP_MIMES; do
+            case ";$MIME_LINE;" in
+                *";$MIME;"*) ;;
+                *) MIME_LINE="${MIME_LINE:+$MIME_LINE;}$MIME" ;;
+            esac
+        done
+        sed -i "s|^MimeType=.*|MimeType=$MIME_LINE;|" "$DESKTOP_FILE"
+    else
+        MIME_LINE=""
+        for MIME in $REQUIRED_DESKTOP_MIMES; do
+            MIME_LINE="${MIME_LINE:+$MIME_LINE;}$MIME"
+        done
+        echo "MimeType=$MIME_LINE;" >> "$DESKTOP_FILE"
     fi
 
     # Tauri's bundle category is a fixed macOS-style enum (Utility is the closest

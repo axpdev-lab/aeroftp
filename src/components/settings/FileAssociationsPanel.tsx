@@ -16,7 +16,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { RefreshCw, CheckCircle2, AlertCircle, ExternalLink, Archive, FileCheck } from 'lucide-react';
-import { Checkbox } from '../ui/Checkbox';
 import { useTranslation } from '../../i18n';
 
 interface FileAssociationItem {
@@ -63,12 +62,12 @@ export const FileAssociationsPanel: React.FC<FileAssociationsPanelProps> = ({ co
       const s = await invoke<FileAssociationStatus>('file_associations_status');
       setStatus(s);
     } catch (e: any) {
-      setError(String(e?.message || e || 'Failed to load association status'));
+      setError(String(e?.message || e || t('settings.fileAssociationStatusFailed') || 'Failed to load association status'));
     } finally {
       if (isRefresh) setRefreshing(false);
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     loadStatus(false);
@@ -89,11 +88,11 @@ export const FileAssociationsPanel: React.FC<FileAssociationsPanelProps> = ({ co
       // Always refresh to reflect real OS state (especially on Win after user returns)
       await loadStatus(true);
     } catch (e: any) {
-      setError(String(e?.message || e || 'Failed to apply association'));
+      setError(String(e?.message || e || t('settings.fileAssociationApplyFailed') || 'Failed to apply association'));
     } finally {
       setApplyingKey(null);
     }
-  }, [loadStatus]);
+  }, [loadStatus, t]);
 
   const openOsSettings = useCallback(async () => {
     setError(null);
@@ -161,7 +160,7 @@ export const FileAssociationsPanel: React.FC<FileAssociationsPanelProps> = ({ co
         );
       }
       if (item.action === 'unsupported') {
-        return <span className="text-xs text-gray-400">—</span>;
+        return <span className="text-xs text-gray-400">-</span>;
       }
       const busy = applyingKey === item.key;
       if (isLinux && item.action === 'direct') {
@@ -233,7 +232,7 @@ export const FileAssociationsPanel: React.FC<FileAssociationsPanelProps> = ({ co
               onClick={openOsSettings}
               className="text-xs px-2 py-1 rounded border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-800 flex items-center gap-1"
             >
-              {t('settings.fileAssociationOpenSettings') || 'Open Default apps'} <ExternalLink size={12} />
+              {t('settings.fileAssociationOpenSettings') || 'Open settings'} <ExternalLink size={12} />
             </button>
           )}
           <button
@@ -241,7 +240,7 @@ export const FileAssociationsPanel: React.FC<FileAssociationsPanelProps> = ({ co
             disabled={refreshing}
             className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500"
             title={t('settings.fileAssociationRefresh') || 'Refresh'}
-            aria-label="Refresh file association status"
+            aria-label={t('settings.fileAssociationRefresh') || 'Refresh'}
           >
             <RefreshCw size={15} className={refreshing ? 'animate-spin' : ''} />
           </button>
@@ -267,7 +266,7 @@ export const FileAssociationsPanel: React.FC<FileAssociationsPanelProps> = ({ co
         </div>
         <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden bg-white dark:bg-gray-900">
           {aeroItems.length > 0 ? aeroItems.map(renderRow) : (
-            <div className="p-2 text-xs text-gray-400">—</div>
+            <div className="p-2 text-xs text-gray-400">-</div>
           )}
         </div>
       </div>
@@ -279,16 +278,16 @@ export const FileAssociationsPanel: React.FC<FileAssociationsPanelProps> = ({ co
         </div>
         <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden bg-white dark:bg-gray-900">
           {archiveItems.length > 0 ? archiveItems.map(renderRow) : (
-            <div className="p-2 text-xs text-gray-400">—</div>
+            <div className="p-2 text-xs text-gray-400">-</div>
           )}
         </div>
       </div>
 
       <div className="text-[10px] text-gray-400 dark:text-gray-500 pt-1">
-        {isLinux && 'Linux: changes apply immediately via xdg-mime.'}
-        {isWindows && 'Windows: defaults are protected. AeroFTP opens Default apps — choose AeroFTP there, then Refresh.'}
-        {isMac && 'macOS: best-effort only. Confirm in System Settings after attempting.'}
-        {!isLinux && !isWindows && !isMac && 'Platform support is limited on this host.'}
+        {isLinux && t('settings.fileAssociationLinuxApplied')}
+        {isWindows && t('settings.fileAssociationWindowsConfirm')}
+        {isMac && t('settings.fileAssociationMacBestEffort')}
+        {!isLinux && !isWindows && !isMac && t('settings.fileAssociationUnknown')}
       </div>
     </div>
   );

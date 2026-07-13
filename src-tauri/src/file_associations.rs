@@ -449,8 +449,11 @@ pub async fn file_associations_set_default(
             for k in keys {
                 requires.push(k);
             }
-            // Also trigger the UI immediately for convenience (non-fatal).
-            let _ = file_associations_open_settings().await;
+            // Trigger the UI immediately for convenience, but surface launch
+            // failures so the frontend does not claim the chooser opened.
+            if let Err(e) = file_associations_open_settings().await {
+                errors.push(e);
+            }
         }
         "macos" => {
             // Best effort: attempt LaunchServices if we can, otherwise just open settings.
@@ -468,7 +471,9 @@ pub async fn file_associations_set_default(
                     requires.push(k);
                 }
             }
-            let _ = file_associations_open_settings().await;
+            if let Err(e) = file_associations_open_settings().await {
+                errors.push(e);
+            }
         }
         _ => {
             for k in keys {
