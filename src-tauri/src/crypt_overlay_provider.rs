@@ -3723,6 +3723,7 @@ mod tests {
                 Some(&digest),
                 false,
                 true,
+                None,
             )
             .await,
             "a spurious keyfile on a password-only vault must be rejected",
@@ -3758,6 +3759,7 @@ mod tests {
                 Some(&digest),
                 false,
                 true,
+                None,
             )
             .await,
             "rclone-crypt must reject a keyfile",

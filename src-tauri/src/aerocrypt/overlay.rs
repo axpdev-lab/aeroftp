@@ -1252,11 +1252,11 @@ mod tests {
         let vid = random_vault_id();
         let master_def = derive_base_kek(
             "correct-horse-battery-staple-123456789012345678901234567890",
-            &AEROCRYPT_DEFAULT_SALT_V1,
+            &crate::aerocrypt::AEROCRYPT_DEFAULT_SALT_V1,
         )
         .unwrap();
         let tsv_def = init_config_v3_with_vault_id(
-            &AEROCRYPT_DEFAULT_SALT_V1,
+            &crate::aerocrypt::AEROCRYPT_DEFAULT_SALT_V1,
             &master_def,
             &vid,
             SaltMode::DefaultV1,
