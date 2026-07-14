@@ -11,6 +11,7 @@ use serde_json::{json, Value};
 
 use crate::ai_core::remote_backend::RemoteBackend;
 use crate::ai_core::tools::{ToolCtx, ToolError};
+use crate::dedupe::{self, SimilarityMode};
 
 const MAX_READ_PREVIEW_BYTES: usize = 1_048_576;
 const DEFAULT_PREVIEW_BYTES: usize = 5 * 1024;
@@ -2677,9 +2678,19 @@ async fn dedupe(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
         });
     }
     let dry_run = get_bool_opt(args, "dry_run").unwrap_or(true);
+
+    // Phase 3: new optional params (back-compat: default "exact" keeps old fast-path 100%)
+    let similarity = get_str_opt(args, "similarity").unwrap_or_else(|| "exact".to_string());
+    let sim_mode = SimilarityMode::parse(&similarity);
+    let distance = args
+        .get("distance")
+        .and_then(|v| v.as_u64())
+        .map(|d| d as u32);
+    let is_non_identical = sim_mode == SimilarityMode::NonIdentical;
+
     let backend = ctx.remote_backend(&server).await.map_err(backend_error)?;
 
-    // BFS scan to collect (path, size, mtime).
+    // BFS scan to collect (path, size, mtime). Same for both modes.
     let mut files: Vec<(String, u64, Option<String>)> = Vec::new();
     let mut dirs: Vec<(String, usize)> = vec![(root.clone(), 0)];
     let mut scan_errors: u32 = 0;
@@ -2706,60 +2717,151 @@ async fn dedupe(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
         }
     }
 
-    // Group by size.
-    let mut size_groups: std::collections::HashMap<u64, Vec<(String, Option<String>)>> =
-        std::collections::HashMap::new();
-    for (p, s, m) in &files {
-        if *s > 0 {
-            size_groups
-                .entry(*s)
-                .or_default()
-                .push((p.clone(), m.clone()));
-        }
-    }
-    type DedupeCandidate = (String, Option<String>);
-    type DedupeSizeGroup = (u64, Vec<DedupeCandidate>);
-    let candidate_groups: Vec<DedupeSizeGroup> = size_groups
-        .into_iter()
-        .filter(|(_, v)| v.len() > 1)
-        .collect();
-
     let mut hash_errors: u32 = 0;
     let mut duplicate_groups: Vec<Vec<(String, u64, Option<String>)>> = Vec::new();
     let mut total_duplicates: u32 = 0;
     let mut wasted_bytes: u64 = 0;
 
-    for (size, candidates) in candidate_groups {
-        if size > MAX_DEDUPE_FILE_BYTES {
-            // Skip oversize files: would blow the agent memory budget.
-            hash_errors += candidates.len() as u32;
-            continue;
-        }
-        let mut hash_map: std::collections::HashMap<String, Vec<(String, u64, Option<String>)>> =
-            std::collections::HashMap::new();
-        for (p, m) in candidates {
-            match backend.download_to_bytes(&p).await {
-                Ok(data) => {
-                    let hash = format!("{:x}", sha2::Sha256::digest(&data));
-                    hash_map.entry(hash).or_default().push((p, size, m));
+    if is_non_identical {
+        // Non-identical path (Phase 3): download to temp preserving extension so
+        // detect_modality + TLSH/SimHash/pHash work inside the shared engine.
+        // Reuses the exact staging + remap pattern from aeroftp_cli.rs dedupe --similarity non-identical.
+        // Exact fast-path (below) is left 100% untouched.
+        let temp_dir = match tempfile::tempdir() {
+            Ok(d) => d,
+            Err(e) => {
+                return Err(ToolError::Exec(format!(
+                    "Failed to create temp dir for non-identical dedupe: {}",
+                    e
+                )));
+            }
+        };
+
+        let mut temp_map: std::collections::HashMap<
+            std::path::PathBuf,
+            (String, u64, Option<String>),
+        > = std::collections::HashMap::new();
+
+        let mut dl_errors = 0u32;
+
+        for (orig_path, sz, mtime) in &files {
+            if *sz == 0 || *sz > MAX_DEDUPE_FILE_BYTES {
+                hash_errors += 1;
+                continue;
+            }
+            let p = std::path::Path::new(orig_path);
+            let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("bin");
+            let tmp_name = format!("dedupe_{}_{}.{}", files.len(), temp_map.len(), ext);
+            let tmp_path = temp_dir.path().join(&tmp_name);
+
+            match backend
+                .download_to_bytes_capped(orig_path, MAX_DEDUPE_FILE_BYTES)
+                .await
+            {
+                Ok(bytes) => {
+                    if let Err(e) = std::fs::write(&tmp_path, &bytes) {
+                        dl_errors += 1;
+                        tracing::debug!("dedupe(non-id): stage fail {}: {}", orig_path, e);
+                        continue;
+                    }
+                    temp_map.insert(tmp_path.clone(), (orig_path.clone(), *sz, mtime.clone()));
                 }
                 Err(e) => {
+                    dl_errors += 1;
                     hash_errors += 1;
-                    tracing::debug!("dedupe: failed to hash {}: {}", p, e);
+                    tracing::debug!(
+                        "dedupe: failed to download {} for similarity: {}",
+                        orig_path,
+                        e
+                    );
+                    continue;
                 }
             }
         }
-        for (_, group) in hash_map {
-            if group.len() > 1 {
-                let dupes = group.len() as u32 - 1;
+
+        let tmp_paths: Vec<std::path::PathBuf> = temp_map.keys().cloned().collect();
+        let sim_groups = dedupe::find_similar_local(&tmp_paths, sim_mode, distance, None);
+
+        for g in sim_groups {
+            if g.files.len() < 2 {
+                continue;
+            }
+            let mut remapped: Vec<(String, u64, Option<String>)> = Vec::new();
+            let mut group_size = 0u64;
+            for tf in &g.files {
+                if let Some((orig, sz, mt)) = temp_map.get(std::path::Path::new(tf)) {
+                    if group_size == 0 {
+                        group_size = *sz;
+                    }
+                    remapped.push((orig.clone(), *sz, mt.clone()));
+                }
+            }
+            if remapped.len() >= 2 {
+                let dupes = (remapped.len() as u32).saturating_sub(1);
                 total_duplicates += dupes;
-                wasted_bytes += size * dupes as u64;
-                duplicate_groups.push(group);
+                wasted_bytes += group_size * dupes as u64;
+                duplicate_groups.push(remapped);
+            }
+        }
+
+        // Note: dl_errors folded into hash_errors for the final report (consistent with CLI non-id path)
+        if dl_errors > 0 {
+            hash_errors += dl_errors;
+        }
+    } else {
+        // EXACT fast-path: 100% unchanged per Phase 3 spec (size prefilter + SHA-256).
+        // Group by size.
+        let mut size_groups: std::collections::HashMap<u64, Vec<(String, Option<String>)>> =
+            std::collections::HashMap::new();
+        for (p, s, m) in &files {
+            if *s > 0 {
+                size_groups
+                    .entry(*s)
+                    .or_default()
+                    .push((p.clone(), m.clone()));
+            }
+        }
+        type DedupeCandidate = (String, Option<String>);
+        type DedupeSizeGroup = (u64, Vec<DedupeCandidate>);
+        let candidate_groups: Vec<DedupeSizeGroup> = size_groups
+            .into_iter()
+            .filter(|(_, v)| v.len() > 1)
+            .collect();
+
+        for (size, candidates) in candidate_groups {
+            if size > MAX_DEDUPE_FILE_BYTES {
+                // Skip oversize files: would blow the agent memory budget.
+                hash_errors += candidates.len() as u32;
+                continue;
+            }
+            let mut hash_map: std::collections::HashMap<
+                String,
+                Vec<(String, u64, Option<String>)>,
+            > = std::collections::HashMap::new();
+            for (p, m) in candidates {
+                match backend.download_to_bytes(&p).await {
+                    Ok(data) => {
+                        let hash = format!("{:x}", sha2::Sha256::digest(&data));
+                        hash_map.entry(hash).or_default().push((p, size, m));
+                    }
+                    Err(e) => {
+                        hash_errors += 1;
+                        tracing::debug!("dedupe: failed to hash {}: {}", p, e);
+                    }
+                }
+            }
+            for (_, group) in hash_map {
+                if group.len() > 1 {
+                    let dupes = group.len() as u32 - 1;
+                    total_duplicates += dupes;
+                    wasted_bytes += size * dupes as u64;
+                    duplicate_groups.push(group);
+                }
             }
         }
     }
 
-    // Sort each group to determine the keeper.
+    // Sort each group to determine the keeper (applies to both exact and non-id).
     for group in &mut duplicate_groups {
         match mode.as_str() {
             "newest" => {
@@ -2820,7 +2922,8 @@ async fn dedupe(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
         }
     }
 
-    Ok(json!({
+    // Augment response for non-identical (top level) while keeping exact shape stable.
+    let mut out = json!({
         "server": server,
         "path": root,
         "mode": mode,
@@ -2835,7 +2938,17 @@ async fn dedupe(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
         "bytes_freed": bytes_freed,
         "action_errors": action_errors,
         "errors": errors,
-    }))
+    });
+    if is_non_identical {
+        out["similarity"] = json!("non-identical");
+        if let Some(d) = distance {
+            out["distance"] = json!(d);
+        }
+    } else {
+        out["similarity"] = json!("exact");
+    }
+
+    Ok(out)
 }
 
 async fn reconcile(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {

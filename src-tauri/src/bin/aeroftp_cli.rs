@@ -41687,9 +41687,8 @@ async fn cmd_dedupe(
     let mut wasted_bytes = 0u64;
 
     if is_non_identical {
-        // Non-identical path (this slice): bypass size prefilter (perceptual matches have different byte sizes).
-        // Download content only for raster/text modalities (by path), use temp files + shared engine.
-        // Other modalities skipped (ssdeep stubbed).
+        // Non-identical path: bypass size prefilter. Download all (capped), stage with original ext for modality detect.
+        // Delegates to shared engine (pHash / SimHash+MinHash / TLSH for Other). Phase 3 complete.
         use std::collections::HashMap as StdHashMap;
         let mut temp_map: StdHashMap<PathBuf, (String, u64, Option<String>)> = StdHashMap::new(); // temp -> (orig, size, mtime)
         let temp_dir = match tempfile::tempdir() {
@@ -55264,9 +55263,11 @@ fn cli_tool_definitions() -> Vec<ftp_client_gui_lib::ai::AIToolDefinition> {
         tool!("local_disk_usage", "Calculate total size of a directory (recursive)", {
             "path" => ("string", "Directory path", true)
         }),
-        tool!("local_find_duplicates", "Find duplicate files using MD5 hash comparison", {
+        tool!("local_find_duplicates", "Find duplicate files (exact=BLAKE3 via engine or non-identical via pHash/SimHash/TLSH). similarity + distance supported (Phase 3).", {
             "path" => ("string", "Directory to scan", true),
-            "min_size" => ("number", "Minimum file size in bytes (default: 1024)", false)
+            "min_size" => ("number", "Minimum file size in bytes (default: 1024)", false),
+            "similarity" => ("string", "exact (default) or non-identical", false),
+            "distance" => ("number", "threshold override", false)
         }),
         tool!("local_diff", "Compare two local files and show unified diff", {
             "path_a" => ("string", "First file path", true),

@@ -186,6 +186,7 @@ hkdf = "0.12"                                                          # HKDF ke
 blake3 = "1"                                                           # BLAKE3 hash (Hash Forge)
 similar = "3"                                                          # Unified diff for local_diff tool
 image_hasher = "3.1"                                                   # Perceptual hashing (pHash) for raster non-identical dedupe (non-conflicting with image 0.25)
+tlsh2 = { version = "1.1", features = ["diff"] }                       # TLSH fuzzy byte hash for Modality::Other non-identical dedupe (Phase 3; pure-Rust, no ssdeep)
 
 # TOTP 2FA for AeroVault (v2.3.0)
 totp-rs = { version = "5", features = ["qr"] }                        # RFC 6238 TOTP with otpauth URI

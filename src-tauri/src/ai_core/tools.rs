@@ -360,12 +360,14 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
         ToolDef {
             name: "local_find_duplicates",
             description:
-                "Find duplicate files by MD5 hash, grouped by size (min_size default 1024).",
+                "Find duplicate files. similarity='exact' (default): BLAKE3 via shared engine (unified, no MD5). similarity='non-identical': pHash (raster) / SimHash+MinHash (text) / TLSH (other bytes) via shared engine. distance overrides default thresholds (raster~10, text~3, other~100). min_size applies as lower bound.",
             input_schema: json!({
                 "type": "object",
                 "properties": {
                     "path": {"type": "string"},
                     "min_size": {"type": "integer"},
+                    "similarity": {"type": "string", "enum": ["exact", "non-identical"], "description": "exact (BLAKE3, default) or non-identical (fuzzy engine)"},
+                    "distance": {"type": "integer", "description": "Distance threshold override (Hamming or TLSH diff)"}
                 },
                 "required": ["path"],
             }),
@@ -1732,14 +1734,16 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
         },
         ToolDef {
             name: "aeroftp_dedupe",
-            description: "Detect duplicate files on a remote tree by SHA-256 hashing files that share the same size. Returns groups of duplicates, the keeper for each group (selected by `mode`), total wasted bytes. With `dry_run=true` (default) returns the report; with `dry_run=false` and `mode != list` deletes the non-keeper duplicates. Hard caps: 100k file scan, 256 MiB per file (oversize files are skipped with `hash_errors++`). Modes: `newest` (keep latest mtime), `oldest` (keep earliest), `largest`, `smallest`, `list` (report only, never delete). Mirrors `aeroftp dedupe` from the CLI but with conservative caps for agent use.",
+            description: "Detect duplicates on remote. similarity='exact' (default): fast path SHA-256 after size prefilter (unchanged behavior). similarity='non-identical': stage capped downloads (preserve ext for modality) then shared engine (pHash/SimHash/TLSH). Supports distance. Same modes + dry_run + caps. Returns similarity in response.",
             input_schema: json!({
                 "type": "object",
                 "properties": {
                     "server": {"type": "string", "description": "Server name or ID"},
                     "path": {"type": "string", "description": "Remote root to scan (default: '/')"},
                     "mode": {"type": "string", "enum": ["newest", "oldest", "largest", "smallest", "list"], "description": "How to choose the keeper of each duplicate group (default: 'list')"},
-                    "dry_run": {"type": "boolean", "description": "Skip deletion even when mode != list (default: true)"}
+                    "dry_run": {"type": "boolean", "description": "Skip deletion even when mode != list (default: true)"},
+                    "similarity": {"type": "string", "enum": ["exact", "non-identical"], "description": "exact (default, fast SHA-256) or non-identical (engine)"},
+                    "distance": {"type": "integer", "description": "Distance threshold for non-identical (TLSH default 100)"}
                 },
                 "required": ["server"],
             }),
@@ -1748,14 +1752,16 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
         },
         ToolDef {
             name: "remote_dedupe",
-            description: "Alias of aeroftp_dedupe.",
+            description: "Alias of aeroftp_dedupe (supports similarity + distance for Phase 3 non-identical).",
             input_schema: json!({
                 "type": "object",
                 "properties": {
                     "server": {"type": "string"},
                     "path": {"type": "string"},
                     "mode": {"type": "string", "enum": ["newest", "oldest", "largest", "smallest", "list"]},
-                    "dry_run": {"type": "boolean"}
+                    "dry_run": {"type": "boolean"},
+                    "similarity": {"type": "string", "enum": ["exact", "non-identical"]},
+                    "distance": {"type": "integer"}
                 },
                 "required": ["server"],
             }),

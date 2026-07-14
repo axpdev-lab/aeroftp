@@ -22,6 +22,7 @@ use serde_json::{json, Value};
 
 use crate::ai_core::event_sink::ToolProgress;
 use crate::ai_core::tools::{ToolCtx, ToolError};
+use crate::dedupe::SimilarityMode;
 
 // ─── Helpers (portati da ai_tools.rs, self-contained) ────────────────────
 
@@ -919,6 +920,16 @@ pub async fn local_find_duplicates(ctx: &dyn ToolCtx, args: &Value) -> Result<Va
         .and_then(|v| v.as_u64())
         .unwrap_or(1024);
 
+    // Phase 3: support similarity (exact | non-identical). Default exact for full back-compat.
+    // In exact we now delegate to engine (BLAKE3 unified, no more MD5 in this path).
+    // Non-identical delegates to shared engine (pHash / SimHash / TLSH).
+    let similarity = get_str_opt(args, "similarity").unwrap_or_else(|| "exact".to_string());
+    let sim_mode = SimilarityMode::parse(&similarity);
+    let distance = args
+        .get("distance")
+        .and_then(|v| v.as_u64())
+        .map(|d| d as u32);
+
     let p = std::path::Path::new(&path);
     if !p.is_dir() {
         return Err(ToolError::Exec(format!(
@@ -929,73 +940,38 @@ pub async fn local_find_duplicates(ctx: &dyn ToolCtx, args: &Value) -> Result<Va
 
     let path_for_scan = path.clone();
     tokio::task::spawn_blocking(move || -> Result<Value, ToolError> {
-        let mut size_groups: std::collections::HashMap<u64, Vec<std::path::PathBuf>> =
-            std::collections::HashMap::new();
-        const MAX_SCAN: u64 = 50_000;
-        let mut scan_count: u64 = 0;
+        let engine_groups = crate::dedupe::find_similar_in_dir(
+            std::path::Path::new(&path_for_scan),
+            sim_mode,
+            distance,
+            Some(min_size),
+        )
+        .map_err(|e| ToolError::Exec(e))?;
 
-        for entry in walkdir::WalkDir::new(&path_for_scan)
-            .follow_links(false)
-            .max_depth(50)
-            .into_iter()
-            .filter_map(|e| e.ok())
-        {
-            if !entry.file_type().is_file() {
+        let mut duplicates: Vec<Value> = Vec::new();
+        for g in engine_groups {
+            let count = g.files.len() as u64;
+            if count < 2 {
                 continue;
             }
-            scan_count += 1;
-            if scan_count > MAX_SCAN {
-                break;
+            let wasted = g.size * (count - 1);
+            let mut entry = json!({
+                "size": g.size,
+                "count": count,
+                "wasted_bytes": wasted,
+                "files": g.files,
+            });
+            if let Some(h) = &g.hash {
+                entry["hash"] = json!(h);
             }
-            let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
-            if size < min_size {
-                continue;
+            if let Some(d) = g.distance {
+                entry["distance"] = json!(d);
             }
-            size_groups.entry(size).or_default().push(entry.into_path());
+            if let Some(m) = &g.modality {
+                entry["modality"] = json!(m);
+            }
+            duplicates.push(entry);
         }
-
-        use md5::{Digest, Md5};
-        use std::io::Read;
-        let mut hash_groups: std::collections::HashMap<String, (u64, Vec<String>)> =
-            std::collections::HashMap::new();
-
-        for (size, files) in &size_groups {
-            if files.len() < 2 {
-                continue;
-            }
-            for file_path in files {
-                if let Ok(mut f) = std::fs::File::open(file_path) {
-                    let mut hasher = Md5::new();
-                    let mut buf = [0u8; 8192];
-                    loop {
-                        match f.read(&mut buf) {
-                            Ok(0) => break,
-                            Ok(n) => hasher.update(&buf[..n]),
-                            Err(_) => break,
-                        }
-                    }
-                    let hash = format!("{:x}", hasher.finalize());
-                    let entry = hash_groups
-                        .entry(hash)
-                        .or_insert_with(|| (*size, Vec::new()));
-                    entry.1.push(file_path.to_string_lossy().to_string());
-                }
-            }
-        }
-
-        let mut duplicates: Vec<Value> = hash_groups
-            .into_iter()
-            .filter(|(_, (_, files))| files.len() >= 2)
-            .map(|(hash, (size, files))| {
-                json!({
-                    "hash": hash,
-                    "size": size,
-                    "count": files.len(),
-                    "wasted_bytes": size * (files.len() as u64 - 1),
-                    "files": files,
-                })
-            })
-            .collect();
 
         duplicates.sort_by(|a, b| {
             let wa = a["wasted_bytes"].as_u64().unwrap_or(0);
@@ -1008,12 +984,18 @@ pub async fn local_find_duplicates(ctx: &dyn ToolCtx, args: &Value) -> Result<Va
             .map(|d| d["wasted_bytes"].as_u64().unwrap_or(0))
             .sum();
 
-        Ok(json!({
+        let mut resp = json!({
             "groups": duplicates.len(),
             "total_wasted_bytes": total_wasted,
             "total_wasted_human": format!("{:.1} MB", total_wasted as f64 / 1_048_576.0),
             "duplicates": duplicates,
-        }))
+            "similarity": sim_mode.as_str(),
+        });
+        if let Some(d) = distance {
+            resp["distance"] = json!(d);
+        }
+
+        Ok(resp)
     })
     .await
     .map_err(|e| ToolError::Exec(format!("local_find_duplicates task failed: {}", e)))?
