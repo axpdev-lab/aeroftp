@@ -285,7 +285,11 @@
             "persistModeCredentials": "Recorda les credencials per a cada protocol d'aquest compte",
             "persistModeCredentialsHint": "Un perfil per compte: manté desades les credencials de cada protocol (API, WebDAV, S3, ...) perquè canviar de mode no les torni a demanar, fins i tot després de reiniciar. Desat xifrat al vault. Desactivat per defecte.",
             "opendriveDefaultPrivacy": "Privadesa predeterminada per a elements nous",
-            "opendriveDefaultPrivacyHelp": "S'aplica a les carpetes i fitxers que creïs o pugis. Les connexions WebDAV fan servir els valors predeterminats d'OpenDrive."
+            "opendriveDefaultPrivacyHelp": "S'aplica a les carpetes i fitxers que creïs o pugis. Les connexions WebDAV fan servir els valors predeterminats d'OpenDrive.",
+            "storedTotpAdvanced": "Avançat: desa el secret de 2FA",
+            "storedTotpWarning": "Desar el secret de 2FA posa tots dos factors a la caixa forta. Si la contrasenya mestra de la caixa forta queda compromesa, 2FA ja no protegeix aquest compte. És preferible un codi d'un sol ús o un pont WebDAV/S3 local.",
+            "filenBridgeCredentialRules": "Límit del pont Filen: {max} caràcters. No admesos: {rejected}",
+            "filenBridgeCredentialRejected": "Aquesta credencial conté caràcters rebutjats pel pont Filen."
         },
         "browser": {
             "remote": "Remot",
@@ -3831,7 +3835,19 @@
             "pwdCopied": "Copiat!",
             "pwdAutoClear": "Copiat (esborrat automàtic en 30s)",
             "pwdNoCharset": "Seleccionar almenys un conjunt de caràcters",
-            "pwdNotBip39": "No és una mnemotècnica BIP-39 vàlida - no l'utilitzeu com a llavor de cartera de criptomonedes"
+            "pwdNotBip39": "No és una mnemotècnica BIP-39 vàlida - no l'utilitzeu com a llavor de cartera de criptomonedes",
+            "hashLegacy": "Heretat",
+            "pwdPresets": "Predefinits professionals",
+            "pwdPresetBalanced": "Equilibrat",
+            "pwdPresetMaximum": "Màxim",
+            "pwdSymbolGroups": "Grups de caràcters",
+            "pwdCustomCharacters": "Afegeix caràcters",
+            "pwdExcludedCharacters": "Exclou caràcters",
+            "pwdRequireEachGroup": "Inclou almenys un caràcter de cada grup seleccionat",
+            "pwdGenerating": "Generant...",
+            "pwdGenerateInline": "Genera una contrasenya segura",
+            "pwdPresetCompatible": "Compatible 32",
+            "pwdGenerateCompatibleInline": "Genera una contrasenya compatible de 32 caràcters"
         },
         "dialog": {
             "deleteFile": "Eliminar \"{name}\"?",

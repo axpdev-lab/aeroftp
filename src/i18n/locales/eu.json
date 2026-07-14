@@ -285,7 +285,11 @@
             "persistModeCredentials": "Gogoratu kontu honetako protokolo bakoitzaren kredentzialak",
             "persistModeCredentialsHint": "Profil bat konto bakoitzeko: protokolo bakoitzaren kredentzialak (API, WebDAV, S3, ...) gordeta mantentzen ditu, modua aldatzeak berriz galde ez dezan, berrabiarazi ondoren ere. Vault-ean zifratuta gordetzen da. Lehenetsita desaktibatuta.",
             "opendriveDefaultPrivacy": "Elementu berrien lehenetsitako pribatutasuna",
-            "opendriveDefaultPrivacyHelp": "Sortzen edo igotzen dituzun karpeta eta fitxategiei aplikatzen zaie. WebDAV konexioek OpenDrive-ren lehenetsitako ezarpenak erabiltzen dituzte."
+            "opendriveDefaultPrivacyHelp": "Sortzen edo igotzen dituzun karpeta eta fitxategiei aplikatzen zaie. WebDAV konexioek OpenDrive-ren lehenetsitako ezarpenak erabiltzen dituzte.",
+            "storedTotpAdvanced": "Aurreratua: gorde 2FA sekretua",
+            "storedTotpWarning": "2FA sekretua gordetzean bi faktoreak kutxa seguruan geratzen dira. Kutxa seguruko pasahitz nagusia arriskuan jartzen bada, 2FAk ez du kontu hau babestuko. Erabili ahal dela behin erabiltzeko kode bat edo WebDAV/S3 zubi lokal bat.",
+            "filenBridgeCredentialRules": "Filen zubiaren muga: {max} karaktere. Onartzen ez direnak: {rejected}",
+            "filenBridgeCredentialRejected": "Kredentzial honek Filen zubiak baztertutako karaktereak ditu."
         },
         "browser": {
             "remote": "Urrunekoa",
@@ -3831,7 +3835,19 @@
             "pwdCopied": "Kopiatuta!",
             "pwdAutoClear": "Kopiatuta (auto-garbiketa 30s-tan)",
             "pwdNoCharset": "Hautatu karaktere multzo bat gutxienez",
-            "pwdNotBip39": "Ez da BIP-39 mnemonikoa baliozkoa - ez ezazu erabili txanpon-zorroko hazia gisa"
+            "pwdNotBip39": "Ez da BIP-39 mnemonikoa baliozkoa - ez ezazu erabili txanpon-zorroko hazia gisa",
+            "hashLegacy": "Zaharkitua",
+            "pwdPresets": "Aurrezarpen profesionalak",
+            "pwdPresetBalanced": "Orekatua",
+            "pwdPresetMaximum": "Gehienekoa",
+            "pwdSymbolGroups": "Karaktere-taldeak",
+            "pwdCustomCharacters": "Gehitu karaktereak",
+            "pwdExcludedCharacters": "Baztertu karaktereak",
+            "pwdRequireEachGroup": "Sartu gutxienez karaktere bat hautatutako talde bakoitzetik",
+            "pwdGenerating": "Sortzen...",
+            "pwdGenerateInline": "Sortu pasahitz segurua",
+            "pwdPresetCompatible": "Bateragarria 32",
+            "pwdGenerateCompatibleInline": "Sortu 32 karaktereko pasahitz bateragarria"
         },
         "dialog": {
             "deleteFile": "\"{name}\" ezabatu?",

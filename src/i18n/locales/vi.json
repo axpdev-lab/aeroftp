@@ -285,7 +285,11 @@
             "persistModeCredentials": "Ghi nhớ thông tin đăng nhập cho mọi giao thức của tài khoản này",
             "persistModeCredentialsHint": "Một hồ sơ cho mỗi tài khoản: giữ lại thông tin đăng nhập của từng giao thức (API, WebDAV, S3, ...) để việc chuyển chế độ không hỏi lại, kể cả sau khi khởi động lại. Được lưu mã hóa trong vault. Mặc định tắt.",
             "opendriveDefaultPrivacy": "Quyền riêng tư mặc định cho mục mới",
-            "opendriveDefaultPrivacyHelp": "Áp dụng cho các thư mục và tệp bạn tạo hoặc tải lên. Kết nối WebDAV dùng giá trị mặc định của OpenDrive."
+            "opendriveDefaultPrivacyHelp": "Áp dụng cho các thư mục và tệp bạn tạo hoặc tải lên. Kết nối WebDAV dùng giá trị mặc định của OpenDrive.",
+            "storedTotpAdvanced": "Nâng cao: lưu bí mật 2FA",
+            "storedTotpWarning": "Việc lưu bí mật 2FA sẽ đặt cả hai yếu tố vào kho. Nếu mật khẩu chính của kho bị xâm phạm, 2FA sẽ không còn bảo vệ tài khoản này. Nên dùng mã một lần hoặc cầu nối WebDAV/S3 cục bộ.",
+            "filenBridgeCredentialRules": "Giới hạn cầu nối Filen: {max} ký tự. Không hỗ trợ: {rejected}",
+            "filenBridgeCredentialRejected": "Thông tin xác thực này chứa các ký tự bị cầu nối Filen từ chối."
         },
         "browser": {
             "remote": "Từ xa",
@@ -3831,7 +3835,19 @@
             "pwdCopied": "Đã sao chép!",
             "pwdAutoClear": "Đã sao chép (tự động xóa sau 30 giây)",
             "pwdNoCharset": "Vui lòng chọn ít nhất một bộ ký tự",
-            "pwdNotBip39": "Không phải BIP-39 mnemonic hợp lệ - không sử dụng làm seed cho ví tiền điện tử"
+            "pwdNotBip39": "Không phải BIP-39 mnemonic hợp lệ - không sử dụng làm seed cho ví tiền điện tử",
+            "hashLegacy": "Cũ",
+            "pwdPresets": "Cấu hình đặt sẵn chuyên nghiệp",
+            "pwdPresetBalanced": "Cân bằng",
+            "pwdPresetMaximum": "Tối đa",
+            "pwdSymbolGroups": "Nhóm ký tự",
+            "pwdCustomCharacters": "Thêm ký tự",
+            "pwdExcludedCharacters": "Loại trừ ký tự",
+            "pwdRequireEachGroup": "Bao gồm ít nhất một ký tự từ mỗi nhóm đã chọn",
+            "pwdGenerating": "Đang tạo...",
+            "pwdGenerateInline": "Tạo mật khẩu an toàn",
+            "pwdPresetCompatible": "Tương thích 32",
+            "pwdGenerateCompatibleInline": "Tạo mật khẩu tương thích gồm 32 ký tự"
         },
         "dialog": {
             "deleteFile": "Xóa \"{name}\"?",

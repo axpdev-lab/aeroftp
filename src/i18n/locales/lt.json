@@ -285,7 +285,11 @@
             "persistModeCredentials": "Įsiminti kiekvieno šios paskyros protokolo prisijungimo duomenis",
             "persistModeCredentialsHint": "Vienas profilis paskyrai: išsaugo kiekvieno protokolo prisijungimo duomenis (API, WebDAV, S3, ...), todėl perjungiant režimą jų nebeprašoma, net ir po paleidimo iš naujo. Saugoma užšifruota saugykloje. Pagal numatytuosius nustatymus išjungta.",
             "opendriveDefaultPrivacy": "Numatytasis naujų elementų privatumas",
-            "opendriveDefaultPrivacyHelp": "Taikoma jūsų kuriamiems ar įkeliamiems aplankams ir failams. WebDAV ryšiai naudoja numatytuosius OpenDrive nustatymus."
+            "opendriveDefaultPrivacyHelp": "Taikoma jūsų kuriamiems ar įkeliamiems aplankams ir failams. WebDAV ryšiai naudoja numatytuosius OpenDrive nustatymus.",
+            "storedTotpAdvanced": "Išsamiau: išsaugoti 2FA paslaptį",
+            "storedTotpWarning": "Išsaugojus 2FA paslaptį, abu veiksniai laikomi saugykloje. Jei saugyklos pagrindinis slaptažodis bus atskleistas, 2FA nebeapsaugos šios paskyros. Geriau naudokite vienkartinį kodą arba vietinį WebDAV/S3 tiltą.",
+            "filenBridgeCredentialRules": "Filen tilto riba: {max} simbolių. Nepalaikoma: {rejected}",
+            "filenBridgeCredentialRejected": "Šiuose prisijungimo duomenyse yra Filen tilto atmetamų simbolių."
         },
         "browser": {
             "remote": "Nuotolinis",
@@ -3831,7 +3835,19 @@
             "pwdCopied": "Nukopijuota!",
             "pwdAutoClear": "Nukopijuota (automatinis išvalymas po 30s)",
             "pwdNoCharset": "Pasirinkite bent vieną simbolių rinkinį",
-            "pwdNotBip39": "Negrįžtas BIP-39 mnemoninis - nenaudokite kaip kriptovaliutos piniginės sėklos"
+            "pwdNotBip39": "Negrįžtas BIP-39 mnemoninis - nenaudokite kaip kriptovaliutos piniginės sėklos",
+            "hashLegacy": "Senasis",
+            "pwdPresets": "Profesionalūs išankstiniai nustatymai",
+            "pwdPresetBalanced": "Subalansuotas",
+            "pwdPresetMaximum": "Didžiausias",
+            "pwdSymbolGroups": "Simbolių grupės",
+            "pwdCustomCharacters": "Pridėti simbolių",
+            "pwdExcludedCharacters": "Neįtraukti simbolių",
+            "pwdRequireEachGroup": "Įtraukti bent po vieną simbolį iš kiekvienos pasirinktos grupės",
+            "pwdGenerating": "Generuojama...",
+            "pwdGenerateInline": "Sukurti saugų slaptažodį",
+            "pwdPresetCompatible": "Suderinamas 32",
+            "pwdGenerateCompatibleInline": "Generuoti suderinamą 32 simbolių slaptažodį"
         },
         "dialog": {
             "deleteFile": "Ištrinti \"{name}\"?",

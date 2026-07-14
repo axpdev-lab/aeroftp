@@ -285,7 +285,11 @@
             "persistModeCredentials": "Bu hesabın her protokolü için kimlik bilgilerini hatırla",
             "persistModeCredentialsHint": "Hesap başına bir profil: her protokolün kimlik bilgilerini (API, WebDAV, S3, ...) kaydedilmiş tutar, böylece mod değiştirmek yeniden sormaz, yeniden başlatmadan sonra bile. Kasada şifreli olarak saklanır. Varsayılan olarak kapalı.",
             "opendriveDefaultPrivacy": "Yeni öğeler için varsayılan gizlilik",
-            "opendriveDefaultPrivacyHelp": "Oluşturduğunuz veya yüklediğiniz klasör ve dosyalara uygulanır. WebDAV bağlantıları OpenDrive'ın kendi varsayılanlarını kullanır."
+            "opendriveDefaultPrivacyHelp": "Oluşturduğunuz veya yüklediğiniz klasör ve dosyalara uygulanır. WebDAV bağlantıları OpenDrive'ın kendi varsayılanlarını kullanır.",
+            "storedTotpAdvanced": "Gelişmiş: 2FA sırrını kaydet",
+            "storedTotpWarning": "2FA sırrını kaydetmek her iki faktörü de kasaya yerleştirir. Kasanın ana parolası ele geçirilirse 2FA artık bu hesabı korumaz. Tek kullanımlık kodu veya yerel bir WebDAV/S3 köprüsünü tercih edin.",
+            "filenBridgeCredentialRules": "Filen köprüsü sınırı: {max} karakter. Desteklenmeyen: {rejected}",
+            "filenBridgeCredentialRejected": "Bu kimlik bilgisi, Filen köprüsünün reddettiği karakterler içeriyor."
         },
         "browser": {
             "remote": "Uzak",
@@ -3831,7 +3835,19 @@
             "pwdCopied": "Kopyalandı!",
             "pwdAutoClear": "Kopyalandı (30s içinde otomatik temizlenecek)",
             "pwdNoCharset": "En az bir karakter seti seçin",
-            "pwdNotBip39": "Geçerli bir BIP-39 anımonik değildir - kripto cüzdan seed olarak kullanmayın"
+            "pwdNotBip39": "Geçerli bir BIP-39 anımonik değildir - kripto cüzdan seed olarak kullanmayın",
+            "hashLegacy": "Eski",
+            "pwdPresets": "Profesyonel ön ayarlar",
+            "pwdPresetBalanced": "Dengeli",
+            "pwdPresetMaximum": "En yüksek",
+            "pwdSymbolGroups": "Karakter grupları",
+            "pwdCustomCharacters": "Karakter ekle",
+            "pwdExcludedCharacters": "Karakterleri hariç tut",
+            "pwdRequireEachGroup": "Seçilen her gruptan en az bir karakter ekle",
+            "pwdGenerating": "Oluşturuluyor...",
+            "pwdGenerateInline": "Güvenli bir parola oluştur",
+            "pwdPresetCompatible": "Uyumlu 32",
+            "pwdGenerateCompatibleInline": "32 karakterlik uyumlu bir parola oluştur"
         },
         "dialog": {
             "deleteFile": "\"{name}\" silinsin mi?",

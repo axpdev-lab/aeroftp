@@ -285,7 +285,11 @@
             "persistModeCredentials": "このアカウントの各プロトコルの認証情報を記憶する",
             "persistModeCredentialsHint": "アカウントごとに1つのプロファイル: 各プロトコルの認証情報 (API、WebDAV、S3、...) を保存しておくため、モードを切り替えても再入力を求められません。再起動後も同様です。ボールトに暗号化して保存されます。デフォルトはオフです。",
             "opendriveDefaultPrivacy": "新しい項目の既定のプライバシー",
-            "opendriveDefaultPrivacyHelp": "作成またはアップロードするフォルダーとファイルに適用されます。WebDAV 接続は OpenDrive 独自の既定値を使用します。"
+            "opendriveDefaultPrivacyHelp": "作成またはアップロードするフォルダーとファイルに適用されます。WebDAV 接続は OpenDrive 独自の既定値を使用します。",
+            "storedTotpAdvanced": "詳細設定: 2FAシークレットを保存",
+            "storedTotpWarning": "2FAシークレットを保存すると、両方の要素が保管庫に格納されます。保管庫のマスターパスワードが漏えいした場合、2FAではこのアカウントを保護できなくなります。ワンタイムコードまたはローカルのWebDAV/S3ブリッジを使用してください。",
+            "filenBridgeCredentialRules": "Filenブリッジの上限: {max}文字。未対応: {rejected}",
+            "filenBridgeCredentialRejected": "この認証情報にはFilenブリッジで拒否される文字が含まれています。"
         },
         "browser": {
             "remote": "リモート",
@@ -3796,7 +3800,19 @@
             "pwdCopied": "コピーしました！",
             "pwdAutoClear": "コピーしました (30秒後に自動クリア)",
             "pwdNoCharset": "少なくとも1つの文字セットを選択してください",
-            "pwdNotBip39": "有効なBIP-39ニーモニックではありません - 暗号資産ウォレットのシードとして使用しないでください"
+            "pwdNotBip39": "有効なBIP-39ニーモニックではありません - 暗号資産ウォレットのシードとして使用しないでください",
+            "hashLegacy": "レガシー",
+            "pwdPresets": "プロ向けプリセット",
+            "pwdPresetBalanced": "バランス",
+            "pwdPresetMaximum": "最大",
+            "pwdSymbolGroups": "文字グループ",
+            "pwdCustomCharacters": "文字を追加",
+            "pwdExcludedCharacters": "文字を除外",
+            "pwdRequireEachGroup": "選択した各グループから少なくとも1文字を含める",
+            "pwdGenerating": "生成中...",
+            "pwdGenerateInline": "安全なパスワードを生成",
+            "pwdPresetCompatible": "互換 32",
+            "pwdGenerateCompatibleInline": "互換性のある32文字のパスワードを生成"
         },
         "dialog": {
             "deleteFile": "「{name}」を削除しますか？",

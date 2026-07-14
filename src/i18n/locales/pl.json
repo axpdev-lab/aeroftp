@@ -285,7 +285,11 @@
             "persistModeCredentials": "Zapamiętaj poświadczenia dla każdego protokołu tego konta",
             "persistModeCredentialsHint": "Jeden profil na konto: przechowuje poświadczenia każdego protokołu (API, WebDAV, S3, ...), więc przełączanie trybu już o nie nie pyta, nawet po ponownym uruchomieniu. Przechowywane zaszyfrowane w sejfie. Domyślnie wyłączone.",
             "opendriveDefaultPrivacy": "Domyślna prywatność nowych elementów",
-            "opendriveDefaultPrivacyHelp": "Stosowana do folderów i plików, które tworzysz lub przesyłasz. Połączenia WebDAV używają domyślnych ustawień OpenDrive."
+            "opendriveDefaultPrivacyHelp": "Stosowana do folderów i plików, które tworzysz lub przesyłasz. Połączenia WebDAV używają domyślnych ustawień OpenDrive.",
+            "storedTotpAdvanced": "Zaawansowane: zapisz sekret 2FA",
+            "storedTotpWarning": "Zapisanie sekretu 2FA umieszcza oba składniki w sejfie. Jeśli główne hasło sejfu zostanie przejęte, 2FA przestanie chronić to konto. Lepiej użyć kodu jednorazowego lub lokalnego mostu WebDAV/S3.",
+            "filenBridgeCredentialRules": "Limit mostu Filen: {max} znaków. Nieobsługiwane: {rejected}",
+            "filenBridgeCredentialRejected": "Te dane uwierzytelniające zawierają znaki odrzucane przez most Filen."
         },
         "browser": {
             "remote": "Zdalny",
@@ -3831,7 +3835,19 @@
             "pwdCopied": "Skopiowano!",
             "pwdAutoClear": "Skopiowano (automatyczne czyszczenie za 30s)",
             "pwdNoCharset": "Wybierz co najmniej jeden zestaw znaków",
-            "pwdNotBip39": "Nie jest ważną frazą mnemoniczną BIP-39 - nie używaj jako nasienia portfela kryptowaluty"
+            "pwdNotBip39": "Nie jest ważną frazą mnemoniczną BIP-39 - nie używaj jako nasienia portfela kryptowaluty",
+            "hashLegacy": "Starsze",
+            "pwdPresets": "Profesjonalne ustawienia wstępne",
+            "pwdPresetBalanced": "Zrównoważone",
+            "pwdPresetMaximum": "Maksymalne",
+            "pwdSymbolGroups": "Grupy znaków",
+            "pwdCustomCharacters": "Dodaj znaki",
+            "pwdExcludedCharacters": "Wyklucz znaki",
+            "pwdRequireEachGroup": "Uwzględnij co najmniej jeden znak z każdej wybranej grupy",
+            "pwdGenerating": "Generowanie...",
+            "pwdGenerateInline": "Wygeneruj bezpieczne hasło",
+            "pwdPresetCompatible": "Zgodne 32",
+            "pwdGenerateCompatibleInline": "Wygeneruj zgodne hasło o długości 32 znaków"
         },
         "dialog": {
             "deleteFile": "Usunąć \"{name}\"?",

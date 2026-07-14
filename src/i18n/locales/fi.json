@@ -285,7 +285,11 @@
             "persistModeCredentials": "Muista jokaisen tämän tilin protokollan tunnistetiedot",
             "persistModeCredentialsHint": "Yksi profiili tiliä kohden: säilyttää jokaisen protokollan tunnistetiedot (API, WebDAV, S3, ...) tallennettuina, joten tilan vaihtaminen ei kysy uudelleen, edes uudelleenkäynnistyksen jälkeen. Tallennetaan salattuna holviin. Oletuksena pois päältä.",
             "opendriveDefaultPrivacy": "Uusien kohteiden oletustietosuoja",
-            "opendriveDefaultPrivacyHelp": "Koskee luomiasi tai lataamiasi kansioita ja tiedostoja. WebDAV-yhteydet käyttävät OpenDriven omia oletusasetuksia."
+            "opendriveDefaultPrivacyHelp": "Koskee luomiasi tai lataamiasi kansioita ja tiedostoja. WebDAV-yhteydet käyttävät OpenDriven omia oletusasetuksia.",
+            "storedTotpAdvanced": "Lisäasetukset: tallenna 2FA-salaisuus",
+            "storedTotpWarning": "2FA-salaisuuden tallentaminen sijoittaa molemmat tekijät holviin. Jos holvin pääsalasana vaarantuu, 2FA ei enää suojaa tätä tiliä. Käytä mieluummin kertakäyttökoodia tai paikallista WebDAV/S3-siltaa.",
+            "filenBridgeCredentialRules": "Filen-sillan rajoitus: {max} merkkiä. Ei tuettu: {rejected}",
+            "filenBridgeCredentialRejected": "Tämä tunnistetieto sisältää Filen-sillan hylkäämiä merkkejä."
         },
         "browser": {
             "remote": "Etä",
@@ -3831,7 +3835,19 @@
             "pwdCopied": "Kopioitu!",
             "pwdAutoClear": "Kopioitu (automaattinen tyhjennys 30s)",
             "pwdNoCharset": "Valitse vähintään yksi merkistö",
-            "pwdNotBip39": "Ei kelvollinen BIP-39-muistisana - älä käytä kryptovaluuttalokin siemenenä"
+            "pwdNotBip39": "Ei kelvollinen BIP-39-muistisana - älä käytä kryptovaluuttalokin siemenenä",
+            "hashLegacy": "Vanha",
+            "pwdPresets": "Ammattimaiset esiasetukset",
+            "pwdPresetBalanced": "Tasapainoinen",
+            "pwdPresetMaximum": "Enimmäistaso",
+            "pwdSymbolGroups": "Merkkiryhmät",
+            "pwdCustomCharacters": "Lisää merkkejä",
+            "pwdExcludedCharacters": "Ohita merkit",
+            "pwdRequireEachGroup": "Sisällytä vähintään yksi merkki jokaisesta valitusta ryhmästä",
+            "pwdGenerating": "Luodaan...",
+            "pwdGenerateInline": "Luo turvallinen salasana",
+            "pwdPresetCompatible": "Yhteensopiva 32",
+            "pwdGenerateCompatibleInline": "Luo yhteensopiva 32 merkin salasana"
         },
         "dialog": {
             "deleteFile": "Poista \"{name}\"?",

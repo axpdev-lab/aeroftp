@@ -285,7 +285,11 @@
             "persistModeCredentials": "이 계정의 각 프로토콜에 대한 자격 증명 기억하기",
             "persistModeCredentialsHint": "계정당 프로필 하나: 각 프로토콜의 자격 증명(API, WebDAV, S3, ...)을 저장해 두어 모드를 전환해도 다시 묻지 않으며, 다시 시작한 후에도 마찬가지입니다. 볼트에 암호화되어 저장됩니다. 기본값은 꺼짐입니다.",
             "opendriveDefaultPrivacy": "새 항목의 기본 개인정보 설정",
-            "opendriveDefaultPrivacyHelp": "만들거나 업로드하는 폴더와 파일에 적용됩니다. WebDAV 연결은 OpenDrive 자체 기본값을 사용합니다."
+            "opendriveDefaultPrivacyHelp": "만들거나 업로드하는 폴더와 파일에 적용됩니다. WebDAV 연결은 OpenDrive 자체 기본값을 사용합니다.",
+            "storedTotpAdvanced": "고급: 2FA 비밀 키 저장",
+            "storedTotpWarning": "2FA 비밀 키를 저장하면 두 인증 요소가 모두 볼트에 보관됩니다. 볼트 마스터 비밀번호가 유출되면 2FA가 더 이상 이 계정을 보호하지 못합니다. 일회용 코드 또는 로컬 WebDAV/S3 브리지를 사용하는 것이 좋습니다.",
+            "filenBridgeCredentialRules": "Filen 브리지 제한: {max}자. 지원되지 않음: {rejected}",
+            "filenBridgeCredentialRejected": "이 인증 정보에는 Filen 브리지에서 거부하는 문자가 포함되어 있습니다."
         },
         "browser": {
             "remote": "원격",
@@ -3831,7 +3835,19 @@
             "pwdCopied": "복사됨!",
             "pwdAutoClear": "복사됨 (30초 후 자동 삭제)",
             "pwdNoCharset": "최소 하나의 문자 집합을 선택하세요",
-            "pwdNotBip39": "유효한 BIP-39 니모닉이 아닙니다 - 암호화폐 지갑 시드로 사용하지 마세요"
+            "pwdNotBip39": "유효한 BIP-39 니모닉이 아닙니다 - 암호화폐 지갑 시드로 사용하지 마세요",
+            "hashLegacy": "레거시",
+            "pwdPresets": "전문가용 사전 설정",
+            "pwdPresetBalanced": "균형",
+            "pwdPresetMaximum": "최대",
+            "pwdSymbolGroups": "문자 그룹",
+            "pwdCustomCharacters": "문자 추가",
+            "pwdExcludedCharacters": "문자 제외",
+            "pwdRequireEachGroup": "선택한 각 그룹에서 문자를 하나 이상 포함",
+            "pwdGenerating": "생성 중...",
+            "pwdGenerateInline": "안전한 비밀번호 생성",
+            "pwdPresetCompatible": "호환 32",
+            "pwdGenerateCompatibleInline": "호환되는 32자 비밀번호 생성"
         },
         "dialog": {
             "deleteFile": "\"{name}\"을(를) 삭제하시겠습니까?",

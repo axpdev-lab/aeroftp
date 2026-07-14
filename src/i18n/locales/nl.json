@@ -285,7 +285,11 @@
             "persistModeCredentials": "Onthoud inloggegevens voor elk protocol van dit account",
             "persistModeCredentialsHint": "Eén profiel per account: bewaart de inloggegevens van elk protocol (API, WebDAV, S3, ...) zodat het wisselen van modus er niet opnieuw om vraagt, zelfs na een herstart. Versleuteld opgeslagen in de kluis. Standaard uit.",
             "opendriveDefaultPrivacy": "Standaardprivacy voor nieuwe items",
-            "opendriveDefaultPrivacyHelp": "Toegepast op mappen en bestanden die je maakt of uploadt. WebDAV-verbindingen gebruiken de standaardinstellingen van OpenDrive."
+            "opendriveDefaultPrivacyHelp": "Toegepast op mappen en bestanden die je maakt of uploadt. WebDAV-verbindingen gebruiken de standaardinstellingen van OpenDrive.",
+            "storedTotpAdvanced": "Geavanceerd: het 2FA-geheim opslaan",
+            "storedTotpWarning": "Als u het 2FA-geheim opslaat, worden beide factoren in de kluis bewaard. Als het hoofdwachtwoord van de kluis wordt gecompromitteerd, beschermt 2FA dit account niet meer. Gebruik bij voorkeur een eenmalige code of een lokale WebDAV/S3-bridge.",
+            "filenBridgeCredentialRules": "Limiet van Filen-bridge: {max} tekens. Niet ondersteund: {rejected}",
+            "filenBridgeCredentialRejected": "Deze inloggegevens bevatten tekens die door de Filen-bridge worden geweigerd."
         },
         "browser": {
             "remote": "Extern",
@@ -3831,7 +3835,19 @@
             "pwdCopied": "Gekopieerd!",
             "pwdAutoClear": "Gekopieerd (auto-wissen over 30s)",
             "pwdNoCharset": "Selecteer minstens één tekenset",
-            "pwdNotBip39": "Geen geldige BIP-39-mnemonische uitdrukking - gebruik niet als cryptocurrency walletachtervoegsel"
+            "pwdNotBip39": "Geen geldige BIP-39-mnemonische uitdrukking - gebruik niet als cryptocurrency walletachtervoegsel",
+            "hashLegacy": "Verouderd",
+            "pwdPresets": "Professionele voorinstellingen",
+            "pwdPresetBalanced": "Gebalanceerd",
+            "pwdPresetMaximum": "Maximum",
+            "pwdSymbolGroups": "Tekengroepen",
+            "pwdCustomCharacters": "Tekens toevoegen",
+            "pwdExcludedCharacters": "Tekens uitsluiten",
+            "pwdRequireEachGroup": "Minstens één teken uit elke geselecteerde groep opnemen",
+            "pwdGenerating": "Genereren...",
+            "pwdGenerateInline": "Een veilig wachtwoord genereren",
+            "pwdPresetCompatible": "Compatibel 32",
+            "pwdGenerateCompatibleInline": "Een compatibel wachtwoord van 32 tekens genereren"
         },
         "dialog": {
             "deleteFile": "\"{name}\" verwijderen?",

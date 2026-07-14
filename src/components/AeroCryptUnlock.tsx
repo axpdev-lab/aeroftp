@@ -21,6 +21,7 @@ import { Lock, Unlock, Loader2, X, FileKey } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { PasswordInput } from './common/PasswordInput';
 import { PasswordMatchHint } from './common/PasswordMatchHint';
+import { InlinePasswordGenerator } from './common/InlinePasswordGenerator';
 import { PasswordStrengthBar } from './vault/PasswordStrengthBar';
 import { QRCodeSVG } from 'qrcode.react';
 
@@ -375,14 +376,18 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({ onClose, onUnl
                                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                                     {t('aerocryptNative.password')}
                                 </label>
-                                <PasswordInput
-                                    value={password}
-                                    onChange={setPassword}
-                                    onKeyDown={(e) => e.key === 'Enter' && (mode === 'open' ? handleUnlock() : handleCreate())}
-                                    placeholder={t('aerocryptNative.passwordPlaceholder')}
-                                    ariaLabel={t('aerocryptNative.password')}
-                                    autoFocus
-                                />
+                                <div className="relative">
+                                    <PasswordInput
+                                        value={password}
+                                        onChange={setPassword}
+                                        onKeyDown={(e) => e.key === 'Enter' && (mode === 'open' ? handleUnlock() : handleCreate())}
+                                        placeholder={t('aerocryptNative.passwordPlaceholder')}
+                                        ariaLabel={t('aerocryptNative.password')}
+                                        className={mode === 'create' ? 'pr-20' : undefined}
+                                        autoFocus
+                                    />
+                                    {mode === 'create' && <InlinePasswordGenerator onGenerated={value => { setPassword(value); setConfirmPassword(value); }} className="absolute right-9 top-1/2 -translate-y-1/2" />}
+                                </div>
                                 {mode === 'create' && password.length > 0 && (
                                     <div className="mt-2">
                                         <PasswordStrengthBar password={password} />

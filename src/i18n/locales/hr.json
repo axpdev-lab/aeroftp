@@ -285,7 +285,11 @@
             "persistModeCredentials": "Zapamti vjerodajnice za svaki protokol ovog računa",
             "persistModeCredentialsHint": "Jedan profil po računu: čuva vjerodajnice svakog protokola (API, WebDAV, S3, ...) spremljene pa promjena načina više ne pita, čak i nakon ponovnog pokretanja. Pohranjeno šifrirano u trezoru. Prema zadanim postavkama isključeno.",
             "opendriveDefaultPrivacy": "Zadana privatnost za nove stavke",
-            "opendriveDefaultPrivacyHelp": "Primjenjuje se na mape i datoteke koje stvorite ili prenesete. WebDAV veze koriste zadane postavke OpenDrivea."
+            "opendriveDefaultPrivacyHelp": "Primjenjuje se na mape i datoteke koje stvorite ili prenesete. WebDAV veze koriste zadane postavke OpenDrivea.",
+            "storedTotpAdvanced": "Napredno: spremi tajnu za 2FA",
+            "storedTotpWarning": "Spremanje tajne za 2FA stavlja oba čimbenika u trezor. Ako glavna lozinka trezora bude ugrožena, 2FA više ne štiti ovaj račun. Radije upotrijebite jednokratni kod ili lokalni WebDAV/S3 most.",
+            "filenBridgeCredentialRules": "Ograničenje Filen mosta: {max} znakova. Nije podržano: {rejected}",
+            "filenBridgeCredentialRejected": "Ova vjerodajnica sadrži znakove koje Filen most odbija."
         },
         "browser": {
             "remote": "Udaljeno",
@@ -3831,7 +3835,19 @@
             "pwdCopied": "Kopirano!",
             "pwdAutoClear": "Kopirano (automatsko brisanje za 30s)",
             "pwdNoCharset": "Odaberite barem jedan skup znakova",
-            "pwdNotBip39": "Nije valjani BIP-39 mnemoni - ne koristite kao sjeme za kripto novčanik"
+            "pwdNotBip39": "Nije valjani BIP-39 mnemoni - ne koristite kao sjeme za kripto novčanik",
+            "hashLegacy": "Naslijeđeno",
+            "pwdPresets": "Profesionalne postavke",
+            "pwdPresetBalanced": "Uravnoteženo",
+            "pwdPresetMaximum": "Maksimalno",
+            "pwdSymbolGroups": "Grupe znakova",
+            "pwdCustomCharacters": "Dodaj znakove",
+            "pwdExcludedCharacters": "Izuzmi znakove",
+            "pwdRequireEachGroup": "Uključi barem jedan znak iz svake odabrane grupe",
+            "pwdGenerating": "Generiranje...",
+            "pwdGenerateInline": "Generiraj sigurnu lozinku",
+            "pwdPresetCompatible": "Kompatibilno 32",
+            "pwdGenerateCompatibleInline": "Generiraj kompatibilnu lozinku od 32 znaka"
         },
         "dialog": {
             "deleteFile": "Obrisati \"{name}\"?",

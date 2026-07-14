@@ -285,7 +285,11 @@
             "persistModeCredentials": "Lembrar as credenciais para cada protocolo desta conta",
             "persistModeCredentialsHint": "Um perfil por conta: mantém guardadas as credenciais de cada protocolo (API, WebDAV, S3, ...) para que mudar de modo não as peça novamente, mesmo após reiniciar. Armazenado encriptado no cofre. Desativado por predefinição.",
             "opendriveDefaultPrivacy": "Privacidade padrão para novos itens",
-            "opendriveDefaultPrivacyHelp": "Aplicada a pastas e ficheiros que criar ou carregar. As ligações WebDAV usam as predefinições do OpenDrive."
+            "opendriveDefaultPrivacyHelp": "Aplicada a pastas e ficheiros que criar ou carregar. As ligações WebDAV usam as predefinições do OpenDrive.",
+            "storedTotpAdvanced": "Avançado: guardar o segredo de 2FA",
+            "storedTotpWarning": "Guardar o segredo de 2FA coloca ambos os fatores no cofre. Se a palavra-passe principal do cofre for comprometida, a 2FA deixa de proteger esta conta. Prefira um código de utilização única ou uma ponte WebDAV/S3 local.",
+            "filenBridgeCredentialRules": "Limite da ponte Filen: {max} caracteres. Não suportados: {rejected}",
+            "filenBridgeCredentialRejected": "Esta credencial contém caracteres rejeitados pela ponte Filen."
         },
         "browser": {
             "remote": "Remoto",
@@ -3831,7 +3835,19 @@
             "pwdCopied": "Copiado!",
             "pwdAutoClear": "Copiado (limpeza automática em 30s)",
             "pwdNoCharset": "Selecionar pelo menos um conjunto de caracteres",
-            "pwdNotBip39": "Não é uma frase mnemônica BIP-39 válida - não use como semente de carteira de criptografia"
+            "pwdNotBip39": "Não é uma frase mnemônica BIP-39 válida - não use como semente de carteira de criptografia",
+            "hashLegacy": "Legado",
+            "pwdPresets": "Predefinições profissionais",
+            "pwdPresetBalanced": "Equilibrado",
+            "pwdPresetMaximum": "Máximo",
+            "pwdSymbolGroups": "Grupos de caracteres",
+            "pwdCustomCharacters": "Adicionar caracteres",
+            "pwdExcludedCharacters": "Excluir caracteres",
+            "pwdRequireEachGroup": "Incluir pelo menos um caráter de cada grupo selecionado",
+            "pwdGenerating": "A gerar...",
+            "pwdGenerateInline": "Gerar uma palavra-passe segura",
+            "pwdPresetCompatible": "Compatível 32",
+            "pwdGenerateCompatibleInline": "Gerar uma palavra-passe compatível de 32 caracteres"
         },
         "dialog": {
             "deleteFile": "Eliminar \"{name}\"?",

@@ -285,7 +285,11 @@
             "persistModeCredentials": "Reține datele de autentificare pentru fiecare protocol al acestui cont",
             "persistModeCredentialsHint": "Un profil per cont: păstrează salvate datele de autentificare ale fiecărui protocol (API, WebDAV, S3, ...), astfel încât schimbarea modului să nu le mai ceară, chiar și după o repornire. Stocat criptat în seif. Dezactivat implicit.",
             "opendriveDefaultPrivacy": "Confidențialitate implicită pentru elemente noi",
-            "opendriveDefaultPrivacyHelp": "Se aplică folderelor și fișierelor pe care le creați sau le încărcați. Conexiunile WebDAV folosesc setările implicite ale OpenDrive."
+            "opendriveDefaultPrivacyHelp": "Se aplică folderelor și fișierelor pe care le creați sau le încărcați. Conexiunile WebDAV folosesc setările implicite ale OpenDrive.",
+            "storedTotpAdvanced": "Avansat: salvează secretul 2FA",
+            "storedTotpWarning": "Salvarea secretului 2FA plasează ambii factori în seif. Dacă parola principală a seifului este compromisă, 2FA nu mai protejează acest cont. Preferați un cod de unică folosință sau o punte WebDAV/S3 locală.",
+            "filenBridgeCredentialRules": "Limita punții Filen: {max} caractere. Neacceptate: {rejected}",
+            "filenBridgeCredentialRejected": "Aceste date de autentificare conțin caractere respinse de puntea Filen."
         },
         "browser": {
             "remote": "La distanță",
@@ -3831,7 +3835,19 @@
             "pwdCopied": "Copiat!",
             "pwdAutoClear": "Copiat (ștergere automată în 30s)",
             "pwdNoCharset": "Selectați cel puțin un set de caractere",
-            "pwdNotBip39": "Nu este o propoziție mnemonică BIP-39 validă - nu o utiliza ca sămânță pentru portofelul de criptomonede"
+            "pwdNotBip39": "Nu este o propoziție mnemonică BIP-39 validă - nu o utiliza ca sămânță pentru portofelul de criptomonede",
+            "hashLegacy": "Moștenit",
+            "pwdPresets": "Presetări profesionale",
+            "pwdPresetBalanced": "Echilibrat",
+            "pwdPresetMaximum": "Maxim",
+            "pwdSymbolGroups": "Grupuri de caractere",
+            "pwdCustomCharacters": "Adaugă caractere",
+            "pwdExcludedCharacters": "Exclude caractere",
+            "pwdRequireEachGroup": "Include cel puțin un caracter din fiecare grup selectat",
+            "pwdGenerating": "Se generează...",
+            "pwdGenerateInline": "Generează o parolă sigură",
+            "pwdPresetCompatible": "Compatibilă 32",
+            "pwdGenerateCompatibleInline": "Generează o parolă compatibilă de 32 de caractere"
         },
         "dialog": {
             "deleteFile": "Ștergeți \"{name}\"?",

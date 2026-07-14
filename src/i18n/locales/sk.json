@@ -285,7 +285,11 @@
             "persistModeCredentials": "Zapamätať si prihlasovacie údaje pre každý protokol tohto účtu",
             "persistModeCredentialsHint": "Jeden profil na účet: uchováva prihlasovacie údaje každého protokolu (API, WebDAV, S3, ...), takže prepnutie režimu sa už nepýta, ani po reštarte. Uložené šifrovane v trezore. Predvolene vypnuté.",
             "opendriveDefaultPrivacy": "Predvolené súkromie pre nové položky",
-            "opendriveDefaultPrivacyHelp": "Použije sa na priečinky a súbory, ktoré vytvoríte alebo nahráte. Pripojenia WebDAV používajú predvolené nastavenia OpenDrive."
+            "opendriveDefaultPrivacyHelp": "Použije sa na priečinky a súbory, ktoré vytvoríte alebo nahráte. Pripojenia WebDAV používajú predvolené nastavenia OpenDrive.",
+            "storedTotpAdvanced": "Rozšírené: uložiť tajný kľúč 2FA",
+            "storedTotpWarning": "Uložením tajného kľúča 2FA sa oba faktory uložia do trezoru. Ak dôjde k prelomeniu hlavného hesla trezoru, 2FA už tento účet nechráni. Uprednostnite jednorazový kód alebo miestny most WebDAV/S3.",
+            "filenBridgeCredentialRules": "Limit mosta Filen: {max} znakov. Nepodporované: {rejected}",
+            "filenBridgeCredentialRejected": "Tieto prihlasovacie údaje obsahujú znaky odmietnuté mostom Filen."
         },
         "browser": {
             "remote": "Vzdialený",
@@ -3831,7 +3835,19 @@
             "pwdCopied": "Skopírované!",
             "pwdAutoClear": "Skopírované (automatické vymazanie za 30s)",
             "pwdNoCharset": "Vyberte aspoň jednu znakovú sadu",
-            "pwdNotBip39": "Nie je platnou mnemonickou frázou BIP-39 - nepoužívajte ako semeno peňaženky kryptomeny"
+            "pwdNotBip39": "Nie je platnou mnemonickou frázou BIP-39 - nepoužívajte ako semeno peňaženky kryptomeny",
+            "hashLegacy": "Staršie",
+            "pwdPresets": "Profesionálne predvoľby",
+            "pwdPresetBalanced": "Vyvážené",
+            "pwdPresetMaximum": "Maximum",
+            "pwdSymbolGroups": "Skupiny znakov",
+            "pwdCustomCharacters": "Pridať znaky",
+            "pwdExcludedCharacters": "Vylúčiť znaky",
+            "pwdRequireEachGroup": "Zahrnúť aspoň jeden znak z každej vybranej skupiny",
+            "pwdGenerating": "Generovanie...",
+            "pwdGenerateInline": "Vygenerovať bezpečné heslo",
+            "pwdPresetCompatible": "Kompatibilné 32",
+            "pwdGenerateCompatibleInline": "Vygenerovať kompatibilné heslo s 32 znakmi"
         },
         "dialog": {
             "deleteFile": "Odstrániť \"{name}\"?",

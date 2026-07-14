@@ -23,8 +23,9 @@ import { UnstableProviderNotice } from './UnstableProviderNotice';
 import { ProviderModeTabs } from './ProviderModeTabs';
 import { CollapsibleSetupBox } from './CollapsibleSetupBox';
 import { AeroShareHandshakeBody } from './AeroShare/AeroShareHandshakeBody';
-import { TotpLivePreview } from './TotpLivePreview';
 import { TotpCodeInput } from './TotpCodeInput';
+import { StoredTotpSecretDisclosure } from './StoredTotpSecretDisclosure';
+import { InlinePasswordGenerator } from './common/InlinePasswordGenerator';
 import { findActiveMode, findActiveModeGroup, modeGroupProviderIds, resolveModeHeader, resolveModeSwitchCredentials } from './providerModeGroups';
 import { loadModeCredentials, storeModeCredentials, deleteModeCredentials, type ModeCredentialMap } from '../utils/modeCredentialStore';
 import { openUrl } from '../utils/openUrl';
@@ -45,6 +46,7 @@ import { formatBytes, parseHumanSize } from '../utils/formatters';
 import { useActivityLog } from '../hooks/useActivityLog';
 import { logger } from '../utils/logger';
 import { Checkbox } from './ui/Checkbox';
+import { FILEN_BRIDGE_MAX_LENGTH, FILEN_BRIDGE_REJECTED_CHARACTERS, filenBridgeCredentialError } from '../utils/passwordForge';
 
 // Protocols that can be switched between when editing a saved connection
 const SWITCHABLE_PROTOCOLS: ProviderType[] = ['ftp', 'ftps', 'sftp'];
@@ -532,8 +534,6 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     } | null>(null);
     const [savedServersUpdate, setSavedServersUpdate] = useState(0);
     const [showPassword, setShowPassword] = useState(false);
-    // Reveal toggle for the saved 2FA Secret field, mirroring the password eye.
-    const [showTotpSecret, setShowTotpSecret] = useState(false);
     // Reveal toggle for the optional Filen CLI API Key field.
     const [showFilenApiKey, setShowFilenApiKey] = useState(false);
 
@@ -563,6 +563,10 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     const megaMode = getMegaConnectionMode(connectionParams.options);
     const isMegaCmdMode = megaMode === 'megacmd';
     const activeProviderId = connectionParams.providerId || selectedProviderId || undefined;
+    const isFilenDesktopBridge = activeProviderId === 'filen-desktop-webdav' || activeProviderId === 'filen-desktop-s3';
+    const filenBridgeCredentialIssue = isFilenDesktopBridge
+        ? filenBridgeCredentialError(connectionParams.username) || filenBridgeCredentialError(connectionParams.password)
+        : null;
     // Resolve the provider currently targeted by the form so we can warn when
     // it is flagged stable:false. The dev-only protocol grid hides these, but
     // the Add Service list view leaks them into production (#308); swift with no
@@ -2952,8 +2956,14 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             disabled={overlayFieldsLocked}
                                             onChange={(e) => setAeroCryptPassword(e.target.value)}
                                             placeholder={editingProfileId && !aeroCryptPassword ? t('aerocryptProfile.passwordStored') : t('aerocryptProfile.passwordPlaceholder')}
-                                            className="w-full px-4 py-2.5 pr-10 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm disabled:opacity-60 disabled:cursor-not-allowed"
+                                            className="w-full px-4 py-2.5 pr-20 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm disabled:opacity-60 disabled:cursor-not-allowed"
                                         />
+                                        {!overlayFieldsLocked && (
+                                            <InlinePasswordGenerator
+                                                onGenerated={(value) => { setAeroCryptPassword(value); setAeroCryptConfirm(value); }}
+                                                className="absolute right-9 top-1/2 -translate-y-1/2"
+                                            />
+                                        )}
                                         <button
                                             type="button"
                                             tabIndex={-1}
@@ -5185,30 +5195,14 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             />
                                         </div>
 
-                                        <div>
-                                            <div className="flex items-center justify-between gap-2 mb-1.5 min-h-[1.75rem]">
-                                                <label className="block text-sm font-medium">{t('connection.totpSecret')}</label>
-                                                <TotpLivePreview secret={connectionParams.options?.totp_secret || ''} t={t} inline />
-                                            </div>
-                                            <div className="relative">
-                                                <input
-                                                    type={showTotpSecret ? 'text' : 'password'}
-                                                    value={connectionParams.options?.totp_secret || ''}
-                                                    onChange={(e) => onConnectionParamsChange({
-                                                        ...connectionParams,
-                                                        options: { ...connectionParams.options, totp_secret: e.target.value || undefined }
-                                                    })}
-                                                    className="w-full px-4 py-2.5 pr-12 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-mono focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
-                                                    placeholder={t('connection.totpSecretPlaceholder')}
-                                                    autoComplete="off"
-                                                    spellCheck={false}
-                                                />
-                                                <button type="button" tabIndex={-1} onClick={() => setShowTotpSecret(!showTotpSecret)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
-                                                    {showTotpSecret ? <EyeOff size={18} /> : <Eye size={18} />}
-                                                </button>
-                                            </div>
-                                            <p className="mt-1.5 text-xs text-gray-500 dark:text-gray-400">{t('connection.totpSecretHelp')}</p>
-                                        </div>
+                                        <StoredTotpSecretDisclosure
+                                            value={connectionParams.options?.totp_secret || ''}
+                                            onChange={(value) => onConnectionParamsChange({
+                                                ...connectionParams,
+                                                options: { ...connectionParams.options, totp_secret: value || undefined }
+                                            })}
+                                            accent="emerald"
+                                        />
 
                                         <div>
                                             <label className="block text-sm font-medium mb-1.5">{t('connection.filenApiKey')}</label>
@@ -5597,30 +5591,14 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             />
                                         </div>
 
-                                        <div>
-                                            <div className="flex items-center justify-between gap-2 mb-1.5 min-h-[1.75rem]">
-                                                <label className="block text-sm font-medium">{t('connection.totpSecret')}</label>
-                                                <TotpLivePreview secret={connectionParams.options?.totp_secret || ''} t={t} inline />
-                                            </div>
-                                            <div className="relative">
-                                                <input
-                                                    type={showTotpSecret ? 'text' : 'password'}
-                                                    value={connectionParams.options?.totp_secret || ''}
-                                                    onChange={(e) => onConnectionParamsChange({
-                                                        ...connectionParams,
-                                                        options: { ...connectionParams.options, totp_secret: e.target.value || undefined }
-                                                    })}
-                                                    className="w-full px-4 py-2.5 pr-12 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-mono focus:ring-2 focus:ring-red-500 focus:border-red-500"
-                                                    placeholder={t('connection.totpSecretPlaceholder')}
-                                                    autoComplete="off"
-                                                    spellCheck={false}
-                                                />
-                                                <button type="button" tabIndex={-1} onClick={() => setShowTotpSecret(!showTotpSecret)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
-                                                    {showTotpSecret ? <EyeOff size={18} /> : <Eye size={18} />}
-                                                </button>
-                                            </div>
-                                            <p className="mt-1.5 text-xs text-gray-500 dark:text-gray-400">{t('connection.totpSecretHelp')}</p>
-                                        </div>
+                                        <StoredTotpSecretDisclosure
+                                            value={connectionParams.options?.totp_secret || ''}
+                                            onChange={(value) => onConnectionParamsChange({
+                                                ...connectionParams,
+                                                options: { ...connectionParams.options, totp_secret: value || undefined }
+                                            })}
+                                            accent="red"
+                                        />
 
                                         <div className="space-y-2">
                                             <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide">
@@ -6198,13 +6176,15 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                         )}
                                         <div>
                                             {renderUsernameLabel()}
-                                            <input
-                                                type="text"
-                                                value={connectionParams.username}
-                                                onChange={(e) => onConnectionParamsChange({ ...connectionParams, username: e.target.value })}
-                                                className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
-                                                placeholder={getUsernamePlaceholder()}
-                                            />
+                                                <input
+                                                    type="text"
+                                                    value={connectionParams.username}
+                                                    onChange={(e) => onConnectionParamsChange({ ...connectionParams, username: e.target.value })}
+                                                    className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
+                                                    placeholder={getUsernamePlaceholder()}
+                                                    maxLength={isFilenDesktopBridge ? FILEN_BRIDGE_MAX_LENGTH : undefined}
+                                                    aria-invalid={!!filenBridgeCredentialIssue}
+                                                />
                                         </div>
                                         {/* Password: not applicable to an AeroShare friend (peer carries
                                             no password; the binding rides in options.peer*). */}
@@ -6216,13 +6196,29 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     type={showPassword ? 'text' : 'password'}
                                                     value={connectionParams.password}
                                                     onChange={(e) => onConnectionParamsChange({ ...connectionParams, password: e.target.value })}
-                                                    className="w-full px-4 py-2.5 pr-12 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
+                                                    className={`w-full px-4 py-2.5 ${isFilenDesktopBridge ? 'pr-20' : 'pr-12'} bg-gray-50 dark:bg-gray-700 border rounded-lg text-sm ${filenBridgeCredentialIssue ? 'border-amber-500' : 'border-gray-300 dark:border-gray-600'}`}
                                                     placeholder={t('connection.passwordPlaceholder')}
+                                                    maxLength={isFilenDesktopBridge ? FILEN_BRIDGE_MAX_LENGTH : undefined}
+                                                    aria-invalid={!!filenBridgeCredentialIssue}
                                                 />
+                                                {isFilenDesktopBridge && (
+                                                    <InlinePasswordGenerator
+                                                        preset="compatible"
+                                                        onGenerated={(value) => onConnectionParamsChange({ ...connectionParams, password: value })}
+                                                        className="absolute right-9 top-1/2 -translate-y-1/2"
+                                                    />
+                                                )}
                                                 <button tabIndex={-1} type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
                                                     {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                                                 </button>
                                             </div>
+                                            {isFilenDesktopBridge && (
+                                                <p className={`mt-1.5 text-xs ${filenBridgeCredentialIssue ? 'text-amber-600 dark:text-amber-400' : 'text-gray-500 dark:text-gray-400'}`}>
+                                                    {filenBridgeCredentialIssue
+                                                        ? t('connection.filenBridgeCredentialRejected')
+                                                        : t('connection.filenBridgeCredentialRules', { max: FILEN_BRIDGE_MAX_LENGTH, rejected: FILEN_BRIDGE_REJECTED_CHARACTERS })}
+                                                </p>
+                                            )}
                                         </div>
                                         )}
 

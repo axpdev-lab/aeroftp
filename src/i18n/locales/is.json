@@ -285,7 +285,11 @@
             "persistModeCredentials": "Muna auðkenni fyrir hverja samskiptareglu þessa reiknings",
             "persistModeCredentialsHint": "Ein snið á reikning: heldur auðkennum hverrar samskiptareglu (API, WebDAV, S3, ...) vistuðum svo að skipta um ham spyr ekki aftur, jafnvel eftir endurræsingu. Geymt dulkóðað í hvelfingunni. Sjálfgefið slökkt.",
             "opendriveDefaultPrivacy": "Sjálfgefið næði fyrir nýja hluti",
-            "opendriveDefaultPrivacyHelp": "Á við möppur og skrár sem þú býrð til eða hleður upp. WebDAV-tengingar nota sjálfgefnar stillingar OpenDrive."
+            "opendriveDefaultPrivacyHelp": "Á við möppur og skrár sem þú býrð til eða hleður upp. WebDAV-tengingar nota sjálfgefnar stillingar OpenDrive.",
+            "storedTotpAdvanced": "Ítarlegt: vista 2FA-leyndarmálið",
+            "storedTotpWarning": "Þegar 2FA-leyndarmálið er vistað eru báðir þættirnir geymdir í hvelfingunni. Ef aðallykilorð hvelfingarinnar er rofið verndar 2FA ekki lengur þennan reikning. Notaðu frekar einnota kóða eða staðbundna WebDAV/S3-brú.",
+            "filenBridgeCredentialRules": "Takmörk Filen-brúar: {max} stafir. Óstudd: {rejected}",
+            "filenBridgeCredentialRejected": "Þessi auðkenni innihalda stafi sem Filen-brúin hafnar."
         },
         "browser": {
             "remote": "Fjartengdur",
@@ -3831,7 +3835,19 @@
             "pwdCopied": "Afritað!",
             "pwdAutoClear": "Afritað (sjálfvirk hreinsun eftir 30s)",
             "pwdNoCharset": "Veldu að minnsta kosti eitt stafasett",
-            "pwdNotBip39": "Ekki gildur BIP-39 mnemonik - ekki nota sem frjó dulmálsvisku"
+            "pwdNotBip39": "Ekki gildur BIP-39 mnemonik - ekki nota sem frjó dulmálsvisku",
+            "hashLegacy": "Eldra",
+            "pwdPresets": "Faglegar forstillingar",
+            "pwdPresetBalanced": "Jafnvægi",
+            "pwdPresetMaximum": "Hámark",
+            "pwdSymbolGroups": "Stafahópar",
+            "pwdCustomCharacters": "Bæta við stöfum",
+            "pwdExcludedCharacters": "Útiloka stafi",
+            "pwdRequireEachGroup": "Hafa að minnsta kosti einn staf úr hverjum völdum hópi",
+            "pwdGenerating": "Bý til...",
+            "pwdGenerateInline": "Búa til öruggt lykilorð",
+            "pwdPresetCompatible": "Samhæft 32",
+            "pwdGenerateCompatibleInline": "Búa til samhæft 32 stafa lykilorð"
         },
         "dialog": {
             "deleteFile": "Eyða \"{name}\"?",

@@ -285,7 +285,11 @@
             "persistModeCredentials": "Ingat kredensial untuk setiap protokol akun ini",
             "persistModeCredentialsHint": "Satu profil per akun: menyimpan kredensial setiap protokol (API, WebDAV, S3, ...) sehingga berpindah mode tidak menanyakannya lagi, bahkan setelah memulai ulang. Disimpan terenkripsi di vault. Nonaktif secara default.",
             "opendriveDefaultPrivacy": "Privasi default untuk item baru",
-            "opendriveDefaultPrivacyHelp": "Diterapkan ke folder dan file yang Anda buat atau unggah. Koneksi WebDAV menggunakan default OpenDrive sendiri."
+            "opendriveDefaultPrivacyHelp": "Diterapkan ke folder dan file yang Anda buat atau unggah. Koneksi WebDAV menggunakan default OpenDrive sendiri.",
+            "storedTotpAdvanced": "Lanjutan: simpan rahasia 2FA",
+            "storedTotpWarning": "Menyimpan rahasia 2FA menempatkan kedua faktor di brankas. Jika kata sandi utama brankas dibobol, 2FA tidak lagi melindungi akun ini. Utamakan kode sekali pakai atau jembatan WebDAV/S3 lokal.",
+            "filenBridgeCredentialRules": "Batas jembatan Filen: {max} karakter. Tidak didukung: {rejected}",
+            "filenBridgeCredentialRejected": "Kredensial ini berisi karakter yang ditolak oleh jembatan Filen."
         },
         "browser": {
             "remote": "Jarak Jauh",
@@ -3831,7 +3835,19 @@
             "pwdCopied": "Tersalin!",
             "pwdAutoClear": "Tersalin (hapus otomatis dalam 30 detik)",
             "pwdNoCharset": "Pilih minimal satu set karakter",
-            "pwdNotBip39": "Bukan mnemonik BIP-39 yang valid - jangan gunakan sebagai seed dompet cryptocurrency"
+            "pwdNotBip39": "Bukan mnemonik BIP-39 yang valid - jangan gunakan sebagai seed dompet cryptocurrency",
+            "hashLegacy": "Warisan",
+            "pwdPresets": "Prasetel profesional",
+            "pwdPresetBalanced": "Seimbang",
+            "pwdPresetMaximum": "Maksimum",
+            "pwdSymbolGroups": "Grup karakter",
+            "pwdCustomCharacters": "Tambahkan karakter",
+            "pwdExcludedCharacters": "Kecualikan karakter",
+            "pwdRequireEachGroup": "Sertakan setidaknya satu karakter dari setiap grup yang dipilih",
+            "pwdGenerating": "Membuat...",
+            "pwdGenerateInline": "Buat kata sandi yang aman",
+            "pwdPresetCompatible": "Kompatibel 32",
+            "pwdGenerateCompatibleInline": "Buat kata sandi kompatibel 32 karakter"
         },
         "dialog": {
             "deleteFile": "Hapus \"{name}\"?",

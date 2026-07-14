@@ -285,7 +285,11 @@
             "persistModeCredentials": "Atcerēties akreditācijas datus katram šī konta protokolam",
             "persistModeCredentialsHint": "Viens profils kontam: saglabā katra protokola akreditācijas datus (API, WebDAV, S3, ...), tāpēc režīma pārslēgšana tos vairs neprasa, pat pēc atsāknēšanas. Glabājas šifrēti glabātavā. Pēc noklusējuma izslēgts.",
             "opendriveDefaultPrivacy": "Noklusējuma privātums jauniem vienumiem",
-            "opendriveDefaultPrivacyHelp": "Attiecas uz mapēm un failiem, ko izveidojat vai augšupielādējat. WebDAV savienojumi izmanto OpenDrive noklusējuma iestatījumus."
+            "opendriveDefaultPrivacyHelp": "Attiecas uz mapēm un failiem, ko izveidojat vai augšupielādējat. WebDAV savienojumi izmanto OpenDrive noklusējuma iestatījumus.",
+            "storedTotpAdvanced": "Papildu: saglabāt 2FA noslēpumu",
+            "storedTotpWarning": "Saglabājot 2FA noslēpumu, abi faktori tiek ievietoti glabātavā. Ja glabātavas galvenā parole tiek apdraudēta, 2FA vairs neaizsargā šo kontu. Ieteicams izmantot vienreizēju kodu vai lokālu WebDAV/S3 tiltu.",
+            "filenBridgeCredentialRules": "Filen tilta ierobežojums: {max} rakstzīmes. Neatbalstīts: {rejected}",
+            "filenBridgeCredentialRejected": "Šajos akreditācijas datos ir rakstzīmes, kuras Filen tilts noraida."
         },
         "browser": {
             "remote": "Attālināts",
@@ -3831,7 +3835,19 @@
             "pwdCopied": "Nokopēts!",
             "pwdAutoClear": "Nokopēts (automātiska dzēšana pēc 30s)",
             "pwdNoCharset": "Atlasiet vismaz vienu rakstzīmju kopu",
-            "pwdNotBip39": "Nav derīga BIP-39 mnemoniskā frāze - neizmantojiet kā kriptovalūtas maciņa sēklu"
+            "pwdNotBip39": "Nav derīga BIP-39 mnemoniskā frāze - neizmantojiet kā kriptovalūtas maciņa sēklu",
+            "hashLegacy": "Mantots",
+            "pwdPresets": "Profesionāli sākotnējie iestatījumi",
+            "pwdPresetBalanced": "Līdzsvarots",
+            "pwdPresetMaximum": "Maksimālais",
+            "pwdSymbolGroups": "Rakstzīmju grupas",
+            "pwdCustomCharacters": "Pievienot rakstzīmes",
+            "pwdExcludedCharacters": "Izslēgt rakstzīmes",
+            "pwdRequireEachGroup": "Iekļaut vismaz vienu rakstzīmi no katras atlasītās grupas",
+            "pwdGenerating": "Ģenerē...",
+            "pwdGenerateInline": "Ģenerēt drošu paroli",
+            "pwdPresetCompatible": "Saderīga 32",
+            "pwdGenerateCompatibleInline": "Ģenerēt saderīgu 32 rakstzīmju paroli"
         },
         "dialog": {
             "deleteFile": "Dzēst \"{name}\"?",

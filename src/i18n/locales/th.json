@@ -285,7 +285,11 @@
             "persistModeCredentials": "จดจำข้อมูลรับรองสำหรับทุกโปรโตคอลของบัญชีนี้",
             "persistModeCredentialsHint": "หนึ่งโปรไฟล์ต่อหนึ่งบัญชี: เก็บข้อมูลรับรองของแต่ละโปรโตคอล (API, WebDAV, S3, ...) ไว้ เพื่อให้การสลับโหมดไม่ถามอีก แม้หลังจากรีสตาร์ท จัดเก็บแบบเข้ารหัสในวอลต์ ปิดไว้ตามค่าเริ่มต้น",
             "opendriveDefaultPrivacy": "ความเป็นส่วนตัวเริ่มต้นสำหรับรายการใหม่",
-            "opendriveDefaultPrivacyHelp": "ใช้กับโฟลเดอร์และไฟล์ที่คุณสร้างหรืออัปโหลด การเชื่อมต่อ WebDAV จะใช้ค่าเริ่มต้นของ OpenDrive เอง"
+            "opendriveDefaultPrivacyHelp": "ใช้กับโฟลเดอร์และไฟล์ที่คุณสร้างหรืออัปโหลด การเชื่อมต่อ WebDAV จะใช้ค่าเริ่มต้นของ OpenDrive เอง",
+            "storedTotpAdvanced": "ขั้นสูง: บันทึกข้อมูลลับ 2FA",
+            "storedTotpWarning": "การบันทึกข้อมูลลับ 2FA จะเก็บปัจจัยทั้งสองไว้ในห้องนิรภัย หากรหัสผ่านหลักของห้องนิรภัยถูกเปิดเผย 2FA จะไม่สามารถปกป้องบัญชีนี้ได้อีก ควรใช้รหัสแบบใช้ครั้งเดียวหรือบริดจ์ WebDAV/S3 ภายในเครื่อง",
+            "filenBridgeCredentialRules": "ขีดจำกัดบริดจ์ Filen: {max} อักขระ ไม่รองรับ: {rejected}",
+            "filenBridgeCredentialRejected": "ข้อมูลรับรองนี้มีอักขระที่บริดจ์ Filen ปฏิเสธ"
         },
         "browser": {
             "remote": "ระยะไกล",
@@ -3831,7 +3835,19 @@
             "pwdCopied": "คัดลอกแล้ว!",
             "pwdAutoClear": "คัดลอกแล้ว (ล้างอัตโนมัติใน 30 วินาที)",
             "pwdNoCharset": "กรุณาเลือกอย่างน้อยหนึ่งชุดตัวอักษร",
-            "pwdNotBip39": "ไม่ใช่ BIP-39 mnemonic ที่ถูกต้อง - อย่าใช้เป็น seed สำหรับกระเป๋าเงินคริปโต"
+            "pwdNotBip39": "ไม่ใช่ BIP-39 mnemonic ที่ถูกต้อง - อย่าใช้เป็น seed สำหรับกระเป๋าเงินคริปโต",
+            "hashLegacy": "แบบเดิม",
+            "pwdPresets": "ค่าที่ตั้งไว้ล่วงหน้าสำหรับมืออาชีพ",
+            "pwdPresetBalanced": "สมดุล",
+            "pwdPresetMaximum": "สูงสุด",
+            "pwdSymbolGroups": "กลุ่มอักขระ",
+            "pwdCustomCharacters": "เพิ่มอักขระ",
+            "pwdExcludedCharacters": "ไม่รวมอักขระ",
+            "pwdRequireEachGroup": "รวมอักขระอย่างน้อยหนึ่งตัวจากทุกกลุ่มที่เลือก",
+            "pwdGenerating": "กำลังสร้าง...",
+            "pwdGenerateInline": "สร้างรหัสผ่านที่ปลอดภัย",
+            "pwdPresetCompatible": "เข้ากันได้ 32",
+            "pwdGenerateCompatibleInline": "สร้างรหัสผ่านที่เข้ากันได้จำนวน 32 อักขระ"
         },
         "dialog": {
             "deleteFile": "ลบ \"{name}\" หรือไม่?",

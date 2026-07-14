@@ -16,6 +16,7 @@ import { TransferProgressBar } from './TransferProgressBar';
 import { computeCompressionRatio } from '../utils/archiveSizeReport';
 import { PasswordStrengthBar } from './vault/PasswordStrengthBar';
 import { PasswordMatchHint } from './common/PasswordMatchHint';
+import { InlinePasswordGenerator } from './common/InlinePasswordGenerator';
 import './CompressDialog.css';
 
 type CompressFormat = 'zip' | '7z' | 'tar' | 'tar.gz' | 'tar.xz' | 'tar.bz2' | 'gz' | 'xz' | 'bz2';
@@ -668,10 +669,15 @@ export const CompressDialog: React.FC<CompressDialogProps> = ({ files, defaultNa
                                     onChange={e => setPassword(e.target.value)}
                                     disabled={compressing}
                                     placeholder={t('compress.passwordHint') || 'Leave empty for no encryption'}
-                                    className="w-full rounded-lg px-3 py-2 text-sm pr-9 outline-none transition-colors"
+                                    className="w-full rounded-lg px-3 py-2 text-sm pr-16 outline-none transition-colors"
                                     style={{ background: 'var(--compress-input-bg)', border: '1px solid var(--compress-input-border)', color: 'var(--compress-text)' }}
                                     onFocus={e => (e.currentTarget.style.borderColor = 'var(--compress-accent)')}
                                     onBlur={e => (e.currentTarget.style.borderColor = 'var(--compress-input-border)')}
+                                />
+                                <InlinePasswordGenerator
+                                    onGenerated={value => { setPassword(value); setConfirmPassword(value); }}
+                                    disabled={compressing}
+                                    className="absolute right-8 top-1/2 -translate-y-1/2"
                                 />
                                 <button
                                     type="button"

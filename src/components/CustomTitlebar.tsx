@@ -491,7 +491,7 @@ export const CustomTitlebar: React.FC<TitlebarProps> = (props) => {
                     ) : null}
                 </div>
 
-                {/* Cluster 2: Utility (Notifications bell, Cyber Toolkit if cyber theme, AeroVault, Users, Lock, Settings) */}
+                {/* Cluster 2: Utility (Notifications, Security Tools, AeroVault, Users, Lock, Settings) */}
                 <div className="flex items-center gap-0.5">
                     {/* AeroShare notification center: durable surface for received/
                         sent/failed transfers (Finding 8). Flag-gated on activation
@@ -499,15 +499,13 @@ export const CustomTitlebar: React.FC<TitlebarProps> = (props) => {
                         lights up once AeroShare is active, since notifications only
                         originate from AeroShare. */}
                     {aeroShareEnabled && <NotificationBell />}
-                    {appTheme === 'cyber' && (
-                        <button
-                            onClick={onShowCyberTools}
-                            className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-[var(--color-bg-tertiary)] transition-colors cursor-pointer"
-                            title={t('cyberTools.title')}
-                        >
-                            <CyberShieldIcon size={14} className="text-emerald-400" />
-                        </button>
-                    )}
+                    <button
+                        onClick={onShowCyberTools}
+                        className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-[var(--color-bg-tertiary)] transition-colors cursor-pointer"
+                        title={t('cyberTools.title')}
+                    >
+                        <CyberShieldIcon size={14} className={appTheme === 'cyber' ? 'text-emerald-400' : 'text-[var(--color-text-secondary)]'} />
+                    </button>
                     <button
                         onClick={onShowVault}
                         className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-[var(--color-bg-tertiary)] transition-colors cursor-pointer"

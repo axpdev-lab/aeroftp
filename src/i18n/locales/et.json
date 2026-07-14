@@ -285,7 +285,11 @@
             "persistModeCredentials": "Jäta meelde selle konto iga protokolli mandaadid",
             "persistModeCredentialsHint": "Üks profiil konto kohta: hoiab iga protokolli mandaadid (API, WebDAV, S3, ...) salvestatuna, nii et režiimi vahetamine ei küsi enam, isegi pärast taaskäivitust. Salvestatud krüpteeritult hoidlas. Vaikimisi väljas.",
             "opendriveDefaultPrivacy": "Uute üksuste vaikeprivaatsus",
-            "opendriveDefaultPrivacyHelp": "Rakendub kaustadele ja failidele, mille loote või üles laadite. WebDAV-ühendused kasutavad OpenDrive'i enda vaikeseadeid."
+            "opendriveDefaultPrivacyHelp": "Rakendub kaustadele ja failidele, mille loote või üles laadite. WebDAV-ühendused kasutavad OpenDrive'i enda vaikeseadeid.",
+            "storedTotpAdvanced": "Täpsem: salvesta 2FA saladus",
+            "storedTotpWarning": "2FA saladuse salvestamisel hoitakse mõlemat tegurit võlvhoidlas. Kui võlvhoidla peaparool satub ohtu, ei kaitse 2FA enam seda kontot. Eelista ühekordset koodi või kohalikku WebDAV/S3 silda.",
+            "filenBridgeCredentialRules": "Fileni silla piirang: {max} märki. Toetamata: {rejected}",
+            "filenBridgeCredentialRejected": "Need identimisteabe andmed sisaldavad Fileni silla poolt tagasi lükatud märke."
         },
         "browser": {
             "remote": "Kaugserver",
@@ -3831,7 +3835,19 @@
             "pwdCopied": "Kopeeritud!",
             "pwdAutoClear": "Kopeeritud (automaatne puhastus 30s pärast)",
             "pwdNoCharset": "Vali vähemalt üks märgistik",
-            "pwdNotBip39": "Mitte kehtiv BIP-39 mnemooniline fraas - ärge kasutage krüptovaluuta rahakoti seemnena"
+            "pwdNotBip39": "Mitte kehtiv BIP-39 mnemooniline fraas - ärge kasutage krüptovaluuta rahakoti seemnena",
+            "hashLegacy": "Pärand",
+            "pwdPresets": "Professionaalsed eelseaded",
+            "pwdPresetBalanced": "Tasakaalustatud",
+            "pwdPresetMaximum": "Maksimaalne",
+            "pwdSymbolGroups": "Märgirühmad",
+            "pwdCustomCharacters": "Lisa märke",
+            "pwdExcludedCharacters": "Välista märgid",
+            "pwdRequireEachGroup": "Kaasa vähemalt üks märk igast valitud rühmast",
+            "pwdGenerating": "Genereerimine...",
+            "pwdGenerateInline": "Loo turvaline parool",
+            "pwdPresetCompatible": "Ühilduv 32",
+            "pwdGenerateCompatibleInline": "Loo ühilduv 32-märgiline parool"
         },
         "dialog": {
             "deleteFile": "Kustuta \"{name}\"?",

@@ -8,7 +8,7 @@
 // Sensitive data is zeroized on drop via secrecy crate.
 
 use base64::{engine::general_purpose::STANDARD as B64, Engine as _};
-use rand::Rng;
+use rand::{seq::SliceRandom, Rng};
 use sha2::Digest;
 // A2-02: Zeroize import removed: derive_key now returns Zeroizing<> wrapper
 
@@ -284,6 +284,112 @@ const LOWER_FULL: &[u8] = b"abcdefghijklmnopqrstuvwxyz";
 const DIGITS: &[u8] = b"23456789";
 const DIGITS_FULL: &[u8] = b"0123456789";
 const SYMBOLS: &[u8] = b"!@#$%^&*()-_=+[]{}|;:,.<>?/~";
+const SYMBOL_PUNCTUATION: &[u8] = b"!@#$%^&*";
+const SYMBOL_BRACKETS: &[u8] = b"()[]{}<>";
+const SYMBOL_SEPARATORS: &[u8] = b"-_=+";
+const SYMBOL_SPECIAL: &[u8] = b"|;:,.?/~";
+
+fn symbol_group(name: &str) -> Option<&'static [u8]> {
+    match name {
+        "punctuation" => Some(SYMBOL_PUNCTUATION),
+        "brackets" => Some(SYMBOL_BRACKETS),
+        "separators" => Some(SYMBOL_SEPARATORS),
+        "special" => Some(SYMBOL_SPECIAL),
+        _ => None,
+    }
+}
+
+fn build_password_groups(
+    uppercase: bool,
+    lowercase: bool,
+    digits: bool,
+    symbols: bool,
+    exclude_ambiguous: bool,
+    symbol_groups: Option<&[String]>,
+    custom_characters: Option<&str>,
+    excluded_characters: Option<&str>,
+) -> Result<Vec<Vec<u8>>, String> {
+    let excluded = excluded_characters.unwrap_or_default().as_bytes();
+    let filter_group = |source: &[u8]| {
+        let mut group = Vec::new();
+        for byte in source {
+            if !excluded.contains(byte) && !group.contains(byte) {
+                group.push(*byte);
+            }
+        }
+        group
+    };
+
+    let mut groups = Vec::new();
+    let mut push_selected = |selected: bool, source: &[u8], label: &str| -> Result<(), String> {
+        if selected {
+            let group = filter_group(source);
+            if group.is_empty() {
+                return Err(format!(
+                    "The {label} character group is empty after exclusions"
+                ));
+            }
+            groups.push(group);
+        }
+        Ok(())
+    };
+
+    push_selected(
+        uppercase,
+        if exclude_ambiguous { UPPER } else { UPPER_FULL },
+        "uppercase",
+    )?;
+    push_selected(
+        lowercase,
+        if exclude_ambiguous { LOWER } else { LOWER_FULL },
+        "lowercase",
+    )?;
+    push_selected(
+        digits,
+        if exclude_ambiguous {
+            DIGITS
+        } else {
+            DIGITS_FULL
+        },
+        "digits",
+    )?;
+
+    if symbols {
+        match symbol_groups {
+            Some(names) => {
+                if names.is_empty() {
+                    return Err("Select at least one symbol group".into());
+                }
+                for name in names {
+                    let source = symbol_group(name)
+                        .ok_or_else(|| format!("Unknown symbol group: {name}"))?;
+                    let group = filter_group(source);
+                    if group.is_empty() {
+                        return Err(format!("The {name} symbol group is empty after exclusions"));
+                    }
+                    groups.push(group);
+                }
+            }
+            None => push_selected(true, SYMBOLS, "symbols")?,
+        }
+    }
+
+    if let Some(custom) = custom_characters.filter(|value| !value.is_empty()) {
+        if !custom.bytes().all(|byte| byte.is_ascii_graphic()) {
+            return Err("Custom characters must be printable ASCII without spaces".into());
+        }
+        let group = filter_group(custom.as_bytes());
+        if group.is_empty() {
+            return Err("The custom character group is empty after exclusions".into());
+        }
+        groups.push(group);
+    }
+
+    if groups.is_empty() {
+        return Err("Select at least one character set".into());
+    }
+    Ok(groups)
+}
 
 /// Generate cryptographically secure random passwords.
 #[tauri::command]
@@ -295,48 +401,59 @@ pub fn generate_password(
     symbols: bool,
     exclude_ambiguous: bool,
     count: usize,
+    symbol_groups: Option<Vec<String>>,
+    custom_characters: Option<String>,
+    excluded_characters: Option<String>,
+    require_each_group: Option<bool>,
 ) -> Result<Vec<String>, String> {
     if !(8..=128).contains(&length) {
         return Err("Length must be between 8 and 128".into());
     }
     let count = count.clamp(1, 10);
 
+    let groups = build_password_groups(
+        uppercase,
+        lowercase,
+        digits,
+        symbols,
+        exclude_ambiguous,
+        symbol_groups.as_deref(),
+        custom_characters.as_deref(),
+        excluded_characters.as_deref(),
+    )?;
+    if require_each_group.unwrap_or(false) && length < groups.len() {
+        return Err("Password length is smaller than the number of required groups".into());
+    }
     let mut pool = Vec::new();
-    if uppercase {
-        pool.extend_from_slice(if exclude_ambiguous { UPPER } else { UPPER_FULL });
-    }
-    if lowercase {
-        pool.extend_from_slice(if exclude_ambiguous { LOWER } else { LOWER_FULL });
-    }
-    if digits {
-        pool.extend_from_slice(if exclude_ambiguous {
-            DIGITS
-        } else {
-            DIGITS_FULL
-        });
-    }
-    if symbols {
-        pool.extend_from_slice(SYMBOLS);
-    }
-
-    if pool.is_empty() {
-        return Err("Select at least one character set".into());
+    for group in &groups {
+        for byte in group {
+            if !pool.contains(byte) {
+                pool.push(*byte);
+            }
+        }
     }
 
     let mut rng = rand::thread_rng();
     let mut results = Vec::with_capacity(count);
 
     for _ in 0..count {
-        let pwd: String = (0..length)
-            .map(|_| pool[rng.gen_range(0..pool.len())] as char)
-            .collect();
-        results.push(pwd);
+        let mut password = Vec::with_capacity(length);
+        if require_each_group.unwrap_or(false) {
+            for group in &groups {
+                password.push(group[rng.gen_range(0..group.len())]);
+            }
+        }
+        while password.len() < length {
+            password.push(pool[rng.gen_range(0..pool.len())]);
+        }
+        password.shuffle(&mut rng);
+        results.push(String::from_utf8(password).expect("password groups are ASCII"));
     }
 
     Ok(results)
 }
 
-/// Generate random passphrases from EFF diceware short wordlist (1296 words).
+/// Generate random passphrases from AeroFTP's 1133-word EFF-derived short list.
 #[tauri::command]
 pub fn generate_passphrase(
     word_count: usize,
@@ -387,41 +504,150 @@ pub fn calculate_entropy(
     digits: bool,
     symbols: bool,
     exclude_ambiguous: bool,
+    symbol_groups: Option<Vec<String>>,
+    custom_characters: Option<String>,
+    excluded_characters: Option<String>,
 ) -> f64 {
-    let mut pool_size: usize = 0;
-    if uppercase {
-        pool_size += if exclude_ambiguous {
-            UPPER.len()
-        } else {
-            UPPER_FULL.len()
-        };
+    let Ok(groups) = build_password_groups(
+        uppercase,
+        lowercase,
+        digits,
+        symbols,
+        exclude_ambiguous,
+        symbol_groups.as_deref(),
+        custom_characters.as_deref(),
+        excluded_characters.as_deref(),
+    ) else {
+        return 0.0;
+    };
+    let mut pool = Vec::new();
+    for group in groups {
+        for byte in group {
+            if !pool.contains(&byte) {
+                pool.push(byte);
+            }
+        }
     }
-    if lowercase {
-        pool_size += if exclude_ambiguous {
-            LOWER.len()
-        } else {
-            LOWER_FULL.len()
-        };
-    }
-    if digits {
-        pool_size += if exclude_ambiguous {
-            DIGITS.len()
-        } else {
-            DIGITS_FULL.len()
-        };
-    }
-    if symbols {
-        pool_size += SYMBOLS.len();
-    }
+    let pool_size = pool.len();
     if pool_size == 0 {
         return 0.0;
     }
     length as f64 * (pool_size as f64).log2()
 }
 
-// ─── EFF Short Wordlist (1296 words, 5 dice) ───────────────────────────────
-// Source: Electronic Frontier Foundation (eff.org/dice)
-// Compact subset for passphrase generation
+#[cfg(test)]
+mod password_forge_tests {
+    use super::*;
+
+    fn generate_with(
+        length: usize,
+        symbols: bool,
+        symbol_groups: Option<Vec<String>>,
+        custom: Option<&str>,
+        excluded: Option<&str>,
+        require_each: bool,
+    ) -> Vec<String> {
+        generate_password(
+            length,
+            true,
+            true,
+            true,
+            symbols,
+            false,
+            10,
+            symbol_groups,
+            custom.map(str::to_owned),
+            excluded.map(str::to_owned),
+            Some(require_each),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn custom_and_excluded_characters_are_enforced() {
+        let values = generate_with(32, false, None, Some("!_"), Some("_O0l1"), true);
+        for value in values {
+            assert_eq!(value.len(), 32);
+            assert!(value.contains('!'));
+            assert!(!value.chars().any(|c| "_O0l1".contains(c)));
+        }
+    }
+
+    #[test]
+    fn every_selected_symbol_group_is_represented() {
+        let values = generate_with(
+            20,
+            true,
+            Some(vec!["punctuation".into(), "brackets".into()]),
+            None,
+            None,
+            true,
+        );
+        for value in values {
+            assert!(value.bytes().any(|c| SYMBOL_PUNCTUATION.contains(&c)));
+            assert!(value.bytes().any(|c| SYMBOL_BRACKETS.contains(&c)));
+            assert!(value.bytes().any(|c| UPPER_FULL.contains(&c)));
+            assert!(value.bytes().any(|c| LOWER_FULL.contains(&c)));
+            assert!(value.bytes().any(|c| DIGITS_FULL.contains(&c)));
+        }
+    }
+
+    #[test]
+    fn rejects_unknown_or_empty_required_groups() {
+        assert!(generate_password(
+            16,
+            false,
+            false,
+            false,
+            true,
+            false,
+            1,
+            Some(vec!["unknown".into()]),
+            None,
+            None,
+            Some(true),
+        )
+        .is_err());
+        assert!(generate_password(
+            16,
+            true,
+            true,
+            true,
+            true,
+            false,
+            1,
+            Some(vec![]),
+            None,
+            None,
+            Some(true),
+        )
+        .is_err());
+        assert!(generate_password(
+            8,
+            true,
+            true,
+            true,
+            true,
+            false,
+            1,
+            Some(vec!["punctuation".into(), "brackets".into()]),
+            Some("xyz".into()),
+            None,
+            Some(true),
+        )
+        .is_ok());
+    }
+
+    #[test]
+    fn passphrase_wordlist_is_unique() {
+        let unique: std::collections::HashSet<_> = WORDLIST.iter().collect();
+        assert_eq!(WORDLIST.len(), 1133);
+        assert_eq!(unique.len(), WORDLIST.len());
+    }
+}
+
+// ─── EFF-Derived Short Wordlist (1133 words) ───────────────────────────────
+// Compact subset derived from the Electronic Frontier Foundation lists.
 
 const WORDLIST: &[&str] = &[
     "acid", "acme", "acre", "acts", "aged", "agent", "agile", "aging", "agony", "agree", "ahead",
@@ -528,13 +754,13 @@ const WORDLIST: &[&str] = &[
     "touch", "tough", "towel", "tower", "toxic", "trace", "track", "trade", "trail", "train",
     "trait", "trash", "trawl", "trend", "trial", "tribe", "trick", "troop", "trout", "truck",
     "truly", "trump", "trunk", "trust", "truth", "tulip", "tumor", "tuner", "turbo", "tutor",
-    "twang", "tweed", "twice", "twist", "ultra", "uncut", "under", "undue", "unfit", "fungi",
-    "union", "unite", "unity", "until", "upper", "upset", "urban", "usage", "usher", "using",
-    "usual", "utter", "valet", "valid", "valor", "valve", "vault", "venom", "venue", "verse",
-    "vigor", "vinyl", "viola", "viper", "viral", "visit", "visor", "vista", "vital", "vivid",
-    "vocal", "vodka", "voice", "voter", "vouch", "vowel", "wages", "wagon", "waist", "waste",
-    "watch", "water", "waved", "waxed", "weary", "weave", "wedge", "weird", "wheat", "wheel",
-    "where", "which", "while", "white", "whole", "widen", "width", "wield", "windy", "witch",
-    "woken", "woman", "world", "worry", "worst", "worth", "wound", "wrath", "wrist", "wrote",
-    "yacht", "yearn", "yeast", "yield", "young", "youth", "zebra", "zilch", "zones",
+    "twang", "tweed", "twice", "twist", "ultra", "uncut", "under", "undue", "unfit", "union",
+    "unite", "unity", "until", "upper", "upset", "urban", "usage", "usher", "using", "usual",
+    "utter", "valet", "valid", "valor", "valve", "vault", "venom", "venue", "verse", "vigor",
+    "vinyl", "viola", "viper", "viral", "visit", "visor", "vista", "vital", "vivid", "vocal",
+    "vodka", "voice", "voter", "vouch", "vowel", "wages", "wagon", "waist", "waste", "watch",
+    "water", "waved", "waxed", "weary", "weave", "wedge", "weird", "wheat", "wheel", "where",
+    "which", "while", "white", "whole", "widen", "width", "wield", "windy", "witch", "woken",
+    "woman", "world", "worry", "worst", "worth", "wound", "wrath", "wrist", "wrote", "yacht",
+    "yearn", "yeast", "yield", "young", "youth", "zebra", "zilch", "zones",
 ];

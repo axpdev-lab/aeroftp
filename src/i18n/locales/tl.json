@@ -285,7 +285,11 @@
             "persistModeCredentials": "Tandaan ang mga kredensyal para sa bawat protocol ng account na ito",
             "persistModeCredentialsHint": "Isang profile bawat account: pinapanatiling naka-save ang mga kredensyal ng bawat protocol (API, WebDAV, S3, ...) para hindi na magtanong muli ang paglipat ng mode, kahit pagkatapos mag-restart. Naka-encrypt na nakaimbak sa vault. Naka-off bilang default.",
             "opendriveDefaultPrivacy": "Default na privacy para sa mga bagong item",
-            "opendriveDefaultPrivacyHelp": "Inilalapat sa mga folder at file na ginagawa o ina-upload mo. Gumagamit ang mga koneksyong WebDAV ng sariling default ng OpenDrive."
+            "opendriveDefaultPrivacyHelp": "Inilalapat sa mga folder at file na ginagawa o ina-upload mo. Gumagamit ang mga koneksyong WebDAV ng sariling default ng OpenDrive.",
+            "storedTotpAdvanced": "Advanced: i-save ang 2FA secret",
+            "storedTotpWarning": "Kapag sine-save ang 2FA secret, nailalagay sa vault ang parehong factor. Kung makompromiso ang master password ng vault, hindi na mapoprotektahan ng 2FA ang account na ito. Mas mainam ang one-time code o lokal na WebDAV/S3 bridge.",
+            "filenBridgeCredentialRules": "Limitasyon ng Filen bridge: {max} character. Hindi suportado: {rejected}",
+            "filenBridgeCredentialRejected": "Naglalaman ang credential na ito ng mga character na tinatanggihan ng Filen bridge."
         },
         "browser": {
             "remote": "Remote",
@@ -3831,7 +3835,19 @@
             "pwdCopied": "Nakopya!",
             "pwdAutoClear": "Nakopya (awtomatikong mabubura sa 30s)",
             "pwdNoCharset": "Pumili ng kahit isang character set",
-            "pwdNotBip39": "Hindi valid na BIP-39 mnemonic - huwag gamitin bilang seed para sa cryptocurrency wallet"
+            "pwdNotBip39": "Hindi valid na BIP-39 mnemonic - huwag gamitin bilang seed para sa cryptocurrency wallet",
+            "hashLegacy": "Luma",
+            "pwdPresets": "Mga propesyonal na preset",
+            "pwdPresetBalanced": "Balanse",
+            "pwdPresetMaximum": "Pinakamataas",
+            "pwdSymbolGroups": "Mga pangkat ng character",
+            "pwdCustomCharacters": "Magdagdag ng mga character",
+            "pwdExcludedCharacters": "Ibukod ang mga character",
+            "pwdRequireEachGroup": "Magsama ng kahit isang character mula sa bawat napiling pangkat",
+            "pwdGenerating": "Bumubuo...",
+            "pwdGenerateInline": "Gumawa ng ligtas na password",
+            "pwdPresetCompatible": "Tugma 32",
+            "pwdGenerateCompatibleInline": "Gumawa ng tugmang password na 32 character"
         },
         "dialog": {
             "deleteFile": "Tanggalin ang \"{name}\"?",

@@ -285,7 +285,11 @@
             "persistModeCredentials": "Kumbuka kitambulisho cha kila itifaki ya akaunti hii",
             "persistModeCredentialsHint": "Wasifu mmoja kwa kila akaunti: huhifadhi kitambulisho cha kila itifaki (API, WebDAV, S3, ...) ili kubadilisha hali kusiulize tena, hata baada ya kuanzisha upya. Huhifadhiwa kwa njia fiche kwenye hazina. Imezimwa kwa chaguo-msingi.",
             "opendriveDefaultPrivacy": "Faragha chaguo-msingi kwa vipengee vipya",
-            "opendriveDefaultPrivacyHelp": "Hutumika kwa folda na faili unazounda au kupakia. Miunganisho ya WebDAV hutumia mipangilio chaguo-msingi ya OpenDrive."
+            "opendriveDefaultPrivacyHelp": "Hutumika kwa folda na faili unazounda au kupakia. Miunganisho ya WebDAV hutumia mipangilio chaguo-msingi ya OpenDrive.",
+            "storedTotpAdvanced": "Kina: hifadhi siri ya 2FA",
+            "storedTotpWarning": "Kuhifadhi siri ya 2FA huweka vipengele vyote viwili kwenye hifadhi salama. Nenosiri kuu la hifadhi likifichuliwa, 2FA haitalinda tena akaunti hii. Tumia msimbo wa mara moja au daraja la WebDAV/S3 la ndani.",
+            "filenBridgeCredentialRules": "Kikomo cha daraja la Filen: herufi {max}. Hazitumiki: {rejected}",
+            "filenBridgeCredentialRejected": "Kitambulisho hiki kina herufi zinazokataliwa na daraja la Filen."
         },
         "browser": {
             "remote": "Mbali",
@@ -3831,7 +3835,19 @@
             "pwdCopied": "Imenakiliwa!",
             "pwdAutoClear": "Imenakiliwa (kufuta otomatiki baada ya 30s)",
             "pwdNoCharset": "Chagua angalau seti moja ya herufi",
-            "pwdNotBip39": "Sio BIP-39 mnemonik halali - usitumie kama seed ya pochi ya kriptografia"
+            "pwdNotBip39": "Sio BIP-39 mnemonik halali - usitumie kama seed ya pochi ya kriptografia",
+            "hashLegacy": "Urithi",
+            "pwdPresets": "Mipangilio awali ya kitaalamu",
+            "pwdPresetBalanced": "Iliyosawazishwa",
+            "pwdPresetMaximum": "Kiwango cha juu",
+            "pwdSymbolGroups": "Vikundi vya vibambo",
+            "pwdCustomCharacters": "Ongeza vibambo",
+            "pwdExcludedCharacters": "Ondoa vibambo",
+            "pwdRequireEachGroup": "Jumuisha angalau kibambo kimoja kutoka kila kikundi kilichochaguliwa",
+            "pwdGenerating": "Inatengeneza...",
+            "pwdGenerateInline": "Tengeneza nenosiri salama",
+            "pwdPresetCompatible": "Inayooana 32",
+            "pwdGenerateCompatibleInline": "Tengeneza nenosiri linalooana la herufi 32"
         },
         "dialog": {
             "deleteFile": "Futa \"{name}\"?",

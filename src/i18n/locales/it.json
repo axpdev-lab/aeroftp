@@ -400,7 +400,11 @@
             "unstableTitle": "Provider sperimentale",
             "unstableBody": "{provider} non è ancora stabile e il servizio potrebbe non essere disponibile. La connessione può fallire senza alcuna colpa da parte tua.",
             "opendriveDefaultPrivacy": "Privacy predefinita per i nuovi elementi",
-            "opendriveDefaultPrivacyHelp": "Applicata a cartelle e file che crei o carichi. Le connessioni WebDAV usano le impostazioni predefinite di OpenDrive."
+            "opendriveDefaultPrivacyHelp": "Applicata a cartelle e file che crei o carichi. Le connessioni WebDAV usano le impostazioni predefinite di OpenDrive.",
+            "storedTotpAdvanced": "Avanzate: salva il segreto 2FA",
+            "storedTotpWarning": "Il salvataggio del segreto 2FA memorizza entrambi i fattori nel vault. Se la password principale del vault viene compromessa, 2FA non protegge più questo account. Preferisci un codice monouso o un bridge WebDAV/S3 locale.",
+            "filenBridgeCredentialRules": "Limite del bridge Filen: {max} caratteri. Non supportati: {rejected}",
+            "filenBridgeCredentialRejected": "Questa credenziale contiene caratteri rifiutati dal bridge Filen."
         },
         "twoFactor": {
             "title": "Autenticazione a due fattori richiesta",
@@ -3053,7 +3057,19 @@
             "pwdCopy": "Copia",
             "pwdCopied": "Copiato!",
             "pwdAutoClear": "Copiato (pulizia auto in 30s)",
-            "pwdNoCharset": "Seleziona almeno un set di caratteri"
+            "pwdNoCharset": "Seleziona almeno un set di caratteri",
+            "hashLegacy": "Obsoleto",
+            "pwdPresets": "Preimpostazioni professionali",
+            "pwdPresetBalanced": "Bilanciato",
+            "pwdPresetMaximum": "Massimo",
+            "pwdSymbolGroups": "Gruppi di caratteri",
+            "pwdCustomCharacters": "Aggiungi caratteri",
+            "pwdExcludedCharacters": "Escludi caratteri",
+            "pwdRequireEachGroup": "Includi almeno un carattere da ogni gruppo selezionato",
+            "pwdGenerating": "Generazione...",
+            "pwdGenerateInline": "Genera una password sicura",
+            "pwdPresetCompatible": "Compatibile 32",
+            "pwdGenerateCompatibleInline": "Genera una password compatibile di 32 caratteri"
         },
         "vault": {
             "addDirectorySuccess": "Aggiunti {files} file in {dirs} directory",

@@ -9,6 +9,7 @@ import { useTranslation } from '../i18n';
 import { open, save } from '@tauri-apps/plugin-dialog';
 import { PasswordInput } from './common/PasswordInput';
 import { PasswordMatchHint } from './common/PasswordMatchHint';
+import { InlinePasswordGenerator } from './common/InlinePasswordGenerator';
 import { PasswordStrengthBar } from './vault/PasswordStrengthBar';
 
 interface RcloneCryptUnlockProps {
@@ -248,14 +249,18 @@ export const RcloneCryptUnlock: React.FC<RcloneCryptUnlockProps> = ({ onClose, o
                                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                                     {t('aerocrypt.password')}
                                 </label>
-                                <PasswordInput
-                                    value={password}
-                                    onChange={setPassword}
-                                    onKeyDown={(e) => e.key === 'Enter' && (mode === 'open' ? handleUnlock() : handleCreate())}
-                                    placeholder={t('aerocrypt.passwordPlaceholder')}
-                                    ariaLabel={t('aerocrypt.password')}
-                                    autoFocus
-                                />
+                                <div className="relative">
+                                    <PasswordInput
+                                        value={password}
+                                        onChange={setPassword}
+                                        onKeyDown={(e) => e.key === 'Enter' && (mode === 'open' ? handleUnlock() : handleCreate())}
+                                        placeholder={t('aerocrypt.passwordPlaceholder')}
+                                        ariaLabel={t('aerocrypt.password')}
+                                        className={mode === 'create' ? 'w-full px-3 py-2 pr-20 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white' : undefined}
+                                        autoFocus
+                                    />
+                                    {mode === 'create' && <InlinePasswordGenerator onGenerated={value => { setPassword(value); setConfirmPassword(value); }} className="absolute right-9 top-1/2 -translate-y-1/2" />}
+                                </div>
                                 {mode === 'create' && password.length > 0 && (
                                     <div className="mt-2">
                                         <PasswordStrengthBar password={password} />

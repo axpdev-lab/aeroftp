@@ -10,6 +10,7 @@ import { TransferProgressBar } from '../TransferProgressBar';
 import { useTranslation } from '../../i18n';
 import { VaultState, securityLevels, SecurityLevel, VaultV3CompressionProfile } from './useVaultState';
 import { PasswordStrengthBar } from './PasswordStrengthBar';
+import { InlinePasswordGenerator } from '../common/InlinePasswordGenerator';
 import { PasswordMatchHint } from '../common/PasswordMatchHint';
 import { CompressionEstimateBar } from '../common/CompressionEstimateBar';
 import { formatSize } from '../../utils/formatters';
@@ -355,10 +356,14 @@ export const VaultCreate: React.FC<VaultCreateProps> = ({ state }) => {
                                 type={state.showPassword ? 'text' : 'password'}
                                 value={state.password}
                                 onChange={e => state.setPassword(e.target.value)}
-                                className="w-full rounded-lg px-3 py-2 text-sm pr-9 outline-none transition-colors"
+                                className="w-full rounded-lg px-3 py-2 text-sm pr-16 outline-none transition-colors"
                                 style={{ background: 'var(--compress-input-bg)', border: '1px solid var(--compress-input-border)', color: 'var(--compress-text)' }}
                                 onFocus={e => (e.currentTarget.style.borderColor = 'var(--compress-accent)')}
                                 onBlur={e => (e.currentTarget.style.borderColor = 'var(--compress-input-border)')}
+                            />
+                            <InlinePasswordGenerator
+                                onGenerated={password => { state.setPassword(password); state.setConfirmPassword(password); }}
+                                className="absolute right-8 top-1/2 -translate-y-1/2"
                             />
                             <button tabIndex={-1} type="button" onClick={() => state.setShowPassword(!state.showPassword)}
                                 className="absolute right-2.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--compress-text-muted)' }}>

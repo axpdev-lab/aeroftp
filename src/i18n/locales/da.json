@@ -285,7 +285,11 @@
             "persistModeCredentials": "Husk legitimationsoplysninger for hver protokol på denne konto",
             "persistModeCredentialsHint": "Én profil pr. konto: gemmer hver protokols legitimationsoplysninger (API, WebDAV, S3, ...), så skift af tilstand ikke spørger igen, selv efter en genstart. Gemmes krypteret i vaulten. Slået fra som standard.",
             "opendriveDefaultPrivacy": "Standardprivatliv for nye elementer",
-            "opendriveDefaultPrivacyHelp": "Anvendes på mapper og filer, du opretter eller uploader. WebDAV-forbindelser bruger OpenDrives egne standardindstillinger."
+            "opendriveDefaultPrivacyHelp": "Anvendes på mapper og filer, du opretter eller uploader. WebDAV-forbindelser bruger OpenDrives egne standardindstillinger.",
+            "storedTotpAdvanced": "Avanceret: gem 2FA-hemmeligheden",
+            "storedTotpWarning": "Hvis 2FA-hemmeligheden gemmes, placeres begge faktorer i boksen. Hvis boksens hovedadgangskode kompromitteres, beskytter 2FA ikke længere denne konto. Foretræk en engangskode eller en lokal WebDAV/S3-bro.",
+            "filenBridgeCredentialRules": "Grænse for Filen-bro: {max} tegn. Ikke understøttet: {rejected}",
+            "filenBridgeCredentialRejected": "Disse legitimationsoplysninger indeholder tegn, som Filen-broen afviser."
         },
         "browser": {
             "remote": "Ekstern",
@@ -3831,7 +3835,19 @@
             "pwdCopied": "Kopieret!",
             "pwdAutoClear": "Kopieret (automatisk sletning om 30s)",
             "pwdNoCharset": "Vælg mindst ét tegnsæt",
-            "pwdNotBip39": "Ikke en gyldig BIP-39 mnemonisk sekvens - brug ikke som seed til kryptovaluta-pung"
+            "pwdNotBip39": "Ikke en gyldig BIP-39 mnemonisk sekvens - brug ikke som seed til kryptovaluta-pung",
+            "hashLegacy": "Ældre",
+            "pwdPresets": "Professionelle forudindstillinger",
+            "pwdPresetBalanced": "Balanceret",
+            "pwdPresetMaximum": "Maksimum",
+            "pwdSymbolGroups": "Tegngrupper",
+            "pwdCustomCharacters": "Tilføj tegn",
+            "pwdExcludedCharacters": "Udelad tegn",
+            "pwdRequireEachGroup": "Medtag mindst ét tegn fra hver valgt gruppe",
+            "pwdGenerating": "Genererer...",
+            "pwdGenerateInline": "Generér en sikker adgangskode",
+            "pwdPresetCompatible": "Kompatibel 32",
+            "pwdGenerateCompatibleInline": "Generér en kompatibel adgangskode på 32 tegn"
         },
         "dialog": {
             "deleteFile": "Slet \"{name}\"?",

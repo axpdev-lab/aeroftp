@@ -285,7 +285,11 @@
             "persistModeCredentials": "Kom ihåg autentiseringsuppgifter för varje protokoll på detta konto",
             "persistModeCredentialsHint": "En profil per konto: behåller varje protokolls autentiseringsuppgifter (API, WebDAV, S3, ...) sparade så att byte av läge inte frågar igen, även efter en omstart. Lagras krypterat i valvet. Av som standard.",
             "opendriveDefaultPrivacy": "Standardsekretess för nya objekt",
-            "opendriveDefaultPrivacyHelp": "Tillämpas på mappar och filer du skapar eller laddar upp. WebDAV-anslutningar använder OpenDrives egna standardinställningar."
+            "opendriveDefaultPrivacyHelp": "Tillämpas på mappar och filer du skapar eller laddar upp. WebDAV-anslutningar använder OpenDrives egna standardinställningar.",
+            "storedTotpAdvanced": "Avancerat: spara 2FA-hemligheten",
+            "storedTotpWarning": "Om 2FA-hemligheten sparas placeras båda faktorerna i valvet. Om valvets huvudlösenord komprometteras skyddar 2FA inte längre det här kontot. Använd helst en engångskod eller en lokal WebDAV/S3-brygga.",
+            "filenBridgeCredentialRules": "Gräns för Filen-brygga: {max} tecken. Stöds inte: {rejected}",
+            "filenBridgeCredentialRejected": "Dessa inloggningsuppgifter innehåller tecken som Filen-bryggan avvisar."
         },
         "browser": {
             "remote": "Fjärr",
@@ -3831,7 +3835,19 @@
             "pwdCopied": "Kopierad!",
             "pwdAutoClear": "Kopierad (auto-rensning om 30s)",
             "pwdNoCharset": "Välj minst en teckenuppsättning",
-            "pwdNotBip39": "Inte en giltig BIP-39-mnemonikserie - använd inte som seed för kryptovalutaplånbok"
+            "pwdNotBip39": "Inte en giltig BIP-39-mnemonikserie - använd inte som seed för kryptovalutaplånbok",
+            "hashLegacy": "Äldre",
+            "pwdPresets": "Professionella förinställningar",
+            "pwdPresetBalanced": "Balanserad",
+            "pwdPresetMaximum": "Maximalt",
+            "pwdSymbolGroups": "Teckengrupper",
+            "pwdCustomCharacters": "Lägg till tecken",
+            "pwdExcludedCharacters": "Uteslut tecken",
+            "pwdRequireEachGroup": "Inkludera minst ett tecken från varje vald grupp",
+            "pwdGenerating": "Genererar...",
+            "pwdGenerateInline": "Generera ett säkert lösenord",
+            "pwdPresetCompatible": "Kompatibel 32",
+            "pwdGenerateCompatibleInline": "Generera ett kompatibelt lösenord med 32 tecken"
         },
         "dialog": {
             "deleteFile": "Radera \"{name}\"?",

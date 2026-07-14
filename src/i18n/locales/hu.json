@@ -285,7 +285,11 @@
             "persistModeCredentials": "Jegyezze meg a hitelesítő adatokat a fiók minden protokolljához",
             "persistModeCredentialsHint": "Egy profil fiókonként: minden protokoll hitelesítő adatait (API, WebDAV, S3, ...) elmentve tartja, így a mód váltása többé nem kérdez rá, még újraindítás után sem. Titkosítva tárolva a széfben. Alapértelmezés szerint kikapcsolva.",
             "opendriveDefaultPrivacy": "Alapértelmezett adatvédelem új elemekhez",
-            "opendriveDefaultPrivacyHelp": "A létrehozott vagy feltöltött mappákra és fájlokra vonatkozik. A WebDAV-kapcsolatok az OpenDrive alapértelmezéseit használják."
+            "opendriveDefaultPrivacyHelp": "A létrehozott vagy feltöltött mappákra és fájlokra vonatkozik. A WebDAV-kapcsolatok az OpenDrive alapértelmezéseit használják.",
+            "storedTotpAdvanced": "Speciális: a 2FA titkának mentése",
+            "storedTotpWarning": "A 2FA titkának mentésével mindkét tényező a tárolóba kerül. Ha a tároló mesterjelszava illetéktelen kézbe kerül, a 2FA többé nem védi ezt a fiókot. Használjon inkább egyszer használatos kódot vagy helyi WebDAV/S3-hidat.",
+            "filenBridgeCredentialRules": "Filen-híd korlátja: {max} karakter. Nem támogatott: {rejected}",
+            "filenBridgeCredentialRejected": "Ez a hitelesítő adat a Filen-híd által elutasított karaktereket tartalmaz."
         },
         "browser": {
             "remote": "Távoli",
@@ -3831,7 +3835,19 @@
             "pwdCopied": "Másolva!",
             "pwdAutoClear": "Másolva (automatikus törlés 30mp múlva)",
             "pwdNoCharset": "Válasszon legalább egy karakterkészletet",
-            "pwdNotBip39": "Nem érvényes BIP-39 mnemonikus mondat - ne használd kriptovaluta-tárca magjaként"
+            "pwdNotBip39": "Nem érvényes BIP-39 mnemonikus mondat - ne használd kriptovaluta-tárca magjaként",
+            "hashLegacy": "Örökölt",
+            "pwdPresets": "Professzionális előbeállítások",
+            "pwdPresetBalanced": "Kiegyensúlyozott",
+            "pwdPresetMaximum": "Maximális",
+            "pwdSymbolGroups": "Karaktercsoportok",
+            "pwdCustomCharacters": "Karakterek hozzáadása",
+            "pwdExcludedCharacters": "Karakterek kizárása",
+            "pwdRequireEachGroup": "Minden kijelölt csoportból legalább egy karakter szerepeljen",
+            "pwdGenerating": "Generálás...",
+            "pwdGenerateInline": "Biztonságos jelszó létrehozása",
+            "pwdPresetCompatible": "Kompatibilis 32",
+            "pwdGenerateCompatibleInline": "Kompatibilis, 32 karakteres jelszó létrehozása"
         },
         "dialog": {
             "deleteFile": "Törli a \"{name}\" fájlt?",

@@ -285,7 +285,11 @@
             "persistModeCredentials": "Cofio'r manylion ar gyfer pob protocol o'r cyfrif hwn",
             "persistModeCredentialsHint": "Un proffil i bob cyfrif: mae'n cadw manylion pob protocol (API, WebDAV, S3, ...) fel nad yw newid modd yn gofyn eto, hyd yn oed ar ôl ailgychwyn. Storir wedi'i amgryptio yn y gell. Wedi'i ddiffodd yn ddiofyn.",
             "opendriveDefaultPrivacy": "Preifatrwydd diofyn ar gyfer eitemau newydd",
-            "opendriveDefaultPrivacyHelp": "Yn cael ei gymhwyso i ffolderi a ffeiliau rydych yn eu creu neu'n eu llwytho i fyny. Mae cysylltiadau WebDAV yn defnyddio rhagosodiadau OpenDrive ei hun."
+            "opendriveDefaultPrivacyHelp": "Yn cael ei gymhwyso i ffolderi a ffeiliau rydych yn eu creu neu'n eu llwytho i fyny. Mae cysylltiadau WebDAV yn defnyddio rhagosodiadau OpenDrive ei hun.",
+            "storedTotpAdvanced": "Uwch: cadw cyfrinach 2FA",
+            "storedTotpWarning": "Mae cadw cyfrinach 2FA yn rhoi'r ddau ffactor yn y gladdgell. Os peryglir prif gyfrinair y gladdgell, ni fydd 2FA bellach yn diogelu'r cyfrif hwn. Mae'n well defnyddio cod untro neu bont WebDAV/S3 leol.",
+            "filenBridgeCredentialRules": "Terfyn pont Filen: {max} nod. Heb eu cynnal: {rejected}",
+            "filenBridgeCredentialRejected": "Mae'r manylion hyn yn cynnwys nodau a wrthodwyd gan bont Filen."
         },
         "browser": {
             "remote": "Pell",
@@ -3831,7 +3835,19 @@
             "pwdCopied": "Wedi copïo!",
             "pwdAutoClear": "Wedi copïo (clirio awtomatig mewn 30s)",
             "pwdNoCharset": "Dewiswch o leiaf un set nodau",
-            "pwdNotBip39": "Nid yw'n fnemotechnik BIP-39 dilys - peidiwch â'i ddefnyddio fel hadau porfa crypto-arian"
+            "pwdNotBip39": "Nid yw'n fnemotechnik BIP-39 dilys - peidiwch â'i ddefnyddio fel hadau porfa crypto-arian",
+            "hashLegacy": "Etifeddol",
+            "pwdPresets": "Rhagosodiadau proffesiynol",
+            "pwdPresetBalanced": "Cytbwys",
+            "pwdPresetMaximum": "Uchafswm",
+            "pwdSymbolGroups": "Grwpiau nodau",
+            "pwdCustomCharacters": "Ychwanegu nodau",
+            "pwdExcludedCharacters": "Eithrio nodau",
+            "pwdRequireEachGroup": "Cynnwys o leiaf un nod o bob grŵp a ddewiswyd",
+            "pwdGenerating": "Wrthi'n cynhyrchu...",
+            "pwdGenerateInline": "Cynhyrchu cyfrinair diogel",
+            "pwdPresetCompatible": "Cydnaws 32",
+            "pwdGenerateCompatibleInline": "Cynhyrchu cyfrinair cydnaws 32 nod"
         },
         "dialog": {
             "deleteFile": "Dileu \"{name}\"?",

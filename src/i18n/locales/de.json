@@ -285,7 +285,11 @@
             "persistModeCredentials": "Anmeldedaten für jedes Protokoll dieses Kontos merken",
             "persistModeCredentialsHint": "Ein Profil pro Konto: Bewahrt die Anmeldedaten jedes Protokolls (API, WebDAV, S3, ...) auf, sodass der Moduswechsel nicht erneut nachfragt, auch nach einem Neustart. Verschlüsselt im Vault gespeichert. Standardmäßig aus.",
             "opendriveDefaultPrivacy": "Standard-Datenschutz für neue Elemente",
-            "opendriveDefaultPrivacyHelp": "Wird auf Ordner und Dateien angewendet, die du erstellst oder hochlädst. WebDAV-Verbindungen nutzen die Standardeinstellungen von OpenDrive."
+            "opendriveDefaultPrivacyHelp": "Wird auf Ordner und Dateien angewendet, die du erstellst oder hochlädst. WebDAV-Verbindungen nutzen die Standardeinstellungen von OpenDrive.",
+            "storedTotpAdvanced": "Erweitert: 2FA-Geheimnis speichern",
+            "storedTotpWarning": "Durch das Speichern des 2FA-Geheimnisses befinden sich beide Faktoren im Tresor. Wird das Master-Passwort des Tresors kompromittiert, schützt 2FA dieses Konto nicht mehr. Verwenden Sie vorzugsweise einen Einmalcode oder eine lokale WebDAV/S3-Bridge.",
+            "filenBridgeCredentialRules": "Limit der Filen-Bridge: {max} Zeichen. Nicht unterstützt: {rejected}",
+            "filenBridgeCredentialRejected": "Diese Anmeldedaten enthalten Zeichen, die von der Filen-Bridge abgelehnt werden."
         },
         "browser": {
             "remote": "Remote",
@@ -3831,7 +3835,19 @@
             "pwdCopied": "Kopiert!",
             "pwdAutoClear": "Kopiert (Auto-Löschung in 30s)",
             "pwdNoCharset": "Mindestens einen Zeichensatz auswählen",
-            "pwdNotBip39": "Keine gültige BIP-39-Mnemonische - verwenden Sie dies nicht als Seed für eine Kryptowährungs-Geldbörse"
+            "pwdNotBip39": "Keine gültige BIP-39-Mnemonische - verwenden Sie dies nicht als Seed für eine Kryptowährungs-Geldbörse",
+            "hashLegacy": "Veraltet",
+            "pwdPresets": "Professionelle Voreinstellungen",
+            "pwdPresetBalanced": "Ausgewogen",
+            "pwdPresetMaximum": "Maximum",
+            "pwdSymbolGroups": "Zeichengruppen",
+            "pwdCustomCharacters": "Zeichen hinzufügen",
+            "pwdExcludedCharacters": "Zeichen ausschließen",
+            "pwdRequireEachGroup": "Mindestens ein Zeichen aus jeder ausgewählten Gruppe einschließen",
+            "pwdGenerating": "Wird generiert...",
+            "pwdGenerateInline": "Sicheres Passwort generieren",
+            "pwdPresetCompatible": "Kompatibel 32",
+            "pwdGenerateCompatibleInline": "Kompatibles Passwort mit 32 Zeichen generieren"
         },
         "dialog": {
             "deleteFile": "\"{name}\" löschen?",

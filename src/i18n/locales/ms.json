@@ -285,7 +285,11 @@
             "persistModeCredentials": "Ingat kelayakan untuk setiap protokol akaun ini",
             "persistModeCredentialsHint": "Satu profil setiap akaun: menyimpan kelayakan setiap protokol (API, WebDAV, S3, ...) supaya menukar mod tidak bertanya lagi, walaupun selepas dimulakan semula. Disimpan tersulit dalam bilik kebal. Dimatikan secara lalai.",
             "opendriveDefaultPrivacy": "Privasi lalai untuk item baharu",
-            "opendriveDefaultPrivacyHelp": "Digunakan pada folder dan fail yang anda cipta atau muat naik. Sambungan WebDAV menggunakan tetapan lalai OpenDrive sendiri."
+            "opendriveDefaultPrivacyHelp": "Digunakan pada folder dan fail yang anda cipta atau muat naik. Sambungan WebDAV menggunakan tetapan lalai OpenDrive sendiri.",
+            "storedTotpAdvanced": "Lanjutan: simpan rahsia 2FA",
+            "storedTotpWarning": "Menyimpan rahsia 2FA meletakkan kedua-dua faktor dalam peti besi. Jika kata laluan induk peti besi terjejas, 2FA tidak lagi melindungi akaun ini. Utamakan kod sekali guna atau jambatan WebDAV/S3 setempat.",
+            "filenBridgeCredentialRules": "Had jambatan Filen: {max} aksara. Tidak disokong: {rejected}",
+            "filenBridgeCredentialRejected": "Kelayakan ini mengandungi aksara yang ditolak oleh jambatan Filen."
         },
         "browser": {
             "remote": "Jauh",
@@ -3831,7 +3835,19 @@
             "pwdCopied": "Disalin!",
             "pwdAutoClear": "Disalin (padam auto dalam 30 saat)",
             "pwdNoCharset": "Pilih sekurang-kurangnya satu set aksara",
-            "pwdNotBip39": "Bukan frasa mnemonik BIP-39 yang sah - jangan gunakan sebagai benih dompet mata wang kripto"
+            "pwdNotBip39": "Bukan frasa mnemonik BIP-39 yang sah - jangan gunakan sebagai benih dompet mata wang kripto",
+            "hashLegacy": "Legasi",
+            "pwdPresets": "Pratetap profesional",
+            "pwdPresetBalanced": "Seimbang",
+            "pwdPresetMaximum": "Maksimum",
+            "pwdSymbolGroups": "Kumpulan aksara",
+            "pwdCustomCharacters": "Tambah aksara",
+            "pwdExcludedCharacters": "Kecualikan aksara",
+            "pwdRequireEachGroup": "Sertakan sekurang-kurangnya satu aksara daripada setiap kumpulan yang dipilih",
+            "pwdGenerating": "Menjana...",
+            "pwdGenerateInline": "Jana kata laluan selamat",
+            "pwdPresetCompatible": "Serasi 32",
+            "pwdGenerateCompatibleInline": "Jana kata laluan serasi 32 aksara"
         },
         "dialog": {
             "deleteFile": "Padam \"{name}\"?",

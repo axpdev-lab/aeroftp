@@ -285,7 +285,11 @@
             "persistModeCredentials": "इस खाते के हर प्रोटोकॉल के क्रेडेंशियल याद रखें",
             "persistModeCredentialsHint": "हर खाते के लिए एक प्रोफ़ाइल: हर प्रोटोकॉल के क्रेडेंशियल (API, WebDAV, S3, ...) सहेजे रखता है ताकि मोड बदलने पर दोबारा न पूछे, पुनः आरंभ करने के बाद भी। वॉल्ट में एन्क्रिप्टेड रूप में संग्रहीत। डिफ़ॉल्ट रूप से बंद।",
             "opendriveDefaultPrivacy": "नई वस्तुओं के लिए डिफ़ॉल्ट गोपनीयता",
-            "opendriveDefaultPrivacyHelp": "उन फ़ोल्डरों और फ़ाइलों पर लागू होती है जिन्हें आप बनाते या अपलोड करते हैं। WebDAV कनेक्शन OpenDrive की अपनी डिफ़ॉल्ट सेटिंग्स का उपयोग करते हैं।"
+            "opendriveDefaultPrivacyHelp": "उन फ़ोल्डरों और फ़ाइलों पर लागू होती है जिन्हें आप बनाते या अपलोड करते हैं। WebDAV कनेक्शन OpenDrive की अपनी डिफ़ॉल्ट सेटिंग्स का उपयोग करते हैं।",
+            "storedTotpAdvanced": "उन्नत: 2FA सीक्रेट सहेजें",
+            "storedTotpWarning": "2FA सीक्रेट सहेजने से दोनों कारक वॉल्ट में रखे जाते हैं। यदि वॉल्ट का मास्टर पासवर्ड असुरक्षित हो जाता है, तो 2FA इस खाते की सुरक्षा नहीं करेगा। एक बार उपयोग होने वाला कोड या स्थानीय WebDAV/S3 ब्रिज बेहतर है।",
+            "filenBridgeCredentialRules": "Filen ब्रिज सीमा: {max} वर्ण। असमर्थित: {rejected}",
+            "filenBridgeCredentialRejected": "इस क्रेडेंशियल में Filen ब्रिज द्वारा अस्वीकृत वर्ण हैं।"
         },
         "browser": {
             "remote": "दूरस्थ",
@@ -3831,7 +3835,19 @@
             "pwdCopied": "कॉपी हो गया!",
             "pwdAutoClear": "कॉपी हो गया (30 सेकंड में स्वतः साफ़)",
             "pwdNoCharset": "कम से कम एक वर्ण सेट चुनें",
-            "pwdNotBip39": "वैध BIP-39 मेमोनिक नहीं है - इसे क्रिप्टोकरेंसी वॉलेट सीड के रूप में उपयोग न करें"
+            "pwdNotBip39": "वैध BIP-39 मेमोनिक नहीं है - इसे क्रिप्टोकरेंसी वॉलेट सीड के रूप में उपयोग न करें",
+            "hashLegacy": "लेगेसी",
+            "pwdPresets": "पेशेवर प्रीसेट",
+            "pwdPresetBalanced": "संतुलित",
+            "pwdPresetMaximum": "अधिकतम",
+            "pwdSymbolGroups": "वर्ण समूह",
+            "pwdCustomCharacters": "वर्ण जोड़ें",
+            "pwdExcludedCharacters": "वर्ण बाहर रखें",
+            "pwdRequireEachGroup": "प्रत्येक चयनित समूह से कम से कम एक वर्ण शामिल करें",
+            "pwdGenerating": "बनाया जा रहा है...",
+            "pwdGenerateInline": "एक सुरक्षित पासवर्ड बनाएँ",
+            "pwdPresetCompatible": "संगत 32",
+            "pwdGenerateCompatibleInline": "32-वर्णों वाला संगत पासवर्ड जनरेट करें"
         },
         "dialog": {
             "deleteFile": "\"{name}\" हटाएं?",

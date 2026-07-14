@@ -1,16 +1,17 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import {
     X, Hash, Lock, KeyRound, Copy, Check, FileSearch, Type,
-    RefreshCw, Eye, EyeOff, Loader2, AlertTriangle, CheckCircle2, Shuffle
+    RefreshCw, Eye, EyeOff, Loader2, AlertTriangle, CheckCircle2
 } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { Checkbox } from './ui/Checkbox';
 import { useDraggableModal } from '../hooks/useDraggableModal';
+import { PasswordForgeTab } from './PasswordForgeTab';
 
 interface CyberToolsModalProps {
     onClose: () => void;
@@ -116,7 +117,7 @@ const CopyButton: React.FC<{ text: string; label?: string }> = ({ text, label })
 const PillButton: React.FC<{ active: boolean; onClick: () => void; children: React.ReactNode }> = ({ active, onClick, children }) => (
     <button
         onClick={onClick}
-        className={`px-3 py-1 text-xs font-medium rounded-full transition-colors cursor-pointer ${
+        className={`px-3 py-1 text-xs font-medium rounded-md transition-colors cursor-pointer ${
             active
                 ? 'bg-cyan-500 text-white'
                 : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
@@ -224,7 +225,7 @@ const HashForgeTab: React.FC = () => {
                 <div className="flex flex-wrap gap-1.5">
                     {HASH_ALGOS.map(a => (
                         <PillButton key={a} active={algorithm === algoMap[a]} onClick={() => setAlgorithm(algoMap[a])}>
-                            {a}
+                            {a}{(a === 'MD5' || a === 'SHA-1') ? ` · ${t('cyberTools.hashLegacy')}` : ''}
                         </PillButton>
                     ))}
                 </div>
@@ -406,222 +407,6 @@ const CryptoLabTab: React.FC = () => {
                         </code>
                         <CopyButton text={output} label={t('cyberTools.cryptoCopy')} />
                     </div>
-                </div>
-            )}
-        </div>
-    );
-};
-
-// ─── Password Forge Tab ─────────────────────────────────────────────────────
-
-const PasswordForgeTab: React.FC = () => {
-    const t = useTranslation();
-    const [mode, setMode] = useState<'random' | 'passphrase'>('random');
-    const [length, setLength] = useState(24);
-    const [uppercase, setUppercase] = useState(true);
-    const [lowercase, setLowercase] = useState(true);
-    const [digits, setDigits] = useState(true);
-    const [symbols, setSymbols] = useState(true);
-    const [excludeAmbiguous, setExcludeAmbiguous] = useState(false);
-    const [wordCount, setWordCount] = useState(5);
-    const [separator, setSeparator] = useState('-');
-    const [capitalize, setCapitalize] = useState(true);
-    const [batchCount, setBatchCount] = useState(1);
-    const [passwords, setPasswords] = useState<string[]>([]);
-    const [entropy, setEntropy] = useState(0);
-    const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
-    const clearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-    // Calculate entropy when settings change
-    useEffect(() => {
-        if (mode === 'random') {
-            invoke<number>('calculate_entropy', {
-                length, uppercase, lowercase, digits, symbols, excludeAmbiguous: excludeAmbiguous
-            }).then(setEntropy).catch(() => setEntropy(0));
-        } else {
-            // Passphrase entropy: log2(wordlist_size) * word_count
-            // Our wordlist has ~1000 words
-            setEntropy(wordCount * Math.log2(1000));
-        }
-    }, [mode, length, uppercase, lowercase, digits, symbols, excludeAmbiguous, wordCount]);
-
-    const generate = useCallback(async () => {
-        try {
-            if (mode === 'random') {
-                const result: string[] = await invoke('generate_password', {
-                    length, uppercase, lowercase, digits, symbols,
-                    excludeAmbiguous: excludeAmbiguous, count: batchCount
-                });
-                setPasswords(result);
-            } else {
-                const result: string[] = await invoke('generate_passphrase', {
-                    wordCount, separator, capitalize, count: batchCount
-                });
-                setPasswords(result);
-            }
-        } catch (e) {
-            setPasswords([`Error: ${e}`]);
-        }
-    }, [mode, length, uppercase, lowercase, digits, symbols, excludeAmbiguous, wordCount, separator, capitalize, batchCount]);
-
-    const copyPassword = useCallback(async (pwd: string, idx: number) => {
-        try {
-            await invoke('copy_to_clipboard', { text: pwd });
-            setCopiedIdx(idx);
-            setTimeout(() => setCopiedIdx(null), 2000);
-            // Auto-clear clipboard after 30s
-            if (clearTimerRef.current) clearTimeout(clearTimerRef.current);
-            clearTimerRef.current = setTimeout(async () => {
-                try { await invoke('copy_to_clipboard', { text: '' }); } catch { /* ignore */ }
-            }, 30000);
-        } catch { /* ignore */ }
-    }, []);
-
-    // Cleanup timer on unmount
-    useEffect(() => {
-        return () => { if (clearTimerRef.current) clearTimeout(clearTimerRef.current); };
-    }, []);
-
-    const entropyColor = entropy < 40 ? 'bg-red-500' : entropy < 60 ? 'bg-orange-500' : entropy < 80 ? 'bg-yellow-500' : entropy < 100 ? 'bg-green-500' : 'bg-cyan-500';
-    const entropyLabel = entropy < 40 ? t('cyberTools.pwdWeak') : entropy < 60 ? t('cyberTools.pwdFair') : entropy < 80 ? t('cyberTools.pwdGood') : entropy < 100 ? t('cyberTools.pwdStrong') : t('cyberTools.pwdExcellent');
-    const entropyPct = Math.min(100, (entropy / 128) * 100);
-
-    return (
-        <div className="space-y-4">
-            <p className="text-xs text-gray-500 dark:text-gray-400">{t('cyberTools.pwdDescription')}</p>
-
-            {/* Mode */}
-            <div className="flex gap-2">
-                <PillButton active={mode === 'random'} onClick={() => setMode('random')}>{t('cyberTools.pwdModeRandom')}</PillButton>
-                <PillButton active={mode === 'passphrase'} onClick={() => setMode('passphrase')}>{t('cyberTools.pwdModePassphrase')}</PillButton>
-            </div>
-
-            {mode === 'random' ? (
-                <div className="space-y-3">
-                    {/* Length slider */}
-                    <div>
-                        <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400 mb-1">
-                            <span>{t('cyberTools.pwdLength')}</span>
-                            <span className="font-mono">{length}</span>
-                        </div>
-                        <input
-                            type="range" min={8} max={128} value={length}
-                            onChange={e => setLength(Number(e.target.value))}
-                            className="w-full accent-cyan-500"
-                        />
-                    </div>
-
-                    {/* Checkboxes */}
-                    <div className="grid grid-cols-2 gap-2">
-                        {[
-                            { label: t('cyberTools.pwdUppercase'), checked: uppercase, set: setUppercase },
-                            { label: t('cyberTools.pwdLowercase'), checked: lowercase, set: setLowercase },
-                            { label: t('cyberTools.pwdDigits'), checked: digits, set: setDigits },
-                            { label: t('cyberTools.pwdSymbols'), checked: symbols, set: setSymbols },
-                        ].map(({ label, checked, set }) => (
-                            <Checkbox
-                                key={label}
-                                checked={checked}
-                                onChange={set}
-                                label={<span className="text-xs text-gray-700 dark:text-gray-300">{label}</span>}
-                            />
-                        ))}
-                        <div className="col-span-2">
-                            <Checkbox
-                                checked={excludeAmbiguous}
-                                onChange={setExcludeAmbiguous}
-                                label={<span className="text-xs text-gray-500 dark:text-gray-400">{t('cyberTools.pwdExcludeAmbiguous')}</span>}
-                            />
-                        </div>
-                    </div>
-                </div>
-            ) : (
-                <div className="space-y-3">
-                    {/* Word count */}
-                    <div>
-                        <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400 mb-1">
-                            <span>{t('cyberTools.pwdWordCount')}</span>
-                            <span className="font-mono">{wordCount}</span>
-                        </div>
-                        <input
-                            type="range" min={3} max={24} value={wordCount}
-                            onChange={e => setWordCount(Number(e.target.value))}
-                            className="w-full accent-cyan-500"
-                        />
-                    </div>
-                    <div className="flex gap-3">
-                        <div className="flex-1">
-                            <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">{t('cyberTools.pwdSeparator')}</label>
-                            <input
-                                value={separator}
-                                onChange={e => setSeparator(e.target.value)}
-                                maxLength={3}
-                                className="w-full px-3 py-1.5 text-sm rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-center font-mono"
-                            />
-                        </div>
-                        <div className="flex items-center pt-5">
-                            <Checkbox
-                                checked={capitalize}
-                                onChange={setCapitalize}
-                                label={<span className="text-xs text-gray-700 dark:text-gray-300">{t('cyberTools.pwdCapitalize')}</span>}
-                            />
-                        </div>
-                    </div>
-                    {wordCount >= 12 && (
-                        <p className="text-[10px] text-amber-500/80 mt-1">{t('cyberTools.pwdNotBip39')}</p>
-                    )}
-                </div>
-            )}
-
-            {/* Batch count */}
-            <div>
-                <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400 mb-1">
-                    <span>{t('cyberTools.pwdBatchCount')}</span>
-                    <span className="font-mono">{batchCount}</span>
-                </div>
-                <input
-                    type="range" min={1} max={5} value={batchCount}
-                    onChange={e => setBatchCount(Number(e.target.value))}
-                    className="w-full accent-cyan-500"
-                />
-            </div>
-
-            {/* Entropy bar */}
-            <div>
-                <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400 mb-1">
-                    <span>{t('cyberTools.pwdEntropy')}</span>
-                    <span className="font-mono">{Math.round(entropy)} {t('cyberTools.pwdBits')}: {entropyLabel}</span>
-                </div>
-                <div className="h-2 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
-                    <div className={`h-full rounded-full transition-all duration-300 ${entropyColor}`} style={{ width: `${entropyPct}%` }} />
-                </div>
-            </div>
-
-            {/* Generate */}
-            <button
-                onClick={generate}
-                className="w-full py-2 text-sm font-medium rounded bg-cyan-500 hover:bg-cyan-600 text-white transition-colors cursor-pointer flex items-center justify-center gap-2"
-            >
-                <Shuffle size={14} /> {t('cyberTools.pwdGenerate')}
-            </button>
-
-            {/* Results */}
-            {passwords.length > 0 && (
-                <div className="space-y-2">
-                    {passwords.map((pwd, i) => (
-                        <div key={i} className="flex items-center gap-2">
-                            <code className="flex-1 px-3 py-2 text-xs font-mono rounded bg-gray-50 dark:bg-gray-900 text-gray-800 dark:text-gray-200 break-all border border-gray-200 dark:border-gray-700 select-all truncate">
-                                {pwd}
-                            </code>
-                            <button
-                                onClick={() => copyPassword(pwd, i)}
-                                className="flex items-center gap-1 px-2 py-1 text-xs rounded bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors cursor-pointer shrink-0"
-                            >
-                                {copiedIdx === i ? <Check size={12} className="text-green-500" /> : <Copy size={12} />}
-                                {copiedIdx === i ? t('cyberTools.pwdCopied') : t('cyberTools.pwdCopy')}
-                            </button>
-                        </div>
-                    ))}
                 </div>
             )}
         </div>

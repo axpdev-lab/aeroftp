@@ -285,7 +285,11 @@
             "persistModeCredentials": "记住此账户每个协议的凭据",
             "persistModeCredentialsHint": "每个账户一个配置文件：保存每个协议的凭据（API、WebDAV、S3 等），这样切换模式时不再询问，即使重启后也是如此。以加密形式存储在保险库中。默认关闭。",
             "opendriveDefaultPrivacy": "新项目的默认隐私",
-            "opendriveDefaultPrivacyHelp": "应用于您创建或上传的文件夹和文件。WebDAV 连接使用 OpenDrive 自身的默认设置。"
+            "opendriveDefaultPrivacyHelp": "应用于您创建或上传的文件夹和文件。WebDAV 连接使用 OpenDrive 自身的默认设置。",
+            "storedTotpAdvanced": "高级：保存 2FA 密钥",
+            "storedTotpWarning": "保存 2FA 密钥会将两个验证因素都存入保险库。如果保险库主密码泄露，2FA 将无法继续保护此账户。建议使用一次性验证码或本地 WebDAV/S3 网桥。",
+            "filenBridgeCredentialRules": "Filen 网桥限制：{max} 个字符。不支持：{rejected}",
+            "filenBridgeCredentialRejected": "此凭据包含 Filen 网桥拒绝的字符。"
         },
         "browser": {
             "remote": "远程",
@@ -3831,7 +3835,19 @@
             "pwdCopied": "已复制！",
             "pwdAutoClear": "已复制 (30秒后自动清除)",
             "pwdNoCharset": "请至少选择一个字符集",
-            "pwdNotBip39": "不是有效的 BIP-39 助记词 - 不要将其用作加密钱包种子"
+            "pwdNotBip39": "不是有效的 BIP-39 助记词 - 不要将其用作加密钱包种子",
+            "hashLegacy": "旧版",
+            "pwdPresets": "专业预设",
+            "pwdPresetBalanced": "均衡",
+            "pwdPresetMaximum": "最高",
+            "pwdSymbolGroups": "字符组",
+            "pwdCustomCharacters": "添加字符",
+            "pwdExcludedCharacters": "排除字符",
+            "pwdRequireEachGroup": "每个所选组至少包含一个字符",
+            "pwdGenerating": "正在生成...",
+            "pwdGenerateInline": "生成安全密码",
+            "pwdPresetCompatible": "兼容 32",
+            "pwdGenerateCompatibleInline": "生成兼容的 32 字符密码"
         },
         "dialog": {
             "deleteFile": "删除\"{name}\"？",

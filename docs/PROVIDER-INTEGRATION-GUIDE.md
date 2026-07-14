@@ -722,6 +722,20 @@ Three providers implement client-side encryption where the server never sees pla
 
 > **Key lesson**: E2E providers require downloading the entire file to decrypt. No partial reads, no server-side search, no thumbnails. Every operation is fundamentally different from cleartext REST APIs.
 
+#### Credential scope and stored 2FA secrets
+
+Client-side encryption changes the credential model. AeroFTP needs the account password to derive decryption keys, so a narrow storage token cannot replace it. Saving the TOTP secret beside that password also places both authentication factors behind the same vault gate. The encrypted vault protects credentials at rest, but it cannot reduce their account-level privilege while the app is using them.
+
+The connection UI therefore keeps the one-time TOTP code as the primary path. Saving the reusable 2FA secret is an advanced option with an explicit warning. Choose the least-privilege integration that fits the account:
+
+| User profile | Recommendation |
+|---|---|
+| Suite account also used for messenger, VPN, or password management | Do not give the account password and reusable 2FA secret to third-party apps. Prefer the provider's first-party app with its local WebDAV/S3 bridge, or separate the storage service from the suite account. |
+| Cloud-only MEGA, Internxt, or Filen account | Prefer the same local bridge model. For direct access, enter a one-time TOTP code rather than storing the reusable secret. Cloud-only use narrows the impact to one account, but compromise still means a full account takeover. |
+| Internxt | Apply the same guidance, while noting that Internxt CLI/WebDAV access may require a paid plan. The safer bridge path is not always available on the free tier. |
+
+The bridge relocates the high-privilege password to the provider's first-party app and exposes a scoped local endpoint. This reduces privilege exposure; it does not eliminate the need for a trusted component to hold the password. See [discussion #266](https://github.com/axpdev-lab/aeroftp/discussions/266) for the design rationale.
+
 ### 3.8 Session-Based Username/Password
 
 **File**: `opendrive.rs` (~1,211 lines)

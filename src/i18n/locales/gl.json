@@ -285,7 +285,11 @@
             "persistModeCredentials": "Lembrar as credenciais para cada protocolo desta conta",
             "persistModeCredentialsHint": "Un perfil por conta: mantén gardadas as credenciais de cada protocolo (API, WebDAV, S3, ...) para que cambiar de modo non as volva pedir, mesmo tras reiniciar. Gárdase cifrado no vault. Desactivado de forma predeterminada.",
             "opendriveDefaultPrivacy": "Privacidade predeterminada para novos elementos",
-            "opendriveDefaultPrivacyHelp": "Aplícase ás carpetas e ficheiros que crees ou subas. As conexións WebDAV usan os valores predeterminados de OpenDrive."
+            "opendriveDefaultPrivacyHelp": "Aplícase ás carpetas e ficheiros que crees ou subas. As conexións WebDAV usan os valores predeterminados de OpenDrive.",
+            "storedTotpAdvanced": "Avanzado: gardar o segredo de 2FA",
+            "storedTotpWarning": "Gardar o segredo de 2FA coloca ambos os factores na caixa forte. Se o contrasinal mestre da caixa forte se ve comprometido, 2FA deixa de protexer esta conta. É preferible usar un código dun só uso ou unha ponte WebDAV/S3 local.",
+            "filenBridgeCredentialRules": "Límite da ponte Filen: {max} caracteres. Non admitidos: {rejected}",
+            "filenBridgeCredentialRejected": "Esta credencial contén caracteres rexeitados pola ponte Filen."
         },
         "browser": {
             "remote": "Remoto",
@@ -3831,7 +3835,19 @@
             "pwdCopied": "Copiado!",
             "pwdAutoClear": "Copiado (borrado automático en 30s)",
             "pwdNoCharset": "Seleccionar polo menos un conxunto de caracteres",
-            "pwdNotBip39": "Non é unha frase mnemotécnica BIP-39 válida - non a uses como semente de carteira de criptomonedas"
+            "pwdNotBip39": "Non é unha frase mnemotécnica BIP-39 válida - non a uses como semente de carteira de criptomonedas",
+            "hashLegacy": "Herdado",
+            "pwdPresets": "Predefinicións profesionais",
+            "pwdPresetBalanced": "Equilibrado",
+            "pwdPresetMaximum": "Máximo",
+            "pwdSymbolGroups": "Grupos de caracteres",
+            "pwdCustomCharacters": "Engadir caracteres",
+            "pwdExcludedCharacters": "Excluír caracteres",
+            "pwdRequireEachGroup": "Incluír polo menos un carácter de cada grupo seleccionado",
+            "pwdGenerating": "Xerando...",
+            "pwdGenerateInline": "Xerar un contrasinal seguro",
+            "pwdPresetCompatible": "Compatible 32",
+            "pwdGenerateCompatibleInline": "Xerar un contrasinal compatible de 32 caracteres"
         },
         "dialog": {
             "deleteFile": "Eliminar \"{name}\"?",
