@@ -5044,7 +5044,7 @@
                 "heading": "តើស្រទាប់ត្រួតនេះធ្វើអ្វីខ្លះ",
                 "p1": "អ៊ីនគ្រីបឈ្មោះ និងមាតិកាឯកសារ<strong>ភ្លាមៗ</strong> មុនពេលផ្ញើទៅម៉ាស៊ីនមេ ហើយឌិគ្រីបវានៅពេលអ្នកទាញយក។ ម៉ាស៊ីនមេឃើញតែទិន្នន័យដែលមានឈ្មោះច្របូកច្របល់ប៉ុណ្ណោះ។ អ្នកវិញឃើញឈ្មោះដើម។",
                 "p2": "ខណៈពេលស្រទាប់ត្រួតកំពុងសកម្ម៖ វគ្គពីចម្ងាយរបស់អ្នកបង្ហាញមាតិកាជាអក្សរធម្មតា ការផ្ទុកឡើងនីមួយៗត្រូវបានអ៊ីនគ្រីប ការទាញយកនីមួយៗត្រូវបានឌិគ្រីប។ សូមរកមើលផ្លាក <em>AEROCRYPT</em> នៅក្នុងរបារផ្លូវ។",
-                "p3": "នេះគឺជាស្រទាប់ត្រួត<strong>ដើម</strong>របស់ AeroFTP នៅលើម៉ាស៊ីនដែលបានធ្វើសវនកម្មដូចគ្នានឹង AeroVault (មាតិកា AES-256-GCM-SIV ឈ្មោះ AES-256-SIV Argon2id)។ salt របស់ស្រទាប់ត្រួតត្រូវបានរក្សាទុកក្នុង <code>.aeroftp-crypt.json</code> នៅ root របស់វានៅលើម៉ាស៊ីនពីចម្ងាយ ដូច្នេះអ្នកអាចបើកវាឡើងវិញពីឧបករណ៍ណាមួយដោយប្រើតែពាក្យសម្ងាត់។"
+                "p3": "នេះគឺជា overlay <strong>ដើម</strong> របស់ AeroFTP លើម៉ាស៊ីនដែលបានធ្វើសវនកម្មដូចគ្នានឹង AeroVault (មាតិកា AES-256-GCM-SIV, ឈ្មោះ AES-256-SIV, Argon2id)។ salt របស់ overlay ត្រូវបានរក្សាទុកក្នុង marker (<code>.aerocrypt.tsv</code> សម្រាប់ vault ថ្មីៗ, <code>.aeroftp-crypt.json</code> ចាស់នៅតែអាចអានបាន) នៅ root របស់វានៅលើ remote ដូច្នេះអ្នកអាចបើកវាឡើងវិញពីឧបករណ៍ណាក៏បាន ដោយប្រើតែពាក្យសម្ងាត់។"
             },
             "openExisting": "បើកដែលមានស្រាប់",
             "createNew": "បង្កើតថ្មី",
@@ -5077,7 +5077,20 @@
             "recoveryKitIntro": "ស្រេចចិត្ត។ ឧបករណ៍នេះមានតែការកំណត់រចនាសម្ព័ន្ធសាធារណៈប៉ុណ្ណោះ (vault ID, salt, ប៉ារ៉ាម៉ែត្រ KDF) មិនដែលមានความลับឡើយ។ ឧបករណ៍នេះ និងពាក្យសម្ងាត់របស់អ្នក ត្រូវការទាំងពីរ ដើម្បីស្ដារ vault របស់អ្នកឡើងវិញ បន្ទាប់ពីបាត់បង់កន្លែងផ្ទុកសោក្នុងតំបន់ (ដំឡើងឡើងវិញ ឬម៉ាស៊ីនថ្មី) ប៉ុន្តែរក្សាទុកពួកវានៅកន្លែងផ្សេងគ្នា៖ គ្មានមួយណាតែឯង អាចបើក vault បានឡើយ។ អ្នកអាចបើក និងរក្សាទុកវាម្ដងទៀតគ្រប់ពេល។",
             "showKit": "ឧបករណ៍សង្គ្រោះ",
             "hideKit": "បិទ",
-            "kitUnavailable": "ឧបករណ៍សង្គ្រោះមិនទាន់មានសម្រាប់ vault នេះនៅឡើយទេ។"
+            "kitUnavailable": "ឧបករណ៍សង្គ្រោះមិនទាន់មានសម្រាប់ vault នេះនៅឡើយទេ។",
+            "defaultSaltLabel": "salt លំនាំដើម (ជម្រើស opt-in, អាចផ្ទេរបានដោយប្រើតែពាក្យសម្ងាត់; ត្រូវការ entropy ខ្ពស់ និង attestation)",
+            "defaultSaltStrength128": "ណែនាំ 128-bit",
+            "defaultSaltStrength256": "256-bit",
+            "defaultSaltAttestation": "ខ្ញុំបានប្រើកម្មវិធីគ្រប់គ្រងពាក្យសម្ងាត់ ហើយយល់ពីការដោះដូរ linkability។",
+            "legacyMarkerNotice": "vault នេះនៅតែប្រើ marker ចាស់ .aeroftp-crypt.json។ បម្លែងវាទៅ .aerocrypt.tsv បន្ទាប់ពីបញ្ចូលពាក្យសម្ងាត់ ឬ keyfile។",
+            "migrateLegacyMarker": "បម្លែង marker",
+            "legacyMarkerMigrated": "marker ត្រូវបានបម្លែងទៅ .aerocrypt.tsv។",
+            "legacyMarkerAlreadyCurrent": "មិនមាន marker ចាស់នៅសល់ទេ។",
+            "recoveryQr": "QR សម្រាប់ស្តារ",
+            "qrErrorCorrection": "ការកែកំហុស",
+            "qrRecommended": "(បានណែនាំ)",
+            "qrHint": "កម្រិតខ្ពស់ជាងនេះមានភាពធន់ជាងលើច្បាប់ចម្លងដែលបានបោះពុម្ព ឬស្កេន។",
+            "qrPrintNote": "កម្រិត QR: {level} - ស្កេនដោយប្រើម៉ាស៊ីនស្កេន USB QR ឬចម្លងអត្ថបទខាងលើ"
         },
         "aerocryptProfile": {
             "enable": "Crypt (ការអ៊ីនគ្រីប)",
@@ -5106,7 +5119,7 @@
             "keyfileGeneratedBackup": "បានបង្កើតឯកសារកូនសោ។ សូមបម្រុងទុកឥឡូវនេះ៖ បាត់វាធ្វើឱ្យឃ្លាំងជាប់សោជារៀងរហូត។",
             "keyfileRepointHint": "ផ្លូវនេះគ្រាន់តែចង្អុលទៅកន្លែងឯកសារកូនសោស្ថិតនៅ។ ការផ្លាស់ប្ដូរវាមិនផ្លាស់ប្ដូរកូនសោឃ្លាំងទេ។ ឯកសារកូនសោខុសឬបាត់ នឹងបដិសេធការដោះសោ។",
             "keyfileStorageHint": "រក្សាទុកវានៅលើថាសមូលដ្ឋាន ឬ USB ដ្រាយ ដោយឡែកពីម៉ាស៊ីនពីចម្ងាយដែលអ្នកកំពុងអ៊ិនគ្រីប ហើយរក្សាទុកច្បាប់ចម្លងបម្រុងទុក។",
-            "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
+            "headerToggle": "សរសេរ header ទៅ remote (.aerocrypt.tsv)",
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "ផ្លូវពីចម្ងាយនៃការត្រួតលើ",
             "overlaysRemotePathHint": "ថតរងនៃ Remote Path ដែលការត្រួតលើត្រូវបានចងភ្ជាប់។ ទុកឲ្យទទេដើម្បីប្រើ Remote Path ឬវាយបញ្ចូលតែឈ្មោះថតរង (វាត្រូវបានបង្កើតនៅក្រោម Remote Path)។",

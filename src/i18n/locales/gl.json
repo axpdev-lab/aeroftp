@@ -5044,7 +5044,7 @@
                 "heading": "Que fai esta superposición",
                 "p1": "Cifra os nomes e o contido dos ficheiros <strong>sobre a marcha</strong>, antes de envialos ao servidor, e descífraos ao descargar. O servidor só ve blobs con nomes ilexibles. Ti ves os nomes orixinais.",
                 "p2": "Mentres a superposición está activa: a túa sesión remota mostra o contido en claro, cada envío cífrase e cada descarga descífrase. Busca a insignia <em>AEROCRYPT</em> na barra de ruta.",
-                "p3": "Esta é a superposición <strong>nativa</strong> de AeroFTP, sobre o mesmo motor auditado que AeroVault (AES-256-GCM-SIV para o contido, AES-256-SIV para os nomes, Argon2id). O sal da superposición gárdase en <code>.aeroftp-crypt.json</code> na súa raíz no servidor remoto, polo que podes reabrila desde calquera dispositivo só co contrasinal."
+                "p3": "Esta é a capa <strong>nativa</strong> de AeroFTP, sobre o mesmo motor auditado ca AeroVault (contido AES-256-GCM-SIV, nomes AES-256-SIV, Argon2id). O sal da capa gárdase no marcador (<code>.aerocrypt.tsv</code> para novas caixas fortes, o herdado <code>.aeroftp-crypt.json</code> segue sendo lexible) na súa raíz no remoto, polo que podes reabrila desde calquera dispositivo só co contrasinal."
             },
             "openExisting": "Abrir existente",
             "createNew": "Crear nova",
@@ -5077,7 +5077,20 @@
             "recoveryKitIntro": "Opcional. Este kit contén só configuración pública (vault ID, salt, parámetros KDF), nunca segredos. O kit e o seu contrasinal son ambos necesarios para restaurar a súa caixa forte tras perder o almacén de claves local (reinstalación ou máquina nova), pero gárdeos en lugares separados: ningún dos dous por si só pode abrir a caixa forte. Pode volver abrila e gardala de novo en calquera momento.",
             "showKit": "Kit de recuperación",
             "hideKit": "Pechar",
-            "kitUnavailable": "O kit de recuperación aínda non está dispoñible para esta caixa forte."
+            "kitUnavailable": "O kit de recuperación aínda non está dispoñible para esta caixa forte.",
+            "defaultSaltLabel": "Sal predeterminado (opcional, portabilidade só con contrasinal; require alta entropía e attestación)",
+            "defaultSaltStrength128": "128 bits recomendado",
+            "defaultSaltStrength256": "256 bits",
+            "defaultSaltAttestation": "Usei un xestor de contrasinais e entendo o compromiso de vinculabilidade.",
+            "legacyMarkerNotice": "Este vault aínda usa o marcador antigo .aeroftp-crypt.json. Convérteo a .aerocrypt.tsv despois de introducir o contrasinal ou o keyfile.",
+            "migrateLegacyMarker": "Converter marcador",
+            "legacyMarkerMigrated": "Marcador convertido a .aerocrypt.tsv.",
+            "legacyMarkerAlreadyCurrent": "Non queda ningún marcador antigo.",
+            "recoveryQr": "QR de recuperación",
+            "qrErrorCorrection": "Corrección de erros",
+            "qrRecommended": "(recomendado)",
+            "qrHint": "Os niveis máis altos son máis resistentes nas copias impresas ou escaneadas.",
+            "qrPrintNote": "Nivel QR: {level} - escanea cun escáner QR USB ou transcribe o texto superior"
         },
         "aerocryptProfile": {
             "enable": "Crypt (Cifrado)",
@@ -5106,7 +5119,7 @@
             "keyfileGeneratedBackup": "Ficheiro de clave xerado. Faga unha copia agora: perdelo deixa a caixa forte inaccesible para sempre.",
             "keyfileRepointHint": "Esta ruta só indica onde está o ficheiro de clave; cambiala non volve cifrar a caixa forte. Un ficheiro de clave errado ou ausente rexeita o desbloqueo.",
             "keyfileStorageHint": "Gárdao nun disco local ou nunha unidade USB, separado do remoto que estás cifrando, e conserva unha copia de seguranza.",
-            "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
+            "headerToggle": "Escribir cabeceira no remote (.aerocrypt.tsv)",
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "Ruta remota da superposición",
             "overlaysRemotePathHint": "Subcartafol do Remote Path onde se ancora a superposición. Déixao baleiro para usar o Remote Path, ou escribe só un nome de subcartafol (créase baixo o Remote Path).",

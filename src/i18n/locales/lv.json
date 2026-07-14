@@ -5025,7 +5025,7 @@
                 "heading": "Ko šis pārklājums dara",
                 "p1": "Šifrē failu nosaukumus un saturu <strong>uzreiz</strong>, pirms tos nosūta uz serveri, un atšifrē tos lejupielādes laikā. Serveris redz tikai blobus ar sajauktiem nosaukumiem. Tu redzi sākotnējos nosaukumus.",
                 "p2": "Kamēr pārklājums ir aktīvs: tava attālā sesija rāda saturu atklātā veidā, katra augšupielāde tiek šifrēta un katra lejupielāde tiek atšifrēta. Meklē <em>AEROCRYPT</em> apzīmējumu ceļa joslā.",
-                "p3": "Šis ir AeroFTP <strong>vietējais</strong> pārklājums uz tā paša auditētā dzinēja kā AeroVault (AES-256-GCM-SIV saturam, AES-256-SIV nosaukumiem, Argon2id). Pārklājuma sāls tiek glabāta failā <code>.aeroftp-crypt.json</code> tā saknē attālajā serverī, tāpēc to var atkārtoti atvērt no jebkuras ierīces, izmantojot tikai paroli."
+                "p3": "Šis ir AeroFTP <strong>vietējais</strong> overlay tajā pašā auditētajā dzinī kā AeroVault (AES-256-GCM-SIV saturs, AES-256-SIV nosaukumi, Argon2id). Overlay sāls tiek glabāts marķierī (<code>.aerocrypt.tsv</code> jaunām glabātavām, mantotais <code>.aeroftp-crypt.json</code> joprojām ir lasāms) tā saknē attālajā vietā, tāpēc to var atkārtoti atvērt no jebkuras ierīces tikai ar paroli."
             },
             "openExisting": "Atvērt esošu",
             "createNew": "Izveidot jaunu",
@@ -5058,7 +5058,20 @@
             "recoveryKitIntro": "Neobligāti. Šis komplekts satur tikai publisko konfigurāciju (vault ID, salt, KDF parametri), nekad noslēpumus. Komplekts un jūsu parole abi ir nepieciešami, lai atjaunotu glabātavu pēc vietējās atslēgu krātuves zaudēšanas (pārinstalēšana vai jauns dators), taču glabājiet tos atsevišķās vietās: neviens no tiem atsevišķi nevar atvērt glabātavu. Jūs varat to atkārtoti atvērt un saglabāt jebkurā laikā.",
             "showKit": "Atkopšanas komplekts",
             "hideKit": "Aizvērt",
-            "kitUnavailable": "Atkopšanas komplekts šai glabātavai vēl nav pieejams."
+            "kitUnavailable": "Atkopšanas komplekts šai glabātavai vēl nav pieejams.",
+            "defaultSaltLabel": "Noklusējuma sāls (izvēles režīms, pārnesamība tikai ar paroli; nepieciešama augsta entropija un apliecinājums)",
+            "defaultSaltStrength128": "ieteicami 128 biti",
+            "defaultSaltStrength256": "256 biti",
+            "defaultSaltAttestation": "Es izmantoju paroļu pārvaldnieku un saprotu sasaistāmības kompromisu.",
+            "legacyMarkerNotice": "Šis vault joprojām izmanto veco marķieri .aeroftp-crypt.json. Pēc paroles vai keyfile ievadīšanas konvertējiet to uz .aerocrypt.tsv.",
+            "migrateLegacyMarker": "Konvertēt marķieri",
+            "legacyMarkerMigrated": "Marķieris konvertēts uz .aerocrypt.tsv.",
+            "legacyMarkerAlreadyCurrent": "Vecais marķieris vairs nepastāv.",
+            "recoveryQr": "Atkopšanas QR",
+            "qrErrorCorrection": "Kļūdu labošana",
+            "qrRecommended": "(ieteicams)",
+            "qrHint": "Augstāki līmeņi ir noturīgāki drukātās vai skenētās kopijās.",
+            "qrPrintNote": "QR līmenis: {level} - skenējiet ar USB QR skeneri vai pārrakstiet iepriekš redzamo tekstu"
         },
         "aerocryptProfile": {
             "enable": "Crypt (Šifrēšana)",
@@ -5087,7 +5100,7 @@
             "keyfileGeneratedBackup": "Atslēgas fails izveidots. Izveidojiet kopiju tūlīt: tā zaudēšana uz visiem laikiem aizslēgs seifu.",
             "keyfileRepointHint": "Šis ceļš tikai norāda, kur atrodas atslēgas fails; tā maiņa nepāršifrē seifu. Nepareizs vai trūkstošs atslēgas fails noraida atslēgšanu.",
             "keyfileStorageHint": "Saglabājiet to lokālajā diskā vai USB diskā, atsevišķi no attālā servera, ko šifrējat, un saglabājiet dublējumkopiju.",
-            "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
+            "headerToggle": "Rakstīt header uz remote (.aerocrypt.tsv)",
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "Pārklājuma attālais ceļš",
             "overlaysRemotePathHint": "Remote Path apakšmape, kurā pārklājums ir noenkurots. Atstājiet tukšu, lai izmantotu Remote Path, vai ievadiet tikai apakšmapes nosaukumu (tā tiek izveidota zem Remote Path).",

@@ -5044,7 +5044,7 @@
                 "heading": "Hva dette overlegget gjør",
                 "p1": "Krypterer filnavn og innhold <strong>fortløpende</strong>, før de sendes til serveren, og dekrypterer dem når du laster ned. Serveren ser bare blobber med forvrengte navn. Du ser de opprinnelige navnene.",
                 "p2": "Mens overlegget er aktivt: fjernøkten din viser innholdet i klartekst, hver opplasting krypteres, og hver nedlasting dekrypteres. Se etter <em>AEROCRYPT</em>-merket i stilinjen.",
-                "p3": "Dette er AeroFTPs <strong>opprinnelige</strong> overlegg, på samme reviderte motor som AeroVault (AES-256-GCM-SIV for innhold, AES-256-SIV for navn, Argon2id). Overleggets salt lagres i <code>.aeroftp-crypt.json</code> i roten på fjernserveren, slik at du kan åpne det på nytt fra hvilken som helst enhet med bare passordet."
+                "p3": "Dette er AeroFTP sitt <strong>native</strong> overlay, på den samme reviderte motoren som AeroVault (AES-256-GCM-SIV-innhold, AES-256-SIV-navn, Argon2id). Overlayets salt lagres i markøren (<code>.aerocrypt.tsv</code> for nye hvelv, eldre <code>.aeroftp-crypt.json</code> er fortsatt lesbar) i roten på fjernstedet, slik at du kan åpne det igjen fra hvilken som helst enhet med bare passordet."
             },
             "openExisting": "Åpne eksisterende",
             "createNew": "Opprett ny",
@@ -5077,7 +5077,20 @@
             "recoveryKitIntro": "Valgfritt. Dette settet inneholder bare offentlig konfigurasjon (vault ID, salt, KDF-parametere), aldri hemmeligheter. Både settet og passordet ditt trengs for å gjenopprette hvelvet etter tap av det lokale nøkkellageret (ny installasjon eller ny maskin), men oppbevar dem på atskilte steder: ingen av dem kan åpne hvelvet alene. Du kan når som helst åpne det igjen og lagre det på nytt.",
             "showKit": "Gjenopprettingssett",
             "hideKit": "Lukk",
-            "kitUnavailable": "Gjenopprettingssettet er ennå ikke tilgjengelig for dette hvelvet."
+            "kitUnavailable": "Gjenopprettingssettet er ennå ikke tilgjengelig for dette hvelvet.",
+            "defaultSaltLabel": "Standardsalt (valgfritt, portabilitet kun med passord; krever høy entropi og attestering)",
+            "defaultSaltStrength128": "128-bit anbefales",
+            "defaultSaltStrength256": "256-bit",
+            "defaultSaltAttestation": "Jeg brukte en passordbehandler og forstår avveiningen om koblingsmulighet.",
+            "legacyMarkerNotice": "Denne vaulten bruker fortsatt den gamle .aeroftp-crypt.json-markøren. Konverter den til .aerocrypt.tsv etter at du har skrevet inn passordet eller keyfile.",
+            "migrateLegacyMarker": "Konverter markør",
+            "legacyMarkerMigrated": "Markør konvertert til .aerocrypt.tsv.",
+            "legacyMarkerAlreadyCurrent": "Ingen gammel markør gjenstår.",
+            "recoveryQr": "Gjenopprettings-QR",
+            "qrErrorCorrection": "Feilretting",
+            "qrRecommended": "(anbefalt)",
+            "qrHint": "Høyere nivåer er mer robuste på utskrevne eller skannede kopier.",
+            "qrPrintNote": "QR-nivå: {level} - skann med en USB QR-skanner eller skriv av teksten over"
         },
         "aerocryptProfile": {
             "enable": "Crypt (Kryptering)",
@@ -5106,7 +5119,7 @@
             "keyfileGeneratedBackup": "Nøkkelfil generert. Ta sikkerhetskopi nå: mistes den, låses hvelvet for alltid.",
             "keyfileRepointHint": "Denne stien peker bare på hvor nøkkelfilen ligger; å endre den bytter ikke hvelvets nøkkel. En feil eller manglende nøkkelfil avviser opplåsingen.",
             "keyfileStorageHint": "Lagre den på en lokal disk eller USB-enhet, atskilt fra fjernlageret du krypterer, og oppbevar en sikkerhetskopi.",
-            "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
+            "headerToggle": "Skriv header til remote (.aerocrypt.tsv)",
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "Ekstern sti for overlegg",
             "overlaysRemotePathHint": "Undermappe av Remote Path der overlegget er forankret. La feltet stå tomt for å bruke Remote Path, eller skriv bare et undermappenavn (det opprettes under Remote Path).",

@@ -5025,7 +5025,7 @@
                 "heading": "Apa yang dilakukan overlay ini",
                 "p1": "Mengenkripsi nama dan isi file <strong>secara langsung</strong> sebelum mengirimnya ke server, dan mendekripsinya saat Anda mengunduh. Server hanya melihat gumpalan data dengan nama yang teracak. Anda melihat nama aslinya.",
                 "p2": "Saat overlay aktif: sesi jarak jauh Anda menampilkan isi dalam bentuk teks biasa, setiap unggahan dienkripsi, setiap unduhan didekripsi. Cari lencana <em>AEROCRYPT</em> di bilah jalur.",
-                "p3": "Ini adalah overlay <strong>native</strong> AeroFTP, pada engine teraudit yang sama dengan AeroVault (konten AES-256-GCM-SIV, nama AES-256-SIV, Argon2id). Salt overlay disimpan dalam <code>.aeroftp-crypt.json</code> di root-nya pada server jarak jauh, sehingga Anda dapat membukanya kembali dari perangkat mana pun hanya dengan kata sandi."
+                "p3": "Ini adalah overlay <strong>native</strong> AeroFTP, pada mesin teraudit yang sama dengan AeroVault (konten AES-256-GCM-SIV, nama AES-256-SIV, Argon2id). Salt overlay disimpan di marker (<code>.aerocrypt.tsv</code> untuk vault baru, <code>.aeroftp-crypt.json</code> lama masih dapat dibaca) pada root-nya di remote, sehingga Anda dapat membukanya kembali dari perangkat apa pun hanya dengan kata sandi."
             },
             "openExisting": "Buka yang ada",
             "createNew": "Buat baru",
@@ -5058,7 +5058,20 @@
             "recoveryKitIntro": "Opsional. Kit ini hanya berisi konfigurasi publik (vault ID, salt, parameter KDF), bukan rahasia. Kit dan kata sandi Anda keduanya diperlukan untuk memulihkan brankas setelah kehilangan penyimpanan kunci lokal (pemasangan ulang atau mesin baru), tetapi simpan di tempat terpisah: tidak satu pun dari keduanya sendirian dapat membuka brankas. Anda dapat membukanya kembali dan menyimpannya lagi kapan saja.",
             "showKit": "Kit pemulihan",
             "hideKit": "Tutup",
-            "kitUnavailable": "Kit pemulihan belum tersedia untuk brankas ini."
+            "kitUnavailable": "Kit pemulihan belum tersedia untuk brankas ini.",
+            "defaultSaltLabel": "Salt default (opt-in, portabilitas hanya dengan kata sandi; memerlukan entropi tinggi dan atestasi)",
+            "defaultSaltStrength128": "128-bit disarankan",
+            "defaultSaltStrength256": "256-bit",
+            "defaultSaltAttestation": "Saya menggunakan pengelola kata sandi dan memahami kompromi keterhubungan.",
+            "legacyMarkerNotice": "Vault ini masih menggunakan marker lama .aeroftp-crypt.json. Konversikan ke .aerocrypt.tsv setelah memasukkan kata sandi atau keyfile.",
+            "migrateLegacyMarker": "Konversi marker",
+            "legacyMarkerMigrated": "Marker dikonversi ke .aerocrypt.tsv.",
+            "legacyMarkerAlreadyCurrent": "Tidak ada marker lama tersisa.",
+            "recoveryQr": "QR pemulihan",
+            "qrErrorCorrection": "Koreksi kesalahan",
+            "qrRecommended": "(disarankan)",
+            "qrHint": "Level yang lebih tinggi lebih tahan pada salinan cetak atau hasil pindai.",
+            "qrPrintNote": "Level QR: {level} - pindai dengan pemindai QR USB atau salin teks di atas"
         },
         "aerocryptProfile": {
             "enable": "Crypt (Enkripsi)",
@@ -5087,7 +5100,7 @@
             "keyfileGeneratedBackup": "Berkas kunci dibuat. Cadangkan sekarang: kehilangannya membuat brankas terkunci selamanya.",
             "keyfileRepointHint": "Jalur ini hanya menunjuk lokasi berkas kunci; mengubahnya tidak mengganti kunci brankas. Berkas kunci yang salah atau hilang menolak pembukaan.",
             "keyfileStorageHint": "Simpan di disk lokal atau drive USB, terpisah dari remote yang Anda enkripsi, dan simpan salinan cadangan.",
-            "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
+            "headerToggle": "Tulis header ke remote (.aerocrypt.tsv)",
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "Jalur Jarak Jauh Overlay",
             "overlaysRemotePathHint": "Subfolder dari Remote Path tempat overlay ditambatkan. Biarkan kosong untuk menggunakan Remote Path, atau ketik hanya nama subfolder (dibuat di dalam Remote Path).",

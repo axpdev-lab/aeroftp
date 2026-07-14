@@ -5025,7 +5025,7 @@
                 "heading": "เลเยอร์ซ้อนนี้ทำอะไร",
                 "p1": "เข้ารหัสชื่อไฟล์และเนื้อหา<strong>แบบเรียลไทม์</strong>ก่อนส่งไปยังเซิร์ฟเวอร์ และถอดรหัสเมื่อคุณดาวน์โหลด เซิร์ฟเวอร์จะเห็นเพียงก้อนข้อมูลที่มีชื่อถูกสับเปลี่ยน ส่วนคุณจะเห็นชื่อเดิม",
                 "p2": "ขณะที่เลเยอร์ซ้อนทำงานอยู่: เซสชันระยะไกลของคุณจะแสดงเนื้อหาแบบข้อความธรรมดา ทุกการอัปโหลดจะถูกเข้ารหัส และทุกการดาวน์โหลดจะถูกถอดรหัส มองหาป้าย <em>AEROCRYPT</em> ในแถบเส้นทาง",
-                "p3": "นี่คือเลเยอร์ซ้อน<strong>เนทีฟ</strong>ของ AeroFTP บนเอนจินที่ผ่านการตรวจสอบเดียวกันกับ AeroVault (เนื้อหาใช้ AES-256-GCM-SIV, ชื่อใช้ AES-256-SIV, Argon2id) ค่า salt ของเลเยอร์ซ้อนถูกจัดเก็บไว้ใน <code>.aeroftp-crypt.json</code> ที่รูทบนเซิร์ฟเวอร์ระยะไกล ดังนั้นคุณจึงสามารถเปิดมันใหม่ได้จากอุปกรณ์ใดก็ได้เพียงใช้รหัสผ่าน"
+                "p3": "นี่คือ overlay <strong>เนทีฟ</strong> ของ AeroFTP บนเอนจินที่ผ่านการตรวจสอบเดียวกับ AeroVault (เนื้อหา AES-256-GCM-SIV, ชื่อ AES-256-SIV, Argon2id) salt ของ overlay จะถูกเก็บไว้ใน marker (<code>.aerocrypt.tsv</code> สำหรับ vault ใหม่, <code>.aeroftp-crypt.json</code> แบบเดิมยังอ่านได้) ที่ root ของมันบน remote คุณจึงเปิดใหม่ได้จากทุกอุปกรณ์ด้วยรหัสผ่านเพียงอย่างเดียว"
             },
             "openExisting": "เปิดที่มีอยู่",
             "createNew": "สร้างใหม่",
@@ -5058,7 +5058,20 @@
             "recoveryKitIntro": "ไม่บังคับ ชุดนี้เก็บเฉพาะการตั้งค่าสาธารณะ (vault ID, salt, พารามิเตอร์ KDF) ไม่เคยเก็บความลับ ทั้งชุดนี้และรหัสผ่านของคุณจำเป็นต้องใช้ทั้งคู่เพื่อกู้คืนห้องนิรภัยของคุณหลังจากสูญเสียที่จัดเก็บกุญแจในเครื่อง (ติดตั้งใหม่หรือเครื่องใหม่) แต่ให้เก็บไว้ในที่แยกกัน เพราะสิ่งใดสิ่งหนึ่งเพียงลำพังไม่สามารถเปิดห้องนิรภัยได้ คุณสามารถเปิดและบันทึกใหม่ได้ทุกเมื่อ",
             "showKit": "ชุดกู้คืน",
             "hideKit": "ปิด",
-            "kitUnavailable": "ชุดกู้คืนยังไม่พร้อมใช้งานสำหรับวอลต์นี้"
+            "kitUnavailable": "ชุดกู้คืนยังไม่พร้อมใช้งานสำหรับวอลต์นี้",
+            "defaultSaltLabel": "salt เริ่มต้น (เลือกเปิดใช้เอง, พกพาได้ด้วยรหัสผ่านเท่านั้น; ต้องมี entropy สูงและ attestation)",
+            "defaultSaltStrength128": "แนะนำ 128-bit",
+            "defaultSaltStrength256": "256-bit",
+            "defaultSaltAttestation": "ฉันใช้ตัวจัดการรหัสผ่านและเข้าใจ tradeoff ด้าน linkability",
+            "legacyMarkerNotice": "vault นี้ยังใช้ marker เก่า .aeroftp-crypt.json อยู่ แปลงเป็น .aerocrypt.tsv หลังจากป้อนรหัสผ่านหรือ keyfile แล้ว",
+            "migrateLegacyMarker": "แปลง marker",
+            "legacyMarkerMigrated": "แปลง marker เป็น .aerocrypt.tsv แล้ว",
+            "legacyMarkerAlreadyCurrent": "ไม่มี marker เก่าเหลืออยู่",
+            "recoveryQr": "QR สำหรับการกู้คืน",
+            "qrErrorCorrection": "การแก้ไขข้อผิดพลาด",
+            "qrRecommended": "(แนะนำ)",
+            "qrHint": "ระดับที่สูงกว่าจะทนทานกว่าสำหรับสำเนาที่พิมพ์หรือสแกน",
+            "qrPrintNote": "ระดับ QR: {level} - สแกนด้วยเครื่องสแกน USB QR หรือคัดลอกข้อความด้านบน"
         },
         "aerocryptProfile": {
             "enable": "Crypt (การเข้ารหัส)",
@@ -5087,7 +5100,7 @@
             "keyfileGeneratedBackup": "สร้างไฟล์กุญแจแล้ว โปรดสำรองทันที: หากสูญหาย ตู้นิรภัยจะเปิดไม่ได้ตลอดไป",
             "keyfileRepointHint": "พาธนี้เพียงชี้ตำแหน่งของไฟล์กุญแจ การเปลี่ยนพาธไม่ได้เปลี่ยนกุญแจของตู้นิรภัย ไฟล์กุญแจที่ผิดหรือหายไปจะถูกปฏิเสธการปลดล็อก",
             "keyfileStorageHint": "จัดเก็บไว้ในดิสก์ภายในเครื่องหรือไดรฟ์ USB แยกจากรีโมทที่คุณกำลังเข้ารหัส และเก็บสำเนาสำรองไว้",
-            "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
+            "headerToggle": "เขียน header ไปยัง remote (.aerocrypt.tsv)",
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "เส้นทางระยะไกลของโอเวอร์เลย์",
             "overlaysRemotePathHint": "โฟลเดอร์ย่อยของ Remote Path ที่ใช้ยึดโอเวอร์เลย์ ปล่อยว่างไว้เพื่อใช้ Remote Path หรือพิมพ์เพียงชื่อโฟลเดอร์ย่อย (ระบบจะสร้างไว้ภายใต้ Remote Path)",

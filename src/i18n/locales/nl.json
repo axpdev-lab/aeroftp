@@ -5025,7 +5025,7 @@
                 "heading": "Wat deze overlay doet",
                 "p1": "Versleutelt bestandsnamen en inhoud <strong>direct</strong>, voordat ze naar de server worden verzonden, en ontsleutelt ze bij het downloaden. De server ziet alleen blobs met door elkaar gehaalde namen. U ziet de oorspronkelijke namen.",
                 "p2": "Zolang de overlay actief is: uw externe sessie toont de inhoud leesbaar, elke upload wordt versleuteld en elke download wordt ontsleuteld. Let op het <em>AEROCRYPT</em>-label in de padbalk.",
-                "p3": "Dit is de <strong>native</strong> overlay van AeroFTP, op dezelfde gecontroleerde engine als AeroVault (AES-256-GCM-SIV voor inhoud, AES-256-SIV voor namen, Argon2id). De salt van de overlay wordt opgeslagen in <code>.aeroftp-crypt.json</code> in de hoofdmap op de externe server, zodat u deze vanaf elk apparaat opnieuw kunt openen met alleen het wachtwoord."
+                "p3": "Dit is de <strong>native</strong> overlay van AeroFTP, op dezelfde geauditeerde engine als AeroVault (AES-256-GCM-SIV-inhoud, AES-256-SIV-namen, Argon2id). De salt van de overlay wordt opgeslagen in de markering (<code>.aerocrypt.tsv</code> voor nieuwe kluizen, de oudere <code>.aeroftp-crypt.json</code> blijft leesbaar) in de root op de remote, zodat je deze vanaf elk apparaat opnieuw kunt openen met alleen het wachtwoord."
             },
             "openExisting": "Bestaande openen",
             "createNew": "Nieuwe maken",
@@ -5058,7 +5058,20 @@
             "recoveryKitIntro": "Optioneel. Deze kit bevat alleen openbare configuratie (vault ID, salt, KDF-parameters), nooit geheimen. De kit en uw wachtwoord zijn beide vereist om uw kluis te herstellen na verlies van de lokale sleutelopslag (herinstallatie of nieuwe machine), maar bewaar ze op gescheiden plaatsen: geen van beide kan de kluis alleen openen. U kunt hem op elk moment opnieuw openen en opnieuw opslaan.",
             "showKit": "Herstelkit",
             "hideKit": "Sluiten",
-            "kitUnavailable": "De herstelkit is nog niet beschikbaar voor deze kluis."
+            "kitUnavailable": "De herstelkit is nog niet beschikbaar voor deze kluis.",
+            "defaultSaltLabel": "Standaard-salt (opt-in, portabiliteit met alleen wachtwoord; vereist hoge entropie en attestatie)",
+            "defaultSaltStrength128": "128-bit aanbevolen",
+            "defaultSaltStrength256": "256-bit",
+            "defaultSaltAttestation": "Ik heb een wachtwoordmanager gebruikt en begrijp de afweging rond koppelbaarheid.",
+            "legacyMarkerNotice": "Deze vault gebruikt nog de oude marker .aeroftp-crypt.json. Converteer die naar .aerocrypt.tsv nadat je het wachtwoord of keyfile hebt ingevoerd.",
+            "migrateLegacyMarker": "Marker converteren",
+            "legacyMarkerMigrated": "Marker geconverteerd naar .aerocrypt.tsv.",
+            "legacyMarkerAlreadyCurrent": "Er is geen oude marker meer.",
+            "recoveryQr": "Herstel-QR",
+            "qrErrorCorrection": "Foutcorrectie",
+            "qrRecommended": "(aanbevolen)",
+            "qrHint": "Hogere niveaus zijn robuuster op afgedrukte of gescande kopieën.",
+            "qrPrintNote": "QR-niveau: {level} - scan met een USB-QR-scanner of schrijf de bovenstaande tekst over"
         },
         "aerocryptProfile": {
             "enable": "Crypt (Versleuteling)",
@@ -5087,7 +5100,7 @@
             "keyfileGeneratedBackup": "Sleutelbestand gegenereerd. Maak nu een back-up: verlies maakt de kluis voorgoed onopenbaar.",
             "keyfileRepointHint": "Dit pad wijst alleen aan waar het sleutelbestand staat; het wijzigen versleutelt de kluis niet opnieuw. Een verkeerd of ontbrekend sleutelbestand weigert het ontgrendelen.",
             "keyfileStorageHint": "Bewaar het op een lokale schijf of USB-stick, gescheiden van de externe locatie die u versleutelt, en bewaar een back-up.",
-            "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
+            "headerToggle": "Header naar remote schrijven (.aerocrypt.tsv)",
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "Extern pad van overlay",
             "overlaysRemotePathHint": "Submap van het Remote Path waar de overlay is verankerd. Laat leeg om het Remote Path te gebruiken, of typ alleen een submapnaam (deze wordt onder het Remote Path aangemaakt).",

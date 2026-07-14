@@ -17,11 +17,11 @@
 //! - Names use **AES-256-SIV deterministically over the master key alone**
 //!   ([`crate::aerocrypt::names`]); there is no per-directory IV, so name
 //!   encoding takes no `is_dir`/`dir_iv` argument.
-//! - The overlay's salt lives in a `.aeroftp-crypt.json` config **on the
-//!   remote** (rclone keeps its config locally). Unlocking an existing overlay
-//!   therefore needs to read that file first, which is why this set adds
-//!   [`aerocrypt_provider_read_config`] on top of the eight rclone-parallel
-//!   commands.
+//! - The overlay's salt lives in a remote marker (`.aerocrypt.tsv` for new
+//!   vaults, legacy `.aeroftp-crypt.json` still readable). rclone keeps its
+//!   config locally. Unlocking an existing overlay therefore needs to read that
+//!   marker first, which is why this set adds [`aerocrypt_provider_read_config`]
+//!   on top of the eight rclone-parallel commands.
 
 use std::collections::HashMap;
 
@@ -110,10 +110,27 @@ impl Default for AeroCryptState {
 pub struct AeroCryptVaultInfo {
     pub vault_id: String,
     pub version: u8,
-    /// The overlay config JSON. For a fresh overlay (no `config_json` passed to
-    /// unlock) this is the newly generated config the caller must persist as
-    /// `.aeroftp-crypt.json` at the overlay root.
+    /// The overlay config text. For a fresh overlay (no `config_json` passed to
+    /// unlock) this is the newly generated config the caller must persist as the
+    /// `.aerocrypt.tsv` marker at the overlay root.
     pub config_json: String,
+}
+
+/// Lightweight marker probe for the unlock modal. It carries no config bytes and
+/// is safe to expose before the user enters credentials.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AeroCryptMarkerStatus {
+    pub has_current_marker: bool,
+    pub has_legacy_marker: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AeroCryptMarkerMigrationResult {
+    pub changed: bool,
+    pub legacy_deleted: bool,
+    pub warning: Option<String>,
 }
 
 // ── Unlock / lock (pure, no provider I/O) ────────────────────────────────────
@@ -121,11 +138,11 @@ pub struct AeroCryptVaultInfo {
 /// Unlock a native AeroCrypt overlay for the session.
 ///
 /// `config_json`:
-/// - `Some(json)` — an existing overlay; parse it, derive the master key, and
+/// - `Some(json)` - an existing overlay; parse it, derive the master key, and
 ///   verify the key-bound config MAC (v3), so a tampered `version`/`salt` or a
 ///   wrong password fails closed (the caller reads the config from the remote
 ///   via [`aerocrypt_provider_read_config`]).
-/// - `None` — prepare a fresh overlay: generate a v3 salt + key-bound config and
+/// - `None` - prepare a fresh overlay: generate a v3 salt + key-bound config and
 ///   derive the key. The returned `config_json` is what the caller persists on
 ///   the remote (e.g. via [`aerocrypt_provider_create_remote`]).
 #[tauri::command]
@@ -218,9 +235,9 @@ pub async fn aerocrypt_lock(
 
 // ── Provider commands ────────────────────────────────────────────────────────
 
-/// Read the overlay config (`.aeroftp-crypt.json`) from the provider's current
-/// directory. Returns `None` when no overlay is present there, so a GUI can tell
-/// "open existing" from "create new". Native-model addition over the rclone set.
+/// Read the overlay config marker from the provider's current directory. Returns
+/// `None` when no overlay is present there, so a GUI can tell "open existing"
+/// from "create new". Native-model addition over the rclone set.
 #[tauri::command]
 pub async fn aerocrypt_provider_read_config(
     provider_state: State<'_, ProviderState>,
@@ -297,11 +314,206 @@ pub async fn aerocrypt_provider_read_config(
     }
 }
 
+async fn read_marker_text(
+    provider: &mut dyn crate::providers::StorageProvider,
+    path: &str,
+) -> Result<String, String> {
+    if let Ok(sz) = provider.size(path).await {
+        if sz > CONFIG_MAX_BYTES {
+            return Err(format!(
+                "crypt config at {} is implausibly large ({} bytes); refusing to read",
+                path, sz
+            ));
+        }
+    }
+    let bytes = provider
+        .download_to_bytes(path)
+        .await
+        .map_err(|e| format!("Cannot read AeroCrypt marker: {e}"))?;
+    if bytes.len() as u64 > CONFIG_MAX_BYTES {
+        return Err("crypt config exceeds the maximum allowed size".to_string());
+    }
+    String::from_utf8(bytes).map_err(|e| format!("AeroCrypt marker is not valid UTF-8: {e}"))
+}
+
+async fn validate_marker_for_migration(
+    config_text: &str,
+    password: &str,
+    keyfile_digest: Option<[u8; KEY_SIZE]>,
+) -> Result<(OverlayConfig, [u8; KEY_SIZE]), String> {
+    let config = overlay::parse_config(config_text)?;
+    if config.is_read_only() {
+        return Err(format!(
+            "AeroCrypt v{} metadata migration is not supported; only v3 vaults can migrate",
+            config.version()
+        ));
+    }
+    let keyfile_digest = match (config.requires_keyfile(), keyfile_digest) {
+        (true, None) => {
+            return Err("this AeroCrypt overlay requires a keyfile (none was provided)".to_string())
+        }
+        (false, Some(_)) => return Err(
+            "this AeroCrypt overlay was not created with a keyfile (remove the keyfile to migrate)"
+                .to_string(),
+        ),
+        (true, kd) => kd,
+        (false, _) => None,
+    };
+    let master_key = derive_master_key_async(&config, password, keyfile_digest).await?;
+    overlay::verify_config_mac(&config, &master_key)?;
+    Ok((config, master_key))
+}
+
+/// Probe for a legacy marker at the current AeroCrypt root. The modal uses this
+/// to show the opt-in conversion action only when it is relevant.
+#[tauri::command]
+pub async fn aerocrypt_provider_marker_status(
+    provider_state: State<'_, ProviderState>,
+    base_path: Option<String>,
+) -> Result<AeroCryptMarkerStatus, String> {
+    let mut provider_lock = provider_state.provider.lock().await;
+    let provider = provider_lock
+        .as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+
+    if let Some(bp) = base_path
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty() && *s != "/")
+    {
+        provider
+            .cd(bp)
+            .await
+            .map_err(|e| format!("Failed to cd into {bp}: {e}"))?;
+    }
+
+    let cwd = provider.pwd().await.unwrap_or_else(|_| "/".to_string());
+    let current_path = join_remote_path(&cwd, overlay::CRYPT_CONFIG_WRITE_NAME);
+    let legacy_path = join_remote_path(&cwd, overlay::CRYPT_CONFIG_LEGACY_NAME);
+    Ok(AeroCryptMarkerStatus {
+        has_current_marker: provider.exists(&current_path).await.unwrap_or(false),
+        has_legacy_marker: provider.exists(&legacy_path).await.unwrap_or(false),
+    })
+}
+
+/// Convert an explicitly detected legacy headed marker to the new TSV marker.
+/// This is never automatic: callers must pass the unlock factors, we verify the
+/// legacy config MAC, write and verify the new marker, then delete the legacy one.
+#[tauri::command]
+pub async fn aerocrypt_provider_migrate_legacy_marker(
+    provider_state: State<'_, ProviderState>,
+    password: String,
+    keyfile_path: Option<String>,
+    base_path: Option<String>,
+) -> Result<AeroCryptMarkerMigrationResult, String> {
+    if password.is_empty() && keyfile_path.as_deref().unwrap_or("").trim().is_empty() {
+        return Err("password or keyfile required to migrate the AeroCrypt marker".to_string());
+    }
+    let keyfile_digest = resolve_ui_keyfile_digest(keyfile_path.as_deref())?;
+    let mut provider_lock = provider_state.provider.lock().await;
+    let provider = provider_lock
+        .as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+
+    if let Some(bp) = base_path
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty() && *s != "/")
+    {
+        provider
+            .cd(bp)
+            .await
+            .map_err(|e| format!("Failed to cd into {bp}: {e}"))?;
+    }
+
+    let cwd = provider.pwd().await.unwrap_or_else(|_| "/".to_string());
+    let current_path = join_remote_path(&cwd, overlay::CRYPT_CONFIG_WRITE_NAME);
+    let legacy_path = join_remote_path(&cwd, overlay::CRYPT_CONFIG_LEGACY_NAME);
+    let legacy_exists = provider
+        .exists(&legacy_path)
+        .await
+        .map_err(|e| format!("Failed to probe legacy AeroCrypt marker: {e}"))?;
+    if !legacy_exists {
+        return Ok(AeroCryptMarkerMigrationResult {
+            changed: false,
+            legacy_deleted: false,
+            warning: None,
+        });
+    }
+
+    let legacy_text = read_marker_text(&mut **provider, &legacy_path).await?;
+    let (legacy_config, legacy_master) =
+        validate_marker_for_migration(&legacy_text, &password, keyfile_digest).await?;
+    let rebuilt_marker = overlay::rebuild_config_v3(&legacy_config, &legacy_master)?;
+    validate_marker_for_migration(&rebuilt_marker, &password, keyfile_digest).await?;
+
+    let current_exists = provider
+        .exists(&current_path)
+        .await
+        .map_err(|e| format!("Failed to probe current AeroCrypt marker: {e}"))?;
+    if current_exists {
+        let current_text = read_marker_text(&mut **provider, &current_path).await?;
+        validate_marker_for_migration(&current_text, &password, keyfile_digest).await?;
+    } else {
+        let temp = std::env::temp_dir().join(format!(
+            "aeroftp_aerocrypt_marker_{}_{}.tsv",
+            chrono::Utc::now().timestamp_millis(),
+            uuid::Uuid::new_v4()
+        ));
+        tokio::fs::write(&temp, rebuilt_marker.as_bytes())
+            .await
+            .map_err(|e| format!("Failed to stage AeroCrypt marker: {e}"))?;
+        let remote_tmp = format!("{current_path}.aerotmp-{}", uuid::Uuid::new_v4());
+        let upload = provider
+            .upload(&temp.to_string_lossy(), &remote_tmp, None)
+            .await
+            .map_err(|e| format!("Failed to upload staged AeroCrypt marker: {e}"));
+        let _ = tokio::fs::remove_file(&temp).await;
+        upload?;
+
+        let staged = match provider.download_to_bytes(&remote_tmp).await {
+            Ok(bytes) => bytes,
+            Err(e) => {
+                let _ = provider.delete(&remote_tmp).await;
+                return Err(format!("Failed to verify staged AeroCrypt marker: {e}"));
+            }
+        };
+        if staged != rebuilt_marker.as_bytes() {
+            let _ = provider.delete(&remote_tmp).await;
+            return Err(
+                "staged AeroCrypt marker failed byte-for-byte verification; legacy marker retained"
+                    .to_string(),
+            );
+        }
+        let staged_text = String::from_utf8(staged)
+            .map_err(|e| format!("Staged AeroCrypt marker is not valid UTF-8: {e}"))?;
+        validate_marker_for_migration(&staged_text, &password, keyfile_digest).await?;
+        if let Err(e) = provider.rename(&remote_tmp, &current_path).await {
+            let _ = provider.delete(&remote_tmp).await;
+            return Err(format!("Failed to publish verified AeroCrypt marker: {e}"));
+        }
+    }
+
+    let current_text = read_marker_text(&mut **provider, &current_path).await?;
+    validate_marker_for_migration(&current_text, &password, keyfile_digest).await?;
+    let warning = match provider.delete(&legacy_path).await {
+        Ok(()) => None,
+        Err(e) => Some(format!(
+            "current marker verified, but legacy marker could not be deleted: {e}"
+        )),
+    };
+    Ok(AeroCryptMarkerMigrationResult {
+        changed: warning.is_none(),
+        legacy_deleted: warning.is_none(),
+        warning,
+    })
+}
+
 /// Bootstrap a brand-new native AeroCrypt overlay on the connected provider:
-/// generate a fresh v3 (key-bound) config, derive the key, write
-/// `.aeroftp-crypt.json` at the (optional) sub-path, and register the unlocked
-/// vault. Refuses to overwrite an existing overlay unless `force` is set, because
-/// re-initializing rotates the salt and would orphan every existing file.
+/// generate a fresh v3 (key-bound) config, derive the key, write `.aerocrypt.tsv`
+/// at the (optional) sub-path, and register the unlocked vault. Refuses to
+/// overwrite an existing overlay unless `force` is set, because re-initializing
+/// rotates the salt and would orphan every existing file.
 #[tauri::command]
 pub async fn aerocrypt_provider_create_remote(
     provider_state: State<'_, ProviderState>,

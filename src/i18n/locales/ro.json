@@ -5025,7 +5025,7 @@
                 "heading": "Ce face acest strat",
                 "p1": "Criptează numele și conținutul fișierelor <strong>din mers</strong>, înainte de a le trimite către server, și le decriptează la descărcare. Serverul vede doar blob-uri cu nume amestecate. Dumneavoastră vedeți numele originale.",
                 "p2": "Cât timp stratul este activ: sesiunea la distanță afișează conținutul în clar, fiecare încărcare este criptată, fiecare descărcare este decriptată. Căutați insigna <em>AEROCRYPT</em> în bara de cale.",
-                "p3": "Acesta este stratul <strong>nativ</strong> al AeroFTP, pe același motor auditat ca AeroVault (conținut AES-256-GCM-SIV, nume AES-256-SIV, Argon2id). Sarea stratului este stocată în <code>.aeroftp-crypt.json</code> la rădăcina sa pe serverul la distanță, astfel încât îl puteți redeschide de pe orice dispozitiv doar cu parola."
+                "p3": "Acesta este overlay-ul <strong>nativ</strong> al AeroFTP, pe același motor auditat ca AeroVault (conținut AES-256-GCM-SIV, nume AES-256-SIV, Argon2id). Salt-ul overlay-ului este stocat în marker (<code>.aerocrypt.tsv</code> pentru seifuri noi, vechiul <code>.aeroftp-crypt.json</code> rămâne lizibil) la rădăcina lui pe remote, astfel încât îl poți redeschide de pe orice dispozitiv doar cu parola."
             },
             "openExisting": "Deschide existent",
             "createNew": "Creează nou",
@@ -5058,7 +5058,20 @@
             "recoveryKitIntro": "Opțional. Acest kit conține doar configurație publică (vault ID, salt, parametri KDF), niciodată secrete. Kitul și parola sunt amândouă necesare pentru a restaura seiful după pierderea depozitului de chei local (reinstalare sau mașină nouă), dar păstrați-le în locuri separate: niciunul singur nu poate deschide seiful. Îl puteți redeschide și salva din nou oricând.",
             "showKit": "Kit de recuperare",
             "hideKit": "Închide",
-            "kitUnavailable": "Kitul de recuperare nu este încă disponibil pentru acest seif."
+            "kitUnavailable": "Kitul de recuperare nu este încă disponibil pentru acest seif.",
+            "defaultSaltLabel": "Salt implicit (opțional, portabilitate doar cu parolă; necesită entropie ridicată și atestare)",
+            "defaultSaltStrength128": "128 de biți recomandat",
+            "defaultSaltStrength256": "256 de biți",
+            "defaultSaltAttestation": "Am folosit un manager de parole și înțeleg compromisul privind posibilitatea de corelare.",
+            "legacyMarkerNotice": "Acest vault folosește încă vechiul marker .aeroftp-crypt.json. Convertiți-l în .aerocrypt.tsv după introducerea parolei sau a keyfile-ului.",
+            "migrateLegacyMarker": "Convertește markerul",
+            "legacyMarkerMigrated": "Marker convertit în .aerocrypt.tsv.",
+            "legacyMarkerAlreadyCurrent": "Nu mai există niciun marker vechi.",
+            "recoveryQr": "QR de recuperare",
+            "qrErrorCorrection": "Corectarea erorilor",
+            "qrRecommended": "(recomandat)",
+            "qrHint": "Nivelurile mai ridicate sunt mai rezistente pe copiile tipărite sau scanate.",
+            "qrPrintNote": "Nivel QR: {level} - scanați cu un scaner QR USB sau transcrieți textul de mai sus"
         },
         "aerocryptProfile": {
             "enable": "Crypt (Criptare)",
@@ -5087,7 +5100,7 @@
             "keyfileGeneratedBackup": "Fișier de cheie generat. Faceți o copie acum: pierderea lui blochează seiful pentru totdeauna.",
             "keyfileRepointHint": "Această cale doar indică unde se află fișierul de cheie; schimbarea ei nu recriptează seiful. Un fișier de cheie greșit sau lipsă refuză deblocarea.",
             "keyfileStorageHint": "Salvați-l pe un disc local sau pe o unitate USB, separat de serverul la distanță pe care îl criptați, și păstrați o copie de rezervă.",
-            "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
+            "headerToggle": "Scrie headerul pe remote (.aerocrypt.tsv)",
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "Cale la distanță a suprapunerii",
             "overlaysRemotePathHint": "Subfolder al Remote Path unde este ancorată suprapunerea. Lăsați gol pentru a folosi Remote Path sau introduceți doar un nume de subfolder (se creează sub Remote Path).",

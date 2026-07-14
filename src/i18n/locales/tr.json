@@ -5025,7 +5025,7 @@
                 "heading": "Bu katman ne yapar",
                 "p1": "Dosya adlarını ve içeriklerini sunucuya göndermeden önce <strong>anında</strong> şifreler ve indirdiğinizde çözer. Sunucu yalnızca karıştırılmış adlara sahip ham verileri görür. Siz orijinal adları görürsünüz.",
                 "p2": "Katman etkinken: uzak oturumunuz içerikleri açık olarak gösterir, her yükleme şifrelenir, her indirme çözülür. Yol çubuğunda <em>AEROCRYPT</em> rozetini arayın.",
-                "p3": "Bu, AeroFTP'nin AeroVault ile aynı denetlenmiş motor üzerinde çalışan <strong>yerel</strong> katmanıdır (AES-256-GCM-SIV içerik, AES-256-SIV adlar, Argon2id). Katmanın salt değeri uzak sunucudaki kök dizinde <code>.aeroftp-crypt.json</code> dosyasında saklanır, böylece yalnızca parolayla herhangi bir cihazdan yeniden açabilirsiniz."
+                "p3": "Bu, AeroFTP'nin AeroVault ile aynı denetlenmiş motor üzerindeki <strong>yerel</strong> overlay'idir (AES-256-GCM-SIV içerik, AES-256-SIV adlar, Argon2id). Overlay'in salt değeri uzak kökteki marker içinde saklanır (yeni vault'lar için <code>.aerocrypt.tsv</code>, eski <code>.aeroftp-crypt.json</code> hâlâ okunabilir), böylece yalnızca parolayla herhangi bir cihazdan yeniden açabilirsiniz."
             },
             "openExisting": "Mevcut olanı aç",
             "createNew": "Yeni oluştur",
@@ -5058,7 +5058,20 @@
             "recoveryKitIntro": "İsteğe bağlı. Bu kit yalnızca genel yapılandırmayı içerir (vault ID, salt, KDF parametreleri), asla gizli bilgi içermez. Yerel anahtar deposunu kaybettikten sonra (yeniden kurulum veya yeni makine) kasanızı geri yüklemek için kit ve parolanızın ikisi de gereklidir, ancak bunları ayrı yerlerde saklayın: hiçbiri tek başına kasayı açamaz. İstediğiniz zaman yeniden açıp tekrar kaydedebilirsiniz.",
             "showKit": "Kurtarma kiti",
             "hideKit": "Kapat",
-            "kitUnavailable": "Kurtarma kiti bu kasa için henüz kullanılamıyor."
+            "kitUnavailable": "Kurtarma kiti bu kasa için henüz kullanılamıyor.",
+            "defaultSaltLabel": "Varsayılan salt (isteğe bağlı, yalnızca parolayla taşınabilirlik; yüksek entropy ve attestation gerektirir)",
+            "defaultSaltStrength128": "128-bit önerilir",
+            "defaultSaltStrength256": "256-bit",
+            "defaultSaltAttestation": "Bir parola yöneticisi kullandım ve linkability ödününü anlıyorum.",
+            "legacyMarkerNotice": "Bu vault hâlâ eski .aeroftp-crypt.json markerını kullanıyor. Parolayı veya keyfile'ı girdikten sonra .aerocrypt.tsv'ye dönüştürün.",
+            "migrateLegacyMarker": "Markerı dönüştür",
+            "legacyMarkerMigrated": "Marker .aerocrypt.tsv'ye dönüştürüldü.",
+            "legacyMarkerAlreadyCurrent": "Eski marker kalmadı.",
+            "recoveryQr": "Kurtarma QR'si",
+            "qrErrorCorrection": "Hata düzeltme",
+            "qrRecommended": "(önerilir)",
+            "qrHint": "Daha yüksek seviyeler basılı veya taranmış kopyalarda daha dayanıklıdır.",
+            "qrPrintNote": "QR seviyesi: {level} - USB QR tarayıcıyla tarayın veya yukarıdaki metni yazıya geçirin"
         },
         "aerocryptProfile": {
             "enable": "Crypt (Şifreleme)",
@@ -5087,7 +5100,7 @@
             "keyfileGeneratedBackup": "Anahtar dosyası oluşturuldu. Hemen yedekleyin: kaybı kasayı sonsuza dek kilitler.",
             "keyfileRepointHint": "Bu yol yalnızca anahtar dosyasının nerede olduğunu gösterir; değiştirmek kasanın anahtarını değiştirmez. Yanlış veya eksik anahtar dosyası kilit açmayı reddeder.",
             "keyfileStorageHint": "Şifrelediğiniz uzak sunucudan ayrı olarak yerel diskte veya USB sürücüde saklayın ve bir yedek kopyasını tutun.",
-            "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
+            "headerToggle": "Header'ı remote'a yaz (.aerocrypt.tsv)",
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "Yer Paylaşımı Uzak Yolu",
             "overlaysRemotePathHint": "Yer paylaşımının sabitlendiği Remote Path alt klasörü. Remote Path'i kullanmak için boş bırakın veya yalnızca bir alt klasör adı yazın (Remote Path altında oluşturulur).",

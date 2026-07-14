@@ -4853,7 +4853,7 @@ interface UpdateVerificationInfo {
   // renders transparently decrypted (Filen/MEGA-style), with no modal. The
   // provider is already positioned at the overlay scope (initialPath ==
   // remoteScope) by the connect listing. Both kinds are handled: native
-  // (`aerocrypt`, config from .aeroftp-crypt.json) and `rclone-crypt` interop
+  // (`aerocrypt`, config from the AeroCrypt marker) and `rclone-crypt` interop
   // (salt + filename/dir-name encryption from the binding, salt from the vault).
   // Returns the activated overlay's vault id + provider prefix, or null when no
   // overlay was activated. The vault info lets callers (switchSession recovery)

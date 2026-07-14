@@ -5025,7 +5025,7 @@
                 "heading": "Vad det här överlägget gör",
                 "p1": "Krypterar filnamn och innehåll <strong>i farten</strong>, innan de skickas till servern, och dekrypterar dem när du laddar ner. Servern ser bara blobbar med förvanskade namn. Du ser de ursprungliga namnen.",
                 "p2": "Medan överlägget är aktivt: din fjärrsession visar innehållet i klartext, varje uppladdning krypteras och varje nedladdning dekrypteras. Håll utkik efter <em>AEROCRYPT</em>-märket i sökvägsfältet.",
-                "p3": "Det här är AeroFTP:s <strong>inbyggda</strong> överlägg, på samma granskade motor som AeroVault (AES-256-GCM-SIV för innehåll, AES-256-SIV för namn, Argon2id). Överläggets salt lagras i <code>.aeroftp-crypt.json</code> i dess rot på fjärrservern, så att du kan öppna det igen från valfri enhet med bara lösenordet."
+                "p3": "Det här är AeroFTP:s <strong>inbyggda</strong> overlay, på samma granskade motor som AeroVault (AES-256-GCM-SIV-innehåll, AES-256-SIV-namn, Argon2id). Overlayets salt lagras i markören (<code>.aerocrypt.tsv</code> för nya valv, äldre <code>.aeroftp-crypt.json</code> kan fortfarande läsas) i dess rot på fjärrplatsen, så du kan öppna det igen från vilken enhet som helst med endast lösenordet."
             },
             "openExisting": "Öppna befintligt",
             "createNew": "Skapa nytt",
@@ -5058,7 +5058,20 @@
             "recoveryKitIntro": "Valfritt. Detta kit innehåller endast offentlig konfiguration (vault ID, salt, KDF-parametrar), aldrig hemligheter. Både kitet och ditt lösenord behövs för att återställa valvet efter förlust av det lokala nyckellagret (ominstallation eller ny dator), men förvara dem på separata platser: ingetdera kan öppna valvet på egen hand. Du kan när som helst öppna det igen och spara det på nytt.",
             "showKit": "Återställningskit",
             "hideKit": "Stäng",
-            "kitUnavailable": "Återställningskitet är ännu inte tillgängligt för detta valv."
+            "kitUnavailable": "Återställningskitet är ännu inte tillgängligt för detta valv.",
+            "defaultSaltLabel": "Standardsalt (valfritt, portabilitet endast med lösenord; kräver hög entropi och attestering)",
+            "defaultSaltStrength128": "128-bit rekommenderas",
+            "defaultSaltStrength256": "256-bit",
+            "defaultSaltAttestation": "Jag använde en lösenordshanterare och förstår avvägningen kring länkbarhet.",
+            "legacyMarkerNotice": "Detta vault använder fortfarande den gamla .aeroftp-crypt.json-markören. Konvertera den till .aerocrypt.tsv efter att du har angett lösenordet eller keyfile.",
+            "migrateLegacyMarker": "Konvertera markör",
+            "legacyMarkerMigrated": "Markör konverterad till .aerocrypt.tsv.",
+            "legacyMarkerAlreadyCurrent": "Ingen gammal markör finns kvar.",
+            "recoveryQr": "Återställnings-QR",
+            "qrErrorCorrection": "Felkorrigering",
+            "qrRecommended": "(rekommenderas)",
+            "qrHint": "Högre nivåer är mer tåliga på utskrivna eller skannade kopior.",
+            "qrPrintNote": "QR-nivå: {level} - skanna med en USB QR-skanner eller skriv av texten ovan"
         },
         "aerocryptProfile": {
             "enable": "Crypt (Kryptering)",
@@ -5087,7 +5100,7 @@
             "keyfileGeneratedBackup": "Nyckelfil genererad. Säkerhetskopiera nu: förlust låser valvet för alltid.",
             "keyfileRepointHint": "Denna sökväg pekar bara på var nyckelfilen ligger; att ändra den byter inte valvets nyckel. En fel eller saknad nyckelfil nekar upplåsningen.",
             "keyfileStorageHint": "Spara den på en lokal disk eller ett USB-minne, åtskild från fjärrservern du krypterar, och behåll en säkerhetskopia.",
-            "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
+            "headerToggle": "Skriv header till remote (.aerocrypt.tsv)",
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "Fjärrsökväg för överlägg",
             "overlaysRemotePathHint": "Undermapp till Remote Path där överlägget är förankrat. Lämna tomt för att använda Remote Path, eller skriv bara ett undermappsnamn (det skapas under Remote Path).",

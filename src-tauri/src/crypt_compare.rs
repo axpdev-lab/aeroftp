@@ -713,25 +713,22 @@ mod tests {
     /// Compare unlock must open a headerless overlay from the local keystore
     /// config alone, with NO remote marker on the wire, and stay fail-closed.
     /// The marker-PRESENT branch is covered by the tests above; this exercises
-    /// the `local_config_json` fallback branch (`exists()` false) end to end.
+    /// the local-config fallback branch (`exists()` false) end to end.
     #[tokio::test]
     async fn unlock_overlay_keys_headerless_from_local_config() {
         use crate::aerocrypt::overlay;
+        use base64::Engine as _;
 
-        // Build a valid v3 config JSON the way `provider_with_v3_config` does,
+        // Build a valid v3 config marker the way `provider_with_v3_config` does,
         // but keep it OUT of the provider so `exists()` returns false: this is a
         // headerless overlay whose config lives only in the local keystore.
         let salt = overlay::random_salt_v3();
         let tmp = overlay::OverlayConfig::v3_bootstrap(salt);
         let master_key =
             overlay::derive_master_key_with_keyfile(&tmp, "pw", None).expect("derive master key");
-        let json = overlay::init_config_v3(&salt, &master_key).expect("build headerless config");
-        let config_salt = serde_json::from_str::<serde_json::Value>(&json)
-            .expect("config json parses")
-            .get("salt")
-            .and_then(|v| v.as_str())
-            .expect("config carries a salt")
-            .to_string();
+        let config_text =
+            overlay::init_config_v3(&salt, &master_key).expect("build headerless config");
+        let config_salt = base64::engine::general_purpose::STANDARD.encode(salt);
 
         // Empty provider -> the marker `<scope>/.aeroftp-crypt.json` is absent.
         let empty = || ConfigProvider {
@@ -740,7 +737,7 @@ mod tests {
 
         // 1) Headerless unlock succeeds from the local config alone.
         let mut params = aerocrypt_params("/Headerless");
-        params.local_config_json = Some(json.clone());
+        params.local_config_json = Some(config_text.clone());
         params.local_config_salt = Some(config_salt.clone());
         params.profile_id = Some("srv_headerless_test".to_string());
         let mut prov = empty();
@@ -766,7 +763,7 @@ mod tests {
 
         // 3) Salt mismatch -> fail-closed (a divergent keystore never unlocks).
         let mut params_bad = aerocrypt_params("/Headerless");
-        params_bad.local_config_json = Some(json);
+        params_bad.local_config_json = Some(config_text);
         params_bad.local_config_salt = Some("deadbeef-not-the-config-salt".to_string());
         params_bad.profile_id = Some("srv_headerless_test".to_string());
         let mut prov_bad = empty();

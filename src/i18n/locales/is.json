@@ -5044,7 +5044,7 @@
                 "heading": "Hvað þetta yfirlag gerir",
                 "p1": "Dulkóðar skráarnöfn og innihald <strong>jafnóðum</strong>, áður en þau eru send á þjóninn, og afkóðar þau þegar þú sækir. Þjónninn sér aðeins gagnaklumpa með ruglað nöfn. Þú sérð upprunalegu nöfnin.",
                 "p2": "Á meðan yfirlagið er virkt: fjarlæga lotan þín sýnir innihaldið ódulkóðað, hver upphleðsla er dulkóðuð og hvert niðurhal er afkóðað. Leitaðu að <em>AEROCRYPT</em>-merkinu í slóðastikunni.",
-                "p3": "Þetta er <strong>innbyggða</strong> yfirlag AeroFTP, á sömu úttektuðu vél og AeroVault (AES-256-GCM-SIV fyrir innihald, AES-256-SIV fyrir nöfn, Argon2id). Salt yfirlagsins er geymt í <code>.aeroftp-crypt.json</code> í rót þess á fjarþjóninum, svo þú getur opnað það aftur úr hvaða tæki sem er aðeins með lykilorðinu."
+                "p3": "Þetta er <strong>innbyggða</strong> overlay AeroFTP, á sömu útteknu vél og AeroVault (AES-256-GCM-SIV-efni, AES-256-SIV-nöfn, Argon2id). Salt overlay-sins er vistað í merkinu (<code>.aerocrypt.tsv</code> fyrir nýjar vaults, eldri <code>.aeroftp-crypt.json</code> er enn læsilegt) í rót þess á fjartengda staðnum, svo þú getur opnað það aftur úr hvaða tæki sem er með aðeins lykilorðinu."
             },
             "openExisting": "Opna fyrirliggjandi",
             "createNew": "Búa til nýtt",
@@ -5077,7 +5077,20 @@
             "recoveryKitIntro": "Valfrjálst. Þetta sett inniheldur aðeins opinbera uppsetningu (vault ID, salt, KDF færibreytur), aldrei leyndarmál. Bæði settið og lykilorðið þitt eru nauðsynleg til að endurheimta hvelfinguna eftir að hafa tapað staðbundnu lyklageymslunni (enduruppsetning eða ný tölva), en geymdu þau á aðskildum stöðum: hvorugt eitt og sér getur opnað hvelfinguna. Þú getur opnað hana aftur og vistað hana á ný hvenær sem er.",
             "showKit": "Endurheimtarsett",
             "hideKit": "Loka",
-            "kitUnavailable": "Endurheimtarsettið er ekki enn tiltækt fyrir þessa hvelfingu."
+            "kitUnavailable": "Endurheimtarsettið er ekki enn tiltækt fyrir þessa hvelfingu.",
+            "defaultSaltLabel": "Sjálfgefið salt (valkvætt, færanleiki aðeins með lykilorði; krefst mikillar óreiðu og staðfestingar)",
+            "defaultSaltStrength128": "128-bit mælt með",
+            "defaultSaltStrength256": "256-bit",
+            "defaultSaltAttestation": "Ég notaði lykilorðastjóra og skil málamiðlunina um tengjanleika.",
+            "legacyMarkerNotice": "Þessi vault notar enn gamla .aeroftp-crypt.json-merkið. Umbreyttu því í .aerocrypt.tsv eftir að lykilorð eða keyfile hefur verið slegið inn.",
+            "migrateLegacyMarker": "Umbreyta merki",
+            "legacyMarkerMigrated": "Merki umbreytt í .aerocrypt.tsv.",
+            "legacyMarkerAlreadyCurrent": "Ekkert gamalt merki er eftir.",
+            "recoveryQr": "Endurheimtar-QR",
+            "qrErrorCorrection": "Villuleiðrétting",
+            "qrRecommended": "(ráðlagt)",
+            "qrHint": "Hærri stig eru þolnari á prentuðum eða skönnuðum afritum.",
+            "qrPrintNote": "QR-stig: {level} - skannaðu með USB QR-skanna eða skrifaðu upp textann hér að ofan"
         },
         "aerocryptProfile": {
             "enable": "Crypt (Dulkóðun)",
@@ -5106,7 +5119,7 @@
             "keyfileGeneratedBackup": "Lykilskrá búin til. Taktu afrit núna: glatist hún læsist hirslan að eilífu.",
             "keyfileRepointHint": "Þessi slóð bendir aðeins á hvar lykilskráin liggur; að breyta henni endurlyklar ekki hirsluna. Röng eða vantandi lykilskrá hafnar aflæsingu.",
             "keyfileStorageHint": "Vistaðu það á staðbundnum diski eða USB-drifi, aðskilið frá fjartengingunni sem þú ert að dulkóða, og geymdu öryggisafrit.",
-            "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
+            "headerToggle": "Skrifa header á remote (.aerocrypt.tsv)",
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "Fjarslóð yfirlags",
             "overlaysRemotePathHint": "Undirmappa Remote Path þar sem yfirlagið er fest. Skildu eftir autt til að nota Remote Path, eða skrifaðu aðeins undirmöppuheiti (það er búið til undir Remote Path).",

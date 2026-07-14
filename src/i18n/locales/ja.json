@@ -5025,7 +5025,7 @@
                 "heading": "このオーバーレイの機能",
                 "p1": "ファイル名と内容をサーバーへ送信する前に<strong>その場で</strong>暗号化し、ダウンロード時に復号します。サーバーには名前が暗号化されたデータの塊しか見えません。あなたには元の名前が表示されます。",
                 "p2": "オーバーレイが有効な間：リモートセッションには内容が平文で表示され、アップロードはすべて暗号化、ダウンロードはすべて復号されます。パスバーの <em>AEROCRYPT</em> バッジを確認してください。",
-                "p3": "これは AeroVault と同じ監査済みエンジン（コンテンツに AES-256-GCM-SIV、名前に AES-256-SIV、Argon2id）を使用する AeroFTP の<strong>ネイティブ</strong>オーバーレイです。オーバーレイのソルトはリモートのルートにある <code>.aeroftp-crypt.json</code> に保存されるため、パスワードさえあればどのデバイスからでも再び開けます。"
+                "p3": "これは AeroFTP の<strong>ネイティブ</strong> overlay で、AeroVault と同じ監査済みエンジンを使用しています (AES-256-GCM-SIV コンテンツ、AES-256-SIV 名、Argon2id)。overlay の salt はリモート上のルートにある marker (<code>.aerocrypt.tsv</code> は新しい vault 用、従来の <code>.aeroftp-crypt.json</code> も引き続き読み取り可能) に保存されるため、パスワードだけで任意のデバイスから再度開けます。"
             },
             "openExisting": "既存を開く",
             "createNew": "新規作成",
@@ -5058,7 +5058,20 @@
             "recoveryKitIntro": "任意。このキットには公開設定のみが含まれ(vault ID、salt、KDF パラメータ)、秘密情報は一切含まれません。ローカルのキーストアを失った後(再インストールや新しいマシン)にボールトを復元するには、キットとパスワードの両方が必要ですが、別々の場所に保管してください。どちらか一方だけではボールトを開けません。いつでも再び開いて保存し直せます。",
             "showKit": "リカバリキット",
             "hideKit": "閉じる",
-            "kitUnavailable": "このボルトのリカバリキットはまだ利用できません。"
+            "kitUnavailable": "このボルトのリカバリキットはまだ利用できません。",
+            "defaultSaltLabel": "デフォルト salt (任意選択、パスワードのみでの移植性。高エントロピーと attestation が必要)",
+            "defaultSaltStrength128": "128-bit 推奨",
+            "defaultSaltStrength256": "256-bit",
+            "defaultSaltAttestation": "パスワードマネージャーを使用しており、linkability のトレードオフを理解しています。",
+            "legacyMarkerNotice": "このvaultはまだ旧式の.aeroftp-crypt.jsonマーカーを使用しています。パスワードまたはkeyfileの入力後に.aerocrypt.tsvへ変換してください。",
+            "migrateLegacyMarker": "マーカーを変換",
+            "legacyMarkerMigrated": "マーカーを.aerocrypt.tsvに変換しました。",
+            "legacyMarkerAlreadyCurrent": "旧式のマーカーは残っていません。",
+            "recoveryQr": "復旧用QR",
+            "qrErrorCorrection": "誤り訂正",
+            "qrRecommended": "(推奨)",
+            "qrHint": "レベルが高いほど、印刷またはスキャンしたコピーで読み取りやすくなります。",
+            "qrPrintNote": "QRレベル: {level} - USB QRスキャナーでスキャンするか、上のテキストを転記してください"
         },
         "aerocryptProfile": {
             "enable": "Crypt (暗号化)",
@@ -5087,7 +5100,7 @@
             "keyfileGeneratedBackup": "キーファイルを生成しました。今すぐバックアップしてください: 紛失するとボールトは二度と開けません。",
             "keyfileRepointHint": "このパスはキーファイルの場所を指すだけで、変更してもボールトの鍵は変わりません。誤った、または見つからないキーファイルではロック解除は拒否されます。",
             "keyfileStorageHint": "暗号化するリモートとは別に、ローカルディスクまたは USB ドライブに保存し、バックアップコピーを保管してください。",
-            "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
+            "headerToggle": "remoteにheaderを書き込む（.aerocrypt.tsv）",
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "オーバーレイのリモートパス",
             "overlaysRemotePathHint": "オーバーレイをアンカーする Remote Path のサブフォルダーです。Remote Path をそのまま使うには空のままにするか、サブフォルダー名だけを入力してください（Remote Path の下に作成されます）。",

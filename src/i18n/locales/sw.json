@@ -5025,7 +5025,7 @@
                 "heading": "Tabaka hili hufanya nini",
                 "p1": "Husimba majina ya faili na maudhui <strong>papo hapo</strong>, kabla ya kuyatuma kwa seva, na huyafichua wakati wa kupakua. Seva huona tu data zenye majina yaliyochanganywa. Wewe huona majina halisi.",
                 "p2": "Wakati tabaka likiwa hai: kipindi chako cha mbali huonyesha maudhui wazi, kila upakiaji husimbwa, kila upakuaji hufichuliwa. Tafuta beji ya <em>AEROCRYPT</em> kwenye upau wa njia.",
-                "p3": "Hili ni tabaka <strong>asilia</strong> la AeroFTP, kwenye injini ile ile iliyokaguliwa kama AeroVault (maudhui AES-256-GCM-SIV, majina AES-256-SIV, Argon2id). Chumvi ya tabaka huhifadhiwa katika <code>.aeroftp-crypt.json</code> kwenye mzizi wake kwenye seva ya mbali, ili uweze kulifungua tena kutoka kifaa chochote kwa nenosiri tu."
+                "p3": "Hii ni overlay <strong>asilia</strong> ya AeroFTP, kwenye injini ileile iliyokaguliwa kama AeroVault (maudhui AES-256-GCM-SIV, majina AES-256-SIV, Argon2id). Salt ya overlay huhifadhiwa kwenye marker (<code>.aerocrypt.tsv</code> kwa vault mpya, <code>.aeroftp-crypt.json</code> ya zamani bado inaweza kusomwa) kwenye mzizi wake kwenye remote, hivyo unaweza kuifungua tena kutoka kifaa chochote kwa kutumia nenosiri pekee."
             },
             "openExisting": "Fungua lililopo",
             "createNew": "Unda jipya",
@@ -5058,7 +5058,20 @@
             "recoveryKitIntro": "Si lazima. Kifurushi hiki kina usanidi wa umma pekee (vault ID, salt, vigezo vya KDF), kamwe si siri. Kifurushi na nenosiri lako vyote vinahitajika ili kurejesha hazina yako baada ya kupoteza hifadhi ya funguo ya ndani (kusakinisha upya au mashine mpya), lakini vihifadhi katika sehemu tofauti: hakuna hata kimoja peke yake kinachoweza kufungua hazina. Unaweza kuifungua tena na kuihifadhi upya wakati wowote.",
             "showKit": "Kifurushi cha kurejesha",
             "hideKit": "Funga",
-            "kitUnavailable": "Kifurushi cha kurejesha bado hakipatikani kwa hazina hii."
+            "kitUnavailable": "Kifurushi cha kurejesha bado hakipatikani kwa hazina hii.",
+            "defaultSaltLabel": "Salt chaguomsingi (hiari, uhamishikaji kwa nenosiri pekee; inahitaji entropy ya juu na attestation)",
+            "defaultSaltStrength128": "128-bit inapendekezwa",
+            "defaultSaltStrength256": "256-bit",
+            "defaultSaltAttestation": "Nilitumia kidhibiti cha manenosiri na ninaelewa mabadilishano ya linkability.",
+            "legacyMarkerNotice": "Vault hii bado inatumia marker ya zamani .aeroftp-crypt.json. Ibadilishe kuwa .aerocrypt.tsv baada ya kuingiza nenosiri au keyfile.",
+            "migrateLegacyMarker": "Badilisha marker",
+            "legacyMarkerMigrated": "Marker imebadilishwa kuwa .aerocrypt.tsv.",
+            "legacyMarkerAlreadyCurrent": "Hakuna marker ya zamani iliyosalia.",
+            "recoveryQr": "QR ya urejeshaji",
+            "qrErrorCorrection": "Usahihishaji wa hitilafu",
+            "qrRecommended": "(inapendekezwa)",
+            "qrHint": "Viwango vya juu hustahimili zaidi kwenye nakala zilizochapishwa au kuchanganuliwa.",
+            "qrPrintNote": "Kiwango cha QR: {level} - changanua kwa skana ya USB QR au nakili maandishi yaliyo juu"
         },
         "aerocryptProfile": {
             "enable": "Crypt (Usimbaji fiche)",
@@ -5087,7 +5100,7 @@
             "keyfileGeneratedBackup": "Faili ya ufunguo imetengenezwa. Hifadhi nakala sasa: kuipoteza hufunga kasha milele.",
             "keyfileRepointHint": "Njia hii inaonyesha tu mahali faili ya ufunguo ilipo; kuibadilisha hakubadilishi ufunguo wa kasha. Faili ya ufunguo isiyo sahihi au isiyopo hukataa kufungua.",
             "keyfileStorageHint": "Ihifadhi kwenye diski ya ndani au kiendeshi cha USB, tofauti na seva ya mbali unayosimba, na uweke nakala rudufu.",
-            "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
+            "headerToggle": "Andika header kwenye remote (.aerocrypt.tsv)",
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "Njia ya Mbali ya Uwekeleaji",
             "overlaysRemotePathHint": "Kijifolda cha Remote Path ambapo tabaka limetiwa nanga. Acha wazi ili kutumia Remote Path, au andika jina la kijifolda tu (kinaundwa chini ya Remote Path).",

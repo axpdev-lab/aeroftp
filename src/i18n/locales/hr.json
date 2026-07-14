@@ -5025,7 +5025,7 @@
                 "heading": "Što ovaj sloj radi",
                 "p1": "Šifrira nazive i sadržaj datoteka <strong>u hodu</strong>, prije slanja na poslužitelj, te ih dešifrira pri preuzimanju. Poslužitelj vidi samo blobove s izmiješanim nazivima. Vi vidite izvorne nazive.",
                 "p2": "Dok je sloj aktivan: vaša udaljena sesija prikazuje sadržaj u čistom obliku, svako učitavanje je šifrirano, svako preuzimanje je dešifrirano. Potražite oznaku <em>AEROCRYPT</em> u traci puta.",
-                "p3": "Ovo je <strong>nativni</strong> sloj aplikacije AeroFTP, na istom revidiranom pogonu kao AeroVault (sadržaj AES-256-GCM-SIV, nazivi AES-256-SIV, Argon2id). Sol sloja pohranjena je u <code>.aeroftp-crypt.json</code> u njegovom korijenu na udaljenom poslužitelju, pa ga možete ponovno otvoriti s bilo kojeg uređaja samo pomoću lozinke."
+                "p3": "Ovo je AeroFTP-ov <strong>izvorni</strong> overlay, na istom auditiranom pogonu kao AeroVault (AES-256-GCM-SIV sadržaj, AES-256-SIV nazivi, Argon2id). Sol overlaya pohranjuje se u markeru (<code>.aerocrypt.tsv</code> za nove trezore, naslijeđeni <code>.aeroftp-crypt.json</code> i dalje je čitljiv) u njegovom korijenu na udaljenoj lokaciji, pa ga možete ponovno otvoriti s bilo kojeg uređaja samo lozinkom."
             },
             "openExisting": "Otvori postojeći",
             "createNew": "Stvori novi",
@@ -5058,7 +5058,20 @@
             "recoveryKitIntro": "Neobavezno. Ovaj komplet sadrži samo javnu konfiguraciju (vault ID, salt, KDF parametre), nikada tajne. Komplet i vaša lozinka oboje su potrebni za obnovu trezora nakon gubitka lokalne pohrane ključeva (ponovna instalacija ili novo računalo), ali čuvajte ih na odvojenim mjestima: nijedno samo za sebe ne može otvoriti trezor. Možete ga ponovno otvoriti i ponovno spremiti u bilo kojem trenutku.",
             "showKit": "Komplet za oporavak",
             "hideKit": "Zatvori",
-            "kitUnavailable": "Komplet za oporavak još nije dostupan za ovaj trezor."
+            "kitUnavailable": "Komplet za oporavak još nije dostupan za ovaj trezor.",
+            "defaultSaltLabel": "Zadana sol (uključuje se po želji, prenosivost samo lozinkom; zahtijeva visoku entropiju i potvrdu)",
+            "defaultSaltStrength128": "preporučeno 128-bitno",
+            "defaultSaltStrength256": "256-bitno",
+            "defaultSaltAttestation": "Koristio/la sam upravitelj lozinki i razumijem kompromis povezivosti.",
+            "legacyMarkerNotice": "Ovaj vault još koristi stari marker .aeroftp-crypt.json. Pretvorite ga u .aerocrypt.tsv nakon unosa lozinke ili keyfilea.",
+            "migrateLegacyMarker": "Pretvori marker",
+            "legacyMarkerMigrated": "Marker pretvoren u .aerocrypt.tsv.",
+            "legacyMarkerAlreadyCurrent": "Nema preostalog starog markera.",
+            "recoveryQr": "QR za oporavak",
+            "qrErrorCorrection": "Ispravljanje pogrešaka",
+            "qrRecommended": "(preporučeno)",
+            "qrHint": "Više razine otpornije su na ispisanim ili skeniranim kopijama.",
+            "qrPrintNote": "QR razina: {level} - skenirajte USB QR skenerom ili prepišite gornji tekst"
         },
         "aerocryptProfile": {
             "enable": "Crypt (Šifriranje)",
@@ -5087,7 +5100,7 @@
             "keyfileGeneratedBackup": "Datoteka ključa generirana. Odmah napravite kopiju: njezin gubitak trajno zaključava trezor.",
             "keyfileRepointHint": "Ova putanja samo pokazuje gdje se datoteka ključa nalazi; njezina promjena ne mijenja ključ trezora. Pogrešna ili nedostajuća datoteka ključa odbija otključavanje.",
             "keyfileStorageHint": "Spremite ga na lokalni disk ili USB pogon, odvojeno od udaljenog poslužitelja koji šifrirate, i čuvajte sigurnosnu kopiju.",
-            "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
+            "headerToggle": "Zapiši header na remote (.aerocrypt.tsv)",
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "Udaljena putanja sloja",
             "overlaysRemotePathHint": "Podmapa Remote Patha u kojoj je sloj usidren. Ostavite prazno za korištenje Remote Patha ili upišite samo naziv podmape (stvara se unutar Remote Patha).",

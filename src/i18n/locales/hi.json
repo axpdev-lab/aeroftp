@@ -5025,7 +5025,7 @@
                 "heading": "यह ओवरले क्या करता है",
                 "p1": "फ़ाइल नामों और सामग्री को सर्वर पर भेजने से पहले <strong>तुरंत</strong> एन्क्रिप्ट करता है, और डाउनलोड करते समय उन्हें डिक्रिप्ट करता है। सर्वर केवल अव्यवस्थित नामों वाला अस्पष्ट डेटा देखता है। आप मूल नाम देखते हैं।",
                 "p2": "जब ओवरले सक्रिय होता है: आपका रिमोट सत्र सामग्री को स्पष्ट रूप से दिखाता है, हर अपलोड एन्क्रिप्ट होता है, हर डाउनलोड डिक्रिप्ट होता है। पथ बार में <em>AEROCRYPT</em> बैज देखें।",
-                "p3": "यह AeroFTP का <strong>नेटिव</strong> ओवरले है, जो AeroVault के समान ऑडिट किए गए इंजन पर चलता है (सामग्री AES-256-GCM-SIV, नाम AES-256-SIV, Argon2id)। ओवरले का साल्ट रिमोट सर्वर पर इसके रूट में <code>.aeroftp-crypt.json</code> में संग्रहीत होता है, ताकि आप केवल पासवर्ड के साथ किसी भी डिवाइस से इसे फिर से खोल सकें।"
+                "p3": "यह AeroFTP का <strong>नेटिव</strong> overlay है, उसी ऑडिट किए गए इंजन पर जिस पर AeroVault है (AES-256-GCM-SIV सामग्री, AES-256-SIV नाम, Argon2id)। overlay का salt remote पर उसके root में marker में संग्रहीत रहता है (नए vaults के लिए <code>.aerocrypt.tsv</code>, legacy <code>.aeroftp-crypt.json</code> अभी भी पढ़ने योग्य है), इसलिए आप केवल पासवर्ड से इसे किसी भी device से फिर खोल सकते हैं।"
             },
             "openExisting": "मौजूदा खोलें",
             "createNew": "नया बनाएं",
@@ -5058,7 +5058,20 @@
             "recoveryKitIntro": "वैकल्पिक। इस किट में केवल सार्वजनिक कॉन्फ़िगरेशन होता है (vault ID, salt, KDF पैरामीटर), कभी गुप्त जानकारी नहीं। स्थानीय कुंजी संग्रह खोने के बाद (पुनः इंस्टॉल या नई मशीन) अपनी वॉल्ट को पुनर्स्थापित करने के लिए किट और आपका पासवर्ड दोनों आवश्यक हैं, लेकिन उन्हें अलग-अलग स्थानों पर रखें: दोनों में से कोई भी अकेले वॉल्ट नहीं खोल सकता। आप इसे किसी भी समय फिर से खोल और सहेज सकते हैं।",
             "showKit": "पुनर्प्राप्ति किट",
             "hideKit": "बंद करें",
-            "kitUnavailable": "इस वॉल्ट के लिए पुनर्प्राप्ति किट अभी उपलब्ध नहीं है।"
+            "kitUnavailable": "इस वॉल्ट के लिए पुनर्प्राप्ति किट अभी उपलब्ध नहीं है।",
+            "defaultSaltLabel": "डिफ़ॉल्ट salt (opt-in, केवल पासवर्ड से portability; उच्च entropy और attestation आवश्यक)",
+            "defaultSaltStrength128": "128-bit अनुशंसित",
+            "defaultSaltStrength256": "256-bit",
+            "defaultSaltAttestation": "मैंने password manager का उपयोग किया है और linkability tradeoff को समझता/समझती हूँ।",
+            "legacyMarkerNotice": "यह vault अभी भी पुराने .aeroftp-crypt.json मार्कर का उपयोग करता है। पासवर्ड या keyfile दर्ज करने के बाद इसे .aerocrypt.tsv में बदलें।",
+            "migrateLegacyMarker": "मार्कर बदलें",
+            "legacyMarkerMigrated": "मार्कर .aerocrypt.tsv में बदल दिया गया।",
+            "legacyMarkerAlreadyCurrent": "कोई पुराना मार्कर शेष नहीं है।",
+            "recoveryQr": "पुनर्प्राप्ति QR",
+            "qrErrorCorrection": "त्रुटि सुधार",
+            "qrRecommended": "(अनुशंसित)",
+            "qrHint": "उच्च स्तर मुद्रित या स्कैन की गई प्रतियों पर अधिक टिकाऊ होते हैं।",
+            "qrPrintNote": "QR स्तर: {level} - USB QR स्कैनर से स्कैन करें या ऊपर दिया गया पाठ लिखें"
         },
         "aerocryptProfile": {
             "enable": "Crypt (एन्क्रिप्शन)",
@@ -5087,7 +5100,7 @@
             "keyfileGeneratedBackup": "की-फ़ाइल जनरेट हुई। अभी बैकअप लें: इसे खोने पर वॉल्ट हमेशा के लिए बंद हो जाएगा।",
             "keyfileRepointHint": "यह पथ केवल बताता है कि की-फ़ाइल कहाँ है; इसे बदलने से वॉल्ट की कुंजी नहीं बदलती। गलत या अनुपलब्ध की-फ़ाइल पर अनलॉक अस्वीकृत होता है।",
             "keyfileStorageHint": "इसे स्थानीय डिस्क या USB ड्राइव पर सहेजें, जिस रिमोट को आप एन्क्रिप्ट कर रहे हैं उससे अलग रखें, और एक बैकअप प्रति रखें।",
-            "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
+            "headerToggle": "remote पर header लिखें (.aerocrypt.tsv)",
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "ओवरले रिमोट पथ",
             "overlaysRemotePathHint": "Remote Path का सबफ़ोल्डर जहाँ ओवरले एंकर किया जाता है। Remote Path का उपयोग करने के लिए इसे खाली छोड़ें, या केवल एक सबफ़ोल्डर नाम टाइप करें (यह Remote Path के अंतर्गत बनाया जाता है)।",

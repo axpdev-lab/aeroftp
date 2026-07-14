@@ -5025,7 +5025,7 @@
                 "heading": "Mit csinál ez a réteg",
                 "p1": "A fájlneveket és tartalmakat <strong>menet közben</strong> titkosítja, mielőtt elküldené a kiszolgálónak, és letöltéskor visszafejti azokat. A kiszolgáló csak összekevert nevű blobokat lát. Ön az eredeti neveket látja.",
                 "p2": "Amíg a réteg aktív: a távoli munkamenet a tartalmakat olvasható formában jeleníti meg, minden feltöltés titkosítva van, minden letöltés visszafejtve. Keresse az <em>AEROCRYPT</em> jelvényt az útvonalsávon.",
-                "p3": "Ez az AeroFTP <strong>natív</strong> rétege, ugyanazon az auditált motoron, mint az AeroVault (AES-256-GCM-SIV tartalom, AES-256-SIV nevek, Argon2id). A réteg sója a <code>.aeroftp-crypt.json</code> fájlban tárolódik a gyökerében a távoli kiszolgálón, így bármely eszközről újra megnyithatja pusztán a jelszóval."
+                "p3": "Ez az AeroFTP <strong>natív</strong> overlaye, ugyanazon az auditált motoron, mint az AeroVault (AES-256-GCM-SIV tartalom, AES-256-SIV nevek, Argon2id). Az overlay sója a jelölőben tárolódik (<code>.aerocrypt.tsv</code> az új tárolókhoz, a régi <code>.aeroftp-crypt.json</code> továbbra is olvasható) a távoli gyökerében, így bármely eszközről újra megnyithatod pusztán a jelszóval."
             },
             "openExisting": "Meglévő megnyitása",
             "createNew": "Új létrehozása",
@@ -5058,7 +5058,20 @@
             "recoveryKitIntro": "Választható. Ez a készlet csak nyilvános konfigurációt tartalmaz (vault ID, salt, KDF paraméterek), titkokat soha. A készlet és a jelszó együtt szükségesek a széf helyreállításához a helyi kulcstároló elvesztése után (újratelepítés vagy új gép), de tartsa őket külön helyen: egyik sem tudja önmagában megnyitni a széfet. Bármikor újra megnyithatja és újra mentheti.",
             "showKit": "Helyreállítási készlet",
             "hideKit": "Bezárás",
-            "kitUnavailable": "A helyreállítási készlet még nem érhető el ehhez a széfhez."
+            "kitUnavailable": "A helyreállítási készlet még nem érhető el ehhez a széfhez.",
+            "defaultSaltLabel": "Alapértelmezett só (választható, csak jelszavas hordozhatóság; nagy entrópiát és tanúsítást igényel)",
+            "defaultSaltStrength128": "128 bites ajánlott",
+            "defaultSaltStrength256": "256 bites",
+            "defaultSaltAttestation": "Jelszókezelőt használtam, és értem az összekapcsolhatósági kompromisszumot.",
+            "legacyMarkerNotice": "Ez a vault még a régi .aeroftp-crypt.json markert használja. A jelszó vagy keyfile megadása után alakítsa át .aerocrypt.tsv-re.",
+            "migrateLegacyMarker": "Marker átalakítása",
+            "legacyMarkerMigrated": "A marker .aerocrypt.tsv-re alakítva.",
+            "legacyMarkerAlreadyCurrent": "Nem maradt régi marker.",
+            "recoveryQr": "Helyreállítási QR",
+            "qrErrorCorrection": "Hibajavítás",
+            "qrRecommended": "(ajánlott)",
+            "qrHint": "A magasabb szintek ellenállóbbak a nyomtatott vagy beolvasott példányokon.",
+            "qrPrintNote": "QR-szint: {level} - olvassa be USB QR-szkennerrel, vagy írja át a fenti szöveget"
         },
         "aerocryptProfile": {
             "enable": "Crypt (Titkosítás)",
@@ -5087,7 +5100,7 @@
             "keyfileGeneratedBackup": "Kulcsfájl létrehozva. Készítsen másolatot most: elvesztése a széfet végleg megnyithatatlanná teszi.",
             "keyfileRepointHint": "Ez az útvonal csak azt mutatja, hol van a kulcsfájl; módosítása nem kulcsolja újra a széfet. Hibás vagy hiányzó kulcsfájl esetén a feloldás megtagadva.",
             "keyfileStorageHint": "Mentse el helyi lemezre vagy USB-meghajtóra, a titkosított távoli tárhelytől elkülönítve, és őrizzen meg egy biztonsági másolatot.",
-            "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
+            "headerToggle": "Header írása a remote-ra (.aerocrypt.tsv)",
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "Az átfedés távoli útvonala",
             "overlaysRemotePathHint": "A Remote Path azon almappája, ahol az átfedés rögzül. Hagyja üresen a Remote Path használatához, vagy írjon be csak egy almappanevet (a Remote Path alatt jön létre).",

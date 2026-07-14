@@ -5025,7 +5025,7 @@
                 "heading": "Mida see kattekiht teeb",
                 "p1": "Krüpteerib failinimed ja sisu <strong>lennult</strong>, enne nende serverisse saatmist, ning dekrüpteerib need allalaadimisel. Server näeb ainult segatud nimedega blobe. Sina näed algupäraseid nimesid.",
                 "p2": "Kui kattekiht on aktiivne: sinu kaugseanss näitab sisu selgel kujul, iga üleslaadimine krüpteeritakse ja iga allalaadimine dekrüpteeritakse. Otsi teeribalt <em>AEROCRYPT</em> märki.",
-                "p3": "See on AeroFTP <strong>natiivne</strong> kattekiht, mis kasutab sama auditeeritud mootorit nagu AeroVault (AES-256-GCM-SIV sisu jaoks, AES-256-SIV nimede jaoks, Argon2id). Kattekihi sool salvestatakse failis <code>.aeroftp-crypt.json</code> selle juurkaustas kaugserveris, nii et saad selle uuesti avada igast seadmest ainult parooliga."
+                "p3": "See on AeroFTP <strong>natiivne</strong> overlay, samal auditeeritud mootoril nagu AeroVault (AES-256-GCM-SIV sisu, AES-256-SIV nimed, Argon2id). Overlay sool salvestatakse markerisse (<code>.aerocrypt.tsv</code> uute hoidlate jaoks, pärand <code>.aeroftp-crypt.json</code> on endiselt loetav) selle juures kaugjuurel, nii et saad selle taas avada mis tahes seadmest ainult parooliga."
             },
             "openExisting": "Ava olemasolev",
             "createNew": "Loo uus",
@@ -5058,7 +5058,20 @@
             "recoveryKitIntro": "Valikuline. See komplekt sisaldab ainult avalikku konfiguratsiooni (vault ID, salt, KDF parameetrid), mitte kunagi saladusi. Hoidla taastamiseks pärast kohaliku võtmehoidla kaotamist (uuesti paigaldamine või uus arvuti) on vaja nii komplekti kui ka parooli, kuid hoidke neid eraldi kohtades: kumbki üksi ei suuda hoidlat avada. Võite selle igal ajal uuesti avada ja uuesti salvestada.",
             "showKit": "Taastekomplekt",
             "hideKit": "Sulge",
-            "kitUnavailable": "Taastekomplekt pole selle hoidla jaoks veel saadaval."
+            "kitUnavailable": "Taastekomplekt pole selle hoidla jaoks veel saadaval.",
+            "defaultSaltLabel": "Vaikesool (valikuline, paroolipõhine kaasaskantavus; nõuab suurt entroopiat ja kinnitust)",
+            "defaultSaltStrength128": "soovitatav 128-bitine",
+            "defaultSaltStrength256": "256-bitine",
+            "defaultSaltAttestation": "Kasutasin paroolihaldurit ja mõistan seostatavuse kompromissi.",
+            "legacyMarkerNotice": "See vault kasutab endiselt pärandmarkerit .aeroftp-crypt.json. Teisendage see pärast parooli või keyfile'i sisestamist vormingusse .aerocrypt.tsv.",
+            "migrateLegacyMarker": "Teisenda marker",
+            "legacyMarkerMigrated": "Marker teisendati vormingusse .aerocrypt.tsv.",
+            "legacyMarkerAlreadyCurrent": "Pärandmarkerit pole alles.",
+            "recoveryQr": "Taaste QR",
+            "qrErrorCorrection": "Veaparandus",
+            "qrRecommended": "(soovitatav)",
+            "qrHint": "Kõrgemad tasemed on prinditud või skannitud koopiatel vastupidavamad.",
+            "qrPrintNote": "QR-tase: {level} - skanni USB QR-skanneriga või kirjuta ülalolev tekst ümber"
         },
         "aerocryptProfile": {
             "enable": "Crypt (Krüptimine)",
@@ -5087,7 +5100,7 @@
             "keyfileGeneratedBackup": "Võtmefail genereeritud. Tehke varukoopia kohe: selle kaotamine muudab hoidla jäädavalt avamatuks.",
             "keyfileRepointHint": "See tee näitab vaid, kus võtmefail asub; selle muutmine hoidlat ümber ei võtmesta. Vale või puuduv võtmefail keelab avamise.",
             "keyfileStorageHint": "Salvestage see kohalikule kettale või USB-mälupulgale, eraldi kaugserverist, mida krüpteerite, ja hoidke alles varukoopia.",
-            "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
+            "headerToggle": "Kirjuta päis remote'i (.aerocrypt.tsv)",
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "Ülekatte kaugtee",
             "overlaysRemotePathHint": "Remote Path'i alamkaust, kuhu ülekate ankurdatakse. Jäta tühjaks, et kasutada Remote Path'i, või sisesta ainult alamkausta nimi (see luuakse Remote Path'i alla).",

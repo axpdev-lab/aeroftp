@@ -5025,7 +5025,7 @@
                 "heading": "Ką ši perdanga daro",
                 "p1": "Užšifruoja failų pavadinimus ir turinį <strong>realiuoju laiku</strong>, prieš siunčiant juos į serverį, ir iššifruoja juos, kai atsisiunčiate. Serveris mato tik blobus su sumaišytais pavadinimais. Jūs matote originalius pavadinimus.",
                 "p2": "Kol perdanga aktyvi: jūsų nuotolinis seansas rodo turinį atviru tekstu, kiekvienas įkėlimas užšifruojamas, o kiekvienas atsisiuntimas iššifruojamas. Kelio juostoje ieškokite <em>AEROCRYPT</em> ženklo.",
-                "p3": "Tai AeroFTP <strong>natyvinė</strong> perdanga, veikianti tuo pačiu audituotu varikliu kaip ir AeroVault (AES-256-GCM-SIV turiniui, AES-256-SIV pavadinimams, Argon2id). Perdangos druska saugoma faile <code>.aeroftp-crypt.json</code> jos šaknyje nuotoliniame serveryje, todėl ją galite vėl atidaryti iš bet kurio įrenginio tik su slaptažodžiu."
+                "p3": "Tai yra AeroFTP <strong>gimtasis</strong> overlay, veikiantis tame pačiame audituotame variklyje kaip AeroVault (AES-256-GCM-SIV turinys, AES-256-SIV pavadinimai, Argon2id). Overlay druska saugoma žymeklyje (<code>.aerocrypt.tsv</code> naujiems seifams, senasis <code>.aeroftp-crypt.json</code> vis dar skaitomas) jo šaknyje nuotolinėje vietoje, todėl jį galima vėl atidaryti iš bet kurio įrenginio turint tik slaptažodį."
             },
             "openExisting": "Atidaryti esamą",
             "createNew": "Sukurti naują",
@@ -5058,7 +5058,20 @@
             "recoveryKitIntro": "Neprivaloma. Šiame rinkinyje yra tik vieša konfigūracija (vault ID, salt, KDF parametrai), niekada paslapčių. Rinkinys ir slaptažodis abu reikalingi saugyklai atkurti praradus vietinę raktų saugyklą (perdiegus arba naujame kompiuteryje), tačiau laikykite juos atskirose vietose: nė vienas iš jų atskirai negali atrakinti saugyklos. Bet kada galite ją vėl atidaryti ir iš naujo įrašyti.",
             "showKit": "Atkūrimo rinkinys",
             "hideKit": "Uždaryti",
-            "kitUnavailable": "Atkūrimo rinkinys šiai saugyklai dar neprieinamas."
+            "kitUnavailable": "Atkūrimo rinkinys šiai saugyklai dar neprieinamas.",
+            "defaultSaltLabel": "Numatytoji druska (pasirenkama, perkeliamumas tik su slaptažodžiu; reikia didelės entropijos ir patvirtinimo)",
+            "defaultSaltStrength128": "rekomenduojama 128 bitų",
+            "defaultSaltStrength256": "256 bitų",
+            "defaultSaltAttestation": "Naudojau slaptažodžių tvarkyklę ir suprantu susiejimo kompromisą.",
+            "legacyMarkerNotice": "Ši vault saugykla vis dar naudoja seną .aeroftp-crypt.json žymeklį. Įvedę slaptažodį arba keyfile, konvertuokite jį į .aerocrypt.tsv.",
+            "migrateLegacyMarker": "Konvertuoti žymeklį",
+            "legacyMarkerMigrated": "Žymeklis konvertuotas į .aerocrypt.tsv.",
+            "legacyMarkerAlreadyCurrent": "Seno žymeklio nebeliko.",
+            "recoveryQr": "Atkūrimo QR",
+            "qrErrorCorrection": "Klaidų taisymas",
+            "qrRecommended": "(rekomenduojama)",
+            "qrHint": "Aukštesni lygiai yra atsparesni spausdintose arba nuskaitytose kopijose.",
+            "qrPrintNote": "QR lygis: {level} - nuskaitykite USB QR skaitytuvu arba perrašykite aukščiau esantį tekstą"
         },
         "aerocryptProfile": {
             "enable": "Crypt (Šifravimas)",
@@ -5087,7 +5100,7 @@
             "keyfileGeneratedBackup": "Rakto failas sugeneruotas. Tuoj pat pasidarykite kopiją: jį praradus saugykla užsirakins visam laikui.",
             "keyfileRepointHint": "Šis kelias tik nurodo, kur yra rakto failas; jo keitimas saugyklos rakto nekeičia. Neteisingas ar trūkstamas rakto failas atrakinimą atmeta.",
             "keyfileStorageHint": "Išsaugokite jį vietiniame diske arba USB atmintinėje, atskirai nuo šifruojamo nuotolinio serverio, ir laikykite atsarginę kopiją.",
-            "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
+            "headerToggle": "Įrašyti header į remote (.aerocrypt.tsv)",
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "Perdangos nuotolinis kelias",
             "overlaysRemotePathHint": "Remote Path poaplankis, kuriame pritvirtinamas perdangos sluoksnis. Palikite tuščią, kad būtų naudojamas Remote Path, arba įveskite tik poaplankio pavadinimą (jis sukuriamas po Remote Path).",

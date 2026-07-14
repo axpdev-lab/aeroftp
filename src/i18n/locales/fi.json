@@ -5025,7 +5025,7 @@
                 "heading": "Mitä tämä peittokerros tekee",
                 "p1": "Salaa tiedostonimet ja sisällön <strong>lennossa</strong> ennen kuin ne lähetetään palvelimelle, ja purkaa salauksen, kun lataat tiedostoja. Palvelin näkee vain blob-objekteja sekoitetuilla nimillä. Sinä näet alkuperäiset nimet.",
                 "p2": "Kun peittokerros on käytössä: etäistuntosi näyttää sisällön selkokielisenä, jokainen lähetys salataan ja jokaisen latauksen salaus puretaan. Etsi <em>AEROCRYPT</em>-merkkiä polkupalkista.",
-                "p3": "Tämä on AeroFTP:n <strong>natiivi</strong> peittokerros, joka käyttää samaa auditoitua moottoria kuin AeroVault (AES-256-GCM-SIV sisällölle, AES-256-SIV nimille, Argon2id). Peittokerroksen suola tallennetaan tiedostoon <code>.aeroftp-crypt.json</code> sen juuressa etäpalvelimella, joten voit avata sen uudelleen miltä tahansa laitteelta pelkällä salasanalla."
+                "p3": "Tämä on AeroFTP:n <strong>natiivi</strong> overlay samalla auditoidulla moottorilla kuin AeroVault (AES-256-GCM-SIV-sisältö, AES-256-SIV-nimet, Argon2id). Overlayn suola tallennetaan merkitsimeen (<code>.aerocrypt.tsv</code> uusille holveille, vanha <code>.aeroftp-crypt.json</code> on edelleen luettavissa) sen juureen etäkohteessa, joten voit avata sen uudelleen miltä tahansa laitteelta pelkällä salasanalla."
             },
             "openExisting": "Avaa olemassa oleva",
             "createNew": "Luo uusi",
@@ -5058,7 +5058,20 @@
             "recoveryKitIntro": "Valinnainen. Tämä paketti sisältää vain julkisen määrityksen (vault ID, salt, KDF-parametrit), ei koskaan salaisuuksia. Sekä paketti että salasana tarvitaan holvin palauttamiseen paikallisen avainsäilön menetyksen jälkeen (uudelleenasennus tai uusi kone), mutta säilytä ne erillisissä paikoissa: kumpikaan yksin ei avaa holvia. Voit avata sen uudelleen ja tallentaa sen milloin tahansa.",
             "showKit": "Palautuspaketti",
             "hideKit": "Sulje",
-            "kitUnavailable": "Palautuspaketti ei ole vielä käytettävissä tälle holville."
+            "kitUnavailable": "Palautuspaketti ei ole vielä käytettävissä tälle holville.",
+            "defaultSaltLabel": "Oletussuola (valinnainen, siirrettävyys vain salasanalla; vaatii suuren entropian ja vakuutuksen)",
+            "defaultSaltStrength128": "128-bittinen suositeltu",
+            "defaultSaltStrength256": "256-bittinen",
+            "defaultSaltAttestation": "Käytin salasananhallintaa ja ymmärrän linkitettävyyden kompromissin.",
+            "legacyMarkerNotice": "Tämä vault käyttää yhä vanhaa .aeroftp-crypt.json-merkkiä. Muunna se .aerocrypt.tsv-muotoon salasanan tai keyfile-tiedoston syöttämisen jälkeen.",
+            "migrateLegacyMarker": "Muunna merkki",
+            "legacyMarkerMigrated": "Merkki muunnettu muotoon .aerocrypt.tsv.",
+            "legacyMarkerAlreadyCurrent": "Vanhaa merkkiä ei ole jäljellä.",
+            "recoveryQr": "Palautus-QR",
+            "qrErrorCorrection": "Virheenkorjaus",
+            "qrRecommended": "(suositeltu)",
+            "qrHint": "Korkeammat tasot kestävät paremmin tulostetuissa tai skannatuissa kopioissa.",
+            "qrPrintNote": "QR-taso: {level} - skannaa USB-QR-lukijalla tai kirjoita yllä oleva teksti"
         },
         "aerocryptProfile": {
             "enable": "Crypt (Salaus)",
@@ -5087,7 +5100,7 @@
             "keyfileGeneratedBackup": "Avaintiedosto luotu. Varmuuskopioi se heti: sen katoaminen lukitsee holvin pysyvästi.",
             "keyfileRepointHint": "Tämä polku vain osoittaa, missä avaintiedosto sijaitsee; sen muuttaminen ei vaihda holvin avainta. Väärä tai puuttuva avaintiedosto estää avauksen.",
             "keyfileStorageHint": "Tallenna se paikalliselle levylle tai USB-asemalle, erilleen etäpalvelimesta, jota salaat, ja säilytä varmuuskopio.",
-            "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
+            "headerToggle": "Kirjoita header remoteen (.aerocrypt.tsv)",
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "Peittokerroksen etäpolku",
             "overlaysRemotePathHint": "Remote Pathin alikansio, johon peite ankkuroidaan. Jätä tyhjäksi käyttääksesi Remote Pathia, tai kirjoita vain alikansion nimi (se luodaan Remote Pathin alle).",

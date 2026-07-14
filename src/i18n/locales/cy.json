@@ -5044,7 +5044,7 @@
                 "heading": "Beth mae'r troshaen hwn yn ei wneud",
                 "p1": "Mae'n amgryptio enwau ffeiliau a chynnwys <strong>ar y pryd</strong>, cyn eu hanfon at y gweinydd, ac yn eu dadamgryptio pan fyddwch yn lawrlwytho. Dim ond blobiau ag enwau wedi'u cymysgu y mae'r gweinydd yn eu gweld. Rydych chi'n gweld yr enwau gwreiddiol.",
                 "p2": "Tra bo'r troshaen yn weithredol: mae eich sesiwn bell yn dangos y cynnwys yn glir, mae pob llwytho i fyny yn cael ei amgryptio, ac mae pob lawrlwythiad yn cael ei ddadamgryptio. Chwiliwch am y bathodyn <em>AEROCRYPT</em> yn y bar llwybr.",
-                "p3": "Dyma droshaen <strong>brodorol</strong> AeroFTP, ar yr un peiriant archwiliedig ag AeroVault (AES-256-GCM-SIV ar gyfer cynnwys, AES-256-SIV ar gyfer enwau, Argon2id). Mae halen y troshaen yn cael ei storio yn <code>.aeroftp-crypt.json</code> yn ei wraidd ar y gweinydd pell, fel y gallwch ei ailagor o unrhyw ddyfais gyda'r cyfrinair yn unig."
+                "p3": "Dyma overlay <strong>brodorol</strong> AeroFTP, ar yr un injan wedi'i harchwilio ag AeroVault (cynnwys AES-256-GCM-SIV, enwau AES-256-SIV, Argon2id). Cedwir halen yr overlay yn y marciwr (<code>.aerocrypt.tsv</code> ar gyfer vaults newydd, mae'r hen <code>.aeroftp-crypt.json</code> yn dal yn ddarllenadwy) wrth ei wraidd ar y pell, fel y gallwch ei ailagor o unrhyw ddyfais gyda'r cyfrinair yn unig."
             },
             "openExisting": "Agor un sy'n bodoli",
             "createNew": "Creu un newydd",
@@ -5077,7 +5077,20 @@
             "recoveryKitIntro": "Dewisol. Mae'r pecyn hwn yn dal ffurfweddiad cyhoeddus yn unig (vault ID, salt, paramedrau KDF), byth cyfrinachau. Mae angen y pecyn a'ch cyfrinair ill dau i adfer eich cell ar ôl colli'r storfa allweddi leol (ailosod neu beiriant newydd), ond cadwch nhw mewn lleoedd ar wahân: ni all yr un ohonynt ar ei ben ei hun agor y gell. Gallwch ei agor a'i gadw eto unrhyw bryd.",
             "showKit": "Pecyn adfer",
             "hideKit": "Cau",
-            "kitUnavailable": "Nid yw'r pecyn adfer ar gael ar gyfer y gell hon eto."
+            "kitUnavailable": "Nid yw'r pecyn adfer ar gael ar gyfer y gell hon eto.",
+            "defaultSaltLabel": "Halen diofyn (dewisol, cludadwyedd gyda chyfrinair yn unig; mae angen entropi uchel ac ardystiad)",
+            "defaultSaltStrength128": "argymhellir 128-bit",
+            "defaultSaltStrength256": "256-bit",
+            "defaultSaltAttestation": "Defnyddiais reolwr cyfrineiriau ac rwy'n deall y cyfaddawd cysylltadwyedd.",
+            "legacyMarkerNotice": "Mae'r vault hwn yn dal i ddefnyddio'r marciwr etifeddol .aeroftp-crypt.json. Troswch ef i .aerocrypt.tsv ar ôl rhoi'r cyfrinair neu'r keyfile.",
+            "migrateLegacyMarker": "Trosi marciwr",
+            "legacyMarkerMigrated": "Marciwr wedi'i drosi i .aerocrypt.tsv.",
+            "legacyMarkerAlreadyCurrent": "Nid oes marciwr etifeddol ar ôl.",
+            "recoveryQr": "QR adfer",
+            "qrErrorCorrection": "Cywiro gwallau",
+            "qrRecommended": "(argymhellir)",
+            "qrHint": "Mae lefelau uwch yn fwy gwydn ar gopïau wedi'u hargraffu neu eu sganio.",
+            "qrPrintNote": "Lefel QR: {level} - sganiwch gyda sganiwr QR USB neu drawsgrifiwch y testun uchod"
         },
         "aerocryptProfile": {
             "enable": "Crypt (Amgryptio)",
@@ -5106,7 +5119,7 @@
             "keyfileGeneratedBackup": "Ffeil allwedd wedi'i chynhyrchu. Cadwch gopi wrth gefn nawr: mae ei cholli yn cloi'r gladdgell am byth.",
             "keyfileRepointHint": "Dim ond dangos lle mae'r ffeil allwedd y mae'r llwybr hwn; nid yw ei newid yn ail-allweddu'r gladdgell. Bydd ffeil allwedd anghywir neu goll yn gwrthod datgloi.",
             "keyfileStorageHint": "Cadwch ef ar ddisg lleol neu yriant USB, ar wahân i'r pell rydych chi'n ei amgryptio, a chadwch gopi wrth gefn.",
-            "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
+            "headerToggle": "Ysgrifennu header i'r remote (.aerocrypt.tsv)",
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "Llwybr Pell yr Troshaen",
             "overlaysRemotePathHint": "Is-ffolder o'r Remote Path lle mae'r troshaen wedi'i angori. Gadewch yn wag i ddefnyddio'r Remote Path, neu teipiwch enw is-ffolder yn unig (caiff ei greu o dan y Remote Path).",

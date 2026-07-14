@@ -5025,7 +5025,7 @@
                 "heading": "Čo táto vrstva robí",
                 "p1": "Šifruje názvy a obsah súborov <strong>za behu</strong>, ešte pred ich odoslaním na server, a pri sťahovaní ich dešifruje. Server vidí iba bloby so zašifrovanými názvami. Vy vidíte pôvodné názvy.",
                 "p2": "Kým je vrstva aktívna: vaša vzdialená relácia zobrazuje obsah v čitateľnej podobe, každé nahrávanie je šifrované a každé sťahovanie je dešifrované. Hľadajte odznak <em>AEROCRYPT</em> v lište cesty.",
-                "p3": "Toto je <strong>natívna</strong> vrstva AeroFTP, postavená na rovnakom auditovanom jadre ako AeroVault (obsah AES-256-GCM-SIV, názvy AES-256-SIV, Argon2id). Soľ tejto vrstvy je uložená v súbore <code>.aeroftp-crypt.json</code> v jej koreni na vzdialenom serveri, takže ju môžete znova otvoriť z akéhokoľvek zariadenia iba pomocou hesla."
+                "p3": "Toto je <strong>natívny</strong> overlay AeroFTP, na rovnakom auditovanom engine ako AeroVault (obsah AES-256-GCM-SIV, názvy AES-256-SIV, Argon2id). Soľ overlaya je uložená v značke (<code>.aerocrypt.tsv</code> pre nové trezory, starší <code>.aeroftp-crypt.json</code> je stále čitateľný) v jeho koreni na vzdialenom úložisku, takže ho môžete znova otvoriť z ľubovoľného zariadenia len pomocou hesla."
             },
             "openExisting": "Otvoriť existujúcu",
             "createNew": "Vytvoriť novú",
@@ -5058,7 +5058,20 @@
             "recoveryKitIntro": "Voliteľné. Táto súprava obsahuje iba verejnú konfiguráciu (vault ID, salt, parametre KDF), nikdy tajomstvá. Súprava aj vaše heslo sú potrebné oboje na obnovenie trezora po strate lokálneho úložiska kľúčov (preinštalovanie alebo nový počítač), ale uchovávajte ich na oddelených miestach: ani jedno z nich samo trezor neotvorí. Kedykoľvek ho môžete znova otvoriť a znova uložiť.",
             "showKit": "Súprava na obnovenie",
             "hideKit": "Zavrieť",
-            "kitUnavailable": "Súprava na obnovenie zatiaľ nie je pre tento trezor k dispozícii."
+            "kitUnavailable": "Súprava na obnovenie zatiaľ nie je pre tento trezor k dispozícii.",
+            "defaultSaltLabel": "Predvolená soľ (voliteľné, prenositeľnosť iba pomocou hesla; vyžaduje vysokú entropiu a potvrdenie)",
+            "defaultSaltStrength128": "odporúča sa 128 bitov",
+            "defaultSaltStrength256": "256 bitov",
+            "defaultSaltAttestation": "Použil(a) som správcu hesiel a rozumiem kompromisu prepojiteľnosti.",
+            "legacyMarkerNotice": "Tento vault stále používa starý marker .aeroftp-crypt.json. Po zadaní hesla alebo keyfile ho skonvertujte na .aerocrypt.tsv.",
+            "migrateLegacyMarker": "Skonvertovať marker",
+            "legacyMarkerMigrated": "Marker skonvertovaný na .aerocrypt.tsv.",
+            "legacyMarkerAlreadyCurrent": "Nezostal žiadny starý marker.",
+            "recoveryQr": "QR na obnovenie",
+            "qrErrorCorrection": "Oprava chýb",
+            "qrRecommended": "(odporúčané)",
+            "qrHint": "Vyššie úrovne sú odolnejšie pri tlačených alebo skenovaných kópiách.",
+            "qrPrintNote": "Úroveň QR: {level} - naskenujte USB QR skenerom alebo prepíšte text vyššie"
         },
         "aerocryptProfile": {
             "enable": "Crypt (Šifrovanie)",
@@ -5087,7 +5100,7 @@
             "keyfileGeneratedBackup": "Súbor kľúča vygenerovaný. Ihneď ho zálohujte: jeho strata trezor navždy uzamkne.",
             "keyfileRepointHint": "Táto cesta iba ukazuje, kde súbor kľúča leží; jej zmena trezor neprekľúčuje. Nesprávny alebo chýbajúci súbor kľúča odomknutie odmietne.",
             "keyfileStorageHint": "Uložte ho na lokálny disk alebo USB kľúč, oddelene od vzdialeného úložiska, ktoré šifrujete, a uchovajte si záložnú kópiu.",
-            "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
+            "headerToggle": "Zapísať header na remote (.aerocrypt.tsv)",
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "Vzdialená cesta prekrytia",
             "overlaysRemotePathHint": "Podpriečinok Remote Path, kde je vrstva ukotvená. Ponechajte prázdne na použitie Remote Path alebo zadajte len názov podpriečinka (vytvorí sa v Remote Path).",

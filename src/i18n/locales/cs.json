@@ -5025,7 +5025,7 @@
                 "heading": "Co tato vrstva dělá",
                 "p1": "Šifruje názvy a obsah souborů <strong>za běhu</strong>, ještě před odesláním na server, a při stahování je dešifruje. Server vidí pouze bloby se zašifrovanými názvy. Vy vidíte původní názvy.",
                 "p2": "Když je vrstva aktivní: vaše vzdálená relace zobrazuje obsah v čitelné podobě, každé nahrání je šifrováno a každé stahování je dešifrováno. Hledejte odznak <em>AEROCRYPT</em> v liště cesty.",
-                "p3": "Toto je <strong>nativní</strong> vrstva AeroFTP, postavená na stejném auditovaném jádře jako AeroVault (obsah AES-256-GCM-SIV, názvy AES-256-SIV, Argon2id). Sůl této vrstvy je uložena v souboru <code>.aeroftp-crypt.json</code> v jejím kořeni na vzdáleném serveru, takže ji můžete znovu otevřít z jakéhokoli zařízení pouze pomocí hesla."
+                "p3": "Toto je <strong>nativní</strong> overlay AeroFTP, postavený na stejném auditovaném enginu jako AeroVault (obsah AES-256-GCM-SIV, názvy AES-256-SIV, Argon2id). Sůl overlaye je uložená ve značce (<code>.aerocrypt.tsv</code> pro nové trezory, starší <code>.aeroftp-crypt.json</code> je stále čitelný) v jeho kořeni na vzdáleném úložišti, takže jej můžete znovu otevřít z libovolného zařízení jen pomocí hesla."
             },
             "openExisting": "Otevřít existující",
             "createNew": "Vytvořit novou",
@@ -5058,7 +5058,20 @@
             "recoveryKitIntro": "Volitelné. Tato sada obsahuje pouze veřejnou konfiguraci (vault ID, salt, parametry KDF), nikdy tajné údaje. Sada i vaše heslo jsou pro obnovení trezoru po ztrátě místního úložiště klíčů (přeinstalace nebo nový počítač) potřeba oba, ale uchovávejte je na oddělených místech: ani jedno z nich samo o sobě trezor neotevře. Kdykoli jej můžete znovu otevřít a znovu uložit.",
             "showKit": "Sada pro obnovení",
             "hideKit": "Zavřít",
-            "kitUnavailable": "Sada pro obnovení zatím pro tento trezor není k dispozici."
+            "kitUnavailable": "Sada pro obnovení zatím pro tento trezor není k dispozici.",
+            "defaultSaltLabel": "Výchozí sůl (volitelné, přenositelnost pouze pomocí hesla; vyžaduje vysokou entropii a potvrzení)",
+            "defaultSaltStrength128": "doporučeno 128 bitů",
+            "defaultSaltStrength256": "256 bitů",
+            "defaultSaltAttestation": "Použil(a) jsem správce hesel a rozumím kompromisu propojitelnosti.",
+            "legacyMarkerNotice": "Tento vault stále používá starý marker .aeroftp-crypt.json. Po zadání hesla nebo keyfile jej převeďte na .aerocrypt.tsv.",
+            "migrateLegacyMarker": "Převést marker",
+            "legacyMarkerMigrated": "Marker převeden na .aerocrypt.tsv.",
+            "legacyMarkerAlreadyCurrent": "Nezbývá žádný starý marker.",
+            "recoveryQr": "QR pro obnovení",
+            "qrErrorCorrection": "Oprava chyb",
+            "qrRecommended": "(doporučeno)",
+            "qrHint": "Vyšší úrovně jsou odolnější u tištěných nebo skenovaných kopií.",
+            "qrPrintNote": "Úroveň QR: {level} - naskenujte USB QR skenerem nebo přepište text výše"
         },
         "aerocryptProfile": {
             "enable": "Crypt (Šifrování)",
@@ -5087,7 +5100,7 @@
             "keyfileGeneratedBackup": "Soubor klíče vygenerován. Ihned jej zálohujte: jeho ztráta trezor navždy uzamkne.",
             "keyfileRepointHint": "Tato cesta pouze ukazuje, kde soubor klíče leží; její změna trezor nepřeklíčuje. Špatný nebo chybějící soubor klíče odemčení odmítne.",
             "keyfileStorageHint": "Uložte jej na místní disk nebo USB disk, odděleně od vzdáleného úložiště, které šifrujete, a uchovejte si záložní kopii.",
-            "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
+            "headerToggle": "Zapsat hlavičku na remote (.aerocrypt.tsv)",
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "Vzdálená cesta překryvu",
             "overlaysRemotePathHint": "Podsložka Remote Path, kde je vrstva ukotvena. Ponechte prázdné pro použití Remote Path, nebo zadejte jen název podsložky (vytvoří se pod Remote Path).",

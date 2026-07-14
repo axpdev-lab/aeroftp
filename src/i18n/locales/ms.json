@@ -5025,7 +5025,7 @@
                 "heading": "Apa yang dilakukan tindanan ini",
                 "p1": "Menyulitkan nama dan kandungan fail <strong>secara langsung</strong> sebelum menghantarnya ke pelayan, dan menyahsulitnya semasa anda memuat turun. Pelayan hanya melihat gumpalan data dengan nama yang dikelirukan. Anda melihat nama asal.",
                 "p2": "Semasa tindanan aktif: sesi jauh anda memaparkan kandungan dalam bentuk teks jelas, setiap muat naik disulitkan, setiap muat turun dinyahsulit. Cari lencana <em>AEROCRYPT</em> dalam bar laluan.",
-                "p3": "Ini ialah tindanan <strong>asli</strong> AeroFTP, pada enjin teraudit yang sama seperti AeroVault (kandungan AES-256-GCM-SIV, nama AES-256-SIV, Argon2id). Salt tindanan disimpan dalam <code>.aeroftp-crypt.json</code> pada rootnya di pelayan jauh, jadi anda boleh membukanya semula daripada mana-mana peranti hanya dengan kata laluan."
+                "p3": "Ini ialah overlay <strong>asli</strong> AeroFTP, pada enjin diaudit yang sama seperti AeroVault (kandungan AES-256-GCM-SIV, nama AES-256-SIV, Argon2id). Salt overlay disimpan dalam penanda (<code>.aerocrypt.tsv</code> untuk vault baharu, <code>.aeroftp-crypt.json</code> lama masih boleh dibaca) pada akarnya di remote, jadi anda boleh membukanya semula daripada mana-mana peranti hanya dengan kata laluan."
             },
             "openExisting": "Buka sedia ada",
             "createNew": "Cipta baharu",
@@ -5058,7 +5058,20 @@
             "recoveryKitIntro": "Pilihan. Kit ini hanya mengandungi konfigurasi awam (vault ID, salt, parameter KDF), bukan rahsia. Kit dan kata laluan anda kedua-duanya diperlukan untuk memulihkan bilik kebal anda selepas kehilangan stor kunci setempat (pemasangan semula atau mesin baharu), tetapi simpannya di tempat berasingan: tiada satu pun daripadanya secara bersendirian boleh membuka bilik kebal. Anda boleh membukanya semula dan menyimpannya semula pada bila-bila masa.",
             "showKit": "Kit pemulihan",
             "hideKit": "Tutup",
-            "kitUnavailable": "Kit pemulihan belum tersedia untuk bilik kebal ini lagi."
+            "kitUnavailable": "Kit pemulihan belum tersedia untuk bilik kebal ini lagi.",
+            "defaultSaltLabel": "Salt lalai (ikut serta, kebolehalihan hanya dengan kata laluan; memerlukan entropi tinggi dan perakuan)",
+            "defaultSaltStrength128": "128-bit disyorkan",
+            "defaultSaltStrength256": "256-bit",
+            "defaultSaltAttestation": "Saya menggunakan pengurus kata laluan dan memahami kompromi kebolehpautan.",
+            "legacyMarkerNotice": "Vault ini masih menggunakan marker lama .aeroftp-crypt.json. Tukarkannya kepada .aerocrypt.tsv selepas memasukkan kata laluan atau keyfile.",
+            "migrateLegacyMarker": "Tukar marker",
+            "legacyMarkerMigrated": "Marker ditukar kepada .aerocrypt.tsv.",
+            "legacyMarkerAlreadyCurrent": "Tiada marker lama yang tinggal.",
+            "recoveryQr": "QR pemulihan",
+            "qrErrorCorrection": "Pembetulan ralat",
+            "qrRecommended": "(disyorkan)",
+            "qrHint": "Tahap yang lebih tinggi lebih tahan pada salinan bercetak atau yang diimbas.",
+            "qrPrintNote": "Tahap QR: {level} - imbas dengan pengimbas QR USB atau salin teks di atas"
         },
         "aerocryptProfile": {
             "enable": "Crypt (Penyulitan)",
@@ -5087,7 +5100,7 @@
             "keyfileGeneratedBackup": "Fail kunci dijana. Sandarkan sekarang: kehilangannya mengunci bilik kebal selama-lamanya.",
             "keyfileRepointHint": "Laluan ini hanya menunjuk lokasi fail kunci; mengubahnya tidak menukar kunci bilik kebal. Fail kunci yang salah atau tiada akan menolak buka kunci.",
             "keyfileStorageHint": "Simpan pada cakera setempat atau pemacu USB, berasingan daripada peranti jauh yang anda sulitkan, dan simpan salinan sandaran.",
-            "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
+            "headerToggle": "Tulis header ke remote (.aerocrypt.tsv)",
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "Laluan Jauh Tindanan",
             "overlaysRemotePathHint": "Subfolder Remote Path tempat tindihan disauh. Biarkan kosong untuk menggunakan Remote Path, atau taip hanya nama subfolder (ia dicipta di bawah Remote Path).",

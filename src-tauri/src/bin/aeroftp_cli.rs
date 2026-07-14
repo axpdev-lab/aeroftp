@@ -4750,6 +4750,21 @@ enum CryptCommands {
         #[arg(long)]
         keyfile: Option<String>,
     },
+    /// Convert a legacy .aeroftp-crypt.json marker to .aerocrypt.tsv
+    MigrateMarker {
+        /// Server URL (omit when using --profile)
+        #[arg(default_value = "_", hide_default_value = true)]
+        url: String,
+        /// Remote encrypted directory
+        #[arg(default_value = "/")]
+        path: String,
+        /// Encryption password
+        #[arg(long, env = "AEROFTP_CRYPT_PASSWORD", hide_env_values = true)]
+        password: Option<String>,
+        /// Keyfile, required if the overlay was created with one
+        #[arg(long)]
+        keyfile: Option<String>,
+    },
     /// List files in an encrypted overlay (decrypted names)
     Ls {
         /// Server URL (omit when using --profile)
@@ -47818,6 +47833,63 @@ fn read_headerless_config_from_store(
     Ok(Some(config_json))
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CryptMarkerKind {
+    Current,
+    Legacy,
+}
+
+impl CryptMarkerKind {
+    fn name(self) -> &'static str {
+        match self {
+            CryptMarkerKind::Current => {
+                ftp_client_gui_lib::aerocrypt::overlay::CRYPT_CONFIG_WRITE_NAME
+            }
+            CryptMarkerKind::Legacy => {
+                ftp_client_gui_lib::aerocrypt::overlay::CRYPT_CONFIG_LEGACY_NAME
+            }
+        }
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            CryptMarkerKind::Current => "current",
+            CryptMarkerKind::Legacy => "legacy",
+        }
+    }
+}
+
+struct RemoteCryptMarker {
+    text: String,
+}
+
+fn crypt_marker_path(base_path: &str, kind: CryptMarkerKind) -> String {
+    format!("{}/{}", base_path.trim_end_matches('/'), kind.name())
+}
+
+async fn download_remote_crypt_marker(
+    provider: &mut dyn StorageProvider,
+    path: &str,
+) -> Result<String, ProviderError> {
+    let bytes = provider.download_to_bytes(path).await?;
+    String::from_utf8(bytes)
+        .map_err(|e| ProviderError::InvalidConfig(format!("AeroCrypt marker is not UTF-8: {e}")))
+}
+
+async fn read_remote_crypt_marker(
+    provider: &mut dyn StorageProvider,
+    base_path: &str,
+) -> Result<Option<RemoteCryptMarker>, ProviderError> {
+    for kind in [CryptMarkerKind::Current, CryptMarkerKind::Legacy] {
+        let path = crypt_marker_path(base_path, kind);
+        if provider.exists(&path).await? {
+            let text = download_remote_crypt_marker(provider, &path).await?;
+            return Ok(Some(RemoteCryptMarker { text }));
+        }
+    }
+    Ok(None)
+}
+
 async fn load_crypt_config_json(
     provider: &mut dyn StorageProvider,
     base_path: &str,
@@ -47825,33 +47897,18 @@ async fn load_crypt_config_json(
     format: OutputFormat,
     missing_message: &str,
 ) -> Result<String, i32> {
-    let config_path = format!("{}/.aerocrypt.tsv", base_path.trim_end_matches('/'));
-    let present = match provider.exists(&config_path).await {
-        Ok(v) => v,
+    match read_remote_crypt_marker(provider, base_path).await {
+        Ok(Some(marker)) => return Ok(marker.text),
+        Ok(None) => {}
         Err(e) => {
             let code = provider_error_to_exit_code(&e);
             print_error(
                 format,
-                &format!("Cannot probe crypt overlay config: {}", e),
+                &format!("Cannot probe crypt overlay config: {e}"),
                 code,
             );
             return Err(code);
         }
-    };
-    if present {
-        let config_data = match provider.download_to_bytes(&config_path).await {
-            Ok(d) => d,
-            Err(e) => {
-                let code = provider_error_to_exit_code(&e);
-                print_error(
-                    format,
-                    &format!("Cannot read crypt overlay config: {}", e),
-                    code,
-                );
-                return Err(code);
-            }
-        };
-        return Ok(String::from_utf8_lossy(&config_data).into_owned());
     }
     match read_cli_headerless_config(cli, format)? {
         Some(config_json) => Ok(config_json),
@@ -47859,6 +47916,20 @@ async fn load_crypt_config_json(
             print_error(format, missing_message, 5);
             Err(5)
         }
+    }
+}
+
+fn v3_config_salt_b64(
+    config: &ftp_client_gui_lib::aerocrypt::overlay::OverlayConfig,
+) -> Result<String, String> {
+    match config {
+        ftp_client_gui_lib::aerocrypt::overlay::OverlayConfig::V3 { salt, .. } => {
+            Ok(base64::engine::general_purpose::STANDARD.encode(salt))
+        }
+        other => Err(format!(
+            "AeroCrypt v{} metadata migration is not supported; only v3 vaults can migrate",
+            other.version()
+        )),
     }
 }
 
@@ -47911,14 +47982,7 @@ fn validate_crypt_migration_config(
         .map_err(|e| format!("Key derivation failed: {e}"))?;
     overlay::verify_config_mac(&config, &master_key)
         .map_err(|e| format!("Crypt unlock failed: {e}"))?;
-    let value: serde_json::Value = serde_json::from_str(config_json)
-        .map_err(|e| format!("Invalid AeroCrypt config JSON: {e}"))?;
-    let salt_b64 = value
-        .get("salt")
-        .and_then(|value| value.as_str())
-        .filter(|salt| !salt.is_empty())
-        .ok_or_else(|| "AeroCrypt config is missing salt".to_string())?
-        .to_string();
+    let salt_b64 = v3_config_salt_b64(&config)?;
     Ok((config, master_key, salt_b64))
 }
 
@@ -48278,6 +48342,277 @@ async fn cmd_crypt_to_headed(
     }
 
     crypt_migration_result(cli, format, &base_path, "headerless", "headed", true);
+    let _ = provider.disconnect().await;
+    0
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn cmd_crypt_migrate_marker(
+    url: &str,
+    path: &str,
+    password: &str,
+    keyfile_digest: Option<&[u8; 32]>,
+    cli: &Cli,
+    format: OutputFormat,
+) -> i32 {
+    use ftp_client_gui_lib::aerocrypt::overlay;
+
+    let (mut provider, initial_path) = match create_and_connect_raw(url, cli, format).await {
+        Ok(provider) => provider,
+        Err(code) => return code,
+    };
+    let base_path = normalize_remote_path(&resolve_cli_remote_path(&initial_path, path));
+    let current_path = crypt_marker_path(&base_path, CryptMarkerKind::Current);
+    let legacy_path = crypt_marker_path(&base_path, CryptMarkerKind::Legacy);
+
+    let legacy_exists = match provider.exists(&legacy_path).await {
+        Ok(exists) => exists,
+        Err(e) => {
+            let code = provider_error_to_exit_code(&e);
+            print_error(
+                format,
+                &format!("Cannot probe legacy AeroCrypt marker: {e}"),
+                code,
+            );
+            let _ = provider.disconnect().await;
+            return code;
+        }
+    };
+    if !legacy_exists {
+        let current_exists = match provider.exists(&current_path).await {
+            Ok(exists) => exists,
+            Err(e) => {
+                let code = provider_error_to_exit_code(&e);
+                print_error(
+                    format,
+                    &format!("Cannot probe current AeroCrypt marker: {e}"),
+                    code,
+                );
+                let _ = provider.disconnect().await;
+                return code;
+            }
+        };
+        if current_exists {
+            crypt_migration_result(
+                cli,
+                format,
+                &base_path,
+                CryptMarkerKind::Current.label(),
+                CryptMarkerKind::Current.name(),
+                false,
+            );
+            let _ = provider.disconnect().await;
+            return 0;
+        }
+        print_error(
+            format,
+            "No AeroCrypt marker was found at the requested path.",
+            2,
+        );
+        let _ = provider.disconnect().await;
+        return 2;
+    }
+
+    let legacy_text = match download_remote_crypt_marker(&mut *provider, &legacy_path).await {
+        Ok(text) => text,
+        Err(e) => {
+            let code = provider_error_to_exit_code(&e);
+            print_error(
+                format,
+                &format!("Cannot read legacy AeroCrypt marker: {e}"),
+                code,
+            );
+            let _ = provider.disconnect().await;
+            return code;
+        }
+    };
+    let (legacy_config, legacy_master, _) =
+        match validate_crypt_migration_config(&legacy_text, password, keyfile_digest) {
+            Ok(validated) => validated,
+            Err(e) => {
+                print_error(format, &e, 6);
+                let _ = provider.disconnect().await;
+                return 6;
+            }
+        };
+    let rebuilt_marker = match overlay::rebuild_config_v3(&legacy_config, &legacy_master) {
+        Ok(marker) => marker,
+        Err(e) => {
+            print_error(format, &format!("Cannot rebuild AeroCrypt marker: {e}"), 5);
+            let _ = provider.disconnect().await;
+            return 5;
+        }
+    };
+    if let Err(e) = validate_crypt_migration_config(&rebuilt_marker, password, keyfile_digest) {
+        print_error(
+            format,
+            &format!("Rebuilt AeroCrypt marker failed verification: {e}"),
+            5,
+        );
+        let _ = provider.disconnect().await;
+        return 5;
+    }
+
+    let current_exists = match provider.exists(&current_path).await {
+        Ok(exists) => exists,
+        Err(e) => {
+            let code = provider_error_to_exit_code(&e);
+            print_error(
+                format,
+                &format!("Cannot probe current AeroCrypt marker: {e}"),
+                code,
+            );
+            let _ = provider.disconnect().await;
+            return code;
+        }
+    };
+    if current_exists {
+        let current_text = match download_remote_crypt_marker(&mut *provider, &current_path).await {
+            Ok(text) => text,
+            Err(e) => {
+                let code = provider_error_to_exit_code(&e);
+                print_error(
+                    format,
+                    &format!("Cannot read current AeroCrypt marker: {e}"),
+                    code,
+                );
+                let _ = provider.disconnect().await;
+                return code;
+            }
+        };
+        if let Err(e) = validate_crypt_migration_config(&current_text, password, keyfile_digest) {
+            print_error(
+                format,
+                &format!(
+                    "Current AeroCrypt marker failed verification; legacy marker retained: {e}"
+                ),
+                6,
+            );
+            let _ = provider.disconnect().await;
+            return 6;
+        }
+    } else {
+        let local_tmp = match tempfile::NamedTempFile::new() {
+            Ok(tmp) => tmp,
+            Err(e) => {
+                print_error(format, &format!("Cannot stage AeroCrypt marker: {e}"), 11);
+                let _ = provider.disconnect().await;
+                return 11;
+            }
+        };
+        if let Err(e) = std::fs::write(local_tmp.path(), rebuilt_marker.as_bytes()) {
+            print_error(format, &format!("Cannot stage AeroCrypt marker: {e}"), 11);
+            let _ = provider.disconnect().await;
+            return 11;
+        }
+        let remote_tmp = format!("{current_path}.aerotmp-{}", uuid::Uuid::new_v4());
+        if let Err(e) = provider
+            .upload(&local_tmp.path().to_string_lossy(), &remote_tmp, None)
+            .await
+        {
+            let code = provider_error_to_exit_code(&e);
+            print_error(
+                format,
+                &format!("Cannot upload staged AeroCrypt marker: {e}"),
+                code,
+            );
+            let _ = provider.disconnect().await;
+            return code;
+        }
+        let staged = match provider.download_to_bytes(&remote_tmp).await {
+            Ok(bytes) => bytes,
+            Err(e) => {
+                let _ = provider.delete(&remote_tmp).await;
+                let code = provider_error_to_exit_code(&e);
+                print_error(
+                    format,
+                    &format!("Cannot verify staged AeroCrypt marker: {e}"),
+                    code,
+                );
+                let _ = provider.disconnect().await;
+                return code;
+            }
+        };
+        if staged != rebuilt_marker.as_bytes()
+            || String::from_utf8(staged)
+                .map_err(|e| e.to_string())
+                .and_then(|marker| {
+                    validate_crypt_migration_config(&marker, password, keyfile_digest).map(|_| ())
+                })
+                .is_err()
+        {
+            let _ = provider.delete(&remote_tmp).await;
+            print_error(
+                format,
+                "Staged AeroCrypt marker failed byte-for-byte or unlock verification; legacy marker retained.",
+                4,
+            );
+            let _ = provider.disconnect().await;
+            return 4;
+        }
+        if let Err(e) = provider.rename(&remote_tmp, &current_path).await {
+            let _ = provider.delete(&remote_tmp).await;
+            let code = provider_error_to_exit_code(&e);
+            print_error(
+                format,
+                &format!("Cannot publish verified AeroCrypt marker: {e}"),
+                code,
+            );
+            let _ = provider.disconnect().await;
+            return code;
+        }
+    }
+
+    let verified_current = match download_remote_crypt_marker(&mut *provider, &current_path).await {
+        Ok(text) => text,
+        Err(e) => {
+            let code = provider_error_to_exit_code(&e);
+            print_error(
+                format,
+                &format!("Cannot read back current AeroCrypt marker: {e}"),
+                code,
+            );
+            let _ = provider.disconnect().await;
+            return code;
+        }
+    };
+    if let Err(e) = validate_crypt_migration_config(&verified_current, password, keyfile_digest) {
+        print_error(
+            format,
+            &format!(
+                "Current AeroCrypt marker failed final verification; legacy marker retained: {e}"
+            ),
+            6,
+        );
+        let _ = provider.disconnect().await;
+        return 6;
+    }
+
+    let delete_warning = match provider.delete(&legacy_path).await {
+        Ok(()) => None,
+        Err(e) => Some(e.to_string()),
+    };
+    if matches!(format, OutputFormat::Json) {
+        print_json(&serde_json::json!({
+            "status": "ok",
+            "path": base_path,
+            "from": overlay::CRYPT_CONFIG_LEGACY_NAME,
+            "to": overlay::CRYPT_CONFIG_WRITE_NAME,
+            "changed": delete_warning.is_none(),
+            "legacyDeleted": delete_warning.is_none(),
+            "warning": delete_warning,
+        }));
+    } else if !cli.quiet {
+        println!(
+            "AeroCrypt marker migrated from {} to {} at {}",
+            overlay::CRYPT_CONFIG_LEGACY_NAME,
+            overlay::CRYPT_CONFIG_WRITE_NAME,
+            base_path
+        );
+        if let Some(warning) = delete_warning {
+            eprintln!("Warning: current marker verified, but legacy marker could not be deleted: {warning}");
+        }
+    }
     let _ = provider.disconnect().await;
     0
 }
@@ -61486,6 +61821,31 @@ async fn main() {
                         }
                     }
                 },
+                CryptCommands::MigrateMarker {
+                    url,
+                    path,
+                    password,
+                    keyfile,
+                } => match read_keyfile_digest(keyfile) {
+                    Err(e) => {
+                        print_error(format, &e, 6);
+                        6
+                    }
+                    Ok(kf) => {
+                        let pw = resolve_crypt_password(password).unwrap_or_default();
+                        if !require_secret(&pw, kf.as_ref(), "migrate-marker") {
+                            5
+                        } else {
+                            let (u, dir) = resolve_profile_crypt_positionals(
+                                cli.profile.is_some(),
+                                url,
+                                path,
+                                "/",
+                            );
+                            cmd_crypt_migrate_marker(&u, &dir, &pw, kf.as_ref(), &cli, format).await
+                        }
+                    }
+                },
                 CryptCommands::Ls {
                     url,
                     path,
@@ -66364,12 +66724,12 @@ mod tests {
             validate_crypt_migration_config(&local_metadata, password, None).unwrap();
         assert_eq!(
             local_salt,
-            serde_json::from_str::<serde_json::Value>(&headed_marker).unwrap()["salt"]
+            base64::engine::general_purpose::STANDARD.encode(salt)
         );
         assert_eq!(local_cfg.vault_id(), Some(vault_id));
         assert_eq!(aecr_before, aecr_before.clone());
 
-        // Headerless -> headed recomputes the MAC from the stored salt and key,
+        // Headerless -> headed rebuilds the marker from the stored salt and key,
         // while preserving vault identity and never reading or rewriting AECR.
         let rebuilt_marker = overlay::rebuild_config_v3(&local_cfg, &local_master).unwrap();
         let (rebuilt_cfg, rebuilt_master, _) =

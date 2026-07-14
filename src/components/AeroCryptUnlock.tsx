@@ -5,9 +5,10 @@
 // the native aerocrypt_provider_* backend on our own audited codec. It is
 // deliberately simpler than the rclone modal: the native overlay always encrypts
 // names with AES-256-SIV (no filename-encryption / dir-name / dirIV options), and
-// the salt is generated automatically and stored in .aeroftp-crypt.json on the
-// remote, so there is no salt field. Opening an existing overlay reads that
-// config from the provider's current directory first (aerocrypt_provider_read_config).
+// the salt is generated automatically and stored in the remote marker
+// (.aerocrypt.tsv for new vaults, legacy .aeroftp-crypt.json still readable), so
+// there is no salt field. Opening an existing overlay reads that config from the
+// provider's current directory first (aerocrypt_provider_read_config).
 //
 // i18n note: this modal uses the dedicated `aerocryptNative.*` namespace. The
 // rclone modal still owns `aerocrypt.*`; the coordinated split/rename is P6.
@@ -53,6 +54,17 @@ interface AerocryptEmergencyKit {
     text: string;
 }
 
+interface AeroCryptMarkerStatus {
+    hasCurrentMarker: boolean;
+    hasLegacyMarker: boolean;
+}
+
+interface AeroCryptMarkerMigrationResult {
+    changed: boolean;
+    legacyDeleted: boolean;
+    warning?: string | null;
+}
+
 export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({ onClose, onUnlocked, onLocked, activeVaultId }) => {
     const t = useTranslation();
     const [mode, setMode] = useState<'open' | 'create'>('open');
@@ -87,6 +99,8 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({ onClose, onUnl
     const [success, setSuccess] = useState<string | null>(null);
     const [kitData, setKitData] = useState<AerocryptEmergencyKit | null>(null);
     const [kitQrLevel, setKitQrLevel] = useState<'L' | 'M' | 'Q' | 'H'>('H');
+    const [markerStatus, setMarkerStatus] = useState<AeroCryptMarkerStatus | null>(null);
+    const [markerMigrating, setMarkerMigrating] = useState(false);
     const vaultInfoRef = useRef<AeroCryptVaultInfo | null>(null);
 
     useEffect(() => {
@@ -98,6 +112,20 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({ onClose, onUnl
         setVaultInfo({ vault_id: activeVaultId, version: 2, config_json: '' });
     }, [activeVaultId]);
 
+    const refreshMarkerStatus = useCallback(async () => {
+        if (mode !== 'open' || vaultInfoRef.current) return;
+        try {
+            const status = await invoke<AeroCryptMarkerStatus>('aerocrypt_provider_marker_status', {});
+            setMarkerStatus(status);
+        } catch {
+            setMarkerStatus(null);
+        }
+    }, [mode]);
+
+    useEffect(() => {
+        void refreshMarkerStatus();
+    }, [refreshMarkerStatus]);
+
     const clearSensitiveState = useCallback(() => {
         setVaultInfo(null);
         setPassword('');
@@ -107,6 +135,7 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({ onClose, onUnl
         setAeroCryptDefaultSalt(false);
         setAeroCryptDefaultSaltStrength('128');
         setAeroCryptDefaultSaltAttested(false);
+        setMarkerStatus(null);
     }, []);
 
     const lockVault = useCallback(async (vaultId: string) => {
@@ -119,8 +148,8 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({ onClose, onUnl
         setLoading(true);
         setError(null);
         try {
-            // The native overlay's salt lives in .aeroftp-crypt.json on the
-            // remote: read it from the current directory before deriving the key.
+            // The native overlay's salt lives in the remote marker: read it from
+            // the current directory before deriving the key.
             const configJson = await invoke<string | null>('aerocrypt_provider_read_config', {});
             if (!configJson) {
                 setError(t('aerocryptNative.noOverlayFound'));
@@ -183,6 +212,31 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({ onClose, onUnl
         }
     };
 
+    const handleMigrateLegacyMarker = async () => {
+        if (!password && !keyfilePath) return;
+        setMarkerMigrating(true);
+        setError(null);
+        setSuccess(null);
+        try {
+            const result = await invoke<AeroCryptMarkerMigrationResult>('aerocrypt_provider_migrate_legacy_marker', {
+                password,
+                keyfilePath: keyfilePath || null,
+            });
+            await refreshMarkerStatus();
+            if (result.warning) {
+                setError(result.warning);
+            } else if (result.changed || result.legacyDeleted) {
+                setSuccess(t('aerocryptNative.legacyMarkerMigrated'));
+            } else {
+                setSuccess(t('aerocryptNative.legacyMarkerAlreadyCurrent'));
+            }
+        } catch (e) {
+            setError(String(e));
+        } finally {
+            setMarkerMigrating(false);
+        }
+    };
+
     // On-demand recovery kit: rebuild the public kit from the vault's config at
     // any time (never forced). For a freshly created or opened vault the
     // config_json is already in vaultInfo; for a vault re-entered via
@@ -225,7 +279,7 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({ onClose, onUnl
         if (!kitData) return;
         const w = window.open('', '_blank');
         if (w) {
-            const qrNote = `\n[QR level: ${kitQrLevel} — scan with USB QR scanner or transcribe the text above]\n`;
+            const qrNote = `\n[${t('aerocryptNative.qrPrintNote', { level: kitQrLevel })}]\n`;
             w.document.write('<pre style="font-family: monospace; white-space: pre-wrap;">' +
                 kitData.text.replace(/&/g,'&amp;').replace(/</g,'&lt;') +
                 qrNote.replace(/&/g,'&amp;') +
@@ -417,20 +471,37 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({ onClose, onUnl
                                             onChange={(e) => setAeroCryptDefaultSalt(e.target.checked)}
                                             disabled={!canToggleDefaultSalt}
                                         />
-                                        <span>Default salt (opt-in, password-only portability; requires high entropy + attestation)</span>
+                                        <span>{t('aerocryptNative.defaultSaltLabel')}</span>
                                     </label>
                                     {aeroCryptDefaultSalt && (
                                         <>
                                             <div className="ml-5 flex gap-3">
-                                                <label><input type="radio" name="mstrength" checked={aeroCryptDefaultSaltStrength==='128'} onChange={() => setAeroCryptDefaultSaltStrength('128')} /> 128-bit rec.</label>
-                                                <label><input type="radio" name="mstrength" checked={aeroCryptDefaultSaltStrength==='256'} onChange={() => setAeroCryptDefaultSaltStrength('256')} /> 256-bit</label>
+                                                <label><input type="radio" name="mstrength" checked={aeroCryptDefaultSaltStrength==='128'} onChange={() => setAeroCryptDefaultSaltStrength('128')} /> {t('aerocryptNative.defaultSaltStrength128')}</label>
+                                                <label><input type="radio" name="mstrength" checked={aeroCryptDefaultSaltStrength==='256'} onChange={() => setAeroCryptDefaultSaltStrength('256')} /> {t('aerocryptNative.defaultSaltStrength256')}</label>
                                             </div>
                                             <label className="ml-5 flex items-start gap-1.5">
                                                 <input type="checkbox" checked={aeroCryptDefaultSaltAttested} onChange={(e)=>setAeroCryptDefaultSaltAttested(e.target.checked)} />
-                                                <span>I used a password manager and understand the linkability tradeoff.</span>
+                                                <span>{t('aerocryptNative.defaultSaltAttestation')}</span>
                                             </label>
                                         </>
                                     )}
+                                </div>
+                            )}
+
+                            {mode === 'open' && markerStatus?.hasLegacyMarker && (
+                                <div className="space-y-2 rounded border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 p-3 text-xs">
+                                    <p className="text-amber-800 dark:text-amber-200">
+                                        {t('aerocryptNative.legacyMarkerNotice')}
+                                    </p>
+                                    <button
+                                        type="button"
+                                        onClick={handleMigrateLegacyMarker}
+                                        disabled={(!password && !keyfilePath) || loading || markerMigrating}
+                                        className="inline-flex items-center gap-2 px-3 py-1.5 rounded bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    >
+                                        {markerMigrating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileKey className="w-3.5 h-3.5" />}
+                                        {t('aerocryptNative.migrateLegacyMarker')}
+                                    </button>
                                 </div>
                             )}
 
@@ -483,7 +554,7 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({ onClose, onUnl
                                     {/* D4: QR code for the recovery kit (public fields only). Level selector defaults to H (max correction). */}
                                     <div className="flex flex-col sm:flex-row gap-3 items-start">
                                         <div>
-                                            <div className="text-[10px] uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1">Recovery QR</div>
+                                            <div className="text-[10px] uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1">{t('aerocryptNative.recoveryQr')}</div>
                                             <QRCodeSVG
                                                 value={`AEROCRYPT-KIT v1\n${kitData.text}`}
                                                 level={kitQrLevel}
@@ -492,7 +563,7 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({ onClose, onUnl
                                             />
                                         </div>
                                         <div className="text-xs space-y-1">
-                                            <div className="font-medium">Error correction</div>
+                                            <div className="font-medium">{t('aerocryptNative.qrErrorCorrection')}</div>
                                             {(['L','M','Q','H'] as const).map(lv => (
                                                 <label key={lv} className="flex items-center gap-1.5 cursor-pointer">
                                                     <input
@@ -501,10 +572,10 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({ onClose, onUnl
                                                         checked={kitQrLevel === lv}
                                                         onChange={() => setKitQrLevel(lv)}
                                                     />
-                                                    <span>{lv} {lv === 'H' ? '(recommended)' : ''}</span>
+                                                    <span>{lv} {lv === 'H' ? t('aerocryptNative.qrRecommended') : ''}</span>
                                                 </label>
                                             ))}
-                                            <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-1">Higher = more resilient to damage on print/scan.</p>
+                                            <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-1">{t('aerocryptNative.qrHint')}</p>
                                         </div>
                                     </div>
 

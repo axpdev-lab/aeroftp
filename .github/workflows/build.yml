@@ -197,11 +197,40 @@ jobs:
         working-directory: src-tauri
         run: cargo test
 
-      # Native build: linux, windows, and the macOS arm64 leg (host arch, no
+      # Native build: Linux, Windows, and the macOS arm64 leg (host arch, no
       # --target). A real/native target dir keeps every package bin in
       # target/release so the bundler finds them all.
+      #
+      # Linux AppImage packaging downloads AppRun/linuxdeploy helpers from
+      # GitHub during Tauri's bundling phase. GitHub-hosted runners can drop
+      # those connections after the Rust build is already complete, so retry
+      # only the Linux build step and clear partial helper downloads between
+      # attempts.
+      - name: Build Tauri app (Linux with AppImage download retry)
+        if: matrix.target == 'linux'
+        shell: bash
+        run: |
+          set -u
+          for attempt in 1 2 3; do
+            if npm run tauri build; then
+              exit 0
+            fi
+            status=$?
+            if [ "$attempt" -eq 3 ]; then
+              exit "$status"
+            fi
+            echo "::warning::Tauri Linux build failed on attempt ${attempt}/3; retrying after clearing partial AppImage helper downloads"
+            find src-tauri/target/release/bundle/appimage \
+              -maxdepth 2 \
+              \( -name 'AppRun*' -o -name 'linuxdeploy*' \) \
+              -type f -delete 2>/dev/null || true
+            sleep $((attempt * 20))
+          done
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Build Tauri app
-        if: matrix.target != 'macos' || matrix.arch == 'aarch64'
+        if: matrix.target != 'linux' && (matrix.target != 'macos' || matrix.arch == 'aarch64')
         run: npm run tauri build
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

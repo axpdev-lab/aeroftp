@@ -5025,7 +5025,7 @@
                 "heading": "এই ওভারলে কী করে",
                 "p1": "সার্ভারে পাঠানোর আগে ফাইলের নাম ও বিষয়বস্তু <strong>তাৎক্ষণিকভাবে</strong> এনক্রিপ্ট করে এবং ডাউনলোড করার সময় ডিক্রিপ্ট করে। সার্ভার কেবল এলোমেলো নামসহ অস্পষ্ট ডেটা দেখে। আপনি মূল নামগুলো দেখেন।",
                 "p2": "ওভারলে সক্রিয় থাকাকালীন: আপনার দূরবর্তী সেশন বিষয়বস্তু স্পষ্টভাবে দেখায়, প্রতিটি আপলোড এনক্রিপ্ট করা হয়, প্রতিটি ডাউনলোড ডিক্রিপ্ট করা হয়। পাথ বারে <em>AEROCRYPT</em> ব্যাজটি খুঁজুন।",
-                "p3": "এটি AeroFTP-এর <strong>নেটিভ</strong> ওভারলে, AeroVault-এর মতো একই নিরীক্ষিত ইঞ্জিনে (বিষয়বস্তু AES-256-GCM-SIV, নাম AES-256-SIV, Argon2id)। ওভারলের সল্ট দূরবর্তী সার্ভারে এর মূলে <code>.aeroftp-crypt.json</code>-এ সংরক্ষিত থাকে, তাই আপনি কেবল পাসওয়ার্ড দিয়ে যেকোনো ডিভাইস থেকে এটি আবার খুলতে পারেন।"
+                "p3": "এটি AeroFTP-এর <strong>নেটিভ</strong> overlay, AeroVault-এর মতো একই নিরীক্ষিত ইঞ্জিনে (AES-256-GCM-SIV কনটেন্ট, AES-256-SIV নাম, Argon2id)। overlay-এর salt রিমোটের রুটে marker-এ সংরক্ষিত থাকে (নতুন vault-এর জন্য <code>.aerocrypt.tsv</code>, পুরোনো <code>.aeroftp-crypt.json</code> এখনও পড়া যায়), তাই শুধু পাসওয়ার্ড দিয়েই যেকোনো ডিভাইস থেকে এটি আবার খুলতে পারবেন।"
             },
             "openExisting": "বিদ্যমানটি খুলুন",
             "createNew": "নতুন তৈরি করুন",
@@ -5058,7 +5058,20 @@
             "recoveryKitIntro": "ঐচ্ছিক। এই কিটে শুধু পাবলিক কনফিগারেশন থাকে (vault ID, salt, KDF প্যারামিটার), কখনও গোপন তথ্য নয়। স্থানীয় কী স্টোর হারানোর পর (পুনরায় ইনস্টল বা নতুন মেশিন) আপনার ভল্ট পুনরুদ্ধার করতে কিট এবং আপনার পাসওয়ার্ড দুটোই প্রয়োজন, তবে এগুলো আলাদা জায়গায় রাখুন: কোনোটি একা ভল্ট খুলতে পারে না। আপনি যে কোনো সময় এটি আবার খুলে সংরক্ষণ করতে পারেন।",
             "showKit": "পুনরুদ্ধার কিট",
             "hideKit": "বন্ধ করুন",
-            "kitUnavailable": "এই ভল্টের জন্য পুনরুদ্ধার কিট এখনও উপলব্ধ নয়।"
+            "kitUnavailable": "এই ভল্টের জন্য পুনরুদ্ধার কিট এখনও উপলব্ধ নয়।",
+            "defaultSaltLabel": "ডিফল্ট salt (নিজে বেছে নেওয়া, শুধু পাসওয়ার্ডে বহনযোগ্যতা; উচ্চ entropy ও attestation প্রয়োজন)",
+            "defaultSaltStrength128": "128-bit প্রস্তাবিত",
+            "defaultSaltStrength256": "256-bit",
+            "defaultSaltAttestation": "আমি একটি পাসওয়ার্ড ম্যানেজার ব্যবহার করেছি এবং linkability tradeoff বুঝি।",
+            "legacyMarkerNotice": "এই vault এখনও পুরনো .aeroftp-crypt.json মার্কার ব্যবহার করছে। পাসওয়ার্ড বা keyfile দেওয়ার পরে এটিকে .aerocrypt.tsv-তে রূপান্তর করুন।",
+            "migrateLegacyMarker": "মার্কার রূপান্তর করুন",
+            "legacyMarkerMigrated": "মার্কার .aerocrypt.tsv-তে রূপান্তরিত হয়েছে।",
+            "legacyMarkerAlreadyCurrent": "কোনও পুরনো মার্কার অবশিষ্ট নেই।",
+            "recoveryQr": "পুনরুদ্ধার QR",
+            "qrErrorCorrection": "ত্রুটি সংশোধন",
+            "qrRecommended": "(সুপারিশকৃত)",
+            "qrHint": "উচ্চতর স্তরগুলো মুদ্রিত বা স্ক্যান করা কপিতে বেশি সহনশীল।",
+            "qrPrintNote": "QR স্তর: {level} - একটি USB QR স্ক্যানার দিয়ে স্ক্যান করুন বা উপরের পাঠ্যটি লিখে নিন"
         },
         "aerocryptProfile": {
             "enable": "Crypt (এনক্রিপশন)",
@@ -5087,7 +5100,7 @@
             "keyfileGeneratedBackup": "কী-ফাইল তৈরি হয়েছে। এখনই ব্যাকআপ নিন: এটি হারালে ভল্ট চিরতরে বন্ধ হয়ে যাবে।",
             "keyfileRepointHint": "এই পাথ শুধু কী-ফাইলটি কোথায় আছে তা নির্দেশ করে; এটি বদলালে ভল্টের কী বদলায় না। ভুল বা অনুপস্থিত কী-ফাইল হলে আনলক প্রত্যাখ্যাত হয়।",
             "keyfileStorageHint": "এটি স্থানীয় ডিস্ক বা USB ড্রাইভে সংরক্ষণ করুন, আপনি যে রিমোট এনক্রিপ্ট করছেন তা থেকে আলাদা রাখুন এবং একটি ব্যাকআপ কপি রাখুন।",
-            "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
+            "headerToggle": "remote-এ header লিখুন (.aerocrypt.tsv)",
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "ওভারলে রিমোট পাথ",
             "overlaysRemotePathHint": "Remote Path-এর একটি সাবফোল্ডার যেখানে ওভারলে নোঙর করা হয়। Remote Path ব্যবহার করতে খালি রাখুন, অথবা শুধু একটি সাবফোল্ডারের নাম লিখুন (এটি Remote Path-এর অধীনে তৈরি হয়)।",

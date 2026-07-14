@@ -5025,7 +5025,7 @@
                 "heading": "Qué hace esta superposición",
                 "p1": "Cifra los nombres y el contenido de los archivos <strong>sobre la marcha</strong>, antes de enviarlos al servidor, y los descifra al descargarlos. El servidor solo ve blobs con nombres ilegibles. Tú ves los nombres originales.",
                 "p2": "Mientras la superposición está activa: tu sesión remota muestra el contenido en claro, cada subida se cifra y cada descarga se descifra. Busca la insignia <em>AEROCRYPT</em> en la barra de ruta.",
-                "p3": "Esta es la superposición <strong>nativa</strong> de AeroFTP, sobre el mismo motor auditado que AeroVault (AES-256-GCM-SIV para el contenido, AES-256-SIV para los nombres, Argon2id). La sal de la superposición se guarda en <code>.aeroftp-crypt.json</code> en su raíz en el servidor remoto, por lo que puedes volver a abrirla desde cualquier dispositivo solo con la contraseña."
+                "p3": "Esta es la capa <strong>nativa</strong> de AeroFTP, sobre el mismo motor auditado que AeroVault (contenido AES-256-GCM-SIV, nombres AES-256-SIV, Argon2id). La sal de la capa se guarda en el marcador (<code>.aerocrypt.tsv</code> para bóvedas nuevas, el heredado <code>.aeroftp-crypt.json</code> sigue siendo legible) en su raíz en el remoto, para que puedas reabrirla desde cualquier dispositivo solo con la contraseña."
             },
             "openExisting": "Abrir existente",
             "createNew": "Crear nueva",
@@ -5058,7 +5058,20 @@
             "recoveryKitIntro": "Opcional. Este kit contiene solo configuración pública (vault ID, salt, parámetros KDF), nunca secretos. El kit y su contraseña son ambos necesarios para restaurar su bóveda tras perder el almacén de claves local (reinstalación o equipo nuevo), pero guárdelos en lugares separados: ninguno de los dos por sí solo puede abrir la bóveda. Puede volver a abrirla y guardarla de nuevo en cualquier momento.",
             "showKit": "Kit de recuperación",
             "hideKit": "Cerrar",
-            "kitUnavailable": "El kit de recuperación aún no está disponible para esta bóveda."
+            "kitUnavailable": "El kit de recuperación aún no está disponible para esta bóveda.",
+            "defaultSaltLabel": "Sal predeterminada (opcional, portabilidad solo con contraseña; requiere alta entropía y atestación)",
+            "defaultSaltStrength128": "128 bits recomendado",
+            "defaultSaltStrength256": "256 bits",
+            "defaultSaltAttestation": "He usado un gestor de contraseñas y entiendo el compromiso de vinculabilidad.",
+            "legacyMarkerNotice": "Este vault aún usa el marcador heredado .aeroftp-crypt.json. Conviértelo a .aerocrypt.tsv después de introducir la contraseña o el keyfile.",
+            "migrateLegacyMarker": "Convertir marcador",
+            "legacyMarkerMigrated": "Marcador convertido a .aerocrypt.tsv.",
+            "legacyMarkerAlreadyCurrent": "No queda ningún marcador heredado.",
+            "recoveryQr": "QR de recuperación",
+            "qrErrorCorrection": "Corrección de errores",
+            "qrRecommended": "(recomendado)",
+            "qrHint": "Los niveles más altos son más resistentes en copias impresas o escaneadas.",
+            "qrPrintNote": "Nivel QR: {level} - escanea con un escáner QR USB o transcribe el texto anterior"
         },
         "aerocryptProfile": {
             "enable": "Crypt (Cifrado)",
@@ -5087,7 +5100,7 @@
             "keyfileGeneratedBackup": "Archivo de clave generado. Haga una copia ahora: perderlo deja la bóveda inaccesible para siempre.",
             "keyfileRepointHint": "Esta ruta solo indica dónde está el archivo de clave; cambiarla no vuelve a cifrar la bóveda. Un archivo de clave erróneo o ausente rechaza el desbloqueo.",
             "keyfileStorageHint": "Guárdalo en un disco local o una unidad USB, separado del remoto que estás cifrando, y conserva una copia de seguridad.",
-            "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
+            "headerToggle": "Escribir cabecera en remoto (.aerocrypt.tsv)",
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "Ruta remota de la superposición",
             "overlaysRemotePathHint": "Subcarpeta del Remote Path donde se ancla la superposición. Déjalo vacío para usar el Remote Path, o escribe solo un nombre de subcarpeta (se crea bajo el Remote Path).",

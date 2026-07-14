@@ -5025,7 +5025,7 @@
                 "heading": "Lớp phủ này làm gì",
                 "p1": "Mã hóa tên và nội dung tệp <strong>tức thời</strong> trước khi gửi lên máy chủ, và giải mã khi bạn tải xuống. Máy chủ chỉ thấy các khối dữ liệu với tên bị xáo trộn. Bạn thì thấy tên gốc.",
                 "p2": "Khi lớp phủ đang hoạt động: phiên từ xa của bạn hiển thị nội dung ở dạng rõ, mọi lần tải lên đều được mã hóa, mọi lần tải xuống đều được giải mã. Hãy tìm huy hiệu <em>AEROCRYPT</em> trên thanh đường dẫn.",
-                "p3": "Đây là lớp phủ <strong>gốc</strong> của AeroFTP, chạy trên cùng engine đã được kiểm toán như AeroVault (nội dung dùng AES-256-GCM-SIV, tên dùng AES-256-SIV, Argon2id). Giá trị salt của lớp phủ được lưu trong <code>.aeroftp-crypt.json</code> tại thư mục gốc trên máy chủ từ xa, vì vậy bạn có thể mở lại nó từ bất kỳ thiết bị nào chỉ với mật khẩu."
+                "p3": "Đây là overlay <strong>gốc</strong> của AeroFTP, dùng cùng engine đã được kiểm toán như AeroVault (nội dung AES-256-GCM-SIV, tên AES-256-SIV, Argon2id). Salt của overlay được lưu trong marker (<code>.aerocrypt.tsv</code> cho vault mới, <code>.aeroftp-crypt.json</code> cũ vẫn đọc được) tại root của nó trên remote, vì vậy bạn có thể mở lại từ bất kỳ thiết bị nào chỉ bằng mật khẩu."
             },
             "openExisting": "Mở hiện có",
             "createNew": "Tạo mới",
@@ -5058,7 +5058,20 @@
             "recoveryKitIntro": "Tùy chọn. Bộ này chỉ chứa cấu hình công khai (vault ID, salt, tham số KDF), không bao giờ chứa bí mật. Cả bộ này và mật khẩu của bạn đều cần thiết để khôi phục kho lưu trữ sau khi mất kho khóa cục bộ (cài đặt lại hoặc máy mới), nhưng hãy giữ chúng ở những nơi riêng biệt: không thứ nào một mình có thể mở kho lưu trữ. Bạn có thể mở lại và lưu lại bất cứ lúc nào.",
             "showKit": "Bộ khôi phục",
             "hideKit": "Đóng",
-            "kitUnavailable": "Bộ khôi phục chưa khả dụng cho kho này."
+            "kitUnavailable": "Bộ khôi phục chưa khả dụng cho kho này.",
+            "defaultSaltLabel": "Salt mặc định (chọn bật, khả năng di chuyển chỉ bằng mật khẩu; yêu cầu entropy cao và attestation)",
+            "defaultSaltStrength128": "khuyến nghị 128-bit",
+            "defaultSaltStrength256": "256-bit",
+            "defaultSaltAttestation": "Tôi đã dùng trình quản lý mật khẩu và hiểu đánh đổi về linkability.",
+            "legacyMarkerNotice": "Vault này vẫn dùng marker cũ .aeroftp-crypt.json. Chuyển đổi nó sang .aerocrypt.tsv sau khi nhập mật khẩu hoặc keyfile.",
+            "migrateLegacyMarker": "Chuyển đổi marker",
+            "legacyMarkerMigrated": "Marker đã được chuyển đổi sang .aerocrypt.tsv.",
+            "legacyMarkerAlreadyCurrent": "Không còn marker cũ nào.",
+            "recoveryQr": "QR khôi phục",
+            "qrErrorCorrection": "Sửa lỗi",
+            "qrRecommended": "(được đề xuất)",
+            "qrHint": "Mức cao hơn bền hơn trên các bản in hoặc bản quét.",
+            "qrPrintNote": "Mức QR: {level} - quét bằng máy quét USB QR hoặc chép lại văn bản phía trên"
         },
         "aerocryptProfile": {
             "enable": "Crypt (Mã hóa)",
@@ -5087,7 +5100,7 @@
             "keyfileGeneratedBackup": "Đã tạo tệp khóa. Hãy sao lưu ngay: mất nó khiến két bị khóa vĩnh viễn.",
             "keyfileRepointHint": "Đường dẫn này chỉ trỏ tới nơi tệp khóa nằm; thay đổi nó không đổi khóa của két. Tệp khóa sai hoặc thiếu sẽ bị từ chối mở khóa.",
             "keyfileStorageHint": "Lưu nó trên ổ đĩa cục bộ hoặc ổ USB, tách biệt với máy chủ từ xa mà bạn đang mã hóa, và giữ một bản sao lưu.",
-            "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
+            "headerToggle": "Ghi header vào remote (.aerocrypt.tsv)",
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "Đường dẫn từ xa của lớp phủ",
             "overlaysRemotePathHint": "Thư mục con của Remote Path nơi lớp phủ được neo. Để trống để dùng Remote Path, hoặc chỉ nhập tên thư mục con (nó được tạo bên trong Remote Path).",

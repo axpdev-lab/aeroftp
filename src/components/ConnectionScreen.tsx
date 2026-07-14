@@ -630,7 +630,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     const [aeroCryptDefaultSaltAttested, setAeroCryptDefaultSaltAttested] = useState(false);
     // P3.3b: rclone-crypt interop needs salt (password2) + filename/dir-name
     // encryption mode to auto-unlock on connect, mirroring the RcloneCryptUnlock
-    // modal. Native AeroCrypt ignores these (config lives in .aeroftp-crypt.json).
+    // modal. Native AeroCrypt ignores these (config lives in its marker).
     const [aeroCryptSalt, setAeroCryptSalt] = useState('');
     const [showAeroCryptSalt, setShowAeroCryptSalt] = useState(false);
     // AeroCrypt Tier 1 keyfile second factor: the PATH is a pointer, not a
@@ -3136,7 +3136,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                 )}
                                 {/* rclone-crypt interop (P3.3b): salt + filename/dir-name
                                     encryption so the bound profile auto-unlocks like native.
-                                    Native AeroCrypt reads these from .aeroftp-crypt.json. */}
+                                    Native AeroCrypt reads these from its marker. */}
                                 {aeroCryptKind === 'rclone-crypt' && (
                                     <>
                                         <div>

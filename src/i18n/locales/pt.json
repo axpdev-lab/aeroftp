@@ -5025,7 +5025,7 @@
                 "heading": "O que esta sobreposição faz",
                 "p1": "Cifra os nomes e o conteúdo dos ficheiros <strong>em tempo real</strong>, antes de os enviar para o servidor, e decifra-os ao transferir. O servidor só vê blobs com nomes baralhados. Você vê os nomes originais.",
                 "p2": "Enquanto a sobreposição está ativa: a sua sessão remota mostra o conteúdo em claro, cada envio é cifrado e cada transferência é decifrada. Procure o emblema <em>AEROCRYPT</em> na barra de caminho.",
-                "p3": "Esta é a sobreposição <strong>nativa</strong> do AeroFTP, no mesmo motor auditado que o AeroVault (AES-256-GCM-SIV para o conteúdo, AES-256-SIV para os nomes, Argon2id). O sal da sobreposição é guardado em <code>.aeroftp-crypt.json</code> na sua raiz no servidor remoto, para que possa reabri-la a partir de qualquer dispositivo apenas com a palavra-passe."
+                "p3": "Esta é a camada <strong>nativa</strong> do AeroFTP, no mesmo motor auditado que o AeroVault (conteúdo AES-256-GCM-SIV, nomes AES-256-SIV, Argon2id). O sal da camada é armazenado no marcador (<code>.aerocrypt.tsv</code> para novos cofres, o legado <code>.aeroftp-crypt.json</code> ainda pode ser lido) na sua raiz no remoto, para que possa reabri-la a partir de qualquer dispositivo apenas com a senha."
             },
             "openExisting": "Abrir existente",
             "createNew": "Criar nova",
@@ -5058,7 +5058,20 @@
             "recoveryKitIntro": "Opcional. Este kit contém apenas configuração pública (vault ID, salt, parâmetros KDF), nunca segredos. O kit e a sua palavra-passe são ambos necessários para restaurar o seu cofre após perder o armazenamento de chaves local (reinstalação ou nova máquina), mas guarde-os em locais separados: nenhum deles sozinho consegue abrir o cofre. Pode reabri-lo e guardá-lo novamente a qualquer momento.",
             "showKit": "Kit de recuperação",
             "hideKit": "Fechar",
-            "kitUnavailable": "O kit de recuperação ainda não está disponível para este cofre."
+            "kitUnavailable": "O kit de recuperação ainda não está disponível para este cofre.",
+            "defaultSaltLabel": "Sal predefinido (opcional, portabilidade apenas com senha; requer alta entropia e atestação)",
+            "defaultSaltStrength128": "128 bits recomendado",
+            "defaultSaltStrength256": "256 bits",
+            "defaultSaltAttestation": "Usei um gestor de senhas e compreendo o compromisso de vinculabilidade.",
+            "legacyMarkerNotice": "Este vault ainda usa o marcador antigo .aeroftp-crypt.json. Converta-o para .aerocrypt.tsv depois de inserir a palavra-passe ou o keyfile.",
+            "migrateLegacyMarker": "Converter marcador",
+            "legacyMarkerMigrated": "Marcador convertido para .aerocrypt.tsv.",
+            "legacyMarkerAlreadyCurrent": "Não resta nenhum marcador antigo.",
+            "recoveryQr": "QR de recuperação",
+            "qrErrorCorrection": "Correção de erros",
+            "qrRecommended": "(recomendado)",
+            "qrHint": "Níveis mais altos são mais resistentes em cópias impressas ou digitalizadas.",
+            "qrPrintNote": "Nível QR: {level} - digitalize com um leitor QR USB ou transcreva o texto acima"
         },
         "aerocryptProfile": {
             "enable": "Crypt (Encriptação)",
@@ -5087,7 +5100,7 @@
             "keyfileGeneratedBackup": "Ficheiro de chave gerado. Faça uma cópia agora: perdê-lo torna o cofre inabrível para sempre.",
             "keyfileRepointHint": "Este caminho apenas indica onde está o ficheiro de chave; alterá-lo não recifra o cofre. Um ficheiro de chave errado ou ausente recusa o desbloqueio.",
             "keyfileStorageHint": "Guarde-o em um disco local ou em uma unidade USB, separado do remoto que você está criptografando, e mantenha uma cópia de backup.",
-            "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
+            "headerToggle": "Escrever header no remote (.aerocrypt.tsv)",
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "Caminho remoto da sobreposição",
             "overlaysRemotePathHint": "Subpasta do Remote Path onde a sobreposição fica ancorada. Deixe vazio para usar o Remote Path, ou digite apenas um nome de subpasta (é criada dentro do Remote Path).",

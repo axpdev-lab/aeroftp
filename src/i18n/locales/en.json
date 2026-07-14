@@ -1617,7 +1617,20 @@
             "printKit": "Print",
             "showKit": "Recovery kit",
             "hideKit": "Close",
-            "kitUnavailable": "The recovery kit is not available for this vault yet."
+            "kitUnavailable": "The recovery kit is not available for this vault yet.",
+            "defaultSaltLabel": "Default salt (opt-in, password-only portability; requires high entropy and attestation)",
+            "defaultSaltStrength128": "128-bit recommended",
+            "defaultSaltStrength256": "256-bit",
+            "defaultSaltAttestation": "I used a password manager and understand the linkability tradeoff.",
+            "legacyMarkerNotice": "This vault still uses the legacy .aeroftp-crypt.json marker. Convert it to .aerocrypt.tsv after entering the password or keyfile.",
+            "migrateLegacyMarker": "Convert marker",
+            "legacyMarkerMigrated": "Marker converted to .aerocrypt.tsv.",
+            "legacyMarkerAlreadyCurrent": "No legacy marker remains.",
+            "recoveryQr": "Recovery QR",
+            "qrErrorCorrection": "Error correction",
+            "qrRecommended": "(recommended)",
+            "qrHint": "Higher levels are more resilient on printed or scanned copies.",
+            "qrPrintNote": "QR level: {level} - scan with a USB QR scanner or transcribe the text above"
         },
         "cryptomator": {
             "confirmPassword": "Confirm Password",

@@ -5044,7 +5044,7 @@
                 "heading": "Zer egiten du gainjartze honek",
                 "p1": "Fitxategien izenak eta edukiak <strong>une berean</strong> zifratzen ditu, zerbitzarira bidali aurretik, eta deszifratu egiten ditu deskargatzean. Zerbitzariak izen nahasiak dituzten blobak baino ez ditu ikusten. Zuk jatorrizko izenak ikusten dituzu.",
                 "p2": "Gainjartzea aktibo dagoen bitartean: zure urruneko saioak edukiak garbi erakusten ditu, igoera bakoitza zifratu egiten da eta deskarga bakoitza deszifratu. Bilatu <em>AEROCRYPT</em> bereizgarria bide-barran.",
-                "p3": "Hau AeroFTPren gainjartze <strong>natiboa</strong> da, AeroVault-en motor auditatu beraren gainean (AES-256-GCM-SIV edukirako, AES-256-SIV izenetarako, Argon2id). Gainjartzearen gatza <code>.aeroftp-crypt.json</code> fitxategian gordetzen da bere erroan urrunekoan, beraz, edozein gailutatik berriro ireki dezakezu pasahitzarekin soilik."
+                "p3": "Hau AeroFTP-ren <strong>jatorrizko</strong> overlay-a da, AeroVault-en motor auditatu berean oinarritua (AES-256-GCM-SIV edukia, AES-256-SIV izenak, Argon2id). Overlay-aren gatza markatzailean gordetzen da (<code>.aerocrypt.tsv</code> vault berrientzat, <code>.aeroftp-crypt.json</code> zaharra oraindik irakur daiteke) urruneko erroan; horrela, edozein gailutatik berriro ireki dezakezu pasahitzarekin bakarrik."
             },
             "openExisting": "Ireki lehendik dagoena",
             "createNew": "Sortu berria",
@@ -5077,7 +5077,20 @@
             "recoveryKitIntro": "Aukerakoa. Kit honek konfigurazio publikoa baino ez du (vault ID, salt, KDF parametroak), inoiz ez sekretuak. Kita eta zure pasahitza biak behar dira zure ganga berreskuratzeko tokiko gako-biltegia galdu ondoren (berrinstalazioa edo makina berria), baina toki bereizietan gorde itzazu: bakoitzak berak ezin du ganga ireki. Edozein unetan ireki eta berriro gorde dezakezu.",
             "showKit": "Berreskuratze-kita",
             "hideKit": "Itxi",
-            "kitUnavailable": "Berreskuratze-kita ez dago oraindik erabilgarri kutxa gotor honetarako."
+            "kitUnavailable": "Berreskuratze-kita ez dago oraindik erabilgarri kutxa gotor honetarako.",
+            "defaultSaltLabel": "Gatz lehenetsia (aukerakoa, pasahitz hutsezko eramangarritasuna; entropia handia eta egiaztapena behar ditu)",
+            "defaultSaltStrength128": "128-bit gomendatua",
+            "defaultSaltStrength256": "256-bit",
+            "defaultSaltAttestation": "Pasahitz-kudeatzaile bat erabili dut eta estekagarritasunaren konpromisoa ulertzen dut.",
+            "legacyMarkerNotice": "Vault honek oraindik .aeroftp-crypt.json markatzaile zaharra erabiltzen du. Bihurtu .aerocrypt.tsv-ra pasahitza edo keyfile-a sartu ondoren.",
+            "migrateLegacyMarker": "Bihurtu markatzailea",
+            "legacyMarkerMigrated": "Markatzailea .aerocrypt.tsv-ra bihurtu da.",
+            "legacyMarkerAlreadyCurrent": "Ez da markatzaile zaharrik geratzen.",
+            "recoveryQr": "Berreskuratzeko QR",
+            "qrErrorCorrection": "Erroreen zuzenketa",
+            "qrRecommended": "(gomendatua)",
+            "qrHint": "Maila altuagoak sendoagoak dira inprimatutako edo eskaneatutako kopietan.",
+            "qrPrintNote": "QR maila: {level} - eskaneatu USB QR eskaner batekin edo transkribatu goiko testua"
         },
         "aerocryptProfile": {
             "enable": "Crypt (Zifratzea)",
@@ -5106,7 +5119,7 @@
             "keyfileGeneratedBackup": "Gako-fitxategia sortu da. Egin babeskopia orain: galtzen bada, kutxa betiko itxita geratuko da.",
             "keyfileRepointHint": "Bide honek gako-fitxategia non dagoen baino ez du adierazten; aldatzeak ez du kutxa berriro zifratzen. Gako-fitxategi oker edo faltak desblokeoa ukatzen du.",
             "keyfileStorageHint": "Gorde ezazu tokiko disko batean edo USB unitate batean, enkriptatzen ari zaren urrunekotik bereizita, eta gorde segurtasun-kopia bat.",
-            "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
+            "headerToggle": "Idatzi goiburua remote-ra (.aerocrypt.tsv)",
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "Gainjarriaren urruneko bidea",
             "overlaysRemotePathHint": "Gainjartzea ainguratzen den Remote Path-eko azpikarpeta. Utzi hutsik Remote Path erabiltzeko, edo idatzi azpikarpeta baten izena soilik (Remote Path-en azpian sortzen da).",

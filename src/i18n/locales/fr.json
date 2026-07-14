@@ -5025,7 +5025,7 @@
                 "heading": "Ce que fait cette superposition",
                 "p1": "Chiffre les noms et le contenu des fichiers <strong>à la volée</strong>, avant de les envoyer au serveur, et les déchiffre lors du téléchargement. Le serveur ne voit que des blobs aux noms brouillés. Vous voyez les noms d'origine.",
                 "p2": "Tant que la superposition est active : votre session distante affiche le contenu en clair, chaque envoi est chiffré, chaque téléchargement est déchiffré. Repérez le badge <em>AEROCRYPT</em> dans la barre de chemin.",
-                "p3": "Il s'agit de la superposition <strong>native</strong> d'AeroFTP, sur le même moteur audité qu'AeroVault (AES-256-GCM-SIV pour le contenu, AES-256-SIV pour les noms, Argon2id). Le sel de la superposition est stocké dans <code>.aeroftp-crypt.json</code> à sa racine sur le serveur distant, ce qui vous permet de la rouvrir depuis n'importe quel appareil avec le seul mot de passe."
+                "p3": "Il s'agit de l'overlay <strong>natif</strong> d'AeroFTP, sur le même moteur audité qu'AeroVault (contenu AES-256-GCM-SIV, noms AES-256-SIV, Argon2id). Le sel de l'overlay est stocké dans le marqueur (<code>.aerocrypt.tsv</code> pour les nouveaux coffres, l'ancien <code>.aeroftp-crypt.json</code> reste lisible) à sa racine sur le distant, ce qui permet de le rouvrir depuis n'importe quel appareil avec seulement le mot de passe."
             },
             "openExisting": "Ouvrir une existante",
             "createNew": "En créer une",
@@ -5058,7 +5058,20 @@
             "recoveryKitIntro": "Facultatif. Ce kit ne contient que la configuration publique (vault ID, salt, paramètres KDF), jamais de secrets. Le kit et votre mot de passe sont tous deux nécessaires pour restaurer votre coffre après la perte du magasin de clés local (réinstallation ou nouvelle machine), mais conservez-les à des endroits distincts : aucun des deux seul ne peut ouvrir le coffre. Vous pouvez le rouvrir et l'enregistrer à nouveau à tout moment.",
             "showKit": "Kit de récupération",
             "hideKit": "Fermer",
-            "kitUnavailable": "Le kit de récupération n'est pas encore disponible pour ce coffre."
+            "kitUnavailable": "Le kit de récupération n'est pas encore disponible pour ce coffre.",
+            "defaultSaltLabel": "Sel par défaut (activation volontaire, portabilité par mot de passe uniquement ; exige une entropie élevée et une attestation)",
+            "defaultSaltStrength128": "128 bits recommandé",
+            "defaultSaltStrength256": "256 bits",
+            "defaultSaltAttestation": "J'ai utilisé un gestionnaire de mots de passe et je comprends le compromis de liabilité.",
+            "legacyMarkerNotice": "Ce vault utilise encore l'ancien marqueur .aeroftp-crypt.json. Convertissez-le en .aerocrypt.tsv après avoir saisi le mot de passe ou le keyfile.",
+            "migrateLegacyMarker": "Convertir le marqueur",
+            "legacyMarkerMigrated": "Marqueur converti en .aerocrypt.tsv.",
+            "legacyMarkerAlreadyCurrent": "Aucun ancien marqueur restant.",
+            "recoveryQr": "QR de récupération",
+            "qrErrorCorrection": "Correction d'erreurs",
+            "qrRecommended": "(recommandé)",
+            "qrHint": "Les niveaux plus élevés sont plus fiables sur les copies imprimées ou numérisées.",
+            "qrPrintNote": "Niveau QR : {level} - scannez avec un scanner QR USB ou recopiez le texte ci-dessus"
         },
         "aerocryptProfile": {
             "enable": "Crypt (Chiffrement)",
@@ -5087,7 +5100,7 @@
             "keyfileGeneratedBackup": "Fichier de clé généré. Sauvegardez-le maintenant : sa perte rend le coffre définitivement inouvrable.",
             "keyfileRepointHint": "Ce chemin indique seulement où se trouve le fichier de clé ; le modifier ne rechiffre pas le coffre. Un fichier de clé erroné ou absent refuse le déverrouillage.",
             "keyfileStorageHint": "Conservez-le sur un disque local ou une clé USB, séparé du serveur distant que vous chiffrez, et gardez une copie de sauvegarde.",
-            "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
+            "headerToggle": "Écrire l'en-tête sur le remote (.aerocrypt.tsv)",
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "Chemin distant de la superposition",
             "overlaysRemotePathHint": "Sous-dossier du Remote Path où la superposition est ancrée. Laissez vide pour utiliser le Remote Path, ou saisissez uniquement un nom de sous-dossier (il est créé sous le Remote Path).",

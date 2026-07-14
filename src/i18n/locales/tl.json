@@ -5044,7 +5044,7 @@
                 "heading": "Ano ang ginagawa ng overlay na ito",
                 "p1": "Ine-encrypt ang mga pangalan at nilalaman ng file <strong>habang ginagawa</strong>, bago ipadala ang mga ito sa server, at dine-decrypt ang mga ito kapag nag-download ka. Nakikita lang ng server ang mga blob na may nagulong pangalan. Nakikita mo ang orihinal na mga pangalan.",
                 "p2": "Habang aktibo ang overlay: ipinapakita ng iyong remote session ang nilalaman nang malinaw, bawat upload ay naka-encrypt, bawat download ay na-decrypt. Hanapin ang <em>AEROCRYPT</em> badge sa path bar.",
-                "p3": "Ito ang <strong>native</strong> overlay ng AeroFTP, sa parehong audited engine gaya ng AeroVault (AES-256-GCM-SIV para sa nilalaman, AES-256-SIV para sa mga pangalan, Argon2id). Ang salt ng overlay ay nakaimbak sa <code>.aeroftp-crypt.json</code> sa root nito sa remote, kaya maaari mo itong buksang muli mula sa anumang device gamit lamang ang password."
+                "p3": "Ito ang <strong>native</strong> overlay ng AeroFTP, sa parehong na-audit na engine tulad ng AeroVault (nilalamang AES-256-GCM-SIV, mga pangalang AES-256-SIV, Argon2id). Ang salt ng overlay ay nakaimbak sa marker (<code>.aerocrypt.tsv</code> para sa mga bagong vault, nababasa pa rin ang legacy <code>.aeroftp-crypt.json</code>) sa root nito sa remote, kaya mabubuksan mo itong muli mula sa anumang device gamit lang ang password."
             },
             "openExisting": "Buksan ang umiiral",
             "createNew": "Gumawa ng bago",
@@ -5077,7 +5077,20 @@
             "recoveryKitIntro": "Opsyonal. Naglalaman lamang ang kit na ito ng pampublikong configuration (vault ID, salt, mga parameter ng KDF), hindi kailanman mga lihim. Kailangan kapwa ang kit at ang iyong password upang maibalik ang iyong vault matapos mawala ang lokal na key store (muling pag-install o bagong makina), ngunit itago ang mga ito sa magkahiwalay na lugar: walang isa man sa kanila na mag-isang makakapagbukas ng vault. Maaari mo itong muling buksan at i-save anumang oras.",
             "showKit": "Recovery kit",
             "hideKit": "Isara",
-            "kitUnavailable": "Hindi pa available ang recovery kit para sa vault na ito."
+            "kitUnavailable": "Hindi pa available ang recovery kit para sa vault na ito.",
+            "defaultSaltLabel": "Default na salt (opt-in, portability gamit lang ang password; nangangailangan ng mataas na entropy at attestation)",
+            "defaultSaltStrength128": "128-bit ang inirerekomenda",
+            "defaultSaltStrength256": "256-bit",
+            "defaultSaltAttestation": "Gumamit ako ng password manager at nauunawaan ko ang tradeoff sa linkability.",
+            "legacyMarkerNotice": "Gumagamit pa rin ang vault na ito ng lumang marker na .aeroftp-crypt.json. I-convert ito sa .aerocrypt.tsv pagkatapos ilagay ang password o keyfile.",
+            "migrateLegacyMarker": "I-convert ang marker",
+            "legacyMarkerMigrated": "Na-convert ang marker sa .aerocrypt.tsv.",
+            "legacyMarkerAlreadyCurrent": "Wala nang natitirang lumang marker.",
+            "recoveryQr": "QR sa pagbawi",
+            "qrErrorCorrection": "Pagwawasto ng mga error",
+            "qrRecommended": "(inirerekomenda)",
+            "qrHint": "Mas matatag ang mas mataas na antas sa mga naka-print o na-scan na kopya.",
+            "qrPrintNote": "Antas ng QR: {level} - i-scan gamit ang USB QR scanner o kopyahin ang teksto sa itaas"
         },
         "aerocryptProfile": {
             "enable": "Crypt (Pag-encrypt)",
@@ -5106,7 +5119,7 @@
             "keyfileGeneratedBackup": "Nabuo ang keyfile. Mag-backup na ngayon: kapag nawala ito, tuluyang hindi mabubuksan ang vault.",
             "keyfileRepointHint": "Ang path na ito ay tumutukoy lang kung nasaan ang keyfile; ang pagpalit nito ay hindi nagpapalit ng susi ng vault. Ang mali o nawawalang keyfile ay tatanggihan sa pag-unlock.",
             "keyfileStorageHint": "Itago ito sa lokal na disk o USB drive, hiwalay sa remote na ini-encrypt mo, at mag-ingat ng backup na kopya.",
-            "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
+            "headerToggle": "Isulat ang header sa remote (.aerocrypt.tsv)",
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "Remote Path ng Overlay",
             "overlaysRemotePathHint": "Subfolder ng Remote Path kung saan naka-angkla ang overlay. Iwanang blangko para gamitin ang Remote Path, o mag-type lang ng pangalan ng subfolder (gagawin ito sa ilalim ng Remote Path).",

@@ -5025,7 +5025,7 @@
                 "heading": "Hvad dette overlay gør",
                 "p1": "Krypterer filnavne og indhold <strong>i farten</strong>, før de sendes til serveren, og dekrypterer dem, når du downloader. Serveren ser kun blobs med forvanskede navne. Du ser de oprindelige navne.",
                 "p2": "Mens overlayet er aktivt: din fjernsession viser indholdet i klar tekst, hver upload krypteres, og hver download dekrypteres. Hold øje med <em>AEROCRYPT</em>-mærket i stilinjen.",
-                "p3": "Dette er AeroFTP's <strong>oprindelige</strong> overlay på samme reviderede motor som AeroVault (AES-256-GCM-SIV til indhold, AES-256-SIV til navne, Argon2id). Overlayets salt gemmes i <code>.aeroftp-crypt.json</code> i dets rod på fjernserveren, så du kan genåbne det fra enhver enhed med blot adgangskoden."
+                "p3": "Dette er AeroFTP's <strong>native</strong> overlay på den samme auditerede motor som AeroVault (AES-256-GCM-SIV-indhold, AES-256-SIV-navne, Argon2id). Overlayets salt gemmes i markøren (<code>.aerocrypt.tsv</code> for nye bokse, ældre <code>.aeroftp-crypt.json</code> kan stadig læses) ved roden på fjernplaceringen, så du kan åbne det igen fra enhver enhed med kun adgangskoden."
             },
             "openExisting": "Åbn eksisterende",
             "createNew": "Opret ny",
@@ -5058,7 +5058,20 @@
             "recoveryKitIntro": "Valgfrit. Dette kit indeholder kun offentlig konfiguration (vault ID, salt, KDF-parametre), aldrig hemmeligheder. Både kittet og din adgangskode er nødvendige for at gendanne dit hvælv efter tab af det lokale nøglelager (geninstallation eller ny maskine), men opbevar dem separate steder: ingen af dem kan alene åbne hvælvet. Du kan altid åbne det igen og gemme det på ny.",
             "showKit": "Gendannelsessæt",
             "hideKit": "Luk",
-            "kitUnavailable": "Gendannelsessættet er endnu ikke tilgængeligt for denne boks."
+            "kitUnavailable": "Gendannelsessættet er endnu ikke tilgængeligt for denne boks.",
+            "defaultSaltLabel": "Standardsalt (tilvalg, portabilitet kun med adgangskode; kræver høj entropi og attestering)",
+            "defaultSaltStrength128": "128-bit anbefales",
+            "defaultSaltStrength256": "256-bit",
+            "defaultSaltAttestation": "Jeg har brugt en adgangskodeadministrator og forstår afvejningen om linkbarhed.",
+            "legacyMarkerNotice": "Denne vault bruger stadig den gamle .aeroftp-crypt.json-markør. Konverter den til .aerocrypt.tsv efter indtastning af adgangskoden eller keyfile.",
+            "migrateLegacyMarker": "Konverter markør",
+            "legacyMarkerMigrated": "Markør konverteret til .aerocrypt.tsv.",
+            "legacyMarkerAlreadyCurrent": "Der er ingen gammel markør tilbage.",
+            "recoveryQr": "Gendannelses-QR",
+            "qrErrorCorrection": "Fejlkorrektion",
+            "qrRecommended": "(anbefalet)",
+            "qrHint": "Højere niveauer er mere robuste på udskrevne eller scannede kopier.",
+            "qrPrintNote": "QR-niveau: {level} - scan med en USB QR-scanner, eller skriv teksten ovenfor af"
         },
         "aerocryptProfile": {
             "enable": "Crypt (Kryptering)",
@@ -5087,7 +5100,7 @@
             "keyfileGeneratedBackup": "Nøglefil genereret. Tag backup nu: mistes den, kan boksen aldrig åbnes igen.",
             "keyfileRepointHint": "Denne sti peger kun på, hvor nøglefilen ligger; at ændre den omnøgler ikke boksen. En forkert eller manglende nøglefil afviser oplåsningen.",
             "keyfileStorageHint": "Gem den på en lokal disk eller et USB-drev, adskilt fra det fjernlager, du krypterer, og opbevar en sikkerhedskopi.",
-            "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
+            "headerToggle": "Skriv header til remote (.aerocrypt.tsv)",
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "Fjernsti for overlay",
             "overlaysRemotePathHint": "Undermappe af Remote Path, hvor overlayet er forankret. Lad feltet stå tomt for at bruge Remote Path, eller skriv blot et undermappenavn (det oprettes under Remote Path).",

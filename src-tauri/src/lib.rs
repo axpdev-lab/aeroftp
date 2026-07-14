@@ -18558,6 +18558,8 @@ pub fn run() {
             aerocrypt_provider::aerocrypt_unlock,
             aerocrypt_provider::aerocrypt_lock,
             aerocrypt_provider::aerocrypt_provider_read_config,
+            aerocrypt_provider::aerocrypt_provider_marker_status,
+            aerocrypt_provider::aerocrypt_provider_migrate_legacy_marker,
             aerocrypt_provider::aerocrypt_provider_create_remote,
             aerocrypt_provider::aerocrypt_build_emergency_kit,
             aerovault_overlay_unlock,

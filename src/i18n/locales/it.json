@@ -3303,7 +3303,7 @@
                 "heading": "Cosa fa questo overlay",
                 "p1": "Cifra nomi e contenuti dei file <strong>al volo</strong>, prima di inviarli al server, e li decifra quando scarichi. Il server vede solo blob con nomi offuscati. Tu vedi i nomi originali.",
                 "p2": "Mentre l'overlay è attivo: la sessione remota mostra i contenuti in chiaro, ogni upload è cifrato, ogni download è decifrato. Cerca il badge <em>AEROCRYPT</em> nella barra del percorso.",
-                "p3": "Questo è l'overlay <strong>nativo</strong> di AeroFTP, sullo stesso motore verificato di AeroVault (contenuti AES-256-GCM-SIV, nomi AES-256-SIV, Argon2id). Il salt dell'overlay è salvato in <code>.aeroftp-crypt.json</code> nella sua radice sul remoto, così puoi riaprirlo da qualsiasi dispositivo con la sola password."
+                "p3": "Questo è l'overlay <strong>nativo</strong> di AeroFTP, sullo stesso motore verificato di AeroVault (contenuto AES-256-GCM-SIV, nomi AES-256-SIV, Argon2id). Il salt dell'overlay viene salvato nel marker (<code>.aerocrypt.tsv</code> per i nuovi vault, il vecchio <code>.aeroftp-crypt.json</code> resta leggibile) nella sua radice sul remoto, così puoi riaprirlo da qualsiasi dispositivo usando solo la password."
             },
             "openExisting": "Apri esistente",
             "createNew": "Crea nuovo",
@@ -3336,7 +3336,20 @@
             "recoveryKitIntro": "Facoltativo. Questo kit contiene solo configurazione pubblica (vault ID, salt, parametri KDF), mai segreti. Il kit e la password sono entrambi necessari per ripristinare la cassaforte dopo la perdita dell'archivio chiavi locale (reinstallazione o nuovo computer), ma conservali in luoghi separati: nessuno dei due da solo può aprire la cassaforte. Puoi riaprirla e salvarla di nuovo in qualsiasi momento.",
             "showKit": "Kit di ripristino",
             "hideKit": "Chiudi",
-            "kitUnavailable": "Il kit di ripristino non è ancora disponibile per questa cassaforte."
+            "kitUnavailable": "Il kit di ripristino non è ancora disponibile per questa cassaforte.",
+            "defaultSaltLabel": "Salt predefinito (opt-in, portabilità solo con password; richiede alta entropia e attestazione)",
+            "defaultSaltStrength128": "128 bit consigliato",
+            "defaultSaltStrength256": "256 bit",
+            "defaultSaltAttestation": "Ho usato un gestore di password e comprendo il compromesso di collegabilità.",
+            "legacyMarkerNotice": "Questo vault usa ancora il marker legacy .aeroftp-crypt.json. Convertilo in .aerocrypt.tsv dopo aver inserito la password o il keyfile.",
+            "migrateLegacyMarker": "Converti marker",
+            "legacyMarkerMigrated": "Marker convertito in .aerocrypt.tsv.",
+            "legacyMarkerAlreadyCurrent": "Non resta alcun marker legacy.",
+            "recoveryQr": "QR di recupero",
+            "qrErrorCorrection": "Correzione degli errori",
+            "qrRecommended": "(consigliato)",
+            "qrHint": "I livelli più alti sono più resistenti sulle copie stampate o scansionate.",
+            "qrPrintNote": "Livello QR: {level} - scansiona con uno scanner QR USB o trascrivi il testo sopra"
         },
         "cryptomator": {
             "confirmPassword": "Conferma Password",
@@ -5095,7 +5108,7 @@
             "keyfileGenerate": "Genera...",
             "keyfileGeneratedBackup": "File chiave generato. Fai subito un backup: perderlo rende la cassaforte inapribile per sempre.",
             "keyfileRepointHint": "Questo percorso indica solo dove si trova il file chiave; cambiarlo non ricifra la cassaforte. Un file chiave errato o assente rifiuta lo sblocco.",
-            "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
+            "headerToggle": "Scrivi header sul remote (.aerocrypt.tsv)",
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "Percorso remoto dell'overlay",
             "overlaysRemotePathHint": "Sottocartella del Remote Path in cui l'overlay è ancorato. Lascia vuoto per usare il Remote Path, oppure digita solo il nome di una sottocartella (viene creata sotto il Remote Path).",

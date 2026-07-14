@@ -72,7 +72,7 @@ export const AeroCryptRecoveryKitModal: React.FC<Props> = ({ profileId, profileN
         if (!kit) return;
         const w = window.open('', '_blank');
         if (w) {
-            const qrNote = `\n[QR level: ${qrLevel} — scan with USB QR scanner or transcribe the text above]\n`;
+            const qrNote = `\n[${t('aerocryptNative.qrPrintNote', { level: qrLevel })}]\n`;
             w.document.write('<pre style="font-family: monospace; white-space: pre-wrap;">' +
                 kit.text.replace(/&/g, '&amp;').replace(/</g, '&lt;') +
                 qrNote.replace(/&/g, '&amp;') + '</pre>');
@@ -118,7 +118,7 @@ export const AeroCryptRecoveryKitModal: React.FC<Props> = ({ profileId, profileN
                                 <div className="text-xs space-y-1">
                                     {(['L','M','Q','H'] as const).map(lv => (
                                         <label key={lv} className="flex items-center gap-1 cursor-pointer">
-                                            <input type="radio" name="qrL" checked={qrLevel===lv} onChange={() => setQrLevel(lv)} /> {lv}{lv==='H' ? ' (max correction)' : ''}
+                                            <input type="radio" name="qrL" checked={qrLevel===lv} onChange={() => setQrLevel(lv)} /> {lv}{lv==='H' ? ` ${t('aerocryptNative.qrRecommended')}` : ''}
                                         </label>
                                     ))}
                                 </div>

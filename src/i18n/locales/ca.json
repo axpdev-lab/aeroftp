@@ -5044,7 +5044,7 @@
                 "heading": "Què fa aquesta superposició",
                 "p1": "Xifra els noms i el contingut dels fitxers <strong>sobre la marxa</strong>, abans d'enviar-los al servidor, i els desxifra en baixar-los. El servidor només veu blobs amb noms il·legibles. Tu veus els noms originals.",
                 "p2": "Mentre la superposició és activa: la teva sessió remota mostra el contingut en clar, cada pujada es xifra i cada baixada es desxifra. Cerca la insígnia <em>AEROCRYPT</em> a la barra de camí.",
-                "p3": "Aquesta és la superposició <strong>nativa</strong> d'AeroFTP, sobre el mateix motor auditat que AeroVault (AES-256-GCM-SIV per al contingut, AES-256-SIV per als noms, Argon2id). La sal de la superposició es desa a <code>.aeroftp-crypt.json</code> a la seva arrel al servidor remot, de manera que la pots tornar a obrir des de qualsevol dispositiu només amb la contrasenya."
+                "p3": "Aquesta és la superposició <strong>nativa</strong> d'AeroFTP, amb el mateix motor auditat que AeroVault (contingut AES-256-GCM-SIV, noms AES-256-SIV, Argon2id). La sal de la superposició es desa al marcador (<code>.aerocrypt.tsv</code> per als magatzems nous, el llegat <code>.aeroftp-crypt.json</code> encara es pot llegir) a la seva arrel al remot, de manera que la pots reobrir des de qualsevol dispositiu només amb la contrasenya."
             },
             "openExisting": "Obre una existent",
             "createNew": "Crea'n una de nova",
@@ -5077,7 +5077,20 @@
             "recoveryKitIntro": "Opcional. Aquest kit conté només configuració pública (vault ID, salt, paràmetres KDF), mai secrets. El kit i la vostra contrasenya són tots dos necessaris per restaurar el magatzem després de perdre el magatzem de claus local (reinstal·lació o màquina nova), però deseu-los en llocs separats: cap dels dos per si sol pot obrir el magatzem. Podeu tornar a obrir-lo i desar-lo de nou en qualsevol moment.",
             "showKit": "Kit de recuperació",
             "hideKit": "Tanca",
-            "kitUnavailable": "El kit de recuperació encara no està disponible per a aquest magatzem."
+            "kitUnavailable": "El kit de recuperació encara no està disponible per a aquest magatzem.",
+            "defaultSaltLabel": "Sal predeterminada (opcional, portabilitat només amb contrasenya; requereix alta entropia i attestació)",
+            "defaultSaltStrength128": "128 bits recomanat",
+            "defaultSaltStrength256": "256 bits",
+            "defaultSaltAttestation": "He utilitzat un gestor de contrasenyes i entenc el compromís de vinculabilitat.",
+            "legacyMarkerNotice": "Aquest vault encara usa el marcador antic .aeroftp-crypt.json. Convertiu-lo a .aerocrypt.tsv després d'introduir la contrasenya o el keyfile.",
+            "migrateLegacyMarker": "Converteix el marcador",
+            "legacyMarkerMigrated": "Marcador convertit a .aerocrypt.tsv.",
+            "legacyMarkerAlreadyCurrent": "No queda cap marcador antic.",
+            "recoveryQr": "QR de recuperació",
+            "qrErrorCorrection": "Correcció d'errors",
+            "qrRecommended": "(recomanat)",
+            "qrHint": "Els nivells més alts són més resistents en còpies impreses o escanejades.",
+            "qrPrintNote": "Nivell QR: {level} - escaneja amb un escàner QR USB o transcriu el text de dalt"
         },
         "aerocryptProfile": {
             "enable": "Crypt (Xifratge)",
@@ -5106,7 +5119,7 @@
             "keyfileGeneratedBackup": "Fitxer de clau generat. Feu-ne una còpia ara: perdre'l fa la caixa forta inaccessible per sempre.",
             "keyfileRepointHint": "Aquest camí només indica on és el fitxer de clau; canviar-lo no torna a xifrar la caixa forta. Un fitxer de clau erroni o absent bloqueja el desbloqueig.",
             "keyfileStorageHint": "Deseu-lo en un disc local o una unitat USB, separat del remot que esteu xifrant, i conserveu-ne una còpia de seguretat.",
-            "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
+            "headerToggle": "Escriu la capçalera al remot (.aerocrypt.tsv)",
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "Ruta remota de la superposició",
             "overlaysRemotePathHint": "Subcarpeta del Remote Path on s'ancora la superposició. Deixeu-ho buit per fer servir el Remote Path, o escriviu només un nom de subcarpeta (es crea sota el Remote Path).",

@@ -5025,7 +5025,7 @@
                 "heading": "이 오버레이의 기능",
                 "p1": "파일 이름과 내용을 서버로 보내기 전에 <strong>실시간으로</strong> 암호화하고, 다운로드할 때 복호화합니다. 서버에는 이름이 뒤섞인 데이터 덩어리만 보입니다. 사용자에게는 원래 이름이 표시됩니다.",
                 "p2": "오버레이가 활성화된 동안: 원격 세션에는 내용이 평문으로 표시되고, 모든 업로드는 암호화되며, 모든 다운로드는 복호화됩니다. 경로 표시줄의 <em>AEROCRYPT</em> 배지를 확인하세요.",
-                "p3": "이것은 AeroVault와 동일한 감사된 엔진(콘텐츠는 AES-256-GCM-SIV, 이름은 AES-256-SIV, Argon2id)을 사용하는 AeroFTP의 <strong>네이티브</strong> 오버레이입니다. 오버레이의 솔트는 원격의 루트에 있는 <code>.aeroftp-crypt.json</code>에 저장되므로 비밀번호만 있으면 어떤 기기에서든 다시 열 수 있습니다."
+                "p3": "이것은 AeroVault와 동일한 감사된 엔진을 사용하는 AeroFTP의 <strong>네이티브</strong> overlay입니다(AES-256-GCM-SIV 콘텐츠, AES-256-SIV 이름, Argon2id). overlay의 salt는 원격의 루트에 있는 marker(<code>.aerocrypt.tsv</code>는 새 vault용, 기존 <code>.aeroftp-crypt.json</code>도 계속 읽을 수 있음)에 저장되므로, 비밀번호만으로 어떤 기기에서든 다시 열 수 있습니다."
             },
             "openExisting": "기존 열기",
             "createNew": "새로 만들기",
@@ -5058,7 +5058,20 @@
             "recoveryKitIntro": "선택 사항. 이 키트에는 공개 구성만 포함되며(vault ID, salt, KDF 매개변수), 비밀 정보는 절대 포함되지 않습니다. 로컬 키 저장소를 잃어버린 후(재설치 또는 새 컴퓨터) 볼트를 복원하려면 키트와 비밀번호가 모두 필요하지만, 서로 다른 장소에 보관하세요. 둘 중 하나만으로는 볼트를 열 수 없습니다. 언제든지 다시 열어 저장할 수 있습니다.",
             "showKit": "복구 키트",
             "hideKit": "닫기",
-            "kitUnavailable": "이 볼트에 대한 복구 키트는 아직 사용할 수 없습니다."
+            "kitUnavailable": "이 볼트에 대한 복구 키트는 아직 사용할 수 없습니다.",
+            "defaultSaltLabel": "기본 salt(선택 사항, 비밀번호만으로 이동 가능; 높은 entropy와 attestation 필요)",
+            "defaultSaltStrength128": "128-bit 권장",
+            "defaultSaltStrength256": "256-bit",
+            "defaultSaltAttestation": "비밀번호 관리자를 사용했으며 linkability tradeoff를 이해합니다.",
+            "legacyMarkerNotice": "이 vault는 아직 기존 .aeroftp-crypt.json 마커를 사용합니다. 비밀번호 또는 keyfile을 입력한 후 .aerocrypt.tsv로 변환하세요.",
+            "migrateLegacyMarker": "마커 변환",
+            "legacyMarkerMigrated": "마커가 .aerocrypt.tsv로 변환되었습니다.",
+            "legacyMarkerAlreadyCurrent": "남아 있는 기존 마커가 없습니다.",
+            "recoveryQr": "복구 QR",
+            "qrErrorCorrection": "오류 수정",
+            "qrRecommended": "(권장)",
+            "qrHint": "높은 수준일수록 인쇄되거나 스캔된 사본에서 더 안정적입니다.",
+            "qrPrintNote": "QR 수준: {level} - USB QR 스캐너로 스캔하거나 위의 텍스트를 옮겨 적으세요"
         },
         "aerocryptProfile": {
             "enable": "Crypt (암호화)",
@@ -5087,7 +5100,7 @@
             "keyfileGeneratedBackup": "키파일이 생성되었습니다. 지금 백업하세요: 분실하면 볼트는 영구히 열 수 없습니다.",
             "keyfileRepointHint": "이 경로는 키파일의 위치만 가리키며, 변경해도 볼트의 키는 바뀌지 않습니다. 잘못되었거나 없는 키파일은 잠금 해제가 거부됩니다.",
             "keyfileStorageHint": "암호화하는 원격 저장소와 분리하여 로컬 디스크나 USB 드라이브에 저장하고 백업 사본을 보관하세요.",
-            "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
+            "headerToggle": "remote에 header 쓰기 (.aerocrypt.tsv)",
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "오버레이 원격 경로",
             "overlaysRemotePathHint": "오버레이가 고정되는 Remote Path의 하위 폴더입니다. Remote Path를 사용하려면 비워 두거나, 하위 폴더 이름만 입력하세요(Remote Path 아래에 생성됩니다).",

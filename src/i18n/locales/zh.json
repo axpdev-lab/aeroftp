@@ -5025,7 +5025,7 @@
                 "heading": "此叠加层的功能",
                 "p1": "在将文件名和内容发送到服务器之前<strong>实时</strong>加密，并在下载时解密。服务器只能看到名称被打乱的数据块。而你看到的是原始名称。",
                 "p2": "当叠加层处于活动状态时：远程会话以明文显示内容，每次上传都会被加密，每次下载都会被解密。请留意路径栏中的 <em>AEROCRYPT</em> 徽章。",
-                "p3": "这是 AeroFTP 的<strong>原生</strong>叠加层，使用与 AeroVault 相同的经审计引擎（内容采用 AES-256-GCM-SIV，名称采用 AES-256-SIV，以及 Argon2id）。叠加层的盐值存储在远程根目录下的 <code>.aeroftp-crypt.json</code> 中，因此你只需密码即可在任何设备上重新打开它。"
+                "p3": "这是 AeroFTP 的<strong>原生</strong> overlay，使用与 AeroVault 相同且已审计的引擎（AES-256-GCM-SIV 内容、AES-256-SIV 名称、Argon2id）。overlay 的 salt 存储在远程根目录的 marker 中（新 vault 使用 <code>.aerocrypt.tsv</code>，旧版 <code>.aeroftp-crypt.json</code> 仍可读取），因此你只需密码就能从任何设备重新打开它。"
             },
             "openExisting": "打开现有",
             "createNew": "新建",
@@ -5058,7 +5058,20 @@
             "recoveryKitIntro": "可选。此工具包仅包含公开配置(vault ID、salt、KDF 参数),绝不包含密钥。丢失本地密钥存储后(重新安装或更换设备),恢复保险库需要同时用到工具包和密码,但请将两者分开存放:任何一方单独都无法打开保险库。您可以随时重新打开并再次保存。",
             "showKit": "恢复套件",
             "hideKit": "关闭",
-            "kitUnavailable": "此保险库的恢复套件尚不可用。"
+            "kitUnavailable": "此保险库的恢复套件尚不可用。",
+            "defaultSaltLabel": "默认 salt（选择启用，仅凭密码即可移植；需要高 entropy 和 attestation）",
+            "defaultSaltStrength128": "推荐 128-bit",
+            "defaultSaltStrength256": "256-bit",
+            "defaultSaltAttestation": "我使用了密码管理器，并理解 linkability 的权衡。",
+            "legacyMarkerNotice": "此 vault 仍在使用旧版 .aeroftp-crypt.json 标记。输入密码或 keyfile 后，将其转换为 .aerocrypt.tsv。",
+            "migrateLegacyMarker": "转换标记",
+            "legacyMarkerMigrated": "标记已转换为 .aerocrypt.tsv。",
+            "legacyMarkerAlreadyCurrent": "没有遗留标记。",
+            "recoveryQr": "恢复 QR",
+            "qrErrorCorrection": "纠错",
+            "qrRecommended": "(推荐)",
+            "qrHint": "较高级别在打印或扫描副本上更可靠。",
+            "qrPrintNote": "QR 级别：{level} - 使用 USB QR 扫描器扫描，或抄录上方文本"
         },
         "aerocryptProfile": {
             "enable": "Crypt (加密)",
@@ -5087,7 +5100,7 @@
             "keyfileGeneratedBackup": "密钥文件已生成。请立即备份: 丢失它将导致保险库永久无法打开。",
             "keyfileRepointHint": "此路径只指向密钥文件所在位置; 更改它不会更换保险库的密钥。错误或缺失的密钥文件将被拒绝解锁。",
             "keyfileStorageHint": "请将其保存在本地磁盘或 U 盘上，与您正在加密的远程存储分开，并保留一份备份。",
-            "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
+            "headerToggle": "将 header 写入 remote (.aerocrypt.tsv)",
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "叠加层远程路径",
             "overlaysRemotePathHint": "叠加层锚定所在的 Remote Path 子文件夹。留空以使用 Remote Path，或仅输入一个子文件夹名称（将在 Remote Path 下创建）。",
