@@ -61416,7 +61416,7 @@ async fn main() {
                                         *no_bind,
                                         keyfile_path,
                                         *use_default_salt,
-                                        &salt_strength,
+                                        salt_strength,
                                         *i_understand_linkability,
                                         &cli,
                                         format,

@@ -1245,4 +1245,55 @@ mod tests {
         .to_string();
         assert!(parse_config(&no_mac).is_err());
     }
+
+    #[test]
+    fn default_salt_and_tsv_roundtrip_and_mac_binding() {
+        // DefaultV1 uses the public constant; MAC includes the frozen suffix.
+        let vid = random_vault_id();
+        let master_def = derive_base_kek(
+            "correct-horse-battery-staple-123456789012345678901234567890",
+            &AEROCRYPT_DEFAULT_SALT_V1,
+        )
+        .unwrap();
+        let tsv_def = init_config_v3_with_vault_id(
+            &AEROCRYPT_DEFAULT_SALT_V1,
+            &master_def,
+            &vid,
+            SaltMode::DefaultV1,
+        )
+        .unwrap();
+        assert!(tsv_def.contains("salt_mode\tdefault-v1"));
+        let cfg_def = parse_config(&tsv_def).unwrap();
+        if let OverlayConfig::V3 { salt_mode, .. } = &cfg_def {
+            assert_eq!(*salt_mode, SaltMode::DefaultV1);
+        }
+        verify_config_mac(&cfg_def, &master_def).unwrap();
+
+        // Per-vault TSV has no salt_mode field, MAC without suffix.
+        let salt_per = [7u8; SALT_V3_SIZE];
+        let master_per =
+            derive_base_kek("another-strong-pw-12345678901234567890", &salt_per).unwrap();
+        let tsv_per =
+            init_config_v3_with_vault_id(&salt_per, &master_per, &vid, SaltMode::PerVault).unwrap();
+        assert!(!tsv_per.contains("salt_mode"));
+        let cfg_per = parse_config(&tsv_per).unwrap();
+        verify_config_mac(&cfg_per, &master_per).unwrap();
+    }
+
+    #[test]
+    fn tsv_and_legacy_json_are_both_parsable_for_read_both() {
+        let salt = [5u8; SALT_V3_SIZE];
+        let vid = random_vault_id();
+        let master = derive_base_kek("pw-for-read-both", &salt).unwrap();
+        // Current init emits TSV
+        let tsv = init_config_v3_with_vault_id(&salt, &master, &vid, SaltMode::PerVault).unwrap();
+        let cfg_from_tsv = parse_config(&tsv).unwrap();
+        verify_config_mac(&cfg_from_tsv, &master).unwrap();
+
+        // Simulate legacy JSON (what old files have)
+        let legacy_json =
+            build_config_v3_json(&salt, &master, &vid, false, None, SaltMode::PerVault).unwrap();
+        let cfg_from_json = parse_config(&legacy_json).unwrap();
+        verify_config_mac(&cfg_from_json, &master).unwrap();
+    }
 }
