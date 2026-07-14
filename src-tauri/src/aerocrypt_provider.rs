@@ -177,6 +177,7 @@ pub async fn aerocrypt_unlock(
                     &master_key,
                     &overlay::random_vault_id(),
                     None,
+                    overlay::SaltMode::PerVault,
                 )?
             } else {
                 overlay::init_config_v3(&salt, &master_key)?
@@ -296,11 +297,22 @@ pub async fn aerocrypt_provider_create_remote(
     target_subpath: Option<String>,
     force: Option<bool>,
     keyfile_path: Option<String>,
+    use_default_salt: Option<bool>,
 ) -> Result<AeroCryptVaultInfo, String> {
     let secret_pwd = secrecy::SecretString::from(password);
     let force = force.unwrap_or(false);
     let keyfile_digest = resolve_ui_keyfile_digest(keyfile_path.as_deref())?;
-    let salt = overlay::random_salt_v3();
+    let use_default = use_default_salt.unwrap_or(false);
+    let salt = if use_default {
+        crate::aerocrypt::AEROCRYPT_DEFAULT_SALT_V1
+    } else {
+        overlay::random_salt_v3()
+    };
+    let salt_mode = if use_default {
+        overlay::SaltMode::DefaultV1
+    } else {
+        overlay::SaltMode::PerVault
+    };
     let tmp_cfg = OverlayConfig::v3_bootstrap(salt);
     let master_key = derive_master_key_async(
         &tmp_cfg,
@@ -311,9 +323,20 @@ pub async fn aerocrypt_provider_create_remote(
     // Keyfile vaults record kdf_inputs + a fresh vault_id (no keyfile_hint by
     // default, F5), so any client knows the second factor is required.
     let config_json = if keyfile_digest.is_some() {
-        overlay::init_config_v3_with_keyfile(&salt, &master_key, &overlay::random_vault_id(), None)?
+        overlay::init_config_v3_with_keyfile(
+            &salt,
+            &master_key,
+            &overlay::random_vault_id(),
+            None,
+            salt_mode,
+        )?
     } else {
-        overlay::init_config_v3(&salt, &master_key)?
+        overlay::init_config_v3_with_vault_id(
+            &salt,
+            &master_key,
+            &overlay::random_vault_id(),
+            salt_mode,
+        )?
     };
     let config = overlay::parse_config(&config_json)?;
 

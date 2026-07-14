@@ -31,6 +31,20 @@ pub mod overlay;
 pub const KEY_SIZE: usize = 32;
 /// Argon2id salt length, in bytes.
 pub const SALT_SIZE: usize = 32;
+
+/// Public, nothing-up-my-sleeve default salt for the opt-in "default-salt mode"
+/// (rclone-analog portability). When selected at create time (and only then),
+/// master-key derivation uses this constant instead of a fresh random per-vault salt.
+///
+/// Derivation: SHA256("AeroCrypt default salt v1").
+/// This value is PUBLIC and versioned. The security argument requires a high-entropy
+/// generated password (~128-bit class or better); see the two-tier entropy gate.
+/// The sole tradeoff is cross-vault linkability for vaults that reuse the exact
+/// same password (identical encrypted names become linkable without the key).
+pub const AEROCRYPT_DEFAULT_SALT_V1: [u8; SALT_SIZE] = [
+    0xcd, 0xfc, 0x27, 0x45, 0x61, 0xc3, 0xc3, 0xa8, 0x77, 0x1d, 0x7d, 0xbb, 0x78, 0x70, 0x49, 0x13,
+    0x3b, 0x2f, 0x3e, 0x70, 0x36, 0x96, 0xa7, 0x14, 0x3f, 0x5c, 0xa5, 0x85, 0xc0, 0xa1, 0xca, 0x63,
+];
 /// AES-GCM-SIV nonce length, in bytes.
 pub const NONCE_SIZE: usize = 12;
 /// Length of an AES-KW-wrapped 256-bit key (key + 8-byte integrity check).
@@ -381,6 +395,18 @@ mod tests {
         let k3 = hkdf_expand::<KEY_SIZE>(&a, b"label-2").unwrap();
         assert_eq!(k1, k2);
         assert_ne!(k1, k3);
+    }
+
+    #[test]
+    fn default_salt_constant_is_nothing_up_my_sleeve() {
+        // The constant must be exactly SHA256("AeroCrypt default salt v1").
+        // This test makes the derivation auditable and prevents silent drift.
+        use sha2::{Digest, Sha256};
+        let expected = Sha256::digest(b"AeroCrypt default salt v1");
+        assert_eq!(&AEROCRYPT_DEFAULT_SALT_V1[..], expected.as_slice());
+        // Sanity: not the all-zero or all-one trap value.
+        assert_ne!(AEROCRYPT_DEFAULT_SALT_V1, [0u8; SALT_SIZE]);
+        assert_ne!(AEROCRYPT_DEFAULT_SALT_V1, [0xffu8; SALT_SIZE]);
     }
 
     #[test]

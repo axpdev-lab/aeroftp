@@ -48578,7 +48578,13 @@ async fn cmd_crypt_init(
     let config_json = if keyfile_digest.is_some() {
         // F5: no keyfile_hint on the remote by default.
         let vault_id = overlay::random_vault_id();
-        match overlay::init_config_v3_with_keyfile(&salt, &master_key, &vault_id, None) {
+        match overlay::init_config_v3_with_keyfile(
+            &salt,
+            &master_key,
+            &vault_id,
+            None,
+            overlay::SaltMode::PerVault,
+        ) {
             Ok(j) => j,
             Err(e) => {
                 print_error(format, &format!("Failed to build crypt config: {}", e), 5);

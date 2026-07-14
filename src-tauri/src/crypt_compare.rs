@@ -576,6 +576,7 @@ mod tests {
                 &master_key,
                 &overlay::random_vault_id(),
                 None,
+                overlay::SaltMode::PerVault,
             ),
             None => overlay::init_config_v3(&salt, &master_key),
         }

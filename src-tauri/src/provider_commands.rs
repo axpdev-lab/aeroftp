@@ -1429,6 +1429,10 @@ pub struct ApplyCryptOverlayParams {
     pub profile_id: Option<String>,
     #[serde(default)]
     pub with_header: Option<bool>,
+    /// Opt-in default-salt mode for native AeroCrypt (D1). When true, the
+    /// create path uses the public constant instead of a random per-vault salt.
+    #[serde(default)]
+    pub use_default_salt: Option<bool>,
 }
 
 /// Apply a crypt overlay (rclone-crypt or AeroCrypt) to the live connection in
@@ -1486,6 +1490,7 @@ pub async fn provider_apply_crypt_overlay(
     };
     let salt = params.salt.unwrap_or_default();
     let with_header = params.with_header.unwrap_or(false);
+    let use_default_salt = params.use_default_salt;
     // Keyfile second factor: resolve the picked path to its digest before
     // touching the connection; a keyfile vault with no keyfile fails closed
     // inside the unlock with a clear "requires a keyfile" error.
@@ -1502,6 +1507,7 @@ pub async fn provider_apply_crypt_overlay(
             &salt,
             keyfile_digest.as_ref(),
             with_header,
+            use_default_salt,
         )
         .await
         {

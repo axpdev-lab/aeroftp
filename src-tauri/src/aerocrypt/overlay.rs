@@ -53,6 +53,37 @@ const CONFIG_MAC_SIZE: usize = 32;
 /// from Tier 1 onward; seeds rollback pinning, Emergency Kits, and diagnostics.
 pub const VAULT_ID_SIZE: usize = 16;
 
+/// Salt source mode for a v3 vault.
+/// - PerVault (default, absent in serialised form): fresh random salt per vault (current behaviour).
+/// - DefaultV1: opt-in public constant salt (AEROCRYPT_DEFAULT_SALT_V1). Password alone
+///   reconstructs the master key (rclone-analog headerless portability).
+///
+/// The mode is recorded in the keystore profile for headerless vaults and (when DefaultV1)
+/// emitted in the headed marker. It is bound into the config MAC when DefaultV1 so a
+/// downgrade/upgrade is tamper-evident.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SaltMode {
+    #[default]
+    PerVault,
+    DefaultV1,
+}
+
+impl SaltMode {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            SaltMode::PerVault => "per-vault",
+            SaltMode::DefaultV1 => "default-v1",
+        }
+    }
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s {
+            "per-vault" | "PerVault" => Some(SaltMode::PerVault),
+            "default-v1" | "DefaultV1" => Some(SaltMode::DefaultV1),
+            _ => None,
+        }
+    }
+}
+
 /// Legacy Argon2id parameters for v1 overlays (balanced 64 MiB / t3 / p4).
 const ARGON2_V1_MEM_KIB: u32 = 65536;
 const ARGON2_V1_TIME: u32 = 3;
@@ -95,6 +126,9 @@ pub enum OverlayConfig {
         /// True when `kdf_inputs` includes a keyfile, i.e. unlock needs the
         /// keyfile digest in addition to the password.
         requires_keyfile: bool,
+        /// Salt source. Absent in on-disk legacy v3 markers => PerVault (back-compat).
+        /// When DefaultV1 the salt bytes are the public constant (reconstructible).
+        salt_mode: SaltMode,
     },
 }
 
@@ -141,6 +175,7 @@ impl OverlayConfig {
             mac: [0u8; CONFIG_MAC_SIZE],
             vault_id: None,
             requires_keyfile: false,
+            salt_mode: SaltMode::PerVault,
         }
     }
 }
@@ -202,9 +237,15 @@ pub fn verify_config_mac(cfg: &OverlayConfig, master_key: &[u8; KEY_SIZE]) -> Re
             mac,
             vault_id,
             requires_keyfile,
+            salt_mode,
         } => {
-            let expected =
-                compute_config_mac_v3(master_key, salt, *requires_keyfile, vault_id.as_ref())?;
+            let expected = compute_config_mac_v3(
+                master_key,
+                salt,
+                *requires_keyfile,
+                vault_id.as_ref(),
+                *salt_mode,
+            )?;
             if expected.ct_eq(mac).into() {
                 Ok(())
             } else if *requires_keyfile {
@@ -226,11 +267,16 @@ pub fn verify_config_mac(cfg: &OverlayConfig, master_key: &[u8; KEY_SIZE]) -> Re
 /// FROZEN suffix binding the keyfile requirement and the vault_id (F3). This is
 /// back-compat safe: password-only vaults produce the exact original MAC, and no
 /// pre-keyfile reader can open a keyfile vault anyway.
+///
+/// For default-salt vaults we append a second FROZEN suffix binding the mode.
+/// This makes a mode flip (default <-> per-vault) on an existing marker
+/// tamper-evident. Per-vault vaults emit the exact pre-default-salt MAC bytes.
 fn compute_config_mac_v3(
     master_key: &[u8; KEY_SIZE],
     salt: &[u8; SALT_V3_SIZE],
     requires_keyfile: bool,
     vault_id: Option<&[u8; VAULT_ID_SIZE]>,
+    salt_mode: SaltMode,
 ) -> Result<[u8; CONFIG_MAC_SIZE], String> {
     let mut info = Vec::with_capacity(V3_CONFIG_MAC_LABEL.len() + 1 + 4 + 12 + SALT_V3_SIZE);
     info.extend_from_slice(V3_CONFIG_MAC_LABEL);
@@ -244,6 +290,12 @@ fn compute_config_mac_v3(
         let vid = vault_id.ok_or("keyfile vault requires a vault_id for the config MAC")?;
         info.extend_from_slice(V3_KEYFILE_MAC_SUFFIX);
         info.extend_from_slice(vid);
+    }
+    if salt_mode == SaltMode::DefaultV1 {
+        // FROZEN suffix for default-salt binding (domain-separated, versioned).
+        // Per-vault vaults must produce identical MAC bytes as before this feature.
+        const V3_DEFAULT_SALT_MAC_SUFFIX: &[u8] = b"|salt_mode=default-v1";
+        info.extend_from_slice(V3_DEFAULT_SALT_MAC_SUFFIX);
     }
     hkdf_expand::<CONFIG_MAC_SIZE>(master_key, &info)
 }
@@ -496,7 +548,7 @@ pub fn init_config_v3(
     salt: &[u8; SALT_V3_SIZE],
     master_key: &[u8; KEY_SIZE],
 ) -> Result<String, String> {
-    init_config_v3_with_vault_id(salt, master_key, &random_vault_id())
+    init_config_v3_with_vault_id(salt, master_key, &random_vault_id(), SaltMode::PerVault)
 }
 
 /// Build a password-only v3 config while preserving an existing vault id.
@@ -506,8 +558,9 @@ pub fn init_config_v3_with_vault_id(
     salt: &[u8; SALT_V3_SIZE],
     master_key: &[u8; KEY_SIZE],
     vault_id: &[u8; VAULT_ID_SIZE],
+    salt_mode: SaltMode,
 ) -> Result<String, String> {
-    build_config_v3_json(salt, master_key, vault_id, false, None)
+    build_config_v3_json(salt, master_key, vault_id, false, None, salt_mode)
 }
 
 /// Build the v3 config JSON for a KEYFILE overlay. The caller supplies the
@@ -520,8 +573,9 @@ pub fn init_config_v3_with_keyfile(
     master_key: &[u8; KEY_SIZE],
     vault_id: &[u8; VAULT_ID_SIZE],
     keyfile_hint: Option<&str>,
+    salt_mode: SaltMode,
 ) -> Result<String, String> {
-    build_config_v3_json(salt, master_key, vault_id, true, keyfile_hint)
+    build_config_v3_json(salt, master_key, vault_id, true, keyfile_hint, salt_mode)
 }
 
 /// Rebuild a headed v3 marker from parsed local metadata and a verified key.
@@ -537,13 +591,15 @@ pub fn rebuild_config_v3(
             salt,
             vault_id,
             requires_keyfile,
+            salt_mode,
             ..
         } => {
             let vault_id = vault_id.unwrap_or_else(random_vault_id);
             if *requires_keyfile {
-                init_config_v3_with_keyfile(salt, master_key, &vault_id, None)
+                // keyfile + default-salt is coherent (orthogonal factors); keep the mode
+                init_config_v3_with_keyfile(salt, master_key, &vault_id, None, *salt_mode)
             } else {
-                init_config_v3_with_vault_id(salt, master_key, &vault_id)
+                init_config_v3_with_vault_id(salt, master_key, &vault_id, *salt_mode)
             }
         }
         other => Err(format!(
@@ -559,8 +615,15 @@ fn build_config_v3_json(
     vault_id: &[u8; VAULT_ID_SIZE],
     requires_keyfile: bool,
     keyfile_hint: Option<&str>,
+    salt_mode: SaltMode,
 ) -> Result<String, String> {
-    let mac = compute_config_mac_v3(master_key, salt, requires_keyfile, Some(vault_id))?;
+    let mac = compute_config_mac_v3(
+        master_key,
+        salt,
+        requires_keyfile,
+        Some(vault_id),
+        salt_mode,
+    )?;
     let mut obj = serde_json::json!({
         "version": VERSION_V3,
         "cipher": "AES-256-GCM-SIV",
@@ -580,6 +643,11 @@ fn build_config_v3_json(
         if let Some(hint) = keyfile_hint {
             obj["keyfile_hint"] = serde_json::json!(hint);
         }
+    }
+    // Emit salt_mode ONLY for the non-default (opt-in) case so that every
+    // existing per-vault marker stays byte-for-byte identical on disk.
+    if salt_mode == SaltMode::DefaultV1 {
+        obj["salt_mode"] = serde_json::json!(salt_mode.as_str());
     }
     Ok(obj.to_string())
 }
@@ -664,11 +732,18 @@ pub fn parse_config(config_json: &str) -> Result<OverlayConfig, String> {
                 return Err("keyfile crypt config is missing its vault_id".to_string());
             }
 
+            // salt_mode: optional, absent or "per-vault" => PerVault (back-compat for all pre-default-salt markers)
+            let salt_mode = match val.get("salt_mode").and_then(|v| v.as_str()) {
+                Some(s) => SaltMode::from_str(s).unwrap_or(SaltMode::PerVault),
+                None => SaltMode::PerVault,
+            };
+
             Ok(OverlayConfig::V3 {
                 salt,
                 mac,
                 vault_id,
                 requires_keyfile,
+                salt_mode,
             })
         }
         other => Err(format!(
@@ -905,6 +980,7 @@ mod tests {
                 mac,
                 vault_id: None,
                 requires_keyfile: false,
+                salt_mode: SaltMode::PerVault,
             };
             let evil_key = derive_base_kek("right-password", &evil_salt).unwrap();
             assert!(verify_config_mac(&evil_cfg, &evil_key).is_err());
@@ -920,7 +996,8 @@ mod tests {
         let master =
             derive_master_key_with_keyfile(&OverlayConfig::v3_bootstrap(salt), "pw", Some(&kf))
                 .unwrap();
-        let json = init_config_v3_with_keyfile(&salt, &master, &vault_id, None).unwrap();
+        let json = init_config_v3_with_keyfile(&salt, &master, &vault_id, None, SaltMode::PerVault)
+            .unwrap();
         let cfg = parse_config(&json).unwrap();
         assert!(cfg.requires_keyfile());
         assert_eq!(cfg.vault_id(), Some(vault_id));
@@ -953,7 +1030,8 @@ mod tests {
         let salt = [12u8; SALT_V3_SIZE];
         let vault_id = [34u8; VAULT_ID_SIZE];
         let master = derive_base_kek("migration-password", &salt).unwrap();
-        let original = init_config_v3_with_vault_id(&salt, &master, &vault_id).unwrap();
+        let original =
+            init_config_v3_with_vault_id(&salt, &master, &vault_id, SaltMode::PerVault).unwrap();
         let original_cfg = parse_config(&original).unwrap();
 
         let rebuilt = rebuild_config_v3(&original_cfg, &master).unwrap();
@@ -973,8 +1051,14 @@ mod tests {
         let master =
             derive_master_key_with_keyfile(&bootstrap, "migration-password", Some(&keyfile))
                 .unwrap();
-        let original =
-            init_config_v3_with_keyfile(&salt, &master, &vault_id, Some("not-preserved")).unwrap();
+        let original = init_config_v3_with_keyfile(
+            &salt,
+            &master,
+            &vault_id,
+            Some("not-preserved"),
+            SaltMode::PerVault,
+        )
+        .unwrap();
         let original_cfg = parse_config(&original).unwrap();
 
         let rebuilt = rebuild_config_v3(&original_cfg, &master).unwrap();
