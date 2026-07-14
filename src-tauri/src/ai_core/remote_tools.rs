@@ -2768,7 +2768,6 @@ async fn dedupe(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
                 }
                 Err(e) => {
                     dl_errors += 1;
-                    hash_errors += 1;
                     tracing::debug!(
                         "dedupe: failed to download {} for similarity: {}",
                         orig_path,

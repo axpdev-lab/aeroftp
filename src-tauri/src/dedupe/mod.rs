@@ -730,7 +730,7 @@ mod tests {
         base.extend_from_slice(
             b"some trailing bytes to reach TLSH minimum length and stability 0123456789",
         );
-        let mut b1 = base.clone();
+        let b1 = base.clone();
         let mut b2 = base.clone();
         if b2.len() > 80 {
             b2[70] = b2[70].wrapping_add(3);
@@ -738,28 +738,42 @@ mod tests {
         }
         let p1 = write_file(td.path(), "blobA.dat", &b1);
         let p2 = write_file(td.path(), "blobB.dat", &b2);
-        let p3 = write_file(
-            td.path(),
-            "blobC.dat",
-            b"utterly unrelated payload bytes that will have high TLSH distance 999999",
+        let mut unrelated: Vec<u8> = (0u8..=255).rev().collect();
+        unrelated.extend_from_slice(
+            b"another unrelated tail to exceed TLSH minimum length and stay byte-diverse 9876543210",
         );
+        let p3 = write_file(td.path(), "blobC.dat", &unrelated);
 
         // loose threshold to catch small edits
-        let groups =
-            find_similar_local(&[p1, p2, p3], SimilarityMode::NonIdentical, Some(150), None);
+        let groups = find_similar_local(
+            &[p1.clone(), p2.clone(), p3.clone()],
+            SimilarityMode::NonIdentical,
+            Some(150),
+            None,
+        );
         let other_groups: Vec<_> = groups
             .iter()
             .filter(|g| g.modality.as_deref() == Some("other"))
             .collect();
-        assert!(other_groups.iter().any(|g| g.files.len() >= 2));
+        assert!(other_groups.iter().any(|g| {
+            g.files.iter().any(|f| f.contains("blobA"))
+                && g.files.iter().any(|f| f.contains("blobB"))
+        }));
+        assert!(!other_groups
+            .iter()
+            .any(|g| g.files.iter().any(|f| f.contains("blobC"))));
 
         // tight threshold: the near pair should still match at dist ~small, but verify different pair does not force group
-        let groups_tight =
-            find_similar_local(&[p1, p2, p3], SimilarityMode::NonIdentical, Some(5), None);
+        let groups_tight = find_similar_local(
+            &[p1.clone(), p2.clone(), p3.clone()],
+            SimilarityMode::NonIdentical,
+            Some(5),
+            None,
+        );
         // p1/p2 may or may not under 5; main point is p3 stays out, and we don't crash
         let has_bad = groups_tight
             .iter()
             .any(|g| g.files.iter().any(|f| f.contains("blobC")));
-        assert!(!has_bad || groups_tight.iter().all(|g| g.files.len() < 2));
+        assert!(!has_bad);
     }
 }

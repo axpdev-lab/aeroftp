@@ -946,7 +946,7 @@ pub async fn local_find_duplicates(ctx: &dyn ToolCtx, args: &Value) -> Result<Va
             distance,
             Some(min_size),
         )
-        .map_err(|e| ToolError::Exec(e))?;
+        .map_err(ToolError::Exec)?;
 
         let mut duplicates: Vec<Value> = Vec::new();
         for g in engine_groups {
