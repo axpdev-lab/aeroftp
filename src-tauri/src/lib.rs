@@ -139,6 +139,7 @@ pub mod util;
 #[cfg(feature = "aerorsync")]
 pub mod aerorsync;
 pub mod agent_session;
+pub mod dedupe;
 mod file_associations;
 mod file_tags;
 mod file_watcher;

@@ -65,6 +65,7 @@ use axum::{
 };
 use base64::Engine as _;
 use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
+use ftp_client_gui_lib::dedupe::{self, Modality, SimilarityMode};
 use ftp_client_gui_lib::local_bridge::{
     bridge_kind_for_provider_id, probe_bridge_blocking, BridgeUiState,
 };
@@ -1975,6 +1976,12 @@ enum Commands {
         /// (absolute N or N%). Defaults to 100 when omitted; raise it to act on more.
         #[arg(long)]
         max_delete: Option<String>,
+        /// Similarity: exact (byte-identical, default, back-compat) or non-identical (perceptual for images, simhash for text/SVG)
+        #[arg(long, default_value = "exact")]
+        similarity: String,
+        /// Hamming distance threshold override for non-identical mode (raster default 10, text 3)
+        #[arg(long)]
+        distance: Option<u32>,
     },
     /// Synchronize local and remote directories
     Sync {
@@ -41584,6 +41591,8 @@ async fn cmd_dedupe(
     dry_run: bool,
     force: bool,
     max_delete: Option<&str>,
+    similarity: &str,
+    distance: Option<u32>,
     cli: &Cli,
     format: OutputFormat,
 ) -> i32 {
@@ -41657,99 +41666,241 @@ async fn cmd_dedupe(
         }
     }
 
+    let sim_mode = SimilarityMode::parse(similarity);
+    let is_non_identical = sim_mode == SimilarityMode::NonIdentical;
+
     if !quiet {
-        eprintln!("Scanned {} files. Grouping by size...", files.len());
-    }
-
-    // Group by size (fast pre-filter)
-    let mut size_groups: std::collections::HashMap<u64, Vec<(String, Option<String>)>> =
-        std::collections::HashMap::new();
-    for (path, size, mtime) in &files {
-        if *size > 0 {
-            size_groups
-                .entry(*size)
-                .or_default()
-                .push((path.clone(), mtime.clone()));
-        }
-    }
-
-    // Filter to groups with >1 file (potential duplicates)
-    #[allow(clippy::type_complexity)]
-    let candidate_groups: Vec<(u64, Vec<(String, Option<String>)>)> = size_groups
-        .into_iter()
-        .filter(|(_, paths)| paths.len() > 1)
-        .collect();
-
-    if candidate_groups.is_empty() {
-        if !quiet {
-            if scan_errors == 0 {
-                eprintln!("No potential duplicates found.");
-            } else {
-                eprintln!(
-                    "No potential duplicates found, but scan completed with {} error(s).",
-                    scan_errors
-                );
-            }
-        }
-        if matches!(format, OutputFormat::Json) {
-            print_json(&serde_json::json!({
-                "status": if scan_errors == 0 { "ok" } else { "partial" },
-                "groups": 0,
-                "duplicates": 0,
-                "scan_errors": scan_errors,
-                "hash_errors": 0,
-                "action_errors": 0,
-            }));
-        }
-        let _ = provider.disconnect().await;
-        return if scan_errors == 0 {
-            0
+        if is_non_identical {
+            eprintln!(
+                "Scanned {} files. Computing non-identical similarity signatures (size pre-filter bypassed for raster/text)...",
+                files.len()
+            );
         } else {
-            exit_code.max(4)
-        };
+            eprintln!("Scanned {} files. Grouping by size...", files.len());
+        }
     }
 
-    if !quiet {
-        eprintln!(
-            "{} size groups with potential duplicates. Hashing...",
-            candidate_groups.len()
-        );
-    }
-
-    // Hash files within each group to confirm duplicates
+    // duplicate_groups shape reused for both paths: Vec of same-size or same-sim groups
     // Each entry: (path, size, mtime)
     let mut duplicate_groups: Vec<Vec<(String, u64, Option<String>)>> = Vec::new();
     let mut total_duplicates = 0u32;
     let mut wasted_bytes = 0u64;
 
-    for (size, paths_with_mtime) in &candidate_groups {
-        let mut hash_map: std::collections::HashMap<String, Vec<(String, u64, Option<String>)>> =
-            std::collections::HashMap::new();
-        for (p, mtime) in paths_with_mtime {
-            match dedupe_hash_remote_sha256(&mut provider, p, *size).await {
-                Ok(hash) => {
-                    hash_map
-                        .entry(hash)
-                        .or_default()
-                        .push((p.clone(), *size, mtime.clone()));
+    if is_non_identical {
+        // Non-identical path (this slice): bypass size prefilter (perceptual matches have different byte sizes).
+        // Download content only for raster/text modalities (by path), use temp files + shared engine.
+        // Other modalities skipped (ssdeep stubbed).
+        use std::collections::HashMap as StdHashMap;
+        let mut temp_map: StdHashMap<PathBuf, (String, u64, Option<String>)> = StdHashMap::new(); // temp -> (orig, size, mtime)
+        let temp_dir = match tempfile::tempdir() {
+            Ok(d) => d,
+            Err(e) => {
+                eprintln!("Failed to create temp dir for non-identical dedupe: {}", e);
+                let _ = provider.disconnect().await;
+                return 5;
+            }
+        };
+
+        const MAX_SIM_DL: u64 = 80 * 1024 * 1024; // 80 MiB cap per file for sim compute
+        let mut dl_errors = 0u32;
+
+        for (orig_path, sz, mtime) in &files {
+            let p = Path::new(orig_path);
+            let modality = dedupe::detect_modality(p);
+            if !matches!(modality, Modality::Raster | Modality::Text) {
+                continue;
+            }
+            // Preserve extension for correct modality inside engine
+            let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("bin");
+            let tmp_name = format!("dedupe_{}_{}.{}", files.len(), temp_map.len(), ext);
+            let tmp_path = temp_dir.path().join(&tmp_name);
+
+            match provider
+                .download_to_bytes_capped(orig_path, MAX_SIM_DL)
+                .await
+            {
+                Ok(bytes) => {
+                    if let Err(e) = std::fs::write(&tmp_path, &bytes) {
+                        dl_errors += 1;
+                        if !quiet {
+                            eprintln!("  Failed to stage {}: {}", orig_path, e);
+                        }
+                        continue;
+                    }
+                    temp_map.insert(tmp_path.clone(), (orig_path.clone(), *sz, mtime.clone()));
                 }
                 Err(e) => {
+                    dl_errors += 1;
                     hash_errors += 1;
                     if exit_code == 0 {
                         exit_code = provider_error_to_exit_code(&e);
                     }
                     if !quiet {
-                        eprintln!("  Failed to hash {}: {}", p, e);
+                        eprintln!("  Failed to download {} for similarity: {}", orig_path, e);
                     }
                     continue;
                 }
             }
         }
-        for (_, group) in hash_map {
+
+        if !quiet {
+            eprintln!(
+                "Fetched {} files for similarity. Clustering...",
+                temp_map.len()
+            );
+        }
+
+        let tmp_paths: Vec<PathBuf> = temp_map.keys().cloned().collect();
+        let sim_groups = dedupe::find_similar_local(&tmp_paths, sim_mode, distance, None);
+
+        for g in sim_groups {
+            if g.files.len() < 2 {
+                continue;
+            }
+            // remap temp names back to remote paths, carry one size (first)
+            let mut remapped: Vec<(String, u64, Option<String>)> = Vec::new();
+            let mut group_size = 0u64;
+            for tf in &g.files {
+                if let Some((orig, sz, mt)) = temp_map.get(Path::new(tf)) {
+                    if group_size == 0 {
+                        group_size = *sz;
+                    }
+                    remapped.push((orig.clone(), *sz, mt.clone()));
+                }
+            }
+            if remapped.len() >= 2 {
+                let dupes = (remapped.len() as u32).saturating_sub(1);
+                total_duplicates += dupes;
+                wasted_bytes += group_size * dupes as u64;
+                duplicate_groups.push(remapped);
+            }
+        }
+
+        if duplicate_groups.is_empty() {
+            if !quiet {
+                eprintln!(
+                    "No non-identical duplicates found ({} download errors).",
+                    dl_errors
+                );
+            }
+            if matches!(format, OutputFormat::Json) {
+                print_json(&serde_json::json!({
+                    "status": if dl_errors == 0 && scan_errors == 0 { "ok" } else { "partial" },
+                    "mode": "non-identical",
+                    "groups": 0,
+                    "duplicates": 0,
+                    "scan_errors": scan_errors,
+                    "hash_errors": hash_errors,
+                    "action_errors": 0,
+                }));
+            }
+            let _ = provider.disconnect().await;
+            return if scan_errors == 0 && dl_errors == 0 {
+                0
+            } else {
+                exit_code.max(4)
+            };
+        }
+
+        if !quiet {
+            eprintln!(
+                "{} non-identical groups ({} duplicates).",
+                duplicate_groups.len(),
+                total_duplicates
+            );
+        }
+    } else {
+        // Original exact path: size prefilter + remote sha256
+        // Group by size (fast pre-filter)
+        let mut size_groups: std::collections::HashMap<u64, Vec<(String, Option<String>)>> =
+            std::collections::HashMap::new();
+        for (path, size, mtime) in &files {
+            if *size > 0 {
+                size_groups
+                    .entry(*size)
+                    .or_default()
+                    .push((path.clone(), mtime.clone()));
+            }
+        }
+
+        // Filter to groups with >1 file (potential duplicates)
+        #[allow(clippy::type_complexity)]
+        let candidate_groups: Vec<(u64, Vec<(String, Option<String>)>)> = size_groups
+            .into_iter()
+            .filter(|(_, paths)| paths.len() > 1)
+            .collect();
+
+        if candidate_groups.is_empty() {
+            if !quiet {
+                if scan_errors == 0 {
+                    eprintln!("No potential duplicates found.");
+                } else {
+                    eprintln!(
+                        "No potential duplicates found, but scan completed with {} error(s).",
+                        scan_errors
+                    );
+                }
+            }
+            if matches!(format, OutputFormat::Json) {
+                print_json(&serde_json::json!({
+                    "status": if scan_errors == 0 { "ok" } else { "partial" },
+                    "groups": 0,
+                    "duplicates": 0,
+                    "scan_errors": scan_errors,
+                    "hash_errors": 0,
+                    "action_errors": 0,
+                }));
+            }
+            let _ = provider.disconnect().await;
+            return if scan_errors == 0 {
+                0
+            } else {
+                exit_code.max(4)
+            };
+        }
+
+        if !quiet {
+            eprintln!(
+                "{} size groups with potential duplicates. Hashing...",
+                candidate_groups.len()
+            );
+        }
+
+        // Hash files within each group to confirm duplicates
+        // Each entry: (path, size, mtime)
+        let mut hash_map_global: std::collections::HashMap<
+            String,
+            Vec<(String, u64, Option<String>)>,
+        > = std::collections::HashMap::new();
+        for (size, paths_with_mtime) in &candidate_groups {
+            for (p, mtime) in paths_with_mtime {
+                match dedupe_hash_remote_sha256(&mut provider, p, *size).await {
+                    Ok(hash) => {
+                        hash_map_global.entry(hash).or_default().push((
+                            p.clone(),
+                            *size,
+                            mtime.clone(),
+                        ));
+                    }
+                    Err(e) => {
+                        hash_errors += 1;
+                        if exit_code == 0 {
+                            exit_code = provider_error_to_exit_code(&e);
+                        }
+                        if !quiet {
+                            eprintln!("  Failed to hash {}: {}", p, e);
+                        }
+                        continue;
+                    }
+                }
+            }
+        }
+        for (_, group) in hash_map_global {
             if group.len() > 1 {
+                let sz = group.first().map(|g| g.1).unwrap_or(0);
                 let dupes = group.len() as u32 - 1;
                 total_duplicates += dupes;
-                wasted_bytes += size * dupes as u64;
+                wasted_bytes += sz * dupes as u64;
                 duplicate_groups.push(group);
             }
         }
@@ -59367,6 +59518,8 @@ async fn main() {
             dry_run,
             force,
             max_delete,
+            similarity,
+            distance,
         } => {
             let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
                 ("_", url.as_str())
@@ -59380,6 +59533,8 @@ async fn main() {
                 *dry_run,
                 *force,
                 max_delete.as_deref(),
+                similarity,
+                *distance,
                 &cli,
                 format,
             )
