@@ -12,6 +12,7 @@ import { useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { FileKey, Loader2, X } from 'lucide-react';
 import { useTranslation } from '../i18n';
+import { QRCodeSVG } from 'qrcode.react';
 
 interface AerocryptEmergencyKit {
     vault_id: string;
@@ -35,6 +36,7 @@ export const AeroCryptRecoveryKitModal: React.FC<Props> = ({ profileId, profileN
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [kit, setKit] = useState<AerocryptEmergencyKit | null>(null);
+    const [qrLevel, setQrLevel] = useState<'L' | 'M' | 'Q' | 'H'>('H');
 
     useEffect(() => {
         let cancelled = false;
@@ -70,7 +72,10 @@ export const AeroCryptRecoveryKitModal: React.FC<Props> = ({ profileId, profileN
         if (!kit) return;
         const w = window.open('', '_blank');
         if (w) {
-            w.document.write('<pre style="font-family: monospace; white-space: pre-wrap;">' + kit.text.replace(/&/g, '&amp;').replace(/</g, '&lt;') + '</pre>');
+            const qrNote = `\n[QR level: ${qrLevel} — scan with USB QR scanner or transcribe the text above]\n`;
+            w.document.write('<pre style="font-family: monospace; white-space: pre-wrap;">' +
+                kit.text.replace(/&/g, '&amp;').replace(/</g, '&lt;') +
+                qrNote.replace(/&/g, '&amp;') + '</pre>');
             w.document.close();
             w.focus();
             w.print();
@@ -106,6 +111,19 @@ export const AeroCryptRecoveryKitModal: React.FC<Props> = ({ profileId, profileN
                             <div className="bg-gray-50 dark:bg-gray-900 rounded p-2 text-xs font-mono whitespace-pre-wrap break-all max-h-64 overflow-auto">
                                 {kit.text}
                             </div>
+
+                            {/* D4 QR + level (same public payload as the other kit surface) */}
+                            <div className="flex flex-col sm:flex-row gap-3 items-start">
+                                <QRCodeSVG value={`AEROCRYPT-KIT v1\n${kit.text}`} level={qrLevel} size={112} includeMargin />
+                                <div className="text-xs space-y-1">
+                                    {(['L','M','Q','H'] as const).map(lv => (
+                                        <label key={lv} className="flex items-center gap-1 cursor-pointer">
+                                            <input type="radio" name="qrL" checked={qrLevel===lv} onChange={() => setQrLevel(lv)} /> {lv}{lv==='H' ? ' (max correction)' : ''}
+                                        </label>
+                                    ))}
+                                </div>
+                            </div>
+
                             <div className="flex gap-2">
                                 <button onClick={saveKitToFile} className="flex-1 px-3 py-1.5 text-sm rounded bg-emerald-600 text-white hover:bg-emerald-700">{t('aerocryptNative.saveKit')}</button>
                                 <button onClick={printKit} className="flex-1 px-3 py-1.5 text-sm rounded bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">{t('aerocryptNative.printKit')}</button>
