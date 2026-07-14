@@ -105,14 +105,9 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
       setIsScanning(false);
       setIsDeleting(false);
     }
+    // Note: `scan` depends on `mode`, so toggling the mode re-runs this effect
+    // and re-scans automatically. No separate mode effect is needed.
   }, [isOpen, scan]);
-
-  // Re-scan immediately when user toggles the mode (while dialog is open)
-  useEffect(() => {
-    if (isOpen) {
-      scan();
-    }
-  }, [mode, isOpen]);
 
   // Hide scrollbars when dialog is open (WebKitGTK fix)
   useEffect(() => {
