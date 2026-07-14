@@ -56,6 +56,8 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
   const [error, setError] = useState<string | null>(null);
   // Set of file paths selected for deletion
   const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set());
+  // Mode: 'exact' (default, byte-identical) or 'non-identical' (consumes shared engine)
+  const [mode, setMode] = useState<'exact' | 'non-identical'>('exact');
 
   // Scan for duplicates when the dialog opens
   const scan = useCallback(async () => {
@@ -65,23 +67,32 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
     setSelectedPaths(new Set());
 
     try {
-      const result = await invoke<DuplicateGroup[]>('find_duplicate_files', { path: scanPath });
+      const result = await invoke<DuplicateGroup[]>('find_duplicate_files', {
+        path: scanPath,
+        mode: mode,
+      });
       setGroups(result);
 
-      // Auto-select all non-first files (duplicates) by default
-      const autoSelected = new Set<string>();
-      for (const group of result) {
-        for (let i = 1; i < group.files.length; i++) {
-          autoSelected.add(group.files[i]);
+      if (mode === 'exact') {
+        // Exact mode: auto-select all non-first files (duplicates) by default (original behavior)
+        const autoSelected = new Set<string>();
+        for (const group of result) {
+          for (let i = 1; i < group.files.length; i++) {
+            autoSelected.add(group.files[i]);
+          }
         }
+        setSelectedPaths(autoSelected);
+      } else {
+        // Non-identical mode: NEVER auto-select. User must manually tick files.
+        // The first file in each group is visually suggested as KEEP (largest-quality heuristic).
+        setSelectedPaths(new Set());
       }
-      setSelectedPaths(autoSelected);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setIsScanning(false);
     }
-  }, [scanPath]);
+  }, [scanPath, mode]);
 
   useEffect(() => {
     if (isOpen) {
@@ -95,6 +106,13 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
       setIsDeleting(false);
     }
   }, [isOpen, scan]);
+
+  // Re-scan immediately when user toggles the mode (while dialog is open)
+  useEffect(() => {
+    if (isOpen) {
+      scan();
+    }
+  }, [mode, isOpen]);
 
   // Hide scrollbars when dialog is open (WebKitGTK fix)
   useEffect(() => {
@@ -190,14 +208,27 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
     let totalDuplicates = 0;
     let wastedBytes = 0;
 
-    for (const group of groups) {
-      const dupeCount = group.files.length - 1;
-      totalDuplicates += dupeCount;
-      wastedBytes += group.size * dupeCount;
+    if (mode === 'non-identical') {
+      // Non-identical: "potential" waste only from user-selected files (nothing auto-selected)
+      for (const group of groups) {
+        for (const f of group.files) {
+          if (selectedPaths.has(f)) {
+            // count as potential dupe (size is group size, approximate)
+            totalDuplicates += 1;
+            wastedBytes += group.size;
+          }
+        }
+      }
+    } else {
+      for (const group of groups) {
+        const dupeCount = group.files.length - 1;
+        totalDuplicates += dupeCount;
+        wastedBytes += group.size * dupeCount;
+      }
     }
 
     return { totalGroups, totalDuplicates, wastedBytes };
-  }, [groups]);
+  }, [groups, mode, selectedPaths]);
 
   const selectedCount = selectedPaths.size;
 
@@ -232,6 +263,36 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
           >
             <X size={18} className="text-gray-500" />
           </button>
+        </div>
+
+        {/* Mode toggle: Exact (byte-identical, default, auto-selects dupes) vs Non-identical (uses shared engine, no auto-select) */}
+        <div className="flex items-center gap-2 px-4 py-2 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
+          <span className="text-xs text-gray-500 dark:text-gray-400 mr-1">Mode:</span>
+          <button
+            disabled={isScanning}
+            onClick={() => setMode('exact')}
+            className={`px-3 py-1 text-xs rounded border transition-colors disabled:opacity-50 ${
+              mode === 'exact'
+                ? 'bg-blue-500 text-white border-blue-500'
+                : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600'
+            }`}
+          >
+            Exact
+          </button>
+          <button
+            disabled={isScanning}
+            onClick={() => setMode('non-identical')}
+            className={`px-3 py-1 text-xs rounded border transition-colors disabled:opacity-50 ${
+              mode === 'non-identical'
+                ? 'bg-purple-500 text-white border-purple-500'
+                : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600'
+            }`}
+          >
+            Non-identical
+          </button>
+          <span className="ml-2 text-[10px] text-gray-400 dark:text-gray-500">
+            {mode === 'non-identical' ? 'Perceptual / text similarity — no auto-delete' : 'Byte-identical'}
+          </span>
         </div>
 
         {/* Scanning state */}
@@ -285,7 +346,7 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
               </span>
               <span className="flex items-center gap-1.5">
                 <Trash2 size={13} className="text-red-400" />
-                {formatBytes(summary.wastedBytes)} {t('duplicates.wasted')}
+                {formatBytes(summary.wastedBytes)} {mode === 'non-identical' ? 'potential waste (selected)' : t('duplicates.wasted')}
               </span>
             </div>
 
@@ -308,6 +369,11 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
                     <span className="text-gray-400 dark:text-gray-500 ml-auto shrink-0">
                       {formatBytes(group.size)} &times; {group.files.length} {t('duplicates.copies')}
                     </span>
+                    {group.similarity && (
+                      <span className="ml-2 px-1.5 py-0.5 text-[10px] rounded bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 shrink-0">
+                        {group.similarity}{group.distance != null ? `, dist ${group.distance}` : ''}
+                      </span>
+                    )}
                   </div>
 
                   {/* File entries */}

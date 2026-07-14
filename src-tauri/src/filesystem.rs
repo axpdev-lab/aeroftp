@@ -11,7 +11,7 @@
 //! - `list_trash_items`: List items in system trash (FreeDesktop spec / macOS)
 //! - `restore_trash_item`: Restore a trash item to its original location
 //! - `empty_trash`: Permanently delete all items in system trash
-//! - `find_duplicate_files`: Scan directory for duplicate files (BLAKE3 hash)
+//! - `find_duplicate_files`: Scan directory for duplicate files (exact BLAKE3 or non-identical via shared engine)
 //! - `scan_disk_usage`: Disk usage tree for treemap visualization
 //! - `volumes_changed`: Fast change detection for mounted volumes (hash-based)
 
@@ -1629,23 +1629,33 @@ pub async fn empty_trash() -> Result<u64, String> {
 
 // ─── Structs (Duplicate Finder) ─────────────────────────────────────────────
 
-/// A group of files that are exact duplicates (same BLAKE3 hash and size).
+/// A group of duplicate files.
+/// For exact mode: hash is the content hash.
+/// For non-identical mode: hash may be a representative id (e.g. first file), similarity and distance carry the cluster info.
 #[derive(Serialize, Clone)]
 pub struct DuplicateGroup {
     pub hash: String,
     pub size: u64,
     pub files: Vec<String>,
+    /// "perceptual" / "text" / etc when non-identical; None for exact
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub similarity: Option<String>,
+    /// Hamming distance of the cluster (representative); None for exact
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub distance: Option<u32>,
 }
 
 // ─── Command 11: find_duplicate_files ───────────────────────────────────────
 
-/// Scans a directory recursively for duplicate files. Groups by size first,
-/// then computes BLAKE3 hash only for size-matched candidates for performance.
-/// Returns groups sorted by wasted space descending.
+/// Scans a directory recursively for duplicate files.
+/// - mode "exact" (default): byte-identical using BLAKE3 (original behavior).
+/// - mode "non-identical": delegates to shared dedupe engine (perceptual for images, simhash for text/SVG).
+/// Returns groups sorted by wasted space descending (for non-identical, sizes may vary within group).
 #[tauri::command]
 pub async fn find_duplicate_files(
     path: String,
     min_size: Option<u64>,
+    mode: Option<String>,
 ) -> Result<Vec<DuplicateGroup>, String> {
     validate_path(&path)?;
 
@@ -1655,6 +1665,34 @@ pub async fn find_duplicate_files(
     }
 
     let min = min_size.unwrap_or(1);
+
+    let is_non_identical = mode
+        .as_deref()
+        .map(|m| m.eq_ignore_ascii_case("non-identical") || m.eq_ignore_ascii_case("nonidentical"))
+        .unwrap_or(false);
+
+    if is_non_identical {
+        // Delegate entirely to the shared engine (src-tauri/src/dedupe/) — Phase 1 source of truth.
+        // Do NOT re-implement perceptual/SimHash logic here.
+        let engine_groups = crate::dedupe::find_similar_in_dir(
+            path_ref,
+            crate::dedupe::SimilarityMode::NonIdentical,
+            None, // engine defaults: raster <=10, text <=3
+            min_size,
+        )?;
+        let result: Vec<DuplicateGroup> = engine_groups
+            .into_iter()
+            .map(|g| DuplicateGroup {
+                // Use first file as stable identifier for React key (no single content hash in non-id mode).
+                hash: g.files.first().cloned().unwrap_or_default(),
+                size: g.size,
+                files: g.files,
+                similarity: g.modality,
+                distance: g.distance,
+            })
+            .collect();
+        return Ok(result);
+    }
 
     // AF-RUST-H03: Resource exhaustion limits
     const MAX_FILE_COUNT: u64 = 100_000;
@@ -1730,7 +1768,13 @@ pub async fn find_duplicate_files(
     let mut result: Vec<DuplicateGroup> = hash_groups
         .into_iter()
         .filter(|(_, (_, files))| files.len() >= 2)
-        .map(|(hash, (size, files))| DuplicateGroup { hash, size, files })
+        .map(|(hash, (size, files))| DuplicateGroup {
+            hash,
+            size,
+            files,
+            similarity: None,
+            distance: None,
+        })
         .collect();
 
     result.sort_by(|a, b| {

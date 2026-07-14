@@ -59,11 +59,16 @@ export interface FolderSizeResult {
   dir_count: number;
 }
 
-/** Group of duplicate files sharing the same content hash */
+/** Group of duplicate files.
+ * For exact mode: hash is the content hash.
+ * For non-identical: hash is a representative id (e.g. first file), similarity/distance provide cluster info.
+ */
 export interface DuplicateGroup {
   hash: string;
   size: number;
   files: string[];
+  similarity?: string; // e.g. "raster" | "text" (perceptual / simhash)
+  distance?: number;   // Hamming distance of the cluster
 }
 
 /** Node in a disk usage tree for treemap visualization */
