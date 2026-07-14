@@ -5091,7 +5091,10 @@
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "Ülekatte kaugtee",
             "overlaysRemotePathHint": "Remote Path'i alamkaust, kuhu ülekate ankurdatakse. Jäta tühjaks, et kasutada Remote Path'i, või sisesta ainult alamkausta nimi (see luuakse Remote Path'i alla).",
-            "overlaysRemotePathInvalid": "Peab olema Kaugtee või selle alamkaust"
+            "overlaysRemotePathInvalid": "Peab olema Kaugtee või selle alamkaust",
+            "defaultSaltToggle": "Vaikesool (ainult parool avab; pärast loomist pole komplekti ega võtmehoidjat vaja)",
+            "defaultSaltToggleHint": "Avalik konstantne sool (rclone-style). Nõuab genereeritud kõrge entroopiaga parooli. Sama parool mitmel hoidlal muudab krüpteeritud nimed võtmeta lingitavaks.",
+            "defaultSaltAttestation": "Lõin selle parooli paroolihalduriga ja mõistan lingitavuse kompromissi."
         },
         "modalGuard": {
             "busyTitle": "Toiming käib",

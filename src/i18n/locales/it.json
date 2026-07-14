@@ -5099,7 +5099,10 @@
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "Percorso remoto dell'overlay",
             "overlaysRemotePathHint": "Sottocartella del Remote Path in cui l'overlay è ancorato. Lascia vuoto per usare il Remote Path, oppure digita solo il nome di una sottocartella (viene creata sotto il Remote Path).",
-            "overlaysRemotePathInvalid": "Deve essere il Percorso remoto o una sua sottocartella"
+            "overlaysRemotePathInvalid": "Deve essere il Percorso remoto o una sua sottocartella",
+            "defaultSaltToggle": "Sale predefinito (solo la password apre; dopo la creazione non serve kit o keystore)",
+            "defaultSaltToggleHint": "Sale costante pubblico (stile rclone). Richiede una password generata ad alta entropia. La stessa password su più vault rende i nomi criptati collegabili senza la chiave.",
+            "defaultSaltAttestation": "Ho generato questa password con un gestore password e comprendo il compromesso di collegabilità."
         },
         "modalGuard": {
             "busyTitle": "Operazione in corso",

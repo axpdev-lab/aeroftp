@@ -5110,7 +5110,10 @@
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "ផ្លូវពីចម្ងាយនៃការត្រួតលើ",
             "overlaysRemotePathHint": "ថតរងនៃ Remote Path ដែលការត្រួតលើត្រូវបានចងភ្ជាប់។ ទុកឲ្យទទេដើម្បីប្រើ Remote Path ឬវាយបញ្ចូលតែឈ្មោះថតរង (វាត្រូវបានបង្កើតនៅក្រោម Remote Path)។",
-            "overlaysRemotePathInvalid": "ត្រូវតែជាផ្លូវពីចម្ងាយ ឬថតរងរបស់វា"
+            "overlaysRemotePathInvalid": "ត្រូវតែជាផ្លូវពីចម្ងាយ ឬថតរងរបស់វា",
+            "defaultSaltToggle": "អំបិលលំនាំដើម (ពាក្យសម្ងាត់តែមួយបើក; មិនត្រូវការឧបករណ៍ឬឃ្លាំងសោបន្ទាប់ពីបង្កើត)",
+            "defaultSaltToggleHint": "អំបិលថេរសាធារណៈ (រចនាប័ទ្ម rclone)។ តម្រូវឱ្យបង្កើតពាក្យសម្ងាត់ដែលមានអង់ត្រូពីខ្ពស់។ ពាក្យសម្ងាត់ដូចគ្នានៅលើតុដេកច្រើនធ្វើឱ្យឈ្មោះដែលបានអ៊ិនគ្រីបអាចភ្ជាប់បានដោយគ្មានកូនសោ។",
+            "defaultSaltAttestation": "ខ្ញុំបានបង្កើតពាក្យសម្ងាត់នេះដោយប្រើកម្មវិធីគ្រប់គ្រងពាក្យសម្ងាត់ ហើយយល់ពីការផ្លាស់ប្តូរភាពភ្ជាប់បាន។"
         },
         "modalGuard": {
             "busyTitle": "ប្រតិបត្តិការកំពុងដំណើរការ",

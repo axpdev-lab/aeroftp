@@ -5109,7 +5109,10 @@
             "keyfileGeneratedBackup": "Keyfile generated. Back it up now: losing it makes the vault permanently unopenable.",
             "keyfileRepointHint": "This path only points to where the keyfile lives; changing it does not re-key the vault. A wrong or missing keyfile fails closed at unlock.",
             "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
-            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore."
+            "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
+            "defaultSaltToggle": "Default salt (password alone opens; no kit or keystore needed after create)",
+            "defaultSaltToggleHint": "Public constant salt (rclone-style). Requires a generated high-entropy password. Same password on multiple vaults makes encrypted names linkable without the key.",
+            "defaultSaltAttestation": "I generated this password with a password manager and understand the linkability tradeoff."
         },
         "modalView": {
             "listView": "List view",

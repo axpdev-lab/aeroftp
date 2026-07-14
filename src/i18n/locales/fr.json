@@ -5091,7 +5091,10 @@
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "Chemin distant de la superposition",
             "overlaysRemotePathHint": "Sous-dossier du Remote Path où la superposition est ancrée. Laissez vide pour utiliser le Remote Path, ou saisissez uniquement un nom de sous-dossier (il est créé sous le Remote Path).",
-            "overlaysRemotePathInvalid": "Doit être le Chemin distant ou un de ses sous-dossiers"
+            "overlaysRemotePathInvalid": "Doit être le Chemin distant ou un de ses sous-dossiers",
+            "defaultSaltToggle": "Sel par défaut (seul le mot de passe ouvre ; aucun kit ou magasin de clés nécessaire après création)",
+            "defaultSaltToggleHint": "Sel constant public (style rclone). Nécessite un mot de passe généré à haute entropie. Le même mot de passe sur plusieurs coffres rend les noms chiffrés associables sans la clé.",
+            "defaultSaltAttestation": "J'ai généré ce mot de passe avec un gestionnaire de mots de passe et je comprends le compromis de traçabilité."
         },
         "modalGuard": {
             "busyTitle": "Opération en cours",

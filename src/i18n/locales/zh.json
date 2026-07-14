@@ -5091,7 +5091,10 @@
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "叠加层远程路径",
             "overlaysRemotePathHint": "叠加层锚定所在的 Remote Path 子文件夹。留空以使用 Remote Path，或仅输入一个子文件夹名称（将在 Remote Path 下创建）。",
-            "overlaysRemotePathInvalid": "必须是远程路径或其子文件夹"
+            "overlaysRemotePathInvalid": "必须是远程路径或其子文件夹",
+            "defaultSaltToggle": "默认盐值（仅密码即可打开；创建后无需套件或密钥库）",
+            "defaultSaltToggleHint": "公共常量盐值（rclone-style）。需要生成的高熵密码。在多个保险库上使用相同密码会使加密名称在无密钥情况下可关联。",
+            "defaultSaltAttestation": "我使用密码管理器生成了此密码，并理解可关联性的权衡。"
         },
         "modalGuard": {
             "busyTitle": "操作进行中",

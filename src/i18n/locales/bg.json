@@ -5091,7 +5091,10 @@
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "Отдалечен път на слоя",
             "overlaysRemotePathHint": "Подпапка на Remote Path, където е закотнат оверлеят. Оставете празно, за да използвате Remote Path, или въведете само име на подпапка (тя се създава под Remote Path).",
-            "overlaysRemotePathInvalid": "Трябва да е Отдалеченият път или негова подпапка"
+            "overlaysRemotePathInvalid": "Трябва да е Отдалеченият път или негова подпапка",
+            "defaultSaltToggle": "Сол по подразбиране (само паролата отваря; след създаване не са необходими комплект или хранилище за ключове)",
+            "defaultSaltToggleHint": "Публична постоянна сол (rclone-style). Изисква генерирана парола с висока ентропия. Еднаква парола на няколко хранилища прави криптираните имена свързваеми без ключа.",
+            "defaultSaltAttestation": "Генерирах тази парола с мениджър на пароли и разбирам компромиса със свързваемостта."
         },
         "modalGuard": {
             "busyTitle": "Операция в ход",

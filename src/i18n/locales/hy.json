@@ -5091,7 +5091,10 @@
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "Վերադրման հեռավոր ուղի",
             "overlaysRemotePathHint": "Remote Path-ի ենթապանակը, որտեղ ամրագրվում է վերադրումը։ Թողեք դատարկ՝ Remote Path-ն օգտագործելու համար, կամ մուտքագրեք միայն ենթապանակի անուն (այն ստեղծվում է Remote Path-ի ներքո)։",
-            "overlaysRemotePathInvalid": "Պետք է լինի Հեռավոր ուղին կամ դրա ենթաթղթապանակը"
+            "overlaysRemotePathInvalid": "Պետք է լինի Հեռավոր ուղին կամ դրա ենթաթղթապանակը",
+            "defaultSaltToggle": "Կանխադրված աղ (միայն գաղտնաբառը բացում է; ստեղծումից հետո հավաքածու կամ բանալիների պահեստ չի պահանջվում)",
+            "defaultSaltToggleHint": "Հանրային հաստատուն աղ (rclone-style): Պահանջում է բարձր էնտրոպիայով գեներացված գաղտնաբառ: Նույն գաղտնաբառը մի քանի պահեստներում անբանալի դարձնում է կոդավորված անունները կապվող:",
+            "defaultSaltAttestation": "Ես այս գաղտնաբառը գեներացրել եմ գաղտնաբառերի կառավարիչով և հասկանում եմ կապելիության փոխզիջումը:"
         },
         "modalGuard": {
             "busyTitle": "Գործողությունն ընթացքի մեջ է",

@@ -5091,7 +5091,10 @@
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "Απομακρυσμένη διαδρομή επικάλυψης",
             "overlaysRemotePathHint": "Υποφάκελος του Remote Path όπου αγκυρώνεται η επικάλυψη. Αφήστε το κενό για να χρησιμοποιήσετε το Remote Path ή πληκτρολογήστε μόνο ένα όνομα υποφακέλου (δημιουργείται κάτω από το Remote Path).",
-            "overlaysRemotePathInvalid": "Πρέπει να είναι η Απομακρυσμένη διαδρομή ή ένας υποφάκελός της"
+            "overlaysRemotePathInvalid": "Πρέπει να είναι η Απομακρυσμένη διαδρομή ή ένας υποφάκελός της",
+            "defaultSaltToggle": "Προεπιλεγμένο αλάτι (μόνο ο κωδικός ανοίγει· δεν χρειάζεται kit ή αποθήκη κλειδιών μετά τη δημιουργία)",
+            "defaultSaltToggleHint": "Δημόσιο σταθερό αλάτι (rclone-style). Απαιτεί κωδικό υψηλής εντροπίας που έχει δημιουργηθεί. Ο ίδιος κωδικός σε πολλαπλά θησαυροφυλάκια καθιστά τα κρυπτογραφημένα ονόματα συνδέσιμα χωρίς το κλειδί.",
+            "defaultSaltAttestation": "Δημιούργησα αυτόν τον κωδικό με έναν διαχειριστή κωδικών και κατανοώ την αντιστάθμιση της συνδεσιμότητας."
         },
         "modalGuard": {
             "busyTitle": "Λειτουργία σε εξέλιξη",

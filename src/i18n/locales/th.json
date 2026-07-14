@@ -5091,7 +5091,10 @@
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "เส้นทางระยะไกลของโอเวอร์เลย์",
             "overlaysRemotePathHint": "โฟลเดอร์ย่อยของ Remote Path ที่ใช้ยึดโอเวอร์เลย์ ปล่อยว่างไว้เพื่อใช้ Remote Path หรือพิมพ์เพียงชื่อโฟลเดอร์ย่อย (ระบบจะสร้างไว้ภายใต้ Remote Path)",
-            "overlaysRemotePathInvalid": "ต้องเป็นเส้นทางระยะไกลหรือโฟลเดอร์ย่อยของมัน"
+            "overlaysRemotePathInvalid": "ต้องเป็นเส้นทางระยะไกลหรือโฟลเดอร์ย่อยของมัน",
+            "defaultSaltToggle": "เกลือเริ่มต้น (เปิดด้วยรหัสผ่านเท่านั้น; ไม่ต้องใช้ชุดหรือที่เก็บคีย์หลังสร้าง)",
+            "defaultSaltToggleHint": "เกลือคงที่สาธารณะ (สไตล์ rclone) ต้องใช้รหัสผ่านเอนโทรปีสูงที่สร้างขึ้น การใช้รหัสผ่านเดียวกันในหลายคลังทำให้ชื่อที่เข้ารหัสสามารถเชื่อมโยงได้โดยไม่ต้องใช้กุญแจ",
+            "defaultSaltAttestation": "ฉันสร้างรหัสผ่านนี้ด้วยตัวจัดการรหัสผ่านและเข้าใจการแลกเปลี่ยนความเชื่อมโยง"
         },
         "modalGuard": {
             "busyTitle": "กำลังดำเนินการ",

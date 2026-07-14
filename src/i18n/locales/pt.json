@@ -5091,7 +5091,10 @@
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "Caminho remoto da sobreposição",
             "overlaysRemotePathHint": "Subpasta do Remote Path onde a sobreposição fica ancorada. Deixe vazio para usar o Remote Path, ou digite apenas um nome de subpasta (é criada dentro do Remote Path).",
-            "overlaysRemotePathInvalid": "Deve ser o Caminho remoto ou uma subpasta dele"
+            "overlaysRemotePathInvalid": "Deve ser o Caminho remoto ou uma subpasta dele",
+            "defaultSaltToggle": "Sal padrão (apenas a senha abre; nenhum kit ou armazenamento de chaves necessário após criar)",
+            "defaultSaltToggleHint": "Sal constante público (estilo rclone). Requer uma senha gerada de alta entropia. A mesma senha em múltiplos cofres torna os nomes criptografados vinculáveis sem a chave.",
+            "defaultSaltAttestation": "Gerei esta senha com um gerenciador de senhas e entendo o compromisso de vinculabilidade."
         },
         "modalGuard": {
             "busyTitle": "Operação em curso",

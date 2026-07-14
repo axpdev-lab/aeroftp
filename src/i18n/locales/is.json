@@ -5110,7 +5110,10 @@
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "Fjarslóð yfirlags",
             "overlaysRemotePathHint": "Undirmappa Remote Path þar sem yfirlagið er fest. Skildu eftir autt til að nota Remote Path, eða skrifaðu aðeins undirmöppuheiti (það er búið til undir Remote Path).",
-            "overlaysRemotePathInvalid": "Verður að vera Fjarslóðin eða undirmappa hennar"
+            "overlaysRemotePathInvalid": "Verður að vera Fjarslóðin eða undirmappa hennar",
+            "defaultSaltToggle": "Sjálfgefið salt (aðeins lykilorð opnar; engin pakkning eða lyklageymsla þarf eftir stofnun)",
+            "defaultSaltToggleHint": "Opinbert fast salt (rclone-stíll). Krefst myndaðs lykilorðs með mikilli óreiðu. Sama lykilorð á mörgum geymslum gerir dulrituð nöfn tengjanleg án lykils.",
+            "defaultSaltAttestation": "Ég bjó til þetta lykilorð með lykilorðastjóra og skil tengjanleikaviðskiptin."
         },
         "modalGuard": {
             "busyTitle": "Aðgerð í gangi",

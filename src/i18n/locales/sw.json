@@ -5091,7 +5091,10 @@
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "Njia ya Mbali ya Uwekeleaji",
             "overlaysRemotePathHint": "Kijifolda cha Remote Path ambapo tabaka limetiwa nanga. Acha wazi ili kutumia Remote Path, au andika jina la kijifolda tu (kinaundwa chini ya Remote Path).",
-            "overlaysRemotePathInvalid": "Lazima iwe Njia ya Mbali au folda ndogo yake"
+            "overlaysRemotePathInvalid": "Lazima iwe Njia ya Mbali au folda ndogo yake",
+            "defaultSaltToggle": "Chumvi chaguomsingi (neno la siri pekee hufungua; hakuna kit au hifadhi ya funguo inayohitajika baada ya kuunda)",
+            "defaultSaltToggleHint": "Chumvi ya mara kwa mara ya umma (mtindo wa rclone). Inahitaji neno la siri lililotengenezwa lenye entropia ya juu. Neno la siri sawa kwenye hifadhi nyingi hufanya majina yaliyosimbwa kuwa yanayoweza kuunganishwa bila ufunguo.",
+            "defaultSaltAttestation": "Nilitengeneza neno hili la siri kwa kutumia kidhibiti cha maneno ya siri na ninaelewa maelewano ya uunganishwaji."
         },
         "modalGuard": {
             "busyTitle": "Operesheni inaendelea",

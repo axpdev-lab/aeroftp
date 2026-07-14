@@ -5091,7 +5091,10 @@
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "Удаљена путања преклопа",
             "overlaysRemotePathHint": "Потфасцикла Remote Path-а у којој је преклоп усидрен. Оставите празно да користите Remote Path или унесите само име потфасцикле (креира се унутар Remote Path-а).",
-            "overlaysRemotePathInvalid": "Мора бити Удаљена путања или њена подфасцикла"
+            "overlaysRemotePathInvalid": "Мора бити Удаљена путања или њена подфасцикла",
+            "defaultSaltToggle": "Подразумевана со (само лозинка отвара; након креирања није потребан комплет или складиште кључева)",
+            "defaultSaltToggleHint": "Јавна константна со (rclone-style). Захтева генерисану лозинку високе ентропије. Иста лозинка на више сводова чини шифрована имена повезивим без кључа.",
+            "defaultSaltAttestation": "Генерисао сам ову лозинку помоћу менаџера лозинки и разумем компромис повезивости."
         },
         "modalGuard": {
             "busyTitle": "Операција у току",

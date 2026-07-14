@@ -59,6 +59,27 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({ onClose, onUnl
     const [confirmPassword, setConfirmPassword] = useState('');
     const [keyfilePath, setKeyfilePath] = useState('');
     const [createSubpath, setCreateSubpath] = useState('');
+    const [aeroCryptDefaultSalt, setAeroCryptDefaultSalt] = useState(false);
+    const [aeroCryptDefaultSaltStrength, setAeroCryptDefaultSaltStrength] = useState<'128' | '256'>('128');
+    const [aeroCryptDefaultSaltAttested, setAeroCryptDefaultSaltAttested] = useState(false);
+
+    // Entropy gate (D1-D3, mirrors ConnectionScreen)
+    const pwLen = password.length;
+    const strengthLevel = React.useMemo(() => {
+        if (!password) return 0;
+        let sc = Math.min(pwLen * 4, 40);
+        const variety = [/[a-z]/.test(password), /[A-Z]/.test(password), /[0-9]/.test(password), /[^a-zA-Z0-9]/.test(password)].filter(Boolean).length;
+        sc += variety * 10;
+        if (variety >= 3 && pwLen >= 12) sc += 10;
+        if (variety >= 4 && pwLen >= 16) sc += 10;
+        sc = Math.max(0, Math.min(100, sc));
+        return sc < 20 ? 0 : sc < 40 ? 1 : sc < 60 ? 2 : sc < 80 ? 3 : 4;
+    }, [password, pwLen]);
+    const requiredLen = aeroCryptDefaultSaltStrength === '256' ? 39 : 20;
+    const meetsEntropy = strengthLevel === 4 && pwLen >= requiredLen;
+    const effectiveUseDefaultSalt = aeroCryptDefaultSalt && aeroCryptDefaultSaltAttested && meetsEntropy;
+    const canToggleDefaultSalt = meetsEntropy;
+
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [vaultInfo, setVaultInfo] = useState<AeroCryptVaultInfo | null>(null);
@@ -81,6 +102,9 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({ onClose, onUnl
         setConfirmPassword('');
         setSuccess(null);
         setKitData(null);
+        setAeroCryptDefaultSalt(false);
+        setAeroCryptDefaultSaltStrength('128');
+        setAeroCryptDefaultSaltAttested(false);
     }, []);
 
     const lockVault = useCallback(async (vaultId: string) => {
@@ -131,6 +155,7 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({ onClose, onUnl
                 password,
                 targetSubpath: createSubpath.trim() ? createSubpath.trim() : null,
                 keyfilePath: keyfilePath || null,
+                useDefaultSalt: effectiveUseDefaultSalt || null,
             });
             // Non-blocking recovery model (owner decision, v4.1.4): creating a
             // headerless vault must be as frictionless as rclone-crypt. The vault
@@ -374,6 +399,32 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({ onClose, onUnl
                                     <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                                         {t('aerocryptNative.targetSubpathHint')}
                                     </p>
+                                </div>
+                            )}
+
+                            {mode === 'create' && (
+                                <div className="space-y-2 border border-gray-200 dark:border-gray-700 rounded p-2 text-xs">
+                                    <label className="flex items-center gap-2">
+                                        <input
+                                            type="checkbox"
+                                            checked={aeroCryptDefaultSalt}
+                                            onChange={(e) => setAeroCryptDefaultSalt(e.target.checked)}
+                                            disabled={!canToggleDefaultSalt}
+                                        />
+                                        <span>Default salt (opt-in, password-only portability; requires high entropy + attestation)</span>
+                                    </label>
+                                    {aeroCryptDefaultSalt && (
+                                        <>
+                                            <div className="ml-5 flex gap-3">
+                                                <label><input type="radio" name="mstrength" checked={aeroCryptDefaultSaltStrength==='128'} onChange={() => setAeroCryptDefaultSaltStrength('128')} /> 128-bit rec.</label>
+                                                <label><input type="radio" name="mstrength" checked={aeroCryptDefaultSaltStrength==='256'} onChange={() => setAeroCryptDefaultSaltStrength('256')} /> 256-bit</label>
+                                            </div>
+                                            <label className="ml-5 flex items-start gap-1.5">
+                                                <input type="checkbox" checked={aeroCryptDefaultSaltAttested} onChange={(e)=>setAeroCryptDefaultSaltAttested(e.target.checked)} />
+                                                <span>I used a password manager and understand the linkability tradeoff.</span>
+                                            </label>
+                                        </>
+                                    )}
                                 </div>
                             )}
 

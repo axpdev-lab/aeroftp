@@ -5091,7 +5091,10 @@
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "Ścieżka zdalna nakładki",
             "overlaysRemotePathHint": "Podfolder Remote Path, w którym zakotwiczona jest nakładka. Pozostaw puste, aby użyć Remote Path, lub wpisz tylko nazwę podfolderu (zostanie utworzony w Remote Path).",
-            "overlaysRemotePathInvalid": "Musi to być Ścieżka zdalna lub jej podfolder"
+            "overlaysRemotePathInvalid": "Musi to być Ścieżka zdalna lub jej podfolder",
+            "defaultSaltToggle": "Domyślna sól (tylko hasło otwiera; po utworzeniu nie jest potrzebny zestaw ani magazyn kluczy)",
+            "defaultSaltToggleHint": "Publiczna stała sól (styl rclone). Wymaga wygenerowanego hasła o wysokiej entropii. To samo hasło na wielu sejfach sprawia, że zaszyfrowane nazwy są powiązane bez klucza.",
+            "defaultSaltAttestation": "Wygenerowałem to hasło za pomocą menedżera haseł i rozumiem kompromis w zakresie powiązywalności."
         },
         "modalGuard": {
             "busyTitle": "Operacja w toku",

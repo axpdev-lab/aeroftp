@@ -5091,7 +5091,10 @@
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "Perdangos nuotolinis kelias",
             "overlaysRemotePathHint": "Remote Path poaplankis, kuriame pritvirtinamas perdangos sluoksnis. Palikite tuščią, kad būtų naudojamas Remote Path, arba įveskite tik poaplankio pavadinimą (jis sukuriamas po Remote Path).",
-            "overlaysRemotePathInvalid": "Tai turi būti Nuotolinis kelias arba jo poaplankis"
+            "overlaysRemotePathInvalid": "Tai turi būti Nuotolinis kelias arba jo poaplankis",
+            "defaultSaltToggle": "Numatytoji druska (tik slaptažodis atidaro; po sukūrimo nereikia rinkinio ar raktų saugyklos)",
+            "defaultSaltToggleHint": "Vieša pastovi druska (rclone-style). Reikia sugeneruoto didelės entropijos slaptažodžio. Tas pats slaptažodis keliuose saugyklose daro užšifruotus pavadinimus susiejamus be rakto.",
+            "defaultSaltAttestation": "Šį slaptažodį sugeneravau naudodamas slaptažodžių tvarkyklę ir suprantu susiejamumo kompromisą."
         },
         "modalGuard": {
             "busyTitle": "Vykdoma operacija",

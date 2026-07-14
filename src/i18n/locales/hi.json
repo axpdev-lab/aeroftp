@@ -5091,7 +5091,10 @@
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "ओवरले रिमोट पथ",
             "overlaysRemotePathHint": "Remote Path का सबफ़ोल्डर जहाँ ओवरले एंकर किया जाता है। Remote Path का उपयोग करने के लिए इसे खाली छोड़ें, या केवल एक सबफ़ोल्डर नाम टाइप करें (यह Remote Path के अंतर्गत बनाया जाता है)।",
-            "overlaysRemotePathInvalid": "यह रिमोट पथ या उसका उपफ़ोल्डर होना चाहिए"
+            "overlaysRemotePathInvalid": "यह रिमोट पथ या उसका उपफ़ोल्डर होना चाहिए",
+            "defaultSaltToggle": "डिफ़ॉल्ट सॉल्ट (केवल पासवर्ड से खुलता है; बनाने के बाद किट या कीस्टोर की आवश्यकता नहीं)",
+            "defaultSaltToggleHint": "सार्वजनिक स्थिर सॉल्ट (rclone-style)। उच्च एन्ट्रॉपी वाला जेनरेट किया गया पासवर्ड आवश्यक है। एकाधिक वॉल्ट पर समान पासवर्ड बिना कुंजी के एन्क्रिप्टेड नामों को लिंक करने योग्य बनाता है।",
+            "defaultSaltAttestation": "मैंने इस पासवर्ड को पासवर्ड मैनेजर से जेनरेट किया है और लिंकेबिलिटी ट्रेडऑफ को समझता हूँ।"
         },
         "modalGuard": {
             "busyTitle": "ऑपरेशन जारी है",

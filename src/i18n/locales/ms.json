@@ -5091,7 +5091,10 @@
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "Laluan Jauh Tindanan",
             "overlaysRemotePathHint": "Subfolder Remote Path tempat tindihan disauh. Biarkan kosong untuk menggunakan Remote Path, atau taip hanya nama subfolder (ia dicipta di bawah Remote Path).",
-            "overlaysRemotePathInvalid": "Mestilah Laluan Jauh atau subfolder daripadanya"
+            "overlaysRemotePathInvalid": "Mestilah Laluan Jauh atau subfolder daripadanya",
+            "defaultSaltToggle": "Salt lalai (hanya kata laluan membuka; tiada kit atau storan kunci diperlukan selepas dicipta)",
+            "defaultSaltToggleHint": "Salt malar awam (gaya rclone). Memerlukan kata laluan berentropi tinggi yang dijana. Kata laluan sama pada berbilang vault menjadikan nama tersulit boleh dipaut tanpa kunci.",
+            "defaultSaltAttestation": "Saya menjana kata laluan ini dengan pengurus kata laluan dan memahami pertukaran keboleh-pautan."
         },
         "modalGuard": {
             "busyTitle": "Operasi sedang berjalan",

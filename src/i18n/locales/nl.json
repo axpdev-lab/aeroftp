@@ -5091,7 +5091,10 @@
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "Extern pad van overlay",
             "overlaysRemotePathHint": "Submap van het Remote Path waar de overlay is verankerd. Laat leeg om het Remote Path te gebruiken, of typ alleen een submapnaam (deze wordt onder het Remote Path aangemaakt).",
-            "overlaysRemotePathInvalid": "Moet het Externe pad of een submap ervan zijn"
+            "overlaysRemotePathInvalid": "Moet het Externe pad of een submap ervan zijn",
+            "defaultSaltToggle": "Standaard salt (alleen wachtwoord opent; na aanmaken geen kit of sleutelopslag nodig)",
+            "defaultSaltToggleHint": "Publieke constante salt (rclone-stijl). Vereist een gegenereerd wachtwoord met hoge entropie. Zelfde wachtwoord op meerdere kluizen maakt versleutelde namen koppelbaar zonder sleutel.",
+            "defaultSaltAttestation": "Ik heb dit wachtwoord gegenereerd met een wachtwoordbeheerder en begrijp de linkbaarheid-afweging."
         },
         "modalGuard": {
             "busyTitle": "Bewerking bezig",

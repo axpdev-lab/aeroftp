@@ -5091,7 +5091,10 @@
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "Yer Paylaşımı Uzak Yolu",
             "overlaysRemotePathHint": "Yer paylaşımının sabitlendiği Remote Path alt klasörü. Remote Path'i kullanmak için boş bırakın veya yalnızca bir alt klasör adı yazın (Remote Path altında oluşturulur).",
-            "overlaysRemotePathInvalid": "Uzak Yol veya onun bir alt klasörü olmalıdır"
+            "overlaysRemotePathInvalid": "Uzak Yol veya onun bir alt klasörü olmalıdır",
+            "defaultSaltToggle": "Varsayılan tuz (yalnızca parola açar; oluşturduktan sonra kit veya anahtar deposu gerekmez)",
+            "defaultSaltToggleHint": "Herkese açık sabit tuz (rclone-style). Yüksek entropili üretilmiş parola gerektirir. Birden fazla kasada aynı parola kullanmak, anahtar olmadan şifrelenmiş adları bağlanabilir hale getirir.",
+            "defaultSaltAttestation": "Bu parolayı bir parola yöneticisiyle oluşturdum ve bağlanabilirlik değiş tokuşunu anlıyorum."
         },
         "modalGuard": {
             "busyTitle": "İşlem sürüyor",

@@ -5110,7 +5110,10 @@
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "Ekstern sti for overlegg",
             "overlaysRemotePathHint": "Undermappe av Remote Path der overlegget er forankret. La feltet stå tomt for å bruke Remote Path, eller skriv bare et undermappenavn (det opprettes under Remote Path).",
-            "overlaysRemotePathInvalid": "Må være Ekstern sti eller en undermappe av den"
+            "overlaysRemotePathInvalid": "Må være Ekstern sti eller en undermappe av den",
+            "defaultSaltToggle": "Standard salt (kun passord åpner; ingen kit eller nøkkellager nødvendig etter opprettelse)",
+            "defaultSaltToggleHint": "Offentlig konstant salt (rclone-style). Krever et generert høyt entropi-passord. Samme passord på flere hvelv gjør krypterte navn lenkbare uten nøkkelen.",
+            "defaultSaltAttestation": "Jeg genererte dette passordet med en passordbehandler og forstår linkbarhets-kompromisset."
         },
         "modalGuard": {
             "busyTitle": "Operasjon pågår",

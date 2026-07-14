@@ -5091,7 +5091,10 @@
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "オーバーレイのリモートパス",
             "overlaysRemotePathHint": "オーバーレイをアンカーする Remote Path のサブフォルダーです。Remote Path をそのまま使うには空のままにするか、サブフォルダー名だけを入力してください（Remote Path の下に作成されます）。",
-            "overlaysRemotePathInvalid": "リモートパス自体か、そのサブフォルダーである必要があります"
+            "overlaysRemotePathInvalid": "リモートパス自体か、そのサブフォルダーである必要があります",
+            "defaultSaltToggle": "デフォルトソルト (パスワードだけで開く; 作成後はキットやキーストアは不要)",
+            "defaultSaltToggleHint": "公開定数ソルト (rclone-style)。高エントロピーの生成パスワードが必要です。複数のボールトで同じパスワードを使うと、鍵なしで暗号化名がリンク可能になります。",
+            "defaultSaltAttestation": "このパスワードをパスワードマネージャーで生成し、リンク可能性のトレードオフを理解しています。"
         },
         "modalGuard": {
             "busyTitle": "操作の実行中",

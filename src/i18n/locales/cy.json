@@ -5110,7 +5110,10 @@
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "Llwybr Pell yr Troshaen",
             "overlaysRemotePathHint": "Is-ffolder o'r Remote Path lle mae'r troshaen wedi'i angori. Gadewch yn wag i ddefnyddio'r Remote Path, neu teipiwch enw is-ffolder yn unig (caiff ei greu o dan y Remote Path).",
-            "overlaysRemotePathInvalid": "Rhaid iddo fod y Llwybr Pell neu is-ffolder ohono"
+            "overlaysRemotePathInvalid": "Rhaid iddo fod y Llwybr Pell neu is-ffolder ohono",
+            "defaultSaltToggle": "Halen diofyn (dim ond y cyfrinair sy'n agor; nid oes angen pecyn neu storfa allweddi ar ôl creu)",
+            "defaultSaltToggleHint": "Halen cyson cyhoeddus (arddull rclone). Mae angen cyfrinair uchel-entropi a gynhyrchwyd. Mae'r un cyfrinair ar sawl storfa yn gwneud enwau wedi'u hamgryptio yn gysylltadwy heb yr allwedd.",
+            "defaultSaltAttestation": "Fe wnes i gynhyrchu'r cyfrinair hwn gyda rheolwr cyfrineiriau ac rwy'n deall y cyfaddawd cysylltedd."
         },
         "modalGuard": {
             "busyTitle": "Gweithrediad ar y gweill",

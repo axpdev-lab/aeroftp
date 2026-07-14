@@ -5091,7 +5091,10 @@
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "Peittokerroksen etäpolku",
             "overlaysRemotePathHint": "Remote Pathin alikansio, johon peite ankkuroidaan. Jätä tyhjäksi käyttääksesi Remote Pathia, tai kirjoita vain alikansion nimi (se luodaan Remote Pathin alle).",
-            "overlaysRemotePathInvalid": "Sen on oltava Etäpolku tai sen alikansio"
+            "overlaysRemotePathInvalid": "Sen on oltava Etäpolku tai sen alikansio",
+            "defaultSaltToggle": "Oletussuola (vain salasana avaa; luomisen jälkeen ei tarvita pakettia tai avainvarastoa)",
+            "defaultSaltToggleHint": "Julkinen vakiosuola (rclone-tyyli). Vaatii luodun korkean entropian salasanan. Sama salasana useissa holveissa tekee salatuista nimistä linkitettäviä ilman avainta.",
+            "defaultSaltAttestation": "Loin tämän salasanan salasananhallinnalla ja ymmärrän linkitettävyyden kompromissin."
         },
         "modalGuard": {
             "busyTitle": "Toiminto käynnissä",

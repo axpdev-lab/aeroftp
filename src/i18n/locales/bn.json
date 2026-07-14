@@ -5091,7 +5091,10 @@
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "ওভারলে রিমোট পাথ",
             "overlaysRemotePathHint": "Remote Path-এর একটি সাবফোল্ডার যেখানে ওভারলে নোঙর করা হয়। Remote Path ব্যবহার করতে খালি রাখুন, অথবা শুধু একটি সাবফোল্ডারের নাম লিখুন (এটি Remote Path-এর অধীনে তৈরি হয়)।",
-            "overlaysRemotePathInvalid": "অবশ্যই রিমোট পাথ বা তার একটি সাবফোল্ডার হতে হবে"
+            "overlaysRemotePathInvalid": "অবশ্যই রিমোট পাথ বা তার একটি সাবফোল্ডার হতে হবে",
+            "defaultSaltToggle": "ডিফল্ট সল্ট (শুধু পাসওয়ার্ড দিয়েই খোলে; তৈরির পর কোনো কিট বা কীস্টোরের প্রয়োজন নেই)",
+            "defaultSaltToggleHint": "পাবলিক কনস্ট্যান্ট সল্ট (rclone-style)। উচ্চ-এনট্রপি পাসওয়ার্ড জেনারেট করতে হয়। একাধিক ভল্টে একই পাসওয়ার্ড ব্যবহার করলে চাবি ছাড়া এনক্রিপ্ট করা নামগুলো লিঙ্কযোগ্য হয়।",
+            "defaultSaltAttestation": "আমি পাসওয়ার্ড ম্যানেজার দিয়ে এই পাসওয়ার্ড তৈরি করেছি এবং লিঙ্কযোগ্যতার ট্রেডঅফ বুঝতে পেরেছি।"
         },
         "modalGuard": {
             "busyTitle": "অপারেশন চলছে",

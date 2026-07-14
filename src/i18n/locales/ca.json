@@ -5110,7 +5110,10 @@
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "Ruta remota de la superposició",
             "overlaysRemotePathHint": "Subcarpeta del Remote Path on s'ancora la superposició. Deixeu-ho buit per fer servir el Remote Path, o escriviu només un nom de subcarpeta (es crea sota el Remote Path).",
-            "overlaysRemotePathInvalid": "Ha de ser la Ruta remota o una subcarpeta d'aquesta"
+            "overlaysRemotePathInvalid": "Ha de ser la Ruta remota o una subcarpeta d'aquesta",
+            "defaultSaltToggle": "Sal per defecte (només amb la contrasenya s'obre; no cal kit ni magatzem de claus després de crear)",
+            "defaultSaltToggleHint": "Sal constant pública (estil rclone). Requereix una contrasenya generada d'alta entropia. La mateixa contrasenya en múltiples cofres fa que els noms xifrats siguin enllaçables sense la clau.",
+            "defaultSaltAttestation": "He generat aquesta contrasenya amb un gestor de contrasenyes i entenc el compromís de vinculabilitat."
         },
         "modalGuard": {
             "busyTitle": "Operació en curs",

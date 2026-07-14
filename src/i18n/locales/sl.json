@@ -5091,7 +5091,10 @@
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "Oddaljena pot prekrivne plasti",
             "overlaysRemotePathHint": "Podmapa poti Remote Path, kjer je prekrivni sloj zasidran. Pustite prazno za uporabo Remote Path ali vnesite le ime podmape (ustvari se pod Remote Path).",
-            "overlaysRemotePathInvalid": "Biti mora Oddaljena pot ali njena podmapa"
+            "overlaysRemotePathInvalid": "Biti mora Oddaljena pot ali njena podmapa",
+            "defaultSaltToggle": "Privzeta sol (samo geslo odpre; po ustvarjanju ni potreben komplet ali shramba ključev)",
+            "defaultSaltToggleHint": "Javna konstantna sol (rclone-style). Zahteva ustvarjeno geslo z visoko entropijo. Isto geslo na več trezorjih naredi šifrirana imena povezljiva brez ključa.",
+            "defaultSaltAttestation": "To geslo sem ustvaril z upravljalnikom gesel in razumem kompromis povezljivosti."
         },
         "modalGuard": {
             "busyTitle": "Operacija poteka",

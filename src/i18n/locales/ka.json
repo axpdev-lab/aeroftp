@@ -5091,7 +5091,10 @@
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "გადაფარვის დისტანციური გზა",
             "overlaysRemotePathHint": "Remote Path-ის ქვესაქაღალდე, სადაც ოვერლეი მიმაგრებულია. დატოვეთ ცარიელი Remote Path-ის გამოსაყენებლად, ან აკრიფეთ მხოლოდ ქვესაქაღალდის სახელი (ის იქმნება Remote Path-ის ქვეშ).",
-            "overlaysRemotePathInvalid": "უნდა იყოს დისტანციური გზა ან მისი ქვესაქაღალდე"
+            "overlaysRemotePathInvalid": "უნდა იყოს დისტანციური გზა ან მისი ქვესაქაღალდე",
+            "defaultSaltToggle": "ნაგულისხმევი მარილი (მხოლოდ პაროლი ხსნის; შექმნის შემდეგ კომპლექტი ან გასაღებების საცავი არ სჭირდება)",
+            "defaultSaltToggleHint": "საჯარო მუდმივი მარილი (rclone-style). საჭიროებს მაღალი ენტროპიის გენერირებულ პაროლს. ერთი და იგივე პაროლი რამდენიმე საცავში შიფრირებულ სახელებს გასაღების გარეშე დაკავშირებადს ხდის.",
+            "defaultSaltAttestation": "მე ეს პაროლი პაროლების მენეჯერით გენერირებული მაქვს და ვხვდები დაკავშირებადობის კომპრომისს."
         },
         "modalGuard": {
             "busyTitle": "მიმდინარეობს ოპერაცია",

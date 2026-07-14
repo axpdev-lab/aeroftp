@@ -543,6 +543,7 @@ export interface AeroCryptOverlayBinding {
   localScope?: string; // bound local working folder: downloads land here, uploads source here
   localEncrypted?: boolean; // opt-in, schema-ready now, implementation deferred (P3b/P4)
   withHeader?: boolean; // true = write marker to remote; default undefined (treated as false = headerless)
+  useDefaultSalt?: boolean; // opt-in public constant salt (D1); password alone opens headerless vaults (rclone parity). Entropy gate + attestation required in UI.
   filenameEncryption?: "standard" | "obfuscate" | "off"; // default "standard"
   directoryNameEncryption?: boolean; // rclone-crypt only (P3.3b): default true; native ignores it
   aead?: "auto" | "aes-256-gcm-siv" | "xchacha20-poly1305"; // native only; see master plan §5

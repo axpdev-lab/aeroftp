@@ -625,6 +625,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     const [aeroCryptConfirm, setAeroCryptConfirm] = useState('');
     const [showAeroCryptPassword, setShowAeroCryptPassword] = useState(false);
     const [aeroCryptWithHeader, setAeroCryptWithHeader] = useState(false);
+    const [aeroCryptDefaultSalt, setAeroCryptDefaultSalt] = useState(false);
+    const [aeroCryptDefaultSaltStrength, setAeroCryptDefaultSaltStrength] = useState<'128' | '256'>('128');
+    const [aeroCryptDefaultSaltAttested, setAeroCryptDefaultSaltAttested] = useState(false);
     // P3.3b: rclone-crypt interop needs salt (password2) + filename/dir-name
     // encryption mode to auto-unlock on connect, mirroring the RcloneCryptUnlock
     // modal. Native AeroCrypt ignores these (config lives in .aeroftp-crypt.json).
@@ -1008,6 +1011,30 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     // must match before the profile can be saved (a typo locks the blobs forever).
     const aeroCryptConfirmMismatch = aeroCryptEnabled && overlayEligible && !overlayFieldsLocked && !!aeroCryptPassword && aeroCryptConfirm !== aeroCryptPassword;
 
+    // D1-D3 entropy gate (reuse PasswordStrengthBar visual signal + length floor).
+    // 128-bit recommended tier: level 4 + ~20 chars minimum.
+    // 256-bit stricter: level 4 + ~39 chars.
+    // Plus explicit attestation checkbox.
+    const pwLen = aeroCryptPassword.length;
+    const strengthLevel = useMemo(() => {
+        // Lightweight mirror of the bar's internal compute for gating (level 0-4).
+        if (!aeroCryptPassword) return 0;
+        let sc = Math.min(pwLen * 4, 40);
+        const variety = [/[a-z]/.test(aeroCryptPassword), /[A-Z]/.test(aeroCryptPassword), /[0-9]/.test(aeroCryptPassword), /[^a-zA-Z0-9]/.test(aeroCryptPassword)].filter(Boolean).length;
+        sc += variety * 10;
+        if (variety >= 3 && pwLen >= 12) sc += 10;
+        if (variety >= 4 && pwLen >= 16) sc += 10;
+        sc = Math.max(0, Math.min(100, sc));
+        return sc < 20 ? 0 : sc < 40 ? 1 : sc < 60 ? 2 : sc < 80 ? 3 : 4;
+    }, [aeroCryptPassword, pwLen]);
+
+    const requiredLen = aeroCryptDefaultSaltStrength === '256' ? 39 : 20;
+    const meetsEntropy = strengthLevel === 4 && pwLen >= requiredLen;
+    // Effective flag only when user explicitly opts in + attests + passes gate.
+    const effectiveUseDefaultSalt = aeroCryptDefaultSalt && aeroCryptDefaultSaltAttested && meetsEntropy;
+    // Checkbox itself enabled as soon as entropy floor is met (attestation revealed after).
+    const canToggleDefaultSalt = meetsEntropy;
+
     // P3: build the overlay-binding profile fields + stash the overlay password
     // in the vault under aerocrypt_overlay_pw_<id> (mirrors stashFilenApiKey).
     // Always returns explicit values so disabling the toggle on an existing
@@ -1041,6 +1068,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                 enabled: true,
                 kind: aeroCryptKind,
                 withHeader: aeroCryptWithHeader,
+                useDefaultSalt: effectiveUseDefaultSalt,
                 // Normalize the pinned anchor (strip trailing/duplicate slashes)
                 // so it persists identically to how the backend reads it. A blank
                 // or "/" scope collapses to '' and falls back to the Remote Path,
@@ -2020,6 +2048,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         setAeroCryptFilenameEnc(overlayBinding?.filenameEncryption || 'standard');
         setAeroCryptDirNameEnc(overlayBinding?.directoryNameEncryption ?? true);
         setAeroCryptWithHeader(!!overlayBinding?.withHeader);
+        setAeroCryptDefaultSalt(!!overlayBinding?.useDefaultSalt);
         // P3 follow-up (#369): hydrate the pinned overlaysRemotePath, but only if
         // it differs from the profile's Remote Path; otherwise keep '' which means
         // "same as Remote Path" (so an unchanged profile round-trips unchanged).
@@ -2138,6 +2167,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         setAeroCryptFilenameEnc('standard');
         setAeroCryptDirNameEnc(true);
         setAeroCryptWithHeader(false);
+        setAeroCryptDefaultSalt(false);
+        setAeroCryptDefaultSaltStrength('128');
+        setAeroCryptDefaultSaltAttested(false);
         setAeroCryptKeyfilePath('');
         setKeyfileJustGenerated(false);
         setKeyfileError(null);
@@ -2990,6 +3022,78 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                 </div>
                                             </label>
                                         </div>
+
+                                        {/* D1-D3: opt-in default-salt (public constant) for headerless password-only portability.
+                                            Sibling to header toggle. Gated by entropy + explicit attestation.
+                                            Two tiers: 128-bit recommended (default), 256-bit stricter. */}
+                                        {aeroCryptKind === 'aerocrypt' && (
+                                            <div className="flex flex-col gap-1.5 mt-2 mb-4">
+                                                <label className="flex items-start gap-3 cursor-pointer group">
+                                                    <div className="relative flex items-center h-5 mt-0.5">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={aeroCryptDefaultSalt}
+                                                            onChange={(e) => setAeroCryptDefaultSalt(e.target.checked)}
+                                                            disabled={overlayFieldsLocked || !canToggleDefaultSalt}
+                                                            className="peer sr-only"
+                                                        />
+                                                        <div className="w-9 h-5 bg-gray-200 dark:bg-gray-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-emerald-500/30 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-500 disabled:opacity-50 transition-colors"></div>
+                                                    </div>
+                                                    <div className="flex flex-col text-sm">
+                                                        <span className={`font-medium transition-colors ${overlayFieldsLocked || !canToggleDefaultSalt ? 'text-gray-400 dark:text-gray-500' : 'text-gray-700 dark:text-gray-300 group-hover:text-gray-900 dark:group-hover:text-gray-100'}`}>
+                                                            {t('aerocryptProfile.defaultSaltToggle') || 'Default salt (password only, no kit/keystore needed)'}
+                                                        </span>
+                                                        <span className={`text-xs mt-0.5 leading-relaxed ${overlayFieldsLocked || !canToggleDefaultSalt ? 'text-gray-400/80 dark:text-gray-500/80' : 'text-gray-500 dark:text-gray-400'}`}>
+                                                            {t('aerocryptProfile.defaultSaltToggleHint') || 'Uses a public constant salt. Requires high-entropy generated password. Same password across vaults makes names linkable.'}
+                                                        </span>
+                                                    </div>
+                                                </label>
+
+                                                {/* Two-tier selector (appears when considering default salt or always for clarity) */}
+                                                {aeroCryptKind === 'aerocrypt' && (
+                                                    <div className="ml-12 mt-1 flex items-center gap-3 text-xs">
+                                                        <label className="flex items-center gap-1.5">
+                                                            <input
+                                                                type="radio"
+                                                                name="saltStrength"
+                                                                checked={!aeroCryptDefaultSaltStrength || aeroCryptDefaultSaltStrength === '128'}
+                                                                onChange={() => setAeroCryptDefaultSaltStrength('128')}
+                                                                disabled={overlayFieldsLocked}
+                                                            />
+                                                            <span>128-bit (recommended)</span>
+                                                        </label>
+                                                        <label className="flex items-center gap-1.5">
+                                                            <input
+                                                                type="radio"
+                                                                name="saltStrength"
+                                                                checked={aeroCryptDefaultSaltStrength === '256'}
+                                                                onChange={() => setAeroCryptDefaultSaltStrength('256')}
+                                                                disabled={overlayFieldsLocked}
+                                                            />
+                                                            <span>256-bit (stricter)</span>
+                                                        </label>
+                                                    </div>
+                                                )}
+
+                                                {/* Attestation (required to enable default salt) */}
+                                                {aeroCryptDefaultSalt && (
+                                                    <div className="ml-12 mt-1">
+                                                        <label className="flex items-start gap-2 text-xs cursor-pointer">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={aeroCryptDefaultSaltAttested}
+                                                                onChange={(e) => setAeroCryptDefaultSaltAttested(e.target.checked)}
+                                                                className="mt-0.5"
+                                                            />
+                                                            <span className="text-gray-600 dark:text-gray-400">
+                                                                {t('aerocryptProfile.defaultSaltAttestation') || 'I generated this password with a password manager and understand the linkability tradeoff (identical passwords produce linkable encrypted names).'}
+                                                            </span>
+                                                        </label>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+
                                         <div>
                                         <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">{t('aerocryptProfile.keyfileLabel')}</label>
                                         <div className="flex gap-2">

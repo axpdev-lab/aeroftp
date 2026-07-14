@@ -5091,7 +5091,10 @@
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "Đường dẫn từ xa của lớp phủ",
             "overlaysRemotePathHint": "Thư mục con của Remote Path nơi lớp phủ được neo. Để trống để dùng Remote Path, hoặc chỉ nhập tên thư mục con (nó được tạo bên trong Remote Path).",
-            "overlaysRemotePathInvalid": "Phải là Đường dẫn từ xa hoặc thư mục con của nó"
+            "overlaysRemotePathInvalid": "Phải là Đường dẫn từ xa hoặc thư mục con của nó",
+            "defaultSaltToggle": "Muối mặc định (chỉ mật khẩu mở; không cần bộ công cụ hay kho khóa sau khi tạo)",
+            "defaultSaltToggleHint": "Muối hằng số công khai (kiểu rclone). Yêu cầu mật khẩu được tạo có độ entropy cao. Cùng một mật khẩu trên nhiều kho làm cho tên đã mã hóa có thể liên kết mà không cần khóa.",
+            "defaultSaltAttestation": "Tôi đã tạo mật khẩu này bằng trình quản lý mật khẩu và hiểu sự đánh đổi về khả năng liên kết."
         },
         "modalGuard": {
             "busyTitle": "Đang thực hiện thao tác",

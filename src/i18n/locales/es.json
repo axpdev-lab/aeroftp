@@ -5091,7 +5091,10 @@
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "Ruta remota de la superposición",
             "overlaysRemotePathHint": "Subcarpeta del Remote Path donde se ancla la superposición. Déjalo vacío para usar el Remote Path, o escribe solo un nombre de subcarpeta (se crea bajo el Remote Path).",
-            "overlaysRemotePathInvalid": "Debe ser la Ruta remota o una subcarpeta de ella"
+            "overlaysRemotePathInvalid": "Debe ser la Ruta remota o una subcarpeta de ella",
+            "defaultSaltToggle": "Sal por defecto (solo la contraseña abre; no se necesita kit ni almacén de claves tras crear)",
+            "defaultSaltToggleHint": "Sal constante pública (rclone-style). Requiere una contraseña generada de alta entropía. Usar la misma contraseña en múltiples bóvedas hace que los nombres cifrados sean vinculables sin la clave.",
+            "defaultSaltAttestation": "Generé esta contraseña con un gestor de contraseñas y entiendo el compromiso de vinculabilidad."
         },
         "modalGuard": {
             "busyTitle": "Operación en curso",

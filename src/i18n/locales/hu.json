@@ -5091,7 +5091,10 @@
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "Az átfedés távoli útvonala",
             "overlaysRemotePathHint": "A Remote Path azon almappája, ahol az átfedés rögzül. Hagyja üresen a Remote Path használatához, vagy írjon be csak egy almappanevet (a Remote Path alatt jön létre).",
-            "overlaysRemotePathInvalid": "A Távoli útvonalnak vagy annak almappájának kell lennie"
+            "overlaysRemotePathInvalid": "A Távoli útvonalnak vagy annak almappájának kell lennie",
+            "defaultSaltToggle": "Alapértelmezett só (csak a jelszó nyitja ki; létrehozás után nincs szükség készletre vagy kulcstárolóra)",
+            "defaultSaltToggleHint": "Nyilvános állandó só (rclone-stílus). Magas entrópia jelszót igényel. Ugyanaz a jelszó több tárolón a titkosított neveket kulcs nélkül összekapcsolhatóvá teszi.",
+            "defaultSaltAttestation": "Ezt a jelszót jelszókezelővel generáltam, és megértem az összekapcsolhatósági kompromisszumot."
         },
         "modalGuard": {
             "busyTitle": "Művelet folyamatban",

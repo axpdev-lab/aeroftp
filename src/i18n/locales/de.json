@@ -5091,7 +5091,10 @@
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "Remote-Pfad des Overlays",
             "overlaysRemotePathHint": "Unterordner des Remote Path, in dem das Overlay verankert wird. Leer lassen, um den Remote Path zu verwenden, oder nur einen Unterordnernamen eingeben (er wird unter dem Remote Path erstellt).",
-            "overlaysRemotePathInvalid": "Muss der Remote-Pfad oder ein Unterordner davon sein"
+            "overlaysRemotePathInvalid": "Muss der Remote-Pfad oder ein Unterordner davon sein",
+            "defaultSaltToggle": "Standard-Salt (nur Passwort öffnet; nach Erstellung kein Kit oder Keystore nötig)",
+            "defaultSaltToggleHint": "Öffentliches konstantes Salt (rclone-style). Erfordert ein generiertes Passwort mit hoher Entropie. Dasselbe Passwort auf mehreren Tresoren macht verschlüsselte Namen ohne Schlüssel verknüpfbar.",
+            "defaultSaltAttestation": "Ich habe dieses Passwort mit einem Passwort-Manager generiert und verstehe den Linkbarkeits-Kompromiss."
         },
         "modalGuard": {
             "busyTitle": "Vorgang läuft",

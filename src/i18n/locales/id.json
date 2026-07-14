@@ -5091,7 +5091,10 @@
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "Jalur Jarak Jauh Overlay",
             "overlaysRemotePathHint": "Subfolder dari Remote Path tempat overlay ditambatkan. Biarkan kosong untuk menggunakan Remote Path, atau ketik hanya nama subfolder (dibuat di dalam Remote Path).",
-            "overlaysRemotePathInvalid": "Harus berupa Jalur Jarak Jauh atau subfolder darinya"
+            "overlaysRemotePathInvalid": "Harus berupa Jalur Jarak Jauh atau subfolder darinya",
+            "defaultSaltToggle": "Salt default (hanya kata sandi yang membuka; setelah dibuat tidak perlu kit atau keystore)",
+            "defaultSaltToggleHint": "Salt konstan publik (gaya rclone). Membutuhkan kata sandi berentropi tinggi yang dihasilkan. Kata sandi yang sama di beberapa brankas membuat nama terenkripsi dapat ditautkan tanpa kunci.",
+            "defaultSaltAttestation": "Saya menghasilkan kata sandi ini dengan manajer kata sandi dan memahami trade-off keterkaitan."
         },
         "modalGuard": {
             "busyTitle": "Operasi berlangsung",

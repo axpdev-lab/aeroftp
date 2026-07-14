@@ -4768,6 +4768,7 @@ interface UpdateVerificationInfo {
         // forwarding it here made the backend see profile_id=None and fail closed
         // with "Cannot create a headerless AeroCrypt vault without a saved profile".
         profileId: params.profileId ?? null,
+        useDefaultSalt: (params as any).useDefaultSalt ?? null,
       },
     });
     return normCryptScope(appliedScope);

@@ -5110,7 +5110,10 @@
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "Оддалечена патека на прекривката",
             "overlaysRemotePathHint": "Потпапка на Remote Path каде што е закотвен слојот. Оставете празно за да го користите Remote Path, или внесете само име на потпапка (се создава под Remote Path).",
-            "overlaysRemotePathInvalid": "Мора да биде Оддалечената патека или нејзина потпапка"
+            "overlaysRemotePathInvalid": "Мора да биде Оддалечената патека или нејзина потпапка",
+            "defaultSaltToggle": "Стандардна сол (само лозинката отвора; по креирањето не е потребен комплет или складиште за клучеви)",
+            "defaultSaltToggleHint": "Јавна константна сол (rclone-style). Бара генерирана лозинка со висока ентропија. Иста лозинка на повеќе сводови ги прави шифрираните имиња поврзувачки без клучот.",
+            "defaultSaltAttestation": "Ја генерирав оваа лозинка со менаџер за лозинки и го разбирам компромисот за поврзување."
         },
         "modalGuard": {
             "busyTitle": "Операција во тек",

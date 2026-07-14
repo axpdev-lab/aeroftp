@@ -5091,7 +5091,10 @@
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "overlaysRemotePath": "Vzdálená cesta překryvu",
             "overlaysRemotePathHint": "Podsložka Remote Path, kde je vrstva ukotvena. Ponechte prázdné pro použití Remote Path, nebo zadejte jen název podsložky (vytvoří se pod Remote Path).",
-            "overlaysRemotePathInvalid": "Musí to být Vzdálená cesta nebo její podsložka"
+            "overlaysRemotePathInvalid": "Musí to být Vzdálená cesta nebo její podsložka",
+            "defaultSaltToggle": "Výchozí sůl (pouze heslo otevírá; po vytvoření není potřeba sada ani úložiště klíčů)",
+            "defaultSaltToggleHint": "Veřejná konstantní sůl (rclone-style). Vyžaduje vygenerované heslo s vysokou entropií. Stejné heslo na více trezorech činí šifrované názvy propojitelné bez klíče.",
+            "defaultSaltAttestation": "Vygeneroval jsem toto heslo pomocí správce hesel a rozumím kompromisu ohledně propojování."
         },
         "modalGuard": {
             "busyTitle": "Probíhá operace",
