@@ -1584,7 +1584,7 @@
                 "heading": "What this overlay does",
                 "p1": "Encrypts file names and contents <strong>on the fly</strong>, before sending them to the server, and decrypts them when you download. The server only sees blobs with scrambled names. You see the original names.",
                 "p2": "While the overlay is active: your remote session shows contents in clear, every upload is encrypted, every download is decrypted. Look for the <em>AEROCRYPT</em> badge in the path bar.",
-                "p3": "This is AeroFTP's <strong>native</strong> overlay, on the same audited engine as AeroVault (AES-256-GCM-SIV content, AES-256-SIV names, Argon2id). The overlay's salt is stored in <code>.aeroftp-crypt.json</code> at its root on the remote, so you can reopen it from any device with just the password."
+                "p3": "This is AeroFTP's <strong>native</strong> overlay, on the same audited engine as AeroVault (AES-256-GCM-SIV content, AES-256-SIV names, Argon2id). The overlay's salt is stored in the marker (<code>.aerocrypt.tsv</code> for new vaults, legacy <code>.aeroftp-crypt.json</code> still readable) at its root on the remote, so you can reopen it from any device with just the password."
             },
             "openExisting": "Open existing",
             "createNew": "Create new",
@@ -5108,7 +5108,7 @@
             "keyfileGenerate": "Generate...",
             "keyfileGeneratedBackup": "Keyfile generated. Back it up now: losing it makes the vault permanently unopenable.",
             "keyfileRepointHint": "This path only points to where the keyfile lives; changing it does not re-key the vault. A wrong or missing keyfile fails closed at unlock.",
-            "headerToggle": "Write header to remote (.aeroftp-crypt.json)",
+            "headerToggle": "Write header to remote (.aerocrypt.tsv)",
             "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
             "defaultSaltToggle": "Default salt (password alone opens; no kit or keystore needed after create)",
             "defaultSaltToggleHint": "Public constant salt (rclone-style). Requires a generated high-entropy password. Same password on multiple vaults makes encrypted names linkable without the key.",
