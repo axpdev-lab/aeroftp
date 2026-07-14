@@ -205,7 +205,7 @@ pub struct OverlayUnlockParams {
 }
 
 /// AeroCrypt overlay config filename, written at the scope root by `crypt init`.
-const AEROCRYPT_CONFIG_FILENAME: &str = ".aeroftp-crypt.json";
+const AEROCRYPT_CONFIG_FILENAME: &str = crate::aerocrypt::overlay::CRYPT_CONFIG_WRITE_NAME;
 
 /// Unlock crypt-compare keys for the CLI / MCP from an overlay binding plus the
 /// secret(s) read from the vault (or env).

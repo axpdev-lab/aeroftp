@@ -37,7 +37,7 @@ use crate::provider_commands::ProviderState;
 
 /// Config file written at the root of an overlay; holds the version + salt the
 /// master key is derived from. Skipped from every listing and never decrypted.
-const CONFIG_NAME: &str = ".aeroftp-crypt.json";
+const CONFIG_NAME: &str = crate::aerocrypt::overlay::CRYPT_CONFIG_WRITE_NAME; // write new; read-both handled at call sites
 
 /// Hard cap on the overlay config read from the (untrusted) remote, so a hostile
 /// remote cannot serve a multi-GB "config" and OOM the backend before parsing.

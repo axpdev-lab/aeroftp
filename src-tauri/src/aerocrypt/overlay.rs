@@ -53,6 +53,11 @@ const CONFIG_MAC_SIZE: usize = 32;
 /// from Tier 1 onward; seeds rollback pinning, Emergency Kits, and diagnostics.
 pub const VAULT_ID_SIZE: usize = 16;
 
+/// Current write name for the headed marker (lean TSV format).
+pub const CRYPT_CONFIG_WRITE_NAME: &str = ".aerocrypt.tsv";
+/// Legacy read name (still supported forever for read-both migration window).
+pub const CRYPT_CONFIG_LEGACY_NAME: &str = ".aeroftp-crypt.json";
+
 /// Salt source mode for a v3 vault.
 /// - PerVault (default, absent in serialised form): fresh random salt per vault (current behaviour).
 /// - DefaultV1: opt-in public constant salt (AEROCRYPT_DEFAULT_SALT_V1). Password alone
@@ -75,11 +80,16 @@ impl SaltMode {
             SaltMode::DefaultV1 => "default-v1",
         }
     }
-    pub fn from_str(s: &str) -> Option<Self> {
+}
+
+impl std::str::FromStr for SaltMode {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "per-vault" | "PerVault" => Some(SaltMode::PerVault),
-            "default-v1" | "DefaultV1" => Some(SaltMode::DefaultV1),
-            _ => None,
+            "per-vault" | "PerVault" => Ok(SaltMode::PerVault),
+            "default-v1" | "DefaultV1" => Ok(SaltMode::DefaultV1),
+            other => Err(format!("unknown salt_mode: {}", other)),
         }
     }
 }
@@ -560,7 +570,7 @@ pub fn init_config_v3_with_vault_id(
     vault_id: &[u8; VAULT_ID_SIZE],
     salt_mode: SaltMode,
 ) -> Result<String, String> {
-    build_config_v3_json(salt, master_key, vault_id, false, None, salt_mode)
+    build_config_v3_tsv(salt, master_key, vault_id, false, None, salt_mode)
 }
 
 /// Build the v3 config JSON for a KEYFILE overlay. The caller supplies the
@@ -575,7 +585,7 @@ pub fn init_config_v3_with_keyfile(
     keyfile_hint: Option<&str>,
     salt_mode: SaltMode,
 ) -> Result<String, String> {
-    build_config_v3_json(salt, master_key, vault_id, true, keyfile_hint, salt_mode)
+    build_config_v3_tsv(salt, master_key, vault_id, true, keyfile_hint, salt_mode)
 }
 
 /// Rebuild a headed v3 marker from parsed local metadata and a verified key.
@@ -652,9 +662,106 @@ fn build_config_v3_json(
     Ok(obj.to_string())
 }
 
-/// Parse an overlay config. A missing or unknown `version` is a hard error
-/// (no silent fallback to the legacy weaker format).
-pub fn parse_config(config_json: &str) -> Result<OverlayConfig, String> {
+fn build_config_v3_tsv(
+    salt: &[u8; SALT_V3_SIZE],
+    master_key: &[u8; KEY_SIZE],
+    vault_id: &[u8; VAULT_ID_SIZE],
+    requires_keyfile: bool,
+    keyfile_hint: Option<&str>,
+    salt_mode: SaltMode,
+) -> Result<String, String> {
+    let mac = compute_config_mac_v3(master_key, salt, requires_keyfile, Some(vault_id), salt_mode)?;
+    let mut lines = vec![
+        "Warning\tPlease do not delete this file, it is needed to decrypt AeroCrypt".to_string(),
+        format!("version\t{}", VERSION_V3),
+        format!("salt\t{}", base64::engine::general_purpose::STANDARD.encode(salt)),
+        format!("vault_id\t{}", base64::engine::general_purpose::STANDARD.encode(vault_id)),
+        format!("mac\t{}", base64::engine::general_purpose::STANDARD.encode(mac)),
+    ];
+    if requires_keyfile {
+        lines.push("kdf_inputs\tpassword,keyfile".to_string());
+        if let Some(h) = keyfile_hint {
+            lines.push(format!("keyfile_hint\t{}", h));
+        }
+    }
+    if salt_mode == SaltMode::DefaultV1 {
+        lines.push(format!("salt_mode\t{}", salt_mode.as_str()));
+    }
+    Ok(lines.join("\n") + "\n")
+}
+
+fn parse_config_tsv(config: &str) -> Result<OverlayConfig, String> {
+    let mut version: Option<u64> = None;
+    let mut salt_b64: Option<&str> = None;
+    let mut mac_b64: Option<&str> = None;
+    let mut vault_id_b64: Option<&str> = None;
+    let mut kdf_inputs: Option<&str> = None;
+    let mut salt_mode_str: Option<&str> = None;
+
+    for line in config.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') || line.starts_with("Warning") { continue; }
+        if let Some((k, v)) = line.split_once('\t') {
+            match k {
+                "version" => version = v.parse().ok(),
+                "salt" => salt_b64 = Some(v),
+                "mac" => mac_b64 = Some(v),
+                "vault_id" => vault_id_b64 = Some(v),
+                "kdf_inputs" => kdf_inputs = Some(v),
+                "salt_mode" => salt_mode_str = Some(v),
+                _ => {}
+            }
+        }
+    }
+
+    let version = version.ok_or("missing version in tsv crypt config")?;
+    let salt_bytes = base64::engine::general_purpose::STANDARD
+        .decode(salt_b64.ok_or("missing salt in tsv")?)
+        .map_err(|e| format!("invalid salt: {e}"))?;
+
+    if version != 3 || salt_bytes.len() != SALT_V3_SIZE {
+        return Err("only v3 TSV supported".into());
+    }
+    let mut salt = [0u8; SALT_V3_SIZE];
+    salt.copy_from_slice(&salt_bytes);
+
+    let mac_bytes = base64::engine::general_purpose::STANDARD
+        .decode(mac_b64.ok_or("missing mac in tsv")?)
+        .map_err(|e| format!("invalid mac: {e}"))?;
+    let mut mac = [0u8; CONFIG_MAC_SIZE];
+    mac.copy_from_slice(&mac_bytes);
+
+    let vault_id = if let Some(v) = vault_id_b64 {
+        let b = base64::engine::general_purpose::STANDARD.decode(v).map_err(|e| format!("bad vault_id: {e}"))?;
+        if b.len() != VAULT_ID_SIZE { return Err("bad vault_id len".into()); }
+        let mut vid = [0u8; VAULT_ID_SIZE];
+        vid.copy_from_slice(&b);
+        Some(vid)
+    } else { None };
+
+    let requires_keyfile = kdf_inputs.map_or(false, |s| s.contains("keyfile"));
+    let salt_mode: SaltMode = salt_mode_str.unwrap_or("per-vault").parse().unwrap_or(SaltMode::PerVault);
+
+    if requires_keyfile && vault_id.is_none() {
+        return Err("keyfile tsv missing vault_id".into());
+    }
+
+    Ok(OverlayConfig::V3 { salt, mac, vault_id, requires_keyfile, salt_mode })
+}
+
+/// Parse an overlay config. Supports both legacy JSON (starts with `{`) and the new
+/// lean TSV format. A missing or unknown `version` is a hard error.
+pub fn parse_config(config: &str) -> Result<OverlayConfig, String> {
+    let trimmed = config.trim_start();
+    if trimmed.starts_with('{') {
+        // Legacy JSON format (read-both support)
+        return parse_config_json(config);
+    }
+    // New TSV format
+    parse_config_tsv(config)
+}
+
+fn parse_config_json(config_json: &str) -> Result<OverlayConfig, String> {
     let val: serde_json::Value =
         serde_json::from_str(config_json).map_err(|e| format!("invalid crypt config: {e}"))?;
     let version = val
@@ -734,7 +841,7 @@ pub fn parse_config(config_json: &str) -> Result<OverlayConfig, String> {
 
             // salt_mode: optional, absent or "per-vault" => PerVault (back-compat for all pre-default-salt markers)
             let salt_mode = match val.get("salt_mode").and_then(|v| v.as_str()) {
-                Some(s) => SaltMode::from_str(s).unwrap_or(SaltMode::PerVault),
+                Some(s) => s.parse().unwrap_or(SaltMode::PerVault),
                 None => SaltMode::PerVault,
             };
 
@@ -807,13 +914,14 @@ mod tests {
     fn v3_cfg() -> (OverlayConfig, [u8; KEY_SIZE]) {
         let salt = [9u8; SALT_V3_SIZE];
         let master = derive_base_kek("correct horse battery staple", &salt).unwrap();
-        let mac = compute_config_mac_v3(&master, &salt, false, None).unwrap();
+        let mac = compute_config_mac_v3(&master, &salt, false, None, SaltMode::PerVault).unwrap();
         (
             OverlayConfig::V3 {
                 salt,
                 mac,
                 vault_id: None,
                 requires_keyfile: false,
+                salt_mode: SaltMode::PerVault,
             },
             master,
         )
@@ -1020,8 +1128,8 @@ mod tests {
         // (old readers ignore the field and still verify).
         let salt = [4u8; SALT_V3_SIZE];
         let master = derive_base_kek("pw", &salt).unwrap();
-        let with_vid = compute_config_mac_v3(&master, &salt, false, Some(&[7u8; VAULT_ID_SIZE]));
-        let without = compute_config_mac_v3(&master, &salt, false, None);
+        let with_vid = compute_config_mac_v3(&master, &salt, false, Some(&[7u8; VAULT_ID_SIZE]), SaltMode::PerVault);
+        let without = compute_config_mac_v3(&master, &salt, false, None, SaltMode::PerVault);
         assert_eq!(with_vid.unwrap(), without.unwrap());
     }
 

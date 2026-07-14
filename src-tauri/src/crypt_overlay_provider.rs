@@ -86,7 +86,7 @@ use crate::rclone_crypt::{self, FilenameEncryption, RcloneCryptKeys};
 /// AeroCrypt overlay config filename, written at the scope root by `crypt init`.
 /// Skipped from every decrypted listing (it is plaintext JSON, never an overlay
 /// entry).
-const AEROCRYPT_CONFIG_NAME: &str = ".aeroftp-crypt.json";
+const AEROCRYPT_CONFIG_NAME: &str = crate::aerocrypt::overlay::CRYPT_CONFIG_WRITE_NAME;
 
 /// Per-directory IV sentinels some rclone-crypt layouts carry. Our overlays use
 /// the global `name_tweak` so they are normally absent, but skip them defensively
@@ -1885,6 +1885,7 @@ pub(crate) fn overlay_binding_from_profile(
 /// (mirroring the CLI `reconcile_keyfile`), so a missing or spurious keyfile is
 /// a clear error instead of a confusing "wrong password" from a
 /// silently-wrong derived key.
+#[allow(clippy::too_many_arguments)]
 async fn unlock_overlay_keys_encrypting(
     provider: &mut dyn StorageProvider,
     params: &OverlayUnlockParams,
