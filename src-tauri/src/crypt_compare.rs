@@ -205,6 +205,7 @@ pub struct OverlayUnlockParams {
 }
 
 /// AeroCrypt overlay config filename, written at the scope root by `crypt init`.
+#[allow(dead_code)]
 const AEROCRYPT_CONFIG_FILENAME: &str = crate::aerocrypt::overlay::CRYPT_CONFIG_WRITE_NAME;
 
 /// Unlock crypt-compare keys for the CLI / MCP from an overlay binding plus the
@@ -257,11 +258,27 @@ pub async fn unlock_overlay_keys(
         "aerocrypt" => {
             use crate::aerocrypt::overlay;
             let scope = params.remote_scope.trim_end_matches('/');
-            let config_path = format!("{}/{}", scope, AEROCRYPT_CONFIG_FILENAME);
-            let present = provider
-                .exists(&config_path)
-                .await
-                .map_err(|e| format!("Cannot probe AeroCrypt overlay config: {}", e))?;
+            let new_name = overlay::CRYPT_CONFIG_WRITE_NAME;
+            let legacy_name = overlay::CRYPT_CONFIG_LEGACY_NAME;
+            let new_path = format!("{}/{}", scope, new_name);
+            let legacy_path = format!("{}/{}", scope, legacy_name);
+
+            // read-both for D5
+            let present_new = provider.exists(&new_path).await.unwrap_or(false);
+            let present_legacy = if !present_new {
+                provider.exists(&legacy_path).await.unwrap_or(false)
+            } else {
+                false
+            };
+            let present = present_new || present_legacy;
+            let config_path = if present_new {
+                new_path
+            } else if present_legacy {
+                legacy_path
+            } else {
+                new_path
+            };
+
             let config_str = if present {
                 let config_bytes = provider
                     .download_to_bytes(&config_path)
