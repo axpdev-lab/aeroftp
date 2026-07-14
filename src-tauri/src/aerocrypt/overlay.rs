@@ -1214,12 +1214,9 @@ mod tests {
         assert_eq!(rebuilt_cfg.vault_id(), Some(vault_id));
         assert!(rebuilt_cfg.requires_keyfile());
         verify_config_mac(&rebuilt_cfg, &master).unwrap();
-        let value: serde_json::Value = serde_json::from_str(&rebuilt).unwrap();
-        assert_eq!(
-            value["kdf_inputs"],
-            serde_json::json!(["password", "keyfile"])
-        );
-        assert!(value.get("keyfile_hint").is_none());
+        // TSV format (D5): check raw content instead of JSON
+        assert!(rebuilt.contains("kdf_inputs\tpassword,keyfile"));
+        assert!(!rebuilt.contains("keyfile_hint"));
     }
 
     #[test]

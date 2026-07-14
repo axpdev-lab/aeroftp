@@ -1490,16 +1490,18 @@ pub fn resolve_profile_keyfile_digest(
 /// as local tampering or a partial restore and fails closed.
 pub fn validate_headerless_config_salt(
     profile_id: &str,
-    config_json: &str,
+    config_data: &str,
     stored_salt: Option<&str>,
 ) -> Result<(), String> {
-    let value: serde_json::Value = serde_json::from_str(config_json)
-        .map_err(|e| format!("Invalid headerless AeroCrypt config JSON: {e}"))?;
-    let config_salt = value
-        .get("salt")
-        .and_then(|v| v.as_str())
-        .filter(|s| !s.is_empty())
-        .ok_or_else(|| "Headerless AeroCrypt config is missing salt".to_string())?;
+    // Support both legacy JSON and new TSV (D5)
+    let cfg = overlay::parse_config(config_data)
+        .map_err(|e| format!("Invalid headerless AeroCrypt config: {e}"))?;
+    use base64::Engine as _;
+    let config_salt_b64 = match &cfg {
+        OverlayConfig::V3 { salt, .. } => base64::engine::general_purpose::STANDARD.encode(salt),
+        _ => return Err("Headerless only supported for v3".to_string()),
+    };
+    let config_salt = &config_salt_b64;
     let stored_salt = stored_salt.filter(|s| !s.is_empty()).ok_or_else(|| {
         if profile_id.is_empty() {
             "Headerless AeroCrypt config is missing its local salt of record".to_string()
@@ -3420,7 +3422,7 @@ mod tests {
             "activation must refuse to bootstrap over a non-empty folder (would orphan existing files)"
         );
         assert!(
-            !mem.exists("/Vault/.aeroftp-crypt.json")
+            !mem.exists("/Vault/.aerocrypt.tsv")
                 .await
                 .expect("probe config marker"),
             "no overlay config may be written when bootstrap is refused"
@@ -3455,7 +3457,7 @@ mod tests {
             "refusal should explain the inaccessible scope: {err}"
         );
         assert!(
-            !mem.exists("/Vault/.aeroftp-crypt.json")
+            !mem.exists("/Vault/.aerocrypt.tsv")
                 .await
                 .expect("probe config marker"),
             "no overlay config may be written when bootstrap is refused"
@@ -3493,7 +3495,7 @@ mod tests {
                 .expect("an empty existing scope must bootstrap a v3 overlay");
         assert!(matches!(keys, OverlayKeys::AeroCrypt { .. }));
         assert!(
-            mem.exists("/Vault/.aeroftp-crypt.json")
+            mem.exists("/Vault/.aerocrypt.tsv")
                 .await
                 .expect("probe config marker"),
             "bootstrap over an empty existing scope must write the overlay config"
@@ -3527,7 +3529,7 @@ mod tests {
             "headerless activation without a profile id must fail closed"
         );
         assert!(
-            !mem.exists("/Vault/.aeroftp-crypt.json")
+            !mem.exists("/Vault/.aerocrypt.tsv")
                 .await
                 .expect("probe marker"),
             "a refused headerless activation must not write a remote marker"
@@ -3560,10 +3562,10 @@ mod tests {
 
         // The config was persisted to the remote and is v3.
         let cfg = mem
-            .raw_bytes("/Vault/.aeroftp-crypt.json")
+            .raw_bytes("/Vault/.aerocrypt.tsv")
             .expect("a config must be written on bootstrap");
-        let v: serde_json::Value = serde_json::from_slice(&cfg).unwrap();
-        assert_eq!(v["version"], serde_json::json!(3));
+        let content = String::from_utf8_lossy(&cfg);
+        assert!(content.contains("version\t3"));
 
         // Re-activation reads the existing config (no second bootstrap, no clobber).
         let keys2 =
@@ -3574,7 +3576,7 @@ mod tests {
         let still: Vec<String> = mem
             .raw_paths()
             .into_iter()
-            .filter(|p| p == "/Vault/.aeroftp-crypt.json")
+            .filter(|p| p == "/Vault/.aerocrypt.tsv")
             .collect();
         assert_eq!(
             still.len(),
@@ -3602,7 +3604,7 @@ mod tests {
             "non-interactive empty folder must fail closed"
         );
         assert!(
-            mem.raw_bytes("/Empty/.aeroftp-crypt.json").is_none(),
+            mem.raw_bytes("/Empty/.aerocrypt.tsv").is_none(),
             "fail-closed path must not write a config"
         );
     }
@@ -3652,17 +3654,11 @@ mod tests {
         )
         .await
         .expect("bootstrap a keyfile vault");
-        let cfg = mem.raw_bytes("/KfVault/.aeroftp-crypt.json").unwrap();
-        let v: serde_json::Value = serde_json::from_slice(&cfg).unwrap();
-        assert_eq!(v["kdf_inputs"], serde_json::json!(["password", "keyfile"]));
-        assert!(
-            v.get("vault_id").is_some(),
-            "keyfile config records a vault_id"
-        );
-        assert!(
-            v.get("keyfile_hint").is_none(),
-            "no keyfile_hint by default (F5)"
-        );
+        let cfg = mem.raw_bytes("/KfVault/.aerocrypt.tsv").unwrap();
+        let content = String::from_utf8_lossy(&cfg);
+        assert!(content.contains("kdf_inputs\tpassword,keyfile"));
+        assert!(content.contains("vault_id\t"));
+        assert!(!content.contains("keyfile_hint"));
 
         unlock_overlay_keys_encrypting(
             &mut mem,
