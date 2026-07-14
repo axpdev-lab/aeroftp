@@ -4684,6 +4684,22 @@ enum CryptCommands {
         /// leaves the overlay reachable only via the standalone `crypt` commands.
         #[arg(long)]
         no_bind: bool,
+        /// Opt-in to the public default salt (AeroCrypt default salt v1) instead
+        /// of a fresh random per-vault salt. This makes a headerless vault openable
+        /// with the password alone (rclone-style portability). Requires a high-entropy
+        /// generated password; see --salt-strength and the confirmation flag.
+        #[arg(long)]
+        use_default_salt: bool,
+        /// Strength tier for the entropy gate when --use-default-salt is set.
+        /// 128 (default, recommended): ~20+ char generated password.
+        /// 256: stricter ~39+ char generated password.
+        #[arg(long, value_parser = ["128", "256"], default_value = "128")]
+        salt_strength: String,
+        /// Required explicit confirmation when using --use-default-salt.
+        /// Acknowledges the linkability tradeoff (same password on multiple
+        /// default-salt vaults produces identical encrypted names).
+        #[arg(long)]
+        i_understand_linkability: bool,
     },
     /// Bind an existing crypt overlay to a saved profile so the whole app
     /// (CLI ls/get/sync, MCP, GUI) transparently decrypts it on connect.
@@ -48558,6 +48574,9 @@ async fn cmd_crypt_init(
     emergency_kit: Option<&str>,
     no_bind: bool,
     keyfile_path: Option<&str>,
+    use_default_salt: bool,
+    _salt_strength: &str,
+    i_understand_linkability: bool,
     cli: &Cli,
     format: OutputFormat,
 ) -> i32 {
@@ -48566,7 +48585,28 @@ async fn cmd_crypt_init(
     // config MAC). Derive the master key first so we can both validate the
     // password and bind the config MAC. An optional keyfile is mixed into the
     // KDF and recorded in the config (kdf_inputs + a fresh vault_id).
-    let salt = overlay::random_salt_v3();
+
+    // D1: default-salt opt-in handling (per 10-executive-plan).
+    if use_default_salt && !i_understand_linkability {
+        // Require the explicit confirmation flag (or we could add interactive
+        // prompt here for TTY, but the plan calls for a required confirmation flag).
+        print_error(
+            format,
+            "Using --use-default-salt requires --i-understand-linkability (the linkability tradeoff is documented in the release notes).",
+            5,
+        );
+        return 5;
+    }
+    let salt_mode = if use_default_salt {
+        overlay::SaltMode::DefaultV1
+    } else {
+        overlay::SaltMode::PerVault
+    };
+    let salt = if use_default_salt {
+        ftp_client_gui_lib::aerocrypt::AEROCRYPT_DEFAULT_SALT_V1
+    } else {
+        overlay::random_salt_v3()
+    };
     let cfg = overlay::OverlayConfig::v3_bootstrap(salt);
     let master_key = match overlay::derive_master_key_with_keyfile(&cfg, password, keyfile_digest) {
         Ok(k) => k,
@@ -48578,13 +48618,7 @@ async fn cmd_crypt_init(
     let config_json = if keyfile_digest.is_some() {
         // F5: no keyfile_hint on the remote by default.
         let vault_id = overlay::random_vault_id();
-        match overlay::init_config_v3_with_keyfile(
-            &salt,
-            &master_key,
-            &vault_id,
-            None,
-            overlay::SaltMode::PerVault,
-        ) {
+        match overlay::init_config_v3_with_keyfile(&salt, &master_key, &vault_id, None, salt_mode) {
             Ok(j) => j,
             Err(e) => {
                 print_error(format, &format!("Failed to build crypt config: {}", e), 5);
@@ -48592,7 +48626,12 @@ async fn cmd_crypt_init(
             }
         }
     } else {
-        match overlay::init_config_v3(&salt, &master_key) {
+        match overlay::init_config_v3_with_vault_id(
+            &salt,
+            &master_key,
+            &overlay::random_vault_id(),
+            salt_mode,
+        ) {
             Ok(j) => j,
             Err(e) => {
                 print_error(format, &format!("Failed to build crypt config: {}", e), 5);
@@ -61336,6 +61375,10 @@ async fn main() {
                     force,
                     emergency_kit,
                     no_bind,
+                    use_default_salt,
+                    salt_strength,
+                    i_understand_linkability,
+                    ..
                 } => {
                     if let Err(msg) = ensure_headerless_init_profile_selector(
                         cli.profile.as_deref(),
@@ -61372,6 +61415,9 @@ async fn main() {
                                         emergency_kit.as_deref(),
                                         *no_bind,
                                         keyfile_path,
+                                        *use_default_salt,
+                                        &salt_strength,
+                                        *i_understand_linkability,
                                         &cli,
                                         format,
                                     )

@@ -21,6 +21,7 @@ import { useTranslation } from '../i18n';
 import { PasswordInput } from './common/PasswordInput';
 import { PasswordMatchHint } from './common/PasswordMatchHint';
 import { PasswordStrengthBar } from './vault/PasswordStrengthBar';
+import { QRCodeSVG } from 'qrcode.react';
 
 interface AeroCryptUnlockProps {
     onClose: () => void;
@@ -85,6 +86,7 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({ onClose, onUnl
     const [vaultInfo, setVaultInfo] = useState<AeroCryptVaultInfo | null>(null);
     const [success, setSuccess] = useState<string | null>(null);
     const [kitData, setKitData] = useState<AerocryptEmergencyKit | null>(null);
+    const [kitQrLevel, setKitQrLevel] = useState<'L' | 'M' | 'Q' | 'H'>('H');
     const vaultInfoRef = useRef<AeroCryptVaultInfo | null>(null);
 
     useEffect(() => {
@@ -223,7 +225,11 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({ onClose, onUnl
         if (!kitData) return;
         const w = window.open('', '_blank');
         if (w) {
-            w.document.write('<pre style="font-family: monospace; white-space: pre-wrap;">' + kitData.text.replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</pre>');
+            const qrNote = `\n[QR level: ${kitQrLevel} — scan with USB QR scanner or transcribe the text above]\n`;
+            w.document.write('<pre style="font-family: monospace; white-space: pre-wrap;">' +
+                kitData.text.replace(/&/g,'&amp;').replace(/</g,'&lt;') +
+                qrNote.replace(/&/g,'&amp;') +
+                '</pre>');
             w.document.close();
             w.focus();
             w.print();
@@ -473,6 +479,35 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({ onClose, onUnl
                                     <div className="bg-gray-50 dark:bg-gray-900 rounded p-2 text-xs font-mono whitespace-pre-wrap break-all max-h-48 overflow-auto">
                                         {kitData.text}
                                     </div>
+
+                                    {/* D4: QR code for the recovery kit (public fields only). Level selector defaults to H (max correction). */}
+                                    <div className="flex flex-col sm:flex-row gap-3 items-start">
+                                        <div>
+                                            <div className="text-[10px] uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1">Recovery QR</div>
+                                            <QRCodeSVG
+                                                value={`AEROCRYPT-KIT v1\n${kitData.text}`}
+                                                level={kitQrLevel}
+                                                size={128}
+                                                includeMargin
+                                            />
+                                        </div>
+                                        <div className="text-xs space-y-1">
+                                            <div className="font-medium">Error correction</div>
+                                            {(['L','M','Q','H'] as const).map(lv => (
+                                                <label key={lv} className="flex items-center gap-1.5 cursor-pointer">
+                                                    <input
+                                                        type="radio"
+                                                        name="kitQrLevel"
+                                                        checked={kitQrLevel === lv}
+                                                        onChange={() => setKitQrLevel(lv)}
+                                                    />
+                                                    <span>{lv} {lv === 'H' ? '(recommended)' : ''}</span>
+                                                </label>
+                                            ))}
+                                            <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-1">Higher = more resilient to damage on print/scan.</p>
+                                        </div>
+                                    </div>
+
                                     <div className="flex gap-2">
                                         <button onClick={saveKitToFile} className="flex-1 px-3 py-1.5 text-sm rounded bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">{t('aerocryptNative.saveKit')}</button>
                                         <button onClick={printKit} className="flex-1 px-3 py-1.5 text-sm rounded bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">{t('aerocryptNative.printKit')}</button>
