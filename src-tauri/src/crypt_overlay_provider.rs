@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
+// Allow for the internal unlock helper that threads many necessary context params.
+#![allow(clippy::too_many_arguments)]
+
 //! Crypt-overlay decorator: a [`StorageProvider`] that wraps an inner provider
 //! and transparently maps/encrypts every path and content method through a
 //! crypt overlay (rclone-crypt or native AeroCrypt).
@@ -253,7 +256,9 @@ impl OverlayKeys {
     /// surfaced as a decrypted file (config file, rclone dirIV markers).
     fn is_sentinel(&self, name: &str) -> bool {
         match self {
-            Self::AeroCrypt { .. } => name == AEROCRYPT_CONFIG_NAME,
+            Self::AeroCrypt { .. } => {
+                name == AEROCRYPT_CONFIG_NAME || name == overlay::CRYPT_CONFIG_LEGACY_NAME
+            }
             Self::Rclone(_) => RCLONE_DIRIV_SENTINELS.contains(&name),
         }
     }
@@ -1925,17 +1930,33 @@ async fn unlock_overlay_keys_encrypting(
         }
         "aerocrypt" => {
             let scope = params.remote_scope.trim_end_matches('/');
-            let config_path = format!("{}/{}", scope, AEROCRYPT_CONFIG_NAME);
+            let new_name = AEROCRYPT_CONFIG_NAME;
+            let legacy_name = overlay::CRYPT_CONFIG_LEGACY_NAME;
+            let new_path = format!("{}/{}", scope, new_name);
+            let legacy_path = format!("{}/{}", scope, legacy_name);
+
+            // Read-both for D5: probe new name first, fall back to legacy.
+            let present_new = provider.exists(&new_path).await.unwrap_or(false);
+            let present_legacy = if !present_new {
+                provider.exists(&legacy_path).await.unwrap_or(false)
+            } else {
+                false
+            };
+            let present = present_new || present_legacy;
+            let config_path = if present_new {
+                new_path
+            } else if present_legacy {
+                legacy_path
+            } else {
+                new_path // for bootstrap write
+            };
+
             // Clobber-safe existence probe. A fresh empty target must bootstrap a v3
             // overlay (mirrors the legacy `aerocrypt_provider::aerocrypt_unlock` None
             // branch the Phase-3 migration replaced), but a read/network error must
             // NEVER be taken for "absent": re-init rotates the salt and would orphan
             // every file already encrypted under the existing overlay. So only an
             // explicit `exists == false` triggers the bootstrap.
-            let present = provider
-                .exists(&config_path)
-                .await
-                .map_err(|e| format!("Cannot probe AeroCrypt overlay config: {e}"))?;
             let (config, master_key) = if present {
                 let config_bytes = provider
                     .download_to_bytes(&config_path)
@@ -3170,7 +3191,7 @@ mod tests {
         );
 
         // Apply: the slot now holds a decorator.
-        let scope = apply_overlay_in_place(&mut slot, &binding, "pw", "salt", None, true)
+        let scope = apply_overlay_in_place(&mut slot, &binding, "pw", "salt", None, true, None)
             .await
             .unwrap();
         assert_eq!(scope, "");
@@ -3184,7 +3205,7 @@ mod tests {
         );
 
         // Re-apply (re-anchor): must revert the prior overlay first, never stack.
-        apply_overlay_in_place(&mut slot, &binding, "pw", "salt", None, true)
+        apply_overlay_in_place(&mut slot, &binding, "pw", "salt", None, true, None)
             .await
             .unwrap();
 
@@ -3574,7 +3595,8 @@ mod tests {
             local_config_salt: None,
         };
         let res =
-            unlock_overlay_keys_encrypting(&mut mem, &other, "pw", "", None, false, true).await;
+            unlock_overlay_keys_encrypting(&mut mem, &other, "pw", "", None, false, true, None)
+                .await;
         assert!(
             res.is_err(),
             "non-interactive empty folder must fail closed"

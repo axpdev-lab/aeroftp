@@ -47825,7 +47825,7 @@ async fn load_crypt_config_json(
     format: OutputFormat,
     missing_message: &str,
 ) -> Result<String, i32> {
-    let config_path = format!("{}/.aeroftp-crypt.json", base_path.trim_end_matches('/'));
+    let config_path = format!("{}/.aerocrypt.tsv", base_path.trim_end_matches('/'));
     let present = match provider.exists(&config_path).await {
         Ok(v) => v,
         Err(e) => {
@@ -47965,7 +47965,7 @@ async fn cmd_crypt_to_headerless(
         Err(code) => return code,
     };
     let base_path = normalize_remote_path(&resolve_cli_remote_path(&initial_path, path));
-    let config_path = format!("{}/.aeroftp-crypt.json", base_path.trim_end_matches('/'));
+    let config_path = format!("{}/.aerocrypt.tsv", base_path.trim_end_matches('/'));
     let marker_exists = match provider.exists(&config_path).await {
         Ok(exists) => exists,
         Err(e) => {
@@ -48121,7 +48121,7 @@ async fn cmd_crypt_to_headed(
         Err(code) => return code,
     };
     let base_path = normalize_remote_path(&resolve_cli_remote_path(&initial_path, path));
-    let config_path = format!("{}/.aeroftp-crypt.json", base_path.trim_end_matches('/'));
+    let config_path = format!("{}/.aerocrypt.tsv", base_path.trim_end_matches('/'));
     match provider.exists(&config_path).await {
         Ok(true) => {
             let marker = match provider.download_to_bytes(&config_path).await {
@@ -48655,7 +48655,7 @@ async fn cmd_crypt_init(
     };
 
     let base_path = normalize_remote_path(&resolve_cli_remote_path(&initial_path, path));
-    let config_path = format!("{}/.aeroftp-crypt.json", base_path.trim_end_matches('/'));
+    let config_path = format!("{}/.aerocrypt.tsv", base_path.trim_end_matches('/'));
 
     // Ensure the remote scope directory exists so `crypt init /a/b/c` prepares
     // the vault immediately: the headed marker upload writes into it, and the
@@ -49034,7 +49034,7 @@ async fn cmd_crypt_ls(
                 }
             };
             for entry in entries {
-                if entry.name == ".aeroftp-crypt.json" {
+                if entry.name == ".aerocrypt.tsv" || entry.name == ".aeroftp-crypt.json" {
                     continue;
                 }
                 // Skip foreign / undecryptable names rather than aborting the walk.
@@ -49118,7 +49118,7 @@ async fn cmd_crypt_ls(
 
     let mut decrypted: Vec<(String, String, bool, u64)> = Vec::new(); // (decrypted_name, encrypted_name, is_dir, size)
     for entry in &entries {
-        if entry.name == ".aeroftp-crypt.json" {
+        if entry.name == ".aerocrypt.tsv" || entry.name == ".aeroftp-crypt.json" {
             continue;
         }
         let decrypted_name = names::decrypt_filename(&master_key, &entry.name)
@@ -49619,7 +49619,7 @@ async fn cmd_crypt_get(
             };
             first = false;
             for entry in entries {
-                if entry.name == ".aeroftp-crypt.json" {
+                if entry.name == ".aerocrypt.tsv" || entry.name == ".aeroftp-crypt.json" {
                     continue;
                 }
                 let plain = match names::decrypt_filename(&master_key, &entry.name) {
@@ -66347,8 +66347,13 @@ mod tests {
         let vault_id = [43u8; overlay::VAULT_ID_SIZE];
         let bootstrap = overlay::OverlayConfig::v3_bootstrap(salt);
         let master = overlay::derive_master_key(&bootstrap, password).unwrap();
-        let headed_marker =
-            overlay::init_config_v3_with_vault_id(&salt, &master, &vault_id).unwrap();
+        let headed_marker = overlay::init_config_v3_with_vault_id(
+            &salt,
+            &master,
+            &vault_id,
+            overlay::SaltMode::PerVault,
+        )
+        .unwrap();
         let headed_cfg = overlay::parse_config(&headed_marker).unwrap();
         let aecr_before =
             overlay::encrypt_data(&headed_cfg, &master, b"metadata-only migration").unwrap();

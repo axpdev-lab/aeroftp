@@ -619,6 +619,7 @@ pub fn rebuild_config_v3(
     }
 }
 
+#[allow(dead_code)]
 fn build_config_v3_json(
     salt: &[u8; SALT_V3_SIZE],
     master_key: &[u8; KEY_SIZE],
@@ -670,13 +671,28 @@ fn build_config_v3_tsv(
     keyfile_hint: Option<&str>,
     salt_mode: SaltMode,
 ) -> Result<String, String> {
-    let mac = compute_config_mac_v3(master_key, salt, requires_keyfile, Some(vault_id), salt_mode)?;
+    let mac = compute_config_mac_v3(
+        master_key,
+        salt,
+        requires_keyfile,
+        Some(vault_id),
+        salt_mode,
+    )?;
     let mut lines = vec![
         "Warning\tPlease do not delete this file, it is needed to decrypt AeroCrypt".to_string(),
         format!("version\t{}", VERSION_V3),
-        format!("salt\t{}", base64::engine::general_purpose::STANDARD.encode(salt)),
-        format!("vault_id\t{}", base64::engine::general_purpose::STANDARD.encode(vault_id)),
-        format!("mac\t{}", base64::engine::general_purpose::STANDARD.encode(mac)),
+        format!(
+            "salt\t{}",
+            base64::engine::general_purpose::STANDARD.encode(salt)
+        ),
+        format!(
+            "vault_id\t{}",
+            base64::engine::general_purpose::STANDARD.encode(vault_id)
+        ),
+        format!(
+            "mac\t{}",
+            base64::engine::general_purpose::STANDARD.encode(mac)
+        ),
     ];
     if requires_keyfile {
         lines.push("kdf_inputs\tpassword,keyfile".to_string());
@@ -700,7 +716,9 @@ fn parse_config_tsv(config: &str) -> Result<OverlayConfig, String> {
 
     for line in config.lines() {
         let line = line.trim();
-        if line.is_empty() || line.starts_with('#') || line.starts_with("Warning") { continue; }
+        if line.is_empty() || line.starts_with('#') || line.starts_with("Warning") {
+            continue;
+        }
         if let Some((k, v)) = line.split_once('\t') {
             match k {
                 "version" => version = v.parse().ok(),
@@ -732,21 +750,36 @@ fn parse_config_tsv(config: &str) -> Result<OverlayConfig, String> {
     mac.copy_from_slice(&mac_bytes);
 
     let vault_id = if let Some(v) = vault_id_b64 {
-        let b = base64::engine::general_purpose::STANDARD.decode(v).map_err(|e| format!("bad vault_id: {e}"))?;
-        if b.len() != VAULT_ID_SIZE { return Err("bad vault_id len".into()); }
+        let b = base64::engine::general_purpose::STANDARD
+            .decode(v)
+            .map_err(|e| format!("bad vault_id: {e}"))?;
+        if b.len() != VAULT_ID_SIZE {
+            return Err("bad vault_id len".into());
+        }
         let mut vid = [0u8; VAULT_ID_SIZE];
         vid.copy_from_slice(&b);
         Some(vid)
-    } else { None };
+    } else {
+        None
+    };
 
-    let requires_keyfile = kdf_inputs.map_or(false, |s| s.contains("keyfile"));
-    let salt_mode: SaltMode = salt_mode_str.unwrap_or("per-vault").parse().unwrap_or(SaltMode::PerVault);
+    let requires_keyfile = kdf_inputs.is_some_and(|s| s.contains("keyfile"));
+    let salt_mode: SaltMode = salt_mode_str
+        .unwrap_or("per-vault")
+        .parse()
+        .unwrap_or(SaltMode::PerVault);
 
     if requires_keyfile && vault_id.is_none() {
         return Err("keyfile tsv missing vault_id".into());
     }
 
-    Ok(OverlayConfig::V3 { salt, mac, vault_id, requires_keyfile, salt_mode })
+    Ok(OverlayConfig::V3 {
+        salt,
+        mac,
+        vault_id,
+        requires_keyfile,
+        salt_mode,
+    })
 }
 
 /// Parse an overlay config. Supports both legacy JSON (starts with `{`) and the new
@@ -1128,7 +1161,13 @@ mod tests {
         // (old readers ignore the field and still verify).
         let salt = [4u8; SALT_V3_SIZE];
         let master = derive_base_kek("pw", &salt).unwrap();
-        let with_vid = compute_config_mac_v3(&master, &salt, false, Some(&[7u8; VAULT_ID_SIZE]), SaltMode::PerVault);
+        let with_vid = compute_config_mac_v3(
+            &master,
+            &salt,
+            false,
+            Some(&[7u8; VAULT_ID_SIZE]),
+            SaltMode::PerVault,
+        );
         let without = compute_config_mac_v3(&master, &salt, false, None, SaltMode::PerVault);
         assert_eq!(with_vid.unwrap(), without.unwrap());
     }

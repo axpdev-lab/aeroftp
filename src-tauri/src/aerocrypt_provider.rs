@@ -252,9 +252,22 @@ pub async fn aerocrypt_provider_read_config(
     }
 
     let cwd = provider.pwd().await.unwrap_or_else(|_| "/".to_string());
-    let config_path = join_remote_path(&cwd, CONFIG_NAME);
+    let new_name = overlay::CRYPT_CONFIG_WRITE_NAME;
+    let legacy_name = overlay::CRYPT_CONFIG_LEGACY_NAME;
+    let new_path = join_remote_path(&cwd, new_name);
+    let legacy_path = join_remote_path(&cwd, legacy_name);
+
+    // Read-both: prefer the new .aerocrypt.tsv, fall back to legacy .aeroftp-crypt.json
+    let config_path = if provider.exists(&new_path).await.unwrap_or(false) {
+        new_path
+    } else if provider.exists(&legacy_path).await.unwrap_or(false) {
+        legacy_path
+    } else {
+        new_path // for "not found" case below
+    };
+
     log::debug!(
-        "[aerocrypt][read_config] provider pwd={:?} -> reading config at {:?}",
+        "[aerocrypt][read_config] provider pwd={:?} -> reading config at {:?} (read-both)",
         cwd,
         config_path
     );
