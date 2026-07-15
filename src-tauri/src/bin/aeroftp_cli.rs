@@ -149,6 +149,7 @@ struct Cli {
     /// All human diagnostics, "Using profile", path notes, connection chatter,
     /// "Connected successfully", "Next: ..." etc. go to stderr (or are suppressed).
     /// This is the recommended flag for robust agent/LLM/tool-calling use.
+    /// (also via AEROFTP_MACHINE env var)
     #[arg(long, global = true, help_heading = "Output options")]
     machine: bool,
 
@@ -23767,7 +23768,7 @@ fn cmd_agent_info(cli: &Cli, redact_identifiers: bool) -> i32 {
         },
         "output": {
             "json_flag": "--json",
-            "machine_flag": "--machine (recommended for agents; implies --json --no-banner --quiet)",
+            "machine_flag": "--machine (recommended for agents; implies --json --no-banner --quiet; also via AEROFTP_MACHINE=1 env var)",
             "stdout": "In --json/--machine: ONLY the structured result data (object/array). No leading human text.",
             "stderr": "All diagnostics, connection logs, 'Using profile', 'Note: path resolved', progress, warnings. In --machine mode chatter is minimized.",
             "contract": "With --machine (or --format json) agents can safely parse stdout as JSON. All human scaffolding goes to stderr.",
@@ -48926,11 +48927,7 @@ async fn cmd_crypt_kit_verify(
         match std::fs::read_to_string(p) {
             Ok(s) => (s, format!("file:{p}")),
             Err(e) => {
-                print_error(
-                    format,
-                    &format!("Cannot read kit/marker file {p}: {e}"),
-                    11,
-                );
+                print_error(format, &format!("Cannot read kit/marker file {p}: {e}"), 11);
                 return 11;
             }
         }
@@ -48967,23 +48964,19 @@ async fn cmd_crypt_kit_verify(
             }
         };
         let _ = provider.disconnect().await;
-        (
-            marker.text,
-            format!("remote-marker:{base_path}"),
-        )
+        (marker.text, format!("remote-marker:{base_path}"))
     };
 
-    let report =
-        match ftp_client_gui_lib::aerocrypt::emergency_kit::verify_against_active(
-            &active_config,
-            &candidate,
-        ) {
-            Ok(r) => r,
-            Err(e) => {
-                print_error(format, &format!("Cannot parse kit/marker: {e}"), 5);
-                return 5;
-            }
-        };
+    let report = match ftp_client_gui_lib::aerocrypt::emergency_kit::verify_against_active(
+        &active_config,
+        &candidate,
+    ) {
+        Ok(r) => r,
+        Err(e) => {
+            print_error(format, &format!("Cannot parse kit/marker: {e}"), 5);
+            return 5;
+        }
+    };
 
     if matches!(format, OutputFormat::Json) {
         print_json(&serde_json::json!({
@@ -58876,6 +58869,15 @@ async fn main() {
     };
 
     let mut cli = Cli::parse_from(args);
+
+    // AEROFTP_MACHINE=1 (or any truthy value: 1/true/yes/on) turns on machine
+    // mode without the --machine flag, for agents/CI that set it in the env.
+    // Uses the same strict_env_truthy helper as AEROFTP_STRICT so =0/false/no/off
+    // stays off, matching the three-state verification: =1 on, unset off, =0 off.
+    if strict_env_truthy(std::env::var("AEROFTP_MACHINE").ok().as_deref()) {
+        cli.machine = true;
+    }
+
     let format = cli.output_format();
 
     // Stash JSON-mode + machine mode globally.
