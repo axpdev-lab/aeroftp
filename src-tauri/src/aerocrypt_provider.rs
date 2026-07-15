@@ -244,31 +244,27 @@ pub async fn aerocrypt_provider_read_config(
     base_path: Option<String>,
 ) -> Result<Option<String>, String> {
     let mut provider_lock = provider_state.provider.lock().await;
-    let provider = provider_lock
+    let slot = provider_lock
         .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
+    // Markers live as cleartext names on the wire. When the live slot is wrapped
+    // by CryptOverlayProvider, path mapping would encrypt `.aerocrypt.tsv` /
+    // `.aeroftp-crypt.json` and miss them. Always peel to the concrete transport.
+    let provider = crate::crypt_overlay_provider::concrete_provider_mut(slot.as_mut());
 
     // Anchor the overlay at its configured absolute root, independent of the live
     // pwd. Path-based providers (Filen, etc.) reset current_path to "/" on connect
     // and never cd when they merely *list* a folder, so the overlay would always
-    // root at "/". cd into base_path and STAY there, so read_config, the create
-    // fallback, and the listing that follows all operate at the overlay root.
-    if let Some(bp) = base_path
+    // root at "/". Prefer an absolute marker path under base_path when given.
+    let cwd = if let Some(bp) = base_path
         .as_deref()
         .map(str::trim)
         .filter(|s| !s.is_empty() && *s != "/")
     {
-        match provider.cd(bp).await {
-            Ok(()) => log::debug!("[aerocrypt][read_config] anchored at base_path={:?}", bp),
-            Err(e) => log::debug!(
-                "[aerocrypt][read_config] base_path cd to {:?} failed ({}), staying at pwd",
-                bp,
-                e
-            ),
-        }
-    }
-
-    let cwd = provider.pwd().await.unwrap_or_else(|_| "/".to_string());
+        bp.to_string()
+    } else {
+        provider.pwd().await.unwrap_or_else(|_| "/".to_string())
+    };
     let new_name = overlay::CRYPT_CONFIG_WRITE_NAME;
     let legacy_name = overlay::CRYPT_CONFIG_LEGACY_NAME;
     let new_path = join_remote_path(&cwd, new_name);
@@ -284,7 +280,7 @@ pub async fn aerocrypt_provider_read_config(
     };
 
     log::debug!(
-        "[aerocrypt][read_config] provider pwd={:?} -> reading config at {:?} (read-both)",
+        "[aerocrypt][read_config] provider root={:?} -> reading config at {:?} (read-both, raw transport)",
         cwd,
         config_path
     );
@@ -372,22 +368,20 @@ pub async fn aerocrypt_provider_marker_status(
     base_path: Option<String>,
 ) -> Result<AeroCryptMarkerStatus, String> {
     let mut provider_lock = provider_state.provider.lock().await;
-    let provider = provider_lock
+    let slot = provider_lock
         .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
+    let provider = crate::crypt_overlay_provider::concrete_provider_mut(slot.as_mut());
 
-    if let Some(bp) = base_path
+    let cwd = if let Some(bp) = base_path
         .as_deref()
         .map(str::trim)
         .filter(|s| !s.is_empty() && *s != "/")
     {
-        provider
-            .cd(bp)
-            .await
-            .map_err(|e| format!("Failed to cd into {bp}: {e}"))?;
-    }
-
-    let cwd = provider.pwd().await.unwrap_or_else(|_| "/".to_string());
+        bp.to_string()
+    } else {
+        provider.pwd().await.unwrap_or_else(|_| "/".to_string())
+    };
     let current_path = join_remote_path(&cwd, overlay::CRYPT_CONFIG_WRITE_NAME);
     let legacy_path = join_remote_path(&cwd, overlay::CRYPT_CONFIG_LEGACY_NAME);
     Ok(AeroCryptMarkerStatus {
@@ -411,22 +405,21 @@ pub async fn aerocrypt_provider_migrate_legacy_marker(
     }
     let keyfile_digest = resolve_ui_keyfile_digest(keyfile_path.as_deref())?;
     let mut provider_lock = provider_state.provider.lock().await;
-    let provider = provider_lock
+    let slot = provider_lock
         .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
+    // Same peel as read_config/marker_status: migrate must see cleartext marker names.
+    let provider = crate::crypt_overlay_provider::concrete_provider_mut(slot.as_mut());
 
-    if let Some(bp) = base_path
+    let cwd = if let Some(bp) = base_path
         .as_deref()
         .map(str::trim)
         .filter(|s| !s.is_empty() && *s != "/")
     {
-        provider
-            .cd(bp)
-            .await
-            .map_err(|e| format!("Failed to cd into {bp}: {e}"))?;
-    }
-
-    let cwd = provider.pwd().await.unwrap_or_else(|_| "/".to_string());
+        bp.to_string()
+    } else {
+        provider.pwd().await.unwrap_or_else(|_| "/".to_string())
+    };
     let current_path = join_remote_path(&cwd, overlay::CRYPT_CONFIG_WRITE_NAME);
     let legacy_path = join_remote_path(&cwd, overlay::CRYPT_CONFIG_LEGACY_NAME);
     let legacy_exists = provider
@@ -441,7 +434,7 @@ pub async fn aerocrypt_provider_migrate_legacy_marker(
         });
     }
 
-    let legacy_text = read_marker_text(&mut **provider, &legacy_path).await?;
+    let legacy_text = read_marker_text(provider, &legacy_path).await?;
     let (legacy_config, legacy_master) =
         validate_marker_for_migration(&legacy_text, &password, keyfile_digest).await?;
     let rebuilt_marker = overlay::rebuild_config_v3(&legacy_config, &legacy_master)?;
@@ -452,7 +445,7 @@ pub async fn aerocrypt_provider_migrate_legacy_marker(
         .await
         .map_err(|e| format!("Failed to probe current AeroCrypt marker: {e}"))?;
     if current_exists {
-        let current_text = read_marker_text(&mut **provider, &current_path).await?;
+        let current_text = read_marker_text(provider, &current_path).await?;
         validate_marker_for_migration(&current_text, &password, keyfile_digest).await?;
     } else {
         let temp = std::env::temp_dir().join(format!(
@@ -494,7 +487,7 @@ pub async fn aerocrypt_provider_migrate_legacy_marker(
         }
     }
 
-    let current_text = read_marker_text(&mut **provider, &current_path).await?;
+    let current_text = read_marker_text(provider, &current_path).await?;
     validate_marker_for_migration(&current_text, &password, keyfile_digest).await?;
     let warning = match provider.delete(&legacy_path).await {
         Ok(()) => None,

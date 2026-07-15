@@ -1571,7 +1571,10 @@
             "overlay_failed": "Impossible de déverrouiller la surcouche chiffrée",
             "session_resumed": "Session active reprise vers {server}",
             "connect_cancelled": "Annulé par l'utilisateur : listage arrêté, déconnecté du serveur",
-            "overlay_locked": "Superposition chiffrée verrouillée"
+            "overlay_locked": "Superposition chiffrée verrouillée",
+            "aerocrypt_marker_migrate": "Converting AeroCrypt marker to .aerocrypt.tsv…",
+            "aerocrypt_marker_migrated": "AeroCrypt marker converted to .aerocrypt.tsv",
+            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed"
         },
         "protocol": {
             "selectProtocol": "Sélectionner un protocole...",
@@ -5087,7 +5090,24 @@
             "qrErrorCorrection": "Correction d'erreurs",
             "qrRecommended": "(recommandé)",
             "qrHint": "Les niveaux plus élevés sont plus fiables sur les copies imprimées ou numérisées.",
-            "qrPrintNote": "Niveau QR : {level} - scannez avec un scanner QR USB ou recopiez le texte ci-dessus"
+            "qrPrintNote": "Niveau QR : {level} - scannez avec un scanner QR USB ou recopiez le texte ci-dessus",
+            "verifyKit": "Vérifier le kit…",
+            "verifyKitHint": "Choisissez un kit enregistré (texte, dump QR, .aerocrypt.tsv ou legacy .aeroftp-crypt.json) et confirmez qu'il correspond encore au keystore de ce profil (vault ID, salt, version, KDF). Hors ligne, sans mot de passe.",
+            "verifyKitOk": "Correspondance : ce kit/marqueur correspond à la config du keystore du profil actif.",
+            "verifyKitMismatch": "Écart : ce kit/marqueur ne correspond pas à la config du keystore du profil actif.",
+            "verifyKitKind": "Entrée détectée : {kind}",
+            "markerMissingRestoredTitle": "AeroCrypt safety net restored",
+            "markerMissingRestoredBody": "The remote marker (.aerocrypt.tsv) was missing and was rebuilt from the local keystore. Do not delete it again unless you switch to headerless — deleting it twice and losing the keystore locks you out.",
+            "markerMissingRestoreFailedTitle": "AeroCrypt marker still missing",
+            "markerMissingRestoreFailedBody": "Unlocked from the local keystore, but the remote safety net could not be restored: {error}",
+            "kitNotCachedYet": "No recovery kit is cached for this profile yet. Connect once so its public configuration is stored locally (this happens automatically on connect), then reopen the recovery kit. This is not an error.",
+            "kitNeedsVaultIdUpgrade": "This vault was created before the recovery-kit vault ID field existed. Connect once and, if the remote still uses a legacy .aeroftp-crypt.json marker, convert it to .aerocrypt.tsv (Convert marker). The kit becomes available after a successful connect that writes a Tier-1 config with vault ID.",
+            "kitSaved": "Recovery kit saved to {path}",
+            "kitPrintFailed": "Could not open the print dialog. Use Save kit to file instead.",
+            "legacyMarkerConnectBanner": "Legacy AeroCrypt marker",
+            "legacyMarkerConvertAction": "[NEEDS TRANSLATION] Convert marker…",
+            "migrateNeedsFactors": "Enter the overlay password or keyfile (or ensure they are stored on the profile) to convert the marker.",
+            "migrateUsesStoredFactors": "Uses the password/keyfile already stored for this profile when the fields above are empty."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Chiffrement)",

@@ -483,6 +483,10 @@ pub fn resolve_overlay_secrets(
     .map(|s| s.to_string())
     .filter(|s| !s.is_empty());
 
+    let with_header = overlay
+        .get("withHeader")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
     let params = crate::crypt_compare::OverlayUnlockParams {
         kind,
         remote_scope,
@@ -496,6 +500,7 @@ pub fn resolve_overlay_secrets(
         } else {
             Some(salt.clone())
         },
+        with_header,
     };
     Ok(Some((params, password, salt, keyfile_digest)))
 }

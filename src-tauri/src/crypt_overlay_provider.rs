@@ -1334,19 +1334,24 @@ pub async fn wrap_provider_with_overlay_if_bound(
         return Ok(inner);
     };
     // Non-interactive factory (CLI / cross-profile / MCP): fail-closed, never
-    // bootstrap an overlay on a folder that has no config.
-    let keys = unlock_overlay_keys_encrypting(
+    // bootstrap an overlay on a folder that has no config. Headed intent comes
+    // from the profile binding (`params.with_header`); when set, a missing
+    // remote marker is healed from the keystore with a one-shot stderr warning.
+    let outcome = unlock_overlay_keys_encrypting(
         &mut *inner,
         params,
         password,
         salt,
         keyfile_digest,
         false,
-        false,
+        params.with_header,
         None, // non-interactive factory path: never default-salt opt-in
     )
     .await?;
-    let provider = CryptOverlayProvider::new(inner, keys, &params.remote_scope);
+    if let Some(w) = outcome.warning.as_deref() {
+        eprintln!("Warning: {w}");
+    }
+    let provider = CryptOverlayProvider::new(inner, outcome.keys, &params.remote_scope);
     Ok(Box::new(provider))
 }
 
@@ -1570,10 +1575,16 @@ fn persist_public_overlay_config(
 
 /// Best-effort: cache a HEADED vault's PUBLIC config in the local keystore so the
 /// on-demand Recovery Kit (T3) works without connecting, for headed vaults
-/// created before this build too. Idempotent: fills the per-profile config/salt
-/// entries only when nothing is stored yet, so it never clobbers an existing
-/// (possibly headerless) salt of record. No-op without a saved profile id or a
-/// keystore. Never fails the unlock: the remote marker is authoritative.
+/// created before this build too.
+///
+/// Writes when:
+/// - nothing is stored yet, or
+/// - the stored blob is present but has no `vault_id` (pre-Tier-1 v3) while the
+///   candidate config does (e.g. rebuilt via `rebuild_config_v3` on unlock).
+///
+/// Never clobbers a complete keystore entry that already has a vault_id (the
+/// remote marker stays authoritative for salt; we only fill kit-readiness gaps).
+/// No-op without a saved profile id or a keystore. Never fails the unlock.
 fn backfill_headed_overlay_config(params: &OverlayUnlockParams, config_json: &str) {
     let Some(id) = params.profile_id.as_deref().filter(|s| !s.is_empty()) else {
         return;
@@ -1582,26 +1593,34 @@ fn backfill_headed_overlay_config(params: &OverlayUnlockParams, config_json: &st
         return;
     };
     let config_key = format!("aerocrypt_overlay_config_{id}");
-    let already = crate::user_partitions::resolve_active_credential(&store, &config_key)
+    let existing = crate::user_partitions::resolve_active_credential(&store, &config_key)
         .ok()
         .flatten()
-        .map(|s| !s.to_string().is_empty())
-        .unwrap_or(false);
-    if already {
-        return;
+        .map(|s| s.to_string())
+        .filter(|s| !s.is_empty());
+    if let Some(ref prev) = existing {
+        let prev_has_vid = overlay::parse_config(prev)
+            .ok()
+            .and_then(|c| c.vault_id())
+            .is_some();
+        let new_has_vid = overlay::parse_config(config_json)
+            .ok()
+            .and_then(|c| c.vault_id())
+            .is_some();
+        // Keep a complete kit cache; only upgrade pre-Tier-1 blobs that lack vault_id.
+        if prev_has_vid || !new_has_vid {
+            return;
+        }
     }
-    // The config JSON carries the salt (base64) directly; reuse it as the salt of
-    // record so validate_headerless_config_salt stays consistent.
-    let Some(salt_b64) = serde_json::from_str::<serde_json::Value>(config_json)
-        .ok()
-        .and_then(|v| {
-            v.get("salt")
-                .and_then(|s| s.as_str())
-                .map(|s| s.to_string())
-        })
-        .filter(|s| !s.is_empty())
-    else {
-        return;
+    // Extract salt via the shared parser so both legacy JSON and current TSV
+    // headed markers backfill correctly. (A JSON-only read silently no-ops for
+    // .aerocrypt.tsv, which left headed TSV vaults without a recovery kit cache.)
+    let salt_b64 = match overlay::parse_config(config_json) {
+        Ok(OverlayConfig::V3 { salt, .. }) => {
+            use base64::Engine as _;
+            base64::engine::general_purpose::STANDARD.encode(salt)
+        }
+        _ => return,
     };
     if let Err(e) = persist_public_overlay_config(&store, id, config_json, &salt_b64) {
         eprintln!("[aerocrypt] headed overlay config backfill skipped for {id}: {e}");
@@ -1744,6 +1763,7 @@ pub async fn wrap_connected_provider_for_profile(
     .flatten()
     .map(|s| s.to_string())
     .filter(|s| !s.is_empty());
+    // with_header comes from the profile binding (overlay_binding_from_profile).
     let params = OverlayUnlockParams {
         local_config_json,
         local_config_salt: if salt.is_empty() {
@@ -1878,7 +1898,87 @@ pub(crate) fn overlay_binding_from_profile(
             .map(str::to_string),
         local_config_json: None,
         local_config_salt: None,
+        // Profile-level headed intent (GUI ConnectionScreen / CLI crypt init
+        // --with-header / crypt to-headed). Drives missing-marker auto-heal.
+        with_header: overlay
+            .get("withHeader")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false),
     })
+}
+
+/// Human-readable safety warning when a headed marker was missing and rebuilt
+/// from the local keystore (tracker #421 item #7). Public, no secrets.
+pub const MARKER_RESTORED_WARNING: &str = "AeroCrypt headed marker was missing on the remote and \
+was rebuilt from this device's local keystore (.aerocrypt.tsv). Do not delete it again: a second \
+deletion plus a lost keystore is a permanent lockout. Only remove the remote marker if you \
+deliberately switch to headerless (crypt to-headerless / disable \"Write header to remote\").";
+
+/// Outcome of unlocking overlay keys, including optional headed-marker heal info.
+/// Keys intentionally have no Debug (secret material).
+pub struct OverlayUnlockOutcome {
+    pub keys: OverlayKeys,
+    /// True when a missing headed marker was rewritten from the local keystore.
+    pub marker_restored: bool,
+    /// Remote path of the restored marker (when `marker_restored`).
+    pub marker_path: Option<String>,
+    /// Safety warning to surface once in CLI stderr / GUI toast (when restored
+    /// or when restore was attempted and failed but unlock still succeeded).
+    pub warning: Option<String>,
+    /// Only the legacy JSON marker is present (no TSV).
+    pub has_legacy_marker: bool,
+    /// Current TSV marker is present.
+    pub has_current_marker: bool,
+}
+
+/// Publish a headed AeroCrypt marker from already-verified local config + master
+/// key. Stages to a temp remote name, verifies byte-for-byte + unlock, then
+/// renames into place (same choreography as CLI `crypt to-headed`). Returns the
+/// absolute remote marker path on success.
+pub async fn restore_headed_marker_from_config(
+    provider: &mut dyn StorageProvider,
+    config_path: &str,
+    config: &OverlayConfig,
+    master_key: &[u8; KEY_SIZE],
+) -> Result<String, String> {
+    let marker_text = overlay::rebuild_config_v3(config, master_key)
+        .map_err(|e| format!("Cannot rebuild AeroCrypt marker: {e}"))?;
+    // Verify the rebuilt marker unlocks with the same key (config MAC).
+    overlay::verify_config_mac(
+        &overlay::parse_config(&marker_text)
+            .map_err(|e| format!("Rebuilt AeroCrypt marker is unparseable: {e}"))?,
+        master_key,
+    )
+    .map_err(|e| format!("Rebuilt AeroCrypt marker failed verification: {e}"))?;
+
+    let staged = tempfile::NamedTempFile::new()
+        .map_err(|e| format!("Cannot stage AeroCrypt marker: {e}"))?;
+    std::fs::write(staged.path(), marker_text.as_bytes())
+        .map_err(|e| format!("Cannot stage AeroCrypt marker: {e}"))?;
+    let remote_tmp = format!("{config_path}.aerotmp-{}", uuid::Uuid::new_v4());
+    provider
+        .upload(&staged.path().to_string_lossy(), &remote_tmp, None)
+        .await
+        .map_err(|e| format!("Cannot upload staged AeroCrypt marker: {e}"))?;
+    let staged_bytes = match provider.download_to_bytes(&remote_tmp).await {
+        Ok(b) => b,
+        Err(e) => {
+            let _ = provider.delete(&remote_tmp).await;
+            return Err(format!("Cannot verify staged AeroCrypt marker: {e}"));
+        }
+    };
+    if staged_bytes != marker_text.as_bytes() {
+        let _ = provider.delete(&remote_tmp).await;
+        return Err(
+            "Staged AeroCrypt marker failed byte-for-byte verification; original keystore metadata retained."
+                .to_string(),
+        );
+    }
+    if let Err(e) = provider.rename(&remote_tmp, config_path).await {
+        let _ = provider.delete(&remote_tmp).await;
+        return Err(format!("Cannot publish verified AeroCrypt marker: {e}"));
+    }
+    Ok(config_path.to_string())
 }
 
 /// Unlock encryption-capable [`OverlayKeys`] from an overlay binding plus the
@@ -1892,6 +1992,11 @@ pub(crate) fn overlay_binding_from_profile(
 /// (mirroring the CLI `reconcile_keyfile`), so a missing or spurious keyfile is
 /// a clear error instead of a confusing "wrong password" from a
 /// silently-wrong derived key.
+///
+/// When the vault is headed (`with_header` or `params.with_header`) and the
+/// remote marker is missing while local keystore config is present, the marker
+/// is rebuilt from the keystore and the outcome carries a safety warning
+/// (tracker #421 item #7). Intentional headerless vaults never auto-heal.
 #[allow(clippy::too_many_arguments)]
 async fn unlock_overlay_keys_encrypting(
     provider: &mut dyn StorageProvider,
@@ -1902,7 +2007,7 @@ async fn unlock_overlay_keys_encrypting(
     allow_init: bool,
     with_header: bool,
     use_default_salt: Option<bool>,
-) -> Result<OverlayKeys, String> {
+) -> Result<OverlayUnlockOutcome, String> {
     match params.kind.as_str() {
         "rclone-crypt" => {
             if keyfile_digest.is_some() {
@@ -1921,14 +2026,21 @@ async fn unlock_overlay_keys_encrypting(
                 _ => FilenameEncryption::Standard,
             };
             let off_suffix = rclone_crypt::resolve_off_suffix(params.off_suffix.as_deref());
-            Ok(OverlayKeys::Rclone(RcloneCryptKeys {
-                name_key,
-                data_key,
-                name_tweak,
-                filename_encryption,
-                off_suffix,
-                directory_name_encryption: params.directory_name_encryption,
-            }))
+            Ok(OverlayUnlockOutcome {
+                keys: OverlayKeys::Rclone(RcloneCryptKeys {
+                    name_key,
+                    data_key,
+                    name_tweak,
+                    filename_encryption,
+                    off_suffix,
+                    directory_name_encryption: params.directory_name_encryption,
+                }),
+                marker_restored: false,
+                marker_path: None,
+                warning: None,
+                has_legacy_marker: false,
+                has_current_marker: false,
+            })
         }
         "aerocrypt" => {
             let scope = params.remote_scope.trim_end_matches('/');
@@ -1936,6 +2048,8 @@ async fn unlock_overlay_keys_encrypting(
             let legacy_name = overlay::CRYPT_CONFIG_LEGACY_NAME;
             let new_path = format!("{}/{}", scope, new_name);
             let legacy_path = format!("{}/{}", scope, legacy_name);
+            // Headed intent: explicit apply/init flag OR profile binding withHeader.
+            let headed_intent = with_header || params.with_header;
 
             // Read-both for D5: probe new name first, fall back to legacy.
             let present_new = provider.exists(&new_path).await.unwrap_or(false);
@@ -1946,11 +2060,11 @@ async fn unlock_overlay_keys_encrypting(
             };
             let present = present_new || present_legacy;
             let config_path = if present_new {
-                new_path
+                new_path.clone()
             } else if present_legacy {
                 legacy_path
             } else {
-                new_path // for bootstrap write
+                new_path.clone() // for bootstrap write / heal target
             };
 
             // Clobber-safe existence probe. A fresh empty target must bootstrap a v3
@@ -1959,7 +2073,14 @@ async fn unlock_overlay_keys_encrypting(
             // NEVER be taken for "absent": re-init rotates the salt and would orphan
             // every file already encrypted under the existing overlay. So only an
             // explicit `exists == false` triggers the bootstrap.
-            let (config, master_key) = if present {
+    let mut marker_restored = false;
+    let mut marker_path: Option<String> = None;
+    let mut warning: Option<String> = None;
+    // Captured for ApplyOverlayResult so the GUI can offer Convert marker.
+    let has_legacy_marker_flag = present_legacy && !present_new;
+    let has_current_marker_flag = present_new;
+
+    let (config, master_key) = if present {
                 let config_bytes = provider
                     .download_to_bytes(&config_path)
                     .await
@@ -1970,15 +2091,70 @@ async fn unlock_overlay_keys_encrypting(
                     password,
                     keyfile_digest,
                 )?;
-                // T3: cache this headed vault's PUBLIC config in the local keystore
-                // so the on-demand Recovery Kit works without connecting, for headed
-                // vaults created before this build too. Best-effort and idempotent
-                // (only fills a missing entry); the remote marker stays the source of
-                // truth, so a cache miss never fails the unlock.
-                backfill_headed_overlay_config(params, &config_str);
+                // T3: cache PUBLIC config for the Recovery Kit. Pre-Tier-1 v3
+                // markers lack vault_id: rebuild a kit-ready blob (adds vault_id,
+                // same salt/key) into the keystore only — the remote marker is
+                // left untouched until the user runs migrate-marker / Convert.
+                let kit_blob = if derived.0.vault_id().is_none() {
+                    overlay::rebuild_config_v3(&derived.0, &derived.1).unwrap_or_else(|_| {
+                        config_str.to_string()
+                    })
+                } else {
+                    config_str.to_string()
+                };
+                backfill_headed_overlay_config(params, &kit_blob);
+                if present_legacy && !present_new {
+                    // Surface once so the GUI can offer Convert marker without
+                    // requiring the ad-hoc unlock modal.
+                    let notice = "This vault still uses the legacy .aeroftp-crypt.json marker. \
+                         Convert it to .aerocrypt.tsv (crypt migrate-marker / Convert marker) \
+                         for full recovery-kit support.";
+                    warning = Some(match warning.take() {
+                        Some(prev) => format!("{prev} {notice}"),
+                        None => notice.to_string(),
+                    });
+                }
                 derived
             } else if let Some(config_json) = local_headerless_config_from_params(params)? {
-                derive_aerocrypt_overlay_keys_from_config(&config_json, password, keyfile_digest)?
+                // Local keystore has public config and remote marker is absent.
+                // Headerless by design: unlock only. Headed intent: rebuild the
+                // remote safety net from the keystore and warn once (#421 #7).
+                let derived = derive_aerocrypt_overlay_keys_from_config(
+                    &config_json,
+                    password,
+                    keyfile_digest,
+                )?;
+                if headed_intent {
+                    match restore_headed_marker_from_config(
+                        provider,
+                        &new_path,
+                        &derived.0,
+                        &derived.1,
+                    )
+                    .await
+                    {
+                        Ok(path) => {
+                            marker_restored = true;
+                            marker_path = Some(path);
+                            warning = Some(MARKER_RESTORED_WARNING.to_string());
+                            // Refresh keystore cache with the published marker text
+                            // (best-effort; salt/config already present for headerless).
+                            backfill_headed_overlay_config(params, &config_json);
+                        }
+                        Err(e) => {
+                            // Still unlock from keystore (availability) but warn that
+                            // the remote safety net remains missing.
+                            warning = Some(format!(
+                                "AeroCrypt headed marker is missing on the remote. Unlocked from \
+                                 the local keystore, but the remote safety net could not be \
+                                 restored ({e}). Re-run `aeroftp-cli crypt to-headed --profile …` \
+                                 or reconnect when the remote is writable. Do not delete keystore \
+                                 backups."
+                            ));
+                        }
+                    }
+                }
+                derived
             } else if allow_init {
                 // Bootstrap a fresh AECR v3 overlay and persist its config so the
                 // empty folder becomes a self-describing crypt store on first
@@ -2078,13 +2254,15 @@ async fn unlock_overlay_keys_encrypting(
                 std::fs::write(staged.path(), json.as_bytes())
                     .map_err(|e| format!("Cannot stage AeroCrypt overlay config: {e}"))?;
 
-                if with_header {
+                if headed_intent {
                     // Headed vault: the on-remote marker is the source of truth,
                     // exactly like the CLI `crypt init --with-header`. Upload it, then
                     // ALSO cache the PUBLIC config in the local keystore (best-effort,
                     // T3) so the on-demand Recovery Kit works in every mode without a
                     // connection. The marker stays authoritative, so a cache-write
                     // failure is logged and never fails the create.
+                    // First-time create (not a heal of a deleted marker): no safety
+                    // warning — the user just opted into headed mode.
                     provider
                         .upload(&staged.path().to_string_lossy(), &config_path, None)
                         .await
@@ -2141,7 +2319,14 @@ async fn unlock_overlay_keys_encrypting(
                     "Cannot read AeroCrypt overlay config: no overlay at {config_path}"
                 ));
             };
-            Ok(OverlayKeys::AeroCrypt { master_key, config })
+            Ok(OverlayUnlockOutcome {
+                keys: OverlayKeys::AeroCrypt { master_key, config },
+                marker_restored,
+                marker_path,
+                warning,
+                has_legacy_marker: has_legacy_marker_flag,
+                has_current_marker: has_current_marker_flag,
+            })
         }
         other => Err(format!("Unsupported crypt overlay kind: {other}")),
     }
@@ -2157,12 +2342,31 @@ async fn unlock_overlay_keys_encrypting(
 // reverts it to raw (showing plaintext outside the encrypted scope, exactly like
 // the old command layer). Both operate on the same `Option<Box<dyn ...>>` slot.
 
+/// Result of applying a crypt overlay to a live provider slot.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApplyOverlayResult {
+    /// Normalized plaintext scope the overlay is anchored at.
+    pub scope: String,
+    /// True when a missing headed marker was rewritten from the local keystore.
+    pub marker_restored: bool,
+    /// Remote path of the restored marker (when `marker_restored`).
+    pub marker_path: Option<String>,
+    /// One-shot safety warning for the user (CLI stderr / GUI toast).
+    pub warning: Option<String>,
+    /// True when only the legacy `.aeroftp-crypt.json` marker is present (no TSV).
+    pub has_legacy_marker: bool,
+    /// True when the current `.aerocrypt.tsv` marker is present.
+    pub has_current_marker: bool,
+}
+
 /// Apply a crypt overlay to a live provider slot in place. Any existing overlay
 /// is reverted first (re-anchor / refresh / refresh-after-scope-change), so the
 /// slot is never double-wrapped. The keys are derived against the live
 /// connection; FAIL-CLOSED: on any unlock error the slot keeps the untouched raw
-/// provider (the borrow is released without taking), so a failed unlock never
-/// drops the session. Returns the normalized plaintext scope on success.
+/// provider (we borrowed via `&mut`, never took), so a failed unlock never
+/// drops the session. Returns the normalized plaintext scope plus optional
+/// headed-marker heal info (tracker #421 item #7).
 pub async fn apply_overlay_in_place(
     slot: &mut Option<Box<dyn StorageProvider>>,
     binding: &OverlayUnlockParams,
@@ -2171,7 +2375,7 @@ pub async fn apply_overlay_in_place(
     keyfile_digest: Option<&[u8; 32]>,
     with_header: bool,
     use_default_salt: Option<bool>,
-) -> Result<String, String> {
+) -> Result<ApplyOverlayResult, String> {
     // Revert any prior overlay so a re-apply (re-anchor / scope change) can never
     // stack a second decorator on top of the first.
     clear_overlay_in_place(slot);
@@ -2185,23 +2389,30 @@ pub async fn apply_overlay_in_place(
     // folder has no config yet (clobber-safe), so "activate overlay here" works on
     // an empty folder instead of failing "could not be unlocked". A Some
     // keyfile_digest makes that bootstrap a keyfile vault (Tier 1).
-    let keys = unlock_overlay_keys_encrypting(
+    let outcome = unlock_overlay_keys_encrypting(
         &mut **provider,
         binding,
         password,
         salt,
         keyfile_digest,
         true,
-        with_header,
+        with_header || binding.with_header,
         use_default_salt,
     )
     .await?;
     let raw = slot
         .take()
         .expect("provider present after a successful unlock");
-    let wrapped = CryptOverlayProvider::new(raw, keys, &binding.remote_scope);
+    let wrapped = CryptOverlayProvider::new(raw, outcome.keys, &binding.remote_scope);
     *slot = Some(Box::new(wrapped));
-    Ok(norm_anchor(&binding.remote_scope))
+    Ok(ApplyOverlayResult {
+        scope: norm_anchor(&binding.remote_scope),
+        marker_restored: outcome.marker_restored,
+        marker_path: outcome.marker_path,
+        warning: outcome.warning,
+        has_legacy_marker: outcome.has_legacy_marker,
+        has_current_marker: outcome.has_current_marker,
+    })
 }
 
 /// Revert a live provider slot to its raw inner when it currently holds a
@@ -3141,6 +3352,7 @@ mod tests {
             profile_id: Some("profile-headerless".to_string()),
             local_config_json: Some(config_json),
             local_config_salt: Some(salt_b64),
+            with_header: false,
         };
 
         let inner = Box::new(MemProvider::new());
@@ -3165,7 +3377,75 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(got, payload);
+        // Headerless: remote marker must NOT appear.
+        assert!(
+            !provider.exists("/Vault/.aerocrypt.tsv").await.unwrap(),
+            "headerless unlock must not write a remote marker"
+        );
         let _ = tokio::fs::remove_dir_all(&dir).await;
+    }
+
+    /// Tracker #421 item #7: headed vault with local keystore config and a
+    /// missing remote marker must rebuild `.aerocrypt.tsv` and unlock.
+    #[tokio::test]
+    async fn wrap_aerocrypt_headed_restores_missing_marker_from_keystore() {
+        use base64::Engine as _;
+
+        let salt = overlay::random_salt_v3();
+        let tmp = OverlayConfig::v3_bootstrap(salt);
+        let master_key = overlay::derive_master_key(&tmp, "overlay-pass").unwrap();
+        let config_json = overlay::init_config_v3(&salt, &master_key).unwrap();
+        let salt_b64 = base64::engine::general_purpose::STANDARD.encode(salt);
+        let binding = OverlayUnlockParams {
+            kind: "aerocrypt".to_string(),
+            remote_scope: "/Vault".to_string(),
+            filename_encryption: "standard".to_string(),
+            directory_name_encryption: true,
+            off_suffix: None,
+            profile_id: Some("profile-headed".to_string()),
+            local_config_json: Some(config_json.clone()),
+            local_config_salt: Some(salt_b64),
+            with_header: true,
+        };
+
+        let mut mem = MemProvider::new();
+        assert!(
+            !mem.exists("/Vault/.aerocrypt.tsv").await.unwrap(),
+            "precondition: no marker"
+        );
+        let mut provider = wrap_provider_with_overlay_if_bound(
+            Box::new(mem),
+            Some(&binding),
+            "overlay-pass",
+            "",
+            None,
+        )
+        .await
+        .unwrap();
+
+        // Marker restored on the raw remote (visible through the decorator as
+        // a hidden config name — probe via concrete peel).
+        let raw = concrete_provider_mut(&mut *provider);
+        assert!(
+            raw.exists("/Vault/.aerocrypt.tsv").await.unwrap(),
+            "headed unlock must restore the missing marker from keystore"
+        );
+        let bytes = raw
+            .download_to_bytes("/Vault/.aerocrypt.tsv")
+            .await
+            .unwrap();
+        let restored = String::from_utf8(bytes).unwrap();
+        // Same salt/vault identity as the local config (rebuild preserves them).
+        let expected = overlay::parse_config(&config_json).unwrap();
+        let got = overlay::parse_config(&restored).unwrap();
+        assert_eq!(expected.vault_id(), got.vault_id());
+        match (&expected, &got) {
+            (
+                OverlayConfig::V3 { salt: s1, .. },
+                OverlayConfig::V3 { salt: s2, .. },
+            ) => assert_eq!(s1, s2),
+            _ => panic!("expected v3 configs"),
+        }
     }
 
     /// Phase 3 on-demand model: applying an overlay to a live slot wraps the raw
@@ -3184,6 +3464,7 @@ mod tests {
             profile_id: None,
             local_config_json: None,
             local_config_salt: None,
+            with_header: false,
         };
 
         // No-op on a raw slot.
@@ -3193,10 +3474,11 @@ mod tests {
         );
 
         // Apply: the slot now holds a decorator.
-        let scope = apply_overlay_in_place(&mut slot, &binding, "pw", "salt", None, true, None)
+        let applied = apply_overlay_in_place(&mut slot, &binding, "pw", "salt", None, true, None)
             .await
             .unwrap();
-        assert_eq!(scope, "");
+        assert_eq!(applied.scope, "");
+        assert!(!applied.marker_restored);
         assert!(
             slot.as_mut()
                 .unwrap()
@@ -3279,6 +3561,7 @@ mod tests {
             profile_id: None,
             local_config_json: None,
             local_config_salt: None,
+            with_header: false,
         };
         let mut wrapped =
             wrap_provider_with_overlay_if_bound(inner, Some(&binding), "pw", "salt", None)
@@ -3303,6 +3586,7 @@ mod tests {
             profile_id: None,
             local_config_json: None,
             local_config_salt: None,
+            with_header: false,
         };
         // No config on the (empty) remote -> unlock fails, no raw provider handed
         // back.
@@ -3326,6 +3610,7 @@ mod tests {
             profile_id: None,
             local_config_json: None,
             local_config_salt: None,
+            with_header: false,
         };
         // Bootstrap a real v3 config under the CORRECT password.
         let mut mem = MemProvider::new();
@@ -3368,6 +3653,7 @@ mod tests {
             profile_id: None,
             local_config_json: None,
             local_config_salt: None,
+            with_header: false,
         };
         let mut mem = MemProvider::new();
         unlock_overlay_keys_encrypting(&mut mem, &binding, "pw", "", None, true, true, None)
@@ -3413,6 +3699,7 @@ mod tests {
             profile_id: None,
             local_config_json: None,
             local_config_salt: None,
+            with_header: false,
         };
         let res =
             unlock_overlay_keys_encrypting(&mut mem, &binding, "pw", "", None, true, true, None)
@@ -3444,6 +3731,7 @@ mod tests {
             profile_id: None,
             local_config_json: None,
             local_config_salt: None,
+            with_header: false,
         };
 
         let res =
@@ -3487,13 +3775,14 @@ mod tests {
             profile_id: None,
             local_config_json: None,
             local_config_salt: None,
+            with_header: false,
         };
 
         let keys =
             unlock_overlay_keys_encrypting(&mut mem, &binding, "pw", "", None, true, true, None)
                 .await
                 .expect("an empty existing scope must bootstrap a v3 overlay");
-        assert!(matches!(keys, OverlayKeys::AeroCrypt { .. }));
+        assert!(matches!(keys.keys, OverlayKeys::AeroCrypt { .. }));
         assert!(
             mem.exists("/Vault/.aerocrypt.tsv")
                 .await
@@ -3519,6 +3808,7 @@ mod tests {
             profile_id: None,
             local_config_json: None,
             local_config_salt: None,
+            with_header: false,
         };
         // allow_init=true (interactive), with_header=false (headerless), empty folder.
         let res =
@@ -3552,13 +3842,14 @@ mod tests {
             profile_id: None,
             local_config_json: None,
             local_config_salt: None,
+            with_header: false,
         };
 
         let keys =
             unlock_overlay_keys_encrypting(&mut mem, &binding, "pw", "", None, true, true, None)
                 .await
                 .expect("empty folder must bootstrap a v3 overlay");
-        assert!(matches!(keys, OverlayKeys::AeroCrypt { .. }));
+        assert!(matches!(keys.keys, OverlayKeys::AeroCrypt { .. }));
 
         // The config was persisted to the remote and is v3.
         let cfg = mem
@@ -3572,7 +3863,7 @@ mod tests {
             unlock_overlay_keys_encrypting(&mut mem, &binding, "pw", "", None, true, true, None)
                 .await
                 .expect("re-activation must read the existing config");
-        assert!(matches!(keys2, OverlayKeys::AeroCrypt { .. }));
+        assert!(matches!(keys2.keys, OverlayKeys::AeroCrypt { .. }));
         let still: Vec<String> = mem
             .raw_paths()
             .into_iter()
@@ -3595,6 +3886,7 @@ mod tests {
             profile_id: None,
             local_config_json: None,
             local_config_salt: None,
+            with_header: false,
         };
         let res =
             unlock_overlay_keys_encrypting(&mut mem, &other, "pw", "", None, false, true, None)
@@ -3611,7 +3903,7 @@ mod tests {
 
     /// `expect_err` for unlock results. [`OverlayKeys`] intentionally has no
     /// `Debug` impl (key material), so `Result::expect_err` cannot be used.
-    fn unlock_err(res: Result<OverlayKeys, String>, msg: &str) -> String {
+    fn unlock_err(res: Result<OverlayUnlockOutcome, String>, msg: &str) -> String {
         match res {
             Ok(_) => panic!("{msg}"),
             Err(e) => e,
@@ -3636,6 +3928,7 @@ mod tests {
             profile_id: None,
             local_config_json: None,
             local_config_salt: None,
+            with_header: false,
         };
         let digest = crate::aerocrypt::keyfile_digest_from_file(
             crate::aerocrypt::generate_keyfile_v1().as_bytes(),
@@ -3706,6 +3999,7 @@ mod tests {
             profile_id: None,
             local_config_json: None,
             local_config_salt: None,
+            with_header: false,
         };
         unlock_overlay_keys_encrypting(&mut mem, &pw_only, "pw", "", None, true, true, None)
             .await
@@ -3744,6 +4038,7 @@ mod tests {
             profile_id: None,
             local_config_json: None,
             local_config_salt: None,
+            with_header: false,
         };
         let digest = crate::aerocrypt::keyfile_digest(b"kf");
         let err = unlock_err(

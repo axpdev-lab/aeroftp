@@ -4765,6 +4765,28 @@ enum CryptCommands {
         #[arg(long)]
         keyfile: Option<String>,
     },
+    /// Re-parse a saved Emergency Kit or headed marker and confirm it still
+    /// matches the active profile keystore config (vault_id, salt, version, KDF).
+    /// Offline by default: no password, no network. Optional remote probe when
+    /// --kit is omitted and a headed marker is present on the remote.
+    KitVerify {
+        /// Server URL (omit when using --profile). Only used when probing a
+        /// remote headed marker (no --kit).
+        #[arg(default_value = "_", hide_default_value = true)]
+        url: String,
+        /// Remote encrypted directory (scope). Used only when probing a remote
+        /// headed marker (no --kit). Defaults to the profile initial path.
+        #[arg(default_value = "/")]
+        path: String,
+        /// Path to a saved kit text file, QR payload dump, .aerocrypt.tsv, or
+        /// legacy .aeroftp-crypt.json. When set, verification is fully offline.
+        #[arg(long)]
+        kit: Option<String>,
+        /// Inline kit/marker text (alternative to --kit). Useful for piping a
+        /// QR scan or a pasted kit block. Mutually exclusive with --kit.
+        #[arg(long, conflicts_with = "kit")]
+        kit_text: Option<String>,
+    },
     /// List files in an encrypted overlay (decrypted names)
     Ls {
         /// Server URL (omit when using --profile)
@@ -23718,7 +23740,7 @@ fn cmd_agent_info(cli: &Cli, redact_identifiers: bool) -> i32 {
                 {"name": "serve", "syntax": "aeroftp-cli serve <http|webdav|ftp|sftp> --profile NAME /path", "description": "Expose a remote over a local protocol bridge"},
                 {"name": "daemon", "syntax": "aeroftp-cli daemon <start|stop|status>", "description": "Manage the background jobs daemon"},
                 {"name": "jobs", "syntax": "aeroftp-cli jobs <add|list|status|cancel>", "description": "Manage queued background jobs"},
-                {"name": "crypt", "syntax": "aeroftp-cli crypt <init|ls|put|get> --profile NAME /path", "description": "Use encrypted overlay storage"},
+                {"name": "crypt", "syntax": "aeroftp-cli crypt <init|bind|unbind|to-headed|to-headerless|migrate-marker|kit-verify|ls|put|get> --profile NAME /path", "description": "Use encrypted overlay storage"},
                 {"name": "batch", "syntax": "aeroftp-cli batch file.aeroftp-script", "description": "Run batch automation scripts"},
                 {"name": "agent-info", "syntax": "aeroftp-cli agent-info --json", "description": "Show machine-readable CLI capabilities"}
             ]
@@ -25532,6 +25554,10 @@ async fn cli_apply_crypt_overlay(
         read_server_cred(&store, uid, &format!("aerocrypt_overlay_config_{}", id))
             .filter(|s| !s.is_empty());
 
+    let with_header = overlay
+        .get("withHeader")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
     let params = ftp_client_gui_lib::crypt_compare::OverlayUnlockParams {
         kind,
         remote_scope,
@@ -25545,6 +25571,7 @@ async fn cli_apply_crypt_overlay(
         } else {
             Some(salt.clone())
         },
+        with_header,
     };
     match ftp_client_gui_lib::crypt_overlay_provider::wrap_provider_with_overlay_if_bound(
         provider,
@@ -47994,6 +48021,18 @@ fn crypt_migration_result(
     to: &str,
     changed: bool,
 ) {
+    crypt_migration_result_with_warning(cli, format, base_path, from, to, changed, None);
+}
+
+fn crypt_migration_result_with_warning(
+    cli: &Cli,
+    format: OutputFormat,
+    base_path: &str,
+    from: &str,
+    to: &str,
+    changed: bool,
+    warning: Option<&str>,
+) {
     if matches!(format, OutputFormat::Json) {
         print_json(&serde_json::json!({
             "status": "ok",
@@ -48001,12 +48040,17 @@ fn crypt_migration_result(
             "from": from,
             "to": to,
             "changed": changed,
+            "marker_restored": changed && to == "headed",
+            "warning": warning,
         }));
     } else if !cli.quiet {
         if changed {
             println!("AeroCrypt metadata migrated from {from} to {to} at {base_path}");
         } else {
             println!("AeroCrypt vault at {base_path} is already {to}; nothing changed");
+        }
+        if let Some(w) = warning {
+            eprintln!("Warning: {w}");
         }
     }
 }
@@ -48159,6 +48203,11 @@ async fn cmd_crypt_to_headerless(
         );
         let _ = provider.disconnect().await;
         return code;
+    }
+    // Clear headed intent so connect no longer tries to auto-heal a marker the
+    // user deliberately removed (tracker #421 #7).
+    if let Err(e) = set_profile_crypt_with_header(cli, &store, &profile_id, false) {
+        eprintln!("Warning: marker removed but could not clear profile withHeader: {e}");
     }
     crypt_migration_result(cli, format, &base_path, "headed", "headerless", true);
     let _ = provider.disconnect().await;
@@ -48341,7 +48390,21 @@ async fn cmd_crypt_to_headed(
         return code;
     }
 
-    crypt_migration_result(cli, format, &base_path, "headerless", "headed", true);
+    // Persist headed intent on the profile so subsequent connect/CLI wrap will
+    // auto-heal if the marker is deleted again (tracker #421 #7).
+    if let Err(e) = set_profile_crypt_with_header(cli, &store, &profile_id, true) {
+        eprintln!("Warning: marker published but could not set profile withHeader: {e}");
+    }
+
+    crypt_migration_result_with_warning(
+        cli,
+        format,
+        &base_path,
+        "headerless",
+        "headed",
+        true,
+        Some(ftp_client_gui_lib::crypt_overlay_provider::MARKER_RESTORED_WARNING),
+    );
     let _ = provider.disconnect().await;
     0
 }
@@ -48705,12 +48768,37 @@ fn bind_crypt_overlay_to_profile(
     password: &str,
     keyfile_path: Option<&str>,
 ) -> Result<(), String> {
+    bind_crypt_overlay_to_profile_ex(
+        cli,
+        store,
+        uid,
+        profile_id,
+        remote_scope,
+        password,
+        keyfile_path,
+        false,
+    )
+}
+
+/// Like [`bind_crypt_overlay_to_profile`], with explicit headed intent.
+#[allow(clippy::too_many_arguments)]
+fn bind_crypt_overlay_to_profile_ex(
+    cli: &Cli,
+    store: &CredentialStore,
+    uid: Option<i64>,
+    profile_id: &str,
+    remote_scope: &str,
+    password: &str,
+    keyfile_path: Option<&str>,
+    with_header: bool,
+) -> Result<(), String> {
     let binding = serde_json::json!({
         "enabled": true,
         "kind": "aerocrypt",
         "remoteScope": remote_scope,
         "filenameEncryption": "standard",
         "directoryNameEncryption": true,
+        "withHeader": with_header,
     });
     update_profile_field_in_vault(cli, store, profile_id, "aeroCryptOverlay", binding)?;
     if !password.is_empty() {
@@ -48745,8 +48833,9 @@ fn bind_after_init(
     remote_scope: &str,
     password: &str,
     keyfile_path: Option<&str>,
+    with_header: bool,
 ) {
-    match bind_crypt_overlay_to_profile(
+    match bind_crypt_overlay_to_profile_ex(
         cli,
         store,
         uid,
@@ -48754,6 +48843,7 @@ fn bind_after_init(
         remote_scope,
         password,
         keyfile_path,
+        with_header,
     ) {
         Ok(()) => {
             if !cli.quiet && !matches!(format, OutputFormat::Json) {
@@ -48765,6 +48855,175 @@ fn bind_after_init(
         Err(e) => {
             eprintln!("Warning: overlay created but profile binding failed: {e}");
         }
+    }
+}
+
+/// Set or clear `aeroCryptOverlay.withHeader` on a saved profile without
+/// touching secrets. Used by `crypt to-headed` / `to-headerless` so connect-time
+/// heal knows the vault's headed intent (tracker #421 item #7).
+fn set_profile_crypt_with_header(
+    cli: &Cli,
+    store: &CredentialStore,
+    profile_id: &str,
+    with_header: bool,
+) -> Result<(), String> {
+    let profiles = load_active_user_profiles(cli, store)?;
+    let profile = profiles
+        .iter()
+        .find(|p| p.get("id").and_then(|v| v.as_str()) == Some(profile_id))
+        .ok_or_else(|| format!("Profile {profile_id} not found"))?;
+    let mut overlay = profile
+        .get("aeroCryptOverlay")
+        .cloned()
+        .unwrap_or_else(|| serde_json::json!({}));
+    if !overlay.is_object() {
+        overlay = serde_json::json!({});
+    }
+    if let Some(obj) = overlay.as_object_mut() {
+        obj.insert("enabled".into(), serde_json::json!(true));
+        obj.insert("kind".into(), serde_json::json!("aerocrypt"));
+        obj.insert("withHeader".into(), serde_json::json!(with_header));
+    }
+    update_profile_field_in_vault(cli, store, profile_id, "aeroCryptOverlay", overlay).map(|_| ())
+}
+
+/// `crypt kit-verify`: re-parse a saved Emergency Kit / marker and confirm it
+/// still matches the active profile keystore config (vault_id, salt, version,
+/// KDF). Offline when `--kit` / `--kit-text` is set; optional remote headed-marker
+/// probe when neither is set. Never requires a password.
+async fn cmd_crypt_kit_verify(
+    url: &str,
+    path: &str,
+    kit_path: Option<&str>,
+    kit_text: Option<&str>,
+    cli: &Cli,
+    format: OutputFormat,
+) -> i32 {
+    let (store, uid, profile_id) = match resolve_crypt_migration_target(cli, format) {
+        Ok(target) => target,
+        Err(code) => return code,
+    };
+    let active_config = match read_headerless_config_from_store(&store, uid, &profile_id) {
+        Ok(Some(cfg)) => cfg,
+        Ok(None) => {
+            print_error(
+                format,
+                "No recovery kit cached for this profile yet. Connect to its vault once so its \
+                 public configuration is stored locally, then re-run kit-verify.",
+                2,
+            );
+            return 2;
+        }
+        Err(e) => {
+            print_error(format, &e, 5);
+            return 5;
+        }
+    };
+
+    let (candidate, candidate_source) = if let Some(text) = kit_text {
+        (text.to_string(), "kit-text-arg".to_string())
+    } else if let Some(p) = kit_path {
+        match std::fs::read_to_string(p) {
+            Ok(s) => (s, format!("file:{p}")),
+            Err(e) => {
+                print_error(
+                    format,
+                    &format!("Cannot read kit/marker file {p}: {e}"),
+                    11,
+                );
+                return 11;
+            }
+        }
+    } else {
+        // No local kit: probe the remote headed marker (optional network path).
+        let (mut provider, initial_path) = match create_and_connect_raw(url, cli, format).await {
+            Ok(provider) => provider,
+            Err(code) => return code,
+        };
+        let base_path = normalize_remote_path(&resolve_cli_remote_path(&initial_path, path));
+        let marker = match read_remote_crypt_marker(&mut *provider, &base_path).await {
+            Ok(Some(m)) => m,
+            Ok(None) => {
+                print_error(
+                    format,
+                    &format!(
+                        "No headed marker at {base_path} and no --kit/--kit-text supplied. \
+                         Pass --kit <path> for offline verification of a saved kit."
+                    ),
+                    2,
+                );
+                let _ = provider.disconnect().await;
+                return 2;
+            }
+            Err(e) => {
+                let code = provider_error_to_exit_code(&e);
+                print_error(
+                    format,
+                    &format!("Cannot read remote AeroCrypt marker at {base_path}: {e}"),
+                    code,
+                );
+                let _ = provider.disconnect().await;
+                return code;
+            }
+        };
+        let _ = provider.disconnect().await;
+        (
+            marker.text,
+            format!("remote-marker:{base_path}"),
+        )
+    };
+
+    let report =
+        match ftp_client_gui_lib::aerocrypt::emergency_kit::verify_against_active(
+            &active_config,
+            &candidate,
+        ) {
+            Ok(r) => r,
+            Err(e) => {
+                print_error(format, &format!("Cannot parse kit/marker: {e}"), 5);
+                return 5;
+            }
+        };
+
+    if matches!(format, OutputFormat::Json) {
+        print_json(&serde_json::json!({
+            "status": if report.ok { "ok" } else { "mismatch" },
+            "profile_id": profile_id,
+            "candidate_source": candidate_source,
+            "report": report,
+        }));
+    } else if !cli.quiet {
+        if report.ok {
+            println!(
+                "OK: kit/marker matches active profile keystore config (kind={}, source={})",
+                report.candidate_kind, candidate_source
+            );
+            println!(
+                "  vault_id={}  salt={}  version={}  kdf={} (mem={} KiB, t={}, p={})",
+                report.expected.vault_id,
+                report.expected.salt,
+                report.expected.version,
+                report.expected.kdf_algorithm,
+                report.expected.kdf_mem_kib,
+                report.expected.kdf_time,
+                report.expected.kdf_lanes
+            );
+        } else {
+            eprintln!(
+                "MISMATCH: kit/marker does not match active profile keystore config (kind={}, source={})",
+                report.candidate_kind, candidate_source
+            );
+            for d in &report.details {
+                eprintln!("  - {d}");
+            }
+        }
+    }
+
+    if report.ok {
+        0
+    } else {
+        // Not-found-style: the kit is valid-but-wrong for this profile.
+        4
     }
 }
 
@@ -49097,6 +49356,7 @@ async fn cmd_crypt_init(
                         base_path.trim_end_matches('/'),
                         password,
                         keyfile_path,
+                        false, // headerless init
                     );
                 }
 
@@ -49235,6 +49495,7 @@ async fn cmd_crypt_init(
                                         base_path.trim_end_matches('/'),
                                         password,
                                         keyfile_path,
+                                        true, // headed init (--with-header)
                                     );
                                     bound = true;
                                 }
@@ -51875,6 +52136,7 @@ async fn cli_unlock_crypt_compare_keys(
         } else {
             Some(salt.clone())
         },
+        with_header: false,
     };
     match ftp_client_gui_lib::crypt_compare::unlock_overlay_keys(
         provider,
@@ -61856,6 +62118,24 @@ async fn main() {
                         }
                     }
                 },
+                CryptCommands::KitVerify {
+                    url,
+                    path,
+                    kit,
+                    kit_text,
+                } => {
+                    let (u, dir) =
+                        resolve_profile_crypt_positionals(cli.profile.is_some(), url, path, "/");
+                    cmd_crypt_kit_verify(
+                        &u,
+                        &dir,
+                        kit.as_deref(),
+                        kit_text.as_deref(),
+                        &cli,
+                        format,
+                    )
+                    .await
+                }
                 CryptCommands::Ls {
                     url,
                     path,

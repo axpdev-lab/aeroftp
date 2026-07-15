@@ -192,7 +192,10 @@
             "release_asset_download_start": "[{provider}] Downloading release asset {filename}...",
             "release_asset_download_success": "[{provider}] Downloaded release asset {filename}",
             "release_asset_download_error": "[{provider}] Failed to download release asset {filename}",
-            "session_resumed": "Resumed live session to {server}"
+            "session_resumed": "Resumed live session to {server}",
+            "aerocrypt_marker_migrate": "Converting AeroCrypt marker to .aerocrypt.tsv…",
+            "aerocrypt_marker_migrated": "AeroCrypt marker converted to .aerocrypt.tsv",
+            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed"
         },
         "activityPanel": {
             "awaitingCommands": "Awaiting commands...",
@@ -1622,6 +1625,21 @@
             "showKit": "Recovery kit",
             "hideKit": "Close",
             "kitUnavailable": "The recovery kit is not available for this vault yet.",
+            "verifyKit": "Verify kit…",
+            "verifyKitHint": "Pick a saved kit text, QR dump, .aerocrypt.tsv or legacy .aeroftp-crypt.json and confirm it still matches this profile's keystore (vault ID, salt, version, KDF). Offline, no password.",
+            "verifyKitOk": "Match: this kit/marker matches the active profile keystore config.",
+            "verifyKitMismatch": "Mismatch: this kit/marker does not match the active profile keystore config.",
+            "verifyKitKind": "Detected input: {kind}",
+            "kitNotCachedYet": "No recovery kit is cached for this profile yet. Connect once so its public configuration is stored locally (this happens automatically on connect), then reopen the recovery kit. This is not an error.",
+            "kitNeedsVaultIdUpgrade": "This vault was created before the recovery-kit vault ID field existed. Connect once and, if the remote still uses a legacy .aeroftp-crypt.json marker, convert it to .aerocrypt.tsv (Convert marker). The kit becomes available after a successful connect that writes a Tier-1 config with vault ID.",
+            "kitSaved": "Recovery kit saved to {path}",
+            "kitPrintFailed": "Could not open the print dialog. Use Save kit to file instead.",
+            "legacyMarkerConnectBanner": "This vault still uses the legacy .aeroftp-crypt.json marker. Convert it to .aerocrypt.tsv to keep full recovery-kit support and the current format.",
+            "legacyMarkerConvertAction": "Convert marker…",
+            "markerMissingRestoredTitle": "AeroCrypt safety net restored",
+            "markerMissingRestoredBody": "The remote marker (.aerocrypt.tsv) was missing and was rebuilt from the local keystore. Do not delete it again unless you switch to headerless — deleting it twice and losing the keystore locks you out.",
+            "markerMissingRestoreFailedTitle": "AeroCrypt marker still missing",
+            "markerMissingRestoreFailedBody": "Unlocked from the local keystore, but the remote safety net could not be restored: {error}",
             "defaultSaltLabel": "Default salt (opt-in, password-only portability; requires high entropy and attestation)",
             "defaultSaltStrength128": "128-bit recommended",
             "defaultSaltStrength256": "256-bit",
@@ -1634,7 +1652,9 @@
             "qrErrorCorrection": "Error correction",
             "qrRecommended": "(recommended)",
             "qrHint": "Higher levels are more resilient on printed or scanned copies.",
-            "qrPrintNote": "QR level: {level} - scan with a USB QR scanner or transcribe the text above"
+            "qrPrintNote": "QR level: {level} - scan with a USB QR scanner or transcribe the text above",
+            "migrateNeedsFactors": "Enter the overlay password or keyfile (or ensure they are stored on the profile) to convert the marker.",
+            "migrateUsesStoredFactors": "Uses the password/keyfile already stored for this profile when the fields above are empty."
         },
         "cryptomator": {
             "confirmPassword": "Confirm Password",

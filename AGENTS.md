@@ -123,6 +123,7 @@ The `profiles --json` output:
 | `crypt put` | `AEROFTP_CRYPT_PASSWORD=... aeroftp-cli --profile NAME crypt put ./file _ /dir` | Upload encrypted |
 | `crypt get` | `AEROFTP_CRYPT_PASSWORD=... aeroftp-cli --profile NAME crypt get filename _ /dir ./out` | Download + decrypt |
 | `crypt ls` | `AEROFTP_CRYPT_PASSWORD=... aeroftp-cli --profile NAME crypt ls _ /dir` | List decrypted names |
+| `crypt kit-verify` | `aeroftp-cli crypt kit-verify --profile NAME --kit ./kit.txt` | Re-parse a saved Emergency Kit / marker and confirm it matches the active profile keystore (offline; no password) |
 | `batch` | `aeroftp-cli batch script.aeroftp-script` | Run batch script (.aeroftp-script) |
 | `import` | `aeroftp-cli import rclone [--json]` | Import profiles from rclone/FileZilla |
 | `profile-export` | `aeroftp-cli profile-export backup.aeroftp [--include-credentials]` | Export profiles to an encrypted `.aeroftp` backup (GUI-compatible; secrets opt-in) |
@@ -182,7 +183,7 @@ aeroftp-cli ls --profile "Server" / --json 2>/dev/null | jq '.entries[].name'
 ## Safety Guidelines
 
 ### Safe operations (no confirmation needed)
-- `ls`, `cat`, `stat`, `find`, `tree`, `df`, `profiles`, `connect`, `agent-info`, `cleanup` (dry-run), `dedupe --mode list`
+- `ls`, `cat`, `stat`, `find`, `tree`, `df`, `profiles`, `connect`, `agent-info`, `cleanup` (dry-run), `dedupe --mode list`, `crypt kit-verify`
 
 ### Operations that modify remote state (inform user before executing)
 - `put`, `mkdir`, `mv`, `access`, `sync`, `transfer`, `crypt put`, `crypt init`

@@ -280,7 +280,15 @@ export function ServerBadges({ server, cryptDetailed = false, peerState }: { ser
         const baseTitle = cryptIsRclone ? t('introHub.cryptBadge.rcloneTitle') : t('introHub.cryptBadge.aerocryptTitle');
         // Compact (card) keeps the cipher in the identity tooltip; detailed
         // (list) shows it on the dedicated strength badge instead.
-        const identityTitle = cryptDetailed ? baseTitle : `${cryptCipher}: ${baseTitle}`;
+        // Native AeroCrypt always speaks AECR v3 on the wire today; show a short
+        // v3 chip next to the brand so pre-Tier1 / legacy vaults are not confused
+        // with "unknown format" (the recovery kit path still surfaces upgrades).
+        const aerocryptVersion = !cryptIsRclone ? 'v3' : null;
+        const identityTitle = cryptDetailed
+            ? baseTitle
+            : aerocryptVersion
+              ? `${cryptCipher} (${aerocryptVersion}): ${baseTitle}`
+              : `${cryptCipher}: ${baseTitle}`;
         return (
             <div className="flex items-center gap-1">
                 <span
@@ -289,6 +297,9 @@ export function ServerBadges({ server, cryptDetailed = false, peerState }: { ser
                 >
                     <Lock size={10} />
                     {cryptIsRclone ? t('introHub.cryptBadge.rclone') : t('introHub.cryptBadge.aerocrypt')}
+                    {aerocryptVersion && (
+                        <span className="opacity-80 font-semibold">{aerocryptVersion}</span>
+                    )}
                 </span>
                 {cryptDetailed && (
                     <span

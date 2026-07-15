@@ -1571,7 +1571,10 @@
             "overlay_failed": "암호화 오버레이의 잠금을 해제할 수 없습니다",
             "session_resumed": "{server}의 활성 세션을 다시 시작했습니다",
             "connect_cancelled": "사용자가 취소함: 목록 조회 중지, 서버 연결 해제",
-            "overlay_locked": "암호화 오버레이 잠김"
+            "overlay_locked": "암호화 오버레이 잠김",
+            "aerocrypt_marker_migrate": "Converting AeroCrypt marker to .aerocrypt.tsv…",
+            "aerocrypt_marker_migrated": "AeroCrypt marker converted to .aerocrypt.tsv",
+            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed"
         },
         "protocol": {
             "selectProtocol": "프로토콜 선택...",
@@ -5087,7 +5090,24 @@
             "qrErrorCorrection": "오류 수정",
             "qrRecommended": "(권장)",
             "qrHint": "높은 수준일수록 인쇄되거나 스캔된 사본에서 더 안정적입니다.",
-            "qrPrintNote": "QR 수준: {level} - USB QR 스캐너로 스캔하거나 위의 텍스트를 옮겨 적으세요"
+            "qrPrintNote": "QR 수준: {level} - USB QR 스캐너로 스캔하거나 위의 텍스트를 옮겨 적으세요",
+            "verifyKit": "키트 확인…",
+            "verifyKitHint": "저장된 키트(텍스트, QR 덤프, .aerocrypt.tsv 또는 레거시 .aeroftp-crypt.json)를 선택하고 이 프로필 키스토어(vault ID, salt, 버전, KDF)와 일치하는지 확인합니다. 오프라인, 비밀번호 없음.",
+            "verifyKitOk": "일치: 이 키트/마커가 활성 프로필 키스토어 설정과 일치합니다.",
+            "verifyKitMismatch": "불일치: 이 키트/마커가 활성 프로필 키스토어 설정과 일치하지 않습니다.",
+            "verifyKitKind": "감지된 입력: {kind}",
+            "markerMissingRestoredTitle": "AeroCrypt safety net restored",
+            "markerMissingRestoredBody": "The remote marker (.aerocrypt.tsv) was missing and was rebuilt from the local keystore. Do not delete it again unless you switch to headerless — deleting it twice and losing the keystore locks you out.",
+            "markerMissingRestoreFailedTitle": "AeroCrypt marker still missing",
+            "markerMissingRestoreFailedBody": "Unlocked from the local keystore, but the remote safety net could not be restored: {error}",
+            "kitNotCachedYet": "No recovery kit is cached for this profile yet. Connect once so its public configuration is stored locally (this happens automatically on connect), then reopen the recovery kit. This is not an error.",
+            "kitNeedsVaultIdUpgrade": "This vault was created before the recovery-kit vault ID field existed. Connect once and, if the remote still uses a legacy .aeroftp-crypt.json marker, convert it to .aerocrypt.tsv (Convert marker). The kit becomes available after a successful connect that writes a Tier-1 config with vault ID.",
+            "kitSaved": "Recovery kit saved to {path}",
+            "kitPrintFailed": "Could not open the print dialog. Use Save kit to file instead.",
+            "legacyMarkerConnectBanner": "Legacy AeroCrypt marker",
+            "legacyMarkerConvertAction": "[NEEDS TRANSLATION] Convert marker…",
+            "migrateNeedsFactors": "Enter the overlay password or keyfile (or ensure they are stored on the profile) to convert the marker.",
+            "migrateUsesStoredFactors": "Uses the password/keyfile already stored for this profile when the fields above are empty."
         },
         "aerocryptProfile": {
             "enable": "Crypt (암호화)",

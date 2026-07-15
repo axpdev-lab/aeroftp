@@ -18596,6 +18596,7 @@ pub fn run() {
             provider_commands::provider_arm_crypt_capability,
             provider_commands::provider_apply_crypt_overlay,
             provider_commands::aerocrypt_profile_recovery_kit,
+            provider_commands::aerocrypt_verify_recovery_kit,
             provider_commands::crypt_generate_keyfile,
             provider_commands::provider_clear_crypt_overlay,
             provider_commands::provider_crypt_cwd_in_view,

@@ -108,6 +108,18 @@ interface ProviderCryptOverlayApply {
   /** AeroCrypt Tier 1 optional keyfile second factor (local path, resolved to a digest backend-side). */
   keyfilePath?: string | null;
   profileId?: string | null;
+  /** Headed vault: write/heal remote marker when missing (tracker #421 #7). */
+  withHeader?: boolean | null;
+  useDefaultSalt?: boolean | null;
+}
+
+interface ProviderApplyCryptOverlayResult {
+  scope: string;
+  markerRestored?: boolean;
+  markerPath?: string | null;
+  warning?: string | null;
+  hasLegacyMarker?: boolean;
+  hasCurrentMarker?: boolean;
 }
 
 interface ImportedServerProfile {
@@ -3770,28 +3782,143 @@ interface UpdateVerificationInfo {
 
   // Right-click the crypt overlay badge: a small menu to toggle the overlay
   // on/off and, for native AeroCrypt, view/save its recovery kit any time.
+  // Optional: Convert marker (JSON→TSV) is opt-in design update — shown only
+  // when a legacy .aeroftp-crypt.json is still present (never when already TSV).
   // rclone-crypt gets toggle only (it is stateless and has no recovery kit).
   const showCryptBadgeMenu = (e: React.MouseEvent) => {
     const sess = sessions.find((s) => s.id === activeSessionId);
     const kind = sess?.cryptOverlayKind;
     if (!kind || overlayBadgeDecrypting) return;
     const lit = !!(rcloneCryptVaultId || aeroCryptVaultId);
-    const items: ContextMenuItem[] = [
-      {
-        label: lit ? t('aerocrypt.lock') : t('aerocrypt.unlock'),
-        icon: <Lock size={14} />,
-        action: () => toggleActiveCryptOverlay(),
-      },
-    ];
-    if (kind === 'aerocrypt' && sess?.savedServerId) {
-      items.push({
-        label: t('aerocryptNative.showKit'),
-        icon: <FileKey size={14} />,
-        action: () => setBadgeRecoveryKit({ id: sess.savedServerId as string, name: sess.serverName || '' }),
-        divider: true,
-      });
-    }
-    contextMenu.show(e, items);
+    const clientX = e.clientX;
+    const clientY = e.clientY;
+    void (async () => {
+      const items: ContextMenuItem[] = [
+        {
+          label: lit ? t('aerocrypt.lock') : t('aerocrypt.unlock'),
+          icon: <Lock size={14} />,
+          action: () => toggleActiveCryptOverlay(),
+        },
+      ];
+      if (kind === 'aerocrypt' && sess?.savedServerId) {
+        items.push({
+          label: t('aerocryptNative.showKit'),
+          icon: <FileKey size={14} />,
+          action: () => setBadgeRecoveryKit({ id: sess.savedServerId as string, name: sess.serverName || '' }),
+          divider: true,
+        });
+        // Probe markers on the raw transport; Convert only if legacy JSON remains.
+        let showConvert = false;
+        try {
+          const status = await invoke<{ hasCurrentMarker: boolean; hasLegacyMarker: boolean }>(
+            'aerocrypt_provider_marker_status',
+            { basePath: sess.cryptOverlay?.remoteScope || null },
+          );
+          showConvert = !!(status.hasLegacyMarker && !status.hasCurrentMarker);
+        } catch {
+          showConvert = false;
+        }
+        if (showConvert) {
+          items.push({
+            label: t('aerocryptNative.migrateLegacyMarker'),
+            icon: <FileKey size={14} />,
+            action: () => {
+              void (async () => {
+                const profileId = sess.savedServerId as string;
+                const scope = sess.cryptOverlay?.remoteScope || '';
+                const logId = humanLog.logRaw(
+                  'activity.aerocrypt_marker_migrate',
+                  'INFO',
+                  { name: sess.serverName || profileId },
+                  'running',
+                );
+                try {
+                  const password = await invoke<string>('get_credential', {
+                    account: `aerocrypt_overlay_pw_${profileId}`,
+                  }).catch(() => '');
+                  const keyfilePath = await invoke<string>('get_credential', {
+                    account: `aerocrypt_overlay_keyfile_path_${profileId}`,
+                  }).catch(() => '');
+                  if (!password && !keyfilePath) {
+                    humanLog.updateEntry(logId, {
+                      status: 'error',
+                      message: t('aerocryptNative.migrateNeedsFactors'),
+                    });
+                    notify.warning(
+                      t('aerocryptNative.legacyMarkerConnectBanner'),
+                      t('aerocryptNative.migrateNeedsFactors'),
+                    );
+                    return;
+                  }
+                  const result = await invoke<{
+                    changed: boolean;
+                    legacyDeleted: boolean;
+                    warning?: string | null;
+                  }>('aerocrypt_provider_migrate_legacy_marker', {
+                    password: password || '',
+                    keyfilePath: keyfilePath || null,
+                    basePath: scope || null,
+                  });
+                  if (result.warning) {
+                    humanLog.updateEntry(logId, {
+                      status: 'error',
+                      message: String(result.warning),
+                    });
+                    notify.warning(t('aerocryptNative.legacyMarkerConnectBanner'), String(result.warning));
+                  } else if (result.changed || result.legacyDeleted) {
+                    try {
+                      const configJson = await invoke<string | null>('aerocrypt_provider_read_config', {
+                        basePath: scope || null,
+                      });
+                      if (configJson) {
+                        let saltB64 = '';
+                        const saltLine = configJson.split('\n').find((l) => l.startsWith('salt\t'));
+                        if (saltLine) saltB64 = saltLine.split('\t')[1]?.trim() || '';
+                        await invoke('store_credential', {
+                          account: `aerocrypt_overlay_config_${profileId}`,
+                          password: configJson,
+                        });
+                        if (saltB64) {
+                          await invoke('store_credential', {
+                            account: `aerocrypt_overlay_salt_${profileId}`,
+                            password: saltB64,
+                          });
+                        }
+                      }
+                    } catch {
+                      /* kit warms on next connect */
+                    }
+                    humanLog.updateEntry(logId, {
+                      status: 'success',
+                      message: t('aerocryptNative.legacyMarkerMigrated'),
+                    });
+                    notify.success(
+                      t('aerocryptNative.legacyMarkerConnectBanner'),
+                      t('aerocryptNative.legacyMarkerMigrated'),
+                    );
+                    await loadRemoteFiles(undefined, true, true).catch(() => undefined);
+                  } else {
+                    humanLog.updateEntry(logId, {
+                      status: 'success',
+                      message: t('aerocryptNative.legacyMarkerAlreadyCurrent'),
+                    });
+                    notify.info(t('aerocryptNative.legacyMarkerAlreadyCurrent'));
+                  }
+                } catch (err) {
+                  humanLog.updateEntry(logId, { status: 'error', message: String(err) });
+                  notify.error('AeroCrypt', String(err));
+                }
+              })();
+            },
+          });
+        }
+      }
+      // Synthetic event so the menu anchors where the user right-clicked.
+      contextMenu.show(
+        { clientX, clientY, preventDefault() {}, stopPropagation() {} } as React.MouseEvent,
+        items,
+      );
+    })();
   };
 
   const activeUnifiedRemoteProfile = useMemo(() => {
@@ -4754,7 +4881,7 @@ interface UpdateVerificationInfo {
     `provider-overlay:${kind}:${owner || 'adhoc'}`;
 
   const applyProviderCryptOverlay = async (params: ProviderCryptOverlayApply): Promise<string> => {
-    const appliedScope = await invoke<string>('provider_apply_crypt_overlay', {
+    const result = await invoke<ProviderApplyCryptOverlayResult | string>('provider_apply_crypt_overlay', {
       params: {
         kind: params.kind,
         remoteScope: params.remoteScope ?? '',
@@ -4768,9 +4895,22 @@ interface UpdateVerificationInfo {
         // forwarding it here made the backend see profile_id=None and fail closed
         // with "Cannot create a headerless AeroCrypt vault without a saved profile".
         profileId: params.profileId ?? null,
-        useDefaultSalt: (params as any).useDefaultSalt ?? null,
+        withHeader: params.withHeader ?? null,
+        useDefaultSalt: params.useDefaultSalt ?? null,
       },
     });
+    // Backend returns ApplyOverlayResult { scope, markerRestored, warning, … };
+    // tolerate a plain string for forward/back compat during hot reload.
+    const appliedScope = typeof result === 'string' ? result : result.scope;
+    // Only auto-toast the missing-marker rebuild safety warning.
+    // Legacy JSON→TSV is a retrocompatible design update: opt-in via the
+    // AEROCRYPT badge context menu "Convert marker", never a connect nag.
+    if (typeof result !== 'string' && result.warning) {
+      notify.warning(
+        t('aerocryptNative.markerMissingRestoredTitle'),
+        result.warning,
+      );
+    }
     return normCryptScope(appliedScope);
   };
 
@@ -4914,6 +5054,9 @@ interface UpdateVerificationInfo {
             salt: salt || null,
             keyfilePath: keyfilePath || null,
             profileId: savedServerId,
+            // Headed intent from the saved profile: missing remote marker is
+            // healed from the keystore with a one-shot safety toast (#421 #7).
+            withHeader: !!binding.withHeader,
           },
           savedServerId,
         );
@@ -14863,6 +15006,15 @@ interface UpdateVerificationInfo {
           <AeroCryptUnlock
             onClose={() => setShowAeroCryptUnlock(false)}
             activeVaultId={aeroCryptVaultId}
+            profileId={
+              sessions.find((s) => s.id === activeSessionId)?.savedServerId
+              || cryptOverlayOwner?.savedServerId
+              || null
+            }
+            remoteScope={
+              sessions.find((s) => s.id === activeSessionId)?.cryptOverlay?.remoteScope
+              || null
+            }
             onUnlocked={(details) => {
               void (async () => {
                 try {

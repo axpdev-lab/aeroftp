@@ -202,6 +202,12 @@ pub struct OverlayUnlockParams {
     /// Scoped salt of record from `aerocrypt_overlay_salt_<id>`, used to detect
     /// local keystore divergence before deriving from `local_config_json`.
     pub local_config_salt: Option<String>,
+    /// When true, this binding expects a headed remote marker (`.aerocrypt.tsv`
+    /// / legacy `.aeroftp-crypt.json`). On unlock, if the remote marker is
+    /// missing while local keystore config is present, AeroFTP rebuilds the
+    /// marker from the keystore and surfaces a one-shot safety warning
+    /// (tracker #421 item #7). Default false = intentional headerless.
+    pub with_header: bool,
 }
 
 /// AeroCrypt overlay config filename, written at the scope root by `crypt init`.
@@ -616,6 +622,7 @@ mod tests {
             profile_id: None,
             local_config_json: None,
             local_config_salt: None,
+            with_header: false,
         }
     }
 
@@ -700,6 +707,7 @@ mod tests {
             profile_id: None,
             local_config_json: None,
             local_config_salt: None,
+            with_header: false,
         };
         let digest = crate::aerocrypt::keyfile_digest(b"kf");
         let err = unlock_err(

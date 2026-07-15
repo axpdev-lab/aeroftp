@@ -1442,12 +1442,12 @@ pub struct ApplyCryptOverlayParams {
 /// crypt-aware (plaintext paths in, ciphertext on the wire). FAIL-CLOSED: an
 /// unlock failure leaves the raw connection untouched and returns the error.
 /// Idempotent: re-applying re-anchors (the prior overlay is reverted first).
-/// Returns the normalized plaintext scope.
+/// Returns scope plus optional headed-marker heal info (tracker #421 item #7).
 #[tauri::command]
 pub async fn provider_apply_crypt_overlay(
     state: State<'_, ProviderState>,
     params: ApplyCryptOverlayParams,
-) -> Result<String, String> {
+) -> Result<crate::crypt_overlay_provider::ApplyOverlayResult, String> {
     let (local_config_json, local_config_salt) = if let Some(id) = &params.profile_id {
         if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
             let json = crate::user_partitions::resolve_active_credential(
@@ -1476,6 +1476,7 @@ pub async fn provider_apply_crypt_overlay(
         (None, None)
     };
 
+    let with_header = params.with_header.unwrap_or(false);
     let binding = crate::crypt_compare::OverlayUnlockParams {
         kind: params.kind,
         remote_scope: params.remote_scope,
@@ -1487,9 +1488,9 @@ pub async fn provider_apply_crypt_overlay(
         profile_id: params.profile_id,
         local_config_json,
         local_config_salt,
+        with_header,
     };
     let salt = params.salt.unwrap_or_default();
-    let with_header = params.with_header.unwrap_or(false);
     let use_default_salt = params.use_default_salt;
     // Keyfile second factor: resolve the picked path to its digest before
     // touching the connection; a keyfile vault with no keyfile fails closed
@@ -1498,7 +1499,7 @@ pub async fn provider_apply_crypt_overlay(
         Some(p) => Some(crate::crypt_overlay_provider::keyfile_digest_from_path(p)?),
         None => None,
     };
-    let scope = {
+    let result = {
         let mut guard = state.provider.lock().await;
         match crate::crypt_overlay_provider::apply_overlay_in_place(
             &mut guard,
@@ -1511,7 +1512,7 @@ pub async fn provider_apply_crypt_overlay(
         )
         .await
         {
-            Ok(s) => s,
+            Ok(r) => r,
             Err(e) => {
                 // The unlock reason is otherwise swallowed by the generic frontend
                 // "could not be unlocked" message. Log it (kind only, no path or
@@ -1527,10 +1528,10 @@ pub async fn provider_apply_crypt_overlay(
     state.active_crypt_overlay.store(true, Ordering::SeqCst);
     state.overlay_wrapped.store(true, Ordering::SeqCst);
     info!(
-        "Crypt overlay applied to live provider (scope: {:?})",
-        scope
+        "Crypt overlay applied to live provider (scope: {:?}, marker_restored={})",
+        result.scope, result.marker_restored
     );
-    Ok(scope)
+    Ok(result)
 }
 
 /// Build the OPTIONAL recovery kit for a saved headerless AeroCrypt profile, on
@@ -1576,6 +1577,46 @@ pub fn aerocrypt_profile_recovery_kit(
         salt.as_deref(),
     )?;
     crate::aerocrypt::emergency_kit::build_from_config_json(&config_json)
+}
+
+/// Re-parse a saved Emergency Kit text, QR payload, or headed marker and confirm
+/// its public fields (vault_id, salt, version, KDF) still match the active
+/// profile's keystore config. Offline, no password, no network. Surfaces the
+/// internal `build_from_config_json` / kit-text parser path so a user can check
+/// a printed kit occasionally without a full recovery drill (tracker #421 #6).
+#[tauri::command]
+pub fn aerocrypt_verify_recovery_kit(
+    profile_id: String,
+    kit_or_marker_text: String,
+) -> Result<crate::aerocrypt::emergency_kit::KitVerifyReport, String> {
+    let store = crate::credential_store::CredentialStore::from_cache()
+        .ok_or_else(|| "The local keystore is unavailable.".to_string())?;
+    let config_json = crate::user_partitions::resolve_active_credential(
+        &store,
+        &format!("aerocrypt_overlay_config_{profile_id}"),
+    )
+    .ok()
+    .flatten()
+    .map(|s| s.to_string())
+    .filter(|s| !s.is_empty())
+    .ok_or_else(|| {
+        "No recovery kit cached for this profile yet. Connect to its vault once so its \
+         public configuration is stored locally, then reopen Verify."
+            .to_string()
+    })?;
+    let salt = crate::user_partitions::resolve_active_credential(
+        &store,
+        &format!("aerocrypt_overlay_salt_{profile_id}"),
+    )
+    .ok()
+    .flatten()
+    .map(|s| s.to_string());
+    crate::crypt_overlay_provider::validate_headerless_config_salt(
+        &profile_id,
+        &config_json,
+        salt.as_deref(),
+    )?;
+    crate::aerocrypt::emergency_kit::verify_against_active(&config_json, &kit_or_marker_text)
 }
 
 /// Generate a fresh transfer-safe AeroCrypt keyfile (AEROFTP-KEYFILE-V1) at
