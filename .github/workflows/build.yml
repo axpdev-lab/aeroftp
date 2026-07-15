@@ -773,6 +773,8 @@ jobs:
         uses: vedantmgoyal9/winget-releaser@4ffc7888bffd451b357355dc214d43bb9f23917e # v2
         with:
           identifier: axpnet.AeroFTP
-          installers-regex: '\.exe$|\.msi$'
+          # Keep MSI published as a release asset, but avoid the WinGet x64/machine/wix
+          # validation lane while the service is failing there without a threat family.
+          installers-regex: '_x64-setup\.exe$'
           fork-user: axpnet
           token: ${{ secrets.WINGET_TOKEN }}
