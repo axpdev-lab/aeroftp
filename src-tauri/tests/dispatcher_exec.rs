@@ -98,6 +98,22 @@ fn dispatch_execs_cli_stub_and_preserves_arguments() {
 }
 
 #[test]
+fn cli_alias_without_args_shows_help_successfully() {
+    let test_dir = TestDir::new();
+    let dispatcher = copy_dispatcher(&test_dir.path);
+    write_stub(&test_dir.path.join("aeroftp-cli"), "CLI", 0);
+    write_stub(&test_dir.path.join("aeroftp.bin"), "GUI", 23);
+
+    let output = run_dispatcher(&dispatcher, "aftp", &[]);
+
+    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "CLI\nargs:[--help]\nwebkit:\n"
+    );
+}
+
+#[test]
 fn dispatch_execs_gui_stub_with_linux_webkit_env() {
     let test_dir = TestDir::new();
     let dispatcher = copy_dispatcher(&test_dir.path);

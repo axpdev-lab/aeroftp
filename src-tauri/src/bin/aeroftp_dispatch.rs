@@ -30,7 +30,11 @@ fn dispatch(argv: Vec<OsString>, route: DispatchRoute) -> Result<u8, String> {
     })?;
 
     let mut command = Command::new(&target);
-    command.args(argv.iter().skip(1));
+    if route == DispatchRoute::Cli && argv.len() == 1 {
+        command.arg("--help");
+    } else {
+        command.args(argv.iter().skip(1));
+    }
 
     #[cfg(target_os = "linux")]
     if route == DispatchRoute::Gui {

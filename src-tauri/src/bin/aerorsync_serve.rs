@@ -6,6 +6,13 @@
 
 #[cfg(not(feature = "aerorsync"))]
 fn main() {
+    if std::env::args_os().len() == 1 {
+        println!(
+            "aerorsync_serve is a development-only helper; pass --probe in aerorsync-enabled builds."
+        );
+        return;
+    }
+
     eprintln!(
         "aerorsync_serve is a development-only helper. Rebuild with \
          `--features aerorsync` to enable the native RSNP stdio server."
@@ -47,6 +54,14 @@ mod real_server {
     }
 
     pub fn run() {
+        if std::env::args_os().len() == 1 {
+            println!(
+                "rsnp-proto server version 0.0.0 protocol version {}",
+                ProtocolVersion::CURRENT.0
+            );
+            return;
+        }
+
         let cli = Cli::parse();
         if cli.probe {
             // B.4: banner aligned with stock `rsync --version` so

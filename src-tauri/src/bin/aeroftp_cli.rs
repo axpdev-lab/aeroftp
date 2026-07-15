@@ -58595,6 +58595,16 @@ async fn main() {
         eprintln!();
     }
 
+    if raw_args.len() == 1 {
+        let mut command = Cli::command();
+        if let Err(error) = command.print_help() {
+            eprintln!("Error: {error}");
+            std::process::exit(5);
+        }
+        println!();
+        return;
+    }
+
     let args = match prepare_cli_args(raw_args) {
         Ok(args) => args,
         Err(e) => {
