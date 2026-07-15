@@ -198,6 +198,7 @@ pub mod transfer_domain;
 pub mod transfer_event_sink;
 pub mod transfer_orchestrator;
 mod transfer_pool;
+mod transfer_queue_journal;
 mod transfer_queue_scan;
 pub mod transfer_router;
 pub mod transfer_settings;
@@ -11969,6 +11970,26 @@ fn clear_all_journals_cmd() -> Result<u32, String> {
     sync::clear_all_journals()
 }
 
+// ============ Transfer Queue Journal (TQ-7a: persistence + restart detection) ============
+
+#[tauri::command]
+fn save_transfer_queue_journal_cmd(
+    entries: Vec<transfer_queue_journal::TransferQueueJournalEntry>,
+) -> Result<(), String> {
+    transfer_queue_journal::save_transfer_queue_journal(entries)
+}
+
+#[tauri::command]
+fn load_transfer_queue_journal_cmd(
+) -> Result<Option<transfer_queue_journal::TransferQueueJournal>, String> {
+    transfer_queue_journal::load_transfer_queue_journal()
+}
+
+#[tauri::command]
+fn clear_transfer_queue_journal_cmd() -> Result<(), String> {
+    transfer_queue_journal::clear_transfer_queue_journal()
+}
+
 #[tauri::command]
 fn load_sync_profiles_cmd() -> Result<Vec<sync::SyncProfile>, String> {
     sync::load_sync_profiles()
@@ -18212,6 +18233,9 @@ pub fn run() {
             list_sync_journals_cmd,
             cleanup_old_journals_cmd,
             clear_all_journals_cmd,
+            save_transfer_queue_journal_cmd,
+            load_transfer_queue_journal_cmd,
+            clear_transfer_queue_journal_cmd,
             load_sync_profiles_cmd,
             save_sync_profile_cmd,
             delete_sync_profile_cmd,
