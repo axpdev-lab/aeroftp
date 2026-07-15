@@ -316,11 +316,29 @@ impl DeltaTransport for RsyncBinaryTransport {
         remote_path: &str,
         local_path: &Path,
     ) -> Result<RsyncStats, RsyncError> {
-        rsync_download(remote_path, local_path, &self.config).await
+        rsync_download(remote_path, local_path, &self.config, None).await
     }
 
     async fn upload(&self, local_path: &Path, remote_path: &str) -> Result<RsyncStats, RsyncError> {
-        rsync_upload(local_path, remote_path, &self.config).await
+        rsync_upload(local_path, remote_path, &self.config, None).await
+    }
+
+    async fn download_with_progress(
+        &self,
+        remote_path: &str,
+        local_path: &Path,
+        progress: Option<DeltaProgressSink>,
+    ) -> Result<RsyncStats, RsyncError> {
+        rsync_download(remote_path, local_path, &self.config, progress).await
+    }
+
+    async fn upload_with_progress(
+        &self,
+        local_path: &Path,
+        remote_path: &str,
+        progress: Option<DeltaProgressSink>,
+    ) -> Result<RsyncStats, RsyncError> {
+        rsync_upload(local_path, remote_path, &self.config, progress).await
     }
 }
 

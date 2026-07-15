@@ -38,6 +38,8 @@
 #![allow(dead_code)]
 
 #[cfg(unix)]
+use crate::delta_transport::DeltaProgressSink;
+#[cfg(unix)]
 use crate::providers::sftp::SharedSshHandle;
 #[cfg(unix)]
 use crate::rsync_output::{parse_line, RsyncEvent};
@@ -53,7 +55,7 @@ use std::process::Stdio;
 #[cfg(unix)]
 use std::time::Instant;
 #[cfg(unix)]
-use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
+use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncReadExt, BufReader};
 #[cfg(unix)]
 use tokio::process::Command;
 
@@ -913,6 +915,7 @@ pub async fn rsync_download(
     remote_path: &str,
     local_path: &Path,
     config: &RsyncConfig,
+    progress: Option<DeltaProgressSink>,
 ) -> Result<RsyncStats, RsyncError> {
     probe_local_rsync().await?;
 
@@ -943,7 +946,7 @@ pub async fn rsync_download(
     cmd.arg(&remote_spec);
     cmd.arg(local_path);
 
-    run_rsync(cmd).await
+    run_rsync(cmd, progress).await
 }
 
 /// Upload `local_path` to `remote_path` using delta sync.
@@ -952,6 +955,7 @@ pub async fn rsync_upload(
     local_path: &Path,
     remote_path: &str,
     config: &RsyncConfig,
+    progress: Option<DeltaProgressSink>,
 ) -> Result<RsyncStats, RsyncError> {
     probe_local_rsync().await?;
 
@@ -981,13 +985,88 @@ pub async fn rsync_upload(
     cmd.arg(local_path);
     cmd.arg(&remote_spec);
 
-    run_rsync(cmd).await
+    run_rsync(cmd, progress).await
+}
+
+/// Process rsync stdout lines, dispatching parsed events to stats and the
+/// optional progress sink.
+///
+/// Extracted from `run_rsync` so tests can feed synthetic lines without
+/// spawning a real child process.
+#[cfg(unix)]
+async fn process_rsync_stdout<R: AsyncBufRead + Unpin>(
+    reader: R,
+    progress: &mut Option<DeltaProgressSink>,
+) -> RsyncStats {
+    let mut reader = BufReader::new(reader);
+    let mut line = String::new();
+    let mut stats = RsyncStats::default();
+    let mut sent_summary: Option<RsyncStats> = None;
+    let mut warnings = Vec::<String>::new();
+
+    loop {
+        line.clear();
+        match reader.read_line(&mut line).await {
+            Ok(0) => break,
+            Ok(_) => {}
+            Err(_) => break,
+        }
+
+        if let Some(evt) = parse_line(&line) {
+            match evt {
+                RsyncEvent::Progress { bytes, percent, .. } => {
+                    if let Some(ref mut sink) = progress {
+                        // rsync --info=progress2 gives cumulative bytes transferred
+                        // and percent complete; derive an approximate total from them.
+                        // When percent == 0 early on the total is unknown (0) and the
+                        // sink treats the bar as indeterminate.
+                        let total = if percent > 0 {
+                            bytes.saturating_mul(100) / percent as u64
+                        } else {
+                            0
+                        };
+                        sink(bytes, total);
+                    }
+                }
+                RsyncEvent::Summary {
+                    sent,
+                    received,
+                    bytes_per_sec: _,
+                    total_size,
+                    speedup,
+                } => {
+                    // Two summary lines per run: merge partials.
+                    if total_size > 0 {
+                        stats.total_size = total_size;
+                        stats.speedup = speedup;
+                    }
+                    if sent + received > 0 {
+                        stats.bytes_sent = sent;
+                        stats.bytes_received = received;
+                    }
+                    sent_summary = Some(stats.clone());
+                }
+                RsyncEvent::Warning { message } => {
+                    warnings.push(message);
+                }
+                RsyncEvent::Error { .. } | RsyncEvent::FileStart { .. } => {
+                    // Errors surface via exit status + stderr; FileStart currently no-op.
+                }
+            }
+        }
+    }
+
+    stats.warnings = warnings;
+    sent_summary.unwrap_or(stats)
 }
 
 /// Execute a configured rsync [`Command`], streaming stdout through the parser
 /// and collecting stats.
 #[cfg(unix)]
-async fn run_rsync(mut cmd: Command) -> Result<RsyncStats, RsyncError> {
+async fn run_rsync(
+    mut cmd: Command,
+    mut progress: Option<DeltaProgressSink>,
+) -> Result<RsyncStats, RsyncError> {
     // The rsync output parser (`rsync_output`) uses locale-tolerant number
     // parsing (`number_parsing`) that accepts both en_US ("1,048,576" / "1.00")
     // and it_IT / de_DE / fr_FR ("1.048.576" / "1,00") conventions. No LC_*
@@ -1011,55 +1090,8 @@ async fn run_rsync(mut cmd: Command) -> Result<RsyncStats, RsyncError> {
         .ok_or_else(|| RsyncError::SpawnFailed("no stderr pipe".into()))?;
 
     let stdout_task = tokio::spawn(async move {
-        let mut reader = BufReader::new(stdout);
-        let mut line = String::new();
-        let mut stats = RsyncStats::default();
-        let mut sent_summary: Option<RsyncStats> = None;
-        let mut warnings = Vec::<String>::new();
-
-        loop {
-            line.clear();
-            match reader.read_line(&mut line).await {
-                Ok(0) => break,
-                Ok(_) => {}
-                Err(_) => break,
-            }
-
-            if let Some(evt) = parse_line(&line) {
-                match evt {
-                    RsyncEvent::Progress { .. } => {
-                        // TODO (T1.5): forward to UI via tauri event in adapter layer.
-                    }
-                    RsyncEvent::Summary {
-                        sent,
-                        received,
-                        bytes_per_sec: _,
-                        total_size,
-                        speedup,
-                    } => {
-                        // Two summary lines per run: merge partials.
-                        if total_size > 0 {
-                            stats.total_size = total_size;
-                            stats.speedup = speedup;
-                        }
-                        if sent + received > 0 {
-                            stats.bytes_sent = sent;
-                            stats.bytes_received = received;
-                        }
-                        sent_summary = Some(stats.clone());
-                    }
-                    RsyncEvent::Warning { message } => {
-                        warnings.push(message);
-                    }
-                    RsyncEvent::Error { .. } | RsyncEvent::FileStart { .. } => {
-                        // Errors surface via exit status + stderr; FileStart currently no-op.
-                    }
-                }
-            }
-        }
-
-        stats.warnings = warnings;
-        sent_summary.unwrap_or(stats)
+        let reader = BufReader::new(stdout);
+        process_rsync_stdout(reader, &mut progress).await
     });
 
     let stderr_task = tokio::spawn(async move {
@@ -1087,6 +1119,8 @@ async fn run_rsync(mut cmd: Command) -> Result<RsyncStats, RsyncError> {
 #[cfg(all(test, unix))]
 mod tests {
     use super::*;
+    use crate::delta_transport::DeltaProgressSink;
+    use std::sync::{Arc, Mutex};
 
     #[test]
     fn extract_version_full_banner() {
@@ -1299,5 +1333,68 @@ mod tests {
             Err(RsyncError::PasswordAuthUnsupported) => {}
             other => panic!("expected PasswordAuthUnsupported, got {:?}", other),
         }
+    }
+
+    /// Feed synthetic `--info=progress2` lines through `process_rsync_stdout`
+    /// and assert:
+    ///   - Each `Progress` line calls `sink(bytes, total)` with the expected values.
+    ///   - `Summary` and `Warning` lines do NOT trigger the sink.
+    #[tokio::test]
+    async fn process_rsync_stdout_dispatches_progress_not_summary_or_warning() {
+        // Three progress lines (50 %, 75 %, 100 %), one summary pair, one warning.
+        // The progress regex requires leading whitespace.
+        let input = concat!(
+            "         5,242,880  50%    2.00MB/s    0:00:02 (xfr#1, to-chk=0/1)\n",
+            "         7,864,320  75%    3.00MB/s    0:00:01 (xfr#1, to-chk=0/1)\n",
+            "        10,485,760 100%    5.00MB/s    0:00:00 (xfr#1, to-chk=0/1)\n",
+            "sent 10,486,108 bytes  received 35 bytes  2,996,040.86 bytes/sec\n",
+            "total size is 10,485,760  speedup is 1.00\n",
+            "WARNING: some files vanished before they could be transferred\n",
+        );
+
+        let calls: Arc<Mutex<Vec<(u64, u64)>>> = Arc::new(Mutex::new(Vec::new()));
+        let calls_clone = Arc::clone(&calls);
+        let sink: DeltaProgressSink = Box::new(move |transferred, total| {
+            calls_clone.lock().unwrap().push((transferred, total));
+        });
+
+        let mut progress: Option<DeltaProgressSink> = Some(sink);
+        let reader = std::io::Cursor::new(input.as_bytes());
+        let async_reader = tokio::io::BufReader::new(reader);
+        process_rsync_stdout(async_reader, &mut progress).await;
+
+        let seen = calls.lock().unwrap().clone();
+
+        // Exactly three progress calls — no Summary or Warning extras.
+        assert_eq!(seen.len(), 3, "expected 3 sink calls, got: {:?}", seen);
+
+        // 50 %: bytes=5_242_880, total = 5_242_880 * 100 / 50 = 10_485_760
+        assert_eq!(
+            seen[0],
+            (5_242_880, 10_485_760),
+            "first progress call mismatch"
+        );
+        // 75 %: bytes=7_864_320, total = 7_864_320 * 100 / 75 = 10_485_760
+        assert_eq!(
+            seen[1],
+            (7_864_320, 10_485_760),
+            "second progress call mismatch"
+        );
+        // 100 %: bytes=10_485_760, total = 10_485_760 * 100 / 100 = 10_485_760
+        assert_eq!(
+            seen[2],
+            (10_485_760, 10_485_760),
+            "third progress call mismatch"
+        );
+    }
+
+    /// Verify that a `None` sink results in zero calls and does not panic.
+    #[tokio::test]
+    async fn process_rsync_stdout_none_sink_is_noop() {
+        let input = "         5,242,880  50%    2.00MB/s    0:00:02 (xfr#1, to-chk=0/1)\n";
+        let mut progress: Option<DeltaProgressSink> = None;
+        let reader = tokio::io::BufReader::new(std::io::Cursor::new(input.as_bytes()));
+        // Should complete without panicking; no sink to verify.
+        process_rsync_stdout(reader, &mut progress).await;
     }
 }
