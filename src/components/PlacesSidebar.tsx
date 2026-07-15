@@ -354,7 +354,16 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
       }
     }, VOLUME_POLL_FALLBACK_MS);
 
+    // Immediate refetch when the app window regains focus. On Windows/macOS the
+    // watcher falls back to the 30s poll, so a drive inserted while AeroFTP was in
+    // the background could take that long to appear; refetching on focus surfaces
+    // it as soon as the user returns to the window. Cheap and idempotent on Linux,
+    // where the inotify watcher already updates instantly (#351).
+    const onFocus = () => { if (mountedRef.current) fetchVolumes(); };
+    window.addEventListener('focus', onFocus);
+
     return () => {
+      window.removeEventListener('focus', onFocus);
       disposeListener();
       if (volumeIntervalRef.current) {
         clearInterval(volumeIntervalRef.current);
