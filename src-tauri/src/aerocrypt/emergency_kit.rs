@@ -106,10 +106,7 @@ impl EmergencyKit {
         )
     }
 
-    fn public_snapshot(
-        fields: PublicKitFields,
-        requires_keyfile: bool,
-    ) -> Self {
+    fn public_snapshot(fields: PublicKitFields, requires_keyfile: bool) -> Self {
         let text = Self::render_text(
             &fields.vault_id,
             fields.version,
@@ -271,7 +268,10 @@ pub fn parse_kit_text(text: &str) -> Result<EmergencyKit, String> {
         if line.is_empty() {
             continue;
         }
-        if line.to_ascii_lowercase().contains("also requires its keyfile") {
+        if line
+            .to_ascii_lowercase()
+            .contains("also requires its keyfile")
+        {
             requires_keyfile = true;
         }
         if let Some(v) = line.strip_prefix("Vault ID:") {
@@ -301,10 +301,7 @@ pub fn parse_kit_text(text: &str) -> Result<EmergencyKit, String> {
             let (algo, params) = match rest.find('(') {
                 Some(i) => {
                     let algo = rest[..i].trim().to_string();
-                    let inside = rest[i + 1..]
-                        .trim_end_matches(')')
-                        .trim()
-                        .to_string();
+                    let inside = rest[i + 1..].trim_end_matches(')').trim().to_string();
                     (algo, inside)
                 }
                 None => {
@@ -356,8 +353,7 @@ pub fn parse_kit_text(text: &str) -> Result<EmergencyKit, String> {
     let vault_id = vault_id.ok_or_else(|| "Kit is missing Vault ID".to_string())?;
     let version = version.ok_or_else(|| "Kit is missing Version".to_string())?;
     let salt = salt.ok_or_else(|| "Kit is missing Salt".to_string())?;
-    let kdf_algorithm =
-        kdf_algorithm.ok_or_else(|| "Kit is missing KDF algorithm".to_string())?;
+    let kdf_algorithm = kdf_algorithm.ok_or_else(|| "Kit is missing KDF algorithm".to_string())?;
     let kdf_mem_kib = kdf_mem_kib.ok_or_else(|| "Kit is missing KDF mem".to_string())?;
     let kdf_time = kdf_time.ok_or_else(|| "Kit is missing KDF t".to_string())?;
     let kdf_lanes = kdf_lanes.ok_or_else(|| "Kit is missing KDF p".to_string())?;

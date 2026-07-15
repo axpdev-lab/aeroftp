@@ -2073,14 +2073,14 @@ async fn unlock_overlay_keys_encrypting(
             // NEVER be taken for "absent": re-init rotates the salt and would orphan
             // every file already encrypted under the existing overlay. So only an
             // explicit `exists == false` triggers the bootstrap.
-    let mut marker_restored = false;
-    let mut marker_path: Option<String> = None;
-    let mut warning: Option<String> = None;
-    // Captured for ApplyOverlayResult so the GUI can offer Convert marker.
-    let has_legacy_marker_flag = present_legacy && !present_new;
-    let has_current_marker_flag = present_new;
+            let mut marker_restored = false;
+            let mut marker_path: Option<String> = None;
+            let mut warning: Option<String> = None;
+            // Captured for ApplyOverlayResult so the GUI can offer Convert marker.
+            let has_legacy_marker_flag = present_legacy && !present_new;
+            let has_current_marker_flag = present_new;
 
-    let (config, master_key) = if present {
+            let (config, master_key) = if present {
                 let config_bytes = provider
                     .download_to_bytes(&config_path)
                     .await
@@ -2096,9 +2096,8 @@ async fn unlock_overlay_keys_encrypting(
                 // same salt/key) into the keystore only — the remote marker is
                 // left untouched until the user runs migrate-marker / Convert.
                 let kit_blob = if derived.0.vault_id().is_none() {
-                    overlay::rebuild_config_v3(&derived.0, &derived.1).unwrap_or_else(|_| {
-                        config_str.to_string()
-                    })
+                    overlay::rebuild_config_v3(&derived.0, &derived.1)
+                        .unwrap_or_else(|_| config_str.to_string())
                 } else {
                     config_str.to_string()
                 };
@@ -2126,10 +2125,7 @@ async fn unlock_overlay_keys_encrypting(
                 )?;
                 if headed_intent {
                     match restore_headed_marker_from_config(
-                        provider,
-                        &new_path,
-                        &derived.0,
-                        &derived.1,
+                        provider, &new_path, &derived.0, &derived.1,
                     )
                     .await
                     {
@@ -3440,10 +3436,9 @@ mod tests {
         let got = overlay::parse_config(&restored).unwrap();
         assert_eq!(expected.vault_id(), got.vault_id());
         match (&expected, &got) {
-            (
-                OverlayConfig::V3 { salt: s1, .. },
-                OverlayConfig::V3 { salt: s2, .. },
-            ) => assert_eq!(s1, s2),
+            (OverlayConfig::V3 { salt: s1, .. }, OverlayConfig::V3 { salt: s2, .. }) => {
+                assert_eq!(s1, s2)
+            }
             _ => panic!("expected v3 configs"),
         }
     }
