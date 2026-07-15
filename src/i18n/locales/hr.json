@@ -5105,7 +5105,7 @@
             "kitSaved": "Recovery kit saved to {path}",
             "kitPrintFailed": "Could not open the print dialog. Use Save kit to file instead.",
             "legacyMarkerConnectBanner": "Legacy AeroCrypt marker",
-            "legacyMarkerConvertAction": "[NEEDS TRANSLATION] Convert marker…",
+            "legacyMarkerConvertAction": "Pretvori oznaku…",
             "migrateNeedsFactors": "Enter the overlay password or keyfile (or ensure they are stored on the profile) to convert the marker.",
             "migrateUsesStoredFactors": "Uses the password/keyfile already stored for this profile when the fields above are empty."
         },
