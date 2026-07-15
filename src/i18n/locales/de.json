@@ -562,7 +562,9 @@
             },
             "staged": "in Warteschlange",
             "start": "Starten",
-            "startAll": "Alle starten"
+            "startAll": "Alle starten",
+            "restored": "Wiederhergestellt",
+            "restoredHint": "Aus einer vorherigen Sitzung wiederhergestellt. Stellen Sie die Verbindung zum selben Server wieder her und drücken Sie dann Wiederholen, um erneut auszuführen."
         },
         "settings": {
             "title": "Einstellungen",

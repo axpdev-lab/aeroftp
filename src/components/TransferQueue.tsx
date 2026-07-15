@@ -44,6 +44,11 @@ export interface TransferItem {
     isFolder?: boolean;
     totalFiles?: number;
     completedFiles?: number;
+    /**
+     * TQ-7b: item was reloaded from the transfer-queue journal after restart.
+     * Not auto-started; user reconnects and retries to re-run via the normal path.
+     */
+    restored?: boolean;
 }
 
 interface TransferQueueProps {
@@ -147,7 +152,7 @@ const QueueContextMenu: React.FC<QueueContextMenuProps> = ({ x, y, item, onRetry
             {item.status === 'staged' && onStart && (
                 menuItem(<Play size={12} />, t('transfer.start'), () => onStart(item.id))
             )}
-            {item.status === 'error' && onRetry && (
+            {(item.status === 'error' || (item.restored && item.status === 'pending')) && onRetry && (
                 menuItem(<RotateCcw size={12} />, t('transfer.retry'), () => onRetry(item.id))
             )}
             {item.status === 'error' && item.error && (
@@ -291,12 +296,22 @@ const QueueItemRow = React.memo<QueueItemRowProps>(({
 
             {/* Filename: truncate from start to always show extension */}
             <span className={`flex-1 overflow-hidden ${item.status === 'completed' ? 'text-gray-400 dark:text-gray-500' : 'text-gray-700 dark:text-gray-300'}`}
-                title={item.filename}
+                title={item.restored ? `${item.filename} - ${t('transfer.restoredHint')}` : item.filename}
             >
                 <span className="block" style={{ direction: 'rtl', textAlign: 'left', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
                     <bdi>{item.filename}</bdi>
                 </span>
             </span>
+
+            {/* TQ-7b: restored-from-previous-session badge */}
+            {item.restored && item.status === 'pending' && (
+                <span
+                    className="px-1.5 py-0.5 rounded text-[10px] font-medium shrink-0 bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300"
+                    title={t('transfer.restoredHint')}
+                >
+                    {t('transfer.restored')}
+                </span>
+            )}
 
             {/* Folder file count badge */}
             {item.isFolder && item.totalFiles !== undefined && item.totalFiles > 0 && (
@@ -368,7 +383,7 @@ const QueueItemRow = React.memo<QueueItemRowProps>(({
                         <Play size={10} />
                     </button>
                 )}
-                {item.status === 'error' && onRetryItem && (
+                {(item.status === 'error' || (item.restored && item.status === 'pending')) && onRetryItem && (
                     <button
                         onClick={(e) => { e.stopPropagation(); onRetryItem(item.id); }}
                         className="p-0.5 text-gray-400 dark:text-gray-600 hover:text-cyan-500 dark:hover:text-cyan-400 transition-colors"

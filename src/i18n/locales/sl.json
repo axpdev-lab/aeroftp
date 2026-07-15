@@ -562,7 +562,9 @@
             },
             "staged": "v vrsti",
             "start": "Začni",
-            "startAll": "Začni vse"
+            "startAll": "Začni vse",
+            "restored": "Obnovljeno",
+            "restoredHint": "Obnovljeno iz prejšnje seje. Ponovno se povežite z istim strežnikom in pritisnite Poskusi znova za ponovni zagon."
         },
         "settings": {
             "title": "Nastavitve",

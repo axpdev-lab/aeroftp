@@ -562,7 +562,9 @@
             },
             "staged": "sorban",
             "start": "Indítás",
-            "startAll": "Összes indítása"
+            "startAll": "Összes indítása",
+            "restored": "Visszaállítva",
+            "restoredHint": "Előző munkamenetből visszaállítva. Csatlakozzon újra ugyanahhoz a szerverhez, majd nyomja meg az Újra gombot az ismételt futtatáshoz."
         },
         "settings": {
             "title": "Beállítások",

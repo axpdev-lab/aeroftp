@@ -562,7 +562,9 @@
             },
             "staged": "in wachtrij",
             "start": "Starten",
-            "startAll": "Alle starten"
+            "startAll": "Alle starten",
+            "restored": "Hersteld",
+            "restoredHint": "Hersteld vanuit een vorige sessie. Maak opnieuw verbinding met dezelfde server en druk op Opnieuw proberen om opnieuw uit te voeren."
         },
         "settings": {
             "title": "Instellingen",

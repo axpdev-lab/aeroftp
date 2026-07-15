@@ -562,7 +562,9 @@
             },
             "staged": "eilėje",
             "start": "Pradėti",
-            "startAll": "Pradėti viską"
+            "startAll": "Pradėti viską",
+            "restored": "Atkurta",
+            "restoredHint": "Atkurta iš ankstesnio seanso. Iš naujo prisijunkite prie to paties serverio, tada paspauskite Bandyti dar kartą, kad paleistumėte iš naujo."
         },
         "settings": {
             "title": "Nustatymai",

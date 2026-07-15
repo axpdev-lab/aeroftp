@@ -562,7 +562,9 @@
             },
             "staged": "en cola",
             "start": "Iniciar",
-            "startAll": "Iniciar todo"
+            "startAll": "Iniciar todo",
+            "restored": "Restaurado",
+            "restoredHint": "Restaurado dunha sesión anterior. Volve conectar ao mesmo servidor e preme Reintentar para executalo de novo."
         },
         "settings": {
             "title": "Axustes",

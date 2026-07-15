@@ -562,7 +562,9 @@
             },
             "staged": "em fila",
             "start": "Iniciar",
-            "startAll": "Iniciar tudo"
+            "startAll": "Iniciar tudo",
+            "restored": "Restaurado",
+            "restoredHint": "Restaurado de uma sessão anterior. Reconecte-se ao mesmo servidor e pressione Tentar novamente para executar de novo."
         },
         "settings": {
             "title": "Configurações",

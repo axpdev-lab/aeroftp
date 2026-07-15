@@ -562,7 +562,9 @@
             },
             "staged": "已排队",
             "start": "开始",
-            "startAll": "全部开始"
+            "startAll": "全部开始",
+            "restored": "已恢复",
+            "restoredHint": "已从上次会话恢复。请重新连接到同一服务器，然后按重试以重新执行。"
         },
         "settings": {
             "title": "设置",

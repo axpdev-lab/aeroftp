@@ -562,7 +562,9 @@
             },
             "staged": "ilaran",
             "start": "Hasi",
-            "startAll": "Dena hasi"
+            "startAll": "Dena hasi",
+            "restored": "Berrezarrita",
+            "restoredHint": "Aurreko saiotik berrezarrita. Konektatu berriro zerbitzari berera, eta sakatu Saiatu berriro berriro exekutatzeko."
         },
         "settings": {
             "title": "Ezarpenak",

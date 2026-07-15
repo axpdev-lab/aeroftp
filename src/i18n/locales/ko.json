@@ -562,7 +562,9 @@
             },
             "staged": "대기 중",
             "start": "시작",
-            "startAll": "모두 시작"
+            "startAll": "모두 시작",
+            "restored": "복원됨",
+            "restoredHint": "이전 세션에서 복원되었습니다. 같은 서버에 다시 연결한 다음 재시도를 눌러 다시 실행하세요."
         },
         "settings": {
             "title": "설정",

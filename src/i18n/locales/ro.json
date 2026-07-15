@@ -562,7 +562,9 @@
             },
             "staged": "în coadă",
             "start": "Pornește",
-            "startAll": "Pornește tot"
+            "startAll": "Pornește tot",
+            "restored": "Restaurat",
+            "restoredHint": "Restaurat dintr-o sesiune anterioară. Reconectați-vă la același server, apoi apăsați Reîncercați pentru a rula din nou."
         },
         "settings": {
             "title": "Setări",

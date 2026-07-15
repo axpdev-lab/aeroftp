@@ -562,7 +562,9 @@
             },
             "staged": "vo fronte",
             "start": "Spustiť",
-            "startAll": "Spustiť všetko"
+            "startAll": "Spustiť všetko",
+            "restored": "Obnovené",
+            "restoredHint": "Obnovené z predchádzajúcej relácie. Znova sa pripojte k rovnakému serveru a stlačte Skúsiť znova pre opätovné spustenie."
         },
         "settings": {
             "title": "Nastavenia",

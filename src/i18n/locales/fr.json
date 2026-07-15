@@ -562,7 +562,9 @@
             },
             "staged": "en file",
             "start": "Démarrer",
-            "startAll": "Tout démarrer"
+            "startAll": "Tout démarrer",
+            "restored": "Restauré",
+            "restoredHint": "Restauré depuis une session précédente. Reconnectez-vous au même serveur, puis appuyez sur Réessayer pour relancer."
         },
         "settings": {
             "title": "Paramètres",

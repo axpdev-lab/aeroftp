@@ -562,7 +562,9 @@
             },
             "staged": "í biðröð",
             "start": "Byrja",
-            "startAll": "Byrja allt"
+            "startAll": "Byrja allt",
+            "restored": "Endurheimt",
+            "restoredHint": "Endurheimt úr fyrri lotu. Tengstu aftur sama netþjóni og ýttu síðan á Reyna aftur til að keyra aftur."
         },
         "settings": {
             "title": "Stillingar",

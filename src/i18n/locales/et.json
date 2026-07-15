@@ -562,7 +562,9 @@
             },
             "staged": "järjekorras",
             "start": "Käivita",
-            "startAll": "Käivita kõik"
+            "startAll": "Käivita kõik",
+            "restored": "Taastatud",
+            "restoredHint": "Taastatud eelmisest seansist. Ühendage uuesti sama serveriga ja vajutage uuesti käivitamiseks nuppu Proovi uuesti."
         },
         "settings": {
             "title": "Seaded",

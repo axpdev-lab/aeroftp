@@ -562,7 +562,9 @@
             },
             "staged": "kwenye foleni",
             "start": "Anza",
-            "startAll": "Anza zote"
+            "startAll": "Anza zote",
+            "restored": "Imerejeshwa",
+            "restoredHint": "Imerejeshwa kutoka kwa kipindi kilichopita. Unganisha tena kwenye seva ile ile, kisha bonyeza Jaribu tena ili kuendesha tena."
         },
         "settings": {
             "title": "Mipangilio",

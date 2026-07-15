@@ -33,6 +33,10 @@ export interface AddItemOptions {
     /** Optional explicit id; tests pass it in to keep assertions stable.
      *  Production code lets the hook generate one. */
     id?: string;
+    /** TQ-7b: mark item as restored from a previous session journal. */
+    restored?: boolean;
+    /** Folder transfer flag (set at enqueue when known). */
+    isFolder?: boolean;
 }
 
 /** Apply a queue status transition. Kept pure so event-order races can be
@@ -83,6 +87,8 @@ export function addItem(
             type,
             status,
             startTime: Date.now(),
+            restored: options?.restored || undefined,
+            isFolder: options?.isFolder || undefined,
         },
     ];
 }

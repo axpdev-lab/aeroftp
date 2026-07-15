@@ -562,7 +562,9 @@
             },
             "staged": "i kø",
             "start": "Start",
-            "startAll": "Start alle"
+            "startAll": "Start alle",
+            "restored": "Gjenopprettet",
+            "restoredHint": "Gjenopprettet fra en tidligere økt. Koble til den samme serveren på nytt, og trykk deretter Prøv igjen for å kjøre på nytt."
         },
         "settings": {
             "title": "Innstillinger",

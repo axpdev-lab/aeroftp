@@ -562,7 +562,9 @@
             },
             "staged": "en cua",
             "start": "Inicia",
-            "startAll": "Inicia-ho tot"
+            "startAll": "Inicia-ho tot",
+            "restored": "Restaurat",
+            "restoredHint": "Restaurat d'una sessió anterior. Torneu a connectar al mateix servidor i premeu Reintenta per tornar-ho a executar."
         },
         "settings": {
             "title": "Configuracio",

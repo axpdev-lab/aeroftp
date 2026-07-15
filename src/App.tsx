@@ -201,6 +201,15 @@ import { TransferQueue, useTransferQueue } from './components/TransferQueue';
 import { filterSurvivingBatchEntries } from './components/transferQueueActions';
 import { useCircuitBreaker } from './hooks/useCircuitBreaker';
 import { RECONNECT_ERROR_KINDS, getErrorKindI18nKey } from './utils/transferErrorClassifier';
+import {
+  buildJournalEntries,
+  displayPathForRestore,
+  isRestorableJournalStatus,
+  joinRemotePath,
+  parentDir,
+  type JournalDescriptorFields,
+  type TransferQueueJournalDto,
+} from './utils/transferQueueJournal';
 import { normalizeMegaOptions } from './utils/providerConnectionMeta';
 import { localizeRestrictedCharError } from './utils/restrictedCharError';
 import { CONNECT_CANCELLED_MARKER, CONNECT_HARD_TIMEOUT_MARKER, isConnectCancelledError, isConnectHardTimeoutError } from './utils/connectCancel';
@@ -1522,6 +1531,37 @@ const App: React.FC = () => {
   const batchCancelledRef = React.useRef(false);
   const cancelLevelRef = React.useRef(0); // 0=none, 1=soft, 2=hard
 
+  // TQ-7b: side map of re-executable descriptors (local/remote/profile).
+  // TransferItem has a single `path` and cannot reconstruct a journal entry alone.
+  const journalDescriptorsRef = React.useRef<Map<string, JournalDescriptorFields>>(new Map());
+  // Do not persist until the startup restore pass finishes (avoids wiping the journal on first paint).
+  const journalHydratedRef = React.useRef(false);
+  const journalPersistTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Latest transfer fns for restored-item retry callbacks registered at mount.
+  const transferFnsRef = React.useRef<{
+    uploadFile: (
+      localFilePath: string,
+      fileName: string,
+      isDir?: boolean,
+      fileSize?: number,
+      skipConflictCheck?: boolean,
+      commitMessage?: string,
+      explicitRemoteDir?: string,
+    ) => Promise<void>;
+    downloadFile: (
+      remoteFilePath: string,
+      fileName: string,
+      destinationPath?: string,
+      isDir?: boolean,
+      fileSize?: number,
+      skipConflictCheck?: boolean,
+    ) => Promise<void>;
+  } | null>(null);
+
+  const recordQueueDescriptor = React.useCallback((id: string, fields: JournalDescriptorFields) => {
+    journalDescriptorsRef.current.set(id, fields);
+  }, []);
+
   // TQ-4-routing: dispatcher for staged -> pending transitions.
   // When the user presses Start (per-item) or Start all in the panel, the
   // hook flips entries from 'staged' to 'pending'. This effect detects the
@@ -1530,6 +1570,9 @@ const App: React.FC = () => {
   // path keeps working unchanged (error -> pending also fires here, but
   // retryItem() already invokes the callback directly, and the executor is
   // idempotent for batch sites via a one-shot guard).
+  //
+  // TQ-7b: also debounced-persist the queue journal on every items change
+  // (after startup hydration).
   const prevQueueStatusRef = React.useRef<Map<string, string>>(new Map());
   const queueItemsRef = React.useRef(transferQueue.items);
   React.useEffect(() => {
@@ -1550,6 +1593,34 @@ const App: React.FC = () => {
       next.set(item.id, item.status);
     }
     prevQueueStatusRef.current = next;
+
+    // TQ-7b: debounced journal persist (~450ms)
+    if (!journalHydratedRef.current) return;
+    if (journalPersistTimerRef.current) {
+      clearTimeout(journalPersistTimerRef.current);
+    }
+    journalPersistTimerRef.current = setTimeout(() => {
+      journalPersistTimerRef.current = null;
+      const items = queueItemsRef.current;
+      if (items.length === 0) {
+        journalDescriptorsRef.current.clear();
+        void invoke('clear_transfer_queue_journal_cmd').catch(() => undefined);
+        return;
+      }
+      const entries = buildJournalEntries(items, journalDescriptorsRef.current, {
+        pruneMissing: true,
+      });
+      // If nothing is journalable yet (descriptors lagging), skip rather than clear.
+      if (entries.length === 0) return;
+      void invoke('save_transfer_queue_journal_cmd', { entries }).catch(() => undefined);
+    }, 450);
+
+    return () => {
+      if (journalPersistTimerRef.current) {
+        clearTimeout(journalPersistTimerRef.current);
+        journalPersistTimerRef.current = null;
+      }
+    };
   }, [transferQueue.items]);
 
   // Circuit breaker for batch transfers
@@ -8723,7 +8794,18 @@ interface UpdateVerificationInfo {
     }
   };
 
-  const uploadFile = async (localFilePath: string, fileName: string, isDir: boolean = false, fileSize?: number, _skipConflictCheck: boolean = false, commitMessage?: string) => {
+  // TQ-7b: optional explicitRemoteDir lets restore re-run an upload to the
+  // journaled remote directory without depending on currentRemotePath.
+  // All existing callers leave it undefined (legacy path unchanged).
+  const uploadFile = async (
+    localFilePath: string,
+    fileName: string,
+    isDir: boolean = false,
+    fileSize?: number,
+    _skipConflictCheck: boolean = false,
+    commitMessage?: string,
+    explicitRemoteDir?: string,
+  ) => {
     const startTime = Date.now();
     try {
       // Check if we're using a Provider (get protocol from active session as fallback)
@@ -8732,6 +8814,8 @@ interface UpdateVerificationInfo {
       const isProvider = usesProviderApi(protocol);
       const isAeroVaultOverlay = !!aeroVaultOverlaySession?.sessionId;
       const isGitHubRepoMode = (protocol === 'github' && !currentRemotePath.startsWith('/.github-releases')) || protocol === 'gitlab';
+      // Path construction base: restore path overrides the live panel cwd.
+      const remoteBase = explicitRemoteDir ?? currentRemotePath;
 
       if (isDir) {
         if (isAeroVaultOverlay) {
@@ -8740,7 +8824,7 @@ interface UpdateVerificationInfo {
         const logId = humanLog.logStart('UPLOAD', { filename: fileName });
         pendingFileLogIds.current.set(fileName, logId); // Register for adoption by backend event
         if (isProvider) {
-          const remoteRootForFolder = `${currentRemotePath}${currentRemotePath.endsWith('/') ? '' : '/'}${fileName}`;
+          const remoteRootForFolder = joinRemotePath(remoteBase, fileName);
           setScanningState({ active: true, folderName: fileName, message: t('activity.upload_start', { filename: fileName }) || `Uploading ${fileName}...`, operation: 'upload' });
           try {
             const folderAction2 = fileExistsAction === 'ask' ? '' : fileExistsAction;
@@ -8779,7 +8863,7 @@ interface UpdateVerificationInfo {
           // loadRemoteFiles() is called by the transfer event handler on 'complete'
           return;
         }
-        const remotePath = `${currentRemotePath}${currentRemotePath.endsWith('/') ? '' : '/'}${fileName}`;
+        const remotePath = joinRemotePath(remoteBase, fileName);
         const folderAction2 = fileExistsAction === 'ask' ? '' : fileExistsAction;
         const params: UploadFolderParams = {
           local_path: localFilePath,
@@ -8826,7 +8910,7 @@ interface UpdateVerificationInfo {
           }
         }
 
-        const remotePath = `${currentRemotePath}${currentRemotePath.endsWith('/') ? '' : '/'}${targetName}`;
+        const remotePath = joinRemotePath(remoteBase, targetName);
 
         if (isGitHubRepoMode && !commitMessage && gitHubRepoInfo && gitHubRepoInfo.writeModeKind !== 'unknown') {
           setGitHubCommitDialog({
@@ -8837,7 +8921,7 @@ interface UpdateVerificationInfo {
             workingBranch: gitHubRepoInfo.workingBranch || undefined,
             onCommit: (message: string) => {
               setGitHubCommitDialog(null);
-              void uploadFile(localFilePath, fileName, isDir, fileSize, _skipConflictCheck, message);
+              void uploadFile(localFilePath, fileName, isDir, fileSize, _skipConflictCheck, message, explicitRemoteDir);
             },
           });
           return;
@@ -8895,6 +8979,97 @@ interface UpdateVerificationInfo {
       }
     }
   };
+
+  // Keep restore-retry callbacks pointing at the latest transfer fns.
+  transferFnsRef.current = { uploadFile, downloadFile };
+
+  // TQ-7b: restore interrupted queue items from the journal on startup.
+  // Does NOT auto-start or auto-reconnect; items land pending + restored.
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const journal = await invoke<TransferQueueJournalDto | null>(
+          'load_transfer_queue_journal_cmd',
+        );
+        if (cancelled) return;
+        const entries = journal?.entries ?? [];
+        for (const entry of entries) {
+          if (!isRestorableJournalStatus(entry.status)) continue;
+          const direction = entry.direction === 'upload' ? 'upload' : 'download';
+          const displayPath = displayPathForRestore(
+            direction,
+            entry.local_path,
+            entry.remote_path,
+          );
+          const id = transferQueue.addItem(
+            entry.filename,
+            displayPath,
+            Number(entry.size) || 0,
+            direction,
+            {
+              restored: true,
+              isFolder: !!entry.is_folder,
+            },
+          );
+          recordQueueDescriptor(id, {
+            direction,
+            local_path: entry.local_path,
+            remote_path: entry.remote_path,
+            profile_id: entry.profile_id ?? null,
+            filename: entry.filename,
+            size: Number(entry.size) || 0,
+            is_folder: !!entry.is_folder,
+          });
+          const remoteDir = parentDir(entry.remote_path);
+          const localDir = parentDir(entry.local_path);
+          retryCallbacksRef.current.set(id, async () => {
+            transferQueue.startTransfer(id);
+            try {
+              const fns = transferFnsRef.current;
+              if (!fns) {
+                throw new Error('Transfer functions not ready');
+              }
+              if (direction === 'download') {
+                await fns.downloadFile(
+                  entry.remote_path,
+                  entry.filename,
+                  localDir || undefined,
+                  !!entry.is_folder,
+                  Number(entry.size) || undefined,
+                );
+              } else {
+                // Option (a): explicit remote dir from the journal.
+                await fns.uploadFile(
+                  entry.local_path,
+                  entry.filename,
+                  !!entry.is_folder,
+                  Number(entry.size) || undefined,
+                  false,
+                  undefined,
+                  remoteDir || undefined,
+                );
+              }
+              transferQueue.completeTransfer(id);
+            } catch (error) {
+              transferQueue.failTransfer(id, String(error));
+            }
+          });
+        }
+      } catch (e) {
+        logger.warn('[TQ-7b] failed to load transfer queue journal', e);
+      } finally {
+        if (!cancelled) {
+          journalHydratedRef.current = true;
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // Mount-only: transferQueue.addItem is stable enough (functional setState).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Two-level cancel: Stop (finish current file) → Force Stop (interrupt immediately)
   const cancelTransfer = async () => {
@@ -10552,9 +10727,20 @@ interface UpdateVerificationInfo {
             loadRemoteFiles();
           };
 
+          const uploadProfileId =
+            sessions.find(s => s.id === activeSessionId)?.savedServerId ?? null;
           if (settings.autoStartTransfers !== false) {
             for (const entry of entries) {
-              transferQueue.addItem(entry.display_name, entry.remote_path, entry.size, 'upload');
+              const id = transferQueue.addItem(entry.display_name, entry.remote_path, entry.size, 'upload');
+              recordQueueDescriptor(id, {
+                direction: 'upload',
+                local_path: entry.local_path,
+                remote_path: entry.remote_path,
+                profile_id: uploadProfileId,
+                filename: entry.display_name,
+                size: entry.size,
+                is_folder: false,
+              });
             }
             await launchBatchUpload(entries);
           } else {
@@ -10570,6 +10756,15 @@ interface UpdateVerificationInfo {
               const id = transferQueue.addItem(entry.display_name, entry.remote_path, entry.size, 'upload', { staged: true });
               idToEntry.set(id, entry);
               retryCallbacksRef.current.set(id, batchExecutor);
+              recordQueueDescriptor(id, {
+                direction: 'upload',
+                local_path: entry.local_path,
+                remote_path: entry.remote_path,
+                profile_id: uploadProfileId,
+                filename: entry.display_name,
+                size: entry.size,
+                is_folder: false,
+              });
             }
           }
           return;
@@ -10582,10 +10777,23 @@ interface UpdateVerificationInfo {
         // path falls through to the overwrite + circuit-breaker for-loop;
         // staged path returns immediately after seeding the queue.
         const stagedUploadMode = settings.autoStartTransfers === false;
+        const sequentialUploadProfileId =
+          sessions.find(s => s.id === activeSessionId)?.savedServerId ?? null;
+        const frozenUploadRemoteDir = currentRemotePath;
         const queueItems = filesToUpload.map(({ path: filePath, file }) => {
           const fileName = filePath.split(/[/\\]/).pop() || filePath;
           const size = file?.size || 0;
           const id = transferQueue.addItem(fileName, filePath, size, 'upload', stagedUploadMode ? { staged: true } : undefined);
+          const remoteFull = joinRemotePath(frozenUploadRemoteDir, fileName);
+          recordQueueDescriptor(id, {
+            direction: 'upload',
+            local_path: filePath,
+            remote_path: remoteFull,
+            profile_id: sequentialUploadProfileId,
+            filename: fileName,
+            size,
+            is_folder: !!file?.is_dir,
+          });
           retryCallbacksRef.current.set(id, async () => {
             transferQueue.startTransfer(id);
             try {
@@ -10817,9 +11025,21 @@ interface UpdateVerificationInfo {
       // TQ-4-routing: stage the dialog-selected entries. Same callback
       // is reused as the staged executor.
       const stagedDialogMode = settings.autoStartTransfers === false;
+      const dialogUploadProfileId =
+        sessions.find(s => s.id === activeSessionId)?.savedServerId ?? null;
+      const frozenDialogRemoteDir = currentRemotePath;
       const queueItems = files.map(filePath => {
         const fileName = filePath.replace(/^.*[\\\/]/, '');
         const id = transferQueue.addItem(fileName, filePath, 0, 'upload', stagedDialogMode ? { staged: true } : undefined);
+        recordQueueDescriptor(id, {
+          direction: 'upload',
+          local_path: filePath,
+          remote_path: joinRemotePath(frozenDialogRemoteDir, fileName),
+          profile_id: dialogUploadProfileId,
+          filename: fileName,
+          size: 0,
+          is_folder: false,
+        });
         retryCallbacksRef.current.set(id, async () => {
           transferQueue.startTransfer(id);
           try {
@@ -11056,9 +11276,20 @@ interface UpdateVerificationInfo {
           await loadLocalFiles(currentLocalPath);
         };
 
+        const downloadProfileId =
+          sessions.find(s => s.id === activeSessionId)?.savedServerId ?? null;
         if (settings.autoStartTransfers !== false) {
           for (const entry of entries) {
-            transferQueue.addItem(entry.display_name, entry.remote_path, entry.size, 'download');
+            const id = transferQueue.addItem(entry.display_name, entry.remote_path, entry.size, 'download');
+            recordQueueDescriptor(id, {
+              direction: 'download',
+              local_path: entry.local_path,
+              remote_path: entry.remote_path,
+              profile_id: downloadProfileId,
+              filename: entry.display_name,
+              size: entry.size,
+              is_folder: false,
+            });
           }
           await launchBatchDownload(entries);
         } else {
@@ -11074,6 +11305,15 @@ interface UpdateVerificationInfo {
             const id = transferQueue.addItem(entry.display_name, entry.remote_path, entry.size, 'download', { staged: true });
             idToEntry.set(id, entry);
             retryCallbacksRef.current.set(id, batchExecutor);
+            recordQueueDescriptor(id, {
+              direction: 'download',
+              local_path: entry.local_path,
+              remote_path: entry.remote_path,
+              profile_id: downloadProfileId,
+              filename: entry.display_name,
+              size: entry.size,
+              is_folder: false,
+            });
           }
         }
         return;
@@ -11086,8 +11326,19 @@ interface UpdateVerificationInfo {
       // Freeze paths at queue time so retry callbacks don't use stale state
       const frozenLocalPath = currentLocalPath;
       const stagedDownloadMode = settings.autoStartTransfers === false;
+      const sequentialDownloadProfileId =
+        sessions.find(s => s.id === activeSessionId)?.savedServerId ?? null;
       const queueItems = filesToDownload.map(file => {
         const id = transferQueue.addItem(file.name, file.path, file.size || 0, 'download', stagedDownloadMode ? { staged: true } : undefined);
+        recordQueueDescriptor(id, {
+          direction: 'download',
+          local_path: `${frozenLocalPath}/${file.name}`,
+          remote_path: file.path,
+          profile_id: sequentialDownloadProfileId,
+          filename: file.name,
+          size: file.size || 0,
+          is_folder: !!file.is_dir,
+        });
         retryCallbacksRef.current.set(id, async () => {
           transferQueue.startTransfer(id);
           try {

@@ -562,7 +562,9 @@
             },
             "staged": "u redu",
             "start": "Pokreni",
-            "startAll": "Pokreni sve"
+            "startAll": "Pokreni sve",
+            "restored": "Vraćeno",
+            "restoredHint": "Vraćeno iz prethodne sesije. Ponovno se povežite na isti poslužitelj, zatim pritisnite Pokušaj ponovo za ponovno pokretanje."
         },
         "settings": {
             "title": "Postavke",

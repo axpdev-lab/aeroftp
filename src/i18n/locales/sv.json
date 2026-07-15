@@ -562,7 +562,9 @@
             },
             "staged": "i kö",
             "start": "Starta",
-            "startAll": "Starta alla"
+            "startAll": "Starta alla",
+            "restored": "Återställd",
+            "restoredHint": "Återställd från en tidigare session. Anslut igen till samma server och tryck sedan på Försök igen för att köra om."
         },
         "settings": {
             "title": "Inställningar",

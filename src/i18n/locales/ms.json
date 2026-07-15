@@ -562,7 +562,9 @@
             },
             "staged": "dalam baris",
             "start": "Mula",
-            "startAll": "Mula semua"
+            "startAll": "Mula semua",
+            "restored": "Dipulihkan",
+            "restoredHint": "Dipulihkan daripada sesi sebelumnya. Sambung semula ke pelayan yang sama, kemudian tekan Cuba lagi untuk jalankan semula."
         },
         "settings": {
             "title": "Tetapan",

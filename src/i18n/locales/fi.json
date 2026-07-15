@@ -562,7 +562,9 @@
             },
             "staged": "jonossa",
             "start": "Aloita",
-            "startAll": "Aloita kaikki"
+            "startAll": "Aloita kaikki",
+            "restored": "Palautettu",
+            "restoredHint": "Palautettu edellisestä istunnosta. Yhdistä uudelleen samaan palvelimeen ja paina sitten Yritä uudelleen suorittaaksesi uudelleen."
         },
         "settings": {
             "title": "Asetukset",

@@ -562,7 +562,9 @@
             },
             "staged": "naka-queue",
             "start": "Simulan",
-            "startAll": "Simulan lahat"
+            "startAll": "Simulan lahat",
+            "restored": "Naibalik",
+            "restoredHint": "Naibalik mula sa nakaraang session. Kumonekta muli sa parehong server, pagkatapos ay pindutin ang Subukan muli para muling patakbuhin."
         },
         "settings": {
             "title": "Mga Setting",

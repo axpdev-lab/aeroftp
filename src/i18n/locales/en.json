@@ -3971,7 +3971,9 @@
                 "disk_error": "Disk full or I/O error",
                 "unknown": "Unknown error"
             },
-            "retryAllFailed": "Retry All Failed"
+            "retryAllFailed": "Retry All Failed",
+            "restored": "Restored",
+            "restoredHint": "Restored from a previous session. Reconnect to the same server, then press Retry to re-run."
         },
         "scanning": {
             "deleting": "Deleting",

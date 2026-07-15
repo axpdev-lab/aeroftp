@@ -562,7 +562,9 @@
             },
             "staged": "i kø",
             "start": "Start",
-            "startAll": "Start alle"
+            "startAll": "Start alle",
+            "restored": "Gendannet",
+            "restoredHint": "Gendannet fra en tidligere session. Opret forbindelse til den samme server igen, og tryk derefter på Prøv igen for at køre igen."
         },
         "settings": {
             "title": "Indstillinger",

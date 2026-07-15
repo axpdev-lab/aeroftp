@@ -562,7 +562,9 @@
             },
             "staged": "rindā",
             "start": "Sākt",
-            "startAll": "Sākt visu"
+            "startAll": "Sākt visu",
+            "restored": "Atjaunots",
+            "restoredHint": "Atjaunots no iepriekšējās sesijas. Atkārtoti savienojieties ar to pašu serveri un nospiediet Mēģināt vēlreiz, lai palaistu atkārtoti."
         },
         "settings": {
             "title": "Iestatījumi",

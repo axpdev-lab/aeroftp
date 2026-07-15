@@ -562,7 +562,9 @@
             },
             "staged": "w kolejce",
             "start": "Rozpocznij",
-            "startAll": "Rozpocznij wszystkie"
+            "startAll": "Rozpocznij wszystkie",
+            "restored": "Przywrócono",
+            "restoredHint": "Przywrócono z poprzedniej sesji. Połącz się ponownie z tym samym serwerem, a następnie naciśnij Ponów, aby uruchomić ponownie."
         },
         "settings": {
             "title": "Ustawienia",

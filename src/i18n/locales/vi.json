@@ -562,7 +562,9 @@
             },
             "staged": "trong hàng đợi",
             "start": "Bắt đầu",
-            "startAll": "Bắt đầu tất cả"
+            "startAll": "Bắt đầu tất cả",
+            "restored": "Đã khôi phục",
+            "restoredHint": "Đã khôi phục từ phiên trước. Kết nối lại cùng máy chủ, rồi nhấn Thử lại để chạy lại."
         },
         "settings": {
             "title": "Cài đặt",

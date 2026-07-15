@@ -562,7 +562,9 @@
             },
             "staged": "sırada",
             "start": "Başlat",
-            "startAll": "Tümünü başlat"
+            "startAll": "Tümünü başlat",
+            "restored": "Geri yüklendi",
+            "restoredHint": "Önceki oturumdan geri yüklendi. Aynı sunucuya yeniden bağlanın, ardından yeniden çalıştırmak için Yeniden dene’ye basın."
         },
         "settings": {
             "title": "Ayarlar",

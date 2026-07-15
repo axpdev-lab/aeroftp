@@ -562,7 +562,9 @@
             },
             "staged": "dalam antrian",
             "start": "Mulai",
-            "startAll": "Mulai semua"
+            "startAll": "Mulai semua",
+            "restored": "Dipulihkan",
+            "restoredHint": "Dipulihkan dari sesi sebelumnya. Sambungkan kembali ke server yang sama, lalu tekan Coba lagi untuk menjalankan ulang."
         },
         "settings": {
             "title": "Pengaturan",

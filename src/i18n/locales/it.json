@@ -965,7 +965,9 @@
             },
             "staged": "in coda",
             "start": "Avvia",
-            "startAll": "Avvia tutto"
+            "startAll": "Avvia tutto",
+            "restored": "Ripristinato",
+            "restoredHint": "Ripristinato da una sessione precedente. Riconnettiti allo stesso server, poi premi Riprova per rieseguire."
         },
         "scanning": {
             "deleting": "Eliminazione",
