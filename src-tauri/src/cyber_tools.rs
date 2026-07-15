@@ -299,17 +299,19 @@ fn symbol_group(name: &str) -> Option<&'static [u8]> {
     }
 }
 
-fn build_password_groups(
+struct PasswordGroupOptions<'a> {
     uppercase: bool,
     lowercase: bool,
     digits: bool,
     symbols: bool,
     exclude_ambiguous: bool,
-    symbol_groups: Option<&[String]>,
-    custom_characters: Option<&str>,
-    excluded_characters: Option<&str>,
-) -> Result<Vec<Vec<u8>>, String> {
-    let excluded = excluded_characters.unwrap_or_default().as_bytes();
+    symbol_groups: Option<&'a [String]>,
+    custom_characters: Option<&'a str>,
+    excluded_characters: Option<&'a str>,
+}
+
+fn build_password_groups(options: PasswordGroupOptions<'_>) -> Result<Vec<Vec<u8>>, String> {
+    let excluded = options.excluded_characters.unwrap_or_default().as_bytes();
     let filter_group = |source: &[u8]| {
         let mut group = Vec::new();
         for byte in source {
@@ -335,18 +337,26 @@ fn build_password_groups(
     };
 
     push_selected(
-        uppercase,
-        if exclude_ambiguous { UPPER } else { UPPER_FULL },
+        options.uppercase,
+        if options.exclude_ambiguous {
+            UPPER
+        } else {
+            UPPER_FULL
+        },
         "uppercase",
     )?;
     push_selected(
-        lowercase,
-        if exclude_ambiguous { LOWER } else { LOWER_FULL },
+        options.lowercase,
+        if options.exclude_ambiguous {
+            LOWER
+        } else {
+            LOWER_FULL
+        },
         "lowercase",
     )?;
     push_selected(
-        digits,
-        if exclude_ambiguous {
+        options.digits,
+        if options.exclude_ambiguous {
             DIGITS
         } else {
             DIGITS_FULL
@@ -354,8 +364,8 @@ fn build_password_groups(
         "digits",
     )?;
 
-    if symbols {
-        match symbol_groups {
+    if options.symbols {
+        match options.symbol_groups {
             Some(names) => {
                 if names.is_empty() {
                     return Err("Select at least one symbol group".into());
@@ -374,7 +384,7 @@ fn build_password_groups(
         }
     }
 
-    if let Some(custom) = custom_characters.filter(|value| !value.is_empty()) {
+    if let Some(custom) = options.custom_characters.filter(|value| !value.is_empty()) {
         if !custom.bytes().all(|byte| byte.is_ascii_graphic()) {
             return Err("Custom characters must be printable ASCII without spaces".into());
         }
@@ -393,6 +403,7 @@ fn build_password_groups(
 
 /// Generate cryptographically secure random passwords.
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub fn generate_password(
     length: usize,
     uppercase: bool,
@@ -411,16 +422,16 @@ pub fn generate_password(
     }
     let count = count.clamp(1, 10);
 
-    let groups = build_password_groups(
+    let groups = build_password_groups(PasswordGroupOptions {
         uppercase,
         lowercase,
         digits,
         symbols,
         exclude_ambiguous,
-        symbol_groups.as_deref(),
-        custom_characters.as_deref(),
-        excluded_characters.as_deref(),
-    )?;
+        symbol_groups: symbol_groups.as_deref(),
+        custom_characters: custom_characters.as_deref(),
+        excluded_characters: excluded_characters.as_deref(),
+    })?;
     if require_each_group.unwrap_or(false) && length < groups.len() {
         return Err("Password length is smaller than the number of required groups".into());
     }
@@ -497,6 +508,7 @@ pub fn generate_passphrase(
 
 /// Calculate password entropy in bits.
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub fn calculate_entropy(
     length: usize,
     uppercase: bool,
@@ -508,16 +520,16 @@ pub fn calculate_entropy(
     custom_characters: Option<String>,
     excluded_characters: Option<String>,
 ) -> f64 {
-    let Ok(groups) = build_password_groups(
+    let Ok(groups) = build_password_groups(PasswordGroupOptions {
         uppercase,
         lowercase,
         digits,
         symbols,
         exclude_ambiguous,
-        symbol_groups.as_deref(),
-        custom_characters.as_deref(),
-        excluded_characters.as_deref(),
-    ) else {
+        symbol_groups: symbol_groups.as_deref(),
+        custom_characters: custom_characters.as_deref(),
+        excluded_characters: excluded_characters.as_deref(),
+    }) else {
         return 0.0;
     };
     let mut pool = Vec::new();
@@ -533,117 +545,6 @@ pub fn calculate_entropy(
         return 0.0;
     }
     length as f64 * (pool_size as f64).log2()
-}
-
-#[cfg(test)]
-mod password_forge_tests {
-    use super::*;
-
-    fn generate_with(
-        length: usize,
-        symbols: bool,
-        symbol_groups: Option<Vec<String>>,
-        custom: Option<&str>,
-        excluded: Option<&str>,
-        require_each: bool,
-    ) -> Vec<String> {
-        generate_password(
-            length,
-            true,
-            true,
-            true,
-            symbols,
-            false,
-            10,
-            symbol_groups,
-            custom.map(str::to_owned),
-            excluded.map(str::to_owned),
-            Some(require_each),
-        )
-        .unwrap()
-    }
-
-    #[test]
-    fn custom_and_excluded_characters_are_enforced() {
-        let values = generate_with(32, false, None, Some("!_"), Some("_O0l1"), true);
-        for value in values {
-            assert_eq!(value.len(), 32);
-            assert!(value.contains('!'));
-            assert!(!value.chars().any(|c| "_O0l1".contains(c)));
-        }
-    }
-
-    #[test]
-    fn every_selected_symbol_group_is_represented() {
-        let values = generate_with(
-            20,
-            true,
-            Some(vec!["punctuation".into(), "brackets".into()]),
-            None,
-            None,
-            true,
-        );
-        for value in values {
-            assert!(value.bytes().any(|c| SYMBOL_PUNCTUATION.contains(&c)));
-            assert!(value.bytes().any(|c| SYMBOL_BRACKETS.contains(&c)));
-            assert!(value.bytes().any(|c| UPPER_FULL.contains(&c)));
-            assert!(value.bytes().any(|c| LOWER_FULL.contains(&c)));
-            assert!(value.bytes().any(|c| DIGITS_FULL.contains(&c)));
-        }
-    }
-
-    #[test]
-    fn rejects_unknown_or_empty_required_groups() {
-        assert!(generate_password(
-            16,
-            false,
-            false,
-            false,
-            true,
-            false,
-            1,
-            Some(vec!["unknown".into()]),
-            None,
-            None,
-            Some(true),
-        )
-        .is_err());
-        assert!(generate_password(
-            16,
-            true,
-            true,
-            true,
-            true,
-            false,
-            1,
-            Some(vec![]),
-            None,
-            None,
-            Some(true),
-        )
-        .is_err());
-        assert!(generate_password(
-            8,
-            true,
-            true,
-            true,
-            true,
-            false,
-            1,
-            Some(vec!["punctuation".into(), "brackets".into()]),
-            Some("xyz".into()),
-            None,
-            Some(true),
-        )
-        .is_ok());
-    }
-
-    #[test]
-    fn passphrase_wordlist_is_unique() {
-        let unique: std::collections::HashSet<_> = WORDLIST.iter().collect();
-        assert_eq!(WORDLIST.len(), 1133);
-        assert_eq!(unique.len(), WORDLIST.len());
-    }
 }
 
 // ─── EFF-Derived Short Wordlist (1133 words) ───────────────────────────────
@@ -764,3 +665,114 @@ const WORDLIST: &[&str] = &[
     "woman", "world", "worry", "worst", "worth", "wound", "wrath", "wrist", "wrote", "yacht",
     "yearn", "yeast", "yield", "young", "youth", "zebra", "zilch", "zones",
 ];
+
+#[cfg(test)]
+mod password_forge_tests {
+    use super::*;
+
+    fn generate_with(
+        length: usize,
+        symbols: bool,
+        symbol_groups: Option<Vec<String>>,
+        custom: Option<&str>,
+        excluded: Option<&str>,
+        require_each: bool,
+    ) -> Vec<String> {
+        generate_password(
+            length,
+            true,
+            true,
+            true,
+            symbols,
+            false,
+            10,
+            symbol_groups,
+            custom.map(str::to_owned),
+            excluded.map(str::to_owned),
+            Some(require_each),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn custom_and_excluded_characters_are_enforced() {
+        let values = generate_with(32, false, None, Some("!_"), Some("_O0l1"), true);
+        for value in values {
+            assert_eq!(value.len(), 32);
+            assert!(value.contains('!'));
+            assert!(!value.chars().any(|c| "_O0l1".contains(c)));
+        }
+    }
+
+    #[test]
+    fn every_selected_symbol_group_is_represented() {
+        let values = generate_with(
+            20,
+            true,
+            Some(vec!["punctuation".into(), "brackets".into()]),
+            None,
+            None,
+            true,
+        );
+        for value in values {
+            assert!(value.bytes().any(|c| SYMBOL_PUNCTUATION.contains(&c)));
+            assert!(value.bytes().any(|c| SYMBOL_BRACKETS.contains(&c)));
+            assert!(value.bytes().any(|c| UPPER_FULL.contains(&c)));
+            assert!(value.bytes().any(|c| LOWER_FULL.contains(&c)));
+            assert!(value.bytes().any(|c| DIGITS_FULL.contains(&c)));
+        }
+    }
+
+    #[test]
+    fn rejects_unknown_or_empty_required_groups() {
+        assert!(generate_password(
+            16,
+            false,
+            false,
+            false,
+            true,
+            false,
+            1,
+            Some(vec!["unknown".into()]),
+            None,
+            None,
+            Some(true),
+        )
+        .is_err());
+        assert!(generate_password(
+            16,
+            true,
+            true,
+            true,
+            true,
+            false,
+            1,
+            Some(vec![]),
+            None,
+            None,
+            Some(true),
+        )
+        .is_err());
+        assert!(generate_password(
+            8,
+            true,
+            true,
+            true,
+            true,
+            false,
+            1,
+            Some(vec!["punctuation".into(), "brackets".into()]),
+            Some("xyz".into()),
+            None,
+            Some(true),
+        )
+        .is_ok());
+    }
+
+    #[test]
+    fn passphrase_wordlist_is_unique() {
+        let unique: std::collections::HashSet<_> = WORDLIST.iter().collect();
+        assert_eq!(WORDLIST.len(), 1133);
+        assert_eq!(unique.len(), WORDLIST.len());
+    }
+}
