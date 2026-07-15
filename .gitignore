@@ -125,3 +125,4 @@ bun.lock
 .cache/
 .claude/
 .github/agents/
+.antigravitycli/
