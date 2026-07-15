@@ -58799,10 +58799,10 @@ async fn main() {
     // top-level --help. Subcommand help (e.g. `aeroftp-cli get --help`)
     // skips it so the banner doesn't dominate every screen during
     // exploration. Suppressed entirely when stderr isn't a TTY (CI,
-    // pipes), when AEROFTP_NO_BANNER is set, or when --no-banner is
+    // pipes), when AEROFTP_NO_BANNER is truthy (1/true/yes/on), or when --no-banner is
     // present anywhere on the command line.
     let raw_args: Vec<String> = std::env::args().collect();
-    let banner_suppressed = std::env::var("AEROFTP_NO_BANNER").is_ok()
+    let banner_suppressed = strict_env_truthy(std::env::var("AEROFTP_NO_BANNER").ok().as_deref())
         || raw_args.iter().any(|a| a == "--no-banner")
         || !std::io::stderr().is_terminal();
     let is_top_level_invocation = match raw_args.get(1).map(String::as_str) {
