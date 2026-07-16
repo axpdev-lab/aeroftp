@@ -341,10 +341,11 @@ fn release_gvfs_mtp_claim(device_id: Option<&str>) -> Vec<i32> {
 }
 
 fn unmount_gvfs_mtp_mounts() {
+    // Never run unbounded `gio`: if a volume monitor is SIGSTOP'd (or dbus is
+    // wedged), `gio mount -s` blocks ~60s on IsSupported() and the phone can
+    // sleep/unplug mid-open. Cap each call at 1.5s.
     for scheme in ["mtp", "gphoto2"] {
-        let _ = std::process::Command::new("gio")
-            .args(["mount", "-s", scheme])
-            .output();
+        run_gio_timed(&["mount", "-s", scheme]);
     }
 
     let uid = unsafe { libc::getuid() };
@@ -358,9 +359,42 @@ fn unmount_gvfs_mtp_mounts() {
             }
             let path = entry.path();
             let path_s = path.to_string_lossy();
-            let _ = std::process::Command::new("gio")
-                .args(["mount", "-u", path_s.as_ref()])
-                .output();
+            run_gio_timed(&["mount", "-u", path_s.as_ref()]);
+        }
+    }
+}
+
+/// Best-effort `gio` with a hard wall-clock limit (kills the child on expiry).
+fn run_gio_timed(args: &[&str]) {
+    use std::process::{Command, Stdio};
+    use std::time::{Duration, Instant};
+
+    let mut child = match Command::new("gio")
+        .args(args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+    {
+        Ok(c) => c,
+        Err(_) => return,
+    };
+    let deadline = Instant::now() + Duration::from_millis(1500);
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => return,
+            Ok(None) => {
+                if Instant::now() >= deadline {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return;
+                }
+                std::thread::sleep(Duration::from_millis(50));
+            }
+            Err(_) => {
+                let _ = child.kill();
+                return;
+            }
         }
     }
 }
@@ -1011,11 +1045,25 @@ impl MtpBackend for LinuxLibmtpBackend {
             let (device, display) = match open_with_release(&id) {
                 Ok(pair) => pair,
                 Err(e) if is_busy_connection_error(&e) => {
-                    tracing::info!(
-                        target: "mtp",
-                        "MTP open busy after first release; retrying gvfs release once"
-                    );
-                    open_with_release(&id)?
+                    // Only retry when something else still holds the node or a
+                    // gvfs worker is alive. A free-but-wedged phone (PTP_ERROR_IO
+                    // after libmtp USB reset) must not get a second open attempt:
+                    // that re-resets USB and leaves Android unusable until unplug.
+                    let still_contended = parse_device_id(&id)
+                        .map(|(bus, dev)| {
+                            usb_node_has_foreign_holders(bus, dev)
+                                || processes_matching_present(GVFS_MTP_WORKER_NAMES)
+                        })
+                        .unwrap_or(false);
+                    if still_contended {
+                        tracing::info!(
+                            target: "mtp",
+                            "MTP open busy with holders still present; retrying gvfs release once"
+                        );
+                        open_with_release(&id)?
+                    } else {
+                        return Err(e);
+                    }
                 }
                 Err(e) => return Err(e),
             };
