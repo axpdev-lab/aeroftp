@@ -256,6 +256,7 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
   const [mountingDevice, setMountingDevice] = useState<string | null>(null);
   const [portableDevices, setPortableDevices] = useState<MtpDeviceInfo[]>([]);
   const [portableLoading, setPortableLoading] = useState(false);
+  const didFirstPortableLoadRef = useRef(false);
   const [closingPortableId, setClosingPortableId] = useState<string | null>(null);
   const [openingPortableId, setOpeningPortableId] = useState<string | null>(null);
 
@@ -480,6 +481,17 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
   // Portable devices (MTP / WPD): list + hotplug, separate from volumes
   // -----------------------------------------------------------------------
 
+  // Read these through refs so `fetchPortableDevices` never changes identity.
+  // It is an effect dependency, and `list_mtp_devices` is not a cheap read: it
+  // runs a libmtp USB bus scan. When the identity churned, the effect tore down
+  // and re-ran on every parent render, which flashed the spinner against "No
+  // portable devices detected" and hammered the phone with ~110 bus scans in a
+  // few seconds.
+  const activePortableDeviceIdRef = useRef(activePortableDeviceId);
+  activePortableDeviceIdRef.current = activePortableDeviceId;
+  const onPortableDeviceClosedRef = useRef(onPortableDeviceClosed);
+  onPortableDeviceClosedRef.current = onPortableDeviceClosed;
+
   const fetchPortableDevices = useCallback(async () => {
     try {
       const devices = await invoke<MtpDeviceInfo[]>('list_mtp_devices');
@@ -487,28 +499,29 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
       setPortableDevices(devices);
       // If the open device disappeared (unplug), tell the parent so session
       // highlight / browse state does not stick on a ghost row.
-      if (
-        activePortableDeviceId &&
-        !devices.some((d) => d.deviceId === activePortableDeviceId)
-      ) {
-        onPortableDeviceClosed?.(activePortableDeviceId);
+      const activeId = activePortableDeviceIdRef.current;
+      if (activeId && !devices.some((d) => d.deviceId === activeId)) {
+        onPortableDeviceClosedRef.current?.(activeId);
       }
     } catch {
       // Backend command missing or Null backend: show empty section.
       if (mountedRef.current) setPortableDevices([]);
     }
-  }, [activePortableDeviceId, onPortableDeviceClosed]);
+  }, []);
 
   useEffect(() => {
     if (!showPortable) return;
 
-    setPortableLoading(true);
+    // Spinner on the first load only. A background refresh that momentarily
+    // returns nothing must not replace the section with a spinner.
+    if (!didFirstPortableLoadRef.current) setPortableLoading(true);
     fetchPortableDevices().finally(() => {
+      didFirstPortableLoadRef.current = true;
       if (mountedRef.current) setPortableLoading(false);
     });
 
-    // Event-driven: Windows WM_DEVICECHANGE watcher emits `mtp-devices-changed`.
-    // Linux is currently no-op wake; FE poll + focus cover it until udev polish.
+    // Event-driven wake: Windows WM_DEVICECHANGE, Linux kernel USB uevents.
+    // Both emit `mtp-devices-changed`; the interval below is only a fallback.
     const disposeListener = guardedUnlisten(
       listen<void>('mtp-devices-changed', () => {
         if (mountedRef.current) fetchPortableDevices();
