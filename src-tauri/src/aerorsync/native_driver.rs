@@ -47,8 +47,8 @@
 //! checkpoint doc.
 
 use crate::aerorsync::engine_adapter::{
-    apply_delta_streaming, BaselineSource, DeltaEngineAdapter, DeltaPlanProducer, EngineDeltaOp,
-    EngineSignatureBlock, RollingDeltaPlanProducer,
+    apply_delta_streaming, BaselineSource, BlockStrongAlgo, DeltaEngineAdapter, DeltaPlanProducer,
+    EngineDeltaOp, EngineSignatureBlock, RollingDeltaPlanProducer,
 };
 use crate::aerorsync::events::EventSink;
 use crate::aerorsync::real_wire::{
@@ -639,6 +639,20 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
     }
     pub fn checksum_seed(&self) -> u32 {
         self.checksum_seed
+    }
+
+    /// CLAUDE-AV-B3-15: block-strong algorithm for confirming rolling hits
+    /// against wire signatures. Must match how the peer (or we, on the
+    /// download emit path) filled `SumBlock.strong`. xxh128 is the common
+    /// winner of our advertisement list; other block algos stay
+    /// `Unknown` until recomputed in-tree (safer than rolling-only).
+    pub(crate) fn block_strong_algo(&self) -> BlockStrongAlgo {
+        match self.negotiated_checksum_algo() {
+            Some(XXH128_ALGO_NAME) => BlockStrongAlgo::Xxh128 {
+                seed: self.checksum_seed as u64,
+            },
+            _ => BlockStrongAlgo::Unknown,
+        }
     }
     pub fn negotiated_checksum_algos(&self) -> &str {
         &self.negotiated_checksum_algos
@@ -1768,7 +1782,14 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
                 should_use_delta: true,
             }
         } else {
-            adapter.compute_delta(source_data, &engine_sigs, block_size)
+            // CLAUDE-AV-B3-15: seed-aware plan for real wire; mock adapters
+            // keep returning canned ops via the trait default.
+            adapter.compute_delta_for_wire(
+                source_data,
+                &engine_sigs,
+                block_size,
+                self.block_strong_algo(),
+            )
         };
 
         // Extract raw literals in encounter order for session-wide
@@ -2047,7 +2068,13 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
                 ops.push(EngineDeltaOp::Literal(chunk_acc));
             }
         } else {
-            let mut producer = RollingDeltaPlanProducer::new(block_size, engine_sigs);
+            // CLAUDE-AV-B3-15: wire sigs are truncated xxh128 (or other
+            // negotiated) prefixes, not SHA-256. Thread the session algo.
+            let mut producer = RollingDeltaPlanProducer::with_strong_algo(
+                block_size,
+                engine_sigs,
+                self.block_strong_algo(),
+            );
             loop {
                 let n = source_reader.read(&mut buf).await.map_err(|e| {
                     AerorsyncError::transport(format!(

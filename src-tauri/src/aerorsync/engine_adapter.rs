@@ -27,6 +27,92 @@ use crate::aerorsync::protocol::{
 };
 use crate::delta_sync;
 use crate::delta_sync::{strong_hash, RollingChecksum};
+use xxhash_rust::xxh3::{xxh3_128, xxh3_128_with_seed};
+
+/// How to recompute a block's strong checksum when confirming a rolling hit.
+///
+/// CLAUDE-AV-B3-15: wire signatures store algorithm-specific digests
+/// (usually a truncated xxh128-with-seed prefix), NOT the first N bytes
+/// of SHA-256. Comparing `strong_hash(window)[..n]` to the wire prefix
+/// is wrong and would reject every real match. Engine-native signatures
+/// from `delta_sync::compute_signatures` still carry full SHA-256.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum BlockStrongAlgo {
+    /// Full SHA-256 of the window. Default for engine-native signatures
+    /// (`strong_len == 32` from `delta_sync`).
+    #[default]
+    Sha256,
+    /// xxh3-128 in rsync wire byte order (`lo_u64 LE || hi_u64 LE`),
+    /// optionally seeded. Seeded for per-block digests (rsync
+    /// `get_checksum2`); the whole-file trailer is unseeded and lives
+    /// elsewhere.
+    Xxh128 { seed: u64 },
+    /// Negotiated block algo we cannot recompute in-tree (md5/xxh64/...).
+    /// Never confirm a rolling hit: prefer a full transfer over a silent
+    /// false match.
+    Unknown,
+}
+
+impl BlockStrongAlgo {
+    /// 32-byte digest buffer. Only the first `strong_len` bytes are
+    /// compared against `EngineSignatureBlock::strong`.
+    pub fn digest(&self, data: &[u8]) -> [u8; 32] {
+        match *self {
+            Self::Sha256 => strong_hash(data),
+            Self::Xxh128 { seed } => {
+                let hash = if seed == 0 {
+                    xxh3_128(data)
+                } else {
+                    xxh3_128_with_seed(data, seed)
+                };
+                // Same layout as `native_driver::xxh128_wire_bytes`.
+                let lo = hash as u64;
+                let hi = (hash >> 64) as u64;
+                let mut out = [0u8; 32];
+                out[..8].copy_from_slice(&lo.to_le_bytes());
+                out[8..16].copy_from_slice(&hi.to_le_bytes());
+                out
+            }
+            Self::Unknown => [0u8; 32],
+        }
+    }
+}
+
+/// Chunk-fed delta plan with an explicit block-strong algorithm.
+/// Used by the real-wire driver (seed/algo known) and by unit tests.
+/// CLAUDE-AV-B3-15.
+pub fn plan_delta_with_strong_algo(
+    source_data: &[u8],
+    destination_signatures: Vec<EngineSignatureBlock>,
+    block_size: usize,
+    strong_algo: BlockStrongAlgo,
+) -> EngineDeltaPlan {
+    let file_size: u64 = destination_signatures
+        .iter()
+        .map(|s| s.block_len as u64)
+        .sum();
+    let mut producer =
+        RollingDeltaPlanProducer::with_strong_algo(block_size, destination_signatures, strong_algo);
+    let mut ops = Vec::new();
+    producer.drive_chunk(source_data, &mut ops);
+    producer.finalize(&mut ops);
+    let copy_blocks = producer.stats().copy_blocks;
+    let literal_bytes = producer.stats().literal_bytes;
+    let total_delta_bytes = literal_bytes + (copy_blocks as u64 * 8);
+    let savings_ratio = if file_size > 0 {
+        1.0 - (total_delta_bytes as f64 / file_size as f64)
+    } else {
+        0.0
+    };
+    EngineDeltaPlan {
+        ops,
+        copy_blocks,
+        literal_bytes,
+        total_delta_bytes,
+        savings_ratio,
+        should_use_delta: savings_ratio > 0.20,
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EngineSignatureBlock {
@@ -204,6 +290,24 @@ pub trait DeltaEngineAdapter: Send + Sync {
         block_size: usize,
     ) -> EngineDeltaPlan;
 
+    /// CLAUDE-AV-B3-15: wire-aware twin of [`Self::compute_delta`].
+    /// Real-wire sessions pass the negotiated block-strong algo + seed
+    /// so truncated `sig.strong` prefixes are compared correctly.
+    ///
+    /// Default: ignore `strong_algo` and call [`Self::compute_delta`].
+    /// Mock adapters that return canned plans keep working without
+    /// override; [`CurrentDeltaSyncBridge`] overrides to honour the algo.
+    fn compute_delta_for_wire(
+        &self,
+        source_data: &[u8],
+        destination_signatures: &[EngineSignatureBlock],
+        block_size: usize,
+        strong_algo: BlockStrongAlgo,
+    ) -> EngineDeltaPlan {
+        let _ = strong_algo;
+        self.compute_delta(source_data, destination_signatures, block_size)
+    }
+
     /// Reconstruct a file from the destination data and a delta instruction
     /// stream. Used by the download-with-engine driver path. `block_size` is
     /// the block size the signatures were computed with.
@@ -250,31 +354,15 @@ impl DeltaEngineAdapter for CurrentDeltaSyncBridge {
         block_size: usize,
     ) -> EngineDeltaPlan {
         if destination_signatures.iter().any(|sig| sig.strong_len < 32) {
-            let mut producer =
-                RollingDeltaPlanProducer::new(block_size, destination_signatures.to_vec());
-            let mut ops = Vec::new();
-            producer.drive_chunk(source_data, &mut ops);
-            producer.finalize(&mut ops);
-            let copy_blocks = producer.stats().copy_blocks;
-            let literal_bytes = producer.stats().literal_bytes;
-            let total_delta_bytes = literal_bytes + (copy_blocks as u64 * 8);
-            let file_size: u64 = destination_signatures
-                .iter()
-                .map(|s| s.block_len as u64)
-                .sum();
-            let savings_ratio = if file_size > 0 {
-                1.0 - (total_delta_bytes as f64 / file_size as f64)
-            } else {
-                0.0
-            };
-            return EngineDeltaPlan {
-                ops,
-                copy_blocks,
-                literal_bytes,
-                total_delta_bytes,
-                savings_ratio,
-                should_use_delta: savings_ratio > 0.20,
-            };
+            // CLAUDE-AV-B3-15: truncated wire strong bytes are NOT SHA-256
+            // prefixes. Seed-less callers default to xxh128 seed 0.
+            // Session-aware code should call `compute_delta_for_wire`.
+            return plan_delta_with_strong_algo(
+                source_data,
+                destination_signatures.to_vec(),
+                block_size,
+                BlockStrongAlgo::Xxh128 { seed: 0 },
+            );
         }
 
         // Reconstruct the engine's SignatureTable from the engine-form input.
@@ -303,6 +391,25 @@ impl DeltaEngineAdapter for CurrentDeltaSyncBridge {
             savings_ratio: result.savings_ratio,
             should_use_delta: result.should_use_delta,
         }
+    }
+
+    fn compute_delta_for_wire(
+        &self,
+        source_data: &[u8],
+        destination_signatures: &[EngineSignatureBlock],
+        block_size: usize,
+        strong_algo: BlockStrongAlgo,
+    ) -> EngineDeltaPlan {
+        // CLAUDE-AV-B3-15: honour the session's block-strong algo+seed.
+        if destination_signatures.iter().any(|sig| sig.strong_len < 32) {
+            return plan_delta_with_strong_algo(
+                source_data,
+                destination_signatures.to_vec(),
+                block_size,
+                strong_algo,
+            );
+        }
+        self.compute_delta(source_data, destination_signatures, block_size)
     }
 
     fn apply_delta(
@@ -393,6 +500,8 @@ pub struct RollingDeltaPlanProducer {
     block_size: usize,
     signatures: Vec<EngineSignatureBlock>,
     lookup: HashMap<u32, Vec<usize>>,
+    /// CLAUDE-AV-B3-15: how to recompute the block strong for confirmation.
+    strong_algo: BlockStrongAlgo,
     source_buf: Vec<u8>,
     pos: usize,
     rolling: Option<RollingChecksum>,
@@ -408,9 +517,21 @@ pub struct RollingDeltaPlanProducer {
 
 impl RollingDeltaPlanProducer {
     /// Build a producer from a known block size + destination signatures.
-    /// Mirrors the input shape of `delta_sync::compute_delta` so callers
-    /// can swap one for the other transparently.
+    /// Uses [`BlockStrongAlgo::Sha256`] (engine-native). For wire-truncated
+    /// signatures, call [`Self::with_strong_algo`] with the negotiated
+    /// block algo + seed (CLAUDE-AV-B3-15).
     pub fn new(block_size: usize, signatures: Vec<EngineSignatureBlock>) -> Self {
+        Self::with_strong_algo(block_size, signatures, BlockStrongAlgo::Sha256)
+    }
+
+    /// CLAUDE-AV-B3-15: producer that confirms rolling hits with the
+    /// given block-strong algorithm (must match how `sig.strong` was
+    /// produced on the wire or by the engine).
+    pub fn with_strong_algo(
+        block_size: usize,
+        signatures: Vec<EngineSignatureBlock>,
+        strong_algo: BlockStrongAlgo,
+    ) -> Self {
         let mut lookup: HashMap<u32, Vec<usize>> = HashMap::new();
         for (i, sig) in signatures.iter().enumerate() {
             lookup.entry(sig.rolling).or_default().push(i);
@@ -419,6 +540,7 @@ impl RollingDeltaPlanProducer {
             block_size,
             signatures,
             lookup,
+            strong_algo,
             source_buf: Vec::new(),
             pos: 0,
             rolling: None,
@@ -440,15 +562,30 @@ impl RollingDeltaPlanProducer {
 
     /// Linear scan over candidates with matching rolling checksum. Returns
     /// the signature index (not the block index) of the first hit.
+    ///
+    /// CLAUDE-AV-B3-15: always compare the first `strong_len` bytes of the
+    /// recomputed block strong against `sig.strong`. The previous short-
+    /// circuit `strong_len < 32 || ...` accepted ANY rolling hit when the
+    /// wire carried a truncated digest (s2length=2), which is the weak-
+    /// hash false-match vector demoted (not fixed) by the whole-file
+    /// trailer verify. Do NOT compare SHA-256 prefixes to wire xxh128
+    /// prefixes: they are different algorithms.
     fn find_match(&self, rolling_val: u32) -> Option<usize> {
         let candidates = self.lookup.get(&rolling_val)?;
+        // Unknown algo: refuse confirmation rather than rolling-only.
+        if matches!(self.strong_algo, BlockStrongAlgo::Unknown) {
+            return None;
+        }
         let window = &self.source_buf[self.pos..self.pos + self.block_size];
-        let strong = strong_hash(window);
+        let computed = self.strong_algo.digest(window);
         candidates
             .iter()
             .find(|&&idx| {
                 let sig = &self.signatures[idx];
-                sig.strong_len < 32 || sig.strong == strong
+                let n = (sig.strong_len as usize).min(32);
+                // Empty strong: no confirmation (do not fall back to
+                // rolling-only; that reopens the false-match path).
+                n > 0 && sig.strong[..n] == computed[..n]
             })
             .copied()
     }
@@ -1327,7 +1464,24 @@ mod producer_tests {
         source: &[u8],
         chunk_size: usize,
     ) -> (Vec<EngineDeltaOp>, EngineDeltaStats) {
-        let mut producer = RollingDeltaPlanProducer::new(block_size, signatures);
+        run_producer_with_algo(
+            block_size,
+            signatures,
+            source,
+            chunk_size,
+            BlockStrongAlgo::Sha256,
+        )
+    }
+
+    fn run_producer_with_algo(
+        block_size: usize,
+        signatures: Vec<EngineSignatureBlock>,
+        source: &[u8],
+        chunk_size: usize,
+        strong_algo: BlockStrongAlgo,
+    ) -> (Vec<EngineDeltaOp>, EngineDeltaStats) {
+        let mut producer =
+            RollingDeltaPlanProducer::with_strong_algo(block_size, signatures, strong_algo);
         let mut out = Vec::new();
         if chunk_size == 0 {
             producer.drive_chunk(source, &mut out);
@@ -1346,11 +1500,25 @@ mod producer_tests {
         ops_to_engine(ops)
     }
 
-    fn wire_short_sigs_from_dest(dest: &[u8], block_size: usize) -> Vec<EngineSignatureBlock> {
+    /// Wire-shaped truncated signatures: rolling from the engine, strong
+    /// = first 2 bytes of seeded xxh128 of each block (CLAUDE-AV-B3-15).
+    /// Pre-fix helpers zeroed the strong and relied on the short-circuit
+    /// `strong_len < 32` accept-any path; that is the bug under test.
+    fn wire_xxh128_short_sigs_from_dest(
+        dest: &[u8],
+        block_size: usize,
+        seed: u64,
+    ) -> Vec<EngineSignatureBlock> {
         engine_sigs_from_dest(dest, block_size)
             .into_iter()
             .map(|mut sig| {
-                sig.strong = [0u8; 32];
+                let start = sig.index as usize * block_size;
+                let end = (start + sig.block_len as usize).min(dest.len());
+                let block = &dest[start..end];
+                let digest = BlockStrongAlgo::Xxh128 { seed }.digest(block);
+                let mut strong = [0u8; 32];
+                strong[..2].copy_from_slice(&digest[..2]);
+                sig.strong = strong;
                 sig.strong_len = 2;
                 sig
             })
@@ -1520,6 +1688,8 @@ mod producer_tests {
 
     #[test]
     fn producer_matches_rsync_wire_short_signatures_for_localized_tail_change() {
+        // CLAUDE-AV-B3-15: short wire strongs are real xxh128 prefixes
+        // (seed 0), not zeroed placeholders that rode the old short-circuit.
         let block_size = 1024;
         let dest_len = 1024 * 1024;
         let mut dest = vec![0u8; dest_len];
@@ -1532,8 +1702,11 @@ mod producer_tests {
             *b = ((i.wrapping_mul(97) ^ 0xC3) & 0xFF) as u8;
         }
 
-        let sigs = wire_short_sigs_from_dest(&dest, block_size);
-        let (streaming, stats) = run_producer(block_size, sigs.clone(), &source, 4096);
+        let seed = 0u64;
+        let algo = BlockStrongAlgo::Xxh128 { seed };
+        let sigs = wire_xxh128_short_sigs_from_dest(&dest, block_size, seed);
+        let (streaming, stats) =
+            run_producer_with_algo(block_size, sigs.clone(), &source, 4096, algo);
         assert!(
             stats.copy_blocks >= 900,
             "expected most leading blocks to match, got {}",
@@ -1551,10 +1724,86 @@ mod producer_tests {
             "wire-short signatures must produce CopyBlock ops"
         );
 
+        // Bridge truncated path defaults to xxh128 seed 0, same as this fixture.
         let bridge = CurrentDeltaSyncBridge::new();
         let bulk_plan = bridge.compute_delta(&source, &sigs, block_size);
         assert_eq!(bulk_plan.copy_blocks, stats.copy_blocks);
         assert_eq!(bulk_plan.literal_bytes, stats.literal_bytes);
+    }
+
+    /// CLAUDE-AV-B3-15: a rolling hit whose truncated strong disagrees
+    /// must NOT become a CopyBlock. Pre-fix, `strong_len < 32` short-
+    /// circuited the strong check and accepted any rolling match.
+    #[test]
+    fn producer_truncated_strong_mismatch_rejects_rolling_hit() {
+        let block_size = 512;
+        let dest = vec![0xAAu8; 4 * block_size];
+        let source = dest.clone();
+        let mut sigs = engine_sigs_from_dest(&dest, block_size);
+        for sig in &mut sigs {
+            // Keep rolling (so find_match still enters the candidate list)
+            // but poison the wire-truncated strong prefix.
+            sig.strong = [0xFFu8; 32];
+            sig.strong_len = 2;
+        }
+        let (ops, stats) = run_producer_with_algo(
+            block_size,
+            sigs,
+            &source,
+            0,
+            BlockStrongAlgo::Xxh128 { seed: 0 },
+        );
+        assert_eq!(
+            stats.copy_blocks, 0,
+            "poisoned truncated strong must yield zero CopyBlocks, got {}",
+            stats.copy_blocks
+        );
+        assert!(
+            ops.iter().all(|op| matches!(op, EngineDeltaOp::Literal(_))),
+            "expected only Literal ops when strong prefixes disagree"
+        );
+        assert_eq!(stats.literal_bytes, source.len() as u64);
+    }
+
+    /// CLAUDE-AV-B3-15: positive twin of the reject test: real xxh128
+    /// prefixes with the matching algo confirm identical source/dest.
+    #[test]
+    fn producer_truncated_xxh128_strong_confirms_identical_source() {
+        let block_size = 512;
+        let mut dest = vec![0u8; 4 * block_size];
+        for (i, b) in dest.iter_mut().enumerate() {
+            *b = (i % 251) as u8;
+        }
+        let source = dest.clone();
+        let seed = 0xDEAD_BEEFu64;
+        let algo = BlockStrongAlgo::Xxh128 { seed };
+        let sigs = wire_xxh128_short_sigs_from_dest(&dest, block_size, seed);
+        let (ops, stats) = run_producer_with_algo(block_size, sigs, &source, 64, algo);
+        assert_eq!(stats.copy_blocks, 4);
+        assert_eq!(stats.literal_bytes, 0);
+        assert!(
+            ops.iter()
+                .all(|op| matches!(op, EngineDeltaOp::CopyBlock(_))),
+            "identical source with correct xxh128 prefixes must be all CopyBlocks"
+        );
+    }
+
+    /// CLAUDE-AV-B3-15 landmine guard: comparing SHA-256 prefixes to
+    /// xxh128 wire prefixes must not be how we "fix" truncated matching
+    /// (that would reject every real match and silently disable delta).
+    #[test]
+    fn producer_sha256_algo_on_xxh128_wire_sigs_disables_matches() {
+        let block_size = 512;
+        let dest = vec![0xCCu8; 2 * block_size];
+        let source = dest.clone();
+        let sigs = wire_xxh128_short_sigs_from_dest(&dest, block_size, 0);
+        // Wrong algo on purpose: Sha256 prefixes != xxh128 prefixes.
+        let (_, stats) =
+            run_producer_with_algo(block_size, sigs, &source, 0, BlockStrongAlgo::Sha256);
+        assert_eq!(
+            stats.copy_blocks, 0,
+            "SHA-256 vs xxh128-prefix compare must not spuriously match"
+        );
     }
 
     #[test]
