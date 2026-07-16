@@ -138,3 +138,50 @@ export function deviceFingerprintFromMtpInfo(
     canonical,
   };
 }
+
+/**
+ * Find the live list row that matches a saved profile fingerprint.
+ * Uses `device.fingerprint` when present, else rebuilds via `deviceFingerprintFromMtpInfo`.
+ * Returns undefined when the device is not attached (or fingerprint missing).
+ */
+export function matchLiveDevice(
+  profileCanonical: string | undefined | null,
+  devices: readonly MtpDeviceInfo[],
+): MtpDeviceInfo | undefined {
+  const want = profileCanonical?.trim();
+  if (!want) return undefined;
+  for (const device of devices) {
+    if (device.fingerprint && fingerprintEqual(want, device.fingerprint)) {
+      return device;
+    }
+    const rebuilt = deviceFingerprintFromMtpInfo(device);
+    if (rebuilt && fingerprintEqual(want, rebuilt.canonical)) {
+      return device;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Profile ids whose stored MTP fingerprint matches a currently attached device.
+ * Non-mtp profiles are ignored.
+ */
+export function computeAttachedProfileIds(
+  profiles: readonly {
+    id: string;
+    protocol?: string;
+    deviceFingerprint?: { canonical?: string } | null;
+  }[],
+  devices: readonly MtpDeviceInfo[],
+): Set<string> {
+  const ids = new Set<string>();
+  if (devices.length === 0) return ids;
+  for (const p of profiles) {
+    if (p.protocol !== 'mtp') continue;
+    const fp = p.deviceFingerprint?.canonical;
+    if (matchLiveDevice(fp, devices)) {
+      ids.add(p.id);
+    }
+  }
+  return ids;
+}

@@ -430,6 +430,9 @@ interface ServerCardProps {
      *  so users can tell at a glance which saved server they are already
      *  connected to. Independent from the health status itself. Issue #222. */
     hasActiveSession?: boolean;
+    /** APPENDIX-DEVICE-PROFILES Phase 3: MTP device physically attached
+     *  (fingerprint match). Separate from HTTP healthStatus. */
+    deviceAttached?: boolean;
     /** AeroShare friend cards only: live replication/serving state for the
      *  bound drive, fed by usePeerDriveStates. Drives the badge chip. */
     peerState?: PeerDriveState;
@@ -565,6 +568,7 @@ export const ServerCard = React.memo(function ServerCard({
     onRetryHealth,
     thresholds = DEFAULT_THRESHOLDS,
     hasActiveSession = false,
+    deviceAttached,
     peerState,
 }: ServerCardProps) {
     const t = useTranslation();
@@ -574,7 +578,13 @@ export const ServerCard = React.memo(function ServerCard({
     const connectButtonSize = Math.max(40, Math.min(48, introHubIconSize + 16));
     const connectIconSize = Math.min(introHubIconSize, connectButtonSize - 10);
     const connectSpinnerSize = Math.max(16, Math.min(22, connectIconSize - 2));
-    const radialTitle = healthStatus
+    const isMtpDevice = server.protocol === 'mtp';
+    const attachedTitle = deviceAttached
+        ? t('introHub.deviceAttached')
+        : t('introHub.deviceNotAttached');
+    const radialTitle = isMtpDevice
+        ? (hasActiveSession ? `${attachedTitle} (${t('common.goToActiveSession')})` : attachedTitle)
+        : healthStatus
         ? t(`introHub.health.${healthStatus}`)
             + (healthLatencyMs && healthStatus !== 'pending' && healthStatus !== 'down' ? ` · ${healthLatencyMs}ms` : '')
             + (onRetryHealth ? ` · ${t('introHub.health.clickToRetry')}` : '')
@@ -700,7 +710,19 @@ export const ServerCard = React.memo(function ServerCard({
                     >
                         {isConnecting ? <Loader2 size={connectSpinnerSize} className="animate-spin text-blue-500" /> : getServerIcon(server, connectIconSize)}
                     </button>
-                    {cardLayout !== 'detailed' && healthStatus && healthStatus !== 'unknown' && (
+                    {/* MTP: green attached-dot when phone/camera is plugged in.
+                        Separate signal from HTTP health (mtp has no health URL). */}
+                    {cardLayout !== 'detailed' && isMtpDevice && deviceAttached && (
+                        <span
+                            className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full ring-2 ring-white dark:ring-gray-800 pointer-events-none bg-green-500 ${
+                                hasActiveSession ? 'animate-pulse' : ''
+                            }`}
+                            title={radialTitle}
+                            aria-label={radialTitle}
+                            data-testid="server-card-device-attached"
+                        />
+                    )}
+                    {cardLayout !== 'detailed' && !isMtpDevice && healthStatus && healthStatus !== 'unknown' && (
                         <span
                             className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full ring-2 ring-white dark:ring-gray-800 pointer-events-none ${
                                 healthStatus === 'up' ? 'bg-green-500'
@@ -780,14 +802,25 @@ export const ServerCard = React.memo(function ServerCard({
                         <StorageUsageBar quota={server.lastQuota} supported={quotaSupported} thresholds={thresholds} manualTotal={effectiveManualCap(server.options?.manualTotalBytes, server.protocol, server.providerId, server.host)} />
                     </div>
                     <div className="shrink-0 text-gray-300 dark:text-gray-600">
-                        <HealthRadial
-                            status={healthStatus || 'unknown'}
-                            latencyMs={healthLatencyMs}
-                            size={16}
-                            title={hasActiveSession ? `${radialTitle} (active session)` : radialTitle}
-                            onRetry={handleRetry}
-                            pulsing={hasActiveSession}
-                        />
+                        {isMtpDevice ? (
+                            <span
+                                className={`inline-block w-3.5 h-3.5 rounded-full ring-2 ring-white dark:ring-gray-800 ${
+                                    deviceAttached ? 'bg-green-500' : 'bg-gray-400'
+                                } ${hasActiveSession && deviceAttached ? 'animate-pulse' : ''}`}
+                                title={radialTitle}
+                                aria-label={radialTitle}
+                                data-testid="server-card-device-attached-detailed"
+                            />
+                        ) : (
+                            <HealthRadial
+                                status={healthStatus || 'unknown'}
+                                latencyMs={healthLatencyMs}
+                                size={16}
+                                title={hasActiveSession ? `${radialTitle} (active session)` : radialTitle}
+                                onRetry={handleRetry}
+                                pulsing={hasActiveSession}
+                            />
+                        )}
                     </div>
                 </div>
             )}

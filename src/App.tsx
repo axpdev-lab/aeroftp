@@ -4311,13 +4311,19 @@ interface UpdateVerificationInfo {
     void changeLocalDirectory(path);
   }
 
-  // MTP / portable devices (APPENDIX-MTP Phase 4+5): session open via PLACES,
-  // installs MtpProvider into ProviderState so remote panel lists via
-  // provider_list_files. Never a fake OS path.
+  // MTP / portable devices (APPENDIX-MTP Phase 4+5 + DEVICE-PROFILES Phase 3):
+  // session open via PLACES or My Servers card. Installs MtpProvider into
+  // ProviderState so remote panel lists via provider_list_files. Never a fake OS path.
   const [activePortableDeviceId, setActivePortableDeviceId] = useState<string | null>(null);
   const MTP_HONESTY_SEEN_KEY = 'aerofile_mtp_honesty_seen';
 
-  const handleOpenPortableDevice = useCallback(async (device: MtpDeviceInfo) => {
+  /** Shared open path for PLACES row and saved device profile card.
+   *  When `profile` is set: savedServerId for activeProfileIds pulse, default
+   *  remote/local paths, providerId from profile (usually mtp-portable). */
+  const openMtpSessionFromLiveDevice = useCallback(async (
+    device: MtpDeviceInfo,
+    profile?: Pick<ServerProfile, 'id' | 'name' | 'providerId' | 'initialPath' | 'localInitialPath'>,
+  ) => {
     try {
       // Drop any live remote/FTP slot first; mtp_open also drains ProviderState.
       try { await invoke('provider_disconnect'); } catch { /* not connected */ }
@@ -4328,14 +4334,18 @@ interface UpdateVerificationInfo {
       });
       setActivePortableDeviceId(session.deviceId);
 
-      const displayName = session.displayName || device.displayName || 'Portable device';
+      const displayName =
+        profile?.name || session.displayName || device.displayName || 'Portable device';
+      // PLACES-only opens stay providerId 'mtp'; saved device profiles use mtp-portable.
+      const providerId = profile?.providerId || 'mtp';
       const mtpParams: ConnectionParams = {
         protocol: 'mtp',
         server: displayName,
         username: '',
         password: '',
         displayName,
-        providerId: 'mtp',
+        providerId,
+        ...(profile?.id ? { savedServerId: profile.id } : {}),
       };
       setConnectionParams(mtpParams);
       setIsConnected(true);
@@ -4344,14 +4354,8 @@ interface UpdateVerificationInfo {
       setShowConnectionScreen(false);
       setActivePanel('remote');
 
-      // List storage roots through the generic provider fabric.
-      let files: RemoteFile[] = [];
-      let remotePath = '/';
-      try {
-        const response = await invoke<{ files: any[]; current_path: string }>('provider_list_files', {
-          path: null,
-        });
-        files = (response.files || []).map((f: any) => ({
+      const mapProviderFiles = (raw: any[] | undefined): RemoteFile[] =>
+        (raw || []).map((f: any) => ({
           name: f.name,
           path: f.path,
           size: f.size,
@@ -4360,7 +4364,34 @@ interface UpdateVerificationInfo {
           permissions: f.permissions,
           metadata: f.metadata,
         }));
-        remotePath = response.current_path || '/';
+
+      // List storage roots (or profile default remote path) through provider fabric.
+      let files: RemoteFile[] = [];
+      let remotePath = '/';
+      const wantedRemote = profile?.initialPath?.trim();
+      try {
+        if (wantedRemote && wantedRemote !== '/' && wantedRemote !== '.') {
+          try {
+            const response = await invoke<{ files: any[]; current_path: string }>('provider_change_dir', {
+              path: wantedRemote,
+            });
+            files = mapProviderFiles(response.files);
+            remotePath = response.current_path || wantedRemote;
+          } catch {
+            // Default path missing on device: fall back to storage roots.
+            const response = await invoke<{ files: any[]; current_path: string }>('provider_list_files', {
+              path: null,
+            });
+            files = mapProviderFiles(response.files);
+            remotePath = response.current_path || '/';
+          }
+        } else {
+          const response = await invoke<{ files: any[]; current_path: string }>('provider_list_files', {
+            path: null,
+          });
+          files = mapProviderFiles(response.files);
+          remotePath = response.current_path || '/';
+        }
         setRemoteFiles(files);
         setCurrentRemotePath(remotePath);
         setCurrentRemoteDisplayPath(remotePath);
@@ -4382,19 +4413,42 @@ interface UpdateVerificationInfo {
         }));
       }
 
+      // Optional default local folder (saved device profile). Inline invoke
+      // because this callback sits above loadLocalFiles in the App body.
+      let resolvedLocalPath = currentLocalPath;
+      let resolvedLocalFiles = localFiles;
+      const wantedLocal = profile?.localInitialPath?.trim();
+      if (wantedLocal) {
+        try {
+          const listed: LocalFile[] = await invoke('get_local_files', {
+            path: wantedLocal,
+            showHidden: showHiddenFiles,
+          });
+          setLocalFiles(listed);
+          setCurrentLocalPath(wantedLocal);
+          setSelectedLocalFiles(new Set());
+          resolvedLocalPath = wantedLocal;
+          resolvedLocalFiles = listed;
+        } catch {
+          // Keep current local path when the saved default is missing.
+        }
+      }
+
       // Session tab so disconnect / multi-tab plumbing treats MTP like any provider.
+      // savedServerId makes activeProfileIds pulse the My Servers card.
       const newSession: FtpSession = {
         id: `session_mtp_${Date.now()}`,
         serverId: displayName,
+        ...(profile?.id ? { savedServerId: profile.id } : {}),
         serverName: displayName,
         status: 'connected',
         remotePath,
-        localPath: currentLocalPath,
+        localPath: resolvedLocalPath,
         remoteFiles: files,
-        localFiles: [...localFiles],
+        localFiles: [...resolvedLocalFiles],
         lastActivity: new Date(),
         connectionParams: mtpParams,
-        providerId: 'mtp',
+        providerId,
         isSyncNavigation: false,
         syncBasePaths: null,
         aeroVaultOverlaySession: null,
@@ -4442,7 +4496,12 @@ interface UpdateVerificationInfo {
         },
       }));
     }
-  }, [notify, t, currentLocalPath, localFiles]);
+  }, [notify, t, currentLocalPath, localFiles, showHiddenFiles]);
+
+  /** PLACES portable row: open without a saved profile. */
+  const handleOpenPortableDevice = useCallback(async (device: MtpDeviceInfo) => {
+    await openMtpSessionFromLiveDevice(device);
+  }, [openMtpSessionFromLiveDevice]);
 
   const handlePortableDeviceClosed = useCallback((deviceId: string) => {
     setActivePortableDeviceId((prev) => (prev === deviceId ? null : prev));
@@ -16159,6 +16218,7 @@ interface UpdateVerificationInfo {
               onActivateSession={goToActiveSession}
               connectingProfileId={connectingProfileId}
               onDisconnectProfile={disconnectProfile}
+              onOpenMtpDeviceProfile={openMtpSessionFromLiveDevice}
               serversRefreshKey={serversRefreshKey}
               onServersChanged={() => setServersRefreshKey(k => k + 1)}
               onAeroCloud={() => {

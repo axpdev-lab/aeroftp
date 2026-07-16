@@ -4,9 +4,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   canonicalizeFingerprint,
+  computeAttachedProfileIds,
   deviceFingerprintFromMtpInfo,
   fingerprintEqual,
   formatUsbHex4,
+  matchLiveDevice,
   mtpDeviceFingerprint,
 } from './mtpFingerprint';
 
@@ -106,5 +108,56 @@ describe('deviceFingerprintFromMtpInfo', () => {
     });
     expect(fp?.canonical).toBe('mtp:vidpid=18D1:4EE1;model=Pixel');
     expect(fp?.kind).toBe('mtp');
+  });
+});
+
+describe('matchLiveDevice / computeAttachedProfileIds', () => {
+  const xperia = {
+    deviceId: 'usb:001:012',
+    displayName: 'XQ-DQ54',
+    serial: 'QV770LUNJD',
+    vendorId: 0x0fce,
+    productId: 0x020d,
+    fingerprint: 'mtp:serial=QV770LUNJD',
+    platform: 'linux',
+    storagesHint: 1,
+  };
+  const pixel = {
+    deviceId: 'usb:001:013',
+    displayName: 'Pixel',
+    serial: null as string | null,
+    vendorId: 0x18d1,
+    productId: 0x4ee1,
+    fingerprint: null as string | null,
+    platform: 'linux',
+    storagesHint: 1,
+  };
+
+  it('matches serial fingerprint case-insensitively', () => {
+    const hit = matchLiveDevice('mtp:serial=qv770lunjd', [xperia, pixel]);
+    expect(hit?.deviceId).toBe('usb:001:012');
+  });
+
+  it('matches rebuilt vid/pid when list omits fingerprint', () => {
+    const hit = matchLiveDevice('mtp:vidpid=18D1:4EE1;model=Pixel', [pixel]);
+    expect(hit?.deviceId).toBe('usb:001:013');
+  });
+
+  it('returns undefined when not attached', () => {
+    expect(matchLiveDevice('mtp:serial=OTHER', [xperia])).toBeUndefined();
+    expect(matchLiveDevice(undefined, [xperia])).toBeUndefined();
+  });
+
+  it('collects attached profile ids for mtp only', () => {
+    const ids = computeAttachedProfileIds(
+      [
+        { id: 'p1', protocol: 'mtp', deviceFingerprint: { canonical: 'mtp:serial=QV770LUNJD' } },
+        { id: 'p2', protocol: 'mtp', deviceFingerprint: { canonical: 'mtp:serial=MISSING' } },
+        { id: 'p3', protocol: 'sftp', deviceFingerprint: { canonical: 'mtp:serial=QV770LUNJD' } },
+        { id: 'p4', protocol: 'mtp' },
+      ],
+      [xperia],
+    );
+    expect([...ids]).toEqual(['p1']);
   });
 });
