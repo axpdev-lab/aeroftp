@@ -18950,6 +18950,7 @@ pub fn run() {
             providers::mtp::commands::mtp_open_device,
             providers::mtp::commands::mtp_close_device,
             providers::mtp::commands::mtp_backend_status,
+            providers::mtp::commands::mtp_desktop_automounter_present,
             // Mission Green Badge - File sync status tracking
             sync_badge::start_badge_server_cmd,
             sync_badge::stop_badge_server_cmd,

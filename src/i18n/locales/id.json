@@ -3223,7 +3223,8 @@
             "portable_opened": "[NEEDS TRANSLATION] Connected to {name}",
             "portable_storages": "[NEEDS TRANSLATION] {count} storage(s)",
             "portable_disconnected": "[NEEDS TRANSLATION] Portable device disconnected: {name}",
-            "portable_unplugged": "Perangkat portabel terputus. Colokkan kembali kabelnya dan buka lagi."
+            "portable_unplugged": "Perangkat portabel terputus. Colokkan kembali kabelnya dan buka lagi.",
+            "portable_needs_replug": "Tidak dimuat oleh desktop. Cabut dan colokkan kembali kabelnya, lalu buka lagi."
         },
         "viewMode": {
             "list": "Daftar",

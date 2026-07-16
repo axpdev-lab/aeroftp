@@ -3223,7 +3223,8 @@
             "portable_opened": "[NEEDS TRANSLATION] Connected to {name}",
             "portable_storages": "[NEEDS TRANSLATION] {count} storage(s)",
             "portable_disconnected": "[NEEDS TRANSLATION] Portable device disconnected: {name}",
-            "portable_unplugged": "Gailu eramangarria deskonektatu da. Konektatu kablea berriro eta ireki berriro."
+            "portable_unplugged": "Gailu eramangarria deskonektatu da. Konektatu kablea berriro eta ireki berriro.",
+            "portable_needs_replug": "Mahaigainak ez du muntatu. Deskonektatu eta konektatu berriro kablea, eta ireki berriro."
         },
         "viewMode": {
             "list": "Zerrenda",

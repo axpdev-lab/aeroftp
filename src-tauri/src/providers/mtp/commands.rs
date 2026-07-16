@@ -321,11 +321,152 @@ pub struct MtpBackendStatusDto {
     pub build_backend: String,
 }
 
+/// Whether the desktop is set up to automount MTP devices (gvfs on Linux).
+///
+/// Used by the PLACES Portable devices row: when an automounter is present but
+/// the phone is not currently mounted, the single MTP session was already spent
+/// (typically at plug time) and an exclusive libmtp open is certain to fail after
+/// a long wait. The FE shows amber + re-plug guidance instead of attempting open.
+///
+/// Non-Linux (Windows WPD, etc.): always `false` so the exclusive path stays
+/// clickable. Systems without gvfs also get `false`.
+#[tauri::command]
+pub async fn mtp_desktop_automounter_present() -> Result<bool, String> {
+    Ok(desktop_mtp_automounter_present())
+}
+
+/// Pure helper (also unit-tested). Prefer process presence; fall back to
+/// installed gvfs MTP monitor binaries (monitors may be dbus-activated later).
+pub fn desktop_mtp_automounter_present() -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        linux_gvfs_mtp_automounter_present()
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        false
+    }
+}
+
+/// gvfs MTP / gphoto2 volume monitors: process basenames and common install paths.
+#[cfg(target_os = "linux")]
+const LINUX_GVFS_MTP_MONITOR_NAMES: &[&str] =
+    &["gvfs-mtp-volume-monitor", "gvfs-gphoto2-volume-monitor"];
+
+/// Well-known install locations for the gvfs MTP volume monitor (and gphoto2).
+/// Checked only when no monitor process is running yet.
+#[cfg(target_os = "linux")]
+const LINUX_GVFS_MTP_MONITOR_PATHS: &[&str] = &[
+    "/usr/libexec/gvfs-mtp-volume-monitor",
+    "/usr/lib/gvfs/gvfs-mtp-volume-monitor",
+    "/usr/lib/x86_64-linux-gnu/gvfs/gvfs-mtp-volume-monitor",
+    "/usr/libexec/gvfs-gphoto2-volume-monitor",
+    "/usr/lib/gvfs/gvfs-gphoto2-volume-monitor",
+    "/usr/lib/x86_64-linux-gnu/gvfs/gvfs-gphoto2-volume-monitor",
+];
+
+#[cfg(target_os = "linux")]
+fn linux_gvfs_mtp_automounter_present() -> bool {
+    if linux_process_basenames_present(LINUX_GVFS_MTP_MONITOR_NAMES) {
+        return true;
+    }
+    linux_any_path_is_file(LINUX_GVFS_MTP_MONITOR_PATHS)
+}
+
+/// True if any path exists as a regular file (or symlink to one).
+#[cfg(target_os = "linux")]
+fn linux_any_path_is_file(paths: &[&str]) -> bool {
+    paths.iter().any(|p| std::path::Path::new(p).is_file())
+}
+
+/// Scan `/proc` for a running process whose exe basename (or argv0) is in `names`.
+#[cfg(target_os = "linux")]
+fn linux_process_basenames_present(names: &[&str]) -> bool {
+    let Ok(proc) = std::fs::read_dir("/proc") else {
+        return false;
+    };
+    let self_pid = std::process::id() as i32;
+    for entry in proc.flatten() {
+        let pid: i32 = match entry.file_name().to_string_lossy().parse() {
+            Ok(p) => p,
+            Err(_) => continue,
+        };
+        if pid <= 1 || pid == self_pid {
+            continue;
+        }
+        if linux_process_exe_basename_matches(pid, names) {
+            return true;
+        }
+    }
+    false
+}
+
+#[cfg(target_os = "linux")]
+fn linux_process_exe_basename_matches(pid: i32, names: &[&str]) -> bool {
+    let proc_dir = std::path::PathBuf::from(format!("/proc/{pid}"));
+    if let Ok(link) = std::fs::read_link(proc_dir.join("exe")) {
+        if let Some(base) = link.file_name().and_then(|s| s.to_str()) {
+            if names.contains(&base) {
+                return true;
+            }
+        }
+    }
+    let Ok(raw) = std::fs::read(proc_dir.join("cmdline")) else {
+        return false;
+    };
+    let first = raw.split(|b| *b == 0).find(|s| !s.is_empty());
+    let Some(first) = first else {
+        return false;
+    };
+    let arg0 = String::from_utf8_lossy(first);
+    let arg0_str: &str = arg0.as_ref();
+    let base = std::path::Path::new(arg0_str)
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or(arg0_str);
+    names.contains(&base)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::providers::mtp::backend::{FakeMtpBackend, MtpBackend};
     use crate::providers::StorageProvider;
+
+    #[test]
+    fn desktop_automounter_present_is_bool_on_this_host() {
+        // Must not panic; value is platform-specific. On Linux with gvfs
+        // installed or running this is typically true; on Windows always false.
+        let _ = desktop_mtp_automounter_present();
+        #[cfg(not(target_os = "linux"))]
+        {
+            assert!(!desktop_mtp_automounter_present());
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn linux_any_path_is_file_empty_and_missing() {
+        assert!(!linux_any_path_is_file(&[]));
+        assert!(!linux_any_path_is_file(&[
+            "/nonexistent/gvfs-mtp-volume-monitor-xyz"
+        ]));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn linux_process_basenames_self_not_match_gvfs() {
+        // Sanity: our test process is not a gvfs volume monitor.
+        assert!(!linux_process_basenames_present(&[
+            "definitely-not-a-real-process-name-aeroftp-mtp"
+        ]));
+    }
+
+    #[tokio::test]
+    async fn mtp_desktop_automounter_command_ok() {
+        let result = mtp_desktop_automounter_present().await;
+        assert!(result.is_ok(), "{result:?}");
+    }
 
     #[tokio::test]
     async fn list_devices_command_ok() {

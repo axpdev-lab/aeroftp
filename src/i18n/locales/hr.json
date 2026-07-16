@@ -3223,7 +3223,8 @@
             "portable_opened": "[NEEDS TRANSLATION] Connected to {name}",
             "portable_storages": "[NEEDS TRANSLATION] {count} storage(s)",
             "portable_disconnected": "[NEEDS TRANSLATION] Portable device disconnected: {name}",
-            "portable_unplugged": "Prijenosni uređaj je isključen. Ponovno priključite kabel i otvorite ga ponovno."
+            "portable_unplugged": "Prijenosni uređaj je isključen. Ponovno priključite kabel i otvorite ga ponovno.",
+            "portable_needs_replug": "Nije montirano od strane radne površine. Iskopčajte i ponovno utaknite kabel, zatim ga ponovno otvorite."
         },
         "viewMode": {
             "list": "Popis",

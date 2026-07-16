@@ -3223,7 +3223,8 @@
             "portable_opened": "[NEEDS TRANSLATION] Connected to {name}",
             "portable_storages": "[NEEDS TRANSLATION] {count} storage(s)",
             "portable_disconnected": "[NEEDS TRANSLATION] Portable device disconnected: {name}",
-            "portable_unplugged": "Kaasaskantav seade ühendati lahti. Ühendage kaabel uuesti ja avage seade uuesti."
+            "portable_unplugged": "Kaasaskantav seade ühendati lahti. Ühendage kaabel uuesti ja avage seade uuesti.",
+            "portable_needs_replug": "Töölaua poolt ei ole haagitud. Ühendage kaabel lahti ja uuesti sisse, seejärel avage uuesti."
         },
         "viewMode": {
             "list": "Loend",

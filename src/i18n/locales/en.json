@@ -3535,6 +3535,7 @@
       "portable_opened": "Connected to {name}",
       "portable_storages": "{count} storage(s)",
       "portable_unplugged": "The portable device was disconnected. Re-plug the cable and open it again.",
+      "portable_needs_replug": "Not mounted by the desktop. Unplug and re-plug the cable, then open it again.",
       "recent": "Recent",
       "remove_from_sidebar": "Remove from Sidebar",
       "switch_to_places": "Switch to places",

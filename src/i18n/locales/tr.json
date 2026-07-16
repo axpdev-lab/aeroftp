@@ -3223,7 +3223,8 @@
             "portable_opened": "[NEEDS TRANSLATION] Connected to {name}",
             "portable_storages": "[NEEDS TRANSLATION] {count} storage(s)",
             "portable_disconnected": "[NEEDS TRANSLATION] Portable device disconnected: {name}",
-            "portable_unplugged": "Taşınabilir cihaz bağlantısı kesildi. Kabloyu yeniden takın ve tekrar açın."
+            "portable_unplugged": "Taşınabilir cihaz bağlantısı kesildi. Kabloyu yeniden takın ve tekrar açın.",
+            "portable_needs_replug": "Masaüstü tarafından bağlanmadı. Kabloyu çıkarıp yeniden takın, sonra tekrar açın."
         },
         "viewMode": {
             "list": "Liste",

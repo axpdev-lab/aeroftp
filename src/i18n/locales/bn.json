@@ -3223,7 +3223,8 @@
             "portable_opened": "[NEEDS TRANSLATION] Connected to {name}",
             "portable_storages": "[NEEDS TRANSLATION] {count} storage(s)",
             "portable_disconnected": "[NEEDS TRANSLATION] Portable device disconnected: {name}",
-            "portable_unplugged": "পোর্টেবল ডিভাইসটি বিচ্ছিন্ন হয়ে গেছে। কেবলটি আবার প্লাগ করুন এবং আবার খুলুন।"
+            "portable_unplugged": "পোর্টেবল ডিভাইসটি বিচ্ছিন্ন হয়ে গেছে। কেবলটি আবার প্লাগ করুন এবং আবার খুলুন।",
+            "portable_needs_replug": "ডেস্কটপ দ্বারা মাউন্ট করা হয়নি। কেবলটি খুলে আবার লাগান, তারপর আবার খুলুন।"
         },
         "viewMode": {
             "list": "তালিকা",

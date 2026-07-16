@@ -3223,7 +3223,8 @@
             "portable_opened": "[NEEDS TRANSLATION] Connected to {name}",
             "portable_storages": "[NEEDS TRANSLATION] {count} storage(s)",
             "portable_disconnected": "[NEEDS TRANSLATION] Portable device disconnected: {name}",
-            "portable_unplugged": "Kannettava laite irrotettiin. Kytke kaapeli uudelleen ja avaa se uudelleen."
+            "portable_unplugged": "Kannettava laite irrotettiin. Kytke kaapeli uudelleen ja avaa se uudelleen.",
+            "portable_needs_replug": "Ei työpöydän liittämä. Irrota ja kytke kaapeli uudelleen, ja avaa sitten uudelleen."
         },
         "viewMode": {
             "list": "Lista",

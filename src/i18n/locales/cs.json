@@ -3223,7 +3223,8 @@
             "portable_opened": "[NEEDS TRANSLATION] Connected to {name}",
             "portable_storages": "[NEEDS TRANSLATION] {count} storage(s)",
             "portable_disconnected": "[NEEDS TRANSLATION] Portable device disconnected: {name}",
-            "portable_unplugged": "Přenosné zařízení bylo odpojeno. Znovu zapojte kabel a otevřete ho znovu."
+            "portable_unplugged": "Přenosné zařízení bylo odpojeno. Znovu zapojte kabel a otevřete ho znovu.",
+            "portable_needs_replug": "Není připojeno desktopem. Odpojte a znovu zapojte kabel a poté jej znovu otevřete."
         },
         "viewMode": {
             "list": "Seznam",

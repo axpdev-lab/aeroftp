@@ -3223,7 +3223,8 @@
             "portable_opened": "[NEEDS TRANSLATION] Connected to {name}",
             "portable_storages": "[NEEDS TRANSLATION] {count} storage(s)",
             "portable_disconnected": "[NEEDS TRANSLATION] Portable device disconnected: {name}",
-            "portable_unplugged": "Datgysylltwyd y ddyfais gludadwy. Ail-blygiwch y cebl a'i hagor eto."
+            "portable_unplugged": "Datgysylltwyd y ddyfais gludadwy. Ail-blygiwch y cebl a'i hagor eto.",
+            "portable_needs_replug": "Heb ei osod gan y bwrdd gwaith. Dad-blygiwch ac ail-blygiwch y cebl, yna ei agor eto."
         },
         "viewMode": {
             "list": "Rhestr",

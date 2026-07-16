@@ -3223,7 +3223,8 @@
             "portable_opened": "[NEEDS TRANSLATION] Connected to {name}",
             "portable_storages": "[NEEDS TRANSLATION] {count} storage(s)",
             "portable_disconnected": "[NEEDS TRANSLATION] Portable device disconnected: {name}",
-            "portable_unplugged": "Desconectouse o dispositivo portátil. Volva conectar o cable e ábrao de novo."
+            "portable_unplugged": "Desconectouse o dispositivo portátil. Volva conectar o cable e ábrao de novo.",
+            "portable_needs_replug": "Non montado polo escritorio. Desconecta e volve conectar o cable e ábreo de novo."
         },
         "viewMode": {
             "list": "Lista",

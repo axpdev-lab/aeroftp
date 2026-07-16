@@ -3223,7 +3223,8 @@
             "portable_opened": "[NEEDS TRANSLATION] Connected to {name}",
             "portable_storages": "[NEEDS TRANSLATION] {count} storage(s)",
             "portable_disconnected": "[NEEDS TRANSLATION] Portable device disconnected: {name}",
-            "portable_unplugged": "पोर्टेबल डिवाइस डिस्कनेक्ट हो गया। केबल फिर से प्लग करें और इसे दोबारा खोलें।"
+            "portable_unplugged": "पोर्टेबल डिवाइस डिस्कनेक्ट हो गया। केबल फिर से प्लग करें और इसे दोबारा खोलें।",
+            "portable_needs_replug": "डेस्कटॉप द्वारा माउंट नहीं किया गया। केबल निकालकर फिर से लगाएँ, फिर इसे फिर से खोलें।"
         },
         "viewMode": {
             "list": "सूची",

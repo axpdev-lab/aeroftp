@@ -3223,7 +3223,8 @@
             "portable_opened": "[NEEDS TRANSLATION] Connected to {name}",
             "portable_storages": "[NEEDS TRANSLATION] {count} storage(s)",
             "portable_disconnected": "[NEEDS TRANSLATION] Portable device disconnected: {name}",
-            "portable_unplugged": "Het draagbare apparaat is losgekoppeld. Sluit de kabel opnieuw aan en open het opnieuw."
+            "portable_unplugged": "Het draagbare apparaat is losgekoppeld. Sluit de kabel opnieuw aan en open het opnieuw.",
+            "portable_needs_replug": "Niet gekoppeld door het bureaublad. Haal de kabel eruit en steek hem weer in, en open het daarna opnieuw."
         },
         "viewMode": {
             "list": "Lijst",

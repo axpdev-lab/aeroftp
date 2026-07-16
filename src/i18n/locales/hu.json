@@ -3223,7 +3223,8 @@
             "portable_opened": "[NEEDS TRANSLATION] Connected to {name}",
             "portable_storages": "[NEEDS TRANSLATION] {count} storage(s)",
             "portable_disconnected": "[NEEDS TRANSLATION] Portable device disconnected: {name}",
-            "portable_unplugged": "A hordozható eszköz lecsatlakozott. Csatlakoztassa újra a kábelt, és nyissa meg újra."
+            "portable_unplugged": "A hordozható eszköz lecsatlakozott. Csatlakoztassa újra a kábelt, és nyissa meg újra.",
+            "portable_needs_replug": "Az asztal nem csatolta fel. Húzza ki, majd dugja vissza a kábelt, és nyissa meg újra."
         },
         "viewMode": {
             "list": "Lista",

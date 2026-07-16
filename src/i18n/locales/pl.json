@@ -3223,7 +3223,8 @@
             "portable_opened": "[NEEDS TRANSLATION] Connected to {name}",
             "portable_storages": "[NEEDS TRANSLATION] {count} storage(s)",
             "portable_disconnected": "[NEEDS TRANSLATION] Portable device disconnected: {name}",
-            "portable_unplugged": "Urządzenie przenośne zostało odłączone. Podłącz ponownie kabel i otwórz je jeszcze raz."
+            "portable_unplugged": "Urządzenie przenośne zostało odłączone. Podłącz ponownie kabel i otwórz je jeszcze raz.",
+            "portable_needs_replug": "Nie zamontowane przez pulpit. Odłącz i podłącz ponownie kabel, a następnie otwórz ponownie."
         },
         "viewMode": {
             "list": "Lista",

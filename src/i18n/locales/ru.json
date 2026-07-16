@@ -3223,7 +3223,8 @@
             "portable_opened": "[NEEDS TRANSLATION] Connected to {name}",
             "portable_storages": "[NEEDS TRANSLATION] {count} storage(s)",
             "portable_disconnected": "[NEEDS TRANSLATION] Portable device disconnected: {name}",
-            "portable_unplugged": "Портативное устройство было отключено. Подключите кабель снова и откройте его заново."
+            "portable_unplugged": "Портативное устройство было отключено. Подключите кабель снова и откройте его заново.",
+            "portable_needs_replug": "Не смонтировано рабочим столом. Отключите и снова подключите кабель, затем откройте снова."
         },
         "viewMode": {
             "list": "Список",

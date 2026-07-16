@@ -3223,7 +3223,8 @@
             "portable_opened": "[NEEDS TRANSLATION] Connected to {name}",
             "portable_storages": "[NEEDS TRANSLATION] {count} storage(s)",
             "portable_disconnected": "[NEEDS TRANSLATION] Portable device disconnected: {name}",
-            "portable_unplugged": "Færanlega tækið var aftengt. Tengdu snúruna aftur og opnaðu það aftur."
+            "portable_unplugged": "Færanlega tækið var aftengt. Tengdu snúruna aftur og opnaðu það aftur.",
+            "portable_needs_replug": "Ekki fest af skjáborðinu. Taktu snúruna úr og settu hana aftur í, opnaðu síðan aftur."
         },
         "viewMode": {
             "list": "Listi",

@@ -3223,7 +3223,8 @@
             "portable_opened": "Verbunden mit {name}",
             "portable_storages": "{count} Speicher",
             "portable_disconnected": "Tragbares Gerät getrennt: {name}",
-            "portable_unplugged": "Das tragbare Gerät wurde getrennt. Kabel erneut anschließen und erneut öffnen."
+            "portable_unplugged": "Das tragbare Gerät wurde getrennt. Kabel erneut anschließen und erneut öffnen.",
+            "portable_needs_replug": "Vom Desktop nicht eingehängt. Kabel abziehen und wieder einstecken, dann erneut öffnen."
         },
         "viewMode": {
             "list": "Liste",

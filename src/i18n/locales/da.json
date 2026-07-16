@@ -3223,7 +3223,8 @@
             "portable_opened": "[NEEDS TRANSLATION] Connected to {name}",
             "portable_storages": "[NEEDS TRANSLATION] {count} storage(s)",
             "portable_disconnected": "[NEEDS TRANSLATION] Portable device disconnected: {name}",
-            "portable_unplugged": "Den bærbare enhed blev afbrudt. Sæt kablet i igen, og åbn den igen."
+            "portable_unplugged": "Den bærbare enhed blev afbrudt. Sæt kablet i igen, og åbn den igen.",
+            "portable_needs_replug": "Ikke monteret af skrivebordet. Træk kablet ud og sæt det i igen, og åbn det derefter igen."
         },
         "viewMode": {
             "list": "Liste",

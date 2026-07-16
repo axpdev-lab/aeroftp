@@ -3223,7 +3223,8 @@
             "portable_opened": "[NEEDS TRANSLATION] Connected to {name}",
             "portable_storages": "[NEEDS TRANSLATION] {count} storage(s)",
             "portable_disconnected": "[NEEDS TRANSLATION] Portable device disconnected: {name}",
-            "portable_unplugged": "휴대용 장치가 연결 해제되었습니다. 케이블을 다시 연결한 뒤 다시 여세요."
+            "portable_unplugged": "휴대용 장치가 연결 해제되었습니다. 케이블을 다시 연결한 뒤 다시 여세요.",
+            "portable_needs_replug": "데스크톱에 마운트되지 않았습니다. 케이블을 뽑았다가 다시 꽂은 다음 다시 여세요."
         },
         "viewMode": {
             "list": "목록",

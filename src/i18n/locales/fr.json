@@ -3223,7 +3223,8 @@
             "portable_opened": "Connecté à {name}",
             "portable_storages": "{count} stockage(s)",
             "portable_disconnected": "Appareil portable déconnecté : {name}",
-            "portable_unplugged": "L'appareil portable a été déconnecté. Rebranchez le câble et rouvrez-le."
+            "portable_unplugged": "L'appareil portable a été déconnecté. Rebranchez le câble et rouvrez-le.",
+            "portable_needs_replug": "Non monté par le bureau. Débranchez et rebranchez le câble, puis rouvrez-le."
         },
         "viewMode": {
             "list": "Liste",

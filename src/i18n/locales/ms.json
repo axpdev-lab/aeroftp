@@ -3223,7 +3223,8 @@
             "portable_opened": "[NEEDS TRANSLATION] Connected to {name}",
             "portable_storages": "[NEEDS TRANSLATION] {count} storage(s)",
             "portable_disconnected": "[NEEDS TRANSLATION] Portable device disconnected: {name}",
-            "portable_unplugged": "Peranti mudah alih telah diputuskan. Colokkan semula kabel dan buka semula."
+            "portable_unplugged": "Peranti mudah alih telah diputuskan. Colokkan semula kabel dan buka semula.",
+            "portable_needs_replug": "Tidak dipasang oleh desktop. Cabut dan pasang semula kabel, kemudian buka semula."
         },
         "viewMode": {
             "list": "Senarai",

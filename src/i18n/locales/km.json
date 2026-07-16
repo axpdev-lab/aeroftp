@@ -3223,7 +3223,8 @@
             "portable_opened": "[NEEDS TRANSLATION] Connected to {name}",
             "portable_storages": "[NEEDS TRANSLATION] {count} storage(s)",
             "portable_disconnected": "[NEEDS TRANSLATION] Portable device disconnected: {name}",
-            "portable_unplugged": "ឧបករណ៍ចល័តត្រូវបានផ្តាច់។ សូមដោតខ្សែម្តងទៀត ហើយបើកវាម្តងទៀត។"
+            "portable_unplugged": "ឧបករណ៍ចល័តត្រូវបានផ្តាច់។ សូមដោតខ្សែម្តងទៀត ហើយបើកវាម្តងទៀត។",
+            "portable_needs_replug": "មិនត្រូវបានភ្ជាប់ដោយផ្ទៃតុទេ។ ដកខ្សែចេញ រួចដោតម្តងទៀត បន្ទាប់មកបើកវាឡើងវិញ។"
         },
         "viewMode": {
             "list": "បញ្ជី",

@@ -3223,7 +3223,8 @@
             "portable_opened": "[NEEDS TRANSLATION] Connected to {name}",
             "portable_storages": "[NEEDS TRANSLATION] {count} storage(s)",
             "portable_disconnected": "[NEEDS TRANSLATION] Portable device disconnected: {name}",
-            "portable_unplugged": "Nešiojamasis įrenginys buvo atjungtas. Vėl prijunkite kabelį ir atidarykite jį iš naujo."
+            "portable_unplugged": "Nešiojamasis įrenginys buvo atjungtas. Vėl prijunkite kabelį ir atidarykite jį iš naujo.",
+            "portable_needs_replug": "Darbalaukis neprijungė. Atjunkite ir vėl įjunkite kabelį, tada atidarykite iš naujo."
         },
         "viewMode": {
             "list": "Sąrašas",

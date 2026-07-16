@@ -19,7 +19,7 @@ import {
 } from '../types/aerofile';
 import { FolderTree } from './FolderTree';
 import { formatBytes } from '../utils/formatters';
-import { findGvfsMtpMount } from '../utils/gvfsMtpMount';
+import { findGvfsMtpMount, portableDeviceNeedsReplug } from '../utils/gvfsMtpMount';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -260,6 +260,11 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
   const didFirstPortableLoadRef = useRef(false);
   const [closingPortableId, setClosingPortableId] = useState<string | null>(null);
   const [openingPortableId, setOpeningPortableId] = useState<string | null>(null);
+  // Desktop MTP automounter (gvfs monitors / binaries). When true and the phone
+  // is not mounted, exclusive libmtp open is certain to fail; show amber + re-plug.
+  const [mtpAutomounterPresent, setMtpAutomounterPresent] = useState(false);
+  // Mount list for gvfs matching (independent of Other Locations expand state).
+  const [portableMounts, setPortableMounts] = useState<VolumeInfo[]>([]);
 
   // Context menu for removing custom locations
   const [removeMenu, setRemoveMenu] = useState<RemoveMenuState>({
@@ -510,12 +515,34 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
     }
   }, []);
 
+  const fetchPortableMounts = useCallback(async () => {
+    try {
+      const mounts = await invoke<VolumeInfo[]>('list_mounted_volumes');
+      if (mountedRef.current) setPortableMounts(mounts);
+    } catch {
+      if (mountedRef.current) setPortableMounts([]);
+    }
+  }, []);
+
+  const fetchMtpAutomounterPresent = useCallback(async () => {
+    try {
+      const present = await invoke<boolean>('mtp_desktop_automounter_present');
+      if (mountedRef.current) setMtpAutomounterPresent(present);
+    } catch {
+      // Missing command / older backend: treat as no automounter so exclusive
+      // path stays clickable (never block opens on a failed probe).
+      if (mountedRef.current) setMtpAutomounterPresent(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (!showPortable) return;
 
     // Spinner on the first load only. A background refresh that momentarily
     // returns nothing must not replace the section with a spinner.
     if (!didFirstPortableLoadRef.current) setPortableLoading(true);
+    void fetchMtpAutomounterPresent();
+    void fetchPortableMounts();
     fetchPortableDevices().finally(() => {
       didFirstPortableLoadRef.current = true;
       if (mountedRef.current) setPortableLoading(false);
@@ -523,28 +550,48 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
 
     // Event-driven wake: Windows WM_DEVICECHANGE, Linux kernel USB uevents.
     // Both emit `mtp-devices-changed`; the interval below is only a fallback.
-    const disposeListener = guardedUnlisten(
+    const disposeMtpListener = guardedUnlisten(
       listen<void>('mtp-devices-changed', () => {
-        if (mountedRef.current) fetchPortableDevices();
+        if (mountedRef.current) {
+          fetchPortableDevices();
+          fetchPortableMounts();
+          fetchMtpAutomounterPresent();
+        }
+      }),
+    );
+    // gvfs mount appear/disappear (plug, sleep death, remount) updates amber vs open.
+    const disposeVolListener = guardedUnlisten(
+      listen<void>('volumes-changed', () => {
+        if (mountedRef.current) fetchPortableMounts();
       }),
     );
 
     portableIntervalRef.current = setInterval(() => {
-      if (mountedRef.current) fetchPortableDevices();
+      if (mountedRef.current) {
+        fetchPortableDevices();
+        fetchPortableMounts();
+      }
     }, PORTABLE_POLL_FALLBACK_MS);
 
-    const onFocus = () => { if (mountedRef.current) fetchPortableDevices(); };
+    const onFocus = () => {
+      if (mountedRef.current) {
+        fetchPortableDevices();
+        fetchPortableMounts();
+        fetchMtpAutomounterPresent();
+      }
+    };
     window.addEventListener('focus', onFocus);
 
     return () => {
       window.removeEventListener('focus', onFocus);
-      disposeListener();
+      disposeMtpListener();
+      disposeVolListener();
       if (portableIntervalRef.current) {
         clearInterval(portableIntervalRef.current);
         portableIntervalRef.current = null;
       }
     };
-  }, [showPortable, fetchPortableDevices]);
+  }, [showPortable, fetchPortableDevices, fetchPortableMounts, fetchMtpAutomounterPresent]);
 
   const handleOpenPortable = useCallback(async (device: MtpDeviceInfo) => {
     setOpeningPortableId(device.deviceId);
@@ -560,9 +607,17 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
       } catch {
         // No volume backend: fall through to the exclusive path.
       }
+      if (mountedRef.current) setPortableMounts(mounts);
       const gvfsPath = findGvfsMtpMount(mounts, device);
       if (gvfsPath) {
         onNavigate(gvfsPath);
+        return;
+      }
+
+      // Fail-fast: automounter spent the session and mount is gone. Do not burn
+      // ~28s inside libmtp for a certain failure. Row UI already shows amber;
+      // this guards double-clicks / races before state catches up.
+      if (mtpAutomounterPresent) {
         return;
       }
 
@@ -573,7 +628,7 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
     } finally {
       if (mountedRef.current) setOpeningPortableId(null);
     }
-  }, [onOpenPortableDevice, onNavigate]);
+  }, [onOpenPortableDevice, onNavigate, mtpAutomounterPresent]);
 
   const handleClosePortable = useCallback(async (deviceId: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -872,47 +927,78 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
             const isActive = activePortableDeviceId === dev.deviceId;
             const isOpening = openingPortableId === dev.deviceId;
             const isClosing = closingPortableId === dev.deviceId;
-            const subtitle = dev.busLocation
-              || (dev.storagesHint > 0
-                ? t('sidebar.portable_storages', { count: dev.storagesHint })
-                : dev.platform);
+            const gvfsMount = findGvfsMtpMount(portableMounts, dev);
+            const needsReplug = portableDeviceNeedsReplug(mtpAutomounterPresent, gvfsMount);
+            const subtitle = needsReplug
+              ? t('sidebar.portable_needs_replug')
+              : (dev.busLocation
+                || (dev.storagesHint > 0
+                  ? t('sidebar.portable_storages', { count: dev.storagesHint })
+                  : dev.platform));
+            const rowTitle = needsReplug
+              ? t('sidebar.portable_needs_replug')
+              : (dev.serial ? `${dev.displayName} (${dev.serial})` : dev.displayName);
 
             return (
               <div
                 key={dev.deviceId}
                 role="button"
-                tabIndex={0}
-                className={`flex flex-col gap-0.5 px-2 py-1.5 rounded-lg cursor-pointer transition-colors duration-100 ${
-                  isActive
-                    ? 'bg-blue-100 dark:bg-blue-600/20'
-                    : 'hover:bg-gray-100 dark:hover:bg-gray-700/50'
+                tabIndex={needsReplug ? -1 : 0}
+                aria-disabled={needsReplug || undefined}
+                className={`flex flex-col gap-0.5 px-2 py-1.5 rounded-lg transition-colors duration-100 ${
+                  needsReplug
+                    ? 'cursor-default bg-amber-50 dark:bg-amber-900/25'
+                    : isActive
+                      ? 'cursor-pointer bg-blue-100 dark:bg-blue-600/20'
+                      : 'cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700/50'
                 }`}
-                onClick={() => { void handleOpenPortable(dev); }}
+                onClick={() => {
+                  if (needsReplug) return;
+                  void handleOpenPortable(dev);
+                }}
                 onKeyDown={(e) => {
+                  if (needsReplug) return;
                   if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault();
                     void handleOpenPortable(dev);
                   }
                 }}
-                title={dev.serial ? `${dev.displayName} (${dev.serial})` : dev.displayName}
+                title={rowTitle}
               >
                 <div className="flex items-center gap-2">
                   {isOpening ? (
                     <Loader2 size={16} className="animate-spin flex-shrink-0 opacity-70" />
                   ) : (
-                    <Smartphone size={16} className="opacity-70 flex-shrink-0" />
+                    <Smartphone
+                      size={16}
+                      className={`flex-shrink-0 ${
+                        needsReplug
+                          ? 'text-amber-600 dark:text-amber-400 opacity-90'
+                          : 'opacity-70'
+                      }`}
+                    />
                   )}
                   <div className="flex-1 min-w-0">
                     <div className={`text-sm truncate ${
-                      isActive ? 'text-blue-600 dark:text-blue-400' : 'text-gray-700 dark:text-gray-300'
+                      needsReplug
+                        ? 'text-amber-800 dark:text-amber-200'
+                        : isActive
+                          ? 'text-blue-600 dark:text-blue-400'
+                          : 'text-gray-700 dark:text-gray-300'
                     }`}>
                       {dev.displayName || dev.deviceId}
                     </div>
                     {subtitle && (
-                      <div className="text-[10px] text-gray-500 truncate">{subtitle}</div>
+                      <div className={`text-[10px] truncate ${
+                        needsReplug
+                          ? 'text-amber-700/90 dark:text-amber-300/90'
+                          : 'text-gray-500'
+                      }`}>
+                        {subtitle}
+                      </div>
                     )}
                   </div>
-                  {isActive && (
+                  {isActive && !needsReplug && (
                     <button
                       aria-label={`${t('sidebar.portable_disconnect')} ${dev.displayName}`}
                       className="p-0.5 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600 dark:hover:bg-gray-600/50 dark:hover:text-gray-200 flex-shrink-0 transition-colors"

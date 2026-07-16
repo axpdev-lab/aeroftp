@@ -3223,7 +3223,8 @@
             "portable_opened": "[NEEDS TRANSLATION] Connected to {name}",
             "portable_storages": "[NEEDS TRANSLATION] {count} storage(s)",
             "portable_disconnected": "[NEEDS TRANSLATION] Portable device disconnected: {name}",
-            "portable_unplugged": "Prenosna naprava je bila odklopljena. Ponovno priključite kabel in jo znova odprite."
+            "portable_unplugged": "Prenosna naprava je bila odklopljena. Ponovno priključite kabel in jo znova odprite.",
+            "portable_needs_replug": "Namizje ni priklopilo. Izklopite in znova vklopite kabel, nato znova odprite."
         },
         "viewMode": {
             "list": "Seznam",

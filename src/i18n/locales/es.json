@@ -3223,7 +3223,8 @@
             "portable_opened": "Conectado a {name}",
             "portable_storages": "{count} almacenamiento(s)",
             "portable_disconnected": "Dispositivo portátil desconectado: {name}",
-            "portable_unplugged": "Se desconectó el dispositivo portátil. Vuelva a conectar el cable y ábralo de nuevo."
+            "portable_unplugged": "Se desconectó el dispositivo portátil. Vuelva a conectar el cable y ábralo de nuevo.",
+            "portable_needs_replug": "No montado por el escritorio. Desconecta y vuelve a conectar el cable y ábrelo de nuevo."
         },
         "viewMode": {
             "list": "Lista",

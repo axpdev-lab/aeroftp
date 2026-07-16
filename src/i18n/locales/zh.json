@@ -3223,7 +3223,8 @@
             "portable_opened": "[NEEDS TRANSLATION] Connected to {name}",
             "portable_storages": "[NEEDS TRANSLATION] {count} storage(s)",
             "portable_disconnected": "[NEEDS TRANSLATION] Portable device disconnected: {name}",
-            "portable_unplugged": "便携设备已断开连接。请重新插入电缆并再次打开。"
+            "portable_unplugged": "便携设备已断开连接。请重新插入电缆并再次打开。",
+            "portable_needs_replug": "桌面未挂载。请拔下并重新插入电缆，然后再次打开。"
         },
         "viewMode": {
             "list": "列表",

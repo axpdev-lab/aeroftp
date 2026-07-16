@@ -3216,7 +3216,8 @@
             "portable_opened": "[NEEDS TRANSLATION] Connected to {name}",
             "portable_storages": "[NEEDS TRANSLATION] {count} storage(s)",
             "portable_disconnected": "[NEEDS TRANSLATION] Portable device disconnected: {name}",
-            "portable_unplugged": "Դյուրակիր սարքը անջատվել է։ Կրկին միացրեք մալուխը և նորից բացեք այն։"
+            "portable_unplugged": "Դյուրակիր սարքը անջատվել է։ Կրկին միացրեք մալուխը և նորից բացեք այն։",
+            "portable_needs_replug": "Աշխատասեղանի կողմից չի միացվել։ Անջատեք և նորից միացրեք մալուխը, ապա կրկին բացեք։"
         },
         "viewMode": {
             "list": "Ցուցակ",

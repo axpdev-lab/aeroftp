@@ -3188,7 +3188,8 @@
             "portable_opened": "[NEEDS TRANSLATION] Connected to {name}",
             "portable_storages": "[NEEDS TRANSLATION] {count} storage(s)",
             "portable_disconnected": "[NEEDS TRANSLATION] Portable device disconnected: {name}",
-            "portable_unplugged": "ポータブルデバイスが切断されました。ケーブルを再接続して、もう一度開いてください。"
+            "portable_unplugged": "ポータブルデバイスが切断されました。ケーブルを再接続して、もう一度開いてください。",
+            "portable_needs_replug": "デスクトップにマウントされていません。ケーブルを抜き差ししてから、もう一度開いてください。"
         },
         "viewMode": {
             "list": "リスト",

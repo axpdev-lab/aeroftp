@@ -3223,7 +3223,8 @@
             "portable_opened": "[NEEDS TRANSLATION] Connected to {name}",
             "portable_storages": "[NEEDS TRANSLATION] {count} storage(s)",
             "portable_disconnected": "[NEEDS TRANSLATION] Portable device disconnected: {name}",
-            "portable_unplugged": "Nadiskonekta ang portable na device. Ikabit muli ang cable at buksan ito ulit."
+            "portable_unplugged": "Nadiskonekta ang portable na device. Ikabit muli ang cable at buksan ito ulit.",
+            "portable_needs_replug": "Hindi naka-mount ng desktop. I-unplug at i-plug muli ang cable, tapos buksan ulit."
         },
         "viewMode": {
             "list": "Listahan",

@@ -3223,7 +3223,8 @@
             "portable_opened": "[NEEDS TRANSLATION] Connected to {name}",
             "portable_storages": "[NEEDS TRANSLATION] {count} storage(s)",
             "portable_disconnected": "[NEEDS TRANSLATION] Portable device disconnected: {name}",
-            "portable_unplugged": "Kifaa kinachobebeka kilikatwa. Chomeka tena kebo na uifungue tena."
+            "portable_unplugged": "Kifaa kinachobebeka kilikatwa. Chomeka tena kebo na uifungue tena.",
+            "portable_needs_replug": "Haijawekwa na eneo-kazi. Ondoa kebo na uiunganishe tena, kisha fungua tena."
         },
         "viewMode": {
             "list": "Orodha",

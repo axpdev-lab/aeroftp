@@ -3223,7 +3223,8 @@
             "portable_opened": "[NEEDS TRANSLATION] Connected to {name}",
             "portable_storages": "[NEEDS TRANSLATION] {count} storage(s)",
             "portable_disconnected": "[NEEDS TRANSLATION] Portable device disconnected: {name}",
-            "portable_unplugged": "Η φορητή συσκευή αποσυνδέθηκε. Επανασυνδέστε το καλώδιο και ανοίξτε την ξανά."
+            "portable_unplugged": "Η φορητή συσκευή αποσυνδέθηκε. Επανασυνδέστε το καλώδιο και ανοίξτε την ξανά.",
+            "portable_needs_replug": "Δεν έχει προσαρτηθεί από την επιφάνεια εργασίας. Αποσυνδέστε και επανασυνδέστε το καλώδιο, μετά ανοίξτε το ξανά."
         },
         "viewMode": {
             "list": "Λίστα",

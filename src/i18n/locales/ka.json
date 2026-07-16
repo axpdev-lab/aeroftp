@@ -3223,7 +3223,8 @@
             "portable_opened": "[NEEDS TRANSLATION] Connected to {name}",
             "portable_storages": "[NEEDS TRANSLATION] {count} storage(s)",
             "portable_disconnected": "[NEEDS TRANSLATION] Portable device disconnected: {name}",
-            "portable_unplugged": "პორტატული მოწყობილობა გაითიშა. ხელახლა შეაერთეთ კაბელი და გახსენით ხელახლა."
+            "portable_unplugged": "პორტატული მოწყობილობა გაითიშა. ხელახლა შეაერთეთ კაბელი და გახსენით ხელახლა.",
+            "portable_needs_replug": "სამუშაო მაგიდის მიერ არ არის მიმაგრებული. ამოაძრეთ და ხელახლა შეაერთეთ კაბელი, შემდეგ კვლავ გახსენით."
         },
         "viewMode": {
             "list": "სია",

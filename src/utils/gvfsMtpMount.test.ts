@@ -2,7 +2,7 @@
 // Copyright (c) 2024-2026 axpnet -- AI-assisted (see AI-TRANSPARENCY.md)
 
 import { describe, expect, it } from 'vitest';
-import { findGvfsMtpMount, isGvfsMtpPath } from './gvfsMtpMount';
+import { findGvfsMtpMount, isGvfsMtpPath, portableDeviceNeedsReplug } from './gvfsMtpMount';
 import type { VolumeInfo } from '../types/aerofile';
 
 const vol = (name: string, mount_point: string): VolumeInfo => ({
@@ -69,5 +69,23 @@ describe('findGvfsMtpMount', () => {
     const volumes = [vol('Samsung', other), vol('Sony', XPERIA_MOUNT)];
     expect(findGvfsMtpMount(volumes, { serial: 'R52T9' })).toBe(other);
     expect(findGvfsMtpMount(volumes, { serial: 'QV770LUNJD' })).toBe(XPERIA_MOUNT);
+  });
+});
+
+describe('portableDeviceNeedsReplug', () => {
+  it('is amber only when automounter exists and device is not mounted', () => {
+    expect(portableDeviceNeedsReplug(true, null)).toBe(true);
+    expect(portableDeviceNeedsReplug(true, undefined)).toBe(true);
+    expect(portableDeviceNeedsReplug(true, '')).toBe(true);
+  });
+
+  it('stays openable when the gvfs mount is present', () => {
+    expect(portableDeviceNeedsReplug(true, XPERIA_MOUNT)).toBe(false);
+  });
+
+  it('stays openable (exclusive path) when there is no automounter', () => {
+    // Minimal DE / CLI / Windows: exclusive libmtp is the only path and works.
+    expect(portableDeviceNeedsReplug(false, null)).toBe(false);
+    expect(portableDeviceNeedsReplug(false, XPERIA_MOUNT)).toBe(false);
   });
 });

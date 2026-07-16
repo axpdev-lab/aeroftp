@@ -3223,7 +3223,8 @@
             "portable_opened": "[NEEDS TRANSLATION] Connected to {name}",
             "portable_storages": "[NEEDS TRANSLATION] {count} storage(s)",
             "portable_disconnected": "[NEEDS TRANSLATION] Portable device disconnected: {name}",
-            "portable_unplugged": "อุปกรณ์พกพาถูกตัดการเชื่อมต่อ เสียบสายเคเบิลอีกครั้งแล้วเปิดใหม่อีกครั้ง"
+            "portable_unplugged": "อุปกรณ์พกพาถูกตัดการเชื่อมต่อ เสียบสายเคเบิลอีกครั้งแล้วเปิดใหม่อีกครั้ง",
+            "portable_needs_replug": "เดสก์ท็อปยังไม่ได้เมานต์ ถอดสายแล้วเสียบใหม่ จากนั้นเปิดอีกครั้ง"
         },
         "viewMode": {
             "list": "รายการ",

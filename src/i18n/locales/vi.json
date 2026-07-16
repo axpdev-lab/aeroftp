@@ -3223,7 +3223,8 @@
             "portable_opened": "[NEEDS TRANSLATION] Connected to {name}",
             "portable_storages": "[NEEDS TRANSLATION] {count} storage(s)",
             "portable_disconnected": "[NEEDS TRANSLATION] Portable device disconnected: {name}",
-            "portable_unplugged": "Thiết bị di động đã bị ngắt kết nối. Cắm lại cáp và mở lại thiết bị."
+            "portable_unplugged": "Thiết bị di động đã bị ngắt kết nối. Cắm lại cáp và mở lại thiết bị.",
+            "portable_needs_replug": "Chưa được máy tính gắn kết. Rút rồi cắm lại cáp, sau đó mở lại."
         },
         "viewMode": {
             "list": "Danh sách",

@@ -45,3 +45,18 @@ export function findGvfsMtpMount(
   );
   return hit ? hit.mount_point : null;
 }
+
+/**
+ * True when exclusive libmtp open is certain to fail: the desktop automounts
+ * MTP (gvfs) so it already spent the single session at plug time, and the
+ * device is not currently mounted for us to ride.
+ *
+ * When there is no automounter, exclusive open is the only path and must stay
+ * available. Do not treat "not mounted" alone as a failure signal.
+ */
+export function portableDeviceNeedsReplug(
+  automounterPresent: boolean,
+  gvfsMountPath: string | null | undefined,
+): boolean {
+  return automounterPresent && !gvfsMountPath;
+}
