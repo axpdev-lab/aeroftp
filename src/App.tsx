@@ -455,6 +455,7 @@ import type { PresetPlan } from './utils/syncPresets';
 import { runRemoteSync, filesFromJournal, type RemoteSyncConfig, type SyncRunReport, type SyncRunFile, type SyncRunDirs } from './utils/remoteSyncRunner';
 import { buildRemoteSyncInput, buildMirrorSyncInput } from './utils/presetToSyncRun';
 import { adaptFileComparisons } from './utils/recursiveCompare';
+import { describeScanIncompleteError, isScanIncompleteError } from './utils/scanCompleteness';
 import { useTranslation } from './i18n';
 
 // Components
@@ -10362,12 +10363,23 @@ interface UpdateVerificationInfo {
             // Both sides are local: local_info = left, remote_info = right.
             resolved = adaptFileComparisons(comparisons, true);
           } catch (err) {
-            // Recursive scan failed: fall back to the flat top-level classify.
-            resolved = compareEntries(
-              localFiles.map(toCompareEntry),
-              localFiles2.map(toCompareEntry),
-            );
-            notify.warning(t('aerosync.title') || 'AeroSync', String(err));
+            if (isScanIncompleteError(err)) {
+              // CLAUDE-AV-B3-13: one of the two local walks did not see its
+              // whole tree. A dual-local pair deletes in BOTH directions, so
+              // the flat fallback below is even more dangerous here than on
+              // the remote path: whichever root went away contributes an empty
+              // listing and Mirror deletes the other side down to it. Fail
+              // closed, no executable plan.
+              resolved = compareEntries([], []);
+              notify.error(t('aerosync.title') || 'AeroSync', describeScanIncompleteError(err));
+            } else {
+              // Recursive scan failed: fall back to the flat top-level classify.
+              resolved = compareEntries(
+                localFiles.map(toCompareEntry),
+                localFiles2.map(toCompareEntry),
+              );
+              notify.warning(t('aerosync.title') || 'AeroSync', String(err));
+            }
           }
           if (aeroSyncCompareSeqRef.current !== mySeq) return;
           setAeroSync((prev) =>
@@ -10462,6 +10474,17 @@ interface UpdateVerificationInfo {
             // error and leave Compare with no executable result.
             resolved = compareEntries([], []);
             notify.error(t('aerosync.title') || 'AeroSync', String(err));
+          } else if (isScanIncompleteError(err)) {
+            // CLAUDE-AV-B3-13: the backend refused because the local walk did
+            // not see the whole tree (unmounted root, unreadable directory,
+            // cancelled or capped scan). Do NOT drop to the flat fallback
+            // below: with the local root gone its panel listing is empty, so
+            // every remote entry would land in `only-right` and Mirror maps
+            // that to `delete-right`. That would rebuild the very mass-delete
+            // the backend just refused, off an even thinner tree. Fail closed
+            // like the crypt arm: no rows, no executable plan, blocking error.
+            resolved = compareEntries([], []);
+            notify.error(t('aerosync.title') || 'AeroSync', describeScanIncompleteError(err));
           } else {
             // Recursive scan failed: fall back to the flat top-level
             // classify so the Compare tab still shows something actionable.

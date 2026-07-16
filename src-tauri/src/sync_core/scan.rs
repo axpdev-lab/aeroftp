@@ -459,14 +459,21 @@ pub async fn scan_remote_tree_checked(
 /// Scan a remote tree through the GUI provider holder, consuming explicit
 /// checker/list leases. Clone-backed providers can list independent directories
 /// concurrently; locked legacy providers keep the old one-list-at-a-time path.
-pub async fn scan_remote_tree_with_provider_lock(
+/// Also reports [`ScanCompleteness`], so a caller that turns "absent from this
+/// listing" into a delete can refuse to act on a tree it did not fully see.
+/// CLAUDE-AV-B3-13: every branch below used to drop its listing failures to an
+/// `eprintln!` and answer with a plain `Vec`, which is indistinguishable from a
+/// tree that really is missing those files.
+pub async fn scan_remote_tree_with_provider_lock_checked(
     provider: Arc<Mutex<Option<Box<dyn StorageProvider>>>>,
     remote_root: &str,
     opts: &ScanOptions,
     list_model: &ProviderListSessionModel,
     cancel: Option<Arc<std::sync::atomic::AtomicBool>>,
     observer: Option<&dyn DagObserver>,
-) -> Vec<RemoteEntry> {
+) -> (Vec<RemoteEntry>, ScanCompleteness) {
+    let mut completeness = ScanCompleteness::default();
+
     // GAP-9f: provider-native single-shot recursive listing fast-path,
     // tried once before either BFS branch (clone-pool or locked). S3's flat
     // ListObjectsV2 returns the whole subtree in one paginated call.
@@ -484,7 +491,15 @@ pub async fn scan_remote_tree_with_provider_lock(
             if let Some(obs) = observer {
                 obs.on_scan_progress(results.len(), 0);
             }
-            return results;
+            // `Some` means the provider returned a full recursive listing in one
+            // call, and it degrades to `None` on any error, so there are no
+            // per-directory failures to count here. The cap still bites though:
+            // `adapt_fastpath_entries` stops filling at `max_entries`, and a
+            // listing cut off at the cap is a truncated tree like any other.
+            if results.len() >= opts.max_entries.unwrap_or(MAX_SCAN_ENTRIES) {
+                completeness.truncated = true;
+            }
+            return (results, completeness);
         }
     }
 
@@ -522,16 +537,22 @@ pub async fn scan_remote_tree_with_provider_lock(
 
     while (!queue.is_empty() || in_flight > 0) && results.len() < cap {
         if scan_cancelled(&cancel) {
+            // CLAUDE-AV-B3-13: a cancelled walk stopped mid-tree.
+            completeness.truncated = true;
             break;
         }
         while in_flight < max_workers {
             if scan_cancelled(&cancel) {
+                completeness.truncated = true;
                 break;
             }
             let Some(dir) = queue.pop_front() else {
                 break;
             };
             if dir.depth >= depth {
+                // CLAUDE-AV-B3-13: everything under this directory is below the
+                // depth limit and therefore invisible to the scan.
+                completeness.truncated = true;
                 continue;
             }
             spawn_remote_scan_task(
@@ -556,12 +577,15 @@ pub async fn scan_remote_tree_with_provider_lock(
                 in_flight = in_flight.saturating_sub(1);
                 for file in batch.files {
                     if results.len() >= cap {
+                        completeness.truncated = true;
                         break;
                     }
                     results.push(file);
                 }
                 for dir in batch.dirs {
                     if results.len() >= cap {
+                        // Dropping a queued directory drops its whole subtree.
+                        completeness.truncated = true;
                         break;
                     }
                     queue.push_back(dir);
@@ -569,10 +593,15 @@ pub async fn scan_remote_tree_with_provider_lock(
             }
             Some(Ok(Err(error))) => {
                 in_flight = in_flight.saturating_sub(1);
+                // CLAUDE-AV-B3-13: this directory did not list. Its files are
+                // simply absent from `results`, which reads exactly like a
+                // deletion downstream, so count it instead of only warning.
+                completeness.list_errors += 1;
                 eprintln!("[scan_remote_tree] warning: {}", error);
             }
             Some(Err(error)) => {
                 in_flight = in_flight.saturating_sub(1);
+                completeness.list_errors += 1;
                 eprintln!("[scan_remote_tree] warning: scan task failed: {}", error);
             }
             None => break,
@@ -586,10 +615,15 @@ pub async fn scan_remote_tree_with_provider_lock(
         }
     }
 
+    // The loop also exits when the cap is hit, which is a truncated tree.
+    if results.len() >= cap {
+        completeness.truncated = true;
+    }
+
     if let Some(obs) = observer {
         obs.on_scan_progress(results.len(), 0);
     }
-    results
+    (results, completeness)
 }
 
 async fn scan_remote_tree_locked(
@@ -599,7 +633,7 @@ async fn scan_remote_tree_locked(
     list_model: &ProviderListSessionModel,
     cancel: Option<Arc<std::sync::atomic::AtomicBool>>,
     observer: Option<&dyn DagObserver>,
-) -> Vec<RemoteEntry> {
+) -> (Vec<RemoteEntry>, ScanCompleteness) {
     let cap = opts.max_entries.unwrap_or(MAX_SCAN_ENTRIES);
     let depth = opts.max_depth.unwrap_or(DEFAULT_SCAN_DEPTH);
     let want_remote_checksum = {
@@ -612,6 +646,7 @@ async fn scan_remote_tree_locked(
     };
 
     let mut results = Vec::new();
+    let mut completeness = ScanCompleteness::default();
     let resource_manager = TransferResourceManager::new(TransferBudget {
         checker_slots: 1,
         ..TransferBudget::from_file_slots(1)
@@ -624,24 +659,33 @@ async fn scan_remote_tree_locked(
     }]);
     while let Some(dir) = queue.pop_front() {
         if scan_cancelled(&cancel) {
+            completeness.truncated = true;
             break;
         }
+        // CLAUDE-AV-B3-13: both of these skip a directory we were asked to walk,
+        // so the tree we report is smaller than the tree that exists.
         if dir.depth >= depth || results.len() >= cap {
+            completeness.truncated = true;
             continue;
         }
 
+        // CLAUDE-AV-B3-13: each of the three aborts below abandons the queue
+        // mid-walk. They used to leave only a stderr warning behind.
         let Ok(_checker_lease) = resource_manager.acquire(ResourceRequest::checker()).await else {
             eprintln!("[scan_remote_tree] warning: failed to acquire checker slot");
+            completeness.truncated = true;
             break;
         };
         let Ok(session_lease) = session_pool.acquire().await else {
             eprintln!("[scan_remote_tree] warning: failed to acquire list lease");
+            completeness.truncated = true;
             break;
         };
         let batch = {
             let mut provider_lock = provider.lock().await;
             let Some(provider) = provider_lock.as_mut() else {
                 eprintln!("[scan_remote_tree] warning: provider disconnected");
+                completeness.truncated = true;
                 break;
             };
             scan_remote_dir(provider, &dir, opts, want_remote_checksum, &cancel).await
@@ -652,6 +696,7 @@ async fn scan_remote_tree_locked(
             Ok(batch) => {
                 for file in batch.files {
                     if results.len() >= cap {
+                        completeness.truncated = true;
                         break;
                     }
                     results.push(file);
@@ -661,6 +706,9 @@ async fn scan_remote_tree_locked(
                 }
             }
             Err(error) => {
+                // CLAUDE-AV-B3-13: an unlisted directory hides every file under
+                // it, which downstream reads as "these files were deleted".
+                completeness.list_errors += 1;
                 eprintln!(
                     "[scan_remote_tree] warning: failed to list {}: {}",
                     dir.abs_dir, error
@@ -678,7 +726,7 @@ async fn scan_remote_tree_locked(
     if let Some(obs) = observer {
         obs.on_scan_progress(results.len(), 0);
     }
-    results
+    (results, completeness)
 }
 
 #[derive(Debug, Clone)]
@@ -939,6 +987,84 @@ mod tests {
     use super::*;
     use std::fs;
     use tempfile::tempdir;
+
+    /// CLAUDE-AV-B3-13: the provider-backed remote walk must report that it did
+    /// not see the whole tree. Every abort below used to leave a stderr warning
+    /// and return a plain `Vec`, which downstream cannot tell apart from a
+    /// remote where those files genuinely no longer exist: running a preset
+    /// remote-to-local then deletes the local copies.
+    ///
+    /// Both branches are driven with a DISCONNECTED provider, which needs no
+    /// mock: it is itself one of the real failure paths.
+    #[tokio::test]
+    async fn locked_walk_on_a_disconnected_provider_is_incomplete_not_an_empty_remote() {
+        let provider: Arc<Mutex<Option<Box<dyn StorageProvider>>>> = Arc::new(Mutex::new(None));
+        let model = ProviderListSessionModel::LockedSingle {
+            provider_type: None,
+        };
+
+        let (entries, scan) = scan_remote_tree_with_provider_lock_checked(
+            provider,
+            "/remote",
+            &ScanOptions::default(),
+            &model,
+            None,
+            None,
+        )
+        .await;
+
+        assert!(entries.is_empty());
+        assert!(
+            !scan.is_complete(),
+            "a walk that never listed anything is not an empty remote"
+        );
+        assert!(scan.truncated, "the walk abandoned its queue mid-tree");
+    }
+
+    #[tokio::test]
+    async fn clone_pool_walk_counts_a_failed_directory_listing() {
+        let provider: Arc<Mutex<Option<Box<dyn StorageProvider>>>> = Arc::new(Mutex::new(None));
+        let model = ProviderListSessionModel::HttpClonePool {
+            provider_type: crate::providers::ProviderType::S3,
+            max_leases: 2,
+        };
+
+        let (entries, scan) = scan_remote_tree_with_provider_lock_checked(
+            provider,
+            "/remote",
+            &ScanOptions::default(),
+            &model,
+            None,
+            None,
+        )
+        .await;
+
+        assert!(entries.is_empty());
+        assert!(scan.list_errors > 0, "the failed listing must be counted");
+        assert!(!scan.is_complete());
+    }
+
+    #[tokio::test]
+    async fn a_cancelled_remote_walk_is_incomplete() {
+        let provider: Arc<Mutex<Option<Box<dyn StorageProvider>>>> = Arc::new(Mutex::new(None));
+        let model = ProviderListSessionModel::LockedSingle {
+            provider_type: None,
+        };
+        let cancel = Arc::new(std::sync::atomic::AtomicBool::new(true));
+
+        let (_entries, scan) = scan_remote_tree_with_provider_lock_checked(
+            provider,
+            "/remote",
+            &ScanOptions::default(),
+            &model,
+            Some(cancel),
+            None,
+        )
+        .await;
+
+        assert!(!scan.is_complete(), "a cancelled walk stopped early");
+        assert!(scan.truncated);
+    }
 
     #[test]
     fn scan_local_tree_returns_files_with_relative_paths() {

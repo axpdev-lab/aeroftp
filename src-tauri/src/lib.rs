@@ -11469,7 +11469,7 @@ async fn compare_directories(
     // Run local and remote scans concurrently (F2 optimization)
     // Local scan runs on filesystem; remote scan holds FTP lock.
     // tokio::join! runs both futures on the same task but interleaves their I/O waits.
-    let local_future = get_local_files_recursive_with_progress(
+    let local_future = get_local_files_recursive_checked(
         &local_path,
         &local_path,
         &options.exclude_patterns,
@@ -11493,9 +11493,20 @@ async fn compare_directories(
     };
 
     let (local_result, remote_result) = tokio::join!(local_future, remote_future);
-    let local_files = local_result.map_err(|e| format!("Failed to scan local directory: {}", e))?;
-    let remote_files =
+    let (local_files, local_scan) =
+        local_result.map_err(|e| format!("Failed to scan local directory: {}", e))?;
+    let (remote_files, remote_scan) =
         remote_result.map_err(|e| format!("Failed to scan remote directory: {}", e))?;
+
+    // CLAUDE-AV-B3-13: the rows below feed the Compare tab, and a Mirror preset
+    // turns every "remote only" row into a remote delete. If the local walk
+    // missed part of the tree, those files are present but invisible, so classify
+    // nothing rather than hand the runner a plan that deletes live data.
+    ensure_scan_complete("local", &local_path, &local_scan)?;
+    // The mirror image: run the preset remote-to-local and "absent on the remote"
+    // becomes a LOCAL delete, so a half-listed server tree is just as destructive.
+    // Gate both sides; a compare is only safe when the whole pair was seen.
+    ensure_scan_complete("remote", &remote_path, &remote_scan)?;
 
     // Emit scan phase: comparing
     let _ = app.emit(
@@ -11559,7 +11570,7 @@ async fn compare_local_directories(
     );
 
     // Both sides are filesystem scans; run them concurrently.
-    let left_future = get_local_files_recursive_with_progress(
+    let left_future = get_local_files_recursive_checked(
         &left_path,
         &left_path,
         &options.exclude_patterns,
@@ -11567,7 +11578,7 @@ async fn compare_local_directories(
         Some(&state.cancel_flag),
         Some(&app),
     );
-    let right_future = get_local_files_recursive_with_progress(
+    let right_future = get_local_files_recursive_checked(
         &right_path,
         &right_path,
         &options.exclude_patterns,
@@ -11577,8 +11588,15 @@ async fn compare_local_directories(
     );
 
     let (left_result, right_result) = tokio::join!(left_future, right_future);
-    let left_files = left_result.map_err(|e| format!("Failed to scan left directory: {}", e))?;
-    let right_files = right_result.map_err(|e| format!("Failed to scan right directory: {}", e))?;
+    let (left_files, left_scan) =
+        left_result.map_err(|e| format!("Failed to scan left directory: {}", e))?;
+    let (right_files, right_scan) =
+        right_result.map_err(|e| format!("Failed to scan right directory: {}", e))?;
+
+    // CLAUDE-AV-B3-13: a dual-local pair deletes in BOTH directions, so an
+    // incomplete walk on either side can wipe the other. Gate both.
+    ensure_scan_complete("left", &left_path, &left_scan)?;
+    ensure_scan_complete("right", &right_path, &right_scan)?;
 
     let _ = app.emit(
         "sync_scan_progress",
@@ -11621,8 +11639,59 @@ async fn compute_sha256(path: &std::path::Path) -> Option<String> {
     Some(format!("{:x}", hasher.finalize()))
 }
 
+/// CLAUDE-AV-B3-13: marker embedded in the error a compare command returns when
+/// the local scan could not see the whole tree.
+///
+/// The compare commands answer with a flat `Vec<FileComparison>`, so there is no
+/// field in which to say "this scan was partial". Rather than widen the payload,
+/// the refusal travels in the error string behind a stable marker, the same way
+/// `CONNECT_CANCELLED` / `DEST_EXISTS` already do. The frontend matches on it
+/// (`src/utils/scanCompleteness.ts`) and fails closed instead of dropping to its
+/// flat top-level fallback, which would rebuild an actionable delete plan and
+/// re-open the very hole this guard closes.
+pub const SCAN_INCOMPLETE_MARKER: &str = "SCAN_INCOMPLETE";
+
+/// CLAUDE-AV-B3-13: refuse to hand a tree we did not fully see to a caller that
+/// turns "missing on one side" into a delete on the other.
+///
+/// A file hidden by a failed listing is indistinguishable from a file the user
+/// deleted: both are simply absent from the map. Mirroring that absence is what
+/// turns an unreadable directory into remote data loss, so every compare that
+/// can feed a Mirror preset gates on this before classifying.
+pub(crate) fn ensure_scan_complete(
+    side: &str,
+    path: &str,
+    scan: &crate::sync_core::ScanCompleteness,
+) -> Result<(), String> {
+    if scan.is_complete() {
+        return Ok(());
+    }
+    let mut why = Vec::new();
+    if scan.list_errors > 0 {
+        why.push(format!("{} directory listing(s) failed", scan.list_errors));
+    }
+    if scan.truncated {
+        why.push("the scan stopped before the end of the tree".to_string());
+    }
+    Err(format!(
+        "{}: the {} scan of {} did not see the whole tree ({}). Refusing to compare: \
+         a file hidden by a failed listing looks exactly like a deleted one, so a \
+         Mirror pass would delete it on the other side. Check the folder is mounted \
+         and readable, then compare again.",
+        SCAN_INCOMPLETE_MARKER,
+        side,
+        path,
+        why.join(" and "),
+    ))
+}
+
 /// Scan local directory iteratively and build file info map.
 /// When `compare_checksum` is true, computes SHA-256 for each file.
+///
+/// Returns the map ALONE, so a partial scan is indistinguishable from a complete
+/// one. Callers that delete orphans must use
+/// [`get_local_files_recursive_checked`] and gate on the reported completeness.
+/// CLAUDE-AV-B3-13.
 pub async fn get_local_files_recursive(
     base_path: &str,
     _current_path: &str,
@@ -11644,6 +11713,9 @@ pub async fn get_local_files_recursive(
 /// Same as get_local_files_recursive, but emits `sync_scan_progress` events
 /// while traversing. Without this, scanning large trees (e.g. a home directory)
 /// leaves the UI stuck on "0 files found" for minutes, which looks like a stall.
+///
+/// Returns the map ALONE: see [`get_local_files_recursive_checked`] before using
+/// this in anything that deletes. CLAUDE-AV-B3-13.
 pub async fn get_local_files_recursive_with_progress(
     base_path: &str,
     _current_path: &str,
@@ -11652,11 +11724,54 @@ pub async fn get_local_files_recursive_with_progress(
     cancel_flag: Option<&std::sync::atomic::AtomicBool>,
     app: Option<&AppHandle>,
 ) -> Result<HashMap<String, FileInfo>, String> {
+    get_local_files_recursive_checked(
+        base_path,
+        _current_path,
+        exclude_patterns,
+        compare_checksum,
+        cancel_flag,
+        app,
+    )
+    .await
+    .map(|(files, _)| files)
+}
+
+/// Like [`get_local_files_recursive_with_progress`] but also reports
+/// [`ScanCompleteness`](crate::sync_core::ScanCompleteness), mirroring
+/// `sync_core::scan::scan_local_tree_checked`, so a caller that turns "missing
+/// locally" into a delete can refuse to act on a tree it did not fully see.
+///
+/// The walker used to swallow every traversal failure and answer `Ok(map)`, so a
+/// half-read tree was reported as a clean, complete one. CLAUDE-AV-B3-13.
+pub async fn get_local_files_recursive_checked(
+    base_path: &str,
+    _current_path: &str,
+    exclude_patterns: &[String],
+    compare_checksum: bool,
+    cancel_flag: Option<&std::sync::atomic::AtomicBool>,
+    app: Option<&AppHandle>,
+) -> Result<
+    (
+        HashMap<String, FileInfo>,
+        crate::sync_core::ScanCompleteness,
+    ),
+    String,
+> {
     let mut files = HashMap::new();
+    let mut completeness = crate::sync_core::ScanCompleteness::default();
     let base = PathBuf::from(base_path);
 
+    // CLAUDE-AV-B3-13: an absent root is NOT an empty tree. For a compare that
+    // drives deletes it is the unmounted-drive case, and calling it a clean
+    // empty scan is exactly how every local file reads as "deleted" and gets
+    // mirrored into a remote wipe. `scan_local_tree_checked` already counts its
+    // walkdir root error the same way, so this matches the local-scan precedent
+    // rather than the nonexistent-REMOTE-preview one (where empty IS the truth).
+    // The GUI only compares a folder the user is browsing, so this can fire only
+    // when the path really did go away underneath us.
     if !base.exists() {
-        return Ok(files);
+        completeness.list_errors += 1;
+        return Ok((files, completeness));
     }
 
     // Use a stack for iterative traversal instead of recursion
@@ -11670,7 +11785,13 @@ pub async fn get_local_files_recursive_with_progress(
         // Check cancellation
         if let Some(flag) = cancel_flag {
             if flag.load(std::sync::atomic::Ordering::Relaxed) {
-                return Ok(files); // Return partial results
+                // CLAUDE-AV-B3-13: a cancelled walk stops mid-tree, so the map
+                // is a prefix of the truth rather than the truth. Still return
+                // the partial results (a preview caller wants them), but report
+                // the scan as incomplete so delete propagation refuses it: a
+                // cancelled scan used to produce a full-looking delete plan.
+                completeness.truncated = true;
+                return Ok((files, completeness));
             }
         }
 
@@ -11695,10 +11816,28 @@ pub async fn get_local_files_recursive_with_progress(
 
         let mut entries = match tokio::fs::read_dir(&current_dir).await {
             Ok(e) => e,
-            Err(_) => continue,
+            Err(_) => {
+                // CLAUDE-AV-B3-13: an unreadable directory hides every file
+                // under it. Skipping it silently made those files read as
+                // deleted; count it so delete propagation can refuse.
+                completeness.list_errors += 1;
+                continue;
+            }
         };
 
-        while let Ok(Some(entry)) = entries.next_entry().await {
+        loop {
+            let entry = match entries.next_entry().await {
+                Ok(Some(e)) => e,
+                Ok(None) => break,
+                Err(_) => {
+                    // CLAUDE-AV-B3-13: this was `while let Ok(Some(entry))`, so
+                    // an error mid-listing ended the loop indistinguishably from
+                    // a clean end: the rest of this directory silently vanished
+                    // from the map and read as deleted.
+                    completeness.list_errors += 1;
+                    break;
+                }
+            };
             let path = entry.path();
             let name = entry.file_name().to_string_lossy().to_string();
 
@@ -11758,12 +11897,16 @@ pub async fn get_local_files_recursive_with_progress(
                 checksum,
             };
 
-            // P2-1: Cap file index at 1M entries to prevent unbounded memory growth
+            // P2-1: Cap file index at 1M entries to prevent unbounded memory growth.
+            // CLAUDE-AV-B3-13: carry the marker so the frontend fails closed. A
+            // capped scan is a truncated tree, and this used to surface as a bare
+            // error that dropped the UI into its flat top-level fallback, which
+            // happily rebuilds a delete plan from the very tree we just refused.
             if files.len() >= 1_000_000 {
-                return Err(
-                    "File scan exceeded 1,000,000 entries. Consider narrowing the scan scope."
-                        .to_string(),
-                );
+                return Err(format!(
+                    "{}: file scan exceeded 1,000,000 entries. Consider narrowing the scan scope.",
+                    SCAN_INCOMPLETE_MARKER
+                ));
             }
 
             files.insert(relative_path, file_info);
@@ -11775,12 +11918,21 @@ pub async fn get_local_files_recursive_with_progress(
         }
     }
 
-    Ok(files)
+    Ok((files, completeness))
 }
 
 /// Parallel local scan: directory traversal is sequential (fast), but SHA-256
 /// checksums are computed concurrently using a bounded JoinSet + Semaphore.
 /// Falls back to sequential scan when `compare_checksum` is false (no I/O benefit).
+///
+/// CLAUDE-AV-B3-13: this twin still swallows traversal failures (absent root,
+/// unreadable directory, mid-listing error) and answers `Ok(map)`, so a partial
+/// tree is indistinguishable from a complete one. That is not a live data-loss
+/// path today only because its single caller, the `get_parallel_scan_files`
+/// command, hands the map straight back and never deletes: no delete gate exists
+/// to attach a completeness signal to. Before wiring this into anything that
+/// propagates deletes, give it the [`get_local_files_recursive_checked`]
+/// treatment; do not assume `Ok` means the whole tree was seen.
 pub async fn get_local_files_recursive_parallel(
     base_path: &str,
     exclude_patterns: &[String],
@@ -11955,7 +12107,15 @@ pub async fn get_local_files_recursive_parallel(
     Ok(files)
 }
 
-/// Scan remote directory with progress events
+/// Scan remote directory with progress events.
+///
+/// CLAUDE-AV-B3-13: also reports [`ScanCompleteness`](crate::sync_core::ScanCompleteness),
+/// for the same reason as the local walker. The hazard is symmetric, not
+/// hypothetical: a Mirror running remote-to-local maps "present locally, absent
+/// on the remote" to a LOCAL delete, so a remote directory the server refused to
+/// list makes the files under it look deleted and takes your local copies with
+/// them. This walk hits the network, where a half-listed tree is far more
+/// ordinary than a half-read local disk.
 async fn get_remote_files_recursive_with_progress(
     app: &AppHandle,
     ftp_manager: &mut ftp::FtpManager,
@@ -11964,8 +12124,15 @@ async fn get_remote_files_recursive_with_progress(
     exclude_patterns: &[String],
     local_count: usize,
     cancel_flag: Option<&std::sync::atomic::AtomicBool>,
-) -> Result<HashMap<String, FileInfo>, String> {
+) -> Result<
+    (
+        HashMap<String, FileInfo>,
+        crate::sync_core::ScanCompleteness,
+    ),
+    String,
+> {
     let mut files = HashMap::new();
+    let mut completeness = crate::sync_core::ScanCompleteness::default();
     // (absolute_path, depth): depth limit prevents infinite loops on servers
     // that list the current directory itself as a child entry.
     let mut dirs_to_process: Vec<(String, u32)> = vec![(base_path.to_string(), 0)];
@@ -11976,6 +12143,9 @@ async fn get_remote_files_recursive_with_progress(
     while let Some((current_dir, depth)) = dirs_to_process.pop() {
         if depth > MAX_DEPTH {
             info!("Remote scan depth limit reached at {}", current_dir);
+            // CLAUDE-AV-B3-13: everything below the depth limit is invisible to
+            // this scan, which is a truncated tree, not an absent one.
+            completeness.truncated = true;
             continue;
         }
 
@@ -11983,7 +12153,12 @@ async fn get_remote_files_recursive_with_progress(
         if let Some(flag) = cancel_flag {
             if flag.load(std::sync::atomic::Ordering::Relaxed) {
                 info!("Remote scan cancelled by user after {} files", files.len());
-                return Ok(files); // Return partial results (will be discarded by frontend)
+                // CLAUDE-AV-B3-13: the old comment here claimed the frontend
+                // discards these partial results. It only discards them when the
+                // dialog was closed or reopened; a cancel with the dialog still
+                // open kept them and classified against a half-read tree.
+                completeness.truncated = true;
+                return Ok((files, completeness));
             }
         }
         if let Err(e) = ftp_manager.change_dir(&current_dir).await {
@@ -11991,6 +12166,9 @@ async fn get_remote_files_recursive_with_progress(
                 "Warning: Could not change to directory {}: {}",
                 current_dir, e
             );
+            // CLAUDE-AV-B3-13: a directory we could not enter hides everything
+            // under it; count it rather than silently pruning the subtree.
+            completeness.list_errors += 1;
             continue;
         }
 
@@ -11998,6 +12176,7 @@ async fn get_remote_files_recursive_with_progress(
             Ok(e) => e,
             Err(e) => {
                 info!("Warning: Could not list files in {}: {}", current_dir, e);
+                completeness.list_errors += 1;
                 continue;
             }
         };
@@ -12069,7 +12248,7 @@ async fn get_remote_files_recursive_with_progress(
     }
 
     let _ = ftp_manager.change_dir(base_path).await;
-    Ok(files)
+    Ok((files, completeness))
 }
 
 #[tauri::command]
@@ -20881,5 +21060,123 @@ mod arch_install_format_tests {
                 "{format} must select no release asset"
             );
         }
+    }
+}
+
+/// CLAUDE-AV-B3-13: the local walker must tell a delete-driving caller when it
+/// did not see the whole tree, and the shared gate must refuse that tree.
+///
+/// The walker used to answer `Ok(map)` for every one of these cases, so a
+/// half-read tree was indistinguishable from a complete one: every file it
+/// missed classified as "missing locally", which a Mirror preset deletes on the
+/// other side.
+#[cfg(test)]
+mod scan_completeness_gate_tests {
+    use super::*;
+
+    async fn scan(
+        root: &str,
+    ) -> (
+        HashMap<String, FileInfo>,
+        crate::sync_core::ScanCompleteness,
+    ) {
+        get_local_files_recursive_checked(root, root, &[], false, None, None)
+            .await
+            .expect("walk should not hard-error")
+    }
+
+    #[tokio::test]
+    async fn complete_scan_is_reported_complete_and_passes_the_gate() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(dir.path().join("a.txt"), b"a").expect("write a");
+        std::fs::create_dir(dir.path().join("sub")).expect("mkdir");
+        std::fs::write(dir.path().join("sub/b.txt"), b"b").expect("write b");
+
+        let (files, scan) = scan(dir.path().to_str().unwrap()).await;
+
+        assert!(scan.is_complete(), "a readable tree is a complete scan");
+        assert!(files.contains_key("a.txt"));
+        assert!(files.contains_key("sub/b.txt"));
+        // The gate must stay OUT of the way of the normal path: this is the
+        // half of the guard that keeps real compares (and real deletes) working.
+        assert!(ensure_scan_complete("local", dir.path().to_str().unwrap(), &scan).is_ok());
+    }
+
+    #[tokio::test]
+    async fn absent_root_is_incomplete_not_an_empty_tree() {
+        // The unmounted-drive case. This is the headline regression: the walker
+        // returned Ok(empty) here, so EVERY file on the other side read as
+        // locally deleted and a Mirror pass would wipe it.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let gone = dir.path().join("never-existed");
+
+        let (files, scan) = scan(gone.to_str().unwrap()).await;
+
+        assert!(files.is_empty());
+        assert!(!scan.is_complete(), "an absent root is not an empty tree");
+        assert!(ensure_scan_complete("local", gone.to_str().unwrap(), &scan).is_err());
+    }
+
+    #[tokio::test]
+    async fn unreadable_root_listing_is_incomplete() {
+        // A root that exists but cannot be listed as a directory: read_dir fails,
+        // which used to `continue` into a clean-looking empty result.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let not_a_dir = dir.path().join("file.txt");
+        std::fs::write(&not_a_dir, b"x").expect("write");
+
+        let (files, scan) = scan(not_a_dir.to_str().unwrap()).await;
+
+        assert!(files.is_empty());
+        assert_eq!(scan.list_errors, 1, "the failed listing must be counted");
+        assert!(!scan.is_complete());
+        assert!(ensure_scan_complete("local", not_a_dir.to_str().unwrap(), &scan).is_err());
+    }
+
+    #[tokio::test]
+    async fn cancelled_scan_is_incomplete_even_though_it_returns_rows() {
+        // A cancelled walk stops mid-tree. The partial map is still returned
+        // (a preview caller wants it), but it must never drive a delete plan.
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(dir.path().join("a.txt"), b"a").expect("write");
+        let cancel = std::sync::atomic::AtomicBool::new(true);
+
+        let (_files, scan) = get_local_files_recursive_checked(
+            dir.path().to_str().unwrap(),
+            dir.path().to_str().unwrap(),
+            &[],
+            false,
+            Some(&cancel),
+            None,
+        )
+        .await
+        .expect("cancel is not a hard error");
+
+        assert!(scan.truncated, "a cancelled walk stopped early");
+        assert!(!scan.is_complete());
+        assert!(ensure_scan_complete("local", dir.path().to_str().unwrap(), &scan).is_err());
+    }
+
+    #[test]
+    fn the_refusal_carries_the_marker_the_frontend_matches_on() {
+        // The frontend fails closed by matching this marker; if the string ever
+        // drifts, the UI silently falls back to its flat compare, which rebuilds
+        // the delete plan. Keep the two ends pinned together.
+        let scan = crate::sync_core::ScanCompleteness {
+            list_errors: 2,
+            truncated: false,
+        };
+        let err = ensure_scan_complete("local", "/mnt/backup", &scan).unwrap_err();
+        assert!(err.contains(SCAN_INCOMPLETE_MARKER));
+        assert!(err.contains("/mnt/backup"));
+        assert!(err.contains("2 directory listing(s) failed"));
+
+        let truncated = crate::sync_core::ScanCompleteness {
+            list_errors: 0,
+            truncated: true,
+        };
+        let err = ensure_scan_complete("left", "/mnt/backup", &truncated).unwrap_err();
+        assert!(err.contains(SCAN_INCOMPLETE_MARKER));
+        assert!(err.contains("stopped before the end"));
     }
 }

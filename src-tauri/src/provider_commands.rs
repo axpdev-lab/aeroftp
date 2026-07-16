@@ -6240,7 +6240,7 @@ pub async fn provider_compare_directories(
     // Get local files (reuse the same logic from lib.rs).
     // Pass the AppHandle so the scan emits throttled progress events -
     // otherwise large trees (e.g. a home directory) look like a stall.
-    let local_files = crate::get_local_files_recursive_with_progress(
+    let (local_files, local_scan) = crate::get_local_files_recursive_checked(
         &local_path,
         &local_path,
         &options.exclude_patterns,
@@ -6250,6 +6250,11 @@ pub async fn provider_compare_directories(
     )
     .await
     .map_err(|e| format!("Failed to scan local directory: {}", e))?;
+
+    // CLAUDE-AV-B3-13: same guard as `compare_directories`. This path shares the
+    // walker, so a half-read local tree would reach the Compare tab as a set of
+    // "remote only" rows that a Mirror preset deletes on the provider.
+    crate::ensure_scan_complete("local", &local_path, &local_scan)?;
 
     let _ = app.emit(
         "sync_scan_progress",
@@ -6272,10 +6277,13 @@ pub async fn provider_compare_directories(
 
     let list_model = resolve_provider_list_session_model(&state.provider, 8).await;
     if list_model.is_clone_pool() {
-        use crate::sync_core::scan::{scan_remote_tree_with_provider_lock, ScanOptions};
+        use crate::sync_core::scan::{scan_remote_tree_with_provider_lock_checked, ScanOptions};
 
         if state.cancel_flag.load(std::sync::atomic::Ordering::Relaxed) {
-            return Err("Compare cancelled by user".to_string());
+            return Err(format!(
+                "{}: compare cancelled by user before the remote tree was fully listed.",
+                crate::SCAN_INCOMPLETE_MARKER
+            ));
         }
 
         let scan_options = ScanOptions {
@@ -6285,7 +6293,7 @@ pub async fn provider_compare_directories(
             ..Default::default()
         };
         let scan_observer = ScanProgressEmitter { app: app.clone() };
-        let remote_entries = scan_remote_tree_with_provider_lock(
+        let (remote_entries, remote_scan) = scan_remote_tree_with_provider_lock_checked(
             state.provider.clone(),
             &remote_path,
             &scan_options,
@@ -6295,12 +6303,21 @@ pub async fn provider_compare_directories(
         )
         .await;
 
+        // CLAUDE-AV-B3-13: a directory the provider refused to list contributes
+        // no rows, which is indistinguishable from the user having deleted its
+        // contents. Running the preset remote-to-local then deletes the local
+        // copies of files that are still sitting on the provider.
+        crate::ensure_scan_complete("remote", &remote_path, &remote_scan)?;
+
         // The parallel scan stops early when the cancel flag is raised but
         // returns the partial results it gathered. Surface the same
         // user-facing error the per-directory legacy path returned so the UI
         // does not treat a cancelled compare as a completed one.
         if state.cancel_flag.load(std::sync::atomic::Ordering::Relaxed) {
-            return Err("Compare cancelled by user".to_string());
+            return Err(format!(
+                "{}: compare cancelled by user before the remote tree was fully listed.",
+                crate::SCAN_INCOMPLETE_MARKER
+            ));
         }
 
         for entry in remote_entries {
@@ -6361,7 +6378,10 @@ pub async fn provider_compare_directories(
             // Without this, the walk keeps listing directories until the tree is
             // exhausted, which can look like a runaway scan on large providers.
             if state.cancel_flag.load(std::sync::atomic::Ordering::Relaxed) {
-                return Err("Compare cancelled by user".to_string());
+                return Err(format!(
+                    "{}: compare cancelled by user before the remote tree was fully listed.",
+                    crate::SCAN_INCOMPLETE_MARKER
+                ));
             }
 
             // Lock provider only for this single list operation, then release
@@ -6370,10 +6390,18 @@ pub async fn provider_compare_directories(
                 let provider = provider_lock
                     .as_mut()
                     .ok_or("Not connected to any provider")?;
-                provider
-                    .list(&current_dir)
-                    .await
-                    .map_err(|e| format!("Failed to list {}: {}", current_dir, e))?
+                provider.list(&current_dir).await.map_err(|e| {
+                    // CLAUDE-AV-B3-13: a directory that would not list leaves
+                    // its files out of the compare, where they read as deleted.
+                    // Mark it so the UI fails closed instead of falling back to
+                    // a flat plan built from the panel listings.
+                    format!(
+                        "{}: failed to list {}: {}",
+                        crate::SCAN_INCOMPLETE_MARKER,
+                        current_dir,
+                        e
+                    )
+                })?
             };
 
             for entry in entries {
