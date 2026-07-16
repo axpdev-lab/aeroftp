@@ -33157,6 +33157,17 @@ async fn cmd_import_rclone(path: Option<String>, json: bool, apply: bool, cli: &
         return 1;
     }
 
+    // CLAUDE-AV-B9-02: mirror the GUI's 10 MB import cap on the CLI path, which
+    // otherwise reads an arbitrarily large config straight into memory.
+    if let Err(e) = ftp_client_gui_lib::bridge_shared::ensure_import_file_size_ok(&config_path) {
+        if json {
+            println!("{}", serde_json::json!({ "error": e }));
+        } else {
+            eprintln!("Error: {}", e);
+        }
+        return 1;
+    }
+
     match rclone_import::import_rclone(&config_path) {
         Ok(result) => {
             // Issue #214: --apply mirrors the GUI `import_rclone_config` Tauri
@@ -33578,6 +33589,20 @@ async fn cmd_import_bridge(src: &str, path: Option<String>, json: bool) -> i32 {
                 eprintln!("{}", serde_json::json!({ "error": msg }));
             } else {
                 eprintln!("Error: {}", msg);
+            }
+            return 1;
+        }
+    }
+
+    // CLAUDE-AV-B9-02: mirror the GUI's 10 MB import cap. `resolved` is None only
+    // on restic's env-fallback path (nothing to read); every other source has a
+    // concrete file here that the importer would otherwise read fully into memory.
+    if let Some(cfg) = &resolved {
+        if let Err(e) = ftp_client_gui_lib::bridge_shared::ensure_import_file_size_ok(cfg) {
+            if json {
+                eprintln!("{}", serde_json::json!({ "error": e }));
+            } else {
+                eprintln!("Error: {}", e);
             }
             return 1;
         }
@@ -35983,6 +36008,16 @@ async fn cmd_import_winscp(path: Option<String>, json: bool) -> i32 {
             );
         } else {
             eprintln!("Error: file not found: {}", config_path.display());
+        }
+        return 1;
+    }
+
+    // CLAUDE-AV-B9-02: mirror the GUI's 10 MB import cap on the CLI path.
+    if let Err(e) = ftp_client_gui_lib::bridge_shared::ensure_import_file_size_ok(&config_path) {
+        if json {
+            println!("{}", serde_json::json!({ "error": e }));
+        } else {
+            eprintln!("Error: {}", e);
         }
         return 1;
     }

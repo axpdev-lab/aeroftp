@@ -193,30 +193,54 @@ pub(crate) fn json_map(
 /// Atomic write (temp + rename) with `0600` on unix. Mandatory for any
 /// exported file that carries a secret (restic env script, duplicacy
 /// preferences, kopia storage block, aws/mc/s3cmd native files).
-/// Template: `profile_export.rs:109-117`.
+///
+/// The secret goes through an O_EXCL tempfile that `tempfile` creates `0600`
+/// from the start, then renames into place. This closes two hazards the old
+/// predictable `<name>.aerotmp` + `std::fs::write` had: (1) the temp was
+/// created at the process umask (world/group-readable) and only chmod'd to
+/// `0600` *after* the plaintext credentials were already on disk, leaving a
+/// readable window on the secret; and (2) the predictable path let another
+/// local user pre-plant a symlink there and redirect the plaintext write.
+/// Mirrors `keystore_export::atomic_write_synced`. CLAUDE-AV-B9-03
 pub(crate) fn atomic_write_600(path: &Path, bytes: &[u8]) -> Result<(), String> {
-    let tmp = path.with_file_name(format!(
-        "{}.aerotmp",
-        path.file_name()
-            .map(|s| s.to_string_lossy().into_owned())
-            .unwrap_or_else(|| "bridge-export".to_string())
-    ));
-    std::fs::write(&tmp, bytes).map_err(|e| format!("write temp: {e}"))?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let _ = std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o600));
-    }
-    std::fs::rename(&tmp, path).map_err(|e| {
-        let _ = std::fs::remove_file(&tmp);
-        format!("rename into place: {e}")
-    })?;
+    use std::io::Write;
+    let parent = path
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    let mut tmp = tempfile::Builder::new()
+        .prefix(".aeroftp-bridge-export-")
+        .tempfile_in(parent)
+        .map_err(|e| format!("write temp: {e}"))?;
+    tmp.write_all(bytes)
+        .map_err(|e| format!("write temp: {e}"))?;
+    // `persist` renames the 0600 temp onto the target; on failure the returned
+    // `PersistError` owns the tempfile, so dropping it here unlinks the temp.
+    tmp.persist(path)
+        .map_err(|e| format!("rename into place: {e}"))?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
         let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600));
     }
     Ok(())
+}
+
+/// Maximum accepted size for an imported foreign config file. The GUI import
+/// command (`bridge_commands.rs`) already rejects anything larger; this mirrors
+/// the cap for the CLI import paths, whose importers `read_to_string` the whole
+/// file into memory. CLAUDE-AV-B9-02
+pub const MAX_IMPORT_FILE_BYTES: u64 = 10 * 1024 * 1024;
+
+/// Reject an oversized import config before an importer reads it into memory,
+/// matching the GUI's 10 MB guard. A file whose metadata can't be read (e.g.
+/// it doesn't exist) is passed through so the importer's own not-found handling
+/// still runs. CLAUDE-AV-B9-02
+pub fn ensure_import_file_size_ok(path: &Path) -> Result<(), String> {
+    match std::fs::metadata(path) {
+        Ok(m) if m.len() > MAX_IMPORT_FILE_BYTES => Err("File too large (max 10 MB)".to_string()),
+        _ => Ok(()),
+    }
 }
 
 // ============ INI parser (aws, s3cmd, ...) ============
@@ -570,6 +594,41 @@ mod tests {
         assert_eq!(u.len(), 36);
         assert_eq!(u.as_bytes()[14], b'4'); // version nibble
         assert_eq!(&u[8..9], "-");
+    }
+
+    // CLAUDE-AV-B9-03: an exported secret-bearing file must be owner-only, with
+    // no predictable temp sibling left behind (no world-readable window / no
+    // symlink-redirectable predictable path).
+    #[cfg(unix)]
+    #[test]
+    fn atomic_write_600_final_file_is_owner_only() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("credentials");
+        atomic_write_600(&target, b"aws_secret_access_key=TOPSECRET").unwrap();
+        let mode = std::fs::metadata(&target).unwrap().permissions().mode() & 0o777;
+        assert_eq!(
+            mode, 0o600,
+            "exported secret file must be 0600, got {mode:o}"
+        );
+        assert!(
+            !dir.path().join("credentials.aerotmp").exists(),
+            "no predictable .aerotmp sibling must remain"
+        );
+    }
+
+    #[test]
+    fn ensure_import_file_size_ok_rejects_oversized() {
+        let dir = tempfile::tempdir().unwrap();
+        let small = dir.path().join("small.conf");
+        std::fs::write(&small, b"[section]\nkey=value\n").unwrap();
+        assert!(ensure_import_file_size_ok(&small).is_ok());
+        // A missing file is passed through (importer handles not-found).
+        assert!(ensure_import_file_size_ok(&dir.path().join("nope.conf")).is_ok());
+        // Over the cap is rejected before the importer reads it.
+        let big = dir.path().join("big.conf");
+        std::fs::write(&big, vec![b'x'; (MAX_IMPORT_FILE_BYTES + 1) as usize]).unwrap();
+        assert!(ensure_import_file_size_ok(&big).is_err());
     }
 
     #[test]

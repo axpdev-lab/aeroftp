@@ -99,16 +99,18 @@ pub fn decode_winscp_password(hex_str: &str, key: &str) -> Result<String, String
     let decoded = String::from_utf8(result)
         .map_err(|_| "password contains invalid UTF-8 after de-obfuscation".to_string())?;
 
-    // In extended format, the key is prepended to the plaintext: strip it
+    // In extended format, the key (username+host) is prepended to the plaintext:
+    // strip it. Both `key` and `decoded` come straight from the imported file, so
+    // `key.len()` is NOT a guaranteed UTF-8 char boundary of `decoded`; a raw
+    // byte-slice `decoded[key.len()..]` panics on a crafted WinSCP.ini whose
+    // de-obfuscated password lands a multi-byte char across that index. Use a
+    // boundary-safe slice and fall back to the raw decoded string when the prefix
+    // does not line up (shorter than the key, or a mid-char boundary).
+    // CLAUDE-AV-B9-01
     if flag == PWALG_SIMPLE_FLAG {
-        if decoded.len() >= key.len() && decoded.starts_with(key) {
-            Ok(decoded[key.len()..].to_string())
-        } else if decoded.len() >= key.len() {
-            // Key might not match exactly (e.g. different encoding), try stripping by length
-            Ok(decoded[key.len()..].to_string())
-        } else {
-            // Decoded string is shorter than key: return empty or the raw decoded
-            Ok(decoded)
+        match decoded.get(key.len()..) {
+            Some(stripped) => Ok(stripped.to_string()),
+            None => Ok(decoded),
         }
     } else {
         Ok(decoded)
@@ -626,6 +628,27 @@ mod tests {
         assert_eq!(url_decode("Hello%20World"), "Hello World");
         assert_eq!(url_decode("test%25value"), "test%value");
         assert_eq!(url_decode("no-encoding"), "no-encoding");
+    }
+
+    // CLAUDE-AV-B9-01: a crafted WinSCP.ini must not panic the importer.
+    #[test]
+    fn decode_winscp_password_non_boundary_key_does_not_panic() {
+        // Emit a byte through WinSCP's public de-obfuscation so `dec_next_char`
+        // reproduces it: `dec_next_char` returns `!enc ^ MAGIC`, so to get `out`
+        // we store `enc = !(out ^ MAGIC)` as two hex nibbles.
+        fn enc_stream(bytes: &[u8]) -> String {
+            bytes
+                .iter()
+                .map(|out| format!("{:02X}", !(*out ^ PWALG_SIMPLE_MAGIC)))
+                .collect()
+        }
+        // Extended format (flag 0xFF), version!=2 -> 8-bit length, zero padding
+        // shift, then the 3-byte UTF-8 plaintext "xé" (78 C3 A9). With key "ab"
+        // (len 2), byte index 2 is the continuation byte of 'é' -> not a char
+        // boundary, so a raw `decoded[key.len()..]` slice would panic.
+        let hex = enc_stream(&[0xFF, 0x00, 0x03, 0x00, 0x78, 0xC3, 0xA9]);
+        let out = decode_winscp_password(&hex, "ab").expect("must return Ok, not panic");
+        assert_eq!(out, "xé"); // prefix can't be stripped safely -> raw decoded
     }
 
     #[test]
