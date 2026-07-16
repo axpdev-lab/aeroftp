@@ -3526,7 +3526,16 @@
             "copy_path": "Copia Percorso",
             "new_folder": "Nuova Cartella",
             "clear_recent": "Cancella Recenti",
-            "no_recent": "Nessuna posizione recente"
+            "no_recent": "Nessuna posizione recente",
+            "portable_devices": "Dispositivi portatili",
+            "portable_disconnect": "Disconnetti",
+            "portable_disconnect_failed": "Impossibile disconnettere il dispositivo portatile",
+            "portable_empty": "Nessun dispositivo portatile rilevato",
+            "portable_honesty": "I dispositivi portatili usano MTP: solo copia di file interi, senza lettera di unità, e alcune operazioni sono limitate dal sistema del dispositivo.",
+            "portable_no_storages": "Sessione aperta (elenco storage non ancora disponibile; il browse completo arriverà dopo)",
+            "portable_open_failed": "Impossibile aprire il dispositivo portatile",
+            "portable_opened": "Connesso a {name}",
+            "portable_storages": "{count} storage"
         },
         "viewMode": {
             "list": "Lista",

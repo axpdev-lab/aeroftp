@@ -199,6 +199,10 @@ export interface LocalFilePanelProps {
   /** L / R marker rendered in the PlacesSidebar header when dual mode is on,
    * so the user can tell which local panel the sidebar will drive on click. */
   sidebarActivePanelMarker?: 'L' | 'R';
+  /** Open MTP/WPD portable device (PLACES Portable devices section). */
+  onOpenPortableDevice?: (device: import('../types/aerofile').MtpDeviceInfo) => void | Promise<void>;
+  activePortableDeviceId?: string | null;
+  onPortableDeviceClosed?: (deviceId: string) => void;
   recentPaths: string[];
   setRecentPaths: React.Dispatch<React.SetStateAction<string[]>>;
 
@@ -309,6 +313,9 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
   sidebarCurrentPath,
   sidebarOnNavigate,
   sidebarActivePanelMarker,
+  onOpenPortableDevice,
+  activePortableDeviceId,
+  onPortableDeviceClosed,
   recentPaths,
   setRecentPaths,
   getTagsForFile,
@@ -786,6 +793,9 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
             activeTagFilter={activeTagFilter}
             onTagFilter={onTagFilter}
             activePanelMarker={sidebarActivePanelMarker}
+            onOpenPortableDevice={onOpenPortableDevice}
+            activePortableDeviceId={activePortableDeviceId}
+            onPortableDeviceClosed={onPortableDeviceClosed}
           />
         )}
         <div

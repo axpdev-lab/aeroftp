@@ -3195,7 +3195,16 @@
             "clear_recent": "Effacer les recents",
             "no_recent": "Aucun emplacement recent",
             "mount": "Monter",
-            "ejectFailed": "Échec de l'éjection"
+            "ejectFailed": "Échec de l'éjection",
+            "portable_devices": "Appareils portables",
+            "portable_disconnect": "Déconnecter",
+            "portable_disconnect_failed": "Impossible de déconnecter l'appareil portable",
+            "portable_empty": "Aucun appareil portable détecté",
+            "portable_honesty": "Les appareils portables utilisent MTP : copie de fichiers entiers uniquement, pas de lettre de lecteur, et certaines opérations sont limitées par l'appareil.",
+            "portable_no_storages": "Session ouverte (liste des stockages pas encore disponible ; navigation complète à venir)",
+            "portable_open_failed": "Impossible d'ouvrir l'appareil portable",
+            "portable_opened": "Connecté à {name}",
+            "portable_storages": "{count} stockage(s)"
         },
         "viewMode": {
             "list": "Liste",

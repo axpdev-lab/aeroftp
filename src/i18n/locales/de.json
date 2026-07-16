@@ -3195,7 +3195,16 @@
             "clear_recent": "Zuletzt verwendete löschen",
             "no_recent": "Keine zuletzt verwendeten Orte",
             "mount": "Einbinden",
-            "ejectFailed": "Auswerfen fehlgeschlagen"
+            "ejectFailed": "Auswerfen fehlgeschlagen",
+            "portable_devices": "Tragbare Geräte",
+            "portable_disconnect": "Trennen",
+            "portable_disconnect_failed": "Tragbares Gerät konnte nicht getrennt werden",
+            "portable_empty": "Keine tragbaren Geräte erkannt",
+            "portable_honesty": "Tragbare Geräte nutzen MTP: nur vollständige Dateikopie, kein Laufwerksbuchstabe, und manche Operationen sind gerätebedingt eingeschränkt.",
+            "portable_no_storages": "Sitzung geöffnet (noch keine Speicherliste; Browser-Politur folgt)",
+            "portable_open_failed": "Tragbares Gerät konnte nicht geöffnet werden",
+            "portable_opened": "Verbunden mit {name}",
+            "portable_storages": "{count} Speicher"
         },
         "viewMode": {
             "list": "Liste",

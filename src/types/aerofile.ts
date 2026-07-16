@@ -24,6 +24,37 @@ export interface VolumeInfo {
   is_ejectable: boolean;
 }
 
+/**
+ * MTP / WPD portable device row from `list_mtp_devices`.
+ * camelCase matches `MtpDeviceInfoDto` (`#[serde(rename_all = "camelCase")]`).
+ * Not a filesystem path: open via `mtp_open_device`, never `onNavigate`.
+ */
+export interface MtpDeviceInfo {
+  deviceId: string;
+  displayName: string;
+  serial?: string | null;
+  busLocation?: string | null;
+  platform: string;
+  storagesHint: number;
+}
+
+/** Storage partition on an open MTP session (`mtp_open_device`). */
+export interface MtpStorageInfo {
+  storageId: string;
+  displayName: string;
+  totalBytes?: number | null;
+  freeBytes?: number | null;
+}
+
+/** Session info returned by `mtp_open_device`. */
+export interface MtpSessionInfo {
+  deviceId: string;
+  displayName: string;
+  platform: string;
+  backendLinked: boolean;
+  storages: MtpStorageInfo[];
+}
+
 /** Unmounted partition detected by Rust `list_unmounted_partitions` command */
 export interface UnmountedPartition {
   name: string;

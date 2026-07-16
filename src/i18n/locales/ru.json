@@ -3195,7 +3195,16 @@
             "clear_recent": "Очистить недавние",
             "no_recent": "Нет недавних расположений",
             "mount": "Подключить",
-            "ejectFailed": "Не удалось извлечь"
+            "ejectFailed": "Не удалось извлечь",
+            "portable_devices": "[NEEDS TRANSLATION] Portable devices",
+            "portable_disconnect": "[NEEDS TRANSLATION] Disconnect",
+            "portable_disconnect_failed": "[NEEDS TRANSLATION] Could not disconnect portable device",
+            "portable_empty": "[NEEDS TRANSLATION] No portable devices detected",
+            "portable_honesty": "[NEEDS TRANSLATION] Portable devices use MTP: whole-file copy only, no drive letter, and some operations are limited by the device OS.",
+            "portable_no_storages": "[NEEDS TRANSLATION] Session open (no storage list yet; browse polish follows)",
+            "portable_open_failed": "[NEEDS TRANSLATION] Could not open portable device",
+            "portable_opened": "[NEEDS TRANSLATION] Connected to {name}",
+            "portable_storages": "[NEEDS TRANSLATION] {count} storage(s)"
         },
         "viewMode": {
             "list": "Список",

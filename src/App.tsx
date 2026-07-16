@@ -420,7 +420,7 @@ import DiskUsageTreemap from './components/DiskUsageTreemap';
 import { FileTagBadge } from './components/FileTagBadge';
 import { VaultIcon } from './components/icons/VaultIcon';
 import { DecryptingText } from './components/DecryptingText';
-import type { TrashItem, FolderSizeResult, LocalTab } from './types/aerofile';
+import type { TrashItem, FolderSizeResult, LocalTab, MtpDeviceInfo, MtpSessionInfo } from './types/aerofile';
 
 // Utilities
 import { formatBytes, formatSpeed, formatETA, formatDate } from './utils';
@@ -4310,6 +4310,61 @@ interface UpdateVerificationInfo {
     setActiveLocalPanelId('local');
     void changeLocalDirectory(path);
   }
+
+  // MTP / portable devices (APPENDIX-MTP Phase 4): session open via PLACES,
+  // never a fake local path. Full dual-panel browse is Phase 5 polish; v1
+  // opens the backend session, surfaces storages, and keeps honesty visible.
+  const [activePortableDeviceId, setActivePortableDeviceId] = useState<string | null>(null);
+  const MTP_HONESTY_SEEN_KEY = 'aerofile_mtp_honesty_seen';
+
+  const handleOpenPortableDevice = useCallback(async (device: MtpDeviceInfo) => {
+    try {
+      const session = await invoke<MtpSessionInfo>('mtp_open_device', {
+        deviceId: device.deviceId,
+      });
+      setActivePortableDeviceId(session.deviceId);
+      const storageNames = session.storages
+        .map((s) => s.displayName)
+        .filter((n) => n && n.trim().length > 0);
+      const detail = storageNames.length > 0
+        ? storageNames.join(', ')
+        : t('sidebar.portable_no_storages');
+      notify.success(
+        t('sidebar.portable_opened', { name: session.displayName || device.displayName }),
+        detail,
+      );
+      // Dismissible honesty once per profile store (localStorage).
+      let seen = false;
+      try {
+        seen = localStorage.getItem(MTP_HONESTY_SEEN_KEY) === 'true';
+      } catch {
+        seen = false;
+      }
+      if (!seen) {
+        notify.info(t('sidebar.portable_devices'), t('sidebar.portable_honesty'));
+        try {
+          localStorage.setItem(MTP_HONESTY_SEEN_KEY, 'true');
+        } catch {
+          /* quota */
+        }
+      }
+    } catch (err) {
+      // Important: surface even if ambient toasts are off (user clicked).
+      window.dispatchEvent(new CustomEvent('aeroftp-toast', {
+        detail: {
+          type: 'error',
+          title: t('sidebar.portable_open_failed'),
+          message: typeof err === 'string' ? err : String(err),
+          duration: 8000,
+          important: true,
+        },
+      }));
+    }
+  }, [notify, t]);
+
+  const handlePortableDeviceClosed = useCallback((deviceId: string) => {
+    setActivePortableDeviceId((prev) => (prev === deviceId ? null : prev));
+  }, []);
 
   const handleRestoreTrashItem = useCallback(async (item: TrashItem) => {
     try {
@@ -17597,6 +17652,9 @@ interface UpdateVerificationInfo {
                   sidebarCurrentPath={sidebarCurrentPath}
                   sidebarOnNavigate={handleSidebarNavigate}
                   sidebarActivePanelMarker={isDualLocalAeroFileMode ? (sidebarTargetPanelId === 'local2' ? 'R' : 'L') : undefined}
+                  onOpenPortableDevice={handleOpenPortableDevice}
+                  activePortableDeviceId={activePortableDeviceId}
+                  onPortableDeviceClosed={handlePortableDeviceClosed}
                   recentPaths={recentPaths}
                   setRecentPaths={setRecentPaths}
                   iconProvider={iconProvider}
