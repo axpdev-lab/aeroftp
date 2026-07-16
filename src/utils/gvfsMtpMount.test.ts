@@ -33,6 +33,13 @@ describe('isGvfsMtpPath', () => {
     expect(isGvfsMtpPath('/run/user/1001/gvfs/smb-share:server=nas')).toBe(false);
   });
 
+  it('does not treat bare mtp: fingerprints or mtp:// URLs as gvfs mount paths', () => {
+    // Path sniffers must not confuse identity strings / URI schemes with FUSE paths.
+    expect(isGvfsMtpPath('mtp:serial=QV770LUNJD')).toBe(false);
+    expect(isGvfsMtpPath('mtp://Sony_XQ-DQ54_QV770LUNJD/')).toBe(false);
+    expect(isGvfsMtpPath('mtp:host=Sony_XQ-DQ54_QV770LUNJD')).toBe(false);
+  });
+
   it('rejects empty or missing paths', () => {
     expect(isGvfsMtpPath('')).toBe(false);
     expect(isGvfsMtpPath(null)).toBe(false);

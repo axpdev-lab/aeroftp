@@ -44,4 +44,16 @@ describe('openWithDefault routing', () => {
     expect(isSafeLocalOpenPath('/tmp/a\nb.txt')).toBe(false);
     expect(buildTerminalCommandForPath('file:///tmp/a.sh')).toBeNull();
   });
+
+  it('treats gvfs mtp:host= FUSE paths as safe local paths (not a URL scheme)', () => {
+    // gvfs names MTP mounts with a colon inside the path component. That is not
+    // scheme:// and must remain openable as a local filesystem path.
+    const gvfs =
+      '/run/user/1001/gvfs/mtp:host=Sony_XQ-DQ54_QV770LUNJD/Internal shared storage/DCIM/a.jpg';
+    expect(isSafeLocalOpenPath(gvfs)).toBe(true);
+    expect(getOpenWithDefaultRoute(gvfs).kind).toBe('system');
+    // True URL schemes still blocked
+    expect(isSafeLocalOpenPath('mtp://host/path')).toBe(false);
+    expect(isSafeLocalOpenPath('file:///run/user/1001/gvfs/mtp:host=x')).toBe(false);
+  });
 });
