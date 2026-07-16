@@ -334,10 +334,75 @@ impl Default for LinuxLibmtpBackend {
     }
 }
 
+/// Read USB iSerial from sysfs for `bus:devnum` without claiming the interface.
+///
+/// Prefer this over a brief libmtp open during list/detect so PLACES polling
+/// does not fight gvfs or an already-open AeroFTP session.
+///
+/// Note: `/sys/bus/usb/devices` mixes device nodes (`5-1`) with interfaces
+/// (`5-1:1.0`) and hubs. Skip entries missing busnum/devnum; do not `?` out of
+/// the whole scan on the first incomplete row.
+fn usb_sysfs_serial(bus: u32, devnum: u8) -> Option<String> {
+    let dir = std::fs::read_dir("/sys/bus/usb/devices").ok()?;
+    for entry in dir.flatten() {
+        let path = entry.path();
+        let Some(busnum) = std::fs::read_to_string(path.join("busnum"))
+            .ok()
+            .and_then(|s| s.trim().parse::<u32>().ok())
+        else {
+            continue;
+        };
+        let Some(dn) = std::fs::read_to_string(path.join("devnum"))
+            .ok()
+            .and_then(|s| s.trim().parse::<u8>().ok())
+        else {
+            continue;
+        };
+        if busnum != bus || dn != devnum {
+            continue;
+        }
+        let serial = std::fs::read_to_string(path.join("serial")).ok()?;
+        let s = serial.trim().to_string();
+        if !s.is_empty() {
+            return Some(s);
+        }
+        return None;
+    }
+    None
+}
+
+/// Brief open → `LIBMTP_Get_Serialnumber` → release, using a pointer into the
+/// live `Detect_Raw_Devices` array (same open rule as `open_raw_by_id_locked`).
+///
+/// Caller must hold `LIBMTP_LOCK`. Always releases on success path; never leaves
+/// a dual-open USB session for list/detect.
+unsafe fn serial_via_brief_open(raw_ref: *mut LibmtpRawDevice) -> Option<String> {
+    if raw_ref.is_null() {
+        return None;
+    }
+    let mut dev = LIBMTP_Open_Raw_Device_Uncached(raw_ref);
+    if dev.is_null() {
+        dev = LIBMTP_Open_Raw_Device(raw_ref);
+    }
+    if dev.is_null() {
+        return None;
+    }
+    let serial_ptr = LIBMTP_Get_Serialnumber(dev);
+    let owned = cstr_opt(serial_ptr);
+    free_c_string(serial_ptr);
+    LIBMTP_Release_Device(dev);
+    owned
+}
+
 /// Caller must hold `LIBMTP_LOCK`.
 ///
 /// Returns owned device rows. The raw libmtp array is freed before return;
 /// only POD fields of `LibmtpRawDevice` are copied (safe for list/display).
+///
+/// Identity for device profiles (APPENDIX-DEVICE-PROFILES Phase 0):
+/// - `vendor_id` / `product_id` always from the raw entry
+/// - `serial` from sysfs iSerial when present; else brief open+Get_Serialnumber
+/// - never leaves the device open after list
 fn detect_raw_devices_locked(
 ) -> Result<Vec<(String, MtpDeviceInfo, LibmtpRawDevice)>, ProviderError> {
     ensure_init();
@@ -371,10 +436,17 @@ fn detect_raw_devices_locked(
                     raw.device_entry.vendor_id, raw.device_entry.product_id
                 ),
             };
+            // Prefer sysfs (no exclusive claim). Fall back to brief open only
+            // when iSerial is missing; open failure leaves serial None but
+            // vid/pid still support a weak fingerprint.
+            let serial = usb_sysfs_serial(raw.bus_location, raw.devnum)
+                .or_else(|| serial_via_brief_open(raw_ptr.add(i)));
             let info = MtpDeviceInfo {
                 device_id: id.clone(),
                 display_name: display,
-                serial: None,
+                serial,
+                vendor_id: Some(raw.device_entry.vendor_id),
+                product_id: Some(raw.device_entry.product_id),
                 bus_location: Some(format!("{}:{}", raw.bus_location, raw.devnum)),
                 platform: "linux-libmtp".into(),
                 storages_hint: 0,

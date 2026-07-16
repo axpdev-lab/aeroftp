@@ -27,6 +27,12 @@ pub struct MtpDeviceInfoDto {
     pub device_id: String,
     pub display_name: String,
     pub serial: Option<String>,
+    /// USB vendor id when known (libmtp detect).
+    pub vendor_id: Option<u16>,
+    /// USB product id when known (libmtp detect).
+    pub product_id: Option<u16>,
+    /// Canonical profile fingerprint (`mtp:serial=...` or `mtp:vidpid=...`).
+    pub fingerprint: Option<String>,
     pub bus_location: Option<String>,
     pub platform: String,
     pub storages_hint: u32,
@@ -34,10 +40,14 @@ pub struct MtpDeviceInfoDto {
 
 impl From<MtpDeviceInfo> for MtpDeviceInfoDto {
     fn from(d: MtpDeviceInfo) -> Self {
+        let fingerprint = d.fingerprint();
         Self {
             device_id: d.device_id,
             display_name: d.display_name,
             serial: d.serial,
+            vendor_id: d.vendor_id,
+            product_id: d.product_id,
+            fingerprint,
             bus_location: d.bus_location,
             platform: d.platform,
             storages_hint: d.storages_hint,
@@ -439,6 +449,8 @@ mod tests {
             device_id: "usb:1:2".into(),
             display_name: "Phone".into(),
             serial: Some("abc".into()),
+            vendor_id: Some(0x0fce),
+            product_id: Some(0x01b0),
             bus_location: Some("1:2".into()),
             platform: "linux-libmtp".into(),
             storages_hint: 1,
@@ -446,6 +458,28 @@ mod tests {
         let dto = MtpDeviceInfoDto::from(d);
         assert_eq!(dto.device_id, "usb:1:2");
         assert_eq!(dto.storages_hint, 1);
+        assert_eq!(dto.vendor_id, Some(0x0fce));
+        assert_eq!(dto.product_id, Some(0x01b0));
+        assert_eq!(dto.fingerprint.as_deref(), Some("mtp:serial=abc"));
+    }
+
+    #[test]
+    fn dto_fingerprint_vidpid_when_no_serial() {
+        let d = MtpDeviceInfo {
+            device_id: "usb:1:2".into(),
+            display_name: "  SONY   Xperia  ".into(),
+            serial: None,
+            vendor_id: Some(0x0fce),
+            product_id: Some(0x01b0),
+            bus_location: Some("1:2".into()),
+            platform: "linux-libmtp".into(),
+            storages_hint: 0,
+        };
+        let dto = MtpDeviceInfoDto::from(d);
+        assert_eq!(
+            dto.fingerprint.as_deref(),
+            Some("mtp:vidpid=0FCE:01B0;model=SONY Xperia")
+        );
     }
 
     #[test]
@@ -459,6 +493,9 @@ mod tests {
         let devices = b.list_devices().await.unwrap();
         assert_eq!(devices.len(), 1);
         assert_eq!(devices[0].device_id, "fake-phone");
+        assert_eq!(devices[0].serial.as_deref(), Some("FAKE-SERIAL"));
+        assert_eq!(devices[0].vendor_id, Some(0x18d1));
+        assert_eq!(devices[0].product_id, Some(0x4ee1));
     }
 
     /// Live USB smoke: phone in File Transfer mode + libmtp linked.
@@ -476,8 +513,33 @@ mod tests {
             !devices.is_empty(),
             "no MTP devices; unlock phone, set File Transfer"
         );
-        let id = devices[0].device_id.clone();
-        eprintln!("opening {} ({id})", devices[0].display_name);
+        let d0 = &devices[0];
+        eprintln!(
+            "identity: serial={:?} vid={:?} pid={:?} fingerprint={:?}",
+            d0.serial, d0.vendor_id, d0.product_id, d0.fingerprint
+        );
+        // Phase 0: list must expose identity for profile matching.
+        // Prefer non-empty serial; otherwise vid/pid (+ fingerprint) is the
+        // documented fallback for devices without iSerial.
+        let has_serial = d0
+            .serial
+            .as_ref()
+            .map(|s| !s.trim().is_empty())
+            .unwrap_or(false);
+        let has_vidpid = d0.vendor_id.is_some() && d0.product_id.is_some();
+        assert!(
+            has_serial || has_vidpid,
+            "list_mtp_devices row has no serial and no vid/pid; cannot fingerprint"
+        );
+        assert!(
+            d0.fingerprint
+                .as_ref()
+                .map(|s| !s.is_empty())
+                .unwrap_or(false),
+            "fingerprint helper produced empty for live device"
+        );
+        let id = d0.device_id.clone();
+        eprintln!("opening {} ({id})", d0.display_name);
 
         let state = ProviderState::new();
         let session = mtp_open_device_inner(&state, id.clone())

@@ -289,7 +289,10 @@ fn list_pnp_devices_locked() -> Result<Vec<MtpDeviceInfo>, ProviderError> {
             out.push(MtpDeviceInfo {
                 device_id: id_str,
                 display_name: display,
+                // WPD serial/vid/pid property mapping is a peer-station follow-up.
                 serial: None,
+                vendor_id: None,
+                product_id: None,
                 bus_location: None,
                 platform: "windows-wpd".into(),
                 storages_hint: 0,

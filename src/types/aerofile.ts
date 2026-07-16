@@ -32,7 +32,14 @@ export interface VolumeInfo {
 export interface MtpDeviceInfo {
   deviceId: string;
   displayName: string;
+  /** USB / libmtp serial when available (stable profile key). */
   serial?: string | null;
+  /** USB vendor id (host number). Present on Linux libmtp detect. */
+  vendorId?: number | null;
+  /** USB product id (host number). Present on Linux libmtp detect. */
+  productId?: number | null;
+  /** Canonical fingerprint: `mtp:serial=...` or `mtp:vidpid=XXXX:YYYY;model=...`. */
+  fingerprint?: string | null;
   busLocation?: string | null;
   platform: string;
   storagesHint: number;

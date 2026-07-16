@@ -48,10 +48,127 @@ pub struct MtpObject {
 pub struct MtpDeviceInfo {
     pub device_id: MtpDeviceId,
     pub display_name: String,
+    /// USB/iSerial or libmtp serial when available (stable profile key).
     pub serial: Option<String>,
+    /// USB vendor id (host-endian). Present on libmtp detect; optional on WPD.
+    pub vendor_id: Option<u16>,
+    /// USB product id (host-endian). Present on libmtp detect; optional on WPD.
+    pub product_id: Option<u16>,
     pub bus_location: Option<String>,
     pub platform: String,
     pub storages_hint: u32,
+}
+
+impl MtpDeviceInfo {
+    /// Canonical fingerprint for profile matching (see APPENDIX-DEVICE-PROFILES).
+    ///
+    /// Prefer `mtp:serial=...`; fall back to `mtp:vidpid=XXXX:YYYY;model=...`.
+    pub fn fingerprint(&self) -> Option<String> {
+        mtp_device_fingerprint(
+            self.serial.as_deref(),
+            self.vendor_id,
+            self.product_id,
+            Some(self.display_name.as_str()),
+        )
+    }
+}
+
+/// Build a stable MTP fingerprint string for vault profiles.
+///
+/// Normalize: trim serial; uppercase hex vid/pid; collapse model whitespace.
+/// Returns `None` when neither serial nor vid/pid is available.
+pub fn mtp_device_fingerprint(
+    serial: Option<&str>,
+    vendor_id: Option<u16>,
+    product_id: Option<u16>,
+    model: Option<&str>,
+) -> Option<String> {
+    if let Some(s) = normalize_serial(serial) {
+        return Some(format!("mtp:serial={s}"));
+    }
+    match (vendor_id, product_id) {
+        (Some(vid), Some(pid)) => {
+            let base = format!("mtp:vidpid={vid:04X}:{pid:04X}");
+            match normalize_model(model) {
+                Some(m) => Some(format!("{base};model={m}")),
+                None => Some(base),
+            }
+        }
+        _ => None,
+    }
+}
+
+/// True when two fingerprint strings refer to the same device under
+/// case/whitespace normalization (serial form or vidpid form).
+pub fn fingerprint_equal(a: &str, b: &str) -> bool {
+    canonicalize_fingerprint(a) == canonicalize_fingerprint(b)
+        && !canonicalize_fingerprint(a).is_empty()
+}
+
+fn normalize_serial(serial: Option<&str>) -> Option<String> {
+    serial
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+}
+
+fn normalize_model(model: Option<&str>) -> Option<String> {
+    model
+        .map(|s| s.split_whitespace().collect::<Vec<_>>().join(" "))
+        .filter(|s| !s.is_empty())
+}
+
+/// Lowercase form used only for equality checks (not storage).
+fn canonicalize_fingerprint(fp: &str) -> String {
+    let t = fp.trim();
+    if let Some(rest) = t.strip_prefix("mtp:serial=") {
+        let serial = rest.trim();
+        if serial.is_empty() {
+            return String::new();
+        }
+        // Serial compare is case-insensitive (USB iSerial casing varies).
+        return format!("mtp:serial={}", serial.to_ascii_lowercase());
+    }
+    if let Some(rest) = t.strip_prefix("mtp:vidpid=") {
+        // Accept `XXXX:YYYY` or `XXXX:YYYY;model=...` with loose spacing.
+        let rest = rest.trim();
+        let (ids, model_part) = match rest.split_once(';') {
+            Some((ids, tail)) => (ids.trim(), Some(tail.trim())),
+            None => (rest, None),
+        };
+        let mut parts = ids.split(':');
+        let vid = parts.next().unwrap_or("").trim();
+        let pid = parts.next().unwrap_or("").trim();
+        if vid.is_empty() || pid.is_empty() || parts.next().is_some() {
+            return String::new();
+        }
+        let Ok(vid_n) = u16::from_str_radix(vid, 16) else {
+            return String::new();
+        };
+        let Ok(pid_n) = u16::from_str_radix(pid, 16) else {
+            return String::new();
+        };
+        let mut out = format!("mtp:vidpid={vid_n:04x}:{pid_n:04x}");
+        if let Some(tail) = model_part {
+            if let Some(model) = tail
+                .strip_prefix("model=")
+                .or_else(|| tail.strip_prefix("MODEL="))
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+            {
+                let m = model
+                    .split_whitespace()
+                    .collect::<Vec<_>>()
+                    .join(" ")
+                    .to_ascii_lowercase();
+                out.push_str(";model=");
+                out.push_str(&m);
+            }
+        }
+        return out;
+    }
+    // Unknown form: still allow exact trim+lower equality.
+    t.to_ascii_lowercase()
 }
 
 /// Progress callback: (bytes_transferred, total_bytes_or_zero_if_unknown).
@@ -284,6 +401,8 @@ impl MtpBackend for FakeMtpBackend {
             device_id: "fake-phone".into(),
             display_name: "Fake Phone".into(),
             serial: Some("FAKE-SERIAL".into()),
+            vendor_id: Some(0x18d1),
+            product_id: Some(0x4ee1),
             bus_location: Some("test:0".into()),
             platform: "test-fake".into(),
             storages_hint: 1,
@@ -520,5 +639,71 @@ mod tests {
         ));
         b.close().await.unwrap();
         assert!(!b.is_open());
+    }
+
+    #[test]
+    fn fingerprint_prefers_serial() {
+        let fp = mtp_device_fingerprint(
+            Some("  AbC123  "),
+            Some(0x0fce),
+            Some(0x01b0),
+            Some("SONY Phone"),
+        );
+        assert_eq!(fp.as_deref(), Some("mtp:serial=AbC123"));
+    }
+
+    #[test]
+    fn fingerprint_falls_back_to_vidpid_model() {
+        let fp =
+            mtp_device_fingerprint(None, Some(0x0fce), Some(0x01b0), Some("  SONY   Xperia  "));
+        assert_eq!(
+            fp.as_deref(),
+            Some("mtp:vidpid=0FCE:01B0;model=SONY Xperia")
+        );
+    }
+
+    #[test]
+    fn fingerprint_vidpid_without_model() {
+        let fp = mtp_device_fingerprint(None, Some(0x18d1), Some(0x4ee1), None);
+        assert_eq!(fp.as_deref(), Some("mtp:vidpid=18D1:4EE1"));
+    }
+
+    #[test]
+    fn fingerprint_none_without_identity() {
+        assert!(mtp_device_fingerprint(Some("  "), None, None, Some("x")).is_none());
+        assert!(mtp_device_fingerprint(None, Some(1), None, None).is_none());
+    }
+
+    #[test]
+    fn fingerprint_equal_serial_case_and_whitespace() {
+        assert!(fingerprint_equal(
+            "mtp:serial=AbC123",
+            "  mtp:serial=abc123  "
+        ));
+        assert!(!fingerprint_equal("mtp:serial=AbC123", "mtp:serial=other"));
+    }
+
+    #[test]
+    fn fingerprint_equal_vidpid_hex_case_and_model_ws() {
+        assert!(fingerprint_equal(
+            "mtp:vidpid=0FCE:01B0;model=SONY Xperia",
+            "mtp:vidpid=0fce:01b0;model=  sony   xperia  "
+        ));
+        assert!(!fingerprint_equal(
+            "mtp:vidpid=0FCE:01B0;model=SONY",
+            "mtp:vidpid=0FCE:01B0;model=Other"
+        ));
+    }
+
+    #[tokio::test]
+    async fn fake_device_fingerprint_uses_serial() {
+        let b = FakeMtpBackend::with_demo_tree();
+        let devices = b.list_devices().await.unwrap();
+        assert_eq!(
+            devices[0].fingerprint().as_deref(),
+            Some("mtp:serial=FAKE-SERIAL")
+        );
+        assert_eq!(devices[0].vendor_id, Some(0x18d1));
+        assert_eq!(devices[0].product_id, Some(0x4ee1));
     }
 }
