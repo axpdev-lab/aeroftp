@@ -90,6 +90,14 @@ fn compute_xxh128_wire_with_seed(data: &[u8], seed: u64) -> Vec<u8> {
     } else {
         xxh3_128_with_seed(data, seed)
     };
+    xxh128_wire_bytes(hash)
+}
+
+/// CLAUDE-AV-B3-12: split an xxh3-128 digest into rsync's 16-byte wire
+/// layout. Extracted so the streaming sender, the bulk sender, and the
+/// download-side whole-file verify all serialise the digest through one
+/// place instead of three hand-rolled copies of the same byte order.
+pub(crate) fn xxh128_wire_bytes(hash: u128) -> Vec<u8> {
     let lo = hash as u64;
     let hi = (hash >> 64) as u64;
     let mut out = Vec::with_capacity(16);
@@ -97,6 +105,11 @@ fn compute_xxh128_wire_with_seed(data: &[u8], seed: u64) -> Vec<u8> {
     out.extend_from_slice(&hi.to_le_bytes());
     out
 }
+
+/// The one checksum algorithm this driver can recompute in-tree. The
+/// download-side whole-file verify keys off this name so that a peer
+/// which negotiated md5/md4 keeps its delta path untouched.
+pub(crate) const XXH128_ALGO_NAME: &str = "xxh128";
 
 /// Chunk size used for raw-stream reads. Large enough to swallow a full
 /// preamble + file list in one go for small transfers, small enough not
@@ -622,6 +635,33 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
     }
     pub fn negotiated_checksum_algos(&self) -> &str {
         &self.negotiated_checksum_algos
+    }
+    /// CLAUDE-AV-B3-12: the single checksum algorithm the two peers
+    /// actually agreed on, or `None` when the lists intersect nowhere
+    /// (or the peer advertised none, e.g. a server that skipped the
+    /// negotiated strings entirely).
+    ///
+    /// [`Self::negotiated_checksum_algos`] is a misnomer worth knowing
+    /// about: it holds the peer's RAW advertised list, not a winner, so
+    /// "contains xxh128" is NOT the same question as "xxh128 won".
+    ///
+    /// Mirrors rsync 3.2.7 `compat.c::parse_negotiate_str`: `nno->saw[]`
+    /// carries each name's 1-based priority taken from OUR OWN list, the
+    /// scan walks the PEER's tokens, and the winner is the candidate with
+    /// the best (lowest) `saw` value. That reduces exactly to the first
+    /// name in our priority-ordered advertisement that the peer also
+    /// advertised. Deriving it here (rather than assuming our profile's
+    /// head) keeps the answer honest when `with_env_overrides` reorders
+    /// or trims what we advertise.
+    pub fn negotiated_checksum_algo(&self) -> Option<&str> {
+        self.preamble_profile
+            .checksum_algos
+            .split_whitespace()
+            .find(|ours| {
+                self.negotiated_checksum_algos
+                    .split_whitespace()
+                    .any(|theirs| theirs == *ours)
+            })
     }
     pub fn negotiated_compression_algos(&self) -> &str {
         &self.negotiated_compression_algos
@@ -2071,15 +2111,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         // Streaming xxh3-128 → 16-byte wire trailer.
         // Layout pinned by `xxh128_wire_bytes_match_SIVAL64_pair`:
         // `out[0..8] = lo.to_le_bytes(); out[8..16] = hi.to_le_bytes()`.
-        let file_checksum = {
-            let hash = hasher.digest128();
-            let lo = hash as u64;
-            let hi = (hash >> 64) as u64;
-            let mut out = Vec::with_capacity(16);
-            out.extend_from_slice(&lo.to_le_bytes());
-            out.extend_from_slice(&hi.to_le_bytes());
-            out
-        };
+        let file_checksum = xxh128_wire_bytes(hasher.digest128());
 
         let report = DeltaStreamReport {
             ops: wire_ops.clone(),
@@ -3517,6 +3549,72 @@ mod tests {
         assert_eq!(d.negotiated_checksum_algos(), "md5 xxh64");
         assert_eq!(d.negotiated_compression_algos(), "none zstd");
         assert_eq!(d.phase(), AerorsyncSessionPhase::ClientPreambleRecvd);
+    }
+
+    /// CLAUDE-AV-B3-12. Pins rsync 3.2.7 `compat.c::parse_negotiate_str`:
+    /// the winner is the first algorithm in OUR priority-ordered
+    /// advertisement that the peer also advertised, NOT the head of the
+    /// peer's list and NOT merely "the peer mentioned xxh128 somewhere".
+    /// The download-side whole-file verify keys off this, so getting the
+    /// rule wrong either disables the guard or breaks interop.
+    #[tokio::test]
+    async fn negotiated_checksum_algo_picks_first_of_our_list_present_in_peers() {
+        async fn negotiate(ours: &str, theirs: &str) -> Option<String> {
+            let encoded = encode_server_preamble(&ServerPreamble {
+                protocol_version: 31,
+                compat_flags: 0x07,
+                checksum_algos: theirs.to_string(),
+                compression_algos: "none zstd".to_string(),
+                checksum_seed: 0xDEAD_BEEF,
+                consumed: 0,
+            });
+            let mut d = make_driver(mock_transport()).with_preamble_profile(PreambleProfile {
+                checksum_algos: ours.to_string(),
+                compression_algos: "zstd none".to_string(),
+            });
+            d.receive_server_preamble(&encoded).await.unwrap();
+            d.negotiated_checksum_algo().map(str::to_string)
+        }
+
+        let default_ours = "xxh128 xxh3 xxh64 md5 md4";
+
+        // Stock rsync 3.2.7+ advertises xxh128 first: it wins, guard armed.
+        assert_eq!(
+            negotiate(default_ours, "xxh128 xxh3 xxh64 md5 md4").await,
+            Some("xxh128".to_string())
+        );
+        // OUR order decides, not the peer's: the peer leads with md5 but
+        // still offers xxh128, so xxh128 (our top choice) wins.
+        assert_eq!(
+            negotiate(default_ours, "md5 xxh128").await,
+            Some("xxh128".to_string())
+        );
+        // The canonical fixture peer: no xxh128 on offer, so our next
+        // common choice wins and the verify must stay disarmed.
+        assert_eq!(
+            negotiate(default_ours, "md5 xxh64").await,
+            Some("xxh64".to_string())
+        );
+        // md5-only peer: md5 wins. This is the interop case that a naive
+        // "assume xxh128" verify would have broken on every file.
+        assert_eq!(
+            negotiate(default_ours, "md5 md4").await,
+            Some("md5".to_string())
+        );
+        // A peer that skipped the negotiated strings entirely.
+        assert_eq!(negotiate(default_ours, "").await, None);
+        // No common ground at all.
+        assert_eq!(negotiate("xxh128", "md5 md4").await, None);
+        // `with_env_overrides` can retune what we advertise: if we stop
+        // leading with xxh128, the rule must follow our real list rather
+        // than a hardcoded assumption.
+        assert_eq!(
+            negotiate("md5 xxh128", "xxh128 md5").await,
+            Some("md5".to_string())
+        );
+        // Substring safety: "xxh128" must not be matched by a peer that
+        // only offers "xxh12" or "xxh1284".
+        assert_eq!(negotiate("xxh128", "xxh12 xxh1284").await, None);
     }
 
     #[tokio::test]

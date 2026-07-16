@@ -55,19 +55,24 @@
 #![cfg(feature = "aerorsync")]
 
 use std::path::{Path, PathBuf};
+use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex as StdMutex};
+use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use tokio::fs::{self, OpenOptions};
-use tokio::io::{AsyncSeekExt, AsyncWriteExt};
+use tokio::io::{AsyncSeekExt, AsyncWrite, AsyncWriteExt};
+use xxhash_rust::xxh3::Xxh3Default;
 
 use crate::aerorsync::engine_adapter::{
     BaselineSource, CurrentDeltaSyncBridge, FileBaseline, MemoryBaseline,
 };
 use crate::aerorsync::fallback_policy::{classify_fallback, FallbackVerdict};
-use crate::aerorsync::native_driver::{AerorsyncDriver, PreambleProfile};
+use crate::aerorsync::native_driver::{
+    xxh128_wire_bytes, AerorsyncDriver, PreambleProfile, XXH128_ALGO_NAME,
+};
 use crate::aerorsync::real_wire::FileListEntry;
 use crate::aerorsync::remote_command::RemoteCommandSpec;
 use crate::aerorsync::rsync_event_bridge::RsyncEventBridge;
@@ -498,6 +503,75 @@ async fn discard_streaming_temp(writer: StreamingAtomicWriter) {
     let _ = fs::remove_file(&temp).await;
 }
 
+/// CLAUDE-AV-B3-12: `AsyncWrite` shim that xxh3-128s every byte on its
+/// way to the inner writer, so [`do_download`] can check the
+/// reconstruction against the sender's whole-file trailer without a
+/// second read pass over the temp file.
+///
+/// Wrapping the sink (rather than threading a hasher down through
+/// `apply_delta_streaming`) keeps the driver and the engine adapter
+/// untouched: the reconstruction is exactly the byte sequence the writer
+/// accepts, in order, so hashing here is equivalent by construction and
+/// stays O(1) in memory.
+struct HashingWriter<'a, W> {
+    inner: &'a mut W,
+    hasher: Xxh3Default,
+}
+
+impl<'a, W> HashingWriter<'a, W> {
+    fn new(inner: &'a mut W) -> Self {
+        Self {
+            inner,
+            hasher: Xxh3Default::new(),
+        }
+    }
+
+    fn digest128(&self) -> u128 {
+        self.hasher.digest128()
+    }
+}
+
+impl<W> AsyncWrite for HashingWriter<'_, W>
+where
+    W: AsyncWrite + Unpin + Send,
+{
+    fn poll_write(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &[u8],
+    ) -> Poll<std::io::Result<usize>> {
+        let me = self.get_mut();
+        let result = Pin::new(&mut *me.inner).poll_write(cx, buf);
+        // Hash exactly the prefix the inner writer accepted. A short
+        // write that hashed the whole `buf` would silently desynchronise
+        // the digest from the bytes actually on disk, turning the guard
+        // into a source of false corruption reports.
+        if let Poll::Ready(Ok(n)) = &result {
+            me.hasher.update(&buf[..*n]);
+        }
+        result
+    }
+
+    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
+        let me = self.get_mut();
+        Pin::new(&mut *me.inner).poll_flush(cx)
+    }
+
+    fn poll_shutdown(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
+        let me = self.get_mut();
+        Pin::new(&mut *me.inner).poll_shutdown(cx)
+    }
+}
+
+/// Render a wire checksum for an operator-facing error string.
+fn hex_checksum(bytes: &[u8]) -> String {
+    use std::fmt::Write as _;
+    bytes.iter().fold(String::new(), |mut out, b| {
+        let _ = write!(out, "{b:02x}");
+        out
+    })
+}
+
 /// Module-private download core extracted from `download_inner` in P3-T01
 /// W3.2(a). Behavior byte-identical to the pre-W3.2 single-shot path:
 /// baseline read + FileBaseline/MemoryBaseline pick + StreamingAtomicWriter
@@ -611,16 +685,24 @@ where
     // (WrapperParity flavor). Pinned against rsync 3.2.7 capture by
     // `download_remote_command_matches_capture`.
     let spec = RemoteCommandSpec::download(remote_path);
-    let drive_res = driver
-        .drive_download_through_delta_streaming(
-            spec,
-            &destination_data,
-            &mut *baseline,
-            &mut writer,
-            &adapter,
-            &mut bridge,
-        )
-        .await;
+    // CLAUDE-AV-B3-12: hash the reconstruction as it streams to disk so
+    // the whole-file trailer can be checked below. The shim borrows
+    // `writer` only for the drive; the digest outlives the scope so
+    // `writer` is free again for the guards and the commit.
+    let (drive_res, reconstructed_digest) = {
+        let mut hashing_writer = HashingWriter::new(&mut writer);
+        let res = driver
+            .drive_download_through_delta_streaming(
+                spec,
+                &destination_data,
+                &mut *baseline,
+                &mut hashing_writer,
+                &adapter,
+                &mut bridge,
+            )
+            .await;
+        (res, hashing_writer.digest128())
+    };
     if let Err(e) = drive_res {
         // Abandon path. A delta failure here (transient transport error,
         // early channel close, etc.) maps to `DeltaSyncResult::fallback`
@@ -685,6 +767,53 @@ where
             );
             discard_streaming_temp(writer).await;
             return Err(RsyncError::TransferFailed { exit: -1, stderr });
+        }
+    }
+
+    // Whole-file checksum guard (CLAUDE-AV-B3-12). The size guard above
+    // only catches truncation; it cannot see corruption. rsync closes the
+    // delta stream with the sender's strong checksum over the WHOLE
+    // reconstructed file (`match.c::match_sums` →
+    // `sum_init(xfer_sum_nni, checksum_seed)` … `sum_end(sender_file_sum)`
+    // → `write_buf(f, sender_file_sum, xfer_sum_len)`). We already
+    // received and stored that trailer and then never looked at it, so a
+    // weak-hash false match in `engine_adapter::find_match` reconstructed
+    // wrong bytes and reported success. Verifying it also catches the
+    // sender's deliberate bad-checksum signal: on a source read error
+    // `match.c` intentionally transmits an all-zero sum so the receiver
+    // refuses the file.
+    //
+    // INTEROP: run ONLY when the negotiated algorithm is xxh128, the one
+    // algorithm we can recompute in-tree. Against a peer that negotiated
+    // md5/md4 the check is skipped and behavior is exactly as before,
+    // because a verify that assumed xxh128 would mismatch on every single
+    // file and silently downgrade that peer to classic transfers forever:
+    // trading a rare corruption for a permanent performance loss.
+    //
+    // SEED: rsync's FILE checksum is UNSEEDED for xxh3. `checksum.c::
+    // sum_init` calls `XXH3_128bits_reset(xxh3_state)` and ignores its
+    // `seed` argument for CSUM_XXH3_128 (only the legacy MD4 variants mix
+    // it in), whereas the per-BLOCK checksum does seed via
+    // `checksum.c::get_checksum2` → `XXH3_128bits_withSeed`. Our sender
+    // mirrors that asymmetry already (`compute_xxh128_wire` for the
+    // trailer vs `compute_xxh128_wire_with_seed` for blocks), so
+    // `checksum_seed` must NOT enter here: feeding it in would break
+    // against real rsync AND against our own server.
+    if driver.negotiated_checksum_algo() == Some(XXH128_ALGO_NAME) {
+        if let Some(expected) = driver.received_file_checksum() {
+            let actual = xxh128_wire_bytes(reconstructed_digest);
+            if expected != actual.as_slice() {
+                let stderr = format!(
+                    "delta reconstruction checksum mismatch for {}: sender sent xxh128 {}, \
+                     reconstruction hashes to {} ({} bytes); falling back to classic download",
+                    remote_path,
+                    hex_checksum(expected),
+                    hex_checksum(&actual),
+                    file_size
+                );
+                discard_streaming_temp(writer).await;
+                return Err(RsyncError::TransferFailed { exit: -1, stderr });
+            }
         }
     }
 
@@ -1659,6 +1788,232 @@ mod tests {
 
     fn fresh_tempdir() -> TempDir {
         tempfile::tempdir().expect("tempdir")
+    }
+
+    // -- CLAUDE-AV-B3-12: whole-file checksum verify on native delta -------
+
+    /// Script a complete single-file download session for the mock
+    /// transport: server preamble (advertising `peer_algos`) + file list
+    /// entry + terminator + the sender's signature-phase echo + a delta
+    /// stream that is one whole-file Literal + the closing summary frame.
+    ///
+    /// One Literal and an absent local baseline keep the real
+    /// `CurrentDeltaSyncBridge` out of the picture: with no baseline
+    /// there are no signatures, so the sender cannot emit a CopyBlock and
+    /// the reconstruction is exactly `content`. That isolates the
+    /// trailer check, which is what these tests are about.
+    fn download_session_inbound(content: &[u8], peer_algos: &str, trailer: Vec<u8>) -> Vec<u8> {
+        use crate::aerorsync::real_wire::{
+            compress_zstd_literal_stream, encode_delta_stream, encode_file_list_entry,
+            encode_file_list_terminator, encode_item_flags, encode_ndx, encode_server_preamble,
+            encode_sum_head, encode_summary_frame, DeltaOp, DeltaStreamReport,
+            FileListDecodeOptions, FileListEntry, MuxHeader, MuxTag, NdxState, ServerPreamble,
+            SumHead, SummaryFrame,
+        };
+
+        fn mux(payload: &[u8]) -> Vec<u8> {
+            let header = MuxHeader {
+                tag: MuxTag::Data,
+                length: payload.len() as u32,
+            };
+            let mut out = header.encode().to_vec();
+            out.extend_from_slice(payload);
+            out
+        }
+
+        // Mirrors `native_driver::tests::sample_file_list_entry`, but the
+        // size must be the real content length or the pre-existing
+        // completeness guard rejects the file before ours ever runs.
+        // XMIT_SAME_MODE is deliberately NOT set: the mode has to travel
+        // so `finalize` chmods the temp to something it can still stamp
+        // an mtime onto (a transmitted mode of 0 means chmod 0o000, and
+        // the commit then fails with EPERM at the mtime step).
+        const XMIT_SAME_UID: u32 = 0x0008;
+        const XMIT_SAME_GID: u32 = 0x0010;
+        const XMIT_LONG_NAME: u32 = 0x0040;
+        const XMIT_SAME_TIME: u32 = 0x0080;
+        let entry = FileListEntry {
+            flags: XMIT_LONG_NAME | XMIT_SAME_UID | XMIT_SAME_GID | XMIT_SAME_TIME,
+            path: "target.bin".to_string(),
+            size: content.len() as i64,
+            mtime: 0,
+            mtime_nsec: None,
+            mode: 0o100_644,
+            uid: None,
+            uid_name: None,
+            gid: None,
+            gid_name: None,
+            checksum: vec![0xAA; 16],
+            symlink_target: None,
+        };
+        let opts = FileListDecodeOptions {
+            protocol: 31,
+            xfer_flags_as_varint: true,
+            always_checksum: true,
+            csum_len: 16,
+            preserve_uid: true,
+            preserve_gid: true,
+            previous_name: None,
+        };
+
+        // Sender's signature-phase echo: ndx + iflags + an empty sum_head
+        // (no baseline → no blocks), matching `download_sender_prefix()`.
+        let mut ndx_state = NdxState::default();
+        let mut prefix = encode_ndx(1, &mut ndx_state);
+        prefix.extend_from_slice(&encode_item_flags(0x8002));
+        prefix.extend_from_slice(&encode_sum_head(&SumHead {
+            count: 0,
+            block_length: 512,
+            checksum_length: 2,
+            remainder_length: 0,
+        }));
+
+        let compressed =
+            compress_zstd_literal_stream(&[content]).expect("zstd compress fixture literal");
+        let delta_bytes = encode_delta_stream(&DeltaStreamReport {
+            ops: vec![DeltaOp::Literal {
+                compressed_payload: compressed[0].clone(),
+            }],
+            file_checksum: trailer,
+        });
+
+        // The real download tail: `PRE_SUMMARY_NDX_DONE_COUNT_DOWNLOAD`
+        // (3) NDX_DONE markers ahead of the summary, which is what
+        // `drain_leading_ndx_done_download` expects from rsync.
+        let mut summary = vec![0x00; 3];
+        summary.extend_from_slice(&encode_summary_frame(
+            &SummaryFrame {
+                total_read: 12_345,
+                total_written: content.len() as i64,
+                total_size: content.len() as i64,
+                flist_buildtime: Some(1),
+                flist_xfertime: Some(0),
+            },
+            31,
+        ));
+
+        let mut inbound = encode_server_preamble(&ServerPreamble {
+            protocol_version: 31,
+            compat_flags: 0x07,
+            checksum_algos: peer_algos.to_string(),
+            compression_algos: "none zstd".to_string(),
+            checksum_seed: 0xDEAD_BEEF,
+            consumed: 0,
+        });
+        inbound.extend_from_slice(&mux(&encode_file_list_entry(&entry, &opts)));
+        inbound.extend_from_slice(&mux(&encode_file_list_terminator(&opts)));
+        inbound.extend_from_slice(&mux(&prefix));
+        inbound.extend_from_slice(&mux(&delta_bytes));
+        inbound.extend_from_slice(&mux(&summary));
+        inbound
+    }
+
+    async fn run_download_fixture(
+        dir: &TempDir,
+        content: &[u8],
+        peer_algos: &str,
+        trailer: Vec<u8>,
+    ) -> (Result<RsyncStats, RsyncError>, PathBuf) {
+        use crate::aerorsync::mock::{MockRemoteShellTransport, MockTransportConfig};
+
+        let local_path = dir.path().join("target.bin");
+        let transport = MockRemoteShellTransport::new(
+            MockTransportConfig::healthy_upload()
+                .with_raw_inbound(download_session_inbound(content, peer_algos, trailer)),
+        );
+        let result = do_download(
+            transport,
+            CancelHandle::inert(),
+            "/remote/target.bin",
+            &local_path,
+            PreambleProfile::default(),
+            None,
+        )
+        .await;
+        (result, local_path)
+    }
+
+    /// The guard's reason for existing: a delta whose reconstruction does
+    /// not match the sender's whole-file checksum (the observable symptom
+    /// of a weak-hash false match in `find_match`) must be refused before
+    /// the atomic rename, not committed and reported as success.
+    #[tokio::test]
+    async fn download_refuses_reconstruction_that_fails_the_whole_file_checksum() {
+        let dir = fresh_tempdir();
+        let content = b"the bytes that actually arrive on the wire".to_vec();
+        let (result, local_path) = run_download_fixture(
+            &dir,
+            &content,
+            "xxh128 xxh3 xxh64 md5 md4",
+            vec![0xCC; 16], // sender's trailer for some OTHER content
+        )
+        .await;
+
+        match result {
+            Err(RsyncError::TransferFailed { exit, stderr }) => {
+                assert_eq!(exit, -1, "must be fallback-eligible, not a hard rejection");
+                assert!(
+                    stderr.contains("checksum mismatch") && stderr.contains("/remote/target.bin"),
+                    "stderr must name the failure and the file: {stderr}"
+                );
+            }
+            other => panic!("expected TransferFailed on checksum mismatch, got {other:?}"),
+        }
+        assert!(
+            !local_path.exists(),
+            "target must be untouched: the temp is never renamed onto it"
+        );
+        assert!(
+            !temp_path_for(&local_path).exists(),
+            "temp must be discarded so the classic fallback can re-open it with create_new(true)"
+        );
+    }
+
+    /// The interop guard. Against a peer that negotiated md5/md4 we
+    /// cannot recompute the trailer, so the verify MUST stay out of the
+    /// way: the same mismatching trailer that is fatal above has to
+    /// commit here, exactly as it did before this change. Getting this
+    /// wrong would silently disable delta for every non-xxh128 peer.
+    #[tokio::test]
+    async fn download_skips_the_verify_when_the_peer_did_not_negotiate_xxh128() {
+        let dir = fresh_tempdir();
+        let content = b"the bytes that actually arrive on the wire".to_vec();
+        let (result, local_path) =
+            run_download_fixture(&dir, &content, "md5 md4", vec![0xCC; 16]).await;
+
+        assert!(
+            result.is_ok(),
+            "a non-xxh128 peer must keep today's behavior, got {result:?}"
+        );
+        assert_eq!(
+            tokio::fs::read(&local_path).await.expect("target written"),
+            content,
+            "reconstruction must still commit unchanged"
+        );
+    }
+
+    /// The happy path: a trailer that matches commits normally. Without
+    /// this, a guard that rejected everything would still pass the test
+    /// above.
+    #[tokio::test]
+    async fn download_commits_when_the_whole_file_checksum_matches() {
+        let dir = fresh_tempdir();
+        let content = b"the bytes that actually arrive on the wire".to_vec();
+        // Unseeded, matching rsync's `sum_init` for CSUM_XXH3_128 (it
+        // ignores checksum_seed; only the legacy MD4 variants mix it in)
+        // even though this fixture's preamble carries a nonzero seed.
+        let trailer = xxh128_wire_bytes(xxhash_rust::xxh3::xxh3_128(&content));
+        let (result, local_path) =
+            run_download_fixture(&dir, &content, "xxh128 xxh3 xxh64 md5 md4", trailer).await;
+
+        assert!(
+            result.is_ok(),
+            "a matching trailer must commit, got {result:?}"
+        );
+        assert_eq!(
+            tokio::fs::read(&local_path).await.expect("target written"),
+            content
+        );
     }
 
     // -- map_native_error_to_rsync -----------------------------------------
