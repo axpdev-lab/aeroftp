@@ -317,9 +317,24 @@ pub async fn local_sync_run(
         }
 
         if !used_delta {
-            match std::fs::copy(&src, &dst) {
+            // CLAUDE-AV-B3-10: copy to a temp sibling then rename onto the
+            // destination, so an interrupted copy (app killed / power loss)
+            // cannot leave a truncated file where the previous good mirror copy
+            // was. `std::fs::copy` writes the destination in place; the delta
+            // path already uses kill-safe rename-last writes.
+            let tmp = {
+                let mut t = dst.clone().into_os_string();
+                t.push(".aerotmp");
+                std::path::PathBuf::from(t)
+            };
+            let copy_result = std::fs::copy(&src, &tmp).and_then(|n| {
+                std::fs::rename(&tmp, &dst)?;
+                Ok(n)
+            });
+            match copy_result {
                 Ok(n) => wire_bytes = n,
                 Err(e) => {
+                    let _ = std::fs::remove_file(&tmp);
                     report.errors += 1;
                     report
                         .error_messages

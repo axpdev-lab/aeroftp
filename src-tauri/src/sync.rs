@@ -711,18 +711,37 @@ pub fn should_exclude(path: &str, patterns: &[String]) -> bool {
 
     for pattern in patterns {
         let pattern_lower = pattern.to_lowercase();
+        // CLAUDE-AV-B3-09: a trailing '/' marks a directory pattern
+        // (`node_modules/`, the natural gitignore spelling the .aeroignore
+        // template teaches); strip it so it matches the `node_modules` segment
+        // instead of failing open. A pattern with an interior '/' (`build/output`)
+        // is a path fragment matched at a '/' boundary rather than never matching.
+        let pattern_clean = pattern_lower.trim_end_matches('/');
+        if pattern_clean.is_empty() {
+            continue;
+        }
 
         // Simple glob matching
-        if let Some(ext) = pattern_lower.strip_prefix('*') {
+        if let Some(ext) = pattern_clean.strip_prefix('*') {
             // *.ext pattern
             if path_lower.ends_with(ext) {
+                return true;
+            }
+        } else if pattern_clean.contains('/') {
+            // Multi-segment fragment: match anchored at a path boundary.
+            let norm = path_lower.replace('\\', "/");
+            if norm == pattern_clean
+                || norm.starts_with(&format!("{}/", pattern_clean))
+                || norm.contains(&format!("/{}/", pattern_clean))
+                || norm.ends_with(&format!("/{}", pattern_clean))
+            {
                 return true;
             }
         } else {
             // Match against path segments (not just substring)
             // This prevents false positives like "node" matching "node_modules"
             for segment in &path_segments {
-                if segment == &pattern_lower {
+                if segment == &pattern_clean {
                     return true;
                 }
             }
@@ -5392,6 +5411,27 @@ mod tests {
         assert!(
             orphan_delete_guard(SyncDirection::Both, &[], &rfile, &incomplete, &incomplete).is_ok()
         );
+    }
+
+    /// CLAUDE-AV-B3-09: config exclude patterns must match gitignore-style
+    /// directory (`node_modules/`) and multi-segment (`build/output`) forms.
+    /// Pre-fix they compared each path segment verbatim and never matched.
+    #[test]
+    fn should_exclude_matches_dir_and_multi_segment_patterns() {
+        let patterns = vec![
+            "node_modules/".to_string(),
+            "build/output".to_string(),
+            "*.tmp".to_string(),
+        ];
+        assert!(should_exclude("node_modules", &patterns));
+        assert!(should_exclude("src/node_modules/react/index.js", &patterns));
+        assert!(should_exclude("build/output", &patterns));
+        assert!(should_exclude("a/build/output/x.o", &patterns));
+        assert!(should_exclude("cache.tmp", &patterns));
+        // Near-misses must still NOT match.
+        assert!(!should_exclude("node_modules_extra", &patterns));
+        assert!(!should_exclude("src/main.rs", &patterns));
+        assert!(!should_exclude("build/other", &patterns));
     }
 
     #[test]

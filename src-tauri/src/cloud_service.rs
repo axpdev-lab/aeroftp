@@ -71,6 +71,24 @@ fn conflict_rename(local_path: &Path) -> String {
     format!("{} (AeroCloud conflict {} {}){}", stem, ts, host, ext)
 }
 
+/// Archive a local file to `.aeroversions/` before a sync deletes it, mirroring
+/// the archive-before-overwrite path. Without this, a delete propagated from a
+/// remote-side disappearance (`SyncAction::DeleteLocal`) was permanent, while an
+/// overwrite of the same file WAS recoverable — an inconsistent gap. Best-effort:
+/// a failed archive is logged, not fatal, matching the overwrite path.
+/// CLAUDE-AV-B3-08.
+fn archive_before_propagated_delete(config: &CloudConfig, local_path: &Path) {
+    let versioning = crate::sync_versioning::SyncVersioning::new(
+        &config.local_folder,
+        config.versioning_strategy.clone(),
+    );
+    if versioning.is_enabled() {
+        if let Err(e) = versioning.archive(local_path) {
+            tracing::warn!("Versioning archive before delete failed: {}", e);
+        }
+    }
+}
+
 /// Result of a sync operation
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SyncedFileDetail {
@@ -1329,6 +1347,7 @@ impl CloudService {
             SyncAction::DeleteLocal if !comparison.is_dir => {
                 let local_path = config.local_folder.join(&comparison.relative_path);
                 if local_path.exists() {
+                    archive_before_propagated_delete(config, &local_path);
                     std::fs::remove_file(&local_path)
                         .map_err(|e| format!("Delete propagation (local) failed: {}", e))?;
                     tracing::info!(
@@ -1643,6 +1662,7 @@ impl CloudService {
             SyncAction::DeleteLocal if !comparison.is_dir => {
                 let local_path = config.local_folder.join(&comparison.relative_path);
                 if local_path.exists() {
+                    archive_before_propagated_delete(config, &local_path);
                     std::fs::remove_file(&local_path)
                         .map_err(|e| format!("Delete propagation (local) failed: {}", e))?;
                     tracing::info!(
