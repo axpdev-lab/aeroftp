@@ -276,53 +276,71 @@ fn is_gvfs_mtp_mount_name(name: &str) -> bool {
     lower.starts_with("mtp:") || lower.starts_with("gphoto2:")
 }
 
-/// Soft-release the Linux system MTP claim (Nautilus / gvfs) so libmtp can open.
+/// Soft-release + pause gvfs so libmtp can open without a mid-open reclaim race.
 ///
-/// Order:
-/// 1. `gio mount --unmount-scheme=mtp` (and gphoto2)
-/// 2. unmount any remaining `/run/user/<uid>/gvfs/mtp:*` entries
-/// 3. SIGTERM `gvfsd-mtp` workers **and** `gvfs-mtp-volume-monitor` (the monitor
-///    respawns workers and re-claims mid-open if left alive)
-/// 4. SIGTERM other holders of the USB node when `device_id` is known (never self)
-/// 5. Poll briefly: if gvfs reclaims or holders reappear, re-release once more
-/// 6. Settle so libusb sees a free interface before open
+/// Live evidence (Sony Xperia / gvfs): killing `gvfsd-mtp` alone is not enough.
+/// `gvfs-mtp-volume-monitor` dbus-activates a new worker within hundreds of ms
+/// and re-claims the USB node during settle / Detect / Open. Fix:
+/// 1. Unmount gvfs MTP mounts
+/// 2. SIGTERM **workers** (`gvfsd-mtp`, `gvfsd-gphoto2`) so they drop the USB claim
+/// 3. SIGSTOP **volume monitors** so they cannot respawn workers mid-open
+/// 4. SIGTERM other USB node holders (never self)
+/// 5. Poll until free (re-kill workers if they return)
+/// 6. Short settle, then open immediately
 ///
-/// After AeroFTP disconnects, gvfs is free to dbus-activate again and quietly
-/// re-automount for Nautilus. That is expected.
+/// Returns monitor PIDs that were stopped; caller **must** `resume_gvfs_mtp_monitors`
+/// after the open attempt (success or fail) so Nautilus can quiet re-automount
+/// once AeroFTP disconnects.
 ///
-/// Best-effort: missing `gio` or permission errors are ignored so open can still
-/// try (and surface a clear busy error if another client remains).
-fn release_gvfs_mtp_claim(device_id: Option<&str>) {
-    release_gvfs_mtp_claim_once(device_id);
+/// Best-effort: missing `gio` or permission errors are ignored.
+fn release_gvfs_mtp_claim(device_id: Option<&str>) -> Vec<i32> {
+    unmount_gvfs_mtp_mounts();
+    // Drop exclusive USB claim first.
+    signal_processes_matching(GVFS_MTP_WORKER_NAMES, libc::SIGTERM);
+    // Freeze monitors so they cannot restart workers during open.
+    let mut stopped = stop_gvfs_mtp_monitors();
+    if let Some(id) = device_id {
+        if let Ok((bus, devnum)) = parse_device_id(id) {
+            force_release_usb_node(bus, devnum);
+        }
+    }
 
-    // Volume monitor can dbus-activate and re-claim within a few hundred ms.
-    // Poll holders and re-release if gvfs comes back before we open.
     let parsed = device_id.and_then(|id| parse_device_id(id).ok());
-    for _ in 0..6 {
-        std::thread::sleep(std::time::Duration::from_millis(150));
-        let gvfs_back = gvfs_mtp_processes_present();
+    for _ in 0..8 {
+        // Re-stop monitors that dbus-activated after our first pass.
+        let more = stop_gvfs_mtp_monitors();
+        for pid in more {
+            if !stopped.contains(&pid) {
+                stopped.push(pid);
+            }
+        }
+        signal_processes_matching(GVFS_MTP_WORKER_NAMES, libc::SIGTERM);
+        if let Some((bus, dev)) = parsed {
+            force_release_usb_node(bus, dev);
+        }
+        std::thread::sleep(std::time::Duration::from_millis(80));
+        let workers = processes_matching_present(GVFS_MTP_WORKER_NAMES);
         let foreign = parsed
             .map(|(bus, dev)| usb_node_has_foreign_holders(bus, dev))
             .unwrap_or(false);
-        if !gvfs_back && !foreign {
+        if !workers && !foreign {
             break;
         }
         tracing::info!(
             target: "mtp",
-            gvfs_back,
+            workers_present = workers,
             foreign_holders = foreign,
-            "MTP soft-release: gvfs/holders returned; releasing again"
+            "MTP soft-release: workers/holders still present; retrying"
         );
-        release_gvfs_mtp_claim_once(device_id);
     }
 
-    // Final settle: Sony/Android often needs >400ms after gvfs dies before
-    // Open_Raw succeeds; shorter windows yield PTP_ERROR_IO + libmtp USB reset.
-    std::thread::sleep(std::time::Duration::from_millis(700));
+    // Keep settle short: a long free window lets a new monitor start and reclaim
+    // before Open_Raw (observed: gvfsd-mtp back during 700ms settle).
+    std::thread::sleep(std::time::Duration::from_millis(80));
+    stopped
 }
 
-fn release_gvfs_mtp_claim_once(device_id: Option<&str>) {
-    // Scheme unmount covers ShadowMounts even when no FUSE dir is visible yet.
+fn unmount_gvfs_mtp_mounts() {
     for scheme in ["mtp", "gphoto2"] {
         let _ = std::process::Command::new("gio")
             .args(["mount", "-s", scheme])
@@ -345,23 +363,22 @@ fn release_gvfs_mtp_claim_once(device_id: Option<&str>) {
                 .output();
         }
     }
-
-    // Workers hold libusb; the volume monitor restarts them and races open.
-    // Match by executable basename only (never full cmdline substring: a shell
-    // script that mentions gvfsd-mtp must not be SIGTERM'd).
-    terminate_gvfs_mtp_processes();
-
-    if let Some(id) = device_id {
-        if let Ok((bus, devnum)) = parse_device_id(id) {
-            force_release_usb_node(bus, devnum);
-        }
-    }
 }
 
-const GVFS_MTP_PROCESS_NAMES: &[&str] = &["gvfsd-mtp", "gvfs-mtp-volume-monitor"];
+/// Workers that hold libusb on the phone. Kill (SIGTERM) to drop the claim.
+const GVFS_MTP_WORKER_NAMES: &[&str] = &["gvfsd-mtp", "gvfsd-gphoto2"];
+/// Volume monitors that respawn workers. Freeze (SIGSTOP) across open.
+const GVFS_MTP_MONITOR_NAMES: &[&str] = &["gvfs-mtp-volume-monitor", "gvfs-gphoto2-volume-monitor"];
+/// All names used by unit tests for basename matching.
+#[cfg(test)]
+const GVFS_MTP_PROCESS_NAMES: &[&str] = &[
+    "gvfsd-mtp",
+    "gvfsd-gphoto2",
+    "gvfs-mtp-volume-monitor",
+    "gvfs-gphoto2-volume-monitor",
+];
 
-/// True if a gvfs MTP worker or volume monitor is running in this user session.
-fn gvfs_mtp_processes_present() -> bool {
+fn processes_matching_present(names: &[&str]) -> bool {
     let Ok(proc) = std::fs::read_dir("/proc") else {
         return false;
     };
@@ -374,16 +391,14 @@ fn gvfs_mtp_processes_present() -> bool {
         if pid <= 1 || pid == self_pid {
             continue;
         }
-        if process_exe_basename_matches(pid, GVFS_MTP_PROCESS_NAMES) {
+        if process_exe_basename_matches(pid, names) {
             return true;
         }
     }
     false
 }
 
-/// SIGTERM gvfs MTP worker + volume monitor by executable basename.
-/// Skips self so a release never shoots the app or its test harness.
-fn terminate_gvfs_mtp_processes() {
+fn signal_processes_matching(names: &[&str], sig: i32) {
     let Ok(proc) = std::fs::read_dir("/proc") else {
         return;
     };
@@ -396,16 +411,69 @@ fn terminate_gvfs_mtp_processes() {
         if pid <= 1 || pid == self_pid {
             continue;
         }
-        if !process_exe_basename_matches(pid, GVFS_MTP_PROCESS_NAMES) {
+        if !process_exe_basename_matches(pid, names) {
             continue;
         }
         unsafe {
-            libc::kill(pid, libc::SIGTERM);
+            libc::kill(pid, sig);
         }
         tracing::info!(
             target: "mtp",
             pid,
-            "released system MTP claim: SIGTERM gvfs process"
+            sig,
+            "released system MTP claim: signal gvfs process"
+        );
+    }
+}
+
+/// SIGSTOP gvfs MTP/gphoto2 volume monitors; returns their PIDs for later CONT.
+fn stop_gvfs_mtp_monitors() -> Vec<i32> {
+    let Ok(proc) = std::fs::read_dir("/proc") else {
+        return Vec::new();
+    };
+    let self_pid = std::process::id() as i32;
+    let mut out = Vec::new();
+    for entry in proc.flatten() {
+        let pid: i32 = match entry.file_name().to_string_lossy().parse() {
+            Ok(p) => p,
+            Err(_) => continue,
+        };
+        if pid <= 1 || pid == self_pid {
+            continue;
+        }
+        if !process_exe_basename_matches(pid, GVFS_MTP_MONITOR_NAMES) {
+            continue;
+        }
+        unsafe {
+            libc::kill(pid, libc::SIGSTOP);
+        }
+        tracing::info!(
+            target: "mtp",
+            pid,
+            "paused gvfs MTP volume monitor (SIGSTOP) for open"
+        );
+        out.push(pid);
+    }
+    out
+}
+
+/// Resume monitors stopped for open (best-effort SIGCONT).
+fn resume_gvfs_mtp_monitors(pids: &[i32]) {
+    for &pid in pids {
+        if pid <= 1 {
+            continue;
+        }
+        // Skip if process already exited.
+        if !std::path::Path::new(&format!("/proc/{pid}")).exists() {
+            continue;
+        }
+        unsafe {
+            libc::kill(pid, libc::SIGCONT);
+        }
+        tracing::info!(
+            target: "mtp",
+            pid,
+            "resumed gvfs MTP volume monitor (SIGCONT)"
         );
     }
 }
@@ -925,25 +993,29 @@ impl MtpBackend for LinuxLibmtpBackend {
             }
 
             // Product UX: green profile + Connect must work even when Nautilus
-            // already claimed the phone. Soft-release gvfs *before* the first
-            // open attempt so libmtp does not USB-reset a busy interface.
-            release_gvfs_mtp_claim(Some(&id));
-
-            let open_once =
+            // already claimed the phone. Soft-release workers + SIGSTOP volume
+            // monitors for the open window so gvfs cannot re-claim mid-Detect.
+            let open_with_release =
                 |device_id: &str| -> Result<(*mut LibmtpMtpDevice, String), ProviderError> {
-                    let _g = LIBMTP_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-                    open_raw_by_id_locked(device_id)
+                    let stopped = release_gvfs_mtp_claim(Some(device_id));
+                    // Re-kill workers immediately under the libmtp lock, then open.
+                    let result = {
+                        let _g = LIBMTP_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+                        signal_processes_matching(GVFS_MTP_WORKER_NAMES, libc::SIGTERM);
+                        open_raw_by_id_locked(device_id)
+                    };
+                    resume_gvfs_mtp_monitors(&stopped);
+                    result
                 };
 
-            let (device, display) = match open_once(&id) {
+            let (device, display) = match open_with_release(&id) {
                 Ok(pair) => pair,
                 Err(e) if is_busy_connection_error(&e) => {
                     tracing::info!(
                         target: "mtp",
                         "MTP open busy after first release; retrying gvfs release once"
                     );
-                    release_gvfs_mtp_claim(Some(&id));
-                    open_once(&id)?
+                    open_with_release(&id)?
                 }
                 Err(e) => return Err(e),
             };
