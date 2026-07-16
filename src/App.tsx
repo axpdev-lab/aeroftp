@@ -423,7 +423,8 @@ import { DecryptingText } from './components/DecryptingText';
 import type { TrashItem, FolderSizeResult, LocalTab } from './types/aerofile';
 
 // Utilities
-import { formatBytes, formatSpeed, formatETA, formatDate } from './utils';
+import { formatBytes, formatSpeed, formatETA, formatDate, isWindowsDriveRoot, parentLocalPath } from './utils';
+
 import { useArchiveMeta } from './hooks/useArchiveMeta';
 import { formatArchiveCipher } from './utils/archiveCipher';
 import { useIconTheme, getDefaultIconTheme } from './hooks/useIconTheme';
@@ -2613,9 +2614,13 @@ interface UpdateVerificationInfo {
       } else {
         const panel = getActiveLocalState();
         if (!panel.currentPath) return;
-        if (panel.currentPath !== '/') panel.changeDir(panel.currentPath.split(/[\\/]/).slice(0, -1).join('/') || '/');
+        // Windows drive roots (`D:/`) and bare `D:` must not go up; parent of
+        // `D:/boot` must be `D:/` (absolute), not bare `D:` (Rust rejects it).
+        if (panel.currentPath === '/' || isWindowsDriveRoot(panel.currentPath)) return;
+        panel.changeDir(parentLocalPath(panel.currentPath));
       }
     },
+
 
     // Tab: switch active panel. In AeroFile dual-panel mode, cycle between the
     // two local panels (left → right → left). Otherwise toggle remote↔local.

@@ -27,7 +27,8 @@ import { LargeIconsGrid } from './LargeIconsGrid';
 import { ImageThumbnail } from './ImageThumbnail';
 import { getPreviewCategory, isPreviewable as isMediaPreviewable } from './Preview';
 import { isPreviewable } from './DevTools';
-import { formatBytes, formatDate } from '../utils';
+import { formatBytes, formatDate, isWindowsDriveRoot, parentLocalPath } from '../utils';
+
 import { LocalFile } from '../types';
 import type { ServerProfile } from '../types';
 import type { TrashItem, FileTag, PanelEndpoint } from '../types/aerofile';
@@ -370,10 +371,10 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
     return <BridgeConfigBadge source={source} title={`${source.label} - ${t('contextMenu.importToAeroFTP')}`} />;
   };
 
-  // Navigate to parent directory
+  // Navigate to parent directory (normalize bare Windows drive letters to X:/
+  // so Rust Path::is_absolute accepts them; see BUG-parent-up-windows-drive).
   const navigateUp = () => {
-    const parent = currentPath.split(/[\\/]/).slice(0, -1).join('/') || '/';
-    onNavigate(parent);
+    onNavigate(parentLocalPath(currentPath));
   };
 
   // Handle file double-click
@@ -502,7 +503,7 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
     }
   };
 
-  const isAtRoot = currentPath === '/' || !!(
+  const isAtRoot = currentPath === '/' || isWindowsDriveRoot(currentPath) || !!(
     isSyncNavigation && syncBasePaths && (
       (currentPath.endsWith('/') && currentPath.length > 1 ? currentPath.slice(0, -1) : currentPath) ===
       (syncBasePaths.local.endsWith('/') && syncBasePaths.local.length > 1 ? syncBasePaths.local.slice(0, -1) : syncBasePaths.local)
@@ -969,8 +970,8 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
               {/* Go Up Row */}
               <tr
                 role="row"
-                className={`${currentPath !== '/' ? 'hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer' : 'opacity-50 cursor-not-allowed'}`}
-                onClick={() => currentPath !== '/' && navigateUp()}
+                className={`${!isAtRoot ? 'hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer' : 'opacity-50 cursor-not-allowed'}`}
+                onClick={() => !isAtRoot && navigateUp()}
               >
                 <td className="px-4 py-2 flex items-center gap-2 text-gray-500">
                   {iconProvider.getFolderUpIcon(16).icon}
@@ -1045,9 +1046,9 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
           /* ===================== GRID VIEW ===================== */
           <div className="file-grid" role="grid" aria-label={t('browser.name')}>
             <div
-              className={`file-grid-item file-grid-go-up ${currentPath === '/' ? 'opacity-50 cursor-not-allowed' : ''}`}
+              className={`file-grid-item file-grid-go-up ${isAtRoot ? 'opacity-50 cursor-not-allowed' : ''}`}
               role="row"
-              onClick={() => currentPath !== '/' && navigateUp()}
+              onClick={() => !isAtRoot && navigateUp()}
             >
               <div className="file-grid-icon">
                 {iconProvider.getFolderUpIcon(32).icon}

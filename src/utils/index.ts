@@ -8,3 +8,4 @@
 export { formatBytes, formatSize, formatSpeed, formatETA, formatDate, formatDateCompact, parseHumanSize } from './formatters';
 export { getFileIcon, getFileIconColor } from './fileIcons';
 export { logger } from './logger';
+export { isWindowsDriveRoot, parentLocalPath } from './parentLocalPath';
