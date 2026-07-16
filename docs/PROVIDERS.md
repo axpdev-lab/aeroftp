@@ -81,8 +81,10 @@ aeroftp.app / docs.aeroftp.app provider tables mirror this list.
   same dual-panel transfer fabric as other providers. MTP/WPD limits (no mount,
   no resume, no multi-thread range download, often `max_file_slots = 1`, exclusive
   USB claim) are properties of the protocol and OS stacks, not missing AeroFTP
-  features. See
-  [PROTOCOL-FEATURES.md](./PROTOCOL-FEATURES.md#portable-devices-mtp--wpd).
+  features. On Linux connect, AeroFTP soft-releases the gvfs/Nautilus MTP claim
+  before opening so a green device profile is usable without manual unmount;
+  disconnect drops only the AeroFTP session and the desktop may re-automount.
+  See [PROTOCOL-FEATURES.md](./PROTOCOL-FEATURES.md#portable-devices-mtp--wpd).
   Saved profiles work from the CLI via `aeroftp-cli --profile "<name>" …` when
   the device is attached (fingerprint match → open session). There is no separate
   `mtp://` host URL mode; ProviderFactory host create still rejects MTP.

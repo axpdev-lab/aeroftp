@@ -255,6 +255,158 @@ fn friendly_busy(msg: &str) -> ProviderError {
     }
 }
 
+fn is_busy_connection_error(err: &ProviderError) -> bool {
+    match err {
+        ProviderError::ConnectionFailed(msg) => {
+            let lower = msg.to_ascii_lowercase();
+            lower.contains("busy")
+                || lower.contains("file manager")
+                || lower.contains("gvfs")
+                || lower.contains("nautilus")
+                || lower.contains("claim")
+        }
+        _ => false,
+    }
+}
+
+/// gvfs FUSE dir names look like `mtp:host=%5Busb%3A002%2C015%5D` or
+/// `mtp:host=Sony_XQ-DQ54_QV770LUNJD`.
+fn is_gvfs_mtp_mount_name(name: &str) -> bool {
+    let lower = name.to_ascii_lowercase();
+    lower.starts_with("mtp:") || lower.starts_with("gphoto2:")
+}
+
+/// Soft-release the Linux system MTP claim (Nautilus / gvfs) so libmtp can open.
+///
+/// Order:
+/// 1. `gio mount --unmount-scheme=mtp` (and gphoto2)
+/// 2. unmount any remaining `/run/user/<uid>/gvfs/mtp:*` entries
+/// 3. SIGTERM `gvfsd-mtp` workers **and** `gvfs-mtp-volume-monitor` (the monitor
+///    respawns workers and re-claims mid-open if left alive)
+/// 4. optional `fuser -k` on the USB node when `device_id` is known
+///
+/// After AeroFTP disconnects, gvfs is free to dbus-activate again and quietly
+/// re-automount for Nautilus. That is expected.
+///
+/// Best-effort: missing `gio` or permission errors are ignored so open can still
+/// try (and surface a clear busy error if another client remains).
+fn release_gvfs_mtp_claim(device_id: Option<&str>) {
+    // Scheme unmount covers ShadowMounts even when no FUSE dir is visible yet.
+    for scheme in ["mtp", "gphoto2"] {
+        let _ = std::process::Command::new("gio")
+            .args(["mount", "-s", scheme])
+            .output();
+    }
+
+    let uid = unsafe { libc::getuid() };
+    let gvfs_dir = format!("/run/user/{uid}/gvfs");
+    if let Ok(entries) = std::fs::read_dir(&gvfs_dir) {
+        for entry in entries.flatten() {
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            if !is_gvfs_mtp_mount_name(&name) {
+                continue;
+            }
+            let path = entry.path();
+            let path_s = path.to_string_lossy();
+            let _ = std::process::Command::new("gio")
+                .args(["mount", "-u", path_s.as_ref()])
+                .output();
+        }
+    }
+
+    // Workers hold libusb; the volume monitor restarts them and races open.
+    terminate_processes_matching(&["gvfsd-mtp", "gvfs-mtp-volume-monitor"]);
+
+    if let Some(id) = device_id {
+        if let Ok((bus, devnum)) = parse_device_id(id) {
+            force_release_usb_node(bus, devnum);
+        }
+    }
+
+    // Brief settle so libusb sees the released interface before open.
+    std::thread::sleep(std::time::Duration::from_millis(400));
+}
+
+/// SIGTERM user-session processes whose cmdline contains any of `needles`.
+/// Skips self / cargo / aeroftp so a release never shoots the app.
+fn terminate_processes_matching(needles: &[&str]) {
+    let Ok(proc) = std::fs::read_dir("/proc") else {
+        return;
+    };
+    let self_pid = std::process::id() as i32;
+    for entry in proc.flatten() {
+        let pid: i32 = match entry.file_name().to_string_lossy().parse() {
+            Ok(p) => p,
+            Err(_) => continue,
+        };
+        if pid <= 1 || pid == self_pid {
+            continue;
+        }
+        let cmdline_path = entry.path().join("cmdline");
+        let Ok(raw) = std::fs::read(&cmdline_path) else {
+            continue;
+        };
+        // /proc/pid/cmdline is NUL-separated.
+        let joined = raw
+            .split(|b| *b == 0)
+            .filter(|s| !s.is_empty())
+            .map(|s| String::from_utf8_lossy(s).into_owned())
+            .collect::<Vec<_>>()
+            .join(" ");
+        if !needles.iter().any(|n| joined.contains(n)) {
+            continue;
+        }
+        // Never match our own process tree tooling by accident.
+        if joined.contains("cargo") || joined.contains("aeroftp") {
+            continue;
+        }
+        unsafe {
+            libc::kill(pid, libc::SIGTERM);
+        }
+        tracing::info!(
+            target: "mtp",
+            pid,
+            cmd = %joined,
+            "released system MTP claim: SIGTERM"
+        );
+    }
+}
+
+/// Best-effort: SIGTERM other processes still holding the USB device node.
+///
+/// Never kill our own PID: after a failed open, libmtp may still hold a partial
+/// claim on the node; `fuser -k` would terminate the AeroFTP/test process.
+fn force_release_usb_node(bus: u32, devnum: u8) {
+    let node = format!("/dev/bus/usb/{bus:03}/{devnum:03}");
+    if !std::path::Path::new(&node).exists() {
+        return;
+    }
+    let Ok(output) = std::process::Command::new("fuser").arg(&node).output() else {
+        return;
+    };
+    // fuser prints space-separated PIDs on stdout (and may write noise on stderr).
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let self_pid = std::process::id();
+    for tok in stdout.split_whitespace() {
+        let Ok(pid) = tok.parse::<u32>() else {
+            continue;
+        };
+        if pid == 0 || pid == self_pid {
+            continue;
+        }
+        unsafe {
+            libc::kill(pid as i32, libc::SIGTERM);
+        }
+        tracing::info!(
+            target: "mtp",
+            pid,
+            %node,
+            "released system MTP claim: SIGTERM USB node holder"
+        );
+    }
+}
+
 fn parse_handle(handle: &str) -> Result<u32, ProviderError> {
     if let Some(rest) = handle.strip_prefix("storage:") {
         return rest
@@ -524,7 +676,7 @@ fn open_raw_by_id_locked(device_id: &str) -> Result<(*mut LibmtpMtpDevice, Strin
     };
     if device.is_null() {
         return Err(ProviderError::ConnectionFailed(
-            "failed to open MTP device (busy, unauthorized, or not in MTP mode). If a file manager has the phone open, close that window and retry.".into(),
+            "failed to open MTP device (busy, unauthorized, or not in MTP mode). AeroFTP tried to release the system file manager mount; close any remaining MTP client and retry.".into(),
         ));
     }
 
@@ -689,8 +841,31 @@ impl MtpBackend for LinuxLibmtpBackend {
                 }
                 guard.device = ptr::null_mut();
             }
-            let _g = LIBMTP_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-            let (device, display) = open_raw_by_id_locked(&id)?;
+
+            // Product UX: green profile + Connect must work even when Nautilus
+            // already claimed the phone. Soft-release gvfs *before* the first
+            // open attempt so libmtp does not USB-reset a busy interface.
+            release_gvfs_mtp_claim(Some(&id));
+
+            let open_once =
+                |device_id: &str| -> Result<(*mut LibmtpMtpDevice, String), ProviderError> {
+                    let _g = LIBMTP_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+                    open_raw_by_id_locked(device_id)
+                };
+
+            let (device, display) = match open_once(&id) {
+                Ok(pair) => pair,
+                Err(e) if is_busy_connection_error(&e) => {
+                    tracing::info!(
+                        target: "mtp",
+                        "MTP open busy after first release; retrying gvfs release once"
+                    );
+                    release_gvfs_mtp_claim(Some(&id));
+                    open_once(&id)?
+                }
+                Err(e) => return Err(e),
+            };
+
             guard.device = device;
             guard.device_id = Some(id);
             guard.display_name = Some(display);
@@ -989,6 +1164,32 @@ mod tests {
         assert_eq!(d, 12);
         assert!(parse_device_id("nope").is_err());
         assert!(parse_device_id("usb:x:y").is_err());
+    }
+
+    #[test]
+    fn gvfs_mtp_mount_name_detects_scheme() {
+        assert!(is_gvfs_mtp_mount_name("mtp:host=Sony_XQ-DQ54_QV770LUNJD"));
+        assert!(is_gvfs_mtp_mount_name("mtp:host=%5Busb%3A005%2C019%5D"));
+        assert!(is_gvfs_mtp_mount_name("gphoto2:host=camera"));
+        assert!(is_gvfs_mtp_mount_name("MTP:host=upper"));
+        assert!(!is_gvfs_mtp_mount_name("sftp:host=nas"));
+        assert!(!is_gvfs_mtp_mount_name("smb-share:server=x"));
+    }
+
+    #[test]
+    fn busy_error_classifier() {
+        assert!(is_busy_connection_error(&ProviderError::ConnectionFailed(
+            "failed to open MTP device (busy, unauthorized, or not in MTP mode). AeroFTP tried to release the system file manager mount; close any remaining MTP client and retry.".into()
+        )));
+        assert!(is_busy_connection_error(&ProviderError::ConnectionFailed(
+            "MTP device is busy (another program such as a file manager may have it open).".into()
+        )));
+        assert!(!is_busy_connection_error(&ProviderError::ConnectionFailed(
+            "not in MTP mode / phone locked".into()
+        )));
+        assert!(!is_busy_connection_error(&ProviderError::NotFound(
+            "no device".into()
+        )));
     }
 
     #[tokio::test]

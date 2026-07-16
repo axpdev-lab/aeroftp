@@ -63,8 +63,12 @@ claim them as "coming soon" for this transport:
 | No delta / rsync | No block-checksum protocol on the wire |
 | Exclusive USB claim | Only one program can hold the phone over MTP at a time |
 
-**Exclusive claim:** close the system file manager (or any other MTP client) if
-AeroFTP cannot open the device, and vice versa.
+**Exclusive claim:** only one program can hold the phone over MTP at a time.
+On **Linux**, when you Connect from PLACES or a My Servers device profile,
+AeroFTP soft-releases the system gvfs/Nautilus MTP mount (then opens libmtp) so
+you do not have to unmount by hand. On disconnect AeroFTP drops its session and
+the desktop may quietly re-automount the phone. If open still fails, close any
+remaining MTP client (or re-toggle File Transfer on the phone) and retry.
 
 **macOS** is out of scope until a Mac station and backend exist.
 
