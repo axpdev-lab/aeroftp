@@ -27,6 +27,7 @@ import { ProfileRelocateDialog } from '../ProfileRelocateDialog';
 import { listUsers } from '../../utils/userPartitions';
 import { supportsSpeedTest } from '../../utils/speedTest';
 import { useProviderHealth, type HealthTarget } from '../../hooks/useProviderHealth';
+import { useDeviceAttachState } from '../../hooks/useDeviceAttachState';
 import { useCardLayout } from '../../hooks/useCardLayout';
 import { useStorageThresholds } from '../../hooks/useStorageThresholds';
 import { useMyServersDensity } from '../../hooks/useMyServersDensity';
@@ -34,6 +35,8 @@ import { useMyServersColumns } from '../../hooks/useMyServersColumns';
 import { useResponsiveColumns } from '../../hooks/useResponsiveColumns';
 import { PROVIDER_HEALTH_URLS } from './discoverData';
 import { mergeSavedServerProfile } from '../../utils/serverProfileStore';
+import { matchLiveDevice } from '../../utils/mtpFingerprint';
+import type { MtpDeviceInfo } from '../../types/aerofile';
 import { loadFavoriteServers, saveFavoriteServers } from '../../utils/favoriteServers';
 import {
     ServerGroup,
@@ -236,6 +239,9 @@ function getHealthProbeInput(server: ServerProfile): string | null {
     // AeroShare friend: no HTTP endpoint to probe (the drive is a local
     // replica; reachability is the live sync badge, not a health dot).
     if (proto === 'peer') return null;
+    // MTP device profile: attach is physical fingerprint match (useDeviceAttachState),
+    // not HTTP. Never invent a probe URL from the human host label.
+    if (proto === 'mtp') return null;
     const providerUrl = server.providerId ? getProviderById(server.providerId)?.healthCheckUrl : undefined;
     const protocolUrl = PROVIDER_HEALTH_URLS[proto];
     const endpoint = server.options?.endpoint;
@@ -314,6 +320,8 @@ interface MyServersPanelProps {
     /** Close every open session for the given saved profile. Wired to the
      *  Disconnect context-menu entry, gated on `activeProfileIds`. #222. */
     onDisconnectProfile?: (profileId: string) => void | Promise<void>;
+    /** APPENDIX-DEVICE-PROFILES Phase 3: open attached MTP device for a saved profile. */
+    onOpenMtpDeviceProfile?: (device: MtpDeviceInfo, profile: ServerProfile) => void | Promise<void>;
 }
 
 const EMPTY_STATE_CATEGORIES: { id: CatalogCategoryId; labelKey: string; icon: React.ReactNode; iconColor: string }[] = [
@@ -340,6 +348,7 @@ export function MyServersPanel({
     onActivateSession,
     connectingProfileId,
     onDisconnectProfile,
+    onOpenMtpDeviceProfile,
 }: MyServersPanelProps) {
     const t = useTranslation();
     const { log: logActivity } = useActivityLog();
@@ -922,6 +931,17 @@ export function MyServersPanel({
         insertEdgesRef.current = { insertStartIdx, insertEndIdx };
     }, [insertStartIdx, insertEndIdx]);
 
+    // MTP device attach: fingerprint match against live list_mtp_devices.
+    // Poll only when at least one saved mtp profile exists.
+    const hasMtpProfiles = useMemo(
+        () => servers.some(s => s.protocol === 'mtp' && !!s.deviceFingerprint?.canonical),
+        [servers],
+    );
+    const { attachedProfileIds, refresh: refreshMtpDevices } = useDeviceAttachState(
+        servers,
+        hasMtpProfiles,
+    );
+
     // Per-server reachability probe: only meaningful in detailed layout, so
     // we skip the scan otherwise to avoid burning network on a probe nobody
     // can see. `cardLayout` is read above (toolbar toggle uses it too).
@@ -999,7 +1019,7 @@ export function MyServersPanel({
     const chipCounts = useMemo(() => {
         const counts: Record<MyServersFilterBy, number> = {
             all: servers.length,
-            ftp: 0, s3: 0, webdav: 0, cloud: 0, media: 0, dev: 0, 'local-bridge': 0, peer: 0, favorites: 0, encrypted: 0,
+            ftp: 0, s3: 0, webdav: 0, cloud: 0, media: 0, dev: 0, 'local-bridge': 0, mtp: 0, peer: 0, favorites: 0, encrypted: 0,
             // Open-session count: a profile-id set, not a protocol predicate.
             active: activeProfileIds?.size ?? 0,
         };
@@ -1031,7 +1051,7 @@ export function MyServersPanel({
     }, [activeFilter, activeProfileIds]);
 
     // Connection handler - full logic from original SavedServers.tsx
-    // Handles OAuth2, 4shared OAuth1, and standard credential-based connections
+    // Handles OAuth2, 4shared OAuth1, MTP device profiles, and credential connections
     const handleConnect = useCallback(async (server: ServerProfile) => {
         if (connectingId) return;
 
@@ -1051,6 +1071,56 @@ export function MyServersPanel({
         // account is never re-logged-in or re-prompted for 2FA. Falls through
         // to a normal connect when no open session is found.
         if (activeProfileIds?.has(server.id) && onActivateSession?.(server.id)) {
+            return;
+        }
+
+        // APPENDIX-DEVICE-PROFILES Phase 3: MTP device profile.
+        // Do NOT route through provider_connect / host factory (rejects Mtp).
+        // Match live device by fingerprint → mtp_open_device via App helper.
+        if (server.protocol === 'mtp') {
+            setConnectingId(server.id);
+            try {
+                if (!onOpenMtpDeviceProfile) {
+                    window.dispatchEvent(new CustomEvent('aeroftp-toast', {
+                        detail: {
+                            type: 'error',
+                            title: t('connection.mtpNotAttachedTitle'),
+                            message: t('connection.mtpNotAttached'),
+                            duration: 6000,
+                            important: true,
+                        },
+                    }));
+                    return;
+                }
+                // Fresh list on click: bus:dev ids change across re-plug.
+                const devices = await refreshMtpDevices();
+                const live = matchLiveDevice(server.deviceFingerprint?.canonical, devices);
+                if (!live) {
+                    window.dispatchEvent(new CustomEvent('aeroftp-toast', {
+                        detail: {
+                            type: 'info',
+                            title: t('connection.mtpNotAttachedTitle'),
+                            message: t('connection.mtpNotAttached'),
+                            duration: 6000,
+                            important: true,
+                        },
+                    }));
+                    return;
+                }
+                await onOpenMtpDeviceProfile(live, server);
+                const connectedAt = new Date().toISOString();
+                setServers(current => current.map(s => (
+                    s.id === server.id ? { ...s, lastConnected: connectedAt } : s
+                )));
+                await mergeSavedServerProfile(server.id, latest => ({
+                    ...latest,
+                    lastConnected: connectedAt,
+                }));
+            } catch (e) {
+                if (!isConnectCancelledError(e)) logger.error('MTP device connection failed', e);
+            } finally {
+                setConnectingId(null);
+            }
             return;
         }
 
@@ -1259,7 +1329,17 @@ export function MyServersPanel({
         } finally {
             setConnectingId(null);
         }
-    }, [servers, connectingId, onConnect, cancellableConnect, t]);
+    }, [
+        servers,
+        connectingId,
+        onConnect,
+        cancellableConnect,
+        t,
+        activeProfileIds,
+        onActivateSession,
+        onOpenMtpDeviceProfile,
+        refreshMtpDevices,
+    ]);
 
     const handleDuplicate = useCallback(async (server: ServerProfile) => {
         const newId = `srv_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
@@ -1732,6 +1812,7 @@ export function MyServersPanel({
                                     onRetryHealth={cardLayout === 'detailed' ? handleRetryHealth : undefined}
                                     thresholds={thresholds}
                                     hasActiveSession={activeProfileIds?.has(server.id) ?? false}
+                                    deviceAttached={server.protocol === 'mtp' ? attachedProfileIds.has(server.id) : undefined}
                                     peerState={peerStateFor(server)}
                                 />
                             );
@@ -1804,6 +1885,7 @@ export function MyServersPanel({
                         thresholds={thresholds}
                         density={density}
                         activeProfileIds={activeProfileIds}
+                        attachedProfileIds={attachedProfileIds}
                         getPeerState={peerStateFor}
                     />
                     {canDrag && dragIdx !== null && (

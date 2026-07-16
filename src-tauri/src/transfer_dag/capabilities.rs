@@ -183,7 +183,10 @@ impl TransferCapabilities {
             // conservative no-special-capabilities default.
             | ProviderType::AeroVaultMount
             // AeroShare peer drive: local replica reads, hint defaults apply.
-            | ProviderType::Peer => {}
+            | ProviderType::Peer
+            // MTP/WPD portable device: whole-file only; MtpProvider overrides
+            // transfer_capabilities() with an explicit honest set.
+            | ProviderType::Mtp => {}
         }
 
         if !caps.multipart_upload.is_available() {

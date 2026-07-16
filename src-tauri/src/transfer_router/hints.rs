@@ -87,7 +87,9 @@ pub fn from_provider_type(
         // AeroShare peer drive: reads come from the LOCAL replica folder, so
         // there is no network class to route on. Unmeasured -> the module's
         // safe default until a benchmark says otherwise.
-        | ProviderType::Peer => ProviderHint::OAuthCloud,
+        | ProviderType::Peer
+        // MTP/WPD: local USB session, not a network route class.
+        | ProviderType::Mtp => ProviderHint::OAuthCloud,
     }
 }
 

@@ -289,7 +289,21 @@
             "storedTotpAdvanced": "Напредно: сачувај 2FA тајну",
             "storedTotpWarning": "Чување 2FA тајне ставља оба фактора у трезор. Ако главна лозинка трезора буде угрожена, 2FA више не штити овај налог. Користите једнократни кôд или локални WebDAV/S3 мост.",
             "filenBridgeCredentialRules": "Ограничење Filen моста: {max} знакова. Није подржано: {rejected}",
-            "filenBridgeCredentialRejected": "Ови акредитиви садрже знакове које Filen мост одбија."
+            "filenBridgeCredentialRejected": "Ови акредитиви садрже знакове које Filen мост одбија.",
+            "mtpDefaultName": "[NEEDS TRANSLATION] Portable device",
+            "mtpDetect": "[NEEDS TRANSLATION] Detect",
+            "mtpDetectFailed": "[NEEDS TRANSLATION] Could not list portable devices",
+            "mtpDetecting": "[NEEDS TRANSLATION] Detecting...",
+            "mtpDevice": "[NEEDS TRANSLATION] USB device",
+            "mtpFingerprint": "[NEEDS TRANSLATION] Fingerprint",
+            "mtpHonesty": "[NEEDS TRANSLATION] MTP is exclusive: only one app can open the device. Close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter). Some operations are limited by the device OS.",
+            "mtpNoDevices": "[NEEDS TRANSLATION] No portable devices detected. Plug in the phone or camera and enable File Transfer mode.",
+            "mtpRemotePathPlaceholder": "[NEEDS TRANSLATION] Default remote path (e.g. / or DCIM)",
+            "mtpSaveRequiresDevice": "[NEEDS TRANSLATION] Detect and select a device to enable Save.",
+            "mtpSelectPlaceholder": "[NEEDS TRANSLATION] Select a device...",
+            "mtpSelectPlaceholderEmpty": "[NEEDS TRANSLATION] No devices yet — click Detect",
+            "mtpNotAttachedTitle": "[NEEDS TRANSLATION] Device not connected",
+            "mtpNotAttached": "[NEEDS TRANSLATION] Plug in the device and enable File Transfer mode, then try again."
         },
         "browser": {
             "remote": "Удаљено",
@@ -1843,7 +1857,10 @@
             "s3RoleMfaTokenCode": "Kôd MFA tokena",
             "s3RoleMfaTokenCodePlaceholder": "123456",
             "s3RoleMfaTokenCodeHint": "Jednokratni kôd sa vašeg MFA uređaja, potreban samo ako uloga zahteva MFA. Koristi se jednom pri povezivanju i nikada se ne čuva.",
-            "peerDesc": "Делите фасцикле директно са пријатељима преко шифрованог peer-to-peer канала, без сервера у средини."
+            "peerDesc": "Делите фасцикле директно са пријатељима преко шифрованог peer-to-peer канала, без сервера у средини.",
+            "devicesInfoLine1": "[NEEDS TRANSLATION] Save a portable USB device (phone, camera, tablet) as a My Servers profile. Detect the device over MTP, set default folders, and reconnect with one click when it is plugged in.",
+            "devicesInfoLine2": "[NEEDS TRANSLATION] MTP is exclusive: close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter).",
+            "discoverMtpPortable": "[NEEDS TRANSLATION] Phone, camera, or tablet over USB MTP"
         },
         "shortcuts": {
             "title": "Prečice na tastaturi",
@@ -3195,7 +3212,19 @@
             "clear_recent": "Obriši nedavne",
             "no_recent": "Nema nedavnih lokacija",
             "mount": "Montiraj",
-            "ejectFailed": "Избацивање није успело"
+            "ejectFailed": "Избацивање није успело",
+            "portable_devices": "[NEEDS TRANSLATION] Portable devices",
+            "portable_disconnect": "[NEEDS TRANSLATION] Disconnect",
+            "portable_disconnect_failed": "[NEEDS TRANSLATION] Could not disconnect portable device",
+            "portable_empty": "[NEEDS TRANSLATION] No portable devices detected",
+            "portable_honesty": "[NEEDS TRANSLATION] Portable devices use MTP: whole-file copy only, no drive letter, and some operations are limited by the device OS.",
+            "portable_no_storages": "[NEEDS TRANSLATION] Session open (no storage list yet; browse polish follows)",
+            "portable_open_failed": "[NEEDS TRANSLATION] Could not open portable device",
+            "portable_opened": "[NEEDS TRANSLATION] Connected to {name}",
+            "portable_storages": "[NEEDS TRANSLATION] {count} storage(s)",
+            "portable_disconnected": "[NEEDS TRANSLATION] Portable device disconnected: {name}",
+            "portable_unplugged": "Преносни уређај је искључен. Поново прикључите кабл и отворите га поново.",
+            "portable_needs_replug": "Није монтирано од стране радне површине. Искључите и поново прикључите кабл, затим га поново отворите."
         },
         "viewMode": {
             "list": "Lista",
@@ -4456,7 +4485,8 @@
                 "media": "Медији",
                 "localBridge": "Локални мост",
                 "paid": "Плаћено",
-                "encrypted": "Шифровани"
+                "encrypted": "Шифровани",
+                "mtp": "[NEEDS TRANSLATION] MTP"
             },
             "noServers": "Нема сачуваних сервера",
             "noServersHint": "Почните са брзим повезивањем или истражите каталог сервиса.",
@@ -4476,7 +4506,8 @@
                 "cloudStorage": "Клауд складиште",
                 "developer": "Програмер",
                 "mediaServices": "Медијски сервиси",
-                "all": "Све"
+                "all": "Све",
+                "devices": "[NEEDS TRANSLATION] Devices"
             },
             "confirmDeleteServer": "Обрисати сервер \"{name}\"? Ово уклања сачуване акредитиве и не може се поништити.",
             "renameWithHotkey": "Преименуј (F2)",
@@ -4597,7 +4628,9 @@
                 "expand": "Прошири бочну траку",
                 "moveLeft": "Помери траку улево",
                 "moveRight": "Помери траку удесно"
-            }
+            },
+            "deviceAttached": "[NEEDS TRANSLATION] Device attached",
+            "deviceNotAttached": "[NEEDS TRANSLATION] Device not attached"
         },
         "gitlab": {
             "projectPath": "Путања пројекта",

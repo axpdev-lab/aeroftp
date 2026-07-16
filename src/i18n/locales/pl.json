@@ -289,7 +289,21 @@
             "storedTotpAdvanced": "Zaawansowane: zapisz sekret 2FA",
             "storedTotpWarning": "Zapisanie sekretu 2FA umieszcza oba składniki w sejfie. Jeśli główne hasło sejfu zostanie przejęte, 2FA przestanie chronić to konto. Lepiej użyć kodu jednorazowego lub lokalnego mostu WebDAV/S3.",
             "filenBridgeCredentialRules": "Limit mostu Filen: {max} znaków. Nieobsługiwane: {rejected}",
-            "filenBridgeCredentialRejected": "Te dane uwierzytelniające zawierają znaki odrzucane przez most Filen."
+            "filenBridgeCredentialRejected": "Te dane uwierzytelniające zawierają znaki odrzucane przez most Filen.",
+            "mtpDefaultName": "[NEEDS TRANSLATION] Portable device",
+            "mtpDetect": "[NEEDS TRANSLATION] Detect",
+            "mtpDetectFailed": "[NEEDS TRANSLATION] Could not list portable devices",
+            "mtpDetecting": "[NEEDS TRANSLATION] Detecting...",
+            "mtpDevice": "[NEEDS TRANSLATION] USB device",
+            "mtpFingerprint": "[NEEDS TRANSLATION] Fingerprint",
+            "mtpHonesty": "[NEEDS TRANSLATION] MTP is exclusive: only one app can open the device. Close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter). Some operations are limited by the device OS.",
+            "mtpNoDevices": "[NEEDS TRANSLATION] No portable devices detected. Plug in the phone or camera and enable File Transfer mode.",
+            "mtpRemotePathPlaceholder": "[NEEDS TRANSLATION] Default remote path (e.g. / or DCIM)",
+            "mtpSaveRequiresDevice": "[NEEDS TRANSLATION] Detect and select a device to enable Save.",
+            "mtpSelectPlaceholder": "[NEEDS TRANSLATION] Select a device...",
+            "mtpSelectPlaceholderEmpty": "[NEEDS TRANSLATION] No devices yet — click Detect",
+            "mtpNotAttachedTitle": "[NEEDS TRANSLATION] Device not connected",
+            "mtpNotAttached": "[NEEDS TRANSLATION] Plug in the device and enable File Transfer mode, then try again."
         },
         "browser": {
             "remote": "Zdalny",
@@ -1843,7 +1857,10 @@
             "s3RoleMfaTokenCode": "Kod tokena MFA",
             "s3RoleMfaTokenCodePlaceholder": "123456",
             "s3RoleMfaTokenCodeHint": "Jednorazowy kod z urządzenia MFA, wymagany tylko jeśli rola wymusza MFA. Używany raz podczas łączenia i nigdy nie zapisywany.",
-            "peerDesc": "Udostępniaj foldery bezpośrednio znajomym przez szyfrowany kanał peer-to-peer, bez serwera pośredniczącego."
+            "peerDesc": "Udostępniaj foldery bezpośrednio znajomym przez szyfrowany kanał peer-to-peer, bez serwera pośredniczącego.",
+            "devicesInfoLine1": "[NEEDS TRANSLATION] Save a portable USB device (phone, camera, tablet) as a My Servers profile. Detect the device over MTP, set default folders, and reconnect with one click when it is plugged in.",
+            "devicesInfoLine2": "[NEEDS TRANSLATION] MTP is exclusive: close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter).",
+            "discoverMtpPortable": "[NEEDS TRANSLATION] Phone, camera, or tablet over USB MTP"
         },
         "shortcuts": {
             "title": "Skróty klawiszowe",
@@ -3195,7 +3212,19 @@
             "clear_recent": "Wyczyść ostatnie",
             "no_recent": "Brak ostatnich lokalizacji",
             "mount": "Zamontuj",
-            "ejectFailed": "Wysuwanie nie powiodło się"
+            "ejectFailed": "Wysuwanie nie powiodło się",
+            "portable_devices": "[NEEDS TRANSLATION] Portable devices",
+            "portable_disconnect": "[NEEDS TRANSLATION] Disconnect",
+            "portable_disconnect_failed": "[NEEDS TRANSLATION] Could not disconnect portable device",
+            "portable_empty": "[NEEDS TRANSLATION] No portable devices detected",
+            "portable_honesty": "[NEEDS TRANSLATION] Portable devices use MTP: whole-file copy only, no drive letter, and some operations are limited by the device OS.",
+            "portable_no_storages": "[NEEDS TRANSLATION] Session open (no storage list yet; browse polish follows)",
+            "portable_open_failed": "[NEEDS TRANSLATION] Could not open portable device",
+            "portable_opened": "[NEEDS TRANSLATION] Connected to {name}",
+            "portable_storages": "[NEEDS TRANSLATION] {count} storage(s)",
+            "portable_disconnected": "[NEEDS TRANSLATION] Portable device disconnected: {name}",
+            "portable_unplugged": "Urządzenie przenośne zostało odłączone. Podłącz ponownie kabel i otwórz je jeszcze raz.",
+            "portable_needs_replug": "Nie zamontowane przez pulpit. Odłącz i podłącz ponownie kabel, a następnie otwórz ponownie."
         },
         "viewMode": {
             "list": "Lista",
@@ -4456,7 +4485,8 @@
                 "media": "Media",
                 "localBridge": "Mostek lokalny",
                 "paid": "Płatny",
-                "encrypted": "Zaszyfrowane"
+                "encrypted": "Zaszyfrowane",
+                "mtp": "[NEEDS TRANSLATION] MTP"
             },
             "noServers": "Brak zapisanych serwerów",
             "noServersHint": "Zacznij od szybkiego połączenia lub przeglądaj katalog usług.",
@@ -4476,7 +4506,8 @@
                 "cloudStorage": "Magazyn chmurowy",
                 "developer": "Deweloper",
                 "mediaServices": "Usługi multimedialne",
-                "all": "Wszystkie"
+                "all": "Wszystkie",
+                "devices": "[NEEDS TRANSLATION] Devices"
             },
             "confirmDeleteServer": "Usunąć serwer \"{name}\"? Spowoduje to usunięcie zapisanych danych logowania i nie można tego cofnąć.",
             "renameWithHotkey": "Zmień nazwę (F2)",
@@ -4597,7 +4628,9 @@
                 "expand": "Rozwiń panel boczny",
                 "moveLeft": "Przesuń panel w lewo",
                 "moveRight": "Przesuń panel w prawo"
-            }
+            },
+            "deviceAttached": "[NEEDS TRANSLATION] Device attached",
+            "deviceNotAttached": "[NEEDS TRANSLATION] Device not attached"
         },
         "gitlab": {
             "projectPath": "Sciezka projektu",

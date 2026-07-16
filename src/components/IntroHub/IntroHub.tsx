@@ -14,6 +14,7 @@ import { useTranslation } from '../../i18n';
 import { loadSavedServerProfiles, storeSavedServerProfiles } from '../../utils/serverProfileStore';
 import type { ProviderType } from '../../types';
 import type { CatalogCategoryId } from '../../types/catalog';
+import type { MtpDeviceInfo } from '../../types/aerofile';
 
 const TAB_STATE_KEY = 'aeroftp-intro-active-tab';
 
@@ -75,6 +76,9 @@ export interface IntroHubProps {
      *  Disconnect entry in the server card context menu, gated on the profile
      *  being present in `activeProfileIds`. Issue #222. */
     onDisconnectProfile?: (profileId: string) => void | Promise<void>;
+    /** APPENDIX-DEVICE-PROFILES Phase 3: open an attached MTP device for a
+     *  saved device profile (fingerprint match already done in MyServersPanel). */
+    onOpenMtpDeviceProfile?: (device: MtpDeviceInfo, profile: ServerProfile) => void | Promise<void>;
 }
 
 function generateTabId(): string {
@@ -108,6 +112,7 @@ export function IntroHub(props: IntroHubProps) {
         onActivateSession,
         connectingProfileId,
         onDisconnectProfile,
+        onOpenMtpDeviceProfile,
     } = props;
 
     const t = useTranslation();
@@ -181,7 +186,10 @@ export function IntroHub(props: IntroHubProps) {
         const id = generateTabId();
         // Apply provider defaults (server, port, basePath) when creating the tab
         const provider = providerId ? getProviderById(providerId) : undefined;
-        const PROVIDER_NAMES: Record<string, string> = { pixelunion: 'PixelUnion' };
+        const PROVIDER_NAMES: Record<string, string> = {
+            pixelunion: 'PixelUnion',
+            'mtp-portable': 'Portable device (MTP)',
+        };
         const label = demo ? `Demo: ${protocol.toUpperCase()}` : (provider?.name || PROVIDER_NAMES[providerId || ''] || providerId || protocol.toUpperCase());
         const defaultLabel = `New: ${label}`;
         const newTab: FormTabState = {
@@ -195,7 +203,8 @@ export function IntroHub(props: IntroHubProps) {
                 username: demo?.username || '',
                 password: demo?.password || '',
                 protocol,
-                port: demo?.port || provider?.defaults?.port || undefined,
+                // MTP device profiles use port 0 (no TCP host); connect is fingerprint match.
+                port: protocol === 'mtp' ? 0 : (demo?.port || provider?.defaults?.port || undefined),
                 providerId,
                 options: {
                     pathStyle: provider?.defaults?.pathStyle,
@@ -431,6 +440,7 @@ export function IntroHub(props: IntroHubProps) {
                         onActivateSession={onActivateSession}
                         connectingProfileId={connectingProfileId}
                         onDisconnectProfile={onDisconnectProfile}
+                        onOpenMtpDeviceProfile={onOpenMtpDeviceProfile}
                     />
                 </div>
 

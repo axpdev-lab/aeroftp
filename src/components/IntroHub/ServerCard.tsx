@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { Edit2, Trash2, Copy, Loader2, Star, Heart, Clock, ShieldCheck, Lock, Check, X, ArrowUpRight, ArrowDownLeft, AlertTriangle, Users, RefreshCw, Wifi } from 'lucide-react';
+import { Edit2, Trash2, Copy, Loader2, Star, Heart, Clock, ShieldCheck, Lock, Check, X, ArrowUpRight, ArrowDownLeft, AlertTriangle, Users, RefreshCw, Wifi, Smartphone } from 'lucide-react';
 import { ServerProfile, ProviderType, getProtocolClass, getE2EBits, profileHasQuota, resolveEffectiveQuota, effectiveManualCap, getServerCryptOverlay } from '../../types';
 import type { PeerDriveState } from '../../hooks/usePeerDriveStates';
 import { shortAfid } from '../../utils/aeroShare';
@@ -204,6 +204,15 @@ export function ServerBadges({ server, cryptDetailed = false, peerState }: { ser
             </span>
         );
     }
+    // Portable MTP/WPD: never fall through to the generic "API" class badge.
+    if (proto === 'mtp') {
+        return (
+            <span className="text-[10px] px-1.5 py-0.5 rounded font-medium inline-flex items-center gap-0.5 bg-teal-100 dark:bg-teal-900/40 text-teal-700 dark:text-teal-300">
+                <Smartphone size={10} />
+                MTP
+            </span>
+        );
+    }
     // Default tlsMode matches ProtocolSelector: ftp→'explicit', ftps→'implicit'
     const tlsMode = server.options?.tlsMode || (proto === 'ftp' ? 'explicit' : proto === 'ftps' ? 'implicit' : undefined);
     // FTP with any TLS mode (except 'none') is effectively FTPS
@@ -231,6 +240,7 @@ export function ServerBadges({ server, cryptDetailed = false, peerState }: { ser
         S3: 'bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300',
         Azure: 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300',
         AeroCloud: 'bg-cyan-100 dark:bg-cyan-900/40 text-cyan-700 dark:text-cyan-300',
+        MTP: 'bg-teal-100 dark:bg-teal-900/40 text-teal-700 dark:text-teal-300',
     };
 
     // Only render the protocol badge when it carries dedicated color (FTP/FTPS/SFTP);
@@ -430,6 +440,9 @@ interface ServerCardProps {
      *  so users can tell at a glance which saved server they are already
      *  connected to. Independent from the health status itself. Issue #222. */
     hasActiveSession?: boolean;
+    /** APPENDIX-DEVICE-PROFILES Phase 3: MTP device physically attached
+     *  (fingerprint match). Separate from HTTP healthStatus. */
+    deviceAttached?: boolean;
     /** AeroShare friend cards only: live replication/serving state for the
      *  bound drive, fed by usePeerDriveStates. Drives the badge chip. */
     peerState?: PeerDriveState;
@@ -565,6 +578,7 @@ export const ServerCard = React.memo(function ServerCard({
     onRetryHealth,
     thresholds = DEFAULT_THRESHOLDS,
     hasActiveSession = false,
+    deviceAttached,
     peerState,
 }: ServerCardProps) {
     const t = useTranslation();
@@ -574,7 +588,13 @@ export const ServerCard = React.memo(function ServerCard({
     const connectButtonSize = Math.max(40, Math.min(48, introHubIconSize + 16));
     const connectIconSize = Math.min(introHubIconSize, connectButtonSize - 10);
     const connectSpinnerSize = Math.max(16, Math.min(22, connectIconSize - 2));
-    const radialTitle = healthStatus
+    const isMtpDevice = server.protocol === 'mtp';
+    const attachedTitle = deviceAttached
+        ? t('introHub.deviceAttached')
+        : t('introHub.deviceNotAttached');
+    const radialTitle = isMtpDevice
+        ? (hasActiveSession ? `${attachedTitle} (${t('common.goToActiveSession')})` : attachedTitle)
+        : healthStatus
         ? t(`introHub.health.${healthStatus}`)
             + (healthLatencyMs && healthStatus !== 'pending' && healthStatus !== 'down' ? ` · ${healthLatencyMs}ms` : '')
             + (onRetryHealth ? ` · ${t('introHub.health.clickToRetry')}` : '')
@@ -700,7 +720,20 @@ export const ServerCard = React.memo(function ServerCard({
                     >
                         {isConnecting ? <Loader2 size={connectSpinnerSize} className="animate-spin text-blue-500" /> : getServerIcon(server, connectIconSize)}
                     </button>
-                    {cardLayout !== 'detailed' && healthStatus && healthStatus !== 'unknown' && (
+                    {/* MTP attach: always show a presence dot (green = plugged in,
+                        red = unplugged), same vocabulary as HTTP health up/down.
+                        Separate signal from HTTP health (mtp has no health URL). */}
+                    {cardLayout !== 'detailed' && isMtpDevice && (
+                        <span
+                            className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full ring-2 ring-white dark:ring-gray-800 pointer-events-none ${
+                                deviceAttached ? 'bg-green-500' : 'bg-red-500'
+                            } ${hasActiveSession && deviceAttached ? 'animate-pulse' : ''}`}
+                            title={radialTitle}
+                            aria-label={radialTitle}
+                            data-testid="server-card-device-attached"
+                        />
+                    )}
+                    {cardLayout !== 'detailed' && !isMtpDevice && healthStatus && healthStatus !== 'unknown' && (
                         <span
                             className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full ring-2 ring-white dark:ring-gray-800 pointer-events-none ${
                                 healthStatus === 'up' ? 'bg-green-500'
@@ -780,14 +813,25 @@ export const ServerCard = React.memo(function ServerCard({
                         <StorageUsageBar quota={server.lastQuota} supported={quotaSupported} thresholds={thresholds} manualTotal={effectiveManualCap(server.options?.manualTotalBytes, server.protocol, server.providerId, server.host)} />
                     </div>
                     <div className="shrink-0 text-gray-300 dark:text-gray-600">
-                        <HealthRadial
-                            status={healthStatus || 'unknown'}
-                            latencyMs={healthLatencyMs}
-                            size={16}
-                            title={hasActiveSession ? `${radialTitle} (active session)` : radialTitle}
-                            onRetry={handleRetry}
-                            pulsing={hasActiveSession}
-                        />
+                        {isMtpDevice ? (
+                            <span
+                                className={`inline-block w-3.5 h-3.5 rounded-full ring-2 ring-white dark:ring-gray-800 ${
+                                    deviceAttached ? 'bg-green-500' : 'bg-red-500'
+                                } ${hasActiveSession && deviceAttached ? 'animate-pulse' : ''}`}
+                                title={radialTitle}
+                                aria-label={radialTitle}
+                                data-testid="server-card-device-attached-detailed"
+                            />
+                        ) : (
+                            <HealthRadial
+                                status={healthStatus || 'unknown'}
+                                latencyMs={healthLatencyMs}
+                                size={16}
+                                title={hasActiveSession ? `${radialTitle} (active session)` : radialTitle}
+                                onRetry={handleRetry}
+                                pulsing={hasActiveSession}
+                            />
+                        )}
                     </div>
                 </div>
             )}

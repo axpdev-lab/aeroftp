@@ -289,7 +289,21 @@
             "storedTotpAdvanced": "高级：保存 2FA 密钥",
             "storedTotpWarning": "保存 2FA 密钥会将两个验证因素都存入保险库。如果保险库主密码泄露，2FA 将无法继续保护此账户。建议使用一次性验证码或本地 WebDAV/S3 网桥。",
             "filenBridgeCredentialRules": "Filen 网桥限制：{max} 个字符。不支持：{rejected}",
-            "filenBridgeCredentialRejected": "此凭据包含 Filen 网桥拒绝的字符。"
+            "filenBridgeCredentialRejected": "此凭据包含 Filen 网桥拒绝的字符。",
+            "mtpDefaultName": "[NEEDS TRANSLATION] Portable device",
+            "mtpDetect": "[NEEDS TRANSLATION] Detect",
+            "mtpDetectFailed": "[NEEDS TRANSLATION] Could not list portable devices",
+            "mtpDetecting": "[NEEDS TRANSLATION] Detecting...",
+            "mtpDevice": "[NEEDS TRANSLATION] USB device",
+            "mtpFingerprint": "[NEEDS TRANSLATION] Fingerprint",
+            "mtpHonesty": "[NEEDS TRANSLATION] MTP is exclusive: only one app can open the device. Close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter). Some operations are limited by the device OS.",
+            "mtpNoDevices": "[NEEDS TRANSLATION] No portable devices detected. Plug in the phone or camera and enable File Transfer mode.",
+            "mtpRemotePathPlaceholder": "[NEEDS TRANSLATION] Default remote path (e.g. / or DCIM)",
+            "mtpSaveRequiresDevice": "[NEEDS TRANSLATION] Detect and select a device to enable Save.",
+            "mtpSelectPlaceholder": "[NEEDS TRANSLATION] Select a device...",
+            "mtpSelectPlaceholderEmpty": "[NEEDS TRANSLATION] No devices yet — click Detect",
+            "mtpNotAttachedTitle": "[NEEDS TRANSLATION] Device not connected",
+            "mtpNotAttached": "[NEEDS TRANSLATION] Plug in the device and enable File Transfer mode, then try again."
         },
         "browser": {
             "remote": "远程",
@@ -1843,7 +1857,10 @@
             "s3RoleMfaTokenCode": "MFA 令牌代码",
             "s3RoleMfaTokenCodePlaceholder": "123456",
             "s3RoleMfaTokenCodeHint": "来自您 MFA 设备的一次性代码，仅在角色强制要求 MFA 时需要。连接时使用一次，绝不保存。",
-            "peerDesc": "通过加密的点对点通道直接与好友共享文件夹，中间无需任何服务器。"
+            "peerDesc": "通过加密的点对点通道直接与好友共享文件夹，中间无需任何服务器。",
+            "devicesInfoLine1": "[NEEDS TRANSLATION] Save a portable USB device (phone, camera, tablet) as a My Servers profile. Detect the device over MTP, set default folders, and reconnect with one click when it is plugged in.",
+            "devicesInfoLine2": "[NEEDS TRANSLATION] MTP is exclusive: close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter).",
+            "discoverMtpPortable": "[NEEDS TRANSLATION] Phone, camera, or tablet over USB MTP"
         },
         "shortcuts": {
             "title": "键盘快捷键",
@@ -3195,7 +3212,19 @@
             "clear_recent": "清除最近记录",
             "no_recent": "没有最近访问的位置",
             "mount": "挂载",
-            "ejectFailed": "弹出失败"
+            "ejectFailed": "弹出失败",
+            "portable_devices": "[NEEDS TRANSLATION] Portable devices",
+            "portable_disconnect": "[NEEDS TRANSLATION] Disconnect",
+            "portable_disconnect_failed": "[NEEDS TRANSLATION] Could not disconnect portable device",
+            "portable_empty": "[NEEDS TRANSLATION] No portable devices detected",
+            "portable_honesty": "[NEEDS TRANSLATION] Portable devices use MTP: whole-file copy only, no drive letter, and some operations are limited by the device OS.",
+            "portable_no_storages": "[NEEDS TRANSLATION] Session open (no storage list yet; browse polish follows)",
+            "portable_open_failed": "[NEEDS TRANSLATION] Could not open portable device",
+            "portable_opened": "[NEEDS TRANSLATION] Connected to {name}",
+            "portable_storages": "[NEEDS TRANSLATION] {count} storage(s)",
+            "portable_disconnected": "[NEEDS TRANSLATION] Portable device disconnected: {name}",
+            "portable_unplugged": "便携设备已断开连接。请重新插入电缆并再次打开。",
+            "portable_needs_replug": "桌面未挂载。请拔下并重新插入电缆，然后再次打开。"
         },
         "viewMode": {
             "list": "列表",
@@ -4456,7 +4485,8 @@
                 "media": "媒体",
                 "localBridge": "本地桥接",
                 "paid": "付费",
-                "encrypted": "已加密"
+                "encrypted": "已加密",
+                "mtp": "[NEEDS TRANSLATION] MTP"
             },
             "noServers": "没有保存的服务器",
             "noServersHint": "从快速连接开始或浏览服务目录。",
@@ -4476,7 +4506,8 @@
                 "cloudStorage": "云存储",
                 "developer": "开发者",
                 "mediaServices": "媒体服务",
-                "all": "全部"
+                "all": "全部",
+                "devices": "[NEEDS TRANSLATION] Devices"
             },
             "confirmDeleteServer": "删除服务器 \"{name}\"？这将移除已保存的凭据，且无法撤销。",
             "renameWithHotkey": "重命名 (F2)",
@@ -4597,7 +4628,9 @@
                 "expand": "展开侧边栏",
                 "moveLeft": "向左移动",
                 "moveRight": "向右移动"
-            }
+            },
+            "deviceAttached": "[NEEDS TRANSLATION] Device attached",
+            "deviceNotAttached": "[NEEDS TRANSLATION] Device not attached"
         },
         "gitlab": {
             "projectPath": "项目路径",

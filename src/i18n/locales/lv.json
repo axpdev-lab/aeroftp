@@ -289,7 +289,21 @@
             "storedTotpAdvanced": "Papildu: saglabāt 2FA noslēpumu",
             "storedTotpWarning": "Saglabājot 2FA noslēpumu, abi faktori tiek ievietoti glabātavā. Ja glabātavas galvenā parole tiek apdraudēta, 2FA vairs neaizsargā šo kontu. Ieteicams izmantot vienreizēju kodu vai lokālu WebDAV/S3 tiltu.",
             "filenBridgeCredentialRules": "Filen tilta ierobežojums: {max} rakstzīmes. Neatbalstīts: {rejected}",
-            "filenBridgeCredentialRejected": "Šajos akreditācijas datos ir rakstzīmes, kuras Filen tilts noraida."
+            "filenBridgeCredentialRejected": "Šajos akreditācijas datos ir rakstzīmes, kuras Filen tilts noraida.",
+            "mtpDefaultName": "[NEEDS TRANSLATION] Portable device",
+            "mtpDetect": "[NEEDS TRANSLATION] Detect",
+            "mtpDetectFailed": "[NEEDS TRANSLATION] Could not list portable devices",
+            "mtpDetecting": "[NEEDS TRANSLATION] Detecting...",
+            "mtpDevice": "[NEEDS TRANSLATION] USB device",
+            "mtpFingerprint": "[NEEDS TRANSLATION] Fingerprint",
+            "mtpHonesty": "[NEEDS TRANSLATION] MTP is exclusive: only one app can open the device. Close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter). Some operations are limited by the device OS.",
+            "mtpNoDevices": "[NEEDS TRANSLATION] No portable devices detected. Plug in the phone or camera and enable File Transfer mode.",
+            "mtpRemotePathPlaceholder": "[NEEDS TRANSLATION] Default remote path (e.g. / or DCIM)",
+            "mtpSaveRequiresDevice": "[NEEDS TRANSLATION] Detect and select a device to enable Save.",
+            "mtpSelectPlaceholder": "[NEEDS TRANSLATION] Select a device...",
+            "mtpSelectPlaceholderEmpty": "[NEEDS TRANSLATION] No devices yet — click Detect",
+            "mtpNotAttachedTitle": "[NEEDS TRANSLATION] Device not connected",
+            "mtpNotAttached": "[NEEDS TRANSLATION] Plug in the device and enable File Transfer mode, then try again."
         },
         "browser": {
             "remote": "Attālināts",
@@ -1843,7 +1857,10 @@
             "s3RoleMfaTokenCode": "MFA kods",
             "s3RoleMfaTokenCodePlaceholder": "123456",
             "s3RoleMfaTokenCodeHint": "Vienreizējs kods no jūsu MFA ierīces, nepieciešams tikai tad, ja loma pieprasa MFA. Tiek izmantots vienreiz, savienojoties, un nekad netiek saglabāts.",
-            "peerDesc": "Kopīgojiet mapes tieši ar draugiem, izmantojot šifrētu peer-to-peer kanālu, bez servera pa vidu."
+            "peerDesc": "Kopīgojiet mapes tieši ar draugiem, izmantojot šifrētu peer-to-peer kanālu, bez servera pa vidu.",
+            "devicesInfoLine1": "[NEEDS TRANSLATION] Save a portable USB device (phone, camera, tablet) as a My Servers profile. Detect the device over MTP, set default folders, and reconnect with one click when it is plugged in.",
+            "devicesInfoLine2": "[NEEDS TRANSLATION] MTP is exclusive: close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter).",
+            "discoverMtpPortable": "[NEEDS TRANSLATION] Phone, camera, or tablet over USB MTP"
         },
         "shortcuts": {
             "title": "Tastatūras saīsnes",
@@ -3195,7 +3212,19 @@
             "clear_recent": "Notīrīt nesenos",
             "no_recent": "Nav nesenu vietu",
             "mount": "Montēt",
-            "ejectFailed": "Neizdevās izstumt"
+            "ejectFailed": "Neizdevās izstumt",
+            "portable_devices": "[NEEDS TRANSLATION] Portable devices",
+            "portable_disconnect": "[NEEDS TRANSLATION] Disconnect",
+            "portable_disconnect_failed": "[NEEDS TRANSLATION] Could not disconnect portable device",
+            "portable_empty": "[NEEDS TRANSLATION] No portable devices detected",
+            "portable_honesty": "[NEEDS TRANSLATION] Portable devices use MTP: whole-file copy only, no drive letter, and some operations are limited by the device OS.",
+            "portable_no_storages": "[NEEDS TRANSLATION] Session open (no storage list yet; browse polish follows)",
+            "portable_open_failed": "[NEEDS TRANSLATION] Could not open portable device",
+            "portable_opened": "[NEEDS TRANSLATION] Connected to {name}",
+            "portable_storages": "[NEEDS TRANSLATION] {count} storage(s)",
+            "portable_disconnected": "[NEEDS TRANSLATION] Portable device disconnected: {name}",
+            "portable_unplugged": "Pārnēsājamā ierīce tika atvienota. Atkārtoti pievienojiet kabeli un atveriet to vēlreiz.",
+            "portable_needs_replug": "Darbvirsma nav pievienojusi. Atvienojiet un atkal pievienojiet kabeli, pēc tam atveriet vēlreiz."
         },
         "viewMode": {
             "list": "Saraksts",
@@ -4456,7 +4485,8 @@
                 "media": "Multivide",
                 "localBridge": "Lokāls tilts",
                 "paid": "Maksas",
-                "encrypted": "Šifrēti"
+                "encrypted": "Šifrēti",
+                "mtp": "[NEEDS TRANSLATION] MTP"
             },
             "noServers": "Nav saglabātu serveru",
             "noServersHint": "Sāciet ar ātro savienojumu vai pārlūkojiet pakalpojumu katalogu.",
@@ -4476,7 +4506,8 @@
                 "cloudStorage": "Mākoņkrātuve",
                 "developer": "Izstrādātājiem",
                 "mediaServices": "Multivides pakalpojumi",
-                "all": "Visi"
+                "all": "Visi",
+                "devices": "[NEEDS TRANSLATION] Devices"
             },
             "confirmDeleteServer": "Dzēst serveri \"{name}\"? Tas noņems saglabātos akreditācijas datus un darbību nevar atsaukt.",
             "renameWithHotkey": "Pārdēvēt (F2)",
@@ -4597,7 +4628,9 @@
                 "expand": "Izvērst sānjoslu",
                 "moveLeft": "Pārvietot pa kreisi",
                 "moveRight": "Pārvietot pa labi"
-            }
+            },
+            "deviceAttached": "[NEEDS TRANSLATION] Device attached",
+            "deviceNotAttached": "[NEEDS TRANSLATION] Device not attached"
         },
         "gitlab": {
             "projectPath": "Projekta ceļš",

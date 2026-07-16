@@ -48,6 +48,7 @@ pub mod mega;
 pub mod mega_crypto;
 pub mod mega_df;
 pub mod mega_native;
+pub mod mtp;
 pub mod multi_thread;
 pub mod oauth1;
 pub mod oauth2;
@@ -107,6 +108,9 @@ pub use kdrive::KDriveProvider;
 pub use koofr::KoofrProvider;
 pub use mega::{MegaCmdProvider, MegaProvider};
 pub use mega_native::MegaNativeProvider;
+pub use mtp::{
+    fingerprint_equal, list_mtp_devices, match_live_device_id, mtp_device_fingerprint, MtpProvider,
+};
 pub use oauth2::{OAuth2Manager, OAuthConfig, OAuthProvider};
 pub use onedrive::OneDriveProvider;
 pub use opendrive::OpenDriveProvider;
@@ -1304,6 +1308,13 @@ impl ProviderFactory {
                 let peer_config = peer::PeerProviderConfig::from_provider_config(config)?;
                 Ok(Box::new(PeerProvider::new(peer_config)))
             }
+            // MTP connect is fingerprint match → mtp_open_device (PLACES or a
+            // saved device profile), not ProviderFactory host+password create.
+            // APPENDIX-MTP / APPENDIX-DEVICE-PROFILES.
+            ProviderType::Mtp => Err(ProviderError::InvalidConfig(
+                "MTP is opened via mtp_open_device / device profile match, not ProviderFactory host connect"
+                    .to_string(),
+            )),
         }
     }
 

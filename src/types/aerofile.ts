@@ -24,6 +24,47 @@ export interface VolumeInfo {
   is_ejectable: boolean;
 }
 
+/**
+ * MTP / WPD portable device row from `list_mtp_devices`.
+ * camelCase matches `MtpDeviceInfoDto` (`#[serde(rename_all = "camelCase")]`).
+ * Not a filesystem path: open via `mtp_open_device`, never `onNavigate`.
+ */
+export interface MtpDeviceInfo {
+  deviceId: string;
+  displayName: string;
+  /** USB / libmtp serial when available (stable profile key). */
+  serial?: string | null;
+  /** USB vendor id (host number). Present on Linux libmtp detect. */
+  vendorId?: number | null;
+  /** USB product id (host number). Present on Linux libmtp detect. */
+  productId?: number | null;
+  /** Canonical fingerprint: `mtp:serial=...` or `mtp:vidpid=XXXX:YYYY;model=...`. */
+  fingerprint?: string | null;
+  busLocation?: string | null;
+  platform: string;
+  storagesHint: number;
+}
+
+/** Storage partition on an open MTP session (`mtp_open_device`). */
+export interface MtpStorageInfo {
+  storageId: string;
+  displayName: string;
+  totalBytes?: number | null;
+  freeBytes?: number | null;
+}
+
+/**
+ * Session info returned by `mtp_open_device` (exclusive libmtp/WPD) or
+ * `mtp_open_gvfs_mount` (filesystem-backed; platform is often `linux-gvfs`).
+ */
+export interface MtpSessionInfo {
+  deviceId: string;
+  displayName: string;
+  platform: string;
+  backendLinked: boolean;
+  storages: MtpStorageInfo[];
+}
+
 /** Unmounted partition detected by Rust `list_unmounted_partitions` command */
 export interface UnmountedPartition {
   name: string;

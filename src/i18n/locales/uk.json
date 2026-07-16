@@ -289,7 +289,21 @@
             "storedTotpAdvanced": "Додатково: зберегти секрет 2FA",
             "storedTotpWarning": "Збереження секрету 2FA розміщує обидва фактори в сховищі. Якщо головний пароль сховища буде скомпрометовано, 2FA більше не захищатиме цей обліковий запис. Надавайте перевагу одноразовому коду або локальному мосту WebDAV/S3.",
             "filenBridgeCredentialRules": "Обмеження мосту Filen: {max} символів. Не підтримуються: {rejected}",
-            "filenBridgeCredentialRejected": "Ці облікові дані містять символи, які відхиляє міст Filen."
+            "filenBridgeCredentialRejected": "Ці облікові дані містять символи, які відхиляє міст Filen.",
+            "mtpDefaultName": "[NEEDS TRANSLATION] Portable device",
+            "mtpDetect": "[NEEDS TRANSLATION] Detect",
+            "mtpDetectFailed": "[NEEDS TRANSLATION] Could not list portable devices",
+            "mtpDetecting": "[NEEDS TRANSLATION] Detecting...",
+            "mtpDevice": "[NEEDS TRANSLATION] USB device",
+            "mtpFingerprint": "[NEEDS TRANSLATION] Fingerprint",
+            "mtpHonesty": "[NEEDS TRANSLATION] MTP is exclusive: only one app can open the device. Close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter). Some operations are limited by the device OS.",
+            "mtpNoDevices": "[NEEDS TRANSLATION] No portable devices detected. Plug in the phone or camera and enable File Transfer mode.",
+            "mtpRemotePathPlaceholder": "[NEEDS TRANSLATION] Default remote path (e.g. / or DCIM)",
+            "mtpSaveRequiresDevice": "[NEEDS TRANSLATION] Detect and select a device to enable Save.",
+            "mtpSelectPlaceholder": "[NEEDS TRANSLATION] Select a device...",
+            "mtpSelectPlaceholderEmpty": "[NEEDS TRANSLATION] No devices yet — click Detect",
+            "mtpNotAttachedTitle": "[NEEDS TRANSLATION] Device not connected",
+            "mtpNotAttached": "[NEEDS TRANSLATION] Plug in the device and enable File Transfer mode, then try again."
         },
         "browser": {
             "remote": "Віддалений",
@@ -1843,7 +1857,10 @@
             "s3RoleMfaTokenCode": "Код токена MFA",
             "s3RoleMfaTokenCodePlaceholder": "123456",
             "s3RoleMfaTokenCodeHint": "Одноразовий код із вашого пристрою MFA, потрібен лише якщо роль вимагає MFA. Використовується один раз під час підключення і ніколи не зберігається.",
-            "peerDesc": "Діліться папками безпосередньо з друзями через зашифрований одноранговий канал, без сервера-посередника."
+            "peerDesc": "Діліться папками безпосередньо з друзями через зашифрований одноранговий канал, без сервера-посередника.",
+            "devicesInfoLine1": "[NEEDS TRANSLATION] Save a portable USB device (phone, camera, tablet) as a My Servers profile. Detect the device over MTP, set default folders, and reconnect with one click when it is plugged in.",
+            "devicesInfoLine2": "[NEEDS TRANSLATION] MTP is exclusive: close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter).",
+            "discoverMtpPortable": "[NEEDS TRANSLATION] Phone, camera, or tablet over USB MTP"
         },
         "shortcuts": {
             "title": "Грячі клавіші",
@@ -3195,7 +3212,19 @@
             "clear_recent": "Очистити нещодавні",
             "no_recent": "Немає нещодавніх розташувань",
             "mount": "Підключити",
-            "ejectFailed": "Не вдалося витягти"
+            "ejectFailed": "Не вдалося витягти",
+            "portable_devices": "[NEEDS TRANSLATION] Portable devices",
+            "portable_disconnect": "[NEEDS TRANSLATION] Disconnect",
+            "portable_disconnect_failed": "[NEEDS TRANSLATION] Could not disconnect portable device",
+            "portable_empty": "[NEEDS TRANSLATION] No portable devices detected",
+            "portable_honesty": "[NEEDS TRANSLATION] Portable devices use MTP: whole-file copy only, no drive letter, and some operations are limited by the device OS.",
+            "portable_no_storages": "[NEEDS TRANSLATION] Session open (no storage list yet; browse polish follows)",
+            "portable_open_failed": "[NEEDS TRANSLATION] Could not open portable device",
+            "portable_opened": "[NEEDS TRANSLATION] Connected to {name}",
+            "portable_storages": "[NEEDS TRANSLATION] {count} storage(s)",
+            "portable_disconnected": "[NEEDS TRANSLATION] Portable device disconnected: {name}",
+            "portable_unplugged": "Портативний пристрій було відключено. Підключіть кабель знову та відкрийте його ще раз.",
+            "portable_needs_replug": "Не змонтовано робочим столом. Від’єднайте та знову під’єднайте кабель, потім відкрийте знову."
         },
         "viewMode": {
             "list": "Список",
@@ -4456,7 +4485,8 @@
                 "media": "Медіа",
                 "localBridge": "Локальний міст",
                 "paid": "Платний",
-                "encrypted": "Зашифровані"
+                "encrypted": "Зашифровані",
+                "mtp": "[NEEDS TRANSLATION] MTP"
             },
             "noServers": "Немає збережених серверів",
             "noServersHint": "Почніть зі швидкого підключення або перегляньте каталог сервісів.",
@@ -4476,7 +4506,8 @@
                 "cloudStorage": "Хмарне сховище",
                 "developer": "Розробник",
                 "mediaServices": "Медіасервіси",
-                "all": "Усі"
+                "all": "Усі",
+                "devices": "[NEEDS TRANSLATION] Devices"
             },
             "confirmDeleteServer": "Видалити сервер \"{name}\"? Це видалить збережені облікові дані і дію неможливо скасувати.",
             "renameWithHotkey": "Перейменувати (F2)",
@@ -4597,7 +4628,9 @@
                 "expand": "Розгорнути бічну панель",
                 "moveLeft": "Перемістити панель ліворуч",
                 "moveRight": "Перемістити панель праворуч"
-            }
+            },
+            "deviceAttached": "[NEEDS TRANSLATION] Device attached",
+            "deviceNotAttached": "[NEEDS TRANSLATION] Device not attached"
         },
         "gitlab": {
             "projectPath": "Шлях до проєкту",

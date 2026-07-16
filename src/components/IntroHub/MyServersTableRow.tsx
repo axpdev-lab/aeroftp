@@ -67,6 +67,8 @@ interface MyServersTableRowProps {
     resolveAlign?: (id: MyServersTableColId) => TableColAlign;
     /** True when this profile has an open session: pulses the health radial. */
     hasActiveSession?: boolean;
+    /** MTP device physically attached (fingerprint match). */
+    deviceAttached?: boolean;
     /** AeroShare friend rows: live drive-state for the badge chip. */
     peerState?: PeerDriveState;
 }
@@ -109,6 +111,7 @@ export const MyServersTableRow = React.memo(function MyServersTableRow({
     density = 'compact',
     resolveAlign,
     hasActiveSession = false,
+    deviceAttached,
     peerState,
 }: MyServersTableRowProps) {
     const t = useTranslation();
@@ -117,6 +120,10 @@ export const MyServersTableRow = React.memo(function MyServersTableRow({
     const rowPadY = isCompact ? 'py-1' : 'py-2';
     const iconBoxSize = isCompact ? 'w-8 h-8' : 'w-10 h-10';
     const iconSize = isCompact ? 16 : 18;
+    const isMtpDevice = server.protocol === 'mtp';
+    const attachedTitle = deviceAttached
+        ? t('introHub.deviceAttached')
+        : t('introHub.deviceNotAttached');
     const quotaSupported = profileHasQuota(server);
     const timeAgo = getTimeAgo(server.lastConnected);
     const subtitle = React.useMemo(() => getServerSubtitle(server, {
@@ -147,7 +154,9 @@ export const MyServersTableRow = React.memo(function MyServersTableRow({
         (e: React.DragEvent) => { if (typeof dragIndex === 'number') onDrop?.(dragIndex, e); },
         [onDrop, dragIndex],
     );
-    const radialTitle = healthStatus
+    const radialTitle = isMtpDevice
+        ? (hasActiveSession ? `${attachedTitle} (${t('common.goToActiveSession')})` : attachedTitle)
+        : healthStatus
         ? t(`introHub.health.${healthStatus}`)
             + (healthLatencyMs && healthStatus !== 'pending' && healthStatus !== 'down' ? ` · ${healthLatencyMs}ms` : '')
             + (onRetryHealth ? ` · ${t('introHub.health.clickToRetry')}` : '')
@@ -322,6 +331,16 @@ export const MyServersTableRow = React.memo(function MyServersTableRow({
                                     <AlertTriangle size={9} strokeWidth={2.75} />
                                 </span>
                             )}
+                            {isMtpDevice && (
+                                <span
+                                    className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full ring-2 ring-white dark:ring-gray-800 pointer-events-none ${
+                                        deviceAttached ? 'bg-green-500' : 'bg-red-500'
+                                    } ${hasActiveSession && deviceAttached ? 'animate-pulse' : ''}`}
+                                    title={radialTitle}
+                                    aria-label={radialTitle}
+                                    data-testid="server-row-device-attached"
+                                />
+                            )}
                             {/* AeroShare drive-state presence dot (matches the grid card). */}
                             {server.protocol === 'peer' && <PeerPresenceDot peerState={peerState} hasActiveSession={hasActiveSession} />}
                         </div>
@@ -406,14 +425,25 @@ export const MyServersTableRow = React.memo(function MyServersTableRow({
                 return (
                     <td key="health" className={`${cellClass} ${alignTd('health', 'center')} text-gray-300 dark:text-gray-600`}>
                         <span className={`inline-flex items-center ${alignFlex('health', 'center')}`}>
-                            <HealthRadial
-                                status={healthStatus || 'unknown'}
-                                latencyMs={healthLatencyMs}
-                                size={16}
-                                title={hasActiveSession ? `${radialTitle} (active session)` : radialTitle}
-                                onRetry={handleRetry}
-                                pulsing={hasActiveSession}
-                            />
+                            {isMtpDevice ? (
+                                <span
+                                    className={`inline-block w-3.5 h-3.5 rounded-full ring-2 ring-white dark:ring-gray-800 ${
+                                        deviceAttached ? 'bg-green-500' : 'bg-red-500'
+                                    } ${hasActiveSession && deviceAttached ? 'animate-pulse' : ''}`}
+                                    title={radialTitle}
+                                    aria-label={radialTitle}
+                                    data-testid="server-row-device-attached-health"
+                                />
+                            ) : (
+                                <HealthRadial
+                                    status={healthStatus || 'unknown'}
+                                    latencyMs={healthLatencyMs}
+                                    size={16}
+                                    title={hasActiveSession ? `${radialTitle} (active session)` : radialTitle}
+                                    onRetry={handleRetry}
+                                    pulsing={hasActiveSession}
+                                />
+                            )}
                         </span>
                     </td>
                 );

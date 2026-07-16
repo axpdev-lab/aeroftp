@@ -6998,6 +6998,44 @@ async fn chmod_remote_file(
 /// destroying the target. (CLAUDE-AV-B1-10)
 pub(crate) const DEST_EXISTS_MARKER: &str = "DEST_EXISTS";
 
+/// True when `rename(2)` failed because source and destination are on different
+/// filesystems (classic EXDEV). Gvfs MTP FUSE mounts hit this when the user
+/// moves a phone file onto the home disk (or dual local panels on different
+/// mounts). Copy then delete is the correct fallback.
+fn is_cross_device_rename_error(err: &std::io::Error) -> bool {
+    if err.kind() == std::io::ErrorKind::CrossesDevices {
+        return true;
+    }
+    // Defensive: some libc / FUSE surfaces may not map EXDEV to CrossesDevices.
+    let lower = err.to_string().to_lowercase();
+    lower.contains("exdev")
+        || lower.contains("cross-device")
+        || lower.contains("cross device")
+        || lower.contains("invalid cross-device link")
+}
+
+/// Copy `from` to `to`, then remove `from`. Used when rename hits EXDEV.
+/// Same-FS rename remains preferred (atomic); this path is for FUSE↔ext4 etc.
+async fn copy_then_delete_local(
+    from: &std::path::Path,
+    to: &std::path::Path,
+) -> Result<(), String> {
+    if from.is_dir() {
+        copy_dir_recursive(from, to, 0).await?;
+        tokio::fs::remove_dir_all(from)
+            .await
+            .map_err(|e| format!("Failed to remove source after cross-device move: {}", e))?;
+    } else {
+        tokio::fs::copy(from, to)
+            .await
+            .map_err(|e| format!("Failed to copy for cross-device move: {}", e))?;
+        tokio::fs::remove_file(from)
+            .await
+            .map_err(|e| format!("Failed to remove source after cross-device move: {}", e))?;
+    }
+    Ok(())
+}
+
 #[tauri::command]
 async fn rename_local_file(
     from: String,
@@ -7030,11 +7068,18 @@ async fn rename_local_file(
         return Err(format!("{DEST_EXISTS_MARKER}: {to}"));
     }
 
-    tokio::fs::rename(&from, &to)
-        .await
-        .map_err(|e| format!("Failed to rename: {}", e))?;
-
-    Ok(())
+    match tokio::fs::rename(&from, &to).await {
+        Ok(()) => Ok(()),
+        // FUSE MTP (gvfs) ↔ disk, bind mounts, etc.: rename is EXDEV.
+        // Live case: phone path under /run/user/.../gvfs/mtp:host=... → $HOME.
+        Err(e) if is_cross_device_rename_error(&e) => {
+            copy_then_delete_local(std::path::Path::new(&from), std::path::Path::new(&to))
+                .await
+                .map_err(|msg| format!("Failed to rename (cross-device fallback): {}", msg))?;
+            Ok(())
+        }
+        Err(e) => Err(format!("Failed to rename: {}", e)),
+    }
 }
 
 #[tauri::command]
@@ -7099,6 +7144,126 @@ async fn copy_dir_recursive(
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod rename_local_exdev_tests {
+    use super::{copy_then_delete_local, is_cross_device_rename_error, rename_local_file};
+    use std::io::{Error, ErrorKind};
+    use std::path::Path;
+
+    #[test]
+    fn detects_crosses_devices_kind() {
+        let err = Error::new(ErrorKind::CrossesDevices, "Invalid cross-device link");
+        assert!(is_cross_device_rename_error(&err));
+    }
+
+    #[test]
+    fn detects_exdev_message_when_kind_is_other() {
+        // Some FUSE stacks surface EXDEV without the stable ErrorKind mapping.
+        let err = Error::other("os error 18 (EXDEV: Invalid cross-device link)");
+        assert!(is_cross_device_rename_error(&err));
+        let err2 = Error::other("cross-device link not permitted");
+        assert!(is_cross_device_rename_error(&err2));
+    }
+
+    #[test]
+    fn ignores_unrelated_io_errors() {
+        let err = Error::new(ErrorKind::PermissionDenied, "permission denied");
+        assert!(!is_cross_device_rename_error(&err));
+        let err2 = Error::new(ErrorKind::NotFound, "No such file or directory");
+        assert!(!is_cross_device_rename_error(&err2));
+    }
+
+    #[tokio::test]
+    async fn copy_then_delete_moves_file_across_tempdirs() {
+        // Unit stand-in for gvfs→home: two tempdirs on the same FS still
+        // exercise the fallback body (copy + unlink source). Live EXDEV is
+        // gvfs MTP FUSE vs ext4 when the phone is on the bus.
+        let src_root = tempfile::tempdir().expect("src tempdir");
+        let dst_root = tempfile::tempdir().expect("dst tempdir");
+        let from = src_root.path().join("photo.jpg");
+        let to = dst_root.path().join("photo.jpg");
+        std::fs::write(&from, b"mtp-payload").expect("write src");
+
+        copy_then_delete_local(&from, &to).await.expect("move");
+
+        assert!(!from.exists(), "source must be gone after move");
+        assert_eq!(std::fs::read(&to).expect("read dest"), b"mtp-payload");
+    }
+
+    #[tokio::test]
+    async fn copy_then_delete_moves_directory_tree() {
+        let src_root = tempfile::tempdir().expect("src tempdir");
+        let dst_root = tempfile::tempdir().expect("dst tempdir");
+        let from_dir = src_root.path().join("DCIM");
+        let nested = from_dir.join("Camera");
+        std::fs::create_dir_all(&nested).expect("mkdir");
+        std::fs::write(nested.join("a.jpg"), b"a").expect("write a");
+        std::fs::write(from_dir.join("b.jpg"), b"b").expect("write b");
+        let to_dir = dst_root.path().join("DCIM");
+
+        copy_then_delete_local(&from_dir, &to_dir)
+            .await
+            .expect("move dir");
+
+        assert!(!from_dir.exists());
+        assert_eq!(std::fs::read(to_dir.join("Camera/a.jpg")).unwrap(), b"a");
+        assert_eq!(std::fs::read(to_dir.join("b.jpg")).unwrap(), b"b");
+    }
+
+    #[tokio::test]
+    async fn rename_local_file_same_fs_still_works() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let from = dir.path().join("old.txt");
+        let to = dir.path().join("new.txt");
+        std::fs::write(&from, b"ok").expect("write");
+        rename_local_file(
+            from.to_string_lossy().into_owned(),
+            to.to_string_lossy().into_owned(),
+            Some(false),
+        )
+        .await
+        .expect("rename");
+        assert!(!from.exists());
+        assert_eq!(std::fs::read(&to).unwrap(), b"ok");
+    }
+
+    #[tokio::test]
+    async fn rename_local_file_refuses_dest_exists_without_overwrite() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let from = dir.path().join("a.txt");
+        let to = dir.path().join("b.txt");
+        std::fs::write(&from, b"a").expect("write a");
+        std::fs::write(&to, b"b").expect("write b");
+        let err = rename_local_file(
+            from.to_string_lossy().into_owned(),
+            to.to_string_lossy().into_owned(),
+            Some(false),
+        )
+        .await
+        .expect_err("must refuse clobber");
+        assert!(
+            err.starts_with(super::DEST_EXISTS_MARKER),
+            "expected DEST_EXISTS marker, got {err}"
+        );
+        // Neither path changed
+        assert_eq!(std::fs::read(&from).unwrap(), b"a");
+        assert_eq!(std::fs::read(&to).unwrap(), b"b");
+    }
+
+    #[test]
+    fn validate_path_allows_gvfs_mtp_host_colon() {
+        // Colon in the mount leaf is not a URL scheme; must not be rejected.
+        let p = "/run/user/1001/gvfs/mtp:host=Sony_XQ-DQ54_QV770LUNJD/Internal shared storage";
+        assert!(
+            crate::filesystem::validate_path(p).is_ok(),
+            "gvfs mtp:host= path must pass validate_path"
+        );
+        // Sanity: absolute path required
+        assert!(crate::filesystem::validate_path("mtp:host=foo").is_err());
+        let _ = Path::new(p); // keep Path in scope for clarity in failure dumps
+    }
 }
 
 #[tauri::command]
@@ -17428,6 +17593,9 @@ pub fn run() {
 
             // Start mount watcher: emits 'volumes-changed' events instead of 5s polling
             filesystem::start_mount_watcher(app.handle().clone());
+            // Portable MTP/WPD devices: debounced 'mtp-devices-changed' (Windows WPD
+            // wake; no-op elsewhere). Separate from lettered-volume LAST_DRIVE_MASK.
+            providers::mtp::start_mtp_device_watcher(app.handle().clone());
 
             // Proactive AeroVault overlay sweeper: polls every OVERLAY_SWEEPER_INTERVAL_SECS,
             // evicts sessions past their idle timeout and emits `aerovault-overlay-expired`
@@ -18942,6 +19110,13 @@ pub fn run() {
             filesystem::find_duplicate_files,
             filesystem::scan_disk_usage,
             filesystem::volumes_changed,
+            // MTP portable devices (APPENDIX-MTP Phase 2; PLACES wiring in Phase 4)
+            providers::mtp::commands::list_mtp_devices,
+            providers::mtp::commands::mtp_open_device,
+            providers::mtp::commands::mtp_open_gvfs_mount,
+            providers::mtp::commands::mtp_close_device,
+            providers::mtp::commands::mtp_backend_status,
+            providers::mtp::commands::mtp_desktop_automounter_present,
             // Mission Green Badge - File sync status tracking
             sync_badge::start_badge_server_cmd,
             sync_badge::stop_badge_server_cmd,

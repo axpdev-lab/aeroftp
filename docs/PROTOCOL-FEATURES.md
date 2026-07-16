@@ -19,6 +19,72 @@ In addition to the cloud transports above, AeroFTP v4.1.0 previews **AeroShare**
 
 ---
 
+## Portable devices (MTP / WPD)
+
+<a id="portable-devices-mtp--wpd"></a>
+
+AeroFTP can open **attached portable devices** (phones, cameras) that speak
+**MTP** (Linux libmtp) or **WPD** (Windows) even when the OS never assigns a
+drive letter. They appear under **PLACES → Portable devices**. You can also
+**save a device as a My Servers profile** (Add Services → **Devices**): a green
+attach indicator shows when that phone is plugged in, and click-to-connect
+reopens a session at the saved default remote (and local) path. Identity uses a
+stable **device fingerprint** (`mtp:serial=…` preferred, else vid/pid + model),
+not a USB bus address.
+
+CLI: `aeroftp-cli --profile "Sony backup" ls` (and other profile-backed verbs)
+resolve the same fingerprint against currently attached devices.
+
+### What works
+
+| Capability | Support |
+|------------|---------|
+| Discover attached devices | Yes (when the OS backend can see them) |
+| Browse storages and folders | Yes (virtual path: `/Storage/…`) |
+| Copy whole files to/from device | Yes (progress callbacks; single transfer slot) |
+| Disconnect / release session | Yes |
+| Dual-panel local ↔ device | Yes (other panel stays local FS) |
+| Saved My Servers device profiles | Yes (fingerprint match, green attach, click connect) |
+| CLI `--profile` open when attached | Yes |
+
+### Hard limits (protocol / OS, not AeroFTP gaps)
+
+These are properties of MTP/WPD and common device firmware. AeroFTP will **not**
+claim them as "coming soon" for this transport:
+
+| Limit | Reality |
+|-------|---------|
+| No real mount / no drive letter | Device is not a block filesystem |
+| No random access / range download | Object get/send is stream-oriented |
+| No honest resume | Interrupted transfer restarts the whole object |
+| No multipart upload | No S3-style part commit |
+| Weak concurrency | Default `max_file_slots = 1` |
+| Metadata best-effort | Size/mtime often missing or wrong |
+| No delta / rsync | No block-checksum protocol on the wire |
+| Exclusive USB claim | Only one program can hold the phone over MTP at a time |
+
+**Exclusive claim (on-demand):** only one program can hold the phone over MTP at
+a time. A saved device profile does not claim the USB until you Connect. On
+**Linux**, Connect soft-releases the system gvfs/Nautilus MTP mount (then opens
+libmtp) so you get the session without a manual unmount; disconnect drops only
+AeroFTP and the desktop may quietly re-automount. Open the door for the
+session, close it when you leave, no lasting fight with the file manager. If
+open still fails, re-toggle File Transfer on the phone and retry.
+
+**macOS** is out of scope until a Mac station and backend exist.
+
+### Error framing
+
+- Device gone / not attached: reconnect the USB cable, unlock, enable File
+  Transfer mode, then open again from PLACES or My Servers (or retry CLI
+  `--profile`).
+- Open fails while cable is connected: another program likely holds the exclusive
+  claim; close the system file manager and retry.
+- Unsupported op: the portable device does not support that operation (MTP limitation).
+- Transfer cancelled: incomplete objects on the device are removed when the API allows.
+
+---
+
 ## Protocol Security Matrix
 
 ### Connection Security by Protocol

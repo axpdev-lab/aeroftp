@@ -289,7 +289,21 @@
             "storedTotpAdvanced": "Napredno: shrani skrivnost 2FA",
             "storedTotpWarning": "Če shranite skrivnost 2FA, sta oba dejavnika shranjena v trezorju. Če je glavno geslo trezorja ogroženo, 2FA ne varuje več tega računa. Raje uporabite enkratno kodo ali lokalni most WebDAV/S3.",
             "filenBridgeCredentialRules": "Omejitev mostu Filen: {max} znakov. Nepodprto: {rejected}",
-            "filenBridgeCredentialRejected": "Ta poverilnica vsebuje znake, ki jih most Filen zavrača."
+            "filenBridgeCredentialRejected": "Ta poverilnica vsebuje znake, ki jih most Filen zavrača.",
+            "mtpDefaultName": "[NEEDS TRANSLATION] Portable device",
+            "mtpDetect": "[NEEDS TRANSLATION] Detect",
+            "mtpDetectFailed": "[NEEDS TRANSLATION] Could not list portable devices",
+            "mtpDetecting": "[NEEDS TRANSLATION] Detecting...",
+            "mtpDevice": "[NEEDS TRANSLATION] USB device",
+            "mtpFingerprint": "[NEEDS TRANSLATION] Fingerprint",
+            "mtpHonesty": "[NEEDS TRANSLATION] MTP is exclusive: only one app can open the device. Close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter). Some operations are limited by the device OS.",
+            "mtpNoDevices": "[NEEDS TRANSLATION] No portable devices detected. Plug in the phone or camera and enable File Transfer mode.",
+            "mtpRemotePathPlaceholder": "[NEEDS TRANSLATION] Default remote path (e.g. / or DCIM)",
+            "mtpSaveRequiresDevice": "[NEEDS TRANSLATION] Detect and select a device to enable Save.",
+            "mtpSelectPlaceholder": "[NEEDS TRANSLATION] Select a device...",
+            "mtpSelectPlaceholderEmpty": "[NEEDS TRANSLATION] No devices yet — click Detect",
+            "mtpNotAttachedTitle": "[NEEDS TRANSLATION] Device not connected",
+            "mtpNotAttached": "[NEEDS TRANSLATION] Plug in the device and enable File Transfer mode, then try again."
         },
         "browser": {
             "remote": "Oddaljeno",
@@ -1843,7 +1857,10 @@
             "s3RoleMfaTokenCode": "Koda žetona MFA",
             "s3RoleMfaTokenCodePlaceholder": "123456",
             "s3RoleMfaTokenCodeHint": "Enkratna koda iz vaše naprave MFA, potrebna le če vloga zahteva MFA. Uporabljena enkrat ob povezavi in nikoli shranjena.",
-            "peerDesc": "Mape delite neposredno s prijatelji prek šifriranega peer-to-peer kanala, brez strežnika vmes."
+            "peerDesc": "Mape delite neposredno s prijatelji prek šifriranega peer-to-peer kanala, brez strežnika vmes.",
+            "devicesInfoLine1": "[NEEDS TRANSLATION] Save a portable USB device (phone, camera, tablet) as a My Servers profile. Detect the device over MTP, set default folders, and reconnect with one click when it is plugged in.",
+            "devicesInfoLine2": "[NEEDS TRANSLATION] MTP is exclusive: close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter).",
+            "discoverMtpPortable": "[NEEDS TRANSLATION] Phone, camera, or tablet over USB MTP"
         },
         "shortcuts": {
             "title": "Bližnjice na tipkovnici",
@@ -3195,7 +3212,19 @@
             "clear_recent": "Počisti nedavno",
             "no_recent": "Ni nedavnih lokacij",
             "mount": "Priklopi",
-            "ejectFailed": "Izvrženje ni uspelo"
+            "ejectFailed": "Izvrženje ni uspelo",
+            "portable_devices": "[NEEDS TRANSLATION] Portable devices",
+            "portable_disconnect": "[NEEDS TRANSLATION] Disconnect",
+            "portable_disconnect_failed": "[NEEDS TRANSLATION] Could not disconnect portable device",
+            "portable_empty": "[NEEDS TRANSLATION] No portable devices detected",
+            "portable_honesty": "[NEEDS TRANSLATION] Portable devices use MTP: whole-file copy only, no drive letter, and some operations are limited by the device OS.",
+            "portable_no_storages": "[NEEDS TRANSLATION] Session open (no storage list yet; browse polish follows)",
+            "portable_open_failed": "[NEEDS TRANSLATION] Could not open portable device",
+            "portable_opened": "[NEEDS TRANSLATION] Connected to {name}",
+            "portable_storages": "[NEEDS TRANSLATION] {count} storage(s)",
+            "portable_disconnected": "[NEEDS TRANSLATION] Portable device disconnected: {name}",
+            "portable_unplugged": "Prenosna naprava je bila odklopljena. Ponovno priključite kabel in jo znova odprite.",
+            "portable_needs_replug": "Namizje ni priklopilo. Izklopite in znova vklopite kabel, nato znova odprite."
         },
         "viewMode": {
             "list": "Seznam",
@@ -4456,7 +4485,8 @@
                 "media": "Mediji",
                 "localBridge": "Lokalni most",
                 "paid": "Plačljivo",
-                "encrypted": "Šifrirani"
+                "encrypted": "Šifrirani",
+                "mtp": "[NEEDS TRANSLATION] MTP"
             },
             "noServers": "Ni shranjenih strežnikov",
             "noServersHint": "Začnite s hitro povezavo ali raziskušite katalog storitev.",
@@ -4476,7 +4506,8 @@
                 "cloudStorage": "Oblačna shramba",
                 "developer": "Razvijalec",
                 "mediaServices": "Medijske storitve",
-                "all": "Vse"
+                "all": "Vse",
+                "devices": "[NEEDS TRANSLATION] Devices"
             },
             "confirmDeleteServer": "Izbrisati strežnik \"{name}\"? S tem se odstranijo shranjene poverilnice in tega ni mogoče razveljaviti.",
             "renameWithHotkey": "Preimenuj (F2)",
@@ -4597,7 +4628,9 @@
                 "expand": "Razširi stransko vrstico",
                 "moveLeft": "Premakni vrstico levo",
                 "moveRight": "Premakni vrstico desno"
-            }
+            },
+            "deviceAttached": "[NEEDS TRANSLATION] Device attached",
+            "deviceNotAttached": "[NEEDS TRANSLATION] Device not attached"
         },
         "gitlab": {
             "projectPath": "Pot projekta",

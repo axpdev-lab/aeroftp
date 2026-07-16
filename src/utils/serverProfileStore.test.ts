@@ -135,6 +135,57 @@ describe('loadSavedServerProfiles', () => {
         );
     });
 
+    it('roundtrips an MTP device profile with deviceFingerprint', async () => {
+        // APPENDIX-DEVICE-PROFILES Phase 1: vault load/store must preserve the
+        // structured fingerprint (and path fields) for saved MTP devices.
+        const mtpProfile = sampleProfile({
+            id: 'dev_xperia',
+            name: 'Sony Xperia backup',
+            host: 'XQ-DQ54',
+            port: 0,
+            username: '',
+            protocol: 'mtp',
+            providerId: 'mtp-portable',
+            initialPath: '/Internal shared storage/DCIM',
+            localInitialPath: '/home/user/PhoneBackup',
+            deviceFingerprint: {
+                kind: 'mtp',
+                serial: 'QV770LUNJD',
+                vid: '0FCE',
+                pid: '020D',
+                model: 'XQ-DQ54',
+                canonical: 'mtp:serial=QV770LUNJD',
+            },
+        });
+
+        mockInvoke.mockResolvedValueOnce(undefined); // partition save
+        await storeSavedServerProfiles([mtpProfile]);
+        expect(mockInvoke).toHaveBeenCalledWith(
+            'user_partitions_save_active_server_profiles',
+            { profiles: [mtpProfile] },
+        );
+
+        mockInvoke.mockReset();
+        mockInvoke.mockResolvedValueOnce([mtpProfile]); // partition load
+        const loaded = await loadSavedServerProfiles();
+
+        expect(loaded).toHaveLength(1);
+        const row = loaded[0];
+        expect(row.protocol).toBe('mtp');
+        expect(row.initialPath).toBe('/Internal shared storage/DCIM');
+        expect(row.localInitialPath).toBe('/home/user/PhoneBackup');
+        expect(row.deviceFingerprint).toEqual({
+            kind: 'mtp',
+            serial: 'QV770LUNJD',
+            vid: '0FCE',
+            pid: '020D',
+            model: 'XQ-DQ54',
+            canonical: 'mtp:serial=QV770LUNJD',
+        });
+        // Deep equal on the whole profile (JSON vault path is identity for optional fields).
+        expect(row).toEqual(mtpProfile);
+    });
+
     it('seeds the legacy vault when local data exists and the vault is empty', async () => {
         const legacy = [sampleProfile({ id: 'srv_legacy', name: 'legacy-row' })];
         localStoreMap.set('aeroftp-saved-servers', JSON.stringify(legacy));

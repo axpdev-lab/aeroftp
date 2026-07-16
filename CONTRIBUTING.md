@@ -71,6 +71,16 @@ Platform-specific native build tools:
   sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev \
     librsvg2-dev patchelf libfuse3-dev
   ```
+  Optional (MTP / portable devices, APPENDIX-MTP):
+  ```bash
+  sudo apt-get install -y libmtp-dev libmtp9t64
+  ```
+  `pkg-config libmtp` must succeed for the Linux libmtp backend to link. Without
+  it the app still builds and runs; portable-device discovery returns an empty
+  list and transfer ops report that the MTP backend is not linked. Set
+  `AEROFTP_DISABLE_LIBMTP=1` to force the Null backend even when libmtp is
+  installed. Runtime package `libmtp9` / `libmtp9t64` is required on end-user
+  systems that use the linked backend.
 - **macOS**: Xcode Command Line Tools (`xcode-select --install`).
 
 > First build note: `npm run tauri dev` compiles the full Rust dependency tree,

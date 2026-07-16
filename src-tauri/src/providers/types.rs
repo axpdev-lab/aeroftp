@@ -88,9 +88,13 @@ pub enum ProviderType {
     /// factory and never persisted to a profile; it has no network endpoint.
     AeroVaultMount,
     /// AeroShare peer drive (user-to-user E2EE folder over iroh). Browses the
-    /// LOCAL replica folder kept fresh by the PeerRuntime sync task; Phase 1
+    /// LOCAL replica folder kept fresh by the PeerRuntime sync task. Phase 1
     /// is read-only ("their drive"), the write direction lands in Phase 2.
     Peer,
+    /// Portable device over MTP/WPD (phones, cameras). Session-only: opened
+    /// from PLACES, never a saved server profile. Whole-file object transfer;
+    /// no real mount / no drive letter. See APPENDIX-MTP.
+    Mtp,
 }
 
 impl fmt::Display for ProviderType {
@@ -131,6 +135,7 @@ impl fmt::Display for ProviderType {
             ProviderType::Cloudinary => write!(f, "Cloudinary"),
             ProviderType::AeroVaultMount => write!(f, "AeroMount (unlocked vault)"),
             ProviderType::Peer => write!(f, "AeroShare"),
+            ProviderType::Mtp => write!(f, "MTP"),
         }
     }
 }
@@ -179,6 +184,7 @@ impl ProviderType {
             "b2" | "backblaze" | "backblazeb2" => Some(Self::Backblaze),
             "cloudinary" => Some(Self::Cloudinary),
             "peer" | "aeroshare" => Some(Self::Peer),
+            "mtp" | "wpd" | "portabledevice" | "portable" => Some(Self::Mtp),
             _ => None,
         }
     }
@@ -222,6 +228,7 @@ impl ProviderType {
             ProviderType::AeroVaultMount => 0, // local, no network endpoint
             // Transport is iroh (QUIC + relay); there is no host:port to dial.
             ProviderType::Peer => 443,
+            ProviderType::Mtp => 0, // local USB / WPD, no network endpoint
         }
     }
 

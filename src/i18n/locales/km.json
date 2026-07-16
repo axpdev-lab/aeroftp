@@ -289,7 +289,21 @@
             "storedTotpAdvanced": "កម្រិតខ្ពស់៖ រក្សាទុកព័ត៌មានសម្ងាត់ 2FA",
             "storedTotpWarning": "ការរក្សាទុកព័ត៌មានសម្ងាត់ 2FA នឹងដាក់កត្តាទាំងពីរនៅក្នុងឃ្លាំង។ ប្រសិនបើពាក្យសម្ងាត់មេរបស់ឃ្លាំងត្រូវបានលួច 2FA នឹងលែងការពារគណនីនេះ។ គួរប្រើកូដប្រើបានម្តង ឬស្ពាន WebDAV/S3 ក្នុងមូលដ្ឋាន។",
             "filenBridgeCredentialRules": "ដែនកំណត់ស្ពាន Filen៖ {max} តួអក្សរ។ មិនគាំទ្រ៖ {rejected}",
-            "filenBridgeCredentialRejected": "ព័ត៌មានសម្គាល់នេះមានតួអក្សរដែលស្ពាន Filen បដិសេធ។"
+            "filenBridgeCredentialRejected": "ព័ត៌មានសម្គាល់នេះមានតួអក្សរដែលស្ពាន Filen បដិសេធ។",
+            "mtpDefaultName": "[NEEDS TRANSLATION] Portable device",
+            "mtpDetect": "[NEEDS TRANSLATION] Detect",
+            "mtpDetectFailed": "[NEEDS TRANSLATION] Could not list portable devices",
+            "mtpDetecting": "[NEEDS TRANSLATION] Detecting...",
+            "mtpDevice": "[NEEDS TRANSLATION] USB device",
+            "mtpFingerprint": "[NEEDS TRANSLATION] Fingerprint",
+            "mtpHonesty": "[NEEDS TRANSLATION] MTP is exclusive: only one app can open the device. Close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter). Some operations are limited by the device OS.",
+            "mtpNoDevices": "[NEEDS TRANSLATION] No portable devices detected. Plug in the phone or camera and enable File Transfer mode.",
+            "mtpRemotePathPlaceholder": "[NEEDS TRANSLATION] Default remote path (e.g. / or DCIM)",
+            "mtpSaveRequiresDevice": "[NEEDS TRANSLATION] Detect and select a device to enable Save.",
+            "mtpSelectPlaceholder": "[NEEDS TRANSLATION] Select a device...",
+            "mtpSelectPlaceholderEmpty": "[NEEDS TRANSLATION] No devices yet — click Detect",
+            "mtpNotAttachedTitle": "[NEEDS TRANSLATION] Device not connected",
+            "mtpNotAttached": "[NEEDS TRANSLATION] Plug in the device and enable File Transfer mode, then try again."
         },
         "browser": {
             "remote": "ពីចម្ងាយ",
@@ -1843,7 +1857,10 @@
             "s3RoleMfaTokenCode": "កូដថូខឹន MFA",
             "s3RoleMfaTokenCodePlaceholder": "123456",
             "s3RoleMfaTokenCodeHint": "កូដប្រើតែម្ដងពីឧបករណ៍ MFA របស់អ្នក ត្រូវការតែប្រសិនបើតួនាទីតម្រូវឱ្យប្រើ MFA។ ប្រើម្ដងនៅពេលតភ្ជាប់ ហើយមិនត្រូវបានរក្សាទុកឡើយ។",
-            "peerDesc": "ចែករំលែកថតផ្ទាល់ជាមួយមិត្តភក្តិតាមរយៈបណ្តាញ peer-to-peer ដែលបានអ៊ីនគ្រីប ដោយគ្មានម៉ាស៊ីនមេនៅកណ្តាល។"
+            "peerDesc": "ចែករំលែកថតផ្ទាល់ជាមួយមិត្តភក្តិតាមរយៈបណ្តាញ peer-to-peer ដែលបានអ៊ីនគ្រីប ដោយគ្មានម៉ាស៊ីនមេនៅកណ្តាល។",
+            "devicesInfoLine1": "[NEEDS TRANSLATION] Save a portable USB device (phone, camera, tablet) as a My Servers profile. Detect the device over MTP, set default folders, and reconnect with one click when it is plugged in.",
+            "devicesInfoLine2": "[NEEDS TRANSLATION] MTP is exclusive: close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter).",
+            "discoverMtpPortable": "[NEEDS TRANSLATION] Phone, camera, or tablet over USB MTP"
         },
         "shortcuts": {
             "title": "ផ្លូវកាត់ក្តារចុច",
@@ -3195,7 +3212,19 @@
             "clear_recent": "សម្អាតថ្មីៗ",
             "no_recent": "គ្មានទីតាំងដែលបានប្រើថ្មីៗ",
             "mount": "Mount",
-            "ejectFailed": "ការដកចេញបានបរាជ័យ"
+            "ejectFailed": "ការដកចេញបានបរាជ័យ",
+            "portable_devices": "[NEEDS TRANSLATION] Portable devices",
+            "portable_disconnect": "[NEEDS TRANSLATION] Disconnect",
+            "portable_disconnect_failed": "[NEEDS TRANSLATION] Could not disconnect portable device",
+            "portable_empty": "[NEEDS TRANSLATION] No portable devices detected",
+            "portable_honesty": "[NEEDS TRANSLATION] Portable devices use MTP: whole-file copy only, no drive letter, and some operations are limited by the device OS.",
+            "portable_no_storages": "[NEEDS TRANSLATION] Session open (no storage list yet; browse polish follows)",
+            "portable_open_failed": "[NEEDS TRANSLATION] Could not open portable device",
+            "portable_opened": "[NEEDS TRANSLATION] Connected to {name}",
+            "portable_storages": "[NEEDS TRANSLATION] {count} storage(s)",
+            "portable_disconnected": "[NEEDS TRANSLATION] Portable device disconnected: {name}",
+            "portable_unplugged": "ឧបករណ៍ចល័តត្រូវបានផ្តាច់។ សូមដោតខ្សែម្តងទៀត ហើយបើកវាម្តងទៀត។",
+            "portable_needs_replug": "មិនត្រូវបានភ្ជាប់ដោយផ្ទៃតុទេ។ ដកខ្សែចេញ រួចដោតម្តងទៀត បន្ទាប់មកបើកវាឡើងវិញ។"
         },
         "viewMode": {
             "list": "បញ្ជី",
@@ -4475,7 +4504,8 @@
                 "media": "មេឌៀ",
                 "localBridge": "ស្ពានមូលដ្ឋាន",
                 "paid": "បង់ប្រាក់",
-                "encrypted": "បានអ៊ិនគ្រីប"
+                "encrypted": "បានអ៊ិនគ្រីប",
+                "mtp": "[NEEDS TRANSLATION] MTP"
             },
             "noServers": "មិនមានម៉ាស៊ីនមេដែលបានរក្សាទុក",
             "noServersHint": "ចាប់ផ្តើមដោយការតភ្ជាប់រហ័ស ឬរុករកកាតាឡុកសេវាកម្ម។",
@@ -4495,7 +4525,8 @@
                 "cloudStorage": "កន្លែងផ្ទុកពពក",
                 "developer": "អ្នកអភិវឌ្ឍន៍",
                 "mediaServices": "សេវាកម្មមេឌៀ",
-                "all": "ទាំងអស់"
+                "all": "ទាំងអស់",
+                "devices": "[NEEDS TRANSLATION] Devices"
             },
             "confirmDeleteServer": "លុបម៉ាស៊ីនមេ \"{name}\"? វានឹងលុបព័ត៌មានសម្ងាត់ដែលបានរក្សាទុក ហើយមិនអាចត្រឡប់វិញបានទេ។",
             "renameWithHotkey": "ប្តូរឈ្មោះ (F2)",
@@ -4616,7 +4647,9 @@
                 "expand": "ពង្រីករបារចំហៀង",
                 "moveLeft": "ផ្លាស់ទីទៅឆ្វេង",
                 "moveRight": "ផ្លាស់ទីទៅស្តាំ"
-            }
+            },
+            "deviceAttached": "[NEEDS TRANSLATION] Device attached",
+            "deviceNotAttached": "[NEEDS TRANSLATION] Device not attached"
         },
         "gitlab": {
             "projectPath": "ផ្លូវគម្រោង",

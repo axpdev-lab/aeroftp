@@ -10,8 +10,10 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { open, save } from '@tauri-apps/plugin-dialog';
 import { readFile } from '@tauri-apps/plugin-fs';
-import { FolderOpen, HardDrive, ChevronRight, ChevronDown, Save, Copy, Cloud, Check, Settings, Clock, Folder, X, Lock, ArrowLeft, Eye, EyeOff, ExternalLink, Shield, ShieldCheck, KeyRound, Loader2, Image, Info, Pencil, Link2, ArrowRightLeft, RefreshCw } from 'lucide-react';
-import { ConnectionParams, ProviderType, ProviderOptions, isOAuthProvider, isAeroCloudProvider, isFourSharedProvider, isNativeApiProtocol, isNonFtpProvider, providerServesQuota, providerSupportsCryptOverlay, ServerProfile } from '../types';
+import { FolderOpen, HardDrive, ChevronRight, ChevronDown, Save, Copy, Cloud, Check, Settings, Clock, Folder, X, Lock, ArrowLeft, Eye, EyeOff, ExternalLink, Shield, ShieldCheck, KeyRound, Loader2, Image, Info, Pencil, Link2, ArrowRightLeft, RefreshCw, Usb } from 'lucide-react';
+import { ConnectionParams, ProviderType, ProviderOptions, DeviceFingerprint, isOAuthProvider, isAeroCloudProvider, isFourSharedProvider, isNativeApiProtocol, isNonFtpProvider, providerServesQuota, providerSupportsCryptOverlay, ServerProfile } from '../types';
+import type { MtpDeviceInfo } from '../types/aerofile';
+import { deviceFingerprintFromMtpInfo } from '../utils/mtpFingerprint';
 import { PROVIDER_LOGOS } from './ProviderLogos';
 import { PasswordStrengthBar } from './vault/PasswordStrengthBar';
 import { PasswordMatchHint } from './common/PasswordMatchHint';
@@ -500,6 +502,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     // So we relabel Server -> AeroFTP-ID (read-only), Username -> friend name,
     // and hide Port / Password / Remote Path / storage fields below.
     const isPeer = protocol === 'peer';
+    // Portable MTP device profile (APPENDIX-DEVICE-PROFILES Phase 2): no host/password;
+    // detect attached devices, pick one, store deviceFingerprint + default paths.
+    const isMtp = protocol === 'mtp';
 
     // Connections are always saved (the legacy "Save this connection" checkbox
     // was removed: the user can still delete a profile from the list afterwards).
@@ -515,6 +520,13 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     const [customIconForSave, setCustomIconForSave] = useState<string | undefined>(undefined);
     const [faviconForSave, setFaviconForSave] = useState<string | undefined>(undefined);
     const [showIconPicker, setShowIconPicker] = useState(false);
+
+    // MTP device-profile form state (list_mtp_devices → fingerprint → save)
+    const [mtpDevices, setMtpDevices] = useState<MtpDeviceInfo[]>([]);
+    const [mtpDetecting, setMtpDetecting] = useState(false);
+    const [mtpDetectError, setMtpDetectError] = useState<string | null>(null);
+    const [mtpSelectedDeviceId, setMtpSelectedDeviceId] = useState<string | null>(null);
+    const [mtpFingerprint, setMtpFingerprint] = useState<DeviceFingerprint | undefined>(undefined);
 
     // AeroCloud state
     const [aeroCloudConfig, setAeroCloudConfig] = useState<AeroCloudConfig | null>(null);
@@ -842,6 +854,65 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [formOnly, connectionParams.providerId]);
+
+    // Hydrate MTP fingerprint when editing a saved device profile (or clear when leaving mtp).
+    useEffect(() => {
+        if (!isMtp) {
+            setMtpDevices([]);
+            setMtpDetectError(null);
+            setMtpSelectedDeviceId(null);
+            setMtpFingerprint(undefined);
+            return;
+        }
+        if (editingProfile?.deviceFingerprint) {
+            setMtpFingerprint(editingProfile.deviceFingerprint);
+            setMtpSelectedDeviceId(null);
+        }
+    }, [isMtp, editingProfile?.id, editingProfile?.deviceFingerprint]);
+
+    const detectMtpDevices = async () => {
+        setMtpDetecting(true);
+        setMtpDetectError(null);
+        try {
+            const devices = await invoke<MtpDeviceInfo[]>('list_mtp_devices');
+            setMtpDevices(devices || []);
+            if (!devices || devices.length === 0) {
+                setMtpDetectError(t('connection.mtpNoDevices'));
+            }
+        } catch (e) {
+            const msg = e instanceof Error ? e.message : String(e);
+            setMtpDevices([]);
+            setMtpDetectError(msg || t('connection.mtpDetectFailed'));
+        } finally {
+            setMtpDetecting(false);
+        }
+    };
+
+    const selectMtpDevice = (deviceId: string) => {
+        setMtpSelectedDeviceId(deviceId);
+        const device = mtpDevices.find((d) => d.deviceId === deviceId);
+        if (!device) {
+            setMtpFingerprint(undefined);
+            return;
+        }
+        const fp = deviceFingerprintFromMtpInfo(device);
+        setMtpFingerprint(fp);
+        // Suggest profile name from device display name when the field is empty
+        // or still the previous device name.
+        const suggestion = device.displayName?.trim() || fp?.model || 'MTP device';
+        if (!connectionName.trim() || connectionName === connectionParams.server) {
+            setConnectionName(suggestion);
+        }
+        onConnectionParamsChange({
+            ...connectionParams,
+            server: suggestion,
+            port: 0,
+            username: '',
+            password: '',
+            protocol: 'mtp',
+            providerId: connectionParams.providerId || 'mtp-portable',
+        });
+    };
 
     // Store a credential in the universal vault
     const tryStoreCredential = async (account: string, password: string | undefined): Promise<boolean> => {
@@ -1213,7 +1284,17 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         // same for a manual connect, #128 item E).
         window.dispatchEvent(new CustomEvent('aeroftp-cancel-totp-autoretry'));
 
-        const normalizedParams = protocol === 'uploadcare'
+        const normalizedParams = protocol === 'mtp'
+            ? {
+                ...connectionParams,
+                // host is a human label (model); connect uses deviceFingerprint, not host.
+                server: connectionParams.server || mtpFingerprint?.model || connectionName || 'MTP device',
+                port: 0,
+                username: '',
+                password: '',
+                providerId: connectionParams.providerId || selectedProviderId || 'mtp-portable',
+            }
+            : protocol === 'uploadcare'
             ? {
                 ...connectionParams,
                 server: connectionParams.server || 'api.uploadcare.com',
@@ -1274,6 +1355,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                 }
             : connectionParams;
 
+        // MTP save requires a fingerprint (from Detect or hydrated edit profile).
+        if (protocol === 'mtp' && !mtpFingerprint?.canonical) return;
+
         const optionsToSave = protocol === 'mega'
             ? normalizeMegaOptions(connectionParams.options)
             : { ...connectionParams.options };
@@ -1331,24 +1415,33 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             }
 
             const aeroFieldsEdit = await aeroCryptOverlayFields(editingProfileId, prevProfile?.hasStoredAeroCryptPassword, prevProfile?.hasStoredAeroCryptSalt, prevProfile?.hasStoredAeroCryptKeyfilePath);
+            const savedPortEdit = protocol === 'mtp' ? 0 : (normalizedParams.port || getDefaultPort(protocol));
             const updatedServers = existingServers.map((s: ServerProfile) => {
                 if (s.id === editingProfileId) {
                     return {
                         ...s,
                         name: editedName,
                         host: normalizedParams.server,
-                        port: normalizedParams.port || getDefaultPort(protocol),
-                        username: normalizedParams.username,
-                        hasStoredCredential: credentialStored || (s.hasStoredCredential && !connectionParams.password),
+                        port: savedPortEdit,
+                        username: protocol === 'mtp' ? '' : normalizedParams.username,
+                        hasStoredCredential: protocol === 'mtp'
+                            ? false
+                            : (credentialStored || (s.hasStoredCredential && !connectionParams.password)),
                         hasStoredFilenApiKey: filenKeyStored,
                         protocol: protocol as ProviderType,
-                        options: optionsToSave,
+                        options: protocol === 'mtp' ? undefined : optionsToSave,
                         initialPath: quickConnectDirs.remoteDir,
                         localInitialPath: quickConnectDirs.localDir,
-                        persistModeCredentials: persistModeCredentials && inModeGroup,
-                        providerId: selectedProviderId || s.providerId || (protocol === 'swift' ? 'blomp' : protocol === 'mega' ? 'mega' : undefined),
+                        persistModeCredentials: protocol === 'mtp' ? false : (persistModeCredentials && inModeGroup),
+                        providerId: selectedProviderId
+                            || s.providerId
+                            || (protocol === 'mtp' ? (connectionParams.providerId || 'mtp-portable')
+                                : protocol === 'swift' ? 'blomp'
+                                : protocol === 'mega' ? 'mega'
+                                : undefined),
                         customIconUrl: customIconForSave !== undefined ? customIconForSave : s.customIconUrl,
-                        ...aeroFieldsEdit,
+                        ...(protocol === 'mtp' && mtpFingerprint ? { deviceFingerprint: mtpFingerprint } : {}),
+                        ...(protocol === 'mtp' ? {} : aeroFieldsEdit),
                     };
                 }
                 return s;
@@ -1397,22 +1490,27 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                 );
             }
 
-            const aeroFieldsNew = await aeroCryptOverlayFields(newId);
+            const aeroFieldsNew = protocol === 'mtp' ? {} : await aeroCryptOverlayFields(newId);
             const newServer: ServerProfile = {
                 id: newId,
                 name: newName,
                 host: normalizedParams.server,
-                port: normalizedParams.port || getDefaultPort(protocol),
-                username: normalizedParams.username,
-                hasStoredCredential: credentialStored,
+                port: protocol === 'mtp' ? 0 : (normalizedParams.port || getDefaultPort(protocol)),
+                username: protocol === 'mtp' ? '' : normalizedParams.username,
+                hasStoredCredential: protocol === 'mtp' ? false : credentialStored,
                 hasStoredFilenApiKey: filenKeyStored,
                 protocol: protocol as ProviderType,
                 initialPath: quickConnectDirs.remoteDir,
                 localInitialPath: quickConnectDirs.localDir,
-                options: optionsToSave,
-                persistModeCredentials: persistModeCredentials && inModeGroup,
-                providerId: selectedProviderId || (protocol === 'swift' ? 'blomp' : protocol === 'mega' ? 'mega' : undefined),
+                options: protocol === 'mtp' ? undefined : optionsToSave,
+                persistModeCredentials: protocol === 'mtp' ? false : (persistModeCredentials && inModeGroup),
+                providerId: selectedProviderId
+                    || (protocol === 'mtp' ? (connectionParams.providerId || 'mtp-portable')
+                        : protocol === 'swift' ? 'blomp'
+                        : protocol === 'mega' ? 'mega'
+                        : undefined),
                 customIconUrl: customIconForSave,
+                ...(protocol === 'mtp' && mtpFingerprint ? { deviceFingerprint: mtpFingerprint } : {}),
                 ...aeroFieldsNew,
             };
 
@@ -1532,6 +1630,10 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             setSaveConnection(false);
             setPersistModeCredentials(false);
             modeCredentialSnapshotsRef.current = {};
+            setMtpDevices([]);
+            setMtpSelectedDeviceId(null);
+            setMtpFingerprint(undefined);
+            setMtpDetectError(null);
             onConnectionParamsChange({ server: '', username: '', password: '' });
             onQuickConnectDirsChange({ remoteDir: '', localDir: '' });
             onFormSaved?.();
@@ -1542,6 +1644,10 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             setSaveConnection(false);
             setPersistModeCredentials(false);
             modeCredentialSnapshotsRef.current = {};
+            setMtpDevices([]);
+            setMtpSelectedDeviceId(null);
+            setMtpFingerprint(undefined);
+            setMtpDetectError(null);
             onConnectionParamsChange({ server: '', username: '', password: '' });
             onQuickConnectDirsChange({ remoteDir: '', localDir: '' });
             onFormSaved?.();
@@ -3429,6 +3535,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                     drime: 'Drime', mega: 'MEGA', backblaze: 'Backblaze B2', fourshared: '4shared',
                                     imagekit: 'ImageKit', uploadcare: 'Uploadcare', cloudinary: 'Cloudinary',
                                     filelu: 'FileLu', github: 'GitHub', gitlab: 'GitLab',
+                                    mtp: 'Portable device (MTP)',
                                 };
                                 const pid = connectionParams.providerId || '';
                                 // When the active config belongs to a mode
@@ -3866,6 +3973,83 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                     onSaveEdit={savePeerEditedProfile}
                                     onClose={() => { onFormSaved?.(); }}
                                 />
+                            </div>
+                        ) : isMtp ? (
+                            /* APPENDIX-DEVICE-PROFILES Phase 2: Portable MTP device form.
+                               Detect attached phones, pick one, set default paths, save
+                               deviceFingerprint. No password; connect lands in Phase 3. */
+                            <div className="space-y-4 pt-1">
+                                <div className="flex items-start gap-2.5 p-3 bg-amber-50/70 dark:bg-amber-900/15 border border-amber-200/60 dark:border-amber-800/40 rounded-lg text-xs text-gray-700 dark:text-gray-300">
+                                    <Info size={14} className="text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                                    <p>{t('connection.mtpHonesty')}</p>
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium mb-1.5 flex items-center gap-1.5">
+                                        <Usb size={14} />
+                                        {t('connection.mtpDevice')}
+                                    </label>
+                                    <div className="flex gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={detectMtpDevices}
+                                            disabled={mtpDetecting}
+                                            className="px-3 py-2.5 text-sm font-medium rounded-lg bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 border border-gray-300 dark:border-gray-600 transition-colors flex items-center gap-1.5 disabled:opacity-50"
+                                        >
+                                            {mtpDetecting
+                                                ? <Loader2 size={14} className="animate-spin" />
+                                                : <RefreshCw size={14} />}
+                                            {mtpDetecting ? t('connection.mtpDetecting') : t('connection.mtpDetect')}
+                                        </button>
+                                        <select
+                                            value={mtpSelectedDeviceId || ''}
+                                            onChange={(e) => selectMtpDevice(e.target.value)}
+                                            disabled={mtpDevices.length === 0}
+                                            className="flex-1 px-3 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm disabled:opacity-60"
+                                        >
+                                            <option value="">
+                                                {mtpDevices.length === 0
+                                                    ? t('connection.mtpSelectPlaceholderEmpty')
+                                                    : t('connection.mtpSelectPlaceholder')}
+                                            </option>
+                                            {mtpDevices.map((d) => (
+                                                <option key={d.deviceId} value={d.deviceId}>
+                                                    {d.displayName}
+                                                    {d.serial ? ` (${d.serial})` : ''}
+                                                    {d.vendorId != null && d.productId != null
+                                                        ? ` [${(d.vendorId & 0xffff).toString(16).toUpperCase().padStart(4, '0')}:${(d.productId & 0xffff).toString(16).toUpperCase().padStart(4, '0')}]`
+                                                        : ''}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    {mtpDetectError && (
+                                        <p className="text-xs text-amber-600 dark:text-amber-400 mt-1.5">{mtpDetectError}</p>
+                                    )}
+                                    {mtpFingerprint?.canonical && (
+                                        <div className="mt-2 p-2.5 rounded-lg bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 text-xs font-mono text-gray-600 dark:text-gray-300 break-all">
+                                            <span className="font-sans font-medium text-gray-500 dark:text-gray-400 mr-1.5">
+                                                {t('connection.mtpFingerprint')}:
+                                            </span>
+                                            {mtpFingerprint.canonical}
+                                        </div>
+                                    )}
+                                    {!mtpFingerprint?.canonical && (
+                                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1.5">
+                                            {t('connection.mtpSaveRequiresDevice')}
+                                        </p>
+                                    )}
+                                </div>
+
+                                {renderRightColumn({
+                                    disabled: !mtpFingerprint?.canonical,
+                                    buttonColorClass: 'bg-green-600 hover:bg-green-700',
+                                    buttonText: (<><Save size={18} /> {t('common.save')}</>),
+                                    remotePathPlaceholder: t('connection.mtpRemotePathPlaceholder'),
+                                    connectionNameKey: connectionParams.server || mtpFingerprint?.model || t('connection.mtpDefaultName'),
+                                    saveOverride: handleConnectAndSave,
+                                    cancelOverride: formOnly ? () => { onFormSaved?.(); } : undefined,
+                                })}
                             </div>
                         ) : (
                             <>

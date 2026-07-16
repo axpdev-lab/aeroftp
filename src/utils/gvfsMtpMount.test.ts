@@ -1,0 +1,133 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet -- AI-assisted (see AI-TRANSPARENCY.md)
+
+import { describe, expect, it } from 'vitest';
+import {
+  findGvfsMtpMount,
+  isGvfsMtpPath,
+  isPathOnOrUnderMount,
+  portableDeviceNeedsReplug,
+} from './gvfsMtpMount';
+import type { VolumeInfo } from '../types/aerofile';
+
+const vol = (name: string, mount_point: string): VolumeInfo => ({
+  name,
+  mount_point,
+  volume_type: 'removable',
+  total_bytes: 0,
+  free_bytes: 0,
+  fs_type: 'fuse',
+  is_ejectable: true,
+});
+
+// Real shape observed live on the owner's station.
+const XPERIA_MOUNT = '/run/user/1001/gvfs/mtp:host=Sony_XQ-DQ54_QV770LUNJD';
+
+describe('isGvfsMtpPath', () => {
+  it('recognises a gvfs MTP mount root', () => {
+    expect(isGvfsMtpPath(XPERIA_MOUNT)).toBe(true);
+  });
+
+  it('recognises a path under a gvfs MTP mount', () => {
+    expect(isGvfsMtpPath(`${XPERIA_MOUNT}/Internal shared storage/DCIM`)).toBe(true);
+  });
+
+  it('rejects ordinary local paths', () => {
+    expect(isGvfsMtpPath('/home/axpdev')).toBe(false);
+    expect(isGvfsMtpPath('/media/axpdev/USB')).toBe(false);
+    expect(isGvfsMtpPath('/run/user/1001/gvfs/smb-share:server=nas')).toBe(false);
+  });
+
+  it('does not treat bare mtp: fingerprints or mtp:// URLs as gvfs mount paths', () => {
+    // Path sniffers must not confuse identity strings / URI schemes with FUSE paths.
+    expect(isGvfsMtpPath('mtp:serial=QV770LUNJD')).toBe(false);
+    expect(isGvfsMtpPath('mtp://Sony_XQ-DQ54_QV770LUNJD/')).toBe(false);
+    expect(isGvfsMtpPath('mtp:host=Sony_XQ-DQ54_QV770LUNJD')).toBe(false);
+  });
+
+  it('rejects empty or missing paths', () => {
+    expect(isGvfsMtpPath('')).toBe(false);
+    expect(isGvfsMtpPath(null)).toBe(false);
+    expect(isGvfsMtpPath(undefined)).toBe(false);
+  });
+});
+
+describe('findGvfsMtpMount', () => {
+  it('finds the mount whose gvfs name carries the device serial', () => {
+    const volumes = [
+      vol('System', '/'),
+      vol('Sony_XQ-DQ54_QV770LUNJD', XPERIA_MOUNT),
+    ];
+    expect(findGvfsMtpMount(volumes, { serial: 'QV770LUNJD' })).toBe(XPERIA_MOUNT);
+  });
+
+  it('returns null when the desktop has not mounted the device', () => {
+    expect(findGvfsMtpMount([vol('System', '/')], { serial: 'QV770LUNJD' })).toBeNull();
+  });
+
+  it('returns null without a serial, rather than guessing a wrong phone', () => {
+    const volumes = [vol('Sony', XPERIA_MOUNT)];
+    expect(findGvfsMtpMount(volumes, { serial: undefined })).toBeNull();
+    expect(findGvfsMtpMount(volumes, { serial: '  ' })).toBeNull();
+  });
+
+  it('does not match a same-serial path that is not a gvfs MTP mount', () => {
+    const volumes = [vol('backup disk', '/media/axpdev/QV770LUNJD-backup')];
+    expect(findGvfsMtpMount(volumes, { serial: 'QV770LUNJD' })).toBeNull();
+  });
+
+  it('picks the right phone when two are mounted', () => {
+    const other = '/run/user/1001/gvfs/mtp:host=Samsung_Tab_R52T9';
+    const volumes = [vol('Samsung', other), vol('Sony', XPERIA_MOUNT)];
+    expect(findGvfsMtpMount(volumes, { serial: 'R52T9' })).toBe(other);
+    expect(findGvfsMtpMount(volumes, { serial: 'QV770LUNJD' })).toBe(XPERIA_MOUNT);
+  });
+});
+
+describe('portableDeviceNeedsReplug', () => {
+  it('is amber only when automounter exists and device is not mounted', () => {
+    expect(portableDeviceNeedsReplug(true, null)).toBe(true);
+    expect(portableDeviceNeedsReplug(true, undefined)).toBe(true);
+    expect(portableDeviceNeedsReplug(true, '')).toBe(true);
+  });
+
+  it('stays openable when the gvfs mount is present', () => {
+    expect(portableDeviceNeedsReplug(true, XPERIA_MOUNT)).toBe(false);
+  });
+
+  it('stays openable (exclusive path) when there is no automounter', () => {
+    // Minimal DE / CLI / Windows: exclusive libmtp is the only path and works.
+    expect(portableDeviceNeedsReplug(false, null)).toBe(false);
+    expect(portableDeviceNeedsReplug(false, XPERIA_MOUNT)).toBe(false);
+  });
+});
+
+describe('isPathOnOrUnderMount', () => {
+  it('matches the mount root', () => {
+    expect(isPathOnOrUnderMount(XPERIA_MOUNT, XPERIA_MOUNT)).toBe(true);
+  });
+
+  it('matches child paths under the mount (drill into DCIM)', () => {
+    expect(isPathOnOrUnderMount(`${XPERIA_MOUNT}/Internal shared storage/DCIM`, XPERIA_MOUNT)).toBe(true);
+  });
+
+  it('matches Windows-style separators under the mount', () => {
+    expect(isPathOnOrUnderMount(`${XPERIA_MOUNT}\\Storage\\DCIM`, XPERIA_MOUNT)).toBe(true);
+  });
+
+  it('does not match a sibling path with a shared prefix', () => {
+    // /run/user/1001/gvfs/mtp:host=Sony_... vs same + trailing junk without separator
+    expect(isPathOnOrUnderMount(`${XPERIA_MOUNT}2`, XPERIA_MOUNT)).toBe(false);
+    expect(isPathOnOrUnderMount('/home/axpdev', XPERIA_MOUNT)).toBe(false);
+    expect(isPathOnOrUnderMount('/run/user/1001/gvfs/mtp:host=Other_Phone', XPERIA_MOUNT)).toBe(false);
+  });
+
+  it('rejects empty or missing path/mount', () => {
+    expect(isPathOnOrUnderMount(null, XPERIA_MOUNT)).toBe(false);
+    expect(isPathOnOrUnderMount(undefined, XPERIA_MOUNT)).toBe(false);
+    expect(isPathOnOrUnderMount(XPERIA_MOUNT, null)).toBe(false);
+    expect(isPathOnOrUnderMount(XPERIA_MOUNT, undefined)).toBe(false);
+    expect(isPathOnOrUnderMount('', XPERIA_MOUNT)).toBe(false);
+    expect(isPathOnOrUnderMount(XPERIA_MOUNT, '')).toBe(false);
+  });
+});

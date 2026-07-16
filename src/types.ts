@@ -52,7 +52,13 @@ export type ProviderType =
   | "uploadcare"
   | "backblaze"
   | "cloudinary"
-  | "peer";
+  | "peer"
+  /**
+   * Portable device over MTP/WPD. Session from PLACES discovery, or a saved
+   * device profile matched by fingerprint (not host+password path).
+   * See APPENDIX-DEVICE-PROFILES.
+   */
+  | "mtp";
 
 // Check if a provider type requires OAuth2 authentication
 export const isOAuthProvider = (type: ProviderType): boolean => {
@@ -78,11 +84,11 @@ export const isAeroCloudProvider = (type: ProviderType): boolean => {
   return type === "aerocloud";
 };
 
-// Protocol class label shown on My Servers tiles (OAuth / API / WebDAV / E2E / FTP / SFTP / S3 / Azure)
+// Protocol class label shown on My Servers tiles (OAuth / API / WebDAV / E2E / FTP / SFTP / S3 / Azure / MTP)
 // "Crypt" is a profile-level class (not a transport): a saved profile with an
 // enabled crypt overlay reads as "Crypt" regardless of its backend. See
 // getProfileProtocolClass.
-export type ProtocolClass = "OAuth" | "API" | "WebDAV" | "E2E" | "FTP" | "FTPS" | "SFTP" | "S3" | "Azure" | "AeroCloud" | "Crypt";
+export type ProtocolClass = "OAuth" | "API" | "WebDAV" | "E2E" | "FTP" | "FTPS" | "SFTP" | "S3" | "Azure" | "AeroCloud" | "Crypt" | "MTP";
 
 export const getProtocolClass = (type: ProviderType): ProtocolClass => {
   if (isOAuthProvider(type) || isFourSharedProvider(type)) return "OAuth";
@@ -94,6 +100,8 @@ export const getProtocolClass = (type: ProviderType): ProtocolClass => {
   if (type === "sftp") return "SFTP";
   if (type === "s3") return "S3";
   if (type === "azure") return "Azure";
+  // Portable USB MTP/WPD (not an HTTP "API" cloud).
+  if (type === "mtp") return "MTP";
   // Native API providers (Koofr, Jottacloud, OpenDrive, kDrive, Drime, FileLu, Yandex, GitHub, GitLab, Swift, Immich)
   return "API";
 };
@@ -142,6 +150,8 @@ export const isNonFtpProvider = (type: ProviderType): boolean => {
     // command surface (protocol "peer"), so they dispatch like any non-FTP
     // provider. The replica is read-only in Phase 1.
     "peer",
+    // Portable MTP/WPD sessions installed into ProviderState from PLACES.
+    "mtp",
   ].includes(type);
 };
 
@@ -168,6 +178,9 @@ const CRYPT_OVERLAY_INCOMPATIBLE: ReadonlySet<string> = new Set([
   "googlephotos",
   "github",
   "gitlab",
+  // MTP is whole-file object transfer with weak metadata; crypt overlay
+  // would invent a filesystem model the device does not have.
+  "mtp",
 ]);
 
 // True when a transparent crypt overlay can be offered for this protocol.
@@ -549,6 +562,23 @@ export interface AeroCryptOverlayBinding {
   aead?: "auto" | "aes-256-gcm-siv" | "xchacha20-poly1305"; // native only; see master plan §5
 }
 
+/**
+ * Stable identity for a saved MTP device profile (APPENDIX-DEVICE-PROFILES).
+ * Prefer serial form; fall back to vid/pid (+ model) when serial is missing.
+ * `canonical` is the compare/storage key (`mtp:serial=...` or `mtp:vidpid=...`).
+ */
+export interface DeviceFingerprint {
+  kind: "mtp";
+  serial?: string;
+  /** USB vendor id as 4-digit uppercase hex when known. */
+  vid?: string;
+  /** USB product id as 4-digit uppercase hex when known. */
+  pid?: string;
+  model?: string;
+  /** Canonical fingerprint string used for attach match. */
+  canonical: string;
+}
+
 // Server profile for saved connections
 export interface ServerProfile {
   id: string;
@@ -575,6 +605,13 @@ export interface ServerProfile {
   customIconUrl?: string; // User-chosen custom icon (base64 data URL, highest priority)
   publicUrlBase?: string; // HTTP base URL for share link generation (e.g. https://www.example.com/)
   skipDeltaEligibilityPrompt?: boolean; // Suppress the classic fallback modal for this saved server
+  /**
+   * MTP device identity when `protocol === 'mtp'` (APPENDIX-DEVICE-PROFILES).
+   * Connect is fingerprint match → `mtp_open_device`, not host+password.
+   * For MTP rows, `host` may hold a human search string (model); `port` is 0;
+   * username/password are unused.
+   */
+  deviceFingerprint?: DeviceFingerprint;
   // Last known storage quota cached after a successful connection. Used by the
   // detailed My Servers card layout to render a usage bar without requiring
   // a fresh authentication round-trip on every render. `totalSource` records

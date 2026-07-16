@@ -289,7 +289,21 @@
             "storedTotpAdvanced": "Geavanceerd: het 2FA-geheim opslaan",
             "storedTotpWarning": "Als u het 2FA-geheim opslaat, worden beide factoren in de kluis bewaard. Als het hoofdwachtwoord van de kluis wordt gecompromitteerd, beschermt 2FA dit account niet meer. Gebruik bij voorkeur een eenmalige code of een lokale WebDAV/S3-bridge.",
             "filenBridgeCredentialRules": "Limiet van Filen-bridge: {max} tekens. Niet ondersteund: {rejected}",
-            "filenBridgeCredentialRejected": "Deze inloggegevens bevatten tekens die door de Filen-bridge worden geweigerd."
+            "filenBridgeCredentialRejected": "Deze inloggegevens bevatten tekens die door de Filen-bridge worden geweigerd.",
+            "mtpDefaultName": "[NEEDS TRANSLATION] Portable device",
+            "mtpDetect": "[NEEDS TRANSLATION] Detect",
+            "mtpDetectFailed": "[NEEDS TRANSLATION] Could not list portable devices",
+            "mtpDetecting": "[NEEDS TRANSLATION] Detecting...",
+            "mtpDevice": "[NEEDS TRANSLATION] USB device",
+            "mtpFingerprint": "[NEEDS TRANSLATION] Fingerprint",
+            "mtpHonesty": "[NEEDS TRANSLATION] MTP is exclusive: only one app can open the device. Close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter). Some operations are limited by the device OS.",
+            "mtpNoDevices": "[NEEDS TRANSLATION] No portable devices detected. Plug in the phone or camera and enable File Transfer mode.",
+            "mtpRemotePathPlaceholder": "[NEEDS TRANSLATION] Default remote path (e.g. / or DCIM)",
+            "mtpSaveRequiresDevice": "[NEEDS TRANSLATION] Detect and select a device to enable Save.",
+            "mtpSelectPlaceholder": "[NEEDS TRANSLATION] Select a device...",
+            "mtpSelectPlaceholderEmpty": "[NEEDS TRANSLATION] No devices yet — click Detect",
+            "mtpNotAttachedTitle": "[NEEDS TRANSLATION] Device not connected",
+            "mtpNotAttached": "[NEEDS TRANSLATION] Plug in the device and enable File Transfer mode, then try again."
         },
         "browser": {
             "remote": "Extern",
@@ -1843,7 +1857,10 @@
             "s3RoleMfaTokenCode": "MFA-tokencode",
             "s3RoleMfaTokenCodePlaceholder": "123456",
             "s3RoleMfaTokenCodeHint": "Eenmalige code van uw MFA-apparaat, alleen vereist als de rol MFA afdwingt. Wordt eenmalig bij het verbinden gebruikt en nooit opgeslagen.",
-            "peerDesc": "Deel mappen rechtstreeks met vrienden via een versleuteld peer-to-peer-kanaal, zonder server ertussen."
+            "peerDesc": "Deel mappen rechtstreeks met vrienden via een versleuteld peer-to-peer-kanaal, zonder server ertussen.",
+            "devicesInfoLine1": "[NEEDS TRANSLATION] Save a portable USB device (phone, camera, tablet) as a My Servers profile. Detect the device over MTP, set default folders, and reconnect with one click when it is plugged in.",
+            "devicesInfoLine2": "[NEEDS TRANSLATION] MTP is exclusive: close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter).",
+            "discoverMtpPortable": "[NEEDS TRANSLATION] Phone, camera, or tablet over USB MTP"
         },
         "shortcuts": {
             "title": "Sneltoetsen",
@@ -3195,7 +3212,19 @@
             "clear_recent": "Recente wissen",
             "no_recent": "Geen recente locaties",
             "mount": "Koppelen",
-            "ejectFailed": "Uitwerpen mislukt"
+            "ejectFailed": "Uitwerpen mislukt",
+            "portable_devices": "[NEEDS TRANSLATION] Portable devices",
+            "portable_disconnect": "[NEEDS TRANSLATION] Disconnect",
+            "portable_disconnect_failed": "[NEEDS TRANSLATION] Could not disconnect portable device",
+            "portable_empty": "[NEEDS TRANSLATION] No portable devices detected",
+            "portable_honesty": "[NEEDS TRANSLATION] Portable devices use MTP: whole-file copy only, no drive letter, and some operations are limited by the device OS.",
+            "portable_no_storages": "[NEEDS TRANSLATION] Session open (no storage list yet; browse polish follows)",
+            "portable_open_failed": "[NEEDS TRANSLATION] Could not open portable device",
+            "portable_opened": "[NEEDS TRANSLATION] Connected to {name}",
+            "portable_storages": "[NEEDS TRANSLATION] {count} storage(s)",
+            "portable_disconnected": "[NEEDS TRANSLATION] Portable device disconnected: {name}",
+            "portable_unplugged": "Het draagbare apparaat is losgekoppeld. Sluit de kabel opnieuw aan en open het opnieuw.",
+            "portable_needs_replug": "Niet gekoppeld door het bureaublad. Haal de kabel eruit en steek hem weer in, en open het daarna opnieuw."
         },
         "viewMode": {
             "list": "Lijst",
@@ -4456,7 +4485,8 @@
                 "media": "Media",
                 "localBridge": "Lokale brug",
                 "paid": "Betaald",
-                "encrypted": "Versleuteld"
+                "encrypted": "Versleuteld",
+                "mtp": "[NEEDS TRANSLATION] MTP"
             },
             "noServers": "Geen opgeslagen servers",
             "noServersHint": "Begin met een snelle verbinding of verken de servicecatalogus.",
@@ -4476,7 +4506,8 @@
                 "cloudStorage": "Cloudopslag",
                 "developer": "Ontwikkelaar",
                 "mediaServices": "Mediadiensten",
-                "all": "Alles"
+                "all": "Alles",
+                "devices": "[NEEDS TRANSLATION] Devices"
             },
             "confirmDeleteServer": "Server \"{name}\" verwijderen? Dit verwijdert opgeslagen inloggegevens en kan niet ongedaan worden gemaakt.",
             "renameWithHotkey": "Hernoemen (F2)",
@@ -4597,7 +4628,9 @@
                 "expand": "Zijbalk uitklappen",
                 "moveLeft": "Zijbalk naar links",
                 "moveRight": "Zijbalk naar rechts"
-            }
+            },
+            "deviceAttached": "[NEEDS TRANSLATION] Device attached",
+            "deviceNotAttached": "[NEEDS TRANSLATION] Device not attached"
         },
         "gitlab": {
             "projectPath": "Projectpad",

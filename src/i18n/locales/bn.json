@@ -289,7 +289,21 @@
             "storedTotpAdvanced": "উন্নত: 2FA গোপন তথ্য সংরক্ষণ করুন",
             "storedTotpWarning": "2FA গোপন তথ্য সংরক্ষণ করলে উভয় ফ্যাক্টর ভল্টে থাকবে। ভল্টের মাস্টার পাসওয়ার্ড ফাঁস হলে 2FA আর এই অ্যাকাউন্টকে সুরক্ষিত রাখবে না। একবার ব্যবহারযোগ্য কোড বা স্থানীয় WebDAV/S3 ব্রিজ ব্যবহার করুন।",
             "filenBridgeCredentialRules": "Filen ব্রিজের সীমা: {max} অক্ষর। অসমর্থিত: {rejected}",
-            "filenBridgeCredentialRejected": "এই শংসাপত্রে Filen ব্রিজের প্রত্যাখ্যাত অক্ষর রয়েছে।"
+            "filenBridgeCredentialRejected": "এই শংসাপত্রে Filen ব্রিজের প্রত্যাখ্যাত অক্ষর রয়েছে।",
+            "mtpDefaultName": "[NEEDS TRANSLATION] Portable device",
+            "mtpDetect": "[NEEDS TRANSLATION] Detect",
+            "mtpDetectFailed": "[NEEDS TRANSLATION] Could not list portable devices",
+            "mtpDetecting": "[NEEDS TRANSLATION] Detecting...",
+            "mtpDevice": "[NEEDS TRANSLATION] USB device",
+            "mtpFingerprint": "[NEEDS TRANSLATION] Fingerprint",
+            "mtpHonesty": "[NEEDS TRANSLATION] MTP is exclusive: only one app can open the device. Close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter). Some operations are limited by the device OS.",
+            "mtpNoDevices": "[NEEDS TRANSLATION] No portable devices detected. Plug in the phone or camera and enable File Transfer mode.",
+            "mtpRemotePathPlaceholder": "[NEEDS TRANSLATION] Default remote path (e.g. / or DCIM)",
+            "mtpSaveRequiresDevice": "[NEEDS TRANSLATION] Detect and select a device to enable Save.",
+            "mtpSelectPlaceholder": "[NEEDS TRANSLATION] Select a device...",
+            "mtpSelectPlaceholderEmpty": "[NEEDS TRANSLATION] No devices yet — click Detect",
+            "mtpNotAttachedTitle": "[NEEDS TRANSLATION] Device not connected",
+            "mtpNotAttached": "[NEEDS TRANSLATION] Plug in the device and enable File Transfer mode, then try again."
         },
         "browser": {
             "remote": "রিমোট",
@@ -1843,7 +1857,10 @@
             "s3RoleMfaTokenCode": "MFA টোকেন কোড",
             "s3RoleMfaTokenCodePlaceholder": "123456",
             "s3RoleMfaTokenCodeHint": "আপনার MFA ডিভাইস থেকে একবার ব্যবহারযোগ্য কোড, শুধুমাত্র তখনই প্রয়োজন যখন ভূমিকা MFA বাধ্যতামূলক করে। সংযোগের সময় একবার ব্যবহৃত হয় এবং কখনও সংরক্ষণ করা হয় না।",
-            "peerDesc": "মাঝখানে কোনো সার্ভার ছাড়াই, একটি এনক্রিপ্টেড পিয়ার-টু-পিয়ার চ্যানেলে সরাসরি বন্ধুদের সাথে ফোল্ডার শেয়ার করুন।"
+            "peerDesc": "মাঝখানে কোনো সার্ভার ছাড়াই, একটি এনক্রিপ্টেড পিয়ার-টু-পিয়ার চ্যানেলে সরাসরি বন্ধুদের সাথে ফোল্ডার শেয়ার করুন।",
+            "devicesInfoLine1": "[NEEDS TRANSLATION] Save a portable USB device (phone, camera, tablet) as a My Servers profile. Detect the device over MTP, set default folders, and reconnect with one click when it is plugged in.",
+            "devicesInfoLine2": "[NEEDS TRANSLATION] MTP is exclusive: close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter).",
+            "discoverMtpPortable": "[NEEDS TRANSLATION] Phone, camera, or tablet over USB MTP"
         },
         "shortcuts": {
             "title": "কীবোর্ড শর্টকাট",
@@ -3195,7 +3212,19 @@
             "clear_recent": "সাম্প্রতিক সাফ করুন",
             "no_recent": "কোনো সাম্প্রতিক স্থান নেই",
             "mount": "মাউন্ট",
-            "ejectFailed": "ইজেক্ট ব্যর্থ হয়েছে"
+            "ejectFailed": "ইজেক্ট ব্যর্থ হয়েছে",
+            "portable_devices": "[NEEDS TRANSLATION] Portable devices",
+            "portable_disconnect": "[NEEDS TRANSLATION] Disconnect",
+            "portable_disconnect_failed": "[NEEDS TRANSLATION] Could not disconnect portable device",
+            "portable_empty": "[NEEDS TRANSLATION] No portable devices detected",
+            "portable_honesty": "[NEEDS TRANSLATION] Portable devices use MTP: whole-file copy only, no drive letter, and some operations are limited by the device OS.",
+            "portable_no_storages": "[NEEDS TRANSLATION] Session open (no storage list yet; browse polish follows)",
+            "portable_open_failed": "[NEEDS TRANSLATION] Could not open portable device",
+            "portable_opened": "[NEEDS TRANSLATION] Connected to {name}",
+            "portable_storages": "[NEEDS TRANSLATION] {count} storage(s)",
+            "portable_disconnected": "[NEEDS TRANSLATION] Portable device disconnected: {name}",
+            "portable_unplugged": "পোর্টেবল ডিভাইসটি বিচ্ছিন্ন হয়ে গেছে। কেবলটি আবার প্লাগ করুন এবং আবার খুলুন।",
+            "portable_needs_replug": "ডেস্কটপ দ্বারা মাউন্ট করা হয়নি। কেবলটি খুলে আবার লাগান, তারপর আবার খুলুন।"
         },
         "viewMode": {
             "list": "তালিকা",
@@ -4456,7 +4485,8 @@
                 "media": "মিডিয়া",
                 "localBridge": "লোকাল ব্রিজ",
                 "paid": "পেইড",
-                "encrypted": "এনক্রিপ্টেড"
+                "encrypted": "এনক্রিপ্টেড",
+                "mtp": "[NEEDS TRANSLATION] MTP"
             },
             "noServers": "কোনো সংরক্ষিত সার্ভার নেই",
             "noServersHint": "দ্রুত সংযোগ দিয়ে শুরু করুন বা সেবা ক্যাটালগ ব্রাউজ করুন।",
@@ -4476,7 +4506,8 @@
                 "cloudStorage": "ক্লাউড স্টোরেজ",
                 "developer": "ডেভেলপার",
                 "mediaServices": "মিডিয়া পরিষেবা",
-                "all": "সব"
+                "all": "সব",
+                "devices": "[NEEDS TRANSLATION] Devices"
             },
             "confirmDeleteServer": "সার্ভার \"{name}\" মুছে ফেলবেন? এটি সংরক্ষিত শংসাপত্র সরিয়ে দেবে এবং পূর্বাবস্থায় ফেরানো যাবে না।",
             "renameWithHotkey": "পুনঃনামকরণ (F2)",
@@ -4597,7 +4628,9 @@
                 "expand": "সাইডবার প্রসারিত করুন",
                 "moveLeft": "বামে সরান",
                 "moveRight": "ডানে সরান"
-            }
+            },
+            "deviceAttached": "[NEEDS TRANSLATION] Device attached",
+            "deviceNotAttached": "[NEEDS TRANSLATION] Device not attached"
         },
         "gitlab": {
             "projectPath": "প্রকল্পের পাথ",

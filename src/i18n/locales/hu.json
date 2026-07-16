@@ -289,7 +289,21 @@
             "storedTotpAdvanced": "Speciális: a 2FA titkának mentése",
             "storedTotpWarning": "A 2FA titkának mentésével mindkét tényező a tárolóba kerül. Ha a tároló mesterjelszava illetéktelen kézbe kerül, a 2FA többé nem védi ezt a fiókot. Használjon inkább egyszer használatos kódot vagy helyi WebDAV/S3-hidat.",
             "filenBridgeCredentialRules": "Filen-híd korlátja: {max} karakter. Nem támogatott: {rejected}",
-            "filenBridgeCredentialRejected": "Ez a hitelesítő adat a Filen-híd által elutasított karaktereket tartalmaz."
+            "filenBridgeCredentialRejected": "Ez a hitelesítő adat a Filen-híd által elutasított karaktereket tartalmaz.",
+            "mtpDefaultName": "[NEEDS TRANSLATION] Portable device",
+            "mtpDetect": "[NEEDS TRANSLATION] Detect",
+            "mtpDetectFailed": "[NEEDS TRANSLATION] Could not list portable devices",
+            "mtpDetecting": "[NEEDS TRANSLATION] Detecting...",
+            "mtpDevice": "[NEEDS TRANSLATION] USB device",
+            "mtpFingerprint": "[NEEDS TRANSLATION] Fingerprint",
+            "mtpHonesty": "[NEEDS TRANSLATION] MTP is exclusive: only one app can open the device. Close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter). Some operations are limited by the device OS.",
+            "mtpNoDevices": "[NEEDS TRANSLATION] No portable devices detected. Plug in the phone or camera and enable File Transfer mode.",
+            "mtpRemotePathPlaceholder": "[NEEDS TRANSLATION] Default remote path (e.g. / or DCIM)",
+            "mtpSaveRequiresDevice": "[NEEDS TRANSLATION] Detect and select a device to enable Save.",
+            "mtpSelectPlaceholder": "[NEEDS TRANSLATION] Select a device...",
+            "mtpSelectPlaceholderEmpty": "[NEEDS TRANSLATION] No devices yet — click Detect",
+            "mtpNotAttachedTitle": "[NEEDS TRANSLATION] Device not connected",
+            "mtpNotAttached": "[NEEDS TRANSLATION] Plug in the device and enable File Transfer mode, then try again."
         },
         "browser": {
             "remote": "Távoli",
@@ -1843,7 +1857,10 @@
             "s3RoleMfaTokenCode": "MFA tokenkód",
             "s3RoleMfaTokenCodePlaceholder": "123456",
             "s3RoleMfaTokenCodeHint": "Egyszer használatos kód az MFA-eszközéről, csak akkor szükséges ha a szerepkör MFA-t követel meg. Csatlakozáskor egyszer használatos és soha nem mentődik.",
-            "peerDesc": "Ossz meg mappákat közvetlenül barátaiddal titkosított peer-to-peer csatornán keresztül, kiszolgáló nélkül."
+            "peerDesc": "Ossz meg mappákat közvetlenül barátaiddal titkosított peer-to-peer csatornán keresztül, kiszolgáló nélkül.",
+            "devicesInfoLine1": "[NEEDS TRANSLATION] Save a portable USB device (phone, camera, tablet) as a My Servers profile. Detect the device over MTP, set default folders, and reconnect with one click when it is plugged in.",
+            "devicesInfoLine2": "[NEEDS TRANSLATION] MTP is exclusive: close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter).",
+            "discoverMtpPortable": "[NEEDS TRANSLATION] Phone, camera, or tablet over USB MTP"
         },
         "shortcuts": {
             "title": "Billentyűparancsok",
@@ -3195,7 +3212,19 @@
             "clear_recent": "Legutóbbiak törlése",
             "no_recent": "Nincsenek legutóbbi helyek",
             "mount": "Csatlakoztatás",
-            "ejectFailed": "A kiadás sikertelen"
+            "ejectFailed": "A kiadás sikertelen",
+            "portable_devices": "[NEEDS TRANSLATION] Portable devices",
+            "portable_disconnect": "[NEEDS TRANSLATION] Disconnect",
+            "portable_disconnect_failed": "[NEEDS TRANSLATION] Could not disconnect portable device",
+            "portable_empty": "[NEEDS TRANSLATION] No portable devices detected",
+            "portable_honesty": "[NEEDS TRANSLATION] Portable devices use MTP: whole-file copy only, no drive letter, and some operations are limited by the device OS.",
+            "portable_no_storages": "[NEEDS TRANSLATION] Session open (no storage list yet; browse polish follows)",
+            "portable_open_failed": "[NEEDS TRANSLATION] Could not open portable device",
+            "portable_opened": "[NEEDS TRANSLATION] Connected to {name}",
+            "portable_storages": "[NEEDS TRANSLATION] {count} storage(s)",
+            "portable_disconnected": "[NEEDS TRANSLATION] Portable device disconnected: {name}",
+            "portable_unplugged": "A hordozható eszköz lecsatlakozott. Csatlakoztassa újra a kábelt, és nyissa meg újra.",
+            "portable_needs_replug": "Az asztal nem csatolta fel. Húzza ki, majd dugja vissza a kábelt, és nyissa meg újra."
         },
         "viewMode": {
             "list": "Lista",
@@ -4456,7 +4485,8 @@
                 "media": "Média",
                 "localBridge": "Helyi híd",
                 "paid": "Fizetős",
-                "encrypted": "Titkosított"
+                "encrypted": "Titkosított",
+                "mtp": "[NEEDS TRANSLATION] MTP"
             },
             "noServers": "Nincsenek mentett szerverek",
             "noServersHint": "Kezdjen egy gyors csatlakozással, vagy böngéssze a szolgáltatáskatalógust.",
@@ -4476,7 +4506,8 @@
                 "cloudStorage": "Felhőtároló",
                 "developer": "Fejlesztői eszközök",
                 "mediaServices": "Médiaszolgáltatások",
-                "all": "Összes"
+                "all": "Összes",
+                "devices": "[NEEDS TRANSLATION] Devices"
             },
             "confirmDeleteServer": "Törli a(z) \"{name}\" szervert? Ez eltávolítja a mentett hitelesítő adatokat, és nem vonható vissza.",
             "renameWithHotkey": "Átnevezés (F2)",
@@ -4597,7 +4628,9 @@
                 "expand": "Oldalsáv kibontása",
                 "moveLeft": "Oldalsáv balra",
                 "moveRight": "Oldalsáv jobbra"
-            }
+            },
+            "deviceAttached": "[NEEDS TRANSLATION] Device attached",
+            "deviceNotAttached": "[NEEDS TRANSLATION] Device not attached"
         },
         "gitlab": {
             "projectPath": "Projekt utvonal",

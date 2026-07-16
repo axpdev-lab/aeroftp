@@ -289,7 +289,21 @@
             "storedTotpAdvanced": "Erweitert: 2FA-Geheimnis speichern",
             "storedTotpWarning": "Durch das Speichern des 2FA-Geheimnisses befinden sich beide Faktoren im Tresor. Wird das Master-Passwort des Tresors kompromittiert, schützt 2FA dieses Konto nicht mehr. Verwenden Sie vorzugsweise einen Einmalcode oder eine lokale WebDAV/S3-Bridge.",
             "filenBridgeCredentialRules": "Limit der Filen-Bridge: {max} Zeichen. Nicht unterstützt: {rejected}",
-            "filenBridgeCredentialRejected": "Diese Anmeldedaten enthalten Zeichen, die von der Filen-Bridge abgelehnt werden."
+            "filenBridgeCredentialRejected": "Diese Anmeldedaten enthalten Zeichen, die von der Filen-Bridge abgelehnt werden.",
+            "mtpDefaultName": "[NEEDS TRANSLATION] Portable device",
+            "mtpDetect": "[NEEDS TRANSLATION] Detect",
+            "mtpDetectFailed": "[NEEDS TRANSLATION] Could not list portable devices",
+            "mtpDetecting": "[NEEDS TRANSLATION] Detecting...",
+            "mtpDevice": "[NEEDS TRANSLATION] USB device",
+            "mtpFingerprint": "[NEEDS TRANSLATION] Fingerprint",
+            "mtpHonesty": "[NEEDS TRANSLATION] MTP is exclusive: only one app can open the device. Close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter). Some operations are limited by the device OS.",
+            "mtpNoDevices": "[NEEDS TRANSLATION] No portable devices detected. Plug in the phone or camera and enable File Transfer mode.",
+            "mtpRemotePathPlaceholder": "[NEEDS TRANSLATION] Default remote path (e.g. / or DCIM)",
+            "mtpSaveRequiresDevice": "[NEEDS TRANSLATION] Detect and select a device to enable Save.",
+            "mtpSelectPlaceholder": "[NEEDS TRANSLATION] Select a device...",
+            "mtpSelectPlaceholderEmpty": "[NEEDS TRANSLATION] No devices yet — click Detect",
+            "mtpNotAttachedTitle": "[NEEDS TRANSLATION] Device not connected",
+            "mtpNotAttached": "[NEEDS TRANSLATION] Plug in the device and enable File Transfer mode, then try again."
         },
         "browser": {
             "remote": "Remote",
@@ -1843,7 +1857,10 @@
             "s3RoleMfaTokenCode": "MFA-Tokencode",
             "s3RoleMfaTokenCodePlaceholder": "123456",
             "s3RoleMfaTokenCodeHint": "Einmalcode von Ihrem MFA-Gerät, nur erforderlich wenn die Rolle MFA erzwingt. Wird einmalig bei der Verbindung verwendet und nie gespeichert.",
-            "peerDesc": "Teilen Sie Ordner direkt mit Freunden über einen verschlüsselten Peer-to-Peer-Kanal, ganz ohne Server dazwischen."
+            "peerDesc": "Teilen Sie Ordner direkt mit Freunden über einen verschlüsselten Peer-to-Peer-Kanal, ganz ohne Server dazwischen.",
+            "devicesInfoLine1": "[NEEDS TRANSLATION] Save a portable USB device (phone, camera, tablet) as a My Servers profile. Detect the device over MTP, set default folders, and reconnect with one click when it is plugged in.",
+            "devicesInfoLine2": "[NEEDS TRANSLATION] MTP is exclusive: close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter).",
+            "discoverMtpPortable": "[NEEDS TRANSLATION] Phone, camera, or tablet over USB MTP"
         },
         "shortcuts": {
             "title": "Tastenkombinationen",
@@ -3195,7 +3212,19 @@
             "clear_recent": "Zuletzt verwendete löschen",
             "no_recent": "Keine zuletzt verwendeten Orte",
             "mount": "Einbinden",
-            "ejectFailed": "Auswerfen fehlgeschlagen"
+            "ejectFailed": "Auswerfen fehlgeschlagen",
+            "portable_devices": "Tragbare Geräte",
+            "portable_disconnect": "Trennen",
+            "portable_disconnect_failed": "Tragbares Gerät konnte nicht getrennt werden",
+            "portable_empty": "Keine tragbaren Geräte erkannt",
+            "portable_honesty": "Tragbare Geräte nutzen MTP: nur vollständige Dateikopie, kein Laufwerksbuchstabe, kein Resume, und manche Operationen sind gerätebedingt eingeschränkt (nicht AeroFTP).",
+            "portable_no_storages": "Sitzung geöffnet (Speicherliste leer oder auf diesem Gerät nicht verfügbar)",
+            "portable_open_failed": "Tragbares Gerät konnte nicht geöffnet werden",
+            "portable_opened": "Verbunden mit {name}",
+            "portable_storages": "{count} Speicher",
+            "portable_disconnected": "Tragbares Gerät getrennt: {name}",
+            "portable_unplugged": "Das tragbare Gerät wurde getrennt. Kabel erneut anschließen und erneut öffnen.",
+            "portable_needs_replug": "Vom Desktop nicht eingehängt. Kabel abziehen und wieder einstecken, dann erneut öffnen."
         },
         "viewMode": {
             "list": "Liste",
@@ -4456,7 +4485,8 @@
                 "media": "Medien",
                 "localBridge": "Lokale Brücke",
                 "paid": "Kostenpflichtig",
-                "encrypted": "Verschlüsselt"
+                "encrypted": "Verschlüsselt",
+                "mtp": "[NEEDS TRANSLATION] MTP"
             },
             "noServers": "Keine gespeicherten Server",
             "noServersHint": "Starten Sie mit einer Schnellverbindung oder erkunden Sie den Dienstkatalog.",
@@ -4476,7 +4506,8 @@
                 "cloudStorage": "Cloud-Speicher",
                 "developer": "Entwickler",
                 "mediaServices": "Mediendienste",
-                "all": "Alle"
+                "all": "Alle",
+                "devices": "[NEEDS TRANSLATION] Devices"
             },
             "confirmDeleteServer": "Server \"{name}\" löschen? Dies entfernt gespeicherte Anmeldedaten und kann nicht rückgängig gemacht werden.",
             "renameWithHotkey": "Umbenennen (F2)",
@@ -4597,7 +4628,9 @@
                 "expand": "Seitenleiste ausklappen",
                 "moveLeft": "Seitenleiste nach links",
                 "moveRight": "Seitenleiste nach rechts"
-            }
+            },
+            "deviceAttached": "[NEEDS TRANSLATION] Device attached",
+            "deviceNotAttached": "[NEEDS TRANSLATION] Device not attached"
         },
         "gitlab": {
             "projectPath": "Projektpfad",

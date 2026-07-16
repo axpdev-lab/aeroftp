@@ -61,6 +61,8 @@ interface MyServersTableProps {
     density: MyServersDensity;
     /** Profile ids that have at least one open session in the tab strip. */
     activeProfileIds?: ReadonlySet<string>;
+    /** MTP device profiles whose fingerprint matches a live USB device. */
+    attachedProfileIds?: ReadonlySet<string>;
     /** AeroShare friend rows: resolve the live drive-state for the badge chip. */
     getPeerState?: (server: ServerProfile) => PeerDriveState | undefined;
 }
@@ -145,6 +147,7 @@ export function MyServersTable({
     thresholds,
     density,
     activeProfileIds,
+    attachedProfileIds,
 }: MyServersTableProps) {
     const t = useTranslation();
     const { config, orderedVisibleColumns, resolveAlign } = columns;
@@ -318,6 +321,7 @@ export function MyServersTable({
                                 density={density}
                                 resolveAlign={resolveAlign}
                                 hasActiveSession={activeProfileIds?.has(server.id) ?? false}
+                                deviceAttached={server.protocol === 'mtp' ? (attachedProfileIds?.has(server.id) ?? false) : undefined}
                                 peerState={getPeerState?.(server)}
                             />
                         );

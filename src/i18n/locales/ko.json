@@ -289,7 +289,21 @@
             "storedTotpAdvanced": "고급: 2FA 비밀 키 저장",
             "storedTotpWarning": "2FA 비밀 키를 저장하면 두 인증 요소가 모두 볼트에 보관됩니다. 볼트 마스터 비밀번호가 유출되면 2FA가 더 이상 이 계정을 보호하지 못합니다. 일회용 코드 또는 로컬 WebDAV/S3 브리지를 사용하는 것이 좋습니다.",
             "filenBridgeCredentialRules": "Filen 브리지 제한: {max}자. 지원되지 않음: {rejected}",
-            "filenBridgeCredentialRejected": "이 인증 정보에는 Filen 브리지에서 거부하는 문자가 포함되어 있습니다."
+            "filenBridgeCredentialRejected": "이 인증 정보에는 Filen 브리지에서 거부하는 문자가 포함되어 있습니다.",
+            "mtpDefaultName": "[NEEDS TRANSLATION] Portable device",
+            "mtpDetect": "[NEEDS TRANSLATION] Detect",
+            "mtpDetectFailed": "[NEEDS TRANSLATION] Could not list portable devices",
+            "mtpDetecting": "[NEEDS TRANSLATION] Detecting...",
+            "mtpDevice": "[NEEDS TRANSLATION] USB device",
+            "mtpFingerprint": "[NEEDS TRANSLATION] Fingerprint",
+            "mtpHonesty": "[NEEDS TRANSLATION] MTP is exclusive: only one app can open the device. Close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter). Some operations are limited by the device OS.",
+            "mtpNoDevices": "[NEEDS TRANSLATION] No portable devices detected. Plug in the phone or camera and enable File Transfer mode.",
+            "mtpRemotePathPlaceholder": "[NEEDS TRANSLATION] Default remote path (e.g. / or DCIM)",
+            "mtpSaveRequiresDevice": "[NEEDS TRANSLATION] Detect and select a device to enable Save.",
+            "mtpSelectPlaceholder": "[NEEDS TRANSLATION] Select a device...",
+            "mtpSelectPlaceholderEmpty": "[NEEDS TRANSLATION] No devices yet — click Detect",
+            "mtpNotAttachedTitle": "[NEEDS TRANSLATION] Device not connected",
+            "mtpNotAttached": "[NEEDS TRANSLATION] Plug in the device and enable File Transfer mode, then try again."
         },
         "browser": {
             "remote": "원격",
@@ -1843,7 +1857,10 @@
             "s3RoleMfaTokenCode": "MFA 토큰 코드",
             "s3RoleMfaTokenCodePlaceholder": "123456",
             "s3RoleMfaTokenCodeHint": "MFA 디바이스의 일회용 코드로, 역할이 MFA를 요구하는 경우에만 필요합니다. 연결 시 한 번만 사용되며 저장되지 않습니다.",
-            "peerDesc": "중간 서버 없이 암호화된 P2P 채널을 통해 친구와 폴더를 직접 공유합니다."
+            "peerDesc": "중간 서버 없이 암호화된 P2P 채널을 통해 친구와 폴더를 직접 공유합니다.",
+            "devicesInfoLine1": "[NEEDS TRANSLATION] Save a portable USB device (phone, camera, tablet) as a My Servers profile. Detect the device over MTP, set default folders, and reconnect with one click when it is plugged in.",
+            "devicesInfoLine2": "[NEEDS TRANSLATION] MTP is exclusive: close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter).",
+            "discoverMtpPortable": "[NEEDS TRANSLATION] Phone, camera, or tablet over USB MTP"
         },
         "shortcuts": {
             "title": "단축키",
@@ -3195,7 +3212,19 @@
             "clear_recent": "최근 목록 지우기",
             "no_recent": "최근 위치 없음",
             "mount": "마운트",
-            "ejectFailed": "꺼내기 실패"
+            "ejectFailed": "꺼내기 실패",
+            "portable_devices": "[NEEDS TRANSLATION] Portable devices",
+            "portable_disconnect": "[NEEDS TRANSLATION] Disconnect",
+            "portable_disconnect_failed": "[NEEDS TRANSLATION] Could not disconnect portable device",
+            "portable_empty": "[NEEDS TRANSLATION] No portable devices detected",
+            "portable_honesty": "[NEEDS TRANSLATION] Portable devices use MTP: whole-file copy only, no drive letter, and some operations are limited by the device OS.",
+            "portable_no_storages": "[NEEDS TRANSLATION] Session open (no storage list yet; browse polish follows)",
+            "portable_open_failed": "[NEEDS TRANSLATION] Could not open portable device",
+            "portable_opened": "[NEEDS TRANSLATION] Connected to {name}",
+            "portable_storages": "[NEEDS TRANSLATION] {count} storage(s)",
+            "portable_disconnected": "[NEEDS TRANSLATION] Portable device disconnected: {name}",
+            "portable_unplugged": "휴대용 장치가 연결 해제되었습니다. 케이블을 다시 연결한 뒤 다시 여세요.",
+            "portable_needs_replug": "데스크톱에 마운트되지 않았습니다. 케이블을 뽑았다가 다시 꽂은 다음 다시 여세요."
         },
         "viewMode": {
             "list": "목록",
@@ -4456,7 +4485,8 @@
                 "media": "미디어",
                 "localBridge": "로컬 브리지",
                 "paid": "유료",
-                "encrypted": "암호화됨"
+                "encrypted": "암호화됨",
+                "mtp": "[NEEDS TRANSLATION] MTP"
             },
             "noServers": "저장된 서버가 없습니다",
             "noServersHint": "빠른 연결로 시작하거나 서비스 카탈로그를 탐색해 보세요.",
@@ -4476,7 +4506,8 @@
                 "cloudStorage": "클라우드 스토리지",
                 "developer": "개발자",
                 "mediaServices": "미디어 서비스",
-                "all": "전체"
+                "all": "전체",
+                "devices": "[NEEDS TRANSLATION] Devices"
             },
             "confirmDeleteServer": "서버 \"{name}\"을(를) 삭제하시겠습니까? 저장된 자격 증명이 제거되며 되돌릴 수 없습니다.",
             "renameWithHotkey": "이름 바꾸기 (F2)",
@@ -4597,7 +4628,9 @@
                 "expand": "사이드바 펼치기",
                 "moveLeft": "왼쪽으로 이동",
                 "moveRight": "오른쪽으로 이동"
-            }
+            },
+            "deviceAttached": "[NEEDS TRANSLATION] Device attached",
+            "deviceNotAttached": "[NEEDS TRANSLATION] Device not attached"
         },
         "gitlab": {
             "projectPath": "프로젝트 경로",

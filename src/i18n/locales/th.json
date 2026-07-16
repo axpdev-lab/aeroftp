@@ -289,7 +289,21 @@
             "storedTotpAdvanced": "ขั้นสูง: บันทึกข้อมูลลับ 2FA",
             "storedTotpWarning": "การบันทึกข้อมูลลับ 2FA จะเก็บปัจจัยทั้งสองไว้ในห้องนิรภัย หากรหัสผ่านหลักของห้องนิรภัยถูกเปิดเผย 2FA จะไม่สามารถปกป้องบัญชีนี้ได้อีก ควรใช้รหัสแบบใช้ครั้งเดียวหรือบริดจ์ WebDAV/S3 ภายในเครื่อง",
             "filenBridgeCredentialRules": "ขีดจำกัดบริดจ์ Filen: {max} อักขระ ไม่รองรับ: {rejected}",
-            "filenBridgeCredentialRejected": "ข้อมูลรับรองนี้มีอักขระที่บริดจ์ Filen ปฏิเสธ"
+            "filenBridgeCredentialRejected": "ข้อมูลรับรองนี้มีอักขระที่บริดจ์ Filen ปฏิเสธ",
+            "mtpDefaultName": "[NEEDS TRANSLATION] Portable device",
+            "mtpDetect": "[NEEDS TRANSLATION] Detect",
+            "mtpDetectFailed": "[NEEDS TRANSLATION] Could not list portable devices",
+            "mtpDetecting": "[NEEDS TRANSLATION] Detecting...",
+            "mtpDevice": "[NEEDS TRANSLATION] USB device",
+            "mtpFingerprint": "[NEEDS TRANSLATION] Fingerprint",
+            "mtpHonesty": "[NEEDS TRANSLATION] MTP is exclusive: only one app can open the device. Close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter). Some operations are limited by the device OS.",
+            "mtpNoDevices": "[NEEDS TRANSLATION] No portable devices detected. Plug in the phone or camera and enable File Transfer mode.",
+            "mtpRemotePathPlaceholder": "[NEEDS TRANSLATION] Default remote path (e.g. / or DCIM)",
+            "mtpSaveRequiresDevice": "[NEEDS TRANSLATION] Detect and select a device to enable Save.",
+            "mtpSelectPlaceholder": "[NEEDS TRANSLATION] Select a device...",
+            "mtpSelectPlaceholderEmpty": "[NEEDS TRANSLATION] No devices yet — click Detect",
+            "mtpNotAttachedTitle": "[NEEDS TRANSLATION] Device not connected",
+            "mtpNotAttached": "[NEEDS TRANSLATION] Plug in the device and enable File Transfer mode, then try again."
         },
         "browser": {
             "remote": "ระยะไกล",
@@ -1843,7 +1857,10 @@
             "s3RoleMfaTokenCode": "รหัสโทเค็น MFA",
             "s3RoleMfaTokenCodePlaceholder": "123456",
             "s3RoleMfaTokenCodeHint": "รหัสใช้ครั้งเดียวจากอุปกรณ์ MFA ของคุณ จำเป็นเฉพาะเมื่อบทบาทบังคับใช้ MFA ใช้หนึ่งครั้งเมื่อเชื่อมต่อและไม่บันทึกไว้",
-            "peerDesc": "แชร์โฟลเดอร์โดยตรงกับเพื่อนผ่านช่องทางแบบเพียร์ทูเพียร์ที่เข้ารหัส โดยไม่มีเซิร์ฟเวอร์อยู่ตรงกลาง"
+            "peerDesc": "แชร์โฟลเดอร์โดยตรงกับเพื่อนผ่านช่องทางแบบเพียร์ทูเพียร์ที่เข้ารหัส โดยไม่มีเซิร์ฟเวอร์อยู่ตรงกลาง",
+            "devicesInfoLine1": "[NEEDS TRANSLATION] Save a portable USB device (phone, camera, tablet) as a My Servers profile. Detect the device over MTP, set default folders, and reconnect with one click when it is plugged in.",
+            "devicesInfoLine2": "[NEEDS TRANSLATION] MTP is exclusive: close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter).",
+            "discoverMtpPortable": "[NEEDS TRANSLATION] Phone, camera, or tablet over USB MTP"
         },
         "shortcuts": {
             "title": "แป้นพิมพ์ลัด",
@@ -3195,7 +3212,19 @@
             "clear_recent": "ล้างรายการล่าสุด",
             "no_recent": "ไม่มีตำแหน่งล่าสุด",
             "mount": "เมาต์",
-            "ejectFailed": "การนำออกล้มเหลว"
+            "ejectFailed": "การนำออกล้มเหลว",
+            "portable_devices": "[NEEDS TRANSLATION] Portable devices",
+            "portable_disconnect": "[NEEDS TRANSLATION] Disconnect",
+            "portable_disconnect_failed": "[NEEDS TRANSLATION] Could not disconnect portable device",
+            "portable_empty": "[NEEDS TRANSLATION] No portable devices detected",
+            "portable_honesty": "[NEEDS TRANSLATION] Portable devices use MTP: whole-file copy only, no drive letter, and some operations are limited by the device OS.",
+            "portable_no_storages": "[NEEDS TRANSLATION] Session open (no storage list yet; browse polish follows)",
+            "portable_open_failed": "[NEEDS TRANSLATION] Could not open portable device",
+            "portable_opened": "[NEEDS TRANSLATION] Connected to {name}",
+            "portable_storages": "[NEEDS TRANSLATION] {count} storage(s)",
+            "portable_disconnected": "[NEEDS TRANSLATION] Portable device disconnected: {name}",
+            "portable_unplugged": "อุปกรณ์พกพาถูกตัดการเชื่อมต่อ เสียบสายเคเบิลอีกครั้งแล้วเปิดใหม่อีกครั้ง",
+            "portable_needs_replug": "เดสก์ท็อปยังไม่ได้เมานต์ ถอดสายแล้วเสียบใหม่ จากนั้นเปิดอีกครั้ง"
         },
         "viewMode": {
             "list": "รายการ",
@@ -4456,7 +4485,8 @@
                 "media": "มีเดีย",
                 "localBridge": "บริดจ์ในเครื่อง",
                 "paid": "เสียเงิน",
-                "encrypted": "เข้ารหัส"
+                "encrypted": "เข้ารหัส",
+                "mtp": "[NEEDS TRANSLATION] MTP"
             },
             "noServers": "ไม่มีเซิร์ฟเวอร์ที่บันทึกไว้",
             "noServersHint": "เริ่มต้นด้วยการเชื่อมต่อด่วนหรือสำรวจแค็ตตาล็อกบริการ",
@@ -4476,7 +4506,8 @@
                 "cloudStorage": "พื้นที่จัดเก็บคลาวด์",
                 "developer": "นักพัฒนา",
                 "mediaServices": "บริการสื่อ",
-                "all": "ทั้งหมด"
+                "all": "ทั้งหมด",
+                "devices": "[NEEDS TRANSLATION] Devices"
             },
             "confirmDeleteServer": "ลบเซิร์ฟเวอร์ \"{name}\"? การดำเนินการนี้จะลบข้อมูลรับรองที่บันทึกไว้และไม่สามารถย้อนกลับได้",
             "renameWithHotkey": "เปลี่ยนชื่อ (F2)",
@@ -4597,7 +4628,9 @@
                 "expand": "ขยายแถบด้านข้าง",
                 "moveLeft": "ย้ายไปทางซ้าย",
                 "moveRight": "ย้ายไปทางขวา"
-            }
+            },
+            "deviceAttached": "[NEEDS TRANSLATION] Device attached",
+            "deviceNotAttached": "[NEEDS TRANSLATION] Device not attached"
         },
         "gitlab": {
             "projectPath": "เส้นทางโปรเจกต์",

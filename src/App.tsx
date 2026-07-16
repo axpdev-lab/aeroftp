@@ -420,7 +420,7 @@ import DiskUsageTreemap from './components/DiskUsageTreemap';
 import { FileTagBadge } from './components/FileTagBadge';
 import { VaultIcon } from './components/icons/VaultIcon';
 import { DecryptingText } from './components/DecryptingText';
-import type { TrashItem, FolderSizeResult, LocalTab } from './types/aerofile';
+import type { TrashItem, FolderSizeResult, LocalTab, MtpDeviceInfo, MtpSessionInfo, VolumeInfo } from './types/aerofile';
 
 // Utilities
 import { formatBytes, formatSpeed, formatETA, formatDate, isWindowsDriveRoot, parentLocalPath } from './utils';
@@ -463,6 +463,7 @@ import { TransferToastContainer, dispatchTransferToast, reopenTransferToast } fr
 import { runExtractWithToast } from './utils/extractToast';
 import { archiveStem, dispatchGeneralExtract, isWrongPasswordError, resolveUniqueExtractDir } from './utils/extractOrchestrator';
 import { formatExtractDetails, formatCompressDetails } from './utils/archiveSizeReport';
+import { findGvfsMtpMount, isGvfsMtpPath } from './utils/gvfsMtpMount';
 import { GlobalTooltip } from './components/GlobalTooltip';
 import { TransferProgressBar } from './components/TransferProgressBar';
 import { ImageThumbnail } from './components/ImageThumbnail';
@@ -4316,6 +4317,320 @@ interface UpdateVerificationInfo {
     void changeLocalDirectory(path);
   }
 
+  // MTP / portable devices (APPENDIX-MTP Phase 4+5 + DEVICE-PROFILES Phase 3):
+  // session open via PLACES or My Servers card. Installs MtpProvider (exclusive)
+  // or MtpFsProvider (gvfs-first) into ProviderState so remote panel lists via
+  // provider_list_files. Card "connected" = this remote session is live;
+  // attach-dot = cable present (separate). Never invent a fake OS path for exclusive.
+  const [activePortableDeviceId, setActivePortableDeviceId] = useState<string | null>(null);
+  /** When the remote MTP session rides gvfs, store the mount path for honest unplug. */
+  const mtpGvfsMountPathRef = useRef<string | null>(null);
+  const MTP_HONESTY_SEEN_KEY = 'aerofile_mtp_honesty_seen';
+
+  /** Shared open path for PLACES exclusive fallback and saved device profile card.
+   *  Gvfs-first: if the desktop already mounted the phone, install an FS-backed
+   *  provider rooted at that mount (no libmtp; no bus fight). Else exclusive
+   *  mtp_open_device. When `profile` is set: savedServerId for activeProfileIds
+   *  pulse, default remote/local paths, providerId from profile (usually mtp-portable). */
+  const openMtpSessionFromLiveDevice = useCallback(async (
+    device: MtpDeviceInfo,
+    profile?: Pick<ServerProfile, 'id' | 'name' | 'providerId' | 'initialPath' | 'localInitialPath'>,
+  ) => {
+    try {
+      // Drop any live remote/FTP slot first; open also drains ProviderState.
+      try { await invoke('provider_disconnect'); } catch { /* not connected */ }
+      try { await invoke('disconnect_ftp'); } catch { /* not connected */ }
+      try { await invoke('mtp_close_device', { deviceId: null }); } catch { /* none */ }
+
+      // Ride gvfs when the desktop already holds the single MTP session.
+      // Exclusive libmtp after automount always loses (PTP_ERROR_IO) and can wedge
+      // the phone; see 09-live-findings-2026-07-16.md.
+      let gvfsMount: string | null = null;
+      try {
+        const mounts = await invoke<VolumeInfo[]>('list_mounted_volumes');
+        gvfsMount = findGvfsMtpMount(mounts, device);
+      } catch {
+        gvfsMount = null;
+      }
+
+      const displayHint =
+        profile?.name || device.displayName || undefined;
+      let session: MtpSessionInfo;
+      if (gvfsMount) {
+        session = await invoke<MtpSessionInfo>('mtp_open_gvfs_mount', {
+          mountPath: gvfsMount,
+          deviceId: device.deviceId,
+          displayName: displayHint ?? null,
+        });
+        mtpGvfsMountPathRef.current = gvfsMount;
+      } else {
+        session = await invoke<MtpSessionInfo>('mtp_open_device', {
+          deviceId: device.deviceId,
+        });
+        mtpGvfsMountPathRef.current = null;
+      }
+      setActivePortableDeviceId(session.deviceId);
+
+      const displayName =
+        profile?.name || session.displayName || device.displayName || 'Portable device';
+      // PLACES-only opens stay providerId 'mtp'; saved device profiles use mtp-portable.
+      const providerId = profile?.providerId || 'mtp';
+      const mtpParams: ConnectionParams = {
+        protocol: 'mtp',
+        server: displayName,
+        username: '',
+        password: '',
+        displayName,
+        providerId,
+        ...(profile?.id ? { savedServerId: profile.id } : {}),
+      };
+      setConnectionParams(mtpParams);
+      setIsConnected(true);
+      setShowRemotePanel(true);
+      setShowLocalPreview(false);
+      setShowConnectionScreen(false);
+      setActivePanel('remote');
+
+      const mapProviderFiles = (raw: any[] | undefined): RemoteFile[] =>
+        (raw || []).map((f: any) => ({
+          name: f.name,
+          path: f.path,
+          size: f.size,
+          is_dir: f.is_dir,
+          modified: f.modified,
+          permissions: f.permissions,
+          metadata: f.metadata,
+        }));
+
+      // List storage roots (or profile default remote path) through provider fabric.
+      let files: RemoteFile[] = [];
+      let remotePath = '/';
+      const wantedRemote = profile?.initialPath?.trim();
+      try {
+        if (wantedRemote && wantedRemote !== '/' && wantedRemote !== '.') {
+          try {
+            const response = await invoke<{ files: any[]; current_path: string }>('provider_change_dir', {
+              path: wantedRemote,
+            });
+            files = mapProviderFiles(response.files);
+            remotePath = response.current_path || wantedRemote;
+          } catch {
+            // Default path missing on device: fall back to storage roots.
+            const response = await invoke<{ files: any[]; current_path: string }>('provider_list_files', {
+              path: null,
+            });
+            files = mapProviderFiles(response.files);
+            remotePath = response.current_path || '/';
+          }
+        } else {
+          const response = await invoke<{ files: any[]; current_path: string }>('provider_list_files', {
+            path: null,
+          });
+          files = mapProviderFiles(response.files);
+          remotePath = response.current_path || '/';
+        }
+        setRemoteFiles(files);
+        setCurrentRemotePath(remotePath);
+        setCurrentRemoteDisplayPath(remotePath);
+        setSelectedRemoteFiles(new Set());
+      } catch (listErr) {
+        // Open succeeded; listing may fail when backend is Null/unlinked or
+        // the device needs unlock. Keep the session active and show the error.
+        const listErrorMessage = typeof listErr === 'string' ? listErr : String(listErr);
+        setRemoteFiles([]);
+        setCurrentRemotePath('/');
+        setCurrentRemoteDisplayPath('/');
+        activityLog.log(
+          'ERROR',
+          `${t('sidebar.portable_open_failed')}: ${displayName}`,
+          'error',
+          listErrorMessage,
+        );
+        window.dispatchEvent(new CustomEvent('aeroftp-toast', {
+          detail: {
+            type: 'error',
+            title: t('sidebar.portable_open_failed'),
+            message: listErrorMessage,
+            duration: 8000,
+            important: true,
+          },
+        }));
+      }
+
+      // Optional default local folder (saved device profile). Inline invoke
+      // because this callback sits above loadLocalFiles in the App body.
+      let resolvedLocalPath = currentLocalPath;
+      let resolvedLocalFiles = localFiles;
+      const wantedLocal = profile?.localInitialPath?.trim();
+      if (wantedLocal) {
+        try {
+          const listed: LocalFile[] = await invoke('get_local_files', {
+            path: wantedLocal,
+            showHidden: showHiddenFiles,
+          });
+          setLocalFiles(listed);
+          setCurrentLocalPath(wantedLocal);
+          setSelectedLocalFiles(new Set());
+          resolvedLocalPath = wantedLocal;
+          resolvedLocalFiles = listed;
+        } catch {
+          // Keep current local path when the saved default is missing.
+        }
+      }
+
+      // Session tab so disconnect / multi-tab plumbing treats MTP like any provider.
+      // savedServerId makes activeProfileIds pulse the My Servers card.
+      const newSession: FtpSession = {
+        id: `session_mtp_${Date.now()}`,
+        serverId: displayName,
+        ...(profile?.id ? { savedServerId: profile.id } : {}),
+        serverName: displayName,
+        status: 'connected',
+        remotePath,
+        localPath: resolvedLocalPath,
+        remoteFiles: files,
+        localFiles: [...resolvedLocalFiles],
+        lastActivity: new Date(),
+        connectionParams: mtpParams,
+        providerId,
+        isSyncNavigation: false,
+        syncBasePaths: null,
+        aeroVaultOverlaySession: null,
+      };
+      setIsSyncNavigation(false);
+      setSyncBasePaths(null);
+      setSessions([newSession]);
+      setActiveSessionId(newSession.id);
+
+      const storageNames = session.storages
+        .map((s) => s.displayName)
+        .filter((n) => n && n.trim().length > 0);
+      const detail = storageNames.length > 0
+        ? storageNames.join(', ')
+        : t('sidebar.portable_no_storages');
+      if (profile?.id) void clearProfileConnectFailure(profile.id);
+      notify.success(
+        t('sidebar.portable_opened', { name: displayName }),
+        detail,
+      );
+      // Dismissible honesty once per profile store (localStorage).
+      let seen = false;
+      try {
+        seen = localStorage.getItem(MTP_HONESTY_SEEN_KEY) === 'true';
+      } catch {
+        seen = false;
+      }
+      if (!seen) {
+        notify.info(t('sidebar.portable_devices'), t('sidebar.portable_honesty'));
+        try {
+          localStorage.setItem(MTP_HONESTY_SEEN_KEY, 'true');
+        } catch {
+          /* quota */
+        }
+      }
+    } catch (err) {
+      setActivePortableDeviceId(null);
+      mtpGvfsMountPathRef.current = null;
+      const errorMessage = typeof err === 'string' ? err : String(err);
+      const deviceName = profile?.name || device.displayName || device.deviceId;
+      if (profile?.id) void recordProfileConnectFailure(profile.id, err);
+      activityLog.log(
+        'CONNECT',
+        `${t('sidebar.portable_open_failed')}: ${deviceName}`,
+        'error',
+        errorMessage,
+      );
+      // Important: surface even if ambient toasts are off (user clicked).
+      window.dispatchEvent(new CustomEvent('aeroftp-toast', {
+        detail: {
+          type: 'error',
+          title: t('sidebar.portable_open_failed'),
+          message: errorMessage,
+          duration: 8000,
+          important: true,
+        },
+      }));
+      throw err;
+    }
+  }, [notify, t, currentLocalPath, localFiles, showHiddenFiles, activityLog]);
+
+  /** PLACES portable row: open without a saved profile. */
+  const handleOpenPortableDevice = useCallback(async (device: MtpDeviceInfo) => {
+    await openMtpSessionFromLiveDevice(device);
+  }, [openMtpSessionFromLiveDevice]);
+
+  const handlePortableDeviceClosed = useCallback((deviceId: string) => {
+    setActivePortableDeviceId((prev) => (prev === deviceId ? null : prev));
+    mtpGvfsMountPathRef.current = null;
+    // Device unplugged or ejected: release ProviderState. Eject already called
+    // mtp_close_device; unplug may not have, so both are best-effort.
+    void (async () => {
+      try { await invoke('mtp_close_device', { deviceId }); } catch { /* ignore */ }
+      try { await invoke('provider_disconnect'); } catch { /* ignore */ }
+    })();
+    // Step the remote panel out only when this was an MTP session.
+    if (connectionParams.protocol === 'mtp') {
+      setIsConnected(false);
+      setRemoteFiles([]);
+      setCurrentRemotePath('/');
+      setCurrentRemoteDisplayPath('/');
+      setSessions([]);
+      setActiveSessionId(null);
+      setShowRemotePanel(false);
+      setShowConnectionScreen(true);
+      setActivePanel('local');
+      const name = connectionParams.server || deviceId;
+      // One activity line, typed DISCONNECT. Toast raised directly rather than
+      // through `notify`, which would log a second, INFO-typed copy of the same
+      // sentence.
+      humanLog.logRaw('sidebar.portable_disconnected', 'DISCONNECT', { name }, 'error');
+      if (showToastNotifications) {
+        toast.info(t('sidebar.portable_devices'), t('sidebar.portable_disconnected', { name }));
+      }
+    }
+  }, [
+    connectionParams.protocol,
+    connectionParams.server,
+    humanLog,
+    showToastNotifications,
+    toast,
+    t,
+  ]);
+
+  // Unplug while a device session is live.
+  //
+  // PlacesSidebar also detects this, but it cannot be the only detector: while
+  // a My Servers card is connected the sidebar is not even mounted, so nothing
+  // noticed the cable leaving. The session stayed "connected" until the user
+  // touched it, and then the generic provider reconnect machinery answered with
+  // "Reconnection failed" -- retry semantics that can never work for an unplug,
+  // and no Disconnect line in the activity log.
+  //
+  // The hotplug wake (`mtp-devices-changed`, Linux uevents / Windows
+  // WM_DEVICECHANGE) already fires within a second, so listen for it here, where
+  // the session lives, and tear the session down honestly.
+  useEffect(() => {
+    if (!activePortableDeviceId) return;
+    const openDeviceId = activePortableDeviceId;
+
+    const dispose = guardedUnlisten(
+      listen<void>('mtp-devices-changed', () => {
+        void (async () => {
+          try {
+            const devices = await invoke<MtpDeviceInfo[]>('list_mtp_devices');
+            if (!devices.some((d) => d.deviceId === openDeviceId)) {
+              handlePortableDeviceClosed(openDeviceId);
+            }
+          } catch {
+            // Listing failed: say nothing rather than kill a live session on a
+            // transient backend error.
+          }
+        })();
+      }),
+    );
+    return () => dispose();
+  }, [activePortableDeviceId, handlePortableDeviceClosed]);
+
   const handleRestoreTrashItem = useCallback(async (item: TrashItem) => {
     try {
       await invoke('restore_trash_item', { id: item.id, originalPath: item.original_path });
@@ -4670,6 +4985,27 @@ interface UpdateVerificationInfo {
       return true;
     } catch (error) {
       if (callId !== loadLocalCallIdRef.current) return false;
+      // gvfs MTP mount vanishes on unplug; the raw "Path does not exist"
+      // is useless. Tell the user what happened and step the panel Home.
+      if (isGvfsMtpPath(path)) {
+        notify.error(t('common.error'), t('sidebar.portable_unplugged'));
+        try {
+          const home = await homeDir().catch(() => '/');
+          if (home === path) return false;
+          const homeCallId = ++loadLocalCallIdRef.current;
+          const homeFiles: LocalFile[] = await invoke('get_local_files', {
+            path: home,
+            showHidden: showHiddenFiles,
+          });
+          if (homeCallId !== loadLocalCallIdRef.current) return false;
+          setLocalFiles(homeFiles);
+          setCurrentLocalPath(home);
+          setSelectedLocalFiles(new Set());
+          return true;
+        } catch {
+          return false;
+        }
+      }
       notify.error(t('common.error'), `Failed to list local files: ${error}`);
       return false;
     }
@@ -4684,10 +5020,44 @@ interface UpdateVerificationInfo {
       setSelectedLocalFiles2(new Set());
       return true;
     } catch (error) {
+      if (isGvfsMtpPath(path)) {
+        notify.error(t('common.error'), t('sidebar.portable_unplugged'));
+        try {
+          const home = await homeDir().catch(() => '/');
+          if (home === path) return false;
+          const homeFiles: LocalFile[] = await invoke('get_local_files', {
+            path: home,
+            showHidden: showHiddenFiles,
+          });
+          setLocalFiles2(homeFiles);
+          setCurrentLocalPath2(home);
+          setSelectedLocalFiles2(new Set());
+          return true;
+        } catch {
+          return false;
+        }
+      }
       notify.error(t('common.error'), `Failed to list local files: ${error}`);
       return false;
     }
   }, [showHiddenFiles, notify, t, setLocalFiles2, setCurrentLocalPath2, setSelectedLocalFiles2]);
+
+  // Reload every local panel whose current path equals `dir` (panel 1 and/or
+  // dual panel 2). Paste / cut destinations must not hardcode panel 1: dual
+  // local mode and PLACES gvfs paths often target panel 2.
+  const refreshLocalPanelForPath = useCallback(async (dir: string | null | undefined) => {
+    if (!dir) return;
+    const norm = (p: string) => p.replace(/\\/g, '/').replace(/\/+$/, '') || '/';
+    const n = norm(dir);
+    const tasks: Promise<unknown>[] = [];
+    if (currentLocalPath && norm(currentLocalPath) === n) {
+      tasks.push(loadLocalFiles(currentLocalPath));
+    }
+    if (currentLocalPath2 && norm(currentLocalPath2) === n) {
+      tasks.push(loadLocalFiles2(currentLocalPath2));
+    }
+    if (tasks.length > 0) await Promise.all(tasks);
+  }, [currentLocalPath, currentLocalPath2, loadLocalFiles, loadLocalFiles2]);
 
   const changeLocalDirectory2 = useCallback(async (path: string) => {
     await loadLocalFiles2(path);
@@ -5433,6 +5803,33 @@ interface UpdateVerificationInfo {
         }
       }
       console.error('[loadRemoteFiles] Error:', error);
+      // Gvfs-backed MTP: mount vanishes on unplug; raw IO error is useless.
+      // Card "connected" ends; attach-dot is driven separately by device list.
+      if (
+        connectionParams.protocol === 'mtp'
+        && mtpGvfsMountPathRef.current
+        && (isGvfsMtpPath(mtpGvfsMountPathRef.current)
+          || /not found|no such file|not a directory|not connected|not available/i.test(String(error)))
+      ) {
+        mtpGvfsMountPathRef.current = null;
+        setActivePortableDeviceId(null);
+        setIsConnected(false);
+        setRemoteFiles([]);
+        setCurrentRemotePath('/');
+        setCurrentRemoteDisplayPath('/');
+        setSessions([]);
+        setActiveSessionId(null);
+        setShowRemotePanel(false);
+        setShowConnectionScreen(true);
+        setActivePanel('local');
+        void (async () => {
+          try { await invoke('mtp_close_device', { deviceId: null }); } catch { /* ignore */ }
+          try { await invoke('provider_disconnect'); } catch { /* ignore */ }
+        })();
+        activityLog.log('ERROR', t('sidebar.portable_unplugged'), 'error');
+        notify.error(t('common.error'), t('sidebar.portable_unplugged'));
+        return null;
+      }
       activityLog.log('ERROR', `Failed to list files: ${error}`, 'error');
       notify.error(t('common.error'), `Failed to list files: ${error}`);
       return null;
@@ -7105,7 +7502,12 @@ interface UpdateVerificationInfo {
       setOverlayDecrypting(false);
       overlayReloadedVaultRef.current = null;
       overlayUnlockInFlightRef.current = false;
-      await invoke('disconnect_ftp');
+      // Providers (including MTP) live in ProviderState; FTP uses AppState.
+      // Always attempt both so a single Disconnect clears whichever is live.
+      try { await invoke('provider_disconnect'); } catch { /* not a provider session */ }
+      try { await invoke('disconnect_ftp'); } catch { /* not an FTP session */ }
+      try { await invoke('mtp_close_device', { deviceId: null }); } catch { /* no MTP */ }
+      setActivePortableDeviceId(null);
       setIsConnected(false);
       setActivePanel('local');
       setRemoteFiles([]);
@@ -10660,18 +11062,18 @@ interface UpdateVerificationInfo {
     // Cross-panel paste → upload or download using clipboard paths directly
     if (sourceIsRemote !== targetIsRemote) {
       if (sourceIsRemote) {
-        // Remote → Local: download each file using stored path (not current listing)
+        // Remote → Local: download into the paste target panel path (not always panel 1)
         for (const file of files) {
           try {
             if (batchCancelledRef.current) break;
-            await downloadFile(file.path, file.name, currentLocalPath, file.is_dir);
+            await downloadFile(file.path, file.name, targetDir, file.is_dir);
           } catch (e) {
             if (!batchCancelledRef.current) {
               notify.error(t('toast.downloadFailed'), `${file.name}: ${String(e)}`);
             }
           }
         }
-        loadLocalFiles(currentLocalPath);
+        await refreshLocalPanelForPath(targetDir);
       } else {
         // Local → Remote: upload each file using stored path (not current listing)
         for (const file of files) {
@@ -10718,7 +11120,7 @@ interface UpdateVerificationInfo {
           }
         }
         if (sourceIsRemote) loadRemoteFiles(undefined, true);
-        else loadLocalFiles(currentLocalPath);
+        else await refreshLocalPanelForPath(sourceDir);
       }
     }
     // Same-panel paste
@@ -10755,8 +11157,13 @@ interface UpdateVerificationInfo {
             notify.error(t('toast.renameFailed', { error: `${file.name}: ${String(e)}` }));
           }
         }
-        if (targetIsRemote) loadRemoteFiles(undefined, true);
-        else loadLocalFiles(currentLocalPath);
+        if (targetIsRemote) {
+          loadRemoteFiles(undefined, true);
+        } else {
+          // Destination listing + source listing when cut across dual local panels
+          await refreshLocalPanelForPath(targetDir);
+          if (sourceDir) await refreshLocalPanelForPath(sourceDir);
+        }
       } else {
         // Copy files within same panel
         if (!targetIsRemote) {
@@ -10785,7 +11192,7 @@ interface UpdateVerificationInfo {
               }
             }
           }
-          loadLocalFiles(currentLocalPath);
+          await refreshLocalPanelForPath(targetDir);
         } else {
           const isAeroVaultOverlay = !!aeroVaultOverlaySession?.sessionId;
           // Remote copy via server-side copy API
@@ -16000,6 +16407,7 @@ interface UpdateVerificationInfo {
               onActivateSession={goToActiveSession}
               connectingProfileId={connectingProfileId}
               onDisconnectProfile={disconnectProfile}
+              onOpenMtpDeviceProfile={openMtpSessionFromLiveDevice}
               serversRefreshKey={serversRefreshKey}
               onServersChanged={() => setServersRefreshKey(k => k + 1)}
               onAeroCloud={() => {
@@ -17602,6 +18010,9 @@ interface UpdateVerificationInfo {
                   sidebarCurrentPath={sidebarCurrentPath}
                   sidebarOnNavigate={handleSidebarNavigate}
                   sidebarActivePanelMarker={isDualLocalAeroFileMode ? (sidebarTargetPanelId === 'local2' ? 'R' : 'L') : undefined}
+                  onOpenPortableDevice={handleOpenPortableDevice}
+                  activePortableDeviceId={activePortableDeviceId}
+                  onPortableDeviceClosed={handlePortableDeviceClosed}
                   recentPaths={recentPaths}
                   setRecentPaths={setRecentPaths}
                   iconProvider={iconProvider}

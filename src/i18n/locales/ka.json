@@ -289,7 +289,21 @@
             "storedTotpAdvanced": "გაფართოებული: 2FA საიდუმლოს შენახვა",
             "storedTotpWarning": "2FA საიდუმლოს შენახვისას ორივე ფაქტორი საცავში თავსდება. თუ საცავის მთავარი პაროლი გამჟღავნდა, 2FA ამ ანგარიშს ვეღარ დაიცავს. უპირატესობა მიანიჭეთ ერთჯერად კოდს ან ლოკალურ WebDAV/S3 ხიდს.",
             "filenBridgeCredentialRules": "Filen ხიდის ლიმიტი: {max} სიმბოლო. მხარდაუჭერელია: {rejected}",
-            "filenBridgeCredentialRejected": "ეს ავტორიზაციის მონაცემი შეიცავს Filen ხიდის მიერ უარყოფილ სიმბოლოებს."
+            "filenBridgeCredentialRejected": "ეს ავტორიზაციის მონაცემი შეიცავს Filen ხიდის მიერ უარყოფილ სიმბოლოებს.",
+            "mtpDefaultName": "[NEEDS TRANSLATION] Portable device",
+            "mtpDetect": "[NEEDS TRANSLATION] Detect",
+            "mtpDetectFailed": "[NEEDS TRANSLATION] Could not list portable devices",
+            "mtpDetecting": "[NEEDS TRANSLATION] Detecting...",
+            "mtpDevice": "[NEEDS TRANSLATION] USB device",
+            "mtpFingerprint": "[NEEDS TRANSLATION] Fingerprint",
+            "mtpHonesty": "[NEEDS TRANSLATION] MTP is exclusive: only one app can open the device. Close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter). Some operations are limited by the device OS.",
+            "mtpNoDevices": "[NEEDS TRANSLATION] No portable devices detected. Plug in the phone or camera and enable File Transfer mode.",
+            "mtpRemotePathPlaceholder": "[NEEDS TRANSLATION] Default remote path (e.g. / or DCIM)",
+            "mtpSaveRequiresDevice": "[NEEDS TRANSLATION] Detect and select a device to enable Save.",
+            "mtpSelectPlaceholder": "[NEEDS TRANSLATION] Select a device...",
+            "mtpSelectPlaceholderEmpty": "[NEEDS TRANSLATION] No devices yet — click Detect",
+            "mtpNotAttachedTitle": "[NEEDS TRANSLATION] Device not connected",
+            "mtpNotAttached": "[NEEDS TRANSLATION] Plug in the device and enable File Transfer mode, then try again."
         },
         "browser": {
             "remote": "დისტანციური",
@@ -1843,7 +1857,10 @@
             "s3RoleMfaTokenCode": "MFA ტოკენის კოდი",
             "s3RoleMfaTokenCodePlaceholder": "123456",
             "s3RoleMfaTokenCodeHint": "ერთჯერადი კოდი თქვენი MFA მოწყობილობიდან, საჭიროა მხოლოდ თუ როლი მოითხოვს MFA-ს. გამოიყენება ერთხელ დაკავშირებისას და არასოდეს ინახება.",
-            "peerDesc": "გააზიარეთ საქაღალდეები პირდაპირ მეგობრებთან დაშიფრული peer-to-peer არხით, შუა სერვერის გარეშე."
+            "peerDesc": "გააზიარეთ საქაღალდეები პირდაპირ მეგობრებთან დაშიფრული peer-to-peer არხით, შუა სერვერის გარეშე.",
+            "devicesInfoLine1": "[NEEDS TRANSLATION] Save a portable USB device (phone, camera, tablet) as a My Servers profile. Detect the device over MTP, set default folders, and reconnect with one click when it is plugged in.",
+            "devicesInfoLine2": "[NEEDS TRANSLATION] MTP is exclusive: close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter).",
+            "discoverMtpPortable": "[NEEDS TRANSLATION] Phone, camera, or tablet over USB MTP"
         },
         "shortcuts": {
             "title": "კლავიატურის მალსახმობები",
@@ -3195,7 +3212,19 @@
             "clear_recent": "ბოლოდროინდელის გასუფთავება",
             "no_recent": "ბოლო მდებარეობები არ არის",
             "mount": "მაუნტი",
-            "ejectFailed": "ამოღება ვერ მოხერხდა"
+            "ejectFailed": "ამოღება ვერ მოხერხდა",
+            "portable_devices": "[NEEDS TRANSLATION] Portable devices",
+            "portable_disconnect": "[NEEDS TRANSLATION] Disconnect",
+            "portable_disconnect_failed": "[NEEDS TRANSLATION] Could not disconnect portable device",
+            "portable_empty": "[NEEDS TRANSLATION] No portable devices detected",
+            "portable_honesty": "[NEEDS TRANSLATION] Portable devices use MTP: whole-file copy only, no drive letter, and some operations are limited by the device OS.",
+            "portable_no_storages": "[NEEDS TRANSLATION] Session open (no storage list yet; browse polish follows)",
+            "portable_open_failed": "[NEEDS TRANSLATION] Could not open portable device",
+            "portable_opened": "[NEEDS TRANSLATION] Connected to {name}",
+            "portable_storages": "[NEEDS TRANSLATION] {count} storage(s)",
+            "portable_disconnected": "[NEEDS TRANSLATION] Portable device disconnected: {name}",
+            "portable_unplugged": "პორტატული მოწყობილობა გაითიშა. ხელახლა შეაერთეთ კაბელი და გახსენით ხელახლა.",
+            "portable_needs_replug": "სამუშაო მაგიდის მიერ არ არის მიმაგრებული. ამოაძრეთ და ხელახლა შეაერთეთ კაბელი, შემდეგ კვლავ გახსენით."
         },
         "viewMode": {
             "list": "სია",
@@ -4456,7 +4485,8 @@
                 "media": "მედია",
                 "localBridge": "ლოკალური ხიდი",
                 "paid": "ფასიანი",
-                "encrypted": "დაშიფრული"
+                "encrypted": "დაშიფრული",
+                "mtp": "[NEEDS TRANSLATION] MTP"
             },
             "noServers": "შენახული სერვერები არ არის",
             "noServersHint": "დაიწყეთ სწრაფი დაკავშირებით ან დაათვალიერეთ სერვისების კატალოგი.",
@@ -4476,7 +4506,8 @@
                 "cloudStorage": "ღრუბლოვანი საცავი",
                 "developer": "დეველოპერი",
                 "mediaServices": "მედია სერვისები",
-                "all": "ყველა"
+                "all": "ყველა",
+                "devices": "[NEEDS TRANSLATION] Devices"
             },
             "confirmDeleteServer": "წაიშალოს სერვერი \"{name}\"? ეს ამოშლის შენახულ სერთიფიკატებს და ვერ გაუქმდება.",
             "renameWithHotkey": "სახელის გადარქმევა (F2)",
@@ -4597,7 +4628,9 @@
                 "expand": "გვერდითი ზოლის გაშლა",
                 "moveLeft": "მარცხნივ გადატანა",
                 "moveRight": "მარჯვნივ გადატანა"
-            }
+            },
+            "deviceAttached": "[NEEDS TRANSLATION] Device attached",
+            "deviceNotAttached": "[NEEDS TRANSLATION] Device not attached"
         },
         "gitlab": {
             "projectPath": "პროექტის გზა",

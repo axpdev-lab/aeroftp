@@ -164,7 +164,97 @@ fn main() {
         println!("cargo:rustc-env=RUSTC_VERSION=unknown");
     }
 
+    // Optional Linux MTP: link libmtp when pkg-config finds it. CI and hosts
+    // without libmtp-dev stay green via NullMtpBackend (cfg mtp_libmtp unset).
+    detect_and_link_libmtp();
+
     tauri_build::build()
+}
+
+/// Probe for system libmtp (Linux). Emits `cargo:rustc-cfg=mtp_libmtp` and link
+/// flags when present. Never fails the build when absent.
+fn detect_and_link_libmtp() {
+    println!("cargo:rerun-if-env-changed=PKG_CONFIG_PATH");
+    println!("cargo:rerun-if-env-changed=AEROFTP_DISABLE_LIBMTP");
+
+    if std::env::var_os("AEROFTP_DISABLE_LIBMTP").is_some() {
+        println!("cargo:warning=AEROFTP_DISABLE_LIBMTP set; Linux MTP backend disabled");
+        println!("cargo:rustc-env=AEROFTP_MTP_BACKEND=null");
+        return;
+    }
+
+    let target = std::env::var("TARGET").unwrap_or_default();
+    // Windows always uses the in-tree WPD backend (system COM, no extra DLL).
+    if target.contains("windows") {
+        println!("cargo:rustc-env=AEROFTP_MTP_BACKEND=wpd");
+        return;
+    }
+    // Non-Linux, non-Windows (e.g. macOS): Null until ImageCapture lands.
+    if !target.contains("linux") {
+        println!("cargo:rustc-env=AEROFTP_MTP_BACKEND=null");
+        return;
+    }
+
+    let status = std::process::Command::new("pkg-config")
+        .args(["--exists", "libmtp"])
+        .status();
+    let found = matches!(status, Ok(s) if s.success());
+    if !found {
+        println!(
+            "cargo:warning=libmtp not found (pkg-config libmtp); install libmtp-dev for portable-device support"
+        );
+        println!("cargo:rustc-env=AEROFTP_MTP_BACKEND=null");
+        return;
+    }
+
+    // --libs-only-L / --libs-only-l keep us from injecting raw -Wl flags.
+    if let Ok(output) = std::process::Command::new("pkg-config")
+        .args(["--libs-only-L", "libmtp"])
+        .output()
+    {
+        if output.status.success() {
+            let s = String::from_utf8_lossy(&output.stdout);
+            for part in s.split_whitespace() {
+                if let Some(path) = part.strip_prefix("-L") {
+                    if !path.is_empty() {
+                        println!("cargo:rustc-link-search=native={path}");
+                    }
+                }
+            }
+        }
+    }
+    if let Ok(output) = std::process::Command::new("pkg-config")
+        .args(["--libs-only-l", "libmtp"])
+        .output()
+    {
+        if output.status.success() {
+            let s = String::from_utf8_lossy(&output.stdout);
+            for part in s.split_whitespace() {
+                if let Some(lib) = part.strip_prefix("-l") {
+                    if !lib.is_empty() {
+                        println!("cargo:rustc-link-lib={lib}");
+                    }
+                }
+            }
+        } else {
+            println!("cargo:rustc-link-lib=mtp");
+        }
+    } else {
+        println!("cargo:rustc-link-lib=mtp");
+    }
+
+    println!("cargo:rustc-cfg=mtp_libmtp");
+    println!("cargo:rustc-env=AEROFTP_MTP_BACKEND=libmtp");
+    if let Ok(output) = std::process::Command::new("pkg-config")
+        .args(["--modversion", "libmtp"])
+        .output()
+    {
+        if output.status.success() {
+            let ver = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            println!("cargo:rustc-env=AEROFTP_LIBMTP_VERSION={ver}");
+            println!("cargo:warning=linking libmtp {ver} for MTP portable-device backend");
+        }
+    }
 }
 
 /// Parse Cargo.lock and return highest version for each package name.

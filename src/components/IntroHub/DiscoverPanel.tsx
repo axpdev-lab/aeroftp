@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import {
-    Server, Database, Globe, Cloud, Code, Camera, Layers,
+    Server, Database, Globe, Cloud, Code, Camera, Layers, Smartphone,
     ChevronRight, Search, X, Zap, Activity, ShieldCheck, Lock, Info, LayoutGrid, Table as TableIcon, RefreshCw, Share2,
 } from 'lucide-react';
 import { ProviderType } from '../../types';
@@ -72,6 +72,7 @@ const CATEGORY_ICONS: Record<string, React.ReactNode> = {
     Cloud: <Cloud size={16} />,
     Camera: <Camera size={16} />,
     Code: <Code size={16} />,
+    Smartphone: <Smartphone size={16} />,
 };
 
 const CATEGORY_COLORS: Record<CatalogCategoryId, string> = {
@@ -81,6 +82,7 @@ const CATEGORY_COLORS: Record<CatalogCategoryId, string> = {
     'cloud-storage': 'text-sky-400',
     'media-services': 'text-pink-400',
     'developer': 'text-gray-400',
+    'devices': 'text-slate-400',
 };
 
 interface DiscoverPanelProps {
@@ -167,6 +169,8 @@ function ServiceCard({
                         ? 'bg-violet-100 text-violet-700 dark:bg-violet-900 dark:text-violet-300'
                     : item.badge === 'DEMO'
                         ? 'bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300'
+                    : item.badge === 'MTP' || item.badge === 'USB'
+                        ? 'bg-teal-100 text-teal-700 dark:bg-teal-900 dark:text-teal-300'
                     : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
                 }`}>
                     {isCipherStrengthBadge(item.badge)
@@ -518,6 +522,7 @@ export function DiscoverPanel({ onSelectProvider }: DiscoverPanelProps) {
                         'cloud-storage': 'cloud',
                         'media-services': 'media',
                         'developer': 'developer',
+                        'devices': 'devices',
                     };
                     const key = infoKeyMap[activeCategory];
                     if (!key) return null;

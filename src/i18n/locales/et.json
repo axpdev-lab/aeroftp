@@ -289,7 +289,21 @@
             "storedTotpAdvanced": "Täpsem: salvesta 2FA saladus",
             "storedTotpWarning": "2FA saladuse salvestamisel hoitakse mõlemat tegurit võlvhoidlas. Kui võlvhoidla peaparool satub ohtu, ei kaitse 2FA enam seda kontot. Eelista ühekordset koodi või kohalikku WebDAV/S3 silda.",
             "filenBridgeCredentialRules": "Fileni silla piirang: {max} märki. Toetamata: {rejected}",
-            "filenBridgeCredentialRejected": "Need identimisteabe andmed sisaldavad Fileni silla poolt tagasi lükatud märke."
+            "filenBridgeCredentialRejected": "Need identimisteabe andmed sisaldavad Fileni silla poolt tagasi lükatud märke.",
+            "mtpDefaultName": "[NEEDS TRANSLATION] Portable device",
+            "mtpDetect": "[NEEDS TRANSLATION] Detect",
+            "mtpDetectFailed": "[NEEDS TRANSLATION] Could not list portable devices",
+            "mtpDetecting": "[NEEDS TRANSLATION] Detecting...",
+            "mtpDevice": "[NEEDS TRANSLATION] USB device",
+            "mtpFingerprint": "[NEEDS TRANSLATION] Fingerprint",
+            "mtpHonesty": "[NEEDS TRANSLATION] MTP is exclusive: only one app can open the device. Close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter). Some operations are limited by the device OS.",
+            "mtpNoDevices": "[NEEDS TRANSLATION] No portable devices detected. Plug in the phone or camera and enable File Transfer mode.",
+            "mtpRemotePathPlaceholder": "[NEEDS TRANSLATION] Default remote path (e.g. / or DCIM)",
+            "mtpSaveRequiresDevice": "[NEEDS TRANSLATION] Detect and select a device to enable Save.",
+            "mtpSelectPlaceholder": "[NEEDS TRANSLATION] Select a device...",
+            "mtpSelectPlaceholderEmpty": "[NEEDS TRANSLATION] No devices yet — click Detect",
+            "mtpNotAttachedTitle": "[NEEDS TRANSLATION] Device not connected",
+            "mtpNotAttached": "[NEEDS TRANSLATION] Plug in the device and enable File Transfer mode, then try again."
         },
         "browser": {
             "remote": "Kaugserver",
@@ -1843,7 +1857,10 @@
             "s3RoleMfaTokenCode": "MFA tunnuskood",
             "s3RoleMfaTokenCodePlaceholder": "123456",
             "s3RoleMfaTokenCodeHint": "Ühekordne kood sinu MFA-seadmest, vajalik ainult kui roll nõuab MFA-d. Kasutatakse ühendamisel üks kord ja seda ei salvestata kunagi.",
-            "peerDesc": "Jagage kaustu otse sõpradega krüptitud peer-to-peer kanali kaudu, ilma vahepealse serverita."
+            "peerDesc": "Jagage kaustu otse sõpradega krüptitud peer-to-peer kanali kaudu, ilma vahepealse serverita.",
+            "devicesInfoLine1": "[NEEDS TRANSLATION] Save a portable USB device (phone, camera, tablet) as a My Servers profile. Detect the device over MTP, set default folders, and reconnect with one click when it is plugged in.",
+            "devicesInfoLine2": "[NEEDS TRANSLATION] MTP is exclusive: close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter).",
+            "discoverMtpPortable": "[NEEDS TRANSLATION] Phone, camera, or tablet over USB MTP"
         },
         "shortcuts": {
             "title": "Kiirklahvid",
@@ -3195,7 +3212,19 @@
             "clear_recent": "Tühjenda hiljutised",
             "no_recent": "Hiljutisi asukohti pole",
             "mount": "Ühenda",
-            "ejectFailed": "Väljastamine ebaõnnestus"
+            "ejectFailed": "Väljastamine ebaõnnestus",
+            "portable_devices": "[NEEDS TRANSLATION] Portable devices",
+            "portable_disconnect": "[NEEDS TRANSLATION] Disconnect",
+            "portable_disconnect_failed": "[NEEDS TRANSLATION] Could not disconnect portable device",
+            "portable_empty": "[NEEDS TRANSLATION] No portable devices detected",
+            "portable_honesty": "[NEEDS TRANSLATION] Portable devices use MTP: whole-file copy only, no drive letter, and some operations are limited by the device OS.",
+            "portable_no_storages": "[NEEDS TRANSLATION] Session open (no storage list yet; browse polish follows)",
+            "portable_open_failed": "[NEEDS TRANSLATION] Could not open portable device",
+            "portable_opened": "[NEEDS TRANSLATION] Connected to {name}",
+            "portable_storages": "[NEEDS TRANSLATION] {count} storage(s)",
+            "portable_disconnected": "[NEEDS TRANSLATION] Portable device disconnected: {name}",
+            "portable_unplugged": "Kaasaskantav seade ühendati lahti. Ühendage kaabel uuesti ja avage seade uuesti.",
+            "portable_needs_replug": "Töölaua poolt ei ole haagitud. Ühendage kaabel lahti ja uuesti sisse, seejärel avage uuesti."
         },
         "viewMode": {
             "list": "Loend",
@@ -4456,7 +4485,8 @@
                 "media": "Meedia",
                 "localBridge": "Kohalik sild",
                 "paid": "Tasuline",
-                "encrypted": "Krüpteeritud"
+                "encrypted": "Krüpteeritud",
+                "mtp": "[NEEDS TRANSLATION] MTP"
             },
             "noServers": "Salvestatud serverid puuduvad",
             "noServersHint": "Alustage kiirühendusega või sirvige teenuste kataloogi.",
@@ -4476,7 +4506,8 @@
                 "cloudStorage": "Pilvesalvestus",
                 "developer": "Arendaja",
                 "mediaServices": "Meediateenused",
-                "all": "Kõik"
+                "all": "Kõik",
+                "devices": "[NEEDS TRANSLATION] Devices"
             },
             "confirmDeleteServer": "Kustutada server \"{name}\"? See eemaldab salvestatud mandaadid ja seda ei saa tagasi võtta.",
             "renameWithHotkey": "Nimeta ümber (F2)",
@@ -4597,7 +4628,9 @@
                 "expand": "Laienda külgriba",
                 "moveLeft": "Liiguta vasakule",
                 "moveRight": "Liiguta paremale"
-            }
+            },
+            "deviceAttached": "[NEEDS TRANSLATION] Device attached",
+            "deviceNotAttached": "[NEEDS TRANSLATION] Device not attached"
         },
         "gitlab": {
             "projectPath": "Projekti tee",
