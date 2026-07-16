@@ -437,7 +437,9 @@ impl CloudService {
         .await;
 
         // Get file listings
-        let local_files = self.scan_local_folder(&config).await?;
+        // CLAUDE-AV-B3-16: local scan now reports completeness too (unstattable
+        // entries used to be silently dropped, which looked like RemoteOnly).
+        let (local_files, local_complete) = self.scan_local_folder(&config).await?;
         let (remote_files, remote_complete) = self.scan_remote_folder(ftp_manager, &config).await?;
 
         let local_str = config.local_folder.to_string_lossy().to_string();
@@ -469,20 +471,22 @@ impl CloudService {
         // Safety gate: refuse to propagate deletes when a mass disappearance
         // looks like a transient/partial listing failure (a whole side empty,
         // or deletes exceeding half the baseline) rather than a real user delete.
+        // CLAUDE-AV-B3-16: either side incomplete trips the gate.
         let pending_deletes = self.count_pending_deletes(&config, &comparisons);
         if Self::delete_safety_trips(
             prior_count,
             local_len == 0,
             remote_len == 0,
             pending_deletes,
-            !remote_complete,
+            !remote_complete || !local_complete,
         ) {
             tracing::warn!(
-                "AeroCloud safety gate (FTP): {} pending deletes vs {} baselined (L:{} R:{}, remote scan complete: {}). Disabling delete propagation this cycle to prevent accidental wipe.",
+                "AeroCloud safety gate (FTP): {} pending deletes vs {} baselined (L:{} R:{}, local scan complete: {}, remote scan complete: {}). Disabling delete propagation this cycle to prevent accidental wipe.",
                 pending_deletes,
                 prior_count,
                 local_len,
                 remote_len,
+                local_complete,
                 remote_complete
             );
             for c in &mut comparisons {
@@ -639,7 +643,8 @@ impl CloudService {
         }
 
         // Get file listings
-        let local_files = self.scan_local_folder(config).await?;
+        // CLAUDE-AV-B3-16: local scan reports completeness (see scan_local_folder).
+        let (local_files, local_complete) = self.scan_local_folder(config).await?;
         let (remote_files, remote_complete) = if remote_present || ensure_remote {
             match self
                 .scan_remote_folder_with_provider(provider, config)
@@ -700,20 +705,22 @@ impl CloudService {
         // Safety gate: refuse to propagate deletes when a mass disappearance
         // looks like a transient/partial listing failure (a whole side empty,
         // or deletes exceeding half the baseline) rather than a real user delete.
+        // CLAUDE-AV-B3-16: either side incomplete trips the gate.
         let pending_deletes = self.count_pending_deletes(config, &comparisons);
         if Self::delete_safety_trips(
             prior_count,
             local_len == 0,
             remote_len == 0,
             pending_deletes,
-            !remote_complete,
+            !remote_complete || !local_complete,
         ) {
             tracing::warn!(
-                "AeroCloud safety gate (provider): {} pending deletes vs {} baselined (L:{} R:{}, remote scan complete: {}). Disabling delete propagation this cycle to prevent accidental wipe.",
+                "AeroCloud safety gate (provider): {} pending deletes vs {} baselined (L:{} R:{}, local scan complete: {}, remote scan complete: {}). Disabling delete propagation this cycle to prevent accidental wipe.",
                 pending_deletes,
                 prior_count,
                 local_len,
                 remote_len,
+                local_complete,
                 remote_complete
             );
             for c in &mut comparisons {
@@ -989,26 +996,42 @@ impl CloudService {
         }
     }
 
-    /// Scan local folder and build file info map
+    /// Scan local folder and build file info map.
+    ///
+    /// Returns the local index plus whether the scan saw the WHOLE tree. A
+    /// `false` completeness flag means at least one entry could not be stated
+    /// (permission flake, transient FS error), a mid-listing iterator error
+    /// was swallowed, or the 100K index cap truncated the walk: the map then
+    /// understates the local side and must never drive delete propagation.
+    /// Mirrors `scan_remote_folder`'s completeness contract. (CLAUDE-AV-B3-16)
     async fn scan_local_folder(
         &self,
         config: &CloudConfig,
-    ) -> Result<HashMap<String, FileInfo>, String> {
+    ) -> Result<(HashMap<String, FileInfo>, bool), String> {
         let mut files = HashMap::new();
+        let mut complete = true;
         let base_path = &config.local_folder;
 
+        // Absent root stays a complete empty map: the empty-side safety gate
+        // (local_empty with a prior baseline) already protects delete
+        // propagation, matching the pre-existing first-run / not-yet-created
+        // local-folder path. Do not reclassify it as incomplete.
         if !base_path.exists() {
-            return Ok(files);
+            return Ok((files, true));
         }
 
         // Load .aeroignore from sync root (if present)
         let aeroignore = crate::sync_ignore::AeroIgnore::load(base_path);
 
-        // Use walkdir for recursive scanning
+        // Recursive scan with a completeness flag: unstattable entries used to
+        // be `Err(_) => continue`, which made a baselined file that became
+        // unstattable look RemoteOnly and could drive DeleteRemote.
+        // (CLAUDE-AV-B3-16)
         fn scan_recursive(
             base: &PathBuf,
             current: &PathBuf,
             files: &mut HashMap<String, FileInfo>,
+            complete: &mut bool,
             exclude: &[String],
             excluded_folders: &[String],
             aeroignore: Option<&crate::sync_ignore::AeroIgnore>,
@@ -1016,13 +1039,29 @@ impl CloudService {
             let entries = std::fs::read_dir(current)
                 .map_err(|e| format!("Failed to read directory: {}", e))?;
 
-            for entry in entries.flatten() {
+            for entry_result in entries {
+                // CLAUDE-AV-B3-16: was `entries.flatten()`, which silently
+                // dropped mid-listing iterator errors and understated the tree.
+                let entry = match entry_result {
+                    Ok(e) => e,
+                    Err(_) => {
+                        *complete = false;
+                        continue;
+                    }
+                };
                 let path = entry.path();
 
                 // Use symlink_metadata to avoid following symlinks (CF-007)
                 let metadata = match path.symlink_metadata() {
                     Ok(m) => m,
-                    Err(_) => continue,
+                    Err(_) => {
+                        // CLAUDE-AV-B3-16: an unstattable entry is invisible to
+                        // the comparator. Keep skipping it (do not invent a
+                        // fake FileInfo) but mark the scan incomplete so the
+                        // delete safety gate refuses to act on the lie.
+                        *complete = false;
+                        continue;
+                    }
                 };
 
                 // Skip symlinks entirely to prevent symlink-following attacks
@@ -1062,9 +1101,13 @@ impl CloudService {
 
                 let size = if is_dir { 0 } else { metadata.len() };
 
-                // P1-6: Cap file index at 100K to prevent unbounded memory growth
+                // P1-6: Cap file index at 100K to prevent unbounded memory growth.
+                // A truncated scan is an INCOMPLETE scan: report it so the delete
+                // gate refuses to act on it. Mirrors the remote scanner.
+                // (CLAUDE-AV-B3-16)
                 if files.len() >= 100_000 {
                     tracing::warn!("Local file index cap reached (100K), truncating scan");
+                    *complete = false;
                     return Ok(());
                 }
 
@@ -1082,7 +1125,15 @@ impl CloudService {
                 );
 
                 if is_dir {
-                    scan_recursive(base, &path, files, exclude, excluded_folders, aeroignore)?;
+                    scan_recursive(
+                        base,
+                        &path,
+                        files,
+                        complete,
+                        exclude,
+                        excluded_folders,
+                        aeroignore,
+                    )?;
                 }
             }
 
@@ -1093,11 +1144,12 @@ impl CloudService {
             base_path,
             base_path,
             &mut files,
+            &mut complete,
             &config.exclude_patterns,
             &config.excluded_folders,
             aeroignore.as_ref(),
         )?;
-        Ok(files)
+        Ok((files, complete))
     }
 
     /// Scan remote folder and build file info map
@@ -2061,5 +2113,115 @@ mod baseline_tests {
         // No prior baseline still wins: nothing was ever baselined, so there is
         // nothing to delete and nothing to protect.
         assert!(!CloudService::delete_safety_trips(0, false, false, 0, true));
+    }
+
+    // ---- CLAUDE-AV-B3-16: local scan completeness ----
+
+    #[tokio::test]
+    async fn local_scan_complete_on_clean_readable_tree() {
+        // A fully readable tree must stay complete: the new completeness flag
+        // must not change delete behaviour for clean full local scans.
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(dir.path().join("a.txt"), b"a").expect("write a");
+        std::fs::create_dir(dir.path().join("sub")).expect("mkdir");
+        std::fs::write(dir.path().join("sub/b.txt"), b"b").expect("write b");
+
+        let svc = CloudService::new();
+        let config = CloudConfig {
+            local_folder: dir.path().to_path_buf(),
+            ..Default::default()
+        };
+        let (files, complete) = svc
+            .scan_local_folder(&config)
+            .await
+            .expect("scan should succeed");
+
+        assert!(complete, "a clean readable tree is a complete local scan");
+        assert!(files.contains_key("a.txt"));
+        assert!(files.contains_key("sub/b.txt"));
+        // Call-site wiring: both sides complete must NOT trip on a single delete.
+        let local_complete = complete;
+        let remote_complete = true;
+        assert!(!CloudService::delete_safety_trips(
+            20,
+            false,
+            false,
+            1,
+            !remote_complete || !local_complete,
+        ));
+    }
+
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn local_scan_reports_incomplete_when_entry_unstattable() {
+        // Classic Unix: directory mode r-- (0o400) lets readdir list names, but
+        // path resolution for lstat/symlink_metadata needs search (x). That is
+        // exactly the pre-fix silent-drop path: the entry vanishes from the map
+        // and a baselined remote file would read as RemoteOnly / DeleteRemote.
+        // (CLAUDE-AV-B3-16)
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(dir.path().join("secret.txt"), b"x").expect("write");
+
+        std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o400))
+            .expect("chmod r--");
+
+        let svc = CloudService::new();
+        let config = CloudConfig {
+            local_folder: dir.path().to_path_buf(),
+            ..Default::default()
+        };
+        let result = svc.scan_local_folder(&config).await;
+
+        // Always restore so TempDir cleanup can remove the tree.
+        let _ = std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o700));
+
+        let (files, complete) = result.expect("scan should not hard-error");
+        assert!(
+            !complete,
+            "an unstattable local entry must mark the scan incomplete"
+        );
+        assert!(
+            !files.contains_key("secret.txt"),
+            "unstattable entry stays out of the map (no fake FileInfo)"
+        );
+        // Call-site equivalent: !remote_complete || !local_complete with remote
+        // clean and local incomplete must trip the gate (benign counts).
+        let local_complete = complete;
+        let remote_complete = true;
+        assert!(CloudService::delete_safety_trips(
+            20,
+            false,
+            false,
+            1,
+            !remote_complete || !local_complete,
+        ));
+    }
+
+    #[tokio::test]
+    async fn local_scan_absent_root_is_complete_empty_map() {
+        // Pre-existing contract: a not-yet-created local folder is a complete
+        // empty listing (first-run path). Delete safety still trips via the
+        // local_empty count path when a prior baseline exists; do not reclassify
+        // as scan_incomplete. (CLAUDE-AV-B3-16)
+        let dir = tempfile::tempdir().expect("tempdir");
+        let gone = dir.path().join("never-existed");
+
+        let svc = CloudService::new();
+        let config = CloudConfig {
+            local_folder: gone,
+            ..Default::default()
+        };
+        let (files, complete) = svc
+            .scan_local_folder(&config)
+            .await
+            .expect("absent root is Ok");
+
+        assert!(files.is_empty());
+        assert!(
+            complete,
+            "absent local root stays a complete empty map (empty-side gate covers it)"
+        );
     }
 }
