@@ -3534,6 +3534,7 @@
       "portable_open_failed": "Could not open portable device",
       "portable_opened": "Connected to {name}",
       "portable_storages": "{count} storage(s)",
+      "portable_unplugged": "The portable device was disconnected. Re-plug the cable and open it again.",
       "recent": "Recent",
       "remove_from_sidebar": "Remove from Sidebar",
       "switch_to_places": "Switch to places",

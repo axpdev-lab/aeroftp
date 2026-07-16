@@ -3222,7 +3222,8 @@
             "portable_open_failed": "[NEEDS TRANSLATION] Could not open portable device",
             "portable_opened": "[NEEDS TRANSLATION] Connected to {name}",
             "portable_storages": "[NEEDS TRANSLATION] {count} storage(s)",
-            "portable_disconnected": "[NEEDS TRANSLATION] Portable device disconnected: {name}"
+            "portable_disconnected": "[NEEDS TRANSLATION] Portable device disconnected: {name}",
+            "portable_unplugged": "पोर्टेबल डिवाइस डिस्कनेक्ट हो गया। केबल फिर से प्लग करें और इसे दोबारा खोलें।"
         },
         "viewMode": {
             "list": "सूची",

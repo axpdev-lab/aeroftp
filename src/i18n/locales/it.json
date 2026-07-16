@@ -3553,7 +3553,8 @@
             "portable_open_failed": "Impossibile aprire il dispositivo portatile",
             "portable_opened": "Connesso a {name}",
             "portable_storages": "{count} storage",
-            "portable_disconnected": "Dispositivo portatile disconnesso: {name}"
+            "portable_disconnected": "Dispositivo portatile disconnesso: {name}",
+            "portable_unplugged": "Il dispositivo portatile è stato scollegato. Ricollega il cavo e aprilo di nuovo."
         },
         "viewMode": {
             "list": "Lista",

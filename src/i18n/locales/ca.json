@@ -3222,7 +3222,8 @@
             "portable_open_failed": "[NEEDS TRANSLATION] Could not open portable device",
             "portable_opened": "[NEEDS TRANSLATION] Connected to {name}",
             "portable_storages": "[NEEDS TRANSLATION] {count} storage(s)",
-            "portable_disconnected": "[NEEDS TRANSLATION] Portable device disconnected: {name}"
+            "portable_disconnected": "[NEEDS TRANSLATION] Portable device disconnected: {name}",
+            "portable_unplugged": "El dispositiu portàtil s'ha desconnectat. Torneu a connectar el cable i obriu-lo de nou."
         },
         "viewMode": {
             "list": "Llista",

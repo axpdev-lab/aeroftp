@@ -3187,7 +3187,8 @@
             "portable_open_failed": "[NEEDS TRANSLATION] Could not open portable device",
             "portable_opened": "[NEEDS TRANSLATION] Connected to {name}",
             "portable_storages": "[NEEDS TRANSLATION] {count} storage(s)",
-            "portable_disconnected": "[NEEDS TRANSLATION] Portable device disconnected: {name}"
+            "portable_disconnected": "[NEEDS TRANSLATION] Portable device disconnected: {name}",
+            "portable_unplugged": "ポータブルデバイスが切断されました。ケーブルを再接続して、もう一度開いてください。"
         },
         "viewMode": {
             "list": "リスト",

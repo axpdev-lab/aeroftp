@@ -3222,7 +3222,8 @@
             "portable_open_failed": "Tragbares Gerät konnte nicht geöffnet werden",
             "portable_opened": "Verbunden mit {name}",
             "portable_storages": "{count} Speicher",
-            "portable_disconnected": "Tragbares Gerät getrennt: {name}"
+            "portable_disconnected": "Tragbares Gerät getrennt: {name}",
+            "portable_unplugged": "Das tragbare Gerät wurde getrennt. Kabel erneut anschließen und erneut öffnen."
         },
         "viewMode": {
             "list": "Liste",

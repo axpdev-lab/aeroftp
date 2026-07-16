@@ -16,6 +16,17 @@ import type { MtpDeviceInfo, VolumeInfo } from '../types/aerofile';
 const GVFS_MTP_MOUNT_MARKER = '/gvfs/mtp:host=';
 
 /**
+ * True when `path` is (or is under) a gvfs MTP FUSE mount.
+ *
+ * Used to degrade honestly on unplug: the mount vanishes and the backend
+ * reports a raw "Path does not exist", which is useless to the user.
+ */
+export function isGvfsMtpPath(path: string | null | undefined): boolean {
+  if (!path) return false;
+  return path.includes(GVFS_MTP_MOUNT_MARKER);
+}
+
+/**
  * The gvfs FUSE mount point for `device`, or null when the desktop has not
  * mounted it (or the device reports no serial to match on).
  *

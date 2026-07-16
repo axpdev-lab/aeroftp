@@ -2,7 +2,7 @@
 // Copyright (c) 2024-2026 axpnet -- AI-assisted (see AI-TRANSPARENCY.md)
 
 import { describe, expect, it } from 'vitest';
-import { findGvfsMtpMount } from './gvfsMtpMount';
+import { findGvfsMtpMount, isGvfsMtpPath } from './gvfsMtpMount';
 import type { VolumeInfo } from '../types/aerofile';
 
 const vol = (name: string, mount_point: string): VolumeInfo => ({
@@ -17,6 +17,28 @@ const vol = (name: string, mount_point: string): VolumeInfo => ({
 
 // Real shape observed live on the owner's station.
 const XPERIA_MOUNT = '/run/user/1001/gvfs/mtp:host=Sony_XQ-DQ54_QV770LUNJD';
+
+describe('isGvfsMtpPath', () => {
+  it('recognises a gvfs MTP mount root', () => {
+    expect(isGvfsMtpPath(XPERIA_MOUNT)).toBe(true);
+  });
+
+  it('recognises a path under a gvfs MTP mount', () => {
+    expect(isGvfsMtpPath(`${XPERIA_MOUNT}/Internal shared storage/DCIM`)).toBe(true);
+  });
+
+  it('rejects ordinary local paths', () => {
+    expect(isGvfsMtpPath('/home/axpdev')).toBe(false);
+    expect(isGvfsMtpPath('/media/axpdev/USB')).toBe(false);
+    expect(isGvfsMtpPath('/run/user/1001/gvfs/smb-share:server=nas')).toBe(false);
+  });
+
+  it('rejects empty or missing paths', () => {
+    expect(isGvfsMtpPath('')).toBe(false);
+    expect(isGvfsMtpPath(null)).toBe(false);
+    expect(isGvfsMtpPath(undefined)).toBe(false);
+  });
+});
 
 describe('findGvfsMtpMount', () => {
   it('finds the mount whose gvfs name carries the device serial', () => {

@@ -3222,7 +3222,8 @@
             "portable_open_failed": "Impossible d'ouvrir l'appareil portable",
             "portable_opened": "Connecté à {name}",
             "portable_storages": "{count} stockage(s)",
-            "portable_disconnected": "Appareil portable déconnecté : {name}"
+            "portable_disconnected": "Appareil portable déconnecté : {name}",
+            "portable_unplugged": "L'appareil portable a été déconnecté. Rebranchez le câble et rouvrez-le."
         },
         "viewMode": {
             "list": "Liste",

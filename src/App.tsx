@@ -462,6 +462,7 @@ import { TransferToastContainer, dispatchTransferToast, reopenTransferToast } fr
 import { runExtractWithToast } from './utils/extractToast';
 import { archiveStem, dispatchGeneralExtract, isWrongPasswordError, resolveUniqueExtractDir } from './utils/extractOrchestrator';
 import { formatExtractDetails, formatCompressDetails } from './utils/archiveSizeReport';
+import { isGvfsMtpPath } from './utils/gvfsMtpMount';
 import { GlobalTooltip } from './components/GlobalTooltip';
 import { TransferProgressBar } from './components/TransferProgressBar';
 import { ImageThumbnail } from './components/ImageThumbnail';
@@ -4901,6 +4902,27 @@ interface UpdateVerificationInfo {
       return true;
     } catch (error) {
       if (callId !== loadLocalCallIdRef.current) return false;
+      // gvfs MTP mount vanishes on unplug; the raw "Path does not exist"
+      // is useless. Tell the user what happened and step the panel Home.
+      if (isGvfsMtpPath(path)) {
+        notify.error(t('common.error'), t('sidebar.portable_unplugged'));
+        try {
+          const home = await homeDir().catch(() => '/');
+          if (home === path) return false;
+          const homeCallId = ++loadLocalCallIdRef.current;
+          const homeFiles: LocalFile[] = await invoke('get_local_files', {
+            path: home,
+            showHidden: showHiddenFiles,
+          });
+          if (homeCallId !== loadLocalCallIdRef.current) return false;
+          setLocalFiles(homeFiles);
+          setCurrentLocalPath(home);
+          setSelectedLocalFiles(new Set());
+          return true;
+        } catch {
+          return false;
+        }
+      }
       notify.error(t('common.error'), `Failed to list local files: ${error}`);
       return false;
     }
@@ -4915,6 +4937,23 @@ interface UpdateVerificationInfo {
       setSelectedLocalFiles2(new Set());
       return true;
     } catch (error) {
+      if (isGvfsMtpPath(path)) {
+        notify.error(t('common.error'), t('sidebar.portable_unplugged'));
+        try {
+          const home = await homeDir().catch(() => '/');
+          if (home === path) return false;
+          const homeFiles: LocalFile[] = await invoke('get_local_files', {
+            path: home,
+            showHidden: showHiddenFiles,
+          });
+          setLocalFiles2(homeFiles);
+          setCurrentLocalPath2(home);
+          setSelectedLocalFiles2(new Set());
+          return true;
+        } catch {
+          return false;
+        }
+      }
       notify.error(t('common.error'), `Failed to list local files: ${error}`);
       return false;
     }

@@ -3222,7 +3222,8 @@
             "portable_open_failed": "[NEEDS TRANSLATION] Could not open portable device",
             "portable_opened": "[NEEDS TRANSLATION] Connected to {name}",
             "portable_storages": "[NEEDS TRANSLATION] {count} storage(s)",
-            "portable_disconnected": "[NEEDS TRANSLATION] Portable device disconnected: {name}"
+            "portable_disconnected": "[NEEDS TRANSLATION] Portable device disconnected: {name}",
+            "portable_unplugged": "Dispozitivul portabil a fost deconectat. Reconectați cablul și deschideți-l din nou."
         },
         "viewMode": {
             "list": "Listă",
