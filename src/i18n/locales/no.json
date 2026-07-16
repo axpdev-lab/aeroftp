@@ -564,7 +564,18 @@
             "start": "Start",
             "startAll": "Start alle",
             "restored": "Gjenopprettet",
-            "restoredHint": "Gjenopprettet fra en tidligere økt. Koble til den samme serveren på nytt, og trykk deretter Prøv igjen for å kjøre på nytt."
+            "restoredHint": "Gjenopprettet fra en tidligere økt. Fortsett kobler til den lagrede serveren om nødvendig, og kjører deretter overføringen på nytt.",
+            "restoredQueueTitle": "Avbrutte overføringer fra en tidligere økt",
+            "restoredQueueDescription": "{count} overføring(er) ble gjenopprettet. Fortsett kobler til den lagrede serveren om nødvendig, og kjører dem deretter på nytt. Forkast fjerner dem.",
+            "resumeRestoredAll": "Gjenoppta alle",
+            "discardRestored": "Forkast",
+            "resumeConnectConfirm": "Koble til \"{name}\" og fortsett {count} overføring(er)?",
+            "connectAndResume": "Koble til og fortsett",
+            "resumeNeedsConnection": "Koble til en server først, og fortsett deretter denne overføringen.",
+            "resumeNoProfile": "Denne overføringen har ingen lagret serverprofil. Koble til manuelt, og fortsett deretter.",
+            "resumeProfileMissing": "Den lagrede serveren for denne overføringen ble ikke funnet (den kan ha blitt slettet).",
+            "connectingToResume": "Kobler til {name} for å fortsette overføringer…",
+            "resumeConnectFailed": "Kunne ikke koble til {name}. Overføringer ble ikke startet."
         },
         "settings": {
             "title": "Innstillinger",

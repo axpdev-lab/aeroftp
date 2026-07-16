@@ -564,7 +564,18 @@
             "start": "Simulan",
             "startAll": "Simulan lahat",
             "restored": "Naibalik",
-            "restoredHint": "Naibalik mula sa nakaraang session. Kumonekta muli sa parehong server, pagkatapos ay pindutin ang Subukan muli para muling patakbuhin."
+            "restoredHint": "Naibalik mula sa nakaraang session. Kapag ipinagpatuloy, kumokonekta sa naka-save na server kung kailangan, pagkatapos ay pinapatakbo ulit ang transfer.",
+            "restoredQueueTitle": "Mga transfer na naantala mula sa nakaraang session",
+            "restoredQueueDescription": "{count} (na) transfer ang naibalik. Kapag ipinagpatuloy, kumokonekta sa naka-save na server kung kailangan, pagkatapos ay pinapatakbo ulit ang mga ito. Tinatanggal ng Discard ang mga ito.",
+            "resumeRestoredAll": "Ipagpatuloy lahat",
+            "discardRestored": "Itapon",
+            "resumeConnectConfirm": "Kumonekta sa \"{name}\" at ipagpatuloy ang {count} (na) transfer?",
+            "connectAndResume": "Kumonekta at Ipagpatuloy",
+            "resumeNeedsConnection": "Kumonekta muna sa isang server, pagkatapos ay ipagpatuloy ang transfer na ito.",
+            "resumeNoProfile": "Walang naka-save na server profile ang transfer na ito. Manu-manong kumonekta, pagkatapos ay ipagpatuloy.",
+            "resumeProfileMissing": "Hindi nahanap ang naka-save na server para sa transfer na ito (maaaring nabura na).",
+            "connectingToResume": "Kumokonekta sa {name} para ipagpatuloy ang mga transfer…",
+            "resumeConnectFailed": "Hindi makakonekta sa {name}. Hindi nasimulan ang mga transfer."
         },
         "settings": {
             "title": "Mga Setting",

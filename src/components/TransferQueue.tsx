@@ -10,7 +10,10 @@ import { TransferProgressBar } from './TransferProgressBar';
 import type { BatchProgressSnapshot } from '../hooks/useTransferEvents';
 import {
     addItem as addItemHelper,
+    clearRestoredFlags as clearRestoredFlagsHelper,
+    listRestoredPendingIds,
     removeItem as removeItemHelper,
+    removeRestoredPending as removeRestoredPendingHelper,
     reorder as reorderHelper,
     startAll as startAllHelper,
     startStaged as startStagedHelper,
@@ -71,6 +74,12 @@ interface TransferQueueProps {
      *  so the footer bar climbs on real bytes instead of a lazily-enqueued
      *  item-count wave that pegs near 100% mid-batch. */
     activeBatchSnapshot?: BatchProgressSnapshot | null;
+    /**
+     * TQ-7c: startup banner actions when items were restored from the journal.
+     * Resume all re-fires each restored item's retry callback; Discard drops them.
+     */
+    onResumeRestored?: () => void;
+    onDiscardRestored?: () => void;
 }
 
 const StatusIcon: React.FC<{ status: TransferStatus }> = ({ status }) => {
@@ -429,6 +438,8 @@ export const TransferQueue: React.FC<TransferQueueProps> = ({
     onResume,
     onRetryAllFailed,
     activeBatchSnapshot,
+    onResumeRestored,
+    onDiscardRestored,
 }) => {
     const t = useTranslation();
     const scrollRef = useRef<HTMLDivElement>(null);
@@ -456,13 +467,16 @@ export const TransferQueue: React.FC<TransferQueueProps> = ({
     }, []);
 
     // Single-pass counting instead of 6 separate .filter() calls: O(n) vs O(6n)
-    const { completedCount, errorCount, transferringCount, pendingCount, stagedCount, primaryType, transferringProgressSum } = useMemo(() => {
-        let completed = 0, error = 0, transferring = 0, pending = 0, staged = 0, uploads = 0, progressSum = 0;
+    const { completedCount, errorCount, transferringCount, pendingCount, stagedCount, restoredPendingCount, primaryType, transferringProgressSum } = useMemo(() => {
+        let completed = 0, error = 0, transferring = 0, pending = 0, staged = 0, restoredPending = 0, uploads = 0, progressSum = 0;
         for (const item of items) {
             if (item.status === 'completed') completed++;
             else if (item.status === 'error') error++;
             else if (item.status === 'transferring') { transferring++; progressSum += Math.max(0, Math.min(100, item.progress ?? 0)) / 100; }
-            else if (item.status === 'pending') pending++;
+            else if (item.status === 'pending') {
+                pending++;
+                if (item.restored) restoredPending++;
+            }
             else if (item.status === 'staged') staged++;
             if (item.type === 'upload') uploads++;
         }
@@ -472,6 +486,7 @@ export const TransferQueue: React.FC<TransferQueueProps> = ({
             transferringCount: transferring,
             pendingCount: pending,
             stagedCount: staged,
+            restoredPendingCount: restoredPending,
             transferringProgressSum: progressSum,
             primaryType: (uploads >= items.length - uploads ? 'upload' : 'download') as TransferType
         };
@@ -650,6 +665,44 @@ export const TransferQueue: React.FC<TransferQueueProps> = ({
                                     className="px-2 py-1 text-[11px] bg-red-600 hover:bg-red-500 text-white rounded transition-colors"
                                 >
                                     {t('transfer.cancelAll')}
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                )}
+
+                {/* TQ-7c: startup resume banner for journal-restored transfers (AeroSync-style). */}
+                {restoredPendingCount > 0 && (onResumeRestored || onDiscardRestored) && (
+                    <div className="mx-2 my-2 rounded-lg border border-amber-300 bg-amber-50 p-2.5 dark:border-amber-700 dark:bg-amber-900/20">
+                        <div className="mb-1 flex items-center gap-2">
+                            <RotateCcw size={14} className="text-amber-500 flex-shrink-0" />
+                            <span className="text-xs font-semibold text-gray-800 dark:text-gray-100">
+                                {t('transfer.restoredQueueTitle')}
+                            </span>
+                        </div>
+                        <p className="mb-2 text-[11px] text-gray-600 dark:text-gray-400 leading-snug">
+                            {t('transfer.restoredQueueDescription', {
+                                count: String(restoredPendingCount),
+                            })}
+                        </p>
+                        <div className="flex gap-2">
+                            {onResumeRestored && (
+                                <button
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); onResumeRestored(); }}
+                                    className="inline-flex items-center gap-1 rounded bg-amber-500 px-2.5 py-1 text-[11px] font-medium text-white hover:bg-amber-600"
+                                >
+                                    <RotateCcw size={11} />
+                                    {t('transfer.resumeRestoredAll')}
+                                </button>
+                            )}
+                            {onDiscardRestored && (
+                                <button
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); onDiscardRestored(); }}
+                                    className="rounded bg-gray-200 px-2.5 py-1 text-[11px] font-medium hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600"
+                                >
+                                    {t('transfer.discardRestored')}
                                 </button>
                             )}
                         </div>
@@ -889,6 +942,25 @@ export const useTransferQueue = () => {
         return failedIds;
     };
 
+    // TQ-7c: ids of restored+pending items (for Resume all / banner).
+    // Snapshot is taken from current state; callers fire retry callbacks after.
+    const getRestoredPendingIds = (): string[] => listRestoredPendingIds(items);
+
+    // TQ-7c: clear restored badges (hides the startup banner after Resume all).
+    const clearRestoredFlags = (ids?: string[]) => {
+        setItems(prev => clearRestoredFlagsHelper(prev, ids));
+    };
+
+    // TQ-7c: discard restored pending items; returns removed ids for cleanup.
+    // Snapshot ids from the latest render (event handlers always see current
+    // state); the setState updater re-filters so concurrent updates stay safe.
+    const discardRestored = (): string[] => {
+        const removed = listRestoredPendingIds(items);
+        if (removed.length === 0) return [];
+        setItems(prev => removeRestoredPendingHelper(prev).next);
+        return removed;
+    };
+
     // Simple toggle for manual control
     const toggle = () => {
         // Cancel any auto-hide when user manually toggles
@@ -947,6 +1019,9 @@ export const useTransferQueue = () => {
         removeItem,
         retryItem,
         retryAllFailed,
+        getRestoredPendingIds,
+        clearRestoredFlags,
+        discardRestored,
         toggle,
         show,
         // TQ-3 staging lifecycle

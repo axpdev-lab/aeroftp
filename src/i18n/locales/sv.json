@@ -564,7 +564,18 @@
             "start": "Starta",
             "startAll": "Starta alla",
             "restored": "Återställd",
-            "restoredHint": "Återställd från en tidigare session. Anslut igen till samma server och tryck sedan på Försök igen för att köra om."
+            "restoredHint": "Återställd från en tidigare session. Återuppta ansluter till den sparade servern vid behov och kör sedan överföringen igen.",
+            "restoredQueueTitle": "Avbrutna överföringar från en tidigare session",
+            "restoredQueueDescription": "{count} överföring(ar) återställdes. Återuppta ansluter till den sparade servern vid behov och kör dem sedan igen. Kasta tar bort dem.",
+            "resumeRestoredAll": "Återuppta alla",
+            "discardRestored": "Kasta",
+            "resumeConnectConfirm": "Anslut till \"{name}\" och återuppta {count} överföring(ar)?",
+            "connectAndResume": "Anslut och återuppta",
+            "resumeNeedsConnection": "Anslut till en server först och återuppta sedan den här överföringen.",
+            "resumeNoProfile": "Den här överföringen har ingen sparad serverprofil. Anslut manuellt och återuppta sedan.",
+            "resumeProfileMissing": "Den sparade servern för den här överföringen hittades inte (den kan ha tagits bort).",
+            "connectingToResume": "Ansluter till {name} för att återuppta överföringar…",
+            "resumeConnectFailed": "Kunde inte ansluta till {name}. Överföringar startades inte."
         },
         "settings": {
             "title": "Inställningar",

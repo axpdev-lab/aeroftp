@@ -564,7 +564,18 @@
             "start": "Inicia",
             "startAll": "Inicia-ho tot",
             "restored": "Restaurat",
-            "restoredHint": "Restaurat d'una sessió anterior. Torneu a connectar al mateix servidor i premeu Reintenta per tornar-ho a executar."
+            "restoredHint": "Restaurat d'una sessió anterior. Reprendre es connecta al servidor desat si cal i després torna a executar la transferència.",
+            "restoredQueueTitle": "Transferències interrompudes d'una sessió anterior",
+            "restoredQueueDescription": "S'han restaurat {count} transferència(es). Reprendre es connecta al servidor desat si cal i després les torna a executar. Descarta les elimina.",
+            "resumeRestoredAll": "Reprèn-ho tot",
+            "discardRestored": "Descarta",
+            "resumeConnectConfirm": "Connectar a «{name}» i reprendre {count} transferència(es)?",
+            "connectAndResume": "Connecta i reprèn",
+            "resumeNeedsConnection": "Connecteu-vos primer a un servidor i després repreneu aquesta transferència.",
+            "resumeNoProfile": "Aquesta transferència no té cap perfil de servidor desat. Connecteu-vos manualment i després repreneu.",
+            "resumeProfileMissing": "No s'ha trobat el servidor desat d'aquesta transferència (potser s'ha suprimit).",
+            "connectingToResume": "S'està connectant a {name} per reprendre les transferències…",
+            "resumeConnectFailed": "No s'ha pogut connectar a {name}. No s'han iniciat les transferències."
         },
         "settings": {
             "title": "Configuracio",

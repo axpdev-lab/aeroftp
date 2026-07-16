@@ -564,7 +564,18 @@
             "start": "Hasi",
             "startAll": "Dena hasi",
             "restored": "Berrezarrita",
-            "restoredHint": "Aurreko saiotik berrezarrita. Konektatu berriro zerbitzari berera, eta sakatu Saiatu berriro berriro exekutatzeko."
+            "restoredHint": "Aurreko saio batetik leheneratua. Berrekin behar izanez gero gordetako zerbitzarira konektatzen da, eta ondoren transferentzia berriro exekutatzen du.",
+            "restoredQueueTitle": "Aurreko saio bateko etendako transferentziak",
+            "restoredQueueDescription": "{count} transferentzia leheneratu dira. Berrekin behar izanez gero gordetako zerbitzarira konektatzen da, eta ondoren berriro exekutatzen ditu. Baztertu haiek kentzen ditu.",
+            "resumeRestoredAll": "Berrekin denak",
+            "discardRestored": "Baztertu",
+            "resumeConnectConfirm": "\"{name}\"-ra konektatu eta {count} transferentzia berrekin?",
+            "connectAndResume": "Konektatu eta berrekin",
+            "resumeNeedsConnection": "Konektatu lehenik zerbitzari batera, eta ondoren berrekin transferentzia hau.",
+            "resumeNoProfile": "Transferentzia honek ez du gordetako zerbitzari-profilik. Konektatu eskuz, eta ondoren berrekin.",
+            "resumeProfileMissing": "Ez da aurkitu transferentzia honen gordetako zerbitzaria (ezabatua izan daiteke).",
+            "connectingToResume": "{name}-ra konektatzen transferentziak berrekiteko…",
+            "resumeConnectFailed": "Ezin izan da {name}-ra konektatu. Transferentziak ez dira hasi."
         },
         "settings": {
             "title": "Ezarpenak",

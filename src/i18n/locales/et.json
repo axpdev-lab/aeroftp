@@ -564,7 +564,18 @@
             "start": "Käivita",
             "startAll": "Käivita kõik",
             "restored": "Taastatud",
-            "restoredHint": "Taastatud eelmisest seansist. Ühendage uuesti sama serveriga ja vajutage uuesti käivitamiseks nuppu Proovi uuesti."
+            "restoredHint": "Taastatud eelmisest seansist. Jätkamine ühendub vajadusel salvestatud serveriga ja käivitab seejärel edastuse uuesti.",
+            "restoredQueueTitle": "Eelmisest seansist katkestatud ülekanded",
+            "restoredQueueDescription": "Taastati {count} edastus(t). Jätkamine ühendub vajadusel salvestatud serveriga ja käivitab need seejärel uuesti. Hülgamine eemaldab need.",
+            "resumeRestoredAll": "Jätka kõiki",
+            "discardRestored": "Loobu",
+            "resumeConnectConfirm": "Ühenduda serveriga „{name}“ ja jätkata {count} edastus(t)?",
+            "connectAndResume": "Ühenda ja jätka",
+            "resumeNeedsConnection": "Ühenduge esmalt serveriga ja jätkake seejärel seda edastust.",
+            "resumeNoProfile": "Sellel edastusel pole salvestatud serveriprofiili. Ühenduge käsitsi ja jätkake seejärel.",
+            "resumeProfileMissing": "Selle edastuse salvestatud serverit ei leitud (võib olla kustutatud).",
+            "connectingToResume": "Ühendamine serveriga {name} edastuste jätkamiseks…",
+            "resumeConnectFailed": "Serveriga {name} ei saanud ühendust. Edastusi ei alustatud."
         },
         "settings": {
             "title": "Seaded",

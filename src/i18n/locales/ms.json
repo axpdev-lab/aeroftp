@@ -564,7 +564,18 @@
             "start": "Mula",
             "startAll": "Mula semua",
             "restored": "Dipulihkan",
-            "restoredHint": "Dipulihkan daripada sesi sebelumnya. Sambung semula ke pelayan yang sama, kemudian tekan Cuba lagi untuk jalankan semula."
+            "restoredHint": "Dipulihkan daripada sesi sebelumnya. Sambung semula menyambung ke pelayan tersimpan jika perlu, kemudian menjalankan semula pemindahan.",
+            "restoredQueueTitle": "Pemindahan terganggu dari sesi sebelumnya",
+            "restoredQueueDescription": "{count} pemindahan dipulihkan. Sambung semula menyambung ke pelayan tersimpan jika perlu, kemudian menjalankannya semula. Buang mengalih keluarnya.",
+            "resumeRestoredAll": "Sambung semua",
+            "discardRestored": "Buang",
+            "resumeConnectConfirm": "Sambung ke \"{name}\" dan sambung semula {count} pemindahan?",
+            "connectAndResume": "Sambung & Sambung semula",
+            "resumeNeedsConnection": "Sambung ke pelayan dahulu, kemudian sambung semula pemindahan ini.",
+            "resumeNoProfile": "Pemindahan ini tiada profil pelayan tersimpan. Sambung secara manual, kemudian sambung semula.",
+            "resumeProfileMissing": "Pelayan tersimpan untuk pemindahan ini tidak dijumpai (mungkin telah dipadam).",
+            "connectingToResume": "Menyambung ke {name} untuk menyambung semula pemindahan…",
+            "resumeConnectFailed": "Tidak dapat menyambung ke {name}. Pemindahan tidak dimulakan."
         },
         "settings": {
             "title": "Tetapan",

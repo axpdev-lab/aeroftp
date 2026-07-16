@@ -564,7 +564,18 @@
             "start": "Starten",
             "startAll": "Alle starten",
             "restored": "Hersteld",
-            "restoredHint": "Hersteld vanuit een vorige sessie. Maak opnieuw verbinding met dezelfde server en druk op Opnieuw proberen om opnieuw uit te voeren."
+            "restoredHint": "Hersteld uit een vorige sessie. Hervatten maakt indien nodig verbinding met de opgeslagen server en voert daarna de overdracht opnieuw uit.",
+            "restoredQueueTitle": "Onderbroken overdrachten van een vorige sessie",
+            "restoredQueueDescription": "{count} overdracht(en) zijn hersteld. Hervatten maakt indien nodig verbinding met de opgeslagen server en voert ze daarna opnieuw uit. Verwerpen verwijdert ze.",
+            "resumeRestoredAll": "Alles hervatten",
+            "discardRestored": "Verwerpen",
+            "resumeConnectConfirm": "Verbinden met \"{name}\" en {count} overdracht(en) hervatten?",
+            "connectAndResume": "Verbinden en hervatten",
+            "resumeNeedsConnection": "Maak eerst verbinding met een server en hervat daarna deze overdracht.",
+            "resumeNoProfile": "Deze overdracht heeft geen opgeslagen serverprofiel. Maak handmatig verbinding en hervat daarna.",
+            "resumeProfileMissing": "De opgeslagen server voor deze overdracht is niet gevonden (deze is mogelijk verwijderd).",
+            "connectingToResume": "Verbinden met {name} om overdrachten te hervatten…",
+            "resumeConnectFailed": "Kon geen verbinding maken met {name}. Overdrachten zijn niet gestart."
         },
         "settings": {
             "title": "Instellingen",

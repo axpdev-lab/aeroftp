@@ -564,7 +564,18 @@
             "start": "Pokreni",
             "startAll": "Pokreni sve",
             "restored": "Vraćeno",
-            "restoredHint": "Vraćeno iz prethodne sesije. Ponovno se povežite na isti poslužitelj, zatim pritisnite Pokušaj ponovo za ponovno pokretanje."
+            "restoredHint": "Vraćeno iz prethodne sesije. Nastavak se po potrebi povezuje s spremljenim poslužiteljem, a zatim ponovno pokreće prijenos.",
+            "restoredQueueTitle": "Prekinuti prijenosi iz prethodne sesije",
+            "restoredQueueDescription": "Vraćeno je {count} prijenos(a). Nastavak se po potrebi povezuje s spremljenim poslužiteljem, a zatim ih ponovno pokreće. Odbaci ih uklanja.",
+            "resumeRestoredAll": "Nastavi sve",
+            "discardRestored": "Odbaci",
+            "resumeConnectConfirm": "Povezati se s \"{name}\" i nastaviti {count} prijenos(a)?",
+            "connectAndResume": "Poveži i nastavi",
+            "resumeNeedsConnection": "Prvo se povežite s poslužiteljem, zatim nastavite ovaj prijenos.",
+            "resumeNoProfile": "Ovaj prijenos nema spremljeni profil poslužitelja. Povežite se ručno, zatim nastavite.",
+            "resumeProfileMissing": "Spremljeni poslužitelj za ovaj prijenos nije pronađen (možda je obrisan).",
+            "connectingToResume": "Povezivanje s {name} za nastavak prijenosa…",
+            "resumeConnectFailed": "Nije moguće povezati se s {name}. Prijenosi nisu pokrenuti."
         },
         "settings": {
             "title": "Postavke",

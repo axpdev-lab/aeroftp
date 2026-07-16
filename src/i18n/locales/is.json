@@ -564,7 +564,18 @@
             "start": "Byrja",
             "startAll": "Byrja allt",
             "restored": "Endurheimt",
-            "restoredHint": "Endurheimt úr fyrri lotu. Tengstu aftur sama netþjóni og ýttu síðan á Reyna aftur til að keyra aftur."
+            "restoredHint": "Endurheimt úr fyrri lotu. Halda áfram tengist vistaða þjóninum ef þörf krefur og keyrir síðan flutninginn aftur.",
+            "restoredQueueTitle": "Truflaðar millifærslur úr fyrri lotu",
+            "restoredQueueDescription": "{count} flutning(ar) voru endurheimt(ir). Halda áfram tengist vistaða þjóninum ef þörf krefur og keyrir þá síðan aftur. Fleygja fjarlægir þá.",
+            "resumeRestoredAll": "Halda öllu áfram",
+            "discardRestored": "Fleygja",
+            "resumeConnectConfirm": "Tengjast „{name}“ og halda áfram með {count} flutning(a)?",
+            "connectAndResume": "Tengjast og halda áfram",
+            "resumeNeedsConnection": "Tengstu fyrst við þjón, haltu síðan áfram með þennan flutning.",
+            "resumeNoProfile": "Þessi flutningur hefur ekkert vistað þjónasnið. Tengstu handvirkt og haltu síðan áfram.",
+            "resumeProfileMissing": "Vistaði þjónninn fyrir þennan flutning fannst ekki (hann kann að hafa verið eytt).",
+            "connectingToResume": "Tengist {name} til að halda áfram flutningum…",
+            "resumeConnectFailed": "Gat ekki tengst {name}. Flutningar voru ekki ræstir."
         },
         "settings": {
             "title": "Stillingar",

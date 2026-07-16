@@ -197,6 +197,52 @@ export function filterSurvivingBatchEntries<T>(
     return out;
 }
 
+// ---- TQ-7c: startup resume-queue prompt helpers ----
+
+/** Pending items restored from the journal after restart (banner target). */
+export function listRestoredPendingIds(items: ReadonlyArray<TransferItem>): string[] {
+    const ids: string[] = [];
+    for (const item of items) {
+        if (item.restored && item.status === 'pending') ids.push(item.id);
+    }
+    return ids;
+}
+
+/** Clear the `restored` badge so the startup banner hides after Resume all. */
+export function clearRestoredFlags(
+    items: TransferItem[],
+    ids?: ReadonlyArray<string>,
+): TransferItem[] {
+    const only = ids ? new Set(ids) : null;
+    let changed = false;
+    const next = items.map((item) => {
+        if (!item.restored) return item;
+        if (only && !only.has(item.id)) return item;
+        changed = true;
+        return { ...item, restored: false };
+    });
+    return changed ? next : items;
+}
+
+/**
+ * Drop restored-and-still-pending items (Discard on the startup banner).
+ * Returns the pruned queue and the removed ids (for descriptor/callback cleanup).
+ */
+export function removeRestoredPending(items: TransferItem[]): {
+    next: TransferItem[];
+    removedIds: string[];
+} {
+    const removedIds: string[] = [];
+    const next = items.filter((item) => {
+        if (item.restored && item.status === 'pending') {
+            removedIds.push(item.id);
+            return false;
+        }
+        return true;
+    });
+    return removedIds.length === 0 ? { next: items, removedIds } : { next, removedIds };
+}
+
 /** Minimal shape of the real aggregate byte snapshot the footer bar needs
  *  (#364). `BatchProgressSnapshot` from `useTransferEvents` is structurally
  *  assignable to it, but the helper stays free of any React/tauri import so it

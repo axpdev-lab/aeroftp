@@ -564,7 +564,18 @@
             "start": "Bắt đầu",
             "startAll": "Bắt đầu tất cả",
             "restored": "Đã khôi phục",
-            "restoredHint": "Đã khôi phục từ phiên trước. Kết nối lại cùng máy chủ, rồi nhấn Thử lại để chạy lại."
+            "restoredHint": "Đã khôi phục từ phiên trước. Tiếp tục sẽ kết nối tới máy chủ đã lưu nếu cần, rồi chạy lại quá trình truyền.",
+            "restoredQueueTitle": "Các lần truyền bị gián đoạn từ phiên trước",
+            "restoredQueueDescription": "Đã khôi phục {count} quá trình truyền. Tiếp tục sẽ kết nối tới máy chủ đã lưu nếu cần, rồi chạy lại chúng. Hủy bỏ sẽ xóa chúng.",
+            "resumeRestoredAll": "Tiếp tục tất cả",
+            "discardRestored": "Hủy bỏ",
+            "resumeConnectConfirm": "Kết nối tới \"{name}\" và tiếp tục {count} quá trình truyền?",
+            "connectAndResume": "Kết nối & Tiếp tục",
+            "resumeNeedsConnection": "Hãy kết nối tới máy chủ trước, rồi tiếp tục quá trình truyền này.",
+            "resumeNoProfile": "Quá trình truyền này không có hồ sơ máy chủ đã lưu. Hãy kết nối thủ công, rồi tiếp tục.",
+            "resumeProfileMissing": "Không tìm thấy máy chủ đã lưu cho quá trình truyền này (có thể đã bị xóa).",
+            "connectingToResume": "Đang kết nối tới {name} để tiếp tục truyền…",
+            "resumeConnectFailed": "Không thể kết nối tới {name}. Các quá trình truyền chưa được bắt đầu."
         },
         "settings": {
             "title": "Cài đặt",

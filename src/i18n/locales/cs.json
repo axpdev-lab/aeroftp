@@ -564,7 +564,18 @@
             "start": "Spustit",
             "startAll": "Spustit vše",
             "restored": "Obnoveno",
-            "restoredHint": "Obnoveno z předchozí relace. Znovu se připojte ke stejnému serveru a stiskněte Opakovat pro opětovné spuštění."
+            "restoredHint": "Obnoveno z předchozí relace. Obnovení se v případě potřeby připojí k uloženému serveru a poté znovu spustí přenos.",
+            "restoredQueueTitle": "Přerušené přenosy z předchozí relace",
+            "restoredQueueDescription": "Bylo obnoveno {count} přenos(ů). Obnovení se v případě potřeby připojí k uloženému serveru a poté je znovu spustí. Zahození je odstraní.",
+            "resumeRestoredAll": "Obnovit vše",
+            "discardRestored": "Zahodit",
+            "resumeConnectConfirm": "Připojit k „{name}“ a obnovit {count} přenos(ů)?",
+            "connectAndResume": "Připojit a obnovit",
+            "resumeNeedsConnection": "Nejprve se připojte k serveru a poté obnovte tento přenos.",
+            "resumeNoProfile": "Tento přenos nemá uložený profil serveru. Připojte se ručně a poté obnovte.",
+            "resumeProfileMissing": "Uložený server pro tento přenos nebyl nalezen (mohl být smazán).",
+            "connectingToResume": "Připojování k {name} pro obnovení přenosů…",
+            "resumeConnectFailed": "Nepodařilo se připojit k {name}. Přenosy nebyly spuštěny."
         },
         "settings": {
             "title": "Nastavení",

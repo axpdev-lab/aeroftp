@@ -5,9 +5,12 @@ import { describe, expect, it } from 'vitest';
 import type { TransferItem, TransferStatus, TransferType } from './TransferQueue';
 import {
     addItem,
+    clearRestoredFlags,
     computeFooterPercentage,
     filterSurvivingBatchEntries,
+    listRestoredPendingIds,
     removeItem,
+    removeRestoredPending,
     reorder,
     stagedCount,
     startAll,
@@ -28,6 +31,9 @@ const makeItem = (
     type: (extra?.type ?? 'upload') as TransferType,
     status,
     startTime: extra?.startTime,
+    restored: extra?.restored,
+    isFolder: extra?.isFolder,
+    error: extra?.error,
 });
 
 describe('addItem', () => {
@@ -352,5 +358,58 @@ describe('computeFooterPercentage (#364 folder-batch aggregate bar)', () => {
 
     it('returns 0 when there is nothing to show', () => {
         expect(computeFooterPercentage(0, 0, 0, null)).toBe(0);
+    });
+});
+
+describe('TQ-7c restored resume helpers', () => {
+    it('listRestoredPendingIds returns only restored+pending', () => {
+        const items = [
+            makeItem('a', 'pending', { restored: true }),
+            makeItem('b', 'pending'),
+            makeItem('c', 'error', { restored: true }),
+            makeItem('d', 'transferring', { restored: true }),
+            makeItem('e', 'pending', { restored: true }),
+        ];
+        expect(listRestoredPendingIds(items)).toEqual(['a', 'e']);
+    });
+
+    it('clearRestoredFlags clears all or a subset without mutating others', () => {
+        const items = [
+            makeItem('a', 'pending', { restored: true }),
+            makeItem('b', 'pending', { restored: true }),
+            makeItem('c', 'pending'),
+        ];
+        const subset = clearRestoredFlags(items, ['a']);
+        expect(subset[0].restored).toBe(false);
+        expect(subset[1].restored).toBe(true);
+        expect(subset[2].restored).toBeFalsy();
+
+        const all = clearRestoredFlags(items);
+        expect(all.every((i) => !i.restored)).toBe(true);
+
+        // No-op when nothing restored
+        const plain = [makeItem('x', 'pending')];
+        expect(clearRestoredFlags(plain)).toBe(plain);
+    });
+
+    it('removeRestoredPending drops restored pending and reports ids', () => {
+        const items = [
+            makeItem('a', 'pending', { restored: true }),
+            makeItem('b', 'completed', { restored: true }),
+            makeItem('c', 'pending'),
+            makeItem('d', 'error', { restored: true }),
+        ];
+        const { next, removedIds } = removeRestoredPending(items);
+        expect(removedIds).toEqual(['a']);
+        expect(next.map((i) => i.id)).toEqual(['b', 'c', 'd']);
+        // b stays: restored but not pending (edge; should not happen in practice)
+        expect(next[0].restored).toBe(true);
+    });
+
+    it('removeRestoredPending is a no-op when none match', () => {
+        const items = [makeItem('a', 'pending'), makeItem('b', 'error')];
+        const { next, removedIds } = removeRestoredPending(items);
+        expect(removedIds).toEqual([]);
+        expect(next).toBe(items);
     });
 });

@@ -6,6 +6,7 @@ import type { TransferItem } from '../components/TransferQueue';
 import {
     buildJournalEntries,
     displayPathForRestore,
+    groupIdsByProfileId,
     isCancelledTransferError,
     isRestorableJournalStatus,
     joinRemotePath,
@@ -163,5 +164,28 @@ describe('displayPathForRestore', () => {
     it('picks local for upload and remote for download', () => {
         expect(displayPathForRestore('upload', '/L/x', '/R/x')).toBe('/L/x');
         expect(displayPathForRestore('download', '/L/x', '/R/x')).toBe('/R/x');
+    });
+});
+
+describe('groupIdsByProfileId', () => {
+    it('groups by profile_id and keeps first-seen order', () => {
+        const descriptors = new Map([
+            ['a', { profile_id: 'p1' }],
+            ['b', { profile_id: null }],
+            ['c', { profile_id: 'p1' }],
+            ['d', { profile_id: 'p2' }],
+            ['e', { profile_id: '' }],
+        ]);
+        expect(groupIdsByProfileId(['a', 'b', 'c', 'd', 'e'], descriptors)).toEqual([
+            { profileId: 'p1', ids: ['a', 'c'] },
+            { profileId: null, ids: ['b', 'e'] },
+            { profileId: 'p2', ids: ['d'] },
+        ]);
+    });
+
+    it('treats missing descriptors as null profile', () => {
+        expect(groupIdsByProfileId(['x'], new Map())).toEqual([
+            { profileId: null, ids: ['x'] },
+        ]);
     });
 });

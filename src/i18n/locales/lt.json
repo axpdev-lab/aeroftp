@@ -564,7 +564,18 @@
             "start": "Pradėti",
             "startAll": "Pradėti viską",
             "restored": "Atkurta",
-            "restoredHint": "Atkurta iš ankstesnio seanso. Iš naujo prisijunkite prie to paties serverio, tada paspauskite Bandyti dar kartą, kad paleistumėte iš naujo."
+            "restoredHint": "Atkurta iš ankstesnio seanso. Tęsimas prireikus prisijungia prie išsaugoto serverio, tada iš naujo paleidžia perdavimą.",
+            "restoredQueueTitle": "Iš ankstesnio seanso nutraukti perdavimai",
+            "restoredQueueDescription": "Atkurta {count} perdavimas (-ai). Tęsimas prireikus prisijungia prie išsaugoto serverio, tada juos paleidžia iš naujo. Atmesti juos pašalina.",
+            "resumeRestoredAll": "Tęsti visus",
+            "discardRestored": "Atsisakyti",
+            "resumeConnectConfirm": "Prisijungti prie „{name}“ ir tęsti {count} perdavimą (-us)?",
+            "connectAndResume": "Prisijungti ir tęsti",
+            "resumeNeedsConnection": "Pirmiausia prisijunkite prie serverio, tada tęskite šį perdavimą.",
+            "resumeNoProfile": "Šis perdavimas neturi išsaugoto serverio profilio. Prisijunkite rankiniu būdu, tada tęskite.",
+            "resumeProfileMissing": "Šio perdavimo išsaugotas serveris nerastas (galėjo būti ištrintas).",
+            "connectingToResume": "Jungiamasi prie {name}, kad būtų tęsiami perdavimai…",
+            "resumeConnectFailed": "Nepavyko prisijungti prie {name}. Perdavimai nepradėti."
         },
         "settings": {
             "title": "Nustatymai",

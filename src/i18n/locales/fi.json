@@ -564,7 +564,18 @@
             "start": "Aloita",
             "startAll": "Aloita kaikki",
             "restored": "Palautettu",
-            "restoredHint": "Palautettu edellisestä istunnosta. Yhdistä uudelleen samaan palvelimeen ja paina sitten Yritä uudelleen suorittaaksesi uudelleen."
+            "restoredHint": "Palautettu edellisestä istunnosta. Jatka yhdistää tarvittaessa tallennettuun palvelimeen ja suorittaa sitten siirron uudelleen.",
+            "restoredQueueTitle": "Edellisestä istunnosta keskeytyneet siirrot",
+            "restoredQueueDescription": "{count} siirto(a) palautettiin. Jatka yhdistää tarvittaessa tallennettuun palvelimeen ja suorittaa ne sitten uudelleen. Hylkää poistaa ne.",
+            "resumeRestoredAll": "Jatka kaikkia",
+            "discardRestored": "Hylkää",
+            "resumeConnectConfirm": "Yhdistetäänkö palvelimeen \"{name}\" ja jatketaan {count} siirtoa?",
+            "connectAndResume": "Yhdistä ja jatka",
+            "resumeNeedsConnection": "Yhdistä ensin palvelimeen ja jatka sitten tätä siirtoa.",
+            "resumeNoProfile": "Tällä siirrolla ei ole tallennettua palvelinprofiilia. Yhdistä manuaalisesti ja jatka sitten.",
+            "resumeProfileMissing": "Tämän siirron tallennettua palvelinta ei löytynyt (se on ehkä poistettu).",
+            "connectingToResume": "Yhdistetään palvelimeen {name} siirtojen jatkamiseksi…",
+            "resumeConnectFailed": "Yhteyttä palvelimeen {name} ei voitu muodostaa. Siirtoja ei aloitettu."
         },
         "settings": {
             "title": "Asetukset",
