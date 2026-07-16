@@ -259,6 +259,13 @@ windows = { version = "0.58", features = [
     # console Ctrl+C / Ctrl+Break broadcasts (self-updater, parent shell)
     # instead of dying. See install_mcp_signal_guard in aeroftp_cli.rs.
     "Win32_System_Console",
+    # WM_DEVICECHANGE mount watcher (PLACES volumes hotplug):
+    # hidden top-level window + GetMessage loop on a dedicated thread.
+    # Win32_Graphics_Gdi is required by windows 0.58 for WNDCLASSEXW
+    # (hbrBackground: HBRUSH) and RegisterClassExW.
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_System_LibraryLoader",
+    "Win32_Graphics_Gdi",
 ] }
 # Windows Registry access for auto-update install-format detection.
 # Walks HKLM/HKCU `Software\Microsoft\Windows\CurrentVersion\Uninstall`

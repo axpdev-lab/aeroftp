@@ -22,7 +22,7 @@ use serde::Serialize;
 use std::path::{Component, Path, PathBuf};
 #[cfg(target_os = "linux")]
 use std::sync::{LazyLock, Mutex};
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "windows"))]
 use tauri::Emitter;
 #[cfg(target_os = "linux")]
 use tracing::{error, info, warn};
@@ -2012,12 +2012,13 @@ pub fn volumes_changed() -> bool {
 
 // ─── Mount watcher (event-driven, replaces 5s setInterval) ──────────────────
 
-/// Start a background thread that watches `/proc/mounts` (via `poll()`) and
-/// the GVFS directory (via `inotify`) for mount table changes. Emits a
-/// `volumes-changed` Tauri event when either source changes, so the frontend
-/// can react immediately instead of polling every 5 seconds.
+/// Start a background thread that watches for mount/volume table changes and
+/// emits a `volumes-changed` Tauri event so the frontend can react immediately
+/// instead of waiting on the 30s poll fallback.
 ///
-/// On non-Linux platforms this is a no-op: frontend falls back to polling.
+/// - Linux: `poll()` on `/proc/mounts` + `inotify` on GVFS
+/// - Windows: hidden message window handling `WM_DEVICECHANGE` (volume arrival/removal)
+/// - Other platforms: no-op (frontend poll + focus refetch remain the safety net)
 #[cfg(target_os = "linux")]
 pub fn start_mount_watcher(app_handle: tauri::AppHandle) {
     use std::io::{Read, Seek, SeekFrom};
@@ -2134,7 +2135,226 @@ pub fn start_mount_watcher(app_handle: tauri::AppHandle) {
         .ok();
 }
 
-#[cfg(not(target_os = "linux"))]
+// ─── Windows mount watcher (WM_DEVICECHANGE) ────────────────────────────────
+
+/// Win32 dbt.h constants (avoid Win32_Devices_* feature thrash for three values).
+#[cfg(target_os = "windows")]
+const DBT_DEVICEARRIVAL: usize = 0x8000;
+#[cfg(target_os = "windows")]
+const DBT_DEVICEREMOVECOMPLETE: usize = 0x8004;
+#[cfg(target_os = "windows")]
+const DBT_DEVTYP_VOLUME: u32 = 0x0000_0002;
+/// ERROR_CLASS_ALREADY_EXISTS (winerror.h) -- class still usable for CreateWindow.
+#[cfg(target_os = "windows")]
+const ERROR_CLASS_ALREADY_EXISTS: u32 = 1410;
+
+/// Minimal DEV_BROADCAST_HDR for filtering volume device-change events.
+#[cfg(target_os = "windows")]
+#[repr(C)]
+struct DevBroadcastHdr {
+    dbch_size: u32,
+    dbch_devicetype: u32,
+    dbch_reserved: u32,
+}
+
+/// AppHandle for the Windows mount-watcher WndProc -> emit path.
+/// Set once when the watcher thread starts; never cleared (process lifetime).
+#[cfg(target_os = "windows")]
+static WIN_MOUNT_WATCHER_APP: std::sync::OnceLock<tauri::AppHandle> = std::sync::OnceLock::new();
+
+/// Coalesce rapid WM_DEVICECHANGE bursts into a single delayed emit (mirrors Linux 300ms).
+#[cfg(target_os = "windows")]
+static WIN_MOUNT_DEBOUNCE: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+/// Schedule a debounced `volumes-changed` emit from the Windows device-change path.
+#[cfg(target_os = "windows")]
+fn schedule_windows_volumes_changed() {
+    use std::sync::atomic::Ordering;
+
+    // If a debounce is already pending, drop this event; the pending emit will
+    // re-list after the settle window and pick up the final drive mask.
+    if WIN_MOUNT_DEBOUNCE.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    std::thread::Builder::new()
+        .name("mount-watcher-debounce".to_string())
+        .spawn(|| {
+            std::thread::sleep(std::time::Duration::from_millis(300));
+            WIN_MOUNT_DEBOUNCE.store(false, Ordering::SeqCst);
+            if let Some(app) = WIN_MOUNT_WATCHER_APP.get() {
+                let _ = app.emit("volumes-changed", ());
+            }
+        })
+        .ok();
+}
+
+/// WndProc for the hidden mount-watcher window. Emits on volume arrival/removal.
+#[cfg(target_os = "windows")]
+unsafe extern "system" fn mount_watcher_wndproc(
+    hwnd: windows::Win32::Foundation::HWND,
+    msg: u32,
+    wparam: windows::Win32::Foundation::WPARAM,
+    lparam: windows::Win32::Foundation::LPARAM,
+) -> windows::Win32::Foundation::LRESULT {
+    use windows::Win32::Foundation::LRESULT;
+    use windows::Win32::UI::WindowsAndMessaging::{DefWindowProcW, WM_DEVICECHANGE};
+
+    if msg == WM_DEVICECHANGE {
+        let event = wparam.0;
+        if event == DBT_DEVICEARRIVAL || event == DBT_DEVICEREMOVECOMPLETE {
+            // Prefer volume-only events; if the header is missing, emit anyway
+            // (list_mounted_volumes is cheap and the 300ms debounce coalesces noise).
+            let is_volume = if lparam.0 == 0 {
+                true
+            } else {
+                // SAFETY: lParam is a DEV_BROADCAST_HDR* for arrival/removecomplete
+                // when non-null (MSDN WM_DEVICECHANGE).
+                let hdr = &*(lparam.0 as *const DevBroadcastHdr);
+                hdr.dbch_devicetype == DBT_DEVTYP_VOLUME
+            };
+            if is_volume {
+                schedule_windows_volumes_changed();
+            }
+        }
+        // TRUE acknowledges the notification; irrelevant for arrival/remove but harmless.
+        return LRESULT(1);
+    }
+    DefWindowProcW(hwnd, msg, wparam, lparam)
+}
+
+/// Start a background thread with a hidden top-level window that receives
+/// `WM_DEVICECHANGE` broadcasts for volume arrival/removal and emits
+/// `volumes-changed` (debounced 300ms). Message-only windows do NOT receive
+/// system device-change broadcasts, so this uses a zero-size tool window.
+///
+/// Frontend 30s poll + focus refetch remain as safety nets.
+#[cfg(target_os = "windows")]
+pub fn start_mount_watcher(app_handle: tauri::AppHandle) {
+    use windows::core::{w, PCWSTR};
+    use windows::Win32::Foundation::{GetLastError, HINSTANCE, HWND};
+    use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+    use windows::Win32::UI::WindowsAndMessaging::{
+        CreateWindowExW, DispatchMessageW, GetMessageW, RegisterClassExW, TranslateMessage,
+        CS_HREDRAW, CS_VREDRAW, HMENU, MSG, WNDCLASSEXW, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
+        WS_POPUP,
+    };
+
+    if WIN_MOUNT_WATCHER_APP.set(app_handle).is_err() {
+        // Already running (e.g. setup called twice); keep the first handle.
+        warn!("mount-watcher: Windows watcher already started");
+        return;
+    }
+
+    std::thread::Builder::new()
+        .name("mount-watcher".to_string())
+        .spawn(move || {
+            let hinstance: HINSTANCE = match unsafe { GetModuleHandleW(None) } {
+                Ok(h) => h.into(),
+                Err(e) => {
+                    warn!(
+                        "mount-watcher: GetModuleHandleW failed: {}; frontend poll remains",
+                        e
+                    );
+                    return;
+                }
+            };
+
+            let class_name = w!("AeroFTPMountWatcher");
+            let wc = WNDCLASSEXW {
+                cbSize: std::mem::size_of::<WNDCLASSEXW>() as u32,
+                style: CS_HREDRAW | CS_VREDRAW,
+                lpfnWndProc: Some(mount_watcher_wndproc),
+                cbClsExtra: 0,
+                cbWndExtra: 0,
+                hInstance: hinstance,
+                hIcon: Default::default(),
+                hCursor: Default::default(),
+                hbrBackground: Default::default(),
+                lpszMenuName: PCWSTR::null(),
+                lpszClassName: class_name,
+                hIconSm: Default::default(),
+            };
+
+            // SAFETY: wc points at valid WNDCLASSEXW for the duration of the call.
+            let atom = unsafe { RegisterClassExW(&wc) };
+            if atom == 0 {
+                let err = unsafe { GetLastError() };
+                // Class may already exist after a hot-reload; CreateWindow can still use it.
+                if err.0 != ERROR_CLASS_ALREADY_EXISTS {
+                    warn!(
+                        "mount-watcher: RegisterClassExW failed (win32 {}); frontend poll remains",
+                        err.0
+                    );
+                    return;
+                }
+            }
+
+            // Hidden top-level tool window: receives WM_DEVICECHANGE broadcasts.
+            // Zero size, no activate, not on the taskbar. Do not ShowWindow.
+            // SAFETY: class registered (or already existed); null parent = top-level.
+            let hwnd = match unsafe {
+                CreateWindowExW(
+                    WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
+                    class_name,
+                    w!(""),
+                    WS_POPUP,
+                    0,
+                    0,
+                    0,
+                    0,
+                    HWND::default(),
+                    HMENU::default(),
+                    hinstance,
+                    None,
+                )
+            } {
+                Ok(h) if !h.is_invalid() => h,
+                Ok(_) => {
+                    warn!(
+                        "mount-watcher: CreateWindowExW returned null HWND; frontend poll remains"
+                    );
+                    return;
+                }
+                Err(e) => {
+                    warn!(
+                        "mount-watcher: CreateWindowExW failed: {}; frontend poll remains",
+                        e
+                    );
+                    return;
+                }
+            };
+
+            // Keep the HWND alive for the message loop (system owns the window object).
+            let _hwnd = hwnd;
+            info!("mount-watcher: Windows WM_DEVICECHANGE watcher started");
+
+            let mut msg = MSG::default();
+            loop {
+                // SAFETY: msg is a valid writable MSG; filter range 0..0 = all messages.
+                let ret = unsafe { GetMessageW(&mut msg, None, 0, 0) };
+                if ret.0 == 0 {
+                    // WM_QUIT
+                    break;
+                }
+                if ret.0 == -1 {
+                    warn!("mount-watcher: GetMessageW error; exiting watcher thread");
+                    break;
+                }
+                unsafe {
+                    let _ = TranslateMessage(&msg);
+                    DispatchMessageW(&msg);
+                }
+            }
+
+            info!("mount-watcher thread exited");
+        })
+        .ok();
+}
+
+/// macOS and other non-Linux/non-Windows targets: no real-time watcher yet.
+/// Frontend 30s poll + focus refetch remain the path.
+#[cfg(not(any(target_os = "linux", target_os = "windows")))]
 pub fn start_mount_watcher(_app_handle: tauri::AppHandle) {
-    // No-op: macOS/Windows rely on frontend polling fallback
+    // No-op: rely on frontend polling fallback
 }
