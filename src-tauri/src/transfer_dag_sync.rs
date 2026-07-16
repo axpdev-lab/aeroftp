@@ -71,7 +71,9 @@ use crate::sync::{
     DeltaPolicy, FileOutcome, SyncDirection, SyncError, SyncOptions, SyncPhase, SyncProgressSink,
     SyncReport, SyncTransferSpec, SyncTreeAction,
 };
-use crate::sync_core::scan::{scan_local_tree, scan_remote_tree, LocalEntry, RemoteEntry};
+use crate::sync_core::scan::{
+    scan_local_tree_checked, scan_remote_tree_checked, LocalEntry, RemoteEntry, ScanCompleteness,
+};
 use crate::transfer_dag::executor::{execute_dag, DagNodeRunner, NodeFuture, NodeOutcome};
 use crate::transfer_dag::graph::{TransferNode, TransferNodeKind};
 use crate::transfer_dag::{
@@ -444,10 +446,10 @@ pub async fn execute_sync_dag(
     let local_handle = {
         let root = local_root.to_string();
         let scan_opts = scan.clone();
-        tokio::task::spawn_blocking(move || scan_local_tree(&root, &scan_opts))
+        tokio::task::spawn_blocking(move || scan_local_tree_checked(&root, &scan_opts))
     };
-    let remotes = scan_remote_tree(provider, remote_root, &scan).await;
-    // `scan_local_tree` itself returns a `Vec` (best-effort, mirroring
+    let (remotes, remote_scan) = scan_remote_tree_checked(provider, remote_root, &scan).await;
+    // `scan_local_tree_checked` itself returns a `Vec` (best-effort, mirroring
     // `scan_remote_tree`), so the only way the join returns `Err` is a panic
     // inside the blocking thread. `.unwrap_or_default()` would silently turn
     // that panic into an empty local listing, which then drives a "no
@@ -455,11 +457,20 @@ pub async fn execute_sync_dag(
     // success while the local side was never scanned. Surface the panic as
     // a hard `SyncError` on the report so the caller sees the failure;
     // keep `locals` empty so the remote-only side of the run still proceeds.
-    let (locals, local_scan_panic) = match local_handle.await {
-        Ok(entries) => (entries, None),
+    // A panicked scan is treated as maximally incomplete so the orphan-delete
+    // guard below refuses (CLAUDE-AV-B3-01).
+    let (locals, local_scan, local_scan_panic) = match local_handle.await {
+        Ok((entries, completeness)) => (entries, completeness, None),
         Err(join_err) => {
             eprintln!("[execute_sync_dag] local scan task failed: {}", join_err);
-            (Vec::new(), Some(join_err.to_string()))
+            (
+                Vec::new(),
+                ScanCompleteness {
+                    list_errors: 1,
+                    truncated: false,
+                },
+                Some(join_err.to_string()),
+            )
         }
     };
 
@@ -481,7 +492,40 @@ pub async fn execute_sync_dag(
             decision_policy: opts.delta_policy,
         });
     }
-    let plan = plan_sync_dag(&locals, &remotes, opts);
+
+    // CLAUDE-AV-B3-01: same orphan-delete guard as the legacy core. When the
+    // source listing is untrustworthy (incomplete, or empty while the other
+    // side is not), plan the run WITHOUT orphan deletes and record why, so a
+    // transient listing failure cannot mirror a destructive delete here either.
+    let dag_opts;
+    let plan_opts = if opts.delete_orphans {
+        match crate::sync::orphan_delete_guard(
+            opts.direction,
+            &locals,
+            &remotes,
+            &local_scan,
+            &remote_scan,
+        ) {
+            Ok(()) => opts,
+            Err(reason) => {
+                tracing::warn!("sync.delete_orphans refused (dag): {}", reason);
+                report.errors.push(SyncError {
+                    rel_path: String::new(),
+                    operation: "delete_skipped",
+                    message: reason,
+                    decision_policy: opts.delta_policy,
+                });
+                dag_opts = SyncOptions {
+                    delete_orphans: false,
+                    ..opts.clone()
+                };
+                &dag_opts
+            }
+        }
+    } else {
+        opts
+    };
+    let plan = plan_sync_dag(&locals, &remotes, plan_opts);
 
     // Phase 3: Executing.
     sink.on_phase(SyncPhase::Executing);

@@ -22,4 +22,7 @@ pub use crate::sync::{
     SyncProgressSink, SyncReport,
 };
 pub use compare::{compare_trees, DiffEntry, DiffReport};
-pub use scan::{scan_local_tree, scan_remote_tree, LocalEntry, RemoteEntry, ScanOptions};
+pub use scan::{
+    scan_local_tree, scan_local_tree_checked, scan_remote_tree, scan_remote_tree_checked,
+    LocalEntry, RemoteEntry, ScanCompleteness, ScanOptions,
+};

@@ -199,22 +199,67 @@ async fn try_recursive_fastpath(
     adapt_fastpath_entries(listing.entries, remote_root, opts)
 }
 
+/// Completeness signal for a tree scan.
+///
+/// A scan is INCOMPLETE when a directory listing failed (`list_errors > 0`) or
+/// it was cut short at the entry cap (`truncated`). This matters for
+/// delete-propagation: a file "missing" from an *incomplete* scan may simply be
+/// un-listed rather than actually deleted on that side, so mirroring that
+/// "missing" into a destructive delete is unsafe. Callers that delete orphans
+/// must gate on [`ScanCompleteness::is_complete`]. CLAUDE-AV-B3-01.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ScanCompleteness {
+    /// Number of directory listings that failed during the scan.
+    pub list_errors: usize,
+    /// True if the scan stopped early at [`MAX_SCAN_ENTRIES`] / `max_entries`.
+    pub truncated: bool,
+}
+
+impl ScanCompleteness {
+    /// The scan saw the whole tree: no listing errors and no cap truncation.
+    pub fn is_complete(&self) -> bool {
+        self.list_errors == 0 && !self.truncated
+    }
+}
+
 /// Walk the local directory tree and return files matching the filter.
 /// Errors that hit non-root entries are silently dropped (same behaviour as
 /// the CLI) so that partial scans still return useful data on messy trees.
 pub fn scan_local_tree(root: &str, opts: &ScanOptions) -> Vec<LocalEntry> {
+    scan_local_tree_checked(root, opts).0
+}
+
+/// Like [`scan_local_tree`] but also reports [`ScanCompleteness`] so an
+/// orphan-delete caller can refuse to delete off an incomplete scan.
+/// CLAUDE-AV-B3-01.
+pub fn scan_local_tree_checked(
+    root: &str,
+    opts: &ScanOptions,
+) -> (Vec<LocalEntry>, ScanCompleteness) {
     let matchers = compile_matchers(&opts.exclude_patterns);
     let cap = opts.max_entries.unwrap_or(MAX_SCAN_ENTRIES);
     let depth = opts.max_depth.unwrap_or(DEFAULT_SCAN_DEPTH);
 
     let mut entries = Vec::new();
-    for walk_entry in walkdir::WalkDir::new(root)
+    let mut completeness = ScanCompleteness::default();
+    for result in walkdir::WalkDir::new(root)
         .follow_links(false)
         .max_depth(depth)
         .into_iter()
-        .filter_map(|e| e.ok())
     {
+        let walk_entry = match result {
+            Ok(e) => e,
+            Err(_) => {
+                // A directory we could not read (the root itself when the mount
+                // is gone, or any subtree) makes the scan incomplete: files
+                // under it are invisible. Count it so delete propagation can
+                // refuse. CLAUDE-AV-B3-01.
+                completeness.list_errors += 1;
+                continue;
+            }
+        };
         if entries.len() >= cap {
+            completeness.truncated = true;
             break;
         }
         if !walk_entry.file_type().is_file() {
@@ -264,7 +309,7 @@ pub fn scan_local_tree(root: &str, opts: &ScanOptions) -> Vec<LocalEntry> {
             sha256,
         });
     }
-    entries
+    (entries, completeness)
 }
 
 /// Recursively list the remote tree rooted at `remote_root`. Uses the
@@ -276,18 +321,41 @@ pub async fn scan_remote_tree(
     remote_root: &str,
     opts: &ScanOptions,
 ) -> Vec<RemoteEntry> {
+    scan_remote_tree_checked(provider, remote_root, opts)
+        .await
+        .0
+}
+
+/// Like [`scan_remote_tree`] but also reports [`ScanCompleteness`]. A failed
+/// directory listing is COUNTED (not swallowed into a silently-empty tree) and
+/// cap truncation is flagged, so an orphan-delete caller can refuse to mirror a
+/// "missing" file that is really just un-listed. CLAUDE-AV-B3-01.
+pub async fn scan_remote_tree_checked(
+    provider: &mut Box<dyn StorageProvider>,
+    remote_root: &str,
+    opts: &ScanOptions,
+) -> (Vec<RemoteEntry>, ScanCompleteness) {
+    let cap = opts.max_entries.unwrap_or(MAX_SCAN_ENTRIES);
     // GAP-9f: provider-native single-shot recursive listing fast-path. S3
     // collapses the per-directory BFS round-trips into one flat listing.
     // Skipped when checksums are requested (the flat listing carries no
-    // per-file hash, so the BFS per-file `checksum()` is still required).
+    // per-file hash, so the BFS per-file `checksum()` is still required). A
+    // successful fast-path fetched the WHOLE subtree in one call, so it is
+    // complete unless it hit the entry cap.
     if !opts.compute_remote_checksum && !opts.disable_recursive_fastpath {
         if let Some(results) = try_recursive_fastpath(provider, remote_root, opts).await {
-            return results;
+            let truncated = results.len() >= cap;
+            return (
+                results,
+                ScanCompleteness {
+                    list_errors: 0,
+                    truncated,
+                },
+            );
         }
     }
 
     let matchers = compile_matchers(&opts.exclude_patterns);
-    let cap = opts.max_entries.unwrap_or(MAX_SCAN_ENTRIES);
     let depth = opts.max_depth.unwrap_or(DEFAULT_SCAN_DEPTH);
     // Server-side checksum is only worth requesting when both the caller
     // asked for it AND the provider advertises the capability. This lets
@@ -296,12 +364,14 @@ pub async fn scan_remote_tree(
     let want_remote_checksum = opts.compute_remote_checksum && provider.supports_checksum();
 
     let mut results = Vec::new();
+    let mut completeness = ScanCompleteness::default();
     let mut queue: Vec<(String, String, usize)> = vec![(remote_root.to_string(), String::new(), 0)];
     while let Some((abs_dir, rel_prefix, current_depth)) = queue.pop() {
         if current_depth >= depth {
             continue;
         }
         if results.len() >= cap {
+            completeness.truncated = true;
             break;
         }
         match list_with_transport_retry(provider, &abs_dir).await {
@@ -354,6 +424,7 @@ pub async fn scan_remote_tree(
                 }
                 for (entry_rel, abs_path, provider_entry) in pending_files {
                     if results.len() >= cap {
+                        completeness.truncated = true;
                         break;
                     }
                     let (checksum_alg, checksum_hex) = if want_remote_checksum {
@@ -378,10 +449,11 @@ pub async fn scan_remote_tree(
                     "[scan_remote_tree] warning: failed to list {}: {}",
                     abs_dir, e
                 );
+                completeness.list_errors += 1;
             }
         }
     }
-    results
+    (results, completeness)
 }
 
 /// Scan a remote tree through the GUI provider holder, consuming explicit

@@ -14,7 +14,9 @@ use crate::error_correction::{
     ERROR_CORRECTION_DEFAULT_PCT, ERROR_CORRECTION_MAX_PCT, ERROR_CORRECTION_MIN_PCT,
 };
 use crate::providers::{ProviderError, ProviderTransferExecutorKind, StorageProvider};
-use crate::sync_core::scan::{scan_local_tree, scan_remote_tree, ScanOptions};
+use crate::sync_core::scan::{
+    scan_local_tree_checked, scan_remote_tree_checked, ScanCompleteness, ScanOptions,
+};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -1143,6 +1145,53 @@ pub fn get_recommended_action(status: &SyncStatus, direction: &CompareDirection)
     decide_sync_action(status, direction, false, true)
 }
 
+/// Decide whether [`sync_tree_core`]'s orphan-delete pass is safe to run.
+///
+/// Orphan deletes are authorised by the SOURCE listing: Upload deletes remote
+/// files absent locally (the local listing is the source of truth), Download
+/// deletes local files absent remotely (the remote listing is), and Both does
+/// no orphan deletes. Returns `Err(reason)` to REFUSE the whole pass when the
+/// source listing cannot be trusted:
+///  - it is INCOMPLETE (a directory failed to list, or the scan hit the entry
+///    cap): a file "missing" from it may just be un-listed, not deleted;
+///  - it is EMPTY while the destination is not: the both-sides-empty wipe (an
+///    errored root / unmounted mount / dead session returns an empty tree).
+///
+/// This is the shared guard behind the known delete-propagation gap; without it
+/// a transient listing failure mirrors a destructive delete of every file the
+/// user still has, and this core has no trash to recover from. CLAUDE-AV-B3-01.
+pub(crate) fn orphan_delete_guard(
+    direction: SyncDirection,
+    locals: &[crate::sync_core::LocalEntry],
+    remotes: &[crate::sync_core::RemoteEntry],
+    local_scan: &ScanCompleteness,
+    remote_scan: &ScanCompleteness,
+) -> Result<(), String> {
+    let (source_scan, source_empty, dest_nonempty) = match direction {
+        SyncDirection::Upload => (local_scan, locals.is_empty(), !remotes.is_empty()),
+        SyncDirection::Download => (remote_scan, remotes.is_empty(), !locals.is_empty()),
+        SyncDirection::Both => return Ok(()),
+    };
+    if !source_scan.is_complete() {
+        return Err(format!(
+            "source scan incomplete ({} listing error(s){}); orphan deletes skipped to avoid a false-missing wipe",
+            source_scan.list_errors,
+            if source_scan.truncated {
+                ", truncated at the entry cap"
+            } else {
+                ""
+            }
+        ));
+    }
+    if source_empty && dest_nonempty {
+        return Err(
+            "source side is empty while the destination is not; orphan deletes skipped (both-sides-empty safety)"
+                .to_string(),
+        );
+    }
+    Ok(())
+}
+
 /// Run a sync between `local_root` and `remote_root` using `provider` and
 /// record progress via `sink`.
 pub async fn sync_tree_core(
@@ -1173,7 +1222,7 @@ pub async fn sync_tree_core(
     let start = std::time::Instant::now();
     sink.on_phase(SyncPhase::Scanning);
     let scan = scan_options_for_sync(opts);
-    let locals = scan_local_tree(local_root, &scan);
+    let (locals, local_scan) = scan_local_tree_checked(local_root, &scan);
 
     if !opts.dry_run
         && !locals.is_empty()
@@ -1182,7 +1231,7 @@ pub async fn sync_tree_core(
         ensure_remote_dir(provider, remote_root).await;
     }
 
-    let remotes = scan_remote_tree(provider, remote_root, &scan).await;
+    let (remotes, remote_scan) = scan_remote_tree_checked(provider, remote_root, &scan).await;
 
     sink.on_phase(SyncPhase::Planning);
     let mut report = SyncReport {
@@ -1350,53 +1399,71 @@ pub async fn sync_tree_core(
     }
 
     if opts.delete_orphans {
-        match opts.direction {
-            SyncDirection::Upload => {
-                for remote_entry in &remotes {
-                    if !local_entries_by_path.contains_key(remote_entry.rel_path.as_str()) {
-                        let outcome = perform_remote_delete(
-                            provider,
-                            remote_root,
-                            &remote_entry.rel_path,
-                            opts.delta_policy,
-                            opts.dry_run,
-                            sink,
-                            &opts.error_correction,
-                        )
-                        .await;
-                        apply_sync_tree_outcome(
-                            &mut report,
-                            &remote_entry.rel_path,
-                            "delete_remote",
-                            outcome,
-                            opts.delta_policy,
-                            sink,
-                        );
+        // CLAUDE-AV-B3-01: gate the orphan-delete pass on the trustworthiness
+        // of the SOURCE listing (the side whose "this file is gone" verdict
+        // authorises deleting the other side). A transient listing failure or
+        // an unmounted root otherwise returns an empty/partial tree that the
+        // loop below mirrors into a destructive delete of files the user still
+        // has, with no trash to recover from.
+        if let Err(reason) =
+            orphan_delete_guard(opts.direction, &locals, &remotes, &local_scan, &remote_scan)
+        {
+            tracing::warn!("sync.delete_orphans refused: {}", reason);
+            report.errors.push(SyncError {
+                rel_path: String::new(),
+                operation: "delete_skipped",
+                message: reason,
+                decision_policy: opts.delta_policy,
+            });
+        } else {
+            match opts.direction {
+                SyncDirection::Upload => {
+                    for remote_entry in &remotes {
+                        if !local_entries_by_path.contains_key(remote_entry.rel_path.as_str()) {
+                            let outcome = perform_remote_delete(
+                                provider,
+                                remote_root,
+                                &remote_entry.rel_path,
+                                opts.delta_policy,
+                                opts.dry_run,
+                                sink,
+                                &opts.error_correction,
+                            )
+                            .await;
+                            apply_sync_tree_outcome(
+                                &mut report,
+                                &remote_entry.rel_path,
+                                "delete_remote",
+                                outcome,
+                                opts.delta_policy,
+                                sink,
+                            );
+                        }
                     }
                 }
-            }
-            SyncDirection::Download => {
-                for local_entry in &locals {
-                    if !remote_entries_by_path.contains_key(local_entry.rel_path.as_str()) {
-                        let outcome = perform_local_delete(
-                            local_root,
-                            &local_entry.rel_path,
-                            opts.delta_policy,
-                            opts.dry_run,
-                            sink,
-                        );
-                        apply_sync_tree_outcome(
-                            &mut report,
-                            &local_entry.rel_path,
-                            "delete_local",
-                            outcome,
-                            opts.delta_policy,
-                            sink,
-                        );
+                SyncDirection::Download => {
+                    for local_entry in &locals {
+                        if !remote_entries_by_path.contains_key(local_entry.rel_path.as_str()) {
+                            let outcome = perform_local_delete(
+                                local_root,
+                                &local_entry.rel_path,
+                                opts.delta_policy,
+                                opts.dry_run,
+                                sink,
+                            );
+                            apply_sync_tree_outcome(
+                                &mut report,
+                                &local_entry.rel_path,
+                                "delete_local",
+                                outcome,
+                                opts.delta_policy,
+                                sink,
+                            );
+                        }
                     }
                 }
+                SyncDirection::Both => {}
             }
-            SyncDirection::Both => {}
         }
     }
 
@@ -5236,6 +5303,95 @@ mod tests {
             checksum_alg: checksum_hex.map(|_| "sha256".to_string()),
             checksum_hex: checksum_hex.map(str::to_string),
         }
+    }
+
+    /// CLAUDE-AV-B3-01: the shared orphan-delete guard must refuse whenever the
+    /// SOURCE listing is untrustworthy, so a transient listing failure or an
+    /// unmounted root can never mirror a destructive delete.
+    #[test]
+    fn orphan_delete_guard_refuses_unsafe_source_listings() {
+        use crate::sync_core::ScanCompleteness;
+        let complete = ScanCompleteness::default();
+        let incomplete = ScanCompleteness {
+            list_errors: 1,
+            truncated: false,
+        };
+        let truncated = ScanCompleteness {
+            list_errors: 0,
+            truncated: true,
+        };
+        let lfile = [local_entry(10, None, None)];
+        let rfile = [remote_entry(10, None, None)];
+
+        // Download deletes local orphans, authorised by the REMOTE listing.
+        assert!(
+            orphan_delete_guard(
+                SyncDirection::Download,
+                &lfile,
+                &rfile,
+                &complete,
+                &complete
+            )
+            .is_ok(),
+            "complete non-empty remote should permit local orphan deletes"
+        );
+        assert!(
+            orphan_delete_guard(
+                SyncDirection::Download,
+                &lfile,
+                &rfile,
+                &complete,
+                &incomplete
+            )
+            .is_err(),
+            "incomplete remote scan must refuse"
+        );
+        assert!(
+            orphan_delete_guard(
+                SyncDirection::Download,
+                &lfile,
+                &rfile,
+                &complete,
+                &truncated
+            )
+            .is_err(),
+            "truncated remote scan must refuse"
+        );
+        assert!(
+            orphan_delete_guard(SyncDirection::Download, &lfile, &[], &complete, &complete)
+                .is_err(),
+            "empty remote + non-empty local is the both-sides-empty wipe: refuse"
+        );
+        assert!(
+            orphan_delete_guard(SyncDirection::Download, &[], &[], &complete, &complete).is_ok(),
+            "empty remote + empty local has nothing to delete: allowed"
+        );
+
+        // Upload deletes remote orphans, authorised by the LOCAL listing.
+        assert!(
+            orphan_delete_guard(SyncDirection::Upload, &lfile, &rfile, &complete, &complete)
+                .is_ok()
+        );
+        assert!(
+            orphan_delete_guard(
+                SyncDirection::Upload,
+                &lfile,
+                &rfile,
+                &incomplete,
+                &complete
+            )
+            .is_err(),
+            "incomplete local scan must refuse remote orphan deletes"
+        );
+        assert!(
+            orphan_delete_guard(SyncDirection::Upload, &[], &rfile, &complete, &complete).is_err(),
+            "empty local + non-empty remote is the both-sides-empty wipe: refuse"
+        );
+
+        // Both never performs orphan deletes: always safe regardless of scans.
+        assert!(
+            orphan_delete_guard(SyncDirection::Both, &[], &rfile, &incomplete, &incomplete).is_ok()
+        );
     }
 
     #[test]
