@@ -106,10 +106,17 @@ pub(crate) fn xxh128_wire_bytes(hash: u128) -> Vec<u8> {
     out
 }
 
-/// The one checksum algorithm this driver can recompute in-tree. The
-/// download-side whole-file verify keys off this name so that a peer
-/// which negotiated md5/md4 keeps its delta path untouched.
+/// Checksum algorithm names the download-side whole-file verify can
+/// recompute in-tree. Peers that negotiate anything else (xxh3, xxh64,
+/// md4, ...) keep the pre-verify delta path untouched: the check is a
+/// deliberate no-op for unimplemented algorithms so a verify that
+/// assumed the wrong digest cannot silently disable delta forever.
 pub(crate) const XXH128_ALGO_NAME: &str = "xxh128";
+/// CLAUDE-AV-B3-14: md5 whole-file trailer, the practical fallback
+/// real rsync uses when xxh* is unavailable. Same 16-byte length as
+/// xxh128 (`A2_3_FILE_CHECKSUM_LEN`), unseeded (see `sum_init` for
+/// `CSUM_MD5` in rsync 3.2.7).
+pub(crate) const MD5_ALGO_NAME: &str = "md5";
 
 /// Chunk size used for raw-stream reads. Large enough to swallow a full
 /// preamble + file list in one go for small transfers, small enough not

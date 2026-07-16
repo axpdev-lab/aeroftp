@@ -71,7 +71,7 @@ use crate::aerorsync::engine_adapter::{
 };
 use crate::aerorsync::fallback_policy::{classify_fallback, FallbackVerdict};
 use crate::aerorsync::native_driver::{
-    xxh128_wire_bytes, AerorsyncDriver, PreambleProfile, XXH128_ALGO_NAME,
+    xxh128_wire_bytes, AerorsyncDriver, PreambleProfile, MD5_ALGO_NAME, XXH128_ALGO_NAME,
 };
 use crate::aerorsync::real_wire::FileListEntry;
 use crate::aerorsync::remote_command::RemoteCommandSpec;
@@ -770,10 +770,10 @@ where
         }
     }
 
-    // Whole-file checksum guard (CLAUDE-AV-B3-12). The size guard above
-    // only catches truncation; it cannot see corruption. rsync closes the
-    // delta stream with the sender's strong checksum over the WHOLE
-    // reconstructed file (`match.c::match_sums` →
+    // Whole-file checksum guard (CLAUDE-AV-B3-12 / CLAUDE-AV-B3-14). The
+    // size guard above only catches truncation; it cannot see corruption.
+    // rsync closes the delta stream with the sender's strong checksum over
+    // the WHOLE reconstructed file (`match.c::match_sums` →
     // `sum_init(xfer_sum_nni, checksum_seed)` … `sum_end(sender_file_sum)`
     // → `write_buf(f, sender_file_sum, xfer_sum_len)`). We already
     // received and stored that trailer and then never looked at it, so a
@@ -783,37 +783,90 @@ where
     // `match.c` intentionally transmits an all-zero sum so the receiver
     // refuses the file.
     //
-    // INTEROP: run ONLY when the negotiated algorithm is xxh128, the one
-    // algorithm we can recompute in-tree. Against a peer that negotiated
-    // md5/md4 the check is skipped and behavior is exactly as before,
-    // because a verify that assumed xxh128 would mismatch on every single
-    // file and silently downgrade that peer to classic transfers forever:
-    // trading a rare corruption for a permanent performance loss.
+    // INTEROP: run ONLY for algorithms we can recompute in-tree (xxh128
+    // via the streaming `HashingWriter`, md5 via a page-cache re-read of
+    // the temp). Against a peer that negotiated anything else (xxh3,
+    // xxh64, md4, ...) the check is a deliberate no-op so a verify that
+    // assumed the wrong digest cannot silently disable delta forever.
     //
-    // SEED: rsync's FILE checksum is UNSEEDED for xxh3. `checksum.c::
-    // sum_init` calls `XXH3_128bits_reset(xxh3_state)` and ignores its
-    // `seed` argument for CSUM_XXH3_128 (only the legacy MD4 variants mix
-    // it in), whereas the per-BLOCK checksum does seed via
-    // `checksum.c::get_checksum2` → `XXH3_128bits_withSeed`. Our sender
-    // mirrors that asymmetry already (`compute_xxh128_wire` for the
-    // trailer vs `compute_xxh128_wire_with_seed` for blocks), so
-    // `checksum_seed` must NOT enter here: feeding it in would break
-    // against real rsync AND against our own server.
-    if driver.negotiated_checksum_algo() == Some(XXH128_ALGO_NAME) {
-        if let Some(expected) = driver.received_file_checksum() {
-            let actual = xxh128_wire_bytes(reconstructed_digest);
-            if expected != actual.as_slice() {
-                let stderr = format!(
-                    "delta reconstruction checksum mismatch for {}: sender sent xxh128 {}, \
-                     reconstruction hashes to {} ({} bytes); falling back to classic download",
-                    remote_path,
-                    hex_checksum(expected),
-                    hex_checksum(&actual),
-                    file_size
-                );
-                discard_streaming_temp(writer).await;
-                return Err(RsyncError::TransferFailed { exit: -1, stderr });
+    // HASHER DESIGN (CLAUDE-AV-B3-14): `HashingWriter` is constructed
+    // BEFORE the drive, but the negotiated algo is only known AFTER it
+    // (the preamble is exchanged inside the drive). We keep the streaming
+    // xxh3 shim always-on for the xxh128 fast path (zero extra I/O), and
+    // only when md5 wins do we re-hash the just-written temp from disk.
+    // That second read is a page-cache hit on typical workloads (see
+    // `compute_xxh128_file_streaming`); dual-hashing every download would
+    // throttle the xxh128 path at md5 disk speed for no gain.
+    //
+    // SEED: rsync's FILE checksum is UNSEEDED for both xxh3 and md5.
+    // `checksum.c::sum_init` calls `XXH3_128bits_reset` / `md5_begin`
+    // (or `EVP_DigestInit_ex(..., NULL)` under OpenSSL) and ignores its
+    // `seed` argument; only the legacy MD4 variants mix it in. The
+    // per-BLOCK checksum does seed via `get_checksum2`. Our sender
+    // mirrors that asymmetry already, so `checksum_seed` must NOT enter
+    // here: feeding it in would break against real rsync AND against our
+    // own server.
+    match driver.negotiated_checksum_algo() {
+        Some(XXH128_ALGO_NAME) => {
+            if let Some(expected) = driver.received_file_checksum() {
+                let actual = xxh128_wire_bytes(reconstructed_digest);
+                if expected != actual.as_slice() {
+                    let stderr = format!(
+                        "delta reconstruction checksum mismatch for {}: sender sent xxh128 {}, \
+                         reconstruction hashes to {} ({} bytes); falling back to classic download",
+                        remote_path,
+                        hex_checksum(expected),
+                        hex_checksum(&actual),
+                        file_size
+                    );
+                    discard_streaming_temp(writer).await;
+                    return Err(RsyncError::TransferFailed { exit: -1, stderr });
+                }
             }
+        }
+        // CLAUDE-AV-B3-14: md5 peers. Re-read the temp (flushed) rather
+        // than dual-hash during the drive; see HASHER DESIGN above.
+        Some(MD5_ALGO_NAME) => {
+            if let Some(expected) = driver.received_file_checksum() {
+                if let Err(e) = writer.flush().await {
+                    let stderr = format!(
+                        "delta reconstruction checksum flush failed for {}: {}; \
+                         falling back to classic download",
+                        remote_path, e
+                    );
+                    discard_streaming_temp(writer).await;
+                    return Err(RsyncError::TransferFailed { exit: -1, stderr });
+                }
+                let actual = match compute_md5_file_streaming(writer.temp_path()).await {
+                    Ok(v) => v,
+                    Err(e) => {
+                        let stderr = format!(
+                            "delta reconstruction checksum re-read failed for {}: {}; \
+                             falling back to classic download",
+                            remote_path, e
+                        );
+                        discard_streaming_temp(writer).await;
+                        return Err(RsyncError::TransferFailed { exit: -1, stderr });
+                    }
+                };
+                if expected != actual.as_slice() {
+                    let stderr = format!(
+                        "delta reconstruction checksum mismatch for {}: sender sent md5 {}, \
+                         reconstruction hashes to {} ({} bytes); falling back to classic download",
+                        remote_path,
+                        hex_checksum(expected),
+                        hex_checksum(&actual),
+                        file_size
+                    );
+                    discard_streaming_temp(writer).await;
+                    return Err(RsyncError::TransferFailed { exit: -1, stderr });
+                }
+            }
+        }
+        _ => {
+            // Unimplemented algo (xxh3 / xxh64 / md4 / none): leave the
+            // delta path alone. The no-op is what keeps this shippable
+            // without live fixtures for every peer flavour.
         }
     }
 
@@ -1277,6 +1330,32 @@ async fn compute_xxh128_file_streaming(path: &Path) -> std::io::Result<Vec<u8>> 
         hasher.update(&buf[..n]);
     }
     Ok(hasher.digest128().to_le_bytes().to_vec())
+}
+
+/// CLAUDE-AV-B3-14: streaming md5 over a file path. Twin of
+/// [`compute_xxh128_file_streaming`]: same slab size and page-cache
+/// argument, used by the download-side whole-file verify when the peer
+/// negotiated md5. Output is the raw 16-byte digest rsync puts on the
+/// wire (`sum_end` for `CSUM_MD5`); the trailer is unseeded, so
+/// `checksum_seed` must NOT enter here.
+async fn compute_md5_file_streaming(path: &Path) -> std::io::Result<Vec<u8>> {
+    use md5::{Digest, Md5};
+    use tokio::io::AsyncReadExt;
+    /// Same 4 MiB stride as the xxh128 twin so the page-cache fill
+    /// matches the just-written reconstruction.
+    const MD5_STREAM_BUF_BYTES: usize = 4 * 1024 * 1024;
+
+    let mut file = fs::File::open(path).await?;
+    let mut hasher = Md5::new();
+    let mut buf = vec![0u8; MD5_STREAM_BUF_BYTES];
+    loop {
+        let n = file.read(&mut buf).await?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buf[..n]);
+    }
+    Ok(hasher.finalize().to_vec())
 }
 
 /// Extract `(mtime_seconds_since_epoch, optional_nanoseconds)` from a
@@ -1963,27 +2042,38 @@ mod tests {
             !local_path.exists(),
             "target must be untouched: the temp is never renamed onto it"
         );
+        // StreamingAtomicWriter uses `<target>.aerotmp` (no salt); the
+        // salted `temp_path_for` helper is for the bulk write path only.
+        let streaming_temp = {
+            let mut os = local_path.as_os_str().to_os_string();
+            os.push(".aerotmp");
+            PathBuf::from(os)
+        };
         assert!(
-            !temp_path_for(&local_path).exists(),
+            !streaming_temp.exists(),
             "temp must be discarded so the classic fallback can re-open it with create_new(true)"
         );
     }
 
-    /// The interop guard. Against a peer that negotiated md5/md4 we
-    /// cannot recompute the trailer, so the verify MUST stay out of the
-    /// way: the same mismatching trailer that is fatal above has to
-    /// commit here, exactly as it did before this change. Getting this
-    /// wrong would silently disable delta for every non-xxh128 peer.
+    /// The interop guard for algorithms we still do not recompute.
+    /// CLAUDE-AV-B3-14 now verifies md5, so the skip case points at
+    /// xxh64 (it sits above md5 in our advertised list and wins the
+    /// negotiation; the verify must stay out of its way). The same
+    /// mismatching trailer that is fatal for xxh128/md5 has to commit
+    /// here. Getting this wrong would silently disable delta for every
+    /// peer that negotiated an unimplemented algo.
     #[tokio::test]
-    async fn download_skips_the_verify_when_the_peer_did_not_negotiate_xxh128() {
+    async fn download_skips_the_verify_when_the_peer_negotiated_an_unimplemented_algo() {
         let dir = fresh_tempdir();
         let content = b"the bytes that actually arrive on the wire".to_vec();
+        // "xxh64" alone wins negotiation (our list prefers it over md5)
+        // and is still unimplemented, so the verify must no-op.
         let (result, local_path) =
-            run_download_fixture(&dir, &content, "md5 md4", vec![0xCC; 16]).await;
+            run_download_fixture(&dir, &content, "xxh64", vec![0xCC; 16]).await;
 
         assert!(
             result.is_ok(),
-            "a non-xxh128 peer must keep today's behavior, got {result:?}"
+            "an unimplemented-algo peer must keep the pre-verify path, got {result:?}"
         );
         assert_eq!(
             tokio::fs::read(&local_path).await.expect("target written"),
@@ -2009,6 +2099,67 @@ mod tests {
         assert!(
             result.is_ok(),
             "a matching trailer must commit, got {result:?}"
+        );
+        assert_eq!(
+            tokio::fs::read(&local_path).await.expect("target written"),
+            content
+        );
+    }
+
+    /// CLAUDE-AV-B3-14: md5 peer + wrong trailer must fail the same way
+    /// as the xxh128 mismatch case. Pass peer_algos `"md5"` alone so
+    /// md5 wins (our list is `xxh128 xxh3 xxh64 md5 md4`; the fixture
+    /// preamble's default `"md5 xxh64"` would negotiate xxh64 and disarm
+    /// the verify).
+    #[tokio::test]
+    async fn download_refuses_md5_reconstruction_that_fails_the_whole_file_checksum() {
+        let dir = fresh_tempdir();
+        let content = b"the bytes that actually arrive on the wire".to_vec();
+        let (result, local_path) =
+            run_download_fixture(&dir, &content, "md5", vec![0xCC; 16]).await;
+
+        match result {
+            Err(RsyncError::TransferFailed { exit, stderr }) => {
+                assert_eq!(exit, -1, "must be fallback-eligible, not a hard rejection");
+                assert!(
+                    stderr.contains("checksum mismatch")
+                        && stderr.contains("md5")
+                        && stderr.contains("/remote/target.bin"),
+                    "stderr must name the failure, the algo, and the file: {stderr}"
+                );
+            }
+            other => panic!("expected TransferFailed on md5 checksum mismatch, got {other:?}"),
+        }
+        assert!(
+            !local_path.exists(),
+            "target must be untouched: the temp is never renamed onto it"
+        );
+        let streaming_temp = {
+            let mut os = local_path.as_os_str().to_os_string();
+            os.push(".aerotmp");
+            PathBuf::from(os)
+        };
+        assert!(
+            !streaming_temp.exists(),
+            "temp must be discarded so the classic fallback can re-open it with create_new(true)"
+        );
+    }
+
+    /// CLAUDE-AV-B3-14: md5 peer + correct unseeded trailer commits.
+    /// Pins both the happy path and the seed decision (fixture preamble
+    /// carries a nonzero `checksum_seed`; the matching digest is plain
+    /// md5 over the file bytes, no seed mixed in).
+    #[tokio::test]
+    async fn download_commits_when_the_md5_whole_file_checksum_matches() {
+        use md5::{Digest, Md5};
+        let dir = fresh_tempdir();
+        let content = b"the bytes that actually arrive on the wire".to_vec();
+        let trailer = Md5::digest(&content).to_vec();
+        let (result, local_path) = run_download_fixture(&dir, &content, "md5", trailer).await;
+
+        assert!(
+            result.is_ok(),
+            "a matching md5 trailer must commit, got {result:?}"
         );
         assert_eq!(
             tokio::fs::read(&local_path).await.expect("target written"),
