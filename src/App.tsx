@@ -4959,6 +4959,23 @@ interface UpdateVerificationInfo {
     }
   }, [showHiddenFiles, notify, t, setLocalFiles2, setCurrentLocalPath2, setSelectedLocalFiles2]);
 
+  // Reload every local panel whose current path equals `dir` (panel 1 and/or
+  // dual panel 2). Paste / cut destinations must not hardcode panel 1: dual
+  // local mode and PLACES gvfs paths often target panel 2.
+  const refreshLocalPanelForPath = useCallback(async (dir: string | null | undefined) => {
+    if (!dir) return;
+    const norm = (p: string) => p.replace(/\\/g, '/').replace(/\/+$/, '') || '/';
+    const n = norm(dir);
+    const tasks: Promise<unknown>[] = [];
+    if (currentLocalPath && norm(currentLocalPath) === n) {
+      tasks.push(loadLocalFiles(currentLocalPath));
+    }
+    if (currentLocalPath2 && norm(currentLocalPath2) === n) {
+      tasks.push(loadLocalFiles2(currentLocalPath2));
+    }
+    if (tasks.length > 0) await Promise.all(tasks);
+  }, [currentLocalPath, currentLocalPath2, loadLocalFiles, loadLocalFiles2]);
+
   const changeLocalDirectory2 = useCallback(async (path: string) => {
     await loadLocalFiles2(path);
   }, [loadLocalFiles2]);
@@ -10935,18 +10952,18 @@ interface UpdateVerificationInfo {
     // Cross-panel paste → upload or download using clipboard paths directly
     if (sourceIsRemote !== targetIsRemote) {
       if (sourceIsRemote) {
-        // Remote → Local: download each file using stored path (not current listing)
+        // Remote → Local: download into the paste target panel path (not always panel 1)
         for (const file of files) {
           try {
             if (batchCancelledRef.current) break;
-            await downloadFile(file.path, file.name, currentLocalPath, file.is_dir);
+            await downloadFile(file.path, file.name, targetDir, file.is_dir);
           } catch (e) {
             if (!batchCancelledRef.current) {
               notify.error(t('toast.downloadFailed'), `${file.name}: ${String(e)}`);
             }
           }
         }
-        loadLocalFiles(currentLocalPath);
+        await refreshLocalPanelForPath(targetDir);
       } else {
         // Local → Remote: upload each file using stored path (not current listing)
         for (const file of files) {
@@ -10993,7 +11010,7 @@ interface UpdateVerificationInfo {
           }
         }
         if (sourceIsRemote) loadRemoteFiles(undefined, true);
-        else loadLocalFiles(currentLocalPath);
+        else await refreshLocalPanelForPath(sourceDir);
       }
     }
     // Same-panel paste
@@ -11030,8 +11047,13 @@ interface UpdateVerificationInfo {
             notify.error(t('toast.renameFailed', { error: `${file.name}: ${String(e)}` }));
           }
         }
-        if (targetIsRemote) loadRemoteFiles(undefined, true);
-        else loadLocalFiles(currentLocalPath);
+        if (targetIsRemote) {
+          loadRemoteFiles(undefined, true);
+        } else {
+          // Destination listing + source listing when cut across dual local panels
+          await refreshLocalPanelForPath(targetDir);
+          if (sourceDir) await refreshLocalPanelForPath(sourceDir);
+        }
       } else {
         // Copy files within same panel
         if (!targetIsRemote) {
@@ -11060,7 +11082,7 @@ interface UpdateVerificationInfo {
               }
             }
           }
-          loadLocalFiles(currentLocalPath);
+          await refreshLocalPanelForPath(targetDir);
         } else {
           const isAeroVaultOverlay = !!aeroVaultOverlaySession?.sessionId;
           // Remote copy via server-side copy API
