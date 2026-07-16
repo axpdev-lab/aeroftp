@@ -11,8 +11,22 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
-use globset::Glob;
+use globset::GlobBuilder;
 use std::path::Path;
+
+/// Compile one `.aeroignore` glob with the module's matching policy:
+/// `literal_separator` so a lone `*`/`?` never crosses `/` (gitignore-style;
+/// `**` still spans directories), plus case-insensitivity on Windows/macOS as
+/// the module doc-comment promises. Returns `None` if globset rejects it.
+/// CLAUDE-AV-B3-03.
+fn build_ignore_matcher(pattern: &str) -> Option<globset::GlobMatcher> {
+    GlobBuilder::new(pattern)
+        .literal_separator(true)
+        .case_insensitive(cfg!(any(windows, target_os = "macos")))
+        .build()
+        .ok()
+        .map(|g| g.compile_matcher())
+}
 
 /// A compiled .aeroignore rule: pattern + whether it negates (re-includes).
 #[derive(Debug, Clone)]
@@ -87,18 +101,39 @@ impl AeroIgnore {
             let dir_only = pattern.ends_with('/');
             let clean = pattern.trim_end_matches('/');
 
-            // Build glob pattern:
-            // - If pattern contains `/`, it's anchored to root
-            // - Otherwise, match anywhere in the path (prepend `**/`)
-            let glob_pattern = if clean.contains('/') {
-                clean.to_string()
+            // CLAUDE-AV-B3-03: gitignore-style anchoring. A leading '/' or an
+            // interior '/' anchors the pattern to the sync root; a bare name
+            // matches in any directory (prepend `**/`). The leading '/' is
+            // stripped because relative paths carry no leading slash, so the
+            // pre-fix code compiled `/secrets` to a glob that never matched.
+            let anchored = clean.contains('/');
+            let core = clean.strip_prefix('/').unwrap_or(clean);
+            let glob_pattern = if anchored {
+                core.to_string()
             } else {
-                format!("**/{}", clean)
+                format!("**/{}", core)
             };
 
-            match Glob::new(&glob_pattern) {
-                Ok(glob) => {
-                    individual_globs.push(glob.compile_matcher());
+            let matcher = build_ignore_matcher(&glob_pattern).or_else(|| {
+                // CLAUDE-AV-B3-03: fail CLOSED. A pattern globset rejects (bad
+                // char class, stray bracket, ...) must NOT silently vanish and
+                // let the file it names get synced/deleted. Retry it as a
+                // literal so the user's intended path is still excluded.
+                tracing::warn!(
+                    ".aeroignore: invalid glob '{}', matching it literally",
+                    trimmed
+                );
+                let literal = if anchored {
+                    globset::escape(core)
+                } else {
+                    format!("**/{}", globset::escape(core))
+                };
+                build_ignore_matcher(&literal)
+            });
+
+            match matcher {
+                Some(m) => {
+                    individual_globs.push(m);
                     rules.push(IgnoreRule {
                         _pattern: trimmed.to_string(),
                         negated,
@@ -106,8 +141,8 @@ impl AeroIgnore {
                     });
                     has_patterns = true;
                 }
-                Err(e) => {
-                    tracing::warn!(".aeroignore: invalid pattern '{}': {}", trimmed, e);
+                None => {
+                    tracing::warn!(".aeroignore: unparseable pattern '{}' dropped", trimmed);
                 }
             }
         }
@@ -230,5 +265,34 @@ mod tests {
     fn test_empty_file() {
         assert!(AeroIgnore::parse("").is_none());
         assert!(AeroIgnore::parse("# only comments").is_none());
+    }
+
+    /// CLAUDE-AV-B3-03 (F2-06): a leading-slash pattern anchors to the sync
+    /// root. Pre-fix `/secrets` compiled verbatim and never matched a relative
+    /// path (which has no leading slash), silently syncing the secrets dir.
+    #[test]
+    fn leading_slash_anchors_to_root() {
+        let ignore = AeroIgnore::parse("/secrets").unwrap();
+        assert!(ignore.is_ignored("secrets", true));
+        assert!(!ignore.is_ignored("sub/secrets", true));
+    }
+
+    /// CLAUDE-AV-B3-03 (F2-07): a lone `*` must not cross `/`. Pre-fix
+    /// `foo*bar` compiled without `literal_separator` and over-matched across
+    /// directories, silently excluding files the user meant to sync.
+    #[test]
+    fn star_does_not_cross_separator() {
+        let ignore = AeroIgnore::parse("foo*bar").unwrap();
+        assert!(ignore.is_ignored("fooXYZbar", false));
+        assert!(!ignore.is_ignored("foo/deep/bar", false));
+    }
+
+    /// CLAUDE-AV-B3-03 (F2-04): a pattern globset rejects must fail CLOSED
+    /// (still exclude its literal), not silently vanish. Pre-fix `sec[ret`
+    /// (unclosed char class) was dropped, so the file it named got synced.
+    #[test]
+    fn invalid_pattern_fails_closed_as_literal() {
+        let ignore = AeroIgnore::parse("sec[ret").expect("fail-closed keeps the rule");
+        assert!(ignore.is_ignored("sec[ret", false));
     }
 }

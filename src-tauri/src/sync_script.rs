@@ -132,8 +132,17 @@ pub fn generate_script(profile: &AerosyncScriptProfile, app_version: &str) -> St
     }
     out.push('\n');
 
-    out.push_str(&format!("SET LOCAL={}\n", profile.local_path));
-    out.push_str(&format!("SET REMOTE={}\n", profile.remote_path));
+    // CLAUDE-AV-B3-05: quote the SET values. The parser captures the value
+    // verbatim (rest of line) into the variable, then `SYNC ${LOCAL} ${REMOTE}`
+    // expands and is re-tokenized on whitespace. Without quoting, a path with a
+    // space (`/Users/John Smith/Docs`) word-splits into the wrong local/remote
+    // pair on re-import; the quote-aware `tokenize` reconstructs the exact value
+    // when the quotes ride inside the variable. Mirrors the excludes/CONNECT.
+    out.push_str(&format!("SET LOCAL={}\n", shell_quote(&profile.local_path)));
+    out.push_str(&format!(
+        "SET REMOTE={}\n",
+        shell_quote(&profile.remote_path)
+    ));
     out.push('\n');
 
     if let Some(name) = profile.connect_profile.as_deref() {
@@ -644,37 +653,37 @@ fn expand_variables(
     vars: &std::collections::HashMap<String, String>,
     line: usize,
 ) -> Result<String, ParseError> {
-    let bytes = body.as_bytes();
+    // CLAUDE-AV-B3-04: scan by `str` slices, never by raw bytes. The prior
+    // fallback computed a char length from `(b as char).len_utf8()` on a RAW
+    // byte, which for a multi-byte UTF-8 lead byte (e.g. 0xE7) yields the wrong
+    // length and slices mid-character, panicking on any non-ASCII literal path
+    // in a SYNC/CONNECT line. `find("${")` and slicing at the returned char
+    // boundaries is UTF-8-safe.
     let mut out = String::with_capacity(body.len());
-    let mut i = 0;
-    while i < bytes.len() {
-        let b = bytes[i];
-        if b == b'$' && i + 1 < bytes.len() && bytes[i + 1] == b'{' {
-            if let Some(end) = body[i + 2..].find('}') {
-                let name = &body[i + 2..i + 2 + end];
-                match vars.get(name) {
-                    Some(v) => out.push_str(v),
-                    None => {
-                        return Err(ParseError::UndefinedVariable {
-                            line,
-                            name: name.to_string(),
-                        });
-                    }
+    let mut rest = body;
+    while let Some(pos) = rest.find("${") {
+        out.push_str(&rest[..pos]);
+        let after = &rest[pos + 2..];
+        if let Some(end) = after.find('}') {
+            let name = &after[..end];
+            match vars.get(name) {
+                Some(v) => out.push_str(v),
+                None => {
+                    return Err(ParseError::UndefinedVariable {
+                        line,
+                        name: name.to_string(),
+                    });
                 }
-                i = i + 2 + end + 1;
-                continue;
             }
-        }
-        // Push by char to preserve UTF-8 multi-byte sequences.
-        let ch_len = (b as char).len_utf8().max(1);
-        if i + ch_len <= body.len() {
-            out.push_str(&body[i..i + ch_len]);
-            i += ch_len;
+            rest = &after[end + 1..];
         } else {
-            out.push(b as char);
-            i += 1;
+            // No closing brace: emit the literal "${" and keep scanning after it
+            // (preserves the pre-fix behavior for an unterminated variable).
+            out.push_str("${");
+            rest = after;
         }
     }
+    out.push_str(rest);
     Ok(out)
 }
 
@@ -948,6 +957,34 @@ mod tests {
             CompareDirection::Bidirectional
         );
         assert!(!parsed.profile.profile.delete_orphans);
+    }
+
+    /// CLAUDE-AV-B3-05: a local/remote path with spaces must survive the
+    /// generate/parse round-trip. Pre-fix the unquoted SET value word-split on
+    /// re-import into the wrong local/remote pair.
+    #[test]
+    fn round_trip_paths_with_spaces_preserve_pair() {
+        let mut original = sample(SyncProfile::mirror());
+        original.local_path = "/Users/John Smith/My Documents".to_string();
+        original.remote_path = "/srv/back ups/John".to_string();
+        let text = generate_script(&original, "3.8.5-test");
+        let parsed = parse_script(&text).expect("must parse");
+        assert_eq!(parsed.profile.local_path, original.local_path);
+        assert_eq!(parsed.profile.remote_path, original.remote_path);
+    }
+
+    /// CLAUDE-AV-B3-04: `expand_variables` must be UTF-8-safe. Pre-fix, a
+    /// non-ASCII literal (not routed through a `${VAR}`) in a SYNC/CONNECT line
+    /// panicked on a non-char-boundary byte slice.
+    #[test]
+    fn expand_variables_non_ascii_literal_does_not_panic() {
+        let mut vars = std::collections::HashMap::new();
+        vars.insert("LOCAL".to_string(), "/data".to_string());
+        let out = expand_variables("${LOCAL}/照片 /backup 4-byte:\u{1F600}", &vars, 1).unwrap();
+        assert_eq!(out, "/data/照片 /backup 4-byte:\u{1F600}");
+        // Unterminated variable is preserved literally, not panicked on.
+        let raw = expand_variables("a ${OPEN and 文字", &vars, 1).unwrap();
+        assert_eq!(raw, "a ${OPEN and 文字");
     }
 
     #[test]
