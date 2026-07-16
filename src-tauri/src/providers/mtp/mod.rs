@@ -14,6 +14,9 @@ pub mod commands;
 pub mod path;
 pub mod provider;
 
+#[cfg(target_os = "linux")]
+pub mod linux_hotplug;
+
 #[cfg(all(target_os = "linux", mtp_libmtp))]
 pub mod linux_libmtp;
 
@@ -33,14 +36,19 @@ pub use provider::MtpProvider;
 
 /// Start platform hotplug wake for portable devices (`mtp-devices-changed`).
 ///
-/// Windows: WM_DEVICECHANGE -> debounced event. Other OS: no-op for now
-/// (Phase 4 FE may poll; Linux udev wake is a later polish).
+/// Windows: WM_DEVICECHANGE -> debounced event.
+/// Linux: kernel uevent netlink (sysfs scan fallback) -> debounced event.
+/// Other OS: no-op; the frontend fallback poll still covers them.
 pub fn start_mtp_device_watcher(app_handle: tauri::AppHandle) {
     #[cfg(windows)]
     {
         windows_wpd::start_mtp_device_watcher(app_handle);
     }
-    #[cfg(not(windows))]
+    #[cfg(target_os = "linux")]
+    {
+        linux_hotplug::start_mtp_device_watcher(app_handle);
+    }
+    #[cfg(not(any(windows, target_os = "linux")))]
     {
         let _ = app_handle;
     }

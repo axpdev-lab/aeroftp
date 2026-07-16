@@ -12,7 +12,15 @@ import { guardedUnlisten } from './useTauriListener';
 import type { MtpDeviceInfo } from '../types/aerofile';
 import { computeAttachedProfileIds, matchLiveDevice } from '../utils/mtpFingerprint';
 
-/** Match PlacesSidebar portable poll: event + focus, 30s fallback. */
+/**
+ * Match PlacesSidebar portable poll: event + focus, 30s fallback.
+ *
+ * `mtp-devices-changed` is the fast path and now fires on every platform that
+ * has a watcher (Windows WM_DEVICECHANGE, Linux kernel uevents), so unplug
+ * flips the card red in well under a second. This interval is only the safety
+ * net for platforms without one: it stays slow on purpose because each refresh
+ * runs a libmtp bus scan, which must not contend with an open device session.
+ */
 const DEVICE_ATTACH_POLL_MS = 30_000;
 
 export type DeviceAttachProfile = {
