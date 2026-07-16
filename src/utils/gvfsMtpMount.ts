@@ -60,3 +60,23 @@ export function portableDeviceNeedsReplug(
 ): boolean {
   return automounterPresent && !gvfsMountPath;
 }
+
+/**
+ * True when `currentPath` is the mount root or a path under it.
+ *
+ * Portable-devices rows use this so a gvfs-first PLACES browse lights the
+ * matching phone blue even though no exclusive libmtp session id is set.
+ * Child paths (e.g. .../DCIM) still count as on-device.
+ */
+export function isPathOnOrUnderMount(
+  currentPath: string | null | undefined,
+  mountPoint: string | null | undefined,
+): boolean {
+  if (!currentPath || !mountPoint) return false;
+  if (currentPath === mountPoint) return true;
+  // Avoid prefix false positives (e.g. /mnt/phone vs /mnt/phone2).
+  return (
+    currentPath.startsWith(mountPoint + '/')
+    || currentPath.startsWith(mountPoint + '\\')
+  );
+}

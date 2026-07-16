@@ -2,7 +2,12 @@
 // Copyright (c) 2024-2026 axpnet -- AI-assisted (see AI-TRANSPARENCY.md)
 
 import { describe, expect, it } from 'vitest';
-import { findGvfsMtpMount, isGvfsMtpPath, portableDeviceNeedsReplug } from './gvfsMtpMount';
+import {
+  findGvfsMtpMount,
+  isGvfsMtpPath,
+  isPathOnOrUnderMount,
+  portableDeviceNeedsReplug,
+} from './gvfsMtpMount';
 import type { VolumeInfo } from '../types/aerofile';
 
 const vol = (name: string, mount_point: string): VolumeInfo => ({
@@ -94,5 +99,35 @@ describe('portableDeviceNeedsReplug', () => {
     // Minimal DE / CLI / Windows: exclusive libmtp is the only path and works.
     expect(portableDeviceNeedsReplug(false, null)).toBe(false);
     expect(portableDeviceNeedsReplug(false, XPERIA_MOUNT)).toBe(false);
+  });
+});
+
+describe('isPathOnOrUnderMount', () => {
+  it('matches the mount root', () => {
+    expect(isPathOnOrUnderMount(XPERIA_MOUNT, XPERIA_MOUNT)).toBe(true);
+  });
+
+  it('matches child paths under the mount (drill into DCIM)', () => {
+    expect(isPathOnOrUnderMount(`${XPERIA_MOUNT}/Internal shared storage/DCIM`, XPERIA_MOUNT)).toBe(true);
+  });
+
+  it('matches Windows-style separators under the mount', () => {
+    expect(isPathOnOrUnderMount(`${XPERIA_MOUNT}\\Storage\\DCIM`, XPERIA_MOUNT)).toBe(true);
+  });
+
+  it('does not match a sibling path with a shared prefix', () => {
+    // /run/user/1001/gvfs/mtp:host=Sony_... vs same + trailing junk without separator
+    expect(isPathOnOrUnderMount(`${XPERIA_MOUNT}2`, XPERIA_MOUNT)).toBe(false);
+    expect(isPathOnOrUnderMount('/home/axpdev', XPERIA_MOUNT)).toBe(false);
+    expect(isPathOnOrUnderMount('/run/user/1001/gvfs/mtp:host=Other_Phone', XPERIA_MOUNT)).toBe(false);
+  });
+
+  it('rejects empty or missing path/mount', () => {
+    expect(isPathOnOrUnderMount(null, XPERIA_MOUNT)).toBe(false);
+    expect(isPathOnOrUnderMount(undefined, XPERIA_MOUNT)).toBe(false);
+    expect(isPathOnOrUnderMount(XPERIA_MOUNT, null)).toBe(false);
+    expect(isPathOnOrUnderMount(XPERIA_MOUNT, undefined)).toBe(false);
+    expect(isPathOnOrUnderMount('', XPERIA_MOUNT)).toBe(false);
+    expect(isPathOnOrUnderMount(XPERIA_MOUNT, '')).toBe(false);
   });
 });

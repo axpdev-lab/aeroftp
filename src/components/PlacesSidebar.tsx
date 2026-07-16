@@ -19,7 +19,7 @@ import {
 } from '../types/aerofile';
 import { FolderTree } from './FolderTree';
 import { formatBytes } from '../utils/formatters';
-import { findGvfsMtpMount, portableDeviceNeedsReplug } from '../utils/gvfsMtpMount';
+import { findGvfsMtpMount, isPathOnOrUnderMount, portableDeviceNeedsReplug } from '../utils/gvfsMtpMount';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -924,10 +924,13 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
             </div>
           )}
           {portableDevices.map((dev) => {
-            const isActive = activePortableDeviceId === dev.deviceId;
+            // Session id = exclusive libmtp or My Servers gvfs FS provider.
+            // Path match = PLACES gvfs browse (no session id set on open).
+            const hasSession = activePortableDeviceId === dev.deviceId;
+            const gvfsMount = findGvfsMtpMount(portableMounts, dev);
+            const isActive = hasSession || isPathOnOrUnderMount(currentPath, gvfsMount);
             const isOpening = openingPortableId === dev.deviceId;
             const isClosing = closingPortableId === dev.deviceId;
-            const gvfsMount = findGvfsMtpMount(portableMounts, dev);
             const needsReplug = portableDeviceNeedsReplug(mtpAutomounterPresent, gvfsMount);
             const subtitle = needsReplug
               ? t('sidebar.portable_needs_replug')
@@ -998,7 +1001,9 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
                       </div>
                     )}
                   </div>
-                  {isActive && !needsReplug && (
+                  {/* Disconnect only when a real session id exists; path-only
+                      gvfs browse must not offer mtp_close_device. */}
+                  {hasSession && !needsReplug && (
                     <button
                       aria-label={`${t('sidebar.portable_disconnect')} ${dev.displayName}`}
                       className="p-0.5 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600 dark:hover:bg-gray-600/50 dark:hover:text-gray-200 flex-shrink-0 transition-colors"
