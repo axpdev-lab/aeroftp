@@ -247,7 +247,7 @@ xxhash-rust = { version = "0.8", features = ["xxh3"], optional = true }
 hound = { version = "3", optional = true }
 whisper-rs = { version = "0.16.0", optional = true }
 
-# Windows Explorer badge integration (v2.0.5)
+# Windows Explorer badge integration (v2.0.5) + MTP/WPD portable devices (Phase 3)
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.58", features = [
     "Win32_Storage_CloudFilters",
@@ -255,10 +255,16 @@ windows = { version = "0.58", features = [
     "Win32_Storage_FileSystem",
     "Win32_Security",
     "Win32_UI_Shell",
+    "Win32_UI_Shell_PropertiesSystem",
     # SetConsoleCtrlHandler: MCP/orchestrate stdio daemon must swallow
     # console Ctrl+C / Ctrl+Break broadcasts (self-updater, parent shell)
     # instead of dying. See install_mcp_signal_guard in aeroftp_cli.rs.
     "Win32_System_Console",
+    # MTP portable-device provider (APPENDIX-MTP Phase 3): WPD COM + hotplug wake.
+    "Win32_Devices_PortableDevices",
+    "Win32_System_Com",
+    "Win32_System_LibraryLoader",
+    "Win32_UI_WindowsAndMessaging",
 ] }
 # Windows Registry access for auto-update install-format detection.
 # Walks HKLM/HKCU `Software\Microsoft\Windows\CurrentVersion\Uninstall`

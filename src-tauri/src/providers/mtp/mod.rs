@@ -2,7 +2,7 @@
 //!
 //! Phase 1: types, virtual paths, Null backend, honest TransferCapabilities.
 //! Phase 2: libmtp (Linux) backend + Tauri list/open/close commands.
-//! Phase 3: WPD (Windows) backend.
+//! Phase 3: WPD (Windows) backend + `mtp-devices-changed` wake.
 //! Phase 4: PLACES Portable devices UI.
 
 // SPDX-License-Identifier: GPL-3.0-or-later
@@ -16,6 +16,9 @@ pub mod provider;
 #[cfg(all(target_os = "linux", mtp_libmtp))]
 pub mod linux_libmtp;
 
+#[cfg(windows)]
+pub mod windows_wpd;
+
 pub use backend::{
     list_mtp_devices, mtp_backend_linked, platform_backend, MtpBackend, MtpDeviceInfo,
     NullMtpBackend,
@@ -25,3 +28,18 @@ pub use path::{
     split_segments,
 };
 pub use provider::MtpProvider;
+
+/// Start platform hotplug wake for portable devices (`mtp-devices-changed`).
+///
+/// Windows: WM_DEVICECHANGE -> debounced event. Other OS: no-op for now
+/// (Phase 4 FE may poll; Linux udev wake is a later polish).
+pub fn start_mtp_device_watcher(app_handle: tauri::AppHandle) {
+    #[cfg(windows)]
+    {
+        windows_wpd::start_mtp_device_watcher(app_handle);
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = app_handle;
+    }
+}

@@ -17428,6 +17428,9 @@ pub fn run() {
 
             // Start mount watcher: emits 'volumes-changed' events instead of 5s polling
             filesystem::start_mount_watcher(app.handle().clone());
+            // Portable MTP/WPD devices: debounced 'mtp-devices-changed' (Windows WPD
+            // wake; no-op elsewhere). Separate from lettered-volume LAST_DRIVE_MASK.
+            providers::mtp::start_mtp_device_watcher(app.handle().clone());
 
             // Proactive AeroVault overlay sweeper: polls every OVERLAY_SWEEPER_INTERVAL_SECS,
             // evicts sessions past their idle timeout and emits `aerovault-overlay-expired`

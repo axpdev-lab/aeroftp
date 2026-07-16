@@ -98,7 +98,7 @@ fn put_session(session: OpenSession) -> Result<(), String> {
     Ok(())
 }
 
-/// Whether this build linked a real MTP platform backend (libmtp on Linux).
+/// Whether this build linked a real MTP platform backend (libmtp / WPD).
 pub fn mtp_backend_linked() -> bool {
     crate::providers::mtp::backend::mtp_backend_linked()
 }
@@ -145,6 +145,8 @@ pub async fn mtp_open_device(device_id: String) -> Result<MtpSessionInfoDto, Str
 
     let platform = if linked && cfg!(target_os = "linux") {
         "linux-libmtp".to_string()
+    } else if linked && cfg!(windows) {
+        "windows-wpd".to_string()
     } else {
         std::env::consts::OS.to_string()
     };

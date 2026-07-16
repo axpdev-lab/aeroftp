@@ -221,22 +221,29 @@ impl MtpBackend for NullMtpBackend {
     }
 }
 
-/// Whether this build linked a real platform MTP backend (libmtp on Linux).
+/// Whether this build linked a real platform MTP backend
+/// (libmtp on Linux, WPD on Windows).
 pub fn mtp_backend_linked() -> bool {
-    cfg!(all(target_os = "linux", mtp_libmtp))
+    cfg!(all(target_os = "linux", mtp_libmtp)) || cfg!(windows)
 }
 
 /// Construct the best available backend for this OS/build.
 ///
 /// - Linux + libmtp linked: [`crate::providers::mtp::linux_libmtp::LinuxLibmtpBackend`]
+/// - Windows: [`crate::providers::mtp::windows_wpd::WindowsWpdBackend`]
 /// - otherwise: [`NullMtpBackend`] (honest empty list / NotSupported)
 pub fn platform_backend() -> Box<dyn MtpBackend> {
     #[cfg(all(target_os = "linux", mtp_libmtp))]
     {
         use crate::providers::mtp::linux_libmtp::LinuxLibmtpBackend;
-        Box::new(LinuxLibmtpBackend::new())
+        return Box::new(LinuxLibmtpBackend::new());
     }
-    #[cfg(not(all(target_os = "linux", mtp_libmtp)))]
+    #[cfg(windows)]
+    {
+        use crate::providers::mtp::windows_wpd::WindowsWpdBackend;
+        return Box::new(WindowsWpdBackend::new());
+    }
+    #[cfg(not(any(all(target_os = "linux", mtp_libmtp), windows)))]
     {
         Box::new(NullMtpBackend::new())
     }

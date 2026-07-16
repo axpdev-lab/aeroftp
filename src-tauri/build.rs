@@ -183,9 +183,13 @@ fn detect_and_link_libmtp() {
         return;
     }
 
-    // Only meaningful on Linux host builds (cross builds to Windows/macOS leave
-    // the cfg unset and use Null / future WPD).
     let target = std::env::var("TARGET").unwrap_or_default();
+    // Windows always uses the in-tree WPD backend (system COM, no extra DLL).
+    if target.contains("windows") {
+        println!("cargo:rustc-env=AEROFTP_MTP_BACKEND=wpd");
+        return;
+    }
+    // Non-Linux, non-Windows (e.g. macOS): Null until ImageCapture lands.
     if !target.contains("linux") {
         println!("cargo:rustc-env=AEROFTP_MTP_BACKEND=null");
         return;
