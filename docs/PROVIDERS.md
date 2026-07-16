@@ -74,14 +74,18 @@ aeroftp.app / docs.aeroftp.app provider tables mirror this list.
 ## Provider notes
 
 - **Portable devices (MTP / WPD):** not a catalog cloud provider. Attached phones
-  and cameras without a drive letter appear under **PLACES → Portable devices**.
+  and cameras without a drive letter appear under **PLACES → Portable devices**,
+  and can be saved as **My Servers device profiles** (Add Services → Devices)
+  with a stable fingerprint, green attach indicator, and click-to-connect.
   Open a device to browse its storages and copy **whole files** only through the
   same dual-panel transfer fabric as other providers. MTP/WPD limits (no mount,
-  no resume, no multi-thread range download, often `max_file_slots = 1`) are
-  properties of the protocol and OS stacks, not missing AeroFTP features. See
+  no resume, no multi-thread range download, often `max_file_slots = 1`, exclusive
+  USB claim) are properties of the protocol and OS stacks, not missing AeroFTP
+  features. See
   [PROTOCOL-FEATURES.md](./PROTOCOL-FEATURES.md#portable-devices-mtp--wpd).
-  GUI-first in this release; CLI `mtp` subcommands are not required for the
-  feature to be complete.
+  Saved profiles work from the CLI via `aeroftp-cli --profile "<name>" …` when
+  the device is attached (fingerprint match → open session). There is no separate
+  `mtp://` host URL mode; ProviderFactory host create still rejects MTP.
 - **Filen (S3 bridge):** renaming an *empty* folder over the Filen S3 bridge
   cannot work, because a virtual prefix has no underlying object for the S3
   copy-then-delete rename to act on. AeroFTP returns an actionable message

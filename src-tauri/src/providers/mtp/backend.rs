@@ -105,6 +105,26 @@ pub fn fingerprint_equal(a: &str, b: &str) -> bool {
         && !canonicalize_fingerprint(a).is_empty()
 }
 
+/// Match a saved device-profile fingerprint against live discovery rows.
+///
+/// Returns the first matching device's `device_id` (APPENDIX-DEVICE-PROFILES
+/// Phase 4 CLI / agent connect). Compares via [`fingerprint_equal`] against
+/// each row's computed fingerprint (serial preferred, else vid/pid).
+pub fn match_live_device_id(profile_canonical: &str, devices: &[MtpDeviceInfo]) -> Option<String> {
+    let want = profile_canonical.trim();
+    if want.is_empty() {
+        return None;
+    }
+    for d in devices {
+        if let Some(fp) = d.fingerprint() {
+            if fingerprint_equal(want, &fp) {
+                return Some(d.device_id.clone());
+            }
+        }
+    }
+    None
+}
+
 fn normalize_serial(serial: Option<&str>) -> Option<String> {
     serial
         .map(str::trim)
@@ -705,5 +725,40 @@ mod tests {
         );
         assert_eq!(devices[0].vendor_id, Some(0x18d1));
         assert_eq!(devices[0].product_id, Some(0x4ee1));
+    }
+
+    #[tokio::test]
+    async fn match_live_device_id_serial_case_insensitive() {
+        let b = FakeMtpBackend::with_demo_tree();
+        let devices = b.list_devices().await.unwrap();
+        assert_eq!(
+            match_live_device_id("mtp:serial=fake-serial", &devices).as_deref(),
+            Some("fake-phone")
+        );
+        assert_eq!(
+            match_live_device_id("  mtp:serial=FAKE-SERIAL  ", &devices).as_deref(),
+            Some("fake-phone")
+        );
+        assert!(match_live_device_id("mtp:serial=other", &devices).is_none());
+        assert!(match_live_device_id("", &devices).is_none());
+    }
+
+    #[test]
+    fn match_live_device_id_vidpid_when_no_serial() {
+        let devices = vec![MtpDeviceInfo {
+            device_id: "usb:1:2".into(),
+            display_name: "  SONY   Xperia  ".into(),
+            serial: None,
+            vendor_id: Some(0x0fce),
+            product_id: Some(0x020d),
+            bus_location: Some("1:2".into()),
+            platform: "test".into(),
+            storages_hint: 1,
+        }];
+        assert_eq!(
+            match_live_device_id("mtp:vidpid=0FCE:020D;model=SONY Xperia", &devices).as_deref(),
+            Some("usb:1:2")
+        );
+        assert!(match_live_device_id("mtp:vidpid=0FCE:020D;model=Other", &devices).is_none());
     }
 }

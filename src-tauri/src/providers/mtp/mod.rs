@@ -21,8 +21,9 @@ pub mod linux_libmtp;
 pub mod windows_wpd;
 
 pub use backend::{
-    fingerprint_equal, list_mtp_devices, mtp_backend_linked, mtp_device_fingerprint,
-    platform_backend, FakeMtpBackend, MtpBackend, MtpDeviceInfo, NullMtpBackend,
+    fingerprint_equal, list_mtp_devices, match_live_device_id, mtp_backend_linked,
+    mtp_device_fingerprint, platform_backend, FakeMtpBackend, MtpBackend, MtpDeviceInfo,
+    NullMtpBackend,
 };
 pub use path::{
     join_virtual, leaf_name, normalize_virtual_path, parent_path, sanitize_leaf_for_download,

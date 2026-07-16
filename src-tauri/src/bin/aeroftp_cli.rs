@@ -23509,6 +23509,19 @@ async fn create_and_connect_for_agent(
     )
     .unwrap_or_default();
 
+    // APPENDIX-DEVICE-PROFILES Phase 4: MTP device profiles open by fingerprint.
+    if protocol.eq_ignore_ascii_case("mtp") {
+        let (provider, path) = connect_mtp_device_profile_agent(matched).await?;
+        // Crypt-overlay chokepoint (same as factory path below): MTP is not
+        // crypt-compatible yet, but wrap is identity when unbound.
+        let provider =
+            ftp_client_gui_lib::crypt_overlay_provider::wrap_connected_provider_for_profile(
+                provider, matched, &store,
+            )
+            .await?;
+        return Ok((provider, path));
+    }
+
     // Build provider config
     let provider_type = match protocol.to_uppercase().as_str() {
         "FTP" => ftp_client_gui_lib::providers::ProviderType::Ftp,
@@ -23518,7 +23531,7 @@ async fn create_and_connect_for_agent(
         "S3" => ftp_client_gui_lib::providers::ProviderType::S3,
         "GITHUB" => ftp_client_gui_lib::providers::ProviderType::GitHub,
         "GITLAB" => ftp_client_gui_lib::providers::ProviderType::GitLab,
-        other => return Err(format!("Protocol '{}' on server '{}' is not supported for agent server_exec. Supported: FTP, FTPS, SFTP, WebDAV, S3, GitHub, GitLab.", other, profile_name)),
+        other => return Err(format!("Protocol '{}' on server '{}' is not supported for agent server_exec. Supported: FTP, FTPS, SFTP, WebDAV, S3, GitHub, GitLab, MTP.", other, profile_name)),
     };
 
     // AGENT-03: apply provider-specific options (S3 bucket/region/endpoint, Azure
@@ -24502,6 +24515,189 @@ fn match_profile_by_query<'a>(
     }
 }
 
+/// Open a saved MTP device profile by fingerprint match (APPENDIX-DEVICE-PROFILES Phase 4).
+///
+/// Does **not** use [`ProviderFactory`] host create (factory rejects `ProviderType::Mtp`).
+/// Flow: read `deviceFingerprint.canonical` → list live devices → match →
+/// [`MtpProvider::open_device`] → optional `initialPath` cd.
+async fn connect_mtp_device_profile(
+    profile: &serde_json::Value,
+    cli: &Cli,
+    format: OutputFormat,
+) -> Result<(Box<dyn StorageProvider>, String), i32> {
+    use ftp_client_gui_lib::providers::{list_mtp_devices, match_live_device_id, MtpProvider};
+
+    let name = profile
+        .get("name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unnamed");
+    let host_label = profile
+        .get("host")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .trim();
+    let initial_path = profile
+        .get("initialPath")
+        .and_then(|v| v.as_str())
+        .unwrap_or("/")
+        .to_string();
+    let canonical = profile
+        .get("deviceFingerprint")
+        .and_then(|v| v.get("canonical"))
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty());
+
+    let Some(canonical) = canonical else {
+        print_error(
+            format,
+            &format!(
+                "MTP profile '{}' has no deviceFingerprint.canonical. Re-save the device from Add Services > Devices after Detect.",
+                name
+            ),
+            5,
+        );
+        return Err(5);
+    };
+
+    let devices = match list_mtp_devices().await {
+        Ok(d) => d,
+        Err(e) => {
+            let code = provider_error_to_exit_code(&e);
+            print_error(format, &format!("Failed to list MTP devices: {}", e), code);
+            return Err(code);
+        }
+    };
+
+    let Some(device_id) = match_live_device_id(canonical, &devices) else {
+        print_error(
+            format,
+            &format!(
+                "Device not attached for profile '{}' ({}). Plug in the phone, unlock it, and enable File Transfer (MTP) mode. Only one program can hold the USB claim; close the system file manager if open fails.",
+                name, canonical
+            ),
+            2,
+        );
+        return Err(2);
+    };
+
+    let display = devices
+        .iter()
+        .find(|d| d.device_id == device_id)
+        .map(|d| d.display_name.as_str())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| {
+            if host_label.is_empty() {
+                name
+            } else {
+                host_label
+            }
+        });
+
+    let preset_suffix = profile
+        .get("providerId")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|p| format!(" [{}]", p))
+        .unwrap_or_default();
+    print_profile_banner_once(
+        name,
+        format!("MTP -> {}{}", display, preset_suffix),
+        cli.quiet,
+    );
+
+    let mut mtp = MtpProvider::with_platform_backend();
+    if let Err(e) = mtp.open_device(&device_id).await {
+        let code = provider_error_to_exit_code(&e);
+        print_error(
+            format,
+            &format!(
+                "Failed to open MTP device: {} (only one program can hold MTP; close the system file manager and retry)",
+                e
+            ),
+            code,
+        );
+        return Err(code);
+    }
+
+    // GUI parity: land on saved remote path when set. Absolute path resolution
+    // still works if cd fails; warn and keep listing via initialPath join.
+    if !initial_path.trim().is_empty() && initial_path.trim() != "/" {
+        if let Err(e) = mtp.cd(&initial_path).await {
+            if !cli.quiet {
+                eprintln!(
+                    "Warning: could not cd to initialPath '{}': {}",
+                    initial_path, e
+                );
+            }
+        }
+    }
+
+    let path_out = if initial_path.trim().is_empty() {
+        "/".to_string()
+    } else {
+        initial_path
+    };
+    Ok((Box::new(mtp), path_out))
+}
+
+/// Agent-facing MTP profile open (string errors; no CLI banner / exit codes).
+async fn connect_mtp_device_profile_agent(
+    profile: &serde_json::Value,
+) -> Result<(Box<dyn StorageProvider>, String), String> {
+    use ftp_client_gui_lib::providers::{list_mtp_devices, match_live_device_id, MtpProvider};
+
+    let name = profile
+        .get("name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unnamed");
+    let initial_path = profile
+        .get("initialPath")
+        .and_then(|v| v.as_str())
+        .unwrap_or("/")
+        .to_string();
+    let canonical = profile
+        .get("deviceFingerprint")
+        .and_then(|v| v.get("canonical"))
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| format!("MTP profile '{}' has no deviceFingerprint.canonical", name))?;
+
+    let devices = list_mtp_devices()
+        .await
+        .map_err(|e| format!("Failed to list MTP devices: {}", e))?;
+    let device_id = match_live_device_id(canonical, &devices).ok_or_else(|| {
+        format!(
+            "Device not attached for profile '{}' ({}). Plug in the phone and enable File Transfer mode; close the system file manager if it holds the USB claim.",
+            name, canonical
+        )
+    })?;
+
+    let mut mtp = MtpProvider::with_platform_backend();
+    mtp.open_device(&device_id)
+        .await
+        .map_err(|e| format!("Failed to open MTP device: {}", e))?;
+
+    if !initial_path.trim().is_empty() && initial_path.trim() != "/" {
+        if let Err(e) = mtp.cd(&initial_path).await {
+            // Soft: agent list/get still resolve absolute paths from initial_path.
+            eprintln!(
+                "Warning: could not cd to initialPath '{}': {}",
+                initial_path, e
+            );
+        }
+    }
+
+    let path_out = if initial_path.trim().is_empty() {
+        "/".to_string()
+    } else {
+        initial_path
+    };
+    Ok((Box::new(mtp), path_out))
+}
+
 fn profile_to_provider_config(
     profile_name: &str,
     cli: &Cli,
@@ -24699,6 +24895,15 @@ fn profile_to_provider_config(
         "uploadcare" | "upload_care" => ProviderType::Uploadcare,
         "cloudinary" => ProviderType::Cloudinary,
         "b2" | "backblaze" | "backblazeb2" => ProviderType::Backblaze,
+        // MTP is fingerprint → open_device (connect_mtp_device_profile), not factory.
+        "mtp" => {
+            print_error(
+                format,
+                "MTP device profiles open via fingerprint match (aeroftp-cli --profile \"…\"), not ProviderFactory host connect. Use create_and_connect / --profile path.",
+                7,
+            );
+            return Err(7);
+        }
         _ => {
             print_error(
                 format,
@@ -25681,6 +25886,20 @@ async fn create_and_connect_with(
                             .get("protocol")
                             .and_then(|v| v.as_str())
                             .unwrap_or("");
+                        // APPENDIX-DEVICE-PROFILES Phase 4: MTP saved device
+                        // profiles open by fingerprint match + open_device.
+                        // Never route through ProviderFactory host create.
+                        if protocol.eq_ignore_ascii_case("mtp") {
+                            let (provider, path) =
+                                connect_mtp_device_profile(&profile, cli, format).await?;
+                            let provider = if apply_overlay {
+                                cli_apply_crypt_overlay(provider, cli, profile_override, format)
+                                    .await?
+                            } else {
+                                provider
+                            };
+                            return Ok((provider, path));
+                        }
                         let name = profile
                             .get("name")
                             .and_then(|v| v.as_str())
@@ -53586,6 +53805,22 @@ async fn batch_connect_profile(
     cli: &Cli,
     format: OutputFormat,
 ) -> Result<Box<dyn StorageProvider>, i32> {
+    // MTP device profiles: fingerprint match (not ProviderFactory).
+    if let Ok(store) = open_vault(cli) {
+        if let Ok(profiles) = load_active_user_profiles(cli, &store) {
+            if let ProfileMatch::One(p) = match_profile_by_query(&profiles, profile_name) {
+                if p.get("protocol")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .eq_ignore_ascii_case("mtp")
+                {
+                    let (provider, _) = connect_mtp_device_profile(p, cli, format).await?;
+                    return Ok(provider);
+                }
+            }
+        }
+    }
+
     let (cfg, _) = profile_to_provider_config(profile_name, cli, format)?;
     let mut provider = ProviderFactory::create(&cfg).map_err(|e| {
         print_error(
@@ -53862,6 +54097,18 @@ async fn audit_connect_profile(
     cli: &Cli,
     format: OutputFormat,
 ) -> Result<Box<dyn StorageProvider>, String> {
+    if profile
+        .get("protocol")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .eq_ignore_ascii_case("mtp")
+    {
+        let (provider, _) = connect_mtp_device_profile(profile, cli, format)
+            .await
+            .map_err(|code| format!("MTP profile connect failed (exit {})", code))?;
+        return Ok(provider);
+    }
+
     let name = profile
         .get("name")
         .and_then(|v| v.as_str())

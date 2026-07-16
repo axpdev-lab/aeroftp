@@ -25,8 +25,15 @@ In addition to the cloud transports above, AeroFTP v4.1.0 previews **AeroShare**
 
 AeroFTP can open **attached portable devices** (phones, cameras) that speak
 **MTP** (Linux libmtp) or **WPD** (Windows) even when the OS never assigns a
-drive letter. They appear under **PLACES → Portable devices**, not under
-My Servers and not as a fake local path.
+drive letter. They appear under **PLACES → Portable devices**. You can also
+**save a device as a My Servers profile** (Add Services → **Devices**): a green
+attach indicator shows when that phone is plugged in, and click-to-connect
+reopens a session at the saved default remote (and local) path. Identity uses a
+stable **device fingerprint** (`mtp:serial=…` preferred, else vid/pid + model),
+not a USB bus address.
+
+CLI: `aeroftp-cli --profile "Sony backup" ls` (and other profile-backed verbs)
+resolve the same fingerprint against currently attached devices.
 
 ### What works
 
@@ -37,11 +44,13 @@ My Servers and not as a fake local path.
 | Copy whole files to/from device | Yes (progress callbacks; single transfer slot) |
 | Disconnect / release session | Yes |
 | Dual-panel local ↔ device | Yes (other panel stays local FS) |
+| Saved My Servers device profiles | Yes (fingerprint match, green attach, click connect) |
+| CLI `--profile` open when attached | Yes |
 
 ### Hard limits (protocol / OS, not AeroFTP gaps)
 
 These are properties of MTP/WPD and common device firmware. AeroFTP will **not**
-claim them as “coming soon” for this transport:
+claim them as "coming soon" for this transport:
 
 | Limit | Reality |
 |-------|---------|
@@ -52,12 +61,20 @@ claim them as “coming soon” for this transport:
 | Weak concurrency | Default `max_file_slots = 1` |
 | Metadata best-effort | Size/mtime often missing or wrong |
 | No delta / rsync | No block-checksum protocol on the wire |
+| Exclusive USB claim | Only one program can hold the phone over MTP at a time |
+
+**Exclusive claim:** close the system file manager (or any other MTP client) if
+AeroFTP cannot open the device, and vice versa.
 
 **macOS** is out of scope until a Mac station and backend exist.
 
 ### Error framing
 
-- Device gone: reconnect the USB cable and open the device again from PLACES.
+- Device gone / not attached: reconnect the USB cable, unlock, enable File
+  Transfer mode, then open again from PLACES or My Servers (or retry CLI
+  `--profile`).
+- Open fails while cable is connected: another program likely holds the exclusive
+  claim; close the system file manager and retry.
 - Unsupported op: the portable device does not support that operation (MTP limitation).
 - Transfer cancelled: incomplete objects on the device are removed when the API allows.
 

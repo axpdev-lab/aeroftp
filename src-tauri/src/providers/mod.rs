@@ -108,7 +108,9 @@ pub use kdrive::KDriveProvider;
 pub use koofr::KoofrProvider;
 pub use mega::{MegaCmdProvider, MegaProvider};
 pub use mega_native::MegaNativeProvider;
-pub use mtp::MtpProvider;
+pub use mtp::{
+    fingerprint_equal, list_mtp_devices, match_live_device_id, mtp_device_fingerprint, MtpProvider,
+};
 pub use oauth2::{OAuth2Manager, OAuthConfig, OAuthProvider};
 pub use onedrive::OneDriveProvider;
 pub use opendrive::OpenDriveProvider;
