@@ -236,7 +236,12 @@ impl StorageProvider for MtpProvider {
 
     async fn list(&mut self, path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
         self.require_open()?;
-        let norm = if path.is_empty() {
+        // `provider_list_files` / `provider_change_dir` pass `"."` or `null`→`"."`
+        // for "list cwd". That is NOT the virtual root: normalize_virtual_path(".")
+        // collapses to `/` (dot segments stripped), which would re-list storages
+        // after every cd into a storage and make drill-in appear stuck.
+        let trimmed = path.trim();
+        let norm = if trimmed.is_empty() || trimmed == "." {
             self.cwd.clone()
         } else {
             normalize_virtual_path(path)?
@@ -680,6 +685,18 @@ mod tests {
         assert_eq!(p.pwd().await.unwrap(), "/Internal shared storage/DCIM");
         let files = p.list("").await.unwrap();
         assert!(files.iter().any(|e| e.name == "IMG_001.JPG"));
+        // Same path the GUI uses after provider_change_dir (list cwd as ".")
+        let files_dot = p.list(".").await.unwrap();
+        assert!(
+            files_dot.iter().any(|e| e.name == "IMG_001.JPG"),
+            "list(\".\") must list cwd, not virtual root: {files_dot:?}"
+        );
+        assert!(
+            !files_dot
+                .iter()
+                .any(|e| e.name == "Internal shared storage"),
+            "list(\".\") must not re-list storage roots: {files_dot:?}"
+        );
 
         let tmp = tempfile::tempdir().unwrap();
         let dest = tmp.path().join("photo.jpg");
