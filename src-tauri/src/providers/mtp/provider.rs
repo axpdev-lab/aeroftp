@@ -638,7 +638,10 @@ mod tests {
                 assert!(matches!(err, ProviderError::InvalidConfig(_)));
                 let msg = err.to_string();
                 assert!(
-                    msg.contains("PLACES") || msg.contains("MTP"),
+                    msg.contains("mtp_open_device")
+                        || msg.contains("device profile")
+                        || msg.contains("MTP")
+                        || msg.contains("PLACES"),
                     "unexpected message: {msg}"
                 );
             }

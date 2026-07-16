@@ -1306,10 +1306,11 @@ impl ProviderFactory {
                 let peer_config = peer::PeerProviderConfig::from_provider_config(config)?;
                 Ok(Box::new(PeerProvider::new(peer_config)))
             }
-            // MTP sessions are opened from PLACES portable-device discovery,
-            // never from a saved server profile (APPENDIX-MTP).
+            // MTP connect is fingerprint match → mtp_open_device (PLACES or a
+            // saved device profile), not ProviderFactory host+password create.
+            // APPENDIX-MTP / APPENDIX-DEVICE-PROFILES.
             ProviderType::Mtp => Err(ProviderError::InvalidConfig(
-                "MTP portable devices are opened from PLACES, not as a saved server profile"
+                "MTP is opened via mtp_open_device / device profile match, not ProviderFactory host connect"
                     .to_string(),
             )),
         }

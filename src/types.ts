@@ -53,7 +53,11 @@ export type ProviderType =
   | "backblaze"
   | "cloudinary"
   | "peer"
-  /** Portable device over MTP/WPD (session-only from PLACES, never a saved profile). */
+  /**
+   * Portable device over MTP/WPD. Session from PLACES discovery, or a saved
+   * device profile matched by fingerprint (not host+password path).
+   * See APPENDIX-DEVICE-PROFILES.
+   */
   | "mtp";
 
 // Check if a provider type requires OAuth2 authentication
@@ -556,6 +560,23 @@ export interface AeroCryptOverlayBinding {
   aead?: "auto" | "aes-256-gcm-siv" | "xchacha20-poly1305"; // native only; see master plan §5
 }
 
+/**
+ * Stable identity for a saved MTP device profile (APPENDIX-DEVICE-PROFILES).
+ * Prefer serial form; fall back to vid/pid (+ model) when serial is missing.
+ * `canonical` is the compare/storage key (`mtp:serial=...` or `mtp:vidpid=...`).
+ */
+export interface DeviceFingerprint {
+  kind: "mtp";
+  serial?: string;
+  /** USB vendor id as 4-digit uppercase hex when known. */
+  vid?: string;
+  /** USB product id as 4-digit uppercase hex when known. */
+  pid?: string;
+  model?: string;
+  /** Canonical fingerprint string used for attach match. */
+  canonical: string;
+}
+
 // Server profile for saved connections
 export interface ServerProfile {
   id: string;
@@ -582,6 +603,13 @@ export interface ServerProfile {
   customIconUrl?: string; // User-chosen custom icon (base64 data URL, highest priority)
   publicUrlBase?: string; // HTTP base URL for share link generation (e.g. https://www.example.com/)
   skipDeltaEligibilityPrompt?: boolean; // Suppress the classic fallback modal for this saved server
+  /**
+   * MTP device identity when `protocol === 'mtp'` (APPENDIX-DEVICE-PROFILES).
+   * Connect is fingerprint match → `mtp_open_device`, not host+password.
+   * For MTP rows, `host` may hold a human search string (model); `port` is 0;
+   * username/password are unused.
+   */
+  deviceFingerprint?: DeviceFingerprint;
   // Last known storage quota cached after a successful connection. Used by the
   // detailed My Servers card layout to render a usage bar without requiring
   // a fresh authentication round-trip on every render. `totalSource` records
