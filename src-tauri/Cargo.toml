@@ -328,8 +328,10 @@ local-stt = ["dep:hound", "dep:whisper-rs"]
 # `#[cfg(ci_lane2)]` / `#[cfg(ci_lane3)]` do not surface
 # `unexpected_cfgs` warnings under `-D warnings`. Enable on CI with
 # `RUSTFLAGS='--cfg ci_lane3'` (or `ci_lane2`); left unset otherwise.
+# mtp_libmtp: set by build.rs when pkg-config finds libmtp (optional).
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = [
     'cfg(ci_lane2)',
     'cfg(ci_lane3)',
+    'cfg(mtp_libmtp)',
 ] }

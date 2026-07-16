@@ -18942,6 +18942,11 @@ pub fn run() {
             filesystem::find_duplicate_files,
             filesystem::scan_disk_usage,
             filesystem::volumes_changed,
+            // MTP portable devices (APPENDIX-MTP Phase 2; PLACES wiring in Phase 4)
+            providers::mtp::commands::list_mtp_devices,
+            providers::mtp::commands::mtp_open_device,
+            providers::mtp::commands::mtp_close_device,
+            providers::mtp::commands::mtp_backend_status,
             // Mission Green Badge - File sync status tracking
             sync_badge::start_badge_server_cmd,
             sync_badge::stop_badge_server_cmd,

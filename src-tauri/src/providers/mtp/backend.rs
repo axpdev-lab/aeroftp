@@ -125,7 +125,7 @@ impl NullMtpBackend {
     }
 
     const NOT_LINKED: &'static str =
-        "MTP backend not linked on this build (Phase 1 scaffold; libmtp/WPD land next)";
+        "MTP backend not linked on this build (install libmtp-dev and rebuild on Linux, or use Windows WPD when available)";
 }
 
 impl Default for NullMtpBackend {
@@ -221,9 +221,30 @@ impl MtpBackend for NullMtpBackend {
     }
 }
 
+/// Whether this build linked a real platform MTP backend (libmtp on Linux).
+pub fn mtp_backend_linked() -> bool {
+    cfg!(all(target_os = "linux", mtp_libmtp))
+}
+
+/// Construct the best available backend for this OS/build.
+///
+/// - Linux + libmtp linked: [`crate::providers::mtp::linux_libmtp::LinuxLibmtpBackend`]
+/// - otherwise: [`NullMtpBackend`] (honest empty list / NotSupported)
+pub fn platform_backend() -> Box<dyn MtpBackend> {
+    #[cfg(all(target_os = "linux", mtp_libmtp))]
+    {
+        use crate::providers::mtp::linux_libmtp::LinuxLibmtpBackend;
+        Box::new(LinuxLibmtpBackend::new())
+    }
+    #[cfg(not(all(target_os = "linux", mtp_libmtp)))]
+    {
+        Box::new(NullMtpBackend::new())
+    }
+}
+
 /// Standalone discovery helper (no open session).
 pub async fn list_mtp_devices() -> Result<Vec<MtpDeviceInfo>, ProviderError> {
-    NullMtpBackend::new().list_devices().await
+    platform_backend().list_devices().await
 }
 
 #[cfg(test)]

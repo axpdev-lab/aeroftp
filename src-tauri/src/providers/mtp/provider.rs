@@ -55,6 +55,11 @@ impl MtpProvider {
         Self::new(Box::new(NullMtpBackend::new()))
     }
 
+    /// Platform-selected backend (libmtp on Linux when linked, else Null).
+    pub fn with_platform_backend() -> Self {
+        Self::new(crate::providers::mtp::backend::platform_backend())
+    }
+
     /// Open a specific device id (call after construction).
     pub async fn open_device(&mut self, device_id: &str) -> Result<(), ProviderError> {
         self.backend.open(device_id).await?;

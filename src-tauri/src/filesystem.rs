@@ -345,6 +345,11 @@ fn gvfs_fs_type(dir_name: &str) -> String {
         "nfs".to_string()
     } else if dir_name.starts_with("afp:") {
         "afp".to_string()
+    } else if dir_name.starts_with("mtp:") || dir_name.starts_with("gphoto2:") {
+        // Phone / camera already mounted via gvfs: not a network share.
+        // Product browsing still prefers the MTP provider session; this only
+        // fixes volume classification (bonus, APPENDIX-MTP/04).
+        "mtp".to_string()
     } else {
         "network".to_string()
     }
