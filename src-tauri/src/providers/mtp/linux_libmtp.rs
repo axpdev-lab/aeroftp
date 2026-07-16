@@ -881,13 +881,15 @@ fn open_raw_by_id_locked(device_id: &str) -> Result<(*mut LibmtpMtpDevice, Strin
 
     let device = unsafe {
         let raw_ref = raw_ptr.add(idx);
-        // Prefer cached open first after a gvfs soft-release: Uncached often
-        // hits PTP_ERROR_IO and libmtp's internal USB reset, which can leave
-        // *our* process holding usbfs (fuser shows aeroftp) so the next
-        // Connect is always busy until the app restarts.
-        let mut dev = LIBMTP_Open_Raw_Device(raw_ref);
+        // Uncached first, restoring the order of `6152086cf`: both live-green
+        // opens on the Sony Xperia used it, and no live open has been green
+        // since `5cd3e5caf` flipped it. The order alone was not proven to be
+        // the deciding factor (what decides an open is being the first MTP
+        // session after plug, see `release_gvfs_mtp_claim`), so this only puts
+        // us back on the sole configuration ever observed working.
+        let mut dev = LIBMTP_Open_Raw_Device_Uncached(raw_ref);
         if dev.is_null() {
-            dev = LIBMTP_Open_Raw_Device_Uncached(raw_ref);
+            dev = LIBMTP_Open_Raw_Device(raw_ref);
         }
         // Free detect array only after open has consumed the raw entry.
         libc::free(raw_ptr as *mut c_void);
