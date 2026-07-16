@@ -279,20 +279,31 @@ impl CloudService {
     }
 
     /// Whether the delete-propagation safety gate should trip this cycle. Trips
-    /// when a prior baseline existed AND either a whole side is empty, or the
-    /// pending deletes exceed half of the prior baseline: a mass disappearance
-    /// is far more likely a transient/partial listing failure than a deliberate
-    /// user delete. The floor keeps tiny folders from tripping on a legitimate
-    /// "delete most of a 3-file folder".
+    /// when a prior baseline existed AND either the scan that produced the
+    /// listings was incomplete, or a whole side is empty, or the pending deletes
+    /// exceed half of the prior baseline: a mass disappearance is far more likely
+    /// a transient/partial listing failure than a deliberate user delete. The
+    /// floor keeps tiny folders from tripping on a legitimate "delete most of a
+    /// 3-file folder".
+    ///
+    /// `scan_incomplete` is the only signal that does not reason about counts: a
+    /// scanner that swallowed a listing error returns a map that LOOKS complete,
+    /// so the files it could not see are indistinguishable from files the user
+    /// deleted. Any count-based heuristic is downstream of a lie, hence the
+    /// unconditional trip. (CLAUDE-AV-B3-11)
     fn delete_safety_trips(
         prior_count: usize,
         local_empty: bool,
         remote_empty: bool,
         pending_deletes: usize,
+        scan_incomplete: bool,
     ) -> bool {
         const MASS_DELETE_FLOOR: usize = 10;
         if prior_count == 0 {
             return false;
+        }
+        if scan_incomplete {
+            return true;
         }
         if local_empty || remote_empty {
             return true;
@@ -427,7 +438,7 @@ impl CloudService {
 
         // Get file listings
         let local_files = self.scan_local_folder(&config).await?;
-        let remote_files = self.scan_remote_folder(ftp_manager, &config).await?;
+        let (remote_files, remote_complete) = self.scan_remote_folder(ftp_manager, &config).await?;
 
         let local_str = config.local_folder.to_string_lossy().to_string();
         let remote_str = config.remote_folder.clone();
@@ -464,13 +475,15 @@ impl CloudService {
             local_len == 0,
             remote_len == 0,
             pending_deletes,
+            !remote_complete,
         ) {
             tracing::warn!(
-                "AeroCloud safety gate (FTP): {} pending deletes vs {} baselined (L:{} R:{}). Disabling delete propagation this cycle to prevent accidental wipe.",
+                "AeroCloud safety gate (FTP): {} pending deletes vs {} baselined (L:{} R:{}, remote scan complete: {}). Disabling delete propagation this cycle to prevent accidental wipe.",
                 pending_deletes,
                 prior_count,
                 local_len,
-                remote_len
+                remote_len,
+                remote_complete
             );
             for c in &mut comparisons {
                 if c.status == SyncStatus::LocalOnly || c.status == SyncStatus::RemoteOnly {
@@ -627,12 +640,12 @@ impl CloudService {
 
         // Get file listings
         let local_files = self.scan_local_folder(config).await?;
-        let remote_files = if remote_present || ensure_remote {
+        let (remote_files, remote_complete) = if remote_present || ensure_remote {
             match self
                 .scan_remote_folder_with_provider(provider, config)
                 .await
             {
-                Ok(files) => files,
+                Ok(scanned) => scanned,
                 Err(e) => {
                     // Propagate OAuth 1.0a token revocation to the UI before returning.
                     // Without this, 4shared failures during scan only surface as a generic
@@ -643,8 +656,10 @@ impl CloudService {
             }
         } else {
             // Preview against a not-yet-created remote: nothing is there, so every
-            // local file reads as new. No mkdir, no scan, no mutation.
-            HashMap::new()
+            // local file reads as new. No mkdir, no scan, no mutation. The empty
+            // map is the TRUTH about that remote, not a failed listing, so it
+            // counts as a complete scan.
+            (HashMap::new(), true)
         };
 
         let local_str = config.local_folder.to_string_lossy().to_string();
@@ -691,13 +706,15 @@ impl CloudService {
             local_len == 0,
             remote_len == 0,
             pending_deletes,
+            !remote_complete,
         ) {
             tracing::warn!(
-                "AeroCloud safety gate (provider): {} pending deletes vs {} baselined (L:{} R:{}). Disabling delete propagation this cycle to prevent accidental wipe.",
+                "AeroCloud safety gate (provider): {} pending deletes vs {} baselined (L:{} R:{}, remote scan complete: {}). Disabling delete propagation this cycle to prevent accidental wipe.",
                 pending_deletes,
                 prior_count,
                 local_len,
-                remote_len
+                remote_len,
+                remote_complete
             );
             for c in &mut comparisons {
                 if c.status == SyncStatus::LocalOnly || c.status == SyncStatus::RemoteOnly {
@@ -1084,12 +1101,17 @@ impl CloudService {
     }
 
     /// Scan remote folder and build file info map
+    /// Returns the remote index plus whether the scan saw the WHOLE tree. A
+    /// `false` completeness flag means at least one directory was skipped (a
+    /// failed cd/list, the depth limit, the index cap), so the map understates
+    /// the remote and must never drive delete propagation. (CLAUDE-AV-B3-11)
     async fn scan_remote_folder(
         &self,
         ftp_manager: &mut FtpManager,
         config: &CloudConfig,
-    ) -> Result<HashMap<String, FileInfo>, String> {
+    ) -> Result<(HashMap<String, FileInfo>, bool), String> {
         let mut files = HashMap::new();
+        let mut complete = true;
         let base_path = &config.remote_folder;
         let aeroignore = crate::sync_ignore::AeroIgnore::load(&config.local_folder);
 
@@ -1105,18 +1127,23 @@ impl CloudService {
         while let Some((current_path, relative_prefix, depth)) = stack.pop() {
             if depth > MAX_DEPTH {
                 tracing::warn!("Remote scan depth limit reached at {}", current_path);
+                complete = false;
                 continue;
             }
 
             // Navigate to directory
             if ftp_manager.change_dir(&current_path).await.is_err() {
+                complete = false;
                 continue;
             }
 
             // List files
             let entries = match ftp_manager.list_files().await {
                 Ok(list) => list,
-                Err(_) => continue,
+                Err(_) => {
+                    complete = false;
+                    continue;
+                }
             };
 
             for entry in entries {
@@ -1136,10 +1163,12 @@ impl CloudService {
                     continue;
                 }
 
-                // P1-6: Cap file index at 100K to prevent unbounded memory growth
+                // P1-6: Cap file index at 100K to prevent unbounded memory growth.
+                // A truncated scan is an INCOMPLETE scan: report it so the delete
+                // gate refuses to act on it. (CLAUDE-AV-B3-11)
                 if files.len() >= 100_000 {
                     tracing::warn!("Remote file index cap reached (100K), truncating scan");
-                    return Ok(files);
+                    return Ok((files, false));
                 }
 
                 files.insert(
@@ -1194,7 +1223,7 @@ impl CloudService {
             }
         }
 
-        Ok(files)
+        Ok((files, complete))
     }
 
     /// Process a single file comparison and perform the appropriate action
@@ -1363,12 +1392,15 @@ impl CloudService {
     }
 
     /// Scan remote folder using any StorageProvider (multi-protocol support)
+    /// Returns the remote index plus whether the scan saw the WHOLE tree; see
+    /// `scan_remote_folder` for why the flag exists. (CLAUDE-AV-B3-11)
     async fn scan_remote_folder_with_provider<P: StorageProvider + ?Sized>(
         &self,
         provider: &mut P,
         config: &CloudConfig,
-    ) -> Result<HashMap<String, FileInfo>, String> {
+    ) -> Result<(HashMap<String, FileInfo>, bool), String> {
         let mut files = HashMap::new();
+        let mut complete = true;
         let base_path = &config.remote_folder;
         // Load .aeroignore from local sync root (applies to remote paths too)
         let aeroignore = crate::sync_ignore::AeroIgnore::load(&config.local_folder);
@@ -1385,18 +1417,23 @@ impl CloudService {
         while let Some((current_path, relative_prefix, depth)) = stack.pop() {
             if depth > MAX_DEPTH {
                 tracing::warn!("Remote scan depth limit reached at {}", current_path);
+                complete = false;
                 continue;
             }
 
             // Navigate to directory
             if provider.cd(&current_path).await.is_err() {
+                complete = false;
                 continue;
             }
 
             // List files using provider
             let entries = match provider.list(".").await {
                 Ok(list) => list,
-                Err(_) => continue,
+                Err(_) => {
+                    complete = false;
+                    continue;
+                }
             };
 
             for entry in entries {
@@ -1416,10 +1453,12 @@ impl CloudService {
                     continue;
                 }
 
-                // P1-6: Cap file index at 100K to prevent unbounded memory growth
+                // P1-6: Cap file index at 100K to prevent unbounded memory growth.
+                // A truncated scan is an INCOMPLETE scan: report it so the delete
+                // gate refuses to act on it. (CLAUDE-AV-B3-11)
                 if files.len() >= 100_000 {
                     tracing::warn!("Remote file index cap reached (100K), truncating scan");
-                    return Ok(files);
+                    return Ok((files, false));
                 }
 
                 files.insert(
@@ -1476,7 +1515,7 @@ impl CloudService {
             }
         }
 
-        Ok(files)
+        Ok((files, complete))
     }
 
     /// Process a single file comparison using any StorageProvider
@@ -1988,14 +2027,39 @@ mod baseline_tests {
     #[test]
     fn safety_trips_on_empty_side_and_mass_delete_but_not_normal() {
         // Whole side empty with a prior baseline -> trip.
-        assert!(CloudService::delete_safety_trips(20, true, false, 0));
+        assert!(CloudService::delete_safety_trips(20, true, false, 0, false));
         // More than half of a >= floor baseline pending delete -> trip.
-        assert!(CloudService::delete_safety_trips(20, false, false, 11));
+        assert!(CloudService::delete_safety_trips(
+            20, false, false, 11, false
+        ));
         // A few deletes out of many -> no trip.
-        assert!(!CloudService::delete_safety_trips(20, false, false, 3));
+        assert!(!CloudService::delete_safety_trips(
+            20, false, false, 3, false
+        ));
         // Tiny folder below the floor deleting most -> no trip (deliberate).
-        assert!(!CloudService::delete_safety_trips(3, false, false, 3));
+        assert!(!CloudService::delete_safety_trips(
+            3, false, false, 3, false
+        ));
         // No prior baseline (first sync) -> never trip.
-        assert!(!CloudService::delete_safety_trips(0, true, true, 0));
+        assert!(!CloudService::delete_safety_trips(0, true, true, 0, false));
+    }
+
+    #[test]
+    fn safety_trips_on_incomplete_scan_regardless_of_counts() {
+        // An incomplete scan makes every count a lie: the files the scanner
+        // could not see are indistinguishable from files the user deleted. Trip
+        // even when the counts look perfectly benign (a single delete out of a
+        // healthy baseline, neither side empty). (CLAUDE-AV-B3-11)
+        assert!(CloudService::delete_safety_trips(20, false, false, 1, true));
+        // Same shape WITHOUT the incomplete flag stays a normal, allowed delete:
+        // proves the trip comes from completeness, not from the counts.
+        assert!(!CloudService::delete_safety_trips(
+            20, false, false, 1, false
+        ));
+        // Below the mass-delete floor too: the floor must not excuse a blind scan.
+        assert!(CloudService::delete_safety_trips(3, false, false, 1, true));
+        // No prior baseline still wins: nothing was ever baselined, so there is
+        // nothing to delete and nothing to protect.
+        assert!(!CloudService::delete_safety_trips(0, false, false, 0, true));
     }
 }
