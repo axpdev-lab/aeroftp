@@ -115,8 +115,15 @@ pub(crate) const XXH128_ALGO_NAME: &str = "xxh128";
 /// CLAUDE-AV-B3-14: md5 whole-file trailer, the practical fallback
 /// real rsync uses when xxh* is unavailable. Same 16-byte length as
 /// xxh128 (`A2_3_FILE_CHECKSUM_LEN`), unseeded (see `sum_init` for
-/// `CSUM_MD5` in rsync 3.2.7).
+/// `CSUM_MD5` in rsync 3.2.7). CLAUDE-AV-B3-17: also the per-block
+/// strong algo via `get_checksum2` (seeded; see `CF_CHKSUM_SEED_FIX`).
 pub(crate) const MD5_ALGO_NAME: &str = "md5";
+
+/// rsync.h `CF_CHKSUM_SEED_FIX` (`1<<5`). When set in the server's
+/// `compat_flags`, `proper_seed_order=1` and `get_checksum2` for
+/// `CSUM_MD5` feeds seed LE bytes *before* the block data. Without it
+/// the legacy order is data then seed. CLAUDE-AV-B3-17.
+const CF_CHKSUM_SEED_FIX: i32 = 1 << 5;
 
 /// Chunk size used for raw-stream reads. Large enough to swallow a full
 /// preamble + file list in one go for small transfers, small enough not
@@ -641,15 +648,21 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         self.checksum_seed
     }
 
-    /// CLAUDE-AV-B3-15: block-strong algorithm for confirming rolling hits
-    /// against wire signatures. Must match how the peer (or we, on the
-    /// download emit path) filled `SumBlock.strong`. xxh128 is the common
-    /// winner of our advertisement list; other block algos stay
-    /// `Unknown` until recomputed in-tree (safer than rolling-only).
+    /// CLAUDE-AV-B3-15 / CLAUDE-AV-B3-17: block-strong algorithm for
+    /// confirming rolling hits against wire signatures. Must match how
+    /// the peer (or we, on the download emit path) filled
+    /// `SumBlock.strong`. xxh128 and md5 are recomputed in-tree; other
+    /// winners (xxh64/xxh3/md4/...) stay `Unknown` (safer than
+    /// rolling-only confirmation).
     pub(crate) fn block_strong_algo(&self) -> BlockStrongAlgo {
         match self.negotiated_checksum_algo() {
             Some(XXH128_ALGO_NAME) => BlockStrongAlgo::Xxh128 {
                 seed: self.checksum_seed as u64,
+            },
+            // CLAUDE-AV-B3-17: rsync get_checksum2 CSUM_MD5 seed order.
+            Some(MD5_ALGO_NAME) => BlockStrongAlgo::Md5 {
+                seed: self.checksum_seed,
+                proper_seed_order: self.compat_flags & CF_CHKSUM_SEED_FIX != 0,
             },
             _ => BlockStrongAlgo::Unknown,
         }
@@ -1665,8 +1678,14 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         let engine_sigs = adapter.build_signatures(destination_data, block_size);
 
         // Build truncated wire SumBlocks.
+        // CLAUDE-AV-B3-17: emit block strongs with the negotiated algo
+        // (md5 or xxh128), not a hardcoded xxh128. Unknown winners keep
+        // the historical xxh128 emit so existing fixtures do not flip;
+        // confirm path still refuses Unknown, so a mismatched emit only
+        // costs a full transfer rather than a silent false match.
         let s2length = A2_2_DOWNLOAD_S2LENGTH;
         let s2length_usize = s2length as usize;
+        let strong_algo = self.block_strong_algo();
         let mut sum_blocks: Vec<SumBlock> = Vec::with_capacity(engine_sigs.len());
         for sig in &engine_sigs {
             let start = sig.index as usize * block_size;
@@ -1674,7 +1693,23 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
                 .saturating_add(sig.block_len as usize)
                 .min(destination_data.len());
             let block = destination_data.get(start..end).unwrap_or(&[]);
-            let strong_wire = compute_xxh128_wire_with_seed(block, self.checksum_seed as u64);
+            let strong_wire = match strong_algo {
+                BlockStrongAlgo::Xxh128 { seed } => compute_xxh128_wire_with_seed(block, seed),
+                BlockStrongAlgo::Md5 {
+                    seed,
+                    proper_seed_order,
+                } => {
+                    let digest = BlockStrongAlgo::Md5 {
+                        seed,
+                        proper_seed_order,
+                    }
+                    .digest(block);
+                    digest[..16].to_vec()
+                }
+                BlockStrongAlgo::Sha256 | BlockStrongAlgo::Unknown => {
+                    compute_xxh128_wire_with_seed(block, self.checksum_seed as u64)
+                }
+            };
             let strong = strong_wire[..s2length_usize.min(strong_wire.len())].to_vec();
             sum_blocks.push(SumBlock {
                 rolling: sig.rolling,
@@ -3583,6 +3618,86 @@ mod tests {
         assert_eq!(d.negotiated_checksum_algos(), "md5 xxh64");
         assert_eq!(d.negotiated_compression_algos(), "none zstd");
         assert_eq!(d.phase(), AerorsyncSessionPhase::ClientPreambleRecvd);
+    }
+
+    /// CLAUDE-AV-B3-17: md5 winner maps to seeded Md5 with
+    /// `proper_seed_order` from CF_CHKSUM_SEED_FIX (0x20).
+    #[tokio::test]
+    async fn block_strong_algo_maps_md5_with_seed_fix_flag() {
+        let encoded = encode_server_preamble(&ServerPreamble {
+            protocol_version: 31,
+            compat_flags: 0x07 | CF_CHKSUM_SEED_FIX,
+            checksum_algos: "md5".to_string(),
+            compression_algos: "none".to_string(),
+            checksum_seed: 0xDEAD_BEEF,
+            consumed: 0,
+        });
+        let mut d = make_driver(mock_transport()).with_preamble_profile(PreambleProfile {
+            checksum_algos: "xxh128 xxh3 xxh64 md5 md4".to_string(),
+            compression_algos: "zstd none".to_string(),
+        });
+        d.receive_server_preamble(&encoded).await.unwrap();
+        assert_eq!(d.negotiated_checksum_algo(), Some(MD5_ALGO_NAME));
+        assert_eq!(
+            d.block_strong_algo(),
+            BlockStrongAlgo::Md5 {
+                seed: 0xDEAD_BEEF,
+                proper_seed_order: true,
+            }
+        );
+    }
+
+    /// CLAUDE-AV-B3-17: without CF_CHKSUM_SEED_FIX, md5 uses legacy
+    /// seed order (data then seed).
+    #[tokio::test]
+    async fn block_strong_algo_maps_md5_legacy_seed_order_without_flag() {
+        let encoded = encode_server_preamble(&ServerPreamble {
+            protocol_version: 31,
+            compat_flags: 0x07, // no CF_CHKSUM_SEED_FIX
+            checksum_algos: "md5".to_string(),
+            compression_algos: "none".to_string(),
+            checksum_seed: 0xCAFE_BABE,
+            consumed: 0,
+        });
+        let mut d = make_driver(mock_transport()).with_preamble_profile(PreambleProfile {
+            checksum_algos: "xxh128 xxh3 xxh64 md5 md4".to_string(),
+            compression_algos: "zstd none".to_string(),
+        });
+        d.receive_server_preamble(&encoded).await.unwrap();
+        assert_eq!(
+            d.block_strong_algo(),
+            BlockStrongAlgo::Md5 {
+                seed: 0xCAFE_BABE,
+                proper_seed_order: false,
+            }
+        );
+    }
+
+    /// CLAUDE-AV-B3-17: xxh128 still maps to seeded Xxh128; xxh64 stays
+    /// Unknown (not yet recomputed in-tree for block strongs).
+    #[tokio::test]
+    async fn block_strong_algo_maps_xxh128_and_leaves_xxh64_unknown() {
+        async fn algo(theirs: &str) -> BlockStrongAlgo {
+            let encoded = encode_server_preamble(&ServerPreamble {
+                protocol_version: 31,
+                compat_flags: 0x07 | CF_CHKSUM_SEED_FIX,
+                checksum_algos: theirs.to_string(),
+                compression_algos: "none".to_string(),
+                checksum_seed: 0x1111_2222,
+                consumed: 0,
+            });
+            let mut d = make_driver(mock_transport()).with_preamble_profile(PreambleProfile {
+                checksum_algos: "xxh128 xxh3 xxh64 md5 md4".to_string(),
+                compression_algos: "zstd none".to_string(),
+            });
+            d.receive_server_preamble(&encoded).await.unwrap();
+            d.block_strong_algo()
+        }
+        assert_eq!(
+            algo("xxh128 md5").await,
+            BlockStrongAlgo::Xxh128 { seed: 0x1111_2222 }
+        );
+        assert_eq!(algo("xxh64 md5").await, BlockStrongAlgo::Unknown);
     }
 
     /// CLAUDE-AV-B3-12. Pins rsync 3.2.7 `compat.c::parse_negotiate_str`:

@@ -36,6 +36,11 @@ use xxhash_rust::xxh3::{xxh3_128, xxh3_128_with_seed};
 /// of SHA-256. Comparing `strong_hash(window)[..n]` to the wire prefix
 /// is wrong and would reject every real match. Engine-native signatures
 /// from `delta_sync::compute_signatures` still carry full SHA-256.
+///
+/// CLAUDE-AV-B3-17: md5 per-block digests mirror rsync 3.2.7
+/// `get_checksum2` / `CSUM_MD5` (seeded; seed order gated by
+/// `proper_seed_order` / `CF_CHKSUM_SEED_FIX`). Whole-file md5 trailers
+/// stay unseeded and live elsewhere.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum BlockStrongAlgo {
     /// Full SHA-256 of the window. Default for engine-native signatures
@@ -47,7 +52,15 @@ pub enum BlockStrongAlgo {
     /// `get_checksum2`); the whole-file trailer is unseeded and lives
     /// elsewhere.
     Xxh128 { seed: u64 },
-    /// Negotiated block algo we cannot recompute in-tree (md5/xxh64/...).
+    /// MD5 of the window, 16 wire bytes (padded into the first half of
+    /// the 32-byte buffer). Seeded per rsync `get_checksum2`:
+    /// - `proper_seed_order == true` (CF_CHKSUM_SEED_FIX): if seed != 0,
+    ///   update seed LE bytes then data;
+    /// - legacy: data then seed (if seed != 0).
+    ///
+    /// Seed 0 is identical under both orders (no seed bytes mixed in).
+    Md5 { seed: u32, proper_seed_order: bool },
+    /// Negotiated block algo we cannot recompute in-tree (xxh64/xxh3/md4/...).
     /// Never confirm a rolling hit: prefer a full transfer over a silent
     /// false match.
     Unknown,
@@ -71,6 +84,29 @@ impl BlockStrongAlgo {
                 let mut out = [0u8; 32];
                 out[..8].copy_from_slice(&lo.to_le_bytes());
                 out[8..16].copy_from_slice(&hi.to_le_bytes());
+                out
+            }
+            // CLAUDE-AV-B3-17: rsync 3.2.7 checksum.c::get_checksum2 CSUM_MD5.
+            Self::Md5 {
+                seed,
+                proper_seed_order,
+            } => {
+                use md5::{Digest, Md5};
+                let mut hasher = Md5::new();
+                let seedbuf = seed.to_le_bytes(); // SIVALu
+                if proper_seed_order {
+                    if seed != 0 {
+                        hasher.update(seedbuf);
+                    }
+                    hasher.update(data);
+                } else {
+                    hasher.update(data);
+                    if seed != 0 {
+                        hasher.update(seedbuf);
+                    }
+                }
+                let mut out = [0u8; 32];
+                out[..16].copy_from_slice(&hasher.finalize());
                 out
             }
             Self::Unknown => [0u8; 32],
@@ -1525,6 +1561,34 @@ mod producer_tests {
             .collect()
     }
 
+    /// CLAUDE-AV-B3-17: same shape as the xxh128 helper, but strong
+    /// prefixes come from seeded md5 (`get_checksum2` CSUM_MD5).
+    fn wire_md5_short_sigs_from_dest(
+        dest: &[u8],
+        block_size: usize,
+        seed: u32,
+        proper_seed_order: bool,
+    ) -> Vec<EngineSignatureBlock> {
+        engine_sigs_from_dest(dest, block_size)
+            .into_iter()
+            .map(|mut sig| {
+                let start = sig.index as usize * block_size;
+                let end = (start + sig.block_len as usize).min(dest.len());
+                let block = &dest[start..end];
+                let digest = BlockStrongAlgo::Md5 {
+                    seed,
+                    proper_seed_order,
+                }
+                .digest(block);
+                let mut strong = [0u8; 32];
+                strong[..2].copy_from_slice(&digest[..2]);
+                sig.strong = strong;
+                sig.strong_len = 2;
+                sig
+            })
+            .collect()
+    }
+
     #[test]
     fn producer_empty_source_matches_bulk_literal_empty() {
         let block_size = 512;
@@ -1803,6 +1867,126 @@ mod producer_tests {
         assert_eq!(
             stats.copy_blocks, 0,
             "SHA-256 vs xxh128-prefix compare must not spuriously match"
+        );
+    }
+
+    /// CLAUDE-AV-B3-17: truncated md5 prefixes confirm identical
+    /// source/dest when seed and proper_seed_order match.
+    #[test]
+    fn producer_truncated_md5_strong_confirms_identical_source() {
+        let block_size = 512;
+        let mut dest = vec![0u8; 4 * block_size];
+        for (i, b) in dest.iter_mut().enumerate() {
+            *b = (i % 251) as u8;
+        }
+        let source = dest.clone();
+        let seed = 0xDEAD_BEEFu32;
+        let proper = true;
+        let algo = BlockStrongAlgo::Md5 {
+            seed,
+            proper_seed_order: proper,
+        };
+        let sigs = wire_md5_short_sigs_from_dest(&dest, block_size, seed, proper);
+        let (ops, stats) = run_producer_with_algo(block_size, sigs, &source, 64, algo);
+        assert_eq!(stats.copy_blocks, 4);
+        assert_eq!(stats.literal_bytes, 0);
+        assert!(
+            ops.iter()
+                .all(|op| matches!(op, EngineDeltaOp::CopyBlock(_))),
+            "identical source with correct md5 prefixes must be all CopyBlocks"
+        );
+    }
+
+    /// CLAUDE-AV-B3-17: poisoned truncated md5 prefix rejects rolling hits.
+    #[test]
+    fn producer_truncated_md5_strong_mismatch_rejects_rolling_hit() {
+        let block_size = 512;
+        let dest = vec![0xAAu8; 4 * block_size];
+        let source = dest.clone();
+        let mut sigs = engine_sigs_from_dest(&dest, block_size);
+        for sig in &mut sigs {
+            sig.strong = [0xFFu8; 32];
+            sig.strong_len = 2;
+        }
+        let (ops, stats) = run_producer_with_algo(
+            block_size,
+            sigs,
+            &source,
+            0,
+            BlockStrongAlgo::Md5 {
+                seed: 0xDEAD_BEEF,
+                proper_seed_order: true,
+            },
+        );
+        assert_eq!(
+            stats.copy_blocks, 0,
+            "poisoned truncated md5 strong must yield zero CopyBlocks, got {}",
+            stats.copy_blocks
+        );
+        assert!(
+            ops.iter().all(|op| matches!(op, EngineDeltaOp::Literal(_))),
+            "expected only Literal ops when md5 strong prefixes disagree"
+        );
+        assert_eq!(stats.literal_bytes, source.len() as u64);
+    }
+
+    /// CLAUDE-AV-B3-17 landmine: wrong seed (nonzero) must match nothing.
+    /// Wrong algo/seed does not error; it silently disables delta.
+    #[test]
+    fn producer_wrong_md5_seed_disables_matches() {
+        let block_size = 512;
+        let dest = vec![0xCCu8; 2 * block_size];
+        let source = dest.clone();
+        let wire_seed = 0xDEAD_BEEFu32;
+        let sigs = wire_md5_short_sigs_from_dest(&dest, block_size, wire_seed, true);
+        let wrong_algo = BlockStrongAlgo::Md5 {
+            seed: 0xCAFE_BABE,
+            proper_seed_order: true,
+        };
+        let (_, stats) = run_producer_with_algo(block_size, sigs, &source, 0, wrong_algo);
+        assert_eq!(
+            stats.copy_blocks, 0,
+            "wrong md5 seed must not spuriously match"
+        );
+    }
+
+    /// CLAUDE-AV-B3-17 landmine: with nonzero seed, wrong proper_seed_order
+    /// yields a different digest and matches nothing.
+    #[test]
+    fn producer_wrong_md5_seed_order_disables_matches() {
+        let block_size = 512;
+        let dest = vec![0xDDu8; 2 * block_size];
+        let source = dest.clone();
+        let seed = 0x1234_5678u32;
+        // Wire was emitted with proper order (seed then data).
+        let sigs = wire_md5_short_sigs_from_dest(&dest, block_size, seed, true);
+        let wrong_order = BlockStrongAlgo::Md5 {
+            seed,
+            proper_seed_order: false,
+        };
+        let (_, stats) = run_producer_with_algo(block_size, sigs, &source, 0, wrong_order);
+        assert_eq!(
+            stats.copy_blocks, 0,
+            "legacy vs proper seed order must not spuriously match when seed != 0"
+        );
+    }
+
+    /// CLAUDE-AV-B3-17: seed 0 is identical under both orders (no seed
+    /// bytes mixed in), so order mismatch must NOT disable matches.
+    #[test]
+    fn producer_md5_seed_zero_order_irrelevant() {
+        let block_size = 512;
+        let dest = vec![0xEEu8; 2 * block_size];
+        let source = dest.clone();
+        let sigs = wire_md5_short_sigs_from_dest(&dest, block_size, 0, true);
+        let legacy = BlockStrongAlgo::Md5 {
+            seed: 0,
+            proper_seed_order: false,
+        };
+        let (_, stats) = run_producer_with_algo(block_size, sigs, &source, 0, legacy);
+        assert_eq!(
+            stats.copy_blocks, 2,
+            "seed 0 digests must match regardless of proper_seed_order"
         );
     }
 
