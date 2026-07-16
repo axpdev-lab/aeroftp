@@ -1,17 +1,24 @@
 //! Tauri commands for MTP portable-device discovery and session open/close.
 //!
-//! Phase 2 surface for later PLACES wiring (Phase 4). Whole-file transfers go
-//! through [`crate::providers::mtp::provider::MtpProvider`] once a session is open.
+//! Open installs an [`MtpProvider`] into [`ProviderState`] so the existing
+//! `provider_list_files` / download / upload fabric can browse and transfer
+//! without a second parallel API. See APPENDIX-MTP Phase 5.
 
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
-use std::sync::Mutex;
+use std::sync::atomic::Ordering;
+use std::time::Duration;
 
 use serde::Serialize;
+use tauri::State;
+use tracing::warn;
 
-use crate::providers::mtp::backend::{platform_backend, MtpBackend, MtpDeviceInfo, MtpStorage};
-use crate::providers::types::ProviderError;
+use crate::provider_commands::{drain_in_flight_transfers, ProviderState};
+use crate::providers::mtp::backend::{platform_backend, MtpDeviceInfo, MtpStorage};
+use crate::providers::mtp::provider::MtpProvider;
+use crate::providers::types::{ProviderConfig, ProviderError, ProviderType};
+use crate::providers::StorageProvider;
 
 /// Discovery row for the frontend.
 #[derive(Debug, Clone, Serialize)]
@@ -70,32 +77,18 @@ pub struct MtpSessionInfoDto {
     pub storages: Vec<MtpStorageDto>,
 }
 
-struct OpenSession {
-    device_id: String,
-    backend: Box<dyn MtpBackend>,
-}
-
-/// Process-wide single open MTP session (matches max_file_slots = 1 model).
-/// Never hold this mutex across `.await`.
-static SESSION: Mutex<Option<OpenSession>> = Mutex::new(None);
-
 fn err_str(e: ProviderError) -> String {
     e.to_string()
 }
 
-fn take_session() -> Result<Option<OpenSession>, String> {
-    SESSION
-        .lock()
-        .map_err(|_| "MTP session lock poisoned".to_string())
-        .map(|mut g| g.take())
-}
-
-fn put_session(session: OpenSession) -> Result<(), String> {
-    let mut g = SESSION
-        .lock()
-        .map_err(|_| "MTP session lock poisoned".to_string())?;
-    *g = Some(session);
-    Ok(())
+fn mtp_platform_label(linked: bool) -> String {
+    if linked && cfg!(target_os = "linux") {
+        "linux-libmtp".to_string()
+    } else if linked && cfg!(windows) {
+        "windows-wpd".to_string()
+    } else {
+        std::env::consts::OS.to_string()
+    }
 }
 
 /// Whether this build linked a real MTP platform backend (libmtp / WPD).
@@ -111,50 +104,131 @@ pub async fn list_mtp_devices() -> Result<Vec<MtpDeviceInfoDto>, String> {
     Ok(devices.into_iter().map(MtpDeviceInfoDto::from).collect())
 }
 
-/// Open an MTP device session. Closes any previous session first.
-#[tauri::command]
-pub async fn mtp_open_device(device_id: String) -> Result<MtpSessionInfoDto, String> {
+/// Install `provider` into `ProviderState`, disconnecting any previous slot.
+async fn install_provider(
+    state: &ProviderState,
+    provider: Box<dyn crate::providers::StorageProvider>,
+    config: ProviderConfig,
+) {
+    drain_in_flight_transfers(state, Duration::from_secs(30)).await;
+    {
+        let mut prov_lock = state.provider.lock().await;
+        if let Some(mut previous) = prov_lock.take() {
+            if let Err(err) = previous.disconnect().await {
+                warn!(
+                    "mtp_open_device: previous provider disconnect failed: {}",
+                    err
+                );
+            }
+        }
+        *prov_lock = Some(provider);
+    }
+    state.active_crypt_overlay.store(false, Ordering::SeqCst);
+    state.overlay_wrapped.store(false, Ordering::SeqCst);
+    {
+        let mut config_lock = state.config.lock().await;
+        *config_lock = Some(config);
+    }
+}
+
+/// Clear ProviderState when the live slot is an MTP session (or when forced).
+async fn clear_mtp_provider_slot(
+    state: &ProviderState,
+    want_device_id: Option<&str>,
+) -> Result<(), String> {
+    drain_in_flight_transfers(state, Duration::from_secs(30)).await;
+
+    let mut prov_lock = state.provider.lock().await;
+    let is_mtp = prov_lock
+        .as_ref()
+        .map(|p| p.provider_type() == ProviderType::Mtp)
+        .unwrap_or(false);
+
+    if !is_mtp {
+        // No MTP provider installed: still clear a stale MTP config if present.
+        drop(prov_lock);
+        let mut config_lock = state.config.lock().await;
+        if config_lock
+            .as_ref()
+            .map(|c| c.provider_type == ProviderType::Mtp)
+            .unwrap_or(false)
+        {
+            *config_lock = None;
+        }
+        return Ok(());
+    }
+
+    if let Some(want) = want_device_id {
+        if !want.is_empty() {
+            let open_id = {
+                let config_lock = state.config.lock().await;
+                config_lock
+                    .as_ref()
+                    .filter(|c| c.provider_type == ProviderType::Mtp)
+                    .map(|c| c.host.clone())
+            };
+            if let Some(open_id) = open_id {
+                if open_id != want {
+                    return Err(format!("open MTP session is {open_id} not {want}"));
+                }
+            }
+        }
+    }
+
+    if let Some(mut provider) = prov_lock.take() {
+        if let Err(err) = provider.disconnect().await {
+            warn!("mtp_close_device: disconnect failed: {}", err);
+            return Err(format!("Disconnect failed: {err}"));
+        }
+    }
+    drop(prov_lock);
+
+    let mut config_lock = state.config.lock().await;
+    *config_lock = None;
+    state.active_crypt_overlay.store(false, Ordering::SeqCst);
+    state.overlay_wrapped.store(false, Ordering::SeqCst);
+    Ok(())
+}
+
+/// Open an MTP device session and install it into ProviderState.
+///
+/// Closes any previous provider (MTP or otherwise) first, so the single
+/// ProviderState slot remains the sole owner of the USB session.
+pub async fn mtp_open_device_inner(
+    state: &ProviderState,
+    device_id: String,
+) -> Result<MtpSessionInfoDto, String> {
     if device_id.trim().is_empty() {
         return Err("MTP device_id is required".into());
     }
 
-    // Drop previous session (if any) before opening a new one.
-    if let Some(mut prev) = take_session()? {
-        let _ = prev.backend.close().await;
-    }
-
     let linked = mtp_backend_linked();
-    let mut backend = platform_backend();
-    backend.open(&device_id).await.map_err(err_str)?;
-    let display = backend
-        .device_display_name()
-        .unwrap_or_else(|| format!("MTP device ({device_id})"));
+    let mut mtp = MtpProvider::with_platform_backend();
+    mtp.open_device(&device_id).await.map_err(err_str)?;
 
-    let storages = if linked {
-        match backend.list_storages().await {
-            Ok(s) => s.into_iter().map(MtpStorageDto::from).collect(),
-            Err(ProviderError::NotSupported(_)) => Vec::new(),
-            Err(e) => {
-                let _ = backend.close().await;
-                return Err(err_str(e));
-            }
+    let display = mtp.display_name();
+    let storages = match mtp.list_storage_info().await {
+        Ok(s) => s.into_iter().map(MtpStorageDto::from).collect(),
+        Err(ProviderError::NotSupported(_)) => Vec::new(),
+        Err(e) => {
+            let _ = mtp.disconnect().await;
+            return Err(err_str(e));
         }
-    } else {
-        Vec::new()
     };
 
-    let platform = if linked && cfg!(target_os = "linux") {
-        "linux-libmtp".to_string()
-    } else if linked && cfg!(windows) {
-        "windows-wpd".to_string()
-    } else {
-        std::env::consts::OS.to_string()
+    let platform = mtp_platform_label(linked);
+    let config = ProviderConfig {
+        name: display.clone(),
+        provider_type: ProviderType::Mtp,
+        host: device_id.clone(),
+        port: None,
+        username: None,
+        password: None,
+        initial_path: Some("/".to_string()),
+        extra: Default::default(),
     };
 
-    put_session(OpenSession {
-        device_id: device_id.clone(),
-        backend,
-    })?;
+    install_provider(state, Box::new(mtp), config).await;
 
     Ok(MtpSessionInfoDto {
         device_id,
@@ -165,39 +239,67 @@ pub async fn mtp_open_device(device_id: String) -> Result<MtpSessionInfoDto, Str
     })
 }
 
+/// Open an MTP device session. Closes any previous provider first.
+#[tauri::command]
+pub async fn mtp_open_device(
+    state: State<'_, ProviderState>,
+    device_id: String,
+) -> Result<MtpSessionInfoDto, String> {
+    mtp_open_device_inner(&state, device_id).await
+}
+
+/// Close the open MTP device session (no-op if none).
+pub async fn mtp_close_device_inner(
+    state: &ProviderState,
+    device_id: Option<String>,
+) -> Result<(), String> {
+    clear_mtp_provider_slot(state, device_id.as_deref()).await
+}
+
 /// Close the open MTP device session (no-op if none).
 #[tauri::command]
-pub async fn mtp_close_device(device_id: Option<String>) -> Result<(), String> {
-    let mut session = match take_session()? {
-        Some(s) => s,
-        None => return Ok(()),
-    };
-
-    if let Some(want) = device_id.as_ref() {
-        if !want.is_empty() && want != &session.device_id {
-            let open_id = session.device_id.clone();
-            put_session(session)?;
-            return Err(format!("open MTP session is {open_id} not {want}"));
-        }
-    }
-    session.backend.close().await.map_err(err_str)
+pub async fn mtp_close_device(
+    state: State<'_, ProviderState>,
+    device_id: Option<String>,
+) -> Result<(), String> {
+    mtp_close_device_inner(&state, device_id).await
 }
 
 /// Diagnostic: backend linkage and open session (no USB side effects beyond status).
 #[tauri::command]
-pub fn mtp_backend_status() -> MtpBackendStatusDto {
-    let open_id = SESSION
-        .lock()
-        .ok()
-        .and_then(|g| g.as_ref().map(|s| s.device_id.clone()));
-    MtpBackendStatusDto {
+pub async fn mtp_backend_status(
+    state: State<'_, ProviderState>,
+) -> Result<MtpBackendStatusDto, String> {
+    let open_device_id = {
+        let config_lock = state.config.lock().await;
+        config_lock
+            .as_ref()
+            .filter(|c| c.provider_type == ProviderType::Mtp)
+            .map(|c| c.host.clone())
+    };
+    // Prefer config; fall back to live provider type if config was cleared mid-flight.
+    let open_device_id = if open_device_id.is_some() {
+        open_device_id
+    } else {
+        let prov = state.provider.lock().await;
+        if prov
+            .as_ref()
+            .map(|p| p.provider_type() == ProviderType::Mtp)
+            .unwrap_or(false)
+        {
+            Some("(open)".to_string())
+        } else {
+            None
+        }
+    };
+    Ok(MtpBackendStatusDto {
         linked: mtp_backend_linked(),
         platform: std::env::consts::OS.to_string(),
-        open_device_id: open_id,
+        open_device_id,
         build_backend: option_env!("AEROFTP_MTP_BACKEND")
             .unwrap_or("unknown")
             .to_string(),
-    }
+    })
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -212,6 +314,7 @@ pub struct MtpBackendStatusDto {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::providers::mtp::backend::{FakeMtpBackend, MtpBackend};
 
     #[tokio::test]
     async fn list_devices_command_ok() {
@@ -220,15 +323,36 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn open_close_null_or_linked() {
-        assert!(mtp_open_device(String::new()).await.is_err());
-        let open = mtp_open_device("usb:0:0".into()).await;
+    async fn open_installs_into_provider_state() {
+        let state = ProviderState::new();
+        assert!(mtp_open_device_inner(&state, String::new()).await.is_err());
+
+        // Null / unlinked: open still installs the session shell so FE can
+        // clear it via close; list may be empty or NotSupported.
+        let open = mtp_open_device_inner(&state, "usb:0:0".into()).await;
         match open {
             Ok(info) => {
                 assert_eq!(info.device_id, "usb:0:0");
-                mtp_close_device(Some("usb:0:0".into())).await.unwrap();
+                {
+                    let lock = state.provider.lock().await;
+                    let p = lock.as_ref().expect("provider installed");
+                    assert_eq!(p.provider_type(), ProviderType::Mtp);
+                    assert!(p.is_connected());
+                }
+                {
+                    let cfg = state.config.lock().await;
+                    let c = cfg.as_ref().expect("config installed");
+                    assert_eq!(c.provider_type, ProviderType::Mtp);
+                    assert_eq!(c.host, "usb:0:0");
+                }
+                mtp_close_device_inner(&state, Some("usb:0:0".into()))
+                    .await
+                    .unwrap();
+                assert!(state.provider.lock().await.is_none());
+                assert!(state.config.lock().await.is_none());
             }
             Err(msg) => {
+                // Real libmtp may reject a fake id when linked.
                 assert!(
                     msg.contains("not found")
                         || msg.contains("failed to open")
@@ -241,13 +365,71 @@ mod tests {
                 );
             }
         }
-        mtp_close_device(None).await.unwrap();
+        mtp_close_device_inner(&state, None).await.unwrap();
     }
 
-    #[test]
-    fn status_reports_platform() {
-        let s = mtp_backend_status();
-        assert!(!s.platform.is_empty());
+    #[tokio::test]
+    async fn fake_backend_open_lists_storages_via_provider() {
+        let state = ProviderState::new();
+        // Direct provider path (bypasses platform_backend) to prove list works.
+        let mut mtp = MtpProvider::new(Box::new(FakeMtpBackend::with_demo_tree()));
+        mtp.open_device("fake-phone").await.unwrap();
+        let storages = mtp.list_storage_info().await.unwrap();
+        assert_eq!(storages.len(), 1);
+        assert_eq!(storages[0].display_name, "Internal shared storage");
+        let entries = mtp.list("/").await.unwrap();
+        assert_eq!(entries.len(), 1);
+        assert!(entries[0].is_dir);
+        let kids = mtp.list("/Internal shared storage").await.unwrap();
+        assert!(kids.iter().any(|e| e.name == "DCIM" && e.is_dir));
+        let files = mtp.list("/Internal shared storage/DCIM").await.unwrap();
+        assert!(files.iter().any(|e| e.name == "IMG_001.JPG" && !e.is_dir));
+
+        let config = ProviderConfig {
+            name: mtp.display_name(),
+            provider_type: ProviderType::Mtp,
+            host: "fake-phone".into(),
+            port: None,
+            username: None,
+            password: None,
+            initial_path: Some("/".into()),
+            extra: Default::default(),
+        };
+        install_provider(&state, Box::new(mtp), config).await;
+        {
+            let mut lock = state.provider.lock().await;
+            let p = lock.as_mut().unwrap();
+            let listed = p.list("/").await.unwrap();
+            assert_eq!(listed.len(), 1);
+        }
+        mtp_close_device_inner(&state, Some("fake-phone".into()))
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn close_wrong_id_errors_when_open() {
+        let state = ProviderState::new();
+        let mut mtp = MtpProvider::new(Box::new(FakeMtpBackend::with_demo_tree()));
+        mtp.open_device("dev-a").await.unwrap();
+        let config = ProviderConfig {
+            name: "Phone".into(),
+            provider_type: ProviderType::Mtp,
+            host: "dev-a".into(),
+            port: None,
+            username: None,
+            password: None,
+            initial_path: Some("/".into()),
+            extra: Default::default(),
+        };
+        install_provider(&state, Box::new(mtp), config).await;
+        let err = mtp_close_device_inner(&state, Some("dev-b".into()))
+            .await
+            .unwrap_err();
+        assert!(err.contains("dev-a"), "{err}");
+        mtp_close_device_inner(&state, Some("dev-a".into()))
+            .await
+            .unwrap();
     }
 
     #[test]
@@ -268,5 +450,13 @@ mod tests {
     #[test]
     fn null_backend_constructible() {
         let _ = crate::providers::mtp::backend::NullMtpBackend::new();
+    }
+
+    #[tokio::test]
+    async fn fake_backend_list_devices() {
+        let b = FakeMtpBackend::with_demo_tree();
+        let devices = b.list_devices().await.unwrap();
+        assert_eq!(devices.len(), 1);
+        assert_eq!(devices[0].device_id, "fake-phone");
     }
 }

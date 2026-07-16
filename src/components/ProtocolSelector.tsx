@@ -24,6 +24,7 @@ import {
     Flame,
     Eye,
     EyeOff,
+    Smartphone,
 } from 'lucide-react';
 import { ProviderType, FtpTlsMode } from '../types';
 import { useTranslation } from '../i18n';
@@ -489,6 +490,8 @@ const PROTOCOLS_FALLBACK: ProtocolInfo[] = [
     { type: 'uploadcare', name: 'Uploadcare', icon: <UploadcareLogo size={18} />, description: 'EU media CDN (3 GB free)', defaultPort: 443, badge: 'EU', color: 'text-emerald-500', isCloudStorage: true, tooltip: 'Uploadcare: public + secret key, flat media library' },
     { type: 'cloudinary', name: 'Cloudinary', icon: <CloudinaryLogo size={18} />, description: 'Media CDN (25 credits/month free)', defaultPort: 443, badge: 'API', color: 'text-indigo-600', isCloudStorage: true, tooltip: 'Cloudinary: api_key + api_secret, REST + Upload API, dynamic folders' },
     { type: 'backblaze', name: 'Backblaze B2', icon: <Flame size={18} />, description: 'Backblaze B2 native API v4', defaultPort: 443, badge: 'API', color: 'text-red-600', isCloudStorage: true, tooltip: 'Backblaze B2 native: applicationKeyId + applicationKey, large-file workflow, server-side copy' },
+    // Session-only from PLACES (not offered in the connect form catalog).
+    { type: 'mtp', name: 'Portable (MTP)', icon: <Smartphone size={18} />, description: 'Phone or camera over MTP/WPD', defaultPort: 0, badge: 'USB', color: 'text-slate-500', tooltip: 'Whole-file portable-device session; open from PLACES, not My Servers' },
 ];
 
 export const getProtocolInfo = (type: ProviderType | ''): ProtocolInfo | null => {
@@ -1646,6 +1649,8 @@ export const ProtocolBadge: React.FC<{ protocol?: ProviderType; className?: stri
         // renders a dedicated violet chip; this entry only satisfies the
         // exhaustive Record<ProviderType, string>).
         peer: 'bg-violet-100 text-violet-700 dark:bg-violet-900 dark:text-violet-300',
+        // Portable MTP/WPD session (opened from PLACES, not the connect form).
+        mtp: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
     };
 
     return (

@@ -19,6 +19,50 @@ In addition to the cloud transports above, AeroFTP v4.1.0 previews **AeroShare**
 
 ---
 
+## Portable devices (MTP / WPD)
+
+<a id="portable-devices-mtp--wpd"></a>
+
+AeroFTP can open **attached portable devices** (phones, cameras) that speak
+**MTP** (Linux libmtp) or **WPD** (Windows) even when the OS never assigns a
+drive letter. They appear under **PLACES → Portable devices**, not under
+My Servers and not as a fake local path.
+
+### What works
+
+| Capability | Support |
+|------------|---------|
+| Discover attached devices | Yes (when the OS backend can see them) |
+| Browse storages and folders | Yes (virtual path: `/Storage/…`) |
+| Copy whole files to/from device | Yes (progress callbacks; single transfer slot) |
+| Disconnect / release session | Yes |
+| Dual-panel local ↔ device | Yes (other panel stays local FS) |
+
+### Hard limits (protocol / OS, not AeroFTP gaps)
+
+These are properties of MTP/WPD and common device firmware. AeroFTP will **not**
+claim them as “coming soon” for this transport:
+
+| Limit | Reality |
+|-------|---------|
+| No real mount / no drive letter | Device is not a block filesystem |
+| No random access / range download | Object get/send is stream-oriented |
+| No honest resume | Interrupted transfer restarts the whole object |
+| No multipart upload | No S3-style part commit |
+| Weak concurrency | Default `max_file_slots = 1` |
+| Metadata best-effort | Size/mtime often missing or wrong |
+| No delta / rsync | No block-checksum protocol on the wire |
+
+**macOS** is out of scope until a Mac station and backend exist.
+
+### Error framing
+
+- Device gone: reconnect the USB cable and open the device again from PLACES.
+- Unsupported op: the portable device does not support that operation (MTP limitation).
+- Transfer cancelled: incomplete objects on the device are removed when the API allows.
+
+---
+
 ## Protocol Security Matrix
 
 ### Connection Security by Protocol

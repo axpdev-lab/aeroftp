@@ -469,7 +469,9 @@ impl Drop for TransferOperationGuard {
 /// disconnect or a session swap. On timeout the function logs a warning
 /// and returns, restoring the pre-fix behaviour (the active transfer will
 /// surface `NotConnected` once the slot is mutated).
-async fn drain_in_flight_transfers(state: &ProviderState, total_timeout: Duration) {
+/// Public so session-only providers (MTP PLACES open) can reuse the same
+/// swap-safe drain before replacing `ProviderState::provider`.
+pub(crate) async fn drain_in_flight_transfers(state: &ProviderState, total_timeout: Duration) {
     let deadline = Instant::now() + total_timeout;
     while state.in_flight_transfers.load(Ordering::SeqCst) > 0 {
         let remaining = deadline.saturating_duration_since(Instant::now());
@@ -3018,12 +3020,22 @@ pub async fn provider_download_file(
                                 fallback_reason: None,
                             },
                         );
-                        return Err(format!("Download cancelled by user: {}", filename));
+                        // Break so MTP (and others) can drop a partial local file.
+                        break Err(crate::providers::types::ProviderError::TransferFailed(
+                            format!("Download cancelled by user: {}", filename),
+                        ));
                     }
                 }
             }
         }
     };
+
+    // Partial local target is not a valid whole file after cancel (MTP has no resume).
+    if let Err(ref err) = result {
+        if err.to_string().contains("cancelled by user") {
+            let _ = tokio::fs::remove_file(&local_path).await;
+        }
+    }
 
     match &result {
         Ok(()) => {
@@ -3056,6 +3068,10 @@ pub async fn provider_download_file(
             );
             info!("Download completed: {}", filename);
             Ok(format!("Downloaded: {}", filename))
+        }
+        Err(e) if e.to_string().contains("cancelled by user") => {
+            // Cancel path already emitted a transfer_event above.
+            Err(format!("Download cancelled by user: {}", filename))
         }
         Err(e) => {
             let _ = app.emit(
@@ -4515,12 +4531,30 @@ pub async fn provider_upload_file(
                                 fallback_reason: None,
                             },
                         );
-                        return Err(format!("Upload cancelled by user: {}", filename));
+                        // Break (do not return) so MTP can best-effort delete a
+                        // partial object below. MTP has no honest resume: a
+                        // half-sent object is invalid on many devices.
+                        break Err(format!("Upload cancelled by user: {}", filename));
                     }
                 }
             }
         }
     };
+
+    // MTP honesty: cancelled whole-file upload may leave a partial object.
+    // Delete it when the backend allows; never claim resume.
+    if let Err(ref err) = result {
+        if err.contains("cancelled by user")
+            && provider.provider_type() == crate::providers::types::ProviderType::Mtp
+        {
+            if let Err(del_err) = provider.delete(&remote_path).await {
+                warn!(
+                    "MTP cancelled upload cleanup delete failed for {}: {}",
+                    remote_path, del_err
+                );
+            }
+        }
+    }
 
     match &result {
         Ok(()) => {
@@ -4547,6 +4581,10 @@ pub async fn provider_upload_file(
             );
             info!("Upload completed: {}", filename);
             Ok(format!("Uploaded: {}", filename))
+        }
+        Err(e) if e.contains("cancelled by user") => {
+            // Cancel path already emitted a transfer_event above.
+            Err(e.clone())
         }
         Err(e) => {
             let _ = app.emit(

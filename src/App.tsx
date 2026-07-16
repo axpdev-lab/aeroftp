@@ -4311,18 +4311,99 @@ interface UpdateVerificationInfo {
     void changeLocalDirectory(path);
   }
 
-  // MTP / portable devices (APPENDIX-MTP Phase 4): session open via PLACES,
-  // never a fake local path. Full dual-panel browse is Phase 5 polish; v1
-  // opens the backend session, surfaces storages, and keeps honesty visible.
+  // MTP / portable devices (APPENDIX-MTP Phase 4+5): session open via PLACES,
+  // installs MtpProvider into ProviderState so remote panel lists via
+  // provider_list_files. Never a fake OS path.
   const [activePortableDeviceId, setActivePortableDeviceId] = useState<string | null>(null);
   const MTP_HONESTY_SEEN_KEY = 'aerofile_mtp_honesty_seen';
 
   const handleOpenPortableDevice = useCallback(async (device: MtpDeviceInfo) => {
     try {
+      // Drop any live remote/FTP slot first; mtp_open also drains ProviderState.
+      try { await invoke('provider_disconnect'); } catch { /* not connected */ }
+      try { await invoke('disconnect_ftp'); } catch { /* not connected */ }
+
       const session = await invoke<MtpSessionInfo>('mtp_open_device', {
         deviceId: device.deviceId,
       });
       setActivePortableDeviceId(session.deviceId);
+
+      const displayName = session.displayName || device.displayName || 'Portable device';
+      const mtpParams: ConnectionParams = {
+        protocol: 'mtp',
+        server: displayName,
+        username: '',
+        password: '',
+        displayName,
+        providerId: 'mtp',
+      };
+      setConnectionParams(mtpParams);
+      setIsConnected(true);
+      setShowRemotePanel(true);
+      setShowLocalPreview(false);
+      setShowConnectionScreen(false);
+      setActivePanel('remote');
+
+      // List storage roots through the generic provider fabric.
+      let files: RemoteFile[] = [];
+      let remotePath = '/';
+      try {
+        const response = await invoke<{ files: any[]; current_path: string }>('provider_list_files', {
+          path: null,
+        });
+        files = (response.files || []).map((f: any) => ({
+          name: f.name,
+          path: f.path,
+          size: f.size,
+          is_dir: f.is_dir,
+          modified: f.modified,
+          permissions: f.permissions,
+          metadata: f.metadata,
+        }));
+        remotePath = response.current_path || '/';
+        setRemoteFiles(files);
+        setCurrentRemotePath(remotePath);
+        setCurrentRemoteDisplayPath(remotePath);
+        setSelectedRemoteFiles(new Set());
+      } catch (listErr) {
+        // Open succeeded; listing may fail when backend is Null/unlinked or
+        // the device needs unlock. Keep the session active and show the error.
+        setRemoteFiles([]);
+        setCurrentRemotePath('/');
+        setCurrentRemoteDisplayPath('/');
+        window.dispatchEvent(new CustomEvent('aeroftp-toast', {
+          detail: {
+            type: 'error',
+            title: t('sidebar.portable_open_failed'),
+            message: typeof listErr === 'string' ? listErr : String(listErr),
+            duration: 8000,
+            important: true,
+          },
+        }));
+      }
+
+      // Session tab so disconnect / multi-tab plumbing treats MTP like any provider.
+      const newSession: FtpSession = {
+        id: `session_mtp_${Date.now()}`,
+        serverId: displayName,
+        serverName: displayName,
+        status: 'connected',
+        remotePath,
+        localPath: currentLocalPath,
+        remoteFiles: files,
+        localFiles: [...localFiles],
+        lastActivity: new Date(),
+        connectionParams: mtpParams,
+        providerId: 'mtp',
+        isSyncNavigation: false,
+        syncBasePaths: null,
+        aeroVaultOverlaySession: null,
+      };
+      setIsSyncNavigation(false);
+      setSyncBasePaths(null);
+      setSessions([newSession]);
+      setActiveSessionId(newSession.id);
+
       const storageNames = session.storages
         .map((s) => s.displayName)
         .filter((n) => n && n.trim().length > 0);
@@ -4330,7 +4411,7 @@ interface UpdateVerificationInfo {
         ? storageNames.join(', ')
         : t('sidebar.portable_no_storages');
       notify.success(
-        t('sidebar.portable_opened', { name: session.displayName || device.displayName }),
+        t('sidebar.portable_opened', { name: displayName }),
         detail,
       );
       // Dismissible honesty once per profile store (localStorage).
@@ -4349,6 +4430,7 @@ interface UpdateVerificationInfo {
         }
       }
     } catch (err) {
+      setActivePortableDeviceId(null);
       // Important: surface even if ambient toasts are off (user clicked).
       window.dispatchEvent(new CustomEvent('aeroftp-toast', {
         detail: {
@@ -4360,11 +4442,33 @@ interface UpdateVerificationInfo {
         },
       }));
     }
-  }, [notify, t]);
+  }, [notify, t, currentLocalPath, localFiles]);
 
   const handlePortableDeviceClosed = useCallback((deviceId: string) => {
     setActivePortableDeviceId((prev) => (prev === deviceId ? null : prev));
-  }, []);
+    // Device unplugged or ejected: release ProviderState. Eject already called
+    // mtp_close_device; unplug may not have, so both are best-effort.
+    void (async () => {
+      try { await invoke('mtp_close_device', { deviceId }); } catch { /* ignore */ }
+      try { await invoke('provider_disconnect'); } catch { /* ignore */ }
+    })();
+    // Step the remote panel out only when this was an MTP session.
+    if (connectionParams.protocol === 'mtp') {
+      setIsConnected(false);
+      setRemoteFiles([]);
+      setCurrentRemotePath('/');
+      setCurrentRemoteDisplayPath('/');
+      setSessions([]);
+      setActiveSessionId(null);
+      setShowRemotePanel(false);
+      setShowConnectionScreen(true);
+      setActivePanel('local');
+      notify.info(
+        t('sidebar.portable_devices'),
+        t('sidebar.portable_disconnected', { name: connectionParams.server || deviceId }),
+      );
+    }
+  }, [connectionParams.protocol, connectionParams.server, notify, t]);
 
   const handleRestoreTrashItem = useCallback(async (item: TrashItem) => {
     try {
@@ -7155,7 +7259,12 @@ interface UpdateVerificationInfo {
       setOverlayDecrypting(false);
       overlayReloadedVaultRef.current = null;
       overlayUnlockInFlightRef.current = false;
-      await invoke('disconnect_ftp');
+      // Providers (including MTP) live in ProviderState; FTP uses AppState.
+      // Always attempt both so a single Disconnect clears whichever is live.
+      try { await invoke('provider_disconnect'); } catch { /* not a provider session */ }
+      try { await invoke('disconnect_ftp'); } catch { /* not an FTP session */ }
+      try { await invoke('mtp_close_device', { deviceId: null }); } catch { /* no MTP */ }
+      setActivePortableDeviceId(null);
       setIsConnected(false);
       setActivePanel('local');
       setRemoteFiles([]);

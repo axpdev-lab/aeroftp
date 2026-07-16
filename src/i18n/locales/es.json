@@ -3200,11 +3200,12 @@
             "portable_disconnect": "Desconectar",
             "portable_disconnect_failed": "No se pudo desconectar el dispositivo portátil",
             "portable_empty": "No se detectaron dispositivos portátiles",
-            "portable_honesty": "Los dispositivos portátiles usan MTP: solo copia de archivos completos, sin letra de unidad, y algunas operaciones están limitadas por el dispositivo.",
-            "portable_no_storages": "Sesión abierta (lista de almacenes aún no disponible; la navegación completa llega después)",
+            "portable_honesty": "Los dispositivos portátiles usan MTP: solo copia de archivos completos, sin letra de unidad, sin reanudación, y algunas operaciones están limitadas por el dispositivo (no por AeroFTP).",
+            "portable_no_storages": "Sesión abierta (lista de almacenes vacía o no disponible en este dispositivo)",
             "portable_open_failed": "No se pudo abrir el dispositivo portátil",
             "portable_opened": "Conectado a {name}",
-            "portable_storages": "{count} almacenamiento(s)"
+            "portable_storages": "{count} almacenamiento(s)",
+            "portable_disconnected": "Dispositivo portátil desconectado: {name}"
         },
         "viewMode": {
             "list": "Lista",

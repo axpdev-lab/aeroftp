@@ -73,6 +73,17 @@ impl MtpProvider {
         Ok(())
     }
 
+    /// Device id of the open session (if any).
+    pub fn device_id(&self) -> Option<&str> {
+        self.device_id.as_deref()
+    }
+
+    /// Load and return storage partitions (for open-session DTO / PLACES detail).
+    pub async fn list_storage_info(&mut self) -> Result<Vec<MtpStorage>, ProviderError> {
+        self.ensure_storages().await?;
+        Ok(self.storages.clone())
+    }
+
     fn require_open(&self) -> Result<(), ProviderError> {
         if self.backend.is_open() {
             Ok(())
@@ -650,5 +661,55 @@ mod tests {
         assert!(matches!(err, ProviderError::NotSupported(_)));
         p.disconnect().await.unwrap();
         assert!(!p.is_connected());
+    }
+
+    #[tokio::test]
+    async fn fake_backend_browse_download_upload() {
+        use crate::providers::mtp::backend::FakeMtpBackend;
+        use std::io::Write;
+
+        let mut p = MtpProvider::new(Box::new(FakeMtpBackend::with_demo_tree()));
+        p.open_device("fake-phone").await.unwrap();
+        assert!(p.is_connected());
+
+        let root = p.list("/").await.unwrap();
+        assert_eq!(root.len(), 1);
+        assert_eq!(root[0].name, "Internal shared storage");
+
+        p.cd("/Internal shared storage/DCIM").await.unwrap();
+        assert_eq!(p.pwd().await.unwrap(), "/Internal shared storage/DCIM");
+        let files = p.list("").await.unwrap();
+        assert!(files.iter().any(|e| e.name == "IMG_001.JPG"));
+
+        let tmp = tempfile::tempdir().unwrap();
+        let dest = tmp.path().join("photo.jpg");
+        p.download(
+            "/Internal shared storage/DCIM/IMG_001.JPG",
+            dest.to_str().unwrap(),
+            None,
+        )
+        .await
+        .unwrap();
+        assert_eq!(std::fs::read(&dest).unwrap(), b"JPEG");
+
+        let upload_src = tmp.path().join("note.txt");
+        {
+            let mut f = std::fs::File::create(&upload_src).unwrap();
+            f.write_all(b"hello mtp").unwrap();
+        }
+        p.upload(
+            upload_src.to_str().unwrap(),
+            "/Internal shared storage/DCIM/note.txt",
+            None,
+        )
+        .await
+        .unwrap();
+        let after = p.list("/Internal shared storage/DCIM").await.unwrap();
+        assert!(after.iter().any(|e| e.name == "note.txt"));
+
+        p.delete("/Internal shared storage/DCIM/note.txt")
+            .await
+            .unwrap();
+        p.disconnect().await.unwrap();
     }
 }

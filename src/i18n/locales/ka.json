@@ -3204,7 +3204,8 @@
             "portable_no_storages": "[NEEDS TRANSLATION] Session open (no storage list yet; browse polish follows)",
             "portable_open_failed": "[NEEDS TRANSLATION] Could not open portable device",
             "portable_opened": "[NEEDS TRANSLATION] Connected to {name}",
-            "portable_storages": "[NEEDS TRANSLATION] {count} storage(s)"
+            "portable_storages": "[NEEDS TRANSLATION] {count} storage(s)",
+            "portable_disconnected": "[NEEDS TRANSLATION] Portable device disconnected: {name}"
         },
         "viewMode": {
             "list": "სია",

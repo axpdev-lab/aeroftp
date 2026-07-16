@@ -52,7 +52,9 @@ export type ProviderType =
   | "uploadcare"
   | "backblaze"
   | "cloudinary"
-  | "peer";
+  | "peer"
+  /** Portable device over MTP/WPD (session-only from PLACES, never a saved profile). */
+  | "mtp";
 
 // Check if a provider type requires OAuth2 authentication
 export const isOAuthProvider = (type: ProviderType): boolean => {
@@ -142,6 +144,8 @@ export const isNonFtpProvider = (type: ProviderType): boolean => {
     // command surface (protocol "peer"), so they dispatch like any non-FTP
     // provider. The replica is read-only in Phase 1.
     "peer",
+    // Portable MTP/WPD sessions installed into ProviderState from PLACES.
+    "mtp",
   ].includes(type);
 };
 
@@ -168,6 +172,9 @@ const CRYPT_OVERLAY_INCOMPATIBLE: ReadonlySet<string> = new Set([
   "googlephotos",
   "github",
   "gitlab",
+  // MTP is whole-file object transfer with weak metadata; crypt overlay
+  // would invent a filesystem model the device does not have.
+  "mtp",
 ]);
 
 // True when a transparent crypt overlay can be offered for this protocol.

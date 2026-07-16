@@ -3200,11 +3200,12 @@
             "portable_disconnect": "Déconnecter",
             "portable_disconnect_failed": "Impossible de déconnecter l'appareil portable",
             "portable_empty": "Aucun appareil portable détecté",
-            "portable_honesty": "Les appareils portables utilisent MTP : copie de fichiers entiers uniquement, pas de lettre de lecteur, et certaines opérations sont limitées par l'appareil.",
-            "portable_no_storages": "Session ouverte (liste des stockages pas encore disponible ; navigation complète à venir)",
+            "portable_honesty": "Les appareils portables utilisent MTP : copie de fichiers entiers uniquement, pas de lettre de lecteur, pas de reprise, et certaines opérations sont limitées par l'appareil (pas par AeroFTP).",
+            "portable_no_storages": "Session ouverte (liste des stockages vide ou indisponible sur cet appareil)",
             "portable_open_failed": "Impossible d'ouvrir l'appareil portable",
             "portable_opened": "Connecté à {name}",
-            "portable_storages": "{count} stockage(s)"
+            "portable_storages": "{count} stockage(s)",
+            "portable_disconnected": "Appareil portable déconnecté : {name}"
         },
         "viewMode": {
             "list": "Liste",

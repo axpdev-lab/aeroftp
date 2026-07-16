@@ -221,6 +221,249 @@ impl MtpBackend for NullMtpBackend {
     }
 }
 
+/// In-memory demo backend for unit tests (and CI without USB hardware).
+///
+/// Not a product path: one fake phone, one storage, a DCIM folder and a file.
+/// Whole-file get/send write real bytes under a temp root when paths are set.
+pub struct FakeMtpBackend {
+    open: bool,
+    device_id: Option<String>,
+    /// storage_id -> (display_name, objects keyed by parent handle or "" for root)
+    storages: Vec<MtpStorage>,
+    /// key: parent handle ("" or "storage:{id}" for storage root, else object handle)
+    children: std::collections::HashMap<String, Vec<MtpObject>>,
+    next_handle: u64,
+}
+
+impl FakeMtpBackend {
+    /// Demo tree: Internal shared storage / DCIM / IMG_001.JPG
+    pub fn with_demo_tree() -> Self {
+        let storage = MtpStorage {
+            storage_id: "s1".into(),
+            display_name: "Internal shared storage".into(),
+            total_bytes: Some(64 * 1024 * 1024 * 1024),
+            free_bytes: Some(32 * 1024 * 1024 * 1024),
+        };
+        let dcim = MtpObject {
+            id: MtpObjectId {
+                storage_id: "s1".into(),
+                handle: "obj:1".into(),
+            },
+            name: "DCIM".into(),
+            is_dir: true,
+            size: 0,
+            modified: None,
+        };
+        let photo = MtpObject {
+            id: MtpObjectId {
+                storage_id: "s1".into(),
+                handle: "obj:2".into(),
+            },
+            name: "IMG_001.JPG".into(),
+            is_dir: false,
+            size: 4,
+            modified: Some("2026-01-01T00:00:00Z".into()),
+        };
+        let mut children = std::collections::HashMap::new();
+        children.insert("storage:s1".into(), vec![dcim]);
+        children.insert("obj:1".into(), vec![photo]);
+        Self {
+            open: false,
+            device_id: None,
+            storages: vec![storage],
+            children,
+            next_handle: 10,
+        }
+    }
+}
+
+#[async_trait]
+impl MtpBackend for FakeMtpBackend {
+    async fn list_devices(&self) -> Result<Vec<MtpDeviceInfo>, ProviderError> {
+        Ok(vec![MtpDeviceInfo {
+            device_id: "fake-phone".into(),
+            display_name: "Fake Phone".into(),
+            serial: Some("FAKE-SERIAL".into()),
+            bus_location: Some("test:0".into()),
+            platform: "test-fake".into(),
+            storages_hint: 1,
+        }])
+    }
+
+    async fn open(&mut self, device_id: &str) -> Result<(), ProviderError> {
+        if device_id.trim().is_empty() {
+            return Err(ProviderError::InvalidConfig(
+                "MTP device_id is required".to_string(),
+            ));
+        }
+        self.device_id = Some(device_id.to_string());
+        self.open = true;
+        Ok(())
+    }
+
+    async fn close(&mut self) -> Result<(), ProviderError> {
+        self.open = false;
+        self.device_id = None;
+        Ok(())
+    }
+
+    fn is_open(&self) -> bool {
+        self.open
+    }
+
+    fn device_display_name(&self) -> Option<String> {
+        self.device_id
+            .as_ref()
+            .map(|id| format!("Fake portable ({id})"))
+    }
+
+    async fn list_storages(&mut self) -> Result<Vec<MtpStorage>, ProviderError> {
+        if !self.open {
+            return Err(ProviderError::NotConnected);
+        }
+        Ok(self.storages.clone())
+    }
+
+    async fn list_objects(
+        &mut self,
+        parent: Option<&MtpObjectId>,
+        storage_id: Option<&str>,
+    ) -> Result<Vec<MtpObject>, ProviderError> {
+        if !self.open {
+            return Err(ProviderError::NotConnected);
+        }
+        let key = match parent {
+            None => {
+                let sid = storage_id.ok_or_else(|| {
+                    ProviderError::InvalidPath("storage_id required for storage root list".into())
+                })?;
+                format!("storage:{sid}")
+            }
+            Some(id) => id.handle.clone(),
+        };
+        Ok(self.children.get(&key).cloned().unwrap_or_default())
+    }
+
+    async fn get_object(
+        &mut self,
+        id: &MtpObjectId,
+        dest: &Path,
+        on_progress: Option<MtpProgress>,
+    ) -> Result<(), ProviderError> {
+        if !self.open {
+            return Err(ProviderError::NotConnected);
+        }
+        // Find object size/name by scanning.
+        let mut found: Option<MtpObject> = None;
+        for kids in self.children.values() {
+            if let Some(o) = kids.iter().find(|o| o.id == *id) {
+                found = Some(o.clone());
+                break;
+            }
+        }
+        let obj = found.ok_or_else(|| ProviderError::NotFound(id.handle.clone()))?;
+        if obj.is_dir {
+            return Err(ProviderError::InvalidPath(
+                "cannot download a folder as a file".into(),
+            ));
+        }
+        let data = b"JPEG";
+        if let Some(parent) = dest.parent() {
+            if !parent.as_os_str().is_empty() {
+                std::fs::create_dir_all(parent).map_err(ProviderError::IoError)?;
+            }
+        }
+        std::fs::write(dest, data).map_err(ProviderError::IoError)?;
+        if let Some(cb) = on_progress {
+            cb(data.len() as u64, data.len() as u64);
+        }
+        let _ = obj;
+        Ok(())
+    }
+
+    async fn send_object(
+        &mut self,
+        parent: Option<&MtpObjectId>,
+        storage_id: &str,
+        src: &Path,
+        name: &str,
+        on_progress: Option<MtpProgress>,
+    ) -> Result<MtpObjectId, ProviderError> {
+        if !self.open {
+            return Err(ProviderError::NotConnected);
+        }
+        let meta = std::fs::metadata(src).map_err(ProviderError::IoError)?;
+        let size = meta.len();
+        if let Some(cb) = on_progress {
+            cb(size, size);
+        }
+        let handle = format!("obj:{}", self.next_handle);
+        self.next_handle += 1;
+        let id = MtpObjectId {
+            storage_id: storage_id.to_string(),
+            handle: handle.clone(),
+        };
+        let obj = MtpObject {
+            id: id.clone(),
+            name: name.to_string(),
+            is_dir: false,
+            size,
+            modified: None,
+        };
+        let key = match parent {
+            None => format!("storage:{storage_id}"),
+            Some(p) => p.handle.clone(),
+        };
+        self.children.entry(key).or_default().push(obj);
+        Ok(id)
+    }
+
+    async fn delete_object(&mut self, id: &MtpObjectId) -> Result<(), ProviderError> {
+        if !self.open {
+            return Err(ProviderError::NotConnected);
+        }
+        for kids in self.children.values_mut() {
+            if let Some(pos) = kids.iter().position(|o| o.id == *id) {
+                kids.remove(pos);
+                self.children.remove(&id.handle);
+                return Ok(());
+            }
+        }
+        Err(ProviderError::NotFound(id.handle.clone()))
+    }
+
+    async fn create_folder(
+        &mut self,
+        parent: Option<&MtpObjectId>,
+        storage_id: &str,
+        name: &str,
+    ) -> Result<MtpObjectId, ProviderError> {
+        if !self.open {
+            return Err(ProviderError::NotConnected);
+        }
+        let handle = format!("obj:{}", self.next_handle);
+        self.next_handle += 1;
+        let id = MtpObjectId {
+            storage_id: storage_id.to_string(),
+            handle: handle.clone(),
+        };
+        let obj = MtpObject {
+            id: id.clone(),
+            name: name.to_string(),
+            is_dir: true,
+            size: 0,
+            modified: None,
+        };
+        let key = match parent {
+            None => format!("storage:{storage_id}"),
+            Some(p) => p.handle.clone(),
+        };
+        self.children.entry(key).or_default().push(obj);
+        self.children.entry(handle).or_default();
+        Ok(id)
+    }
+}
+
 /// Whether this build linked a real platform MTP backend
 /// (libmtp on Linux, WPD on Windows).
 pub fn mtp_backend_linked() -> bool {
