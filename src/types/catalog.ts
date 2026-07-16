@@ -18,7 +18,8 @@ export type CatalogCategoryId =
     | 'webdav'
     | 'cloud-storage'
     | 'media-services'
-    | 'developer';
+    | 'developer'
+    | 'devices';
 
 export type MyServersViewMode = 'grid' | 'list';
 export type MyServersSortBy = 'lastConnected' | 'name' | 'protocol';

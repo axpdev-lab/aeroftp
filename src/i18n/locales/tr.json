@@ -289,7 +289,19 @@
             "storedTotpAdvanced": "Gelişmiş: 2FA sırrını kaydet",
             "storedTotpWarning": "2FA sırrını kaydetmek her iki faktörü de kasaya yerleştirir. Kasanın ana parolası ele geçirilirse 2FA artık bu hesabı korumaz. Tek kullanımlık kodu veya yerel bir WebDAV/S3 köprüsünü tercih edin.",
             "filenBridgeCredentialRules": "Filen köprüsü sınırı: {max} karakter. Desteklenmeyen: {rejected}",
-            "filenBridgeCredentialRejected": "Bu kimlik bilgisi, Filen köprüsünün reddettiği karakterler içeriyor."
+            "filenBridgeCredentialRejected": "Bu kimlik bilgisi, Filen köprüsünün reddettiği karakterler içeriyor.",
+            "mtpDefaultName": "[NEEDS TRANSLATION] Portable device",
+            "mtpDetect": "[NEEDS TRANSLATION] Detect",
+            "mtpDetectFailed": "[NEEDS TRANSLATION] Could not list portable devices",
+            "mtpDetecting": "[NEEDS TRANSLATION] Detecting...",
+            "mtpDevice": "[NEEDS TRANSLATION] USB device",
+            "mtpFingerprint": "[NEEDS TRANSLATION] Fingerprint",
+            "mtpHonesty": "[NEEDS TRANSLATION] MTP is exclusive: only one app can open the device. Close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter). Some operations are limited by the device OS.",
+            "mtpNoDevices": "[NEEDS TRANSLATION] No portable devices detected. Plug in the phone or camera and enable File Transfer mode.",
+            "mtpRemotePathPlaceholder": "[NEEDS TRANSLATION] Default remote path (e.g. / or DCIM)",
+            "mtpSaveRequiresDevice": "[NEEDS TRANSLATION] Detect and select a device to enable Save.",
+            "mtpSelectPlaceholder": "[NEEDS TRANSLATION] Select a device...",
+            "mtpSelectPlaceholderEmpty": "[NEEDS TRANSLATION] No devices yet — click Detect"
         },
         "browser": {
             "remote": "Uzak",
@@ -1843,7 +1855,10 @@
             "s3RoleMfaTokenCode": "MFA jeton kodu",
             "s3RoleMfaTokenCodePlaceholder": "123456",
             "s3RoleMfaTokenCodeHint": "MFA cihazınızdan tek kullanımlık kod, yalnızca rol MFA zorunlu kılıyorsa gereklidir. Bağlanırken bir kez kullanılır ve asla kaydedilmez.",
-            "peerDesc": "Klasörleri arkadaşlarınızla doğrudan, şifreli bir peer-to-peer kanal üzerinden, aradaki sunucu olmadan paylaşın."
+            "peerDesc": "Klasörleri arkadaşlarınızla doğrudan, şifreli bir peer-to-peer kanal üzerinden, aradaki sunucu olmadan paylaşın.",
+            "devicesInfoLine1": "[NEEDS TRANSLATION] Save a portable USB device (phone, camera, tablet) as a My Servers profile. Detect the device over MTP, set default folders, and reconnect with one click when it is plugged in.",
+            "devicesInfoLine2": "[NEEDS TRANSLATION] MTP is exclusive: close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter).",
+            "discoverMtpPortable": "[NEEDS TRANSLATION] Phone, camera, or tablet over USB MTP"
         },
         "shortcuts": {
             "title": "Klavye Kısayolları",
@@ -4486,7 +4501,8 @@
                 "cloudStorage": "Bulut Depolama",
                 "developer": "Geliştirici",
                 "mediaServices": "Medya Hizmetleri",
-                "all": "Tümü"
+                "all": "Tümü",
+                "devices": "[NEEDS TRANSLATION] Devices"
             },
             "confirmDeleteServer": "\"{name}\" sunucusu silinsin mi? Bu işlem kayıtlı kimlik bilgilerini kaldırır ve geri alınamaz.",
             "renameWithHotkey": "Yeniden adlandır (F2)",

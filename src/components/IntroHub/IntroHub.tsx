@@ -181,7 +181,10 @@ export function IntroHub(props: IntroHubProps) {
         const id = generateTabId();
         // Apply provider defaults (server, port, basePath) when creating the tab
         const provider = providerId ? getProviderById(providerId) : undefined;
-        const PROVIDER_NAMES: Record<string, string> = { pixelunion: 'PixelUnion' };
+        const PROVIDER_NAMES: Record<string, string> = {
+            pixelunion: 'PixelUnion',
+            'mtp-portable': 'Portable device (MTP)',
+        };
         const label = demo ? `Demo: ${protocol.toUpperCase()}` : (provider?.name || PROVIDER_NAMES[providerId || ''] || providerId || protocol.toUpperCase());
         const defaultLabel = `New: ${label}`;
         const newTab: FormTabState = {
@@ -195,7 +198,8 @@ export function IntroHub(props: IntroHubProps) {
                 username: demo?.username || '',
                 password: demo?.password || '',
                 protocol,
-                port: demo?.port || provider?.defaults?.port || undefined,
+                // MTP device profiles use port 0 (no TCP host); connect is fingerprint match.
+                port: protocol === 'mtp' ? 0 : (demo?.port || provider?.defaults?.port || undefined),
                 providerId,
                 options: {
                     pathStyle: provider?.defaults?.pathStyle,

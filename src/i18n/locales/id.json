@@ -289,7 +289,19 @@
             "storedTotpAdvanced": "Lanjutan: simpan rahasia 2FA",
             "storedTotpWarning": "Menyimpan rahasia 2FA menempatkan kedua faktor di brankas. Jika kata sandi utama brankas dibobol, 2FA tidak lagi melindungi akun ini. Utamakan kode sekali pakai atau jembatan WebDAV/S3 lokal.",
             "filenBridgeCredentialRules": "Batas jembatan Filen: {max} karakter. Tidak didukung: {rejected}",
-            "filenBridgeCredentialRejected": "Kredensial ini berisi karakter yang ditolak oleh jembatan Filen."
+            "filenBridgeCredentialRejected": "Kredensial ini berisi karakter yang ditolak oleh jembatan Filen.",
+            "mtpDefaultName": "[NEEDS TRANSLATION] Portable device",
+            "mtpDetect": "[NEEDS TRANSLATION] Detect",
+            "mtpDetectFailed": "[NEEDS TRANSLATION] Could not list portable devices",
+            "mtpDetecting": "[NEEDS TRANSLATION] Detecting...",
+            "mtpDevice": "[NEEDS TRANSLATION] USB device",
+            "mtpFingerprint": "[NEEDS TRANSLATION] Fingerprint",
+            "mtpHonesty": "[NEEDS TRANSLATION] MTP is exclusive: only one app can open the device. Close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter). Some operations are limited by the device OS.",
+            "mtpNoDevices": "[NEEDS TRANSLATION] No portable devices detected. Plug in the phone or camera and enable File Transfer mode.",
+            "mtpRemotePathPlaceholder": "[NEEDS TRANSLATION] Default remote path (e.g. / or DCIM)",
+            "mtpSaveRequiresDevice": "[NEEDS TRANSLATION] Detect and select a device to enable Save.",
+            "mtpSelectPlaceholder": "[NEEDS TRANSLATION] Select a device...",
+            "mtpSelectPlaceholderEmpty": "[NEEDS TRANSLATION] No devices yet — click Detect"
         },
         "browser": {
             "remote": "Jarak Jauh",
@@ -1843,7 +1855,10 @@
             "s3RoleMfaTokenCode": "Kode token MFA",
             "s3RoleMfaTokenCodePlaceholder": "123456",
             "s3RoleMfaTokenCodeHint": "Kode sekali pakai dari perangkat MFA Anda, diperlukan hanya jika peran mewajibkan MFA. Digunakan sekali saat menghubungkan dan tidak pernah disimpan.",
-            "peerDesc": "Bagikan folder langsung dengan teman melalui saluran peer-to-peer terenkripsi, tanpa server perantara."
+            "peerDesc": "Bagikan folder langsung dengan teman melalui saluran peer-to-peer terenkripsi, tanpa server perantara.",
+            "devicesInfoLine1": "[NEEDS TRANSLATION] Save a portable USB device (phone, camera, tablet) as a My Servers profile. Detect the device over MTP, set default folders, and reconnect with one click when it is plugged in.",
+            "devicesInfoLine2": "[NEEDS TRANSLATION] MTP is exclusive: close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter).",
+            "discoverMtpPortable": "[NEEDS TRANSLATION] Phone, camera, or tablet over USB MTP"
         },
         "shortcuts": {
             "title": "Pintasan Keyboard",
@@ -4486,7 +4501,8 @@
                 "cloudStorage": "Penyimpanan Cloud",
                 "developer": "Pengembang",
                 "mediaServices": "Layanan Media",
-                "all": "Semua"
+                "all": "Semua",
+                "devices": "[NEEDS TRANSLATION] Devices"
             },
             "confirmDeleteServer": "Hapus server \"{name}\"? Ini akan menghapus kredensial yang tersimpan dan tidak dapat dibatalkan.",
             "renameWithHotkey": "Ganti nama (F2)",

@@ -2,7 +2,7 @@ import * as React from 'react';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { invoke } from '@tauri-apps/api/core';
-import { Plus, Server as ServerIcon, Play, Edit2, Copy, Trash2, Activity, Star, PencilLine, ArrowUpRight, ArrowDownLeft, Database, Globe, Cloud, Camera, Code, Gauge, HardDrive, LogOut, Scissors, Folder, FolderPlus, Check, UserPlus, FileKey } from 'lucide-react';
+import { Plus, Server as ServerIcon, Play, Edit2, Copy, Trash2, Activity, Star, PencilLine, ArrowUpRight, ArrowDownLeft, Database, Globe, Cloud, Camera, Code, Smartphone, Gauge, HardDrive, LogOut, Scissors, Folder, FolderPlus, Check, UserPlus, FileKey } from 'lucide-react';
 import { AeroCryptRecoveryKitModal } from '../AeroCryptRecoveryKitModal';
 import { ServerProfile, ConnectionParams, ProviderType, getE2EBits, getProtocolClass, isOAuthProvider, isFourSharedProvider, isNativeApiProtocol, getServerCryptOverlay } from '../../types';
 import { MyServersViewMode, MyServersFilterBy, FILTER_CHIPS, CatalogCategoryId } from '../../types/catalog';
@@ -323,6 +323,7 @@ const EMPTY_STATE_CATEGORIES: { id: CatalogCategoryId; labelKey: string; icon: R
     { id: 'cloud-storage', labelKey: 'introHub.category.cloudStorage', icon: <Cloud size={18} />, iconColor: 'text-sky-500 dark:text-sky-400' },
     { id: 'media-services', labelKey: 'introHub.category.mediaServices', icon: <Camera size={18} />, iconColor: 'text-pink-500 dark:text-pink-400' },
     { id: 'developer', labelKey: 'introHub.category.developer', icon: <Code size={18} />, iconColor: 'text-gray-500 dark:text-gray-400' },
+    { id: 'devices', labelKey: 'introHub.category.devices', icon: <Smartphone size={18} />, iconColor: 'text-slate-500 dark:text-slate-400' },
 ];
 
 export function MyServersPanel({

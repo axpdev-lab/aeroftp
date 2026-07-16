@@ -289,7 +289,19 @@
             "storedTotpAdvanced": "Rozšírené: uložiť tajný kľúč 2FA",
             "storedTotpWarning": "Uložením tajného kľúča 2FA sa oba faktory uložia do trezoru. Ak dôjde k prelomeniu hlavného hesla trezoru, 2FA už tento účet nechráni. Uprednostnite jednorazový kód alebo miestny most WebDAV/S3.",
             "filenBridgeCredentialRules": "Limit mosta Filen: {max} znakov. Nepodporované: {rejected}",
-            "filenBridgeCredentialRejected": "Tieto prihlasovacie údaje obsahujú znaky odmietnuté mostom Filen."
+            "filenBridgeCredentialRejected": "Tieto prihlasovacie údaje obsahujú znaky odmietnuté mostom Filen.",
+            "mtpDefaultName": "[NEEDS TRANSLATION] Portable device",
+            "mtpDetect": "[NEEDS TRANSLATION] Detect",
+            "mtpDetectFailed": "[NEEDS TRANSLATION] Could not list portable devices",
+            "mtpDetecting": "[NEEDS TRANSLATION] Detecting...",
+            "mtpDevice": "[NEEDS TRANSLATION] USB device",
+            "mtpFingerprint": "[NEEDS TRANSLATION] Fingerprint",
+            "mtpHonesty": "[NEEDS TRANSLATION] MTP is exclusive: only one app can open the device. Close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter). Some operations are limited by the device OS.",
+            "mtpNoDevices": "[NEEDS TRANSLATION] No portable devices detected. Plug in the phone or camera and enable File Transfer mode.",
+            "mtpRemotePathPlaceholder": "[NEEDS TRANSLATION] Default remote path (e.g. / or DCIM)",
+            "mtpSaveRequiresDevice": "[NEEDS TRANSLATION] Detect and select a device to enable Save.",
+            "mtpSelectPlaceholder": "[NEEDS TRANSLATION] Select a device...",
+            "mtpSelectPlaceholderEmpty": "[NEEDS TRANSLATION] No devices yet — click Detect"
         },
         "browser": {
             "remote": "Vzdialený",
@@ -1843,7 +1855,10 @@
             "s3RoleMfaTokenCode": "Kód tokenu MFA",
             "s3RoleMfaTokenCodePlaceholder": "123456",
             "s3RoleMfaTokenCodeHint": "Jednorazový kód z vášho zariadenia MFA, vyžadovaný len ak rola vynucuje MFA. Použije sa raz pri pripojení a nikdy sa neukladá.",
-            "peerDesc": "Zdieľajte priečinky priamo s priateľmi cez šifrovaný kanál peer-to-peer, bez servera uprostred."
+            "peerDesc": "Zdieľajte priečinky priamo s priateľmi cez šifrovaný kanál peer-to-peer, bez servera uprostred.",
+            "devicesInfoLine1": "[NEEDS TRANSLATION] Save a portable USB device (phone, camera, tablet) as a My Servers profile. Detect the device over MTP, set default folders, and reconnect with one click when it is plugged in.",
+            "devicesInfoLine2": "[NEEDS TRANSLATION] MTP is exclusive: close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter).",
+            "discoverMtpPortable": "[NEEDS TRANSLATION] Phone, camera, or tablet over USB MTP"
         },
         "shortcuts": {
             "title": "Klávesové skratky",
@@ -4486,7 +4501,8 @@
                 "cloudStorage": "Cloudové úložisko",
                 "developer": "Vývojár",
                 "mediaServices": "Mediálne služby",
-                "all": "Všetko"
+                "all": "Všetko",
+                "devices": "[NEEDS TRANSLATION] Devices"
             },
             "confirmDeleteServer": "Odstrániť server \"{name}\"? Týmto sa odstránia uložené prihlasovacie údaje a túto akciu nie je možné vrátiť späť.",
             "renameWithHotkey": "Premenovať (F2)",

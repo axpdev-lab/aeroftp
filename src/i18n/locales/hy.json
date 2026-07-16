@@ -289,7 +289,19 @@
             "storedTotpAdvanced": "Ընդլայնված․ պահպանել 2FA գաղտնիքը",
             "storedTotpWarning": "2FA գաղտնիքը պահպանելիս երկու գործոններն էլ պահոցում են հայտնվում։ Եթե պահոցի հիմնական գաղտնաբառը վտանգվի, 2FA-ն այլևս չի պաշտպանի այս հաշիվը։ Նախընտրեք մեկանգամյա կոդ կամ տեղային WebDAV/S3 կամուրջ։",
             "filenBridgeCredentialRules": "Filen կամրջի սահմանաչափը՝ {max} նիշ։ Չաջակցվող՝ {rejected}",
-            "filenBridgeCredentialRejected": "Այս մուտքանունը պարունակում է Filen կամրջի կողմից մերժված նիշեր։"
+            "filenBridgeCredentialRejected": "Այս մուտքանունը պարունակում է Filen կամրջի կողմից մերժված նիշեր։",
+            "mtpDefaultName": "[NEEDS TRANSLATION] Portable device",
+            "mtpDetect": "[NEEDS TRANSLATION] Detect",
+            "mtpDetectFailed": "[NEEDS TRANSLATION] Could not list portable devices",
+            "mtpDetecting": "[NEEDS TRANSLATION] Detecting...",
+            "mtpDevice": "[NEEDS TRANSLATION] USB device",
+            "mtpFingerprint": "[NEEDS TRANSLATION] Fingerprint",
+            "mtpHonesty": "[NEEDS TRANSLATION] MTP is exclusive: only one app can open the device. Close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter). Some operations are limited by the device OS.",
+            "mtpNoDevices": "[NEEDS TRANSLATION] No portable devices detected. Plug in the phone or camera and enable File Transfer mode.",
+            "mtpRemotePathPlaceholder": "[NEEDS TRANSLATION] Default remote path (e.g. / or DCIM)",
+            "mtpSaveRequiresDevice": "[NEEDS TRANSLATION] Detect and select a device to enable Save.",
+            "mtpSelectPlaceholder": "[NEEDS TRANSLATION] Select a device...",
+            "mtpSelectPlaceholderEmpty": "[NEEDS TRANSLATION] No devices yet — click Detect"
         },
         "browser": {
             "remote": "Հեռավոր",
@@ -1836,7 +1848,10 @@
             "s3RoleMfaTokenCode": "MFA թոքենի կոդ",
             "s3RoleMfaTokenCodePlaceholder": "123456",
             "s3RoleMfaTokenCodeHint": "Միանվագ կոդ ձեր MFA սարքից, պահանջվում է միայն եթե դերը պարտադրում է MFA։ Օգտագործվում է մեկ անգամ միանալիս և երբեք չի պահպանվում։",
-            "peerDesc": "Կիսվեք թղթապանակներով անմիջապես ընկերների հետ՝ գաղտնագրված peer-to-peer ալիքով, առանց միջանկյալ սերվերի։"
+            "peerDesc": "Կիսվեք թղթապանակներով անմիջապես ընկերների հետ՝ գաղտնագրված peer-to-peer ալիքով, առանց միջանկյալ սերվերի։",
+            "devicesInfoLine1": "[NEEDS TRANSLATION] Save a portable USB device (phone, camera, tablet) as a My Servers profile. Detect the device over MTP, set default folders, and reconnect with one click when it is plugged in.",
+            "devicesInfoLine2": "[NEEDS TRANSLATION] MTP is exclusive: close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter).",
+            "discoverMtpPortable": "[NEEDS TRANSLATION] Phone, camera, or tablet over USB MTP"
         },
         "shortcuts": {
             "title": "Ստեղնաշարի դյուրանցումներ",
@@ -4486,7 +4501,8 @@
                 "cloudStorage": "Ամպային պահոց",
                 "developer": "Ծրագրավորող",
                 "mediaServices": "Մեդիա ծառայություններ",
-                "all": "Բոլորը"
+                "all": "Բոլորը",
+                "devices": "[NEEDS TRANSLATION] Devices"
             },
             "confirmDeleteServer": "Ջնջե՞լ սերվերը \"{name}\"? Սա կհեռացնի պահված հավատարմագրերը և հնարավոր չի լինի չեղարկել:",
             "renameWithHotkey": "Վերանվանել (F2)",

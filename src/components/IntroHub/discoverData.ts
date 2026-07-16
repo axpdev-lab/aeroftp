@@ -93,6 +93,20 @@ const DEVELOPER_ITEMS: DiscoverItem[] = [
     { id: 'gitlab', name: 'GitLab', description: 'Repository & CI/CD platform', protocol: 'gitlab', badge: 'API', healthCheckUrl: 'https://gitlab.com', source: 'protocol' },
 ];
 
+/** Portable devices (USB MTP/WPD). APPENDIX-DEVICE-PROFILES Phase 2. */
+const DEVICE_ITEMS: DiscoverItem[] = [
+    {
+        id: 'mtp-portable',
+        name: 'Portable device (MTP)',
+        description: 'Phone, camera, or tablet over USB MTP',
+        protocol: 'mtp',
+        providerId: 'mtp-portable',
+        badge: 'USB',
+        source: 'protocol',
+        searchAliases: ['phone', 'android', 'camera', 'wpd', 'usb', 'mtp', 'tablet'],
+    },
+];
+
 /** Reachability probe URL per cloud protocol. Used by My Servers cards to
  *  drive the Health radial without needing to ping the user-supplied host
  *  (their saved profile may not even have a usable hostname for OAuth). */
@@ -198,6 +212,8 @@ export const DISCOVER_DESC_KEYS: Record<string, string> = {
     'imagekit': 'protocol.discoverImageKit',
     'uploadcare': 'protocol.discoverUploadcare',
     'cloudinary': 'protocol.discoverCloudinary',
+    // Devices (APPENDIX-DEVICE-PROFILES)
+    'mtp-portable': 'protocol.discoverMtpPortable',
 };
 
 /** Badge overrides for registry providers with distinctive features */
@@ -344,6 +360,13 @@ export function buildDiscoverCategories(): DiscoverCategory[] {
             icon: 'Code',
             count: devItems.length,
             items: devItems,
+        },
+        {
+            id: 'devices',
+            labelKey: 'introHub.category.devices',
+            icon: 'Smartphone',
+            count: DEVICE_ITEMS.length,
+            items: DEVICE_ITEMS,
         },
     ];
 

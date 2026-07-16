@@ -289,7 +289,19 @@
             "storedTotpAdvanced": "Додатково: зберегти секрет 2FA",
             "storedTotpWarning": "Збереження секрету 2FA розміщує обидва фактори в сховищі. Якщо головний пароль сховища буде скомпрометовано, 2FA більше не захищатиме цей обліковий запис. Надавайте перевагу одноразовому коду або локальному мосту WebDAV/S3.",
             "filenBridgeCredentialRules": "Обмеження мосту Filen: {max} символів. Не підтримуються: {rejected}",
-            "filenBridgeCredentialRejected": "Ці облікові дані містять символи, які відхиляє міст Filen."
+            "filenBridgeCredentialRejected": "Ці облікові дані містять символи, які відхиляє міст Filen.",
+            "mtpDefaultName": "[NEEDS TRANSLATION] Portable device",
+            "mtpDetect": "[NEEDS TRANSLATION] Detect",
+            "mtpDetectFailed": "[NEEDS TRANSLATION] Could not list portable devices",
+            "mtpDetecting": "[NEEDS TRANSLATION] Detecting...",
+            "mtpDevice": "[NEEDS TRANSLATION] USB device",
+            "mtpFingerprint": "[NEEDS TRANSLATION] Fingerprint",
+            "mtpHonesty": "[NEEDS TRANSLATION] MTP is exclusive: only one app can open the device. Close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter). Some operations are limited by the device OS.",
+            "mtpNoDevices": "[NEEDS TRANSLATION] No portable devices detected. Plug in the phone or camera and enable File Transfer mode.",
+            "mtpRemotePathPlaceholder": "[NEEDS TRANSLATION] Default remote path (e.g. / or DCIM)",
+            "mtpSaveRequiresDevice": "[NEEDS TRANSLATION] Detect and select a device to enable Save.",
+            "mtpSelectPlaceholder": "[NEEDS TRANSLATION] Select a device...",
+            "mtpSelectPlaceholderEmpty": "[NEEDS TRANSLATION] No devices yet — click Detect"
         },
         "browser": {
             "remote": "Віддалений",
@@ -1843,7 +1855,10 @@
             "s3RoleMfaTokenCode": "Код токена MFA",
             "s3RoleMfaTokenCodePlaceholder": "123456",
             "s3RoleMfaTokenCodeHint": "Одноразовий код із вашого пристрою MFA, потрібен лише якщо роль вимагає MFA. Використовується один раз під час підключення і ніколи не зберігається.",
-            "peerDesc": "Діліться папками безпосередньо з друзями через зашифрований одноранговий канал, без сервера-посередника."
+            "peerDesc": "Діліться папками безпосередньо з друзями через зашифрований одноранговий канал, без сервера-посередника.",
+            "devicesInfoLine1": "[NEEDS TRANSLATION] Save a portable USB device (phone, camera, tablet) as a My Servers profile. Detect the device over MTP, set default folders, and reconnect with one click when it is plugged in.",
+            "devicesInfoLine2": "[NEEDS TRANSLATION] MTP is exclusive: close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter).",
+            "discoverMtpPortable": "[NEEDS TRANSLATION] Phone, camera, or tablet over USB MTP"
         },
         "shortcuts": {
             "title": "Грячі клавіші",
@@ -4486,7 +4501,8 @@
                 "cloudStorage": "Хмарне сховище",
                 "developer": "Розробник",
                 "mediaServices": "Медіасервіси",
-                "all": "Усі"
+                "all": "Усі",
+                "devices": "[NEEDS TRANSLATION] Devices"
             },
             "confirmDeleteServer": "Видалити сервер \"{name}\"? Це видалить збережені облікові дані і дію неможливо скасувати.",
             "renameWithHotkey": "Перейменувати (F2)",

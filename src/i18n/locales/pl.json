@@ -289,7 +289,19 @@
             "storedTotpAdvanced": "Zaawansowane: zapisz sekret 2FA",
             "storedTotpWarning": "Zapisanie sekretu 2FA umieszcza oba składniki w sejfie. Jeśli główne hasło sejfu zostanie przejęte, 2FA przestanie chronić to konto. Lepiej użyć kodu jednorazowego lub lokalnego mostu WebDAV/S3.",
             "filenBridgeCredentialRules": "Limit mostu Filen: {max} znaków. Nieobsługiwane: {rejected}",
-            "filenBridgeCredentialRejected": "Te dane uwierzytelniające zawierają znaki odrzucane przez most Filen."
+            "filenBridgeCredentialRejected": "Te dane uwierzytelniające zawierają znaki odrzucane przez most Filen.",
+            "mtpDefaultName": "[NEEDS TRANSLATION] Portable device",
+            "mtpDetect": "[NEEDS TRANSLATION] Detect",
+            "mtpDetectFailed": "[NEEDS TRANSLATION] Could not list portable devices",
+            "mtpDetecting": "[NEEDS TRANSLATION] Detecting...",
+            "mtpDevice": "[NEEDS TRANSLATION] USB device",
+            "mtpFingerprint": "[NEEDS TRANSLATION] Fingerprint",
+            "mtpHonesty": "[NEEDS TRANSLATION] MTP is exclusive: only one app can open the device. Close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter). Some operations are limited by the device OS.",
+            "mtpNoDevices": "[NEEDS TRANSLATION] No portable devices detected. Plug in the phone or camera and enable File Transfer mode.",
+            "mtpRemotePathPlaceholder": "[NEEDS TRANSLATION] Default remote path (e.g. / or DCIM)",
+            "mtpSaveRequiresDevice": "[NEEDS TRANSLATION] Detect and select a device to enable Save.",
+            "mtpSelectPlaceholder": "[NEEDS TRANSLATION] Select a device...",
+            "mtpSelectPlaceholderEmpty": "[NEEDS TRANSLATION] No devices yet — click Detect"
         },
         "browser": {
             "remote": "Zdalny",
@@ -1843,7 +1855,10 @@
             "s3RoleMfaTokenCode": "Kod tokena MFA",
             "s3RoleMfaTokenCodePlaceholder": "123456",
             "s3RoleMfaTokenCodeHint": "Jednorazowy kod z urządzenia MFA, wymagany tylko jeśli rola wymusza MFA. Używany raz podczas łączenia i nigdy nie zapisywany.",
-            "peerDesc": "Udostępniaj foldery bezpośrednio znajomym przez szyfrowany kanał peer-to-peer, bez serwera pośredniczącego."
+            "peerDesc": "Udostępniaj foldery bezpośrednio znajomym przez szyfrowany kanał peer-to-peer, bez serwera pośredniczącego.",
+            "devicesInfoLine1": "[NEEDS TRANSLATION] Save a portable USB device (phone, camera, tablet) as a My Servers profile. Detect the device over MTP, set default folders, and reconnect with one click when it is plugged in.",
+            "devicesInfoLine2": "[NEEDS TRANSLATION] MTP is exclusive: close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter).",
+            "discoverMtpPortable": "[NEEDS TRANSLATION] Phone, camera, or tablet over USB MTP"
         },
         "shortcuts": {
             "title": "Skróty klawiszowe",
@@ -4486,7 +4501,8 @@
                 "cloudStorage": "Magazyn chmurowy",
                 "developer": "Deweloper",
                 "mediaServices": "Usługi multimedialne",
-                "all": "Wszystkie"
+                "all": "Wszystkie",
+                "devices": "[NEEDS TRANSLATION] Devices"
             },
             "confirmDeleteServer": "Usunąć serwer \"{name}\"? Spowoduje to usunięcie zapisanych danych logowania i nie można tego cofnąć.",
             "renameWithHotkey": "Zmień nazwę (F2)",

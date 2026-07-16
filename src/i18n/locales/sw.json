@@ -289,7 +289,19 @@
             "storedTotpAdvanced": "Kina: hifadhi siri ya 2FA",
             "storedTotpWarning": "Kuhifadhi siri ya 2FA huweka vipengele vyote viwili kwenye hifadhi salama. Nenosiri kuu la hifadhi likifichuliwa, 2FA haitalinda tena akaunti hii. Tumia msimbo wa mara moja au daraja la WebDAV/S3 la ndani.",
             "filenBridgeCredentialRules": "Kikomo cha daraja la Filen: herufi {max}. Hazitumiki: {rejected}",
-            "filenBridgeCredentialRejected": "Kitambulisho hiki kina herufi zinazokataliwa na daraja la Filen."
+            "filenBridgeCredentialRejected": "Kitambulisho hiki kina herufi zinazokataliwa na daraja la Filen.",
+            "mtpDefaultName": "[NEEDS TRANSLATION] Portable device",
+            "mtpDetect": "[NEEDS TRANSLATION] Detect",
+            "mtpDetectFailed": "[NEEDS TRANSLATION] Could not list portable devices",
+            "mtpDetecting": "[NEEDS TRANSLATION] Detecting...",
+            "mtpDevice": "[NEEDS TRANSLATION] USB device",
+            "mtpFingerprint": "[NEEDS TRANSLATION] Fingerprint",
+            "mtpHonesty": "[NEEDS TRANSLATION] MTP is exclusive: only one app can open the device. Close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter). Some operations are limited by the device OS.",
+            "mtpNoDevices": "[NEEDS TRANSLATION] No portable devices detected. Plug in the phone or camera and enable File Transfer mode.",
+            "mtpRemotePathPlaceholder": "[NEEDS TRANSLATION] Default remote path (e.g. / or DCIM)",
+            "mtpSaveRequiresDevice": "[NEEDS TRANSLATION] Detect and select a device to enable Save.",
+            "mtpSelectPlaceholder": "[NEEDS TRANSLATION] Select a device...",
+            "mtpSelectPlaceholderEmpty": "[NEEDS TRANSLATION] No devices yet — click Detect"
         },
         "browser": {
             "remote": "Mbali",
@@ -1843,7 +1855,10 @@
             "s3RoleMfaTokenCode": "Msimbo wa tokeni ya MFA",
             "s3RoleMfaTokenCodePlaceholder": "123456",
             "s3RoleMfaTokenCodeHint": "Msimbo wa matumizi ya mara moja kutoka kifaa chako cha MFA, unahitajika tu ikiwa jukumu linalazimisha MFA. Hutumiwa mara moja wakati wa kuunganisha na hauhifadhiwi kamwe.",
-            "peerDesc": "Shiriki folda moja kwa moja na marafiki kupitia njia ya peer-to-peer iliyosimbwa, bila seva katikati."
+            "peerDesc": "Shiriki folda moja kwa moja na marafiki kupitia njia ya peer-to-peer iliyosimbwa, bila seva katikati.",
+            "devicesInfoLine1": "[NEEDS TRANSLATION] Save a portable USB device (phone, camera, tablet) as a My Servers profile. Detect the device over MTP, set default folders, and reconnect with one click when it is plugged in.",
+            "devicesInfoLine2": "[NEEDS TRANSLATION] MTP is exclusive: close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter).",
+            "discoverMtpPortable": "[NEEDS TRANSLATION] Phone, camera, or tablet over USB MTP"
         },
         "shortcuts": {
             "title": "Njia za Mkato",
@@ -4486,7 +4501,8 @@
                 "cloudStorage": "Hifadhi ya wingu",
                 "developer": "Msanidi",
                 "mediaServices": "Huduma za Media",
-                "all": "Zote"
+                "all": "Zote",
+                "devices": "[NEEDS TRANSLATION] Devices"
             },
             "confirmDeleteServer": "Futa seva \"{name}\"? Hii itaondoa vitambulisho vilivyohifadhiwa na haiwezi kutendwa upya.",
             "renameWithHotkey": "Pa jina jipya (F2)",

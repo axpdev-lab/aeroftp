@@ -289,7 +289,19 @@
             "storedTotpAdvanced": "Lisäasetukset: tallenna 2FA-salaisuus",
             "storedTotpWarning": "2FA-salaisuuden tallentaminen sijoittaa molemmat tekijät holviin. Jos holvin pääsalasana vaarantuu, 2FA ei enää suojaa tätä tiliä. Käytä mieluummin kertakäyttökoodia tai paikallista WebDAV/S3-siltaa.",
             "filenBridgeCredentialRules": "Filen-sillan rajoitus: {max} merkkiä. Ei tuettu: {rejected}",
-            "filenBridgeCredentialRejected": "Tämä tunnistetieto sisältää Filen-sillan hylkäämiä merkkejä."
+            "filenBridgeCredentialRejected": "Tämä tunnistetieto sisältää Filen-sillan hylkäämiä merkkejä.",
+            "mtpDefaultName": "[NEEDS TRANSLATION] Portable device",
+            "mtpDetect": "[NEEDS TRANSLATION] Detect",
+            "mtpDetectFailed": "[NEEDS TRANSLATION] Could not list portable devices",
+            "mtpDetecting": "[NEEDS TRANSLATION] Detecting...",
+            "mtpDevice": "[NEEDS TRANSLATION] USB device",
+            "mtpFingerprint": "[NEEDS TRANSLATION] Fingerprint",
+            "mtpHonesty": "[NEEDS TRANSLATION] MTP is exclusive: only one app can open the device. Close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter). Some operations are limited by the device OS.",
+            "mtpNoDevices": "[NEEDS TRANSLATION] No portable devices detected. Plug in the phone or camera and enable File Transfer mode.",
+            "mtpRemotePathPlaceholder": "[NEEDS TRANSLATION] Default remote path (e.g. / or DCIM)",
+            "mtpSaveRequiresDevice": "[NEEDS TRANSLATION] Detect and select a device to enable Save.",
+            "mtpSelectPlaceholder": "[NEEDS TRANSLATION] Select a device...",
+            "mtpSelectPlaceholderEmpty": "[NEEDS TRANSLATION] No devices yet — click Detect"
         },
         "browser": {
             "remote": "Etä",
@@ -1843,7 +1855,10 @@
             "s3RoleMfaTokenCode": "MFA-tunnuskoodi",
             "s3RoleMfaTokenCodePlaceholder": "123456",
             "s3RoleMfaTokenCodeHint": "Kertakäyttöinen koodi MFA-laitteeltasi, vaaditaan vain jos rooli edellyttää MFA:ta. Käytetään kerran yhdistettäessä eikä koskaan tallenneta.",
-            "peerDesc": "Jaa kansioita suoraan kavereiden kanssa salatun vertaisyhteyden kautta ilman välissä olevaa palvelinta."
+            "peerDesc": "Jaa kansioita suoraan kavereiden kanssa salatun vertaisyhteyden kautta ilman välissä olevaa palvelinta.",
+            "devicesInfoLine1": "[NEEDS TRANSLATION] Save a portable USB device (phone, camera, tablet) as a My Servers profile. Detect the device over MTP, set default folders, and reconnect with one click when it is plugged in.",
+            "devicesInfoLine2": "[NEEDS TRANSLATION] MTP is exclusive: close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter).",
+            "discoverMtpPortable": "[NEEDS TRANSLATION] Phone, camera, or tablet over USB MTP"
         },
         "shortcuts": {
             "title": "Pikanäppäimet",
@@ -4486,7 +4501,8 @@
                 "cloudStorage": "Pilvitallennustila",
                 "developer": "Kehittäjä",
                 "mediaServices": "Mediapalvelut",
-                "all": "Kaikki"
+                "all": "Kaikki",
+                "devices": "[NEEDS TRANSLATION] Devices"
             },
             "confirmDeleteServer": "Poistetaanko palvelin \"{name}\"? Tämä poistaa tallennetut tunnistetiedot eikä sitä voi kumota.",
             "renameWithHotkey": "Nimeä uudelleen (F2)",

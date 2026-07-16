@@ -289,7 +289,19 @@
             "storedTotpAdvanced": "詳細設定: 2FAシークレットを保存",
             "storedTotpWarning": "2FAシークレットを保存すると、両方の要素が保管庫に格納されます。保管庫のマスターパスワードが漏えいした場合、2FAではこのアカウントを保護できなくなります。ワンタイムコードまたはローカルのWebDAV/S3ブリッジを使用してください。",
             "filenBridgeCredentialRules": "Filenブリッジの上限: {max}文字。未対応: {rejected}",
-            "filenBridgeCredentialRejected": "この認証情報にはFilenブリッジで拒否される文字が含まれています。"
+            "filenBridgeCredentialRejected": "この認証情報にはFilenブリッジで拒否される文字が含まれています。",
+            "mtpDefaultName": "[NEEDS TRANSLATION] Portable device",
+            "mtpDetect": "[NEEDS TRANSLATION] Detect",
+            "mtpDetectFailed": "[NEEDS TRANSLATION] Could not list portable devices",
+            "mtpDetecting": "[NEEDS TRANSLATION] Detecting...",
+            "mtpDevice": "[NEEDS TRANSLATION] USB device",
+            "mtpFingerprint": "[NEEDS TRANSLATION] Fingerprint",
+            "mtpHonesty": "[NEEDS TRANSLATION] MTP is exclusive: only one app can open the device. Close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter). Some operations are limited by the device OS.",
+            "mtpNoDevices": "[NEEDS TRANSLATION] No portable devices detected. Plug in the phone or camera and enable File Transfer mode.",
+            "mtpRemotePathPlaceholder": "[NEEDS TRANSLATION] Default remote path (e.g. / or DCIM)",
+            "mtpSaveRequiresDevice": "[NEEDS TRANSLATION] Detect and select a device to enable Save.",
+            "mtpSelectPlaceholder": "[NEEDS TRANSLATION] Select a device...",
+            "mtpSelectPlaceholderEmpty": "[NEEDS TRANSLATION] No devices yet — click Detect"
         },
         "browser": {
             "remote": "リモート",
@@ -1843,7 +1855,10 @@
             "s3RoleMfaTokenCode": "MFA トークンコード",
             "s3RoleMfaTokenCodePlaceholder": "123456",
             "s3RoleMfaTokenCodeHint": "MFA デバイスのワンタイムコードです。ロールが MFA を要求する場合のみ必要です。接続時に一度だけ使用され、保存されることはありません。",
-            "peerDesc": "暗号化されたピアツーピア接続を通じて、間にサーバーを介さずに友達と直接フォルダを共有します。"
+            "peerDesc": "暗号化されたピアツーピア接続を通じて、間にサーバーを介さずに友達と直接フォルダを共有します。",
+            "devicesInfoLine1": "[NEEDS TRANSLATION] Save a portable USB device (phone, camera, tablet) as a My Servers profile. Detect the device over MTP, set default folders, and reconnect with one click when it is plugged in.",
+            "devicesInfoLine2": "[NEEDS TRANSLATION] MTP is exclusive: close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter).",
+            "discoverMtpPortable": "[NEEDS TRANSLATION] Phone, camera, or tablet over USB MTP"
         },
         "shortcuts": {
             "title": "キーボードショートカット",
@@ -4486,7 +4501,8 @@
                 "cloudStorage": "クラウドストレージ",
                 "developer": "開発者向け",
                 "mediaServices": "メディアサービス",
-                "all": "すべて"
+                "all": "すべて",
+                "devices": "[NEEDS TRANSLATION] Devices"
             },
             "confirmDeleteServer": "サーバー \"{name}\" を削除しますか？保存された認証情報が削除され、元に戻すことはできません。",
             "renameWithHotkey": "名前を変更 (F2)",

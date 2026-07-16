@@ -289,7 +289,19 @@
             "storedTotpAdvanced": "Avanceret: gem 2FA-hemmeligheden",
             "storedTotpWarning": "Hvis 2FA-hemmeligheden gemmes, placeres begge faktorer i boksen. Hvis boksens hovedadgangskode kompromitteres, beskytter 2FA ikke længere denne konto. Foretræk en engangskode eller en lokal WebDAV/S3-bro.",
             "filenBridgeCredentialRules": "Grænse for Filen-bro: {max} tegn. Ikke understøttet: {rejected}",
-            "filenBridgeCredentialRejected": "Disse legitimationsoplysninger indeholder tegn, som Filen-broen afviser."
+            "filenBridgeCredentialRejected": "Disse legitimationsoplysninger indeholder tegn, som Filen-broen afviser.",
+            "mtpDefaultName": "[NEEDS TRANSLATION] Portable device",
+            "mtpDetect": "[NEEDS TRANSLATION] Detect",
+            "mtpDetectFailed": "[NEEDS TRANSLATION] Could not list portable devices",
+            "mtpDetecting": "[NEEDS TRANSLATION] Detecting...",
+            "mtpDevice": "[NEEDS TRANSLATION] USB device",
+            "mtpFingerprint": "[NEEDS TRANSLATION] Fingerprint",
+            "mtpHonesty": "[NEEDS TRANSLATION] MTP is exclusive: only one app can open the device. Close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter). Some operations are limited by the device OS.",
+            "mtpNoDevices": "[NEEDS TRANSLATION] No portable devices detected. Plug in the phone or camera and enable File Transfer mode.",
+            "mtpRemotePathPlaceholder": "[NEEDS TRANSLATION] Default remote path (e.g. / or DCIM)",
+            "mtpSaveRequiresDevice": "[NEEDS TRANSLATION] Detect and select a device to enable Save.",
+            "mtpSelectPlaceholder": "[NEEDS TRANSLATION] Select a device...",
+            "mtpSelectPlaceholderEmpty": "[NEEDS TRANSLATION] No devices yet — click Detect"
         },
         "browser": {
             "remote": "Ekstern",
@@ -1843,7 +1855,10 @@
             "s3RoleMfaTokenCode": "MFA-tokenkode",
             "s3RoleMfaTokenCodePlaceholder": "123456",
             "s3RoleMfaTokenCodeHint": "Engangskode fra din MFA-enhed, kun påkrævet hvis rollen kræver MFA. Bruges én gang ved tilslutning og gemmes aldrig.",
-            "peerDesc": "Del mapper direkte med venner via en krypteret peer-to-peer-kanal, uden nogen server imellem."
+            "peerDesc": "Del mapper direkte med venner via en krypteret peer-to-peer-kanal, uden nogen server imellem.",
+            "devicesInfoLine1": "[NEEDS TRANSLATION] Save a portable USB device (phone, camera, tablet) as a My Servers profile. Detect the device over MTP, set default folders, and reconnect with one click when it is plugged in.",
+            "devicesInfoLine2": "[NEEDS TRANSLATION] MTP is exclusive: close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter).",
+            "discoverMtpPortable": "[NEEDS TRANSLATION] Phone, camera, or tablet over USB MTP"
         },
         "shortcuts": {
             "title": "Tastaturgenveje",
@@ -4486,7 +4501,8 @@
                 "cloudStorage": "Cloud-lagring",
                 "developer": "Udvikler",
                 "mediaServices": "Medietjenester",
-                "all": "Alle"
+                "all": "Alle",
+                "devices": "[NEEDS TRANSLATION] Devices"
             },
             "confirmDeleteServer": "Slet serveren \"{name}\"? Dette fjerner gemte legitimationsoplysninger og kan ikke fortrydes.",
             "renameWithHotkey": "Omdøb (F2)",

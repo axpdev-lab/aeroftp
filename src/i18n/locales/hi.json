@@ -289,7 +289,19 @@
             "storedTotpAdvanced": "उन्नत: 2FA सीक्रेट सहेजें",
             "storedTotpWarning": "2FA सीक्रेट सहेजने से दोनों कारक वॉल्ट में रखे जाते हैं। यदि वॉल्ट का मास्टर पासवर्ड असुरक्षित हो जाता है, तो 2FA इस खाते की सुरक्षा नहीं करेगा। एक बार उपयोग होने वाला कोड या स्थानीय WebDAV/S3 ब्रिज बेहतर है।",
             "filenBridgeCredentialRules": "Filen ब्रिज सीमा: {max} वर्ण। असमर्थित: {rejected}",
-            "filenBridgeCredentialRejected": "इस क्रेडेंशियल में Filen ब्रिज द्वारा अस्वीकृत वर्ण हैं।"
+            "filenBridgeCredentialRejected": "इस क्रेडेंशियल में Filen ब्रिज द्वारा अस्वीकृत वर्ण हैं।",
+            "mtpDefaultName": "[NEEDS TRANSLATION] Portable device",
+            "mtpDetect": "[NEEDS TRANSLATION] Detect",
+            "mtpDetectFailed": "[NEEDS TRANSLATION] Could not list portable devices",
+            "mtpDetecting": "[NEEDS TRANSLATION] Detecting...",
+            "mtpDevice": "[NEEDS TRANSLATION] USB device",
+            "mtpFingerprint": "[NEEDS TRANSLATION] Fingerprint",
+            "mtpHonesty": "[NEEDS TRANSLATION] MTP is exclusive: only one app can open the device. Close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter). Some operations are limited by the device OS.",
+            "mtpNoDevices": "[NEEDS TRANSLATION] No portable devices detected. Plug in the phone or camera and enable File Transfer mode.",
+            "mtpRemotePathPlaceholder": "[NEEDS TRANSLATION] Default remote path (e.g. / or DCIM)",
+            "mtpSaveRequiresDevice": "[NEEDS TRANSLATION] Detect and select a device to enable Save.",
+            "mtpSelectPlaceholder": "[NEEDS TRANSLATION] Select a device...",
+            "mtpSelectPlaceholderEmpty": "[NEEDS TRANSLATION] No devices yet — click Detect"
         },
         "browser": {
             "remote": "दूरस्थ",
@@ -1843,7 +1855,10 @@
             "s3RoleMfaTokenCode": "MFA टोकन कोड",
             "s3RoleMfaTokenCodePlaceholder": "123456",
             "s3RoleMfaTokenCodeHint": "आपके MFA डिवाइस से एक बार उपयोग होने वाला कोड, केवल तभी आवश्यक जब भूमिका MFA अनिवार्य करती है। कनेक्ट करते समय एक बार उपयोग किया जाता है और कभी सहेजा नहीं जाता।",
-            "peerDesc": "बिना किसी बीच के सर्वर के, एन्क्रिप्टेड पीयर-टू-पीयर चैनल पर सीधे मित्रों के साथ फ़ोल्डर साझा करें।"
+            "peerDesc": "बिना किसी बीच के सर्वर के, एन्क्रिप्टेड पीयर-टू-पीयर चैनल पर सीधे मित्रों के साथ फ़ोल्डर साझा करें।",
+            "devicesInfoLine1": "[NEEDS TRANSLATION] Save a portable USB device (phone, camera, tablet) as a My Servers profile. Detect the device over MTP, set default folders, and reconnect with one click when it is plugged in.",
+            "devicesInfoLine2": "[NEEDS TRANSLATION] MTP is exclusive: close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter).",
+            "discoverMtpPortable": "[NEEDS TRANSLATION] Phone, camera, or tablet over USB MTP"
         },
         "shortcuts": {
             "title": "कीबोर्ड शॉर्टकट",
@@ -4486,7 +4501,8 @@
                 "cloudStorage": "क्लाउड स्टोरेज",
                 "developer": "डेवलपर",
                 "mediaServices": "मीडिया सेवाएं",
-                "all": "सभी"
+                "all": "सभी",
+                "devices": "[NEEDS TRANSLATION] Devices"
             },
             "confirmDeleteServer": "सर्वर \"{name}\" हटाएं? इससे सहेजी गई क्रेडेंशियल हट जाएंगी और इसे पूर्ववत नहीं किया जा सकता।",
             "renameWithHotkey": "नाम बदलें (F2)",

@@ -53,7 +53,7 @@ describe('providers table drift guard (issue #270 17104681)', () => {
 
 describe('provider catalog category model (issue #224)', () => {
     const CATEGORIES: CatalogCategoryId[] = [
-        'protocols', 'object-storage', 'webdav', 'cloud-storage', 'media-services', 'developer',
+        'protocols', 'object-storage', 'webdav', 'cloud-storage', 'media-services', 'developer', 'devices',
     ];
 
     it('every protocol carries a valid category', () => {

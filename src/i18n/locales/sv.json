@@ -289,7 +289,19 @@
             "storedTotpAdvanced": "Avancerat: spara 2FA-hemligheten",
             "storedTotpWarning": "Om 2FA-hemligheten sparas placeras båda faktorerna i valvet. Om valvets huvudlösenord komprometteras skyddar 2FA inte längre det här kontot. Använd helst en engångskod eller en lokal WebDAV/S3-brygga.",
             "filenBridgeCredentialRules": "Gräns för Filen-brygga: {max} tecken. Stöds inte: {rejected}",
-            "filenBridgeCredentialRejected": "Dessa inloggningsuppgifter innehåller tecken som Filen-bryggan avvisar."
+            "filenBridgeCredentialRejected": "Dessa inloggningsuppgifter innehåller tecken som Filen-bryggan avvisar.",
+            "mtpDefaultName": "[NEEDS TRANSLATION] Portable device",
+            "mtpDetect": "[NEEDS TRANSLATION] Detect",
+            "mtpDetectFailed": "[NEEDS TRANSLATION] Could not list portable devices",
+            "mtpDetecting": "[NEEDS TRANSLATION] Detecting...",
+            "mtpDevice": "[NEEDS TRANSLATION] USB device",
+            "mtpFingerprint": "[NEEDS TRANSLATION] Fingerprint",
+            "mtpHonesty": "[NEEDS TRANSLATION] MTP is exclusive: only one app can open the device. Close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter). Some operations are limited by the device OS.",
+            "mtpNoDevices": "[NEEDS TRANSLATION] No portable devices detected. Plug in the phone or camera and enable File Transfer mode.",
+            "mtpRemotePathPlaceholder": "[NEEDS TRANSLATION] Default remote path (e.g. / or DCIM)",
+            "mtpSaveRequiresDevice": "[NEEDS TRANSLATION] Detect and select a device to enable Save.",
+            "mtpSelectPlaceholder": "[NEEDS TRANSLATION] Select a device...",
+            "mtpSelectPlaceholderEmpty": "[NEEDS TRANSLATION] No devices yet — click Detect"
         },
         "browser": {
             "remote": "Fjärr",
@@ -1843,7 +1855,10 @@
             "s3RoleMfaTokenCode": "MFA-tokenkod",
             "s3RoleMfaTokenCodePlaceholder": "123456",
             "s3RoleMfaTokenCodeHint": "Engångskod från din MFA-enhet, krävs bara om rollen kräver MFA. Används en gång vid anslutning och sparas aldrig.",
-            "peerDesc": "Dela mappar direkt med vänner via en krypterad peer-to-peer-kanal, utan någon server emellan."
+            "peerDesc": "Dela mappar direkt med vänner via en krypterad peer-to-peer-kanal, utan någon server emellan.",
+            "devicesInfoLine1": "[NEEDS TRANSLATION] Save a portable USB device (phone, camera, tablet) as a My Servers profile. Detect the device over MTP, set default folders, and reconnect with one click when it is plugged in.",
+            "devicesInfoLine2": "[NEEDS TRANSLATION] MTP is exclusive: close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter).",
+            "discoverMtpPortable": "[NEEDS TRANSLATION] Phone, camera, or tablet over USB MTP"
         },
         "shortcuts": {
             "title": "Kortkommandon",
@@ -4486,7 +4501,8 @@
                 "cloudStorage": "Molnlagring",
                 "developer": "Utvecklare",
                 "mediaServices": "Medietjänster",
-                "all": "Alla"
+                "all": "Alla",
+                "devices": "[NEEDS TRANSLATION] Devices"
             },
             "confirmDeleteServer": "Ta bort servern \"{name}\"? Detta tar bort sparade inloggningsuppgifter och kan inte ångras.",
             "renameWithHotkey": "Byt namn (F2)",
