@@ -420,7 +420,7 @@ import DiskUsageTreemap from './components/DiskUsageTreemap';
 import { FileTagBadge } from './components/FileTagBadge';
 import { VaultIcon } from './components/icons/VaultIcon';
 import { DecryptingText } from './components/DecryptingText';
-import type { TrashItem, FolderSizeResult, LocalTab, MtpDeviceInfo, MtpSessionInfo } from './types/aerofile';
+import type { TrashItem, FolderSizeResult, LocalTab, MtpDeviceInfo, MtpSessionInfo, VolumeInfo } from './types/aerofile';
 
 // Utilities
 import { formatBytes, formatSpeed, formatETA, formatDate } from './utils';
@@ -462,7 +462,7 @@ import { TransferToastContainer, dispatchTransferToast, reopenTransferToast } fr
 import { runExtractWithToast } from './utils/extractToast';
 import { archiveStem, dispatchGeneralExtract, isWrongPasswordError, resolveUniqueExtractDir } from './utils/extractOrchestrator';
 import { formatExtractDetails, formatCompressDetails } from './utils/archiveSizeReport';
-import { isGvfsMtpPath } from './utils/gvfsMtpMount';
+import { findGvfsMtpMount, isGvfsMtpPath } from './utils/gvfsMtpMount';
 import { GlobalTooltip } from './components/GlobalTooltip';
 import { TransferProgressBar } from './components/TransferProgressBar';
 import { ImageThumbnail } from './components/ImageThumbnail';
@@ -4313,26 +4313,57 @@ interface UpdateVerificationInfo {
   }
 
   // MTP / portable devices (APPENDIX-MTP Phase 4+5 + DEVICE-PROFILES Phase 3):
-  // session open via PLACES or My Servers card. Installs MtpProvider into
-  // ProviderState so remote panel lists via provider_list_files. Never a fake OS path.
+  // session open via PLACES or My Servers card. Installs MtpProvider (exclusive)
+  // or MtpFsProvider (gvfs-first) into ProviderState so remote panel lists via
+  // provider_list_files. Card "connected" = this remote session is live;
+  // attach-dot = cable present (separate). Never invent a fake OS path for exclusive.
   const [activePortableDeviceId, setActivePortableDeviceId] = useState<string | null>(null);
+  /** When the remote MTP session rides gvfs, store the mount path for honest unplug. */
+  const mtpGvfsMountPathRef = useRef<string | null>(null);
   const MTP_HONESTY_SEEN_KEY = 'aerofile_mtp_honesty_seen';
 
-  /** Shared open path for PLACES row and saved device profile card.
-   *  When `profile` is set: savedServerId for activeProfileIds pulse, default
-   *  remote/local paths, providerId from profile (usually mtp-portable). */
+  /** Shared open path for PLACES exclusive fallback and saved device profile card.
+   *  Gvfs-first: if the desktop already mounted the phone, install an FS-backed
+   *  provider rooted at that mount (no libmtp; no bus fight). Else exclusive
+   *  mtp_open_device. When `profile` is set: savedServerId for activeProfileIds
+   *  pulse, default remote/local paths, providerId from profile (usually mtp-portable). */
   const openMtpSessionFromLiveDevice = useCallback(async (
     device: MtpDeviceInfo,
     profile?: Pick<ServerProfile, 'id' | 'name' | 'providerId' | 'initialPath' | 'localInitialPath'>,
   ) => {
     try {
-      // Drop any live remote/FTP slot first; mtp_open also drains ProviderState.
+      // Drop any live remote/FTP slot first; open also drains ProviderState.
       try { await invoke('provider_disconnect'); } catch { /* not connected */ }
       try { await invoke('disconnect_ftp'); } catch { /* not connected */ }
+      try { await invoke('mtp_close_device', { deviceId: null }); } catch { /* none */ }
 
-      const session = await invoke<MtpSessionInfo>('mtp_open_device', {
-        deviceId: device.deviceId,
-      });
+      // Ride gvfs when the desktop already holds the single MTP session.
+      // Exclusive libmtp after automount always loses (PTP_ERROR_IO) and can wedge
+      // the phone; see 09-live-findings-2026-07-16.md.
+      let gvfsMount: string | null = null;
+      try {
+        const mounts = await invoke<VolumeInfo[]>('list_mounted_volumes');
+        gvfsMount = findGvfsMtpMount(mounts, device);
+      } catch {
+        gvfsMount = null;
+      }
+
+      const displayHint =
+        profile?.name || device.displayName || undefined;
+      let session: MtpSessionInfo;
+      if (gvfsMount) {
+        session = await invoke<MtpSessionInfo>('mtp_open_gvfs_mount', {
+          mountPath: gvfsMount,
+          deviceId: device.deviceId,
+          displayName: displayHint ?? null,
+        });
+        mtpGvfsMountPathRef.current = gvfsMount;
+      } else {
+        session = await invoke<MtpSessionInfo>('mtp_open_device', {
+          deviceId: device.deviceId,
+        });
+        mtpGvfsMountPathRef.current = null;
+      }
       setActivePortableDeviceId(session.deviceId);
 
       const displayName =
@@ -4494,6 +4525,7 @@ interface UpdateVerificationInfo {
       }
     } catch (err) {
       setActivePortableDeviceId(null);
+      mtpGvfsMountPathRef.current = null;
       const errorMessage = typeof err === 'string' ? err : String(err);
       const deviceName = profile?.name || device.displayName || device.deviceId;
       if (profile?.id) void recordProfileConnectFailure(profile.id, err);
@@ -4524,6 +4556,7 @@ interface UpdateVerificationInfo {
 
   const handlePortableDeviceClosed = useCallback((deviceId: string) => {
     setActivePortableDeviceId((prev) => (prev === deviceId ? null : prev));
+    mtpGvfsMountPathRef.current = null;
     // Device unplugged or ejected: release ProviderState. Eject already called
     // mtp_close_device; unplug may not have, so both are best-effort.
     void (async () => {
@@ -5720,6 +5753,33 @@ interface UpdateVerificationInfo {
         }
       }
       console.error('[loadRemoteFiles] Error:', error);
+      // Gvfs-backed MTP: mount vanishes on unplug; raw IO error is useless.
+      // Card "connected" ends; attach-dot is driven separately by device list.
+      if (
+        connectionParams.protocol === 'mtp'
+        && mtpGvfsMountPathRef.current
+        && (isGvfsMtpPath(mtpGvfsMountPathRef.current)
+          || /not found|no such file|not a directory|not connected|not available/i.test(String(error)))
+      ) {
+        mtpGvfsMountPathRef.current = null;
+        setActivePortableDeviceId(null);
+        setIsConnected(false);
+        setRemoteFiles([]);
+        setCurrentRemotePath('/');
+        setCurrentRemoteDisplayPath('/');
+        setSessions([]);
+        setActiveSessionId(null);
+        setShowRemotePanel(false);
+        setShowConnectionScreen(true);
+        setActivePanel('local');
+        void (async () => {
+          try { await invoke('mtp_close_device', { deviceId: null }); } catch { /* ignore */ }
+          try { await invoke('provider_disconnect'); } catch { /* ignore */ }
+        })();
+        activityLog.log('ERROR', t('sidebar.portable_unplugged'), 'error');
+        notify.error(t('common.error'), t('sidebar.portable_unplugged'));
+        return null;
+      }
       activityLog.log('ERROR', `Failed to list files: ${error}`, 'error');
       notify.error(t('common.error'), `Failed to list files: ${error}`);
       return null;

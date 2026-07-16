@@ -18948,6 +18948,7 @@ pub fn run() {
             // MTP portable devices (APPENDIX-MTP Phase 2; PLACES wiring in Phase 4)
             providers::mtp::commands::list_mtp_devices,
             providers::mtp::commands::mtp_open_device,
+            providers::mtp::commands::mtp_open_gvfs_mount,
             providers::mtp::commands::mtp_close_device,
             providers::mtp::commands::mtp_backend_status,
             providers::mtp::commands::mtp_desktop_automounter_present,

@@ -53,7 +53,10 @@ export interface MtpStorageInfo {
   freeBytes?: number | null;
 }
 
-/** Session info returned by `mtp_open_device`. */
+/**
+ * Session info returned by `mtp_open_device` (exclusive libmtp/WPD) or
+ * `mtp_open_gvfs_mount` (filesystem-backed; platform is often `linux-gvfs`).
+ */
 export interface MtpSessionInfo {
   deviceId: string;
   displayName: string;

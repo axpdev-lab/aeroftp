@@ -11,6 +11,7 @@
 
 pub mod backend;
 pub mod commands;
+pub mod fs_provider;
 pub mod path;
 pub mod provider;
 
@@ -28,6 +29,7 @@ pub use backend::{
     mtp_device_fingerprint, platform_backend, FakeMtpBackend, MtpBackend, MtpDeviceInfo,
     NullMtpBackend,
 };
+pub use fs_provider::MtpFsProvider;
 pub use path::{
     join_virtual, leaf_name, normalize_virtual_path, parent_path, sanitize_leaf_for_download,
     split_segments,

@@ -16,6 +16,9 @@ use tracing::warn;
 
 use crate::provider_commands::{drain_in_flight_transfers, ProviderState};
 use crate::providers::mtp::backend::{platform_backend, MtpDeviceInfo, MtpStorage};
+use crate::providers::mtp::fs_provider::{
+    MtpFsProvider, MTP_BACKEND_GVFS, MTP_EXTRA_BACKEND, MTP_EXTRA_MOUNT_PATH,
+};
 use crate::providers::mtp::provider::MtpProvider;
 use crate::providers::types::{ProviderConfig, ProviderError, ProviderType};
 use crate::providers::StorageProvider;
@@ -256,6 +259,101 @@ pub async fn mtp_open_device(
     device_id: String,
 ) -> Result<MtpSessionInfoDto, String> {
     mtp_open_device_inner(&state, device_id).await
+}
+
+/// Open a portable device by riding an existing desktop MTP mount (gvfs FUSE).
+///
+/// Does **not** call libmtp: the desktop already holds the single MTP session.
+/// Installs [`MtpFsProvider`] into ProviderState so the remote panel and transfer
+/// fabric see a normal `ProviderType::Mtp` session. Disconnect only drops our
+/// slot; the gvfs mount stays for Nautilus.
+#[tauri::command]
+pub async fn mtp_open_gvfs_mount(
+    state: State<'_, ProviderState>,
+    mount_path: String,
+    device_id: String,
+    display_name: Option<String>,
+) -> Result<MtpSessionInfoDto, String> {
+    mtp_open_gvfs_mount_inner(&state, mount_path, device_id, display_name).await
+}
+
+pub async fn mtp_open_gvfs_mount_inner(
+    state: &ProviderState,
+    mount_path: String,
+    device_id: String,
+    display_name: Option<String>,
+) -> Result<MtpSessionInfoDto, String> {
+    let mount_path = mount_path.trim().to_string();
+    if mount_path.is_empty() {
+        return Err("MTP gvfs mount_path is required".into());
+    }
+    if device_id.trim().is_empty() {
+        return Err("MTP device_id is required".into());
+    }
+    let path = std::path::Path::new(&mount_path);
+    if !path.is_absolute() {
+        return Err("MTP gvfs mount_path must be absolute".into());
+    }
+    if !path.is_dir() {
+        return Err(format!(
+            "MTP mount path is not available (device may have unplugged): {mount_path}"
+        ));
+    }
+
+    let display = display_name
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| {
+            path.file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .filter(|s| !s.is_empty())
+                .unwrap_or_else(|| "Portable device".to_string())
+        });
+
+    let mut provider = MtpFsProvider::new(path.to_path_buf(), device_id.clone(), display.clone());
+    provider.connect().await.map_err(err_str)?;
+
+    let storages: Vec<MtpStorageDto> = match provider.list_storage_roots().await {
+        Ok(roots) => roots
+            .into_iter()
+            .enumerate()
+            .map(|(i, (name, _))| MtpStorageDto {
+                storage_id: format!("gvfs-{i}"),
+                display_name: name,
+                total_bytes: None,
+                free_bytes: None,
+            })
+            .collect(),
+        Err(e) => {
+            let _ = provider.disconnect().await;
+            return Err(err_str(e));
+        }
+    };
+
+    let mut extra = std::collections::HashMap::new();
+    extra.insert(MTP_EXTRA_BACKEND.to_string(), MTP_BACKEND_GVFS.to_string());
+    extra.insert(MTP_EXTRA_MOUNT_PATH.to_string(), mount_path.clone());
+
+    let config = ProviderConfig {
+        name: display.clone(),
+        provider_type: ProviderType::Mtp,
+        host: device_id.clone(),
+        port: None,
+        username: None,
+        password: None,
+        initial_path: Some("/".to_string()),
+        extra,
+    };
+
+    install_provider(state, Box::new(provider), config).await;
+
+    Ok(MtpSessionInfoDto {
+        device_id,
+        display_name: display,
+        platform: "linux-gvfs".to_string(),
+        backend_linked: true,
+        storages,
+    })
 }
 
 /// Close the open MTP device session (no-op if none).
