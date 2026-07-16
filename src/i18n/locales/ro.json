@@ -564,7 +564,18 @@
             "start": "Pornește",
             "startAll": "Pornește tot",
             "restored": "Restaurat",
-            "restoredHint": "Restaurat dintr-o sesiune anterioară. Reconectați-vă la același server, apoi apăsați Reîncercați pentru a rula din nou."
+            "restoredHint": "Restaurat dintr-o sesiune anterioară. Reluarea se conectează la serverul salvat dacă e necesar, apoi reexecută transferul.",
+            "restoredQueueTitle": "Transferuri întrerupte dintr-o sesiune anterioară",
+            "restoredQueueDescription": "{count} transfer(uri) au fost restaurate. Reluarea se conectează la serverul salvat dacă e necesar, apoi le reexecută. Renunțarea le elimină.",
+            "resumeRestoredAll": "Reia tot",
+            "discardRestored": "Renunță",
+            "resumeConnectConfirm": "Conectați-vă la „{name}” și reluați {count} transfer(uri)?",
+            "connectAndResume": "Conectare și reluare",
+            "resumeNeedsConnection": "Conectați-vă mai întâi la un server, apoi reluați acest transfer.",
+            "resumeNoProfile": "Acest transfer nu are un profil de server salvat. Conectați-vă manual, apoi reluați.",
+            "resumeProfileMissing": "Serverul salvat pentru acest transfer nu a fost găsit (este posibil să fi fost șters).",
+            "connectingToResume": "Se conectează la {name} pentru a relua transferurile…",
+            "resumeConnectFailed": "Nu s-a putut conecta la {name}. Transferurile nu au fost pornite."
         },
         "settings": {
             "title": "Setări",

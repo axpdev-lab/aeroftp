@@ -564,7 +564,18 @@
             "start": "Mulai",
             "startAll": "Mulai semua",
             "restored": "Dipulihkan",
-            "restoredHint": "Dipulihkan dari sesi sebelumnya. Sambungkan kembali ke server yang sama, lalu tekan Coba lagi untuk menjalankan ulang."
+            "restoredHint": "Dipulihkan dari sesi sebelumnya. Lanjutkan terhubung ke server tersimpan jika diperlukan, lalu menjalankan ulang transfer.",
+            "restoredQueueTitle": "Transfer terputus dari sesi sebelumnya",
+            "restoredQueueDescription": "{count} transfer dipulihkan. Lanjutkan terhubung ke server tersimpan jika diperlukan, lalu menjalankannya ulang. Buang menghapusnya.",
+            "resumeRestoredAll": "Lanjutkan semua",
+            "discardRestored": "Buang",
+            "resumeConnectConfirm": "Hubungkan ke \"{name}\" dan lanjutkan {count} transfer?",
+            "connectAndResume": "Hubungkan & Lanjutkan",
+            "resumeNeedsConnection": "Hubungkan ke server terlebih dahulu, lalu lanjutkan transfer ini.",
+            "resumeNoProfile": "Transfer ini tidak memiliki profil server tersimpan. Hubungkan secara manual, lalu lanjutkan.",
+            "resumeProfileMissing": "Server tersimpan untuk transfer ini tidak ditemukan (mungkin telah dihapus).",
+            "connectingToResume": "Menghubungkan ke {name} untuk melanjutkan transfer…",
+            "resumeConnectFailed": "Tidak dapat terhubung ke {name}. Transfer tidak dimulai."
         },
         "settings": {
             "title": "Pengaturan",

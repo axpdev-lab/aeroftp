@@ -564,7 +564,18 @@
             "start": "Anza",
             "startAll": "Anza zote",
             "restored": "Imerejeshwa",
-            "restoredHint": "Imerejeshwa kutoka kwa kipindi kilichopita. Unganisha tena kwenye seva ile ile, kisha bonyeza Jaribu tena ili kuendesha tena."
+            "restoredHint": "Imerejeshwa kutoka kipindi kilichopita. Endelea inaunganisha kwenye seva iliyohifadhiwa inapohitajika, kisha inatekeleza tena uhamishaji.",
+            "restoredQueueTitle": "Uhamishaji uliokatizwa kutoka kipindi cha awali",
+            "restoredQueueDescription": "Uhamishaji {count} umerejeshwa. Endelea inaunganisha kwenye seva iliyohifadhiwa inapohitajika, kisha inazitekeleza tena. Tupa inaziondoa.",
+            "resumeRestoredAll": "Endelea yote",
+            "discardRestored": "Batilisha",
+            "resumeConnectConfirm": "Unganisha kwenye \"{name}\" na uendelee na uhamishaji {count}?",
+            "connectAndResume": "Unganisha na Endelea",
+            "resumeNeedsConnection": "Unganisha kwenye seva kwanza, kisha uendelee na uhamishaji huu.",
+            "resumeNoProfile": "Uhamishaji huu hauna wasifu wa seva uliohifadhiwa. Unganisha kwa mikono, kisha uendelee.",
+            "resumeProfileMissing": "Seva iliyohifadhiwa ya uhamishaji huu haikupatikana (huenda ilifutwa).",
+            "connectingToResume": "Inaunganisha kwenye {name} ili kuendelea na uhamishaji…",
+            "resumeConnectFailed": "Imeshindwa kuunganisha kwenye {name}. Uhamishaji haukuanza."
         },
         "settings": {
             "title": "Mipangilio",

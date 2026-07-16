@@ -564,7 +564,18 @@
             "start": "開始",
             "startAll": "すべて開始",
             "restored": "復元済み",
-            "restoredHint": "前回のセッションから復元されました。同じサーバーに再接続してから、「再試行」を押して再実行してください。"
+            "restoredHint": "前回のセッションから復元されました。再開すると必要に応じて保存済みサーバーに接続し、転送を再実行します。",
+            "restoredQueueTitle": "前回のセッションから中断された転送",
+            "restoredQueueDescription": "{count} 件の転送が復元されました。再開すると必要に応じて保存済みサーバーに接続し、再実行します。破棄すると削除されます。",
+            "resumeRestoredAll": "すべて再開",
+            "discardRestored": "破棄",
+            "resumeConnectConfirm": "「{name}」に接続して {count} 件の転送を再開しますか？",
+            "connectAndResume": "接続して再開",
+            "resumeNeedsConnection": "先にサーバーに接続してから、この転送を再開してください。",
+            "resumeNoProfile": "この転送には保存済みのサーバープロファイルがありません。手動で接続してから再開してください。",
+            "resumeProfileMissing": "この転送の保存済みサーバーが見つかりません（削除された可能性があります）。",
+            "connectingToResume": "転送を再開するため {name} に接続中…",
+            "resumeConnectFailed": "{name} に接続できませんでした。転送は開始されませんでした。"
         },
         "settings": {
             "title": "設定",

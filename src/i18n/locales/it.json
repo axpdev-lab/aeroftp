@@ -967,7 +967,18 @@
             "start": "Avvia",
             "startAll": "Avvia tutto",
             "restored": "Ripristinato",
-            "restoredHint": "Ripristinato da una sessione precedente. Riconnettiti allo stesso server, poi premi Riprova per rieseguire."
+            "restoredHint": "Ripristinato da una sessione precedente. Riprendi si connette al server salvato se necessario, quindi riesegue il trasferimento.",
+            "restoredQueueTitle": "Trasferimenti interrotti da una sessione precedente",
+            "restoredQueueDescription": "{count} trasferimento/i ripristinato/i. Riprendi si connette al server salvato se necessario, quindi li riesegue. Scarta li elimina.",
+            "resumeRestoredAll": "Riprendi tutti",
+            "discardRestored": "Scarta",
+            "resumeConnectConfirm": "Connettersi a \"{name}\" e riprendere {count} trasferimento/i?",
+            "connectAndResume": "Connetti e riprendi",
+            "resumeNeedsConnection": "Connettiti prima a un server, poi riprendi questo trasferimento.",
+            "resumeNoProfile": "Questo trasferimento non ha un profilo server salvato. Connettiti manualmente, poi riprendi.",
+            "resumeProfileMissing": "Il server salvato per questo trasferimento non è stato trovato (potrebbe essere stato eliminato).",
+            "connectingToResume": "Connessione a {name} per riprendere i trasferimenti…",
+            "resumeConnectFailed": "Impossibile connettersi a {name}. I trasferimenti non sono stati avviati."
         },
         "scanning": {
             "deleting": "Eliminazione",

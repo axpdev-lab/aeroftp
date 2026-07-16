@@ -564,7 +564,18 @@
             "start": "Cychwyn",
             "startAll": "Cychwyn popeth",
             "restored": "Wedi'i adfer",
-            "restoredHint": "Wedi'i adfer o sesiwn flaenorol. Ailgysylltwch â'r un gweinydd, yna pwyswch Ailgynnig i'w redeg eto."
+            "restoredHint": "Wedi'i adfer o sesiwn flaenorol. Ailgychwyn yn cysylltu â'r gweinydd wedi'i gadw os oes angen, yna'n ail-redeg y trosglwyddiad.",
+            "restoredQueueTitle": "Trosglwyddiadau wedi'u torri o sesiwn flaenorol",
+            "restoredQueueDescription": "Adferwyd {count} trosglwyddiad(au). Ailgychwyn yn cysylltu â'r gweinydd wedi'i gadw os oes angen, yna'n eu hail-redeg. Gwaredu yn eu gollwng.",
+            "resumeRestoredAll": "Ailddechrau popeth",
+            "discardRestored": "Taflu",
+            "resumeConnectConfirm": "Cysylltu â \"{name}\" ac ailgychwyn {count} trosglwyddiad(au)?",
+            "connectAndResume": "Cysylltu ac Ailgychwyn",
+            "resumeNeedsConnection": "Cysylltwch â gweinydd yn gyntaf, yna ailgychwynnwch y trosglwyddiad hwn.",
+            "resumeNoProfile": "Nid oes proffil gweinydd wedi'i gadw gan y trosglwyddiad hwn. Cysylltwch â llaw, yna ailgychwynnwch.",
+            "resumeProfileMissing": "Ni chanfuwyd y gweinydd wedi'i gadw ar gyfer y trosglwyddiad hwn (efallai ei fod wedi'i ddileu).",
+            "connectingToResume": "Yn cysylltu â {name} i ailgychwyn trosglwyddiadau…",
+            "resumeConnectFailed": "Methu cysylltu â {name}. Ni chychwynnwyd y trosglwyddiadau."
         },
         "settings": {
             "title": "Gosodiadau",

@@ -564,7 +564,18 @@
             "start": "Začni",
             "startAll": "Začni vse",
             "restored": "Obnovljeno",
-            "restoredHint": "Obnovljeno iz prejšnje seje. Ponovno se povežite z istim strežnikom in pritisnite Poskusi znova za ponovni zagon."
+            "restoredHint": "Obnovljeno iz prejšnje seje. Nadaljevanje se po potrebi poveže s shranjenim strežnikom in nato znova zažene prenos.",
+            "restoredQueueTitle": "Prekinjeni prenosi iz prejšnje seje",
+            "restoredQueueDescription": "Obnovljenih je bilo {count} prenos(ov). Nadaljevanje se po potrebi poveže s shranjenim strežnikom in jih nato znova zažene. Zavrzi jih odstrani.",
+            "resumeRestoredAll": "Nadaljuj vse",
+            "discardRestored": "Zavrzi",
+            "resumeConnectConfirm": "Povezati se s »{name}« in nadaljevati {count} prenos(ov)?",
+            "connectAndResume": "Poveži in nadaljuj",
+            "resumeNeedsConnection": "Najprej se povežite s strežnikom, nato nadaljujte ta prenos.",
+            "resumeNoProfile": "Ta prenos nima shranjenega profila strežnika. Povežite se ročno, nato nadaljujte.",
+            "resumeProfileMissing": "Shranjenega strežnika za ta prenos ni bilo mogoče najti (morda je bil izbrisan).",
+            "connectingToResume": "Povezovanje s {name} za nadaljevanje prenosov…",
+            "resumeConnectFailed": "Povezava s {name} ni uspela. Prenosi niso bili zagnani."
         },
         "settings": {
             "title": "Nastavitve",

@@ -564,7 +564,18 @@
             "start": "Rozpocznij",
             "startAll": "Rozpocznij wszystkie",
             "restored": "Przywrócono",
-            "restoredHint": "Przywrócono z poprzedniej sesji. Połącz się ponownie z tym samym serwerem, a następnie naciśnij Ponów, aby uruchomić ponownie."
+            "restoredHint": "Przywrócono z poprzedniej sesji. Wznów w razie potrzeby łączy się z zapisanym serwerem, a następnie ponownie uruchamia transfer.",
+            "restoredQueueTitle": "Przerwane transfery z poprzedniej sesji",
+            "restoredQueueDescription": "Przywrócono {count} transfer(ów). Wznów w razie potrzeby łączy się z zapisanym serwerem, a następnie uruchamia je ponownie. Odrzuć usuwa je.",
+            "resumeRestoredAll": "Wznów wszystkie",
+            "discardRestored": "Odrzuć",
+            "resumeConnectConfirm": "Połączyć z „{name}” i wznowić {count} transfer(ów)?",
+            "connectAndResume": "Połącz i wznów",
+            "resumeNeedsConnection": "Najpierw połącz się z serwerem, a następnie wznów ten transfer.",
+            "resumeNoProfile": "Ten transfer nie ma zapisanego profilu serwera. Połącz się ręcznie, a następnie wznów.",
+            "resumeProfileMissing": "Nie znaleziono zapisanego serwera dla tego transferu (mógł zostać usunięty).",
+            "connectingToResume": "Łączenie z {name} w celu wznowienia transferów…",
+            "resumeConnectFailed": "Nie udało się połączyć z {name}. Transfery nie zostały uruchomione."
         },
         "settings": {
             "title": "Ustawienia",

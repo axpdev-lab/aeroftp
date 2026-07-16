@@ -564,7 +564,18 @@
             "start": "Démarrer",
             "startAll": "Tout démarrer",
             "restored": "Restauré",
-            "restoredHint": "Restauré depuis une session précédente. Reconnectez-vous au même serveur, puis appuyez sur Réessayer pour relancer."
+            "restoredHint": "Restauré depuis une session précédente. Reprendre se connecte au serveur enregistré si nécessaire, puis relance le transfert.",
+            "restoredQueueTitle": "Transferts interrompus d'une session précédente",
+            "restoredQueueDescription": "{count} transfert(s) ont été restaurés. Reprendre se connecte au serveur enregistré si nécessaire, puis les relance. Ignorer les supprime.",
+            "resumeRestoredAll": "Tout reprendre",
+            "discardRestored": "Ignorer",
+            "resumeConnectConfirm": "Se connecter à « {name} » et reprendre {count} transfert(s) ?",
+            "connectAndResume": "Connecter et reprendre",
+            "resumeNeedsConnection": "Connectez-vous d'abord à un serveur, puis reprenez ce transfert.",
+            "resumeNoProfile": "Ce transfert n'a pas de profil de serveur enregistré. Connectez-vous manuellement, puis reprenez.",
+            "resumeProfileMissing": "Le serveur enregistré pour ce transfert est introuvable (il a peut-être été supprimé).",
+            "connectingToResume": "Connexion à {name} pour reprendre les transferts…",
+            "resumeConnectFailed": "Impossible de se connecter à {name}. Les transferts n'ont pas démarré."
         },
         "settings": {
             "title": "Paramètres",

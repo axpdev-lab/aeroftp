@@ -564,7 +564,18 @@
             "start": "Sākt",
             "startAll": "Sākt visu",
             "restored": "Atjaunots",
-            "restoredHint": "Atjaunots no iepriekšējās sesijas. Atkārtoti savienojieties ar to pašu serveri un nospiediet Mēģināt vēlreiz, lai palaistu atkārtoti."
+            "restoredHint": "Atjaunots no iepriekšējās sesijas. Turpināšana vajadzības gadījumā savienojas ar saglabāto serveri un pēc tam atkārtoti izpilda pārsūtīšanu.",
+            "restoredQueueTitle": "Pārtrauktie pārsūtījumi no iepriekšējās sesijas",
+            "restoredQueueDescription": "Tika atjaunota(-s) {count} pārsūtīšana(-s). Turpināšana vajadzības gadījumā savienojas ar saglabāto serveri un pēc tam tās atkārtoti izpilda. Atmest tās noņem.",
+            "resumeRestoredAll": "Atsākt visus",
+            "discardRestored": "Atmest",
+            "resumeConnectConfirm": "Savienoties ar \"{name}\" un turpināt {count} pārsūtīšanu(-as)?",
+            "connectAndResume": "Savienot un turpināt",
+            "resumeNeedsConnection": "Vispirms savienojieties ar serveri un pēc tam turpiniet šo pārsūtīšanu.",
+            "resumeNoProfile": "Šai pārsūtīšanai nav saglabāta servera profila. Savienojieties manuāli un pēc tam turpiniet.",
+            "resumeProfileMissing": "Šīs pārsūtīšanas saglabātais serveris netika atrasts (iespējams, tas ir izdzēsts).",
+            "connectingToResume": "Notiek savienojums ar {name}, lai turpinātu pārsūtīšanas…",
+            "resumeConnectFailed": "Neizdevās savienoties ar {name}. Pārsūtīšanas netika sāktas."
         },
         "settings": {
             "title": "Iestatījumi",

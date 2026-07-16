@@ -166,3 +166,26 @@ export function displayPathForRestore(
 ): string {
     return direction === 'upload' ? localPath : remotePath;
 }
+
+/**
+ * TQ-7c smart resume: group transfer ids by journal `profile_id`.
+ * Null/empty profile ids land under the `null` key (ad-hoc / quick-connect).
+ * Order of first appearance of each profile is preserved.
+ */
+export function groupIdsByProfileId(
+    ids: ReadonlyArray<string>,
+    descriptors: ReadonlyMap<string, { profile_id: string | null }>,
+): Array<{ profileId: string | null; ids: string[] }> {
+    const order: Array<string | null> = [];
+    const buckets = new Map<string | null, string[]>();
+    for (const id of ids) {
+        const raw = descriptors.get(id)?.profile_id ?? null;
+        const profileId = raw && raw.length > 0 ? raw : null;
+        if (!buckets.has(profileId)) {
+            buckets.set(profileId, []);
+            order.push(profileId);
+        }
+        buckets.get(profileId)!.push(id);
+    }
+    return order.map((profileId) => ({ profileId, ids: buckets.get(profileId)! }));
+}

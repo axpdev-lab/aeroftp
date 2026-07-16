@@ -564,7 +564,18 @@
             "start": "Starten",
             "startAll": "Alle starten",
             "restored": "Wiederhergestellt",
-            "restoredHint": "Aus einer vorherigen Sitzung wiederhergestellt. Stellen Sie die Verbindung zum selben Server wieder her und drücken Sie dann Wiederholen, um erneut auszuführen."
+            "restoredHint": "Aus einer vorherigen Sitzung wiederhergestellt. Fortsetzen verbindet bei Bedarf mit dem gespeicherten Server und führt die Übertragung dann erneut aus.",
+            "restoredQueueTitle": "Unterbrochene Übertragungen aus einer vorherigen Sitzung",
+            "restoredQueueDescription": "{count} Übertragung(en) wurden wiederhergestellt. Fortsetzen verbindet bei Bedarf mit dem gespeicherten Server und führt sie dann erneut aus. Verwerfen entfernt sie.",
+            "resumeRestoredAll": "Alle fortsetzen",
+            "discardRestored": "Verwerfen",
+            "resumeConnectConfirm": "Mit „{name}“ verbinden und {count} Übertragung(en) fortsetzen?",
+            "connectAndResume": "Verbinden & fortsetzen",
+            "resumeNeedsConnection": "Verbinden Sie sich zuerst mit einem Server, und setzen Sie diese Übertragung dann fort.",
+            "resumeNoProfile": "Diese Übertragung hat kein gespeichertes Serverprofil. Manuell verbinden, dann fortsetzen.",
+            "resumeProfileMissing": "Der gespeicherte Server für diese Übertragung wurde nicht gefunden (er wurde möglicherweise gelöscht).",
+            "connectingToResume": "Verbindung mit {name} wird hergestellt, um Übertragungen fortzusetzen…",
+            "resumeConnectFailed": "Verbindung mit {name} fehlgeschlagen. Übertragungen wurden nicht gestartet."
         },
         "settings": {
             "title": "Einstellungen",

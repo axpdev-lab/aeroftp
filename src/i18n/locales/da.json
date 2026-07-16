@@ -564,7 +564,18 @@
             "start": "Start",
             "startAll": "Start alle",
             "restored": "Gendannet",
-            "restoredHint": "Gendannet fra en tidligere session. Opret forbindelse til den samme server igen, og tryk derefter på Prøv igen for at køre igen."
+            "restoredHint": "Gendannet fra en tidligere session. Genoptag forbinder til den gemte server om nødvendigt og kører derefter overførslen igen.",
+            "restoredQueueTitle": "Afbrudte overførsler fra en tidligere session",
+            "restoredQueueDescription": "{count} overførsel(ser) blev gendannet. Genoptag forbinder til den gemte server om nødvendigt og kører dem derefter igen. Kassér fjerner dem.",
+            "resumeRestoredAll": "Genoptag alle",
+            "discardRestored": "Kassér",
+            "resumeConnectConfirm": "Opret forbindelse til \"{name}\" og genoptag {count} overførsel(ser)?",
+            "connectAndResume": "Opret forbindelse og genoptag",
+            "resumeNeedsConnection": "Opret først forbindelse til en server, og genoptag derefter denne overførsel.",
+            "resumeNoProfile": "Denne overførsel har ingen gemt serverprofil. Opret forbindelse manuelt, og genoptag derefter.",
+            "resumeProfileMissing": "Den gemte server for denne overførsel blev ikke fundet (den kan være slettet).",
+            "connectingToResume": "Opretter forbindelse til {name} for at genoptage overførsler…",
+            "resumeConnectFailed": "Kunne ikke oprette forbindelse til {name}. Overførsler blev ikke startet."
         },
         "settings": {
             "title": "Indstillinger",

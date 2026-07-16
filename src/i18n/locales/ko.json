@@ -564,7 +564,18 @@
             "start": "시작",
             "startAll": "모두 시작",
             "restored": "복원됨",
-            "restoredHint": "이전 세션에서 복원되었습니다. 같은 서버에 다시 연결한 다음 재시도를 눌러 다시 실행하세요."
+            "restoredHint": "이전 세션에서 복원되었습니다. 재개하면 필요 시 저장된 서버에 연결한 뒤 전송을 다시 실행합니다.",
+            "restoredQueueTitle": "이전 세션에서 중단된 전송",
+            "restoredQueueDescription": "{count}개의 전송이 복원되었습니다. 재개하면 필요 시 저장된 서버에 연결한 뒤 다시 실행합니다. 버리면 제거됩니다.",
+            "resumeRestoredAll": "모두 재개",
+            "discardRestored": "삭제",
+            "resumeConnectConfirm": "\"{name}\"에 연결하고 {count}개의 전송을 재개할까요?",
+            "connectAndResume": "연결 및 재개",
+            "resumeNeedsConnection": "먼저 서버에 연결한 다음 이 전송을 재개하세요.",
+            "resumeNoProfile": "이 전송에는 저장된 서버 프로필이 없습니다. 수동으로 연결한 다음 재개하세요.",
+            "resumeProfileMissing": "이 전송의 저장된 서버를 찾을 수 없습니다(삭제되었을 수 있음).",
+            "connectingToResume": "전송을 재개하기 위해 {name}에 연결 중…",
+            "resumeConnectFailed": "{name}에 연결할 수 없습니다. 전송이 시작되지 않았습니다."
         },
         "settings": {
             "title": "설정",

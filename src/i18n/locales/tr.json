@@ -564,7 +564,18 @@
             "start": "Başlat",
             "startAll": "Tümünü başlat",
             "restored": "Geri yüklendi",
-            "restoredHint": "Önceki oturumdan geri yüklendi. Aynı sunucuya yeniden bağlanın, ardından yeniden çalıştırmak için Yeniden dene’ye basın."
+            "restoredHint": "Önceki oturumdan geri yüklendi. Sürdür, gerekirse kayıtlı sunucuya bağlanır, ardından aktarımı yeniden çalıştırır.",
+            "restoredQueueTitle": "Önceki oturumdan yarıda kalan aktarımlar",
+            "restoredQueueDescription": "{count} aktarım geri yüklendi. Sürdür, gerekirse kayıtlı sunucuya bağlanır, ardından bunları yeniden çalıştırır. At, bunları kaldırır.",
+            "resumeRestoredAll": "Tümünü devam ettir",
+            "discardRestored": "İptal et",
+            "resumeConnectConfirm": "\"{name}\" sunucusuna bağlanıp {count} aktarımı sürdürelim mi?",
+            "connectAndResume": "Bağlan ve Sürdür",
+            "resumeNeedsConnection": "Önce bir sunucuya bağlanın, ardından bu aktarımı sürdürün.",
+            "resumeNoProfile": "Bu aktarımın kayıtlı sunucu profili yok. Elle bağlanın, ardından sürdürün.",
+            "resumeProfileMissing": "Bu aktarımın kayıtlı sunucusu bulunamadı (silinmiş olabilir).",
+            "connectingToResume": "Aktarımları sürdürmek için {name} sunucusuna bağlanılıyor…",
+            "resumeConnectFailed": "{name} sunucusuna bağlanılamadı. Aktarımlar başlatılmadı."
         },
         "settings": {
             "title": "Ayarlar",

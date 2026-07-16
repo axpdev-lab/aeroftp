@@ -14,7 +14,7 @@ import { getVersion } from '@tauri-apps/api/app';
 import {
   FileListResponse, ConnectionParams, DownloadParams, UploadParams,
   LocalFile, TransferEvent, TransferProgress, RemoteFile, FtpSession, ServerProfile,
-  ProviderType, isOAuthProvider, isFourSharedProvider, isNonFtpProvider, isFtpProtocol, providerSupportsCryptOverlay, supportsStorageQuota, supportsNativeShareLink,
+  ProviderType, isOAuthProvider, isFourSharedProvider, isNativeApiProtocol, isNonFtpProvider, isFtpProtocol, providerSupportsCryptOverlay, supportsStorageQuota, supportsNativeShareLink,
   resolveEffectiveQuota, effectiveManualCap,
   AeroVaultOverlaySession,
   DeltaEligibilityProbeResult,
@@ -204,12 +204,14 @@ import { RECONNECT_ERROR_KINDS, getErrorKindI18nKey } from './utils/transferErro
 import {
   buildJournalEntries,
   displayPathForRestore,
+  groupIdsByProfileId,
   isRestorableJournalStatus,
   joinRemotePath,
   parentDir,
   type JournalDescriptorFields,
   type TransferQueueJournalDto,
 } from './utils/transferQueueJournal';
+import { getCredentialWithRetry } from './utils/profileVaultSecrets';
 import { normalizeMegaOptions } from './utils/providerConnectionMeta';
 import { localizeRestrictedCharError } from './utils/restrictedCharError';
 import { CONNECT_CANCELLED_MARKER, CONNECT_HARD_TIMEOUT_MARKER, isConnectCancelledError, isConnectHardTimeoutError } from './utils/connectCancel';
@@ -9071,6 +9073,290 @@ interface UpdateVerificationInfo {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // TQ-7c smart resume: ensure the journal profile is live (auto-connect with
+  // confirm when needed), then fire the stored retry callbacks. Never starts a
+  // transfer while disconnected — that was the silent fail on Retry.
+  const fireRetryCallbacks = (ids: string[]) => {
+    for (const id of ids) {
+      const cb = retryCallbacksRef.current.get(id);
+      if (!cb) continue;
+      // Callbacks are often async; Map type is () => void so ignore the
+      // return type and still surface rejections.
+      void Promise.resolve()
+        .then(() => cb())
+        .catch((e) => {
+          console.error('resume transfer failed', e);
+        });
+    }
+  };
+
+  const isLiveOnProfile = (profileId: string): boolean => {
+    if (!isConnected) return false;
+    const active = sessions.find((s) => s.id === activeSessionId);
+    if (!active) return false;
+    return (
+      active.savedServerId === profileId
+      || active.connectionParams?.savedServerId === profileId
+    );
+  };
+
+  const connectSavedProfileForResume = async (profile: ServerProfile): Promise<boolean> => {
+    const protocol = (profile.protocol || 'ftp') as ProviderType;
+
+    // Reuse an open session tab when one already exists for this profile.
+    const existing = sessions.find(
+      (s) => s.savedServerId === profile.id || s.connectionParams?.savedServerId === profile.id,
+    );
+    if (existing) {
+      setShowConnectionScreen(false);
+      setShowRemotePanel(true);
+      setShowLocalPreview(false);
+      setIsConnected(true);
+      await switchSession(existing.id);
+      return true;
+    }
+
+    notify.info(
+      t('toast.connecting') || 'Connecting',
+      t('transfer.connectingToResume', { name: profile.name }),
+    );
+
+    try {
+      if (protocol === 'peer') {
+        notify.error(
+          t('toast.connectionFailed') || 'Connection failed',
+          t('transfer.resumeNoProfile'),
+        );
+        return false;
+      }
+
+      if (isOAuthProvider(protocol)) {
+        let clientId = '';
+        let clientSecret = '';
+        try {
+          clientId = await getCredentialWithRetry(`oauth_${protocol}_client_id`);
+          clientSecret = await getCredentialWithRetry(`oauth_${protocol}_client_secret`);
+        } catch { /* missing */ }
+        if (!clientId || !clientSecret) {
+          notify.error(
+            t('toast.connectionFailed') || 'Connection failed',
+            t('transfer.resumeConnectFailed', { name: profile.name }),
+          );
+          return false;
+        }
+        const oauthProvider = protocol === 'googledrive' ? 'google_drive' : protocol;
+        let region: string | undefined = profile.options?.region;
+        if (!region && protocol === 'zohoworkdrive') {
+          try {
+            region = await invoke<string>('get_credential', { account: `oauth_${protocol}_region` });
+          } catch { /* default */ }
+        }
+        const baseParams = {
+          provider: oauthProvider,
+          client_id: clientId,
+          client_secret: clientSecret,
+          profile_id: profile.id,
+          ...(region && { region }),
+        };
+        const hasTokens = await invoke<boolean>('oauth2_has_tokens', {
+          provider: oauthProvider,
+          profileId: profile.id,
+        });
+        if (!hasTokens) await invoke('oauth2_full_auth', { params: baseParams });
+        let oauthResult: { display_name?: string; account_email?: string | null };
+        try {
+          oauthResult = await invoke('oauth2_connect', { params: baseParams });
+        } catch (connectErr) {
+          const errMsg = connectErr instanceof Error ? connectErr.message : String(connectErr);
+          const lower = errMsg.toLowerCase();
+          if (
+            lower.includes('token expired')
+            || (lower.includes('token') && lower.includes('refresh'))
+            || lower.includes('authentication failed')
+            || (lower.includes('invalid') && lower.includes('access_token'))
+          ) {
+            await invoke('oauth2_full_auth', { params: baseParams });
+            oauthResult = await invoke('oauth2_connect', { params: baseParams });
+          } else {
+            throw connectErr;
+          }
+        }
+        const displayName = oauthResult?.display_name || profile.name;
+        const accountEmail = oauthResult?.account_email || profile.username || '';
+        await connectToFtp({
+          server: displayName,
+          username: accountEmail,
+          password: '',
+          protocol,
+          displayName: profile.name,
+          providerId: profile.providerId,
+          savedServerId: profile.id,
+        });
+        return true;
+      }
+
+      if (isFourSharedProvider(protocol)) {
+        let consumerKey = '';
+        let consumerSecret = '';
+        try {
+          consumerKey = await getCredentialWithRetry('oauth_fourshared_client_id');
+          consumerSecret = await getCredentialWithRetry('oauth_fourshared_client_secret');
+        } catch { /* missing */ }
+        if (!consumerKey || !consumerSecret) {
+          notify.error(
+            t('toast.connectionFailed') || 'Connection failed',
+            t('transfer.resumeConnectFailed', { name: profile.name }),
+          );
+          return false;
+        }
+        const hasTokens = await invoke<boolean>('fourshared_has_tokens');
+        const params = { consumer_key: consumerKey, consumer_secret: consumerSecret };
+        if (!hasTokens) await invoke('fourshared_full_auth', { params });
+        try {
+          await invoke('fourshared_connect', { params });
+        } catch {
+          await invoke('fourshared_full_auth', { params });
+          await invoke('fourshared_connect', { params });
+        }
+        await connectToFtp({
+          server: profile.name,
+          username: profile.username || '',
+          password: '',
+          protocol,
+          displayName: profile.name,
+          providerId: profile.providerId,
+          savedServerId: profile.id,
+        });
+        return true;
+      }
+
+      // Credential-based providers (FTP/SFTP/S3/WebDAV/API keys…).
+      let password = '';
+      try {
+        password = await getCredentialWithRetry(`server_${profile.id}`);
+      } catch { /* may be key-only or empty */ }
+
+      // After the peer early-return, TS narrows `protocol`; keep a wide binding
+      // so registry preset rewrites still type-check.
+      let proto: ProviderType = protocol;
+      if (profile.providerId && !isNativeApiProtocol(profile.protocol)) {
+        const presetProto = getProviderById(profile.providerId)?.protocol;
+        if (presetProto && presetProto !== proto) {
+          proto = presetProto as ProviderType;
+        }
+      }
+
+      // Seed local initial dir so connectToFtp lands the dual panel correctly.
+      if (profile.localInitialPath || profile.initialPath) {
+        setQuickConnectDirs((prev) => ({
+          localDir: profile.localInitialPath || prev.localDir,
+          remoteDir: profile.initialPath || prev.remoteDir,
+        }));
+      }
+
+      let options = profile.options ? { ...profile.options } : undefined;
+      if (proto === 'filen' && options && !options.filen_api_key) {
+        try {
+          const filenKey = await getCredentialWithRetry(`filen_api_key_${profile.id}`);
+          if (filenKey) options = { ...options, filen_api_key: filenKey };
+        } catch { /* no stored Filen key */ }
+      }
+
+      await connectToFtp({
+        server: profile.host,
+        username: profile.username,
+        password,
+        // peer is rejected above; cast for ConnectionParams protocol union.
+        protocol: proto as ConnectionParams['protocol'],
+        port: profile.port,
+        displayName: profile.name,
+        options,
+        providerId: profile.providerId,
+        savedServerId: profile.id,
+      });
+      return true;
+    } catch (e) {
+      if (isConnectCancelledError(e)) return false;
+      logger.error('[TQ-7c] connect for resume failed', e);
+      notify.error(
+        t('toast.connectionFailed') || 'Connection failed',
+        t('transfer.resumeConnectFailed', { name: profile.name }),
+      );
+      return false;
+    }
+  };
+
+  const resumeRestoredTransfers = async (ids: string[]) => {
+    if (ids.length === 0) return;
+    const groups = groupIdsByProfileId(ids, journalDescriptorsRef.current);
+
+    for (const group of groups) {
+      const { profileId, ids: groupIds } = group;
+
+      if (!profileId) {
+        // Ad-hoc / quick-connect journal entries: only resume if already live.
+        if (!isConnected) {
+          notify.error(
+            t('transfer.restoredQueueTitle'),
+            t('transfer.resumeNoProfile'),
+          );
+          continue;
+        }
+        transferQueue.clearRestoredFlags(groupIds);
+        fireRetryCallbacks(groupIds);
+        continue;
+      }
+
+      if (isLiveOnProfile(profileId)) {
+        transferQueue.clearRestoredFlags(groupIds);
+        fireRetryCallbacks(groupIds);
+        continue;
+      }
+
+      let profiles: ServerProfile[] = [];
+      try {
+        profiles = (await loadSavedServerProfiles()) || [];
+      } catch {
+        profiles = [];
+      }
+      const profile = profiles.find((p) => p.id === profileId);
+      if (!profile) {
+        notify.error(
+          t('transfer.restoredQueueTitle'),
+          t('transfer.resumeProfileMissing'),
+        );
+        continue;
+      }
+
+      // Confirm before auto-connect so the user can cancel.
+      const confirmed = await new Promise<boolean>((resolve) => {
+        setConfirmDialog({
+          message: t('transfer.resumeConnectConfirm', {
+            name: profile.name,
+            count: String(groupIds.length),
+          }),
+          confirmLabel: t('transfer.connectAndResume'),
+          confirmColor: 'blue',
+          onConfirm: () => {
+            setConfirmDialog(null);
+            resolve(true);
+          },
+          onCancel: () => {
+            setConfirmDialog(null);
+            resolve(false);
+          },
+        });
+      });
+      if (!confirmed) continue;
+
+      const ok = await connectSavedProfileForResume(profile);
+      if (!ok) continue;
+
+      transferQueue.clearRestoredFlags(groupIds);
+      fireRetryCallbacks(groupIds);
+    }
+  };
+
   // Two-level cancel: Stop (finish current file) → Force Stop (interrupt immediately)
   const cancelTransfer = async () => {
     // If batch is paused by circuit breaker, resolve the pause promise
@@ -14642,6 +14928,12 @@ interface UpdateVerificationInfo {
           forceStopMode={isForceStopMode}
           onRemoveItem={transferQueue.removeItem}
           onRetryItem={(id: string) => {
+            const item = transferQueue.items.find((i) => i.id === id);
+            // TQ-7c: restored items go through smart resume (auto-connect).
+            if (item?.restored && item.status === 'pending') {
+              void resumeRestoredTransfers([id]);
+              return;
+            }
             transferQueue.retryItem(id);
             const cb = retryCallbacksRef.current.get(id);
             if (cb) cb();
@@ -14653,6 +14945,25 @@ interface UpdateVerificationInfo {
           onResume={resumeBatch}
           onRetryAllFailed={retryAllFailedItems}
           activeBatchSnapshot={activeBatchSnapshot}
+          onResumeRestored={() => {
+            const ids = transferQueue.getRestoredPendingIds();
+            if (ids.length === 0) return;
+            void resumeRestoredTransfers(ids);
+          }}
+          onDiscardRestored={() => {
+            // TQ-7c: drop restored pending items + descriptors + callbacks.
+            // Journal rewrite follows via the existing persist effect (or
+            // clear eagerly when the queue will be empty).
+            const beforeCount = transferQueue.items.length;
+            const removed = transferQueue.discardRestored();
+            for (const id of removed) {
+              journalDescriptorsRef.current.delete(id);
+              retryCallbacksRef.current.delete(id);
+            }
+            if (removed.length > 0 && removed.length === beforeCount) {
+              void invoke('clear_transfer_queue_journal_cmd').catch(() => undefined);
+            }
+          }}
         />
         {contextMenu.state.visible && <ContextMenu x={contextMenu.state.x} y={contextMenu.state.y} items={contextMenu.state.items} onClose={contextMenu.hide} />}
         {settings.showTransferProgress !== false && <TransferToastContainer onOpen={transferQueue.show} />}

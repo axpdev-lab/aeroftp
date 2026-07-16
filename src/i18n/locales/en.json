@@ -3973,7 +3973,18 @@
             },
             "retryAllFailed": "Retry All Failed",
             "restored": "Restored",
-            "restoredHint": "Restored from a previous session. Reconnect to the same server, then press Retry to re-run."
+            "restoredHint": "Restored from a previous session. Resume connects to the saved server if needed, then re-runs the transfer.",
+            "restoredQueueTitle": "Interrupted transfers from a previous session",
+            "restoredQueueDescription": "{count} transfer(s) were restored. Resume connects to the saved server if needed, then re-runs them. Discard drops them.",
+            "resumeRestoredAll": "Resume all",
+            "discardRestored": "Discard",
+            "resumeConnectConfirm": "Connect to \"{name}\" and resume {count} transfer(s)?",
+            "connectAndResume": "Connect & Resume",
+            "resumeNeedsConnection": "Connect to a server first, then resume this transfer.",
+            "resumeNoProfile": "This transfer has no saved server profile. Connect manually, then resume.",
+            "resumeProfileMissing": "The saved server for this transfer was not found (it may have been deleted).",
+            "connectingToResume": "Connecting to {name} to resume transfers…",
+            "resumeConnectFailed": "Could not connect to {name}. Transfers were not started."
         },
         "scanning": {
             "deleting": "Deleting",

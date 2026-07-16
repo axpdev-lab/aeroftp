@@ -564,7 +564,18 @@
             "start": "Indítás",
             "startAll": "Összes indítása",
             "restored": "Visszaállítva",
-            "restoredHint": "Előző munkamenetből visszaállítva. Csatlakozzon újra ugyanahhoz a szerverhez, majd nyomja meg az Újra gombot az ismételt futtatáshoz."
+            "restoredHint": "Előző munkamenetből helyreállítva. A folytatás szükség esetén csatlakozik a mentett kiszolgálóhoz, majd újrafuttatja az átvitelt.",
+            "restoredQueueTitle": "Megszakított átvitelek egy korábbi munkamenetből",
+            "restoredQueueDescription": "{count} átvitel helyreállítva. A folytatás szükség esetén csatlakozik a mentett kiszolgálóhoz, majd újrafuttatja őket. Az elvetés eltávolítja őket.",
+            "resumeRestoredAll": "Összes folytatása",
+            "discardRestored": "Elvetés",
+            "resumeConnectConfirm": "Csatlakozás a(z) „{name}” kiszolgálóhoz és {count} átvitel folytatása?",
+            "connectAndResume": "Csatlakozás és folytatás",
+            "resumeNeedsConnection": "Először csatlakozzon egy kiszolgálóhoz, majd folytassa ezt az átvitelt.",
+            "resumeNoProfile": "Ehhez az átvitelhez nincs mentett kiszolgálóprofil. Csatlakozzon manuálisan, majd folytassa.",
+            "resumeProfileMissing": "Az átvitel mentett kiszolgálója nem található (lehet, hogy törölték).",
+            "connectingToResume": "Csatlakozás a(z) {name} kiszolgálóhoz az átvitelek folytatásához…",
+            "resumeConnectFailed": "Nem sikerült csatlakozni a(z) {name} kiszolgálóhoz. Az átvitelek nem indultak el."
         },
         "settings": {
             "title": "Beállítások",

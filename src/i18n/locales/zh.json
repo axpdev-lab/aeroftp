@@ -564,7 +564,18 @@
             "start": "开始",
             "startAll": "全部开始",
             "restored": "已恢复",
-            "restoredHint": "已从上次会话恢复。请重新连接到同一服务器，然后按重试以重新执行。"
+            "restoredHint": "已从上次会话恢复。恢复会在需要时连接已保存的服务器，然后重新执行传输。",
+            "restoredQueueTitle": "上一会话中断的传输",
+            "restoredQueueDescription": "已恢复 {count} 项传输。恢复会在需要时连接已保存的服务器，然后重新执行。丢弃会移除它们。",
+            "resumeRestoredAll": "全部继续",
+            "discardRestored": "丢弃",
+            "resumeConnectConfirm": "连接到“{name}”并恢复 {count} 项传输？",
+            "connectAndResume": "连接并恢复",
+            "resumeNeedsConnection": "请先连接到服务器，再恢复此传输。",
+            "resumeNoProfile": "此传输没有已保存的服务器配置。请手动连接后再恢复。",
+            "resumeProfileMissing": "未找到此传输已保存的服务器（可能已删除）。",
+            "connectingToResume": "正在连接 {name} 以恢复传输…",
+            "resumeConnectFailed": "无法连接到 {name}。传输未启动。"
         },
         "settings": {
             "title": "设置",

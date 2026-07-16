@@ -564,7 +564,18 @@
             "start": "Iniciar",
             "startAll": "Iniciar todo",
             "restored": "Restaurado",
-            "restoredHint": "Restaurado de una sesión anterior. Vuelve a conectar al mismo servidor y pulsa Reintentar para volver a ejecutarlo."
+            "restoredHint": "Restaurado de una sesión anterior. Reanudar se conecta al servidor guardado si es necesario y luego vuelve a ejecutar la transferencia.",
+            "restoredQueueTitle": "Transferencias interrumpidas de una sesión anterior",
+            "restoredQueueDescription": "Se restauraron {count} transferencia(s). Reanudar se conecta al servidor guardado si es necesario y luego las vuelve a ejecutar. Descartar las elimina.",
+            "resumeRestoredAll": "Reanudar todo",
+            "discardRestored": "Descartar",
+            "resumeConnectConfirm": "¿Conectar a «{name}» y reanudar {count} transferencia(s)?",
+            "connectAndResume": "Conectar y reanudar",
+            "resumeNeedsConnection": "Conéctese primero a un servidor y luego reanude esta transferencia.",
+            "resumeNoProfile": "Esta transferencia no tiene un perfil de servidor guardado. Conéctese manualmente y luego reanude.",
+            "resumeProfileMissing": "No se encontró el servidor guardado de esta transferencia (puede haberse eliminado).",
+            "connectingToResume": "Conectando a {name} para reanudar transferencias…",
+            "resumeConnectFailed": "No se pudo conectar a {name}. No se iniciaron las transferencias."
         },
         "settings": {
             "title": "Configuración",
