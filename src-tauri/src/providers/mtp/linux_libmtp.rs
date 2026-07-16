@@ -294,8 +294,16 @@ fn is_gvfs_mtp_mount_name(name: &str) -> bool {
 ///
 /// Best-effort: missing `gio` or permission errors are ignored.
 fn release_gvfs_mtp_claim(device_id: Option<&str>) -> Vec<i32> {
+    // Ask gvfs to let go the clean way, then *give it time to finish*. A
+    // SIGTERM here truncates the very close we just requested and leaves the
+    // phone's PTP session dangling. Measured on the Sony Xperia: given the
+    // chance, gvfsd-mtp exits on its own 1.14s after the unmount. Monitors must
+    // still be running for this: gvfsd-mtp talks to them while shutting down,
+    // so freezing them first can stall the graceful exit we are waiting for.
     unmount_gvfs_mtp_mounts();
-    // Drop exclusive USB claim first.
+    wait_for_gvfs_workers_to_exit(std::time::Duration::from_millis(2000));
+
+    // Only now insist: whatever survived the graceful path gets SIGTERM.
     signal_processes_matching(GVFS_MTP_WORKER_NAMES, libc::SIGTERM);
     // Freeze monitors so they cannot restart workers during open.
     let mut stopped = stop_gvfs_mtp_monitors();
@@ -339,6 +347,27 @@ fn release_gvfs_mtp_claim(device_id: Option<&str>) -> Vec<i32> {
     // PTP session; opening too soon yields PTP_ERROR_IO + libmtp USB reset.
     std::thread::sleep(std::time::Duration::from_millis(600));
     stopped
+}
+
+/// Wait for gvfs MTP workers to exit by themselves after a clean unmount.
+///
+/// Returns true if none are left. Polls instead of sleeping a fixed amount so a
+/// fast desktop is not punished and a slow one is not cut off mid-close.
+fn wait_for_gvfs_workers_to_exit(timeout: std::time::Duration) -> bool {
+    let deadline = std::time::Instant::now() + timeout;
+    loop {
+        if !processes_matching_present(GVFS_MTP_WORKER_NAMES) {
+            return true;
+        }
+        if std::time::Instant::now() >= deadline {
+            tracing::info!(
+                target: "mtp",
+                "MTP soft-release: gvfs worker still alive after clean unmount; escalating to SIGTERM"
+            );
+            return false;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
 }
 
 fn unmount_gvfs_mtp_mounts() {
@@ -900,8 +929,14 @@ fn open_raw_by_id_locked(device_id: &str) -> Result<(*mut LibmtpMtpDevice, Strin
         // path). Without this, fuser keeps aeroftp on the node and every
         // subsequent Connect fails busy until process restart.
         usbdevfs_reset_node(bus, devnum);
+        // Be honest about what actually happened. The phone grants one MTP
+        // session per physical connection: if the desktop file manager took it
+        // at plug time, no amount of releasing or retrying wins it back, and
+        // the old "close any remaining MTP client and retry" text sent users
+        // hunting for a culprit that is usually AeroFTP itself. Only a replug
+        // re-arms the device (verified: USBDEVFS_RESET does not).
         return Err(ProviderError::ConnectionFailed(
-            "failed to open MTP device (busy, unauthorized, or not in MTP mode). AeroFTP tried to release the system file manager mount; close any remaining MTP client and retry.".into(),
+            "could not open the device: it grants a single MTP session per connection and something already used it (often the desktop file manager, which mounts phones automatically). Unplug the cable, plug it back in, then connect from AeroFTP before opening the phone anywhere else.".into(),
         ));
     }
 
