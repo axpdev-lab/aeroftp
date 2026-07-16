@@ -4399,14 +4399,21 @@ interface UpdateVerificationInfo {
       } catch (listErr) {
         // Open succeeded; listing may fail when backend is Null/unlinked or
         // the device needs unlock. Keep the session active and show the error.
+        const listErrorMessage = typeof listErr === 'string' ? listErr : String(listErr);
         setRemoteFiles([]);
         setCurrentRemotePath('/');
         setCurrentRemoteDisplayPath('/');
+        activityLog.log(
+          'ERROR',
+          `${t('sidebar.portable_open_failed')}: ${displayName}`,
+          'error',
+          listErrorMessage,
+        );
         window.dispatchEvent(new CustomEvent('aeroftp-toast', {
           detail: {
             type: 'error',
             title: t('sidebar.portable_open_failed'),
-            message: typeof listErr === 'string' ? listErr : String(listErr),
+            message: listErrorMessage,
             duration: 8000,
             important: true,
           },
@@ -4464,6 +4471,7 @@ interface UpdateVerificationInfo {
       const detail = storageNames.length > 0
         ? storageNames.join(', ')
         : t('sidebar.portable_no_storages');
+      if (profile?.id) void clearProfileConnectFailure(profile.id);
       notify.success(
         t('sidebar.portable_opened', { name: displayName }),
         detail,
@@ -4485,18 +4493,28 @@ interface UpdateVerificationInfo {
       }
     } catch (err) {
       setActivePortableDeviceId(null);
+      const errorMessage = typeof err === 'string' ? err : String(err);
+      const deviceName = profile?.name || device.displayName || device.deviceId;
+      if (profile?.id) void recordProfileConnectFailure(profile.id, err);
+      activityLog.log(
+        'CONNECT',
+        `${t('sidebar.portable_open_failed')}: ${deviceName}`,
+        'error',
+        errorMessage,
+      );
       // Important: surface even if ambient toasts are off (user clicked).
       window.dispatchEvent(new CustomEvent('aeroftp-toast', {
         detail: {
           type: 'error',
           title: t('sidebar.portable_open_failed'),
-          message: typeof err === 'string' ? err : String(err),
+          message: errorMessage,
           duration: 8000,
           important: true,
         },
       }));
+      throw err;
     }
-  }, [notify, t, currentLocalPath, localFiles, showHiddenFiles]);
+  }, [notify, t, currentLocalPath, localFiles, showHiddenFiles, activityLog]);
 
   /** PLACES portable row: open without a saved profile. */
   const handleOpenPortableDevice = useCallback(async (device: MtpDeviceInfo) => {

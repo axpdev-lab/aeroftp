@@ -537,6 +537,8 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
     setOpeningPortableId(device.deviceId);
     try {
       await onOpenPortableDevice(device);
+    } catch {
+      // The parent records and surfaces MTP open failures.
     } finally {
       if (mountedRef.current) setOpeningPortableId(null);
     }
