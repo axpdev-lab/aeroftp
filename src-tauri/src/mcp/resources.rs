@@ -235,6 +235,7 @@ fn protocol_feature_key(pt: ProviderType) -> &'static str {
         // Synthetic local mount provider; never reaches the MCP protocol table.
         ProviderType::AeroVaultMount => "aerovaultmount",
         ProviderType::Peer => "peer",
+        ProviderType::Mtp => "mtp",
     }
 }
 

@@ -48,6 +48,7 @@ pub mod mega;
 pub mod mega_crypto;
 pub mod mega_df;
 pub mod mega_native;
+pub mod mtp;
 pub mod multi_thread;
 pub mod oauth1;
 pub mod oauth2;
@@ -107,6 +108,7 @@ pub use kdrive::KDriveProvider;
 pub use koofr::KoofrProvider;
 pub use mega::{MegaCmdProvider, MegaProvider};
 pub use mega_native::MegaNativeProvider;
+pub use mtp::MtpProvider;
 pub use oauth2::{OAuth2Manager, OAuthConfig, OAuthProvider};
 pub use onedrive::OneDriveProvider;
 pub use opendrive::OpenDriveProvider;
@@ -1304,6 +1306,12 @@ impl ProviderFactory {
                 let peer_config = peer::PeerProviderConfig::from_provider_config(config)?;
                 Ok(Box::new(PeerProvider::new(peer_config)))
             }
+            // MTP sessions are opened from PLACES portable-device discovery,
+            // never from a saved server profile (APPENDIX-MTP).
+            ProviderType::Mtp => Err(ProviderError::InvalidConfig(
+                "MTP portable devices are opened from PLACES, not as a saved server profile"
+                    .to_string(),
+            )),
         }
     }
 
