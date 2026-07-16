@@ -334,9 +334,10 @@ fn release_gvfs_mtp_claim(device_id: Option<&str>) -> Vec<i32> {
         );
     }
 
-    // Keep settle short: a long free window lets a new monitor start and reclaim
-    // before Open_Raw (observed: gvfsd-mtp back during 700ms settle).
-    std::thread::sleep(std::time::Duration::from_millis(80));
+    // Monitors are SIGSTOP'd, so a longer settle is safe from gvfs reclaim.
+    // Android often needs a few hundred ms after gvfsd-mtp dies to close its
+    // PTP session; opening too soon yields PTP_ERROR_IO + libmtp USB reset.
+    std::thread::sleep(std::time::Duration::from_millis(600));
     stopped
 }
 
@@ -589,6 +590,38 @@ fn usb_node_has_foreign_holders(bus: u32, devnum: u8) -> bool {
             .map(|pid| pid != 0 && pid != self_pid)
             .unwrap_or(false)
     })
+}
+
+/// Best-effort `USBDEVFS_RESET` after a failed libmtp open so we do not leave
+/// our own process holding the usbfs node (live: fuser shows aeroftp after
+/// PTP_ERROR_IO + libmtp USB reset).
+///
+/// Linux `USBDEVFS_RESET` is `_IO('U', 20)` → `0x5514` on common archs.
+fn usbdevfs_reset_node(bus: u32, devnum: u8) {
+    let node = format!("/dev/bus/usb/{bus:03}/{devnum:03}");
+    let c_path = match std::ffi::CString::new(node.as_str()) {
+        Ok(p) => p,
+        Err(_) => return,
+    };
+    // SAFETY: path is a NUL-terminated C string we own for the open call.
+    let fd = unsafe { libc::open(c_path.as_ptr(), libc::O_RDWR) };
+    if fd < 0 {
+        tracing::debug!(target: "mtp", %node, "usbdevfs reset: open failed");
+        return;
+    }
+    const USBDEVFS_RESET: libc::c_ulong = 0x5514;
+    // SAFETY: fd is a valid usbfs descriptor; RESET takes no arg pointer.
+    let rc = unsafe { libc::ioctl(fd, USBDEVFS_RESET) };
+    unsafe {
+        libc::close(fd);
+    }
+    if rc == 0 {
+        tracing::info!(target: "mtp", %node, "usbdevfs reset after failed MTP open");
+        // Brief settle so re-detect sees a stable node.
+        std::thread::sleep(std::time::Duration::from_millis(300));
+    } else {
+        tracing::debug!(target: "mtp", %node, "usbdevfs reset failed rc={rc}");
+    }
 }
 
 fn parse_handle(handle: &str) -> Result<u32, ProviderError> {
@@ -848,17 +881,23 @@ fn open_raw_by_id_locked(device_id: &str) -> Result<(*mut LibmtpMtpDevice, Strin
 
     let device = unsafe {
         let raw_ref = raw_ptr.add(idx);
-        let mut dev = LIBMTP_Open_Raw_Device_Uncached(raw_ref);
+        // Prefer cached open first after a gvfs soft-release: Uncached often
+        // hits PTP_ERROR_IO and libmtp's internal USB reset, which can leave
+        // *our* process holding usbfs (fuser shows aeroftp) so the next
+        // Connect is always busy until the app restarts.
+        let mut dev = LIBMTP_Open_Raw_Device(raw_ref);
         if dev.is_null() {
-            // Cached open is a second chance used by libmtp tools after a
-            // flaky uncached session on some Android builds.
-            dev = LIBMTP_Open_Raw_Device(raw_ref);
+            dev = LIBMTP_Open_Raw_Device_Uncached(raw_ref);
         }
         // Free detect array only after open has consumed the raw entry.
         libc::free(raw_ptr as *mut c_void);
         dev
     };
     if device.is_null() {
+        // Drop leftover usbfs claim after a failed Open_Raw (libmtp USB-reset
+        // path). Without this, fuser keeps aeroftp on the node and every
+        // subsequent Connect fails busy until process restart.
+        usbdevfs_reset_node(bus, devnum);
         return Err(ProviderError::ConnectionFailed(
             "failed to open MTP device (busy, unauthorized, or not in MTP mode). AeroFTP tried to release the system file manager mount; close any remaining MTP client and retry.".into(),
         ));
