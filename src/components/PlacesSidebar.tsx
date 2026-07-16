@@ -19,6 +19,7 @@ import {
 } from '../types/aerofile';
 import { FolderTree } from './FolderTree';
 import { formatBytes } from '../utils/formatters';
+import { findGvfsMtpMount } from '../utils/gvfsMtpMount';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -546,16 +547,33 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
   }, [showPortable, fetchPortableDevices]);
 
   const handleOpenPortable = useCallback(async (device: MtpDeviceInfo) => {
-    if (!onOpenPortableDevice) return;
     setOpeningPortableId(device.deviceId);
     try {
+      // gvfs-first: if the desktop already mounted this phone, browse its FUSE
+      // path. An exclusive libmtp open cannot win here, because the device
+      // grants one MTP session per physical connection and gvfs took it at plug
+      // time. Ask for the mounts now rather than reusing `volumes`, which is
+      // only populated while the Other Locations section is expanded.
+      let mounts: VolumeInfo[] = [];
+      try {
+        mounts = await invoke<VolumeInfo[]>('list_mounted_volumes');
+      } catch {
+        // No volume backend: fall through to the exclusive path.
+      }
+      const gvfsPath = findGvfsMtpMount(mounts, device);
+      if (gvfsPath) {
+        onNavigate(gvfsPath);
+        return;
+      }
+
+      if (!onOpenPortableDevice) return;
       await onOpenPortableDevice(device);
     } catch {
       // The parent records and surfaces MTP open failures.
     } finally {
       if (mountedRef.current) setOpeningPortableId(null);
     }
-  }, [onOpenPortableDevice]);
+  }, [onOpenPortableDevice, onNavigate]);
 
   const handleClosePortable = useCallback(async (deviceId: string, e: React.MouseEvent) => {
     e.stopPropagation();
