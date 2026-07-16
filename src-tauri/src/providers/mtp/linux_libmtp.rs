@@ -99,6 +99,7 @@ type LibmtpProgressFunc =
 extern "C" {
     fn LIBMTP_Init();
     fn LIBMTP_Detect_Raw_Devices(devices: *mut *mut LibmtpRawDevice, numdevs: *mut c_int) -> c_int;
+    fn LIBMTP_Open_Raw_Device(raw: *mut LibmtpRawDevice) -> *mut LibmtpMtpDevice;
     fn LIBMTP_Open_Raw_Device_Uncached(raw: *mut LibmtpRawDevice) -> *mut LibmtpMtpDevice;
     fn LIBMTP_Release_Device(device: *mut LibmtpMtpDevice);
     fn LIBMTP_Get_Storage(device: *mut LibmtpMtpDevice, sortby: c_int) -> c_int;
@@ -334,6 +335,9 @@ impl Default for LinuxLibmtpBackend {
 }
 
 /// Caller must hold `LIBMTP_LOCK`.
+///
+/// Returns owned device rows. The raw libmtp array is freed before return;
+/// only POD fields of `LibmtpRawDevice` are copied (safe for list/display).
 fn detect_raw_devices_locked(
 ) -> Result<Vec<(String, MtpDeviceInfo, LibmtpRawDevice)>, ProviderError> {
     ensure_init();
@@ -388,24 +392,64 @@ fn detect_raw_devices() -> Result<Vec<(String, MtpDeviceInfo, LibmtpRawDevice)>,
 }
 
 /// Caller must hold `LIBMTP_LOCK`.
+///
+/// Open must use a pointer into the live `Detect_Raw_Devices` allocation (same
+/// pattern as libmtp examples and our C smoke). Freeing the array before
+/// `LIBMTP_Open_Raw_Device*` can leave dangling internal pointers and yields
+/// PTP_ERROR_IO on some Sony/Android devices even when detect succeeds.
 fn open_raw_by_id_locked(device_id: &str) -> Result<(*mut LibmtpMtpDevice, String), ProviderError> {
     let (bus, devnum) = parse_device_id(device_id)?;
-    let devices = detect_raw_devices_locked()?;
-    let mut matched: Option<LibmtpRawDevice> = None;
-    for (id, _, raw) in &devices {
-        if id == device_id || (raw.bus_location == bus && raw.devnum == devnum) {
-            matched = Some(*raw);
-            break;
+    ensure_init();
+
+    let mut raw_ptr: *mut LibmtpRawDevice = ptr::null_mut();
+    let mut num: c_int = 0;
+    let rc = unsafe { LIBMTP_Detect_Raw_Devices(&mut raw_ptr, &mut num) };
+    if rc == LIBMTP_ERROR_NO_DEVICE_ATTACHED || (rc == LIBMTP_ERROR_NONE && num == 0) {
+        return Err(ProviderError::NotFound(format!(
+            "MTP device {device_id} not found (unplugged or not in file-transfer mode)"
+        )));
+    }
+    if rc != LIBMTP_ERROR_NONE {
+        return Err(map_detect_error(rc));
+    }
+    if raw_ptr.is_null() || num < 1 {
+        return Err(ProviderError::NotFound(format!(
+            "MTP device {device_id} not found (unplugged or not in file-transfer mode)"
+        )));
+    }
+
+    let mut match_idx: Option<usize> = None;
+    unsafe {
+        for i in 0..num as usize {
+            let raw = &*raw_ptr.add(i);
+            let id = raw_device_id(raw);
+            if id == device_id || (raw.bus_location == bus && raw.devnum == devnum) {
+                match_idx = Some(i);
+                break;
+            }
         }
     }
-    let mut raw = matched.ok_or_else(|| {
+    let idx = match_idx.ok_or_else(|| {
+        unsafe {
+            libc::free(raw_ptr as *mut c_void);
+        }
         ProviderError::NotFound(format!(
             "MTP device {device_id} not found (unplugged or not in file-transfer mode)"
         ))
     })?;
 
-    ensure_init();
-    let device = unsafe { LIBMTP_Open_Raw_Device_Uncached(&mut raw) };
+    let device = unsafe {
+        let raw_ref = raw_ptr.add(idx);
+        let mut dev = LIBMTP_Open_Raw_Device_Uncached(raw_ref);
+        if dev.is_null() {
+            // Cached open is a second chance used by libmtp tools after a
+            // flaky uncached session on some Android builds.
+            dev = LIBMTP_Open_Raw_Device(raw_ref);
+        }
+        // Free detect array only after open has consumed the raw entry.
+        libc::free(raw_ptr as *mut c_void);
+        dev
+    };
     if device.is_null() {
         return Err(ProviderError::ConnectionFailed(
             "failed to open MTP device (busy, unauthorized, or not in MTP mode). If a file manager has the phone open, close that window and retry.".into(),

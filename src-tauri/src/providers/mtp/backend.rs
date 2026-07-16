@@ -479,7 +479,7 @@ pub fn platform_backend() -> Box<dyn MtpBackend> {
     #[cfg(all(target_os = "linux", mtp_libmtp))]
     {
         use crate::providers::mtp::linux_libmtp::LinuxLibmtpBackend;
-        return Box::new(LinuxLibmtpBackend::new());
+        Box::new(LinuxLibmtpBackend::new())
     }
     #[cfg(windows)]
     {

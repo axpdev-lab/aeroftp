@@ -315,6 +315,7 @@ pub struct MtpBackendStatusDto {
 mod tests {
     use super::*;
     use crate::providers::mtp::backend::{FakeMtpBackend, MtpBackend};
+    use crate::providers::StorageProvider;
 
     #[tokio::test]
     async fn list_devices_command_ok() {
@@ -458,5 +459,57 @@ mod tests {
         let devices = b.list_devices().await.unwrap();
         assert_eq!(devices.len(), 1);
         assert_eq!(devices[0].device_id, "fake-phone");
+    }
+
+    /// Live USB smoke: phone in File Transfer mode + libmtp linked.
+    /// `cargo test --lib mtp_live_phone_smoke -- --ignored --nocapture`
+    #[tokio::test]
+    #[ignore = "live USB phone"]
+    async fn mtp_live_phone_smoke() {
+        assert!(
+            mtp_backend_linked(),
+            "libmtp not linked; install libmtp-dev and rebuild"
+        );
+        let devices = list_mtp_devices().await.expect("list_mtp_devices");
+        eprintln!("devices: {devices:#?}");
+        assert!(
+            !devices.is_empty(),
+            "no MTP devices; unlock phone, set File Transfer"
+        );
+        let id = devices[0].device_id.clone();
+        eprintln!("opening {} ({id})", devices[0].display_name);
+
+        let state = ProviderState::new();
+        let session = mtp_open_device_inner(&state, id.clone())
+            .await
+            .expect("mtp_open_device");
+        eprintln!("session: {session:#?}");
+        assert!(
+            !session.storages.is_empty(),
+            "no storages; unlock phone / allow USB data"
+        );
+
+        {
+            let mut lock = state.provider.lock().await;
+            let p = lock.as_mut().expect("provider");
+            let root = p.list("/").await.expect("list root");
+            eprintln!("root: {root:#?}");
+            assert!(!root.is_empty());
+            let first = &root[0];
+            if first.is_dir {
+                let kids = p.list(&first.path).await.expect("list storage");
+                eprintln!(
+                    "first 20 under {}: {:#?}",
+                    first.path,
+                    kids.iter().take(20).collect::<Vec<_>>()
+                );
+            }
+        }
+
+        mtp_close_device_inner(&state, Some(id))
+            .await
+            .expect("close");
+        assert!(state.provider.lock().await.is_none());
+        eprintln!("live smoke OK");
     }
 }
