@@ -4574,12 +4574,57 @@ interface UpdateVerificationInfo {
       setShowRemotePanel(false);
       setShowConnectionScreen(true);
       setActivePanel('local');
-      notify.info(
-        t('sidebar.portable_devices'),
-        t('sidebar.portable_disconnected', { name: connectionParams.server || deviceId }),
-      );
+      const name = connectionParams.server || deviceId;
+      // One activity line, typed DISCONNECT. Toast raised directly rather than
+      // through `notify`, which would log a second, INFO-typed copy of the same
+      // sentence.
+      humanLog.logRaw('sidebar.portable_disconnected', 'DISCONNECT', { name }, 'error');
+      if (showToastNotifications) {
+        toast.info(t('sidebar.portable_devices'), t('sidebar.portable_disconnected', { name }));
+      }
     }
-  }, [connectionParams.protocol, connectionParams.server, notify, t]);
+  }, [
+    connectionParams.protocol,
+    connectionParams.server,
+    humanLog,
+    showToastNotifications,
+    toast,
+    t,
+  ]);
+
+  // Unplug while a device session is live.
+  //
+  // PlacesSidebar also detects this, but it cannot be the only detector: while
+  // a My Servers card is connected the sidebar is not even mounted, so nothing
+  // noticed the cable leaving. The session stayed "connected" until the user
+  // touched it, and then the generic provider reconnect machinery answered with
+  // "Reconnection failed" -- retry semantics that can never work for an unplug,
+  // and no Disconnect line in the activity log.
+  //
+  // The hotplug wake (`mtp-devices-changed`, Linux uevents / Windows
+  // WM_DEVICECHANGE) already fires within a second, so listen for it here, where
+  // the session lives, and tear the session down honestly.
+  useEffect(() => {
+    if (!activePortableDeviceId) return;
+    const openDeviceId = activePortableDeviceId;
+
+    const dispose = guardedUnlisten(
+      listen<void>('mtp-devices-changed', () => {
+        void (async () => {
+          try {
+            const devices = await invoke<MtpDeviceInfo[]>('list_mtp_devices');
+            if (!devices.some((d) => d.deviceId === openDeviceId)) {
+              handlePortableDeviceClosed(openDeviceId);
+            }
+          } catch {
+            // Listing failed: say nothing rather than kill a live session on a
+            // transient backend error.
+          }
+        })();
+      }),
+    );
+    return () => dispose();
+  }, [activePortableDeviceId, handlePortableDeviceClosed]);
 
   const handleRestoreTrashItem = useCallback(async (item: TrashItem) => {
     try {
