@@ -315,16 +315,24 @@ async fn check_tls(host: &str, port: u16) -> CheckDetail {
 }
 
 /// Check if an HTTP status indicates the server is reachable.
-/// For cloud APIs, 400/404/429 mean "server is up, auth required": count as pass.
-fn is_reachable_status(status: reqwest::StatusCode, is_cloud: bool) -> bool {
+///
+/// Any well-formed HTTP response proves the server is up. A bare-root probe
+/// that answers 400/404/429 is normal for raw WebDAV/S3 endpoints that require
+/// a sub-path (404), reject the probe verb/shape (400), or rate-limit it (429),
+/// so those count as reachable too, not just for cloud APIs. Previously 400/404/
+/// 429 were reachable only when `is_cloud`, which demoted a fully-working self-
+/// hosted WebDAV/S3 root from "healthy" to "degraded" purely on a root 404.
+/// Only transport errors and 5xx (server up but erroring) fall through to
+/// "fail". CLAUDE-AV-B9-05
+fn is_reachable_status(status: reqwest::StatusCode) -> bool {
     status.is_success()
         || status.is_redirection()
         || status == reqwest::StatusCode::UNAUTHORIZED
         || status == reqwest::StatusCode::FORBIDDEN
         || status == reqwest::StatusCode::METHOD_NOT_ALLOWED
-        || (is_cloud && status == reqwest::StatusCode::BAD_REQUEST)
-        || (is_cloud && status == reqwest::StatusCode::NOT_FOUND)
-        || (is_cloud && status == reqwest::StatusCode::TOO_MANY_REQUESTS)
+        || status == reqwest::StatusCode::BAD_REQUEST
+        || status == reqwest::StatusCode::NOT_FOUND
+        || status == reqwest::StatusCode::TOO_MANY_REQUESTS
 }
 
 /// Probe HTTP endpoint. Tries HEAD first, falls back to GET if HEAD fails/times out.
@@ -353,7 +361,7 @@ async fn check_http(url: &str, is_cloud: bool) -> CheckDetail {
         Ok(resp) => {
             let elapsed = start.elapsed();
             let status = resp.status();
-            if is_reachable_status(status, is_cloud) {
+            if is_reachable_status(status) {
                 return CheckDetail {
                     name: "http_response".into(),
                     status: "pass".into(),
@@ -381,7 +389,7 @@ async fn check_http(url: &str, is_cloud: bool) -> CheckDetail {
         Ok(resp) => {
             let elapsed = get_start.elapsed();
             let status = resp.status();
-            let pass = is_reachable_status(status, is_cloud);
+            let pass = is_reachable_status(status);
             CheckDetail {
                 name: "http_response".into(),
                 status: if pass { "pass" } else { "fail" }.into(),
@@ -760,23 +768,21 @@ mod tests {
     #[test]
     fn is_reachable_status_accepts_expected_codes() {
         use reqwest::StatusCode;
-        assert!(is_reachable_status(StatusCode::OK, false));
-        assert!(is_reachable_status(StatusCode::MOVED_PERMANENTLY, false));
+        assert!(is_reachable_status(StatusCode::OK));
+        assert!(is_reachable_status(StatusCode::MOVED_PERMANENTLY));
         // Auth-required codes are still "server is up"
-        assert!(is_reachable_status(StatusCode::UNAUTHORIZED, false));
-        assert!(is_reachable_status(StatusCode::FORBIDDEN, false));
-        assert!(is_reachable_status(StatusCode::METHOD_NOT_ALLOWED, false));
-        // Cloud-only leniency for 400/404/429
-        assert!(is_reachable_status(StatusCode::BAD_REQUEST, true));
-        assert!(!is_reachable_status(StatusCode::BAD_REQUEST, false));
-        assert!(is_reachable_status(StatusCode::NOT_FOUND, true));
-        assert!(!is_reachable_status(StatusCode::NOT_FOUND, false));
-        assert!(is_reachable_status(StatusCode::TOO_MANY_REQUESTS, true));
-        // Hard 5xx: not reachable
-        assert!(!is_reachable_status(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            true
-        ));
+        assert!(is_reachable_status(StatusCode::UNAUTHORIZED));
+        assert!(is_reachable_status(StatusCode::FORBIDDEN));
+        assert!(is_reachable_status(StatusCode::METHOD_NOT_ALLOWED));
+        // CLAUDE-AV-B9-05: 400/404/429 now mean "reachable" for every protocol
+        // (a response proves the HTTP server is up), not only cloud APIs, so a
+        // raw WebDAV/S3 root that 404s is no longer scored as an http failure.
+        assert!(is_reachable_status(StatusCode::BAD_REQUEST));
+        assert!(is_reachable_status(StatusCode::NOT_FOUND));
+        assert!(is_reachable_status(StatusCode::TOO_MANY_REQUESTS));
+        // Hard 5xx: server up but erroring -> still not "reachable"
+        assert!(!is_reachable_status(StatusCode::INTERNAL_SERVER_ERROR));
+        assert!(!is_reachable_status(StatusCode::BAD_GATEWAY));
     }
 
     #[test]

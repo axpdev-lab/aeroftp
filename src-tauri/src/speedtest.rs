@@ -638,8 +638,18 @@ async fn run_speedtest_inner(
         None,
     );
 
+    // CLAUDE-AV-B9-06: the download speed must reflect bytes actually written to
+    // disk, not the intended request size. With integrity verification off, a
+    // provider that returns Ok after a short/truncated download would otherwise
+    // inflate the reported throughput (the SHA-256 check that would catch it is
+    // skipped in that mode). The upload payload is a local file of exactly
+    // `size_bytes`, so the upload figure stays keyed to the request size; only
+    // the download is stat'd, falling back to the intended size if unreadable.
+    let downloaded_bytes = std::fs::metadata(&download_target_path)
+        .map(|m| m.len())
+        .unwrap_or(request.size_bytes);
     let upload_bytes_per_sec = bytes_per_sec(request.size_bytes, upload_duration_ms);
-    let download_bytes_per_sec = bytes_per_sec(request.size_bytes, download_duration_ms);
+    let download_bytes_per_sec = bytes_per_sec(downloaded_bytes, download_duration_ms);
 
     Ok(SpeedTestResult {
         test_id,

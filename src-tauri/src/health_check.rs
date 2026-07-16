@@ -76,7 +76,14 @@ async fn check_tcp(host: &str, port: u16) -> (&'static str, u64) {
             }
         }
         Ok(Err(_)) => ("down", elapsed),
-        Err(_) => ("slow", elapsed), // connect timeout
+        // CLAUDE-AV-B9-04: a connect *timeout* means no answer at all (host
+        // down / firewalled / dropping SYNs), so it is "down", not "slow". The
+        // legitimate slow case is a connection that *succeeds* past
+        // SLOW_THRESHOLD_MS (the Ok(Ok(_)) arm above). Reporting a timeout as
+        // "slow" (amber, reachable) both misled the radial and contradicted the
+        // modal's `server_health::check_tcp`, which scores the same timeout as
+        // fatally unreachable.
+        Err(_) => ("down", elapsed), // connect timeout: no response
     }
 }
 
