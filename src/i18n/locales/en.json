@@ -4747,6 +4747,7 @@
         "dev": "Dev",
         "favorites": "Favorites",
         "localBridge": "Local bridge",
+        "mtp": "MTP",
         "paid": "Paid",
         "encrypted": "Encrypted"
       },

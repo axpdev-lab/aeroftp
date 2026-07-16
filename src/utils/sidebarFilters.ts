@@ -14,7 +14,7 @@
 import type { MyServersFilterBy } from '../types/catalog';
 
 export const QUICK_FILTER_IDS: MyServersFilterBy[] = ['all', 'favorites', 'encrypted'];
-export const PROTOCOL_FILTER_IDS: MyServersFilterBy[] = ['ftp', 's3', 'webdav', 'cloud', 'media', 'dev', 'local-bridge'];
+export const PROTOCOL_FILTER_IDS: MyServersFilterBy[] = ['ftp', 's3', 'webdav', 'cloud', 'media', 'dev', 'local-bridge', 'mtp'];
 
 /** Quick chips to show: `all` always, the rest only when their count > 0. */
 export function visibleQuickFilters(counts: Partial<Record<MyServersFilterBy, number>>): MyServersFilterBy[] {

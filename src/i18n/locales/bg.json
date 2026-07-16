@@ -4483,7 +4483,8 @@
                 "media": "Медия",
                 "localBridge": "Локален мост",
                 "paid": "Платен",
-                "encrypted": "Шифровани"
+                "encrypted": "Шифровани",
+                "mtp": "[NEEDS TRANSLATION] MTP"
             },
             "noServers": "Няма запазени сървъри",
             "noServersHint": "Започнете с бързо свързване или разгледайте каталога с услуги.",

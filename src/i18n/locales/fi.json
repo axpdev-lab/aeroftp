@@ -4483,7 +4483,8 @@
                 "media": "Media",
                 "localBridge": "Paikallinen silta",
                 "paid": "Maksullinen",
-                "encrypted": "Salatut"
+                "encrypted": "Salatut",
+                "mtp": "[NEEDS TRANSLATION] MTP"
             },
             "noServers": "Ei tallennettuja palvelimia",
             "noServersHint": "Aloita pikayhteydellä tai selaa palveluluetteloa.",

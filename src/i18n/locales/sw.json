@@ -4483,7 +4483,8 @@
                 "media": "Media",
                 "localBridge": "Daraja la ndani",
                 "paid": "Inalipiwa",
-                "encrypted": "Zilizosimbwa"
+                "encrypted": "Zilizosimbwa",
+                "mtp": "[NEEDS TRANSLATION] MTP"
             },
             "noServers": "Hakuna seva zilizohifadhiwa",
             "noServersHint": "Anza na unganisho wa haraka au chunguza katalogi ya huduma.",

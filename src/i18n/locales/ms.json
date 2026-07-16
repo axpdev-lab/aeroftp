@@ -4483,7 +4483,8 @@
                 "media": "Media",
                 "localBridge": "Jambatan tempatan",
                 "paid": "Berbayar",
-                "encrypted": "Disulitkan"
+                "encrypted": "Disulitkan",
+                "mtp": "[NEEDS TRANSLATION] MTP"
             },
             "noServers": "Tiada pelayan yang disimpan",
             "noServersHint": "Mulakan dengan sambungan pantas atau terokai katalog perkhidmatan.",

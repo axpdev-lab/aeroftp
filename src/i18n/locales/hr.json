@@ -4483,7 +4483,8 @@
                 "media": "Mediji",
                 "localBridge": "Lokalni most",
                 "paid": "Plaćeno",
-                "encrypted": "Šifrirani"
+                "encrypted": "Šifrirani",
+                "mtp": "[NEEDS TRANSLATION] MTP"
             },
             "noServers": "Nema spremljenih poslužitelja",
             "noServersHint": "Započnite s brzim povezivanjem ili pregledajte katalog usluga.",

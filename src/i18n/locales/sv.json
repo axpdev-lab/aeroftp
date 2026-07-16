@@ -4483,7 +4483,8 @@
                 "media": "Media",
                 "localBridge": "Lokal brygga",
                 "paid": "Betald",
-                "encrypted": "Krypterade"
+                "encrypted": "Krypterade",
+                "mtp": "[NEEDS TRANSLATION] MTP"
             },
             "noServers": "Inga sparade servrar",
             "noServersHint": "Börja med en snabbanslutning eller utforska tjänstekatalogen.",

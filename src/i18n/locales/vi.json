@@ -4483,7 +4483,8 @@
                 "media": "Phương tiện",
                 "localBridge": "Cầu nối cục bộ",
                 "paid": "Trả phí",
-                "encrypted": "Đã mã hóa"
+                "encrypted": "Đã mã hóa",
+                "mtp": "[NEEDS TRANSLATION] MTP"
             },
             "noServers": "Không có máy chủ đã lưu",
             "noServersHint": "Bắt đầu với kết nối nhanh hoặc khám phá danh mục dịch vụ.",

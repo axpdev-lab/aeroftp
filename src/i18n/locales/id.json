@@ -4483,7 +4483,8 @@
                 "media": "Media",
                 "localBridge": "Jembatan lokal",
                 "paid": "Berbayar",
-                "encrypted": "Terenkripsi"
+                "encrypted": "Terenkripsi",
+                "mtp": "[NEEDS TRANSLATION] MTP"
             },
             "noServers": "Tidak ada server tersimpan",
             "noServersHint": "Mulai dengan sambungan cepat atau jelajahi katalog layanan.",

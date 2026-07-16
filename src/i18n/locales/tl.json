@@ -4502,7 +4502,8 @@
                 "media": "Media",
                 "localBridge": "Lokal na tulay",
                 "paid": "Bayad",
-                "encrypted": "Naka-encrypt"
+                "encrypted": "Naka-encrypt",
+                "mtp": "[NEEDS TRANSLATION] MTP"
             },
             "noServers": "Walang naka-save na mga server",
             "noServersHint": "Magsimula sa mabilis na koneksyon o tuklasin ang katalogo ng serbisyo.",

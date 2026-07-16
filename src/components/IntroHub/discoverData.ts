@@ -79,6 +79,19 @@ const MEDIA_SERVICES: DiscoverItem[] = [
 const PROTOCOL_ITEMS: DiscoverItem[] = [
     { id: 'ftp-generic', name: 'FTP / FTPS', description: 'File Transfer Protocol (plain or TLS)', protocol: 'ftp', badge: 'TLS', isGeneric: true, source: 'protocol' },
     { id: 'sftp-generic', name: 'SFTP', description: 'SSH File Transfer', protocol: 'sftp', badge: 'SSH', isGeneric: true, source: 'protocol' },
+    // Portable MTP framed as a first-class protocol (with P2P / FTP / SFTP), not
+    // a one-item "Devices" catalog category. APPENDIX-DEVICE-PROFILES.
+    {
+        id: 'mtp-portable',
+        name: 'Portable device (MTP)',
+        description: 'Phone, camera, or tablet over USB MTP',
+        protocol: 'mtp',
+        providerId: 'mtp-portable',
+        badge: 'MTP',
+        isGeneric: true,
+        source: 'protocol',
+        searchAliases: ['phone', 'android', 'camera', 'wpd', 'usb', 'mtp', 'tablet', 'xperia'],
+    },
     { id: 'rebex-ftp-demo', name: 'Rebex FTP Demo', description: 'Public read-only FTP test server', protocol: 'ftp', badge: 'DEMO', healthCheckUrl: 'https://test.rebex.net', source: 'protocol', demo: { server: 'test.rebex.net', port: 21, username: 'demo', password: 'password' } },
     { id: 'rebex-sftp-demo', name: 'Rebex SFTP Demo', description: 'Public read-only SFTP test server', protocol: 'sftp', badge: 'DEMO', healthCheckUrl: 'https://test.rebex.net', source: 'protocol', demo: { server: 'test.rebex.net', port: 22, username: 'demo', password: 'password' } },
 ];
@@ -91,20 +104,6 @@ const OBJECT_STORAGE_ITEMS: DiscoverItem[] = [
 const DEVELOPER_ITEMS: DiscoverItem[] = [
     { id: 'github', name: 'GitHub', description: 'Repository file system', protocol: 'github', badge: 'API', healthCheckUrl: 'https://api.github.com', source: 'protocol' },
     { id: 'gitlab', name: 'GitLab', description: 'Repository & CI/CD platform', protocol: 'gitlab', badge: 'API', healthCheckUrl: 'https://gitlab.com', source: 'protocol' },
-];
-
-/** Portable devices (USB MTP/WPD). APPENDIX-DEVICE-PROFILES Phase 2. */
-const DEVICE_ITEMS: DiscoverItem[] = [
-    {
-        id: 'mtp-portable',
-        name: 'Portable device (MTP)',
-        description: 'Phone, camera, or tablet over USB MTP',
-        protocol: 'mtp',
-        providerId: 'mtp-portable',
-        badge: 'USB',
-        source: 'protocol',
-        searchAliases: ['phone', 'android', 'camera', 'wpd', 'usb', 'mtp', 'tablet'],
-    },
 ];
 
 /** Reachability probe URL per cloud protocol. Used by My Servers cards to
@@ -310,7 +309,8 @@ export function buildDiscoverCategories(): DiscoverCategory[] {
         ? [{ ...sfInRegistry, description: 'Open source hosting' }, ...DEVELOPER_ITEMS]
         : [...DEVELOPER_ITEMS];
 
-    // Build protocol items: generics first, then Hetzner, then demos last
+    // Build protocol items: generics (incl. MTP) first, then Hetzner, then demos last.
+    // No separate Devices category: one MTP connector belongs with Protocols.
     const hetzner = ftpProviders.find(p => p.id === 'hetzner-storage-box');
     const protoItems = [
         ...PROTOCOL_ITEMS.filter(p => !p.demo),
@@ -360,13 +360,6 @@ export function buildDiscoverCategories(): DiscoverCategory[] {
             icon: 'Code',
             count: devItems.length,
             items: devItems,
-        },
-        {
-            id: 'devices',
-            labelKey: 'introHub.category.devices',
-            icon: 'Smartphone',
-            count: DEVICE_ITEMS.length,
-            items: DEVICE_ITEMS,
         },
     ];
 

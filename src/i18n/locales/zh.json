@@ -4483,7 +4483,8 @@
                 "media": "媒体",
                 "localBridge": "本地桥接",
                 "paid": "付费",
-                "encrypted": "已加密"
+                "encrypted": "已加密",
+                "mtp": "[NEEDS TRANSLATION] MTP"
             },
             "noServers": "没有保存的服务器",
             "noServersHint": "从快速连接开始或浏览服务目录。",

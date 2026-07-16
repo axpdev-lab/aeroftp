@@ -4483,7 +4483,8 @@
                 "media": "Medya",
                 "localBridge": "Yerel köprü",
                 "paid": "Ücretli",
-                "encrypted": "Şifreli"
+                "encrypted": "Şifreli",
+                "mtp": "[NEEDS TRANSLATION] MTP"
             },
             "noServers": "Kayıtlı sunucu yok",
             "noServersHint": "Hızlı bağlantı ile başlayın veya hizmet kataloğunu keşfedin.",

@@ -4483,7 +4483,8 @@
                 "media": "Media",
                 "localBridge": "Mostek lokalny",
                 "paid": "Płatny",
-                "encrypted": "Zaszyfrowane"
+                "encrypted": "Zaszyfrowane",
+                "mtp": "[NEEDS TRANSLATION] MTP"
             },
             "noServers": "Brak zapisanych serwerów",
             "noServersHint": "Zacznij od szybkiego połączenia lub przeglądaj katalog usług.",

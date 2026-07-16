@@ -4502,7 +4502,8 @@
                 "media": "Multimedia",
                 "localBridge": "Ponte local",
                 "paid": "De pago",
-                "encrypted": "Cifrados"
+                "encrypted": "Cifrados",
+                "mtp": "[NEEDS TRANSLATION] MTP"
             },
             "noServers": "Non hai servidores gardados",
             "noServersHint": "Comece cunha conexión rápida ou explore o catálogo de servizos.",

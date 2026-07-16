@@ -4502,7 +4502,8 @@
                 "media": "Medier",
                 "localBridge": "Lokal bro",
                 "paid": "Betalt",
-                "encrypted": "Kryptert"
+                "encrypted": "Kryptert",
+                "mtp": "[NEEDS TRANSLATION] MTP"
             },
             "noServers": "Ingen lagrede servere",
             "noServersHint": "Start med en hurtigtilkobling eller utforsk tjenestekatalogen.",

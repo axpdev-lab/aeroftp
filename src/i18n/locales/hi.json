@@ -4483,7 +4483,8 @@
                 "media": "मीडिया",
                 "localBridge": "लोकल ब्रिज",
                 "paid": "सशुल्क",
-                "encrypted": "एन्क्रिप्टेड"
+                "encrypted": "एन्क्रिप्टेड",
+                "mtp": "[NEEDS TRANSLATION] MTP"
             },
             "noServers": "कोई सहेजे गए सर्वर नहीं",
             "noServersHint": "त्वरित कनेक्शन से शुरू करें या सेवा कैटलॉग ब्राउज़ करें।",

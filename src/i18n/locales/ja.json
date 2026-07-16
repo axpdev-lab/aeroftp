@@ -4483,7 +4483,8 @@
                 "media": "メディア",
                 "localBridge": "ローカルブリッジ",
                 "paid": "有料",
-                "encrypted": "暗号化"
+                "encrypted": "暗号化",
+                "mtp": "[NEEDS TRANSLATION] MTP"
             },
             "noServers": "保存済みサーバーはありません",
             "noServersHint": "クイック接続で始めるか、サービスカタログを探索してください。",

@@ -25,4 +25,8 @@ describe('visibleProtocolFilters', () => {
     it('keeps only the non-empty protocol chips in canonical order', () => {
         expect(visibleProtocolFilters({ ftp: 2, webdav: 0, cloud: 5 })).toEqual(['ftp', 'cloud']);
     });
+
+    it('shows mtp when at least one device profile exists', () => {
+        expect(visibleProtocolFilters({ mtp: 1, ftp: 2 })).toEqual(['ftp', 'mtp']);
+    });
 });

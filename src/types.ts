@@ -84,11 +84,11 @@ export const isAeroCloudProvider = (type: ProviderType): boolean => {
   return type === "aerocloud";
 };
 
-// Protocol class label shown on My Servers tiles (OAuth / API / WebDAV / E2E / FTP / SFTP / S3 / Azure)
+// Protocol class label shown on My Servers tiles (OAuth / API / WebDAV / E2E / FTP / SFTP / S3 / Azure / MTP)
 // "Crypt" is a profile-level class (not a transport): a saved profile with an
 // enabled crypt overlay reads as "Crypt" regardless of its backend. See
 // getProfileProtocolClass.
-export type ProtocolClass = "OAuth" | "API" | "WebDAV" | "E2E" | "FTP" | "FTPS" | "SFTP" | "S3" | "Azure" | "AeroCloud" | "Crypt";
+export type ProtocolClass = "OAuth" | "API" | "WebDAV" | "E2E" | "FTP" | "FTPS" | "SFTP" | "S3" | "Azure" | "AeroCloud" | "Crypt" | "MTP";
 
 export const getProtocolClass = (type: ProviderType): ProtocolClass => {
   if (isOAuthProvider(type) || isFourSharedProvider(type)) return "OAuth";
@@ -100,6 +100,8 @@ export const getProtocolClass = (type: ProviderType): ProtocolClass => {
   if (type === "sftp") return "SFTP";
   if (type === "s3") return "S3";
   if (type === "azure") return "Azure";
+  // Portable USB MTP/WPD (not an HTTP "API" cloud).
+  if (type === "mtp") return "MTP";
   // Native API providers (Koofr, Jottacloud, OpenDrive, kDrive, Drime, FileLu, Yandex, GitHub, GitLab, Swift, Immich)
   return "API";
 };

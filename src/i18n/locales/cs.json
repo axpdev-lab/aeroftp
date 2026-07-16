@@ -4483,7 +4483,8 @@
                 "media": "Média",
                 "localBridge": "Místní most",
                 "paid": "Placené",
-                "encrypted": "Šifrované"
+                "encrypted": "Šifrované",
+                "mtp": "[NEEDS TRANSLATION] MTP"
             },
             "noServers": "Žádné uložené servery",
             "noServersHint": "Začněte rychlým připojením nebo prozkoumejte katalog služeb.",

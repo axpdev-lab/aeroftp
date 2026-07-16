@@ -4483,7 +4483,8 @@
                 "media": "Media",
                 "localBridge": "Lokale brug",
                 "paid": "Betaald",
-                "encrypted": "Versleuteld"
+                "encrypted": "Versleuteld",
+                "mtp": "[NEEDS TRANSLATION] MTP"
             },
             "noServers": "Geen opgeslagen servers",
             "noServersHint": "Begin met een snelle verbinding of verken de servicecatalogus.",

@@ -4483,7 +4483,8 @@
                 "media": "মিডিয়া",
                 "localBridge": "লোকাল ব্রিজ",
                 "paid": "পেইড",
-                "encrypted": "এনক্রিপ্টেড"
+                "encrypted": "এনক্রিপ্টেড",
+                "mtp": "[NEEDS TRANSLATION] MTP"
             },
             "noServers": "কোনো সংরক্ষিত সার্ভার নেই",
             "noServersHint": "দ্রুত সংযোগ দিয়ে শুরু করুন বা সেবা ক্যাটালগ ব্রাউজ করুন।",

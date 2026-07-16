@@ -4483,7 +4483,8 @@
                 "media": "Multivide",
                 "localBridge": "Lokāls tilts",
                 "paid": "Maksas",
-                "encrypted": "Šifrēti"
+                "encrypted": "Šifrēti",
+                "mtp": "[NEEDS TRANSLATION] MTP"
             },
             "noServers": "Nav saglabātu serveru",
             "noServersHint": "Sāciet ar ātro savienojumu vai pārlūkojiet pakalpojumu katalogu.",

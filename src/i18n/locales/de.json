@@ -4483,7 +4483,8 @@
                 "media": "Medien",
                 "localBridge": "Lokale Brücke",
                 "paid": "Kostenpflichtig",
-                "encrypted": "Verschlüsselt"
+                "encrypted": "Verschlüsselt",
+                "mtp": "[NEEDS TRANSLATION] MTP"
             },
             "noServers": "Keine gespeicherten Server",
             "noServersHint": "Starten Sie mit einer Schnellverbindung oder erkunden Sie den Dienstkatalog.",

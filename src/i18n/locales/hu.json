@@ -4483,7 +4483,8 @@
                 "media": "Média",
                 "localBridge": "Helyi híd",
                 "paid": "Fizetős",
-                "encrypted": "Titkosított"
+                "encrypted": "Titkosított",
+                "mtp": "[NEEDS TRANSLATION] MTP"
             },
             "noServers": "Nincsenek mentett szerverek",
             "noServersHint": "Kezdjen egy gyors csatlakozással, vagy böngéssze a szolgáltatáskatalógust.",

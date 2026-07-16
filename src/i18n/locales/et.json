@@ -4483,7 +4483,8 @@
                 "media": "Meedia",
                 "localBridge": "Kohalik sild",
                 "paid": "Tasuline",
-                "encrypted": "Krüpteeritud"
+                "encrypted": "Krüpteeritud",
+                "mtp": "[NEEDS TRANSLATION] MTP"
             },
             "noServers": "Salvestatud serverid puuduvad",
             "noServersHint": "Alustage kiirühendusega või sirvige teenuste kataloogi.",

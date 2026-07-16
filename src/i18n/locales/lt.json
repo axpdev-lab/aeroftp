@@ -4483,7 +4483,8 @@
                 "media": "Medija",
                 "localBridge": "Vietinis tiltas",
                 "paid": "Mokama",
-                "encrypted": "Šifruoti"
+                "encrypted": "Šifruoti",
+                "mtp": "[NEEDS TRANSLATION] MTP"
             },
             "noServers": "Nėra išsaugotų serverių",
             "noServersHint": "Pradėkite su greitu prisijungimu arba naršykite paslaugų katalogą.",

@@ -4483,7 +4483,8 @@
                 "media": "Media",
                 "localBridge": "Punte locală",
                 "paid": "Plătit",
-                "encrypted": "Criptate"
+                "encrypted": "Criptate",
+                "mtp": "[NEEDS TRANSLATION] MTP"
             },
             "noServers": "Niciun server salvat",
             "noServersHint": "Începe cu o conectare rapidă sau explorează catalogul de servicii.",

@@ -4483,7 +4483,8 @@
                 "media": "Multimedia",
                 "localBridge": "Puente local",
                 "paid": "De pago",
-                "encrypted": "Cifrados"
+                "encrypted": "Cifrados",
+                "mtp": "[NEEDS TRANSLATION] MTP"
             },
             "noServers": "No hay servidores guardados",
             "noServersHint": "Comience con una conexión rápida o explore el catálogo de servicios.",

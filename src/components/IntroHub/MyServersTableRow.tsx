@@ -331,11 +331,11 @@ export const MyServersTableRow = React.memo(function MyServersTableRow({
                                     <AlertTriangle size={9} strokeWidth={2.75} />
                                 </span>
                             )}
-                            {isMtpDevice && deviceAttached && (
+                            {isMtpDevice && (
                                 <span
-                                    className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full ring-2 ring-white dark:ring-gray-800 pointer-events-none bg-green-500 ${
-                                        hasActiveSession ? 'animate-pulse' : ''
-                                    }`}
+                                    className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full ring-2 ring-white dark:ring-gray-800 pointer-events-none ${
+                                        deviceAttached ? 'bg-green-500' : 'bg-red-500'
+                                    } ${hasActiveSession && deviceAttached ? 'animate-pulse' : ''}`}
                                     title={radialTitle}
                                     aria-label={radialTitle}
                                     data-testid="server-row-device-attached"
@@ -428,7 +428,7 @@ export const MyServersTableRow = React.memo(function MyServersTableRow({
                             {isMtpDevice ? (
                                 <span
                                     className={`inline-block w-3.5 h-3.5 rounded-full ring-2 ring-white dark:ring-gray-800 ${
-                                        deviceAttached ? 'bg-green-500' : 'bg-gray-400'
+                                        deviceAttached ? 'bg-green-500' : 'bg-red-500'
                                     } ${hasActiveSession && deviceAttached ? 'animate-pulse' : ''}`}
                                     title={radialTitle}
                                     aria-label={radialTitle}

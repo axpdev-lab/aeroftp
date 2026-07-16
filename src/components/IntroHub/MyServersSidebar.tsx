@@ -2,6 +2,7 @@ import * as React from 'react';
 import {
     Search, X, Star, ShieldCheck, Server, Globe, Database, Cloud, Image, Code,
     HardDrive, Folder, FolderPlus, PanelLeftClose, PanelLeftOpen, ArrowLeftRight, Activity, Share2,
+    Smartphone,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useTranslation } from '../../i18n';
@@ -21,6 +22,7 @@ const FILTER_ICON: Record<MyServersFilterBy, LucideIcon> = {
     media: Image,
     dev: Code,
     'local-bridge': HardDrive,
+    mtp: Smartphone,
     peer: Share2,
 };
 
