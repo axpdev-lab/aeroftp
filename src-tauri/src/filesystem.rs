@@ -2003,8 +2003,31 @@ pub fn volumes_changed() -> bool {
     }
 }
 
-/// Non-Linux platforms always report changed (fall back to regular polling).
-#[cfg(not(target_os = "linux"))]
+/// Cached logical drive bitmask from the last `volumes_changed` call on Windows.
+/// Bit N set means drive letter `'A' + N` is present (`GetLogicalDrives`).
+#[cfg(target_os = "windows")]
+static LAST_DRIVE_MASK: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+
+/// Returns true if the set of logical drive letters changed since the last call.
+///
+/// Compares the `GetLogicalDrives` bitmask (cheap kernel query) so the 30s frontend
+/// poll only triggers a full volume refresh when a drive was inserted or removed.
+/// Label renames without a mask change are rare and are still covered by the
+/// real-time `WM_DEVICECHANGE` watcher emit and the focus-refetch safety net.
+/// First call with a non-zero mask reports changed (same pattern as Linux hash at 0).
+#[cfg(target_os = "windows")]
+#[tauri::command]
+pub fn volumes_changed() -> bool {
+    use std::sync::atomic::Ordering;
+    use windows::Win32::Storage::FileSystem::GetLogicalDrives;
+
+    let mask = unsafe { GetLogicalDrives() };
+    let last = LAST_DRIVE_MASK.swap(mask, Ordering::SeqCst);
+    last != mask
+}
+
+/// Non-Linux, non-Windows platforms always report changed (poll full refresh).
+#[cfg(not(any(target_os = "linux", target_os = "windows")))]
 #[tauri::command]
 pub fn volumes_changed() -> bool {
     true
