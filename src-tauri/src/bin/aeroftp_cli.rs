@@ -24586,12 +24586,10 @@ async fn connect_mtp_device_profile(
         .find(|d| d.device_id == device_id)
         .map(|d| d.display_name.as_str())
         .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| {
-            if host_label.is_empty() {
-                name
-            } else {
-                host_label
-            }
+        .unwrap_or(if host_label.is_empty() {
+            name
+        } else {
+            host_label
         });
 
     let preset_suffix = profile

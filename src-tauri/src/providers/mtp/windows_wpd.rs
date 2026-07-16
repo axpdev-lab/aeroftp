@@ -814,6 +814,21 @@ struct Inner {
     display_name: Option<String>,
 }
 
+// SAFETY: `device` is created from `PortableDeviceFTM` (see `open_device`), the
+// free-threaded-marshaler form of the WPD device object. Aggregating the FTM is
+// exactly Microsoft's contract for calling an interface pointer directly from
+// any thread in the process, with no proxy and no marshalling, which is the
+// guarantee `Send` asks for. Every entry point also initialises COM as MTA on
+// whatever thread it lands on (`ComGuard`), and `Inner` is only ever reached
+// through the `Mutex`, so the pointer is never used concurrently.
+//
+// Rust cannot infer this: `IPortableDevice` wraps `IUnknown(NonNull<c_void>)`,
+// which is `!Send` for the general COM case (an apartment-bound object really
+// would need marshalling). The FTM choice above is what makes the assertion
+// sound here, so keep them together: switching back to the plain
+// `PortableDevice` CLSID would invalidate this impl.
+unsafe impl Send for Inner {}
+
 /// WPD-backed [`MtpBackend`] for Windows.
 pub struct WindowsWpdBackend {
     inner: Arc<Mutex<Inner>>,
