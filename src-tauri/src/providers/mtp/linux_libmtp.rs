@@ -283,7 +283,9 @@ fn is_gvfs_mtp_mount_name(name: &str) -> bool {
 /// 2. unmount any remaining `/run/user/<uid>/gvfs/mtp:*` entries
 /// 3. SIGTERM `gvfsd-mtp` workers **and** `gvfs-mtp-volume-monitor` (the monitor
 ///    respawns workers and re-claims mid-open if left alive)
-/// 4. optional `fuser -k` on the USB node when `device_id` is known
+/// 4. SIGTERM other holders of the USB node when `device_id` is known (never self)
+/// 5. Poll briefly: if gvfs reclaims or holders reappear, re-release once more
+/// 6. Settle so libusb sees a free interface before open
 ///
 /// After AeroFTP disconnects, gvfs is free to dbus-activate again and quietly
 /// re-automount for Nautilus. That is expected.
@@ -291,6 +293,35 @@ fn is_gvfs_mtp_mount_name(name: &str) -> bool {
 /// Best-effort: missing `gio` or permission errors are ignored so open can still
 /// try (and surface a clear busy error if another client remains).
 fn release_gvfs_mtp_claim(device_id: Option<&str>) {
+    release_gvfs_mtp_claim_once(device_id);
+
+    // Volume monitor can dbus-activate and re-claim within a few hundred ms.
+    // Poll holders and re-release if gvfs comes back before we open.
+    let parsed = device_id.and_then(|id| parse_device_id(id).ok());
+    for _ in 0..6 {
+        std::thread::sleep(std::time::Duration::from_millis(150));
+        let gvfs_back = gvfs_mtp_processes_present();
+        let foreign = parsed
+            .map(|(bus, dev)| usb_node_has_foreign_holders(bus, dev))
+            .unwrap_or(false);
+        if !gvfs_back && !foreign {
+            break;
+        }
+        tracing::info!(
+            target: "mtp",
+            gvfs_back,
+            foreign_holders = foreign,
+            "MTP soft-release: gvfs/holders returned; releasing again"
+        );
+        release_gvfs_mtp_claim_once(device_id);
+    }
+
+    // Final settle: Sony/Android often needs >400ms after gvfs dies before
+    // Open_Raw succeeds; shorter windows yield PTP_ERROR_IO + libmtp USB reset.
+    std::thread::sleep(std::time::Duration::from_millis(700));
+}
+
+fn release_gvfs_mtp_claim_once(device_id: Option<&str>) {
     // Scheme unmount covers ShadowMounts even when no FUSE dir is visible yet.
     for scheme in ["mtp", "gphoto2"] {
         let _ = std::process::Command::new("gio")
@@ -316,21 +347,43 @@ fn release_gvfs_mtp_claim(device_id: Option<&str>) {
     }
 
     // Workers hold libusb; the volume monitor restarts them and races open.
-    terminate_processes_matching(&["gvfsd-mtp", "gvfs-mtp-volume-monitor"]);
+    // Match by executable basename only (never full cmdline substring: a shell
+    // script that mentions gvfsd-mtp must not be SIGTERM'd).
+    terminate_gvfs_mtp_processes();
 
     if let Some(id) = device_id {
         if let Ok((bus, devnum)) = parse_device_id(id) {
             force_release_usb_node(bus, devnum);
         }
     }
-
-    // Brief settle so libusb sees the released interface before open.
-    std::thread::sleep(std::time::Duration::from_millis(400));
 }
 
-/// SIGTERM user-session processes whose cmdline contains any of `needles`.
-/// Skips self / cargo / aeroftp so a release never shoots the app.
-fn terminate_processes_matching(needles: &[&str]) {
+const GVFS_MTP_PROCESS_NAMES: &[&str] = &["gvfsd-mtp", "gvfs-mtp-volume-monitor"];
+
+/// True if a gvfs MTP worker or volume monitor is running in this user session.
+fn gvfs_mtp_processes_present() -> bool {
+    let Ok(proc) = std::fs::read_dir("/proc") else {
+        return false;
+    };
+    let self_pid = std::process::id() as i32;
+    for entry in proc.flatten() {
+        let pid: i32 = match entry.file_name().to_string_lossy().parse() {
+            Ok(p) => p,
+            Err(_) => continue,
+        };
+        if pid <= 1 || pid == self_pid {
+            continue;
+        }
+        if process_exe_basename_matches(pid, GVFS_MTP_PROCESS_NAMES) {
+            return true;
+        }
+    }
+    false
+}
+
+/// SIGTERM gvfs MTP worker + volume monitor by executable basename.
+/// Skips self so a release never shoots the app or its test harness.
+fn terminate_gvfs_mtp_processes() {
     let Ok(proc) = std::fs::read_dir("/proc") else {
         return;
     };
@@ -343,22 +396,7 @@ fn terminate_processes_matching(needles: &[&str]) {
         if pid <= 1 || pid == self_pid {
             continue;
         }
-        let cmdline_path = entry.path().join("cmdline");
-        let Ok(raw) = std::fs::read(&cmdline_path) else {
-            continue;
-        };
-        // /proc/pid/cmdline is NUL-separated.
-        let joined = raw
-            .split(|b| *b == 0)
-            .filter(|s| !s.is_empty())
-            .map(|s| String::from_utf8_lossy(s).into_owned())
-            .collect::<Vec<_>>()
-            .join(" ");
-        if !needles.iter().any(|n| joined.contains(n)) {
-            continue;
-        }
-        // Never match our own process tree tooling by accident.
-        if joined.contains("cargo") || joined.contains("aeroftp") {
+        if !process_exe_basename_matches(pid, GVFS_MTP_PROCESS_NAMES) {
             continue;
         }
         unsafe {
@@ -367,10 +405,36 @@ fn terminate_processes_matching(needles: &[&str]) {
         tracing::info!(
             target: "mtp",
             pid,
-            cmd = %joined,
-            "released system MTP claim: SIGTERM"
+            "released system MTP claim: SIGTERM gvfs process"
         );
     }
+}
+
+/// Match `/proc/<pid>/exe` basename (or first argv token) against `names`.
+fn process_exe_basename_matches(pid: i32, names: &[&str]) -> bool {
+    let proc_dir = std::path::PathBuf::from(format!("/proc/{pid}"));
+    // Prefer exe symlink: stable even when argv0 is a short name.
+    if let Ok(link) = std::fs::read_link(proc_dir.join("exe")) {
+        if let Some(base) = link.file_name().and_then(|s| s.to_str()) {
+            if names.contains(&base) {
+                return true;
+            }
+        }
+    }
+    let Ok(raw) = std::fs::read(proc_dir.join("cmdline")) else {
+        return false;
+    };
+    let first = raw.split(|b| *b == 0).find(|s| !s.is_empty());
+    let Some(first) = first else {
+        return false;
+    };
+    let arg0 = String::from_utf8_lossy(first);
+    let arg0_str: &str = arg0.as_ref();
+    let base = std::path::Path::new(arg0_str)
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or(arg0_str);
+    names.contains(&base)
 }
 
 /// Best-effort: SIGTERM other processes still holding the USB device node.
@@ -405,6 +469,24 @@ fn force_release_usb_node(bus: u32, devnum: u8) {
             "released system MTP claim: SIGTERM USB node holder"
         );
     }
+}
+
+/// True if any process other than self holds `/dev/bus/usb/BBB/DDD`.
+fn usb_node_has_foreign_holders(bus: u32, devnum: u8) -> bool {
+    let node = format!("/dev/bus/usb/{bus:03}/{devnum:03}");
+    if !std::path::Path::new(&node).exists() {
+        return false;
+    }
+    let Ok(output) = std::process::Command::new("fuser").arg(&node).output() else {
+        return false;
+    };
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let self_pid = std::process::id();
+    stdout.split_whitespace().any(|tok| {
+        tok.parse::<u32>()
+            .map(|pid| pid != 0 && pid != self_pid)
+            .unwrap_or(false)
+    })
 }
 
 fn parse_handle(handle: &str) -> Result<u32, ProviderError> {
@@ -1190,6 +1272,19 @@ mod tests {
         assert!(!is_busy_connection_error(&ProviderError::NotFound(
             "no device".into()
         )));
+    }
+
+    #[test]
+    fn process_exe_basename_match_is_exact_not_cmdline_substring() {
+        // Self is never a gvfs MTP binary; basename match must not false-positive
+        // on processes whose cmdline merely *mentions* those names.
+        let self_pid = std::process::id() as i32;
+        assert!(!process_exe_basename_matches(
+            self_pid,
+            GVFS_MTP_PROCESS_NAMES
+        ));
+        // PID 1 exists and is not gvfsd-mtp on a normal Linux host.
+        assert!(!process_exe_basename_matches(1, GVFS_MTP_PROCESS_NAMES));
     }
 
     #[tokio::test]
