@@ -111,6 +111,9 @@ pub struct SessionStats {
     pub bytes_received: u64,
     pub literal_bytes: u64,
     pub matched_bytes: u64,
+    /// Number of baseline blocks reused by decoded or emitted CopyRun
+    /// operations during this session.
+    pub copy_blocks: u64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

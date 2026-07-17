@@ -233,7 +233,7 @@ reed-solomon-erasure = "=6.0.0"
 # aerorsync: XXH3-128 file-level checksum trailer (S8j). Provides
 # `xxhash_rust::xxh3::xxh3_128` used by the driver to compute the file
 # checksum rsync verifies at the end of a delta stream.
-xxhash-rust = { version = "0.8", features = ["xxh3"], optional = true }
+xxhash-rust = { version = "0.8", features = ["xxh3", "xxh64"], optional = true }
 
 # Local speech-to-text: excluded on macOS (WKWebView has native Web Speech API)
 # and gated behind the `local-stt` feature on Linux/Windows. The feature is

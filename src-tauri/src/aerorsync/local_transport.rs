@@ -188,6 +188,7 @@ impl LocalDeltaTransport {
             total_size,
             speedup,
             duration_ms,
+            copy_blocks: 0,
             warnings: Vec::new(),
         })
     }

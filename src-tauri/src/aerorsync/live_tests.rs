@@ -37,6 +37,18 @@ fn make_payload(size: usize) -> Vec<u8> {
     (0..size).map(|index| (index % 251) as u8).collect()
 }
 
+fn make_incompressible_payload(size: usize, seed: u64) -> Vec<u8> {
+    let mut state = seed;
+    (0..size)
+        .map(|_| {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            state as u8
+        })
+        .collect()
+}
+
 fn mutate_payload(basis: &[u8], offset: usize, patch: &[u8]) -> Vec<u8> {
     let mut out = basis.to_vec();
     let end = offset + patch.len();
@@ -394,6 +406,26 @@ fn real_rsync_delta_download_inputs(
     (transport, remote, local, expected)
 }
 
+fn real_rsync_delta_upload_inputs() -> (AerorsyncDeltaTransport, String, PathBuf, PathBuf) {
+    let mut ssh = base_config_with_prefix("RSNP_TEST_REAL");
+    ssh.probe_request = RemoteExecRequest {
+        program: "rsync".to_string(),
+        args: vec!["--version".to_string()],
+        environment: Vec::new(),
+    };
+    let transport = AerorsyncDeltaTransport::new(ssh, 0);
+    let remote = env::var("RSNP_TEST_REAL_REMOTE_UPLOAD_TARGET")
+        .expect("RSNP_TEST_REAL_REMOTE_UPLOAD_TARGET must point at the remote file");
+    let workspace =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/aerorsync/capture/workspace/real");
+    (
+        transport,
+        remote,
+        workspace.join("local/upload.bin"),
+        workspace.join("upload/target.bin"),
+    )
+}
+
 /// Production wire path against stock rsync (B3-12 / B3-15 xxh128 path).
 ///
 /// Unlike the RSNP `SessionDriver` lane above, this drives
@@ -513,6 +545,18 @@ async fn live_real_rsync_native_download_completes_for_xxh64_and_xxh3_peers() {
         return;
     }
 
+    let workspace =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/aerorsync/capture/workspace/real");
+    let remote_bind = workspace.join("download/target.bin");
+    let expected_path = env_path("RSNP_TEST_REAL_EXPECT_DOWNLOAD_FILE");
+    let baseline = make_incompressible_payload(1024 * 1024, 0xA11C_E55A_55E5_1A11);
+    let mut expected_bytes = baseline.clone();
+    for byte in &mut expected_bytes[512 * 1024..512 * 1024 + 4096] {
+        *byte ^= 0x5A;
+    }
+    write_bytes(&remote_bind, &expected_bytes);
+    write_bytes(&expected_path, &expected_bytes);
+
     for algorithm in ["xxh64", "xxh3"] {
         let (transport, remote, local, expected) =
             real_rsync_delta_download_inputs("RSNP_TEST_REAL_LOCAL_DOWNLOAD_FILE");
@@ -524,10 +568,7 @@ async fn live_real_rsync_native_download_completes_for_xxh64_and_xxh3_peers() {
         // Each successful download replaces the baseline with the remote
         // bytes. Reintroduce one deterministic difference before every run
         // so both algorithms exercise the transfer path independently.
-        let mut baseline = expected.clone();
-        let midpoint = baseline.len() / 2;
-        baseline[midpoint] ^= 0xFF;
-        fs::write(&local, baseline).expect("reseed local baseline");
+        fs::write(&local, &baseline).expect("reseed local baseline");
 
         // SAFETY: ignored live test, documented and invoked with one test
         // thread. Clear the override before asserting on the result.
@@ -549,12 +590,77 @@ async fn live_real_rsync_native_download_completes_for_xxh64_and_xxh3_peers() {
         );
         assert_eq!(stats.total_size, expected.len() as u64);
         eprintln!(
-            "live real-rsync native download ({algorithm}): total_size={} bytes_sent={} bytes_received={} speedup={:.2} duration_ms={}",
+            "live real-rsync native download ({algorithm}): total_size={} bytes_sent={} bytes_received={} copy_blocks={} speedup={:.2} duration_ms={}",
             stats.total_size,
             stats.bytes_sent,
             stats.bytes_received,
+            stats.copy_blocks,
             stats.speedup,
             stats.duration_ms
+        );
+        assert!(
+            stats.copy_blocks > 0,
+            "{algorithm} download must decode at least one CopyRun block"
+        );
+    }
+}
+
+/// Production upload path against stock rsync 3.2.7 with each 8-byte
+/// checksum winner forced in turn. The baseline is deterministic
+/// pseudo-random data with one localised edit, so compressed literals
+/// cannot masquerade as delta reuse.
+#[tokio::test]
+#[ignore = "requires the Docker real-rsync SSH fixture + xxh64/xxh3 overrides"]
+async fn live_real_rsync_native_upload_completes_for_xxh64_and_xxh3_peers() {
+    if env::var("RSNP_TEST_REAL_SSH_KEY").is_err() {
+        eprintln!("skipping: RSNP_TEST_REAL_SSH_KEY not set (real-rsync lane inactive)");
+        return;
+    }
+
+    let algorithms = env::var("RSNP_TEST_ONLY_CSUM_ALGO")
+        .map(|value| vec![value])
+        .unwrap_or_else(|_| vec!["xxh64".to_string(), "xxh3".to_string()]);
+    for algorithm in algorithms {
+        let (transport, remote, local, remote_bind) = real_rsync_delta_upload_inputs();
+        let baseline = make_incompressible_payload(1024 * 1024, 0xC0FF_EE11_2233_4455);
+        let mut expected = baseline.clone();
+        for byte in &mut expected[512 * 1024..512 * 1024 + 4096] {
+            *byte ^= 0xA5;
+        }
+        write_bytes(&remote_bind, &baseline);
+        write_bytes(&local, &expected);
+
+        // SAFETY: ignored live test, documented and invoked with one test
+        // thread. Clear the override before asserting on the result.
+        unsafe {
+            env::set_var("AEROFTP_RSYNC_CSUM_ALGOS", &algorithm);
+        }
+        let result = transport.upload(&local, &remote).await;
+        unsafe {
+            env::remove_var("AEROFTP_RSYNC_CSUM_ALGOS");
+        }
+
+        let stats = result.unwrap_or_else(|e| {
+            panic!("native upload ({algorithm} peer) against real rsync failed: {e:?}")
+        });
+        let got = fs::read(&remote_bind).expect("read reconstructed remote target");
+        assert_eq!(
+            got, expected,
+            "{algorithm}-peer reconstruction must match local source"
+        );
+        assert_eq!(stats.total_size, expected.len() as u64);
+        eprintln!(
+            "live real-rsync native upload ({algorithm}): total_size={} bytes_sent={} bytes_received={} copy_blocks={} speedup={:.2} duration_ms={}",
+            stats.total_size,
+            stats.bytes_sent,
+            stats.bytes_received,
+            stats.copy_blocks,
+            stats.speedup,
+            stats.duration_ms
+        );
+        assert!(
+            stats.copy_blocks > 0,
+            "{algorithm} upload must emit at least one CopyRun block"
         );
     }
 }

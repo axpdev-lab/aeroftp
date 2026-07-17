@@ -217,6 +217,9 @@ pub struct RsyncStats {
     pub total_size: u64,
     pub speedup: f64,
     pub duration_ms: u64,
+    /// Baseline blocks directly reused by the native delta stream.
+    /// Crate-private so production UI/API surfaces remain unchanged.
+    pub(crate) copy_blocks: u64,
     /// Warnings collected during transfer (non-fatal). Empty on a clean run.
     /// `pub(crate)` because entries may contain remote file paths and must
     /// not flow to logs, UI, or MCP responses without sanitization.

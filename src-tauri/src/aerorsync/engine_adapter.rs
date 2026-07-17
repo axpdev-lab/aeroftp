@@ -27,7 +27,8 @@ use crate::aerorsync::protocol::{
 };
 use crate::delta_sync;
 use crate::delta_sync::{strong_hash, RollingChecksum};
-use xxhash_rust::xxh3::{xxh3_128, xxh3_128_with_seed};
+use xxhash_rust::xxh3::{xxh3_128, xxh3_128_with_seed, xxh3_64_with_seed};
+use xxhash_rust::xxh64::xxh64;
 
 /// How to recompute a block's strong checksum when confirming a rolling hit.
 ///
@@ -52,6 +53,12 @@ pub enum BlockStrongAlgo {
     /// `get_checksum2`); the whole-file trailer is unseeded and lives
     /// elsewhere.
     Xxh128 { seed: u64 },
+    /// Seeded XXH64, encoded as the 8 little-endian bytes rsync writes
+    /// for `CSUM_XXH64`.
+    Xxh64 { seed: u64 },
+    /// Seeded XXH3-64, encoded as the 8 little-endian bytes rsync writes
+    /// for `CSUM_XXH3_64`.
+    Xxh3_64 { seed: u64 },
     /// MD5 of the window, 16 wire bytes (padded into the first half of
     /// the 32-byte buffer). Seeded per rsync `get_checksum2`:
     /// - `proper_seed_order == true` (CF_CHKSUM_SEED_FIX): if seed != 0,
@@ -84,6 +91,16 @@ impl BlockStrongAlgo {
                 let mut out = [0u8; 32];
                 out[..8].copy_from_slice(&lo.to_le_bytes());
                 out[8..16].copy_from_slice(&hi.to_le_bytes());
+                out
+            }
+            Self::Xxh64 { seed } => {
+                let mut out = [0u8; 32];
+                out[..8].copy_from_slice(&xxh64(data, seed).to_le_bytes());
+                out
+            }
+            Self::Xxh3_64 { seed } => {
+                let mut out = [0u8; 32];
+                out[..8].copy_from_slice(&xxh3_64_with_seed(data, seed).to_le_bytes());
                 out
             }
             // CLAUDE-AV-B3-17: rsync 3.2.7 checksum.c::get_checksum2 CSUM_MD5.
@@ -1589,6 +1606,55 @@ mod producer_tests {
             .collect()
     }
 
+    fn wire_short_sigs_from_dest_with_algo(
+        dest: &[u8],
+        block_size: usize,
+        algo: BlockStrongAlgo,
+    ) -> Vec<EngineSignatureBlock> {
+        engine_sigs_from_dest(dest, block_size)
+            .into_iter()
+            .map(|mut sig| {
+                let start = sig.index as usize * block_size;
+                let end = (start + sig.block_len as usize).min(dest.len());
+                let digest = algo.digest(&dest[start..end]);
+                sig.strong = [0u8; 32];
+                sig.strong[..2].copy_from_slice(&digest[..2]);
+                sig.strong_len = 2;
+                sig
+            })
+            .collect()
+    }
+
+    fn patterned_blocks(block_size: usize, count: usize) -> Vec<u8> {
+        (0..block_size * count)
+            .map(|index| ((index * 37 + index / block_size * 11) % 251) as u8)
+            .collect()
+    }
+
+    #[test]
+    fn seeded_xxh64_wire_bytes_match_libxxhash_known_vector() {
+        // Expected bytes were generated independently with the system
+        // libxxhash `XXH64` symbol, not with xxhash-rust.
+        let digest =
+            BlockStrongAlgo::Xxh64 { seed: 0x1234_5678 }.digest(b"rsync-c-full-known-vector");
+        assert_eq!(
+            &digest[..8],
+            &[0x7e, 0x10, 0xc0, 0x64, 0xd4, 0x24, 0x98, 0xba]
+        );
+    }
+
+    #[test]
+    fn seeded_xxh3_64_wire_bytes_match_libxxhash_known_vector() {
+        // Expected bytes were generated independently with the system
+        // libxxhash `XXH3_64bits_withSeed` symbol.
+        let digest =
+            BlockStrongAlgo::Xxh3_64 { seed: 0x1234_5678 }.digest(b"rsync-c-full-known-vector");
+        assert_eq!(
+            &digest[..8],
+            &[0x3a, 0x02, 0x2e, 0xf8, 0xca, 0xce, 0xd9, 0x6c]
+        );
+    }
+
     #[test]
     fn producer_empty_source_matches_bulk_literal_empty() {
         let block_size = 512;
@@ -1850,6 +1916,106 @@ mod producer_tests {
                 .all(|op| matches!(op, EngineDeltaOp::CopyBlock(_))),
             "identical source with correct xxh128 prefixes must be all CopyBlocks"
         );
+    }
+
+    #[test]
+    fn producer_truncated_xxh64_strong_confirms_identical_source() {
+        let block_size = 512;
+        let dest = patterned_blocks(block_size, 4);
+        let algo = BlockStrongAlgo::Xxh64 { seed: 0xDEAD_BEEF };
+        let sigs = wire_short_sigs_from_dest_with_algo(&dest, block_size, algo);
+        let (ops, stats) = run_producer_with_algo(block_size, sigs, &dest, 64, algo);
+        assert_eq!(stats.copy_blocks, 4);
+        assert_eq!(stats.literal_bytes, 0);
+        assert!(ops
+            .iter()
+            .all(|op| matches!(op, EngineDeltaOp::CopyBlock(_))));
+    }
+
+    #[test]
+    fn producer_truncated_xxh3_strong_confirms_identical_source() {
+        let block_size = 512;
+        let dest = patterned_blocks(block_size, 4);
+        let algo = BlockStrongAlgo::Xxh3_64 { seed: 0xDEAD_BEEF };
+        let sigs = wire_short_sigs_from_dest_with_algo(&dest, block_size, algo);
+        let (ops, stats) = run_producer_with_algo(block_size, sigs, &dest, 64, algo);
+        assert_eq!(stats.copy_blocks, 4);
+        assert_eq!(stats.literal_bytes, 0);
+        assert!(ops
+            .iter()
+            .all(|op| matches!(op, EngineDeltaOp::CopyBlock(_))));
+    }
+
+    #[test]
+    fn producer_poisoned_xxh64_prefix_rejects_rolling_hits() {
+        let block_size = 512;
+        let dest = patterned_blocks(block_size, 4);
+        let mut sigs = engine_sigs_from_dest(&dest, block_size);
+        for sig in &mut sigs {
+            sig.strong = [0xFF; 32];
+            sig.strong_len = 2;
+        }
+        let (ops, stats) = run_producer_with_algo(
+            block_size,
+            sigs,
+            &dest,
+            64,
+            BlockStrongAlgo::Xxh64 { seed: 0xDEAD_BEEF },
+        );
+        assert_eq!(stats.copy_blocks, 0);
+        assert!(ops.iter().all(|op| matches!(op, EngineDeltaOp::Literal(_))));
+    }
+
+    #[test]
+    fn producer_poisoned_xxh3_prefix_rejects_rolling_hits() {
+        let block_size = 512;
+        let dest = patterned_blocks(block_size, 4);
+        let mut sigs = engine_sigs_from_dest(&dest, block_size);
+        for sig in &mut sigs {
+            sig.strong = [0xFF; 32];
+            sig.strong_len = 2;
+        }
+        let (ops, stats) = run_producer_with_algo(
+            block_size,
+            sigs,
+            &dest,
+            64,
+            BlockStrongAlgo::Xxh3_64 { seed: 0xDEAD_BEEF },
+        );
+        assert_eq!(stats.copy_blocks, 0);
+        assert!(ops.iter().all(|op| matches!(op, EngineDeltaOp::Literal(_))));
+    }
+
+    #[test]
+    fn producer_wrong_xxh64_seed_disables_matches() {
+        let block_size = 512;
+        let dest = patterned_blocks(block_size, 2);
+        let wire_algo = BlockStrongAlgo::Xxh64 { seed: 0xDEAD_BEEF };
+        let sigs = wire_short_sigs_from_dest_with_algo(&dest, block_size, wire_algo);
+        let (_, stats) = run_producer_with_algo(
+            block_size,
+            sigs,
+            &dest,
+            64,
+            BlockStrongAlgo::Xxh64 { seed: 0xCAFE_BABE },
+        );
+        assert_eq!(stats.copy_blocks, 0);
+    }
+
+    #[test]
+    fn producer_wrong_xxh3_seed_disables_matches() {
+        let block_size = 512;
+        let dest = patterned_blocks(block_size, 2);
+        let wire_algo = BlockStrongAlgo::Xxh3_64 { seed: 0xDEAD_BEEF };
+        let sigs = wire_short_sigs_from_dest_with_algo(&dest, block_size, wire_algo);
+        let (_, stats) = run_producer_with_algo(
+            block_size,
+            sigs,
+            &dest,
+            64,
+            BlockStrongAlgo::Xxh3_64 { seed: 0xCAFE_BABE },
+        );
+        assert_eq!(stats.copy_blocks, 0);
     }
 
     /// CLAUDE-AV-B3-15 landmine guard: comparing SHA-256 prefixes to

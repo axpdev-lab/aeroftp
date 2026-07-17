@@ -782,6 +782,7 @@ mod tests {
             total_size: 10_000,
             speedup: 66.6,
             duration_ms: 123,
+            copy_blocks: 0,
             warnings: vec![],
         };
         let r = DeltaSyncResult::used(stats.clone());

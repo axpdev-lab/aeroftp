@@ -67,8 +67,9 @@ use crate::aerorsync::real_wire::{
 use crate::aerorsync::remote_command::{RemoteCommandFlavor, RemoteCommandSpec};
 use crate::aerorsync::transport::{CancelHandle, RawByteStream, RawRemoteShellTransport};
 use crate::aerorsync::types::{AerorsyncError, AerorsyncErrorKind, SessionRole, SessionStats};
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite};
-use xxhash_rust::xxh3::{xxh3_128, xxh3_128_with_seed, Xxh3Default};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncSeek, AsyncSeekExt, AsyncWrite, SeekFrom};
+use xxhash_rust::xxh3::{xxh3_128, xxh3_128_with_seed, xxh3_64, Xxh3Default};
+use xxhash_rust::xxh64::{xxh64, Xxh64};
 
 /// Compute the 16-byte file-level strong checksum rsync verifies at the
 /// end of the delta stream when `xxh128` is the negotiated algo.
@@ -107,6 +108,82 @@ pub(crate) fn xxh128_wire_bytes(hash: u128) -> Vec<u8> {
     out.extend_from_slice(&lo.to_le_bytes());
     out.extend_from_slice(&hi.to_le_bytes());
     out
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FileChecksumKind {
+    Xxh128,
+    Xxh3,
+    Xxh64,
+    Md5,
+}
+
+impl FileChecksumKind {
+    fn from_negotiated_name(name: Option<&str>) -> Self {
+        match name {
+            Some(XXH3_ALGO_NAME) => Self::Xxh3,
+            Some(XXH64_ALGO_NAME) => Self::Xxh64,
+            Some(MD5_ALGO_NAME) => Self::Md5,
+            // Preserve the historical xxh128 behavior for an absent or
+            // unsupported winner. The default production profile always
+            // negotiates one of the four explicitly supported algorithms.
+            _ => Self::Xxh128,
+        }
+    }
+
+    fn digest(self, data: &[u8]) -> Vec<u8> {
+        match self {
+            Self::Xxh128 => compute_xxh128_wire(data),
+            Self::Xxh3 => xxh3_64(data).to_le_bytes().to_vec(),
+            Self::Xxh64 => xxh64(data, 0).to_le_bytes().to_vec(),
+            Self::Md5 => {
+                use md5::{Digest, Md5};
+                Md5::digest(data).to_vec()
+            }
+        }
+    }
+
+    fn streaming_hasher(self) -> FileChecksumHasher {
+        use md5::Digest;
+        match self {
+            Self::Xxh128 => FileChecksumHasher::Xxh128(Xxh3Default::new()),
+            Self::Xxh3 => FileChecksumHasher::Xxh3(Xxh3Default::new()),
+            Self::Xxh64 => FileChecksumHasher::Xxh64(Xxh64::new(0)),
+            Self::Md5 => FileChecksumHasher::Md5(md5::Md5::new()),
+        }
+    }
+}
+
+enum FileChecksumHasher {
+    Xxh128(Xxh3Default),
+    Xxh3(Xxh3Default),
+    Xxh64(Xxh64),
+    Md5(md5::Md5),
+}
+
+impl FileChecksumHasher {
+    fn update(&mut self, data: &[u8]) {
+        match self {
+            Self::Xxh128(hasher) | Self::Xxh3(hasher) => hasher.update(data),
+            Self::Xxh64(hasher) => hasher.update(data),
+            Self::Md5(hasher) => {
+                use md5::Digest;
+                hasher.update(data);
+            }
+        }
+    }
+
+    fn finish(self) -> Vec<u8> {
+        match self {
+            Self::Xxh128(hasher) => xxh128_wire_bytes(hasher.digest128()),
+            Self::Xxh3(hasher) => hasher.digest().to_le_bytes().to_vec(),
+            Self::Xxh64(hasher) => hasher.digest().to_le_bytes().to_vec(),
+            Self::Md5(hasher) => {
+                use md5::Digest;
+                hasher.finalize().to_vec()
+            }
+        }
+    }
 }
 
 /// Checksum algorithm names the download-side whole-file verify can
@@ -655,15 +732,21 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         self.checksum_seed
     }
 
-    /// CLAUDE-AV-B3-15 / CLAUDE-AV-B3-17: block-strong algorithm for
+    /// Block-strong algorithm for
     /// confirming rolling hits against wire signatures. Must match how
     /// the peer (or we, on the download emit path) filled
-    /// `SumBlock.strong`. xxh128 and md5 are recomputed in-tree; other
-    /// winners (xxh64/xxh3/md4/...) stay `Unknown` (safer than
-    /// rolling-only confirmation).
+    /// `SumBlock.strong`. xxh128, xxh3, xxh64, and md5 are recomputed
+    /// in-tree; other winners (md4, sha variants, ...) stay `Unknown`
+    /// (safer than rolling-only confirmation).
     pub(crate) fn block_strong_algo(&self) -> BlockStrongAlgo {
         match self.negotiated_checksum_algo() {
             Some(XXH128_ALGO_NAME) => BlockStrongAlgo::Xxh128 {
+                seed: self.checksum_seed as u64,
+            },
+            Some(XXH3_ALGO_NAME) => BlockStrongAlgo::Xxh3_64 {
+                seed: self.checksum_seed as u64,
+            },
+            Some(XXH64_ALGO_NAME) => BlockStrongAlgo::Xxh64 {
                 seed: self.checksum_seed as u64,
             },
             // CLAUDE-AV-B3-17: rsync get_checksum2 CSUM_MD5 seed order.
@@ -673,6 +756,10 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
             },
             _ => BlockStrongAlgo::Unknown,
         }
+    }
+
+    fn file_checksum_kind(&self) -> FileChecksumKind {
+        FileChecksumKind::from_negotiated_name(self.negotiated_checksum_algo())
     }
     pub fn negotiated_checksum_algos(&self) -> &str {
         &self.negotiated_checksum_algos
@@ -904,7 +991,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         bridge: &mut dyn EventSink,
     ) -> Result<(), AerorsyncError>
     where
-        R: AsyncRead + Unpin + Send,
+        R: AsyncRead + AsyncSeek + Unpin + Send,
     {
         match self
             .drive_upload_inner_streaming(
@@ -1005,7 +1092,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
     async fn drive_upload_inner(
         &mut self,
         command_spec: RemoteCommandSpec,
-        source_entry: FileListEntry,
+        mut source_entry: FileListEntry,
         source_data: &[u8],
         adapter: &dyn DeltaEngineAdapter,
         bridge: &mut dyn EventSink,
@@ -1022,6 +1109,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         let comp_algos = self.preamble_profile.compression_algos.clone();
         self.perform_preamble_exchange(31, &csum_algos, &comp_algos)
             .await?;
+        source_entry.checksum = self.file_checksum_kind().digest(source_data);
         self.send_file_list_single_file(&source_entry).await?;
         self.receive_signature_phase_single_file(bridge).await?;
         if !self.upload_noop_transfer {
@@ -1039,14 +1127,14 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
     async fn drive_upload_inner_streaming<R>(
         &mut self,
         command_spec: RemoteCommandSpec,
-        source_entry: FileListEntry,
-        source_reader: R,
+        mut source_entry: FileListEntry,
+        mut source_reader: R,
         source_len: u64,
         adapter: &dyn DeltaEngineAdapter,
         bridge: &mut dyn EventSink,
     ) -> Result<(), AerorsyncError>
     where
-        R: AsyncRead + Unpin + Send,
+        R: AsyncRead + AsyncSeek + Unpin + Send,
     {
         self.session_role = Some(SessionRole::Sender);
         self.remote_command_flavor = command_spec.flavor;
@@ -1055,6 +1143,26 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         let comp_algos = self.preamble_profile.compression_algos.clone();
         self.perform_preamble_exchange(31, &csum_algos, &comp_algos)
             .await?;
+        let checksum_kind = self.file_checksum_kind();
+        let mut checksum_hasher = checksum_kind.streaming_hasher();
+        let mut checksum_buf = vec![0u8; STREAMING_READ_CHUNK_BYTES];
+        loop {
+            let n = source_reader.read(&mut checksum_buf).await.map_err(|e| {
+                AerorsyncError::transport(format!(
+                    "drive_upload_inner_streaming: checksum read failed: {e}"
+                ))
+            })?;
+            if n == 0 {
+                break;
+            }
+            checksum_hasher.update(&checksum_buf[..n]);
+        }
+        source_entry.checksum = checksum_hasher.finish();
+        source_reader.seek(SeekFrom::Start(0)).await.map_err(|e| {
+            AerorsyncError::transport(format!(
+                "drive_upload_inner_streaming: source rewind failed: {e}"
+            ))
+        })?;
         self.send_file_list_single_file(&source_entry).await?;
         self.receive_signature_phase_single_file(bridge).await?;
         if !self.upload_noop_transfer {
@@ -1725,6 +1833,9 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
             let block = destination_data.get(start..end).unwrap_or(&[]);
             let strong_wire = match strong_algo {
                 BlockStrongAlgo::Xxh128 { seed } => compute_xxh128_wire_with_seed(block, seed),
+                BlockStrongAlgo::Xxh64 { .. } | BlockStrongAlgo::Xxh3_64 { .. } => {
+                    strong_algo.digest(block)[..8].to_vec()
+                }
                 BlockStrongAlgo::Md5 {
                     seed,
                     proper_seed_order,
@@ -1939,13 +2050,16 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
             }
         }
 
-        // S8j: real xxh128 (XXH3-128) over `source_data`. Rsync 3.2.7
-        // verifies this trailer server-side when `xxh128` is negotiated
-        // in `checksum_algos` (see `perform_preamble_exchange` call
-        // sites below). Byte layout matches `checksum.c::hash_struct`'s
-        // `SIVAL64(buf, 0, lo); SIVAL64(buf, 8, hi)`: lower 64 bits LE
-        // first, upper 64 bits LE second.
-        let file_checksum = compute_xxh128_wire(source_data);
+        self.session_stats.copy_blocks = u64::from(plan.copy_blocks);
+        self.session_stats.matched_bytes = self
+            .session_stats
+            .copy_blocks
+            .saturating_mul(block_size as u64);
+        self.session_stats.literal_bytes = plan.literal_bytes;
+
+        // File-level trailers are unseeded even though per-block strong
+        // digests use the negotiated checksum seed.
+        let file_checksum = self.file_checksum_kind().digest(source_data);
 
         let report = DeltaStreamReport {
             ops: wire_ops.clone(),
@@ -2052,12 +2166,12 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
             .map(|h| h.block_length as usize)
             .unwrap_or(0);
 
-        // Drive the producer + xxh3 hasher chunk-by-chunk. The producer
+        // Drive the producer + negotiated file hasher chunk-by-chunk. The producer
         // owns the rolling window; the hasher accumulates a streaming
-        // xxh3_128 of the source. Both are populated from the same
+        // whole-file checksum of the source. Both are populated from the same
         // chunk slice so the wire trailer matches what
         // `compute_xxh128_wire(source_data)` would have produced bulk.
-        let mut hasher = Xxh3Default::new();
+        let mut file_hasher = self.file_checksum_kind().streaming_hasher();
         let mut ops: Vec<EngineDeltaOp> = Vec::new();
         let mut total_source_bytes: u64 = 0;
         let mut buf = vec![0u8; STREAMING_READ_CHUNK_BYTES];
@@ -2112,7 +2226,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
                 if n == 0 {
                     break;
                 }
-                hasher.update(&buf[..n]);
+                file_hasher.update(&buf[..n]);
                 total_source_bytes += n as u64;
 
                 let mut to_consume: &[u8] = &buf[..n];
@@ -2149,7 +2263,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
                 if n == 0 {
                     break;
                 }
-                hasher.update(&buf[..n]);
+                file_hasher.update(&buf[..n]);
                 producer.drive_chunk(&buf[..n], &mut ops);
                 total_source_bytes += n as u64;
             }
@@ -2161,6 +2275,22 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
                 "send_delta_phase_streaming: declared source_len {source_len} != bytes read {total_source_bytes}"
             )));
         }
+
+        self.session_stats.copy_blocks = ops
+            .iter()
+            .filter(|op| matches!(op, EngineDeltaOp::CopyBlock(_)))
+            .count() as u64;
+        self.session_stats.matched_bytes = self
+            .session_stats
+            .copy_blocks
+            .saturating_mul(block_size as u64);
+        self.session_stats.literal_bytes = ops
+            .iter()
+            .filter_map(|op| match op {
+                EngineDeltaOp::Literal(bytes) => Some(bytes.len() as u64),
+                EngineDeltaOp::CopyBlock(_) => None,
+            })
+            .sum();
 
         // From here on the encoding/wire-emission path is byte-for-byte
         // identical to `send_delta_phase_single_file`. Any divergence
@@ -2207,10 +2337,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
             }
         }
 
-        // Streaming xxh3-128 → 16-byte wire trailer.
-        // Layout pinned by `xxh128_wire_bytes_match_SIVAL64_pair`:
-        // `out[0..8] = lo.to_le_bytes(); out[8..16] = hi.to_le_bytes()`.
-        let file_checksum = xxh128_wire_bytes(hasher.digest128());
+        let file_checksum = file_hasher.finish();
 
         let report = DeltaStreamReport {
             ops: wire_ops.clone(),
@@ -2385,6 +2512,13 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         adapter: &dyn DeltaEngineAdapter,
         wire_ops: Vec<DeltaOp>,
     ) -> Result<(), AerorsyncError> {
+        let copy_blocks: u64 = wire_ops
+            .iter()
+            .filter_map(|op| match op {
+                DeltaOp::CopyRun { run_length, .. } => Some(u64::from(*run_length)),
+                DeltaOp::Literal { .. } => None,
+            })
+            .sum();
         let zstd_on = self.zstd_negotiated();
         let engine_ops = self.delta_wire_to_engine_ops(&wire_ops, zstd_on)?;
         let block_size = self
@@ -2397,6 +2531,8 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
                 "receive_delta_phase: block_size is zero (missing local sum_head)",
             ));
         }
+        self.session_stats.copy_blocks = copy_blocks;
+        self.session_stats.matched_bytes = copy_blocks.saturating_mul(block_size as u64);
         let reconstructed = adapter
             .apply_delta(destination_data, &engine_ops, block_size)
             .map_err(|e| AerorsyncError::invalid_frame(format!("apply_delta: {e}")))?;
@@ -2602,6 +2738,13 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         adapter: &dyn DeltaEngineAdapter,
         wire_ops: Vec<DeltaOp>,
     ) -> Result<(), AerorsyncError> {
+        let copy_blocks: u64 = wire_ops
+            .iter()
+            .filter_map(|op| match op {
+                DeltaOp::CopyRun { run_length, .. } => Some(u64::from(*run_length)),
+                DeltaOp::Literal { .. } => None,
+            })
+            .sum();
         let zstd_on = self.zstd_negotiated();
         let engine_ops = self.delta_wire_to_engine_ops(&wire_ops, zstd_on)?;
         let _ = adapter; // adapter is unused on the streaming path -
@@ -2618,6 +2761,8 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
                 "receive_delta_phase: block_size is zero (missing local sum_head)",
             ));
         }
+        self.session_stats.copy_blocks = copy_blocks;
+        self.session_stats.matched_bytes = copy_blocks.saturating_mul(block_size as u64);
         apply_delta_streaming(baseline, engine_ops, block_size, writer)
             .await
             .map_err(|e| AerorsyncError::invalid_frame(format!("apply_delta_streaming: {e}")))?;
@@ -3272,7 +3417,8 @@ fn map_realwire_error(err: RealWireError, context: &'static str) -> AerorsyncErr
 mod tests {
     use super::*;
     use crate::aerorsync::engine_adapter::{
-        DeltaEngineAdapter, EngineDeltaOp, EngineDeltaPlan, EngineSignatureBlock,
+        CurrentDeltaSyncBridge, DeltaEngineAdapter, EngineDeltaOp, EngineDeltaPlan,
+        EngineSignatureBlock,
     };
     use crate::aerorsync::events::{classify_oob_frame, AerorsyncEvent, CollectingSink};
     use crate::aerorsync::fixtures::RealRsyncBaselineByteTranscript;
@@ -3498,6 +3644,48 @@ mod tests {
         out
     }
 
+    fn decode_upload_file_and_trailer_checksums(
+        outbound: &[u8],
+        checksum_len: usize,
+    ) -> (Vec<u8>, Vec<u8>) {
+        let client = decode_client_preamble(outbound).expect("decode outbound client preamble");
+        let app = reassemble_msg_data(&outbound[client.consumed..])
+            .expect("reassemble outbound MSG_DATA")
+            .app_stream;
+        let opts = FileListDecodeOptions {
+            protocol: 31,
+            xfer_flags_as_varint: true,
+            always_checksum: true,
+            csum_len: checksum_len,
+            preserve_uid: true,
+            preserve_gid: true,
+            previous_name: None,
+        };
+        let (entry, mut cursor) =
+            match decode_file_list_entry(&app, &opts).expect("decode outbound file-list entry") {
+                (FileListDecodeOutcome::Entry(entry), consumed) => (entry, consumed),
+                other => panic!("expected outbound file-list entry, got {other:?}"),
+            };
+        let (_, consumed) =
+            decode_file_list_entry(&app[cursor..], &opts).expect("decode file-list terminator");
+        cursor += consumed;
+
+        let mut ndx_state = NdxState::default();
+        let (_, consumed) =
+            decode_ndx(&app[cursor..], &mut ndx_state).expect("decode NDX_FLIST_EOF");
+        cursor += consumed;
+        let (_, consumed) =
+            decode_ndx(&app[cursor..], &mut ndx_state).expect("decode echoed file NDX");
+        cursor += consumed;
+        let (_, consumed) = decode_item_flags(&app[cursor..]).expect("decode echoed item flags");
+        cursor += consumed;
+        let (head, consumed) = decode_sum_head(&app[cursor..]).expect("decode echoed sum head");
+        cursor += consumed;
+        let (report, _) = decode_delta_stream(&app[cursor..], checksum_len, Some(head.count))
+            .expect("decode outbound delta stream");
+        (entry.checksum, report.file_checksum)
+    }
+
     /// Build a `FileListEntry` that the encoder/decoder will round-trip
     /// under `build_flist_options` (varint flags, always_checksum on,
     /// preserve_uid/gid on with SAME_UID/SAME_GID gating uid/gid out).
@@ -3712,10 +3900,10 @@ mod tests {
         );
     }
 
-    /// CLAUDE-AV-B3-17: xxh128 still maps to seeded Xxh128; xxh64 stays
-    /// Unknown (not yet recomputed in-tree for block strongs).
+    /// Every implemented xxhash winner maps to its seeded block-strong
+    /// variant. The seed is widened from rsync's u32 wire field.
     #[tokio::test]
-    async fn block_strong_algo_maps_xxh128_and_leaves_xxh64_unknown() {
+    async fn block_strong_algo_maps_all_xxhash_winners() {
         async fn algo(theirs: &str) -> BlockStrongAlgo {
             let encoded = encode_server_preamble(&ServerPreamble {
                 protocol_version: 31,
@@ -3736,7 +3924,66 @@ mod tests {
             algo("xxh128 md5").await,
             BlockStrongAlgo::Xxh128 { seed: 0x1111_2222 }
         );
-        assert_eq!(algo("xxh64 md5").await, BlockStrongAlgo::Unknown);
+        assert_eq!(
+            algo("xxh64 md5").await,
+            BlockStrongAlgo::Xxh64 { seed: 0x1111_2222 }
+        );
+        assert_eq!(
+            algo("xxh3 xxh64 md5").await,
+            BlockStrongAlgo::Xxh3_64 { seed: 0x1111_2222 }
+        );
+    }
+
+    #[tokio::test]
+    async fn download_signature_emit_uses_negotiated_xxh64_and_xxh3_digest_prefixes() {
+        let payload = b"rsync-c-full-known-vector";
+        let cases = [
+            (
+                XXH64_ALGO_NAME,
+                vec![0x7e, 0x10, 0xc0, 0x64, 0xd4, 0x24, 0x98, 0xba],
+            ),
+            (
+                XXH3_ALGO_NAME,
+                vec![0x3a, 0x02, 0x2e, 0xf8, 0xca, 0xce, 0xd9, 0x6c],
+            ),
+        ];
+        for (algorithm, full_digest) in cases {
+            let inbound = encode_server_preamble(&ServerPreamble {
+                protocol_version: 31,
+                compat_flags: 0x07 | CF_CHKSUM_SEED_FIX,
+                checksum_algos: algorithm.to_string(),
+                compression_algos: "none".to_string(),
+                checksum_seed: 0x1234_5678,
+                consumed: 0,
+            });
+            let transport = mock_transport_with_raw_inbound(inbound);
+            let mut driver = make_driver(transport).with_preamble_profile(PreambleProfile {
+                checksum_algos: algorithm.to_string(),
+                compression_algos: "none".to_string(),
+            });
+            driver
+                .open_raw_stream_internal(&RemoteCommandSpec::download("/remote/target.bin"))
+                .await
+                .unwrap();
+            driver
+                .perform_preamble_exchange(31, algorithm, "none")
+                .await
+                .unwrap();
+            let adapter = MockSigAdapter::with_fixed_signatures(
+                payload.len(),
+                vec![make_engine_sig(0, 0xA0A0_A0A0, 0, payload.len() as u32)],
+            );
+            driver
+                .send_signature_phase_single_file(payload, &adapter)
+                .await
+                .unwrap();
+            assert_eq!(driver.sent_signatures().len(), 1);
+            assert_eq!(
+                driver.sent_signatures()[0].strong,
+                full_digest[..A2_2_DOWNLOAD_S2LENGTH as usize],
+                "{algorithm} signature must emit the negotiated digest before protocol truncation"
+            );
+        }
     }
 
     /// CLAUDE-AV-B3-12. Pins rsync 3.2.7 `compat.c::parse_negotiate_str`:
@@ -3980,7 +4227,9 @@ mod tests {
             preserve_gid: true,
             previous_name: None,
         };
-        let entry_bytes = encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
+        let mut expected_entry = sample_file_list_entry("target.bin");
+        expected_entry.checksum = FileChecksumKind::Md5.digest(&[]);
+        let entry_bytes = encode_file_list_entry(&expected_entry, &opts);
         let term_bytes = encode_file_list_terminator(&opts);
         let mut ndx_state = NdxState::default();
         let ndx_bytes = encode_ndx(NDX_FLIST_EOF, &mut ndx_state);
@@ -5202,17 +5451,15 @@ mod tests {
             .count();
         assert_eq!(literal_count, 2);
 
-        // S8j: the outbound capture must contain the REAL xxh128 trailer
-        // computed over `source_data`: not the 16-zero placeholder the
-        // A2.3 prototype emitted. Verify by recomputing the expected
-        // 16 bytes via `compute_xxh128_wire` and scanning the outbound
-        // window. This pins both the encoder and the driver's wiring of
-        // `source_data` into the hash function.
-        let expected_trailer = compute_xxh128_wire(b"hello\0\0\0world");
+        // The canonical test preamble negotiates md5. The outbound
+        // capture must therefore contain the real negotiated trailer,
+        // not the old hardcoded xxh128 bytes or the prototype's zero
+        // placeholder.
+        let expected_trailer = FileChecksumKind::Md5.digest(b"hello\0\0\0world");
         assert_eq!(expected_trailer.len(), 16);
         assert!(
             !expected_trailer.iter().all(|&b| b == 0),
-            "xxh128 of a non-empty payload must not be all-zero"
+            "md5 of a non-empty payload must not be all-zero"
         );
         let guard = last_raw_outbound.lock().unwrap();
         let outbound_arc = guard.as_ref().expect("raw stream must have opened");
@@ -5221,9 +5468,105 @@ mod tests {
             outbound
                 .windows(16)
                 .any(|w| w == expected_trailer.as_slice()),
-            "real xxh128 trailer must appear in outbound bytes"
+            "real negotiated md5 trailer must appear in outbound bytes"
         );
         assert!(d.sent_data_bytes() > 0);
+    }
+
+    #[tokio::test]
+    async fn upload_file_list_and_trailer_follow_negotiated_algo_in_bulk_and_streaming_paths() {
+        use md5::{Digest, Md5};
+
+        let source = b"rsync-c-full-known-vector";
+        let cases = [
+            (XXH128_ALGO_NAME, compute_xxh128_wire(source)),
+            (MD5_ALGO_NAME, Md5::digest(source).to_vec()),
+            (
+                XXH64_ALGO_NAME,
+                vec![0x52, 0x80, 0x6e, 0xc1, 0x30, 0x3f, 0x06, 0x34],
+            ),
+            (
+                XXH3_ALGO_NAME,
+                vec![0x1b, 0x50, 0x88, 0xcd, 0xd5, 0x07, 0x4a, 0xd3],
+            ),
+        ];
+
+        for (algorithm, expected) in cases {
+            let head = SumHead {
+                count: 0,
+                block_length: 0,
+                checksum_length: 0,
+                remainder_length: 0,
+            };
+            let sig_payload = build_sig_phase_payload(1, 0x8002, &head, &[]);
+            let server_preamble = encode_server_preamble(&ServerPreamble {
+                protocol_version: 31,
+                compat_flags: 0x07 | CF_CHKSUM_SEED_FIX,
+                checksum_algos: algorithm.to_string(),
+                compression_algos: "none".to_string(),
+                checksum_seed: 0x1234_5678,
+                consumed: 0,
+            });
+            let profile = PreambleProfile {
+                checksum_algos: algorithm.to_string(),
+                compression_algos: "none".to_string(),
+            };
+
+            let mut bulk_inbound = server_preamble.clone();
+            bulk_inbound.extend_from_slice(&mux_frame(MuxTag::Data, &sig_payload));
+            let bulk_transport = mock_transport_with_raw_inbound(bulk_inbound);
+            let bulk_outbound = bulk_transport.last_raw_outbound.clone();
+            let mut bulk_driver =
+                make_driver(bulk_transport).with_preamble_profile(profile.clone());
+            bulk_driver
+                .drive_upload_through_delta(
+                    RemoteCommandSpec::upload("/remote/target.bin"),
+                    sample_file_list_entry("target.bin"),
+                    source,
+                    &CurrentDeltaSyncBridge::new(),
+                    &mut CollectingSink::default(),
+                )
+                .await
+                .unwrap_or_else(|error| panic!("bulk {algorithm} upload failed: {error:?}"));
+            let bulk_bytes = {
+                let guard = bulk_outbound.lock().unwrap();
+                let bytes = guard.as_ref().expect("bulk raw stream").lock().unwrap();
+                bytes.clone()
+            };
+            let (bulk_flist, bulk_trailer) =
+                decode_upload_file_and_trailer_checksums(&bulk_bytes, expected.len());
+            assert_eq!(bulk_flist, expected, "bulk {algorithm} file-list digest");
+            assert_eq!(bulk_trailer, expected, "bulk {algorithm} trailer");
+
+            let mut stream_inbound = server_preamble;
+            stream_inbound.extend_from_slice(&mux_frame(MuxTag::Data, &sig_payload));
+            let stream_transport = mock_transport_with_raw_inbound(stream_inbound);
+            let stream_outbound = stream_transport.last_raw_outbound.clone();
+            let mut stream_driver = make_driver(stream_transport).with_preamble_profile(profile);
+            stream_driver
+                .drive_upload_through_delta_streaming(
+                    RemoteCommandSpec::upload("/remote/target.bin"),
+                    sample_file_list_entry("target.bin"),
+                    std::io::Cursor::new(source.to_vec()),
+                    source.len() as u64,
+                    &CurrentDeltaSyncBridge::new(),
+                    &mut CollectingSink::default(),
+                )
+                .await
+                .unwrap_or_else(|error| panic!("streaming {algorithm} upload failed: {error:?}"));
+            let stream_bytes = {
+                let guard = stream_outbound.lock().unwrap();
+                let bytes = guard.as_ref().expect("stream raw stream").lock().unwrap();
+                bytes.clone()
+            };
+            let (stream_flist, stream_trailer) =
+                decode_upload_file_and_trailer_checksums(&stream_bytes, expected.len());
+            assert_eq!(
+                stream_flist, expected,
+                "streaming {algorithm} file-list digest"
+            );
+            assert_eq!(stream_trailer, expected, "streaming {algorithm} trailer");
+        }
     }
 
     /// S8j pin: a single `EngineDeltaOp::Literal` whose zstd-compressed
