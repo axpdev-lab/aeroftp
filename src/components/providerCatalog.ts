@@ -260,7 +260,7 @@ export const PROVIDER_CATALOG: CatalogCompany[] = [
     { company: 'Hetzner Storage Box', logoId: 'hetzner-storage-box', countryCode: 'DE', freeStorageGb: null,
       freeNote: 'paid plan',
       protocols: [{ label: 'SFTP', protocol: 'sftp', providerId: 'hetzner-storage-box', category: 'protocols', paid: true }] },
-    { company: 'Tab.digital', logoId: 'tabdigital', countryCode: 'IN', freeStorageGb: 8,
+    { company: 'TAB.DIGITAL', logoId: 'tabdigital', countryCode: 'IN', freeStorageGb: 8,
       freeNote: 'managed Nextcloud',
       protocols: [{ label: 'WebDAV', protocol: 'webdav', providerId: 'tabdigital', category: 'webdav' }] },
     { company: 'PixelUnion', logoId: 'pixelunion', countryCode: 'EU', freeStorageGb: 16,
@@ -328,7 +328,7 @@ export function hasFreeTier(c: CatalogCompany): boolean {
 
 /**
  * The three commercial buckets the list-view tier filter sorts companies into:
- * - `free`      : a free tier you can use without a credit card (Tab.digital, MEGA, ...).
+ * - `free`      : a free tier you can use without a credit card (TAB.DIGITAL, MEGA, ...).
  * - `free-card` : a genuine free allowance, but signup requires a card on file
  *                 (Amazon S3, Azure Blob, Yandex Object Storage). Kept OUT of paid.
  * - `paid`      : no free tier at all, only a trial and/or paid plans (Wasabi,

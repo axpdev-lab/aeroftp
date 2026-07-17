@@ -797,7 +797,7 @@ export const SavedServers: React.FC<SavedServersProps> = ({
                                         // Match both the bare provider id and the `-webdav`
                                         // suffix variant set by MyServersPanel's host heuristic
                                         // for legacy profiles saved before the preset existed.
-                                        // Felicloud + Tab.digital share the same OCS protocol
+                                        // Felicloud + TAB.DIGITAL share the same OCS protocol
                                         // class so the badge uses one tint for both: a colour
                                         // difference would read as a protocol difference.
                                         const pid = server.providerId || '';

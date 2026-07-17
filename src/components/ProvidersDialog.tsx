@@ -226,7 +226,7 @@ const ALL_PROVIDERS: ProviderFeatures[] = [
   { name: 'Felicloud', logoId: 'felicloud',
     base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search', 'shareLink', 'trash', 'versioning'],
     advanced: [] },
-  { name: 'Tab.digital', logoId: 'tabdigital',
+  { name: 'TAB.DIGITAL', logoId: 'tabdigital',
     base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search', 'shareLink', 'trash', 'versioning'],
     advanced: [] },
   { name: 'Hetzner Storage Box', logoId: 'hetzner',

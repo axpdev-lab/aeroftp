@@ -255,7 +255,7 @@ export function ServerBadges({ server, cryptDetailed = false, peerState }: { ser
 
     // Recognise both the bare provider id and the `-webdav` suffix variant
     // emitted by MyServersPanel's host heuristic for legacy profiles.
-    // Both Felicloud and Tab.digital are Nextcloud-as-a-service providers
+    // Both Felicloud and TAB.DIGITAL are Nextcloud-as-a-service providers
     // and share the same API OCS protocol class, so they use the same
     // badge tint to avoid the colour difference reading as a protocol
     // difference. The brand colour lives on the provider logo, not here.

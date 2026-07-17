@@ -1211,8 +1211,11 @@ impl MegaCmdProvider {
             .ok_or_else(|| ProviderError::InvalidPath("Invalid trash item name".to_string()))?
             .to_string_lossy();
         let rubbish_path = format!("//bin/{}", clean_name);
-        // Use -f flag for permanent deletion
-        self.run_mega_cmd_with_reauth("mega-rm", &["-f", &rubbish_path])
+        // Use -r -f: MEGA soft-deletes files but hard-deletes folders, so a
+        // folder trashed via the native API needs `-r` to purge (MEGAcmd errors
+        // "Use -r to delete a folder recursively" otherwise). `-r` is harmless on
+        // a file with `-f`, matching `delete_permanent` above.
+        self.run_mega_cmd_with_reauth("mega-rm", &["-r", "-f", &rubbish_path])
             .await?;
         Ok(())
     }

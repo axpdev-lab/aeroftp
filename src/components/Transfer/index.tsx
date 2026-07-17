@@ -225,8 +225,10 @@ export const ProgressCard: React.FC<ProgressCardProps> = ({ transfer, onCancel, 
     }, [summary.percentage, lanes, onCancel]);
 
     return (
+        // #364: anchor bottom-LEFT (was centered) so this card never overlaps
+        // the bottom-right Transfer Queue panel (fixed bottom-12 right-6 w-[33rem]).
         <div
-            className={`fixed bottom-12 left-1/2 transform -translate-x-1/2 z-40 rounded-lg border px-4 py-3 w-[30rem] max-w-[calc(100vw-2rem)] text-xs ${styles.container}`}
+            className={`fixed bottom-12 left-6 z-40 rounded-lg border px-4 py-3 w-[30rem] max-w-[calc(100vw-2rem)] text-xs ${styles.container}`}
             style={{ isolation: 'isolate', contain: 'layout paint' }}
         >
             <div className="flex items-start gap-3">
@@ -353,7 +355,7 @@ export const MinimizedTransferIndicator: React.FC<MinimizedTransferIndicatorProp
 
     return (
         <div
-            className={`fixed bottom-12 left-1/2 transform -translate-x-1/2 z-40 rounded-full border px-3 py-1.5 flex items-center gap-2 text-xs cursor-pointer ${styles.container}`}
+            className={`fixed bottom-12 left-6 z-40 rounded-full border px-3 py-1.5 flex items-center gap-2 text-xs cursor-pointer ${styles.container}`}
             style={{ isolation: 'isolate', contain: 'layout paint' }}
             onClick={onOpen}
             role="button"

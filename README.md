@@ -87,7 +87,7 @@ AeroFTP organizes integrations on three tiers, so what you see in the catalog is
 
 1. **Transport protocols (7):** native wire-level support for FTP, FTPS, SFTP, WebDAV, S3, Azure Blob, OpenStack Swift.
 2. **Native provider integrations (25+):** dedicated OAuth2 / API key / SDK code paths per provider, so each one's specific features (sharing, native delta sync, server-side copy, large-file chunking, media-CDN transformations) are first-class instead of best-effort. Includes the dedicated **media services** tier (ImageKit, Uploadcare, Cloudinary, Immich, PixelUnion).
-3. **Pre-configured presets (45+):** server URL, port, base path, password-generation deep-link filled in automatically for compatible services on top of the protocols above (S3-compatible endpoints from MEGA S4 to Filen S5 to MinIO, WebDAV-compatible servers including Nextcloud, Tab.digital, Felicloud, Seafile, InfiniCLOUD, etc.).
+3. **Pre-configured presets (45+):** server URL, port, base path, password-generation deep-link filled in automatically for compatible services on top of the protocols above (S3-compatible endpoints from MEGA S4 to Filen S5 to MinIO, WebDAV-compatible servers including Nextcloud, TAB.DIGITAL, Felicloud, Seafile, InfiniCLOUD, etc.).
 
 <table align="center">
   <!-- Continuous grid: Cloud (OAuth/API) -> S3-Compatible -> WebDAV -> SFTP -> Developer -> Media (last) -->
@@ -133,7 +133,7 @@ AeroFTP organizes integrations on three tiers, so what you see in the catalog is
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/quotaless"><img src="public/icons/providers/grid/quotaless.png" width="36" /></a><br><sub>Quotaless</sub></td>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/nextcloud"><img src="public/icons/providers/grid/nextcloud.png" width="36" /></a><br><sub>Nextcloud</sub></td>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/felicloud"><img src="public/icons/providers/grid/felicloud.png" width="36" /></a><br><sub>Felicloud</sub></td>
-    <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/tabdigital"><img src="public/icons/providers/grid/tabdigital.png" width="36" /></a><br><sub>Tab.digital</sub></td>
+    <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/tabdigital"><img src="public/icons/providers/grid/tabdigital.png" width="36" /></a><br><sub>TAB.DIGITAL</sub></td>
   </tr>
   <tr>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/cloudme"><img src="public/icons/providers/grid/cloudme.png" width="36" /></a><br><sub>CloudMe</sub></td>
@@ -217,7 +217,7 @@ AeroFTP organizes integrations on three tiers, so what you see in the catalog is
 | Seafile | - | self-hosted | WebDAV |
 | SourceForge | US | OSS hosting | SFTP |
 | Storj | US | 30-day trial | S3* |
-| Tab.digital | IN | 8 GB (managed Nextcloud) | WebDAV |
+| TAB.DIGITAL | IN | 8 GB (managed Nextcloud) | WebDAV |
 | Tencent COS | CN | 6-month trial | S3* |
 | Uploadcare | US | 1 GB (media CDN) | API |
 | Wasabi | US | 30-day trial | S3* |
@@ -285,17 +285,19 @@ Web hosting providers can generate encrypted `.aeroftp` connection profiles from
 
 ## File Formats
 
-AeroFTP defines five user-facing file formats. Each has a single purpose and a distinct extension; desktop file associations are registered on Windows, macOS, and Linux, with `.aerozip` shipping CLI create/list/extract first.
+AeroFTP defines seven user-facing file formats. Each has a single purpose and a distinct extension; desktop file associations are registered on Windows, macOS, and Linux, with `.aerozip` shipping CLI create/list/extract first. They are ordered from simplest to most advanced: compression, then encryption, then error correction, then the profile / script / keystore family.
 
 | Extension | Purpose | Encryption | Carries |
 |---|---|---|---|
+| <img src="src-tauri/icons/mimetypes/application-x-aerozip-64.png" width="32" height="32" alt="" /><br>`.aerozip` | Plaintext recoverable archive (`aeroftp-cli archive create/list/extract`) | None - integrity + Reed-Solomon recovery, **not confidentiality** | Arbitrary files and folders inside a compressed, self-healing archive readable by anyone with the file |
 | <img src="src-tauri/icons/mimetypes/application-x-aerovault-64.png" width="32" height="32" alt="" /><br>`.aerovault` | Encrypted container (alternative to Cryptomator / `.zip` / `.rar`) | AES-256-GCM-SIV + Argon2id | Arbitrary files and folders inside a single sealed archive |
+| <img src="src-tauri/icons/mimetypes/application-x-aeroftp-script-64.png" width="32" height="32" alt="" /><br>`.aerocorrect` | Detached Reed-Solomon recovery sidecar (magic `AEROCORR`, format v2), par2-style; shared by AeroVault and AeroSync. The protected file stays byte-identical | None - integrity + recovery, **not confidentiality** | Content-SHA-bound reconstruction parity for a sibling file or vault; selectable overhead (~7% / ~15% / ~25% / ~30%) |
+| <img src="src-tauri/icons/mimetypes/application-x-aeroftp-script-64.png" width="32" height="32" alt="" /><br>`.aeroignore` | Ignore-pattern file (gitignore-style, last-match-wins) for AeroSync and transfers; convert from rclone filters with `aeroftp-cli import rclone-filter` | None (no secrets) | Exclude / include glob rules; references no credentials |
+| <img src="src-tauri/icons/mimetypes/application-x-aeroftp-script-64.png" width="32" height="32" alt="" /><br>`.aeroftp-script` | Portable batch script for `aeroftp-cli batch` (safer alternative to `.sh` / `.ps1`, runs on every OS where AeroFTP is supported) | None (no secrets) | AeroFTP CLI command lines; references saved profiles by name, never inline credentials |
 | <img src="src-tauri/icons/mimetypes/application-x-aeroftp-64.png" width="32" height="32" alt="" /><br>`.aeroftp` | Server-profile export and cross-tool exchange format (bridge with rclone / WinSCP / FileZilla) | AES-256-GCM + Argon2id | Selected saved profiles (host, user, protocol, paths). With *include credentials* on, also per-profile passwords and per-profile OAuth / Jottacloud tokens |
 | <img src="src-tauri/icons/mimetypes/application-x-aeroftp-keystore-64.png" width="32" height="32" alt="" /><br>`.aeroftp-keystore` | Full vault backup | AES-256-GCM + Argon2id | Everything in the vault: every profile, every credential, AI provider keys, app settings, theme and background preferences, AI chats |
-| <img src="src-tauri/icons/mimetypes/application-x-aerozip-64.png" width="32" height="32" alt="" /><br>`.aerozip` | Plaintext recoverable archive (`aeroftp-cli archive create/list/extract`) | None - integrity + Reed-Solomon recovery, **not confidentiality** | Arbitrary files and folders inside a compressed, self-healing archive readable by anyone with the file |
-| <img src="src-tauri/icons/mimetypes/application-x-aeroftp-script-64.png" width="32" height="32" alt="" /><br>`.aeroftp-script` | Portable batch script for `aeroftp-cli batch` (safer alternative to `.sh` / `.ps1`, runs on every OS where AeroFTP is supported) | None (no secrets) | AeroFTP CLI command lines; references saved profiles by name, never inline credentials |
 
-The first three are encrypted with a user-chosen password at export time. `.aerozip` is plaintext on purpose: it provides integrity and recovery (Reed-Solomon parity is on by default and opt-out, `--recovery-level 0` for a smaller parity-free archive), not secrecy. `.aeroftp-script` is also plaintext on purpose: it never carries secrets, so it can be checked into a repository, scheduled by cron / Task Scheduler, or shared with a teammate without any vault round-trip.
+`.aerovault`, `.aeroftp` and `.aeroftp-keystore` are encrypted with a user-chosen password at seal / export time. `.aerozip` is plaintext on purpose: it provides integrity and recovery (Reed-Solomon parity is on by default and opt-out, `--recovery-level 0` for a smaller parity-free archive), not secrecy, and `.aerocorrect` is the detached form of that same recovery parity, carrying no secrets. `.aeroignore` and `.aeroftp-script` are also plaintext on purpose: they never carry secrets, so they can be checked into a repository, scheduled by cron / Task Scheduler, or shared with a teammate without any vault round-trip.
 
 ---
 

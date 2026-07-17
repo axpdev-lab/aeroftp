@@ -516,6 +516,18 @@ export const TransferQueue: React.FC<TransferQueueProps> = ({
     // See `computeFooterPercentage` for the full precedence + rationale.
     const wavePercentage = computeFooterPercentage(waveTotal, waveDone, transferringCount, activeBatchSnapshot);
 
+    // #364: the header item counter must read completed/total for the WHOLE
+    // transfer, not the lazily-enqueued item-count wave. Queue items enqueue on
+    // `file_start`, so `items.length` only counts files started so far (e.g.
+    // [148/150] on a 600-file upload). When a batch snapshot is live, use its
+    // pre-scan `total` (fixed upfront) and `completed`; fall back to the queue
+    // array for single-file / non-batch transfers. Mirrors computeFooterPercentage.
+    const counterFromSnapshot = !!activeBatchSnapshot && transferringCount > 0 && activeBatchSnapshot.total > 0;
+    const displayCompleted = counterFromSnapshot
+        ? Math.min(activeBatchSnapshot!.completed, activeBatchSnapshot!.total)
+        : completedCount;
+    const displayTotal = counterFromSnapshot ? activeBatchSnapshot!.total : items.length;
+
     // Only render if visible AND has items
     if (!isVisible || items.length === 0) return null;
 
@@ -534,7 +546,7 @@ export const TransferQueue: React.FC<TransferQueueProps> = ({
                         }
                         <span className="text-gray-700 dark:text-gray-300 font-medium">{t('transfer.queue')}</span>
                         <span className="text-gray-500 dark:text-gray-500">
-                            [{completedCount}/{items.length}]
+                            [{displayCompleted}/{displayTotal}]
                         </span>
                     </div>
                     <div className="flex items-center gap-2">
@@ -615,7 +627,7 @@ export const TransferQueue: React.FC<TransferQueueProps> = ({
                                         const time = item.startTime && item.endTime ? ` ${((item.endTime - item.startTime) / 1000).toFixed(1)}s` : '';
                                         return `${num} ${dir} ${st} ${folder}${item.filename}${count}${sz}${time}${err}`;
                                     }).join('\n');
-                                    const header = `Transfer Queue [${completedCount}/${items.length}]`;
+                                    const header = `Transfer Queue [${displayCompleted}/${displayTotal}]`;
                                     navigator.clipboard.writeText(`${header}\n${lines}`);
                                 }}
                                 disabled={items.length === 0}

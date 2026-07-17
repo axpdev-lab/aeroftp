@@ -218,7 +218,7 @@ export const DISCOVER_DESC_KEYS: Record<string, string> = {
 /** Badge overrides for registry providers with distinctive features */
 const BADGE_OVERRIDES: Record<string, string> = {
     'felicloud': 'API OCS',   // Nextcloud-based, OCS REST API for sharing
-    'tabdigital': 'API OCS',  // Tab.digital is also Nextcloud-as-a-service
+    'tabdigital': 'API OCS',  // TAB.DIGITAL is also Nextcloud-as-a-service
     'megacmd-webdav': 'LOCAL',
     'filen-desktop-webdav': 'LOCAL',
     'filen-desktop-s3': 'LOCAL',

@@ -59,7 +59,7 @@ aeroftp.app / docs.aeroftp.app provider tables mirror this list.
 | Seafile | - | self-hosted | WebDAV |
 | SourceForge | US | OSS hosting | SFTP |
 | Storj | US | 30-day trial | S3* |
-| Tab.digital | IN | 8 GB (managed Nextcloud) | WebDAV |
+| TAB.DIGITAL | IN | 8 GB (managed Nextcloud) | WebDAV |
 | Tencent COS | CN | 6-month trial | S3* |
 | Uploadcare | US | 1 GB (media CDN) | API |
 | Wasabi | US | 30-day trial | S3* |

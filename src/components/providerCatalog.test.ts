@@ -144,7 +144,7 @@ describe('commercial tier model: free / free-card / paid', () => {
     });
 
     it('no-card free tiers classify as plain free', () => {
-        expect(tierOf('Tab.digital')).toBe('free');
+        expect(tierOf('TAB.DIGITAL')).toBe('free');
         expect(tierOf('MEGA')).toBe('free');
     });
 

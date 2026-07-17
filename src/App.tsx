@@ -323,7 +323,7 @@ import {
  * Resolve a `{username}` placeholder inside a connection path against the
  * actual credentials. Some Nextcloud-based provider presets ship with
  * `defaults.basePath = '/remote.php/dav/files/{username}/'` (Felicloud,
- * generic Nextcloud, Tab.digital before the basePath was dropped). The
+ * generic Nextcloud, TAB.DIGITAL before the basePath was dropped). The
  * placeholder reaches `quickConnectDirs.remoteDir` at protocol-selection
  * time, BEFORE the user has typed the username, so it cannot be resolved
  * upstream. Resolving here at connect time covers every path that flows
@@ -349,7 +349,7 @@ const resolveUsernameTemplate = (
 
 /**
  * Strip a legacy initialPath that points exactly at a Nextcloud WebDAV root
- * for a provider that no longer needs it. Tab.digital saved profiles created
+ * for a provider that no longer needs it. TAB.DIGITAL saved profiles created
  * before commit efb5a27f shipped with `initialPath = "/remote.php/dav/files/<user>/"`
  * (template resolved at save time). With basePath dropped from the preset,
  * the WebDAV auto-detect in connect() finds the same path on its own and
@@ -7238,7 +7238,7 @@ interface UpdateVerificationInfo {
         // Resolve any `{username}` placeholder against the actual username
         // before the path enters the connect flow. See resolveUsernameTemplate
         // doc comment. Then strip the literal Nextcloud WebDAV root for
-        // legacy Tab.digital / Felicloud / Nextcloud profiles saved before
+        // legacy TAB.DIGITAL / Felicloud / Nextcloud profiles saved before
         // basePath was dropped from the preset.
         const qcTemplateResolved = resolveUsernameTemplate(quickConnectDirs.remoteDir, effectiveParams.username);
         const resolvedRemoteDir = stripLegacyNextcloudWebdavRoot(
@@ -10438,6 +10438,19 @@ interface UpdateVerificationInfo {
       const isProviderConn = usesProviderApi(activeUnifiedRemoteProfile?.protocol);
       const remoteLabel = activeUnifiedRemoteProfile?.name || 'Remote';
       const cryptCompareActive = isCryptOverlayActive();
+      // Crypt-aware Compare: the backend only runs its rclone-crypt name/size
+      // normalization when provider_compare_directories is given the vault
+      // binding. The live provider is not always overlay-wrapped (e.g. a compare
+      // launched on a scope that has not applied the overlay slot), so pass the
+      // binding explicitly, mirroring provider_apply_crypt_overlay. Without it the
+      // remote keeps encrypted names and on-wire padded sizes and every file
+      // mis-diffs, re-uploading the whole folder (#347).
+      const compareCryptVaultId = aeroCryptVaultId || rcloneCryptVaultId;
+      const compareCryptKind: ProviderCryptOverlayKind | null = aeroCryptVaultId
+        ? 'aerocrypt'
+        : rcloneCryptVaultId
+          ? 'rclone-crypt'
+          : null;
 
       // Open immediately with a scanning placeholder so the modal is
       // responsive while the recursive scan runs.
@@ -10464,6 +10477,9 @@ interface UpdateVerificationInfo {
           const compareArgs: Record<string, unknown> = {
             localPath: currentLocalPath,
             remotePath: currentRemotePath,
+            ...(isProviderConn && cryptCompareActive && compareCryptVaultId
+              ? { cryptVaultId: compareCryptVaultId, cryptKind: compareCryptKind }
+              : {}),
             options: {
               compare_timestamp: true,
               compare_size: true,
@@ -16606,7 +16622,7 @@ interface UpdateVerificationInfo {
                     // Resolve {username} placeholder before any path enters
                     // the connect flow. See resolveUsernameTemplate doc.
                     // Then strip the literal Nextcloud WebDAV root for
-                    // legacy Tab.digital / Felicloud / Nextcloud profiles
+                    // legacy TAB.DIGITAL / Felicloud / Nextcloud profiles
                     // saved before basePath was dropped from the preset.
                     const templateResolved = resolveUsernameTemplate(initialPath, normalizedParams.username);
                     const resolvedSavedInitialPath = stripLegacyNextcloudWebdavRoot(
