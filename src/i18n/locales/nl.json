@@ -290,20 +290,20 @@
             "storedTotpWarning": "Als u het 2FA-geheim opslaat, worden beide factoren in de kluis bewaard. Als het hoofdwachtwoord van de kluis wordt gecompromitteerd, beschermt 2FA dit account niet meer. Gebruik bij voorkeur een eenmalige code of een lokale WebDAV/S3-bridge.",
             "filenBridgeCredentialRules": "Limiet van Filen-bridge: {max} tekens. Niet ondersteund: {rejected}",
             "filenBridgeCredentialRejected": "Deze inloggegevens bevatten tekens die door de Filen-bridge worden geweigerd.",
-            "mtpDefaultName": "[NEEDS TRANSLATION] Portable device",
-            "mtpDetect": "[NEEDS TRANSLATION] Detect",
-            "mtpDetectFailed": "[NEEDS TRANSLATION] Could not list portable devices",
-            "mtpDetecting": "[NEEDS TRANSLATION] Detecting...",
-            "mtpDevice": "[NEEDS TRANSLATION] USB device",
-            "mtpFingerprint": "[NEEDS TRANSLATION] Fingerprint",
-            "mtpHonesty": "[NEEDS TRANSLATION] MTP is exclusive: only one app can open the device. Close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter). Some operations are limited by the device OS.",
-            "mtpNoDevices": "[NEEDS TRANSLATION] No portable devices detected. Plug in the phone or camera and enable File Transfer mode.",
-            "mtpRemotePathPlaceholder": "[NEEDS TRANSLATION] Default remote path (e.g. / or DCIM)",
-            "mtpSaveRequiresDevice": "[NEEDS TRANSLATION] Detect and select a device to enable Save.",
-            "mtpSelectPlaceholder": "[NEEDS TRANSLATION] Select a device...",
-            "mtpSelectPlaceholderEmpty": "[NEEDS TRANSLATION] No devices yet — click Detect",
-            "mtpNotAttachedTitle": "[NEEDS TRANSLATION] Device not connected",
-            "mtpNotAttached": "[NEEDS TRANSLATION] Plug in the device and enable File Transfer mode, then try again."
+            "mtpDefaultName": "Draagbaar apparaat",
+            "mtpDetect": "Detecteren",
+            "mtpDetectFailed": "Kan draagbare apparaten niet weergeven",
+            "mtpDetecting": "Detecteren...",
+            "mtpDevice": "USB-apparaat",
+            "mtpFingerprint": "Vingerafdruk",
+            "mtpHonesty": "MTP is exclusief en op aanvraag: Verbinden claimt het apparaat voor deze sessie (op Linux wordt eerst de systeembestandsbeheerder vrijgegeven); verbreken geeft het terug. Overdrachten zijn alleen als volledig bestand (geen hervatten, geen stationsletter). Sommige bewerkingen worden beperkt door het besturingssysteem van het apparaat.",
+            "mtpNoDevices": "Geen draagbare apparaten gedetecteerd. Sluit de telefoon of camera aan en schakel de bestandsoverdrachtmodus in.",
+            "mtpRemotePathPlaceholder": "Standaard extern pad (bijv. / of DCIM)",
+            "mtpSaveRequiresDevice": "Detecteer en selecteer een apparaat om Opslaan in te schakelen.",
+            "mtpSelectPlaceholder": "Selecteer een apparaat...",
+            "mtpSelectPlaceholderEmpty": "Nog geen apparaten — klik op Detecteren",
+            "mtpNotAttachedTitle": "Apparaat niet verbonden",
+            "mtpNotAttached": "Sluit het apparaat aan en schakel de bestandsoverdrachtmodus in, probeer het daarna opnieuw."
         },
         "browser": {
             "remote": "Extern",
@@ -1858,9 +1858,9 @@
             "s3RoleMfaTokenCodePlaceholder": "123456",
             "s3RoleMfaTokenCodeHint": "Eenmalige code van uw MFA-apparaat, alleen vereist als de rol MFA afdwingt. Wordt eenmalig bij het verbinden gebruikt en nooit opgeslagen.",
             "peerDesc": "Deel mappen rechtstreeks met vrienden via een versleuteld peer-to-peer-kanaal, zonder server ertussen.",
-            "devicesInfoLine1": "[NEEDS TRANSLATION] Save a portable USB device (phone, camera, tablet) as a My Servers profile. Detect the device over MTP, set default folders, and reconnect with one click when it is plugged in.",
-            "devicesInfoLine2": "[NEEDS TRANSLATION] MTP is exclusive: close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter).",
-            "discoverMtpPortable": "[NEEDS TRANSLATION] Phone, camera, or tablet over USB MTP"
+            "devicesInfoLine1": "Sla een draagbaar USB-apparaat (telefoon, camera, tablet) op als een profiel in Mijn servers. Detecteer het apparaat via MTP, stel standaardmappen in en verbind met één klik opnieuw wanneer het is aangesloten.",
+            "devicesInfoLine2": "MTP is exclusief en op aanvraag: Verbinden claimt het apparaat voor de sessie; verbreken geeft het terug. Overdrachten zijn alleen als volledig bestand (geen hervatten, geen stationsletter).",
+            "discoverMtpPortable": "Telefoon, camera of tablet via USB MTP"
         },
         "shortcuts": {
             "title": "Sneltoetsen",
@@ -3213,16 +3213,16 @@
             "no_recent": "Geen recente locaties",
             "mount": "Koppelen",
             "ejectFailed": "Uitwerpen mislukt",
-            "portable_devices": "[NEEDS TRANSLATION] Portable devices",
-            "portable_disconnect": "[NEEDS TRANSLATION] Disconnect",
-            "portable_disconnect_failed": "[NEEDS TRANSLATION] Could not disconnect portable device",
-            "portable_empty": "[NEEDS TRANSLATION] No portable devices detected",
-            "portable_honesty": "[NEEDS TRANSLATION] Portable devices use MTP: whole-file copy only, no drive letter, and some operations are limited by the device OS.",
-            "portable_no_storages": "[NEEDS TRANSLATION] Session open (no storage list yet; browse polish follows)",
-            "portable_open_failed": "[NEEDS TRANSLATION] Could not open portable device",
-            "portable_opened": "[NEEDS TRANSLATION] Connected to {name}",
-            "portable_storages": "[NEEDS TRANSLATION] {count} storage(s)",
-            "portable_disconnected": "[NEEDS TRANSLATION] Portable device disconnected: {name}",
+            "portable_devices": "Draagbare apparaten",
+            "portable_disconnect": "Verbinding verbreken",
+            "portable_disconnect_failed": "Kan draagbaar apparaat niet loskoppelen",
+            "portable_empty": "Geen draagbare apparaten gedetecteerd",
+            "portable_honesty": "Draagbare apparaten gebruiken MTP: alleen kopiëren van volledige bestanden, geen stationsletter, geen hervatten, en sommige bewerkingen worden beperkt door het besturingssysteem van het apparaat (niet door AeroFTP).",
+            "portable_no_storages": "Sessie geopend (opslaglijst leeg of niet beschikbaar op dit apparaat)",
+            "portable_open_failed": "Kan draagbaar apparaat niet openen",
+            "portable_opened": "Verbonden met {name}",
+            "portable_storages": "{count} opslag",
+            "portable_disconnected": "Draagbaar apparaat losgekoppeld: {name}",
             "portable_unplugged": "Het draagbare apparaat is losgekoppeld. Sluit de kabel opnieuw aan en open het opnieuw.",
             "portable_needs_replug": "Niet gekoppeld door het bureaublad. Haal de kabel eruit en steek hem weer in, en open het daarna opnieuw."
         },
@@ -4486,7 +4486,7 @@
                 "localBridge": "Lokale brug",
                 "paid": "Betaald",
                 "encrypted": "Versleuteld",
-                "mtp": "[NEEDS TRANSLATION] MTP"
+                "mtp": "MTP"
             },
             "noServers": "Geen opgeslagen servers",
             "noServersHint": "Begin met een snelle verbinding of verken de servicecatalogus.",
@@ -4507,7 +4507,7 @@
                 "developer": "Ontwikkelaar",
                 "mediaServices": "Mediadiensten",
                 "all": "Alles",
-                "devices": "[NEEDS TRANSLATION] Devices"
+                "devices": "Apparaten"
             },
             "confirmDeleteServer": "Server \"{name}\" verwijderen? Dit verwijdert opgeslagen inloggegevens en kan niet ongedaan worden gemaakt.",
             "renameWithHotkey": "Hernoemen (F2)",
@@ -4629,8 +4629,8 @@
                 "moveLeft": "Zijbalk naar links",
                 "moveRight": "Zijbalk naar rechts"
             },
-            "deviceAttached": "[NEEDS TRANSLATION] Device attached",
-            "deviceNotAttached": "[NEEDS TRANSLATION] Device not attached"
+            "deviceAttached": "Apparaat aangesloten",
+            "deviceNotAttached": "Apparaat niet aangesloten"
         },
         "gitlab": {
             "projectPath": "Projectpad",

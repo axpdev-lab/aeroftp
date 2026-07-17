@@ -290,20 +290,20 @@
             "storedTotpWarning": "Збереження секрету 2FA розміщує обидва фактори в сховищі. Якщо головний пароль сховища буде скомпрометовано, 2FA більше не захищатиме цей обліковий запис. Надавайте перевагу одноразовому коду або локальному мосту WebDAV/S3.",
             "filenBridgeCredentialRules": "Обмеження мосту Filen: {max} символів. Не підтримуються: {rejected}",
             "filenBridgeCredentialRejected": "Ці облікові дані містять символи, які відхиляє міст Filen.",
-            "mtpDefaultName": "[NEEDS TRANSLATION] Portable device",
-            "mtpDetect": "[NEEDS TRANSLATION] Detect",
-            "mtpDetectFailed": "[NEEDS TRANSLATION] Could not list portable devices",
-            "mtpDetecting": "[NEEDS TRANSLATION] Detecting...",
-            "mtpDevice": "[NEEDS TRANSLATION] USB device",
-            "mtpFingerprint": "[NEEDS TRANSLATION] Fingerprint",
-            "mtpHonesty": "[NEEDS TRANSLATION] MTP is exclusive: only one app can open the device. Close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter). Some operations are limited by the device OS.",
-            "mtpNoDevices": "[NEEDS TRANSLATION] No portable devices detected. Plug in the phone or camera and enable File Transfer mode.",
-            "mtpRemotePathPlaceholder": "[NEEDS TRANSLATION] Default remote path (e.g. / or DCIM)",
-            "mtpSaveRequiresDevice": "[NEEDS TRANSLATION] Detect and select a device to enable Save.",
-            "mtpSelectPlaceholder": "[NEEDS TRANSLATION] Select a device...",
-            "mtpSelectPlaceholderEmpty": "[NEEDS TRANSLATION] No devices yet — click Detect",
-            "mtpNotAttachedTitle": "[NEEDS TRANSLATION] Device not connected",
-            "mtpNotAttached": "[NEEDS TRANSLATION] Plug in the device and enable File Transfer mode, then try again."
+            "mtpDefaultName": "Портативний пристрій",
+            "mtpDetect": "Виявити",
+            "mtpDetectFailed": "Не вдалося отримати список портативних пристроїв",
+            "mtpDetecting": "Виявлення...",
+            "mtpDevice": "USB-пристрій",
+            "mtpFingerprint": "Відбиток",
+            "mtpHonesty": "MTP є ексклюзивним і на вимогу: Підключити займає пристрій для цього сеансу (у Linux спочатку звільняє системний файловий менеджер); відключення повертає його. Передавання виконується лише цілими файлами (без відновлення, без літери диска). Деякі операції обмежені операційною системою пристрою.",
+            "mtpNoDevices": "Портативних пристроїв не виявлено. Підключіть телефон або камеру та увімкніть режим передавання файлів.",
+            "mtpRemotePathPlaceholder": "Віддалений шлях за замовчуванням (напр. / або DCIM)",
+            "mtpSaveRequiresDevice": "Виявіть і виберіть пристрій, щоб увімкнути Зберегти.",
+            "mtpSelectPlaceholder": "Виберіть пристрій...",
+            "mtpSelectPlaceholderEmpty": "Ще немає пристроїв — натисніть Виявити",
+            "mtpNotAttachedTitle": "Пристрій не підключено",
+            "mtpNotAttached": "Підключіть пристрій та увімкніть режим передавання файлів, потім повторіть спробу."
         },
         "browser": {
             "remote": "Віддалений",
@@ -1858,9 +1858,9 @@
             "s3RoleMfaTokenCodePlaceholder": "123456",
             "s3RoleMfaTokenCodeHint": "Одноразовий код із вашого пристрою MFA, потрібен лише якщо роль вимагає MFA. Використовується один раз під час підключення і ніколи не зберігається.",
             "peerDesc": "Діліться папками безпосередньо з друзями через зашифрований одноранговий канал, без сервера-посередника.",
-            "devicesInfoLine1": "[NEEDS TRANSLATION] Save a portable USB device (phone, camera, tablet) as a My Servers profile. Detect the device over MTP, set default folders, and reconnect with one click when it is plugged in.",
-            "devicesInfoLine2": "[NEEDS TRANSLATION] MTP is exclusive: close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter).",
-            "discoverMtpPortable": "[NEEDS TRANSLATION] Phone, camera, or tablet over USB MTP"
+            "devicesInfoLine1": "Збережіть портативний USB-пристрій (телефон, камеру, планшет) як профіль у Мої сервери. Виявіть пристрій через MTP, задайте типові теки та перепідключайтеся одним клацанням, коли він підключений.",
+            "devicesInfoLine2": "MTP є ексклюзивним і на вимогу: Підключити займає пристрій для сеансу; відключення повертає його. Передавання виконується лише цілими файлами (без відновлення, без літери диска).",
+            "discoverMtpPortable": "Телефон, камера або планшет через USB MTP"
         },
         "shortcuts": {
             "title": "Грячі клавіші",
@@ -3213,16 +3213,16 @@
             "no_recent": "Немає нещодавніх розташувань",
             "mount": "Підключити",
             "ejectFailed": "Не вдалося витягти",
-            "portable_devices": "[NEEDS TRANSLATION] Portable devices",
-            "portable_disconnect": "[NEEDS TRANSLATION] Disconnect",
-            "portable_disconnect_failed": "[NEEDS TRANSLATION] Could not disconnect portable device",
-            "portable_empty": "[NEEDS TRANSLATION] No portable devices detected",
-            "portable_honesty": "[NEEDS TRANSLATION] Portable devices use MTP: whole-file copy only, no drive letter, and some operations are limited by the device OS.",
-            "portable_no_storages": "[NEEDS TRANSLATION] Session open (no storage list yet; browse polish follows)",
-            "portable_open_failed": "[NEEDS TRANSLATION] Could not open portable device",
-            "portable_opened": "[NEEDS TRANSLATION] Connected to {name}",
-            "portable_storages": "[NEEDS TRANSLATION] {count} storage(s)",
-            "portable_disconnected": "[NEEDS TRANSLATION] Portable device disconnected: {name}",
+            "portable_devices": "Портативні пристрої",
+            "portable_disconnect": "Відключити",
+            "portable_disconnect_failed": "Не вдалося відключити портативний пристрій",
+            "portable_empty": "Портативних пристроїв не виявлено",
+            "portable_honesty": "Портативні пристрої використовують MTP: лише копіювання цілих файлів, без літери диска, без відновлення, і деякі операції обмежені операційною системою пристрою (не AeroFTP).",
+            "portable_no_storages": "Сеанс відкрито (список сховищ порожній або недоступний на цьому пристрої)",
+            "portable_open_failed": "Не вдалося відкрити портативний пристрій",
+            "portable_opened": "Підключено до {name}",
+            "portable_storages": "{count} сховищ",
+            "portable_disconnected": "Портативний пристрій відключено: {name}",
             "portable_unplugged": "Портативний пристрій було відключено. Підключіть кабель знову та відкрийте його ще раз.",
             "portable_needs_replug": "Не змонтовано робочим столом. Від’єднайте та знову під’єднайте кабель, потім відкрийте знову."
         },
@@ -4486,7 +4486,7 @@
                 "localBridge": "Локальний міст",
                 "paid": "Платний",
                 "encrypted": "Зашифровані",
-                "mtp": "[NEEDS TRANSLATION] MTP"
+                "mtp": "MTP"
             },
             "noServers": "Немає збережених серверів",
             "noServersHint": "Почніть зі швидкого підключення або перегляньте каталог сервісів.",
@@ -4507,7 +4507,7 @@
                 "developer": "Розробник",
                 "mediaServices": "Медіасервіси",
                 "all": "Усі",
-                "devices": "[NEEDS TRANSLATION] Devices"
+                "devices": "Пристрої"
             },
             "confirmDeleteServer": "Видалити сервер \"{name}\"? Це видалить збережені облікові дані і дію неможливо скасувати.",
             "renameWithHotkey": "Перейменувати (F2)",
@@ -4629,8 +4629,8 @@
                 "moveLeft": "Перемістити панель ліворуч",
                 "moveRight": "Перемістити панель праворуч"
             },
-            "deviceAttached": "[NEEDS TRANSLATION] Device attached",
-            "deviceNotAttached": "[NEEDS TRANSLATION] Device not attached"
+            "deviceAttached": "Пристрій підключено",
+            "deviceNotAttached": "Пристрій не підключено"
         },
         "gitlab": {
             "projectPath": "Шлях до проєкту",

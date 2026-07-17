@@ -290,20 +290,20 @@
             "storedTotpWarning": "Durch das Speichern des 2FA-Geheimnisses befinden sich beide Faktoren im Tresor. Wird das Master-Passwort des Tresors kompromittiert, schützt 2FA dieses Konto nicht mehr. Verwenden Sie vorzugsweise einen Einmalcode oder eine lokale WebDAV/S3-Bridge.",
             "filenBridgeCredentialRules": "Limit der Filen-Bridge: {max} Zeichen. Nicht unterstützt: {rejected}",
             "filenBridgeCredentialRejected": "Diese Anmeldedaten enthalten Zeichen, die von der Filen-Bridge abgelehnt werden.",
-            "mtpDefaultName": "[NEEDS TRANSLATION] Portable device",
-            "mtpDetect": "[NEEDS TRANSLATION] Detect",
-            "mtpDetectFailed": "[NEEDS TRANSLATION] Could not list portable devices",
-            "mtpDetecting": "[NEEDS TRANSLATION] Detecting...",
-            "mtpDevice": "[NEEDS TRANSLATION] USB device",
-            "mtpFingerprint": "[NEEDS TRANSLATION] Fingerprint",
-            "mtpHonesty": "[NEEDS TRANSLATION] MTP is exclusive: only one app can open the device. Close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter). Some operations are limited by the device OS.",
-            "mtpNoDevices": "[NEEDS TRANSLATION] No portable devices detected. Plug in the phone or camera and enable File Transfer mode.",
-            "mtpRemotePathPlaceholder": "[NEEDS TRANSLATION] Default remote path (e.g. / or DCIM)",
-            "mtpSaveRequiresDevice": "[NEEDS TRANSLATION] Detect and select a device to enable Save.",
-            "mtpSelectPlaceholder": "[NEEDS TRANSLATION] Select a device...",
-            "mtpSelectPlaceholderEmpty": "[NEEDS TRANSLATION] No devices yet — click Detect",
-            "mtpNotAttachedTitle": "[NEEDS TRANSLATION] Device not connected",
-            "mtpNotAttached": "[NEEDS TRANSLATION] Plug in the device and enable File Transfer mode, then try again."
+            "mtpDefaultName": "Tragbares Gerät",
+            "mtpDetect": "Erkennen",
+            "mtpDetectFailed": "Tragbare Geräte konnten nicht aufgelistet werden",
+            "mtpDetecting": "Erkennen...",
+            "mtpDevice": "USB-Gerät",
+            "mtpFingerprint": "Fingerabdruck",
+            "mtpHonesty": "MTP ist exklusiv und bei Bedarf: Verbinden beansprucht das Gerät für diese Sitzung (unter Linux wird zuerst der System-Dateimanager freigegeben); Trennen gibt es zurück. Übertragungen erfolgen nur als ganze Datei (kein Fortsetzen, kein Laufwerksbuchstabe). Einige Vorgänge sind durch das Betriebssystem des Geräts eingeschränkt.",
+            "mtpNoDevices": "Keine tragbaren Geräte erkannt. Schließe das Telefon oder die Kamera an und aktiviere den Dateiübertragungsmodus.",
+            "mtpRemotePathPlaceholder": "Standard-Remote-Pfad (z. B. / oder DCIM)",
+            "mtpSaveRequiresDevice": "Erkenne und wähle ein Gerät aus, um Speichern zu aktivieren.",
+            "mtpSelectPlaceholder": "Gerät auswählen...",
+            "mtpSelectPlaceholderEmpty": "Noch keine Geräte – auf Erkennen klicken",
+            "mtpNotAttachedTitle": "Gerät nicht verbunden",
+            "mtpNotAttached": "Schließe das Gerät an und aktiviere den Dateiübertragungsmodus, versuche es dann erneut."
         },
         "browser": {
             "remote": "Remote",
@@ -1858,9 +1858,9 @@
             "s3RoleMfaTokenCodePlaceholder": "123456",
             "s3RoleMfaTokenCodeHint": "Einmalcode von Ihrem MFA-Gerät, nur erforderlich wenn die Rolle MFA erzwingt. Wird einmalig bei der Verbindung verwendet und nie gespeichert.",
             "peerDesc": "Teilen Sie Ordner direkt mit Freunden über einen verschlüsselten Peer-to-Peer-Kanal, ganz ohne Server dazwischen.",
-            "devicesInfoLine1": "[NEEDS TRANSLATION] Save a portable USB device (phone, camera, tablet) as a My Servers profile. Detect the device over MTP, set default folders, and reconnect with one click when it is plugged in.",
-            "devicesInfoLine2": "[NEEDS TRANSLATION] MTP is exclusive: close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter).",
-            "discoverMtpPortable": "[NEEDS TRANSLATION] Phone, camera, or tablet over USB MTP"
+            "devicesInfoLine1": "Speichere ein tragbares USB-Gerät (Telefon, Kamera, Tablet) als Profil in Meine Server. Erkenne das Gerät über MTP, lege Standardordner fest und verbinde dich mit einem Klick erneut, wenn es angeschlossen ist.",
+            "devicesInfoLine2": "MTP ist exklusiv und bei Bedarf: Verbinden beansprucht das Gerät für die Sitzung; Trennen gibt es zurück. Übertragungen erfolgen nur als ganze Datei (kein Fortsetzen, kein Laufwerksbuchstabe).",
+            "discoverMtpPortable": "Telefon, Kamera oder Tablet über USB MTP"
         },
         "shortcuts": {
             "title": "Tastenkombinationen",
@@ -4486,7 +4486,7 @@
                 "localBridge": "Lokale Brücke",
                 "paid": "Kostenpflichtig",
                 "encrypted": "Verschlüsselt",
-                "mtp": "[NEEDS TRANSLATION] MTP"
+                "mtp": "MTP"
             },
             "noServers": "Keine gespeicherten Server",
             "noServersHint": "Starten Sie mit einer Schnellverbindung oder erkunden Sie den Dienstkatalog.",
@@ -4507,7 +4507,7 @@
                 "developer": "Entwickler",
                 "mediaServices": "Mediendienste",
                 "all": "Alle",
-                "devices": "[NEEDS TRANSLATION] Devices"
+                "devices": "Geräte"
             },
             "confirmDeleteServer": "Server \"{name}\" löschen? Dies entfernt gespeicherte Anmeldedaten und kann nicht rückgängig gemacht werden.",
             "renameWithHotkey": "Umbenennen (F2)",
@@ -4629,8 +4629,8 @@
                 "moveLeft": "Seitenleiste nach links",
                 "moveRight": "Seitenleiste nach rechts"
             },
-            "deviceAttached": "[NEEDS TRANSLATION] Device attached",
-            "deviceNotAttached": "[NEEDS TRANSLATION] Device not attached"
+            "deviceAttached": "Gerät angeschlossen",
+            "deviceNotAttached": "Gerät nicht angeschlossen"
         },
         "gitlab": {
             "projectPath": "Projektpfad",

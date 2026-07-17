@@ -290,20 +290,20 @@
             "storedTotpWarning": "Η αποθήκευση του μυστικού 2FA τοποθετεί και τους δύο παράγοντες στο θησαυροφυλάκιο. Αν παραβιαστεί ο κύριος κωδικός πρόσβασης του θησαυροφυλακίου, το 2FA δεν προστατεύει πλέον αυτόν τον λογαριασμό. Προτιμήστε κωδικό μίας χρήσης ή τοπική γέφυρα WebDAV/S3.",
             "filenBridgeCredentialRules": "Όριο γέφυρας Filen: {max} χαρακτήρες. Μη υποστηριζόμενοι: {rejected}",
             "filenBridgeCredentialRejected": "Αυτά τα διαπιστευτήρια περιέχουν χαρακτήρες που απορρίπτονται από τη γέφυρα Filen.",
-            "mtpDefaultName": "[NEEDS TRANSLATION] Portable device",
-            "mtpDetect": "[NEEDS TRANSLATION] Detect",
-            "mtpDetectFailed": "[NEEDS TRANSLATION] Could not list portable devices",
-            "mtpDetecting": "[NEEDS TRANSLATION] Detecting...",
-            "mtpDevice": "[NEEDS TRANSLATION] USB device",
-            "mtpFingerprint": "[NEEDS TRANSLATION] Fingerprint",
-            "mtpHonesty": "[NEEDS TRANSLATION] MTP is exclusive: only one app can open the device. Close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter). Some operations are limited by the device OS.",
-            "mtpNoDevices": "[NEEDS TRANSLATION] No portable devices detected. Plug in the phone or camera and enable File Transfer mode.",
-            "mtpRemotePathPlaceholder": "[NEEDS TRANSLATION] Default remote path (e.g. / or DCIM)",
-            "mtpSaveRequiresDevice": "[NEEDS TRANSLATION] Detect and select a device to enable Save.",
-            "mtpSelectPlaceholder": "[NEEDS TRANSLATION] Select a device...",
-            "mtpSelectPlaceholderEmpty": "[NEEDS TRANSLATION] No devices yet — click Detect",
-            "mtpNotAttachedTitle": "[NEEDS TRANSLATION] Device not connected",
-            "mtpNotAttached": "[NEEDS TRANSLATION] Plug in the device and enable File Transfer mode, then try again."
+            "mtpDefaultName": "Φορητή συσκευή",
+            "mtpDetect": "Εντοπισμός",
+            "mtpDetectFailed": "Δεν ήταν δυνατή η προβολή φορητών συσκευών",
+            "mtpDetecting": "Εντοπισμός...",
+            "mtpDevice": "Συσκευή USB",
+            "mtpFingerprint": "Δακτυλικό αποτύπωμα",
+            "mtpHonesty": "Το MTP είναι αποκλειστικό και κατ' απαίτηση: Η Σύνδεση δεσμεύει τη συσκευή για αυτήν τη συνεδρία (σε Linux, απελευθερώνει πρώτα τον διαχειριστή αρχείων του συστήματος)· η αποσύνδεση την επιστρέφει. Οι μεταφορές είναι μόνο ολόκληρων αρχείων (χωρίς συνέχιση, χωρίς γράμμα μονάδας). Ορισμένες λειτουργίες περιορίζονται από το λειτουργικό σύστημα της συσκευής.",
+            "mtpNoDevices": "Δεν εντοπίστηκαν φορητές συσκευές. Συνδέστε το τηλέφωνο ή την κάμερα και ενεργοποιήστε τη λειτουργία μεταφοράς αρχείων.",
+            "mtpRemotePathPlaceholder": "Προεπιλεγμένη απομακρυσμένη διαδρομή (π.χ. / ή DCIM)",
+            "mtpSaveRequiresDevice": "Εντοπίστε και επιλέξτε μια συσκευή για να ενεργοποιήσετε την Αποθήκευση.",
+            "mtpSelectPlaceholder": "Επιλέξτε μια συσκευή...",
+            "mtpSelectPlaceholderEmpty": "Δεν υπάρχουν ακόμη συσκευές — κάντε κλικ στον Εντοπισμό",
+            "mtpNotAttachedTitle": "Η συσκευή δεν είναι συνδεδεμένη",
+            "mtpNotAttached": "Συνδέστε τη συσκευή και ενεργοποιήστε τη λειτουργία μεταφοράς αρχείων και έπειτα δοκιμάστε ξανά."
         },
         "browser": {
             "remote": "Απομακρυσμένο",
@@ -1858,9 +1858,9 @@
             "s3RoleMfaTokenCodePlaceholder": "123456",
             "s3RoleMfaTokenCodeHint": "Κωδικός μίας χρήσης από τη συσκευή MFA σας, απαιτείται μόνο αν ο ρόλος επιβάλλει MFA. Χρησιμοποιείται μία φορά κατά τη σύνδεση και δεν αποθηκεύεται ποτέ.",
             "peerDesc": "Μοιραστείτε φακέλους απευθείας με φίλους μέσω κρυπτογραφημένου καναλιού peer-to-peer, χωρίς διακομιστή στη μέση.",
-            "devicesInfoLine1": "[NEEDS TRANSLATION] Save a portable USB device (phone, camera, tablet) as a My Servers profile. Detect the device over MTP, set default folders, and reconnect with one click when it is plugged in.",
-            "devicesInfoLine2": "[NEEDS TRANSLATION] MTP is exclusive: close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter).",
-            "discoverMtpPortable": "[NEEDS TRANSLATION] Phone, camera, or tablet over USB MTP"
+            "devicesInfoLine1": "Αποθηκεύστε μια φορητή συσκευή USB (τηλέφωνο, κάμερα, tablet) ως προφίλ στους Διακομιστές μου. Εντοπίστε τη συσκευή μέσω MTP, ορίστε προεπιλεγμένους φακέλους και επανασυνδεθείτε με ένα κλικ όταν είναι συνδεδεμένη.",
+            "devicesInfoLine2": "Το MTP είναι αποκλειστικό και κατ' απαίτηση: Η Σύνδεση δεσμεύει τη συσκευή για τη συνεδρία· η αποσύνδεση την επιστρέφει. Οι μεταφορές είναι μόνο ολόκληρων αρχείων (χωρίς συνέχιση, χωρίς γράμμα μονάδας).",
+            "discoverMtpPortable": "Τηλέφωνο, κάμερα ή tablet μέσω USB MTP"
         },
         "shortcuts": {
             "title": "Συντομεύσεις πληκτρολογίου",
@@ -3213,16 +3213,16 @@
             "no_recent": "Δεν υπάρχουν πρόσφατες τοποθεσίες",
             "mount": "Προσάρτηση",
             "ejectFailed": "Η εξαγωγή απέτυχε",
-            "portable_devices": "[NEEDS TRANSLATION] Portable devices",
-            "portable_disconnect": "[NEEDS TRANSLATION] Disconnect",
-            "portable_disconnect_failed": "[NEEDS TRANSLATION] Could not disconnect portable device",
-            "portable_empty": "[NEEDS TRANSLATION] No portable devices detected",
-            "portable_honesty": "[NEEDS TRANSLATION] Portable devices use MTP: whole-file copy only, no drive letter, and some operations are limited by the device OS.",
-            "portable_no_storages": "[NEEDS TRANSLATION] Session open (no storage list yet; browse polish follows)",
-            "portable_open_failed": "[NEEDS TRANSLATION] Could not open portable device",
-            "portable_opened": "[NEEDS TRANSLATION] Connected to {name}",
-            "portable_storages": "[NEEDS TRANSLATION] {count} storage(s)",
-            "portable_disconnected": "[NEEDS TRANSLATION] Portable device disconnected: {name}",
+            "portable_devices": "Φορητές συσκευές",
+            "portable_disconnect": "Αποσύνδεση",
+            "portable_disconnect_failed": "Δεν ήταν δυνατή η αποσύνδεση της φορητής συσκευής",
+            "portable_empty": "Δεν εντοπίστηκαν φορητές συσκευές",
+            "portable_honesty": "Οι φορητές συσκευές χρησιμοποιούν MTP: μόνο αντιγραφή ολόκληρου αρχείου, χωρίς γράμμα μονάδας, χωρίς συνέχιση, και ορισμένες λειτουργίες περιορίζονται από το λειτουργικό σύστημα της συσκευής (όχι από το AeroFTP).",
+            "portable_no_storages": "Η συνεδρία είναι ανοιχτή (η λίστα αποθήκευσης είναι κενή ή μη διαθέσιμη σε αυτήν τη συσκευή)",
+            "portable_open_failed": "Δεν ήταν δυνατό το άνοιγμα της φορητής συσκευής",
+            "portable_opened": "Συνδέθηκε στο {name}",
+            "portable_storages": "{count} αποθηκευτικοί χώροι",
+            "portable_disconnected": "Η φορητή συσκευή αποσυνδέθηκε: {name}",
             "portable_unplugged": "Η φορητή συσκευή αποσυνδέθηκε. Επανασυνδέστε το καλώδιο και ανοίξτε την ξανά.",
             "portable_needs_replug": "Δεν έχει προσαρτηθεί από την επιφάνεια εργασίας. Αποσυνδέστε και επανασυνδέστε το καλώδιο, μετά ανοίξτε το ξανά."
         },
@@ -4486,7 +4486,7 @@
                 "localBridge": "Τοπική γέφυρα",
                 "paid": "Επί πληρωμή",
                 "encrypted": "Κρυπτογραφημένα",
-                "mtp": "[NEEDS TRANSLATION] MTP"
+                "mtp": "MTP"
             },
             "noServers": "Δεν υπάρχουν αποθηκευμένοι διακομιστές",
             "noServersHint": "Ξεκινήστε με μια γρήγορη σύνδεση ή εξερευνήστε τον κατάλογο υπηρεσιών.",
@@ -4507,7 +4507,7 @@
                 "developer": "Προγραμματιστής",
                 "mediaServices": "Υπηρεσίες πολυμέσων",
                 "all": "Όλα",
-                "devices": "[NEEDS TRANSLATION] Devices"
+                "devices": "Συσκευές"
             },
             "confirmDeleteServer": "Διαγραφή διακομιστή \"{name}\"; Αυτό αφαιρεί τα αποθηκευμένα διαπιστευτήρια και δεν μπορεί να αναιρεθεί.",
             "renameWithHotkey": "Μετονομασία (F2)",
@@ -4629,8 +4629,8 @@
                 "moveLeft": "Μετακίνηση αριστερά",
                 "moveRight": "Μετακίνηση δεξιά"
             },
-            "deviceAttached": "[NEEDS TRANSLATION] Device attached",
-            "deviceNotAttached": "[NEEDS TRANSLATION] Device not attached"
+            "deviceAttached": "Η συσκευή συνδέθηκε",
+            "deviceNotAttached": "Η συσκευή δεν συνδέθηκε"
         },
         "gitlab": {
             "projectPath": "Διαδρομή Έργου",

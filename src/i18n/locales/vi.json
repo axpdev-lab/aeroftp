@@ -290,20 +290,20 @@
             "storedTotpWarning": "Việc lưu bí mật 2FA sẽ đặt cả hai yếu tố vào kho. Nếu mật khẩu chính của kho bị xâm phạm, 2FA sẽ không còn bảo vệ tài khoản này. Nên dùng mã một lần hoặc cầu nối WebDAV/S3 cục bộ.",
             "filenBridgeCredentialRules": "Giới hạn cầu nối Filen: {max} ký tự. Không hỗ trợ: {rejected}",
             "filenBridgeCredentialRejected": "Thông tin xác thực này chứa các ký tự bị cầu nối Filen từ chối.",
-            "mtpDefaultName": "[NEEDS TRANSLATION] Portable device",
-            "mtpDetect": "[NEEDS TRANSLATION] Detect",
-            "mtpDetectFailed": "[NEEDS TRANSLATION] Could not list portable devices",
-            "mtpDetecting": "[NEEDS TRANSLATION] Detecting...",
-            "mtpDevice": "[NEEDS TRANSLATION] USB device",
-            "mtpFingerprint": "[NEEDS TRANSLATION] Fingerprint",
-            "mtpHonesty": "[NEEDS TRANSLATION] MTP is exclusive: only one app can open the device. Close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter). Some operations are limited by the device OS.",
-            "mtpNoDevices": "[NEEDS TRANSLATION] No portable devices detected. Plug in the phone or camera and enable File Transfer mode.",
-            "mtpRemotePathPlaceholder": "[NEEDS TRANSLATION] Default remote path (e.g. / or DCIM)",
-            "mtpSaveRequiresDevice": "[NEEDS TRANSLATION] Detect and select a device to enable Save.",
-            "mtpSelectPlaceholder": "[NEEDS TRANSLATION] Select a device...",
-            "mtpSelectPlaceholderEmpty": "[NEEDS TRANSLATION] No devices yet — click Detect",
-            "mtpNotAttachedTitle": "[NEEDS TRANSLATION] Device not connected",
-            "mtpNotAttached": "[NEEDS TRANSLATION] Plug in the device and enable File Transfer mode, then try again."
+            "mtpDefaultName": "Thiết bị di động",
+            "mtpDetect": "Phát hiện",
+            "mtpDetectFailed": "Không thể liệt kê các thiết bị di động",
+            "mtpDetecting": "Đang phát hiện...",
+            "mtpDevice": "Thiết bị USB",
+            "mtpFingerprint": "Vân tay",
+            "mtpHonesty": "MTP là độc quyền và theo yêu cầu: Kết nối chiếm thiết bị cho phiên này (trên Linux, giải phóng trình quản lý tệp hệ thống trước); ngắt kết nối sẽ trả lại. Truyền chỉ toàn bộ tệp (không tiếp tục, không ký tự ổ đĩa). Một số thao tác bị giới hạn bởi hệ điều hành của thiết bị.",
+            "mtpNoDevices": "Không phát hiện thiết bị di động nào. Cắm điện thoại hoặc máy ảnh và bật chế độ Truyền tệp.",
+            "mtpRemotePathPlaceholder": "Đường dẫn từ xa mặc định (ví dụ: / hoặc DCIM)",
+            "mtpSaveRequiresDevice": "Phát hiện và chọn một thiết bị để bật Lưu.",
+            "mtpSelectPlaceholder": "Chọn một thiết bị...",
+            "mtpSelectPlaceholderEmpty": "Chưa có thiết bị nào — nhấp Phát hiện",
+            "mtpNotAttachedTitle": "Thiết bị chưa được kết nối",
+            "mtpNotAttached": "Cắm thiết bị và bật chế độ Truyền tệp, sau đó thử lại."
         },
         "browser": {
             "remote": "Từ xa",
@@ -1858,9 +1858,9 @@
             "s3RoleMfaTokenCodePlaceholder": "123456",
             "s3RoleMfaTokenCodeHint": "Mã dùng một lần từ thiết bị MFA của bạn, chỉ bắt buộc nếu vai trò yêu cầu MFA. Được dùng một lần khi kết nối và không bao giờ được lưu.",
             "peerDesc": "Chia sẻ thư mục trực tiếp với bạn bè qua kênh ngang hàng được mã hóa, không có máy chủ trung gian.",
-            "devicesInfoLine1": "[NEEDS TRANSLATION] Save a portable USB device (phone, camera, tablet) as a My Servers profile. Detect the device over MTP, set default folders, and reconnect with one click when it is plugged in.",
-            "devicesInfoLine2": "[NEEDS TRANSLATION] MTP is exclusive: close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter).",
-            "discoverMtpPortable": "[NEEDS TRANSLATION] Phone, camera, or tablet over USB MTP"
+            "devicesInfoLine1": "Lưu thiết bị USB di động (điện thoại, máy ảnh, máy tính bảng) làm hồ sơ trong Máy chủ của tôi. Phát hiện thiết bị qua MTP, đặt thư mục mặc định và kết nối lại bằng một cú nhấp khi được cắm.",
+            "devicesInfoLine2": "MTP là độc quyền và theo yêu cầu: Kết nối chiếm thiết bị cho phiên; ngắt kết nối sẽ trả lại. Truyền chỉ toàn bộ tệp (không tiếp tục, không ký tự ổ đĩa).",
+            "discoverMtpPortable": "Điện thoại, máy ảnh hoặc máy tính bảng qua USB MTP"
         },
         "shortcuts": {
             "title": "Phím tắt",
@@ -3213,16 +3213,16 @@
             "no_recent": "Không có vị trí gần đây",
             "mount": "Gắn kết",
             "ejectFailed": "Tháo thất bại",
-            "portable_devices": "[NEEDS TRANSLATION] Portable devices",
-            "portable_disconnect": "[NEEDS TRANSLATION] Disconnect",
-            "portable_disconnect_failed": "[NEEDS TRANSLATION] Could not disconnect portable device",
-            "portable_empty": "[NEEDS TRANSLATION] No portable devices detected",
-            "portable_honesty": "[NEEDS TRANSLATION] Portable devices use MTP: whole-file copy only, no drive letter, and some operations are limited by the device OS.",
-            "portable_no_storages": "[NEEDS TRANSLATION] Session open (no storage list yet; browse polish follows)",
-            "portable_open_failed": "[NEEDS TRANSLATION] Could not open portable device",
-            "portable_opened": "[NEEDS TRANSLATION] Connected to {name}",
-            "portable_storages": "[NEEDS TRANSLATION] {count} storage(s)",
-            "portable_disconnected": "[NEEDS TRANSLATION] Portable device disconnected: {name}",
+            "portable_devices": "Thiết bị di động",
+            "portable_disconnect": "Ngắt kết nối",
+            "portable_disconnect_failed": "Không thể ngắt kết nối thiết bị di động",
+            "portable_empty": "Không phát hiện thiết bị di động nào",
+            "portable_honesty": "Thiết bị di động sử dụng MTP: chỉ sao chép toàn bộ tệp, không ký tự ổ đĩa, không tiếp tục và một số thao tác bị giới hạn bởi hệ điều hành của thiết bị (không phải AeroFTP).",
+            "portable_no_storages": "Phiên đang mở (danh sách bộ nhớ trống hoặc không khả dụng trên thiết bị này)",
+            "portable_open_failed": "Không thể mở thiết bị di động",
+            "portable_opened": "Đã kết nối với {name}",
+            "portable_storages": "{count} bộ nhớ",
+            "portable_disconnected": "Đã ngắt kết nối thiết bị di động: {name}",
             "portable_unplugged": "Thiết bị di động đã bị ngắt kết nối. Cắm lại cáp và mở lại thiết bị.",
             "portable_needs_replug": "Chưa được máy tính gắn kết. Rút rồi cắm lại cáp, sau đó mở lại."
         },
@@ -4486,7 +4486,7 @@
                 "localBridge": "Cầu nối cục bộ",
                 "paid": "Trả phí",
                 "encrypted": "Đã mã hóa",
-                "mtp": "[NEEDS TRANSLATION] MTP"
+                "mtp": "MTP"
             },
             "noServers": "Không có máy chủ đã lưu",
             "noServersHint": "Bắt đầu với kết nối nhanh hoặc khám phá danh mục dịch vụ.",
@@ -4507,7 +4507,7 @@
                 "developer": "Nhà phát triển",
                 "mediaServices": "Dịch vụ Phương tiện",
                 "all": "Tất cả",
-                "devices": "[NEEDS TRANSLATION] Devices"
+                "devices": "Thiết bị"
             },
             "confirmDeleteServer": "Xóa máy chủ \"{name}\"? Thao tác này sẽ xóa thông tin xác thực đã lưu và không thể hoàn tác.",
             "renameWithHotkey": "Đổi tên (F2)",
@@ -4629,8 +4629,8 @@
                 "moveLeft": "Di chuyển sang trái",
                 "moveRight": "Di chuyển sang phải"
             },
-            "deviceAttached": "[NEEDS TRANSLATION] Device attached",
-            "deviceNotAttached": "[NEEDS TRANSLATION] Device not attached"
+            "deviceAttached": "Đã gắn thiết bị",
+            "deviceNotAttached": "Chưa gắn thiết bị"
         },
         "gitlab": {
             "projectPath": "Duong dan du an",

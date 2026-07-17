@@ -290,20 +290,20 @@
             "storedTotpWarning": "Menyimpan rahasia 2FA menempatkan kedua faktor di brankas. Jika kata sandi utama brankas dibobol, 2FA tidak lagi melindungi akun ini. Utamakan kode sekali pakai atau jembatan WebDAV/S3 lokal.",
             "filenBridgeCredentialRules": "Batas jembatan Filen: {max} karakter. Tidak didukung: {rejected}",
             "filenBridgeCredentialRejected": "Kredensial ini berisi karakter yang ditolak oleh jembatan Filen.",
-            "mtpDefaultName": "[NEEDS TRANSLATION] Portable device",
-            "mtpDetect": "[NEEDS TRANSLATION] Detect",
-            "mtpDetectFailed": "[NEEDS TRANSLATION] Could not list portable devices",
-            "mtpDetecting": "[NEEDS TRANSLATION] Detecting...",
-            "mtpDevice": "[NEEDS TRANSLATION] USB device",
-            "mtpFingerprint": "[NEEDS TRANSLATION] Fingerprint",
-            "mtpHonesty": "[NEEDS TRANSLATION] MTP is exclusive: only one app can open the device. Close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter). Some operations are limited by the device OS.",
-            "mtpNoDevices": "[NEEDS TRANSLATION] No portable devices detected. Plug in the phone or camera and enable File Transfer mode.",
-            "mtpRemotePathPlaceholder": "[NEEDS TRANSLATION] Default remote path (e.g. / or DCIM)",
-            "mtpSaveRequiresDevice": "[NEEDS TRANSLATION] Detect and select a device to enable Save.",
-            "mtpSelectPlaceholder": "[NEEDS TRANSLATION] Select a device...",
-            "mtpSelectPlaceholderEmpty": "[NEEDS TRANSLATION] No devices yet — click Detect",
-            "mtpNotAttachedTitle": "[NEEDS TRANSLATION] Device not connected",
-            "mtpNotAttached": "[NEEDS TRANSLATION] Plug in the device and enable File Transfer mode, then try again."
+            "mtpDefaultName": "Perangkat portabel",
+            "mtpDetect": "Deteksi",
+            "mtpDetectFailed": "Tidak dapat mencantumkan perangkat portabel",
+            "mtpDetecting": "Mendeteksi...",
+            "mtpDevice": "Perangkat USB",
+            "mtpFingerprint": "Sidik jari",
+            "mtpHonesty": "MTP bersifat eksklusif dan sesuai permintaan: Hubungkan mengklaim perangkat untuk sesi ini (di Linux, melepaskan pengelola file sistem terlebih dahulu); memutuskan sambungan mengembalikannya. Transfer hanya seluruh file (tanpa lanjut, tanpa huruf drive). Beberapa operasi dibatasi oleh OS perangkat.",
+            "mtpNoDevices": "Tidak ada perangkat portabel terdeteksi. Colokkan ponsel atau kamera dan aktifkan mode Transfer File.",
+            "mtpRemotePathPlaceholder": "Jalur jarak jauh default (mis. / atau DCIM)",
+            "mtpSaveRequiresDevice": "Deteksi dan pilih perangkat untuk mengaktifkan Simpan.",
+            "mtpSelectPlaceholder": "Pilih perangkat...",
+            "mtpSelectPlaceholderEmpty": "Belum ada perangkat — klik Deteksi",
+            "mtpNotAttachedTitle": "Perangkat tidak terhubung",
+            "mtpNotAttached": "Colokkan perangkat dan aktifkan mode Transfer File, lalu coba lagi."
         },
         "browser": {
             "remote": "Jarak Jauh",
@@ -1858,9 +1858,9 @@
             "s3RoleMfaTokenCodePlaceholder": "123456",
             "s3RoleMfaTokenCodeHint": "Kode sekali pakai dari perangkat MFA Anda, diperlukan hanya jika peran mewajibkan MFA. Digunakan sekali saat menghubungkan dan tidak pernah disimpan.",
             "peerDesc": "Bagikan folder langsung dengan teman melalui saluran peer-to-peer terenkripsi, tanpa server perantara.",
-            "devicesInfoLine1": "[NEEDS TRANSLATION] Save a portable USB device (phone, camera, tablet) as a My Servers profile. Detect the device over MTP, set default folders, and reconnect with one click when it is plugged in.",
-            "devicesInfoLine2": "[NEEDS TRANSLATION] MTP is exclusive: close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter).",
-            "discoverMtpPortable": "[NEEDS TRANSLATION] Phone, camera, or tablet over USB MTP"
+            "devicesInfoLine1": "Simpan perangkat USB portabel (ponsel, kamera, tablet) sebagai profil di Server Saya. Deteksi perangkat melalui MTP, atur folder default, dan sambungkan kembali dengan satu klik saat terpasang.",
+            "devicesInfoLine2": "MTP bersifat eksklusif dan sesuai permintaan: Hubungkan mengklaim perangkat untuk sesi; memutuskan sambungan mengembalikannya. Transfer hanya seluruh file (tanpa lanjut, tanpa huruf drive).",
+            "discoverMtpPortable": "Ponsel, kamera, atau tablet melalui USB MTP"
         },
         "shortcuts": {
             "title": "Pintasan Keyboard",
@@ -3213,16 +3213,16 @@
             "no_recent": "Tidak ada tempat terbaru",
             "mount": "Mount",
             "ejectFailed": "Gagal mengeluarkan",
-            "portable_devices": "[NEEDS TRANSLATION] Portable devices",
-            "portable_disconnect": "[NEEDS TRANSLATION] Disconnect",
-            "portable_disconnect_failed": "[NEEDS TRANSLATION] Could not disconnect portable device",
-            "portable_empty": "[NEEDS TRANSLATION] No portable devices detected",
-            "portable_honesty": "[NEEDS TRANSLATION] Portable devices use MTP: whole-file copy only, no drive letter, and some operations are limited by the device OS.",
-            "portable_no_storages": "[NEEDS TRANSLATION] Session open (no storage list yet; browse polish follows)",
-            "portable_open_failed": "[NEEDS TRANSLATION] Could not open portable device",
-            "portable_opened": "[NEEDS TRANSLATION] Connected to {name}",
-            "portable_storages": "[NEEDS TRANSLATION] {count} storage(s)",
-            "portable_disconnected": "[NEEDS TRANSLATION] Portable device disconnected: {name}",
+            "portable_devices": "Perangkat portabel",
+            "portable_disconnect": "Putuskan sambungan",
+            "portable_disconnect_failed": "Tidak dapat memutuskan sambungan perangkat portabel",
+            "portable_empty": "Tidak ada perangkat portabel terdeteksi",
+            "portable_honesty": "Perangkat portabel menggunakan MTP: hanya salinan seluruh file, tanpa huruf drive, tanpa lanjut, dan beberapa operasi dibatasi oleh OS perangkat (bukan AeroFTP).",
+            "portable_no_storages": "Sesi terbuka (daftar penyimpanan kosong atau tidak tersedia di perangkat ini)",
+            "portable_open_failed": "Tidak dapat membuka perangkat portabel",
+            "portable_opened": "Terhubung ke {name}",
+            "portable_storages": "{count} penyimpanan",
+            "portable_disconnected": "Perangkat portabel terputus: {name}",
             "portable_unplugged": "Perangkat portabel terputus. Colokkan kembali kabelnya dan buka lagi.",
             "portable_needs_replug": "Tidak dimuat oleh desktop. Cabut dan colokkan kembali kabelnya, lalu buka lagi."
         },
@@ -4486,7 +4486,7 @@
                 "localBridge": "Jembatan lokal",
                 "paid": "Berbayar",
                 "encrypted": "Terenkripsi",
-                "mtp": "[NEEDS TRANSLATION] MTP"
+                "mtp": "MTP"
             },
             "noServers": "Tidak ada server tersimpan",
             "noServersHint": "Mulai dengan sambungan cepat atau jelajahi katalog layanan.",
@@ -4507,7 +4507,7 @@
                 "developer": "Pengembang",
                 "mediaServices": "Layanan Media",
                 "all": "Semua",
-                "devices": "[NEEDS TRANSLATION] Devices"
+                "devices": "Perangkat"
             },
             "confirmDeleteServer": "Hapus server \"{name}\"? Ini akan menghapus kredensial yang tersimpan dan tidak dapat dibatalkan.",
             "renameWithHotkey": "Ganti nama (F2)",
@@ -4629,8 +4629,8 @@
                 "moveLeft": "Pindahkan ke kiri",
                 "moveRight": "Pindahkan ke kanan"
             },
-            "deviceAttached": "[NEEDS TRANSLATION] Device attached",
-            "deviceNotAttached": "[NEEDS TRANSLATION] Device not attached"
+            "deviceAttached": "Perangkat terpasang",
+            "deviceNotAttached": "Perangkat tidak terpasang"
         },
         "gitlab": {
             "projectPath": "Jalur Proyek",

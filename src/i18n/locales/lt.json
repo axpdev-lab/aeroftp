@@ -290,20 +290,20 @@
             "storedTotpWarning": "Išsaugojus 2FA paslaptį, abu veiksniai laikomi saugykloje. Jei saugyklos pagrindinis slaptažodis bus atskleistas, 2FA nebeapsaugos šios paskyros. Geriau naudokite vienkartinį kodą arba vietinį WebDAV/S3 tiltą.",
             "filenBridgeCredentialRules": "Filen tilto riba: {max} simbolių. Nepalaikoma: {rejected}",
             "filenBridgeCredentialRejected": "Šiuose prisijungimo duomenyse yra Filen tilto atmetamų simbolių.",
-            "mtpDefaultName": "[NEEDS TRANSLATION] Portable device",
-            "mtpDetect": "[NEEDS TRANSLATION] Detect",
-            "mtpDetectFailed": "[NEEDS TRANSLATION] Could not list portable devices",
-            "mtpDetecting": "[NEEDS TRANSLATION] Detecting...",
-            "mtpDevice": "[NEEDS TRANSLATION] USB device",
-            "mtpFingerprint": "[NEEDS TRANSLATION] Fingerprint",
-            "mtpHonesty": "[NEEDS TRANSLATION] MTP is exclusive: only one app can open the device. Close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter). Some operations are limited by the device OS.",
-            "mtpNoDevices": "[NEEDS TRANSLATION] No portable devices detected. Plug in the phone or camera and enable File Transfer mode.",
-            "mtpRemotePathPlaceholder": "[NEEDS TRANSLATION] Default remote path (e.g. / or DCIM)",
-            "mtpSaveRequiresDevice": "[NEEDS TRANSLATION] Detect and select a device to enable Save.",
-            "mtpSelectPlaceholder": "[NEEDS TRANSLATION] Select a device...",
-            "mtpSelectPlaceholderEmpty": "[NEEDS TRANSLATION] No devices yet — click Detect",
-            "mtpNotAttachedTitle": "[NEEDS TRANSLATION] Device not connected",
-            "mtpNotAttached": "[NEEDS TRANSLATION] Plug in the device and enable File Transfer mode, then try again."
+            "mtpDefaultName": "Nešiojamasis įrenginys",
+            "mtpDetect": "Aptikti",
+            "mtpDetectFailed": "Nepavyko išvardyti nešiojamųjų įrenginių",
+            "mtpDetecting": "Aptinkama...",
+            "mtpDevice": "USB įrenginys",
+            "mtpFingerprint": "Piršto atspaudas",
+            "mtpHonesty": "MTP yra išskirtinis ir pagal poreikį: Prisijungti užima įrenginį šiai sesijai (Linux sistemoje pirmiausia atlaisvina sistemos failų tvarkytuvę); atsijungimas jį grąžina. Perkeliami tik ištisi failai (be atnaujinimo, be disko raidės). Kai kurias operacijas riboja įrenginio operacinė sistema.",
+            "mtpNoDevices": "Nešiojamųjų įrenginių neaptikta. Prijunkite telefoną arba kamerą ir įjunkite failų perdavimo režimą.",
+            "mtpRemotePathPlaceholder": "Numatytasis nuotolinis kelias (pvz., / arba DCIM)",
+            "mtpSaveRequiresDevice": "Aptikite ir pasirinkite įrenginį, kad įjungtumėte Įrašyti.",
+            "mtpSelectPlaceholder": "Pasirinkite įrenginį...",
+            "mtpSelectPlaceholderEmpty": "Dar nėra įrenginių – spustelėkite Aptikti",
+            "mtpNotAttachedTitle": "Įrenginys neprijungtas",
+            "mtpNotAttached": "Prijunkite įrenginį ir įjunkite failų perdavimo režimą, tada bandykite dar kartą."
         },
         "browser": {
             "remote": "Nuotolinis",
@@ -1858,9 +1858,9 @@
             "s3RoleMfaTokenCodePlaceholder": "123456",
             "s3RoleMfaTokenCodeHint": "Vienkartinis kodas iš jūsų MFA įrenginio, reikalingas tik jei vaidmuo reikalauja MFA. Naudojamas vieną kartą prisijungiant ir niekada nesaugomas.",
             "peerDesc": "Bendrinkite aplankus tiesiogiai su draugais užšifruotu peer-to-peer kanalu, be serverio tarpininkavimo.",
-            "devicesInfoLine1": "[NEEDS TRANSLATION] Save a portable USB device (phone, camera, tablet) as a My Servers profile. Detect the device over MTP, set default folders, and reconnect with one click when it is plugged in.",
-            "devicesInfoLine2": "[NEEDS TRANSLATION] MTP is exclusive: close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter).",
-            "discoverMtpPortable": "[NEEDS TRANSLATION] Phone, camera, or tablet over USB MTP"
+            "devicesInfoLine1": "Įrašykite nešiojamąjį USB įrenginį (telefoną, kamerą, planšetę) kaip profilį skiltyje Mano serveriai. Aptikite įrenginį per MTP, nustatykite numatytuosius aplankus ir iš naujo prisijunkite vienu spustelėjimu, kai jis prijungtas.",
+            "devicesInfoLine2": "MTP yra išskirtinis ir pagal poreikį: Prisijungti užima įrenginį sesijai; atsijungimas jį grąžina. Perkeliami tik ištisi failai (be atnaujinimo, be disko raidės).",
+            "discoverMtpPortable": "Telefonas, kamera ar planšetė per USB MTP"
         },
         "shortcuts": {
             "title": "Klaviatūros trumpiniai",
@@ -3213,16 +3213,16 @@
             "no_recent": "Nėra naujų vietų",
             "mount": "Prijungti",
             "ejectFailed": "Nepavyko išstumti",
-            "portable_devices": "[NEEDS TRANSLATION] Portable devices",
-            "portable_disconnect": "[NEEDS TRANSLATION] Disconnect",
-            "portable_disconnect_failed": "[NEEDS TRANSLATION] Could not disconnect portable device",
-            "portable_empty": "[NEEDS TRANSLATION] No portable devices detected",
-            "portable_honesty": "[NEEDS TRANSLATION] Portable devices use MTP: whole-file copy only, no drive letter, and some operations are limited by the device OS.",
-            "portable_no_storages": "[NEEDS TRANSLATION] Session open (no storage list yet; browse polish follows)",
-            "portable_open_failed": "[NEEDS TRANSLATION] Could not open portable device",
-            "portable_opened": "[NEEDS TRANSLATION] Connected to {name}",
-            "portable_storages": "[NEEDS TRANSLATION] {count} storage(s)",
-            "portable_disconnected": "[NEEDS TRANSLATION] Portable device disconnected: {name}",
+            "portable_devices": "Nešiojamieji įrenginiai",
+            "portable_disconnect": "Atsijungti",
+            "portable_disconnect_failed": "Nepavyko atjungti nešiojamojo įrenginio",
+            "portable_empty": "Nešiojamųjų įrenginių neaptikta",
+            "portable_honesty": "Nešiojamieji įrenginiai naudoja MTP: tik ištisų failų kopijavimas, be disko raidės, be atnaujinimo, o kai kurias operacijas riboja įrenginio operacinė sistema (ne AeroFTP).",
+            "portable_no_storages": "Sesija atidaryta (saugyklų sąrašas tuščias arba nepasiekiamas šiame įrenginyje)",
+            "portable_open_failed": "Nepavyko atidaryti nešiojamojo įrenginio",
+            "portable_opened": "Prisijungta prie {name}",
+            "portable_storages": "{count} saugyklos",
+            "portable_disconnected": "Nešiojamasis įrenginys atjungtas: {name}",
             "portable_unplugged": "Nešiojamasis įrenginys buvo atjungtas. Vėl prijunkite kabelį ir atidarykite jį iš naujo.",
             "portable_needs_replug": "Darbalaukis neprijungė. Atjunkite ir vėl įjunkite kabelį, tada atidarykite iš naujo."
         },
@@ -4486,7 +4486,7 @@
                 "localBridge": "Vietinis tiltas",
                 "paid": "Mokama",
                 "encrypted": "Šifruoti",
-                "mtp": "[NEEDS TRANSLATION] MTP"
+                "mtp": "MTP"
             },
             "noServers": "Nėra išsaugotų serverių",
             "noServersHint": "Pradėkite su greitu prisijungimu arba naršykite paslaugų katalogą.",
@@ -4507,7 +4507,7 @@
                 "developer": "Kūrėjams",
                 "mediaServices": "Medijos paslaugos",
                 "all": "Visi",
-                "devices": "[NEEDS TRANSLATION] Devices"
+                "devices": "Įrenginiai"
             },
             "confirmDeleteServer": "Ištrinti serverį \"{name}\"? Tai pašalins išsaugotus kredencialus ir negalės būti atšaukta.",
             "renameWithHotkey": "Pervadinti (F2)",
@@ -4629,8 +4629,8 @@
                 "moveLeft": "Perkelti į kairę",
                 "moveRight": "Perkelti į dešinę"
             },
-            "deviceAttached": "[NEEDS TRANSLATION] Device attached",
-            "deviceNotAttached": "[NEEDS TRANSLATION] Device not attached"
+            "deviceAttached": "Įrenginys prijungtas",
+            "deviceNotAttached": "Įrenginys neprijungtas"
         },
         "gitlab": {
             "projectPath": "Projekto kelias",

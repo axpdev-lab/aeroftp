@@ -290,20 +290,20 @@
             "storedTotpWarning": "Salvarea secretului 2FA plasează ambii factori în seif. Dacă parola principală a seifului este compromisă, 2FA nu mai protejează acest cont. Preferați un cod de unică folosință sau o punte WebDAV/S3 locală.",
             "filenBridgeCredentialRules": "Limita punții Filen: {max} caractere. Neacceptate: {rejected}",
             "filenBridgeCredentialRejected": "Aceste date de autentificare conțin caractere respinse de puntea Filen.",
-            "mtpDefaultName": "[NEEDS TRANSLATION] Portable device",
-            "mtpDetect": "[NEEDS TRANSLATION] Detect",
-            "mtpDetectFailed": "[NEEDS TRANSLATION] Could not list portable devices",
-            "mtpDetecting": "[NEEDS TRANSLATION] Detecting...",
-            "mtpDevice": "[NEEDS TRANSLATION] USB device",
-            "mtpFingerprint": "[NEEDS TRANSLATION] Fingerprint",
-            "mtpHonesty": "[NEEDS TRANSLATION] MTP is exclusive: only one app can open the device. Close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter). Some operations are limited by the device OS.",
-            "mtpNoDevices": "[NEEDS TRANSLATION] No portable devices detected. Plug in the phone or camera and enable File Transfer mode.",
-            "mtpRemotePathPlaceholder": "[NEEDS TRANSLATION] Default remote path (e.g. / or DCIM)",
-            "mtpSaveRequiresDevice": "[NEEDS TRANSLATION] Detect and select a device to enable Save.",
-            "mtpSelectPlaceholder": "[NEEDS TRANSLATION] Select a device...",
-            "mtpSelectPlaceholderEmpty": "[NEEDS TRANSLATION] No devices yet — click Detect",
-            "mtpNotAttachedTitle": "[NEEDS TRANSLATION] Device not connected",
-            "mtpNotAttached": "[NEEDS TRANSLATION] Plug in the device and enable File Transfer mode, then try again."
+            "mtpDefaultName": "Dispozitiv portabil",
+            "mtpDetect": "Detectează",
+            "mtpDetectFailed": "Nu s-au putut lista dispozitivele portabile",
+            "mtpDetecting": "Se detectează...",
+            "mtpDevice": "Dispozitiv USB",
+            "mtpFingerprint": "Amprentă",
+            "mtpHonesty": "MTP este exclusiv și la cerere: Conectare revendică dispozitivul pentru această sesiune (pe Linux, eliberând mai întâi managerul de fișiere al sistemului); deconectarea îl returnează. Transferurile sunt doar pe fișier întreg (fără reluare, fără literă de unitate). Unele operațiuni sunt limitate de sistemul dispozitivului.",
+            "mtpNoDevices": "Niciun dispozitiv portabil detectat. Conectează telefonul sau camera și activează modul Transfer de fișiere.",
+            "mtpRemotePathPlaceholder": "Cale la distanță implicită (de ex. / sau DCIM)",
+            "mtpSaveRequiresDevice": "Detectează și selectează un dispozitiv pentru a activa Salvare.",
+            "mtpSelectPlaceholder": "Selectează un dispozitiv...",
+            "mtpSelectPlaceholderEmpty": "Încă niciun dispozitiv — apasă pe Detectează",
+            "mtpNotAttachedTitle": "Dispozitiv neconectat",
+            "mtpNotAttached": "Conectează dispozitivul și activează modul Transfer de fișiere, apoi încearcă din nou."
         },
         "browser": {
             "remote": "La distanță",
@@ -1858,9 +1858,9 @@
             "s3RoleMfaTokenCodePlaceholder": "123456",
             "s3RoleMfaTokenCodeHint": "Cod de unică folosință de la dispozitivul MFA, necesar doar dacă rolul impune MFA. Folosit o singură dată la conectare și niciodată salvat.",
             "peerDesc": "Partajează foldere direct cu prietenii printr-un canal criptat de la egal la egal, fără niciun server la mijloc.",
-            "devicesInfoLine1": "[NEEDS TRANSLATION] Save a portable USB device (phone, camera, tablet) as a My Servers profile. Detect the device over MTP, set default folders, and reconnect with one click when it is plugged in.",
-            "devicesInfoLine2": "[NEEDS TRANSLATION] MTP is exclusive: close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter).",
-            "discoverMtpPortable": "[NEEDS TRANSLATION] Phone, camera, or tablet over USB MTP"
+            "devicesInfoLine1": "Salvează un dispozitiv USB portabil (telefon, cameră, tabletă) ca profil în Serverele mele. Detectează dispozitivul prin MTP, setează folderele implicite și reconectează-te cu un clic când este conectat.",
+            "devicesInfoLine2": "MTP este exclusiv și la cerere: Conectare revendică dispozitivul pentru sesiune; deconectarea îl returnează. Transferurile sunt doar pe fișier întreg (fără reluare, fără literă de unitate).",
+            "discoverMtpPortable": "Telefon, cameră sau tabletă prin USB MTP"
         },
         "shortcuts": {
             "title": "Scurtături tastatură",
@@ -3213,16 +3213,16 @@
             "no_recent": "Nicio locație recentă",
             "mount": "Montare",
             "ejectFailed": "Scoaterea a eșuat",
-            "portable_devices": "[NEEDS TRANSLATION] Portable devices",
-            "portable_disconnect": "[NEEDS TRANSLATION] Disconnect",
-            "portable_disconnect_failed": "[NEEDS TRANSLATION] Could not disconnect portable device",
-            "portable_empty": "[NEEDS TRANSLATION] No portable devices detected",
-            "portable_honesty": "[NEEDS TRANSLATION] Portable devices use MTP: whole-file copy only, no drive letter, and some operations are limited by the device OS.",
-            "portable_no_storages": "[NEEDS TRANSLATION] Session open (no storage list yet; browse polish follows)",
-            "portable_open_failed": "[NEEDS TRANSLATION] Could not open portable device",
-            "portable_opened": "[NEEDS TRANSLATION] Connected to {name}",
-            "portable_storages": "[NEEDS TRANSLATION] {count} storage(s)",
-            "portable_disconnected": "[NEEDS TRANSLATION] Portable device disconnected: {name}",
+            "portable_devices": "Dispozitive portabile",
+            "portable_disconnect": "Deconectează",
+            "portable_disconnect_failed": "Nu s-a putut deconecta dispozitivul portabil",
+            "portable_empty": "Niciun dispozitiv portabil detectat",
+            "portable_honesty": "Dispozitivele portabile folosesc MTP: doar copiere pe fișier întreg, fără literă de unitate, fără reluare, iar unele operațiuni sunt limitate de sistemul dispozitivului (nu de AeroFTP).",
+            "portable_no_storages": "Sesiune deschisă (listă de stocare goală sau indisponibilă pe acest dispozitiv)",
+            "portable_open_failed": "Nu s-a putut deschide dispozitivul portabil",
+            "portable_opened": "Conectat la {name}",
+            "portable_storages": "{count} stocări",
+            "portable_disconnected": "Dispozitiv portabil deconectat: {name}",
             "portable_unplugged": "Dispozitivul portabil a fost deconectat. Reconectați cablul și deschideți-l din nou.",
             "portable_needs_replug": "Neînregistrat de desktop. Deconectați și reconectați cablul, apoi deschideți din nou."
         },
@@ -4486,7 +4486,7 @@
                 "localBridge": "Punte locală",
                 "paid": "Plătit",
                 "encrypted": "Criptate",
-                "mtp": "[NEEDS TRANSLATION] MTP"
+                "mtp": "MTP"
             },
             "noServers": "Niciun server salvat",
             "noServersHint": "Începe cu o conectare rapidă sau explorează catalogul de servicii.",
@@ -4507,7 +4507,7 @@
                 "developer": "Dezvoltator",
                 "mediaServices": "Servicii Media",
                 "all": "Toate",
-                "devices": "[NEEDS TRANSLATION] Devices"
+                "devices": "Dispozitive"
             },
             "confirmDeleteServer": "Ștergeți serverul \"{name}\"? Aceasta elimină acreditările salvate și nu poate fi anulată.",
             "renameWithHotkey": "Redenumire (F2)",
@@ -4629,8 +4629,8 @@
                 "moveLeft": "Mută bara la stânga",
                 "moveRight": "Mută bara la dreapta"
             },
-            "deviceAttached": "[NEEDS TRANSLATION] Device attached",
-            "deviceNotAttached": "[NEEDS TRANSLATION] Device not attached"
+            "deviceAttached": "Dispozitiv atașat",
+            "deviceNotAttached": "Dispozitiv neatașat"
         },
         "gitlab": {
             "projectPath": "Calea proiectului",

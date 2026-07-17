@@ -290,20 +290,20 @@
             "storedTotpWarning": "Mae cadw cyfrinach 2FA yn rhoi'r ddau ffactor yn y gladdgell. Os peryglir prif gyfrinair y gladdgell, ni fydd 2FA bellach yn diogelu'r cyfrif hwn. Mae'n well defnyddio cod untro neu bont WebDAV/S3 leol.",
             "filenBridgeCredentialRules": "Terfyn pont Filen: {max} nod. Heb eu cynnal: {rejected}",
             "filenBridgeCredentialRejected": "Mae'r manylion hyn yn cynnwys nodau a wrthodwyd gan bont Filen.",
-            "mtpDefaultName": "[NEEDS TRANSLATION] Portable device",
-            "mtpDetect": "[NEEDS TRANSLATION] Detect",
-            "mtpDetectFailed": "[NEEDS TRANSLATION] Could not list portable devices",
-            "mtpDetecting": "[NEEDS TRANSLATION] Detecting...",
-            "mtpDevice": "[NEEDS TRANSLATION] USB device",
-            "mtpFingerprint": "[NEEDS TRANSLATION] Fingerprint",
-            "mtpHonesty": "[NEEDS TRANSLATION] MTP is exclusive: only one app can open the device. Close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter). Some operations are limited by the device OS.",
-            "mtpNoDevices": "[NEEDS TRANSLATION] No portable devices detected. Plug in the phone or camera and enable File Transfer mode.",
-            "mtpRemotePathPlaceholder": "[NEEDS TRANSLATION] Default remote path (e.g. / or DCIM)",
-            "mtpSaveRequiresDevice": "[NEEDS TRANSLATION] Detect and select a device to enable Save.",
-            "mtpSelectPlaceholder": "[NEEDS TRANSLATION] Select a device...",
-            "mtpSelectPlaceholderEmpty": "[NEEDS TRANSLATION] No devices yet — click Detect",
-            "mtpNotAttachedTitle": "[NEEDS TRANSLATION] Device not connected",
-            "mtpNotAttached": "[NEEDS TRANSLATION] Plug in the device and enable File Transfer mode, then try again."
+            "mtpDefaultName": "Dyfais gludadwy",
+            "mtpDetect": "Canfod",
+            "mtpDetectFailed": "Methwyd â rhestru dyfeisiau cludadwy",
+            "mtpDetecting": "Yn canfod...",
+            "mtpDevice": "Dyfais USB",
+            "mtpFingerprint": "Olion bysedd",
+            "mtpHonesty": "Mae MTP yn unigryw ac ar-alw: Mae Cysylltu yn hawlio'r ddyfais ar gyfer y sesiwn hon (ar Linux, gan ryddhau rheolwr ffeiliau'r system yn gyntaf); mae datgysylltu yn ei dychwelyd. Trosglwyddiadau ffeil gyfan yn unig (dim ailddechrau, dim llythyren gyriant). Mae rhai gweithrediadau wedi'u cyfyngu gan system weithredu'r ddyfais.",
+            "mtpNoDevices": "Ni chanfuwyd unrhyw ddyfeisiau cludadwy. Cysylltwch y ffôn neu'r camera a galluogwch y modd Trosglwyddo Ffeiliau.",
+            "mtpRemotePathPlaceholder": "Llwybr pell rhagosodedig (e.e. / neu DCIM)",
+            "mtpSaveRequiresDevice": "Canfyddwch a dewiswch ddyfais i alluogi Cadw.",
+            "mtpSelectPlaceholder": "Dewiswch ddyfais...",
+            "mtpSelectPlaceholderEmpty": "Dim dyfeisiau eto — cliciwch Canfod",
+            "mtpNotAttachedTitle": "Nid yw'r ddyfais wedi'i chysylltu",
+            "mtpNotAttached": "Cysylltwch y ddyfais a galluogwch y modd Trosglwyddo Ffeiliau, yna rhowch gynnig arni eto."
         },
         "browser": {
             "remote": "Pell",
@@ -1858,9 +1858,9 @@
             "s3RoleMfaTokenCodePlaceholder": "123456",
             "s3RoleMfaTokenCodeHint": "Cod un-tro o'ch dyfais MFA, dim ond os yw'r rôl yn gorfodi MFA. Defnyddir unwaith wrth gysylltu ac ni chaiff ei gadw byth.",
             "peerDesc": "Rhannwch ffolderi yn uniongyrchol gyda ffrindiau dros sianel peer-to-peer wedi'i hamgryptio, heb weinydd yn y canol.",
-            "devicesInfoLine1": "[NEEDS TRANSLATION] Save a portable USB device (phone, camera, tablet) as a My Servers profile. Detect the device over MTP, set default folders, and reconnect with one click when it is plugged in.",
-            "devicesInfoLine2": "[NEEDS TRANSLATION] MTP is exclusive: close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter).",
-            "discoverMtpPortable": "[NEEDS TRANSLATION] Phone, camera, or tablet over USB MTP"
+            "devicesInfoLine1": "Cadwch ddyfais USB gludadwy (ffôn, camera, llechen) fel proffil yn Fy Ngweinyddion. Canfyddwch y ddyfais dros MTP, gosodwch ffolderi rhagosodedig, ac ailgysylltwch ag un clic pan fydd wedi'i chysylltu.",
+            "devicesInfoLine2": "Mae MTP yn unigryw ac ar-alw: Mae Cysylltu yn hawlio'r ddyfais ar gyfer y sesiwn; mae datgysylltu yn ei dychwelyd. Trosglwyddiadau ffeil gyfan yn unig (dim ailddechrau, dim llythyren gyriant).",
+            "discoverMtpPortable": "Ffôn, camera, neu lechen dros USB MTP"
         },
         "shortcuts": {
             "title": "Llwybrau Byr Bysellfwrdd",
@@ -3213,16 +3213,16 @@
             "no_recent": "Dim lleoliadau diweddar",
             "mount": "Mowntio",
             "ejectFailed": "Methodd y diarddel",
-            "portable_devices": "[NEEDS TRANSLATION] Portable devices",
-            "portable_disconnect": "[NEEDS TRANSLATION] Disconnect",
-            "portable_disconnect_failed": "[NEEDS TRANSLATION] Could not disconnect portable device",
-            "portable_empty": "[NEEDS TRANSLATION] No portable devices detected",
-            "portable_honesty": "[NEEDS TRANSLATION] Portable devices use MTP: whole-file copy only, no drive letter, and some operations are limited by the device OS.",
-            "portable_no_storages": "[NEEDS TRANSLATION] Session open (no storage list yet; browse polish follows)",
-            "portable_open_failed": "[NEEDS TRANSLATION] Could not open portable device",
-            "portable_opened": "[NEEDS TRANSLATION] Connected to {name}",
-            "portable_storages": "[NEEDS TRANSLATION] {count} storage(s)",
-            "portable_disconnected": "[NEEDS TRANSLATION] Portable device disconnected: {name}",
+            "portable_devices": "Dyfeisiau cludadwy",
+            "portable_disconnect": "Datgysylltu",
+            "portable_disconnect_failed": "Methwyd â datgysylltu'r ddyfais gludadwy",
+            "portable_empty": "Ni chanfuwyd unrhyw ddyfeisiau cludadwy",
+            "portable_honesty": "Mae dyfeisiau cludadwy'n defnyddio MTP: copïo ffeil gyfan yn unig, dim llythyren gyriant, dim ailddechrau, ac mae rhai gweithrediadau wedi'u cyfyngu gan system weithredu'r ddyfais (nid AeroFTP).",
+            "portable_no_storages": "Sesiwn ar agor (rhestr storfa'n wag neu ddim ar gael ar y ddyfais hon)",
+            "portable_open_failed": "Methwyd ag agor y ddyfais gludadwy",
+            "portable_opened": "Wedi cysylltu â {name}",
+            "portable_storages": "{count} storfa",
+            "portable_disconnected": "Dyfais gludadwy wedi'i datgysylltu: {name}",
             "portable_unplugged": "Datgysylltwyd y ddyfais gludadwy. Ail-blygiwch y cebl a'i hagor eto.",
             "portable_needs_replug": "Heb ei osod gan y bwrdd gwaith. Dad-blygiwch ac ail-blygiwch y cebl, yna ei agor eto."
         },
@@ -4505,7 +4505,7 @@
                 "localBridge": "Pont lleol",
                 "paid": "Taledig",
                 "encrypted": "Wedi'u hamgryptio",
-                "mtp": "[NEEDS TRANSLATION] MTP"
+                "mtp": "MTP"
             },
             "noServers": "Dim gweinyddion wedi'u cadw",
             "noServersHint": "Dechreuwch gyda chysylltiad cyflym neu archwiliwch y catalog gwasanaethau.",
@@ -4526,7 +4526,7 @@
                 "developer": "Datblygwr",
                 "mediaServices": "Gwasanaethau cyfryngau",
                 "all": "Y cyfan",
-                "devices": "[NEEDS TRANSLATION] Devices"
+                "devices": "Dyfeisiau"
             },
             "confirmDeleteServer": "Dileu'r gweinydd \"{name}\"? Mae hyn yn dileu manylion mewngofnodi a gadwyd ac ni ellir ei ddadwneud.",
             "renameWithHotkey": "Ailenwi (F2)",
@@ -4648,8 +4648,8 @@
                 "moveLeft": "Symud i'r chwith",
                 "moveRight": "Symud i'r dde"
             },
-            "deviceAttached": "[NEEDS TRANSLATION] Device attached",
-            "deviceNotAttached": "[NEEDS TRANSLATION] Device not attached"
+            "deviceAttached": "Dyfais wedi'i chysylltu",
+            "deviceNotAttached": "Dyfais heb ei chysylltu"
         },
         "gitlab": {
             "projectPath": "Llwybr y prosiect",

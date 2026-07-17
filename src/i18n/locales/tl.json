@@ -290,20 +290,20 @@
             "storedTotpWarning": "Kapag sine-save ang 2FA secret, nailalagay sa vault ang parehong factor. Kung makompromiso ang master password ng vault, hindi na mapoprotektahan ng 2FA ang account na ito. Mas mainam ang one-time code o lokal na WebDAV/S3 bridge.",
             "filenBridgeCredentialRules": "Limitasyon ng Filen bridge: {max} character. Hindi suportado: {rejected}",
             "filenBridgeCredentialRejected": "Naglalaman ang credential na ito ng mga character na tinatanggihan ng Filen bridge.",
-            "mtpDefaultName": "[NEEDS TRANSLATION] Portable device",
-            "mtpDetect": "[NEEDS TRANSLATION] Detect",
-            "mtpDetectFailed": "[NEEDS TRANSLATION] Could not list portable devices",
-            "mtpDetecting": "[NEEDS TRANSLATION] Detecting...",
-            "mtpDevice": "[NEEDS TRANSLATION] USB device",
-            "mtpFingerprint": "[NEEDS TRANSLATION] Fingerprint",
-            "mtpHonesty": "[NEEDS TRANSLATION] MTP is exclusive: only one app can open the device. Close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter). Some operations are limited by the device OS.",
-            "mtpNoDevices": "[NEEDS TRANSLATION] No portable devices detected. Plug in the phone or camera and enable File Transfer mode.",
-            "mtpRemotePathPlaceholder": "[NEEDS TRANSLATION] Default remote path (e.g. / or DCIM)",
-            "mtpSaveRequiresDevice": "[NEEDS TRANSLATION] Detect and select a device to enable Save.",
-            "mtpSelectPlaceholder": "[NEEDS TRANSLATION] Select a device...",
-            "mtpSelectPlaceholderEmpty": "[NEEDS TRANSLATION] No devices yet — click Detect",
-            "mtpNotAttachedTitle": "[NEEDS TRANSLATION] Device not connected",
-            "mtpNotAttached": "[NEEDS TRANSLATION] Plug in the device and enable File Transfer mode, then try again."
+            "mtpDefaultName": "Portable na device",
+            "mtpDetect": "Tuklasin",
+            "mtpDetectFailed": "Hindi ma-list ang mga portable na device",
+            "mtpDetecting": "Tinutuklas...",
+            "mtpDevice": "USB device",
+            "mtpFingerprint": "Fingerprint",
+            "mtpHonesty": "Ang MTP ay eksklusibo at on-demand: Kinukuha ng Kumonekta ang device para sa session na ito (sa Linux, pinapakawalan muna ang system file manager); ibinabalik ito ng pag-disconnect. Buong file lang ang mga paglilipat (walang resume, walang drive letter). Ang ilang operasyon ay limitado ng OS ng device.",
+            "mtpNoDevices": "Walang natukoy na portable na device. Isaksak ang telepono o camera at i-enable ang File Transfer mode.",
+            "mtpRemotePathPlaceholder": "Default na remote path (hal. / o DCIM)",
+            "mtpSaveRequiresDevice": "Tumuklas at pumili ng device para i-enable ang I-save.",
+            "mtpSelectPlaceholder": "Pumili ng device...",
+            "mtpSelectPlaceholderEmpty": "Wala pang device — i-click ang Tuklasin",
+            "mtpNotAttachedTitle": "Hindi nakakonekta ang device",
+            "mtpNotAttached": "Isaksak ang device at i-enable ang File Transfer mode, pagkatapos ay subukan muli."
         },
         "browser": {
             "remote": "Remote",
@@ -1858,9 +1858,9 @@
             "s3RoleMfaTokenCodePlaceholder": "123456",
             "s3RoleMfaTokenCodeHint": "Isang beses na code mula sa iyong MFA device, kailangan lamang kung ang role ay nag-aatas ng MFA. Ginagamit nang isang beses sa pagkonekta at hindi kailanman sini-save.",
             "peerDesc": "Direktang magbahagi ng mga folder sa mga kaibigan sa pamamagitan ng naka-encrypt na peer-to-peer na channel, nang walang server sa pagitan.",
-            "devicesInfoLine1": "[NEEDS TRANSLATION] Save a portable USB device (phone, camera, tablet) as a My Servers profile. Detect the device over MTP, set default folders, and reconnect with one click when it is plugged in.",
-            "devicesInfoLine2": "[NEEDS TRANSLATION] MTP is exclusive: close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter).",
-            "discoverMtpPortable": "[NEEDS TRANSLATION] Phone, camera, or tablet over USB MTP"
+            "devicesInfoLine1": "I-save ang portable na USB device (telepono, camera, tablet) bilang profile sa Aking mga Server. Tuklasin ang device sa pamamagitan ng MTP, itakda ang mga default na folder, at kumonekta muli nang isang click kapag nakasaksak.",
+            "devicesInfoLine2": "Ang MTP ay eksklusibo at on-demand: Kinukuha ng Kumonekta ang device para sa session; ibinabalik ito ng pag-disconnect. Buong file lang ang mga paglilipat (walang resume, walang drive letter).",
+            "discoverMtpPortable": "Telepono, camera, o tablet sa pamamagitan ng USB MTP"
         },
         "shortcuts": {
             "title": "Keyboard Shortcuts",
@@ -3213,16 +3213,16 @@
             "no_recent": "Walang kamakailang lokasyon",
             "mount": "I-mount",
             "ejectFailed": "Nabigo ang pag-eject",
-            "portable_devices": "[NEEDS TRANSLATION] Portable devices",
-            "portable_disconnect": "[NEEDS TRANSLATION] Disconnect",
-            "portable_disconnect_failed": "[NEEDS TRANSLATION] Could not disconnect portable device",
-            "portable_empty": "[NEEDS TRANSLATION] No portable devices detected",
-            "portable_honesty": "[NEEDS TRANSLATION] Portable devices use MTP: whole-file copy only, no drive letter, and some operations are limited by the device OS.",
-            "portable_no_storages": "[NEEDS TRANSLATION] Session open (no storage list yet; browse polish follows)",
-            "portable_open_failed": "[NEEDS TRANSLATION] Could not open portable device",
-            "portable_opened": "[NEEDS TRANSLATION] Connected to {name}",
-            "portable_storages": "[NEEDS TRANSLATION] {count} storage(s)",
-            "portable_disconnected": "[NEEDS TRANSLATION] Portable device disconnected: {name}",
+            "portable_devices": "Mga portable na device",
+            "portable_disconnect": "I-disconnect",
+            "portable_disconnect_failed": "Hindi ma-disconnect ang portable na device",
+            "portable_empty": "Walang natukoy na portable na device",
+            "portable_honesty": "Ang mga portable na device ay gumagamit ng MTP: buong-file na kopya lang, walang drive letter, walang resume, at ang ilang operasyon ay limitado ng OS ng device (hindi ng AeroFTP).",
+            "portable_no_storages": "Bukas ang session (walang laman o hindi available ang listahan ng storage sa device na ito)",
+            "portable_open_failed": "Hindi mabuksan ang portable na device",
+            "portable_opened": "Nakakonekta sa {name}",
+            "portable_storages": "{count} storage",
+            "portable_disconnected": "Na-disconnect ang portable na device: {name}",
             "portable_unplugged": "Nadiskonekta ang portable na device. Ikabit muli ang cable at buksan ito ulit.",
             "portable_needs_replug": "Hindi naka-mount ng desktop. I-unplug at i-plug muli ang cable, tapos buksan ulit."
         },
@@ -4505,7 +4505,7 @@
                 "localBridge": "Lokal na tulay",
                 "paid": "Bayad",
                 "encrypted": "Naka-encrypt",
-                "mtp": "[NEEDS TRANSLATION] MTP"
+                "mtp": "MTP"
             },
             "noServers": "Walang naka-save na mga server",
             "noServersHint": "Magsimula sa mabilis na koneksyon o tuklasin ang katalogo ng serbisyo.",
@@ -4526,7 +4526,7 @@
                 "developer": "Developer",
                 "mediaServices": "Mga Serbisyo ng Media",
                 "all": "Lahat",
-                "devices": "[NEEDS TRANSLATION] Devices"
+                "devices": "Mga device"
             },
             "confirmDeleteServer": "Burahin ang server na \"{name}\"? Aalisin nito ang mga naka-save na kredensyal at hindi ito maaaring ibalik.",
             "renameWithHotkey": "Palitan ang pangalan (F2)",
@@ -4648,8 +4648,8 @@
                 "moveLeft": "Ilipat sa kaliwa",
                 "moveRight": "Ilipat sa kanan"
             },
-            "deviceAttached": "[NEEDS TRANSLATION] Device attached",
-            "deviceNotAttached": "[NEEDS TRANSLATION] Device not attached"
+            "deviceAttached": "Nakakabit ang device",
+            "deviceNotAttached": "Hindi nakakabit ang device"
         },
         "gitlab": {
             "projectPath": "Path ng Project",

@@ -290,20 +290,20 @@
             "storedTotpWarning": "Om 2FA-hemligheten sparas placeras båda faktorerna i valvet. Om valvets huvudlösenord komprometteras skyddar 2FA inte längre det här kontot. Använd helst en engångskod eller en lokal WebDAV/S3-brygga.",
             "filenBridgeCredentialRules": "Gräns för Filen-brygga: {max} tecken. Stöds inte: {rejected}",
             "filenBridgeCredentialRejected": "Dessa inloggningsuppgifter innehåller tecken som Filen-bryggan avvisar.",
-            "mtpDefaultName": "[NEEDS TRANSLATION] Portable device",
-            "mtpDetect": "[NEEDS TRANSLATION] Detect",
-            "mtpDetectFailed": "[NEEDS TRANSLATION] Could not list portable devices",
-            "mtpDetecting": "[NEEDS TRANSLATION] Detecting...",
-            "mtpDevice": "[NEEDS TRANSLATION] USB device",
-            "mtpFingerprint": "[NEEDS TRANSLATION] Fingerprint",
-            "mtpHonesty": "[NEEDS TRANSLATION] MTP is exclusive: only one app can open the device. Close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter). Some operations are limited by the device OS.",
-            "mtpNoDevices": "[NEEDS TRANSLATION] No portable devices detected. Plug in the phone or camera and enable File Transfer mode.",
-            "mtpRemotePathPlaceholder": "[NEEDS TRANSLATION] Default remote path (e.g. / or DCIM)",
-            "mtpSaveRequiresDevice": "[NEEDS TRANSLATION] Detect and select a device to enable Save.",
-            "mtpSelectPlaceholder": "[NEEDS TRANSLATION] Select a device...",
-            "mtpSelectPlaceholderEmpty": "[NEEDS TRANSLATION] No devices yet — click Detect",
-            "mtpNotAttachedTitle": "[NEEDS TRANSLATION] Device not connected",
-            "mtpNotAttached": "[NEEDS TRANSLATION] Plug in the device and enable File Transfer mode, then try again."
+            "mtpDefaultName": "Bärbar enhet",
+            "mtpDetect": "Upptäck",
+            "mtpDetectFailed": "Det gick inte att lista bärbara enheter",
+            "mtpDetecting": "Upptäcker...",
+            "mtpDevice": "USB-enhet",
+            "mtpFingerprint": "Fingeravtryck",
+            "mtpHonesty": "MTP är exklusivt och på begäran: Anslut tar enheten för den här sessionen (på Linux frigörs först systemets filhanterare); koppla från återlämnar den. Överföringar sker endast som hela filer (ingen återupptagning, ingen enhetsbokstav). Vissa åtgärder begränsas av enhetens operativsystem.",
+            "mtpNoDevices": "Inga bärbara enheter hittades. Anslut telefonen eller kameran och aktivera filöverföringsläge.",
+            "mtpRemotePathPlaceholder": "Standardsökväg för fjärr (t.ex. / eller DCIM)",
+            "mtpSaveRequiresDevice": "Upptäck och välj en enhet för att aktivera Spara.",
+            "mtpSelectPlaceholder": "Välj en enhet...",
+            "mtpSelectPlaceholderEmpty": "Inga enheter ännu – klicka på Upptäck",
+            "mtpNotAttachedTitle": "Enheten är inte ansluten",
+            "mtpNotAttached": "Anslut enheten och aktivera filöverföringsläge, försök sedan igen."
         },
         "browser": {
             "remote": "Fjärr",
@@ -1858,9 +1858,9 @@
             "s3RoleMfaTokenCodePlaceholder": "123456",
             "s3RoleMfaTokenCodeHint": "Engångskod från din MFA-enhet, krävs bara om rollen kräver MFA. Används en gång vid anslutning och sparas aldrig.",
             "peerDesc": "Dela mappar direkt med vänner via en krypterad peer-to-peer-kanal, utan någon server emellan.",
-            "devicesInfoLine1": "[NEEDS TRANSLATION] Save a portable USB device (phone, camera, tablet) as a My Servers profile. Detect the device over MTP, set default folders, and reconnect with one click when it is plugged in.",
-            "devicesInfoLine2": "[NEEDS TRANSLATION] MTP is exclusive: close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter).",
-            "discoverMtpPortable": "[NEEDS TRANSLATION] Phone, camera, or tablet over USB MTP"
+            "devicesInfoLine1": "Spara en bärbar USB-enhet (telefon, kamera, surfplatta) som en profil i Mina servrar. Upptäck enheten via MTP, ange standardmappar och återanslut med ett klick när den är ansluten.",
+            "devicesInfoLine2": "MTP är exklusivt och på begäran: Anslut tar enheten för sessionen; koppla från återlämnar den. Överföringar sker endast som hela filer (ingen återupptagning, ingen enhetsbokstav).",
+            "discoverMtpPortable": "Telefon, kamera eller surfplatta via USB MTP"
         },
         "shortcuts": {
             "title": "Kortkommandon",
@@ -3213,16 +3213,16 @@
             "no_recent": "Inga senaste platser",
             "mount": "Montera",
             "ejectFailed": "Utmatning misslyckades",
-            "portable_devices": "[NEEDS TRANSLATION] Portable devices",
-            "portable_disconnect": "[NEEDS TRANSLATION] Disconnect",
-            "portable_disconnect_failed": "[NEEDS TRANSLATION] Could not disconnect portable device",
-            "portable_empty": "[NEEDS TRANSLATION] No portable devices detected",
-            "portable_honesty": "[NEEDS TRANSLATION] Portable devices use MTP: whole-file copy only, no drive letter, and some operations are limited by the device OS.",
-            "portable_no_storages": "[NEEDS TRANSLATION] Session open (no storage list yet; browse polish follows)",
-            "portable_open_failed": "[NEEDS TRANSLATION] Could not open portable device",
-            "portable_opened": "[NEEDS TRANSLATION] Connected to {name}",
-            "portable_storages": "[NEEDS TRANSLATION] {count} storage(s)",
-            "portable_disconnected": "[NEEDS TRANSLATION] Portable device disconnected: {name}",
+            "portable_devices": "Bärbara enheter",
+            "portable_disconnect": "Koppla från",
+            "portable_disconnect_failed": "Det gick inte att koppla från den bärbara enheten",
+            "portable_empty": "Inga bärbara enheter hittades",
+            "portable_honesty": "Bärbara enheter använder MTP: endast kopiering av hela filer, ingen enhetsbokstav, ingen återupptagning, och vissa åtgärder begränsas av enhetens operativsystem (inte av AeroFTP).",
+            "portable_no_storages": "Session öppen (lagringslistan är tom eller otillgänglig på den här enheten)",
+            "portable_open_failed": "Det gick inte att öppna den bärbara enheten",
+            "portable_opened": "Ansluten till {name}",
+            "portable_storages": "{count} lagringsutrymmen",
+            "portable_disconnected": "Bärbar enhet frånkopplad: {name}",
             "portable_unplugged": "Den bärbara enheten kopplades bort. Anslut kabeln igen och öppna den på nytt.",
             "portable_needs_replug": "Inte monterat av skrivbordet. Dra ur och sätt i kabeln igen, öppna sedan igen."
         },
@@ -4486,7 +4486,7 @@
                 "localBridge": "Lokal brygga",
                 "paid": "Betald",
                 "encrypted": "Krypterade",
-                "mtp": "[NEEDS TRANSLATION] MTP"
+                "mtp": "MTP"
             },
             "noServers": "Inga sparade servrar",
             "noServersHint": "Börja med en snabbanslutning eller utforska tjänstekatalogen.",
@@ -4507,7 +4507,7 @@
                 "developer": "Utvecklare",
                 "mediaServices": "Medietjänster",
                 "all": "Alla",
-                "devices": "[NEEDS TRANSLATION] Devices"
+                "devices": "Enheter"
             },
             "confirmDeleteServer": "Ta bort servern \"{name}\"? Detta tar bort sparade inloggningsuppgifter och kan inte ångras.",
             "renameWithHotkey": "Byt namn (F2)",
@@ -4629,8 +4629,8 @@
                 "moveLeft": "Flytta åt vänster",
                 "moveRight": "Flytta åt höger"
             },
-            "deviceAttached": "[NEEDS TRANSLATION] Device attached",
-            "deviceNotAttached": "[NEEDS TRANSLATION] Device not attached"
+            "deviceAttached": "Enhet ansluten",
+            "deviceNotAttached": "Enhet inte ansluten"
         },
         "gitlab": {
             "projectPath": "Projektsokvag",

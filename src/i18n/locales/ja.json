@@ -290,20 +290,20 @@
             "storedTotpWarning": "2FAシークレットを保存すると、両方の要素が保管庫に格納されます。保管庫のマスターパスワードが漏えいした場合、2FAではこのアカウントを保護できなくなります。ワンタイムコードまたはローカルのWebDAV/S3ブリッジを使用してください。",
             "filenBridgeCredentialRules": "Filenブリッジの上限: {max}文字。未対応: {rejected}",
             "filenBridgeCredentialRejected": "この認証情報にはFilenブリッジで拒否される文字が含まれています。",
-            "mtpDefaultName": "[NEEDS TRANSLATION] Portable device",
-            "mtpDetect": "[NEEDS TRANSLATION] Detect",
-            "mtpDetectFailed": "[NEEDS TRANSLATION] Could not list portable devices",
-            "mtpDetecting": "[NEEDS TRANSLATION] Detecting...",
-            "mtpDevice": "[NEEDS TRANSLATION] USB device",
-            "mtpFingerprint": "[NEEDS TRANSLATION] Fingerprint",
-            "mtpHonesty": "[NEEDS TRANSLATION] MTP is exclusive: only one app can open the device. Close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter). Some operations are limited by the device OS.",
-            "mtpNoDevices": "[NEEDS TRANSLATION] No portable devices detected. Plug in the phone or camera and enable File Transfer mode.",
-            "mtpRemotePathPlaceholder": "[NEEDS TRANSLATION] Default remote path (e.g. / or DCIM)",
-            "mtpSaveRequiresDevice": "[NEEDS TRANSLATION] Detect and select a device to enable Save.",
-            "mtpSelectPlaceholder": "[NEEDS TRANSLATION] Select a device...",
-            "mtpSelectPlaceholderEmpty": "[NEEDS TRANSLATION] No devices yet — click Detect",
-            "mtpNotAttachedTitle": "[NEEDS TRANSLATION] Device not connected",
-            "mtpNotAttached": "[NEEDS TRANSLATION] Plug in the device and enable File Transfer mode, then try again."
+            "mtpDefaultName": "ポータブルデバイス",
+            "mtpDetect": "検出",
+            "mtpDetectFailed": "ポータブルデバイスを一覧表示できませんでした",
+            "mtpDetecting": "検出中...",
+            "mtpDevice": "USBデバイス",
+            "mtpFingerprint": "フィンガープリント",
+            "mtpHonesty": "MTPは排他的かつオンデマンドです：接続するとこのセッションのためにデバイスを占有します（Linuxではまずシステムのファイルマネージャーを解放します）。切断すると返却されます。転送はファイル全体のみ（再開なし、ドライブ文字なし）。一部の操作はデバイスのOSによって制限されます。",
+            "mtpNoDevices": "ポータブルデバイスが検出されませんでした。電話またはカメラを接続し、ファイル転送モードを有効にしてください。",
+            "mtpRemotePathPlaceholder": "既定のリモートパス（例：/ または DCIM）",
+            "mtpSaveRequiresDevice": "保存を有効にするには、デバイスを検出して選択してください。",
+            "mtpSelectPlaceholder": "デバイスを選択...",
+            "mtpSelectPlaceholderEmpty": "デバイスがまだありません — 検出をクリック",
+            "mtpNotAttachedTitle": "デバイスが接続されていません",
+            "mtpNotAttached": "デバイスを接続してファイル転送モードを有効にしてから、もう一度お試しください。"
         },
         "browser": {
             "remote": "リモート",
@@ -1858,9 +1858,9 @@
             "s3RoleMfaTokenCodePlaceholder": "123456",
             "s3RoleMfaTokenCodeHint": "MFA デバイスのワンタイムコードです。ロールが MFA を要求する場合のみ必要です。接続時に一度だけ使用され、保存されることはありません。",
             "peerDesc": "暗号化されたピアツーピア接続を通じて、間にサーバーを介さずに友達と直接フォルダを共有します。",
-            "devicesInfoLine1": "[NEEDS TRANSLATION] Save a portable USB device (phone, camera, tablet) as a My Servers profile. Detect the device over MTP, set default folders, and reconnect with one click when it is plugged in.",
-            "devicesInfoLine2": "[NEEDS TRANSLATION] MTP is exclusive: close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter).",
-            "discoverMtpPortable": "[NEEDS TRANSLATION] Phone, camera, or tablet over USB MTP"
+            "devicesInfoLine1": "ポータブルUSBデバイス（電話、カメラ、タブレット）を「マイサーバー」のプロファイルとして保存します。MTP経由でデバイスを検出し、既定のフォルダーを設定し、接続時にワンクリックで再接続できます。",
+            "devicesInfoLine2": "MTPは排他的かつオンデマンドです：接続するとセッションのためにデバイスを占有します。切断すると返却されます。転送はファイル全体のみ（再開なし、ドライブ文字なし）。",
+            "discoverMtpPortable": "USB MTP経由の電話、カメラ、またはタブレット"
         },
         "shortcuts": {
             "title": "キーボードショートカット",
@@ -3178,16 +3178,16 @@
             "no_recent": "最近の場所はありません",
             "mount": "マウント",
             "ejectFailed": "取り出しに失敗しました",
-            "portable_devices": "[NEEDS TRANSLATION] Portable devices",
-            "portable_disconnect": "[NEEDS TRANSLATION] Disconnect",
-            "portable_disconnect_failed": "[NEEDS TRANSLATION] Could not disconnect portable device",
-            "portable_empty": "[NEEDS TRANSLATION] No portable devices detected",
-            "portable_honesty": "[NEEDS TRANSLATION] Portable devices use MTP: whole-file copy only, no drive letter, and some operations are limited by the device OS.",
-            "portable_no_storages": "[NEEDS TRANSLATION] Session open (no storage list yet; browse polish follows)",
-            "portable_open_failed": "[NEEDS TRANSLATION] Could not open portable device",
-            "portable_opened": "[NEEDS TRANSLATION] Connected to {name}",
-            "portable_storages": "[NEEDS TRANSLATION] {count} storage(s)",
-            "portable_disconnected": "[NEEDS TRANSLATION] Portable device disconnected: {name}",
+            "portable_devices": "ポータブルデバイス",
+            "portable_disconnect": "切断",
+            "portable_disconnect_failed": "ポータブルデバイスを切断できませんでした",
+            "portable_empty": "ポータブルデバイスが検出されませんでした",
+            "portable_honesty": "ポータブルデバイスはMTPを使用します：ファイル全体のコピーのみ、ドライブ文字なし、再開なし、一部の操作はデバイスのOS（AeroFTPではない）によって制限されます。",
+            "portable_no_storages": "セッションを開いています（このデバイスではストレージ一覧が空か利用できません）",
+            "portable_open_failed": "ポータブルデバイスを開けませんでした",
+            "portable_opened": "{name} に接続しました",
+            "portable_storages": "{count} 個のストレージ",
+            "portable_disconnected": "ポータブルデバイスを切断しました：{name}",
             "portable_unplugged": "ポータブルデバイスが切断されました。ケーブルを再接続して、もう一度開いてください。",
             "portable_needs_replug": "デスクトップにマウントされていません。ケーブルを抜き差ししてから、もう一度開いてください。"
         },
@@ -4486,7 +4486,7 @@
                 "localBridge": "ローカルブリッジ",
                 "paid": "有料",
                 "encrypted": "暗号化",
-                "mtp": "[NEEDS TRANSLATION] MTP"
+                "mtp": "MTP"
             },
             "noServers": "保存済みサーバーはありません",
             "noServersHint": "クイック接続で始めるか、サービスカタログを探索してください。",
@@ -4507,7 +4507,7 @@
                 "developer": "開発者向け",
                 "mediaServices": "メディアサービス",
                 "all": "すべて",
-                "devices": "[NEEDS TRANSLATION] Devices"
+                "devices": "デバイス"
             },
             "confirmDeleteServer": "サーバー \"{name}\" を削除しますか？保存された認証情報が削除され、元に戻すことはできません。",
             "renameWithHotkey": "名前を変更 (F2)",
@@ -4629,8 +4629,8 @@
                 "moveLeft": "左に移動",
                 "moveRight": "右に移動"
             },
-            "deviceAttached": "[NEEDS TRANSLATION] Device attached",
-            "deviceNotAttached": "[NEEDS TRANSLATION] Device not attached"
+            "deviceAttached": "デバイス接続済み",
+            "deviceNotAttached": "デバイス未接続"
         },
         "gitlab": {
             "projectPath": "プロジェクトパス",

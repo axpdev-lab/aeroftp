@@ -290,20 +290,20 @@
             "storedTotpWarning": "Gardar o segredo de 2FA coloca ambos os factores na caixa forte. Se o contrasinal mestre da caixa forte se ve comprometido, 2FA deixa de protexer esta conta. É preferible usar un código dun só uso ou unha ponte WebDAV/S3 local.",
             "filenBridgeCredentialRules": "Límite da ponte Filen: {max} caracteres. Non admitidos: {rejected}",
             "filenBridgeCredentialRejected": "Esta credencial contén caracteres rexeitados pola ponte Filen.",
-            "mtpDefaultName": "[NEEDS TRANSLATION] Portable device",
-            "mtpDetect": "[NEEDS TRANSLATION] Detect",
-            "mtpDetectFailed": "[NEEDS TRANSLATION] Could not list portable devices",
-            "mtpDetecting": "[NEEDS TRANSLATION] Detecting...",
-            "mtpDevice": "[NEEDS TRANSLATION] USB device",
-            "mtpFingerprint": "[NEEDS TRANSLATION] Fingerprint",
-            "mtpHonesty": "[NEEDS TRANSLATION] MTP is exclusive: only one app can open the device. Close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter). Some operations are limited by the device OS.",
-            "mtpNoDevices": "[NEEDS TRANSLATION] No portable devices detected. Plug in the phone or camera and enable File Transfer mode.",
-            "mtpRemotePathPlaceholder": "[NEEDS TRANSLATION] Default remote path (e.g. / or DCIM)",
-            "mtpSaveRequiresDevice": "[NEEDS TRANSLATION] Detect and select a device to enable Save.",
-            "mtpSelectPlaceholder": "[NEEDS TRANSLATION] Select a device...",
-            "mtpSelectPlaceholderEmpty": "[NEEDS TRANSLATION] No devices yet — click Detect",
-            "mtpNotAttachedTitle": "[NEEDS TRANSLATION] Device not connected",
-            "mtpNotAttached": "[NEEDS TRANSLATION] Plug in the device and enable File Transfer mode, then try again."
+            "mtpDefaultName": "Dispositivo portátil",
+            "mtpDetect": "Detectar",
+            "mtpDetectFailed": "Non se puideron listar os dispositivos portátiles",
+            "mtpDetecting": "Detectando...",
+            "mtpDevice": "Dispositivo USB",
+            "mtpFingerprint": "Pegada",
+            "mtpHonesty": "MTP é exclusivo e baixo demanda: Conectar reclama o dispositivo para esta sesión (en Linux, liberando primeiro o xestor de ficheiros do sistema); desconectar devólveo. As transferencias son de ficheiro completo (sen retoma nin letra de unidade). Algunhas operacións están limitadas polo sistema do dispositivo.",
+            "mtpNoDevices": "Non se detectou ningún dispositivo portátil. Conecta o teléfono ou a cámara e activa o modo de transferencia de ficheiros.",
+            "mtpRemotePathPlaceholder": "Ruta remota predeterminada (p. ex. / ou DCIM)",
+            "mtpSaveRequiresDevice": "Detecta e selecciona un dispositivo para activar Gardar.",
+            "mtpSelectPlaceholder": "Selecciona un dispositivo...",
+            "mtpSelectPlaceholderEmpty": "Aínda non hai dispositivos — fai clic en Detectar",
+            "mtpNotAttachedTitle": "Dispositivo non conectado",
+            "mtpNotAttached": "Conecta o dispositivo e activa o modo de transferencia de ficheiros, despois téntao de novo."
         },
         "browser": {
             "remote": "Remoto",
@@ -1858,9 +1858,9 @@
             "s3RoleMfaTokenCodePlaceholder": "123456",
             "s3RoleMfaTokenCodeHint": "Código dun só uso do teu dispositivo MFA, necesario só se o rol esixe MFA. Úsase unha vez ao conectar e nunca se garda.",
             "peerDesc": "Comparte cartafoles directamente cos teus amigos a través dunha canle cifrada de igual a igual, sen ningún servidor polo medio.",
-            "devicesInfoLine1": "[NEEDS TRANSLATION] Save a portable USB device (phone, camera, tablet) as a My Servers profile. Detect the device over MTP, set default folders, and reconnect with one click when it is plugged in.",
-            "devicesInfoLine2": "[NEEDS TRANSLATION] MTP is exclusive: close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter).",
-            "discoverMtpPortable": "[NEEDS TRANSLATION] Phone, camera, or tablet over USB MTP"
+            "devicesInfoLine1": "Garda un dispositivo USB portátil (teléfono, cámara, tableta) como un perfil dos Meus servidores. Detecta o dispositivo por MTP, define os cartafoles predeterminados e reconéctate cun clic cando estea conectado.",
+            "devicesInfoLine2": "MTP é exclusivo e baixo demanda: Conectar reclama o dispositivo para a sesión; desconectar devólveo. As transferencias son de ficheiro completo (sen retoma nin letra de unidade).",
+            "discoverMtpPortable": "Teléfono, cámara ou tableta por USB MTP"
         },
         "shortcuts": {
             "title": "Atallos de teclado",
@@ -3213,16 +3213,16 @@
             "copy_path": "Copiar ruta",
             "new_folder": "Novo cartafol",
             "ejectFailed": "Produciuse un erro ao expulsar",
-            "portable_devices": "[NEEDS TRANSLATION] Portable devices",
-            "portable_disconnect": "[NEEDS TRANSLATION] Disconnect",
-            "portable_disconnect_failed": "[NEEDS TRANSLATION] Could not disconnect portable device",
-            "portable_empty": "[NEEDS TRANSLATION] No portable devices detected",
-            "portable_honesty": "[NEEDS TRANSLATION] Portable devices use MTP: whole-file copy only, no drive letter, and some operations are limited by the device OS.",
-            "portable_no_storages": "[NEEDS TRANSLATION] Session open (no storage list yet; browse polish follows)",
-            "portable_open_failed": "[NEEDS TRANSLATION] Could not open portable device",
-            "portable_opened": "[NEEDS TRANSLATION] Connected to {name}",
-            "portable_storages": "[NEEDS TRANSLATION] {count} storage(s)",
-            "portable_disconnected": "[NEEDS TRANSLATION] Portable device disconnected: {name}",
+            "portable_devices": "Dispositivos portátiles",
+            "portable_disconnect": "Desconectar",
+            "portable_disconnect_failed": "Non se puido desconectar o dispositivo portátil",
+            "portable_empty": "Non se detectou ningún dispositivo portátil",
+            "portable_honesty": "Os dispositivos portátiles usan MTP: só copia de ficheiro completo, sen letra de unidade, sen retoma, e algunhas operacións están limitadas polo sistema do dispositivo (non por AeroFTP).",
+            "portable_no_storages": "Sesión aberta (lista de almacenamento baleira ou non dispoñible neste dispositivo)",
+            "portable_open_failed": "Non se puido abrir o dispositivo portátil",
+            "portable_opened": "Conectado a {name}",
+            "portable_storages": "{count} almacenamentos",
+            "portable_disconnected": "Dispositivo portátil desconectado: {name}",
             "portable_unplugged": "Desconectouse o dispositivo portátil. Volva conectar o cable e ábrao de novo.",
             "portable_needs_replug": "Non montado polo escritorio. Desconecta e volve conectar o cable e ábreo de novo."
         },
@@ -4505,7 +4505,7 @@
                 "localBridge": "Ponte local",
                 "paid": "De pago",
                 "encrypted": "Cifrados",
-                "mtp": "[NEEDS TRANSLATION] MTP"
+                "mtp": "MTP"
             },
             "noServers": "Non hai servidores gardados",
             "noServersHint": "Comece cunha conexión rápida ou explore o catálogo de servizos.",
@@ -4526,7 +4526,7 @@
                 "developer": "Desenvolvedor",
                 "mediaServices": "Servizos multimedia",
                 "all": "Todos",
-                "devices": "[NEEDS TRANSLATION] Devices"
+                "devices": "Dispositivos"
             },
             "confirmDeleteServer": "Eliminar o servidor \"{name}\"? Isto elimina as credenciais gardadas e non se pode desfacer.",
             "renameWithHotkey": "Renomear (F2)",
@@ -4648,8 +4648,8 @@
                 "moveLeft": "Mover á esquerda",
                 "moveRight": "Mover á dereita"
             },
-            "deviceAttached": "[NEEDS TRANSLATION] Device attached",
-            "deviceNotAttached": "[NEEDS TRANSLATION] Device not attached"
+            "deviceAttached": "Dispositivo conectado",
+            "deviceNotAttached": "Dispositivo non conectado"
         },
         "gitlab": {
             "projectPath": "Ruta do proxecto",
