@@ -1081,6 +1081,178 @@ pub fn v4_unwrap_omk(
         .map_err(|_| "v4 omk_wrap unwrap: OMK wrong length".to_string())
 }
 
+/// Pure v4 unlock from a known `slot_key` (no Argon2).
+///
+/// Chain: unwrap epoch_key -> VK -> **verify stored-bytes `config_mac`** (mandatory
+/// belt; pass the exact downloaded / keystore header) -> unwrap OMK.
+/// Callers that already hold a slot key (tests, rotate/revoke tooling) use this;
+/// password unlock goes through [`unlock_v4_config`].
+pub fn unlock_v4_with_slot_key(
+    raw_header: &str,
+    cfg: &OverlayConfig,
+    slot: &Slot,
+    slot_key: &[u8; KEY_SIZE],
+) -> Result<[u8; KEY_SIZE], String> {
+    let OverlayConfig::V4 {
+        vault_id,
+        epoch,
+        vk_wrap,
+        omk_wrap,
+        config_mac,
+        ..
+    } = cfg
+    else {
+        return Err("unlock_v4_with_slot_key requires a v4 config".into());
+    };
+    let epoch_key = v4_unwrap_epoch_key(slot, slot_key, vault_id, *epoch)?;
+    let vk = v4_unwrap_vk(vk_wrap, &epoch_key, vault_id, *epoch)?;
+    // F-carry-in: per-wrap AADs alone are not enough; always verify stored bytes.
+    verify_config_mac_v4(&vk, vault_id, raw_header, config_mac)?;
+    v4_unwrap_omk(omk_wrap, &vk, vault_id)
+}
+
+/// Unlock a v4 keyslot vault from the raw stored header and a factor.
+///
+/// Factor reconcile (T4 minimum):
+/// - passphrase-only slots: reject a spurious keyfile digest (v3-like fail-closed)
+/// - keyfile-only slots: require a digest
+/// - mixed: try each slot with a matching factor shape; first successful unwrap wins
+///
+/// F-2: slot keys come from [`derive_slot_key`] (v3 Argon2 profile); stored kdf
+/// is AAD metadata only. Does **not** auto-migrate v3 headers.
+pub fn unlock_v4_config(
+    raw_header: &str,
+    password: &str,
+    keyfile_digest: Option<&[u8; KEY_SIZE]>,
+) -> Result<(OverlayConfig, [u8; KEY_SIZE]), String> {
+    let config =
+        parse_config(raw_header).map_err(|e| format!("Invalid AeroCrypt overlay config: {e}"))?;
+    let OverlayConfig::V4 { slots, .. } = &config else {
+        return Err("unlock_v4_config requires a v4 header".into());
+    };
+
+    let has_passphrase = slots.iter().any(|s| s.kind == SlotType::Passphrase);
+    let has_keyfile = slots.iter().any(|s| s.kind == SlotType::Keyfile);
+
+    match keyfile_digest {
+        Some(_) if !has_keyfile => {
+            // Password-only (or recovery-only) vault: spurious keyfile fails closed.
+            return Err(
+                "this AeroCrypt overlay was not created with a keyfile (remove the keyfile to unlock)"
+                    .to_string(),
+            );
+        }
+        None if has_keyfile && !has_passphrase => {
+            return Err(
+                "this AeroCrypt overlay requires a keyfile (none was provided)".to_string(),
+            );
+        }
+        _ => {}
+    }
+
+    if slots.is_empty() {
+        return Err("v4 vault has no known slots to unlock".into());
+    }
+
+    let mut last_err = "wrong credential or no matching keyslot".to_string();
+    for slot in slots {
+        let factor = match slot.kind {
+            SlotType::Passphrase => {
+                // Always try passphrase slots with the password (mixed vaults may
+                // also carry a keyfile digest for other slots).
+                SlotFactor::Passphrase(password)
+            }
+            SlotType::Keyfile => {
+                let Some(digest) = keyfile_digest else {
+                    continue;
+                };
+                SlotFactor::KeyfileDigest { password, digest }
+            }
+            SlotType::Recovery => {
+                // T7 will own recovery-code normalization; until then try the
+                // supplied password as the recovery factor when no keyfile is set.
+                if keyfile_digest.is_some() {
+                    continue;
+                }
+                SlotFactor::Recovery(password)
+            }
+            SlotType::Fido2Hmac | SlotType::And | SlotType::Threshold => {
+                // Not built (T8 / F8); skip rather than hard-error so other slots
+                // can still open the vault.
+                continue;
+            }
+        };
+
+        let salt: [u8; SALT_SIZE] = match slot.salt.as_slice().try_into() {
+            Ok(s) => s,
+            Err(_) => {
+                last_err = format!("v4 slot {} salt must be {SALT_SIZE} bytes", slot.id);
+                continue;
+            }
+        };
+
+        // F-2: pass stored kdf for API symmetry; derive_slot_key ignores it.
+        let slot_key = match derive_slot_key(slot.kind, &factor, &salt, slot.kdf.as_ref()) {
+            Ok(k) => k,
+            Err(e) => {
+                last_err = e;
+                continue;
+            }
+        };
+
+        match unlock_v4_with_slot_key(raw_header, &config, slot, &slot_key) {
+            Ok(omk) => return Ok((config, omk)),
+            Err(e) => {
+                last_err = e;
+            }
+        }
+    }
+
+    Err(format!("AeroCrypt unlock failed: {last_err}"))
+}
+
+/// Shared unlock chokepoint for GUI, CLI, and crypt-compare/MCP.
+///
+/// Parses the **raw stored header** (exact bytes from download/keystore), derives
+/// the content key (`master_key` / OMK), and verifies config integrity:
+/// - v1/v2/v3: [`derive_master_key_with_keyfile`] + [`verify_config_mac`]
+/// - v4: keyslot chain via [`unlock_v4_config`] (OMK as master_key)
+///
+/// Does not auto-migrate v3 to v4.
+pub fn unlock_overlay_from_config(
+    raw_header: &str,
+    password: &str,
+    keyfile_digest: Option<&[u8; KEY_SIZE]>,
+) -> Result<(OverlayConfig, [u8; KEY_SIZE]), String> {
+    let config =
+        parse_config(raw_header).map_err(|e| format!("Invalid AeroCrypt overlay config: {e}"))?;
+    match config.version() {
+        VERSION_V4 => unlock_v4_config(raw_header, password, keyfile_digest),
+        _ => {
+            let keyfile_digest = match (config.requires_keyfile(), keyfile_digest) {
+                (true, None) => {
+                    return Err(
+                        "this AeroCrypt overlay requires a keyfile (none was provided)".to_string(),
+                    )
+                }
+                (false, Some(_)) => {
+                    return Err(
+                        "this AeroCrypt overlay was not created with a keyfile (remove the keyfile to unlock)"
+                            .to_string(),
+                    )
+                }
+                (true, kd) => kd,
+                (false, _) => None,
+            };
+            let master_key = derive_master_key_with_keyfile(&config, password, keyfile_digest)
+                .map_err(|e| format!("AeroCrypt key derivation failed: {e}"))?;
+            verify_config_mac(&config, &master_key)
+                .map_err(|e| format!("AeroCrypt unlock failed: {e}"))?;
+            Ok((config, master_key))
+        }
+    }
+}
+
 /// Migrate a v3 headed vault to v4 (single-schedule OMK, 09 §7a).
 ///
 /// - OMK = `v3_master_key` (caller already derived; no Argon2 here).
@@ -3083,5 +3255,236 @@ mod tests {
             err.contains("exactly one config_mac"),
             "expected duplicate reject, got: {err}"
         );
+    }
+
+    // --- v4 unlock wiring (T4, OMK as master_key) --------------------------
+
+    #[test]
+    fn unlock_v4_migrate_password_recovers_omk() {
+        let salt = [0xA1u8; SALT_V3_SIZE];
+        let password = "t4-unlock-password";
+        let master = derive_master_key(&OverlayConfig::v3_bootstrap(salt), password).unwrap();
+        let v3 =
+            init_config_v3_with_vault_id(&salt, &master, &random_vault_id(), SaltMode::PerVault)
+                .unwrap();
+        let v4_json = migrate_v3_to_v4(&parse_config(&v3).unwrap(), &master).unwrap();
+
+        let (cfg, omk) = unlock_overlay_from_config(&v4_json, password, None).expect("unlock v4");
+        assert_eq!(cfg.version(), VERSION_V4);
+        assert_eq!(omk, master, "migrated OMK must equal v3 master");
+
+        // Wrong password fails closed.
+        let bad = unlock_overlay_from_config(&v4_json, "wrong-password", None);
+        assert!(bad.is_err(), "wrong password must fail");
+
+        // Spurious keyfile on passphrase-only vault fails closed.
+        let digest = [0xDDu8; KEY_SIZE];
+        let err = unlock_overlay_from_config(&v4_json, password, Some(&digest)).unwrap_err();
+        assert!(
+            err.contains("not created with a keyfile"),
+            "spurious keyfile must fail closed, got: {err}"
+        );
+
+        // Content round-trip under recovered OMK.
+        let ct = encrypt_data(&cfg, &omk, b"t4-round-trip").unwrap();
+        assert_eq!(decrypt_data(&omk, &ct).unwrap(), b"t4-round-trip");
+    }
+
+    #[test]
+    fn unlock_v4_keyfile_factor_reconcile() {
+        let salt = [0xA2u8; SALT_V3_SIZE];
+        let password = "t4-kf-pass";
+        let keyfile = b"t4-keyfile-bytes";
+        let digest = crate::aerocrypt::keyfile_digest_from_file(keyfile).unwrap();
+        let master = derive_master_key_with_keyfile(
+            &OverlayConfig::v3_bootstrap(salt),
+            password,
+            Some(&digest),
+        )
+        .unwrap();
+        let v3 = init_config_v3_with_keyfile(
+            &salt,
+            &master,
+            &random_vault_id(),
+            None,
+            SaltMode::PerVault,
+        )
+        .unwrap();
+        let v4_json = migrate_v3_to_v4(&parse_config(&v3).unwrap(), &master).unwrap();
+
+        let (cfg, omk) =
+            unlock_overlay_from_config(&v4_json, password, Some(&digest)).expect("kf unlock");
+        assert_eq!(cfg.version(), VERSION_V4);
+        assert_eq!(omk, master);
+
+        // Missing digest fails closed.
+        let err = unlock_overlay_from_config(&v4_json, password, None).unwrap_err();
+        assert!(
+            err.contains("requires a keyfile"),
+            "missing keyfile must fail, got: {err}"
+        );
+
+        // Wrong digest fails closed.
+        let wrong = [0xEEu8; KEY_SIZE];
+        assert!(
+            unlock_overlay_from_config(&v4_json, password, Some(&wrong)).is_err(),
+            "wrong keyfile digest must fail"
+        );
+    }
+
+    #[test]
+    fn unlock_v4_after_revoke_old_factor_fails() {
+        let salt = [0xA3u8; SALT_V3_SIZE];
+        let password = "t4-revoke-pw";
+        let master = derive_master_key(&OverlayConfig::v3_bootstrap(salt), password).unwrap();
+        let v3 =
+            init_config_v3_with_vault_id(&salt, &master, &random_vault_id(), SaltMode::PerVault)
+                .unwrap();
+        let v4_json = migrate_v3_to_v4(&parse_config(&v3).unwrap(), &master).unwrap();
+        let v4_cfg = parse_config(&v4_json).unwrap();
+        let (epoch_key, vk, omk_before) = v4_recover_from_slot0(&v4_cfg, &master);
+
+        // Add a second passphrase slot with a known slot_key (not password-derived).
+        let slot1_key = [0x71u8; KEY_SIZE];
+        let added = add_slot(
+            &v4_cfg,
+            &vk,
+            &epoch_key,
+            SlotKeyMaterial {
+                id: 1,
+                kind: SlotType::Passphrase,
+                salt: vec![0x72u8; SALT_SIZE],
+                kdf: Some(Argon2Params::v3_profile()),
+                binding: SlotBinding::None,
+                slot_key: slot1_key,
+            },
+        )
+        .unwrap();
+        let cfg_two = parse_config(&added).unwrap();
+        let revoked = revoke_slot(&cfg_two, &vk, 0, &[(1, slot1_key)]).unwrap();
+        let cfg_rev = parse_config(&revoked).unwrap();
+
+        // Old password (slot 0) no longer opens after revoke.
+        assert!(
+            unlock_overlay_from_config(&revoked, password, None).is_err(),
+            "revoked slot 0 password must fail"
+        );
+
+        // Pure path with surviving slot_key recovers the same OMK + MAC belt.
+        let OverlayConfig::V4 { slots, .. } = &cfg_rev else {
+            panic!("V4");
+        };
+        let survivor = slots.iter().find(|s| s.id == 1).expect("slot 1");
+        let omk = unlock_v4_with_slot_key(&revoked, &cfg_rev, survivor, &slot1_key)
+            .expect("surviving slot unlock");
+        assert_eq!(omk, omk_before);
+
+        // Tampered body after a good slot unwrap fails the MAC belt.
+        let tampered = revoked.replacen("\"epoch\":2", "\"epoch\":3", 1);
+        // Parse may still succeed if we only change a non-structural field; force
+        // a stored-bytes change that keeps parseable slots when possible.
+        let tampered = if tampered == revoked {
+            // Fallback: inject trailing whitespace inside a string-safe area.
+            revoked.replace("\"version\":4", "\"version\":4,\"_x\":0")
+        } else {
+            tampered
+        };
+        // Re-parse may fail on epoch mismatch vs AAD; belt test uses pure path
+        // with a forged header that still parses as V4 when possible.
+        if let Ok(cfg_t) = parse_config(&tampered) {
+            if let OverlayConfig::V4 { slots: s, .. } = &cfg_t {
+                if let Some(slot) = s.iter().find(|s| s.id == 1) {
+                    // Even if unwrap of epoch fails due to epoch in AAD, assert fail-closed.
+                    assert!(
+                        unlock_v4_with_slot_key(&tampered, &cfg_t, slot, &slot1_key).is_err(),
+                        "tampered header must fail closed"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn unlock_v4_mac_belt_rejects_forged_header() {
+        let salt = [0xA4u8; SALT_V3_SIZE];
+        let password = "t4-mac-belt";
+        let master = derive_master_key(&OverlayConfig::v3_bootstrap(salt), password).unwrap();
+        let v3 =
+            init_config_v3_with_vault_id(&salt, &master, &random_vault_id(), SaltMode::PerVault)
+                .unwrap();
+        let v4_json = migrate_v3_to_v4(&parse_config(&v3).unwrap(), &master).unwrap();
+        let cfg = parse_config(&v4_json).unwrap();
+
+        // Forge: keep wraps/slots intact, rewrite a top-level field that is not
+        // part of slot AAD but is covered by stored-bytes config_mac. Inject an
+        // extra JSON field before config_mac by string splice after "slots".
+        let forged = v4_json.replacen("\"slots\":", "\"forged\":true,\"slots\":", 1);
+        assert_ne!(forged, v4_json);
+        let cfg_forged = parse_config(&forged).expect("forged header still parses");
+        let OverlayConfig::V4 { slots, .. } = &cfg_forged else {
+            panic!("V4");
+        };
+        // Slot unwrap may succeed (slot AAD unchanged) but MAC belt must reject.
+        let err = unlock_v4_with_slot_key(&forged, &cfg_forged, &slots[0], &master).unwrap_err();
+        assert!(
+            err.contains("tampered") || err.contains("wrong credential"),
+            "MAC belt must reject forged body, got: {err}"
+        );
+        // Full unlock path also fails closed.
+        assert!(unlock_overlay_from_config(&forged, password, None).is_err());
+        // Sanity: original still opens.
+        let (_c, omk) = unlock_overlay_from_config(&v4_json, password, None).unwrap();
+        assert_eq!(omk, master);
+        let _ = cfg;
+    }
+
+    #[test]
+    fn unlock_overlay_v3_regression_password_and_keyfile() {
+        let salt = [0xA5u8; SALT_V3_SIZE];
+        let password = "t4-v3-reg";
+        let master = derive_master_key(&OverlayConfig::v3_bootstrap(salt), password).unwrap();
+        let v3 =
+            init_config_v3_with_vault_id(&salt, &master, &random_vault_id(), SaltMode::PerVault)
+                .unwrap();
+        let (cfg, mk) = unlock_overlay_from_config(&v3, password, None).expect("v3 unlock");
+        assert_eq!(cfg.version(), VERSION_V3);
+        assert_eq!(mk, master);
+        assert!(unlock_overlay_from_config(&v3, "nope", None).is_err());
+        let digest = [0xABu8; KEY_SIZE];
+        assert!(
+            unlock_overlay_from_config(&v3, password, Some(&digest)).is_err(),
+            "v3 password-only rejects keyfile"
+        );
+
+        let keyfile = b"t4-v3-kf";
+        let kd = crate::aerocrypt::keyfile_digest_from_file(keyfile).unwrap();
+        let master_kf =
+            derive_master_key_with_keyfile(&OverlayConfig::v3_bootstrap(salt), password, Some(&kd))
+                .unwrap();
+        let v3_kf = init_config_v3_with_keyfile(
+            &salt,
+            &master_kf,
+            &random_vault_id(),
+            None,
+            SaltMode::PerVault,
+        )
+        .unwrap();
+        let (cfg_kf, mk_kf) =
+            unlock_overlay_from_config(&v3_kf, password, Some(&kd)).expect("v3 kf");
+        assert!(cfg_kf.requires_keyfile());
+        assert_eq!(mk_kf, master_kf);
+        assert!(unlock_overlay_from_config(&v3_kf, password, None).is_err());
+    }
+
+    #[test]
+    fn unlock_v4_native_init_password() {
+        // Native v4 (OMK != slot_key): still recovers OMK via keyslots.
+        let password = "t4-native-v4";
+        let v4_json = init_config_v4(password).expect("init v4");
+        let (cfg, omk) = unlock_overlay_from_config(&v4_json, password, None).expect("unlock");
+        assert_eq!(cfg.version(), VERSION_V4);
+        let ct = encrypt_data(&cfg, &omk, b"native-v4").unwrap();
+        assert_eq!(decrypt_data(&omk, &ct).unwrap(), b"native-v4");
+        assert!(unlock_overlay_from_config(&v4_json, "wrong", None).is_err());
     }
 }

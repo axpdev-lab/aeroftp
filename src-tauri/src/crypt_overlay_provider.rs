@@ -1670,24 +1670,9 @@ fn derive_aerocrypt_overlay_keys_from_config(
     password: &str,
     keyfile_digest: Option<&[u8; 32]>,
 ) -> Result<(OverlayConfig, [u8; KEY_SIZE]), String> {
-    let config = overlay::parse_config(config_json)
-        .map_err(|e| format!("Invalid AeroCrypt overlay config: {e}"))?;
-    let keyfile_digest = match (config.requires_keyfile(), keyfile_digest) {
-        (true, None) => {
-            return Err("this AeroCrypt overlay requires a keyfile (none was provided)".to_string())
-        }
-        (false, Some(_)) => return Err(
-            "this AeroCrypt overlay was not created with a keyfile (remove the keyfile to unlock)"
-                .to_string(),
-        ),
-        (true, kd) => kd,
-        (false, _) => None,
-    };
-    let master_key = overlay::derive_master_key_with_keyfile(&config, password, keyfile_digest)
-        .map_err(|e| format!("AeroCrypt key derivation failed: {e}"))?;
-    overlay::verify_config_mac(&config, &master_key)
-        .map_err(|e| format!("AeroCrypt unlock failed: {e}"))?;
-    Ok((config, master_key))
+    // Shared with crypt_compare::unlock_overlay_keys: v3 KDF path and v4
+    // keyslot chain (OMK as master_key) with stored-bytes config_mac belt.
+    overlay::unlock_overlay_from_config(config_json, password, keyfile_digest)
 }
 
 /// Resolve a saved profile's `aeroCryptOverlay` binding (+ its per-profile vault

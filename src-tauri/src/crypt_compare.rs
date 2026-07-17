@@ -307,30 +307,10 @@ pub async fn unlock_overlay_keys(
                 )?;
                 local
             };
-            let cfg = overlay::parse_config(&config_str)
-                .map_err(|e| format!("Invalid AeroCrypt overlay config: {}", e))?;
-            // Reconcile the supplied keyfile against what the config requires
-            // (v1/v2 never require one) before deriving.
-            let keyfile_digest = match (cfg.requires_keyfile(), keyfile_digest) {
-                (true, None) => {
-                    return Err(
-                        "this AeroCrypt overlay requires a keyfile (none was provided)".to_string(),
-                    )
-                }
-                (false, Some(_)) => {
-                    return Err(
-                        "this AeroCrypt overlay was not created with a keyfile (remove the keyfile to unlock)"
-                            .to_string(),
-                    )
-                }
-                (true, kd) => kd,
-                (false, _) => None,
-            };
-            let master_key =
-                overlay::derive_master_key_with_keyfile(&cfg, password, keyfile_digest)
-                    .map_err(|e| format!("AeroCrypt key derivation failed: {}", e))?;
-            overlay::verify_config_mac(&cfg, &master_key)
-                .map_err(|e| format!("AeroCrypt unlock failed: {}", e))?;
+            // Shared with crypt_overlay_provider::derive_aerocrypt_overlay_keys_from_config:
+            // v3 KDF + MAC, or v4 keyslot unlock to OMK (raw header for config_mac belt).
+            let (_cfg, master_key) =
+                overlay::unlock_overlay_from_config(&config_str, password, keyfile_digest)?;
             Ok(CryptCompareKeys::AeroCrypt(master_key))
         }
         other => Err(format!("Unsupported crypt overlay kind: {}", other)),
