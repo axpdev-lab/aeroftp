@@ -40,11 +40,14 @@
 //! `committed()` reports `false`, letting the A4 adapter decide to fall
 //! back to the classic-SFTP path.
 //!
-//! # csum_len in A2.1
+//! # Negotiated file-checksum length (CLAUDE-AV-B3-18)
 //!
-//! Hardcoded to 16 (xxh128 / md5 / md4). A2.2 will derive it dynamically
-//! from `negotiated_checksum_algos`. Accepted risk, tracked in the
-//! checkpoint doc.
+//! File-list checksums and delta-stream trailers have no length prefix.
+//! Their width must therefore follow the algorithm that won checksum
+//! negotiation. [`AerorsyncDriver::negotiated_file_checksum_len`] mirrors
+//! rsync 3.2.7 `checksum.c::csum_len_for_type`; assuming 16 made downloads
+//! from `xxh64` and `xxh3` peers wait forever for eight bytes that were
+//! never coming.
 
 use crate::aerorsync::engine_adapter::{
     apply_delta_streaming, BaselineSource, BlockStrongAlgo, DeltaEngineAdapter, DeltaPlanProducer,
@@ -118,6 +121,10 @@ pub(crate) const XXH128_ALGO_NAME: &str = "xxh128";
 /// `CSUM_MD5` in rsync 3.2.7). CLAUDE-AV-B3-17: also the per-block
 /// strong algo via `get_checksum2` (seeded; see `CF_CHKSUM_SEED_FIX`).
 pub(crate) const MD5_ALGO_NAME: &str = "md5";
+/// CLAUDE-AV-B3-18: rsync's two 64-bit xxhash names. Despite its name,
+/// `xxh3` is the 8-byte variant; the 16-byte variant is `xxh128`.
+pub(crate) const XXH3_ALGO_NAME: &str = "xxh3";
+pub(crate) const XXH64_ALGO_NAME: &str = "xxh64";
 
 /// rsync.h `CF_CHKSUM_SEED_FIX` (`1<<5`). When set in the server's
 /// `compat_flags`, `proper_seed_order=1` and `get_checksum2` for
@@ -174,9 +181,9 @@ const A2_2_DOWNLOAD_SIGNATURE_PREFIX_ZEROS: usize = 4;
 /// receiver-side phase bookkeeping before the remote sender starts
 /// producing delta bytes.
 const A2_2_DOWNLOAD_SIGNATURE_TAIL_NDX_DONE_COUNT: usize = 5;
-/// File-level strong checksum length (xxh128 / md5 / md4). Hardcoded to
-/// 16 for A2.3; real xxh128 computation over `source_data` deferred to
-/// S8j when the driver is wired against a live rsync server.
+/// Historical default for file-level strong checksums (xxh128 / md5 /
+/// md4). CLAUDE-AV-B3-18: receive paths use the negotiated width instead;
+/// this remains the conservative fallback for absent or unknown winners.
 const A2_3_FILE_CHECKSUM_LEN: usize = 16;
 
 /// S8j download: exact count of `NDX_DONE` markers rsync 3.2.7 interleaves
@@ -696,6 +703,22 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
                     .split_whitespace()
                     .any(|theirs| theirs == *ours)
             })
+    }
+    /// CLAUDE-AV-B3-18: byte width of both the `--checksum` file-list
+    /// digest and the whole-file delta trailer for the negotiated winner.
+    ///
+    /// Mirrors rsync 3.2.7 `checksum.c::csum_len_for_type`. Unknown or
+    /// absent negotiation retains the historical 16-byte behavior instead
+    /// of guessing a new wire shape.
+    pub(crate) fn negotiated_file_checksum_len(&self) -> usize {
+        match self.negotiated_checksum_algo() {
+            Some(XXH3_ALGO_NAME | XXH64_ALGO_NAME | "xxhash") => 8,
+            Some("sha1") => 20,
+            Some("sha256") => 32,
+            Some("sha512") => 64,
+            Some("none") => 1,
+            _ => A2_3_FILE_CHECKSUM_LEN,
+        }
     }
     pub fn negotiated_compression_algos(&self) -> &str {
         &self.negotiated_compression_algos
@@ -1222,8 +1245,11 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
     }
 
     /// Compute `FileListDecodeOptions` from the driver's current
-    /// negotiation state. csum_len hardcoded to 16 for A2.1.
-    fn build_flist_options(&self) -> FileListDecodeOptions<'static> {
+    /// negotiation state. CLAUDE-AV-B3-18: callers supply the checksum
+    /// width because download receives must use the negotiated width while
+    /// upload sends use the width of the checksum already computed in the
+    /// source entry.
+    fn build_flist_options(&self, csum_len: usize) -> FileListDecodeOptions<'static> {
         FileListDecodeOptions {
             protocol: self.protocol_version,
             // CF_VARINT_FLIST_FLAGS is active from protocol 30+. The
@@ -1234,10 +1260,10 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
             // B.2: production dispatch invokes the server with `-c`
             // (always_checksum) and `-o -g` (preserve owner/group).
             // Mirror the oracle compat: each regular file entry carries
-            // 16-byte xxh128 checksum + uid + gid varints (with names
-            // when XMIT_USER/GROUP_NAME_FOLLOWS gates them).
+            // the negotiated checksum + uid + gid varints (with names when
+            // XMIT_USER/GROUP_NAME_FOLLOWS gates them).
             always_checksum: true,
-            csum_len: 16,
+            csum_len,
             preserve_uid: true,
             preserve_gid: true,
             previous_name: None,
@@ -1249,7 +1275,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         entry: &FileListEntry,
     ) -> Result<(), AerorsyncError> {
         self.phase = AerorsyncSessionPhase::FileListSending;
-        let opts = self.build_flist_options();
+        let opts = self.build_flist_options(entry.checksum.len());
         // B.2: coalesce entry + terminator + NDX_FLIST_EOF into a single
         // MSG_DATA frame. The frozen oracle's first MSG_DATA payload is
         // 67 bytes carrying exactly this layout (entry 47 B + xxh128
@@ -1273,7 +1299,11 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         bridge: &mut dyn EventSink,
     ) -> Result<(), AerorsyncError> {
         self.phase = AerorsyncSessionPhase::FileListReceiving;
-        let opts = self.build_flist_options();
+        // CLAUDE-AV-B3-18: the file-list checksum has no length prefix.
+        // A stock xxh64/xxh3 peer sends 8 bytes; assuming 16 consumed the
+        // list terminator as checksum and then waited forever for another
+        // MSG_DATA frame.
+        let opts = self.build_flist_options(self.negotiated_file_checksum_len());
         let mut flist_buf: Vec<u8> = Vec::new();
         let mut entry_seen = false;
         loop {
@@ -2231,6 +2261,9 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
     ) -> Result<(), AerorsyncError> {
         self.phase = AerorsyncSessionPhase::DeltaReceiving;
         let sum_head_count = self.sent_sum_head.as_ref().map(|h| h.count);
+        // CLAUDE-AV-B3-18: like the file-list checksum, the delta trailer
+        // has no length prefix and must follow the negotiated winner.
+        let file_checksum_len = self.negotiated_file_checksum_len();
 
         // Stock rsync's sender frames every file transfer as
         // `write_ndx_and_attrs` (ndx + iflags) + `write_sum_head`
@@ -2265,7 +2298,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         loop {
             self.check_cancel("receive_delta_phase")?;
             if !buf.is_empty() {
-                match decode_delta_stream(&buf, A2_3_FILE_CHECKSUM_LEN, sum_head_count) {
+                match decode_delta_stream(&buf, file_checksum_len, sum_head_count) {
                     Ok((report, consumed)) => {
                         self.stash_post_delta_into_summary_seed(&buf[consumed..]);
                         self.received_file_checksum = Some(report.file_checksum.clone());
@@ -2309,7 +2342,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
                     // loop-top would. An empty `buf` here is a genuine
                     // no-payload no-op (keep the local baseline).
                     if !buf.is_empty() {
-                        match decode_delta_stream(&buf, A2_3_FILE_CHECKSUM_LEN, sum_head_count) {
+                        match decode_delta_stream(&buf, file_checksum_len, sum_head_count) {
                             Ok((report, consumed)) => {
                                 self.stash_post_delta_into_summary_seed(&buf[consumed..]);
                                 self.received_file_checksum = Some(report.file_checksum.clone());
@@ -2391,6 +2424,9 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
     ) -> Result<(), AerorsyncError> {
         self.phase = AerorsyncSessionPhase::DeltaReceiving;
         let sum_head_count = self.sent_sum_head.as_ref().map(|h| h.count);
+        // CLAUDE-AV-B3-18: streaming and bulk receive paths must decode
+        // the same negotiated-width trailer.
+        let file_checksum_len = self.negotiated_file_checksum_len();
 
         // Consume the sender's `write_ndx_and_attrs` + `write_sum_head`
         // prefix (ndx + iflags + sum_head) that precedes the token
@@ -2417,7 +2453,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         loop {
             self.check_cancel("receive_delta_phase")?;
             if !buf.is_empty() {
-                match decode_delta_stream(&buf, A2_3_FILE_CHECKSUM_LEN, sum_head_count) {
+                match decode_delta_stream(&buf, file_checksum_len, sum_head_count) {
                     Ok((report, consumed)) => {
                         self.stash_post_delta_into_summary_seed(&buf[consumed..]);
                         self.received_file_checksum = Some(report.file_checksum.clone());
@@ -2460,7 +2496,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
                     // loop-top would. An empty `buf` here is a genuine
                     // no-payload no-op (keep the local baseline).
                     if !buf.is_empty() {
-                        match decode_delta_stream(&buf, A2_3_FILE_CHECKSUM_LEN, sum_head_count) {
+                        match decode_delta_stream(&buf, file_checksum_len, sum_head_count) {
                             Ok((report, consumed)) => {
                                 self.stash_post_delta_into_summary_seed(&buf[consumed..]);
                                 self.received_file_checksum = Some(report.file_checksum.clone());
@@ -3441,7 +3477,10 @@ mod tests {
         encode_server_preamble(&ServerPreamble {
             protocol_version: 31,
             compat_flags: 0x07,
-            checksum_algos: "md5 xxh64".to_string(),
+            // CLAUDE-AV-B3-18: this shared fixture carries 16-byte file-list
+            // checksums and delta trailers, so its winner must be a 16-byte
+            // algorithm. Dedicated xxh64 fixtures below carry 8 bytes.
+            checksum_algos: "md5".to_string(),
             compression_algos: "none zstd".to_string(),
             checksum_seed: 0xDEAD_BEEF,
             consumed: 0,
@@ -3615,7 +3654,7 @@ mod tests {
         assert_eq!(d.protocol_version(), 31);
         assert_eq!(d.compat_flags(), 0x07);
         assert_eq!(d.checksum_seed(), 0xDEAD_BEEF);
-        assert_eq!(d.negotiated_checksum_algos(), "md5 xxh64");
+        assert_eq!(d.negotiated_checksum_algos(), "md5");
         assert_eq!(d.negotiated_compression_algos(), "none zstd");
         assert_eq!(d.phase(), AerorsyncSessionPhase::ClientPreambleRecvd);
     }
@@ -3764,6 +3803,54 @@ mod tests {
         // Substring safety: "xxh128" must not be matched by a peer that
         // only offers "xxh12" or "xxh1284".
         assert_eq!(negotiate("xxh128", "xxh12 xxh1284").await, None);
+    }
+
+    /// CLAUDE-AV-B3-18: pin rsync 3.2.7
+    /// `checksum.c::csum_len_for_type` for every name the runtime override
+    /// can advertise. The xxh3 naming trap is intentional: `xxh3` is the
+    /// 64-bit, 8-byte variant, while `xxh128` is 16 bytes.
+    #[tokio::test]
+    async fn file_checksum_len_follows_the_negotiated_algorithm() {
+        let cases = [
+            ("xxh128", 16),
+            ("xxh3", 8),
+            ("xxh64", 8),
+            ("xxhash", 8),
+            ("md5", 16),
+            ("md4", 16),
+            ("sha1", 20),
+            ("sha256", 32),
+            ("sha512", 64),
+            ("none", 1),
+        ];
+
+        for (algorithm, expected_len) in cases {
+            let encoded = encode_server_preamble(&ServerPreamble {
+                protocol_version: 31,
+                compat_flags: 0x07,
+                checksum_algos: algorithm.to_string(),
+                compression_algos: "none".to_string(),
+                checksum_seed: 0,
+                consumed: 0,
+            });
+            let mut d = make_driver(mock_transport()).with_preamble_profile(PreambleProfile {
+                checksum_algos: algorithm.to_string(),
+                compression_algos: "none".to_string(),
+            });
+            d.receive_server_preamble(&encoded).await.unwrap();
+            assert_eq!(
+                d.negotiated_file_checksum_len(),
+                expected_len,
+                "{algorithm} must use a {expected_len}-byte file checksum"
+            );
+        }
+
+        let d = make_driver(mock_transport());
+        assert_eq!(
+            d.negotiated_file_checksum_len(),
+            A2_3_FILE_CHECKSUM_LEN,
+            "absent negotiation must retain the historical fallback"
+        );
     }
 
     #[tokio::test]
@@ -4101,6 +4188,58 @@ mod tests {
         assert_eq!(d.file_list()[0].path, "target.bin");
         assert_eq!(d.file_list()[0].size, 4096);
         assert!(!d.committed());
+    }
+
+    /// CLAUDE-AV-B3-18: exact regression for the live xxh64 hang. The
+    /// server sends one complete file-list frame with an 8-byte checksum
+    /// and a terminator. Reading 16 consumes the terminator as checksum,
+    /// reports truncation, and waits for a second frame that never exists.
+    #[tokio::test]
+    async fn driver_download_accepts_xxh64_filelist_checksum_without_an_extra_frame() {
+        let opts = FileListDecodeOptions {
+            protocol: 31,
+            xfer_flags_as_varint: true,
+            always_checksum: true,
+            csum_len: 8,
+            preserve_uid: true,
+            preserve_gid: true,
+            previous_name: None,
+        };
+        let mut entry = sample_file_list_entry("target.bin");
+        entry.checksum = vec![0xA5; 8];
+        let mut file_list_payload = encode_file_list_entry(&entry, &opts);
+        file_list_payload.extend_from_slice(&encode_file_list_terminator(&opts));
+
+        let mut inbound = encode_server_preamble(&ServerPreamble {
+            protocol_version: 31,
+            compat_flags: 0x07,
+            checksum_algos: XXH64_ALGO_NAME.to_string(),
+            compression_algos: "none".to_string(),
+            checksum_seed: 0x1234_5678,
+            consumed: 0,
+        });
+        inbound.extend_from_slice(&mux_frame(MuxTag::Data, &file_list_payload));
+
+        let transport = mock_transport_with_raw_inbound(inbound);
+        let mut d = make_driver(transport).with_preamble_profile(PreambleProfile {
+            checksum_algos: XXH64_ALGO_NAME.to_string(),
+            compression_algos: "none".to_string(),
+        });
+        d.session_role = Some(SessionRole::Receiver);
+        d.open_raw_stream_internal(&RemoteCommandSpec::download("/remote/target.bin"))
+            .await
+            .unwrap();
+        d.perform_preamble_exchange(31, XXH64_ALGO_NAME, "none")
+            .await
+            .unwrap();
+        d.send_download_receiver_phase_prefix().await.unwrap();
+        d.receive_file_list_single_file(&mut CollectingSink::default())
+            .await
+            .expect("the complete xxh64 file-list frame must decode without another read");
+
+        assert_eq!(d.phase(), AerorsyncSessionPhase::FileListReceived);
+        assert_eq!(d.file_list().len(), 1);
+        assert_eq!(d.file_list()[0].checksum, vec![0xA5; 8]);
     }
 
     #[tokio::test]
@@ -4611,7 +4750,16 @@ mod tests {
             ops: Vec::new(),
             file_checksum: vec![0u8; A2_3_FILE_CHECKSUM_LEN],
         });
-        let mut inbound = canonical_server_preamble_bytes();
+        // CLAUDE-AV-B3-18: this test pins xxh128 signature bytes, so use an
+        // explicit xxh128 winner instead of the shared 16-byte md5 fixture.
+        let mut inbound = encode_server_preamble(&ServerPreamble {
+            protocol_version: 31,
+            compat_flags: 0x07,
+            checksum_algos: XXH128_ALGO_NAME.to_string(),
+            compression_algos: "none zstd".to_string(),
+            checksum_seed: 0xDEAD_BEEF,
+            consumed: 0,
+        });
         inbound.extend_from_slice(&mux_frame(MuxTag::Data, &entry_bytes));
         inbound.extend_from_slice(&mux_frame(MuxTag::Data, &term_bytes));
         inbound.extend_from_slice(&mux_frame(MuxTag::Data, &empty_delta));

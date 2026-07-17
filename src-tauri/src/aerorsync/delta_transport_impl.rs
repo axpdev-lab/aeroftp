@@ -1911,6 +1911,10 @@ mod tests {
         const XMIT_SAME_GID: u32 = 0x0010;
         const XMIT_LONG_NAME: u32 = 0x0040;
         const XMIT_SAME_TIME: u32 = 0x0080;
+        // CLAUDE-AV-B3-18: file-list digest and delta trailer use the same
+        // negotiated checksum width. The fixture's trailer therefore
+        // supplies the authoritative width instead of assuming 16.
+        let checksum_len = trailer.len();
         let entry = FileListEntry {
             flags: XMIT_LONG_NAME | XMIT_SAME_UID | XMIT_SAME_GID | XMIT_SAME_TIME,
             path: "target.bin".to_string(),
@@ -1922,14 +1926,14 @@ mod tests {
             uid_name: None,
             gid: None,
             gid_name: None,
-            checksum: vec![0xAA; 16],
+            checksum: vec![0xAA; checksum_len],
             symlink_target: None,
         };
         let opts = FileListDecodeOptions {
             protocol: 31,
             xfer_flags_as_varint: true,
             always_checksum: true,
-            csum_len: 16,
+            csum_len: checksum_len,
             preserve_uid: true,
             preserve_gid: true,
             previous_name: None,
@@ -2069,7 +2073,7 @@ mod tests {
         // "xxh64" alone wins negotiation (our list prefers it over md5)
         // and is still unimplemented, so the verify must no-op.
         let (result, local_path) =
-            run_download_fixture(&dir, &content, "xxh64", vec![0xCC; 16]).await;
+            run_download_fixture(&dir, &content, "xxh64", vec![0xCC; 8]).await;
 
         assert!(
             result.is_ok(),

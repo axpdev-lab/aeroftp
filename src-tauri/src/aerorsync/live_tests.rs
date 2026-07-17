@@ -497,3 +497,64 @@ async fn live_real_rsync_native_delta_download_md5_peer() {
         stats.total_size
     );
 }
+
+/// CLAUDE-AV-B3-18: production download path against stock rsync 3.2.7
+/// with each 8-byte checksum winner forced in turn. Before the fix both
+/// cases decoded the complete file-list frame as truncated and timed out
+/// waiting for a second frame that the server would never send.
+///
+/// Run with `--test-threads=1`: the checksum advertisement override is a
+/// process-global environment variable.
+#[tokio::test]
+#[ignore = "requires the Docker real-rsync SSH fixture + xxh64/xxh3 overrides"]
+async fn live_real_rsync_native_download_completes_for_xxh64_and_xxh3_peers() {
+    if env::var("RSNP_TEST_REAL_SSH_KEY").is_err() {
+        eprintln!("skipping: RSNP_TEST_REAL_SSH_KEY not set (real-rsync lane inactive)");
+        return;
+    }
+
+    for algorithm in ["xxh64", "xxh3"] {
+        let (transport, remote, local, expected) =
+            real_rsync_delta_download_inputs("RSNP_TEST_REAL_LOCAL_DOWNLOAD_FILE");
+        assert!(
+            !expected.is_empty(),
+            "the real-rsync fixture must contain a non-empty download target"
+        );
+
+        // Each successful download replaces the baseline with the remote
+        // bytes. Reintroduce one deterministic difference before every run
+        // so both algorithms exercise the transfer path independently.
+        let mut baseline = expected.clone();
+        let midpoint = baseline.len() / 2;
+        baseline[midpoint] ^= 0xFF;
+        fs::write(&local, baseline).expect("reseed local baseline");
+
+        // SAFETY: ignored live test, documented and invoked with one test
+        // thread. Clear the override before asserting on the result.
+        unsafe {
+            env::set_var("AEROFTP_RSYNC_CSUM_ALGOS", algorithm);
+        }
+        let result = transport.download(&remote, &local).await;
+        unsafe {
+            env::remove_var("AEROFTP_RSYNC_CSUM_ALGOS");
+        }
+
+        let stats = result.unwrap_or_else(|e| {
+            panic!("native download ({algorithm} peer) against real rsync failed: {e:?}")
+        });
+        let got = fs::read(&local).expect("read reconstructed local target");
+        assert_eq!(
+            got, expected,
+            "{algorithm}-peer reconstruction must match remote"
+        );
+        assert_eq!(stats.total_size, expected.len() as u64);
+        eprintln!(
+            "live real-rsync native download ({algorithm}): total_size={} bytes_sent={} bytes_received={} speedup={:.2} duration_ms={}",
+            stats.total_size,
+            stats.bytes_sent,
+            stats.bytes_received,
+            stats.speedup,
+            stats.duration_ms
+        );
+    }
+}

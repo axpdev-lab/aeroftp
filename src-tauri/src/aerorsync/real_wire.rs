@@ -4666,6 +4666,29 @@ mod tests {
         assert_eq!(consumed, 1 + 16);
     }
 
+    /// CLAUDE-AV-B3-18: an xxh64/xxh3 delta trailer is exactly 8 bytes.
+    /// The same complete wire buffer must decode at the negotiated width
+    /// and remain truncated under the historical hardcoded width.
+    #[test]
+    fn decode_delta_stream_respects_an_eight_byte_file_checksum() {
+        let mut wire = vec![TOKEN_END_FLAG];
+        wire.extend_from_slice(&[0xA5; 8]);
+
+        let (report, consumed) = decode_delta_stream(&wire, 8, None).unwrap();
+        assert!(report.ops.is_empty());
+        assert_eq!(report.file_checksum, vec![0xA5; 8]);
+        assert_eq!(consumed, wire.len());
+
+        assert!(matches!(
+            decode_delta_stream(&wire, 16, None),
+            Err(RealWireError::DeltaTokenTruncated {
+                at: "file_checksum",
+                needed: 16,
+                available: 8,
+            })
+        ));
+    }
+
     #[test]
     fn decode_file_checksum_truncation_reports_needed() {
         let err = decode_file_checksum(&[0x11, 0x22], 16).unwrap_err();
