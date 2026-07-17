@@ -223,9 +223,15 @@ pub fn aad_omk(vault_id: &[u8; VAULT_ID_SIZE]) -> Vec<u8> {
 /// ```text
 /// b"aerocrypt v4 slot-wrap" || vault_id(16) || 0x04 || u32_le(epoch)
 ///   || u32_le(id) || tag || u32_le(salt.len) || salt
-///   || (kdf: u32_le(m) || u32_le(t) || u32_le(p))?
+///   || kdf_present (1 byte: 0x00 | 0x01)
+///   || (if present: u32_le(m) || u32_le(t) || u32_le(p))
 ///   || u32_le(binding.len) || binding_bytes
 /// ```
+///
+/// The kdf presence flag (F-3) makes the optional KDF block unconditionally
+/// injective: without it, `kdf=Some(m=12,t=1,p=1), binding=None` collided with
+/// `kdf=None, binding=12 crafted bytes` (identical trailing layout). Presence
+/// must be fixed before any v4 marker is persisted.
 pub fn aad_slot(
     vault_id: &[u8; VAULT_ID_SIZE],
     epoch: u32,
@@ -245,6 +251,7 @@ pub fn aad_slot(
             + 1
             + 4
             + salt.len()
+            + 1
             + if kdf.is_some() { 12 } else { 0 }
             + 4
             + binding_bytes.len(),
@@ -257,10 +264,14 @@ pub fn aad_slot(
     aad.push(kind.tag());
     aad.extend_from_slice(&(salt.len() as u32).to_le_bytes());
     aad.extend_from_slice(salt);
-    if let Some(params) = kdf {
-        aad.extend_from_slice(&params.m_kib.to_le_bytes());
-        aad.extend_from_slice(&params.t.to_le_bytes());
-        aad.extend_from_slice(&params.p.to_le_bytes());
+    match kdf {
+        Some(params) => {
+            aad.push(1);
+            aad.extend_from_slice(&params.m_kib.to_le_bytes());
+            aad.extend_from_slice(&params.t.to_le_bytes());
+            aad.extend_from_slice(&params.p.to_le_bytes());
+        }
+        None => aad.push(0),
     }
     aad.extend_from_slice(&(binding_bytes.len() as u32).to_le_bytes());
     aad.extend_from_slice(&binding_bytes);
@@ -516,5 +527,57 @@ mod tests {
         assert!(derive_slot_key(SlotType::Threshold, &factor, &salt, None)
             .unwrap_err()
             .contains("reserved"));
+    }
+
+    /// F-3: optional KDF block must be injective via a presence flag.
+    /// Pre-flag layout let `kdf=Some(m=12,t=1,p=1), binding=None` collide with
+    /// `kdf=None, binding=12 bytes crafted from the same params encoding`.
+    #[test]
+    fn aad_slot_kdf_presence_flag_is_injective() {
+        let vault_id = [0x11u8; VAULT_ID_SIZE];
+        let salt = vec![0x99u8; SALT_SIZE];
+        // m_kib=12 encodes as u32_le 0x0c000000, which doubles as binding_len=12.
+        let kdf = Argon2Params {
+            m_kib: 12,
+            t: 1,
+            p: 1,
+        };
+        let aad_with = aad_slot(
+            &vault_id,
+            1,
+            0,
+            SlotType::Passphrase,
+            &salt,
+            Some(&kdf),
+            &SlotBinding::None,
+        );
+
+        // Binding that would have collided without the presence byte:
+        // trailing layout was m||t||p||len0 vs len12||(t||p||0).
+        let mut crafted = Vec::new();
+        crafted.extend_from_slice(&1u32.to_le_bytes()); // t
+        crafted.extend_from_slice(&1u32.to_le_bytes()); // p
+        crafted.extend_from_slice(&0u32.to_le_bytes()); // former empty binding_len
+        let aad_without = aad_slot(
+            &vault_id,
+            1,
+            0,
+            SlotType::Passphrase,
+            &salt,
+            None,
+            // Recovery binding is raw prefix bytes; used here only as a 12-byte probe.
+            &SlotBinding::Recovery {
+                vault_prefix: String::from_utf8(crafted).expect("crafted binding is utf-8"),
+            },
+        );
+
+        assert_ne!(
+            aad_with, aad_without,
+            "kdf presence flag must make Some vs None injective"
+        );
+        // Presence byte sits immediately after salt.
+        let salt_end = AAD_LABEL_SLOT.len() + VAULT_ID_SIZE + 1 + 4 + 4 + 1 + 4 + salt.len();
+        assert_eq!(aad_with[salt_end], 1);
+        assert_eq!(aad_without[salt_end], 0);
     }
 }

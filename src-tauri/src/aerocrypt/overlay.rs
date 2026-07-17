@@ -35,8 +35,10 @@ use subtle::ConstantTimeEq;
 use zeroize::Zeroizing;
 
 use super::keyslots::{
-    AndMember, Argon2Params, Slot, SlotBinding, SlotType, MAX_ARGON2_LANES, MAX_ARGON2_MEM_KIB,
-    MAX_ARGON2_TIME, MAX_SLOTS, MIN_ARGON2_LANES, MIN_ARGON2_MEM_KIB, MIN_ARGON2_TIME, VERSION_V4,
+    aad_omk, aad_slot, aad_vk, derive_slot_key, unwrap as slot_unwrap, wrap as slot_wrap,
+    AndMember, Argon2Params, Slot, SlotBinding, SlotFactor, SlotType, MAX_ARGON2_LANES,
+    MAX_ARGON2_MEM_KIB, MAX_ARGON2_TIME, MAX_SLOTS, MIN_ARGON2_LANES, MIN_ARGON2_MEM_KIB,
+    MIN_ARGON2_TIME, VERSION_V4,
 };
 use super::{
     decrypt_with_aad, derive_base_kek, encrypt_with_aad, hkdf_expand, random_array, unwrap_key,
@@ -135,6 +137,9 @@ const V3_KEYFILE_MAC_SUFFIX: &[u8] = b"|kdf_inputs=password+keyfile|vault_id=";
 /// Domain-separating label for the v4 config-mac key derivation (spec 08 §8).
 /// `mac_key = HKDF-Expand(VK, this_label || vault_id)`.
 const V4_CONFIG_MAC_KEY_LABEL: &[u8] = b"aerocrypt v4 config-mac";
+/// Domain-separating label for the OMK wrap key (09 §7a).
+/// `omk_wrap_key = HKDF-Expand(VK, this_label || vault_id)`.
+const V4_OMK_WRAP_KEY_LABEL: &[u8] = b"aerocrypt v4 omk-wrap";
 
 /// GCM tag length added to every AEAD block.
 const GCM_TAG: usize = 16;
@@ -416,6 +421,17 @@ pub fn verify_config_mac_v4(
 /// 5. All other bytes (including whitespace) are left intact.
 fn excise_config_mac_field(raw: &str) -> Result<String, String> {
     const KEY: &str = "\"config_mac\"";
+    // F-4 hardening: builders emit exactly one top-level config_mac; reject
+    // ambiguous headers (injected nested/duplicate keys) rather than first-hit.
+    let occurrences = raw.matches(KEY).count();
+    if occurrences == 0 {
+        return Err("v4 header missing config_mac field for MAC excision".to_string());
+    }
+    if occurrences != 1 {
+        return Err(format!(
+            "v4 header must contain exactly one config_mac field, found {occurrences}"
+        ));
+    }
     let key_pos = raw
         .find(KEY)
         .ok_or_else(|| "v4 header missing config_mac field for MAC excision".to_string())?;
@@ -787,6 +803,574 @@ pub fn rebuild_config_v3(
             "AeroCrypt v{} metadata migration is not supported; only v3 vaults can migrate",
             other.version()
         )),
+    }
+}
+
+// --- v4 keyslot builders (single-schedule OMK, 09 §7a) ---------------------
+
+/// Caller-held material for adding or rotating a v4 slot. Unlock (T4) derives
+/// `slot_key` from the factor; these builders never re-run Argon2 unless the
+/// caller already did (F-2: stored kdf params are AAD metadata only).
+#[derive(Debug, Clone)]
+pub struct SlotKeyMaterial {
+    pub id: u32,
+    pub kind: SlotType,
+    pub salt: Vec<u8>,
+    pub kdf: Option<Argon2Params>,
+    pub binding: SlotBinding,
+    pub slot_key: [u8; KEY_SIZE],
+}
+
+/// HKDF-Expand(VK, "aerocrypt v4 omk-wrap" || vault_id) (09 §7a).
+pub fn omk_wrap_key(
+    vk: &[u8; KEY_SIZE],
+    vault_id: &[u8; VAULT_ID_SIZE],
+) -> Result<[u8; KEY_SIZE], String> {
+    let mut info = Vec::with_capacity(V4_OMK_WRAP_KEY_LABEL.len() + VAULT_ID_SIZE);
+    info.extend_from_slice(V4_OMK_WRAP_KEY_LABEL);
+    info.extend_from_slice(vault_id);
+    hkdf_expand::<KEY_SIZE>(vk, &info)
+}
+
+/// Floor/cap Argon2 params the same way the F9 parser does. Builders must use
+/// clamped values in AAD so wrap/unwrap matches a re-parsed header.
+fn clamp_argon2_params(p: Argon2Params) -> Argon2Params {
+    Argon2Params {
+        m_kib: p.m_kib.clamp(MIN_ARGON2_MEM_KIB, MAX_ARGON2_MEM_KIB),
+        t: p.t.clamp(MIN_ARGON2_TIME, MAX_ARGON2_TIME),
+        p: p.p.clamp(MIN_ARGON2_LANES, MAX_ARGON2_LANES),
+    }
+}
+
+fn slot_type_to_wire(kind: SlotType) -> &'static str {
+    match kind {
+        SlotType::Passphrase => "passphrase",
+        // Canonical Tier-1 combined scheme name (parser also accepts "keyfile").
+        SlotType::Keyfile => "aecr-t1-combined-v1",
+        SlotType::Recovery => "recovery",
+        SlotType::Fido2Hmac => "fido2-hmac",
+        SlotType::And => "and",
+        SlotType::Threshold => "threshold",
+    }
+}
+
+fn b64_std(bytes: &[u8]) -> String {
+    base64::engine::general_purpose::STANDARD.encode(bytes)
+}
+
+/// Emit one slot object for the v4 JSON marker. Field names are fixed; no slot
+/// key may be named `config_mac` (F-4).
+fn emit_slot_json(slot: &Slot) -> Result<String, String> {
+    // Guard: KDF slots need a 32-byte salt on the wire.
+    if matches!(
+        slot.kind,
+        SlotType::Passphrase | SlotType::Keyfile | SlotType::Recovery
+    ) && slot.salt.len() != SALT_SIZE
+    {
+        return Err(format!(
+            "v4 slot {} salt must be {SALT_SIZE} bytes for KDF types",
+            slot.id
+        ));
+    }
+    let mut out = format!(
+        r#"{{"id":{},"type":"{}","salt":"{}""#,
+        slot.id,
+        slot_type_to_wire(slot.kind),
+        b64_std(&slot.salt),
+    );
+    if let Some(kdf) = slot.kdf {
+        let kdf = clamp_argon2_params(kdf);
+        out.push_str(&format!(
+            r#","kdf":{{"m_kib":{},"t":{},"p":{}}}"#,
+            kdf.m_kib, kdf.t, kdf.p
+        ));
+    }
+    match &slot.binding {
+        SlotBinding::None => {}
+        SlotBinding::Recovery { vault_prefix } => {
+            // JSON-escape the prefix (vault prefixes are Crockford alphabet; keep safe).
+            let escaped = vault_prefix
+                .replace('\\', "\\\\")
+                .replace('"', "\\\"")
+                .replace('\n', "\\n")
+                .replace('\r', "\\r");
+            out.push_str(&format!(r#","binding":{{"vault_prefix":"{escaped}"}}"#));
+        }
+        SlotBinding::Fido2 {
+            credential_id,
+            hmac_salt,
+        } => {
+            out.push_str(&format!(
+                r#","binding":{{"credential_id":"{}","hmac_salt":"{}"}}"#,
+                b64_std(credential_id),
+                b64_std(hmac_salt),
+            ));
+        }
+        SlotBinding::And { members } => {
+            let mut mem = String::from("[");
+            for (i, m) in members.iter().enumerate() {
+                if i > 0 {
+                    mem.push(',');
+                }
+                mem.push_str(&format!(
+                    r#"{{"type":"{}","salt":"{}""#,
+                    slot_type_to_wire(m.kind),
+                    b64_std(&m.salt),
+                ));
+                if let Some(kdf) = m.kdf {
+                    let kdf = clamp_argon2_params(kdf);
+                    mem.push_str(&format!(
+                        r#","kdf":{{"m_kib":{},"t":{},"p":{}}}"#,
+                        kdf.m_kib, kdf.t, kdf.p
+                    ));
+                }
+                if let (Some(cid), Some(hs)) = (&m.credential_id, &m.hmac_salt) {
+                    mem.push_str(&format!(
+                        r#","credential_id":"{}","hmac_salt":"{}""#,
+                        b64_std(cid),
+                        b64_std(hs),
+                    ));
+                }
+                mem.push('}');
+            }
+            mem.push(']');
+            out.push_str(&format!(r#","binding":{{"members":{mem}}}"#));
+        }
+    }
+    out.push_str(&format!(r#","wrapped":"{}"}}"#, b64_std(&slot.wrapped)));
+    Ok(out)
+}
+
+/// Build a v4 JSON marker.
+///
+/// **Emission rule (F-4):** serialize the body *without* `config_mac` in a fixed
+/// top-level field order (`version`, `vault_id`, `epoch`, `vk_wrap`, `omk_wrap`,
+/// `slots`), compute `config_mac` over those exact body bytes, then append a
+/// single top-level `"config_mac"` as the **last** field. No slot field may be
+/// named `config_mac`. Base64 payloads cannot contain the substring (no `_`).
+pub fn build_config_v4_json(
+    vault_id: &[u8; VAULT_ID_SIZE],
+    epoch: u32,
+    vk_wrap: &[u8],
+    omk_wrap: &[u8],
+    slots: &[Slot],
+    vk: &[u8; KEY_SIZE],
+) -> Result<String, String> {
+    if epoch == 0 {
+        return Err("v4 epoch must be non-zero".into());
+    }
+    if slots.len() > MAX_SLOTS {
+        return Err(format!(
+            "v4 crypt config has {} slots; max is {MAX_SLOTS}",
+            slots.len()
+        ));
+    }
+    let mut seen: Vec<u32> = Vec::with_capacity(slots.len());
+    for s in slots {
+        if seen.contains(&s.id) {
+            return Err(format!("v4 crypt config has duplicate slot id {}", s.id));
+        }
+        seen.push(s.id);
+    }
+
+    let mut slots_json = String::from("[");
+    for (i, slot) in slots.iter().enumerate() {
+        if i > 0 {
+            slots_json.push(',');
+        }
+        slots_json.push_str(&emit_slot_json(slot)?);
+    }
+    slots_json.push(']');
+
+    // Body without config_mac (canonical order). MAC covers these exact bytes.
+    let body = format!(
+        r#"{{"version":4,"vault_id":"{}","epoch":{},"vk_wrap":"{}","omk_wrap":"{}","slots":{slots_json}}}"#,
+        b64_std(vault_id),
+        epoch,
+        b64_std(vk_wrap),
+        b64_std(omk_wrap),
+    );
+    let mac = compute_config_mac_v4(vk, vault_id, body.as_bytes())?;
+
+    // Append the single top-level config_mac as the last field.
+    let mut out = body;
+    debug_assert!(out.ends_with('}'));
+    out.pop();
+    out.push_str(&format!(r#","config_mac":"{}"}}"#, b64_std(&mac)));
+    Ok(out)
+}
+
+/// Wrap a slot's epoch_key under `material.slot_key` with clamped AAD params.
+fn wrap_slot_epoch_key(
+    vault_id: &[u8; VAULT_ID_SIZE],
+    epoch: u32,
+    material: &SlotKeyMaterial,
+    epoch_key: &[u8; KEY_SIZE],
+) -> Result<Slot, String> {
+    let kdf = material.kdf.map(clamp_argon2_params);
+    let aad = aad_slot(
+        vault_id,
+        epoch,
+        material.id,
+        material.kind,
+        &material.salt,
+        kdf.as_ref(),
+        &material.binding,
+    );
+    let wrapped = slot_wrap(&material.slot_key, epoch_key, &aad)?;
+    Ok(Slot {
+        id: material.id,
+        kind: material.kind,
+        salt: material.salt.clone(),
+        kdf,
+        binding: material.binding.clone(),
+        wrapped,
+    })
+}
+
+/// Recover `epoch_key` from a slot wrap (T4 unlock step 1).
+pub fn v4_unwrap_epoch_key(
+    slot: &Slot,
+    slot_key: &[u8; KEY_SIZE],
+    vault_id: &[u8; VAULT_ID_SIZE],
+    epoch: u32,
+) -> Result<[u8; KEY_SIZE], String> {
+    let kdf = slot.kdf.map(clamp_argon2_params);
+    let aad = aad_slot(
+        vault_id,
+        epoch,
+        slot.id,
+        slot.kind,
+        &slot.salt,
+        kdf.as_ref(),
+        &slot.binding,
+    );
+    let pt = slot_unwrap(slot_key, &slot.wrapped, &aad)?;
+    let arr: [u8; KEY_SIZE] = pt
+        .as_slice()
+        .try_into()
+        .map_err(|_| "v4 slot unwrap: epoch_key wrong length".to_string())?;
+    Ok(arr)
+}
+
+/// Recover VK from `vk_wrap` under `epoch_key` (T4 unlock step 2).
+pub fn v4_unwrap_vk(
+    vk_wrap: &[u8],
+    epoch_key: &[u8; KEY_SIZE],
+    vault_id: &[u8; VAULT_ID_SIZE],
+    epoch: u32,
+) -> Result<[u8; KEY_SIZE], String> {
+    let aad = aad_vk(vault_id, epoch);
+    let pt = slot_unwrap(epoch_key, vk_wrap, &aad)?;
+    pt.as_slice()
+        .try_into()
+        .map_err(|_| "v4 vk_wrap unwrap: VK wrong length".to_string())
+}
+
+/// Recover OMK from `omk_wrap` under the VK-derived OMK wrap key (T4 step 3).
+pub fn v4_unwrap_omk(
+    omk_wrap: &[u8],
+    vk: &[u8; KEY_SIZE],
+    vault_id: &[u8; VAULT_ID_SIZE],
+) -> Result<[u8; KEY_SIZE], String> {
+    let kek = omk_wrap_key(vk, vault_id)?;
+    let aad = aad_omk(vault_id);
+    let pt = slot_unwrap(&kek, omk_wrap, &aad)?;
+    pt.as_slice()
+        .try_into()
+        .map_err(|_| "v4 omk_wrap unwrap: OMK wrong length".to_string())
+}
+
+/// Migrate a v3 headed vault to v4 (single-schedule OMK, 09 §7a).
+///
+/// - OMK = `v3_master_key` (caller already derived; no Argon2 here).
+/// - Slot 0 salt = v3 salt; `slot_key_0` = OMK by construction (F-2: do not
+///   re-derive with stored kdf params).
+/// - Wire type: `passphrase` or `aecr-t1-combined-v1` for keyfile vaults.
+/// - One small JSON marker; no object or name rewrite.
+pub fn migrate_v3_to_v4(
+    v3_cfg: &OverlayConfig,
+    v3_master_key: &[u8; KEY_SIZE],
+) -> Result<String, String> {
+    let OverlayConfig::V3 {
+        salt,
+        vault_id,
+        requires_keyfile,
+        ..
+    } = v3_cfg
+    else {
+        return Err(format!(
+            "only v3 vaults can migrate to v4; got v{}",
+            v3_cfg.version()
+        ));
+    };
+
+    let vault_id = vault_id.unwrap_or_else(random_vault_id);
+    let omk = *v3_master_key;
+    let vk = random_array::<KEY_SIZE>();
+    let epoch_key = random_array::<KEY_SIZE>();
+    let epoch = 1u32;
+
+    let omk_kek = omk_wrap_key(&vk, &vault_id)?;
+    let omk_wrap = slot_wrap(&omk_kek, &omk, &aad_omk(&vault_id))?;
+    let vk_wrap = slot_wrap(&epoch_key, &vk, &aad_vk(&vault_id, epoch))?;
+
+    let kind = if *requires_keyfile {
+        SlotType::Keyfile
+    } else {
+        SlotType::Passphrase
+    };
+    let kdf = Argon2Params::v3_profile();
+    // F-2: wrap with OMK as slot_key_0; never re-derive from stored kdf.
+    let material = SlotKeyMaterial {
+        id: 0,
+        kind,
+        salt: salt.to_vec(),
+        kdf: Some(kdf),
+        binding: SlotBinding::None,
+        slot_key: omk,
+    };
+    let slot0 = wrap_slot_epoch_key(&vault_id, epoch, &material, &epoch_key)?;
+
+    build_config_v4_json(&vault_id, epoch, &vk_wrap, &omk_wrap, &[slot0], &vk)
+}
+
+/// Create a fresh native v4 vault with a single passphrase slot.
+///
+/// OMK is random (not equal to the slot key). One Argon2id at create time.
+pub fn init_config_v4(password: &str) -> Result<String, String> {
+    if password.is_empty() {
+        return Err("v4 init requires a non-empty password".into());
+    }
+    let vault_id = random_vault_id();
+    let salt = random_salt_v3();
+    let omk = random_array::<KEY_SIZE>();
+    let vk = random_array::<KEY_SIZE>();
+    let epoch_key = random_array::<KEY_SIZE>();
+    let epoch = 1u32;
+    let kdf = Argon2Params::v3_profile();
+
+    let slot_key = derive_slot_key(
+        SlotType::Passphrase,
+        &SlotFactor::Passphrase(password),
+        &salt,
+        Some(&kdf),
+    )?;
+
+    let omk_kek = omk_wrap_key(&vk, &vault_id)?;
+    let omk_wrap = slot_wrap(&omk_kek, &omk, &aad_omk(&vault_id))?;
+    let vk_wrap = slot_wrap(&epoch_key, &vk, &aad_vk(&vault_id, epoch))?;
+
+    let material = SlotKeyMaterial {
+        id: 0,
+        kind: SlotType::Passphrase,
+        salt: salt.to_vec(),
+        kdf: Some(kdf),
+        binding: SlotBinding::None,
+        slot_key,
+    };
+    let slot0 = wrap_slot_epoch_key(&vault_id, epoch, &material, &epoch_key)?;
+    build_config_v4_json(&vault_id, epoch, &vk_wrap, &omk_wrap, &[slot0], &vk)
+}
+
+/// Add a slot without bumping epoch. Re-wraps only the new slot; recomputes
+/// `config_mac`. Caller supplies the unwrapped `epoch_key` and new slot key.
+pub fn add_slot(
+    cfg: &OverlayConfig,
+    vk: &[u8; KEY_SIZE],
+    epoch_key: &[u8; KEY_SIZE],
+    material: SlotKeyMaterial,
+) -> Result<String, String> {
+    let OverlayConfig::V4 {
+        vault_id,
+        epoch,
+        vk_wrap,
+        omk_wrap,
+        slots,
+        ..
+    } = cfg
+    else {
+        return Err("add_slot requires a v4 config".into());
+    };
+    if slots.len() >= MAX_SLOTS {
+        return Err(format!("cannot add slot: already at max {MAX_SLOTS}"));
+    }
+    if slots.iter().any(|s| s.id == material.id) {
+        return Err(format!("slot id {} already exists", material.id));
+    }
+    if matches!(
+        material.kind,
+        SlotType::Passphrase | SlotType::Keyfile | SlotType::Recovery
+    ) && material.kdf.is_none()
+    {
+        return Err(format!(
+            "slot {} of KDF type requires kdf params",
+            material.id
+        ));
+    }
+
+    let new_slot = wrap_slot_epoch_key(vault_id, *epoch, &material, epoch_key)?;
+    let mut new_slots = slots.clone();
+    new_slots.push(new_slot);
+    build_config_v4_json(vault_id, *epoch, vk_wrap, omk_wrap, &new_slots, vk)
+}
+
+/// Revoke a slot: bump epoch, fresh `epoch_key`, re-wrap VK and every surviving
+/// slot. OMK / `omk_wrap` stay immutable. Slot ids are never reused.
+///
+/// `surviving_keys` maps each remaining slot id to its unwrapped slot key.
+pub fn revoke_slot(
+    cfg: &OverlayConfig,
+    vk: &[u8; KEY_SIZE],
+    slot_id: u32,
+    surviving_keys: &[(u32, [u8; KEY_SIZE])],
+) -> Result<String, String> {
+    let OverlayConfig::V4 {
+        vault_id,
+        epoch,
+        omk_wrap,
+        slots,
+        ..
+    } = cfg
+    else {
+        return Err("revoke_slot requires a v4 config".into());
+    };
+    if !slots.iter().any(|s| s.id == slot_id) {
+        return Err(format!("unknown slot id {slot_id}"));
+    }
+    let surviving: Vec<&Slot> = slots.iter().filter(|s| s.id != slot_id).collect();
+    if surviving.is_empty() {
+        return Err("cannot revoke the last slot".into());
+    }
+
+    let new_epoch = epoch
+        .checked_add(1)
+        .ok_or_else(|| "v4 epoch overflow".to_string())?;
+    let new_epoch_key = random_array::<KEY_SIZE>();
+    let new_vk_wrap = slot_wrap(&new_epoch_key, vk, &aad_vk(vault_id, new_epoch))?;
+
+    let mut rewrapped = Vec::with_capacity(surviving.len());
+    for slot in surviving {
+        let slot_key = surviving_keys
+            .iter()
+            .find(|(id, _)| *id == slot.id)
+            .map(|(_, k)| k)
+            .ok_or_else(|| format!("missing slot key for surviving slot {}", slot.id))?;
+        let material = SlotKeyMaterial {
+            id: slot.id,
+            kind: slot.kind,
+            salt: slot.salt.clone(),
+            kdf: slot.kdf,
+            binding: slot.binding.clone(),
+            slot_key: *slot_key,
+        };
+        rewrapped.push(wrap_slot_epoch_key(
+            vault_id,
+            new_epoch,
+            &material,
+            &new_epoch_key,
+        )?);
+    }
+
+    build_config_v4_json(vault_id, new_epoch, &new_vk_wrap, omk_wrap, &rewrapped, vk)
+}
+
+/// Replace one slot's factor without an epoch bump (same `epoch_key`).
+pub fn rotate_slot(
+    cfg: &OverlayConfig,
+    vk: &[u8; KEY_SIZE],
+    epoch_key: &[u8; KEY_SIZE],
+    material: SlotKeyMaterial,
+) -> Result<String, String> {
+    let OverlayConfig::V4 {
+        vault_id,
+        epoch,
+        vk_wrap,
+        omk_wrap,
+        slots,
+        ..
+    } = cfg
+    else {
+        return Err("rotate_slot requires a v4 config".into());
+    };
+    if !slots.iter().any(|s| s.id == material.id) {
+        return Err(format!("unknown slot id {} for rotate", material.id));
+    }
+    if matches!(
+        material.kind,
+        SlotType::Passphrase | SlotType::Keyfile | SlotType::Recovery
+    ) && material.kdf.is_none()
+    {
+        return Err(format!(
+            "slot {} of KDF type requires kdf params",
+            material.id
+        ));
+    }
+
+    let rotated = wrap_slot_epoch_key(vault_id, *epoch, &material, epoch_key)?;
+    let new_slots: Vec<Slot> = slots
+        .iter()
+        .map(|s| {
+            if s.id == material.id {
+                rotated.clone()
+            } else {
+                s.clone()
+            }
+        })
+        .collect();
+
+    build_config_v4_json(vault_id, *epoch, vk_wrap, omk_wrap, &new_slots, vk)
+}
+
+/// Revert a v4 vault to v3 when lossless: exactly one slot (id 0), passphrase or
+/// keyfile, and OMK still equals the v3 master key (single-schedule, no native
+/// divergence). Emits a headed v3 TSV marker from slot 0 salt + OMK.
+pub fn revert_v4_to_v3(cfg: &OverlayConfig, omk: &[u8; KEY_SIZE]) -> Result<String, String> {
+    let OverlayConfig::V4 {
+        vault_id,
+        slots,
+        epoch,
+        ..
+    } = cfg
+    else {
+        return Err("revert_v4_to_v3 requires a v4 config".into());
+    };
+    if slots.len() != 1 {
+        return Err(format!(
+            "revert refused: vault has {} slots (need exactly 1)",
+            slots.len()
+        ));
+    }
+    let slot0 = &slots[0];
+    if slot0.id != 0 {
+        return Err(format!(
+            "revert refused: single slot id is {} (need id 0)",
+            slot0.id
+        ));
+    }
+    if !matches!(slot0.kind, SlotType::Passphrase | SlotType::Keyfile) {
+        return Err(format!(
+            "revert refused: slot 0 type {:?} is not passphrase/keyfile",
+            slot0.kind
+        ));
+    }
+    if *epoch != 1 {
+        // Strict: any epoch bump means revocation happened; reverse is refused.
+        return Err(format!(
+            "revert refused: epoch is {epoch} (only epoch 1 single-slot vaults reverse)"
+        ));
+    }
+    if slot0.salt.len() != SALT_SIZE {
+        return Err("revert refused: slot 0 salt wrong length".into());
+    }
+    let mut salt = [0u8; SALT_V3_SIZE];
+    salt.copy_from_slice(&slot0.salt);
+
+    let requires_keyfile = matches!(slot0.kind, SlotType::Keyfile);
+    if requires_keyfile {
+        init_config_v3_with_keyfile(&salt, omk, vault_id, None, SaltMode::PerVault)
+    } else {
+        init_config_v3_with_vault_id(&salt, omk, vault_id, SaltMode::PerVault)
     }
 }
 
@@ -2099,6 +2683,405 @@ mod tests {
         assert!(
             err.contains("invalid mac length"),
             "expected mac-length rejection, got: {err}"
+        );
+    }
+
+    // --- v4 migrate + slot manager (T3, single-schedule OMK) ---------------
+
+    /// Recover VK + OMK from a parsed V4 config using a known slot_key (no Argon2).
+    fn v4_recover_from_slot0(
+        cfg: &OverlayConfig,
+        slot_key: &[u8; KEY_SIZE],
+    ) -> ([u8; KEY_SIZE], [u8; KEY_SIZE], [u8; KEY_SIZE]) {
+        let OverlayConfig::V4 {
+            vault_id,
+            epoch,
+            vk_wrap,
+            omk_wrap,
+            slots,
+            ..
+        } = cfg
+        else {
+            panic!("expected V4");
+        };
+        let slot0 = slots.iter().find(|s| s.id == 0).expect("slot 0");
+        let epoch_key = v4_unwrap_epoch_key(slot0, slot_key, vault_id, *epoch).expect("epoch_key");
+        let vk = v4_unwrap_vk(vk_wrap, &epoch_key, vault_id, *epoch).expect("vk");
+        let omk = v4_unwrap_omk(omk_wrap, &vk, vault_id).expect("omk");
+        (epoch_key, vk, omk)
+    }
+
+    #[test]
+    fn v4_migrate_password_only_round_trip() {
+        let salt = [0x42u8; SALT_V3_SIZE];
+        let password = "migrate-password-only";
+        let master = derive_master_key(&OverlayConfig::v3_bootstrap(salt), password).unwrap();
+        let vault_id = random_vault_id();
+        let v3_json =
+            init_config_v3_with_vault_id(&salt, &master, &vault_id, SaltMode::PerVault).unwrap();
+        let v3_cfg = parse_config(&v3_json).unwrap();
+        verify_config_mac(&v3_cfg, &master).unwrap();
+
+        let v4_json = migrate_v3_to_v4(&v3_cfg, &master).expect("migrate");
+        assert!(
+            v4_json.contains(r#""config_mac":"#),
+            "config_mac must be top-level"
+        );
+        // F-4: single occurrence, last top-level field.
+        assert_eq!(v4_json.matches("\"config_mac\"").count(), 1);
+        assert!(
+            v4_json.trim_end().ends_with("}"),
+            "marker must close after config_mac"
+        );
+        let mac_pos = v4_json.rfind("\"config_mac\"").unwrap();
+        let slots_pos = v4_json.find("\"slots\"").unwrap();
+        assert!(
+            mac_pos > slots_pos,
+            "config_mac must be after slots (canonical last)"
+        );
+
+        let v4_cfg = parse_config(&v4_json).expect("parse v4");
+        assert_eq!(v4_cfg.version(), VERSION_V4);
+        let OverlayConfig::V4 {
+            vault_id: vid,
+            epoch,
+            slots,
+            config_mac,
+            ..
+        } = &v4_cfg
+        else {
+            panic!("expected V4");
+        };
+        assert_eq!(*vid, vault_id);
+        assert_eq!(*epoch, 1);
+        assert_eq!(slots.len(), 1);
+        assert_eq!(slots[0].id, 0);
+        assert_eq!(slots[0].kind, SlotType::Passphrase);
+        assert_eq!(slots[0].salt.as_slice(), &salt);
+        assert_eq!(slots[0].kdf, Some(Argon2Params::v3_profile()));
+        assert!(v4_json.contains(r#""type":"passphrase""#));
+
+        // F-2: slot_key_0 == OMK == v3 master (no re-derive with stored params).
+        let (epoch_key, vk, omk) = v4_recover_from_slot0(&v4_cfg, &master);
+        assert_eq!(omk, master, "OMK must equal v3 master key");
+        // epoch_key is random; just ensure chain is consistent by re-wrapping VK check.
+        let _ = epoch_key;
+        verify_config_mac_v4(&vk, vid, &v4_json, config_mac).expect("config_mac verifies");
+
+        // Objects under OMK still decrypt (OMK == master).
+        let ct = encrypt_data(&v4_cfg, &omk, b"hello-v4-migrate").unwrap();
+        assert_eq!(decrypt_data(&omk, &ct).unwrap(), b"hello-v4-migrate");
+    }
+
+    #[test]
+    fn v4_migrate_keyfile_wire_type() {
+        let salt = [0x55u8; SALT_V3_SIZE];
+        let vault_id = random_vault_id();
+        let keyfile = b"keyfile-bytes-for-migrate";
+        let digest = crate::aerocrypt::keyfile_digest_from_file(keyfile).unwrap();
+        let master = derive_master_key_with_keyfile(
+            &OverlayConfig::v3_bootstrap(salt),
+            "kf-pass",
+            Some(&digest),
+        )
+        .unwrap();
+        let v3_json =
+            init_config_v3_with_keyfile(&salt, &master, &vault_id, None, SaltMode::PerVault)
+                .unwrap();
+        let v3_cfg = parse_config(&v3_json).unwrap();
+        assert!(v3_cfg.requires_keyfile());
+
+        let v4_json = migrate_v3_to_v4(&v3_cfg, &master).expect("migrate keyfile");
+        assert!(
+            v4_json.contains(r#""type":"aecr-t1-combined-v1""#),
+            "keyfile migrate must emit aecr-t1-combined-v1, got: {v4_json}"
+        );
+        let v4_cfg = parse_config(&v4_json).unwrap();
+        if let OverlayConfig::V4 { slots, .. } = &v4_cfg {
+            assert_eq!(slots[0].kind, SlotType::Keyfile);
+            assert_eq!(slots[0].salt.as_slice(), &salt);
+        } else {
+            panic!("expected V4");
+        }
+        let (_ek, vk, omk) = v4_recover_from_slot0(&v4_cfg, &master);
+        assert_eq!(omk, master);
+        if let OverlayConfig::V4 {
+            vault_id: vid,
+            config_mac,
+            ..
+        } = &v4_cfg
+        {
+            verify_config_mac_v4(&vk, vid, &v4_json, config_mac).unwrap();
+        }
+    }
+
+    #[test]
+    fn v4_add_slot_no_epoch_bump() {
+        let salt = [0x61u8; SALT_V3_SIZE];
+        let master = derive_master_key(&OverlayConfig::v3_bootstrap(salt), "add-slot-pw").unwrap();
+        let v3 =
+            init_config_v3_with_vault_id(&salt, &master, &random_vault_id(), SaltMode::PerVault)
+                .unwrap();
+        let v3_cfg = parse_config(&v3).unwrap();
+        let v4_json = migrate_v3_to_v4(&v3_cfg, &master).unwrap();
+        let v4_cfg = parse_config(&v4_json).unwrap();
+        let (epoch_key, vk, _omk) = v4_recover_from_slot0(&v4_cfg, &master);
+
+        let OverlayConfig::V4 { epoch, slots, .. } = &v4_cfg else {
+            panic!("V4");
+        };
+        assert_eq!(*epoch, 1);
+        assert_eq!(slots.len(), 1);
+
+        // Second slot with a random slot_key (no Argon2 needed for unit test).
+        let slot1_key = [0xABu8; KEY_SIZE];
+        let slot1_salt = vec![0xCDu8; SALT_SIZE];
+        let material = SlotKeyMaterial {
+            id: 1,
+            kind: SlotType::Passphrase,
+            salt: slot1_salt,
+            kdf: Some(Argon2Params::v3_profile()),
+            binding: SlotBinding::None,
+            slot_key: slot1_key,
+        };
+        let with_two = add_slot(&v4_cfg, &vk, &epoch_key, material).expect("add_slot");
+        let cfg2 = parse_config(&with_two).unwrap();
+        if let OverlayConfig::V4 {
+            epoch: e2,
+            slots: s2,
+            vault_id,
+            config_mac,
+            ..
+        } = &cfg2
+        {
+            assert_eq!(*e2, 1, "add_slot must not bump epoch");
+            assert_eq!(s2.len(), 2);
+            assert!(s2.iter().any(|s| s.id == 1));
+            // New slot unwraps the same epoch_key.
+            let s1 = s2.iter().find(|s| s.id == 1).unwrap();
+            let ek1 = v4_unwrap_epoch_key(s1, &slot1_key, vault_id, *e2).unwrap();
+            assert_eq!(ek1, epoch_key);
+            verify_config_mac_v4(&vk, vault_id, &with_two, config_mac).unwrap();
+        } else {
+            panic!("expected V4");
+        }
+    }
+
+    #[test]
+    fn v4_revoke_bumps_epoch_and_kills_old_slot() {
+        let salt = [0x71u8; SALT_V3_SIZE];
+        let master = derive_master_key(&OverlayConfig::v3_bootstrap(salt), "revoke-pw").unwrap();
+        let v3 =
+            init_config_v3_with_vault_id(&salt, &master, &random_vault_id(), SaltMode::PerVault)
+                .unwrap();
+        let v4_json = migrate_v3_to_v4(&parse_config(&v3).unwrap(), &master).unwrap();
+        let v4_cfg = parse_config(&v4_json).unwrap();
+        let (epoch_key, vk, omk_before) = v4_recover_from_slot0(&v4_cfg, &master);
+
+        let slot1_key = [0x11u8; KEY_SIZE];
+        let added = add_slot(
+            &v4_cfg,
+            &vk,
+            &epoch_key,
+            SlotKeyMaterial {
+                id: 1,
+                kind: SlotType::Passphrase,
+                salt: vec![0x22u8; SALT_SIZE],
+                kdf: Some(Argon2Params::v3_profile()),
+                binding: SlotBinding::None,
+                slot_key: slot1_key,
+            },
+        )
+        .unwrap();
+        let cfg_two = parse_config(&added).unwrap();
+
+        // Revoke slot 0; only slot 1 survives.
+        let revoked = revoke_slot(&cfg_two, &vk, 0, &[(1, slot1_key)]).expect("revoke");
+        let cfg_rev = parse_config(&revoked).unwrap();
+        let OverlayConfig::V4 {
+            epoch,
+            slots,
+            vault_id,
+            omk_wrap,
+            vk_wrap,
+            config_mac,
+            ..
+        } = &cfg_rev
+        else {
+            panic!("V4");
+        };
+        assert_eq!(*epoch, 2, "revoke must bump epoch");
+        assert_eq!(slots.len(), 1);
+        assert_eq!(slots[0].id, 1);
+
+        // Surviving slot unwraps new epoch_key -> same VK -> same OMK.
+        let new_ek = v4_unwrap_epoch_key(&slots[0], &slot1_key, vault_id, *epoch).unwrap();
+        assert_ne!(new_ek, epoch_key, "epoch_key must be fresh after revoke");
+        let vk2 = v4_unwrap_vk(vk_wrap, &new_ek, vault_id, *epoch).unwrap();
+        assert_eq!(vk2, vk, "VK is immutable across epoch bump");
+        let omk = v4_unwrap_omk(omk_wrap, &vk2, vault_id).unwrap();
+        assert_eq!(omk, omk_before, "OMK/omk_wrap untouched by revoke");
+        verify_config_mac_v4(&vk, vault_id, &revoked, config_mac).unwrap();
+
+        // Old slot 0 wrap (from pre-revoke header) fails against the new epoch AAD.
+        if let OverlayConfig::V4 {
+            slots: old_slots,
+            vault_id: old_vid,
+            ..
+        } = &cfg_two
+        {
+            let old0 = old_slots.iter().find(|s| s.id == 0).unwrap();
+            assert!(
+                v4_unwrap_epoch_key(old0, &master, old_vid, 2).is_err(),
+                "old slot0 must not unwrap under new epoch"
+            );
+            // Old slot0 still works under the OLD epoch (stale header), which is why
+            // the epoch bump + re-wrap is the load-bearing revocation step.
+            assert!(v4_unwrap_epoch_key(old0, &master, old_vid, 1).is_ok());
+        }
+
+        // Objects still decrypt under OMK.
+        let ct = encrypt_data(&cfg_rev, &omk, b"still-there").unwrap();
+        assert_eq!(decrypt_data(&omk, &ct).unwrap(), b"still-there");
+    }
+
+    #[test]
+    fn v4_revert_single_slot_to_v3() {
+        let salt = [0x81u8; SALT_V3_SIZE];
+        let master = derive_master_key(&OverlayConfig::v3_bootstrap(salt), "revert-pw").unwrap();
+        let vault_id = random_vault_id();
+        let v3 =
+            init_config_v3_with_vault_id(&salt, &master, &vault_id, SaltMode::PerVault).unwrap();
+        let v4_json = migrate_v3_to_v4(&parse_config(&v3).unwrap(), &master).unwrap();
+        let v4_cfg = parse_config(&v4_json).unwrap();
+        let (_ek, _vk, omk) = v4_recover_from_slot0(&v4_cfg, &master);
+
+        let v3_again = revert_v4_to_v3(&v4_cfg, &omk).expect("revert");
+        let cfg3 = parse_config(&v3_again).unwrap();
+        assert_eq!(cfg3.version(), VERSION_V3);
+        assert!(!cfg3.requires_keyfile());
+        if let OverlayConfig::V3 {
+            salt: s3,
+            vault_id: vid,
+            ..
+        } = &cfg3
+        {
+            assert_eq!(s3, &salt);
+            assert_eq!(*vid, Some(vault_id));
+        } else {
+            panic!("expected V3");
+        }
+        let m2 = derive_master_key(&cfg3, "revert-pw").unwrap();
+        assert_eq!(m2, master);
+        verify_config_mac(&cfg3, &master).unwrap();
+    }
+
+    #[test]
+    fn v4_reject_migrate_non_v3_and_bad_revoke() {
+        let salt = [0x91u8; SALT_V3_SIZE];
+        let master = derive_master_key(&OverlayConfig::v3_bootstrap(salt), "reject-pw").unwrap();
+        // Non-v3 migrate fails.
+        let err = migrate_v3_to_v4(&OverlayConfig::V1 { salt: [0u8; 16] }, &master).unwrap_err();
+        assert!(err.contains("only v3"), "got: {err}");
+
+        let v3 =
+            init_config_v3_with_vault_id(&salt, &master, &random_vault_id(), SaltMode::PerVault)
+                .unwrap();
+        let v4_json = migrate_v3_to_v4(&parse_config(&v3).unwrap(), &master).unwrap();
+        let v4_cfg = parse_config(&v4_json).unwrap();
+        let (_ek, vk, _omk) = v4_recover_from_slot0(&v4_cfg, &master);
+
+        // Cannot revoke last slot.
+        let err = revoke_slot(&v4_cfg, &vk, 0, &[]).unwrap_err();
+        assert!(err.contains("last slot"), "got: {err}");
+
+        // Unknown id.
+        let err = revoke_slot(&v4_cfg, &vk, 99, &[]).unwrap_err();
+        assert!(err.contains("unknown slot"), "got: {err}");
+
+        // Revert refused after a second slot is present.
+        let (epoch_key, vk, omk) = v4_recover_from_slot0(&v4_cfg, &master);
+        let two = add_slot(
+            &v4_cfg,
+            &vk,
+            &epoch_key,
+            SlotKeyMaterial {
+                id: 1,
+                kind: SlotType::Passphrase,
+                salt: vec![0x33u8; SALT_SIZE],
+                kdf: Some(Argon2Params::v3_profile()),
+                binding: SlotBinding::None,
+                slot_key: [0x44u8; KEY_SIZE],
+            },
+        )
+        .unwrap();
+        let err = revert_v4_to_v3(&parse_config(&two).unwrap(), &omk).unwrap_err();
+        assert!(err.contains("slots"), "got: {err}");
+    }
+
+    #[test]
+    fn v4_rotate_slot_keeps_epoch() {
+        let salt = [0xA1u8; SALT_V3_SIZE];
+        let master = derive_master_key(&OverlayConfig::v3_bootstrap(salt), "rotate-pw").unwrap();
+        let v3 =
+            init_config_v3_with_vault_id(&salt, &master, &random_vault_id(), SaltMode::PerVault)
+                .unwrap();
+        let v4_json = migrate_v3_to_v4(&parse_config(&v3).unwrap(), &master).unwrap();
+        let v4_cfg = parse_config(&v4_json).unwrap();
+        let (epoch_key, vk, omk) = v4_recover_from_slot0(&v4_cfg, &master);
+
+        let new_salt = vec![0xBBu8; SALT_SIZE];
+        let new_slot_key = [0xCCu8; KEY_SIZE];
+        let rotated = rotate_slot(
+            &v4_cfg,
+            &vk,
+            &epoch_key,
+            SlotKeyMaterial {
+                id: 0,
+                kind: SlotType::Passphrase,
+                salt: new_salt.clone(),
+                kdf: Some(Argon2Params::v3_profile()),
+                binding: SlotBinding::None,
+                slot_key: new_slot_key,
+            },
+        )
+        .expect("rotate");
+        let cfg_r = parse_config(&rotated).unwrap();
+        if let OverlayConfig::V4 {
+            epoch,
+            slots,
+            vault_id,
+            config_mac,
+            omk_wrap,
+            vk_wrap,
+            ..
+        } = &cfg_r
+        {
+            assert_eq!(*epoch, 1, "rotate must not bump epoch");
+            assert_eq!(slots.len(), 1);
+            assert_eq!(slots[0].salt, new_salt);
+            // Old master key no longer opens slot 0.
+            assert!(v4_unwrap_epoch_key(&slots[0], &master, vault_id, *epoch).is_err());
+            // New key opens the same epoch_key -> VK -> OMK.
+            let ek = v4_unwrap_epoch_key(&slots[0], &new_slot_key, vault_id, *epoch).unwrap();
+            assert_eq!(ek, epoch_key);
+            let vk2 = v4_unwrap_vk(vk_wrap, &ek, vault_id, *epoch).unwrap();
+            assert_eq!(vk2, vk);
+            let omk2 = v4_unwrap_omk(omk_wrap, &vk2, vault_id).unwrap();
+            assert_eq!(omk2, omk);
+            verify_config_mac_v4(&vk, vault_id, &rotated, config_mac).unwrap();
+        } else {
+            panic!("expected V4");
+        }
+    }
+
+    #[test]
+    fn v4_excise_rejects_duplicate_config_mac() {
+        let body = r#"{"version":4,"config_mac":"aaa","nested":{"config_mac":"bbb"}}"#;
+        let err = excise_config_mac_field(body).unwrap_err();
+        assert!(
+            err.contains("exactly one config_mac"),
+            "expected duplicate reject, got: {err}"
         );
     }
 }
