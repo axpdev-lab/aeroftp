@@ -285,6 +285,11 @@ fn parse_compact_body(
     compact: &str,
     vault_id: Option<&[u8; VAULT_ID_SIZE]>,
 ) -> Result<RecoveryCode, String> {
+    // Crockford is ASCII-only. Reject non-ASCII BEFORE any byte-index slicing so a
+    // multibyte UTF-8 char can never land mid-slice and panic; fail closed instead.
+    if !compact.is_ascii() {
+        return Err("recovery code contains non-Crockford characters".into());
+    }
     let expected_len = RECOVERY_VAULT_PREFIX_LEN + RECOVERY_PAYLOAD_CHARS + RECOVERY_CHECKSUM_CHARS;
     if compact.len() != expected_len {
         return Err(format!(
@@ -445,5 +450,30 @@ mod tests {
         ));
         assert!(!looks_like_recovery_code("correct horse battery staple"));
         assert!(!looks_like_recovery_code(""));
+    }
+
+    /// Regression: a recovery-shaped input carrying a multibyte UTF-8 char must
+    /// fail closed with Err, never panic on a non-char-boundary byte slice.
+    /// (Found by Orchestrator L2 probe: pre-fix this panicked at the vault_prefix
+    /// slice because normalization preserved non-ASCII before byte indexing.)
+    #[test]
+    fn hostile_multibyte_recovery_code_fails_closed() {
+        let vault_id = [0x5Au8; VAULT_ID_SIZE];
+        let hostiles = [
+            format!("AEROAAA\u{00e9}{}", "A".repeat(30)), // 'é' straddles body byte idx 4
+            format!("AERO{}\u{00e9}", "A".repeat(31)),    // multibyte near checksum boundary
+            format!("AERO{}", "\u{00e9}".repeat(17)),     // all-multibyte body
+            "\u{4e2d}\u{6587}AERO123456".to_string(),     // CJK around AERO
+            format!("{}\u{00e9}{}", "A".repeat(3), "A".repeat(30)), // compact form, no AERO
+        ];
+        for h in hostiles {
+            assert!(
+                parse_recovery_code(&h, Some(&vault_id)).is_err(),
+                "hostile multibyte input must fail closed: {h:?}"
+            );
+        }
+        // The valid happy path still round-trips after the ASCII guard.
+        let good = generate_recovery_code(&vault_id);
+        assert!(parse_recovery_code(&good.formatted, Some(&vault_id)).is_ok());
     }
 }
