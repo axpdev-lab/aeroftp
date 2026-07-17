@@ -4,14 +4,18 @@
 //! obfuscated names, the shape that keeps an encrypted scope browsable and
 //! syncable object by object (master plan 3.7).
 //!
-//! - **v3 (current)** is built on the shared [`crate::aerocrypt`] engine:
-//!   AES-256-GCM-SIV content under a per-file random DEK that is wrapped with
-//!   AES-256-KW under the Argon2id-128 master KEK. Every block binds the block
-//!   index **and the total block count** as AAD, and the total count is also
-//!   carried (authenticated) in the header, so truncation and append are
+//! - **v3 (current object codec)** is built on the shared [`crate::aerocrypt`]
+//!   engine: AES-256-GCM-SIV content under a per-file random DEK that is wrapped
+//!   with AES-256-KW under the Argon2id-128 master KEK. Every block binds the
+//!   block index **and the total block count** as AAD, and the total count is
+//!   also carried (authenticated) in the header, so truncation and append are
 //!   detected and fail closed. The config carries a key-bound MAC so a tampered
 //!   `version`/`salt` is rejected on unlock (closes the unauthenticated-config
 //!   downgrade and gives a clean wrong-password signal).
+//! - **v4 (keyslots)** replaces only the key-management layer: a Volume Key
+//!   wrapped by independent slots (passphrase / keyfile / recovery / ...). The
+//!   per-file object layout stays the v3 codec under OMK (09 §7a). Parser is
+//!   F9-hardened; `config_mac` covers exact stored header bytes.
 //! - **v2 / v1 (legacy)** stay **read-only**: existing overlays keep decrypting
 //!   transparently, but new objects are always written as v3. v2 = GCM-SIV per
 //!   the shared engine without the length binding; v1 = original plain
@@ -30,9 +34,13 @@ use sha2::Sha256;
 use subtle::ConstantTimeEq;
 use zeroize::Zeroizing;
 
+use super::keyslots::{
+    AndMember, Argon2Params, Slot, SlotBinding, SlotType, MAX_ARGON2_LANES, MAX_ARGON2_MEM_KIB,
+    MAX_ARGON2_TIME, MAX_SLOTS, MIN_ARGON2_LANES, MIN_ARGON2_MEM_KIB, MIN_ARGON2_TIME, VERSION_V4,
+};
 use super::{
     decrypt_with_aad, derive_base_kek, encrypt_with_aad, hkdf_expand, random_array, unwrap_key,
-    wrap_key, KEY_SIZE, NONCE_SIZE, WRAPPED_KEY_SIZE,
+    wrap_key, KEY_SIZE, NONCE_SIZE, SALT_SIZE, WRAPPED_KEY_SIZE,
 };
 
 /// Magic bytes for an AeroCrypt-encrypted file.
@@ -43,12 +51,22 @@ pub const VERSION_V1: u8 = 1;
 pub const VERSION_V2: u8 = 2;
 /// Current format: GCM-SIV + AES-KW + per-block index/total binding.
 pub const VERSION_V3: u8 = 3;
+// VERSION_V4 lives in keyslots.rs (shared with AAD tags); re-export is the const import above.
 /// Streaming block size (64 KiB plaintext per AEAD block).
 const BLOCK_SIZE: usize = 64 * 1024;
 const SALT_V1_SIZE: usize = 16;
 const SALT_V2_SIZE: usize = 32; // == super::SALT_SIZE
 const SALT_V3_SIZE: usize = 32;
-const CONFIG_MAC_SIZE: usize = 32;
+/// Config MAC output length (HKDF-Expand, 32 bytes) for v3 and v4.
+pub(crate) const CONFIG_MAC_SIZE: usize = 32;
+/// Max base64 characters accepted for a single field before decode (F9 OOM guard).
+const MAX_B64_FIELD_LEN: usize = 512;
+/// Max base64 characters for a wrap blob (nonce || ct || tag is ~60 raw bytes).
+const MAX_B64_WRAP_LEN: usize = 256;
+/// Max base64 characters for a salt / MAC field (32 raw bytes).
+const MAX_B64_SALT_LEN: usize = 128;
+/// Max base64 characters for vault_id (16 raw bytes).
+const MAX_B64_VAULT_ID_LEN: usize = 64;
 /// Random per-vault identifier length (bytes). Emitted in every new v3 config
 /// from Tier 1 onward; seeds rollback pinning, Emergency Kits, and diagnostics.
 pub const VAULT_ID_SIZE: usize = 16;
@@ -114,11 +132,14 @@ const V3_CONFIG_MAC_LABEL: &[u8] = b"AeroCrypt overlay v3 config MAC";
 /// reader can open a keyfile vault, so extending the info here is back-compat
 /// safe and binds the keyfile requirement + vault_id against tampering.
 const V3_KEYFILE_MAC_SUFFIX: &[u8] = b"|kdf_inputs=password+keyfile|vault_id=";
+/// Domain-separating label for the v4 config-mac key derivation (spec 08 §8).
+/// `mac_key = HKDF-Expand(VK, this_label || vault_id)`.
+const V4_CONFIG_MAC_KEY_LABEL: &[u8] = b"aerocrypt v4 config-mac";
 
 /// GCM tag length added to every AEAD block.
 const GCM_TAG: usize = 16;
 
-/// A parsed `.aeroftp-crypt.json` overlay configuration.
+/// A parsed `.aeroftp-crypt.json` / `.aerocrypt.tsv` overlay configuration.
 #[derive(Debug, Clone)]
 pub enum OverlayConfig {
     V1 {
@@ -140,6 +161,22 @@ pub enum OverlayConfig {
         /// When DefaultV1 the salt bytes are the public constant (reconstructible).
         salt_mode: SaltMode,
     },
+    /// AECR v4 keyslot vault (Tier 2). Object codec stays v3 under OMK; key
+    /// management is the slot layer (spec 08, migration 09 §7a).
+    V4 {
+        vault_id: [u8; VAULT_ID_SIZE],
+        epoch: u32,
+        /// Nonce-prefixed GCM-SIV(epoch_key -> VK).
+        vk_wrap: Vec<u8>,
+        /// Nonce-prefixed GCM-SIV(HKDF(VK, omk-wrap) -> OMK); immutable across epochs.
+        omk_wrap: Vec<u8>,
+        /// Known slots only; unknown type tags are dropped from this list but
+        /// remain covered by `config_mac` over the exact stored header bytes.
+        slots: Vec<Slot>,
+        /// Top-level config MAC over exact stored bytes with this field excised
+        /// (spec 08 section 8). Verified after unlock obtains VK (T4).
+        config_mac: [u8; CONFIG_MAC_SIZE],
+    },
 }
 
 impl OverlayConfig {
@@ -148,16 +185,18 @@ impl OverlayConfig {
             OverlayConfig::V1 { .. } => VERSION_V1,
             OverlayConfig::V2 { .. } => VERSION_V2,
             OverlayConfig::V3 { .. } => VERSION_V3,
+            OverlayConfig::V4 { .. } => VERSION_V4,
         }
     }
 
     /// True for legacy formats that are kept readable but never written.
     pub fn is_read_only(&self) -> bool {
-        !matches!(self, OverlayConfig::V3 { .. })
+        !matches!(self, OverlayConfig::V3 { .. } | OverlayConfig::V4 { .. })
     }
 
     /// True when this overlay requires a keyfile in addition to the password.
-    /// Always false for legacy v1/v2 (keyfiles are a v3-only feature).
+    /// Always false for legacy v1/v2. For v4, unlock (T4) inspects slots; this
+    /// helper stays v3-only so callers do not assume a single keyfile factor.
     pub fn requires_keyfile(&self) -> bool {
         matches!(
             self,
@@ -168,10 +207,11 @@ impl OverlayConfig {
         )
     }
 
-    /// The vault id, when present (v3 configs written from Tier 1 on).
+    /// The vault id, when present (v3 from Tier 1 on; always for v4).
     pub fn vault_id(&self) -> Option<[u8; VAULT_ID_SIZE]> {
         match self {
             OverlayConfig::V3 { vault_id, .. } => *vault_id,
+            OverlayConfig::V4 { vault_id, .. } => Some(*vault_id),
             _ => None,
         }
     }
@@ -221,6 +261,9 @@ pub fn derive_master_key(cfg: &OverlayConfig, password: &str) -> Result<[u8; KEY
 /// KDF (Tier 1). `None` is byte-identical to the password-only path, so existing
 /// vaults are unaffected. Keyfiles apply to v3 only; a v1/v2 config ignores the
 /// digest (callers reject `--keyfile` against legacy overlays upstream).
+///
+/// v4 vaults unlock via keyslots (slot_key -> epoch_key -> VK -> OMK); this path
+/// fails closed so a mistaken call never derives a silent wrong key.
 pub fn derive_master_key_with_keyfile(
     cfg: &OverlayConfig,
     password: &str,
@@ -233,6 +276,9 @@ pub fn derive_master_key_with_keyfile(
             None => derive_base_kek(password, salt),
             some => super::derive_base_kek_with_keyfile(password, some, salt),
         },
+        OverlayConfig::V4 { .. } => {
+            Err("v4 vaults unlock via keyslots, not derive_master_key".to_string())
+        }
     }
 }
 
@@ -240,6 +286,9 @@ pub fn derive_master_key_with_keyfile(
 /// password is wrong or the config (`version`/`salt`) was tampered with.
 /// Legacy v1/v2 carry no MAC and always pass (they fail closed later on the
 /// AEAD instead).
+///
+/// v4 uses a stored-bytes MAC verified after keyslot unlock; call
+/// [`verify_config_mac_v4`] with the raw header and VK instead.
 pub fn verify_config_mac(cfg: &OverlayConfig, master_key: &[u8; KEY_SIZE]) -> Result<(), String> {
     match cfg {
         OverlayConfig::V3 {
@@ -264,6 +313,9 @@ pub fn verify_config_mac(cfg: &OverlayConfig, master_key: &[u8; KEY_SIZE]) -> Re
                 Err("wrong password or tampered crypt config".to_string())
             }
         }
+        OverlayConfig::V4 { .. } => Err(
+            "v4 vaults verify config_mac via verify_config_mac_v4 after keyslot unlock".to_string(),
+        ),
         _ => Ok(()),
     }
 }
@@ -308,6 +360,121 @@ fn compute_config_mac_v3(
         info.extend_from_slice(V3_DEFAULT_SALT_MAC_SUFFIX);
     }
     hkdf_expand::<CONFIG_MAC_SIZE>(master_key, &info)
+}
+
+/// Compute the v4 config MAC over the exact stored header bytes with the
+/// `config_mac` field already excised (spec 08 section 8).
+///
+/// ```text
+/// mac_key     = HKDF-Expand(VK, "aerocrypt v4 config-mac" || vault_id)
+/// config_mac  = HKDF-Expand(mac_key, stored_header_without_mac)
+/// ```
+///
+/// Hand-built only: never re-serialize the header. Callers pass the output of
+/// [`excise_config_mac_field`] (or an equivalent fixed-rule excision).
+pub fn compute_config_mac_v4(
+    vk: &[u8; KEY_SIZE],
+    vault_id: &[u8; VAULT_ID_SIZE],
+    stored_header_without_mac: &[u8],
+) -> Result<[u8; CONFIG_MAC_SIZE], String> {
+    let mut mac_key_info = Vec::with_capacity(V4_CONFIG_MAC_KEY_LABEL.len() + VAULT_ID_SIZE);
+    mac_key_info.extend_from_slice(V4_CONFIG_MAC_KEY_LABEL);
+    mac_key_info.extend_from_slice(vault_id);
+    let mac_key = hkdf_expand::<KEY_SIZE>(vk, &mac_key_info)?;
+    hkdf_expand::<CONFIG_MAC_SIZE>(&mac_key, stored_header_without_mac)
+}
+
+/// Verify a v4 config_mac against the raw stored header (before or after any
+/// parse). Bootstrap circularity (08 §5 step 5): call only after unlock yields VK.
+pub fn verify_config_mac_v4(
+    vk: &[u8; KEY_SIZE],
+    vault_id: &[u8; VAULT_ID_SIZE],
+    stored_header: &str,
+    expected_mac: &[u8; CONFIG_MAC_SIZE],
+) -> Result<(), String> {
+    let without = excise_config_mac_field(stored_header)?;
+    let expected = compute_config_mac_v4(vk, vault_id, without.as_bytes())?;
+    if expected.ct_eq(expected_mac).into() {
+        Ok(())
+    } else {
+        Err("wrong credential or tampered v4 crypt config".to_string())
+    }
+}
+
+/// Excise the `config_mac` field from a stored v4 JSON header by a fixed textual
+/// rule (not re-serialization). The MAC covers the exact remaining bytes.
+///
+/// Rule (JSON):
+/// 1. Locate the first occurrence of the key substring `"config_mac"`.
+/// 2. From that key's opening quote, consume optional whitespace, `:`, optional
+///    whitespace, then a JSON string value (`"..."` with no escape handling for
+///    base64 payloads which never need escapes).
+/// 3. If a comma immediately follows the value (after optional whitespace),
+///    remove that trailing comma with the field.
+/// 4. Else, if a comma immediately precedes the key (after optional whitespace
+///    walking backward), remove that preceding comma so objects stay valid.
+/// 5. All other bytes (including whitespace) are left intact.
+fn excise_config_mac_field(raw: &str) -> Result<String, String> {
+    const KEY: &str = "\"config_mac\"";
+    let key_pos = raw
+        .find(KEY)
+        .ok_or_else(|| "v4 header missing config_mac field for MAC excision".to_string())?;
+
+    // Walk forward past key, colon, and the string value.
+    let after_key = key_pos + KEY.len();
+    let bytes = raw.as_bytes();
+    let mut i = after_key;
+    while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+        i += 1;
+    }
+    if i >= bytes.len() || bytes[i] != b':' {
+        return Err("v4 config_mac field missing ':' after key".to_string());
+    }
+    i += 1;
+    while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+        i += 1;
+    }
+    if i >= bytes.len() || bytes[i] != b'"' {
+        return Err("v4 config_mac value is not a JSON string".to_string());
+    }
+    i += 1; // open quote of value
+    while i < bytes.len() && bytes[i] != b'"' {
+        // Base64 values have no escapes; reject backslash to stay strict.
+        if bytes[i] == b'\\' {
+            return Err("v4 config_mac value has unexpected escape".to_string());
+        }
+        i += 1;
+    }
+    if i >= bytes.len() {
+        return Err("v4 config_mac value string not terminated".to_string());
+    }
+    i += 1; // close quote of value
+    let value_end = i;
+
+    // Prefer removing a trailing comma after the value.
+    let mut trail = value_end;
+    while trail < bytes.len() && bytes[trail].is_ascii_whitespace() {
+        trail += 1;
+    }
+    let (field_start, field_end) = if trail < bytes.len() && bytes[trail] == b',' {
+        (key_pos, trail + 1)
+    } else {
+        // No trailing comma: remove a preceding comma if present.
+        let mut pre = key_pos;
+        while pre > 0 && bytes[pre - 1].is_ascii_whitespace() {
+            pre -= 1;
+        }
+        if pre > 0 && bytes[pre - 1] == b',' {
+            (pre - 1, value_end)
+        } else {
+            (key_pos, value_end)
+        }
+    };
+
+    let mut out = String::with_capacity(raw.len() - (field_end - field_start));
+    out.push_str(&raw[..field_start]);
+    out.push_str(&raw[field_end..]);
+    Ok(out)
 }
 
 // --- v1 legacy content path (read-only) -----------------------------------
@@ -505,16 +672,20 @@ fn decrypt_data_v3(master_key: &[u8; KEY_SIZE], ciphertext: &[u8]) -> Result<Vec
 
 // --- Public content API (version-dispatched) ------------------------------
 
-/// Encrypt a file's bytes. New objects are always written as v3; legacy v1/v2
-/// overlays are read-only and return an error so a downgraded or stale config
-/// can never produce weaker ciphertext.
+/// Encrypt a file's bytes. New objects are always written as v3 wire format;
+/// v4 keyslot vaults reuse the same object codec under OMK (09 §7a). Legacy
+/// v1/v2 overlays are read-only and return an error so a downgraded or stale
+/// config can never produce weaker ciphertext.
 pub fn encrypt_data(
     cfg: &OverlayConfig,
     master_key: &[u8; KEY_SIZE],
     plaintext: &[u8],
 ) -> Result<Vec<u8>, String> {
     match cfg {
-        OverlayConfig::V3 { .. } => encrypt_data_v3(master_key, plaintext),
+        // v4: master_key is OMK recovered via keyslots (T4); object layout is v3.
+        OverlayConfig::V3 { .. } | OverlayConfig::V4 { .. } => {
+            encrypt_data_v3(master_key, plaintext)
+        }
         OverlayConfig::V2 { .. } | OverlayConfig::V1 { .. } => Err(format!(
             "legacy AeroCrypt v{} overlay is read-only; create a new overlay to add files",
             cfg.version()
@@ -733,6 +904,10 @@ fn parse_config_tsv(config: &str) -> Result<OverlayConfig, String> {
     }
 
     let version = version.ok_or("missing version in tsv crypt config")?;
+    if version == 4 {
+        // T2: v4 headed markers are JSON-first; TSV layout lands with T3 builders.
+        return Err("v4 TSV not yet supported".into());
+    }
     let salt_bytes = base64::engine::general_purpose::STANDARD
         .decode(salt_b64.ok_or("missing salt in tsv")?)
         .map_err(|e| format!("invalid salt: {e}"))?;
@@ -801,10 +976,26 @@ fn parse_config_json(config_json: &str) -> Result<OverlayConfig, String> {
         .get("version")
         .and_then(|v| v.as_u64())
         .ok_or("missing version in crypt config")?;
+    match version {
+        1..=3 => parse_config_json_v1_v2_v3(version, &val),
+        4 => parse_config_json_v4(&val),
+        other => Err(format!(
+            "unsupported crypt config version {other}: this vault was created by a newer AeroFTP, please update"
+        )),
+    }
+}
+
+fn parse_config_json_v1_v2_v3(
+    version: u64,
+    val: &serde_json::Value,
+) -> Result<OverlayConfig, String> {
     let salt_b64 = val
         .get("salt")
         .and_then(|v| v.as_str())
         .ok_or("missing salt in crypt config")?;
+    if salt_b64.len() > MAX_B64_SALT_LEN {
+        return Err("salt field too long".into());
+    }
     let salt_bytes = base64::engine::general_purpose::STANDARD
         .decode(salt_b64)
         .map_err(|e| format!("invalid salt: {e}"))?;
@@ -833,6 +1024,9 @@ fn parse_config_json(config_json: &str) -> Result<OverlayConfig, String> {
                 .get("mac")
                 .and_then(|v| v.as_str())
                 .ok_or("missing mac in v3 crypt config")?;
+            if mac_b64.len() > MAX_B64_SALT_LEN {
+                return Err("mac field too long".into());
+            }
             let mac_bytes = base64::engine::general_purpose::STANDARD
                 .decode(mac_b64)
                 .map_err(|e| format!("invalid mac: {e}"))?;
@@ -847,6 +1041,9 @@ fn parse_config_json(config_json: &str) -> Result<OverlayConfig, String> {
             // Optional vault_id (present from Tier 1 on).
             let vault_id = match val.get("vault_id").and_then(|v| v.as_str()) {
                 Some(vid_b64) => {
+                    if vid_b64.len() > MAX_B64_VAULT_ID_LEN {
+                        return Err("vault_id field too long".into());
+                    }
                     let vid_bytes = base64::engine::general_purpose::STANDARD
                         .decode(vid_b64)
                         .map_err(|e| format!("invalid vault_id: {e}"))?;
@@ -863,9 +1060,7 @@ fn parse_config_json(config_json: &str) -> Result<OverlayConfig, String> {
             // `kdf_inputs` decides whether a keyfile is required. Absent (or
             // exactly ["password"]) means password-only.
             let requires_keyfile = match val.get("kdf_inputs").and_then(|v| v.as_array()) {
-                Some(arr) => arr
-                    .iter()
-                    .any(|v| v.as_str() == Some("keyfile")),
+                Some(arr) => arr.iter().any(|v| v.as_str() == Some("keyfile")),
                 None => false,
             };
             if requires_keyfile && vault_id.is_none() {
@@ -886,10 +1081,326 @@ fn parse_config_json(config_json: &str) -> Result<OverlayConfig, String> {
                 salt_mode,
             })
         }
-        other => Err(format!(
-            "unsupported crypt config version {other}: this vault was created by a newer AeroFTP, please update"
-        )),
+        _ => unreachable!("parse_config_json_v1_v2_v3 called with non-legacy version"),
     }
+}
+
+/// Parse a v4 keyslot header (JSON). Applies F9 bounds BEFORE any Argon2id:
+/// slot cap, duplicate ids, Argon2 floor/cap, fixed KDF salt sizes, base64
+/// length bounds, unknown type skip (MAC covers stored bytes, not this list).
+fn parse_config_json_v4(val: &serde_json::Value) -> Result<OverlayConfig, String> {
+    let vault_id = decode_b64_fixed::<VAULT_ID_SIZE>(
+        val.get("vault_id")
+            .and_then(|v| v.as_str())
+            .ok_or("missing vault_id in v4 crypt config")?,
+        MAX_B64_VAULT_ID_LEN,
+        "vault_id",
+    )?;
+
+    let epoch = val
+        .get("epoch")
+        .and_then(|v| v.as_u64())
+        .ok_or("missing epoch in v4 crypt config")?;
+    if epoch == 0 || epoch > u32::MAX as u64 {
+        return Err("v4 epoch must be a non-zero u32".into());
+    }
+    let epoch = epoch as u32;
+
+    let vk_wrap = decode_b64_bounded(
+        val.get("vk_wrap")
+            .and_then(|v| v.as_str())
+            .ok_or("missing vk_wrap in v4 crypt config")?,
+        MAX_B64_WRAP_LEN,
+        "vk_wrap",
+    )?;
+    let omk_wrap = decode_b64_bounded(
+        val.get("omk_wrap")
+            .and_then(|v| v.as_str())
+            .ok_or("missing omk_wrap in v4 crypt config")?,
+        MAX_B64_WRAP_LEN,
+        "omk_wrap",
+    )?;
+
+    let config_mac = decode_b64_fixed::<CONFIG_MAC_SIZE>(
+        val.get("config_mac")
+            .and_then(|v| v.as_str())
+            .ok_or("missing config_mac in v4 crypt config")?,
+        MAX_B64_SALT_LEN,
+        "config_mac",
+    )?;
+
+    let slots_val = val
+        .get("slots")
+        .and_then(|v| v.as_array())
+        .ok_or("missing slots array in v4 crypt config")?;
+    if slots_val.len() > MAX_SLOTS {
+        return Err(format!(
+            "v4 crypt config has {} slots; max is {MAX_SLOTS}",
+            slots_val.len()
+        ));
+    }
+
+    let mut slots: Vec<Slot> = Vec::with_capacity(slots_val.len());
+    let mut seen_ids: Vec<u32> = Vec::with_capacity(slots_val.len());
+    for (idx, slot_val) in slots_val.iter().enumerate() {
+        let id = slot_val
+            .get("id")
+            .and_then(|v| v.as_u64())
+            .ok_or_else(|| format!("v4 slot[{idx}] missing id"))?;
+        if id > u32::MAX as u64 {
+            return Err(format!("v4 slot[{idx}] id out of u32 range"));
+        }
+        let id = id as u32;
+        if seen_ids.contains(&id) {
+            return Err(format!("v4 crypt config has duplicate slot id {id}"));
+        }
+        seen_ids.push(id);
+
+        let type_str = slot_val
+            .get("type")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| format!("v4 slot[{idx}] missing type"))?;
+        let Some(kind) = parse_slot_type_str(type_str) else {
+            // F9: unknown type skipped for unlock; config_mac still covers raw bytes.
+            continue;
+        };
+
+        let salt = decode_b64_bounded(
+            slot_val
+                .get("salt")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| format!("v4 slot[{idx}] missing salt"))?,
+            MAX_B64_SALT_LEN,
+            "slot salt",
+        )?;
+        // KDF slots require a fixed 32-byte salt; other reserved types keep salt
+        // as variable for forward-compat (still length-bounded above).
+        if matches!(
+            kind,
+            SlotType::Passphrase | SlotType::Keyfile | SlotType::Recovery
+        ) && salt.len() != SALT_SIZE
+        {
+            return Err(format!(
+                "v4 slot[{idx}] salt must be {SALT_SIZE} bytes for KDF slot types"
+            ));
+        }
+
+        let kdf = parse_slot_kdf(slot_val.get("kdf"), kind, idx)?;
+        let binding = parse_slot_binding(slot_val.get("binding"), kind, idx)?;
+        let wrapped = decode_b64_bounded(
+            slot_val
+                .get("wrapped")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| format!("v4 slot[{idx}] missing wrapped"))?,
+            MAX_B64_WRAP_LEN,
+            "slot wrapped",
+        )?;
+
+        slots.push(Slot {
+            id,
+            kind,
+            salt,
+            kdf,
+            binding,
+            wrapped,
+        });
+    }
+
+    Ok(OverlayConfig::V4 {
+        vault_id,
+        epoch,
+        vk_wrap,
+        omk_wrap,
+        slots,
+        config_mac,
+    })
+}
+
+fn parse_slot_type_str(s: &str) -> Option<SlotType> {
+    match s {
+        "passphrase" => Some(SlotType::Passphrase),
+        // Legacy Tier-1 combined scheme is the keyfile slot type on the wire.
+        "keyfile" | "aecr-t1-combined-v1" => Some(SlotType::Keyfile),
+        "recovery" => Some(SlotType::Recovery),
+        "fido2-hmac" => Some(SlotType::Fido2Hmac),
+        "and" => Some(SlotType::And),
+        "threshold" => Some(SlotType::Threshold),
+        _ => None,
+    }
+}
+
+/// Parse and floor/cap Argon2id params (F9). Absent kdf is allowed for
+/// non-KDF types (fido2-hmac); KDF types require the object.
+fn parse_slot_kdf(
+    kdf_val: Option<&serde_json::Value>,
+    kind: SlotType,
+    idx: usize,
+) -> Result<Option<Argon2Params>, String> {
+    let needs_kdf = matches!(
+        kind,
+        SlotType::Passphrase | SlotType::Keyfile | SlotType::Recovery
+    );
+    match kdf_val {
+        None | Some(serde_json::Value::Null) => {
+            if needs_kdf {
+                Err(format!("v4 slot[{idx}] missing kdf for KDF slot type"))
+            } else {
+                Ok(None)
+            }
+        }
+        Some(obj) => {
+            let m_kib = obj
+                .get("m_kib")
+                .and_then(|v| v.as_u64())
+                .ok_or_else(|| format!("v4 slot[{idx}] kdf.m_kib missing"))?;
+            let t = obj
+                .get("t")
+                .and_then(|v| v.as_u64())
+                .ok_or_else(|| format!("v4 slot[{idx}] kdf.t missing"))?;
+            let p = obj
+                .get("p")
+                .and_then(|v| v.as_u64())
+                .ok_or_else(|| format!("v4 slot[{idx}] kdf.p missing"))?;
+            if m_kib > u32::MAX as u64 || t > u32::MAX as u64 || p > u32::MAX as u64 {
+                return Err(format!("v4 slot[{idx}] kdf param out of u32 range"));
+            }
+            // Floor + cap (do not reject): protects the honest client from DoS
+            // or under-strength params in a hostile header (F9).
+            Ok(Some(Argon2Params {
+                m_kib: (m_kib as u32).clamp(MIN_ARGON2_MEM_KIB, MAX_ARGON2_MEM_KIB),
+                t: (t as u32).clamp(MIN_ARGON2_TIME, MAX_ARGON2_TIME),
+                p: (p as u32).clamp(MIN_ARGON2_LANES, MAX_ARGON2_LANES),
+            }))
+        }
+    }
+}
+
+fn parse_slot_binding(
+    binding_val: Option<&serde_json::Value>,
+    kind: SlotType,
+    idx: usize,
+) -> Result<SlotBinding, String> {
+    match kind {
+        SlotType::Passphrase | SlotType::Keyfile => Ok(SlotBinding::None),
+        SlotType::Recovery => {
+            let prefix = binding_val
+                .and_then(|b| b.get("vault_prefix"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            if prefix.len() > 64 {
+                return Err(format!("v4 slot[{idx}] recovery vault_prefix too long"));
+            }
+            Ok(SlotBinding::Recovery {
+                vault_prefix: prefix,
+            })
+        }
+        SlotType::Fido2Hmac => {
+            let b = binding_val.ok_or_else(|| format!("v4 slot[{idx}] fido2 missing binding"))?;
+            let credential_id = decode_b64_bounded(
+                b.get("credential_id")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| format!("v4 slot[{idx}] fido2 missing credential_id"))?,
+                MAX_B64_FIELD_LEN,
+                "credential_id",
+            )?;
+            let hmac_salt = decode_b64_bounded(
+                b.get("hmac_salt")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| format!("v4 slot[{idx}] fido2 missing hmac_salt"))?,
+                MAX_B64_SALT_LEN,
+                "hmac_salt",
+            )?;
+            Ok(SlotBinding::Fido2 {
+                credential_id,
+                hmac_salt,
+            })
+        }
+        SlotType::And => {
+            let members_val = binding_val
+                .and_then(|b| b.get("members"))
+                .and_then(|v| v.as_array())
+                .ok_or_else(|| format!("v4 slot[{idx}] and binding missing members"))?;
+            if members_val.len() > MAX_SLOTS {
+                return Err(format!("v4 slot[{idx}] and members exceed MAX_SLOTS"));
+            }
+            let mut members = Vec::with_capacity(members_val.len());
+            for (mi, m) in members_val.iter().enumerate() {
+                let type_str = m
+                    .get("type")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| format!("v4 slot[{idx}] and member[{mi}] missing type"))?;
+                let mkind = parse_slot_type_str(type_str).ok_or_else(|| {
+                    format!("v4 slot[{idx}] and member[{mi}] unknown type {type_str}")
+                })?;
+                let salt = decode_b64_bounded(
+                    m.get("salt")
+                        .and_then(|v| v.as_str())
+                        .ok_or_else(|| format!("v4 slot[{idx}] and member[{mi}] missing salt"))?,
+                    MAX_B64_SALT_LEN,
+                    "and member salt",
+                )?;
+                let kdf = parse_slot_kdf(m.get("kdf"), mkind, idx)?;
+                let (credential_id, hmac_salt) = if mkind == SlotType::Fido2Hmac {
+                    (
+                        Some(decode_b64_bounded(
+                            m.get("credential_id")
+                                .and_then(|v| v.as_str())
+                                .ok_or_else(|| {
+                                    format!("v4 slot[{idx}] and member[{mi}] missing credential_id")
+                                })?,
+                            MAX_B64_FIELD_LEN,
+                            "credential_id",
+                        )?),
+                        Some(decode_b64_bounded(
+                            m.get("hmac_salt").and_then(|v| v.as_str()).ok_or_else(|| {
+                                format!("v4 slot[{idx}] and member[{mi}] missing hmac_salt")
+                            })?,
+                            MAX_B64_SALT_LEN,
+                            "hmac_salt",
+                        )?),
+                    )
+                } else {
+                    (None, None)
+                };
+                members.push(AndMember {
+                    kind: mkind,
+                    salt,
+                    kdf,
+                    credential_id,
+                    hmac_salt,
+                });
+            }
+            Ok(SlotBinding::And { members })
+        }
+        SlotType::Threshold => {
+            // Reserved: accept empty binding; unlock will fail closed later.
+            Ok(SlotBinding::None)
+        }
+    }
+}
+
+fn decode_b64_bounded(b64: &str, max_len: usize, field: &str) -> Result<Vec<u8>, String> {
+    if b64.len() > max_len {
+        return Err(format!("{field} field too long"));
+    }
+    base64::engine::general_purpose::STANDARD
+        .decode(b64)
+        .map_err(|e| format!("invalid {field}: {e}"))
+}
+
+fn decode_b64_fixed<const N: usize>(
+    b64: &str,
+    max_len: usize,
+    field: &str,
+) -> Result<[u8; N], String> {
+    let bytes = decode_b64_bounded(b64, max_len, field)?;
+    if bytes.len() != N {
+        return Err(format!("{field} must be {N} bytes"));
+    }
+    let mut out = [0u8; N];
+    out.copy_from_slice(&bytes);
+    Ok(out)
 }
 
 #[cfg(test)]
@@ -1292,5 +1803,285 @@ mod tests {
             build_config_v3_json(&salt, &master, &vid, false, None, SaltMode::PerVault).unwrap();
         let cfg_from_json = parse_config(&legacy_json).unwrap();
         verify_config_mac(&cfg_from_json, &master).unwrap();
+    }
+
+    // --- v4 keyslot parser (F9) + stored-bytes config_mac -------------------
+
+    fn b64(bytes: &[u8]) -> String {
+        base64::engine::general_purpose::STANDARD.encode(bytes)
+    }
+
+    /// Minimal valid v4 JSON fixture (no real crypto wraps; parse-only).
+    struct V4Fixture {
+        n_slots: usize,
+        kdf: (u32, u32, u32),
+        salt_len: usize,
+        duplicate_id: bool,
+    }
+
+    impl Default for V4Fixture {
+        fn default() -> Self {
+            Self {
+                n_slots: 1,
+                kdf: (128 * 1024, 4, 4),
+                salt_len: SALT_SIZE,
+                duplicate_id: false,
+            }
+        }
+    }
+
+    impl V4Fixture {
+        fn to_json(&self) -> String {
+            let vault_id = [0xABu8; VAULT_ID_SIZE];
+            let wrap = vec![0x11u8; 60]; // nonce(12)+ct(32)+tag(16) shape
+            let salt = vec![0x22u8; self.salt_len];
+            let (kdf_m, kdf_t, kdf_p) = self.kdf;
+            let mut slots = String::from("[");
+            for i in 0..self.n_slots {
+                let id = if self.duplicate_id && i == 1 {
+                    0
+                } else {
+                    i as u32
+                };
+                if i > 0 {
+                    slots.push(',');
+                }
+                slots.push_str(&format!(
+                    r#"{{"id":{id},"type":"passphrase","salt":"{}","kdf":{{"m_kib":{kdf_m},"t":{kdf_t},"p":{kdf_p}}},"wrapped":"{}"}}"#,
+                    b64(&salt),
+                    b64(&wrap),
+                ));
+            }
+            slots.push(']');
+            format!(
+                r#"{{"version":4,"vault_id":"{}","epoch":1,"vk_wrap":"{}","omk_wrap":"{}","slots":{slots},"config_mac":"{}"}}"#,
+                b64(&vault_id),
+                b64(&wrap),
+                b64(&wrap),
+                b64(&[0u8; CONFIG_MAC_SIZE]),
+            )
+        }
+    }
+
+    #[test]
+    fn v4_rejects_more_than_max_slots() {
+        let json = V4Fixture {
+            n_slots: MAX_SLOTS + 1,
+            ..Default::default()
+        }
+        .to_json();
+        let err = parse_config(&json).unwrap_err();
+        assert!(
+            err.contains("max is") || err.contains(&MAX_SLOTS.to_string()),
+            "expected MAX_SLOTS reject, got: {err}"
+        );
+    }
+
+    #[test]
+    fn v4_floors_and_caps_argon2_params() {
+        // Too-weak params are floored; no Argon2id runs during parse.
+        let weak = V4Fixture {
+            kdf: (1, 0, 0),
+            ..Default::default()
+        }
+        .to_json();
+        let cfg = parse_config(&weak).expect("weak kdf should parse with floor");
+        if let OverlayConfig::V4 { slots, .. } = cfg {
+            let kdf = slots[0].kdf.expect("kdf present");
+            assert_eq!(kdf.m_kib, MIN_ARGON2_MEM_KIB);
+            assert_eq!(kdf.t, MIN_ARGON2_TIME);
+            assert_eq!(kdf.p, MIN_ARGON2_LANES);
+        } else {
+            panic!("expected V4");
+        }
+
+        // Huge params are capped.
+        let huge = V4Fixture {
+            kdf: (u32::MAX, u32::MAX, u32::MAX),
+            ..Default::default()
+        }
+        .to_json();
+        let cfg = parse_config(&huge).expect("huge kdf should parse with cap");
+        if let OverlayConfig::V4 { slots, .. } = cfg {
+            let kdf = slots[0].kdf.expect("kdf present");
+            assert_eq!(kdf.m_kib, MAX_ARGON2_MEM_KIB);
+            assert_eq!(kdf.t, MAX_ARGON2_TIME);
+            assert_eq!(kdf.p, MAX_ARGON2_LANES);
+        } else {
+            panic!("expected V4");
+        }
+    }
+
+    #[test]
+    fn v4_rejects_wrong_salt_length() {
+        let json = V4Fixture {
+            salt_len: 16, // wrong: KDF slots need 32
+            ..Default::default()
+        }
+        .to_json();
+        let err = parse_config(&json).unwrap_err();
+        assert!(
+            err.contains("salt must be"),
+            "expected salt length reject, got: {err}"
+        );
+    }
+
+    #[test]
+    fn v4_skips_unknown_slot_type_but_mac_covers_stored_bytes() {
+        let vault_id = [0xABu8; VAULT_ID_SIZE];
+        let wrap = vec![0x11u8; 60];
+        let salt = vec![0x22u8; SALT_SIZE];
+        // Placeholder MAC; we recompute after excision.
+        let placeholder_mac = [0u8; CONFIG_MAC_SIZE];
+        let unknown_slot = format!(
+            r#"{{"id":1,"type":"future-widget","salt":"{}","wrapped":"{}"}}"#,
+            b64(&salt),
+            b64(&wrap),
+        );
+        let json = format!(
+            r#"{{"version":4,"vault_id":"{}","epoch":1,"vk_wrap":"{}","omk_wrap":"{}","slots":[{{"id":0,"type":"passphrase","salt":"{}","kdf":{{"m_kib":131072,"t":4,"p":4}},"wrapped":"{}"}},{unknown_slot}],"config_mac":"{}"}}"#,
+            b64(&vault_id),
+            b64(&wrap),
+            b64(&wrap),
+            b64(&salt),
+            b64(&wrap),
+            b64(&placeholder_mac),
+        );
+
+        let cfg = parse_config(&json).expect("unknown type must not fail parse");
+        if let OverlayConfig::V4 { slots, .. } = &cfg {
+            assert_eq!(slots.len(), 1, "only known slot kept in-memory");
+            assert_eq!(slots[0].id, 0);
+            assert_eq!(slots[0].kind, SlotType::Passphrase);
+        } else {
+            panic!("expected V4");
+        }
+
+        // MAC over stored bytes: unknown slot remains in the raw header, so a
+        // MAC computed on the full excised header covers it.
+        let vk = [0x77u8; KEY_SIZE];
+        let without = excise_config_mac_field(&json).unwrap();
+        assert!(
+            without.contains("future-widget"),
+            "excised header must still contain the unknown slot"
+        );
+        assert!(
+            !without.contains("config_mac"),
+            "excised header must not contain config_mac key"
+        );
+        let mac = compute_config_mac_v4(&vk, &vault_id, without.as_bytes()).unwrap();
+        // Rebuild header with real MAC and verify.
+        let with_mac = format!(
+            r#"{{"version":4,"vault_id":"{}","epoch":1,"vk_wrap":"{}","omk_wrap":"{}","slots":[{{"id":0,"type":"passphrase","salt":"{}","kdf":{{"m_kib":131072,"t":4,"p":4}},"wrapped":"{}"}},{unknown_slot}],"config_mac":"{}"}}"#,
+            b64(&vault_id),
+            b64(&wrap),
+            b64(&wrap),
+            b64(&salt),
+            b64(&wrap),
+            b64(&mac),
+        );
+        verify_config_mac_v4(&vk, &vault_id, &with_mac, &mac).expect("MAC must verify");
+        // Tamper unknown slot content: MAC fails.
+        let tampered = with_mac.replace("future-widget", "future-widgetX");
+        assert!(verify_config_mac_v4(&vk, &vault_id, &tampered, &mac).is_err());
+    }
+
+    #[test]
+    fn v4_rejects_duplicate_slot_ids() {
+        let json = V4Fixture {
+            n_slots: 2,
+            duplicate_id: true,
+            ..Default::default()
+        }
+        .to_json();
+        let err = parse_config(&json).unwrap_err();
+        assert!(
+            err.contains("duplicate slot id"),
+            "expected duplicate id reject, got: {err}"
+        );
+    }
+
+    #[test]
+    fn v4_version_helpers_and_derive_fail_closed() {
+        let json = V4Fixture::default().to_json();
+        let cfg = parse_config(&json).expect("valid v4 fixture");
+        assert_eq!(cfg.version(), VERSION_V4);
+        assert_eq!(cfg.version(), 4);
+        assert!(!cfg.is_read_only());
+        assert!(!cfg.requires_keyfile()); // v4 inspects slots at unlock (T4)
+        assert_eq!(cfg.vault_id(), Some([0xABu8; VAULT_ID_SIZE]));
+        let err = derive_master_key(&cfg, "anything").unwrap_err();
+        assert!(
+            err.contains("keyslots"),
+            "derive_master_key must fail closed on v4: {err}"
+        );
+        assert!(verify_config_mac(&cfg, &[0u8; KEY_SIZE]).is_err());
+    }
+
+    #[test]
+    fn v4_unknown_version_still_hard_errors() {
+        let bad = serde_json::json!({
+            "version": 99,
+            "salt": b64(&[1u8; SALT_V3_SIZE]),
+        })
+        .to_string();
+        let err = parse_config(&bad).unwrap_err();
+        assert!(
+            err.contains("unsupported crypt config version 99") && err.contains("please update"),
+            "expected update message, got: {err}"
+        );
+    }
+
+    #[test]
+    fn v4_config_mac_round_trip_and_excise() {
+        let vk = [0x42u8; KEY_SIZE];
+        let vault_id = [0x11u8; VAULT_ID_SIZE];
+        // Hand-built header: config_mac in the middle so both comma cases work.
+        let body = format!(
+            r#"{{"version":4,"vault_id":"{}","epoch":1,"vk_wrap":"{}","config_mac":"PLACEHOLDER","omk_wrap":"{}","slots":[]}}"#,
+            b64(&vault_id),
+            b64(&[0u8; 60]),
+            b64(&[0u8; 60]),
+        );
+        // First compute MAC over a header with a zero MAC field excised.
+        let zero_mac = [0u8; CONFIG_MAC_SIZE];
+        let with_zero = body.replace("PLACEHOLDER", &b64(&zero_mac));
+        let without = excise_config_mac_field(&with_zero).unwrap();
+        assert!(!without.contains("config_mac"));
+        assert!(without.contains("\"omk_wrap\""));
+        let mac = compute_config_mac_v4(&vk, &vault_id, without.as_bytes()).unwrap();
+        let with_mac = body.replace("PLACEHOLDER", &b64(&mac));
+        verify_config_mac_v4(&vk, &vault_id, &with_mac, &mac).unwrap();
+
+        // Wrong VK fails.
+        let wrong_vk = [0x43u8; KEY_SIZE];
+        assert!(verify_config_mac_v4(&wrong_vk, &vault_id, &with_mac, &mac).is_err());
+
+        // Trailing-comma form: config_mac last before closing brace.
+        let trailing = format!(
+            r#"{{"version":4,"vault_id":"{}","epoch":2,"vk_wrap":"{}","omk_wrap":"{}","slots":[],"config_mac":"{}"}}"#,
+            b64(&vault_id),
+            b64(&[1u8; 60]),
+            b64(&[1u8; 60]),
+            b64(&zero_mac),
+        );
+        let w = excise_config_mac_field(&trailing).unwrap();
+        assert!(!w.contains("config_mac"));
+        let mac2 = compute_config_mac_v4(&vk, &vault_id, w.as_bytes()).unwrap();
+        let trailing_ok = format!(
+            r#"{{"version":4,"vault_id":"{}","epoch":2,"vk_wrap":"{}","omk_wrap":"{}","slots":[],"config_mac":"{}"}}"#,
+            b64(&vault_id),
+            b64(&[1u8; 60]),
+            b64(&[1u8; 60]),
+            b64(&mac2),
+        );
+        verify_config_mac_v4(&vk, &vault_id, &trailing_ok, &mac2).unwrap();
+    }
+
+    #[test]
+    fn v4_tsv_not_yet_supported() {
+        let tsv = "version\t4\nvault_id\tabc\n";
+        let err = parse_config(tsv).unwrap_err();
+        assert!(err.contains("v4 TSV not yet supported"), "got: {err}");
     }
 }
