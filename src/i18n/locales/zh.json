@@ -5192,7 +5192,13 @@
             "keyslotsRotateUnsupported": "此插槽类型尚无法通过图形界面轮换。",
             "keyslotsAdded": "已添加插槽。",
             "keyslotsRotated": "已轮换插槽。",
-            "keyslotsRemoved": "已移除插槽（纪元已提升）。"
+            "keyslotsRemoved": "已移除插槽（纪元已提升）。",
+            "keyslotsRecoveryHint": "将生成恢复码并仅显示一次。请打印或离线保存；无需密码或 keyfile 即可打开此保险库。",
+            "keyslotsRecoveryAdded": "已添加恢复槽。请保存下方恢复码；不会再次显示。",
+            "keyslotsRecoveryAutoOffered": "已自动添加恢复槽，因为此保险库将仅支持 keyfile。请保存下方恢复码。",
+            "keyslotsRecoverySaveOnce": "请立即保存此恢复码（仅显示一次）：",
+            "keyslotsRecoveryCopy": "复制代码",
+            "keyslotsUnlockWithRecovery": "也可以使用恢复码解锁（将其粘贴为密码）。"
         },
         "aerocryptProfile": {
             "enable": "Crypt (加密)",

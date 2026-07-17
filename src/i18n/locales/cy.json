@@ -5211,7 +5211,13 @@
             "keyslotsRotateUnsupported": "Ni ellir cylchdroi'r math hwn o slot o'r GUI eto.",
             "keyslotsAdded": "Slot wedi'i ychwanegu.",
             "keyslotsRotated": "Slot wedi'i gylchdroi.",
-            "keyslotsRemoved": "Slot wedi'i dynnu (epoc wedi'i gynyddu)."
+            "keyslotsRemoved": "Slot wedi'i dynnu (epoc wedi'i gynyddu).",
+            "keyslotsRecoveryHint": "Cynhyrchir cod adfer a'i ddangos unwaith. Argraffwch ef neu storir ef all-lein; gall agor y storfa hon heb eich cyfrinair na keyfile.",
+            "keyslotsRecoveryAdded": "Ychwanegwyd slot adfer. Cadwch y cod adfer isod; ni chaiff ei ddangos eto.",
+            "keyslotsRecoveryAutoOffered": "Ychwanegwyd slot adfer yn awtomatig oherwydd byddai'r storfa hon wedi bod yn keyfile yn unig. Cadwch y cod adfer isod.",
+            "keyslotsRecoverySaveOnce": "Cadwch y cod adfer hwn nawr (dangosir unwaith):",
+            "keyslotsRecoveryCopy": "Copïo'r cod",
+            "keyslotsUnlockWithRecovery": "Gallwch hefyd ddatgloi â chod adfer (gludwch ef fel y cyfrinair)."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Amgryptio)",

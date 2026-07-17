@@ -5192,7 +5192,13 @@
             "keyslotsRotateUnsupported": "Šio tipo angos dar negalima rotuoti iš GUI.",
             "keyslotsAdded": "Anga pridėta.",
             "keyslotsRotated": "Anga rotuota.",
-            "keyslotsRemoved": "Anga pašalinta (epocha padidinta)."
+            "keyslotsRemoved": "Anga pašalinta (epocha padidinta).",
+            "keyslotsRecoveryHint": "Bus sugeneruotas atkūrimo kodas ir parodytas vieną kartą. Atspausdinkite jį arba saugokite neprisijungę; juo galima atidaryti šį seifą be slaptažodžio ar keyfile.",
+            "keyslotsRecoveryAdded": "Atkūrimo lizdas pridėtas. Išsaugokite atkūrimo kodą žemiau; jis nebebus rodomas.",
+            "keyslotsRecoveryAutoOffered": "Atkūrimo lizdas pridėtas automatiškai, nes šis seifas būtų buvęs tik su keyfile. Išsaugokite atkūrimo kodą žemiau.",
+            "keyslotsRecoverySaveOnce": "Išsaugokite šį atkūrimo kodą dabar (rodomas vieną kartą):",
+            "keyslotsRecoveryCopy": "Kopijuoti kodą",
+            "keyslotsUnlockWithRecovery": "Taip pat galite atrakinti atkūrimo kodu (įklijuokite jį kaip slaptažodį)."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Šifravimas)",

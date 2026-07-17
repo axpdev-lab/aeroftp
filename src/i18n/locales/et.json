@@ -5192,7 +5192,13 @@
             "keyslotsRotateUnsupported": "Seda pesatüüpi ei saa veel GUI-st rotatsioonida.",
             "keyslotsAdded": "Pesa lisatud.",
             "keyslotsRotated": "Pesa rotatsioonitud.",
-            "keyslotsRemoved": "Pesa eemaldatud (epohh suurendatud)."
+            "keyslotsRemoved": "Pesa eemaldatud (epohh suurendatud).",
+            "keyslotsRecoveryHint": "Taastekood genereeritakse ja kuvatakse üks kord. Printige see või salvestage võrguühenduseta; sellega saab avada seda võlvi ilma parooli või keyfile'ita.",
+            "keyslotsRecoveryAdded": "Taastamispilu lisatud. Salvestage allolev taastekood; seda enam ei kuvata.",
+            "keyslotsRecoveryAutoOffered": "Taastamispilu lisati automaatselt, sest see võlv oleks olnud ainult keyfile'iga. Salvestage allolev taastekood.",
+            "keyslotsRecoverySaveOnce": "Salvestage see taastekood kohe (kuvatakse üks kord):",
+            "keyslotsRecoveryCopy": "Kopeeri kood",
+            "keyslotsUnlockWithRecovery": "Saate avada ka taastekoodiga (kleepige see paroolina)."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Krüptimine)",

@@ -40,9 +40,13 @@ use super::keyslots::{
     MAX_ARGON2_MEM_KIB, MAX_ARGON2_TIME, MAX_SLOTS, MIN_ARGON2_LANES, MIN_ARGON2_MEM_KIB,
     MIN_ARGON2_TIME, VERSION_V4,
 };
+use super::recovery::{
+    generate_recovery_code, looks_like_recovery_code, parse_recovery_code, vault_prefix_from_id,
+    RecoveryCode,
+};
 use super::{
     decrypt_with_aad, derive_base_kek, encrypt_with_aad, hkdf_expand, random_array, unwrap_key,
-    wrap_key, KEY_SIZE, NONCE_SIZE, SALT_SIZE, WRAPPED_KEY_SIZE,
+    wrap_key, AEROCRYPT_DEFAULT_SALT_V1, KEY_SIZE, NONCE_SIZE, SALT_SIZE, WRAPPED_KEY_SIZE,
 };
 
 /// Magic bytes for an AeroCrypt-encrypted file.
@@ -1173,16 +1177,26 @@ pub fn unlock_v4_for_management(
 
     let has_keyfile = slots.iter().any(|s| s.kind == SlotType::Keyfile);
     let has_passphrase = slots.iter().any(|s| s.kind == SlotType::Passphrase);
+    let has_recovery = slots.iter().any(|s| s.kind == SlotType::Recovery);
+    let recovery_shaped = looks_like_recovery_code(password);
 
     match keyfile_digest {
-        Some(_) if !has_keyfile => {
+        Some(_) if !has_keyfile && !recovery_shaped => {
             // Password-only (or recovery-only) vault: spurious keyfile fails closed.
+            // Exception: a recovery-code unlock may carry a leftover keyfile path.
             return Err(
                 "this AeroCrypt overlay was not created with a keyfile (remove the keyfile to unlock)"
                     .to_string(),
             );
         }
-        None if has_keyfile && !has_passphrase => {
+        None if has_keyfile && !has_passphrase && !has_recovery => {
+            return Err(
+                "this AeroCrypt overlay requires a keyfile (none was provided)".to_string(),
+            );
+        }
+        None if has_keyfile && !has_passphrase && has_recovery && !recovery_shaped => {
+            // Keyfile+recovery vault: password alone is not a recovery code, so
+            // a keyfile is still required for the keyfile factor.
             return Err(
                 "this AeroCrypt overlay requires a keyfile (none was provided)".to_string(),
             );
@@ -1194,12 +1208,31 @@ pub fn unlock_v4_for_management(
         return Err("v4 vault has no known slots to unlock".into());
     }
 
+    // Normalize a recovery-code attempt once (owned) so SlotFactor can borrow it.
+    // Prefer vault_id-checked parse; fall back to shape-only when no vault_id.
+    let vault_id_for_recovery = match &config {
+        OverlayConfig::V4 { vault_id, .. } => Some(*vault_id),
+        _ => None,
+    };
+    let recovery_attempt: Option<RecoveryCode> = if looks_like_recovery_code(password) {
+        match vault_id_for_recovery {
+            Some(vid) => parse_recovery_code(password, Some(&vid)).ok(),
+            None => parse_recovery_code(password, None).ok(),
+        }
+    } else {
+        None
+    };
+
     let mut last_err = "wrong credential or no matching keyslot".to_string();
     for slot in &slots {
         let factor = match slot.kind {
             SlotType::Passphrase => {
                 // Always try passphrase slots with the password (mixed vaults may
-                // also carry a keyfile digest for other slots).
+                // also carry a keyfile digest for other slots). Skip when the
+                // input is clearly a recovery code (avoid useless Argon2).
+                if recovery_attempt.is_some() && looks_like_recovery_code(password) {
+                    continue;
+                }
                 SlotFactor::Passphrase(password)
             }
             SlotType::Keyfile => {
@@ -1209,12 +1242,20 @@ pub fn unlock_v4_for_management(
                 SlotFactor::KeyfileDigest { password, digest }
             }
             SlotType::Recovery => {
-                // T7 will own recovery-code normalization; until then try the
-                // supplied password as the recovery factor when no keyfile is set.
-                if keyfile_digest.is_some() {
+                // Recovery slots require a parsed recovery code (checksum +
+                // vault_prefix). Spurious keyfile does not block recovery unlock:
+                // the user may have a leftover keyfile path while recovering.
+                let Some(ref code) = recovery_attempt else {
                     continue;
+                };
+                if let SlotBinding::Recovery { vault_prefix } = &slot.binding {
+                    if vault_prefix != &code.vault_prefix {
+                        last_err =
+                            format!("recovery code vault_prefix does not match slot {}", slot.id);
+                        continue;
+                    }
                 }
-                SlotFactor::Recovery(password)
+                SlotFactor::Recovery(code.normalized.as_str())
             }
             SlotType::Fido2Hmac | SlotType::And | SlotType::Threshold => {
                 // Not built (T8 / F8); skip rather than hard-error so other slots
@@ -1559,6 +1600,11 @@ pub fn rotate_slot(
 /// Revert a v4 vault to v3 when lossless: exactly one slot (id 0), passphrase or
 /// keyfile, and OMK still equals the v3 master key (single-schedule, no native
 /// divergence). Emits a headed v3 TSV marker from slot 0 salt + OMK.
+///
+/// Salt mode: v4 headers do not carry `salt_mode`. If slot 0 salt equals the
+/// public default salt constant, restore `DefaultV1`; otherwise `PerVault`.
+/// (Closes the LOW open note: a migrated default-salt vault no longer comes
+/// back mis-labelled as PerVault.)
 pub fn revert_v4_to_v3(cfg: &OverlayConfig, omk: &[u8; KEY_SIZE]) -> Result<String, String> {
     let OverlayConfig::V4 {
         vault_id,
@@ -1600,12 +1646,99 @@ pub fn revert_v4_to_v3(cfg: &OverlayConfig, omk: &[u8; KEY_SIZE]) -> Result<Stri
     let mut salt = [0u8; SALT_V3_SIZE];
     salt.copy_from_slice(&slot0.salt);
 
+    // Recover salt_mode by salt identity (v4 does not store the mode).
+    let salt_mode = if salt == AEROCRYPT_DEFAULT_SALT_V1 {
+        SaltMode::DefaultV1
+    } else {
+        SaltMode::PerVault
+    };
+
     let requires_keyfile = matches!(slot0.kind, SlotType::Keyfile);
     if requires_keyfile {
-        init_config_v3_with_keyfile(&salt, omk, vault_id, None, SaltMode::PerVault)
+        init_config_v3_with_keyfile(&salt, omk, vault_id, None, salt_mode)
     } else {
-        init_config_v3_with_vault_id(&salt, omk, vault_id, SaltMode::PerVault)
+        init_config_v3_with_vault_id(&salt, omk, vault_id, salt_mode)
     }
+}
+
+/// Build recovery-slot material (fresh code unless `code` is provided).
+/// Returns material for [`add_slot`] / [`rotate_slot`] and the human-facing
+/// recovery code that MUST be shown once (Emergency Kit).
+pub fn build_recovery_slot_material(
+    vault_id: &[u8; VAULT_ID_SIZE],
+    slot_id: u32,
+    code: Option<&RecoveryCode>,
+) -> Result<(SlotKeyMaterial, RecoveryCode), String> {
+    let code = match code {
+        Some(c) => parse_recovery_code(&c.formatted, Some(vault_id))?,
+        None => generate_recovery_code(vault_id),
+    };
+    let salt = random_salt_v3();
+    let kdf = Argon2Params::v3_profile();
+    let slot_key = derive_slot_key(
+        SlotType::Recovery,
+        &SlotFactor::Recovery(&code.normalized),
+        &salt,
+        Some(&kdf),
+    )?;
+    let material = SlotKeyMaterial {
+        id: slot_id,
+        kind: SlotType::Recovery,
+        salt: salt.to_vec(),
+        kdf: Some(kdf),
+        binding: SlotBinding::Recovery {
+            vault_prefix: code.vault_prefix.clone(),
+        },
+        slot_key,
+    };
+    Ok((material, code))
+}
+
+/// True when every present slot is hardware/keyfile-only (no passphrase and no
+/// recovery). Spec 08 §4: auto-offer a recovery slot in that case.
+pub fn vault_is_keyfile_or_hardware_only(slots: &[Slot]) -> bool {
+    if slots.is_empty() {
+        return false;
+    }
+    let has_soft = slots
+        .iter()
+        .any(|s| matches!(s.kind, SlotType::Passphrase | SlotType::Recovery));
+    if has_soft {
+        return false;
+    }
+    slots
+        .iter()
+        .any(|s| matches!(s.kind, SlotType::Keyfile | SlotType::Fido2Hmac))
+}
+
+/// If `cfg` is a keyfile/hardware-only v4 vault with no recovery slot, add one.
+/// Returns the new marker JSON and the recovery code to show the user once.
+pub fn ensure_recovery_slot_if_needed(
+    cfg: &OverlayConfig,
+    vk: &[u8; KEY_SIZE],
+    epoch_key: &[u8; KEY_SIZE],
+) -> Result<Option<(String, RecoveryCode)>, String> {
+    let OverlayConfig::V4 {
+        vault_id, slots, ..
+    } = cfg
+    else {
+        return Ok(None);
+    };
+    if !vault_is_keyfile_or_hardware_only(slots) {
+        return Ok(None);
+    }
+    if slots.iter().any(|s| s.kind == SlotType::Recovery) {
+        return Ok(None);
+    }
+    let new_id = slots.iter().map(|s| s.id).max().map(|m| m + 1).unwrap_or(0);
+    let (material, code) = build_recovery_slot_material(vault_id, new_id, None)?;
+    let marker = add_slot(cfg, vk, epoch_key, material)?;
+    Ok(Some((marker, code)))
+}
+
+/// Public vault_prefix helper re-exported for CLI/GUI binding display.
+pub fn recovery_vault_prefix(vault_id: &[u8; VAULT_ID_SIZE]) -> String {
+    vault_prefix_from_id(vault_id)
 }
 
 #[allow(dead_code)]
@@ -3350,6 +3483,72 @@ mod tests {
         // Content round-trip under recovered OMK.
         let ct = encrypt_data(&cfg, &omk, b"t4-round-trip").unwrap();
         assert_eq!(decrypt_data(&omk, &ct).unwrap(), b"t4-round-trip");
+    }
+
+    /// T7: recovery slot recovers the same OMK; corrupted checksum fails closed.
+    #[test]
+    fn unlock_v4_recovery_slot_same_omk_and_fail_closed() {
+        let salt = [0xB7u8; SALT_V3_SIZE];
+        let password = "t7-rec-pass";
+        let master = derive_master_key(&OverlayConfig::v3_bootstrap(salt), password).unwrap();
+        let vault_id = random_vault_id();
+        let v3 =
+            init_config_v3_with_vault_id(&salt, &master, &vault_id, SaltMode::PerVault).unwrap();
+        let v4_json = migrate_v3_to_v4(&parse_config(&v3).unwrap(), &master).unwrap();
+        let mat = unlock_v4_for_management(&v4_json, password, None).unwrap();
+        let (rec_mat, code) =
+            build_recovery_slot_material(&vault_id, 1, None).expect("build recovery");
+        let with_rec =
+            add_slot(&mat.config, &mat.vk, &mat.epoch_key, rec_mat).expect("add recovery");
+
+        let (cfg, omk) =
+            unlock_overlay_from_config(&with_rec, &code.formatted, None).expect("recovery unlock");
+        assert_eq!(cfg.version(), VERSION_V4);
+        assert_eq!(
+            omk, master,
+            "recovery must recover the same OMK (decision B)"
+        );
+
+        // Kit with recovery code round-trips public + secret fields.
+        let kit = super::super::emergency_kit::build_v4_with_recovery(
+            &parse_config(&with_rec).unwrap(),
+            &code.formatted,
+        )
+        .unwrap();
+        assert_eq!(kit.version, 4);
+        assert_eq!(kit.recovery_code.as_deref(), Some(code.formatted.as_str()));
+        assert!(kit.slots.as_ref().map(|s| s.len()).unwrap_or(0) >= 2);
+        assert!(kit.text.contains("Recovery code"));
+
+        // Corrupted checksum fails closed.
+        let mut chars: Vec<char> = code.formatted.chars().collect();
+        let last = chars.len() - 1;
+        chars[last] = if chars[last] == '0' { '1' } else { '0' };
+        let bad: String = chars.into_iter().collect();
+        assert!(
+            unlock_overlay_from_config(&with_rec, &bad, None).is_err(),
+            "corrupted recovery code must fail closed"
+        );
+    }
+
+    /// T7: revert restores DefaultV1 when slot salt is the public constant.
+    #[test]
+    fn v4_revert_restores_default_salt_mode() {
+        let salt = crate::aerocrypt::AEROCRYPT_DEFAULT_SALT_V1;
+        let master = derive_master_key(&OverlayConfig::v3_bootstrap(salt), "def-salt-pw").unwrap();
+        let vault_id = random_vault_id();
+        let v3 =
+            init_config_v3_with_vault_id(&salt, &master, &vault_id, SaltMode::DefaultV1).unwrap();
+        let v4_json = migrate_v3_to_v4(&parse_config(&v3).unwrap(), &master).unwrap();
+        let v4_cfg = parse_config(&v4_json).unwrap();
+        let (_ek, _vk, omk) = v4_recover_from_slot0(&v4_cfg, &master);
+        let v3_again = revert_v4_to_v3(&v4_cfg, &omk).expect("revert");
+        let cfg3 = parse_config(&v3_again).unwrap();
+        if let OverlayConfig::V3 { salt_mode, .. } = cfg3 {
+            assert_eq!(salt_mode, SaltMode::DefaultV1);
+        } else {
+            panic!("expected V3");
+        }
     }
 
     #[test]

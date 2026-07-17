@@ -5192,7 +5192,13 @@
             "keyslotsRotateUnsupported": "Este tipo de ranura aún no se puede rotar desde la GUI.",
             "keyslotsAdded": "Ranura añadida.",
             "keyslotsRotated": "Ranura rotada.",
-            "keyslotsRemoved": "Ranura eliminada (época incrementada)."
+            "keyslotsRemoved": "Ranura eliminada (época incrementada).",
+            "keyslotsRecoveryHint": "Se generará un código de recuperación y se mostrará una sola vez. Imprímalo o guárdelo sin conexión; puede abrir esta bóveda sin su contraseña ni keyfile.",
+            "keyslotsRecoveryAdded": "Ranura de recuperación añadida. Guarde el código de recuperación de abajo; no se volverá a mostrar.",
+            "keyslotsRecoveryAutoOffered": "Se añadió automáticamente una ranura de recuperación porque esta bóveda habría sido solo con keyfile. Guarde el código de recuperación de abajo.",
+            "keyslotsRecoverySaveOnce": "Guarde este código de recuperación ahora (se muestra una sola vez):",
+            "keyslotsRecoveryCopy": "Copiar código",
+            "keyslotsUnlockWithRecovery": "También puede desbloquear con un código de recuperación (péguelo como contraseña)."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Cifrado)",

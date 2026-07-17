@@ -5192,7 +5192,13 @@
             "keyslotsRotateUnsupported": "Loại khe này chưa thể xoay từ GUI.",
             "keyslotsAdded": "Đã thêm khe.",
             "keyslotsRotated": "Đã xoay khe.",
-            "keyslotsRemoved": "Đã gỡ khe (đã tăng epoch)."
+            "keyslotsRemoved": "Đã gỡ khe (đã tăng epoch).",
+            "keyslotsRecoveryHint": "Một mã khôi phục sẽ được tạo và hiển thị một lần. In hoặc lưu ngoại tuyến; mã có thể mở kho này mà không cần mật khẩu hay keyfile.",
+            "keyslotsRecoveryAdded": "Đã thêm khe khôi phục. Lưu mã khôi phục bên dưới; mã sẽ không được hiển thị lại.",
+            "keyslotsRecoveryAutoOffered": "Đã tự động thêm khe khôi phục vì kho này sẽ chỉ dùng keyfile. Lưu mã khôi phục bên dưới.",
+            "keyslotsRecoverySaveOnce": "Lưu mã khôi phục này ngay (hiển thị một lần):",
+            "keyslotsRecoveryCopy": "Sao chép mã",
+            "keyslotsUnlockWithRecovery": "Bạn cũng có thể mở khóa bằng mã khôi phục (dán làm mật khẩu)."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Mã hóa)",

@@ -5192,7 +5192,13 @@
             "keyslotsRotateUnsupported": "Šo slota veidu vēl nevar rotēt no GUI.",
             "keyslotsAdded": "Slots pievienots.",
             "keyslotsRotated": "Slots rotēts.",
-            "keyslotsRemoved": "Slots noņemts (epoha palielināta)."
+            "keyslotsRemoved": "Slots noņemts (epoha palielināta).",
+            "keyslotsRecoveryHint": "Tiks ģenerēts atkopšanas kods un parādīts vienreiz. Izdrukājiet to vai glabājiet bezsaistē; ar to var atvērt šo seifu bez paroles vai keyfile.",
+            "keyslotsRecoveryAdded": "Atkopšanas slots pievienots. Saglabājiet tālāk norādīto atkopšanas kodu; tas vairs netiks rādīts.",
+            "keyslotsRecoveryAutoOffered": "Atkopšanas slots tika pievienots automātiski, jo šis seifs būtu bijis tikai ar keyfile. Saglabājiet tālāk norādīto atkopšanas kodu.",
+            "keyslotsRecoverySaveOnce": "Saglabājiet šo atkopšanas kodu tūlīt (rādīts vienreiz):",
+            "keyslotsRecoveryCopy": "Kopēt kodu",
+            "keyslotsUnlockWithRecovery": "Varat arī atbloķēt ar atkopšanas kodu (ielīmējiet to kā paroli)."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Šifrēšana)",

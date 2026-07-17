@@ -5192,7 +5192,13 @@
             "keyslotsRotateUnsupported": "이 슬롯 유형은 아직 GUI에서 교체할 수 없습니다.",
             "keyslotsAdded": "슬롯이 추가되었습니다.",
             "keyslotsRotated": "슬롯이 교체되었습니다.",
-            "keyslotsRemoved": "슬롯이 제거되었습니다(에포크 증가)."
+            "keyslotsRemoved": "슬롯이 제거되었습니다(에포크 증가).",
+            "keyslotsRecoveryHint": "복구 코드가 생성되어 한 번만 표시됩니다. 인쇄하거나 오프라인으로 보관하세요. 비밀번호나 keyfile 없이 이 볼트를 열 수 있습니다.",
+            "keyslotsRecoveryAdded": "복구 슬롯이 추가되었습니다. 아래 복구 코드를 저장하세요. 다시 표시되지 않습니다.",
+            "keyslotsRecoveryAutoOffered": "이 볼트가 keyfile 전용이 될 수 있어 복구 슬롯이 자동으로 추가되었습니다. 아래 복구 코드를 저장하세요.",
+            "keyslotsRecoverySaveOnce": "이 복구 코드를 지금 저장하세요(한 번만 표시):",
+            "keyslotsRecoveryCopy": "코드 복사",
+            "keyslotsUnlockWithRecovery": "복구 코드로도 잠금을 해제할 수 있습니다(비밀번호로 붙여넣기)."
         },
         "aerocryptProfile": {
             "enable": "Crypt (암호화)",

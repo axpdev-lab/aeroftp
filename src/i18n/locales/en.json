@@ -1707,7 +1707,13 @@
       "keyslotsRotateUnsupported": "This slot type cannot be rotated from the GUI yet.",
       "keyslotsAdded": "Slot added.",
       "keyslotsRotated": "Slot rotated.",
-      "keyslotsRemoved": "Slot removed (epoch bumped)."
+      "keyslotsRemoved": "Slot removed (epoch bumped).",
+      "keyslotsRecoveryHint": "A recovery code will be generated and shown once. Print or store it offline; it can open this vault without your password or keyfile.",
+      "keyslotsRecoveryAdded": "Recovery slot added. Save the recovery code below; it will not be shown again.",
+      "keyslotsRecoveryAutoOffered": "A recovery slot was auto-added because this vault would have been keyfile-only. Save the recovery code below.",
+      "keyslotsRecoverySaveOnce": "Save this recovery code now (shown once):",
+      "keyslotsRecoveryCopy": "Copy code",
+      "keyslotsUnlockWithRecovery": "You can also unlock with a recovery code (paste it as the password)."
     },
     "cryptomator": {
       "confirmPassword": "Confirm Password",

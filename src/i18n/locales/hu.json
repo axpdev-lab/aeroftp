@@ -5192,7 +5192,13 @@
             "keyslotsRotateUnsupported": "Ez a nyílástípus még nem forgatható a grafikus felületről.",
             "keyslotsAdded": "Nyílás hozzáadva.",
             "keyslotsRotated": "Nyílás forgatva.",
-            "keyslotsRemoved": "Nyílás eltávolítva (korszak növelve)."
+            "keyslotsRemoved": "Nyílás eltávolítva (korszak növelve).",
+            "keyslotsRecoveryHint": "Egy helyreállító kód generálódik, és egyszer jelenik meg. Nyomtassa ki vagy tárolja offline; a jelszó vagy keyfile nélkül is megnyithatja ezt a trezort.",
+            "keyslotsRecoveryAdded": "Helyreállító hely hozzáadva. Mentse el az alábbi helyreállító kódot; nem jelenik meg újra.",
+            "keyslotsRecoveryAutoOffered": "Helyreállító hely automatikusan hozzáadva, mert ez a trezor csak keyfile-os lett volna. Mentse el az alábbi helyreállító kódot.",
+            "keyslotsRecoverySaveOnce": "Mentse el most ezt a helyreállító kódot (egyszer jelenik meg):",
+            "keyslotsRecoveryCopy": "Kód másolása",
+            "keyslotsUnlockWithRecovery": "Helyreállító kóddal is feloldhat (illesztse be jelszóként)."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Titkosítás)",

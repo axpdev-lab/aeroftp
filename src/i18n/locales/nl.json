@@ -5192,7 +5192,13 @@
             "keyslotsRotateUnsupported": "Dit slottype kan nog niet vanuit de GUI worden geroteerd.",
             "keyslotsAdded": "Slot toegevoegd.",
             "keyslotsRotated": "Slot geroteerd.",
-            "keyslotsRemoved": "Slot verwijderd (epoch verhoogd)."
+            "keyslotsRemoved": "Slot verwijderd (epoch verhoogd).",
+            "keyslotsRecoveryHint": "Er wordt een herstelcode gegenereerd en één keer getoond. Print of bewaar deze offline; hiermee opent u deze kluis zonder wachtwoord of keyfile.",
+            "keyslotsRecoveryAdded": "Herstel-slot toegevoegd. Sla de herstelcode hieronder op; deze wordt niet opnieuw getoond.",
+            "keyslotsRecoveryAutoOffered": "Er is automatisch een herstel-slot toegevoegd omdat deze kluis anders alleen met keyfile toegankelijk was. Sla de herstelcode hieronder op.",
+            "keyslotsRecoverySaveOnce": "Sla deze herstelcode nu op (één keer getoond):",
+            "keyslotsRecoveryCopy": "Code kopiëren",
+            "keyslotsUnlockWithRecovery": "U kunt ook ontgrendelen met een herstelcode (plak als wachtwoord)."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Versleuteling)",

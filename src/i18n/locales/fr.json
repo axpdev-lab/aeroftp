@@ -5192,7 +5192,13 @@
             "keyslotsRotateUnsupported": "Ce type d'emplacement ne peut pas encore être basculé depuis l'interface graphique.",
             "keyslotsAdded": "Emplacement ajouté.",
             "keyslotsRotated": "Emplacement basculé.",
-            "keyslotsRemoved": "Emplacement supprimé (époque incrémentée)."
+            "keyslotsRemoved": "Emplacement supprimé (époque incrémentée).",
+            "keyslotsRecoveryHint": "Un code de récupération sera généré et affiché une seule fois. Imprimez-le ou conservez-le hors ligne ; il peut ouvrir ce coffre sans votre mot de passe ni keyfile.",
+            "keyslotsRecoveryAdded": "Emplacement de récupération ajouté. Enregistrez le code de récupération ci-dessous ; il ne sera plus affiché.",
+            "keyslotsRecoveryAutoOffered": "Un emplacement de récupération a été ajouté automatiquement car ce coffre n'aurait eu qu'un keyfile. Enregistrez le code de récupération ci-dessous.",
+            "keyslotsRecoverySaveOnce": "Enregistrez ce code de récupération maintenant (affiché une seule fois) :",
+            "keyslotsRecoveryCopy": "Copier le code",
+            "keyslotsUnlockWithRecovery": "Vous pouvez aussi déverrouiller avec un code de récupération (collez-le comme mot de passe)."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Chiffrement)",

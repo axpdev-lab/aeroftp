@@ -5192,7 +5192,13 @@
             "keyslotsRotateUnsupported": "このスロット種別はまだ GUI からローテーションできません。",
             "keyslotsAdded": "スロットを追加しました。",
             "keyslotsRotated": "スロットをローテーションしました。",
-            "keyslotsRemoved": "スロットを削除しました（エポックを更新）。"
+            "keyslotsRemoved": "スロットを削除しました（エポックを更新）。",
+            "keyslotsRecoveryHint": "リカバリーコードが生成され、一度だけ表示されます。印刷するかオフラインで保管してください。パスワードや keyfile なしでこの保管庫を開けます。",
+            "keyslotsRecoveryAdded": "リカバリースロットを追加しました。下のリカバリーコードを保存してください。再表示されません。",
+            "keyslotsRecoveryAutoOffered": "この保管庫が keyfile のみになるため、リカバリースロットを自動追加しました。下のリカバリーコードを保存してください。",
+            "keyslotsRecoverySaveOnce": "このリカバリーコードを今すぐ保存してください（一度だけ表示）:",
+            "keyslotsRecoveryCopy": "コードをコピー",
+            "keyslotsUnlockWithRecovery": "リカバリーコードでもロック解除できます（パスワードとして貼り付け）。"
         },
         "aerocryptProfile": {
             "enable": "Crypt (暗号化)",

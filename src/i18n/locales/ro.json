@@ -5192,7 +5192,13 @@
             "keyslotsRotateUnsupported": "Acest tip de slot nu poate fi rotit încă din GUI.",
             "keyslotsAdded": "Slot adăugat.",
             "keyslotsRotated": "Slot rotit.",
-            "keyslotsRemoved": "Slot eliminat (epoca majorată)."
+            "keyslotsRemoved": "Slot eliminat (epoca majorată).",
+            "keyslotsRecoveryHint": "Un cod de recuperare va fi generat și afișat o singură dată. Tipăriți-l sau stocați-l offline; poate deschide acest seif fără parola sau keyfile-ul dvs.",
+            "keyslotsRecoveryAdded": "Slot de recuperare adăugat. Salvați codul de recuperare de mai jos; nu va mai fi afișat.",
+            "keyslotsRecoveryAutoOffered": "Un slot de recuperare a fost adăugat automat deoarece acest seif ar fi fost doar cu keyfile. Salvați codul de recuperare de mai jos.",
+            "keyslotsRecoverySaveOnce": "Salvați acum acest cod de recuperare (afișat o singură dată):",
+            "keyslotsRecoveryCopy": "Copiați codul",
+            "keyslotsUnlockWithRecovery": "Puteți debloca și cu un cod de recuperare (lipiți-l ca parolă)."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Criptare)",

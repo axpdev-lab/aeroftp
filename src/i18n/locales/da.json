@@ -5192,7 +5192,13 @@
             "keyslotsRotateUnsupported": "Denne pladstype kan endnu ikke roteres fra GUI.",
             "keyslotsAdded": "Plads tilføjet.",
             "keyslotsRotated": "Plads roteret.",
-            "keyslotsRemoved": "Plads fjernet (epoke forøget)."
+            "keyslotsRemoved": "Plads fjernet (epoke forøget).",
+            "keyslotsRecoveryHint": "En gendannelseskode genereres og vises én gang. Udskriv eller gem den offline; den kan åbne denne boks uden din adgangskode eller keyfile.",
+            "keyslotsRecoveryAdded": "Gendannelsesslot tilføjet. Gem gendannelseskoden nedenfor; den vises ikke igen.",
+            "keyslotsRecoveryAutoOffered": "Et gendannelsesslot blev automatisk tilføjet, fordi denne boks ellers kun havde keyfile. Gem gendannelseskoden nedenfor.",
+            "keyslotsRecoverySaveOnce": "Gem denne gendannelseskode nu (vises én gang):",
+            "keyslotsRecoveryCopy": "Kopiér kode",
+            "keyslotsUnlockWithRecovery": "Du kan også låse op med en gendannelseskode (indsæt den som adgangskode)."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Kryptering)",

@@ -5192,7 +5192,13 @@
             "keyslotsRotateUnsupported": "Tento typ slotu zatiaľ nie je možné rotovať z GUI.",
             "keyslotsAdded": "Slot pridaný.",
             "keyslotsRotated": "Slot rotovaný.",
-            "keyslotsRemoved": "Slot odstránený (epocha zvýšená)."
+            "keyslotsRemoved": "Slot odstránený (epocha zvýšená).",
+            "keyslotsRecoveryHint": "Bude vygenerovaný obnovovací kód a zobrazený raz. Vytlačte ho alebo uložte offline; môže otvoriť tento trezor bez hesla alebo keyfile.",
+            "keyslotsRecoveryAdded": "Obnovovací slot bol pridaný. Uložte obnovovací kód nižšie; už sa nezobrazí.",
+            "keyslotsRecoveryAutoOffered": "Obnovovací slot bol automaticky pridaný, pretože tento trezor by bol len s keyfile. Uložte obnovovací kód nižšie.",
+            "keyslotsRecoverySaveOnce": "Uložte tento obnovovací kód teraz (zobrazený raz):",
+            "keyslotsRecoveryCopy": "Kopírovať kód",
+            "keyslotsUnlockWithRecovery": "Môžete odomknúť aj obnovovacím kódom (vložte ho ako heslo)."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Šifrovanie)",

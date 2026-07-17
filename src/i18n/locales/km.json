@@ -5211,7 +5211,13 @@
             "keyslotsRotateUnsupported": "ប្រភេទស្លត់នេះមិនអាចបង្វិលពី GUI នៅឡើយទេ។",
             "keyslotsAdded": "បានបន្ថែមស្លត់។",
             "keyslotsRotated": "បានបង្វិលស្លត់។",
-            "keyslotsRemoved": "បានដកស្លត់ (បានបង្កើនយុគ)។"
+            "keyslotsRemoved": "បានដកស្លត់ (បានបង្កើនយុគ)។",
+            "keyslotsRecoveryHint": "លេខកូដស្តារនឹងត្រូវបានបង្កើត និងបង្ហាញម្តង។ បោះពុម្ព ឬរក្សាទុកក្រៅបណ្តាញ។ វាអាចបើក vault នេះដោយគ្មានពាក្យសម្ងាត់ ឬ keyfile របស់អ្នក។",
+            "keyslotsRecoveryAdded": "បានបន្ថែមរន្ធស្តារ។ រក្សាទុកលេខកូដស្តារខាងក្រោម។ វានឹងមិនត្រូវបានបង្ហាញម្តងទៀតទេ។",
+            "keyslotsRecoveryAutoOffered": "បានបន្ថែមរន្ធស្តារដោយស្វ័យប្រវត្តិ ពីព្រោះ vault នេះនឹងមានតែ keyfile។ រក្សាទុកលេខកូដស្តារខាងក្រោម។",
+            "keyslotsRecoverySaveOnce": "រក្សាទុកលេខកូដស្តារនេះឥឡូវ (បង្ហាញម្តង):",
+            "keyslotsRecoveryCopy": "ចម្លងលេខកូដ",
+            "keyslotsUnlockWithRecovery": "អ្នកក៏អាចដោះសោដោយលេខកូដស្តារ (បិទភ្ជាប់ជាពាក្យសម្ងាត់)។"
         },
         "aerocryptProfile": {
             "enable": "Crypt (ការអ៊ីនគ្រីប)",

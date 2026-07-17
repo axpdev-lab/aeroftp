@@ -5211,7 +5211,13 @@
             "keyslotsRotateUnsupported": "Este tipo de ranura aínda non se pode rotar desde a GUI.",
             "keyslotsAdded": "Ranura engadida.",
             "keyslotsRotated": "Ranura rotada.",
-            "keyslotsRemoved": "Ranura eliminada (época incrementada)."
+            "keyslotsRemoved": "Ranura eliminada (época incrementada).",
+            "keyslotsRecoveryHint": "Xerarase un código de recuperación e mostrarase unha soa vez. Imprímao ou gárdeo sen conexión; pode abrir este vault sen o seu contrasinal nin keyfile.",
+            "keyslotsRecoveryAdded": "Engadiuse a rañura de recuperación. Garde o código de recuperación de abaixo; non se volverá mostrar.",
+            "keyslotsRecoveryAutoOffered": "Engadiuse automaticamente unha rañura de recuperación porque este vault sería só con keyfile. Garde o código de recuperación de abaixo.",
+            "keyslotsRecoverySaveOnce": "Garde este código de recuperación agora (móstrase unha soa vez):",
+            "keyslotsRecoveryCopy": "Copiar código",
+            "keyslotsUnlockWithRecovery": "Tamén pode desbloquear cun código de recuperación (péguelo como contrasinal)."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Cifrado)",

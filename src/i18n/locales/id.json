@@ -5192,7 +5192,13 @@
             "keyslotsRotateUnsupported": "Jenis slot ini belum dapat diputar dari GUI.",
             "keyslotsAdded": "Slot ditambahkan.",
             "keyslotsRotated": "Slot diputar.",
-            "keyslotsRemoved": "Slot dihapus (epoch dinaikkan)."
+            "keyslotsRemoved": "Slot dihapus (epoch dinaikkan).",
+            "keyslotsRecoveryHint": "Kode pemulihan akan dibuat dan ditampilkan sekali. Cetak atau simpan secara offline; kode ini dapat membuka vault ini tanpa kata sandi atau keyfile Anda.",
+            "keyslotsRecoveryAdded": "Slot pemulihan ditambahkan. Simpan kode pemulihan di bawah; tidak akan ditampilkan lagi.",
+            "keyslotsRecoveryAutoOffered": "Slot pemulihan ditambahkan otomatis karena vault ini hanya akan memakai keyfile. Simpan kode pemulihan di bawah.",
+            "keyslotsRecoverySaveOnce": "Simpan kode pemulihan ini sekarang (ditampilkan sekali):",
+            "keyslotsRecoveryCopy": "Salin kode",
+            "keyslotsUnlockWithRecovery": "Anda juga dapat membuka kunci dengan kode pemulihan (tempel sebagai kata sandi)."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Enkripsi)",

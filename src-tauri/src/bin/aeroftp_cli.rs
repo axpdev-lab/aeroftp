@@ -4810,7 +4810,7 @@ enum CryptCommands {
         #[arg(default_value = "/")]
         path: String,
         /// Slot type to add
-        #[arg(long = "type", value_parser = ["passphrase", "keyfile"])]
+        #[arg(long = "type", value_parser = ["passphrase", "keyfile", "recovery"])]
         slot_type: String,
         /// Encryption password for the authenticating factor
         #[arg(long, env = "AEROFTP_CRYPT_PASSWORD", hide_env_values = true)]
@@ -4818,7 +4818,8 @@ enum CryptCommands {
         /// Keyfile for the authenticating factor (if required)
         #[arg(long)]
         keyfile: Option<String>,
-        /// New passphrase for a passphrase slot (or set AEROFTP_CRYPT_NEW_PASSWORD)
+        /// New passphrase for a passphrase slot (or set AEROFTP_CRYPT_NEW_PASSWORD).
+        /// For --type recovery, omit to generate a fresh code (printed once).
         #[arg(long, env = "AEROFTP_CRYPT_NEW_PASSWORD", hide_env_values = true)]
         new_password: Option<String>,
         /// New keyfile path for a keyfile slot
@@ -48388,11 +48389,17 @@ fn unlock_standalone_crypt_config(
 }
 
 /// Pure migrate-v4: unlock v3 header, emit v4 JSON marker. No network I/O.
-fn crypt_v4_migrate_header(
+/// Keyfile-only vaults auto-offer a recovery slot (spec 08 §4).
+struct CryptV4MigrateResult {
+    marker: String,
+    recovery_code: Option<String>,
+}
+
+fn crypt_v4_migrate_header_full(
     raw_header: &str,
     password: &str,
     keyfile_digest: Option<&[u8; 32]>,
-) -> Result<String, String> {
+) -> Result<CryptV4MigrateResult, String> {
     use ftp_client_gui_lib::aerocrypt::overlay;
     let (cfg, master) = unlock_standalone_crypt_config(raw_header, password, keyfile_digest)?;
     if cfg.version() != overlay::VERSION_V3 {
@@ -48401,7 +48408,20 @@ fn crypt_v4_migrate_header(
             cfg.version()
         ));
     }
-    overlay::migrate_v3_to_v4(&cfg, &master)
+    let mut marker = overlay::migrate_v3_to_v4(&cfg, &master)?;
+    let mut recovery_code = None;
+    let v4_cfg = overlay::parse_config(&marker)?;
+    let material = overlay::unlock_v4_for_management(&marker, password, keyfile_digest)?;
+    if let Some((with_rec, code)) =
+        overlay::ensure_recovery_slot_if_needed(&v4_cfg, &material.vk, &material.epoch_key)?
+    {
+        marker = with_rec;
+        recovery_code = Some(code.formatted);
+    }
+    Ok(CryptV4MigrateResult {
+        marker,
+        recovery_code,
+    })
 }
 
 /// Slot summary for list-slots (no secrets).
@@ -48449,7 +48469,20 @@ fn crypt_v4_next_slot_id(slots: &[ftp_client_gui_lib::aerocrypt::keyslots::Slot]
     slots.iter().map(|s| s.id).max().map(|m| m + 1).unwrap_or(0)
 }
 
+/// Result of a pure add-slot: new marker + optional recovery code (shown once).
+struct CryptV4AddSlotResult {
+    marker: String,
+    /// Fresh recovery code when a recovery slot was created (explicit or auto-offer).
+    recovery_code: Option<String>,
+    /// True when a recovery slot was auto-added because the vault would have been
+    /// keyfile/hardware-only (spec 08 §4).
+    auto_offered_recovery: bool,
+}
+
 /// Pure add-slot: unlock for management, derive new slot key, return new marker.
+/// `--type recovery` generates a Crockford recovery code (or parses --new-password
+/// as an existing code). Auto-offers a recovery slot after adding a keyfile when
+/// the vault would otherwise be keyfile-only.
 fn crypt_v4_add_slot_header(
     raw_header: &str,
     password: &str,
@@ -48457,29 +48490,33 @@ fn crypt_v4_add_slot_header(
     slot_type: &str,
     new_password: &str,
     new_keyfile_digest: Option<&[u8; 32]>,
-) -> Result<String, String> {
+) -> Result<CryptV4AddSlotResult, String> {
     use ftp_client_gui_lib::aerocrypt::keyslots::{
         derive_slot_key, Argon2Params, SlotBinding, SlotFactor, SlotType,
     };
     use ftp_client_gui_lib::aerocrypt::overlay::{self, OverlayConfig, SlotKeyMaterial};
+    use ftp_client_gui_lib::aerocrypt::recovery::parse_recovery_code;
 
     let material = overlay::unlock_v4_for_management(raw_header, password, keyfile_digest)?;
-    let OverlayConfig::V4 { slots, .. } = &material.config else {
+    let OverlayConfig::V4 {
+        vault_id, slots, ..
+    } = &material.config
+    else {
         return Err("add-slot requires a v4 vault".into());
     };
     let kind = match slot_type {
         "passphrase" => SlotType::Passphrase,
         "keyfile" => SlotType::Keyfile,
+        "recovery" => SlotType::Recovery,
         other => {
             return Err(format!(
-                "unsupported slot type '{other}' (use passphrase|keyfile)"
+                "unsupported slot type '{other}' (use passphrase|keyfile|recovery)"
             ))
         }
     };
     let new_id = crypt_v4_next_slot_id(slots);
-    let salt = overlay::random_salt_v3();
-    let kdf = Argon2Params::v3_profile();
-    let factor = match kind {
+    let mut recovery_code_out: Option<String> = None;
+    let sk = match kind {
         SlotType::Passphrase => {
             if new_password.is_empty() {
                 return Err(
@@ -48490,29 +48527,83 @@ fn crypt_v4_add_slot_header(
             if new_keyfile_digest.is_some() {
                 return Err("add-slot --type passphrase does not take --new-keyfile".into());
             }
-            SlotFactor::Passphrase(new_password)
+            let salt = overlay::random_salt_v3();
+            let kdf = Argon2Params::v3_profile();
+            let slot_key = derive_slot_key(
+                kind,
+                &SlotFactor::Passphrase(new_password),
+                &salt,
+                Some(&kdf),
+            )?;
+            SlotKeyMaterial {
+                id: new_id,
+                kind,
+                salt: salt.to_vec(),
+                kdf: Some(kdf),
+                binding: SlotBinding::None,
+                slot_key,
+            }
         }
         SlotType::Keyfile => {
             let Some(digest) = new_keyfile_digest else {
                 return Err("add-slot --type keyfile requires --new-keyfile".into());
             };
-            SlotFactor::KeyfileDigest {
-                password: new_password,
-                digest,
+            let salt = overlay::random_salt_v3();
+            let kdf = Argon2Params::v3_profile();
+            let slot_key = derive_slot_key(
+                kind,
+                &SlotFactor::KeyfileDigest {
+                    password: new_password,
+                    digest,
+                },
+                &salt,
+                Some(&kdf),
+            )?;
+            SlotKeyMaterial {
+                id: new_id,
+                kind,
+                salt: salt.to_vec(),
+                kdf: Some(kdf),
+                binding: SlotBinding::None,
+                slot_key,
             }
+        }
+        SlotType::Recovery => {
+            if new_keyfile_digest.is_some() {
+                return Err("add-slot --type recovery does not take --new-keyfile".into());
+            }
+            let supplied = if new_password.is_empty() {
+                None
+            } else {
+                Some(parse_recovery_code(new_password, Some(vault_id))?)
+            };
+            let (mat, code) =
+                overlay::build_recovery_slot_material(vault_id, new_id, supplied.as_ref())?;
+            recovery_code_out = Some(code.formatted);
+            mat
         }
         _ => return Err("unsupported slot type".into()),
     };
-    let slot_key = derive_slot_key(kind, &factor, &salt, Some(&kdf))?;
-    let sk = SlotKeyMaterial {
-        id: new_id,
-        kind,
-        salt: salt.to_vec(),
-        kdf: Some(kdf),
-        binding: SlotBinding::None,
-        slot_key,
-    };
-    overlay::add_slot(&material.config, &material.vk, &material.epoch_key, sk)
+    let mut marker = overlay::add_slot(&material.config, &material.vk, &material.epoch_key, sk)?;
+    let mut auto_offered = false;
+
+    // Spec 08 §4: auto-offer recovery when the vault would be keyfile-only.
+    if kind == SlotType::Keyfile {
+        let cfg = overlay::parse_config(&marker)?;
+        if let Some((with_rec, code)) =
+            overlay::ensure_recovery_slot_if_needed(&cfg, &material.vk, &material.epoch_key)?
+        {
+            marker = with_rec;
+            recovery_code_out = Some(code.formatted);
+            auto_offered = true;
+        }
+    }
+
+    Ok(CryptV4AddSlotResult {
+        marker,
+        recovery_code: recovery_code_out,
+        auto_offered_recovery: auto_offered,
+    })
 }
 
 /// Pure remove-slot (T5: single-survivor only). Auth factor must belong to the
@@ -50250,7 +50341,7 @@ async fn cmd_crypt_migrate_v4(
             return code;
         }
     };
-    let v4_marker = match crypt_v4_migrate_header(&config_str, password, keyfile_digest) {
+    let migrate = match crypt_v4_migrate_header_full(&config_str, password, keyfile_digest) {
         Ok(m) => m,
         Err(e) => {
             print_error(format, &e, 6);
@@ -50258,8 +50349,9 @@ async fn cmd_crypt_migrate_v4(
             return 6;
         }
     };
+    let v4_marker = &migrate.marker;
     // After migrate, unlock with the same factor must recover OMK (verify before write).
-    if let Err(e) = unlock_standalone_crypt_config(&v4_marker, password, keyfile_digest) {
+    if let Err(e) = unlock_standalone_crypt_config(v4_marker, password, keyfile_digest) {
         print_error(
             format,
             &format!("migrate-v4 produced a marker that fails unlock: {e}"),
@@ -50271,7 +50363,7 @@ async fn cmd_crypt_migrate_v4(
     if let Err(code) = publish_crypt_marker(
         &mut *provider,
         &base_path,
-        &v4_marker,
+        v4_marker,
         password,
         keyfile_digest,
         format,
@@ -50288,9 +50380,14 @@ async fn cmd_crypt_migrate_v4(
             "from": "v3",
             "to": "v4",
             "marker": ftp_client_gui_lib::aerocrypt::overlay::CRYPT_CONFIG_WRITE_NAME,
+            "recovery_code": migrate.recovery_code,
         }));
     } else if !cli.quiet {
         println!("Migrated AeroCrypt vault at {base_path} from v3 to v4 keyslots");
+        if let Some(ref code) = migrate.recovery_code {
+            println!("Auto-offered recovery slot (keyfile-only vault). Save this code ONCE:");
+            println!("{code}");
+        }
     }
     let _ = provider.disconnect().await;
     0
@@ -50397,7 +50494,7 @@ async fn cmd_crypt_add_slot(
             return code;
         }
     };
-    let new_marker = match crypt_v4_add_slot_header(
+    let add_result = match crypt_v4_add_slot_header(
         &config_str,
         password,
         keyfile_digest,
@@ -50412,8 +50509,9 @@ async fn cmd_crypt_add_slot(
             return 6;
         }
     };
+    let new_marker = &add_result.marker;
     // Verify old factor still opens after add.
-    if let Err(e) = unlock_standalone_crypt_config(&new_marker, password, keyfile_digest) {
+    if let Err(e) = unlock_standalone_crypt_config(new_marker, password, keyfile_digest) {
         print_error(
             format,
             &format!("add-slot produced a marker that fails unlock: {e}"),
@@ -50422,10 +50520,22 @@ async fn cmd_crypt_add_slot(
         let _ = provider.disconnect().await;
         return 5;
     }
+    // When a recovery slot was added, verify the recovery code unlocks too.
+    if let Some(ref code) = add_result.recovery_code {
+        if let Err(e) = unlock_standalone_crypt_config(new_marker, code, None) {
+            print_error(
+                format,
+                &format!("add-slot recovery code fails unlock: {e}"),
+                5,
+            );
+            let _ = provider.disconnect().await;
+            return 5;
+        }
+    }
     if let Err(code) = publish_crypt_marker(
         &mut *provider,
         &base_path,
-        &new_marker,
+        new_marker,
         password,
         keyfile_digest,
         format,
@@ -50441,9 +50551,18 @@ async fn cmd_crypt_add_slot(
             "path": base_path,
             "action": "add-slot",
             "type": slot_type,
+            "recovery_code": add_result.recovery_code,
+            "auto_offered_recovery": add_result.auto_offered_recovery,
         }));
     } else if !cli.quiet {
         println!("Added {slot_type} slot to AeroCrypt vault at {base_path}");
+        if let Some(ref code) = add_result.recovery_code {
+            if add_result.auto_offered_recovery {
+                println!("Auto-offered recovery slot (vault would have been keyfile-only).");
+            }
+            println!("Recovery code (save this ONCE; it will not be shown again):");
+            println!("{code}");
+        }
     }
     let _ = provider.disconnect().await;
     0
@@ -68275,7 +68394,9 @@ mod tests {
         )
         .unwrap();
 
-        let v4 = crypt_v4_migrate_header(&v3, password, None).expect("migrate-v4");
+        let v4 = crypt_v4_migrate_header_full(&v3, password, None)
+            .expect("migrate-v4")
+            .marker;
         let (cfg, omk) =
             unlock_standalone_crypt_config(&v4, password, None).expect("unlock v4 via CLI helper");
         assert_eq!(cfg.version(), 4);
@@ -68315,7 +68436,9 @@ mod tests {
             overlay::SaltMode::PerVault,
         )
         .unwrap();
-        let v4 = crypt_v4_migrate_header(&v3, password, None).unwrap();
+        let v4 = crypt_v4_migrate_header_full(&v3, password, None)
+            .unwrap()
+            .marker;
 
         let (epoch, slots) = crypt_v4_list_slots(&v4, password, None).expect("list-slots");
         assert_eq!(epoch, 1);
@@ -68332,6 +68455,7 @@ mod tests {
             None,
         )
         .expect("add-slot");
+        let with_two = with_two.marker;
         let (epoch2, slots2) = crypt_v4_list_slots(&with_two, password, None).unwrap();
         assert_eq!(epoch2, 1, "add-slot must not bump epoch");
         assert_eq!(slots2.len(), 2);
@@ -68379,6 +68503,47 @@ mod tests {
         assert_eq!(omk_final, master);
     }
 
+    /// T7: recovery slot add + unlock recovers the same OMK; bad checksum fails closed.
+    #[test]
+    fn crypt_v4_cli_recovery_slot_same_omk_and_fail_closed() {
+        use ftp_client_gui_lib::aerocrypt::overlay;
+
+        let password = "t7-cli-recovery-password";
+        let salt = [0xC7u8; 32];
+        let master =
+            overlay::derive_master_key(&overlay::OverlayConfig::v3_bootstrap(salt), password)
+                .unwrap();
+        let v3 = overlay::init_config_v3_with_vault_id(
+            &salt,
+            &master,
+            &overlay::random_vault_id(),
+            overlay::SaltMode::PerVault,
+        )
+        .unwrap();
+        let v4 = crypt_v4_migrate_header_full(&v3, password, None)
+            .unwrap()
+            .marker;
+
+        let added = crypt_v4_add_slot_header(&v4, password, None, "recovery", "", None)
+            .expect("add recovery slot");
+        let code = added
+            .recovery_code
+            .expect("recovery code must be returned once");
+        let (_c, omk_rec) =
+            unlock_standalone_crypt_config(&added.marker, &code, None).expect("recovery unlock");
+        assert_eq!(omk_rec, master, "recovery slot must recover the same OMK");
+
+        // Corrupted checksum fails closed.
+        let mut chars: Vec<char> = code.chars().collect();
+        let last = chars.len() - 1;
+        chars[last] = if chars[last] == '0' { '1' } else { '0' };
+        let bad: String = chars.into_iter().collect();
+        assert!(
+            unlock_standalone_crypt_config(&added.marker, &bad, None).is_err(),
+            "corrupted recovery code must fail closed"
+        );
+    }
+
     #[test]
     fn crypt_v4_cli_subcommands_parse_via_clap() {
         on_big_stack(|| {
@@ -68418,6 +68583,20 @@ mod tests {
                         "x",
                         "--new-password",
                         "y",
+                        "_",
+                        "/enc",
+                    ],
+                    "add-slot",
+                ),
+                (
+                    vec![
+                        "aeroftp",
+                        "crypt",
+                        "add-slot",
+                        "--type",
+                        "recovery",
+                        "--password",
+                        "x",
                         "_",
                         "/enc",
                     ],

@@ -5211,7 +5211,13 @@
             "keyslotsRotateUnsupported": "Hindi pa maaaring i-rotate ang uri ng slot na ito mula sa GUI.",
             "keyslotsAdded": "Naidagdag ang slot.",
             "keyslotsRotated": "Na-rotate ang slot.",
-            "keyslotsRemoved": "Inalis ang slot (tumaas ang epoch)."
+            "keyslotsRemoved": "Inalis ang slot (tumaas ang epoch).",
+            "keyslotsRecoveryHint": "Isang recovery code ang bubuuin at ipapakita nang minsan. I-print o i-store nang offline; nito mabubuksan ang vault na ito nang walang password o keyfile.",
+            "keyslotsRecoveryAdded": "Naidagdag ang recovery slot. I-save ang recovery code sa ibaba; hindi na ito ipapakita ulit.",
+            "keyslotsRecoveryAutoOffered": "Awtomatikong naidagdag ang recovery slot dahil magiging keyfile-only ang vault na ito. I-save ang recovery code sa ibaba.",
+            "keyslotsRecoverySaveOnce": "I-save ang recovery code na ito ngayon (minsan lang ipapakita):",
+            "keyslotsRecoveryCopy": "Kopyahin ang code",
+            "keyslotsUnlockWithRecovery": "Maaari mo ring i-unlock gamit ang recovery code (i-paste bilang password)."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Pag-encrypt)",

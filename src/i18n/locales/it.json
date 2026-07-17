@@ -3454,7 +3454,13 @@
             "keyslotsRotateUnsupported": "Questo tipo di slot non può ancora essere ruotato dalla GUI.",
             "keyslotsAdded": "Slot aggiunto.",
             "keyslotsRotated": "Slot ruotato.",
-            "keyslotsRemoved": "Slot rimosso (epoca incrementata)."
+            "keyslotsRemoved": "Slot rimosso (epoca incrementata).",
+            "keyslotsRecoveryHint": "Verrà generato un codice di recupero e mostrato una sola volta. Stampalo o conservalo offline; può aprire questa cassaforte senza password o keyfile.",
+            "keyslotsRecoveryAdded": "Slot di recupero aggiunto. Salva il codice di recupero qui sotto; non verrà più mostrato.",
+            "keyslotsRecoveryAutoOffered": "Uno slot di recupero è stato aggiunto automaticamente perché questa cassaforte sarebbe stata solo con keyfile. Salva il codice di recupero qui sotto.",
+            "keyslotsRecoverySaveOnce": "Salva ora questo codice di recupero (mostrato una sola volta):",
+            "keyslotsRecoveryCopy": "Copia codice",
+            "keyslotsUnlockWithRecovery": "Puoi anche sbloccare con un codice di recupero (incollalo come password)."
         },
         "cryptomator": {
             "confirmPassword": "Conferma Password",

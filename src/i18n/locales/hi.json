@@ -5192,7 +5192,13 @@
             "keyslotsRotateUnsupported": "इस स्लॉट प्रकार को अभी GUI से घुमाया नहीं जा सकता।",
             "keyslotsAdded": "स्लॉट जोड़ा गया।",
             "keyslotsRotated": "स्लॉट घुमाया गया।",
-            "keyslotsRemoved": "स्लॉट हटाया गया (युग बढ़ाया गया)।"
+            "keyslotsRemoved": "स्लॉट हटाया गया (युग बढ़ाया गया)।",
+            "keyslotsRecoveryHint": "एक रिकवरी कोड जनरेट किया जाएगा और एक बार दिखाया जाएगा। इसे प्रिंट करें या ऑफ़लाइन संग्रहीत करें; यह आपके पासवर्ड या keyfile के बिना इस वॉल्ट को खोल सकता है।",
+            "keyslotsRecoveryAdded": "रिकवरी स्लॉट जोड़ा गया। नीचे दिया गया रिकवरी कोड सहेजें; यह फिर नहीं दिखाया जाएगा।",
+            "keyslotsRecoveryAutoOffered": "एक रिकवरी स्लॉट स्वतः जोड़ा गया क्योंकि यह वॉल्ट केवल keyfile वाला होता। नीचे दिया गया रिकवरी कोड सहेजें।",
+            "keyslotsRecoverySaveOnce": "यह रिकवरी कोड अभी सहेजें (एक बार दिखाया जाता है):",
+            "keyslotsRecoveryCopy": "कोड कॉपी करें",
+            "keyslotsUnlockWithRecovery": "आप रिकवरी कोड से भी अनलॉक कर सकते हैं (इसे पासवर्ड के रूप में पेस्ट करें)।"
         },
         "aerocryptProfile": {
             "enable": "Crypt (एन्क्रिप्शन)",

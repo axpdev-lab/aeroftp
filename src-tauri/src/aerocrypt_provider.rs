@@ -686,6 +686,12 @@ pub struct AeroCryptSlotMutateResult {
     pub opened_slot_id: Option<u32>,
     pub slots: Vec<AeroCryptSlotSummary>,
     pub action: String,
+    /// Fresh recovery code when a recovery slot was created (show once).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub recovery_code: Option<String>,
+    /// True when recovery was auto-offered for a keyfile/hardware-only vault.
+    #[serde(default)]
+    pub auto_offered_recovery: bool,
 }
 
 fn slot_kind_label(kind: SlotType) -> String {
@@ -850,11 +856,16 @@ fn best_effort_refresh_keystore_config(profile_id: Option<&str>, marker_text: &s
     }
 }
 
-fn crypt_v4_migrate_header_pure(
+struct MigratePureResult {
+    marker: String,
+    recovery_code: Option<String>,
+}
+
+fn crypt_v4_migrate_header_full_pure(
     raw_header: &str,
     password: &str,
     keyfile_digest: Option<&[u8; KEY_SIZE]>,
-) -> Result<String, String> {
+) -> Result<MigratePureResult, String> {
     let (cfg, master) = overlay::unlock_overlay_from_config(raw_header, password, keyfile_digest)?;
     if cfg.version() != overlay::VERSION_V3 {
         return Err(format!(
@@ -862,7 +873,21 @@ fn crypt_v4_migrate_header_pure(
             cfg.version()
         ));
     }
-    overlay::migrate_v3_to_v4(&cfg, &master)
+    let mut marker = overlay::migrate_v3_to_v4(&cfg, &master)?;
+    let mut recovery_code = None;
+    // Spec 08 §4: keyfile-only vault must auto-offer a recovery slot.
+    let v4_cfg = overlay::parse_config(&marker)?;
+    let material = overlay::unlock_v4_for_management(&marker, password, keyfile_digest)?;
+    if let Some((with_rec, code)) =
+        overlay::ensure_recovery_slot_if_needed(&v4_cfg, &material.vk, &material.epoch_key)?
+    {
+        marker = with_rec;
+        recovery_code = Some(code.formatted);
+    }
+    Ok(MigratePureResult {
+        marker,
+        recovery_code,
+    })
 }
 
 fn crypt_v4_add_slot_header_pure(
@@ -872,24 +897,27 @@ fn crypt_v4_add_slot_header_pure(
     slot_type: &str,
     new_password: &str,
     new_keyfile_digest: Option<&[u8; KEY_SIZE]>,
-) -> Result<String, String> {
+) -> Result<AddSlotPureResult, String> {
     let material = overlay::unlock_v4_for_management(raw_header, password, keyfile_digest)?;
-    let OverlayConfig::V4 { slots, .. } = &material.config else {
+    let OverlayConfig::V4 {
+        vault_id, slots, ..
+    } = &material.config
+    else {
         return Err("add-slot requires a v4 vault".into());
     };
     let kind = match slot_type {
         "passphrase" => SlotType::Passphrase,
         "keyfile" => SlotType::Keyfile,
+        "recovery" => SlotType::Recovery,
         other => {
             return Err(format!(
-                "unsupported slot type '{other}' (use passphrase|keyfile)"
+                "unsupported slot type '{other}' (use passphrase|keyfile|recovery)"
             ))
         }
     };
     let new_id = next_slot_id(slots);
-    let salt = overlay::random_salt_v3();
-    let kdf = Argon2Params::v3_profile();
-    let factor = match kind {
+    let mut recovery_code_out: Option<String> = None;
+    let sk = match kind {
         SlotType::Passphrase => {
             if new_password.is_empty() {
                 return Err("add-slot passphrase requires a new password".into());
@@ -897,29 +925,86 @@ fn crypt_v4_add_slot_header_pure(
             if new_keyfile_digest.is_some() {
                 return Err("add-slot passphrase does not take a new keyfile".into());
             }
-            SlotFactor::Passphrase(new_password)
+            let salt = overlay::random_salt_v3();
+            let kdf = Argon2Params::v3_profile();
+            let slot_key = derive_slot_key(
+                kind,
+                &SlotFactor::Passphrase(new_password),
+                &salt,
+                Some(&kdf),
+            )?;
+            SlotKeyMaterial {
+                id: new_id,
+                kind,
+                salt: salt.to_vec(),
+                kdf: Some(kdf),
+                binding: SlotBinding::None,
+                slot_key,
+            }
         }
         SlotType::Keyfile => {
             let Some(digest) = new_keyfile_digest else {
                 return Err("add-slot keyfile requires a new keyfile".into());
             };
-            SlotFactor::KeyfileDigest {
-                password: new_password,
-                digest,
+            let salt = overlay::random_salt_v3();
+            let kdf = Argon2Params::v3_profile();
+            let slot_key = derive_slot_key(
+                kind,
+                &SlotFactor::KeyfileDigest {
+                    password: new_password,
+                    digest,
+                },
+                &salt,
+                Some(&kdf),
+            )?;
+            SlotKeyMaterial {
+                id: new_id,
+                kind,
+                salt: salt.to_vec(),
+                kdf: Some(kdf),
+                binding: SlotBinding::None,
+                slot_key,
             }
+        }
+        SlotType::Recovery => {
+            if new_keyfile_digest.is_some() {
+                return Err("add-slot recovery does not take a new keyfile".into());
+            }
+            let supplied = if new_password.is_empty() {
+                None
+            } else {
+                Some(crate::aerocrypt::recovery::parse_recovery_code(
+                    new_password,
+                    Some(vault_id),
+                )?)
+            };
+            let (mat, code) =
+                overlay::build_recovery_slot_material(vault_id, new_id, supplied.as_ref())?;
+            recovery_code_out = Some(code.formatted);
+            mat
         }
         _ => return Err("unsupported slot type".into()),
     };
-    let slot_key = derive_slot_key(kind, &factor, &salt, Some(&kdf))?;
-    let sk = SlotKeyMaterial {
-        id: new_id,
-        kind,
-        salt: salt.to_vec(),
-        kdf: Some(kdf),
-        binding: SlotBinding::None,
-        slot_key,
-    };
-    overlay::add_slot(&material.config, &material.vk, &material.epoch_key, sk)
+    let mut marker = overlay::add_slot(&material.config, &material.vk, &material.epoch_key, sk)?;
+    let mut auto_offered = false;
+
+    // Spec 08 §4: auto-offer recovery when the vault would be keyfile-only.
+    if kind == SlotType::Keyfile {
+        let cfg = overlay::parse_config(&marker)?;
+        if let Some((with_rec, code)) =
+            overlay::ensure_recovery_slot_if_needed(&cfg, &material.vk, &material.epoch_key)?
+        {
+            marker = with_rec;
+            recovery_code_out = Some(code.formatted);
+            auto_offered = true;
+        }
+    }
+
+    Ok(AddSlotPureResult {
+        marker,
+        recovery_code: recovery_code_out,
+        auto_offered_recovery: auto_offered,
+    })
 }
 
 fn crypt_v4_remove_slot_header_pure(
@@ -1042,6 +1127,24 @@ fn mutate_result_from_header(
     keyfile_digest: Option<&[u8; KEY_SIZE]>,
     action: &str,
 ) -> Result<AeroCryptSlotMutateResult, String> {
+    mutate_result_from_header_with_recovery(
+        new_header,
+        password,
+        keyfile_digest,
+        action,
+        None,
+        false,
+    )
+}
+
+fn mutate_result_from_header_with_recovery(
+    new_header: &str,
+    password: &str,
+    keyfile_digest: Option<&[u8; KEY_SIZE]>,
+    action: &str,
+    recovery_code: Option<String>,
+    auto_offered_recovery: bool,
+) -> Result<AeroCryptSlotMutateResult, String> {
     let list = list_result_from_v4(new_header, password, keyfile_digest)?;
     Ok(AeroCryptSlotMutateResult {
         version: list.version,
@@ -1050,7 +1153,16 @@ fn mutate_result_from_header(
         opened_slot_id: list.opened_slot_id,
         slots: list.slots,
         action: action.to_string(),
+        recovery_code,
+        auto_offered_recovery,
     })
+}
+
+/// Pure add-slot result (marker + optional one-time recovery code).
+struct AddSlotPureResult {
+    marker: String,
+    recovery_code: Option<String>,
+    auto_offered_recovery: bool,
 }
 
 /// List keyslots on the connected AeroCrypt vault (v4). Requires unlock factors.
@@ -1077,8 +1189,7 @@ pub async fn aerocrypt_list_slots(
     let kd = keyfile_digest;
     let pw = password;
     tokio::task::spawn_blocking(move || {
-        let (cfg, _) =
-            overlay::unlock_overlay_from_config(&raw, &pw, kd.as_ref())?;
+        let (cfg, _) = overlay::unlock_overlay_from_config(&raw, &pw, kd.as_ref())?;
         match cfg.version() {
             4 => list_result_from_v4(&raw, &pw, kd.as_ref()),
             overlay::VERSION_V3 => Ok(AeroCryptSlotListResult {
@@ -1119,14 +1230,17 @@ pub async fn aerocrypt_migrate_v4(
     let (raw, _) = load_headed_marker(provider, &cwd).await?;
     let kd = keyfile_digest;
     let pw = password.clone();
-    let v4_marker = tokio::task::spawn_blocking(move || {
-        let marker = crypt_v4_migrate_header_pure(&raw, &pw, kd.as_ref())?;
+    let migrate = tokio::task::spawn_blocking(move || {
+        let result = crypt_v4_migrate_header_full_pure(&raw, &pw, kd.as_ref())?;
         // Verify unlock recovers OMK before any remote write.
-        overlay::unlock_overlay_from_config(&marker, &pw, kd.as_ref())?;
-        Ok::<_, String>(marker)
+        overlay::unlock_overlay_from_config(&result.marker, &pw, kd.as_ref())?;
+        Ok::<_, String>(result)
     })
     .await
     .map_err(|e| format!("migrate-v4 task failed: {e}"))??;
+    let v4_marker = migrate.marker;
+    let recovery_code = migrate.recovery_code;
+    let auto_offered = recovery_code.is_some();
 
     publish_headed_marker(provider, &cwd, &v4_marker, &password, keyfile_digest).await?;
     best_effort_refresh_keystore_config(profile_id.as_deref(), &v4_marker);
@@ -1135,7 +1249,14 @@ pub async fn aerocrypt_migrate_v4(
     let pw = password;
     let marker = v4_marker;
     tokio::task::spawn_blocking(move || {
-        mutate_result_from_header(&marker, &pw, kd.as_ref(), "migrate-v4")
+        mutate_result_from_header_with_recovery(
+            &marker,
+            &pw,
+            kd.as_ref(),
+            "migrate-v4",
+            recovery_code,
+            auto_offered,
+        )
     })
     .await
     .map_err(|e| format!("migrate-v4 verify task failed: {e}"))?
@@ -1172,11 +1293,14 @@ pub async fn aerocrypt_add_slot(
     let pw = password.clone();
     let st = slot_type.clone();
     let new_pw_for_build = new_pw_owned.clone();
-    let new_header = tokio::task::spawn_blocking(move || {
+    let add_result = tokio::task::spawn_blocking(move || {
         crypt_v4_add_slot_header_pure(&raw, &pw, kd.as_ref(), &st, &new_pw_for_build, nkd.as_ref())
     })
     .await
     .map_err(|e| format!("add-slot task failed: {e}"))??;
+    let new_header = add_result.marker;
+    let recovery_code = add_result.recovery_code;
+    let auto_offered = add_result.auto_offered_recovery;
 
     // Verify with the NEW factor when present; otherwise with unlock factor.
     let verify_pw = if slot_type == "passphrase" {
@@ -1185,6 +1309,11 @@ pub async fn aerocrypt_add_slot(
         } else {
             new_pw_owned.clone()
         }
+    } else if slot_type == "recovery" {
+        recovery_code
+            .clone()
+            .filter(|c| !c.is_empty())
+            .unwrap_or_else(|| password.clone())
     } else if new_pw_owned.is_empty() {
         password.clone()
     } else {
@@ -1206,6 +1335,19 @@ pub async fn aerocrypt_add_slot(
         .map_err(|e| format!("add-slot verify task failed: {e}"))?
         .map_err(|e| format!("add-slot produced a marker that fails unlock: {e}"))?;
     }
+    // Also verify the recovery code when auto-offered (keyfile path).
+    if let Some(ref code) = recovery_code {
+        if slot_type != "recovery" {
+            let marker = new_header.clone();
+            let vpw = code.clone();
+            tokio::task::spawn_blocking(move || {
+                overlay::unlock_overlay_from_config(&marker, &vpw, None)
+            })
+            .await
+            .map_err(|e| format!("add-slot recovery verify task failed: {e}"))?
+            .map_err(|e| format!("auto-offered recovery code fails unlock: {e}"))?;
+        }
+    }
 
     // Publish with the original unlock factor (still valid; add does not revoke).
     publish_headed_marker(provider, &cwd, &new_header, &password, keyfile_digest).await?;
@@ -1214,8 +1356,10 @@ pub async fn aerocrypt_add_slot(
     let kd = keyfile_digest;
     let pw = password;
     let marker = new_header;
+    let rec = recovery_code;
+    let auto = auto_offered;
     tokio::task::spawn_blocking(move || {
-        mutate_result_from_header(&marker, &pw, kd.as_ref(), "add-slot")
+        mutate_result_from_header_with_recovery(&marker, &pw, kd.as_ref(), "add-slot", rec, auto)
     })
     .await
     .map_err(|e| format!("add-slot list task failed: {e}"))?
@@ -1377,7 +1521,9 @@ mod tests {
         )
         .unwrap();
 
-        let v4 = crypt_v4_migrate_header_pure(&v3, "owner-pw", None).unwrap();
+        let v4 = crypt_v4_migrate_header_full_pure(&v3, "owner-pw", None)
+            .unwrap()
+            .marker;
         let list = list_result_from_v4(&v4, "owner-pw", None).unwrap();
         assert_eq!(list.version, 4);
         assert_eq!(list.slots.len(), 1);
@@ -1387,11 +1533,11 @@ mod tests {
             crypt_v4_add_slot_header_pure(&v4, "owner-pw", None, "passphrase", "second-pw", None)
                 .unwrap();
         // New factor opens; original still opens.
-        overlay::unlock_overlay_from_config(&with_extra, "second-pw", None).unwrap();
-        overlay::unlock_overlay_from_config(&with_extra, "owner-pw", None).unwrap();
+        overlay::unlock_overlay_from_config(&with_extra.marker, "second-pw", None).unwrap();
+        overlay::unlock_overlay_from_config(&with_extra.marker, "owner-pw", None).unwrap();
 
         let rotated = crypt_v4_rotate_slot_header_pure(
-            &with_extra,
+            &with_extra.marker,
             "second-pw",
             None,
             1,
@@ -1417,5 +1563,36 @@ mod tests {
         let list2 = list_result_from_v4(&removed, "owner-pw", None).unwrap();
         assert_eq!(list2.slots.len(), 1);
         assert_eq!(list2.slots[0].id, 0);
+    }
+
+    /// T7: recovery slot recovers the same OMK; bad checksum fails closed.
+    #[test]
+    fn keyslot_gui_pure_recovery_slot_same_omk() {
+        let salt = overlay::random_salt_v3();
+        let master =
+            overlay::derive_master_key(&OverlayConfig::v3_bootstrap(salt), "owner-pw").unwrap();
+        let v3 = overlay::init_config_v3_with_vault_id(
+            &salt,
+            &master,
+            &overlay::random_vault_id(),
+            overlay::SaltMode::PerVault,
+        )
+        .unwrap();
+        let v4 = crypt_v4_migrate_header_full_pure(&v3, "owner-pw", None)
+            .unwrap()
+            .marker;
+        let added =
+            crypt_v4_add_slot_header_pure(&v4, "owner-pw", None, "recovery", "", None).unwrap();
+        let code = added.recovery_code.expect("recovery code once");
+        let (_cfg, omk) = overlay::unlock_overlay_from_config(&added.marker, &code, None).unwrap();
+        assert_eq!(omk, master);
+        let mut chars: Vec<char> = code.chars().collect();
+        let last = chars.len() - 1;
+        chars[last] = if chars[last] == '0' { '1' } else { '0' };
+        let bad: String = chars.into_iter().collect();
+        assert!(
+            overlay::unlock_overlay_from_config(&added.marker, &bad, None).is_err(),
+            "corrupted recovery must fail closed"
+        );
     }
 }

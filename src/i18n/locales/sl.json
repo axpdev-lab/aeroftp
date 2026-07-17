@@ -5192,7 +5192,13 @@
             "keyslotsRotateUnsupported": "Te vrste reže še ni mogoče rotirati iz GUI.",
             "keyslotsAdded": "Reža dodana.",
             "keyslotsRotated": "Reža rotirana.",
-            "keyslotsRemoved": "Reža odstranjena (epoha povečana)."
+            "keyslotsRemoved": "Reža odstranjena (epoha povečana).",
+            "keyslotsRecoveryHint": "Ustvarjena bo obnovitvena koda in prikazana enkrat. Natisnite jo ali shranite brez povezave; odpre lahko ta trezor brez gesla ali keyfile.",
+            "keyslotsRecoveryAdded": "Obnovitvena reža dodana. Shranite obnovitveno kodo spodaj; ne bo več prikazana.",
+            "keyslotsRecoveryAutoOffered": "Obnovitvena reža je bila samodejno dodana, ker bi bil ta trezor le s keyfile. Shranite obnovitveno kodo spodaj.",
+            "keyslotsRecoverySaveOnce": "Shranite to obnovitveno kodo zdaj (prikazana enkrat):",
+            "keyslotsRecoveryCopy": "Kopiraj kodo",
+            "keyslotsUnlockWithRecovery": "Odklenete lahko tudi z obnovitveno kodo (prilepite jo kot geslo)."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Šifriranje)",

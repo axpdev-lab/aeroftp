@@ -27,6 +27,7 @@ pub mod emergency_kit;
 pub mod keyslots;
 pub mod names;
 pub mod overlay;
+pub mod recovery;
 
 /// AES-256 key length, in bytes.
 pub const KEY_SIZE: usize = 32;

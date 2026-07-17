@@ -5192,7 +5192,13 @@
             "keyslotsRotateUnsupported": "ยังไม่สามารถหมุนสล็อตประเภทนี้จาก GUI ได้",
             "keyslotsAdded": "เพิ่มสล็อตแล้ว",
             "keyslotsRotated": "หมุนสล็อตแล้ว",
-            "keyslotsRemoved": "ลบสล็อตแล้ว (เพิ่ม epoch แล้ว)"
+            "keyslotsRemoved": "ลบสล็อตแล้ว (เพิ่ม epoch แล้ว)",
+            "keyslotsRecoveryHint": "จะสร้างรหัสกู้คืนและแสดงเพียงครั้งเดียว พิมพ์หรือเก็บออฟไลน์ไว้ รหัสนี้เปิดคลังนี้ได้โดยไม่ต้องใช้รหัสผ่านหรือ keyfile",
+            "keyslotsRecoveryAdded": "เพิ่มช่องกู้คืนแล้ว บันทึกรหัสกู้คืนด้านล่าง จะไม่แสดงอีก",
+            "keyslotsRecoveryAutoOffered": "เพิ่มช่องกู้คืนอัตโนมัติเนื่องจากคลังนี้จะใช้เฉพาะ keyfile บันทึกรหัสกู้คืนด้านล่าง",
+            "keyslotsRecoverySaveOnce": "บันทึกรหัสกู้คืนนี้ทันที (แสดงครั้งเดียว):",
+            "keyslotsRecoveryCopy": "คัดลอกรหัส",
+            "keyslotsUnlockWithRecovery": "คุณยังปลดล็อกด้วยรหัสกู้คืนได้ (วางเป็นรหัสผ่าน)"
         },
         "aerocryptProfile": {
             "enable": "Crypt (การเข้ารหัส)",

@@ -5192,7 +5192,13 @@
             "keyslotsRotateUnsupported": "Aina hii ya nafasi bado haiwezi kuzungushwa kutoka GUI.",
             "keyslotsAdded": "Nafasi imeongezwa.",
             "keyslotsRotated": "Nafasi imezungushwa.",
-            "keyslotsRemoved": "Nafasi imeondolewa (enzi imeongezwa)."
+            "keyslotsRemoved": "Nafasi imeondolewa (enzi imeongezwa).",
+            "keyslotsRecoveryHint": "Msimbo wa urejeshaji utazalishwa na kuonyeshwa mara moja. Uchapishe au uhifadhi nje ya mtandao; unaweza kufungua hazina hii bila nenosiri lako au keyfile.",
+            "keyslotsRecoveryAdded": "Sloti ya urejeshaji imeongezwa. Hifadhi msimbo wa urejeshaji hapa chini; hautaonyeshwa tena.",
+            "keyslotsRecoveryAutoOffered": "Sloti ya urejeshaji iliongezwa kiotomatiki kwa sababu hazina hii ingekuwa ya keyfile pekee. Hifadhi msimbo wa urejeshaji hapa chini.",
+            "keyslotsRecoverySaveOnce": "Hifadhi msimbo huu wa urejeshaji sasa (unaonyeshwa mara moja):",
+            "keyslotsRecoveryCopy": "Nakili msimbo",
+            "keyslotsUnlockWithRecovery": "Unaweza pia kufungua kwa msimbo wa urejeshaji (ubandike kama nenosiri)."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Usimbaji fiche)",

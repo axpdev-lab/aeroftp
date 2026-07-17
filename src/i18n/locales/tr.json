@@ -5192,7 +5192,13 @@
             "keyslotsRotateUnsupported": "Bu yuva türü henüz GUI'den döndürülemez.",
             "keyslotsAdded": "Yuva eklendi.",
             "keyslotsRotated": "Yuva döndürüldü.",
-            "keyslotsRemoved": "Yuva kaldırıldı (epoch artırıldı)."
+            "keyslotsRemoved": "Yuva kaldırıldı (epoch artırıldı).",
+            "keyslotsRecoveryHint": "Bir kurtarma kodu oluşturulacak ve bir kez gösterilecek. Yazdırın veya çevrimdışı saklayın; parolanız veya keyfile olmadan bu kasayı açabilir.",
+            "keyslotsRecoveryAdded": "Kurtarma yuvası eklendi. Aşağıdaki kurtarma kodunu kaydedin; bir daha gösterilmeyecek.",
+            "keyslotsRecoveryAutoOffered": "Bu kasa yalnızca keyfile ile olacağı için bir kurtarma yuvası otomatik eklendi. Aşağıdaki kurtarma kodunu kaydedin.",
+            "keyslotsRecoverySaveOnce": "Bu kurtarma kodunu şimdi kaydedin (bir kez gösterilir):",
+            "keyslotsRecoveryCopy": "Kodu kopyala",
+            "keyslotsUnlockWithRecovery": "Kurtarma koduyla da kilidi açabilirsiniz (parola olarak yapıştırın)."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Şifreleme)",

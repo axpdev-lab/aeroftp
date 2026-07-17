@@ -5192,7 +5192,13 @@
             "keyslotsRotateUnsupported": "Tätä paikan tyyppiä ei voi vielä kierrättää graafisesta käyttöliittymästä.",
             "keyslotsAdded": "Paikka lisätty.",
             "keyslotsRotated": "Paikka kierrätetty.",
-            "keyslotsRemoved": "Paikka poistettu (aikakausi nostettu)."
+            "keyslotsRemoved": "Paikka poistettu (aikakausi nostettu).",
+            "keyslotsRecoveryHint": "Palautuskoodi luodaan ja näytetään kerran. Tulosta se tai tallenna offline-tilassa; sillä voi avata tämän holvin ilman salasanaa tai keyfileä.",
+            "keyslotsRecoveryAdded": "Palautuspaikka lisätty. Tallenna alla oleva palautuskoodi; sitä ei näytetä uudelleen.",
+            "keyslotsRecoveryAutoOffered": "Palautuspaikka lisättiin automaattisesti, koska tämä holvi olisi ollut vain keyfile-pohjainen. Tallenna alla oleva palautuskoodi.",
+            "keyslotsRecoverySaveOnce": "Tallenna tämä palautuskoodi nyt (näytetään kerran):",
+            "keyslotsRecoveryCopy": "Kopioi koodi",
+            "keyslotsUnlockWithRecovery": "Voit avata myös palautuskoodilla (liitä se salasanaksi)."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Salaus)",

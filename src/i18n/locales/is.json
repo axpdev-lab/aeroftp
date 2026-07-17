@@ -5211,7 +5211,13 @@
             "keyslotsRotateUnsupported": "Þessi tegund raufar er ekki enn hægt að snúa úr GUI.",
             "keyslotsAdded": "Rauf bætt við.",
             "keyslotsRotated": "Rauf snúin.",
-            "keyslotsRemoved": "Rauf fjarlægð (tímabil hækkað)."
+            "keyslotsRemoved": "Rauf fjarlægð (tímabil hækkað).",
+            "keyslotsRecoveryHint": "Endurheimtukóði verður búinn til og sýndur einu sinni. Prentaðu hann eða geymdu hann ótengdan; hann getur opnað þennan örugga hólf án lykilorðs eða keyfile.",
+            "keyslotsRecoveryAdded": "Endurheimturauf bætt við. Vistaðu endurheimtukóðann hér að neðan; hann verður ekki sýndur aftur.",
+            "keyslotsRecoveryAutoOffered": "Endurheimturauf var bætt við sjálfkrafa vegna þess að þetta hólf hefði aðeins verið með keyfile. Vistaðu endurheimtukóðann hér að neðan.",
+            "keyslotsRecoverySaveOnce": "Vistaðu þennan endurheimtukóða núna (sýndur einu sinni):",
+            "keyslotsRecoveryCopy": "Afrita kóða",
+            "keyslotsUnlockWithRecovery": "Þú getur líka opnað með endurheimtukóða (límdu hann sem lykilorð)."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Dulkóðun)",

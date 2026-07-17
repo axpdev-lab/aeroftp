@@ -29,6 +29,8 @@ interface SlotListResult {
 
 interface SlotMutateResult extends SlotListResult {
     action: string;
+    recoveryCode?: string | null;
+    autoOfferedRecovery?: boolean;
 }
 
 interface Props {
@@ -60,10 +62,12 @@ export const AeroCryptKeyslotsModal: React.FC<Props> = ({
     const [mode, setMode] = useState<PanelMode>('list');
 
     // Add / rotate form
-    const [slotType, setSlotType] = useState<'passphrase' | 'keyfile'>('passphrase');
+    const [slotType, setSlotType] = useState<'passphrase' | 'keyfile' | 'recovery'>('passphrase');
     const [newPassword, setNewPassword] = useState('');
     const [newPassword2, setNewPassword2] = useState('');
     const [newKeyfilePath, setNewKeyfilePath] = useState('');
+    // One-time recovery code shown after add (must be saved by the user).
+    const [shownRecoveryCode, setShownRecoveryCode] = useState<string | null>(null);
     // F6 gate: user must type YES to confirm remove
     const [removeConfirm, setRemoveConfirm] = useState('');
 
@@ -148,6 +152,7 @@ export const AeroCryptKeyslotsModal: React.FC<Props> = ({
     const runMigrate = async () => {
         setError(null);
         setInfo(null);
+        setShownRecoveryCode(null);
         setBusy(true);
         try {
             const result = await invoke<SlotMutateResult>('aerocrypt_migrate_v4', {
@@ -156,7 +161,12 @@ export const AeroCryptKeyslotsModal: React.FC<Props> = ({
             setList(result);
             setSelectedId(result.slots[0]?.id ?? null);
             setMode('list');
-            setInfo(t('aerocryptNative.keyslotsMigrated'));
+            if (result.recoveryCode) {
+                setShownRecoveryCode(result.recoveryCode);
+                setInfo(t('aerocryptNative.keyslotsRecoveryAutoOffered'));
+            } else {
+                setInfo(t('aerocryptNative.keyslotsMigrated'));
+            }
         } catch (e) {
             setError(String(e).replace(/^Error:\s*/i, ''));
         } finally {
@@ -167,6 +177,7 @@ export const AeroCryptKeyslotsModal: React.FC<Props> = ({
     const runAdd = async () => {
         setError(null);
         setInfo(null);
+        setShownRecoveryCode(null);
         if (slotType === 'passphrase') {
             if (!newPassword) {
                 setError(t('aerocryptNative.keyslotsNewPasswordRequired'));
@@ -176,10 +187,13 @@ export const AeroCryptKeyslotsModal: React.FC<Props> = ({
                 setError(t('aerocryptNative.keyslotsPasswordMismatch'));
                 return;
             }
-        } else if (!newKeyfilePath.trim()) {
-            setError(t('aerocryptNative.keyslotsNewKeyfileRequired'));
-            return;
+        } else if (slotType === 'keyfile') {
+            if (!newKeyfilePath.trim()) {
+                setError(t('aerocryptNative.keyslotsNewKeyfileRequired'));
+                return;
+            }
         }
+        // recovery: no form fields; backend generates a code
         setBusy(true);
         try {
             const result = await invoke<SlotMutateResult>('aerocrypt_add_slot', {
@@ -193,7 +207,16 @@ export const AeroCryptKeyslotsModal: React.FC<Props> = ({
             setNewPassword2('');
             setNewKeyfilePath('');
             setMode('list');
-            setInfo(t('aerocryptNative.keyslotsAdded'));
+            if (result.recoveryCode) {
+                setShownRecoveryCode(result.recoveryCode);
+                setInfo(
+                    result.autoOfferedRecovery
+                        ? t('aerocryptNative.keyslotsRecoveryAutoOffered')
+                        : t('aerocryptNative.keyslotsRecoveryAdded'),
+                );
+            } else {
+                setInfo(t('aerocryptNative.keyslotsAdded'));
+            }
         } catch (e) {
             setError(String(e).replace(/^Error:\s*/i, ''));
         } finally {
@@ -455,6 +478,28 @@ export const AeroCryptKeyslotsModal: React.FC<Props> = ({
                                 </div>
                             )}
 
+                            {shownRecoveryCode && (
+                                <div className="p-3 bg-amber-50 dark:bg-amber-900/40 border border-amber-300 dark:border-amber-700 rounded text-sm text-amber-900 dark:text-amber-100 space-y-2">
+                                    <p className="font-medium">
+                                        {t('aerocryptNative.keyslotsRecoverySaveOnce')}
+                                    </p>
+                                    <code className="block break-all text-xs font-mono bg-white/70 dark:bg-gray-900/70 px-2 py-1.5 rounded select-all">
+                                        {shownRecoveryCode}
+                                    </code>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            void navigator.clipboard
+                                                ?.writeText(shownRecoveryCode)
+                                                .catch(() => undefined);
+                                        }}
+                                        className="px-2 py-1 text-xs rounded bg-amber-600 text-white hover:bg-amber-700"
+                                    >
+                                        {t('aerocryptNative.keyslotsRecoveryCopy')}
+                                    </button>
+                                </div>
+                            )}
+
                             {list.version >= 4 && mode === 'list' && (
                                 <>
                                     <ul className="divide-y divide-gray-200 dark:divide-gray-700 border border-gray-200 dark:border-gray-700 rounded overflow-hidden">
@@ -554,7 +599,7 @@ export const AeroCryptKeyslotsModal: React.FC<Props> = ({
                                     <div className="font-medium text-sm text-gray-800 dark:text-gray-100">
                                         {t('aerocryptNative.keyslotsAdd')}
                                     </div>
-                                    <div className="flex gap-3 text-sm">
+                                    <div className="flex flex-wrap gap-3 text-sm">
                                         <label className="flex items-center gap-1 cursor-pointer text-gray-800 dark:text-gray-200">
                                             <input
                                                 type="radio"
@@ -572,6 +617,15 @@ export const AeroCryptKeyslotsModal: React.FC<Props> = ({
                                                 onChange={() => setSlotType('keyfile')}
                                             />
                                             {t('aerocryptNative.keyslotsKindKeyfile')}
+                                        </label>
+                                        <label className="flex items-center gap-1 cursor-pointer text-gray-800 dark:text-gray-200">
+                                            <input
+                                                type="radio"
+                                                name="slotType"
+                                                checked={slotType === 'recovery'}
+                                                onChange={() => setSlotType('recovery')}
+                                            />
+                                            {t('aerocryptNative.keyslotsKindRecovery')}
                                         </label>
                                     </div>
                                     {slotType === 'passphrase' ? (
@@ -597,7 +651,7 @@ export const AeroCryptKeyslotsModal: React.FC<Props> = ({
                                                 className="w-full px-2 py-1.5 text-sm rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
                                             />
                                         </>
-                                    ) : (
+                                    ) : slotType === 'keyfile' ? (
                                         <div className="flex gap-2">
                                             <input
                                                 type="text"
@@ -616,6 +670,10 @@ export const AeroCryptKeyslotsModal: React.FC<Props> = ({
                                                 {t('aerocryptNative.keyfileChoose')}
                                             </button>
                                         </div>
+                                    ) : (
+                                        <p className="text-xs text-gray-600 dark:text-gray-300">
+                                            {t('aerocryptNative.keyslotsRecoveryHint')}
+                                        </p>
                                     )}
                                     <div className="flex gap-2">
                                         <button

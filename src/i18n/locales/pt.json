@@ -5192,7 +5192,13 @@
             "keyslotsRotateUnsupported": "Este tipo de ranhura ainda não pode ser rodado a partir da GUI.",
             "keyslotsAdded": "Ranhura adicionada.",
             "keyslotsRotated": "Ranhura rodada.",
-            "keyslotsRemoved": "Ranhura removida (época incrementada)."
+            "keyslotsRemoved": "Ranhura removida (época incrementada).",
+            "keyslotsRecoveryHint": "Um código de recuperação será gerado e mostrado uma vez. Imprima-o ou guarde-o offline; ele pode abrir este cofre sem a sua palavra-passe ou keyfile.",
+            "keyslotsRecoveryAdded": "Slot de recuperação adicionado. Guarde o código de recuperação abaixo; não será mostrado novamente.",
+            "keyslotsRecoveryAutoOffered": "Um slot de recuperação foi adicionado automaticamente porque este cofre seria apenas com keyfile. Guarde o código de recuperação abaixo.",
+            "keyslotsRecoverySaveOnce": "Guarde este código de recuperação agora (mostrado uma vez):",
+            "keyslotsRecoveryCopy": "Copiar código",
+            "keyslotsUnlockWithRecovery": "Também pode desbloquear com um código de recuperação (cole-o como palavra-passe)."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Encriptação)",

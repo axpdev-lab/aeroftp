@@ -1,45 +1,52 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
-//! Minimal Emergency Kit builder (Tier 1 for headerless default).
+//! Emergency Kit builder (Tier 1 public kit + v4 recovery-slot extension).
 //!
-//! The kit carries only public, non-secret fields from a persisted
-//! OverlayConfig: vault_id, version, salt, and the KDF parameters.
-//! It is an OPTIONAL, on-demand recovery kit available in every mode
-//! (headerless, headed, keyfile): in the GUI it never gates create or
-//! connect (owner decision, v4.1.4) and is re-viewable any time from the
-//! crypt toggle; the CLI `crypt init` still shows it once for an explicit
-//! acknowledgement.
+//! Tier 1 (v3): public fields only from a persisted OverlayConfig: vault_id,
+//! version, salt, and the KDF parameters. OPTIONAL, on-demand; GUI never gates
+//! create/connect (owner decision, v4.1.4).
 //!
-//! Never includes password, master key, keyfile material, or config_mac.
-//! The builder always reads the persisted config (via caller using
-//! validate_headerless_config_salt + parse_config) and does not
-//! re-derive crypto values.
+//! v4 (T7): same public fields plus an optional recovery code (secret: shown
+//! only when the caller supplies it at recovery-slot creation) and a public
+//! slot array (id, type, vault_prefix). Never includes password, master key,
+//! keyfile material, or config_mac.
 //!
 //! `verify_against_active` re-parses a saved kit text or remote marker and
 //! confirms vault_id / salt / version / KDF still match the active profile
-//! keystore config (tracker #421 item #6). No secrets are accepted or returned.
+//! keystore config (tracker #421 item #6). Recovery-code match is optional.
 
 use base64::Engine as _;
 use serde::Serialize;
 
+use super::keyslots::SlotType;
 use super::overlay::{parse_config, OverlayConfig, VAULT_ID_SIZE, VERSION_V3};
 use super::{argon2_lanes, argon2_mem_kib, argon2_time};
 
-/// Public-only Emergency Kit for recovery after keystore loss.
-/// The salt here is the per-vault random value (not a constant).
-/// With the matching password (and optional keyfile) this data lets
-/// a user reconstruct the local headerless config or headed marker.
+/// Public slot row for the v4 Emergency Kit (no secrets).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct KitSlotSummary {
+    pub id: u32,
+    pub kind: String,
+    /// Present for recovery slots (Crockford vault prefix).
+    pub vault_prefix: Option<String>,
+}
+
+/// Emergency Kit for recovery after keystore loss.
+///
+/// Public fields always: vault_id, version, salt, KDF. Optional secret:
+/// `recovery_code` only when the caller passes it (fresh generation). Optional
+/// v4: `slots` public summary.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct EmergencyKit {
     /// Base64 encoding of the 16-byte vault_id (matches the persisted
     /// config JSON exactly). Labelled in text output for clarity.
     pub vault_id: String,
-    /// AECR version (always 3 for current overlays that emit vault_id).
+    /// AECR version (3 for Tier-1, 4 for keyslot vaults).
     pub version: u8,
-    /// Base64 encoding of the 32-byte salt (matches persisted JSON).
+    /// Base64 encoding of the 32-byte salt (v3) or first KDF-slot salt (v4).
     pub salt: String,
-    /// KDF algorithm name (always "Argon2id" for v3).
+    /// KDF algorithm name (always "Argon2id" for KDF slots).
     pub kdf_algorithm: String,
     pub kdf_mem_kib: u32,
     pub kdf_time: u32,
@@ -47,6 +54,13 @@ pub struct EmergencyKit {
     /// Full human-readable printable representation. This is what the
     /// user saves to paper or an offline file.
     pub text: String,
+    /// Optional recovery code (SECRET). Only set when the caller supplies it
+    /// at recovery-slot creation; never reconstructed from the marker alone.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub recovery_code: Option<String>,
+    /// v4 public slot list (id / type / vault_prefix). None for v3 kits.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub slots: Option<Vec<KitSlotSummary>>,
 }
 
 /// Field-level comparison of a candidate kit/marker against the active
@@ -72,8 +86,9 @@ pub struct KitVerifyReport {
 }
 
 impl EmergencyKit {
-    /// Render the kit as a stable, printable block (no secrets).
+    /// Render the kit as a stable, printable block.
     /// Used by CLI when printing for interactive ack and by GUI dialog.
+    #[allow(clippy::too_many_arguments)]
     pub fn render_text(
         vault_id: &str,
         version: u8,
@@ -82,6 +97,8 @@ impl EmergencyKit {
         time: u32,
         lanes: u32,
         requires_keyfile: bool,
+        recovery_code: Option<&str>,
+        slots: Option<&[KitSlotSummary]>,
     ) -> String {
         let keyfile_line = if requires_keyfile {
             "This vault also requires its keyfile: this kit and your password are not\n\
@@ -89,24 +106,62 @@ impl EmergencyKit {
         } else {
             ""
         };
+        let mut slots_block = String::new();
+        if let Some(list) = slots {
+            if !list.is_empty() {
+                slots_block.push_str("Slots:\n");
+                for s in list {
+                    match &s.vault_prefix {
+                        Some(vp) => {
+                            slots_block.push_str(&format!(
+                                "  - id={} type={} vault_prefix={}\n",
+                                s.id, s.kind, vp
+                            ));
+                        }
+                        None => {
+                            slots_block.push_str(&format!("  - id={} type={}\n", s.id, s.kind));
+                        }
+                    }
+                }
+            }
+        }
+        let recovery_block = match recovery_code {
+            Some(code) => format!(
+                "\n\
+                 Recovery code (SECRET - treat like a password):\n\
+                 {code}\n\
+                 This code alone can open the vault (recovery slot). Print it once\n\
+                 and store it offline, separate from this kit's other copy if possible.\n"
+            ),
+            None => String::new(),
+        };
+        let secret_note = if recovery_code.is_some() {
+            "This kit includes a recovery code (a secret). Keep the paper offline.\n"
+        } else {
+            "This kit holds only public configuration, never a secret.\n"
+        };
         format!(
             "AEROCRYPT EMERGENCY KIT\n\n\
              Keep this in a safe place. You will need it TOGETHER WITH your\n\
              password to recover your vault after losing the local keystore\n\
              (reinstall, new machine, lost credentials store).\n\
-             This kit holds only public configuration, never a secret.\n\n\
-             Vault ID: {}\n\
-             Version: {}\n\
-             Salt (base64): {}\n\
-             KDF: {} (mem={} KiB, t={}, p={})\n\
-             {}\n\
+             {secret_note}\n\
+             Vault ID: {vault_id}\n\
+             Version: {version}\n\
+             Salt (base64): {salt}\n\
+             KDF: Argon2id (mem={mem} KiB, t={time}, p={lanes})\n\
+             {keyfile_line}{slots_block}{recovery_block}\n\
              SECURITY: NEVER keep this kit and your password in the same place.\n\
-             Both are required to open the vault; neither one alone can.\n",
-            vault_id, version, salt, "Argon2id", mem, time, lanes, keyfile_line
+             Both are required to open the vault; neither one alone can.\n"
         )
     }
 
-    fn public_snapshot(fields: PublicKitFields, requires_keyfile: bool) -> Self {
+    fn public_snapshot(
+        fields: PublicKitFields,
+        requires_keyfile: bool,
+        recovery_code: Option<String>,
+        slots: Option<Vec<KitSlotSummary>>,
+    ) -> Self {
         let text = Self::render_text(
             &fields.vault_id,
             fields.version,
@@ -115,6 +170,8 @@ impl EmergencyKit {
             fields.kdf_time,
             fields.kdf_lanes,
             requires_keyfile,
+            recovery_code.as_deref(),
+            slots.as_deref(),
         );
         Self {
             vault_id: fields.vault_id,
@@ -125,6 +182,8 @@ impl EmergencyKit {
             kdf_time: fields.kdf_time,
             kdf_lanes: fields.kdf_lanes,
             text,
+            recovery_code,
+            slots,
         }
     }
 }
@@ -149,12 +208,43 @@ pub fn build_from_config_json(config_json: &str) -> Result<EmergencyKit, String>
     build_from_overlay_config(&cfg)
 }
 
-/// Build directly from a parsed OverlayConfig (v3 only for Tier-1 kit).
+/// Build directly from a parsed OverlayConfig (v3 public kit or v4 with slots).
 /// Extracts vault_id (required), salt and KDF params from the live profile.
+/// Does not include a recovery code (call [`build_v4_with_recovery`] for that).
 pub fn build_from_overlay_config(cfg: &OverlayConfig) -> Result<EmergencyKit, String> {
-    let requires_keyfile = cfg.requires_keyfile();
+    build_from_overlay_config_inner(cfg, None)
+}
+
+/// v4 kit that also embeds a freshly generated recovery code (SECRET).
+pub fn build_v4_with_recovery(
+    cfg: &OverlayConfig,
+    recovery_code: &str,
+) -> Result<EmergencyKit, String> {
+    build_from_overlay_config_inner(cfg, Some(recovery_code.to_string()))
+}
+
+fn slot_kind_label(kind: SlotType) -> String {
+    match kind {
+        SlotType::Passphrase => "passphrase".to_string(),
+        SlotType::Keyfile => "keyfile".to_string(),
+        SlotType::Recovery => "recovery".to_string(),
+        SlotType::Fido2Hmac => "fido2-hmac".to_string(),
+        SlotType::And => "and".to_string(),
+        SlotType::Threshold => "threshold".to_string(),
+    }
+}
+
+fn build_from_overlay_config_inner(
+    cfg: &OverlayConfig,
+    recovery_code: Option<String>,
+) -> Result<EmergencyKit, String> {
     match cfg {
-        OverlayConfig::V3 { salt, vault_id, .. } => {
+        OverlayConfig::V3 {
+            salt,
+            vault_id,
+            requires_keyfile,
+            ..
+        } => {
             let vid = vault_id.ok_or_else(|| {
                 "Emergency Kit requires a vault_id (present in all v3 configs since Tier 1)"
                     .to_string()
@@ -174,11 +264,64 @@ pub fn build_from_overlay_config(cfg: &OverlayConfig) -> Result<EmergencyKit, St
                     kdf_time: argon2_time(),
                     kdf_lanes: argon2_lanes(),
                 },
+                *requires_keyfile,
+                // v3 kits never carry a recovery code (no recovery slot).
+                None,
+                None,
+            ))
+        }
+        OverlayConfig::V4 {
+            vault_id, slots, ..
+        } => {
+            let requires_keyfile = slots.iter().any(|s| s.kind == SlotType::Keyfile);
+            // Prefer the first KDF slot salt as the kit salt (public; for display).
+            let salt_bytes = slots
+                .iter()
+                .find(|s| {
+                    matches!(
+                        s.kind,
+                        SlotType::Passphrase | SlotType::Keyfile | SlotType::Recovery
+                    ) && s.salt.len() == 32
+                })
+                .map(|s| s.salt.as_slice())
+                .ok_or_else(|| {
+                    "v4 Emergency Kit requires at least one KDF slot with salt".to_string()
+                })?;
+            let salt_b64 = base64::engine::general_purpose::STANDARD.encode(salt_bytes);
+            let vid_b64 = base64::engine::general_purpose::STANDARD.encode(vault_id);
+            let kit_slots: Vec<KitSlotSummary> = slots
+                .iter()
+                .map(|s| {
+                    let vault_prefix = match &s.binding {
+                        super::keyslots::SlotBinding::Recovery { vault_prefix } => {
+                            Some(vault_prefix.clone())
+                        }
+                        _ => None,
+                    };
+                    KitSlotSummary {
+                        id: s.id,
+                        kind: slot_kind_label(s.kind),
+                        vault_prefix,
+                    }
+                })
+                .collect();
+            Ok(EmergencyKit::public_snapshot(
+                PublicKitFields {
+                    vault_id: vid_b64,
+                    version: 4,
+                    salt: salt_b64,
+                    kdf_algorithm: "Argon2id".to_string(),
+                    kdf_mem_kib: argon2_mem_kib(),
+                    kdf_time: argon2_time(),
+                    kdf_lanes: argon2_lanes(),
+                },
                 requires_keyfile,
+                recovery_code,
+                Some(kit_slots),
             ))
         }
         other => Err(format!(
-            "Emergency Kit is only supported for v3 overlays (got v{})",
+            "Emergency Kit is only supported for v3/v4 overlays (got v{})",
             other.version()
         )),
     }
@@ -262,17 +405,60 @@ pub fn parse_kit_text(text: &str) -> Result<EmergencyKit, String> {
     let mut kdf_time: Option<u32> = None;
     let mut kdf_lanes: Option<u32> = None;
     let mut requires_keyfile = false;
+    let mut recovery_code: Option<String> = None;
+    let mut slots: Vec<KitSlotSummary> = Vec::new();
+    let mut next_is_recovery_code = false;
 
     for raw in text.lines() {
         let line = raw.trim();
         if line.is_empty() {
             continue;
         }
+        if next_is_recovery_code {
+            // Recovery code is the next non-empty line after the label.
+            if line.starts_with("AERO-") || line.to_ascii_uppercase().starts_with("AERO") {
+                recovery_code = Some(line.to_string());
+                next_is_recovery_code = false;
+                continue;
+            }
+            next_is_recovery_code = false;
+        }
         if line
             .to_ascii_lowercase()
             .contains("also requires its keyfile")
         {
             requires_keyfile = true;
+        }
+        if line.starts_with("Recovery code") {
+            next_is_recovery_code = true;
+            continue;
+        }
+        // Slot rows: "  - id=N type=T" or with vault_prefix=
+        if let Some(rest) = line.strip_prefix("- id=") {
+            let mut id = None;
+            let mut kind = None;
+            let mut vault_prefix = None;
+            // rest is like "0 type=passphrase" or "1 type=recovery vault_prefix=ABCD"
+            let parts: Vec<&str> = rest.split_whitespace().collect();
+            if let Some(id_s) = parts.first() {
+                id = id_s.parse::<u32>().ok();
+            }
+            for p in &parts {
+                if let Some(k) = p.strip_prefix("type=") {
+                    kind = Some(k.to_string());
+                }
+                if let Some(vp) = p.strip_prefix("vault_prefix=") {
+                    vault_prefix = Some(vp.to_string());
+                }
+            }
+            if let (Some(id), Some(kind)) = (id, kind) {
+                slots.push(KitSlotSummary {
+                    id,
+                    kind,
+                    vault_prefix,
+                });
+            }
+            continue;
         }
         if let Some(v) = line.strip_prefix("Vault ID:") {
             vault_id = Some(v.trim().to_string());
@@ -389,6 +575,8 @@ pub fn parse_kit_text(text: &str) -> Result<EmergencyKit, String> {
             kdf_lanes,
         },
         requires_keyfile,
+        recovery_code,
+        if slots.is_empty() { None } else { Some(slots) },
     ))
 }
 

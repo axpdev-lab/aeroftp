@@ -5192,7 +5192,13 @@
             "keyslotsRotateUnsupported": "Ovu vrstu utora još nije moguće rotirati iz GUI-ja.",
             "keyslotsAdded": "Utor dodan.",
             "keyslotsRotated": "Utor rotiran.",
-            "keyslotsRemoved": "Utor uklonjen (epoha povećana)."
+            "keyslotsRemoved": "Utor uklonjen (epoha povećana).",
+            "keyslotsRecoveryHint": "Kod za oporavak bit će generiran i prikazan jednom. Ispišite ga ili pohranite offline; može otvoriti ovaj trezor bez lozinke ili keyfilea.",
+            "keyslotsRecoveryAdded": "Utor za oporavak dodan. Spremite kod za oporavak u nastavku; više se neće prikazati.",
+            "keyslotsRecoveryAutoOffered": "Utor za oporavak automatski je dodan jer bi ovaj trezor bio samo s keyfileom. Spremite kod za oporavak u nastavku.",
+            "keyslotsRecoverySaveOnce": "Spremite ovaj kod za oporavak sada (prikazuje se jednom):",
+            "keyslotsRecoveryCopy": "Kopiraj kod",
+            "keyslotsUnlockWithRecovery": "Također možete otključati kodom za oporavak (zalijepite ga kao lozinku)."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Šifriranje)",

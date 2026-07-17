@@ -5211,7 +5211,13 @@
             "keyslotsRotateUnsupported": "Slot mota hau ezin da oraindik GUI-tik biratu.",
             "keyslotsAdded": "Slota gehitu da.",
             "keyslotsRotated": "Slota biratu da.",
-            "keyslotsRemoved": "Slota kendu da (epoka igo da)."
+            "keyslotsRemoved": "Slota kendu da (epoka igo da).",
+            "keyslotsRecoveryHint": "Berreskuratze-kode bat sortuko da eta behin bakarrik erakutsiko da. Inprimatu edo gorde konektatu gabe; pasahitz edo keyfile gabe ireki dezake gordailu hau.",
+            "keyslotsRecoveryAdded": "Berreskuratze-zirrikitua gehitu da. Gorde beheko berreskuratze-kodea; ez da berriro erakutsiko.",
+            "keyslotsRecoveryAutoOffered": "Berreskuratze-zirrikitu bat automatikoki gehitu da, gordailu hau keyfile soilik izango zelako. Gorde beheko berreskuratze-kodea.",
+            "keyslotsRecoverySaveOnce": "Gorde berreskuratze-kode hau orain (behin erakusten da):",
+            "keyslotsRecoveryCopy": "Kopiatu kodea",
+            "keyslotsUnlockWithRecovery": "Berreskuratze-kode batekin ere desblokea dezakezu (itsatsi pasahitz gisa)."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Zifratzea)",

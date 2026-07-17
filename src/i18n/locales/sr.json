@@ -5192,7 +5192,13 @@
             "keyslotsRotateUnsupported": "Овај тип слота још не може да се ротира из GUI-ја.",
             "keyslotsAdded": "Слот додат.",
             "keyslotsRotated": "Слот ротиран.",
-            "keyslotsRemoved": "Слот уклоњен (епоха повећана)."
+            "keyslotsRemoved": "Слот уклоњен (епоха повећана).",
+            "keyslotsRecoveryHint": "Код за опоравак биће генерисан и приказан једном. Одштампајте га или сачувајте офлајн; може отворити овај трезор без лозинке или keyfile-а.",
+            "keyslotsRecoveryAdded": "Слот за опоравак додат. Сачувајте код за опоравак испод; неће бити поново приказан.",
+            "keyslotsRecoveryAutoOffered": "Слот за опоравак је аутоматски додат јер би овај трезор био само са keyfile-ом. Сачувајте код за опоравак испод.",
+            "keyslotsRecoverySaveOnce": "Сачувајте овај код за опоравак сада (приказује се једном):",
+            "keyslotsRecoveryCopy": "Копирај код",
+            "keyslotsUnlockWithRecovery": "Можете откључати и кодом за опоравак (налепите га као лозинку)."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Шифровање)",

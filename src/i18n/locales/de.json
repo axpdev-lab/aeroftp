@@ -5192,7 +5192,13 @@
             "keyslotsRotateUnsupported": "Dieser Slot-Typ kann noch nicht über die GUI rotiert werden.",
             "keyslotsAdded": "Slot hinzugefügt.",
             "keyslotsRotated": "Slot rotiert.",
-            "keyslotsRemoved": "Slot entfernt (Epoche erhöht)."
+            "keyslotsRemoved": "Slot entfernt (Epoche erhöht).",
+            "keyslotsRecoveryHint": "Ein Wiederherstellungscode wird erzeugt und einmalig angezeigt. Drucken Sie ihn aus oder speichern Sie ihn offline; er kann diesen Tresor ohne Passwort oder Keyfile öffnen.",
+            "keyslotsRecoveryAdded": "Wiederherstellungsslot hinzugefügt. Speichern Sie den Wiederherstellungscode unten; er wird nicht erneut angezeigt.",
+            "keyslotsRecoveryAutoOffered": "Ein Wiederherstellungsslot wurde automatisch hinzugefügt, weil dieser Tresor sonst nur per Keyfile zugänglich gewesen wäre. Speichern Sie den Wiederherstellungscode unten.",
+            "keyslotsRecoverySaveOnce": "Speichern Sie diesen Wiederherstellungscode jetzt (einmalig angezeigt):",
+            "keyslotsRecoveryCopy": "Code kopieren",
+            "keyslotsUnlockWithRecovery": "Sie können auch mit einem Wiederherstellungscode entsperren (als Passwort einfügen)."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Verschlüsselung)",

@@ -5211,7 +5211,13 @@
             "keyslotsRotateUnsupported": "Denne plasstypen kan ikke roteres fra GUI ennå.",
             "keyslotsAdded": "Plass lagt til.",
             "keyslotsRotated": "Plass rotert.",
-            "keyslotsRemoved": "Plass fjernet (epoke økt)."
+            "keyslotsRemoved": "Plass fjernet (epoke økt).",
+            "keyslotsRecoveryHint": "En gjenopprettingskode genereres og vises én gang. Skriv den ut eller lagre den frakoblet; den kan åpne dette hvelvet uten passord eller keyfile.",
+            "keyslotsRecoveryAdded": "Gjenopprettingsspor lagt til. Lagre gjenopprettingskoden nedenfor; den vises ikke igjen.",
+            "keyslotsRecoveryAutoOffered": "Et gjenopprettingsspor ble automatisk lagt til fordi dette hvelvet ellers bare hadde keyfile. Lagre gjenopprettingskoden nedenfor.",
+            "keyslotsRecoverySaveOnce": "Lagre denne gjenopprettingskoden nå (vises én gang):",
+            "keyslotsRecoveryCopy": "Kopier kode",
+            "keyslotsUnlockWithRecovery": "Du kan også låse opp med en gjenopprettingskode (lim den inn som passord)."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Kryptering)",

@@ -5192,7 +5192,13 @@
             "keyslotsRotateUnsupported": "Denna platstyp kan inte roteras från GUI ännu.",
             "keyslotsAdded": "Plats tillagd.",
             "keyslotsRotated": "Plats roterad.",
-            "keyslotsRemoved": "Plats borttagen (epok ökad)."
+            "keyslotsRemoved": "Plats borttagen (epok ökad).",
+            "keyslotsRecoveryHint": "En återställningskod genereras och visas en gång. Skriv ut eller spara den offline; den kan öppna detta valv utan ditt lösenord eller keyfile.",
+            "keyslotsRecoveryAdded": "Återställningsplats tillagd. Spara återställningskoden nedan; den visas inte igen.",
+            "keyslotsRecoveryAutoOffered": "En återställningsplats lades till automatiskt eftersom detta valv annars bara hade keyfile. Spara återställningskoden nedan.",
+            "keyslotsRecoverySaveOnce": "Spara denna återställningskod nu (visas en gång):",
+            "keyslotsRecoveryCopy": "Kopiera kod",
+            "keyslotsUnlockWithRecovery": "Du kan också låsa upp med en återställningskod (klistra in den som lösenord)."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Kryptering)",
