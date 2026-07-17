@@ -7,6 +7,7 @@ use std::time::{Duration, Instant};
 
 use tokio::time::sleep;
 
+use crate::aerorsync::delta_transport_impl::AerorsyncDeltaTransport;
 use crate::aerorsync::driver::SessionDriver;
 use crate::aerorsync::engine_adapter::CurrentDeltaSyncBridge;
 use crate::aerorsync::protocol::{AerorsyncFrameCodec, FileMetadataMessage};
@@ -19,6 +20,7 @@ use crate::aerorsync::transport::{
     BidirectionalByteStream, RemoteExecRequest, RemoteShellTransport,
 };
 use crate::aerorsync::types::{AerorsyncConfig, AerorsyncErrorKind};
+use crate::delta_transport::DeltaTransport;
 
 fn env_path(name: &str) -> PathBuf {
     PathBuf::from(env::var(name).unwrap_or_else(|_| panic!("missing env var {name}")))
@@ -364,5 +366,134 @@ async fn live_real_rsync_lane_emits_protocol_31_greeting() {
         greeting[0] == 0x1f || greeting[0] == 0x20,
         "unexpected first greeting byte {:#04x}: expected 0x1f (protocol 31) or 0x20 (32)",
         greeting[0]
+    );
+}
+
+/// Shared setup for the production wire-path live tests against stock rsync.
+/// Returns `(transport, remote, local, expected)`. Each test MUST pass its
+/// own local path env var so parallel cargo tests do not race on the same
+/// `<target>.aerotmp` / rename.
+fn real_rsync_delta_download_inputs(
+    local_env: &str,
+) -> (AerorsyncDeltaTransport, String, PathBuf, Vec<u8>) {
+    let mut ssh = base_config_with_prefix("RSNP_TEST_REAL");
+    // Probe stock rsync --version (not aerorsync_serve).
+    ssh.probe_request = RemoteExecRequest {
+        program: "rsync".to_string(),
+        args: vec!["--version".to_string()],
+        environment: Vec::new(),
+    };
+    // 256 KiB fixture is below the production min_file_size; download has no
+    // size gate, but keep min at 0 so a future upload twin stays usable.
+    let transport = AerorsyncDeltaTransport::new(ssh, 0);
+    let remote = env::var("RSNP_TEST_REAL_REMOTE_DOWNLOAD_TARGET")
+        .expect("RSNP_TEST_REAL_REMOTE_DOWNLOAD_TARGET must point at the remote file");
+    let local = env_path(local_env);
+    let expected = fs::read(env_path("RSNP_TEST_REAL_EXPECT_DOWNLOAD_FILE"))
+        .expect("read expected download fixture");
+    (transport, remote, local, expected)
+}
+
+/// Production wire path against stock rsync (B3-12 / B3-15 xxh128 path).
+///
+/// Unlike the RSNP `SessionDriver` lane above, this drives
+/// [`AerorsyncDeltaTransport`] / `do_download` against a real `rsync --server
+/// --sender` peer. That is the path that negotiates xxh128 by default,
+/// confirms rolling hits with truncated block-strong (B3-15), and verifies
+/// the sender's whole-file trailer before commit (B3-12).
+///
+/// Env (same `RSNP_TEST_REAL_*` namespace as the greeting test, plus paths):
+/// - `RSNP_TEST_REAL_SSH_KEY`, `HOST`, `PORT`, `USER`, optional `HOST_FINGERPRINT`
+/// - `RSNP_TEST_REAL_REMOTE_DOWNLOAD_TARGET` (absolute path on the fixture)
+/// - `RSNP_TEST_REAL_LOCAL_DOWNLOAD_FILE` (host-side baseline / target)
+/// - `RSNP_TEST_REAL_EXPECT_DOWNLOAD_FILE` (expected final bytes)
+#[tokio::test]
+#[ignore = "requires the Docker real-rsync SSH fixture + AerorsyncDeltaTransport"]
+async fn live_real_rsync_native_delta_download_verifies_whole_file() {
+    if env::var("RSNP_TEST_REAL_SSH_KEY").is_err() {
+        eprintln!("skipping: RSNP_TEST_REAL_SSH_KEY not set (real-rsync lane inactive)");
+        return;
+    }
+
+    let (transport, remote, local, expected) =
+        real_rsync_delta_download_inputs("RSNP_TEST_REAL_LOCAL_DOWNLOAD_FILE");
+
+    // Baseline is already the older basis on disk (harness seeds it). A
+    // successful delta reconstructs `expected` and commits atomically.
+    let stats = transport
+        .download(&remote, &local)
+        .await
+        .unwrap_or_else(|e| panic!("native delta download against real rsync failed: {e:?}"));
+
+    let got = fs::read(&local).expect("read reconstructed local target");
+    assert_eq!(
+        got, expected,
+        "reconstructed local bytes must match the remote source"
+    );
+    assert_eq!(
+        stats.total_size,
+        expected.len() as u64,
+        "stats.total_size must equal reconstructed length"
+    );
+    eprintln!(
+        "live real-rsync native delta download (default/xxh128): total_size={} bytes_sent={} bytes_received={} speedup={:.2} duration_ms={}",
+        stats.total_size,
+        stats.bytes_sent,
+        stats.bytes_received,
+        stats.speedup,
+        stats.duration_ms
+    );
+    assert!(
+        stats.bytes_received < stats.total_size || stats.total_size < 4096,
+        "expected a real delta (bytes_received < total_size) for the 256 KiB near-identical basis; got bytes_received={} total={}",
+        stats.bytes_received,
+        stats.total_size
+    );
+}
+
+/// Same production wire path with checksum negotiation forced to md5
+/// (`AEROFTP_RSYNC_CSUM_ALGOS=md5`), exercising B3-14 whole-file trailer
+/// verify and B3-17 block-strong confirm against a stock rsync 3.2.7 peer.
+///
+/// Uses `RSNP_TEST_REAL_LOCAL_DOWNLOAD_FILE_MD5` so it can run in parallel
+/// with the xxh128 twin without racing on the same `.aerotmp`.
+#[tokio::test]
+#[ignore = "requires the Docker real-rsync SSH fixture + md5 preamble override"]
+async fn live_real_rsync_native_delta_download_md5_peer() {
+    if env::var("RSNP_TEST_REAL_SSH_KEY").is_err() {
+        eprintln!("skipping: RSNP_TEST_REAL_SSH_KEY not set (real-rsync lane inactive)");
+        return;
+    }
+
+    // Force md5 as the only advertised client algo so negotiation cannot
+    // prefer xxh128. PreambleProfile::for_host reads this via with_env_overrides.
+    // SAFETY: live test process; no other concurrent reader of this var in
+    // the md5 peer path. Cleared before return.
+    unsafe {
+        env::set_var("AEROFTP_RSYNC_CSUM_ALGOS", "md5");
+    }
+
+    let (transport, remote, local, expected) =
+        real_rsync_delta_download_inputs("RSNP_TEST_REAL_LOCAL_DOWNLOAD_FILE_MD5");
+
+    let result = transport.download(&remote, &local).await;
+    unsafe {
+        env::remove_var("AEROFTP_RSYNC_CSUM_ALGOS");
+    }
+
+    let stats = result.unwrap_or_else(|e| {
+        panic!("native delta download (md5 peer) against real rsync failed: {e:?}")
+    });
+    let got = fs::read(&local).expect("read reconstructed local target");
+    assert_eq!(got, expected, "md5-peer reconstruction must match remote");
+    eprintln!(
+        "live real-rsync native delta download (md5): total_size={} bytes_sent={} bytes_received={} speedup={:.2}",
+        stats.total_size, stats.bytes_sent, stats.bytes_received, stats.speedup
+    );
+    assert!(
+        stats.bytes_received < stats.total_size || stats.total_size < 4096,
+        "expected a real delta under md5 block-strong; got bytes_received={} total={}",
+        stats.bytes_received,
+        stats.total_size
     );
 }
