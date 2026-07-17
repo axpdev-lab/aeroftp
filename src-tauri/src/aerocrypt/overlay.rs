@@ -921,6 +921,9 @@ fn parse_config_tsv(config: &str) -> Result<OverlayConfig, String> {
     let mac_bytes = base64::engine::general_purpose::STANDARD
         .decode(mac_b64.ok_or("missing mac in tsv")?)
         .map_err(|e| format!("invalid mac: {e}"))?;
+    if mac_bytes.len() != CONFIG_MAC_SIZE {
+        return Err("invalid mac length in tsv crypt config".into());
+    }
     let mut mac = [0u8; CONFIG_MAC_SIZE];
     mac.copy_from_slice(&mac_bytes);
 
@@ -2083,5 +2086,19 @@ mod tests {
         let tsv = "version\t4\nvault_id\tabc\n";
         let err = parse_config(tsv).unwrap_err();
         assert!(err.contains("v4 TSV not yet supported"), "got: {err}");
+    }
+
+    #[test]
+    fn tsv_v3_rejects_wrong_length_mac_without_panic() {
+        // A hostile marker with a valid 32-byte salt but a mac that base64-decodes
+        // to the wrong length must fail closed, never panic on copy_from_slice.
+        let salt = base64::engine::general_purpose::STANDARD.encode([0x22u8; SALT_V3_SIZE]);
+        let short_mac = base64::engine::general_purpose::STANDARD.encode([0x33u8; 8]);
+        let marker = format!("version\t3\nsalt\t{salt}\nmac\t{short_mac}\n");
+        let err = parse_config(&marker).unwrap_err();
+        assert!(
+            err.contains("invalid mac length"),
+            "expected mac-length rejection, got: {err}"
+        );
     }
 }
