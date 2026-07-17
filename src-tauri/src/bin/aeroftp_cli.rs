@@ -4766,6 +4766,110 @@ enum CryptCommands {
         #[arg(long)]
         keyfile: Option<String>,
     },
+    /// Migrate a v3 headed vault marker to v4 keyslots (one small marker write;
+    /// objects and names are not rewritten). Explicit only: ordinary unlock
+    /// never auto-migrates.
+    #[command(name = "migrate-v4")]
+    MigrateV4 {
+        /// Server URL (omit when using --profile)
+        #[arg(default_value = "_", hide_default_value = true)]
+        url: String,
+        /// Remote encrypted directory
+        #[arg(default_value = "/")]
+        path: String,
+        /// Encryption password (current v3 credential)
+        #[arg(long, env = "AEROFTP_CRYPT_PASSWORD", hide_env_values = true)]
+        password: Option<String>,
+        /// Keyfile, required if the v3 overlay was created with one
+        #[arg(long)]
+        keyfile: Option<String>,
+    },
+    /// List keyslots on a v4 vault (id, type, salt length; no secrets)
+    #[command(name = "list-slots")]
+    ListSlots {
+        /// Server URL (omit when using --profile)
+        #[arg(default_value = "_", hide_default_value = true)]
+        url: String,
+        /// Remote encrypted directory
+        #[arg(default_value = "/")]
+        path: String,
+        /// Encryption password (any valid factor)
+        #[arg(long, env = "AEROFTP_CRYPT_PASSWORD", hide_env_values = true)]
+        password: Option<String>,
+        /// Keyfile, if unlocking via a keyfile slot
+        #[arg(long)]
+        keyfile: Option<String>,
+    },
+    /// Add a keyslot to a v4 vault (no data rewrite; epoch unchanged)
+    #[command(name = "add-slot")]
+    AddSlot {
+        /// Server URL (omit when using --profile)
+        #[arg(default_value = "_", hide_default_value = true)]
+        url: String,
+        /// Remote encrypted directory
+        #[arg(default_value = "/")]
+        path: String,
+        /// Slot type to add
+        #[arg(long = "type", value_parser = ["passphrase", "keyfile"])]
+        slot_type: String,
+        /// Encryption password for the authenticating factor
+        #[arg(long, env = "AEROFTP_CRYPT_PASSWORD", hide_env_values = true)]
+        password: Option<String>,
+        /// Keyfile for the authenticating factor (if required)
+        #[arg(long)]
+        keyfile: Option<String>,
+        /// New passphrase for a passphrase slot (or set AEROFTP_CRYPT_NEW_PASSWORD)
+        #[arg(long, env = "AEROFTP_CRYPT_NEW_PASSWORD", hide_env_values = true)]
+        new_password: Option<String>,
+        /// New keyfile path for a keyfile slot
+        #[arg(long)]
+        new_keyfile: Option<String>,
+    },
+    /// Remove (revoke) a keyslot from a v4 vault (epoch bump). T5 supports the
+    /// single-survivor case: unlock with a slot you keep, then remove the other.
+    #[command(name = "remove-slot")]
+    RemoveSlot {
+        /// Server URL (omit when using --profile)
+        #[arg(default_value = "_", hide_default_value = true)]
+        url: String,
+        /// Remote encrypted directory
+        #[arg(default_value = "/")]
+        path: String,
+        /// Slot id to revoke
+        #[arg(long)]
+        slot_id: u32,
+        /// Encryption password for a surviving slot
+        #[arg(long, env = "AEROFTP_CRYPT_PASSWORD", hide_env_values = true)]
+        password: Option<String>,
+        /// Keyfile for a surviving slot (if required)
+        #[arg(long)]
+        keyfile: Option<String>,
+    },
+    /// Rotate one keyslot's factor (same epoch; re-wrap that slot only)
+    #[command(name = "rotate-slot")]
+    RotateSlot {
+        /// Server URL (omit when using --profile)
+        #[arg(default_value = "_", hide_default_value = true)]
+        url: String,
+        /// Remote encrypted directory
+        #[arg(default_value = "/")]
+        path: String,
+        /// Slot id to rotate (must match the authenticating factor)
+        #[arg(long)]
+        slot_id: u32,
+        /// Current encryption password
+        #[arg(long, env = "AEROFTP_CRYPT_PASSWORD", hide_env_values = true)]
+        password: Option<String>,
+        /// Current keyfile, if the slot uses one
+        #[arg(long)]
+        keyfile: Option<String>,
+        /// New passphrase (or set AEROFTP_CRYPT_NEW_PASSWORD)
+        #[arg(long, env = "AEROFTP_CRYPT_NEW_PASSWORD", hide_env_values = true)]
+        new_password: Option<String>,
+        /// New keyfile path (for keyfile slots)
+        #[arg(long)]
+        new_keyfile: Option<String>,
+    },
     /// Re-parse a saved Emergency Kit or headed marker and confirm it still
     /// matches the active profile keystore config (vault_id, salt, version, KDF).
     /// Offline by default: no password, no network. Optional remote probe when
@@ -23754,7 +23858,7 @@ fn cmd_agent_info(cli: &Cli, redact_identifiers: bool) -> i32 {
                 {"name": "serve", "syntax": "aeroftp-cli serve <http|webdav|ftp|sftp> --profile NAME /path", "description": "Expose a remote over a local protocol bridge"},
                 {"name": "daemon", "syntax": "aeroftp-cli daemon <start|stop|status>", "description": "Manage the background jobs daemon"},
                 {"name": "jobs", "syntax": "aeroftp-cli jobs <add|list|status|cancel>", "description": "Manage queued background jobs"},
-                {"name": "crypt", "syntax": "aeroftp-cli crypt <init|bind|unbind|to-headed|to-headerless|migrate-marker|kit-verify|ls|put|get> --profile NAME /path", "description": "Use encrypted overlay storage"},
+                {"name": "crypt", "syntax": "aeroftp-cli crypt <init|bind|unbind|to-headed|to-headerless|migrate-marker|migrate-v4|list-slots|add-slot|remove-slot|rotate-slot|kit-verify|ls|put|get> --profile NAME /path", "description": "Use encrypted overlay storage (v4 keyslots: migrate-v4 / list-slots / add-slot / remove-slot / rotate-slot)"},
                 {"name": "batch", "syntax": "aeroftp-cli batch file.aeroftp-script", "description": "Run batch automation scripts"},
                 {"name": "agent-info", "syntax": "aeroftp-cli agent-info --json", "description": "Show machine-readable CLI capabilities"}
             ]
@@ -48249,21 +48353,277 @@ fn validate_crypt_migration_config(
 > {
     use ftp_client_gui_lib::aerocrypt::overlay;
 
-    let config =
-        overlay::parse_config(config_json).map_err(|e| format!("Invalid AeroCrypt config: {e}"))?;
-    if config.is_read_only() {
+    // Fail-closed unlock via the shared chokepoint (v3 path). Do not invent a
+    // second derive+verify chain for CLI migration.
+    let (config, master_key) =
+        unlock_standalone_crypt_config(config_json, password, keyfile_digest)?;
+    if config.is_read_only() || config.version() != overlay::VERSION_V3 {
         return Err(format!(
             "AeroCrypt v{} metadata migration is not supported; only v3 vaults can migrate",
             config.version()
         ));
     }
-    let keyfile_digest = reconcile_keyfile(&config, keyfile_digest)?;
-    let master_key = overlay::derive_master_key_with_keyfile(&config, password, keyfile_digest)
-        .map_err(|e| format!("Key derivation failed: {e}"))?;
-    overlay::verify_config_mac(&config, &master_key)
-        .map_err(|e| format!("Crypt unlock failed: {e}"))?;
     let salt_b64 = v3_config_salt_b64(&config)?;
     Ok((config, master_key, salt_b64))
+}
+
+/// CLI standalone unlock: always the shared overlay chokepoint (v1-v4).
+/// Fail-closed on wrong factor; never auto-migrates v3->v4.
+fn unlock_standalone_crypt_config(
+    raw_header: &str,
+    password: &str,
+    keyfile_digest: Option<&[u8; 32]>,
+) -> Result<
+    (
+        ftp_client_gui_lib::aerocrypt::overlay::OverlayConfig,
+        [u8; 32],
+    ),
+    String,
+> {
+    ftp_client_gui_lib::aerocrypt::overlay::unlock_overlay_from_config(
+        raw_header,
+        password,
+        keyfile_digest,
+    )
+}
+
+/// Pure migrate-v4: unlock v3 header, emit v4 JSON marker. No network I/O.
+fn crypt_v4_migrate_header(
+    raw_header: &str,
+    password: &str,
+    keyfile_digest: Option<&[u8; 32]>,
+) -> Result<String, String> {
+    use ftp_client_gui_lib::aerocrypt::overlay;
+    let (cfg, master) = unlock_standalone_crypt_config(raw_header, password, keyfile_digest)?;
+    if cfg.version() != overlay::VERSION_V3 {
+        return Err(format!(
+            "migrate-v4 requires a v3 headed vault; got v{}",
+            cfg.version()
+        ));
+    }
+    overlay::migrate_v3_to_v4(&cfg, &master)
+}
+
+/// Slot summary for list-slots (no secrets).
+#[derive(Debug, Clone)]
+struct CryptSlotSummary {
+    id: u32,
+    kind: String,
+    salt_len: usize,
+}
+
+fn crypt_v4_list_slots(
+    raw_header: &str,
+    password: &str,
+    keyfile_digest: Option<&[u8; 32]>,
+) -> Result<(u32, Vec<CryptSlotSummary>), String> {
+    use ftp_client_gui_lib::aerocrypt::keyslots::SlotType;
+    use ftp_client_gui_lib::aerocrypt::overlay::OverlayConfig;
+
+    let (cfg, _omk) = unlock_standalone_crypt_config(raw_header, password, keyfile_digest)?;
+    let OverlayConfig::V4 { epoch, slots, .. } = cfg else {
+        return Err(format!(
+            "list-slots requires a v4 vault; got v{}",
+            cfg.version()
+        ));
+    };
+    let summaries = slots
+        .iter()
+        .map(|s| CryptSlotSummary {
+            id: s.id,
+            kind: match s.kind {
+                SlotType::Passphrase => "passphrase".to_string(),
+                SlotType::Keyfile => "keyfile".to_string(),
+                SlotType::Recovery => "recovery".to_string(),
+                SlotType::Fido2Hmac => "fido2-hmac".to_string(),
+                SlotType::And => "and".to_string(),
+                SlotType::Threshold => "threshold".to_string(),
+            },
+            salt_len: s.salt.len(),
+        })
+        .collect();
+    Ok((epoch, summaries))
+}
+
+fn crypt_v4_next_slot_id(slots: &[ftp_client_gui_lib::aerocrypt::keyslots::Slot]) -> u32 {
+    slots.iter().map(|s| s.id).max().map(|m| m + 1).unwrap_or(0)
+}
+
+/// Pure add-slot: unlock for management, derive new slot key, return new marker.
+fn crypt_v4_add_slot_header(
+    raw_header: &str,
+    password: &str,
+    keyfile_digest: Option<&[u8; 32]>,
+    slot_type: &str,
+    new_password: &str,
+    new_keyfile_digest: Option<&[u8; 32]>,
+) -> Result<String, String> {
+    use ftp_client_gui_lib::aerocrypt::keyslots::{
+        derive_slot_key, Argon2Params, SlotBinding, SlotFactor, SlotType,
+    };
+    use ftp_client_gui_lib::aerocrypt::overlay::{self, OverlayConfig, SlotKeyMaterial};
+
+    let material = overlay::unlock_v4_for_management(raw_header, password, keyfile_digest)?;
+    let OverlayConfig::V4 { slots, .. } = &material.config else {
+        return Err("add-slot requires a v4 vault".into());
+    };
+    let kind = match slot_type {
+        "passphrase" => SlotType::Passphrase,
+        "keyfile" => SlotType::Keyfile,
+        other => {
+            return Err(format!(
+                "unsupported slot type '{other}' (use passphrase|keyfile)"
+            ))
+        }
+    };
+    let new_id = crypt_v4_next_slot_id(slots);
+    let salt = overlay::random_salt_v3();
+    let kdf = Argon2Params::v3_profile();
+    let factor = match kind {
+        SlotType::Passphrase => {
+            if new_password.is_empty() {
+                return Err(
+                    "add-slot --type passphrase requires --new-password or AEROFTP_CRYPT_NEW_PASSWORD"
+                        .into(),
+                );
+            }
+            if new_keyfile_digest.is_some() {
+                return Err("add-slot --type passphrase does not take --new-keyfile".into());
+            }
+            SlotFactor::Passphrase(new_password)
+        }
+        SlotType::Keyfile => {
+            let Some(digest) = new_keyfile_digest else {
+                return Err("add-slot --type keyfile requires --new-keyfile".into());
+            };
+            SlotFactor::KeyfileDigest {
+                password: new_password,
+                digest,
+            }
+        }
+        _ => return Err("unsupported slot type".into()),
+    };
+    let slot_key = derive_slot_key(kind, &factor, &salt, Some(&kdf))?;
+    let sk = SlotKeyMaterial {
+        id: new_id,
+        kind,
+        salt: salt.to_vec(),
+        kdf: Some(kdf),
+        binding: SlotBinding::None,
+        slot_key,
+    };
+    overlay::add_slot(&material.config, &material.vk, &material.epoch_key, sk)
+}
+
+/// Pure remove-slot (T5: single-survivor only). Auth factor must belong to the
+/// sole surviving slot after revoke.
+fn crypt_v4_remove_slot_header(
+    raw_header: &str,
+    password: &str,
+    keyfile_digest: Option<&[u8; 32]>,
+    slot_id: u32,
+) -> Result<String, String> {
+    use ftp_client_gui_lib::aerocrypt::overlay::{self, OverlayConfig};
+
+    let material = overlay::unlock_v4_for_management(raw_header, password, keyfile_digest)?;
+    let OverlayConfig::V4 { slots, .. } = &material.config else {
+        return Err("remove-slot requires a v4 vault".into());
+    };
+    if material.slot_id == slot_id {
+        return Err(
+            "cannot remove the slot used to unlock; unlock with a surviving slot's credential"
+                .into(),
+        );
+    }
+    let surviving: Vec<_> = slots.iter().filter(|s| s.id != slot_id).collect();
+    if surviving.is_empty() {
+        return Err("cannot revoke the last slot".into());
+    }
+    // T5 limit: only re-wrap keys we hold (the authenticating slot).
+    if surviving.len() != 1 || surviving[0].id != material.slot_id {
+        return Err(format!(
+            "remove-slot currently supports only the single-survivor case (vault has {} slots after remove would keep {}; unlock must match the sole survivor). Multi-survivor revoke needs every surviving slot key (later task).",
+            slots.len(),
+            surviving.len()
+        ));
+    }
+    overlay::revoke_slot(
+        &material.config,
+        &material.vk,
+        slot_id,
+        &[(material.slot_id, material.slot_key)],
+    )
+}
+
+/// Pure rotate-slot: re-wrap the authenticating slot with a new factor.
+fn crypt_v4_rotate_slot_header(
+    raw_header: &str,
+    password: &str,
+    keyfile_digest: Option<&[u8; 32]>,
+    slot_id: u32,
+    new_password: &str,
+    new_keyfile_digest: Option<&[u8; 32]>,
+) -> Result<String, String> {
+    use ftp_client_gui_lib::aerocrypt::keyslots::{
+        derive_slot_key, Argon2Params, SlotBinding, SlotFactor, SlotType,
+    };
+    use ftp_client_gui_lib::aerocrypt::overlay::{self, OverlayConfig, SlotKeyMaterial};
+
+    let material = overlay::unlock_v4_for_management(raw_header, password, keyfile_digest)?;
+    if material.slot_id != slot_id {
+        return Err(format!(
+            "rotate-slot: unlock authenticated slot {}, but --slot-id is {slot_id}; unlock with the slot you are rotating",
+            material.slot_id
+        ));
+    }
+    let OverlayConfig::V4 { slots, .. } = &material.config else {
+        return Err("rotate-slot requires a v4 vault".into());
+    };
+    let slot = slots
+        .iter()
+        .find(|s| s.id == slot_id)
+        .ok_or_else(|| format!("unknown slot id {slot_id}"))?;
+    let kind = slot.kind;
+    let salt = overlay::random_salt_v3();
+    let kdf = Argon2Params::v3_profile();
+    let factor = match kind {
+        SlotType::Passphrase => {
+            if new_password.is_empty() {
+                return Err(
+                    "rotate-slot for a passphrase slot requires --new-password or AEROFTP_CRYPT_NEW_PASSWORD"
+                        .into(),
+                );
+            }
+            if new_keyfile_digest.is_some() {
+                return Err("rotate-slot passphrase slot does not take --new-keyfile".into());
+            }
+            SlotFactor::Passphrase(new_password)
+        }
+        SlotType::Keyfile => {
+            let Some(digest) = new_keyfile_digest else {
+                return Err("rotate-slot for a keyfile slot requires --new-keyfile".into());
+            };
+            SlotFactor::KeyfileDigest {
+                password: new_password,
+                digest,
+            }
+        }
+        other => {
+            return Err(format!(
+                "rotate-slot does not yet support slot type {other:?}"
+            ));
+        }
+    };
+    let slot_key = derive_slot_key(kind, &factor, &salt, Some(&kdf))?;
+    let sk = SlotKeyMaterial {
+        id: slot_id,
+        kind,
+        salt: salt.to_vec(),
+        kdf: Some(kdf),
+        binding: SlotBinding::None,
+        slot_key,
+    };
+    overlay::rotate_slot(&material.config, &material.vk, &material.epoch_key, sk)
 }
 
 fn crypt_migration_result(
@@ -49780,21 +50140,478 @@ async fn cmd_crypt_init(
     }
 }
 
-/// Reconcile the supplied keyfile against what the overlay config requires, so a
-/// mismatch is a clear error instead of a confusing "wrong password" from a
-/// silently-wrong derived key.
-fn reconcile_keyfile<'a>(
-    cfg: &ftp_client_gui_lib::aerocrypt::overlay::OverlayConfig,
-    keyfile_digest: Option<&'a [u8; 32]>,
-) -> Result<Option<&'a [u8; 32]>, String> {
-    match (cfg.requires_keyfile(), keyfile_digest) {
-        (true, None) => Err("this overlay requires a keyfile; pass --keyfile <file>".to_string()),
-        (false, Some(_)) => {
-            Err("this overlay was not created with a keyfile; omit --keyfile".to_string())
+/// Stage-upload-verify-rename a headed crypt marker to `CRYPT_CONFIG_WRITE_NAME`.
+/// Used by migrate-v4 / slot management. Returns an exit code on failure.
+async fn publish_crypt_marker(
+    provider: &mut dyn StorageProvider,
+    base_path: &str,
+    marker_text: &str,
+    password: &str,
+    keyfile_digest: Option<&[u8; 32]>,
+    format: OutputFormat,
+) -> Result<(), i32> {
+    let current_path = crypt_marker_path(base_path, CryptMarkerKind::Current);
+    let local_tmp = match tempfile::NamedTempFile::new() {
+        Ok(tmp) => tmp,
+        Err(e) => {
+            print_error(format, &format!("Cannot stage AeroCrypt marker: {e}"), 11);
+            return Err(11);
         }
-        (true, kd) => Ok(kd),
-        (false, _) => Ok(None),
+    };
+    if let Err(e) = std::fs::write(local_tmp.path(), marker_text.as_bytes()) {
+        print_error(format, &format!("Cannot stage AeroCrypt marker: {e}"), 11);
+        return Err(11);
     }
+    let remote_tmp = format!("{current_path}.aerotmp-{}", uuid::Uuid::new_v4());
+    if let Err(e) = provider
+        .upload(&local_tmp.path().to_string_lossy(), &remote_tmp, None)
+        .await
+    {
+        let code = provider_error_to_exit_code(&e);
+        print_error(
+            format,
+            &format!("Cannot upload staged AeroCrypt marker: {e}"),
+            code,
+        );
+        return Err(code);
+    }
+    let staged = match provider.download_to_bytes(&remote_tmp).await {
+        Ok(bytes) => bytes,
+        Err(e) => {
+            let _ = provider.delete(&remote_tmp).await;
+            let code = provider_error_to_exit_code(&e);
+            print_error(
+                format,
+                &format!("Cannot verify staged AeroCrypt marker: {e}"),
+                code,
+            );
+            return Err(code);
+        }
+    };
+    if staged != marker_text.as_bytes()
+        || unlock_standalone_crypt_config(
+            &String::from_utf8_lossy(&staged),
+            password,
+            keyfile_digest,
+        )
+        .is_err()
+    {
+        let _ = provider.delete(&remote_tmp).await;
+        print_error(
+            format,
+            "Staged AeroCrypt marker failed byte-for-byte or unlock verification.",
+            4,
+        );
+        return Err(4);
+    }
+    if let Err(e) = provider.rename(&remote_tmp, &current_path).await {
+        let _ = provider.delete(&remote_tmp).await;
+        let code = provider_error_to_exit_code(&e);
+        print_error(
+            format,
+            &format!("Cannot publish verified AeroCrypt marker: {e}"),
+            code,
+        );
+        return Err(code);
+    }
+    // Best-effort: drop legacy JSON name when both are present after a v4 write.
+    let legacy_path = crypt_marker_path(base_path, CryptMarkerKind::Legacy);
+    if let Ok(true) = provider.exists(&legacy_path).await {
+        let _ = provider.delete(&legacy_path).await;
+    }
+    Ok(())
+}
+
+async fn cmd_crypt_migrate_v4(
+    url: &str,
+    path: &str,
+    password: &str,
+    keyfile_digest: Option<&[u8; 32]>,
+    cli: &Cli,
+    format: OutputFormat,
+) -> i32 {
+    let (mut provider, initial_path) = match create_and_connect_raw(url, cli, format).await {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
+    let base_path = normalize_remote_path(&resolve_cli_remote_path(&initial_path, path));
+    let config_str = match load_crypt_config_json(
+        &mut *provider,
+        &base_path,
+        cli,
+        format,
+        "No crypt overlay found. Run 'crypt init' first.",
+    )
+    .await
+    {
+        Ok(s) => s,
+        Err(code) => {
+            let _ = provider.disconnect().await;
+            return code;
+        }
+    };
+    let v4_marker = match crypt_v4_migrate_header(&config_str, password, keyfile_digest) {
+        Ok(m) => m,
+        Err(e) => {
+            print_error(format, &e, 6);
+            let _ = provider.disconnect().await;
+            return 6;
+        }
+    };
+    // After migrate, unlock with the same factor must recover OMK (verify before write).
+    if let Err(e) = unlock_standalone_crypt_config(&v4_marker, password, keyfile_digest) {
+        print_error(
+            format,
+            &format!("migrate-v4 produced a marker that fails unlock: {e}"),
+            5,
+        );
+        let _ = provider.disconnect().await;
+        return 5;
+    }
+    if let Err(code) = publish_crypt_marker(
+        &mut *provider,
+        &base_path,
+        &v4_marker,
+        password,
+        keyfile_digest,
+        format,
+    )
+    .await
+    {
+        let _ = provider.disconnect().await;
+        return code;
+    }
+    if matches!(format, OutputFormat::Json) {
+        print_json(&serde_json::json!({
+            "status": "ok",
+            "path": base_path,
+            "from": "v3",
+            "to": "v4",
+            "marker": ftp_client_gui_lib::aerocrypt::overlay::CRYPT_CONFIG_WRITE_NAME,
+        }));
+    } else if !cli.quiet {
+        println!("Migrated AeroCrypt vault at {base_path} from v3 to v4 keyslots");
+    }
+    let _ = provider.disconnect().await;
+    0
+}
+
+async fn cmd_crypt_list_slots(
+    url: &str,
+    path: &str,
+    password: &str,
+    keyfile_digest: Option<&[u8; 32]>,
+    cli: &Cli,
+    format: OutputFormat,
+) -> i32 {
+    let (mut provider, initial_path) = match create_and_connect_raw(url, cli, format).await {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
+    let base_path = normalize_remote_path(&resolve_cli_remote_path(&initial_path, path));
+    let config_str = match load_crypt_config_json(
+        &mut *provider,
+        &base_path,
+        cli,
+        format,
+        "No crypt overlay found.",
+    )
+    .await
+    {
+        Ok(s) => s,
+        Err(code) => {
+            let _ = provider.disconnect().await;
+            return code;
+        }
+    };
+    let (epoch, slots) = match crypt_v4_list_slots(&config_str, password, keyfile_digest) {
+        Ok(v) => v,
+        Err(e) => {
+            print_error(format, &e, 6);
+            let _ = provider.disconnect().await;
+            return 6;
+        }
+    };
+    match format {
+        OutputFormat::Json => {
+            let items: Vec<serde_json::Value> = slots
+                .iter()
+                .map(|s| {
+                    serde_json::json!({
+                        "id": s.id,
+                        "type": s.kind,
+                        "salt_len": s.salt_len,
+                    })
+                })
+                .collect();
+            print_json(&serde_json::json!({
+                "status": "ok",
+                "path": base_path,
+                "epoch": epoch,
+                "slots": items,
+            }));
+        }
+        OutputFormat::Text => {
+            if !cli.quiet {
+                println!("epoch {epoch}");
+                println!("id\ttype\tsalt_len");
+                for s in &slots {
+                    println!("{}\t{}\t{}", s.id, s.kind, s.salt_len);
+                }
+            }
+        }
+    }
+    let _ = provider.disconnect().await;
+    0
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn cmd_crypt_add_slot(
+    url: &str,
+    path: &str,
+    password: &str,
+    keyfile_digest: Option<&[u8; 32]>,
+    slot_type: &str,
+    new_password: &str,
+    new_keyfile_digest: Option<&[u8; 32]>,
+    cli: &Cli,
+    format: OutputFormat,
+) -> i32 {
+    let (mut provider, initial_path) = match create_and_connect_raw(url, cli, format).await {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
+    let base_path = normalize_remote_path(&resolve_cli_remote_path(&initial_path, path));
+    let config_str = match load_crypt_config_json(
+        &mut *provider,
+        &base_path,
+        cli,
+        format,
+        "No crypt overlay found.",
+    )
+    .await
+    {
+        Ok(s) => s,
+        Err(code) => {
+            let _ = provider.disconnect().await;
+            return code;
+        }
+    };
+    let new_marker = match crypt_v4_add_slot_header(
+        &config_str,
+        password,
+        keyfile_digest,
+        slot_type,
+        new_password,
+        new_keyfile_digest,
+    ) {
+        Ok(m) => m,
+        Err(e) => {
+            print_error(format, &e, 6);
+            let _ = provider.disconnect().await;
+            return 6;
+        }
+    };
+    // Verify old factor still opens after add.
+    if let Err(e) = unlock_standalone_crypt_config(&new_marker, password, keyfile_digest) {
+        print_error(
+            format,
+            &format!("add-slot produced a marker that fails unlock: {e}"),
+            5,
+        );
+        let _ = provider.disconnect().await;
+        return 5;
+    }
+    if let Err(code) = publish_crypt_marker(
+        &mut *provider,
+        &base_path,
+        &new_marker,
+        password,
+        keyfile_digest,
+        format,
+    )
+    .await
+    {
+        let _ = provider.disconnect().await;
+        return code;
+    }
+    if matches!(format, OutputFormat::Json) {
+        print_json(&serde_json::json!({
+            "status": "ok",
+            "path": base_path,
+            "action": "add-slot",
+            "type": slot_type,
+        }));
+    } else if !cli.quiet {
+        println!("Added {slot_type} slot to AeroCrypt vault at {base_path}");
+    }
+    let _ = provider.disconnect().await;
+    0
+}
+
+async fn cmd_crypt_remove_slot(
+    url: &str,
+    path: &str,
+    password: &str,
+    keyfile_digest: Option<&[u8; 32]>,
+    slot_id: u32,
+    cli: &Cli,
+    format: OutputFormat,
+) -> i32 {
+    let (mut provider, initial_path) = match create_and_connect_raw(url, cli, format).await {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
+    let base_path = normalize_remote_path(&resolve_cli_remote_path(&initial_path, path));
+    let config_str = match load_crypt_config_json(
+        &mut *provider,
+        &base_path,
+        cli,
+        format,
+        "No crypt overlay found.",
+    )
+    .await
+    {
+        Ok(s) => s,
+        Err(code) => {
+            let _ = provider.disconnect().await;
+            return code;
+        }
+    };
+    let new_marker =
+        match crypt_v4_remove_slot_header(&config_str, password, keyfile_digest, slot_id) {
+            Ok(m) => m,
+            Err(e) => {
+                print_error(format, &e, 6);
+                let _ = provider.disconnect().await;
+                return 6;
+            }
+        };
+    if let Err(e) = unlock_standalone_crypt_config(&new_marker, password, keyfile_digest) {
+        print_error(
+            format,
+            &format!("remove-slot produced a marker that fails unlock: {e}"),
+            5,
+        );
+        let _ = provider.disconnect().await;
+        return 5;
+    }
+    if let Err(code) = publish_crypt_marker(
+        &mut *provider,
+        &base_path,
+        &new_marker,
+        password,
+        keyfile_digest,
+        format,
+    )
+    .await
+    {
+        let _ = provider.disconnect().await;
+        return code;
+    }
+    if matches!(format, OutputFormat::Json) {
+        print_json(&serde_json::json!({
+            "status": "ok",
+            "path": base_path,
+            "action": "remove-slot",
+            "slot_id": slot_id,
+        }));
+    } else if !cli.quiet {
+        println!("Removed slot {slot_id} from AeroCrypt vault at {base_path}");
+    }
+    let _ = provider.disconnect().await;
+    0
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn cmd_crypt_rotate_slot(
+    url: &str,
+    path: &str,
+    password: &str,
+    keyfile_digest: Option<&[u8; 32]>,
+    slot_id: u32,
+    new_password: &str,
+    new_keyfile_digest: Option<&[u8; 32]>,
+    cli: &Cli,
+    format: OutputFormat,
+) -> i32 {
+    let (mut provider, initial_path) = match create_and_connect_raw(url, cli, format).await {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
+    let base_path = normalize_remote_path(&resolve_cli_remote_path(&initial_path, path));
+    let config_str = match load_crypt_config_json(
+        &mut *provider,
+        &base_path,
+        cli,
+        format,
+        "No crypt overlay found.",
+    )
+    .await
+    {
+        Ok(s) => s,
+        Err(code) => {
+            let _ = provider.disconnect().await;
+            return code;
+        }
+    };
+    let new_marker = match crypt_v4_rotate_slot_header(
+        &config_str,
+        password,
+        keyfile_digest,
+        slot_id,
+        new_password,
+        new_keyfile_digest,
+    ) {
+        Ok(m) => m,
+        Err(e) => {
+            print_error(format, &e, 6);
+            let _ = provider.disconnect().await;
+            return 6;
+        }
+    };
+    // After rotate, the NEW factor must open; old factor must fail (checked in unit tests).
+    // Publish verification uses the new factor when supplied, else the auth password.
+    let verify_kf = new_keyfile_digest.or(keyfile_digest);
+    let verify_pw = if !new_password.is_empty() || new_keyfile_digest.is_some() {
+        new_password
+    } else {
+        password
+    };
+    if let Err(e) = unlock_standalone_crypt_config(&new_marker, verify_pw, verify_kf) {
+        print_error(
+            format,
+            &format!("rotate-slot produced a marker that fails unlock with new factor: {e}"),
+            5,
+        );
+        let _ = provider.disconnect().await;
+        return 5;
+    }
+    if let Err(code) = publish_crypt_marker(
+        &mut *provider,
+        &base_path,
+        &new_marker,
+        verify_pw,
+        verify_kf,
+        format,
+    )
+    .await
+    {
+        let _ = provider.disconnect().await;
+        return code;
+    }
+    if matches!(format, OutputFormat::Json) {
+        print_json(&serde_json::json!({
+            "status": "ok",
+            "path": base_path,
+            "action": "rotate-slot",
+            "slot_id": slot_id,
+        }));
+    } else if !cli.quiet {
+        println!("Rotated slot {slot_id} on AeroCrypt vault at {base_path}");
+    }
+    let _ = provider.disconnect().await;
+    0
 }
 
 async fn cmd_crypt_ls(
@@ -49806,7 +50623,7 @@ async fn cmd_crypt_ls(
     cli: &Cli,
     format: OutputFormat,
 ) -> i32 {
-    use ftp_client_gui_lib::aerocrypt::{names, overlay};
+    use ftp_client_gui_lib::aerocrypt::names;
     let (mut provider, initial_path) = match create_and_connect_raw(url, cli, format).await {
         Ok(v) => v,
         Err(code) => return code,
@@ -49826,32 +50643,15 @@ async fn cmd_crypt_ls(
         Ok(s) => s,
         Err(code) => return code,
     };
-    let cfg = match overlay::parse_config(&config_str) {
-        Ok(c) => c,
-        Err(e) => {
-            print_error(format, &format!("Invalid crypt config: {}", e), 5);
-            return 5;
-        }
-    };
-
-    let keyfile_digest = match reconcile_keyfile(&cfg, keyfile_digest) {
-        Ok(kd) => kd,
-        Err(e) => {
-            print_error(format, &e, 6);
-            return 6;
-        }
-    };
-    let master_key = match overlay::derive_master_key_with_keyfile(&cfg, password, keyfile_digest) {
-        Ok(k) => k,
-        Err(e) => {
-            print_error(format, &format!("Key derivation failed: {}", e), 6);
-            return 6;
-        }
-    };
-    if let Err(e) = overlay::verify_config_mac(&cfg, &master_key) {
-        print_error(format, &format!("Crypt unlock failed: {}", e), 6);
-        return 6;
-    }
+    // Shared unlock (v3 + v4 OMK). Fail-closed on wrong factor; no auto-migrate.
+    let (_cfg, master_key) =
+        match unlock_standalone_crypt_config(&config_str, password, keyfile_digest) {
+            Ok(v) => v,
+            Err(e) => {
+                print_error(format, &e, 6);
+                return 6;
+            }
+        };
 
     if recursive {
         // Walk the encrypted tree (depth-bounded like the rclone-crypt overlay),
@@ -50023,32 +50823,15 @@ async fn cmd_crypt_put(
         Ok(s) => s,
         Err(code) => return code,
     };
-    let cfg = match overlay::parse_config(&config_str) {
-        Ok(c) => c,
-        Err(e) => {
-            print_error(format, &e, 5);
-            return 5;
-        }
-    };
-
-    let keyfile_digest = match reconcile_keyfile(&cfg, keyfile_digest) {
-        Ok(kd) => kd,
-        Err(e) => {
-            print_error(format, &e, 6);
-            return 6;
-        }
-    };
-    let master_key = match overlay::derive_master_key_with_keyfile(&cfg, password, keyfile_digest) {
-        Ok(k) => k,
-        Err(e) => {
-            print_error(format, &format!("Key derivation failed: {}", e), 6);
-            return 6;
-        }
-    };
-    if let Err(e) = overlay::verify_config_mac(&cfg, &master_key) {
-        print_error(format, &format!("Crypt unlock failed: {}", e), 6);
-        return 6;
-    }
+    // Shared unlock (v3 + v4 OMK). Fail-closed on wrong factor; no auto-migrate.
+    let (cfg, master_key) =
+        match unlock_standalone_crypt_config(&config_str, password, keyfile_digest) {
+            Ok(v) => v,
+            Err(e) => {
+                print_error(format, &e, 6);
+                return 6;
+            }
+        };
     let start = Instant::now();
 
     // Directory upload: encrypt and mirror the whole local tree under the
@@ -50363,32 +51146,15 @@ async fn cmd_crypt_get(
         Ok(s) => s,
         Err(code) => return code,
     };
-    let cfg = match overlay::parse_config(&config_str) {
-        Ok(c) => c,
-        Err(e) => {
-            print_error(format, &e, 5);
-            return 5;
-        }
-    };
-
-    let keyfile_digest = match reconcile_keyfile(&cfg, keyfile_digest) {
-        Ok(kd) => kd,
-        Err(e) => {
-            print_error(format, &e, 6);
-            return 6;
-        }
-    };
-    let master_key = match overlay::derive_master_key_with_keyfile(&cfg, password, keyfile_digest) {
-        Ok(k) => k,
-        Err(e) => {
-            print_error(format, &format!("Key derivation failed: {}", e), 6);
-            return 6;
-        }
-    };
-    if let Err(e) = overlay::verify_config_mac(&cfg, &master_key) {
-        print_error(format, &format!("Crypt unlock failed: {}", e), 6);
-        return 6;
-    }
+    // Shared unlock (v3 + v4 OMK). Fail-closed on wrong factor; no auto-migrate.
+    let (_cfg, master_key) =
+        match unlock_standalone_crypt_config(&config_str, password, keyfile_digest) {
+            Ok(v) => v,
+            Err(e) => {
+                print_error(format, &e, 6);
+                return 6;
+            }
+        };
     let start = Instant::now();
 
     if recursive {
@@ -62400,6 +63166,177 @@ async fn main() {
                         }
                     }
                 },
+                CryptCommands::MigrateV4 {
+                    url,
+                    path,
+                    password,
+                    keyfile,
+                } => match read_keyfile_digest(keyfile) {
+                    Err(e) => {
+                        print_error(format, &e, 6);
+                        6
+                    }
+                    Ok(kf) => {
+                        let pw = resolve_crypt_password(password).unwrap_or_default();
+                        if !require_secret(&pw, kf.as_ref(), "migrate-v4") {
+                            5
+                        } else {
+                            let (u, dir) = resolve_profile_crypt_positionals(
+                                cli.profile.is_some(),
+                                url,
+                                path,
+                                "/",
+                            );
+                            cmd_crypt_migrate_v4(&u, &dir, &pw, kf.as_ref(), &cli, format).await
+                        }
+                    }
+                },
+                CryptCommands::ListSlots {
+                    url,
+                    path,
+                    password,
+                    keyfile,
+                } => match read_keyfile_digest(keyfile) {
+                    Err(e) => {
+                        print_error(format, &e, 6);
+                        6
+                    }
+                    Ok(kf) => {
+                        let pw = resolve_crypt_password(password).unwrap_or_default();
+                        if !require_secret(&pw, kf.as_ref(), "list-slots") {
+                            5
+                        } else {
+                            let (u, dir) = resolve_profile_crypt_positionals(
+                                cli.profile.is_some(),
+                                url,
+                                path,
+                                "/",
+                            );
+                            cmd_crypt_list_slots(&u, &dir, &pw, kf.as_ref(), &cli, format).await
+                        }
+                    }
+                },
+                CryptCommands::AddSlot {
+                    url,
+                    path,
+                    slot_type,
+                    password,
+                    keyfile,
+                    new_password,
+                    new_keyfile,
+                } => match (
+                    read_keyfile_digest(keyfile),
+                    read_keyfile_digest(new_keyfile),
+                ) {
+                    (Err(e), _) | (_, Err(e)) => {
+                        print_error(format, &e, 6);
+                        6
+                    }
+                    (Ok(kf), Ok(new_kf)) => {
+                        let pw = resolve_crypt_password(password).unwrap_or_default();
+                        if !require_secret(&pw, kf.as_ref(), "add-slot") {
+                            5
+                        } else {
+                            let new_pw = new_password.clone().unwrap_or_default();
+                            let (u, dir) = resolve_profile_crypt_positionals(
+                                cli.profile.is_some(),
+                                url,
+                                path,
+                                "/",
+                            );
+                            cmd_crypt_add_slot(
+                                &u,
+                                &dir,
+                                &pw,
+                                kf.as_ref(),
+                                slot_type,
+                                &new_pw,
+                                new_kf.as_ref(),
+                                &cli,
+                                format,
+                            )
+                            .await
+                        }
+                    }
+                },
+                CryptCommands::RemoveSlot {
+                    url,
+                    path,
+                    slot_id,
+                    password,
+                    keyfile,
+                } => match read_keyfile_digest(keyfile) {
+                    Err(e) => {
+                        print_error(format, &e, 6);
+                        6
+                    }
+                    Ok(kf) => {
+                        let pw = resolve_crypt_password(password).unwrap_or_default();
+                        if !require_secret(&pw, kf.as_ref(), "remove-slot") {
+                            5
+                        } else {
+                            let (u, dir) = resolve_profile_crypt_positionals(
+                                cli.profile.is_some(),
+                                url,
+                                path,
+                                "/",
+                            );
+                            cmd_crypt_remove_slot(
+                                &u,
+                                &dir,
+                                &pw,
+                                kf.as_ref(),
+                                *slot_id,
+                                &cli,
+                                format,
+                            )
+                            .await
+                        }
+                    }
+                },
+                CryptCommands::RotateSlot {
+                    url,
+                    path,
+                    slot_id,
+                    password,
+                    keyfile,
+                    new_password,
+                    new_keyfile,
+                } => match (
+                    read_keyfile_digest(keyfile),
+                    read_keyfile_digest(new_keyfile),
+                ) {
+                    (Err(e), _) | (_, Err(e)) => {
+                        print_error(format, &e, 6);
+                        6
+                    }
+                    (Ok(kf), Ok(new_kf)) => {
+                        let pw = resolve_crypt_password(password).unwrap_or_default();
+                        if !require_secret(&pw, kf.as_ref(), "rotate-slot") {
+                            5
+                        } else {
+                            let new_pw = new_password.clone().unwrap_or_default();
+                            let (u, dir) = resolve_profile_crypt_positionals(
+                                cli.profile.is_some(),
+                                url,
+                                path,
+                                "/",
+                            );
+                            cmd_crypt_rotate_slot(
+                                &u,
+                                &dir,
+                                &pw,
+                                kf.as_ref(),
+                                *slot_id,
+                                &new_pw,
+                                new_kf.as_ref(),
+                                &cli,
+                                format,
+                            )
+                            .await
+                        }
+                    }
+                },
                 CryptCommands::KitVerify {
                     url,
                     path,
@@ -67316,6 +68253,227 @@ mod tests {
             overlay::decrypt_data(&rebuilt_master, &aecr_after).unwrap(),
             b"metadata-only migration"
         );
+    }
+
+    /// T5: CLI pure path migrate-v4 then unlock recovers OMK; wrong password fails closed.
+    /// Passwords are passed as function args (never set AEROFTP_MASTER_PASSWORD here:
+    /// that env can clobber the system keyring entry for the developer's vault).
+    #[test]
+    fn crypt_v4_cli_migrate_then_unlock_recovers_omk() {
+        use ftp_client_gui_lib::aerocrypt::overlay;
+
+        let password = "t5-cli-migrate-password";
+        let salt = [0xC1u8; 32];
+        let master =
+            overlay::derive_master_key(&overlay::OverlayConfig::v3_bootstrap(salt), password)
+                .unwrap();
+        let v3 = overlay::init_config_v3_with_vault_id(
+            &salt,
+            &master,
+            &overlay::random_vault_id(),
+            overlay::SaltMode::PerVault,
+        )
+        .unwrap();
+
+        let v4 = crypt_v4_migrate_header(&v3, password, None).expect("migrate-v4");
+        let (cfg, omk) =
+            unlock_standalone_crypt_config(&v4, password, None).expect("unlock v4 via CLI helper");
+        assert_eq!(cfg.version(), 4);
+        assert_eq!(omk, master, "OMK must equal pre-migrate v3 master");
+
+        // Fail-closed on wrong factor (CLI path uses the shared chokepoint).
+        assert!(
+            unlock_standalone_crypt_config(&v4, "wrong-password", None).is_err(),
+            "wrong password must fail closed"
+        );
+        // Spurious keyfile on password-only v4 fails closed.
+        let digest = [0xABu8; 32];
+        assert!(
+            unlock_standalone_crypt_config(&v4, password, Some(&digest)).is_err(),
+            "spurious keyfile must fail closed"
+        );
+        // v3 path still unlocks via the same helper.
+        let (v3_cfg, v3_mk) =
+            unlock_standalone_crypt_config(&v3, password, None).expect("v3 unlock");
+        assert_eq!(v3_cfg.version(), overlay::VERSION_V3);
+        assert_eq!(v3_mk, master);
+    }
+
+    #[test]
+    fn crypt_v4_cli_add_rotate_remove_slot_pure() {
+        use ftp_client_gui_lib::aerocrypt::overlay;
+
+        let password = "t5-cli-slot-password";
+        let salt = [0xC2u8; 32];
+        let master =
+            overlay::derive_master_key(&overlay::OverlayConfig::v3_bootstrap(salt), password)
+                .unwrap();
+        let v3 = overlay::init_config_v3_with_vault_id(
+            &salt,
+            &master,
+            &overlay::random_vault_id(),
+            overlay::SaltMode::PerVault,
+        )
+        .unwrap();
+        let v4 = crypt_v4_migrate_header(&v3, password, None).unwrap();
+
+        let (epoch, slots) = crypt_v4_list_slots(&v4, password, None).expect("list-slots");
+        assert_eq!(epoch, 1);
+        assert_eq!(slots.len(), 1);
+        assert_eq!(slots[0].id, 0);
+        assert_eq!(slots[0].kind, "passphrase");
+
+        let with_two = crypt_v4_add_slot_header(
+            &v4,
+            password,
+            None,
+            "passphrase",
+            "second-slot-password",
+            None,
+        )
+        .expect("add-slot");
+        let (epoch2, slots2) = crypt_v4_list_slots(&with_two, password, None).unwrap();
+        assert_eq!(epoch2, 1, "add-slot must not bump epoch");
+        assert_eq!(slots2.len(), 2);
+        // New factor opens; old still opens.
+        let (_c, omk_new) =
+            unlock_standalone_crypt_config(&with_two, "second-slot-password", None).unwrap();
+        let (_c, omk_old) = unlock_standalone_crypt_config(&with_two, password, None).unwrap();
+        assert_eq!(omk_new, omk_old);
+        assert_eq!(omk_old, master);
+
+        // Rotate slot 0 (auth with original password).
+        let rotated = crypt_v4_rotate_slot_header(
+            &with_two,
+            password,
+            None,
+            0,
+            "rotated-slot-password",
+            None,
+        )
+        .expect("rotate-slot");
+        assert!(
+            unlock_standalone_crypt_config(&rotated, password, None).is_err(),
+            "old password must fail after rotate"
+        );
+        let (_c, omk_r) =
+            unlock_standalone_crypt_config(&rotated, "rotated-slot-password", None).unwrap();
+        assert_eq!(omk_r, master);
+        // Second slot still opens.
+        unlock_standalone_crypt_config(&rotated, "second-slot-password", None).unwrap();
+
+        // Remove slot 1 while unlocked via rotated slot 0 (single-survivor case).
+        let revoked = crypt_v4_remove_slot_header(&rotated, "rotated-slot-password", None, 1)
+            .expect("remove-slot");
+        let (epoch3, slots3) =
+            crypt_v4_list_slots(&revoked, "rotated-slot-password", None).unwrap();
+        assert_eq!(epoch3, 2, "remove-slot must bump epoch");
+        assert_eq!(slots3.len(), 1);
+        assert_eq!(slots3[0].id, 0);
+        assert!(
+            unlock_standalone_crypt_config(&revoked, "second-slot-password", None).is_err(),
+            "revoked factor must fail closed"
+        );
+        let (_c, omk_final) =
+            unlock_standalone_crypt_config(&revoked, "rotated-slot-password", None).unwrap();
+        assert_eq!(omk_final, master);
+    }
+
+    #[test]
+    fn crypt_v4_cli_subcommands_parse_via_clap() {
+        on_big_stack(|| {
+            for (args, expect_name) in [
+                (
+                    vec![
+                        "aeroftp",
+                        "crypt",
+                        "migrate-v4",
+                        "--password",
+                        "x",
+                        "_",
+                        "/enc",
+                    ],
+                    "migrate-v4",
+                ),
+                (
+                    vec![
+                        "aeroftp",
+                        "crypt",
+                        "list-slots",
+                        "--password",
+                        "x",
+                        "_",
+                        "/enc",
+                    ],
+                    "list-slots",
+                ),
+                (
+                    vec![
+                        "aeroftp",
+                        "crypt",
+                        "add-slot",
+                        "--type",
+                        "passphrase",
+                        "--password",
+                        "x",
+                        "--new-password",
+                        "y",
+                        "_",
+                        "/enc",
+                    ],
+                    "add-slot",
+                ),
+                (
+                    vec![
+                        "aeroftp",
+                        "crypt",
+                        "remove-slot",
+                        "--slot-id",
+                        "1",
+                        "--password",
+                        "x",
+                        "_",
+                        "/enc",
+                    ],
+                    "remove-slot",
+                ),
+                (
+                    vec![
+                        "aeroftp",
+                        "crypt",
+                        "rotate-slot",
+                        "--slot-id",
+                        "0",
+                        "--password",
+                        "x",
+                        "--new-password",
+                        "y",
+                        "_",
+                        "/enc",
+                    ],
+                    "rotate-slot",
+                ),
+            ] {
+                let cli = Cli::try_parse_from(args).unwrap_or_else(|e| {
+                    panic!("crypt {expect_name} must parse: {e}");
+                });
+                match cli.command {
+                    Commands::Crypt { command } => match expect_name {
+                        "migrate-v4" => assert!(matches!(command, CryptCommands::MigrateV4 { .. })),
+                        "list-slots" => assert!(matches!(command, CryptCommands::ListSlots { .. })),
+                        "add-slot" => assert!(matches!(command, CryptCommands::AddSlot { .. })),
+                        "remove-slot" => {
+                            assert!(matches!(command, CryptCommands::RemoveSlot { .. }))
+                        }
+                        "rotate-slot" => {
+                            assert!(matches!(command, CryptCommands::RotateSlot { .. }))
+                        }
+                        other => panic!("unexpected expect_name {other}"),
+                    },
+                    _ => panic!("expected Crypt command for {expect_name}"),
+                }
+            }
+        });
     }
 
     #[test]

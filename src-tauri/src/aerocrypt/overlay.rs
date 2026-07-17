@@ -1081,6 +1081,58 @@ pub fn v4_unwrap_omk(
         .map_err(|_| "v4 omk_wrap unwrap: OMK wrong length".to_string())
 }
 
+/// Intermediate keys recovered during a successful v4 unlock.
+///
+/// Used by slot management (add/revoke/rotate): builders need VK + epoch_key
+/// without re-running Argon2 or inventing a second unlock path.
+#[derive(Clone)]
+pub struct V4UnlockMaterial {
+    pub config: OverlayConfig,
+    pub omk: [u8; KEY_SIZE],
+    pub vk: [u8; KEY_SIZE],
+    pub epoch_key: [u8; KEY_SIZE],
+    /// Slot that authenticated this unlock.
+    pub slot_id: u32,
+    pub slot_key: [u8; KEY_SIZE],
+}
+
+/// Keys recovered by the pure v4 unwrap chain (no Argon2).
+#[derive(Clone, Copy)]
+pub struct V4ChainKeys {
+    pub omk: [u8; KEY_SIZE],
+    pub vk: [u8; KEY_SIZE],
+    pub epoch_key: [u8; KEY_SIZE],
+}
+
+/// Pure v4 unlock chain from a known `slot_key` (no Argon2).
+///
+/// Returns OMK + VK + epoch_key. Callers that only need OMK use
+/// [`unlock_v4_with_slot_key`]; management ops use the full triple.
+pub fn unlock_v4_chain(
+    raw_header: &str,
+    cfg: &OverlayConfig,
+    slot: &Slot,
+    slot_key: &[u8; KEY_SIZE],
+) -> Result<V4ChainKeys, String> {
+    let OverlayConfig::V4 {
+        vault_id,
+        epoch,
+        vk_wrap,
+        omk_wrap,
+        config_mac,
+        ..
+    } = cfg
+    else {
+        return Err("unlock_v4_chain requires a v4 config".into());
+    };
+    let epoch_key = v4_unwrap_epoch_key(slot, slot_key, vault_id, *epoch)?;
+    let vk = v4_unwrap_vk(vk_wrap, &epoch_key, vault_id, *epoch)?;
+    // F-carry-in: per-wrap AADs alone are not enough; always verify stored bytes.
+    verify_config_mac_v4(&vk, vault_id, raw_header, config_mac)?;
+    let omk = v4_unwrap_omk(omk_wrap, &vk, vault_id)?;
+    Ok(V4ChainKeys { omk, vk, epoch_key })
+}
+
 /// Pure v4 unlock from a known `slot_key` (no Argon2).
 ///
 /// Chain: unwrap epoch_key -> VK -> **verify stored-bytes `config_mac`** (mandatory
@@ -1093,25 +1145,10 @@ pub fn unlock_v4_with_slot_key(
     slot: &Slot,
     slot_key: &[u8; KEY_SIZE],
 ) -> Result<[u8; KEY_SIZE], String> {
-    let OverlayConfig::V4 {
-        vault_id,
-        epoch,
-        vk_wrap,
-        omk_wrap,
-        config_mac,
-        ..
-    } = cfg
-    else {
-        return Err("unlock_v4_with_slot_key requires a v4 config".into());
-    };
-    let epoch_key = v4_unwrap_epoch_key(slot, slot_key, vault_id, *epoch)?;
-    let vk = v4_unwrap_vk(vk_wrap, &epoch_key, vault_id, *epoch)?;
-    // F-carry-in: per-wrap AADs alone are not enough; always verify stored bytes.
-    verify_config_mac_v4(&vk, vault_id, raw_header, config_mac)?;
-    v4_unwrap_omk(omk_wrap, &vk, vault_id)
+    Ok(unlock_v4_chain(raw_header, cfg, slot, slot_key)?.omk)
 }
 
-/// Unlock a v4 keyslot vault from the raw stored header and a factor.
+/// Unlock a v4 keyslot vault and return full management material.
 ///
 /// Factor reconcile (T4 minimum):
 /// - passphrase-only slots: reject a spurious keyfile digest (v3-like fail-closed)
@@ -1120,19 +1157,22 @@ pub fn unlock_v4_with_slot_key(
 ///
 /// F-2: slot keys come from [`derive_slot_key`] (v3 Argon2 profile); stored kdf
 /// is AAD metadata only. Does **not** auto-migrate v3 headers.
-pub fn unlock_v4_config(
+pub fn unlock_v4_for_management(
     raw_header: &str,
     password: &str,
     keyfile_digest: Option<&[u8; KEY_SIZE]>,
-) -> Result<(OverlayConfig, [u8; KEY_SIZE]), String> {
+) -> Result<V4UnlockMaterial, String> {
     let config =
         parse_config(raw_header).map_err(|e| format!("Invalid AeroCrypt overlay config: {e}"))?;
-    let OverlayConfig::V4 { slots, .. } = &config else {
-        return Err("unlock_v4_config requires a v4 header".into());
+    // Clone the slot list so we can move `config` into the success result without
+    // fighting a long-lived borrow of `config.slots`.
+    let slots: Vec<Slot> = match &config {
+        OverlayConfig::V4 { slots, .. } => slots.clone(),
+        _ => return Err("unlock_v4_for_management requires a v4 header".into()),
     };
 
-    let has_passphrase = slots.iter().any(|s| s.kind == SlotType::Passphrase);
     let has_keyfile = slots.iter().any(|s| s.kind == SlotType::Keyfile);
+    let has_passphrase = slots.iter().any(|s| s.kind == SlotType::Passphrase);
 
     match keyfile_digest {
         Some(_) if !has_keyfile => {
@@ -1155,7 +1195,7 @@ pub fn unlock_v4_config(
     }
 
     let mut last_err = "wrong credential or no matching keyslot".to_string();
-    for slot in slots {
+    for slot in &slots {
         let factor = match slot.kind {
             SlotType::Passphrase => {
                 // Always try passphrase slots with the password (mixed vaults may
@@ -1200,8 +1240,17 @@ pub fn unlock_v4_config(
             }
         };
 
-        match unlock_v4_with_slot_key(raw_header, &config, slot, &slot_key) {
-            Ok(omk) => return Ok((config, omk)),
+        match unlock_v4_chain(raw_header, &config, slot, &slot_key) {
+            Ok(chain) => {
+                return Ok(V4UnlockMaterial {
+                    config,
+                    omk: chain.omk,
+                    vk: chain.vk,
+                    epoch_key: chain.epoch_key,
+                    slot_id: slot.id,
+                    slot_key,
+                });
+            }
             Err(e) => {
                 last_err = e;
             }
@@ -1209,6 +1258,19 @@ pub fn unlock_v4_config(
     }
 
     Err(format!("AeroCrypt unlock failed: {last_err}"))
+}
+
+/// Unlock a v4 keyslot vault from the raw stored header and a factor.
+///
+/// See [`unlock_v4_for_management`] for factor reconcile and F-2 rules. This
+/// returns only `(config, OMK)` for ordinary open paths.
+pub fn unlock_v4_config(
+    raw_header: &str,
+    password: &str,
+    keyfile_digest: Option<&[u8; KEY_SIZE]>,
+) -> Result<(OverlayConfig, [u8; KEY_SIZE]), String> {
+    let material = unlock_v4_for_management(raw_header, password, keyfile_digest)?;
+    Ok((material.config, material.omk))
 }
 
 /// Shared unlock chokepoint for GUI, CLI, and crypt-compare/MCP.
