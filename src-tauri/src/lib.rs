@@ -18933,6 +18933,12 @@ pub fn run() {
             aerocrypt_provider::aerocrypt_provider_migrate_legacy_marker,
             aerocrypt_provider::aerocrypt_provider_create_remote,
             aerocrypt_provider::aerocrypt_build_emergency_kit,
+            // v4 keyslot manager (T6 GUI parity with CLI migrate-v4 / *-slot)
+            aerocrypt_provider::aerocrypt_list_slots,
+            aerocrypt_provider::aerocrypt_migrate_v4,
+            aerocrypt_provider::aerocrypt_add_slot,
+            aerocrypt_provider::aerocrypt_remove_slot,
+            aerocrypt_provider::aerocrypt_rotate_slot,
             aerovault_overlay_unlock,
             aerovault_overlay_lock,
             aerovault_overlay_list,

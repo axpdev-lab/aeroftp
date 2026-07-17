@@ -237,6 +237,7 @@ import { CryptomatorBrowser } from './components/CryptomatorBrowser';
 import { RcloneCryptUnlock } from './components/RcloneCryptUnlock';
 import { AeroCryptUnlock } from './components/AeroCryptUnlock';
 import { AeroCryptRecoveryKitModal } from './components/AeroCryptRecoveryKitModal';
+import { AeroCryptKeyslotsModal } from './components/AeroCryptKeyslotsModal';
 import { CrossProfilePanel } from './components/CrossProfile/CrossProfilePanel';
 import { ArchiveBrowser } from './components/ArchiveBrowser';
 import { ZohoTrashManager } from './components/ZohoTrashManager';
@@ -315,7 +316,7 @@ import {
   Archive, Image, Video, Music, FileType, Code, Database, Clock,
   Copy, Clipboard, ClipboardPaste, ClipboardList, Scissors, ExternalLink, List, LayoutGrid, CheckCircle2, AlertTriangle, Share2, Send, Info,
   Lock, LockOpen, Unlock, Server, XCircle, History, Users, FolderSync, Replace, LogOut, PanelLeft, Rows3, Zap,
-  MoreHorizontal, Tag, Bot, Terminal, Star, MessageSquare, Package, FileSpreadsheet, Presentation, LinkIcon, GitCommit, ArrowRight, ArrowRightLeft, Columns2, FileKey
+  MoreHorizontal, Tag, Bot, Terminal, Star, MessageSquare, Package, FileSpreadsheet, Presentation, LinkIcon, GitCommit, ArrowRight, ArrowRightLeft, Columns2, FileKey, KeyRound
 } from 'lucide-react';
 
 /**
@@ -1204,6 +1205,12 @@ const App: React.FC = () => {
   // Recovery kit viewer opened from the crypt badge right-click menu (connected
   // native AeroCrypt profile). Same modal as the saved-server context menu.
   const [badgeRecoveryKit, setBadgeRecoveryKit] = useState<{ id: string; name: string } | null>(null);
+  // v4 keyslot manager (T6) opened from the crypt badge context menu.
+  const [badgeKeyslots, setBadgeKeyslots] = useState<{
+    id: string | null;
+    name: string;
+    remoteScope: string | null;
+  } | null>(null);
   const [aeroCryptVaultId, setAeroCryptVaultId] = useState<string | null>(null);
   // P3.3: deferred overlay auto-unlock (runs in a post-connect effect at settled
   // state) + flag that drives the name-decryption animation while unlocking.
@@ -3880,12 +3887,24 @@ interface UpdateVerificationInfo {
           action: () => toggleActiveCryptOverlay(),
         },
       ];
+      if (kind === 'aerocrypt') {
+        items.push({
+          label: t('aerocryptNative.keyslotsManage'),
+          icon: <KeyRound size={14} />,
+          action: () =>
+            setBadgeKeyslots({
+              id: (sess?.savedServerId as string) || null,
+              name: sess?.serverName || '',
+              remoteScope: sess?.cryptOverlay?.remoteScope || null,
+            }),
+          divider: true,
+        });
+      }
       if (kind === 'aerocrypt' && sess?.savedServerId) {
         items.push({
           label: t('aerocryptNative.showKit'),
           icon: <FileKey size={14} />,
           action: () => setBadgeRecoveryKit({ id: sess.savedServerId as string, name: sess.serverName || '' }),
-          divider: true,
         });
         // Probe markers on the raw transport; Convert only if legacy JSON remains.
         let showConvert = false;
@@ -16049,6 +16068,14 @@ interface UpdateVerificationInfo {
             profileId={badgeRecoveryKit.id}
             profileName={badgeRecoveryKit.name}
             onClose={() => setBadgeRecoveryKit(null)}
+          />
+        )}
+        {badgeKeyslots && (
+          <AeroCryptKeyslotsModal
+            profileId={badgeKeyslots.id}
+            profileName={badgeKeyslots.name}
+            remoteScope={badgeKeyslots.remoteScope}
+            onClose={() => setBadgeKeyslots(null)}
           />
         )}
         {rcloneCryptImportBanner && !rcloneCryptVaultId && (

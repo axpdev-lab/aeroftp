@@ -30,7 +30,10 @@ use tauri::State;
 use tokio::sync::Mutex;
 use zeroize::{Zeroize, Zeroizing};
 
-use crate::aerocrypt::overlay::{self, OverlayConfig};
+use crate::aerocrypt::keyslots::{
+    derive_slot_key, Argon2Params, SlotBinding, SlotFactor, SlotType,
+};
+use crate::aerocrypt::overlay::{self, OverlayConfig, SlotKeyMaterial};
 use crate::aerocrypt::{emergency_kit, KEY_SIZE};
 use crate::join_remote_path;
 use crate::provider_commands::ProviderState;
@@ -649,6 +652,702 @@ pub fn aerocrypt_build_emergency_kit(
     emergency_kit::build_from_config_json(&config_json)
 }
 
+// ── v4 keyslot manager (T6 GUI parity with CLI crypt migrate-v4 / *-slot) ─────
+
+/// Public, no-secret slot row for the keyslot manager UI.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AeroCryptSlotSummary {
+    pub id: u32,
+    pub kind: String,
+    pub salt_len: usize,
+}
+
+/// Snapshot returned by [`aerocrypt_list_slots`] after a successful unlock.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AeroCryptSlotListResult {
+    pub version: u8,
+    pub epoch: u32,
+    /// Short hex prefix of vault_id (public); empty when absent.
+    pub vault_id_short: String,
+    /// Slot that authenticated this unlock (v4 only).
+    pub opened_slot_id: Option<u32>,
+    pub slots: Vec<AeroCryptSlotSummary>,
+}
+
+/// Result of a marker-mutating keyslot action (migrate / add / remove / rotate).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AeroCryptSlotMutateResult {
+    pub version: u8,
+    pub epoch: u32,
+    pub vault_id_short: String,
+    pub opened_slot_id: Option<u32>,
+    pub slots: Vec<AeroCryptSlotSummary>,
+    pub action: String,
+}
+
+fn slot_kind_label(kind: SlotType) -> String {
+    match kind {
+        SlotType::Passphrase => "passphrase".to_string(),
+        SlotType::Keyfile => "keyfile".to_string(),
+        SlotType::Recovery => "recovery".to_string(),
+        SlotType::Fido2Hmac => "fido2-hmac".to_string(),
+        SlotType::And => "and".to_string(),
+        SlotType::Threshold => "threshold".to_string(),
+    }
+}
+
+fn vault_id_short_hex(cfg: &OverlayConfig) -> String {
+    match cfg.vault_id() {
+        Some(vid) => {
+            // Short hex of first 4 bytes for UI diagnostics (public).
+            vid[..4.min(vid.len())]
+                .iter()
+                .map(|b| format!("{b:02x}"))
+                .collect()
+        }
+        None => String::new(),
+    }
+}
+
+fn summarize_v4_slots(cfg: &OverlayConfig) -> Result<(u32, Vec<AeroCryptSlotSummary>), String> {
+    let OverlayConfig::V4 { epoch, slots, .. } = cfg else {
+        return Err(format!(
+            "keyslot manager requires a v4 vault; got v{}",
+            cfg.version()
+        ));
+    };
+    let summaries = slots
+        .iter()
+        .map(|s| AeroCryptSlotSummary {
+            id: s.id,
+            kind: slot_kind_label(s.kind),
+            salt_len: s.salt.len(),
+        })
+        .collect();
+    Ok((*epoch, summaries))
+}
+
+fn next_slot_id(slots: &[crate::aerocrypt::keyslots::Slot]) -> u32 {
+    slots.iter().map(|s| s.id).max().map(|m| m + 1).unwrap_or(0)
+}
+
+/// Resolve the overlay root: absolute `base_path` when given, else provider pwd.
+async fn resolve_overlay_cwd(
+    provider: &mut dyn crate::providers::StorageProvider,
+    base_path: Option<&str>,
+) -> String {
+    if let Some(bp) = base_path
+        .map(str::trim)
+        .filter(|s| !s.is_empty() && *s != "/")
+    {
+        bp.to_string()
+    } else {
+        provider.pwd().await.unwrap_or_else(|_| "/".to_string())
+    }
+}
+
+/// Read the headed marker (prefer `.aerocrypt.tsv`, fall back to legacy JSON).
+async fn load_headed_marker(
+    provider: &mut dyn crate::providers::StorageProvider,
+    cwd: &str,
+) -> Result<(String, String), String> {
+    let current_path = join_remote_path(cwd, overlay::CRYPT_CONFIG_WRITE_NAME);
+    let legacy_path = join_remote_path(cwd, overlay::CRYPT_CONFIG_LEGACY_NAME);
+    if provider.exists(&current_path).await.unwrap_or(false) {
+        let text = read_marker_text(provider, &current_path).await?;
+        return Ok((text, current_path));
+    }
+    if provider.exists(&legacy_path).await.unwrap_or(false) {
+        let text = read_marker_text(provider, &legacy_path).await?;
+        return Ok((text, legacy_path));
+    }
+    Err(format!(
+        "No AeroCrypt marker found under {cwd} (looked for {} and {})",
+        overlay::CRYPT_CONFIG_WRITE_NAME,
+        overlay::CRYPT_CONFIG_LEGACY_NAME
+    ))
+}
+
+/// Stage-upload-verify-rename a headed marker to the current write name, then
+/// best-effort drop a leftover legacy JSON name (same pattern as CLI
+/// `publish_crypt_marker` and legacy-marker migration).
+async fn publish_headed_marker(
+    provider: &mut dyn crate::providers::StorageProvider,
+    cwd: &str,
+    marker_text: &str,
+    password: &str,
+    keyfile_digest: Option<[u8; KEY_SIZE]>,
+) -> Result<(), String> {
+    let current_path = join_remote_path(cwd, overlay::CRYPT_CONFIG_WRITE_NAME);
+    let temp = std::env::temp_dir().join(format!(
+        "aeroftp_aerocrypt_keyslot_{}_{}.json",
+        chrono::Utc::now().timestamp_millis(),
+        uuid::Uuid::new_v4()
+    ));
+    tokio::fs::write(&temp, marker_text.as_bytes())
+        .await
+        .map_err(|e| format!("Failed to stage AeroCrypt marker: {e}"))?;
+    let remote_tmp = format!("{current_path}.aerotmp-{}", uuid::Uuid::new_v4());
+    let upload = provider
+        .upload(&temp.to_string_lossy(), &remote_tmp, None)
+        .await
+        .map_err(|e| format!("Failed to upload staged AeroCrypt marker: {e}"));
+    let _ = tokio::fs::remove_file(&temp).await;
+    upload?;
+
+    let staged = match provider.download_to_bytes(&remote_tmp).await {
+        Ok(bytes) => bytes,
+        Err(e) => {
+            let _ = provider.delete(&remote_tmp).await;
+            return Err(format!("Failed to verify staged AeroCrypt marker: {e}"));
+        }
+    };
+    if staged != marker_text.as_bytes() {
+        let _ = provider.delete(&remote_tmp).await;
+        return Err(
+            "staged AeroCrypt marker failed byte-for-byte verification; original marker retained"
+                .to_string(),
+        );
+    }
+    let staged_text = String::from_utf8_lossy(&staged).to_string();
+    // Fail-closed unlock check before rename (parity with CLI publish).
+    if let Err(e) =
+        overlay::unlock_overlay_from_config(&staged_text, password, keyfile_digest.as_ref())
+    {
+        let _ = provider.delete(&remote_tmp).await;
+        return Err(format!(
+            "staged AeroCrypt marker failed unlock verification: {e}"
+        ));
+    }
+    if let Err(e) = provider.rename(&remote_tmp, &current_path).await {
+        let _ = provider.delete(&remote_tmp).await;
+        return Err(format!("Failed to publish verified AeroCrypt marker: {e}"));
+    }
+    let legacy_path = join_remote_path(cwd, overlay::CRYPT_CONFIG_LEGACY_NAME);
+    if provider.exists(&legacy_path).await.unwrap_or(false) {
+        let _ = provider.delete(&legacy_path).await;
+    }
+    Ok(())
+}
+
+/// Best-effort: refresh the local public config cache so Recovery Kit / next
+/// connect see the post-mutation header. Never fails the remote write path.
+fn best_effort_refresh_keystore_config(profile_id: Option<&str>, marker_text: &str) {
+    let Some(id) = profile_id.map(str::trim).filter(|s| !s.is_empty()) else {
+        return;
+    };
+    let Some(store) = crate::credential_store::CredentialStore::from_cache() else {
+        return;
+    };
+    let config_key = format!("aerocrypt_overlay_config_{id}");
+    if let Err(e) =
+        crate::user_partitions::store_active_credential_dual(&store, &config_key, marker_text)
+    {
+        log::warn!("[aerocrypt] keyslot keystore config refresh skipped for {id}: {e}");
+    }
+}
+
+fn crypt_v4_migrate_header_pure(
+    raw_header: &str,
+    password: &str,
+    keyfile_digest: Option<&[u8; KEY_SIZE]>,
+) -> Result<String, String> {
+    let (cfg, master) = overlay::unlock_overlay_from_config(raw_header, password, keyfile_digest)?;
+    if cfg.version() != overlay::VERSION_V3 {
+        return Err(format!(
+            "migrate-v4 requires a v3 headed vault; got v{}",
+            cfg.version()
+        ));
+    }
+    overlay::migrate_v3_to_v4(&cfg, &master)
+}
+
+fn crypt_v4_add_slot_header_pure(
+    raw_header: &str,
+    password: &str,
+    keyfile_digest: Option<&[u8; KEY_SIZE]>,
+    slot_type: &str,
+    new_password: &str,
+    new_keyfile_digest: Option<&[u8; KEY_SIZE]>,
+) -> Result<String, String> {
+    let material = overlay::unlock_v4_for_management(raw_header, password, keyfile_digest)?;
+    let OverlayConfig::V4 { slots, .. } = &material.config else {
+        return Err("add-slot requires a v4 vault".into());
+    };
+    let kind = match slot_type {
+        "passphrase" => SlotType::Passphrase,
+        "keyfile" => SlotType::Keyfile,
+        other => {
+            return Err(format!(
+                "unsupported slot type '{other}' (use passphrase|keyfile)"
+            ))
+        }
+    };
+    let new_id = next_slot_id(slots);
+    let salt = overlay::random_salt_v3();
+    let kdf = Argon2Params::v3_profile();
+    let factor = match kind {
+        SlotType::Passphrase => {
+            if new_password.is_empty() {
+                return Err("add-slot passphrase requires a new password".into());
+            }
+            if new_keyfile_digest.is_some() {
+                return Err("add-slot passphrase does not take a new keyfile".into());
+            }
+            SlotFactor::Passphrase(new_password)
+        }
+        SlotType::Keyfile => {
+            let Some(digest) = new_keyfile_digest else {
+                return Err("add-slot keyfile requires a new keyfile".into());
+            };
+            SlotFactor::KeyfileDigest {
+                password: new_password,
+                digest,
+            }
+        }
+        _ => return Err("unsupported slot type".into()),
+    };
+    let slot_key = derive_slot_key(kind, &factor, &salt, Some(&kdf))?;
+    let sk = SlotKeyMaterial {
+        id: new_id,
+        kind,
+        salt: salt.to_vec(),
+        kdf: Some(kdf),
+        binding: SlotBinding::None,
+        slot_key,
+    };
+    overlay::add_slot(&material.config, &material.vk, &material.epoch_key, sk)
+}
+
+fn crypt_v4_remove_slot_header_pure(
+    raw_header: &str,
+    password: &str,
+    keyfile_digest: Option<&[u8; KEY_SIZE]>,
+    slot_id: u32,
+) -> Result<String, String> {
+    let material = overlay::unlock_v4_for_management(raw_header, password, keyfile_digest)?;
+    let OverlayConfig::V4 { slots, .. } = &material.config else {
+        return Err("remove-slot requires a v4 vault".into());
+    };
+    if material.slot_id == slot_id {
+        return Err(
+            "cannot remove the slot used to unlock; unlock with a surviving slot's credential"
+                .into(),
+        );
+    }
+    let surviving: Vec<_> = slots.iter().filter(|s| s.id != slot_id).collect();
+    if surviving.is_empty() {
+        return Err("cannot revoke the last slot".into());
+    }
+    // T5/T6 limit: only re-wrap keys we hold (the authenticating slot).
+    if surviving.len() != 1 || surviving[0].id != material.slot_id {
+        return Err(format!(
+            "remove-slot currently supports only the single-survivor case (vault has {} slots after remove would keep {}; unlock must match the sole survivor). Multi-survivor revoke needs every surviving slot key (later task).",
+            slots.len(),
+            surviving.len()
+        ));
+    }
+    overlay::revoke_slot(
+        &material.config,
+        &material.vk,
+        slot_id,
+        &[(material.slot_id, material.slot_key)],
+    )
+}
+
+fn crypt_v4_rotate_slot_header_pure(
+    raw_header: &str,
+    password: &str,
+    keyfile_digest: Option<&[u8; KEY_SIZE]>,
+    slot_id: u32,
+    new_password: &str,
+    new_keyfile_digest: Option<&[u8; KEY_SIZE]>,
+) -> Result<String, String> {
+    let material = overlay::unlock_v4_for_management(raw_header, password, keyfile_digest)?;
+    if material.slot_id != slot_id {
+        return Err(format!(
+            "rotate-slot: unlock authenticated slot {}, but slot-id is {slot_id}; unlock with the slot you are rotating",
+            material.slot_id
+        ));
+    }
+    let OverlayConfig::V4 { slots, .. } = &material.config else {
+        return Err("rotate-slot requires a v4 vault".into());
+    };
+    let slot = slots
+        .iter()
+        .find(|s| s.id == slot_id)
+        .ok_or_else(|| format!("unknown slot id {slot_id}"))?;
+    let kind = slot.kind;
+    let salt = overlay::random_salt_v3();
+    let kdf = Argon2Params::v3_profile();
+    let factor = match kind {
+        SlotType::Passphrase => {
+            if new_password.is_empty() {
+                return Err("rotate-slot for a passphrase slot requires a new password".into());
+            }
+            if new_keyfile_digest.is_some() {
+                return Err("rotate-slot passphrase slot does not take a new keyfile".into());
+            }
+            SlotFactor::Passphrase(new_password)
+        }
+        SlotType::Keyfile => {
+            let Some(digest) = new_keyfile_digest else {
+                return Err("rotate-slot for a keyfile slot requires a new keyfile".into());
+            };
+            SlotFactor::KeyfileDigest {
+                password: new_password,
+                digest,
+            }
+        }
+        other => {
+            return Err(format!(
+                "rotate-slot does not yet support slot type {other:?}"
+            ));
+        }
+    };
+    let slot_key = derive_slot_key(kind, &factor, &salt, Some(&kdf))?;
+    let sk = SlotKeyMaterial {
+        id: slot_id,
+        kind,
+        salt: salt.to_vec(),
+        kdf: Some(kdf),
+        binding: SlotBinding::None,
+        slot_key,
+    };
+    overlay::rotate_slot(&material.config, &material.vk, &material.epoch_key, sk)
+}
+
+fn list_result_from_v4(
+    raw_header: &str,
+    password: &str,
+    keyfile_digest: Option<&[u8; KEY_SIZE]>,
+) -> Result<AeroCryptSlotListResult, String> {
+    let material = overlay::unlock_v4_for_management(raw_header, password, keyfile_digest)?;
+    let (epoch, slots) = summarize_v4_slots(&material.config)?;
+    Ok(AeroCryptSlotListResult {
+        version: material.config.version(),
+        epoch,
+        vault_id_short: vault_id_short_hex(&material.config),
+        opened_slot_id: Some(material.slot_id),
+        slots,
+    })
+}
+
+fn mutate_result_from_header(
+    new_header: &str,
+    password: &str,
+    keyfile_digest: Option<&[u8; KEY_SIZE]>,
+    action: &str,
+) -> Result<AeroCryptSlotMutateResult, String> {
+    let list = list_result_from_v4(new_header, password, keyfile_digest)?;
+    Ok(AeroCryptSlotMutateResult {
+        version: list.version,
+        epoch: list.epoch,
+        vault_id_short: list.vault_id_short,
+        opened_slot_id: list.opened_slot_id,
+        slots: list.slots,
+        action: action.to_string(),
+    })
+}
+
+/// List keyslots on the connected AeroCrypt vault (v4). Requires unlock factors.
+/// On a v3 vault returns version=3 with an empty slot list so the GUI can offer
+/// "Convert to keyslot vault (v4)" without a separate probe.
+#[tauri::command]
+pub async fn aerocrypt_list_slots(
+    provider_state: State<'_, ProviderState>,
+    password: String,
+    keyfile_path: Option<String>,
+    base_path: Option<String>,
+) -> Result<AeroCryptSlotListResult, String> {
+    if password.is_empty() && keyfile_path.as_deref().unwrap_or("").trim().is_empty() {
+        return Err("password or keyfile required to list AeroCrypt slots".to_string());
+    }
+    let keyfile_digest = resolve_ui_keyfile_digest(keyfile_path.as_deref())?;
+    let mut provider_lock = provider_state.provider.lock().await;
+    let slot = provider_lock
+        .as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+    let provider = crate::crypt_overlay_provider::concrete_provider_mut(slot.as_mut());
+    let cwd = resolve_overlay_cwd(provider, base_path.as_deref()).await;
+    let (raw, _) = load_headed_marker(provider, &cwd).await?;
+    let kd = keyfile_digest;
+    let pw = password;
+    tokio::task::spawn_blocking(move || {
+        let (cfg, _) =
+            overlay::unlock_overlay_from_config(&raw, &pw, kd.as_ref())?;
+        match cfg.version() {
+            4 => list_result_from_v4(&raw, &pw, kd.as_ref()),
+            overlay::VERSION_V3 => Ok(AeroCryptSlotListResult {
+                version: 3,
+                epoch: 0,
+                vault_id_short: vault_id_short_hex(&cfg),
+                opened_slot_id: None,
+                slots: vec![],
+            }),
+            other => Err(format!(
+                "keyslot manager does not support AeroCrypt v{other}"
+            )),
+        }
+    })
+    .await
+    .map_err(|e| format!("list-slots task failed: {e}"))?
+}
+
+/// Convert a connected v3 headed vault to v4 keyslots and publish the new marker.
+#[tauri::command]
+pub async fn aerocrypt_migrate_v4(
+    provider_state: State<'_, ProviderState>,
+    password: String,
+    keyfile_path: Option<String>,
+    base_path: Option<String>,
+    profile_id: Option<String>,
+) -> Result<AeroCryptSlotMutateResult, String> {
+    if password.is_empty() && keyfile_path.as_deref().unwrap_or("").trim().is_empty() {
+        return Err("password or keyfile required to migrate to v4".to_string());
+    }
+    let keyfile_digest = resolve_ui_keyfile_digest(keyfile_path.as_deref())?;
+    let mut provider_lock = provider_state.provider.lock().await;
+    let slot = provider_lock
+        .as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+    let provider = crate::crypt_overlay_provider::concrete_provider_mut(slot.as_mut());
+    let cwd = resolve_overlay_cwd(provider, base_path.as_deref()).await;
+    let (raw, _) = load_headed_marker(provider, &cwd).await?;
+    let kd = keyfile_digest;
+    let pw = password.clone();
+    let v4_marker = tokio::task::spawn_blocking(move || {
+        let marker = crypt_v4_migrate_header_pure(&raw, &pw, kd.as_ref())?;
+        // Verify unlock recovers OMK before any remote write.
+        overlay::unlock_overlay_from_config(&marker, &pw, kd.as_ref())?;
+        Ok::<_, String>(marker)
+    })
+    .await
+    .map_err(|e| format!("migrate-v4 task failed: {e}"))??;
+
+    publish_headed_marker(provider, &cwd, &v4_marker, &password, keyfile_digest).await?;
+    best_effort_refresh_keystore_config(profile_id.as_deref(), &v4_marker);
+
+    let kd = keyfile_digest;
+    let pw = password;
+    let marker = v4_marker;
+    tokio::task::spawn_blocking(move || {
+        mutate_result_from_header(&marker, &pw, kd.as_ref(), "migrate-v4")
+    })
+    .await
+    .map_err(|e| format!("migrate-v4 verify task failed: {e}"))?
+}
+
+/// Add a passphrase or keyfile slot to a connected v4 vault.
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+pub async fn aerocrypt_add_slot(
+    provider_state: State<'_, ProviderState>,
+    password: String,
+    keyfile_path: Option<String>,
+    base_path: Option<String>,
+    profile_id: Option<String>,
+    slot_type: String,
+    new_password: Option<String>,
+    new_keyfile_path: Option<String>,
+) -> Result<AeroCryptSlotMutateResult, String> {
+    if password.is_empty() && keyfile_path.as_deref().unwrap_or("").trim().is_empty() {
+        return Err("password or keyfile required to add a slot".to_string());
+    }
+    let keyfile_digest = resolve_ui_keyfile_digest(keyfile_path.as_deref())?;
+    let new_keyfile_digest = resolve_ui_keyfile_digest(new_keyfile_path.as_deref())?;
+    let new_pw_owned = new_password.unwrap_or_default();
+    let mut provider_lock = provider_state.provider.lock().await;
+    let slot = provider_lock
+        .as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+    let provider = crate::crypt_overlay_provider::concrete_provider_mut(slot.as_mut());
+    let cwd = resolve_overlay_cwd(provider, base_path.as_deref()).await;
+    let (raw, _) = load_headed_marker(provider, &cwd).await?;
+    let kd = keyfile_digest;
+    let nkd = new_keyfile_digest;
+    let pw = password.clone();
+    let st = slot_type.clone();
+    let new_pw_for_build = new_pw_owned.clone();
+    let new_header = tokio::task::spawn_blocking(move || {
+        crypt_v4_add_slot_header_pure(&raw, &pw, kd.as_ref(), &st, &new_pw_for_build, nkd.as_ref())
+    })
+    .await
+    .map_err(|e| format!("add-slot task failed: {e}"))??;
+
+    // Verify with the NEW factor when present; otherwise with unlock factor.
+    let verify_pw = if slot_type == "passphrase" {
+        if new_pw_owned.is_empty() {
+            password.clone()
+        } else {
+            new_pw_owned.clone()
+        }
+    } else if new_pw_owned.is_empty() {
+        password.clone()
+    } else {
+        new_pw_owned.clone()
+    };
+    let verify_kd = if slot_type == "keyfile" {
+        new_keyfile_digest
+    } else {
+        None
+    };
+    {
+        let marker = new_header.clone();
+        let vpw = verify_pw.clone();
+        let vkd = verify_kd;
+        tokio::task::spawn_blocking(move || {
+            overlay::unlock_overlay_from_config(&marker, &vpw, vkd.as_ref())
+        })
+        .await
+        .map_err(|e| format!("add-slot verify task failed: {e}"))?
+        .map_err(|e| format!("add-slot produced a marker that fails unlock: {e}"))?;
+    }
+
+    // Publish with the original unlock factor (still valid; add does not revoke).
+    publish_headed_marker(provider, &cwd, &new_header, &password, keyfile_digest).await?;
+    best_effort_refresh_keystore_config(profile_id.as_deref(), &new_header);
+
+    let kd = keyfile_digest;
+    let pw = password;
+    let marker = new_header;
+    tokio::task::spawn_blocking(move || {
+        mutate_result_from_header(&marker, &pw, kd.as_ref(), "add-slot")
+    })
+    .await
+    .map_err(|e| format!("add-slot list task failed: {e}"))?
+}
+
+/// Remove (revoke) a slot. T6 mirrors T5 single-survivor limit. Carries F6
+/// honesty in the GUI; this command only enforces crypto/API rules.
+#[tauri::command]
+pub async fn aerocrypt_remove_slot(
+    provider_state: State<'_, ProviderState>,
+    password: String,
+    keyfile_path: Option<String>,
+    base_path: Option<String>,
+    profile_id: Option<String>,
+    slot_id: u32,
+) -> Result<AeroCryptSlotMutateResult, String> {
+    if password.is_empty() && keyfile_path.as_deref().unwrap_or("").trim().is_empty() {
+        return Err("password or keyfile required to remove a slot".to_string());
+    }
+    let keyfile_digest = resolve_ui_keyfile_digest(keyfile_path.as_deref())?;
+    let mut provider_lock = provider_state.provider.lock().await;
+    let slot = provider_lock
+        .as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+    let provider = crate::crypt_overlay_provider::concrete_provider_mut(slot.as_mut());
+    let cwd = resolve_overlay_cwd(provider, base_path.as_deref()).await;
+    let (raw, _) = load_headed_marker(provider, &cwd).await?;
+    let kd = keyfile_digest;
+    let pw = password.clone();
+    let new_header = tokio::task::spawn_blocking(move || {
+        crypt_v4_remove_slot_header_pure(&raw, &pw, kd.as_ref(), slot_id)
+    })
+    .await
+    .map_err(|e| format!("remove-slot task failed: {e}"))??;
+
+    {
+        let marker = new_header.clone();
+        let vpw = password.clone();
+        let vkd = keyfile_digest;
+        tokio::task::spawn_blocking(move || {
+            overlay::unlock_overlay_from_config(&marker, &vpw, vkd.as_ref())
+        })
+        .await
+        .map_err(|e| format!("remove-slot verify task failed: {e}"))?
+        .map_err(|e| format!("remove-slot produced a marker that fails unlock: {e}"))?;
+    }
+
+    publish_headed_marker(provider, &cwd, &new_header, &password, keyfile_digest).await?;
+    best_effort_refresh_keystore_config(profile_id.as_deref(), &new_header);
+
+    let kd = keyfile_digest;
+    let pw = password;
+    let marker = new_header;
+    tokio::task::spawn_blocking(move || {
+        mutate_result_from_header(&marker, &pw, kd.as_ref(), "remove-slot")
+    })
+    .await
+    .map_err(|e| format!("remove-slot list task failed: {e}"))?
+}
+
+/// Rotate the factor of the authenticating slot (new password or keyfile).
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+pub async fn aerocrypt_rotate_slot(
+    provider_state: State<'_, ProviderState>,
+    password: String,
+    keyfile_path: Option<String>,
+    base_path: Option<String>,
+    profile_id: Option<String>,
+    slot_id: u32,
+    new_password: Option<String>,
+    new_keyfile_path: Option<String>,
+) -> Result<AeroCryptSlotMutateResult, String> {
+    if password.is_empty() && keyfile_path.as_deref().unwrap_or("").trim().is_empty() {
+        return Err("password or keyfile required to rotate a slot".to_string());
+    }
+    let keyfile_digest = resolve_ui_keyfile_digest(keyfile_path.as_deref())?;
+    let new_keyfile_digest = resolve_ui_keyfile_digest(new_keyfile_path.as_deref())?;
+    let new_pw = new_password.clone().unwrap_or_default();
+    let mut provider_lock = provider_state.provider.lock().await;
+    let slot = provider_lock
+        .as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+    let provider = crate::crypt_overlay_provider::concrete_provider_mut(slot.as_mut());
+    let cwd = resolve_overlay_cwd(provider, base_path.as_deref()).await;
+    let (raw, _) = load_headed_marker(provider, &cwd).await?;
+    let kd = keyfile_digest;
+    let nkd = new_keyfile_digest;
+    let pw = password.clone();
+    let new_header = tokio::task::spawn_blocking(move || {
+        crypt_v4_rotate_slot_header_pure(&raw, &pw, kd.as_ref(), slot_id, &new_pw, nkd.as_ref())
+    })
+    .await
+    .map_err(|e| format!("rotate-slot task failed: {e}"))??;
+
+    // After rotate, only the NEW factor unlocks the rotated slot.
+    // Prefer new keyfile when provided; else new password.
+    let (vpw, vkd): (String, Option<[u8; KEY_SIZE]>) = if new_keyfile_digest.is_some() {
+        (new_password.clone().unwrap_or_default(), new_keyfile_digest)
+    } else {
+        (new_password.clone().unwrap_or_default(), None)
+    };
+    if vpw.is_empty() && vkd.is_none() {
+        return Err("rotate-slot requires a new password or new keyfile".to_string());
+    }
+    {
+        let marker = new_header.clone();
+        let vpw2 = vpw.clone();
+        let vkd2 = vkd;
+        tokio::task::spawn_blocking(move || {
+            overlay::unlock_overlay_from_config(&marker, &vpw2, vkd2.as_ref())
+        })
+        .await
+        .map_err(|e| format!("rotate-slot verify task failed: {e}"))?
+        .map_err(|e| {
+            format!("rotate-slot produced a marker that fails unlock with new factor: {e}")
+        })?;
+    }
+
+    // Publish: verify path above already used the new factor; use the same for
+    // the staged unlock check inside publish.
+    publish_headed_marker(provider, &cwd, &new_header, &vpw, vkd).await?;
+    best_effort_refresh_keystore_config(profile_id.as_deref(), &new_header);
+
+    let marker = new_header;
+    tokio::task::spawn_blocking(move || {
+        mutate_result_from_header(&marker, &vpw, vkd.as_ref(), "rotate-slot")
+    })
+    .await
+    .map_err(|e| format!("rotate-slot list task failed: {e}"))?
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -662,5 +1361,61 @@ mod tests {
         let plaintext = b"AeroCrypt provider round trip".repeat(4096);
         let blob = overlay::encrypt_data(&cfg, &master, &plaintext).unwrap();
         assert_eq!(overlay::decrypt_data(&master, &blob).unwrap(), plaintext);
+    }
+
+    /// T6 pure path: migrate v3 → list → add → rotate → remove recovers OMK.
+    #[test]
+    fn keyslot_gui_pure_migrate_add_rotate_remove() {
+        let salt = overlay::random_salt_v3();
+        let master =
+            overlay::derive_master_key(&OverlayConfig::v3_bootstrap(salt), "owner-pw").unwrap();
+        let v3 = overlay::init_config_v3_with_vault_id(
+            &salt,
+            &master,
+            &overlay::random_vault_id(),
+            overlay::SaltMode::PerVault,
+        )
+        .unwrap();
+
+        let v4 = crypt_v4_migrate_header_pure(&v3, "owner-pw", None).unwrap();
+        let list = list_result_from_v4(&v4, "owner-pw", None).unwrap();
+        assert_eq!(list.version, 4);
+        assert_eq!(list.slots.len(), 1);
+        assert_eq!(list.opened_slot_id, Some(0));
+
+        let with_extra =
+            crypt_v4_add_slot_header_pure(&v4, "owner-pw", None, "passphrase", "second-pw", None)
+                .unwrap();
+        // New factor opens; original still opens.
+        overlay::unlock_overlay_from_config(&with_extra, "second-pw", None).unwrap();
+        overlay::unlock_overlay_from_config(&with_extra, "owner-pw", None).unwrap();
+
+        let rotated = crypt_v4_rotate_slot_header_pure(
+            &with_extra,
+            "second-pw",
+            None,
+            1,
+            "second-pw-rotated",
+            None,
+        )
+        .unwrap();
+        assert!(
+            overlay::unlock_overlay_from_config(&rotated, "second-pw", None).is_err(),
+            "old factor of rotated slot must fail closed"
+        );
+        overlay::unlock_overlay_from_config(&rotated, "second-pw-rotated", None).unwrap();
+
+        // Remove slot 1 while unlocked as sole survivor (slot 0).
+        let removed = crypt_v4_remove_slot_header_pure(&rotated, "owner-pw", None, 1).unwrap();
+        assert!(
+            overlay::unlock_overlay_from_config(&removed, "second-pw-rotated", None).is_err(),
+            "revoked factor must fail closed"
+        );
+        let (cfg, omk) = overlay::unlock_overlay_from_config(&removed, "owner-pw", None).unwrap();
+        assert_eq!(cfg.version(), 4);
+        assert_eq!(omk, master, "OMK must stay stable through manage ops");
+        let list2 = list_result_from_v4(&removed, "owner-pw", None).unwrap();
+        assert_eq!(list2.slots.len(), 1);
+        assert_eq!(list2.slots[0].id, 0);
     }
 }
