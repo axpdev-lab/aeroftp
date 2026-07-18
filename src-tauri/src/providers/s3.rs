@@ -84,6 +84,24 @@ fn filen_decode_listed_key(key: String, filen_decode: bool) -> String {
 /// objects use an opaque value. We accept exactly 32 lowercase-hex chars
 /// (which also rejects any `-N` suffix), mirroring rclone's S3 hash
 /// behaviour: omit rather than report a wrong digest.
+/// The de-facto S3 "this object is a directory marker" content-type, written
+/// on `mkdir` and recognised on `list` to tell an empty-folder marker from a
+/// real zero-byte object on gateways that alias "key/" to "key" (S3Drive).
+const S3_DIRECTORY_CONTENT_TYPE: &str = "application/x-directory";
+
+/// True when a content-type marks an object as a directory placeholder. Accepts
+/// the two common conventions: `application/x-directory` (written here, also
+/// s3fs / AWS console) and `httpd/unix-directory` (davfs / some gateways).
+fn is_s3_directory_content_type(content_type: &str) -> bool {
+    let ct = content_type
+        .split(';')
+        .next()
+        .unwrap_or("")
+        .trim()
+        .to_ascii_lowercase();
+    ct == "application/x-directory" || ct == "httpd/unix-directory"
+}
+
 fn etag_to_md5(raw: &str) -> Option<String> {
     let v = raw.trim().trim_matches('"').to_ascii_lowercase();
     if v.len() == 32 && v.bytes().all(|b| b.is_ascii_hexdigit()) {
@@ -2633,6 +2651,96 @@ impl StorageProvider for S3Provider {
             }
         }
 
+        // EF-22 (#266/#347): disambiguate S3 folder markers that would render
+        // as phantom files. On gateways that strip the trailing slash from the
+        // "<prefix>/" marker AND emit no CommonPrefixes (S3Drive), an empty
+        // folder comes back as a zero-byte object with no slash and would list
+        // as a file. Spec-compliant gateways (MinIO/AWS) return the marker as a
+        // CommonPrefixes entry — already a directory here — so nothing below is
+        // a candidate and no extra request is issued. For the remaining
+        // zero-byte entries with no same-name directory sibling, HEAD "<key>/"
+        // and reclassify as a folder only when the marker carries the directory
+        // content-type (see the closure below for why existence alone is unsafe).
+        {
+            use futures_util::StreamExt;
+            use std::collections::HashSet;
+
+            let dir_names: HashSet<&str> = all_entries
+                .iter()
+                .filter(|e| e.is_dir)
+                .map(|e| e.name.as_str())
+                .collect();
+            let candidates: Vec<usize> = all_entries
+                .iter()
+                .enumerate()
+                .filter(|(_, e)| !e.is_dir && e.size == 0 && !dir_names.contains(e.name.as_str()))
+                .map(|(i, _)| i)
+                .collect();
+
+            // Cap the HEAD fan-out so a pathological page full of real zero-byte
+            // objects cannot probe unbounded; anything past the cap stays a file
+            // (logged, never silently dropped).
+            const MARKER_PROBE_CAP: usize = 256;
+            let probe_n = candidates.len().min(MARKER_PROBE_CAP);
+            if candidates.len() > probe_n {
+                tracing::warn!(
+                    "S3 folder-marker probe: {} zero-byte keys exceed cap {}, leaving {} as files",
+                    candidates.len(),
+                    MARKER_PROBE_CAP,
+                    candidates.len() - probe_n
+                );
+            }
+
+            if probe_n > 0 {
+                let this: &Self = self;
+                // Precompute owned (idx, marker_key) pairs so the async blocks
+                // capture owned data instead of borrowing the iterator element
+                // across the await (avoids an HRTB "not general enough" error).
+                let jobs: Vec<(usize, String)> = candidates
+                    .iter()
+                    .take(probe_n)
+                    .map(|&idx| {
+                        (
+                            idx,
+                            format!("{}/", all_entries[idx].path.trim_start_matches('/')),
+                        )
+                    })
+                    .collect();
+                let verdicts: Vec<(usize, bool)> = futures_util::stream::iter(
+                    jobs.into_iter().map(|(idx, marker_key)| async move {
+                        // HEAD "<key>/" and treat the entry as a folder only when
+                        // the marker carries the directory content-type. Mere
+                        // existence is not enough: S3Drive aliases "key/" to the
+                        // real "key", so a plain zero-byte file would 200 here —
+                        // the content-type is what keeps it classified as a file.
+                        let is_dir =
+                            match this.s3_request(Method::HEAD, &marker_key, None, None).await {
+                                Ok(r) if r.status().is_success() => {
+                                    let ct = r
+                                        .headers()
+                                        .get("content-type")
+                                        .and_then(|v| v.to_str().ok())
+                                        .unwrap_or("");
+                                    is_s3_directory_content_type(ct)
+                                }
+                                _ => false,
+                            };
+                        (idx, is_dir)
+                    }),
+                )
+                .buffer_unordered(16)
+                .collect()
+                .await;
+
+                for (idx, is_dir) in verdicts {
+                    if is_dir {
+                        let e = &all_entries[idx];
+                        all_entries[idx] = RemoteEntry::directory(e.name.clone(), e.path.clone());
+                    }
+                }
+            }
+        }
+
         Ok(all_entries)
     }
 
@@ -2980,16 +3088,49 @@ impl StorageProvider for S3Provider {
         }
     }
 
-    async fn mkdir(&mut self, _path: &str) -> Result<(), ProviderError> {
+    async fn mkdir(&mut self, path: &str) -> Result<(), ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
 
-        // S3 has no real directories; rclone-style, we do not persist an
-        // empty-folder marker object (owner decision #266, see
-        // docs/dev/DECISION-s3-marker-266.md). A prefix comes into existence
-        // once it holds an object, so mkdir is a no-op.
-        Ok(())
+        // Persist an explicit zero-byte marker object at "<prefix>/" so an
+        // empty folder is visible and survives a round-trip (EF-22, Refs
+        // #266/#347). This was historically a no-op: writing a "prefix/"
+        // marker rendered as a phantom empty *file* on gateways that strip
+        // the trailing slash (S3Drive). The list/parse path now classifies a
+        // trailing-slash zero-byte key as a directory (and dedups it against
+        // CommonPrefixes), so the marker no longer surfaces as a file.
+        // Mirror of `delete` below.
+        let trimmed = path.trim_matches('/');
+        if trimmed.is_empty() {
+            return Err(ProviderError::InvalidPath(
+                "Refusing to create a folder marker at the bucket root".into(),
+            ));
+        }
+        // Tag the marker with the `application/x-directory` content-type (the
+        // de-facto S3 directory-marker convention, also used by s3fs / the AWS
+        // console). It is what lets `list` tell a real zero-byte object from an
+        // empty-folder marker on gateways that alias "key/" to "key" and strip
+        // the trailing slash (S3Drive): the marker carries x-directory, a real
+        // zero-byte file carries its own/default type.
+        let marker = format!("{}/", trimmed);
+        let response = self
+            .s3_request_ext(
+                Method::PUT,
+                &marker,
+                None,
+                None,
+                &[("content-type", S3_DIRECTORY_CONTENT_TYPE)],
+            )
+            .await?;
+
+        match response.status() {
+            StatusCode::OK | StatusCode::CREATED | StatusCode::NO_CONTENT => Ok(()),
+            status => Err(ProviderError::ServerError(format!(
+                "mkdir marker PUT failed with status: {}",
+                status
+            ))),
+        }
     }
 
     async fn delete(&mut self, path: &str) -> Result<(), ProviderError> {
@@ -5211,6 +5352,22 @@ fn parse_object_versions_page(xml_str: &str) -> Result<VersionsPage, ProviderErr
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn is_s3_directory_content_type_matches_dir_marker_conventions() {
+        // Written by mkdir and the alternate davfs convention count as folders.
+        assert!(is_s3_directory_content_type("application/x-directory"));
+        assert!(is_s3_directory_content_type("httpd/unix-directory"));
+        // A charset/parameter suffix or odd casing must not defeat the check.
+        assert!(is_s3_directory_content_type(
+            "application/x-directory; charset=utf-8"
+        ));
+        assert!(is_s3_directory_content_type("Application/X-Directory"));
+        // A real object (the S3Drive zero-byte false-positive) is never a folder.
+        assert!(!is_s3_directory_content_type("application/octet-stream"));
+        assert!(!is_s3_directory_content_type("text/plain"));
+        assert!(!is_s3_directory_content_type(""));
+    }
 
     #[test]
     fn test_build_url_path_style() {
