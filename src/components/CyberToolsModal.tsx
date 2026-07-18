@@ -38,12 +38,13 @@ export const CyberToolsModal: React.FC<CyberToolsModalProps> = ({ onClose }) => 
         { id: 'password', label: t('cyberTools.passwordForge'), icon: <KeyRound size={15} /> },
     ];
 
+    // No outside-click-to-close: users copy hashes / drag files here, an accidental
+    // backdrop click must not dismiss (close via the X button or Escape).
     return (
-        <div className="fixed inset-0 z-50 flex items-start justify-center pt-[5vh] bg-black/60" onClick={onClose}>
+        <div className="fixed inset-0 z-50 flex items-start justify-center pt-[5vh] bg-black/60">
             <div
                 {...modalDrag.panelProps}
                 className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl border border-gray-200 dark:border-gray-700 w-[560px] max-h-[85vh] flex flex-col animate-scale-in"
-                onClick={e => e.stopPropagation()}
             >
                 {/* Header */}
                 <div
@@ -132,6 +133,22 @@ const PillButton: React.FC<{ active: boolean; onClick: () => void; children: Rea
 
 const HASH_ALGOS = ['MD5', 'SHA-1', 'SHA-256', 'SHA-512', 'BLAKE3'] as const;
 const HASH_ENCODINGS = ['utf-8', 'base64', 'hex', 'binary'] as const;
+
+// Absolute path of an OS file dropped via HTML drag-and-drop. On WebKitGTK the
+// drag data carries the real path (files[].path or the text/uri-list); Mac and
+// Windows may not expose it (the native onDragDropEvent listener covers those).
+function extractDroppedPath(dt: DataTransfer): string | null {
+    const file = dt.files?.[0] as (File & { path?: string }) | undefined;
+    let p = file?.path ?? '';
+    if (!p) {
+        const raw = dt.getData('text/uri-list') || dt.getData('text/plain') || '';
+        p = raw.split(/\r?\n/).map(s => s.trim()).find(s => s && !s.startsWith('#')) ?? '';
+    }
+    if (p.startsWith('file://')) {
+        try { p = decodeURIComponent(p.replace(/^file:\/\//, '')); } catch { /* keep raw */ }
+    }
+    return p.trim() || null;
+}
 type HashEncoding = (typeof HASH_ENCODINGS)[number];
 
 const HashForgeTab: React.FC = () => {
@@ -263,10 +280,24 @@ const HashForgeTab: React.FC = () => {
 
     return (
         <div
-            className={`space-y-4 rounded-md transition-colors ${
+            className={`relative space-y-4 rounded-md transition-colors ${
                 dragActive ? 'ring-2 ring-cyan-500 ring-offset-2 dark:ring-offset-gray-800 bg-cyan-500/5' : ''
             }`}
+            onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; if (!dragActive) setDragActive(true); }}
+            onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragActive(false); }}
+            onDrop={e => {
+                e.preventDefault();
+                setDragActive(false);
+                const path = extractDroppedPath(e.dataTransfer);
+                if (path) { setMode('file'); setFilePath(path); }
+            }}
         >
+            {dragActive && (
+                <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 rounded-md border-2 border-dashed border-cyan-500 bg-cyan-500/10 backdrop-blur-[1px] pointer-events-none">
+                    <FileSearch size={28} className="text-cyan-500" />
+                    <span className="text-sm font-medium text-cyan-700 dark:text-cyan-300">{t('cyberTools.hashDropHint')}</span>
+                </div>
+            )}
             <p className="text-xs text-gray-500 dark:text-gray-400">{t('cyberTools.hashDescription')}</p>
             <p className="text-[10px] text-gray-400 dark:text-gray-500">{t('cyberTools.hashDropHint')}</p>
 
