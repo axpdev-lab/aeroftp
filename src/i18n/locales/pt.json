@@ -3894,7 +3894,9 @@
             "pwdGenerating": "A gerar...",
             "pwdGenerateInline": "Gerar uma palavra-passe segura",
             "pwdPresetCompatible": "Compatível 32",
-            "pwdGenerateCompatibleInline": "Gerar uma palavra-passe compatível de 32 caracteres"
+            "pwdGenerateCompatibleInline": "Gerar uma palavra-passe compatível de 32 caracteres",
+            "pwdShow": "[NEEDS TRANSLATION] Show password",
+            "pwdHide": "[NEEDS TRANSLATION] Hide password"
         },
         "dialog": {
             "deleteFile": "Eliminar \"{name}\"?",

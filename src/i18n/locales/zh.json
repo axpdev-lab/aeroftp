@@ -3894,7 +3894,9 @@
             "pwdGenerating": "正在生成...",
             "pwdGenerateInline": "生成安全密码",
             "pwdPresetCompatible": "兼容 32",
-            "pwdGenerateCompatibleInline": "生成兼容的 32 字符密码"
+            "pwdGenerateCompatibleInline": "生成兼容的 32 字符密码",
+            "pwdShow": "[NEEDS TRANSLATION] Show password",
+            "pwdHide": "[NEEDS TRANSLATION] Hide password"
         },
         "dialog": {
             "deleteFile": "删除\"{name}\"？",

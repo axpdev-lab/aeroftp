@@ -3894,7 +3894,9 @@
             "pwdGenerating": "Xerando...",
             "pwdGenerateInline": "Xerar un contrasinal seguro",
             "pwdPresetCompatible": "Compatible 32",
-            "pwdGenerateCompatibleInline": "Xerar un contrasinal compatible de 32 caracteres"
+            "pwdGenerateCompatibleInline": "Xerar un contrasinal compatible de 32 caracteres",
+            "pwdShow": "[NEEDS TRANSLATION] Show password",
+            "pwdHide": "[NEEDS TRANSLATION] Hide password"
         },
         "dialog": {
             "deleteFile": "Eliminar \"{name}\"?",

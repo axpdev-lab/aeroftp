@@ -3894,7 +3894,9 @@
             "pwdGenerating": "생성 중...",
             "pwdGenerateInline": "안전한 비밀번호 생성",
             "pwdPresetCompatible": "호환 32",
-            "pwdGenerateCompatibleInline": "호환되는 32자 비밀번호 생성"
+            "pwdGenerateCompatibleInline": "호환되는 32자 비밀번호 생성",
+            "pwdShow": "[NEEDS TRANSLATION] Show password",
+            "pwdHide": "[NEEDS TRANSLATION] Hide password"
         },
         "dialog": {
             "deleteFile": "\"{name}\"을(를) 삭제하시겠습니까?",

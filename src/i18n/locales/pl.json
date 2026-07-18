@@ -3894,7 +3894,9 @@
             "pwdGenerating": "Generowanie...",
             "pwdGenerateInline": "Wygeneruj bezpieczne hasło",
             "pwdPresetCompatible": "Zgodne 32",
-            "pwdGenerateCompatibleInline": "Wygeneruj zgodne hasło o długości 32 znaków"
+            "pwdGenerateCompatibleInline": "Wygeneruj zgodne hasło o długości 32 znaków",
+            "pwdShow": "[NEEDS TRANSLATION] Show password",
+            "pwdHide": "[NEEDS TRANSLATION] Hide password"
         },
         "dialog": {
             "deleteFile": "Usunąć \"{name}\"?",

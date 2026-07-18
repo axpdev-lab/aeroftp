@@ -3894,7 +3894,9 @@
             "pwdGenerating": "Ustvarjanje...",
             "pwdGenerateInline": "Ustvari varno geslo",
             "pwdPresetCompatible": "Združljivo 32",
-            "pwdGenerateCompatibleInline": "Ustvari združljivo geslo z 32 znaki"
+            "pwdGenerateCompatibleInline": "Ustvari združljivo geslo z 32 znaki",
+            "pwdShow": "[NEEDS TRANSLATION] Show password",
+            "pwdHide": "[NEEDS TRANSLATION] Hide password"
         },
         "dialog": {
             "deleteFile": "Izbrisati \"{name}\"?",

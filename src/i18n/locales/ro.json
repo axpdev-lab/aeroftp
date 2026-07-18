@@ -3894,7 +3894,9 @@
             "pwdGenerating": "Se generează...",
             "pwdGenerateInline": "Generează o parolă sigură",
             "pwdPresetCompatible": "Compatibilă 32",
-            "pwdGenerateCompatibleInline": "Generează o parolă compatibilă de 32 de caractere"
+            "pwdGenerateCompatibleInline": "Generează o parolă compatibilă de 32 de caractere",
+            "pwdShow": "[NEEDS TRANSLATION] Show password",
+            "pwdHide": "[NEEDS TRANSLATION] Hide password"
         },
         "dialog": {
             "deleteFile": "Ștergeți \"{name}\"?",

@@ -4235,6 +4235,8 @@
       "pwdCopy": "Copy",
       "pwdCopied": "Copied!",
       "pwdAutoClear": "Copied (auto-clear in 30s)",
+      "pwdShow": "Show password",
+      "pwdHide": "Hide password",
       "pwdNoCharset": "Select at least one character set"
     },
     "vault": {

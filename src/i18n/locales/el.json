@@ -3894,7 +3894,9 @@
             "pwdGenerating": "Δημιουργία...",
             "pwdGenerateInline": "Δημιουργία ασφαλούς κωδικού πρόσβασης",
             "pwdPresetCompatible": "Συμβατό 32",
-            "pwdGenerateCompatibleInline": "Δημιουργία συμβατού κωδικού πρόσβασης 32 χαρακτήρων"
+            "pwdGenerateCompatibleInline": "Δημιουργία συμβατού κωδικού πρόσβασης 32 χαρακτήρων",
+            "pwdShow": "[NEEDS TRANSLATION] Show password",
+            "pwdHide": "[NEEDS TRANSLATION] Hide password"
         },
         "dialog": {
             "deleteFile": "Διαγραφή του \"{name}\";",

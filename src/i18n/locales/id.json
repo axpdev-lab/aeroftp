@@ -3894,7 +3894,9 @@
             "pwdGenerating": "Membuat...",
             "pwdGenerateInline": "Buat kata sandi yang aman",
             "pwdPresetCompatible": "Kompatibel 32",
-            "pwdGenerateCompatibleInline": "Buat kata sandi kompatibel 32 karakter"
+            "pwdGenerateCompatibleInline": "Buat kata sandi kompatibel 32 karakter",
+            "pwdShow": "[NEEDS TRANSLATION] Show password",
+            "pwdHide": "[NEEDS TRANSLATION] Hide password"
         },
         "dialog": {
             "deleteFile": "Hapus \"{name}\"?",

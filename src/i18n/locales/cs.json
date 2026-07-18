@@ -3894,7 +3894,9 @@
             "pwdGenerating": "Generování...",
             "pwdGenerateInline": "Vygenerovat bezpečné heslo",
             "pwdPresetCompatible": "Kompatibilní 32",
-            "pwdGenerateCompatibleInline": "Vygenerovat kompatibilní heslo o 32 znacích"
+            "pwdGenerateCompatibleInline": "Vygenerovat kompatibilní heslo o 32 znacích",
+            "pwdShow": "[NEEDS TRANSLATION] Show password",
+            "pwdHide": "[NEEDS TRANSLATION] Hide password"
         },
         "dialog": {
             "deleteFile": "Odstranit \"{name}\"?",

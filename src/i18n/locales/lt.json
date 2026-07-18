@@ -3894,7 +3894,9 @@
             "pwdGenerating": "Generuojama...",
             "pwdGenerateInline": "Sukurti saugų slaptažodį",
             "pwdPresetCompatible": "Suderinamas 32",
-            "pwdGenerateCompatibleInline": "Generuoti suderinamą 32 simbolių slaptažodį"
+            "pwdGenerateCompatibleInline": "Generuoti suderinamą 32 simbolių slaptažodį",
+            "pwdShow": "[NEEDS TRANSLATION] Show password",
+            "pwdHide": "[NEEDS TRANSLATION] Hide password"
         },
         "dialog": {
             "deleteFile": "Ištrinti \"{name}\"?",

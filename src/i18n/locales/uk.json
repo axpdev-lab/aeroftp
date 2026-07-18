@@ -3894,7 +3894,9 @@
             "pwdGenerating": "Створення...",
             "pwdGenerateInline": "Створити надійний пароль",
             "pwdPresetCompatible": "Сумісний 32",
-            "pwdGenerateCompatibleInline": "Створити сумісний пароль із 32 символів"
+            "pwdGenerateCompatibleInline": "Створити сумісний пароль із 32 символів",
+            "pwdShow": "[NEEDS TRANSLATION] Show password",
+            "pwdHide": "[NEEDS TRANSLATION] Hide password"
         },
         "dialog": {
             "deleteFile": "Видалити \"{name}\"?",

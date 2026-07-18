@@ -3894,7 +3894,9 @@
             "pwdGenerating": "Menjana...",
             "pwdGenerateInline": "Jana kata laluan selamat",
             "pwdPresetCompatible": "Serasi 32",
-            "pwdGenerateCompatibleInline": "Jana kata laluan serasi 32 aksara"
+            "pwdGenerateCompatibleInline": "Jana kata laluan serasi 32 aksara",
+            "pwdShow": "[NEEDS TRANSLATION] Show password",
+            "pwdHide": "[NEEDS TRANSLATION] Hide password"
         },
         "dialog": {
             "deleteFile": "Padam \"{name}\"?",

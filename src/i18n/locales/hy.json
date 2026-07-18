@@ -3887,7 +3887,9 @@
             "pwdGenerating": "Ստեղծվում է...",
             "pwdGenerateInline": "Ստեղծել անվտանգ գաղտնաբառ",
             "pwdPresetCompatible": "Համատեղելի 32",
-            "pwdGenerateCompatibleInline": "Ստեղծել համատեղելի 32 նիշանոց գաղտնաբառ"
+            "pwdGenerateCompatibleInline": "Ստեղծել համատեղելի 32 նիշանոց գաղտնաբառ",
+            "pwdShow": "[NEEDS TRANSLATION] Show password",
+            "pwdHide": "[NEEDS TRANSLATION] Hide password"
         },
         "dialog": {
             "deleteFile": "Ջնջե՞լ «{name}»-ը։",

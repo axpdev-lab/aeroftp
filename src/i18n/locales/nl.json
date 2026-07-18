@@ -3894,7 +3894,9 @@
             "pwdGenerating": "Genereren...",
             "pwdGenerateInline": "Een veilig wachtwoord genereren",
             "pwdPresetCompatible": "Compatibel 32",
-            "pwdGenerateCompatibleInline": "Een compatibel wachtwoord van 32 tekens genereren"
+            "pwdGenerateCompatibleInline": "Een compatibel wachtwoord van 32 tekens genereren",
+            "pwdShow": "[NEEDS TRANSLATION] Show password",
+            "pwdHide": "[NEEDS TRANSLATION] Hide password"
         },
         "dialog": {
             "deleteFile": "\"{name}\" verwijderen?",

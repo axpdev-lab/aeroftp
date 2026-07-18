@@ -3894,7 +3894,9 @@
             "pwdGenerating": "Се генерира...",
             "pwdGenerateInline": "Генерирај безбедна лозинка",
             "pwdPresetCompatible": "Компатибилна 32",
-            "pwdGenerateCompatibleInline": "Генерирај компатибилна лозинка од 32 знаци"
+            "pwdGenerateCompatibleInline": "Генерирај компатибилна лозинка од 32 знаци",
+            "pwdShow": "[NEEDS TRANSLATION] Show password",
+            "pwdHide": "[NEEDS TRANSLATION] Hide password"
         },
         "dialog": {
             "deleteFile": "Избриши \"{name}\"?",

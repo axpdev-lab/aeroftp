@@ -3894,7 +3894,9 @@
             "pwdGenerating": "Inatengeneza...",
             "pwdGenerateInline": "Tengeneza nenosiri salama",
             "pwdPresetCompatible": "Inayooana 32",
-            "pwdGenerateCompatibleInline": "Tengeneza nenosiri linalooana la herufi 32"
+            "pwdGenerateCompatibleInline": "Tengeneza nenosiri linalooana la herufi 32",
+            "pwdShow": "[NEEDS TRANSLATION] Show password",
+            "pwdHide": "[NEEDS TRANSLATION] Hide password"
         },
         "dialog": {
             "deleteFile": "Futa \"{name}\"?",

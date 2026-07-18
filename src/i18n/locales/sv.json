@@ -3894,7 +3894,9 @@
             "pwdGenerating": "Genererar...",
             "pwdGenerateInline": "Generera ett säkert lösenord",
             "pwdPresetCompatible": "Kompatibel 32",
-            "pwdGenerateCompatibleInline": "Generera ett kompatibelt lösenord med 32 tecken"
+            "pwdGenerateCompatibleInline": "Generera ett kompatibelt lösenord med 32 tecken",
+            "pwdShow": "[NEEDS TRANSLATION] Show password",
+            "pwdHide": "[NEEDS TRANSLATION] Hide password"
         },
         "dialog": {
             "deleteFile": "Radera \"{name}\"?",

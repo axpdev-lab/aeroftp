@@ -3894,7 +3894,9 @@
             "pwdGenerating": "Luodaan...",
             "pwdGenerateInline": "Luo turvallinen salasana",
             "pwdPresetCompatible": "Yhteensopiva 32",
-            "pwdGenerateCompatibleInline": "Luo yhteensopiva 32 merkin salasana"
+            "pwdGenerateCompatibleInline": "Luo yhteensopiva 32 merkin salasana",
+            "pwdShow": "[NEEDS TRANSLATION] Show password",
+            "pwdHide": "[NEEDS TRANSLATION] Hide password"
         },
         "dialog": {
             "deleteFile": "Poista \"{name}\"?",

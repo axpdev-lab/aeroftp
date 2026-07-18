@@ -3894,7 +3894,9 @@
             "pwdGenerating": "बनाया जा रहा है...",
             "pwdGenerateInline": "एक सुरक्षित पासवर्ड बनाएँ",
             "pwdPresetCompatible": "संगत 32",
-            "pwdGenerateCompatibleInline": "32-वर्णों वाला संगत पासवर्ड जनरेट करें"
+            "pwdGenerateCompatibleInline": "32-वर्णों वाला संगत पासवर्ड जनरेट करें",
+            "pwdShow": "[NEEDS TRANSLATION] Show password",
+            "pwdHide": "[NEEDS TRANSLATION] Hide password"
         },
         "dialog": {
             "deleteFile": "\"{name}\" हटाएं?",

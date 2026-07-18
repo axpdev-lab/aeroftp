@@ -3894,7 +3894,9 @@
             "pwdGenerating": "Đang tạo...",
             "pwdGenerateInline": "Tạo mật khẩu an toàn",
             "pwdPresetCompatible": "Tương thích 32",
-            "pwdGenerateCompatibleInline": "Tạo mật khẩu tương thích gồm 32 ký tự"
+            "pwdGenerateCompatibleInline": "Tạo mật khẩu tương thích gồm 32 ký tự",
+            "pwdShow": "[NEEDS TRANSLATION] Show password",
+            "pwdHide": "[NEEDS TRANSLATION] Hide password"
         },
         "dialog": {
             "deleteFile": "Xóa \"{name}\"?",

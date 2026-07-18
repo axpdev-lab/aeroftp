@@ -3894,7 +3894,9 @@
             "pwdGenerating": "Ģenerē...",
             "pwdGenerateInline": "Ģenerēt drošu paroli",
             "pwdPresetCompatible": "Saderīga 32",
-            "pwdGenerateCompatibleInline": "Ģenerēt saderīgu 32 rakstzīmju paroli"
+            "pwdGenerateCompatibleInline": "Ģenerēt saderīgu 32 rakstzīmju paroli",
+            "pwdShow": "[NEEDS TRANSLATION] Show password",
+            "pwdHide": "[NEEDS TRANSLATION] Hide password"
         },
         "dialog": {
             "deleteFile": "Dzēst \"{name}\"?",

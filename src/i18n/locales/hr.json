@@ -3894,7 +3894,9 @@
             "pwdGenerating": "Generiranje...",
             "pwdGenerateInline": "Generiraj sigurnu lozinku",
             "pwdPresetCompatible": "Kompatibilno 32",
-            "pwdGenerateCompatibleInline": "Generiraj kompatibilnu lozinku od 32 znaka"
+            "pwdGenerateCompatibleInline": "Generiraj kompatibilnu lozinku od 32 znaka",
+            "pwdShow": "[NEEDS TRANSLATION] Show password",
+            "pwdHide": "[NEEDS TRANSLATION] Hide password"
         },
         "dialog": {
             "deleteFile": "Obrisati \"{name}\"?",

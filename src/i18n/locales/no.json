@@ -3894,7 +3894,9 @@
             "pwdGenerating": "Genererer...",
             "pwdGenerateInline": "Generer et sikkert passord",
             "pwdPresetCompatible": "Kompatibel 32",
-            "pwdGenerateCompatibleInline": "Generer et kompatibelt passord på 32 tegn"
+            "pwdGenerateCompatibleInline": "Generer et kompatibelt passord på 32 tegn",
+            "pwdShow": "[NEEDS TRANSLATION] Show password",
+            "pwdHide": "[NEEDS TRANSLATION] Hide password"
         },
         "dialog": {
             "deleteFile": "Slett \"{name}\"?",

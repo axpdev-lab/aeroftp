@@ -3894,7 +3894,9 @@
             "pwdGenerating": "Bý til...",
             "pwdGenerateInline": "Búa til öruggt lykilorð",
             "pwdPresetCompatible": "Samhæft 32",
-            "pwdGenerateCompatibleInline": "Búa til samhæft 32 stafa lykilorð"
+            "pwdGenerateCompatibleInline": "Búa til samhæft 32 stafa lykilorð",
+            "pwdShow": "[NEEDS TRANSLATION] Show password",
+            "pwdHide": "[NEEDS TRANSLATION] Hide password"
         },
         "dialog": {
             "deleteFile": "Eyða \"{name}\"?",

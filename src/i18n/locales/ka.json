@@ -3894,7 +3894,9 @@
             "pwdGenerating": "გენერირდება...",
             "pwdGenerateInline": "უსაფრთხო პაროლის გენერირება",
             "pwdPresetCompatible": "თავსებადი 32",
-            "pwdGenerateCompatibleInline": "თავსებადი 32-სიმბოლოიანი პაროლის გენერაცია"
+            "pwdGenerateCompatibleInline": "თავსებადი 32-სიმბოლოიანი პაროლის გენერაცია",
+            "pwdShow": "[NEEDS TRANSLATION] Show password",
+            "pwdHide": "[NEEDS TRANSLATION] Hide password"
         },
         "dialog": {
             "deleteFile": "წაიშალოს \"{name}\"?",

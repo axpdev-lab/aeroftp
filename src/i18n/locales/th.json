@@ -3894,7 +3894,9 @@
             "pwdGenerating": "กำลังสร้าง...",
             "pwdGenerateInline": "สร้างรหัสผ่านที่ปลอดภัย",
             "pwdPresetCompatible": "เข้ากันได้ 32",
-            "pwdGenerateCompatibleInline": "สร้างรหัสผ่านที่เข้ากันได้จำนวน 32 อักขระ"
+            "pwdGenerateCompatibleInline": "สร้างรหัสผ่านที่เข้ากันได้จำนวน 32 อักขระ",
+            "pwdShow": "[NEEDS TRANSLATION] Show password",
+            "pwdHide": "[NEEDS TRANSLATION] Hide password"
         },
         "dialog": {
             "deleteFile": "ลบ \"{name}\" หรือไม่?",

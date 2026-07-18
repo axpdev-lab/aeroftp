@@ -3859,7 +3859,9 @@
             "pwdGenerating": "生成中...",
             "pwdGenerateInline": "安全なパスワードを生成",
             "pwdPresetCompatible": "互換 32",
-            "pwdGenerateCompatibleInline": "互換性のある32文字のパスワードを生成"
+            "pwdGenerateCompatibleInline": "互換性のある32文字のパスワードを生成",
+            "pwdShow": "[NEEDS TRANSLATION] Show password",
+            "pwdHide": "[NEEDS TRANSLATION] Hide password"
         },
         "dialog": {
             "deleteFile": "「{name}」を削除しますか？",

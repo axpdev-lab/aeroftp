@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { AlertTriangle, Check, Copy, Loader2, Shuffle } from 'lucide-react';
+import { AlertTriangle, Check, Copy, Eye, EyeOff, Loader2, Shuffle } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { Checkbox } from './ui/Checkbox';
 import {
@@ -33,6 +33,8 @@ export const PasswordForgeTab: React.FC = () => {
     const [passwords, setPasswords] = useState<string[]>([]);
     const [entropy, setEntropy] = useState(0);
     const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
+    /** Per-row reveal state; passwords stay masked by default (KeePass parity). */
+    const [revealed, setRevealed] = useState<Record<number, boolean>>({});
     const [generating, setGenerating] = useState(false);
     const [error, setError] = useState('');
     const clearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -68,8 +70,10 @@ export const PasswordForgeTab: React.FC = () => {
                 ? await invoke<string[]>('generate_password', passwordCommandArgs(settings, batchCount))
                 : await invoke<string[]>('generate_passphrase', { wordCount, separator, capitalize, count: batchCount });
             setPasswords(result);
+            setRevealed({});
         } catch (reason) {
             setPasswords([]);
+            setRevealed({});
             setError(String(reason));
         } finally {
             setGenerating(false);
@@ -205,14 +209,40 @@ export const PasswordForgeTab: React.FC = () => {
 
             {passwords.length > 0 && (
                 <div className="space-y-2">
-                    {passwords.map((password, index) => (
+                    {passwords.map((password, index) => {
+                        const isRevealed = !!revealed[index];
+                        return (
                         <div key={`${index}-${password}`} className="flex items-center gap-2 animate-scale-in">
-                            <code className="min-w-0 flex-1 select-all break-all rounded-md border border-gray-200 bg-gray-50 px-3 py-2 font-mono text-xs text-gray-800 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200">{password}</code>
-                            <button onClick={() => copyPassword(password, index)} className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-gray-100 transition-colors hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600" title={copiedIdx === index ? t('cyberTools.pwdAutoClear') : t('cyberTools.pwdCopy')}>
+                            <div className="relative min-w-0 flex-1">
+                                <input
+                                    type={isRevealed ? 'text' : 'password'}
+                                    readOnly
+                                    value={password}
+                                    className="w-full select-all rounded-md border border-gray-200 bg-gray-50 px-3 py-2 font-mono text-xs text-gray-800 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200"
+                                    spellCheck={false}
+                                    autoComplete="off"
+                                />
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setRevealed(prev => ({ ...prev, [index]: !prev[index] }))}
+                                className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-gray-100 text-gray-500 transition-colors hover:bg-gray-200 hover:text-gray-700 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600 dark:hover:text-gray-100"
+                                title={isRevealed ? t('cyberTools.pwdHide') : t('cyberTools.pwdShow')}
+                                aria-label={isRevealed ? t('cyberTools.pwdHide') : t('cyberTools.pwdShow')}
+                            >
+                                {isRevealed ? <EyeOff size={13} /> : <Eye size={13} />}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => copyPassword(password, index)}
+                                className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-gray-100 transition-colors hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600"
+                                title={copiedIdx === index ? t('cyberTools.pwdAutoClear') : t('cyberTools.pwdCopy')}
+                            >
                                 {copiedIdx === index ? <Check size={13} className="text-green-500" /> : <Copy size={13} />}
                             </button>
                         </div>
-                    ))}
+                        );
+                    })}
                 </div>
             )}
         </div>

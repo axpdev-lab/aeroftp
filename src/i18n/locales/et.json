@@ -3894,7 +3894,9 @@
             "pwdGenerating": "Genereerimine...",
             "pwdGenerateInline": "Loo turvaline parool",
             "pwdPresetCompatible": "Ühilduv 32",
-            "pwdGenerateCompatibleInline": "Loo ühilduv 32-märgiline parool"
+            "pwdGenerateCompatibleInline": "Loo ühilduv 32-märgiline parool",
+            "pwdShow": "[NEEDS TRANSLATION] Show password",
+            "pwdHide": "[NEEDS TRANSLATION] Hide password"
         },
         "dialog": {
             "deleteFile": "Kustuta \"{name}\"?",

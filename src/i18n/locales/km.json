@@ -3894,7 +3894,9 @@
             "pwdGenerating": "កំពុងបង្កើត...",
             "pwdGenerateInline": "បង្កើតពាក្យសម្ងាត់ដែលមានសុវត្ថិភាព",
             "pwdPresetCompatible": "ឆបគ្នា 32",
-            "pwdGenerateCompatibleInline": "បង្កើតពាក្យសម្ងាត់ដែលឆបគ្នាប្រវែង 32 តួអក្សរ"
+            "pwdGenerateCompatibleInline": "បង្កើតពាក្យសម្ងាត់ដែលឆបគ្នាប្រវែង 32 តួអក្សរ",
+            "pwdShow": "[NEEDS TRANSLATION] Show password",
+            "pwdHide": "[NEEDS TRANSLATION] Hide password"
         },
         "dialog": {
             "deleteFile": "លុប \"{name}\"?",

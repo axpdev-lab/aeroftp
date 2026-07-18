@@ -3894,7 +3894,9 @@
             "pwdGenerating": "Bumubuo...",
             "pwdGenerateInline": "Gumawa ng ligtas na password",
             "pwdPresetCompatible": "Tugma 32",
-            "pwdGenerateCompatibleInline": "Gumawa ng tugmang password na 32 character"
+            "pwdGenerateCompatibleInline": "Gumawa ng tugmang password na 32 character",
+            "pwdShow": "[NEEDS TRANSLATION] Show password",
+            "pwdHide": "[NEEDS TRANSLATION] Hide password"
         },
         "dialog": {
             "deleteFile": "Tanggalin ang \"{name}\"?",

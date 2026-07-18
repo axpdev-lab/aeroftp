@@ -3894,7 +3894,9 @@
             "pwdGenerating": "Sortzen...",
             "pwdGenerateInline": "Sortu pasahitz segurua",
             "pwdPresetCompatible": "Bateragarria 32",
-            "pwdGenerateCompatibleInline": "Sortu 32 karaktereko pasahitz bateragarria"
+            "pwdGenerateCompatibleInline": "Sortu 32 karaktereko pasahitz bateragarria",
+            "pwdShow": "[NEEDS TRANSLATION] Show password",
+            "pwdHide": "[NEEDS TRANSLATION] Hide password"
         },
         "dialog": {
             "deleteFile": "\"{name}\" ezabatu?",

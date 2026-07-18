@@ -3894,7 +3894,9 @@
             "pwdGenerating": "Генериране...",
             "pwdGenerateInline": "Генериране на сигурна парола",
             "pwdPresetCompatible": "Съвместима 32",
-            "pwdGenerateCompatibleInline": "Генериране на съвместима парола от 32 знака"
+            "pwdGenerateCompatibleInline": "Генериране на съвместима парола от 32 знака",
+            "pwdShow": "[NEEDS TRANSLATION] Show password",
+            "pwdHide": "[NEEDS TRANSLATION] Hide password"
         },
         "dialog": {
             "deleteFile": "Изтрий \"{name}\"?",
