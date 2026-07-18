@@ -8,7 +8,7 @@ import { ProviderType } from '../../types';
 import { PROVIDER_LOGOS } from '../ProviderLogos';
 import { ProtocolIcon, ProtocolBadge, isSecureBadge, isCipherStrengthBadge } from '../ProtocolSelector';
 import { useTranslation } from '../../i18n';
-import { buildDiscoverCategories, DiscoverCategory, DiscoverItem, DISCOVER_DESC_KEYS, PROVIDER_HEALTH_URLS } from './discoverData';
+import { buildDiscoverCategories, DiscoverCategory, DiscoverItem, DISCOVER_DESC_KEYS, PROVIDER_HEALTH_URLS, SYNTHETIC_TILE_COUNT } from './discoverData';
 import { getProviderById } from '../../providers';
 import { CatalogCategoryId } from '../../types/catalog';
 import type { CatalogCompany } from '../providerCatalog';
@@ -390,11 +390,12 @@ export function DiscoverPanel({ onSelectProvider }: DiscoverPanelProps) {
         try { localStorage.setItem(CATEGORY_KEY, id); } catch { /* ignore */ }
     }, []);
 
-    const activeCatMeta = categories.find(c => c.id === activeCategory);
-    const headerLabel = activeCategory === 'all'
-        ? t('introHub.category.all')
-        : t(activeCatMeta?.labelKey || '');
-
+    // Live count of what the current view actually renders: grid = protocol tiles
+    // (incl. the AeroShare tile in All/Protocols), table = company rows. The two axes
+    // legitimately differ (the documented grid-vs-table gap, #274, which narrows as
+    // EF-13 rows land); in the unfiltered grid "All" view it equals the canonical
+    // getTotalServiceCount(). The old top-left icon + category name were dropped as
+    // redundant with the highlighted sidebar entry (EF-16), leaving just this badge.
     const headerCount = viewMode === 'list' ? catalogCompanies.length : visibleGridItems.length;
 
     return (
@@ -417,8 +418,10 @@ export function DiscoverPanel({ onSelectProvider }: DiscoverPanelProps) {
                 >
                     <span className="text-indigo-400"><Layers size={16} /></span>
                     <span className="flex-1 text-left truncate">{t('introHub.category.all')}</span>
+                    {/* Canonical total (EF-16): categories + always-on synthetic tiles
+                        (AeroShare). Same source as the tab badge's getTotalServiceCount(). */}
                     <span className="text-[10px] text-gray-400 dark:text-gray-500 tabular-nums px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700/50">
-                        {totalItemCount + (peerTile ? 1 : 0)}
+                        {totalItemCount + SYNTHETIC_TILE_COUNT}
                     </span>
                 </button>
                 {categories.map((cat) => (
@@ -436,7 +439,7 @@ export function DiscoverPanel({ onSelectProvider }: DiscoverPanelProps) {
                         </span>
                         <span className="flex-1 text-left truncate">{t(cat.labelKey)}</span>
                         <span className="text-[10px] text-gray-400 dark:text-gray-500 tabular-nums px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700/50">
-                            {cat.count + (peerTile && cat.id === 'protocols' ? 1 : 0)}
+                            {cat.count + (cat.id === 'protocols' ? SYNTHETIC_TILE_COUNT : 0)}
                         </span>
                     </button>
                 ))}
@@ -446,12 +449,9 @@ export function DiscoverPanel({ onSelectProvider }: DiscoverPanelProps) {
             <div className="flex-1 min-w-0 flex flex-col">
                 {/* Category header */}
                 <div className="flex items-center gap-2 mb-3">
-                    <span className={activeCategory === 'all' ? 'text-indigo-400' : CATEGORY_COLORS[activeCategory]}>
-                        {activeCategory === 'all' ? <Layers size={16} /> : CATEGORY_ICONS[activeCatMeta?.icon || 'Server']}
-                    </span>
-                    <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-                        {headerLabel}
-                    </h3>
+                    {/* EF-16: the redundant category icon + name were removed here (the
+                        sidebar already highlights the active category); only the live
+                        count badge stays. */}
                     <span className="text-[10px] text-gray-400 dark:text-gray-500 tabular-nums px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700/50">
                         {headerCount}
                     </span>

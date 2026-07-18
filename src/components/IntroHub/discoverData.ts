@@ -223,6 +223,7 @@ const BADGE_OVERRIDES: Record<string, string> = {
     'filen-desktop-webdav': 'LOCAL',
     'filen-desktop-s3': 'LOCAL',
     'nextcloud': 'OCS',       // Self-hosted Nextcloud, OCS REST API
+    'filelu-ftp': 'FTP',      // Plain FTP (port 21); the FTPS variant is not surfaced
 };
 
 /** Extra lowercase search terms per registry provider id, matched by the Add
@@ -254,8 +255,11 @@ function registryToDiscoverItem(p: ProviderConfig): DiscoverItem {
     };
 }
 
-/** IDs to exclude from Discover (FileLu FTP/FTPS - redundant, already has S3+WebDAV+API) */
-const EXCLUDED_IDS = new Set(['filelu-ftp', 'filelu-ftps']);
+/** IDs to exclude from the Discover FTP pull. FileLu FTPS stays hidden (it is only
+ *  the implicit-TLS variant of the same host as FileLu FTP, so one FTP tile is
+ *  enough). FileLu FTP itself is now surfaced (EF-13, Ehud #274): it is pulled into
+ *  the Protocols grid below and carries an FTP badge on the FileLu catalog row. */
+const EXCLUDED_IDS = new Set(['filelu-ftps']);
 
 export function buildDiscoverCategories(): DiscoverCategory[] {
     const s3Providers = [...getProvidersByCategory('s3').map(registryToDiscoverItem), ...OBJECT_STORAGE_ITEMS]
@@ -312,9 +316,13 @@ export function buildDiscoverCategories(): DiscoverCategory[] {
     // Build protocol items: generics (incl. MTP) first, then Hetzner, then demos last.
     // No separate Devices category: one MTP connector belongs with Protocols.
     const hetzner = ftpProviders.find(p => p.id === 'hetzner-storage-box');
+    // FileLu FTP surfaced in the Protocols grid (EF-13): FileLu already appears in
+    // Cloud / S3 / WebDAV, so FTP was the only method missing from Add Service.
+    const fileluFtp = ftpProviders.find(p => p.id === 'filelu-ftp');
     const protoItems = [
         ...PROTOCOL_ITEMS.filter(p => !p.demo),
         ...(hetzner ? [hetzner] : []),
+        ...(fileluFtp ? [fileluFtp] : []),
         ...PROTOCOL_ITEMS.filter(p => !!p.demo),
     ];
 
@@ -366,7 +374,24 @@ export function buildDiscoverCategories(): DiscoverCategory[] {
     return categories;
 }
 
-/** Get total count of all services across all categories */
+/**
+ * Always-on synthetic discovery tiles surfaced in the grid (Protocols + All) that
+ * are NOT wire protocols, so they live neither in `buildDiscoverCategories()` nor in
+ * the company catalog: currently just AeroShare (peer). They are still a selectable
+ * "service" on the Add Service page, so the canonical total counts them. Single
+ * source for the "+1" that used to be duplicated in DiscoverPanel's sidebar "All"
+ * badge and its Protocols category badge (EF-16).
+ */
+export const SYNTHETIC_TILE_COUNT = 1;
+
+/**
+ * Canonical total number of services in the Add Service catalog: every category
+ * item plus the always-on synthetic tiles (AeroShare). THE single source of truth
+ * for the Discover tab badge (IntroHub), the sidebar "All" badge and the grid "All"
+ * header (EF-16). Previously this summed only the categories (68) while the sidebar
+ * added AeroShare (69), so the tab badge and the sidebar disagreed by one; both now
+ * derive from here, and the AeroShare tile is counted because it is always rendered.
+ */
 export function getTotalServiceCount(): number {
-    return buildDiscoverCategories().reduce((sum, cat) => sum + cat.count, 0);
+    return buildDiscoverCategories().reduce((sum, cat) => sum + cat.count, 0) + SYNTHETIC_TILE_COUNT;
 }

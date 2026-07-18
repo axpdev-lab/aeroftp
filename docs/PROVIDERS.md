@@ -30,7 +30,7 @@ aeroftp.app / docs.aeroftp.app provider tables mirror this list.
 | DriveHQ | US | 5 GB | WebDAV |
 | Dropbox | US | 2 GB | OAuth |
 | Felicloud | - | 10 GB (Nextcloud host) | WebDAV |
-| FileLu | US | 10 GB | API, WebDAV, S3 |
+| FileLu | US | 10 GB | API, FTP, WebDAV, S3 |
 | Filen | DE | 10 GB (E2E) | API, S3, WebDAV |
 | GitHub | US | repo storage | API |
 | GitLab | US | repo storage | API |
@@ -46,8 +46,7 @@ aeroftp.app / docs.aeroftp.app provider tables mirror this list.
 | Jottacloud | NO | 5 GB | API |
 | kDrive | CH | 15 GB | API |
 | Koofr | SI | 10 GB | API, WebDAV |
-| MEGA | NZ | 20 GB (E2E) | API, MEGAcmd |
-| MEGA S4 Object Storage | EU | Pro plan | S3* |
+| MEGA | NZ | 20 GB (E2E) | API, MEGAcmd, S3* |
 | Microsoft Azure Blob | US | 5 GB (always-free, card req.) | Blob* |
 | Microsoft OneDrive | US | 5 GB | OAuth |
 | MinIO | - | self-hosted | S3 |
@@ -56,6 +55,8 @@ aeroftp.app / docs.aeroftp.app provider tables mirror this list.
 | Oracle Cloud | US | 20 GB (always-free, card req.) | S3* |
 | pCloud Drive | CH | 10 GB | OAuth, WebDAV* |
 | PixelUnion | EU | 16 GB (managed Immich) | API |
+| Quotaless | - | trial / invite | S3*, WebDAV* |
+| S3Drive | - | 12 GB (via Storj) | S3 |
 | Seafile | - | self-hosted | WebDAV |
 | SourceForge | US | OSS hosting | SFTP |
 | Storj | US | 30-day trial | S3* |
@@ -67,7 +68,7 @@ aeroftp.app / docs.aeroftp.app provider tables mirror this list.
 | Yandex Object Storage | RU | 1 GB (always-free, card req.) | S3* |
 | Zoho WorkDrive | IN | 5 GB | OAuth |
 
-<sub>49 providers, 60 connection methods. `*` marks a paid / credit-card-gated plan. HQ is the ISO 3166-1 alpha-2 of the company HQ (EU = pan-European). Free-tier sizes are approximate: verify with the provider.</sub>
+<sub>50 providers, 64 connection methods. `*` marks a paid / credit-card-gated plan. HQ is the ISO 3166-1 alpha-2 of the company HQ (EU = pan-European). Free-tier sizes are approximate: verify with the provider.</sub>
 
 <!-- END PROVIDERS-TABLE -->
 

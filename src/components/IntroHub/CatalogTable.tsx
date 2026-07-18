@@ -48,7 +48,7 @@ const SORTABLE: CatalogColId[] = ['company', 'region', 'freeGb'];
 
 /** Tokens a company is searchable by (name, regions, note, protocol labels). */
 function searchText(c: CatalogCompany): string {
-    return [c.company, c.countryCode, c.freeNote, ...companyRegions(c), ...c.protocols.map(p => p.label), ...(c.searchAliases ?? [])]
+    return [c.company, c.countryCode, c.freeNote, ...companyRegions(c), ...c.protocols.flatMap(p => [p.label, p.labelOverride]), ...(c.searchAliases ?? [])]
         .filter(Boolean)
         .join(' ')
         .toLowerCase();
@@ -106,7 +106,7 @@ function ProtocolBadge({ p, paid, onClick }: { p: CatalogProtocolRef; paid: bool
             }`}
         >
             <span className="flex-shrink-0 opacity-80">{PROTOCOL_GLYPHS[p.label]}</span>
-            {p.label}
+            {p.labelOverride ?? p.label}
         </button>
     );
 }
