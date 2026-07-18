@@ -4815,7 +4815,9 @@
             "serverHashGated": "Soma de verificação no servidor indisponível enquanto uma sobreposição cifrada está ativa (calcularia o hash do texto cifrado, não do seu ficheiro).",
             "outsideScope": "Fora da área cifrada (os ficheiros aqui não estão cifrados)",
             "overlaysPathButton": "Caminho de sobreposições",
-            "overlaysPathButtonHint": "Ir para o caminho cifrado de sobreposições: {path}"
+            "overlaysPathButtonHint": "Ir para o caminho cifrado de sobreposições: {path}",
+            "lockedOverlayTitle": "Sobreposição cifrada bloqueada",
+            "lockedOverlayDesc": "Este servidor tem uma sobreposição cifrada que não foi possível desbloquear. Introduza a senha para descriptografar os nomes, ou continue a explorar a listagem em bruto."
         },
         "b2": {
             "hidden": {

@@ -4815,7 +4815,9 @@
             "serverHashGated": "Suma kontrolna po stronie serwera niedostępna, gdy aktywna jest zaszyfrowana nakładka (obliczyłaby skrót szyfrogramu, a nie Twojego pliku).",
             "outsideScope": "Poza obszarem zaszyfrowanym (pliki tutaj nie są zaszyfrowane)",
             "overlaysPathButton": "Ścieżka nakładek",
-            "overlaysPathButtonHint": "Przejdź do zaszyfrowanej ścieżki nakładek: {path}"
+            "overlaysPathButtonHint": "Przejdź do zaszyfrowanej ścieżki nakładek: {path}",
+            "lockedOverlayTitle": "Zaszyfrowana nakładka zablokowana",
+            "lockedOverlayDesc": "Ten serwer ma zaszyfrowaną nakładkę, której nie można odblokować. Wprowadź hasło, aby odszyfrować nazwy, lub kontynuuj przeglądanie surowej listy."
         },
         "b2": {
             "hidden": {

@@ -4815,7 +4815,9 @@
             "serverHashGated": "Serverio pusės kontrolinė suma negalima, kai aktyvus šifruotas sluoksnis (ji apskaičiuotų šifruoto teksto maišą, o ne jūsų failo).",
             "outsideScope": "Už šifruotos srities (failai čia nešifruoti)",
             "overlaysPathButton": "Perdangų kelias",
-            "overlaysPathButtonHint": "Pereiti į šifruotą perdangų kelią: {path}"
+            "overlaysPathButtonHint": "Pereiti į šifruotą perdangų kelią: {path}",
+            "lockedOverlayTitle": "Šifruotas sluoksnis užrakintas",
+            "lockedOverlayDesc": "Šis serveris turi šifruotą sluoksnį, kurio nepavyko atrakinti. Įveskite slaptažodį vardams iššifruoti arba toliau naršykite neapdorotą sąrašą."
         },
         "b2": {
             "hidden": {

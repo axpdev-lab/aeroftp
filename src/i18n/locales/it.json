@@ -3357,7 +3357,9 @@
             "serverHashGated": "Checksum lato server non disponibile con un overlay cifrato attivo (calcolerebbe l'hash del testo cifrato, non del tuo file).",
             "outsideScope": "Fuori dalla zona cifrata (i file qui non sono cifrati)",
             "overlaysPathButton": "Percorso overlay",
-            "overlaysPathButtonHint": "Vai al percorso overlay cifrato: {path}"
+            "overlaysPathButtonHint": "Vai al percorso overlay cifrato: {path}",
+            "lockedOverlayTitle": "Overlay cifrato bloccato",
+            "lockedOverlayDesc": "Questo server ha un overlay cifrato che non è stato possibile sbloccare. Inserisci la password per decifrare i nomi, o continua a esplorare l'elenco grezzo."
         },
         "aerocryptNative": {
             "title": "Overlay AeroCrypt",

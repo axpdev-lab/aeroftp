@@ -4834,7 +4834,9 @@
             "serverHashGated": "Nid yw swm gwirio ochr-gweinydd ar gael tra bo haen wedi'i hamgryptio'n weithredol (byddai'n stwnsio'r testun wedi'i amgryptio, nid eich ffeil).",
             "outsideScope": "Y tu allan i'r ardal wedi'i hamgryptio (nid yw'r ffeiliau yma wedi'u hamgryptio)",
             "overlaysPathButton": "Llwybr Troshaenau",
-            "overlaysPathButtonHint": "Neidio i'r Llwybr Troshaenau wedi'i amgryptio: {path}"
+            "overlaysPathButtonHint": "Neidio i'r Llwybr Troshaenau wedi'i amgryptio: {path}",
+            "lockedOverlayTitle": "Haen wedi'i hamgryptio wedi'i chloi",
+            "lockedOverlayDesc": "Mae gan y gweinydd hwn haen wedi'i hamgryptio na ellid ei datgloi. Rhowch y cyfrinair i ddadgryptio enwau, neu parhewch i bori'r rhestr amrwd."
         },
         "b2": {
             "hidden": {

@@ -4815,7 +4815,9 @@
             "serverHashGated": "Controlesom aan serverzijde niet beschikbaar terwijl een versleutelde overlay actief is (deze zou de cijfertekst hashen, niet uw bestand).",
             "outsideScope": "Buiten het versleutelde gebied (bestanden hier zijn niet versleuteld)",
             "overlaysPathButton": "Overlay-pad",
-            "overlaysPathButtonHint": "Ga naar het versleutelde overlay-pad: {path}"
+            "overlaysPathButtonHint": "Ga naar het versleutelde overlay-pad: {path}",
+            "lockedOverlayTitle": "Versleutelde overlay vergrendeld",
+            "lockedOverlayDesc": "Deze server heeft een versleutelde overlay die niet kon worden ontgrendeld. Voer het wachtwoord in om namen te ontsleutelen, of blijf de ruwe lijst verkennen."
         },
         "b2": {
             "hidden": {

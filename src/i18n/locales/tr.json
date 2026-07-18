@@ -4815,7 +4815,9 @@
             "serverHashGated": "Şifreli yer paylaşımı etkinken sunucu tarafı sağlama toplamı kullanılamaz (dosyanızı değil şifreli metni özetler).",
             "outsideScope": "Şifreli alanın dışında (buradaki dosyalar şifreli değil)",
             "overlaysPathButton": "Katman Yolu",
-            "overlaysPathButtonHint": "Şifreli Katman Yoluna atla: {path}"
+            "overlaysPathButtonHint": "Şifreli Katman Yoluna atla: {path}",
+            "lockedOverlayTitle": "Şifreli katman kilitlendi",
+            "lockedOverlayDesc": "Bu sunucuda kilidi açılamayan bir şifreli katman var. Adların şifresini çözmek için parolayı girin veya ham listeye göz atmaya devam edin."
         },
         "b2": {
             "hidden": {

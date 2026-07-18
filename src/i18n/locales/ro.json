@@ -4815,7 +4815,9 @@
             "serverHashGated": "Suma de control pe server indisponibilă cât timp este activ un strat criptat (ar genera hash-ul textului cifrat, nu al fișierului dvs.).",
             "outsideScope": "În afara zonei criptate (fișierele de aici nu sunt criptate)",
             "overlaysPathButton": "Calea suprapunerilor",
-            "overlaysPathButtonHint": "Salt la calea criptată a suprapunerilor: {path}"
+            "overlaysPathButtonHint": "Salt la calea criptată a suprapunerilor: {path}",
+            "lockedOverlayTitle": "Strat criptat blocat",
+            "lockedOverlayDesc": "Acest server are un strat criptat care nu a putut fi deblocat. Introduceți parola pentru a decripta numele, sau continuați explorarea listei brute."
         },
         "b2": {
             "hidden": {

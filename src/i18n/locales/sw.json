@@ -4815,7 +4815,9 @@
             "serverHashGated": "Hakikisho la upande wa seva halipatikani wakati safu iliyosimbwa fiche inafanya kazi (lingehesabu hashi ya maandishi yaliyosimbwa, si faili yako).",
             "outsideScope": "Nje ya eneo lililosimbwa fiche (faili hapa hazijasimbwa fiche)",
             "overlaysPathButton": "Njia ya Vifuniko",
-            "overlaysPathButtonHint": "Rukia Njia ya Vifuniko iliyosimbwa: {path}"
+            "overlaysPathButtonHint": "Rukia Njia ya Vifuniko iliyosimbwa: {path}",
+            "lockedOverlayTitle": "Safu iliyosimbwa imefungwa",
+            "lockedOverlayDesc": "Seva hii ina safu iliyosimbwa ambayo haikuweza kufunguliwa. Ingiza nenosiri ili kufichua majina, au endelea kuvinjari orodha ghafi."
         },
         "b2": {
             "hidden": {

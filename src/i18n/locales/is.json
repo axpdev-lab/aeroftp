@@ -4834,7 +4834,9 @@
             "serverHashGated": "Eftirlitssumma á netþjónshlið er ekki tiltæk meðan dulkóðað yfirlag er virkt (hún myndi tæta dulmálstextann, ekki skrána þína).",
             "outsideScope": "Utan dulkóðaða svæðisins (skrár hér eru ekki dulkóðaðar)",
             "overlaysPathButton": "Yfirlagsslóð",
-            "overlaysPathButtonHint": "Fara á dulkóðaða yfirlagsslóð: {path}"
+            "overlaysPathButtonHint": "Fara á dulkóðaða yfirlagsslóð: {path}",
+            "lockedOverlayTitle": "Dulkóðað yfirlag læst",
+            "lockedOverlayDesc": "Þessi netþjónn er með dulkóðað yfirlag sem ekki tókst að aflæsa. Sláðu inn lykilorðið til að afkóða nöfn, eða haltu áfram að skoða hráa listann."
         },
         "b2": {
             "hidden": {

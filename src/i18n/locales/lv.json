@@ -4815,7 +4815,9 @@
             "serverHashGated": "Servera puses kontrolsumma nav pieejama, kamēr ir aktīvs šifrēts pārklājums (tā jauktu šifrēto tekstu, nevis jūsu failu).",
             "outsideScope": "Ārpus šifrētās zonas (faili šeit nav šifrēti)",
             "overlaysPathButton": "Pārklājumu ceļš",
-            "overlaysPathButtonHint": "Pāriet uz šifrēto pārklājumu ceļu: {path}"
+            "overlaysPathButtonHint": "Pāriet uz šifrēto pārklājumu ceļu: {path}",
+            "lockedOverlayTitle": "Šifrētais slānis bloķēts",
+            "lockedOverlayDesc": "Šim serverim ir šifrēts slānis, kuru neizdevās atbloķēt. Ievadiet paroli, lai atšifrētu nosaukumus, vai turpiniet pārlūkot neapstrādāto sarakstu."
         },
         "b2": {
             "hidden": {

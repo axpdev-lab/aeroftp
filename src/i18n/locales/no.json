@@ -4834,7 +4834,9 @@
             "serverHashGated": "Sjekksum på serversiden er utilgjengelig mens et kryptert overlegg er aktivt (den ville hashe chifferteksten, ikke filen din).",
             "outsideScope": "Utenfor det krypterte området (filer her er ikke kryptert)",
             "overlaysPathButton": "Overlegg-sti",
-            "overlaysPathButtonHint": "Hopp til den krypterte overlegg-stien: {path}"
+            "overlaysPathButtonHint": "Hopp til den krypterte overlegg-stien: {path}",
+            "lockedOverlayTitle": "Kryptert overlegg låst",
+            "lockedOverlayDesc": "Denne serveren har et kryptert overlegg som ikke kunne låses opp. Skriv inn passordet for å dekryptere navn, eller fortsett å bla i den rå listen."
         },
         "b2": {
             "hidden": {

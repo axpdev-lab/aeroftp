@@ -4815,7 +4815,9 @@
             "serverHashGated": "Kontrollsumma på serversidan är inte tillgänglig när ett krypterat överlägg är aktivt (den skulle hasha chiffertexten, inte din fil).",
             "outsideScope": "Utanför det krypterade området (filer här är inte krypterade)",
             "overlaysPathButton": "Överläggssökväg",
-            "overlaysPathButtonHint": "Hoppa till den krypterade överläggssökvägen: {path}"
+            "overlaysPathButtonHint": "Hoppa till den krypterade överläggssökvägen: {path}",
+            "lockedOverlayTitle": "Krypterat överlägg låst",
+            "lockedOverlayDesc": "Denna server har ett krypterat överlägg som inte kunde låsas upp. Ange lösenordet för att dekryptera namn, eller fortsätt bläddra i den råa listan."
         },
         "b2": {
             "hidden": {

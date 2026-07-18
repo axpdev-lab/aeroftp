@@ -4815,7 +4815,9 @@
             "serverHashGated": "Serverseitige Prüfsumme nicht verfügbar, während ein verschlüsseltes Overlay aktiv ist (sie würde den Chiffretext hashen, nicht Ihre Datei).",
             "outsideScope": "Außerhalb des verschlüsselten Bereichs (Dateien hier sind nicht verschlüsselt)",
             "overlaysPathButton": "Overlay-Pfad",
-            "overlaysPathButtonHint": "Zum verschlüsselten Overlay-Pfad springen: {path}"
+            "overlaysPathButtonHint": "Zum verschlüsselten Overlay-Pfad springen: {path}",
+            "lockedOverlayTitle": "Verschlüsselte Überlagerung gesperrt",
+            "lockedOverlayDesc": "Dieser Server hat eine verschlüsselte Überlagerung, die nicht entsperrt werden konnte. Geben Sie das Passwort ein, um Namen zu entschlüsseln, oder browsen Sie weiter die Roh-Auflistung."
         },
         "b2": {
             "hidden": {

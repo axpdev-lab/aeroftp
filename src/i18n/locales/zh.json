@@ -4815,7 +4815,9 @@
             "serverHashGated": "加密叠加层处于活动状态时无法使用服务器端校验和（它会对密文而非您的文件进行哈希）。",
             "outsideScope": "加密区域之外（此处文件未加密）",
             "overlaysPathButton": "叠加层路径",
-            "overlaysPathButtonHint": "跳转到加密的叠加层路径：{path}"
+            "overlaysPathButtonHint": "跳转到加密的叠加层路径：{path}",
+            "lockedOverlayTitle": "已锁定加密叠加层",
+            "lockedOverlayDesc": "此服务器有一个无法解锁的加密叠加层。输入密码以解密名称，或继续浏览原始列表。"
         },
         "b2": {
             "hidden": {

@@ -4815,7 +4815,9 @@
             "serverHashGated": "A kiszolgálóoldali ellenőrzőösszeg nem érhető el, amíg titkosított átfedés aktív (a titkosított szöveget hashelné, nem a fájlt).",
             "outsideScope": "A titkosított területen kívül (az itteni fájlok nincsenek titkosítva)",
             "overlaysPathButton": "Fedvények útvonala",
-            "overlaysPathButtonHint": "Ugrás a titkosított fedvények útvonalára: {path}"
+            "overlaysPathButtonHint": "Ugrás a titkosított fedvények útvonalára: {path}",
+            "lockedOverlayTitle": "Titkosított réteg zárolva",
+            "lockedOverlayDesc": "Ennek a kiszolgálónak van egy titkosított rétege, amelyet nem sikerült feloldani. Adja meg a jelszót a nevek visszafejtéséhez, vagy folytassa a nyers lista böngészését."
         },
         "b2": {
             "hidden": {

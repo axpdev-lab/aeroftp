@@ -1215,6 +1215,13 @@ const App: React.FC = () => {
   // P3.3: deferred overlay auto-unlock (runs in a post-connect effect at settled
   // state) + flag that drives the name-decryption animation while unlocking.
   const [pendingOverlayUnlock, setPendingOverlayUnlock] = useState<string | null>(null);
+  // LT2b: enabled overlay that failed to arm (wrong password, missing salt/keyfile/
+  // marker, etc.). Distinct from a plain server: surface a locked affordance so the
+  // user can unlock in-panel instead of staring at raw ciphertext with no recovery.
+  const [lockedOverlayProfile, setLockedOverlayProfile] = useState<{
+    savedServerId: string;
+    kind: 'rclone-crypt' | 'aerocrypt';
+  } | null>(null);
   const [overlayDecrypting, setOverlayDecrypting] = useState(false);
   // T2: brief grace window after decryption ends so the just-landed decrypted
   // names stay wrapped in DecryptingText long enough to play the reveal ("puff")
@@ -3771,7 +3778,11 @@ interface UpdateVerificationInfo {
   //   - decrypting -> grey + pulse, not clickable
   //   - active     -> lit (emerald aerocrypt / blue rclone), click locks
   //   - locked     -> grey, click re-unlocks (real key re-derivation)
-  const overlayBadgeKind = sessions.find((s) => s.id === activeSessionId)?.cryptOverlayKind ?? null;
+  // LT2b: fall back to lockedOverlayProfile so the badge still renders when
+  // auto-unlock failed before markSessionOverlayKind could stick on a session.
+  const overlayBadgeKind =
+    sessions.find((s) => s.id === activeSessionId)?.cryptOverlayKind
+    ?? (lockedOverlayProfile ? lockedOverlayProfile.kind : null);
   const overlayVaultLit = cryptOverlayOwnerMatchesActive && !!(rcloneCryptVaultId || aeroCryptVaultId);
   const overlayBadgeDecrypting = overlayAnimActive && overlayDecrypting;
   // CWP-20B: the active tab's bound plaintext scope ('' = whole remote) and
@@ -3833,9 +3844,14 @@ interface UpdateVerificationInfo {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [remoteFiles, currentRemoteDisplayPath, overlayVaultLit, overlayInScope, aeroCryptVaultId, rcloneCryptVaultId, warnSameNameEncrypted]);
 
+  const openLockedOverlayUnlockPrompt = (kind: 'rclone-crypt' | 'aerocrypt') => {
+    if (kind === 'aerocrypt') setShowAeroCryptUnlock(true);
+    else setShowRcloneCryptUnlock(true);
+  };
+
   const toggleActiveCryptOverlay = () => {
     const sess = sessions.find((s) => s.id === activeSessionId);
-    const kind = sess?.cryptOverlayKind;
+    const kind = sess?.cryptOverlayKind ?? lockedOverlayProfile?.kind ?? null;
     if (!kind || overlayBadgeDecrypting) return;
     // ACTIVE -> lock (drop the live vault, keep the badge, show raw names).
     if (rcloneCryptVaultId || aeroCryptVaultId) {
@@ -3853,6 +3869,13 @@ interface UpdateVerificationInfo {
           await loadRemoteFiles(undefined, true, true);
         }
       })();
+      return;
+    }
+    // LT2b: auto-unlock already failed (or no stored factor). Re-running the
+    // silent pending path would re-use the same wrong password and fail again
+    // with no UI. Open the password prompt so the user can recover in-panel.
+    if (lockedOverlayProfile) {
+      openLockedOverlayUnlockPrompt(lockedOverlayProfile.kind);
       return;
     }
     // LOCKED -> re-unlock. Saved profiles re-run the auto-unlock+decrypt flow
@@ -5452,6 +5475,26 @@ interface UpdateVerificationInfo {
     return { vaultId, scope: appliedScope };
   };
 
+  // Cheap, side-effect-free probe: profile carries an ENABLED overlay binding
+  // (regardless of whether a password/keyfile is stored). Used to surface the
+  // LT2b locked affordance when auto-unlock never arms, including the case where
+  // there is no stored unlock factor so the suppress-listing path does not run.
+  const getEnabledProfileOverlay = async (
+    savedServerId?: string,
+  ): Promise<{ kind: 'rclone-crypt' | 'aerocrypt'; anchor: string | null } | null> => {
+    if (!savedServerId) return null;
+    try {
+      const profiles = await loadSavedServerProfiles();
+      const profile = profiles.find((p) => p.id === savedServerId);
+      const binding = profile?.aeroCryptOverlay;
+      if (!profile || !binding?.enabled) return null;
+      const scope = binding.remoteScope?.trim() || profile.initialPath?.trim() || '';
+      return { kind: binding.kind, anchor: scope && scope !== '/' ? scope : null };
+    } catch {
+      return null;
+    }
+  };
+
   // Cheap, side-effect-free probe of a saved profile's overlay binding, used at
   // connect time to decide whether to SUPPRESS the raw provider listing (so the
   // encrypted blobs never flash before the deferred unlock). Mirrors the exact
@@ -5620,6 +5663,25 @@ interface UpdateVerificationInfo {
         // Plain server (no overlay): the connect-time listing path is already
         // correct, so drop the captured id without rewriting it.
         connectListingLogIdRef.current = null;
+
+        // LT2b: distinguish "plain server" from "overlay enabled that failed to
+        // arm". The second case must NOT look like a plain listing with no
+        // recovery: keep the path-bar capability badge and surface a locked
+        // affordance so the user can re-enter the password in-panel.
+        let locked: { savedServerId: string; kind: 'rclone-crypt' | 'aerocrypt' } | null = null;
+        try {
+          const profiles = await loadSavedServerProfiles();
+          const profile = profiles.find((p) => p.id === savedId);
+          const binding = profile?.aeroCryptOverlay;
+          if (binding?.enabled) {
+            locked = { savedServerId: savedId, kind: binding.kind };
+            markSessionOverlayKind({ savedServerId: savedId }, binding.kind);
+          }
+        } catch {
+          // best-effort: fall through as plain if the profile re-read fails
+        }
+        if (!cancelled) setLockedOverlayProfile(locked);
+
         // If we had suppressed the connect listing expecting an overlay that did
         // not materialise (binding probe matched but unlock failed), reveal the
         // raw provider view now so the panel is never left empty.
@@ -5702,6 +5764,8 @@ interface UpdateVerificationInfo {
           humanLog.updateEntry(overlayLogIdRef.current, { status: 'success', message: t('activity.overlay_unlocked') });
           overlayLogIdRef.current = null;
         }
+        // LT2b: vault armed successfully, clear any prior locked affordance.
+        setLockedOverlayProfile(null);
       } finally {
         if (!cancelled) {
           setOverlayDecrypting(false);
@@ -7141,8 +7205,12 @@ interface UpdateVerificationInfo {
         overlayHint ? [] : oauthResponse?.files
       );
       // Defer the overlay auto-unlock to the post-connect effect (inline unlock
-      // sees stale session state), same as the credential-provider path.
-      if (overlayHint && overlaySavedId) setPendingOverlayUnlock(overlaySavedId);
+      // sees stale session state), same as the credential-provider path. LT2b:
+      // also arm pending when the overlay is enabled but has no stored unlock
+      // factor, so phase-1 can surface the locked affordance instead of silence.
+      if (overlaySavedId && (overlayHint || await getEnabledProfileOverlay(overlaySavedId))) {
+        setPendingOverlayUnlock(overlaySavedId);
+      }
       // Pass effectiveParams so persistQuotaToProfile receives the saved server id
       // (connectionParams state is async, may still be stale when this runs).
       fetchStorageQuota(protocol, effectiveParams);
@@ -7408,7 +7476,11 @@ interface UpdateVerificationInfo {
         );
         // Defer the overlay auto-unlock to the post-connect effect (same reason
         // as onSavedServerConnect: inline unlock sees stale session state).
-        if (overlayHint && overlaySavedId) setPendingOverlayUnlock(overlaySavedId);
+        // LT2b: also arm pending for enabled-without-factor so the locked
+        // affordance can surface after a silent arm failure.
+        if (overlaySavedId && (overlayHint || await getEnabledProfileOverlay(overlaySavedId))) {
+          setPendingOverlayUnlock(overlaySavedId);
+        }
         fetchStorageQuota(protocol, sessionParams);
       } catch (error) {
         // W3.1: a user-initiated cancel is not a failure. runConnect already
@@ -7562,6 +7634,7 @@ interface UpdateVerificationInfo {
       setRcloneCryptVaultId(null);
       setCryptOverlayOwner(null);
       setPendingOverlayUnlock(null);
+      setLockedOverlayProfile(null);
       setOverlayDecrypting(false);
       overlayReloadedVaultRef.current = null;
       overlayUnlockInFlightRef.current = false;
@@ -8003,6 +8076,7 @@ interface UpdateVerificationInfo {
               overlayLogIdRef.current = null;
             }
             recovered = true;
+            setLockedOverlayProfile(null);
           } catch (overlayErr) {
             // A cancelled listing is not a failed overlay re-apply: rethrow so
             // the switch unwinds instead of tearing the overlay binding down.
@@ -8016,7 +8090,18 @@ interface UpdateVerificationInfo {
             setRcloneCryptVaultId(null);
             setAeroCryptVaultId(null);
             setCryptOverlayOwner(null);
-            clearSessionCryptOverlay({ sessionId });
+            // LT2b: keep the capability badge + locked affordance so the user
+            // can recover with a password prompt after a failed re-apply.
+            if (targetSession.savedServerId && targetOverlay.kind) {
+              markSessionOverlayKind({ sessionId }, targetOverlay.kind);
+              setLockedOverlayProfile({
+                savedServerId: targetSession.savedServerId,
+                kind: targetOverlay.kind,
+              });
+              lockSessionCryptOverlay({ sessionId });
+            } else {
+              clearSessionCryptOverlay({ sessionId });
+            }
             await invoke('provider_clear_crypt_overlay', { full: true }).catch(() => undefined);
           }
         } else {
@@ -8766,6 +8851,7 @@ interface UpdateVerificationInfo {
     setRcloneCryptVaultId(null);
     setCryptOverlayOwner(null);
     setPendingOverlayUnlock(null);
+    setLockedOverlayProfile(null);
     setOverlayDecrypting(false);
     overlayReloadedVaultRef.current = null;
     overlayUnlockInFlightRef.current = false;
@@ -16056,10 +16142,13 @@ interface UpdateVerificationInfo {
                       directoryNameEncryption: details.directoryNameEncryption,
                       password: details.password,
                       salt: details.salt || null,
-                      profileId: sessions.find(s => s.id === activeSessionId)?.savedServerId ?? null,
+                      profileId: sessions.find(s => s.id === activeSessionId)?.savedServerId
+                        ?? lockedOverlayProfile?.savedServerId
+                        ?? null,
                     },
                     activeSessionId,
                   );
+                  setLockedOverlayProfile(null);
                   await loadRemoteFiles(undefined, true, true);
                 } catch (err) {
                   notify.error('Rclone Crypt', String(err));
@@ -16084,6 +16173,7 @@ interface UpdateVerificationInfo {
             profileId={
               sessions.find((s) => s.id === activeSessionId)?.savedServerId
               || cryptOverlayOwner?.savedServerId
+              || lockedOverlayProfile?.savedServerId
               || null
             }
             remoteScope={
@@ -16101,10 +16191,13 @@ interface UpdateVerificationInfo {
                       remoteScope: details.remoteScope ?? '',
                       password: details.password,
                       keyfilePath: details.keyfilePath || null,
-                      profileId: sessions.find(s => s.id === activeSessionId)?.savedServerId ?? null,
+                      profileId: sessions.find(s => s.id === activeSessionId)?.savedServerId
+                        ?? lockedOverlayProfile?.savedServerId
+                        ?? null,
                     },
                     activeSessionId,
                   );
+                  setLockedOverlayProfile(null);
                   await loadRemoteFiles(undefined, true, true);
                 } catch (err) {
                   notify.error('AeroCrypt', String(err));
@@ -16136,6 +16229,39 @@ interface UpdateVerificationInfo {
             remoteScope={badgeKeyslots.remoteScope}
             onClose={() => setBadgeKeyslots(null)}
           />
+        )}
+        {lockedOverlayProfile && isConnected && !aeroCryptVaultId && !rcloneCryptVaultId && !overlayDecrypting && (
+          <div
+            className="fixed bottom-12 right-6 z-40 max-w-sm rounded-lg border border-amber-400/40 bg-amber-500/10 dark:bg-amber-500/15 backdrop-blur shadow-xl p-4 flex flex-col gap-2 animate-scale-in"
+            role="status"
+            aria-live="polite"
+          >
+            <div className="flex items-start gap-2">
+              <Lock size={18} className="text-amber-500 flex-shrink-0 mt-0.5" />
+              <div className="text-sm text-gray-800 dark:text-gray-100">
+                <div className="font-semibold mb-0.5">{t('aerocrypt.lockedOverlayTitle')}</div>
+                <div className="text-xs opacity-80">
+                  {t('aerocrypt.lockedOverlayDesc')}
+                </div>
+              </div>
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button
+                type="button"
+                onClick={() => setLockedOverlayProfile(null)}
+                className="px-3 py-1 text-xs rounded bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600"
+              >
+                {t('common.close')}
+              </button>
+              <button
+                type="button"
+                onClick={() => openLockedOverlayUnlockPrompt(lockedOverlayProfile.kind)}
+                className="px-3 py-1 text-xs rounded bg-amber-500 hover:bg-amber-600 text-white font-semibold"
+              >
+                {t('aerocrypt.unlock')}
+              </button>
+            </div>
+          </div>
         )}
         {rcloneCryptImportBanner && !rcloneCryptVaultId && (
           <div className="fixed bottom-12 right-6 z-40 max-w-sm rounded-lg border border-blue-400/40 bg-blue-500/10 dark:bg-blue-500/15 backdrop-blur shadow-xl p-4 flex flex-col gap-2 animate-scale-in">
@@ -16609,7 +16735,10 @@ interface UpdateVerificationInfo {
                   );
                   // Defer the overlay auto-unlock to the post-connect effect (inline
                   // unlock sees stale session state), same as the provider branch.
-                  if (savedOverlayHint && savedOverlaySavedId) setPendingOverlayUnlock(savedOverlaySavedId);
+                  // LT2b: also arm pending for enabled-without-factor.
+                  if (savedOverlaySavedId && (savedOverlayHint || await getEnabledProfileOverlay(savedOverlaySavedId))) {
+                    setPendingOverlayUnlock(savedOverlaySavedId);
+                  }
                   // Pass normalizedParams so persistQuotaToProfile picks up
                   // savedServerId from the saved profile (connectionParams state
                   // is intentionally not mutated during onSavedServerConnect).
