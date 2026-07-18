@@ -5883,8 +5883,14 @@ interface UpdateVerificationInfo {
           try { await invoke('mtp_close_device', { deviceId: null }); } catch { /* ignore */ }
           try { await invoke('provider_disconnect'); } catch { /* ignore */ }
         })();
-        activityLog.log('ERROR', t('sidebar.portable_unplugged'), 'error');
-        notify.error(t('common.error'), t('sidebar.portable_unplugged'));
+        // Activity Log + toast only on user-facing listings (`!silent`).
+        // Silent background refresh / startup-style probes must not spam
+        // "portable device disconnected" into the log (live-test LT3).
+        // Session cleanup above still runs; debug path keeps console.error.
+        if (showBusy) {
+          activityLog.log('ERROR', t('sidebar.portable_unplugged'), 'error');
+          notify.error(t('common.error'), t('sidebar.portable_unplugged'));
+        }
         return null;
       }
       activityLog.log('ERROR', `Failed to list files: ${error}`, 'error');

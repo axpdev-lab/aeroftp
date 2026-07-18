@@ -13,7 +13,7 @@ import { readFile } from '@tauri-apps/plugin-fs';
 import { FolderOpen, HardDrive, ChevronRight, ChevronDown, Save, Copy, Cloud, Check, Settings, Clock, Folder, X, Lock, ArrowLeft, Eye, EyeOff, ExternalLink, Shield, ShieldCheck, KeyRound, Loader2, Image, Info, Pencil, Link2, ArrowRightLeft, RefreshCw, Usb } from 'lucide-react';
 import { ConnectionParams, ProviderType, ProviderOptions, DeviceFingerprint, isOAuthProvider, isAeroCloudProvider, isFourSharedProvider, isNativeApiProtocol, isNonFtpProvider, providerServesQuota, providerSupportsCryptOverlay, ServerProfile } from '../types';
 import type { MtpDeviceInfo } from '../types/aerofile';
-import { deviceFingerprintFromMtpInfo } from '../utils/mtpFingerprint';
+import { deviceFingerprintFromMtpInfo, matchLiveDevice } from '../utils/mtpFingerprint';
 import { PROVIDER_LOGOS } from './ProviderLogos';
 import { PasswordStrengthBar } from './vault/PasswordStrengthBar';
 import { PasswordMatchHint } from './common/PasswordMatchHint';
@@ -856,6 +856,8 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     }, [formOnly, connectionParams.providerId]);
 
     // Hydrate MTP fingerprint when editing a saved device profile (or clear when leaving mtp).
+    // On edit: auto-detect attached devices and preselect the fingerprint match so
+    // the user does not need a manual Detect click (live-test LT5).
     useEffect(() => {
         if (!isMtp) {
             setMtpDevices([]);
@@ -864,11 +866,46 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             setMtpFingerprint(undefined);
             return;
         }
-        if (editingProfile?.deviceFingerprint) {
-            setMtpFingerprint(editingProfile.deviceFingerprint);
-            setMtpSelectedDeviceId(null);
+        if (!editingProfile?.deviceFingerprint) {
+            return;
         }
-    }, [isMtp, editingProfile?.id, editingProfile?.deviceFingerprint]);
+        setMtpFingerprint(editingProfile.deviceFingerprint);
+        setMtpSelectedDeviceId(null);
+        let cancelled = false;
+        setMtpDetecting(true);
+        setMtpDetectError(null);
+        void (async () => {
+            try {
+                const devices = await invoke<MtpDeviceInfo[]>('list_mtp_devices');
+                if (cancelled) return;
+                setMtpDevices(devices || []);
+                if (!devices || devices.length === 0) {
+                    setMtpDetectError(t('connection.mtpNoDevices'));
+                    return;
+                }
+                const live = matchLiveDevice(
+                    editingProfile.deviceFingerprint?.canonical,
+                    devices,
+                );
+                if (live) {
+                    setMtpSelectedDeviceId(live.deviceId);
+                    // Refresh fingerprint from live row; keep saved profile name.
+                    const fp = deviceFingerprintFromMtpInfo(live);
+                    if (fp) setMtpFingerprint(fp);
+                }
+            } catch (e) {
+                if (cancelled) return;
+                const msg = e instanceof Error ? e.message : String(e);
+                setMtpDevices([]);
+                setMtpDetectError(msg || t('connection.mtpDetectFailed'));
+            } finally {
+                if (!cancelled) setMtpDetecting(false);
+            }
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, [isMtp, editingProfile?.id, editingProfile?.deviceFingerprint, t]);
 
     const detectMtpDevices = async () => {
         setMtpDetecting(true);
@@ -878,6 +915,17 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             setMtpDevices(devices || []);
             if (!devices || devices.length === 0) {
                 setMtpDetectError(t('connection.mtpNoDevices'));
+            } else if (editingProfile?.deviceFingerprint?.canonical) {
+                // Manual Detect while editing: re-preselect the saved device.
+                const live = matchLiveDevice(
+                    editingProfile.deviceFingerprint.canonical,
+                    devices,
+                );
+                if (live) {
+                    setMtpSelectedDeviceId(live.deviceId);
+                    const fp = deviceFingerprintFromMtpInfo(live);
+                    if (fp) setMtpFingerprint(fp);
+                }
             }
         } catch (e) {
             const msg = e instanceof Error ? e.message : String(e);
@@ -3989,12 +4037,12 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                         <Usb size={14} />
                                         {t('connection.mtpDevice')}
                                     </label>
-                                    <div className="flex gap-2">
+                                    <div className="flex gap-2 min-w-0">
                                         <button
                                             type="button"
                                             onClick={detectMtpDevices}
                                             disabled={mtpDetecting}
-                                            className="px-3 py-2.5 text-sm font-medium rounded-lg bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 border border-gray-300 dark:border-gray-600 transition-colors flex items-center gap-1.5 disabled:opacity-50"
+                                            className="shrink-0 px-3 py-2.5 text-sm font-medium rounded-lg bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 border border-gray-300 dark:border-gray-600 transition-colors flex items-center gap-1.5 disabled:opacity-50"
                                         >
                                             {mtpDetecting
                                                 ? <Loader2 size={14} className="animate-spin" />
@@ -4005,20 +4053,20 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             value={mtpSelectedDeviceId || ''}
                                             onChange={(e) => selectMtpDevice(e.target.value)}
                                             disabled={mtpDevices.length === 0}
-                                            className="flex-1 px-3 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm disabled:opacity-60"
+                                            className="flex-1 min-w-0 max-w-full px-3 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm disabled:opacity-60"
                                         >
                                             <option value="">
                                                 {mtpDevices.length === 0
                                                     ? t('connection.mtpSelectPlaceholderEmpty')
                                                     : t('connection.mtpSelectPlaceholder')}
                                             </option>
+                                            {/* Label: displayName (serial) only. VID:PID stays in the
+                                                fingerprint box below so the native option popup
+                                                fits the card (live-test LT6). */}
                                             {mtpDevices.map((d) => (
                                                 <option key={d.deviceId} value={d.deviceId}>
                                                     {d.displayName}
                                                     {d.serial ? ` (${d.serial})` : ''}
-                                                    {d.vendorId != null && d.productId != null
-                                                        ? ` [${(d.vendorId & 0xffff).toString(16).toUpperCase().padStart(4, '0')}:${(d.productId & 0xffff).toString(16).toUpperCase().padStart(4, '0')}]`
-                                                        : ''}
                                                 </option>
                                             ))}
                                         </select>

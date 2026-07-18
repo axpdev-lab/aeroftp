@@ -769,6 +769,93 @@ fn usb_sysfs_serial(bus: u32, devnum: u8) -> Option<String> {
     None
 }
 
+/// Prefer USB iProduct (+ manufacturer) from sysfs over libmtp's stale device DB.
+///
+/// libmtp's built-in VID/PID table is often wrong for newer phones (e.g. Sony
+/// Xperia 1 V `0FCE:020D` is labelled "Xperia 5 II Phone"). Kernel sysfs
+/// exposes the real USB string descriptors: `product` = iProduct (e.g.
+/// "XQ-DQ54"), `manufacturer` = iManufacturer (e.g. "Sony").
+///
+/// Match `idVendor`/`idProduct` as 4-digit lowercase hex. When `serial` is
+/// given, prefer the node whose `serial` matches; otherwise return the first
+/// VID/PID hit. Returns `None` when sysfs has no matching device node (other
+/// platforms, missing perms, empty descriptors) so callers fall back to
+/// friendly/model strings.
+///
+/// Pure over `sysfs_root` so unit tests can pass a fixture directory.
+fn usb_iproduct_for(
+    vid: u16,
+    pid: u16,
+    serial: Option<&str>,
+    sysfs_root: &Path,
+) -> Option<String> {
+    let want_vid = format!("{vid:04x}");
+    let want_pid = format!("{pid:04x}");
+    let want_serial = serial.map(str::trim).filter(|s| !s.is_empty());
+
+    let dir = std::fs::read_dir(sysfs_root).ok()?;
+    let mut fallback: Option<String> = None;
+
+    for entry in dir.flatten() {
+        let path = entry.path();
+        // Device nodes carry idVendor/idProduct; interface nodes (5-1:1.0) skip.
+        let Some(iv) = std::fs::read_to_string(path.join("idVendor"))
+            .ok()
+            .map(|s| s.trim().to_ascii_lowercase())
+            .filter(|s| !s.is_empty())
+        else {
+            continue;
+        };
+        let Some(ip) = std::fs::read_to_string(path.join("idProduct"))
+            .ok()
+            .map(|s| s.trim().to_ascii_lowercase())
+            .filter(|s| !s.is_empty())
+        else {
+            continue;
+        };
+        if iv != want_vid || ip != want_pid {
+            continue;
+        }
+
+        let product = std::fs::read_to_string(path.join("product"))
+            .ok()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
+        let manufacturer = std::fs::read_to_string(path.join("manufacturer"))
+            .ok()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
+        let display = match (manufacturer.as_deref(), product.as_deref()) {
+            (Some(m), Some(p)) => format!("{m} {p}"),
+            (None, Some(p)) => p.to_string(),
+            (Some(m), None) => m.to_string(),
+            _ => continue,
+        };
+
+        if let Some(want) = want_serial {
+            let sys_serial = std::fs::read_to_string(path.join("serial"))
+                .ok()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty());
+            if sys_serial.as_deref() == Some(want) {
+                return Some(display);
+            }
+            // VID/PID hit without serial match: keep as weak fallback.
+            if fallback.is_none() {
+                fallback = Some(display);
+            }
+        } else {
+            return Some(display);
+        }
+    }
+    fallback
+}
+
+/// Live-path helper: look up iProduct under the real sysfs USB tree.
+fn usb_iproduct_live(vid: u16, pid: u16, serial: Option<&str>) -> Option<String> {
+    usb_iproduct_for(vid, pid, serial, Path::new("/sys/bus/usb/devices"))
+}
+
 /// Brief open → `LIBMTP_Get_Serialnumber` → release, using a pointer into the
 /// live `Detect_Raw_Devices` array (same open rule as `open_raw_by_id_locked`).
 ///
@@ -823,22 +910,31 @@ fn detect_raw_devices_locked(
         for i in 0..num as usize {
             let raw = *raw_ptr.add(i);
             let id = raw_device_id(&raw);
-            let product = cstr_opt(raw.device_entry.product);
-            let vendor = cstr_opt(raw.device_entry.vendor);
-            let display = match (vendor.as_deref(), product.as_deref()) {
-                (Some(v), Some(p)) => format!("{v} {p}"),
-                (None, Some(p)) => p.to_string(),
-                (Some(v), None) => v.to_string(),
-                _ => format!(
-                    "MTP {:04x}:{:04x}",
-                    raw.device_entry.vendor_id, raw.device_entry.product_id
-                ),
-            };
             // Prefer sysfs (no exclusive claim). Fall back to brief open only
             // when iSerial is missing; open failure leaves serial None but
             // vid/pid still support a weak fingerprint.
             let serial = usb_sysfs_serial(raw.bus_location, raw.devnum)
                 .or_else(|| serial_via_brief_open(raw_ptr.add(i)));
+            // Prefer USB iProduct/iManufacturer from sysfs (truthful model code)
+            // over libmtp's stale device_entry product string.
+            let display = usb_iproduct_live(
+                raw.device_entry.vendor_id,
+                raw.device_entry.product_id,
+                serial.as_deref(),
+            )
+            .unwrap_or_else(|| {
+                let product = cstr_opt(raw.device_entry.product);
+                let vendor = cstr_opt(raw.device_entry.vendor);
+                match (vendor.as_deref(), product.as_deref()) {
+                    (Some(v), Some(p)) => format!("{v} {p}"),
+                    (None, Some(p)) => p.to_string(),
+                    (Some(v), None) => v.to_string(),
+                    _ => format!(
+                        "MTP {:04x}:{:04x}",
+                        raw.device_entry.vendor_id, raw.device_entry.product_id
+                    ),
+                }
+            });
             let info = MtpDeviceInfo {
                 device_id: id.clone(),
                 display_name: display,
@@ -908,6 +1004,17 @@ fn open_raw_by_id_locked(device_id: &str) -> Result<(*mut LibmtpMtpDevice, Strin
         ))
     })?;
 
+    // Capture identity fields before free: raw_ptr is released after Open_Raw.
+    let (entry_vid, entry_pid, entry_bus, entry_devnum) = unsafe {
+        let raw = &*raw_ptr.add(idx);
+        (
+            raw.device_entry.vendor_id,
+            raw.device_entry.product_id,
+            raw.bus_location,
+            raw.devnum,
+        )
+    };
+
     let device = unsafe {
         let raw_ref = raw_ptr.add(idx);
         // Uncached first, restoring the order of `6152086cf`: both live-green
@@ -940,29 +1047,40 @@ fn open_raw_by_id_locked(device_id: &str) -> Result<(*mut LibmtpMtpDevice, Strin
         ));
     }
 
-    // Build display name from open device strings (owned, free after copy).
-    let display = unsafe {
-        let friendly = LIBMTP_Get_Friendlyname(device);
-        let model = LIBMTP_Get_Modelname(device);
-        let mfg = LIBMTP_Get_Manufacturername(device);
-        let name = cstr_opt(friendly)
-            .or_else(|| {
-                let m = cstr_opt(model);
-                let v = cstr_opt(mfg);
-                match (v, m) {
-                    (Some(v), Some(m)) => Some(format!("{v} {m}")),
-                    (None, Some(m)) => Some(m),
-                    (Some(v), None) => Some(v),
-                    _ => None,
-                }
-            })
-            .unwrap_or_else(|| device_id.to_string());
-        free_c_string(friendly);
-        free_c_string(model);
-        free_c_string(mfg);
-        let serial = LIBMTP_Get_Serialnumber(device);
-        free_c_string(serial);
-        name
+    // Prefer USB iProduct from sysfs (real model code, e.g. "Sony XQ-DQ54")
+    // over libmtp Friendlyname/Modelname (stale DB: 0FCE:020D → "Xperia 5 II").
+    let display = {
+        let serial = usb_sysfs_serial(entry_bus, entry_devnum).or_else(|| unsafe {
+            let serial_ptr = LIBMTP_Get_Serialnumber(device);
+            let s = cstr_opt(serial_ptr);
+            free_c_string(serial_ptr);
+            s
+        });
+        if let Some(sys) = usb_iproduct_live(entry_vid, entry_pid, serial.as_deref()) {
+            sys
+        } else {
+            unsafe {
+                let friendly = LIBMTP_Get_Friendlyname(device);
+                let model = LIBMTP_Get_Modelname(device);
+                let mfg = LIBMTP_Get_Manufacturername(device);
+                let name = cstr_opt(friendly)
+                    .or_else(|| {
+                        let m = cstr_opt(model);
+                        let v = cstr_opt(mfg);
+                        match (v, m) {
+                            (Some(v), Some(m)) => Some(format!("{v} {m}")),
+                            (None, Some(m)) => Some(m),
+                            (Some(v), None) => Some(v),
+                            _ => None,
+                        }
+                    })
+                    .unwrap_or_else(|| device_id.to_string());
+                free_c_string(friendly);
+                free_c_string(model);
+                free_c_string(mfg);
+                name
+            }
+        }
     };
 
     Ok((device, display))
@@ -1489,5 +1607,48 @@ mod tests {
         // May be empty (no phone) or populated; must not panic.
         let result = b.list_devices().await;
         assert!(result.is_ok(), "list_devices err: {result:?}");
+    }
+
+    #[test]
+    fn usb_iproduct_for_prefers_sysfs_product_over_stale_db() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let node = dir.path().join("5-1");
+        std::fs::create_dir(&node).expect("mkdir node");
+        // Sony Xperia 1 V ground-truth: VID 0FCE PID 020D iProduct XQ-DQ54.
+        std::fs::write(node.join("idVendor"), "0fce\n").unwrap();
+        std::fs::write(node.join("idProduct"), "020d\n").unwrap();
+        std::fs::write(node.join("product"), "XQ-DQ54\n").unwrap();
+        std::fs::write(node.join("manufacturer"), "Sony\n").unwrap();
+        std::fs::write(node.join("serial"), "QV770LUNJD\n").unwrap();
+        // Interface sibling must be ignored (no idVendor).
+        let iface = dir.path().join("5-1:1.0");
+        std::fs::create_dir(&iface).unwrap();
+
+        let got = usb_iproduct_for(0x0fce, 0x020d, Some("QV770LUNJD"), dir.path());
+        assert_eq!(got.as_deref(), Some("Sony XQ-DQ54"));
+
+        // Serial mismatch still falls back to VID/PID hit.
+        let weak = usb_iproduct_for(0x0fce, 0x020d, Some("OTHER"), dir.path());
+        assert_eq!(weak.as_deref(), Some("Sony XQ-DQ54"));
+
+        // No serial filter still matches.
+        let any = usb_iproduct_for(0x0fce, 0x020d, None, dir.path());
+        assert_eq!(any.as_deref(), Some("Sony XQ-DQ54"));
+
+        // Wrong VID → None.
+        assert!(usb_iproduct_for(0x18d1, 0x020d, None, dir.path()).is_none());
+    }
+
+    #[test]
+    fn usb_iproduct_for_product_only_when_no_manufacturer() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let node = dir.path().join("1-2");
+        std::fs::create_dir(&node).unwrap();
+        std::fs::write(node.join("idVendor"), "18D1\n").unwrap(); // uppercase hex
+        std::fs::write(node.join("idProduct"), "4EE1\n").unwrap();
+        std::fs::write(node.join("product"), "Pixel 7\n").unwrap();
+        // no manufacturer file
+        let got = usb_iproduct_for(0x18d1, 0x4ee1, None, dir.path());
+        assert_eq!(got.as_deref(), Some("Pixel 7"));
     }
 }

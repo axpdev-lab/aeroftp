@@ -242,6 +242,9 @@ export const providerServesQuota = (
   // concept. Reporting "serves quota" suppresses the manual-total-bytes field
   // and the used-storage scan in the connection/edit form.
   if (protocol === "peer") return true;
+  // MTP portable devices report real storage free/total from the device; the
+  // manual cap and used-scan checkbox are noise on that form (live-test LT7).
+  if (protocol === "mtp") return true;
   if (isNativeApiProtocol(protocol)) return true;
   if (protocol === "webdav") {
     const host = (server || "").toLowerCase();
