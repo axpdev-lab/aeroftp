@@ -6,11 +6,15 @@
 // `list_mtp_devices` (same cadence as PlacesSidebar portable poll).
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { guardedUnlisten } from './useTauriListener';
 import type { MtpDeviceInfo } from '../types/aerofile';
 import { computeAttachedProfileIds, matchLiveDevice } from '../utils/mtpFingerprint';
+import {
+  debounceMtpDevicesChanged,
+  isMtpListInFlight,
+  listMtpDevices,
+} from '../utils/mtpListDevices';
 
 /**
  * Match PlacesSidebar portable poll: event + focus, 30s fallback.
@@ -20,6 +24,8 @@ import { computeAttachedProfileIds, matchLiveDevice } from '../utils/mtpFingerpr
  * flips the card red in well under a second. This interval is only the safety
  * net for platforms without one: it stays slow on purpose because each refresh
  * runs a libmtp bus scan, which must not contend with an open device session.
+ * Event reactions are debounced (~300ms) and polls skip while a list is
+ * in-flight to avoid amplifying detect churn (Known #7).
  */
 const DEVICE_ATTACH_POLL_MS = 30_000;
 
@@ -62,7 +68,7 @@ export function useDeviceAttachState(
 
   const refresh = useCallback(async (): Promise<MtpDeviceInfo[]> => {
     try {
-      const devices = await invoke<MtpDeviceInfo[]>('list_mtp_devices');
+      const devices = await listMtpDevices();
       if (mountedRef.current) setLiveDevices(devices);
       return devices;
     } catch {
@@ -79,23 +85,28 @@ export function useDeviceAttachState(
 
     void refresh();
 
+    const debounced = debounceMtpDevicesChanged(() => {
+      if (mountedRef.current) void refresh();
+    });
     const disposeListener = guardedUnlisten(
       listen<void>('mtp-devices-changed', () => {
-        if (mountedRef.current) void refresh();
+        debounced.schedule();
       }),
     );
 
     const intervalId = window.setInterval(() => {
-      if (mountedRef.current) void refresh();
+      // Skip poll while a detect is already in flight (event or peer caller).
+      if (mountedRef.current && !isMtpListInFlight()) void refresh();
     }, DEVICE_ATTACH_POLL_MS);
 
     const onFocus = () => {
-      if (mountedRef.current) void refresh();
+      if (mountedRef.current && !isMtpListInFlight()) void refresh();
     };
     window.addEventListener('focus', onFocus);
 
     return () => {
       window.removeEventListener('focus', onFocus);
+      debounced.cancel();
       disposeListener();
       window.clearInterval(intervalId);
     };
