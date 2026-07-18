@@ -5011,7 +5011,9 @@
             },
             "launcherScheduler": "Planificador",
             "errorCorrection": "Corrección de erros",
-            "errorCorrectionHint": "Garda un pequeno ficheiro de paridade .aerocorrect xunto a cada ficheiro de copia de seguranza, para que unha copia remota danada por bit-rot poida repararse no seguinte pull, sen o orixinal."
+            "errorCorrectionHint": "Garda un pequeno ficheiro de paridade .aerocorrect xunto a cada ficheiro de copia de seguranza, para que unha copia remota danada por bit-rot poida repararse no seguinte pull, sen o orixinal.",
+            "outOfSyncItemsPct": "Elementos sen sincronizar",
+            "outOfSyncBytesPct": "Bytes sen sincronizar"
         },
         "accountLock": {
             "title": "Escolla unha conta",

@@ -4992,7 +4992,9 @@
             },
             "launcherScheduler": "Ajastaja",
             "errorCorrection": "Veaparandus",
-            "errorCorrectionHint": "Salvestab iga varundatud faili kõrvale väikese .aerocorrect pariteedifaili, et bit-rot'i tõttu rikutud kaugkoopiat saaks järgmisel tõmbamisel parandada ilma originaalita."
+            "errorCorrectionHint": "Salvestab iga varundatud faili kõrvale väikese .aerocorrect pariteedifaili, et bit-rot'i tõttu rikutud kaugkoopiat saaks järgmisel tõmbamisel parandada ilma originaalita.",
+            "outOfSyncItemsPct": "Sünkroonimata üksused",
+            "outOfSyncBytesPct": "Sünkroonimata baidid"
         },
         "accountLock": {
             "title": "Vali konto",

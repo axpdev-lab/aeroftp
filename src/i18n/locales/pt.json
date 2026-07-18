@@ -4992,7 +4992,9 @@
             },
             "launcherScheduler": "Agendador",
             "errorCorrection": "Correção de erros",
-            "errorCorrectionHint": "Guarda um pequeno ficheiro de paridade .aerocorrect ao lado de cada ficheiro de backup, para que uma cópia remota danificada por bit-rot possa ser reparada no próximo pull, sem o original."
+            "errorCorrectionHint": "Guarda um pequeno ficheiro de paridade .aerocorrect ao lado de cada ficheiro de backup, para que uma cópia remota danificada por bit-rot possa ser reparada no próximo pull, sem o original.",
+            "outOfSyncItemsPct": "Itens dessincronizados",
+            "outOfSyncBytesPct": "Bytes dessincronizados"
         },
         "accountLock": {
             "title": "Escolha uma conta",

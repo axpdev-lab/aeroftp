@@ -4992,7 +4992,9 @@
             },
             "launcherScheduler": "Planificator",
             "errorCorrection": "Corectarea erorilor",
-            "errorCorrectionHint": "Salvează un mic fișier de paritate .aerocorrect lângă fiecare fișier de backup, astfel încât o copie la distanță deteriorată de bit-rot să poată fi reparată la următoarea descărcare, fără original."
+            "errorCorrectionHint": "Salvează un mic fișier de paritate .aerocorrect lângă fiecare fișier de backup, astfel încât o copie la distanță deteriorată de bit-rot să poată fi reparată la următoarea descărcare, fără original.",
+            "outOfSyncItemsPct": "Elemente nesincronizate",
+            "outOfSyncBytesPct": "Octeți nesincronizați"
         },
         "accountLock": {
             "title": "Alegeți un cont",

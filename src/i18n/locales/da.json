@@ -4992,7 +4992,9 @@
             },
             "launcherScheduler": "Planlægger",
             "errorCorrection": "Fejlkorrektion",
-            "errorCorrectionHint": "Gemmer en lille .aerocorrect-paritetsfil ved siden af hver sikkerhedskopieret fil, så en fjernkopi ødelagt af bit-rot kan repareres ved næste pull, uden originalen."
+            "errorCorrectionHint": "Gemmer en lille .aerocorrect-paritetsfil ved siden af hver sikkerhedskopieret fil, så en fjernkopi ødelagt af bit-rot kan repareres ved næste pull, uden originalen.",
+            "outOfSyncItemsPct": "Elementer ude af sync",
+            "outOfSyncBytesPct": "Bytes ude af sync"
         },
         "accountLock": {
             "title": "Vælg en konto",

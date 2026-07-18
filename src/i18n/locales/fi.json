@@ -4992,7 +4992,9 @@
             },
             "launcherScheduler": "Ajastin",
             "errorCorrection": "Virheenkorjaus",
-            "errorCorrectionHint": "Tallentaa pienen .aerocorrect-pariteettitiedoston jokaisen varmuuskopioidun tiedoston viereen, jotta bit-rotin vaurioittama etäkopio voidaan korjata seuraavalla haulla ilman alkuperäistä."
+            "errorCorrectionHint": "Tallentaa pienen .aerocorrect-pariteettitiedoston jokaisen varmuuskopioidun tiedoston viereen, jotta bit-rotin vaurioittama etäkopio voidaan korjata seuraavalla haulla ilman alkuperäistä.",
+            "outOfSyncItemsPct": "Synkronoimattomat kohteet",
+            "outOfSyncBytesPct": "Synkronoimattomat tavut"
         },
         "accountLock": {
             "title": "Valitse tili",

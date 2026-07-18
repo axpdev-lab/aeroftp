@@ -5011,7 +5011,9 @@
             },
             "launcherScheduler": "Tímaáætlun",
             "errorCorrection": "Villuleiðrétting",
-            "errorCorrectionHint": "Vistar litla .aerocorrect jöfnunarskrá við hlið hverrar afritsskrár, svo hægt sé að gera við fjarafrit sem skemmst hefur af bit-rot við næsta sækjun, án frumritsins."
+            "errorCorrectionHint": "Vistar litla .aerocorrect jöfnunarskrá við hlið hverrar afritsskrár, svo hægt sé að gera við fjarafrit sem skemmst hefur af bit-rot við næsta sækjun, án frumritsins.",
+            "outOfSyncItemsPct": "Ósamstillt atriði",
+            "outOfSyncBytesPct": "Ósamstillt bæti"
         },
         "accountLock": {
             "title": "Veldu reikning",

@@ -4992,7 +4992,9 @@
             },
             "launcherScheduler": "Raspoređivač",
             "errorCorrection": "Ispravak pogrešaka",
-            "errorCorrectionHint": "Sprema malu .aerocorrect datoteku pariteta uz svaku sigurnosnu kopiju, tako da se udaljena kopija oštećena bit-rotom može popraviti pri sljedećem povlačenju, bez izvornika."
+            "errorCorrectionHint": "Sprema malu .aerocorrect datoteku pariteta uz svaku sigurnosnu kopiju, tako da se udaljena kopija oštećena bit-rotom može popraviti pri sljedećem povlačenju, bez izvornika.",
+            "outOfSyncItemsPct": "Nesinkronizirane stavke",
+            "outOfSyncBytesPct": "Nesinkronizirani bajtovi"
         },
         "accountLock": {
             "title": "Odaberite račun",

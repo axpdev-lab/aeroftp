@@ -4992,7 +4992,9 @@
             },
             "launcherScheduler": "Planificateur",
             "errorCorrection": "Correction d'erreurs",
-            "errorCorrectionHint": "Enregistre un petit fichier de parité .aerocorrect à côté de chaque fichier sauvegardé, afin qu'une copie distante endommagée par le bit-rot puisse être réparée lors du prochain pull, sans l'original."
+            "errorCorrectionHint": "Enregistre un petit fichier de parité .aerocorrect à côté de chaque fichier sauvegardé, afin qu'une copie distante endommagée par le bit-rot puisse être réparée lors du prochain pull, sans l'original.",
+            "outOfSyncItemsPct": "Éléments désynchronisés",
+            "outOfSyncBytesPct": "Octets désynchronisés"
         },
         "accountLock": {
             "title": "Choisissez un compte",

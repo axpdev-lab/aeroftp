@@ -4992,7 +4992,9 @@
             },
             "launcherScheduler": "Tvarkaraštis",
             "errorCorrection": "Klaidų taisymas",
-            "errorCorrectionHint": "Šalia kiekvieno atsarginio failo išsaugo mažą .aerocorrect lygiškumo failą, kad bit-rot pažeistą nuotolinę kopiją būtų galima atkurti kito atsisiuntimo metu be originalo."
+            "errorCorrectionHint": "Šalia kiekvieno atsarginio failo išsaugo mažą .aerocorrect lygiškumo failą, kad bit-rot pažeistą nuotolinę kopiją būtų galima atkurti kito atsisiuntimo metu be originalo.",
+            "outOfSyncItemsPct": "Nesinchronizuoti elementai",
+            "outOfSyncBytesPct": "Nesinchronizuoti baitai"
         },
         "accountLock": {
             "title": "Pasirinkite paskyrą",

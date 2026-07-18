@@ -4992,7 +4992,9 @@
             },
             "launcherScheduler": "Plánovač",
             "errorCorrection": "Oprava chýb",
-            "errorCorrectionHint": "Uloží malý paritný súbor .aerocorrect vedľa každého zálohovaného súboru, takže vzdialenú kópiu poškodenú bit-rotom možno opraviť pri ďalšom stiahnutí, bez originálu."
+            "errorCorrectionHint": "Uloží malý paritný súbor .aerocorrect vedľa každého zálohovaného súboru, takže vzdialenú kópiu poškodenú bit-rotom možno opraviť pri ďalšom stiahnutí, bez originálu.",
+            "outOfSyncItemsPct": "Nesynchronizované položky",
+            "outOfSyncBytesPct": "Nesynchronizované bajty"
         },
         "accountLock": {
             "title": "Vyberte účet",

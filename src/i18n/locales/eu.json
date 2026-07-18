@@ -5011,7 +5011,9 @@
             },
             "launcherScheduler": "Antolatzailea",
             "errorCorrection": "Erroreen zuzenketa",
-            "errorCorrectionHint": "Babeskopia fitxategi bakoitzaren ondoan .aerocorrect paritate-fitxategi txiki bat gordetzen du, bit-rot-ek hondatutako urruneko kopia bat hurrengo pull-ean konpondu ahal izateko, jatorrizkoa gabe."
+            "errorCorrectionHint": "Babeskopia fitxategi bakoitzaren ondoan .aerocorrect paritate-fitxategi txiki bat gordetzen du, bit-rot-ek hondatutako urruneko kopia bat hurrengo pull-ean konpondu ahal izateko, jatorrizkoa gabe.",
+            "outOfSyncItemsPct": "Sinkronizatu gabeko elementuak",
+            "outOfSyncBytesPct": "Sinkronizatu gabeko byteak"
         },
         "accountLock": {
             "title": "Aukeratu kontu bat",

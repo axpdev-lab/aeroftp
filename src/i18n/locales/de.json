@@ -4992,7 +4992,9 @@
             },
             "launcherScheduler": "Planer",
             "errorCorrection": "Fehlerkorrektur",
-            "errorCorrectionHint": "Speichert eine kleine .aerocorrect-Paritätsdatei neben jeder gesicherten Datei, sodass eine durch Bit-Rot beschädigte Remote-Kopie beim nächsten Pull ohne das Original repariert werden kann."
+            "errorCorrectionHint": "Speichert eine kleine .aerocorrect-Paritätsdatei neben jeder gesicherten Datei, sodass eine durch Bit-Rot beschädigte Remote-Kopie beim nächsten Pull ohne das Original repariert werden kann.",
+            "outOfSyncItemsPct": "Nicht synchronisierte Elemente",
+            "outOfSyncBytesPct": "Nicht synchronisierte Bytes"
         },
         "accountLock": {
             "title": "Konto auswählen",

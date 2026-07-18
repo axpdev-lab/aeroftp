@@ -4992,7 +4992,9 @@
             },
             "launcherScheduler": "Zamanlayıcı",
             "errorCorrection": "Hata Düzeltme",
-            "errorCorrectionHint": "Her yedeklenen dosyanın yanına küçük bir .aerocorrect eşlik dosyası kaydeder, böylece bit-rot nedeniyle bozulmuş uzak bir kopya, orijinali olmadan bir sonraki pull işleminde onarılabilir."
+            "errorCorrectionHint": "Her yedeklenen dosyanın yanına küçük bir .aerocorrect eşlik dosyası kaydeder, böylece bit-rot nedeniyle bozulmuş uzak bir kopya, orijinali olmadan bir sonraki pull işleminde onarılabilir.",
+            "outOfSyncItemsPct": "Eşitlenmemiş öğeler",
+            "outOfSyncBytesPct": "Eşitlenmemiş baytlar"
         },
         "accountLock": {
             "title": "Bir hesap seçin",

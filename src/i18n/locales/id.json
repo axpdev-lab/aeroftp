@@ -4992,7 +4992,9 @@
             },
             "launcherScheduler": "Penjadwal",
             "errorCorrection": "Koreksi Kesalahan",
-            "errorCorrectionHint": "Menyimpan file paritas .aerocorrect kecil di samping setiap file cadangan, sehingga salinan jarak jauh yang rusak karena bit-rot dapat diperbaiki pada pull berikutnya, tanpa aslinya."
+            "errorCorrectionHint": "Menyimpan file paritas .aerocorrect kecil di samping setiap file cadangan, sehingga salinan jarak jauh yang rusak karena bit-rot dapat diperbaiki pada pull berikutnya, tanpa aslinya.",
+            "outOfSyncItemsPct": "Item tidak tersinkron",
+            "outOfSyncBytesPct": "Bita tidak tersinkron"
         },
         "accountLock": {
             "title": "Pilih akun",

@@ -5088,6 +5088,8 @@
       "totalEntries": "Total entries",
       "differences": "Differences",
       "totalBytes": "Total bytes",
+      "outOfSyncItemsPct": "Items out of sync",
+      "outOfSyncBytesPct": "Bytes out of sync",
       "mirrorHint": "Mirror buttons stage the matching entries in the unified transfer planner for review.",
       "mirrorLeftToRight": "Mirror left to right",
       "mirrorRightToLeft": "Mirror right to left",

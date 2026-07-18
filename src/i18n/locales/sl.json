@@ -4992,7 +4992,9 @@
             },
             "launcherScheduler": "Razporejevalnik",
             "errorCorrection": "Popravljanje napak",
-            "errorCorrectionHint": "Shrani majhno paritetno datoteko .aerocorrect poleg vsake varnostne kopije, tako da je oddaljeno kopijo, poškodovano zaradi bit-rota, mogoče popraviti ob naslednjem prenosu, brez izvirnika."
+            "errorCorrectionHint": "Shrani majhno paritetno datoteko .aerocorrect poleg vsake varnostne kopije, tako da je oddaljeno kopijo, poškodovano zaradi bit-rota, mogoče popraviti ob naslednjem prenosu, brez izvirnika.",
+            "outOfSyncItemsPct": "Nesinhronizirani elementi",
+            "outOfSyncBytesPct": "Nesinhronizirani bajti"
         },
         "accountLock": {
             "title": "Izberite račun",

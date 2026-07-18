@@ -4992,7 +4992,9 @@
             },
             "launcherScheduler": "Ütemező",
             "errorCorrection": "Hibajavítás",
-            "errorCorrectionHint": "Egy kis .aerocorrect paritásfájlt ment minden mentett fájl mellé, így a bit-rot által károsodott távoli másolat a következő letöltéskor javítható az eredeti nélkül."
+            "errorCorrectionHint": "Egy kis .aerocorrect paritásfájlt ment minden mentett fájl mellé, így a bit-rot által károsodott távoli másolat a következő letöltéskor javítható az eredeti nélkül.",
+            "outOfSyncItemsPct": "Nem szinkronizált elemek",
+            "outOfSyncBytesPct": "Nem szinkronizált bájtok"
         },
         "accountLock": {
             "title": "Válasszon fiókot",

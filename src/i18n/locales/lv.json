@@ -4992,7 +4992,9 @@
             },
             "launcherScheduler": "Plānotājs",
             "errorCorrection": "Kļūdu labošana",
-            "errorCorrectionHint": "Saglabā nelielu .aerocorrect paritātes failu blakus katram dublētajam failam, lai ar bit-rot bojātu attālo kopiju varētu salabot nākamajā lejupielādē bez oriģināla."
+            "errorCorrectionHint": "Saglabā nelielu .aerocorrect paritātes failu blakus katram dublētajam failam, lai ar bit-rot bojātu attālo kopiju varētu salabot nākamajā lejupielādē bez oriģināla.",
+            "outOfSyncItemsPct": "Nesinhronizēti vienumi",
+            "outOfSyncBytesPct": "Nesinhronizēti baiti"
         },
         "accountLock": {
             "title": "Izvēlieties kontu",

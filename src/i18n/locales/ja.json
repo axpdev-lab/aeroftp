@@ -4992,7 +4992,9 @@
             },
             "launcherScheduler": "スケジューラ",
             "errorCorrection": "エラー訂正",
-            "errorCorrectionHint": "バックアップされた各ファイルの隣に小さな .aerocorrect パリティファイルを保存し、bit-rot で破損したリモートコピーを元ファイルなしで次回の pull 時に修復できるようにします。"
+            "errorCorrectionHint": "バックアップされた各ファイルの隣に小さな .aerocorrect パリティファイルを保存し、bit-rot で破損したリモートコピーを元ファイルなしで次回の pull 時に修復できるようにします。",
+            "outOfSyncItemsPct": "同期していない項目",
+            "outOfSyncBytesPct": "同期していないバイト"
         },
         "accountLock": {
             "title": "アカウントを選択",

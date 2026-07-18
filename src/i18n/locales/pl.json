@@ -4992,7 +4992,9 @@
             },
             "launcherScheduler": "Harmonogram",
             "errorCorrection": "Korekcja błędów",
-            "errorCorrectionHint": "Zapisuje mały plik parzystości .aerocorrect obok każdego pliku kopii zapasowej, dzięki czemu zdalną kopię uszkodzoną przez bit-rot można naprawić przy następnym pobraniu, bez oryginału."
+            "errorCorrectionHint": "Zapisuje mały plik parzystości .aerocorrect obok każdego pliku kopii zapasowej, dzięki czemu zdalną kopię uszkodzoną przez bit-rot można naprawić przy następnym pobraniu, bez oryginału.",
+            "outOfSyncItemsPct": "Niezsynchronizowane elementy",
+            "outOfSyncBytesPct": "Niezsynchronizowane bajty"
         },
         "accountLock": {
             "title": "Wybierz konto",

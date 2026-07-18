@@ -4992,7 +4992,9 @@
             },
             "launcherScheduler": "Penjadual",
             "errorCorrection": "Pembetulan Ralat",
-            "errorCorrectionHint": "Menyimpan fail pariti .aerocorrect kecil di sebelah setiap fail sandaran, supaya salinan jauh yang rosak akibat bit-rot boleh dibaiki pada pull seterusnya, tanpa yang asal."
+            "errorCorrectionHint": "Menyimpan fail pariti .aerocorrect kecil di sebelah setiap fail sandaran, supaya salinan jauh yang rosak akibat bit-rot boleh dibaiki pada pull seterusnya, tanpa yang asal.",
+            "outOfSyncItemsPct": "Item tak segerak",
+            "outOfSyncBytesPct": "Bait tak segerak"
         },
         "accountLock": {
             "title": "Pilih akaun",

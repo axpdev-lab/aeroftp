@@ -4992,7 +4992,9 @@
             },
             "launcherScheduler": "Schemaläggare",
             "errorCorrection": "Felkorrigering",
-            "errorCorrectionHint": "Sparar en liten .aerocorrect-paritetsfil bredvid varje säkerhetskopierad fil, så att en fjärrkopia skadad av bit-rot kan repareras vid nästa hämtning, utan originalet."
+            "errorCorrectionHint": "Sparar en liten .aerocorrect-paritetsfil bredvid varje säkerhetskopierad fil, så att en fjärrkopia skadad av bit-rot kan repareras vid nästa hämtning, utan originalet.",
+            "outOfSyncItemsPct": "Osynkroniserade objekt",
+            "outOfSyncBytesPct": "Osynkroniserade byte"
         },
         "accountLock": {
             "title": "Välj ett konto",

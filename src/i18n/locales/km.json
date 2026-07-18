@@ -5011,7 +5011,9 @@
             },
             "launcherScheduler": "កាលវិភាគ",
             "errorCorrection": "ការកែកំហុស",
-            "errorCorrectionHint": "រក្សាទុកឯកសារ parity .aerocorrect តូចមួយនៅជាប់នឹងឯកសារបម្រុងទុកនីមួយៗ ដើម្បីឲ្យច្បាប់ចម្លងពីចម្ងាយដែលខូចដោយ bit-rot អាចត្រូវបានជួសជុលនៅ pull បន្ទាប់ ដោយគ្មានច្បាប់ដើម។"
+            "errorCorrectionHint": "រក្សាទុកឯកសារ parity .aerocorrect តូចមួយនៅជាប់នឹងឯកសារបម្រុងទុកនីមួយៗ ដើម្បីឲ្យច្បាប់ចម្លងពីចម្ងាយដែលខូចដោយ bit-rot អាចត្រូវបានជួសជុលនៅ pull បន្ទាប់ ដោយគ្មានច្បាប់ដើម។",
+            "outOfSyncItemsPct": "ធាតុមិនធ្វើសមកាលកម្ម",
+            "outOfSyncBytesPct": "បៃមិនធ្វើសមកាលកម្ម"
         },
         "accountLock": {
             "title": "ជ្រើសរើសគណនី",

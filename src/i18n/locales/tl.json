@@ -5011,7 +5011,9 @@
             },
             "launcherScheduler": "Tagaplano",
             "errorCorrection": "Pagwawasto ng Error",
-            "errorCorrectionHint": "Nag-iimbak ng maliit na .aerocorrect parity file sa tabi ng bawat naka-backup na file, upang ang isang remote na kopyang nasira ng bit-rot ay maaayos sa susunod na pull, nang walang orihinal."
+            "errorCorrectionHint": "Nag-iimbak ng maliit na .aerocorrect parity file sa tabi ng bawat naka-backup na file, upang ang isang remote na kopyang nasira ng bit-rot ay maaayos sa susunod na pull, nang walang orihinal.",
+            "outOfSyncItemsPct": "Mga item na hindi naka-sync",
+            "outOfSyncBytesPct": "Mga byte na hindi naka-sync"
         },
         "accountLock": {
             "title": "Pumili ng account",

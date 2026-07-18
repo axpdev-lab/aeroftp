@@ -4992,7 +4992,9 @@
             },
             "launcherScheduler": "Mratibu wa Wakati",
             "errorCorrection": "Kusahihisha Makosa",
-            "errorCorrectionHint": "Huhifadhi faili ndogo ya parity ya .aerocorrect kando ya kila faili iliyohifadhiwa nakala, ili nakala ya mbali iliyoharibika kwa bit-rot iweze kurekebishwa kwenye pull inayofuata, bila asili."
+            "errorCorrectionHint": "Huhifadhi faili ndogo ya parity ya .aerocorrect kando ya kila faili iliyohifadhiwa nakala, ili nakala ya mbali iliyoharibika kwa bit-rot iweze kurekebishwa kwenye pull inayofuata, bila asili.",
+            "outOfSyncItemsPct": "Vipengele visivyosawazishwa",
+            "outOfSyncBytesPct": "Baiti zisizosawazishwa"
         },
         "accountLock": {
             "title": "Chagua akaunti",

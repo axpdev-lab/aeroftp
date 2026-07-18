@@ -5208,7 +5208,9 @@
                 "colBytes": "Byte",
                 "colAction": "Azione"
             },
-            "launcherScheduler": "Pianificatore"
+            "launcherScheduler": "Pianificatore",
+            "outOfSyncItemsPct": "Elementi non sincronizzati",
+            "outOfSyncBytesPct": "Byte non sincronizzati"
         },
         "aerocryptProfile": {
             "overlaysSection": "Wrapper / Overlay",
