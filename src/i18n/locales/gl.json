@@ -3894,7 +3894,17 @@
             "pwdGenerating": "Xerando...",
             "pwdGenerateInline": "Xerar un contrasinal seguro",
             "pwdPresetCompatible": "Compatible 32",
-            "pwdGenerateCompatibleInline": "Xerar un contrasinal compatible de 32 caracteres"
+            "pwdGenerateCompatibleInline": "Xerar un contrasinal compatible de 32 caracteres",
+            "pwdShow": "Mostrar o contrasinal",
+            "pwdHide": "Ocultar o contrasinal",
+            "hashEncoding": "Codificación de entrada",
+            "hashEncodingUtf8": "UTF-8",
+            "hashEncodingBase64": "Base64",
+            "hashEncodingHex": "Hex",
+            "hashEncodingBinary": "Binario",
+            "hashOutputLength": "Lonxitude de saída BLAKE3 (bytes)",
+            "hashOutputLengthHint": "1–1024 · predeterminado 32",
+            "hashDropHint": "Solta un ficheiro nesta lapela para calcular o seu hash"
         },
         "dialog": {
             "deleteFile": "Eliminar \"{name}\"?",

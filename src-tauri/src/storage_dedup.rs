@@ -251,6 +251,20 @@ const NATIVE_API_PROTOCOLS: &[&str] = &[
 /// Compute the canonical dedup key for `profile`. See the Phase 4 handoff for
 /// the per-category formula. The fallback is `id:<profileId>` so distinct
 /// profiles never collapse by mistake.
+///
+/// # Aggregation-only (never identity)
+///
+/// For S3, the key embeds `access_key_hash(username)` (SHA-256, 12-char hex).
+/// An **empty / whitespace-only** access key therefore hashes to a **constant**
+/// value, so multiple keyless S3 surfaces share one tag. That is intentional:
+/// storage-usage aggregation deliberately collapses multi-protocol / keyless
+/// surfaces of the same logical drive into a single bucket.
+///
+/// **`dedup_key` MUST NOT be reused as an identity or relocation key.** Account
+/// identity for cross-user Copy/Move is `relocate_identity_surface` plus the
+/// credential fingerprint in `user_partitions` (EF-19 Baton-1 / F4). The
+/// cross-user soft-warning path also filters empty-key S3 *before* tagging
+/// (F5, EF-19(a)) — see `cross_user_dedup_matches`.
 pub fn dedup_key(profile: &ProfileView<'_>) -> String {
     let proto = profile.protocol;
     let user_norm = normalize_user(profile.username);

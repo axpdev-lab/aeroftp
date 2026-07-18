@@ -3894,7 +3894,17 @@
             "pwdGenerating": "Ustvarjanje...",
             "pwdGenerateInline": "Ustvari varno geslo",
             "pwdPresetCompatible": "Združljivo 32",
-            "pwdGenerateCompatibleInline": "Ustvari združljivo geslo z 32 znaki"
+            "pwdGenerateCompatibleInline": "Ustvari združljivo geslo z 32 znaki",
+            "pwdShow": "Prikaži geslo",
+            "pwdHide": "Skrij geslo",
+            "hashEncoding": "Kodiranje vnosa",
+            "hashEncodingUtf8": "UTF-8",
+            "hashEncodingBase64": "Base64",
+            "hashEncodingHex": "Hex",
+            "hashEncodingBinary": "Dvojiško",
+            "hashOutputLength": "Dolžina izhoda BLAKE3 (bajti)",
+            "hashOutputLengthHint": "1–1024 · privzeto 32",
+            "hashDropHint": "Spustite datoteko na ta zavihek za izračun zgoščene vrednosti"
         },
         "dialog": {
             "deleteFile": "Izbrisati \"{name}\"?",

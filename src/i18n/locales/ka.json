@@ -3894,7 +3894,17 @@
             "pwdGenerating": "გენერირდება...",
             "pwdGenerateInline": "უსაფრთხო პაროლის გენერირება",
             "pwdPresetCompatible": "თავსებადი 32",
-            "pwdGenerateCompatibleInline": "თავსებადი 32-სიმბოლოიანი პაროლის გენერაცია"
+            "pwdGenerateCompatibleInline": "თავსებადი 32-სიმბოლოიანი პაროლის გენერაცია",
+            "pwdShow": "პაროლის ჩვენება",
+            "pwdHide": "პაროლის დამალვა",
+            "hashEncoding": "შეყვანის კოდირება",
+            "hashEncodingUtf8": "UTF-8",
+            "hashEncodingBase64": "Base64",
+            "hashEncodingHex": "Hex",
+            "hashEncodingBinary": "ორობითი",
+            "hashOutputLength": "BLAKE3 გამოტანის სიგრძე (ბაიტი)",
+            "hashOutputLengthHint": "1–1024 · ნაგულისხმევი 32",
+            "hashDropHint": "ჰეშის გამოსათვლელად ჩააგდეთ ფაილი ამ ჩანართზე"
         },
         "dialog": {
             "deleteFile": "წაიშალოს \"{name}\"?",

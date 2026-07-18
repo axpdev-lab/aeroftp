@@ -3894,7 +3894,17 @@
             "pwdGenerating": "Generant...",
             "pwdGenerateInline": "Genera una contrasenya segura",
             "pwdPresetCompatible": "Compatible 32",
-            "pwdGenerateCompatibleInline": "Genera una contrasenya compatible de 32 caràcters"
+            "pwdGenerateCompatibleInline": "Genera una contrasenya compatible de 32 caràcters",
+            "pwdShow": "Mostra la contrasenya",
+            "pwdHide": "Amaga la contrasenya",
+            "hashEncoding": "Codificació d'entrada",
+            "hashEncodingUtf8": "UTF-8",
+            "hashEncodingBase64": "Base64",
+            "hashEncodingHex": "Hex",
+            "hashEncodingBinary": "Binari",
+            "hashOutputLength": "Longitud de sortida BLAKE3 (bytes)",
+            "hashOutputLengthHint": "1–1024 · per defecte 32",
+            "hashDropHint": "Deixa anar un fitxer en aquesta pestanya per calcular-ne el hash"
         },
         "dialog": {
             "deleteFile": "Eliminar \"{name}\"?",

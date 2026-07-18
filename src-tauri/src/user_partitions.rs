@@ -1597,6 +1597,12 @@ pub struct ProfileRelocation {
     /// is deleted, #366), and true for a Copy unless `already_present` skipped
     /// it. Gates the credential mirror so a moved profile keeps its secret.
     pub inserted: bool,
+    /// Wire protocol of the source profile (e.g. `pcloud`, `jottacloud`, `sftp`).
+    /// Populated by [`relocate_server_profile`] so the credential dual can resolve
+    /// OAuth / Jottacloud vault keys via [`relocate_credential_key_candidates`]
+    /// without changing caller signatures. Empty when unknown (serde default).
+    #[serde(default)]
+    pub protocol: String,
 }
 
 /// Copy or move a single server profile from `source_user_id` into
@@ -1645,6 +1651,7 @@ pub fn relocate_server_profile(
     let profile_name = value_str(&source, &["name", "label", "host", "hostname"])
         .unwrap_or(profile_id)
         .to_string();
+    let protocol = value_str(&source, &["protocol"]).unwrap_or("").to_string();
 
     // 2. Clone the blob under a fresh id and drop the per-account session field.
     let mut relocated = source.clone();
@@ -1730,38 +1737,65 @@ pub fn relocate_server_profile(
         moved: remove_from_source,
         already_present,
         inserted,
+        protocol,
     })
 }
 
-/// MUV-3 cross-user credential relocation: the partition profile row is already
-/// moved by [`relocate_server_profile`]; this carries the matching `server_<id>`
-/// secret. The vault stays the source of truth (copy onto the new id, drop the
-/// orphan on a Move), and the secret is mirrored onto the TARGET user's
-/// partition under its own scoped DEK (resolved with `target_passphrase`, never
-/// the source session). Best-effort on the partition mirror: a locked/uncovered
-/// target falls back to the dual-written vault. Caller must invoke this while
-/// `root_key` / `target_passphrase` are still live (before zeroize).
-fn relocate_server_credential_dual(
+/// Partition credential_type for a relocate key (migrate precedent at
+/// `copy_user_secrets_with_dek`: `server` / `oauth` / `jottacloud_refresh`).
+fn relocate_secret_kind(credential_key: &str) -> &'static str {
+    if credential_key.starts_with("server_") {
+        "server"
+    } else if credential_key.starts_with("jottacloud_refresh_") {
+        "jottacloud_refresh"
+    } else if credential_key.starts_with("oauth_") {
+        "oauth"
+    } else {
+        // relocate_credential_key_candidates only emits the prefixes above.
+        "server"
+    }
+}
+
+/// Relocate one vault/partition secret under the #366 gating.
+///
+/// Order is non-negotiable for every key:
+/// 1. when `relocation.inserted` → copy source → new (vault + target partition)
+/// 2. when `relocation.moved` → delete the source key
+///
+/// `store: None` skips vault ops only (unit-test seam: partition-only dual).
+/// Production always passes `Some(store)`. Behavior with a store for `server_*`
+/// matches the pre-F4 body byte-for-byte aside from multi-key iteration.
+fn relocate_secret_key_dual(
     conn: &Connection,
-    store: &CredentialStore,
+    store: Option<&CredentialStore>,
     root_key: &[u8; 32],
     source_user_id: i64,
     relocation: &ProfileRelocation,
     target_passphrase: Option<&str>,
+    source_key: &str,
+    new_key: &str,
+    kind: &str,
 ) {
-    let source_key = format!("server_{}", relocation.source_profile_id);
-    let new_key = format!("server_{}", relocation.new_profile_id);
-
     // Copy onto the new id only when a fresh target row was inserted; a dedup
     // no-op (Copy into a target that already has the drive) leaves the target's
     // existing secret untouched. A Move always inserts (#366), so its secret
     // always follows the profile into the target before the source is dropped.
     if relocation.inserted {
-        if let Ok(Some(secret)) =
-            read_credential_with_fallback(conn, store, root_key, source_user_id, &source_key)
-        {
+        let secret = match store {
+            Some(store) => {
+                read_credential_with_fallback(conn, store, root_key, source_user_id, source_key)
+                    .ok()
+                    .flatten()
+            }
+            None => get_user_credential_for(conn, root_key, source_user_id, source_key)
+                .ok()
+                .flatten(),
+        };
+        if let Some(secret) = secret {
             // Vault stays in sync (source of truth + fallback + downgrade safe).
-            let _ = store.store(&new_key, &secret);
+            if let Some(store) = store {
+                let _ = store.store(new_key, &secret);
+            }
             // Mirror onto the target partition under its scoped DEK.
             let root_secret = user_crypto::secret_key_from_bytes(root_key);
             if let Ok(target_dek) = resolve_user_dek_scoped(
@@ -1774,8 +1808,8 @@ fn relocate_server_credential_dual(
                     conn,
                     relocation.target_user_id,
                     &target_dek,
-                    &new_key,
-                    "server",
+                    new_key,
+                    kind,
                     &secret,
                 );
             }
@@ -1785,8 +1819,49 @@ fn relocate_server_credential_dual(
     // Move/Cut: the source profile row is gone, so its orphaned secret is
     // removed from both the vault and the source partition.
     if relocation.moved {
-        let _ = store.delete(&source_key);
-        let _ = delete_user_credential_for(conn, source_user_id, &source_key);
+        if let Some(store) = store {
+            let _ = store.delete(source_key);
+        }
+        let _ = delete_user_credential_for(conn, source_user_id, source_key);
+    }
+}
+
+/// MUV-3 cross-user credential relocation: the partition profile row is already
+/// moved by [`relocate_server_profile`]; this carries every per-profile secret
+/// resolved by [`relocate_credential_key_candidates`] (`server_<id>` plus
+/// OAuth / Jottacloud when the protocol has a vault base). The vault stays the
+/// source of truth (copy onto the new id, drop the orphan on a Move), and each
+/// secret is mirrored onto the TARGET user's partition under its own scoped DEK
+/// (resolved with `target_passphrase`, never the source session). Best-effort on
+/// the partition mirror: a locked/uncovered target falls back to the dual-written
+/// vault. Caller must invoke this while `root_key` / `target_passphrase` are
+/// still live (before zeroize).
+///
+/// #366: for every key, `inserted` gates copy before `moved` gates delete.
+fn relocate_server_credential_dual(
+    conn: &Connection,
+    store: &CredentialStore,
+    root_key: &[u8; 32],
+    source_user_id: i64,
+    relocation: &ProfileRelocation,
+    target_passphrase: Option<&str>,
+) {
+    let source_keys =
+        relocate_credential_key_candidates(&relocation.protocol, &relocation.source_profile_id);
+    let new_keys =
+        relocate_credential_key_candidates(&relocation.protocol, &relocation.new_profile_id);
+    for (source_key, new_key) in source_keys.iter().zip(new_keys.iter()) {
+        relocate_secret_key_dual(
+            conn,
+            Some(store),
+            root_key,
+            source_user_id,
+            relocation,
+            target_passphrase,
+            source_key,
+            new_key,
+            relocate_secret_kind(source_key),
+        );
     }
 }
 
@@ -2664,6 +2739,17 @@ pub fn cross_user_dedup_matches(
     requesting_user_id: i64,
     profile: &Value,
 ) -> Result<Vec<CrossUserDedupMatch>, String> {
+    // EF-19(a): an empty S3 access key hashes to a constant dedup_key, so two
+    // unrelated keyless S3 accounts would cross-warn. Ambiguous surface → no
+    // warning (conservative: this guards the soft warning only; storage
+    // aggregation semantics are unchanged — see storage_dedup::dedup_key).
+    // Cross-ref: storage_dedup::dedup_key is aggregation-only, never identity.
+    let protocol = value_str(profile, &["protocol"]).unwrap_or("ftp");
+    let username = value_str(profile, &["username", "user", "email", "account"]).unwrap_or("");
+    if protocol == "s3" && username.trim().is_empty() {
+        return Ok(Vec::new());
+    }
+
     let root_secret = user_crypto::secret_key_from_bytes(root_key);
     let uid_seed = value_str(profile, &["id"]).unwrap_or("");
     let dedup_tag = profile_dedup_key(&root_secret, profile, uid_seed)?;
@@ -4008,10 +4094,11 @@ pub fn cli_relocate_server_profile(
 }
 
 /// CLI bridge (MUV-3) for the credential half of a cross-user relocation: copies
-/// the `server_<id>` secret onto the new id (vault + the target user's partition
-/// under its scoped DEK) and, on a Move, drops the orphaned source secret from
-/// both stores. Call after [`cli_relocate_server_profile`] with the same
-/// `target_passphrase` still live.
+/// every per-profile secret from [`relocate_credential_key_candidates`]
+/// (`server_<id>` plus OAuth/Jottacloud when applicable) onto the new id (vault
+/// + the target user's partition under its scoped DEK) and, on a Move, drops
+/// the orphaned source secrets from both stores. Call after
+/// [`cli_relocate_server_profile`] with the same `target_passphrase` still live.
 pub fn cli_relocate_server_credential_dual(
     store: &CredentialStore,
     source_user_id: i64,
@@ -4651,9 +4738,9 @@ pub async fn user_partitions_relocate_server_profile(
         target_passphrase.as_deref(),
         move_profile,
     );
-    // MUV-3: relocate the per-profile `server_<id>` secret while the root_key and
-    // the target passphrase are still live. The vault stays in sync and the
-    // secret is mirrored onto the target user's partition under its scoped DEK.
+    // MUV-3/F4: relocate per-profile secrets (server_* + OAuth/Jottacloud) while
+    // the root_key and the target passphrase are still live. The vault stays in
+    // sync and each secret is mirrored onto the target partition under its DEK.
     let outcome = match result {
         Ok(relocation) => {
             relocate_server_credential_dual(
@@ -5821,6 +5908,85 @@ mod tests {
         .expect("seed oauth secret");
     }
 
+    fn seed_jottacloud_secret(
+        conn: &Connection,
+        root: &[u8; 32],
+        user_id: i64,
+        profile_id: &str,
+        secret: &str,
+    ) {
+        set_user_credential_for(
+            conn,
+            root,
+            user_id,
+            &format!("jottacloud_refresh_{profile_id}"),
+            "jottacloud_refresh",
+            secret,
+        )
+        .expect("seed jottacloud secret");
+    }
+
+    fn jottacloud_profile(id: &str, name: &str) -> Value {
+        json!({
+            "id": id,
+            "name": name,
+            "protocol": "jottacloud",
+            "providerId": "jottacloud",
+            "host": "",
+            "port": 0,
+            "username": "jotta-user@example.com"
+        })
+    }
+
+    /// Partition-only credential dual (no vault store) — unit-test seam for F4.
+    fn relocate_credentials_partition_only(
+        conn: &Connection,
+        root: &[u8; 32],
+        source_user_id: i64,
+        relocation: &ProfileRelocation,
+        target_passphrase: Option<&str>,
+    ) {
+        let source_keys =
+            relocate_credential_key_candidates(&relocation.protocol, &relocation.source_profile_id);
+        let new_keys =
+            relocate_credential_key_candidates(&relocation.protocol, &relocation.new_profile_id);
+        for (source_key, new_key) in source_keys.iter().zip(new_keys.iter()) {
+            relocate_secret_key_dual(
+                conn,
+                None,
+                root,
+                source_user_id,
+                relocation,
+                target_passphrase,
+                source_key,
+                new_key,
+                relocate_secret_kind(source_key),
+            );
+        }
+    }
+
+    fn assert_cred_present(
+        conn: &Connection,
+        root: &[u8; 32],
+        user_id: i64,
+        key: &str,
+        expected: &str,
+    ) {
+        let got = get_user_credential_for(conn, root, user_id, key)
+            .expect("read cred")
+            .unwrap_or_else(|| panic!("expected credential {key} for user {user_id}"));
+        assert_eq!(got.as_str(), expected, "credential {key}");
+    }
+
+    fn assert_cred_absent(conn: &Connection, root: &[u8; 32], user_id: i64, key: &str) {
+        let got = get_user_credential_for(conn, root, user_id, key).expect("read cred");
+        assert!(
+            got.is_none(),
+            "credential {key} must be absent for user {user_id}, got {:?}",
+            got.as_ref().map(|s| s.as_str())
+        );
+    }
+
     #[test]
     fn relocate_copy_into_passphraseless_target_keeps_source() {
         let _guard = test_lock();
@@ -6337,6 +6503,253 @@ mod tests {
         );
     }
 
+    // ============ F4: OAuth / Jottacloud credential dual (#366) ============
+
+    #[test]
+    fn relocate_credential_dual_pcloud_copy_keeps_source_oauth() {
+        let _guard = test_lock();
+        let mut conn = migrated_conn(0);
+        let root = test_root();
+        let default = get_active_user(&conn).expect("active").expect("default");
+        let bob = create_passphrase_less_user(&mut conn, &root, "Bob", Some("B"), Some("#6366f1"))
+            .expect("create bob");
+        replace_active_server_profiles(
+            &mut conn,
+            &root,
+            &[pcloud_oauth_empty_user_profile("srv_pc_c", "pCloud Copy")],
+        )
+        .expect("seed pcloud");
+        let token = r#"{"access_token":"tok-copy-a"}"#;
+        seed_oauth_secret(&conn, &root, default.id, "srv_pc_c", token);
+        seed_server_secret(&conn, &root, default.id, "srv_pc_c", "server-secret-a");
+
+        let report = relocate_server_profile(
+            &mut conn,
+            &root,
+            default.id,
+            bob.id,
+            "srv_pc_c",
+            "srv_pc_c_new",
+            None,
+            /*remove_from_source=*/ false,
+        )
+        .expect("pcloud copy");
+        assert!(report.inserted);
+        assert!(!report.moved);
+        assert_eq!(report.protocol, "pcloud");
+
+        relocate_credentials_partition_only(&conn, &root, default.id, &report, None);
+
+        // Target has both secrets under the new id.
+        assert_cred_present(&conn, &root, bob.id, "oauth_pcloud_srv_pc_c_new", token);
+        assert_cred_present(
+            &conn,
+            &root,
+            bob.id,
+            "server_srv_pc_c_new",
+            "server-secret-a",
+        );
+        // Copy must NEVER delete the source keys (#366 gating).
+        assert_cred_present(&conn, &root, default.id, "oauth_pcloud_srv_pc_c", token);
+        assert_cred_present(
+            &conn,
+            &root,
+            default.id,
+            "server_srv_pc_c",
+            "server-secret-a",
+        );
+    }
+
+    #[test]
+    fn relocate_credential_dual_pcloud_move_drops_source_oauth() {
+        let _guard = test_lock();
+        let mut conn = migrated_conn(0);
+        let root = test_root();
+        let default = get_active_user(&conn).expect("active").expect("default");
+        let bob = create_passphrase_less_user(&mut conn, &root, "Bob", Some("B"), Some("#6366f1"))
+            .expect("create bob");
+        replace_active_server_profiles(
+            &mut conn,
+            &root,
+            &[pcloud_oauth_empty_user_profile("srv_pc_m", "pCloud Move")],
+        )
+        .expect("seed pcloud");
+        let token = r#"{"access_token":"tok-move-a"}"#;
+        seed_oauth_secret(&conn, &root, default.id, "srv_pc_m", token);
+        seed_server_secret(&conn, &root, default.id, "srv_pc_m", "server-secret-m");
+
+        let report = relocate_server_profile(
+            &mut conn,
+            &root,
+            default.id,
+            bob.id,
+            "srv_pc_m",
+            "srv_pc_m_new",
+            None,
+            /*remove_from_source=*/ true,
+        )
+        .expect("pcloud move");
+        assert!(report.inserted);
+        assert!(report.moved);
+        assert_eq!(report.protocol, "pcloud");
+
+        relocate_credentials_partition_only(&conn, &root, default.id, &report, None);
+
+        assert_cred_present(&conn, &root, bob.id, "oauth_pcloud_srv_pc_m_new", token);
+        assert_cred_present(
+            &conn,
+            &root,
+            bob.id,
+            "server_srv_pc_m_new",
+            "server-secret-m",
+        );
+        assert_cred_absent(&conn, &root, default.id, "oauth_pcloud_srv_pc_m");
+        assert_cred_absent(&conn, &root, default.id, "server_srv_pc_m");
+    }
+
+    #[test]
+    fn relocate_credential_dual_jottacloud_copy_keeps_source_refresh() {
+        let _guard = test_lock();
+        let mut conn = migrated_conn(0);
+        let root = test_root();
+        let default = get_active_user(&conn).expect("active").expect("default");
+        let bob = create_passphrase_less_user(&mut conn, &root, "Bob", Some("B"), Some("#6366f1"))
+            .expect("create bob");
+        replace_active_server_profiles(
+            &mut conn,
+            &root,
+            &[jottacloud_profile("srv_jt_c", "Jotta Copy")],
+        )
+        .expect("seed jottacloud");
+        let refresh = r#"{"refresh_token":"jrt-copy-a"}"#;
+        seed_jottacloud_secret(&conn, &root, default.id, "srv_jt_c", refresh);
+        seed_server_secret(&conn, &root, default.id, "srv_jt_c", "server-jt-c");
+
+        let report = relocate_server_profile(
+            &mut conn,
+            &root,
+            default.id,
+            bob.id,
+            "srv_jt_c",
+            "srv_jt_c_new",
+            None,
+            /*remove_from_source=*/ false,
+        )
+        .expect("jottacloud copy");
+        assert!(report.inserted);
+        assert!(!report.moved);
+        assert_eq!(report.protocol, "jottacloud");
+
+        relocate_credentials_partition_only(&conn, &root, default.id, &report, None);
+
+        assert_cred_present(
+            &conn,
+            &root,
+            bob.id,
+            "jottacloud_refresh_srv_jt_c_new",
+            refresh,
+        );
+        assert_cred_present(
+            &conn,
+            &root,
+            default.id,
+            "jottacloud_refresh_srv_jt_c",
+            refresh,
+        );
+        assert_cred_present(&conn, &root, default.id, "server_srv_jt_c", "server-jt-c");
+    }
+
+    #[test]
+    fn relocate_credential_dual_jottacloud_move_drops_source_refresh() {
+        let _guard = test_lock();
+        let mut conn = migrated_conn(0);
+        let root = test_root();
+        let default = get_active_user(&conn).expect("active").expect("default");
+        let bob = create_passphrase_less_user(&mut conn, &root, "Bob", Some("B"), Some("#6366f1"))
+            .expect("create bob");
+        replace_active_server_profiles(
+            &mut conn,
+            &root,
+            &[jottacloud_profile("srv_jt_m", "Jotta Move")],
+        )
+        .expect("seed jottacloud");
+        let refresh = r#"{"refresh_token":"jrt-move-a"}"#;
+        seed_jottacloud_secret(&conn, &root, default.id, "srv_jt_m", refresh);
+        seed_server_secret(&conn, &root, default.id, "srv_jt_m", "server-jt-m");
+
+        let report = relocate_server_profile(
+            &mut conn,
+            &root,
+            default.id,
+            bob.id,
+            "srv_jt_m",
+            "srv_jt_m_new",
+            None,
+            /*remove_from_source=*/ true,
+        )
+        .expect("jottacloud move");
+        assert!(report.inserted);
+        assert!(report.moved);
+        assert_eq!(report.protocol, "jottacloud");
+
+        relocate_credentials_partition_only(&conn, &root, default.id, &report, None);
+
+        assert_cred_present(
+            &conn,
+            &root,
+            bob.id,
+            "jottacloud_refresh_srv_jt_m_new",
+            refresh,
+        );
+        assert_cred_absent(&conn, &root, default.id, "jottacloud_refresh_srv_jt_m");
+        assert_cred_absent(&conn, &root, default.id, "server_srv_jt_m");
+    }
+
+    #[test]
+    fn relocate_credential_dual_password_protocol_only_server_keys() {
+        // sftp: resolver returns no oauth base → only server_* is relocated;
+        // no phantom oauth_* / jottacloud_refresh_* rows.
+        let _guard = test_lock();
+        let mut conn = migrated_conn(0);
+        let root = test_root();
+        let default = get_active_user(&conn).expect("active").expect("default");
+        let bob = create_passphrase_less_user(&mut conn, &root, "Bob", Some("B"), Some("#6366f1"))
+            .expect("create bob");
+        replace_active_server_profiles(&mut conn, &root, &[sftp_profile("srv_pw")])
+            .expect("seed sftp");
+        seed_server_secret(&conn, &root, default.id, "srv_pw", "sftp-password");
+
+        let report = relocate_server_profile(
+            &mut conn,
+            &root,
+            default.id,
+            bob.id,
+            "srv_pw",
+            "srv_pw_new",
+            None,
+            /*remove_from_source=*/ true,
+        )
+        .expect("sftp move");
+        assert!(report.inserted);
+        assert!(report.moved);
+        assert_eq!(report.protocol, "sftp");
+        assert_eq!(
+            relocate_credential_key_candidates(&report.protocol, &report.source_profile_id),
+            vec!["server_srv_pw".to_string()],
+            "password protocol must not invent oauth keys"
+        );
+
+        relocate_credentials_partition_only(&conn, &root, default.id, &report, None);
+
+        assert_cred_present(&conn, &root, bob.id, "server_srv_pw_new", "sftp-password");
+        assert_cred_absent(&conn, &root, default.id, "server_srv_pw");
+        // No phantom OAuth/Jottacloud keys on either side.
+        assert_cred_absent(&conn, &root, bob.id, "oauth_pcloud_srv_pw_new");
+        assert_cred_absent(&conn, &root, bob.id, "jottacloud_refresh_srv_pw_new");
+        assert_cred_absent(&conn, &root, default.id, "oauth_pcloud_srv_pw");
+        assert_cred_absent(&conn, &root, default.id, "jottacloud_refresh_srv_pw");
+    }
+
     #[test]
     fn relocate_identity_surface_distinguishes_weak_blob_accounts() {
         // Pure helper coverage: empty-username S3/OAuth/WebDAV surfaces match
@@ -6662,6 +7075,80 @@ mod tests {
         assert_eq!(matches.len(), 2);
         assert_eq!(matches[0].user_id, default.id);
         assert_eq!(matches[1].user_id, alice.id);
+    }
+
+    #[test]
+    fn cross_user_dedup_empty_key_s3_does_not_cross_warn() {
+        // EF-19(a): empty S3 access keys share a constant storage dedup_key.
+        // The soft-warning path must not fire across distinct keyless accounts.
+        let _guard = test_lock();
+        let mut conn = migrated_conn(0);
+        let root = test_root();
+        let default = get_active_user(&conn).expect("active").expect("default");
+        let alice =
+            create_passphrase_less_user(&mut conn, &root, "alice", Some("A"), Some("#3b82f6"))
+                .expect("alice");
+
+        let stored = json!({
+            "id": "s3-empty-a",
+            "name": "S3 Empty A",
+            "protocol": "s3",
+            "providerId": "wasabi",
+            "host": "s3.wasabisys.com",
+            "port": 443,
+            "username": "",
+        });
+        replace_active_server_profiles(&mut conn, &root, std::slice::from_ref(&stored))
+            .expect("save empty-key S3 on default");
+
+        // Candidate for alice: also empty-key S3 (different id; could even share host).
+        let candidate = json!({
+            "id": "s3-empty-b",
+            "name": "S3 Empty B",
+            "protocol": "s3",
+            "providerId": "wasabi",
+            "host": "s3.wasabisys.com",
+            "port": 443,
+            "username": "   ",
+        });
+        set_active_user(&conn, alice.id).expect("switch alice");
+        let matches = cross_user_dedup_matches(&conn, &root, alice.id, &candidate).expect("query");
+        assert!(
+            matches.is_empty(),
+            "empty-key S3 must not cross-warn against user {}; got {:?}",
+            default.id,
+            matches
+        );
+    }
+
+    #[test]
+    fn cross_user_dedup_genuine_s3_dup_still_warns() {
+        // Non-empty access key: same key across users must still soft-warn.
+        let _guard = test_lock();
+        let mut conn = migrated_conn(0);
+        let root = test_root();
+        let default = get_active_user(&conn).expect("active").expect("default");
+        let alice =
+            create_passphrase_less_user(&mut conn, &root, "alice", Some("A"), Some("#3b82f6"))
+                .expect("alice");
+
+        let profile = json!({
+            "id": "s3-real",
+            "name": "S3 Real",
+            "protocol": "s3",
+            "providerId": "wasabi",
+            "host": "s3.wasabisys.com",
+            "port": 443,
+            "username": "AKIA_REAL_KEY_ONE",
+        });
+        replace_active_server_profiles(&mut conn, &root, std::slice::from_ref(&profile))
+            .expect("save real S3 on default");
+
+        set_active_user(&conn, alice.id).expect("switch alice");
+        let matches = cross_user_dedup_matches(&conn, &root, alice.id, &profile).expect("query");
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].user_id, default.id);
+        assert_eq!(matches[0].user_name, DEFAULT_USER_NAME);
     }
 
     // ----- MU-FE-P4a: admin role + self-or-admin gate -----

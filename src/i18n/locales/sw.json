@@ -3894,7 +3894,17 @@
             "pwdGenerating": "Inatengeneza...",
             "pwdGenerateInline": "Tengeneza nenosiri salama",
             "pwdPresetCompatible": "Inayooana 32",
-            "pwdGenerateCompatibleInline": "Tengeneza nenosiri linalooana la herufi 32"
+            "pwdGenerateCompatibleInline": "Tengeneza nenosiri linalooana la herufi 32",
+            "pwdShow": "Onyesha nenosiri",
+            "pwdHide": "Ficha nenosiri",
+            "hashEncoding": "Usimbaji wa ingizo",
+            "hashEncodingUtf8": "UTF-8",
+            "hashEncodingBase64": "Base64",
+            "hashEncodingHex": "Hex",
+            "hashEncodingBinary": "Binari",
+            "hashOutputLength": "Urefu wa matokeo ya BLAKE3 (baiti)",
+            "hashOutputLengthHint": "1–1024 · chaguomsingi 32",
+            "hashDropHint": "Dondosha faili kwenye kichupo hiki ili kukokotoa hash yake"
         },
         "dialog": {
             "deleteFile": "Futa \"{name}\"?",

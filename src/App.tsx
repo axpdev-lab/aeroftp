@@ -18483,6 +18483,7 @@ interface UpdateVerificationInfo {
           onMaximizeChange={setDevToolsMaximized}
           onClose={() => setDevToolsOpen(false)}
           onClearFile={() => setDevToolsPreviewFile(null)}
+          onShowCyberTools={() => setShowCyberTools(true)}
           editorTheme={getMonacoTheme(theme, isDark)}
           appTheme={getEffectiveTheme(theme, isDark)}
           providerType={connectionParams.protocol}

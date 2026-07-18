@@ -3859,7 +3859,17 @@
             "pwdGenerating": "生成中...",
             "pwdGenerateInline": "安全なパスワードを生成",
             "pwdPresetCompatible": "互換 32",
-            "pwdGenerateCompatibleInline": "互換性のある32文字のパスワードを生成"
+            "pwdGenerateCompatibleInline": "互換性のある32文字のパスワードを生成",
+            "pwdShow": "パスワードを表示",
+            "pwdHide": "パスワードを隠す",
+            "hashEncoding": "入力エンコーディング",
+            "hashEncodingUtf8": "UTF-8",
+            "hashEncodingBase64": "Base64",
+            "hashEncodingHex": "Hex",
+            "hashEncodingBinary": "バイナリ",
+            "hashOutputLength": "BLAKE3出力長（バイト）",
+            "hashOutputLengthHint": "1–1024 · 既定 32",
+            "hashDropHint": "このタブにファイルをドロップするとハッシュを計算します"
         },
         "dialog": {
             "deleteFile": "「{name}」を削除しますか？",

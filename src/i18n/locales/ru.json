@@ -3894,7 +3894,17 @@
             "pwdGenerating": "Создание...",
             "pwdGenerateInline": "Создать надёжный пароль",
             "pwdPresetCompatible": "Совместимый 32",
-            "pwdGenerateCompatibleInline": "Создать совместимый пароль из 32 символов"
+            "pwdGenerateCompatibleInline": "Создать совместимый пароль из 32 символов",
+            "pwdShow": "Показать пароль",
+            "pwdHide": "Скрыть пароль",
+            "hashEncoding": "Кодировка ввода",
+            "hashEncodingUtf8": "UTF-8",
+            "hashEncodingBase64": "Base64",
+            "hashEncodingHex": "Hex",
+            "hashEncodingBinary": "Двоичный",
+            "hashOutputLength": "Длина вывода BLAKE3 (байты)",
+            "hashOutputLengthHint": "1–1024 · по умолчанию 32",
+            "hashDropHint": "Перетащите файл на эту вкладку, чтобы вычислить его хеш"
         },
         "dialog": {
             "deleteFile": "Удалить \"{name}\"?",

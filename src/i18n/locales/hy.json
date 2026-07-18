@@ -3887,7 +3887,17 @@
             "pwdGenerating": "Ստեղծվում է...",
             "pwdGenerateInline": "Ստեղծել անվտանգ գաղտնաբառ",
             "pwdPresetCompatible": "Համատեղելի 32",
-            "pwdGenerateCompatibleInline": "Ստեղծել համատեղելի 32 նիշանոց գաղտնաբառ"
+            "pwdGenerateCompatibleInline": "Ստեղծել համատեղելի 32 նիշանոց գաղտնաբառ",
+            "pwdShow": "Ցուցադրել գաղտնաբառը",
+            "pwdHide": "Թաքցնել գաղտնաբառը",
+            "hashEncoding": "Մուտքի կոդավորում",
+            "hashEncodingUtf8": "UTF-8",
+            "hashEncodingBase64": "Base64",
+            "hashEncodingHex": "Hex",
+            "hashEncodingBinary": "Երկուական",
+            "hashOutputLength": "BLAKE3 ելքի երկարություն (բայթ)",
+            "hashOutputLengthHint": "1–1024 · լռելյայն 32",
+            "hashDropHint": "Գցեք ֆայլն այս ներդիրի վրա՝ հեշը հաշվարկելու համար"
         },
         "dialog": {
             "deleteFile": "Ջնջե՞լ «{name}»-ը։",

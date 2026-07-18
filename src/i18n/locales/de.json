@@ -3894,7 +3894,17 @@
             "pwdGenerating": "Wird generiert...",
             "pwdGenerateInline": "Sicheres Passwort generieren",
             "pwdPresetCompatible": "Kompatibel 32",
-            "pwdGenerateCompatibleInline": "Kompatibles Passwort mit 32 Zeichen generieren"
+            "pwdGenerateCompatibleInline": "Kompatibles Passwort mit 32 Zeichen generieren",
+            "pwdShow": "Passwort anzeigen",
+            "pwdHide": "Passwort verbergen",
+            "hashEncoding": "Eingabekodierung",
+            "hashEncodingUtf8": "UTF-8",
+            "hashEncodingBase64": "Base64",
+            "hashEncodingHex": "Hex",
+            "hashEncodingBinary": "Binär",
+            "hashOutputLength": "BLAKE3-Ausgabelänge (Bytes)",
+            "hashOutputLengthHint": "1–1024 · Standard 32",
+            "hashDropHint": "Datei auf diesen Tab ziehen, um sie zu hashen"
         },
         "dialog": {
             "deleteFile": "\"{name}\" löschen?",

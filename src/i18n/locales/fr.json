@@ -3894,7 +3894,17 @@
             "pwdGenerating": "Génération...",
             "pwdGenerateInline": "Générer un mot de passe sécurisé",
             "pwdPresetCompatible": "Compatible 32",
-            "pwdGenerateCompatibleInline": "Générer un mot de passe compatible de 32 caractères"
+            "pwdGenerateCompatibleInline": "Générer un mot de passe compatible de 32 caractères",
+            "pwdShow": "Afficher le mot de passe",
+            "pwdHide": "Masquer le mot de passe",
+            "hashEncoding": "Encodage d'entrée",
+            "hashEncodingUtf8": "UTF-8",
+            "hashEncodingBase64": "Base64",
+            "hashEncodingHex": "Hex",
+            "hashEncodingBinary": "Binaire",
+            "hashOutputLength": "Longueur de sortie BLAKE3 (octets)",
+            "hashOutputLengthHint": "1–1024 · par défaut 32",
+            "hashDropHint": "Déposez un fichier sur cet onglet pour calculer son hachage"
         },
         "dialog": {
             "deleteFile": "Supprimer \"{name}\" ?",

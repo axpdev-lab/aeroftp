@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
+import { getCurrentWebview } from '@tauri-apps/api/webview';
 import {
     X, Hash, Lock, KeyRound, Copy, Check, FileSearch, Type,
     RefreshCw, Eye, EyeOff, Loader2, AlertTriangle, CheckCircle2
@@ -130,6 +131,8 @@ const PillButton: React.FC<{ active: boolean; onClick: () => void; children: Rea
 // ─── Hash Forge Tab ─────────────────────────────────────────────────────────
 
 const HASH_ALGOS = ['MD5', 'SHA-1', 'SHA-256', 'SHA-512', 'BLAKE3'] as const;
+const HASH_ENCODINGS = ['utf-8', 'base64', 'hex', 'binary'] as const;
+type HashEncoding = (typeof HASH_ENCODINGS)[number];
 
 const HashForgeTab: React.FC = () => {
     const t = useTranslation();
@@ -137,52 +140,135 @@ const HashForgeTab: React.FC = () => {
     const [input, setInput] = useState('');
     const [filePath, setFilePath] = useState('');
     const [algorithm, setAlgorithm] = useState('sha256');
+    const [encoding, setEncoding] = useState<HashEncoding>('utf-8');
+    const [outputLen, setOutputLen] = useState(32);
     const [result, setResult] = useState('');
     const [expected, setExpected] = useState('');
     const [match, setMatch] = useState<boolean | null>(null);
     const [loading, setLoading] = useState(false);
+    const [dragActive, setDragActive] = useState(false);
+    const calcGenRef = useRef(0);
 
     const algoMap: Record<string, string> = { 'MD5': 'md5', 'SHA-1': 'sha1', 'SHA-256': 'sha256', 'SHA-512': 'sha512', 'BLAKE3': 'blake3' };
+    const isBlake3 = algorithm === 'blake3';
 
-    const calculate = useCallback(async () => {
-        setLoading(true);
-        setResult('');
-        setMatch(null);
-        try {
-            let hash: string;
-            if (mode === 'text') {
-                hash = await invoke('hash_text', { text: input, algorithm });
-            } else {
-                hash = await invoke('hash_file', { path: filePath, algorithm });
-            }
-            setResult(hash);
-            if (expected.trim()) {
-                const isMatch: boolean = await invoke('compare_hashes', { hashA: hash, hashB: expected.trim() });
-                setMatch(isMatch);
-            }
-        } catch (e) {
-            setResult(`Error: ${e}`);
+    const encodingLabel = (enc: HashEncoding): string => {
+        switch (enc) {
+            case 'utf-8': return t('cyberTools.hashEncodingUtf8');
+            case 'base64': return t('cyberTools.hashEncodingBase64');
+            case 'hex': return t('cyberTools.hashEncodingHex');
+            case 'binary': return t('cyberTools.hashEncodingBinary');
         }
-        setLoading(false);
-    }, [mode, input, filePath, algorithm, expected]);
+    };
+
+    // Debounced auto-calculate (~300ms) on input/algorithm/encoding/output-len/file.
+    // Empty text input is hashed (BLAKE3 empty vector is intentional). File mode
+    // waits for a path. Calculate button removed (BLAKE3-demo parity).
+    useEffect(() => {
+        if (mode === 'file' && !filePath) {
+            setResult('');
+            setMatch(null);
+            setLoading(false);
+            return;
+        }
+
+        const gen = ++calcGenRef.current;
+        setLoading(true);
+        const timer = window.setTimeout(async () => {
+            try {
+                let hash: string;
+                if (mode === 'text') {
+                    const clampedLen = Math.min(1024, Math.max(1, Math.floor(outputLen) || 32));
+                    hash = await invoke<string>('hash_text', {
+                        text: input,
+                        algorithm,
+                        encoding,
+                        outputLen: isBlake3 ? clampedLen : null,
+                    });
+                } else {
+                    const clampedLen = Math.min(1024, Math.max(1, Math.floor(outputLen) || 32));
+                    hash = await invoke<string>('hash_file', {
+                        path: filePath,
+                        algorithm,
+                        outputLen: isBlake3 ? clampedLen : null,
+                    });
+                }
+                if (gen !== calcGenRef.current) return;
+                setResult(hash);
+                // Match against expected is handled by the separate compare effect.
+                setMatch(null);
+            } catch (e) {
+                if (gen !== calcGenRef.current) return;
+                setResult(`Error: ${e}`);
+                setMatch(null);
+            } finally {
+                if (gen === calcGenRef.current) setLoading(false);
+            }
+        }, 300);
+
+        return () => {
+            window.clearTimeout(timer);
+        };
+    }, [mode, input, filePath, algorithm, encoding, outputLen, isBlake3]);
 
     const selectFile = useCallback(async () => {
         const selected = await open({ multiple: false, directory: false });
-        if (selected) setFilePath(selected as string);
+        if (selected) {
+            setMode('file');
+            setFilePath(selected as string);
+        }
     }, []);
 
-    // Auto-compare when expected changes
+    // OS file drag-and-drop via Tauri webview API (HTML drop does not expose
+    // absolute paths in the sandbox). Listener lives for the tab's lifetime —
+    // same house pattern as ExportImportDialog. Drop → file mode + path.
     useEffect(() => {
-        if (result && expected.trim()) {
+        let unlisten: (() => void) | undefined;
+        let cancelled = false;
+        (async () => {
+            try {
+                const webview = getCurrentWebview();
+                const un = await webview.onDragDropEvent((event) => {
+                    if (event.payload.type === 'over' || event.payload.type === 'enter') {
+                        setDragActive(true);
+                    } else if (event.payload.type === 'leave') {
+                        setDragActive(false);
+                    } else if (event.payload.type === 'drop' && event.payload.paths.length > 0) {
+                        setDragActive(false);
+                        setMode('file');
+                        setFilePath(event.payload.paths[0]);
+                    }
+                });
+                if (cancelled) un();
+                else unlisten = un;
+            } catch {
+                /* webview API unavailable outside Tauri */
+            }
+        })();
+        return () => {
+            cancelled = true;
+            if (unlisten) unlisten();
+        };
+    }, []);
+
+    // Auto-compare when expected changes against a stable result (re-run is
+    // also covered by the calculate effect when expected is in its deps).
+    useEffect(() => {
+        if (result && !result.startsWith('Error:') && expected.trim()) {
             invoke<boolean>('compare_hashes', { hashA: result, hashB: expected.trim() }).then(setMatch);
-        } else {
+        } else if (!expected.trim()) {
             setMatch(null);
         }
     }, [expected, result]);
 
     return (
-        <div className="space-y-4">
+        <div
+            className={`space-y-4 rounded-md transition-colors ${
+                dragActive ? 'ring-2 ring-cyan-500 ring-offset-2 dark:ring-offset-gray-800 bg-cyan-500/5' : ''
+            }`}
+        >
             <p className="text-xs text-gray-500 dark:text-gray-400">{t('cyberTools.hashDescription')}</p>
+            <p className="text-[10px] text-gray-400 dark:text-gray-500">{t('cyberTools.hashDropHint')}</p>
 
             {/* Mode toggle */}
             <div className="flex gap-2">
@@ -196,12 +282,24 @@ const HashForgeTab: React.FC = () => {
 
             {/* Input */}
             {mode === 'text' ? (
-                <textarea
-                    value={input}
-                    onChange={e => setInput(e.target.value)}
-                    placeholder={t('cyberTools.hashInputPlaceholder')}
-                    className="w-full h-24 px-3 py-2 text-sm rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 resize-none focus:outline-none focus:ring-1 focus:ring-cyan-500"
-                />
+                <div className="space-y-2">
+                    <textarea
+                        value={input}
+                        onChange={e => setInput(e.target.value)}
+                        placeholder={t('cyberTools.hashInputPlaceholder')}
+                        className="w-full h-24 px-3 py-2 text-sm rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 resize-none focus:outline-none focus:ring-1 focus:ring-cyan-500 font-mono"
+                    />
+                    <div>
+                        <label className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1 block">{t('cyberTools.hashEncoding')}</label>
+                        <div className="flex flex-wrap gap-1.5">
+                            {HASH_ENCODINGS.map(enc => (
+                                <PillButton key={enc} active={encoding === enc} onClick={() => setEncoding(enc)}>
+                                    {encodingLabel(enc)}
+                                </PillButton>
+                            ))}
+                        </div>
+                    </div>
+                </div>
             ) : (
                 <div className="flex gap-2">
                     <input
@@ -231,30 +329,55 @@ const HashForgeTab: React.FC = () => {
                 </div>
             </div>
 
-            {/* Calculate */}
-            <button
-                onClick={calculate}
-                disabled={loading || (mode === 'text' ? !input : !filePath)}
-                className="w-full py-2 text-sm font-medium rounded bg-cyan-500 hover:bg-cyan-600 disabled:bg-gray-300 dark:disabled:bg-gray-700 text-white transition-colors cursor-pointer disabled:cursor-not-allowed flex items-center justify-center gap-2"
-            >
-                {loading ? <><Loader2 size={14} className="animate-spin" /> {t('cyberTools.hashCalculating')}</> : t('cyberTools.hashCalculate')}
-            </button>
+            {/* BLAKE3 XOF output length (bytes) */}
+            {isBlake3 && (
+                <div>
+                    <label className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1 block">
+                        {t('cyberTools.hashOutputLength')}
+                    </label>
+                    <div className="flex items-center gap-2">
+                        <input
+                            type="number"
+                            min={1}
+                            max={1024}
+                            value={outputLen}
+                            onChange={e => {
+                                const n = Number(e.target.value);
+                                if (Number.isFinite(n)) setOutputLen(n);
+                            }}
+                            className="w-24 px-3 py-1.5 text-sm font-mono rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-cyan-500"
+                        />
+                        <span className="text-[10px] text-gray-400 dark:text-gray-500">{t('cyberTools.hashOutputLengthHint')}</span>
+                    </div>
+                </div>
+            )}
+
+            {/* Loading indicator (auto-calc — no Calculate button) */}
+            {loading && (
+                <div className="flex items-center justify-center gap-2 py-1 text-xs text-gray-500 dark:text-gray-400">
+                    <Loader2 size={14} className="animate-spin" /> {t('cyberTools.hashCalculating')}
+                </div>
+            )}
 
             {/* Result */}
             {result && (
                 <div className="space-y-2">
                     <label className="text-xs font-medium text-gray-500 dark:text-gray-400">{t('cyberTools.hashResult')}</label>
                     <div className="flex items-start gap-2">
-                        <code className="flex-1 px-3 py-2 text-xs font-mono rounded bg-gray-50 dark:bg-gray-900 text-gray-800 dark:text-gray-200 break-all border border-gray-200 dark:border-gray-700 select-all">
+                        <code className={`flex-1 px-3 py-2 text-xs font-mono rounded bg-gray-50 dark:bg-gray-900 break-all border border-gray-200 dark:border-gray-700 select-all ${
+                            result.startsWith('Error:') ? 'text-red-600 dark:text-red-400' : 'text-gray-800 dark:text-gray-200'
+                        }`}>
                             {result}
                         </code>
-                        <CopyButton text={result} label={t('cyberTools.hashCopy')} />
+                        {!result.startsWith('Error:') && (
+                            <CopyButton text={result} label={t('cyberTools.hashCopy')} />
+                        )}
                     </div>
                 </div>
             )}
 
             {/* Compare */}
-            {result && (
+            {result && !result.startsWith('Error:') && (
                 <div className="space-y-1">
                     <label className="text-xs font-medium text-gray-500 dark:text-gray-400">{t('cyberTools.hashExpected')}</label>
                     <input

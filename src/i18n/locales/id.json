@@ -3894,7 +3894,17 @@
             "pwdGenerating": "Membuat...",
             "pwdGenerateInline": "Buat kata sandi yang aman",
             "pwdPresetCompatible": "Kompatibel 32",
-            "pwdGenerateCompatibleInline": "Buat kata sandi kompatibel 32 karakter"
+            "pwdGenerateCompatibleInline": "Buat kata sandi kompatibel 32 karakter",
+            "pwdShow": "Tampilkan kata sandi",
+            "pwdHide": "Sembunyikan kata sandi",
+            "hashEncoding": "Pengekodan masukan",
+            "hashEncodingUtf8": "UTF-8",
+            "hashEncodingBase64": "Base64",
+            "hashEncodingHex": "Hex",
+            "hashEncodingBinary": "Biner",
+            "hashOutputLength": "Panjang keluaran BLAKE3 (byte)",
+            "hashOutputLengthHint": "1–1024 · bawaan 32",
+            "hashDropHint": "Jatuhkan berkas ke tab ini untuk menghitung hash-nya"
         },
         "dialog": {
             "deleteFile": "Hapus \"{name}\"?",

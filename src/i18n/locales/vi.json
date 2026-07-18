@@ -3894,7 +3894,17 @@
             "pwdGenerating": "Đang tạo...",
             "pwdGenerateInline": "Tạo mật khẩu an toàn",
             "pwdPresetCompatible": "Tương thích 32",
-            "pwdGenerateCompatibleInline": "Tạo mật khẩu tương thích gồm 32 ký tự"
+            "pwdGenerateCompatibleInline": "Tạo mật khẩu tương thích gồm 32 ký tự",
+            "pwdShow": "Hiện mật khẩu",
+            "pwdHide": "Ẩn mật khẩu",
+            "hashEncoding": "Mã hóa đầu vào",
+            "hashEncodingUtf8": "UTF-8",
+            "hashEncodingBase64": "Base64",
+            "hashEncodingHex": "Hex",
+            "hashEncodingBinary": "Nhị phân",
+            "hashOutputLength": "Độ dài đầu ra BLAKE3 (byte)",
+            "hashOutputLengthHint": "1–1024 · mặc định 32",
+            "hashDropHint": "Thả tệp vào thẻ này để tính hash"
         },
         "dialog": {
             "deleteFile": "Xóa \"{name}\"?",

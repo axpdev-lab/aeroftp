@@ -3894,7 +3894,17 @@
             "pwdGenerating": "Generiranje...",
             "pwdGenerateInline": "Generiraj sigurnu lozinku",
             "pwdPresetCompatible": "Kompatibilno 32",
-            "pwdGenerateCompatibleInline": "Generiraj kompatibilnu lozinku od 32 znaka"
+            "pwdGenerateCompatibleInline": "Generiraj kompatibilnu lozinku od 32 znaka",
+            "pwdShow": "Prikaži lozinku",
+            "pwdHide": "Sakrij lozinku",
+            "hashEncoding": "Kodiranje ulaza",
+            "hashEncodingUtf8": "UTF-8",
+            "hashEncodingBase64": "Base64",
+            "hashEncodingHex": "Hex",
+            "hashEncodingBinary": "Binarno",
+            "hashOutputLength": "Duljina BLAKE3 izlaza (bajtovi)",
+            "hashOutputLengthHint": "1–1024 · zadano 32",
+            "hashDropHint": "Ispustite datoteku na ovu karticu za izračun hasha"
         },
         "dialog": {
             "deleteFile": "Obrisati \"{name}\"?",

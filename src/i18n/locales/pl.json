@@ -3894,7 +3894,17 @@
             "pwdGenerating": "Generowanie...",
             "pwdGenerateInline": "Wygeneruj bezpieczne hasło",
             "pwdPresetCompatible": "Zgodne 32",
-            "pwdGenerateCompatibleInline": "Wygeneruj zgodne hasło o długości 32 znaków"
+            "pwdGenerateCompatibleInline": "Wygeneruj zgodne hasło o długości 32 znaków",
+            "pwdShow": "Pokaż hasło",
+            "pwdHide": "Ukryj hasło",
+            "hashEncoding": "Kodowanie wejścia",
+            "hashEncodingUtf8": "UTF-8",
+            "hashEncodingBase64": "Base64",
+            "hashEncodingHex": "Hex",
+            "hashEncodingBinary": "Binarny",
+            "hashOutputLength": "Długość wyjścia BLAKE3 (bajty)",
+            "hashOutputLengthHint": "1–1024 · domyślnie 32",
+            "hashDropHint": "Upuść plik na tę kartę, aby obliczyć jego hash"
         },
         "dialog": {
             "deleteFile": "Usunąć \"{name}\"?",

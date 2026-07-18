@@ -3894,7 +3894,17 @@
             "pwdGenerating": "Genererar...",
             "pwdGenerateInline": "Generera ett säkert lösenord",
             "pwdPresetCompatible": "Kompatibel 32",
-            "pwdGenerateCompatibleInline": "Generera ett kompatibelt lösenord med 32 tecken"
+            "pwdGenerateCompatibleInline": "Generera ett kompatibelt lösenord med 32 tecken",
+            "pwdShow": "Visa lösenord",
+            "pwdHide": "Dölj lösenord",
+            "hashEncoding": "Indatakodning",
+            "hashEncodingUtf8": "UTF-8",
+            "hashEncodingBase64": "Base64",
+            "hashEncodingHex": "Hex",
+            "hashEncodingBinary": "Binär",
+            "hashOutputLength": "BLAKE3-utdatalängd (byte)",
+            "hashOutputLengthHint": "1–1024 · standard 32",
+            "hashDropHint": "Släpp en fil på den här fliken för att hasha den"
         },
         "dialog": {
             "deleteFile": "Radera \"{name}\"?",

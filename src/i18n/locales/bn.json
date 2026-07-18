@@ -3894,7 +3894,17 @@
             "pwdGenerating": "তৈরি হচ্ছে...",
             "pwdGenerateInline": "একটি নিরাপদ পাসওয়ার্ড তৈরি করুন",
             "pwdPresetCompatible": "সামঞ্জস্যপূর্ণ 32",
-            "pwdGenerateCompatibleInline": "একটি সামঞ্জস্যপূর্ণ 32-অক্ষরের পাসওয়ার্ড তৈরি করুন"
+            "pwdGenerateCompatibleInline": "একটি সামঞ্জস্যপূর্ণ 32-অক্ষরের পাসওয়ার্ড তৈরি করুন",
+            "pwdShow": "পাসওয়ার্ড দেখান",
+            "pwdHide": "পাসওয়ার্ড লুকান",
+            "hashEncoding": "ইনপুট এনকোডিং",
+            "hashEncodingUtf8": "UTF-8",
+            "hashEncodingBase64": "Base64",
+            "hashEncodingHex": "Hex",
+            "hashEncodingBinary": "বাইনারি",
+            "hashOutputLength": "BLAKE3 আউটপুট দৈর্ঘ্য (বাইট)",
+            "hashOutputLengthHint": "1–1024 · ডিফল্ট 32",
+            "hashDropHint": "হ্যাশ করতে এই ট্যাবে একটি ফাইল ফেলুন"
         },
         "dialog": {
             "deleteFile": "\"{name}\" মুছে ফেলবেন?",

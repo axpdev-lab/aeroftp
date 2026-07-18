@@ -3894,7 +3894,17 @@
             "pwdGenerating": "Generovanie...",
             "pwdGenerateInline": "Vygenerovať bezpečné heslo",
             "pwdPresetCompatible": "Kompatibilné 32",
-            "pwdGenerateCompatibleInline": "Vygenerovať kompatibilné heslo s 32 znakmi"
+            "pwdGenerateCompatibleInline": "Vygenerovať kompatibilné heslo s 32 znakmi",
+            "pwdShow": "Zobraziť heslo",
+            "pwdHide": "Skryť heslo",
+            "hashEncoding": "Kódovanie vstupu",
+            "hashEncodingUtf8": "UTF-8",
+            "hashEncodingBase64": "Base64",
+            "hashEncodingHex": "Hex",
+            "hashEncodingBinary": "Binárne",
+            "hashOutputLength": "Dĺžka výstupu BLAKE3 (bajty)",
+            "hashOutputLengthHint": "1–1024 · predvolené 32",
+            "hashDropHint": "Presuňte sem súbor a vypočíta sa jeho hash"
         },
         "dialog": {
             "deleteFile": "Odstrániť \"{name}\"?",

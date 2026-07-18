@@ -3894,7 +3894,17 @@
             "pwdGenerating": "Generálás...",
             "pwdGenerateInline": "Biztonságos jelszó létrehozása",
             "pwdPresetCompatible": "Kompatibilis 32",
-            "pwdGenerateCompatibleInline": "Kompatibilis, 32 karakteres jelszó létrehozása"
+            "pwdGenerateCompatibleInline": "Kompatibilis, 32 karakteres jelszó létrehozása",
+            "pwdShow": "Jelszó megjelenítése",
+            "pwdHide": "Jelszó elrejtése",
+            "hashEncoding": "Bemeneti kódolás",
+            "hashEncodingUtf8": "UTF-8",
+            "hashEncodingBase64": "Base64",
+            "hashEncodingHex": "Hex",
+            "hashEncodingBinary": "Bináris",
+            "hashOutputLength": "BLAKE3 kimenet hossza (bájt)",
+            "hashOutputLengthHint": "1–1024 · alapértelmezett 32",
+            "hashDropHint": "Húzzon ide egy fájlt a hash kiszámításához"
         },
         "dialog": {
             "deleteFile": "Törli a \"{name}\" fájlt?",

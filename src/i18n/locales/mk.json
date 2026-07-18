@@ -3894,7 +3894,17 @@
             "pwdGenerating": "Се генерира...",
             "pwdGenerateInline": "Генерирај безбедна лозинка",
             "pwdPresetCompatible": "Компатибилна 32",
-            "pwdGenerateCompatibleInline": "Генерирај компатибилна лозинка од 32 знаци"
+            "pwdGenerateCompatibleInline": "Генерирај компатибилна лозинка од 32 знаци",
+            "pwdShow": "Прикажи лозинка",
+            "pwdHide": "Сокриј лозинка",
+            "hashEncoding": "Кодирање на влезот",
+            "hashEncodingUtf8": "UTF-8",
+            "hashEncodingBase64": "Base64",
+            "hashEncodingHex": "Hex",
+            "hashEncodingBinary": "Бинарно",
+            "hashOutputLength": "Должина на BLAKE3 излезот (бајти)",
+            "hashOutputLengthHint": "1–1024 · стандардно 32",
+            "hashDropHint": "Пуштете датотека на ова јазиче за да се пресмета хешот"
         },
         "dialog": {
             "deleteFile": "Избриши \"{name}\"?",

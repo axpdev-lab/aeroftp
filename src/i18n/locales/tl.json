@@ -3894,7 +3894,17 @@
             "pwdGenerating": "Bumubuo...",
             "pwdGenerateInline": "Gumawa ng ligtas na password",
             "pwdPresetCompatible": "Tugma 32",
-            "pwdGenerateCompatibleInline": "Gumawa ng tugmang password na 32 character"
+            "pwdGenerateCompatibleInline": "Gumawa ng tugmang password na 32 character",
+            "pwdShow": "Ipakita ang password",
+            "pwdHide": "Itago ang password",
+            "hashEncoding": "Encoding ng input",
+            "hashEncodingUtf8": "UTF-8",
+            "hashEncodingBase64": "Base64",
+            "hashEncodingHex": "Hex",
+            "hashEncodingBinary": "Binary",
+            "hashOutputLength": "Haba ng output ng BLAKE3 (bytes)",
+            "hashOutputLengthHint": "1–1024 · default 32",
+            "hashDropHint": "Ihulog ang file sa tab na ito para i-hash ito"
         },
         "dialog": {
             "deleteFile": "Tanggalin ang \"{name}\"?",

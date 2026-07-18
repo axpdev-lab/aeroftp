@@ -3894,7 +3894,17 @@
             "pwdGenerating": "Genereren...",
             "pwdGenerateInline": "Een veilig wachtwoord genereren",
             "pwdPresetCompatible": "Compatibel 32",
-            "pwdGenerateCompatibleInline": "Een compatibel wachtwoord van 32 tekens genereren"
+            "pwdGenerateCompatibleInline": "Een compatibel wachtwoord van 32 tekens genereren",
+            "pwdShow": "Wachtwoord tonen",
+            "pwdHide": "Wachtwoord verbergen",
+            "hashEncoding": "Invoercodering",
+            "hashEncodingUtf8": "UTF-8",
+            "hashEncodingBase64": "Base64",
+            "hashEncodingHex": "Hex",
+            "hashEncodingBinary": "Binair",
+            "hashOutputLength": "BLAKE3-uitvoerlengte (bytes)",
+            "hashOutputLengthHint": "1–1024 · standaard 32",
+            "hashDropHint": "Sleep een bestand naar dit tabblad om het te hashen"
         },
         "dialog": {
             "deleteFile": "\"{name}\" verwijderen?",

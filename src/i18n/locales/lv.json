@@ -3894,7 +3894,17 @@
             "pwdGenerating": "Ģenerē...",
             "pwdGenerateInline": "Ģenerēt drošu paroli",
             "pwdPresetCompatible": "Saderīga 32",
-            "pwdGenerateCompatibleInline": "Ģenerēt saderīgu 32 rakstzīmju paroli"
+            "pwdGenerateCompatibleInline": "Ģenerēt saderīgu 32 rakstzīmju paroli",
+            "pwdShow": "Rādīt paroli",
+            "pwdHide": "Slēpt paroli",
+            "hashEncoding": "Ievades kodējums",
+            "hashEncodingUtf8": "UTF-8",
+            "hashEncodingBase64": "Base64",
+            "hashEncodingHex": "Hex",
+            "hashEncodingBinary": "Binārs",
+            "hashOutputLength": "BLAKE3 izvades garums (baiti)",
+            "hashOutputLengthHint": "1–1024 · noklusējums 32",
+            "hashDropHint": "Nometiet failu šajā cilnē, lai aprēķinātu tā jaucējkodu"
         },
         "dialog": {
             "deleteFile": "Dzēst \"{name}\"?",

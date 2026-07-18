@@ -3894,7 +3894,17 @@
             "pwdGenerating": "Створення...",
             "pwdGenerateInline": "Створити надійний пароль",
             "pwdPresetCompatible": "Сумісний 32",
-            "pwdGenerateCompatibleInline": "Створити сумісний пароль із 32 символів"
+            "pwdGenerateCompatibleInline": "Створити сумісний пароль із 32 символів",
+            "pwdShow": "Показати пароль",
+            "pwdHide": "Приховати пароль",
+            "hashEncoding": "Кодування вводу",
+            "hashEncodingUtf8": "UTF-8",
+            "hashEncodingBase64": "Base64",
+            "hashEncodingHex": "Hex",
+            "hashEncodingBinary": "Двійковий",
+            "hashOutputLength": "Довжина виводу BLAKE3 (байти)",
+            "hashOutputLengthHint": "1–1024 · за замовчуванням 32",
+            "hashDropHint": "Перетягніть файл на цю вкладку, щоб обчислити його хеш"
         },
         "dialog": {
             "deleteFile": "Видалити \"{name}\"?",

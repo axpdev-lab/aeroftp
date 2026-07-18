@@ -3894,7 +3894,17 @@
             "pwdGenerating": "Sortzen...",
             "pwdGenerateInline": "Sortu pasahitz segurua",
             "pwdPresetCompatible": "Bateragarria 32",
-            "pwdGenerateCompatibleInline": "Sortu 32 karaktereko pasahitz bateragarria"
+            "pwdGenerateCompatibleInline": "Sortu 32 karaktereko pasahitz bateragarria",
+            "pwdShow": "Erakutsi pasahitza",
+            "pwdHide": "Ezkutatu pasahitza",
+            "hashEncoding": "Sarrerako kodeketa",
+            "hashEncodingUtf8": "UTF-8",
+            "hashEncodingBase64": "Base64",
+            "hashEncodingHex": "Hex",
+            "hashEncodingBinary": "Bitarra",
+            "hashOutputLength": "BLAKE3 irteeraren luzera (byte)",
+            "hashOutputLengthHint": "1–1024 · lehenetsia 32",
+            "hashDropHint": "Jaregin fitxategi bat fitxa honetan hash-a kalkulatzeko"
         },
         "dialog": {
             "deleteFile": "\"{name}\" ezabatu?",

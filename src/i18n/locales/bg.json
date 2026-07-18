@@ -3894,7 +3894,17 @@
             "pwdGenerating": "Генериране...",
             "pwdGenerateInline": "Генериране на сигурна парола",
             "pwdPresetCompatible": "Съвместима 32",
-            "pwdGenerateCompatibleInline": "Генериране на съвместима парола от 32 знака"
+            "pwdGenerateCompatibleInline": "Генериране на съвместима парола от 32 знака",
+            "pwdShow": "Показване на паролата",
+            "pwdHide": "Скриване на паролата",
+            "hashEncoding": "Кодиране на входа",
+            "hashEncodingUtf8": "UTF-8",
+            "hashEncodingBase64": "Base64",
+            "hashEncodingHex": "Hex",
+            "hashEncodingBinary": "Двоично",
+            "hashOutputLength": "Дължина на BLAKE3 изхода (байтове)",
+            "hashOutputLengthHint": "1–1024 · по подразбиране 32",
+            "hashDropHint": "Пуснете файл върху този раздел, за да го хеширате"
         },
         "dialog": {
             "deleteFile": "Изтрий \"{name}\"?",

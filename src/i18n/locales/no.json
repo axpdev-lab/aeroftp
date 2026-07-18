@@ -3894,7 +3894,17 @@
             "pwdGenerating": "Genererer...",
             "pwdGenerateInline": "Generer et sikkert passord",
             "pwdPresetCompatible": "Kompatibel 32",
-            "pwdGenerateCompatibleInline": "Generer et kompatibelt passord på 32 tegn"
+            "pwdGenerateCompatibleInline": "Generer et kompatibelt passord på 32 tegn",
+            "pwdShow": "Vis passord",
+            "pwdHide": "Skjul passord",
+            "hashEncoding": "Inndatakoding",
+            "hashEncodingUtf8": "UTF-8",
+            "hashEncodingBase64": "Base64",
+            "hashEncodingHex": "Hex",
+            "hashEncodingBinary": "Binær",
+            "hashOutputLength": "BLAKE3-utdatalengde (byte)",
+            "hashOutputLengthHint": "1–1024 · standard 32",
+            "hashDropHint": "Slipp en fil på denne fanen for å hashe den"
         },
         "dialog": {
             "deleteFile": "Slett \"{name}\"?",

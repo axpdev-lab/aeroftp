@@ -3894,7 +3894,17 @@
             "pwdGenerating": "Bý til...",
             "pwdGenerateInline": "Búa til öruggt lykilorð",
             "pwdPresetCompatible": "Samhæft 32",
-            "pwdGenerateCompatibleInline": "Búa til samhæft 32 stafa lykilorð"
+            "pwdGenerateCompatibleInline": "Búa til samhæft 32 stafa lykilorð",
+            "pwdShow": "Sýna lykilorð",
+            "pwdHide": "Fela lykilorð",
+            "hashEncoding": "Kóðun inntaks",
+            "hashEncodingUtf8": "UTF-8",
+            "hashEncodingBase64": "Base64",
+            "hashEncodingHex": "Hex",
+            "hashEncodingBinary": "Tvíundakerfi",
+            "hashOutputLength": "Úttakslengd BLAKE3 (bæti)",
+            "hashOutputLengthHint": "1–1024 · sjálfgefið 32",
+            "hashDropHint": "Slepptu skrá á þennan flipa til að reikna tætigildi hennar"
         },
         "dialog": {
             "deleteFile": "Eyða \"{name}\"?",

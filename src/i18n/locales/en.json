@@ -4181,6 +4181,14 @@
       "hashMatch": "Hashes match",
       "hashMismatch": "Hashes do not match",
       "hashNoInput": "Enter text or select a file",
+      "hashEncoding": "Input encoding",
+      "hashEncodingUtf8": "UTF-8",
+      "hashEncodingBase64": "Base64",
+      "hashEncodingHex": "Hex",
+      "hashEncodingBinary": "Binary",
+      "hashOutputLength": "BLAKE3 output length (bytes)",
+      "hashOutputLengthHint": "1–1024 · default 32",
+      "hashDropHint": "Drop a file onto this tab to hash it",
       "cryptoDescription": "Encrypt and decrypt text with military-grade algorithms",
       "cryptoEncrypt": "Encrypt",
       "cryptoDecrypt": "Decrypt",
@@ -4235,6 +4243,8 @@
       "pwdCopy": "Copy",
       "pwdCopied": "Copied!",
       "pwdAutoClear": "Copied (auto-clear in 30s)",
+      "pwdShow": "Show password",
+      "pwdHide": "Hide password",
       "pwdNoCharset": "Select at least one character set"
     },
     "vault": {

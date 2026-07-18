@@ -3894,7 +3894,17 @@
             "pwdGenerating": "생성 중...",
             "pwdGenerateInline": "안전한 비밀번호 생성",
             "pwdPresetCompatible": "호환 32",
-            "pwdGenerateCompatibleInline": "호환되는 32자 비밀번호 생성"
+            "pwdGenerateCompatibleInline": "호환되는 32자 비밀번호 생성",
+            "pwdShow": "비밀번호 표시",
+            "pwdHide": "비밀번호 숨기기",
+            "hashEncoding": "입력 인코딩",
+            "hashEncodingUtf8": "UTF-8",
+            "hashEncodingBase64": "Base64",
+            "hashEncodingHex": "Hex",
+            "hashEncodingBinary": "이진",
+            "hashOutputLength": "BLAKE3 출력 길이(바이트)",
+            "hashOutputLengthHint": "1–1024 · 기본값 32",
+            "hashDropHint": "이 탭에 파일을 끌어다 놓으면 해시를 계산합니다"
         },
         "dialog": {
             "deleteFile": "\"{name}\"을(를) 삭제하시겠습니까?",

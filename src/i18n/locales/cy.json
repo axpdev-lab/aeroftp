@@ -3894,7 +3894,17 @@
             "pwdGenerating": "Wrthi'n cynhyrchu...",
             "pwdGenerateInline": "Cynhyrchu cyfrinair diogel",
             "pwdPresetCompatible": "Cydnaws 32",
-            "pwdGenerateCompatibleInline": "Cynhyrchu cyfrinair cydnaws 32 nod"
+            "pwdGenerateCompatibleInline": "Cynhyrchu cyfrinair cydnaws 32 nod",
+            "pwdShow": "Dangos y cyfrinair",
+            "pwdHide": "Cuddio'r cyfrinair",
+            "hashEncoding": "Amgodiad mewnbwn",
+            "hashEncodingUtf8": "UTF-8",
+            "hashEncodingBase64": "Base64",
+            "hashEncodingHex": "Hex",
+            "hashEncodingBinary": "Deuaidd",
+            "hashOutputLength": "Hyd allbwn BLAKE3 (beitiau)",
+            "hashOutputLengthHint": "1–1024 · rhagosodedig 32",
+            "hashDropHint": "Gollyngwch ffeil ar y tab hwn i gyfrifo ei hash"
         },
         "dialog": {
             "deleteFile": "Dileu \"{name}\"?",

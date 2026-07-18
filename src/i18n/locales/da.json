@@ -3894,7 +3894,17 @@
             "pwdGenerating": "Genererer...",
             "pwdGenerateInline": "Generér en sikker adgangskode",
             "pwdPresetCompatible": "Kompatibel 32",
-            "pwdGenerateCompatibleInline": "Generér en kompatibel adgangskode på 32 tegn"
+            "pwdGenerateCompatibleInline": "Generér en kompatibel adgangskode på 32 tegn",
+            "pwdShow": "Vis adgangskode",
+            "pwdHide": "Skjul adgangskode",
+            "hashEncoding": "Inputkodning",
+            "hashEncodingUtf8": "UTF-8",
+            "hashEncodingBase64": "Base64",
+            "hashEncodingHex": "Hex",
+            "hashEncodingBinary": "Binær",
+            "hashOutputLength": "BLAKE3-outputlængde (byte)",
+            "hashOutputLengthHint": "1–1024 · standard 32",
+            "hashDropHint": "Slip en fil på denne fane for at hashe den"
         },
         "dialog": {
             "deleteFile": "Slet \"{name}\"?",

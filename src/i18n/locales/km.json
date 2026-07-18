@@ -3894,7 +3894,17 @@
             "pwdGenerating": "កំពុងបង្កើត...",
             "pwdGenerateInline": "បង្កើតពាក្យសម្ងាត់ដែលមានសុវត្ថិភាព",
             "pwdPresetCompatible": "ឆបគ្នា 32",
-            "pwdGenerateCompatibleInline": "បង្កើតពាក្យសម្ងាត់ដែលឆបគ្នាប្រវែង 32 តួអក្សរ"
+            "pwdGenerateCompatibleInline": "បង្កើតពាក្យសម្ងាត់ដែលឆបគ្នាប្រវែង 32 តួអក្សរ",
+            "pwdShow": "បង្ហាញពាក្យសម្ងាត់",
+            "pwdHide": "លាក់ពាក្យសម្ងាត់",
+            "hashEncoding": "ការអ៊ិនកូដបញ្ចូល",
+            "hashEncodingUtf8": "UTF-8",
+            "hashEncodingBase64": "Base64",
+            "hashEncodingHex": "Hex",
+            "hashEncodingBinary": "គោលពីរ",
+            "hashOutputLength": "ប្រវែងលទ្ធផល BLAKE3 (បៃ)",
+            "hashOutputLengthHint": "1–1024 · លំនាំដើម 32",
+            "hashDropHint": "ទម្លាក់ឯកសារលើផ្ទាំងនេះដើម្បីគណនា hash"
         },
         "dialog": {
             "deleteFile": "លុប \"{name}\"?",

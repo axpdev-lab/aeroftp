@@ -3894,7 +3894,17 @@
             "pwdGenerating": "Δημιουργία...",
             "pwdGenerateInline": "Δημιουργία ασφαλούς κωδικού πρόσβασης",
             "pwdPresetCompatible": "Συμβατό 32",
-            "pwdGenerateCompatibleInline": "Δημιουργία συμβατού κωδικού πρόσβασης 32 χαρακτήρων"
+            "pwdGenerateCompatibleInline": "Δημιουργία συμβατού κωδικού πρόσβασης 32 χαρακτήρων",
+            "pwdShow": "Εμφάνιση κωδικού",
+            "pwdHide": "Απόκρυψη κωδικού",
+            "hashEncoding": "Κωδικοποίηση εισόδου",
+            "hashEncodingUtf8": "UTF-8",
+            "hashEncodingBase64": "Base64",
+            "hashEncodingHex": "Hex",
+            "hashEncodingBinary": "Δυαδικό",
+            "hashOutputLength": "Μήκος εξόδου BLAKE3 (bytes)",
+            "hashOutputLengthHint": "1–1024 · προεπιλογή 32",
+            "hashDropHint": "Αποθέστε ένα αρχείο σε αυτήν την καρτέλα για υπολογισμό hash"
         },
         "dialog": {
             "deleteFile": "Διαγραφή του \"{name}\";",

@@ -3104,7 +3104,17 @@
             "pwdGenerating": "Generazione...",
             "pwdGenerateInline": "Genera una password sicura",
             "pwdPresetCompatible": "Compatibile 32",
-            "pwdGenerateCompatibleInline": "Genera una password compatibile di 32 caratteri"
+            "pwdGenerateCompatibleInline": "Genera una password compatibile di 32 caratteri",
+            "pwdShow": "Mostra password",
+            "pwdHide": "Nascondi password",
+            "hashEncoding": "Codifica input",
+            "hashEncodingUtf8": "UTF-8",
+            "hashEncodingBase64": "Base64",
+            "hashEncodingHex": "Hex",
+            "hashEncodingBinary": "Binario",
+            "hashOutputLength": "Lunghezza output BLAKE3 (byte)",
+            "hashOutputLengthHint": "1–1024 · predefinito 32",
+            "hashDropHint": "Trascina un file su questa scheda per calcolarne l'hash"
         },
         "vault": {
             "addDirectorySuccess": "Aggiunti {files} file in {dirs} directory",

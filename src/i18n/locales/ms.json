@@ -3894,7 +3894,17 @@
             "pwdGenerating": "Menjana...",
             "pwdGenerateInline": "Jana kata laluan selamat",
             "pwdPresetCompatible": "Serasi 32",
-            "pwdGenerateCompatibleInline": "Jana kata laluan serasi 32 aksara"
+            "pwdGenerateCompatibleInline": "Jana kata laluan serasi 32 aksara",
+            "pwdShow": "Tunjukkan kata laluan",
+            "pwdHide": "Sembunyikan kata laluan",
+            "hashEncoding": "Pengekodan input",
+            "hashEncodingUtf8": "UTF-8",
+            "hashEncodingBase64": "Base64",
+            "hashEncodingHex": "Hex",
+            "hashEncodingBinary": "Binari",
+            "hashOutputLength": "Panjang output BLAKE3 (bait)",
+            "hashOutputLengthHint": "1–1024 · lalai 32",
+            "hashDropHint": "Lepaskan fail pada tab ini untuk mengira hashnya"
         },
         "dialog": {
             "deleteFile": "Padam \"{name}\"?",

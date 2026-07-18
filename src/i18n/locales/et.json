@@ -3894,7 +3894,17 @@
             "pwdGenerating": "Genereerimine...",
             "pwdGenerateInline": "Loo turvaline parool",
             "pwdPresetCompatible": "Ühilduv 32",
-            "pwdGenerateCompatibleInline": "Loo ühilduv 32-märgiline parool"
+            "pwdGenerateCompatibleInline": "Loo ühilduv 32-märgiline parool",
+            "pwdShow": "Näita parooli",
+            "pwdHide": "Peida parool",
+            "hashEncoding": "Sisendi kodeering",
+            "hashEncodingUtf8": "UTF-8",
+            "hashEncodingBase64": "Base64",
+            "hashEncodingHex": "Hex",
+            "hashEncodingBinary": "Binaarne",
+            "hashOutputLength": "BLAKE3 väljundi pikkus (baiti)",
+            "hashOutputLengthHint": "1–1024 · vaikimisi 32",
+            "hashDropHint": "Räsi arvutamiseks lohista fail sellele vahekaardile"
         },
         "dialog": {
             "deleteFile": "Kustuta \"{name}\"?",

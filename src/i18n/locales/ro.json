@@ -3894,7 +3894,17 @@
             "pwdGenerating": "Se generează...",
             "pwdGenerateInline": "Generează o parolă sigură",
             "pwdPresetCompatible": "Compatibilă 32",
-            "pwdGenerateCompatibleInline": "Generează o parolă compatibilă de 32 de caractere"
+            "pwdGenerateCompatibleInline": "Generează o parolă compatibilă de 32 de caractere",
+            "pwdShow": "Afișează parola",
+            "pwdHide": "Ascunde parola",
+            "hashEncoding": "Codificarea intrării",
+            "hashEncodingUtf8": "UTF-8",
+            "hashEncodingBase64": "Base64",
+            "hashEncodingHex": "Hex",
+            "hashEncodingBinary": "Binar",
+            "hashOutputLength": "Lungimea ieșirii BLAKE3 (octeți)",
+            "hashOutputLengthHint": "1–1024 · implicit 32",
+            "hashDropHint": "Plasați un fișier pe această filă pentru a-i calcula hash-ul"
         },
         "dialog": {
             "deleteFile": "Ștergeți \"{name}\"?",

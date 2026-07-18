@@ -3894,7 +3894,17 @@
             "pwdGenerating": "正在生成...",
             "pwdGenerateInline": "生成安全密码",
             "pwdPresetCompatible": "兼容 32",
-            "pwdGenerateCompatibleInline": "生成兼容的 32 字符密码"
+            "pwdGenerateCompatibleInline": "生成兼容的 32 字符密码",
+            "pwdShow": "显示密码",
+            "pwdHide": "隐藏密码",
+            "hashEncoding": "输入编码",
+            "hashEncodingUtf8": "UTF-8",
+            "hashEncodingBase64": "Base64",
+            "hashEncodingHex": "Hex",
+            "hashEncodingBinary": "二进制",
+            "hashOutputLength": "BLAKE3 输出长度（字节）",
+            "hashOutputLengthHint": "1–1024 · 默认 32",
+            "hashDropHint": "将文件拖放到此标签页以计算哈希"
         },
         "dialog": {
             "deleteFile": "删除\"{name}\"？",

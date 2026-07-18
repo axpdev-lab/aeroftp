@@ -3894,7 +3894,17 @@
             "pwdGenerating": "Luodaan...",
             "pwdGenerateInline": "Luo turvallinen salasana",
             "pwdPresetCompatible": "Yhteensopiva 32",
-            "pwdGenerateCompatibleInline": "Luo yhteensopiva 32 merkin salasana"
+            "pwdGenerateCompatibleInline": "Luo yhteensopiva 32 merkin salasana",
+            "pwdShow": "Näytä salasana",
+            "pwdHide": "Piilota salasana",
+            "hashEncoding": "Syötteen koodaus",
+            "hashEncodingUtf8": "UTF-8",
+            "hashEncodingBase64": "Base64",
+            "hashEncodingHex": "Hex",
+            "hashEncodingBinary": "Binääri",
+            "hashOutputLength": "BLAKE3-tulosteen pituus (tavua)",
+            "hashOutputLengthHint": "1–1024 · oletus 32",
+            "hashDropHint": "Pudota tiedosto tälle välilehdelle laskeaksesi sen tiivisteen"
         },
         "dialog": {
             "deleteFile": "Poista \"{name}\"?",

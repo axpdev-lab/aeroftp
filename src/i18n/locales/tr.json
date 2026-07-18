@@ -3894,7 +3894,17 @@
             "pwdGenerating": "Oluşturuluyor...",
             "pwdGenerateInline": "Güvenli bir parola oluştur",
             "pwdPresetCompatible": "Uyumlu 32",
-            "pwdGenerateCompatibleInline": "32 karakterlik uyumlu bir parola oluştur"
+            "pwdGenerateCompatibleInline": "32 karakterlik uyumlu bir parola oluştur",
+            "pwdShow": "Şifreyi göster",
+            "pwdHide": "Şifreyi gizle",
+            "hashEncoding": "Girdi kodlaması",
+            "hashEncodingUtf8": "UTF-8",
+            "hashEncodingBase64": "Base64",
+            "hashEncodingHex": "Hex",
+            "hashEncodingBinary": "İkili",
+            "hashOutputLength": "BLAKE3 çıktı uzunluğu (bayt)",
+            "hashOutputLengthHint": "1–1024 · varsayılan 32",
+            "hashDropHint": "Hash'ini hesaplamak için bu sekmeye bir dosya bırakın"
         },
         "dialog": {
             "deleteFile": "\"{name}\" silinsin mi?",
