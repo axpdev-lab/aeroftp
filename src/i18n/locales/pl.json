@@ -482,7 +482,9 @@
             "s3TrashPurgeHint": "Usuń trwale tę wersję (nieodwracalne)",
             "s3TrashPurgeConfirm": "Usunąć trwale tę wersję? Tej operacji nie można cofnąć.",
             "s3TrashEmptySummary": "Spowoduje to trwałe usunięcie {count} obiektów ({bytes}). Tej operacji nie można cofnąć.",
-            "extractOverwriteConfirm": "Wyodrębnienie tutaj nadpisze {count} istniejących elementów: {names}. Kontynuować?"
+            "extractOverwriteConfirm": "Wyodrębnienie tutaj nadpisze {count} istniejących elementów: {names}. Kontynuować?",
+            "permanentDeleteHint": "Trwale usuwa tylko zaznaczone elementy z Kosza. Tej operacji nie można cofnąć.",
+            "emptyTrashHint": "Trwale usuwa WSZYSTKIE elementy w Koszu, nie tylko zaznaczone. Tej operacji nie można cofnąć."
         },
         "transfer": {
             "transferring": "Przesyłanie...",

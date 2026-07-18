@@ -482,7 +482,9 @@
             "s3TrashPurgeHint": "Permanenteng burahin ang bersyon na ito (hindi na maibabalik)",
             "s3TrashPurgeConfirm": "Permanenteng burahin ang bersyon na ito? Hindi na ito maaaring i-undo.",
             "s3TrashEmptySummary": "Permanenteng buburahin nito ang {count} object ({bytes}). Hindi na ito maaaring i-undo.",
-            "extractOverwriteConfirm": "Ang pag-extract dito ay magpapatong sa {count} umiiral na item: {names}. Magpatuloy?"
+            "extractOverwriteConfirm": "Ang pag-extract dito ay magpapatong sa {count} umiiral na item: {names}. Magpatuloy?",
+            "permanentDeleteHint": "Permanenteng tinatanggal lamang ang mga napiling item mula sa Basurahan. Hindi ito maibabalik.",
+            "emptyTrashHint": "Permanenteng tinatanggal ang LAHAT ng item sa Basurahan, hindi lang ang mga napili. Hindi ito maibabalik."
         },
         "transfer": {
             "transferring": "Naglilipat...",

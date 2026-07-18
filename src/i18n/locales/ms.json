@@ -482,7 +482,9 @@
             "s3TrashPurgeHint": "Padam versi ini secara kekal (tidak boleh dibatalkan)",
             "s3TrashPurgeConfirm": "Padam versi ini secara kekal? Tindakan ini tidak boleh dibuat asal.",
             "s3TrashEmptySummary": "Ini akan memadam secara kekal {count} objek ({bytes}). Tindakan ini tidak boleh dibuat asal.",
-            "extractOverwriteConfirm": "Mengekstrak di sini akan menulis ganti {count} item sedia ada: {names}. Teruskan?"
+            "extractOverwriteConfirm": "Mengekstrak di sini akan menulis ganti {count} item sedia ada: {names}. Teruskan?",
+            "permanentDeleteHint": "Memadam secara kekal hanya item yang dipilih daripada Tong Sampah. Ini tidak boleh dibatalkan.",
+            "emptyTrashHint": "Memadam secara kekal SEMUA item dalam Tong Sampah, bukan hanya yang dipilih. Ini tidak boleh dibatalkan."
         },
         "transfer": {
             "transferring": "Memindahkan...",

@@ -482,7 +482,9 @@
             "s3TrashPurgeHint": "Ištrinti šią versiją visam laikui (negrįžtama)",
             "s3TrashPurgeConfirm": "Ištrinti šią versiją visam laikui? Šio veiksmo anuliuoti negalima.",
             "s3TrashEmptySummary": "Tai visam laikui ištrins {count} objektų ({bytes}). Šio veiksmo anuliuoti negalima.",
-            "extractOverwriteConfirm": "Išskleidus čia bus perrašyta {count} esamų elementų: {names}. Tęsti?"
+            "extractOverwriteConfirm": "Išskleidus čia bus perrašyta {count} esamų elementų: {names}. Tęsti?",
+            "permanentDeleteHint": "Visam laikui ištrina tik pasirinktus elementus iš Šiukšlinės. To negalima anuliuoti.",
+            "emptyTrashHint": "Visam laikui ištrina VISUS Šiukšlinės elementus, ne tik pasirinktus. To negalima anuliuoti."
         },
         "transfer": {
             "transferring": "Perduodama...",

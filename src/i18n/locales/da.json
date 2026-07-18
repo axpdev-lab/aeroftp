@@ -482,7 +482,9 @@
             "s3TrashPurgeHint": "Slet denne version permanent (uigenkaldeligt)",
             "s3TrashPurgeConfirm": "Slet denne version permanent? Denne handling kan ikke fortrydes.",
             "s3TrashEmptySummary": "Dette sletter permanent {count} objekt(er) ({bytes}). Denne handling kan ikke fortrydes.",
-            "extractOverwriteConfirm": "Udpakning her overskriver {count} eksisterende element(er): {names}. Fortsæt?"
+            "extractOverwriteConfirm": "Udpakning her overskriver {count} eksisterende element(er): {names}. Fortsæt?",
+            "permanentDeleteHint": "Sletter permanent kun de valgte elementer fra Papirkurven. Dette kan ikke fortrydes.",
+            "emptyTrashHint": "Sletter permanent ALLE elementer i Papirkurven, ikke kun de valgte. Dette kan ikke fortrydes."
         },
         "transfer": {
             "transferring": "Overfører...",

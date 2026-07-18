@@ -482,7 +482,9 @@
             "s3TrashPurgeHint": "A verzió végleges törlése (visszavonhatatlan)",
             "s3TrashPurgeConfirm": "Véglegesen törli ezt a verziót? Ez a művelet nem vonható vissza.",
             "s3TrashEmptySummary": "Ez véglegesen töröl {count} objektumot ({bytes}). Ez a művelet nem vonható vissza.",
-            "extractOverwriteConfirm": "Az ide való kibontás felülír {count} meglévő elemet: {names}. Folytatja?"
+            "extractOverwriteConfirm": "Az ide való kibontás felülír {count} meglévő elemet: {names}. Folytatja?",
+            "permanentDeleteHint": "Csak a kijelölt elemeket törli véglegesen a Kukából. Ezt nem lehet visszavonni.",
+            "emptyTrashHint": "Az ÖSSZES elemet véglegesen törli a Kukából, nem csak a kijelölteket. Ezt nem lehet visszavonni."
         },
         "transfer": {
             "transferring": "Átvitel...",

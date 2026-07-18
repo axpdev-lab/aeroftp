@@ -482,7 +482,9 @@
             "s3TrashPurgeHint": "Deze versie permanent verwijderen (onomkeerbaar)",
             "s3TrashPurgeConfirm": "Deze versie permanent verwijderen? Dit kan niet ongedaan worden gemaakt.",
             "s3TrashEmptySummary": "Hiermee worden {count} object(en) ({bytes}) permanent verwijderd. Dit kan niet ongedaan worden gemaakt.",
-            "extractOverwriteConfirm": "Hier uitpakken overschrijft {count} bestaand(e) item(s): {names}. Doorgaan?"
+            "extractOverwriteConfirm": "Hier uitpakken overschrijft {count} bestaand(e) item(s): {names}. Doorgaan?",
+            "permanentDeleteHint": "Verwijdert alleen de geselecteerde items permanent uit de Prullenbak. Dit kan niet ongedaan worden gemaakt.",
+            "emptyTrashHint": "Verwijdert ALLE items in de Prullenbak permanent, niet alleen de geselecteerde. Dit kan niet ongedaan worden gemaakt."
         },
         "transfer": {
             "transferring": "Overdragen...",

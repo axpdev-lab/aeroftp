@@ -482,7 +482,9 @@
             "s3TrashPurgeHint": "Hapus versi ini secara permanen (tidak dapat dibatalkan)",
             "s3TrashPurgeConfirm": "Hapus versi ini secara permanen? Tindakan ini tidak dapat dibatalkan.",
             "s3TrashEmptySummary": "Ini akan menghapus permanen {count} objek ({bytes}). Tindakan ini tidak dapat dibatalkan.",
-            "extractOverwriteConfirm": "Mengekstrak di sini akan menimpa {count} item yang ada: {names}. Lanjutkan?"
+            "extractOverwriteConfirm": "Mengekstrak di sini akan menimpa {count} item yang ada: {names}. Lanjutkan?",
+            "permanentDeleteHint": "Menghapus permanen hanya item yang dipilih dari Sampah. Ini tidak dapat dibatalkan.",
+            "emptyTrashHint": "Menghapus permanen SEMUA item di Sampah, bukan hanya yang dipilih. Ini tidak dapat dibatalkan."
         },
         "transfer": {
             "transferring": "Mentransfer...",

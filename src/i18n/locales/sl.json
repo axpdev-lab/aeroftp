@@ -482,7 +482,9 @@
             "s3TrashPurgeHint": "Trajno izbriši to različico (nepovratno)",
             "s3TrashPurgeConfirm": "Trajno izbrisati to različico? Tega dejanja ni mogoče razveljaviti.",
             "s3TrashEmptySummary": "S tem bo trajno izbrisano {count} predmetov ({bytes}). Tega dejanja ni mogoče razveljaviti.",
-            "extractOverwriteConfirm": "Razširjanje sem bo prepisalo {count} obstoječih elementov: {names}. Nadaljujem?"
+            "extractOverwriteConfirm": "Razširjanje sem bo prepisalo {count} obstoječih elementov: {names}. Nadaljujem?",
+            "permanentDeleteHint": "Trajno izbriše samo izbrane elemente iz Koša. Tega ni mogoče razveljaviti.",
+            "emptyTrashHint": "Trajno izbriše VSE elemente v Košu, ne samo izbranih. Tega ni mogoče razveljaviti."
         },
         "transfer": {
             "transferring": "Prenašanje...",

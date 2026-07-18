@@ -482,7 +482,9 @@
             "s3TrashPurgeHint": "Xóa vĩnh viễn phiên bản này (không thể hoàn tác)",
             "s3TrashPurgeConfirm": "Xóa vĩnh viễn phiên bản này? Thao tác này không thể hoàn tác.",
             "s3TrashEmptySummary": "Thao tác này sẽ xóa vĩnh viễn {count} đối tượng ({bytes}). Thao tác này không thể hoàn tác.",
-            "extractOverwriteConfirm": "Giải nén tại đây sẽ ghi đè {count} mục hiện có: {names}. Tiếp tục?"
+            "extractOverwriteConfirm": "Giải nén tại đây sẽ ghi đè {count} mục hiện có: {names}. Tiếp tục?",
+            "permanentDeleteHint": "Xóa vĩnh viễn chỉ các mục đã chọn khỏi Thùng rác. Không thể hoàn tác thao tác này.",
+            "emptyTrashHint": "Xóa vĩnh viễn TẤT CẢ các mục trong Thùng rác, không chỉ những mục đã chọn. Không thể hoàn tác thao tác này."
         },
         "transfer": {
             "transferring": "Đang truyền...",

@@ -482,7 +482,9 @@
             "s3TrashPurgeHint": "Elimina permanentment aquesta versió (irreversible)",
             "s3TrashPurgeConfirm": "Voleu eliminar permanentment aquesta versió? Aquesta acció no es pot desfer.",
             "s3TrashEmptySummary": "Això eliminarà permanentment {count} element(s) ({bytes}). Aquesta acció no es pot desfer.",
-            "extractOverwriteConfirm": "Extreure aquí sobreescriurà {count} element(s) existent(s): {names}. Voleu continuar?"
+            "extractOverwriteConfirm": "Extreure aquí sobreescriurà {count} element(s) existent(s): {names}. Voleu continuar?",
+            "permanentDeleteHint": "Elimina permanentment només els elements seleccionats de la Paperera. Això no es pot desfer.",
+            "emptyTrashHint": "Elimina permanentment TOTS els elements de la Paperera, no només els seleccionats. Això no es pot desfer."
         },
         "transfer": {
             "transferring": "Transferint...",

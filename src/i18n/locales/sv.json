@@ -482,7 +482,9 @@
             "s3TrashPurgeHint": "Ta bort den här versionen permanent (oåterkalleligt)",
             "s3TrashPurgeConfirm": "Ta bort den här versionen permanent? Detta kan inte ångras.",
             "s3TrashEmptySummary": "Detta tar permanent bort {count} objekt ({bytes}). Detta kan inte ångras.",
-            "extractOverwriteConfirm": "Att extrahera här skriver över {count} befintliga objekt: {names}. Fortsätta?"
+            "extractOverwriteConfirm": "Att extrahera här skriver över {count} befintliga objekt: {names}. Fortsätta?",
+            "permanentDeleteHint": "Tar bort endast de markerade objekten permanent från Papperskorgen. Detta kan inte ångras.",
+            "emptyTrashHint": "Tar bort ALLA objekt i Papperskorgen permanent, inte bara de markerade. Detta kan inte ångras."
         },
         "transfer": {
             "transferring": "Överför...",

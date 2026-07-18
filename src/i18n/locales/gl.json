@@ -482,7 +482,9 @@
             "s3TrashPurgeHint": "Eliminar permanentemente esta versión (irreversible)",
             "s3TrashPurgeConfirm": "Eliminar permanentemente esta versión? Esta acción non se pode desfacer.",
             "s3TrashEmptySummary": "Isto eliminará permanentemente {count} obxecto(s) ({bytes}). Esta acción non se pode desfacer.",
-            "extractOverwriteConfirm": "Extraer aquí sobrescribirá {count} elemento(s) existente(s): {names}. Continuar?"
+            "extractOverwriteConfirm": "Extraer aquí sobrescribirá {count} elemento(s) existente(s): {names}. Continuar?",
+            "permanentDeleteHint": "Elimina permanentemente só os elementos seleccionados do Lixo. Isto non se pode desfacer.",
+            "emptyTrashHint": "Elimina permanentemente TODOS os elementos do Lixo, non só os seleccionados. Isto non se pode desfacer."
         },
         "transfer": {
             "transferring": "Transferindo...",

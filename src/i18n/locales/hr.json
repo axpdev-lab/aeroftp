@@ -482,7 +482,9 @@
             "s3TrashPurgeHint": "Trajno izbriši ovu verziju (nepovratno)",
             "s3TrashPurgeConfirm": "Trajno izbrisati ovu verziju? Ova radnja se ne može poništiti.",
             "s3TrashEmptySummary": "Ovo će trajno izbrisati {count} objekt(a) ({bytes}). Ova radnja se ne može poništiti.",
-            "extractOverwriteConfirm": "Izdvajanje ovdje prepisat će {count} postojeće stavke: {names}. Nastaviti?"
+            "extractOverwriteConfirm": "Izdvajanje ovdje prepisat će {count} postojeće stavke: {names}. Nastaviti?",
+            "permanentDeleteHint": "Trajno briše samo odabrane stavke iz Smeća. Ovo se ne može poništiti.",
+            "emptyTrashHint": "Trajno briše SVE stavke u Smeću, ne samo odabrane. Ovo se ne može poništiti."
         },
         "transfer": {
             "transferring": "Prijenos...",

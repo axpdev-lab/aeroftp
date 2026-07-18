@@ -482,7 +482,9 @@
             "s3TrashPurgeHint": "Eyða þessari útgáfu varanlega (óafturkræft)",
             "s3TrashPurgeConfirm": "Eyða þessari útgáfu varanlega? Þetta er ekki hægt að afturkalla.",
             "s3TrashEmptySummary": "Þetta eyðir varanlega {count} hlut(um) ({bytes}). Þetta er ekki hægt að afturkalla.",
-            "extractOverwriteConfirm": "Að afþjappa hér skrifar yfir {count} fyrirliggjandi atriði: {names}. Halda áfram?"
+            "extractOverwriteConfirm": "Að afþjappa hér skrifar yfir {count} fyrirliggjandi atriði: {names}. Halda áfram?",
+            "permanentDeleteHint": "Eyðir varanlega aðeins völdum atriðum úr Ruslinu. Þessu er ekki hægt að afturkalla.",
+            "emptyTrashHint": "Eyðir varanlega ÖLLUM atriðum í Ruslinu, ekki bara völdum. Þessu er ekki hægt að afturkalla."
         },
         "transfer": {
             "transferring": "Flytur...",

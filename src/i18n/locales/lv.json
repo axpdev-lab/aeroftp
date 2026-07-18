@@ -482,7 +482,9 @@
             "s3TrashPurgeHint": "Dzēst šo versiju neatgriezeniski (nav atgriezeniski)",
             "s3TrashPurgeConfirm": "Vai neatgriezeniski dzēst šo versiju? Šo darbību nevar atsaukt.",
             "s3TrashEmptySummary": "Tas neatgriezeniski dzēsīs {count} objektu(s) ({bytes}). Šo darbību nevar atsaukt.",
-            "extractOverwriteConfirm": "Izvilkšana šeit pārrakstīs {count} esošus vienumus: {names}. Turpināt?"
+            "extractOverwriteConfirm": "Izvilkšana šeit pārrakstīs {count} esošus vienumus: {names}. Turpināt?",
+            "permanentDeleteHint": "Neatgriezeniski dzēš tikai atlasītos vienumus no Miskastes. To nevar atsaukt.",
+            "emptyTrashHint": "Neatgriezeniski dzēš VISUS Miskastes vienumus, ne tikai atlasītos. To nevar atsaukt."
         },
         "transfer": {
             "transferring": "Pārsūta...",

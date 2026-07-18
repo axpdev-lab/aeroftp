@@ -888,7 +888,9 @@
             "s3TrashPurgeHint": "Elimina definitivamente questa versione (irreversibile)",
             "s3TrashPurgeConfirm": "Eliminare definitivamente questa versione? Questa operazione non può essere annullata.",
             "s3TrashEmptySummary": "Verranno eliminati definitivamente {count} oggetti ({bytes}). Questa operazione non può essere annullata.",
-            "extractOverwriteConfirm": "L'estrazione qui sovrascriverà {count} elemento/i esistente/i: {names}. Continuare?"
+            "extractOverwriteConfirm": "L'estrazione qui sovrascriverà {count} elemento/i esistente/i: {names}. Continuare?",
+            "permanentDeleteHint": "Elimina definitivamente solo gli elementi selezionati dal Cestino. Questa operazione non può essere annullata.",
+            "emptyTrashHint": "Elimina definitivamente TUTTI gli elementi nel Cestino, non solo quelli selezionati. Questa operazione non può essere annullata."
         },
         "transfer": {
             "transferring": "Trasferimento in corso...",

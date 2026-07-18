@@ -482,7 +482,9 @@
             "s3TrashPurgeHint": "このバージョンを完全に削除します (取り消せません)",
             "s3TrashPurgeConfirm": "このバージョンを完全に削除しますか？この操作は元に戻せません。",
             "s3TrashEmptySummary": "{count} 個のオブジェクト ({bytes}) を完全に削除します。この操作は元に戻せません。",
-            "extractOverwriteConfirm": "ここに展開すると、既存の {count} 個の項目が上書きされます: {names}。続行しますか?"
+            "extractOverwriteConfirm": "ここに展開すると、既存の {count} 個の項目が上書きされます: {names}。続行しますか?",
+            "permanentDeleteHint": "ゴミ箱から選択した項目のみを完全に削除します。この操作は元に戻せません。",
+            "emptyTrashHint": "選択した項目だけでなく、ゴミ箱内のすべての項目を完全に削除します。この操作は元に戻せません。"
         },
         "transfer": {
             "transferring": "転送中...",

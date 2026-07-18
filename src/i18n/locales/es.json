@@ -482,7 +482,9 @@
             "s3TrashPurgeHint": "Eliminar permanentemente esta versión (irreversible)",
             "s3TrashPurgeConfirm": "¿Eliminar permanentemente esta versión? Esta acción no se puede deshacer.",
             "s3TrashEmptySummary": "Esto eliminará permanentemente {count} objeto(s) ({bytes}). Esta acción no se puede deshacer.",
-            "extractOverwriteConfirm": "Extraer aquí sobrescribirá {count} elemento(s) existente(s): {names}. ¿Continuar?"
+            "extractOverwriteConfirm": "Extraer aquí sobrescribirá {count} elemento(s) existente(s): {names}. ¿Continuar?",
+            "permanentDeleteHint": "Elimina permanentemente solo los elementos seleccionados de la Papelera. Esto no se puede deshacer.",
+            "emptyTrashHint": "Elimina permanentemente TODOS los elementos de la Papelera, no solo los seleccionados. Esto no se puede deshacer."
         },
         "transfer": {
             "transferring": "Transfiriendo...",

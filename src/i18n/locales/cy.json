@@ -482,7 +482,9 @@
             "s3TrashPurgeHint": "Dileu'r fersiwn hon yn barhaol (di-droi'n-ôl)",
             "s3TrashPurgeConfirm": "Dileu'r fersiwn hon yn barhaol? Ni ellir dadwneud hyn.",
             "s3TrashEmptySummary": "Bydd hyn yn dileu {count} gwrthrych ({bytes}) yn barhaol. Ni ellir dadwneud hyn.",
-            "extractOverwriteConfirm": "Bydd echdynnu yma yn trosysgrifo {count} eitem sy'n bodoli eisoes: {names}. Parhau?"
+            "extractOverwriteConfirm": "Bydd echdynnu yma yn trosysgrifo {count} eitem sy'n bodoli eisoes: {names}. Parhau?",
+            "permanentDeleteHint": "Yn dileu'n barhaol dim ond yr eitemau a ddewiswyd o'r Sbwriel. Ni ellir dadwneud hyn.",
+            "emptyTrashHint": "Yn dileu'n barhaol BOB eitem yn y Sbwriel, nid dim ond y rhai a ddewiswyd. Ni ellir dadwneud hyn."
         },
         "transfer": {
             "transferring": "Yn trosglwyddo...",

@@ -482,7 +482,9 @@
             "s3TrashPurgeHint": "Futa toleo hili kabisa (haiwezi kutenduliwa)",
             "s3TrashPurgeConfirm": "Futa toleo hili kabisa? Kitendo hiki hakiwezi kutenduliwa.",
             "s3TrashEmptySummary": "Hii itafuta kabisa vitu {count} ({bytes}). Kitendo hiki hakiwezi kutenduliwa.",
-            "extractOverwriteConfirm": "Kuchambua hapa kutaandika juu ya vipengele {count} vilivyopo: {names}. Kuendelea?"
+            "extractOverwriteConfirm": "Kuchambua hapa kutaandika juu ya vipengele {count} vilivyopo: {names}. Kuendelea?",
+            "permanentDeleteHint": "Inafuta kabisa vipengele vilivyochaguliwa pekee kutoka kwenye Tapo. Hatua hii haiwezi kutenduliwa.",
+            "emptyTrashHint": "Inafuta kabisa vipengele VYOTE kwenye Tapo, si vilivyochaguliwa pekee. Hatua hii haiwezi kutenduliwa."
         },
         "transfer": {
             "transferring": "Inahamisha...",

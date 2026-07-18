@@ -482,7 +482,9 @@
             "s3TrashPurgeHint": "Șterge definitiv această versiune (ireversibil)",
             "s3TrashPurgeConfirm": "Ștergeți definitiv această versiune? Această acțiune nu poate fi anulată.",
             "s3TrashEmptySummary": "Aceasta va șterge definitiv {count} obiect(e) ({bytes}). Această acțiune nu poate fi anulată.",
-            "extractOverwriteConfirm": "Extragerea aici va suprascrie {count} element(e) existent(e): {names}. Continuați?"
+            "extractOverwriteConfirm": "Extragerea aici va suprascrie {count} element(e) existent(e): {names}. Continuați?",
+            "permanentDeleteHint": "Șterge definitiv doar elementele selectate din Coșul de gunoi. Această acțiune nu poate fi anulată.",
+            "emptyTrashHint": "Șterge definitiv TOATE elementele din Coșul de gunoi, nu doar cele selectate. Această acțiune nu poate fi anulată."
         },
         "transfer": {
             "transferring": "Se transferă...",

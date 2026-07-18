@@ -482,7 +482,9 @@
             "s3TrashPurgeHint": "Bu sürümü kalıcı olarak sil (geri alınamaz)",
             "s3TrashPurgeConfirm": "Bu sürüm kalıcı olarak silinsin mi? Bu işlem geri alınamaz.",
             "s3TrashEmptySummary": "Bu, {count} nesneyi ({bytes}) kalıcı olarak silecek. Bu işlem geri alınamaz.",
-            "extractOverwriteConfirm": "Buraya çıkarmak mevcut {count} öğenin üzerine yazacak: {names}. Devam edilsin mi?"
+            "extractOverwriteConfirm": "Buraya çıkarmak mevcut {count} öğenin üzerine yazacak: {names}. Devam edilsin mi?",
+            "permanentDeleteHint": "Yalnızca seçili öğeleri Çöp Kutusu'ndan kalıcı olarak siler. Bu işlem geri alınamaz.",
+            "emptyTrashHint": "Yalnızca seçili olanları değil, Çöp Kutusu'ndaki TÜM öğeleri kalıcı olarak siler. Bu işlem geri alınamaz."
         },
         "transfer": {
             "transferring": "Aktarılıyor...",

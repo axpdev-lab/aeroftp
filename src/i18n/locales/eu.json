@@ -482,7 +482,9 @@
             "s3TrashPurgeHint": "Ezabatu bertsio hau behin betiko (itzulezina)",
             "s3TrashPurgeConfirm": "Bertsio hau behin betiko ezabatu? Ekintza hau ezin da desegin.",
             "s3TrashEmptySummary": "Honek {count} objektu ({bytes}) behin betiko ezabatuko ditu. Ekintza hau ezin da desegin.",
-            "extractOverwriteConfirm": "Hemen erauzteak lehendik dauden {count} elementu gainidatziko ditu: {names}. Jarraitu?"
+            "extractOverwriteConfirm": "Hemen erauzteak lehendik dauden {count} elementu gainidatziko ditu: {names}. Jarraitu?",
+            "permanentDeleteHint": "Hautatutako elementuak soilik ezabatzen ditu behin betiko Zakarrontzitik. Ezin da desegin.",
+            "emptyTrashHint": "Zakarrontziko elementu GUZTIAK ezabatzen ditu behin betiko, ez soilik hautatutakoak. Ezin da desegin."
         },
         "transfer": {
             "transferring": "Transferitzen...",
