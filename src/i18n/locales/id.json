@@ -484,7 +484,8 @@
             "s3TrashEmptySummary": "Ini akan menghapus permanen {count} objek ({bytes}). Tindakan ini tidak dapat dibatalkan.",
             "extractOverwriteConfirm": "Mengekstrak di sini akan menimpa {count} item yang ada: {names}. Lanjutkan?",
             "permanentDeleteHint": "Menghapus permanen hanya item yang dipilih dari Sampah. Ini tidak dapat dibatalkan.",
-            "emptyTrashHint": "Menghapus permanen SEMUA item di Sampah, bukan hanya yang dipilih. Ini tidak dapat dibatalkan."
+            "emptyTrashHint": "Menghapus permanen SEMUA item di Sampah, bukan hanya yang dipilih. Ini tidak dapat dibatalkan.",
+            "dropboxPurgeBusinessOnly": "Hapus Permanen dan Kosongkan Sampah memerlukan akun Dropbox Business/Team."
         },
         "transfer": {
             "transferring": "Mentransfer...",

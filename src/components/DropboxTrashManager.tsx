@@ -34,6 +34,22 @@ export function DropboxTrashManager({ onClose, onRefreshFiles, currentPath }: Dr
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Dropbox `files/permanently_delete` is a Business-only endpoint, so Permanent
+  // Delete / Empty Trash are enabled only for `business` accounts. Personal
+  // (basic/pro) accounts see the actions disabled with a premium notice (their
+  // trash auto-empties after 30 days). null = still probing the tier.
+  const [accountType, setAccountType] = useState<string | null>(null);
+  const canPurge = accountType === 'business';
+  const [pendingDeleteConfirm, setPendingDeleteConfirm] = useState(false);
+  const [pendingEmptyConfirm, setPendingEmptyConfirm] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    invoke<string>('dropbox_account_type')
+      .then(tier => { if (!cancelled) setAccountType(tier); })
+      .catch(() => { if (!cancelled) setAccountType('basic'); });
+    return () => { cancelled = true; };
+  }, []);
 
   const loadTrash = useCallback(async () => {
     setLoading(true);
@@ -95,10 +111,56 @@ export function DropboxTrashManager({ onClose, onRefreshFiles, currentPath }: Dr
     }
   };
 
-  // Permanent delete / Empty Trash are intentionally NOT offered for Dropbox:
-  // the files/permanent_delete API requires a Business/Team account with the
-  // files.permanent_delete scope (unavailable for personal accounts). Trash
-  // auto-empties after 30 days. See the note at the end of this component.
+  const handlePermanentDelete = () => {
+    if (selected.size === 0 || !canPurge) return;
+    setPendingDeleteConfirm(true);
+  };
+
+  const confirmPermanentDelete = async () => {
+    setPendingDeleteConfirm(false);
+    const paths = Array.from(selected);
+    if (paths.length === 0) return;
+    const logId = humanLog.logRaw('activity.trash_delete_start', 'INFO', { provider: 'Dropbox', count: paths.length });
+    setActionLoading('delete');
+    setError(null);
+    try {
+      for (const path of paths) {
+        await invoke('dropbox_permanent_delete', { path });
+      }
+      humanLog.updateEntry(logId, { status: 'success', message: `[Dropbox] Permanently deleted ${paths.length} item(s) from trash` });
+      await loadTrash();
+      onRefreshFiles?.();
+    } catch (err) {
+      humanLog.updateEntry(logId, { status: 'error', message: `[Dropbox] Failed to permanently delete from trash` });
+      setError(String(err));
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  // Dropbox has no bulk purge API, so Empty Trash permanently deletes every
+  // listed trashed path one by one (same endpoint as Permanent Delete).
+  const confirmEmptyTrash = async () => {
+    setPendingEmptyConfirm(false);
+    const paths = items.map(i => i.path);
+    if (paths.length === 0) return;
+    const logId = humanLog.logRaw('activity.trash_empty_start', 'INFO', { provider: 'Dropbox', count: paths.length });
+    setActionLoading('empty');
+    setError(null);
+    try {
+      for (const path of paths) {
+        await invoke('dropbox_permanent_delete', { path });
+      }
+      humanLog.updateEntry(logId, { status: 'success', message: `[Dropbox] Emptied trash (${paths.length} item(s))` });
+      await loadTrash();
+      onRefreshFiles?.();
+    } catch (err) {
+      humanLog.updateEntry(logId, { status: 'error', message: `[Dropbox] Failed to empty trash` });
+      setError(String(err));
+    } finally {
+      setActionLoading(null);
+    }
+  };
 
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
@@ -151,6 +213,32 @@ export function DropboxTrashManager({ onClose, onRefreshFiles, currentPath }: Dr
               {actionLoading === 'restore' ? <Loader2 size={12} className="animate-spin" /> : <RotateCcw size={12} />}
               {t('contextMenu.restoreFromTrash')} {selected.size > 0 && `(${selected.size})`}
             </button>
+            <button
+              onClick={handlePermanentDelete}
+              disabled={selected.size === 0 || actionLoading !== null || !canPurge}
+              title={canPurge ? t('contextMenu.permanentDeleteHint') : t('contextMenu.dropboxPurgeBusinessOnly')}
+              className="flex items-center gap-1.5 px-3 py-1 text-xs rounded bg-red-600 text-white hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {actionLoading === 'delete' ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+              {t('contextMenu.permanentDelete')} {selected.size > 0 && `(${selected.size})`}
+            </button>
+            <button
+              onClick={() => setPendingEmptyConfirm(true)}
+              disabled={items.length === 0 || actionLoading !== null || !canPurge}
+              title={canPurge ? t('contextMenu.emptyTrashHint') : t('contextMenu.dropboxPurgeBusinessOnly')}
+              className="flex items-center gap-1.5 px-3 py-1 text-xs rounded bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {actionLoading === 'empty' ? <Loader2 size={12} className="animate-spin" /> : <AlertTriangle size={12} />}
+              {t('contextMenu.emptyTrash')}
+            </button>
+          </div>
+        )}
+
+        {/* Premium notice: purge actions need a Dropbox Business/Team account */}
+        {items.length > 0 && accountType !== null && !canPurge && (
+          <div className="flex items-start gap-2 px-4 py-2 border-b border-amber-200 dark:border-amber-900/40 bg-amber-50 dark:bg-amber-900/20 text-xs text-amber-800 dark:text-amber-300">
+            <AlertTriangle size={13} className="shrink-0 mt-0.5" />
+            <span>{t('contextMenu.dropboxPurgeBusinessOnly')}</span>
           </div>
         )}
 
@@ -214,8 +302,43 @@ export function DropboxTrashManager({ onClose, onRefreshFiles, currentPath }: Dr
         </div>
       </div>
 
-      {/* Note: Permanent delete removed: Dropbox API requires Team scope (files.permanent_delete)
-           which is not available for personal accounts. Trash auto-empties after 30 days. */}
+      {/* Permanent delete confirm (selected items) */}
+      {pendingDeleteConfirm && (
+        <div className="fixed inset-0 z-[10000] bg-black/50 flex items-center justify-center" role="dialog" aria-modal="true" onClick={() => setPendingDeleteConfirm(false)}>
+          <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-6 shadow-2xl max-w-sm animate-scale-in" onClick={e => e.stopPropagation()}>
+            <p className="text-gray-900 dark:text-gray-100 mb-4">
+              {t('contextMenu.permanentDeleteConfirm', { count: selected.size })}
+            </p>
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setPendingDeleteConfirm(false)} className="px-3 py-1.5 text-sm rounded bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-900 dark:text-gray-100">
+                {t('common.cancel')}
+              </button>
+              <button onClick={confirmPermanentDelete} className="px-3 py-1.5 text-sm rounded bg-red-600 hover:bg-red-700 text-white">
+                {t('contextMenu.permanentDelete')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Empty Trash confirm (all items) */}
+      {pendingEmptyConfirm && (
+        <div className="fixed inset-0 z-[10000] bg-black/50 flex items-center justify-center" role="dialog" aria-modal="true" onClick={() => setPendingEmptyConfirm(false)}>
+          <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-6 shadow-2xl max-w-sm animate-scale-in" onClick={e => e.stopPropagation()}>
+            <p className="text-gray-900 dark:text-gray-100 mb-4">
+              {t('contextMenu.emptyTrashConfirm')}
+            </p>
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setPendingEmptyConfirm(false)} className="px-3 py-1.5 text-sm rounded bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-900 dark:text-gray-100">
+                {t('common.cancel')}
+              </button>
+              <button onClick={confirmEmptyTrash} className="px-3 py-1.5 text-sm rounded bg-red-600 hover:bg-red-700 text-white">
+                {t('contextMenu.emptyTrash')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

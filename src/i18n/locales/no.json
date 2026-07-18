@@ -484,7 +484,8 @@
             "s3TrashEmptySummary": "Dette sletter permanent {count} objekt(er) ({bytes}). Denne handlingen kan ikke angres.",
             "extractOverwriteConfirm": "Å pakke ut her vil overskrive {count} eksisterende element(er): {names}. Fortsette?",
             "permanentDeleteHint": "Sletter permanent bare de valgte elementene fra Papirkurven. Dette kan ikke angres.",
-            "emptyTrashHint": "Sletter permanent ALLE elementer i Papirkurven, ikke bare de valgte. Dette kan ikke angres."
+            "emptyTrashHint": "Sletter permanent ALLE elementer i Papirkurven, ikke bare de valgte. Dette kan ikke angres.",
+            "dropboxPurgeBusinessOnly": "Permanent sletting og tømming av papirkurven krever en Dropbox Business/Team-konto."
         },
         "transfer": {
             "transferring": "Overfører...",

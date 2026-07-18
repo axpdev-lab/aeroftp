@@ -484,7 +484,8 @@
             "s3TrashEmptySummary": "Ini akan memadam secara kekal {count} objek ({bytes}). Tindakan ini tidak boleh dibuat asal.",
             "extractOverwriteConfirm": "Mengekstrak di sini akan menulis ganti {count} item sedia ada: {names}. Teruskan?",
             "permanentDeleteHint": "Memadam secara kekal hanya item yang dipilih daripada Tong Sampah. Ini tidak boleh dibatalkan.",
-            "emptyTrashHint": "Memadam secara kekal SEMUA item dalam Tong Sampah, bukan hanya yang dipilih. Ini tidak boleh dibatalkan."
+            "emptyTrashHint": "Memadam secara kekal SEMUA item dalam Tong Sampah, bukan hanya yang dipilih. Ini tidak boleh dibatalkan.",
+            "dropboxPurgeBusinessOnly": "Padam Kekal dan Kosongkan Sampah memerlukan akaun Dropbox Business/Team."
         },
         "transfer": {
             "transferring": "Memindahkan...",

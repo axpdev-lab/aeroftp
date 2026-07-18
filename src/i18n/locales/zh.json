@@ -484,7 +484,8 @@
             "s3TrashEmptySummary": "这将永久删除 {count} 个对象 ({bytes})。此操作无法撤消。",
             "extractOverwriteConfirm": "在此解压将覆盖 {count} 个现有项目：{names}。是否继续？",
             "permanentDeleteHint": "仅永久删除回收站中选定的项目。此操作无法撤销。",
-            "emptyTrashHint": "永久删除回收站中的所有项目，而不仅仅是选定的项目。此操作无法撤销。"
+            "emptyTrashHint": "永久删除回收站中的所有项目，而不仅仅是选定的项目。此操作无法撤销。",
+            "dropboxPurgeBusinessOnly": "永久删除和清空回收站需要 Dropbox Business/Team 账户。"
         },
         "transfer": {
             "transferring": "传输中...",

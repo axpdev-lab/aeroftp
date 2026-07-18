@@ -488,6 +488,43 @@ impl DropboxProvider {
         Ok(())
     }
 
+    /// Return the Dropbox account tier tag: "basic", "pro", or "business".
+    ///
+    /// `files/permanently_delete` (and therefore the Permanent Delete / Empty
+    /// Trash actions) is only available for Dropbox Business apps, so the GUI
+    /// uses this to enable those actions for `business` accounts and show a
+    /// premium notice for `basic` / `pro` personal accounts. On any parse
+    /// failure it returns "basic" (the safe, purge-disabled default).
+    pub async fn account_type(&self) -> Result<String, ProviderError> {
+        let url = format!("{}/users/get_current_account", API_BASE);
+        let response = self
+            .client
+            .post(&url)
+            .header(AUTHORIZATION, self.auth_header().await?)
+            .send()
+            .await
+            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let text = response.text().await.unwrap_or_default();
+            return Err(ProviderError::Other(format!(
+                "get_current_account failed {}: {}",
+                status,
+                sanitize_api_error(&text)
+            )));
+        }
+
+        let body = response
+            .json::<serde_json::Value>()
+            .await
+            .map_err(|e| ProviderError::Other(sanitize_api_error(&e.to_string())))?;
+        Ok(body["account_type"][".tag"]
+            .as_str()
+            .unwrap_or("basic")
+            .to_string())
+    }
+
     /// Get tags for a file
     pub async fn get_tags(
         &mut self,

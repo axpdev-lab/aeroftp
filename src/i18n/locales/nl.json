@@ -484,7 +484,8 @@
             "s3TrashEmptySummary": "Hiermee worden {count} object(en) ({bytes}) permanent verwijderd. Dit kan niet ongedaan worden gemaakt.",
             "extractOverwriteConfirm": "Hier uitpakken overschrijft {count} bestaand(e) item(s): {names}. Doorgaan?",
             "permanentDeleteHint": "Verwijdert alleen de geselecteerde items permanent uit de Prullenbak. Dit kan niet ongedaan worden gemaakt.",
-            "emptyTrashHint": "Verwijdert ALLE items in de Prullenbak permanent, niet alleen de geselecteerde. Dit kan niet ongedaan worden gemaakt."
+            "emptyTrashHint": "Verwijdert ALLE items in de Prullenbak permanent, niet alleen de geselecteerde. Dit kan niet ongedaan worden gemaakt.",
+            "dropboxPurgeBusinessOnly": "Permanent verwijderen en Prullenbak legen vereisen een Dropbox Business/Team-account."
         },
         "transfer": {
             "transferring": "Overdragen...",

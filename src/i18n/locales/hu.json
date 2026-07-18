@@ -484,7 +484,8 @@
             "s3TrashEmptySummary": "Ez véglegesen töröl {count} objektumot ({bytes}). Ez a művelet nem vonható vissza.",
             "extractOverwriteConfirm": "Az ide való kibontás felülír {count} meglévő elemet: {names}. Folytatja?",
             "permanentDeleteHint": "Csak a kijelölt elemeket törli véglegesen a Kukából. Ezt nem lehet visszavonni.",
-            "emptyTrashHint": "Az ÖSSZES elemet véglegesen törli a Kukából, nem csak a kijelölteket. Ezt nem lehet visszavonni."
+            "emptyTrashHint": "Az ÖSSZES elemet véglegesen törli a Kukából, nem csak a kijelölteket. Ezt nem lehet visszavonni.",
+            "dropboxPurgeBusinessOnly": "A végleges törléshez és a Kuka ürítéséhez Dropbox Business/Team fiók szükséges."
         },
         "transfer": {
             "transferring": "Átvitel...",

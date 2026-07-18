@@ -484,7 +484,8 @@
             "s3TrashEmptySummary": "See kustutab jäädavalt {count} objekti ({bytes}). Seda toimingut ei saa tagasi võtta.",
             "extractOverwriteConfirm": "Siia lahtipakkimine kirjutab üle {count} olemasolevat üksust: {names}. Kas jätkata?",
             "permanentDeleteHint": "Kustutab jäädavalt ainult valitud üksused Prügikastist. Seda ei saa tagasi võtta.",
-            "emptyTrashHint": "Kustutab jäädavalt KÕIK üksused Prügikastis, mitte ainult valitud. Seda ei saa tagasi võtta."
+            "emptyTrashHint": "Kustutab jäädavalt KÕIK üksused Prügikastis, mitte ainult valitud. Seda ei saa tagasi võtta.",
+            "dropboxPurgeBusinessOnly": "Jäädav kustutamine ja prügikasti tühjendamine nõuavad Dropbox Business/Team kontot."
         },
         "transfer": {
             "transferring": "Ülekanne...",

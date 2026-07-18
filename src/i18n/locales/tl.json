@@ -484,7 +484,8 @@
             "s3TrashEmptySummary": "Permanenteng buburahin nito ang {count} object ({bytes}). Hindi na ito maaaring i-undo.",
             "extractOverwriteConfirm": "Ang pag-extract dito ay magpapatong sa {count} umiiral na item: {names}. Magpatuloy?",
             "permanentDeleteHint": "Permanenteng tinatanggal lamang ang mga napiling item mula sa Basurahan. Hindi ito maibabalik.",
-            "emptyTrashHint": "Permanenteng tinatanggal ang LAHAT ng item sa Basurahan, hindi lang ang mga napili. Hindi ito maibabalik."
+            "emptyTrashHint": "Permanenteng tinatanggal ang LAHAT ng item sa Basurahan, hindi lang ang mga napili. Hindi ito maibabalik.",
+            "dropboxPurgeBusinessOnly": "Ang Permanenteng Pagbura at Pag-empty ng Basurahan ay nangangailangan ng Dropbox Business/Team account."
         },
         "transfer": {
             "transferring": "Naglilipat...",

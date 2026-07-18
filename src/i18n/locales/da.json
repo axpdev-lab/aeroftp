@@ -484,7 +484,8 @@
             "s3TrashEmptySummary": "Dette sletter permanent {count} objekt(er) ({bytes}). Denne handling kan ikke fortrydes.",
             "extractOverwriteConfirm": "Udpakning her overskriver {count} eksisterende element(er): {names}. Fortsæt?",
             "permanentDeleteHint": "Sletter permanent kun de valgte elementer fra Papirkurven. Dette kan ikke fortrydes.",
-            "emptyTrashHint": "Sletter permanent ALLE elementer i Papirkurven, ikke kun de valgte. Dette kan ikke fortrydes."
+            "emptyTrashHint": "Sletter permanent ALLE elementer i Papirkurven, ikke kun de valgte. Dette kan ikke fortrydes.",
+            "dropboxPurgeBusinessOnly": "Permanent sletning og tømning af papirkurven kræver en Dropbox Business/Team-konto."
         },
         "transfer": {
             "transferring": "Overfører...",
