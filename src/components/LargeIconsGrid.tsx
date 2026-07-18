@@ -60,10 +60,9 @@ interface LargeIconsGridProps {
   sameNameLeakLabel?: string;
   sameNameLeakTooltip?: string;
   // AeroCrypt overlay decryption animation (remote panel only): scramble names
-  // while unlocking, then reveal. `revealing` keeps the cards animated through
-  // the brief reveal window after `decrypting` flips false.
+  // while the unlock is in flight. When `decrypting` flips false the decrypted
+  // names paint immediately (no reveal "puff").
   decrypting?: boolean;
-  revealing?: boolean;
 }
 
 // --- Individual file card (memoized) ---
@@ -89,7 +88,6 @@ interface LargeIconCardProps {
   formatBytes: (bytes: number) => string;
   showFileExtensions?: boolean;
   decrypting?: boolean;
-  revealing?: boolean;
   cardIndex?: number;
   lock?: ArchiveLock;
   lockedLabel?: string;
@@ -120,7 +118,6 @@ const LargeIconCard = React.memo<LargeIconCardProps>(({
   formatBytes,
   showFileExtensions = true,
   decrypting = false,
-  revealing = false,
   cardIndex = 0,
   lock = null,
   lockedLabel,
@@ -132,7 +129,7 @@ const LargeIconCard = React.memo<LargeIconCardProps>(({
   const renameRef = useRef<HTMLInputElement>(null);
   const isRenaming = inlineRename?.path === file.path;
   const isImage = IMAGE_EXTENSIONS.test(file.name);
-  const animateName = (decrypting || revealing) && file.name !== '..';
+  const animateName = decrypting && file.name !== '..';
 
   const handleClick = useCallback((e: React.MouseEvent) => {
     onFileClick(file, e);
@@ -314,7 +311,6 @@ export function LargeIconsGrid({
   formatBytes,
   showFileExtensions = true,
   decrypting = false,
-  revealing = false,
   archiveLockOf,
   lockedLabel,
   unlockedLabel,
@@ -368,7 +364,6 @@ export function LargeIconsGrid({
         formatBytes={formatBytes}
         showFileExtensions={showFileExtensions}
         decrypting={decrypting}
-        revealing={revealing}
         cardIndex={index}
         lock={archiveLockOf ? archiveLockOf(file) : null}
         lockedLabel={lockedLabel}
@@ -381,7 +376,7 @@ export function LargeIconsGrid({
   }, [files, selectedFiles, dragOverTarget, currentPath, getFileIcon, onFileClick,
     onFileDoubleClick, onContextMenu, onDragStart, onDragOver, onDrop, onDragLeave,
     onDragEnd, inlineRename, onInlineRenameChange, onInlineRenameCommit,
-    onInlineRenameCancel, formatBytes, showFileExtensions, decrypting, revealing,
+    onInlineRenameCancel, formatBytes, showFileExtensions, decrypting,
     archiveLockOf, lockedLabel, unlockedLabel,
     sameNameLeakOf, sameNameLeakLabel, sameNameLeakTooltip]);
 

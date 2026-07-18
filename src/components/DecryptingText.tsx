@@ -101,7 +101,6 @@ export const DecryptingText: React.FC<DecryptingTextProps> = ({
             title={title ?? text}
         >
             {display}
-            {active && !reduceMotion && <span className="aerocrypt-scan-bar" aria-hidden="true" />}
         </span>
     );
 };
