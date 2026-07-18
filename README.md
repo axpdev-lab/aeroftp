@@ -218,7 +218,7 @@ AeroFTP organizes integrations on three tiers, so what you see in the catalog is
 | Seafile | - | self-hosted | WebDAV |
 | SourceForge | US | OSS hosting | SFTP |
 | Storj | US | 30-day trial | S3* |
-| TAB.DIGITAL | IN | 8 GB (managed Nextcloud) | WebDAV |
+| TAB.DIGITAL | EU | 8 GB (managed Nextcloud) | WebDAV |
 | Tencent COS | CN | 6-month trial | S3* |
 | Uploadcare | US | 1 GB (media CDN) | API |
 | Wasabi | US | 30-day trial | S3* |

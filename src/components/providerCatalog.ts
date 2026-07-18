@@ -278,7 +278,7 @@ export const PROVIDER_CATALOG: CatalogCompany[] = [
     { company: 'Hetzner Storage Box', logoId: 'hetzner-storage-box', countryCode: 'DE', freeStorageGb: null,
       freeNote: 'paid plan',
       protocols: [{ label: 'SFTP', protocol: 'sftp', providerId: 'hetzner-storage-box', category: 'protocols', paid: true }] },
-    { company: 'TAB.DIGITAL', logoId: 'tabdigital', countryCode: 'IN', freeStorageGb: 8,
+    { company: 'TAB.DIGITAL', logoId: 'tabdigital', countryCode: 'EU', freeStorageGb: 8,
       freeNote: 'managed Nextcloud',
       protocols: [{ label: 'WebDAV', protocol: 'webdav', providerId: 'tabdigital', category: 'webdav' }] },
     { company: 'PixelUnion', logoId: 'pixelunion', countryCode: 'EU', freeStorageGb: 16,

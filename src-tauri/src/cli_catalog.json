@@ -1004,12 +1004,12 @@
   {
     "company": "TAB.DIGITAL",
     "logoId": "tabdigital",
-    "country": "IN",
+    "country": "EU",
     "freeGb": 8,
     "freeNote": "managed Nextcloud",
     "freeRequiresCard": false,
     "regions": [
-      "IN"
+      "EU"
     ],
     "protocols": [
       {
