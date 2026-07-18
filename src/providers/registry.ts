@@ -1158,6 +1158,33 @@ export const PROVIDERS: ProviderConfig[] = [
         signupUrl: 'https://www.4shared.com/reg0.jsp',
     },
     {
+        id: '4shared-webdav',
+        name: '4shared (WebDAV)',
+        description: '4shared cloud storage via WebDAV',
+        protocol: 'webdav',
+        category: 'webdav',
+        icon: 'Cloud',
+        color: '#008BF6',
+        stable: true,
+        fields: [
+            { ...COMMON_FIELDS.username, label: 'Email', placeholder: 'email@example.com' },
+            { ...COMMON_FIELDS.password, label: 'Password', helpText: 'Your regular 4shared login password' },
+        ],
+        defaults: {
+            server: 'https://webdav.4shared.com',
+            port: 443,
+            basePath: '/',
+        },
+        features: { shareLink: false, sync: true },
+        healthCheckUrl: 'https://webdav.4shared.com',
+        helpUrl: 'https://www.4shared.com/developer/docs/index.jsp',
+        signupUrl: 'https://www.4shared.com/reg0.jsp',
+        setupInstructions: [
+            'Use your 4shared account email as the username',
+            'Use your regular 4shared login password',
+        ],
+    },
+    {
         id: 'cloudme',
         name: 'CloudMe',
         description: 'Swedish cloud storage with WebDAV (3 GB free)',

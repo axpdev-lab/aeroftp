@@ -185,7 +185,7 @@
       {
         "label": "WebDAV",
         "protocol": "webdav",
-        "providerId": "4shared",
+        "providerId": "4shared-webdav",
         "paid": false,
         "category": "webdav",
         "note": null

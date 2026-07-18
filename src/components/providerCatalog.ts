@@ -153,7 +153,7 @@ export const PROVIDER_CATALOG: CatalogCompany[] = [
       healthCheckUrl: 'https://webdav.4shared.com',
       protocols: [
           { label: 'OAuth', protocol: 'fourshared', category: 'cloud-storage' },
-          { label: 'WebDAV', protocol: 'webdav', providerId: '4shared', category: 'webdav' },
+          { label: 'WebDAV', protocol: 'webdav', providerId: '4shared-webdav', category: 'webdav' },
       ] },
     { company: 'kDrive', logoId: 'kdrive', countryCode: 'CH', freeStorageGb: 15,
       healthCheckUrl: 'https://api.infomaniak.com',
