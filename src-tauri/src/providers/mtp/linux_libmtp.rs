@@ -783,12 +783,7 @@ fn usb_sysfs_serial(bus: u32, devnum: u8) -> Option<String> {
 /// friendly/model strings.
 ///
 /// Pure over `sysfs_root` so unit tests can pass a fixture directory.
-fn usb_iproduct_for(
-    vid: u16,
-    pid: u16,
-    serial: Option<&str>,
-    sysfs_root: &Path,
-) -> Option<String> {
+fn usb_iproduct_for(vid: u16, pid: u16, serial: Option<&str>, sysfs_root: &Path) -> Option<String> {
     let want_vid = format!("{vid:04x}");
     let want_pid = format!("{pid:04x}");
     let want_serial = serial.map(str::trim).filter(|s| !s.is_empty());
