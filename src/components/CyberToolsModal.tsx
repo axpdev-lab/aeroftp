@@ -44,7 +44,7 @@ export const CyberToolsModal: React.FC<CyberToolsModalProps> = ({ onClose }) => 
         <div className="fixed inset-0 z-50 flex items-start justify-center pt-[5vh] bg-black/60">
             <div
                 {...modalDrag.panelProps}
-                className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl border border-gray-200 dark:border-gray-700 w-[560px] max-h-[85vh] flex flex-col animate-scale-in"
+                className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl border border-gray-200 dark:border-gray-700 w-[640px] max-h-[85vh] flex flex-col animate-scale-in"
             >
                 {/* Header */}
                 <div
@@ -584,7 +584,7 @@ const HashForgeTab: React.FC = () => {
                 <div className="space-y-2">
                     <label className="text-xs font-medium text-gray-500 dark:text-gray-400">{t('cyberTools.hashResult')}</label>
                     <div className="flex items-start gap-2">
-                        <code className={`flex-1 px-3 py-2 text-xs font-mono rounded bg-gray-50 dark:bg-gray-900 break-all border border-gray-200 dark:border-gray-700 select-all ${
+                        <code className={`flex-1 min-w-0 px-3 py-2 text-xs font-mono rounded bg-gray-50 dark:bg-gray-900 whitespace-nowrap overflow-x-auto border border-gray-200 dark:border-gray-700 select-all ${
                             result.startsWith('Error:') ? 'text-red-600 dark:text-red-400' : 'text-gray-800 dark:text-gray-200'
                         }`}>
                             {result}
