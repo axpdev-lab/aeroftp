@@ -5190,11 +5190,12 @@ interface UpdateVerificationInfo {
   // Ehud #2: OS file/folder drag&drop from the system File Explorer onto the
   // AeroFile local panel imports the dropped items into the current local
   // directory (copy_local_file is recursive, so folders are pulled in whole).
-  // Skipped while the vault panel is open (it registers its own drop listener)
-  // or the connection screen is showing (no local target). The webview drop
-  // event is window-global, so this gate is what keeps it from double-firing.
+  // Skipped while the vault panel or the Security Tools modal is open (each
+  // registers its own drop listener - Hash Forge owns the drop) or the
+  // connection screen is showing (no local target). The webview drop event is
+  // window-global, so this gate is what keeps it from double-firing.
   useEffect(() => {
-    if (showVaultPanel || showConnectionScreen) return;
+    if (showVaultPanel || showConnectionScreen || showCyberTools) return;
     const webview = getCurrentWebview();
     return guardedUnlisten(webview.onDragDropEvent(async (event) => {
       if (event.payload.type !== 'drop') return;
@@ -5223,7 +5224,7 @@ interface UpdateVerificationInfo {
         notify.error(t('toast.dropFailed', { count: failures.length.toString() }), failures.join(', '));
       }
     }));
-  }, [showVaultPanel, showConnectionScreen, loadLocalFiles, notify, t]);
+  }, [showVaultPanel, showConnectionScreen, showCyberTools, loadLocalFiles, notify, t]);
 
   // T-AUTO-RECONNECT-IDLE: surface silent reconnect lifecycle as a toast
   // so the user gets feedback that the click that hit a dead session
