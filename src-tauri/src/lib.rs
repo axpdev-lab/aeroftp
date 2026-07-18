@@ -17878,8 +17878,18 @@ pub fn run() {
                 .maximizable(true)
                 .minimizable(true)
                 .closable(true)
-                .visible(false)
-                .disable_drag_drop_handler();
+                .visible(false);
+            // Windows WebView2 intercepts OS file drops unless the native
+            // handler is disabled, which breaks HTML5 DnD (CHANGELOG). On
+            // Linux/WebKitGTK the opposite is true: HTML5 DataTransfer from
+            // Nautilus advertises text/uri-list but getData/files stay empty,
+            // so Hash Forge / vault / local-panel need Tauri's GTK-level
+            // onDragDropEvent paths. Keep the native handler everywhere
+            // except Windows.
+            #[cfg(windows)]
+            let main_builder = main_builder.disable_drag_drop_handler();
+            #[cfg(not(windows))]
+            let main_builder = main_builder;
             // Window chrome (issue #290, macOS Tahoe "no window after splash").
             // A fully borderless window (decorations(false)) cannot become the
             // key window on macOS and fails to present after the splash closes,

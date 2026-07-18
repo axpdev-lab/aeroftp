@@ -134,11 +134,11 @@ const PillButton: React.FC<{ active: boolean; onClick: () => void; children: Rea
 const HASH_ALGOS = ['MD5', 'SHA-1', 'SHA-256', 'SHA-512', 'BLAKE3'] as const;
 const HASH_ENCODINGS = ['utf-8', 'base64', 'hex', 'binary'] as const;
 
-// Absolute path of an OS file dropped via HTML drag-and-drop.
-// The main webview always uses `disable_drag_drop_handler` (Windows HTML5
-// requirement), so Tauri's `onDragDropEvent` never fires — only DataTransfer
-// is available. On WebKitGTK, `File.path` is usually absent and `text/uri-list`
-// is often empty; callers must fall back to staging `files[0]` contents.
+// Absolute path from HTML5 DataTransfer (Windows primary path; Linux fallback).
+// On Linux the webview keeps Tauri's native drag handler — Nautilus→WebKitGTK
+// often advertises text/uri-list while getData/files stay empty, so the real
+// path comes from onDragDropEvent. Staging files[0] still covers synthetic
+// drops and engines that expose a File blob without .path.
 function uriOrPathToFsPath(raw: string): string | null {
     const line = raw.trim();
     if (!line || line.startsWith('#')) return null;
@@ -176,15 +176,13 @@ function extractDroppedPath(dt: DataTransfer): string | null {
     }
 
     // 2) MIME types file managers commonly set (must read synchronously in drop)
-    const mimes = ['text/uri-list', 'text/plain', 'text/x-moz-url', 'URL'];
+    const mimes = ['text/uri-list', 'text/plain', 'text/html', 'text/x-moz-url', 'URL'];
     for (const mime of mimes) {
         let raw = '';
         try { raw = dt.getData(mime); } catch { /* ignore */ }
         if (!raw) continue;
-        for (const line of raw.split(/\r?\n/)) {
-            const p = uriOrPathToFsPath(line);
-            if (p) return p;
-        }
+        const fromLines = pathFromUriPayload(raw);
+        if (fromLines) return fromLines;
     }
 
     // 3) Last resort: any type whose payload looks like a file URI / abs path
@@ -193,13 +191,28 @@ function extractDroppedPath(dt: DataTransfer): string | null {
             let raw = '';
             try { raw = dt.getData(t); } catch { /* ignore */ }
             if (!raw) continue;
-            for (const line of raw.split(/\r?\n/)) {
-                const p = uriOrPathToFsPath(line);
-                if (p) return p;
-            }
+            const fromLines = pathFromUriPayload(raw);
+            if (fromLines) return fromLines;
         }
     } catch { /* ignore */ }
 
+    return null;
+}
+
+/** Pull a filesystem path out of uri-list / plain / html drag payloads. */
+function pathFromUriPayload(raw: string): string | null {
+    // Direct lines (uri-list / plain)
+    for (const line of raw.split(/\r?\n/)) {
+        const p = uriOrPathToFsPath(line);
+        if (p) return p;
+    }
+    // HTML from Nautilus sometimes embeds file:// in href/src
+    const hrefMatch = raw.match(/(?:href|src)=["'](file:[^"']+)["']/i)
+        || raw.match(/(file:\/\/[^\s"'<>]+)/i);
+    if (hrefMatch?.[1]) {
+        const p = uriOrPathToFsPath(hrefMatch[1]);
+        if (p) return p;
+    }
     return null;
 }
 
@@ -308,9 +321,10 @@ const HashForgeTab: React.FC = () => {
         }
     }, []);
 
-    // Belt-and-suspenders: if the webview ever re-enables the native drag-drop
-    // handler, prefer its absolute paths (no blob staging). With the current
-    // `disable_drag_drop_handler` this listener never fires on any platform.
+    // Primary drop path on Linux/macOS: Tauri native onDragDropEvent (GTK/WebKit
+    // file URIs). Windows keeps disable_drag_drop_handler so HTML5 handleHtmlDrop
+    // owns drops there. App.tsx gates the local-panel import listener while this
+    // modal is open so the same drop is not double-handled.
     useEffect(() => {
         let unlisten: (() => void) | undefined;
         let cancelled = false;
@@ -322,6 +336,7 @@ const HashForgeTab: React.FC = () => {
                         setDragActive(true);
                     } else if (event.payload.type === 'leave') {
                         setDragActive(false);
+                        dragDepthRef.current = 0;
                     } else if (event.payload.type === 'drop' && event.payload.paths.length > 0) {
                         setDragActive(false);
                         dragDepthRef.current = 0;
@@ -372,10 +387,51 @@ const HashForgeTab: React.FC = () => {
             applyDroppedPath(path);
             return;
         }
+
+        // Some engines advertise uri-list/html but only yield the payload via getAsString.
+        const asyncUri = await new Promise<string | null>(resolve => {
+            let settled = false;
+            const done = (v: string | null) => {
+                if (settled) return;
+                settled = true;
+                resolve(v);
+            };
+            const timer = window.setTimeout(() => done(null), 400);
+            try {
+                const items = Array.from(dt.items || []).filter(i => i.kind === 'string');
+                if (items.length === 0) {
+                    window.clearTimeout(timer);
+                    done(null);
+                    return;
+                }
+                let remaining = items.length;
+                let found: string | null = null;
+                for (const item of items) {
+                    item.getAsString(s => {
+                        if (!found) {
+                            const p = pathFromUriPayload(s || '');
+                            if (p) found = p;
+                        }
+                        remaining -= 1;
+                        if (remaining === 0) {
+                            window.clearTimeout(timer);
+                            done(found);
+                        }
+                    });
+                }
+            } catch {
+                window.clearTimeout(timer);
+                done(null);
+            }
+        });
+        if (asyncUri) {
+            applyDroppedPath(asyncUri);
+            return;
+        }
+
         if (!file) return;
 
-        // WebKitGTK common case: File blob present, no absolute path. Stage
-        // contents so hash_file can stream the real bytes (not the path string).
+        // File blob present, no absolute path: stage contents for hash_file.
         try {
             setLoading(true);
             const dataBase64 = await fileToBase64(file);
@@ -460,12 +516,21 @@ const HashForgeTab: React.FC = () => {
                     <input
                         value={filePath}
                         readOnly
+                        onClick={() => { void selectFile(); }}
+                        onKeyDown={e => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                void selectFile();
+                            }
+                        }}
                         placeholder={t('cyberTools.hashSelectFile')}
-                        className="flex-1 px-3 py-2 text-sm rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 truncate"
+                        title={t('cyberTools.hashSelectFile')}
+                        className="flex-1 px-3 py-2 text-sm rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 truncate cursor-pointer hover:border-cyan-500/60 focus:outline-none focus:ring-1 focus:ring-cyan-500"
                     />
                     <button
-                        onClick={selectFile}
+                        onClick={() => { void selectFile(); }}
                         className="px-3 py-2 text-sm rounded bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors cursor-pointer"
+                        title={t('cyberTools.hashSelectFile')}
                     >
                         <FileSearch size={16} />
                     </button>
