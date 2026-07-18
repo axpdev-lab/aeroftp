@@ -934,7 +934,10 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
             const needsReplug = portableDeviceNeedsReplug(mtpAutomounterPresent, gvfsMount);
             const subtitle = needsReplug
               ? t('sidebar.portable_needs_replug')
-              : (dev.busLocation
+              // Show the full device id (e.g. "usb:5:3"), not the bare
+              // bus:devnum "5:3" which reads as an unlabelled number.
+              : (dev.deviceId
+                || dev.busLocation
                 || (dev.storagesHint > 0
                   ? t('sidebar.portable_storages', { count: dev.storagesHint })
                   : dev.platform));
