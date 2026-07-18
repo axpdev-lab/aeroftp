@@ -1224,10 +1224,6 @@ const App: React.FC = () => {
     kind: 'rclone-crypt' | 'aerocrypt';
   } | null>(null);
   const [overlayDecrypting, setOverlayDecrypting] = useState(false);
-  // T2: brief grace window after decryption ends so the just-landed decrypted
-  // names stay wrapped in DecryptingText long enough to play the reveal ("puff")
-  // instead of unmounting to plain text mid-transition.
-  const [overlayRevealing, setOverlayRevealing] = useState(false);
   // The owner of the active (or in-progress) encrypted overlay. Both the provider
   // decorator state and the decryption animation are gated on
   // this owner matching the active session, so an overlay can NEVER bleed onto
@@ -1246,16 +1242,6 @@ const App: React.FC = () => {
   const [cryptOverlayOwner, setCryptOverlayOwner] = useState<
     { savedServerId: string | null; sessionId: string | null } | null
   >(null);
-  const prevOverlayDecryptingRef = useRef(false);
-  useEffect(() => {
-    const was = prevOverlayDecryptingRef.current;
-    prevOverlayDecryptingRef.current = overlayDecrypting;
-    if (was && !overlayDecrypting) {
-      setOverlayRevealing(true);
-      const id = setTimeout(() => setOverlayRevealing(false), 900);
-      return () => clearTimeout(id);
-    }
-  }, [overlayDecrypting]);
   // Guards the post-unlock reload against double-firing (React 18 StrictMode
   // double-invokes the effect in dev; a stable ref keyed by the activated vault
   // id makes the decrypted reload + activity log run exactly once per unlock).
@@ -3769,10 +3755,13 @@ interface UpdateVerificationInfo {
     return false;
   })();
 
-  // T2: the decryption animation is allowed only on the tab that owns the
-  // overlay, so it never plays on another connected server's panel and stops as
-  // soon as you switch tabs.
-  const overlayAnimActive = (overlayDecrypting || overlayRevealing) && cryptOverlayOwnerMatchesActive;
+  // The decryption scramble is allowed only on the tab that owns the overlay, so
+  // it never plays on another connected server's panel and stops as soon as you
+  // switch tabs. It runs ONLY while the unlock is in flight (overlayDecrypting):
+  // the moment the decrypted names land, they paint immediately with no reveal
+  // "puff" (the ~0.8s cosmetic tail was cut so the toggle feels as fast as the
+  // real Argon2id + re-list work allows).
+  const overlayAnimActive = overlayDecrypting && cryptOverlayOwnerMatchesActive;
 
   // Path-bar crypt overlay TOGGLE badge state. The badge is shown for any overlay
   // tab (capability persists across lock) so it can be clicked to lock/unlock:
@@ -18030,7 +18019,6 @@ interface UpdateVerificationInfo {
                         formatBytes={formatBytes}
                         showFileExtensions={true}
                         decrypting={overlayAnimActive && overlayDecrypting}
-                        revealing={overlayAnimActive && overlayRevealing}
                       />
                     ) : (
                       /* Grid View */

@@ -413,36 +413,6 @@ table::-webkit-scrollbar-thumb:hover {
   }
 }
 
-/* AeroCrypt decryption "scan" cursor: a soft accent band that sweeps across a
-   name while it is being decrypted. The loop (1.6s) is deliberately slower than
-   the per-character scramble so the two motions read as distinct layers. */
-@keyframes aerocrypt-scan {
-  0% {
-    transform: translateX(-130%);
-  }
-  100% {
-    transform: translateX(230%);
-  }
-}
-
-.aerocrypt-scan-bar {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 0;
-  width: 38%;
-  pointer-events: none;
-  background: linear-gradient(90deg, transparent, var(--color-accent, #34d399), transparent);
-  opacity: 0.35;
-  animation: aerocrypt-scan 1.6s ease-in-out infinite;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .aerocrypt-scan-bar {
-    display: none;
-  }
-}
-
 /* ======================================
    Utility Classes
    ====================================== */
