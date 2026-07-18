@@ -2,12 +2,13 @@ import * as React from 'react';
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import {
     Server, Database, Globe, Cloud, Code, Camera, Layers, Smartphone,
-    ChevronRight, Search, X, Zap, Activity, ShieldCheck, Lock, Info, LayoutGrid, Table as TableIcon, RefreshCw, Share2,
+    ChevronRight, Search, Zap, Activity, ShieldCheck, Lock, Info, LayoutGrid, Table as TableIcon, RefreshCw, Share2,
 } from 'lucide-react';
 import { ProviderType } from '../../types';
 import { PROVIDER_LOGOS } from '../ProviderLogos';
 import { ProtocolIcon, ProtocolBadge, isSecureBadge, isCipherStrengthBadge } from '../ProtocolSelector';
 import { useTranslation } from '../../i18n';
+import { SearchBox } from '../SearchBox';
 import { buildDiscoverCategories, DiscoverCategory, DiscoverItem, DISCOVER_DESC_KEYS, PROVIDER_HEALTH_URLS, SYNTHETIC_TILE_COUNT } from './discoverData';
 import { getProviderById } from '../../providers';
 import { CatalogCategoryId } from '../../types/catalog';
@@ -581,25 +582,16 @@ export function DiscoverPanel({ onSelectProvider }: DiscoverPanelProps) {
                 ) : (
                     <>
                         {/* Grid search (the list view has its own search inside CatalogTable) */}
-                        <div className="relative mb-3 max-w-md">
-                            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                            <input
-                                type="text"
-                                value={gridQuery}
-                                onChange={(e) => setGridQuery(e.target.value)}
-                                placeholder={t('introHub.list.searchPlaceholder')}
-                                className="w-full pl-9 pr-8 py-1.5 bg-gray-50 dark:bg-gray-700/60 border border-gray-200 dark:border-gray-600 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/40"
-                            />
-                            {gridQuery && (
-                                <button
-                                    onClick={() => setGridQuery('')}
-                                    className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
-                                    aria-label={t('common.close')}
-                                >
-                                    <X size={13} />
-                                </button>
-                            )}
-                        </div>
+                        <SearchBox
+                            value={gridQuery}
+                            onChange={setGridQuery}
+                            onClear={() => setGridQuery('')}
+                            clearAriaLabel={t('common.close')}
+                            clearIconSize={13}
+                            placeholder={t('introHub.list.searchPlaceholder')}
+                            containerClassName="mb-3 max-w-md"
+                            className="w-full pl-3 pr-8 py-1.5 bg-gray-50 dark:bg-gray-700/60 border border-gray-200 dark:border-gray-600 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                        />
                         {/* Provider grid */}
                         <div className="flex-1 overflow-y-auto">
                             {visibleGridItems.length === 0 ? (

@@ -1,11 +1,12 @@
 import * as React from 'react';
 import {
-    Search, X, Star, ShieldCheck, Server, Globe, Database, Cloud, Image, Code,
+    Star, ShieldCheck, Server, Globe, Database, Cloud, Image, Code,
     HardDrive, Folder, FolderPlus, PanelLeftClose, PanelLeftOpen, ArrowLeftRight, Activity, Share2,
     Smartphone,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useTranslation } from '../../i18n';
+import { SearchBox } from '../SearchBox';
 import { MyServersFilterBy, FILTER_CHIPS } from '../../types/catalog';
 import type { ServerGroup } from '../../utils/serverGroups';
 import { visibleQuickFilters, visibleProtocolFilters, visiblePeerFilter } from '../../utils/sidebarFilters';
@@ -234,24 +235,15 @@ export function MyServersSidebar({
             </div>
 
             {/* Search */}
-            <div className="relative px-2 pb-1">
-                <Search size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-                <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => onSearchChange(e.target.value)}
-                    placeholder={t('introHub.searchServers')}
-                    className="w-full h-8 pl-8 pr-7 text-sm rounded-lg bg-gray-100 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:border-blue-400 dark:focus:border-blue-500 focus:ring-1 focus:ring-blue-400/25 transition-colors"
-                />
-                {searchQuery && (
-                    <button
-                        onClick={() => onSearchChange('')}
-                        className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
-                    >
-                        <X size={13} />
-                    </button>
-                )}
-            </div>
+            <SearchBox
+                value={searchQuery}
+                onChange={onSearchChange}
+                onClear={() => onSearchChange('')}
+                clearIconSize={13}
+                placeholder={t('introHub.searchServers')}
+                containerClassName="px-2 pb-1"
+                className="w-full h-8 pl-3 pr-7 text-sm rounded-lg bg-gray-100 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:border-blue-400 dark:focus:border-blue-500 focus:ring-1 focus:ring-blue-400/25 transition-colors"
+            />
 
             {/* Scrollable filter list */}
             <div className="flex-1 overflow-y-auto px-1.5 pb-2">

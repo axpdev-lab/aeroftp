@@ -3,8 +3,9 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { X, Search, Download, Star, ExternalLink, RefreshCw, Package, Puzzle } from 'lucide-react';
+import { X, Download, Star, ExternalLink, RefreshCw, Package, Puzzle } from 'lucide-react';
 import { useTranslation } from '../../i18n';
+import { SearchBox } from '../SearchBox';
 import { useDraggableModal } from '../../hooks/useDraggableModal';
 
 interface RegistryFile {
@@ -200,20 +201,16 @@ export const PluginBrowser: React.FC<PluginBrowserProps> = ({
                         ))}
                     </div>
                     {activeTab === 'browse' && (
-                        <div className="relative">
-                            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                            <input
-                                ref={searchRef}
-                                type="text"
-                                value={search}
-                                onChange={e => setSearch(e.target.value)}
-                                placeholder={t('plugins.browser.search')}
-                                className="w-full pl-9 pr-3 py-2 rounded-lg text-sm
+                        <SearchBox
+                            inputRef={searchRef}
+                            value={search}
+                            onChange={setSearch}
+                            placeholder={t('plugins.browser.search')}
+                            className="w-full pl-3 pr-3 py-2 rounded-lg text-sm
                                     bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100
                                     border border-gray-200 dark:border-gray-700
                                     placeholder:text-gray-400 focus:outline-none focus:border-purple-500"
-                            />
-                        </div>
+                        />
                     )}
                 </div>
 

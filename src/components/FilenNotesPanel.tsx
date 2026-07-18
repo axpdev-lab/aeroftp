@@ -6,10 +6,11 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import {
   X, Plus, Loader2, Star, Pin, Trash2, Archive, Lock, Save,
-  RotateCcw, Search, Clock, Tag, ChevronLeft, FileText, Code, CheckSquare,
+  RotateCcw, Clock, Tag, ChevronLeft, FileText, Code, CheckSquare,
   Hash, Check
 } from 'lucide-react';
 import { useTranslation } from '../i18n';
+import { SearchBox } from './SearchBox';
 import { formatDate as formatDateFull } from '../utils';
 import { useHumanizedLog } from '../hooks/useHumanizedLog';
 
@@ -613,16 +614,14 @@ export function FilenNotesPanel({ isOpen, onClose }: FilenNotesPanelProps) {
     <div className="flex flex-col h-full">
       {/* Toolbar */}
       <div className="flex items-center gap-2 px-4 py-2.5 border-b border-gray-200 dark:border-gray-700">
-        <div className="flex-1 relative">
-          <Search size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            className="w-full pl-7 pr-2 py-1.5 text-xs bg-gray-100 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded text-gray-800 dark:text-gray-200 outline-none placeholder-gray-400 focus:border-blue-400"
-            placeholder={t('filenNotes.searchPlaceholder')}
-          />
-        </div>
+        <SearchBox
+          value={searchQuery}
+          onChange={setSearchQuery}
+          placeholder={t('filenNotes.searchPlaceholder')}
+          iconSize={12}
+          containerClassName="flex-1"
+          className="w-full pl-2.5 pr-2 py-1.5 text-xs bg-gray-100 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded text-gray-800 dark:text-gray-200 outline-none placeholder-gray-400 focus:border-blue-400"
+        />
         <button
           onClick={() => { setShowCreateForm(true); setNewTitle(''); }}
           className="flex-shrink-0 flex items-center gap-1 px-2 py-1.5 rounded bg-blue-500 hover:bg-blue-600 text-white transition-colors"

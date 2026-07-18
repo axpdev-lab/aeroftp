@@ -3,8 +3,9 @@
 
 import * as React from 'react';
 import { useState, useRef, useEffect, useMemo } from 'react';
-import { ChevronDown, Search, Check, Globe } from 'lucide-react';
+import { ChevronDown, Check, Globe } from 'lucide-react';
 import { Language, LanguageInfo, useTranslation } from '../i18n';
+import { SearchBox } from './SearchBox';
 import * as Flags from 'country-flag-icons/react/3x2';
 
 // Extract 2-letter country code from flag emoji (regional indicator symbols)
@@ -185,17 +186,14 @@ export const LanguageSelector: React.FC<LanguageSelectorProps> = ({
                 <div className="absolute z-50 mt-2 w-full bg-white dark:bg-gray-800 rounded-lg shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden animate-scale-in">
                     {/* Search Input */}
                     <div className="p-3 border-b border-gray-200 dark:border-gray-700">
-                        <div className="relative">
-                            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                            <input
-                                ref={searchInputRef}
-                                type="text"
-                                value={searchQuery}
-                                onChange={(e) => setSearchQuery(e.target.value)}
-                                placeholder={t('ui.language.searchPlaceholder')}
-                                className="w-full pl-9 pr-4 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50"
-                            />
-                        </div>
+                        <SearchBox
+                            inputRef={searchInputRef}
+                            value={searchQuery}
+                            onChange={setSearchQuery}
+                            placeholder={t('ui.language.searchPlaceholder')}
+                            iconSize={16}
+                            className="w-full pl-3 pr-4 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+                        />
                         <p className="text-xs text-gray-400 mt-2 text-center">
                             {t('ui.language.languagesAvailable', { count: availableLanguages.length })}
                         </p>

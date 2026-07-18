@@ -4,11 +4,12 @@
 import * as React from 'react';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { Server, Plus, Trash2, Edit2, Copy, X, Check, Cloud, AlertCircle, GripVertical, Search, Activity, Play, Loader2, Eye, EyeOff, Scissors } from 'lucide-react';
+import { Server, Plus, Trash2, Edit2, Copy, Check, Cloud, AlertCircle, GripVertical, Activity, Play, Loader2, Eye, EyeOff, Scissors } from 'lucide-react';
 import { ImportExportIcon } from './icons/ImportExportIcon';
 import { open } from '@tauri-apps/plugin-dialog';
 import { ServerProfile, ConnectionParams, ProviderType, isOAuthProvider, isFourSharedProvider, isNativeApiProtocol } from '../types';
 import { useTranslation } from '../i18n';
+import { SearchBox } from './SearchBox';
 import { getProtocolInfo, ProtocolBadge, ProtocolIcon } from './ProtocolSelector';
 import { PROVIDER_LOGOS } from './ProviderLogos';
 import { getProviderById } from '../providers';
@@ -715,24 +716,13 @@ export const SavedServers: React.FC<SavedServersProps> = ({
                 {/* Search bar inside scrollable container: sticky at top, same width as servers */}
                 {showSearch && (
                     <div className="sticky top-0 z-10 bg-white dark:bg-gray-800 pb-1">
-                        <div className="relative">
-                            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                            <input
-                                type="text"
-                                value={searchQuery}
-                                onChange={(e) => setSearchQuery(e.target.value)}
-                                placeholder={t('connection.searchServers')}
-                                className="w-full pl-9 pr-8 py-2 text-sm bg-gray-100 dark:bg-gray-700/80 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none"
-                            />
-                            {searchQuery && (
-                                <button
-                                    onClick={() => setSearchQuery('')}
-                                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
-                                >
-                                    <X size={14} />
-                                </button>
-                            )}
-                        </div>
+                        <SearchBox
+                            value={searchQuery}
+                            onChange={setSearchQuery}
+                            onClear={() => setSearchQuery('')}
+                            placeholder={t('connection.searchServers')}
+                            className="w-full pl-3 pr-8 py-2 text-sm bg-gray-100 dark:bg-gray-700/80 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none"
+                        />
                     </div>
                 )}
                 {filteredServers.map((server, idx) => {
