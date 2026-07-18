@@ -95,33 +95,10 @@ export function DropboxTrashManager({ onClose, onRefreshFiles, currentPath }: Dr
     }
   };
 
-  const [pendingDeleteConfirm, setPendingDeleteConfirm] = useState(false);
-
-  const handlePermanentDelete = () => {
-    if (selected.size === 0) return;
-    setPendingDeleteConfirm(true);
-  };
-
-  const confirmPermanentDelete = async () => {
-    setPendingDeleteConfirm(false);
-    const paths = Array.from(selected);
-    if (paths.length === 0) return;
-    const logId = humanLog.logRaw('activity.trash_delete_start', 'INFO', { provider: 'Dropbox', count: paths.length });
-    setActionLoading('delete');
-    try {
-      for (const path of paths) {
-        await invoke('dropbox_permanent_delete', { path });
-      }
-      humanLog.updateEntry(logId, { status: 'success', message: `[Dropbox] Permanently deleted ${paths.length} item(s) from trash` });
-      await loadTrash();
-      onRefreshFiles?.();
-    } catch (err) {
-      humanLog.updateEntry(logId, { status: 'error', message: `[Dropbox] Failed to permanently delete from trash` });
-      setError(String(err));
-    } finally {
-      setActionLoading(null);
-    }
-  };
+  // Permanent delete / Empty Trash are intentionally NOT offered for Dropbox:
+  // the files/permanent_delete API requires a Business/Team account with the
+  // files.permanent_delete scope (unavailable for personal accounts). Trash
+  // auto-empties after 30 days. See the note at the end of this component.
 
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
