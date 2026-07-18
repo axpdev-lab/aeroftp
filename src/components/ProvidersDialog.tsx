@@ -8,7 +8,7 @@ import { useTranslation } from '../i18n';
 import { PROVIDER_LOGOS } from './ProviderLogos';
 import { useDraggableModal } from '../hooks/useDraggableModal';
 import { CountryFlag } from './CountryFlag';
-import { findCatalogByLogo, findCatalogByProviderId, hasFreeTier, isDevOnlyProvider } from './providerCatalog';
+import { findCatalogByLogo, findCatalogByProviderId, hasFreeTier, isDevOnlyProvider, isPaidProvider } from './providerCatalog';
 
 interface ProvidersDialogProps {
   isOpen: boolean;
@@ -361,7 +361,9 @@ export function ProvidersDialog({ isOpen, onClose }: ProvidersDialogProps) {
                 const hasCoreOps = CORE_OPS.every(op => provider.base.includes(op));
                 const catalog = findCatalogByLogo(provider.catalogId ?? provider.logoId)
                     ?? findCatalogByProviderId(provider.catalogId ?? '')?.company;
-                const isFree = catalog ? hasFreeTier(catalog) : false;
+                // Method-pinned rows (catalogId) show the method's tier, not the
+                // company's: MEGA S4 is paid even though MEGA has a free tier.
+                const isFree = catalog ? hasFreeTier(catalog) && !isPaidProvider(provider.catalogId) : false;
                 return (
                   <React.Fragment key={`${provider.logoId}-${idx}`}>
                     {provider.section && (
