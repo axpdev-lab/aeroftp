@@ -8,7 +8,7 @@ import { useTranslation } from '../i18n';
 import { PROVIDER_LOGOS } from './ProviderLogos';
 import { useDraggableModal } from '../hooks/useDraggableModal';
 import { CountryFlag } from './CountryFlag';
-import { findCatalogByLogo, hasFreeTier, isDevOnlyProvider } from './providerCatalog';
+import { findCatalogByLogo, findCatalogByProviderId, hasFreeTier, isDevOnlyProvider } from './providerCatalog';
 
 interface ProvidersDialogProps {
   isOpen: boolean;
@@ -359,7 +359,8 @@ export function ProvidersDialog({ isOpen, onClose }: ProvidersDialogProps) {
               {ALL_PROVIDERS.filter(p => import.meta.env.DEV || !isDevOnlyProvider(p.logoId)).map((provider, idx) => {
                 const Logo = PROVIDER_LOGOS[provider.logoId];
                 const hasCoreOps = CORE_OPS.every(op => provider.base.includes(op));
-                const catalog = findCatalogByLogo(provider.catalogId ?? provider.logoId);
+                const catalog = findCatalogByLogo(provider.catalogId ?? provider.logoId)
+                    ?? findCatalogByProviderId(provider.catalogId ?? '')?.company;
                 const isFree = catalog ? hasFreeTier(catalog) : false;
                 return (
                   <React.Fragment key={`${provider.logoId}-${idx}`}>
