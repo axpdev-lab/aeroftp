@@ -16,19 +16,41 @@ use crate::filesystem::validate_path;
 
 // ─── Hash Forge ─────────────────────────────────────────────────────────────
 
+/// BLAKE3 XOF output length bounds (bytes). Default classic digest is 32.
+const BLAKE3_OUTPUT_LEN_MIN: usize = 1;
+const BLAKE3_OUTPUT_LEN_MAX: usize = 1024;
+const BLAKE3_DEFAULT_LEN: usize = 32;
+
 /// Hash arbitrary text with the specified algorithm.
 /// Returns lowercase hex-encoded hash.
+///
+/// - `encoding`: optional input encoding — `utf-8` (default), `base64`, `hex`,
+///   or `binary` (plaintext 0/1 bits, whitespace tolerated). Decoded on the
+///   Rust side so the UI stays thin and decode errors are testable.
+/// - `output_len`: optional BLAKE3 XOF length in bytes (1..=1024). Ignored for
+///   non-BLAKE3 algorithms. `None` keeps the classic 32-byte BLAKE3 digest.
+/// - Empty input is valid (empty-string / empty-decoded bytes are hashed).
 #[tauri::command]
-pub fn hash_text(text: String, algorithm: String) -> Result<String, String> {
-    if text.is_empty() {
-        return Err("Input text is empty".into());
-    }
-    hash_bytes(text.as_bytes(), &algorithm)
+pub fn hash_text(
+    text: String,
+    algorithm: String,
+    output_len: Option<usize>,
+    encoding: Option<String>,
+) -> Result<String, String> {
+    let enc = encoding.as_deref().unwrap_or("utf-8");
+    let bytes = decode_text_input(&text, enc)?;
+    hash_bytes(&bytes, &algorithm, output_len)
 }
 
 /// Hash a local file with the specified algorithm (64KB streaming buffer).
+///
+/// `output_len` is the optional BLAKE3 XOF length (same rules as `hash_text`).
 #[tauri::command]
-pub async fn hash_file(path: String, algorithm: String) -> Result<String, String> {
+pub async fn hash_file(
+    path: String,
+    algorithm: String,
+    output_len: Option<usize>,
+) -> Result<String, String> {
     validate_path(&path)?;
     use tokio::io::AsyncReadExt;
 
@@ -107,7 +129,7 @@ pub async fn hash_file(path: String, algorithm: String) -> Result<String, String
                 }
                 hasher.update(&buffer[..n]);
             }
-            Ok(hasher.finalize().to_hex().to_string())
+            blake3_finalize_hex(&hasher, output_len)
         }
         _ => Err(format!("Unsupported algorithm: {}", algorithm)),
     }
@@ -129,8 +151,84 @@ pub fn compare_hashes(hash_a: String, hash_b: String) -> bool {
     diff == 0
 }
 
+/// Decode Hash Forge text input according to `encoding`.
+///
+/// - `utf-8` / `utf8` (default): raw UTF-8 bytes of the string
+/// - `base64`: standard Base64
+/// - `hex`: hex digits, whitespace stripped
+/// - `binary`: plaintext `0`/`1` bits (whitespace tolerated); length must be a
+///   multiple of 8 (empty → empty bytes)
+fn decode_text_input(text: &str, encoding: &str) -> Result<Vec<u8>, String> {
+    match encoding.to_ascii_lowercase().as_str() {
+        "utf-8" | "utf8" => Ok(text.as_bytes().to_vec()),
+        "base64" => B64
+            .decode(text.trim().as_bytes())
+            .map_err(|e| format!("Invalid Base64 input: {e}")),
+        "hex" => {
+            let cleaned: String = text.chars().filter(|c| !c.is_whitespace()).collect();
+            if cleaned.is_empty() {
+                return Ok(Vec::new());
+            }
+            hex::decode(&cleaned).map_err(|e| format!("Invalid Hex input: {e}"))
+        }
+        "binary" => {
+            let bits: String = text.chars().filter(|c| !c.is_whitespace()).collect();
+            if bits.is_empty() {
+                return Ok(Vec::new());
+            }
+            if !bits.chars().all(|c| c == '0' || c == '1') {
+                return Err("Invalid Binary input: only 0 and 1 (and whitespace) allowed".into());
+            }
+            if bits.len() % 8 != 0 {
+                return Err("Invalid Binary input: bit length must be a multiple of 8".into());
+            }
+            let mut bytes = Vec::with_capacity(bits.len() / 8);
+            for chunk in bits.as_bytes().chunks(8) {
+                let mut b = 0u8;
+                for &bit in chunk {
+                    b = (b << 1) | u8::from(bit == b'1');
+                }
+                bytes.push(b);
+            }
+            Ok(bytes)
+        }
+        other => Err(format!("Unsupported encoding: {other}")),
+    }
+}
+
+fn validate_blake3_output_len(output_len: usize) -> Result<(), String> {
+    if !(BLAKE3_OUTPUT_LEN_MIN..=BLAKE3_OUTPUT_LEN_MAX).contains(&output_len) {
+        return Err(format!(
+            "BLAKE3 output length must be between {BLAKE3_OUTPUT_LEN_MIN} and {BLAKE3_OUTPUT_LEN_MAX} bytes"
+        ));
+    }
+    Ok(())
+}
+
+/// Finalize a BLAKE3 hasher to lowercase hex. `None` (or classic 32 via
+/// `finalize`) keeps legacy behavior; other lengths use XOF.
+fn blake3_finalize_hex(
+    hasher: &blake3::Hasher,
+    output_len: Option<usize>,
+) -> Result<String, String> {
+    match output_len {
+        None => Ok(hasher.finalize().to_hex().to_string()),
+        Some(n) => {
+            validate_blake3_output_len(n)?;
+            if n == BLAKE3_DEFAULT_LEN {
+                // Classic 32-byte digest is byte-identical to XOF[:32], but
+                // keep the historic finalize path for None-equivalent callers.
+                return Ok(hasher.finalize().to_hex().to_string());
+            }
+            let mut out = vec![0u8; n];
+            hasher.finalize_xof().fill(&mut out);
+            Ok(hex::encode(out))
+        }
+    }
+}
+
 /// Hash in-memory bytes (shared helper).
-fn hash_bytes(data: &[u8], algorithm: &str) -> Result<String, String> {
+fn hash_bytes(data: &[u8], algorithm: &str, output_len: Option<usize>) -> Result<String, String> {
     match algorithm.to_lowercase().as_str() {
         "md5" => {
             let mut h = md5::Md5::new();
@@ -152,7 +250,11 @@ fn hash_bytes(data: &[u8], algorithm: &str) -> Result<String, String> {
             h.update(data);
             Ok(hex::encode(h.finalize()))
         }
-        "blake3" => Ok(blake3::hash(data).to_hex().to_string()),
+        "blake3" => {
+            let mut hasher = blake3::Hasher::new();
+            hasher.update(data);
+            blake3_finalize_hex(&hasher, output_len)
+        }
         _ => Err(format!("Unsupported algorithm: {}", algorithm)),
     }
 }
@@ -665,6 +767,104 @@ const WORDLIST: &[&str] = &[
     "woman", "world", "worry", "worst", "worth", "wound", "wrath", "wrist", "wrote", "yacht",
     "yearn", "yeast", "yield", "young", "youth", "zebra", "zilch", "zones",
 ];
+
+#[cfg(test)]
+mod hash_forge_tests {
+    use super::*;
+
+    /// BLAKE3 of empty input (32-byte classic digest) — known test vector.
+    const BLAKE3_EMPTY: &str = "af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262";
+
+    #[test]
+    fn blake3_empty_input_matches_known_vector() {
+        let hex = hash_text("".into(), "blake3".into(), None, None).expect("empty blake3");
+        assert_eq!(hex, BLAKE3_EMPTY);
+    }
+
+    #[test]
+    fn blake3_xof_32_equals_classic_digest() {
+        let classic = hash_text("hello".into(), "blake3".into(), None, None).unwrap();
+        let xof32 = hash_text("hello".into(), "blake3".into(), Some(32), None).unwrap();
+        assert_eq!(classic, xof32);
+        assert_eq!(classic.len(), 64); // 32 bytes → 64 hex chars
+    }
+
+    #[test]
+    fn blake3_xof_64_is_128_hex_chars_and_extends_classic() {
+        let classic = hash_text("hello".into(), "blake3".into(), None, None).unwrap();
+        let xof64 = hash_text("hello".into(), "blake3".into(), Some(64), None).unwrap();
+        assert_eq!(xof64.len(), 128);
+        assert!(xof64.starts_with(&classic));
+    }
+
+    #[test]
+    fn blake3_output_len_bounds() {
+        assert!(hash_text("x".into(), "blake3".into(), Some(0), None).is_err());
+        assert!(hash_text("x".into(), "blake3".into(), Some(1025), None).is_err());
+        assert!(hash_text("x".into(), "blake3".into(), Some(1), None).is_ok());
+        assert!(hash_text("x".into(), "blake3".into(), Some(1024), None).is_ok());
+    }
+
+    #[test]
+    fn encoding_utf8_default_hashes_raw_bytes() {
+        let a = hash_text("hi".into(), "sha256".into(), None, None).unwrap();
+        let b = hash_text("hi".into(), "sha256".into(), None, Some("utf-8".into())).unwrap();
+        assert_eq!(a, b);
+        // SHA-256("hi") known value
+        assert_eq!(
+            a,
+            "8f434346648f6b96df89dda901c5176b10a6d83961dd3c1ac88b59b2dc327aa4"
+        );
+    }
+
+    #[test]
+    fn encoding_base64_happy_path() {
+        // base64("hi") = "aGk="
+        let from_b64 =
+            hash_text("aGk=".into(), "sha256".into(), None, Some("base64".into())).unwrap();
+        let from_utf8 =
+            hash_text("hi".into(), "sha256".into(), None, Some("utf-8".into())).unwrap();
+        assert_eq!(from_b64, from_utf8);
+    }
+
+    #[test]
+    fn encoding_hex_happy_path() {
+        // hex("hi") = "6869"
+        let from_hex =
+            hash_text("68 69".into(), "sha256".into(), None, Some("hex".into())).unwrap();
+        let from_utf8 =
+            hash_text("hi".into(), "sha256".into(), None, Some("utf-8".into())).unwrap();
+        assert_eq!(from_hex, from_utf8);
+    }
+
+    #[test]
+    fn encoding_binary_happy_path() {
+        // "hi" = 0x68 0x69 → binary
+        let bits = "01101000 01101001";
+        let from_bin =
+            hash_text(bits.into(), "sha256".into(), None, Some("binary".into())).unwrap();
+        let from_utf8 =
+            hash_text("hi".into(), "sha256".into(), None, Some("utf-8".into())).unwrap();
+        assert_eq!(from_bin, from_utf8);
+    }
+
+    #[test]
+    fn encoding_invalid_inputs_error() {
+        assert!(hash_text("!!!".into(), "sha256".into(), None, Some("base64".into())).is_err());
+        assert!(hash_text("zz".into(), "sha256".into(), None, Some("hex".into())).is_err());
+        assert!(hash_text("012".into(), "sha256".into(), None, Some("binary".into())).is_err()); // not multiple of 8
+        assert!(hash_text("0123".into(), "sha256".into(), None, Some("binary".into())).is_err()); // not only 0/1
+        assert!(hash_text("x".into(), "sha256".into(), None, Some("rot13".into())).is_err());
+    }
+
+    #[test]
+    fn non_blake3_ignores_output_len() {
+        let a = hash_text("hi".into(), "md5".into(), None, None).unwrap();
+        let b = hash_text("hi".into(), "md5".into(), Some(64), None).unwrap();
+        assert_eq!(a, b);
+        assert_eq!(a.len(), 32); // md5 is always 16 bytes
+    }
+}
 
 #[cfg(test)]
 mod password_forge_tests {

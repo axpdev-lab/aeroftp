@@ -362,8 +362,9 @@ pub async fn dispatch_gui_tool(
                 return Err(format!("Path is not a file: {}", path));
             }
 
-            // Delegate to existing cyber_tools::hash_file
-            let hash = crate::cyber_tools::hash_file(path.clone(), algorithm.clone()).await?;
+            // Delegate to existing cyber_tools::hash_file (default classic digest length)
+            let hash =
+                crate::cyber_tools::hash_file(path.clone(), algorithm.clone(), None).await?;
 
             Ok(json!({
                 "path": path,
