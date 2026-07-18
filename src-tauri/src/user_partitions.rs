@@ -2739,6 +2739,16 @@ pub fn cross_user_dedup_matches(
     requesting_user_id: i64,
     profile: &Value,
 ) -> Result<Vec<CrossUserDedupMatch>, String> {
+    // EF-19(a): an empty S3 access key hashes to a constant dedup_key, so two
+    // unrelated keyless S3 accounts would cross-warn. Ambiguous surface → no
+    // warning (conservative: this guards the soft warning only; storage
+    // aggregation semantics are unchanged — see storage_dedup::dedup_key).
+    let protocol = value_str(profile, &["protocol"]).unwrap_or("ftp");
+    let username = value_str(profile, &["username", "user", "email", "account"]).unwrap_or("");
+    if protocol == "s3" && username.trim().is_empty() {
+        return Ok(Vec::new());
+    }
+
     let root_secret = user_crypto::secret_key_from_bytes(root_key);
     let uid_seed = value_str(profile, &["id"]).unwrap_or("");
     let dedup_tag = profile_dedup_key(&root_secret, profile, uid_seed)?;
@@ -7064,6 +7074,80 @@ mod tests {
         assert_eq!(matches.len(), 2);
         assert_eq!(matches[0].user_id, default.id);
         assert_eq!(matches[1].user_id, alice.id);
+    }
+
+    #[test]
+    fn cross_user_dedup_empty_key_s3_does_not_cross_warn() {
+        // EF-19(a): empty S3 access keys share a constant storage dedup_key.
+        // The soft-warning path must not fire across distinct keyless accounts.
+        let _guard = test_lock();
+        let mut conn = migrated_conn(0);
+        let root = test_root();
+        let default = get_active_user(&conn).expect("active").expect("default");
+        let alice =
+            create_passphrase_less_user(&mut conn, &root, "alice", Some("A"), Some("#3b82f6"))
+                .expect("alice");
+
+        let stored = json!({
+            "id": "s3-empty-a",
+            "name": "S3 Empty A",
+            "protocol": "s3",
+            "providerId": "wasabi",
+            "host": "s3.wasabisys.com",
+            "port": 443,
+            "username": "",
+        });
+        replace_active_server_profiles(&mut conn, &root, std::slice::from_ref(&stored))
+            .expect("save empty-key S3 on default");
+
+        // Candidate for alice: also empty-key S3 (different id; could even share host).
+        let candidate = json!({
+            "id": "s3-empty-b",
+            "name": "S3 Empty B",
+            "protocol": "s3",
+            "providerId": "wasabi",
+            "host": "s3.wasabisys.com",
+            "port": 443,
+            "username": "   ",
+        });
+        set_active_user(&conn, alice.id).expect("switch alice");
+        let matches = cross_user_dedup_matches(&conn, &root, alice.id, &candidate).expect("query");
+        assert!(
+            matches.is_empty(),
+            "empty-key S3 must not cross-warn against user {}; got {:?}",
+            default.id,
+            matches
+        );
+    }
+
+    #[test]
+    fn cross_user_dedup_genuine_s3_dup_still_warns() {
+        // Non-empty access key: same key across users must still soft-warn.
+        let _guard = test_lock();
+        let mut conn = migrated_conn(0);
+        let root = test_root();
+        let default = get_active_user(&conn).expect("active").expect("default");
+        let alice =
+            create_passphrase_less_user(&mut conn, &root, "alice", Some("A"), Some("#3b82f6"))
+                .expect("alice");
+
+        let profile = json!({
+            "id": "s3-real",
+            "name": "S3 Real",
+            "protocol": "s3",
+            "providerId": "wasabi",
+            "host": "s3.wasabisys.com",
+            "port": 443,
+            "username": "AKIA_REAL_KEY_ONE",
+        });
+        replace_active_server_profiles(&mut conn, &root, std::slice::from_ref(&profile))
+            .expect("save real S3 on default");
+
+        set_active_user(&conn, alice.id).expect("switch alice");
+        let matches = cross_user_dedup_matches(&conn, &root, alice.id, &profile).expect("query");
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].user_id, default.id);
+        assert_eq!(matches[0].user_name, DEFAULT_USER_NAME);
     }
 
     // ----- MU-FE-P4a: admin role + self-or-admin gate -----
