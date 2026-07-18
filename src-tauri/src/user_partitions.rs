@@ -2743,6 +2743,7 @@ pub fn cross_user_dedup_matches(
     // unrelated keyless S3 accounts would cross-warn. Ambiguous surface → no
     // warning (conservative: this guards the soft warning only; storage
     // aggregation semantics are unchanged — see storage_dedup::dedup_key).
+    // Cross-ref: storage_dedup::dedup_key is aggregation-only, never identity.
     let protocol = value_str(profile, &["protocol"]).unwrap_or("ftp");
     let username = value_str(profile, &["username", "user", "email", "account"]).unwrap_or("");
     if protocol == "s3" && username.trim().is_empty() {
