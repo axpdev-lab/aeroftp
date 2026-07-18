@@ -584,7 +584,7 @@ const HashForgeTab: React.FC = () => {
                 <div className="space-y-2">
                     <label className="text-xs font-medium text-gray-500 dark:text-gray-400">{t('cyberTools.hashResult')}</label>
                     <div className="flex items-start gap-2">
-                        <code className={`flex-1 min-w-0 px-3 py-2 text-xs font-mono rounded bg-gray-50 dark:bg-gray-900 whitespace-nowrap overflow-x-auto border border-gray-200 dark:border-gray-700 select-all ${
+                        <code className={`flex-1 min-w-0 px-3 py-2 text-xs font-mono rounded bg-gray-50 dark:bg-gray-900 break-all border border-gray-200 dark:border-gray-700 select-all ${
                             result.startsWith('Error:') ? 'text-red-600 dark:text-red-400' : 'text-gray-800 dark:text-gray-200'
                         }`}>
                             {result}
