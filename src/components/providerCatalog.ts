@@ -50,14 +50,15 @@ export type CatalogProtocol =
 
 /** One connection method for a company, with its Quick Connect target. */
 export interface CatalogProtocolRef {
-    /** Badge label shown in the list. Also the key into `PROTOCOL_GLYPHS` and the
-     *  value serialized to the CLI catalog / providers markdown, so it must stay a
-     *  member of the closed `CatalogProtocol` enum. */
+    /** Badge glyph key into `PROTOCOL_GLYPHS` — must stay a member of the closed
+     *  `CatalogProtocol` enum. Display text prefers `labelOverride` when set
+     *  (GUI badges, CLI catalog, providers markdown). */
     label: CatalogProtocol;
-    /** GUI-only display override for the badge text when the branded product name
-     *  differs from the wire protocol: e.g. MEGA's paid S3 object storage is "S4"
-     *  and FileLu's is "S5", both shown as "S4 (S3)" / "S5 (S3)" while `label`
-     *  stays 'S3' (correct glyph, valid enum). Falls back to `label` when unset. */
+    /** Display override when the branded product name differs from the wire
+     *  protocol: e.g. MEGA's paid S3 object storage is "S4" and FileLu's is "S5",
+     *  both shown as "S4 (S3)" / "S5 (S3)" while `label` stays 'S3' (correct glyph,
+     *  valid enum). Falls back to `label` when unset. Emitted into CLI catalog +
+     *  providers markdown via `labelOverride ?? label`. */
     labelOverride?: string;
     // EF-17 (recommended-protocol highlight) — DEFERRED, blocked on the transfer
     // benchmark harness (#368). The intended shape is a `recommended?: boolean` flag
@@ -436,7 +437,9 @@ export function companyRegions(c: CatalogCompany): string[] {
 
 /** One connection method as projected into the CLI catalog JSON. */
 export interface CliCatalogProtocol {
-    label: CatalogProtocol;
+    /** Display label: `labelOverride ?? label` (may be a branded string such as
+     *  "S4 (S3)"; wire protocol stays in `protocol`). */
+    label: string;
     protocol: ProviderType;
     providerId: string | null;
     paid: boolean;
@@ -472,7 +475,7 @@ export function buildCliCatalog(): CliCatalogCompany[] {
         freeRequiresCard: !!c.freeRequiresCard,
         regions: companyRegions(c),
         protocols: c.protocols.map(p => ({
-            label: p.label,
+            label: p.labelOverride ?? p.label,
             protocol: p.protocol,
             providerId: p.providerId ?? null,
             paid: !!p.paid,
@@ -512,7 +515,7 @@ export function buildProvidersMarkdown(): string {
                 free = c.freeNote ?? '-';
             }
             const methods = c.protocols
-                .map(p => (p.paid ? `${p.label}*` : p.label))
+                .map(p => (p.paid ? `${p.labelOverride ?? p.label}*` : (p.labelOverride ?? p.label)))
                 .join(', ');
             return `| ${mdCell(c.company)} | ${hq} | ${mdCell(free)} | ${mdCell(methods)} |`;
         });

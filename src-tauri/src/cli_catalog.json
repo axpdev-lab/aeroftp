@@ -28,7 +28,7 @@
         "note": "local bridge"
       },
       {
-        "label": "S3",
+        "label": "S4 (S3)",
         "protocol": "s3",
         "providerId": "mega-s4",
         "paid": true,
@@ -726,7 +726,7 @@
         "note": null
       },
       {
-        "label": "S3",
+        "label": "S5 (S3)",
         "protocol": "s3",
         "providerId": "filelu-s3",
         "paid": false,
