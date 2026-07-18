@@ -17188,55 +17188,50 @@ interface UpdateVerificationInfo {
                     </div>
                   )}
                   <div className="flex-shrink-0 px-3 py-1.5 bg-gray-100 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600 text-sm font-medium flex items-center gap-2">
-                    <div className={`flex-1 flex items-center bg-white dark:bg-gray-800 rounded-md border ${isSyncPathMismatch ? 'border-amber-400 dark:border-amber-500' : 'border-gray-300 dark:border-gray-600 hover:border-blue-400 dark:hover:border-blue-500'} focus-within:border-blue-500 dark:focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-500/20 transition-all overflow-hidden`}>
-                      {/* Protocol icon inside address bar (like Chrome favicon) */}
-                      <div className="flex-shrink-0 pl-2.5 pr-1 flex items-center" title={(() => {
-                        const protocol = connectionParams.protocol || 'ftp';
-                        switch (protocol) {
-                          case 's3': return 'Amazon Web Services (AWS)';
-                          case 'webdav': return 'WebDAV';
-                          case 'sftp': return 'SFTP (Secure)';
-                          case 'ftps': return 'FTPS (Secure)';
-                          case 'googledrive': return 'Google Drive';
-                          case 'dropbox': return 'Dropbox';
-                          case 'onedrive': return 'OneDrive';
-                          case 'box': return 'Box';
-                          case 'pcloud': return 'pCloud Drive';
-                          case 'azure': return 'Azure Blob';
-                          case 'filen': return 'Filen';
-                          case 'mega': return 'MEGA';
-                          default: return 'FTP';
-                        }
-                      })()}>
-                        {(() => {
+                    {/* EF-23: the dual-panel remote path bar reuses the AeroFile
+                        breadcrumb (BreadcrumbBar) — clickable directory segments
+                        that navigate, plus a `>` "browse subdirectories" dropdown
+                        per segment — instead of a plain address input. Independent
+                        from the local pane's breadcrumb: segment clicks and edits
+                        route through changeRemoteDirectory (which already handles
+                        the crypt display-path via `plainPath`), and the `>`
+                        dropdown lists the remote provider via provider_list_files
+                        (non-mutating — it lists a path without moving the session
+                        cwd). This bar only renders when connected, so no
+                        not-connected fallback is needed.
+                        TODO(EF-02/Baton 8): the 'Overlays Path' nav button (and
+                        gating the RCLONE/AEROCRYPT toggle to inside the overlay
+                        scope) belong on this same bar — the crypt badges already
+                        render immediately after it below. */}
+                    <div className="flex-1 min-w-0">
+                      <BreadcrumbBar
+                        currentPath={(rcloneCryptVaultId || aeroCryptVaultId || overlayBadgeDecrypting) ? currentRemoteDisplayPath : currentRemotePath}
+                        onNavigate={(path) => changeRemoteDirectory(path, undefined, !!(rcloneCryptVaultId || aeroCryptVaultId))}
+                        isCoherent={!isSyncPathMismatch}
+                        minPath={isSyncNavigation && syncBasePaths ? syncBasePaths.remote : undefined}
+                        listSubdirectories={async (dirPath) => {
+                          const listArg = dirPath && dirPath !== '/' ? dirPath : '/';
+                          const resp = await invoke<{ files: RemoteFile[] }>('provider_list_files', { path: listArg });
+                          const base = listArg.endsWith('/') ? listArg : `${listArg}/`;
+                          return resp.files
+                            .filter((f) => f.is_dir)
+                            .map((f) => ({ name: f.name, path: `${base}${f.name}` }));
+                        }}
+                        rootIcon={(() => {
                           const protocol = connectionParams.protocol || 'ftp';
-                          const iconClass = isSyncPathMismatch ? 'text-amber-500' : isSyncNavigation ? 'text-purple-500' : isConnected ? 'text-green-500' : 'text-gray-400';
-                          if (isSyncPathMismatch) return <AlertTriangle size={14} className={iconClass} />;
                           switch (protocol) {
-                            case 's3': return <Cloud size={14} className={iconClass} />;
-                            case 'webdav': return <Server size={14} className={iconClass} />;
-                            case 'sftp': return <Lock size={14} className={iconClass} />;
-                            case 'ftps': return <Shield size={14} className={iconClass} />;
-                            case 'googledrive': return <Cloud size={14} className={iconClass} />;
-                            case 'dropbox': return <Archive size={14} className={iconClass} />;
-                            case 'onedrive': return <Cloud size={14} className={iconClass} />;
-                            case 'mega': return <Shield size={14} className={iconClass} />;
-                            default: return <Globe size={14} className={iconClass} />;
+                            case 's3': return <Cloud size={14} />;
+                            case 'webdav': return <Server size={14} />;
+                            case 'sftp': return <Lock size={14} />;
+                            case 'ftps': return <Shield size={14} />;
+                            case 'googledrive': return <Cloud size={14} />;
+                            case 'dropbox': return <Archive size={14} />;
+                            case 'onedrive': return <Cloud size={14} />;
+                            case 'mega': return <Shield size={14} />;
+                            default: return <Globe size={14} />;
                           }
                         })()}
-                      </div>
-                      <input
-                        type="text"
-                        value={isConnected ? ((rcloneCryptVaultId || aeroCryptVaultId || overlayBadgeDecrypting) ? currentRemoteDisplayPath : currentRemotePath) : t('browser.notConnected')}
-                        onChange={(e) => {
-                          if (rcloneCryptVaultId || aeroCryptVaultId) setCurrentRemoteDisplayPath(e.target.value);
-                          else setCurrentRemotePath(e.target.value);
-                        }}
-                        onKeyDown={(e) => e.key === 'Enter' && isConnected && changeRemoteDirectory((e.target as HTMLInputElement).value, undefined, !!(rcloneCryptVaultId || aeroCryptVaultId))}
-                        disabled={!isConnected}
-                        className={`flex-1 pl-1 pr-2 py-1 bg-transparent border-none outline-none text-sm cursor-text selection:bg-blue-200 dark:selection:bg-blue-800 disabled:cursor-default disabled:text-gray-400 disabled:bg-gray-50 dark:disabled:bg-gray-900 ${isSyncPathMismatch ? 'text-amber-600 dark:text-amber-400' : ''}`}
-                        title={isSyncPathMismatch ? t('browser.syncPathMismatch') : isConnected ? t('browser.editPathHint') : t('browser.notConnected')}
-                        placeholder="/path/to/directory"
+                        t={t}
                       />
                     </div>
                     {(() => {
