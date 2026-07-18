@@ -4682,6 +4682,57 @@ pub async fn user_partitions_get_active_user(
     get_active_user(&conn)
 }
 
+/// Backward-compat self-heal (BUG-LT2a): the redacted `hasStoredAeroCrypt*`
+/// flags are persisted into the profile blob at save/import time, but the normal
+/// load path returns them verbatim. Profiles created before those flags existed
+/// (or imported without them) therefore load with the flags unset even though
+/// the overlay secret IS present in the vault, and the UI
+/// (`getProfileOverlayHint` / `maybeAutoUnlockProfileOverlay`) gates the
+/// crypt-overlay auto-unlock on exactly those flags, so the overlay silently
+/// fails to arm and the dual panel shows raw ciphertext. Recompute the four
+/// flags from the credential store on every load (the vault is the source of
+/// truth) for profiles that carry an ENABLED overlay binding, using the SAME
+/// lookup the connect path reads (`get_credential` == `store.get`) so the flag
+/// can never disagree with what the unlock will actually retrieve. Cheap: the
+/// store is the in-memory cache and only enabled-overlay profiles are probed.
+///
+/// `has_secret` is injected (not a `&CredentialStore`) so the pure reconcile
+/// logic is unit-testable without a live vault.
+fn reconcile_overlay_secret_flags<F: Fn(&str) -> bool>(has_secret: F, profiles: &mut [Value]) {
+    for profile in profiles.iter_mut() {
+        let enabled = profile
+            .get("aeroCryptOverlay")
+            .and_then(|b| b.get("enabled"))
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        if !enabled {
+            continue;
+        }
+        let id = match profile.get("id").and_then(Value::as_str) {
+            Some(id) if !id.is_empty() => id.to_string(),
+            _ => continue,
+        };
+        if let Some(map) = profile.as_object_mut() {
+            map.insert(
+                "hasStoredAeroCryptPassword".into(),
+                Value::Bool(has_secret(&format!("aerocrypt_overlay_pw_{id}"))),
+            );
+            map.insert(
+                "hasStoredAeroCryptSalt".into(),
+                Value::Bool(has_secret(&format!("aerocrypt_overlay_salt_{id}"))),
+            );
+            map.insert(
+                "hasStoredAeroCryptKeyfilePath".into(),
+                Value::Bool(has_secret(&format!("aerocrypt_overlay_keyfile_path_{id}"))),
+            );
+            map.insert(
+                "hasStoredAeroCryptConfig".into(),
+                Value::Bool(has_secret(&format!("aerocrypt_overlay_config_{id}"))),
+            );
+        }
+    }
+}
+
 #[tauri::command]
 pub async fn user_partitions_load_active_server_profiles(
     app: AppHandle,
@@ -4692,7 +4743,14 @@ pub async fn user_partitions_load_active_server_profiles(
     let conn = open_or_init(&app)?;
     let result = list_active_server_profiles(&conn, &root_key);
     root_key.zeroize();
-    result
+    let mut profiles = result?;
+    // BUG-LT2a backward-compat: recompute the redacted overlay-secret flags from
+    // the vault so legacy crypt profiles auto-unlock without a manual re-save.
+    reconcile_overlay_secret_flags(
+        |key| store.get(key).map(|v| !v.is_empty()).unwrap_or(false),
+        &mut profiles,
+    );
+    Ok(profiles)
 }
 
 #[tauri::command]
@@ -5192,6 +5250,55 @@ mod tests {
 
     fn test_root() -> [u8; 32] {
         [7u8; 32]
+    }
+
+    #[test]
+    fn reconcile_overlay_flags_selfheals_legacy_profile() {
+        // Legacy profile (BUG-LT2a): enabled overlay, flag persisted false, yet
+        // the secret IS in the vault. Recompute must flip the flags to reality.
+        let mut profiles = vec![json!({
+            "id": "srv_legacy",
+            "name": "Legacy crypt",
+            "aeroCryptOverlay": { "enabled": true, "kind": "rclone-crypt" },
+            "hasStoredAeroCryptPassword": false,
+            "hasStoredAeroCryptSalt": false,
+        })];
+        let present: std::collections::HashSet<&str> = [
+            "aerocrypt_overlay_pw_srv_legacy",
+            "aerocrypt_overlay_salt_srv_legacy",
+        ]
+        .into_iter()
+        .collect();
+        reconcile_overlay_secret_flags(|k| present.contains(k), &mut profiles);
+        assert_eq!(profiles[0]["hasStoredAeroCryptPassword"], json!(true));
+        assert_eq!(profiles[0]["hasStoredAeroCryptSalt"], json!(true));
+        assert_eq!(profiles[0]["hasStoredAeroCryptKeyfilePath"], json!(false));
+        assert_eq!(profiles[0]["hasStoredAeroCryptConfig"], json!(false));
+    }
+
+    #[test]
+    fn reconcile_overlay_flags_respects_vault_truth() {
+        let mut profiles = vec![
+            // Disabled overlay: never touched, even with a stale true flag.
+            json!({
+                "id": "srv_off",
+                "aeroCryptOverlay": { "enabled": false },
+                "hasStoredAeroCryptPassword": true,
+            }),
+            // Enabled but the secret is genuinely gone: stale true is cleared to
+            // false so the flag matches what the unlock would actually retrieve.
+            json!({
+                "id": "srv_gone",
+                "aeroCryptOverlay": { "enabled": true },
+                "hasStoredAeroCryptPassword": true,
+            }),
+            // No overlay binding at all: untouched.
+            json!({ "id": "srv_plain", "protocol": "sftp" }),
+        ];
+        reconcile_overlay_secret_flags(|_| false, &mut profiles);
+        assert_eq!(profiles[0]["hasStoredAeroCryptPassword"], json!(true));
+        assert_eq!(profiles[1]["hasStoredAeroCryptPassword"], json!(false));
+        assert!(profiles[2].get("hasStoredAeroCryptPassword").is_none());
     }
 
     fn migrated_conn(profile_count: usize) -> Connection {
