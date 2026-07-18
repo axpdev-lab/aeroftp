@@ -560,6 +560,7 @@ export const PROVIDER_LOGOS: Record<string, React.FC<LogoProps>> = {
     'drivehq': DriveHQLogo,
     '4shared': FourSharedLogo,
     'fourshared': FourSharedLogo,
+    '4shared-webdav': FourSharedLogo,
     'seafile': SeafileLogo,
     'cloudme': CloudMeLogo,
     'zohoworkdrive': ZohoWorkDriveLogo,
