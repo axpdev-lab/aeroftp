@@ -1670,18 +1670,18 @@ export const PROVIDERS: ProviderConfig[] = [
     },
     {
         id: 'tabdigital',
-        name: 'Tab.digital',
-        description: 'Tab.digital (8 GB free, Nextcloud-based, EU/GDPR)',
+        name: 'TAB.DIGITAL',
+        description: 'TAB.DIGITAL (8 GB free, Nextcloud-based, EU/GDPR)',
         protocol: 'webdav',
         category: 'webdav',
         icon: 'Cloud',
         color: '#04bb70',
         stable: true,
         // contactVerified intentionally NOT set: we are not in direct contact
-        // with Tab.digital. Felicloud is, hence its "In direct contact for
+        // with TAB.DIGITAL. Felicloud is, hence its "In direct contact for
         // priority support" footer; we should not claim the same here.
         // Felicloud-style minimal form: only username + password are visible.
-        // The Tab.digital endpoint and port live under "Advanced" with the
+        // The TAB.DIGITAL endpoint and port live under "Advanced" with the
         // pre-filled regional default (fie.nl), so non-NL users open Advanced
         // and Edit the subdomain (fie.de, fie.it, fie.se, fie.lv) once.
         fields: [
@@ -1698,7 +1698,7 @@ export const PROVIDERS: ProviderConfig[] = [
         ],
         defaults: {
             // Default to the fie.nl region (EU continental). Users on other
-            // regional shards (DE, IT, SE, LV per the Tab.digital data-centre
+            // regional shards (DE, IT, SE, LV per the TAB.DIGITAL data-centre
             // map) open Advanced and edit the subdomain once. The {username}
             // template in `server` IS resolved at connect time by
             // WebDavConfig::from_provider_config (Rust backend).

@@ -26,29 +26,14 @@
         "paid": false,
         "category": "webdav",
         "note": "local bridge"
-      }
-    ]
-  },
-  {
-    "company": "MEGA S4 Object Storage",
-    "logoId": "mega-s4",
-    "country": "EU",
-    "freeGb": null,
-    "freeNote": "Pro plan",
-    "freeRequiresCard": false,
-    "regions": [
-      "NL",
-      "LU",
-      "CA"
-    ],
-    "protocols": [
+      },
       {
         "label": "S3",
         "protocol": "s3",
         "providerId": "mega-s4",
         "paid": true,
         "category": "object-storage",
-        "note": "MEGA S4 object storage"
+        "note": "MEGA S4 object storage (Pro plan)"
       }
     ]
   },
@@ -725,6 +710,14 @@
         "note": null
       },
       {
+        "label": "FTP",
+        "protocol": "ftp",
+        "providerId": "filelu-ftp",
+        "paid": false,
+        "category": "protocols",
+        "note": null
+      },
+      {
         "label": "WebDAV",
         "protocol": "webdav",
         "providerId": "filelu-webdav",
@@ -1009,7 +1002,7 @@
     ]
   },
   {
-    "company": "Tab.digital",
+    "company": "TAB.DIGITAL",
     "logoId": "tabdigital",
     "country": "IN",
     "freeGb": 8,
@@ -1067,6 +1060,54 @@
         "providerId": "minio",
         "paid": false,
         "category": "object-storage",
+        "note": null
+      }
+    ]
+  },
+  {
+    "company": "S3Drive",
+    "logoId": "s3drive",
+    "country": "",
+    "freeGb": 12,
+    "freeNote": "via Storj",
+    "freeRequiresCard": false,
+    "regions": [
+      "global"
+    ],
+    "protocols": [
+      {
+        "label": "S3",
+        "protocol": "s3",
+        "providerId": "s3drive",
+        "paid": false,
+        "category": "object-storage",
+        "note": null
+      }
+    ]
+  },
+  {
+    "company": "Quotaless",
+    "logoId": "quotaless-s3",
+    "country": "",
+    "freeGb": null,
+    "freeNote": "trial / invite",
+    "freeRequiresCard": false,
+    "regions": [],
+    "protocols": [
+      {
+        "label": "S3",
+        "protocol": "s3",
+        "providerId": "quotaless-s3",
+        "paid": true,
+        "category": "object-storage",
+        "note": null
+      },
+      {
+        "label": "WebDAV",
+        "protocol": "webdav",
+        "providerId": "quotaless-webdav",
+        "paid": true,
+        "category": "webdav",
         "note": null
       }
     ]

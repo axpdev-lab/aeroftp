@@ -8,6 +8,7 @@ import { Image as ImageIcon, Upload, Trash2, X, Search, PencilLine } from 'lucid
 import { PROVIDER_LOGOS } from './ProviderLogos';
 import { buildDiscoverCategories, type DiscoverItem } from './IntroHub/discoverData';
 import { useTranslation } from '../i18n';
+import { SearchBox } from './SearchBox';
 import { logger } from '../utils/logger';
 import { useDraggableModal } from '../hooks/useDraggableModal';
 
@@ -523,16 +524,12 @@ export function IconPickerDialog({ onSelect, onClose, currentIcon, detectedFavic
                 {/* Search + sort toggle (shipped tab only) */}
                 {tab === 'shipped' && (
                     <div className="px-5 pt-2 space-y-2">
-                        <div className="relative">
-                            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                            <input
-                                type="text"
-                                value={search}
-                                onChange={(e) => setSearch(e.target.value)}
-                                placeholder={t('iconPicker.search')}
-                                className="w-full pl-9 pr-3 py-2 text-sm bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 rounded-lg text-gray-700 dark:text-gray-200 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
-                            />
-                        </div>
+                        <SearchBox
+                            value={search}
+                            onChange={setSearch}
+                            placeholder={t('iconPicker.search')}
+                            className="w-full pl-3 pr-3 py-2 text-sm bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 rounded-lg text-gray-700 dark:text-gray-200 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                        />
                         <div className="flex items-center gap-2 text-[11px]">
                             <span className="text-gray-500 dark:text-gray-400">{t('iconPicker.sort')}:</span>
                             <div className="inline-flex items-center rounded-md border border-gray-200 dark:border-gray-700 overflow-hidden">

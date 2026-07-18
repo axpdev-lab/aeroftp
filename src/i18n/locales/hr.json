@@ -290,20 +290,20 @@
             "storedTotpWarning": "Spremanje tajne za 2FA stavlja oba čimbenika u trezor. Ako glavna lozinka trezora bude ugrožena, 2FA više ne štiti ovaj račun. Radije upotrijebite jednokratni kod ili lokalni WebDAV/S3 most.",
             "filenBridgeCredentialRules": "Ograničenje Filen mosta: {max} znakova. Nije podržano: {rejected}",
             "filenBridgeCredentialRejected": "Ova vjerodajnica sadrži znakove koje Filen most odbija.",
-            "mtpDefaultName": "[NEEDS TRANSLATION] Portable device",
-            "mtpDetect": "[NEEDS TRANSLATION] Detect",
-            "mtpDetectFailed": "[NEEDS TRANSLATION] Could not list portable devices",
-            "mtpDetecting": "[NEEDS TRANSLATION] Detecting...",
-            "mtpDevice": "[NEEDS TRANSLATION] USB device",
-            "mtpFingerprint": "[NEEDS TRANSLATION] Fingerprint",
-            "mtpHonesty": "[NEEDS TRANSLATION] MTP is exclusive: only one app can open the device. Close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter). Some operations are limited by the device OS.",
-            "mtpNoDevices": "[NEEDS TRANSLATION] No portable devices detected. Plug in the phone or camera and enable File Transfer mode.",
-            "mtpRemotePathPlaceholder": "[NEEDS TRANSLATION] Default remote path (e.g. / or DCIM)",
-            "mtpSaveRequiresDevice": "[NEEDS TRANSLATION] Detect and select a device to enable Save.",
-            "mtpSelectPlaceholder": "[NEEDS TRANSLATION] Select a device...",
-            "mtpSelectPlaceholderEmpty": "[NEEDS TRANSLATION] No devices yet — click Detect",
-            "mtpNotAttachedTitle": "[NEEDS TRANSLATION] Device not connected",
-            "mtpNotAttached": "[NEEDS TRANSLATION] Plug in the device and enable File Transfer mode, then try again."
+            "mtpDefaultName": "Prijenosni uređaj",
+            "mtpDetect": "Otkrij",
+            "mtpDetectFailed": "Nije moguće navesti prijenosne uređaje",
+            "mtpDetecting": "Otkrivanje...",
+            "mtpDevice": "USB uređaj",
+            "mtpFingerprint": "Otisak prsta",
+            "mtpHonesty": "MTP je isključiv i na zahtjev: Poveži preuzima uređaj za ovu sesiju (na Linuxu prvo oslobađa sistemski upravitelj datoteka); prekid ga vraća. Prijenosi su samo cijele datoteke (bez nastavka, bez slova pogona). Neke operacije ograničava operacijski sustav uređaja.",
+            "mtpNoDevices": "Nije otkriven nijedan prijenosni uređaj. Priključite telefon ili kameru i omogućite način prijenosa datoteka.",
+            "mtpRemotePathPlaceholder": "Zadana udaljena putanja (npr. / ili DCIM)",
+            "mtpSaveRequiresDevice": "Otkrijte i odaberite uređaj da biste omogućili Spremi.",
+            "mtpSelectPlaceholder": "Odaberite uređaj...",
+            "mtpSelectPlaceholderEmpty": "Još nema uređaja – kliknite Otkrij",
+            "mtpNotAttachedTitle": "Uređaj nije povezan",
+            "mtpNotAttached": "Priključite uređaj i omogućite način prijenosa datoteka, zatim pokušajte ponovno."
         },
         "browser": {
             "remote": "Udaljeno",
@@ -482,7 +482,9 @@
             "s3TrashPurgeHint": "Trajno izbriši ovu verziju (nepovratno)",
             "s3TrashPurgeConfirm": "Trajno izbrisati ovu verziju? Ova radnja se ne može poništiti.",
             "s3TrashEmptySummary": "Ovo će trajno izbrisati {count} objekt(a) ({bytes}). Ova radnja se ne može poništiti.",
-            "extractOverwriteConfirm": "Izdvajanje ovdje prepisat će {count} postojeće stavke: {names}. Nastaviti?"
+            "extractOverwriteConfirm": "Izdvajanje ovdje prepisat će {count} postojeće stavke: {names}. Nastaviti?",
+            "permanentDeleteHint": "Trajno briše samo odabrane stavke iz Smeća. Ovo se ne može poništiti.",
+            "emptyTrashHint": "Trajno briše SVE stavke u Smeću, ne samo odabrane. Ovo se ne može poništiti."
         },
         "transfer": {
             "transferring": "Prijenos...",
@@ -1835,9 +1837,9 @@
             "discoverImageKit": "Medijski CDN i pohrana s nativnim mapama (20 GB besplatno)",
             "discoverUploadcare": "EU upravljanje medijima s CDN-om i API-jima za datoteke (3 GB besplatno)",
             "discoverCloudinary": "CDN za upravljanje medijima s REST API-jem (25 kredita/mjesec besplatno)",
-            "tabdigitalDesc": "Tab.digital (8 GB besplatno, temeljeno na Nextcloud, EU/GDPR)",
-            "tabdigitalTooltip": "Tab.digital: neovisni EU cloud tim od 2018., Nextcloud-as-a-service s 8GB besplatno, usklađen s GDPR-om, regionalne poddomene (fie.nl, fie.de, ...)",
-            "discoverTabDigital": "Tab.digital (8 GB besplatno, temeljeno na Nextcloud, EU/GDPR, regionalne poddomene)",
+            "tabdigitalDesc": "TAB.DIGITAL (8 GB besplatno, temeljeno na Nextcloud, EU/GDPR)",
+            "tabdigitalTooltip": "TAB.DIGITAL: neovisni EU cloud tim od 2018., Nextcloud-as-a-service s 8GB besplatno, usklađen s GDPR-om, regionalne poddomene (fie.nl, fie.de, ...)",
+            "discoverTabDigital": "TAB.DIGITAL (8 GB besplatno, temeljeno na Nextcloud, EU/GDPR, regionalne poddomene)",
             "webdavLocalScheme": "Protokol",
             "webdavLocalSchemeHelp": "Uskladite s HTTP/HTTPS postavkom lokalnog WebDAV mosta (Filen Desktop, MEGAcmd). HTTPS koristi samopotpisani certifikat, pa je provjera certifikata automatski onemogućena.",
             "webdavLocalSchemeAuto": "AeroFTP pri povezivanju automatski otkriva protokol Filen mosta (HTTP ili HTTPS), pa ovdje nema ništa za postaviti.",
@@ -1858,9 +1860,9 @@
             "s3RoleMfaTokenCodePlaceholder": "123456",
             "s3RoleMfaTokenCodeHint": "Jednokratni kôd s vašeg MFA uređaja, potreban samo ako uloga zahtijeva MFA. Koristi se jednom pri povezivanju i nikad se ne sprema.",
             "peerDesc": "Dijelite mape izravno s prijateljima putem šifriranog peer-to-peer kanala, bez poslužitelja u sredini.",
-            "devicesInfoLine1": "[NEEDS TRANSLATION] Save a portable USB device (phone, camera, tablet) as a My Servers profile. Detect the device over MTP, set default folders, and reconnect with one click when it is plugged in.",
-            "devicesInfoLine2": "[NEEDS TRANSLATION] MTP is exclusive: close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter).",
-            "discoverMtpPortable": "[NEEDS TRANSLATION] Phone, camera, or tablet over USB MTP"
+            "devicesInfoLine1": "Spremite prijenosni USB uređaj (telefon, kameru, tablet) kao profil u Moji poslužitelji. Otkrijte uređaj putem MTP-a, postavite zadane mape i ponovno se povežite jednim klikom kada je priključen.",
+            "devicesInfoLine2": "MTP je isključiv i na zahtjev: Poveži preuzima uređaj za sesiju; prekid ga vraća. Prijenosi su samo cijele datoteke (bez nastavka, bez slova pogona).",
+            "discoverMtpPortable": "Telefon, kamera ili tablet putem USB MTP"
         },
         "shortcuts": {
             "title": "Tipkovnički prečaci",
@@ -3213,16 +3215,16 @@
             "copy_path": "Kopiraj putanju",
             "new_folder": "Nova mapa",
             "ejectFailed": "Izbacivanje nije uspjelo",
-            "portable_devices": "[NEEDS TRANSLATION] Portable devices",
-            "portable_disconnect": "[NEEDS TRANSLATION] Disconnect",
-            "portable_disconnect_failed": "[NEEDS TRANSLATION] Could not disconnect portable device",
-            "portable_empty": "[NEEDS TRANSLATION] No portable devices detected",
-            "portable_honesty": "[NEEDS TRANSLATION] Portable devices use MTP: whole-file copy only, no drive letter, and some operations are limited by the device OS.",
-            "portable_no_storages": "[NEEDS TRANSLATION] Session open (no storage list yet; browse polish follows)",
-            "portable_open_failed": "[NEEDS TRANSLATION] Could not open portable device",
-            "portable_opened": "[NEEDS TRANSLATION] Connected to {name}",
-            "portable_storages": "[NEEDS TRANSLATION] {count} storage(s)",
-            "portable_disconnected": "[NEEDS TRANSLATION] Portable device disconnected: {name}",
+            "portable_devices": "Prijenosni uređaji",
+            "portable_disconnect": "Prekini vezu",
+            "portable_disconnect_failed": "Nije moguće odspojiti prijenosni uređaj",
+            "portable_empty": "Nije otkriven nijedan prijenosni uređaj",
+            "portable_honesty": "Prijenosni uređaji koriste MTP: samo kopiranje cijelih datoteka, bez slova pogona, bez nastavka, a neke operacije ograničava operacijski sustav uređaja (ne AeroFTP).",
+            "portable_no_storages": "Sesija otvorena (popis pohrane prazan ili nedostupan na ovom uređaju)",
+            "portable_open_failed": "Nije moguće otvoriti prijenosni uređaj",
+            "portable_opened": "Povezano s {name}",
+            "portable_storages": "{count} pohrana",
+            "portable_disconnected": "Prijenosni uređaj odspojen: {name}",
             "portable_unplugged": "Prijenosni uređaj je isključen. Ponovno priključite kabel i otvorite ga ponovno.",
             "portable_needs_replug": "Nije montirano od strane radne površine. Iskopčajte i ponovno utaknite kabel, zatim ga ponovno otvorite."
         },
@@ -4486,7 +4488,7 @@
                 "localBridge": "Lokalni most",
                 "paid": "Plaćeno",
                 "encrypted": "Šifrirani",
-                "mtp": "[NEEDS TRANSLATION] MTP"
+                "mtp": "MTP"
             },
             "noServers": "Nema spremljenih poslužitelja",
             "noServersHint": "Započnite s brzim povezivanjem ili pregledajte katalog usluga.",
@@ -4507,7 +4509,7 @@
                 "developer": "Razvojni alati",
                 "mediaServices": "Medijske usluge",
                 "all": "Sve",
-                "devices": "[NEEDS TRANSLATION] Devices"
+                "devices": "Uređaji"
             },
             "confirmDeleteServer": "Izbrisati poslužitelj \"{name}\"? Time se uklanjaju spremljene vjerodajnice i ne može se poništiti.",
             "renameWithHotkey": "Preimenuj (F2)",
@@ -4629,8 +4631,8 @@
                 "moveLeft": "Pomakni traku ulijevo",
                 "moveRight": "Pomakni traku udesno"
             },
-            "deviceAttached": "[NEEDS TRANSLATION] Device attached",
-            "deviceNotAttached": "[NEEDS TRANSLATION] Device not attached"
+            "deviceAttached": "Uređaj priključen",
+            "deviceNotAttached": "Uređaj nije priključen"
         },
         "gitlab": {
             "projectPath": "Putanja projekta",
@@ -4801,7 +4803,9 @@
             "decryptFileFromDisk": "Dešifriraj datoteku s diska",
             "fileDecryptedTo": "Datoteka dešifrirana u {path}",
             "serverHashGated": "Kontrolni zbroj na strani poslužitelja nije dostupan dok je aktivan šifrirani sloj (raspršio bi šifrirani tekst, a ne vašu datoteku).",
-            "outsideScope": "Izvan šifrirane zone (datoteke ovdje nisu šifrirane)"
+            "outsideScope": "Izvan šifrirane zone (datoteke ovdje nisu šifrirane)",
+            "overlaysPathButton": "Putanja prekrivača",
+            "overlaysPathButtonHint": "Skoči na šifriranu putanju prekrivača: {path}"
         },
         "b2": {
             "hidden": {
@@ -4990,7 +4994,9 @@
             },
             "launcherScheduler": "Raspoređivač",
             "errorCorrection": "Ispravak pogrešaka",
-            "errorCorrectionHint": "Sprema malu .aerocorrect datoteku pariteta uz svaku sigurnosnu kopiju, tako da se udaljena kopija oštećena bit-rotom može popraviti pri sljedećem povlačenju, bez izvornika."
+            "errorCorrectionHint": "Sprema malu .aerocorrect datoteku pariteta uz svaku sigurnosnu kopiju, tako da se udaljena kopija oštećena bit-rotom može popraviti pri sljedećem povlačenju, bez izvornika.",
+            "outOfSyncItemsPct": "Nesinkronizirane stavke",
+            "outOfSyncBytesPct": "Nesinkronizirani bajtovi"
         },
         "accountLock": {
             "title": "Odaberite račun",

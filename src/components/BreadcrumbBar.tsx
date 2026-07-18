@@ -17,6 +17,16 @@ interface BreadcrumbBarProps {
   isCoherent?: boolean;
   /** When set, segments at or above this path are visually locked (sync navigation boundary) */
   minPath?: string;
+  /**
+   * Lists the immediate subdirectories of `path` for the `>` "browse
+   * subdirectories" dropdown. When omitted the bar defaults to the local
+   * filesystem (`get_local_files`), so the single-panel AeroFile browser keeps
+   * working unchanged. The dual-panel remote pane supplies a remote lister so
+   * the same breadcrumb drives cloud/SFTP/… paths (EF-23).
+   */
+  listSubdirectories?: (path: string) => Promise<SubDirectory[]>;
+  /** Icon for the root segment button. Defaults to a hard-drive (local disk). */
+  rootIcon?: React.ReactNode;
   t: (key: string) => string;
 }
 
@@ -71,6 +81,8 @@ export const BreadcrumbBar: React.FC<BreadcrumbBarProps> = ({
   onNavigate,
   isCoherent = true,
   minPath,
+  listSubdirectories,
+  rootIcon,
   t,
 }) => {
   const [isEditing, setIsEditing] = useState(false);
@@ -222,14 +234,22 @@ export const BreadcrumbBar: React.FC<BreadcrumbBarProps> = ({
     setChevronDropdown({ segmentIndex, items: [], loading: true, anchor });
 
     try {
-      const files: Array<{ name: string; path: string; is_dir: boolean }> = await invoke('get_local_files', {
-        path: parentPath,
-        showHidden: false,
-      });
+      // Default (single-panel AeroFile): list the local filesystem. The
+      // dual-panel remote pane overrides this with a remote lister so the
+      // very same breadcrumb browses cloud/SFTP subdirectories (EF-23).
+      let dirs: SubDirectory[];
+      if (listSubdirectories) {
+        dirs = await listSubdirectories(parentPath);
+      } else {
+        const files: Array<{ name: string; path: string; is_dir: boolean }> = await invoke('get_local_files', {
+          path: parentPath,
+          showHidden: false,
+        });
+        dirs = files.filter((f) => f.is_dir).map((f) => ({ name: f.name, path: f.path }));
+      }
 
-      const dirs: SubDirectory[] = files
-        .filter((f) => f.is_dir)
-        .map((f) => ({ name: f.name, path: f.path }))
+      dirs = dirs
+        .slice()
         .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
 
       setChevronDropdown((prev) =>
@@ -240,7 +260,7 @@ export const BreadcrumbBar: React.FC<BreadcrumbBarProps> = ({
         prev?.segmentIndex === segmentIndex ? { segmentIndex, items: [], loading: false, anchor } : prev
       );
     }
-  }, [chevronDropdown, segments]);
+  }, [chevronDropdown, segments, listSubdirectories]);
 
   const handleDropdownNavigate = useCallback((path: string) => {
     setChevronDropdown(null);
@@ -325,7 +345,7 @@ export const BreadcrumbBar: React.FC<BreadcrumbBarProps> = ({
           title={segments[0].fullPath}
           disabled={isAboveMinPath(segments[0].fullPath)}
         >
-          <HardDrive size={14} />
+          {rootIcon ?? <HardDrive size={14} />}
         </button>
 
         {/* Overflow indicator */}

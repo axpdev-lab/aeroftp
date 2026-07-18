@@ -290,20 +290,20 @@
             "storedTotpWarning": "ការរក្សាទុកព័ត៌មានសម្ងាត់ 2FA នឹងដាក់កត្តាទាំងពីរនៅក្នុងឃ្លាំង។ ប្រសិនបើពាក្យសម្ងាត់មេរបស់ឃ្លាំងត្រូវបានលួច 2FA នឹងលែងការពារគណនីនេះ។ គួរប្រើកូដប្រើបានម្តង ឬស្ពាន WebDAV/S3 ក្នុងមូលដ្ឋាន។",
             "filenBridgeCredentialRules": "ដែនកំណត់ស្ពាន Filen៖ {max} តួអក្សរ។ មិនគាំទ្រ៖ {rejected}",
             "filenBridgeCredentialRejected": "ព័ត៌មានសម្គាល់នេះមានតួអក្សរដែលស្ពាន Filen បដិសេធ។",
-            "mtpDefaultName": "[NEEDS TRANSLATION] Portable device",
-            "mtpDetect": "[NEEDS TRANSLATION] Detect",
-            "mtpDetectFailed": "[NEEDS TRANSLATION] Could not list portable devices",
-            "mtpDetecting": "[NEEDS TRANSLATION] Detecting...",
-            "mtpDevice": "[NEEDS TRANSLATION] USB device",
-            "mtpFingerprint": "[NEEDS TRANSLATION] Fingerprint",
-            "mtpHonesty": "[NEEDS TRANSLATION] MTP is exclusive: only one app can open the device. Close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter). Some operations are limited by the device OS.",
-            "mtpNoDevices": "[NEEDS TRANSLATION] No portable devices detected. Plug in the phone or camera and enable File Transfer mode.",
-            "mtpRemotePathPlaceholder": "[NEEDS TRANSLATION] Default remote path (e.g. / or DCIM)",
-            "mtpSaveRequiresDevice": "[NEEDS TRANSLATION] Detect and select a device to enable Save.",
-            "mtpSelectPlaceholder": "[NEEDS TRANSLATION] Select a device...",
-            "mtpSelectPlaceholderEmpty": "[NEEDS TRANSLATION] No devices yet — click Detect",
-            "mtpNotAttachedTitle": "[NEEDS TRANSLATION] Device not connected",
-            "mtpNotAttached": "[NEEDS TRANSLATION] Plug in the device and enable File Transfer mode, then try again."
+            "mtpDefaultName": "ឧបករណ៍ចល័ត",
+            "mtpDetect": "រកឃើញ",
+            "mtpDetectFailed": "មិនអាចរាយបញ្ជីឧបករណ៍ចល័តបានទេ",
+            "mtpDetecting": "កំពុងរកឃើញ...",
+            "mtpDevice": "ឧបករណ៍ USB",
+            "mtpFingerprint": "ស្នាមម្រាមដៃ",
+            "mtpHonesty": "MTP គឺផ្តាច់មុខ និងតាមតម្រូវការ៖ ភ្ជាប់ យកឧបករណ៍សម្រាប់វគ្គនេះ (នៅលើ Linux ដោះលែងកម្មវិធីគ្រប់គ្រងឯកសាររបស់ប្រព័ន្ធជាមុនសិន)។ ការផ្តាច់ត្រឡប់វាមកវិញ។ ការផ្ទេរគឺជាឯកសារពេញលេញតែប៉ុណ្ណោះ (គ្មានការបន្ត គ្មានអក្សរដ្រាយ)។ ប្រតិបត្តិការមួយចំនួនត្រូវបានកំណត់ដោយប្រព័ន្ធប្រតិបត្តិការរបស់ឧបករណ៍។",
+            "mtpNoDevices": "រកមិនឃើញឧបករណ៍ចល័តទេ។ ដោតទូរស័ព្ទ ឬកាមេរ៉ា ហើយបើកមុខងារផ្ទេរឯកសារ។",
+            "mtpRemotePathPlaceholder": "ផ្លូវពីចម្ងាយលំនាំដើម (ឧ. / ឬ DCIM)",
+            "mtpSaveRequiresDevice": "រកឃើញ និងជ្រើសរើសឧបករណ៍ដើម្បីបើករក្សាទុក។",
+            "mtpSelectPlaceholder": "ជ្រើសរើសឧបករណ៍...",
+            "mtpSelectPlaceholderEmpty": "មិនទាន់មានឧបករណ៍ទេ — ចុចរកឃើញ",
+            "mtpNotAttachedTitle": "ឧបករណ៍មិនត្រូវបានភ្ជាប់ទេ",
+            "mtpNotAttached": "ដោតឧបករណ៍ ហើយបើកមុខងារផ្ទេរឯកសារ បន្ទាប់មកព្យាយាមម្តងទៀត។"
         },
         "browser": {
             "remote": "ពីចម្ងាយ",
@@ -482,7 +482,9 @@
             "s3TrashPurgeHint": "លុបកំណែនេះជាអចិន្ត្រៃយ៍ (មិនអាចត្រឡប់វិញបាន)",
             "s3TrashPurgeConfirm": "លុបកំណែនេះជាអចិន្ត្រៃយ៍? សកម្មភាពនេះមិនអាចត្រឡប់វិញបានទេ។",
             "s3TrashEmptySummary": "សកម្មភាពនេះនឹងលុប {count} វត្ថុ ({bytes}) ជាអចិន្ត្រៃយ៍។ សកម្មភាពនេះមិនអាចត្រឡប់វិញបានទេ។",
-            "extractOverwriteConfirm": "ការស្រង់ចេញនៅទីនេះនឹងសរសេរជាន់លើធាតុដែលមានស្រាប់ {count}៖ {names}។ បន្តទេ?"
+            "extractOverwriteConfirm": "ការស្រង់ចេញនៅទីនេះនឹងសរសេរជាន់លើធាតុដែលមានស្រាប់ {count}៖ {names}។ បន្តទេ?",
+            "permanentDeleteHint": "លុបជាអចិន្ត្រៃយ៍តែធាតុដែលបានជ្រើសរើសពីធុងសំរាម។ មិនអាចត្រឡប់វិញបានទេ។",
+            "emptyTrashHint": "លុបជាអចិន្ត្រៃយ៍នូវធាតុទាំងអស់ក្នុងធុងសំរាម មិនត្រឹមតែធាតុដែលបានជ្រើសរើសទេ។ មិនអាចត្រឡប់វិញបានទេ។"
         },
         "transfer": {
             "transferring": "កំពុងផ្ទេរ...",
@@ -1835,9 +1837,9 @@
             "discoverImageKit": "មេឌៀ CDN និងការផ្ទុកជាមួយថតដើម (20 GB ឥតគិតថ្លៃ)",
             "discoverUploadcare": "ការគ្រប់គ្រងមេឌៀ EU ជាមួយ CDN និង API ឯកសារ (3 GB ឥតគិតថ្លៃ)",
             "discoverCloudinary": "CDN សម្រាប់​ការ​គ្រប់គ្រង​មេឌៀ​ជាមួយ REST API (25 ឥណទាន/ខែ ឥតគិតថ្លៃ)",
-            "tabdigitalDesc": "Tab.digital (ឥតគិតថ្លៃ 8 GB, ផ្អែកលើ Nextcloud, EU/GDPR)",
-            "tabdigitalTooltip": "Tab.digital: ក្រុមពពកឯករាជ្យនៃសហភាពអឺរ៉ុបចាប់តាំងពីឆ្នាំ 2018, Nextcloud-as-a-service ដោយឥតគិតថ្លៃ 8GB, អនុលោមតាម GDPR, ដែនរងតាមតំបន់ (fie.nl, fie.de, ...)",
-            "discoverTabDigital": "Tab.digital (ឥតគិតថ្លៃ 8 GB, ផ្អែកលើ Nextcloud, EU/GDPR, ដែនរងតាមតំបន់)",
+            "tabdigitalDesc": "TAB.DIGITAL (ឥតគិតថ្លៃ 8 GB, ផ្អែកលើ Nextcloud, EU/GDPR)",
+            "tabdigitalTooltip": "TAB.DIGITAL: ក្រុមពពកឯករាជ្យនៃសហភាពអឺរ៉ុបចាប់តាំងពីឆ្នាំ 2018, Nextcloud-as-a-service ដោយឥតគិតថ្លៃ 8GB, អនុលោមតាម GDPR, ដែនរងតាមតំបន់ (fie.nl, fie.de, ...)",
+            "discoverTabDigital": "TAB.DIGITAL (ឥតគិតថ្លៃ 8 GB, ផ្អែកលើ Nextcloud, EU/GDPR, ដែនរងតាមតំបន់)",
             "webdavLocalScheme": "ពិធីការ",
             "webdavLocalSchemeHelp": "ផ្គូផ្គងការកំណត់ HTTP/HTTPS របស់ស្ពាន WebDAV ក្នុងស្រុក (Filen Desktop, MEGAcmd)។ HTTPS ប្រើវិញ្ញាបនបត្រដែលចុះហត្ថលេខាដោយខ្លួនឯង ដូច្នេះការផ្ទៀងផ្ទាត់វិញ្ញាបនបត្រត្រូវបានបិទដោយស្វ័យប្រវត្តិ។",
             "webdavLocalSchemeAuto": "AeroFTP រកឃើញពិធីការនៃស្ពាន Filen (HTTP ឬ HTTPS) ដោយស្វ័យប្រវត្តិនៅពេលអ្នកភ្ជាប់ ដូច្នេះគ្មានអ្វីត្រូវកំណត់នៅទីនេះទេ។",
@@ -1858,9 +1860,9 @@
             "s3RoleMfaTokenCodePlaceholder": "123456",
             "s3RoleMfaTokenCodeHint": "កូដប្រើតែម្ដងពីឧបករណ៍ MFA របស់អ្នក ត្រូវការតែប្រសិនបើតួនាទីតម្រូវឱ្យប្រើ MFA។ ប្រើម្ដងនៅពេលតភ្ជាប់ ហើយមិនត្រូវបានរក្សាទុកឡើយ។",
             "peerDesc": "ចែករំលែកថតផ្ទាល់ជាមួយមិត្តភក្តិតាមរយៈបណ្តាញ peer-to-peer ដែលបានអ៊ីនគ្រីប ដោយគ្មានម៉ាស៊ីនមេនៅកណ្តាល។",
-            "devicesInfoLine1": "[NEEDS TRANSLATION] Save a portable USB device (phone, camera, tablet) as a My Servers profile. Detect the device over MTP, set default folders, and reconnect with one click when it is plugged in.",
-            "devicesInfoLine2": "[NEEDS TRANSLATION] MTP is exclusive: close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter).",
-            "discoverMtpPortable": "[NEEDS TRANSLATION] Phone, camera, or tablet over USB MTP"
+            "devicesInfoLine1": "រក្សាទុកឧបករណ៍ USB ចល័ត (ទូរស័ព្ទ កាមេរ៉ា ថេប្លេត) ជាទម្រង់នៅក្នុងម៉ាស៊ីនមេរបស់ខ្ញុំ។ រកឃើញឧបករណ៍តាមរយៈ MTP កំណត់ថតលំនាំដើម ហើយភ្ជាប់ឡើងវិញដោយចុចម្តងនៅពេលដោត។",
+            "devicesInfoLine2": "MTP គឺផ្តាច់មុខ និងតាមតម្រូវការ៖ ភ្ជាប់ យកឧបករណ៍សម្រាប់វគ្គ។ ការផ្តាច់ត្រឡប់វាមកវិញ។ ការផ្ទេរគឺជាឯកសារពេញលេញតែប៉ុណ្ណោះ (គ្មានការបន្ត គ្មានអក្សរដ្រាយ)។",
+            "discoverMtpPortable": "ទូរស័ព្ទ កាមេរ៉ា ឬថេប្លេតតាមរយៈ USB MTP"
         },
         "shortcuts": {
             "title": "ផ្លូវកាត់ក្តារចុច",
@@ -3213,16 +3215,16 @@
             "no_recent": "គ្មានទីតាំងដែលបានប្រើថ្មីៗ",
             "mount": "Mount",
             "ejectFailed": "ការដកចេញបានបរាជ័យ",
-            "portable_devices": "[NEEDS TRANSLATION] Portable devices",
-            "portable_disconnect": "[NEEDS TRANSLATION] Disconnect",
-            "portable_disconnect_failed": "[NEEDS TRANSLATION] Could not disconnect portable device",
-            "portable_empty": "[NEEDS TRANSLATION] No portable devices detected",
-            "portable_honesty": "[NEEDS TRANSLATION] Portable devices use MTP: whole-file copy only, no drive letter, and some operations are limited by the device OS.",
-            "portable_no_storages": "[NEEDS TRANSLATION] Session open (no storage list yet; browse polish follows)",
-            "portable_open_failed": "[NEEDS TRANSLATION] Could not open portable device",
-            "portable_opened": "[NEEDS TRANSLATION] Connected to {name}",
-            "portable_storages": "[NEEDS TRANSLATION] {count} storage(s)",
-            "portable_disconnected": "[NEEDS TRANSLATION] Portable device disconnected: {name}",
+            "portable_devices": "ឧបករណ៍ចល័ត",
+            "portable_disconnect": "ផ្តាច់",
+            "portable_disconnect_failed": "មិនអាចផ្តាច់ឧបករណ៍ចល័តបានទេ",
+            "portable_empty": "រកមិនឃើញឧបករណ៍ចល័តទេ",
+            "portable_honesty": "ឧបករណ៍ចល័តប្រើ MTP៖ ចម្លងឯកសារពេញលេញតែប៉ុណ្ណោះ គ្មានអក្សរដ្រាយ គ្មានការបន្ត ហើយប្រតិបត្តិការមួយចំនួនត្រូវបានកំណត់ដោយប្រព័ន្ធប្រតិបត្តិការរបស់ឧបករណ៍ (មិនមែន AeroFTP)។",
+            "portable_no_storages": "វគ្គបើក (បញ្ជីឃ្លាំងផ្ទុកទទេ ឬមិនអាចប្រើបាននៅលើឧបករណ៍នេះ)",
+            "portable_open_failed": "មិនអាចបើកឧបករណ៍ចល័តបានទេ",
+            "portable_opened": "បានភ្ជាប់ទៅ {name}",
+            "portable_storages": "ឃ្លាំងផ្ទុក {count}",
+            "portable_disconnected": "បានផ្តាច់ឧបករណ៍ចល័ត៖ {name}",
             "portable_unplugged": "ឧបករណ៍ចល័តត្រូវបានផ្តាច់។ សូមដោតខ្សែម្តងទៀត ហើយបើកវាម្តងទៀត។",
             "portable_needs_replug": "មិនត្រូវបានភ្ជាប់ដោយផ្ទៃតុទេ។ ដកខ្សែចេញ រួចដោតម្តងទៀត បន្ទាប់មកបើកវាឡើងវិញ។"
         },
@@ -4505,7 +4507,7 @@
                 "localBridge": "ស្ពានមូលដ្ឋាន",
                 "paid": "បង់ប្រាក់",
                 "encrypted": "បានអ៊ិនគ្រីប",
-                "mtp": "[NEEDS TRANSLATION] MTP"
+                "mtp": "MTP"
             },
             "noServers": "មិនមានម៉ាស៊ីនមេដែលបានរក្សាទុក",
             "noServersHint": "ចាប់ផ្តើមដោយការតភ្ជាប់រហ័ស ឬរុករកកាតាឡុកសេវាកម្ម។",
@@ -4526,7 +4528,7 @@
                 "developer": "អ្នកអភិវឌ្ឍន៍",
                 "mediaServices": "សេវាកម្មមេឌៀ",
                 "all": "ទាំងអស់",
-                "devices": "[NEEDS TRANSLATION] Devices"
+                "devices": "ឧបករណ៍"
             },
             "confirmDeleteServer": "លុបម៉ាស៊ីនមេ \"{name}\"? វានឹងលុបព័ត៌មានសម្ងាត់ដែលបានរក្សាទុក ហើយមិនអាចត្រឡប់វិញបានទេ។",
             "renameWithHotkey": "ប្តូរឈ្មោះ (F2)",
@@ -4648,8 +4650,8 @@
                 "moveLeft": "ផ្លាស់ទីទៅឆ្វេង",
                 "moveRight": "ផ្លាស់ទីទៅស្តាំ"
             },
-            "deviceAttached": "[NEEDS TRANSLATION] Device attached",
-            "deviceNotAttached": "[NEEDS TRANSLATION] Device not attached"
+            "deviceAttached": "បានភ្ជាប់ឧបករណ៍",
+            "deviceNotAttached": "មិនបានភ្ជាប់ឧបករណ៍"
         },
         "gitlab": {
             "projectPath": "ផ្លូវគម្រោង",
@@ -4820,7 +4822,9 @@
             "decryptFileFromDisk": "ឌិគ្រីបឯកសារពីថាស",
             "fileDecryptedTo": "ឯកសារត្រូវបានឌិគ្រីបទៅ {path}",
             "serverHashGated": "ឆេកសាមនៅខាងម៉ាស៊ីនមេមិនអាចប្រើបានទេ ខណៈពេលដែលការគ្របដណ្តប់អ៊ីនគ្រីបកំពុងដំណើរការ (វានឹង hash អត្ថបទដែលបានអ៊ីនគ្រីប មិនមែនឯកសាររបស់អ្នកទេ)។",
-            "outsideScope": "នៅខាងក្រៅតំបន់អ៊ីនគ្រីប (ឯកសារនៅទីនេះមិនត្រូវបានអ៊ីនគ្រីបទេ)"
+            "outsideScope": "នៅខាងក្រៅតំបន់អ៊ីនគ្រីប (ឯកសារនៅទីនេះមិនត្រូវបានអ៊ីនគ្រីបទេ)",
+            "overlaysPathButton": "ផ្លូវ Overlay",
+            "overlaysPathButtonHint": "លោតទៅផ្លូវ Overlay ដែលបានអ៊ិនគ្រីប៖ {path}"
         },
         "b2": {
             "hidden": {
@@ -5009,7 +5013,9 @@
             },
             "launcherScheduler": "កាលវិភាគ",
             "errorCorrection": "ការកែកំហុស",
-            "errorCorrectionHint": "រក្សាទុកឯកសារ parity .aerocorrect តូចមួយនៅជាប់នឹងឯកសារបម្រុងទុកនីមួយៗ ដើម្បីឲ្យច្បាប់ចម្លងពីចម្ងាយដែលខូចដោយ bit-rot អាចត្រូវបានជួសជុលនៅ pull បន្ទាប់ ដោយគ្មានច្បាប់ដើម។"
+            "errorCorrectionHint": "រក្សាទុកឯកសារ parity .aerocorrect តូចមួយនៅជាប់នឹងឯកសារបម្រុងទុកនីមួយៗ ដើម្បីឲ្យច្បាប់ចម្លងពីចម្ងាយដែលខូចដោយ bit-rot អាចត្រូវបានជួសជុលនៅ pull បន្ទាប់ ដោយគ្មានច្បាប់ដើម។",
+            "outOfSyncItemsPct": "ធាតុមិនធ្វើសមកាលកម្ម",
+            "outOfSyncBytesPct": "បៃមិនធ្វើសមកាលកម្ម"
         },
         "accountLock": {
             "title": "ជ្រើសរើសគណនី",

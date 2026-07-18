@@ -290,20 +290,20 @@
             "storedTotpWarning": "2FA գաղտնիքը պահպանելիս երկու գործոններն էլ պահոցում են հայտնվում։ Եթե պահոցի հիմնական գաղտնաբառը վտանգվի, 2FA-ն այլևս չի պաշտպանի այս հաշիվը։ Նախընտրեք մեկանգամյա կոդ կամ տեղային WebDAV/S3 կամուրջ։",
             "filenBridgeCredentialRules": "Filen կամրջի սահմանաչափը՝ {max} նիշ։ Չաջակցվող՝ {rejected}",
             "filenBridgeCredentialRejected": "Այս մուտքանունը պարունակում է Filen կամրջի կողմից մերժված նիշեր։",
-            "mtpDefaultName": "[NEEDS TRANSLATION] Portable device",
-            "mtpDetect": "[NEEDS TRANSLATION] Detect",
-            "mtpDetectFailed": "[NEEDS TRANSLATION] Could not list portable devices",
-            "mtpDetecting": "[NEEDS TRANSLATION] Detecting...",
-            "mtpDevice": "[NEEDS TRANSLATION] USB device",
-            "mtpFingerprint": "[NEEDS TRANSLATION] Fingerprint",
-            "mtpHonesty": "[NEEDS TRANSLATION] MTP is exclusive: only one app can open the device. Close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter). Some operations are limited by the device OS.",
-            "mtpNoDevices": "[NEEDS TRANSLATION] No portable devices detected. Plug in the phone or camera and enable File Transfer mode.",
-            "mtpRemotePathPlaceholder": "[NEEDS TRANSLATION] Default remote path (e.g. / or DCIM)",
-            "mtpSaveRequiresDevice": "[NEEDS TRANSLATION] Detect and select a device to enable Save.",
-            "mtpSelectPlaceholder": "[NEEDS TRANSLATION] Select a device...",
-            "mtpSelectPlaceholderEmpty": "[NEEDS TRANSLATION] No devices yet — click Detect",
-            "mtpNotAttachedTitle": "[NEEDS TRANSLATION] Device not connected",
-            "mtpNotAttached": "[NEEDS TRANSLATION] Plug in the device and enable File Transfer mode, then try again."
+            "mtpDefaultName": "Շարժական սարք",
+            "mtpDetect": "Հայտնաբերել",
+            "mtpDetectFailed": "Չհաջողվեց ցուցակագրել շարժական սարքերը",
+            "mtpDetecting": "Հայտնաբերում...",
+            "mtpDevice": "USB սարք",
+            "mtpFingerprint": "Մատնահետք",
+            "mtpHonesty": "MTP-ն բացառիկ է և ըստ պահանջի. Միանալը զբաղեցնում է սարքն այս աշխատաշրջանի համար (Linux-ում նախ ազատում է համակարգի ֆայլերի կառավարիչը). անջատումը վերադարձնում է այն։ Փոխանցումները միայն ամբողջական ֆայլով են (առանց վերսկսման, առանց սկավառակի տառի)։ Որոշ գործողություններ սահմանափակված են սարքի օպերացիոն համակարգով։",
+            "mtpNoDevices": "Շարժական սարքեր չեն հայտնաբերվել։ Միացրեք հեռախոսը կամ տեսախցիկը և միացրեք Ֆայլերի փոխանցման ռեժիմը։",
+            "mtpRemotePathPlaceholder": "Հեռավոր լռելյայն ուղի (օր․ / կամ DCIM)",
+            "mtpSaveRequiresDevice": "Հայտնաբերեք և ընտրեք սարք՝ Պահպանելը միացնելու համար։",
+            "mtpSelectPlaceholder": "Ընտրեք սարք...",
+            "mtpSelectPlaceholderEmpty": "Դեռ սարքեր չկան — սեղմեք Հայտնաբերել",
+            "mtpNotAttachedTitle": "Սարքը միացված չէ",
+            "mtpNotAttached": "Միացրեք սարքը և միացրեք Ֆայլերի փոխանցման ռեժիմը, ապա նորից փորձեք։"
         },
         "browser": {
             "remote": "Հեռավոր",
@@ -482,7 +482,9 @@
             "s3TrashPurgeHint": "Ջնջել այս տարբերակն ընդմիշտ (անշրջելի)",
             "s3TrashPurgeConfirm": "Ջնջե՞լ այս տարբերակն ընդմիշտ։ Այս գործողությունը հնարավոր չէ հետ վերածել։",
             "s3TrashEmptySummary": "Սա ընդմիշտ կջնջի {count} օբյեկտ ({bytes})։ Այս գործողությունը հնարավոր չէ հետ վերածել։",
-            "extractOverwriteConfirm": "Այստեղ բացելը կվերագրի {count} առկա տարր(եր)՝ {names}: Շարունակե՞լ։"
+            "extractOverwriteConfirm": "Այստեղ բացելը կվերագրի {count} առկա տարր(եր)՝ {names}: Շարունակե՞լ։",
+            "permanentDeleteHint": "Ընդմիշտ ջնջում է միայն ընտրված տարրերը Աղբարկղից: Սա հնարավոր չէ հետարկել:",
+            "emptyTrashHint": "Ընդմիշտ ջնջում է Աղբարկղի ԲՈԼՈՐ տարրերը, ոչ միայն ընտրվածները: Սա հնարավոր չէ հետարկել:"
         },
         "transfer": {
             "transferring": "Փոխանցում...",
@@ -1828,9 +1830,9 @@
             "discoverImageKit": "Մեդիա CDN և պահոցում ներքին թղթապանակներով (20 GB անվճար)",
             "discoverUploadcare": "EU մեդիայի կառավարում CDN-ով և ֆայլերի API-ներով (3 GB անվճար)",
             "discoverCloudinary": "CDN մեդիա կառավարման համար REST API-ով (25 կրեդիտ/ամսական անվճար)",
-            "tabdigitalDesc": "Tab.digital (8 ԳԲ անվճար, Nextcloud-ի վրա հիմնված, EU/GDPR)",
-            "tabdigitalTooltip": "Tab.digital: անկախ ԵՄ ամպային թիմ 2018 թվականից, Nextcloud-as-a-service 8GB անվճար, GDPR-ի համապատասխան, տարածաշրջանային ենթադոմեններ (fie.nl, fie.de, ...)",
-            "discoverTabDigital": "Tab.digital (8 ԳԲ անվճար, Nextcloud-ի վրա հիմնված, EU/GDPR, տարածաշրջանային ենթադոմեններ)",
+            "tabdigitalDesc": "TAB.DIGITAL (8 ԳԲ անվճար, Nextcloud-ի վրա հիմնված, EU/GDPR)",
+            "tabdigitalTooltip": "TAB.DIGITAL: անկախ ԵՄ ամպային թիմ 2018 թվականից, Nextcloud-as-a-service 8GB անվճար, GDPR-ի համապատասխան, տարածաշրջանային ենթադոմեններ (fie.nl, fie.de, ...)",
+            "discoverTabDigital": "TAB.DIGITAL (8 ԳԲ անվճար, Nextcloud-ի վրա հիմնված, EU/GDPR, տարածաշրջանային ենթադոմեններ)",
             "webdavLocalScheme": "Արձանագրություն",
             "webdavLocalSchemeHelp": "Համապատասխանեցրեք տեղական WebDAV կամրջի HTTP/HTTPS կարգավորմանը (Filen Desktop, MEGAcmd)։ HTTPS-ն օգտագործում է ինքնաստորագրված վկայական, ուստի վկայականի ստուգումն ինքնաշխատ կերպով անջատվում է։",
             "webdavLocalSchemeAuto": "AeroFTP-ը միանալիս ինքնաշխատ հայտնաբերում է Filen կամրջի արձանագրությունը (HTTP կամ HTTPS), ուստի այստեղ կարգավորելու ոչինչ չկա։",
@@ -1851,9 +1853,9 @@
             "s3RoleMfaTokenCodePlaceholder": "123456",
             "s3RoleMfaTokenCodeHint": "Միանվագ կոդ ձեր MFA սարքից, պահանջվում է միայն եթե դերը պարտադրում է MFA։ Օգտագործվում է մեկ անգամ միանալիս և երբեք չի պահպանվում։",
             "peerDesc": "Կիսվեք թղթապանակներով անմիջապես ընկերների հետ՝ գաղտնագրված peer-to-peer ալիքով, առանց միջանկյալ սերվերի։",
-            "devicesInfoLine1": "[NEEDS TRANSLATION] Save a portable USB device (phone, camera, tablet) as a My Servers profile. Detect the device over MTP, set default folders, and reconnect with one click when it is plugged in.",
-            "devicesInfoLine2": "[NEEDS TRANSLATION] MTP is exclusive: close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter).",
-            "discoverMtpPortable": "[NEEDS TRANSLATION] Phone, camera, or tablet over USB MTP"
+            "devicesInfoLine1": "Պահպանեք շարժական USB սարքը (հեռախոս, տեսախցիկ, պլանշետ) որպես պրոֆիլ Իմ սերվերներում։ Հայտնաբերեք սարքը MTP-ի միջոցով, սահմանեք լռելյայն թղթապանակներ և վերամիացեք մեկ սեղմումով, երբ այն միացված է։",
+            "devicesInfoLine2": "MTP-ն բացառիկ է և ըստ պահանջի. Միանալը զբաղեցնում է սարքն աշխատաշրջանի համար. անջատումը վերադարձնում է այն։ Փոխանցումները միայն ամբողջական ֆայլով են (առանց վերսկսման, առանց սկավառակի տառի)։",
+            "discoverMtpPortable": "Հեռախոս, տեսախցիկ կամ պլանշետ USB MTP-ի միջոցով"
         },
         "shortcuts": {
             "title": "Ստեղնաշարի դյուրանցումներ",
@@ -3206,16 +3208,16 @@
             "copy_path": "Պատճենել ուղին",
             "new_folder": "Նոր պանակ",
             "ejectFailed": "Արտամղումը ձախողվեց",
-            "portable_devices": "[NEEDS TRANSLATION] Portable devices",
-            "portable_disconnect": "[NEEDS TRANSLATION] Disconnect",
-            "portable_disconnect_failed": "[NEEDS TRANSLATION] Could not disconnect portable device",
-            "portable_empty": "[NEEDS TRANSLATION] No portable devices detected",
-            "portable_honesty": "[NEEDS TRANSLATION] Portable devices use MTP: whole-file copy only, no drive letter, and some operations are limited by the device OS.",
-            "portable_no_storages": "[NEEDS TRANSLATION] Session open (no storage list yet; browse polish follows)",
-            "portable_open_failed": "[NEEDS TRANSLATION] Could not open portable device",
-            "portable_opened": "[NEEDS TRANSLATION] Connected to {name}",
-            "portable_storages": "[NEEDS TRANSLATION] {count} storage(s)",
-            "portable_disconnected": "[NEEDS TRANSLATION] Portable device disconnected: {name}",
+            "portable_devices": "Շարժական սարքեր",
+            "portable_disconnect": "Անջատել",
+            "portable_disconnect_failed": "Չհաջողվեց անջատել շարժական սարքը",
+            "portable_empty": "Շարժական սարքեր չեն հայտնաբերվել",
+            "portable_honesty": "Շարժական սարքերն օգտագործում են MTP. միայն ամբողջական ֆայլի պատճենում, առանց սկավառակի տառի, առանց վերսկսման, և որոշ գործողություններ սահմանափակված են սարքի օպերացիոն համակարգով (ոչ AeroFTP-ով)։",
+            "portable_no_storages": "Աշխատաշրջանը բաց է (պահեստի ցուցակը դատարկ է կամ հասանելի չէ այս սարքում)",
+            "portable_open_failed": "Չհաջողվեց բացել շարժական սարքը",
+            "portable_opened": "Միացված է {name}-ին",
+            "portable_storages": "{count} պահեստ",
+            "portable_disconnected": "Շարժական սարքն անջատված է. {name}",
             "portable_unplugged": "Դյուրակիր սարքը անջատվել է։ Կրկին միացրեք մալուխը և նորից բացեք այն։",
             "portable_needs_replug": "Աշխատասեղանի կողմից չի միացվել։ Անջատեք և նորից միացրեք մալուխը, ապա կրկին բացեք։"
         },
@@ -4486,7 +4488,7 @@
                 "localBridge": "Տեղական կամուրջ",
                 "paid": "Վճարովի",
                 "encrypted": "Գաղտնագրված",
-                "mtp": "[NEEDS TRANSLATION] MTP"
+                "mtp": "MTP"
             },
             "noServers": "Պահպանված սերվերներ չկան",
             "noServersHint": "Սկսեք արագ միացումով կամ բացահայտեք ծառայությունների գրացուցը։",
@@ -4507,7 +4509,7 @@
                 "developer": "Ծրագրավորող",
                 "mediaServices": "Մեդիա ծառայություններ",
                 "all": "Բոլորը",
-                "devices": "[NEEDS TRANSLATION] Devices"
+                "devices": "Սարքեր"
             },
             "confirmDeleteServer": "Ջնջե՞լ սերվերը \"{name}\"? Սա կհեռացնի պահված հավատարմագրերը և հնարավոր չի լինի չեղարկել:",
             "renameWithHotkey": "Վերանվանել (F2)",
@@ -4629,8 +4631,8 @@
                 "moveLeft": "Տեղափոխել ձախ",
                 "moveRight": "Տեղափոխել աջ"
             },
-            "deviceAttached": "[NEEDS TRANSLATION] Device attached",
-            "deviceNotAttached": "[NEEDS TRANSLATION] Device not attached"
+            "deviceAttached": "Սարքը միացված է",
+            "deviceNotAttached": "Սարքը միացված չէ"
         },
         "gitlab": {
             "projectPath": "Նախագծի ուղի",
@@ -4801,7 +4803,9 @@
             "decryptFileFromDisk": "Վերծանել ֆայլը սկավառակից",
             "fileDecryptedTo": "Ֆայլը վերծանված է {path}-ում",
             "serverHashGated": "Սերվերի կողմից ստուգիչ գումարը հասանելի չէ, երբ ակտիվ է գաղտնագրված շերտը (այն կհաշվարկի գաղտնագրված տեքստի հեշը, ոչ թե ձեր ֆայլի)։",
-            "outsideScope": "Գաղտնագրված տիրույթից դուրս (այստեղի ֆայլերը գաղտնագրված չեն)"
+            "outsideScope": "Գաղտնագրված տիրույթից դուրս (այստեղի ֆայլերը գաղտնագրված չեն)",
+            "overlaysPathButton": "Շերտերի ուղի",
+            "overlaysPathButtonHint": "Անցնել գաղտնագրված շերտերի ուղի՝ {path}"
         },
         "b2": {
             "hidden": {
@@ -4990,7 +4994,9 @@
             },
             "launcherScheduler": "Ժամանակացույց",
             "errorCorrection": "Սխալների ուղղում",
-            "errorCorrectionHint": "Յուրաքանչյուր պահուստավորված ֆայլի կողքին պահում է փոքր .aerocorrect զուգահեռության ֆայլ, որպեսզի bit-rot-ից վնասված հեռավոր պատճենը կարողանա վերականգնվել հաջորդ pull-ի ժամանակ՝ առանց բնօրինակի:"
+            "errorCorrectionHint": "Յուրաքանչյուր պահուստավորված ֆայլի կողքին պահում է փոքր .aerocorrect զուգահեռության ֆայլ, որպեսզի bit-rot-ից վնասված հեռավոր պատճենը կարողանա վերականգնվել հաջորդ pull-ի ժամանակ՝ առանց բնօրինակի:",
+            "outOfSyncItemsPct": "Չհամաժամեցված տարրեր",
+            "outOfSyncBytesPct": "Չհամաժամեցված բայթեր"
         },
         "accountLock": {
             "title": "Ընտրեք հաշիվ",

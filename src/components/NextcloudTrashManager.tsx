@@ -214,6 +214,7 @@ export function NextcloudTrashManager({ providerName, onClose, onRefreshFiles }:
             <button
               onClick={handleDeleteSelected}
               disabled={selected.size === 0 || actionLoading !== null}
+              title={t('contextMenu.permanentDeleteHint')}
               className="flex items-center gap-1.5 px-3 py-1 text-xs rounded bg-orange-600 text-white hover:bg-orange-700 disabled:opacity-40 disabled:cursor-not-allowed"
             >
               {actionLoading === 'delete' ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
@@ -222,6 +223,7 @@ export function NextcloudTrashManager({ providerName, onClose, onRefreshFiles }:
             <button
               onClick={handleEmptyTrash}
               disabled={actionLoading !== null}
+              title={t('contextMenu.emptyTrashHint')}
               className="flex items-center gap-1.5 px-3 py-1 text-xs rounded bg-red-600 text-white hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed"
             >
               {actionLoading === 'empty' ? <Loader2 size={12} className="animate-spin" /> : <AlertTriangle size={12} />}

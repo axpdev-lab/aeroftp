@@ -290,20 +290,20 @@
             "storedTotpWarning": "2FA საიდუმლოს შენახვისას ორივე ფაქტორი საცავში თავსდება. თუ საცავის მთავარი პაროლი გამჟღავნდა, 2FA ამ ანგარიშს ვეღარ დაიცავს. უპირატესობა მიანიჭეთ ერთჯერად კოდს ან ლოკალურ WebDAV/S3 ხიდს.",
             "filenBridgeCredentialRules": "Filen ხიდის ლიმიტი: {max} სიმბოლო. მხარდაუჭერელია: {rejected}",
             "filenBridgeCredentialRejected": "ეს ავტორიზაციის მონაცემი შეიცავს Filen ხიდის მიერ უარყოფილ სიმბოლოებს.",
-            "mtpDefaultName": "[NEEDS TRANSLATION] Portable device",
-            "mtpDetect": "[NEEDS TRANSLATION] Detect",
-            "mtpDetectFailed": "[NEEDS TRANSLATION] Could not list portable devices",
-            "mtpDetecting": "[NEEDS TRANSLATION] Detecting...",
-            "mtpDevice": "[NEEDS TRANSLATION] USB device",
-            "mtpFingerprint": "[NEEDS TRANSLATION] Fingerprint",
-            "mtpHonesty": "[NEEDS TRANSLATION] MTP is exclusive: only one app can open the device. Close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter). Some operations are limited by the device OS.",
-            "mtpNoDevices": "[NEEDS TRANSLATION] No portable devices detected. Plug in the phone or camera and enable File Transfer mode.",
-            "mtpRemotePathPlaceholder": "[NEEDS TRANSLATION] Default remote path (e.g. / or DCIM)",
-            "mtpSaveRequiresDevice": "[NEEDS TRANSLATION] Detect and select a device to enable Save.",
-            "mtpSelectPlaceholder": "[NEEDS TRANSLATION] Select a device...",
-            "mtpSelectPlaceholderEmpty": "[NEEDS TRANSLATION] No devices yet — click Detect",
-            "mtpNotAttachedTitle": "[NEEDS TRANSLATION] Device not connected",
-            "mtpNotAttached": "[NEEDS TRANSLATION] Plug in the device and enable File Transfer mode, then try again."
+            "mtpDefaultName": "პორტატული მოწყობილობა",
+            "mtpDetect": "აღმოჩენა",
+            "mtpDetectFailed": "პორტატული მოწყობილობების ჩამონათვალი ვერ მოხერხდა",
+            "mtpDetecting": "მიმდინარეობს აღმოჩენა...",
+            "mtpDevice": "USB მოწყობილობა",
+            "mtpFingerprint": "ანაბეჭდი",
+            "mtpHonesty": "MTP ექსკლუზიური და მოთხოვნისამებრ არის: დაკავშირება იკავებს მოწყობილობას ამ სესიისთვის (Linux-ზე ჯერ ათავისუფლებს სისტემის ფაილების მენეჯერს); გათიშვა აბრუნებს მას. გადაცემები მხოლოდ სრული ფაილია (გაგრძელების გარეშე, დისკის ასოს გარეშე). ზოგიერთი ოპერაცია შეზღუდულია მოწყობილობის ოპერაციული სისტემით.",
+            "mtpNoDevices": "პორტატული მოწყობილობები ვერ აღმოჩნდა. შეაერთეთ ტელეფონი ან კამერა და ჩართეთ ფაილების გადაცემის რეჟიმი.",
+            "mtpRemotePathPlaceholder": "ნაგულისხმევი დისტანციური გზა (მაგ. / ან DCIM)",
+            "mtpSaveRequiresDevice": "აღმოაჩინეთ და აირჩიეთ მოწყობილობა შენახვის ჩასართავად.",
+            "mtpSelectPlaceholder": "აირჩიეთ მოწყობილობა...",
+            "mtpSelectPlaceholderEmpty": "ჯერ არ არის მოწყობილობები — დააჭირეთ აღმოჩენას",
+            "mtpNotAttachedTitle": "მოწყობილობა არ არის დაკავშირებული",
+            "mtpNotAttached": "შეაერთეთ მოწყობილობა და ჩართეთ ფაილების გადაცემის რეჟიმი, შემდეგ სცადეთ ხელახლა."
         },
         "browser": {
             "remote": "დისტანციური",
@@ -482,7 +482,9 @@
             "s3TrashPurgeHint": "ამ ვერსიის სამუდამოდ წაშლა (შეუქცევადი)",
             "s3TrashPurgeConfirm": "სამუდამოდ წავშალოთ ეს ვერსია? ეს მოქმედება ვერ გაუქმდება.",
             "s3TrashEmptySummary": "ეს სამუდამოდ წაშლის {count} ობიექტს ({bytes}). ეს მოქმედება ვერ გაუქმდება.",
-            "extractOverwriteConfirm": "აქ ამოღება გადააწერს {count} არსებულ ელემენტს: {names}. გავაგრძელოთ?"
+            "extractOverwriteConfirm": "აქ ამოღება გადააწერს {count} არსებულ ელემენტს: {names}. გავაგრძელოთ?",
+            "permanentDeleteHint": "სამუდამოდ შლის მხოლოდ მონიშნულ ერთეულებს სანაგვედან. ამის გაუქმება შეუძლებელია.",
+            "emptyTrashHint": "სამუდამოდ შლის სანაგვის ყველა ერთეულს, არა მხოლოდ მონიშნულებს. ამის გაუქმება შეუძლებელია."
         },
         "transfer": {
             "transferring": "გადაცემა...",
@@ -1835,9 +1837,9 @@
             "discoverImageKit": "მედია CDN და საცავი მშობლიური საქაღალდეებით (20 GB უფასო)",
             "discoverUploadcare": "EU მედიის მართვა CDN-ით და ფაილების API-ებით (3 GB უფასო)",
             "discoverCloudinary": "CDN მედიის მართვისთვის REST API-ით (25 კრედიტი/თვეში უფასოდ)",
-            "tabdigitalDesc": "Tab.digital (8 GB უფასო, Nextcloud-ზე დაფუძნებული, EU/GDPR)",
-            "tabdigitalTooltip": "Tab.digital: დამოუკიდებელი ევროკავშირის ღრუბლის გუნდი 2018 წლიდან, Nextcloud-as-a-service 8GB უფასოდ, GDPR-თან თავსებადი, რეგიონული ქვედომენები (fie.nl, fie.de, ...)",
-            "discoverTabDigital": "Tab.digital (8 GB უფასო, Nextcloud-ზე დაფუძნებული, EU/GDPR, რეგიონული ქვედომენები)",
+            "tabdigitalDesc": "TAB.DIGITAL (8 GB უფასო, Nextcloud-ზე დაფუძნებული, EU/GDPR)",
+            "tabdigitalTooltip": "TAB.DIGITAL: დამოუკიდებელი ევროკავშირის ღრუბლის გუნდი 2018 წლიდან, Nextcloud-as-a-service 8GB უფასოდ, GDPR-თან თავსებადი, რეგიონული ქვედომენები (fie.nl, fie.de, ...)",
+            "discoverTabDigital": "TAB.DIGITAL (8 GB უფასო, Nextcloud-ზე დაფუძნებული, EU/GDPR, რეგიონული ქვედომენები)",
             "webdavLocalScheme": "პროტოკოლი",
             "webdavLocalSchemeHelp": "შეუსაბამეთ ლოკალური WebDAV ხიდის HTTP/HTTPS პარამეტრს (Filen Desktop, MEGAcmd). HTTPS იყენებს თვითხელმოწერილ სერტიფიკატს, ამიტომ სერტიფიკატის შემოწმება ავტომატურად გათიშულია.",
             "webdavLocalSchemeAuto": "AeroFTP ავტომატურად ამოიცნობს Filen-ის ხიდის პროტოკოლს (HTTP ან HTTPS) დაკავშირებისას, ამიტომ აქ არაფრის დაყენება არ არის საჭირო.",
@@ -1858,9 +1860,9 @@
             "s3RoleMfaTokenCodePlaceholder": "123456",
             "s3RoleMfaTokenCodeHint": "ერთჯერადი კოდი თქვენი MFA მოწყობილობიდან, საჭიროა მხოლოდ თუ როლი მოითხოვს MFA-ს. გამოიყენება ერთხელ დაკავშირებისას და არასოდეს ინახება.",
             "peerDesc": "გააზიარეთ საქაღალდეები პირდაპირ მეგობრებთან დაშიფრული peer-to-peer არხით, შუა სერვერის გარეშე.",
-            "devicesInfoLine1": "[NEEDS TRANSLATION] Save a portable USB device (phone, camera, tablet) as a My Servers profile. Detect the device over MTP, set default folders, and reconnect with one click when it is plugged in.",
-            "devicesInfoLine2": "[NEEDS TRANSLATION] MTP is exclusive: close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter).",
-            "discoverMtpPortable": "[NEEDS TRANSLATION] Phone, camera, or tablet over USB MTP"
+            "devicesInfoLine1": "შეინახეთ პორტატული USB მოწყობილობა (ტელეფონი, კამერა, ტაბლეტი) როგორც პროფილი ჩემს სერვერებში. აღმოაჩინეთ მოწყობილობა MTP-ის საშუალებით, დააყენეთ ნაგულისხმევი საქაღალდეები და ხელახლა დაუკავშირდით ერთი დაწკაპუნებით, როცა ის მიერთებულია.",
+            "devicesInfoLine2": "MTP ექსკლუზიური და მოთხოვნისამებრ არის: დაკავშირება იკავებს მოწყობილობას სესიისთვის; გათიშვა აბრუნებს მას. გადაცემები მხოლოდ სრული ფაილია (გაგრძელების გარეშე, დისკის ასოს გარეშე).",
+            "discoverMtpPortable": "ტელეფონი, კამერა ან ტაბლეტი USB MTP-ის საშუალებით"
         },
         "shortcuts": {
             "title": "კლავიატურის მალსახმობები",
@@ -3213,16 +3215,16 @@
             "no_recent": "ბოლო მდებარეობები არ არის",
             "mount": "მაუნტი",
             "ejectFailed": "ამოღება ვერ მოხერხდა",
-            "portable_devices": "[NEEDS TRANSLATION] Portable devices",
-            "portable_disconnect": "[NEEDS TRANSLATION] Disconnect",
-            "portable_disconnect_failed": "[NEEDS TRANSLATION] Could not disconnect portable device",
-            "portable_empty": "[NEEDS TRANSLATION] No portable devices detected",
-            "portable_honesty": "[NEEDS TRANSLATION] Portable devices use MTP: whole-file copy only, no drive letter, and some operations are limited by the device OS.",
-            "portable_no_storages": "[NEEDS TRANSLATION] Session open (no storage list yet; browse polish follows)",
-            "portable_open_failed": "[NEEDS TRANSLATION] Could not open portable device",
-            "portable_opened": "[NEEDS TRANSLATION] Connected to {name}",
-            "portable_storages": "[NEEDS TRANSLATION] {count} storage(s)",
-            "portable_disconnected": "[NEEDS TRANSLATION] Portable device disconnected: {name}",
+            "portable_devices": "პორტატული მოწყობილობები",
+            "portable_disconnect": "გათიშვა",
+            "portable_disconnect_failed": "პორტატული მოწყობილობის გათიშვა ვერ მოხერხდა",
+            "portable_empty": "პორტატული მოწყობილობები ვერ აღმოჩნდა",
+            "portable_honesty": "პორტატული მოწყობილობები იყენებენ MTP-ს: მხოლოდ სრული ფაილის კოპირება, დისკის ასოს გარეშე, გაგრძელების გარეშე, და ზოგიერთი ოპერაცია შეზღუდულია მოწყობილობის ოპერაციული სისტემით (და არა AeroFTP-ით).",
+            "portable_no_storages": "სესია ღიაა (საცავის სია ცარიელია ან მიუწვდომელია ამ მოწყობილობაზე)",
+            "portable_open_failed": "პორტატული მოწყობილობის გახსნა ვერ მოხერხდა",
+            "portable_opened": "დაკავშირებულია {name}-თან",
+            "portable_storages": "{count} საცავი",
+            "portable_disconnected": "პორტატული მოწყობილობა გათიშულია: {name}",
             "portable_unplugged": "პორტატული მოწყობილობა გაითიშა. ხელახლა შეაერთეთ კაბელი და გახსენით ხელახლა.",
             "portable_needs_replug": "სამუშაო მაგიდის მიერ არ არის მიმაგრებული. ამოაძრეთ და ხელახლა შეაერთეთ კაბელი, შემდეგ კვლავ გახსენით."
         },
@@ -4486,7 +4488,7 @@
                 "localBridge": "ლოკალური ხიდი",
                 "paid": "ფასიანი",
                 "encrypted": "დაშიფრული",
-                "mtp": "[NEEDS TRANSLATION] MTP"
+                "mtp": "MTP"
             },
             "noServers": "შენახული სერვერები არ არის",
             "noServersHint": "დაიწყეთ სწრაფი დაკავშირებით ან დაათვალიერეთ სერვისების კატალოგი.",
@@ -4507,7 +4509,7 @@
                 "developer": "დეველოპერი",
                 "mediaServices": "მედია სერვისები",
                 "all": "ყველა",
-                "devices": "[NEEDS TRANSLATION] Devices"
+                "devices": "მოწყობილობები"
             },
             "confirmDeleteServer": "წაიშალოს სერვერი \"{name}\"? ეს ამოშლის შენახულ სერთიფიკატებს და ვერ გაუქმდება.",
             "renameWithHotkey": "სახელის გადარქმევა (F2)",
@@ -4629,8 +4631,8 @@
                 "moveLeft": "მარცხნივ გადატანა",
                 "moveRight": "მარჯვნივ გადატანა"
             },
-            "deviceAttached": "[NEEDS TRANSLATION] Device attached",
-            "deviceNotAttached": "[NEEDS TRANSLATION] Device not attached"
+            "deviceAttached": "მოწყობილობა მიერთებულია",
+            "deviceNotAttached": "მოწყობილობა არ არის მიერთებული"
         },
         "gitlab": {
             "projectPath": "პროექტის გზა",
@@ -4801,7 +4803,9 @@
             "decryptFileFromDisk": "ფაილის გაშიფვრა დისკიდან",
             "fileDecryptedTo": "ფაილი გაშიფრულია: {path}",
             "serverHashGated": "სერვერის მხარის საკონტროლო ჯამი მიუწვდომელია, სანამ დაშიფრული საფარი აქტიურია (ის დაჰეშავს დაშიფრულ ტექსტს და არა თქვენს ფაილს).",
-            "outsideScope": "დაშიფრული ზონის გარეთ (აქ ფაილები დაშიფრული არ არის)"
+            "outsideScope": "დაშიფრული ზონის გარეთ (აქ ფაილები დაშიფრული არ არის)",
+            "overlaysPathButton": "გადაფარვის ბილიკი",
+            "overlaysPathButtonHint": "გადასვლა დაშიფრულ გადაფარვის ბილიკზე: {path}"
         },
         "b2": {
             "hidden": {
@@ -4990,7 +4994,9 @@
             },
             "launcherScheduler": "განრიგი",
             "errorCorrection": "შეცდომების გასწორება",
-            "errorCorrectionHint": "ინახავს პატარა .aerocorrect პარიტეტის ფაილს თითოეული სარეზერვო ფაილის გვერდით, რათა bit-rot-ით დაზიანებული დისტანციური ასლი შესაძლებელი იყოს გასწორდეს შემდეგი pull-ისას, ორიგინალის გარეშე."
+            "errorCorrectionHint": "ინახავს პატარა .aerocorrect პარიტეტის ფაილს თითოეული სარეზერვო ფაილის გვერდით, რათა bit-rot-ით დაზიანებული დისტანციური ასლი შესაძლებელი იყოს გასწორდეს შემდეგი pull-ისას, ორიგინალის გარეშე.",
+            "outOfSyncItemsPct": "არასინქრონიზებული ელემენტები",
+            "outOfSyncBytesPct": "არასინქრონიზებული ბაიტები"
         },
         "accountLock": {
             "title": "აირჩიეთ ანგარიში",

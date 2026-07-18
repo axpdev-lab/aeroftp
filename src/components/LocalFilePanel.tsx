@@ -14,7 +14,7 @@
 import React, { useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import {
-  RefreshCw, Search, HardDrive, AlertTriangle, X, ClipboardList, FolderUp, Loader2,
+  RefreshCw, Search, X, ClipboardList, FolderUp, Loader2,
   Copy, ArrowRightLeft, Lock, LockOpen,
 } from 'lucide-react';
 import { useMarqueeSelection } from '../hooks/useMarqueeSelection';
@@ -648,25 +648,20 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
           </div>
         ) : (
           <>
-            <div className={`flex-1 flex items-center bg-white dark:bg-gray-800 rounded-lg border ${(!isPathCoherent || isSyncPathMismatch) ? 'border-amber-400 dark:border-amber-500' : 'border-gray-300 dark:border-gray-600 hover:border-blue-400 dark:hover:border-blue-500'} focus-within:border-blue-500 dark:focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-500/20 transition-all overflow-hidden`}>
-              <div
-                className="flex-shrink-0 pl-2.5 pr-1 flex items-center"
-                title={isSyncPathMismatch ? t('browser.syncPathMismatch') : isPathCoherent ? "Local Disk" : "Local path doesn't match the connected server"}
-              >
-                {(!isPathCoherent || isSyncPathMismatch) ? (
-                  <AlertTriangle size={14} className="text-amber-500" />
-                ) : (
-                  <HardDrive size={14} className={isSyncNavigation ? 'text-purple-500' : 'text-blue-500'} />
-                )}
-              </div>
-              <input
-                type="text"
-                value={currentPath}
-                onChange={(e) => setCurrentPath(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && onNavigate((e.target as HTMLInputElement).value)}
-                className={`flex-1 pl-1 pr-2 py-1 bg-transparent border-none outline-none text-sm cursor-text selection:bg-blue-200 dark:selection:bg-blue-800 ${(!isPathCoherent || isSyncPathMismatch) ? 'text-amber-600 dark:text-amber-400' : ''}`}
-                title={isSyncPathMismatch ? t('browser.syncPathMismatch') : isPathCoherent ? t('browser.editPathHint') : `\u26a0\ufe0f ${t('browser.localPathMismatch')}`}
-                placeholder="/path/to/local/directory"
+            {/* EF-23: in the dual-panel (connected) view the local pane's path
+                bar reuses the same AeroFile breadcrumb as the single-panel
+                browser - clickable directory segments plus a `>` "browse
+                subdirectories" dropdown per segment - instead of a plain
+                address input. The coherence/sync-mismatch signal is folded into
+                the breadcrumb's own warning icon via `isCoherent`, and the sync
+                navigation boundary via `minPath`. */}
+            <div className="flex-1 min-w-0">
+              <BreadcrumbBar
+                currentPath={currentPath}
+                onNavigate={onNavigate}
+                isCoherent={isPathCoherent && !isSyncPathMismatch}
+                minPath={isSyncNavigation && syncBasePaths ? syncBasePaths.local : undefined}
+                t={t}
               />
             </div>
             {(() => {

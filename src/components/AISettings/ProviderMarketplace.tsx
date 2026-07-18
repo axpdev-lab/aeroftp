@@ -2,8 +2,9 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { X, Search, Check, Zap, Star } from 'lucide-react';
+import { X, Check, Zap, Star } from 'lucide-react';
 import { useTranslation } from '../../i18n';
+import { SearchBox } from '../SearchBox';
 import { useDraggableModal } from '../../hooks/useDraggableModal';
 import { AIProviderType, PROVIDER_PRESETS } from '../../types/ai';
 import {
@@ -231,21 +232,18 @@ export const ProviderMarketplace: React.FC<ProviderMarketplaceProps> = ({
 
                 {/* Search + Category filters */}
                 <div className="px-5 py-3 border-b border-gray-200 dark:border-gray-700 space-y-3">
-                    <div className="relative">
-                        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500" />
-                        <input
-                            ref={searchInputRef}
-                            type="text"
-                            value={search}
-                            onChange={e => setSearch(e.target.value)}
-                            placeholder={t('ai.marketplace.search')}
-                            className="w-full pl-9 pr-3 py-2 rounded-lg text-sm
+                    <SearchBox
+                        inputRef={searchInputRef}
+                        value={search}
+                        onChange={setSearch}
+                        placeholder={t('ai.marketplace.search')}
+                        iconClassName="text-gray-400 dark:text-gray-500"
+                        className="w-full pl-3 pr-3 py-2 rounded-lg text-sm
                                 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100
                                 border border-gray-200 dark:border-gray-700
                                 placeholder:text-gray-400 dark:placeholder:text-gray-500
                                 focus:outline-none focus:border-purple-500"
-                        />
-                    </div>
+                    />
                     <div className="flex flex-wrap gap-1.5">
                         {MARKETPLACE_CATEGORIES.map(cat => (
                             <button

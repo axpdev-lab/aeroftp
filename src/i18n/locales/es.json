@@ -290,20 +290,20 @@
             "storedTotpWarning": "Guardar el secreto de 2FA almacena ambos factores en la bóveda. Si la contraseña maestra de la bóveda se ve comprometida, 2FA dejará de proteger esta cuenta. Es preferible usar un código de un solo uso o un puente WebDAV/S3 local.",
             "filenBridgeCredentialRules": "Límite del puente Filen: {max} caracteres. No admitidos: {rejected}",
             "filenBridgeCredentialRejected": "Esta credencial contiene caracteres rechazados por el puente Filen.",
-            "mtpDefaultName": "[NEEDS TRANSLATION] Portable device",
-            "mtpDetect": "[NEEDS TRANSLATION] Detect",
-            "mtpDetectFailed": "[NEEDS TRANSLATION] Could not list portable devices",
-            "mtpDetecting": "[NEEDS TRANSLATION] Detecting...",
-            "mtpDevice": "[NEEDS TRANSLATION] USB device",
-            "mtpFingerprint": "[NEEDS TRANSLATION] Fingerprint",
-            "mtpHonesty": "[NEEDS TRANSLATION] MTP is exclusive: only one app can open the device. Close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter). Some operations are limited by the device OS.",
-            "mtpNoDevices": "[NEEDS TRANSLATION] No portable devices detected. Plug in the phone or camera and enable File Transfer mode.",
-            "mtpRemotePathPlaceholder": "[NEEDS TRANSLATION] Default remote path (e.g. / or DCIM)",
-            "mtpSaveRequiresDevice": "[NEEDS TRANSLATION] Detect and select a device to enable Save.",
-            "mtpSelectPlaceholder": "[NEEDS TRANSLATION] Select a device...",
-            "mtpSelectPlaceholderEmpty": "[NEEDS TRANSLATION] No devices yet — click Detect",
-            "mtpNotAttachedTitle": "[NEEDS TRANSLATION] Device not connected",
-            "mtpNotAttached": "[NEEDS TRANSLATION] Plug in the device and enable File Transfer mode, then try again."
+            "mtpDefaultName": "Dispositivo portátil",
+            "mtpDetect": "Detectar",
+            "mtpDetectFailed": "No se pudieron listar los dispositivos portátiles",
+            "mtpDetecting": "Detectando...",
+            "mtpDevice": "Dispositivo USB",
+            "mtpFingerprint": "Huella",
+            "mtpHonesty": "MTP es exclusivo y bajo demanda: Conectar reclama el dispositivo para esta sesión (en Linux, liberando primero el gestor de archivos del sistema); desconectar lo devuelve. Las transferencias son de archivo completo (sin reanudación ni letra de unidad). Algunas operaciones están limitadas por el sistema del dispositivo.",
+            "mtpNoDevices": "No se detectaron dispositivos portátiles. Conecta el teléfono o la cámara y activa el modo de transferencia de archivos.",
+            "mtpRemotePathPlaceholder": "Ruta remota predeterminada (p. ej. / o DCIM)",
+            "mtpSaveRequiresDevice": "Detecta y selecciona un dispositivo para habilitar Guardar.",
+            "mtpSelectPlaceholder": "Selecciona un dispositivo...",
+            "mtpSelectPlaceholderEmpty": "Aún no hay dispositivos: haz clic en Detectar",
+            "mtpNotAttachedTitle": "Dispositivo no conectado",
+            "mtpNotAttached": "Conecta el dispositivo y activa el modo de transferencia de archivos; luego inténtalo de nuevo."
         },
         "browser": {
             "remote": "Remoto",
@@ -482,7 +482,9 @@
             "s3TrashPurgeHint": "Eliminar permanentemente esta versión (irreversible)",
             "s3TrashPurgeConfirm": "¿Eliminar permanentemente esta versión? Esta acción no se puede deshacer.",
             "s3TrashEmptySummary": "Esto eliminará permanentemente {count} objeto(s) ({bytes}). Esta acción no se puede deshacer.",
-            "extractOverwriteConfirm": "Extraer aquí sobrescribirá {count} elemento(s) existente(s): {names}. ¿Continuar?"
+            "extractOverwriteConfirm": "Extraer aquí sobrescribirá {count} elemento(s) existente(s): {names}. ¿Continuar?",
+            "permanentDeleteHint": "Elimina permanentemente solo los elementos seleccionados de la Papelera. Esto no se puede deshacer.",
+            "emptyTrashHint": "Elimina permanentemente TODOS los elementos de la Papelera, no solo los seleccionados. Esto no se puede deshacer."
         },
         "transfer": {
             "transferring": "Transfiriendo...",
@@ -1835,9 +1837,9 @@
             "discoverImageKit": "CDN de medios y almacenamiento con carpetas nativas (20 GB gratis)",
             "discoverUploadcare": "Gestión de medios EU con CDN y API de archivos (3 GB gratis)",
             "discoverCloudinary": "CDN para gestión de medios con REST API (25 créditos/mes gratis)",
-            "tabdigitalDesc": "Tab.digital (8 GB gratis, basado en Nextcloud, EU/GDPR)",
-            "tabdigitalTooltip": "Tab.digital: equipo cloud independiente de la UE desde 2018, Nextcloud-as-a-service con 8GB gratis, compatible con GDPR, subdominios regionales (fie.nl, fie.de, ...)",
-            "discoverTabDigital": "Tab.digital (8 GB gratis, basado en Nextcloud, EU/GDPR, subdominios regionales)",
+            "tabdigitalDesc": "TAB.DIGITAL (8 GB gratis, basado en Nextcloud, EU/GDPR)",
+            "tabdigitalTooltip": "TAB.DIGITAL: equipo cloud independiente de la UE desde 2018, Nextcloud-as-a-service con 8GB gratis, compatible con GDPR, subdominios regionales (fie.nl, fie.de, ...)",
+            "discoverTabDigital": "TAB.DIGITAL (8 GB gratis, basado en Nextcloud, EU/GDPR, subdominios regionales)",
             "webdavLocalScheme": "Protocolo",
             "webdavLocalSchemeHelp": "Coincide con la configuración HTTP/HTTPS del puente WebDAV local (Filen Desktop, MEGAcmd). HTTPS utiliza un certificado autofirmado, por lo que la verificación del certificado se desactiva automáticamente.",
             "webdavLocalSchemeAuto": "AeroFTP detecta automáticamente el protocolo del puente de Filen (HTTP o HTTPS) al conectar, así que no hay nada que configurar aquí.",
@@ -1858,9 +1860,9 @@
             "s3RoleMfaTokenCodePlaceholder": "123456",
             "s3RoleMfaTokenCodeHint": "Código de un solo uso de tu dispositivo MFA, necesario solo si el rol exige MFA. Se usa una vez al conectar y nunca se guarda.",
             "peerDesc": "Comparte carpetas directamente con tus amigos a través de un canal cifrado de igual a igual, sin ningún servidor en medio.",
-            "devicesInfoLine1": "[NEEDS TRANSLATION] Save a portable USB device (phone, camera, tablet) as a My Servers profile. Detect the device over MTP, set default folders, and reconnect with one click when it is plugged in.",
-            "devicesInfoLine2": "[NEEDS TRANSLATION] MTP is exclusive: close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter).",
-            "discoverMtpPortable": "[NEEDS TRANSLATION] Phone, camera, or tablet over USB MTP"
+            "devicesInfoLine1": "Guarda un dispositivo USB portátil (teléfono, cámara, tableta) como un perfil de Mis Servidores. Detecta el dispositivo por MTP, define carpetas predeterminadas y reconéctate con un clic cuando esté conectado.",
+            "devicesInfoLine2": "MTP es exclusivo y bajo demanda: Conectar reclama el dispositivo para la sesión; desconectar lo devuelve. Las transferencias son de archivo completo (sin reanudación ni letra de unidad).",
+            "discoverMtpPortable": "Teléfono, cámara o tableta por USB MTP"
         },
         "shortcuts": {
             "title": "Atajos de Teclado",
@@ -4486,7 +4488,7 @@
                 "localBridge": "Puente local",
                 "paid": "De pago",
                 "encrypted": "Cifrados",
-                "mtp": "[NEEDS TRANSLATION] MTP"
+                "mtp": "MTP"
             },
             "noServers": "No hay servidores guardados",
             "noServersHint": "Comience con una conexión rápida o explore el catálogo de servicios.",
@@ -4507,7 +4509,7 @@
                 "developer": "Desarrollador",
                 "mediaServices": "Servicios multimedia",
                 "all": "Todos",
-                "devices": "[NEEDS TRANSLATION] Devices"
+                "devices": "Dispositivos"
             },
             "confirmDeleteServer": "¿Eliminar el servidor \"{name}\"? Esto elimina las credenciales guardadas y no se puede deshacer.",
             "renameWithHotkey": "Renombrar (F2)",
@@ -4629,8 +4631,8 @@
                 "moveLeft": "Mover barra a la izquierda",
                 "moveRight": "Mover barra a la derecha"
             },
-            "deviceAttached": "[NEEDS TRANSLATION] Device attached",
-            "deviceNotAttached": "[NEEDS TRANSLATION] Device not attached"
+            "deviceAttached": "Dispositivo conectado",
+            "deviceNotAttached": "Dispositivo no conectado"
         },
         "gitlab": {
             "projectPath": "Ruta del proyecto",
@@ -4801,7 +4803,9 @@
             "decryptFileFromDisk": "Descifrar archivo del disco",
             "fileDecryptedTo": "Archivo descifrado en {path}",
             "serverHashGated": "Suma de comprobación del lado del servidor no disponible con una capa cifrada activa (calcularía el hash del texto cifrado, no de tu archivo).",
-            "outsideScope": "Fuera del área cifrada (los archivos aquí no están cifrados)"
+            "outsideScope": "Fuera del área cifrada (los archivos aquí no están cifrados)",
+            "overlaysPathButton": "Ruta de superposiciones",
+            "overlaysPathButtonHint": "Ir a la ruta cifrada de superposiciones: {path}"
         },
         "b2": {
             "hidden": {
@@ -4990,7 +4994,9 @@
             },
             "launcherScheduler": "Programador",
             "errorCorrection": "Corrección de errores",
-            "errorCorrectionHint": "Guarda un pequeño archivo de paridad .aerocorrect junto a cada archivo de copia de seguridad, para que una copia remota dañada por bit-rot pueda repararse en el siguiente pull, sin el original."
+            "errorCorrectionHint": "Guarda un pequeño archivo de paridad .aerocorrect junto a cada archivo de copia de seguridad, para que una copia remota dañada por bit-rot pueda repararse en el siguiente pull, sin el original.",
+            "outOfSyncItemsPct": "Elementos sin sincronizar",
+            "outOfSyncBytesPct": "Bytes sin sincronizar"
         },
         "accountLock": {
             "title": "Elige una cuenta",

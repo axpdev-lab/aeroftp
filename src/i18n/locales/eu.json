@@ -290,20 +290,20 @@
             "storedTotpWarning": "2FA sekretua gordetzean bi faktoreak kutxa seguruan geratzen dira. Kutxa seguruko pasahitz nagusia arriskuan jartzen bada, 2FAk ez du kontu hau babestuko. Erabili ahal dela behin erabiltzeko kode bat edo WebDAV/S3 zubi lokal bat.",
             "filenBridgeCredentialRules": "Filen zubiaren muga: {max} karaktere. Onartzen ez direnak: {rejected}",
             "filenBridgeCredentialRejected": "Kredentzial honek Filen zubiak baztertutako karaktereak ditu.",
-            "mtpDefaultName": "[NEEDS TRANSLATION] Portable device",
-            "mtpDetect": "[NEEDS TRANSLATION] Detect",
-            "mtpDetectFailed": "[NEEDS TRANSLATION] Could not list portable devices",
-            "mtpDetecting": "[NEEDS TRANSLATION] Detecting...",
-            "mtpDevice": "[NEEDS TRANSLATION] USB device",
-            "mtpFingerprint": "[NEEDS TRANSLATION] Fingerprint",
-            "mtpHonesty": "[NEEDS TRANSLATION] MTP is exclusive: only one app can open the device. Close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter). Some operations are limited by the device OS.",
-            "mtpNoDevices": "[NEEDS TRANSLATION] No portable devices detected. Plug in the phone or camera and enable File Transfer mode.",
-            "mtpRemotePathPlaceholder": "[NEEDS TRANSLATION] Default remote path (e.g. / or DCIM)",
-            "mtpSaveRequiresDevice": "[NEEDS TRANSLATION] Detect and select a device to enable Save.",
-            "mtpSelectPlaceholder": "[NEEDS TRANSLATION] Select a device...",
-            "mtpSelectPlaceholderEmpty": "[NEEDS TRANSLATION] No devices yet — click Detect",
-            "mtpNotAttachedTitle": "[NEEDS TRANSLATION] Device not connected",
-            "mtpNotAttached": "[NEEDS TRANSLATION] Plug in the device and enable File Transfer mode, then try again."
+            "mtpDefaultName": "Gailu eramangarria",
+            "mtpDetect": "Detektatu",
+            "mtpDetectFailed": "Ezin izan dira gailu eramangarriak zerrendatu",
+            "mtpDetecting": "Detektatzen...",
+            "mtpDevice": "USB gailua",
+            "mtpFingerprint": "Hatz-marka",
+            "mtpHonesty": "MTP esklusiboa eta eskaeraren araberakoa da: Konektatu-k gailua sesio honetarako hartzen du (Linux-en, lehenik sistemaren fitxategi-kudeatzailea askatzen du); deskonektatzeak itzuli egiten du. Transferentziak fitxategi osokoak baino ez dira (berrekiterik gabe, unitate-letrarik gabe). Eragiketa batzuk gailuaren sistema eragileak mugatzen ditu.",
+            "mtpNoDevices": "Ez da gailu eramangarririk detektatu. Konektatu telefonoa edo kamera eta gaitu fitxategi-transferentzia modua.",
+            "mtpRemotePathPlaceholder": "Urruneko bide lehenetsia (adib. / edo DCIM)",
+            "mtpSaveRequiresDevice": "Detektatu eta hautatu gailu bat Gorde gaitzeko.",
+            "mtpSelectPlaceholder": "Hautatu gailu bat...",
+            "mtpSelectPlaceholderEmpty": "Oraindik gailurik ez — egin klik Detektatu-n",
+            "mtpNotAttachedTitle": "Gailua ez dago konektatuta",
+            "mtpNotAttached": "Konektatu gailua eta gaitu fitxategi-transferentzia modua, eta saiatu berriro."
         },
         "browser": {
             "remote": "Urrunekoa",
@@ -482,7 +482,9 @@
             "s3TrashPurgeHint": "Ezabatu bertsio hau behin betiko (itzulezina)",
             "s3TrashPurgeConfirm": "Bertsio hau behin betiko ezabatu? Ekintza hau ezin da desegin.",
             "s3TrashEmptySummary": "Honek {count} objektu ({bytes}) behin betiko ezabatuko ditu. Ekintza hau ezin da desegin.",
-            "extractOverwriteConfirm": "Hemen erauzteak lehendik dauden {count} elementu gainidatziko ditu: {names}. Jarraitu?"
+            "extractOverwriteConfirm": "Hemen erauzteak lehendik dauden {count} elementu gainidatziko ditu: {names}. Jarraitu?",
+            "permanentDeleteHint": "Hautatutako elementuak soilik ezabatzen ditu behin betiko Zakarrontzitik. Ezin da desegin.",
+            "emptyTrashHint": "Zakarrontziko elementu GUZTIAK ezabatzen ditu behin betiko, ez soilik hautatutakoak. Ezin da desegin."
         },
         "transfer": {
             "transferring": "Transferitzen...",
@@ -1835,9 +1837,9 @@
             "discoverImageKit": "Multimedia CDN eta biltegiratzea karpeta natiboekin (20 GB doan)",
             "discoverUploadcare": "EU multimedia-kudeaketa CDN eta fitxategi APIekin (3 GB doan)",
             "discoverCloudinary": "Multimedia kudeatzeko CDNa REST APIarekin (25 kreditu/hilean doan)",
-            "tabdigitalDesc": "Tab.digital (8 GB doan, Nextcloud-en oinarrituta, EU/GDPR)",
-            "tabdigitalTooltip": "Tab.digital: 2018tik EBko hodei talde independentea, Nextcloud-as-a-service 8GB doanekin, GDPRrekin bateragarria, eskualdeko azpidomeinuak (fie.nl, fie.de, ...)",
-            "discoverTabDigital": "Tab.digital (8 GB doan, Nextcloud-en oinarrituta, EU/GDPR, eskualdeko azpidomeinuak)",
+            "tabdigitalDesc": "TAB.DIGITAL (8 GB doan, Nextcloud-en oinarrituta, EU/GDPR)",
+            "tabdigitalTooltip": "TAB.DIGITAL: 2018tik EBko hodei talde independentea, Nextcloud-as-a-service 8GB doanekin, GDPRrekin bateragarria, eskualdeko azpidomeinuak (fie.nl, fie.de, ...)",
+            "discoverTabDigital": "TAB.DIGITAL (8 GB doan, Nextcloud-en oinarrituta, EU/GDPR, eskualdeko azpidomeinuak)",
             "webdavLocalScheme": "Protokoloa",
             "webdavLocalSchemeHelp": "Bat etorri tokiko WebDAV zubiaren HTTP/HTTPS ezarpenarekin (Filen Desktop, MEGAcmd). HTTPSk auto-sinatutako ziurtagiri bat erabiltzen du, beraz ziurtagirien egiaztapena automatikoki desaktibatzen da.",
             "webdavLocalSchemeAuto": "AeroFTP-k automatikoki hautematen du Filen zubiaren protokoloa (HTTP edo HTTPS) konektatzean, beraz, ez dago ezer ezarri beharrik hemen.",
@@ -1858,9 +1860,9 @@
             "s3RoleMfaTokenCodePlaceholder": "123456",
             "s3RoleMfaTokenCodeHint": "Zure MFA gailuko behin erabiltzeko kodea, rolak MFA derrigortzen badu soilik behar da. Konektatzean behin erabiltzen da eta ez da inoiz gordetzen.",
             "peerDesc": "Partekatu karpetak zuzenean lagunekin enkriptatutako peer-to-peer kanal baten bidez, tarteko zerbitzaririk gabe.",
-            "devicesInfoLine1": "[NEEDS TRANSLATION] Save a portable USB device (phone, camera, tablet) as a My Servers profile. Detect the device over MTP, set default folders, and reconnect with one click when it is plugged in.",
-            "devicesInfoLine2": "[NEEDS TRANSLATION] MTP is exclusive: close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter).",
-            "discoverMtpPortable": "[NEEDS TRANSLATION] Phone, camera, or tablet over USB MTP"
+            "devicesInfoLine1": "Gorde USB gailu eramangarri bat (telefonoa, kamera, tableta) Nire zerbitzariak ataleko profil gisa. Detektatu gailua MTP bidez, ezarri karpeta lehenetsiak eta birkonektatu klik bakarrarekin konektatuta dagoenean.",
+            "devicesInfoLine2": "MTP esklusiboa eta eskaeraren araberakoa da: Konektatu-k gailua sesiorako hartzen du; deskonektatzeak itzuli egiten du. Transferentziak fitxategi osokoak baino ez dira (berrekiterik gabe, unitate-letrarik gabe).",
+            "discoverMtpPortable": "Telefonoa, kamera edo tableta USB MTP bidez"
         },
         "shortcuts": {
             "title": "Teklatu lasterbideak",
@@ -3213,16 +3215,16 @@
             "copy_path": "Kopiatu bidea",
             "new_folder": "Karpeta berria",
             "ejectFailed": "Kanporatzeak huts egin du",
-            "portable_devices": "[NEEDS TRANSLATION] Portable devices",
-            "portable_disconnect": "[NEEDS TRANSLATION] Disconnect",
-            "portable_disconnect_failed": "[NEEDS TRANSLATION] Could not disconnect portable device",
-            "portable_empty": "[NEEDS TRANSLATION] No portable devices detected",
-            "portable_honesty": "[NEEDS TRANSLATION] Portable devices use MTP: whole-file copy only, no drive letter, and some operations are limited by the device OS.",
-            "portable_no_storages": "[NEEDS TRANSLATION] Session open (no storage list yet; browse polish follows)",
-            "portable_open_failed": "[NEEDS TRANSLATION] Could not open portable device",
-            "portable_opened": "[NEEDS TRANSLATION] Connected to {name}",
-            "portable_storages": "[NEEDS TRANSLATION] {count} storage(s)",
-            "portable_disconnected": "[NEEDS TRANSLATION] Portable device disconnected: {name}",
+            "portable_devices": "Gailu eramangarriak",
+            "portable_disconnect": "Deskonektatu",
+            "portable_disconnect_failed": "Ezin izan da gailu eramangarria deskonektatu",
+            "portable_empty": "Ez da gailu eramangarririk detektatu",
+            "portable_honesty": "Gailu eramangarriek MTP erabiltzen dute: fitxategi osoen kopia soilik, unitate-letrarik gabe, berrekiterik gabe, eta eragiketa batzuk gailuaren sistema eragileak mugatzen ditu (ez AeroFTP-k).",
+            "portable_no_storages": "Sesioa irekita (biltegi-zerrenda hutsik edo ez dago erabilgarri gailu honetan)",
+            "portable_open_failed": "Ezin izan da gailu eramangarria ireki",
+            "portable_opened": "{name}-(e)ra konektatuta",
+            "portable_storages": "{count} biltegi",
+            "portable_disconnected": "Gailu eramangarria deskonektatuta: {name}",
             "portable_unplugged": "Gailu eramangarria deskonektatu da. Konektatu kablea berriro eta ireki berriro.",
             "portable_needs_replug": "Mahaigainak ez du muntatu. Deskonektatu eta konektatu berriro kablea, eta ireki berriro."
         },
@@ -4505,7 +4507,7 @@
                 "localBridge": "Tokiko zubia",
                 "paid": "Ordainpekoa",
                 "encrypted": "Zifratuak",
-                "mtp": "[NEEDS TRANSLATION] MTP"
+                "mtp": "MTP"
             },
             "noServers": "Ez dago gordetako zerbitzaririk",
             "noServersHint": "Hasi konexio azkar batekin edo arakatu zerbitzu katalogoa.",
@@ -4526,7 +4528,7 @@
                 "developer": "Garatzailea",
                 "mediaServices": "Multimedia zerbitzuak",
                 "all": "Guztiak",
-                "devices": "[NEEDS TRANSLATION] Devices"
+                "devices": "Gailuak"
             },
             "confirmDeleteServer": "\"{name}\" zerbitzaria ezabatu? Honek gordetako kredentzialak kentzen ditu eta ezin da desegin.",
             "renameWithHotkey": "Berrizendatu (F2)",
@@ -4648,8 +4650,8 @@
                 "moveLeft": "Eraman ezkerrera",
                 "moveRight": "Eraman eskuinera"
             },
-            "deviceAttached": "[NEEDS TRANSLATION] Device attached",
-            "deviceNotAttached": "[NEEDS TRANSLATION] Device not attached"
+            "deviceAttached": "Gailua konektatuta",
+            "deviceNotAttached": "Gailua ez dago konektatuta"
         },
         "gitlab": {
             "projectPath": "Proiektuaren bidea",
@@ -4820,7 +4822,9 @@
             "decryptFileFromDisk": "Deszifratu fitxategia diskotik",
             "fileDecryptedTo": "Fitxategia hemen deszifratuta: {path}",
             "serverHashGated": "Zerbitzariko kontrol-batura ez dago erabilgarri zifratutako geruza aktibo dagoenean (testu zifratuaren hash-a egingo luke, ez zure fitxategiarena).",
-            "outsideScope": "Zifratutako eremutik kanpo (hemengo fitxategiak ez daude zifratuta)"
+            "outsideScope": "Zifratutako eremutik kanpo (hemengo fitxategiak ez daude zifratuta)",
+            "overlaysPathButton": "Gainjarrien bidea",
+            "overlaysPathButtonHint": "Jauzi gainjarri zifratuen bidera: {path}"
         },
         "b2": {
             "hidden": {
@@ -5009,7 +5013,9 @@
             },
             "launcherScheduler": "Antolatzailea",
             "errorCorrection": "Erroreen zuzenketa",
-            "errorCorrectionHint": "Babeskopia fitxategi bakoitzaren ondoan .aerocorrect paritate-fitxategi txiki bat gordetzen du, bit-rot-ek hondatutako urruneko kopia bat hurrengo pull-ean konpondu ahal izateko, jatorrizkoa gabe."
+            "errorCorrectionHint": "Babeskopia fitxategi bakoitzaren ondoan .aerocorrect paritate-fitxategi txiki bat gordetzen du, bit-rot-ek hondatutako urruneko kopia bat hurrengo pull-ean konpondu ahal izateko, jatorrizkoa gabe.",
+            "outOfSyncItemsPct": "Sinkronizatu gabeko elementuak",
+            "outOfSyncBytesPct": "Sinkronizatu gabeko byteak"
         },
         "accountLock": {
             "title": "Aukeratu kontu bat",

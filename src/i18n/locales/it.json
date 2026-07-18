@@ -405,20 +405,20 @@
             "storedTotpWarning": "Il salvataggio del segreto 2FA memorizza entrambi i fattori nel vault. Se la password principale del vault viene compromessa, 2FA non protegge più questo account. Preferisci un codice monouso o un bridge WebDAV/S3 locale.",
             "filenBridgeCredentialRules": "Limite del bridge Filen: {max} caratteri. Non supportati: {rejected}",
             "filenBridgeCredentialRejected": "Questa credenziale contiene caratteri rifiutati dal bridge Filen.",
-            "mtpDefaultName": "[NEEDS TRANSLATION] Portable device",
-            "mtpDetect": "[NEEDS TRANSLATION] Detect",
-            "mtpDetectFailed": "[NEEDS TRANSLATION] Could not list portable devices",
-            "mtpDetecting": "[NEEDS TRANSLATION] Detecting...",
-            "mtpDevice": "[NEEDS TRANSLATION] USB device",
-            "mtpFingerprint": "[NEEDS TRANSLATION] Fingerprint",
-            "mtpHonesty": "[NEEDS TRANSLATION] MTP is exclusive: only one app can open the device. Close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter). Some operations are limited by the device OS.",
-            "mtpNoDevices": "[NEEDS TRANSLATION] No portable devices detected. Plug in the phone or camera and enable File Transfer mode.",
-            "mtpRemotePathPlaceholder": "[NEEDS TRANSLATION] Default remote path (e.g. / or DCIM)",
-            "mtpSaveRequiresDevice": "[NEEDS TRANSLATION] Detect and select a device to enable Save.",
-            "mtpSelectPlaceholder": "[NEEDS TRANSLATION] Select a device...",
-            "mtpSelectPlaceholderEmpty": "[NEEDS TRANSLATION] No devices yet — click Detect",
-            "mtpNotAttachedTitle": "[NEEDS TRANSLATION] Device not connected",
-            "mtpNotAttached": "[NEEDS TRANSLATION] Plug in the device and enable File Transfer mode, then try again."
+            "mtpDefaultName": "Dispositivo portatile",
+            "mtpDetect": "Rileva",
+            "mtpDetectFailed": "Impossibile elencare i dispositivi portatili",
+            "mtpDetecting": "Rilevamento...",
+            "mtpDevice": "Dispositivo USB",
+            "mtpFingerprint": "Impronta",
+            "mtpHonesty": "MTP è esclusivo e su richiesta: Connetti riserva il dispositivo per questa sessione (su Linux, rilasciando prima il file manager di sistema); disconnetti lo restituisce. I trasferimenti sono a file intero (nessuna ripresa, nessuna lettera di unità). Alcune operazioni sono limitate dal sistema del dispositivo.",
+            "mtpNoDevices": "Nessun dispositivo portatile rilevato. Collega il telefono o la fotocamera e attiva la modalità Trasferimento file.",
+            "mtpRemotePathPlaceholder": "Percorso remoto predefinito (es. / o DCIM)",
+            "mtpSaveRequiresDevice": "Rileva e seleziona un dispositivo per abilitare Salva.",
+            "mtpSelectPlaceholder": "Seleziona un dispositivo...",
+            "mtpSelectPlaceholderEmpty": "Ancora nessun dispositivo — fai clic su Rileva",
+            "mtpNotAttachedTitle": "Dispositivo non connesso",
+            "mtpNotAttached": "Collega il dispositivo e attiva la modalità Trasferimento file, poi riprova."
         },
         "twoFactor": {
             "title": "Autenticazione a due fattori richiesta",
@@ -563,8 +563,8 @@
             "githubOwnerRepoPlaceholder": "owner/repo (es. axpdev-lab/aeroftp)",
             "felicloudDesc": "Felicloud (10 GB gratuiti, EU/GDPR)",
             "felicloudTooltip": "Felicloud - Archiviazione cloud EU basata su Nextcloud con 10GB gratuiti, conforme al GDPR",
-            "tabdigitalDesc": "Tab.digital (8 GB gratuiti, basato su Nextcloud, EU/GDPR)",
-            "tabdigitalTooltip": "Tab.digital: team cloud indipendente EU dal 2018, Nextcloud-as-a-service con 8GB gratuiti, GDPR-compliant, sottodomini regionali (fie.nl, fie.de, ...)",
+            "tabdigitalDesc": "TAB.DIGITAL (8 GB gratuiti, basato su Nextcloud, EU/GDPR)",
+            "tabdigitalTooltip": "TAB.DIGITAL: team cloud indipendente EU dal 2018, Nextcloud-as-a-service con 8GB gratuiti, GDPR-compliant, sottodomini regionali (fie.nl, fie.de, ...)",
             "blompDesc": "Blomp (40 GB di archiviazione cloud gratuita)",
             "blompTooltip": "Blomp - 40GB di archiviazione cloud gratuita alimentata da OpenStack Swift",
             "swiftDesc": "OpenStack Swift archiviazione oggetti",
@@ -610,7 +610,7 @@
             "discoverCloudMe": "Archiviazione cloud svedese con WebDAV (3 GB gratis)",
             "discoverDriveHQ": "Archiviazione cloud aziendale e condivisione file",
             "discoverFelicloud": "Felicloud (10 GB gratis, basato su Nextcloud, EU/GDPR)",
-            "discoverTabDigital": "Tab.digital (8 GB gratis, basato su Nextcloud, EU/GDPR, sottodomini regionali)",
+            "discoverTabDigital": "TAB.DIGITAL (8 GB gratis, basato su Nextcloud, EU/GDPR, sottodomini regionali)",
             "discoverJianguoyun": "Popolare archiviazione cloud cinese con WebDAV (3 GB gratis)",
             "discoverInfiniCloud": "Archiviazione cloud giapponese con WebDAV (25 GB gratis)",
             "discoverSeafile": "Archiviazione cloud self-hosted open-source con WebDAV",
@@ -686,9 +686,9 @@
             "s3RoleMfaTokenCodePlaceholder": "123456",
             "s3RoleMfaTokenCodeHint": "Codice monouso dal tuo dispositivo MFA, richiesto solo se il ruolo impone MFA. Usato una volta alla connessione e mai salvato.",
             "peerDesc": "Condividi cartelle direttamente con gli amici su un canale peer-to-peer cifrato, senza alcun server di mezzo.",
-            "devicesInfoLine1": "[NEEDS TRANSLATION] Save a portable USB device (phone, camera, tablet) as a My Servers profile. Detect the device over MTP, set default folders, and reconnect with one click when it is plugged in.",
-            "devicesInfoLine2": "[NEEDS TRANSLATION] MTP is exclusive: close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter).",
-            "discoverMtpPortable": "[NEEDS TRANSLATION] Phone, camera, or tablet over USB MTP"
+            "devicesInfoLine1": "Salva un dispositivo USB portatile (telefono, fotocamera, tablet) come profilo in I miei server. Rileva il dispositivo via MTP, imposta le cartelle predefinite e riconnettiti con un clic quando è collegato.",
+            "devicesInfoLine2": "MTP è esclusivo e su richiesta: Connetti riserva il dispositivo per la sessione; disconnetti lo restituisce. I trasferimenti sono a file intero (nessuna ripresa, nessuna lettera di unità).",
+            "discoverMtpPortable": "Telefono, fotocamera o tablet via USB MTP"
         },
         "browser": {
             "remote": "Remoto",
@@ -888,7 +888,9 @@
             "s3TrashPurgeHint": "Elimina definitivamente questa versione (irreversibile)",
             "s3TrashPurgeConfirm": "Eliminare definitivamente questa versione? Questa operazione non può essere annullata.",
             "s3TrashEmptySummary": "Verranno eliminati definitivamente {count} oggetti ({bytes}). Questa operazione non può essere annullata.",
-            "extractOverwriteConfirm": "L'estrazione qui sovrascriverà {count} elemento/i esistente/i: {names}. Continuare?"
+            "extractOverwriteConfirm": "L'estrazione qui sovrascriverà {count} elemento/i esistente/i: {names}. Continuare?",
+            "permanentDeleteHint": "Elimina definitivamente solo gli elementi selezionati dal Cestino. Questa operazione non può essere annullata.",
+            "emptyTrashHint": "Elimina definitivamente TUTTI gli elementi nel Cestino, non solo quelli selezionati. Questa operazione non può essere annullata."
         },
         "transfer": {
             "transferring": "Trasferimento in corso...",
@@ -3343,7 +3345,9 @@
             "decryptFileFromDisk": "Decifra file dal disco",
             "fileDecryptedTo": "File decifrato in {path}",
             "serverHashGated": "Checksum lato server non disponibile con un overlay cifrato attivo (calcolerebbe l'hash del testo cifrato, non del tuo file).",
-            "outsideScope": "Fuori dalla zona cifrata (i file qui non sono cifrati)"
+            "outsideScope": "Fuori dalla zona cifrata (i file qui non sono cifrati)",
+            "overlaysPathButton": "Percorso overlay",
+            "overlaysPathButtonHint": "Vai al percorso overlay cifrato: {path}"
         },
         "aerocryptNative": {
             "title": "Overlay AeroCrypt",
@@ -4801,7 +4805,7 @@
                 "localBridge": "Bridge locale",
                 "paid": "A pagamento",
                 "encrypted": "Cifrati",
-                "mtp": "[NEEDS TRANSLATION] MTP"
+                "mtp": "MTP"
             },
             "cryptBadge": {
                 "aerocrypt": "AeroCrypt",
@@ -4840,7 +4844,7 @@
                 "cloudStorage": "Storage cloud",
                 "developer": "Sviluppatore",
                 "mediaServices": "Servizi multimediali",
-                "devices": "[NEEDS TRANSLATION] Devices"
+                "devices": "Dispositivi"
             },
             "check": "Verifica",
             "scanning": "Scansione...",
@@ -4944,8 +4948,8 @@
                 "moveLeft": "Sposta barra a sinistra",
                 "moveRight": "Sposta barra a destra"
             },
-            "deviceAttached": "[NEEDS TRANSLATION] Device attached",
-            "deviceNotAttached": "[NEEDS TRANSLATION] Device not attached"
+            "deviceAttached": "Dispositivo collegato",
+            "deviceNotAttached": "Dispositivo non collegato"
         },
         "gitlab": {
             "projectPath": "Percorso progetto",
@@ -5206,7 +5210,9 @@
                 "colBytes": "Byte",
                 "colAction": "Azione"
             },
-            "launcherScheduler": "Pianificatore"
+            "launcherScheduler": "Pianificatore",
+            "outOfSyncItemsPct": "Elementi non sincronizzati",
+            "outOfSyncBytesPct": "Byte non sincronizzati"
         },
         "aerocryptProfile": {
             "overlaysSection": "Wrapper / Overlay",

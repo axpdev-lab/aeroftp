@@ -290,20 +290,20 @@
             "storedTotpWarning": "保存 2FA 密钥会将两个验证因素都存入保险库。如果保险库主密码泄露，2FA 将无法继续保护此账户。建议使用一次性验证码或本地 WebDAV/S3 网桥。",
             "filenBridgeCredentialRules": "Filen 网桥限制：{max} 个字符。不支持：{rejected}",
             "filenBridgeCredentialRejected": "此凭据包含 Filen 网桥拒绝的字符。",
-            "mtpDefaultName": "[NEEDS TRANSLATION] Portable device",
-            "mtpDetect": "[NEEDS TRANSLATION] Detect",
-            "mtpDetectFailed": "[NEEDS TRANSLATION] Could not list portable devices",
-            "mtpDetecting": "[NEEDS TRANSLATION] Detecting...",
-            "mtpDevice": "[NEEDS TRANSLATION] USB device",
-            "mtpFingerprint": "[NEEDS TRANSLATION] Fingerprint",
-            "mtpHonesty": "[NEEDS TRANSLATION] MTP is exclusive: only one app can open the device. Close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter). Some operations are limited by the device OS.",
-            "mtpNoDevices": "[NEEDS TRANSLATION] No portable devices detected. Plug in the phone or camera and enable File Transfer mode.",
-            "mtpRemotePathPlaceholder": "[NEEDS TRANSLATION] Default remote path (e.g. / or DCIM)",
-            "mtpSaveRequiresDevice": "[NEEDS TRANSLATION] Detect and select a device to enable Save.",
-            "mtpSelectPlaceholder": "[NEEDS TRANSLATION] Select a device...",
-            "mtpSelectPlaceholderEmpty": "[NEEDS TRANSLATION] No devices yet — click Detect",
-            "mtpNotAttachedTitle": "[NEEDS TRANSLATION] Device not connected",
-            "mtpNotAttached": "[NEEDS TRANSLATION] Plug in the device and enable File Transfer mode, then try again."
+            "mtpDefaultName": "便携设备",
+            "mtpDetect": "检测",
+            "mtpDetectFailed": "无法列出便携设备",
+            "mtpDetecting": "正在检测...",
+            "mtpDevice": "USB 设备",
+            "mtpFingerprint": "指纹",
+            "mtpHonesty": "MTP 是独占且按需的：连接会在本次会话中占用设备（在 Linux 上会先释放系统文件管理器）；断开连接会归还设备。传输仅限整个文件（不支持续传，无驱动器盘符）。某些操作受设备操作系统限制。",
+            "mtpNoDevices": "未检测到便携设备。请接入手机或相机并启用文件传输模式。",
+            "mtpRemotePathPlaceholder": "默认远程路径（例如 / 或 DCIM）",
+            "mtpSaveRequiresDevice": "检测并选择设备以启用“保存”。",
+            "mtpSelectPlaceholder": "选择设备...",
+            "mtpSelectPlaceholderEmpty": "尚无设备 — 点击“检测”",
+            "mtpNotAttachedTitle": "设备未连接",
+            "mtpNotAttached": "请接入设备并启用文件传输模式，然后重试。"
         },
         "browser": {
             "remote": "远程",
@@ -482,7 +482,9 @@
             "s3TrashPurgeHint": "永久删除此版本 (不可逆)",
             "s3TrashPurgeConfirm": "永久删除此版本? 此操作无法撤消。",
             "s3TrashEmptySummary": "这将永久删除 {count} 个对象 ({bytes})。此操作无法撤消。",
-            "extractOverwriteConfirm": "在此解压将覆盖 {count} 个现有项目：{names}。是否继续？"
+            "extractOverwriteConfirm": "在此解压将覆盖 {count} 个现有项目：{names}。是否继续？",
+            "permanentDeleteHint": "仅永久删除回收站中选定的项目。此操作无法撤销。",
+            "emptyTrashHint": "永久删除回收站中的所有项目，而不仅仅是选定的项目。此操作无法撤销。"
         },
         "transfer": {
             "transferring": "传输中...",
@@ -1835,9 +1837,9 @@
             "discoverImageKit": "支持原生文件夹的媒体 CDN 与存储（20 GB 免费）",
             "discoverUploadcare": "带 CDN 和文件 API 的 EU 媒体管理（3 GB 免费）",
             "discoverCloudinary": "媒体管理 CDN，提供 REST API（每月 25 积分免费）",
-            "tabdigitalDesc": "Tab.digital (8 GB 免费, 基于 Nextcloud, EU/GDPR)",
-            "tabdigitalTooltip": "Tab.digital: 自 2018 年起的独立欧盟云团队, 提供 8GB 免费的 Nextcloud-as-a-service, 符合 GDPR, 区域子域名 (fie.nl, fie.de, ...)",
-            "discoverTabDigital": "Tab.digital (8 GB 免费, 基于 Nextcloud, EU/GDPR, 区域子域名)",
+            "tabdigitalDesc": "TAB.DIGITAL (8 GB 免费, 基于 Nextcloud, EU/GDPR)",
+            "tabdigitalTooltip": "TAB.DIGITAL: 自 2018 年起的独立欧盟云团队, 提供 8GB 免费的 Nextcloud-as-a-service, 符合 GDPR, 区域子域名 (fie.nl, fie.de, ...)",
+            "discoverTabDigital": "TAB.DIGITAL (8 GB 免费, 基于 Nextcloud, EU/GDPR, 区域子域名)",
             "webdavLocalScheme": "协议",
             "webdavLocalSchemeHelp": "匹配本地 WebDAV 桥接 (Filen Desktop, MEGAcmd) 的 HTTP/HTTPS 设置。HTTPS 使用自签名证书, 因此证书验证会自动禁用。",
             "webdavLocalSchemeAuto": "AeroFTP 会在连接时自动检测 Filen 桥接的协议（HTTP 或 HTTPS），因此这里无需设置。",
@@ -1858,9 +1860,9 @@
             "s3RoleMfaTokenCodePlaceholder": "123456",
             "s3RoleMfaTokenCodeHint": "来自您 MFA 设备的一次性代码，仅在角色强制要求 MFA 时需要。连接时使用一次，绝不保存。",
             "peerDesc": "通过加密的点对点通道直接与好友共享文件夹，中间无需任何服务器。",
-            "devicesInfoLine1": "[NEEDS TRANSLATION] Save a portable USB device (phone, camera, tablet) as a My Servers profile. Detect the device over MTP, set default folders, and reconnect with one click when it is plugged in.",
-            "devicesInfoLine2": "[NEEDS TRANSLATION] MTP is exclusive: close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter).",
-            "discoverMtpPortable": "[NEEDS TRANSLATION] Phone, camera, or tablet over USB MTP"
+            "devicesInfoLine1": "将便携 USB 设备（手机、相机、平板）保存为“我的服务器”配置文件。通过 MTP 检测设备、设置默认文件夹，并在接入时一键重新连接。",
+            "devicesInfoLine2": "MTP 是独占且按需的：连接会在本次会话中占用设备；断开连接会归还设备。传输仅限整个文件（不支持续传，无驱动器盘符）。",
+            "discoverMtpPortable": "通过 USB MTP 连接的手机、相机或平板"
         },
         "shortcuts": {
             "title": "键盘快捷键",
@@ -3213,16 +3215,16 @@
             "no_recent": "没有最近访问的位置",
             "mount": "挂载",
             "ejectFailed": "弹出失败",
-            "portable_devices": "[NEEDS TRANSLATION] Portable devices",
-            "portable_disconnect": "[NEEDS TRANSLATION] Disconnect",
-            "portable_disconnect_failed": "[NEEDS TRANSLATION] Could not disconnect portable device",
-            "portable_empty": "[NEEDS TRANSLATION] No portable devices detected",
-            "portable_honesty": "[NEEDS TRANSLATION] Portable devices use MTP: whole-file copy only, no drive letter, and some operations are limited by the device OS.",
-            "portable_no_storages": "[NEEDS TRANSLATION] Session open (no storage list yet; browse polish follows)",
-            "portable_open_failed": "[NEEDS TRANSLATION] Could not open portable device",
-            "portable_opened": "[NEEDS TRANSLATION] Connected to {name}",
-            "portable_storages": "[NEEDS TRANSLATION] {count} storage(s)",
-            "portable_disconnected": "[NEEDS TRANSLATION] Portable device disconnected: {name}",
+            "portable_devices": "便携设备",
+            "portable_disconnect": "断开连接",
+            "portable_disconnect_failed": "无法断开便携设备",
+            "portable_empty": "未检测到便携设备",
+            "portable_honesty": "便携设备使用 MTP：仅整文件复制，无驱动器盘符，不支持续传，且某些操作受设备操作系统限制（而非 AeroFTP）。",
+            "portable_no_storages": "会话已打开（此设备上的存储列表为空或不可用）",
+            "portable_open_failed": "无法打开便携设备",
+            "portable_opened": "已连接到 {name}",
+            "portable_storages": "{count} 个存储",
+            "portable_disconnected": "便携设备已断开：{name}",
             "portable_unplugged": "便携设备已断开连接。请重新插入电缆并再次打开。",
             "portable_needs_replug": "桌面未挂载。请拔下并重新插入电缆，然后再次打开。"
         },
@@ -4486,7 +4488,7 @@
                 "localBridge": "本地桥接",
                 "paid": "付费",
                 "encrypted": "已加密",
-                "mtp": "[NEEDS TRANSLATION] MTP"
+                "mtp": "MTP"
             },
             "noServers": "没有保存的服务器",
             "noServersHint": "从快速连接开始或浏览服务目录。",
@@ -4507,7 +4509,7 @@
                 "developer": "开发者",
                 "mediaServices": "媒体服务",
                 "all": "全部",
-                "devices": "[NEEDS TRANSLATION] Devices"
+                "devices": "设备"
             },
             "confirmDeleteServer": "删除服务器 \"{name}\"？这将移除已保存的凭据，且无法撤销。",
             "renameWithHotkey": "重命名 (F2)",
@@ -4629,8 +4631,8 @@
                 "moveLeft": "向左移动",
                 "moveRight": "向右移动"
             },
-            "deviceAttached": "[NEEDS TRANSLATION] Device attached",
-            "deviceNotAttached": "[NEEDS TRANSLATION] Device not attached"
+            "deviceAttached": "设备已接入",
+            "deviceNotAttached": "设备未接入"
         },
         "gitlab": {
             "projectPath": "项目路径",
@@ -4801,7 +4803,9 @@
             "decryptFileFromDisk": "从磁盘解密文件",
             "fileDecryptedTo": "文件已解密至 {path}",
             "serverHashGated": "加密叠加层处于活动状态时无法使用服务器端校验和（它会对密文而非您的文件进行哈希）。",
-            "outsideScope": "加密区域之外（此处文件未加密）"
+            "outsideScope": "加密区域之外（此处文件未加密）",
+            "overlaysPathButton": "叠加层路径",
+            "overlaysPathButtonHint": "跳转到加密的叠加层路径：{path}"
         },
         "b2": {
             "hidden": {
@@ -4990,7 +4994,9 @@
             },
             "launcherScheduler": "调度器",
             "errorCorrection": "纠错",
-            "errorCorrectionHint": "在每个备份文件旁存储一个小的 .aerocorrect 校验文件，使因位衰减（bit-rot）损坏的远程副本能在下次拉取时无需原件即可修复。"
+            "errorCorrectionHint": "在每个备份文件旁存储一个小的 .aerocorrect 校验文件，使因位衰减（bit-rot）损坏的远程副本能在下次拉取时无需原件即可修复。",
+            "outOfSyncItemsPct": "未同步的项目",
+            "outOfSyncBytesPct": "未同步的字节"
         },
         "accountLock": {
             "title": "选择一个账户",

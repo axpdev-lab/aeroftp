@@ -112,6 +112,17 @@ const formatSize = (size?: number | null): string => {
     return formatBytes(Math.max(0, size));
 };
 
+// EF-21 (#347): out-of-sync ratio for the Compare summary. Guards a zero
+// denominator (empty comparison) by rendering an em dash. Shows an integer
+// when the value is clean, otherwise one decimal place.
+const formatOutOfSyncPct = (numerator: number, denominator: number): string => {
+    if (!Number.isFinite(denominator) || denominator <= 0) return '—';
+    const pct = (Math.max(0, numerator) / denominator) * 100;
+    if (!Number.isFinite(pct)) return '—';
+    const rounded = Math.round(pct * 10) / 10;
+    return `${Number.isInteger(rounded) ? rounded.toFixed(0) : rounded.toFixed(1)}%`;
+};
+
 interface BucketSectionProps {
     bucket: CompareBucket;
     entries: CompareResultEntry[];
@@ -321,6 +332,22 @@ export const CompareTabContent: React.FC<CompareTabContentProps> = ({
                         {t('aerosync.totalBytes') || 'Total bytes'}
                     </div>
                     <div className="font-semibold text-gray-900 dark:text-white">{formatBytes(result.totals.bytes)}</div>
+                </div>
+                <div className="rounded-md bg-gray-50 p-3 dark:bg-gray-900/40">
+                    <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                        {t('aerosync.outOfSyncItemsPct') || 'Items out of sync'}
+                    </div>
+                    <div className="font-semibold text-gray-900 dark:text-white">
+                        {formatOutOfSyncPct(result.totals.count - result.stats.same.count, result.totals.count)}
+                    </div>
+                </div>
+                <div className="rounded-md bg-gray-50 p-3 dark:bg-gray-900/40">
+                    <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                        {t('aerosync.outOfSyncBytesPct') || 'Bytes out of sync'}
+                    </div>
+                    <div className="font-semibold text-gray-900 dark:text-white">
+                        {formatOutOfSyncPct(result.totals.bytes - result.stats.same.bytes, result.totals.bytes)}
+                    </div>
                 </div>
             </div>
 

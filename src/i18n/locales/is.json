@@ -290,20 +290,20 @@
             "storedTotpWarning": "Þegar 2FA-leyndarmálið er vistað eru báðir þættirnir geymdir í hvelfingunni. Ef aðallykilorð hvelfingarinnar er rofið verndar 2FA ekki lengur þennan reikning. Notaðu frekar einnota kóða eða staðbundna WebDAV/S3-brú.",
             "filenBridgeCredentialRules": "Takmörk Filen-brúar: {max} stafir. Óstudd: {rejected}",
             "filenBridgeCredentialRejected": "Þessi auðkenni innihalda stafi sem Filen-brúin hafnar.",
-            "mtpDefaultName": "[NEEDS TRANSLATION] Portable device",
-            "mtpDetect": "[NEEDS TRANSLATION] Detect",
-            "mtpDetectFailed": "[NEEDS TRANSLATION] Could not list portable devices",
-            "mtpDetecting": "[NEEDS TRANSLATION] Detecting...",
-            "mtpDevice": "[NEEDS TRANSLATION] USB device",
-            "mtpFingerprint": "[NEEDS TRANSLATION] Fingerprint",
-            "mtpHonesty": "[NEEDS TRANSLATION] MTP is exclusive: only one app can open the device. Close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter). Some operations are limited by the device OS.",
-            "mtpNoDevices": "[NEEDS TRANSLATION] No portable devices detected. Plug in the phone or camera and enable File Transfer mode.",
-            "mtpRemotePathPlaceholder": "[NEEDS TRANSLATION] Default remote path (e.g. / or DCIM)",
-            "mtpSaveRequiresDevice": "[NEEDS TRANSLATION] Detect and select a device to enable Save.",
-            "mtpSelectPlaceholder": "[NEEDS TRANSLATION] Select a device...",
-            "mtpSelectPlaceholderEmpty": "[NEEDS TRANSLATION] No devices yet — click Detect",
-            "mtpNotAttachedTitle": "[NEEDS TRANSLATION] Device not connected",
-            "mtpNotAttached": "[NEEDS TRANSLATION] Plug in the device and enable File Transfer mode, then try again."
+            "mtpDefaultName": "Færanlegt tæki",
+            "mtpDetect": "Greina",
+            "mtpDetectFailed": "Ekki tókst að telja upp færanleg tæki",
+            "mtpDetecting": "Greini...",
+            "mtpDevice": "USB-tæki",
+            "mtpFingerprint": "Fingrafar",
+            "mtpHonesty": "MTP er einkaréttur og eftir þörfum: Tengjast krefst tækisins fyrir þessa lotu (á Linux er skráastjóri kerfisins fyrst gefinn laus); aftengja skilar því. Flutningar eru aðeins heilar skrár (engin endurupptaka, enginn drifstafur). Sumar aðgerðir eru takmarkaðar af stýrikerfi tækisins.",
+            "mtpNoDevices": "Engin færanleg tæki fundust. Tengdu símann eða myndavélina og virkjaðu skráaflutningsham.",
+            "mtpRemotePathPlaceholder": "Sjálfgefin fjarslóð (t.d. / eða DCIM)",
+            "mtpSaveRequiresDevice": "Greindu og veldu tæki til að virkja Vista.",
+            "mtpSelectPlaceholder": "Veldu tæki...",
+            "mtpSelectPlaceholderEmpty": "Engin tæki enn – smelltu á Greina",
+            "mtpNotAttachedTitle": "Tæki ekki tengt",
+            "mtpNotAttached": "Tengdu tækið og virkjaðu skráaflutningsham, reyndu svo aftur."
         },
         "browser": {
             "remote": "Fjartengdur",
@@ -482,7 +482,9 @@
             "s3TrashPurgeHint": "Eyða þessari útgáfu varanlega (óafturkræft)",
             "s3TrashPurgeConfirm": "Eyða þessari útgáfu varanlega? Þetta er ekki hægt að afturkalla.",
             "s3TrashEmptySummary": "Þetta eyðir varanlega {count} hlut(um) ({bytes}). Þetta er ekki hægt að afturkalla.",
-            "extractOverwriteConfirm": "Að afþjappa hér skrifar yfir {count} fyrirliggjandi atriði: {names}. Halda áfram?"
+            "extractOverwriteConfirm": "Að afþjappa hér skrifar yfir {count} fyrirliggjandi atriði: {names}. Halda áfram?",
+            "permanentDeleteHint": "Eyðir varanlega aðeins völdum atriðum úr Ruslinu. Þessu er ekki hægt að afturkalla.",
+            "emptyTrashHint": "Eyðir varanlega ÖLLUM atriðum í Ruslinu, ekki bara völdum. Þessu er ekki hægt að afturkalla."
         },
         "transfer": {
             "transferring": "Flytur...",
@@ -1835,9 +1837,9 @@
             "discoverImageKit": "Margmiðlunar-CDN og geymsla með innfæddum möppum (20 GB ókeypis)",
             "discoverUploadcare": "EU margmiðlunarstjórnun með CDN og skráa-API (3 GB ókeypis)",
             "discoverCloudinary": "CDN fyrir miðlastjórnun með REST API (25 inneignir/mánuði ókeypis)",
-            "tabdigitalDesc": "Tab.digital (8 GB ókeypis, Nextcloud-byggt, EU/GDPR)",
-            "tabdigitalTooltip": "Tab.digital: óháð ESB skýjateymi síðan 2018, Nextcloud-as-a-service með 8GB ókeypis, GDPR-samhæft, svæðisbundin undirlén (fie.nl, fie.de, ...)",
-            "discoverTabDigital": "Tab.digital (8 GB ókeypis, Nextcloud-byggt, EU/GDPR, svæðisbundin undirlén)",
+            "tabdigitalDesc": "TAB.DIGITAL (8 GB ókeypis, Nextcloud-byggt, EU/GDPR)",
+            "tabdigitalTooltip": "TAB.DIGITAL: óháð ESB skýjateymi síðan 2018, Nextcloud-as-a-service með 8GB ókeypis, GDPR-samhæft, svæðisbundin undirlén (fie.nl, fie.de, ...)",
+            "discoverTabDigital": "TAB.DIGITAL (8 GB ókeypis, Nextcloud-byggt, EU/GDPR, svæðisbundin undirlén)",
             "webdavLocalScheme": "Samskiptaregla",
             "webdavLocalSchemeHelp": "Samsvarið HTTP/HTTPS stillingu staðbundinnar WebDAV brúar (Filen Desktop, MEGAcmd). HTTPS notar sjálfundirritað skírteini, þannig að skírteinisstaðfesting er sjálfkrafa óvirk.",
             "webdavLocalSchemeAuto": "AeroFTP greinir sjálfkrafa samskiptareglur Filen-brúarinnar (HTTP eða HTTPS) þegar þú tengist, svo það er ekkert að stilla hér.",
@@ -1858,9 +1860,9 @@
             "s3RoleMfaTokenCodePlaceholder": "123456",
             "s3RoleMfaTokenCodeHint": "Einnota kóði úr MFA-tækinu þínu, aðeins krafist ef hlutverkið krefst MFA. Notaður einu sinni við tengingu og aldrei vistaður.",
             "peerDesc": "Deildu möppum beint með vinum um dulkóðaða jafningjarás, án nokkurs þjóns á milli.",
-            "devicesInfoLine1": "[NEEDS TRANSLATION] Save a portable USB device (phone, camera, tablet) as a My Servers profile. Detect the device over MTP, set default folders, and reconnect with one click when it is plugged in.",
-            "devicesInfoLine2": "[NEEDS TRANSLATION] MTP is exclusive: close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter).",
-            "discoverMtpPortable": "[NEEDS TRANSLATION] Phone, camera, or tablet over USB MTP"
+            "devicesInfoLine1": "Vistaðu færanlegt USB-tæki (síma, myndavél, spjaldtölvu) sem snið í Þjónarnir mínir. Greindu tækið um MTP, stilltu sjálfgefnar möppur og tengstu aftur með einum smelli þegar það er tengt.",
+            "devicesInfoLine2": "MTP er einkaréttur og eftir þörfum: Tengjast krefst tækisins fyrir lotuna; aftengja skilar því. Flutningar eru aðeins heilar skrár (engin endurupptaka, enginn drifstafur).",
+            "discoverMtpPortable": "Sími, myndavél eða spjaldtölva um USB MTP"
         },
         "shortcuts": {
             "title": "Keyboard Shortcuts",
@@ -3213,16 +3215,16 @@
             "no_recent": "Engir nýlegir staðir",
             "mount": "Tengja",
             "ejectFailed": "Útkast mistókst",
-            "portable_devices": "[NEEDS TRANSLATION] Portable devices",
-            "portable_disconnect": "[NEEDS TRANSLATION] Disconnect",
-            "portable_disconnect_failed": "[NEEDS TRANSLATION] Could not disconnect portable device",
-            "portable_empty": "[NEEDS TRANSLATION] No portable devices detected",
-            "portable_honesty": "[NEEDS TRANSLATION] Portable devices use MTP: whole-file copy only, no drive letter, and some operations are limited by the device OS.",
-            "portable_no_storages": "[NEEDS TRANSLATION] Session open (no storage list yet; browse polish follows)",
-            "portable_open_failed": "[NEEDS TRANSLATION] Could not open portable device",
-            "portable_opened": "[NEEDS TRANSLATION] Connected to {name}",
-            "portable_storages": "[NEEDS TRANSLATION] {count} storage(s)",
-            "portable_disconnected": "[NEEDS TRANSLATION] Portable device disconnected: {name}",
+            "portable_devices": "Færanleg tæki",
+            "portable_disconnect": "Aftengja",
+            "portable_disconnect_failed": "Ekki tókst að aftengja færanlega tækið",
+            "portable_empty": "Engin færanleg tæki fundust",
+            "portable_honesty": "Færanleg tæki nota MTP: aðeins afritun heilla skráa, enginn drifstafur, engin endurupptaka, og sumar aðgerðir eru takmarkaðar af stýrikerfi tækisins (ekki af AeroFTP).",
+            "portable_no_storages": "Lota opin (geymslulisti tómur eða ekki tiltækur á þessu tæki)",
+            "portable_open_failed": "Ekki tókst að opna færanlega tækið",
+            "portable_opened": "Tengt við {name}",
+            "portable_storages": "{count} geymslur",
+            "portable_disconnected": "Færanlegt tæki aftengt: {name}",
             "portable_unplugged": "Færanlega tækið var aftengt. Tengdu snúruna aftur og opnaðu það aftur.",
             "portable_needs_replug": "Ekki fest af skjáborðinu. Taktu snúruna úr og settu hana aftur í, opnaðu síðan aftur."
         },
@@ -4505,7 +4507,7 @@
                 "localBridge": "Staðbundin brú",
                 "paid": "Gjaldskylt",
                 "encrypted": "Dulkóðað",
-                "mtp": "[NEEDS TRANSLATION] MTP"
+                "mtp": "MTP"
             },
             "noServers": "Engir vistaðir þjónar",
             "noServersHint": "Byrjaðu með flýtitengingu eða skoðaðu þjónustuskráninguna.",
@@ -4526,7 +4528,7 @@
                 "developer": "Þróunarverkfæri",
                 "mediaServices": "Margmiðlunarþjónustur",
                 "all": "Allt",
-                "devices": "[NEEDS TRANSLATION] Devices"
+                "devices": "Tæki"
             },
             "confirmDeleteServer": "Eyða þjóninum \"{name}\"? Þetta fjarlægir vistuð skilríki og er óafturkræft.",
             "renameWithHotkey": "Endurnefna (F2)",
@@ -4648,8 +4650,8 @@
                 "moveLeft": "Færa til vinstri",
                 "moveRight": "Færa til hægri"
             },
-            "deviceAttached": "[NEEDS TRANSLATION] Device attached",
-            "deviceNotAttached": "[NEEDS TRANSLATION] Device not attached"
+            "deviceAttached": "Tæki tengt",
+            "deviceNotAttached": "Tæki ekki tengt"
         },
         "gitlab": {
             "projectPath": "Verkefnisslóð",
@@ -4820,7 +4822,9 @@
             "decryptFileFromDisk": "Afkóða skrá af diski",
             "fileDecryptedTo": "Skrá afkóðuð í {path}",
             "serverHashGated": "Eftirlitssumma á netþjónshlið er ekki tiltæk meðan dulkóðað yfirlag er virkt (hún myndi tæta dulmálstextann, ekki skrána þína).",
-            "outsideScope": "Utan dulkóðaða svæðisins (skrár hér eru ekki dulkóðaðar)"
+            "outsideScope": "Utan dulkóðaða svæðisins (skrár hér eru ekki dulkóðaðar)",
+            "overlaysPathButton": "Yfirlagsslóð",
+            "overlaysPathButtonHint": "Fara á dulkóðaða yfirlagsslóð: {path}"
         },
         "b2": {
             "hidden": {
@@ -5009,7 +5013,9 @@
             },
             "launcherScheduler": "Tímaáætlun",
             "errorCorrection": "Villuleiðrétting",
-            "errorCorrectionHint": "Vistar litla .aerocorrect jöfnunarskrá við hlið hverrar afritsskrár, svo hægt sé að gera við fjarafrit sem skemmst hefur af bit-rot við næsta sækjun, án frumritsins."
+            "errorCorrectionHint": "Vistar litla .aerocorrect jöfnunarskrá við hlið hverrar afritsskrár, svo hægt sé að gera við fjarafrit sem skemmst hefur af bit-rot við næsta sækjun, án frumritsins.",
+            "outOfSyncItemsPct": "Ósamstillt atriði",
+            "outOfSyncBytesPct": "Ósamstillt bæti"
         },
         "accountLock": {
             "title": "Veldu reikning",

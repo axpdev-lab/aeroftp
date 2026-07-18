@@ -290,20 +290,20 @@
             "storedTotpWarning": "Saglabājot 2FA noslēpumu, abi faktori tiek ievietoti glabātavā. Ja glabātavas galvenā parole tiek apdraudēta, 2FA vairs neaizsargā šo kontu. Ieteicams izmantot vienreizēju kodu vai lokālu WebDAV/S3 tiltu.",
             "filenBridgeCredentialRules": "Filen tilta ierobežojums: {max} rakstzīmes. Neatbalstīts: {rejected}",
             "filenBridgeCredentialRejected": "Šajos akreditācijas datos ir rakstzīmes, kuras Filen tilts noraida.",
-            "mtpDefaultName": "[NEEDS TRANSLATION] Portable device",
-            "mtpDetect": "[NEEDS TRANSLATION] Detect",
-            "mtpDetectFailed": "[NEEDS TRANSLATION] Could not list portable devices",
-            "mtpDetecting": "[NEEDS TRANSLATION] Detecting...",
-            "mtpDevice": "[NEEDS TRANSLATION] USB device",
-            "mtpFingerprint": "[NEEDS TRANSLATION] Fingerprint",
-            "mtpHonesty": "[NEEDS TRANSLATION] MTP is exclusive: only one app can open the device. Close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter). Some operations are limited by the device OS.",
-            "mtpNoDevices": "[NEEDS TRANSLATION] No portable devices detected. Plug in the phone or camera and enable File Transfer mode.",
-            "mtpRemotePathPlaceholder": "[NEEDS TRANSLATION] Default remote path (e.g. / or DCIM)",
-            "mtpSaveRequiresDevice": "[NEEDS TRANSLATION] Detect and select a device to enable Save.",
-            "mtpSelectPlaceholder": "[NEEDS TRANSLATION] Select a device...",
-            "mtpSelectPlaceholderEmpty": "[NEEDS TRANSLATION] No devices yet — click Detect",
-            "mtpNotAttachedTitle": "[NEEDS TRANSLATION] Device not connected",
-            "mtpNotAttached": "[NEEDS TRANSLATION] Plug in the device and enable File Transfer mode, then try again."
+            "mtpDefaultName": "Pārnēsājama ierīce",
+            "mtpDetect": "Noteikt",
+            "mtpDetectFailed": "Neizdevās uzskaitīt pārnēsājamās ierīces",
+            "mtpDetecting": "Notiek noteikšana...",
+            "mtpDevice": "USB ierīce",
+            "mtpFingerprint": "Pirksta nospiedums",
+            "mtpHonesty": "MTP ir ekskluzīvs un pēc pieprasījuma: Savienot pieprasa ierīci šai sesijai (Linux vispirms atbrīvo sistēmas failu pārvaldnieku); atvienošana to atdod. Pārsūtīšana notiek tikai ar veseliem failiem (bez atsākšanas, bez diska burta). Dažas darbības ierobežo ierīces operētājsistēma.",
+            "mtpNoDevices": "Netika atrastas pārnēsājamas ierīces. Pievienojiet tālruni vai kameru un iespējojiet failu pārsūtīšanas režīmu.",
+            "mtpRemotePathPlaceholder": "Noklusējuma attālais ceļš (piem., / vai DCIM)",
+            "mtpSaveRequiresDevice": "Nosakiet un atlasiet ierīci, lai iespējotu Saglabāt.",
+            "mtpSelectPlaceholder": "Atlasiet ierīci...",
+            "mtpSelectPlaceholderEmpty": "Vēl nav ierīču — noklikšķiniet uz Noteikt",
+            "mtpNotAttachedTitle": "Ierīce nav pievienota",
+            "mtpNotAttached": "Pievienojiet ierīci un iespējojiet failu pārsūtīšanas režīmu, pēc tam mēģiniet vēlreiz."
         },
         "browser": {
             "remote": "Attālināts",
@@ -482,7 +482,9 @@
             "s3TrashPurgeHint": "Dzēst šo versiju neatgriezeniski (nav atgriezeniski)",
             "s3TrashPurgeConfirm": "Vai neatgriezeniski dzēst šo versiju? Šo darbību nevar atsaukt.",
             "s3TrashEmptySummary": "Tas neatgriezeniski dzēsīs {count} objektu(s) ({bytes}). Šo darbību nevar atsaukt.",
-            "extractOverwriteConfirm": "Izvilkšana šeit pārrakstīs {count} esošus vienumus: {names}. Turpināt?"
+            "extractOverwriteConfirm": "Izvilkšana šeit pārrakstīs {count} esošus vienumus: {names}. Turpināt?",
+            "permanentDeleteHint": "Neatgriezeniski dzēš tikai atlasītos vienumus no Miskastes. To nevar atsaukt.",
+            "emptyTrashHint": "Neatgriezeniski dzēš VISUS Miskastes vienumus, ne tikai atlasītos. To nevar atsaukt."
         },
         "transfer": {
             "transferring": "Pārsūta...",
@@ -1835,9 +1837,9 @@
             "discoverImageKit": "Mediju CDN un krātuve ar dzimtajām mapēm (20 GB bez maksas)",
             "discoverUploadcare": "EU mediju pārvaldība ar CDN un failu API (3 GB bez maksas)",
             "discoverCloudinary": "CDN mediju pārvaldībai ar REST API (25 kredīti/mēnesī bez maksas)",
-            "tabdigitalDesc": "Tab.digital (8 GB bezmaksas, balstīts uz Nextcloud, EU/GDPR)",
-            "tabdigitalTooltip": "Tab.digital: neatkarīga ES mākoņa komanda kopš 2018. gada, Nextcloud-as-a-service ar 8GB bezmaksas, atbilst GDPR, reģionālie apakšdomēni (fie.nl, fie.de, ...)",
-            "discoverTabDigital": "Tab.digital (8 GB bezmaksas, balstīts uz Nextcloud, EU/GDPR, reģionālie apakšdomēni)",
+            "tabdigitalDesc": "TAB.DIGITAL (8 GB bezmaksas, balstīts uz Nextcloud, EU/GDPR)",
+            "tabdigitalTooltip": "TAB.DIGITAL: neatkarīga ES mākoņa komanda kopš 2018. gada, Nextcloud-as-a-service ar 8GB bezmaksas, atbilst GDPR, reģionālie apakšdomēni (fie.nl, fie.de, ...)",
+            "discoverTabDigital": "TAB.DIGITAL (8 GB bezmaksas, balstīts uz Nextcloud, EU/GDPR, reģionālie apakšdomēni)",
             "webdavLocalScheme": "Protokols",
             "webdavLocalSchemeHelp": "Saskaņojiet ar lokālā WebDAV tilta HTTP/HTTPS iestatījumu (Filen Desktop, MEGAcmd). HTTPS izmanto pašparakstītu sertifikātu, tāpēc sertifikāta pārbaude tiek automātiski atspējota.",
             "webdavLocalSchemeAuto": "AeroFTP savienojuma laikā automātiski nosaka Filen tilta protokolu (HTTP vai HTTPS), tāpēc šeit nekas nav jāiestata.",
@@ -1858,9 +1860,9 @@
             "s3RoleMfaTokenCodePlaceholder": "123456",
             "s3RoleMfaTokenCodeHint": "Vienreizējs kods no jūsu MFA ierīces, nepieciešams tikai tad, ja loma pieprasa MFA. Tiek izmantots vienreiz, savienojoties, un nekad netiek saglabāts.",
             "peerDesc": "Kopīgojiet mapes tieši ar draugiem, izmantojot šifrētu peer-to-peer kanālu, bez servera pa vidu.",
-            "devicesInfoLine1": "[NEEDS TRANSLATION] Save a portable USB device (phone, camera, tablet) as a My Servers profile. Detect the device over MTP, set default folders, and reconnect with one click when it is plugged in.",
-            "devicesInfoLine2": "[NEEDS TRANSLATION] MTP is exclusive: close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter).",
-            "discoverMtpPortable": "[NEEDS TRANSLATION] Phone, camera, or tablet over USB MTP"
+            "devicesInfoLine1": "Saglabājiet pārnēsājamu USB ierīci (tālruni, kameru, planšetdatoru) kā profilu sadaļā Mani serveri. Nosakiet ierīci, izmantojot MTP, iestatiet noklusējuma mapes un atkārtoti savienojieties ar vienu klikšķi, kad tā ir pievienota.",
+            "devicesInfoLine2": "MTP ir ekskluzīvs un pēc pieprasījuma: Savienot pieprasa ierīci sesijai; atvienošana to atdod. Pārsūtīšana notiek tikai ar veseliem failiem (bez atsākšanas, bez diska burta).",
+            "discoverMtpPortable": "Tālrunis, kamera vai planšetdators, izmantojot USB MTP"
         },
         "shortcuts": {
             "title": "Tastatūras saīsnes",
@@ -3213,16 +3215,16 @@
             "no_recent": "Nav nesenu vietu",
             "mount": "Montēt",
             "ejectFailed": "Neizdevās izstumt",
-            "portable_devices": "[NEEDS TRANSLATION] Portable devices",
-            "portable_disconnect": "[NEEDS TRANSLATION] Disconnect",
-            "portable_disconnect_failed": "[NEEDS TRANSLATION] Could not disconnect portable device",
-            "portable_empty": "[NEEDS TRANSLATION] No portable devices detected",
-            "portable_honesty": "[NEEDS TRANSLATION] Portable devices use MTP: whole-file copy only, no drive letter, and some operations are limited by the device OS.",
-            "portable_no_storages": "[NEEDS TRANSLATION] Session open (no storage list yet; browse polish follows)",
-            "portable_open_failed": "[NEEDS TRANSLATION] Could not open portable device",
-            "portable_opened": "[NEEDS TRANSLATION] Connected to {name}",
-            "portable_storages": "[NEEDS TRANSLATION] {count} storage(s)",
-            "portable_disconnected": "[NEEDS TRANSLATION] Portable device disconnected: {name}",
+            "portable_devices": "Pārnēsājamās ierīces",
+            "portable_disconnect": "Atvienot",
+            "portable_disconnect_failed": "Neizdevās atvienot pārnēsājamo ierīci",
+            "portable_empty": "Netika atrastas pārnēsājamas ierīces",
+            "portable_honesty": "Pārnēsājamās ierīces izmanto MTP: tikai veselu failu kopēšana, bez diska burta, bez atsākšanas, un dažas darbības ierobežo ierīces operētājsistēma (nevis AeroFTP).",
+            "portable_no_storages": "Sesija atvērta (krātuvju saraksts ir tukšs vai nav pieejams šajā ierīcē)",
+            "portable_open_failed": "Neizdevās atvērt pārnēsājamo ierīci",
+            "portable_opened": "Savienots ar {name}",
+            "portable_storages": "{count} krātuves",
+            "portable_disconnected": "Pārnēsājamā ierīce atvienota: {name}",
             "portable_unplugged": "Pārnēsājamā ierīce tika atvienota. Atkārtoti pievienojiet kabeli un atveriet to vēlreiz.",
             "portable_needs_replug": "Darbvirsma nav pievienojusi. Atvienojiet un atkal pievienojiet kabeli, pēc tam atveriet vēlreiz."
         },
@@ -4486,7 +4488,7 @@
                 "localBridge": "Lokāls tilts",
                 "paid": "Maksas",
                 "encrypted": "Šifrēti",
-                "mtp": "[NEEDS TRANSLATION] MTP"
+                "mtp": "MTP"
             },
             "noServers": "Nav saglabātu serveru",
             "noServersHint": "Sāciet ar ātro savienojumu vai pārlūkojiet pakalpojumu katalogu.",
@@ -4507,7 +4509,7 @@
                 "developer": "Izstrādātājiem",
                 "mediaServices": "Multivides pakalpojumi",
                 "all": "Visi",
-                "devices": "[NEEDS TRANSLATION] Devices"
+                "devices": "Ierīces"
             },
             "confirmDeleteServer": "Dzēst serveri \"{name}\"? Tas noņems saglabātos akreditācijas datus un darbību nevar atsaukt.",
             "renameWithHotkey": "Pārdēvēt (F2)",
@@ -4629,8 +4631,8 @@
                 "moveLeft": "Pārvietot pa kreisi",
                 "moveRight": "Pārvietot pa labi"
             },
-            "deviceAttached": "[NEEDS TRANSLATION] Device attached",
-            "deviceNotAttached": "[NEEDS TRANSLATION] Device not attached"
+            "deviceAttached": "Ierīce pievienota",
+            "deviceNotAttached": "Ierīce nav pievienota"
         },
         "gitlab": {
             "projectPath": "Projekta ceļš",
@@ -4801,7 +4803,9 @@
             "decryptFileFromDisk": "Atšifrēt failu no diska",
             "fileDecryptedTo": "Fails atšifrēts uz {path}",
             "serverHashGated": "Servera puses kontrolsumma nav pieejama, kamēr ir aktīvs šifrēts pārklājums (tā jauktu šifrēto tekstu, nevis jūsu failu).",
-            "outsideScope": "Ārpus šifrētās zonas (faili šeit nav šifrēti)"
+            "outsideScope": "Ārpus šifrētās zonas (faili šeit nav šifrēti)",
+            "overlaysPathButton": "Pārklājumu ceļš",
+            "overlaysPathButtonHint": "Pāriet uz šifrēto pārklājumu ceļu: {path}"
         },
         "b2": {
             "hidden": {
@@ -4990,7 +4994,9 @@
             },
             "launcherScheduler": "Plānotājs",
             "errorCorrection": "Kļūdu labošana",
-            "errorCorrectionHint": "Saglabā nelielu .aerocorrect paritātes failu blakus katram dublētajam failam, lai ar bit-rot bojātu attālo kopiju varētu salabot nākamajā lejupielādē bez oriģināla."
+            "errorCorrectionHint": "Saglabā nelielu .aerocorrect paritātes failu blakus katram dublētajam failam, lai ar bit-rot bojātu attālo kopiju varētu salabot nākamajā lejupielādē bez oriģināla.",
+            "outOfSyncItemsPct": "Nesinhronizēti vienumi",
+            "outOfSyncBytesPct": "Nesinhronizēti baiti"
         },
         "accountLock": {
             "title": "Izvēlieties kontu",

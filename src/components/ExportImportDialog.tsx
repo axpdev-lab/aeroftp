@@ -6,12 +6,13 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { open, save } from '@tauri-apps/plugin-dialog';
-import { Upload, Download, Shield, AlertCircle, CheckCircle2, X, Eye, EyeOff, Lock, FolderInput, Search } from 'lucide-react';
+import { Upload, Download, Shield, AlertCircle, CheckCircle2, X, Eye, EyeOff, Lock, FolderInput } from 'lucide-react';
 import { PasswordStrengthBar } from './vault/PasswordStrengthBar';
 import { PasswordMatchHint } from './common/PasswordMatchHint';
 import { ServerProfile } from '../types';
 import { loadSavedServerProfiles, storeSavedServerProfiles } from '../utils/serverProfileStore';
 import { useTranslation } from '../i18n';
+import { SearchBox } from './SearchBox';
 import { Checkbox } from './ui/Checkbox';
 import { BridgeSourcePanel } from './BridgeSourcePanel';
 import { BridgeSourceDescriptor, GENERIC_BRIDGE_SOURCES } from './bridge/bridgeSources';
@@ -465,17 +466,14 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
                                     <div className="text-sm text-gray-600 dark:text-gray-300">
                                         {isImport ? t('settings.bridgeSelectSource') : t('settings.bridgeSelectTarget')}
                                     </div>
-                                    <div className="relative">
-                                        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-                                        <input
-                                            type="text"
-                                            autoFocus
-                                            value={bridgeFilter}
-                                            onChange={(e) => setBridgeFilter(e.target.value)}
-                                            placeholder={t('settings.bridgeSearchApps')}
-                                            className="w-full pl-9 pr-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 focus:outline-none focus:border-blue-400 dark:focus:border-blue-500"
-                                        />
-                                    </div>
+                                    <SearchBox
+                                        autoFocus
+                                        value={bridgeFilter}
+                                        onChange={setBridgeFilter}
+                                        placeholder={t('settings.bridgeSearchApps')}
+                                        iconSize={16}
+                                        className="w-full pl-3 pr-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 focus:outline-none focus:border-blue-400 dark:focus:border-blue-500"
+                                    />
                                     <div className="space-y-2 max-h-[336px] overflow-y-auto pr-1">
                                         {filtered.length === 0 ? (
                                             <div className="py-6 text-center text-sm text-gray-400 dark:text-gray-500">{t('settings.bridgeNoApps')}</div>

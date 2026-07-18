@@ -290,20 +290,20 @@
             "storedTotpWarning": "2FA গোপন তথ্য সংরক্ষণ করলে উভয় ফ্যাক্টর ভল্টে থাকবে। ভল্টের মাস্টার পাসওয়ার্ড ফাঁস হলে 2FA আর এই অ্যাকাউন্টকে সুরক্ষিত রাখবে না। একবার ব্যবহারযোগ্য কোড বা স্থানীয় WebDAV/S3 ব্রিজ ব্যবহার করুন।",
             "filenBridgeCredentialRules": "Filen ব্রিজের সীমা: {max} অক্ষর। অসমর্থিত: {rejected}",
             "filenBridgeCredentialRejected": "এই শংসাপত্রে Filen ব্রিজের প্রত্যাখ্যাত অক্ষর রয়েছে।",
-            "mtpDefaultName": "[NEEDS TRANSLATION] Portable device",
-            "mtpDetect": "[NEEDS TRANSLATION] Detect",
-            "mtpDetectFailed": "[NEEDS TRANSLATION] Could not list portable devices",
-            "mtpDetecting": "[NEEDS TRANSLATION] Detecting...",
-            "mtpDevice": "[NEEDS TRANSLATION] USB device",
-            "mtpFingerprint": "[NEEDS TRANSLATION] Fingerprint",
-            "mtpHonesty": "[NEEDS TRANSLATION] MTP is exclusive: only one app can open the device. Close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter). Some operations are limited by the device OS.",
-            "mtpNoDevices": "[NEEDS TRANSLATION] No portable devices detected. Plug in the phone or camera and enable File Transfer mode.",
-            "mtpRemotePathPlaceholder": "[NEEDS TRANSLATION] Default remote path (e.g. / or DCIM)",
-            "mtpSaveRequiresDevice": "[NEEDS TRANSLATION] Detect and select a device to enable Save.",
-            "mtpSelectPlaceholder": "[NEEDS TRANSLATION] Select a device...",
-            "mtpSelectPlaceholderEmpty": "[NEEDS TRANSLATION] No devices yet — click Detect",
-            "mtpNotAttachedTitle": "[NEEDS TRANSLATION] Device not connected",
-            "mtpNotAttached": "[NEEDS TRANSLATION] Plug in the device and enable File Transfer mode, then try again."
+            "mtpDefaultName": "পোর্টেবল ডিভাইস",
+            "mtpDetect": "শনাক্ত করুন",
+            "mtpDetectFailed": "পোর্টেবল ডিভাইসগুলি তালিকাভুক্ত করা যায়নি",
+            "mtpDetecting": "শনাক্ত করা হচ্ছে...",
+            "mtpDevice": "USB ডিভাইস",
+            "mtpFingerprint": "ফিঙ্গারপ্রিন্ট",
+            "mtpHonesty": "MTP একচেটিয়া এবং চাহিদা অনুযায়ী: সংযোগ এই সেশনের জন্য ডিভাইসটি দখল করে (Linux-এ, প্রথমে সিস্টেম ফাইল ম্যানেজার ছেড়ে দেয়); সংযোগ বিচ্ছিন্ন করলে তা ফিরিয়ে দেয়। স্থানান্তর কেবল সম্পূর্ণ ফাইল (কোনো পুনরারম্ভ নেই, কোনো ড্রাইভ অক্ষর নেই)। কিছু অপারেশন ডিভাইসের OS দ্বারা সীমাবদ্ধ।",
+            "mtpNoDevices": "কোনো পোর্টেবল ডিভাইস শনাক্ত হয়নি। ফোন বা ক্যামেরা প্লাগ ইন করুন এবং ফাইল স্থানান্তর মোড সক্ষম করুন।",
+            "mtpRemotePathPlaceholder": "ডিফল্ট দূরবর্তী পথ (যেমন / বা DCIM)",
+            "mtpSaveRequiresDevice": "সংরক্ষণ সক্ষম করতে একটি ডিভাইস শনাক্ত করুন এবং নির্বাচন করুন।",
+            "mtpSelectPlaceholder": "একটি ডিভাইস নির্বাচন করুন...",
+            "mtpSelectPlaceholderEmpty": "এখনও কোনো ডিভাইস নেই — শনাক্ত করুন ক্লিক করুন",
+            "mtpNotAttachedTitle": "ডিভাইস সংযুক্ত নয়",
+            "mtpNotAttached": "ডিভাইসটি প্লাগ ইন করুন এবং ফাইল স্থানান্তর মোড সক্ষম করুন, তারপর আবার চেষ্টা করুন।"
         },
         "browser": {
             "remote": "রিমোট",
@@ -482,7 +482,9 @@
             "s3TrashPurgeHint": "এই সংস্করণটি স্থায়ীভাবে মুছুন (অপরিবর্তনীয়)",
             "s3TrashPurgeConfirm": "এই সংস্করণটি স্থায়ীভাবে মুছবেন? এটি পূর্বাবস্থায় ফেরানো যাবে না।",
             "s3TrashEmptySummary": "এটি স্থায়ীভাবে {count}টি অবজেক্ট ({bytes}) মুছে ফেলবে। এটি পূর্বাবস্থায় ফেরানো যাবে না।",
-            "extractOverwriteConfirm": "এখানে এক্সট্র্যাক্ট করলে {count}টি বিদ্যমান আইটেম ওভাররাইট হবে: {names}। চালিয়ে যাবেন?"
+            "extractOverwriteConfirm": "এখানে এক্সট্র্যাক্ট করলে {count}টি বিদ্যমান আইটেম ওভাররাইট হবে: {names}। চালিয়ে যাবেন?",
+            "permanentDeleteHint": "ট্র্যাশ থেকে শুধুমাত্র নির্বাচিত আইটেম স্থায়ীভাবে মুছে ফেলে। এটি আর ফেরানো যাবে না।",
+            "emptyTrashHint": "ট্র্যাশের সব আইটেম স্থায়ীভাবে মুছে ফেলে, শুধু নির্বাচিতগুলো নয়। এটি আর ফেরানো যাবে না।"
         },
         "transfer": {
             "transferring": "স্থানান্তর করা হচ্ছে...",
@@ -1835,9 +1837,9 @@
             "discoverImageKit": "নেটিভ ফোল্ডার সহ মিডিয়া CDN এবং স্টোরেজ (20 GB ফ্রি)",
             "discoverUploadcare": "CDN এবং ফাইল API সহ EU মিডিয়া ম্যানেজমেন্ট (3 GB ফ্রি)",
             "discoverCloudinary": "REST API সহ মিডিয়া ব্যবস্থাপনার CDN (প্রতি মাসে 25 ক্রেডিট ফ্রি)",
-            "tabdigitalDesc": "Tab.digital (8 GB ফ্রি, Nextcloud-ভিত্তিক, EU/GDPR)",
-            "tabdigitalTooltip": "Tab.digital: ২০১৮ সাল থেকে স্বাধীন EU ক্লাউড টিম, ৮GB ফ্রি সহ Nextcloud-as-a-service, GDPR-সম্মত, আঞ্চলিক সাবডোমেইন (fie.nl, fie.de, ...)",
-            "discoverTabDigital": "Tab.digital (8 GB ফ্রি, Nextcloud-ভিত্তিক, EU/GDPR, আঞ্চলিক সাবডোমেইন)",
+            "tabdigitalDesc": "TAB.DIGITAL (8 GB ফ্রি, Nextcloud-ভিত্তিক, EU/GDPR)",
+            "tabdigitalTooltip": "TAB.DIGITAL: ২০১৮ সাল থেকে স্বাধীন EU ক্লাউড টিম, ৮GB ফ্রি সহ Nextcloud-as-a-service, GDPR-সম্মত, আঞ্চলিক সাবডোমেইন (fie.nl, fie.de, ...)",
+            "discoverTabDigital": "TAB.DIGITAL (8 GB ফ্রি, Nextcloud-ভিত্তিক, EU/GDPR, আঞ্চলিক সাবডোমেইন)",
             "webdavLocalScheme": "প্রোটোকল",
             "webdavLocalSchemeHelp": "লোকাল WebDAV ব্রিজের HTTP/HTTPS সেটিংয়ের সাথে মেলান (Filen Desktop, MEGAcmd)। HTTPS একটি স্ব-স্বাক্ষরিত সার্টিফিকেট ব্যবহার করে, তাই সার্টিফিকেট যাচাই স্বয়ংক্রিয়ভাবে নিষ্ক্রিয় থাকে।",
             "webdavLocalSchemeAuto": "AeroFTP সংযোগের সময় Filen ব্রিজের প্রোটোকল (HTTP বা HTTPS) স্বয়ংক্রিয়ভাবে শনাক্ত করে, তাই এখানে সেট করার কিছু নেই।",
@@ -1858,9 +1860,9 @@
             "s3RoleMfaTokenCodePlaceholder": "123456",
             "s3RoleMfaTokenCodeHint": "আপনার MFA ডিভাইস থেকে একবার ব্যবহারযোগ্য কোড, শুধুমাত্র তখনই প্রয়োজন যখন ভূমিকা MFA বাধ্যতামূলক করে। সংযোগের সময় একবার ব্যবহৃত হয় এবং কখনও সংরক্ষণ করা হয় না।",
             "peerDesc": "মাঝখানে কোনো সার্ভার ছাড়াই, একটি এনক্রিপ্টেড পিয়ার-টু-পিয়ার চ্যানেলে সরাসরি বন্ধুদের সাথে ফোল্ডার শেয়ার করুন।",
-            "devicesInfoLine1": "[NEEDS TRANSLATION] Save a portable USB device (phone, camera, tablet) as a My Servers profile. Detect the device over MTP, set default folders, and reconnect with one click when it is plugged in.",
-            "devicesInfoLine2": "[NEEDS TRANSLATION] MTP is exclusive: close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter).",
-            "discoverMtpPortable": "[NEEDS TRANSLATION] Phone, camera, or tablet over USB MTP"
+            "devicesInfoLine1": "একটি পোর্টেবল USB ডিভাইস (ফোন, ক্যামেরা, ট্যাবলেট) আমার সার্ভার প্রোফাইল হিসেবে সংরক্ষণ করুন। MTP-এর মাধ্যমে ডিভাইস শনাক্ত করুন, ডিফল্ট ফোল্ডার সেট করুন এবং প্লাগ ইন থাকলে এক ক্লিকে পুনরায় সংযোগ করুন।",
+            "devicesInfoLine2": "MTP একচেটিয়া এবং চাহিদা অনুযায়ী: সংযোগ সেশনের জন্য ডিভাইসটি দখল করে; সংযোগ বিচ্ছিন্ন করলে তা ফিরিয়ে দেয়। স্থানান্তর কেবল সম্পূর্ণ ফাইল (কোনো পুনরারম্ভ নেই, কোনো ড্রাইভ অক্ষর নেই)।",
+            "discoverMtpPortable": "USB MTP-এর মাধ্যমে ফোন, ক্যামেরা বা ট্যাবলেট"
         },
         "shortcuts": {
             "title": "কীবোর্ড শর্টকাট",
@@ -3213,16 +3215,16 @@
             "no_recent": "কোনো সাম্প্রতিক স্থান নেই",
             "mount": "মাউন্ট",
             "ejectFailed": "ইজেক্ট ব্যর্থ হয়েছে",
-            "portable_devices": "[NEEDS TRANSLATION] Portable devices",
-            "portable_disconnect": "[NEEDS TRANSLATION] Disconnect",
-            "portable_disconnect_failed": "[NEEDS TRANSLATION] Could not disconnect portable device",
-            "portable_empty": "[NEEDS TRANSLATION] No portable devices detected",
-            "portable_honesty": "[NEEDS TRANSLATION] Portable devices use MTP: whole-file copy only, no drive letter, and some operations are limited by the device OS.",
-            "portable_no_storages": "[NEEDS TRANSLATION] Session open (no storage list yet; browse polish follows)",
-            "portable_open_failed": "[NEEDS TRANSLATION] Could not open portable device",
-            "portable_opened": "[NEEDS TRANSLATION] Connected to {name}",
-            "portable_storages": "[NEEDS TRANSLATION] {count} storage(s)",
-            "portable_disconnected": "[NEEDS TRANSLATION] Portable device disconnected: {name}",
+            "portable_devices": "পোর্টেবল ডিভাইস",
+            "portable_disconnect": "সংযোগ বিচ্ছিন্ন করুন",
+            "portable_disconnect_failed": "পোর্টেবল ডিভাইস সংযোগ বিচ্ছিন্ন করা যায়নি",
+            "portable_empty": "কোনো পোর্টেবল ডিভাইস শনাক্ত হয়নি",
+            "portable_honesty": "পোর্টেবল ডিভাইসগুলি MTP ব্যবহার করে: কেবল সম্পূর্ণ ফাইল অনুলিপি, কোনো ড্রাইভ অক্ষর নেই, কোনো পুনরারম্ভ নেই, এবং কিছু অপারেশন ডিভাইসের OS দ্বারা সীমাবদ্ধ (AeroFTP দ্বারা নয়)।",
+            "portable_no_storages": "সেশন খোলা (এই ডিভাইসে স্টোরেজ তালিকা খালি বা অনুপলব্ধ)",
+            "portable_open_failed": "পোর্টেবল ডিভাইস খোলা যায়নি",
+            "portable_opened": "{name}-এ সংযুক্ত",
+            "portable_storages": "{count}টি স্টোরেজ",
+            "portable_disconnected": "পোর্টেবল ডিভাইস সংযোগ বিচ্ছিন্ন হয়েছে: {name}",
             "portable_unplugged": "পোর্টেবল ডিভাইসটি বিচ্ছিন্ন হয়ে গেছে। কেবলটি আবার প্লাগ করুন এবং আবার খুলুন।",
             "portable_needs_replug": "ডেস্কটপ দ্বারা মাউন্ট করা হয়নি। কেবলটি খুলে আবার লাগান, তারপর আবার খুলুন।"
         },
@@ -4486,7 +4488,7 @@
                 "localBridge": "লোকাল ব্রিজ",
                 "paid": "পেইড",
                 "encrypted": "এনক্রিপ্টেড",
-                "mtp": "[NEEDS TRANSLATION] MTP"
+                "mtp": "MTP"
             },
             "noServers": "কোনো সংরক্ষিত সার্ভার নেই",
             "noServersHint": "দ্রুত সংযোগ দিয়ে শুরু করুন বা সেবা ক্যাটালগ ব্রাউজ করুন।",
@@ -4507,7 +4509,7 @@
                 "developer": "ডেভেলপার",
                 "mediaServices": "মিডিয়া পরিষেবা",
                 "all": "সব",
-                "devices": "[NEEDS TRANSLATION] Devices"
+                "devices": "ডিভাইস"
             },
             "confirmDeleteServer": "সার্ভার \"{name}\" মুছে ফেলবেন? এটি সংরক্ষিত শংসাপত্র সরিয়ে দেবে এবং পূর্বাবস্থায় ফেরানো যাবে না।",
             "renameWithHotkey": "পুনঃনামকরণ (F2)",
@@ -4629,8 +4631,8 @@
                 "moveLeft": "বামে সরান",
                 "moveRight": "ডানে সরান"
             },
-            "deviceAttached": "[NEEDS TRANSLATION] Device attached",
-            "deviceNotAttached": "[NEEDS TRANSLATION] Device not attached"
+            "deviceAttached": "ডিভাইস সংযুক্ত",
+            "deviceNotAttached": "ডিভাইস সংযুক্ত নয়"
         },
         "gitlab": {
             "projectPath": "প্রকল্পের পাথ",
@@ -4801,7 +4803,9 @@
             "decryptFileFromDisk": "ডিস্ক থেকে ফাইল ডিক্রিপ্ট করুন",
             "fileDecryptedTo": "ফাইল {path} এ ডিক্রিপ্ট করা হয়েছে",
             "serverHashGated": "এনক্রিপ্টেড ওভারলে সক্রিয় থাকাকালীন সার্ভার-সাইড চেকসাম পাওয়া যায় না (এটি আপনার ফাইল নয়, সাইফারটেক্সট হ্যাশ করবে)।",
-            "outsideScope": "এনক্রিপ্টেড এলাকার বাইরে (এখানকার ফাইল এনক্রিপ্ট করা নেই)"
+            "outsideScope": "এনক্রিপ্টেড এলাকার বাইরে (এখানকার ফাইল এনক্রিপ্ট করা নেই)",
+            "overlaysPathButton": "ওভারলে পাথ",
+            "overlaysPathButtonHint": "এনক্রিপ্ট করা ওভারলে পাথে যান: {path}"
         },
         "b2": {
             "hidden": {
@@ -4990,7 +4994,9 @@
             },
             "launcherScheduler": "শিডিউলার",
             "errorCorrection": "ত্রুটি সংশোধন",
-            "errorCorrectionHint": "প্রতিটি ব্যাকআপ ফাইলের পাশে একটি ছোট .aerocorrect প্যারিটি ফাইল সংরক্ষণ করে, যাতে bit-rot দ্বারা ক্ষতিগ্রস্ত একটি দূরবর্তী কপি মূল ছাড়াই পরবর্তী pull-এ মেরামত করা যায়।"
+            "errorCorrectionHint": "প্রতিটি ব্যাকআপ ফাইলের পাশে একটি ছোট .aerocorrect প্যারিটি ফাইল সংরক্ষণ করে, যাতে bit-rot দ্বারা ক্ষতিগ্রস্ত একটি দূরবর্তী কপি মূল ছাড়াই পরবর্তী pull-এ মেরামত করা যায়।",
+            "outOfSyncItemsPct": "সিঙ্কের বাইরে আইটেম",
+            "outOfSyncBytesPct": "সিঙ্কের বাইরে বাইট"
         },
         "accountLock": {
             "title": "একটি অ্যাকাউন্ট বেছে নিন",

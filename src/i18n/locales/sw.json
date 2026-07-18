@@ -290,20 +290,20 @@
             "storedTotpWarning": "Kuhifadhi siri ya 2FA huweka vipengele vyote viwili kwenye hifadhi salama. Nenosiri kuu la hifadhi likifichuliwa, 2FA haitalinda tena akaunti hii. Tumia msimbo wa mara moja au daraja la WebDAV/S3 la ndani.",
             "filenBridgeCredentialRules": "Kikomo cha daraja la Filen: herufi {max}. Hazitumiki: {rejected}",
             "filenBridgeCredentialRejected": "Kitambulisho hiki kina herufi zinazokataliwa na daraja la Filen.",
-            "mtpDefaultName": "[NEEDS TRANSLATION] Portable device",
-            "mtpDetect": "[NEEDS TRANSLATION] Detect",
-            "mtpDetectFailed": "[NEEDS TRANSLATION] Could not list portable devices",
-            "mtpDetecting": "[NEEDS TRANSLATION] Detecting...",
-            "mtpDevice": "[NEEDS TRANSLATION] USB device",
-            "mtpFingerprint": "[NEEDS TRANSLATION] Fingerprint",
-            "mtpHonesty": "[NEEDS TRANSLATION] MTP is exclusive: only one app can open the device. Close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter). Some operations are limited by the device OS.",
-            "mtpNoDevices": "[NEEDS TRANSLATION] No portable devices detected. Plug in the phone or camera and enable File Transfer mode.",
-            "mtpRemotePathPlaceholder": "[NEEDS TRANSLATION] Default remote path (e.g. / or DCIM)",
-            "mtpSaveRequiresDevice": "[NEEDS TRANSLATION] Detect and select a device to enable Save.",
-            "mtpSelectPlaceholder": "[NEEDS TRANSLATION] Select a device...",
-            "mtpSelectPlaceholderEmpty": "[NEEDS TRANSLATION] No devices yet — click Detect",
-            "mtpNotAttachedTitle": "[NEEDS TRANSLATION] Device not connected",
-            "mtpNotAttached": "[NEEDS TRANSLATION] Plug in the device and enable File Transfer mode, then try again."
+            "mtpDefaultName": "Kifaa kinachobebeka",
+            "mtpDetect": "Tambua",
+            "mtpDetectFailed": "Imeshindwa kuorodhesha vifaa vinavyobebeka",
+            "mtpDetecting": "Inatambua...",
+            "mtpDevice": "Kifaa cha USB",
+            "mtpFingerprint": "Alama ya kidole",
+            "mtpHonesty": "MTP ni ya kipekee na kwa mahitaji: Unganisha inadai kifaa kwa kipindi hiki (kwenye Linux, inaachilia kwanza kidhibiti faili cha mfumo); kukata muunganisho kunakirudisha. Uhamishaji ni faili nzima pekee (hakuna kuendelea, hakuna herufi ya diski). Baadhi ya operesheni zimezuiliwa na mfumo wa uendeshaji wa kifaa.",
+            "mtpNoDevices": "Hakuna vifaa vinavyobebeka vilivyotambuliwa. Chomeka simu au kamera na uwashe hali ya Uhamishaji Faili.",
+            "mtpRemotePathPlaceholder": "Njia chaguo-msingi ya mbali (mf. / au DCIM)",
+            "mtpSaveRequiresDevice": "Tambua na uchague kifaa ili kuwasha Hifadhi.",
+            "mtpSelectPlaceholder": "Chagua kifaa...",
+            "mtpSelectPlaceholderEmpty": "Bado hakuna vifaa — bofya Tambua",
+            "mtpNotAttachedTitle": "Kifaa hakijaunganishwa",
+            "mtpNotAttached": "Chomeka kifaa na uwashe hali ya Uhamishaji Faili, kisha ujaribu tena."
         },
         "browser": {
             "remote": "Mbali",
@@ -482,7 +482,9 @@
             "s3TrashPurgeHint": "Futa toleo hili kabisa (haiwezi kutenduliwa)",
             "s3TrashPurgeConfirm": "Futa toleo hili kabisa? Kitendo hiki hakiwezi kutenduliwa.",
             "s3TrashEmptySummary": "Hii itafuta kabisa vitu {count} ({bytes}). Kitendo hiki hakiwezi kutenduliwa.",
-            "extractOverwriteConfirm": "Kuchambua hapa kutaandika juu ya vipengele {count} vilivyopo: {names}. Kuendelea?"
+            "extractOverwriteConfirm": "Kuchambua hapa kutaandika juu ya vipengele {count} vilivyopo: {names}. Kuendelea?",
+            "permanentDeleteHint": "Inafuta kabisa vipengele vilivyochaguliwa pekee kutoka kwenye Tapo. Hatua hii haiwezi kutenduliwa.",
+            "emptyTrashHint": "Inafuta kabisa vipengele VYOTE kwenye Tapo, si vilivyochaguliwa pekee. Hatua hii haiwezi kutenduliwa."
         },
         "transfer": {
             "transferring": "Inahamisha...",
@@ -1835,9 +1837,9 @@
             "discoverImageKit": "CDN ya midia na hifadhi yenye folda asili (20 GB bure)",
             "discoverUploadcare": "Usimamizi wa midia EU wenye CDN na API za faili (3 GB bure)",
             "discoverCloudinary": "CDN ya usimamizi wa midia ikiwa na REST API (krediti 25/mwezi bure)",
-            "tabdigitalDesc": "Tab.digital (8 GB bure, msingi wa Nextcloud, EU/GDPR)",
-            "tabdigitalTooltip": "Tab.digital: timu huru ya wingu ya EU tangu 2018, Nextcloud-as-a-service na 8GB bure, inazingatia GDPR, vidomeni vidogo vya kimkoa (fie.nl, fie.de, ...)",
-            "discoverTabDigital": "Tab.digital (8 GB bure, msingi wa Nextcloud, EU/GDPR, vidomeni vidogo vya kimkoa)",
+            "tabdigitalDesc": "TAB.DIGITAL (8 GB bure, msingi wa Nextcloud, EU/GDPR)",
+            "tabdigitalTooltip": "TAB.DIGITAL: timu huru ya wingu ya EU tangu 2018, Nextcloud-as-a-service na 8GB bure, inazingatia GDPR, vidomeni vidogo vya kimkoa (fie.nl, fie.de, ...)",
+            "discoverTabDigital": "TAB.DIGITAL (8 GB bure, msingi wa Nextcloud, EU/GDPR, vidomeni vidogo vya kimkoa)",
             "webdavLocalScheme": "Itifaki",
             "webdavLocalSchemeHelp": "Linganisha na mpangilio wa HTTP/HTTPS wa daraja la WebDAV la ndani (Filen Desktop, MEGAcmd). HTTPS hutumia cheti kilichotiwa saini na yenyewe, kwa hivyo uthibitishaji wa cheti unazimwa kiotomatiki.",
             "webdavLocalSchemeAuto": "AeroFTP hutambua kiotomatiki itifaki ya daraja la Filen (HTTP au HTTPS) unapounganisha, kwa hivyo hakuna cha kuweka hapa.",
@@ -1858,9 +1860,9 @@
             "s3RoleMfaTokenCodePlaceholder": "123456",
             "s3RoleMfaTokenCodeHint": "Msimbo wa matumizi ya mara moja kutoka kifaa chako cha MFA, unahitajika tu ikiwa jukumu linalazimisha MFA. Hutumiwa mara moja wakati wa kuunganisha na hauhifadhiwi kamwe.",
             "peerDesc": "Shiriki folda moja kwa moja na marafiki kupitia njia ya peer-to-peer iliyosimbwa, bila seva katikati.",
-            "devicesInfoLine1": "[NEEDS TRANSLATION] Save a portable USB device (phone, camera, tablet) as a My Servers profile. Detect the device over MTP, set default folders, and reconnect with one click when it is plugged in.",
-            "devicesInfoLine2": "[NEEDS TRANSLATION] MTP is exclusive: close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter).",
-            "discoverMtpPortable": "[NEEDS TRANSLATION] Phone, camera, or tablet over USB MTP"
+            "devicesInfoLine1": "Hifadhi kifaa cha USB kinachobebeka (simu, kamera, kompyuta kibao) kama wasifu katika Seva Zangu. Tambua kifaa kupitia MTP, weka folda chaguo-msingi, na uunganishe tena kwa mbofyo mmoja kinapochomeka.",
+            "devicesInfoLine2": "MTP ni ya kipekee na kwa mahitaji: Unganisha inadai kifaa kwa kipindi; kukata muunganisho kunakirudisha. Uhamishaji ni faili nzima pekee (hakuna kuendelea, hakuna herufi ya diski).",
+            "discoverMtpPortable": "Simu, kamera, au kompyuta kibao kupitia USB MTP"
         },
         "shortcuts": {
             "title": "Njia za Mkato",
@@ -3213,16 +3215,16 @@
             "no_recent": "Hakuna maeneo ya hivi karibuni",
             "mount": "Pachika",
             "ejectFailed": "Kutoa kumeshindwa",
-            "portable_devices": "[NEEDS TRANSLATION] Portable devices",
-            "portable_disconnect": "[NEEDS TRANSLATION] Disconnect",
-            "portable_disconnect_failed": "[NEEDS TRANSLATION] Could not disconnect portable device",
-            "portable_empty": "[NEEDS TRANSLATION] No portable devices detected",
-            "portable_honesty": "[NEEDS TRANSLATION] Portable devices use MTP: whole-file copy only, no drive letter, and some operations are limited by the device OS.",
-            "portable_no_storages": "[NEEDS TRANSLATION] Session open (no storage list yet; browse polish follows)",
-            "portable_open_failed": "[NEEDS TRANSLATION] Could not open portable device",
-            "portable_opened": "[NEEDS TRANSLATION] Connected to {name}",
-            "portable_storages": "[NEEDS TRANSLATION] {count} storage(s)",
-            "portable_disconnected": "[NEEDS TRANSLATION] Portable device disconnected: {name}",
+            "portable_devices": "Vifaa vinavyobebeka",
+            "portable_disconnect": "Kata muunganisho",
+            "portable_disconnect_failed": "Imeshindwa kukata muunganisho wa kifaa kinachobebeka",
+            "portable_empty": "Hakuna vifaa vinavyobebeka vilivyotambuliwa",
+            "portable_honesty": "Vifaa vinavyobebeka hutumia MTP: kunakili faili nzima pekee, hakuna herufi ya diski, hakuna kuendelea, na baadhi ya operesheni zimezuiliwa na mfumo wa uendeshaji wa kifaa (si AeroFTP).",
+            "portable_no_storages": "Kipindi kimefunguliwa (orodha ya hifadhi ni tupu au haipatikani kwenye kifaa hiki)",
+            "portable_open_failed": "Imeshindwa kufungua kifaa kinachobebeka",
+            "portable_opened": "Imeunganishwa kwa {name}",
+            "portable_storages": "hifadhi {count}",
+            "portable_disconnected": "Kifaa kinachobebeka kimekatwa: {name}",
             "portable_unplugged": "Kifaa kinachobebeka kilikatwa. Chomeka tena kebo na uifungue tena.",
             "portable_needs_replug": "Haijawekwa na eneo-kazi. Ondoa kebo na uiunganishe tena, kisha fungua tena."
         },
@@ -4486,7 +4488,7 @@
                 "localBridge": "Daraja la ndani",
                 "paid": "Inalipiwa",
                 "encrypted": "Zilizosimbwa",
-                "mtp": "[NEEDS TRANSLATION] MTP"
+                "mtp": "MTP"
             },
             "noServers": "Hakuna seva zilizohifadhiwa",
             "noServersHint": "Anza na unganisho wa haraka au chunguza katalogi ya huduma.",
@@ -4507,7 +4509,7 @@
                 "developer": "Msanidi",
                 "mediaServices": "Huduma za Media",
                 "all": "Zote",
-                "devices": "[NEEDS TRANSLATION] Devices"
+                "devices": "Vifaa"
             },
             "confirmDeleteServer": "Futa seva \"{name}\"? Hii itaondoa vitambulisho vilivyohifadhiwa na haiwezi kutendwa upya.",
             "renameWithHotkey": "Pa jina jipya (F2)",
@@ -4629,8 +4631,8 @@
                 "moveLeft": "Sogeza kushoto",
                 "moveRight": "Sogeza kulia"
             },
-            "deviceAttached": "[NEEDS TRANSLATION] Device attached",
-            "deviceNotAttached": "[NEEDS TRANSLATION] Device not attached"
+            "deviceAttached": "Kifaa kimeunganishwa",
+            "deviceNotAttached": "Kifaa hakijaunganishwa"
         },
         "gitlab": {
             "projectPath": "Njia ya mradi",
@@ -4801,7 +4803,9 @@
             "decryptFileFromDisk": "Fichua faili kutoka kwenye diski",
             "fileDecryptedTo": "Faili imefichuliwa hadi {path}",
             "serverHashGated": "Hakikisho la upande wa seva halipatikani wakati safu iliyosimbwa fiche inafanya kazi (lingehesabu hashi ya maandishi yaliyosimbwa, si faili yako).",
-            "outsideScope": "Nje ya eneo lililosimbwa fiche (faili hapa hazijasimbwa fiche)"
+            "outsideScope": "Nje ya eneo lililosimbwa fiche (faili hapa hazijasimbwa fiche)",
+            "overlaysPathButton": "Njia ya Vifuniko",
+            "overlaysPathButtonHint": "Rukia Njia ya Vifuniko iliyosimbwa: {path}"
         },
         "b2": {
             "hidden": {
@@ -4990,7 +4994,9 @@
             },
             "launcherScheduler": "Mratibu wa Wakati",
             "errorCorrection": "Kusahihisha Makosa",
-            "errorCorrectionHint": "Huhifadhi faili ndogo ya parity ya .aerocorrect kando ya kila faili iliyohifadhiwa nakala, ili nakala ya mbali iliyoharibika kwa bit-rot iweze kurekebishwa kwenye pull inayofuata, bila asili."
+            "errorCorrectionHint": "Huhifadhi faili ndogo ya parity ya .aerocorrect kando ya kila faili iliyohifadhiwa nakala, ili nakala ya mbali iliyoharibika kwa bit-rot iweze kurekebishwa kwenye pull inayofuata, bila asili.",
+            "outOfSyncItemsPct": "Vipengele visivyosawazishwa",
+            "outOfSyncBytesPct": "Baiti zisizosawazishwa"
         },
         "accountLock": {
             "title": "Chagua akaunti",

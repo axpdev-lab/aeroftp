@@ -290,20 +290,20 @@
             "storedTotpWarning": "Menyimpan rahsia 2FA meletakkan kedua-dua faktor dalam peti besi. Jika kata laluan induk peti besi terjejas, 2FA tidak lagi melindungi akaun ini. Utamakan kod sekali guna atau jambatan WebDAV/S3 setempat.",
             "filenBridgeCredentialRules": "Had jambatan Filen: {max} aksara. Tidak disokong: {rejected}",
             "filenBridgeCredentialRejected": "Kelayakan ini mengandungi aksara yang ditolak oleh jambatan Filen.",
-            "mtpDefaultName": "[NEEDS TRANSLATION] Portable device",
-            "mtpDetect": "[NEEDS TRANSLATION] Detect",
-            "mtpDetectFailed": "[NEEDS TRANSLATION] Could not list portable devices",
-            "mtpDetecting": "[NEEDS TRANSLATION] Detecting...",
-            "mtpDevice": "[NEEDS TRANSLATION] USB device",
-            "mtpFingerprint": "[NEEDS TRANSLATION] Fingerprint",
-            "mtpHonesty": "[NEEDS TRANSLATION] MTP is exclusive: only one app can open the device. Close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter). Some operations are limited by the device OS.",
-            "mtpNoDevices": "[NEEDS TRANSLATION] No portable devices detected. Plug in the phone or camera and enable File Transfer mode.",
-            "mtpRemotePathPlaceholder": "[NEEDS TRANSLATION] Default remote path (e.g. / or DCIM)",
-            "mtpSaveRequiresDevice": "[NEEDS TRANSLATION] Detect and select a device to enable Save.",
-            "mtpSelectPlaceholder": "[NEEDS TRANSLATION] Select a device...",
-            "mtpSelectPlaceholderEmpty": "[NEEDS TRANSLATION] No devices yet — click Detect",
-            "mtpNotAttachedTitle": "[NEEDS TRANSLATION] Device not connected",
-            "mtpNotAttached": "[NEEDS TRANSLATION] Plug in the device and enable File Transfer mode, then try again."
+            "mtpDefaultName": "Peranti mudah alih",
+            "mtpDetect": "Kesan",
+            "mtpDetectFailed": "Tidak dapat menyenaraikan peranti mudah alih",
+            "mtpDetecting": "Mengesan...",
+            "mtpDevice": "Peranti USB",
+            "mtpFingerprint": "Cap jari",
+            "mtpHonesty": "MTP adalah eksklusif dan atas permintaan: Sambung menuntut peranti untuk sesi ini (pada Linux, membebaskan pengurus fail sistem dahulu); memutuskan sambungan mengembalikannya. Pemindahan hanya keseluruhan fail (tiada sambung semula, tiada huruf pemacu). Sesetengah operasi dihadkan oleh OS peranti.",
+            "mtpNoDevices": "Tiada peranti mudah alih dikesan. Pasangkan telefon atau kamera dan dayakan mod Pemindahan Fail.",
+            "mtpRemotePathPlaceholder": "Laluan jauh lalai (cth. / atau DCIM)",
+            "mtpSaveRequiresDevice": "Kesan dan pilih peranti untuk mendayakan Simpan.",
+            "mtpSelectPlaceholder": "Pilih peranti...",
+            "mtpSelectPlaceholderEmpty": "Belum ada peranti — klik Kesan",
+            "mtpNotAttachedTitle": "Peranti tidak disambungkan",
+            "mtpNotAttached": "Pasangkan peranti dan dayakan mod Pemindahan Fail, kemudian cuba lagi."
         },
         "browser": {
             "remote": "Jauh",
@@ -482,7 +482,9 @@
             "s3TrashPurgeHint": "Padam versi ini secara kekal (tidak boleh dibatalkan)",
             "s3TrashPurgeConfirm": "Padam versi ini secara kekal? Tindakan ini tidak boleh dibuat asal.",
             "s3TrashEmptySummary": "Ini akan memadam secara kekal {count} objek ({bytes}). Tindakan ini tidak boleh dibuat asal.",
-            "extractOverwriteConfirm": "Mengekstrak di sini akan menulis ganti {count} item sedia ada: {names}. Teruskan?"
+            "extractOverwriteConfirm": "Mengekstrak di sini akan menulis ganti {count} item sedia ada: {names}. Teruskan?",
+            "permanentDeleteHint": "Memadam secara kekal hanya item yang dipilih daripada Tong Sampah. Ini tidak boleh dibatalkan.",
+            "emptyTrashHint": "Memadam secara kekal SEMUA item dalam Tong Sampah, bukan hanya yang dipilih. Ini tidak boleh dibatalkan."
         },
         "transfer": {
             "transferring": "Memindahkan...",
@@ -1835,9 +1837,9 @@
             "discoverImageKit": "CDN media dan storan dengan folder asli (20 GB percuma)",
             "discoverUploadcare": "Pengurusan media EU dengan CDN dan API fail (3 GB percuma)",
             "discoverCloudinary": "CDN untuk pengurusan media dengan REST API (25 kredit/bulan percuma)",
-            "tabdigitalDesc": "Tab.digital (8 GB percuma, berasaskan Nextcloud, EU/GDPR)",
-            "tabdigitalTooltip": "Tab.digital: pasukan awan EU bebas sejak 2018, Nextcloud-as-a-service dengan 8GB percuma, mematuhi GDPR, subdomain serantau (fie.nl, fie.de, ...)",
-            "discoverTabDigital": "Tab.digital (8 GB percuma, berasaskan Nextcloud, EU/GDPR, subdomain serantau)",
+            "tabdigitalDesc": "TAB.DIGITAL (8 GB percuma, berasaskan Nextcloud, EU/GDPR)",
+            "tabdigitalTooltip": "TAB.DIGITAL: pasukan awan EU bebas sejak 2018, Nextcloud-as-a-service dengan 8GB percuma, mematuhi GDPR, subdomain serantau (fie.nl, fie.de, ...)",
+            "discoverTabDigital": "TAB.DIGITAL (8 GB percuma, berasaskan Nextcloud, EU/GDPR, subdomain serantau)",
             "webdavLocalScheme": "Protokol",
             "webdavLocalSchemeHelp": "Padankan dengan tetapan HTTP/HTTPS jambatan WebDAV tempatan (Filen Desktop, MEGAcmd). HTTPS menggunakan sijil yang ditandatangani sendiri, jadi pengesahan sijil dilumpuhkan secara automatik.",
             "webdavLocalSchemeAuto": "AeroFTP mengesan protokol jambatan Filen (HTTP atau HTTPS) secara automatik apabila anda menyambung, jadi tiada apa-apa untuk ditetapkan di sini.",
@@ -1858,9 +1860,9 @@
             "s3RoleMfaTokenCodePlaceholder": "123456",
             "s3RoleMfaTokenCodeHint": "Kod sekali guna daripada peranti MFA anda, diperlukan hanya jika peranan mewajibkan MFA. Digunakan sekali semasa menyambung dan tidak pernah disimpan.",
             "peerDesc": "Kongsi folder terus dengan rakan melalui saluran peer-to-peer yang disulitkan, tanpa pelayan di tengah.",
-            "devicesInfoLine1": "[NEEDS TRANSLATION] Save a portable USB device (phone, camera, tablet) as a My Servers profile. Detect the device over MTP, set default folders, and reconnect with one click when it is plugged in.",
-            "devicesInfoLine2": "[NEEDS TRANSLATION] MTP is exclusive: close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter).",
-            "discoverMtpPortable": "[NEEDS TRANSLATION] Phone, camera, or tablet over USB MTP"
+            "devicesInfoLine1": "Simpan peranti USB mudah alih (telefon, kamera, tablet) sebagai profil dalam Pelayan Saya. Kesan peranti melalui MTP, tetapkan folder lalai, dan sambung semula dengan satu klik apabila dipasang.",
+            "devicesInfoLine2": "MTP adalah eksklusif dan atas permintaan: Sambung menuntut peranti untuk sesi; memutuskan sambungan mengembalikannya. Pemindahan hanya keseluruhan fail (tiada sambung semula, tiada huruf pemacu).",
+            "discoverMtpPortable": "Telefon, kamera atau tablet melalui USB MTP"
         },
         "shortcuts": {
             "title": "Pintasan Papan Kekunci",
@@ -3213,16 +3215,16 @@
             "no_recent": "Tiada lokasi terkini",
             "mount": "Lekap",
             "ejectFailed": "Gagal mengeluarkan",
-            "portable_devices": "[NEEDS TRANSLATION] Portable devices",
-            "portable_disconnect": "[NEEDS TRANSLATION] Disconnect",
-            "portable_disconnect_failed": "[NEEDS TRANSLATION] Could not disconnect portable device",
-            "portable_empty": "[NEEDS TRANSLATION] No portable devices detected",
-            "portable_honesty": "[NEEDS TRANSLATION] Portable devices use MTP: whole-file copy only, no drive letter, and some operations are limited by the device OS.",
-            "portable_no_storages": "[NEEDS TRANSLATION] Session open (no storage list yet; browse polish follows)",
-            "portable_open_failed": "[NEEDS TRANSLATION] Could not open portable device",
-            "portable_opened": "[NEEDS TRANSLATION] Connected to {name}",
-            "portable_storages": "[NEEDS TRANSLATION] {count} storage(s)",
-            "portable_disconnected": "[NEEDS TRANSLATION] Portable device disconnected: {name}",
+            "portable_devices": "Peranti mudah alih",
+            "portable_disconnect": "Putuskan sambungan",
+            "portable_disconnect_failed": "Tidak dapat memutuskan sambungan peranti mudah alih",
+            "portable_empty": "Tiada peranti mudah alih dikesan",
+            "portable_honesty": "Peranti mudah alih menggunakan MTP: hanya salinan keseluruhan fail, tiada huruf pemacu, tiada sambung semula, dan sesetengah operasi dihadkan oleh OS peranti (bukan AeroFTP).",
+            "portable_no_storages": "Sesi terbuka (senarai storan kosong atau tidak tersedia pada peranti ini)",
+            "portable_open_failed": "Tidak dapat membuka peranti mudah alih",
+            "portable_opened": "Disambungkan ke {name}",
+            "portable_storages": "{count} storan",
+            "portable_disconnected": "Peranti mudah alih diputuskan: {name}",
             "portable_unplugged": "Peranti mudah alih telah diputuskan. Colokkan semula kabel dan buka semula.",
             "portable_needs_replug": "Tidak dipasang oleh desktop. Cabut dan pasang semula kabel, kemudian buka semula."
         },
@@ -4486,7 +4488,7 @@
                 "localBridge": "Jambatan tempatan",
                 "paid": "Berbayar",
                 "encrypted": "Disulitkan",
-                "mtp": "[NEEDS TRANSLATION] MTP"
+                "mtp": "MTP"
             },
             "noServers": "Tiada pelayan yang disimpan",
             "noServersHint": "Mulakan dengan sambungan pantas atau terokai katalog perkhidmatan.",
@@ -4507,7 +4509,7 @@
                 "developer": "Pembangun",
                 "mediaServices": "Perkhidmatan Media",
                 "all": "Semua",
-                "devices": "[NEEDS TRANSLATION] Devices"
+                "devices": "Peranti"
             },
             "confirmDeleteServer": "Padam pelayan \"{name}\"? Ini akan mengalih keluar kelayakan yang disimpan dan tidak boleh dibuat asal.",
             "renameWithHotkey": "Namakan semula (F2)",
@@ -4629,8 +4631,8 @@
                 "moveLeft": "Alih ke kiri",
                 "moveRight": "Alih ke kanan"
             },
-            "deviceAttached": "[NEEDS TRANSLATION] Device attached",
-            "deviceNotAttached": "[NEEDS TRANSLATION] Device not attached"
+            "deviceAttached": "Peranti dipasang",
+            "deviceNotAttached": "Peranti tidak dipasang"
         },
         "gitlab": {
             "projectPath": "Laluan Projek",
@@ -4801,7 +4803,9 @@
             "decryptFileFromDisk": "Nyahsulit fail daripada cakera",
             "fileDecryptedTo": "Fail dinyahsulitkan ke {path}",
             "serverHashGated": "Checksum sebelah pelayan tidak tersedia semasa tindanan tersulit aktif (ia akan hash teks sifir, bukan fail anda).",
-            "outsideScope": "Di luar kawasan tersulit (fail di sini tidak disulitkan)"
+            "outsideScope": "Di luar kawasan tersulit (fail di sini tidak disulitkan)",
+            "overlaysPathButton": "Laluan Tindih",
+            "overlaysPathButtonHint": "Lompat ke Laluan Tindih tersulit: {path}"
         },
         "b2": {
             "hidden": {
@@ -4990,7 +4994,9 @@
             },
             "launcherScheduler": "Penjadual",
             "errorCorrection": "Pembetulan Ralat",
-            "errorCorrectionHint": "Menyimpan fail pariti .aerocorrect kecil di sebelah setiap fail sandaran, supaya salinan jauh yang rosak akibat bit-rot boleh dibaiki pada pull seterusnya, tanpa yang asal."
+            "errorCorrectionHint": "Menyimpan fail pariti .aerocorrect kecil di sebelah setiap fail sandaran, supaya salinan jauh yang rosak akibat bit-rot boleh dibaiki pada pull seterusnya, tanpa yang asal.",
+            "outOfSyncItemsPct": "Item tak segerak",
+            "outOfSyncBytesPct": "Bait tak segerak"
         },
         "accountLock": {
             "title": "Pilih akaun",

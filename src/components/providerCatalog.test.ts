@@ -78,8 +78,9 @@ describe('provider catalog category model (issue #224)', () => {
         const mega = PROVIDER_CATALOG.find(c => c.company === 'MEGA')!;
         expect(companyInCategory(mega, 'cloud-storage')).toBe(true);
         expect(companyInCategory(mega, 'webdav')).toBe(true);
-        // The S3 product was split out, so the MEGA row no longer hits S3.
-        expect(companyInCategory(mega, 'object-storage')).toBe(false);
+        // EF-14/15: MEGA S4 (S3) was merged back into the single MEGA row, so the
+        // MEGA row now also hits object-storage.
+        expect(companyInCategory(mega, 'object-storage')).toBe(true);
     });
 
     it('row launch target is context-aware per category', () => {
@@ -90,13 +91,23 @@ describe('provider catalog category model (issue #224)', () => {
         expect(companyLaunchProtocol(filen, 'all').label).toBe(filen.protocols[0].label);
     });
 
-    it('MEGA S4 and Yandex Object Storage are split into their own paid object-storage rows', () => {
-        const megaS4 = PROVIDER_CATALOG.find(c => c.company === 'MEGA S4 Object Storage');
-        expect(megaS4).toBeDefined();
-        expect(megaS4!.logoId).toBe('mega-s4');
-        expect(megaS4!.freeStorageGb).toBeNull();
-        expect(megaS4!.protocols.every(p => p.paid)).toBe(true);
-        expect(companyInCategory(megaS4!, 'object-storage')).toBe(true);
+    it('MEGA S4 is merged into the single MEGA row as a paid S3 method (EF-14/15); Yandex Object Storage stays its own row', () => {
+        // One row per company: MEGA S4 is MEGA's paid, S3-compatible object storage,
+        // so it is a method on the MEGA row (labelled "S4 (S3)"), NOT a duplicate
+        // "MEGA S4 Object Storage" company.
+        expect(PROVIDER_CATALOG.find(c => c.company === 'MEGA S4 Object Storage')).toBeUndefined();
+        const mega = PROVIDER_CATALOG.find(c => c.company === 'MEGA')!;
+        const s4 = mega.protocols.find(p => p.providerId === 'mega-s4')!;
+        expect(s4).toBeDefined();
+        expect(s4.paid).toBe(true);
+        expect(s4.category).toBe('object-storage');
+        expect(s4.labelOverride).toBe('S4 (S3)');
+        // In the S3 category the MEGA row launches the S4 preset.
+        expect(companyLaunchProtocol(mega, 'object-storage').providerId).toBe('mega-s4');
+
+        // FileLu's S3 object storage is branded "S5" (same EF-14/15 labelling).
+        const fileluS3 = PROVIDER_CATALOG.find(c => c.company === 'FileLu')!.protocols.find(p => p.providerId === 'filelu-s3')!;
+        expect(fileluS3.labelOverride).toBe('S5 (S3)');
 
         const yandexStorage = PROVIDER_CATALOG.find(c => c.company === 'Yandex Object Storage');
         expect(yandexStorage).toBeDefined();
@@ -138,13 +149,16 @@ describe('commercial tier model: free / free-card / paid', () => {
 
     it('paid-only companies have no free tier (trial or paid plan only)', () => {
         // Storj and IDrive e2 discontinued their permanent free tiers (now trial-only).
-        for (const name of ['Wasabi', 'DigitalOcean Spaces', 'Hetzner Storage Box', 'MEGA S4 Object Storage', 'Tencent COS', 'Storj', 'IDrive e2']) {
+        // MEGA S4 is no longer here: it merged into the MEGA row (EF-14/15), and MEGA
+        // has a free API tier, so the company classifies as 'free' (its S4 method
+        // stays individually paid).
+        for (const name of ['Wasabi', 'DigitalOcean Spaces', 'Hetzner Storage Box', 'Tencent COS', 'Storj', 'IDrive e2']) {
             expect(tierOf(name), `${name} tier`).toBe('paid');
         }
     });
 
     it('no-card free tiers classify as plain free', () => {
-        expect(tierOf('Tab.digital')).toBe('free');
+        expect(tierOf('TAB.DIGITAL')).toBe('free');
         expect(tierOf('MEGA')).toBe('free');
     });
 

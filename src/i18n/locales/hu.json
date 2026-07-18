@@ -290,20 +290,20 @@
             "storedTotpWarning": "A 2FA titkának mentésével mindkét tényező a tárolóba kerül. Ha a tároló mesterjelszava illetéktelen kézbe kerül, a 2FA többé nem védi ezt a fiókot. Használjon inkább egyszer használatos kódot vagy helyi WebDAV/S3-hidat.",
             "filenBridgeCredentialRules": "Filen-híd korlátja: {max} karakter. Nem támogatott: {rejected}",
             "filenBridgeCredentialRejected": "Ez a hitelesítő adat a Filen-híd által elutasított karaktereket tartalmaz.",
-            "mtpDefaultName": "[NEEDS TRANSLATION] Portable device",
-            "mtpDetect": "[NEEDS TRANSLATION] Detect",
-            "mtpDetectFailed": "[NEEDS TRANSLATION] Could not list portable devices",
-            "mtpDetecting": "[NEEDS TRANSLATION] Detecting...",
-            "mtpDevice": "[NEEDS TRANSLATION] USB device",
-            "mtpFingerprint": "[NEEDS TRANSLATION] Fingerprint",
-            "mtpHonesty": "[NEEDS TRANSLATION] MTP is exclusive: only one app can open the device. Close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter). Some operations are limited by the device OS.",
-            "mtpNoDevices": "[NEEDS TRANSLATION] No portable devices detected. Plug in the phone or camera and enable File Transfer mode.",
-            "mtpRemotePathPlaceholder": "[NEEDS TRANSLATION] Default remote path (e.g. / or DCIM)",
-            "mtpSaveRequiresDevice": "[NEEDS TRANSLATION] Detect and select a device to enable Save.",
-            "mtpSelectPlaceholder": "[NEEDS TRANSLATION] Select a device...",
-            "mtpSelectPlaceholderEmpty": "[NEEDS TRANSLATION] No devices yet — click Detect",
-            "mtpNotAttachedTitle": "[NEEDS TRANSLATION] Device not connected",
-            "mtpNotAttached": "[NEEDS TRANSLATION] Plug in the device and enable File Transfer mode, then try again."
+            "mtpDefaultName": "Hordozható eszköz",
+            "mtpDetect": "Észlelés",
+            "mtpDetectFailed": "Nem sikerült listázni a hordozható eszközöket",
+            "mtpDetecting": "Észlelés...",
+            "mtpDevice": "USB-eszköz",
+            "mtpFingerprint": "Ujjlenyomat",
+            "mtpHonesty": "Az MTP kizárólagos és igény szerinti: A Csatlakozás lefoglalja az eszközt erre a munkamenetre (Linuxon először felszabadítja a rendszer fájlkezelőjét); a leválasztás visszaadja. Az átvitel csak teljes fájl (nincs folytatás, nincs meghajtóbetűjel). Egyes műveleteket az eszköz operációs rendszere korlátoz.",
+            "mtpNoDevices": "Nem található hordozható eszköz. Csatlakoztassa a telefont vagy a kamerát, és engedélyezze a fájlátviteli módot.",
+            "mtpRemotePathPlaceholder": "Alapértelmezett távoli útvonal (pl. / vagy DCIM)",
+            "mtpSaveRequiresDevice": "Észleljen és válasszon egy eszközt a Mentés engedélyezéséhez.",
+            "mtpSelectPlaceholder": "Válasszon egy eszközt...",
+            "mtpSelectPlaceholderEmpty": "Még nincs eszköz – kattintson az Észlelésre",
+            "mtpNotAttachedTitle": "Az eszköz nincs csatlakoztatva",
+            "mtpNotAttached": "Csatlakoztassa az eszközt, engedélyezze a fájlátviteli módot, majd próbálja újra."
         },
         "browser": {
             "remote": "Távoli",
@@ -482,7 +482,9 @@
             "s3TrashPurgeHint": "A verzió végleges törlése (visszavonhatatlan)",
             "s3TrashPurgeConfirm": "Véglegesen törli ezt a verziót? Ez a művelet nem vonható vissza.",
             "s3TrashEmptySummary": "Ez véglegesen töröl {count} objektumot ({bytes}). Ez a művelet nem vonható vissza.",
-            "extractOverwriteConfirm": "Az ide való kibontás felülír {count} meglévő elemet: {names}. Folytatja?"
+            "extractOverwriteConfirm": "Az ide való kibontás felülír {count} meglévő elemet: {names}. Folytatja?",
+            "permanentDeleteHint": "Csak a kijelölt elemeket törli véglegesen a Kukából. Ezt nem lehet visszavonni.",
+            "emptyTrashHint": "Az ÖSSZES elemet véglegesen törli a Kukából, nem csak a kijelölteket. Ezt nem lehet visszavonni."
         },
         "transfer": {
             "transferring": "Átvitel...",
@@ -1835,9 +1837,9 @@
             "discoverImageKit": "Média CDN és tárhely natív mappákkal (20 GB ingyenes)",
             "discoverUploadcare": "EU médiakezelés CDN-nel és fájl API-kkal (3 GB ingyenes)",
             "discoverCloudinary": "Médiakezelő CDN REST API-val (25 kredit/hónap ingyenes)",
-            "tabdigitalDesc": "Tab.digital (8 GB ingyenes, Nextcloud-alapú, EU/GDPR)",
-            "tabdigitalTooltip": "Tab.digital: független EU felhő csapat 2018 óta, Nextcloud-as-a-service 8GB ingyenes tárhellyel, GDPR-kompatibilis, regionális aldomainek (fie.nl, fie.de, ...)",
-            "discoverTabDigital": "Tab.digital (8 GB ingyenes, Nextcloud-alapú, EU/GDPR, regionális aldomainek)",
+            "tabdigitalDesc": "TAB.DIGITAL (8 GB ingyenes, Nextcloud-alapú, EU/GDPR)",
+            "tabdigitalTooltip": "TAB.DIGITAL: független EU felhő csapat 2018 óta, Nextcloud-as-a-service 8GB ingyenes tárhellyel, GDPR-kompatibilis, regionális aldomainek (fie.nl, fie.de, ...)",
+            "discoverTabDigital": "TAB.DIGITAL (8 GB ingyenes, Nextcloud-alapú, EU/GDPR, regionális aldomainek)",
             "webdavLocalScheme": "Protokoll",
             "webdavLocalSchemeHelp": "Egyezzen meg a helyi WebDAV híd HTTP/HTTPS beállításával (Filen Desktop, MEGAcmd). A HTTPS önaláírt tanúsítványt használ, így a tanúsítvány-ellenőrzés automatikusan letiltásra kerül.",
             "webdavLocalSchemeAuto": "Az AeroFTP csatlakozáskor automatikusan felismeri a Filen híd protokollját (HTTP vagy HTTPS), így itt nincs mit beállítani.",
@@ -1858,9 +1860,9 @@
             "s3RoleMfaTokenCodePlaceholder": "123456",
             "s3RoleMfaTokenCodeHint": "Egyszer használatos kód az MFA-eszközéről, csak akkor szükséges ha a szerepkör MFA-t követel meg. Csatlakozáskor egyszer használatos és soha nem mentődik.",
             "peerDesc": "Ossz meg mappákat közvetlenül barátaiddal titkosított peer-to-peer csatornán keresztül, kiszolgáló nélkül.",
-            "devicesInfoLine1": "[NEEDS TRANSLATION] Save a portable USB device (phone, camera, tablet) as a My Servers profile. Detect the device over MTP, set default folders, and reconnect with one click when it is plugged in.",
-            "devicesInfoLine2": "[NEEDS TRANSLATION] MTP is exclusive: close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter).",
-            "discoverMtpPortable": "[NEEDS TRANSLATION] Phone, camera, or tablet over USB MTP"
+            "devicesInfoLine1": "Mentsen egy hordozható USB-eszközt (telefon, kamera, táblagép) profilként a Kiszolgálóim közé. Észlelje az eszközt MTP-n keresztül, állítson be alapértelmezett mappákat, és csatlakozzon újra egy kattintással, amikor csatlakoztatva van.",
+            "devicesInfoLine2": "Az MTP kizárólagos és igény szerinti: A Csatlakozás lefoglalja az eszközt a munkamenetre; a leválasztás visszaadja. Az átvitel csak teljes fájl (nincs folytatás, nincs meghajtóbetűjel).",
+            "discoverMtpPortable": "Telefon, kamera vagy táblagép USB MTP-n keresztül"
         },
         "shortcuts": {
             "title": "Billentyűparancsok",
@@ -3213,16 +3215,16 @@
             "no_recent": "Nincsenek legutóbbi helyek",
             "mount": "Csatlakoztatás",
             "ejectFailed": "A kiadás sikertelen",
-            "portable_devices": "[NEEDS TRANSLATION] Portable devices",
-            "portable_disconnect": "[NEEDS TRANSLATION] Disconnect",
-            "portable_disconnect_failed": "[NEEDS TRANSLATION] Could not disconnect portable device",
-            "portable_empty": "[NEEDS TRANSLATION] No portable devices detected",
-            "portable_honesty": "[NEEDS TRANSLATION] Portable devices use MTP: whole-file copy only, no drive letter, and some operations are limited by the device OS.",
-            "portable_no_storages": "[NEEDS TRANSLATION] Session open (no storage list yet; browse polish follows)",
-            "portable_open_failed": "[NEEDS TRANSLATION] Could not open portable device",
-            "portable_opened": "[NEEDS TRANSLATION] Connected to {name}",
-            "portable_storages": "[NEEDS TRANSLATION] {count} storage(s)",
-            "portable_disconnected": "[NEEDS TRANSLATION] Portable device disconnected: {name}",
+            "portable_devices": "Hordozható eszközök",
+            "portable_disconnect": "Leválasztás",
+            "portable_disconnect_failed": "Nem sikerült leválasztani a hordozható eszközt",
+            "portable_empty": "Nem található hordozható eszköz",
+            "portable_honesty": "A hordozható eszközök MTP-t használnak: csak teljes fájl másolása, nincs meghajtóbetűjel, nincs folytatás, és egyes műveleteket az eszköz operációs rendszere korlátoz (nem az AeroFTP).",
+            "portable_no_storages": "A munkamenet nyitva (a tárolólista üres vagy nem érhető el ezen az eszközön)",
+            "portable_open_failed": "Nem sikerült megnyitni a hordozható eszközt",
+            "portable_opened": "Csatlakozva ehhez: {name}",
+            "portable_storages": "{count} tároló",
+            "portable_disconnected": "Hordozható eszköz leválasztva: {name}",
             "portable_unplugged": "A hordozható eszköz lecsatlakozott. Csatlakoztassa újra a kábelt, és nyissa meg újra.",
             "portable_needs_replug": "Az asztal nem csatolta fel. Húzza ki, majd dugja vissza a kábelt, és nyissa meg újra."
         },
@@ -4486,7 +4488,7 @@
                 "localBridge": "Helyi híd",
                 "paid": "Fizetős",
                 "encrypted": "Titkosított",
-                "mtp": "[NEEDS TRANSLATION] MTP"
+                "mtp": "MTP"
             },
             "noServers": "Nincsenek mentett szerverek",
             "noServersHint": "Kezdjen egy gyors csatlakozással, vagy böngéssze a szolgáltatáskatalógust.",
@@ -4507,7 +4509,7 @@
                 "developer": "Fejlesztői eszközök",
                 "mediaServices": "Médiaszolgáltatások",
                 "all": "Összes",
-                "devices": "[NEEDS TRANSLATION] Devices"
+                "devices": "Eszközök"
             },
             "confirmDeleteServer": "Törli a(z) \"{name}\" szervert? Ez eltávolítja a mentett hitelesítő adatokat, és nem vonható vissza.",
             "renameWithHotkey": "Átnevezés (F2)",
@@ -4629,8 +4631,8 @@
                 "moveLeft": "Oldalsáv balra",
                 "moveRight": "Oldalsáv jobbra"
             },
-            "deviceAttached": "[NEEDS TRANSLATION] Device attached",
-            "deviceNotAttached": "[NEEDS TRANSLATION] Device not attached"
+            "deviceAttached": "Eszköz csatlakoztatva",
+            "deviceNotAttached": "Eszköz nincs csatlakoztatva"
         },
         "gitlab": {
             "projectPath": "Projekt utvonal",
@@ -4801,7 +4803,9 @@
             "decryptFileFromDisk": "Fájl visszafejtése lemezről",
             "fileDecryptedTo": "Fájl visszafejtve ide: {path}",
             "serverHashGated": "A kiszolgálóoldali ellenőrzőösszeg nem érhető el, amíg titkosított átfedés aktív (a titkosított szöveget hashelné, nem a fájlt).",
-            "outsideScope": "A titkosított területen kívül (az itteni fájlok nincsenek titkosítva)"
+            "outsideScope": "A titkosított területen kívül (az itteni fájlok nincsenek titkosítva)",
+            "overlaysPathButton": "Fedvények útvonala",
+            "overlaysPathButtonHint": "Ugrás a titkosított fedvények útvonalára: {path}"
         },
         "b2": {
             "hidden": {
@@ -4990,7 +4994,9 @@
             },
             "launcherScheduler": "Ütemező",
             "errorCorrection": "Hibajavítás",
-            "errorCorrectionHint": "Egy kis .aerocorrect paritásfájlt ment minden mentett fájl mellé, így a bit-rot által károsodott távoli másolat a következő letöltéskor javítható az eredeti nélkül."
+            "errorCorrectionHint": "Egy kis .aerocorrect paritásfájlt ment minden mentett fájl mellé, így a bit-rot által károsodott távoli másolat a következő letöltéskor javítható az eredeti nélkül.",
+            "outOfSyncItemsPct": "Nem szinkronizált elemek",
+            "outOfSyncBytesPct": "Nem szinkronizált bájtok"
         },
         "accountLock": {
             "title": "Válasszon fiókot",

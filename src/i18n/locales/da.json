@@ -290,20 +290,20 @@
             "storedTotpWarning": "Hvis 2FA-hemmeligheden gemmes, placeres begge faktorer i boksen. Hvis boksens hovedadgangskode kompromitteres, beskytter 2FA ikke længere denne konto. Foretræk en engangskode eller en lokal WebDAV/S3-bro.",
             "filenBridgeCredentialRules": "Grænse for Filen-bro: {max} tegn. Ikke understøttet: {rejected}",
             "filenBridgeCredentialRejected": "Disse legitimationsoplysninger indeholder tegn, som Filen-broen afviser.",
-            "mtpDefaultName": "[NEEDS TRANSLATION] Portable device",
-            "mtpDetect": "[NEEDS TRANSLATION] Detect",
-            "mtpDetectFailed": "[NEEDS TRANSLATION] Could not list portable devices",
-            "mtpDetecting": "[NEEDS TRANSLATION] Detecting...",
-            "mtpDevice": "[NEEDS TRANSLATION] USB device",
-            "mtpFingerprint": "[NEEDS TRANSLATION] Fingerprint",
-            "mtpHonesty": "[NEEDS TRANSLATION] MTP is exclusive: only one app can open the device. Close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter). Some operations are limited by the device OS.",
-            "mtpNoDevices": "[NEEDS TRANSLATION] No portable devices detected. Plug in the phone or camera and enable File Transfer mode.",
-            "mtpRemotePathPlaceholder": "[NEEDS TRANSLATION] Default remote path (e.g. / or DCIM)",
-            "mtpSaveRequiresDevice": "[NEEDS TRANSLATION] Detect and select a device to enable Save.",
-            "mtpSelectPlaceholder": "[NEEDS TRANSLATION] Select a device...",
-            "mtpSelectPlaceholderEmpty": "[NEEDS TRANSLATION] No devices yet — click Detect",
-            "mtpNotAttachedTitle": "[NEEDS TRANSLATION] Device not connected",
-            "mtpNotAttached": "[NEEDS TRANSLATION] Plug in the device and enable File Transfer mode, then try again."
+            "mtpDefaultName": "Bærbar enhed",
+            "mtpDetect": "Registrer",
+            "mtpDetectFailed": "Kunne ikke vise bærbare enheder",
+            "mtpDetecting": "Registrerer...",
+            "mtpDevice": "USB-enhed",
+            "mtpFingerprint": "Fingeraftryk",
+            "mtpHonesty": "MTP er eksklusiv og efter behov: Opret forbindelse gør krav på enheden i denne session (på Linux frigives systemets filhåndtering først); afbryd giver den tilbage. Overførsler er kun hele filer (ingen genoptagelse, intet drevbogstav). Nogle handlinger er begrænset af enhedens operativsystem.",
+            "mtpNoDevices": "Ingen bærbare enheder registreret. Tilslut telefonen eller kameraet, og aktivér filoverførselstilstand.",
+            "mtpRemotePathPlaceholder": "Standard fjernsti (f.eks. / eller DCIM)",
+            "mtpSaveRequiresDevice": "Registrer og vælg en enhed for at aktivere Gem.",
+            "mtpSelectPlaceholder": "Vælg en enhed...",
+            "mtpSelectPlaceholderEmpty": "Ingen enheder endnu – klik på Registrer",
+            "mtpNotAttachedTitle": "Enheden er ikke tilsluttet",
+            "mtpNotAttached": "Tilslut enheden, og aktivér filoverførselstilstand, og prøv derefter igen."
         },
         "browser": {
             "remote": "Ekstern",
@@ -482,7 +482,9 @@
             "s3TrashPurgeHint": "Slet denne version permanent (uigenkaldeligt)",
             "s3TrashPurgeConfirm": "Slet denne version permanent? Denne handling kan ikke fortrydes.",
             "s3TrashEmptySummary": "Dette sletter permanent {count} objekt(er) ({bytes}). Denne handling kan ikke fortrydes.",
-            "extractOverwriteConfirm": "Udpakning her overskriver {count} eksisterende element(er): {names}. Fortsæt?"
+            "extractOverwriteConfirm": "Udpakning her overskriver {count} eksisterende element(er): {names}. Fortsæt?",
+            "permanentDeleteHint": "Sletter permanent kun de valgte elementer fra Papirkurven. Dette kan ikke fortrydes.",
+            "emptyTrashHint": "Sletter permanent ALLE elementer i Papirkurven, ikke kun de valgte. Dette kan ikke fortrydes."
         },
         "transfer": {
             "transferring": "Overfører...",
@@ -1835,9 +1837,9 @@
             "discoverImageKit": "Medie-CDN og lagring med native mapper (20 GB gratis)",
             "discoverUploadcare": "EU-mediehåndtering med CDN og fil-API'er (3 GB gratis)",
             "discoverCloudinary": "CDN til mediestyring med REST API (25 credits/måned gratis)",
-            "tabdigitalDesc": "Tab.digital (8 GB gratis, Nextcloud-baseret, EU/GDPR)",
-            "tabdigitalTooltip": "Tab.digital: uafhængigt EU-cloud-team siden 2018, Nextcloud-as-a-service med 8GB gratis, GDPR-overensstemmende, regionale underdomæner (fie.nl, fie.de, ...)",
-            "discoverTabDigital": "Tab.digital (8 GB gratis, Nextcloud-baseret, EU/GDPR, regionale underdomæner)",
+            "tabdigitalDesc": "TAB.DIGITAL (8 GB gratis, Nextcloud-baseret, EU/GDPR)",
+            "tabdigitalTooltip": "TAB.DIGITAL: uafhængigt EU-cloud-team siden 2018, Nextcloud-as-a-service med 8GB gratis, GDPR-overensstemmende, regionale underdomæner (fie.nl, fie.de, ...)",
+            "discoverTabDigital": "TAB.DIGITAL (8 GB gratis, Nextcloud-baseret, EU/GDPR, regionale underdomæner)",
             "webdavLocalScheme": "Protokol",
             "webdavLocalSchemeHelp": "Match HTTP/HTTPS-indstillingen for den lokale WebDAV-bro (Filen Desktop, MEGAcmd). HTTPS bruger et selvsigneret certifikat, så certifikatverifikation deaktiveres automatisk.",
             "webdavLocalSchemeAuto": "AeroFTP registrerer automatisk protokollen for Filen-broen (HTTP eller HTTPS), når du opretter forbindelse, så der er intet at indstille her.",
@@ -1858,9 +1860,9 @@
             "s3RoleMfaTokenCodePlaceholder": "123456",
             "s3RoleMfaTokenCodeHint": "Engangskode fra din MFA-enhed, kun påkrævet hvis rollen kræver MFA. Bruges én gang ved tilslutning og gemmes aldrig.",
             "peerDesc": "Del mapper direkte med venner via en krypteret peer-to-peer-kanal, uden nogen server imellem.",
-            "devicesInfoLine1": "[NEEDS TRANSLATION] Save a portable USB device (phone, camera, tablet) as a My Servers profile. Detect the device over MTP, set default folders, and reconnect with one click when it is plugged in.",
-            "devicesInfoLine2": "[NEEDS TRANSLATION] MTP is exclusive: close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter).",
-            "discoverMtpPortable": "[NEEDS TRANSLATION] Phone, camera, or tablet over USB MTP"
+            "devicesInfoLine1": "Gem en bærbar USB-enhed (telefon, kamera, tablet) som en profil i Mine servere. Registrer enheden via MTP, angiv standardmapper, og opret forbindelse igen med ét klik, når den er tilsluttet.",
+            "devicesInfoLine2": "MTP er eksklusiv og efter behov: Opret forbindelse gør krav på enheden i sessionen; afbryd giver den tilbage. Overførsler er kun hele filer (ingen genoptagelse, intet drevbogstav).",
+            "discoverMtpPortable": "Telefon, kamera eller tablet via USB MTP"
         },
         "shortcuts": {
             "title": "Tastaturgenveje",
@@ -3213,16 +3215,16 @@
             "no_recent": "Ingen seneste placeringer",
             "mount": "Montér",
             "ejectFailed": "Udskubning mislykkedes",
-            "portable_devices": "[NEEDS TRANSLATION] Portable devices",
-            "portable_disconnect": "[NEEDS TRANSLATION] Disconnect",
-            "portable_disconnect_failed": "[NEEDS TRANSLATION] Could not disconnect portable device",
-            "portable_empty": "[NEEDS TRANSLATION] No portable devices detected",
-            "portable_honesty": "[NEEDS TRANSLATION] Portable devices use MTP: whole-file copy only, no drive letter, and some operations are limited by the device OS.",
-            "portable_no_storages": "[NEEDS TRANSLATION] Session open (no storage list yet; browse polish follows)",
-            "portable_open_failed": "[NEEDS TRANSLATION] Could not open portable device",
-            "portable_opened": "[NEEDS TRANSLATION] Connected to {name}",
-            "portable_storages": "[NEEDS TRANSLATION] {count} storage(s)",
-            "portable_disconnected": "[NEEDS TRANSLATION] Portable device disconnected: {name}",
+            "portable_devices": "Bærbare enheder",
+            "portable_disconnect": "Afbryd forbindelse",
+            "portable_disconnect_failed": "Kunne ikke afbryde forbindelsen til den bærbare enhed",
+            "portable_empty": "Ingen bærbare enheder registreret",
+            "portable_honesty": "Bærbare enheder bruger MTP: kun kopiering af hele filer, intet drevbogstav, ingen genoptagelse, og nogle handlinger er begrænset af enhedens operativsystem (ikke af AeroFTP).",
+            "portable_no_storages": "Session åben (lagerlisten er tom eller utilgængelig på denne enhed)",
+            "portable_open_failed": "Kunne ikke åbne den bærbare enhed",
+            "portable_opened": "Forbundet til {name}",
+            "portable_storages": "{count} lagerenheder",
+            "portable_disconnected": "Bærbar enhed afbrudt: {name}",
             "portable_unplugged": "Den bærbare enhed blev afbrudt. Sæt kablet i igen, og åbn den igen.",
             "portable_needs_replug": "Ikke monteret af skrivebordet. Træk kablet ud og sæt det i igen, og åbn det derefter igen."
         },
@@ -4486,7 +4488,7 @@
                 "localBridge": "Lokal bro",
                 "paid": "Betalt",
                 "encrypted": "Krypteret",
-                "mtp": "[NEEDS TRANSLATION] MTP"
+                "mtp": "MTP"
             },
             "noServers": "Ingen gemte servere",
             "noServersHint": "Start med en hurtig forbindelse eller udforsk tjenestekatalog.",
@@ -4507,7 +4509,7 @@
                 "developer": "Udvikler",
                 "mediaServices": "Medietjenester",
                 "all": "Alle",
-                "devices": "[NEEDS TRANSLATION] Devices"
+                "devices": "Enheder"
             },
             "confirmDeleteServer": "Slet serveren \"{name}\"? Dette fjerner gemte legitimationsoplysninger og kan ikke fortrydes.",
             "renameWithHotkey": "Omdøb (F2)",
@@ -4629,8 +4631,8 @@
                 "moveLeft": "Flyt til venstre",
                 "moveRight": "Flyt til højre"
             },
-            "deviceAttached": "[NEEDS TRANSLATION] Device attached",
-            "deviceNotAttached": "[NEEDS TRANSLATION] Device not attached"
+            "deviceAttached": "Enhed tilsluttet",
+            "deviceNotAttached": "Enhed ikke tilsluttet"
         },
         "gitlab": {
             "projectPath": "Projektsti",
@@ -4801,7 +4803,9 @@
             "decryptFileFromDisk": "Dekrypter fil fra disk",
             "fileDecryptedTo": "Fil dekrypteret til {path}",
             "serverHashGated": "Tjeksum på serversiden er ikke tilgængelig, mens et krypteret overlay er aktivt (den ville hashe chifferteksten, ikke din fil).",
-            "outsideScope": "Uden for det krypterede område (filer her er ikke krypteret)"
+            "outsideScope": "Uden for det krypterede område (filer her er ikke krypteret)",
+            "overlaysPathButton": "Overlay-sti",
+            "overlaysPathButtonHint": "Hop til den krypterede overlay-sti: {path}"
         },
         "b2": {
             "hidden": {
@@ -4990,7 +4994,9 @@
             },
             "launcherScheduler": "Planlægger",
             "errorCorrection": "Fejlkorrektion",
-            "errorCorrectionHint": "Gemmer en lille .aerocorrect-paritetsfil ved siden af hver sikkerhedskopieret fil, så en fjernkopi ødelagt af bit-rot kan repareres ved næste pull, uden originalen."
+            "errorCorrectionHint": "Gemmer en lille .aerocorrect-paritetsfil ved siden af hver sikkerhedskopieret fil, så en fjernkopi ødelagt af bit-rot kan repareres ved næste pull, uden originalen.",
+            "outOfSyncItemsPct": "Elementer ude af sync",
+            "outOfSyncBytesPct": "Bytes ude af sync"
         },
         "accountLock": {
             "title": "Vælg en konto",

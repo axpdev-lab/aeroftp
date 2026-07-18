@@ -11,13 +11,14 @@
 
 import * as React from 'react';
 import { useMemo, useState, useRef, useCallback } from 'react';
-import { Search, X, Columns3, ChevronUp, ChevronDown, ChevronsUpDown, Globe, ExternalLink, Braces, KeyRound, Server, Database, Boxes, TerminalSquare, ShieldCheck, CreditCard } from 'lucide-react';
+import { Search, Columns3, ChevronUp, ChevronDown, ChevronsUpDown, Globe, ExternalLink, Braces, KeyRound, Server, Database, Boxes, TerminalSquare, ShieldCheck, CreditCard } from 'lucide-react';
 import { ProviderType } from '../../types';
 import { CatalogCategoryId } from '../../types/catalog';
 import { PROVIDER_LOGOS, S3BucketLogo } from '../ProviderLogos';
 import type { CatalogProtocol } from '../providerCatalog';
 import { CountryFlag } from '../CountryFlag';
 import { useTranslation } from '../../i18n';
+import { SearchBox } from '../SearchBox';
 import { useTableColumns, type TableColumnDef } from '../../hooks/useTableColumns';
 import { TableColumnsManager } from '../ui/TableColumnsManager';
 import type { HealthStatus } from '../../hooks/useProviderHealth';
@@ -48,7 +49,7 @@ const SORTABLE: CatalogColId[] = ['company', 'region', 'freeGb'];
 
 /** Tokens a company is searchable by (name, regions, note, protocol labels). */
 function searchText(c: CatalogCompany): string {
-    return [c.company, c.countryCode, c.freeNote, ...companyRegions(c), ...c.protocols.map(p => p.label), ...(c.searchAliases ?? [])]
+    return [c.company, c.countryCode, c.freeNote, ...companyRegions(c), ...c.protocols.flatMap(p => [p.label, p.labelOverride]), ...(c.searchAliases ?? [])]
         .filter(Boolean)
         .join(' ')
         .toLowerCase();
@@ -106,7 +107,7 @@ function ProtocolBadge({ p, paid, onClick }: { p: CatalogProtocolRef; paid: bool
             }`}
         >
             <span className="flex-shrink-0 opacity-80">{PROTOCOL_GLYPHS[p.label]}</span>
-            {p.label}
+            {p.labelOverride ?? p.label}
         </button>
     );
 }
@@ -331,25 +332,16 @@ export function CatalogTable({ companies, category, onSelectProvider, getHealth,
         <div className="flex flex-col h-full min-h-0">
             {/* Toolbar: search + column manager */}
             <div className="flex items-center gap-2 mb-3">
-                <div className="relative flex-1 max-w-md">
-                    <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                    <input
-                        type="text"
-                        value={query}
-                        onChange={(e) => setQuery(e.target.value)}
-                        placeholder={t('introHub.list.searchPlaceholder')}
-                        className="w-full pl-9 pr-8 py-1.5 bg-gray-50 dark:bg-gray-700/60 border border-gray-200 dark:border-gray-600 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/40"
-                    />
-                    {query && (
-                        <button
-                            onClick={() => setQuery('')}
-                            className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
-                            aria-label={t('common.close')}
-                        >
-                            <X size={13} />
-                        </button>
-                    )}
-                </div>
+                <SearchBox
+                    value={query}
+                    onChange={setQuery}
+                    onClear={() => setQuery('')}
+                    clearAriaLabel={t('common.close')}
+                    clearIconSize={13}
+                    placeholder={t('introHub.list.searchPlaceholder')}
+                    containerClassName="flex-1 max-w-md"
+                    className="w-full pl-3 pr-8 py-1.5 bg-gray-50 dark:bg-gray-700/60 border border-gray-200 dark:border-gray-600 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                />
                 {/* Free / paid tier filter (parity with `aeroftp-cli catalog --free/--paid`) */}
                 <div className="flex items-center rounded-md border border-gray-200 dark:border-gray-600 overflow-hidden">
                     {([

@@ -370,11 +370,11 @@ export const FeliCloudLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     />
 );
 
-// Tab.digital: blue arrow + "tab" wordmark (Nextcloud-based, EU/Italy, 8 GB free)
+// TAB.DIGITAL: blue arrow + "tab" wordmark (Nextcloud-based, EU/Italy, 8 GB free)
 export const TabDigitalLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     <img
         src="/icons/providers/tabdigital.png"
-        alt="Tab.digital"
+        alt="TAB.DIGITAL"
         width={size}
         height={size}
         style={{ objectFit: 'contain' }}

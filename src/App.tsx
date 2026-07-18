@@ -323,7 +323,7 @@ import {
  * Resolve a `{username}` placeholder inside a connection path against the
  * actual credentials. Some Nextcloud-based provider presets ship with
  * `defaults.basePath = '/remote.php/dav/files/{username}/'` (Felicloud,
- * generic Nextcloud, Tab.digital before the basePath was dropped). The
+ * generic Nextcloud, TAB.DIGITAL before the basePath was dropped). The
  * placeholder reaches `quickConnectDirs.remoteDir` at protocol-selection
  * time, BEFORE the user has typed the username, so it cannot be resolved
  * upstream. Resolving here at connect time covers every path that flows
@@ -349,7 +349,7 @@ const resolveUsernameTemplate = (
 
 /**
  * Strip a legacy initialPath that points exactly at a Nextcloud WebDAV root
- * for a provider that no longer needs it. Tab.digital saved profiles created
+ * for a provider that no longer needs it. TAB.DIGITAL saved profiles created
  * before commit efb5a27f shipped with `initialPath = "/remote.php/dav/files/<user>/"`
  * (template resolved at save time). With basePath dropped from the preset,
  * the WebDAV auto-detect in connect() finds the same path on its own and
@@ -5396,7 +5396,28 @@ interface UpdateVerificationInfo {
   // overlay (a plaintext folder navigated to while it was off, or a spot outside
   // the scope). The backend has the keys to decide; a whole-remote overlay whose
   // scope is empty re-anchors to the remote root.
-  const smartReanchorOverlay = async (appliedScope: string | null | undefined): Promise<void> => {
+  const smartReanchorOverlay = async (
+    appliedScope: string | null | undefined,
+    opts?: { initialLandingPath?: string | null },
+  ): Promise<void> => {
+    // EF-03: the INITIAL connect lands on the connection Remote Path (which may
+    // sit OUTSIDE the Overlays Path), NOT on the anchor. This is a DIFFERENT
+    // trigger from the #390 toggle re-anchor, so it deliberately bypasses both
+    // the cwd-in-view "keep position" check AND the outside-scope bounce: it
+    // moves the wrapped provider straight to the Remote Path regardless of where
+    // read_config/connect left the cwd (aerocrypt cd's into the scope; rclone
+    // leaves it at "/"). Callers only pass a landing path for non-empty scopes;
+    // empty scope (whole-remote overlay) never reaches here and lands as today.
+    if (opts && opts.initialLandingPath !== undefined) {
+      const landing = opts.initialLandingPath;
+      if (normCryptScope(landing) === '') {
+        // Remote Path is the on-wire root.
+        await invoke('provider_change_dir', { path: '/' }).catch(() => undefined);
+      } else {
+        await positionWrappedProviderAtScope(landing);
+      }
+      return;
+    }
     const cwdInView = await invoke<boolean>('provider_crypt_cwd_in_view').catch(() => false);
     if (cwdInView) return; // valid encrypted folder: keep the user in place
     await positionWrappedProviderAtScope(appliedScope);
@@ -5624,21 +5645,36 @@ interface UpdateVerificationInfo {
     if (overlayReloadedVaultRef.current === activeVault) return;
     overlayReloadedVaultRef.current = activeVault;
     let cancelled = false;
-    // Anchor the decrypted reload to the bound overlay scope so it opens at the
-    // configured Remote Path. rclone-crypt needs this explicitly (its unlock
-    // does not move the provider cwd); for aerocrypt the scope matches the dir
-    // its read_config already cd'd into, so the result is unchanged.
-    const reloadScope = sessions.find((s) => s.id === activeSessionId)?.cryptOverlay?.remoteScope || null;
+    // EF-03: anchor the decrypted reload to the connection Remote Path (the
+    // profile's initialPath, carried on the session as serverInitialPath), NOT
+    // the Overlays Path (crypt scope). The Remote Path is the natural connect
+    // landing dir; the Overlays Path is the encrypted island inside it. Landing
+    // on the Remote Path may put the cwd OUTSIDE the scope (plaintext view + the
+    // EF-02 'Overlays Path' button), which is the intended behavior.
+    //   - Only for a NON-EMPTY scope AND a known Remote Path: a whole-remote
+    //     overlay (scope === '') has no plaintext Remote Path, and a missing
+    //     Remote Path falls back to the legacy re-anchor-into-scope behavior.
+    // rclone-crypt needs the explicit move (its unlock does not touch the cwd);
+    // aerocrypt's read_config cd'd into the scope, so the initial-landing branch
+    // in smartReanchorOverlay moves it out to the Remote Path.
+    const activeSess = sessions.find((s) => s.id === activeSessionId);
+    const reloadScope = activeSess?.cryptOverlay?.remoteScope || null;
+    const scopeNonEmpty = normCryptScope(reloadScope) !== '';
+    const remotePath = activeSess?.serverInitialPath?.trim() || '';
+    const initialLandingOpts = (scopeNonEmpty && remotePath)
+      ? { initialLandingPath: remotePath }
+      : undefined;
     void (async () => {
       try {
-        // #390 smart re-anchor: open at the Remote Path on connect (cwd outside the
-        // scope re-anchors in), but keep position when re-arming inside a valid
-        // encrypted subfolder instead of bouncing to the scope root every time.
-        await smartReanchorOverlay(reloadScope);
+        // #390 smart re-anchor is preserved for the toggle path (activateProvider
+        // CryptOverlay); here we pass the initial-connect landing so the connect
+        // opens on the Remote Path without bouncing into the scope. Empty scope /
+        // missing Remote Path fall through to the legacy re-anchor.
+        await smartReanchorOverlay(reloadScope, initialLandingOpts);
         let reloaded = await loadRemoteFiles(undefined, undefined, undefined, null);
         if (!reloaded && !cancelled) {
           await new Promise((res) => setTimeout(res, 1500));
-          await smartReanchorOverlay(reloadScope);
+          await smartReanchorOverlay(reloadScope, initialLandingOpts);
           reloaded = await loadRemoteFiles(undefined, undefined, undefined, null);
         }
         // Rewrite the connect-time listing line to the overlay-anchored display
@@ -7238,7 +7274,7 @@ interface UpdateVerificationInfo {
         // Resolve any `{username}` placeholder against the actual username
         // before the path enters the connect flow. See resolveUsernameTemplate
         // doc comment. Then strip the literal Nextcloud WebDAV root for
-        // legacy Tab.digital / Felicloud / Nextcloud profiles saved before
+        // legacy TAB.DIGITAL / Felicloud / Nextcloud profiles saved before
         // basePath was dropped from the preset.
         const qcTemplateResolved = resolveUsernameTemplate(quickConnectDirs.remoteDir, effectiveParams.username);
         const resolvedRemoteDir = stripLegacyNextcloudWebdavRoot(
@@ -10438,6 +10474,19 @@ interface UpdateVerificationInfo {
       const isProviderConn = usesProviderApi(activeUnifiedRemoteProfile?.protocol);
       const remoteLabel = activeUnifiedRemoteProfile?.name || 'Remote';
       const cryptCompareActive = isCryptOverlayActive();
+      // Crypt-aware Compare: the backend only runs its rclone-crypt name/size
+      // normalization when provider_compare_directories is given the vault
+      // binding. The live provider is not always overlay-wrapped (e.g. a compare
+      // launched on a scope that has not applied the overlay slot), so pass the
+      // binding explicitly, mirroring provider_apply_crypt_overlay. Without it the
+      // remote keeps encrypted names and on-wire padded sizes and every file
+      // mis-diffs, re-uploading the whole folder (#347).
+      const compareCryptVaultId = aeroCryptVaultId || rcloneCryptVaultId;
+      const compareCryptKind: ProviderCryptOverlayKind | null = aeroCryptVaultId
+        ? 'aerocrypt'
+        : rcloneCryptVaultId
+          ? 'rclone-crypt'
+          : null;
 
       // Open immediately with a scanning placeholder so the modal is
       // responsive while the recursive scan runs.
@@ -10464,6 +10513,9 @@ interface UpdateVerificationInfo {
           const compareArgs: Record<string, unknown> = {
             localPath: currentLocalPath,
             remotePath: currentRemotePath,
+            ...(isProviderConn && cryptCompareActive && compareCryptVaultId
+              ? { cryptVaultId: compareCryptVaultId, cryptKind: compareCryptKind }
+              : {}),
             options: {
               compare_timestamp: true,
               compare_size: true,
@@ -16606,7 +16658,7 @@ interface UpdateVerificationInfo {
                     // Resolve {username} placeholder before any path enters
                     // the connect flow. See resolveUsernameTemplate doc.
                     // Then strip the literal Nextcloud WebDAV root for
-                    // legacy Tab.digital / Felicloud / Nextcloud profiles
+                    // legacy TAB.DIGITAL / Felicloud / Nextcloud profiles
                     // saved before basePath was dropped from the preset.
                     const templateResolved = resolveUsernameTemplate(initialPath, normalizedParams.username);
                     const resolvedSavedInitialPath = stripLegacyNextcloudWebdavRoot(
@@ -17172,55 +17224,46 @@ interface UpdateVerificationInfo {
                     </div>
                   )}
                   <div className="flex-shrink-0 px-3 py-1.5 bg-gray-100 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600 text-sm font-medium flex items-center gap-2">
-                    <div className={`flex-1 flex items-center bg-white dark:bg-gray-800 rounded-md border ${isSyncPathMismatch ? 'border-amber-400 dark:border-amber-500' : 'border-gray-300 dark:border-gray-600 hover:border-blue-400 dark:hover:border-blue-500'} focus-within:border-blue-500 dark:focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-500/20 transition-all overflow-hidden`}>
-                      {/* Protocol icon inside address bar (like Chrome favicon) */}
-                      <div className="flex-shrink-0 pl-2.5 pr-1 flex items-center" title={(() => {
-                        const protocol = connectionParams.protocol || 'ftp';
-                        switch (protocol) {
-                          case 's3': return 'Amazon Web Services (AWS)';
-                          case 'webdav': return 'WebDAV';
-                          case 'sftp': return 'SFTP (Secure)';
-                          case 'ftps': return 'FTPS (Secure)';
-                          case 'googledrive': return 'Google Drive';
-                          case 'dropbox': return 'Dropbox';
-                          case 'onedrive': return 'OneDrive';
-                          case 'box': return 'Box';
-                          case 'pcloud': return 'pCloud Drive';
-                          case 'azure': return 'Azure Blob';
-                          case 'filen': return 'Filen';
-                          case 'mega': return 'MEGA';
-                          default: return 'FTP';
-                        }
-                      })()}>
-                        {(() => {
+                    {/* EF-23: the dual-panel remote path bar reuses the AeroFile
+                        breadcrumb (BreadcrumbBar) — clickable directory segments
+                        that navigate, plus a `>` "browse subdirectories" dropdown
+                        per segment — instead of a plain address input. Independent
+                        from the local pane's breadcrumb: segment clicks and edits
+                        route through changeRemoteDirectory (which already handles
+                        the crypt display-path via `plainPath`), and the `>`
+                        dropdown lists the remote provider via provider_list_files
+                        (non-mutating — it lists a path without moving the session
+                        cwd). This bar only renders when connected, so no
+                        not-connected fallback is needed. */}
+                    <div className="flex-1 min-w-0">
+                      <BreadcrumbBar
+                        currentPath={(rcloneCryptVaultId || aeroCryptVaultId || overlayBadgeDecrypting) ? currentRemoteDisplayPath : currentRemotePath}
+                        onNavigate={(path) => changeRemoteDirectory(path, undefined, !!(rcloneCryptVaultId || aeroCryptVaultId))}
+                        isCoherent={!isSyncPathMismatch}
+                        minPath={isSyncNavigation && syncBasePaths ? syncBasePaths.remote : undefined}
+                        listSubdirectories={async (dirPath) => {
+                          const listArg = dirPath && dirPath !== '/' ? dirPath : '/';
+                          const resp = await invoke<{ files: RemoteFile[] }>('provider_list_files', { path: listArg });
+                          const base = listArg.endsWith('/') ? listArg : `${listArg}/`;
+                          return resp.files
+                            .filter((f) => f.is_dir)
+                            .map((f) => ({ name: f.name, path: `${base}${f.name}` }));
+                        }}
+                        rootIcon={(() => {
                           const protocol = connectionParams.protocol || 'ftp';
-                          const iconClass = isSyncPathMismatch ? 'text-amber-500' : isSyncNavigation ? 'text-purple-500' : isConnected ? 'text-green-500' : 'text-gray-400';
-                          if (isSyncPathMismatch) return <AlertTriangle size={14} className={iconClass} />;
                           switch (protocol) {
-                            case 's3': return <Cloud size={14} className={iconClass} />;
-                            case 'webdav': return <Server size={14} className={iconClass} />;
-                            case 'sftp': return <Lock size={14} className={iconClass} />;
-                            case 'ftps': return <Shield size={14} className={iconClass} />;
-                            case 'googledrive': return <Cloud size={14} className={iconClass} />;
-                            case 'dropbox': return <Archive size={14} className={iconClass} />;
-                            case 'onedrive': return <Cloud size={14} className={iconClass} />;
-                            case 'mega': return <Shield size={14} className={iconClass} />;
-                            default: return <Globe size={14} className={iconClass} />;
+                            case 's3': return <Cloud size={14} />;
+                            case 'webdav': return <Server size={14} />;
+                            case 'sftp': return <Lock size={14} />;
+                            case 'ftps': return <Shield size={14} />;
+                            case 'googledrive': return <Cloud size={14} />;
+                            case 'dropbox': return <Archive size={14} />;
+                            case 'onedrive': return <Cloud size={14} />;
+                            case 'mega': return <Shield size={14} />;
+                            default: return <Globe size={14} />;
                           }
                         })()}
-                      </div>
-                      <input
-                        type="text"
-                        value={isConnected ? ((rcloneCryptVaultId || aeroCryptVaultId || overlayBadgeDecrypting) ? currentRemoteDisplayPath : currentRemotePath) : t('browser.notConnected')}
-                        onChange={(e) => {
-                          if (rcloneCryptVaultId || aeroCryptVaultId) setCurrentRemoteDisplayPath(e.target.value);
-                          else setCurrentRemotePath(e.target.value);
-                        }}
-                        onKeyDown={(e) => e.key === 'Enter' && isConnected && changeRemoteDirectory((e.target as HTMLInputElement).value, undefined, !!(rcloneCryptVaultId || aeroCryptVaultId))}
-                        disabled={!isConnected}
-                        className={`flex-1 pl-1 pr-2 py-1 bg-transparent border-none outline-none text-sm cursor-text selection:bg-blue-200 dark:selection:bg-blue-800 disabled:cursor-default disabled:text-gray-400 disabled:bg-gray-50 dark:disabled:bg-gray-900 ${isSyncPathMismatch ? 'text-amber-600 dark:text-amber-400' : ''}`}
-                        title={isSyncPathMismatch ? t('browser.syncPathMismatch') : isConnected ? t('browser.editPathHint') : t('browser.notConnected')}
-                        placeholder="/path/to/directory"
+                        t={t}
                       />
                     </div>
                     {(() => {
@@ -17260,7 +17303,11 @@ interface UpdateVerificationInfo {
                         OVERLAY
                       </span>
                     )}
-                    {overlayBadgeKind && (() => {
+                    {/* EF-02: the crypt toggle only makes sense inside the
+                        Overlays Path (where names encrypt/decrypt). When the cwd
+                        is outside the scope we swap it for an 'Overlays Path' nav
+                        button below that jumps back into the encrypted anchor. */}
+                    {overlayBadgeKind && overlayInScope && (() => {
                       const isAero = overlayBadgeKind === 'aerocrypt';
                       const label = isAero ? 'AEROCRYPT' : 'RCLONE CRYPT';
                       const litCls = isAero
@@ -17302,6 +17349,25 @@ interface UpdateVerificationInfo {
                         >
                           <Lock size={11} className={iconCls} />
                           {label}
+                        </button>
+                      );
+                    })()}
+                    {/* EF-02: overlay armed but the cwd is OUTSIDE the Overlays
+                        Path — offer a one-click jump into the encrypted anchor
+                        (crypt-aware nav, mirroring the BreadcrumbBar onNavigate
+                        crypt flag) instead of the meaningless in-scope toggle. */}
+                    {overlayBadgeKind && !overlayInScope && (() => {
+                      const scopeLabel = activeBoundRemoteScope || '/';
+                      return (
+                        <button
+                          type="button"
+                          onClick={() => changeRemoteDirectory(activeBoundRemoteScope, undefined, true)}
+                          className="flex-shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border transition-colors bg-amber-500/15 text-amber-500 border-amber-500/30 hover:bg-amber-500/25 cursor-pointer"
+                          title={t('aerocrypt.overlaysPathButtonHint', { path: scopeLabel })}
+                          aria-label={t('aerocrypt.overlaysPathButtonHint', { path: scopeLabel })}
+                        >
+                          <Lock size={11} className="text-amber-500" />
+                          {t('aerocrypt.overlaysPathButton')}
                         </button>
                       );
                     })()}

@@ -8,7 +8,8 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use crate::credential_store::{CredentialError, CredentialStore};
-use crate::storage_dedup::{dedup_key, ProfileView};
+use crate::profile_auth_state::oauth_vault_key_for_protocol;
+use crate::storage_dedup::{dedup_key, normalize_host, normalize_user, ProfileView};
 use crate::user_crypto::{self, SecretKey};
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use rusqlite::{params, Connection, OptionalExtension, Transaction};
@@ -684,6 +685,165 @@ fn profile_dedup_key(
         total: quota_u64(profile, "total"),
     };
     user_crypto::metadata_tag(root_key, b"dedup-key", &dedup_key(&view))
+}
+
+// --- EF-19 relocate identity probe (Option B) --------------------------------
+//
+// Storage `dedup_key` deliberately strips profile id and all secrets so the My
+// Servers footer can collapse multi-protocol surfaces of the *same drive*. The
+// cross-user Copy/Move probe must identify an *account*, not a drive: two
+// distinct S3 / preset-OAuth / preset-WebDAV accounts that share an empty or
+// placeholder blob username must NOT collide. This relocate-only key therefore
+// pairs a stable account surface with a fingerprint of the resolved credential
+// secret. `dedup_key` / `profile_dedup_key` stay untouched for storage.
+
+/// Account surface for relocate identity: protocol + provider + host + port +
+/// normalized username/account. Secrets are deliberately excluded here; they
+/// land in the credential fingerprint instead.
+fn relocate_identity_surface(profile: &Value) -> String {
+    let protocol = value_str(profile, &["protocol"])
+        .unwrap_or("ftp")
+        .to_ascii_lowercase();
+    let provider_id = value_str(profile, &["providerId", "provider_id"])
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    let host = normalize_host(value_str(profile, &["host", "hostname", "endpoint"]).unwrap_or(""));
+    let port = value_u64(profile, &["port"]).unwrap_or(0);
+    let username_raw = value_str(profile, &["username", "user", "email", "account"]).unwrap_or("");
+    let user = normalize_user(username_raw).unwrap_or_default();
+    format!("{protocol}\0{provider_id}\0{host}\0{port}\0{user}")
+}
+
+/// True when the blob carries a usable account identifier (non-empty, not an
+/// opaque token). Weak surfaces (empty S3 access key, empty OAuth username,
+/// shared WebDAV placeholder) require a matching credential fingerprint before
+/// a Copy may be skipped.
+fn relocate_surface_has_account_id(profile: &Value) -> bool {
+    let username_raw = value_str(profile, &["username", "user", "email", "account"]).unwrap_or("");
+    normalize_user(username_raw).is_some()
+}
+
+/// Vault / partition key candidates that hold the identifying secret for a
+/// profile. Prefer per-profile keys so distinct accounts never share a
+/// machine-level singleton fingerprint.
+fn relocate_credential_key_candidates(protocol: &str, profile_id: &str) -> Vec<String> {
+    let mut keys = vec![format!("server_{profile_id}")];
+    if let Some(oauth_base) = oauth_vault_key_for_protocol(protocol) {
+        // oauth_vault_key_for_protocol returns e.g. "oauth_pcloud" or
+        // "jottacloud_refresh"; append the profile id for the per-profile key.
+        keys.push(format!("{oauth_base}_{profile_id}"));
+    }
+    keys
+}
+
+/// Decrypt one credential row with an already-resolved DEK (session-free).
+fn read_credential_with_dek(
+    conn: &Connection,
+    user_id: i64,
+    dek: &SecretKey,
+    credential_id: &str,
+) -> Result<Option<Zeroizing<String>>, String> {
+    let row: Option<(Vec<u8>, Vec<u8>)> = conn
+        .query_row(
+            "SELECT encrypted_blob, nonce FROM user_credentials
+             WHERE user_id = ?1 AND credential_id = ?2",
+            params![user_id, credential_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .optional()
+        .map_err(|e| format!("Read user credential: {e}"))?;
+    match row {
+        None => Ok(None),
+        Some((blob, nonce)) => {
+            let plaintext = user_crypto::decrypt_blob(dek, &nonce, &blob)?;
+            let secret = String::from_utf8(plaintext.to_vec())
+                .map_err(|_| "CREDENTIAL_NOT_UTF8".to_string())?;
+            Ok(Some(Zeroizing::new(secret)))
+        }
+    }
+}
+
+/// Resolve the first available identifying secret for `profile_id` from the
+/// user's partition (and, when present, the legacy vault as fallback).
+fn resolve_relocate_secret(
+    conn: &Connection,
+    root_key: &[u8; 32],
+    user_id: i64,
+    user_dek: Option<&SecretKey>,
+    protocol: &str,
+    profile_id: &str,
+) -> Result<Option<Zeroizing<String>>, String> {
+    let candidates = relocate_credential_key_candidates(protocol, profile_id);
+    for key in &candidates {
+        let from_partition = if let Some(dek) = user_dek {
+            read_credential_with_dek(conn, user_id, dek, key)?
+        } else {
+            // Session / device-wrapped path for the source (active) user.
+            match get_user_credential_for(conn, root_key, user_id, key) {
+                Ok(v) => v,
+                // A locked passphrase target without an explicit DEK is not a
+                // fatal relocate error here: fall through to the vault.
+                Err(e) if e == "USER_LOCKED" => None,
+                Err(e) => return Err(e),
+            }
+        };
+        if let Some(secret) = from_partition {
+            if !secret.is_empty() {
+                return Ok(Some(secret));
+            }
+        }
+        // Dual-write fallback: vault still holds secrets not yet mirrored.
+        if let Some(store) = CredentialStore::from_cache() {
+            if let Ok(secret) = store.get_secret(key) {
+                if !secret.is_empty() {
+                    return Ok(Some(secret));
+                }
+            }
+        }
+    }
+    Ok(None)
+}
+
+/// HMAC fingerprint of the identifying credential (empty when unresolved).
+fn relocate_credential_fingerprint(
+    conn: &Connection,
+    root_key: &[u8; 32],
+    root_secret: &SecretKey,
+    user_id: i64,
+    user_dek: Option<&SecretKey>,
+    profile: &Value,
+    profile_id: &str,
+) -> Result<String, String> {
+    let protocol = value_str(profile, &["protocol"]).unwrap_or("ftp");
+    let secret = resolve_relocate_secret(conn, root_key, user_id, user_dek, protocol, profile_id)?;
+    match secret {
+        Some(s) if !s.is_empty() => {
+            user_crypto::metadata_tag(root_secret, b"relocate-cred-fp", s.as_str())
+        }
+        _ => Ok(String::new()),
+    }
+}
+
+/// True when `existing` is the same *account* as `source` for relocate purposes.
+/// Requires matching account surface; credential fingerprints must also match
+/// when either side has one. Weak surfaces (no usable username) without a
+/// matching non-empty fingerprint never skip a Copy — that was the EF-19 false
+/// "already saved" regression under storage `dedup_key`.
+fn relocate_accounts_match(
+    source: &Value,
+    source_fp: &str,
+    existing: &Value,
+    existing_fp: &str,
+) -> bool {
+    if relocate_identity_surface(source) != relocate_identity_surface(existing) {
+        return false;
+    }
+    if !source_fp.is_empty() && source_fp == existing_fp {
+        return true;
+    }
+    // Strong surface (host+user etc.) may match without secrets (e.g. SFTP
+    // key-only / no password stored). Weak surfaces must not.
+    source_fp.is_empty() && existing_fp.is_empty() && relocate_surface_has_account_id(source)
 }
 
 fn insert_default_user(
@@ -1426,10 +1586,11 @@ pub struct ProfileRelocation {
     pub target_user_id: i64,
     /// True for Move/Cut (the source row was deleted), false for Copy.
     pub moved: bool,
-    /// True when the target partition already contained an equivalent server
-    /// (same dedup identity). For a Copy this means the insert was skipped to
-    /// avoid a duplicate; for a Move the profile is still materialised (see
-    /// `inserted`) so the source can be removed without losing the only copy.
+    /// True when the target partition already contained the same *account*
+    /// (relocate identity surface + credential fingerprint; EF-19). For a Copy
+    /// this means the insert was skipped to avoid a duplicate; for a Move the
+    /// profile is still materialised (see `inserted`) so the source can be
+    /// removed without losing the only copy.
     pub already_present: bool,
     /// True when a fresh profile row was actually written into the target
     /// partition. Always true for a Move (it must materialise before the source
@@ -1448,9 +1609,10 @@ pub struct ProfileRelocation {
 /// Security: writing into a passphrase-protected target requires its
 /// passphrase (`TARGET_PASSPHRASE_REQUIRED` otherwise); the target DEK is
 /// resolved session-free so the source user's primed session is never
-/// disturbed. When the target already holds an equivalent server the insert is
-/// skipped (`already_present`), but for `remove_from_source` the source row is
-/// still deleted so a Move always satisfies "this profile now lives in B".
+/// disturbed. When the target already holds the same account (surface +
+/// credential fingerprint; EF-19) the Copy insert is skipped (`already_present`);
+/// for `remove_from_source` a Move always materialises first (#366) so the
+/// source can be deleted without losing the only copy.
 #[allow(clippy::too_many_arguments)]
 pub fn relocate_server_profile(
     conn: &mut Connection,
@@ -1495,15 +1657,36 @@ pub fn relocate_server_profile(
     let target_dek =
         resolve_user_dek_scoped(conn, &root_secret, target_user_id, target_passphrase)?;
 
-    // 4. Dedup against the target on the stable identity (username-based when
-    //    available, so a fresh id never masks an existing same-account server).
+    // 4. Account-identity probe against the target (EF-19 Option B).
+    //    Do NOT reuse storage `dedup_key` / `profile_dedup_key` here: that key
+    //    strips secrets and collapses distinct S3 / OAuth / WebDAV accounts
+    //    that share an empty or placeholder blob username into a false
+    //    "already saved". Skip a Copy only when the target holds the same
+    //    account surface AND the same credential fingerprint.
     let source_seed = value_str(&source, &["id", "uid", "profileUid"]).unwrap_or(profile_id);
-    let source_tag = profile_dedup_key(&root_secret, &source, source_seed)?;
+    let source_fp = relocate_credential_fingerprint(
+        conn,
+        root_key,
+        &root_secret,
+        source_user_id,
+        None,
+        &source,
+        source_seed,
+    )?;
     let target_profiles = read_profiles_with_dek(conn, target_user_id, &target_dek)?;
     let mut already_present = false;
     for existing in &target_profiles {
         let seed = value_str(existing, &["id", "uid", "profileUid"]).unwrap_or("");
-        if profile_dedup_key(&root_secret, existing, seed)? == source_tag {
+        let existing_fp = relocate_credential_fingerprint(
+            conn,
+            root_key,
+            &root_secret,
+            target_user_id,
+            Some(&target_dek),
+            existing,
+            seed,
+        )?;
+        if relocate_accounts_match(&source, &source_fp, existing, &existing_fp) {
             already_present = true;
             break;
         }
@@ -1811,24 +1994,7 @@ pub fn get_user_credential_for(
 ) -> Result<Option<Zeroizing<String>>, String> {
     let root_secret = user_crypto::secret_key_from_bytes(root_key);
     with_user_dek(conn, &root_secret, user_id, |user_id, dek| {
-        let row: Option<(Vec<u8>, Vec<u8>)> = conn
-            .query_row(
-                "SELECT encrypted_blob, nonce FROM user_credentials
-                 WHERE user_id = ?1 AND credential_id = ?2",
-                params![user_id, credential_id],
-                |row| Ok((row.get(0)?, row.get(1)?)),
-            )
-            .optional()
-            .map_err(|e| format!("Read user credential: {e}"))?;
-        match row {
-            None => Ok(None),
-            Some((blob, nonce)) => {
-                let plaintext = user_crypto::decrypt_blob(dek, &nonce, &blob)?;
-                let secret = String::from_utf8(plaintext.to_vec())
-                    .map_err(|_| "CREDENTIAL_NOT_UTF8".to_string())?;
-                Ok(Some(Zeroizing::new(secret)))
-            }
-        }
+        read_credential_with_dek(conn, user_id, dek, credential_id)
     })
 }
 
@@ -5579,6 +5745,82 @@ mod tests {
         })
     }
 
+    /// S3 preset with empty access-key in the blob — storage `dedup_key` hashes
+    /// the empty key to a constant and false-collides distinct accounts (EF-19).
+    fn s3_empty_user_profile(id: &str, name: &str) -> Value {
+        json!({
+            "id": id,
+            "name": name,
+            "protocol": "s3",
+            "providerId": "wasabi",
+            "host": "s3.wasabisys.com",
+            "port": 443,
+            "username": ""
+        })
+    }
+
+    /// Preset OAuth (pCloud) with no email materialised in the blob.
+    fn pcloud_oauth_empty_user_profile(id: &str, name: &str) -> Value {
+        json!({
+            "id": id,
+            "name": name,
+            "protocol": "pcloud",
+            "providerId": "pcloud",
+            "host": "",
+            "port": 0,
+            "username": ""
+        })
+    }
+
+    /// Preset WebDAV with empty / shared placeholder username.
+    fn webdav_preset_empty_user_profile(id: &str, name: &str) -> Value {
+        json!({
+            "id": id,
+            "name": name,
+            "protocol": "webdav",
+            "providerId": "nextcloud",
+            "host": "cloud.example.com",
+            "port": 443,
+            "username": ""
+        })
+    }
+
+    fn seed_server_secret(
+        conn: &Connection,
+        root: &[u8; 32],
+        user_id: i64,
+        profile_id: &str,
+        secret: &str,
+    ) {
+        set_user_credential_for(
+            conn,
+            root,
+            user_id,
+            &format!("server_{profile_id}"),
+            "server",
+            secret,
+        )
+        .expect("seed server secret");
+    }
+
+    fn seed_oauth_secret(
+        conn: &Connection,
+        root: &[u8; 32],
+        user_id: i64,
+        profile_id: &str,
+        secret: &str,
+    ) {
+        set_user_credential_for(
+            conn,
+            root,
+            user_id,
+            &format!("oauth_pcloud_{profile_id}"),
+            "oauth",
+            secret,
+        )
+        .expect("seed oauth secret");
+    }
+
     #[test]
     fn relocate_copy_into_passphraseless_target_keeps_source() {
         let _guard = test_lock();
@@ -5707,28 +5949,218 @@ mod tests {
 
     #[test]
     fn relocate_copy_skips_when_target_already_has_server() {
+        // Strong-surface true positive (SFTP host+user) still skips a second Copy.
+        // EF-19: weak-surface S3 / pCloud OAuth / preset WebDAV with empty blob
+        // usernames and *different* credentials must NOT report "already saved"
+        // and must materialise the Copy. Same credentials after a first copy
+        // still skip (real identity match).
         let _guard = test_lock();
         let mut conn = migrated_conn(0);
         let root = test_root();
         let default = get_active_user(&conn).expect("active").expect("default");
         let bob = create_passphrase_less_user(&mut conn, &root, "Bob", Some("B"), Some("#6366f1"))
             .expect("create bob");
-        replace_active_server_profiles(&mut conn, &root, &[sftp_profile("srv_src")])
-            .expect("seed source profile");
 
+        // --- SFTP: strong surface, no secrets needed ---
+        replace_active_server_profiles(&mut conn, &root, &[sftp_profile("srv_sftp")])
+            .expect("seed sftp");
         relocate_server_profile(
-            &mut conn, &root, default.id, bob.id, "srv_src", "srv_new1", None, false,
+            &mut conn,
+            &root,
+            default.id,
+            bob.id,
+            "srv_sftp",
+            "srv_sftp_bob",
+            None,
+            false,
         )
-        .expect("first copy");
-        // Same logical server (same host/user) -> dedup skip, no duplicate row.
-        let report = relocate_server_profile(
-            &mut conn, &root, default.id, bob.id, "srv_src", "srv_new2", None, false,
+        .expect("first sftp copy");
+        let sftp_second = relocate_server_profile(
+            &mut conn,
+            &root,
+            default.id,
+            bob.id,
+            "srv_sftp",
+            "srv_sftp_dup",
+            None,
+            false,
         )
-        .expect("second copy");
-        assert!(report.already_present);
-        assert!(!report.inserted, "a Copy dedup hit must not insert");
-        let target = list_server_profiles_for(&conn, &root, bob.id).expect("target list");
-        assert_eq!(target.len(), 1, "dedup must not create a second copy");
+        .expect("second sftp copy");
+        assert!(sftp_second.already_present, "same SFTP account must skip");
+        assert!(!sftp_second.inserted, "a Copy identity hit must not insert");
+
+        // --- S3 empty username: distinct secrets must materialise ---
+        replace_active_server_profiles(
+            &mut conn,
+            &root,
+            &[
+                sftp_profile("srv_sftp"),
+                s3_empty_user_profile("srv_s3_a", "Wasabi A"),
+            ],
+        )
+        .expect("seed s3 a on source");
+        seed_server_secret(&conn, &root, default.id, "srv_s3_a", "s3-secret-account-a");
+        // Bob already has a *different* S3 account (same empty blob surface).
+        // Under storage dedup_key both hash to s3:wasabi:<empty-hash> and would
+        // false-positive; the identity probe must not.
+        replace_server_profiles_for(
+            &mut conn,
+            &root,
+            bob.id,
+            &[
+                sftp_profile("srv_sftp_bob"),
+                s3_empty_user_profile("srv_s3_bob", "Wasabi B"),
+            ],
+        )
+        .expect("seed s3 b on bob");
+        seed_server_secret(&conn, &root, bob.id, "srv_s3_bob", "s3-secret-account-b");
+
+        let s3_copy = relocate_server_profile(
+            &mut conn,
+            &root,
+            default.id,
+            bob.id,
+            "srv_s3_a",
+            "srv_s3_copied",
+            None,
+            false,
+        )
+        .expect("s3 cross-user copy");
+        assert!(
+            !s3_copy.already_present,
+            "distinct S3 accounts must not false-positive as already saved"
+        );
+        assert!(s3_copy.inserted, "S3 cross-user Copy must materialise");
+        // Mirror the credential the production dual-write would copy, then a
+        // second Copy of the same account should skip.
+        seed_server_secret(&conn, &root, bob.id, "srv_s3_copied", "s3-secret-account-a");
+        let s3_second = relocate_server_profile(
+            &mut conn,
+            &root,
+            default.id,
+            bob.id,
+            "srv_s3_a",
+            "srv_s3_again",
+            None,
+            false,
+        )
+        .expect("s3 second copy same secret");
+        assert!(
+            s3_second.already_present && !s3_second.inserted,
+            "same S3 credential fingerprint must skip a second Copy"
+        );
+
+        // --- pCloud OAuth empty username: distinct tokens must materialise ---
+        replace_active_server_profiles(
+            &mut conn,
+            &root,
+            &[
+                sftp_profile("srv_sftp"),
+                s3_empty_user_profile("srv_s3_a", "Wasabi A"),
+                pcloud_oauth_empty_user_profile("srv_pc_a", "pCloud A"),
+            ],
+        )
+        .expect("seed pcloud a");
+        seed_oauth_secret(
+            &conn,
+            &root,
+            default.id,
+            "srv_pc_a",
+            r#"{"access_token":"tok-a"}"#,
+        );
+        let bob_profiles = list_server_profiles_for(&conn, &root, bob.id).expect("bob list");
+        let mut bob_seed = bob_profiles;
+        bob_seed.push(pcloud_oauth_empty_user_profile("srv_pc_bob", "pCloud B"));
+        replace_server_profiles_for(&mut conn, &root, bob.id, &bob_seed).expect("seed pcloud b");
+        seed_oauth_secret(
+            &conn,
+            &root,
+            bob.id,
+            "srv_pc_bob",
+            r#"{"access_token":"tok-b"}"#,
+        );
+
+        let pc_copy = relocate_server_profile(
+            &mut conn,
+            &root,
+            default.id,
+            bob.id,
+            "srv_pc_a",
+            "srv_pc_copied",
+            None,
+            false,
+        )
+        .expect("pcloud cross-user copy");
+        assert!(
+            !pc_copy.already_present,
+            "distinct pCloud OAuth accounts must not false-positive"
+        );
+        assert!(
+            pc_copy.inserted,
+            "pCloud OAuth cross-user Copy must materialise"
+        );
+
+        // --- preset WebDAV empty username: distinct secrets must materialise ---
+        replace_active_server_profiles(
+            &mut conn,
+            &root,
+            &[
+                sftp_profile("srv_sftp"),
+                webdav_preset_empty_user_profile("srv_dav_a", "Nextcloud A"),
+            ],
+        )
+        .expect("seed webdav a");
+        seed_server_secret(&conn, &root, default.id, "srv_dav_a", "dav-password-a");
+        let bob_profiles = list_server_profiles_for(&conn, &root, bob.id).expect("bob list");
+        let mut bob_seed = bob_profiles;
+        bob_seed.push(webdav_preset_empty_user_profile(
+            "srv_dav_bob",
+            "Nextcloud B",
+        ));
+        replace_server_profiles_for(&mut conn, &root, bob.id, &bob_seed).expect("seed webdav b");
+        seed_server_secret(&conn, &root, bob.id, "srv_dav_bob", "dav-password-b");
+
+        let dav_copy = relocate_server_profile(
+            &mut conn,
+            &root,
+            default.id,
+            bob.id,
+            "srv_dav_a",
+            "srv_dav_copied",
+            None,
+            false,
+        )
+        .expect("webdav cross-user copy");
+        assert!(
+            !dav_copy.already_present,
+            "distinct WebDAV preset accounts must not false-positive"
+        );
+        assert!(
+            dav_copy.inserted,
+            "WebDAV preset cross-user Copy must materialise"
+        );
+
+        let target = list_server_profiles_for(&conn, &root, bob.id).expect("final target");
+        assert!(
+            target.iter().any(|p| p["id"] == "srv_s3_copied"),
+            "S3 copy landed"
+        );
+        assert!(
+            target.iter().any(|p| p["id"] == "srv_pc_copied"),
+            "pCloud copy landed"
+        );
+        assert!(
+            target.iter().any(|p| p["id"] == "srv_dav_copied"),
+            "WebDAV copy landed"
+        );
+        assert!(
+            !target.iter().any(|p| p["id"] == "srv_sftp_dup"),
+            "SFTP true-positive must not insert a second row"
+        );
+        assert!(
+            !target.iter().any(|p| p["id"] == "srv_s3_again"),
+            "S3 same-credential true-positive must not insert again"
+        );
     }
 
     #[test]
@@ -5738,6 +6170,11 @@ mod tests {
         // insert on a dedup hit yet still deleted the source, so the only copy
         // was lost. The probe still reports `already_present`, but the move must
         // insert first and only then drop the source.
+        //
+        // EF-19: also cover weak-surface S3 / OAuth / WebDAV — a Move of a
+        // *distinct* account (different credential fingerprint) must report
+        // already_present=false yet still materialise; a Move onto a real
+        // equivalent still materialises with already_present=true.
         let _guard = test_lock();
         let mut conn = migrated_conn(0);
         let root = test_root();
@@ -5774,13 +6211,154 @@ mod tests {
         );
 
         // Source removed (it is a move) and the moved profile now lives in the
-        // target: no data loss even though the dedup probe matched.
+        // target: no data loss even though the identity probe matched.
         let source = list_server_profiles_for(&conn, &root, default.id).expect("source list");
         assert!(source.is_empty(), "source removed after move");
         let target = list_server_profiles_for(&conn, &root, bob.id).expect("target list");
         assert!(
             target.iter().any(|p| p["id"] == "srv_moved"),
             "moved profile must exist in the target"
+        );
+
+        // --- EF-19 weak-surface Move: distinct S3 account still materialises ---
+        replace_active_server_profiles(
+            &mut conn,
+            &root,
+            &[s3_empty_user_profile("srv_s3_move", "Wasabi Move")],
+        )
+        .expect("seed s3 move source");
+        seed_server_secret(
+            &conn,
+            &root,
+            default.id,
+            "srv_s3_move",
+            "s3-move-secret-src",
+        );
+        // Target already has another empty-username Wasabi (would collide under
+        // storage dedup_key) with a different secret.
+        let mut bob_now = list_server_profiles_for(&conn, &root, bob.id).expect("bob now");
+        bob_now.push(s3_empty_user_profile("srv_s3_other", "Wasabi Other"));
+        replace_server_profiles_for(&mut conn, &root, bob.id, &bob_now).expect("seed other s3");
+        seed_server_secret(&conn, &root, bob.id, "srv_s3_other", "s3-move-secret-other");
+
+        let s3_move = relocate_server_profile(
+            &mut conn,
+            &root,
+            default.id,
+            bob.id,
+            "srv_s3_move",
+            "srv_s3_moved",
+            None,
+            /*remove_from_source=*/ true,
+        )
+        .expect("s3 move distinct account");
+        assert!(s3_move.moved);
+        assert!(
+            !s3_move.already_present,
+            "distinct S3 credentials must not look already present"
+        );
+        assert!(
+            s3_move.inserted,
+            "Move must materialise before source delete"
+        );
+        let source = list_server_profiles_for(&conn, &root, default.id).expect("source after s3");
+        assert!(source.is_empty(), "s3 source removed after move");
+        let target = list_server_profiles_for(&conn, &root, bob.id).expect("target after s3");
+        assert!(
+            target.iter().any(|p| p["id"] == "srv_s3_moved"),
+            "moved S3 profile must exist in the target"
+        );
+
+        // --- EF-19 weak-surface Move onto real equivalent (same fingerprint) ---
+        replace_active_server_profiles(
+            &mut conn,
+            &root,
+            &[pcloud_oauth_empty_user_profile(
+                "srv_pc_move",
+                "pCloud Move",
+            )],
+        )
+        .expect("seed pcloud move source");
+        seed_oauth_secret(
+            &conn,
+            &root,
+            default.id,
+            "srv_pc_move",
+            r#"{"access_token":"tok-same"}"#,
+        );
+        // First copy lands the account in Bob; credential dual-write is manual
+        // in unit tests (relocate_server_credential_dual needs a store).
+        let pc_seed = relocate_server_profile(
+            &mut conn,
+            &root,
+            default.id,
+            bob.id,
+            "srv_pc_move",
+            "srv_pc_seed",
+            None,
+            false,
+        )
+        .expect("seed pcloud in bob");
+        assert!(pc_seed.inserted);
+        seed_oauth_secret(
+            &conn,
+            &root,
+            bob.id,
+            "srv_pc_seed",
+            r#"{"access_token":"tok-same"}"#,
+        );
+
+        let pc_move = relocate_server_profile(
+            &mut conn,
+            &root,
+            default.id,
+            bob.id,
+            "srv_pc_move",
+            "srv_pc_moved",
+            None,
+            /*remove_from_source=*/ true,
+        )
+        .expect("pcloud move with equivalent present");
+        assert!(pc_move.moved);
+        assert!(
+            pc_move.already_present,
+            "same OAuth fingerprint is a real equivalent"
+        );
+        assert!(
+            pc_move.inserted,
+            "#366: Move still materialises on identity hit"
+        );
+        let source = list_server_profiles_for(&conn, &root, default.id).expect("source after pc");
+        assert!(source.is_empty(), "pcloud source removed after move");
+        let target = list_server_profiles_for(&conn, &root, bob.id).expect("target after pc");
+        assert!(
+            target.iter().any(|p| p["id"] == "srv_pc_moved"),
+            "moved pCloud profile must exist in the target"
+        );
+    }
+
+    #[test]
+    fn relocate_identity_surface_distinguishes_weak_blob_accounts() {
+        // Pure helper coverage: empty-username S3/OAuth/WebDAV surfaces match
+        // each other within a protocol, so the credential fingerprint is what
+        // must break the tie (not storage dedup_key).
+        let a = s3_empty_user_profile("a", "A");
+        let b = s3_empty_user_profile("b", "B");
+        assert_eq!(relocate_identity_surface(&a), relocate_identity_surface(&b));
+        assert!(!relocate_surface_has_account_id(&a));
+        assert!(relocate_accounts_match(&a, "fp1", &b, "fp1"));
+        assert!(!relocate_accounts_match(&a, "fp1", &b, "fp2"));
+        assert!(
+            !relocate_accounts_match(&a, "", &b, ""),
+            "weak surface + empty fingerprints must not match"
+        );
+
+        let sftp_a = sftp_profile("x");
+        let sftp_b = sftp_profile("y");
+        assert!(relocate_surface_has_account_id(&sftp_a));
+        assert!(
+            relocate_accounts_match(&sftp_a, "", &sftp_b, ""),
+            "strong surface may match without secrets"
         );
     }
 

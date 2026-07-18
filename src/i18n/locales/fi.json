@@ -290,20 +290,20 @@
             "storedTotpWarning": "2FA-salaisuuden tallentaminen sijoittaa molemmat tekijät holviin. Jos holvin pääsalasana vaarantuu, 2FA ei enää suojaa tätä tiliä. Käytä mieluummin kertakäyttökoodia tai paikallista WebDAV/S3-siltaa.",
             "filenBridgeCredentialRules": "Filen-sillan rajoitus: {max} merkkiä. Ei tuettu: {rejected}",
             "filenBridgeCredentialRejected": "Tämä tunnistetieto sisältää Filen-sillan hylkäämiä merkkejä.",
-            "mtpDefaultName": "[NEEDS TRANSLATION] Portable device",
-            "mtpDetect": "[NEEDS TRANSLATION] Detect",
-            "mtpDetectFailed": "[NEEDS TRANSLATION] Could not list portable devices",
-            "mtpDetecting": "[NEEDS TRANSLATION] Detecting...",
-            "mtpDevice": "[NEEDS TRANSLATION] USB device",
-            "mtpFingerprint": "[NEEDS TRANSLATION] Fingerprint",
-            "mtpHonesty": "[NEEDS TRANSLATION] MTP is exclusive: only one app can open the device. Close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter). Some operations are limited by the device OS.",
-            "mtpNoDevices": "[NEEDS TRANSLATION] No portable devices detected. Plug in the phone or camera and enable File Transfer mode.",
-            "mtpRemotePathPlaceholder": "[NEEDS TRANSLATION] Default remote path (e.g. / or DCIM)",
-            "mtpSaveRequiresDevice": "[NEEDS TRANSLATION] Detect and select a device to enable Save.",
-            "mtpSelectPlaceholder": "[NEEDS TRANSLATION] Select a device...",
-            "mtpSelectPlaceholderEmpty": "[NEEDS TRANSLATION] No devices yet — click Detect",
-            "mtpNotAttachedTitle": "[NEEDS TRANSLATION] Device not connected",
-            "mtpNotAttached": "[NEEDS TRANSLATION] Plug in the device and enable File Transfer mode, then try again."
+            "mtpDefaultName": "Kannettava laite",
+            "mtpDetect": "Tunnista",
+            "mtpDetectFailed": "Kannettavien laitteiden luettelointi epäonnistui",
+            "mtpDetecting": "Tunnistetaan...",
+            "mtpDevice": "USB-laite",
+            "mtpFingerprint": "Sormenjälki",
+            "mtpHonesty": "MTP on yksinomainen ja tarvittaessa: Yhdistä varaa laitteen tälle istunnolle (Linuxissa järjestelmän tiedostonhallinta vapautetaan ensin); yhteyden katkaisu palauttaa sen. Siirrot ovat vain kokonaisia tiedostoja (ei jatkamista, ei asematunnusta). Jotkin toiminnot ovat laitteen käyttöjärjestelmän rajoittamia.",
+            "mtpNoDevices": "Kannettavia laitteita ei havaittu. Kytke puhelin tai kamera ja ota tiedostonsiirtotila käyttöön.",
+            "mtpRemotePathPlaceholder": "Oletusetäpolku (esim. / tai DCIM)",
+            "mtpSaveRequiresDevice": "Tunnista ja valitse laite ottaaksesi Tallenna käyttöön.",
+            "mtpSelectPlaceholder": "Valitse laite...",
+            "mtpSelectPlaceholderEmpty": "Ei vielä laitteita – napsauta Tunnista",
+            "mtpNotAttachedTitle": "Laitetta ei ole yhdistetty",
+            "mtpNotAttached": "Kytke laite ja ota tiedostonsiirtotila käyttöön, yritä sitten uudelleen."
         },
         "browser": {
             "remote": "Etä",
@@ -482,7 +482,9 @@
             "s3TrashPurgeHint": "Poista tämä versio pysyvästi (peruuttamaton)",
             "s3TrashPurgeConfirm": "Poistetaanko tämä versio pysyvästi? Tätä toimintoa ei voi kumota.",
             "s3TrashEmptySummary": "Tämä poistaa pysyvästi {count} objektia ({bytes}). Tätä toimintoa ei voi kumota.",
-            "extractOverwriteConfirm": "Tänne purkaminen korvaa {count} olemassa olevaa kohdetta: {names}. Jatketaanko?"
+            "extractOverwriteConfirm": "Tänne purkaminen korvaa {count} olemassa olevaa kohdetta: {names}. Jatketaanko?",
+            "permanentDeleteHint": "Poistaa pysyvästi vain valitut kohteet roskakorista. Tätä ei voi kumota.",
+            "emptyTrashHint": "Poistaa pysyvästi KAIKKI roskakorin kohteet, ei vain valittuja. Tätä ei voi kumota."
         },
         "transfer": {
             "transferring": "Siirretään...",
@@ -1835,9 +1837,9 @@
             "discoverImageKit": "Media-CDN ja tallennus natiivikansioilla (20 GB ilmaiseksi)",
             "discoverUploadcare": "EU-mediahallinta CDN:llä ja tiedostorajapinnoilla (3 GB ilmaiseksi)",
             "discoverCloudinary": "Median hallinnan CDN REST API:lla (25 krediittiä/kk ilmaiseksi)",
-            "tabdigitalDesc": "Tab.digital (8 GB ilmainen, Nextcloud-pohjainen, EU/GDPR)",
-            "tabdigitalTooltip": "Tab.digital: itsenäinen EU-pilvitiimi vuodesta 2018, Nextcloud-as-a-service 8GB ilmaiseksi, GDPR-yhteensopiva, alueelliset alidomainit (fie.nl, fie.de, ...)",
-            "discoverTabDigital": "Tab.digital (8 GB ilmainen, Nextcloud-pohjainen, EU/GDPR, alueelliset alidomainit)",
+            "tabdigitalDesc": "TAB.DIGITAL (8 GB ilmainen, Nextcloud-pohjainen, EU/GDPR)",
+            "tabdigitalTooltip": "TAB.DIGITAL: itsenäinen EU-pilvitiimi vuodesta 2018, Nextcloud-as-a-service 8GB ilmaiseksi, GDPR-yhteensopiva, alueelliset alidomainit (fie.nl, fie.de, ...)",
+            "discoverTabDigital": "TAB.DIGITAL (8 GB ilmainen, Nextcloud-pohjainen, EU/GDPR, alueelliset alidomainit)",
             "webdavLocalScheme": "Protokolla",
             "webdavLocalSchemeHelp": "Vastaa paikallisen WebDAV-sillan HTTP/HTTPS-asetusta (Filen Desktop, MEGAcmd). HTTPS käyttää itse allekirjoitettua varmennetta, joten varmenteen tarkistus poistetaan automaattisesti käytöstä.",
             "webdavLocalSchemeAuto": "AeroFTP tunnistaa Filen-sillan protokollan (HTTP tai HTTPS) automaattisesti yhdistäessäsi, joten tässä ei tarvitse asettaa mitään.",
@@ -1858,9 +1860,9 @@
             "s3RoleMfaTokenCodePlaceholder": "123456",
             "s3RoleMfaTokenCodeHint": "Kertakäyttöinen koodi MFA-laitteeltasi, vaaditaan vain jos rooli edellyttää MFA:ta. Käytetään kerran yhdistettäessä eikä koskaan tallenneta.",
             "peerDesc": "Jaa kansioita suoraan kavereiden kanssa salatun vertaisyhteyden kautta ilman välissä olevaa palvelinta.",
-            "devicesInfoLine1": "[NEEDS TRANSLATION] Save a portable USB device (phone, camera, tablet) as a My Servers profile. Detect the device over MTP, set default folders, and reconnect with one click when it is plugged in.",
-            "devicesInfoLine2": "[NEEDS TRANSLATION] MTP is exclusive: close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter).",
-            "discoverMtpPortable": "[NEEDS TRANSLATION] Phone, camera, or tablet over USB MTP"
+            "devicesInfoLine1": "Tallenna kannettava USB-laite (puhelin, kamera, tabletti) profiiliksi Omiin palvelimiin. Tunnista laite MTP:n kautta, määritä oletuskansiot ja yhdistä uudelleen yhdellä napsautuksella, kun se on kytketty.",
+            "devicesInfoLine2": "MTP on yksinomainen ja tarvittaessa: Yhdistä varaa laitteen istunnolle; yhteyden katkaisu palauttaa sen. Siirrot ovat vain kokonaisia tiedostoja (ei jatkamista, ei asematunnusta).",
+            "discoverMtpPortable": "Puhelin, kamera tai tabletti USB MTP:n kautta"
         },
         "shortcuts": {
             "title": "Pikanäppäimet",
@@ -3213,16 +3215,16 @@
             "no_recent": "Ei viimeaikaisia sijainteja",
             "mount": "Liitä",
             "ejectFailed": "Poistaminen epäonnistui",
-            "portable_devices": "[NEEDS TRANSLATION] Portable devices",
-            "portable_disconnect": "[NEEDS TRANSLATION] Disconnect",
-            "portable_disconnect_failed": "[NEEDS TRANSLATION] Could not disconnect portable device",
-            "portable_empty": "[NEEDS TRANSLATION] No portable devices detected",
-            "portable_honesty": "[NEEDS TRANSLATION] Portable devices use MTP: whole-file copy only, no drive letter, and some operations are limited by the device OS.",
-            "portable_no_storages": "[NEEDS TRANSLATION] Session open (no storage list yet; browse polish follows)",
-            "portable_open_failed": "[NEEDS TRANSLATION] Could not open portable device",
-            "portable_opened": "[NEEDS TRANSLATION] Connected to {name}",
-            "portable_storages": "[NEEDS TRANSLATION] {count} storage(s)",
-            "portable_disconnected": "[NEEDS TRANSLATION] Portable device disconnected: {name}",
+            "portable_devices": "Kannettavat laitteet",
+            "portable_disconnect": "Katkaise yhteys",
+            "portable_disconnect_failed": "Kannettavan laitteen yhteyden katkaisu epäonnistui",
+            "portable_empty": "Kannettavia laitteita ei havaittu",
+            "portable_honesty": "Kannettavat laitteet käyttävät MTP:tä: vain kokonaisten tiedostojen kopiointi, ei asematunnusta, ei jatkamista, ja jotkin toiminnot ovat laitteen käyttöjärjestelmän rajoittamia (ei AeroFTP:n).",
+            "portable_no_storages": "Istunto avoinna (tallennusluettelo on tyhjä tai ei käytettävissä tässä laitteessa)",
+            "portable_open_failed": "Kannettavan laitteen avaaminen epäonnistui",
+            "portable_opened": "Yhdistetty: {name}",
+            "portable_storages": "{count} tallennustilaa",
+            "portable_disconnected": "Kannettavan laitteen yhteys katkaistu: {name}",
             "portable_unplugged": "Kannettava laite irrotettiin. Kytke kaapeli uudelleen ja avaa se uudelleen.",
             "portable_needs_replug": "Ei työpöydän liittämä. Irrota ja kytke kaapeli uudelleen, ja avaa sitten uudelleen."
         },
@@ -4486,7 +4488,7 @@
                 "localBridge": "Paikallinen silta",
                 "paid": "Maksullinen",
                 "encrypted": "Salatut",
-                "mtp": "[NEEDS TRANSLATION] MTP"
+                "mtp": "MTP"
             },
             "noServers": "Ei tallennettuja palvelimia",
             "noServersHint": "Aloita pikayhteydellä tai selaa palveluluetteloa.",
@@ -4507,7 +4509,7 @@
                 "developer": "Kehittäjä",
                 "mediaServices": "Mediapalvelut",
                 "all": "Kaikki",
-                "devices": "[NEEDS TRANSLATION] Devices"
+                "devices": "Laitteet"
             },
             "confirmDeleteServer": "Poistetaanko palvelin \"{name}\"? Tämä poistaa tallennetut tunnistetiedot eikä sitä voi kumota.",
             "renameWithHotkey": "Nimeä uudelleen (F2)",
@@ -4629,8 +4631,8 @@
                 "moveLeft": "Siirrä vasemmalle",
                 "moveRight": "Siirrä oikealle"
             },
-            "deviceAttached": "[NEEDS TRANSLATION] Device attached",
-            "deviceNotAttached": "[NEEDS TRANSLATION] Device not attached"
+            "deviceAttached": "Laite liitetty",
+            "deviceNotAttached": "Laitetta ei liitetty"
         },
         "gitlab": {
             "projectPath": "Projektipolku",
@@ -4801,7 +4803,9 @@
             "decryptFileFromDisk": "Pura tiedoston salaus levyltä",
             "fileDecryptedTo": "Tiedosto purettu kohteeseen {path}",
             "serverHashGated": "Palvelinpuolen tarkistussumma ei ole käytettävissä, kun salattu peittokerros on aktiivinen (se laskisi salatekstin tiivisteen, ei tiedostoasi).",
-            "outsideScope": "Salatun alueen ulkopuolella (tiedostoja täällä ei ole salattu)"
+            "outsideScope": "Salatun alueen ulkopuolella (tiedostoja täällä ei ole salattu)",
+            "overlaysPathButton": "Peittojen polku",
+            "overlaysPathButtonHint": "Siirry salattuun peittojen polkuun: {path}"
         },
         "b2": {
             "hidden": {
@@ -4990,7 +4994,9 @@
             },
             "launcherScheduler": "Ajastin",
             "errorCorrection": "Virheenkorjaus",
-            "errorCorrectionHint": "Tallentaa pienen .aerocorrect-pariteettitiedoston jokaisen varmuuskopioidun tiedoston viereen, jotta bit-rotin vaurioittama etäkopio voidaan korjata seuraavalla haulla ilman alkuperäistä."
+            "errorCorrectionHint": "Tallentaa pienen .aerocorrect-pariteettitiedoston jokaisen varmuuskopioidun tiedoston viereen, jotta bit-rotin vaurioittama etäkopio voidaan korjata seuraavalla haulla ilman alkuperäistä.",
+            "outOfSyncItemsPct": "Synkronoimattomat kohteet",
+            "outOfSyncBytesPct": "Synkronoimattomat tavut"
         },
         "accountLock": {
             "title": "Valitse tili",

@@ -290,20 +290,20 @@
             "storedTotpWarning": "2FA saladuse salvestamisel hoitakse mõlemat tegurit võlvhoidlas. Kui võlvhoidla peaparool satub ohtu, ei kaitse 2FA enam seda kontot. Eelista ühekordset koodi või kohalikku WebDAV/S3 silda.",
             "filenBridgeCredentialRules": "Fileni silla piirang: {max} märki. Toetamata: {rejected}",
             "filenBridgeCredentialRejected": "Need identimisteabe andmed sisaldavad Fileni silla poolt tagasi lükatud märke.",
-            "mtpDefaultName": "[NEEDS TRANSLATION] Portable device",
-            "mtpDetect": "[NEEDS TRANSLATION] Detect",
-            "mtpDetectFailed": "[NEEDS TRANSLATION] Could not list portable devices",
-            "mtpDetecting": "[NEEDS TRANSLATION] Detecting...",
-            "mtpDevice": "[NEEDS TRANSLATION] USB device",
-            "mtpFingerprint": "[NEEDS TRANSLATION] Fingerprint",
-            "mtpHonesty": "[NEEDS TRANSLATION] MTP is exclusive: only one app can open the device. Close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter). Some operations are limited by the device OS.",
-            "mtpNoDevices": "[NEEDS TRANSLATION] No portable devices detected. Plug in the phone or camera and enable File Transfer mode.",
-            "mtpRemotePathPlaceholder": "[NEEDS TRANSLATION] Default remote path (e.g. / or DCIM)",
-            "mtpSaveRequiresDevice": "[NEEDS TRANSLATION] Detect and select a device to enable Save.",
-            "mtpSelectPlaceholder": "[NEEDS TRANSLATION] Select a device...",
-            "mtpSelectPlaceholderEmpty": "[NEEDS TRANSLATION] No devices yet — click Detect",
-            "mtpNotAttachedTitle": "[NEEDS TRANSLATION] Device not connected",
-            "mtpNotAttached": "[NEEDS TRANSLATION] Plug in the device and enable File Transfer mode, then try again."
+            "mtpDefaultName": "Kaasaskantav seade",
+            "mtpDetect": "Tuvasta",
+            "mtpDetectFailed": "Kaasaskantavaid seadmeid ei õnnestunud loetleda",
+            "mtpDetecting": "Tuvastamine...",
+            "mtpDevice": "USB-seade",
+            "mtpFingerprint": "Sõrmejälg",
+            "mtpHonesty": "MTP on eksklusiivne ja nõudmisel: Ühenda haarab seadme selleks seansiks (Linuxis vabastab kõigepealt süsteemi failihalduri); lahtiühendamine tagastab selle. Ülekanded on ainult terve fail (ei jätkamist, ei kettatähte). Mõned toimingud on seadme operatsioonisüsteemi poolt piiratud.",
+            "mtpNoDevices": "Kaasaskantavaid seadmeid ei tuvastatud. Ühenda telefon või kaamera ja luba failiedastusrežiim.",
+            "mtpRemotePathPlaceholder": "Vaikimisi kaugtee (nt / või DCIM)",
+            "mtpSaveRequiresDevice": "Tuvasta ja vali seade, et lubada Salvesta.",
+            "mtpSelectPlaceholder": "Vali seade...",
+            "mtpSelectPlaceholderEmpty": "Veel pole seadmeid – klõpsa Tuvasta",
+            "mtpNotAttachedTitle": "Seade pole ühendatud",
+            "mtpNotAttached": "Ühenda seade ja luba failiedastusrežiim, seejärel proovi uuesti."
         },
         "browser": {
             "remote": "Kaugserver",
@@ -482,7 +482,9 @@
             "s3TrashPurgeHint": "Kustuta see versioon jäädavalt (pöördumatu)",
             "s3TrashPurgeConfirm": "Kas kustutada see versioon jäädavalt? Seda toimingut ei saa tagasi võtta.",
             "s3TrashEmptySummary": "See kustutab jäädavalt {count} objekti ({bytes}). Seda toimingut ei saa tagasi võtta.",
-            "extractOverwriteConfirm": "Siia lahtipakkimine kirjutab üle {count} olemasolevat üksust: {names}. Kas jätkata?"
+            "extractOverwriteConfirm": "Siia lahtipakkimine kirjutab üle {count} olemasolevat üksust: {names}. Kas jätkata?",
+            "permanentDeleteHint": "Kustutab jäädavalt ainult valitud üksused Prügikastist. Seda ei saa tagasi võtta.",
+            "emptyTrashHint": "Kustutab jäädavalt KÕIK üksused Prügikastis, mitte ainult valitud. Seda ei saa tagasi võtta."
         },
         "transfer": {
             "transferring": "Ülekanne...",
@@ -1835,9 +1837,9 @@
             "discoverImageKit": "Meedia CDN ja salvestus loomulike kaustadega (20 GB tasuta)",
             "discoverUploadcare": "EU meediahaldus CDN-i ja faili-API-dega (3 GB tasuta)",
             "discoverCloudinary": "CDN meediahalduseks REST API-ga (25 krediiti/kuus tasuta)",
-            "tabdigitalDesc": "Tab.digital (8 GB tasuta, Nextcloud-põhine, EU/GDPR)",
-            "tabdigitalTooltip": "Tab.digital: sõltumatu EU pilvemeeskond alates 2018. aastast, Nextcloud-as-a-service 8GB tasuta, GDPR-iga ühilduv, piirkondlikud alamdomeenid (fie.nl, fie.de, ...)",
-            "discoverTabDigital": "Tab.digital (8 GB tasuta, Nextcloud-põhine, EU/GDPR, piirkondlikud alamdomeenid)",
+            "tabdigitalDesc": "TAB.DIGITAL (8 GB tasuta, Nextcloud-põhine, EU/GDPR)",
+            "tabdigitalTooltip": "TAB.DIGITAL: sõltumatu EU pilvemeeskond alates 2018. aastast, Nextcloud-as-a-service 8GB tasuta, GDPR-iga ühilduv, piirkondlikud alamdomeenid (fie.nl, fie.de, ...)",
+            "discoverTabDigital": "TAB.DIGITAL (8 GB tasuta, Nextcloud-põhine, EU/GDPR, piirkondlikud alamdomeenid)",
             "webdavLocalScheme": "Protokoll",
             "webdavLocalSchemeHelp": "Sobita kohaliku WebDAV silla HTTP/HTTPS sättega (Filen Desktop, MEGAcmd). HTTPS kasutab iseallkirjastatud sertifikaati, seega on sertifikaadi kontroll automaatselt välja lülitatud.",
             "webdavLocalSchemeAuto": "AeroFTP tuvastab ühendumisel automaatselt Fileni silla protokolli (HTTP või HTTPS), seega pole siin midagi seadistada.",
@@ -1858,9 +1860,9 @@
             "s3RoleMfaTokenCodePlaceholder": "123456",
             "s3RoleMfaTokenCodeHint": "Ühekordne kood sinu MFA-seadmest, vajalik ainult kui roll nõuab MFA-d. Kasutatakse ühendamisel üks kord ja seda ei salvestata kunagi.",
             "peerDesc": "Jagage kaustu otse sõpradega krüptitud peer-to-peer kanali kaudu, ilma vahepealse serverita.",
-            "devicesInfoLine1": "[NEEDS TRANSLATION] Save a portable USB device (phone, camera, tablet) as a My Servers profile. Detect the device over MTP, set default folders, and reconnect with one click when it is plugged in.",
-            "devicesInfoLine2": "[NEEDS TRANSLATION] MTP is exclusive: close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter).",
-            "discoverMtpPortable": "[NEEDS TRANSLATION] Phone, camera, or tablet over USB MTP"
+            "devicesInfoLine1": "Salvesta kaasaskantav USB-seade (telefon, kaamera, tahvelarvuti) profiilina jaotisesse Minu serverid. Tuvasta seade MTP kaudu, määra vaikekaustad ja ühenda ühe klõpsuga uuesti, kui see on ühendatud.",
+            "devicesInfoLine2": "MTP on eksklusiivne ja nõudmisel: Ühenda haarab seadme seansiks; lahtiühendamine tagastab selle. Ülekanded on ainult terve fail (ei jätkamist, ei kettatähte).",
+            "discoverMtpPortable": "Telefon, kaamera või tahvelarvuti USB MTP kaudu"
         },
         "shortcuts": {
             "title": "Kiirklahvid",
@@ -3213,16 +3215,16 @@
             "no_recent": "Hiljutisi asukohti pole",
             "mount": "Ühenda",
             "ejectFailed": "Väljastamine ebaõnnestus",
-            "portable_devices": "[NEEDS TRANSLATION] Portable devices",
-            "portable_disconnect": "[NEEDS TRANSLATION] Disconnect",
-            "portable_disconnect_failed": "[NEEDS TRANSLATION] Could not disconnect portable device",
-            "portable_empty": "[NEEDS TRANSLATION] No portable devices detected",
-            "portable_honesty": "[NEEDS TRANSLATION] Portable devices use MTP: whole-file copy only, no drive letter, and some operations are limited by the device OS.",
-            "portable_no_storages": "[NEEDS TRANSLATION] Session open (no storage list yet; browse polish follows)",
-            "portable_open_failed": "[NEEDS TRANSLATION] Could not open portable device",
-            "portable_opened": "[NEEDS TRANSLATION] Connected to {name}",
-            "portable_storages": "[NEEDS TRANSLATION] {count} storage(s)",
-            "portable_disconnected": "[NEEDS TRANSLATION] Portable device disconnected: {name}",
+            "portable_devices": "Kaasaskantavad seadmed",
+            "portable_disconnect": "Ühenda lahti",
+            "portable_disconnect_failed": "Kaasaskantavat seadet ei õnnestunud lahti ühendada",
+            "portable_empty": "Kaasaskantavaid seadmeid ei tuvastatud",
+            "portable_honesty": "Kaasaskantavad seadmed kasutavad MTP-d: ainult terve faili kopeerimine, ei kettatähte, ei jätkamist, ja mõned toimingud on seadme operatsioonisüsteemi poolt piiratud (mitte AeroFTP).",
+            "portable_no_storages": "Seanss avatud (salvestusloend on tühi või selles seadmes pole saadaval)",
+            "portable_open_failed": "Kaasaskantavat seadet ei õnnestunud avada",
+            "portable_opened": "Ühendatud: {name}",
+            "portable_storages": "{count} salvestusruumi",
+            "portable_disconnected": "Kaasaskantav seade lahti ühendatud: {name}",
             "portable_unplugged": "Kaasaskantav seade ühendati lahti. Ühendage kaabel uuesti ja avage seade uuesti.",
             "portable_needs_replug": "Töölaua poolt ei ole haagitud. Ühendage kaabel lahti ja uuesti sisse, seejärel avage uuesti."
         },
@@ -4486,7 +4488,7 @@
                 "localBridge": "Kohalik sild",
                 "paid": "Tasuline",
                 "encrypted": "Krüpteeritud",
-                "mtp": "[NEEDS TRANSLATION] MTP"
+                "mtp": "MTP"
             },
             "noServers": "Salvestatud serverid puuduvad",
             "noServersHint": "Alustage kiirühendusega või sirvige teenuste kataloogi.",
@@ -4507,7 +4509,7 @@
                 "developer": "Arendaja",
                 "mediaServices": "Meediateenused",
                 "all": "Kõik",
-                "devices": "[NEEDS TRANSLATION] Devices"
+                "devices": "Seadmed"
             },
             "confirmDeleteServer": "Kustutada server \"{name}\"? See eemaldab salvestatud mandaadid ja seda ei saa tagasi võtta.",
             "renameWithHotkey": "Nimeta ümber (F2)",
@@ -4629,8 +4631,8 @@
                 "moveLeft": "Liiguta vasakule",
                 "moveRight": "Liiguta paremale"
             },
-            "deviceAttached": "[NEEDS TRANSLATION] Device attached",
-            "deviceNotAttached": "[NEEDS TRANSLATION] Device not attached"
+            "deviceAttached": "Seade ühendatud",
+            "deviceNotAttached": "Seade pole ühendatud"
         },
         "gitlab": {
             "projectPath": "Projekti tee",
@@ -4801,7 +4803,9 @@
             "decryptFileFromDisk": "Dekrüpteeri fail kettalt",
             "fileDecryptedTo": "Fail dekrüpteeritud asukohta {path}",
             "serverHashGated": "Serveripoolne kontrollsumma pole saadaval, kui krüpteeritud kiht on aktiivne (see räsiks šifreeritud teksti, mitte teie faili).",
-            "outsideScope": "Väljaspool krüpteeritud ala (failid siin ei ole krüpteeritud)"
+            "outsideScope": "Väljaspool krüpteeritud ala (failid siin ei ole krüpteeritud)",
+            "overlaysPathButton": "Ülekatete tee",
+            "overlaysPathButtonHint": "Hüppa krüpteeritud ülekatete teele: {path}"
         },
         "b2": {
             "hidden": {
@@ -4990,7 +4994,9 @@
             },
             "launcherScheduler": "Ajastaja",
             "errorCorrection": "Veaparandus",
-            "errorCorrectionHint": "Salvestab iga varundatud faili kõrvale väikese .aerocorrect pariteedifaili, et bit-rot'i tõttu rikutud kaugkoopiat saaks järgmisel tõmbamisel parandada ilma originaalita."
+            "errorCorrectionHint": "Salvestab iga varundatud faili kõrvale väikese .aerocorrect pariteedifaili, et bit-rot'i tõttu rikutud kaugkoopiat saaks järgmisel tõmbamisel parandada ilma originaalita.",
+            "outOfSyncItemsPct": "Sünkroonimata üksused",
+            "outOfSyncBytesPct": "Sünkroonimata baidid"
         },
         "accountLock": {
             "title": "Vali konto",

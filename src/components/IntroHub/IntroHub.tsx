@@ -414,7 +414,7 @@ export function IntroHub(props: IntroHubProps) {
                 when inactive) so the saved-servers list never flashes through
                 the empty "Get started" state when the user comes back from
                 Discover or from a connected session. DiscoverPanel still mounts
-                on demand: it owns the catalog of 67 services and is heavier. */}
+                on demand: it owns the full Add Service catalog and is heavier. */}
             <div ref={contentScrollRef} className="flex-1 min-h-0 overflow-auto p-6">
                 {/* Tab: My Servers (always mounted) */}
                 <div className={activeTab === 'my-servers' ? 'h-full' : 'hidden'}>

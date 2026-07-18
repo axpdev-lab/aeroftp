@@ -50,8 +50,20 @@ export type CatalogProtocol =
 
 /** One connection method for a company, with its Quick Connect target. */
 export interface CatalogProtocolRef {
-    /** Badge label shown in the list. */
+    /** Badge label shown in the list. Also the key into `PROTOCOL_GLYPHS` and the
+     *  value serialized to the CLI catalog / providers markdown, so it must stay a
+     *  member of the closed `CatalogProtocol` enum. */
     label: CatalogProtocol;
+    /** GUI-only display override for the badge text when the branded product name
+     *  differs from the wire protocol: e.g. MEGA's paid S3 object storage is "S4"
+     *  and FileLu's is "S5", both shown as "S4 (S3)" / "S5 (S3)" while `label`
+     *  stays 'S3' (correct glyph, valid enum). Falls back to `label` when unset. */
+    labelOverride?: string;
+    // EF-17 (recommended-protocol highlight) — DEFERRED, blocked on the transfer
+    // benchmark harness (#368). The intended shape is a `recommended?: boolean` flag
+    // here (or a per-company recommended providerId) that the table/grid render as a
+    // "fastest" marker. Do NOT add it until #368 lands real per-protocol throughput
+    // data — hardcoding a pick now would be editorial guesswork. Stub only.
     /** ProviderType handed to Quick Connect (`onSelectProvider`). */
     protocol: ProviderType;
     /** Catalog category this connection method belongs to. Drives the
@@ -115,10 +127,11 @@ export const PROVIDER_CATALOG: CatalogCompany[] = [
       protocols: [
           { label: 'API', protocol: 'mega', category: 'cloud-storage' },
           { label: 'MEGAcmd', protocol: 'webdav', providerId: 'megacmd-webdav', category: 'webdav', note: 'local bridge' },
+          // EF-14/15: MEGA S4 (MEGA's paid, S3-compatible object storage) is one
+          // method of the MEGA company, not a duplicate "MEGA S4 Object Storage"
+          // row. Shown as "S4 (S3)" — MEGA's product name + the wire protocol.
+          { label: 'S3', labelOverride: 'S4 (S3)', protocol: 's3', providerId: 'mega-s4', category: 'object-storage', paid: true, note: 'MEGA S4 object storage (Pro plan)' },
       ] },
-    { company: 'MEGA S4 Object Storage', logoId: 'mega-s4', countryCode: 'EU', freeStorageGb: null,
-      freeNote: 'Pro plan',
-      protocols: [{ label: 'S3', protocol: 's3', providerId: 'mega-s4', category: 'object-storage', paid: true, note: 'MEGA S4 object storage' }] },
     { company: 'Drime', logoId: 'drime', countryCode: 'FR', freeStorageGb: 20,
       healthCheckUrl: 'https://app.drime.cloud',
       protocols: [{ label: 'API', protocol: 'drime', category: 'cloud-storage' }] },
@@ -224,8 +237,12 @@ export const PROVIDER_CATALOG: CatalogCompany[] = [
       healthCheckUrl: 'https://filelu.com',
       protocols: [
           { label: 'API', protocol: 'filelu', category: 'cloud-storage' },
+          // EF-13: FileLu FTP was the one method missing from Add Service (it already
+          // exposes API / WebDAV / S3). Now surfaced as a badge + a Protocols grid tile.
+          { label: 'FTP', protocol: 'ftp', providerId: 'filelu-ftp', category: 'protocols' },
           { label: 'WebDAV', protocol: 'webdav', providerId: 'filelu-webdav', category: 'webdav' },
-          { label: 'S3', protocol: 's3', providerId: 'filelu-s3', category: 'object-storage' },
+          // EF-14/15: FileLu's S3 object storage is branded "S5" — shown as "S5 (S3)".
+          { label: 'S3', labelOverride: 'S5 (S3)', protocol: 's3', providerId: 'filelu-s3', category: 'object-storage' },
       ] },
     { company: 'DriveHQ', logoId: 'drivehq', countryCode: 'US', freeStorageGb: 5,
       protocols: [{ label: 'WebDAV', protocol: 'webdav', providerId: 'drivehq', category: 'webdav' }] },
@@ -260,7 +277,7 @@ export const PROVIDER_CATALOG: CatalogCompany[] = [
     { company: 'Hetzner Storage Box', logoId: 'hetzner-storage-box', countryCode: 'DE', freeStorageGb: null,
       freeNote: 'paid plan',
       protocols: [{ label: 'SFTP', protocol: 'sftp', providerId: 'hetzner-storage-box', category: 'protocols', paid: true }] },
-    { company: 'Tab.digital', logoId: 'tabdigital', countryCode: 'IN', freeStorageGb: 8,
+    { company: 'TAB.DIGITAL', logoId: 'tabdigital', countryCode: 'IN', freeStorageGb: 8,
       freeNote: 'managed Nextcloud',
       protocols: [{ label: 'WebDAV', protocol: 'webdav', providerId: 'tabdigital', category: 'webdav' }] },
     { company: 'PixelUnion', logoId: 'pixelunion', countryCode: 'EU', freeStorageGb: 16,
@@ -269,6 +286,20 @@ export const PROVIDER_CATALOG: CatalogCompany[] = [
     { company: 'MinIO', logoId: 'minio', countryCode: '', freeStorageGb: null,
       freeNote: 'self-hosted',
       protocols: [{ label: 'S3', protocol: 's3', providerId: 'minio', category: 'object-storage' }] },
+    // EF-13: real catalog rows for S3Drive + Quotaless. Both are already in the grid
+    // (registry S3/WebDAV presets), they were missing only from the company table.
+    { company: 'S3Drive', logoId: 's3drive', countryCode: '', freeStorageGb: 12,
+      freeNote: 'via Storj', healthCheckUrl: 'https://storage.kapsa.io',
+      protocols: [{ label: 'S3', protocol: 's3', providerId: 's3drive', category: 'object-storage' }] },
+    { company: 'Quotaless', logoId: 'quotaless-s3', countryCode: '', freeStorageGb: null,
+      freeNote: 'trial / invite', healthCheckUrl: 'https://io.quotaless.cloud:8000',
+      protocols: [
+          // Trial / restricted signup (no fixed free-GB tier), mirroring how the
+          // Discover grid already sorts Quotaless to the end. Marked paid so it lands
+          // in the paid tier like Storj / Wasabi rather than the no-card free bucket.
+          { label: 'S3', protocol: 's3', providerId: 'quotaless-s3', category: 'object-storage', paid: true },
+          { label: 'WebDAV', protocol: 'webdav', providerId: 'quotaless-webdav', category: 'webdav', paid: true },
+      ] },
     { company: 'Nextcloud', logoId: 'nextcloud', countryCode: '', freeStorageGb: null,
       freeNote: 'self-hosted',
       protocols: [{ label: 'WebDAV', protocol: 'webdav', providerId: 'nextcloud', category: 'webdav' }] },
@@ -328,7 +359,7 @@ export function hasFreeTier(c: CatalogCompany): boolean {
 
 /**
  * The three commercial buckets the list-view tier filter sorts companies into:
- * - `free`      : a free tier you can use without a credit card (Tab.digital, MEGA, ...).
+ * - `free`      : a free tier you can use without a credit card (TAB.DIGITAL, MEGA, ...).
  * - `free-card` : a genuine free allowance, but signup requires a card on file
  *                 (Amazon S3, Azure Blob, Yandex Object Storage). Kept OUT of paid.
  * - `paid`      : no free tier at all, only a trial and/or paid plans (Wasabi,
@@ -385,7 +416,10 @@ const REGIONS_BY_LOGO: Record<string, string[]> = {
     'minio': ['global'],
     'backblaze': ['US', 'NL', 'CA'],
     'mega': ['EU', 'CA'],
-    'mega-s4': ['NL', 'LU', 'CA'],
+    // MEGA S4 (mega-s4) was merged into the MEGA row (EF-14/15); its EU/CA storage
+    // footprint is already covered by MEGA's 'EU','CA' above, so no separate entry.
+    // S3Drive rides Storj's decentralized network (automatic global placement).
+    's3drive': ['global'],
     'yandex-storage': ['RU'],
 };
 
@@ -507,9 +541,17 @@ const LOGO_ALIASES: Record<string, string> = {
     'zoho-workdrive': 'zohoworkdrive',
     'backblaze-native': 'backblaze',
     'megacmd-webdav': 'mega',
+    // NB: intentionally NO 'mega-s4' -> 'mega' alias. MEGA S4 merged into the MEGA
+    // row (EF-14/15), but the S4 method is PAID while MEGA the company has a free
+    // tier, so a company-level (logo) alias would mislabel S4 as free wherever
+    // findCatalogByLogo drives a free/paid badge (e.g. ProvidersDialog). Paid status
+    // for the S4 method resolves correctly through findCatalogByProviderId('mega-s4').
     'filelu-s3': 'filelu',
     'filelu-webdav': 'filelu',
+    'filelu-ftp': 'filelu',
     'koofr-webdav': 'koofr',
+    // Quotaless catalog row is keyed by its S3 logoId; map the WebDAV id onto it.
+    'quotaless-webdav': 'quotaless-s3',
 };
 
 const catalogByLogo = new Map<string, CatalogCompany>();

@@ -290,20 +290,20 @@
             "storedTotpWarning": "При сохранении секрета 2FA оба фактора помещаются в хранилище. Если мастер-пароль хранилища будет скомпрометирован, 2FA больше не защитит эту учётную запись. Предпочтительно использовать одноразовый код или локальный мост WebDAV/S3.",
             "filenBridgeCredentialRules": "Ограничение моста Filen: {max} символов. Не поддерживаются: {rejected}",
             "filenBridgeCredentialRejected": "Эти учётные данные содержат символы, отклоняемые мостом Filen.",
-            "mtpDefaultName": "[NEEDS TRANSLATION] Portable device",
-            "mtpDetect": "[NEEDS TRANSLATION] Detect",
-            "mtpDetectFailed": "[NEEDS TRANSLATION] Could not list portable devices",
-            "mtpDetecting": "[NEEDS TRANSLATION] Detecting...",
-            "mtpDevice": "[NEEDS TRANSLATION] USB device",
-            "mtpFingerprint": "[NEEDS TRANSLATION] Fingerprint",
-            "mtpHonesty": "[NEEDS TRANSLATION] MTP is exclusive: only one app can open the device. Close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter). Some operations are limited by the device OS.",
-            "mtpNoDevices": "[NEEDS TRANSLATION] No portable devices detected. Plug in the phone or camera and enable File Transfer mode.",
-            "mtpRemotePathPlaceholder": "[NEEDS TRANSLATION] Default remote path (e.g. / or DCIM)",
-            "mtpSaveRequiresDevice": "[NEEDS TRANSLATION] Detect and select a device to enable Save.",
-            "mtpSelectPlaceholder": "[NEEDS TRANSLATION] Select a device...",
-            "mtpSelectPlaceholderEmpty": "[NEEDS TRANSLATION] No devices yet — click Detect",
-            "mtpNotAttachedTitle": "[NEEDS TRANSLATION] Device not connected",
-            "mtpNotAttached": "[NEEDS TRANSLATION] Plug in the device and enable File Transfer mode, then try again."
+            "mtpDefaultName": "Переносное устройство",
+            "mtpDetect": "Обнаружить",
+            "mtpDetectFailed": "Не удалось получить список переносных устройств",
+            "mtpDetecting": "Обнаружение...",
+            "mtpDevice": "USB-устройство",
+            "mtpFingerprint": "Отпечаток",
+            "mtpHonesty": "MTP является эксклюзивным и по запросу: Подключить занимает устройство для этого сеанса (в Linux сначала освобождает системный файловый менеджер); отключение возвращает его. Передачи выполняются только целыми файлами (без возобновления, без буквы диска). Некоторые операции ограничены операционной системой устройства.",
+            "mtpNoDevices": "Переносные устройства не обнаружены. Подключите телефон или камеру и включите режим передачи файлов.",
+            "mtpRemotePathPlaceholder": "Удалённый путь по умолчанию (напр. / или DCIM)",
+            "mtpSaveRequiresDevice": "Обнаружьте и выберите устройство, чтобы включить Сохранить.",
+            "mtpSelectPlaceholder": "Выберите устройство...",
+            "mtpSelectPlaceholderEmpty": "Пока нет устройств — нажмите Обнаружить",
+            "mtpNotAttachedTitle": "Устройство не подключено",
+            "mtpNotAttached": "Подключите устройство и включите режим передачи файлов, затем повторите попытку."
         },
         "browser": {
             "remote": "Удалённый",
@@ -482,7 +482,9 @@
             "s3TrashPurgeHint": "Удалить эту версию навсегда (необратимо)",
             "s3TrashPurgeConfirm": "Удалить эту версию навсегда? Это действие нельзя отменить.",
             "s3TrashEmptySummary": "Это навсегда удалит {count} объект(ов) ({bytes}). Это действие нельзя отменить.",
-            "extractOverwriteConfirm": "Извлечение сюда перезапишет {count} существующих элементов: {names}. Продолжить?"
+            "extractOverwriteConfirm": "Извлечение сюда перезапишет {count} существующих элементов: {names}. Продолжить?",
+            "permanentDeleteHint": "Безвозвратно удаляет только выбранные элементы из Корзины. Это действие нельзя отменить.",
+            "emptyTrashHint": "Безвозвратно удаляет ВСЕ элементы в Корзине, а не только выбранные. Это действие нельзя отменить."
         },
         "transfer": {
             "transferring": "Передача...",
@@ -1835,9 +1837,9 @@
             "discoverImageKit": "Медиа CDN и хранилище с нативными папками (20 GB бесплатно)",
             "discoverUploadcare": "EU управление медиа с CDN и файловыми API (3 GB бесплатно)",
             "discoverCloudinary": "CDN для управления медиа с REST API (25 кредитов/месяц бесплатно)",
-            "tabdigitalDesc": "Tab.digital (8 ГБ бесплатно, на основе Nextcloud, EU/GDPR)",
-            "tabdigitalTooltip": "Tab.digital: независимая облачная команда ЕС с 2018 года, Nextcloud-as-a-service с 8GB бесплатно, соответствует GDPR, региональные поддомены (fie.nl, fie.de, ...)",
-            "discoverTabDigital": "Tab.digital (8 ГБ бесплатно, на основе Nextcloud, EU/GDPR, региональные поддомены)",
+            "tabdigitalDesc": "TAB.DIGITAL (8 ГБ бесплатно, на основе Nextcloud, EU/GDPR)",
+            "tabdigitalTooltip": "TAB.DIGITAL: независимая облачная команда ЕС с 2018 года, Nextcloud-as-a-service с 8GB бесплатно, соответствует GDPR, региональные поддомены (fie.nl, fie.de, ...)",
+            "discoverTabDigital": "TAB.DIGITAL (8 ГБ бесплатно, на основе Nextcloud, EU/GDPR, региональные поддомены)",
             "webdavLocalScheme": "Протокол",
             "webdavLocalSchemeHelp": "Сопоставьте с настройкой HTTP/HTTPS локального моста WebDAV (Filen Desktop, MEGAcmd). HTTPS использует самоподписанный сертификат, поэтому проверка сертификата автоматически отключена.",
             "webdavLocalSchemeAuto": "AeroFTP автоматически определяет протокол моста Filen (HTTP или HTTPS) при подключении, поэтому здесь ничего настраивать не нужно.",
@@ -1858,9 +1860,9 @@
             "s3RoleMfaTokenCodePlaceholder": "123456",
             "s3RoleMfaTokenCodeHint": "Одноразовый код с вашего устройства MFA, требуется только если роль требует MFA. Используется один раз при подключении и никогда не сохраняется.",
             "peerDesc": "Делитесь папками напрямую с друзьями по зашифрованному одноранговому каналу, без сервера-посредника.",
-            "devicesInfoLine1": "[NEEDS TRANSLATION] Save a portable USB device (phone, camera, tablet) as a My Servers profile. Detect the device over MTP, set default folders, and reconnect with one click when it is plugged in.",
-            "devicesInfoLine2": "[NEEDS TRANSLATION] MTP is exclusive: close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter).",
-            "discoverMtpPortable": "[NEEDS TRANSLATION] Phone, camera, or tablet over USB MTP"
+            "devicesInfoLine1": "Сохраните переносное USB-устройство (телефон, камеру, планшет) как профиль в Мои серверы. Обнаружьте устройство по MTP, задайте папки по умолчанию и переподключайтесь одним щелчком, когда оно подключено.",
+            "devicesInfoLine2": "MTP является эксклюзивным и по запросу: Подключить занимает устройство для сеанса; отключение возвращает его. Передачи выполняются только целыми файлами (без возобновления, без буквы диска).",
+            "discoverMtpPortable": "Телефон, камера или планшет по USB MTP"
         },
         "shortcuts": {
             "title": "Горячие клавиши",
@@ -3213,16 +3215,16 @@
             "no_recent": "Нет недавних расположений",
             "mount": "Подключить",
             "ejectFailed": "Не удалось извлечь",
-            "portable_devices": "[NEEDS TRANSLATION] Portable devices",
-            "portable_disconnect": "[NEEDS TRANSLATION] Disconnect",
-            "portable_disconnect_failed": "[NEEDS TRANSLATION] Could not disconnect portable device",
-            "portable_empty": "[NEEDS TRANSLATION] No portable devices detected",
-            "portable_honesty": "[NEEDS TRANSLATION] Portable devices use MTP: whole-file copy only, no drive letter, and some operations are limited by the device OS.",
-            "portable_no_storages": "[NEEDS TRANSLATION] Session open (no storage list yet; browse polish follows)",
-            "portable_open_failed": "[NEEDS TRANSLATION] Could not open portable device",
-            "portable_opened": "[NEEDS TRANSLATION] Connected to {name}",
-            "portable_storages": "[NEEDS TRANSLATION] {count} storage(s)",
-            "portable_disconnected": "[NEEDS TRANSLATION] Portable device disconnected: {name}",
+            "portable_devices": "Переносные устройства",
+            "portable_disconnect": "Отключить",
+            "portable_disconnect_failed": "Не удалось отключить переносное устройство",
+            "portable_empty": "Переносные устройства не обнаружены",
+            "portable_honesty": "Переносные устройства используют MTP: только копирование целых файлов, без буквы диска, без возобновления, и некоторые операции ограничены операционной системой устройства (не AeroFTP).",
+            "portable_no_storages": "Сеанс открыт (список хранилищ пуст или недоступен на этом устройстве)",
+            "portable_open_failed": "Не удалось открыть переносное устройство",
+            "portable_opened": "Подключено к {name}",
+            "portable_storages": "{count} хранилищ",
+            "portable_disconnected": "Переносное устройство отключено: {name}",
             "portable_unplugged": "Портативное устройство было отключено. Подключите кабель снова и откройте его заново.",
             "portable_needs_replug": "Не смонтировано рабочим столом. Отключите и снова подключите кабель, затем откройте снова."
         },
@@ -4486,7 +4488,7 @@
                 "localBridge": "Локальный мост",
                 "paid": "Платный",
                 "encrypted": "Шифрованные",
-                "mtp": "[NEEDS TRANSLATION] MTP"
+                "mtp": "MTP"
             },
             "noServers": "Нет сохранённых серверов",
             "noServersHint": "Начните с быстрого подключения или изучите каталог сервисов.",
@@ -4507,7 +4509,7 @@
                 "developer": "Разработчик",
                 "mediaServices": "Медиасервисы",
                 "all": "Все",
-                "devices": "[NEEDS TRANSLATION] Devices"
+                "devices": "Устройства"
             },
             "confirmDeleteServer": "Удалить сервер \"{name}\"? Это удалит сохранённые учётные данные и действие нельзя отменить.",
             "renameWithHotkey": "Переименовать (F2)",
@@ -4629,8 +4631,8 @@
                 "moveLeft": "Переместить панель влево",
                 "moveRight": "Переместить панель вправо"
             },
-            "deviceAttached": "[NEEDS TRANSLATION] Device attached",
-            "deviceNotAttached": "[NEEDS TRANSLATION] Device not attached"
+            "deviceAttached": "Устройство подключено",
+            "deviceNotAttached": "Устройство не подключено"
         },
         "gitlab": {
             "projectPath": "Путь к проекту",
@@ -4801,7 +4803,9 @@
             "decryptFileFromDisk": "Расшифровать файл с диска",
             "fileDecryptedTo": "Файл расшифрован в {path}",
             "serverHashGated": "Контрольная сумма на стороне сервера недоступна, пока активен зашифрованный оверлей (она хешировала бы шифртекст, а не ваш файл).",
-            "outsideScope": "Вне зашифрованной области (файлы здесь не зашифрованы)"
+            "outsideScope": "Вне зашифрованной области (файлы здесь не зашифрованы)",
+            "overlaysPathButton": "Путь наложений",
+            "overlaysPathButtonHint": "Перейти к зашифрованному пути наложений: {path}"
         },
         "b2": {
             "hidden": {
@@ -4990,7 +4994,9 @@
             },
             "launcherScheduler": "Планировщик",
             "errorCorrection": "Коррекция ошибок",
-            "errorCorrectionHint": "Сохраняет небольшой файл чётности .aerocorrect рядом с каждым резервным файлом, чтобы удалённую копию, повреждённую bit-rot, можно было восстановить при следующем pull без оригинала."
+            "errorCorrectionHint": "Сохраняет небольшой файл чётности .aerocorrect рядом с каждым резервным файлом, чтобы удалённую копию, повреждённую bit-rot, можно было восстановить при следующем pull без оригинала.",
+            "outOfSyncItemsPct": "Несинхронизированные элементы",
+            "outOfSyncBytesPct": "Несинхронизированные байты"
         },
         "accountLock": {
             "title": "Выберите аккаунт",
