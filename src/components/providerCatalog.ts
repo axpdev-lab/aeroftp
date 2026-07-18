@@ -374,6 +374,32 @@ export function companyTier(c: CatalogCompany): CompanyTier {
     return hasFreeTier(c) ? 'free' : 'paid';
 }
 
+/**
+ * Tier of a company *as seen inside a specific category tab*. A company that is
+ * free-to-enter overall can still be paid-only within one category: MEGA is a
+ * free cloud drive (`cloud-storage`) yet its object-storage product (S4/S3) is
+ * paid-only, so under the S3 tab MEGA is `paid`, not `free`. The list-view tier
+ * filter (Free tier / Paid) must classify by the protocols in the ACTIVE
+ * category, else a provider that is paid-only in this category is unreachable
+ * from Paid and wrongly listed under Free tier. `'all'` (or a category the
+ * company has no protocol in) falls back to the whole-company [`companyTier`].
+ */
+export function companyTierInCategory(
+    c: CatalogCompany,
+    category: CatalogCategoryId | 'all',
+): CompanyTier {
+    if (category === 'all') return companyTier(c);
+    const inCat = c.protocols.filter(p => p.category === category);
+    if (inCat.length === 0) return companyTier(c);
+    // A card-gated free tier keeps the company in the 'free-card' bucket even
+    // per-category: its free allowance IS this category's product (e.g. AWS S3
+    // free tier is that same paid-flagged S3 method). Mirrors companyTier's
+    // precedence and keeps free-card OUT of paid. Only companies with NO free
+    // tier at all fall through to the per-category paid/free split below.
+    if (c.freeRequiresCard) return 'free-card';
+    return inCat.some(p => !p.paid) ? 'free' : 'paid';
+}
+
 /** True when any of the company's connection methods belongs to `category`. */
 export function companyInCategory(c: CatalogCompany, category: CatalogCategoryId): boolean {
     return c.protocols.some(p => p.category === category);

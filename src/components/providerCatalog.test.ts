@@ -13,6 +13,7 @@ import {
     companyInCategory,
     companyLaunchProtocol,
     companyTier,
+    companyTierInCategory,
 } from './providerCatalog';
 
 describe('CLI catalog drift guard', () => {
@@ -160,6 +161,31 @@ describe('commercial tier model: free / free-card / paid', () => {
     it('no-card free tiers classify as plain free', () => {
         expect(tierOf('TAB.DIGITAL')).toBe('free');
         expect(tierOf('MEGA')).toBe('free');
+    });
+
+    it('category-aware tier: a hybrid provider is paid in the category where its only protocol is paid-only (F1)', () => {
+        // MEGA is a free cloud drive (cloud-storage/webdav), but its S4/S3 object
+        // storage is paid-only. The list-view tier filter must classify per the
+        // ACTIVE category, else MEGA S4 is unreachable from Paid and MEGA wrongly
+        // shows under S3 + Free tier.
+        const mega = PROVIDER_CATALOG.find(x => x.company === 'MEGA');
+        expect(mega, 'MEGA present').toBeDefined();
+        expect(companyTierInCategory(mega!, 'object-storage'), 'MEGA under S3 tab').toBe('paid');
+        expect(companyTierInCategory(mega!, 'cloud-storage'), 'MEGA under Cloud tab').toBe('free');
+        expect(companyTierInCategory(mega!, 'webdav'), 'MEGA under WebDAV tab').toBe('free');
+        // 'all' falls back to the whole-company tier (unchanged behavior).
+        expect(companyTierInCategory(mega!, 'all'), 'MEGA under All == whole-company').toBe(companyTier(mega!));
+        expect(companyTierInCategory(mega!, 'all'), 'MEGA under All == free').toBe('free');
+        // A paid-only company stays paid inside its category too.
+        const wasabi = PROVIDER_CATALOG.find(x => x.company === 'Wasabi');
+        expect(wasabi, 'Wasabi present').toBeDefined();
+        expect(companyTierInCategory(wasabi!, 'object-storage'), 'Wasabi under S3 tab').toBe('paid');
+        // A card-gated free tier stays free-card per-category, NOT paid: its free
+        // allowance IS the S3 product (paid-flagged method), so it must land under
+        // Free + card, never leak into Paid nor vanish from Free + card.
+        const aws = PROVIDER_CATALOG.find(x => x.company === 'Amazon Web Services (AWS)');
+        expect(aws, 'AWS present').toBeDefined();
+        expect(companyTierInCategory(aws!, 'object-storage'), 'AWS under S3 tab').toBe('free-card');
     });
 
     it('freeRequiresCard companies are never reported as paid-only by the CLI projection', () => {

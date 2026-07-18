@@ -30,7 +30,7 @@ import {
     paidProtocols,
     companyRegions,
     companyLaunchProtocol,
-    companyTier,
+    companyTierInCategory,
 } from '../providerCatalog';
 
 type CatalogColId = 'company' | 'region' | 'freeGb' | 'free' | 'paid' | 'health';
@@ -145,9 +145,9 @@ export function CatalogTable({ companies, category, onSelectProvider, getHealth,
     const filtered = useMemo(() => {
         const q = query.trim().toLowerCase();
         let rows = q ? companies.filter(c => searchText(c).includes(q)) : companies.slice();
-        if (tierFilter === 'free') rows = rows.filter(c => companyTier(c) === 'free');
-        else if (tierFilter === 'freecard') rows = rows.filter(c => companyTier(c) === 'free-card');
-        else if (tierFilter === 'paid') rows = rows.filter(c => companyTier(c) === 'paid');
+        if (tierFilter === 'free') rows = rows.filter(c => companyTierInCategory(c, category) === 'free');
+        else if (tierFilter === 'freecard') rows = rows.filter(c => companyTierInCategory(c, category) === 'free-card');
+        else if (tierFilter === 'paid') rows = rows.filter(c => companyTierInCategory(c, category) === 'paid');
         const dir = effectiveSort.dir === 'asc' ? 1 : -1;
         rows.sort((a, b) => {
             switch (effectiveSort.colId) {
@@ -165,7 +165,7 @@ export function CatalogTable({ companies, category, onSelectProvider, getHealth,
             }
         });
         return rows;
-    }, [companies, query, tierFilter, effectiveSort.colId, effectiveSort.dir]);
+    }, [companies, category, query, tierFilter, effectiveSort.colId, effectiveSort.dir]);
 
     const totalGb = useMemo(() => totalFreeStorageGb(filtered), [filtered]);
 
