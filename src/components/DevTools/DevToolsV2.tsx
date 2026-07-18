@@ -9,6 +9,7 @@ import { SSHTerminal, SshConnectionInfo } from './SSHTerminal';
 import { readTextFile } from '@tauri-apps/plugin-fs';
 import { AIChat } from './AIChat';
 import { useTranslation } from '../../i18n';
+import { CyberShieldIcon } from '../icons/CyberShieldIcon';
 import type { EffectiveTheme } from '../../hooks/useTheme';
 import { usePointerDrag } from '../../hooks/usePointerDrag';
 import { isSafeLocalOpenPath, shellQuoteLocalPath } from '../../utils/openWithDefault';
@@ -49,6 +50,10 @@ interface DevToolsV2Props {
     onFileMutation?: (target: 'remote' | 'local' | 'both') => void;
     /** SEC-P1-06: TOFU host key check before SSH shell open */
     onCheckHostKey?: (host: string, port: number) => Promise<boolean>;
+    /** Opens the Security Tools modal (state owned by App). AeroTools is the
+     *  always-available home for it; the titlebar button is a Cyber-theme
+     *  easter egg (#369). Hidden when the callback is not provided. */
+    onShowCyberTools?: () => void;
 }
 
 type PanelVisibility = {
@@ -85,6 +90,7 @@ export const DevToolsV2: React.FC<DevToolsV2Props> = ({
     onMaximizeChange,
     onFileMutation,
     onCheckHostKey,
+    onShowCyberTools,
 }) => {
     const t = useTranslation();
     const containerRef = useRef<HTMLDivElement>(null);
@@ -634,6 +640,15 @@ export const DevToolsV2: React.FC<DevToolsV2Props> = ({
                 </div>
 
                 <div className="flex items-center gap-1">
+                    {onShowCyberTools && (
+                        <button
+                            onClick={onShowCyberTools}
+                            className={`p-1 ${theme.buttonHover} rounded transition-colors`}
+                            title={t('cyberTools.title')}
+                        >
+                            <CyberShieldIcon size={14} />
+                        </button>
+                    )}
                     <button
                         onClick={() => { const next = !isMaximized; setIsMaximized(next); onMaximizeChange?.(next); }}
                         className={`p-1 ${theme.buttonHover} rounded transition-colors`}
