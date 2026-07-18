@@ -4815,7 +4815,9 @@
             "serverHashGated": "Somme de contrôle côté serveur indisponible lorsqu'une surcouche chiffrée est active (elle hacherait le texte chiffré, pas votre fichier).",
             "outsideScope": "Hors de la zone chiffrée (les fichiers ici ne sont pas chiffrés)",
             "overlaysPathButton": "Chemin des superpositions",
-            "overlaysPathButtonHint": "Aller au chemin chiffré des superpositions : {path}"
+            "overlaysPathButtonHint": "Aller au chemin chiffré des superpositions : {path}",
+            "lockedOverlayTitle": "Superposition chiffrée verrouillée",
+            "lockedOverlayDesc": "Ce serveur dispose d'une superposition chiffrée qui n'a pas pu être déverrouillée. Saisissez le mot de passe pour déchiffrer les noms, ou continuez à parcourir la liste brute."
         },
         "b2": {
             "hidden": {

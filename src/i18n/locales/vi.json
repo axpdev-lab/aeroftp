@@ -4815,7 +4815,9 @@
             "serverHashGated": "Không thể dùng checksum phía máy chủ khi lớp phủ mã hóa đang hoạt động (nó sẽ băm bản mã, không phải tệp của bạn).",
             "outsideScope": "Ngoài vùng mã hóa (tệp ở đây không được mã hóa)",
             "overlaysPathButton": "Đường dẫn Overlay",
-            "overlaysPathButtonHint": "Nhảy đến Đường dẫn Overlay đã mã hóa: {path}"
+            "overlaysPathButtonHint": "Nhảy đến Đường dẫn Overlay đã mã hóa: {path}",
+            "lockedOverlayTitle": "Đã khóa lớp phủ mã hóa",
+            "lockedOverlayDesc": "Máy chủ này có lớp phủ mã hóa không thể mở khóa. Nhập mật khẩu để giải mã tên, hoặc tiếp tục duyệt danh sách thô."
         },
         "b2": {
             "hidden": {

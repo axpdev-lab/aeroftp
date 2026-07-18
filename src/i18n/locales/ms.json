@@ -4815,7 +4815,9 @@
             "serverHashGated": "Checksum sebelah pelayan tidak tersedia semasa tindanan tersulit aktif (ia akan hash teks sifir, bukan fail anda).",
             "outsideScope": "Di luar kawasan tersulit (fail di sini tidak disulitkan)",
             "overlaysPathButton": "Laluan Tindih",
-            "overlaysPathButtonHint": "Lompat ke Laluan Tindih tersulit: {path}"
+            "overlaysPathButtonHint": "Lompat ke Laluan Tindih tersulit: {path}",
+            "lockedOverlayTitle": "Lapisan tersulit dikunci",
+            "lockedOverlayDesc": "Pelayan ini mempunyai lapisan tersulit yang tidak dapat dibuka kunci. Masukkan kata laluan untuk menyahsulitkan nama, atau terus layari senarai mentah."
         },
         "b2": {
             "hidden": {

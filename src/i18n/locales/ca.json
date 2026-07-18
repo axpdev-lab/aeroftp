@@ -4834,7 +4834,9 @@
             "serverHashGated": "Suma de verificació al servidor no disponible amb una capa xifrada activa (calcularia el hash del text xifrat, no del vostre fitxer).",
             "outsideScope": "Fora de la zona xifrada (els fitxers d'aquí no estan xifrats)",
             "overlaysPathButton": "Ruta de superposicions",
-            "overlaysPathButtonHint": "Vés a la ruta xifrada de superposicions: {path}"
+            "overlaysPathButtonHint": "Vés a la ruta xifrada de superposicions: {path}",
+            "lockedOverlayTitle": "Capa xifrada bloquejada",
+            "lockedOverlayDesc": "Aquest servidor té una capa xifrada que no s'ha pogut desbloquejar. Introduïu la contrasenya per desxifrar els noms, o continueu explorant el llistat en brut."
         },
         "b2": {
             "hidden": {

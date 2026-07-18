@@ -4815,7 +4815,9 @@
             "serverHashGated": "암호화 오버레이가 활성화된 동안에는 서버 측 체크섬을 사용할 수 없습니다(파일이 아니라 암호문을 해시하게 됩니다).",
             "outsideScope": "암호화 영역 밖 (여기 파일은 암호화되지 않음)",
             "overlaysPathButton": "오버레이 경로",
-            "overlaysPathButtonHint": "암호화된 오버레이 경로로 이동: {path}"
+            "overlaysPathButtonHint": "암호화된 오버레이 경로로 이동: {path}",
+            "lockedOverlayTitle": "암호화 오버레이 잠김",
+            "lockedOverlayDesc": "이 서버에는 잠금을 해제할 수 없는 암호화 오버레이가 있습니다. 이름을 복호화하려면 비밀번호를 입력하거나, 원본 목록 탐색을 계속하세요."
         },
         "b2": {
             "hidden": {

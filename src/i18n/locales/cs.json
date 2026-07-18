@@ -4815,7 +4815,9 @@
             "serverHashGated": "Kontrolní součet na straně serveru není dostupný, když je aktivní šifrovaná vrstva (vypočítal by hash šifrovaného textu, ne vašeho souboru).",
             "outsideScope": "Mimo šifrovanou oblast (soubory zde nejsou šifrované)",
             "overlaysPathButton": "Cesta překryvů",
-            "overlaysPathButtonHint": "Přejít na šifrovanou cestu překryvů: {path}"
+            "overlaysPathButtonHint": "Přejít na šifrovanou cestu překryvů: {path}",
+            "lockedOverlayTitle": "Šifrovaná vrstva uzamčena",
+            "lockedOverlayDesc": "Tento server má šifrovanou vrstvu, kterou se nepodařilo odemknout. Zadejte heslo pro dešifrování názvů, nebo pokračujte v procházení surového výpisu."
         },
         "b2": {
             "hidden": {

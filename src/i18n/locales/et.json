@@ -4815,7 +4815,9 @@
             "serverHashGated": "Serveripoolne kontrollsumma pole saadaval, kui krüpteeritud kiht on aktiivne (see räsiks šifreeritud teksti, mitte teie faili).",
             "outsideScope": "Väljaspool krüpteeritud ala (failid siin ei ole krüpteeritud)",
             "overlaysPathButton": "Ülekatete tee",
-            "overlaysPathButtonHint": "Hüppa krüpteeritud ülekatete teele: {path}"
+            "overlaysPathButtonHint": "Hüppa krüpteeritud ülekatete teele: {path}",
+            "lockedOverlayTitle": "Krüpteeritud kiht lukustatud",
+            "lockedOverlayDesc": "Sellel serveril on krüpteeritud kiht, mida ei õnnestunud avada. Sisestage parool nimede dekrüpteerimiseks või jätkake toorloendi sirvimist."
         },
         "b2": {
             "hidden": {

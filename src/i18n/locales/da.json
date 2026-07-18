@@ -4815,7 +4815,9 @@
             "serverHashGated": "Tjeksum på serversiden er ikke tilgængelig, mens et krypteret overlay er aktivt (den ville hashe chifferteksten, ikke din fil).",
             "outsideScope": "Uden for det krypterede område (filer her er ikke krypteret)",
             "overlaysPathButton": "Overlay-sti",
-            "overlaysPathButtonHint": "Hop til den krypterede overlay-sti: {path}"
+            "overlaysPathButtonHint": "Hop til den krypterede overlay-sti: {path}",
+            "lockedOverlayTitle": "Krypteret overlay låst",
+            "lockedOverlayDesc": "Denne server har et krypteret overlay, der ikke kunne låses op. Indtast adgangskoden for at dekryptere navne, eller fortsæt med at browse den rå liste."
         },
         "b2": {
             "hidden": {

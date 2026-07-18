@@ -4815,7 +4815,9 @@
             "serverHashGated": "Suma de comprobación del lado del servidor no disponible con una capa cifrada activa (calcularía el hash del texto cifrado, no de tu archivo).",
             "outsideScope": "Fuera del área cifrada (los archivos aquí no están cifrados)",
             "overlaysPathButton": "Ruta de superposiciones",
-            "overlaysPathButtonHint": "Ir a la ruta cifrada de superposiciones: {path}"
+            "overlaysPathButtonHint": "Ir a la ruta cifrada de superposiciones: {path}",
+            "lockedOverlayTitle": "Capa cifrada bloqueada",
+            "lockedOverlayDesc": "Este servidor tiene una capa cifrada que no se pudo desbloquear. Introduzca la contraseña para descifrar los nombres, o siga explorando el listado en bruto."
         },
         "b2": {
             "hidden": {

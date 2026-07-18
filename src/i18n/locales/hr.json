@@ -4815,7 +4815,9 @@
             "serverHashGated": "Kontrolni zbroj na strani poslužitelja nije dostupan dok je aktivan šifrirani sloj (raspršio bi šifrirani tekst, a ne vašu datoteku).",
             "outsideScope": "Izvan šifrirane zone (datoteke ovdje nisu šifrirane)",
             "overlaysPathButton": "Putanja prekrivača",
-            "overlaysPathButtonHint": "Skoči na šifriranu putanju prekrivača: {path}"
+            "overlaysPathButtonHint": "Skoči na šifriranu putanju prekrivača: {path}",
+            "lockedOverlayTitle": "Šifrirani sloj zaključan",
+            "lockedOverlayDesc": "Ovaj poslužitelj ima šifrirani sloj koji nije moguće otključati. Unesite lozinku za dešifriranje naziva ili nastavite pregledavati sirovi popis."
         },
         "b2": {
             "hidden": {

@@ -166,17 +166,31 @@ pub async fn peer_contact_remove(app: AppHandle, contact_id: String) -> Result<(
 /// "file received" notification through this native command instead. notify-rust
 /// (Linux/D-Bus), the macOS UNUserNotificationCenter, and the Windows toast all
 /// work from the Rust side. The FE owns the opt-in gating and the localized text.
+///
+/// LT1 / tracker Known #7: this command is invoked from async/worker contexts.
+/// On Linux the notification path can touch D-Bus / GLib; marshal the show onto
+/// the GTK main thread so a notification never races the GLib main loop (same
+/// `malloc(): unaligned fastbin chunk` family as tray badge / app_ready).
 #[tauri::command]
 pub fn aeroshare_notify(app: AppHandle, title: String, body: String) -> Result<(), String> {
     use tauri_plugin_notification::NotificationExt;
     tracing::info!("aeroshare_notify ENTER title={title:?} body={body:?}");
-    let r = app
-        .notification()
-        .builder()
-        .title(title)
-        .body(body)
-        .show()
-        .map_err(|e| e.to_string());
+    let (tx, rx) = std::sync::mpsc::channel();
+    let app_main = app.clone();
+    app.run_on_main_thread(move || {
+        let r = app_main
+            .notification()
+            .builder()
+            .title(title)
+            .body(body)
+            .show()
+            .map_err(|e| e.to_string());
+        let _ = tx.send(r);
+    })
+    .map_err(|e| format!("Failed to marshal aeroshare_notify onto main thread: {e}"))?;
+    let r = rx
+        .recv()
+        .map_err(|_| "aeroshare_notify main-thread result channel closed".to_string())?;
     match &r {
         Ok(()) => tracing::info!("aeroshare_notify show() OK"),
         Err(e) => tracing::warn!("aeroshare_notify show() FAILED: {e}"),

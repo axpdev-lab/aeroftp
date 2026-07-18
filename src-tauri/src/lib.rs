@@ -9960,6 +9960,22 @@ fn detect_desktop_lang() -> String {
 }
 
 fn open_extract_window(app: &AppHandle, mode: &str, path: &str) {
+    // LT1 / tracker Known #7: WebviewWindowBuilder::build touches GTK on Linux.
+    // Callers include the single-instance D-Bus callback (zbus thread, NOT the
+    // GTK main thread). Building a window off-main races the GLib main loop and
+    // poisons the fastbin (`malloc(): unaligned fastbin chunk detected`).
+    // Marshal the entire build onto the main thread.
+    let mode = mode.to_string();
+    let path = path.to_string();
+    let app_main = app.clone();
+    if let Err(e) = app.run_on_main_thread(move || {
+        open_extract_window_on_main(&app_main, &mode, &path);
+    }) {
+        log::error!("Failed to marshal open_extract_window onto main thread: {e}");
+    }
+}
+
+fn open_extract_window_on_main(app: &AppHandle, mode: &str, path: &str) {
     let payload = serde_json::json!({ "mode": mode, "path": path, "lang": detect_desktop_lang() })
         .to_string();
     let init = format!("window.__AEROFTP_EXTRACT__ = {payload};");
@@ -10932,6 +10948,25 @@ fn toggle_menu_bar(app: AppHandle, window: tauri::Window, visible: bool) {
 
 #[tauri::command]
 fn rebuild_menu(
+    app: AppHandle,
+    labels: std::collections::HashMap<String, String>,
+) -> Result<(), String> {
+    // LT1 / tracker Known #7: MenuItem/Menu creation and Drop touch GTK on
+    // Linux. This command can run on a Tauri worker thread; build and install
+    // the menu on the GTK main thread so we never create/destroy gtk::Menu*
+    // off-thread (GLib heap corruption class).
+    let (tx, rx) = std::sync::mpsc::channel();
+    let app_main = app.clone();
+    app.run_on_main_thread(move || {
+        let r = rebuild_menu_on_main(app_main, labels);
+        let _ = tx.send(r);
+    })
+    .map_err(|e| format!("Failed to marshal rebuild_menu onto main thread: {e}"))?;
+    rx.recv()
+        .map_err(|_| "rebuild_menu main-thread result channel closed".to_string())?
+}
+
+fn rebuild_menu_on_main(
     app: AppHandle,
     labels: std::collections::HashMap<String, String>,
 ) -> Result<(), String> {
@@ -17481,6 +17516,11 @@ pub fn run() {
             Some(vec!["--autostart"]),
         ))
         .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            // LT1 / tracker Known #7: this callback runs on the zbus single-instance
+            // thread (Linux), not the GTK main thread. open_extract_window already
+            // marshals its WebviewWindowBuilder::build; window show/unminimize/focus
+            // go through Tauri's main-thread message path. Keep all GTK work off this
+            // D-Bus/zbus worker so a second-instance raise cannot poison GLib.
             // OS "Extract here / to folder" verb (Deliverable G): open the dedicated
             // extract window WITHOUT raising or booting the main app, then stop. The
             // main window must stay exactly as the user left it (possibly hidden).
@@ -18233,6 +18273,13 @@ pub fn run() {
                 .tooltip("AeroCloud - Idle")
                 .menu(&tray_menu)
                 .on_menu_event(|app, event| {
+                    // LT1 / tracker Known #7: tray menu activation on Linux can be
+                    // delivered from a GDBus/appindicator worker whose thread is
+                    // NOT Tauri's main_thread_id. Emit is thread-safe; window
+                    // show/unminimize/focus and exit_app must not assume main.
+                    // Window ops already go through send_user_message; exit_app
+                    // is pure logic + app.exit. Keep the match lean and avoid any
+                    // direct GTK/libappindicator mutation here.
                     let id = event.id().as_ref();
                     info!("Tray menu event: {}", id);
                     match id {
@@ -18249,16 +18296,19 @@ pub fn run() {
                             let _ = app.emit("menu-event", "check_update");
                         }
                         "tray_show" => {
-                            if let Some(window) = app.get_webview_window("main") {
-                                // unminimize() is required when the window was
-                                // sent to the taskbar via the minimize (-)
-                                // button: show() alone only un-hides a hidden
-                                // (close-to-tray) window, so a minimized window
-                                // would stay minimized (#270 comment 17195020).
-                                let _ = window.show();
-                                let _ = window.unminimize();
-                                let _ = window.set_focus();
-                            }
+                            let app_main = app.clone();
+                            let _ = app.run_on_main_thread(move || {
+                                if let Some(window) = app_main.get_webview_window("main") {
+                                    // unminimize() is required when the window was
+                                    // sent to the taskbar via the minimize (-)
+                                    // button: show() alone only un-hides a hidden
+                                    // (close-to-tray) window, so a minimized window
+                                    // would stay minimized (#270 comment 17195020).
+                                    let _ = window.show();
+                                    let _ = window.unminimize();
+                                    let _ = window.set_focus();
+                                }
+                            });
                         }
                         "tray_quit" => {
                             exit_app(app);
@@ -18267,22 +18317,26 @@ pub fn run() {
                     }
                 })
                 .on_tray_icon_event(|tray, event| {
-                    // Click on tray icon shows the window
+                    // LT1 / tracker Known #7: same thread discipline as on_menu_event.
+                    // Click on tray icon shows the window.
                     if let tauri::tray::TrayIconEvent::Click {
                         button: MouseButton::Left,
                         button_state: MouseButtonState::Up,
                         ..
                     } = event
                     {
-                        if let Some(window) = tray.app_handle().get_webview_window("main") {
-                            // Mirror the tray "Show AeroFTP" menu: unminimize()
-                            // so a left-click also restores a window that was
-                            // minimized via the (-) button, not just one that
-                            // was hidden to tray (#270 comment 17195020).
-                            let _ = window.show();
-                            let _ = window.unminimize();
-                            let _ = window.set_focus();
-                        }
+                        let app_main = tray.app_handle().clone();
+                        let _ = tray.app_handle().run_on_main_thread(move || {
+                            if let Some(window) = app_main.get_webview_window("main") {
+                                // Mirror the tray "Show AeroFTP" menu: unminimize()
+                                // so a left-click also restores a window that was
+                                // minimized via the (-) button, not just one that
+                                // was hidden to tray (#270 comment 17195020).
+                                let _ = window.show();
+                                let _ = window.unminimize();
+                                let _ = window.set_focus();
+                            }
+                        });
                     }
                 });
 
@@ -18446,6 +18500,12 @@ pub fn run() {
             }
             // Hide window instead of closing when AeroCloud is enabled or the
             // user has opted into "close to tray" in Settings.
+            // LT1 / tracker Known #7: CloseRequested is normally delivered on the
+            // event-loop thread; window.hide() still goes through Tauri's
+            // main-thread message path. Keep mutations confined to window APIs
+            // (no direct GTK/tray calls) so this handler cannot reintroduce the
+            // off-main-thread GLib heap-corruption class that surfaces as
+            // malloc_consolidate on disconnect / suspend storms.
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 let cloud_config = cloud_config::load_cloud_config();
                 let close_to_tray = CLOSE_TO_TRAY.load(std::sync::atomic::Ordering::SeqCst);

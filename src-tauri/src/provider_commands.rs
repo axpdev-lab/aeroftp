@@ -1347,6 +1347,14 @@ pub async fn provider_disconnect(
     state: State<'_, ProviderState>,
     peer_runtime: State<'_, crate::peer::runtime::PeerRuntime>,
 ) -> Result<(), String> {
+    // LT1: this command runs on the async runtime (off the GTK main thread).
+    // The teardown below is pure provider/session state + peer emit: it must
+    // NOT call tray/window/menu/notification APIs. Any UI update triggered by
+    // disconnect (window title, toast) is owned by the frontend and goes
+    // through Tauri's main-thread message path. See tray_badge /
+    // open_extract_window / rebuild_menu / aeroshare_notify for the
+    // run_on_main_thread discipline on the remaining GTK sites.
+    //
     // Issue #233: wait for any in-flight DAG transfer to drain before
     // mutating the provider slot. Without this, an active download/upload
     // sees the box yanked and surfaces a spurious `NotConnected` instead

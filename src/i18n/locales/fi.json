@@ -4815,7 +4815,9 @@
             "serverHashGated": "Palvelinpuolen tarkistussumma ei ole käytettävissä, kun salattu peittokerros on aktiivinen (se laskisi salatekstin tiivisteen, ei tiedostoasi).",
             "outsideScope": "Salatun alueen ulkopuolella (tiedostoja täällä ei ole salattu)",
             "overlaysPathButton": "Peittojen polku",
-            "overlaysPathButtonHint": "Siirry salattuun peittojen polkuun: {path}"
+            "overlaysPathButtonHint": "Siirry salattuun peittojen polkuun: {path}",
+            "lockedOverlayTitle": "Salattu peittokerros lukittu",
+            "lockedOverlayDesc": "Tällä palvelimella on salattu peittokerros, jota ei voitu avata. Syötä salasana nimien salauksen purkamiseksi, tai jatka raakalistauksen selaamista."
         },
         "b2": {
             "hidden": {

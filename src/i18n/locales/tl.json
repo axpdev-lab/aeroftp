@@ -4834,7 +4834,9 @@
             "serverHashGated": "Hindi available ang server-side checksum habang aktibo ang naka-encrypt na overlay (iha-hash nito ang ciphertext, hindi ang file mo).",
             "outsideScope": "Labas sa naka-encrypt na lugar (hindi naka-encrypt ang mga file dito)",
             "overlaysPathButton": "Landas ng Overlay",
-            "overlaysPathButtonHint": "Tumalon sa naka-encrypt na Landas ng Overlay: {path}"
+            "overlaysPathButtonHint": "Tumalon sa naka-encrypt na Landas ng Overlay: {path}",
+            "lockedOverlayTitle": "Naka-lock ang naka-encrypt na overlay",
+            "lockedOverlayDesc": "May naka-encrypt na overlay ang server na ito na hindi ma-unlock. Ipasok ang password para i-decrypt ang mga pangalan, o magpatuloy sa pag-browse ng raw listing."
         },
         "b2": {
             "hidden": {
