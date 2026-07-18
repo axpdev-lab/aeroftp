@@ -422,6 +422,7 @@ import { FileTagBadge } from './components/FileTagBadge';
 import { VaultIcon } from './components/icons/VaultIcon';
 import { DecryptingText } from './components/DecryptingText';
 import type { TrashItem, FolderSizeResult, LocalTab, MtpDeviceInfo, MtpSessionInfo, VolumeInfo } from './types/aerofile';
+import { debounceMtpDevicesChanged, listMtpDevices } from './utils/mtpListDevices';
 
 // Utilities
 import { formatBytes, formatSpeed, formatETA, formatDate, isWindowsDriveRoot, parentLocalPath } from './utils';
@@ -4651,27 +4652,34 @@ interface UpdateVerificationInfo {
   //
   // The hotplug wake (`mtp-devices-changed`, Linux uevents / Windows
   // WM_DEVICECHANGE) already fires within a second, so listen for it here, where
-  // the session lives, and tear the session down honestly.
+  // the session lives, and tear the session down honestly. Debounced + shared
+  // list single-flight so this path does not stack detects with PlacesSidebar.
   useEffect(() => {
     if (!activePortableDeviceId) return;
     const openDeviceId = activePortableDeviceId;
 
+    const debounced = debounceMtpDevicesChanged(() => {
+      void (async () => {
+        try {
+          const devices = await listMtpDevices();
+          if (!devices.some((d) => d.deviceId === openDeviceId)) {
+            handlePortableDeviceClosed(openDeviceId);
+          }
+        } catch {
+          // Listing failed: say nothing rather than kill a live session on a
+          // transient backend error.
+        }
+      })();
+    });
     const dispose = guardedUnlisten(
       listen<void>('mtp-devices-changed', () => {
-        void (async () => {
-          try {
-            const devices = await invoke<MtpDeviceInfo[]>('list_mtp_devices');
-            if (!devices.some((d) => d.deviceId === openDeviceId)) {
-              handlePortableDeviceClosed(openDeviceId);
-            }
-          } catch {
-            // Listing failed: say nothing rather than kill a live session on a
-            // transient backend error.
-          }
-        })();
+        debounced.schedule();
       }),
     );
-    return () => dispose();
+    return () => {
+      debounced.cancel();
+      dispose();
+    };
   }, [activePortableDeviceId, handlePortableDeviceClosed]);
 
   const handleRestoreTrashItem = useCallback(async (item: TrashItem) => {

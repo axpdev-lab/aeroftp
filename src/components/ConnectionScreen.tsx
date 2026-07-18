@@ -14,6 +14,7 @@ import { FolderOpen, HardDrive, ChevronRight, ChevronDown, Save, Copy, Cloud, Ch
 import { ConnectionParams, ProviderType, ProviderOptions, DeviceFingerprint, isOAuthProvider, isAeroCloudProvider, isFourSharedProvider, isNativeApiProtocol, isNonFtpProvider, providerServesQuota, providerSupportsCryptOverlay, ServerProfile } from '../types';
 import type { MtpDeviceInfo } from '../types/aerofile';
 import { deviceFingerprintFromMtpInfo, matchLiveDevice } from '../utils/mtpFingerprint';
+import { listMtpDevices } from '../utils/mtpListDevices';
 import { PROVIDER_LOGOS } from './ProviderLogos';
 import { PasswordStrengthBar } from './vault/PasswordStrengthBar';
 import { PasswordMatchHint } from './common/PasswordMatchHint';
@@ -876,7 +877,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         setMtpDetectError(null);
         void (async () => {
             try {
-                const devices = await invoke<MtpDeviceInfo[]>('list_mtp_devices');
+                const devices = await listMtpDevices();
                 if (cancelled) return;
                 setMtpDevices(devices || []);
                 if (!devices || devices.length === 0) {
@@ -911,7 +912,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         setMtpDetecting(true);
         setMtpDetectError(null);
         try {
-            const devices = await invoke<MtpDeviceInfo[]>('list_mtp_devices');
+            const devices = await listMtpDevices();
             setMtpDevices(devices || []);
             if (!devices || devices.length === 0) {
                 setMtpDetectError(t('connection.mtpNoDevices'));

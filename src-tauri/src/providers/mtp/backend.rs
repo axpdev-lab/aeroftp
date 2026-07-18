@@ -8,10 +8,64 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use std::path::Path;
+use std::sync::{LazyLock, Mutex as StdMutex};
+use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
+use tokio::sync::Mutex as TokioMutex;
 
 use crate::providers::types::ProviderError;
+
+/// How long a successful `list_mtp_devices` result stays reusable without
+/// touching libmtp / WPD again.
+///
+/// Hotplug still updates the UI within ~1s (event + this TTL). Errors are
+/// never cached so a failed detect does not stick.
+pub const LIST_MTP_DEVICES_CACHE_TTL: Duration = Duration::from_millis(800);
+
+/// Successful detect cache entry: `(stored_at, devices)`.
+type ListMtpDevicesCacheEntry = Option<(Instant, Vec<MtpDeviceInfo>)>;
+type ListMtpDevicesCache = StdMutex<ListMtpDevicesCacheEntry>;
+
+static LIST_MTP_DEVICES_CACHE: LazyLock<ListMtpDevicesCache> =
+    LazyLock::new(|| StdMutex::new(None));
+
+/// Single-flight gate: concurrent list callers await the same in-flight detect
+/// instead of stacking `LIBMTP_Detect_Raw_Devices` on the USB bus.
+static LIST_MTP_DEVICES_FLIGHT: LazyLock<TokioMutex<()>> = LazyLock::new(|| TokioMutex::new(()));
+
+/// Pure TTL check (unit-testable without touching the USB bus).
+#[inline]
+pub(crate) fn list_mtp_cache_is_fresh(age: Duration, ttl: Duration) -> bool {
+    age < ttl
+}
+
+fn list_mtp_devices_cache_get(ttl: Duration) -> Option<Vec<MtpDeviceInfo>> {
+    let guard = LIST_MTP_DEVICES_CACHE
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    match &*guard {
+        Some((stored_at, devices)) if list_mtp_cache_is_fresh(stored_at.elapsed(), ttl) => {
+            Some(devices.clone())
+        }
+        _ => None,
+    }
+}
+
+fn list_mtp_devices_cache_put(devices: Vec<MtpDeviceInfo>) {
+    let mut guard = LIST_MTP_DEVICES_CACHE
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    *guard = Some((Instant::now(), devices));
+}
+
+#[cfg(test)]
+fn list_mtp_devices_cache_clear_for_test() {
+    let mut guard = LIST_MTP_DEVICES_CACHE
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    *guard = None;
+}
 
 /// Stable-enough id for one attachment session (opaque to the UI).
 pub type MtpDeviceId = String;
@@ -632,13 +686,70 @@ pub fn platform_backend() -> Box<dyn MtpBackend> {
 }
 
 /// Standalone discovery helper (no open session).
+///
+/// Coalesces concurrent and near-simultaneous callers:
+/// - **TTL cache** (~[`LIST_MTP_DEVICES_CACHE_TTL`]): fresh success returns
+///   immediately without another `LIBMTP_Detect_Raw_Devices` / WPD enumerate.
+/// - **Single-flight**: if a detect is already running, waiters share that
+///   result instead of starting a second bus scan.
+///
+/// Errors are not cached. Unplug still reflects within one TTL window; the
+/// hotplug event path re-lists after attach/detach.
 pub async fn list_mtp_devices() -> Result<Vec<MtpDeviceInfo>, ProviderError> {
-    platform_backend().list_devices().await
+    if let Some(cached) = list_mtp_devices_cache_get(LIST_MTP_DEVICES_CACHE_TTL) {
+        return Ok(cached);
+    }
+
+    // Serialize detects. Re-check cache after lock: a peer may have just filled it.
+    let _flight = LIST_MTP_DEVICES_FLIGHT.lock().await;
+    if let Some(cached) = list_mtp_devices_cache_get(LIST_MTP_DEVICES_CACHE_TTL) {
+        return Ok(cached);
+    }
+
+    match platform_backend().list_devices().await {
+        Ok(devices) => {
+            list_mtp_devices_cache_put(devices.clone());
+            Ok(devices)
+        }
+        Err(err) => Err(err),
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn list_mtp_cache_ttl_fresh_and_stale() {
+        let ttl = Duration::from_millis(800);
+        assert!(list_mtp_cache_is_fresh(Duration::from_millis(0), ttl));
+        assert!(list_mtp_cache_is_fresh(Duration::from_millis(799), ttl));
+        assert!(!list_mtp_cache_is_fresh(Duration::from_millis(800), ttl));
+        assert!(!list_mtp_cache_is_fresh(Duration::from_secs(2), ttl));
+    }
+
+    #[test]
+    fn list_mtp_cache_put_get_respects_ttl() {
+        list_mtp_devices_cache_clear_for_test();
+        list_mtp_devices_cache_put(vec![MtpDeviceInfo {
+            device_id: "cache-test".into(),
+            display_name: "Cache Phone".into(),
+            serial: Some("S1".into()),
+            vendor_id: Some(0x0fce),
+            product_id: Some(0x020d),
+            bus_location: Some("1:2".into()),
+            platform: "test".into(),
+            storages_hint: 0,
+        }]);
+        let hit =
+            list_mtp_devices_cache_get(Duration::from_secs(60)).expect("fresh entry must hit");
+        assert_eq!(hit.len(), 1);
+        assert_eq!(hit[0].device_id, "cache-test");
+        // Zero TTL: any entry is immediately stale.
+        assert!(list_mtp_devices_cache_get(Duration::ZERO).is_none());
+        list_mtp_devices_cache_clear_for_test();
+        assert!(list_mtp_devices_cache_get(Duration::from_secs(60)).is_none());
+    }
 
     #[tokio::test]
     async fn null_backend_lists_no_devices() {

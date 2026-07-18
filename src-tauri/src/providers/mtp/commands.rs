@@ -15,7 +15,9 @@ use tauri::State;
 use tracing::warn;
 
 use crate::provider_commands::{drain_in_flight_transfers, ProviderState};
-use crate::providers::mtp::backend::{platform_backend, MtpDeviceInfo, MtpStorage};
+use crate::providers::mtp::backend::{
+    list_mtp_devices as list_mtp_devices_coalesced, MtpDeviceInfo, MtpStorage,
+};
 use crate::providers::mtp::fs_provider::{
     MtpFsProvider, MTP_BACKEND_GVFS, MTP_EXTRA_BACKEND, MTP_EXTRA_MOUNT_PATH,
 };
@@ -110,10 +112,12 @@ pub fn mtp_backend_linked() -> bool {
 }
 
 /// List attached MTP devices (empty when none, or when backend not linked).
+///
+/// Goes through the coalesced discovery helper (TTL cache + single-flight)
+/// so concurrent FE listeners and polls share one bus detect.
 #[tauri::command]
 pub async fn list_mtp_devices() -> Result<Vec<MtpDeviceInfoDto>, String> {
-    let backend = platform_backend();
-    let devices = backend.list_devices().await.map_err(err_str)?;
+    let devices = list_mtp_devices_coalesced().await.map_err(err_str)?;
     Ok(devices.into_iter().map(MtpDeviceInfoDto::from).collect())
 }
 

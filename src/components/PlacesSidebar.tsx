@@ -20,6 +20,11 @@ import {
 import { FolderTree } from './FolderTree';
 import { formatBytes } from '../utils/formatters';
 import { findGvfsMtpMount, isPathOnOrUnderMount, portableDeviceNeedsReplug } from '../utils/gvfsMtpMount';
+import {
+  debounceMtpDevicesChanged,
+  isMtpListInFlight,
+  listMtpDevices,
+} from '../utils/mtpListDevices';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -28,7 +33,8 @@ import { findGvfsMtpMount, isPathOnOrUnderMount, portableDeviceNeedsReplug } fro
 const SIDEBAR_MODE_KEY = 'aerofile_sidebar_mode';
 const CUSTOM_LOCATIONS_KEY = 'aerofile_custom_locations';
 const VOLUME_POLL_FALLBACK_MS = 30000; // Fallback polling for macOS/Windows (watcher handles Linux)
-const PORTABLE_POLL_FALLBACK_MS = 30000; // Same cadence as volumes; event + focus also refetch
+// 30s fallback only; hotplug is event-driven + debounced. Not aggressive.
+const PORTABLE_POLL_FALLBACK_MS = 30000;
 
 // Collapsible-section persistence (issue #216 follow-up). Each section has a
 // localStorage key carrying its expand state. Defaults match the post-#216
@@ -500,7 +506,7 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
 
   const fetchPortableDevices = useCallback(async () => {
     try {
-      const devices = await invoke<MtpDeviceInfo[]>('list_mtp_devices');
+      const devices = await listMtpDevices();
       if (!mountedRef.current) return;
       setPortableDevices(devices);
       // If the open device disappeared (unplug), tell the parent so session
@@ -549,14 +555,18 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
     });
 
     // Event-driven wake: Windows WM_DEVICECHANGE, Linux kernel USB uevents.
-    // Both emit `mtp-devices-changed`; the interval below is only a fallback.
+    // Both emit `mtp-devices-changed` (already ~300ms backend debounce); FE
+    // debounces again so multi-component listeners collapse into one list.
+    const debouncedMtpRefresh = debounceMtpDevicesChanged(() => {
+      if (mountedRef.current) {
+        void fetchPortableDevices();
+        void fetchPortableMounts();
+        void fetchMtpAutomounterPresent();
+      }
+    });
     const disposeMtpListener = guardedUnlisten(
       listen<void>('mtp-devices-changed', () => {
-        if (mountedRef.current) {
-          fetchPortableDevices();
-          fetchPortableMounts();
-          fetchMtpAutomounterPresent();
-        }
+        debouncedMtpRefresh.schedule();
       }),
     );
     // gvfs mount appear/disappear (plug, sleep death, remount) updates amber vs open.
@@ -567,23 +577,24 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
     );
 
     portableIntervalRef.current = setInterval(() => {
-      if (mountedRef.current) {
-        fetchPortableDevices();
-        fetchPortableMounts();
+      if (mountedRef.current && !isMtpListInFlight()) {
+        void fetchPortableDevices();
+        void fetchPortableMounts();
       }
     }, PORTABLE_POLL_FALLBACK_MS);
 
     const onFocus = () => {
-      if (mountedRef.current) {
-        fetchPortableDevices();
-        fetchPortableMounts();
-        fetchMtpAutomounterPresent();
+      if (mountedRef.current && !isMtpListInFlight()) {
+        void fetchPortableDevices();
+        void fetchPortableMounts();
+        void fetchMtpAutomounterPresent();
       }
     };
     window.addEventListener('focus', onFocus);
 
     return () => {
       window.removeEventListener('focus', onFocus);
+      debouncedMtpRefresh.cancel();
       disposeMtpListener();
       disposeVolListener();
       if (portableIntervalRef.current) {
