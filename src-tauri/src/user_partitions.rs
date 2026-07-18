@@ -1765,6 +1765,7 @@ fn relocate_secret_kind(credential_key: &str) -> &'static str {
 /// `store: None` skips vault ops only (unit-test seam: partition-only dual).
 /// Production always passes `Some(store)`. Behavior with a store for `server_*`
 /// matches the pre-F4 body byte-for-byte aside from multi-key iteration.
+#[allow(clippy::too_many_arguments)]
 fn relocate_secret_key_dual(
     conn: &Connection,
     store: Option<&CredentialStore>,
@@ -4095,9 +4096,9 @@ pub fn cli_relocate_server_profile(
 
 /// CLI bridge (MUV-3) for the credential half of a cross-user relocation: copies
 /// every per-profile secret from [`relocate_credential_key_candidates`]
-/// (`server_<id>` plus OAuth/Jottacloud when applicable) onto the new id (vault
-/// + the target user's partition under its scoped DEK) and, on a Move, drops
-/// the orphaned source secrets from both stores. Call after
+/// (`server_<id>` plus OAuth/Jottacloud when applicable) onto the new id
+/// (vault + the target user's partition under its scoped DEK) and, on a Move,
+/// drops the orphaned source secrets from both stores. Call after
 /// [`cli_relocate_server_profile`] with the same `target_passphrase` still live.
 pub fn cli_relocate_server_credential_dual(
     store: &CredentialStore,
