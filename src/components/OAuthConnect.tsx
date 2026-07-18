@@ -98,7 +98,7 @@ const REDIRECT_URIS: Record<string, { uri: string; note?: string }> = {
   googledrive: { uri: 'http://127.0.0.1 (auto-assigned port)', note: 'redirectUriNoteGoogle' },
   googlephotos: { uri: 'http://127.0.0.1 (auto-assigned port)', note: 'redirectUriNoteGoogle' },
   dropbox: { uri: 'http://127.0.0.1:17548/callback' },
-  onedrive: { uri: 'http://127.0.0.1:27154/callback' },
+  onedrive: { uri: 'http://localhost:27154/callback' },
   box: { uri: 'http://127.0.0.1:9484/callback' },
   pcloud: { uri: 'http://localhost:17384/callback' },
   zohoworkdrive: { uri: 'http://127.0.0.1:18765/callback' },
