@@ -135,6 +135,67 @@ pub async fn hash_file(
     }
 }
 
+/// Stage a browser-dropped file (HTML5 `File` blob) to a temp path so
+/// `hash_file` can stream it. Used when the webview has
+/// `disable_drag_drop_handler` (Windows HTML5 requirement) and the
+/// DataTransfer does not expose an absolute OS path — common on WebKitGTK,
+/// where `File.path` is absent and `text/uri-list` is often empty even
+/// though `files[0]` is present with the real contents.
+///
+/// `data_base64` is the raw file bytes as standard base64 (no data-URL
+/// prefix). Cap is 256 MiB to keep IPC + temp write bounded.
+#[tauri::command]
+pub async fn stage_hash_drop(name: String, data_base64: String) -> Result<String, String> {
+    const MAX_STAGE_BYTES: usize = 256 * 1024 * 1024;
+
+    let data = B64
+        .decode(data_base64.as_bytes())
+        .map_err(|e| format!("Invalid base64 drop payload: {e}"))?;
+    if data.len() > MAX_STAGE_BYTES {
+        return Err(format!(
+            "Dropped file is too large to stage ({} bytes, max {})",
+            data.len(),
+            MAX_STAGE_BYTES
+        ));
+    }
+
+    let dir = std::env::temp_dir().join("aeroftp-hash-drops");
+    tokio::fs::create_dir_all(&dir)
+        .await
+        .map_err(|e| format!("Failed to create drop stage dir: {e}"))?;
+
+    let safe: String = std::path::Path::new(&name)
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("drop.bin")
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '.' || c == '-' || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    let safe = if safe.is_empty() {
+        "drop.bin".to_string()
+    } else {
+        safe
+    };
+
+    let path = dir.join(format!("{}_{}", uuid::Uuid::new_v4(), safe));
+    tokio::fs::write(&path, &data)
+        .await
+        .map_err(|e| format!("Failed to stage dropped file: {e}"))?;
+
+    log::info!(
+        "[HASHDROP] staged {} bytes as {}",
+        data.len(),
+        path.display()
+    );
+    Ok(path.to_string_lossy().into_owned())
+}
+
 /// Constant-time hash comparison to prevent timing attacks.
 #[tauri::command]
 pub fn compare_hashes(hash_a: String, hash_b: String) -> bool {

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef, type DragEvent as ReactDragEvent } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
@@ -134,20 +134,91 @@ const PillButton: React.FC<{ active: boolean; onClick: () => void; children: Rea
 const HASH_ALGOS = ['MD5', 'SHA-1', 'SHA-256', 'SHA-512', 'BLAKE3'] as const;
 const HASH_ENCODINGS = ['utf-8', 'base64', 'hex', 'binary'] as const;
 
-// Absolute path of an OS file dropped via HTML drag-and-drop. On WebKitGTK the
-// drag data carries the real path (files[].path or the text/uri-list); Mac and
-// Windows may not expose it (the native onDragDropEvent listener covers those).
+// Absolute path of an OS file dropped via HTML drag-and-drop.
+// The main webview always uses `disable_drag_drop_handler` (Windows HTML5
+// requirement), so Tauri's `onDragDropEvent` never fires — only DataTransfer
+// is available. On WebKitGTK, `File.path` is usually absent and `text/uri-list`
+// is often empty; callers must fall back to staging `files[0]` contents.
+function uriOrPathToFsPath(raw: string): string | null {
+    const line = raw.trim();
+    if (!line || line.startsWith('#')) return null;
+    if (line.startsWith('file:') || line.startsWith('FILE:')) {
+        try {
+            const u = new URL(line);
+            let p = decodeURIComponent(u.pathname);
+            // Windows file URLs: pathname is "/C:/Users/..." → "C:/Users/..."
+            if (/^\/[A-Za-z]:[\\/]/.test(p)) p = p.slice(1);
+            return p || null;
+        } catch {
+            try {
+                return decodeURIComponent(line.replace(/^file:\/\/(localhost)?/i, '')) || null;
+            } catch {
+                return null;
+            }
+        }
+    }
+    // Plain absolute path (some file managers put this in text/plain)
+    if (line.startsWith('/') || /^[A-Za-z]:[\\/]/.test(line)) return line;
+    return null;
+}
+
 function extractDroppedPath(dt: DataTransfer): string | null {
-    const file = dt.files?.[0] as (File & { path?: string }) | undefined;
-    let p = file?.path ?? '';
-    if (!p) {
-        const raw = dt.getData('text/uri-list') || dt.getData('text/plain') || '';
-        p = raw.split(/\r?\n/).map(s => s.trim()).find(s => s && !s.startsWith('#')) ?? '';
+    // 1) Non-standard File.path (Electron / some WebKit builds)
+    for (const f of Array.from(dt.files || [])) {
+        const p = (f as File & { path?: string }).path;
+        if (p && p.trim()) return p.trim();
     }
-    if (p.startsWith('file://')) {
-        try { p = decodeURIComponent(p.replace(/^file:\/\//, '')); } catch { /* keep raw */ }
+    for (let i = 0; i < (dt.items?.length ?? 0); i++) {
+        const item = dt.items[i];
+        if (item.kind !== 'file') continue;
+        const f = item.getAsFile() as (File & { path?: string }) | null;
+        if (f?.path?.trim()) return f.path.trim();
     }
-    return p.trim() || null;
+
+    // 2) MIME types file managers commonly set (must read synchronously in drop)
+    const mimes = ['text/uri-list', 'text/plain', 'text/x-moz-url', 'URL'];
+    for (const mime of mimes) {
+        let raw = '';
+        try { raw = dt.getData(mime); } catch { /* ignore */ }
+        if (!raw) continue;
+        for (const line of raw.split(/\r?\n/)) {
+            const p = uriOrPathToFsPath(line);
+            if (p) return p;
+        }
+    }
+
+    // 3) Last resort: any type whose payload looks like a file URI / abs path
+    try {
+        for (const t of Array.from(dt.types || [])) {
+            let raw = '';
+            try { raw = dt.getData(t); } catch { /* ignore */ }
+            if (!raw) continue;
+            for (const line of raw.split(/\r?\n/)) {
+                const p = uriOrPathToFsPath(line);
+                if (p) return p;
+            }
+        }
+    } catch { /* ignore */ }
+
+    return null;
+}
+
+/** Read a dropped File as standard base64 (no data-URL prefix) for stage_hash_drop. */
+function fileToBase64(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+            const result = reader.result;
+            if (typeof result !== 'string') {
+                reject(new Error('Failed to read dropped file'));
+                return;
+            }
+            const comma = result.indexOf(',');
+            resolve(comma >= 0 ? result.slice(comma + 1) : result);
+        };
+        reader.onerror = () => reject(reader.error ?? new Error('FileReader failed'));
+        reader.readAsDataURL(file);
+    });
 }
 type HashEncoding = (typeof HASH_ENCODINGS)[number];
 
@@ -164,6 +235,7 @@ const HashForgeTab: React.FC = () => {
     const [match, setMatch] = useState<boolean | null>(null);
     const [loading, setLoading] = useState(false);
     const [dragActive, setDragActive] = useState(false);
+    const dragDepthRef = useRef(0);
     const calcGenRef = useRef(0);
 
     const algoMap: Record<string, string> = { 'MD5': 'md5', 'SHA-1': 'sha1', 'SHA-256': 'sha256', 'SHA-512': 'sha512', 'BLAKE3': 'blake3' };
@@ -236,9 +308,9 @@ const HashForgeTab: React.FC = () => {
         }
     }, []);
 
-    // OS file drag-and-drop via Tauri webview API (HTML drop does not expose
-    // absolute paths in the sandbox). Listener lives for the tab's lifetime —
-    // same house pattern as ExportImportDialog. Drop → file mode + path.
+    // Belt-and-suspenders: if the webview ever re-enables the native drag-drop
+    // handler, prefer its absolute paths (no blob staging). With the current
+    // `disable_drag_drop_handler` this listener never fires on any platform.
     useEffect(() => {
         let unlisten: (() => void) | undefined;
         let cancelled = false;
@@ -252,6 +324,7 @@ const HashForgeTab: React.FC = () => {
                         setDragActive(false);
                     } else if (event.payload.type === 'drop' && event.payload.paths.length > 0) {
                         setDragActive(false);
+                        dragDepthRef.current = 0;
                         setMode('file');
                         setFilePath(event.payload.paths[0]);
                     }
@@ -278,19 +351,70 @@ const HashForgeTab: React.FC = () => {
         }
     }, [expected, result]);
 
+    const applyDroppedPath = useCallback((path: string) => {
+        setMode('file');
+        setFilePath(path);
+    }, []);
+
+    const handleHtmlDrop = useCallback(async (e: ReactDragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        dragDepthRef.current = 0;
+        setDragActive(false);
+
+        const dt = e.dataTransfer;
+        // Read DataTransfer synchronously — some engines clear getData after
+        // the drop handler returns (including across await boundaries).
+        const path = extractDroppedPath(dt);
+        const file = dt.files?.[0] ?? null;
+
+        if (path) {
+            applyDroppedPath(path);
+            return;
+        }
+        if (!file) return;
+
+        // WebKitGTK common case: File blob present, no absolute path. Stage
+        // contents so hash_file can stream the real bytes (not the path string).
+        try {
+            setLoading(true);
+            const dataBase64 = await fileToBase64(file);
+            const staged = await invoke<string>('stage_hash_drop', {
+                name: file.name,
+                dataBase64,
+            });
+            applyDroppedPath(staged);
+        } catch (err) {
+            setResult(`Error: ${err}`);
+            setLoading(false);
+        }
+    }, [applyDroppedPath]);
+
     return (
         <div
             className={`relative space-y-4 rounded-md transition-colors ${
                 dragActive ? 'ring-2 ring-cyan-500 ring-offset-2 dark:ring-offset-gray-800 bg-cyan-500/5' : ''
             }`}
-            onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; if (!dragActive) setDragActive(true); }}
-            onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragActive(false); }}
-            onDrop={e => {
+            onDragEnter={e => {
                 e.preventDefault();
-                setDragActive(false);
-                const path = extractDroppedPath(e.dataTransfer);
-                if (path) { setMode('file'); setFilePath(path); }
+                e.stopPropagation();
+                dragDepthRef.current += 1;
+                setDragActive(true);
             }}
+            onDragOver={e => {
+                e.preventDefault();
+                e.stopPropagation();
+                e.dataTransfer.dropEffect = 'copy';
+            }}
+            onDragLeave={e => {
+                e.preventDefault();
+                e.stopPropagation();
+                // Depth counter: entering children fires leave on parent; only
+                // clear the indicator when the pointer actually leaves the zone.
+                dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+                if (dragDepthRef.current === 0) setDragActive(false);
+            }}
+            onDrop={e => { void handleHtmlDrop(e); }}
         >
             {dragActive && (
                 <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 rounded-md border-2 border-dashed border-cyan-500 bg-cyan-500/10 backdrop-blur-[1px] pointer-events-none">
