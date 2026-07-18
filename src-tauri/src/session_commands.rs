@@ -288,6 +288,10 @@ async fn session_connect_oauth(
 }
 
 /// Close a session and disconnect from the provider
+///
+/// LT1: async command (off GTK main thread). Only tears down provider
+/// sessions; no tray/window/menu/notification mutations. UI side effects of
+/// disconnect are frontend-driven and main-thread-marshalled.
 #[tauri::command]
 pub async fn session_disconnect(
     state: State<'_, MultiProviderState>,
