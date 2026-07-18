@@ -4822,7 +4822,9 @@
             "decryptFileFromDisk": "I-decrypt ang file mula sa disk",
             "fileDecryptedTo": "Na-decrypt ang file sa {path}",
             "serverHashGated": "Hindi available ang server-side checksum habang aktibo ang naka-encrypt na overlay (iha-hash nito ang ciphertext, hindi ang file mo).",
-            "outsideScope": "Labas sa naka-encrypt na lugar (hindi naka-encrypt ang mga file dito)"
+            "outsideScope": "Labas sa naka-encrypt na lugar (hindi naka-encrypt ang mga file dito)",
+            "overlaysPathButton": "Landas ng Overlay",
+            "overlaysPathButtonHint": "Tumalon sa naka-encrypt na Landas ng Overlay: {path}"
         },
         "b2": {
             "hidden": {

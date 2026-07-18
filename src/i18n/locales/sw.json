@@ -4803,7 +4803,9 @@
             "decryptFileFromDisk": "Fichua faili kutoka kwenye diski",
             "fileDecryptedTo": "Faili imefichuliwa hadi {path}",
             "serverHashGated": "Hakikisho la upande wa seva halipatikani wakati safu iliyosimbwa fiche inafanya kazi (lingehesabu hashi ya maandishi yaliyosimbwa, si faili yako).",
-            "outsideScope": "Nje ya eneo lililosimbwa fiche (faili hapa hazijasimbwa fiche)"
+            "outsideScope": "Nje ya eneo lililosimbwa fiche (faili hapa hazijasimbwa fiche)",
+            "overlaysPathButton": "Njia ya Vifuniko",
+            "overlaysPathButtonHint": "Rukia Njia ya Vifuniko iliyosimbwa: {path}"
         },
         "b2": {
             "hidden": {

@@ -4803,7 +4803,9 @@
             "decryptFileFromDisk": "Dekripsi file dari disk",
             "fileDecryptedTo": "File didekripsi ke {path}",
             "serverHashGated": "Checksum sisi server tidak tersedia saat overlay terenkripsi aktif (akan menghash ciphertext, bukan berkas Anda).",
-            "outsideScope": "Di luar area terenkripsi (berkas di sini tidak dienkripsi)"
+            "outsideScope": "Di luar area terenkripsi (berkas di sini tidak dienkripsi)",
+            "overlaysPathButton": "Jalur Overlay",
+            "overlaysPathButtonHint": "Lompat ke Jalur Overlay terenkripsi: {path}"
         },
         "b2": {
             "hidden": {

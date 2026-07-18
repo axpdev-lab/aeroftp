@@ -4803,7 +4803,9 @@
             "decryptFileFromDisk": "Dekrypter fil fra disk",
             "fileDecryptedTo": "Fil dekrypteret til {path}",
             "serverHashGated": "Tjeksum på serversiden er ikke tilgængelig, mens et krypteret overlay er aktivt (den ville hashe chifferteksten, ikke din fil).",
-            "outsideScope": "Uden for det krypterede område (filer her er ikke krypteret)"
+            "outsideScope": "Uden for det krypterede område (filer her er ikke krypteret)",
+            "overlaysPathButton": "Overlay-sti",
+            "overlaysPathButtonHint": "Hop til den krypterede overlay-sti: {path}"
         },
         "b2": {
             "hidden": {

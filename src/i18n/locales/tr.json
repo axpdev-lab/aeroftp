@@ -4803,7 +4803,9 @@
             "decryptFileFromDisk": "Diskteki dosyanın şifresini çöz",
             "fileDecryptedTo": "Dosyanın şifresi şu konuma çözüldü: {path}",
             "serverHashGated": "Şifreli yer paylaşımı etkinken sunucu tarafı sağlama toplamı kullanılamaz (dosyanızı değil şifreli metni özetler).",
-            "outsideScope": "Şifreli alanın dışında (buradaki dosyalar şifreli değil)"
+            "outsideScope": "Şifreli alanın dışında (buradaki dosyalar şifreli değil)",
+            "overlaysPathButton": "Katman Yolu",
+            "overlaysPathButtonHint": "Şifreli Katman Yoluna atla: {path}"
         },
         "b2": {
             "hidden": {

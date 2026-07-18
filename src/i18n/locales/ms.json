@@ -4803,7 +4803,9 @@
             "decryptFileFromDisk": "Nyahsulit fail daripada cakera",
             "fileDecryptedTo": "Fail dinyahsulitkan ke {path}",
             "serverHashGated": "Checksum sebelah pelayan tidak tersedia semasa tindanan tersulit aktif (ia akan hash teks sifir, bukan fail anda).",
-            "outsideScope": "Di luar kawasan tersulit (fail di sini tidak disulitkan)"
+            "outsideScope": "Di luar kawasan tersulit (fail di sini tidak disulitkan)",
+            "overlaysPathButton": "Laluan Tindih",
+            "overlaysPathButtonHint": "Lompat ke Laluan Tindih tersulit: {path}"
         },
         "b2": {
             "hidden": {

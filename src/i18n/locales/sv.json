@@ -4803,7 +4803,9 @@
             "decryptFileFromDisk": "Dekryptera fil från disk",
             "fileDecryptedTo": "Fil dekrypterad till {path}",
             "serverHashGated": "Kontrollsumma på serversidan är inte tillgänglig när ett krypterat överlägg är aktivt (den skulle hasha chiffertexten, inte din fil).",
-            "outsideScope": "Utanför det krypterade området (filer här är inte krypterade)"
+            "outsideScope": "Utanför det krypterade området (filer här är inte krypterade)",
+            "overlaysPathButton": "Överläggssökväg",
+            "overlaysPathButtonHint": "Hoppa till den krypterade överläggssökvägen: {path}"
         },
         "b2": {
             "hidden": {

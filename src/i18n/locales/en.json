@@ -1598,7 +1598,9 @@
       "decryptFileFromDisk": "Decrypt file from disk",
       "fileDecryptedTo": "File decrypted to {path}",
       "serverHashGated": "Server-side checksum unavailable while an encrypted overlay is active (it would hash the ciphertext, not your file).",
-      "outsideScope": "Outside the encrypted area (files here are not encrypted)"
+      "outsideScope": "Outside the encrypted area (files here are not encrypted)",
+      "overlaysPathButton": "Overlays Path",
+      "overlaysPathButtonHint": "Jump to the encrypted Overlays Path: {path}"
     },
     "aerocryptNative": {
       "title": "AeroCrypt overlay",

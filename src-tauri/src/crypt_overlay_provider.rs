@@ -379,10 +379,11 @@ fn encode_plain_target(
     if kind == AccessKind::Read {
         return Ok(norm_abs(target));
     }
-    Err(format!(
-        "crypt target {:?} is outside the overlay scope {:?}",
-        target, scope
-    ))
+    // EF-01 Mixed mode (design 10-crypt-nav-design.md §3, owner-signed): edits
+    // outside the Overlays Path pass through as plaintext, same as reads. The
+    // strip_prefix("{scope}/") gate above still encrypts everything strictly
+    // below the anchor; only provably out-of-scope targets reach here.
+    Ok(norm_abs(target))
 }
 
 /// Decrypt an on-wire path for display, decoding each component as a directory
@@ -2545,20 +2546,67 @@ mod tests {
         }
     }
 
+    /// EF-01 Mixed mode (Option B, owner-signed): a Write to a target that is
+    /// provably OUT OF SCOPE passes through RAW (identical to the Read arm),
+    /// enabling plaintext edits OUTSIDE the anchor. It must NOT fail closed and
+    /// must NOT encrypt the tail.
     #[test]
-    fn encode_plain_target_outside_anchor_is_refused() {
+    fn encode_plain_target_outside_anchor_write_passes_through_raw() {
         for (label, keys) in both_kinds() {
-            let res = encode_plain_target(
+            // (1) out-of-scope absolute Write target passes through raw (unencrypted).
+            let enc = encode_plain_target(
                 &keys,
                 "/Vault",
                 "/Other/secret.txt",
                 false,
                 AccessKind::Write,
+            )
+            .unwrap_or_else(|e| panic!("{label}: out-of-scope Write must pass through, got {e}"));
+            assert_eq!(
+                enc, "/Other/secret.txt",
+                "{label}: out-of-scope Write is raw, not encrypted"
             );
+            // Same shape as the Read arm for the identical target.
+            let read = encode_plain_target(
+                &keys,
+                "/Vault",
+                "/Other/secret.txt",
+                false,
+                AccessKind::Read,
+            )
+            .unwrap();
+            assert_eq!(
+                enc, read,
+                "{label}: Write out-of-scope mirrors Read passthrough"
+            );
+
+            // (2) a Write target strictly BELOW the anchor still gets its tail encrypted.
+            let below = encode_plain_target(
+                &keys,
+                "/Vault",
+                "/Vault/dir/note.md",
+                false,
+                AccessKind::Write,
+            )
+            .unwrap();
             assert!(
-                res.is_err(),
-                "{label}: out-of-scope must fail closed (Write)"
+                below.starts_with("/Vault/"),
+                "{label}: anchor stays cleartext, got {below}"
             );
+            let tail: Vec<&str> = below.trim_start_matches("/Vault/").split('/').collect();
+            assert_eq!(tail.len(), 2, "{label}: encrypted tail below anchor");
+            assert_ne!(
+                tail[0], "dir",
+                "{label}: below-anchor dir segment encrypted"
+            );
+            assert_ne!(tail[1], "note.md", "{label}: below-anchor leaf encrypted");
+            assert_eq!(keys.decode_name(tail[0], true).unwrap(), "dir");
+            assert_eq!(keys.decode_name(tail[1], false).unwrap(), "note.md");
+
+            // (3) the anchor root itself maps verbatim.
+            let root =
+                encode_plain_target(&keys, "/Vault", "/Vault", true, AccessKind::Write).unwrap();
+            assert_eq!(root, "/Vault", "{label}: anchor root maps verbatim");
         }
     }
 
@@ -2787,6 +2835,44 @@ mod tests {
             !names.iter().any(|n| n == &enc_child),
             "cipher name must not surface"
         );
+    }
+
+    /// EF-04 GUI/CLI/MCP listing parity (owner: drop-in-both). A plaintext-named
+    /// folder that lives INSIDE the anchor (created while crypt was OFF) must be
+    /// DROPPED from the encrypted view, and that decision must not depend on the
+    /// caller's exact path form. All three surfaces route through this one
+    /// `CryptOverlayProvider::list`; `wire_path_is_encrypted` normalizes
+    /// `entry.path` via `norm_abs`, so the CLI's absolute anchor path and any
+    /// trailing-slash / equivalent form classify identically. This locks the
+    /// fail-closed parity so the CLI can never resurface the raw plaintext folder
+    /// the GUI hides (issue #386 EF-04).
+    #[tokio::test]
+    async fn list_drops_inside_anchor_plaintext_folder_across_path_forms() {
+        let keys = aerocrypt_keys();
+        let mut mem = MemProvider::new();
+        mem.seed_raw_dir("/AeroCryptTest");
+        // Plaintext-named folder created inside the anchor while crypt was OFF:
+        // its raw on-wire name has no ciphertext preimage.
+        mem.seed_raw_dir("/AeroCryptTest/plainfolder");
+        // A genuine encrypted sibling that MUST decrypt and stay visible.
+        let enc_child = keys.encode_name("real.txt", false).unwrap();
+        mem.seed_raw_file(&format!("/AeroCryptTest/{}", enc_child), b"cipher");
+        let mut provider = CryptOverlayProvider::new(Box::new(mem), keys, "/AeroCryptTest");
+
+        // Every caller path form that addresses the anchor must classify the
+        // same: the CLI's resolved absolute path, and a trailing-slash variant.
+        for form in ["/AeroCryptTest", "/AeroCryptTest/"] {
+            let listed = provider.list(form).await.unwrap();
+            let names: Vec<_> = listed.iter().map(|e| e.name.as_str()).collect();
+            assert!(
+                !names.contains(&"plainfolder"),
+                "{form:?}: inside-anchor plaintext folder must be dropped (drop-in-both), got {names:?}"
+            );
+            assert!(
+                names.contains(&"real.txt"),
+                "{form:?}: genuine encrypted sibling must decrypt and show, got {names:?}"
+            );
+        }
     }
 
     /// Whole-remote (scope="") must behave byte-identical to pre-CWP-20C
@@ -3509,14 +3595,34 @@ mod tests {
         let _ = tokio::fs::remove_dir_all(&dir).await;
     }
 
+    /// EF-01 Mixed mode (Option B, owner-signed): a mutating op OUTSIDE the
+    /// bound anchor now passes through as plaintext (edits outside the Overlays
+    /// Path are legal), the write-side twin of the read/list passthrough. The
+    /// name must land RAW on the wire (never encrypted). The strictly-below
+    /// fail-closed guarantee (#390) is unchanged and is covered separately by
+    /// `upload_into_plaintext_folder_fails_closed_no_phantom`.
     #[tokio::test]
-    async fn out_of_scope_operation_fails_closed() {
+    async fn out_of_scope_write_passes_through_raw() {
         let inner = Box::new(MemProvider::new());
         let mut provider = CryptOverlayProvider::new(inner, aerocrypt_keys(), "/Vault");
-        // Write path outside the bound anchor must still refuse (fail-closed).
-        // (Read paths outside now pass through for Model-B plaintext areas.)
-        let err = provider.mkdir("/Elsewhere/newdir").await;
-        assert!(matches!(err, Err(ProviderError::InvalidPath(_))));
+        // A mkdir outside the anchor succeeds and lands raw (Mixed mode).
+        provider
+            .mkdir("/Elsewhere/newdir")
+            .await
+            .expect("out-of-scope mkdir passes through in Mixed mode");
+        let mem = provider
+            .as_any_mut()
+            .downcast_mut::<CryptOverlayProvider>()
+            .unwrap()
+            .inner
+            .as_any_mut()
+            .downcast_mut::<MemProvider>()
+            .unwrap();
+        let dirs = mem.raw_dirs();
+        assert!(
+            dirs.iter().any(|d| d == "/Elsewhere/newdir"),
+            "out-of-scope dir must be created RAW (unencrypted): {dirs:?}"
+        );
     }
 
     #[tokio::test]

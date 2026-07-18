@@ -4803,7 +4803,9 @@
             "decryptFileFromDisk": "Dešifrovať súbor z disku",
             "fileDecryptedTo": "Súbor dešifrovaný do {path}",
             "serverHashGated": "Kontrolný súčet na strane servera nie je dostupný, kým je aktívna šifrovaná vrstva (vypočítal by hash šifrovaného textu, nie vášho súboru).",
-            "outsideScope": "Mimo šifrovanej oblasti (súbory tu nie sú šifrované)"
+            "outsideScope": "Mimo šifrovanej oblasti (súbory tu nie sú šifrované)",
+            "overlaysPathButton": "Cesta prekrytí",
+            "overlaysPathButtonHint": "Prejsť na šifrovanú cestu prekrytí: {path}"
         },
         "b2": {
             "hidden": {

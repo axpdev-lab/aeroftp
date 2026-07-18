@@ -4803,7 +4803,9 @@
             "decryptFileFromDisk": "Iššifruoti failą iš disko",
             "fileDecryptedTo": "Failas iššifruotas į {path}",
             "serverHashGated": "Serverio pusės kontrolinė suma negalima, kai aktyvus šifruotas sluoksnis (ji apskaičiuotų šifruoto teksto maišą, o ne jūsų failo).",
-            "outsideScope": "Už šifruotos srities (failai čia nešifruoti)"
+            "outsideScope": "Už šifruotos srities (failai čia nešifruoti)",
+            "overlaysPathButton": "Perdangų kelias",
+            "overlaysPathButtonHint": "Pereiti į šifruotą perdangų kelią: {path}"
         },
         "b2": {
             "hidden": {

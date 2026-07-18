@@ -4803,7 +4803,9 @@
             "decryptFileFromDisk": "Giải mã tệp từ đĩa",
             "fileDecryptedTo": "Đã giải mã tệp tới {path}",
             "serverHashGated": "Không thể dùng checksum phía máy chủ khi lớp phủ mã hóa đang hoạt động (nó sẽ băm bản mã, không phải tệp của bạn).",
-            "outsideScope": "Ngoài vùng mã hóa (tệp ở đây không được mã hóa)"
+            "outsideScope": "Ngoài vùng mã hóa (tệp ở đây không được mã hóa)",
+            "overlaysPathButton": "Đường dẫn Overlay",
+            "overlaysPathButtonHint": "Nhảy đến Đường dẫn Overlay đã mã hóa: {path}"
         },
         "b2": {
             "hidden": {

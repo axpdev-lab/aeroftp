@@ -4803,7 +4803,9 @@
             "decryptFileFromDisk": "Atšifrēt failu no diska",
             "fileDecryptedTo": "Fails atšifrēts uz {path}",
             "serverHashGated": "Servera puses kontrolsumma nav pieejama, kamēr ir aktīvs šifrēts pārklājums (tā jauktu šifrēto tekstu, nevis jūsu failu).",
-            "outsideScope": "Ārpus šifrētās zonas (faili šeit nav šifrēti)"
+            "outsideScope": "Ārpus šifrētās zonas (faili šeit nav šifrēti)",
+            "overlaysPathButton": "Pārklājumu ceļš",
+            "overlaysPathButtonHint": "Pāriet uz šifrēto pārklājumu ceļu: {path}"
         },
         "b2": {
             "hidden": {

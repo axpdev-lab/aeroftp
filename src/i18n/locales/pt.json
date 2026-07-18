@@ -4803,7 +4803,9 @@
             "decryptFileFromDisk": "Descriptografar arquivo do disco",
             "fileDecryptedTo": "Arquivo descriptografado em {path}",
             "serverHashGated": "Soma de verificação no servidor indisponível enquanto uma sobreposição cifrada está ativa (calcularia o hash do texto cifrado, não do seu ficheiro).",
-            "outsideScope": "Fora da área cifrada (os ficheiros aqui não estão cifrados)"
+            "outsideScope": "Fora da área cifrada (os ficheiros aqui não estão cifrados)",
+            "overlaysPathButton": "Caminho de sobreposições",
+            "overlaysPathButtonHint": "Ir para o caminho cifrado de sobreposições: {path}"
         },
         "b2": {
             "hidden": {

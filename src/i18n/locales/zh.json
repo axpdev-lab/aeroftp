@@ -4803,7 +4803,9 @@
             "decryptFileFromDisk": "从磁盘解密文件",
             "fileDecryptedTo": "文件已解密至 {path}",
             "serverHashGated": "加密叠加层处于活动状态时无法使用服务器端校验和（它会对密文而非您的文件进行哈希）。",
-            "outsideScope": "加密区域之外（此处文件未加密）"
+            "outsideScope": "加密区域之外（此处文件未加密）",
+            "overlaysPathButton": "叠加层路径",
+            "overlaysPathButtonHint": "跳转到加密的叠加层路径：{path}"
         },
         "b2": {
             "hidden": {

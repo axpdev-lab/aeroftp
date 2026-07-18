@@ -4822,7 +4822,9 @@
             "decryptFileFromDisk": "Dekrypter fil fra disk",
             "fileDecryptedTo": "Fil dekryptert til {path}",
             "serverHashGated": "Sjekksum på serversiden er utilgjengelig mens et kryptert overlegg er aktivt (den ville hashe chifferteksten, ikke filen din).",
-            "outsideScope": "Utenfor det krypterte området (filer her er ikke kryptert)"
+            "outsideScope": "Utenfor det krypterte området (filer her er ikke kryptert)",
+            "overlaysPathButton": "Overlegg-sti",
+            "overlaysPathButtonHint": "Hopp til den krypterte overlegg-stien: {path}"
         },
         "b2": {
             "hidden": {

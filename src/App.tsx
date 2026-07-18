@@ -5396,7 +5396,28 @@ interface UpdateVerificationInfo {
   // overlay (a plaintext folder navigated to while it was off, or a spot outside
   // the scope). The backend has the keys to decide; a whole-remote overlay whose
   // scope is empty re-anchors to the remote root.
-  const smartReanchorOverlay = async (appliedScope: string | null | undefined): Promise<void> => {
+  const smartReanchorOverlay = async (
+    appliedScope: string | null | undefined,
+    opts?: { initialLandingPath?: string | null },
+  ): Promise<void> => {
+    // EF-03: the INITIAL connect lands on the connection Remote Path (which may
+    // sit OUTSIDE the Overlays Path), NOT on the anchor. This is a DIFFERENT
+    // trigger from the #390 toggle re-anchor, so it deliberately bypasses both
+    // the cwd-in-view "keep position" check AND the outside-scope bounce: it
+    // moves the wrapped provider straight to the Remote Path regardless of where
+    // read_config/connect left the cwd (aerocrypt cd's into the scope; rclone
+    // leaves it at "/"). Callers only pass a landing path for non-empty scopes;
+    // empty scope (whole-remote overlay) never reaches here and lands as today.
+    if (opts && opts.initialLandingPath !== undefined) {
+      const landing = opts.initialLandingPath;
+      if (normCryptScope(landing) === '') {
+        // Remote Path is the on-wire root.
+        await invoke('provider_change_dir', { path: '/' }).catch(() => undefined);
+      } else {
+        await positionWrappedProviderAtScope(landing);
+      }
+      return;
+    }
     const cwdInView = await invoke<boolean>('provider_crypt_cwd_in_view').catch(() => false);
     if (cwdInView) return; // valid encrypted folder: keep the user in place
     await positionWrappedProviderAtScope(appliedScope);
@@ -5624,21 +5645,36 @@ interface UpdateVerificationInfo {
     if (overlayReloadedVaultRef.current === activeVault) return;
     overlayReloadedVaultRef.current = activeVault;
     let cancelled = false;
-    // Anchor the decrypted reload to the bound overlay scope so it opens at the
-    // configured Remote Path. rclone-crypt needs this explicitly (its unlock
-    // does not move the provider cwd); for aerocrypt the scope matches the dir
-    // its read_config already cd'd into, so the result is unchanged.
-    const reloadScope = sessions.find((s) => s.id === activeSessionId)?.cryptOverlay?.remoteScope || null;
+    // EF-03: anchor the decrypted reload to the connection Remote Path (the
+    // profile's initialPath, carried on the session as serverInitialPath), NOT
+    // the Overlays Path (crypt scope). The Remote Path is the natural connect
+    // landing dir; the Overlays Path is the encrypted island inside it. Landing
+    // on the Remote Path may put the cwd OUTSIDE the scope (plaintext view + the
+    // EF-02 'Overlays Path' button), which is the intended behavior.
+    //   - Only for a NON-EMPTY scope AND a known Remote Path: a whole-remote
+    //     overlay (scope === '') has no plaintext Remote Path, and a missing
+    //     Remote Path falls back to the legacy re-anchor-into-scope behavior.
+    // rclone-crypt needs the explicit move (its unlock does not touch the cwd);
+    // aerocrypt's read_config cd'd into the scope, so the initial-landing branch
+    // in smartReanchorOverlay moves it out to the Remote Path.
+    const activeSess = sessions.find((s) => s.id === activeSessionId);
+    const reloadScope = activeSess?.cryptOverlay?.remoteScope || null;
+    const scopeNonEmpty = normCryptScope(reloadScope) !== '';
+    const remotePath = activeSess?.serverInitialPath?.trim() || '';
+    const initialLandingOpts = (scopeNonEmpty && remotePath)
+      ? { initialLandingPath: remotePath }
+      : undefined;
     void (async () => {
       try {
-        // #390 smart re-anchor: open at the Remote Path on connect (cwd outside the
-        // scope re-anchors in), but keep position when re-arming inside a valid
-        // encrypted subfolder instead of bouncing to the scope root every time.
-        await smartReanchorOverlay(reloadScope);
+        // #390 smart re-anchor is preserved for the toggle path (activateProvider
+        // CryptOverlay); here we pass the initial-connect landing so the connect
+        // opens on the Remote Path without bouncing into the scope. Empty scope /
+        // missing Remote Path fall through to the legacy re-anchor.
+        await smartReanchorOverlay(reloadScope, initialLandingOpts);
         let reloaded = await loadRemoteFiles(undefined, undefined, undefined, null);
         if (!reloaded && !cancelled) {
           await new Promise((res) => setTimeout(res, 1500));
-          await smartReanchorOverlay(reloadScope);
+          await smartReanchorOverlay(reloadScope, initialLandingOpts);
           reloaded = await loadRemoteFiles(undefined, undefined, undefined, null);
         }
         // Rewrite the connect-time listing line to the overlay-anchored display
@@ -17198,11 +17234,7 @@ interface UpdateVerificationInfo {
                         dropdown lists the remote provider via provider_list_files
                         (non-mutating — it lists a path without moving the session
                         cwd). This bar only renders when connected, so no
-                        not-connected fallback is needed.
-                        TODO(EF-02/Baton 8): the 'Overlays Path' nav button (and
-                        gating the RCLONE/AEROCRYPT toggle to inside the overlay
-                        scope) belong on this same bar — the crypt badges already
-                        render immediately after it below. */}
+                        not-connected fallback is needed. */}
                     <div className="flex-1 min-w-0">
                       <BreadcrumbBar
                         currentPath={(rcloneCryptVaultId || aeroCryptVaultId || overlayBadgeDecrypting) ? currentRemoteDisplayPath : currentRemotePath}
@@ -17271,7 +17303,11 @@ interface UpdateVerificationInfo {
                         OVERLAY
                       </span>
                     )}
-                    {overlayBadgeKind && (() => {
+                    {/* EF-02: the crypt toggle only makes sense inside the
+                        Overlays Path (where names encrypt/decrypt). When the cwd
+                        is outside the scope we swap it for an 'Overlays Path' nav
+                        button below that jumps back into the encrypted anchor. */}
+                    {overlayBadgeKind && overlayInScope && (() => {
                       const isAero = overlayBadgeKind === 'aerocrypt';
                       const label = isAero ? 'AEROCRYPT' : 'RCLONE CRYPT';
                       const litCls = isAero
@@ -17313,6 +17349,25 @@ interface UpdateVerificationInfo {
                         >
                           <Lock size={11} className={iconCls} />
                           {label}
+                        </button>
+                      );
+                    })()}
+                    {/* EF-02: overlay armed but the cwd is OUTSIDE the Overlays
+                        Path — offer a one-click jump into the encrypted anchor
+                        (crypt-aware nav, mirroring the BreadcrumbBar onNavigate
+                        crypt flag) instead of the meaningless in-scope toggle. */}
+                    {overlayBadgeKind && !overlayInScope && (() => {
+                      const scopeLabel = activeBoundRemoteScope || '/';
+                      return (
+                        <button
+                          type="button"
+                          onClick={() => changeRemoteDirectory(activeBoundRemoteScope, undefined, true)}
+                          className="flex-shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border transition-colors bg-amber-500/15 text-amber-500 border-amber-500/30 hover:bg-amber-500/25 cursor-pointer"
+                          title={t('aerocrypt.overlaysPathButtonHint', { path: scopeLabel })}
+                          aria-label={t('aerocrypt.overlaysPathButtonHint', { path: scopeLabel })}
+                        >
+                          <Lock size={11} className="text-amber-500" />
+                          {t('aerocrypt.overlaysPathButton')}
                         </button>
                       );
                     })()}

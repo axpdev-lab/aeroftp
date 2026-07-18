@@ -4822,7 +4822,9 @@
             "decryptFileFromDisk": "Afkóða skrá af diski",
             "fileDecryptedTo": "Skrá afkóðuð í {path}",
             "serverHashGated": "Eftirlitssumma á netþjónshlið er ekki tiltæk meðan dulkóðað yfirlag er virkt (hún myndi tæta dulmálstextann, ekki skrána þína).",
-            "outsideScope": "Utan dulkóðaða svæðisins (skrár hér eru ekki dulkóðaðar)"
+            "outsideScope": "Utan dulkóðaða svæðisins (skrár hér eru ekki dulkóðaðar)",
+            "overlaysPathButton": "Yfirlagsslóð",
+            "overlaysPathButtonHint": "Fara á dulkóðaða yfirlagsslóð: {path}"
         },
         "b2": {
             "hidden": {

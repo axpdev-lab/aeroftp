@@ -4803,7 +4803,9 @@
             "decryptFileFromDisk": "Pura tiedoston salaus levyltä",
             "fileDecryptedTo": "Tiedosto purettu kohteeseen {path}",
             "serverHashGated": "Palvelinpuolen tarkistussumma ei ole käytettävissä, kun salattu peittokerros on aktiivinen (se laskisi salatekstin tiivisteen, ei tiedostoasi).",
-            "outsideScope": "Salatun alueen ulkopuolella (tiedostoja täällä ei ole salattu)"
+            "outsideScope": "Salatun alueen ulkopuolella (tiedostoja täällä ei ole salattu)",
+            "overlaysPathButton": "Peittojen polku",
+            "overlaysPathButtonHint": "Siirry salattuun peittojen polkuun: {path}"
         },
         "b2": {
             "hidden": {

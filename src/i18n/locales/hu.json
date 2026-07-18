@@ -4803,7 +4803,9 @@
             "decryptFileFromDisk": "Fájl visszafejtése lemezről",
             "fileDecryptedTo": "Fájl visszafejtve ide: {path}",
             "serverHashGated": "A kiszolgálóoldali ellenőrzőösszeg nem érhető el, amíg titkosított átfedés aktív (a titkosított szöveget hashelné, nem a fájlt).",
-            "outsideScope": "A titkosított területen kívül (az itteni fájlok nincsenek titkosítva)"
+            "outsideScope": "A titkosított területen kívül (az itteni fájlok nincsenek titkosítva)",
+            "overlaysPathButton": "Fedvények útvonala",
+            "overlaysPathButtonHint": "Ugrás a titkosított fedvények útvonalára: {path}"
         },
         "b2": {
             "hidden": {

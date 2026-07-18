@@ -3345,7 +3345,9 @@
             "decryptFileFromDisk": "Decifra file dal disco",
             "fileDecryptedTo": "File decifrato in {path}",
             "serverHashGated": "Checksum lato server non disponibile con un overlay cifrato attivo (calcolerebbe l'hash del testo cifrato, non del tuo file).",
-            "outsideScope": "Fuori dalla zona cifrata (i file qui non sono cifrati)"
+            "outsideScope": "Fuori dalla zona cifrata (i file qui non sono cifrati)",
+            "overlaysPathButton": "Percorso overlay",
+            "overlaysPathButtonHint": "Vai al percorso overlay cifrato: {path}"
         },
         "aerocryptNative": {
             "title": "Overlay AeroCrypt",

@@ -4803,7 +4803,9 @@
             "decryptFileFromDisk": "Decriptează fișier de pe disc",
             "fileDecryptedTo": "Fișier decriptat la {path}",
             "serverHashGated": "Suma de control pe server indisponibilă cât timp este activ un strat criptat (ar genera hash-ul textului cifrat, nu al fișierului dvs.).",
-            "outsideScope": "În afara zonei criptate (fișierele de aici nu sunt criptate)"
+            "outsideScope": "În afara zonei criptate (fișierele de aici nu sunt criptate)",
+            "overlaysPathButton": "Calea suprapunerilor",
+            "overlaysPathButtonHint": "Salt la calea criptată a suprapunerilor: {path}"
         },
         "b2": {
             "hidden": {

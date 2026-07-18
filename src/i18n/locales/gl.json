@@ -4822,7 +4822,9 @@
             "decryptFileFromDisk": "Descifrar ficheiro do disco",
             "fileDecryptedTo": "Ficheiro descifrado en {path}",
             "serverHashGated": "Suma de comprobación no servidor non dispoñible cunha capa cifrada activa (calcularía o hash do texto cifrado, non do teu ficheiro).",
-            "outsideScope": "Fóra da zona cifrada (os ficheiros aquí non están cifrados)"
+            "outsideScope": "Fóra da zona cifrada (os ficheiros aquí non están cifrados)",
+            "overlaysPathButton": "Ruta de superposicións",
+            "overlaysPathButtonHint": "Ir á ruta cifrada de superposicións: {path}"
         },
         "b2": {
             "hidden": {

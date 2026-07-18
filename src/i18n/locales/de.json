@@ -4803,7 +4803,9 @@
             "decryptFileFromDisk": "Datei von der Festplatte entschlüsseln",
             "fileDecryptedTo": "Datei entschlüsselt nach {path}",
             "serverHashGated": "Serverseitige Prüfsumme nicht verfügbar, während ein verschlüsseltes Overlay aktiv ist (sie würde den Chiffretext hashen, nicht Ihre Datei).",
-            "outsideScope": "Außerhalb des verschlüsselten Bereichs (Dateien hier sind nicht verschlüsselt)"
+            "outsideScope": "Außerhalb des verschlüsselten Bereichs (Dateien hier sind nicht verschlüsselt)",
+            "overlaysPathButton": "Overlay-Pfad",
+            "overlaysPathButtonHint": "Zum verschlüsselten Overlay-Pfad springen: {path}"
         },
         "b2": {
             "hidden": {

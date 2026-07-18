@@ -4803,7 +4803,9 @@
             "decryptFileFromDisk": "Dešifriraj datoteko z diska",
             "fileDecryptedTo": "Datoteka dešifrirana v {path}",
             "serverHashGated": "Kontrolna vsota na strani strežnika ni na voljo, ko je aktivna šifrirana plast (zgostila bi šifrirano besedilo, ne vaše datoteke).",
-            "outsideScope": "Zunaj šifriranega območja (datoteke tukaj niso šifrirane)"
+            "outsideScope": "Zunaj šifriranega območja (datoteke tukaj niso šifrirane)",
+            "overlaysPathButton": "Pot prekrivkov",
+            "overlaysPathButtonHint": "Skoči na šifrirano pot prekrivkov: {path}"
         },
         "b2": {
             "hidden": {

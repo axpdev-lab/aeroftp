@@ -4803,7 +4803,9 @@
             "decryptFileFromDisk": "디스크에서 파일 복호화",
             "fileDecryptedTo": "파일이 {path}로 복호화되었습니다",
             "serverHashGated": "암호화 오버레이가 활성화된 동안에는 서버 측 체크섬을 사용할 수 없습니다(파일이 아니라 암호문을 해시하게 됩니다).",
-            "outsideScope": "암호화 영역 밖 (여기 파일은 암호화되지 않음)"
+            "outsideScope": "암호화 영역 밖 (여기 파일은 암호화되지 않음)",
+            "overlaysPathButton": "오버레이 경로",
+            "overlaysPathButtonHint": "암호화된 오버레이 경로로 이동: {path}"
         },
         "b2": {
             "hidden": {

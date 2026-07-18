@@ -4803,7 +4803,9 @@
             "decryptFileFromDisk": "ディスクからファイルを復号",
             "fileDecryptedTo": "ファイルを {path} に復号しました",
             "serverHashGated": "暗号化オーバーレイが有効な間はサーバー側チェックサムを利用できません（実ファイルではなく暗号文のハッシュになります）。",
-            "outsideScope": "暗号化エリアの外（ここのファイルは暗号化されていません）"
+            "outsideScope": "暗号化エリアの外（ここのファイルは暗号化されていません）",
+            "overlaysPathButton": "オーバーレイパス",
+            "overlaysPathButtonHint": "暗号化されたオーバーレイパスへ移動: {path}"
         },
         "b2": {
             "hidden": {

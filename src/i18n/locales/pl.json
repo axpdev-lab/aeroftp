@@ -4803,7 +4803,9 @@
             "decryptFileFromDisk": "Odszyfruj plik z dysku",
             "fileDecryptedTo": "Plik odszyfrowany do {path}",
             "serverHashGated": "Suma kontrolna po stronie serwera niedostępna, gdy aktywna jest zaszyfrowana nakładka (obliczyłaby skrót szyfrogramu, a nie Twojego pliku).",
-            "outsideScope": "Poza obszarem zaszyfrowanym (pliki tutaj nie są zaszyfrowane)"
+            "outsideScope": "Poza obszarem zaszyfrowanym (pliki tutaj nie są zaszyfrowane)",
+            "overlaysPathButton": "Ścieżka nakładek",
+            "overlaysPathButtonHint": "Przejdź do zaszyfrowanej ścieżki nakładek: {path}"
         },
         "b2": {
             "hidden": {

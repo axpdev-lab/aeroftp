@@ -4803,7 +4803,9 @@
             "decryptFileFromDisk": "Dešifruj fajl sa diska",
             "fileDecryptedTo": "Fajl dešifrovan u {path}",
             "serverHashGated": "Контролни збир на страни сервера није доступан док је активан шифровани слој (хешовао би шифровани текст, а не вашу датотеку).",
-            "outsideScope": "Изван шифроване зоне (датотеке овде нису шифроване)"
+            "outsideScope": "Изван шифроване зоне (датотеке овде нису шифроване)",
+            "overlaysPathButton": "Путања преклопа",
+            "overlaysPathButtonHint": "Скочи на шифровану путању преклопа: {path}"
         },
         "b2": {
             "hidden": {

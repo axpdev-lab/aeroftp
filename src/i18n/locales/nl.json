@@ -4803,7 +4803,9 @@
             "decryptFileFromDisk": "Bestand van schijf ontsleutelen",
             "fileDecryptedTo": "Bestand ontsleuteld naar {path}",
             "serverHashGated": "Controlesom aan serverzijde niet beschikbaar terwijl een versleutelde overlay actief is (deze zou de cijfertekst hashen, niet uw bestand).",
-            "outsideScope": "Buiten het versleutelde gebied (bestanden hier zijn niet versleuteld)"
+            "outsideScope": "Buiten het versleutelde gebied (bestanden hier zijn niet versleuteld)",
+            "overlaysPathButton": "Overlay-pad",
+            "overlaysPathButtonHint": "Ga naar het versleutelde overlay-pad: {path}"
         },
         "b2": {
             "hidden": {

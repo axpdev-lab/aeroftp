@@ -4803,7 +4803,9 @@
             "decryptFileFromDisk": "Dekrüpteeri fail kettalt",
             "fileDecryptedTo": "Fail dekrüpteeritud asukohta {path}",
             "serverHashGated": "Serveripoolne kontrollsumma pole saadaval, kui krüpteeritud kiht on aktiivne (see räsiks šifreeritud teksti, mitte teie faili).",
-            "outsideScope": "Väljaspool krüpteeritud ala (failid siin ei ole krüpteeritud)"
+            "outsideScope": "Väljaspool krüpteeritud ala (failid siin ei ole krüpteeritud)",
+            "overlaysPathButton": "Ülekatete tee",
+            "overlaysPathButtonHint": "Hüppa krüpteeritud ülekatete teele: {path}"
         },
         "b2": {
             "hidden": {

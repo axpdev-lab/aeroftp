@@ -4822,7 +4822,9 @@
             "decryptFileFromDisk": "Dadgryptio ffeil o'r ddisg",
             "fileDecryptedTo": "Ffeil wedi'i dadgryptio i {path}",
             "serverHashGated": "Nid yw swm gwirio ochr-gweinydd ar gael tra bo haen wedi'i hamgryptio'n weithredol (byddai'n stwnsio'r testun wedi'i amgryptio, nid eich ffeil).",
-            "outsideScope": "Y tu allan i'r ardal wedi'i hamgryptio (nid yw'r ffeiliau yma wedi'u hamgryptio)"
+            "outsideScope": "Y tu allan i'r ardal wedi'i hamgryptio (nid yw'r ffeiliau yma wedi'u hamgryptio)",
+            "overlaysPathButton": "Llwybr Troshaenau",
+            "overlaysPathButtonHint": "Neidio i'r Llwybr Troshaenau wedi'i amgryptio: {path}"
         },
         "b2": {
             "hidden": {

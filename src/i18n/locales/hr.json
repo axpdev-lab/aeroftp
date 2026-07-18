@@ -4803,7 +4803,9 @@
             "decryptFileFromDisk": "Dešifriraj datoteku s diska",
             "fileDecryptedTo": "Datoteka dešifrirana u {path}",
             "serverHashGated": "Kontrolni zbroj na strani poslužitelja nije dostupan dok je aktivan šifrirani sloj (raspršio bi šifrirani tekst, a ne vašu datoteku).",
-            "outsideScope": "Izvan šifrirane zone (datoteke ovdje nisu šifrirane)"
+            "outsideScope": "Izvan šifrirane zone (datoteke ovdje nisu šifrirane)",
+            "overlaysPathButton": "Putanja prekrivača",
+            "overlaysPathButtonHint": "Skoči na šifriranu putanju prekrivača: {path}"
         },
         "b2": {
             "hidden": {
