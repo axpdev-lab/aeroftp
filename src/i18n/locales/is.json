@@ -484,7 +484,8 @@
             "s3TrashEmptySummary": "Þetta eyðir varanlega {count} hlut(um) ({bytes}). Þetta er ekki hægt að afturkalla.",
             "extractOverwriteConfirm": "Að afþjappa hér skrifar yfir {count} fyrirliggjandi atriði: {names}. Halda áfram?",
             "permanentDeleteHint": "Eyðir varanlega aðeins völdum atriðum úr Ruslinu. Þessu er ekki hægt að afturkalla.",
-            "emptyTrashHint": "Eyðir varanlega ÖLLUM atriðum í Ruslinu, ekki bara völdum. Þessu er ekki hægt að afturkalla."
+            "emptyTrashHint": "Eyðir varanlega ÖLLUM atriðum í Ruslinu, ekki bara völdum. Þessu er ekki hægt að afturkalla.",
+            "dropboxPurgeBusinessOnly": "Varanleg eyðing og tæming ruslsins krefjast Dropbox Business/Team reiknings."
         },
         "transfer": {
             "transferring": "Flytur...",

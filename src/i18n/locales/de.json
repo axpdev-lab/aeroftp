@@ -484,7 +484,8 @@
             "s3TrashEmptySummary": "Dadurch werden {count} Objekt(e) ({bytes}) endgültig gelöscht. Diese Aktion kann nicht rückgängig gemacht werden.",
             "extractOverwriteConfirm": "Das Extrahieren hierher überschreibt {count} vorhandene(s) Element(e): {names}. Fortfahren?",
             "permanentDeleteHint": "Löscht nur die ausgewählten Elemente endgültig aus dem Papierkorb. Dies kann nicht rückgängig gemacht werden.",
-            "emptyTrashHint": "Löscht ALLE Elemente im Papierkorb endgültig, nicht nur die ausgewählten. Dies kann nicht rückgängig gemacht werden."
+            "emptyTrashHint": "Löscht ALLE Elemente im Papierkorb endgültig, nicht nur die ausgewählten. Dies kann nicht rückgängig gemacht werden.",
+            "dropboxPurgeBusinessOnly": "Endgültiges Löschen und Papierkorb leeren erfordern ein Dropbox Business/Team-Konto."
         },
         "transfer": {
             "transferring": "Übertragung...",

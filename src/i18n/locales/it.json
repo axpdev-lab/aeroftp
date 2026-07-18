@@ -890,7 +890,8 @@
             "s3TrashEmptySummary": "Verranno eliminati definitivamente {count} oggetti ({bytes}). Questa operazione non può essere annullata.",
             "extractOverwriteConfirm": "L'estrazione qui sovrascriverà {count} elemento/i esistente/i: {names}. Continuare?",
             "permanentDeleteHint": "Elimina definitivamente solo gli elementi selezionati dal Cestino. Questa operazione non può essere annullata.",
-            "emptyTrashHint": "Elimina definitivamente TUTTI gli elementi nel Cestino, non solo quelli selezionati. Questa operazione non può essere annullata."
+            "emptyTrashHint": "Elimina definitivamente TUTTI gli elementi nel Cestino, non solo quelli selezionati. Questa operazione non può essere annullata.",
+            "dropboxPurgeBusinessOnly": "Elimina definitivamente e Svuota cestino richiedono un account Dropbox Business/Team."
         },
         "transfer": {
             "transferring": "Trasferimento in corso...",

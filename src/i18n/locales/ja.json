@@ -484,7 +484,8 @@
             "s3TrashEmptySummary": "{count} 個のオブジェクト ({bytes}) を完全に削除します。この操作は元に戻せません。",
             "extractOverwriteConfirm": "ここに展開すると、既存の {count} 個の項目が上書きされます: {names}。続行しますか?",
             "permanentDeleteHint": "ゴミ箱から選択した項目のみを完全に削除します。この操作は元に戻せません。",
-            "emptyTrashHint": "選択した項目だけでなく、ゴミ箱内のすべての項目を完全に削除します。この操作は元に戻せません。"
+            "emptyTrashHint": "選択した項目だけでなく、ゴミ箱内のすべての項目を完全に削除します。この操作は元に戻せません。",
+            "dropboxPurgeBusinessOnly": "完全削除とゴミ箱を空にするには、Dropbox Business/Team アカウントが必要です。"
         },
         "transfer": {
             "transferring": "転送中...",

@@ -8859,6 +8859,23 @@ pub async fn dropbox_permanent_delete(
     db.permanent_delete(&path).await.map_err(|e| e.to_string())
 }
 
+/// Return the Dropbox account tier ("basic" | "pro" | "business"). The GUI
+/// gates Permanent Delete / Empty Trash on "business" because
+/// `files/permanently_delete` is a Dropbox Business only endpoint.
+#[tauri::command]
+pub async fn dropbox_account_type(state: State<'_, ProviderState>) -> Result<String, String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or_else(|| "Not connected".to_string())?;
+    if provider.provider_type() != ProviderType::Dropbox {
+        return Err("Only available for Dropbox".to_string());
+    }
+    let db = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
+        .as_any_mut()
+        .downcast_mut::<crate::providers::dropbox::DropboxProvider>()
+        .ok_or_else(|| "Dropbox downcast failed".to_string())?;
+    db.account_type().await.map_err(|e| e.to_string())
+}
+
 /// Set tags on a Dropbox file (replaces existing tags)
 #[tauri::command]
 pub async fn dropbox_set_tags(

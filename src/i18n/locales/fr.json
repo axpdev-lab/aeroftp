@@ -484,7 +484,8 @@
             "s3TrashEmptySummary": "Cela supprimera définitivement {count} objet(s) ({bytes}). Cette action est irréversible.",
             "extractOverwriteConfirm": "Extraire ici écrasera {count} élément(s) existant(s) : {names}. Continuer ?",
             "permanentDeleteHint": "Supprime définitivement uniquement les éléments sélectionnés de la Corbeille. Cette action est irréversible.",
-            "emptyTrashHint": "Supprime définitivement TOUS les éléments de la Corbeille, pas seulement ceux sélectionnés. Cette action est irréversible."
+            "emptyTrashHint": "Supprime définitivement TOUS les éléments de la Corbeille, pas seulement ceux sélectionnés. Cette action est irréversible.",
+            "dropboxPurgeBusinessOnly": "La suppression définitive et le vidage de la corbeille nécessitent un compte Dropbox Business/Team."
         },
         "transfer": {
             "transferring": "Transfert en cours...",

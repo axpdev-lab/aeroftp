@@ -484,7 +484,8 @@
             "s3TrashEmptySummary": "Tai visam laikui ištrins {count} objektų ({bytes}). Šio veiksmo anuliuoti negalima.",
             "extractOverwriteConfirm": "Išskleidus čia bus perrašyta {count} esamų elementų: {names}. Tęsti?",
             "permanentDeleteHint": "Visam laikui ištrina tik pasirinktus elementus iš Šiukšlinės. To negalima anuliuoti.",
-            "emptyTrashHint": "Visam laikui ištrina VISUS Šiukšlinės elementus, ne tik pasirinktus. To negalima anuliuoti."
+            "emptyTrashHint": "Visam laikui ištrina VISUS Šiukšlinės elementus, ne tik pasirinktus. To negalima anuliuoti.",
+            "dropboxPurgeBusinessOnly": "Ištrynimui visam laikui ir šiukšlinės išvalymui reikia Dropbox Business/Team paskyros."
         },
         "transfer": {
             "transferring": "Perduodama...",

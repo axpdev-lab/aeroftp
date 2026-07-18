@@ -484,7 +484,8 @@
             "s3TrashEmptySummary": "Tímto se trvale smaže {count} objektů ({bytes}). Tuto akci nelze vrátit zpět.",
             "extractOverwriteConfirm": "Rozbalení sem přepíše {count} existujících položek: {names}. Pokračovat?",
             "permanentDeleteHint": "Trvale odstraní pouze vybrané položky z Koše. Tuto akci nelze vrátit zpět.",
-            "emptyTrashHint": "Trvale odstraní VŠECHNY položky v Koši, nejen vybrané. Tuto akci nelze vrátit zpět."
+            "emptyTrashHint": "Trvale odstraní VŠECHNY položky v Koši, nejen vybrané. Tuto akci nelze vrátit zpět.",
+            "dropboxPurgeBusinessOnly": "Trvalé odstranění a vyprázdnění koše vyžadují účet Dropbox Business/Team."
         },
         "transfer": {
             "transferring": "Přenášení...",

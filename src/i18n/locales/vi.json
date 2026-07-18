@@ -484,7 +484,8 @@
             "s3TrashEmptySummary": "Thao tác này sẽ xóa vĩnh viễn {count} đối tượng ({bytes}). Thao tác này không thể hoàn tác.",
             "extractOverwriteConfirm": "Giải nén tại đây sẽ ghi đè {count} mục hiện có: {names}. Tiếp tục?",
             "permanentDeleteHint": "Xóa vĩnh viễn chỉ các mục đã chọn khỏi Thùng rác. Không thể hoàn tác thao tác này.",
-            "emptyTrashHint": "Xóa vĩnh viễn TẤT CẢ các mục trong Thùng rác, không chỉ những mục đã chọn. Không thể hoàn tác thao tác này."
+            "emptyTrashHint": "Xóa vĩnh viễn TẤT CẢ các mục trong Thùng rác, không chỉ những mục đã chọn. Không thể hoàn tác thao tác này.",
+            "dropboxPurgeBusinessOnly": "Xóa vĩnh viễn và Dọn sạch thùng rác yêu cầu tài khoản Dropbox Business/Team."
         },
         "transfer": {
             "transferring": "Đang truyền...",

@@ -19146,6 +19146,7 @@ pub fn run() {
             provider_commands::dropbox_list_trash,
             provider_commands::dropbox_restore_from_trash,
             provider_commands::dropbox_permanent_delete,
+            provider_commands::dropbox_account_type,
             provider_commands::dropbox_set_tags,
             provider_commands::dropbox_get_tags,
             provider_commands::onedrive_list_trash,

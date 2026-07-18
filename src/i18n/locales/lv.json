@@ -484,7 +484,8 @@
             "s3TrashEmptySummary": "Tas neatgriezeniski dzēsīs {count} objektu(s) ({bytes}). Šo darbību nevar atsaukt.",
             "extractOverwriteConfirm": "Izvilkšana šeit pārrakstīs {count} esošus vienumus: {names}. Turpināt?",
             "permanentDeleteHint": "Neatgriezeniski dzēš tikai atlasītos vienumus no Miskastes. To nevar atsaukt.",
-            "emptyTrashHint": "Neatgriezeniski dzēš VISUS Miskastes vienumus, ne tikai atlasītos. To nevar atsaukt."
+            "emptyTrashHint": "Neatgriezeniski dzēš VISUS Miskastes vienumus, ne tikai atlasītos. To nevar atsaukt.",
+            "dropboxPurgeBusinessOnly": "Neatgriezeniska dzēšana un miskastes iztukšošana prasa Dropbox Business/Team kontu."
         },
         "transfer": {
             "transferring": "Pārsūta...",

@@ -484,7 +484,8 @@
             "s3TrashEmptySummary": "Honek {count} objektu ({bytes}) behin betiko ezabatuko ditu. Ekintza hau ezin da desegin.",
             "extractOverwriteConfirm": "Hemen erauzteak lehendik dauden {count} elementu gainidatziko ditu: {names}. Jarraitu?",
             "permanentDeleteHint": "Hautatutako elementuak soilik ezabatzen ditu behin betiko Zakarrontzitik. Ezin da desegin.",
-            "emptyTrashHint": "Zakarrontziko elementu GUZTIAK ezabatzen ditu behin betiko, ez soilik hautatutakoak. Ezin da desegin."
+            "emptyTrashHint": "Zakarrontziko elementu GUZTIAK ezabatzen ditu behin betiko, ez soilik hautatutakoak. Ezin da desegin.",
+            "dropboxPurgeBusinessOnly": "Behin betiko ezabatzeak eta zakarrontzia hustzeak Dropbox Business/Team kontua behar dute."
         },
         "transfer": {
             "transferring": "Transferitzen...",

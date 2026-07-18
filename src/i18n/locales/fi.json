@@ -484,7 +484,8 @@
             "s3TrashEmptySummary": "Tämä poistaa pysyvästi {count} objektia ({bytes}). Tätä toimintoa ei voi kumota.",
             "extractOverwriteConfirm": "Tänne purkaminen korvaa {count} olemassa olevaa kohdetta: {names}. Jatketaanko?",
             "permanentDeleteHint": "Poistaa pysyvästi vain valitut kohteet roskakorista. Tätä ei voi kumota.",
-            "emptyTrashHint": "Poistaa pysyvästi KAIKKI roskakorin kohteet, ei vain valittuja. Tätä ei voi kumota."
+            "emptyTrashHint": "Poistaa pysyvästi KAIKKI roskakorin kohteet, ei vain valittuja. Tätä ei voi kumota.",
+            "dropboxPurgeBusinessOnly": "Pysyvä poisto ja roskakorin tyhjennys vaativat Dropbox Business/Team -tilin."
         },
         "transfer": {
             "transferring": "Siirretään...",

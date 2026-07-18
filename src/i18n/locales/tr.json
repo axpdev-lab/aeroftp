@@ -484,7 +484,8 @@
             "s3TrashEmptySummary": "Bu, {count} nesneyi ({bytes}) kalıcı olarak silecek. Bu işlem geri alınamaz.",
             "extractOverwriteConfirm": "Buraya çıkarmak mevcut {count} öğenin üzerine yazacak: {names}. Devam edilsin mi?",
             "permanentDeleteHint": "Yalnızca seçili öğeleri Çöp Kutusu'ndan kalıcı olarak siler. Bu işlem geri alınamaz.",
-            "emptyTrashHint": "Yalnızca seçili olanları değil, Çöp Kutusu'ndaki TÜM öğeleri kalıcı olarak siler. Bu işlem geri alınamaz."
+            "emptyTrashHint": "Yalnızca seçili olanları değil, Çöp Kutusu'ndaki TÜM öğeleri kalıcı olarak siler. Bu işlem geri alınamaz.",
+            "dropboxPurgeBusinessOnly": "Kalıcı Silme ve Çöp Kutusunu Boşaltma, Dropbox Business/Team hesabı gerektirir."
         },
         "transfer": {
             "transferring": "Aktarılıyor...",

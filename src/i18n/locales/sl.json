@@ -484,7 +484,8 @@
             "s3TrashEmptySummary": "S tem bo trajno izbrisano {count} predmetov ({bytes}). Tega dejanja ni mogoče razveljaviti.",
             "extractOverwriteConfirm": "Razširjanje sem bo prepisalo {count} obstoječih elementov: {names}. Nadaljujem?",
             "permanentDeleteHint": "Trajno izbriše samo izbrane elemente iz Koša. Tega ni mogoče razveljaviti.",
-            "emptyTrashHint": "Trajno izbriše VSE elemente v Košu, ne samo izbranih. Tega ni mogoče razveljaviti."
+            "emptyTrashHint": "Trajno izbriše VSE elemente v Košu, ne samo izbranih. Tega ni mogoče razveljaviti.",
+            "dropboxPurgeBusinessOnly": "Trajno brisanje in praznjenje koša zahtevata račun Dropbox Business/Team."
         },
         "transfer": {
             "transferring": "Prenašanje...",

@@ -484,7 +484,8 @@
             "s3TrashEmptySummary": "Isto eliminará permanentemente {count} objeto(s) ({bytes}). Esta ação não pode ser desfeita.",
             "extractOverwriteConfirm": "Extrair aqui irá substituir {count} item(ns) existente(s): {names}. Continuar?",
             "permanentDeleteHint": "Exclui permanentemente apenas os itens selecionados da Lixeira. Isto não pode ser desfeito.",
-            "emptyTrashHint": "Exclui permanentemente TODOS os itens da Lixeira, não apenas os selecionados. Isto não pode ser desfeito."
+            "emptyTrashHint": "Exclui permanentemente TODOS os itens da Lixeira, não apenas os selecionados. Isto não pode ser desfeito.",
+            "dropboxPurgeBusinessOnly": "Excluir permanentemente e Esvaziar lixeira exigem uma conta Dropbox Business/Team."
         },
         "transfer": {
             "transferring": "Transferindo...",

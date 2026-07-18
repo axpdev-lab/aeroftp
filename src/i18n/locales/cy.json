@@ -484,7 +484,8 @@
             "s3TrashEmptySummary": "Bydd hyn yn dileu {count} gwrthrych ({bytes}) yn barhaol. Ni ellir dadwneud hyn.",
             "extractOverwriteConfirm": "Bydd echdynnu yma yn trosysgrifo {count} eitem sy'n bodoli eisoes: {names}. Parhau?",
             "permanentDeleteHint": "Yn dileu'n barhaol dim ond yr eitemau a ddewiswyd o'r Sbwriel. Ni ellir dadwneud hyn.",
-            "emptyTrashHint": "Yn dileu'n barhaol BOB eitem yn y Sbwriel, nid dim ond y rhai a ddewiswyd. Ni ellir dadwneud hyn."
+            "emptyTrashHint": "Yn dileu'n barhaol BOB eitem yn y Sbwriel, nid dim ond y rhai a ddewiswyd. Ni ellir dadwneud hyn.",
+            "dropboxPurgeBusinessOnly": "Mae Dileu'n Barhaol a Gwagio'r Bin yn gofyn am gyfrif Dropbox Business/Team."
         },
         "transfer": {
             "transferring": "Yn trosglwyddo...",

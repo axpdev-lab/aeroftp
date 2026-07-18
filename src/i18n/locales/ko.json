@@ -484,7 +484,8 @@
             "s3TrashEmptySummary": "{count}개의 개체 ({bytes})가 영구적으로 삭제됩니다. 이 작업은 되돌릴 수 없습니다.",
             "extractOverwriteConfirm": "여기에 압축을 풀면 기존 항목 {count}개를 덮어씁니다: {names}. 계속하시겠습니까?",
             "permanentDeleteHint": "휴지통에서 선택한 항목만 영구적으로 삭제합니다. 이 작업은 취소할 수 없습니다.",
-            "emptyTrashHint": "선택한 항목뿐만 아니라 휴지통의 모든 항목을 영구적으로 삭제합니다. 이 작업은 취소할 수 없습니다."
+            "emptyTrashHint": "선택한 항목뿐만 아니라 휴지통의 모든 항목을 영구적으로 삭제합니다. 이 작업은 취소할 수 없습니다.",
+            "dropboxPurgeBusinessOnly": "영구 삭제 및 휴지통 비우기에는 Dropbox Business/Team 계정이 필요합니다."
         },
         "transfer": {
             "transferring": "전송 중...",

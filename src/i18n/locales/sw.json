@@ -484,7 +484,8 @@
             "s3TrashEmptySummary": "Hii itafuta kabisa vitu {count} ({bytes}). Kitendo hiki hakiwezi kutenduliwa.",
             "extractOverwriteConfirm": "Kuchambua hapa kutaandika juu ya vipengele {count} vilivyopo: {names}. Kuendelea?",
             "permanentDeleteHint": "Inafuta kabisa vipengele vilivyochaguliwa pekee kutoka kwenye Tapo. Hatua hii haiwezi kutenduliwa.",
-            "emptyTrashHint": "Inafuta kabisa vipengele VYOTE kwenye Tapo, si vilivyochaguliwa pekee. Hatua hii haiwezi kutenduliwa."
+            "emptyTrashHint": "Inafuta kabisa vipengele VYOTE kwenye Tapo, si vilivyochaguliwa pekee. Hatua hii haiwezi kutenduliwa.",
+            "dropboxPurgeBusinessOnly": "Kufuta Kabisa na Kumwaga Tapisho kunahitaji akaunti ya Dropbox Business/Team."
         },
         "transfer": {
             "transferring": "Inahamisha...",
