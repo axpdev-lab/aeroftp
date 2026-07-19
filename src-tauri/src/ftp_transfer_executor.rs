@@ -8,7 +8,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
-use tauri::{AppHandle, Emitter};
+use tauri::AppHandle;
 use tokio_util::sync::CancellationToken;
 use tracing::warn;
 
@@ -79,9 +79,7 @@ impl TransferExecutor for FtpDownloadExecutor {
     async fn execute(&self, entry: TransferEntry) -> TransferOutcome {
         let file_transfer_id = entry.id.clone();
 
-        let _ = self.app.emit(
-            "transfer_event",
-            crate::TransferEvent {
+        crate::transfer_event_sink::emit_gui_transfer_event(&self.app, crate::TransferEvent {
                 event_type: "file_start".to_string(),
                 transfer_id: file_transfer_id.clone(),
                 filename: entry.display_name.clone(),
@@ -102,8 +100,7 @@ impl TransferExecutor for FtpDownloadExecutor {
                 path: Some(entry.remote_path.clone()),
                 delta_stats: None,
                 fallback_reason: None,
-            },
-        );
+            },);
 
         let retry_policy = self.runtime_settings.retry_policy();
         let mut last_error = String::new();
@@ -183,9 +180,7 @@ impl TransferExecutor for FtpDownloadExecutor {
                                         0
                                     };
 
-                                    let _ = app.emit(
-                                        "transfer_event",
-                                        crate::TransferEvent {
+                                    crate::transfer_event_sink::emit_gui_transfer_event(&app, crate::TransferEvent {
                                             event_type: "progress".to_string(),
                                             transfer_id: transfer_id.clone(),
                                             filename: display_name.clone(),
@@ -206,8 +201,7 @@ impl TransferExecutor for FtpDownloadExecutor {
                                             path: Some(remote_path_for_progress.clone()),
                                             delta_stats: None,
                                             fallback_reason: None,
-                                        },
-                                    );
+                                        },);
 
                                     true
                                 },
@@ -238,9 +232,7 @@ impl TransferExecutor for FtpDownloadExecutor {
 
             match result {
                 Ok(()) => {
-                    let _ = self.app.emit(
-                        "transfer_event",
-                        crate::TransferEvent {
+                    crate::transfer_event_sink::emit_gui_transfer_event(&self.app, crate::TransferEvent {
                             event_type: "file_complete".to_string(),
                             transfer_id: file_transfer_id.clone(),
                             filename: entry.display_name.clone(),
@@ -250,8 +242,7 @@ impl TransferExecutor for FtpDownloadExecutor {
                             path: Some(entry.remote_path.clone()),
                             delta_stats: None,
                             fallback_reason: None,
-                        },
-                    );
+                        },);
                     return TransferOutcome::Success;
                 }
                 Err(error) => {
@@ -296,9 +287,7 @@ impl TransferExecutor for FtpDownloadExecutor {
             }
         };
 
-        let _ = self.app.emit(
-            "transfer_event",
-            crate::TransferEvent {
+        crate::transfer_event_sink::emit_gui_transfer_event(&self.app, crate::TransferEvent {
                 event_type: "file_error".to_string(),
                 transfer_id: file_transfer_id,
                 filename: entry.display_name.clone(),
@@ -308,8 +297,7 @@ impl TransferExecutor for FtpDownloadExecutor {
                 path: Some(entry.remote_path.clone()),
                 delta_stats: None,
                 fallback_reason: None,
-            },
-        );
+            },);
 
         TransferOutcome::Failed(failure)
     }
@@ -335,9 +323,7 @@ impl TransferExecutor for FtpUploadExecutor {
                 .unwrap_or(0)
         };
 
-        let _ = self.app.emit(
-            "transfer_event",
-            crate::TransferEvent {
+        crate::transfer_event_sink::emit_gui_transfer_event(&self.app, crate::TransferEvent {
                 event_type: "file_start".to_string(),
                 transfer_id: file_transfer_id.clone(),
                 filename: entry.display_name.clone(),
@@ -358,8 +344,7 @@ impl TransferExecutor for FtpUploadExecutor {
                 path: Some(entry.remote_path.clone()),
                 delta_stats: None,
                 fallback_reason: None,
-            },
-        );
+            },);
 
         let retry_policy = self.runtime_settings.retry_policy();
         let mut last_error = String::new();
@@ -436,9 +421,7 @@ impl TransferExecutor for FtpUploadExecutor {
                                         0
                                     };
 
-                                    let _ = app.emit(
-                                        "transfer_event",
-                                        crate::TransferEvent {
+                                    crate::transfer_event_sink::emit_gui_transfer_event(&app, crate::TransferEvent {
                                             event_type: "progress".to_string(),
                                             transfer_id: transfer_id.clone(),
                                             filename: display_name.clone(),
@@ -459,8 +442,7 @@ impl TransferExecutor for FtpUploadExecutor {
                                             path: Some(remote_path_for_progress.clone()),
                                             delta_stats: None,
                                             fallback_reason: None,
-                                        },
-                                    );
+                                        },);
 
                                     true
                                 },
@@ -487,9 +469,7 @@ impl TransferExecutor for FtpUploadExecutor {
 
             match result {
                 Ok(()) => {
-                    let _ = self.app.emit(
-                        "transfer_event",
-                        crate::TransferEvent {
+                    crate::transfer_event_sink::emit_gui_transfer_event(&self.app, crate::TransferEvent {
                             event_type: "file_complete".to_string(),
                             transfer_id: file_transfer_id.clone(),
                             filename: entry.display_name.clone(),
@@ -499,8 +479,7 @@ impl TransferExecutor for FtpUploadExecutor {
                             path: Some(entry.remote_path.clone()),
                             delta_stats: None,
                             fallback_reason: None,
-                        },
-                    );
+                        },);
                     return TransferOutcome::Success;
                 }
                 Err(error) => {
@@ -544,9 +523,7 @@ impl TransferExecutor for FtpUploadExecutor {
             }
         };
 
-        let _ = self.app.emit(
-            "transfer_event",
-            crate::TransferEvent {
+        crate::transfer_event_sink::emit_gui_transfer_event(&self.app, crate::TransferEvent {
                 event_type: "file_error".to_string(),
                 transfer_id: file_transfer_id,
                 filename: entry.display_name.clone(),
@@ -556,8 +533,7 @@ impl TransferExecutor for FtpUploadExecutor {
                 path: Some(entry.remote_path.clone()),
                 delta_stats: None,
                 fallback_reason: None,
-            },
-        );
+            },);
 
         TransferOutcome::Failed(failure)
     }

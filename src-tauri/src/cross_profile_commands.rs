@@ -25,7 +25,7 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
-use tauri::{AppHandle, Emitter};
+use tauri::AppHandle;
 use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 
@@ -135,7 +135,7 @@ pub struct CrossProfileTransferSummary {
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 fn emit_transfer_event(app: &AppHandle, event: TransferEvent) {
-    let _ = app.emit("transfer_event", event);
+    crate::transfer_event_sink::emit_gui_transfer_event(&app, event);
 }
 
 fn now_ms() -> u64 {

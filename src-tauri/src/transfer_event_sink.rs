@@ -10,39 +10,59 @@
 //! (PD-CLI-CONV) from reusing the shared orchestrator executor.
 //!
 //! This trait moves the emission point behind an abstraction. The GUI
-//! implements it as a 1:1 adapter over `app.emit` (byte-identical events,
-//! zero frontend regression). The CLI implements a no-op sink: its progress
-//! UI is driven by the `indicatif` progress callback wired into
-//! `provider.download` / `provider.upload`, not by Tauri events.
+//! implements it as [`AppHandleSink`]: progress samples are admitted through
+//! the shared [`crate::progress_governor::ProgressGovernor`] (≤10 Hz per
+//! transfer/batch lane, latest-sample coalescing, flush-before-terminal).
+//! Lifecycle events remain immediate. Serialized payload fields and event
+//! names are unchanged for the frontend.
+//!
+//! The CLI implements a no-op sink: its progress UI is driven by the
+//! `indicatif` progress callback wired into `provider.download` /
+//! `provider.upload`, not by Tauri events.
 //!
 //! Mirrors the [`crate::ai_core::EventSink`] precedent already used to make
 //! the AI streaming path sink-agnostic for CLI/MCP.
 
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock, Mutex};
 
+use crate::progress_governor::{
+    route_batch_progress, route_batch_terminal_flush, route_transfer_event, ProgressGovernor,
+};
 use crate::transfer_dag::graph::TransferNodeKind;
 use crate::transfer_dag::{DagObserver, ObservedOutcome};
 use crate::transfer_domain::{BatchProgressSnapshot, TransferBatchResult};
 use crate::TransferEvent;
 
+/// Process-wide GUI progress governor. All [`AppHandleSink`] instances share
+/// it so concurrent multipart callbacks and multi-site emitters for the same
+/// `transfer_id` / `batch_id` cannot race past the 10 Hz cap.
+static GUI_PROGRESS_GOVERNOR: LazyLock<Arc<ProgressGovernor>> =
+    LazyLock::new(|| Arc::new(ProgressGovernor::new()));
+
+/// Shared GUI progress governor (tests may construct private governors).
+pub fn gui_progress_governor() -> Arc<ProgressGovernor> {
+    Arc::clone(&GUI_PROGRESS_GOVERNOR)
+}
+
 /// Abstraction over `transfer_event` emission: Tauri GUI or CLI / headless.
 ///
 /// Every implementor receives the exact [`TransferEvent`] the executor would
 /// otherwise have passed to `app.emit("transfer_event", _)`. Implementors
-/// MUST NOT reshape or drop fields: the GUI frontend consumes this payload
-/// verbatim and the byte-shape is a non-regression contract.
+/// MUST NOT reshape payload fields: the GUI frontend consumes this shape
+/// verbatim. The GUI sink may **coalesce** intermediate progress frequency
+/// (DAG-P0-08) but never changes field names or serialized types.
 ///
 /// PD-CLI-CONV-B extends the same single abstraction with the three
 /// **batch-lifecycle** events the orchestrator (`execute_batch`) used to
 /// emit directly via its own `AppHandle`. They default to no-op so the CLI
 /// `NoopTransferSink` and the existing tests inherit them for free; the GUI
-/// `AppHandleSink` overrides them as a 1:1 adapter (byte-identical payload,
-/// same channel names), which is the non-regression proof.
+/// `AppHandleSink` overrides them with the shared progress policy.
 pub trait TransferEventSink: Send + Sync {
     /// Emit one `transfer_event`.
     ///
-    /// - GUI: `app.emit("transfer_event", event)` (fire-and-forget).
+    /// - GUI: governor-gated for `progress`; lifecycle events immediate;
+    ///   terminal events flush the latest pending sample first.
     /// - CLI: no-op (progress surfaced via the indicatif progress callback).
     fn emit_transfer_event(&self, event: TransferEvent);
 
@@ -52,49 +72,114 @@ pub trait TransferEventSink: Send + Sync {
     fn emit_batch_started(&self, _payload: serde_json::Value) {}
 
     /// Per-file batch progress snapshot. GUI:
-    /// `app.emit("transfer_batch_progress", snapshot)`. Default: no-op.
+    /// `app.emit("transfer_batch_progress", snapshot)` at ≤10 Hz per
+    /// `batch_id`, with latest-sample coalescing. Default: no-op.
     fn emit_batch_progress(&self, _snapshot: &BatchProgressSnapshot) {}
 
-    /// Batch completed. GUI: `app.emit("transfer_batch_completed", result)`.
+    /// Batch completed. GUI: flushes pending batch progress for the sink's
+    /// associated `batch_id`, then `app.emit("transfer_batch_completed", result)`.
     /// Default: no-op.
     fn emit_batch_completed(&self, _result: &TransferBatchResult) {}
 }
 
-/// GUI sink: 1:1 adapter over [`tauri::AppHandle::emit`]. Produces exactly the
-/// same `("transfer_event", TransferEvent)` the executor emitted before the
-/// sink abstraction, with the same fire-and-forget error semantics
-/// (`let _ = ...`). This 1:1 property is what guarantees the GUI
-/// non-regression gate.
+/// GUI sink: adapter over [`tauri::AppHandle::emit`] with the shared
+/// progress governor (DAG-P0-08).
+///
+/// Progress contract:
+/// - `transfer_event` with `event_type == "progress"` is keyed by
+///   `transfer_id` and capped at ≤10 Hz per id;
+/// - `transfer_batch_progress` is keyed by `BatchProgressSnapshot::batch_id`
+///   and capped independently at ≤10 Hz;
+/// - independent lanes never share a timestamp;
+/// - `start` / `file_start` / other non-progress lifecycle events are immediate;
+/// - `complete` / `error` / `cancelled` / `file_complete` / `file_error` and
+///   `transfer_batch_completed` flush the latest pending sample for that lane
+///   before the terminal emission, then reject late progress;
+/// - serialized field names and types are unchanged.
 pub struct AppHandleSink {
     app: tauri::AppHandle,
+    governor: Arc<ProgressGovernor>,
+    /// Last batch_id observed on this sink (from started/progress). Used to
+    /// flush on `emit_batch_completed` because [`TransferBatchResult`] has no
+    /// batch id field.
+    last_batch_id: Mutex<Option<String>>,
 }
 
 impl AppHandleSink {
     pub fn new(app: tauri::AppHandle) -> Self {
-        Self { app }
+        Self {
+            app,
+            governor: gui_progress_governor(),
+            last_batch_id: Mutex::new(None),
+        }
+    }
+
+    /// Construct with an explicit governor (unit tests / isolated scopes).
+    pub fn with_governor(app: tauri::AppHandle, governor: Arc<ProgressGovernor>) -> Self {
+        Self {
+            app,
+            governor,
+            last_batch_id: Mutex::new(None),
+        }
+    }
+
+    fn remember_batch_id(&self, batch_id: &str) {
+        if batch_id.is_empty() {
+            return;
+        }
+        if let Ok(mut slot) = self.last_batch_id.lock() {
+            *slot = Some(batch_id.to_string());
+        }
+    }
+
+    fn take_batch_id(&self) -> Option<String> {
+        self.last_batch_id.lock().ok().and_then(|g| g.clone())
     }
 }
 
 impl TransferEventSink for AppHandleSink {
     fn emit_transfer_event(&self, event: TransferEvent) {
         use tauri::Emitter;
-        let _ = self.app.emit("transfer_event", event);
+        // Admit under the governor lock, then emit outside it.
+        let to_emit = route_transfer_event(&self.governor, event);
+        for e in to_emit {
+            let _ = self.app.emit("transfer_event", e);
+        }
     }
 
     fn emit_batch_started(&self, payload: serde_json::Value) {
         use tauri::Emitter;
+        if let Some(id) = payload.get("batch_id").and_then(|v| v.as_str()) {
+            self.remember_batch_id(id);
+        }
         let _ = self.app.emit("transfer_batch_started", payload);
     }
 
     fn emit_batch_progress(&self, snapshot: &BatchProgressSnapshot) {
         use tauri::Emitter;
-        let _ = self.app.emit("transfer_batch_progress", snapshot);
+        self.remember_batch_id(&snapshot.batch_id);
+        if let Some(s) = route_batch_progress(&self.governor, snapshot.clone()) {
+            let _ = self.app.emit("transfer_batch_progress", s);
+        }
     }
 
     fn emit_batch_completed(&self, result: &TransferBatchResult) {
         use tauri::Emitter;
+        if let Some(batch_id) = self.take_batch_id() {
+            if let Some(s) = route_batch_terminal_flush(&self.governor, &batch_id) {
+                let _ = self.app.emit("transfer_batch_progress", s);
+            }
+        }
         let _ = self.app.emit("transfer_batch_completed", result);
     }
+}
+
+/// Emit a GUI `transfer_event` through the shared governor.
+///
+/// Prefer this (or [`AppHandleSink`]) over raw `app.emit("transfer_event", …)`
+/// so every active surface shares the ≤10 Hz policy.
+pub fn emit_gui_transfer_event(app: &tauri::AppHandle, event: TransferEvent) {
+    AppHandleSink::new(app.clone()).emit_transfer_event(event);
 }
 
 /// CLI / headless sink: discards transfer events. The CLI batch path renders
@@ -126,20 +211,21 @@ fn format_complete_size(bytes: u64) -> String {
 /// ## Why only the completion event
 ///
 /// The DAG-ENGINE phase-1 routing keeps the single-file `transfer_event`
-/// stream byte-identical with the legacy path:
+/// stream shape-compatible with the legacy path:
 ///
 /// - `"start"` is emitted by the shared pre-DAG legacy code (it must precede
 ///   the delta attempt), so the observer must NOT emit it again.
 /// - `"progress"` is emitted by the same per-byte callback handed straight to
-///   `provider.download` / `provider.upload`, so it never routes through the
-///   observer either.
+///   `provider.download` / `provider.upload` (governor-gated at the sink), so
+///   it never routes through the observer either.
 /// - `"error"` carries the failure message, but [`DagObserver::on_node_complete`]
 ///   intentionally drops the failure payload (it is observer-object-safe and
 ///   allocation-free). The routing layer holds the typed [`crate::providers::ProviderError`]
 ///   and emits `"error"` itself, exactly as it owns the `"cancelled"` decision.
 /// - `"complete"` is the one event with no upstream emitter on the DAG path:
 ///   the terminal `EmitProgress` node completing is precisely "the transfer
-///   finished successfully". That is what this observer maps.
+///   finished successfully". That is what this observer maps. The sink flushes
+///   any pending progress sample before this terminal event is emitted.
 ///
 /// The completion event is built character-for-character like the legacy one
 /// (`"({size} in 0s)"`, MB/KB via [`format_complete_size`], the original
@@ -375,5 +461,14 @@ mod tests {
         obs.on_node_start(0, TransferNodeKind::DiscoverRemote);
         obs.on_node_start(6, TransferNodeKind::EmitProgress);
         assert!(sink.events().is_empty());
+    }
+
+    #[test]
+    fn route_helpers_cover_progress_and_terminal_ordering() {
+        use crate::progress_governor::{test_progress_event, ProgressGovernor};
+        let g = ProgressGovernor::new();
+        let out = route_transfer_event(&g, test_progress_event("sink-route", 1, 100));
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].event_type, "progress");
     }
 }

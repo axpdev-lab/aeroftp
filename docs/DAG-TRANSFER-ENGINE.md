@@ -259,8 +259,25 @@ profile. These are follow-up tasks, not guarantees of the present engine.
 `DagObserver` provides a shared node lifecycle abstraction. The GUI's
 `GuiDagObserver` is used on the shaped single-file path, but surface start,
 byte-progress, and error events still come from `TransferEventSink` and
-provider callbacks. The executor's bytes and retries fields remain zero until
-the corresponding bindings are wired.
+provider callbacks — not from DAG node lifecycle. Byte progress is therefore
+still adapter-derived, not DAG-derived.
+
+GUI progress pressure is governed by the shared `ProgressGovernor`
+(DAG-P0-08) behind `AppHandleSink` / `emit_gui_transfer_event`:
+
+- `transfer_event` with `event_type == "progress"` is capped at ≤10 Hz per
+  `transfer_id` (latest-sample coalescing; first sample immediate);
+- `transfer_batch_progress` is capped independently at ≤10 Hz per
+  `batch_id`;
+- start / complete / error / cancelled (and file_* terminal variants) are
+  immediate; terminal emission always flushes the latest pending sample for
+  that lane first, then rejects late progress;
+- concurrent multipart callbacks cannot double-claim one 100 ms slot;
+- CLI `indicatif`, MCP progress notifications, and archive/sync-scan
+  throttles remain separate product domains.
+
+The executor's bytes and retries fields remain zero until the corresponding
+bindings are wired (P2 telemetry).
 
 ## Capability contract
 
