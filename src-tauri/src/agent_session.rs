@@ -650,7 +650,7 @@ fn static_http_clone_pool_slots(provider_type: ProviderType) -> Option<(u16, u16
         // DAG-P1-05B: Dropbox + Box multipart part workers, ceiling 4;
         // list remains locked-single.
         ProviderType::Dropbox | ProviderType::Box => Some((4, 1)),
-        // DAG-P1-05C: pCloud deliberately stays off this registry — live
+        // DAG-P1-05C: pCloud deliberately stays off this registry because live
         // concurrent upload_write returns result 2068, so executor remains
         // LockedSingle (hints may still advertise multipart_max_parallel=2).
         _ => None,

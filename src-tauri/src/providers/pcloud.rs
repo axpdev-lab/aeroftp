@@ -60,7 +60,7 @@ fn pcloud_is_throttle_result(result: u32) -> bool {
 fn pcloud_throttle_error(context: &str, error: Option<&str>) -> ProviderError {
     let detail = error.unwrap_or("Throttle limit reached");
     ProviderError::TransferFailed(format!(
-        "pCloud rate limit (result {}): {} — {}",
+        "pCloud rate limit (result {}): {}: {}",
         PCLOUD_RESULT_THROTTLE,
         context,
         sanitize_api_error(detail)
@@ -499,7 +499,7 @@ impl PCloudProvider {
                 2005 | 2009 | 2010 => ProviderError::NotFound(msg),
                 2003 | 2028 => ProviderError::PermissionDenied(msg),
                 2004 => ProviderError::AlreadyExists(msg),
-                // 4006: "Throttle limit reached" — often inside HTTP 200 JSON.
+                // 4006: "Throttle limit reached", often inside HTTP 200 JSON.
                 // Map through a stable rate-limit phrase so AIMD sees RateLimited.
                 PCLOUD_RESULT_THROTTLE => pcloud_throttle_error("API", Some(msg.as_str())),
                 _ => ProviderError::ServerError(msg),
@@ -2464,6 +2464,71 @@ mod tests {
         let te = crate::transfer_dag::TransferError::from_provider(&err);
         assert_eq!(te.kind, crate::transfer_dag::TransferErrorKind::RateLimited);
         assert!(te.is_congestion());
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn upload_create_and_save_result_4006_are_rate_limited() {
+        use axum::{http::StatusCode, routing::get, Router};
+
+        let throttled = || async {
+            (
+                StatusCode::OK,
+                axum::Json(serde_json::json!({
+                    "result": 4006,
+                    "error": "Throttle limit reached"
+                })),
+            )
+        };
+        let app = Router::new()
+            .route("/upload_create", get(throttled))
+            .route("/upload_save", get(throttled));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.ok();
+        });
+
+        let mut primary = fixture_connected();
+        primary.api_base_override = Some(format!("http://{addr}"));
+
+        let create_err = primary.upload_create().await.expect_err("create throttle");
+        let create_te = crate::transfer_dag::TransferError::from_provider(&create_err);
+        assert_eq!(
+            create_te.kind,
+            crate::transfer_dag::TransferErrorKind::RateLimited
+        );
+        assert!(create_te.is_congestion());
+
+        let meta = PCloudMultipartMeta {
+            uploadid: 1,
+            folderid: 2,
+            name: "t.bin".into(),
+            total: 64,
+            part: 64,
+        };
+        let handle = MultipartHandle {
+            upload_id: meta.encode(),
+            remote_path: "/t.bin".into(),
+        };
+        let save_err = primary
+            .complete_multipart_upload(
+                handle,
+                vec![UploadedPart {
+                    part_number: 1,
+                    etag: String::new(),
+                }],
+            )
+            .await
+            .expect_err("save throttle");
+        let save_te = crate::transfer_dag::TransferError::from_provider(&save_err);
+        assert_eq!(
+            save_te.kind,
+            crate::transfer_dag::TransferErrorKind::RateLimited
+        );
+        assert!(save_te.is_congestion());
         server.abort();
     }
 
