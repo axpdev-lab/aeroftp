@@ -269,12 +269,13 @@ single-file DAG runner for both legs.
 ## AIMD, observers, and resources
 
 `AimdController` is real and can be passed to `execute_dag`. It is useful on
-the paths that expose actual class-level concurrency, especially single-file
-multipart and the opt-in range graph. It is not a global governor, is rebuilt
-per operation, and cannot tune a serial file slot into parallelism. Batch
-file-level failures are currently hidden behind a completed node, and sync
-uses one file slot, so neither path supplies the full feedback loop implied by
-the original convergence description.
+the paths that expose actual class-level concurrency, especially batch
+transfers, single-file multipart, and the opt-in range graph. It is not a
+global governor, is rebuilt per operation, and cannot tune a serial file slot
+into parallelism. Batch file-level failures use the typed, non-fatal
+`FileFailedButGraphContinues` outcome: D2 congestion reduces the File-class
+target while unrelated file subgraphs continue. Sync still uses one file slot
+and does not yet expose this batch feedback contract.
 
 The resource manager is also per operation. It has file, checker, chunk, HTTP,
 API, disk-read, disk-write, and hash classes, but no process/endpoint governor

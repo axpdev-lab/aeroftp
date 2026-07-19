@@ -113,27 +113,21 @@ pub fn transfer_error_from_failure(failure: &TransferFailure) -> TransferError {
     let kind = transfer_error_kind_from_failure_kind(failure.kind);
     let mut err = TransferError::new(kind, failure.message.clone()).with_scope(FailureScope::File);
 
+    // The domain flag is authoritative when it is stricter than the kind
+    // default. Congestion classification and AIMD feedback still use `kind`,
+    // independently from whether retrying this particular operation is safe.
     if !failure.retryable {
-        // Honour the domain retry flag when it is stricter than the kind default.
-        if !matches!(
-            kind,
-            TransferErrorKind::RateLimited
-                | TransferErrorKind::ServiceUnavailable
-                | TransferErrorKind::Timeout
-                | TransferErrorKind::MaxConnections
-                | TransferErrorKind::ConnectionReset
-                | TransferErrorKind::Network
-        ) {
-            err.retry = RetryDirective::Never;
-        }
+        err.retry = RetryDirective::Never;
     }
 
     if let Some(secs) = failure.retry_after_secs {
         err.retry_after = Some(Duration::from_secs(secs));
-        if matches!(
-            kind,
-            TransferErrorKind::RateLimited | TransferErrorKind::ServiceUnavailable
-        ) {
+        if failure.retryable
+            && matches!(
+                kind,
+                TransferErrorKind::RateLimited | TransferErrorKind::ServiceUnavailable
+            )
+        {
             err.retry = RetryDirective::AfterHint;
         }
     }
@@ -420,6 +414,26 @@ mod tests {
         assert_eq!(back.retry_after_secs, Some(12));
         assert!(!back.message.contains("token"));
         assert!(!back.message.contains("503"));
+    }
+
+    #[test]
+    fn adapter_preserves_non_retryable_congestion_with_retry_after() {
+        let failure = TransferFailure::new(
+            TransferFailureKind::RateLimited,
+            "Transfer rate limit reached",
+            false,
+        )
+        .with_retry_after_secs(45);
+        let typed = failure.to_transfer_error();
+
+        assert_eq!(typed.kind, TransferErrorKind::RateLimited);
+        assert_eq!(typed.retry, RetryDirective::Never);
+        assert_eq!(typed.retry_after, Some(Duration::from_secs(45)));
+        assert!(typed.is_congestion());
+
+        let back = TransferFailure::from_transfer_error(&typed);
+        assert!(!back.retryable);
+        assert_eq!(back.retry_after_secs, Some(45));
     }
 
     #[test]

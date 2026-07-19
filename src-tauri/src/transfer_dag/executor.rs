@@ -2503,6 +2503,109 @@ mod tests {
         assert_eq!(summary.metrics.backpressure_events, 1);
     }
 
+    /// A decrease must gate newly released file work, not merely update the
+    /// observable target while permits continue to flow at the old ceiling.
+    #[tokio::test]
+    async fn continuing_429_blocks_new_file_dispatch_until_live_falls_to_target() {
+        use crate::transfer_dag::adaptive::{AdaptiveClass, AimdConfig, AimdController};
+        use tokio::sync::{Barrier, Notify};
+
+        let mut dag = TransferDag::default();
+        let congested = dag.add_node(
+            TransferNodeKind::DownloadFile,
+            vec![],
+            ResourceRequest::upload_file(),
+        );
+        let blockers: Vec<_> = (0..4)
+            .map(|_| {
+                dag.add_node(
+                    TransferNodeKind::DownloadFile,
+                    vec![],
+                    ResourceRequest::upload_file(),
+                )
+            })
+            .collect();
+        let released_after_failure = dag.add_node(
+            TransferNodeKind::DownloadFile,
+            vec![congested],
+            ResourceRequest::upload_file(),
+        );
+
+        // The failing node and four blockers all acquire from the initial
+        // ceiling of eight before the failure is allowed to return.
+        let initial_started = Arc::new(Barrier::new(5));
+        let unblock_one = Arc::new(Notify::new());
+        let dependent_started = Arc::new(Notify::new());
+        let runner: Arc<dyn DagNodeRunner> = {
+            let initial_started = Arc::clone(&initial_started);
+            let unblock_one = Arc::clone(&unblock_one);
+            let dependent_started = Arc::clone(&dependent_started);
+            Arc::new(move |node: TransferNode| -> NodeFuture {
+                let initial_started = Arc::clone(&initial_started);
+                let unblock_one = Arc::clone(&unblock_one);
+                let dependent_started = Arc::clone(&dependent_started);
+                let is_blocker = blockers.contains(&node.id);
+                Box::pin(async move {
+                    if node.id == congested {
+                        initial_started.wait().await;
+                        NodeOutcome::FileFailedButGraphContinues(TransferError::new(
+                            TransferErrorKind::RateLimited,
+                            "redacted congestion",
+                        ))
+                    } else if is_blocker {
+                        initial_started.wait().await;
+                        unblock_one.notified().await;
+                        NodeOutcome::Completed
+                    } else if node.id == released_after_failure {
+                        dependent_started.notify_one();
+                        NodeOutcome::Completed
+                    } else {
+                        NodeOutcome::Completed
+                    }
+                })
+            })
+        };
+
+        let controller = Arc::new(AimdController::new(8, 1, 1, 1, AimdConfig::default()));
+        let manager = TransferResourceManager::new(TransferBudget::from_file_slots(8));
+        let execution = {
+            let controller = Arc::clone(&controller);
+            tokio::spawn(async move {
+                execute_dag(&dag, &manager, runner, noop_observer(), Some(controller)).await
+            })
+        };
+
+        tokio::time::timeout(Duration::from_secs(2), async {
+            while controller.target(AdaptiveClass::File) != 4 {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("congestion feedback did not halve the target");
+
+        // Four blockers still own the new target's four live permits, so the
+        // just-released dependent file must remain parked at the AIMD gate.
+        assert!(
+            tokio::time::timeout(Duration::from_millis(50), dependent_started.notified())
+                .await
+                .is_err(),
+            "new file dispatched while four live permits already filled target=4"
+        );
+
+        unblock_one.notify_one();
+        tokio::time::timeout(Duration::from_secs(2), dependent_started.notified())
+            .await
+            .expect("new file did not dispatch after one live permit was released");
+        unblock_one.notify_waiters();
+
+        let summary = execution
+            .await
+            .expect("executor task panicked")
+            .expect("continuing failure graph should drain");
+        assert_eq!(summary.nodes_failed, 1);
+        assert_eq!(summary.nodes_completed, 5);
+    }
+
     /// Typed 503 / timeout / max-connections / connection-reset each trigger
     /// one file-class decrease without message parsing.
     #[tokio::test]
