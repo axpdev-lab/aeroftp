@@ -1,221 +1,285 @@
 # DAG Transfer Engine
 
-*Last updated: 2026-06-22 (current as of the 4.0.x series; engine introduced in the v4.0.0 convergence).*
+*Last updated: 2026-07-19. The engine is active in several production call
+paths, but convergence is partial; this document records the paths that are
+actually reachable, not every shape that the builder can represent.*
 
-AeroFTP routes every file transfer through a shared, provider-agnostic
-node-graph engine. This document describes what the engine is, why it
-exists, how the production graph is shaped, and how providers plug into
-it. It is the canonical technical reference for the engine after the
-v4.0.0 convergence; the deeper architectural walk-through lives at
-`docs.aeroftp.app/architecture/dag-transfer-engine.md`.
+AeroFTP contains a shared, provider-agnostic transfer-DAG core. The core is
+real and is used by the shaped single-file runner, the batch wrapper, the
+non-dry-run sync wrapper, and the opt-in range runner. It is not correct to
+turn the existence of a builder, a capability flag, or a unit test into a
+claim about production wire behavior.
+
+The audit rule used here is:
+
+1. a production call site must reach the builder and `execute_dag`;
+2. the runner must bind the node to real provider I/O or an explicit, named
+   adapter contract; and
+3. wire-level parallelism is claimed only when the provider call can execute
+   independently, not merely because several Tokio tasks or graph nodes exist.
+
+## Production call-path matrix
+
+| Operation | Active production call path | What the graph really does | Wire-level/default status |
+|---|---|---|---|
+| Single-file GUI `get` / `put` | `provider_commands::run_dag_*_leaf` → `execute_single_file_dag` (`src-tauri/src/provider_commands.rs:2289`, `:2438`) | `UploadFile`/`DownloadFile` bind to provider I/O; multipart binds begin/part/complete/abort; several structural nodes are no-ops | Shaped DAG is the normal network path, subject to the transfer router and explicit legacy override |
+| Single-file CLI `get` / `put` | `run_single_file_transfer` → `execute_single_file_dag` (`src-tauri/src/bin/aeroftp_cli.rs:8748-8767`) | Same shaped-file runner and provider binding | DAG is selected by the router for normal network transfers; local-to-local or explicit legacy routes bypass it |
+| Multi-file batch | `transfer_orchestrator::execute_batch` → `execute_batch_dag` (`src-tauri/src/transfer_orchestrator.rs:66-70`) | A graph is built and executed, but the runner uses default capabilities; `entry_transferred` is a whole-file contract | No capability-driven cloud fan-out claim; generic settings currently clamp file concurrency |
+| Non-dry-run sync | `sync_tree_core` → `execute_sync_dag` (`src-tauri/src/sync.rs:1223-1238`) | Scan and planning happen before the graph; the graph wraps a precomputed plan and a serial file driver | DAG wrapper is active; file transfer remains serial by design; dry-run stays on the planning path |
+| Segmented download | `run_provider_segmented_download` (`src-tauri/src/providers/multi_thread.rs:290-310`) | Default is the legacy `JoinSet` range scheduler; `shaped_ranges` calls `execute_dag` only on the opt-in graph branch | Range I/O is real; DAG range scheduling requires `AEROFTP_RANGE_GRAPH=1`; GUI Auto may use one stream |
+| Same-provider copy | GUI/CLI copy commands → `server_side_copy_with_fallback` (`src-tauri/src/provider_commands.rs:5011`, `src-tauri/src/bin/aeroftp_cli.rs:32161`) | Native provider copy or download → upload fallback | Native copy avoids local payload bytes; normal copy is not orchestrated by `shaped_copy` |
+| Cross-profile transfer | `cross_profile_transfer::copy_one_file_with_options` (`src-tauri/src/cross_profile_transfer.rs:123-167`) | Source download → local temp file → destination upload, with optional SFTP delta and optional segmented source helper | Provider-owned/temp-file bridge; not one shared transfer DAG |
+
+The MCP surface can reuse GUI command paths, but the engine does not make all
+MCP, GUI, and CLI wire behavior identical. Surface adapters, provider routing,
+and operation-specific fallbacks remain part of the runtime contract.
 
 ## What the engine is
 
-The DAG transfer engine schedules a per-transfer directed acyclic
-graph of typed nodes. Each node represents one structural step of a
-transfer (discover the source, acquire the resource, move the bytes,
-verify, preserve metadata, commit, emit progress); the executor only
-dispatches a node when all of its predecessors completed and the
-node's resource request can be satisfied from a shared per-session
-budget. Topology is fixed at build time; concurrency comes from a
-small, principled set of resource classes (file, chunk, http, disk
-read, disk write, api).
+The `transfer_dag` core schedules a per-operation directed acyclic graph of
+typed nodes. A node runs only after its dependencies complete and its
+`ResourceRequest` can be acquired from the operation's
+`TransferResourceManager`. The core owns:
 
-Three layers compose the engine:
+- `TransferDag`, node kinds, dependency validation, and ready-frontier
+  dispatch;
+- resource permits for file, checker, chunk, HTTP, API, disk-read,
+  disk-write, and hash classes;
+- the `AimdController` and congestion classifier;
+- `DagObserver` lifecycle hooks and the executor summary.
 
-- **`transfer_dag` core** - pure, provider-free graph engine. Owns
-  the executor, the graph and node types, the resource manager, the
-  AIMD backpressure controller, and the observer pipeline.
-- **`TransferDagBuilder`** - single source of truth for every shape
-  the engine schedules: `single_file`, `from_batch`, `from_batch_shaped`,
-  `from_sync_plan`, `from_sync_plan_shaped`, `shaped_file`, `shaped_copy`,
-  `shaped_ranges`.
-- **Three thin runners** - `transfer_dag_single_file`,
-  `transfer_dag_batch`, `transfer_dag_sync`. Each is a bridge: it
-  builds a graph through the builder, hands it to `execute_dag`, and
-  binds each node kind to real provider I/O through a runner closure.
+The executor is not globally bounded by process or endpoint. The ready
+frontier currently spawns all currently-ready nodes before waiting for a
+completion; resource permits bound I/O classes, not resident Tokio tasks or
+multipart buffer bytes. On failure it stops new dispatches and drains
+in-flight tasks; it does not yet cancel every sibling through a graph-scoped
+token.
 
-The CLI, the Tauri GUI commands, and the MCP server all schedule
-transfers through the same runners, so the wire-level behavior is
-identical across surfaces by construction.
+Three production wrappers call the core:
 
-## Why a DAG engine
+- `transfer_dag_single_file` builds `shaped_file` and binds real single-file
+  provider operations;
+- `transfer_dag_batch` builds `from_batch_shaped` and adapts each file to the
+  existing `TransferExecutor` session contract;
+- `transfer_dag_sync` builds `from_sync_plan_shaped` after scan/planning and
+  adapts graph nodes to a serial per-file driver.
 
-Three converging needs justified the convergence:
+The builder also exposes `shaped_copy` and `shaped_ranges`. Those shapes are
+useful and tested, but their presence is not evidence that the normal copy
+command or default range path uses them.
 
-1. **One observability surface.** Pre-DAG, each surface emitted
-   slightly different progress / completion events through its own
-   ad-hoc orchestrator. The shared engine produces one
-   `DagObserver` stream that every surface consumes; the GUI
-   `transfer_event` stream, the CLI exit-code-and-line semantics, and
-   the MCP `notifications/progress` channel all derive from the same
-   per-node lifecycle.
-2. **Capability-aware shape.** The shaped builders read a provider's
-   `TransferCapabilities` and pick the right transfer-core shape per
-   transfer:
-   - `multipart_upload` on the upload direction: the transfer core
-     fans out into N `UploadPart` nodes, one per chunk, parallelized
-     through the shared chunk budget.
-   - `server_side_copy`: the copy graph collapses into a single
-     `ServerSideCopy` node that holds only an `api_slot` (no disk
-     I/O, no file slot).
-   - `strict_concurrent_range_download`: the segmented download graph
-     emits N `DownloadRange` nodes with no inter-segment dependencies.
-   The same provider trait keeps the legacy fallback (no fan-out,
-   single transfer node) for backends that do not advertise the
-   capability.
-3. **One scheduler, one place to fix.** The AIMD backpressure
-   controller, the file / chunk / http / api budgets, the resource
-   manager, the session pool - every scarce resource lives in
-   `transfer_dag/resources` and is governed once for every transfer.
-   Backends pick what they reserve (a one-line `ResourceRequest` per
-   node kind); they do not own a scheduler of their own.
+## The shapes and their status
 
-## The shapes
+| Shape | Builder | Current production status |
+|---|---|---|
+| Single-file core | `shaped_file(Download|Upload, caps, size)` | Active in normal GUI/CLI single-file network paths, with router and provider exceptions |
+| Multipart single-file | `shaped_file(Upload, caps, size)` → `UploadPart × N` | Active when the single-file runner receives multipart capabilities; independent wire workers only for the provider set listed below |
+| Batch | `from_batch_shaped(items, caps)` | Active graph wrapper, but it passes `TransferCapabilities::default()` and does not provide a per-part batch I/O contract |
+| Sync | `from_sync_plan_shaped(plan, caps)` | Active for non-dry-run sync, with default capabilities, precomputed scan/plan, and serial file execution |
+| Copy | `shaped_copy(caps)` | Builder/test/forward-compatible runner shape; normal copy commands use `server_side_copy_with_fallback` directly |
+| Segmented download | `shaped_ranges(N)` | Active only from the `AEROFTP_RANGE_GRAPH=1` branch; default remains the `JoinSet` scheduler |
 
-| Shape           | Builder method                    | When it applies                                   | Core nodes (excluding structural anchors)          |
-| --------------- | --------------------------------- | ------------------------------------------------- | -------------------------------------------------- |
-| Single file     | `shaped_file(Download, …)`        | Any download leaf                                 | `DownloadFile`                                     |
-| Single file     | `shaped_file(Upload, …)`          | Upload below one chunk OR no multipart capability | `UploadFile`                                       |
-| Multipart fan-out | `shaped_file(Upload, caps, size)` | Upload above one chunk AND multipart capability | N × `UploadPart`                                   |
-| Batch           | `from_batch_shaped(items, caps)`  | Every multi-file transfer                         | Per-file single-core or multipart fan-out          |
-| Sync            | `from_sync_plan_shaped(plan, caps)` | Every non-dry-run sync                          | Global `DiscoverLocal`+`DiscoverRemote`→`Compare`, per-file chain |
-| Copy            | `shaped_copy(caps)`               | Cross-bucket / cross-folder copy                  | `ServerSideCopy` OR `DownloadFile`+`UploadFile`    |
-| Segmented dl    | `shaped_ranges(N)`                | Intra-file Range-download fan-out                 | N × `DownloadRange`                                |
+The usual seven-node envelope is a graph representation, not a guarantee that
+each node performs I/O on every path:
 
-Every shape carries the same seven-node structural envelope:
+`Discover` → `AcquireResource` → *transfer core* → `VerifyChecksum` →
+`PreserveMetadata` → `CommitTemp` → `EmitProgress`.
 
-`Discover(Local|Remote)` → `AcquireResource` → *transfer core* →
-`VerifyChecksum` → `PreserveMetadata` → `CommitTemp` → `EmitProgress`.
+In the current single-file runner, `Discover*`, `AcquireResource`,
+`VerifyChecksum`, and `EmitProgress` are structural no-ops. `CommitTemp` is
+real for multipart completion, and `PreserveMetadata` is real for download
+mtime preservation. Progress start/byte/error events still come from the
+surface adapters and provider callbacks; the executor summary does not yet
+populate a complete engine-level byte/retry telemetry stream.
 
-The structural nodes hold no scarce resources; only transfer-core
-nodes reserve `file_slots` / `chunk_slots` / `disk_read_slots` /
-`disk_write_slots` / `http_slots` / `api_slots`. The executor enforces
-the budget before dispatching a node, so the same `ResourceRequest`
-that a node lists is what the scheduler arbitrates against.
+## Single-file multipart
 
-## Multipart orchestration
+This is the most complete DAG path. `execute_single_file_dag` binds
+`UploadPart` nodes to the real provider lifecycle:
 
-The multipart fan-out shape is the most active part of the runner.
-For an upload above one preferred chunk on a multipart-capable
-provider (S3, B2, …), the runner allocates a per-transfer
-`MultipartCtx`:
+1. the first part lazily calls `begin_multipart_upload`;
+2. each part reads its local slice and calls `upload_part`;
+3. receipts are collected and ordered by part number;
+4. `CommitTemp` calls `complete_multipart_upload`;
+5. a failed graph makes a best-effort `abort_multipart_upload` call.
 
-- An `Arc<Mutex<Option<MultipartHandle>>>` initialized lazily: the
-  first `UploadPart` invocation that wins the mutex opens the session
-  via `StorageProvider::begin_multipart_upload(remote, total_size,
-  content_type, local_source_path)`. Subsequent invocations observe an initialized
-  handle and skip the call.
-- An `Arc<Mutex<Vec<UploadedPart>>>` that collects per-part receipts.
-- An `Arc<HashMap<usize, u32>>` mapping each `UploadPart` node id to
-  its 1-based part number (matching the S3 / B2 contract).
+The runner first tries `clone_for_transfer()`. A clone-capable provider gets an
+independent worker per part; otherwise the provider is taken through the
+shared mutex. The current independent-worker set is:
 
-The terminal `CommitTemp` node sorts the receipts by `part_number`
-ascending and submits them through
-`StorageProvider::complete_multipart_upload(handle, parts)`. On any
-runner-level failure the engine spawns a best-effort
-`abort_multipart_upload(handle)` so the provider does not accumulate
-orphan upload IDs.
+- S3;
+- Backblaze B2;
+- Azure Blob;
+- WebDAV Nextcloud chunked v2.
 
-The graph's `VerifyChecksum` node joins every `UploadPart` node before
-it can run, so the commit only fires once every part lands. The
-shared chunk budget governs how many parts upload in parallel;
-provider-specific protocol caps (S3 / B2 both ceiling at 10000 parts)
-are enforced by the builder profile, not the runner.
+Dropbox, Box, pCloud, Filen, Drime, and Uploadcare can expose multipart
+capability or part APIs, but the current audit does not promote them to
+wire-level DAG fan-out without an independent worker and a provider-specific
+live gate. A graph with N part nodes therefore means “N scheduled part
+operations”, not automatically “N concurrent network requests”.
 
-## Server-side copy
+For providers with `max_chunk_slots <= 1`, `shaped_file` chains parts in
+order. The composed batch and sync builders do not yet apply the same ordering
+to every path; that is tracked by `DAG-P0-07`.
 
-Copies between two keys on the same provider (`S3` `x-amz-copy-source`,
-`B2` `b2_copy_file`, WebDAV `COPY`, ImageKit `copyFile`, and the 14
-other native providers that advertise the capability) route through
-the `shaped_copy` graph. The transfer core collapses to a single
-`ServerSideCopy` node that reserves only an `api_slot`, so the engine
-never schedules disk I/O for a server-side copy. The capability gate
-is `TransferCapabilities::server_side_copy.is_available()`.
+## Batch and sync limitations
 
-When the capability is absent the graph degrades honestly: a
-`DownloadFile` followed by an `UploadFile` (two real transfer nodes,
-two file slots, two real round-trips). The shape is fixed at build
-time so the executor never has to second-guess the legacy fallback at
-runtime.
+### Batch
 
-## AIMD backpressure
+`execute_batch_dag` is the current batch entry point, so the old hand-written
+batch scheduler is gone. The batch runner nevertheless has three important
+limits:
 
-Every shape runs under the same `AimdController`. The controller
-shrinks the per-class dispatch target on a real congestion signal
-(HTTP 429 / 503, network timeout, connection reset, SFTP channel
-disconnect) and grows it linearly when transfers complete cleanly.
-The ceiling is the budget the resource manager was constructed with,
-so a no-congestion transfer dispatches identically to the ceiling
-ceiling.
+- it constructs the graph with `TransferCapabilities::default()` at
+  `src-tauri/src/transfer_dag_batch.rs:104`, rather than the connected
+  provider snapshot;
+- the generic settings resolver currently clamps the effective file
+  concurrency to one (`src-tauri/src/transfer_settings.rs:137`);
+- `entry_transferred` is a whole-file `execute_with_session` contract. When a
+  shaped batch graph contains multiple part nodes, the first node dispatches
+  the whole file and the remaining nodes become no-ops
+  (`src-tauri/src/transfer_dag_batch.rs:129`).
 
-The controller is per-transfer (constructed once at the top of
-`execute_dag` and dropped when the transfer ends); persistence across
-runs remains out of scope.
+The batch graph is therefore active as an orchestration wrapper, but it is not
+yet a capability-aware, per-part, wire-parallel cloud scheduler. A file error
+is also recorded in the batch snapshot while the node currently returns
+`Completed` (`src-tauri/src/transfer_dag_batch.rs:270`), so the documented AIMD
+and failure semantics must not be stronger than that implementation.
 
-## Provider trait surface
+### Sync
 
-A provider participates in the engine by advertising its capabilities
-and implementing the matching trait methods. The capability snapshot
-is read once from `StorageProvider::transfer_capabilities()` before
-the graph is built; the runner reads it on the engine side and the
-builder shapes the graph accordingly. Three families of methods
-matter:
+Non-dry-run sync reaches `execute_sync_dag`. Local and remote scans overlap,
+which is a real benefit. The complete scan and plan are then materialized
+before graph construction. `DiscoverLocal`, `DiscoverRemote`, and `Compare`
+describe that plan but do not perform the scan/planning work themselves.
 
-| Trait method                              | Purpose                                     |
-| ----------------------------------------- | ------------------------------------------- |
-| `begin_multipart_upload(remote, total_size, content_type, local_source_path)` | Open a multipart session. |
-| `upload_part(&handle, part_number, data)` | Upload one part of a multipart session.     |
-| `complete_multipart_upload(handle, parts)` | Finalize a multipart session.              |
-| `abort_multipart_upload(handle)`          | Release session state on failure.           |
-| `server_side_copy(from, to)`              | Native server-side copy on the same backend.|
-| `supports_server_side_copy()`             | Capability gate for the `ServerSideCopy` node. |
+The sync builder receives default capabilities at
+`src-tauri/src/transfer_dag_sync.rs:587-592`, the resource profile has one
+file slot at `:615`, and `drive_sync_transfers` consumes jobs serially. This is
+why the sync DAG should be described as a graph wrapper around a serial file
+driver, not as parallel sync orchestration. Dry-run remains on the legacy
+planning path by design.
 
-The default trait implementations return `ProviderError::NotSupported`,
-so a provider that never advertises the capability never reaches them.
-A provider that advertises a capability MUST implement the matching
-methods or the runner will surface the `NotSupported` error at the
-first dispatch.
+## Segmented downloads
+
+The range primitive itself is production code: it preallocates a temporary
+file, writes validated ranges at offsets, handles servers that ignore Range,
+and cleans up on cancellation. The default selection in
+`providers/multi_thread.rs:290-310` still chooses the `JoinSet` scheduler.
+
+When `AEROFTP_RANGE_GRAPH=1`, the same module builds `shaped_ranges` and calls
+`execute_dag`; that branch binds each `DownloadRange` node to a real range
+request and offset write. This is an opt-in migration path, not the default
+production scheduler. The GUI's Auto value is conservative and can resolve to
+a single stream.
+
+## Server-side copy and cross-profile copy
+
+The normal same-provider copy feature is real, but it is not currently a
+`shaped_copy` production graph. `server_side_copy_with_fallback` is the shared
+entry point for GUI and CLI copy call sites. It first tries the provider's
+native `server_copy` when `supports_server_copy()` is true, then falls back to
+download → upload only for the explicitly recoverable capability failures.
+Authentication, missing-source, quota, and other hard errors remain errors.
+
+The `shaped_copy` builder and the `ServerSideCopy` runner branch model the
+desired one-API-slot graph, and the builder has unit tests for both native and
+fallback shapes. The normal copy commands do not construct that graph, so the
+engine must not claim a unified copy node or S3 `UploadPartCopy` fan-out.
+
+Cross-profile transfer is a different operation: it downloads the source into
+a local temporary file and uploads it to the destination. It may select the
+segmented source helper or SFTP delta upload, but it does not call the shared
+single-file DAG runner for both legs.
+
+## AIMD, observers, and resources
+
+`AimdController` is real and can be passed to `execute_dag`. It is useful on
+the paths that expose actual class-level concurrency, especially single-file
+multipart and the opt-in range graph. It is not a global governor, is rebuilt
+per operation, and cannot tune a serial file slot into parallelism. Batch
+file-level failures are currently hidden behind a completed node, and sync
+uses one file slot, so neither path supplies the full feedback loop implied by
+the original convergence description.
+
+The resource manager is also per operation. It has file, checker, chunk, HTTP,
+API, disk-read, disk-write, and hash classes, but no process/endpoint governor
+and no byte-credit pool for multipart buffers. Upload/download resource
+requests currently reserve both disk directions in the generic whole-file
+profile. These are follow-up tasks, not guarantees of the present engine.
+
+`DagObserver` provides a shared node lifecycle abstraction. The GUI's
+`GuiDagObserver` is used on the shaped single-file path, but surface start,
+byte-progress, and error events still come from `TransferEventSink` and
+provider callbacks. The executor's bytes and retries fields remain zero until
+the corresponding bindings are wired.
+
+## Capability contract
+
+`StorageProvider::transfer_capabilities()` is consumed by the shaped
+single-file runner before `shaped_file` is built. The batch and sync runners
+currently use `TransferCapabilities::default()` at their documented call
+sites. The normal copy helper uses the provider's `supports_server_copy()`
+and `server_copy()` methods rather than `shaped_copy`'s capability snapshot.
+
+The trait methods below describe available provider primitives; they do not
+by themselves prove that every production operation invokes them:
+
+| Method | Purpose |
+|---|---|
+| `begin_multipart_upload` | Open an upload session |
+| `upload_part` | Send one multipart part |
+| `complete_multipart_upload` | Commit the collected parts |
+| `abort_multipart_upload` | Release an incomplete session |
+| `server_side_copy` / `server_copy` | Provider-native copy primitive |
+| `supports_server_side_copy` / `supports_server_copy` | Provider capability gates |
+
+The default implementations return `NotSupported`. A provider can implement a
+primitive while still using a provider-owned or legacy call path for a given
+operation.
 
 ## File map
 
-| File                                      | Role                                                   |
-| ----------------------------------------- | ------------------------------------------------------ |
-| `src-tauri/src/transfer_dag/mod.rs`       | Public exports of the engine surface.                  |
-| `src-tauri/src/transfer_dag/builder.rs`   | Every shape constructor (`shaped_file`, `from_batch_shaped`, `shaped_copy`, `shaped_ranges`, …). |
-| `src-tauri/src/transfer_dag/executor.rs`  | `execute_dag` + resource arbitration + observer pipeline. |
-| `src-tauri/src/transfer_dag/capabilities.rs` | `TransferCapabilities` + `Capability` enum.          |
-| `src-tauri/src/transfer_dag/resources.rs` | `TransferBudget` + `ResourceRequest` + `TransferResourceManager`. |
-| `src-tauri/src/transfer_dag/adaptive.rs`  | `AimdController` + congestion classifier.              |
-| `src-tauri/src/transfer_dag/observer.rs`  | `DagObserver` + Journal / Ordered / Gui observers.     |
-| `src-tauri/src/transfer_dag/probe.rs`     | `SessionProbeCache` + `resolve_session_model`.         |
-| `src-tauri/src/transfer_dag_single_file.rs` | Single-file runner (CLI + GUI single transfer).      |
-| `src-tauri/src/transfer_dag_batch.rs`     | Multi-file batch runner.                               |
-| `src-tauri/src/transfer_dag_sync.rs`      | Sync session runner.                                   |
-| `src-tauri/src/providers/multi_thread.rs` | Segmented download runner.                             |
+| File | Role |
+|---|---|
+| `src-tauri/src/transfer_dag/mod.rs` | Public engine exports |
+| `src-tauri/src/transfer_dag/builder.rs` | Graph shape constructors and shape tests |
+| `src-tauri/src/transfer_dag/executor.rs` | Ready-frontier execution, resource arbitration, observer summary |
+| `src-tauri/src/transfer_dag/capabilities.rs` | `TransferCapabilities` and capability states |
+| `src-tauri/src/transfer_dag/resources.rs` | Per-operation budgets and resource permits |
+| `src-tauri/src/transfer_dag/adaptive.rs` | AIMD controller and congestion classification |
+| `src-tauri/src/transfer_dag/observer.rs` | Observer abstraction and adapters |
+| `src-tauri/src/transfer_dag_single_file.rs` | Real shaped single-file runner |
+| `src-tauri/src/transfer_dag_batch.rs` | Batch graph wrapper and file-session adapter |
+| `src-tauri/src/transfer_dag_sync.rs` | Non-dry-run sync graph wrapper and serial driver |
+| `src-tauri/src/providers/multi_thread.rs` | Default range scheduler and opt-in DAG range runner |
+| `src-tauri/src/copy_fallback.rs` | Normal native-copy/fallback policy |
+| `src-tauri/src/cross_profile_transfer.rs` | Temp-file cross-profile bridge |
 
-The `provider_transfer_executor.rs` module still hosts the
-`TransferExecutor` implementations (`ProviderDownloadExecutor`,
-`ProviderUploadExecutor`) the batch runner consumes through
-`execute_with_session`, the segmented download eligibility gate, and
-the `ProviderListSessionModel` enum the scan layer reads. Its full
-removal is deferred to a post-convergence cleanup window.
+`provider_transfer_executor.rs` remains active for batch session execution,
+segmented-download eligibility, and the provider session model. Its presence
+is an explicit reminder that the transfer architecture is transitional.
 
-## What changed in v4.0.0
+## v4.0.0 convergence, stated accurately
 
-| Before v4.0.0                                          | After v4.0.0                                          |
-| ------------------------------------------------------ | ----------------------------------------------------- |
-| Flag-gated DAG path: `AEROFTP_TRANSFER_ENGINE_DAG_*`   | DAG path unconditional, three env vars removed.       |
-| Hand-rolled `JoinSet` sliding-window batch orchestrator | `execute_batch_dag` is the only batch path.          |
-| Multipart upload was internal to `provider.upload()`   | Multipart is an engine concern: N `UploadPart` nodes governed by the shared chunk budget. |
-| Server-side copy was an ad-hoc per-provider method     | One `ServerSideCopy` node, one `api_slot`, one shape. |
-| Five distinct routing shims (`if dag_enabled { … }`)   | Zero shims; the graph engine is the production path.  |
+| Before | Current implementation |
+|---|---|
+| Rollout flags for the early DAG phases | The three `AEROFTP_TRANSFER_ENGINE_DAG_*` flags were removed; the single-file router still has an explicit legacy override |
+| Hand-written `JoinSet` batch orchestrator | `execute_batch_dag` is the batch entry point |
+| Provider-owned multipart in the old single-file paths | The shaped single-file runner owns the multipart lifecycle where its call path reaches it |
+| Copy behavior spread across provider call sites | Native copy/fallback policy is shared by `server_side_copy_with_fallback`, but is not yet a production `ServerSideCopy` DAG node |
+| Range graph migration | `shaped_ranges` exists and is real, but the default remains the `JoinSet` scheduler |
+| One fully converged engine for every surface | Shared core plus selected wrappers; batch/sync/copy/cross-profile still have documented adapters and limits |
+
+For the planned next steps—bounded dispatch, graph-scoped cancellation,
+typed outcomes, capability-aware batch, real sync concurrency, production
+shaped copy, and global resource governance—see the audit appendix at
+`docs/dev/roadmap/APPENDIX-DAG-ENGINE_Parallel-Transfers-Audit.md`.
 
 ## See also
 
-- `docs.aeroftp.app/architecture/dag-transfer-engine.md` - long-form
-  architectural walk-through, design rationale, performance numbers.
-- `docs/PROVIDER-INTEGRATION-GUIDE.md` - how to plug a new storage
-  backend into the engine (capability advertisement, trait methods,
-  session pool integration).
-- `docs/THREAT-MODEL.md` - STRIDE analysis for the engine surface.
+- `docs/PROVIDER-INTEGRATION-GUIDE.md` - provider primitives and capability
+  advertisement.
+- `docs/CLI-GUIDE.md` - capability discovery and command-specific transfer
+  options.
+- `docs/THREAT-MODEL.md` - security analysis for transfer operations.

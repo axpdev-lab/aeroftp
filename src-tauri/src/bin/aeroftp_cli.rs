@@ -23952,6 +23952,10 @@ fn cmd_agent_info(cli: &Cli, redact_identifiers: bool) -> i32 {
             "gitlab": ftp_client_gui_lib::agent_session::capabilities_for_protocol("gitlab")
         },
         "protocol_transfer_capabilities": protocol_transfer_capabilities,
+        // How to read capability `source` fields without mistaking static
+        // registry baselines for a live server probe (DAG-P0-02).
+        "capability_source_semantics":
+            ftp_client_gui_lib::agent_session::capability_source_semantics(),
         "profile_protocols_seen": profile_protocols_seen,
         "agent_connect_supported_protocols": [
             "ftp", "ftps", "sftp", "webdav", "s3", "github", "gitlab"

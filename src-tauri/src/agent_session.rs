@@ -385,14 +385,25 @@ pub fn provider_type_for_transfer_capabilities(protocol: &str) -> Option<Provide
     }
 }
 
+/// Static provider-type transfer hints used when no live `StorageProvider`
+/// instance is available (`agent-info`, MCP capabilities resource, profile
+/// discovery). Values track the in-tree provider implementations so the
+/// discovery matrix is capability-driven without requiring a session.
+///
+/// Endpoint-specific overrides (e.g. filen-s3 disabling multipart, SFTP/FTP
+/// connection-spec pools) appear only under `source: "live_provider"`.
 pub fn default_transfer_optimization_hints_for_provider(
     provider_type: ProviderType,
 ) -> TransferOptimizationHints {
     match provider_type {
         ProviderType::Sftp => TransferOptimizationHints {
+            // Matches SftpProvider: range/delta/compression yes; resume flags
+            // stay false on the provider-generic path (SCP upload workaround).
             supports_range_download: true,
             supports_compression: true,
             supports_delta_sync: true,
+            supports_resume_download: false,
+            supports_resume_upload: false,
             ..Default::default()
         },
         ProviderType::Ftp | ProviderType::Ftps => TransferOptimizationHints {
@@ -402,9 +413,11 @@ pub fn default_transfer_optimization_hints_for_provider(
             ..Default::default()
         },
         ProviderType::S3 => TransferOptimizationHints {
+            // Mirrors S3Provider defaults (200 MiB threshold, 16 MiB parts).
+            // Live filen-s3 endpoints flip multipart off after connect.
             supports_multipart: true,
-            multipart_threshold: 5 * 1024 * 1024,
-            multipart_part_size: 5 * 1024 * 1024,
+            multipart_threshold: 200 * 1024 * 1024,
+            multipart_part_size: 16 * 1024 * 1024,
             multipart_max_parallel: 4,
             supports_range_download: true,
             supports_resume_download: true,
@@ -417,24 +430,253 @@ pub fn default_transfer_optimization_hints_for_provider(
             multipart_threshold: 200 * 1024 * 1024,
             multipart_part_size: 100 * 1024 * 1024,
             multipart_max_parallel: 4,
-            ..Default::default()
-        },
-        ProviderType::WebDav | ProviderType::Koofr => TransferOptimizationHints {
             supports_range_download: true,
-            supports_resume_download: true,
             ..Default::default()
         },
         ProviderType::Azure => TransferOptimizationHints {
+            supports_multipart: true,
+            multipart_threshold: 200 * 1024 * 1024,
+            multipart_part_size: 8 * 1024 * 1024,
+            multipart_max_parallel: 4,
             supports_range_download: true,
             supports_resume_download: true,
+            ..Default::default()
+        },
+        ProviderType::WebDav => TransferOptimizationHints {
+            supports_range_download: true,
+            supports_resume_download: true,
+            ..Default::default()
+        },
+        ProviderType::Koofr => TransferOptimizationHints {
+            supports_range_download: true,
+            supports_resume_download: true,
+            supports_server_checksum: true,
+            preferred_checksum_algo: Some("koofr".to_string()),
+            supports_delta_sync: true,
             ..Default::default()
         },
         ProviderType::Swift => TransferOptimizationHints {
             supports_resume_download: true,
             ..Default::default()
         },
-        _ => TransferOptimizationHints::default(),
+        ProviderType::Dropbox => TransferOptimizationHints {
+            supports_multipart: true,
+            multipart_threshold: 150 * 1024 * 1024,
+            multipart_part_size: 8 * 1024 * 1024,
+            multipart_max_parallel: 4,
+            supports_resume_download: true,
+            supports_resume_upload: true,
+            ..Default::default()
+        },
+        ProviderType::Box => TransferOptimizationHints {
+            supports_multipart: true,
+            multipart_threshold: 20 * 1024 * 1024,
+            multipart_part_size: 8 * 1024 * 1024,
+            multipart_max_parallel: 4,
+            supports_resume_download: true,
+            supports_resume_upload: true,
+            supports_server_checksum: true,
+            preferred_checksum_algo: Some("sha1".to_string()),
+            ..Default::default()
+        },
+        ProviderType::GoogleDrive => TransferOptimizationHints {
+            // Resumable session is sequential (max_parallel=1), not fan-out.
+            supports_multipart: true,
+            multipart_threshold: 5 * 1024 * 1024,
+            multipart_part_size: 8 * 1024 * 1024,
+            multipart_max_parallel: 1,
+            supports_resume_download: true,
+            supports_resume_upload: true,
+            ..Default::default()
+        },
+        ProviderType::OneDrive => TransferOptimizationHints {
+            supports_multipart: true,
+            multipart_threshold: 4 * 1024 * 1024,
+            multipart_part_size: 10 * 1024 * 1024,
+            multipart_max_parallel: 1,
+            supports_resume_download: true,
+            supports_resume_upload: true,
+            ..Default::default()
+        },
+        ProviderType::PCloud => TransferOptimizationHints {
+            supports_multipart: true,
+            multipart_threshold: 4 * 1024 * 1024,
+            multipart_part_size: 4 * 1024 * 1024,
+            multipart_max_parallel: 2,
+            supports_resume_download: true,
+            supports_resume_upload: true,
+            ..Default::default()
+        },
+        ProviderType::Filen => TransferOptimizationHints {
+            supports_multipart: true,
+            multipart_threshold: 1024 * 1024,
+            multipart_part_size: 1024 * 1024,
+            multipart_max_parallel: 4,
+            supports_resume_download: true,
+            supports_resume_upload: true,
+            ..Default::default()
+        },
+        ProviderType::DrimeCloud => TransferOptimizationHints {
+            supports_multipart: true,
+            multipart_threshold: 5 * 1024 * 1024,
+            multipart_part_size: 5 * 1024 * 1024,
+            multipart_max_parallel: 4,
+            supports_resume_download: true,
+            supports_resume_upload: true,
+            supports_server_checksum: true,
+            preferred_checksum_algo: Some("etag".to_string()),
+            ..Default::default()
+        },
+        ProviderType::YandexDisk => TransferOptimizationHints {
+            supports_multipart: true,
+            multipart_threshold: 32 * 1024 * 1024,
+            multipart_part_size: 8 * 1024 * 1024,
+            multipart_max_parallel: 1,
+            supports_resume_download: true,
+            supports_resume_upload: true,
+            ..Default::default()
+        },
+        ProviderType::OpenDrive => TransferOptimizationHints {
+            supports_multipart: true,
+            multipart_threshold: 5 * 1024 * 1024,
+            multipart_part_size: 5 * 1024 * 1024,
+            multipart_max_parallel: 1,
+            supports_resume_download: true,
+            supports_resume_upload: true,
+            supports_server_checksum: true,
+            preferred_checksum_algo: Some("md5".to_string()),
+            ..Default::default()
+        },
+        ProviderType::Mega => TransferOptimizationHints {
+            // Factory default is MegaNativeProvider (canonical chunk ramp).
+            supports_multipart: true,
+            multipart_threshold: 32 * 1024 * 1024,
+            multipart_part_size: 1024 * 1024,
+            multipart_max_parallel: 1,
+            supports_resume_download: true,
+            supports_resume_upload: true,
+            ..Default::default()
+        },
+        ProviderType::Uploadcare => TransferOptimizationHints {
+            supports_multipart: true,
+            multipart_threshold: 10 * 1024 * 1024,
+            multipart_part_size: 5 * 1024 * 1024,
+            multipart_max_parallel: 4,
+            supports_resume_download: true,
+            supports_resume_upload: true,
+            supports_range_download: true,
+            ..Default::default()
+        },
+        ProviderType::Cloudinary => TransferOptimizationHints {
+            supports_multipart: true,
+            multipart_threshold: 100 * 1024 * 1024,
+            multipart_part_size: 20 * 1024 * 1024,
+            multipart_max_parallel: 1,
+            supports_resume_download: true,
+            supports_resume_upload: true,
+            supports_range_download: true,
+            ..Default::default()
+        },
+        ProviderType::ImageKit => TransferOptimizationHints {
+            supports_resume_download: true,
+            supports_range_download: true,
+            ..Default::default()
+        },
+        ProviderType::GooglePhotos
+        | ProviderType::FileLu
+        | ProviderType::FourShared
+        | ProviderType::Internxt
+        | ProviderType::KDrive
+        | ProviderType::Jottacloud
+        | ProviderType::ZohoWorkdrive => TransferOptimizationHints {
+            supports_resume_download: true,
+            ..Default::default()
+        },
+        // Intentionally conservative: single-shot / no transfer DAG fan-out.
+        ProviderType::GitHub
+        | ProviderType::GitLab
+        | ProviderType::Immich
+        | ProviderType::AeroCloud
+        | ProviderType::AeroVaultMount
+        | ProviderType::Peer
+        | ProviderType::Mtp => TransferOptimizationHints::default(),
     }
+}
+
+/// Providers whose `supports_server_side_copy()` is true in the implementation
+/// independent of endpoint. Used so discovery does not depend only on the
+/// coarser `protocol_features` token list (which omits aliases like `b2`).
+fn provider_supports_server_side_copy_baseline(provider_type: ProviderType) -> bool {
+    matches!(
+        provider_type,
+        ProviderType::S3
+            | ProviderType::Azure
+            | ProviderType::Backblaze
+            | ProviderType::Swift
+            | ProviderType::WebDav
+            | ProviderType::Koofr
+            | ProviderType::GoogleDrive
+            | ProviderType::Dropbox
+            | ProviderType::OneDrive
+            | ProviderType::Box
+            | ProviderType::PCloud
+            | ProviderType::Mega
+            | ProviderType::Filen
+            | ProviderType::ZohoWorkdrive
+            | ProviderType::KDrive
+            | ProviderType::Jottacloud
+            | ProviderType::DrimeCloud
+            | ProviderType::FileLu
+            | ProviderType::YandexDisk
+            | ProviderType::OpenDrive
+            | ProviderType::ImageKit
+    )
+}
+
+/// Static HttpClonePool baseline for providers whose executor kind does not
+/// depend on a live connection_spec. Returns `(max_file_slots, max_list_slots)`.
+///
+/// SFTP/FTP pools are connection-spec gated and therefore **not** advertised
+/// here; they upgrade under `live_provider` only.
+fn static_http_clone_pool_slots(provider_type: ProviderType) -> Option<(u16, u16)> {
+    match provider_type {
+        ProviderType::S3 | ProviderType::Azure => Some((8, 8)),
+        // B2: max(LARGE_FILE_MAX_PARALLEL=4, MULTI_THREAD_MAX_STREAMS=8) = 8;
+        // list stays on locked single today.
+        ProviderType::Backblaze => Some((8, 1)),
+        _ => None,
+    }
+}
+
+/// Human-readable semantics for the three capability `source` labels.
+/// Embedded in `agent-info --json` so agents never confuse static registry
+/// values with a live server probe.
+pub fn capability_source_semantics() -> Value {
+    json!({
+        "protocol_defaults": {
+            "meaning": "Provider-type baseline from the binary capability registry. No connection is opened.",
+            "may_differ_from_live": true,
+            "examples": [
+                "filen-s3 endpoints disable multipart after connect",
+                "SFTP/FTP connection-spec pools appear only under live_provider"
+            ]
+        },
+        "profile_defaults": {
+            "meaning": "Same registry as protocol_defaults, keyed by a saved profile's protocol string. No connection is opened.",
+            "may_differ_from_live": true,
+            "examples": [
+                "providerId/endpoint quirks require agent-connect or a transfer path for live_provider"
+            ]
+        },
+        "live_provider": {
+            "meaning": "Capabilities taken from a connected StorageProvider instance (agent-connect or an active session).",
+            "may_differ_from_live": false,
+            "examples": [
+                "endpoint-specific multipart disable",
+                "SFTP/FTP pool when connection_spec is present"
+            ]
+        }
+    })
 }
 
 pub fn transfer_capabilities_for_protocol(protocol: &str) -> Option<TransferCapabilities> {
@@ -449,27 +691,53 @@ pub fn transfer_capabilities_for_provider_type(
     provider_type: ProviderType,
     protocol_for_feature_hint: &str,
 ) -> TransferCapabilities {
-    TransferCapabilities::from_provider_hints(
+    let server_copy = provider_supports_server_side_copy_baseline(provider_type)
+        || capabilities_for_protocol(protocol_for_feature_hint).contains(&"server_copy");
+
+    let mut caps = TransferCapabilities::from_provider_hints(
         provider_type,
         &default_transfer_optimization_hints_for_provider(provider_type),
-        capabilities_for_protocol(protocol_for_feature_hint).contains(&"server_copy"),
-    )
+        server_copy,
+    );
+
+    // Mirror StorageProvider::transfer_capabilities upgrades for providers
+    // whose clone pool does not require a live connection_spec.
+    if let Some((max_file, max_list)) = static_http_clone_pool_slots(provider_type) {
+        caps.file_parallel = crate::transfer_dag::Capability::Supported;
+        caps.session_pool = crate::transfer_dag::Capability::Supported;
+        caps.max_file_slots = Some(max_file.max(1));
+        if max_list > 1 {
+            caps.list_parallel = crate::transfer_dag::Capability::Supported;
+            caps.max_checker_slots = Some(max_list);
+        }
+    }
+
+    caps
 }
 
+/// Build a transfer-capabilities discovery block.
+///
+/// `source` must be one of `protocol_defaults`, `profile_defaults`, or
+/// `live_provider` (see [`capability_source_semantics`]). When
+/// `live_capabilities` is `Some`, that value is used as-is and `source`
+/// should be `"live_provider"`.
 pub fn transfer_capabilities_block(
     protocol: &str,
     live_capabilities: Option<TransferCapabilities>,
     source: &str,
 ) -> Value {
+    let is_live = live_capabilities.is_some();
     match live_capabilities.or_else(|| transfer_capabilities_for_protocol(protocol)) {
         Some(capabilities) => json!({
             "status": "ok",
             "source": source,
+            "source_is_live": is_live,
             "capabilities": capabilities,
         }),
         None => json!({
             "status": "unsupported",
             "source": source,
+            "source_is_live": is_live,
             "capabilities": TransferCapabilities::default(),
         }),
     }
@@ -817,9 +1085,16 @@ mod tests {
         let v = transfer_capabilities_block("backblaze", None, "profile_defaults");
         assert_eq!(v["status"], "ok");
         assert_eq!(v["source"], "profile_defaults");
+        assert_eq!(v["source_is_live"], false);
         assert_eq!(v["capabilities"]["multipart_upload"], "supported");
         assert_eq!(v["capabilities"]["max_chunk_slots"], 4);
         assert_eq!(v["capabilities"]["preferred_chunk_size"], 100 * 1024 * 1024);
+        // B2 clone pool is static (no connection_spec gate).
+        assert_eq!(v["capabilities"]["file_parallel"], "supported");
+        assert_eq!(v["capabilities"]["session_pool"], "supported");
+        assert_eq!(v["capabilities"]["strict_concurrent_range_download"], "supported");
+        assert_eq!(v["capabilities"]["server_side_copy"], "supported");
+        assert_eq!(v["capabilities"]["max_file_slots"], 8);
     }
 
     #[test]
@@ -827,6 +1102,7 @@ mod tests {
         let v = transfer_capabilities_block("xyzzy", None, "profile_defaults");
         assert_eq!(v["status"], "unsupported");
         assert_eq!(v["source"], "profile_defaults");
+        assert_eq!(v["source_is_live"], false);
         assert_eq!(v["capabilities"]["max_file_slots"], 1);
     }
 
@@ -836,10 +1112,129 @@ mod tests {
         assert_eq!(v["status"], "ok");
         assert_eq!(v["transfer_capabilities"]["status"], "ok");
         assert_eq!(v["transfer_capabilities"]["source"], "protocol_defaults");
+        assert_eq!(v["transfer_capabilities"]["source_is_live"], false);
+        // SFTP pool is connection-spec gated: protocol_defaults stay single-lease.
         assert_eq!(
             v["transfer_capabilities"]["capabilities"]["strict_concurrent_range_download"],
             "unsupported"
         );
+        assert_eq!(
+            v["transfer_capabilities"]["capabilities"]["file_parallel"],
+            "unsupported"
+        );
+        assert_eq!(
+            v["transfer_capabilities"]["capabilities"]["session_pool"],
+            "unsupported"
+        );
+    }
+
+    #[test]
+    fn s3_protocol_defaults_match_clone_pool_and_multipart() {
+        let caps = transfer_capabilities_for_protocol("s3").expect("s3");
+        assert_eq!(
+            caps.multipart_upload,
+            crate::transfer_dag::Capability::Supported
+        );
+        assert_eq!(
+            caps.file_parallel,
+            crate::transfer_dag::Capability::Supported
+        );
+        assert_eq!(
+            caps.session_pool,
+            crate::transfer_dag::Capability::Supported
+        );
+        assert_eq!(
+            caps.strict_concurrent_range_download,
+            crate::transfer_dag::Capability::Supported
+        );
+        assert_eq!(
+            caps.server_side_copy,
+            crate::transfer_dag::Capability::Supported
+        );
+        assert_eq!(
+            caps.list_parallel,
+            crate::transfer_dag::Capability::Supported
+        );
+        assert_eq!(caps.max_file_slots, Some(8));
+        assert_eq!(caps.max_chunk_slots, Some(4));
+        assert_eq!(caps.max_checker_slots, Some(8));
+        assert_eq!(caps.preferred_chunk_size, Some(16 * 1024 * 1024));
+        assert_eq!(caps.multipart_threshold, 200 * 1024 * 1024);
+    }
+
+    #[test]
+    fn azure_protocol_defaults_advertise_multipart_and_pool() {
+        let caps = transfer_capabilities_for_protocol("azure").expect("azure");
+        assert_eq!(
+            caps.multipart_upload,
+            crate::transfer_dag::Capability::Supported
+        );
+        assert_eq!(
+            caps.file_parallel,
+            crate::transfer_dag::Capability::Supported
+        );
+        assert_eq!(
+            caps.session_pool,
+            crate::transfer_dag::Capability::Supported
+        );
+        assert_eq!(
+            caps.strict_concurrent_range_download,
+            crate::transfer_dag::Capability::Supported
+        );
+        assert_eq!(
+            caps.server_side_copy,
+            crate::transfer_dag::Capability::Supported
+        );
+        assert_eq!(caps.max_file_slots, Some(8));
+        assert_eq!(caps.max_chunk_slots, Some(4));
+        assert_eq!(caps.preferred_chunk_size, Some(8 * 1024 * 1024));
+    }
+
+    #[test]
+    fn dropbox_protocol_defaults_advertise_multipart_without_false_pool() {
+        let caps = transfer_capabilities_for_protocol("dropbox").expect("dropbox");
+        assert_eq!(
+            caps.multipart_upload,
+            crate::transfer_dag::Capability::Supported
+        );
+        assert_eq!(caps.max_chunk_slots, Some(4));
+        // No clone_for_transfer today: do not claim file_parallel/session_pool.
+        assert_eq!(
+            caps.file_parallel,
+            crate::transfer_dag::Capability::Unsupported
+        );
+        assert_eq!(
+            caps.session_pool,
+            crate::transfer_dag::Capability::Unsupported
+        );
+        assert_eq!(
+            caps.server_side_copy,
+            crate::transfer_dag::Capability::Supported
+        );
+        assert_eq!(
+            caps.rate_limited_api,
+            crate::transfer_dag::Capability::Supported
+        );
+    }
+
+    #[test]
+    fn live_provider_source_flags_source_is_live() {
+        let live = transfer_capabilities_for_protocol("s3").expect("s3");
+        let v = transfer_capabilities_block("s3", Some(live), "live_provider");
+        assert_eq!(v["source"], "live_provider");
+        assert_eq!(v["source_is_live"], true);
+        assert_eq!(v["status"], "ok");
+    }
+
+    #[test]
+    fn capability_source_semantics_covers_all_labels() {
+        let v = capability_source_semantics();
+        for key in ["protocol_defaults", "profile_defaults", "live_provider"] {
+            assert!(
+                v[key]["meaning"].as_str().is_some_and(|s| !s.is_empty()),
+                "missing semantics for {key}"
+            );
+        }
     }
 
     #[test]

@@ -720,7 +720,7 @@ This patch release pairs a new S3 connection mode with a round of security harde
 
 v4.0.0 lands two architectural shifts in the same release.
 
-The first is the promotion of the ready-frontier **DAG transfer engine** introduced in v3.8.4 to the **single production path** for every transfer surface. The three rollout flags that gated the engine during the v3.8.x cycle are gone, the hand-rolled `JoinSet` batch orchestrator has been deleted, and the shaped builders are now the single source of truth for every graph the executor schedules: single-file leaves, multi-file batches, sync sessions, intra-file segmented downloads, and cross-bucket copies. The release introduces a principled trait expansion on `StorageProvider` so the engine can dispatch the right shape per call from a provider's `TransferCapabilities`, ships the wiring + integration tests that prove the shapes work against live S3, B2, WebDAV, Azure, ImageKit, Google Drive, Dropbox, OneDrive, Box, MEGA, pCloud, kDrive, OpenDrive, Yandex Disk, Jottacloud, Drime, Uploadcare, Cloudinary, and Filen, and pairs the architectural shift with a power-user CLI surface that exposes 25+ runtime knobs over the same engine.
+The first is the promotion of the ready-frontier **DAG transfer engine** introduced in v3.8.4 into selected production paths. The three early rollout flags are gone and the hand-rolled `JoinSet` batch orchestrator has been deleted. The shaped single-file runner is the most complete path; batch and non-dry-run sync use DAG wrappers with conservative adapters, the default range scheduler remains `JoinSet`, normal copy commands use the shared native-copy/fallback helper, and cross-profile transfer remains a temp-file bridge. The release also adds the provider capability and multipart trait surface, while the current call path—not a builder or capability declaration alone—determines which shape and wire behavior are active. The CLI exposes 25+ transfer-related knobs, whose effect remains command- and provider-specific.
 
 The second is the **Multi-User Account Partition**: the vault splits into per-user partitions while remaining fully backward-compatible with single-user installs. A boot-time Account Lock Screen presents the configured users, the vault is partition-aware end-to-end (server profiles, AeroSync settings, CLI `--user` flag), and an admin role with a self-or-admin gate plus an admin reset-passphrase backend rounds out the surface. Migration from a v3.8.x single-user keystore is automatic and idempotent, the admin role is opt-in with a last-admin guard, and the unlock prompts use honest crypto-stack labels (Argon2id key derivation, AES partition encryption). Sixteen commits cover the partition foundation, the boot picker, the CLI `--user` flag across profile and transfer commands, the cross-user dedup probe with HMAC keying, the migration of every existing keystore consumer (ConnectionScreen, SettingsPanel, IntroHub, ExportImport, KeystoreWizard, Cloud, SavedServers, App.tsx), the admin role, and the UX polish (logout, perceptible unlock spinner, refined L2 picker).
 
@@ -728,15 +728,21 @@ The second is the **Multi-User Account Partition**: the vault splits into per-us
 
 ### What's new
 
-#### Capability-aware shape per transfer
+#### Capability-aware shapes in selected paths
 
-The shaped graph builder picks the transfer-core shape per call from the provider's capability snapshot:
+The shaped graph builder picks a transfer-core shape from a capability snapshot
+where the production runner supplies one. The current single-file runner is
+the complete capability-shaped path; batch and sync still use default
+capabilities, and the normal copy/range paths have separate routing:
 
-- **Native multipart upload fan-out** on S3, Backblaze B2, Google Drive, Dropbox, OneDrive, and Box: an upload above one preferred chunk now produces N `UploadPart` graph nodes (one per chunk). The runner orchestrates the lifecycle end-to-end. Per-provider live validation: Drive 500 MiB in 34.6 s (63 parts x 8 MiB), Dropbox 500 MiB in 54.2 s (63 parts x 8 MiB concurrent), OneDrive 500 MiB in 63.8 s (50 parts x 10 MiB sequential), Box 100 MiB in 24.6 s (13 parts x 8 MiB, SHA-1 per chunk + whole-file SHA-1 commit).
-- **Server-side copy** on every backend that advertises the capability: S3 `x-amz-copy-source`, B2 `b2_copy_file`, WebDAV RFC 4918 `COPY`, ImageKit `copyFile`, plus 14 other native providers. The shaped-copy graph collapses to a single `ServerSideCopy` node that reserves only an `api_slot`: no file slot, no disk I/O, no local host bytes. The server moves the data. S3 sources above the 5 GiB `CopyObject` limit fan out into parallel `UploadPartCopy` requests (T-DEBT-08).
-- **Intra-file segmented downloads** through the shared `shaped_ranges` builder: when a provider proves it honours HTTP `Range`, the segmented download fans out into N `DownloadRange` nodes with no inter-segment dependencies, governed by the shared chunk / HTTP / disk-write budget.
+- **Native multipart upload** on the shaped single-file path: an upload above one preferred chunk can produce N `UploadPart` graph nodes and the runner owns the multipart lifecycle. Independent wire-level workers are currently verified for S3, Backblaze B2, Azure Blob, and Nextcloud chunked v2; other providers may serialize their part calls through a shared session.
+- **Server-side copy** through `server_side_copy_with_fallback`: supported providers use their native copy API and recoverable capability failures fall back to download → upload. The `shaped_copy` builder is tested and forward-compatible, but it is not the normal copy-command orchestrator; no `UploadPartCopy` DAG claim is made.
+- **Intra-file segmented downloads** through the `shaped_ranges` builder only when `AEROFTP_RANGE_GRAPH=1`. The default production scheduler remains the `JoinSet` range path.
 
-For users on backends that advertise none of these capabilities the engine degrades honestly to the same single-transfer-core path that shipped pre-v4.0.0, byte-identical with the legacy `provider.upload` / `provider.download`.
+For a shaped single-file path on a backend that advertises none of these
+capabilities, the engine degrades to the single-transfer-core path backed by
+the legacy `provider.upload` / `provider.download` calls. This statement does
+not describe batch, sync, copy, or the default range scheduler.
 
 #### Provider trait expansion
 
@@ -748,11 +754,18 @@ Five new methods extend `StorageProvider`:
 - `abort_multipart_upload(handle)`
 - `server_side_copy(from, to)` (alongside the existing `supports_server_side_copy()` capability gate).
 
-Default implementations return `NotSupported`, so a provider that never advertises a capability never reaches the new methods. Nineteen native backends already implement them: S3 (multipart + server-side copy), B2 (multipart + 5 GB-capped server-side copy), Azure Blob (Put Block / Put Block List), WebDAV (Nextcloud chunked v2 + RFC 4918 `COPY`), ImageKit (`copyFile` / `copyFolder`), Google Drive (resumable session), Dropbox (concurrent `upload_session` + explicit close), OneDrive (Microsoft Graph `createUploadSession`), Box (chunked v2 with per-chunk SHA-1 + whole-file SHA-1 commit), MEGA (gfs* canonical chunk ramp), pCloud (chunked upload session), kDrive (upload-session API), OpenDrive (chunked upload session), Yandex Disk (upload-target API), Jottacloud (allocate API), Drime (S3 multipart), Uploadcare (multipart API), Cloudinary (chunked upload), Filen v3 (chunked AES-GCM encrypted upload). ImageKit / Internxt / MEGA / 4shared / FileLu document the trait as NotSupported-by-design for cases where the protocol does not offer a real multipart surface.
+Default implementations return `NotSupported`. Providers implement different
+subsets of these primitives, and the current single-file runner has
+independent multipart workers only for S3, Backblaze B2, Azure Blob, and
+Nextcloud chunked v2. A provider implementation or capability declaration is
+not by itself proof that batch, sync, copy, or range commands invoke the DAG
+shape.
 
 #### Power-user CLI knob expansion (PR #261)
 
-Twenty-five new flags expose the same DAG engine to scripted workflows and CI pipelines without touching code:
+Twenty-five new transfer-related flags expose provider and scheduler controls
+to scripted workflows and CI pipelines without touching code. Their effect is
+command- and provider-specific; not every runner consumes every flag:
 
 - **Generic** (Sprint K1 Pacchetto A): `--sftp-concurrency`, `--checkers`, `--tpslimit` / `--tpslimit-burst`, `--no-traverse`, `--order-by`.
 - **S3 surface** (KE-B1): `--s3-upload-concurrency`, `--s3-no-check-bucket`, `--s3-disable-checksum`, `--s3-acl`, `--s3-storage-class`.
@@ -831,18 +844,39 @@ A second architectural pillar that splits the vault into per-user partitions whi
 
 ### Documentation
 
-- New canonical technical reference at `docs/DAG-TRANSFER-ENGINE.md`.
+- New canonical technical reference at `docs/DAG-TRANSFER-ENGINE.md`, updated
+  to document the active call-path boundaries and remaining convergence work.
 - New long-form architecture walk-through at `docs.aeroftp.app/architecture/dag-transfer-engine`.
-- `AGENTS.md` gains a Transfer Engine section spelling out the three shapes the engine picks per call.
+- `AGENTS.md` gains a Transfer Engine section with the production call-path
+  matrix and explicit batch/sync/copy/range limits.
 - New **Privacy and Visibility Controls** section in `docs/PROTOCOL-FEATURES.md` (#252 pts 6 and 7, reported by @EhudKirsh, PR #281). Documents the independent axes that contribute to privacy in a cloud-sync app (encryption at rest, default visibility on create, granular toggles, share-link semantics, IP controls, AeroVault overlay), per-provider behavior for OpenDrive / 4shared / FileLu / Filen / Internxt / MEGA / OAuth catch-all, an OpenDrive REST-API-vs-WebDAV reliability note covering the per-IP rate-limit and blacklist behavior on `session/login.json`, and the explicit disclosure that the extended OpenDrive flags (`folder_public_upl`, `folder_public_display`, `folder_public_dnl`) are accepted only on `folder/create.json`. The Advanced Operations matrix `Privacy Toggle` row, previously listing only FileLu, now also lists 4shared and OpenDrive.
 
 ### Compatibility
 
-The MCP tool surface is unchanged: same names, same arguments, same notifications. Progress events are now sourced from the engine's per-node lifecycle, but downstream consumers see the same JSON shape and the same event cadence. The CLI exit codes and the GUI `transfer_event` channel are likewise unchanged. The Multi-User migration is forward-only and idempotent: existing single-user installs keep their data on the first boot under a synthesised `default` user; invocations of `aeroftp-cli` without `--user` continue to target that user, so existing scripts keep working.
+The MCP tool surface is unchanged: same names, same arguments, same
+notifications. Progress remains adapter-specific: shaped single-file GUI
+operations attach a DAG observer, while surface start/byte/error events and
+batch/sync reports still come from their existing sinks and provider
+callbacks. Downstream consumers keep the same JSON shape and the CLI exit
+codes and GUI `transfer_event` channel remain unchanged. The Multi-User
+migration is forward-only and idempotent: existing single-user installs keep
+their data on the first boot under a synthesised `default` user; invocations
+of `aeroftp-cli` without `--user` continue to target that user.
 
 ### Why v4.0.0
 
-The version bump reflects the architectural shift: the production transfer path is now a single, provider-agnostic, capability-aware DAG scheduler with five new trait methods on the public `StorageProvider` API, paired with a power-user CLI knob surface that exposes the same engine over 25+ runtime flags. Three flags, four shims, and the legacy batch orchestrator are gone. The Multi-User Account Partition is a schema-level change in the vault and an authorization-level change on the management API; bumping to v4.0.0 makes both the migration and the surface change explicit. The destructive admin reset, the last-admin guard and the OS-style lock screen are the load-bearing pieces of the new account surface, every one of them audited (`MU-SEC P1`) before landing. The convergence is complete; the cleanup pass for `provider_transfer_executor.rs` is filed as accepted technical debt for the post-v4.0.0 window (see `docs/dev/roadmap/APPENDIX-DAG-ENGINE/STATUS_TODO.md`).
+The version bump reflects the architectural shift: a shared, provider-agnostic
+DAG core and selected production runners, including the complete shaped
+single-file multipart path, plus five new trait methods on the public
+`StorageProvider` API. Batch/sync capability wiring, default range migration,
+production shaped copy, and global resource governance remain follow-up work;
+see the current technical reference and audit appendix. Three early rollout
+flags and the legacy batch orchestrator are gone. The Multi-User Account
+Partition is a schema-level change in the vault and an authorization-level
+change on the management API; bumping to v4.0.0 makes both the migration and
+the surface change explicit. The destructive admin reset, the last-admin
+guard and the OS-style lock screen are the load-bearing pieces of the new
+account surface, every one of them audited (`MU-SEC P1`) before landing.
 
 ---
 
@@ -992,7 +1026,11 @@ The Windows 100-file batch validation completes in 55.4 seconds in a single SSH 
 
 ### Unified Transfer DAG, Staging Queue and AeroFile Sync
 
-v3.8.4 is a big release: the slow work of the last cycle was converging every transfer surface (GUI, CLI, AeroSync, cross-profile) onto one shared execution engine, building a staging queue on top of it, shipping a CLI dispatcher set, unifying three disconnected sync dialogs, and acting on the v3.8.3 community feedback. Seventy commits since v3.8.3, organized below.
+v3.8.4 is a big release: the slow work of the last cycle began converging
+selected transfer surfaces onto shared execution primitives, while also
+building a staging queue, shipping a CLI dispatcher set, unifying three
+disconnected sync dialogs, and acting on the v3.8.3 community feedback.
+Seventy commits since v3.8.3, organized below.
 
 ---
 
@@ -1002,9 +1040,19 @@ This section is the high-level tour. The detailed lists below cover every change
 
 #### A single DAG transfer executor
 
-AeroFTP had multiple parallel transfer paths: the GUI segmented download, intra-file range downloads, cross-profile transfers, the AeroSync engine, the CLI `pget` and `sync` commands, and the legacy per-protocol code. v3.8.4 lands a **ready-frontier executor over a Directed Acyclic Graph** (DAG: every transfer is a graph of nodes where each edge says "this step depends on that one", and the executor walks the graph fanning out as soon as a node's dependencies are satisfied), and progressively converges every one of those paths onto it. The same code now powers concurrent-range downloads for SFTP and FTP, B2 large-file uploads, cross-profile transfers, and the AeroSync download stage. The executor ships with **prudent AIMD backpressure** (Additive Increase, Multiplicative Decrease: the classic TCP-style self-tuning that ramps up while the link is healthy and backs off hard at the first sign of strain) so it adapts to the slowest link without the user having to pick a number, and an **AppHandle-free observability sink** so non-Tauri callers (CLI, agents, tests) get the same progress signal the GUI does.
+AeroFTP had multiple parallel transfer paths: the GUI segmented download,
+intra-file range downloads, cross-profile transfers, the AeroSync engine, the
+CLI `pget` and `sync` commands, and legacy per-protocol code. v3.8.4 landed a
+**ready-frontier executor over a Directed Acyclic Graph** as shared foundation
+and staged migration work. The executor could fan out ready graph nodes and
+provided AIMD and an AppHandle-free observer abstraction, but the migration
+was not a complete replacement for every listed path. The current production
+boundaries are recorded in the v4 technical reference.
 
-This is mostly internal plumbing. The user-visible effect is that the GUI and the CLI now use the same path for large transfers, with the same parallelism, the same backpressure, and the same telemetry. The GUI grows a Settings knob for the download segment count when you want to override the heuristic.
+This is mostly internal plumbing. Some GUI and CLI large-transfer paths could
+use the new primitives, while provider-specific and legacy routes remained.
+The GUI grows a Settings knob for the download segment count when you want to
+override the heuristic.
 
 #### Transfer Queue with real staging
 
@@ -1012,7 +1060,11 @@ The unified planner had a queue, but it was effectively a fire-and-forget list. 
 
 #### Command-line surface, feature-complete
 
-v3.8.4 closes the long-running CLI work and pushes `aeroftp-cli` to **69 top-level subcommands** across listings, transfers, syncing, vaults, profiles, hashing, agent operation, batch scripting, mount and packaging. With this release the CLI is feature-complete for everyday workflows: anything the GUI can do on a file or a server is reachable from the command line, and the same shared transfer engine now powers both surfaces so the throughput numbers no longer drift between them.
+v3.8.4 closes the long-running CLI work and pushes `aeroftp-cli` to **69
+top-level subcommands** across listings, transfers, syncing, vaults, profiles,
+hashing, agent operation, batch scripting, mount and packaging. The CLI and
+GUI expose overlapping everyday workflows, but their provider adapters and
+transfer paths are not guaranteed to have identical scheduling or throughput.
 
 The release adds:
 
@@ -1038,7 +1090,10 @@ Server-side hashing now covers WebDAV (DAV `Mc-Checksum-*` headers when the serv
 
 #### Transfer capabilities surfaced to agents and CLI
 
-The Sync GUI now honors the real per-provider transfer capabilities (concurrent ranges, segment count, server-side copy) instead of using a one-size-fits-all default. The CLI exposes a capability discovery surface for agents (LLM tooling, automation), documented in the CLI guide. `--max-transfer` is now enforced on the converged shared path, so a global cap actually caps the GUI too.
+The CLI exposes a capability discovery surface for agents (LLM tooling,
+automation), documented in the CLI guide. The GUI and CLI consume capability
+data on selected operation paths; batch, sync, copy, and range routing retain
+their own adapters. `--max-transfer` is enforced on the shared session path.
 
 ---
 
@@ -1046,12 +1101,12 @@ The Sync GUI now honors the real per-provider transfer capabilities (concurrent 
 
 #### Added
 
-- **DAG transfer executor**: ready-frontier executor over a Directed Acyclic Graph, the new shared execution path for every transfer surface (`a083181d`). AIMD (Additive Increase, Multiplicative Decrease) backpressure layered on top (`185234c2`), AppHandle-free observability sink so the CLI and tests share the same progress events (`f69c41f6`), converged range download running on it (`78992012`).
-- **Intra-file range downloads** on the converged engine for FTP and SFTP, with pooled SFTP range worker and pipelined reads on one session (`b21b78b7`, `4cb3099d`, `250a62bf`). Provider download executor and `provider_download_file` both wire the segments (`995ea848`, `82bc9104`).
-- **Cross-profile DAG**: cross-profile transfers run on the parallelized DAG path (`503c9d67`).
+- **DAG transfer executor**: ready-frontier executor over a Directed Acyclic Graph as a shared foundation, with AIMD and an AppHandle-free observer abstraction (`a083181d`, `185234c2`, `f69c41f6`). The current production call-path boundaries are documented in `docs/DAG-TRANSFER-ENGINE.md`.
+- **Intra-file range downloads** through the range helper for FTP and SFTP, with pooled SFTP range worker and pipelined reads on one session (`b21b78b7`, `4cb3099d`, `250a62bf`). The default scheduler remains provider-specific; the DAG range branch is opt-in (`995ea848`, `82bc9104`).
+- **Cross-profile transfer bridge**: cross-profile transfers use a temp-file source-download → destination-upload path, with optional segmented source download and SFTP delta upload (`503c9d67`). They do not form one shared transfer DAG.
 - **GUI segmented downloads** with a Settings knob for the segment count (`4322ca84`, `b9647b3f`). Live-WAN integration tests under `tests/gtc` (`4d05e882`, `1c6e2812`).
 - **B2 large-file upload** converged on the shared part engine (`425c8266`).
-- **CLI `pget` and `sync`** converged on the shared concurrent-range engine and executor (`8db6c7e7`, `7a947101`).
+- **CLI `pget` and `sync`** gained their respective range and sync execution paths; they are not interchangeable proof that every CLI transfer uses the DAG executor (`8db6c7e7`, `7a947101`).
 - **AeroSync downloads** routed through the segmented helper (`4706d4cd`).
 - **Transfer Queue staging**: lazy per-level remote scan for FTP and SFTP (`a0e7a9c1`), extension to provider-backed protocols (`884efb56`), staged -> pending dispatcher (`246e12d1`), 5 entry-points routed through staging (`fc668479`), Start / Start all UI in the panel (`28c45a7f`), Auto-start setting (`f4a41a0e`), staging lifecycle in `useTransferQueue` hook (`798cd216`), pruned-set + lifecycle test coverage (`be61c164`).
 - **CLI `agent peek`** subcommand: read-only view of the current staged and pending transfer queue, plus transfer count surfaced in `agent-info` (`9fe0443e`).

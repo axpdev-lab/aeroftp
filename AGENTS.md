@@ -378,26 +378,31 @@ Full orchestration documentation with a verified field test report: **[Agent Orc
 
 ## Transfer Engine
 
-Starting with v4.0.0 every transfer (`get`, `put`, `sync`, `transfer`,
-`transfer-tree`, and their MCP counterparts) schedules through a
-shared, provider-agnostic DAG engine. The engine picks the right
-transfer shape per call from the provider's capabilities:
+Starting with v4.0.0 AeroFTP has a shared, provider-agnostic DAG core and
+several production runners. Do not infer the runtime path from a builder or a
+capability flag alone; check the command path and provider binding.
 
-- **Native multipart upload fan-out** on S3 / Backblaze B2: the
-  upload is split into N parts (one DAG node per chunk), parallelized
-  through a shared chunk budget, and finalized atomically.
-- **Server-side copy** when the backend advertises the capability
-  (S3 `x-amz-copy-source`, B2 `b2_copy_file`, WebDAV `COPY`,
-  ImageKit `copyFile`, plus 14 other native providers): the bytes
-  never traverse the local host.
-- **Intra-file segmented downloads** when the server proves it
-  honours HTTP `Range`: one DAG node per segment, no inter-segment
-  dependencies, governed by the shared chunk / HTTP / disk-write
-  budget.
+- **Single-file `get` / `put`** normally reach the shaped-file runner. The
+  multipart lifecycle is real. Independent wire-level part workers are
+  currently present for S3, Backblaze B2, Azure Blob, and Nextcloud chunked
+  v2; other providers can serialize their provider calls behind a shared
+  session even when their graph contains multiple part nodes.
+- **Batch** reaches `execute_batch_dag`, but currently builds with default
+  capabilities and its generic settings clamp file concurrency. It is a DAG
+  wrapper, not yet capability-driven cloud batch fan-out.
+- **Non-dry-run sync** reaches `execute_sync_dag`; local/remote scan and
+  planning happen before graph execution, and the file driver processes the
+  plan serially. Dry-run stays on the planning path.
+- **Server-side copy** uses `server_side_copy_with_fallback` in the normal GUI
+  and CLI copy call sites. A native provider copy avoids local payload bytes;
+  the `shaped_copy` builder is not the normal copy-command orchestrator.
+- **Segmented download** uses the legacy `JoinSet` path by default. The DAG
+  `shaped_ranges` path is available only with `AEROFTP_RANGE_GRAPH=1`.
 
-For an agent this is transparent: same commands, same exit codes,
-same JSON output shape. The engine handles the right shape for the
-backend.
+The GUI, CLI, and MCP surfaces share these primitives where their call paths
+reach them, but they do not guarantee identical wire behavior. Capabilities,
+concurrency flags, and AIMD settings apply only where the selected runner
+consumes them.
 
 Architecture details: [docs.aeroftp.app/architecture/dag-transfer-engine](https://docs.aeroftp.app/architecture/dag-transfer-engine).
 

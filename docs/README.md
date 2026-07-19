@@ -14,7 +14,7 @@ Welcome to the AeroFTP documentation folder. This contains all technical documen
 | **[TRANSLATIONS.md](./TRANSLATIONS.md)** | Internationalization (i18n) guide for adding new languages |
 | **[PROTOCOL-FEATURES.md](./PROTOCOL-FEATURES.md)** | Protocol feature comparison matrix and protocol capability notes |
 | **[AEROSHARE-P2P.md](./AEROSHARE-P2P.md)** | AeroShare peer-to-peer transfer (Beta preview, v4.1.0) - end-to-end-encrypted user-to-user transfer over iroh 1.0, always-on surface, Inbox, friends |
-| **[DAG-TRANSFER-ENGINE.md](./DAG-TRANSFER-ENGINE.md)** | Shaped Graph Transfer (DAG) engine - node graph, capability-aware shapes (multipart fan-out, server-side copy, segmented downloads), resource classes, AIMD backpressure (v4.0.0) |
+| **[DAG-TRANSFER-ENGINE.md](./DAG-TRANSFER-ENGINE.md)** | Shaped Graph Transfer (DAG) engine - active call paths, single-file multipart, batch/sync limits, direct copy helper, opt-in range graph, resource classes, AIMD (v4.0.0+) |
 | **[UNIVERSAL-VAULT.md](./UNIVERSAL-VAULT.md)** | Universal Vault credential storage architecture, Unified Keystore, backup/restore |
 | **[MULTI-USER.md](./MULTI-USER.md)** | Multi-User Account Partition - per-user encrypted vault partitions, Account Lock Screen, admin role, CLI `--user` flag (v4.0.0) |
 | **[SECURITY-AUDIT-SUMMARY.md](./SECURITY-AUDIT-SUMMARY.md)** | Independent security and quality audit reports (v2.5.0 + v2.6.0 provider audit) |
@@ -104,7 +104,14 @@ AeroAgent provides a broad built-in tool catalog across local files, remote oper
 
 ## Transfer Engine (DAG)
 
-Since v4.0.0, every transfer (single file, batch, sync, cross-profile copy) runs through one shared, provider-agnostic DAG engine that picks the right shape per call from each provider's capability snapshot: native multipart fan-out, server-side copy, or intra-file segmented downloads, degrading honestly to a single stream when a backend advertises none of them. The GUI, CLI, and MCP server schedule through the same runners. See **[DAG-TRANSFER-ENGINE.md](./DAG-TRANSFER-ENGINE.md)**.
+Since v4.0.0, AeroFTP has a shared provider-agnostic DAG core. The shaped
+single-file runner is the most complete production path; batch and non-dry-run
+sync also use DAG wrappers but remain conservative and serial at the file
+driver level. Server-side copy uses the shared direct fallback helper, while
+the DAG range runner is opt-in (`AEROFTP_RANGE_GRAPH=1`). Cross-profile copy
+still uses its temp-file/provider-owned path. See
+**[DAG-TRANSFER-ENGINE.md](./DAG-TRANSFER-ENGINE.md)** for the call-path
+matrix.
 
 ## Multi-User Account Partition
 

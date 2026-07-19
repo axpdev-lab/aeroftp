@@ -220,13 +220,16 @@ aeroftp-cli agent-connect --profile "Server" --json 2>/dev/null \
   | jq '.capabilities.transfer_capabilities'
 ```
 
-Each block carries a `source` field: `protocol_defaults` or
-`profile_defaults` are derived without contacting the server, while
-`live_provider` means a real connection refined the block and may
-differ from the defaults. Honor the advertised limits (for example
-`max_file_slots`, `max_chunk_slots`, `session_pool`) rather than
-passing a `--parallel` value the backend will silently clamp. The
-human-readable matrix is in
+Each block carries `source` and `source_is_live`. `protocol_defaults` /
+`profile_defaults` are the provider-type baseline from the binary
+capability registry (no connection); they are capability-driven from
+the provider implementations, not an empty stub. `live_provider`
+means a real connection refined the block and may differ (endpoint
+quirks, SFTP/FTP connection-spec pools). `agent-info --json` also
+exposes `capability_source_semantics` with the full label meanings.
+Honor the advertised limits (for example `max_file_slots`,
+`max_chunk_slots`, `session_pool`) rather than passing a `--parallel`
+value the backend will silently clamp. The human-readable matrix is in
 [CLI-GUIDE: Transfer Capabilities by Protocol](CLI-GUIDE.md#transfer-capabilities-by-protocol).
 
 ### DO NOT: Retry Non-Retryable Errors

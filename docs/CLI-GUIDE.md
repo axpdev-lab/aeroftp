@@ -1861,7 +1861,7 @@ aeroftp-cli agent-info --json
 
 Prints structured JSON describing safe/modify/destructive command groups, credential model, output hygiene, saved profile inventory with per-profile auth state, and a `protocol_features` map keyed by protocol (share_links, resume, server_copy, versions, thumbnails, change_tracking) plus an `agent_connect_supported_protocols` array. This is the recommended discovery surface for AI coding agents and the canonical input for capability-aware tool routing.
 
-It also emits the transfer-scheduler surface: a `protocol_transfer_capabilities` map (one block per protocol, `source: "protocol_defaults"`) and a per-profile `transfer_capabilities` block (`source: "profile_defaults"`) under `profiles.servers[]`, alongside the safe profile fields `id`, `name`, `protocol`, `host`, `port`, `username`, `initialPath`, `providerId`. Each block is `{ status, source, capabilities }`, where `capabilities` is the `TransferCapabilities` object documented in [Transfer Capabilities by Protocol](#transfer-capabilities-by-protocol). These fields are additive: consumers reading only `protocol_features` keep working unchanged.
+It also emits the transfer-scheduler surface: a `protocol_transfer_capabilities` map (one block per protocol, `source: "protocol_defaults"`) and a per-profile `transfer_capabilities` block (`source: "profile_defaults"`) under `profiles.servers[]`, alongside the safe profile fields `id`, `name`, `protocol`, `host`, `port`, `username`, `initialPath`, `providerId`. Each block is `{ status, source, source_is_live, capabilities }`, where `capabilities` is the `TransferCapabilities` object documented in [Transfer Capabilities by Protocol](#transfer-capabilities-by-protocol). The top-level `capability_source_semantics` object explains the three source labels (`protocol_defaults` / `profile_defaults` / `live_provider`) so agents never treat the static registry as a live probe. Baselines are capability-driven from the provider implementations even without a session. These fields are additive: consumers reading only `protocol_features` keep working unchanged.
 
 ---
 
@@ -1917,30 +1917,62 @@ It also emits the transfer-scheduler surface: a `protocol_transfer_capabilities`
 
 ## Transfer Capabilities by Protocol
 
-Not every protocol can honor every transfer flag. `--parallel`, `--chunk-size`, `--partial`, and the segmented/delta paths each depend on what the underlying backend actually supports. The CLI does not guess: each protocol advertises a `TransferCapabilities` block that the scheduler reads before deciding how to move bytes. This is the same block exposed as machine-readable JSON by [`agent-info`](#agent-info---ai-agent-discovery-metadata) (`protocol_transfer_capabilities` and per-profile `transfer_capabilities`) and by [`agent-connect`](#agent-connect---single-shot-agent-connect).
+Not every protocol can honor every transfer flag. `--parallel`, `--chunk-size`,
+`--partial`, and the segmented/delta paths each depend on what the underlying
+backend actually supports. The shaped single-file runner reads the connected
+provider's `TransferCapabilities` before choosing its transfer core; batch and
+sync currently have more conservative adapter paths, and copy/range commands
+have their own routing. The same capability fields are exposed as
+machine-readable JSON by [`agent-info`](#agent-info---ai-agent-discovery-metadata)
+(`protocol_transfer_capabilities` and per-profile `transfer_capabilities`) and
+by [`agent-connect`](#agent-connect---single-shot-agent-connect).
 
-The table below is the provider-generic default (no live connection). It is generated from the same source of truth the runtime uses, so a backend never claims a capability the transfer engine will not actually exercise.
+The table below is the **provider-type baseline** exposed without a live
+connection (`source: "protocol_defaults"` / `"profile_defaults"`). It is
+generated from the same capability registry that backs
+`agent-info --json` and mirrors what each provider implementation advertises
+in code. It is still a capability advertisement, not a guarantee that every
+command path will use the corresponding DAG shape; live provider data and the
+selected runner still control the operation. Each JSON block also carries
+`source_is_live` (false for this table) and `agent-info` documents the three
+source labels under `capability_source_semantics`.
 
 | Protocol(s) | Parallel files | Session pool | Concurrent range GET | Multipart upload | Resume DL / UL | Server checksum | API rate-limited |
 |---|---|---|---|---|---|---|---|
 | FTP, FTPS | yes (8 slots) | yes | no | no | yes / yes | no | no |
 | SFTP | no (1 slot) | no | no | no | no / no | no | no |
-| S3 | no (1 slot) | no | yes | yes (4 parts, 5 MiB) | yes / no | yes (ETag) | no |
-| Azure Blob | no (1 slot) | no | yes | no | yes / no | no | no |
+| S3 | yes (8 slots) | yes | yes | yes (4 parts, 16 MiB, thr 200 MiB) | yes / no | yes (ETag) | no |
+| Azure Blob | yes (8 slots) | yes | yes | yes (4 parts, 8 MiB, thr 200 MiB) | yes / no | no | no |
+| Backblaze B2 | yes (8 slots) | yes | yes | yes (4 parts, 100 MiB, thr 200 MiB) | no / no | no | no |
 | OpenStack Swift | no (1 slot) | no | no | no | yes / no | no | no |
-| WebDAV, Koofr | no (1 slot) | no | after probe | no | yes / no | no | no |
-| Backblaze B2 | no (1 slot) | no | no | yes (4 parts, 100 MiB) | no / no | no | no |
-| Google Drive, Google Photos, Dropbox, OneDrive, Box, pCloud, Zoho WorkDrive, 4shared, Yandex Disk, kDrive, Jottacloud, Drime, FileLu, OpenDrive | no (1 slot) | no | no | no | no / no | no | yes |
+| WebDAV | no (1 slot) | no | after probe | no | yes / no | no | no |
+| Koofr | no (1 slot) | no | after probe | no | yes / no | yes (koofr) | no |
+| Dropbox | no (1 slot) | no | no | yes (4 parts, 8 MiB, thr 150 MiB) | yes / yes | no | yes |
+| Box | no (1 slot) | no | no | yes (4 parts, 8 MiB, thr 20 MiB) | yes / yes | yes (sha1) | yes |
+| Google Drive | no (1 slot) | no | no | yes (1 part stream, 8 MiB, thr 5 MiB) | yes / yes | no | yes |
+| OneDrive | no (1 slot) | no | no | yes (1 part stream, 10 MiB, thr 4 MiB) | yes / yes | no | yes |
+| pCloud | no (1 slot) | no | no | yes (2 parts, 4 MiB) | yes / yes | no | yes |
+| Yandex Disk | no (1 slot) | no | no | yes (1 part stream, 8 MiB, thr 32 MiB) | yes / yes | no | yes |
+| OpenDrive | no (1 slot) | no | no | yes (1 part stream, 5 MiB) | yes / yes | yes (md5) | yes |
+| Drime | no (1 slot) | no | no | yes (4 parts, 5 MiB) | yes / yes | yes (etag) | yes |
+| Filen | no (1 slot) | no | no | yes (4 parts, 1 MiB) | yes / yes | no | no |
+| MEGA | no (1 slot) | no | no | yes (1 part stream, 1 MiB, thr 32 MiB) | yes / yes | no | no |
+| Uploadcare | no (1 slot) | no | yes | yes (4 parts, 5 MiB, thr 10 MiB) | yes / yes | no | no |
+| Cloudinary | no (1 slot) | no | yes | yes (1 part stream, 20 MiB, thr 100 MiB) | yes / yes | no | no |
+| Google Photos, Zoho WorkDrive, 4shared, FileLu, kDrive, Jottacloud, Internxt | no (1 slot) | no | no | no | yes / no | no | yes (cloud OAuth family) / no (others) |
+| ImageKit | no (1 slot) | no | yes | no | yes / no | no | no |
 | GitHub, GitLab | no (1 slot) | no | no | no | no / no | no | yes |
-| AeroCloud, MEGA, Filen, Internxt, Immich, ImageKit, Uploadcare, Cloudinary | no (1 slot) | no | no | no | no / no | no | no |
+| AeroCloud, Immich | no (1 slot) | no | no | no | no / no | no | no |
 
-Legend: **yes** = `supported`, **no** = `unsupported`, **after probe** = `supported_after_probe` (the capability is exercised only after a runtime range probe confirms the server honors `Range:` correctly). "Parallel files" is `file_parallel` with its `max_file_slots`; "Multipart upload" lists `max_chunk_slots` and `preferred_chunk_size` when the backend sets one. The JSON block also carries `max_checker_slots` (listing/verify fan-out) and the remaining `TransferCapabilities` fields (`offset_upload`, `upload_session`, `server_side_copy`, `list_parallel`, `batch_list`, `atomic_rename`); per-protocol `server_side_copy` and the feature tokens (`share_links`, `versions`, ...) live in the `protocol_features` map.
+Legend: **yes** = `supported`, **no** = `unsupported`, **after probe** = `supported_after_probe` (the capability is exercised only after a runtime range probe confirms the server honors `Range:` correctly). "Parallel files" is `file_parallel` with its `max_file_slots`; "Multipart upload" lists `max_chunk_slots`, `preferred_chunk_size`, and `multipart_threshold` when the backend sets them. Sequential resumable sessions (Drive/OneDrive/Yandex/OpenDrive/MEGA/Cloudinary) correctly report multipart with `max_chunk_slots = 1`. The JSON block also carries `max_checker_slots` (listing/verify fan-out) and the remaining `TransferCapabilities` fields (`offset_upload`, `upload_session`, `server_side_copy`, `list_parallel`, `batch_list`, `atomic_rename`); per-protocol feature tokens (`share_links`, `versions`, ...) live in the `protocol_features` map.
 
 Notes on honesty of the matrix:
 
-- **FTP/FTPS** advertise file-level parallelism through the session pool (up to 8 concurrent file slots) rather than strict concurrent range GET on a single file; the capability surface deliberately does not overclaim single-file range parallelism for FTP.
-- **SFTP** reports a single-lease provider-generic profile by design (the shared SFTP pool is not the provider-generic path). SFTP-specific acceleration is still available and is documented separately: byte-level delta via [`--delta`](#get---download-files) and segmented single-file download via [`pget`](#pget---segmented-parallel-download).
-- The discovery surfaces report `source: "profile_defaults"` (`agent-info` per-profile) or `source: "protocol_defaults"` (`agent-info` `protocol_transfer_capabilities`, `agent-connect` discovery path). Only a real connection upgrades a block to `source: "live_provider"`, which can differ from the defaults above when a specific server exposes more or fewer primitives.
+- **FTP/FTPS** advertise file-level parallelism through the session pool (up to 8 concurrent file slots) rather than strict concurrent range GET on a single file; the capability surface deliberately does not overclaim single-file range parallelism for FTP. Live connections with a `connection_spec` may further enable concurrent range via the FTP pool under `live_provider`.
+- **SFTP** reports a single-lease provider-generic profile by design (the shared SFTP pool requires a connection_spec and only appears under `live_provider`). SFTP-specific acceleration is still available and is documented separately: byte-level delta via [`--delta`](#get---download-files) and segmented single-file download via [`pget`](#pget---segmented-parallel-download).
+- **S3 / Azure / B2** advertise HttpClonePool file-level slots and concurrent Range in `protocol_defaults` because those executors do not depend on a live connection_spec. Endpoint quirks (for example filen-s3 disabling multipart) still require `live_provider`.
+- **Dropbox / Box / pCloud / Filen / Drime / …** advertise multipart session support from the provider trait without claiming `file_parallel` / `session_pool` until a clone pool exists.
+- Discovery surfaces report `source: "profile_defaults"` (`agent-info` per-profile) or `source: "protocol_defaults"` (`agent-info` `protocol_transfer_capabilities`, `agent-connect` discovery path), plus `source_is_live: false`. Only a real connection upgrades a block to `source: "live_provider"` / `source_is_live: true`, which can differ from the defaults above. See `capability_source_semantics` in `agent-info --json`.
 
 Per-file size limits are intentionally not a column here. A maximum single-file size is a provider plan or account policy, not a transfer-scheduler capability, so it is not part of the generated `TransferCapabilities` block this table is built from. For those limits see [wrapper-stack: Free-tier max single file](architecture/wrapper-stack.md#chunking-in-depth) (the largest single file a provider's free plan accepts, which AeroFTP's chunking is built to bypass) and [PROVIDER-INTEGRATION-GUIDE: Upload Pattern Summary](PROVIDER-INTEGRATION-GUIDE.md#upload-pattern-summary) (the API single-request ceiling before a chunked upload strategy is needed).
 

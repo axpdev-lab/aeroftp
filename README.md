@@ -392,15 +392,37 @@ The delta path is wired into:
 
 > [Full documentation →](docs/DAG-TRANSFER-ENGINE.md)
 
-Since **v4.0.0**, every transfer (single file, batch, sync, cross-profile copy) runs through one shared, provider-agnostic DAG engine. Each transfer is scheduled as a directed acyclic graph of typed nodes (discover, acquire, move bytes, verify, commit, emit progress); concurrency comes from a small set of resource classes (file, chunk, http, disk, api) governed by an AIMD backpressure controller.
+Since **v4.0.0**, AeroFTP has a shared, provider-agnostic DAG core and production
+runners for selected transfer paths. The graph is not a promise that every
+surface uses every shape: the active call path, the provider binding, and the
+wire-level behavior are separate facts.
 
-The engine picks the right **shape per call** from each provider's capability snapshot:
+- **Single-file get/put** normally use the shaped-file runner. Multipart
+  `UploadPart` nodes and the begin/part/complete/abort lifecycle are real;
+  independent wire-level fan-out is currently available only where the
+  provider supplies an independent transfer worker (S3, Backblaze B2, Azure
+  Blob, and Nextcloud chunked v2). Other providers may build multipart nodes
+  but serialize provider calls through their shared session.
+- **Batch and non-dry-run sync** enter DAG runners, but their current
+  capability snapshot and file drivers are conservative: batch uses default
+  capabilities and its generic settings clamp file concurrency, while sync
+  executes a precomputed plan through one serial file driver. They are not
+  advertised as parallel cloud batch/sync orchestration yet.
+- **Server-side copy** is a real provider feature, reached by the shared
+  `server_side_copy_with_fallback` helper. Native copies avoid a local payload;
+  recoverable capability failures fall back to download → upload. The
+  `shaped_copy` builder exists, but it is not the normal copy-command
+  orchestrator, so no DAG `UploadPartCopy` claim is made.
+- **Segmented downloads** use the established range helper. The
+  `shaped_ranges` DAG path is opt-in through `AEROFTP_RANGE_GRAPH=1`; the
+  default provider path remains the bounded `JoinSet` scheduler, and Auto may
+  choose a single stream.
 
-- **Native multipart fan-out** on S3, Backblaze B2, Google Drive, Dropbox, OneDrive, and Box: one graph node per chunk, orchestrated end-to-end.
-- **Server-side copy** on every backend that advertises it (S3 `x-amz-copy-source`, B2 `b2_copy_file`, WebDAV RFC 4918 `COPY`, ImageKit `copyFile`, and 14 more): the bytes never touch the local host. S3 sources above the 5 GiB `CopyObject` limit fan out into parallel `UploadPartCopy` requests.
-- **Intra-file segmented downloads** when a provider honours HTTP `Range`.
-
-Backends that advertise none of these degrade honestly to the classic single-stream path, byte-identical with pre-v4.0.0. The GUI, the CLI, and the MCP server schedule through the same runners, so wire-level behavior is identical across all three by construction. The CLI exposes 25+ runtime knobs (`--checkers`, `--s3-upload-concurrency`, `--aimd-min/--aimd-max`, and more) over the same engine.
+The GUI, CLI, and MCP adapters therefore share engine primitives where their
+call paths reach them, but wire behavior is provider- and operation-dependent.
+Capabilities and runtime knobs are meaningful only on the command path that
+consumes them; they do not turn the batch, sync, copy, or default range paths
+into a fully unified parallel scheduler.
 
 ---
 
