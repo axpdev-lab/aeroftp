@@ -44,8 +44,11 @@ typed nodes. A node runs only after its dependencies complete and its
 - `TransferDag`, node kinds, dependency validation, and ready-frontier
   dispatch;
 - resource permits for file, checker, chunk, HTTP, API, disk-read,
-  disk-write, and hash classes;
-- the `AimdController` and congestion classifier;
+  disk-write, hash, and **buffer-byte credits** (weighted quanta);
+- directional disk requests: upload/upload-part reserve disk-read only;
+  download/range reserve disk-write only; server-side copy reserves neither;
+- the `AimdController` and congestion classifier (byte memory is a safety
+  budget, not an AIMD congestion class);
 - `DagObserver` lifecycle hooks and the executor summary.
 
 The executor is not globally bounded by process or endpoint. The ready
@@ -56,18 +59,24 @@ and normalized edge once during dispatch; preprocessing uses
 `sort_unstable`/`dedup` per dependency list, so setup is
 O(V + sum(d_i log d_i)) rather than a strict O(V+E). Wide independent
 frontiers therefore avoid both repeated full scans and unbounded task spawn.
-Resource permits still bound I/O classes separately; they do not cover
-multipart buffer bytes. On the first node failure the executor cancels a
-graph-scoped token (optionally a child of an external parent), stops new
-dispatch, and terminates resident siblings within two seconds — cooperative
-cancel first, then forced `JoinSet` abort, followed by one bounded drain.
-This bound applies to async work that yields to Tokio; synchronous blocking
-code must not run directly inside a DAG node because an async runtime cannot
-preempt it. Optional per-node timeouts start at dispatch (including
-AIMD/resource waits), are typed as `TransferErrorKind::Timeout`, and are
-distinct from external cancel (`Cancelled`). Production keeps
-`node_timeout = None` so long valid transfers are not cut by an arbitrary
-engine limit (`DAG-P0-05`).
+Resource permits bound I/O classes and, as of `DAG-P0-06`, also bound owned
+multipart part buffers via per-manager `buffer_bytes` credits (64 KiB quanta,
+`acquire_many_owned`; env `AEROFTP_TRANSFER_BUFFER_BYTES`; default
+`min(512 MiB, max(64 MiB, 10% MemAvailable))` on Linux, else 256 MiB). A
+single part larger than the budget is admitted one-at-a-time through an
+explicit oversize lane. This is **not** a process-global memory governor
+(`DAG-P2-01`); the legacy non-DAG concurrent upload path in
+`providers/multi_thread.rs` (`read_part_from_disk`) remains outside these
+credits. On the first node failure the executor cancels a graph-scoped token
+(optionally a child of an external parent), stops new dispatch, and
+terminates resident siblings within two seconds — cooperative cancel first,
+then forced `JoinSet` abort, followed by one bounded drain. This bound
+applies to async work that yields to Tokio; synchronous blocking code must
+not run directly inside a DAG node because an async runtime cannot preempt
+it. Optional per-node timeouts start at dispatch (including AIMD/resource
+waits), are typed as `TransferErrorKind::Timeout`, and are distinct from
+external cancel (`Cancelled`). Production keeps `node_timeout = None` so long
+valid transfers are not cut by an arbitrary engine limit (`DAG-P0-05`).
 
 Three production wrappers call the core:
 
@@ -112,10 +121,16 @@ This is the most complete DAG path. `execute_single_file_dag` binds
 `UploadPart` nodes to the real provider lifecycle:
 
 1. the first part lazily calls `begin_multipart_upload`;
-2. each part reads its local slice and calls `upload_part`;
+2. the executor acquires the part's directional + buffer-byte lease, then
+   each part reads its local slice (`read_chunk` → `vec![0u8; len]`) and
+   calls `upload_part` while the lease is still held;
 3. receipts are collected and ordered by part number;
 4. `CommitTemp` calls `complete_multipart_upload`;
 5. a failed graph makes a best-effort `abort_multipart_upload` call.
+
+Part buffer sizing is shared: builder and runner use
+`multipart_part_byte_len(file_size, part_index, part_count,
+preferred_chunk_size)` so graph accounting cannot drift from the allocation.
 
 The runner first tries `clone_for_transfer()`. A clone-capable provider gets an
 independent worker per part; otherwise the provider is taken through the

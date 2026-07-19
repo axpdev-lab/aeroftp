@@ -603,6 +603,12 @@ pub async fn execute_single_file_dag(
 }
 
 /// Read `len` bytes from `path` starting at `offset` into a fresh `Vec`.
+///
+/// Called only from an `UploadPart` node after the executor has already
+/// acquired that node's `ResourceRequest` (including `buffer_bytes == len`).
+/// Peak credited concurrent part buffers therefore cannot exceed the
+/// per-manager byte budget (aside from the documented one-at-a-time oversize
+/// policy). Do not call this without a matching lease held above.
 async fn read_chunk(path: &str, offset: u64, len: u64) -> Result<Vec<u8>, ProviderError> {
     let mut file = tokio::fs::File::open(path).await?;
     file.seek(SeekFrom::Start(offset)).await?;
@@ -638,7 +644,8 @@ fn single_file_needs_aimd(built: &ShapedFileDag) -> bool {
 }
 
 fn single_file_budget(built: &ShapedFileDag) -> TransferBudget {
-    let mut budget = TransferBudget::from_file_slots(1);
+    // Per-manager buffer budget (env / MemAvailable / fallback). Not process-global.
+    let mut budget = TransferBudget::from_file_slots(1).with_resolved_buffer_budget();
     if built.direction == TransferDirection::Upload && built.profile.upload_parts > 1 {
         let chunk_slots = built
             .profile
@@ -646,7 +653,15 @@ fn single_file_budget(built: &ShapedFileDag) -> TransferBudget {
             .max(1)
             .min(built.profile.upload_parts as u16);
         budget.chunk_slots = chunk_slots;
+        // Disk-read slots must cover concurrent parts that each hold a lease.
         budget.disk_read_slots = budget.disk_read_slots.max(chunk_slots);
+        // Directional: multipart upload never needs disk-write permits.
+        budget.disk_write_slots = 1;
+    } else if built.direction == TransferDirection::Upload {
+        budget.disk_write_slots = 1;
+    } else {
+        // Download path: no disk-read contention for the payload.
+        budget.disk_read_slots = 1;
     }
     budget
 }
@@ -762,6 +777,14 @@ mod tests {
         assert_eq!(budget.file_slots, 1);
         assert_eq!(budget.chunk_slots, 4);
         assert_eq!(budget.disk_read_slots, 4);
+        assert!(
+            budget.buffer_bytes >= crate::transfer_dag::MIN_BUFFER_BUDGET_BYTES
+                || budget.buffer_bytes == crate::transfer_dag::DEFAULT_BUFFER_BUDGET_BYTES,
+            "multipart budget must expose a real buffer pool, got {}",
+            budget.buffer_bytes
+        );
+        // Directional: upload manager need not stockpile write permits.
+        assert_eq!(budget.disk_write_slots, 1);
     }
 
     #[test]
@@ -774,6 +797,34 @@ mod tests {
         assert_eq!(budget.file_slots, 1);
         assert_eq!(budget.chunk_slots, 1);
         assert_eq!(budget.disk_read_slots, 1);
+        assert!(budget.buffer_bytes > 0);
+    }
+
+    #[test]
+    fn multipart_part_nodes_request_exact_buffer_bytes() {
+        use crate::transfer_dag::multipart_part_byte_len;
+        let chunk = 8 * 1024 * 1024u64;
+        let file_size = 25 * 1024 * 1024u64;
+        let caps = TransferCapabilities {
+            multipart_upload: Capability::Supported,
+            preferred_chunk_size: Some(chunk),
+            max_chunk_slots: Some(4),
+            multipart_threshold: 0,
+            ..TransferCapabilities::default()
+        };
+        let built =
+            TransferDagBuilder::shaped_file(TransferDirection::Upload, &caps, file_size);
+        let parts = built.profile.upload_parts;
+        assert!(parts > 1);
+        for (idx, &node_id) in built.transfer.iter().enumerate() {
+            let req = &built.dag.nodes()[node_id].resources;
+            assert_eq!(
+                req.buffer_bytes,
+                multipart_part_byte_len(file_size, idx, parts, built.profile.preferred_chunk_size)
+            );
+            assert_eq!(req.disk_write_slots, 0);
+            assert_eq!(req.disk_read_slots, 1);
+        }
     }
 
     #[test]

@@ -21,7 +21,8 @@
 //! - `AcquireResource`: structural anchor. A no-op in phase 1; phase 3 hooks
 //!   the resume-checkpoint fetch here.
 //! - `DownloadFile` / `UploadFile`: the real I/O. The only node that carries a
-//!   scarce resource ([`ResourceRequest::file_transfer`]).
+//!   scarce directional file resource ([`ResourceRequest::download_file`] /
+//!   [`ResourceRequest::upload_file`]).
 //! - `VerifyChecksum`: structural anchor. A no-op in phase 1 (the legacy
 //!   single-file path does not verify); phase 3 makes it real behind the
 //!   `server_checksum` capability.
@@ -42,7 +43,7 @@
 
 use super::capabilities::TransferCapabilities;
 use super::graph::{TransferDag, TransferNodeKind};
-use super::resources::ResourceRequest;
+use super::resources::{multipart_part_byte_len, ResourceRequest};
 
 /// Multipart chunk size used when a provider advertises `multipart_upload` but
 /// does not state a `preferred_chunk_size`. 8 MiB balances part count against
@@ -431,11 +432,11 @@ impl TransferDagBuilder {
     /// `Discover{Remote|Local}` → `AcquireResource` → `{Download|Upload}File`
     /// → `VerifyChecksum` → `PreserveMetadata` → `CommitTemp` → `EmitProgress`.
     ///
-    /// Only the transfer node carries a scarce resource
-    /// ([`ResourceRequest::file_transfer`]); every other node is a metadata
-    /// or structural step with no resource request, so they never contend on
-    /// the shared semaphores and the graph cannot deadlock against its own
-    /// budget.
+    /// Only the transfer node carries a scarce directional resource
+    /// ([`ResourceRequest::upload_file`] / [`ResourceRequest::download_file`]);
+    /// every other node is a metadata or structural step with no resource
+    /// request, so they never contend on the shared semaphores and the graph
+    /// cannot deadlock against its own budget.
     pub fn single_file(direction: TransferDirection) -> SingleFileDag {
         let mut dag = TransferDag::default();
         let ids = append_single_file_chain(&mut dag, direction);
@@ -458,7 +459,7 @@ impl TransferDagBuilder {
     ///
     /// The sub-DAGs are intentionally independent: their discover/acquire
     /// prefixes can enter the ready frontier together, while the real transfer
-    /// nodes all carry [`ResourceRequest::file_transfer`]. A single
+    /// nodes all carry a directional file request. A single
     /// [`TransferResourceManager`](super::resources::TransferResourceManager)
     /// shared by the executor is therefore the only file-level concurrency
     /// governor, matching the Fase 2 `file_slots` contract.
@@ -724,10 +725,16 @@ impl TransferDagBuilder {
                 } else {
                     vec![acquire]
                 };
+                let part_bytes = multipart_part_byte_len(
+                    file_size,
+                    idx,
+                    profile.upload_parts,
+                    profile.preferred_chunk_size,
+                );
                 transfer.push(dag.add_node(
                     TransferNodeKind::UploadPart,
                     parent_dep,
-                    part_request(profile.api_slots),
+                    part_request(profile.api_slots, part_bytes),
                 ));
             }
         } else {
@@ -738,7 +745,7 @@ impl TransferDagBuilder {
             transfer.push(dag.add_node(
                 transfer_kind,
                 vec![acquire],
-                transfer_request(profile.api_slots),
+                transfer_request(direction, profile.api_slots),
             ));
         }
 
@@ -802,26 +809,22 @@ impl TransferDagBuilder {
 
         let mut copy = Vec::new();
         if server_side {
-            // A server-side copy is one API operation; it always reserves an
-            // api slot even when the provider does not flag rate limiting.
+            // A server-side copy is one API operation; no local disk or buffer.
             copy.push(dag.add_node(
                 TransferNodeKind::ServerSideCopy,
                 vec![acquire],
-                ResourceRequest {
-                    api_slots: api_slots.max(1),
-                    ..ResourceRequest::default()
-                },
+                ResourceRequest::server_copy(api_slots),
             ));
         } else {
             let download = dag.add_node(
                 TransferNodeKind::DownloadFile,
                 vec![acquire],
-                transfer_request(api_slots),
+                transfer_request(TransferDirection::Download, api_slots),
             );
             let upload = dag.add_node(
                 TransferNodeKind::UploadFile,
                 vec![download],
-                transfer_request(api_slots),
+                transfer_request(TransferDirection::Upload, api_slots),
             );
             copy.push(download);
             copy.push(upload);
@@ -862,26 +865,22 @@ impl TransferDagBuilder {
     }
 }
 
-/// `ResourceRequest` for a whole-file transfer node, optionally rate-limited.
-fn transfer_request(api_slots: u16) -> ResourceRequest {
-    ResourceRequest {
-        file_slots: 1,
-        disk_read_slots: 1,
-        disk_write_slots: 1,
-        api_slots,
-        ..ResourceRequest::default()
+/// `ResourceRequest` for a whole-file transfer node, directional and optionally
+/// rate-limited. Whole-file runners stream through the provider and do not
+/// pre-allocate a known full-file buffer, so `buffer_bytes` stays 0.
+fn transfer_request(direction: TransferDirection, api_slots: u16) -> ResourceRequest {
+    match direction {
+        TransferDirection::Upload => ResourceRequest::upload_file().with_api_slots(api_slots),
+        TransferDirection::Download => ResourceRequest::download_file().with_api_slots(api_slots),
     }
 }
 
-/// `ResourceRequest` for one `UploadPart` node: a chunk slot (so the chunk
-/// budget governs part parallelism) plus a disk read, optionally rate-limited.
-fn part_request(api_slots: u16) -> ResourceRequest {
-    ResourceRequest {
-        chunk_slots: 1,
-        disk_read_slots: 1,
-        api_slots,
-        ..ResourceRequest::default()
-    }
+/// `ResourceRequest` for one `UploadPart` node: chunk slot + disk read + the
+/// exact maximum `Vec<u8>` this part may allocate (`buffer_bytes`), optionally
+/// rate-limited. Sizing must match the runner's `read_chunk` formula via
+/// [`multipart_part_byte_len`].
+fn part_request(api_slots: u16, buffer_bytes: u64) -> ResourceRequest {
+    ResourceRequest::upload_part(buffer_bytes).with_api_slots(api_slots)
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -919,7 +918,7 @@ fn append_single_file_chain(
     let transfer = dag.add_node(
         transfer_kind,
         vec![acquire],
-        ResourceRequest::file_transfer(),
+        transfer_request(direction, 0),
     );
     let verify = dag.add_node(
         TransferNodeKind::VerifyChecksum,
@@ -994,11 +993,17 @@ fn append_shaped_file_chain(
 
     let mut transfer_nodes = Vec::new();
     if direction == TransferDirection::Upload && profile.upload_parts > 1 {
-        for _ in 0..profile.upload_parts {
+        for idx in 0..profile.upload_parts {
+            let part_bytes = multipart_part_byte_len(
+                file_size,
+                idx,
+                profile.upload_parts,
+                profile.preferred_chunk_size,
+            );
             transfer_nodes.push(dag.add_node(
                 TransferNodeKind::UploadPart,
                 vec![acquire],
-                part_request(profile.api_slots),
+                part_request(profile.api_slots, part_bytes),
             ));
         }
     } else {
@@ -1009,7 +1014,7 @@ fn append_shaped_file_chain(
         transfer_nodes.push(dag.add_node(
             transfer_kind,
             vec![acquire],
-            transfer_request(profile.api_slots),
+            transfer_request(direction, profile.api_slots),
         ));
     }
 
@@ -1068,11 +1073,17 @@ fn append_shaped_sync_file_chain(
 
     let mut transfer_nodes = Vec::new();
     if direction == TransferDirection::Upload && profile.upload_parts > 1 {
-        for _ in 0..profile.upload_parts {
+        for idx in 0..profile.upload_parts {
+            let part_bytes = multipart_part_byte_len(
+                file_size,
+                idx,
+                profile.upload_parts,
+                profile.preferred_chunk_size,
+            );
             transfer_nodes.push(dag.add_node(
                 TransferNodeKind::UploadPart,
                 vec![acquire],
-                part_request(profile.api_slots),
+                part_request(profile.api_slots, part_bytes),
             ));
         }
     } else {
@@ -1083,7 +1094,7 @@ fn append_shaped_sync_file_chain(
         transfer_nodes.push(dag.add_node(
             transfer_kind,
             vec![acquire],
-            transfer_request(profile.api_slots),
+            transfer_request(direction, profile.api_slots),
         ));
     }
 
@@ -1137,7 +1148,7 @@ fn append_sync_file_chain(
     let transfer = dag.add_node(
         transfer_kind,
         vec![acquire],
-        ResourceRequest::file_transfer(),
+        transfer_request(direction, 0),
     );
     let verify = dag.add_node(
         TransferNodeKind::VerifyChecksum,
@@ -1248,7 +1259,7 @@ mod tests {
 
         for node in nodes {
             if node.id == built.transfer {
-                assert_eq!(node.resources, ResourceRequest::file_transfer());
+                assert_eq!(node.resources, ResourceRequest::upload_file());
             } else {
                 assert_eq!(
                     node.resources,
@@ -1259,6 +1270,22 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn single_file_requests_are_directional() {
+        let up = TransferDagBuilder::single_file(TransferDirection::Upload);
+        let down = TransferDagBuilder::single_file(TransferDirection::Download);
+        assert_eq!(
+            up.dag.nodes()[up.transfer].resources,
+            ResourceRequest::upload_file()
+        );
+        assert_eq!(
+            down.dag.nodes()[down.transfer].resources,
+            ResourceRequest::download_file()
+        );
+        assert_eq!(up.dag.nodes()[up.transfer].resources.disk_write_slots, 0);
+        assert_eq!(down.dag.nodes()[down.transfer].resources.disk_read_slots, 0);
     }
 
     #[tokio::test]
@@ -1347,7 +1374,7 @@ mod tests {
             assert_eq!(nodes[file.transfer].depends_on, vec![file.acquire]);
             assert_eq!(
                 nodes[file.transfer].resources,
-                ResourceRequest::file_transfer()
+                ResourceRequest::upload_file()
             );
             assert_eq!(nodes[file.emit_progress].depends_on, vec![file.commit]);
         }
@@ -1634,7 +1661,7 @@ mod tests {
         assert_eq!(nodes[upload.transfer].kind, TransferNodeKind::UploadFile);
         assert_eq!(
             nodes[upload.transfer].resources,
-            ResourceRequest::file_transfer()
+            ResourceRequest::upload_file()
         );
         assert_eq!(nodes[upload.emit_progress].depends_on, vec![upload.commit]);
 
@@ -1650,7 +1677,7 @@ mod tests {
         );
         assert_eq!(
             nodes[download.transfer].resources,
-            ResourceRequest::file_transfer()
+            ResourceRequest::download_file()
         );
         assert_eq!(
             nodes[download.emit_progress].depends_on,
@@ -1774,25 +1801,98 @@ mod tests {
     #[test]
     fn shaped_upload_with_multipart_fans_out_upload_parts() {
         // 5 MiB file, 1 MiB parts: five parallel UploadPart nodes.
+        let file_size = 5 * 1024 * 1024;
+        let chunk = 1024 * 1024;
         let built = TransferDagBuilder::shaped_file(
             TransferDirection::Upload,
-            &caps_multipart(1024 * 1024),
-            5 * 1024 * 1024,
+            &caps_multipart(chunk),
+            file_size,
         );
         let nodes = built.dag.nodes();
 
         assert_eq!(built.profile.upload_parts, 5);
         assert_eq!(built.profile.max_chunk_slots, 4);
         assert_eq!(built.transfer.len(), 5);
-        for &part in &built.transfer {
+        for (idx, &part) in built.transfer.iter().enumerate() {
             assert_eq!(nodes[part].kind, TransferNodeKind::UploadPart);
             assert_eq!(nodes[part].depends_on, vec![built.acquire]);
             assert_eq!(nodes[part].resources.chunk_slots, 1);
+            assert_eq!(nodes[part].resources.disk_read_slots, 1);
+            assert_eq!(nodes[part].resources.disk_write_slots, 0);
+            assert_eq!(
+                nodes[part].resources.buffer_bytes,
+                multipart_part_byte_len(file_size, idx, 5, chunk)
+            );
         }
         // VerifyChecksum joins every part: it cannot run until the last lands.
         assert_eq!(nodes[built.verify].depends_on, built.transfer);
         // discover + acquire + 5 parts + verify + preserve + commit + emit.
         assert_eq!(nodes.len(), 11);
+    }
+
+    #[test]
+    fn shaped_multipart_accounts_short_tail_and_no_disk_write() {
+        let file_size = 25 * 1024 * 1024;
+        let chunk = 8 * 1024 * 1024;
+        let built = TransferDagBuilder::shaped_file(
+            TransferDirection::Upload,
+            &caps_multipart(chunk),
+            file_size,
+        );
+        let nodes = built.dag.nodes();
+        let parts = built.profile.upload_parts;
+        assert_eq!(parts, 4);
+        let last = built.transfer[parts - 1];
+        assert_eq!(
+            nodes[last].resources.buffer_bytes,
+            file_size - (parts as u64 - 1) * chunk
+        );
+        assert!(nodes[last].resources.buffer_bytes < chunk);
+        for &id in &built.transfer {
+            assert_eq!(nodes[id].resources.disk_write_slots, 0);
+            assert_eq!(nodes[id].resources.disk_read_slots, 1);
+        }
+    }
+
+    #[test]
+    fn shaped_download_and_range_and_copy_requests_are_directional() {
+        let down = TransferDagBuilder::shaped_file(
+            TransferDirection::Download,
+            &TransferCapabilities::default(),
+            1024,
+        );
+        let tr = &down.dag.nodes()[down.transfer[0]].resources;
+        assert_eq!(*tr, ResourceRequest::download_file());
+        assert_eq!(tr.disk_read_slots, 0);
+        assert_eq!(tr.disk_write_slots, 1);
+
+        let ranges = TransferDagBuilder::shaped_ranges(2);
+        for &id in &ranges.transfer {
+            let r = &ranges.dag.nodes()[id].resources;
+            assert_eq!(*r, ResourceRequest::range_chunk());
+            assert_eq!(r.disk_read_slots, 0);
+            assert_eq!(r.buffer_bytes, 0);
+        }
+
+        let server = TransferDagBuilder::shaped_copy(&TransferCapabilities {
+            server_side_copy: Capability::Supported,
+            ..TransferCapabilities::default()
+        });
+        let sc = &server.dag.nodes()[server.copy[0]].resources;
+        assert_eq!(sc.disk_read_slots, 0);
+        assert_eq!(sc.disk_write_slots, 0);
+        assert_eq!(sc.file_slots, 0);
+        assert!(sc.api_slots >= 1);
+
+        let fallback = TransferDagBuilder::shaped_copy(&TransferCapabilities::default());
+        assert_eq!(
+            fallback.dag.nodes()[fallback.copy[0]].resources,
+            ResourceRequest::download_file()
+        );
+        assert_eq!(
+            fallback.dag.nodes()[fallback.copy[1]].resources,
+            ResourceRequest::upload_file()
+        );
     }
 
     #[test]

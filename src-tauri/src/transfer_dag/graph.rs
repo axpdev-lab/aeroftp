@@ -75,7 +75,7 @@ mod tests {
         let download = dag.add_node(
             TransferNodeKind::DownloadFile,
             vec![plan],
-            ResourceRequest::file_transfer(),
+            ResourceRequest::download_file(),
         );
 
         assert_eq!(download, 1);

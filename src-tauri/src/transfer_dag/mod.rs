@@ -43,7 +43,12 @@ pub use observer::{
     SyncJournalTerminal,
 };
 pub use probe::SessionProbeCache;
-pub use resources::{ResourceKind, ResourceRequest, TransferBudget, TransferResourceManager};
+pub use resources::{
+    buffer_bytes_to_quanta, multipart_part_byte_len, request_exceeds_budget,
+    resolve_buffer_budget_bytes, ResourceKind, ResourceRequest, TransferBudget,
+    TransferResourceManager, BUFFER_BUDGET_ENV, BUFFER_QUANTUM_BYTES, DEFAULT_BUFFER_BUDGET_BYTES,
+    MAX_BUFFER_BUDGET_BYTES, MIN_BUFFER_BUDGET_BYTES,
+};
 pub use session_pool::{
     FtpPoolSessionLease, FtpSessionPoolAdapter, SessionLeaseId, SessionLeaseInfo, SessionLeaseKind,
     SessionPoolCapacity, SessionPoolError, SingleSessionPool, TransferSessionLease,

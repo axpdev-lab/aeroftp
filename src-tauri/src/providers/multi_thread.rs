@@ -466,14 +466,20 @@ where
 
     // Size the controlled classes so up to `max_parallel` range_chunk nodes
     // run at once: identical effective concurrency to the JoinSet semaphore
-    // (`range_chunk` requests chunk+http+disk_write = 1 each).
+    // (`range_chunk` requests chunk+http+disk_write = 1 each; buffer_bytes=0
+    // because the active runner streams response chunks and does not own a
+    // full-range allocation — do not invent full-range byte accounting here).
     let slots = max_parallel.max(1).min(u16::MAX as usize) as u16;
-    let manager = TransferResourceManager::new(TransferBudget {
-        chunk_slots: slots,
-        http_slots: slots,
-        disk_write_slots: slots,
-        ..TransferBudget::from_file_slots(1)
-    });
+    let manager = TransferResourceManager::new(
+        TransferBudget {
+            chunk_slots: slots,
+            http_slots: slots,
+            disk_write_slots: slots,
+            disk_read_slots: 1,
+            ..TransferBudget::from_file_slots(1)
+        }
+        .with_resolved_buffer_budget(),
+    );
 
     // AIMD backpressure (F3-T05). The controller's per-class ceilings are the
     // budget above, and every class starts at its ceiling: a download with no
@@ -736,6 +742,14 @@ where
 /// buffer. Each part gets its own file handle so concurrent reads never share
 /// a cursor (the read-side mirror of the per-task handle the download engine
 /// opens to write its window).
+///
+/// **Residual non-DAG debt (DAG-P0-06):** this legacy concurrent-upload helper
+/// still allocates full-part buffers outside `TransferResourceManager` byte
+/// credits. Peak RAM is bounded only by `max_parallel * part_size` via the
+/// local semaphore. Do not treat P0-06 as process-wide complete while this
+/// path remains. Wire into the same credit abstraction only when this
+/// scheduler moves fully onto the DAG (or a shared credit helper is extracted
+/// for both paths). Streaming reuse is `DAG-P2-05`.
 async fn read_part_from_disk(path: &Path, offset: u64, len: u64) -> Result<Vec<u8>, ProviderError> {
     let mut file = tokio::fs::File::open(path)
         .await

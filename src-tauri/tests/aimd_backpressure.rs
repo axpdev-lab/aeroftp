@@ -36,7 +36,7 @@ fn one_file_dag() -> TransferDag {
     dag.add_node(
         TransferNodeKind::DownloadFile,
         vec![],
-        ResourceRequest::file_transfer(),
+        ResourceRequest::upload_file(),
     );
     dag
 }
@@ -151,7 +151,7 @@ async fn aimd_shrink_from_a_congested_run_throttles_the_next_run() {
         dag2.add_node(
             TransferNodeKind::DownloadFile,
             vec![],
-            ResourceRequest::file_transfer(),
+            ResourceRequest::upload_file(),
         );
     }
     let in_flight = Arc::new(AtomicUsize::new(0));

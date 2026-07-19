@@ -47,7 +47,9 @@ use super::error::{TransferError, TransferErrorKind};
 use super::graph::{TransferDag, TransferNode};
 use super::metrics::TransferDagMetrics;
 use super::observer::{DagObserver, ObservedOutcome};
-use super::resources::{ResourceRequest, TransferBudget, TransferResourceManager};
+use super::resources::{request_exceeds_budget, ResourceRequest, TransferResourceManager};
+#[cfg(test)]
+use super::resources::TransferBudget;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DagExecutionSummary {
@@ -137,46 +139,6 @@ impl fmt::Display for DagExecutionError {
 }
 
 impl std::error::Error for DagExecutionError {}
-
-/// Returns a human-readable reason if `request` can never be satisfied by
-/// `budget` (more permits of some class than the manager will ever own).
-fn request_exceeds_budget(request: &ResourceRequest, budget: &TransferBudget) -> Option<String> {
-    // Each semaphore is sized at `budget.X.max(1)` (see TransferResourceManager).
-    let checks: [(&str, u16, u16); 8] = [
-        ("file_slots", request.file_slots, budget.file_slots.max(1)),
-        (
-            "checker_slots",
-            request.checker_slots,
-            budget.checker_slots.max(1),
-        ),
-        (
-            "chunk_slots",
-            request.chunk_slots,
-            budget.chunk_slots.max(1),
-        ),
-        ("http_slots", request.http_slots, budget.http_slots.max(1)),
-        ("api_slots", request.api_slots, budget.api_slots.max(1)),
-        (
-            "disk_read_slots",
-            request.disk_read_slots,
-            budget.disk_read_slots.max(1),
-        ),
-        (
-            "disk_write_slots",
-            request.disk_write_slots,
-            budget.disk_write_slots.max(1),
-        ),
-        ("hash_slots", request.hash_slots, budget.hash_slots.max(1)),
-    ];
-    for (name, want, have) in checks {
-        if want > have {
-            return Some(format!(
-                "requests {want} {name} but the budget owns only {have}"
-            ));
-        }
-    }
-    None
-}
 
 /// Default maximum number of concurrently resident dispatched tasks.
 ///
@@ -945,7 +907,7 @@ mod tests {
             dag.add_node(
                 TransferNodeKind::DownloadFile,
                 vec![],
-                ResourceRequest::file_transfer(),
+                ResourceRequest::upload_file(),
             );
         }
 
@@ -1035,6 +997,153 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn zero_buffer_budget_is_unschedulable_for_byte_requests() {
+        let mut dag = TransferDag::default();
+        dag.add_node(
+            TransferNodeKind::UploadPart,
+            vec![],
+            ResourceRequest::upload_part(1024),
+        );
+        let manager = TransferResourceManager::new(TransferBudget {
+            buffer_bytes: 0,
+            chunk_slots: 2,
+            disk_read_slots: 2,
+            ..TransferBudget::from_file_slots(1)
+        });
+        let err = execute_dag(
+            &dag,
+            &manager,
+            Arc::new(|_n: TransferNode| -> NodeFuture {
+                Box::pin(async { NodeOutcome::Completed })
+            }),
+            noop_observer(),
+            None,
+        )
+        .await
+        .unwrap_err();
+        assert!(matches!(err, DagExecutionError::Unschedulable { .. }));
+    }
+
+    #[tokio::test]
+    async fn byte_credits_bound_concurrent_part_nodes() {
+        use crate::transfer_dag::resources::BUFFER_QUANTUM_BYTES;
+        use std::sync::atomic::{AtomicU64, Ordering};
+
+        let quantum = BUFFER_QUANTUM_BYTES;
+        // Budget of 2 quanta: each part wants 2 quanta so only one can run.
+        let budget_bytes = quantum * 2;
+        let budget = TransferBudget {
+            chunk_slots: 4,
+            disk_read_slots: 4,
+            buffer_bytes: budget_bytes,
+            ..TransferBudget::from_file_slots(1)
+        };
+        let manager = TransferResourceManager::new(budget);
+
+        let mut dag = TransferDag::default();
+        for _ in 0..3 {
+            dag.add_node(
+                TransferNodeKind::UploadPart,
+                vec![],
+                ResourceRequest::upload_part(budget_bytes),
+            );
+        }
+
+        let peak = Arc::new(AtomicU64::new(0));
+        let live = Arc::new(AtomicU64::new(0));
+        let peak_c = peak.clone();
+        let live_c = live.clone();
+        let runner: Arc<dyn DagNodeRunner> = Arc::new(move |node: TransferNode| -> NodeFuture {
+            let peak = peak_c.clone();
+            let live = live_c.clone();
+            Box::pin(async move {
+                // Lease is already held; sample peak concurrent buffer credits.
+                let bytes = node.resources.buffer_bytes;
+                let now = live.fetch_add(bytes, Ordering::SeqCst) + bytes;
+                peak.fetch_max(now, Ordering::SeqCst);
+                tokio::time::sleep(Duration::from_millis(20)).await;
+                live.fetch_sub(bytes, Ordering::SeqCst);
+                NodeOutcome::Completed
+            })
+        });
+
+        let summary = execute_dag(&dag, &manager, runner, noop_observer(), None)
+            .await
+            .unwrap();
+        assert_eq!(summary.nodes_completed, 3);
+        assert!(
+            peak.load(Ordering::SeqCst) <= budget_bytes,
+            "peak credited bytes {} exceeded budget {}",
+            peak.load(Ordering::SeqCst),
+            budget_bytes
+        );
+    }
+
+    #[tokio::test]
+    async fn cancel_while_waiting_for_buffer_credits_releases_nothing_extra() {
+        use crate::transfer_dag::resources::BUFFER_QUANTUM_BYTES;
+        use tokio_util::sync::CancellationToken;
+
+        let quantum = BUFFER_QUANTUM_BYTES;
+        let budget = TransferBudget {
+            chunk_slots: 2,
+            disk_read_slots: 2,
+            buffer_bytes: quantum,
+            ..TransferBudget::from_file_slots(1)
+        };
+        let manager = TransferResourceManager::new(budget);
+
+        // Hold the only quantum outside the graph.
+        let held = manager
+            .acquire(ResourceRequest {
+                buffer_bytes: quantum,
+                ..ResourceRequest::default()
+            })
+            .await
+            .unwrap();
+
+        let mut dag = TransferDag::default();
+        dag.add_node(
+            TransferNodeKind::UploadPart,
+            vec![],
+            ResourceRequest::upload_part(quantum),
+        );
+
+        let parent = CancellationToken::new();
+        let parent2 = parent.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(40)).await;
+            parent2.cancel();
+        });
+
+        let err = execute_dag_with_options(
+            &dag,
+            &manager,
+            Arc::new(|_n: TransferNode| -> NodeFuture {
+                Box::pin(async { NodeOutcome::Completed })
+            }),
+            noop_observer(),
+            None,
+            DagExecuteOptions {
+                parent_cancel: Some(parent),
+                ..DagExecuteOptions::default()
+            },
+        )
+        .await
+        .unwrap_err();
+
+        match err {
+            DagExecutionError::NodeFailed { error, .. } => {
+                assert_eq!(error.kind, TransferErrorKind::Cancelled);
+            }
+            other => panic!("expected cancelled NodeFailed, got {other:?}"),
+        }
+        drop(held);
+        assert_eq!(manager.available_buffer_quanta(), 1);
+        assert_eq!(manager.available_oversize_permits(), 1);
+    }
+
+    #[tokio::test]
     async fn fallback_outcome_is_counted() {
         let mut dag = TransferDag::default();
         dag.add_node(
@@ -1114,7 +1223,7 @@ mod tests {
         dag.add_node(
             TransferNodeKind::DownloadFile,
             vec![],
-            ResourceRequest::file_transfer(),
+            ResourceRequest::upload_file(),
         );
 
         let runner: Arc<dyn DagNodeRunner> = Arc::new(|_n: TransferNode| -> NodeFuture {
@@ -1157,7 +1266,7 @@ mod tests {
         dag.add_node(
             TransferNodeKind::DownloadFile,
             vec![],
-            ResourceRequest::file_transfer(),
+            ResourceRequest::upload_file(),
         );
 
         // The hint (45 s) is well above the lower clamp (1 s) and below the
@@ -1214,7 +1323,7 @@ mod tests {
         dag.add_node(
             TransferNodeKind::DownloadFile,
             vec![],
-            ResourceRequest::file_transfer(),
+            ResourceRequest::upload_file(),
         );
 
         let marker = embed_retry_after_marker(45);
@@ -1259,7 +1368,7 @@ mod tests {
         dag.add_node(
             TransferNodeKind::DownloadFile,
             vec![],
-            ResourceRequest::file_transfer(),
+            ResourceRequest::upload_file(),
         );
 
         let runner: Arc<dyn DagNodeRunner> = Arc::new(|_n: TransferNode| -> NodeFuture {
@@ -1289,7 +1398,7 @@ mod tests {
         dag.add_node(
             TransferNodeKind::DownloadFile,
             vec![],
-            ResourceRequest::file_transfer(),
+            ResourceRequest::upload_file(),
         );
 
         let runner: Arc<dyn DagNodeRunner> = Arc::new(|_n: TransferNode| -> NodeFuture {
@@ -1897,7 +2006,7 @@ mod tests {
     async fn node_timeout_includes_resource_wait() {
         let manager = TransferResourceManager::new(TransferBudget::from_file_slots(1));
         let held = manager
-            .acquire(ResourceRequest::file_transfer())
+            .acquire(ResourceRequest::upload_file())
             .await
             .expect("test must hold the only file permit");
 
@@ -1905,7 +2014,7 @@ mod tests {
         dag.add_node(
             TransferNodeKind::DownloadFile,
             vec![],
-            ResourceRequest::file_transfer(),
+            ResourceRequest::upload_file(),
         );
         let runner_calls = Arc::new(AtomicUsize::new(0));
         let runner_calls_c = Arc::clone(&runner_calls);
@@ -2105,12 +2214,12 @@ mod tests {
         dag.add_node(
             TransferNodeKind::DownloadFile,
             vec![],
-            ResourceRequest::file_transfer(),
+            ResourceRequest::upload_file(),
         );
         dag.add_node(
             TransferNodeKind::DownloadFile,
             vec![],
-            ResourceRequest::file_transfer(),
+            ResourceRequest::upload_file(),
         );
 
         let runner: Arc<dyn DagNodeRunner> = Arc::new(|node: TransferNode| -> NodeFuture {
@@ -2135,7 +2244,7 @@ mod tests {
         dag2.add_node(
             TransferNodeKind::DownloadFile,
             vec![],
-            ResourceRequest::file_transfer(),
+            ResourceRequest::upload_file(),
         );
         let runner2: Arc<dyn DagNodeRunner> = Arc::new(|_n: TransferNode| -> NodeFuture {
             Box::pin(async { NodeOutcome::Completed })
