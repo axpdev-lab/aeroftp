@@ -71,7 +71,7 @@ pool is admitted one-at-a-time through an explicit oversize lane. This is
 `providers/multi_thread.rs` (`read_part_from_disk`) remains outside these
 credits. On the first node failure the executor cancels a graph-scoped token
 (optionally a child of an external parent), stops new dispatch, and
-terminates resident siblings within two seconds — cooperative cancel first,
+terminates resident siblings within two seconds: cooperative cancel first,
 then forced `JoinSet` abort, followed by one bounded drain. This bound
 applies to async work that yields to Tokio; synchronous blocking code must
 not run directly inside a DAG node because an async runtime cannot preempt
@@ -142,8 +142,8 @@ shared mutex. The current independent-worker set is:
 - Backblaze B2;
 - Azure Blob;
 - WebDAV Nextcloud chunked v2;
-- **Drime** (`HttpClonePool`, max sessions 4) — DAG-P1-05A;
-- **Uploadcare** (`HttpClonePool`, max sessions 4) — DAG-P1-05A.
+- **Drime** (`HttpClonePool`, max sessions 4), DAG-P1-05A;
+- **Uploadcare** (`HttpClonePool`, max sessions 4), DAG-P1-05A.
 
 Dropbox, Box, pCloud, and Filen can expose multipart capability or part APIs,
 but are not yet promoted to wire-level DAG fan-out without an independent
@@ -304,7 +304,7 @@ profile. These are follow-up tasks, not guarantees of the present engine.
 `DagObserver` provides a shared node lifecycle abstraction. The GUI's
 `GuiDagObserver` is used on the shaped single-file path, but surface start,
 byte-progress, and error events still come from `TransferEventSink` and
-provider callbacks — not from DAG node lifecycle. Byte progress is therefore
+provider callbacks, not from DAG node lifecycle. Byte progress is therefore
 still adapter-derived, not DAG-derived.
 
 GUI progress pressure is governed by the shared `ProgressGovernor`
@@ -333,7 +333,7 @@ bindings are wired (P2 telemetry).
 
 `StorageProvider::transfer_capabilities()` is consumed by the shaped
 single-file runner before `shaped_file` is built. The batch runner (DAG-P1-01)
-uses `TransferExecutor::transfer_capabilities()` — a runtime snapshot composed
+uses `TransferExecutor::transfer_capabilities()`, a runtime snapshot composed
 from the live provider plus clone/pool feasibility
 (`compose_runtime_transfer_capabilities` / `finalize_capabilities_for_session_model`).
 Provider batch settings resolve through
@@ -392,8 +392,8 @@ is an explicit reminder that the transfer architecture is transitional.
 | Range graph migration | `shaped_ranges` exists and is real, but the default remains the `JoinSet` scheduler |
 | One fully converged engine for every surface | Shared core plus selected wrappers; batch/sync/copy/cross-profile still have documented adapters and limits |
 
-For the planned next steps—resource credits, capability-aware batch, real
-sync concurrency, production shaped copy, and global resource governance—see
+For the planned next steps (resource credits, capability-aware batch, real
+sync concurrency, production shaped copy, and global resource governance), see
 the audit appendix at
 `docs/dev/roadmap/APPENDIX-DAG-ENGINE_Parallel-Transfers-Audit.md`.
 Bounded dispatch (P0-04), typed outcomes (P0-03), and graph-scoped
