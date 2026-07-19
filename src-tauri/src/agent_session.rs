@@ -644,6 +644,9 @@ fn static_http_clone_pool_slots(provider_type: ProviderType) -> Option<(u16, u16
         // B2: max(LARGE_FILE_MAX_PARALLEL=4, MULTI_THREAD_MAX_STREAMS=8) = 8;
         // list stays on locked single today.
         ProviderType::Backblaze => Some((8, 1)),
+        // DAG-P1-05A: Drime + Uploadcare promote to HttpClonePool with ceiling 4;
+        // list remains locked-single (no list_executor override).
+        ProviderType::DrimeCloud | ProviderType::Uploadcare => Some((4, 1)),
         _ => None,
     }
 }
@@ -1217,6 +1220,53 @@ mod tests {
         assert_eq!(
             caps.rate_limited_api,
             crate::transfer_dag::Capability::Supported
+        );
+    }
+
+    #[test]
+    fn drime_protocol_defaults_advertise_clone_pool_ceiling_4() {
+        let caps = transfer_capabilities_for_protocol("drime").expect("drime");
+        assert_eq!(
+            caps.multipart_upload,
+            crate::transfer_dag::Capability::Supported
+        );
+        assert_eq!(caps.max_chunk_slots, Some(4));
+        assert_eq!(
+            caps.file_parallel,
+            crate::transfer_dag::Capability::Supported
+        );
+        assert_eq!(
+            caps.session_pool,
+            crate::transfer_dag::Capability::Supported
+        );
+        assert_eq!(caps.max_file_slots, Some(4));
+        // List stays locked-single (no list_executor override).
+        assert_eq!(
+            caps.list_parallel,
+            crate::transfer_dag::Capability::Unsupported
+        );
+    }
+
+    #[test]
+    fn uploadcare_protocol_defaults_advertise_clone_pool_ceiling_4() {
+        let caps = transfer_capabilities_for_protocol("uploadcare").expect("uploadcare");
+        assert_eq!(
+            caps.multipart_upload,
+            crate::transfer_dag::Capability::Supported
+        );
+        assert_eq!(caps.max_chunk_slots, Some(4));
+        assert_eq!(
+            caps.file_parallel,
+            crate::transfer_dag::Capability::Supported
+        );
+        assert_eq!(
+            caps.session_pool,
+            crate::transfer_dag::Capability::Supported
+        );
+        assert_eq!(caps.max_file_slots, Some(4));
+        assert_eq!(
+            caps.list_parallel,
+            crate::transfer_dag::Capability::Unsupported
         );
     }
 

@@ -21,8 +21,8 @@ use tracing::{info, warn};
 
 use super::{
     sanitize_api_error, DrimeCloudConfig, FileVersion, MultipartHandle, ProviderError,
-    ProviderType, RemoteEntry, ShareLinkCapabilities, ShareLinkInfo, ShareLinkOptions,
-    ShareLinkResult, StorageInfo, StorageProvider, UploadedPart,
+    ProviderTransferExecutorKind, ProviderType, RemoteEntry, ShareLinkCapabilities, ShareLinkInfo,
+    ShareLinkOptions, ShareLinkResult, StorageInfo, StorageProvider, UploadedPart,
 };
 
 const API_BASE: &str = "https://app.drime.cloud/api/v1";
@@ -284,8 +284,30 @@ pub struct DrimeCloudProvider {
     user_id: Option<u64>,
 }
 
+/// Honest file/session ceiling for clone-backed Drime workers (DAG-P1-05A).
+/// Matches `multipart_max_parallel` and must not exceed 4.
+const DRIME_TRANSFER_MAX_SESSIONS: u16 = 4;
+
 /// M3: Maximum number of cached directory entries to prevent unbounded memory growth.
 const DIR_CACHE_MAX_ENTRIES: usize = 10_000;
+
+impl Clone for DrimeCloudProvider {
+    /// Connected transfer worker: reuses the cloneable `reqwest::Client` pool
+    /// and immutable credentials without reconnecting. Mutable state
+    /// (path/folder/user/cache) is field-copied so workers do not share a
+    /// mutex, part cursor, or receipt vector.
+    fn clone(&self) -> Self {
+        Self {
+            config: self.config.clone(),
+            client: self.client.clone(),
+            connected: self.connected,
+            current_path: self.current_path.clone(),
+            current_folder_id: self.current_folder_id.clone(),
+            dir_cache: self.dir_cache.clone(),
+            user_id: self.user_id,
+        }
+    }
+}
 
 impl DrimeCloudProvider {
     pub fn new(config: DrimeCloudConfig) -> Self {
@@ -307,6 +329,15 @@ impl DrimeCloudProvider {
             dir_cache: HashMap::new(),
             user_id: None,
         }
+    }
+
+    /// Connected worker for unit tests (no network). Production clones use
+    /// [`clone_for_transfer`] after a real `connect`.
+    #[cfg(test)]
+    fn connected_for_test(config: DrimeCloudConfig) -> Self {
+        let mut p = Self::new(config);
+        p.connected = true;
+        p
     }
 
     // ─── Helpers ─────────────────────────────────────────────────────────
@@ -2117,13 +2148,32 @@ impl StorageProvider for DrimeCloudProvider {
             // Drime's S3-compatible backend takes independent PUT
             // requests against the per-part signed URLs in parallel.
             // 4 matches the AIMD default budget the runner ships with.
-            multipart_max_parallel: 4,
+            multipart_max_parallel: DRIME_TRANSFER_MAX_SESSIONS as u8,
             supports_resume_download: true,
             supports_resume_upload: true,
             supports_server_checksum: true,
             preferred_checksum_algo: Some("etag".to_string()),
             ..Default::default()
         }
+    }
+
+    // DAG-P1-05A: presigned part PUTs are addressable from an opaque
+    // MultipartHandle, so each part can run on an independent clone that
+    // holds only its own `reqwest::Client`. Begin/complete/abort stay on
+    // the primary session (authenticated Drime API).
+    fn transfer_executor_kind(&self) -> ProviderTransferExecutorKind {
+        ProviderTransferExecutorKind::HttpClonePool
+    }
+
+    fn transfer_executor_max_sessions(&self) -> u16 {
+        DRIME_TRANSFER_MAX_SESSIONS
+    }
+
+    fn clone_for_transfer(&self) -> Result<Box<dyn StorageProvider>, ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+        Ok(Box::new(self.clone()))
     }
 
     // Shaped-graph multipart trait wiring (S3-T12).
@@ -2630,5 +2680,387 @@ mod tests {
         assert!(hints.supports_resume_upload);
         assert!(hints.supports_server_checksum);
         assert_eq!(hints.preferred_checksum_algo.as_deref(), Some("etag"));
+    }
+
+    // ---- DAG-P1-05A: HttpClonePool worker promotion ----
+
+    #[test]
+    fn clone_for_transfer_requires_connection() {
+        let p = test_provider();
+        assert!(!p.is_connected());
+        assert!(matches!(
+            p.clone_for_transfer(),
+            Err(ProviderError::NotConnected)
+        ));
+    }
+
+    #[test]
+    fn connected_clone_succeeds_and_reports_same_provider_type() {
+        let p = DrimeCloudProvider::connected_for_test(DrimeCloudConfig {
+            api_token: secrecy::SecretString::from("test-token".to_string()),
+            initial_path: None,
+        });
+        let worker = p.clone_for_transfer().expect("connected clone");
+        assert_eq!(worker.provider_type(), ProviderType::DrimeCloud);
+        assert!(worker.is_connected());
+        assert_eq!(
+            p.transfer_executor_kind(),
+            ProviderTransferExecutorKind::HttpClonePool
+        );
+        assert_eq!(p.transfer_executor_max_sessions(), 4);
+    }
+
+    #[test]
+    fn clone_and_primary_are_distinct_objects_with_independent_cache() {
+        let mut p = DrimeCloudProvider::connected_for_test(DrimeCloudConfig {
+            api_token: secrecy::SecretString::from("test-token".to_string()),
+            initial_path: None,
+        });
+        p.current_path = "/docs".to_string();
+        p.current_folder_id = "42".to_string();
+        p.user_id = Some(7);
+        p.dir_cache_insert(
+            "/docs".to_string(),
+            DirInfo {
+                id: "42".to_string(),
+            },
+        );
+
+        let worker = p.clone_for_transfer().expect("clone");
+        // Distinct boxed objects (not the same allocation as primary).
+        let primary_ptr = &p as *const _ as usize;
+        let worker_any = worker.as_ref() as *const dyn StorageProvider as *const () as usize;
+        assert_ne!(primary_ptr, worker_any);
+
+        // Mutating the primary cache must not affect the worker's copy.
+        p.dir_cache.clear();
+        p.current_path = "/other".to_string();
+        // Worker remains connected and same type; upload_part only needs
+        // connected + client + handle (no shared mutable cache).
+        assert!(worker.is_connected());
+        assert_eq!(worker.provider_type(), ProviderType::DrimeCloud);
+        assert!(p.dir_cache.is_empty());
+    }
+
+    #[test]
+    fn runtime_composition_yields_http_clone_pool_when_connected() {
+        use crate::provider_transfer_executor::{
+            compose_runtime_transfer_capabilities, resolve_session_model,
+        };
+        use crate::transfer_dag::Capability;
+
+        let p = DrimeCloudProvider::connected_for_test(DrimeCloudConfig {
+            api_token: secrecy::SecretString::from("test-token".to_string()),
+            initial_path: None,
+        });
+        let advertised = p.transfer_capabilities();
+        let can_clone = p.clone_for_transfer().is_ok();
+        assert!(can_clone);
+        let caps = compose_runtime_transfer_capabilities(
+            &advertised,
+            p.transfer_executor_kind(),
+            can_clone,
+        );
+        assert_eq!(caps.file_parallel, Capability::Supported);
+        assert_eq!(caps.session_pool, Capability::Supported);
+        assert_eq!(caps.max_file_slots, Some(4));
+        assert_eq!(caps.max_chunk_slots, Some(4));
+
+        let model = resolve_session_model(
+            ProviderType::DrimeCloud,
+            &caps,
+            p.transfer_executor_kind(),
+            can_clone,
+            p.transfer_executor_max_sessions(),
+            8,
+        );
+        assert!(matches!(
+            model,
+            crate::provider_transfer_executor::ProviderExecutorSessionModel::HttpClonePool { .. }
+        ));
+        assert_eq!(model.max_leases(), 4);
+    }
+
+    #[test]
+    fn forced_clone_failure_demotes_runtime_file_parallelism() {
+        use crate::provider_transfer_executor::compose_runtime_transfer_capabilities;
+        use crate::transfer_dag::Capability;
+
+        let p = test_provider(); // disconnected
+        assert_eq!(
+            p.transfer_executor_kind(),
+            ProviderTransferExecutorKind::HttpClonePool
+        );
+        let can_clone = p.clone_for_transfer().is_ok();
+        assert!(!can_clone);
+        let caps = compose_runtime_transfer_capabilities(
+            &p.transfer_capabilities(),
+            p.transfer_executor_kind(),
+            can_clone,
+        );
+        assert_eq!(caps.file_parallel, Capability::Unsupported);
+        assert_eq!(caps.session_pool, Capability::Unsupported);
+        assert_eq!(caps.max_file_slots, Some(1));
+        // Multipart protocol truth is preserved for serial fallback.
+        assert_eq!(caps.max_chunk_slots, Some(4));
+    }
+
+    #[tokio::test]
+    async fn concurrent_part_puts_overlap_on_independent_workers() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
+        use std::time::Duration;
+
+        use axum::{extract::Path, http::StatusCode, routing::put, Router};
+
+        let in_flight = Arc::new(AtomicUsize::new(0));
+        let peak = Arc::new(AtomicUsize::new(0));
+        let request_count = Arc::new(AtomicUsize::new(0));
+        let in_flight_h = Arc::clone(&in_flight);
+        let peak_h = Arc::clone(&peak);
+        let count_h = Arc::clone(&request_count);
+
+        let app = Router::new().route(
+            "/part/{n}",
+            put(move |Path(n): Path<u32>| {
+                let in_flight = Arc::clone(&in_flight_h);
+                let peak = Arc::clone(&peak_h);
+                let count = Arc::clone(&count_h);
+                async move {
+                    count.fetch_add(1, Ordering::SeqCst);
+                    let now = in_flight.fetch_add(1, Ordering::SeqCst) + 1;
+                    peak.fetch_max(now, Ordering::SeqCst);
+                    // Hold the wire long enough for siblings to overlap.
+                    tokio::time::sleep(Duration::from_millis(80)).await;
+                    in_flight.fetch_sub(1, Ordering::SeqCst);
+                    (
+                        StatusCode::OK,
+                        [(axum::http::header::ETAG, format!("\"part-{n}\""))],
+                        format!("ok-{n}"),
+                    )
+                }
+            }),
+        );
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind fixture");
+        let addr = listener.local_addr().expect("local addr");
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.ok();
+        });
+
+        let primary = DrimeCloudProvider::connected_for_test(DrimeCloudConfig {
+            api_token: secrecy::SecretString::from("test-token".to_string()),
+            initial_path: None,
+        });
+        let base = format!("http://{addr}");
+        let signed_urls: Vec<(u32, String)> = (1u32..=4)
+            .map(|n| (n, format!("{base}/part/{n}")))
+            .collect();
+        let meta = DrimeMultipartMeta {
+            key: "users/1/f.bin".to_string(),
+            upload_id: "uid-fixture".to_string(),
+            parent_id: String::new(),
+            filename: "f.bin".to_string(),
+            mime: "application/octet-stream".to_string(),
+            extension: "bin".to_string(),
+            total: 4 * 1024,
+            part: 1024,
+            total_parts: 4,
+            signed_urls,
+        };
+        let handle = MultipartHandle {
+            upload_id: meta.encode(),
+            remote_path: "/f.bin".to_string(),
+        };
+
+        // N independent worker acquisitions (one per part).
+        let mut workers: Vec<Box<dyn StorageProvider>> = (0..4)
+            .map(|_| primary.clone_for_transfer().expect("worker clone"))
+            .collect();
+        let mut set = tokio::task::JoinSet::new();
+        for (i, mut worker) in workers.drain(..).enumerate() {
+            let handle = handle.clone();
+            let part = (i as u32) + 1;
+            set.spawn(async move {
+                worker
+                    .upload_part(&handle, part, vec![b'x'; 64])
+                    .await
+                    .map_err(|e| e.to_string())
+            });
+        }
+        let mut receipts = Vec::new();
+        while let Some(res) = set.join_next().await {
+            receipts.push(res.expect("join").expect("upload_part"));
+        }
+        receipts.sort_by_key(|r| r.part_number);
+        assert_eq!(receipts.len(), 4);
+        for (i, r) in receipts.iter().enumerate() {
+            assert_eq!(r.part_number, (i as u32) + 1);
+            assert!(r.etag.contains(&(i + 1).to_string()) || !r.etag.is_empty());
+        }
+
+        let observed_peak = peak.load(Ordering::SeqCst);
+        let total_reqs = request_count.load(Ordering::SeqCst);
+        assert_eq!(total_reqs, 4, "each part must hit the wire once");
+        assert!(
+            observed_peak > 1,
+            "independent workers must overlap on the wire (peak={observed_peak})"
+        );
+        assert!(
+            observed_peak <= 4,
+            "peak must stay within the honest ceiling of 4 (peak={observed_peak})"
+        );
+
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn out_of_order_part_completion_returns_requested_receipts() {
+        use axum::{http::StatusCode, routing::put, Router};
+
+        let app = Router::new().route(
+            "/part/{n}",
+            put(
+                |axum::extract::Path(n): axum::extract::Path<u32>| async move {
+                    // Deliberately reverse latency so part 4 finishes first.
+                    let delay_ms = 20u64 * (5u64.saturating_sub(n as u64));
+                    tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+                    (
+                        StatusCode::OK,
+                        [(axum::http::header::ETAG, format!("\"etag-{n}\""))],
+                        "ok",
+                    )
+                },
+            ),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.ok();
+        });
+
+        let primary = DrimeCloudProvider::connected_for_test(DrimeCloudConfig {
+            api_token: secrecy::SecretString::from("test-token".to_string()),
+            initial_path: None,
+        });
+        let base = format!("http://{addr}");
+        let meta = DrimeMultipartMeta {
+            key: "k".into(),
+            upload_id: "u".into(),
+            parent_id: String::new(),
+            filename: "f.bin".into(),
+            mime: "application/octet-stream".into(),
+            extension: "bin".into(),
+            total: 4096,
+            part: 1024,
+            total_parts: 4,
+            signed_urls: (1u32..=4)
+                .map(|n| (n, format!("{base}/part/{n}")))
+                .collect(),
+        };
+        let handle = MultipartHandle {
+            upload_id: meta.encode(),
+            remote_path: "/f.bin".into(),
+        };
+        // Launch in reverse order; receipts must still match part numbers.
+        let mut set = tokio::task::JoinSet::new();
+        for part in [4u32, 1, 3, 2] {
+            let mut worker = primary.clone_for_transfer().expect("clone");
+            let handle = handle.clone();
+            set.spawn(async move {
+                worker
+                    .upload_part(&handle, part, vec![0u8; 32])
+                    .await
+                    .map(|r| (part, r))
+                    .map_err(|e| e.to_string())
+            });
+        }
+        let mut got = Vec::new();
+        while let Some(res) = set.join_next().await {
+            let (requested, receipt) = res.unwrap().unwrap();
+            assert_eq!(receipt.part_number, requested);
+            got.push(receipt.part_number);
+        }
+        got.sort();
+        assert_eq!(got, vec![1, 2, 3, 4]);
+        server.abort();
+    }
+
+    #[test]
+    fn clone_multipart_worker_helper_returns_some_only_when_connected() {
+        use crate::transfer_multipart::clone_multipart_worker;
+
+        let disconnected = test_provider();
+        assert!(clone_multipart_worker(&disconnected).is_none());
+
+        let connected = DrimeCloudProvider::connected_for_test(DrimeCloudConfig {
+            api_token: secrecy::SecretString::from("test-token".to_string()),
+            initial_path: None,
+        });
+        assert!(clone_multipart_worker(&connected).is_some());
+    }
+
+    #[tokio::test]
+    async fn one_part_failure_does_not_mutate_primary_cache() {
+        use axum::{http::StatusCode, routing::put, Router};
+
+        let app = Router::new().route(
+            "/part/{n}",
+            put(
+                |axum::extract::Path(n): axum::extract::Path<u32>| async move {
+                    if n == 2 {
+                        (StatusCode::INTERNAL_SERVER_ERROR, "boom")
+                    } else {
+                        (StatusCode::OK, "ok")
+                    }
+                },
+            ),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.ok();
+        });
+
+        let mut primary = DrimeCloudProvider::connected_for_test(DrimeCloudConfig {
+            api_token: secrecy::SecretString::from("test-token".to_string()),
+            initial_path: None,
+        });
+        primary.dir_cache_insert("/keep".into(), DirInfo { id: "1".into() });
+        let cache_before = primary.dir_cache.len();
+
+        let base = format!("http://{addr}");
+        let meta = DrimeMultipartMeta {
+            key: "k".into(),
+            upload_id: "u".into(),
+            parent_id: String::new(),
+            filename: "f.bin".into(),
+            mime: "application/octet-stream".into(),
+            extension: "bin".into(),
+            total: 2048,
+            part: 1024,
+            total_parts: 2,
+            signed_urls: vec![(1, format!("{base}/part/1")), (2, format!("{base}/part/2"))],
+        };
+        let handle = MultipartHandle {
+            upload_id: meta.encode(),
+            remote_path: "/f.bin".into(),
+        };
+        let mut w1 = primary.clone_for_transfer().unwrap();
+        let mut w2 = primary.clone_for_transfer().unwrap();
+        let ok = w1.upload_part(&handle, 1, vec![1u8; 8]).await;
+        let err = w2.upload_part(&handle, 2, vec![2u8; 8]).await;
+        assert!(ok.is_ok());
+        assert!(err.is_err());
+        // Primary mutable cache untouched by worker PUTs.
+        assert_eq!(primary.dir_cache.len(), cache_before);
+        assert!(primary.dir_cache.contains_key("/keep"));
+        server.abort();
     }
 }

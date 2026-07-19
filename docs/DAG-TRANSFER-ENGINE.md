@@ -141,13 +141,31 @@ shared mutex. The current independent-worker set is:
 - S3;
 - Backblaze B2;
 - Azure Blob;
-- WebDAV Nextcloud chunked v2.
+- WebDAV Nextcloud chunked v2;
+- **Drime** (`HttpClonePool`, max sessions 4) — DAG-P1-05A;
+- **Uploadcare** (`HttpClonePool`, max sessions 4) — DAG-P1-05A.
 
-Dropbox, Box, pCloud, Filen, Drime, and Uploadcare can expose multipart
-capability or part APIs, but the current audit does not promote them to
-wire-level DAG fan-out without an independent worker and a provider-specific
-live gate. A graph with N part nodes therefore means “N scheduled part
-operations”, not automatically “N concurrent network requests”.
+Dropbox, Box, pCloud, and Filen can expose multipart capability or part APIs,
+but are not yet promoted to wire-level DAG fan-out without an independent
+worker and a provider-specific live gate (next waves of `DAG-P1-05`). A graph
+with N part nodes therefore means “N scheduled part operations”, not
+automatically “N concurrent network requests”, unless the provider is in the
+independent-worker set above.
+
+### Evidence split (DAG-P1-05A)
+
+| Layer | Drime | Uploadcare |
+|---|---|---|
+| Lifecycle correctness (begin/complete/abort on primary; part uses opaque handle) | unit + local HTTP fixture | unit + local HTTP fixture |
+| Graph task overlap (builder cap >1) | shared multipart topology | shared multipart topology |
+| Deterministic HTTP part overlap | peak ∈ (1, 4] on 4 workers | peak ∈ (1, 4] on 4 workers |
+| Live WAN integrity (multipart ≥4 parts, download-back SHA-256, cleanup) | profile `Drime`, 22 MiB, byte-identical | profile `Uploadcare`, 22 MiB jpg, byte-identical |
+| Live WAN peak part overlap with **this** code | not claimed: production CLI pre-dates the promotion; local debug CLI vault locked in this session | same environmental bound |
+| Whole-file clone pool vs multipart part workers | file/session ≤4; one multipart file holds one session lease; parts use ≤4 chunk credits | same |
+
+Clone failure stays fail-closed: runtime composition demotes
+`file_parallel`/`session_pool` to single-lease and part I/O falls back to the
+primary mutex.
 
 For providers with `max_chunk_slots <= 1` (or missing → effective 1), every
 capability-shaped builder chains parts in strict part-number order:

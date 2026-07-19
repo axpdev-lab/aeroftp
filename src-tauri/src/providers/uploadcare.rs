@@ -18,8 +18,8 @@ use tokio_util::io::ReaderStream;
 
 use super::{
     response_bytes_with_limit, sanitize_api_error, MultipartHandle, ProviderConfig, ProviderError,
-    ProviderType, RemoteEntry, StorageProvider, TransferOptimizationHints, UploadedPart,
-    AEROFTP_USER_AGENT, MAX_DOWNLOAD_TO_BYTES,
+    ProviderTransferExecutorKind, ProviderType, RemoteEntry, StorageProvider,
+    TransferOptimizationHints, UploadedPart, AEROFTP_USER_AGENT, MAX_DOWNLOAD_TO_BYTES,
 };
 
 const API_BASE: &str = "https://api.uploadcare.com";
@@ -166,6 +166,23 @@ pub struct UploadcareProvider {
     connected: bool,
 }
 
+/// Honest file/session ceiling for clone-backed Uploadcare workers (DAG-P1-05A).
+/// Matches `multipart_max_parallel` and must not exceed 4.
+const UPLOADCARE_TRANSFER_MAX_SESSIONS: u16 = 4;
+
+impl Clone for UploadcareProvider {
+    /// Connected transfer worker: reuses the cloneable `reqwest::Client` pool
+    /// and immutable credentials without reconnecting. No mutable part cursor
+    /// or upload-body buffer is shared between primary and worker.
+    fn clone(&self) -> Self {
+        Self {
+            config: self.config.clone(),
+            client: self.client.clone(),
+            connected: self.connected,
+        }
+    }
+}
+
 impl UploadcareProvider {
     pub fn new(config: UploadcareConfig) -> Self {
         let client = reqwest::Client::builder()
@@ -177,6 +194,15 @@ impl UploadcareProvider {
             client,
             connected: false,
         }
+    }
+
+    /// Connected worker for unit tests (no network). Production clones use
+    /// [`clone_for_transfer`] after a real `connect`.
+    #[cfg(test)]
+    fn connected_for_test(config: UploadcareConfig) -> Self {
+        let mut p = Self::new(config);
+        p.connected = true;
+        p
     }
 
     fn auth_header(&self) -> String {
@@ -683,12 +709,30 @@ impl StorageProvider for UploadcareProvider {
             // Uploadcare's multipart parts are independent PUTs against
             // pre-signed S3 URLs returned by /multipart/start/; the
             // runner can fan them out freely. 4 matches the AIMD default.
-            multipart_max_parallel: 4,
+            multipart_max_parallel: UPLOADCARE_TRANSFER_MAX_SESSIONS as u8,
             supports_range_download: true,
             supports_resume_download: true,
             supports_resume_upload: true,
             ..TransferOptimizationHints::default()
         }
+    }
+
+    // DAG-P1-05A: part PUTs address pre-signed URLs in the opaque handle, so
+    // each part runs on an independent clone with its own client. Begin and
+    // complete stay on the primary; abort is a documented no-op.
+    fn transfer_executor_kind(&self) -> ProviderTransferExecutorKind {
+        ProviderTransferExecutorKind::HttpClonePool
+    }
+
+    fn transfer_executor_max_sessions(&self) -> u16 {
+        UPLOADCARE_TRANSFER_MAX_SESSIONS
+    }
+
+    fn clone_for_transfer(&self) -> Result<Box<dyn StorageProvider>, ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+        Ok(Box::new(self.clone()))
     }
 
     // Shaped-graph multipart trait wiring (S3-T13).
@@ -1136,5 +1180,325 @@ mod tests {
         assert_eq!(hints.multipart_max_parallel, 4);
         assert!(hints.supports_resume_download);
         assert!(hints.supports_resume_upload);
+    }
+
+    // ---- DAG-P1-05A: HttpClonePool worker promotion ----
+
+    fn demo_cfg() -> UploadcareConfig {
+        UploadcareConfig {
+            public_key: "demo".to_string(),
+            secret_key: SecretString::from("demo-secret".to_string()),
+        }
+    }
+
+    #[test]
+    fn clone_for_transfer_requires_connection() {
+        let p = UploadcareProvider::new(demo_cfg());
+        assert!(!p.is_connected());
+        assert!(matches!(
+            p.clone_for_transfer(),
+            Err(ProviderError::NotConnected)
+        ));
+    }
+
+    #[test]
+    fn connected_clone_succeeds_and_reports_same_provider_type() {
+        let p = UploadcareProvider::connected_for_test(demo_cfg());
+        let worker = p.clone_for_transfer().expect("connected clone");
+        assert_eq!(worker.provider_type(), ProviderType::Uploadcare);
+        assert!(worker.is_connected());
+        assert_eq!(
+            p.transfer_executor_kind(),
+            ProviderTransferExecutorKind::HttpClonePool
+        );
+        assert_eq!(p.transfer_executor_max_sessions(), 4);
+    }
+
+    #[test]
+    fn clone_and_primary_are_distinct_objects() {
+        let p = UploadcareProvider::connected_for_test(demo_cfg());
+        let worker = p.clone_for_transfer().expect("clone");
+        let primary_ptr = &p as *const _ as usize;
+        let worker_ptr = worker.as_ref() as *const dyn StorageProvider as *const () as usize;
+        assert_ne!(primary_ptr, worker_ptr);
+        assert_eq!(worker.provider_type(), ProviderType::Uploadcare);
+    }
+
+    #[test]
+    fn runtime_composition_yields_http_clone_pool_when_connected() {
+        use crate::provider_transfer_executor::{
+            compose_runtime_transfer_capabilities, resolve_session_model,
+        };
+        use crate::transfer_dag::Capability;
+
+        let p = UploadcareProvider::connected_for_test(demo_cfg());
+        let advertised = p.transfer_capabilities();
+        let can_clone = p.clone_for_transfer().is_ok();
+        assert!(can_clone);
+        let caps = compose_runtime_transfer_capabilities(
+            &advertised,
+            p.transfer_executor_kind(),
+            can_clone,
+        );
+        assert_eq!(caps.file_parallel, Capability::Supported);
+        assert_eq!(caps.session_pool, Capability::Supported);
+        assert_eq!(caps.max_file_slots, Some(4));
+        assert_eq!(caps.max_chunk_slots, Some(4));
+
+        let model = resolve_session_model(
+            ProviderType::Uploadcare,
+            &caps,
+            p.transfer_executor_kind(),
+            can_clone,
+            p.transfer_executor_max_sessions(),
+            8,
+        );
+        assert!(matches!(
+            model,
+            crate::provider_transfer_executor::ProviderExecutorSessionModel::HttpClonePool { .. }
+        ));
+        assert_eq!(model.max_leases(), 4);
+    }
+
+    #[test]
+    fn forced_clone_failure_demotes_runtime_file_parallelism() {
+        use crate::provider_transfer_executor::compose_runtime_transfer_capabilities;
+        use crate::transfer_dag::Capability;
+
+        let p = UploadcareProvider::new(demo_cfg());
+        assert_eq!(
+            p.transfer_executor_kind(),
+            ProviderTransferExecutorKind::HttpClonePool
+        );
+        let can_clone = p.clone_for_transfer().is_ok();
+        assert!(!can_clone);
+        let caps = compose_runtime_transfer_capabilities(
+            &p.transfer_capabilities(),
+            p.transfer_executor_kind(),
+            can_clone,
+        );
+        assert_eq!(caps.file_parallel, Capability::Unsupported);
+        assert_eq!(caps.session_pool, Capability::Unsupported);
+        assert_eq!(caps.max_file_slots, Some(1));
+        assert_eq!(caps.max_chunk_slots, Some(4));
+    }
+
+    #[tokio::test]
+    async fn concurrent_part_puts_overlap_on_independent_workers() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
+        use std::time::Duration;
+
+        use axum::{extract::Path, http::StatusCode, routing::put, Router};
+
+        let in_flight = Arc::new(AtomicUsize::new(0));
+        let peak = Arc::new(AtomicUsize::new(0));
+        let request_count = Arc::new(AtomicUsize::new(0));
+        let in_flight_h = Arc::clone(&in_flight);
+        let peak_h = Arc::clone(&peak);
+        let count_h = Arc::clone(&request_count);
+
+        let app = Router::new().route(
+            "/part/{n}",
+            put(move |Path(n): Path<u32>| {
+                let in_flight = Arc::clone(&in_flight_h);
+                let peak = Arc::clone(&peak_h);
+                let count = Arc::clone(&count_h);
+                async move {
+                    count.fetch_add(1, Ordering::SeqCst);
+                    let now = in_flight.fetch_add(1, Ordering::SeqCst) + 1;
+                    peak.fetch_max(now, Ordering::SeqCst);
+                    tokio::time::sleep(Duration::from_millis(80)).await;
+                    in_flight.fetch_sub(1, Ordering::SeqCst);
+                    (
+                        StatusCode::OK,
+                        [(axum::http::header::ETAG, format!("\"uc-part-{n}\""))],
+                        format!("ok-{n}"),
+                    )
+                }
+            }),
+        );
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind fixture");
+        let addr = listener.local_addr().expect("local addr");
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.ok();
+        });
+
+        let primary = UploadcareProvider::connected_for_test(demo_cfg());
+        let base = format!("http://{addr}");
+        let parts: Vec<String> = (1u32..=4).map(|n| format!("{base}/part/{n}")).collect();
+        let meta = UploadcareMultipartMeta {
+            uuid: "550e8400-e29b-41d4-a716-446655440000".to_string(),
+            parts,
+            total: 4 * 1024,
+            part: 1024,
+            total_parts: 4,
+        };
+        let handle = MultipartHandle {
+            upload_id: meta.encode(),
+            remote_path: "/f.bin".to_string(),
+        };
+
+        let mut workers: Vec<Box<dyn StorageProvider>> = (0..4)
+            .map(|_| primary.clone_for_transfer().expect("worker clone"))
+            .collect();
+        let mut set = tokio::task::JoinSet::new();
+        for (i, mut worker) in workers.drain(..).enumerate() {
+            let handle = handle.clone();
+            let part = (i as u32) + 1;
+            set.spawn(async move {
+                worker
+                    .upload_part(&handle, part, vec![b'y'; 64])
+                    .await
+                    .map_err(|e| e.to_string())
+            });
+        }
+        let mut receipts = Vec::new();
+        while let Some(res) = set.join_next().await {
+            receipts.push(res.expect("join").expect("upload_part"));
+        }
+        receipts.sort_by_key(|r| r.part_number);
+        assert_eq!(receipts.len(), 4);
+        for (i, r) in receipts.iter().enumerate() {
+            assert_eq!(r.part_number, (i as u32) + 1);
+        }
+
+        let observed_peak = peak.load(Ordering::SeqCst);
+        assert_eq!(request_count.load(Ordering::SeqCst), 4);
+        assert!(
+            observed_peak > 1,
+            "independent workers must overlap on the wire (peak={observed_peak})"
+        );
+        assert!(
+            observed_peak <= 4,
+            "peak must stay within the honest ceiling of 4 (peak={observed_peak})"
+        );
+
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn out_of_order_part_completion_returns_requested_receipts() {
+        use axum::{http::StatusCode, routing::put, Router};
+
+        let app = Router::new().route(
+            "/part/{n}",
+            put(
+                |axum::extract::Path(n): axum::extract::Path<u32>| async move {
+                    let delay_ms = 20u64 * (5u64.saturating_sub(n as u64));
+                    tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+                    (
+                        StatusCode::OK,
+                        [(axum::http::header::ETAG, format!("\"etag-{n}\""))],
+                        "ok",
+                    )
+                },
+            ),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.ok();
+        });
+
+        let primary = UploadcareProvider::connected_for_test(demo_cfg());
+        let base = format!("http://{addr}");
+        let meta = UploadcareMultipartMeta {
+            uuid: "550e8400-e29b-41d4-a716-446655440000".to_string(),
+            parts: (1u32..=4).map(|n| format!("{base}/part/{n}")).collect(),
+            total: 4096,
+            part: 1024,
+            total_parts: 4,
+        };
+        let handle = MultipartHandle {
+            upload_id: meta.encode(),
+            remote_path: "/f.bin".into(),
+        };
+        let mut set = tokio::task::JoinSet::new();
+        for part in [4u32, 1, 3, 2] {
+            let mut worker = primary.clone_for_transfer().expect("clone");
+            let handle = handle.clone();
+            set.spawn(async move {
+                worker
+                    .upload_part(&handle, part, vec![0u8; 32])
+                    .await
+                    .map(|r| (part, r))
+                    .map_err(|e| e.to_string())
+            });
+        }
+        let mut got = Vec::new();
+        while let Some(res) = set.join_next().await {
+            let (requested, receipt) = res.unwrap().unwrap();
+            assert_eq!(receipt.part_number, requested);
+            got.push(receipt.part_number);
+        }
+        got.sort();
+        assert_eq!(got, vec![1, 2, 3, 4]);
+        server.abort();
+    }
+
+    #[test]
+    fn clone_multipart_worker_helper_returns_some_only_when_connected() {
+        use crate::transfer_multipart::clone_multipart_worker;
+
+        let disconnected = UploadcareProvider::new(demo_cfg());
+        assert!(clone_multipart_worker(&disconnected).is_none());
+
+        let connected = UploadcareProvider::connected_for_test(demo_cfg());
+        assert!(clone_multipart_worker(&connected).is_some());
+    }
+
+    #[tokio::test]
+    async fn one_part_failure_leaves_sibling_worker_usable() {
+        use axum::{http::StatusCode, routing::put, Router};
+
+        let app = Router::new().route(
+            "/part/{n}",
+            put(
+                |axum::extract::Path(n): axum::extract::Path<u32>| async move {
+                    if n == 2 {
+                        (StatusCode::INTERNAL_SERVER_ERROR, "boom")
+                    } else {
+                        (StatusCode::OK, "ok")
+                    }
+                },
+            ),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.ok();
+        });
+
+        let primary = UploadcareProvider::connected_for_test(demo_cfg());
+        let base = format!("http://{addr}");
+        let meta = UploadcareMultipartMeta {
+            uuid: "550e8400-e29b-41d4-a716-446655440000".to_string(),
+            parts: vec![format!("{base}/part/1"), format!("{base}/part/2")],
+            total: 2048,
+            part: 1024,
+            total_parts: 2,
+        };
+        let handle = MultipartHandle {
+            upload_id: meta.encode(),
+            remote_path: "/f.bin".into(),
+        };
+        let mut w1 = primary.clone_for_transfer().unwrap();
+        let mut w2 = primary.clone_for_transfer().unwrap();
+        let ok = w1.upload_part(&handle, 1, vec![1u8; 8]).await;
+        let err = w2.upload_part(&handle, 2, vec![2u8; 8]).await;
+        assert!(ok.is_ok());
+        assert!(err.is_err());
+        // Primary still connected; begin/complete/abort ownership is primary-only
+        // by construction of the executor (mutex held only around lifecycle).
+        assert!(primary.is_connected());
+        server.abort();
     }
 }
