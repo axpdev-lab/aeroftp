@@ -269,9 +269,14 @@ GUI progress pressure is governed by the shared `ProgressGovernor`
   `transfer_id` (latest-sample coalescing; first sample immediate);
 - `transfer_batch_progress` is capped independently at ≤10 Hz per
   `batch_id`;
-- start / complete / error / cancelled (and file_* terminal variants) are
-  immediate; terminal emission always flushes the latest pending sample for
-  that lane first, then rejects late progress;
+- `start` / per-file `file_start` explicitly open a lane; terminals flush the
+  latest pending sample, remove all lane state, and reject late callbacks
+  until a new lifecycle start (no retained tombstones);
+- cross-profile `file_*` events are immediate children of the aggregate
+  transfer and do not close its lane; only aggregate complete/error/cancelled
+  are terminal there;
+- a bounded same-lane ordering stripe covers routing plus IPC emission, so an
+  already-admitted concurrent callback cannot overtake its terminal event;
 - concurrent multipart callbacks cannot double-claim one 100 ms slot;
 - CLI `indicatif`, MCP progress notifications, and archive/sync-scan
   throttles remain separate product domains.

@@ -25,9 +25,14 @@
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, LazyLock, Mutex};
+use std::{
+    collections::hash_map::DefaultHasher,
+    hash::{Hash, Hasher},
+};
 
 use crate::progress_governor::{
-    route_batch_progress, route_batch_terminal_flush, route_transfer_event, ProgressGovernor,
+    route_batch_progress, route_batch_started, route_batch_terminal_flush, route_transfer_event,
+    ProgressGovernor,
 };
 use crate::transfer_dag::graph::TransferNodeKind;
 use crate::transfer_dag::{DagObserver, ObservedOutcome};
@@ -39,6 +44,26 @@ use crate::TransferEvent;
 /// `transfer_id` / `batch_id` cannot race past the 10 Hz cap.
 static GUI_PROGRESS_GOVERNOR: LazyLock<Arc<ProgressGovernor>> =
     LazyLock::new(|| Arc::new(ProgressGovernor::new()));
+
+/// Bounded per-key ordering locks for route + IPC emission.
+///
+/// The governor mutex is deliberately released before `app.emit`, but that
+/// alone would allow an already-admitted callback to emit after a concurrent
+/// terminal event. Same-key events share one stripe across route and emit, so
+/// terminal ordering is strict. Different keys usually use different stripes;
+/// a hash collision causes only brief serialization, never shared cadence.
+const GUI_EMIT_ORDER_STRIPES: usize = 64;
+static GUI_EMIT_ORDER: LazyLock<Vec<Mutex<()>>> = LazyLock::new(|| {
+    (0..GUI_EMIT_ORDER_STRIPES)
+        .map(|_| Mutex::new(()))
+        .collect()
+});
+
+fn emission_order_stripe(lane_key: &str) -> &'static Mutex<()> {
+    let mut hasher = DefaultHasher::new();
+    lane_key.hash(&mut hasher);
+    &GUI_EMIT_ORDER[hasher.finish() as usize % GUI_EMIT_ORDER_STRIPES]
+}
 
 /// Shared GUI progress governor (tests may construct private governors).
 pub fn gui_progress_governor() -> Arc<ProgressGovernor> {
@@ -91,7 +116,8 @@ pub trait TransferEventSink: Send + Sync {
 /// - `transfer_batch_progress` is keyed by `BatchProgressSnapshot::batch_id`
 ///   and capped independently at ≤10 Hz;
 /// - independent lanes never share a timestamp;
-/// - `start` / `file_start` / other non-progress lifecycle events are immediate;
+/// - `start` / per-file `file_start` open an active lane and are immediate;
+///   cross-profile `file_*` events remain inside their aggregate `start` lane;
 /// - `complete` / `error` / `cancelled` / `file_complete` / `file_error` and
 ///   `transfer_batch_completed` flush the latest pending sample for that lane
 ///   before the terminal emission, then reject late progress;
@@ -133,14 +159,19 @@ impl AppHandleSink {
     }
 
     fn take_batch_id(&self) -> Option<String> {
-        self.last_batch_id.lock().ok().and_then(|g| g.clone())
+        self.last_batch_id.lock().ok().and_then(|mut g| g.take())
     }
 }
 
 impl TransferEventSink for AppHandleSink {
     fn emit_transfer_event(&self, event: TransferEvent) {
         use tauri::Emitter;
-        // Admit under the governor lock, then emit outside it.
+        let lane_key = crate::progress_governor::transfer_lane(&event.transfer_id);
+        let _order = emission_order_stripe(&lane_key)
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        // Admit under the governor state lock, then emit outside that lock
+        // while retaining only the bounded same-lane ordering stripe.
         let to_emit = route_transfer_event(&self.governor, event);
         for e in to_emit {
             let _ = self.app.emit("transfer_event", e);
@@ -149,15 +180,30 @@ impl TransferEventSink for AppHandleSink {
 
     fn emit_batch_started(&self, payload: serde_json::Value) {
         use tauri::Emitter;
-        if let Some(id) = payload.get("batch_id").and_then(|v| v.as_str()) {
-            self.remember_batch_id(id);
+        let batch_id = payload
+            .get("batch_id")
+            .and_then(|v| v.as_str())
+            .map(str::to_owned);
+        if let Some(id) = batch_id {
+            self.remember_batch_id(&id);
+            let lane_key = crate::progress_governor::batch_lane(&id);
+            let _order = emission_order_stripe(&lane_key)
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            route_batch_started(&self.governor, &id);
+            let _ = self.app.emit("transfer_batch_started", payload);
+        } else {
+            let _ = self.app.emit("transfer_batch_started", payload);
         }
-        let _ = self.app.emit("transfer_batch_started", payload);
     }
 
     fn emit_batch_progress(&self, snapshot: &BatchProgressSnapshot) {
         use tauri::Emitter;
         self.remember_batch_id(&snapshot.batch_id);
+        let lane_key = crate::progress_governor::batch_lane(&snapshot.batch_id);
+        let _order = emission_order_stripe(&lane_key)
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         if let Some(s) = route_batch_progress(&self.governor, snapshot.clone()) {
             let _ = self.app.emit("transfer_batch_progress", s);
         }
@@ -166,11 +212,17 @@ impl TransferEventSink for AppHandleSink {
     fn emit_batch_completed(&self, result: &TransferBatchResult) {
         use tauri::Emitter;
         if let Some(batch_id) = self.take_batch_id() {
+            let lane_key = crate::progress_governor::batch_lane(&batch_id);
+            let _order = emission_order_stripe(&lane_key)
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
             if let Some(s) = route_batch_terminal_flush(&self.governor, &batch_id) {
                 let _ = self.app.emit("transfer_batch_progress", s);
             }
+            let _ = self.app.emit("transfer_batch_completed", result);
+        } else {
+            let _ = self.app.emit("transfer_batch_completed", result);
         }
-        let _ = self.app.emit("transfer_batch_completed", result);
     }
 }
 
@@ -467,6 +519,7 @@ mod tests {
     fn route_helpers_cover_progress_and_terminal_ordering() {
         use crate::progress_governor::{test_progress_event, ProgressGovernor};
         let g = ProgressGovernor::new();
+        g.begin_lane(&crate::progress_governor::transfer_lane("sink-route"));
         let out = route_transfer_event(&g, test_progress_event("sink-route", 1, 100));
         assert_eq!(out.len(), 1);
         assert_eq!(out[0].event_type, "progress");

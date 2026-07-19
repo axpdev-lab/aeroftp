@@ -2223,7 +2223,9 @@ async fn run_dag_download_leaf(
                     .await
                     .map(|m| m.len())
                     .unwrap_or(file_size);
-                crate::transfer_event_sink::emit_gui_transfer_event(&app, crate::TransferEvent {
+                crate::transfer_event_sink::emit_gui_transfer_event(
+                    &app,
+                    crate::TransferEvent {
                         event_type: "complete".to_string(),
                         transfer_id: transfer_id.clone(),
                         filename: filename.clone(),
@@ -2240,12 +2242,15 @@ async fn run_dag_download_leaf(
                         path: None,
                         delta_stats: None,
                         fallback_reason: delta_fallback_reason,
-                    },);
+                    },
+                );
                 info!("Download completed: {}", filename);
                 Ok(format!("Downloaded: {}", filename))
             }
             Err(e) => {
-                crate::transfer_event_sink::emit_gui_transfer_event(&app, crate::TransferEvent {
+                crate::transfer_event_sink::emit_gui_transfer_event(
+                    &app,
+                    crate::TransferEvent {
                         event_type: "error".to_string(),
                         transfer_id,
                         filename: filename.clone(),
@@ -2255,7 +2260,8 @@ async fn run_dag_download_leaf(
                         path: None,
                         delta_stats: None,
                         fallback_reason: None,
-                    },);
+                    },
+                );
                 Err(format!("Download failed: {}", e))
             }
         };
@@ -2299,7 +2305,9 @@ async fn run_dag_download_leaf(
             Ok(format!("Downloaded: {}", filename))
         }
         Err(e) => {
-            crate::transfer_event_sink::emit_gui_transfer_event(&app, crate::TransferEvent {
+            crate::transfer_event_sink::emit_gui_transfer_event(
+                &app,
+                crate::TransferEvent {
                     event_type: "error".to_string(),
                     transfer_id,
                     filename: filename.clone(),
@@ -2309,7 +2317,8 @@ async fn run_dag_download_leaf(
                     path: None,
                     delta_stats: None,
                     fallback_reason: None,
-                },);
+                },
+            );
             Err(format!("Download failed: {}", e))
         }
     }
@@ -2388,7 +2397,9 @@ async fn run_dag_upload_leaf(
         return match result {
             Ok(()) => Ok(format!("Uploaded: {}", filename)),
             Err(e) => {
-                crate::transfer_event_sink::emit_gui_transfer_event(&app, crate::TransferEvent {
+                crate::transfer_event_sink::emit_gui_transfer_event(
+                    &app,
+                    crate::TransferEvent {
                         event_type: "error".to_string(),
                         transfer_id,
                         filename: filename.clone(),
@@ -2398,7 +2409,8 @@ async fn run_dag_upload_leaf(
                         path: None,
                         delta_stats: None,
                         fallback_reason: None,
-                    },);
+                    },
+                );
                 Err(format!("Upload failed: {}", e))
             }
         };
@@ -2442,7 +2454,9 @@ async fn run_dag_upload_leaf(
             Ok(format!("Uploaded: {}", filename))
         }
         Err(e) => {
-            crate::transfer_event_sink::emit_gui_transfer_event(&app, crate::TransferEvent {
+            crate::transfer_event_sink::emit_gui_transfer_event(
+                &app,
+                crate::TransferEvent {
                     event_type: "error".to_string(),
                     transfer_id,
                     filename: filename.clone(),
@@ -2452,7 +2466,8 @@ async fn run_dag_upload_leaf(
                     path: None,
                     delta_stats: None,
                     fallback_reason: None,
-                },);
+                },
+            );
             Err(format!("Upload failed: {}", e))
         }
     }
@@ -2789,7 +2804,9 @@ pub async fn provider_download_file(
     );
 
     // Emit start event
-    crate::transfer_event_sink::emit_gui_transfer_event(&app, crate::TransferEvent {
+    crate::transfer_event_sink::emit_gui_transfer_event(
+        &app,
+        crate::TransferEvent {
             event_type: "start".to_string(),
             transfer_id: transfer_id.clone(),
             filename: filename.clone(),
@@ -2799,7 +2816,8 @@ pub async fn provider_download_file(
             path: None,
             delta_stats: None,
             fallback_reason: None,
-        },);
+        },
+    );
 
     // Create parent directory if needed
     if let Some(parent) = std::path::Path::new(&local_path).parent() {
@@ -2830,7 +2848,9 @@ pub async fn provider_download_file(
             } else {
                 0
             };
-            crate::transfer_event_sink::emit_gui_transfer_event(&app_progress, crate::TransferEvent {
+            crate::transfer_event_sink::emit_gui_transfer_event(
+                &app_progress,
+                crate::TransferEvent {
                     event_type: "progress".to_string(),
                     transfer_id: tid_progress.clone(),
                     filename: fname_progress.clone(),
@@ -2851,7 +2871,8 @@ pub async fn provider_download_file(
                     path: None,
                     delta_stats: None,
                     fallback_reason: None,
-                },);
+                },
+            );
         }))
     } else {
         None
@@ -2902,7 +2923,9 @@ pub async fn provider_download_file(
             };
             if delta_cancelled {
                 let err_msg = format!("Download cancelled by user: {}", filename);
-                crate::transfer_event_sink::emit_gui_transfer_event(&app, crate::TransferEvent {
+                crate::transfer_event_sink::emit_gui_transfer_event(
+                    &app,
+                    crate::TransferEvent {
                         event_type: "error".to_string(),
                         transfer_id: transfer_id.clone(),
                         filename: filename.clone(),
@@ -2912,7 +2935,8 @@ pub async fn provider_download_file(
                         path: None,
                         delta_stats: None,
                         fallback_reason: None,
-                    },);
+                    },
+                );
                 return Err(err_msg);
             }
             if let Some(result) = delta_outcome {
@@ -2926,7 +2950,9 @@ pub async fn provider_download_file(
                         .await
                         .map(|m| m.len())
                         .unwrap_or(file_size);
-                    crate::transfer_event_sink::emit_gui_transfer_event(&app, crate::TransferEvent {
+                    crate::transfer_event_sink::emit_gui_transfer_event(
+                        &app,
+                        crate::TransferEvent {
                             event_type: "complete".to_string(),
                             transfer_id: transfer_id.clone(),
                             filename: filename.clone(),
@@ -2943,13 +2969,16 @@ pub async fn provider_download_file(
                             path: None,
                             delta_stats,
                             fallback_reason: None,
-                        },);
+                        },
+                    );
                     info!("Download completed via delta path: {}", filename);
                     return Ok(format!("Downloaded: {}", filename));
                 }
                 if let Some(hard_err) = result.hard_error {
                     let err_msg = format!("delta hard rejection: {}", hard_err);
-                    crate::transfer_event_sink::emit_gui_transfer_event(&app, crate::TransferEvent {
+                    crate::transfer_event_sink::emit_gui_transfer_event(
+                        &app,
+                        crate::TransferEvent {
                             event_type: "error".to_string(),
                             transfer_id: transfer_id.clone(),
                             filename: filename.clone(),
@@ -2959,7 +2988,8 @@ pub async fn provider_download_file(
                             path: None,
                             delta_stats: None,
                             fallback_reason: None,
-                        },);
+                        },
+                    );
                     return Err(err_msg);
                 }
                 // Silent fallback: result.fallback_reason populated but we continue
@@ -3049,7 +3079,9 @@ pub async fn provider_download_file(
             } else {
                 0
             };
-            crate::transfer_event_sink::emit_gui_transfer_event(&app_progress_fb, crate::TransferEvent {
+            crate::transfer_event_sink::emit_gui_transfer_event(
+                &app_progress_fb,
+                crate::TransferEvent {
                     event_type: "progress".to_string(),
                     transfer_id: tid_fb.clone(),
                     filename: fname_fb.clone(),
@@ -3070,7 +3102,8 @@ pub async fn provider_download_file(
                     path: None,
                     delta_stats: None,
                     fallback_reason: None,
-                },);
+                },
+            );
         }));
     }
 
@@ -3181,7 +3214,9 @@ pub async fn provider_download_file(
                 .await
                 .map(|m| m.len())
                 .unwrap_or(file_size);
-            crate::transfer_event_sink::emit_gui_transfer_event(&app, crate::TransferEvent {
+            crate::transfer_event_sink::emit_gui_transfer_event(
+                &app,
+                crate::TransferEvent {
                     event_type: "complete".to_string(),
                     transfer_id: transfer_id.clone(),
                     filename: filename.clone(),
@@ -3198,7 +3233,8 @@ pub async fn provider_download_file(
                     path: None,
                     delta_stats: None,
                     fallback_reason: delta_fallback_reason,
-                },);
+                },
+            );
             info!("Download completed: {}", filename);
             Ok(format!("Downloaded: {}", filename))
         }
@@ -3207,7 +3243,9 @@ pub async fn provider_download_file(
             Err(format!("Download cancelled by user: {}", filename))
         }
         Err(e) => {
-            crate::transfer_event_sink::emit_gui_transfer_event(&app, crate::TransferEvent {
+            crate::transfer_event_sink::emit_gui_transfer_event(
+                &app,
+                crate::TransferEvent {
                     event_type: "error".to_string(),
                     transfer_id,
                     filename: filename.clone(),
@@ -3217,7 +3255,8 @@ pub async fn provider_download_file(
                     path: None,
                     delta_stats: None,
                     fallback_reason: None,
-                },);
+                },
+            );
             Err(format!("Download failed: {}", e))
         }
     }
@@ -3457,7 +3496,9 @@ async fn provider_download_folder_inner(
     );
 
     // Emit start event
-    crate::transfer_event_sink::emit_gui_transfer_event(&app, crate::TransferEvent {
+    crate::transfer_event_sink::emit_gui_transfer_event(
+        app,
+        crate::TransferEvent {
             event_type: "start".to_string(),
             transfer_id: transfer_id.clone(),
             filename: folder_name.clone(),
@@ -3467,7 +3508,8 @@ async fn provider_download_folder_inner(
             path: Some(remote_path.to_string()),
             delta_stats: None,
             fallback_reason: None,
-        },);
+        },
+    );
 
     // Create local folder
     tokio::fs::create_dir_all(local_path)
@@ -3504,7 +3546,9 @@ async fn provider_download_folder_inner(
                 "Provider folder download cancelled by user after {} files",
                 files_downloaded
             );
-            crate::transfer_event_sink::emit_gui_transfer_event(&app, crate::TransferEvent {
+            crate::transfer_event_sink::emit_gui_transfer_event(
+                app,
+                crate::TransferEvent {
                     event_type: "cancelled".to_string(),
                     transfer_id: transfer_id.clone(),
                     filename: folder_name.clone(),
@@ -3517,7 +3561,8 @@ async fn provider_download_folder_inner(
                     path: None,
                     delta_stats: None,
                     fallback_reason: None,
-                },);
+                },
+            );
             return Ok(format!(
                 "Download cancelled after {} files",
                 files_downloaded
@@ -3589,7 +3634,9 @@ async fn provider_download_folder_inner(
 
         // Emit scanning progress
         if last_scan_emit.elapsed().as_millis() > 500 || dirs_scanned <= 1 {
-            crate::transfer_event_sink::emit_gui_transfer_event(&app, crate::TransferEvent {
+            crate::transfer_event_sink::emit_gui_transfer_event(
+                app,
+                crate::TransferEvent {
                     event_type: "scanning".to_string(),
                     transfer_id: transfer_id.clone(),
                     filename: folder_name.clone(),
@@ -3604,7 +3651,8 @@ async fn provider_download_folder_inner(
                     path: None,
                     delta_stats: None,
                     fallback_reason: None,
-                },);
+                },
+            );
             last_scan_emit = std::time::Instant::now();
         }
 
@@ -3616,7 +3664,9 @@ async fn provider_download_folder_inner(
                     "Provider folder download cancelled by user after {} files",
                     files_downloaded
                 );
-                crate::transfer_event_sink::emit_gui_transfer_event(&app, crate::TransferEvent {
+                crate::transfer_event_sink::emit_gui_transfer_event(
+                    app,
+                    crate::TransferEvent {
                         event_type: "cancelled".to_string(),
                         transfer_id: transfer_id.clone(),
                         filename: folder_name.clone(),
@@ -3629,7 +3679,8 @@ async fn provider_download_folder_inner(
                         path: None,
                         delta_stats: None,
                         fallback_reason: None,
-                    },);
+                    },
+                );
                 return Ok(format!(
                     "Download cancelled after {} files",
                     files_downloaded
@@ -3662,7 +3713,9 @@ async fn provider_download_folder_inner(
                             &local_meta,
                         ) {
                             files_skipped += 1;
-                            crate::transfer_event_sink::emit_gui_transfer_event(&app, crate::TransferEvent {
+                            crate::transfer_event_sink::emit_gui_transfer_event(
+                                app,
+                                crate::TransferEvent {
                                     event_type: "file_skip".to_string(),
                                     transfer_id: format!("{}-{}", transfer_id, file_global_index),
                                     filename: entry.name.clone(),
@@ -3672,7 +3725,8 @@ async fn provider_download_folder_inner(
                                     path: Some(entry.remote_path.clone()),
                                     delta_stats: None,
                                     fallback_reason: None,
-                                },);
+                                },
+                            );
                             continue;
                         }
                     }
@@ -3718,7 +3772,9 @@ async fn provider_download_folder_inner(
             100
         };
 
-        crate::transfer_event_sink::emit_gui_transfer_event(&progress_app, crate::TransferEvent {
+        crate::transfer_event_sink::emit_gui_transfer_event(
+            &progress_app,
+            crate::TransferEvent {
                 event_type: "progress".to_string(),
                 transfer_id: progress_transfer_id.clone(),
                 filename: progress_folder_name.clone(),
@@ -3742,7 +3798,8 @@ async fn provider_download_folder_inner(
                 path: Some(progress_remote_path.clone()),
                 delta_stats: None,
                 fallback_reason: None,
-            },);
+            },
+        );
     });
 
     let session_model = resolve_provider_executor_session_model(
@@ -3793,7 +3850,9 @@ async fn provider_download_folder_inner(
         )
     };
 
-    crate::transfer_event_sink::emit_gui_transfer_event(&app, crate::TransferEvent {
+    crate::transfer_event_sink::emit_gui_transfer_event(
+        app,
+        crate::TransferEvent {
             event_type,
             transfer_id,
             filename: folder_name.clone(),
@@ -3803,7 +3862,8 @@ async fn provider_download_folder_inner(
             path: None,
             delta_stats: None,
             fallback_reason: None,
-        },);
+        },
+    );
 
     Ok(result_message)
 }
@@ -3837,7 +3897,9 @@ async fn provider_upload_folder_inner(
         runtime_settings.timeout_seconds
     );
 
-    crate::transfer_event_sink::emit_gui_transfer_event(&app, crate::TransferEvent {
+    crate::transfer_event_sink::emit_gui_transfer_event(
+        app,
+        crate::TransferEvent {
             event_type: "start".to_string(),
             transfer_id: transfer_id.clone(),
             filename: folder_name.clone(),
@@ -3847,7 +3909,8 @@ async fn provider_upload_folder_inner(
             path: Some(remote_path.to_string()),
             delta_stats: None,
             fallback_reason: None,
-        },);
+        },
+    );
 
     let local_base = std::path::Path::new(local_path);
     if !local_base.is_dir() {
@@ -3896,7 +3959,9 @@ async fn provider_upload_folder_inner(
 
     while let Some((current_local_dir, current_remote_dir)) = dirs_to_scan.pop() {
         if provider_transfer_cancelled(state) {
-            crate::transfer_event_sink::emit_gui_transfer_event(&app, crate::TransferEvent {
+            crate::transfer_event_sink::emit_gui_transfer_event(
+                app,
+                crate::TransferEvent {
                     event_type: "cancelled".to_string(),
                     transfer_id: transfer_id.clone(),
                     filename: folder_name.clone(),
@@ -3909,7 +3974,8 @@ async fn provider_upload_folder_inner(
                     path: Some(remote_path.to_string()),
                     delta_stats: None,
                     fallback_reason: None,
-                },);
+                },
+            );
             return Ok(format!(
                 "Upload cancelled after {} files",
                 transfer_entries.len()
@@ -3937,7 +4003,9 @@ async fn provider_upload_folder_inner(
             };
 
             if file_type.is_symlink() {
-                crate::transfer_event_sink::emit_gui_transfer_event(&app, crate::TransferEvent {
+                crate::transfer_event_sink::emit_gui_transfer_event(
+                    app,
+                    crate::TransferEvent {
                         event_type: "file_skip".to_string(),
                         transfer_id: transfer_id.clone(),
                         filename: name.clone(),
@@ -3947,7 +4015,8 @@ async fn provider_upload_folder_inner(
                         path: Some(remote_entry_path.clone()),
                         delta_stats: None,
                         fallback_reason: None,
-                    },);
+                    },
+                );
                 continue;
             }
 
@@ -3971,7 +4040,9 @@ async fn provider_upload_folder_inner(
 
         dirs_scanned += 1;
         if last_scan_emit.elapsed().as_millis() > 500 || dirs_scanned <= 1 {
-            crate::transfer_event_sink::emit_gui_transfer_event(&app, crate::TransferEvent {
+            crate::transfer_event_sink::emit_gui_transfer_event(
+                app,
+                crate::TransferEvent {
                     event_type: "scanning".to_string(),
                     transfer_id: transfer_id.clone(),
                     filename: folder_name.clone(),
@@ -3985,7 +4056,8 @@ async fn provider_upload_folder_inner(
                     path: Some(remote_path.to_string()),
                     delta_stats: None,
                     fallback_reason: None,
-                },);
+                },
+            );
             last_scan_emit = std::time::Instant::now();
         }
     }
@@ -4041,7 +4113,9 @@ async fn provider_upload_folder_inner(
 
             for remote_dir in &remote_dirs {
                 if provider_transfer_cancelled(state) {
-                    crate::transfer_event_sink::emit_gui_transfer_event(&app, crate::TransferEvent {
+                    crate::transfer_event_sink::emit_gui_transfer_event(
+                        app,
+                        crate::TransferEvent {
                             event_type: "cancelled".to_string(),
                             transfer_id: transfer_id.clone(),
                             filename: folder_name.clone(),
@@ -4053,7 +4127,8 @@ async fn provider_upload_folder_inner(
                             path: Some(remote_path.to_string()),
                             delta_stats: None,
                             fallback_reason: None,
-                        },);
+                        },
+                    );
                     return Ok("Upload cancelled before remote conflict scan".to_string());
                 }
 
@@ -4095,7 +4170,9 @@ async fn provider_upload_folder_inner(
             }
 
             files_skipped += 1;
-            crate::transfer_event_sink::emit_gui_transfer_event(&app, crate::TransferEvent {
+            crate::transfer_event_sink::emit_gui_transfer_event(
+                app,
+                crate::TransferEvent {
                     event_type: "file_skip".to_string(),
                     transfer_id: entry.id.clone(),
                     filename: entry.display_name.clone(),
@@ -4105,7 +4182,8 @@ async fn provider_upload_folder_inner(
                     path: Some(entry.remote_path.clone()),
                     delta_stats: None,
                     fallback_reason: None,
-                },);
+                },
+            );
             false
         });
     }
@@ -4136,7 +4214,9 @@ async fn provider_upload_folder_inner(
             100
         };
 
-        crate::transfer_event_sink::emit_gui_transfer_event(&progress_app, crate::TransferEvent {
+        crate::transfer_event_sink::emit_gui_transfer_event(
+            &progress_app,
+            crate::TransferEvent {
                 event_type: "progress".to_string(),
                 transfer_id: progress_transfer_id.clone(),
                 filename: progress_folder_name.clone(),
@@ -4160,7 +4240,8 @@ async fn provider_upload_folder_inner(
                 path: Some(progress_remote_path.clone()),
                 delta_stats: None,
                 fallback_reason: None,
-            },);
+            },
+        );
     });
 
     let session_model = resolve_provider_executor_session_model(
@@ -4206,7 +4287,9 @@ async fn provider_upload_folder_inner(
         )
     };
 
-    crate::transfer_event_sink::emit_gui_transfer_event(&app, crate::TransferEvent {
+    crate::transfer_event_sink::emit_gui_transfer_event(
+        app,
+        crate::TransferEvent {
             event_type,
             transfer_id,
             filename: folder_name.clone(),
@@ -4216,7 +4299,8 @@ async fn provider_upload_folder_inner(
             path: None,
             delta_stats: None,
             fallback_reason: None,
-        },);
+        },
+    );
 
     Ok(result_message)
 }
@@ -4261,7 +4345,9 @@ pub async fn provider_upload_file(
     info!("Uploading via provider: {} -> {}", local_path, remote_path);
 
     // Emit start event
-    crate::transfer_event_sink::emit_gui_transfer_event(&app, crate::TransferEvent {
+    crate::transfer_event_sink::emit_gui_transfer_event(
+        &app,
+        crate::TransferEvent {
             event_type: "start".to_string(),
             transfer_id: transfer_id.clone(),
             filename: filename.clone(),
@@ -4271,7 +4357,8 @@ pub async fn provider_upload_file(
             path: None,
             delta_stats: None,
             fallback_reason: None,
-        },);
+        },
+    );
 
     let app_progress = app.clone();
     let tid_progress = transfer_id.clone();
@@ -4296,7 +4383,9 @@ pub async fn provider_upload_file(
             } else {
                 0
             };
-            crate::transfer_event_sink::emit_gui_transfer_event(&app_progress, crate::TransferEvent {
+            crate::transfer_event_sink::emit_gui_transfer_event(
+                &app_progress,
+                crate::TransferEvent {
                     event_type: "progress".to_string(),
                     transfer_id: tid_progress.clone(),
                     filename: fname_progress.clone(),
@@ -4317,7 +4406,8 @@ pub async fn provider_upload_file(
                     path: None,
                     delta_stats: None,
                     fallback_reason: None,
-                },);
+                },
+            );
         }))
     } else {
         None
@@ -4363,7 +4453,9 @@ pub async fn provider_upload_file(
             };
             if delta_cancelled {
                 let err_msg = format!("Upload cancelled by user: {}", filename);
-                crate::transfer_event_sink::emit_gui_transfer_event(&app, crate::TransferEvent {
+                crate::transfer_event_sink::emit_gui_transfer_event(
+                    &app,
+                    crate::TransferEvent {
                         event_type: "error".to_string(),
                         transfer_id: transfer_id.clone(),
                         filename: filename.clone(),
@@ -4373,7 +4465,8 @@ pub async fn provider_upload_file(
                         path: None,
                         delta_stats: None,
                         fallback_reason: None,
-                    },);
+                    },
+                );
                 return Err(err_msg);
             }
             if let Some(delta_result) = delta_outcome {
@@ -4382,7 +4475,9 @@ pub async fn provider_upload_file(
                         .stats
                         .as_ref()
                         .map(crate::sync::DeltaTransferStats::from_rsync);
-                    crate::transfer_event_sink::emit_gui_transfer_event(&app, crate::TransferEvent {
+                    crate::transfer_event_sink::emit_gui_transfer_event(
+                        &app,
+                        crate::TransferEvent {
                             event_type: "complete".to_string(),
                             transfer_id: transfer_id.clone(),
                             filename: filename.clone(),
@@ -4399,13 +4494,16 @@ pub async fn provider_upload_file(
                             path: None,
                             delta_stats,
                             fallback_reason: None,
-                        },);
+                        },
+                    );
                     info!("Upload completed via delta path: {}", filename);
                     return Ok(format!("Uploaded: {}", filename));
                 }
                 if let Some(hard_err) = delta_result.hard_error {
                     let err_msg = format!("delta hard rejection: {}", hard_err);
-                    crate::transfer_event_sink::emit_gui_transfer_event(&app, crate::TransferEvent {
+                    crate::transfer_event_sink::emit_gui_transfer_event(
+                        &app,
+                        crate::TransferEvent {
                             event_type: "error".to_string(),
                             transfer_id: transfer_id.clone(),
                             filename: filename.clone(),
@@ -4415,7 +4513,8 @@ pub async fn provider_upload_file(
                             path: None,
                             delta_stats: None,
                             fallback_reason: None,
-                        },);
+                        },
+                    );
                     return Err(err_msg);
                 }
                 // Silent fallback to classic provider upload below.
@@ -4458,7 +4557,9 @@ pub async fn provider_upload_file(
             };
             if cancelled {
                 let err_msg = format!("Upload cancelled by user: {}", filename);
-                crate::transfer_event_sink::emit_gui_transfer_event(&app, crate::TransferEvent {
+                crate::transfer_event_sink::emit_gui_transfer_event(
+                    &app,
+                    crate::TransferEvent {
                         event_type: "error".to_string(),
                         transfer_id: transfer_id.clone(),
                         filename: filename.clone(),
@@ -4468,12 +4569,15 @@ pub async fn provider_upload_file(
                         path: None,
                         delta_stats: None,
                         fallback_reason: None,
-                    },);
+                    },
+                );
                 return Err(err_msg);
             }
             return match resume_outcome.expect("resume outcome set when not cancelled") {
                 Ok(()) => {
-                    crate::transfer_event_sink::emit_gui_transfer_event(&app, crate::TransferEvent {
+                    crate::transfer_event_sink::emit_gui_transfer_event(
+                        &app,
+                        crate::TransferEvent {
                             event_type: "complete".to_string(),
                             transfer_id: transfer_id.clone(),
                             filename: filename.clone(),
@@ -4490,13 +4594,16 @@ pub async fn provider_upload_file(
                             path: None,
                             delta_stats: None,
                             fallback_reason: delta_fallback_reason,
-                        },);
+                        },
+                    );
                     info!("Upload resumed to completion: {}", filename);
                     Ok(format!("Uploaded: {}", filename))
                 }
                 Err(e) => {
                     let err_msg = format!("Upload failed: {}", e);
-                    crate::transfer_event_sink::emit_gui_transfer_event(&app, crate::TransferEvent {
+                    crate::transfer_event_sink::emit_gui_transfer_event(
+                        &app,
+                        crate::TransferEvent {
                             event_type: "error".to_string(),
                             transfer_id: transfer_id.clone(),
                             filename: filename.clone(),
@@ -4506,7 +4613,8 @@ pub async fn provider_upload_file(
                             path: None,
                             delta_stats: None,
                             fallback_reason: None,
-                        },);
+                        },
+                    );
                     Err(err_msg)
                 }
             };
@@ -4616,7 +4724,9 @@ pub async fn provider_upload_file(
 
     match &result {
         Ok(()) => {
-            crate::transfer_event_sink::emit_gui_transfer_event(&app, crate::TransferEvent {
+            crate::transfer_event_sink::emit_gui_transfer_event(
+                &app,
+                crate::TransferEvent {
                     event_type: "complete".to_string(),
                     transfer_id,
                     filename: filename.clone(),
@@ -4633,7 +4743,8 @@ pub async fn provider_upload_file(
                     path: None,
                     delta_stats: None,
                     fallback_reason: delta_fallback_reason,
-                },);
+                },
+            );
             info!("Upload completed: {}", filename);
             Ok(format!("Uploaded: {}", filename))
         }
@@ -4642,7 +4753,9 @@ pub async fn provider_upload_file(
             Err(e.clone())
         }
         Err(e) => {
-            crate::transfer_event_sink::emit_gui_transfer_event(&app, crate::TransferEvent {
+            crate::transfer_event_sink::emit_gui_transfer_event(
+                &app,
+                crate::TransferEvent {
                     event_type: "error".to_string(),
                     transfer_id,
                     filename: filename.clone(),
@@ -4652,7 +4765,8 @@ pub async fn provider_upload_file(
                     path: None,
                     delta_stats: None,
                     fallback_reason: None,
-                },);
+                },
+            );
             Err(e.clone())
         }
     }
@@ -4764,7 +4878,9 @@ pub async fn provider_delete_dir(
             .file_name()
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_else(|| path.clone());
-        crate::transfer_event_sink::emit_gui_transfer_event(&app, crate::TransferEvent {
+        crate::transfer_event_sink::emit_gui_transfer_event(
+            &app,
+            crate::TransferEvent {
                 event_type: "scanning".to_string(),
                 transfer_id: format!("del-dir-{}", chrono::Utc::now().timestamp_millis()),
                 filename: folder_name,
@@ -4774,7 +4890,8 @@ pub async fn provider_delete_dir(
                 path: Some(path.clone()),
                 delta_stats: None,
                 fallback_reason: None,
-            },);
+            },
+        );
     }
 
     if is_plain_github_provider(provider.as_mut()) {
@@ -4805,7 +4922,9 @@ pub async fn provider_delete_dir(
             .file_name()
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_else(|| path.clone());
-        crate::transfer_event_sink::emit_gui_transfer_event(&app, crate::TransferEvent {
+        crate::transfer_event_sink::emit_gui_transfer_event(
+            &app,
+            crate::TransferEvent {
                 event_type: "delete_complete".to_string(),
                 transfer_id: format!("del-dir-done-{}", chrono::Utc::now().timestamp_millis()),
                 filename: folder_name,
@@ -4815,7 +4934,8 @@ pub async fn provider_delete_dir(
                 path: Some(path),
                 delta_stats: None,
                 fallback_reason: None,
-            },);
+            },
+        );
     }
 
     Ok(())

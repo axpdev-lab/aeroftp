@@ -705,8 +705,7 @@ impl TransferDagBuilder {
 
         // Single transfer-core helper shared with batch/sync shaped builders
         // so multipart topology (cap=1 chain vs cap>1 fan-out) cannot drift.
-        let transfer =
-            append_transfer_core(&mut dag, direction, acquire, &profile, file_size);
+        let transfer = append_transfer_core(&mut dag, direction, acquire, &profile, file_size);
 
         let verify = dag.add_node(
             TransferNodeKind::VerifyChecksum,
@@ -1018,8 +1017,7 @@ fn append_shaped_file_chain(
         ResourceRequest::default(),
     );
 
-    let transfer_nodes =
-        append_transfer_core(dag, direction, acquire, &profile, file_size);
+    let transfer_nodes = append_transfer_core(dag, direction, acquire, &profile, file_size);
 
     let verify = dag.add_node(
         TransferNodeKind::VerifyChecksum,
@@ -1075,8 +1073,7 @@ fn append_shaped_sync_file_chain(
         ResourceRequest::default(),
     );
 
-    let transfer_nodes =
-        append_transfer_core(dag, direction, acquire, &profile, file_size);
+    let transfer_nodes = append_transfer_core(dag, direction, acquire, &profile, file_size);
 
     let verify = dag.add_node(
         TransferNodeKind::VerifyChecksum,
@@ -2192,8 +2189,8 @@ mod tests {
         );
         let nodes = built.dag.nodes();
         assert_eq!(built.profile.max_chunk_slots, 1);
-        assert_serial_part_chain(&nodes, built.acquire, &built.transfer, built.verify);
-        assert_p0_06_part_accounting(&nodes, &built.transfer, file_size, 3, chunk, 0);
+        assert_serial_part_chain(nodes, built.acquire, &built.transfer, built.verify);
+        assert_p0_06_part_accounting(nodes, &built.transfer, file_size, 3, chunk, 0);
     }
 
     #[test]
@@ -2217,12 +2214,7 @@ mod tests {
 
         for file in &built.files {
             assert_eq!(file.transfer_nodes.len(), 3);
-            assert_serial_part_chain(
-                &nodes,
-                file.acquire,
-                &file.transfer_nodes,
-                file.verify,
-            );
+            assert_serial_part_chain(nodes, file.acquire, &file.transfer_nodes, file.verify);
             // No part may depend on a part belonging to another file.
             let own: std::collections::HashSet<usize> =
                 file.transfer_nodes.iter().copied().collect();
@@ -2245,14 +2237,7 @@ mod tests {
                     );
                 }
             }
-            assert_p0_06_part_accounting(
-                &nodes,
-                &file.transfer_nodes,
-                file_size,
-                3,
-                chunk,
-                0,
-            );
+            assert_p0_06_part_accounting(nodes, &file.transfer_nodes, file_size, 3, chunk, 0);
         }
 
         // Files remain independent roots after discover: no edge from one
@@ -2285,12 +2270,7 @@ mod tests {
         for file in &built.files {
             assert_eq!(nodes[file.acquire].depends_on, vec![built.compare]);
             assert_eq!(file.transfer_nodes.len(), 3);
-            assert_serial_part_chain(
-                &nodes,
-                file.acquire,
-                &file.transfer_nodes,
-                file.verify,
-            );
+            assert_serial_part_chain(nodes, file.acquire, &file.transfer_nodes, file.verify);
             let other: std::collections::HashSet<usize> = built
                 .files
                 .iter()
@@ -2306,14 +2286,7 @@ mod tests {
                     );
                 }
             }
-            assert_p0_06_part_accounting(
-                &nodes,
-                &file.transfer_nodes,
-                file_size,
-                3,
-                chunk,
-                0,
-            );
+            assert_p0_06_part_accounting(nodes, &file.transfer_nodes, file_size, 3, chunk, 0);
         }
     }
 
@@ -2323,14 +2296,9 @@ mod tests {
         let file_size = 4 * chunk;
         let caps = caps_multipart(chunk); // max_chunk_slots = 4
 
-        let single =
-            TransferDagBuilder::shaped_file(TransferDirection::Upload, &caps, file_size);
+        let single = TransferDagBuilder::shaped_file(TransferDirection::Upload, &caps, file_size);
         assert_eq!(single.profile.max_chunk_slots, 4);
-        assert_fanout_parts(
-            single.dag.nodes(),
-            single.acquire,
-            &single.transfer,
-        );
+        assert_fanout_parts(single.dag.nodes(), single.acquire, &single.transfer);
 
         let batch = TransferDagBuilder::from_batch_shaped(
             &[
@@ -2361,8 +2329,7 @@ mod tests {
         let file_size = 3 * chunk;
         let caps = caps_multipart_missing_slots(chunk);
 
-        let single =
-            TransferDagBuilder::shaped_file(TransferDirection::Upload, &caps, file_size);
+        let single = TransferDagBuilder::shaped_file(TransferDirection::Upload, &caps, file_size);
         assert_eq!(
             single.profile.max_chunk_slots, 1,
             "None max_chunk_slots resolves to effective cap=1"
@@ -2383,12 +2350,7 @@ mod tests {
             &caps,
         );
         let f = &batch.files[0];
-        assert_serial_part_chain(
-            batch.dag.nodes(),
-            f.acquire,
-            &f.transfer_nodes,
-            f.verify,
-        );
+        assert_serial_part_chain(batch.dag.nodes(), f.acquire, &f.transfer_nodes, f.verify);
 
         let sync = TransferDagBuilder::from_sync_plan_shaped(
             &[SyncDagItem::with_size(
@@ -2411,8 +2373,7 @@ mod tests {
         let expected_api = 1u16;
         let parts = 4usize;
 
-        let single =
-            TransferDagBuilder::shaped_file(TransferDirection::Upload, &caps, file_size);
+        let single = TransferDagBuilder::shaped_file(TransferDirection::Upload, &caps, file_size);
         assert_eq!(single.profile.api_slots, expected_api);
         assert_p0_06_part_accounting(
             single.dag.nodes(),
@@ -2507,7 +2468,11 @@ mod tests {
         assert_eq!(summary.nodes_failed, 0);
 
         let order = observed.lock().expect("lock").clone();
-        assert_eq!(order, vec![0, 1, 2, 3], "cap=1 must dispatch parts in order");
+        assert_eq!(
+            order,
+            vec![0, 1, 2, 3],
+            "cap=1 must dispatch parts in order"
+        );
     }
 
     #[tokio::test]
@@ -2518,8 +2483,7 @@ mod tests {
             &caps_multipart(chunk), // max_chunk_slots = 4
             4 * chunk,
         );
-        let part_ids: std::collections::HashSet<usize> =
-            built.transfer.iter().copied().collect();
+        let part_ids: std::collections::HashSet<usize> = built.transfer.iter().copied().collect();
         let in_flight = Arc::new(AtomicUsize::new(0));
         let peak = Arc::new(AtomicUsize::new(0));
         let in_flight_run = Arc::clone(&in_flight);

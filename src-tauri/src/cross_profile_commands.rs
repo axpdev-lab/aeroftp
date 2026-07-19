@@ -135,7 +135,7 @@ pub struct CrossProfileTransferSummary {
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 fn emit_transfer_event(app: &AppHandle, event: TransferEvent) {
-    crate::transfer_event_sink::emit_gui_transfer_event(&app, event);
+    crate::transfer_event_sink::emit_gui_transfer_event(app, event);
 }
 
 fn now_ms() -> u64 {

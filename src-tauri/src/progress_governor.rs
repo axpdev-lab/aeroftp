@@ -16,7 +16,8 @@
 //! - emit **outside** the mutex (callers must not hold it while invoking
 //!   `app.emit`);
 //! - no per-callback sleeping tasks or timers;
-//! - late progress after terminal is dropped;
+//! - only an explicit lifecycle start opens a lane, so late progress after
+//!   terminal is dropped without retaining unbounded tombstones;
 //! - counters never regress within a lane (`transferred` / `total` are
 //!   monotonic-max).
 //!
@@ -34,10 +35,6 @@ use crate::TransferEvent;
 
 /// Default minimum gap between progress emissions for one lane (10 Hz).
 pub const DEFAULT_MIN_INTERVAL: Duration = Duration::from_millis(100);
-
-/// Soft cap on retained terminal tombstones; excess tombstones are pruned so
-/// the map cannot grow without bound across long sessions.
-const TOMBSTONE_PRUNE_THRESHOLD: usize = 8192;
 
 /// Monotonic clock used for cadence. Production uses [`SystemClock`]; tests
 /// inject [`ManualClock`].
@@ -77,8 +74,7 @@ impl ManualClock {
     }
 
     pub fn set(&self, d: Duration) {
-        self.offset_ns
-            .store(d.as_nanos() as u64, Ordering::SeqCst);
+        self.offset_ns.store(d.as_nanos() as u64, Ordering::SeqCst);
     }
 }
 
@@ -109,6 +105,10 @@ pub fn batch_lane(batch_id: &str) -> String {
 /// Not `Debug`: [`TransferEvent`] intentionally omits Debug (serde-only GUI
 /// payload). Tests assert on counters via [`ProgressSample::transferred_total`].
 #[derive(Clone)]
+// This value is created for every byte-progress callback. Keeping the
+// TransferEvent inline avoids an additional heap allocation on the hot path;
+// only one pending value per active lane is retained.
+#[allow(clippy::large_enum_variant)]
 pub enum ProgressSample {
     Transfer(TransferEvent),
     Batch(BatchProgressSnapshot),
@@ -125,29 +125,13 @@ impl ProgressSample {
         }
     }
 
-    /// Fingerprint used to skip a final flush that would duplicate the last
-    /// emitted counters (and, for transfer samples, the progress payload).
-    fn fingerprint(&self) -> SampleFingerprint {
-        let (transferred, total) = self.transferred_total();
+    /// Full serialized payload used to skip only an exact duplicate on final
+    /// flush. Counter-only fingerprints lose speed/ETA/path and can therefore
+    /// suppress a materially newer sample.
+    fn fingerprint(&self) -> Option<Vec<u8>> {
         match self {
-            ProgressSample::Transfer(ev) => SampleFingerprint {
-                kind: 0,
-                transferred,
-                total,
-                extra: ev
-                    .progress
-                    .as_ref()
-                    .map(|p| p.percentage as u64)
-                    .unwrap_or(0),
-            },
-            ProgressSample::Batch(s) => SampleFingerprint {
-                kind: 1,
-                transferred,
-                total,
-                extra: ((s.completed as u64) << 32)
-                    | ((s.failed as u64) << 16)
-                    | (s.skipped as u64),
-            },
+            ProgressSample::Transfer(ev) => serde_json::to_vec(&(0u8, ev)).ok(),
+            ProgressSample::Batch(s) => serde_json::to_vec(&(1u8, s)).ok(),
         }
     }
 
@@ -176,23 +160,14 @@ impl ProgressSample {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct SampleFingerprint {
-    kind: u8,
-    transferred: u64,
-    total: u64,
-    extra: u64,
-}
-
 #[derive(Default)]
 struct LaneState {
     last_emit_at: Option<Instant>,
     pending: Option<ProgressSample>,
-    last_emitted_fp: Option<SampleFingerprint>,
+    last_emitted_fp: Option<Vec<u8>>,
     /// Highest transferred/total observed (emitted or pending).
     high_transferred: u64,
     high_total: u64,
-    terminal: bool,
 }
 
 /// Thread-safe progress governor. One process-wide instance backs the GUI
@@ -232,33 +207,37 @@ impl<C: MonotonicClock> ProgressGovernor<C> {
         self.min_interval
     }
 
-    /// Number of lanes currently retained (active + terminal tombstones).
+    /// Number of currently active lanes.
     pub fn lane_count(&self) -> usize {
         self.lanes.lock().expect("progress governor lock").len()
     }
 
-    /// Active (non-terminal) lane count.
+    /// Active lane count.
     pub fn active_lane_count(&self) -> usize {
+        self.lane_count()
+    }
+
+    /// Open (or explicitly restart) a progress lane.
+    ///
+    /// Progress never creates a lane implicitly: this lifecycle boundary is
+    /// what lets terminal close remove all state while still rejecting every
+    /// late callback.
+    pub fn begin_lane(&self, lane_key: &str) {
         self.lanes
             .lock()
             .expect("progress governor lock")
-            .values()
-            .filter(|l| !l.terminal)
-            .count()
+            .insert(lane_key.to_string(), LaneState::default());
     }
 
     /// Admit a progress sample for `lane_key`.
     ///
     /// Returns `Some(sample)` when the caller should emit immediately (mutex
     /// is already released). Returns `None` when the sample was coalesced,
-    /// the lane is terminal, or the sample was rejected.
+    /// the lane is unknown/closed, or the sample was rejected.
     pub fn admit_progress(&self, lane_key: &str, sample: ProgressSample) -> Option<ProgressSample> {
         let now = self.clock.now();
         let mut lanes = self.lanes.lock().expect("progress governor lock");
-        let lane = lanes.entry(lane_key.to_string()).or_default();
-        if lane.terminal {
-            return None;
-        }
+        let lane = lanes.get_mut(lane_key)?;
 
         let sample = sample.apply_monotonic(lane.high_transferred, lane.high_total);
         let (t, tot) = sample.transferred_total();
@@ -283,75 +262,49 @@ impl<C: MonotonicClock> ProgressGovernor<C> {
         }
     }
 
-    /// Flush any pending sample and mark the lane terminal.
+    /// Flush any pending sample and close the lane.
     ///
     /// Returns the pending sample when it differs from the last emitted one
     /// (so a final flush is not duplicated). After this call, further
-    /// `admit_progress` for the same key returns `None`. The active payload
-    /// is dropped; a compact terminal tombstone remains until pruned.
+    /// `admit_progress` for the same key returns `None` until a new explicit
+    /// lifecycle start reopens it. No terminal tombstone is retained.
     pub fn flush_and_close(&self, lane_key: &str) -> Option<ProgressSample> {
         let mut lanes = self.lanes.lock().expect("progress governor lock");
-        let lane = lanes.entry(lane_key.to_string()).or_default();
-        if lane.terminal {
-            return None;
-        }
+        let mut lane = lanes.remove(lane_key)?;
         let pending = lane.pending.take();
-        let last_fp = lane.last_emitted_fp;
-        // Drop active fields; keep tombstone.
-        lane.last_emit_at = None;
-        lane.high_transferred = 0;
-        lane.high_total = 0;
-        lane.last_emitted_fp = None;
-        lane.terminal = true;
+        let last_fp = lane.last_emitted_fp.take();
 
-        let out = pending.and_then(|p| {
-            if last_fp == Some(p.fingerprint()) {
+        pending.and_then(|p| {
+            let pending_fp = p.fingerprint();
+            if pending_fp.is_some() && last_fp == pending_fp {
                 None
             } else {
                 Some(p)
             }
-        });
-
-        Self::prune_tombstones_if_needed(&mut lanes);
-        out
+        })
     }
 
     /// Close a lane without emitting pending (used when the caller already
     /// synthesised a final sample, or for test cleanup). Drops pending.
     pub fn close_without_flush(&self, lane_key: &str) {
-        let mut lanes = self.lanes.lock().expect("progress governor lock");
-        let lane = lanes.entry(lane_key.to_string()).or_default();
-        lane.pending = None;
-        lane.last_emit_at = None;
-        lane.high_transferred = 0;
-        lane.high_total = 0;
-        lane.last_emitted_fp = None;
-        lane.terminal = true;
-        Self::prune_tombstones_if_needed(&mut lanes);
-    }
-
-    /// Whether the lane is known-terminal.
-    pub fn is_terminal(&self, lane_key: &str) -> bool {
         self.lanes
             .lock()
             .expect("progress governor lock")
-            .get(lane_key)
-            .map(|l| l.terminal)
-            .unwrap_or(false)
+            .remove(lane_key);
+    }
+
+    /// Whether a lifecycle start currently owns this lane.
+    pub fn is_active(&self, lane_key: &str) -> bool {
+        self.lanes
+            .lock()
+            .expect("progress governor lock")
+            .contains_key(lane_key)
     }
 
     fn mark_emitted(lane: &mut LaneState, now: Instant, sample: &ProgressSample) {
         lane.last_emit_at = Some(now);
-        lane.last_emitted_fp = Some(sample.fingerprint());
+        lane.last_emitted_fp = sample.fingerprint();
         lane.pending = None;
-    }
-
-    fn prune_tombstones_if_needed(lanes: &mut HashMap<String, LaneState>) {
-        let tombstones = lanes.values().filter(|l| l.terminal).count();
-        if tombstones <= TOMBSTONE_PRUNE_THRESHOLD {
-            return;
-        }
-        lanes.retain(|_, l| !l.terminal);
     }
 }
 
@@ -370,6 +323,22 @@ pub fn is_terminal_event_type(event_type: &str) -> bool {
     )
 }
 
+fn is_cross_profile(event: &TransferEvent) -> bool {
+    event.direction == "cross-profile"
+}
+
+fn opens_transfer_lane(event: &TransferEvent) -> bool {
+    event.event_type == "start" || (event.event_type == "file_start" && !is_cross_profile(event))
+}
+
+fn closes_transfer_lane(event: &TransferEvent) -> bool {
+    matches!(
+        event.event_type.as_str(),
+        "complete" | "error" | "cancelled"
+    ) || (matches!(event.event_type.as_str(), "file_complete" | "file_error")
+        && !is_cross_profile(event))
+}
+
 /// Route one `TransferEvent` through the governor. Returns the ordered list
 /// of events the sink must emit (0..=2). Pure helper for tests and
 /// [`crate::transfer_event_sink::AppHandleSink`].
@@ -378,12 +347,15 @@ pub fn route_transfer_event(
     event: TransferEvent,
 ) -> Vec<TransferEvent> {
     let key = transfer_lane(&event.transfer_id);
-    if is_progress_event_type(&event.event_type) {
+    if opens_transfer_lane(&event) {
+        governor.begin_lane(&key);
+        vec![event]
+    } else if is_progress_event_type(&event.event_type) {
         match governor.admit_progress(&key, ProgressSample::Transfer(event)) {
             Some(ProgressSample::Transfer(e)) => vec![e],
             _ => Vec::new(),
         }
-    } else if is_terminal_event_type(&event.event_type) {
+    } else if closes_transfer_lane(&event) {
         let mut out = Vec::with_capacity(2);
         if let Some(ProgressSample::Transfer(p)) = governor.flush_and_close(&key) {
             out.push(p);
@@ -391,8 +363,16 @@ pub fn route_transfer_event(
         out.push(event);
         out
     } else {
-        // start / file_start / scanning / … — immediate, no close.
+        // Cross-profile file lifecycle and scanning events are immediate but
+        // do not reopen/close the aggregate transfer lane.
         vec![event]
+    }
+}
+
+/// Open a batch lane from `transfer_batch_started`.
+pub fn route_batch_started(governor: &ProgressGovernor<impl MonotonicClock>, batch_id: &str) {
+    if !batch_id.is_empty() {
+        governor.begin_lane(&batch_lane(batch_id));
     }
 }
 
@@ -471,15 +451,43 @@ mod tests {
 
     fn gov_handle() -> (Arc<ManualClock>, ProgressGovernor<ManualClockHandle>) {
         let clock = Arc::new(ManualClock::new());
-        let g = ProgressGovernor::with_clock(ManualClockHandle(Arc::clone(&clock)), DEFAULT_MIN_INTERVAL);
+        let g = ProgressGovernor::with_clock(
+            ManualClockHandle(Arc::clone(&clock)),
+            DEFAULT_MIN_INTERVAL,
+        );
         (clock, g)
+    }
+
+    fn start_event(transfer_id: &str, direction: &str) -> TransferEvent {
+        TransferEvent {
+            event_type: "start".to_string(),
+            transfer_id: transfer_id.to_string(),
+            filename: "f.bin".to_string(),
+            direction: direction.to_string(),
+            message: None,
+            progress: None,
+            path: None,
+            delta_stats: None,
+            fallback_reason: None,
+        }
+    }
+
+    fn open_transfer(g: &ProgressGovernor<ManualClockHandle>, transfer_id: &str) {
+        assert_eq!(
+            route_transfer_event(g, start_event(transfer_id, "download")).len(),
+            1
+        );
     }
 
     #[test]
     fn first_sample_is_immediate() {
         let (_clock, g) = gov_handle();
         let key = transfer_lane("t1");
-        let out = g.admit_progress(&key, ProgressSample::Transfer(test_progress_event("t1", 1, 100)));
+        g.begin_lane(&key);
+        let out = g.admit_progress(
+            &key,
+            ProgressSample::Transfer(test_progress_event("t1", 1, 100)),
+        );
         assert!(out.is_some());
     }
 
@@ -487,14 +495,14 @@ mod tests {
     fn burst_emits_at_most_one_per_interval() {
         let (clock, g) = gov_handle();
         let key = transfer_lane("t1");
+        g.begin_lane(&key);
         let mut emitted = 0u32;
         for i in 1..=20 {
-            if g
-                .admit_progress(
-                    &key,
-                    ProgressSample::Transfer(test_progress_event("t1", i * 10, 1000)),
-                )
-                .is_some()
+            if g.admit_progress(
+                &key,
+                ProgressSample::Transfer(test_progress_event("t1", i * 10, 1000)),
+            )
+            .is_some()
             {
                 emitted += 1;
             }
@@ -511,17 +519,19 @@ mod tests {
             .is_some());
         emitted = 0;
         for i in 1..=10 {
-            if g
-                .admit_progress(
-                    &key,
-                    ProgressSample::Transfer(test_progress_event("t1", 500 + i, 1000)),
-                )
-                .is_some()
+            if g.admit_progress(
+                &key,
+                ProgressSample::Transfer(test_progress_event("t1", 500 + i, 1000)),
+            )
+            .is_some()
             {
                 emitted += 1;
             }
         }
-        assert_eq!(emitted, 0, "second burst inside the closed window must coalesce");
+        assert_eq!(
+            emitted, 0,
+            "second burst inside the closed window must coalesce"
+        );
     }
 
     #[test]
@@ -529,18 +539,32 @@ mod tests {
         let (_clock, g) = gov_handle();
         let a = transfer_lane("a");
         let b = transfer_lane("b");
+        g.begin_lane(&a);
+        g.begin_lane(&b);
         assert!(g
-            .admit_progress(&a, ProgressSample::Transfer(test_progress_event("a", 1, 10)))
+            .admit_progress(
+                &a,
+                ProgressSample::Transfer(test_progress_event("a", 1, 10))
+            )
             .is_some());
         assert!(g
-            .admit_progress(&b, ProgressSample::Transfer(test_progress_event("b", 1, 10)))
+            .admit_progress(
+                &b,
+                ProgressSample::Transfer(test_progress_event("b", 1, 10))
+            )
             .is_some());
         // Same instant: each lane still had its first sample.
         assert!(g
-            .admit_progress(&a, ProgressSample::Transfer(test_progress_event("a", 2, 10)))
+            .admit_progress(
+                &a,
+                ProgressSample::Transfer(test_progress_event("a", 2, 10))
+            )
             .is_none());
         assert!(g
-            .admit_progress(&b, ProgressSample::Transfer(test_progress_event("b", 2, 10)))
+            .admit_progress(
+                &b,
+                ProgressSample::Transfer(test_progress_event("b", 2, 10))
+            )
             .is_none());
     }
 
@@ -549,6 +573,7 @@ mod tests {
         let (clock, g) = gov_handle();
         let g = Arc::new(g);
         let key = transfer_lane("race");
+        g.begin_lane(&key);
         // Seed first emission so the window is closed.
         assert!(g
             .admit_progress(
@@ -564,12 +589,11 @@ mod tests {
             let g = Arc::clone(&g);
             let emits = Arc::clone(&emits);
             handles.push(thread::spawn(move || {
-                if g
-                    .admit_progress(
-                        &transfer_lane("race"),
-                        ProgressSample::Transfer(test_progress_event("race", 100 + i, 1000)),
-                    )
-                    .is_some()
+                if g.admit_progress(
+                    &transfer_lane("race"),
+                    ProgressSample::Transfer(test_progress_event("race", 100 + i, 1000)),
+                )
+                .is_some()
                 {
                     emits.fetch_add(1, Ordering::SeqCst);
                 }
@@ -589,14 +613,24 @@ mod tests {
     fn intermediate_samples_coalesce_to_latest() {
         let (_clock, g) = gov_handle();
         let key = transfer_lane("c");
+        g.begin_lane(&key);
         assert!(g
-            .admit_progress(&key, ProgressSample::Transfer(test_progress_event("c", 1, 100)))
+            .admit_progress(
+                &key,
+                ProgressSample::Transfer(test_progress_event("c", 1, 100))
+            )
             .is_some());
         assert!(g
-            .admit_progress(&key, ProgressSample::Transfer(test_progress_event("c", 10, 100)))
+            .admit_progress(
+                &key,
+                ProgressSample::Transfer(test_progress_event("c", 10, 100))
+            )
             .is_none());
         assert!(g
-            .admit_progress(&key, ProgressSample::Transfer(test_progress_event("c", 50, 100)))
+            .admit_progress(
+                &key,
+                ProgressSample::Transfer(test_progress_event("c", 50, 100))
+            )
             .is_none());
         let flushed = g.flush_and_close(&key);
         match flushed {
@@ -604,7 +638,10 @@ mod tests {
                 assert_eq!(ev.progress.as_ref().unwrap().transferred, 50);
             }
             Some(ProgressSample::Batch(s)) => {
-                panic!("expected transfer sample, got batch {:?}", s.bytes_transferred)
+                panic!(
+                    "expected transfer sample, got batch {:?}",
+                    s.bytes_transferred
+                )
             }
             None => panic!("expected coalesced pending sample"),
         }
@@ -614,20 +651,19 @@ mod tests {
     fn final_flush_emits_latest_once_and_not_duplicate() {
         let (clock, g) = gov_handle();
         let key = transfer_lane("f");
+        g.begin_lane(&key);
         let first = g
             .admit_progress(
                 &key,
                 ProgressSample::Transfer(test_progress_event("f", 100, 100)),
             )
             .expect("first");
-        assert_eq!(
-            first.transferred_total(),
-            (100, 100)
-        );
+        assert_eq!(first.transferred_total(), (100, 100));
         // No further samples; flush has nothing pending → no duplicate 100%.
         assert!(g.flush_and_close(&key).is_none());
 
         let key2 = transfer_lane("f2");
+        g.begin_lane(&key2);
         assert!(g
             .admit_progress(
                 &key2,
@@ -648,6 +684,7 @@ mod tests {
     #[test]
     fn terminal_route_orders_flush_before_complete() {
         let (_clock, g) = gov_handle();
+        open_transfer(&g, "x");
         let mut events = route_transfer_event(&g, test_progress_event("x", 1, 100));
         assert_eq!(events.len(), 1);
         assert!(route_transfer_event(&g, test_progress_event("x", 40, 100)).is_empty());
@@ -674,6 +711,7 @@ mod tests {
     #[test]
     fn error_and_cancel_are_immediate_after_flush() {
         let (_clock, g) = gov_handle();
+        open_transfer(&g, "e");
         let _ = route_transfer_event(&g, test_progress_event("e", 1, 100));
         let _ = route_transfer_event(&g, test_progress_event("e", 20, 100));
         let events = route_transfer_event(
@@ -700,6 +738,7 @@ mod tests {
         assert_eq!(events[1].event_type, "error");
 
         let (_c2, g2) = gov_handle();
+        open_transfer(&g2, "c");
         let _ = route_transfer_event(&g2, test_progress_event("c", 1, 50));
         let _ = route_transfer_event(&g2, test_progress_event("c", 10, 50));
         let events = route_transfer_event(
@@ -724,6 +763,7 @@ mod tests {
     #[test]
     fn late_progress_after_terminal_is_dropped() {
         let (_clock, g) = gov_handle();
+        open_transfer(&g, "z");
         let _ = route_transfer_event(&g, test_progress_event("z", 1, 10));
         let _ = route_transfer_event(
             &g,
@@ -740,12 +780,13 @@ mod tests {
             },
         );
         assert!(route_transfer_event(&g, test_progress_event("z", 10, 10)).is_empty());
-        assert!(g.is_terminal(&transfer_lane("z")));
+        assert!(!g.is_active(&transfer_lane("z")));
     }
 
     #[test]
     fn failed_transfer_does_not_fabricate_full_progress() {
         let (_clock, g) = gov_handle();
+        open_transfer(&g, "bad");
         let _ = route_transfer_event(&g, test_progress_event("bad", 5, 1000));
         let events = route_transfer_event(
             &g,
@@ -770,10 +811,11 @@ mod tests {
     }
 
     #[test]
-    fn state_removed_payload_and_tombstones_bounded() {
+    fn terminal_removes_state_and_rejects_late_progress_without_tombstones() {
         let (_clock, g) = gov_handle();
-        for i in 0..100 {
+        for i in 0..10_000 {
             let id = format!("id-{i}");
+            open_transfer(&g, &id);
             let _ = route_transfer_event(&g, test_progress_event(&id, 1, 10));
             let _ = route_transfer_event(&g, test_progress_event(&id, 5, 10));
             let _ = route_transfer_event(
@@ -790,26 +832,20 @@ mod tests {
                     fallback_reason: None,
                 },
             );
+            assert!(
+                route_transfer_event(&g, test_progress_event(&format!("id-{i}"), 9, 10)).is_empty(),
+                "late progress for {i} must stay rejected"
+            );
         }
         assert_eq!(g.active_lane_count(), 0);
-        // Tombstones remain but active payload is gone.
-        assert!(g.lane_count() <= 100);
-        // Force prune path by filling past threshold with closed lanes.
-        for i in 0..(TOMBSTONE_PRUNE_THRESHOLD + 10) {
-            let id = format!("prune-{i}");
-            g.close_without_flush(&transfer_lane(&id));
-        }
-        assert!(
-            g.lane_count() <= TOMBSTONE_PRUNE_THRESHOLD + 100,
-            "tombstones must prune under pressure, count={}",
-            g.lane_count()
-        );
+        assert_eq!(g.lane_count(), 0);
     }
 
     #[test]
     fn monotonic_counters_reject_regression() {
         let (_clock, g) = gov_handle();
         let key = transfer_lane("mono");
+        g.begin_lane(&key);
         let e1 = g
             .admit_progress(
                 &key,
@@ -836,6 +872,7 @@ mod tests {
         // A pure regression that only restates the last emitted counters is
         // not re-emitted on flush (dedup).
         let key2 = transfer_lane("mono2");
+        g.begin_lane(&key2);
         assert!(g
             .admit_progress(
                 &key2,
@@ -867,6 +904,7 @@ mod tests {
             bytes_transferred: 100,
             bytes_total: 1000,
         };
+        route_batch_started(&g, "batch-1");
         assert!(route_batch_progress(&g, snap.clone()).is_some());
         assert!(route_batch_progress(
             &g,
@@ -878,6 +916,7 @@ mod tests {
         )
         .is_none());
         // Transfer lane still free for first sample.
+        open_transfer(&g, "batch-1");
         assert!(route_transfer_event(&g, test_progress_event("batch-1", 1, 10)).len() == 1);
         let flushed = route_batch_terminal_flush(&g, "batch-1").unwrap();
         assert_eq!(flushed.completed, 2);
@@ -899,10 +938,108 @@ mod tests {
             fallback_reason: None,
         };
         assert_eq!(route_transfer_event(&g, start).len(), 1);
-        assert!(!g.is_terminal(&transfer_lane("s")));
+        assert!(g.is_active(&transfer_lane("s")));
         assert_eq!(
             route_transfer_event(&g, test_progress_event("s", 1, 10)).len(),
             1
         );
+    }
+
+    #[test]
+    fn explicit_restart_reopens_a_closed_identifier() {
+        let (_clock, g) = gov_handle();
+        open_transfer(&g, "reuse");
+        assert_eq!(
+            route_transfer_event(&g, test_progress_event("reuse", 1, 10)).len(),
+            1
+        );
+        let _ = route_transfer_event(
+            &g,
+            TransferEvent {
+                event_type: "complete".to_string(),
+                transfer_id: "reuse".to_string(),
+                filename: "f.bin".to_string(),
+                direction: "download".to_string(),
+                message: None,
+                progress: None,
+                path: None,
+                delta_stats: None,
+                fallback_reason: None,
+            },
+        );
+        assert!(route_transfer_event(&g, test_progress_event("reuse", 2, 10)).is_empty());
+
+        open_transfer(&g, "reuse");
+        assert_eq!(
+            route_transfer_event(&g, test_progress_event("reuse", 1, 10)).len(),
+            1
+        );
+    }
+
+    #[test]
+    fn final_dedup_compares_the_full_transfer_payload() {
+        let (_clock, g) = gov_handle();
+        let key = transfer_lane("payload");
+        g.begin_lane(&key);
+        let mut first = test_progress_event("payload", 10, 100);
+        first.progress.as_mut().unwrap().speed_bps = 10;
+        assert!(g
+            .admit_progress(&key, ProgressSample::Transfer(first))
+            .is_some());
+
+        let mut latest = test_progress_event("payload", 10, 100);
+        latest.progress.as_mut().unwrap().speed_bps = 20;
+        assert!(g
+            .admit_progress(&key, ProgressSample::Transfer(latest))
+            .is_none());
+
+        match g.flush_and_close(&key) {
+            Some(ProgressSample::Transfer(event)) => {
+                assert_eq!(event.progress.unwrap().speed_bps, 20);
+            }
+            _ => panic!("changed speed/ETA metadata must not be deduplicated"),
+        }
+    }
+
+    #[test]
+    fn cross_profile_file_terminals_do_not_close_the_aggregate_lane() {
+        let (_clock, g) = gov_handle();
+        assert_eq!(
+            route_transfer_event(&g, start_event("cross", "cross-profile")).len(),
+            1
+        );
+
+        let file_complete = TransferEvent {
+            event_type: "file_complete".to_string(),
+            transfer_id: "cross".to_string(),
+            filename: "one.bin".to_string(),
+            direction: "cross-profile".to_string(),
+            message: None,
+            progress: None,
+            path: Some("/one.bin".to_string()),
+            delta_stats: None,
+            fallback_reason: None,
+        };
+        assert_eq!(route_transfer_event(&g, file_complete).len(), 1);
+        assert!(g.is_active(&transfer_lane("cross")));
+
+        let mut progress = test_progress_event("cross", 1, 2);
+        progress.direction = "cross-profile".to_string();
+        progress.progress.as_mut().unwrap().direction = "cross-profile".to_string();
+        assert_eq!(route_transfer_event(&g, progress).len(), 1);
+
+        let complete = TransferEvent {
+            event_type: "complete".to_string(),
+            transfer_id: "cross".to_string(),
+            filename: "2 file(s)".to_string(),
+            direction: "cross-profile".to_string(),
+            message: None,
+            progress: None,
+            path: None,
+            delta_stats: None,
+            fallback_reason: None,
+        };
+        assert_eq!(route_transfer_event(&g, complete).len(), 1);
+        assert!(!g.is_active(&transfer_lane("cross")));
     }
 }

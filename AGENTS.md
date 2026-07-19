@@ -5,6 +5,25 @@
 > This file is for AI coding agents (Claude Code, Cursor, Codex, Devin, OpenClaw).
 > It describes how to use AeroFTP CLI for remote operations without credentials.
 
+## Mandatory Pre-Push Gate
+
+Before any agent pushes a code commit, run:
+
+```bash
+npm run ci:pre-push
+```
+
+This is not optional even when targeted task tests already passed. It mirrors
+the blocking local Linux gates from `checks.yml` and `build.yml`: Rust format,
+security regression, frontend tests/typecheck/i18n, strict Clippy, the complete
+Rust test suite, and RustSec audit. Task-specific tests remain additional gates,
+not substitutes.
+
+Do not push while the command is red. If a required gate cannot run locally,
+stop and report the exact environmental blocker before pushing. Platform-native
+packaging remains CI-owned; changes in a platform-specific area also require
+the corresponding local/cross-platform gate documented by that subsystem.
+
 ## Quick Start
 
 ```bash

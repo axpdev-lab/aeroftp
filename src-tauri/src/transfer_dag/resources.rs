@@ -782,7 +782,7 @@ mod tests {
                 r = manager2.acquire(ResourceRequest {
                     buffer_bytes: quantum,
                     ..ResourceRequest::default()
-                }) => r.map_err(|e| e),
+                }) => r,
             }
         });
 

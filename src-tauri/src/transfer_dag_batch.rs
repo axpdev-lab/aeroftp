@@ -23,13 +23,15 @@
 //! [`TransferExecutor::execute_with_session`] the legacy path called, holding
 //! the same per-file session lease from the same `executor.session_pool(..)`.
 //! Only the *scheduling* moves onto the graph; the bytes on the wire and the
-//! emitted `transfer_batch_*` events are byte-identical.
+//! serialized `transfer_batch_*` payload shapes are unchanged. The GUI sink
+//! may coalesce intermediate progress frequency under DAG-P0-08.
 //!
-//! ## Byte-identical contract
+//! ## Payload-compatible contract
 //!
-//! - `emit_batch_started` / `emit_batch_progress` (one per transferred file) /
-//!   `emit_batch_completed` are emitted with the same payloads as the legacy
-//!   orchestrator.
+//! - `emit_batch_started` / `emit_batch_progress` / `emit_batch_completed`
+//!   are produced at the same lifecycle points with the same payload shapes
+//!   as the legacy orchestrator. The GUI governor may coalesce multiple
+//!   intermediate snapshots into the latest sample within a 100 ms window.
 //! - A failed file does NOT abort the batch. The legacy executor records the
 //!   failure in the progress snapshot and proceeds to the next entry, so each
 //!   transfer node always reports [`NodeOutcome::Completed`] to the graph

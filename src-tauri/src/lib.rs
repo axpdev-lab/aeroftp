@@ -168,6 +168,7 @@ mod provider_commands;
 // PD-CLI-CONV-A). Additive visibility only: no behaviour change, no API
 // break (visibility only widens).
 pub mod copy_fallback;
+pub mod progress_governor;
 pub mod provider_transfer_executor;
 pub mod providers;
 mod pty;
@@ -195,7 +196,6 @@ pub mod transfer_dag_batch;
 pub mod transfer_dag_single_file;
 pub mod transfer_dag_sync;
 pub mod transfer_domain;
-pub mod progress_governor;
 pub mod transfer_event_sink;
 pub mod transfer_orchestrator;
 mod transfer_pool;
@@ -1619,7 +1619,9 @@ pub(crate) fn make_delta_progress_sink(
         } else {
             0
         };
-        crate::transfer_event_sink::emit_gui_transfer_event(&app, TransferEvent {
+        crate::transfer_event_sink::emit_gui_transfer_event(
+            &app,
+            TransferEvent {
                 event_type: "progress".to_string(),
                 transfer_id: transfer_id.clone(),
                 filename: filename.clone(),
@@ -1640,7 +1642,8 @@ pub(crate) fn make_delta_progress_sink(
                 path: None,
                 delta_stats: None,
                 fallback_reason: None,
-            },);
+            },
+        );
     })
 }
 
@@ -3143,7 +3146,9 @@ async fn download_file(
     let transfer_id = format!("dl-{}", chrono::Utc::now().timestamp_millis());
 
     // Emit start event
-    crate::transfer_event_sink::emit_gui_transfer_event(&app, TransferEvent {
+    crate::transfer_event_sink::emit_gui_transfer_event(
+        &app,
+        TransferEvent {
             event_type: "start".to_string(),
             transfer_id: transfer_id.clone(),
             filename: filename.clone(),
@@ -3153,7 +3158,8 @@ async fn download_file(
             path: None,
             delta_stats: None,
             fallback_reason: None,
-        },);
+        },
+    );
 
     let mut ftp_manager = state.ftp_manager.lock().await;
 
@@ -3194,7 +3200,9 @@ async fn download_file(
                     0
                 };
 
-                crate::transfer_event_sink::emit_gui_transfer_event(&app, TransferEvent {
+                crate::transfer_event_sink::emit_gui_transfer_event(
+                    &app,
+                    TransferEvent {
                         event_type: "progress".to_string(),
                         transfer_id: transfer_id.clone(),
                         filename: filename.clone(),
@@ -3215,7 +3223,8 @@ async fn download_file(
                         path: None,
                         delta_stats: None,
                         fallback_reason: None,
-                    },);
+                    },
+                );
             }
             !cancel_flag.load(Ordering::Relaxed)
         })
@@ -3226,7 +3235,9 @@ async fn download_file(
             preserve_remote_mtime(&params.local_path, params.modified.as_deref());
 
             // Emit complete event
-            crate::transfer_event_sink::emit_gui_transfer_event(&app, TransferEvent {
+            crate::transfer_event_sink::emit_gui_transfer_event(
+                &app,
+                TransferEvent {
                     event_type: "complete".to_string(),
                     transfer_id: transfer_id.clone(),
                     filename: filename.clone(),
@@ -3236,12 +3247,15 @@ async fn download_file(
                     path: None,
                     delta_stats: None,
                     fallback_reason: None,
-                },);
+                },
+            );
             Ok(format!("Downloaded: {}", filename))
         }
         Err(e) => {
             // Emit error event
-            crate::transfer_event_sink::emit_gui_transfer_event(&app, TransferEvent {
+            crate::transfer_event_sink::emit_gui_transfer_event(
+                &app,
+                TransferEvent {
                     event_type: "error".to_string(),
                     transfer_id: transfer_id.clone(),
                     filename: filename.clone(),
@@ -3251,7 +3265,8 @@ async fn download_file(
                     path: None,
                     delta_stats: None,
                     fallback_reason: None,
-                },);
+                },
+            );
             Err(format!("Download failed: {}", e))
         }
     }
@@ -3284,7 +3299,9 @@ async fn upload_file(
         .unwrap_or(0);
 
     // Emit start event
-    crate::transfer_event_sink::emit_gui_transfer_event(&app, TransferEvent {
+    crate::transfer_event_sink::emit_gui_transfer_event(
+        &app,
+        TransferEvent {
             event_type: "start".to_string(),
             transfer_id: transfer_id.clone(),
             filename: filename.clone(),
@@ -3294,7 +3311,8 @@ async fn upload_file(
             path: None,
             delta_stats: None,
             fallback_reason: None,
-        },);
+        },
+    );
 
     // Try provider path first (cloud providers, GitHub, etc.)
     {
@@ -3336,7 +3354,9 @@ async fn upload_file(
                                     .stats
                                     .as_ref()
                                     .map(sync::DeltaTransferStats::from_rsync);
-                                crate::transfer_event_sink::emit_gui_transfer_event(&app, TransferEvent {
+                                crate::transfer_event_sink::emit_gui_transfer_event(
+                                    &app,
+                                    TransferEvent {
                                         event_type: "complete".to_string(),
                                         transfer_id: transfer_id.clone(),
                                         filename: filename.clone(),
@@ -3349,12 +3369,15 @@ async fn upload_file(
                                         path: None,
                                         delta_stats,
                                         fallback_reason: None,
-                                    },);
+                                    },
+                                );
                                 return Ok(format!("Uploaded: {}", filename));
                             }
                             if let Some(hard_err) = result.hard_error {
                                 let err_msg = format!("delta hard rejection: {}", hard_err);
-                                crate::transfer_event_sink::emit_gui_transfer_event(&app, TransferEvent {
+                                crate::transfer_event_sink::emit_gui_transfer_event(
+                                    &app,
+                                    TransferEvent {
                                         event_type: "error".to_string(),
                                         transfer_id: transfer_id.clone(),
                                         filename: filename.clone(),
@@ -3364,7 +3387,8 @@ async fn upload_file(
                                         path: None,
                                         delta_stats: None,
                                         fallback_reason: None,
-                                    },);
+                                    },
+                                );
                                 return Err(err_msg);
                             }
                             // fallback_reason populated: fall through to the
@@ -3377,7 +3401,9 @@ async fn upload_file(
                 let result = provider
                     .upload(&params.local_path, &params.remote_path, None)
                     .await;
-                crate::transfer_event_sink::emit_gui_transfer_event(&app, TransferEvent {
+                crate::transfer_event_sink::emit_gui_transfer_event(
+                    &app,
+                    TransferEvent {
                         event_type: if result.is_ok() {
                             "complete".to_string()
                         } else {
@@ -3399,7 +3425,8 @@ async fn upload_file(
                         } else {
                             None
                         },
-                    },);
+                    },
+                );
                 return result
                     .map(|_| format!("Uploaded: {}", filename))
                     .map_err(|e| format!("Failed to upload file: {}", e));
@@ -3443,7 +3470,9 @@ async fn upload_file(
                         0
                     };
 
-                    crate::transfer_event_sink::emit_gui_transfer_event(&app, TransferEvent {
+                    crate::transfer_event_sink::emit_gui_transfer_event(
+                        &app,
+                        TransferEvent {
                             event_type: "progress".to_string(),
                             transfer_id: transfer_id.clone(),
                             filename: filename.clone(),
@@ -3464,7 +3493,8 @@ async fn upload_file(
                             path: None,
                             delta_stats: None,
                             fallback_reason: None,
-                        },);
+                        },
+                    );
                 }
                 !cancel_flag_upload.load(Ordering::Relaxed)
             },
@@ -3473,7 +3503,9 @@ async fn upload_file(
     {
         Ok(_) => {
             // Emit complete event
-            crate::transfer_event_sink::emit_gui_transfer_event(&app, TransferEvent {
+            crate::transfer_event_sink::emit_gui_transfer_event(
+                &app,
+                TransferEvent {
                     event_type: "complete".to_string(),
                     transfer_id: transfer_id.clone(),
                     filename: filename.clone(),
@@ -3483,12 +3515,15 @@ async fn upload_file(
                     path: None,
                     delta_stats: None,
                     fallback_reason: None,
-                },);
+                },
+            );
             Ok(format!("Uploaded: {}", filename))
         }
         Err(e) => {
             // Emit error event
-            crate::transfer_event_sink::emit_gui_transfer_event(&app, TransferEvent {
+            crate::transfer_event_sink::emit_gui_transfer_event(
+                &app,
+                TransferEvent {
                     event_type: "error".to_string(),
                     transfer_id: transfer_id.clone(),
                     filename: filename.clone(),
@@ -3498,7 +3533,8 @@ async fn upload_file(
                     path: None,
                     delta_stats: None,
                     fallback_reason: None,
-                },);
+                },
+            );
             Err(format!("Upload failed: {}", e))
         }
     }
@@ -3549,7 +3585,9 @@ async fn download_files_batch(
         })
         .unwrap_or_default();
 
-    crate::transfer_event_sink::emit_gui_transfer_event(&app, TransferEvent {
+    crate::transfer_event_sink::emit_gui_transfer_event(
+        &app,
+        TransferEvent {
             event_type: "start".to_string(),
             transfer_id: transfer_id.clone(),
             filename: display_name.clone(),
@@ -3570,7 +3608,8 @@ async fn download_files_batch(
             path: Some(batch_path.clone()),
             delta_stats: None,
             fallback_reason: None,
-        },);
+        },
+    );
 
     for entry in &params.entries {
         if let Some(parent) = Path::new(&entry.local_path).parent() {
@@ -3638,7 +3677,9 @@ async fn download_files_batch(
             100
         };
 
-        crate::transfer_event_sink::emit_gui_transfer_event(&progress_app, TransferEvent {
+        crate::transfer_event_sink::emit_gui_transfer_event(
+            &progress_app,
+            TransferEvent {
                 event_type: "progress".to_string(),
                 transfer_id: progress_transfer_id.clone(),
                 filename: progress_display_name.clone(),
@@ -3662,7 +3703,8 @@ async fn download_files_batch(
                 path: Some(progress_batch_path.clone()),
                 delta_stats: None,
                 fallback_reason: None,
-            },);
+            },
+        );
     });
 
     let executor = Arc::new(ftp_transfer_executor::FtpDownloadExecutor::new(
@@ -3708,7 +3750,9 @@ async fn download_files_batch(
         )
     };
 
-    crate::transfer_event_sink::emit_gui_transfer_event(&app, TransferEvent {
+    crate::transfer_event_sink::emit_gui_transfer_event(
+        &app,
+        TransferEvent {
             event_type: if batch_result.cancelled {
                 "cancelled".to_string()
             } else {
@@ -3722,7 +3766,8 @@ async fn download_files_batch(
             path: Some(batch_path),
             delta_stats: None,
             fallback_reason: None,
-        },);
+        },
+    );
 
     Ok(result_message)
 }
@@ -3772,7 +3817,9 @@ async fn upload_files_batch(
         })
         .unwrap_or_default();
 
-    crate::transfer_event_sink::emit_gui_transfer_event(&app, TransferEvent {
+    crate::transfer_event_sink::emit_gui_transfer_event(
+        &app,
+        TransferEvent {
             event_type: "start".to_string(),
             transfer_id: transfer_id.clone(),
             filename: display_name.clone(),
@@ -3793,7 +3840,8 @@ async fn upload_files_batch(
             path: Some(batch_path.clone()),
             delta_stats: None,
             fallback_reason: None,
-        },);
+        },
+    );
 
     let connection_spec = {
         let mut ftp_manager = state.ftp_manager.lock().await;
@@ -3849,7 +3897,9 @@ async fn upload_files_batch(
             100
         };
 
-        crate::transfer_event_sink::emit_gui_transfer_event(&progress_app, TransferEvent {
+        crate::transfer_event_sink::emit_gui_transfer_event(
+            &progress_app,
+            TransferEvent {
                 event_type: "progress".to_string(),
                 transfer_id: progress_transfer_id.clone(),
                 filename: progress_display_name.clone(),
@@ -3873,7 +3923,8 @@ async fn upload_files_batch(
                 path: Some(progress_batch_path.clone()),
                 delta_stats: None,
                 fallback_reason: None,
-            },);
+            },
+        );
     });
 
     let executor = Arc::new(ftp_transfer_executor::FtpUploadExecutor::new(
@@ -3919,7 +3970,9 @@ async fn upload_files_batch(
         )
     };
 
-    crate::transfer_event_sink::emit_gui_transfer_event(&app, TransferEvent {
+    crate::transfer_event_sink::emit_gui_transfer_event(
+        &app,
+        TransferEvent {
             event_type: if batch_result.cancelled {
                 "cancelled".to_string()
             } else {
@@ -3933,7 +3986,8 @@ async fn upload_files_batch(
             path: Some(batch_path),
             delta_stats: None,
             fallback_reason: None,
-        },);
+        },
+    );
 
     Ok(result_message)
 }
@@ -4094,7 +4148,9 @@ async fn scan_ftp_download_entries(
     while let Some((remote_dir, local_dir)) = dirs_to_scan.pop() {
         if cancel_flag.load(Ordering::Relaxed) {
             result.cancelled = true;
-            crate::transfer_event_sink::emit_gui_transfer_event(&app, TransferEvent {
+            crate::transfer_event_sink::emit_gui_transfer_event(
+                app,
+                TransferEvent {
                     event_type: "cancelled".to_string(),
                     transfer_id: transfer_id.to_string(),
                     filename: folder_name.to_string(),
@@ -4104,7 +4160,8 @@ async fn scan_ftp_download_entries(
                     path: Some(remote_path.to_string()),
                     delta_stats: None,
                     fallback_reason: None,
-                },);
+                },
+            );
             return Ok(result);
         }
 
@@ -4193,7 +4250,9 @@ async fn scan_ftp_download_entries(
                         )
                     {
                         result.files_skipped += 1;
-                        crate::transfer_event_sink::emit_gui_transfer_event(&app, TransferEvent {
+                        crate::transfer_event_sink::emit_gui_transfer_event(
+                            app,
+                            TransferEvent {
                                 event_type: "file_skip".to_string(),
                                 transfer_id: transfer_id.to_string(),
                                 filename: safe_name.clone(),
@@ -4203,7 +4262,8 @@ async fn scan_ftp_download_entries(
                                 path: Some(remote_file_path.clone()),
                                 delta_stats: None,
                                 fallback_reason: None,
-                            },);
+                            },
+                        );
                         continue;
                     }
                 }
@@ -4223,7 +4283,9 @@ async fn scan_ftp_download_entries(
         }
 
         if last_scan_emit.elapsed().as_millis() > 500 || result.total_files_discovered <= 1 {
-            crate::transfer_event_sink::emit_gui_transfer_event(&app, TransferEvent {
+            crate::transfer_event_sink::emit_gui_transfer_event(
+                app,
+                TransferEvent {
                     event_type: "scanning".to_string(),
                     transfer_id: transfer_id.to_string(),
                     filename: folder_name.to_string(),
@@ -4238,7 +4300,8 @@ async fn scan_ftp_download_entries(
                     path: Some(remote_path.to_string()),
                     delta_stats: None,
                     fallback_reason: None,
-                },);
+                },
+            );
             last_scan_emit = std::time::Instant::now();
         }
     }
@@ -4281,7 +4344,9 @@ async fn download_folder(
 
     let transfer_id = format!("dl-folder-{}", chrono::Utc::now().timestamp_millis());
 
-    crate::transfer_event_sink::emit_gui_transfer_event(&app, TransferEvent {
+    crate::transfer_event_sink::emit_gui_transfer_event(
+        &app,
+        TransferEvent {
             event_type: "start".to_string(),
             transfer_id: transfer_id.clone(),
             filename: folder_name.clone(),
@@ -4291,11 +4356,14 @@ async fn download_folder(
             path: Some(params.remote_path.clone()),
             delta_stats: None,
             fallback_reason: None,
-        },);
+        },
+    );
 
     let local_folder_path = PathBuf::from(&params.local_path);
     if let Err(e) = tokio::fs::create_dir_all(&local_folder_path).await {
-        crate::transfer_event_sink::emit_gui_transfer_event(&app, TransferEvent {
+        crate::transfer_event_sink::emit_gui_transfer_event(
+            &app,
+            TransferEvent {
                 event_type: "error".to_string(),
                 transfer_id: transfer_id.clone(),
                 filename: folder_name.clone(),
@@ -4305,7 +4373,8 @@ async fn download_folder(
                 path: None,
                 delta_stats: None,
                 fallback_reason: None,
-            },);
+            },
+        );
         return Err(format!("Failed to create local directory: {}", e));
     }
 
@@ -4382,7 +4451,9 @@ async fn download_folder(
             100
         };
 
-        crate::transfer_event_sink::emit_gui_transfer_event(&progress_app, TransferEvent {
+        crate::transfer_event_sink::emit_gui_transfer_event(
+            &progress_app,
+            TransferEvent {
                 event_type: "progress".to_string(),
                 transfer_id: progress_transfer_id.clone(),
                 filename: progress_folder_name.clone(),
@@ -4406,7 +4477,8 @@ async fn download_folder(
                 path: Some(progress_remote_path.clone()),
                 delta_stats: None,
                 fallback_reason: None,
-            },);
+            },
+        );
     });
 
     let executor = Arc::new(ftp_transfer_executor::FtpDownloadExecutor::new(
@@ -4449,7 +4521,9 @@ async fn download_folder(
         )
     };
 
-    crate::transfer_event_sink::emit_gui_transfer_event(&app, TransferEvent {
+    crate::transfer_event_sink::emit_gui_transfer_event(
+        &app,
+        TransferEvent {
             event_type: if batch_result.cancelled {
                 "cancelled".to_string()
             } else {
@@ -4463,7 +4537,8 @@ async fn download_folder(
             path: None,
             delta_stats: None,
             fallback_reason: None,
-        },);
+        },
+    );
 
     Ok(result_message)
 }
@@ -4511,7 +4586,9 @@ async fn prepare_ftp_upload_entries(
     while let Some((current_local_dir, current_remote_dir)) = dirs_to_scan.pop() {
         if cancel_flag.load(Ordering::Relaxed) {
             result.cancelled = true;
-            crate::transfer_event_sink::emit_gui_transfer_event(&app, TransferEvent {
+            crate::transfer_event_sink::emit_gui_transfer_event(
+                app,
+                TransferEvent {
                     event_type: "cancelled".to_string(),
                     transfer_id: transfer_id.to_string(),
                     filename: folder_name.to_string(),
@@ -4521,7 +4598,8 @@ async fn prepare_ftp_upload_entries(
                     path: Some(remote_base_path.to_string()),
                     delta_stats: None,
                     fallback_reason: None,
-                },);
+                },
+            );
             return Ok(result);
         }
 
@@ -4550,7 +4628,9 @@ async fn prepare_ftp_upload_entries(
 
             if file_type.is_symlink() {
                 result.files_skipped += 1;
-                crate::transfer_event_sink::emit_gui_transfer_event(&app, TransferEvent {
+                crate::transfer_event_sink::emit_gui_transfer_event(
+                    app,
+                    TransferEvent {
                         event_type: "file_skip".to_string(),
                         transfer_id: transfer_id.to_string(),
                         filename: name.clone(),
@@ -4560,7 +4640,8 @@ async fn prepare_ftp_upload_entries(
                         path: Some(remote_path.clone()),
                         delta_stats: None,
                         fallback_reason: None,
-                    },);
+                    },
+                );
                 continue;
             }
 
@@ -4581,7 +4662,9 @@ async fn prepare_ftp_upload_entries(
 
             scan_counter += 1;
             if last_scan_emit.elapsed().as_millis() > 500 || scan_counter % 100 == 0 {
-                crate::transfer_event_sink::emit_gui_transfer_event(&app, TransferEvent {
+                crate::transfer_event_sink::emit_gui_transfer_event(
+                    app,
+                    TransferEvent {
                         event_type: "scanning".to_string(),
                         transfer_id: transfer_id.to_string(),
                         filename: folder_name.to_string(),
@@ -4595,13 +4678,16 @@ async fn prepare_ftp_upload_entries(
                         path: Some(remote_base_path.to_string()),
                         delta_stats: None,
                         fallback_reason: None,
-                    },);
+                    },
+                );
                 last_scan_emit = std::time::Instant::now();
             }
         }
     }
 
-    crate::transfer_event_sink::emit_gui_transfer_event(&app, TransferEvent {
+    crate::transfer_event_sink::emit_gui_transfer_event(
+        app,
+        TransferEvent {
             event_type: "scanning".to_string(),
             transfer_id: transfer_id.to_string(),
             filename: folder_name.to_string(),
@@ -4615,7 +4701,8 @@ async fn prepare_ftp_upload_entries(
             path: Some(remote_base_path.to_string()),
             delta_stats: None,
             fallback_reason: None,
-        },);
+        },
+    );
 
     let mut dirs_sorted = dirs_to_create;
     dirs_sorted.sort_by_key(|a| a.matches('/').count());
@@ -4639,7 +4726,9 @@ async fn prepare_ftp_upload_entries(
     }
 
     if result.cancelled {
-        crate::transfer_event_sink::emit_gui_transfer_event(&app, TransferEvent {
+        crate::transfer_event_sink::emit_gui_transfer_event(
+            app,
+            TransferEvent {
                 event_type: "cancelled".to_string(),
                 transfer_id: transfer_id.to_string(),
                 filename: folder_name.to_string(),
@@ -4649,7 +4738,8 @@ async fn prepare_ftp_upload_entries(
                 path: Some(remote_base_path.to_string()),
                 delta_stats: None,
                 fallback_reason: None,
-            },);
+            },
+        );
         return Ok(result);
     }
 
@@ -4685,7 +4775,9 @@ async fn prepare_ftp_upload_entries(
     }
 
     if result.cancelled {
-        crate::transfer_event_sink::emit_gui_transfer_event(&app, TransferEvent {
+        crate::transfer_event_sink::emit_gui_transfer_event(
+            app,
+            TransferEvent {
                 event_type: "cancelled".to_string(),
                 transfer_id: transfer_id.to_string(),
                 filename: folder_name.to_string(),
@@ -4695,7 +4787,8 @@ async fn prepare_ftp_upload_entries(
                 path: Some(remote_base_path.to_string()),
                 delta_stats: None,
                 fallback_reason: None,
-            },);
+            },
+        );
         return Ok(result);
     }
 
@@ -4716,7 +4809,9 @@ async fn prepare_ftp_upload_entries(
                         remote_modified,
                     ) {
                         result.files_skipped += 1;
-                        crate::transfer_event_sink::emit_gui_transfer_event(&app, TransferEvent {
+                        crate::transfer_event_sink::emit_gui_transfer_event(
+                            app,
+                            TransferEvent {
                                 event_type: "file_skip".to_string(),
                                 transfer_id: transfer_id.to_string(),
                                 filename: item.name.clone(),
@@ -4726,7 +4821,8 @@ async fn prepare_ftp_upload_entries(
                                 path: Some(item.remote_path.clone()),
                                 delta_stats: None,
                                 fallback_reason: None,
-                            },);
+                            },
+                        );
                         continue;
                     }
                 }
@@ -4782,7 +4878,9 @@ async fn upload_folder(
 
     let transfer_id = format!("ul-folder-{}", chrono::Utc::now().timestamp_millis());
 
-    crate::transfer_event_sink::emit_gui_transfer_event(&app, TransferEvent {
+    crate::transfer_event_sink::emit_gui_transfer_event(
+        &app,
+        TransferEvent {
             event_type: "start".to_string(),
             transfer_id: transfer_id.clone(),
             filename: folder_name.clone(),
@@ -4792,11 +4890,14 @@ async fn upload_folder(
             path: Some(params.remote_path.clone()),
             delta_stats: None,
             fallback_reason: None,
-        },);
+        },
+    );
 
     let local_base_path = PathBuf::from(&params.local_path);
     if !local_base_path.is_dir() {
-        crate::transfer_event_sink::emit_gui_transfer_event(&app, TransferEvent {
+        crate::transfer_event_sink::emit_gui_transfer_event(
+            &app,
+            TransferEvent {
                 event_type: "error".to_string(),
                 transfer_id: transfer_id.clone(),
                 filename: folder_name.clone(),
@@ -4806,7 +4907,8 @@ async fn upload_folder(
                 path: None,
                 delta_stats: None,
                 fallback_reason: None,
-            },);
+            },
+        );
         return Err("Source is not a directory".to_string());
     }
 
@@ -4885,7 +4987,9 @@ async fn upload_folder(
             100
         };
 
-        crate::transfer_event_sink::emit_gui_transfer_event(&progress_app, TransferEvent {
+        crate::transfer_event_sink::emit_gui_transfer_event(
+            &progress_app,
+            TransferEvent {
                 event_type: "progress".to_string(),
                 transfer_id: progress_transfer_id.clone(),
                 filename: progress_folder_name.clone(),
@@ -4909,7 +5013,8 @@ async fn upload_folder(
                 path: Some(progress_remote_path.clone()),
                 delta_stats: None,
                 fallback_reason: None,
-            },);
+            },
+        );
     });
 
     let executor = Arc::new(ftp_transfer_executor::FtpUploadExecutor::new(
@@ -4955,7 +5060,9 @@ async fn upload_folder(
         )
     };
 
-    crate::transfer_event_sink::emit_gui_transfer_event(&app, TransferEvent {
+    crate::transfer_event_sink::emit_gui_transfer_event(
+        &app,
+        TransferEvent {
             event_type: if batch_result.cancelled {
                 "cancelled".to_string()
             } else {
@@ -4969,7 +5076,8 @@ async fn upload_folder(
             path: None,
             delta_stats: None,
             fallback_reason: None,
-        },);
+        },
+    );
 
     Ok(result_message)
 }
@@ -6229,7 +6337,9 @@ async fn delete_remote_file(
 
     if !is_dir {
         // Single file delete - simple case
-        crate::transfer_event_sink::emit_gui_transfer_event(&app, TransferEvent {
+        crate::transfer_event_sink::emit_gui_transfer_event(
+            &app,
+            TransferEvent {
                 event_type: "delete_start".to_string(),
                 transfer_id: delete_id.clone(),
                 filename: file_name.clone(),
@@ -6239,11 +6349,14 @@ async fn delete_remote_file(
                 path: Some(path.clone()),
                 delta_stats: None,
                 fallback_reason: None,
-            },);
+            },
+        );
 
         match ftp_manager.remove(&path).await {
             Ok(_) => {
-                crate::transfer_event_sink::emit_gui_transfer_event(&app, TransferEvent {
+                crate::transfer_event_sink::emit_gui_transfer_event(
+                    &app,
+                    TransferEvent {
                         event_type: "delete_complete".to_string(),
                         transfer_id: delete_id.clone(),
                         filename: file_name.clone(),
@@ -6253,11 +6366,14 @@ async fn delete_remote_file(
                         path: Some(path.clone()),
                         delta_stats: None,
                         fallback_reason: None,
-                    },);
+                    },
+                );
                 Ok(format!("Deleted: {}", file_name))
             }
             Err(e) => {
-                crate::transfer_event_sink::emit_gui_transfer_event(&app, TransferEvent {
+                crate::transfer_event_sink::emit_gui_transfer_event(
+                    &app,
+                    TransferEvent {
                         event_type: "delete_error".to_string(),
                         transfer_id: delete_id.clone(),
                         filename: file_name.clone(),
@@ -6267,13 +6383,16 @@ async fn delete_remote_file(
                         path: Some(path.clone()),
                         delta_stats: None,
                         fallback_reason: None,
-                    },);
+                    },
+                );
                 Err(format!("Failed to delete file: {}", e))
             }
         }
     } else {
         // Folder delete - scan first, then delete with events
-        crate::transfer_event_sink::emit_gui_transfer_event(&app, TransferEvent {
+        crate::transfer_event_sink::emit_gui_transfer_event(
+            &app,
+            TransferEvent {
                 event_type: "delete_start".to_string(),
                 transfer_id: delete_id.clone(),
                 filename: file_name.clone(),
@@ -6283,7 +6402,8 @@ async fn delete_remote_file(
                 path: Some(path.clone()),
                 delta_stats: None,
                 fallback_reason: None,
-            },);
+            },
+        );
 
         let original_path = ftp_manager.current_path();
 
@@ -6335,7 +6455,9 @@ async fn delete_remote_file(
 
             // Emit scan progress every 500ms or every 100 entries
             if last_scan_emit.elapsed().as_millis() > 500 || scan_counter % 100 == 0 {
-                crate::transfer_event_sink::emit_gui_transfer_event(&app, TransferEvent {
+                crate::transfer_event_sink::emit_gui_transfer_event(
+                    &app,
+                    TransferEvent {
                         event_type: "scanning".to_string(),
                         transfer_id: delete_id.clone(),
                         filename: file_name.clone(),
@@ -6349,7 +6471,8 @@ async fn delete_remote_file(
                         path: None,
                         delta_stats: None,
                         fallback_reason: None,
-                    },);
+                    },
+                );
                 last_scan_emit = std::time::Instant::now();
             }
         }
@@ -6362,7 +6485,9 @@ async fn delete_remote_file(
             total_files, total_dirs, file_name
         );
 
-        crate::transfer_event_sink::emit_gui_transfer_event(&app, TransferEvent {
+        crate::transfer_event_sink::emit_gui_transfer_event(
+            &app,
+            TransferEvent {
                 event_type: "scanning".to_string(),
                 transfer_id: delete_id.clone(),
                 filename: file_name.clone(),
@@ -6375,7 +6500,8 @@ async fn delete_remote_file(
                 path: None,
                 delta_stats: None,
                 fallback_reason: None,
-            },);
+            },
+        );
 
         // Phase 2: Delete all files with events (cancellable)
         let mut deleted_files = 0u64;
@@ -6394,7 +6520,9 @@ async fn delete_remote_file(
             }
             let file_delete_id = format!("{}-file-{}", delete_id, deleted_files);
 
-            crate::transfer_event_sink::emit_gui_transfer_event(&app, TransferEvent {
+            crate::transfer_event_sink::emit_gui_transfer_event(
+                &app,
+                TransferEvent {
                     event_type: "delete_file_start".to_string(),
                     transfer_id: file_delete_id.clone(),
                     filename: item.name.clone(),
@@ -6404,12 +6532,15 @@ async fn delete_remote_file(
                     path: Some(item.path.clone()),
                     delta_stats: None,
                     fallback_reason: None,
-                },);
+                },
+            );
 
             match ftp_manager.remove(&item.path).await {
                 Ok(_) => {
                     deleted_files += 1;
-                    crate::transfer_event_sink::emit_gui_transfer_event(&app, TransferEvent {
+                    crate::transfer_event_sink::emit_gui_transfer_event(
+                        &app,
+                        TransferEvent {
                             event_type: "delete_file_complete".to_string(),
                             transfer_id: file_delete_id,
                             filename: item.name.clone(),
@@ -6419,12 +6550,15 @@ async fn delete_remote_file(
                             path: Some(item.path.clone()),
                             delta_stats: None,
                             fallback_reason: None,
-                        },);
+                        },
+                    );
                 }
                 Err(e) => {
                     errors += 1;
                     warn!("Failed to delete {}: {}", item.path, e);
-                    crate::transfer_event_sink::emit_gui_transfer_event(&app, TransferEvent {
+                    crate::transfer_event_sink::emit_gui_transfer_event(
+                        &app,
+                        TransferEvent {
                             event_type: "delete_file_error".to_string(),
                             transfer_id: file_delete_id,
                             filename: item.name.clone(),
@@ -6434,7 +6568,8 @@ async fn delete_remote_file(
                             path: Some(item.path.clone()),
                             delta_stats: None,
                             fallback_reason: None,
-                        },);
+                        },
+                    );
                 }
             }
         }
@@ -6451,7 +6586,9 @@ async fn delete_remote_file(
             let dir_name = dir_path.split('/').next_back().unwrap_or(dir_path);
             match ftp_manager.remove_dir(dir_path).await {
                 Ok(_) => {
-                    crate::transfer_event_sink::emit_gui_transfer_event(&app, TransferEvent {
+                    crate::transfer_event_sink::emit_gui_transfer_event(
+                        &app,
+                        TransferEvent {
                             event_type: "delete_dir_complete".to_string(),
                             transfer_id: delete_id.clone(),
                             filename: dir_name.to_string(),
@@ -6461,7 +6598,8 @@ async fn delete_remote_file(
                             path: Some(dir_path.to_string()),
                             delta_stats: None,
                             fallback_reason: None,
-                        },);
+                        },
+                    );
                 }
                 Err(e) => {
                     warn!("Failed to remove remote directory {}: {}", dir_path, e);
@@ -6487,7 +6625,9 @@ async fn delete_remote_file(
             format!("Deleted {} files, {} folders", deleted_files, total_dirs)
         };
 
-        crate::transfer_event_sink::emit_gui_transfer_event(&app, TransferEvent {
+        crate::transfer_event_sink::emit_gui_transfer_event(
+            &app,
+            TransferEvent {
                 event_type: if cancelled {
                     "delete_cancelled"
                 } else {
@@ -6502,7 +6642,8 @@ async fn delete_remote_file(
                 path: Some(path.clone()),
                 delta_stats: None,
                 fallback_reason: None,
-            },);
+            },
+        );
 
         Ok(result_message)
     }
@@ -6527,7 +6668,9 @@ async fn delete_local_file(
 
     if !is_dir {
         // Single file delete
-        crate::transfer_event_sink::emit_gui_transfer_event(&app, TransferEvent {
+        crate::transfer_event_sink::emit_gui_transfer_event(
+            &app,
+            TransferEvent {
                 event_type: "delete_start".to_string(),
                 transfer_id: delete_id.clone(),
                 filename: file_name.clone(),
@@ -6537,11 +6680,14 @@ async fn delete_local_file(
                 path: Some(path.clone()),
                 delta_stats: None,
                 fallback_reason: None,
-            },);
+            },
+        );
 
         match tokio::fs::remove_file(&path).await {
             Ok(_) => {
-                crate::transfer_event_sink::emit_gui_transfer_event(&app, TransferEvent {
+                crate::transfer_event_sink::emit_gui_transfer_event(
+                    &app,
+                    TransferEvent {
                         event_type: "delete_complete".to_string(),
                         transfer_id: delete_id.clone(),
                         filename: file_name.clone(),
@@ -6551,11 +6697,14 @@ async fn delete_local_file(
                         path: Some(path.clone()),
                         delta_stats: None,
                         fallback_reason: None,
-                    },);
+                    },
+                );
                 Ok(format!("Deleted: {}", file_name))
             }
             Err(e) => {
-                crate::transfer_event_sink::emit_gui_transfer_event(&app, TransferEvent {
+                crate::transfer_event_sink::emit_gui_transfer_event(
+                    &app,
+                    TransferEvent {
                         event_type: "delete_error".to_string(),
                         transfer_id: delete_id.clone(),
                         filename: file_name.clone(),
@@ -6565,13 +6714,16 @@ async fn delete_local_file(
                         path: Some(path.clone()),
                         delta_stats: None,
                         fallback_reason: None,
-                    },);
+                    },
+                );
                 Err(format!("Failed to delete file: {}", e))
             }
         }
     } else {
         // Folder delete - scan first, then delete with events
-        crate::transfer_event_sink::emit_gui_transfer_event(&app, TransferEvent {
+        crate::transfer_event_sink::emit_gui_transfer_event(
+            &app,
+            TransferEvent {
                 event_type: "delete_start".to_string(),
                 transfer_id: delete_id.clone(),
                 filename: file_name.clone(),
@@ -6581,7 +6733,8 @@ async fn delete_local_file(
                 path: Some(path.clone()),
                 delta_stats: None,
                 fallback_reason: None,
-            },);
+            },
+        );
 
         // Phase 1: Collect all files and directories
         struct DeleteItem {
@@ -6640,7 +6793,9 @@ async fn delete_local_file(
             total_files, total_dirs, file_name
         );
 
-        crate::transfer_event_sink::emit_gui_transfer_event(&app, TransferEvent {
+        crate::transfer_event_sink::emit_gui_transfer_event(
+            &app,
+            TransferEvent {
                 event_type: "progress".to_string(),
                 transfer_id: delete_id.clone(),
                 filename: file_name.clone(),
@@ -6653,7 +6808,8 @@ async fn delete_local_file(
                 path: None,
                 delta_stats: None,
                 fallback_reason: None,
-            },);
+            },
+        );
 
         // Phase 2: Delete all files with events (cancellable)
         let mut deleted_files = 0u64;
@@ -6679,7 +6835,9 @@ async fn delete_local_file(
                         || deleted_files % 50 == 0
                         || deleted_files == total_files as u64
                     {
-                        crate::transfer_event_sink::emit_gui_transfer_event(&app, TransferEvent {
+                        crate::transfer_event_sink::emit_gui_transfer_event(
+                            &app,
+                            TransferEvent {
                                 event_type: "delete_file_complete".to_string(),
                                 transfer_id: delete_id.clone(),
                                 filename: item.name.clone(),
@@ -6692,13 +6850,16 @@ async fn delete_local_file(
                                 path: Some(item.path.display().to_string()),
                                 delta_stats: None,
                                 fallback_reason: None,
-                            },);
+                            },
+                        );
                         last_emit = std::time::Instant::now();
                     }
                 }
                 Err(e) => {
                     errors += 1;
-                    crate::transfer_event_sink::emit_gui_transfer_event(&app, TransferEvent {
+                    crate::transfer_event_sink::emit_gui_transfer_event(
+                        &app,
+                        TransferEvent {
                             event_type: "delete_file_error".to_string(),
                             transfer_id: delete_id.clone(),
                             filename: item.name.clone(),
@@ -6708,7 +6869,8 @@ async fn delete_local_file(
                             path: Some(item.path.display().to_string()),
                             delta_stats: None,
                             fallback_reason: None,
-                        },);
+                        },
+                    );
                 }
             }
         }
@@ -6729,7 +6891,9 @@ async fn delete_local_file(
 
             match tokio::fs::remove_dir(dir_path).await {
                 Ok(_) => {
-                    crate::transfer_event_sink::emit_gui_transfer_event(&app, TransferEvent {
+                    crate::transfer_event_sink::emit_gui_transfer_event(
+                        &app,
+                        TransferEvent {
                             event_type: "delete_dir_complete".to_string(),
                             transfer_id: delete_id.clone(),
                             filename: dir_name,
@@ -6739,7 +6903,8 @@ async fn delete_local_file(
                             path: Some(dir_path.display().to_string()),
                             delta_stats: None,
                             fallback_reason: None,
-                        },);
+                        },
+                    );
                 }
                 Err(e) => {
                     warn!("Failed to remove directory {:?}: {}", dir_path, e);
@@ -6762,7 +6927,9 @@ async fn delete_local_file(
             format!("Deleted {} files, {} folders", deleted_files, total_dirs)
         };
 
-        crate::transfer_event_sink::emit_gui_transfer_event(&app, TransferEvent {
+        crate::transfer_event_sink::emit_gui_transfer_event(
+            &app,
+            TransferEvent {
                 event_type: if cancelled {
                     "delete_cancelled"
                 } else {
@@ -6777,7 +6944,8 @@ async fn delete_local_file(
                 path: Some(path.clone()),
                 delta_stats: None,
                 fallback_reason: None,
-            },);
+            },
+        );
 
         Ok(result_message)
     }
