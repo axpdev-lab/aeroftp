@@ -60,10 +60,14 @@ Resource permits still bound I/O classes separately; they do not cover
 multipart buffer bytes. On the first node failure the executor cancels a
 graph-scoped token (optionally a child of an external parent), stops new
 dispatch, and terminates resident siblings within two seconds — cooperative
-cancel first, then forced `JoinSet` abort. Optional per-node timeouts are
-typed as `TransferErrorKind::Timeout` and are distinct from external cancel
-(`Cancelled`). Production keeps `node_timeout = None` so long valid transfers
-are not cut by an arbitrary engine limit (`DAG-P0-05`).
+cancel first, then forced `JoinSet` abort, followed by one bounded drain.
+This bound applies to async work that yields to Tokio; synchronous blocking
+code must not run directly inside a DAG node because an async runtime cannot
+preempt it. Optional per-node timeouts start at dispatch (including
+AIMD/resource waits), are typed as `TransferErrorKind::Timeout`, and are
+distinct from external cancel (`Cancelled`). Production keeps
+`node_timeout = None` so long valid transfers are not cut by an arbitrary
+engine limit (`DAG-P0-05`).
 
 Three production wrappers call the core:
 
