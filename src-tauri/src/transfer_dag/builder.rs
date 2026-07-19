@@ -34,11 +34,11 @@
 //! - `EmitProgress`: emit the terminal completion event.
 //!
 //! Temp-file cleanup on failure is intentionally NOT a graph node. The
-//! ready-frontier executor aborts on the first failed node and drains the
-//! in-flight set; it never dispatches a node whose dependency failed, so a
-//! `CleanupTemp` node could not run on the failure path. Cleanup stays an
-//! RAII concern of the transfer runner (the provider's own `.aerotmp` guard),
-//! which is the honest place for it.
+//! ready-frontier executor aborts on the first failed node and fail-fast
+//! cancels the in-flight set; it never dispatches a node whose dependency
+//! failed, so a `CleanupTemp` node could not run on the failure path.
+//! Cleanup stays an RAII concern of the transfer runner (the provider's own
+//! `.aerotmp` guard), which is the honest place for it.
 
 use super::capabilities::TransferCapabilities;
 use super::graph::{TransferDag, TransferNodeKind};

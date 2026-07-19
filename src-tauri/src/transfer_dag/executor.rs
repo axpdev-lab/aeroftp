@@ -15,6 +15,17 @@
 //! single dispatch step, which is also the point a later slice throttles
 //! adaptively (AIMD).
 //!
+//! ## Graph-scoped cancel and fail-fast (DAG-P0-05)
+//!
+//! Every run owns a graph [`CancellationToken`] (optionally a child of an
+//! external parent). The first [`NodeOutcome::Failed`] cancels that token,
+//! stops new dispatch, and terminates resident siblings within
+//! [`FAIL_FAST_ABORT_GRACE`] — cooperative cancel first, then forced
+//! `JoinSet::abort_all` for non-cooperative work. Resource and AIMD permits
+//! are always released on task exit (including abort). Optional per-node
+//! timeouts are typed as [`TransferErrorKind::Timeout`] and never confused
+//! with external cancel ([`TransferErrorKind::Cancelled`]).
+//!
 //! The executor is active in the single-file, batch, and sync DAG wrappers;
 //! the segmented-range wrapper also uses it when its graph path is selected.
 //! Those callers bind different amounts of real I/O, so using this scheduler
@@ -25,12 +36,14 @@ use std::fmt;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 use tokio::task::JoinSet;
+use tokio_util::sync::CancellationToken;
 
 use super::adaptive::{congestion_from_error, AimdController};
-use super::error::TransferError;
+use super::error::{TransferError, TransferErrorKind};
 use super::graph::{TransferDag, TransferNode};
 use super::metrics::TransferDagMetrics;
 use super::observer::{DagObserver, ObservedOutcome};
@@ -56,8 +69,9 @@ pub enum NodeOutcome {
     /// Node finished, but via a degraded path (counted as completed, plus
     /// `fallback_count`). This is an honest, non-error completion.
     Fallback,
-    /// Node failed. Scheduling stops, in-flight nodes are drained, and the
-    /// typed error is propagated (kind / retry / Retry-After are machine-safe;
+    /// Node failed. Scheduling stops, the graph cancel token fires, resident
+    /// siblings are terminated within [`FAIL_FAST_ABORT_GRACE`], and the typed
+    /// error is propagated (kind / retry / Retry-After are machine-safe;
     /// presentation lives in [`TransferError::message`]).
     Failed(TransferError),
 }
@@ -85,8 +99,9 @@ where
 /// Why a graph execution stopped without completing every node.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DagExecutionError {
-    /// A node action returned [`NodeOutcome::Failed`]. Scheduling stopped and
-    /// in-flight nodes were drained before returning.
+    /// A node action returned [`NodeOutcome::Failed`]. Scheduling stopped, the
+    /// graph cancel token fired, and resident siblings were terminated before
+    /// returning.
     NodeFailed {
         node_id: usize,
         error: TransferError,
@@ -172,10 +187,61 @@ fn request_exceeds_budget(request: &ResourceRequest, budget: &TransferBudget) ->
 /// only when it enters this window, not when it merely becomes ready.
 pub const DEFAULT_DISPATCH_WINDOW: usize = 256;
 
+/// After the first node failure (or external cancel), resident siblings are
+/// given this long to exit cooperatively via the graph cancel token. Any
+/// task still alive is then forcibly aborted — no simple unbounded drain and
+/// no detached work left behind. Gate: sibling abort observed under 2s.
+pub const FAIL_FAST_ABORT_GRACE: Duration = Duration::from_secs(2);
+
+/// Extra ceiling after [`FAIL_FAST_ABORT_GRACE`] + `abort_all` while draining
+/// JoinSet results. Prevents a non-yielding (blocking) task body from hanging
+/// the graph forever; open started nodes are still notified Cancelled.
+const FAIL_FAST_DRAIN_CEILING: Duration = Duration::from_millis(500);
+
+/// Options for a single graph run. [`execute_dag`] uses
+/// [`DagExecuteOptions::default`]; callers that already own a user cancel
+/// token or need a tighter dispatch window pass an explicit value through
+/// [`execute_dag_with_options`].
+#[derive(Debug, Clone)]
+pub struct DagExecuteOptions {
+    /// Maximum concurrent resident tasks in the `JoinSet`. Clamped to ≥ 1.
+    pub dispatch_window: usize,
+    /// Optional external cancel token. When set, the graph token is a child
+    /// of this parent so user Stop cancels the whole run without the executor
+    /// owning the caller's token. When `None`, the graph creates a root token.
+    pub parent_cancel: Option<CancellationToken>,
+    /// Optional per-node wall-clock deadline. `None` (production default)
+    /// means no node timeout: valid long transfers are never cut by an
+    /// arbitrary engine limit. When `Some(d)`, each node that exceeds `d` is
+    /// failed with [`TransferErrorKind::Timeout`] — never as Cancelled.
+    pub node_timeout: Option<Duration>,
+}
+
+impl Default for DagExecuteOptions {
+    fn default() -> Self {
+        Self {
+            dispatch_window: DEFAULT_DISPATCH_WINDOW,
+            parent_cancel: None,
+            node_timeout: None,
+        }
+    }
+}
+
+impl DagExecuteOptions {
+    /// Convenience: default options with an explicit dispatch window.
+    pub fn with_dispatch_window(dispatch_window: usize) -> Self {
+        Self {
+            dispatch_window,
+            ..Self::default()
+        }
+    }
+}
+
 /// Run `dag` to completion on a ready-frontier schedule with
-/// [`DEFAULT_DISPATCH_WINDOW`].
+/// [`DEFAULT_DISPATCH_WINDOW`] and default cancel/timeout options.
 ///
-/// See [`execute_dag_with_dispatch_window`] for full semantics.
+/// Compatibility wrapper: production callers that need a parent cancel token
+/// or node timeout should prefer [`execute_dag_with_options`].
 pub async fn execute_dag(
     dag: &TransferDag,
     manager: &TransferResourceManager,
@@ -183,52 +249,20 @@ pub async fn execute_dag(
     observer: Arc<dyn DagObserver>,
     controller: Option<Arc<AimdController>>,
 ) -> Result<DagExecutionSummary, DagExecutionError> {
-    execute_dag_with_dispatch_window(
+    execute_dag_with_options(
         dag,
         manager,
         runner,
         observer,
         controller,
-        DEFAULT_DISPATCH_WINDOW,
+        DagExecuteOptions::default(),
     )
     .await
 }
 
-/// Run `dag` to completion on a ready-frontier schedule with an explicit
-/// dispatch window.
+/// Run `dag` with an explicit dispatch window (other options default).
 ///
-/// Each node, once its dependencies are complete, enters a ready queue and is
-/// dispatched only while fewer than `dispatch_window` tasks are resident in
-/// the `JoinSet`. Dispatched nodes acquire their `ResourceRequest` from
-/// `manager` before the action runs; the lease is held until the action
-/// returns. I/O concurrency is therefore still bounded by the manager's
-/// semaphores; the window is an orthogonal residency cap.
-///
-/// On the first failed node, no further nodes are dispatched, in-flight nodes
-/// are drained, and [`DagExecutionError::NodeFailed`] is returned (matching
-/// the abort-on-error semantics of the converged single-file path this
-/// executor will host). Failed nodes do not release dependents.
-///
-/// `observer` receives node lifecycle and a final [`TransferDagMetrics`]
-/// snapshot through an `AppHandle`-free abstraction. It defaults to a no-op
-/// for non-GUI callers; the metrics it reports are the truthfully known ones
-/// only (no fabricated throughput/retry counts before a real path is wired).
-///
-/// `controller`, when `Some`, throttles the dispatch step with a prudent
-/// AIMD loop: each dispatched node first acquires per-class dispatch permits
-/// from the controller and holds them for its lifetime, so shrinking the
-/// concurrency target only withholds *future* dispatches and never aborts an
-/// in-flight transfer. Congestion is mapped from the typed
-/// [`TransferError`] on the failure (kind + optional `retry_after`); the
-/// controller never substring-matches presentation text. `None` is the
-/// previous behaviour exactly for congestion-free runs.
-///
-/// `dispatch_window` is clamped to at least 1. After the dependency index is
-/// built, readiness dispatch visits every node and edge once (O(V+E)).
-/// Building that index first normalizes duplicate predecessor ids with
-/// `sort_unstable` + `dedup`, so total scheduler setup is
-/// O(V + sum(d_i log d_i)), not strictly O(V+E). This avoids a per-node hash
-/// allocation while keeping million-wide independent frontiers linear.
+/// See [`execute_dag_with_options`] for full semantics.
 pub async fn execute_dag_with_dispatch_window(
     dag: &TransferDag,
     manager: &TransferResourceManager,
@@ -237,7 +271,64 @@ pub async fn execute_dag_with_dispatch_window(
     controller: Option<Arc<AimdController>>,
     dispatch_window: usize,
 ) -> Result<DagExecutionSummary, DagExecutionError> {
-    let dispatch_window = dispatch_window.max(1);
+    execute_dag_with_options(
+        dag,
+        manager,
+        runner,
+        observer,
+        controller,
+        DagExecuteOptions::with_dispatch_window(dispatch_window),
+    )
+    .await
+}
+
+/// Run `dag` to completion on a ready-frontier schedule.
+///
+/// Each node, once its dependencies are complete, enters a ready queue and is
+/// dispatched only while fewer than `options.dispatch_window` tasks are
+/// resident in the `JoinSet`. Dispatched nodes acquire their
+/// `ResourceRequest` from `manager` before the action runs; the lease is held
+/// until the action returns (or the task is aborted). I/O concurrency is
+/// therefore still bounded by the manager's semaphores; the window is an
+/// orthogonal residency cap.
+///
+/// On the first failed node the graph cancel token is cancelled, no further
+/// nodes are dispatched, resident siblings are terminated within
+/// [`FAIL_FAST_ABORT_GRACE`], and [`DagExecutionError::NodeFailed`] is
+/// returned with the first typed error. Failed nodes do not release
+/// dependents (so `CommitTemp` / join nodes never run after a part failure).
+///
+/// Every node that received `on_node_start` receives exactly one terminal
+/// `on_node_complete` (including force-aborted siblings, reported as
+/// [`ObservedOutcome::Cancelled`]).
+///
+/// `controller`, when `Some`, throttles the dispatch step with a prudent
+/// AIMD loop: each dispatched node first acquires per-class dispatch permits
+/// from the controller and holds them for its lifetime. Congestion is mapped
+/// from the typed [`TransferError`] on the failure; the controller never
+/// substring-matches presentation text.
+///
+/// After the dependency index is built, readiness dispatch visits every node
+/// and edge once (O(V+E)). Building that index first normalizes duplicate
+/// predecessor ids with `sort_unstable` + `dedup`, so total scheduler setup is
+/// O(V + sum(d_i log d_i)), not strictly O(V+E).
+pub async fn execute_dag_with_options(
+    dag: &TransferDag,
+    manager: &TransferResourceManager,
+    runner: Arc<dyn DagNodeRunner>,
+    observer: Arc<dyn DagObserver>,
+    controller: Option<Arc<AimdController>>,
+    options: DagExecuteOptions,
+) -> Result<DagExecutionSummary, DagExecutionError> {
+    let dispatch_window = options.dispatch_window.max(1);
+    let node_timeout = options.node_timeout;
+    // Graph-scoped token: child of an external parent when provided so user
+    // Stop cancels the run; always under executor control for fail-fast.
+    let graph_cancel = match options.parent_cancel {
+        Some(parent) => parent.child_token(),
+        None => CancellationToken::new(),
+    };
+
     let nodes = dag.nodes();
     let mut summary = DagExecutionSummary::default();
     if nodes.is_empty() {
@@ -287,15 +378,28 @@ pub async fn execute_dag_with_dispatch_window(
 
     let mut completed: HashSet<usize> = HashSet::new();
     let mut started: HashSet<usize> = HashSet::new();
+    // Nodes that have already received `on_node_complete`.
+    let mut terminal_notified: HashSet<usize> = HashSet::new();
     let mut requests: HashMap<usize, ResourceRequest> = HashMap::new();
     let mut failed: Option<(usize, TransferError)> = None;
     let mut terminal_error: Option<DagExecutionError> = None;
     let mut join_set: JoinSet<(usize, NodeOutcome)> = JoinSet::new();
+    // When set, we are in fail-fast: no new dispatch; force-abort after grace.
+    let mut fail_fast_deadline: Option<Instant> = None;
+    // True after `abort_all` has been issued for this run.
+    let mut force_aborted = false;
 
     loop {
+        // External cancel without a prior node failure: treat as graph cancel
+        // with a typed Cancelled first-error so the run stops promptly.
+        if failed.is_none() && graph_cancel.is_cancelled() {
+            let err = TransferError::cancelled();
+            failed = Some((usize::MAX, err));
+            fail_fast_deadline = Some(Instant::now() + FAIL_FAST_ABORT_GRACE);
+        }
+
         // Dispatch step: fill the window from the ready queue. Once a node
-        // has failed we stop launching new work and only drain what is
-        // already running. This single step is the point AIMD gates adaptively.
+        // has failed (or external cancel) we stop launching new work.
         if failed.is_none() {
             while join_set.len() < dispatch_window {
                 let Some(id) = ready.pop_front() else {
@@ -312,28 +416,17 @@ pub async fn execute_dag_with_dispatch_window(
                 let manager = manager.clone();
                 let runner = Arc::clone(&runner);
                 let controller = controller.clone();
+                let graph_cancel = graph_cancel.clone();
                 join_set.spawn(async move {
-                    let id = node.id;
-                    let request = node.resources;
-                    // Adaptive dispatch gate (held for the node's lifetime):
-                    // a shrink only parks not-yet-started nodes here, never
-                    // an in-flight transfer.
-                    let _dispatch = match &controller {
-                        Some(ctrl) => Some(ctrl.acquire(&request).await),
-                        None => None,
-                    };
-                    match manager.acquire(request).await {
-                        Ok(_lease) => {
-                            let outcome = runner.run(node).await;
-                            (id, outcome)
-                        }
-                        Err(e) => (
-                            id,
-                            NodeOutcome::Failed(TransferError::resource_acquire(format!(
-                                "resource acquire failed: {e}"
-                            ))),
-                        ),
-                    }
+                    run_dispatched_node(
+                        node,
+                        manager,
+                        runner,
+                        controller,
+                        graph_cancel,
+                        node_timeout,
+                    )
+                    .await
                 });
             }
         }
@@ -351,21 +444,92 @@ pub async fn execute_dag_with_dispatch_window(
             break;
         }
 
-        let joined = join_set
-            .join_next()
-            .await
-            .expect("join_set checked non-empty above");
+        // Fail-fast: after grace, force-abort any still-resident sibling so a
+        // non-cooperative task cannot hang the graph indefinitely.
+        let past_grace = fail_fast_deadline
+            .map(|d| Instant::now() >= d)
+            .unwrap_or(false);
+        if past_grace && !force_aborted {
+            join_set.abort_all();
+            force_aborted = true;
+        }
+
+        let joined = if let Some(deadline) = fail_fast_deadline {
+            if force_aborted {
+                // After abort_all, drain with a hard ceiling so a blocking
+                // (non-yielding) task body cannot pin the graph forever.
+                match tokio::time::timeout(FAIL_FAST_DRAIN_CEILING, join_set.join_next()).await {
+                    Ok(Some(joined)) => joined,
+                    Ok(None) => break,
+                    Err(_) => {
+                        // Non-yielding residual: drop the JoinSet (aborts any
+                        // still-tracked handles on drop) and fall through to
+                        // the started-without-terminal notifier below.
+                        drop(join_set);
+                        break;
+                    }
+                }
+            } else {
+                let remaining = deadline.saturating_duration_since(Instant::now());
+                tokio::select! {
+                    joined = join_set.join_next() => {
+                        joined.expect("join_set checked non-empty above")
+                    }
+                    _ = tokio::time::sleep(remaining) => {
+                        join_set.abort_all();
+                        force_aborted = true;
+                        continue;
+                    }
+                }
+            }
+        } else {
+            join_set
+                .join_next()
+                .await
+                .expect("join_set checked non-empty above")
+        };
+
         let (id, outcome) = match joined {
             Ok(pair) => pair,
             Err(join_err) => {
-                let node_id = guess_panicked_node(&started, &completed);
+                if join_err.is_cancelled() {
+                    // Forced abort (or task cancel): map to a terminal Cancelled
+                    // for one still-open started node. Payload is lost on abort.
+                    let Some(node_id) = first_open_started(&started, &terminal_notified) else {
+                        // Spurious; keep draining.
+                        continue;
+                    };
+                    requests.remove(&node_id);
+                    summary.nodes_failed += 1;
+                    terminal_notified.insert(node_id);
+                    observer.on_node_complete(node_id, ObservedOutcome::Cancelled);
+                    if failed.is_none() {
+                        failed = Some((node_id, TransferError::cancelled()));
+                    }
+                    continue;
+                }
+                let node_id =
+                    first_open_started(&started, &terminal_notified).unwrap_or(usize::MAX);
+                // Notify any open started nodes so observers stay consistent,
+                // then surface the panic as the terminal error.
+                for open_id in started.iter().copied() {
+                    if !terminal_notified.contains(&open_id) {
+                        terminal_notified.insert(open_id);
+                        observer.on_node_complete(open_id, ObservedOutcome::Failed);
+                        summary.nodes_failed += 1;
+                    }
+                }
                 terminal_error = Some(DagExecutionError::TaskPanicked {
                     node_id,
                     message: join_err.to_string(),
                 });
+                join_set.abort_all();
+                // Drain remaining join results so no task is left detached.
+                while join_set.join_next().await.is_some() {}
                 break;
             }
         };
+
         // Drop the stored request once the task finishes so a million-node
         // run does not retain a full request map after drain.
         let node_request = requests.remove(&id);
@@ -373,9 +537,12 @@ pub async fn execute_dag_with_dispatch_window(
             NodeOutcome::Completed => {
                 summary.nodes_completed += 1;
                 completed.insert(id);
+                terminal_notified.insert(id);
                 observer.on_node_complete(id, ObservedOutcome::Completed);
                 aimd_note_healthy(&controller, node_request.as_ref());
-                release_dependents(id, &dependents, &mut remaining_deps, &mut ready);
+                if failed.is_none() {
+                    release_dependents(id, &dependents, &mut remaining_deps, &mut ready);
+                }
             }
             NodeOutcome::Fallback => {
                 summary.nodes_completed += 1;
@@ -384,11 +551,14 @@ pub async fn execute_dag_with_dispatch_window(
                 // slice can populate truthfully.
                 summary.metrics.range_fallbacks += 1;
                 completed.insert(id);
+                terminal_notified.insert(id);
                 observer.on_node_complete(id, ObservedOutcome::Fallback);
                 // A successful (if degraded) completion is still a healthy
                 // signal for the concurrency controller.
                 aimd_note_healthy(&controller, node_request.as_ref());
-                release_dependents(id, &dependents, &mut remaining_deps, &mut ready);
+                if failed.is_none() {
+                    release_dependents(id, &dependents, &mut remaining_deps, &mut ready);
+                }
             }
             NodeOutcome::Failed(error) => {
                 summary.nodes_failed += 1;
@@ -405,10 +575,33 @@ pub async fn execute_dag_with_dispatch_window(
                         }
                     }
                 }
+                let observed = if error.kind == TransferErrorKind::Cancelled {
+                    ObservedOutcome::Cancelled
+                } else {
+                    ObservedOutcome::Failed
+                };
+                terminal_notified.insert(id);
+                observer.on_node_complete(id, observed);
                 if failed.is_none() {
+                    // First error wins (including typed Timeout vs Cancelled).
                     failed = Some((id, error));
+                    // Fail-fast: cancel the graph and start the abort grace clock.
+                    graph_cancel.cancel();
+                    fail_fast_deadline = Some(Instant::now() + FAIL_FAST_ABORT_GRACE);
                 }
-                observer.on_node_complete(id, ObservedOutcome::Failed);
+            }
+        }
+    }
+
+    // Every started node must have a terminal observer event (force-abort path
+    // may have left JoinErrors already mapped; this is the safety net).
+    for id in started.iter().copied() {
+        if !terminal_notified.contains(&id) {
+            terminal_notified.insert(id);
+            summary.nodes_failed += 1;
+            observer.on_node_complete(id, ObservedOutcome::Cancelled);
+            if failed.is_none() {
+                failed = Some((id, TransferError::cancelled()));
             }
         }
     }
@@ -420,9 +613,116 @@ pub async fn execute_dag_with_dispatch_window(
         return Err(error);
     }
     if let Some((node_id, error)) = failed {
+        // External-only cancel used node_id = MAX as a sentinel; surface a
+        // coherent id when we can (first started node) for diagnostics.
+        let node_id = if node_id == usize::MAX {
+            started.iter().copied().next().unwrap_or(usize::MAX)
+        } else {
+            node_id
+        };
         return Err(DagExecutionError::NodeFailed { node_id, error });
     }
     Ok(summary)
+}
+
+/// Body of one dispatched JoinSet task: AIMD + resource acquire (cancel-aware),
+/// then race the node runner against graph cancel and optional node timeout.
+/// Dropping the lease / AIMD permits on every exit path (including cancel and
+/// abort of this task) prevents permit leaks.
+async fn run_dispatched_node(
+    node: TransferNode,
+    manager: TransferResourceManager,
+    runner: Arc<dyn DagNodeRunner>,
+    controller: Option<Arc<AimdController>>,
+    graph_cancel: CancellationToken,
+    node_timeout: Option<Duration>,
+) -> (usize, NodeOutcome) {
+    let id = node.id;
+    let request = node.resources;
+
+    if graph_cancel.is_cancelled() {
+        return (id, NodeOutcome::Failed(TransferError::cancelled()));
+    }
+
+    // Adaptive dispatch gate (held for the node's lifetime): a shrink only
+    // parks not-yet-started nodes here, never an already-running transfer.
+    let _dispatch = match &controller {
+        Some(ctrl) => {
+            tokio::select! {
+                biased;
+                _ = graph_cancel.cancelled() => {
+                    return (id, NodeOutcome::Failed(TransferError::cancelled()));
+                }
+                permit = ctrl.acquire(&request) => Some(permit),
+            }
+        }
+        None => None,
+    };
+
+    let _lease = match tokio::select! {
+        biased;
+        _ = graph_cancel.cancelled() => {
+            return (id, NodeOutcome::Failed(TransferError::cancelled()));
+        }
+        result = manager.acquire(request) => result,
+    } {
+        Ok(lease) => lease,
+        Err(e) => {
+            return (
+                id,
+                NodeOutcome::Failed(TransferError::resource_acquire(format!(
+                    "resource acquire failed: {e}"
+                ))),
+            );
+        }
+    };
+
+    let outcome = run_node_with_cancel_and_timeout(runner, node, &graph_cancel, node_timeout).await;
+    (id, outcome)
+}
+
+async fn run_node_with_cancel_and_timeout(
+    runner: Arc<dyn DagNodeRunner>,
+    node: TransferNode,
+    graph_cancel: &CancellationToken,
+    node_timeout: Option<Duration>,
+) -> NodeOutcome {
+    let run_fut = runner.run(node);
+    match node_timeout {
+        Some(timeout) => {
+            tokio::select! {
+                biased;
+                _ = graph_cancel.cancelled() => {
+                    NodeOutcome::Failed(TransferError::cancelled())
+                }
+                _ = tokio::time::sleep(timeout) => {
+                    NodeOutcome::Failed(TransferError::timeout(format!(
+                        "node exceeded timeout of {timeout:?}"
+                    )))
+                }
+                outcome = run_fut => outcome,
+            }
+        }
+        None => {
+            tokio::select! {
+                biased;
+                _ = graph_cancel.cancelled() => {
+                    NodeOutcome::Failed(TransferError::cancelled())
+                }
+                outcome = run_fut => outcome,
+            }
+        }
+    }
+}
+
+fn first_open_started(
+    started: &HashSet<usize>,
+    terminal_notified: &HashSet<usize>,
+) -> Option<usize> {
+    started
+        .iter()
+        .copied()
+        .find(|id| !terminal_notified.contains(id))
 }
 
 /// After a successful completion, decrement remaining-deps for each child and
@@ -461,16 +761,6 @@ fn aimd_note_healthy(controller: &Option<Arc<AimdController>>, request: Option<&
             ctrl.note_healthy(class);
         }
     }
-}
-
-/// Best-effort node id for a panicking task: a started-but-not-completed node.
-/// `JoinError` does not carry the task's payload, so this is informational.
-fn guess_panicked_node(started: &HashSet<usize>, completed: &HashSet<usize>) -> usize {
-    started
-        .iter()
-        .copied()
-        .find(|id| !completed.contains(id))
-        .unwrap_or(usize::MAX)
 }
 
 #[cfg(test)]
@@ -1198,8 +1488,7 @@ mod tests {
     }
 
     /// Failure stops further dispatch; dependents of the failed node never run.
-    /// In-flight siblings may still complete (drain semantics — fail-fast cancel
-    /// is P0-05).
+    /// Fail-fast also cancels the graph token so in-flight siblings exit.
     #[tokio::test]
     async fn dispatch_window_failure_does_not_release_dependents() {
         let mut dag = TransferDag::default();
@@ -1366,5 +1655,422 @@ mod tests {
             observed >= 2,
             "expected some concurrency under window={WINDOW}, peak={observed}"
         );
+    }
+
+    // --- DAG-P0-05: graph-scoped cancel, fail-fast, typed timeout ----------
+
+    /// First part failure cancels siblings; they exit well under the 2s grace.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn fail_fast_cancels_siblings_under_two_seconds() {
+        use std::sync::atomic::AtomicBool;
+        use std::time::Instant;
+
+        let mut dag = TransferDag::default();
+        // Three independent parts (wide frontier, window large enough).
+        for _ in 0..3 {
+            dag.add_node(
+                TransferNodeKind::UploadPart,
+                vec![],
+                ResourceRequest::default(),
+            );
+        }
+
+        let fail_started = Arc::new(AtomicBool::new(false));
+        let sibling_saw_cancel = Arc::new(AtomicUsize::new(0));
+        let fail_started_r = Arc::clone(&fail_started);
+        let sibling_r = Arc::clone(&sibling_saw_cancel);
+
+        let runner: Arc<dyn DagNodeRunner> = Arc::new(move |node: TransferNode| -> NodeFuture {
+            let fail_started = Arc::clone(&fail_started_r);
+            let sibling_saw_cancel = Arc::clone(&sibling_r);
+            Box::pin(async move {
+                if node.id == 0 {
+                    fail_started.store(true, Ordering::SeqCst);
+                    tokio::time::sleep(Duration::from_millis(20)).await;
+                    NodeOutcome::Failed(TransferError::from_message("part 0 exploded"))
+                } else {
+                    // Cooperative long work: yields so the graph cancel can win.
+                    for _ in 0..200 {
+                        if fail_started.load(Ordering::SeqCst) {
+                            // After the primary fails, the executor cancels the
+                            // graph token and the wrapper returns Cancelled —
+                            // this body may or may not observe it; either way
+                            // the task must not run for seconds.
+                            sibling_saw_cancel.fetch_add(1, Ordering::SeqCst);
+                        }
+                        tokio::time::sleep(Duration::from_millis(50)).await;
+                    }
+                    NodeOutcome::Completed
+                }
+            })
+        });
+
+        let observer = Arc::new(CollectingDagObserver::default());
+        let manager = TransferResourceManager::new(TransferBudget::from_file_slots(8));
+        let started = Instant::now();
+        let err = execute_dag_with_options(
+            &dag,
+            &manager,
+            runner,
+            Arc::clone(&observer) as Arc<dyn DagObserver>,
+            None,
+            DagExecuteOptions {
+                dispatch_window: 8,
+                ..DagExecuteOptions::default()
+            },
+        )
+        .await
+        .unwrap_err();
+        let elapsed = started.elapsed();
+
+        match err {
+            DagExecutionError::NodeFailed { node_id, error } => {
+                assert_eq!(node_id, 0);
+                assert!(error.message.contains("part 0 exploded"));
+            }
+            other => panic!("expected NodeFailed, got {other:?}"),
+        }
+        assert!(
+            elapsed < Duration::from_secs(2),
+            "fail-fast must finish under 2s, took {elapsed:?}"
+        );
+
+        // Every started node got a terminal observer event.
+        let started_ids: HashSet<usize> = observer
+            .started_nodes()
+            .into_iter()
+            .map(|(i, _)| i)
+            .collect();
+        let completed_ids: HashSet<usize> = observer
+            .completed_nodes()
+            .into_iter()
+            .map(|(i, _)| i)
+            .collect();
+        assert_eq!(
+            started_ids, completed_ids,
+            "every started node needs a terminal outcome; started={started_ids:?} completed={completed_ids:?}"
+        );
+        assert!(started_ids.contains(&0));
+    }
+
+    /// A sibling that never checks cancel itself (long sleep, no race_cancel)
+    /// is still terminated by the executor's graph-token select — not by an
+    /// unbounded drain. Wall time stays well under the 2s fail-fast gate.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn fail_fast_terminates_sibling_that_never_checks_cancel() {
+        use std::time::Instant;
+
+        let mut dag = TransferDag::default();
+        dag.add_node(
+            TransferNodeKind::UploadPart,
+            vec![],
+            ResourceRequest::default(),
+        );
+        dag.add_node(
+            TransferNodeKind::UploadPart,
+            vec![],
+            ResourceRequest::default(),
+        );
+
+        let sibling_finished = Arc::new(AtomicUsize::new(0));
+        let sibling_finished_r = Arc::clone(&sibling_finished);
+        let runner: Arc<dyn DagNodeRunner> = Arc::new(move |node: TransferNode| -> NodeFuture {
+            let sibling_finished = Arc::clone(&sibling_finished_r);
+            Box::pin(async move {
+                if node.id == 0 {
+                    tokio::time::sleep(Duration::from_millis(30)).await;
+                    NodeOutcome::Failed(TransferError::from_message("primary failed"))
+                } else {
+                    // Deliberately non-self-checking: a long sleep with no
+                    // cancel poll. The executor races graph_cancel around this
+                    // future and must drop it promptly on fail-fast.
+                    tokio::time::sleep(Duration::from_secs(60)).await;
+                    sibling_finished.fetch_add(1, Ordering::SeqCst);
+                    NodeOutcome::Completed
+                }
+            })
+        });
+
+        let observer = Arc::new(CollectingDagObserver::default());
+        let manager = TransferResourceManager::new(TransferBudget::from_file_slots(4));
+        let started = Instant::now();
+        let err = execute_dag(
+            &dag,
+            &manager,
+            runner,
+            Arc::clone(&observer) as Arc<dyn DagObserver>,
+            None,
+        )
+        .await
+        .unwrap_err();
+        let elapsed = started.elapsed();
+
+        assert!(matches!(
+            err,
+            DagExecutionError::NodeFailed { node_id: 0, .. }
+        ));
+        assert!(
+            elapsed < Duration::from_secs(2),
+            "non-self-checking sibling must be terminated under 2s, took {elapsed:?}"
+        );
+        assert_eq!(
+            sibling_finished.load(Ordering::SeqCst),
+            0,
+            "sibling body must not run to completion after fail-fast"
+        );
+
+        let started_ids: HashSet<usize> = observer
+            .started_nodes()
+            .into_iter()
+            .map(|(i, _)| i)
+            .collect();
+        let completed = observer.completed_nodes();
+        let completed_ids: HashSet<usize> = completed.iter().map(|(i, _)| *i).collect();
+        assert_eq!(started_ids, completed_ids);
+        assert!(
+            completed.iter().any(|(id, o)| *id == 1
+                && matches!(o, ObservedOutcome::Cancelled | ObservedOutcome::Failed)),
+            "sibling terminal missing or unexpected: {completed:?}"
+        );
+    }
+
+    /// Node timeout is typed Timeout, never Cancelled.
+    #[tokio::test]
+    async fn node_timeout_returns_typed_timeout_not_cancelled() {
+        let mut dag = TransferDag::default();
+        dag.add_node(
+            TransferNodeKind::DownloadFile,
+            vec![],
+            ResourceRequest::default(),
+        );
+
+        let runner: Arc<dyn DagNodeRunner> = Arc::new(|_n: TransferNode| -> NodeFuture {
+            Box::pin(async {
+                tokio::time::sleep(Duration::from_secs(30)).await;
+                NodeOutcome::Completed
+            })
+        });
+        let manager = TransferResourceManager::new(TransferBudget::from_file_slots(2));
+        let err = execute_dag_with_options(
+            &dag,
+            &manager,
+            runner,
+            noop_observer(),
+            None,
+            DagExecuteOptions {
+                node_timeout: Some(Duration::from_millis(50)),
+                ..DagExecuteOptions::default()
+            },
+        )
+        .await
+        .unwrap_err();
+
+        match err {
+            DagExecutionError::NodeFailed { error, .. } => {
+                assert_eq!(error.kind, TransferErrorKind::Timeout);
+                assert_ne!(error.kind, TransferErrorKind::Cancelled);
+            }
+            other => panic!("expected NodeFailed, got {other:?}"),
+        }
+    }
+
+    /// External parent cancel surfaces Cancelled, not Timeout, even when a
+    /// node timeout is configured.
+    #[tokio::test]
+    async fn external_cancel_returns_cancelled_not_timeout() {
+        let mut dag = TransferDag::default();
+        dag.add_node(
+            TransferNodeKind::DownloadFile,
+            vec![],
+            ResourceRequest::default(),
+        );
+
+        let parent = CancellationToken::new();
+        let parent_c = parent.clone();
+        let runner: Arc<dyn DagNodeRunner> = Arc::new(move |_n: TransferNode| -> NodeFuture {
+            Box::pin(async {
+                tokio::time::sleep(Duration::from_secs(30)).await;
+                NodeOutcome::Completed
+            })
+        });
+
+        let manager = TransferResourceManager::new(TransferBudget::from_file_slots(2));
+        let exec = execute_dag_with_options(
+            &dag,
+            &manager,
+            runner,
+            noop_observer(),
+            None,
+            DagExecuteOptions {
+                parent_cancel: Some(parent),
+                // A long node timeout must not win over external cancel.
+                node_timeout: Some(Duration::from_secs(60)),
+                ..DagExecuteOptions::default()
+            },
+        );
+        let cancel_task = tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(40)).await;
+            parent_c.cancel();
+        });
+        let err = exec.await.unwrap_err();
+        let _ = cancel_task.await;
+
+        match err {
+            DagExecutionError::NodeFailed { error, .. } => {
+                assert_eq!(
+                    error.kind,
+                    TransferErrorKind::Cancelled,
+                    "external cancel must not be reported as timeout"
+                );
+            }
+            other => panic!("expected NodeFailed, got {other:?}"),
+        }
+    }
+
+    /// After a part failure, CommitTemp (dependent) never runs.
+    #[tokio::test]
+    async fn fail_fast_never_runs_commit_after_part_failure() {
+        let mut dag = TransferDag::default();
+        let p0 = dag.add_node(
+            TransferNodeKind::UploadPart,
+            vec![],
+            ResourceRequest::default(),
+        );
+        let p1 = dag.add_node(
+            TransferNodeKind::UploadPart,
+            vec![],
+            ResourceRequest::default(),
+        );
+        let commit = dag.add_node(
+            TransferNodeKind::CommitTemp,
+            vec![p0, p1],
+            ResourceRequest::default(),
+        );
+
+        let ran: Arc<Mutex<Vec<usize>>> = Arc::new(Mutex::new(Vec::new()));
+        let ran_c = Arc::clone(&ran);
+        let runner: Arc<dyn DagNodeRunner> = Arc::new(move |node: TransferNode| -> NodeFuture {
+            let ran = Arc::clone(&ran_c);
+            Box::pin(async move {
+                ran.lock().unwrap().push(node.id);
+                if node.id == p0 {
+                    NodeOutcome::Failed(TransferError::from_message("part failed"))
+                } else {
+                    // Sibling would complete if allowed to finish without cancel;
+                    // fail-fast may cancel it mid-flight.
+                    tokio::time::sleep(Duration::from_millis(100)).await;
+                    NodeOutcome::Completed
+                }
+            })
+        });
+
+        let manager = TransferResourceManager::new(TransferBudget::from_file_slots(4));
+        let _ = execute_dag(&dag, &manager, runner, noop_observer(), None)
+            .await
+            .unwrap_err();
+
+        let ran = ran.lock().unwrap().clone();
+        assert!(
+            !ran.contains(&commit),
+            "CommitTemp must not run after part failure, ran={ran:?}"
+        );
+    }
+
+    /// Resource permits are released after fail-fast cancel of a holding node
+    /// so a subsequent acquire does not hang.
+    #[tokio::test]
+    async fn fail_fast_releases_resource_permits() {
+        // Two independent file-transfer nodes, budget of 1 file slot.
+        // Node 0 holds the slot and fails after a short delay; node 1 must
+        // still be able to run (or at least the manager must free the slot).
+        // With fail-fast, node 1 may be cancelled if already started, but a
+        // *second* graph on the same manager must acquire immediately.
+        let mut dag = TransferDag::default();
+        dag.add_node(
+            TransferNodeKind::DownloadFile,
+            vec![],
+            ResourceRequest::file_transfer(),
+        );
+        dag.add_node(
+            TransferNodeKind::DownloadFile,
+            vec![],
+            ResourceRequest::file_transfer(),
+        );
+
+        let runner: Arc<dyn DagNodeRunner> = Arc::new(|node: TransferNode| -> NodeFuture {
+            Box::pin(async move {
+                if node.id == 0 {
+                    tokio::time::sleep(Duration::from_millis(30)).await;
+                    NodeOutcome::Failed(TransferError::from_message("boom"))
+                } else {
+                    tokio::time::sleep(Duration::from_secs(30)).await;
+                    NodeOutcome::Completed
+                }
+            })
+        });
+
+        let manager = TransferResourceManager::new(TransferBudget::from_file_slots(1));
+        let _ = execute_dag(&dag, &manager, runner, noop_observer(), None)
+            .await
+            .unwrap_err();
+
+        // Same manager, single-node graph: acquire must not hang on a leaked permit.
+        let mut dag2 = TransferDag::default();
+        dag2.add_node(
+            TransferNodeKind::DownloadFile,
+            vec![],
+            ResourceRequest::file_transfer(),
+        );
+        let runner2: Arc<dyn DagNodeRunner> = Arc::new(|_n: TransferNode| -> NodeFuture {
+            Box::pin(async { NodeOutcome::Completed })
+        });
+        let summary = tokio::time::timeout(
+            Duration::from_secs(2),
+            execute_dag(&dag2, &manager, runner2, noop_observer(), None),
+        )
+        .await
+        .expect("permit leak: second graph hung on acquire")
+        .expect("second graph should succeed");
+        assert_eq!(summary.nodes_completed, 1);
+    }
+
+    /// Happy path and fallback still complete under options API.
+    #[tokio::test]
+    async fn options_default_preserves_happy_path_and_fallback() {
+        let mut dag = TransferDag::default();
+        let a = dag.add_node(
+            TransferNodeKind::PlanTransfer,
+            vec![],
+            ResourceRequest::default(),
+        );
+        let _b = dag.add_node(
+            TransferNodeKind::DownloadFile,
+            vec![a],
+            ResourceRequest::default(),
+        );
+
+        let runner: Arc<dyn DagNodeRunner> = Arc::new(|node: TransferNode| -> NodeFuture {
+            Box::pin(async move {
+                if node.id == 0 {
+                    NodeOutcome::Completed
+                } else {
+                    NodeOutcome::Fallback
+                }
+            })
+        });
+        let manager = TransferResourceManager::new(TransferBudget::from_file_slots(4));
+        let summary = execute_dag_with_options(
+            &dag,
+            &manager,
+            runner,
+            noop_observer(),
+            None,
+            DagExecuteOptions::default(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(summary.nodes_completed, 2);
+        assert_eq!(summary.fallback_count, 1);
+        assert_eq!(summary.metrics.range_fallbacks, 1);
     }
 }

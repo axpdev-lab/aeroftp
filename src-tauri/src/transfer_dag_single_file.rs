@@ -81,11 +81,13 @@ use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 
 use crate::providers::{MultipartHandle, ProviderError, StorageProvider, UploadedPart};
-use crate::transfer_dag::executor::{execute_dag, DagNodeRunner, NodeFuture, NodeOutcome};
+use crate::transfer_dag::executor::{
+    execute_dag_with_options, DagExecuteOptions, DagNodeRunner, NodeFuture, NodeOutcome,
+};
 use crate::transfer_dag::graph::{TransferNode, TransferNodeKind};
 use crate::transfer_dag::{
-    AimdConfig, AimdController, DagObserver, ShapedFileDag, TransferBudget, TransferDirection,
-    TransferError, TransferResourceManager,
+    AimdConfig, AimdController, DagObserver, FailureScope, ShapedFileDag, TransferBudget,
+    TransferDirection, TransferError, TransferResourceManager,
 };
 
 /// A per-byte transfer progress callback, as accepted by
@@ -261,7 +263,11 @@ pub async fn execute_single_file_dag(
                         let cb = progress_slot.lock().expect("progress slot poisoned").take();
                         let mut guard = provider.lock().await;
                         let Some(p) = guard.as_mut() else {
-                            return record_failure(&first_error, ProviderError::NotConnected);
+                            return record_failure(
+                                &first_error,
+                                ProviderError::NotConnected,
+                                FailureScope::File,
+                            );
                         };
                         let dl = async { p.download(&remote, &local, cb).await };
                         let res = match &cancel_token {
@@ -283,14 +289,18 @@ pub async fn execute_single_file_dag(
                                 }
                                 NodeOutcome::Completed
                             }
-                            Err(e) => record_failure(&first_error, e),
+                            Err(e) => record_failure(&first_error, e, FailureScope::File),
                         }
                     }
                     TransferNodeKind::UploadFile => {
                         let cb = progress_slot.lock().expect("progress slot poisoned").take();
                         let mut guard = provider.lock().await;
                         let Some(p) = guard.as_mut() else {
-                            return record_failure(&first_error, ProviderError::NotConnected);
+                            return record_failure(
+                                &first_error,
+                                ProviderError::NotConnected,
+                                FailureScope::File,
+                            );
                         };
                         let ul = async { p.upload(&local, &remote, cb).await };
                         let res = match &cancel_token {
@@ -305,7 +315,7 @@ pub async fn execute_single_file_dag(
                         };
                         match res {
                             Ok(()) => NodeOutcome::Completed,
-                            Err(e) => record_failure(&first_error, e),
+                            Err(e) => record_failure(&first_error, e, FailureScope::File),
                         }
                     }
                     TransferNodeKind::UploadPart => {
@@ -315,6 +325,7 @@ pub async fn execute_single_file_dag(
                                 ProviderError::TransferFailed(
                                     "UploadPart node without multipart context".to_string(),
                                 ),
+                                FailureScope::Part,
                             );
                         };
                         let Some(part_number) = ctx.node_to_part.get(&node.id).copied() else {
@@ -324,6 +335,7 @@ pub async fn execute_single_file_dag(
                                     "UploadPart node {} not mapped to a part number",
                                     node.id
                                 )),
+                                FailureScope::Part,
                             );
                         };
                         // 1. Lazy `begin_multipart_upload`. The first runner
@@ -341,6 +353,7 @@ pub async fn execute_single_file_dag(
                                     return record_failure(
                                         &first_error,
                                         ProviderError::NotConnected,
+                                        FailureScope::Part,
                                     );
                                 };
                                 let begin = async {
@@ -356,7 +369,9 @@ pub async fn execute_single_file_dag(
                                     Ok(handle) => {
                                         *handle_guard = Some(handle);
                                     }
-                                    Err(e) => return record_failure(&first_error, e),
+                                    Err(e) => {
+                                        return record_failure(&first_error, e, FailureScope::Part);
+                                    }
                                 }
                             }
                         }
@@ -371,7 +386,9 @@ pub async fn execute_single_file_dag(
                             .await
                         {
                             Ok(buf) => buf,
-                            Err(e) => return record_failure(&first_error, e),
+                            Err(e) => {
+                                return record_failure(&first_error, e, FailureScope::Part);
+                            }
                         };
 
                         // 3. Upload the part using the resolved handle.
@@ -385,7 +402,11 @@ pub async fn execute_single_file_dag(
                         let cloned_worker = {
                             let mut guard = provider.lock().await;
                             let Some(p) = guard.as_mut() else {
-                                return record_failure(&first_error, ProviderError::NotConnected);
+                                return record_failure(
+                                    &first_error,
+                                    ProviderError::NotConnected,
+                                    FailureScope::Part,
+                                );
                             };
                             clone_multipart_worker(p.as_mut())
                         };
@@ -397,7 +418,11 @@ pub async fn execute_single_file_dag(
                         } else {
                             let mut guard = provider.lock().await;
                             let Some(p) = guard.as_mut() else {
-                                return record_failure(&first_error, ProviderError::NotConnected);
+                                return record_failure(
+                                    &first_error,
+                                    ProviderError::NotConnected,
+                                    FailureScope::Part,
+                                );
                             };
                             race_cancel(&cancel_token, async {
                                 p.upload_part(&handle, part_number, data).await
@@ -409,7 +434,7 @@ pub async fn execute_single_file_dag(
                                 ctx.parts.lock().await.push(receipt);
                                 NodeOutcome::Completed
                             }
-                            Err(e) => record_failure(&first_error, e),
+                            Err(e) => record_failure(&first_error, e, FailureScope::Part),
                         }
                     }
                     TransferNodeKind::ServerSideCopy => {
@@ -426,7 +451,11 @@ pub async fn execute_single_file_dag(
                         // still propagate via `record_failure`.
                         let mut guard = provider.lock().await;
                         let Some(p) = guard.as_mut() else {
-                            return record_failure(&first_error, ProviderError::NotConnected);
+                            return record_failure(
+                                &first_error,
+                                ProviderError::NotConnected,
+                                FailureScope::File,
+                            );
                         };
                         match crate::copy_fallback::server_side_copy_with_fallback(
                             p.as_mut(),
@@ -436,7 +465,7 @@ pub async fn execute_single_file_dag(
                         .await
                         {
                             Ok(_outcome) => NodeOutcome::Completed,
-                            Err(e) => record_failure(&first_error, e),
+                            Err(e) => record_failure(&first_error, e, FailureScope::File),
                         }
                     }
                     TransferNodeKind::CommitTemp => {
@@ -467,6 +496,7 @@ pub async fn execute_single_file_dag(
                                         return record_failure(
                                             &first_error,
                                             ProviderError::NotConnected,
+                                            FailureScope::File,
                                         );
                                     };
                                     race_cancel(&cancel_token, async {
@@ -481,7 +511,7 @@ pub async fn execute_single_file_dag(
                                         ctx.handle.lock().await.take();
                                         NodeOutcome::Completed
                                     }
-                                    Err(e) => record_failure(&first_error, e),
+                                    Err(e) => record_failure(&first_error, e, FailureScope::File),
                                 }
                             } else {
                                 NodeOutcome::Completed
@@ -524,13 +554,29 @@ pub async fn execute_single_file_dag(
         ))
     });
 
-    let outcome = execute_dag(&built.dag, &manager, runner, observer, aimd).await;
+    // Graph-scoped cancel is a child of the caller's token (when present) so
+    // user Stop and first-part fail-fast both terminate resident siblings
+    // within FAIL_FAST_ABORT_GRACE. Production keeps node_timeout = None so
+    // valid long transfers are never cut by an arbitrary engine limit.
+    let outcome = execute_dag_with_options(
+        &built.dag,
+        &manager,
+        runner,
+        observer,
+        aimd,
+        DagExecuteOptions {
+            parent_cancel: cancel_token,
+            ..DagExecuteOptions::default()
+        },
+    )
+    .await;
 
     // On failure, best-effort abort an in-flight multipart session so the
     // provider does not accumulate orphan upload IDs. Idempotent because the
     // commit branch clears the handle ONLY on success, so this runs for both a
     // failure before commit AND a commit-time failure (audit ERR-01); a
-    // successful commit leaves no handle and this is a no-op.
+    // successful commit leaves no handle and this is a no-op. `take()` ensures
+    // abort is called at most once even when fail-fast cancelled many parts.
     if outcome.is_err() {
         if let Some(ctx) = multipart_ctx.as_ref() {
             let leftover_handle = {
@@ -567,11 +613,15 @@ async fn read_chunk(path: &str, offset: u64, len: u64) -> Result<Vec<u8>, Provid
 
 /// Stash the original [`ProviderError`] for the caller and return a typed
 /// node failure so AIMD/cancel decisions never re-parse presentation text.
+///
+/// `scope` is set only when the node context makes it certain (File for the
+/// single-stream transfer core / commit; Part for multipart part nodes).
 fn record_failure(
     first_error: &Arc<StdMutex<Option<ProviderError>>>,
     error: ProviderError,
+    scope: FailureScope,
 ) -> NodeOutcome {
-    let typed = TransferError::from_provider(&error);
+    let typed = TransferError::from_provider(&error).with_scope(scope);
     let mut slot = first_error.lock().expect("first-error slot poisoned");
     if slot.is_none() {
         *slot = Some(error);

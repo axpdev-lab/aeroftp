@@ -34,11 +34,18 @@ use std::sync::{Arc, Mutex};
 /// executor's `NodeOutcome` without coupling the observer to the typed
 /// [`super::error::TransferError`] failure payload (kept observer-object-safe
 /// and allocation-free here).
+///
+/// Every node that received [`DagObserver::on_node_start`] must later receive
+/// exactly one terminal outcome (`Completed`, `Fallback`, `Failed`, or
+/// `Cancelled`) so GUI/journal adapters never leave a started node open.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ObservedOutcome {
     Completed,
     Fallback,
     Failed,
+    /// Graph-scoped cancel, external cancel, fail-fast sibling abort, or
+    /// forced JoinSet abort after the fail-fast grace period.
+    Cancelled,
 }
 
 /// Object-safe, `AppHandle`-free observer. Held as `Arc<dyn DagObserver>` and
@@ -191,6 +198,8 @@ impl SyncJournalDagObserver {
 
 impl DagObserver for SyncJournalDagObserver {
     fn on_node_complete(&self, node_id: usize, outcome: ObservedOutcome) {
+        // Durable journal advances only on real success; Failed / Cancelled /
+        // Fallback leave the entry pending for retry or operator policy.
         if outcome != ObservedOutcome::Completed {
             return;
         }
@@ -257,6 +266,8 @@ pub struct CollectingDagObserver {
     metrics: std::sync::Mutex<TransferDagMetrics>,
     scan_progress_calls: std::sync::atomic::AtomicU32,
     last_scanned: std::sync::atomic::AtomicUsize,
+    started: std::sync::Mutex<Vec<(usize, TransferNodeKind)>>,
+    completed: std::sync::Mutex<Vec<(usize, ObservedOutcome)>>,
 }
 
 impl CollectingDagObserver {
@@ -272,9 +283,34 @@ impl CollectingDagObserver {
     pub fn last_scanned(&self) -> usize {
         self.last_scanned.load(std::sync::atomic::Ordering::SeqCst)
     }
+
+    pub fn started_nodes(&self) -> Vec<(usize, TransferNodeKind)> {
+        self.started.lock().expect("started mutex poisoned").clone()
+    }
+
+    pub fn completed_nodes(&self) -> Vec<(usize, ObservedOutcome)> {
+        self.completed
+            .lock()
+            .expect("completed mutex poisoned")
+            .clone()
+    }
 }
 
 impl DagObserver for CollectingDagObserver {
+    fn on_node_start(&self, node_id: usize, kind: TransferNodeKind) {
+        self.started
+            .lock()
+            .expect("started mutex poisoned")
+            .push((node_id, kind));
+    }
+
+    fn on_node_complete(&self, node_id: usize, outcome: ObservedOutcome) {
+        self.completed
+            .lock()
+            .expect("completed mutex poisoned")
+            .push((node_id, outcome));
+    }
+
     fn on_scan_progress(&self, scanned: usize, _in_flight: usize) {
         self.scan_progress_calls
             .fetch_add(1, std::sync::atomic::Ordering::SeqCst);

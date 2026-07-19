@@ -122,9 +122,22 @@ impl TransferError {
         Self::new(TransferErrorKind::Cancelled, "Transfer cancelled by user")
     }
 
+    /// Per-node (or graph) deadline exceeded. Distinct from
+    /// [`Self::cancelled`]: external cancel never surfaces as Timeout.
+    pub fn timeout(message: impl Into<String>) -> Self {
+        Self::new(TransferErrorKind::Timeout, message)
+    }
+
     /// Resource-manager acquire failure (node never entered its action).
     pub fn resource_acquire(message: impl Into<String>) -> Self {
         Self::new(TransferErrorKind::ResourceAcquire, message)
+    }
+
+    /// Attach a failure scope when the node context makes it certain
+    /// (e.g. multipart part or single-file transfer core).
+    pub fn with_scope(mut self, scope: FailureScope) -> Self {
+        self.scope = scope;
+        self
     }
 
     /// Synthetic / structural failure with only a presentation string.
@@ -391,5 +404,14 @@ mod tests {
         assert_eq!(e.message, "Transfer cancelled by user");
         assert_eq!(e.retry, RetryDirective::Never);
         assert!(!e.is_congestion());
+    }
+
+    #[test]
+    fn timeout_helper_is_distinct_from_cancel() {
+        let e = TransferError::timeout("node exceeded deadline");
+        assert_eq!(e.kind, TransferErrorKind::Timeout);
+        assert_ne!(e.kind, TransferErrorKind::Cancelled);
+        assert!(e.is_congestion());
+        assert_eq!(e.with_scope(FailureScope::Part).scope, FailureScope::Part);
     }
 }

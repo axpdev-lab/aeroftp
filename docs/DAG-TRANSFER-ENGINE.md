@@ -57,9 +57,13 @@ and normalized edge once during dispatch; preprocessing uses
 O(V + sum(d_i log d_i)) rather than a strict O(V+E). Wide independent
 frontiers therefore avoid both repeated full scans and unbounded task spawn.
 Resource permits still bound I/O classes separately; they do not cover
-multipart buffer bytes. On failure the executor stops new dispatches and
-drains in-flight tasks; it does not yet cancel every sibling through a
-graph-scoped token (that is `DAG-P0-05`).
+multipart buffer bytes. On the first node failure the executor cancels a
+graph-scoped token (optionally a child of an external parent), stops new
+dispatch, and terminates resident siblings within two seconds — cooperative
+cancel first, then forced `JoinSet` abort. Optional per-node timeouts are
+typed as `TransferErrorKind::Timeout` and are distinct from external cancel
+(`Cancelled`). Production keeps `node_timeout = None` so long valid transfers
+are not cut by an arbitrary engine limit (`DAG-P0-05`).
 
 Three production wrappers call the core:
 
@@ -277,10 +281,12 @@ is an explicit reminder that the transfer architecture is transitional.
 | Range graph migration | `shaped_ranges` exists and is real, but the default remains the `JoinSet` scheduler |
 | One fully converged engine for every surface | Shared core plus selected wrappers; batch/sync/copy/cross-profile still have documented adapters and limits |
 
-For the planned next steps—bounded dispatch, graph-scoped cancellation,
-typed outcomes, capability-aware batch, real sync concurrency, production
-shaped copy, and global resource governance—see the audit appendix at
+For the planned next steps—resource credits, capability-aware batch, real
+sync concurrency, production shaped copy, and global resource governance—see
+the audit appendix at
 `docs/dev/roadmap/APPENDIX-DAG-ENGINE_Parallel-Transfers-Audit.md`.
+Bounded dispatch (P0-04), typed outcomes (P0-03), and graph-scoped
+fail-fast cancel/timeout (P0-05) are already in the core executor.
 
 ## See also
 

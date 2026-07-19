@@ -444,10 +444,12 @@ where
         + Send
         + 'static,
 {
-    use crate::transfer_dag::executor::{execute_dag, DagNodeRunner, NodeFuture, NodeOutcome};
+    use crate::transfer_dag::executor::{
+        execute_dag_with_options, DagExecuteOptions, DagNodeRunner, NodeFuture, NodeOutcome,
+    };
     use crate::transfer_dag::graph::TransferNode;
     use crate::transfer_dag::{
-        AimdConfig, AimdController, DagObserver, NoopDagObserver, TransferBudget,
+        AimdConfig, AimdController, DagObserver, FailureScope, NoopDagObserver, TransferBudget,
         TransferDagBuilder, TransferError, TransferResourceManager,
     };
     use std::sync::atomic::AtomicBool;
@@ -514,7 +516,9 @@ where
             let (start, end) = ranges[node.id];
             // Mirror the JoinSet path's pre-write cancel check.
             if cancel.is_cancelled() {
-                return NodeOutcome::Failed(TransferError::cancelled());
+                return NodeOutcome::Failed(
+                    TransferError::cancelled().with_scope(FailureScope::Part),
+                );
             }
             match write_one_range(
                 start,
@@ -534,6 +538,8 @@ where
                 Ok(ConcurrentRangeOutcome::ServerIgnoredRange) => {
                     // Honest fallback: cancel siblings; the caller skips the
                     // commit so the temp is removed, exactly like JoinSet.
+                    // Parent cancel also fires the graph child token so the
+                    // executor fail-fast path terminates residual ranges.
                     server_ignored.store(true, Ordering::SeqCst);
                     cancel.cancel();
                     NodeOutcome::Fallback
@@ -542,14 +548,18 @@ where
                     // ProviderError is not Clone (IoError wraps io::Error):
                     // lift a typed TransferError for the DAG/AIMD path, then
                     // move the owned error into the first-error slot to
-                    // preserve the exact variant for the caller.
-                    let typed = TransferError::from_provider(&e);
+                    // preserve the exact variant for the caller. Scope is
+                    // Part: each range node is one independent byte range.
+                    let typed = TransferError::from_provider(&e).with_scope(FailureScope::Part);
                     {
                         let mut slot = first_error.lock().unwrap();
                         if slot.is_none() {
                             *slot = Some(e);
                         }
                     }
+                    // Cancel parent so JoinSet-parity sibling abort and the
+                    // graph child token both fire; executor fail-fast is the
+                    // hard bound (<2s).
                     cancel.cancel();
                     NodeOutcome::Failed(typed)
                 }
@@ -557,12 +567,18 @@ where
         })
     });
 
-    let exec = execute_dag(
+    // Parent cancel token is the caller's; the executor creates a graph child
+    // for fail-fast. Default node_timeout is None (no arbitrary cut-off).
+    let exec = execute_dag_with_options(
         &dag,
         &manager,
         runner,
         Arc::new(NoopDagObserver) as Arc<dyn DagObserver>,
         Some(aimd),
+        DagExecuteOptions {
+            parent_cancel: Some(cancel),
+            ..DagExecuteOptions::default()
+        },
     )
     .await;
 
