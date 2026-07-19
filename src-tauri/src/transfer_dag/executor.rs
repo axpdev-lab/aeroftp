@@ -15,9 +15,10 @@
 //! single dispatch step, which is also the point a later slice throttles
 //! adaptively (AIMD).
 //!
-//! It is additive: nothing dispatches a graph yet. Existing GUI/CLI transfer
-//! paths are unchanged until one path is migrated onto this executor behind a
-//! flag with a byte-identical guarantee.
+//! The executor is active in the single-file, batch, and sync DAG wrappers;
+//! the segmented-range wrapper also uses it when its graph path is selected.
+//! Those callers bind different amounts of real I/O, so using this scheduler
+//! does not by itself imply identical wire-level parallelism across surfaces.
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt;
@@ -222,9 +223,12 @@ pub async fn execute_dag(
 /// controller never substring-matches presentation text. `None` is the
 /// previous behaviour exactly for congestion-free runs.
 ///
-/// `dispatch_window` is clamped to at least 1. Readiness is maintained with
-/// an O(V+E) remaining-deps index so million-node synthetic graphs stay
-/// linear-time in the scheduler (aside from the work of the nodes themselves).
+/// `dispatch_window` is clamped to at least 1. After the dependency index is
+/// built, readiness dispatch visits every node and edge once (O(V+E)).
+/// Building that index first normalizes duplicate predecessor ids with
+/// `sort_unstable` + `dedup`, so total scheduler setup is
+/// O(V + sum(d_i log d_i)), not strictly O(V+E). This avoids a per-node hash
+/// allocation while keeping million-wide independent frontiers linear.
 pub async fn execute_dag_with_dispatch_window(
     dag: &TransferDag,
     manager: &TransferResourceManager,

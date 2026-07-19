@@ -51,11 +51,15 @@ typed nodes. A node runs only after its dependencies complete and its
 The executor is not globally bounded by process or endpoint. The ready
 frontier is dispatch-window bounded (`DEFAULT_DISPATCH_WINDOW = 256`,
 overridable via `execute_dag_with_dispatch_window`): only that many tasks may
-be resident in the `JoinSet` at once, with an O(V+E) indexed ready queue so
-wide frontiers do not spawn unbounded futures. Resource permits still bound
-I/O classes separately; they do not cover multipart buffer bytes. On failure
-the executor stops new dispatches and drains in-flight tasks; it does not yet
-cancel every sibling through a graph-scoped token (that is `DAG-P0-05`).
+be resident in the `JoinSet` at once. The indexed ready queue visits each node
+and normalized edge once during dispatch; preprocessing uses
+`sort_unstable`/`dedup` per dependency list, so setup is
+O(V + sum(d_i log d_i)) rather than a strict O(V+E). Wide independent
+frontiers therefore avoid both repeated full scans and unbounded task spawn.
+Resource permits still bound I/O classes separately; they do not cover
+multipart buffer bytes. On failure the executor stops new dispatches and
+drains in-flight tasks; it does not yet cancel every sibling through a
+graph-scoped token (that is `DAG-P0-05`).
 
 Three production wrappers call the core:
 
