@@ -165,8 +165,8 @@ transfer clone. Cross-process serialization remains on `RefreshLease`.
 | Lifecycle correctness (begin/complete/abort on primary; part uses opaque handle) | unit + local HTTP fixture | unit + local HTTP fixture | unit + local HTTP fixture (concurrent start empty body, close-before-finish, no-op abort) | unit + local HTTP fixture (Content-Range, chunk digest, sorted commit, abort DELETE) |
 | Graph task overlap (builder cap >1) | shared multipart topology | shared multipart topology | shared multipart topology | shared multipart topology |
 | Deterministic HTTP part overlap | peak ∈ (1, 4] on 4 workers | peak ∈ (1, 4] on 4 workers | barrier-backed peak = 4 on 4 workers | barrier-backed peak = 4 on 4 workers |
-| Live WAN integrity (multipart ≥4 parts, download-back SHA-256, cleanup) | profile `Drime`, 22 MiB, byte-identical | profile `Uploadcare`, 22 MiB jpg, byte-identical | not run this wave: profile `My Dropbox` `auth_state=no_credentials` | not run this wave: profile `MyBox` `auth_state=needs_refresh` |
-| Live WAN peak part overlap with **this** code | not claimed | not claimed | not claimed | not claimed |
+| Live WAN integrity (multipart ≥4 parts, download-back SHA-256, cleanup) | profile `Drime`, 22 MiB, byte-identical | profile `Uploadcare`, 22 MiB jpg, byte-identical | profile `My Dropbox`, 160 MiB, SHA-256 match, cleanup (production CLI 4.1.5; one append_v2 retry then success) | profile `MyBox`, 32 MiB (4×8 MiB plan), SHA-256 match, cleanup (production CLI 4.1.5) |
+| Live WAN peak part overlap with **this** code | not claimed | not claimed | not claimed: production CLI pre-dates P1-05B; debug CLI vault/token path not usable for these profiles in session | not claimed: same environmental bound |
 | Whole-file clone pool vs multipart part workers | file/session ≤4 | same | file/session ≤4; shared OAuth refresh guard | file/session ≤4; shared OAuth refresh guard; bounded `id_cache` seed (root + current path only) |
 | Server part-size vs plan | n/a | n/a | n/a | fail-closed if session `part_size` ≠ 8 MiB plan |
 
