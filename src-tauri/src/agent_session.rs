@@ -650,6 +650,9 @@ fn static_http_clone_pool_slots(provider_type: ProviderType) -> Option<(u16, u16
         // DAG-P1-05B: Dropbox + Box multipart part workers, ceiling 4;
         // list remains locked-single.
         ProviderType::Dropbox | ProviderType::Box => Some((4, 1)),
+        // DAG-P1-05D: native Filen multipart part workers, ceiling 4;
+        // list remains locked-single. Crypto/auth via Arc snapshot.
+        ProviderType::Filen => Some((4, 1)),
         // DAG-P1-05C: pCloud deliberately stays off this registry because live
         // concurrent upload_write returns result 2068, so executor remains
         // LockedSingle (hints may still advertise multipart_max_parallel=2).
@@ -1227,6 +1230,34 @@ mod tests {
         assert_eq!(
             caps.server_side_copy,
             crate::transfer_dag::Capability::Supported
+        );
+        assert_eq!(
+            caps.rate_limited_api,
+            crate::transfer_dag::Capability::Supported
+        );
+    }
+
+    #[test]
+    fn filen_protocol_defaults_advertise_clone_pool_ceiling_4() {
+        // DAG-P1-05D: native Filen multipart part workers on HttpClonePool.
+        let caps = transfer_capabilities_for_protocol("filen").expect("filen");
+        assert_eq!(
+            caps.multipart_upload,
+            crate::transfer_dag::Capability::Supported
+        );
+        assert_eq!(caps.max_chunk_slots, Some(4));
+        assert_eq!(
+            caps.file_parallel,
+            crate::transfer_dag::Capability::Supported
+        );
+        assert_eq!(
+            caps.session_pool,
+            crate::transfer_dag::Capability::Supported
+        );
+        assert_eq!(caps.max_file_slots, Some(4));
+        assert_eq!(
+            caps.list_parallel,
+            crate::transfer_dag::Capability::Unsupported
         );
         assert_eq!(
             caps.rate_limited_api,

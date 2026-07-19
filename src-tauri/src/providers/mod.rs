@@ -428,12 +428,23 @@ pub struct ShareLinkInfo {
 /// the backend uses to identify a multipart session (S3 UploadId, B2
 /// fileId, etc.), and `remote_path` echoes the destination key so the
 /// runner can correlate handles with shaped-graph nodes.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct MultipartHandle {
     /// Provider-assigned multipart upload identifier (opaque string).
     pub upload_id: String,
     /// Destination remote path or key the handle is bound to.
     pub remote_path: String,
+}
+
+impl std::fmt::Debug for MultipartHandle {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // Global redaction: Filen (and other providers) embed crypto/session
+        // material in `upload_id`. Never print it in logs, panics, or Debug.
+        f.debug_struct("MultipartHandle")
+            .field("upload_id", &"<redacted>")
+            .field("remote_path", &self.remote_path)
+            .finish()
+    }
 }
 
 /// Receipt for a single uploaded part of a multipart session.

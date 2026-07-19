@@ -145,7 +145,8 @@ shared mutex. The current independent-worker set is:
 - **Drime** (`HttpClonePool`, max sessions 4), DAG-P1-05A;
 - **Uploadcare** (`HttpClonePool`, max sessions 4), DAG-P1-05A;
 - **Dropbox** (`HttpClonePool`, max sessions 4), DAG-P1-05B;
-- **Box** (`HttpClonePool`, max sessions 4), DAG-P1-05B.
+- **Box** (`HttpClonePool`, max sessions 4), DAG-P1-05B;
+- **Filen native** (`HttpClonePool`, max sessions 4), DAG-P1-05D.
 
 **pCloud** (DAG-P1-05C, 2026-07-19): multipart session API remains
 **`LockedSingle`**. Live probes with independent workers on one `uploadid`
@@ -155,10 +156,18 @@ attempt (including with `uploadsize=`). Serial multipart still completes
 to typed DAG `RateLimited`. Hints still advertise `multipart_max_parallel=2`
 for a future re-attempt if the service contract changes.
 
-Filen is the remaining `DAG-P1-05` wave (`DAG-P1-05D`). A graph with N part
-nodes therefore means "N scheduled part operations", not automatically "N
-concurrent network requests", unless the provider is in the independent-worker
-set above.
+**Filen native** (DAG-P1-05D, 2026-07-19): promoted. Transfer clones share
+`Arc` config + auth/crypto snapshots (API key + master-key ring), seed only
+root + current folder navigation (no full `dir_cache` / `file_key_cache`),
+and never reconnect. `MultipartHandle` Debug redacts `upload_id` globally;
+ingest transport errors scrub `uploadKey` / bearer material. Legacy
+`upload()` fan-out stays at 4 and matches the shaped session ceiling (no
+4×4 multiplication: sub-1 MiB files are one Filen chunk). Filen Desktop S3
+and WebDAV bridge providers are unchanged.
+
+A graph with N part nodes therefore means "N scheduled part operations",
+not automatically "N concurrent network requests", unless the provider is
+in the independent-worker set above.
 
 OAuth providers that may rotate refresh tokens (including Dropbox and Box)
 share one in-process `OAuth2Manager` refresh guard across primary and every
@@ -183,8 +192,19 @@ transfer clone. Cross-process serialization remains on `RefreshLease`.
 | Serial live control (production CLI LockedSingle) | 20 MiB: success after occasional 2068 + CLI retry; download-back SHA-256 match; cleanup |
 | Result 4006 | provider boundary maps to typed `TransferErrorKind::RateLimited` / AIMD congestion feedback |
 | Wire contract retained | `upload_write?uploadid=&uploadoffset=`; bearer not in URL; offsets handle-derived |
-| Whole-file clone pool vs multipart part workers | file/session ≤4 | same | file/session ≤4; shared OAuth refresh guard | file/session ≤4; shared OAuth refresh guard; bounded `id_cache` seed (root + current path only) |
-| Server part-size vs plan | n/a | n/a | n/a | fail-closed if session `part_size` ≠ 8 MiB plan |
+
+### Evidence split (DAG-P1-05D Filen native)
+
+| Layer | Filen native |
+|---|---|
+| Promotion decision | **`HttpClonePool` ceiling 4** |
+| Crypto/session ownership | `Arc<FilenConfig>` + `Arc<FilenAuthSnapshot>` (api_key + master_keys); replaced on connect/disconnect; workers never login/KDF/reconnect |
+| Clone cache bounds | root + current path/folder only; empty `file_key_cache` |
+| Deterministic HTTP part overlap | barrier-backed ingest fixture peak = 4; indexes 0..3; distinct AES-GCM nonces; body len = plain + 28 |
+| Secret hygiene | global `MultipartHandle` Debug redacts `upload_id`; transport errors scrub `uploadKey`/bearer; API key stays Authorization header |
+| 429/503 | `format_filen_error` + Retry-After → typed `RateLimited` / `ServiceUnavailable` |
+| Live WAN integrity | profile **`Filen Dev`** (owner override: exact `Filen` requires interactive 2FA), promoted **debug** CLI with dev master (`AEROFTP_MASTER_PASSWORD`): 2×8 MiB + 256 KiB put/get, SHA-256 + byte identity, remote cleanup. Earlier same-day release CLI control also green. |
+| Live WAN peak part overlap | not instrumented on this run (barrier fixture + live integrity) |
 
 Clone failure stays fail-closed: runtime composition demotes
 `file_parallel`/`session_pool` to single-lease and part I/O falls back to the

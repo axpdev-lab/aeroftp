@@ -398,7 +398,7 @@ impl FilenProvider {
         use secrecy::ExposeSecret;
         self.client.get(format!("{}{}", GATEWAY, endpoint)).header(
             "Authorization",
-            format!("Bearer {}", self.api_key.expose_secret()),
+            format!("Bearer {}", self.auth.api_key.expose_secret()),
         )
     }
 
@@ -407,7 +407,7 @@ impl FilenProvider {
         use secrecy::ExposeSecret;
         self.client.post(format!("{}{}", GATEWAY, endpoint)).header(
             "Authorization",
-            format!("Bearer {}", self.api_key.expose_secret()),
+            format!("Bearer {}", self.auth.api_key.expose_secret()),
         )
     }
 

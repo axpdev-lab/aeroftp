@@ -21,6 +21,7 @@ use serde::Deserialize;
 use sha1::Sha1;
 use sha2::{Digest, Sha512};
 use std::collections::HashMap;
+use std::sync::Arc;
 use tracing::debug;
 
 /// Debug logging through tracing infrastructure (no file I/O)
@@ -31,8 +32,9 @@ fn filen_log(msg: &str) {
 use super::http_retry::{send_with_retry, HttpRetryConfig};
 use super::types::FilenConfig;
 use super::{
-    MultipartHandle, ProviderError, ProviderType, RemoteEntry, ShareLinkCapabilities,
-    ShareLinkOptions, ShareLinkResult, StorageInfo, StorageProvider, UploadedPart,
+    MultipartHandle, ProviderError, ProviderTransferExecutorKind, ProviderType, RemoteEntry,
+    ShareLinkCapabilities, ShareLinkOptions, ShareLinkResult, StorageInfo, StorageProvider,
+    UploadedPart,
 };
 use serde::Serialize;
 
@@ -131,6 +133,13 @@ fn format_filen_error(
 
 /// Filen API gateway
 const GATEWAY: &str = "https://gateway.filen.io";
+
+/// Filen ingest CDN (chunk upload POST target).
+const INGEST: &str = "https://ingest.filen.io";
+
+/// Honest file/session ceiling for clone-backed Filen workers (DAG-P1-05D).
+/// Matches `multipart_max_parallel` / `FILEN_PARALLEL_CHUNK_UPLOADS`.
+const FILEN_TRANSFER_MAX_SESSIONS: u16 = 4;
 
 /// Plaintext chunk size used by the Filen v3 upload pipeline. Matches the
 /// `CHUNK_SIZE` constant from the official `filen-sdk-rs` crate. The Filen
@@ -344,15 +353,36 @@ struct DirInfo {
     name: String,
 }
 
-/// Filen Storage Provider
-pub struct FilenProvider {
-    config: FilenConfig,
-    client: reqwest::Client,
-    connected: bool,
+/// Immutable connected auth/crypto snapshot shared by primary and transfer clones.
+///
+/// Replaced wholesale on connect/disconnect. Workers never run login, KDF,
+/// token refresh, or network reconnect — they only read this snapshot.
+#[derive(Clone)]
+struct FilenAuthSnapshot {
     /// F-SEC-01: API key wrapped in SecretString for memory zeroization on drop
     api_key: SecretString,
     /// F-SEC-02: Master encryption keys wrapped in SecretString for memory zeroization on drop
     master_keys: Vec<SecretString>,
+}
+
+impl FilenAuthSnapshot {
+    fn empty() -> Self {
+        Self {
+            api_key: SecretString::from(String::new()),
+            master_keys: Vec::new(),
+        }
+    }
+}
+
+/// Filen Storage Provider
+pub struct FilenProvider {
+    /// Shared immutable config (password/email/optional API key). Arc so transfer
+    /// clones do not independently copy secret material.
+    config: Arc<FilenConfig>,
+    client: reqwest::Client,
+    connected: bool,
+    /// Shared immutable auth/crypto snapshot (API key + master-key ring).
+    auth: Arc<FilenAuthSnapshot>,
     current_path: String,
     current_folder_uuid: String,
     root_uuid: String,
@@ -367,6 +397,12 @@ pub struct FilenProvider {
     user_uuid: String,
     /// Last auth version returned by /v3/auth/info after a successful connect.
     auth_version: Option<u32>,
+    /// Test-only gateway base. `None` keeps production `GATEWAY`.
+    #[cfg(test)]
+    gateway_base_override: Option<String>,
+    /// Test-only ingest base. `None` keeps production `INGEST`.
+    #[cfg(test)]
+    ingest_base_override: Option<String>,
 }
 
 /// M3: Maximum number of cached directory/file-key entries to prevent unbounded memory growth.
@@ -382,11 +418,10 @@ impl FilenProvider {
             .build()
             .unwrap_or_else(|_| reqwest::Client::new());
         Self {
-            config,
+            config: Arc::new(config),
             client,
             connected: false,
-            api_key: SecretString::from(String::new()),
-            master_keys: Vec::new(),
+            auth: Arc::new(FilenAuthSnapshot::empty()),
             current_path: "/".to_string(),
             current_folder_uuid: String::new(),
             root_uuid: String::new(),
@@ -395,11 +430,107 @@ impl FilenProvider {
             retry_config: HttpRetryConfig::default(),
             user_uuid: String::new(),
             auth_version: None,
+            #[cfg(test)]
+            gateway_base_override: None,
+            #[cfg(test)]
+            ingest_base_override: None,
         }
     }
 
     pub fn auth_version(&self) -> Option<u32> {
         self.auth_version
+    }
+
+    /// Connected worker for unit tests (no network). Production clones use
+    /// [`StorageProvider::clone_for_transfer`] after a real `connect`.
+    #[cfg(test)]
+    fn connected_for_test(config: FilenConfig) -> Self {
+        let mut p = Self::new(config);
+        p.connected = true;
+        p.auth = Arc::new(FilenAuthSnapshot {
+            api_key: SecretString::from("test-api-key-not-for-production".to_string()),
+            master_keys: vec![SecretString::from(
+                "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef".to_string(),
+            )],
+        });
+        p.root_uuid = "root-uuid-test".to_string();
+        p.current_folder_uuid = "root-uuid-test".to_string();
+        p.current_path = "/".to_string();
+        p.dir_cache.insert(
+            "/".to_string(),
+            DirInfo {
+                uuid: "root-uuid-test".to_string(),
+                name: "/".to_string(),
+            },
+        );
+        p
+    }
+
+    /// Gateway base (`https://gateway.filen.io` in production).
+    fn gateway_base(&self) -> &str {
+        #[cfg(test)]
+        if let Some(ref base) = self.gateway_base_override {
+            return base.as_str();
+        }
+        GATEWAY
+    }
+
+    /// Ingest base (`https://ingest.filen.io` in production).
+    fn ingest_base(&self) -> &str {
+        #[cfg(test)]
+        if let Some(ref base) = self.ingest_base_override {
+            return base.as_str();
+        }
+        INGEST
+    }
+
+    /// Bound transfer-worker clone: shares config + auth Arc snapshots and the
+    /// cloneable `reqwest::Client`, seeds only root + current path/folder
+    /// navigation state (never copies the full `dir_cache` / `file_key_cache`).
+    fn clone_transfer_worker(&self) -> Self {
+        let mut dir_cache = HashMap::new();
+        if !self.root_uuid.is_empty() {
+            dir_cache.insert(
+                "/".to_string(),
+                DirInfo {
+                    uuid: self.root_uuid.clone(),
+                    name: "/".to_string(),
+                },
+            );
+        }
+        if self.current_path != "/" && !self.current_folder_uuid.is_empty() {
+            let leaf = self
+                .current_path
+                .rsplit('/')
+                .next()
+                .unwrap_or("")
+                .to_string();
+            dir_cache.insert(
+                self.current_path.clone(),
+                DirInfo {
+                    uuid: self.current_folder_uuid.clone(),
+                    name: leaf,
+                },
+            );
+        }
+        Self {
+            config: Arc::clone(&self.config),
+            client: self.client.clone(),
+            connected: self.connected,
+            auth: Arc::clone(&self.auth),
+            current_path: self.current_path.clone(),
+            current_folder_uuid: self.current_folder_uuid.clone(),
+            root_uuid: self.root_uuid.clone(),
+            dir_cache,
+            file_key_cache: HashMap::new(),
+            retry_config: self.retry_config.clone(),
+            user_uuid: self.user_uuid.clone(),
+            auth_version: self.auth_version,
+            #[cfg(test)]
+            gateway_base_override: self.gateway_base_override.clone(),
+            #[cfg(test)]
+            ingest_base_override: self.ingest_base_override.clone(),
+        }
     }
 
     /// M3: Insert into dir_cache with eviction when cap is reached.
@@ -508,7 +639,7 @@ impl FilenProvider {
 
     /// Decrypt metadata string using master keys
     fn decrypt_metadata(&self, encrypted: &str) -> Option<String> {
-        for key in &self.master_keys {
+        for key in &self.auth.master_keys {
             if let Some(decrypted) = Self::try_decrypt_aes_gcm(encrypted, key.expose_secret()) {
                 return Some(decrypted);
             }
@@ -618,6 +749,7 @@ impl FilenProvider {
     /// Filen format: "002" + 12-char IV (random ASCII alphanumeric) + base64(ciphertext+tag)
     fn encrypt_metadata(&self, data: &str) -> Result<String, ProviderError> {
         let key = self
+            .auth
             .master_keys
             .first()
             .ok_or_else(|| ProviderError::Other("No master key".to_string()))?;
@@ -673,10 +805,10 @@ impl FilenProvider {
         let encrypted = Self::encrypt_metadata_with_key(master_key, master_key)?;
         let resp: serde_json::Value = self
             .client
-            .post(format!("{}/v3/user/masterKeys", GATEWAY))
+            .post(format!("{}/v3/user/masterKeys", self.gateway_base()))
             .header(
                 "Authorization",
-                HeaderValue::from_str(&format!("Bearer {}", self.api_key.expose_secret()))
+                HeaderValue::from_str(&format!("Bearer {}", self.auth.api_key.expose_secret()))
                     .map_err(|e| ProviderError::Other(format!("Invalid auth header: {}", e)))?,
             )
             .json(&serde_json::json!({ "masterKeys": encrypted }))
@@ -814,10 +946,10 @@ impl FilenProvider {
             // List current folder to find child
             let request = self
                 .client
-                .post(format!("{}/v3/dir/content", GATEWAY))
+                .post(format!("{}/v3/dir/content", self.gateway_base()))
                 .header(
                     "Authorization",
-                    HeaderValue::from_str(&format!("Bearer {}", self.api_key.expose_secret()))
+                    HeaderValue::from_str(&format!("Bearer {}", self.auth.api_key.expose_secret()))
                         .map_err(|e| ProviderError::Other(format!("Invalid auth header: {}", e)))?,
                 )
                 .json(&serde_json::json!({"uuid": current_uuid}))
@@ -904,10 +1036,10 @@ impl FilenProvider {
     ) -> Result<Vec<FilenFileVersion>, ProviderError> {
         let request = self
             .client
-            .post(format!("{}/v3/file/versions", GATEWAY))
+            .post(format!("{}/v3/file/versions", self.gateway_base()))
             .header(
                 "Authorization",
-                HeaderValue::from_str(&format!("Bearer {}", self.api_key.expose_secret()))
+                HeaderValue::from_str(&format!("Bearer {}", self.auth.api_key.expose_secret()))
                     .map_err(|e| ProviderError::Other(format!("Invalid auth header: {}", e)))?,
             )
             .json(&serde_json::json!({ "uuid": file_uuid }))
@@ -961,7 +1093,7 @@ impl StorageProvider for FilenProvider {
         // Step 1: Get auth info
         let auth_info_resp: AuthInfoResponse = self
             .client
-            .post(format!("{}/v3/auth/info", GATEWAY))
+            .post(format!("{}/v3/auth/info", self.gateway_base()))
             .json(&serde_json::json!({"email": self.config.email}))
             .send()
             .await
@@ -1002,7 +1134,8 @@ impl StorageProvider for FilenProvider {
         //
         // The password is required either way: it derived the E2E master key
         // above. The api_key only authorises API transport, never decryption.
-        self.master_keys = vec![SecretString::from(derived_master_key.clone())];
+        Arc::make_mut(&mut self.auth).master_keys =
+            vec![SecretString::from(derived_master_key.clone())];
 
         let configured_api_key = self
             .config
@@ -1013,7 +1146,7 @@ impl StorageProvider for FilenProvider {
         let api_key_path = configured_api_key.is_some();
 
         let encrypted_master_keys: Option<String> = if let Some(api_key) = configured_api_key {
-            self.api_key = SecretString::from(api_key);
+            Arc::make_mut(&mut self.auth).api_key = SecretString::from(api_key);
             filen_log("connect: API-key path, skipping /v3/login (no 2FA window)");
             // The API-key path replaces /v3/login, so we must obtain and
             // decrypt the canonical master-keys ring here. A partial ring
@@ -1062,7 +1195,7 @@ impl StorageProvider for FilenProvider {
             });
             let login_resp: LoginResponse = self
                 .client
-                .post(format!("{}/v3/login", GATEWAY))
+                .post(format!("{}/v3/login", self.gateway_base()))
                 .json(&login_body)
                 .send()
                 .await
@@ -1083,7 +1216,7 @@ impl StorageProvider for FilenProvider {
                 .data
                 .ok_or_else(|| ProviderError::AuthenticationFailed("No login data".to_string()))?;
 
-            self.api_key = SecretString::from(login_data.api_key);
+            Arc::make_mut(&mut self.auth).api_key = SecretString::from(login_data.api_key);
             Some(login_data.master_keys)
         };
 
@@ -1104,10 +1237,13 @@ impl StorageProvider for FilenProvider {
                     let already_present = decrypted_keys
                         .iter()
                         .any(|k| k.expose_secret() == derived_master_key);
-                    self.master_keys = decrypted_keys;
-                    if !already_present {
-                        self.master_keys
-                            .push(SecretString::from(derived_master_key));
+                    {
+                        let auth = Arc::make_mut(&mut self.auth);
+                        auth.master_keys = decrypted_keys;
+                        if !already_present {
+                            auth.master_keys
+                                .push(SecretString::from(derived_master_key));
+                        }
                     }
                 }
                 None if api_key_path => {
@@ -1125,10 +1261,10 @@ impl StorageProvider for FilenProvider {
         // Step 5: Get root folder UUID from user info
         let user_resp: serde_json::Value = self
             .client
-            .get(format!("{}/v3/user/baseFolder", GATEWAY))
+            .get(format!("{}/v3/user/baseFolder", self.gateway_base()))
             .header(
                 "Authorization",
-                HeaderValue::from_str(&format!("Bearer {}", self.api_key.expose_secret()))
+                HeaderValue::from_str(&format!("Bearer {}", self.auth.api_key.expose_secret()))
                     .map_err(|e| ProviderError::Other(format!("Invalid auth header: {}", e)))?,
             )
             .send()
@@ -1159,10 +1295,10 @@ impl StorageProvider for FilenProvider {
         // Step 6: Fetch user UUID from /v3/user/account (required for Notes participant operations)
         let account_request = self
             .client
-            .get(format!("{}/v3/user/account", GATEWAY))
+            .get(format!("{}/v3/user/account", self.gateway_base()))
             .header(
                 "Authorization",
-                HeaderValue::from_str(&format!("Bearer {}", self.api_key.expose_secret()))
+                HeaderValue::from_str(&format!("Bearer {}", self.auth.api_key.expose_secret()))
                     .map_err(|e| ProviderError::Other(format!("Invalid auth header: {}", e)))?,
             )
             .build()
@@ -1183,17 +1319,16 @@ impl StorageProvider for FilenProvider {
             self.config.email,
             self.root_uuid,
             self.user_uuid,
-            self.master_keys.len()
+            self.auth.master_keys.len()
         ));
         Ok(())
     }
 
     async fn disconnect(&mut self) -> Result<(), ProviderError> {
         self.connected = false;
-        // F-SEC-01: Replace api_key with empty SecretString (zeroizes old value on drop)
-        self.api_key = SecretString::from(String::new());
-        // F-SEC-02: Clear master keys (each SecretString zeroizes on drop)
-        self.master_keys.clear();
+        // F-SEC-01/02: Drop previous auth Arc; replace with empty snapshot
+        // (SecretString zeroizes on drop when the Arc is unique or last-owned).
+        self.auth = Arc::new(FilenAuthSnapshot::empty());
         self.dir_cache.clear();
         // F-SEC-03: Clear cached file encryption keys on disconnect
         self.file_key_cache.clear();
@@ -1212,10 +1347,10 @@ impl StorageProvider for FilenProvider {
 
         let request = self
             .client
-            .post(format!("{}/v3/dir/content", GATEWAY))
+            .post(format!("{}/v3/dir/content", self.gateway_base()))
             .header(
                 "Authorization",
-                HeaderValue::from_str(&format!("Bearer {}", self.api_key.expose_secret()))
+                HeaderValue::from_str(&format!("Bearer {}", self.auth.api_key.expose_secret()))
                     .map_err(|e| ProviderError::Other(format!("Invalid auth header: {}", e)))?,
             )
             .json(&serde_json::json!({"uuid": folder_uuid}))
@@ -1700,7 +1835,8 @@ impl StorageProvider for FilenProvider {
                 next_index += 1;
                 let plaintext_len = buf.len() as u64;
                 let client = self.client.clone();
-                let api_key = self.api_key.clone();
+                let api_key = self.auth.api_key.clone();
+                let ingest_base = self.ingest_base().to_string();
                 let file_uuid = file_uuid.clone();
                 let parent_uuid = parent_uuid.clone();
                 let upload_key = upload_key.clone();
@@ -1709,6 +1845,7 @@ impl StorageProvider for FilenProvider {
                     upload_filen_chunk(
                         &client,
                         &api_key,
+                        &ingest_base,
                         &file_uuid,
                         &parent_uuid,
                         &upload_key,
@@ -1763,10 +1900,10 @@ impl StorageProvider for FilenProvider {
 
         let done_request = self
             .client
-            .post(format!("{}/v3/upload/done", GATEWAY))
+            .post(format!("{}/v3/upload/done", self.gateway_base()))
             .header(
                 "Authorization",
-                HeaderValue::from_str(&format!("Bearer {}", self.api_key.expose_secret()))
+                HeaderValue::from_str(&format!("Bearer {}", self.auth.api_key.expose_secret()))
                     .map_err(|e| ProviderError::Other(format!("Invalid auth header: {}", e)))?,
             )
             .header(CONTENT_TYPE, "application/json")
@@ -1819,10 +1956,10 @@ impl StorageProvider for FilenProvider {
 
         let request = self
             .client
-            .post(format!("{}/v3/dir/create", GATEWAY))
+            .post(format!("{}/v3/dir/create", self.gateway_base()))
             .header(
                 "Authorization",
-                HeaderValue::from_str(&format!("Bearer {}", self.api_key.expose_secret()))
+                HeaderValue::from_str(&format!("Bearer {}", self.auth.api_key.expose_secret()))
                     .map_err(|e| ProviderError::Other(format!("Invalid auth header: {}", e)))?,
             )
             .json(&serde_json::json!({
@@ -1848,6 +1985,7 @@ impl StorageProvider for FilenProvider {
 
         // Call v3/dir/metadata for each master key (required for Filen webapp compatibility)
         let master_keys_exposed: Vec<String> = self
+            .auth
             .master_keys
             .iter()
             .map(|k| k.expose_secret().to_string())
@@ -1856,10 +1994,10 @@ impl StorageProvider for FilenProvider {
             let encrypted_for_key = Self::encrypt_metadata_with_key(&name_json, key)?;
             let meta_request = self
                 .client
-                .post(format!("{}/v3/dir/metadata", GATEWAY))
+                .post(format!("{}/v3/dir/metadata", self.gateway_base()))
                 .header(
                     "Authorization",
-                    HeaderValue::from_str(&format!("Bearer {}", self.api_key.expose_secret()))
+                    HeaderValue::from_str(&format!("Bearer {}", self.auth.api_key.expose_secret()))
                         .map_err(|e| ProviderError::Other(format!("Invalid auth header: {}", e)))?,
                 )
                 .json(&serde_json::json!({
@@ -1902,10 +2040,10 @@ impl StorageProvider for FilenProvider {
 
         let request = self
             .client
-            .post(format!("{}/{}", GATEWAY, endpoint))
+            .post(format!("{}/{}", self.gateway_base(), endpoint))
             .header(
                 "Authorization",
-                HeaderValue::from_str(&format!("Bearer {}", self.api_key.expose_secret()))
+                HeaderValue::from_str(&format!("Bearer {}", self.auth.api_key.expose_secret()))
                     .map_err(|e| ProviderError::Other(format!("Invalid auth header: {}", e)))?,
             )
             .json(&serde_json::json!({"uuid": uuid}))
@@ -1932,10 +2070,10 @@ impl StorageProvider for FilenProvider {
 
         let request = self
             .client
-            .post(format!("{}/v3/dir/trash", GATEWAY))
+            .post(format!("{}/v3/dir/trash", self.gateway_base()))
             .header(
                 "Authorization",
-                HeaderValue::from_str(&format!("Bearer {}", self.api_key.expose_secret()))
+                HeaderValue::from_str(&format!("Bearer {}", self.auth.api_key.expose_secret()))
                     .map_err(|e| ProviderError::Other(format!("Invalid auth header: {}", e)))?,
             )
             .json(&serde_json::json!({"uuid": folder_uuid}))
@@ -2003,10 +2141,10 @@ impl StorageProvider for FilenProvider {
 
             let request = self
                 .client
-                .post(format!("{}/v3/dir/rename", GATEWAY))
+                .post(format!("{}/v3/dir/rename", self.gateway_base()))
                 .header(
                     "Authorization",
-                    HeaderValue::from_str(&format!("Bearer {}", self.api_key.expose_secret()))
+                    HeaderValue::from_str(&format!("Bearer {}", self.auth.api_key.expose_secret()))
                         .map_err(|e| ProviderError::Other(format!("Invalid auth header: {}", e)))?,
                 )
                 .json(&serde_json::json!({
@@ -2031,6 +2169,7 @@ impl StorageProvider for FilenProvider {
 
             // Update dir/metadata for webapp compatibility
             let master_keys_exposed: Vec<String> = self
+                .auth
                 .master_keys
                 .iter()
                 .map(|k| k.expose_secret().to_string())
@@ -2039,13 +2178,14 @@ impl StorageProvider for FilenProvider {
                 let enc = Self::encrypt_metadata_with_key(&name_json, key)?;
                 let meta_request = self
                     .client
-                    .post(format!("{}/v3/dir/metadata", GATEWAY))
+                    .post(format!("{}/v3/dir/metadata", self.gateway_base()))
                     .header(
                         "Authorization",
-                        HeaderValue::from_str(&format!("Bearer {}", self.api_key.expose_secret()))
-                            .map_err(|e| {
-                                ProviderError::Other(format!("Invalid auth header: {}", e))
-                            })?,
+                        HeaderValue::from_str(&format!(
+                            "Bearer {}",
+                            self.auth.api_key.expose_secret()
+                        ))
+                        .map_err(|e| ProviderError::Other(format!("Invalid auth header: {}", e)))?,
                     )
                     .json(&serde_json::json!({"uuid": uuid, "encrypted": enc}))
                     .build()
@@ -2088,10 +2228,10 @@ impl StorageProvider for FilenProvider {
 
             let request = self
                 .client
-                .post(format!("{}/v3/file/rename", GATEWAY))
+                .post(format!("{}/v3/file/rename", self.gateway_base()))
                 .header(
                     "Authorization",
-                    HeaderValue::from_str(&format!("Bearer {}", self.api_key.expose_secret()))
+                    HeaderValue::from_str(&format!("Bearer {}", self.auth.api_key.expose_secret()))
                         .map_err(|e| ProviderError::Other(format!("Invalid auth header: {}", e)))?,
                 )
                 .json(&serde_json::json!({
@@ -2171,10 +2311,10 @@ impl StorageProvider for FilenProvider {
 
         let request = self
             .client
-            .get(format!("{}/v3/user/info", GATEWAY))
+            .get(format!("{}/v3/user/info", self.gateway_base()))
             .header(
                 "Authorization",
-                HeaderValue::from_str(&format!("Bearer {}", self.api_key.expose_secret()))
+                HeaderValue::from_str(&format!("Bearer {}", self.auth.api_key.expose_secret()))
                     .map_err(|e| ProviderError::Other(format!("Invalid auth header: {}", e)))?,
             )
             .build()
@@ -2247,6 +2387,7 @@ impl StorageProvider for FilenProvider {
         // F-SHARE-01: Generate a link key for the recipient to decrypt the shared content.
         // The link key is the first master key, which is used to encrypt the shared metadata.
         let link_key = self
+            .auth
             .master_keys
             .first()
             .map(|k| k.expose_secret().to_string())
@@ -2319,10 +2460,10 @@ impl StorageProvider for FilenProvider {
 
         let request = self
             .client
-            .post(format!("{}/{}", GATEWAY, endpoint))
+            .post(format!("{}/{}", self.gateway_base(), endpoint))
             .header(
                 "Authorization",
-                HeaderValue::from_str(&format!("Bearer {}", self.api_key.expose_secret()))
+                HeaderValue::from_str(&format!("Bearer {}", self.auth.api_key.expose_secret()))
                     .map_err(|e| ProviderError::Other(format!("Invalid auth header: {}", e)))?,
             )
             .json(&link_body)
@@ -2382,10 +2523,10 @@ impl StorageProvider for FilenProvider {
 
         let request = self
             .client
-            .post(format!("{}/{}", GATEWAY, endpoint))
+            .post(format!("{}/{}", self.gateway_base(), endpoint))
             .header(
                 "Authorization",
-                HeaderValue::from_str(&format!("Bearer {}", self.api_key.expose_secret()))
+                HeaderValue::from_str(&format!("Bearer {}", self.auth.api_key.expose_secret()))
                     .map_err(|e| ProviderError::Other(format!("Invalid auth header: {}", e)))?,
             )
             .json(&serde_json::json!({
@@ -2524,10 +2665,10 @@ impl StorageProvider for FilenProvider {
         // (filen-sdk-ts api/v3/file/version/restore).
         let request = self
             .client
-            .post(format!("{}/v3/file/version/restore", GATEWAY))
+            .post(format!("{}/v3/file/version/restore", self.gateway_base()))
             .header(
                 "Authorization",
-                HeaderValue::from_str(&format!("Bearer {}", self.api_key.expose_secret()))
+                HeaderValue::from_str(&format!("Bearer {}", self.auth.api_key.expose_secret()))
                     .map_err(|e| ProviderError::Other(format!("Invalid auth header: {}", e)))?,
             )
             .json(&serde_json::json!({ "uuid": version_id, "current": current_uuid }))
@@ -2612,6 +2753,26 @@ impl StorageProvider for FilenProvider {
         }
     }
 
+    // DAG-P1-05D: each shaped part is independently encrypted and POSTed to
+    // ingest with the opaque handle's crypto snapshot, so part workers may
+    // run on connected clones that share the Arc auth/config snapshot and
+    // their own reqwest client. Begin and complete stay primary-owned;
+    // abort is a documented no-op.
+    fn transfer_executor_kind(&self) -> ProviderTransferExecutorKind {
+        ProviderTransferExecutorKind::HttpClonePool
+    }
+
+    fn transfer_executor_max_sessions(&self) -> u16 {
+        FILEN_TRANSFER_MAX_SESSIONS
+    }
+
+    fn clone_for_transfer(&self) -> Result<Box<dyn StorageProvider>, ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+        Ok(Box::new(self.clone_transfer_worker()))
+    }
+
     // Shaped-graph multipart trait wiring (S3-T02).
     //
     // Filen's v3 chunked upload maps onto the trait as:
@@ -2642,6 +2803,9 @@ impl StorageProvider for FilenProvider {
         _content_type: Option<&str>,
         _local_source_path: Option<&str>,
     ) -> Result<MultipartHandle, ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
         if total_size == 0 {
             return Err(ProviderError::TransferFailed(
                 "Filen does not accept empty files".to_string(),
@@ -2705,6 +2869,9 @@ impl StorageProvider for FilenProvider {
         part_number: u32,
         data: Vec<u8>,
     ) -> Result<UploadedPart, ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
         if part_number == 0 {
             return Err(ProviderError::Other(
                 "Filen upload_part requires 1-based part_number".to_string(),
@@ -2739,7 +2906,8 @@ impl StorageProvider for FilenProvider {
 
         upload_filen_chunk(
             &self.client,
-            &self.api_key,
+            &self.auth.api_key,
+            self.ingest_base(),
             &meta.file_uuid,
             &meta.parent_uuid,
             &meta.upload_key,
@@ -2760,6 +2928,9 @@ impl StorageProvider for FilenProvider {
         handle: MultipartHandle,
         parts: Vec<UploadedPart>,
     ) -> Result<(), ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
         let meta = FilenMultipartMeta::decode(&handle.upload_id)?;
         if parts.len() != meta.total_chunks as usize {
             return Err(ProviderError::TransferFailed(format!(
@@ -2790,10 +2961,10 @@ impl StorageProvider for FilenProvider {
 
         let done_request = self
             .client
-            .post(format!("{}/v3/upload/done", GATEWAY))
+            .post(format!("{}/v3/upload/done", self.gateway_base()))
             .header(
                 "Authorization",
-                HeaderValue::from_str(&format!("Bearer {}", self.api_key.expose_secret()))
+                HeaderValue::from_str(&format!("Bearer {}", self.auth.api_key.expose_secret()))
                     .map_err(|e| ProviderError::Other(format!("Invalid auth header: {}", e)))?,
             )
             .header(CONTENT_TYPE, "application/json")
@@ -2839,6 +3010,63 @@ impl StorageProvider for FilenProvider {
     }
 }
 
+/// Redact Filen secrets that may appear in transport/URL error strings.
+///
+/// The ingest URL carries `uploadKey=` in the query string; a reqwest error can
+/// echo the full URL. Authorization stays in the header (never the URL), but we
+/// still scrub bearer tokens and known secret-bearing query keys.
+fn redact_filen_secrets_in_text(input: &str) -> String {
+    let mut out = input.to_string();
+    // Query-style: uploadKey=<value>, hash=<value> (hash is not a secret but
+    // is long; leave hash — only scrub credential-like params).
+    for key in [
+        "uploadKey",
+        "upload_key",
+        "apiKey",
+        "api_key",
+        "fileKey",
+        "file_key",
+    ] {
+        // key=... until & or end or whitespace
+        let needle = format!("{key}=");
+        let mut search_from = 0;
+        while let Some(rel) = out[search_from..].find(&needle) {
+            let start = search_from + rel + needle.len();
+            let rest = &out[start..];
+            let end_rel = rest
+                .find(|c: char| c == '&' || c.is_whitespace() || c == '"' || c == '\'')
+                .unwrap_or(rest.len());
+            let end = start + end_rel;
+            out.replace_range(start..end, "<redacted>");
+            search_from = start + "<redacted>".len();
+        }
+    }
+    // Bearer tokens
+    if let Some(idx) = out.to_ascii_lowercase().find("bearer ") {
+        let start = idx + "bearer ".len();
+        let rest = &out[start..];
+        let end_rel = rest
+            .find(|c: char| c.is_whitespace() || c == '"' || c == '\'')
+            .unwrap_or(rest.len());
+        let end = start + end_rel;
+        if end > start {
+            out.replace_range(start..end, "<redacted>");
+        }
+    }
+    out
+}
+
+/// Sanitize a reqwest transport error so Filen `uploadKey` / API material never
+/// reaches logs, tracker text, or user-facing errors.
+fn sanitize_filen_transport_error(err: &reqwest::Error) -> String {
+    let mut msg = err.to_string();
+    if let Some(url) = err.url() {
+        let redacted_url = redact_filen_secrets_in_text(url.as_str());
+        msg = msg.replace(url.as_str(), &redacted_url);
+    }
+    redact_filen_secrets_in_text(&msg)
+}
+
 /// Encrypt a single plaintext chunk and POST it to `/v3/upload?index={index}`.
 ///
 /// Mirrors the byte-exact wire format used by `filen-sdk-rs::api::v3::upload::
@@ -2852,6 +3080,7 @@ impl StorageProvider for FilenProvider {
 async fn upload_filen_chunk(
     client: &reqwest::Client,
     api_key: &SecretString,
+    ingest_base: &str,
     file_uuid: &str,
     parent_uuid: &str,
     upload_key: &str,
@@ -2867,8 +3096,13 @@ async fn upload_filen_chunk(
     let chunk_hash = hex::encode(hasher.finalize());
 
     let url = format!(
-        "https://ingest.filen.io/v3/upload?uuid={}&index={}&parent={}&uploadKey={}&hash={}",
-        file_uuid, index, parent_uuid, upload_key, chunk_hash,
+        "{}/v3/upload?uuid={}&index={}&parent={}&uploadKey={}&hash={}",
+        ingest_base.trim_end_matches('/'),
+        file_uuid,
+        index,
+        parent_uuid,
+        upload_key,
+        chunk_hash,
     );
 
     let resp = client
@@ -2881,7 +3115,7 @@ async fn upload_filen_chunk(
         .body(encrypted)
         .send()
         .await
-        .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+        .map_err(|e| ProviderError::NetworkError(sanitize_filen_transport_error(&e)))?;
 
     let status = resp.status();
     let retry_header = resp
@@ -2895,10 +3129,13 @@ async fn upload_filen_chunk(
         .map_err(|e| ProviderError::ParseError(e.to_string()))?;
 
     if !status.is_success() {
+        // Body preview is application JSON; still scrub in case a gateway echoes
+        // the upload key.
+        let preview = redact_filen_secrets_in_text(&resp_text[..resp_text.len().min(200)]);
         return Err(ProviderError::TransferFailed(format_filen_error(
             &format!("Upload chunk {} failed", index),
             status,
-            &resp_text[..resp_text.len().min(200)],
+            &preview,
             retry_header.as_deref(),
         )));
     }
@@ -2906,10 +3143,11 @@ async fn upload_filen_chunk(
     let upload_resp: serde_json::Value =
         serde_json::from_str(&resp_text).map_err(|e| ProviderError::ParseError(e.to_string()))?;
     if upload_resp["status"].as_bool() != Some(true) {
+        let msg = upload_resp["message"].as_str().unwrap_or("unknown");
         return Err(ProviderError::TransferFailed(format!(
             "Upload chunk {} rejected: {}",
             index,
-            upload_resp["message"].as_str().unwrap_or("unknown"),
+            redact_filen_secrets_in_text(msg),
         )));
     }
 
@@ -3258,5 +3496,718 @@ mod tests {
                 "HTTP {code} must NOT be retried"
             );
         }
+    }
+
+    // ---- DAG-P1-05D: HttpClonePool worker promotion ----
+
+    /// Parse a query parameter from a request URI (avoids axum `query` feature).
+    fn uri_query_param(uri: &str, key: &str) -> Option<String> {
+        let q = uri.split_once('?')?.1;
+        for pair in q.split('&') {
+            let (k, v) = pair.split_once('=')?;
+            if k == key {
+                return Some(v.to_string());
+            }
+        }
+        None
+    }
+
+    fn demo_cfg() -> FilenConfig {
+        FilenConfig {
+            email: "demo@example.com".to_string(),
+            password: SecretString::from("demo-password-not-real".to_string()),
+            two_factor_code: None,
+            totp_secret: None,
+            api_key: None,
+        }
+    }
+
+    #[test]
+    fn clone_for_transfer_requires_connection() {
+        let p = FilenProvider::new(demo_cfg());
+        assert!(!p.is_connected());
+        assert!(matches!(
+            p.clone_for_transfer(),
+            Err(ProviderError::NotConnected)
+        ));
+        // Disconnected error must not leak credentials.
+        let err = match p.clone_for_transfer() {
+            Err(e) => e,
+            Ok(_) => panic!("expected NotConnected"),
+        };
+        let s = err.to_string();
+        assert!(!s.contains("demo-password"));
+        assert!(!s.contains("demo@example.com") || s == "Not connected to server");
+    }
+
+    #[test]
+    fn connected_clone_succeeds_without_reconnect_and_is_distinct() {
+        let p = FilenProvider::connected_for_test(demo_cfg());
+        let worker = p.clone_for_transfer().expect("connected clone");
+        assert_eq!(worker.provider_type(), ProviderType::Filen);
+        assert!(worker.is_connected());
+        assert_eq!(
+            p.transfer_executor_kind(),
+            ProviderTransferExecutorKind::HttpClonePool
+        );
+        assert_eq!(p.transfer_executor_max_sessions(), 4);
+        let primary_ptr = &p as *const _ as usize;
+        let worker_ptr = worker.as_ref() as *const dyn StorageProvider as *const () as usize;
+        assert_ne!(primary_ptr, worker_ptr);
+    }
+
+    #[test]
+    fn clone_shares_auth_arc_and_keeps_caches_bounded() {
+        let mut p = FilenProvider::connected_for_test(demo_cfg());
+        // Pollute primary caches beyond navigation seed.
+        for i in 0..20 {
+            p.dir_cache_insert(
+                format!("/folder-{i}"),
+                DirInfo {
+                    uuid: format!("uuid-{i}"),
+                    name: format!("folder-{i}"),
+                },
+            );
+            p.file_key_cache_insert(format!("file-{i}"), format!("key-{i}"));
+        }
+        assert!(p.dir_cache.len() > 2);
+        assert_eq!(p.file_key_cache.len(), 20);
+
+        let w = p.clone_transfer_worker();
+        assert!(
+            Arc::ptr_eq(&p.auth, &w.auth),
+            "auth snapshot must be shared immutably via Arc"
+        );
+        assert!(
+            Arc::ptr_eq(&p.config, &w.config),
+            "config snapshot must be shared immutably via Arc"
+        );
+        // Seeded navigation only: root (+ optional current). Never full caches.
+        assert!(
+            w.dir_cache.len() <= 2,
+            "clone dir_cache must stay bounded (got {})",
+            w.dir_cache.len()
+        );
+        assert!(w.dir_cache.contains_key("/"));
+        assert!(
+            w.file_key_cache.is_empty(),
+            "clone must not copy file_key_cache"
+        );
+        // clone_for_transfer also succeeds and reports Filen.
+        let worker = p.clone_for_transfer().expect("clone");
+        assert_eq!(worker.provider_type(), ProviderType::Filen);
+    }
+
+    #[test]
+    fn runtime_composition_yields_http_clone_pool_when_connected() {
+        use crate::provider_transfer_executor::{
+            compose_runtime_transfer_capabilities, resolve_session_model,
+        };
+        use crate::transfer_dag::Capability;
+
+        let p = FilenProvider::connected_for_test(demo_cfg());
+        let advertised = p.transfer_capabilities();
+        let can_clone = p.clone_for_transfer().is_ok();
+        assert!(can_clone);
+        let caps = compose_runtime_transfer_capabilities(
+            &advertised,
+            p.transfer_executor_kind(),
+            can_clone,
+        );
+        assert_eq!(caps.file_parallel, Capability::Supported);
+        assert_eq!(caps.session_pool, Capability::Supported);
+        assert_eq!(caps.max_file_slots, Some(4));
+        assert_eq!(caps.max_chunk_slots, Some(4));
+
+        let model = resolve_session_model(
+            ProviderType::Filen,
+            &caps,
+            p.transfer_executor_kind(),
+            can_clone,
+            p.transfer_executor_max_sessions(),
+            8,
+        );
+        assert!(matches!(
+            model,
+            crate::provider_transfer_executor::ProviderExecutorSessionModel::HttpClonePool { .. }
+        ));
+        assert_eq!(model.max_leases(), 4);
+    }
+
+    #[test]
+    fn forced_clone_failure_demotes_runtime_file_parallelism() {
+        use crate::provider_transfer_executor::compose_runtime_transfer_capabilities;
+        use crate::transfer_dag::Capability;
+
+        let p = FilenProvider::new(demo_cfg());
+        assert_eq!(
+            p.transfer_executor_kind(),
+            ProviderTransferExecutorKind::HttpClonePool
+        );
+        let can_clone = p.clone_for_transfer().is_ok();
+        assert!(!can_clone);
+        let caps = compose_runtime_transfer_capabilities(
+            &p.transfer_capabilities(),
+            p.transfer_executor_kind(),
+            can_clone,
+        );
+        assert_eq!(caps.file_parallel, Capability::Unsupported);
+        assert_eq!(caps.session_pool, Capability::Unsupported);
+        assert_eq!(caps.max_file_slots, Some(1));
+        // Multipart part cap from hints remains 4; primary mutex serialises parts.
+        assert_eq!(caps.max_chunk_slots, Some(4));
+    }
+
+    #[test]
+    fn legacy_fanout_ceiling_matches_shaped_session_cap() {
+        // Composition proof: legacy upload() fan-out is FILEN_PARALLEL_CHUNK_UPLOADS
+        // and must not exceed the shaped session/file ceiling. Sub-threshold
+        // files (total < 1 MiB) produce a single Filen chunk; shaped files at
+        // or above 1 MiB use DAG part nodes under the same cap of 4.
+        assert_eq!(FILEN_PARALLEL_CHUNK_UPLOADS, 4);
+        assert_eq!(FILEN_TRANSFER_MAX_SESSIONS, 4);
+        assert_eq!(
+            FILEN_PARALLEL_CHUNK_UPLOADS as u16,
+            FILEN_TRANSFER_MAX_SESSIONS
+        );
+        let p = FilenProvider::connected_for_test(demo_cfg());
+        let hints = p.transfer_optimization_hints();
+        assert_eq!(hints.multipart_threshold, FILEN_CHUNK_SIZE as u64);
+        assert_eq!(hints.multipart_max_parallel, 4);
+        // One sub-threshold file → one chunk (no 4×4 multiplication on shaped path).
+        assert_eq!(1u64.div_ceil(FILEN_CHUNK_SIZE as u64), 1);
+        assert_eq!(
+            (FILEN_CHUNK_SIZE as u64).div_ceil(FILEN_CHUNK_SIZE as u64),
+            1
+        );
+        assert_eq!(
+            (4 * FILEN_CHUNK_SIZE as u64).div_ceil(FILEN_CHUNK_SIZE as u64),
+            4
+        );
+    }
+
+    #[test]
+    fn multipart_handle_debug_redacts_upload_id() {
+        let meta = FilenMultipartMeta {
+            file_uuid: "550e8400-e29b-41d4-a716-446655440000".to_string(),
+            parent_uuid: "11111111-2222-3333-4444-555555555555".to_string(),
+            file_key: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                .to_string(),
+            upload_key: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+                .to_string(),
+            file_name: "secret.bin".to_string(),
+            mime: "application/octet-stream".to_string(),
+            total: 4096,
+            part: 1024,
+            total_chunks: 4,
+        };
+        let handle = MultipartHandle {
+            upload_id: meta.encode(),
+            remote_path: "/secret.bin".into(),
+        };
+        let dbg = format!("{handle:?}");
+        assert!(dbg.contains("<redacted>"), "dbg={dbg}");
+        assert!(!dbg.contains(&meta.file_key), "file_key must not appear");
+        assert!(
+            !dbg.contains(&meta.upload_key),
+            "upload_key must not appear"
+        );
+        assert!(!dbg.contains("uploadKey"), "raw meta must not appear");
+        assert!(dbg.contains("/secret.bin"));
+    }
+
+    #[test]
+    fn redact_filen_secrets_strips_upload_key_and_bearer() {
+        let raw = "error sending request for url (https://ingest.filen.io/v3/upload?uuid=u&index=0&parent=p&uploadKey=deadbeefcafebabe&hash=abc) Bearer sk-live-secret-token";
+        let clean = redact_filen_secrets_in_text(raw);
+        assert!(!clean.contains("deadbeefcafebabe"), "clean={clean}");
+        assert!(!clean.contains("sk-live-secret-token"), "clean={clean}");
+        assert!(clean.contains("uploadKey=<redacted>"), "clean={clean}");
+        assert!(
+            clean.contains("Bearer <redacted>")
+                || clean.to_ascii_lowercase().contains("bearer <redacted>")
+        );
+    }
+
+    #[test]
+    fn throttle_429_and_503_map_to_typed_congestion_with_retry_after() {
+        let msg_429 = format_filen_error(
+            "Upload chunk 0 failed",
+            reqwest::StatusCode::TOO_MANY_REQUESTS,
+            "Too many requests",
+            Some("17"),
+        );
+        let pe_429 = ProviderError::TransferFailed(msg_429);
+        let te_429 = crate::transfer_dag::TransferError::from_provider(&pe_429);
+        assert_eq!(
+            te_429.kind,
+            crate::transfer_dag::TransferErrorKind::RateLimited
+        );
+        assert_eq!(te_429.retry_after, Some(std::time::Duration::from_secs(17)));
+
+        let msg_503 = format_filen_error(
+            "Upload chunk 1 failed",
+            reqwest::StatusCode::SERVICE_UNAVAILABLE,
+            "Service Unavailable",
+            Some("42"),
+        );
+        let pe_503 = ProviderError::TransferFailed(msg_503);
+        let te_503 = crate::transfer_dag::TransferError::from_provider(&pe_503);
+        assert_eq!(
+            te_503.kind,
+            crate::transfer_dag::TransferErrorKind::ServiceUnavailable
+        );
+        assert_eq!(te_503.retry_after, Some(std::time::Duration::from_secs(42)));
+    }
+
+    #[test]
+    fn clone_multipart_worker_helper_returns_some_only_when_connected() {
+        use crate::transfer_multipart::clone_multipart_worker;
+
+        let disconnected = FilenProvider::new(demo_cfg());
+        assert!(clone_multipart_worker(&disconnected).is_none());
+
+        let connected = FilenProvider::connected_for_test(demo_cfg());
+        assert!(clone_multipart_worker(&connected).is_some());
+    }
+
+    #[tokio::test]
+    async fn barrier_backed_ingest_records_exact_peak_4() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
+
+        use axum::{body::Bytes, extract::Request, http::StatusCode, routing::post, Router};
+
+        let in_flight = Arc::new(AtomicUsize::new(0));
+        let peak = Arc::new(AtomicUsize::new(0));
+        let request_count = Arc::new(AtomicUsize::new(0));
+        let indexes = Arc::new(std::sync::Mutex::new(Vec::<u64>::new()));
+        let nonces = Arc::new(std::sync::Mutex::new(Vec::<Vec<u8>>::new()));
+        let body_lens = Arc::new(std::sync::Mutex::new(Vec::<usize>::new()));
+        let seen_uuid = Arc::new(std::sync::Mutex::new(None::<String>));
+        let seen_parent = Arc::new(std::sync::Mutex::new(None::<String>));
+        let seen_upload_key = Arc::new(std::sync::Mutex::new(None::<String>));
+        let gate = Arc::new(tokio::sync::Barrier::new(4));
+
+        let in_flight_h = Arc::clone(&in_flight);
+        let peak_h = Arc::clone(&peak);
+        let count_h = Arc::clone(&request_count);
+        let indexes_h = Arc::clone(&indexes);
+        let nonces_h = Arc::clone(&nonces);
+        let body_lens_h = Arc::clone(&body_lens);
+        let uuid_h = Arc::clone(&seen_uuid);
+        let parent_h = Arc::clone(&seen_parent);
+        let uk_h = Arc::clone(&seen_upload_key);
+        let gate_h = Arc::clone(&gate);
+
+        let app = Router::new().route(
+            "/v3/upload",
+            post(move |req: Request| {
+                let in_flight = Arc::clone(&in_flight_h);
+                let peak = Arc::clone(&peak_h);
+                let count = Arc::clone(&count_h);
+                let indexes = Arc::clone(&indexes_h);
+                let nonces = Arc::clone(&nonces_h);
+                let body_lens = Arc::clone(&body_lens_h);
+                let uuid = Arc::clone(&uuid_h);
+                let parent = Arc::clone(&parent_h);
+                let uk = Arc::clone(&uk_h);
+                let gate = Arc::clone(&gate_h);
+                async move {
+                    count.fetch_add(1, Ordering::SeqCst);
+                    let uri = req.uri().to_string();
+                    let q_uuid = uri_query_param(&uri, "uuid").expect("uuid");
+                    let q_index: u64 = uri_query_param(&uri, "index")
+                        .expect("index")
+                        .parse()
+                        .expect("index u64");
+                    let q_parent = uri_query_param(&uri, "parent").expect("parent");
+                    let q_upload_key = uri_query_param(&uri, "uploadKey").expect("uploadKey");
+                    let q_hash = uri_query_param(&uri, "hash").expect("hash");
+                    {
+                        let mut g = uuid.lock().unwrap();
+                        if g.is_none() {
+                            *g = Some(q_uuid.clone());
+                        } else {
+                            assert_eq!(g.as_ref().unwrap(), &q_uuid);
+                        }
+                    }
+                    {
+                        let mut g = parent.lock().unwrap();
+                        if g.is_none() {
+                            *g = Some(q_parent.clone());
+                        } else {
+                            assert_eq!(g.as_ref().unwrap(), &q_parent);
+                        }
+                    }
+                    {
+                        let mut g = uk.lock().unwrap();
+                        if g.is_none() {
+                            *g = Some(q_upload_key.clone());
+                        } else {
+                            assert_eq!(g.as_ref().unwrap(), &q_upload_key);
+                        }
+                    }
+                    indexes.lock().unwrap().push(q_index);
+                    assert!(!q_hash.is_empty());
+
+                    let now = in_flight.fetch_add(1, Ordering::SeqCst) + 1;
+                    peak.fetch_max(now, Ordering::SeqCst);
+                    gate.wait().await;
+                    in_flight.fetch_sub(1, Ordering::SeqCst);
+
+                    let body = axum::body::to_bytes(req.into_body(), 2 * 1024 * 1024)
+                        .await
+                        .unwrap_or_else(|_| Bytes::new());
+                    body_lens.lock().unwrap().push(body.len());
+                    if body.len() >= 12 {
+                        nonces.lock().unwrap().push(body[..12].to_vec());
+                    }
+                    (
+                        StatusCode::OK,
+                        axum::Json(serde_json::json!({"status": true})),
+                    )
+                }
+            }),
+        );
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind fixture");
+        let addr = listener.local_addr().expect("local addr");
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.ok();
+        });
+
+        let mut primary = FilenProvider::connected_for_test(demo_cfg());
+        primary.ingest_base_override = Some(format!("http://{addr}"));
+
+        let file_uuid = "550e8400-e29b-41d4-a716-446655440000".to_string();
+        let parent_uuid = "11111111-2222-3333-4444-555555555555".to_string();
+        let file_key: String = (0..32).map(|i| format!("{:02x}", i as u8)).collect();
+        let upload_key: String = (0..32).map(|i| format!("{:02x}", 255 - i as u8)).collect();
+        let part_plain = 64usize;
+        let meta = FilenMultipartMeta {
+            file_uuid: file_uuid.clone(),
+            parent_uuid: parent_uuid.clone(),
+            file_key: file_key.clone(),
+            upload_key: upload_key.clone(),
+            file_name: "f.bin".to_string(),
+            mime: "application/octet-stream".to_string(),
+            total: (4 * part_plain) as u64,
+            part: part_plain as u64,
+            total_chunks: 4,
+        };
+        let handle = MultipartHandle {
+            upload_id: meta.encode(),
+            remote_path: "/f.bin".to_string(),
+        };
+
+        let mut workers: Vec<Box<dyn StorageProvider>> = (0..4)
+            .map(|_| primary.clone_for_transfer().expect("worker clone"))
+            .collect();
+        let mut set = tokio::task::JoinSet::new();
+        for (i, mut worker) in workers.drain(..).enumerate() {
+            let handle = handle.clone();
+            let part = (i as u32) + 1;
+            set.spawn(async move {
+                worker
+                    .upload_part(&handle, part, vec![b'y'; part_plain])
+                    .await
+                    .map_err(|e| e.to_string())
+            });
+        }
+        let mut receipts = Vec::new();
+        while let Some(res) = set.join_next().await {
+            receipts.push(res.expect("join").expect("upload_part"));
+        }
+        receipts.sort_by_key(|r| r.part_number);
+        assert_eq!(receipts.len(), 4);
+        for (i, r) in receipts.iter().enumerate() {
+            assert_eq!(r.part_number, (i as u32) + 1);
+        }
+
+        let mut seen_idx = indexes.lock().unwrap().clone();
+        seen_idx.sort();
+        assert_eq!(
+            seen_idx,
+            vec![0, 1, 2, 3],
+            "Filen index is 0-based part_number-1"
+        );
+
+        assert_eq!(
+            seen_uuid.lock().unwrap().as_deref(),
+            Some(file_uuid.as_str())
+        );
+        assert_eq!(
+            seen_parent.lock().unwrap().as_deref(),
+            Some(parent_uuid.as_str())
+        );
+        assert_eq!(
+            seen_upload_key.lock().unwrap().as_deref(),
+            Some(upload_key.as_str())
+        );
+
+        let lens = body_lens.lock().unwrap().clone();
+        assert_eq!(lens.len(), 4);
+        for len in &lens {
+            assert_eq!(
+                *len,
+                part_plain + 12 + 16,
+                "encrypted body = plaintext + nonce(12) + tag(16)"
+            );
+        }
+        let ns = nonces.lock().unwrap().clone();
+        assert_eq!(ns.len(), 4);
+        let mut unique = ns.clone();
+        unique.sort();
+        unique.dedup();
+        assert_eq!(
+            unique.len(),
+            4,
+            "each part must use a distinct random nonce"
+        );
+
+        let observed_peak = peak.load(Ordering::SeqCst);
+        assert_eq!(request_count.load(Ordering::SeqCst), 4);
+        assert_eq!(
+            observed_peak, 4,
+            "barrier-backed fixture must record exact peak=4 (got {observed_peak})"
+        );
+
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn out_of_order_parts_map_to_requested_numbers_and_complete_once() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
+
+        use axum::{extract::Request, http::StatusCode, routing::post, Router};
+
+        let done_count = Arc::new(AtomicUsize::new(0));
+        let done_h = Arc::clone(&done_count);
+
+        let app = Router::new()
+            .route(
+                "/v3/upload",
+                post(|req: Request| async move {
+                    let uri = req.uri().to_string();
+                    let index: u64 = uri_query_param(&uri, "index")
+                        .expect("index")
+                        .parse()
+                        .unwrap_or(0);
+                    // Higher indexes complete first so completion order differs.
+                    let delay_ms = 20u64 * (4u64.saturating_sub(index));
+                    tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+                    let _ = axum::body::to_bytes(req.into_body(), 64 * 1024).await;
+                    (
+                        StatusCode::OK,
+                        axum::Json(serde_json::json!({"status": true})),
+                    )
+                }),
+            )
+            .route(
+                "/v3/upload/done",
+                post(move |_req: Request| {
+                    let done = Arc::clone(&done_h);
+                    async move {
+                        done.fetch_add(1, Ordering::SeqCst);
+                        (
+                            StatusCode::OK,
+                            axum::Json(serde_json::json!({"status": true})),
+                        )
+                    }
+                }),
+            );
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.ok();
+        });
+
+        let mut primary = FilenProvider::connected_for_test(demo_cfg());
+        primary.ingest_base_override = Some(format!("http://{addr}"));
+        primary.gateway_base_override = Some(format!("http://{addr}"));
+
+        // Use a known master key that can encrypt metadata (AES path).
+        // encrypt_metadata uses master_keys from auth snapshot set in connected_for_test.
+        let meta = FilenMultipartMeta {
+            file_uuid: "550e8400-e29b-41d4-a716-446655440000".to_string(),
+            parent_uuid: "11111111-2222-3333-4444-555555555555".to_string(),
+            file_key: (0..32).map(|i| format!("{:02x}", i as u8)).collect(),
+            upload_key: (0..32).map(|i| format!("{:02x}", 200 - i as u8)).collect(),
+            file_name: "ooo.bin".to_string(),
+            mime: "application/octet-stream".to_string(),
+            total: 4096,
+            part: 1024,
+            total_chunks: 4,
+        };
+        let handle = MultipartHandle {
+            upload_id: meta.encode(),
+            remote_path: "/ooo.bin".into(),
+        };
+
+        let mut set = tokio::task::JoinSet::new();
+        for part in [4u32, 1, 3, 2] {
+            let mut worker = primary.clone_for_transfer().expect("clone");
+            let handle = handle.clone();
+            set.spawn(async move {
+                worker
+                    .upload_part(&handle, part, vec![0u8; 32])
+                    .await
+                    .map(|r| (part, r))
+                    .map_err(|e| e.to_string())
+            });
+        }
+        let mut got = Vec::new();
+        let mut receipts = Vec::new();
+        while let Some(res) = set.join_next().await {
+            let (requested, receipt) = res.unwrap().unwrap();
+            assert_eq!(receipt.part_number, requested);
+            got.push(receipt.part_number);
+            receipts.push(receipt);
+        }
+        got.sort();
+        assert_eq!(got, vec![1, 2, 3, 4]);
+
+        primary
+            .complete_multipart_upload(handle.clone(), receipts)
+            .await
+            .expect("complete");
+        assert_eq!(done_count.load(Ordering::SeqCst), 1);
+
+        // Abort is a documented no-op and may be called again without extra wire.
+        primary
+            .abort_multipart_upload(handle)
+            .await
+            .expect("abort no-op");
+        assert_eq!(done_count.load(Ordering::SeqCst), 1);
+
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn one_part_failure_leaves_sibling_and_primary_usable() {
+        use axum::{extract::Request, http::StatusCode, routing::post, Router};
+
+        let app = Router::new().route(
+            "/v3/upload",
+            post(|req: Request| async move {
+                let uri = req.uri().to_string();
+                let index: u64 = uri_query_param(&uri, "index")
+                    .expect("index")
+                    .parse()
+                    .unwrap_or(0);
+                let _ = axum::body::to_bytes(req.into_body(), 64 * 1024).await;
+                if index == 1 {
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        axum::Json(serde_json::json!({"status": false, "message": "boom"})),
+                    )
+                } else {
+                    (
+                        StatusCode::OK,
+                        axum::Json(serde_json::json!({"status": true})),
+                    )
+                }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.ok();
+        });
+
+        let mut primary = FilenProvider::connected_for_test(demo_cfg());
+        primary.ingest_base_override = Some(format!("http://{addr}"));
+        let meta = FilenMultipartMeta {
+            file_uuid: "550e8400-e29b-41d4-a716-446655440000".to_string(),
+            parent_uuid: "11111111-2222-3333-4444-555555555555".to_string(),
+            file_key: (0..32).map(|i| format!("{:02x}", i as u8)).collect(),
+            upload_key: (0..32).map(|i| format!("{:02x}", 100 - i as u8)).collect(),
+            file_name: "fail.bin".to_string(),
+            mime: "application/octet-stream".to_string(),
+            total: 2048,
+            part: 1024,
+            total_chunks: 2,
+        };
+        let handle = MultipartHandle {
+            upload_id: meta.encode(),
+            remote_path: "/fail.bin".into(),
+        };
+        let mut w1 = primary.clone_for_transfer().unwrap();
+        let mut w2 = primary.clone_for_transfer().unwrap();
+        let ok = w1.upload_part(&handle, 1, vec![1u8; 8]).await;
+        let err = w2.upload_part(&handle, 2, vec![2u8; 8]).await;
+        assert!(ok.is_ok());
+        assert!(err.is_err());
+        // Failure must not complete; incomplete parts list fails closed.
+        let complete_err = primary
+            .complete_multipart_upload(
+                handle.clone(),
+                vec![UploadedPart {
+                    part_number: 1,
+                    etag: String::new(),
+                }],
+            )
+            .await;
+        assert!(complete_err.is_err());
+        // Abort remains a no-op and is safe to call once (executor at-most-once).
+        primary.abort_multipart_upload(handle).await.expect("abort");
+        assert!(primary.is_connected());
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn transport_error_does_not_leak_upload_key_or_api_key() {
+        // Point ingest at a closed local port so reqwest fails with a URL that
+        // would otherwise include uploadKey in the error string.
+        let mut primary = FilenProvider::connected_for_test(demo_cfg());
+        primary.ingest_base_override = Some("http://127.0.0.1:1".to_string());
+        let api_key = primary.auth.api_key.expose_secret().to_string();
+        let upload_key = "cafebabedeadbeefcafebabedeadbeefcafebabedeadbeefcafebabedeadbeef";
+        let file_key = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+        let meta = FilenMultipartMeta {
+            file_uuid: "550e8400-e29b-41d4-a716-446655440000".to_string(),
+            parent_uuid: "11111111-2222-3333-4444-555555555555".to_string(),
+            file_key: file_key.to_string(),
+            upload_key: upload_key.to_string(),
+            file_name: "x.bin".to_string(),
+            mime: "application/octet-stream".to_string(),
+            total: 64,
+            part: 64,
+            total_chunks: 1,
+        };
+        let handle = MultipartHandle {
+            upload_id: meta.encode(),
+            remote_path: "/x.bin".into(),
+        };
+        let err = primary
+            .upload_part(&handle, 1, vec![9u8; 64])
+            .await
+            .expect_err("must fail against closed port");
+        let s = err.to_string();
+        assert!(
+            !s.contains(upload_key),
+            "upload_key must not appear in error: {s}"
+        );
+        assert!(
+            !s.contains(&api_key),
+            "api_key must not appear in error: {s}"
+        );
+        assert!(
+            !s.contains(file_key),
+            "file_key must not appear in error: {s}"
+        );
+        assert!(
+            !s.contains("uploadKey=cafe") && !s.contains(&format!("uploadKey={upload_key}")),
+            "raw uploadKey query must be redacted: {s}"
+        );
     }
 }

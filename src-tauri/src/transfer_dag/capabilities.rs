@@ -161,7 +161,10 @@ impl TransferCapabilities {
             | ProviderType::Jottacloud
             | ProviderType::DrimeCloud
             | ProviderType::FileLu
-            | ProviderType::OpenDrive => {
+            | ProviderType::OpenDrive
+            // Filen gateway/ingest: KE-E3 maps 429/503 + Retry-After into typed
+            // congestion (DAG-P1-05D).
+            | ProviderType::Filen => {
                 caps.rate_limited_api = Capability::Supported;
                 caps.max_file_slots = Some(1);
                 caps.max_checker_slots = Some(4);
@@ -173,7 +176,6 @@ impl TransferCapabilities {
             }
             ProviderType::AeroCloud
             | ProviderType::Mega
-            | ProviderType::Filen
             | ProviderType::Internxt
             | ProviderType::Immich
             | ProviderType::ImageKit
