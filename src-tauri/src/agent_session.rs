@@ -647,6 +647,9 @@ fn static_http_clone_pool_slots(provider_type: ProviderType) -> Option<(u16, u16
         // DAG-P1-05A: Drime + Uploadcare promote to HttpClonePool with ceiling 4;
         // list remains locked-single (no list_executor override).
         ProviderType::DrimeCloud | ProviderType::Uploadcare => Some((4, 1)),
+        // DAG-P1-05B: Dropbox + Box multipart part workers, ceiling 4;
+        // list remains locked-single.
+        ProviderType::Dropbox | ProviderType::Box => Some((4, 1)),
         _ => None,
     }
 }
@@ -1197,20 +1200,25 @@ mod tests {
     }
 
     #[test]
-    fn dropbox_protocol_defaults_advertise_multipart_without_false_pool() {
+    fn dropbox_protocol_defaults_advertise_clone_pool_ceiling_4() {
+        // DAG-P1-05B: Dropbox concurrent-session part workers on HttpClonePool.
         let caps = transfer_capabilities_for_protocol("dropbox").expect("dropbox");
         assert_eq!(
             caps.multipart_upload,
             crate::transfer_dag::Capability::Supported
         );
         assert_eq!(caps.max_chunk_slots, Some(4));
-        // No clone_for_transfer today: do not claim file_parallel/session_pool.
         assert_eq!(
             caps.file_parallel,
-            crate::transfer_dag::Capability::Unsupported
+            crate::transfer_dag::Capability::Supported
         );
         assert_eq!(
             caps.session_pool,
+            crate::transfer_dag::Capability::Supported
+        );
+        assert_eq!(caps.max_file_slots, Some(4));
+        assert_eq!(
+            caps.list_parallel,
             crate::transfer_dag::Capability::Unsupported
         );
         assert_eq!(
@@ -1220,6 +1228,30 @@ mod tests {
         assert_eq!(
             caps.rate_limited_api,
             crate::transfer_dag::Capability::Supported
+        );
+    }
+
+    #[test]
+    fn box_protocol_defaults_advertise_clone_pool_ceiling_4() {
+        // DAG-P1-05B: Box chunked-upload part workers on HttpClonePool.
+        let caps = transfer_capabilities_for_protocol("box").expect("box");
+        assert_eq!(
+            caps.multipart_upload,
+            crate::transfer_dag::Capability::Supported
+        );
+        assert_eq!(caps.max_chunk_slots, Some(4));
+        assert_eq!(
+            caps.file_parallel,
+            crate::transfer_dag::Capability::Supported
+        );
+        assert_eq!(
+            caps.session_pool,
+            crate::transfer_dag::Capability::Supported
+        );
+        assert_eq!(caps.max_file_slots, Some(4));
+        assert_eq!(
+            caps.list_parallel,
+            crate::transfer_dag::Capability::Unsupported
         );
     }
 

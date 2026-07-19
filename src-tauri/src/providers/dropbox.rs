@@ -14,9 +14,9 @@ use tracing::info;
 
 use super::{
     oauth2::{OAuth2Manager, OAuthConfig, OAuthProvider},
-    sanitize_api_error, LockInfo, MultipartHandle, ProviderConfig, ProviderError, ProviderType,
-    RemoteEntry, ShareLinkCapabilities, ShareLinkInfo, ShareLinkOptions, ShareLinkResult,
-    StorageInfo, StorageProvider, UploadedPart,
+    sanitize_api_error, LockInfo, MultipartHandle, ProviderConfig, ProviderError,
+    ProviderTransferExecutorKind, ProviderType, RemoteEntry, ShareLinkCapabilities, ShareLinkInfo,
+    ShareLinkOptions, ShareLinkResult, StorageInfo, StorageProvider, UploadedPart,
 };
 
 /// Dropbox API endpoints
@@ -34,6 +34,10 @@ const DROPBOX_SESSION_THRESHOLD: u64 = 150 * 1024 * 1024;
 /// actually schedule in parallel. 8 MiB stays well under Dropbox's 150 MiB
 /// per-chunk cap.
 const DROPBOX_MULTIPART_PART_SIZE: u64 = 8 * 1024 * 1024;
+
+/// Honest file/session ceiling for concurrent upload-session part workers
+/// (DAG-P1-05B). Matches `multipart_max_parallel` and the AIMD default.
+const DROPBOX_TRANSFER_MAX_SESSIONS: u16 = 4;
 
 /// Opaque metadata threaded through `MultipartHandle.upload_id` for the
 /// Dropbox concurrent-session multipart trait. Carries the session id plus
@@ -179,6 +183,36 @@ pub struct DropboxProvider {
     /// Server profile identifier owning these OAuth tokens. Empty when the
     /// caller has not bound a profile (legacy singleton key path). Issue #214.
     profile_id: String,
+    /// Test-only content API base. `None` keeps production `CONTENT_BASE`.
+    /// Production connect paths never set this.
+    #[cfg(test)]
+    content_base_override: Option<String>,
+    /// Test-only bearer token for local HTTP fixtures (bypasses vault).
+    /// Never set on production connect paths; never logged or put in handles.
+    #[cfg(test)]
+    test_access_token: Option<String>,
+}
+
+impl Clone for DropboxProvider {
+    /// Connected transfer worker: reuses the cloneable `reqwest::Client`,
+    /// shared [`OAuth2Manager`] (refresh guard + token source), config and
+    /// identity without reconnecting. No mutable multipart cursor is shared;
+    /// offsets stay derived from the opaque handle + part number.
+    fn clone(&self) -> Self {
+        Self {
+            config: self.config.clone(),
+            oauth_manager: self.oauth_manager.clone(),
+            client: self.client.clone(),
+            connected: self.connected,
+            current_path: self.current_path.clone(),
+            account_email: self.account_email.clone(),
+            profile_id: self.profile_id.clone(),
+            #[cfg(test)]
+            content_base_override: self.content_base_override.clone(),
+            #[cfg(test)]
+            test_access_token: self.test_access_token.clone(),
+        }
+    }
 }
 
 impl DropboxProvider {
@@ -196,7 +230,20 @@ impl DropboxProvider {
             current_path: "".to_string(), // Dropbox root is ""
             account_email: None,
             profile_id: String::new(),
+            #[cfg(test)]
+            content_base_override: None,
+            #[cfg(test)]
+            test_access_token: None,
         }
+    }
+
+    /// Connected worker for unit tests (no network). Production clones use
+    /// [`StorageProvider::clone_for_transfer`] after a real `connect`.
+    #[cfg(test)]
+    fn connected_for_test(config: DropboxConfig) -> Self {
+        let mut p = Self::new(config);
+        p.connected = true;
+        p
     }
 
     /// Bind this provider to a server profile so OAuth tokens are stored
@@ -212,9 +259,23 @@ impl DropboxProvider {
             .with_profile_id(&self.profile_id)
     }
 
+    /// Content API base (`content.dropboxapi.com/2` in production).
+    fn content_api_base(&self) -> &str {
+        #[cfg(test)]
+        if let Some(ref base) = self.content_base_override {
+            return base.as_str();
+        }
+        CONTENT_BASE
+    }
+
     /// Get authorization header
     async fn auth_header(&self) -> Result<HeaderValue, ProviderError> {
         use secrecy::ExposeSecret;
+        #[cfg(test)]
+        if let Some(ref tok) = self.test_access_token {
+            return HeaderValue::from_str(&format!("Bearer {tok}"))
+                .map_err(|e| ProviderError::Other(format!("Invalid token: {}", e)));
+        }
         let token = self
             .oauth_manager
             .get_valid_token(&self.oauth_config())
@@ -2076,11 +2137,31 @@ impl StorageProvider for DropboxProvider {
             // Concurrent upload sessions allow parallel `append_v2` calls at
             // distinct byte offsets. Aligned with the 4-slot budget the AIMD
             // controller defaults to so the chunk fan-out actually parallelises.
-            multipart_max_parallel: 4,
+            multipart_max_parallel: DROPBOX_TRANSFER_MAX_SESSIONS as u8,
             supports_resume_download: true,
             supports_resume_upload: true,
             ..Default::default()
         }
+    }
+
+    // DAG-P1-05B: concurrent session part appends are addressable from the
+    // opaque MultipartHandle + part number, so each part can run on an
+    // independent clone that shares the OAuth refresh guard and its own
+    // reqwest client. Begin / close-before-finish / finish / abort stay on
+    // the primary; part workers never close or finish the session.
+    fn transfer_executor_kind(&self) -> ProviderTransferExecutorKind {
+        ProviderTransferExecutorKind::HttpClonePool
+    }
+
+    fn transfer_executor_max_sessions(&self) -> u16 {
+        DROPBOX_TRANSFER_MAX_SESSIONS
+    }
+
+    fn clone_for_transfer(&self) -> Result<Box<dyn StorageProvider>, ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+        Ok(Box::new(self.clone()))
     }
 
     // Shaped-graph multipart trait wiring (S2-T02).
@@ -2120,7 +2201,7 @@ impl StorageProvider for DropboxProvider {
         }
 
         let normalised = self.normalize_path(remote_path);
-        let start_url = format!("{}/files/upload_session/start", CONTENT_BASE);
+        let start_url = format!("{}/files/upload_session/start", self.content_api_base());
         let start_arg = serde_json::json!({
             "session_type": { ".tag": "concurrent" },
             "close": false
@@ -2216,7 +2297,7 @@ impl StorageProvider for DropboxProvider {
             )));
         }
 
-        let append_url = format!("{}/files/upload_session/append_v2", CONTENT_BASE);
+        let append_url = format!("{}/files/upload_session/append_v2", self.content_api_base());
         let append_arg = serde_json::json!({
             "cursor": {
                 "session_id": meta.session_id,
@@ -2288,7 +2369,7 @@ impl StorageProvider for DropboxProvider {
         // `append_v2` with `close: true` and an empty body at the
         // closing offset; then call `finish`. Without this Dropbox
         // returns 409 `concurrent_session_not_closed/`.
-        let close_url = format!("{}/files/upload_session/append_v2", CONTENT_BASE);
+        let close_url = format!("{}/files/upload_session/append_v2", self.content_api_base());
         let close_arg = serde_json::json!({
             "cursor": {
                 "session_id": meta.session_id,
@@ -2328,7 +2409,7 @@ impl StorageProvider for DropboxProvider {
             return Err(ProviderError::Other(msg));
         }
 
-        let finish_url = format!("{}/files/upload_session/finish", CONTENT_BASE);
+        let finish_url = format!("{}/files/upload_session/finish", self.content_api_base());
         let finish_arg = serde_json::json!({
             "cursor": {
                 "session_id": meta.session_id,
@@ -2580,5 +2661,597 @@ mod tests {
             seen_end = end as i128;
         }
         assert_eq!(seen_end as u64, total - 1);
+    }
+
+    // ---- DAG-P1-05B: HttpClonePool worker promotion ----
+
+    fn demo_cfg() -> DropboxConfig {
+        DropboxConfig::new("app-key", "app-secret")
+    }
+
+    fn fixture_connected() -> DropboxProvider {
+        let mut p = DropboxProvider::connected_for_test(demo_cfg());
+        p.test_access_token = Some("fixture-token".to_string());
+        p
+    }
+
+    #[test]
+    fn clone_for_transfer_requires_connection() {
+        let p = DropboxProvider::new(demo_cfg());
+        assert!(!p.is_connected());
+        assert!(matches!(
+            p.clone_for_transfer(),
+            Err(ProviderError::NotConnected)
+        ));
+    }
+
+    #[test]
+    fn connected_clone_succeeds_and_reports_same_provider_type() {
+        let p = fixture_connected();
+        let worker = p.clone_for_transfer().expect("connected clone");
+        assert_eq!(worker.provider_type(), ProviderType::Dropbox);
+        assert!(worker.is_connected());
+        assert_eq!(
+            p.transfer_executor_kind(),
+            ProviderTransferExecutorKind::HttpClonePool
+        );
+        assert_eq!(p.transfer_executor_max_sessions(), 4);
+    }
+
+    #[test]
+    fn clone_and_primary_are_distinct_objects() {
+        let p = fixture_connected();
+        let worker = p.clone_for_transfer().expect("clone");
+        let primary_ptr = &p as *const _ as usize;
+        let worker_ptr = worker.as_ref() as *const dyn StorageProvider as *const () as usize;
+        assert_ne!(primary_ptr, worker_ptr);
+        assert_eq!(worker.provider_type(), ProviderType::Dropbox);
+    }
+
+    #[test]
+    fn clone_shares_oauth_refresh_guard() {
+        let p = fixture_connected();
+        let worker = p.clone();
+        // OAuth2Manager::clone shares Arc refresh_guard; prove via primary
+        // clone of the manager fields through another clone path.
+        assert!(std::sync::Arc::ptr_eq(
+            &p.oauth_manager.refresh_guard_for_test(),
+            &worker.oauth_manager.refresh_guard_for_test()
+        ));
+    }
+
+    #[test]
+    fn runtime_composition_yields_http_clone_pool_when_connected() {
+        use crate::provider_transfer_executor::{
+            compose_runtime_transfer_capabilities, resolve_session_model,
+        };
+        use crate::transfer_dag::Capability;
+
+        let p = fixture_connected();
+        let advertised = p.transfer_capabilities();
+        let can_clone = p.clone_for_transfer().is_ok();
+        assert!(can_clone);
+        let caps = compose_runtime_transfer_capabilities(
+            &advertised,
+            p.transfer_executor_kind(),
+            can_clone,
+        );
+        assert_eq!(caps.file_parallel, Capability::Supported);
+        assert_eq!(caps.session_pool, Capability::Supported);
+        assert_eq!(caps.max_file_slots, Some(4));
+        assert_eq!(caps.max_chunk_slots, Some(4));
+
+        let model = resolve_session_model(
+            ProviderType::Dropbox,
+            &caps,
+            p.transfer_executor_kind(),
+            can_clone,
+            p.transfer_executor_max_sessions(),
+            8,
+        );
+        assert!(matches!(
+            model,
+            crate::provider_transfer_executor::ProviderExecutorSessionModel::HttpClonePool { .. }
+        ));
+        assert_eq!(model.max_leases(), 4);
+    }
+
+    #[test]
+    fn forced_clone_failure_demotes_runtime_file_parallelism() {
+        use crate::provider_transfer_executor::compose_runtime_transfer_capabilities;
+        use crate::transfer_dag::Capability;
+
+        let p = DropboxProvider::new(demo_cfg());
+        assert_eq!(
+            p.transfer_executor_kind(),
+            ProviderTransferExecutorKind::HttpClonePool
+        );
+        let can_clone = p.clone_for_transfer().is_ok();
+        assert!(!can_clone);
+        let caps = compose_runtime_transfer_capabilities(
+            &p.transfer_capabilities(),
+            p.transfer_executor_kind(),
+            can_clone,
+        );
+        assert_eq!(caps.file_parallel, Capability::Unsupported);
+        assert_eq!(caps.session_pool, Capability::Unsupported);
+        assert_eq!(caps.max_file_slots, Some(1));
+        assert_eq!(caps.max_chunk_slots, Some(4));
+    }
+
+    #[tokio::test]
+    async fn concurrent_append_puts_overlap_on_independent_workers() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
+
+        use axum::{extract::Request, http::StatusCode, routing::post, Router};
+
+        let in_flight = Arc::new(AtomicUsize::new(0));
+        let peak = Arc::new(AtomicUsize::new(0));
+        let request_count = Arc::new(AtomicUsize::new(0));
+        let offsets = Arc::new(std::sync::Mutex::new(Vec::<u64>::new()));
+        // Barrier-backed peak: all four part workers must arrive before any
+        // response completes, so peak is exact (not sleep-timing dependent).
+        let gate = Arc::new(tokio::sync::Barrier::new(4));
+        let in_flight_h = Arc::clone(&in_flight);
+        let peak_h = Arc::clone(&peak);
+        let count_h = Arc::clone(&request_count);
+        let offsets_h = Arc::clone(&offsets);
+        let gate_h = Arc::clone(&gate);
+
+        let app = Router::new().route(
+            "/files/upload_session/append_v2",
+            post(move |req: Request| {
+                let in_flight = Arc::clone(&in_flight_h);
+                let peak = Arc::clone(&peak_h);
+                let count = Arc::clone(&count_h);
+                let offsets = Arc::clone(&offsets_h);
+                let gate = Arc::clone(&gate_h);
+                async move {
+                    count.fetch_add(1, Ordering::SeqCst);
+                    let arg = req
+                        .headers()
+                        .get("Dropbox-API-Arg")
+                        .and_then(|v| v.to_str().ok())
+                        .unwrap_or("")
+                        .to_string();
+                    let parsed: serde_json::Value =
+                        serde_json::from_str(&arg).unwrap_or(serde_json::json!({}));
+                    let offset = parsed
+                        .pointer("/cursor/offset")
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(u64::MAX);
+                    let close = parsed
+                        .get("close")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(true);
+                    assert!(!close, "part workers must never set close=true");
+                    offsets.lock().unwrap().push(offset);
+
+                    let now = in_flight.fetch_add(1, Ordering::SeqCst) + 1;
+                    peak.fetch_max(now, Ordering::SeqCst);
+                    gate.wait().await;
+                    in_flight.fetch_sub(1, Ordering::SeqCst);
+                    let _ = axum::body::to_bytes(req.into_body(), 1024 * 1024).await;
+                    StatusCode::OK
+                }
+            }),
+        );
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind fixture");
+        let addr = listener.local_addr().expect("local addr");
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.ok();
+        });
+
+        let mut primary = fixture_connected();
+        primary.content_base_override = Some(format!("http://{addr}"));
+        let meta = DropboxMultipartMeta {
+            session_id: "sess-concurrent".to_string(),
+            total: 4 * 1024,
+            part: 1024,
+            path: "/f.bin".to_string(),
+        };
+        let handle = MultipartHandle {
+            upload_id: meta.encode(),
+            remote_path: "/f.bin".to_string(),
+        };
+
+        let mut workers: Vec<Box<dyn StorageProvider>> = (0..4)
+            .map(|_| primary.clone_for_transfer().expect("worker clone"))
+            .collect();
+        let mut set = tokio::task::JoinSet::new();
+        for (i, mut worker) in workers.drain(..).enumerate() {
+            let handle = handle.clone();
+            let part = (i as u32) + 1;
+            set.spawn(async move {
+                worker
+                    .upload_part(&handle, part, vec![b'y'; 64])
+                    .await
+                    .map_err(|e| e.to_string())
+            });
+        }
+        let mut receipts = Vec::new();
+        while let Some(res) = set.join_next().await {
+            receipts.push(res.expect("join").expect("upload_part"));
+        }
+        receipts.sort_by_key(|r| r.part_number);
+        assert_eq!(receipts.len(), 4);
+        for (i, r) in receipts.iter().enumerate() {
+            assert_eq!(r.part_number, (i as u32) + 1);
+        }
+
+        let mut seen = offsets.lock().unwrap().clone();
+        seen.sort();
+        assert_eq!(seen, vec![0, 1024, 2048, 3072]);
+
+        let observed_peak = peak.load(Ordering::SeqCst);
+        assert_eq!(request_count.load(Ordering::SeqCst), 4);
+        assert_eq!(
+            observed_peak, 4,
+            "barrier-backed fixture must record exact peak=4 (got {observed_peak})"
+        );
+
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn out_of_order_append_returns_requested_part_numbers() {
+        use axum::{extract::Request, http::StatusCode, routing::post, Router};
+
+        let app = Router::new().route(
+            "/files/upload_session/append_v2",
+            post(|req: Request| async move {
+                let arg = req
+                    .headers()
+                    .get("Dropbox-API-Arg")
+                    .and_then(|v| v.to_str().ok())
+                    .unwrap_or("")
+                    .to_string();
+                let parsed: serde_json::Value =
+                    serde_json::from_str(&arg).unwrap_or(serde_json::json!({}));
+                let offset = parsed
+                    .pointer("/cursor/offset")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0);
+                // Higher offsets complete first so completion order differs
+                // from part number order.
+                let delay_ms = 20u64 * (4u64.saturating_sub(offset / 1024));
+                tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+                let _ = axum::body::to_bytes(req.into_body(), 64 * 1024).await;
+                StatusCode::OK
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.ok();
+        });
+
+        let mut primary = fixture_connected();
+        primary.content_base_override = Some(format!("http://{addr}"));
+        let meta = DropboxMultipartMeta {
+            session_id: "sess-ooo".to_string(),
+            total: 4096,
+            part: 1024,
+            path: "/f.bin".to_string(),
+        };
+        let handle = MultipartHandle {
+            upload_id: meta.encode(),
+            remote_path: "/f.bin".into(),
+        };
+        let mut set = tokio::task::JoinSet::new();
+        for part in [4u32, 1, 3, 2] {
+            let mut worker = primary.clone_for_transfer().expect("clone");
+            let handle = handle.clone();
+            set.spawn(async move {
+                worker
+                    .upload_part(&handle, part, vec![0u8; 32])
+                    .await
+                    .map(|r| (part, r))
+                    .map_err(|e| e.to_string())
+            });
+        }
+        let mut got = Vec::new();
+        while let Some(res) = set.join_next().await {
+            let (requested, receipt) = res.unwrap().unwrap();
+            assert_eq!(receipt.part_number, requested);
+            got.push(receipt.part_number);
+        }
+        got.sort();
+        assert_eq!(got, vec![1, 2, 3, 4]);
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn concurrent_session_lifecycle_start_close_finish_contract() {
+        use std::sync::{Arc, Mutex};
+
+        use axum::{body::Bytes, extract::Request, http::StatusCode, routing::post, Router};
+
+        #[derive(Default, Clone)]
+        struct Record {
+            path: String,
+            body_len: usize,
+            arg: String,
+        }
+        let records = Arc::new(Mutex::new(Vec::<Record>::new()));
+        let records_h = Arc::clone(&records);
+
+        let app = Router::new()
+            .route(
+                "/files/upload_session/start",
+                post({
+                    let records = Arc::clone(&records_h);
+                    move |req: Request| {
+                        let records = Arc::clone(&records);
+                        async move {
+                            let arg = req
+                                .headers()
+                                .get("Dropbox-API-Arg")
+                                .and_then(|v| v.to_str().ok())
+                                .unwrap_or("")
+                                .to_string();
+                            let body = axum::body::to_bytes(req.into_body(), 64 * 1024)
+                                .await
+                                .unwrap_or_else(|_| Bytes::new());
+                            records.lock().unwrap().push(Record {
+                                path: "start".into(),
+                                body_len: body.len(),
+                                arg,
+                            });
+                            (
+                                StatusCode::OK,
+                                axum::Json(serde_json::json!({
+                                    "session_id": "sess-lifecycle"
+                                })),
+                            )
+                        }
+                    }
+                }),
+            )
+            .route(
+                "/files/upload_session/append_v2",
+                post({
+                    let records = Arc::clone(&records_h);
+                    move |req: Request| {
+                        let records = Arc::clone(&records);
+                        async move {
+                            let arg = req
+                                .headers()
+                                .get("Dropbox-API-Arg")
+                                .and_then(|v| v.to_str().ok())
+                                .unwrap_or("")
+                                .to_string();
+                            let body = axum::body::to_bytes(req.into_body(), 64 * 1024)
+                                .await
+                                .unwrap_or_else(|_| Bytes::new());
+                            records.lock().unwrap().push(Record {
+                                path: "append".into(),
+                                body_len: body.len(),
+                                arg,
+                            });
+                            StatusCode::OK
+                        }
+                    }
+                }),
+            )
+            .route(
+                "/files/upload_session/finish",
+                post({
+                    let records = Arc::clone(&records_h);
+                    move |req: Request| {
+                        let records = Arc::clone(&records);
+                        async move {
+                            let arg = req
+                                .headers()
+                                .get("Dropbox-API-Arg")
+                                .and_then(|v| v.to_str().ok())
+                                .unwrap_or("")
+                                .to_string();
+                            let body = axum::body::to_bytes(req.into_body(), 64 * 1024)
+                                .await
+                                .unwrap_or_else(|_| Bytes::new());
+                            records.lock().unwrap().push(Record {
+                                path: "finish".into(),
+                                body_len: body.len(),
+                                arg,
+                            });
+                            StatusCode::OK
+                        }
+                    }
+                }),
+            );
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.ok();
+        });
+
+        let mut primary = fixture_connected();
+        primary.content_base_override = Some(format!("http://{addr}"));
+
+        // begin encodes runner part size = DROPBOX_MULTIPART_PART_SIZE (8 MiB).
+        // Two parts ⇒ total just over one full part.
+        let total = DROPBOX_MULTIPART_PART_SIZE + 1024;
+        let handle = primary
+            .begin_multipart_upload("/aeroftp-test/life.bin", total, None, None)
+            .await
+            .expect("begin");
+        let meta = DropboxMultipartMeta::decode(&handle.upload_id).expect("meta");
+        assert_eq!(meta.session_id, "sess-lifecycle");
+        assert_eq!(meta.part, DROPBOX_MULTIPART_PART_SIZE);
+        assert_eq!(meta.total, total);
+
+        // Parts on workers (must not close/finish).
+        let mut w1 = primary.clone_for_transfer().unwrap();
+        let mut w2 = primary.clone_for_transfer().unwrap();
+        w1.upload_part(&handle, 1, vec![1u8; 32])
+            .await
+            .expect("part1");
+        w2.upload_part(&handle, 2, vec![2u8; 32])
+            .await
+            .expect("part2");
+
+        // Primary close + finish.
+        primary
+            .complete_multipart_upload(
+                handle.clone(),
+                vec![
+                    UploadedPart {
+                        part_number: 1,
+                        etag: String::new(),
+                    },
+                    UploadedPart {
+                        part_number: 2,
+                        etag: String::new(),
+                    },
+                ],
+            )
+            .await
+            .expect("complete");
+
+        // Documented no-op abort.
+        primary
+            .abort_multipart_upload(handle)
+            .await
+            .expect("abort no-op");
+
+        let recs = records.lock().unwrap().clone();
+        let starts: Vec<_> = recs.iter().filter(|r| r.path == "start").collect();
+        let finishes: Vec<_> = recs.iter().filter(|r| r.path == "finish").collect();
+        let appends: Vec<_> = recs.iter().filter(|r| r.path == "append").collect();
+        assert_eq!(starts.len(), 1);
+        assert_eq!(starts[0].body_len, 0, "start body must be empty");
+        let start_arg: serde_json::Value = serde_json::from_str(&starts[0].arg).unwrap();
+        assert_eq!(
+            start_arg
+                .pointer("/session_type/.tag")
+                .and_then(|v| v.as_str()),
+            Some("concurrent")
+        );
+        assert_eq!(
+            start_arg.get("close").and_then(|v| v.as_bool()),
+            Some(false)
+        );
+
+        // Two part appends (close=false) + one close=true from primary.
+        assert_eq!(appends.len(), 3);
+        let part_appends: Vec<_> = appends
+            .iter()
+            .filter(|r| {
+                let a: serde_json::Value = serde_json::from_str(&r.arg).unwrap();
+                a.get("close").and_then(|v| v.as_bool()) == Some(false)
+            })
+            .collect();
+        let close_appends: Vec<_> = appends
+            .iter()
+            .filter(|r| {
+                let a: serde_json::Value = serde_json::from_str(&r.arg).unwrap();
+                a.get("close").and_then(|v| v.as_bool()) == Some(true)
+            })
+            .collect();
+        assert_eq!(part_appends.len(), 2);
+        assert_eq!(close_appends.len(), 1);
+        assert_eq!(close_appends[0].body_len, 0);
+        let close_arg: serde_json::Value = serde_json::from_str(&close_appends[0].arg).unwrap();
+        assert_eq!(
+            close_arg.pointer("/cursor/offset").and_then(|v| v.as_u64()),
+            Some(total)
+        );
+
+        assert_eq!(finishes.len(), 1);
+        assert_eq!(finishes[0].body_len, 0, "finish body must be empty");
+
+        // Order: start, two parts (any order), close, finish.
+        let paths: Vec<&str> = recs.iter().map(|r| r.path.as_str()).collect();
+        assert_eq!(paths.first().copied(), Some("start"));
+        assert_eq!(paths.last().copied(), Some("finish"));
+        let close_idx = paths.iter().rposition(|p| *p == "append").unwrap();
+        // The last append is close=true (after both part appends).
+        let last_append_arg: serde_json::Value =
+            serde_json::from_str(&recs[close_idx].arg).unwrap();
+        assert_eq!(
+            last_append_arg.get("close").and_then(|v| v.as_bool()),
+            Some(true)
+        );
+        assert!(close_idx < paths.len() - 1);
+
+        server.abort();
+    }
+
+    #[test]
+    fn clone_multipart_worker_helper_returns_some_only_when_connected() {
+        use crate::transfer_multipart::clone_multipart_worker;
+
+        let disconnected = DropboxProvider::new(demo_cfg());
+        assert!(clone_multipart_worker(&disconnected).is_none());
+
+        let connected = fixture_connected();
+        assert!(clone_multipart_worker(&connected).is_some());
+    }
+
+    #[tokio::test]
+    async fn one_part_failure_leaves_sibling_worker_usable() {
+        use axum::{extract::Request, http::StatusCode, routing::post, Router};
+
+        let app = Router::new().route(
+            "/files/upload_session/append_v2",
+            post(|req: Request| async move {
+                let arg = req
+                    .headers()
+                    .get("Dropbox-API-Arg")
+                    .and_then(|v| v.to_str().ok())
+                    .unwrap_or("")
+                    .to_string();
+                let parsed: serde_json::Value =
+                    serde_json::from_str(&arg).unwrap_or(serde_json::json!({}));
+                let offset = parsed
+                    .pointer("/cursor/offset")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0);
+                let _ = axum::body::to_bytes(req.into_body(), 64 * 1024).await;
+                if offset == 1024 {
+                    StatusCode::INTERNAL_SERVER_ERROR
+                } else {
+                    StatusCode::OK
+                }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.ok();
+        });
+
+        let mut primary = fixture_connected();
+        primary.content_base_override = Some(format!("http://{addr}"));
+        let meta = DropboxMultipartMeta {
+            session_id: "sess-fail".to_string(),
+            total: 2048,
+            part: 1024,
+            path: "/f.bin".to_string(),
+        };
+        let handle = MultipartHandle {
+            upload_id: meta.encode(),
+            remote_path: "/f.bin".into(),
+        };
+        let mut w1 = primary.clone_for_transfer().unwrap();
+        let mut w2 = primary.clone_for_transfer().unwrap();
+        let ok = w1.upload_part(&handle, 1, vec![1u8; 8]).await;
+        let err = w2.upload_part(&handle, 2, vec![2u8; 8]).await;
+        assert!(ok.is_ok());
+        assert!(err.is_err());
+        assert!(primary.is_connected());
+        server.abort();
     }
 }

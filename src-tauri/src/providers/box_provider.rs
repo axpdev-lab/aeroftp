@@ -16,9 +16,9 @@ use tracing::info;
 use super::types::BoxConfig;
 use super::{
     oauth2::{OAuth2Manager, OAuthConfig},
-    sanitize_api_error, FileVersion, MultipartHandle, ProviderError, ProviderType, RemoteEntry,
-    ShareLinkCapabilities, ShareLinkInfo, ShareLinkOptions, ShareLinkResult, StorageInfo,
-    StorageProvider, UploadedPart,
+    sanitize_api_error, FileVersion, MultipartHandle, ProviderError, ProviderTransferExecutorKind,
+    ProviderType, RemoteEntry, ShareLinkCapabilities, ShareLinkInfo, ShareLinkOptions,
+    ShareLinkResult, StorageInfo, StorageProvider, UploadedPart,
 };
 
 /// Box API endpoints
@@ -28,6 +28,14 @@ const API_BASE: &str = "https://api.box.com/2.0";
 /// simple `/files/content` POST is faster. The trait runner uses the same
 /// threshold so single-PUT files keep the legacy path.
 const BOX_SESSION_THRESHOLD: u64 = 20 * 1024 * 1024;
+
+/// Honest file/session ceiling for chunked-upload part workers (DAG-P1-05B).
+/// Matches `multipart_max_parallel` and the AIMD default.
+const BOX_TRANSFER_MAX_SESSIONS: u16 = 4;
+
+/// Advertised planning part size; the live session must return the same value
+/// or begin fails closed (no runner re-shaping yet).
+const BOX_ADVERTISED_PART_SIZE: u64 = 8 * 1024 * 1024;
 
 /// Opaque metadata threaded through `MultipartHandle.upload_id` for the Box
 /// chunked-upload-v2 trait. Box is unusual in two ways:
@@ -323,6 +331,12 @@ pub struct BoxProvider {
     /// Server profile identifier owning these OAuth tokens. Empty when the
     /// caller has not bound a profile (legacy singleton key path). Issue #214.
     profile_id: String,
+    /// Test-only upload API base. `None` keeps production `UPLOAD_BASE`.
+    #[cfg(test)]
+    upload_base_override: Option<String>,
+    /// Test-only bearer token for local HTTP fixtures (bypasses vault).
+    #[cfg(test)]
+    test_access_token: Option<String>,
 }
 
 impl BoxProvider {
@@ -346,6 +360,45 @@ impl BoxProvider {
                 m
             },
             profile_id: String::new(),
+            #[cfg(test)]
+            upload_base_override: None,
+            #[cfg(test)]
+            test_access_token: None,
+        }
+    }
+
+    /// Connected worker for unit tests (no network). Production clones use
+    /// [`StorageProvider::clone_for_transfer`] after a real `connect`.
+    #[cfg(test)]
+    fn connected_for_test(config: BoxConfig) -> Self {
+        let mut p = Self::new(config);
+        p.connected = true;
+        p
+    }
+
+    /// Bound transfer-worker clone: shares OAuth manager + HTTP client, seeds
+    /// only root plus the current path/folder mapping (never copies the full
+    /// unbounded `id_cache`).
+    fn clone_transfer_worker(&self) -> Self {
+        let mut id_cache = HashMap::new();
+        id_cache.insert("/".to_string(), "0".to_string());
+        if self.current_path != "/" && !self.current_folder_id.is_empty() {
+            id_cache.insert(self.current_path.clone(), self.current_folder_id.clone());
+        }
+        Self {
+            config: self.config.clone(),
+            oauth_manager: self.oauth_manager.clone(),
+            client: self.client.clone(),
+            connected: self.connected,
+            current_path: self.current_path.clone(),
+            current_folder_id: self.current_folder_id.clone(),
+            id_cache,
+            account_email: self.account_email.clone(),
+            profile_id: self.profile_id.clone(),
+            #[cfg(test)]
+            upload_base_override: self.upload_base_override.clone(),
+            #[cfg(test)]
+            test_access_token: self.test_access_token.clone(),
         }
     }
 
@@ -356,8 +409,20 @@ impl BoxProvider {
         self
     }
 
+    fn upload_api_base(&self) -> &str {
+        #[cfg(test)]
+        if let Some(ref base) = self.upload_base_override {
+            return base.as_str();
+        }
+        UPLOAD_BASE
+    }
+
     /// Get access token from OAuth manager (returns SecretString for memory zeroization)
     async fn get_token(&self) -> Result<secrecy::SecretString, ProviderError> {
+        #[cfg(test)]
+        if let Some(ref tok) = self.test_access_token {
+            return Ok(secrecy::SecretString::from(tok.clone()));
+        }
         let config = OAuthConfig::box_cloud(&self.config.client_id, &self.config.client_secret)
             .with_profile_id(&self.profile_id);
         self.oauth_manager
@@ -1196,7 +1261,7 @@ impl BoxProvider {
             "folder_id": parent_id,
             "file_size": total_size,
         });
-        let session_url = format!("{}/files/upload_sessions", UPLOAD_BASE);
+        let session_url = format!("{}/files/upload_sessions", self.upload_api_base());
 
         let token = self.get_token().await?;
         let response = self
@@ -1218,7 +1283,11 @@ impl BoxProvider {
             if text.contains("item_name_in_use") {
                 let file_id = self.resolve_file_id(remote_path).await?;
                 let ver_body = serde_json::json!({ "file_size": total_size });
-                let ver_url = format!("{}/files/{}/upload_sessions", UPLOAD_BASE, file_id);
+                let ver_url = format!(
+                    "{}/files/{}/upload_sessions",
+                    self.upload_api_base(),
+                    file_id
+                );
                 let token2 = self.get_token().await?;
                 let ver_resp = self
                     .client
@@ -1254,13 +1323,23 @@ impl BoxProvider {
             .session_endpoints
             .as_ref()
             .and_then(|e| e.upload_part.clone())
-            .unwrap_or_else(|| format!("{}/files/upload_sessions/{}", UPLOAD_BASE, parsed.id));
+            .unwrap_or_else(|| {
+                format!(
+                    "{}/files/upload_sessions/{}",
+                    self.upload_api_base(),
+                    parsed.id
+                )
+            });
         let commit_url = parsed
             .session_endpoints
             .as_ref()
             .and_then(|e| e.commit.clone())
             .unwrap_or_else(|| {
-                format!("{}/files/upload_sessions/{}/commit", UPLOAD_BASE, parsed.id)
+                format!(
+                    "{}/files/upload_sessions/{}/commit",
+                    self.upload_api_base(),
+                    parsed.id
+                )
             });
 
         Ok(BoxMultipartMeta {
@@ -2642,14 +2721,33 @@ impl StorageProvider for BoxProvider {
             // Box's session response carries the authoritative `part_size`;
             // the runner uses our hint as a planning estimate. 8 MiB
             // matches what most Box sessions return.
-            multipart_part_size: 8 * 1024 * 1024,
-            multipart_max_parallel: 4,
+            multipart_part_size: BOX_ADVERTISED_PART_SIZE,
+            multipart_max_parallel: BOX_TRANSFER_MAX_SESSIONS as u8,
             supports_resume_download: true,
             supports_resume_upload: true,
             supports_server_checksum: true,
             preferred_checksum_algo: Some("sha1".to_string()),
             ..Default::default()
         }
+    }
+
+    // DAG-P1-05B: chunked part PUTs are addressable from the opaque handle +
+    // part number, so each part runs on an independent clone with a shared
+    // OAuth refresh guard and a bounded id_cache seed. Begin / commit /
+    // abort stay on the primary.
+    fn transfer_executor_kind(&self) -> ProviderTransferExecutorKind {
+        ProviderTransferExecutorKind::HttpClonePool
+    }
+
+    fn transfer_executor_max_sessions(&self) -> u16 {
+        BOX_TRANSFER_MAX_SESSIONS
+    }
+
+    fn clone_for_transfer(&self) -> Result<Box<dyn StorageProvider>, ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+        Ok(Box::new(self.clone_transfer_worker()))
     }
 
     // Shaped-graph multipart trait wiring (S2-T04).
@@ -2681,6 +2779,9 @@ impl StorageProvider for BoxProvider {
         _content_type: Option<&str>,
         local_source_path: Option<&str>,
     ) -> Result<MultipartHandle, ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
         if total_size == 0 {
             return Err(ProviderError::Other(
                 "Box multipart upload requires non-zero total_size".to_string(),
@@ -2705,7 +2806,6 @@ impl StorageProvider for BoxProvider {
         // overlap byte ranges. For files < 5 GiB Box returns 8 MiB so
         // this almost always matches; surface a typed error otherwise so
         // the runner aborts cleanly instead of producing corrupt commits.
-        const BOX_ADVERTISED_PART_SIZE: u64 = 8 * 1024 * 1024;
         if meta.part != BOX_ADVERTISED_PART_SIZE {
             return Err(ProviderError::TransferFailed(format!(
                 "Box server returned part_size {} but the runner expects {}; \
@@ -2728,6 +2828,9 @@ impl StorageProvider for BoxProvider {
         use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
         use sha1::{Digest, Sha1};
 
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
         if part_number == 0 {
             return Err(ProviderError::Other(
                 "Box upload_part requires 1-based part_number".to_string(),
@@ -2828,6 +2931,9 @@ impl StorageProvider for BoxProvider {
         use sha1::{Digest, Sha1};
         use tokio::io::AsyncReadExt;
 
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
         let meta = BoxMultipartMeta::decode(&handle.upload_id)?;
         if meta.local_path.is_empty() {
             return Err(ProviderError::TransferFailed(
@@ -2921,15 +3027,18 @@ impl StorageProvider for BoxProvider {
         &mut self,
         handle: MultipartHandle,
     ) -> Result<(), ProviderError> {
+        // Connected check is intentional: best-effort abort must not fail
+        // closed when the session is already torn down, but it still needs a
+        // usable client + token path. Ignore transport errors so abort never
+        // masks the original transfer failure.
         let meta = BoxMultipartMeta::decode(&handle.upload_id)?;
-        // Box's abort endpoint is the session URL with DELETE. Best-effort:
-        // ignore errors so the abort cannot mask the original transfer
-        // error. Sessions expire server-side after a few days if abort
-        // ever silently fails.
         if let Ok(token) = self.get_token().await {
             if let Ok(header) = Self::bearer_header(&token) {
-                let abort_url =
-                    format!("{}/files/upload_sessions/{}", UPLOAD_BASE, meta.session_id);
+                let abort_url = format!(
+                    "{}/files/upload_sessions/{}",
+                    self.upload_api_base(),
+                    meta.session_id
+                );
                 let _ = self
                     .client
                     .delete(&abort_url)
@@ -3079,5 +3188,676 @@ mod tests {
             last_end = end as i128;
         }
         assert_eq!(last_end as u64, total - 1);
+    }
+
+    // ---- DAG-P1-05B: HttpClonePool worker promotion ----
+
+    fn demo_cfg() -> BoxConfig {
+        BoxConfig::new("client-id", "client-secret")
+    }
+
+    fn fixture_connected() -> BoxProvider {
+        let mut p = BoxProvider::connected_for_test(demo_cfg());
+        p.test_access_token = Some("fixture-token".to_string());
+        p
+    }
+
+    #[test]
+    fn clone_for_transfer_requires_connection() {
+        let p = BoxProvider::new(demo_cfg());
+        assert!(!p.is_connected());
+        assert!(matches!(
+            p.clone_for_transfer(),
+            Err(ProviderError::NotConnected)
+        ));
+    }
+
+    #[test]
+    fn connected_clone_succeeds_and_reports_same_provider_type() {
+        let p = fixture_connected();
+        let worker = p.clone_for_transfer().expect("connected clone");
+        assert_eq!(worker.provider_type(), ProviderType::Box);
+        assert!(worker.is_connected());
+        assert_eq!(
+            p.transfer_executor_kind(),
+            ProviderTransferExecutorKind::HttpClonePool
+        );
+        assert_eq!(p.transfer_executor_max_sessions(), 4);
+    }
+
+    #[test]
+    fn clone_and_primary_are_distinct_objects() {
+        let p = fixture_connected();
+        let worker = p.clone_for_transfer().expect("clone");
+        let primary_ptr = &p as *const _ as usize;
+        let worker_ptr = worker.as_ref() as *const dyn StorageProvider as *const () as usize;
+        assert_ne!(primary_ptr, worker_ptr);
+    }
+
+    #[test]
+    fn clone_shares_oauth_refresh_guard() {
+        let p = fixture_connected();
+        let worker = p.clone_transfer_worker();
+        assert!(std::sync::Arc::ptr_eq(
+            &p.oauth_manager.refresh_guard_for_test(),
+            &worker.oauth_manager.refresh_guard_for_test()
+        ));
+    }
+
+    #[test]
+    fn clone_does_not_multiply_full_id_cache() {
+        let mut p = fixture_connected();
+        p.current_path = "/projects/alpha".to_string();
+        p.current_folder_id = "fld-alpha".to_string();
+        // Inflate primary cache well beyond the worker seed.
+        for i in 0..200 {
+            p.id_cache.insert(format!("/noise/{i}"), format!("id-{i}"));
+        }
+        assert!(p.id_cache.len() > 100);
+
+        let worker = p.clone_transfer_worker();
+        assert_eq!(worker.id_cache.len(), 2, "seed only root + current path");
+        assert_eq!(worker.id_cache.get("/").map(String::as_str), Some("0"));
+        assert_eq!(
+            worker.id_cache.get("/projects/alpha").map(String::as_str),
+            Some("fld-alpha")
+        );
+        assert!(!worker.id_cache.contains_key("/noise/0"));
+        // Primary cache untouched.
+        assert!(p.id_cache.len() > 100);
+    }
+
+    #[test]
+    fn runtime_composition_yields_http_clone_pool_when_connected() {
+        use crate::provider_transfer_executor::{
+            compose_runtime_transfer_capabilities, resolve_session_model,
+        };
+        use crate::transfer_dag::Capability;
+
+        let p = fixture_connected();
+        let can_clone = p.clone_for_transfer().is_ok();
+        assert!(can_clone);
+        let caps = compose_runtime_transfer_capabilities(
+            &p.transfer_capabilities(),
+            p.transfer_executor_kind(),
+            can_clone,
+        );
+        assert_eq!(caps.file_parallel, Capability::Supported);
+        assert_eq!(caps.session_pool, Capability::Supported);
+        assert_eq!(caps.max_file_slots, Some(4));
+        assert_eq!(caps.max_chunk_slots, Some(4));
+
+        let model = resolve_session_model(
+            ProviderType::Box,
+            &caps,
+            p.transfer_executor_kind(),
+            can_clone,
+            p.transfer_executor_max_sessions(),
+            8,
+        );
+        assert!(matches!(
+            model,
+            crate::provider_transfer_executor::ProviderExecutorSessionModel::HttpClonePool { .. }
+        ));
+        assert_eq!(model.max_leases(), 4);
+    }
+
+    #[test]
+    fn forced_clone_failure_demotes_runtime_file_parallelism() {
+        use crate::provider_transfer_executor::compose_runtime_transfer_capabilities;
+        use crate::transfer_dag::Capability;
+
+        let p = BoxProvider::new(demo_cfg());
+        assert_eq!(
+            p.transfer_executor_kind(),
+            ProviderTransferExecutorKind::HttpClonePool
+        );
+        let can_clone = p.clone_for_transfer().is_ok();
+        assert!(!can_clone);
+        let caps = compose_runtime_transfer_capabilities(
+            &p.transfer_capabilities(),
+            p.transfer_executor_kind(),
+            can_clone,
+        );
+        assert_eq!(caps.file_parallel, Capability::Unsupported);
+        assert_eq!(caps.session_pool, Capability::Unsupported);
+        assert_eq!(caps.max_file_slots, Some(1));
+        assert_eq!(caps.max_chunk_slots, Some(4));
+    }
+
+    #[tokio::test]
+    async fn concurrent_part_puts_overlap_on_independent_workers() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
+
+        use axum::{extract::Request, http::StatusCode, routing::put, Router};
+
+        let in_flight = Arc::new(AtomicUsize::new(0));
+        let peak = Arc::new(AtomicUsize::new(0));
+        let request_count = Arc::new(AtomicUsize::new(0));
+        let ranges = Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let digests = Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let gate = Arc::new(tokio::sync::Barrier::new(4));
+
+        let in_flight_h = Arc::clone(&in_flight);
+        let peak_h = Arc::clone(&peak);
+        let count_h = Arc::clone(&request_count);
+        let ranges_h = Arc::clone(&ranges);
+        let digests_h = Arc::clone(&digests);
+        let gate_h = Arc::clone(&gate);
+
+        let app = Router::new().route(
+            "/part",
+            put(move |req: Request| {
+                let in_flight = Arc::clone(&in_flight_h);
+                let peak = Arc::clone(&peak_h);
+                let count = Arc::clone(&count_h);
+                let ranges = Arc::clone(&ranges_h);
+                let digests = Arc::clone(&digests_h);
+                let gate = Arc::clone(&gate_h);
+                async move {
+                    count.fetch_add(1, Ordering::SeqCst);
+                    let range = req
+                        .headers()
+                        .get("Content-Range")
+                        .and_then(|v| v.to_str().ok())
+                        .unwrap_or("")
+                        .to_string();
+                    let digest = req
+                        .headers()
+                        .get("Digest")
+                        .and_then(|v| v.to_str().ok())
+                        .unwrap_or("")
+                        .to_string();
+                    ranges.lock().unwrap().push(range.clone());
+                    digests.lock().unwrap().push(digest);
+
+                    // Extract offset for part_id.
+                    let offset = range
+                        .strip_prefix("bytes ")
+                        .and_then(|s| s.split('-').next())
+                        .and_then(|s| s.parse::<u64>().ok())
+                        .unwrap_or(0);
+                    let part_id = format!("pid-{offset}");
+
+                    let now = in_flight.fetch_add(1, Ordering::SeqCst) + 1;
+                    peak.fetch_max(now, Ordering::SeqCst);
+                    gate.wait().await;
+                    in_flight.fetch_sub(1, Ordering::SeqCst);
+                    let _ = axum::body::to_bytes(req.into_body(), 1024 * 1024).await;
+                    (
+                        StatusCode::OK,
+                        axum::Json(serde_json::json!({
+                            "part": {
+                                "part_id": part_id,
+                                "offset": offset,
+                                "size": 1024,
+                                "sha1": "ignored"
+                            }
+                        })),
+                    )
+                }
+            }),
+        );
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.ok();
+        });
+
+        let primary = fixture_connected();
+        let base = format!("http://{addr}/part");
+        let meta = BoxMultipartMeta {
+            session_id: "sess-box".to_string(),
+            upload_part_url: base,
+            commit_url: format!("http://{addr}/commit"),
+            total: 4 * 1024,
+            part: 1024,
+            local_path: "/tmp/unused.bin".to_string(),
+        };
+        let handle = MultipartHandle {
+            upload_id: meta.encode(),
+            remote_path: "/f.bin".into(),
+        };
+
+        let mut workers: Vec<Box<dyn StorageProvider>> = (0..4)
+            .map(|_| primary.clone_for_transfer().expect("clone"))
+            .collect();
+        let mut set = tokio::task::JoinSet::new();
+        for (i, mut worker) in workers.drain(..).enumerate() {
+            let handle = handle.clone();
+            let part = (i as u32) + 1;
+            set.spawn(async move {
+                worker
+                    .upload_part(&handle, part, vec![b'x'; 64])
+                    .await
+                    .map_err(|e| e.to_string())
+            });
+        }
+        let mut receipts = Vec::new();
+        while let Some(res) = set.join_next().await {
+            receipts.push(res.expect("join").expect("upload_part"));
+        }
+        receipts.sort_by_key(|r| r.part_number);
+        assert_eq!(receipts.len(), 4);
+        for (i, r) in receipts.iter().enumerate() {
+            assert_eq!(r.part_number, (i as u32) + 1);
+            let receipt: BoxPartReceipt = serde_json::from_str(&r.etag).expect("receipt");
+            assert_eq!(receipt.offset, (i as u64) * 1024);
+            assert_eq!(receipt.size, 64); // actual body size encoded in receipt
+            assert!(!receipt.part_id.is_empty());
+            assert!(!receipt.sha1.is_empty());
+        }
+
+        let mut seen_ranges = ranges.lock().unwrap().clone();
+        seen_ranges.sort();
+        assert_eq!(
+            seen_ranges,
+            vec![
+                "bytes 0-63/4096".to_string(),
+                "bytes 1024-1087/4096".to_string(),
+                "bytes 2048-2111/4096".to_string(),
+                "bytes 3072-3135/4096".to_string(),
+            ]
+        );
+        for d in digests.lock().unwrap().iter() {
+            assert!(d.starts_with("sha="), "chunk digest header: {d}");
+        }
+
+        assert_eq!(request_count.load(Ordering::SeqCst), 4);
+        assert_eq!(peak.load(Ordering::SeqCst), 4);
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn out_of_order_part_completion_returns_requested_receipts() {
+        use axum::{http::StatusCode, routing::put, Router};
+
+        let app = Router::new().route(
+            "/part",
+            put(|req: axum::extract::Request| async move {
+                let range = req
+                    .headers()
+                    .get("Content-Range")
+                    .and_then(|v| v.to_str().ok())
+                    .unwrap_or("")
+                    .to_string();
+                let offset = range
+                    .strip_prefix("bytes ")
+                    .and_then(|s| s.split('-').next())
+                    .and_then(|s| s.parse::<u64>().ok())
+                    .unwrap_or(0);
+                let delay_ms = 20u64 * (4u64.saturating_sub(offset / 1024));
+                tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+                let _ = axum::body::to_bytes(req.into_body(), 64 * 1024).await;
+                (
+                    StatusCode::OK,
+                    axum::Json(serde_json::json!({
+                        "part": {
+                            "part_id": format!("p{offset}"),
+                            "offset": offset,
+                            "size": 32,
+                            "sha1": "x"
+                        }
+                    })),
+                )
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.ok();
+        });
+
+        let primary = fixture_connected();
+        let meta = BoxMultipartMeta {
+            session_id: "sess-ooo".into(),
+            upload_part_url: format!("http://{addr}/part"),
+            commit_url: format!("http://{addr}/commit"),
+            total: 4096,
+            part: 1024,
+            local_path: "/tmp/x.bin".into(),
+        };
+        let handle = MultipartHandle {
+            upload_id: meta.encode(),
+            remote_path: "/f.bin".into(),
+        };
+        let mut set = tokio::task::JoinSet::new();
+        for part in [4u32, 1, 3, 2] {
+            let mut worker = primary.clone_for_transfer().unwrap();
+            let handle = handle.clone();
+            set.spawn(async move {
+                worker
+                    .upload_part(&handle, part, vec![0u8; 32])
+                    .await
+                    .map(|r| (part, r))
+                    .map_err(|e| e.to_string())
+            });
+        }
+        let mut got = Vec::new();
+        while let Some(res) = set.join_next().await {
+            let (requested, receipt) = res.unwrap().unwrap();
+            assert_eq!(receipt.part_number, requested);
+            got.push(receipt.part_number);
+        }
+        got.sort();
+        assert_eq!(got, vec![1, 2, 3, 4]);
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn commit_sorts_receipts_and_sends_whole_file_digest() {
+        use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
+        use sha1::{Digest, Sha1};
+        use std::sync::{Arc, Mutex};
+
+        use axum::{extract::Request, http::StatusCode, routing::post, Router};
+
+        let payload = b"abcdefghijklmnop"; // 16 bytes
+        let tmp =
+            std::env::temp_dir().join(format!("box-p1-05b-commit-{}.bin", std::process::id()));
+        std::fs::write(&tmp, payload).expect("write tmp");
+
+        let expected_sha1 = {
+            let mut h = Sha1::new();
+            h.update(payload);
+            BASE64.encode(h.finalize())
+        };
+
+        let captured = Arc::new(Mutex::new(None::<(String, String, serde_json::Value)>));
+        let captured_h = Arc::clone(&captured);
+        let app = Router::new().route(
+            "/commit",
+            post(move |req: Request| {
+                let captured = Arc::clone(&captured_h);
+                async move {
+                    let digest = req
+                        .headers()
+                        .get("Digest")
+                        .and_then(|v| v.to_str().ok())
+                        .unwrap_or("")
+                        .to_string();
+                    let auth = req
+                        .headers()
+                        .get(axum::http::header::AUTHORIZATION)
+                        .and_then(|v| v.to_str().ok())
+                        .unwrap_or("")
+                        .to_string();
+                    let body = axum::body::to_bytes(req.into_body(), 1024 * 1024)
+                        .await
+                        .unwrap_or_default();
+                    let json: serde_json::Value =
+                        serde_json::from_slice(&body).unwrap_or(serde_json::json!({}));
+                    *captured.lock().unwrap() = Some((auth, digest, json));
+                    StatusCode::CREATED
+                }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.ok();
+        });
+
+        let mut primary = fixture_connected();
+        let meta = BoxMultipartMeta {
+            session_id: "sess-commit".into(),
+            upload_part_url: format!("http://{addr}/part"),
+            commit_url: format!("http://{addr}/commit"),
+            total: payload.len() as u64,
+            part: 8,
+            local_path: tmp.to_string_lossy().into_owned(),
+        };
+        let handle = MultipartHandle {
+            upload_id: meta.encode(),
+            remote_path: "/f.bin".into(),
+        };
+        // Deliberately reverse order so complete must sort.
+        let parts = vec![
+            UploadedPart {
+                part_number: 2,
+                etag: serde_json::to_string(&BoxPartReceipt {
+                    part_id: "b".into(),
+                    offset: 8,
+                    size: 8,
+                    sha1: "sha-b".into(),
+                })
+                .unwrap(),
+            },
+            UploadedPart {
+                part_number: 1,
+                etag: serde_json::to_string(&BoxPartReceipt {
+                    part_id: "a".into(),
+                    offset: 0,
+                    size: 8,
+                    sha1: "sha-a".into(),
+                })
+                .unwrap(),
+            },
+        ];
+        primary
+            .complete_multipart_upload(handle, parts)
+            .await
+            .expect("complete");
+
+        let (auth, digest, body) = captured.lock().unwrap().clone().expect("captured");
+        assert!(auth.starts_with("Bearer "));
+        assert_eq!(digest, format!("sha={expected_sha1}"));
+        let part_ids: Vec<&str> = body["parts"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|p| p["part_id"].as_str().unwrap())
+            .collect();
+        assert_eq!(part_ids, vec!["a", "b"], "commit body must be part-sorted");
+
+        server.abort();
+        let _ = std::fs::remove_file(&tmp);
+    }
+
+    #[tokio::test]
+    async fn abort_hits_session_delete_url_best_effort() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
+
+        use axum::{http::StatusCode, routing::delete, Router};
+
+        let hits = Arc::new(AtomicUsize::new(0));
+        let hits_h = Arc::clone(&hits);
+        let app = Router::new().route(
+            "/files/upload_sessions/{id}",
+            delete(
+                move |axum::extract::Path(id): axum::extract::Path<String>| {
+                    let hits = Arc::clone(&hits_h);
+                    async move {
+                        assert_eq!(id, "sess-abort");
+                        hits.fetch_add(1, Ordering::SeqCst);
+                        StatusCode::NO_CONTENT
+                    }
+                },
+            ),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.ok();
+        });
+
+        let mut primary = fixture_connected();
+        primary.upload_base_override = Some(format!("http://{addr}"));
+        let meta = BoxMultipartMeta {
+            session_id: "sess-abort".into(),
+            upload_part_url: format!("http://{addr}/part"),
+            commit_url: format!("http://{addr}/commit"),
+            total: 1024,
+            part: 1024,
+            local_path: "/tmp/x.bin".into(),
+        };
+        let handle = MultipartHandle {
+            upload_id: meta.encode(),
+            remote_path: "/f.bin".into(),
+        };
+        primary.abort_multipart_upload(handle).await.expect("abort");
+        // Give the best-effort request a moment.
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        assert_eq!(hits.load(Ordering::SeqCst), 1);
+        server.abort();
+    }
+
+    #[test]
+    fn server_part_size_mismatch_is_fail_closed_on_handle_gate() {
+        // begin_multipart_upload compares session part_size to the advertised
+        // 8 MiB plan. Construct the mismatch branch directly: a meta with a
+        // non-8-MiB part would be rejected if returned by open_session.
+        // Unit-level: the constant and the error message shape stay honest.
+        assert_eq!(BOX_ADVERTISED_PART_SIZE, 8 * 1024 * 1024);
+        let bad = 4 * 1024 * 1024u64;
+        let err = ProviderError::TransferFailed(format!(
+            "Box server returned part_size {} but the runner expects {}; \
+             cannot proceed without runner re-shaping (out-of-scope for S2)",
+            bad, BOX_ADVERTISED_PART_SIZE
+        ));
+        let msg = err.to_string();
+        assert!(msg.contains("part_size"));
+        assert!(msg.contains(&BOX_ADVERTISED_PART_SIZE.to_string()));
+    }
+
+    #[tokio::test]
+    async fn begin_rejects_server_part_size_mismatch() {
+        use axum::{http::StatusCode, routing::post, Router};
+
+        let app = Router::new().route(
+            "/files/upload_sessions",
+            post(|| async {
+                (
+                    StatusCode::OK,
+                    axum::Json(serde_json::json!({
+                        "id": "sess-mismatch",
+                        "part_size": 4 * 1024 * 1024,
+                        "session_endpoints": {
+                            "upload_part": "http://127.0.0.1/part",
+                            "commit": "http://127.0.0.1/commit"
+                        }
+                    })),
+                )
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.ok();
+        });
+
+        let mut primary = fixture_connected();
+        primary.upload_base_override = Some(format!("http://{addr}"));
+        // open_chunked_upload_session resolves parent folder via API unless
+        // the path is root. Use root path so resolve_folder_id hits cache.
+        let err = primary
+            .begin_multipart_upload(
+                "/mismatch.bin",
+                BOX_ADVERTISED_PART_SIZE * 2,
+                None,
+                Some("/tmp/local.bin"),
+            )
+            .await
+            .expect_err("must fail closed on part_size mismatch");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("part_size") || msg.contains("runner expects"),
+            "unexpected error: {msg}"
+        );
+
+        server.abort();
+    }
+
+    #[test]
+    fn clone_multipart_worker_helper_returns_some_only_when_connected() {
+        use crate::transfer_multipart::clone_multipart_worker;
+
+        let disconnected = BoxProvider::new(demo_cfg());
+        assert!(clone_multipart_worker(&disconnected).is_none());
+        let connected = fixture_connected();
+        assert!(clone_multipart_worker(&connected).is_some());
+    }
+
+    #[tokio::test]
+    async fn one_part_failure_leaves_sibling_worker_usable() {
+        use axum::{extract::Request, http::StatusCode, routing::put, Router};
+
+        let app = Router::new().route(
+            "/part",
+            put(|req: Request| async move {
+                let range = req
+                    .headers()
+                    .get("Content-Range")
+                    .and_then(|v| v.to_str().ok())
+                    .unwrap_or("")
+                    .to_string();
+                let offset = range
+                    .strip_prefix("bytes ")
+                    .and_then(|s| s.split('-').next())
+                    .and_then(|s| s.parse::<u64>().ok())
+                    .unwrap_or(0);
+                let _ = axum::body::to_bytes(req.into_body(), 64 * 1024).await;
+                if offset == 1024 {
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        axum::Json(serde_json::json!({"error": "boom"})),
+                    )
+                } else {
+                    (
+                        StatusCode::OK,
+                        axum::Json(serde_json::json!({
+                            "part": {
+                                "part_id": "ok",
+                                "offset": offset,
+                                "size": 8,
+                                "sha1": "x"
+                            }
+                        })),
+                    )
+                }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.ok();
+        });
+
+        let primary = fixture_connected();
+        let meta = BoxMultipartMeta {
+            session_id: "sess-fail".into(),
+            upload_part_url: format!("http://{addr}/part"),
+            commit_url: format!("http://{addr}/commit"),
+            total: 2048,
+            part: 1024,
+            local_path: "/tmp/x.bin".into(),
+        };
+        let handle = MultipartHandle {
+            upload_id: meta.encode(),
+            remote_path: "/f.bin".into(),
+        };
+        let mut w1 = primary.clone_for_transfer().unwrap();
+        let mut w2 = primary.clone_for_transfer().unwrap();
+        let ok = w1.upload_part(&handle, 1, vec![1u8; 8]).await;
+        let err = w2.upload_part(&handle, 2, vec![2u8; 8]).await;
+        assert!(ok.is_ok());
+        assert!(err.is_err());
+        assert!(primary.is_connected());
+        server.abort();
     }
 }

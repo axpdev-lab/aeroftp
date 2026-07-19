@@ -523,15 +523,32 @@ impl Drop for RefreshLease {
     }
 }
 
-/// OAuth2 Manager for handling authentication flows
+/// OAuth2 Manager for handling authentication flows.
+///
+/// `Clone` is deliberate and cheap: it shares `pending_verifiers` and the
+/// in-process `refresh_guard` so transfer workers for the same provider
+/// instance cannot rotate refresh tokens concurrently (H-04 / DAG-P1-05B).
+/// Cross-process serialization still goes through [`RefreshLease`].
 pub struct OAuth2Manager {
     /// Pending PKCE verifiers for ongoing auth flows
     pending_verifiers: Arc<RwLock<HashMap<String, PkceCodeVerifier>>>,
     /// Callback server port (used in redirect URL generation)
     #[allow(dead_code)]
     callback_port: u16,
-    /// Guard to prevent concurrent token refresh (H-04: avoids invalid_grant race)
-    refresh_guard: tokio::sync::Mutex<()>,
+    /// Guard to prevent concurrent token refresh (H-04: avoids invalid_grant race).
+    /// Shared across clones of the same manager so Dropbox/Box part workers
+    /// serialize refresh against the primary.
+    refresh_guard: Arc<tokio::sync::Mutex<()>>,
+}
+
+impl Clone for OAuth2Manager {
+    fn clone(&self) -> Self {
+        Self {
+            pending_verifiers: Arc::clone(&self.pending_verifiers),
+            callback_port: self.callback_port,
+            refresh_guard: Arc::clone(&self.refresh_guard),
+        }
+    }
 }
 
 impl OAuth2Manager {
@@ -539,8 +556,15 @@ impl OAuth2Manager {
         Self {
             pending_verifiers: Arc::new(RwLock::new(HashMap::new())),
             callback_port: 0, // Will be assigned dynamically by OS
-            refresh_guard: tokio::sync::Mutex::new(()),
+            refresh_guard: Arc::new(tokio::sync::Mutex::new(())),
         }
+    }
+
+    /// Test-only: expose the shared refresh guard Arc for pointer-equality
+    /// checks across transfer-worker clones (DAG-P1-05B).
+    #[cfg(test)]
+    pub(crate) fn refresh_guard_for_test(&self) -> Arc<tokio::sync::Mutex<()>> {
+        Arc::clone(&self.refresh_guard)
     }
 
     /// Start OAuth2 authorization flow - returns URL to open in browser
@@ -1493,5 +1517,125 @@ mod tests {
         assert!(lock_path.exists());
         drop(stolen);
         assert!(!lock_path.exists());
+    }
+
+    // ---- DAG-P1-05B: shared refresh ownership across transfer clones ----
+
+    #[test]
+    fn oauth_manager_clone_shares_refresh_guard_and_pending_verifiers() {
+        let primary = OAuth2Manager::new();
+        let worker = primary.clone();
+        assert!(
+            Arc::ptr_eq(&primary.refresh_guard, &worker.refresh_guard),
+            "clone must share the in-process refresh mutex"
+        );
+        assert!(
+            Arc::ptr_eq(&primary.pending_verifiers, &worker.pending_verifiers),
+            "clone must share pending PKCE verifiers"
+        );
+        // Distinct manager instances stay independent.
+        let other = OAuth2Manager::new();
+        assert!(!Arc::ptr_eq(&primary.refresh_guard, &other.refresh_guard));
+    }
+
+    #[tokio::test]
+    async fn concurrent_clones_enter_at_most_one_refresh_critical_section() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc as StdArc;
+        use std::time::Duration;
+
+        let primary = OAuth2Manager::new();
+        let clones: Vec<OAuth2Manager> = (0..8).map(|_| primary.clone()).collect();
+        let in_flight = StdArc::new(AtomicUsize::new(0));
+        let peak = StdArc::new(AtomicUsize::new(0));
+        let mut set = tokio::task::JoinSet::new();
+        for m in clones {
+            let in_flight = StdArc::clone(&in_flight);
+            let peak = StdArc::clone(&peak);
+            set.spawn(async move {
+                let _guard = m.refresh_guard.lock().await;
+                let now = in_flight.fetch_add(1, Ordering::SeqCst) + 1;
+                peak.fetch_max(now, Ordering::SeqCst);
+                // Hold long enough that concurrent tasks would overlap if the
+                // mutex were not shared / exclusive.
+                tokio::time::sleep(Duration::from_millis(40)).await;
+                in_flight.fetch_sub(1, Ordering::SeqCst);
+            });
+        }
+        while set.join_next().await.is_some() {}
+        assert_eq!(
+            peak.load(Ordering::SeqCst),
+            1,
+            "shared refresh_guard must admit only one critical section at a time"
+        );
+    }
+
+    #[tokio::test]
+    async fn clones_re_read_shared_profile_token_source() {
+        use secrecy::ExposeSecret;
+
+        let primary = OAuth2Manager::new();
+        let profile = format!("p1-05b-oauth-{}", std::process::id());
+        // Clean any leftover from a previous run of this process.
+        let _ = primary.delete_tokens(OAuthProvider::Dropbox, &profile);
+
+        let tokens = StoredTokens {
+            access_token: "winner-access-token".to_string(),
+            refresh_token: Some("winner-refresh-token".to_string()),
+            // Far future so get_valid_token does not attempt a network refresh.
+            expires_at: Some(chrono::Utc::now().timestamp() + 3600),
+            token_type: "Bearer".to_string(),
+            scopes: vec![],
+        };
+        primary
+            .store_tokens(OAuthProvider::Dropbox, &profile, &tokens)
+            .expect("store");
+
+        let config = OAuthConfig::dropbox("app-key", "app-secret").with_profile_id(&profile);
+        let workers: Vec<OAuth2Manager> = (0..4).map(|_| primary.clone()).collect();
+        let mut set = tokio::task::JoinSet::new();
+        for w in workers {
+            let cfg = config.clone();
+            set.spawn(async move {
+                w.get_valid_token(&cfg)
+                    .await
+                    .map(|s| s.expose_secret().to_string())
+                    .map_err(|e| e.to_string())
+            });
+        }
+        let mut got = Vec::new();
+        while let Some(res) = set.join_next().await {
+            got.push(res.expect("join").expect("token"));
+        }
+        assert_eq!(got.len(), 4);
+        assert!(
+            got.iter().all(|t| t == "winner-access-token"),
+            "all clones must re-read the same profile-scoped winning token"
+        );
+
+        // Distinct profile IDs stay independent (serialization keys differ).
+        let other_profile = format!("{profile}-other");
+        let other_tokens = StoredTokens {
+            access_token: "other-access".to_string(),
+            refresh_token: None,
+            expires_at: Some(chrono::Utc::now().timestamp() + 3600),
+            token_type: "Bearer".to_string(),
+            scopes: vec![],
+        };
+        primary
+            .store_tokens(OAuthProvider::Dropbox, &other_profile, &other_tokens)
+            .expect("store other");
+        let other_cfg =
+            OAuthConfig::dropbox("app-key", "app-secret").with_profile_id(&other_profile);
+        let other = primary
+            .get_valid_token(&other_cfg)
+            .await
+            .expect("other token");
+        assert_eq!(other.expose_secret(), "other-access");
+        let original = primary.get_valid_token(&config).await.expect("original");
+        assert_eq!(original.expose_secret(), "winner-access-token");
+
+        let _ = primary.delete_tokens(OAuthProvider::Dropbox, &profile);
+        let _ = primary.delete_tokens(OAuthProvider::Dropbox, &other_profile);
     }
 }

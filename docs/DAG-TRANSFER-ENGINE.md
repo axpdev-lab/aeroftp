@@ -143,25 +143,32 @@ shared mutex. The current independent-worker set is:
 - Azure Blob;
 - WebDAV Nextcloud chunked v2;
 - **Drime** (`HttpClonePool`, max sessions 4), DAG-P1-05A;
-- **Uploadcare** (`HttpClonePool`, max sessions 4), DAG-P1-05A.
+- **Uploadcare** (`HttpClonePool`, max sessions 4), DAG-P1-05A;
+- **Dropbox** (`HttpClonePool`, max sessions 4), DAG-P1-05B;
+- **Box** (`HttpClonePool`, max sessions 4), DAG-P1-05B.
 
-Dropbox, Box, pCloud, and Filen can expose multipart capability or part APIs,
-but are not yet promoted to wire-level DAG fan-out without an independent
-worker and a provider-specific live gate (next waves of `DAG-P1-05`). A graph
-with N part nodes therefore means “N scheduled part operations”, not
-automatically “N concurrent network requests”, unless the provider is in the
-independent-worker set above.
+pCloud and Filen can expose multipart capability or part APIs, but are not yet
+promoted to wire-level DAG fan-out without an independent worker and a
+provider-specific live gate (next waves of `DAG-P1-05`). A graph with N part
+nodes therefore means "N scheduled part operations", not automatically "N
+concurrent network requests", unless the provider is in the independent-worker
+set above.
 
-### Evidence split (DAG-P1-05A)
+OAuth providers that may rotate refresh tokens (including Dropbox and Box)
+share one in-process `OAuth2Manager` refresh guard across primary and every
+transfer clone. Cross-process serialization remains on `RefreshLease`.
 
-| Layer | Drime | Uploadcare |
-|---|---|---|
-| Lifecycle correctness (begin/complete/abort on primary; part uses opaque handle) | unit + local HTTP fixture | unit + local HTTP fixture |
-| Graph task overlap (builder cap >1) | shared multipart topology | shared multipart topology |
-| Deterministic HTTP part overlap | peak ∈ (1, 4] on 4 workers | peak ∈ (1, 4] on 4 workers |
-| Live WAN integrity (multipart ≥4 parts, download-back SHA-256, cleanup) | profile `Drime`, 22 MiB, byte-identical | profile `Uploadcare`, 22 MiB jpg, byte-identical |
-| Live WAN peak part overlap with **this** code | not claimed: production CLI pre-dates the promotion; local debug CLI vault locked in this session | same environmental bound |
-| Whole-file clone pool vs multipart part workers | file/session ≤4; one multipart file holds one session lease; parts use ≤4 chunk credits | same |
+### Evidence split (DAG-P1-05A + DAG-P1-05B)
+
+| Layer | Drime | Uploadcare | Dropbox | Box |
+|---|---|---|---|---|
+| Lifecycle correctness (begin/complete/abort on primary; part uses opaque handle) | unit + local HTTP fixture | unit + local HTTP fixture | unit + local HTTP fixture (concurrent start empty body, close-before-finish, no-op abort) | unit + local HTTP fixture (Content-Range, chunk digest, sorted commit, abort DELETE) |
+| Graph task overlap (builder cap >1) | shared multipart topology | shared multipart topology | shared multipart topology | shared multipart topology |
+| Deterministic HTTP part overlap | peak ∈ (1, 4] on 4 workers | peak ∈ (1, 4] on 4 workers | barrier-backed peak = 4 on 4 workers | barrier-backed peak = 4 on 4 workers |
+| Live WAN integrity (multipart ≥4 parts, download-back SHA-256, cleanup) | profile `Drime`, 22 MiB, byte-identical | profile `Uploadcare`, 22 MiB jpg, byte-identical | not run this wave: profile `My Dropbox` `auth_state=no_credentials` | not run this wave: profile `MyBox` `auth_state=needs_refresh` |
+| Live WAN peak part overlap with **this** code | not claimed | not claimed | not claimed | not claimed |
+| Whole-file clone pool vs multipart part workers | file/session ≤4 | same | file/session ≤4; shared OAuth refresh guard | file/session ≤4; shared OAuth refresh guard; bounded `id_cache` seed (root + current path only) |
+| Server part-size vs plan | n/a | n/a | n/a | fail-closed if session `part_size` ≠ 8 MiB plan |
 
 Clone failure stays fail-closed: runtime composition demotes
 `file_parallel`/`session_pool` to single-lease and part I/O falls back to the
