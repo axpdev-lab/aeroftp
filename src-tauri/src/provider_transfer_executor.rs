@@ -495,6 +495,108 @@ pub fn resolve_session_model(
     }
 }
 
+/// Compose a runtime-truthful capability snapshot (DAG-P1-01).
+///
+/// Starts from the provider's advertised [`StorageProvider::transfer_capabilities`]
+/// and forces a conservative single-lease profile when the declared executor
+/// kind is not pool-backed or the live `clone_for_transfer` probe fails.
+/// Advertised multipart/range/checksum fields are preserved so batch shaping
+/// still sees protocol truth; only the file-parallel ceiling is demoted.
+pub fn compose_runtime_transfer_capabilities(
+    advertised: &TransferCapabilities,
+    executor_kind: ProviderTransferExecutorKind,
+    can_clone: bool,
+) -> TransferCapabilities {
+    let mut caps = advertised.clone();
+    let kind_is_pool = matches!(
+        executor_kind,
+        ProviderTransferExecutorKind::HttpClonePool
+            | ProviderTransferExecutorKind::SftpConnectionPool
+            | ProviderTransferExecutorKind::FtpConnectionPool
+    );
+    let can_realize_file_parallel = kind_is_pool
+        && can_clone
+        && caps.file_parallel == Capability::Supported
+        && caps.session_pool == Capability::Supported;
+
+    if !can_realize_file_parallel {
+        caps.file_parallel = Capability::Unsupported;
+        caps.session_pool = Capability::Unsupported;
+        caps.max_file_slots = Some(1);
+    } else {
+        // Keep a positive ceiling so settings/session resolution has a bound.
+        let slots = caps.max_file_slots.unwrap_or(1).max(1);
+        caps.max_file_slots = Some(slots);
+    }
+    caps
+}
+
+/// Align a capability snapshot with the session model the executor actually
+/// selected. A locked model can never realize file-parallel even if earlier
+/// probes looked optimistic.
+pub fn finalize_capabilities_for_session_model(
+    caps: &TransferCapabilities,
+    session_model: &ProviderExecutorSessionModel,
+) -> TransferCapabilities {
+    let mut out = caps.clone();
+    if !session_model.is_clone_pool() {
+        out.file_parallel = Capability::Unsupported;
+        out.session_pool = Capability::Unsupported;
+        out.max_file_slots = Some(1);
+    }
+    out
+}
+
+/// Probe the live provider once and return the composed runtime capability
+/// snapshot used by settings resolution (DAG-P1-02) and executor construction
+/// (DAG-P1-01). Disconnected / missing providers stay fully conservative.
+pub async fn probe_provider_runtime_capabilities(
+    provider: &Arc<Mutex<Option<Box<dyn StorageProvider>>>>,
+) -> TransferCapabilities {
+    let provider_lock = provider.lock().await;
+    let Some(provider) = provider_lock.as_ref() else {
+        return TransferCapabilities::default();
+    };
+    compose_runtime_transfer_capabilities(
+        &provider.transfer_capabilities(),
+        provider.transfer_executor_kind(),
+        provider.clone_for_transfer().is_ok(),
+    )
+}
+
+/// Resolve session model and the executor-owned capability snapshot together.
+///
+/// Uses one provider lock, one clone probe, and finalizes capabilities against
+/// the chosen session model so advertised file-parallel cannot outlive a
+/// locked outcome.
+pub async fn resolve_provider_executor_runtime(
+    provider: &Arc<Mutex<Option<Box<dyn StorageProvider>>>>,
+    max_concurrent: usize,
+) -> (ProviderExecutorSessionModel, TransferCapabilities) {
+    let provider_lock = provider.lock().await;
+    let Some(provider) = provider_lock.as_ref() else {
+        return (
+            ProviderExecutorSessionModel::locked(None),
+            TransferCapabilities::default(),
+        );
+    };
+
+    let advertised = provider.transfer_capabilities();
+    let kind = provider.transfer_executor_kind();
+    let can_clone = provider.clone_for_transfer().is_ok();
+    let runtime_caps = compose_runtime_transfer_capabilities(&advertised, kind, can_clone);
+    let model = resolve_session_model(
+        provider.provider_type(),
+        &runtime_caps,
+        kind,
+        can_clone,
+        provider.transfer_executor_max_sessions(),
+        max_concurrent,
+    );
+    let executor_caps = finalize_capabilities_for_session_model(&runtime_caps, &model);
+    (model, executor_caps)
+}
+
 /// Thin async wrapper over [`resolve_session_model`]: locks the provider,
 /// gathers the capability inputs and the `clone_for_transfer` probe, then
 /// delegates the decision to the pure function.
@@ -502,19 +604,9 @@ pub async fn resolve_provider_executor_session_model(
     provider: &Arc<Mutex<Option<Box<dyn StorageProvider>>>>,
     max_concurrent: usize,
 ) -> ProviderExecutorSessionModel {
-    let provider_lock = provider.lock().await;
-    let Some(provider) = provider_lock.as_ref() else {
-        return ProviderExecutorSessionModel::locked(None);
-    };
-
-    resolve_session_model(
-        provider.provider_type(),
-        &provider.transfer_capabilities(),
-        provider.transfer_executor_kind(),
-        provider.clone_for_transfer().is_ok(),
-        provider.transfer_executor_max_sessions(),
-        max_concurrent,
-    )
+    resolve_provider_executor_runtime(provider, max_concurrent)
+        .await
+        .0
 }
 
 pub async fn resolve_provider_list_session_model(
@@ -553,6 +645,8 @@ pub struct ProviderDownloadExecutor {
     runtime_settings: ResolvedTransferSettings,
     cancel_token: CancellationToken,
     session_model: ProviderExecutorSessionModel,
+    /// Runtime capability snapshot used by the batch DAG builder (DAG-P1-01).
+    capabilities: TransferCapabilities,
 }
 
 impl ProviderDownloadExecutor {
@@ -562,12 +656,14 @@ impl ProviderDownloadExecutor {
         runtime_settings: ResolvedTransferSettings,
         cancel_token: CancellationToken,
         session_model: ProviderExecutorSessionModel,
+        capabilities: TransferCapabilities,
     ) -> Self {
         Self {
             sink,
             provider,
             runtime_settings,
             cancel_token,
+            capabilities: finalize_capabilities_for_session_model(&capabilities, &session_model),
             session_model,
         }
     }
@@ -957,6 +1053,8 @@ pub struct ProviderUploadExecutor {
     commit_message: Option<String>,
     cancel_token: CancellationToken,
     session_model: ProviderExecutorSessionModel,
+    /// Runtime capability snapshot used by the batch DAG builder (DAG-P1-01).
+    capabilities: TransferCapabilities,
 }
 
 impl ProviderUploadExecutor {
@@ -967,6 +1065,7 @@ impl ProviderUploadExecutor {
         commit_message: Option<String>,
         cancel_token: CancellationToken,
         session_model: ProviderExecutorSessionModel,
+        capabilities: TransferCapabilities,
     ) -> Self {
         Self {
             sink,
@@ -974,6 +1073,7 @@ impl ProviderUploadExecutor {
             runtime_settings,
             commit_message,
             cancel_token,
+            capabilities: finalize_capabilities_for_session_model(&capabilities, &session_model),
             session_model,
         }
     }
@@ -1252,6 +1352,10 @@ impl TransferExecutor for ProviderDownloadExecutor {
         self.session_model.provider_type()
     }
 
+    fn transfer_capabilities(&self) -> TransferCapabilities {
+        self.capabilities.clone()
+    }
+
     fn session_pool(&self, _max_concurrent: usize) -> TransferSessionPoolHandle {
         self.session_model.session_pool("provider-download")
     }
@@ -1284,6 +1388,10 @@ impl TransferExecutor for ProviderDownloadExecutor {
 impl TransferExecutor for ProviderUploadExecutor {
     fn provider_type(&self) -> Option<ProviderType> {
         self.session_model.provider_type()
+    }
+
+    fn transfer_capabilities(&self) -> TransferCapabilities {
+        self.capabilities.clone()
     }
 
     fn session_pool(&self, _max_concurrent: usize) -> TransferSessionPoolHandle {
@@ -1547,5 +1655,208 @@ mod tests {
             }
             other => panic!("expected HttpClonePool, got {other:?}"),
         }
+    }
+
+    // ---- DAG-P1-01: runtime capability composition -------------------------
+
+    #[test]
+    fn compose_runtime_caps_keeps_http_clone_ceiling_when_clone_ok() {
+        let advertised = TransferCapabilities {
+            file_parallel: Capability::Supported,
+            session_pool: Capability::Supported,
+            max_file_slots: Some(8),
+            multipart_upload: Capability::Supported,
+            max_chunk_slots: Some(4),
+            ..TransferCapabilities::default()
+        };
+        let caps = compose_runtime_transfer_capabilities(
+            &advertised,
+            ProviderTransferExecutorKind::HttpClonePool,
+            true,
+        );
+        assert_eq!(caps.file_parallel, Capability::Supported);
+        assert_eq!(caps.session_pool, Capability::Supported);
+        assert_eq!(caps.max_file_slots, Some(8));
+        assert_eq!(caps.multipart_upload, Capability::Supported);
+        assert_eq!(caps.max_chunk_slots, Some(4));
+    }
+
+    #[test]
+    fn compose_runtime_caps_serializes_when_clone_probe_fails() {
+        let advertised = TransferCapabilities {
+            file_parallel: Capability::Supported,
+            session_pool: Capability::Supported,
+            max_file_slots: Some(8),
+            multipart_upload: Capability::Supported,
+            ..TransferCapabilities::default()
+        };
+        let caps = compose_runtime_transfer_capabilities(
+            &advertised,
+            ProviderTransferExecutorKind::HttpClonePool,
+            false,
+        );
+        assert_eq!(caps.file_parallel, Capability::Unsupported);
+        assert_eq!(caps.session_pool, Capability::Unsupported);
+        assert_eq!(caps.max_file_slots, Some(1));
+        // Multipart advertisement is independent of file-pool feasibility.
+        assert_eq!(caps.multipart_upload, Capability::Supported);
+    }
+
+    #[test]
+    fn compose_runtime_caps_serializes_locked_single_kind() {
+        let advertised = TransferCapabilities {
+            file_parallel: Capability::Supported,
+            session_pool: Capability::Supported,
+            max_file_slots: Some(4),
+            ..TransferCapabilities::default()
+        };
+        let caps = compose_runtime_transfer_capabilities(
+            &advertised,
+            ProviderTransferExecutorKind::LockedSingle,
+            true,
+        );
+        assert_eq!(caps.file_parallel, Capability::Unsupported);
+        assert_eq!(caps.max_file_slots, Some(1));
+    }
+
+    #[test]
+    fn finalize_caps_forces_serial_for_locked_session_model() {
+        let advertised = TransferCapabilities {
+            file_parallel: Capability::Supported,
+            session_pool: Capability::Supported,
+            max_file_slots: Some(8),
+            ..TransferCapabilities::default()
+        };
+        let model = ProviderExecutorSessionModel::locked(Some(ProviderType::S3));
+        let caps = finalize_capabilities_for_session_model(&advertised, &model);
+        assert_eq!(caps.file_parallel, Capability::Unsupported);
+        assert_eq!(caps.max_file_slots, Some(1));
+    }
+
+    #[test]
+    fn s3_provider_executor_snapshot_exposes_clone_pool_ceiling() {
+        use crate::providers::s3::S3Provider;
+        use crate::providers::{S3Config, StorageProvider};
+
+        let provider = S3Provider::new(S3Config {
+            endpoint: Some("http://localhost:9000".to_string()),
+            region: "us-east-1".to_string(),
+            access_key_id: "key".to_string(),
+            secret_access_key: secrecy::SecretString::from("secret".to_string()),
+            session_token: None,
+            role_arn: None,
+            role_external_id: None,
+            role_session_name: None,
+            role_duration_seconds: None,
+            role_mfa_serial: None,
+            role_mfa_token_code: None,
+            bucket: "bucket".to_string(),
+            prefix: None,
+            path_style: true,
+            storage_class: None,
+            sse_mode: None,
+            sse_kms_key_id: None,
+            verify_cert: true,
+        })
+        .expect("s3 provider");
+
+        let advertised = provider.transfer_capabilities();
+        let can_clone = provider.clone_for_transfer().is_ok();
+        assert!(can_clone, "S3 clone_for_transfer must succeed offline");
+        let caps = compose_runtime_transfer_capabilities(
+            &advertised,
+            provider.transfer_executor_kind(),
+            can_clone,
+        );
+        assert_eq!(caps.file_parallel, Capability::Supported);
+        assert_eq!(caps.session_pool, Capability::Supported);
+        assert_eq!(caps.max_file_slots, Some(8));
+        assert!(caps.max_file_slots.unwrap() > 1);
+
+        let model = resolve_session_model(
+            ProviderType::S3,
+            &caps,
+            provider.transfer_executor_kind(),
+            can_clone,
+            provider.transfer_executor_max_sessions(),
+            4,
+        );
+        assert!(model.is_clone_pool());
+        assert_eq!(model.max_leases(), 4);
+    }
+
+    #[test]
+    fn azure_provider_executor_snapshot_exposes_clone_pool_ceiling() {
+        use crate::providers::azure::AzureProvider;
+        use crate::providers::{AzureConfig, StorageProvider};
+
+        let provider = AzureProvider::new(AzureConfig {
+            account_name: "myacc".to_string(),
+            access_key: secrecy::SecretString::from("dGVzdGtleQ==".to_string()),
+            container: "mycontainer".to_string(),
+            sas_token: None,
+            endpoint: None,
+        });
+        let advertised = provider.transfer_capabilities();
+        let can_clone = provider.clone_for_transfer().is_ok();
+        let caps = compose_runtime_transfer_capabilities(
+            &advertised,
+            provider.transfer_executor_kind(),
+            can_clone,
+        );
+        assert_eq!(caps.file_parallel, Capability::Supported);
+        assert_eq!(caps.max_file_slots, Some(8));
+        assert!(can_clone);
+    }
+
+    #[test]
+    fn b2_provider_executor_snapshot_requires_connection_for_clone() {
+        use crate::providers::b2::{B2Config, B2Provider};
+        use crate::providers::StorageProvider;
+
+        let provider = B2Provider::new(B2Config {
+            application_key_id: "id".into(),
+            application_key: secrecy::SecretString::new("k".into()),
+            bucket: "b".into(),
+            initial_path: None,
+        });
+        let advertised = provider.transfer_capabilities();
+        // Disconnected B2 refuses clone; runtime composition must not claim
+        // a file-parallel ceiling the executor cannot realize.
+        let can_clone = provider.clone_for_transfer().is_ok();
+        assert!(!can_clone);
+        let caps = compose_runtime_transfer_capabilities(
+            &advertised,
+            provider.transfer_executor_kind(),
+            can_clone,
+        );
+        assert_eq!(caps.file_parallel, Capability::Unsupported);
+        assert_eq!(caps.max_file_slots, Some(1));
+        // When connected, advertised kind still carries the true ceiling.
+        assert_eq!(
+            provider.transfer_executor_kind(),
+            ProviderTransferExecutorKind::HttpClonePool
+        );
+        assert!(provider.transfer_executor_max_sessions() > 1);
+    }
+
+    #[test]
+    fn nextcloud_clone_alone_does_not_activate_file_parallel_without_pool_kind() {
+        // Residual: WebDAV/Nextcloud can clone for single-file multipart parts
+        // but intentionally keeps LockedSingle transfer_executor_kind, so
+        // batch file-level parallel stays off (activation is S3/B2/Azure).
+        let advertised = TransferCapabilities {
+            file_parallel: Capability::Unsupported,
+            session_pool: Capability::Unsupported,
+            max_file_slots: Some(1),
+            ..TransferCapabilities::default()
+        };
+        let caps = compose_runtime_transfer_capabilities(
+            &advertised,
+            ProviderTransferExecutorKind::LockedSingle,
+            true, // clone ok for Nextcloud parts
+        );
+        assert_eq!(caps.file_parallel, Capability::Unsupported);
+        assert_eq!(caps.max_file_slots, Some(1));
     }
 }

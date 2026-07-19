@@ -135,6 +135,11 @@ pub fn resolve_ftp_transfer_settings(input: TransferSettingsInput) -> ResolvedTr
     resolve_transfer_settings(input, TransferCapabilityCaps::default())
 }
 
+/// Conservative provider settings when no live capability snapshot is available.
+///
+/// Prefer [`resolve_transfer_settings_for_capabilities`] on active provider
+/// batch paths (DAG-P1-02). This helper remains the fail-closed serial clamp
+/// for legacy callers that have not yet resolved runtime capabilities.
 pub fn resolve_provider_transfer_settings(
     input: TransferSettingsInput,
 ) -> ResolvedTransferSettings {
@@ -147,7 +152,13 @@ pub fn resolve_provider_transfer_settings(
     )
 }
 
-#[allow(dead_code)]
+/// Resolve transfer settings against a runtime capability snapshot (DAG-P1-02).
+///
+/// `requested_max_concurrent` preserves user intent; `max_concurrent` is the
+/// effective value after clamping to `capabilities.max_file_slots` (and the
+/// global 1..=8 bounds). Retry, timeout and download-segment policy are
+/// unchanged. Callers must pass the composed runtime snapshot from the live
+/// provider/executor — not protocol defaults alone.
 pub fn resolve_transfer_settings_for_capabilities(
     input: TransferSettingsInput,
     capabilities: &TransferCapabilities,
@@ -174,7 +185,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn provider_settings_are_serialized_until_multi_session_support_exists() {
+    fn provider_settings_without_capabilities_stay_serial() {
+        // Fail-closed fallback when no live capability snapshot is available.
         let resolved = resolve_provider_transfer_settings(TransferSettingsInput {
             max_concurrent: Some(4),
             retry_count: Some(2),
@@ -186,6 +198,60 @@ mod tests {
         assert_eq!(resolved.max_concurrent, 1);
         assert_eq!(resolved.retry_count, 2);
         assert_eq!(resolved.timeout_seconds, 45);
+    }
+
+    #[test]
+    fn capability_settings_raise_effective_concurrency_for_clone_pool() {
+        // Requested 4 with a verified clone-capable ceiling >1 yields effective >1.
+        let resolved = resolve_transfer_settings_for_capabilities(
+            TransferSettingsInput {
+                max_concurrent: Some(4),
+                retry_count: Some(2),
+                timeout_seconds: Some(45),
+                download_segments: None,
+            },
+            &TransferCapabilities {
+                file_parallel: crate::transfer_dag::Capability::Supported,
+                session_pool: crate::transfer_dag::Capability::Supported,
+                max_file_slots: Some(8),
+                ..TransferCapabilities::default()
+            },
+        );
+        assert_eq!(resolved.requested_max_concurrent, 4);
+        assert_eq!(resolved.max_concurrent, 4);
+        assert_eq!(resolved.retry_count, 2);
+        assert_eq!(resolved.timeout_seconds, 45);
+    }
+
+    #[test]
+    fn capability_settings_clamp_requested_above_runtime_ceiling() {
+        let resolved = resolve_transfer_settings_for_capabilities(
+            TransferSettingsInput {
+                max_concurrent: Some(8),
+                retry_count: None,
+                timeout_seconds: None,
+                download_segments: None,
+            },
+            &TransferCapabilities {
+                max_file_slots: Some(3),
+                ..TransferCapabilities::default()
+            },
+        );
+        assert_eq!(resolved.requested_max_concurrent, 8);
+        assert_eq!(resolved.max_concurrent, 3);
+    }
+
+    #[test]
+    fn capability_settings_legacy_single_stays_at_one() {
+        let resolved = resolve_transfer_settings_for_capabilities(
+            TransferSettingsInput {
+                max_concurrent: Some(4),
+                ..TransferSettingsInput::default()
+            },
+            &TransferCapabilities::default(), // max_file_slots = Some(1)
+        );
+        assert_eq!(resolved.requested_max_concurrent, 4);
+        assert_eq!(resolved.max_concurrent, 1);
     }
 
     #[test]

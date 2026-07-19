@@ -105,12 +105,12 @@ where
 
     // One capability-shaped sub-DAG per entry, merged into one graph.
     // Every batch is bound to a single provider session, so the caps set is
-    // shared across files. The shared executor does not yet expose a
-    // capability snapshot to the batch surface (that is the SG-T14 wire-in
-    // gate for native multipart batch uploads); until it does, default caps
-    // produce a graph shape identical to the legacy single-transfer-core
-    // chain, so this is byte-identical with the previous wiring.
-    let caps = TransferCapabilities::default();
+    // shared across files. DAG-P1-01: consume exactly the executor's runtime
+    // capability snapshot (not `TransferCapabilities::default()`). That enables
+    // truthful multipart graph shape and file-slot ceilings for pool-backed
+    // providers. Wire-level per-part I/O inside one batch file remains gated
+    // on `entry_transferred` until DAG-P1-03.
+    let caps: TransferCapabilities = executor.transfer_capabilities();
     let items: Vec<BatchDagItem> = entries
         .iter()
         .map(|entry| BatchDagItem::with_size(entry.id.clone(), dag_direction, entry.size))
@@ -134,7 +134,7 @@ where
     // structural no-ops. This preserves the batch contract (one
     // `execute_with_session` per file, one progress snapshot per file) and
     // keeps the multipart fan-out as a future optimisation gate that
-    // engages once the executor exposes a native per-part contract.
+    // engages once the executor exposes a native per-part contract (P1-03).
     let entry_transferred = Arc::new(Mutex::new(vec![false; entries.len()]));
 
     let entries = Arc::new(entries);
@@ -326,6 +326,9 @@ mod tests {
         in_flight: AtomicUsize,
         peak: AtomicUsize,
         session_capacity: usize,
+        capabilities: TransferCapabilities,
+        /// Counts how many times `execute_with_session` actually ran I/O.
+        transfer_calls: AtomicUsize,
     }
 
     impl MockExecutor {
@@ -337,7 +340,15 @@ mod tests {
                 in_flight: AtomicUsize::new(0),
                 peak: AtomicUsize::new(0),
                 session_capacity,
+                // Default trait path: conservative serial snapshot.
+                capabilities: TransferCapabilities::default(),
+                transfer_calls: AtomicUsize::new(0),
             }
+        }
+
+        fn with_capabilities(mut self, capabilities: TransferCapabilities) -> Self {
+            self.capabilities = capabilities;
+            self
         }
 
         fn executed(&self) -> Vec<String> {
@@ -347,11 +358,16 @@ mod tests {
         fn peak(&self) -> usize {
             self.peak.load(AtomicOrdering::SeqCst)
         }
+
+        fn transfer_calls(&self) -> usize {
+            self.transfer_calls.load(AtomicOrdering::SeqCst)
+        }
     }
 
     #[async_trait]
     impl TransferExecutor for MockExecutor {
         async fn execute(&self, entry: TransferEntry) -> TransferOutcome {
+            self.transfer_calls.fetch_add(1, AtomicOrdering::SeqCst);
             let now = self.in_flight.fetch_add(1, AtomicOrdering::SeqCst) + 1;
             self.peak.fetch_max(now, AtomicOrdering::SeqCst);
             tokio::time::sleep(Duration::from_millis(15)).await;
@@ -371,6 +387,10 @@ mod tests {
             } else {
                 TransferOutcome::Success
             }
+        }
+
+        fn transfer_capabilities(&self) -> TransferCapabilities {
+            self.capabilities.clone()
         }
 
         fn session_pool(&self, max_concurrent: usize) -> TransferSessionPoolHandle {
@@ -632,6 +652,122 @@ mod tests {
         fn session_pool(&self, _max_concurrent: usize) -> TransferSessionPoolHandle {
             TransferSessionPoolHandle::new(AlwaysFailingPool)
         }
+    }
+
+    #[test]
+    fn default_executor_capabilities_are_conservative_serial() {
+        // Trait default (and MockExecutor without override) must stay serial.
+        let executor = MockExecutor::new(1);
+        let caps = executor.transfer_capabilities();
+        assert_eq!(
+            caps.file_parallel,
+            crate::transfer_dag::Capability::Unsupported
+        );
+        assert_eq!(caps.max_file_slots, Some(1));
+        assert_eq!(
+            caps.multipart_upload,
+            crate::transfer_dag::Capability::Unsupported
+        );
+    }
+
+    #[tokio::test]
+    async fn batch_dag_uses_executor_capability_snapshot_not_defaults() {
+        // A clone-capable snapshot with multipart must shape UploadPart nodes,
+        // proving the batch builder consumes executor.transfer_capabilities()
+        // rather than TransferCapabilities::default().
+        use crate::transfer_dag::Capability;
+        let caps = TransferCapabilities {
+            file_parallel: Capability::Supported,
+            session_pool: Capability::Supported,
+            multipart_upload: Capability::Supported,
+            max_file_slots: Some(4),
+            max_chunk_slots: Some(4),
+            preferred_chunk_size: Some(5 * 1024 * 1024),
+            multipart_threshold: 0,
+            ..TransferCapabilities::default()
+        };
+        // Large enough to fan out under preferred_chunk_size.
+        let file_size = 20 * 1024 * 1024;
+        let executor = Arc::new(MockExecutor::new(4).with_capabilities(caps));
+        let result = execute_batch_dag(
+            Arc::new(CountingSink::default()) as Arc<dyn TransferEventSink>,
+            batch(vec![entry("big", file_size)], 4),
+            Arc::clone(&executor),
+            Arc::new(AtomicBool::new(false)),
+            None,
+        )
+        .await;
+        assert_eq!(result.completed, 1);
+        // Whole-file contract until P1-03: multiparts may exist in the graph,
+        // but execute_with_session runs once per entry (entry_transferred).
+        assert_eq!(
+            executor.transfer_calls(),
+            1,
+            "batch multipart must stay whole-file/deduplicated until P1-03"
+        );
+        assert_eq!(executor.executed().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn batch_dag_independent_file_overlap_for_enabled_executor() {
+        // Peak concurrency >1 when max_concurrent and session pool allow it.
+        let caps = TransferCapabilities {
+            file_parallel: crate::transfer_dag::Capability::Supported,
+            session_pool: crate::transfer_dag::Capability::Supported,
+            max_file_slots: Some(4),
+            ..TransferCapabilities::default()
+        };
+        let executor = Arc::new(MockExecutor::new(4).with_capabilities(caps));
+        let result = execute_batch_dag(
+            Arc::new(CountingSink::default()) as Arc<dyn TransferEventSink>,
+            batch(
+                vec![entry("a", 1), entry("b", 1), entry("c", 1), entry("d", 1)],
+                4,
+            ),
+            Arc::clone(&executor),
+            Arc::new(AtomicBool::new(false)),
+            None,
+        )
+        .await;
+        assert_eq!(result.completed, 4);
+        assert!(
+            executor.peak() > 1,
+            "independent files must overlap for a pool-enabled executor (peak={})",
+            executor.peak()
+        );
+        assert!(
+            executor.peak() <= 4,
+            "peak must not exceed file_slots/session capacity"
+        );
+    }
+
+    #[tokio::test]
+    async fn batch_dag_peak_bounded_by_min_of_file_slots_and_session_pool() {
+        // file_slots=4 from config, session pool capacity=2 → peak ≤ 2.
+        let caps = TransferCapabilities {
+            file_parallel: crate::transfer_dag::Capability::Supported,
+            session_pool: crate::transfer_dag::Capability::Supported,
+            max_file_slots: Some(8),
+            ..TransferCapabilities::default()
+        };
+        let executor = Arc::new(MockExecutor::new(2).with_capabilities(caps));
+        let result = execute_batch_dag(
+            Arc::new(CountingSink::default()) as Arc<dyn TransferEventSink>,
+            batch(
+                vec![entry("a", 1), entry("b", 1), entry("c", 1), entry("d", 1)],
+                4,
+            ),
+            Arc::clone(&executor),
+            Arc::new(AtomicBool::new(false)),
+            None,
+        )
+        .await;
+        assert_eq!(result.completed, 4);
+        assert_eq!(
+            executor.peak(),
+            2,
+            "session-pool capacity must bound peak without double-limiting past the tighter cap"
+        );
     }
 
     #[tokio::test]

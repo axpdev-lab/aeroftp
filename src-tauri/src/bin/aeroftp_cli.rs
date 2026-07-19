@@ -8942,8 +8942,8 @@ async fn run_shared_provider_download_batch(
     cancelled: Arc<AtomicBool>,
 ) -> Result<SharedDownloadOutcome, Box<dyn StorageProvider>> {
     use ftp_client_gui_lib::provider_transfer_executor::{
-        resolve_provider_executor_session_model, ProviderDownloadExecutor,
-        ProviderExecutorSessionModel,
+        probe_provider_runtime_capabilities, resolve_provider_executor_runtime,
+        ProviderDownloadExecutor, ProviderExecutorSessionModel,
     };
     use ftp_client_gui_lib::transfer_domain::{
         TransferBatchConfig, TransferDirection, TransferEntry,
@@ -8953,13 +8953,30 @@ async fn run_shared_provider_download_batch(
         execute_batch, ProgressObserver, TransferBatch,
     };
     use ftp_client_gui_lib::transfer_settings::{
-        resolve_provider_transfer_settings, TransferSettingsInput,
+        resolve_transfer_settings_for_capabilities, TransferSettingsInput,
     };
 
     let workers = effective_parallel_workers(cli);
     let provider_arc = Arc::new(AsyncMutex::new(Some(base)));
 
-    let model = resolve_provider_executor_session_model(&provider_arc, workers).await;
+    // DAG-P1-02: capability-aware settings; requested workers clamped to the
+    // runtime file-parallel ceiling of the live provider.
+    let runtime_caps = probe_provider_runtime_capabilities(&provider_arc).await;
+    let runtime_settings = resolve_transfer_settings_for_capabilities(
+        TransferSettingsInput {
+            max_concurrent: Some(workers as u32),
+            retry_count: None,
+            timeout_seconds: None,
+            // CLI segmented downloads use the dedicated `pget` path, not
+            // the GUI provider executor, so the executor stays single-stream.
+            download_segments: None,
+        },
+        &runtime_caps,
+    );
+    let effective_workers = runtime_settings.max_concurrent.max(1) as usize;
+
+    let (model, capabilities) =
+        resolve_provider_executor_runtime(&provider_arc, effective_workers).await;
     let is_pool_backed = matches!(
         model,
         ProviderExecutorSessionModel::HttpClonePool { .. }
@@ -8997,19 +9014,6 @@ async fn run_shared_provider_download_batch(
         }
     }
 
-    // `resolve_provider_transfer_settings` caps max_concurrent to 1 (GUI
-    // policy). The executor only reads retry/timeout from it; the real
-    // file-level concurrency is `TransferBatchConfig.max_concurrent`
-    // below, so the CLI keeps its requested `--parallel`.
-    let runtime_settings = resolve_provider_transfer_settings(TransferSettingsInput {
-        max_concurrent: None,
-        retry_count: None,
-        timeout_seconds: None,
-        // CLI segmented downloads use the dedicated `pget` path, not
-        // the GUI provider executor, so the executor stays single-stream.
-        download_segments: None,
-    });
-
     let entries: Vec<TransferEntry> = files
         .iter()
         .enumerate()
@@ -9035,7 +9039,7 @@ async fn run_shared_provider_download_batch(
         display_name: "aeroftp get -r".to_string(),
         direction: TransferDirection::Download,
         config: TransferBatchConfig {
-            max_concurrent: workers as u32,
+            max_concurrent: runtime_settings.max_concurrent,
             max_retries: runtime_settings.retry_count,
             timeout_ms: runtime_settings.timeout_seconds.saturating_mul(1000),
         },
@@ -9065,6 +9069,7 @@ async fn run_shared_provider_download_batch(
         runtime_settings,
         cancel_token,
         model,
+        capabilities,
     ));
 
     // `BatchProgressSnapshot.bytes_transferred` is monotonic (sum of
@@ -9155,8 +9160,8 @@ async fn run_shared_provider_upload_batch(
     cancelled: Arc<AtomicBool>,
 ) -> Result<SharedUploadOutcome, Box<dyn StorageProvider>> {
     use ftp_client_gui_lib::provider_transfer_executor::{
-        resolve_provider_executor_session_model, ProviderExecutorSessionModel,
-        ProviderUploadExecutor,
+        probe_provider_runtime_capabilities, resolve_provider_executor_runtime,
+        ProviderExecutorSessionModel, ProviderUploadExecutor,
     };
     use ftp_client_gui_lib::transfer_domain::{
         TransferBatchConfig, TransferDirection, TransferEntry,
@@ -9166,13 +9171,30 @@ async fn run_shared_provider_upload_batch(
         execute_batch, ProgressObserver, TransferBatch,
     };
     use ftp_client_gui_lib::transfer_settings::{
-        resolve_provider_transfer_settings, TransferSettingsInput,
+        resolve_transfer_settings_for_capabilities, TransferSettingsInput,
     };
 
     let workers = effective_parallel_workers(cli);
     let provider_arc = Arc::new(AsyncMutex::new(Some(base)));
 
-    let model = resolve_provider_executor_session_model(&provider_arc, workers).await;
+    // DAG-P1-02: capability-aware settings; requested workers clamped to the
+    // runtime file-parallel ceiling of the live provider.
+    let runtime_caps = probe_provider_runtime_capabilities(&provider_arc).await;
+    let runtime_settings = resolve_transfer_settings_for_capabilities(
+        TransferSettingsInput {
+            max_concurrent: Some(workers as u32),
+            retry_count: None,
+            timeout_seconds: None,
+            // CLI segmented downloads use the dedicated `pget` path, not
+            // the GUI provider executor, so the executor stays single-stream.
+            download_segments: None,
+        },
+        &runtime_caps,
+    );
+    let effective_workers = runtime_settings.max_concurrent.max(1) as usize;
+
+    let (model, capabilities) =
+        resolve_provider_executor_runtime(&provider_arc, effective_workers).await;
     let is_pool_backed = matches!(
         model,
         ProviderExecutorSessionModel::HttpClonePool { .. }
@@ -9201,19 +9223,6 @@ async fn run_shared_provider_upload_batch(
     }
     let files = &capped;
 
-    // `resolve_provider_transfer_settings` caps max_concurrent to 1 (GUI
-    // policy). The executor only reads retry/timeout from it; the real
-    // file-level concurrency is `TransferBatchConfig.max_concurrent`
-    // below, so the CLI keeps its requested `--parallel`.
-    let runtime_settings = resolve_provider_transfer_settings(TransferSettingsInput {
-        max_concurrent: None,
-        retry_count: None,
-        timeout_seconds: None,
-        // CLI segmented downloads use the dedicated `pget` path, not
-        // the GUI provider executor, so the executor stays single-stream.
-        download_segments: None,
-    });
-
     let entries: Vec<TransferEntry> = files
         .iter()
         .enumerate()
@@ -9239,7 +9248,7 @@ async fn run_shared_provider_upload_batch(
         display_name: "aeroftp put".to_string(),
         direction: TransferDirection::Upload,
         config: TransferBatchConfig {
-            max_concurrent: workers as u32,
+            max_concurrent: runtime_settings.max_concurrent,
             max_retries: runtime_settings.retry_count,
             timeout_ms: runtime_settings.timeout_seconds.saturating_mul(1000),
         },
@@ -9270,6 +9279,7 @@ async fn run_shared_provider_upload_batch(
         None,
         cancel_token,
         model,
+        capabilities,
     ));
 
     // `BatchProgressSnapshot.bytes_transferred` is monotonic (sum of

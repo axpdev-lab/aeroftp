@@ -24,7 +24,7 @@ The audit rule used here is:
 |---|---|---|---|
 | Single-file GUI `get` / `put` | `provider_commands::run_dag_*_leaf` → `execute_single_file_dag` (`src-tauri/src/provider_commands.rs:2289`, `:2438`) | `UploadFile`/`DownloadFile` bind to provider I/O; multipart binds begin/part/complete/abort; several structural nodes are no-ops | Shaped DAG is the normal network path, subject to the transfer router and explicit legacy override |
 | Single-file CLI `get` / `put` | `run_single_file_transfer` → `execute_single_file_dag` (`src-tauri/src/bin/aeroftp_cli.rs:8748-8767`) | Same shaped-file runner and provider binding | DAG is selected by the router for normal network transfers; local-to-local or explicit legacy routes bypass it |
-| Multi-file batch | `transfer_orchestrator::execute_batch` → `execute_batch_dag` (`src-tauri/src/transfer_orchestrator.rs:66-70`) | A graph is built and executed, but the runner uses default capabilities; `entry_transferred` is a whole-file contract | No capability-driven cloud fan-out claim; generic settings currently clamp file concurrency |
+| Multi-file batch | `transfer_orchestrator::execute_batch` → `execute_batch_dag` (`src-tauri/src/transfer_orchestrator.rs:66-70`) | Graph built from the executor's runtime capability snapshot (DAG-P1-01); provider settings use capability-aware resolution (DAG-P1-02); `entry_transferred` remains a whole-file contract until P1-03 | File-level parallelism is real for clone/session-pool providers (S3/B2/Azure and other pool kinds); per-part wire I/O inside one batch file is still deferred |
 | Non-dry-run sync | `sync_tree_core` → `execute_sync_dag` (`src-tauri/src/sync.rs:1223-1238`) | Scan and planning happen before the graph; the graph wraps a precomputed plan and a serial file driver | DAG wrapper is active; file transfer remains serial by design; dry-run stays on the planning path |
 | Segmented download | `run_provider_segmented_download` (`src-tauri/src/providers/multi_thread.rs:290-310`) | Default is the legacy `JoinSet` range scheduler; `shaped_ranges` calls `execute_dag` only on the opt-in graph branch | Range I/O is real; DAG range scheduling requires `AEROFTP_RANGE_GRAPH=1`; GUI Auto may use one stream |
 | Same-provider copy | GUI/CLI copy commands → `server_side_copy_with_fallback` (`src-tauri/src/provider_commands.rs:5011`, `src-tauri/src/bin/aeroftp_cli.rs:32161`) | Native provider copy or download → upload fallback | Native copy avoids local payload bytes; normal copy is not orchestrated by `shaped_copy` |
@@ -99,7 +99,7 @@ command or default range path uses them.
 |---|---|---|
 | Single-file core | `shaped_file(Download|Upload, caps, size)` | Active in normal GUI/CLI single-file network paths, with router and provider exceptions |
 | Multipart single-file | `shaped_file(Upload, caps, size)` → `UploadPart × N` | Active when the single-file runner receives multipart capabilities; independent wire workers only for the provider set listed below |
-| Batch | `from_batch_shaped(items, caps)` | Active graph wrapper, but it passes `TransferCapabilities::default()` and does not provide a per-part batch I/O contract |
+| Batch | `from_batch_shaped(items, caps)` | Active graph wrapper; caps come from `TransferExecutor::transfer_capabilities()` (runtime snapshot). Still no per-part batch I/O contract (`entry_transferred` whole-file until P1-03) |
 | Sync | `from_sync_plan_shaped(plan, caps)` | Active for non-dry-run sync, with default capabilities, precomputed scan/plan, and serial file execution |
 | Copy | `shaped_copy(caps)` | Builder/test/forward-compatible runner shape; normal copy commands use `server_side_copy_with_fallback` directly |
 | Segmented download | `shaped_ranges(N)` | Active only from the `AEROFTP_RANGE_GRAPH=1` branch; default remains the `JoinSet` scheduler |
@@ -175,24 +175,29 @@ per-file whole-file I/O until P1-03 lands the real per-part contract.
 ### Batch
 
 `execute_batch_dag` is the current batch entry point, so the old hand-written
-batch scheduler is gone. The batch runner nevertheless has three important
-limits:
+batch scheduler is gone. After `DAG-P1-01` / `DAG-P1-02`:
 
-- it constructs the graph with `TransferCapabilities::default()` at
-  `src-tauri/src/transfer_dag_batch.rs:104`, rather than the connected
-  provider snapshot;
-- the generic settings resolver currently clamps the effective file
-  concurrency to one (`src-tauri/src/transfer_settings.rs:137`);
-- `entry_transferred` is a whole-file `execute_with_session` contract. When a
-  shaped batch graph contains multiple part nodes, the first node dispatches
-  the whole file and the remaining nodes become no-ops
-  (`src-tauri/src/transfer_dag_batch.rs:129`).
+- the graph is shaped from `executor.transfer_capabilities()` (the runtime
+  snapshot owned by the provider executor after clone-probe composition), not
+  from `TransferCapabilities::default()`;
+- provider folder/batch entrypoints resolve settings with
+  `resolve_transfer_settings_for_capabilities`, preserving
+  `requested_max_concurrent` vs effective `max_concurrent`;
+- clone/session-pool providers (S3, B2 when connected, Azure, SFTP/FTP pool
+  kinds) can realize file-level concurrency bounded by the tighter of graph
+  `file_slots` and the session-pool lease capacity;
+- unknown, locked-single, failed clone probes, and non-pool kinds stay
+  serial (`max_file_slots = 1`);
+- `entry_transferred` remains a whole-file `execute_with_session` contract.
+  When a shaped batch graph contains multiple part nodes, the first node
+  dispatches the whole file and the remaining nodes become no-ops until
+  `DAG-P1-03`.
 
-The batch graph is therefore active as an orchestration wrapper, but it is not
-yet a capability-aware, per-part, wire-parallel cloud scheduler. A file error
-is also recorded in the batch snapshot while the node currently returns
-`Completed` (`src-tauri/src/transfer_dag_batch.rs:270`), so the documented AIMD
-and failure semantics must not be stronger than that implementation.
+The batch graph is therefore capability-aware at file level, but not yet a
+per-part wire-parallel cloud scheduler. A file error is also recorded in the
+batch snapshot while the node currently returns `Completed`, so the
+documented AIMD and failure semantics must not be stronger than that
+implementation (`DAG-P1-04`).
 
 ### Sync
 
@@ -287,10 +292,15 @@ bindings are wired (P2 telemetry).
 ## Capability contract
 
 `StorageProvider::transfer_capabilities()` is consumed by the shaped
-single-file runner before `shaped_file` is built. The batch and sync runners
-currently use `TransferCapabilities::default()` at their documented call
-sites. The normal copy helper uses the provider's `supports_server_copy()`
-and `server_copy()` methods rather than `shaped_copy`'s capability snapshot.
+single-file runner before `shaped_file` is built. The batch runner (DAG-P1-01)
+uses `TransferExecutor::transfer_capabilities()` — a runtime snapshot composed
+from the live provider plus clone/pool feasibility
+(`compose_runtime_transfer_capabilities` / `finalize_capabilities_for_session_model`).
+Provider batch settings resolve through
+`resolve_transfer_settings_for_capabilities` (DAG-P1-02). The sync runner still
+uses `TransferCapabilities::default()` at its documented call site. The normal
+copy helper uses the provider's `supports_server_copy()` and `server_copy()`
+methods rather than `shaped_copy`'s capability snapshot.
 
 The trait methods below describe available provider primitives; they do not
 by themselves prove that every production operation invokes them:

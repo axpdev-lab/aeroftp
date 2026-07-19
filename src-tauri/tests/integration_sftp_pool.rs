@@ -344,8 +344,7 @@ async fn pd_cli_conv_b_shared_executor_download_is_byte_identical() {
     use std::sync::Arc;
 
     use ftp_client_gui_lib::provider_transfer_executor::{
-        resolve_provider_executor_session_model, ProviderDownloadExecutor,
-        ProviderExecutorSessionModel,
+        resolve_provider_executor_runtime, ProviderDownloadExecutor, ProviderExecutorSessionModel,
     };
     use ftp_client_gui_lib::transfer_domain::{
         TransferBatchConfig, TransferDirection, TransferEntry,
@@ -353,7 +352,7 @@ async fn pd_cli_conv_b_shared_executor_download_is_byte_identical() {
     use ftp_client_gui_lib::transfer_event_sink::{NoopTransferSink, TransferEventSink};
     use ftp_client_gui_lib::transfer_orchestrator::{execute_batch, TransferBatch};
     use ftp_client_gui_lib::transfer_settings::{
-        resolve_provider_transfer_settings, TransferSettingsInput,
+        resolve_transfer_settings_for_capabilities, TransferSettingsInput,
     };
 
     if !ssh_key_path().exists() {
@@ -423,7 +422,8 @@ async fn pd_cli_conv_b_shared_executor_download_is_byte_identical() {
             Box::new(connected) as Box<dyn StorageProvider>
         )));
 
-        let model = resolve_provider_executor_session_model(&provider_arc, concurrency).await;
+        let (model, capabilities) =
+            resolve_provider_executor_runtime(&provider_arc, concurrency).await;
         assert!(
             matches!(
                 model,
@@ -432,12 +432,15 @@ async fn pd_cli_conv_b_shared_executor_download_is_byte_identical() {
             "converged path must resolve to the SFTP connection pool, got {model:?}"
         );
 
-        let runtime_settings = resolve_provider_transfer_settings(TransferSettingsInput {
-            max_concurrent: None,
-            retry_count: None,
-            timeout_seconds: None,
-            download_segments: None,
-        });
+        let runtime_settings = resolve_transfer_settings_for_capabilities(
+            TransferSettingsInput {
+                max_concurrent: Some(concurrency as u32),
+                retry_count: None,
+                timeout_seconds: None,
+                download_segments: None,
+            },
+            &capabilities,
+        );
         let cancel_token = tokio_util::sync::CancellationToken::new();
         let sink: Arc<dyn TransferEventSink> = Arc::new(NoopTransferSink);
         let executor = Arc::new(ProviderDownloadExecutor::new(
@@ -446,6 +449,7 @@ async fn pd_cli_conv_b_shared_executor_download_is_byte_identical() {
             runtime_settings,
             cancel_token,
             model,
+            capabilities,
         ));
 
         let entries: Vec<TransferEntry> = files
@@ -544,8 +548,7 @@ async fn pd_cli_conv_c_shared_executor_upload_is_byte_identical() {
     use std::sync::Arc;
 
     use ftp_client_gui_lib::provider_transfer_executor::{
-        resolve_provider_executor_session_model, ProviderExecutorSessionModel,
-        ProviderUploadExecutor,
+        resolve_provider_executor_runtime, ProviderExecutorSessionModel, ProviderUploadExecutor,
     };
     use ftp_client_gui_lib::transfer_domain::{
         TransferBatchConfig, TransferDirection, TransferEntry,
@@ -553,7 +556,7 @@ async fn pd_cli_conv_c_shared_executor_upload_is_byte_identical() {
     use ftp_client_gui_lib::transfer_event_sink::{NoopTransferSink, TransferEventSink};
     use ftp_client_gui_lib::transfer_orchestrator::{execute_batch, TransferBatch};
     use ftp_client_gui_lib::transfer_settings::{
-        resolve_provider_transfer_settings, TransferSettingsInput,
+        resolve_transfer_settings_for_capabilities, TransferSettingsInput,
     };
 
     if !ssh_key_path().exists() {
@@ -602,7 +605,8 @@ async fn pd_cli_conv_c_shared_executor_upload_is_byte_identical() {
             Box::new(connected) as Box<dyn StorageProvider>
         )));
 
-        let model = resolve_provider_executor_session_model(&provider_arc, concurrency).await;
+        let (model, capabilities) =
+            resolve_provider_executor_runtime(&provider_arc, concurrency).await;
         assert!(
             matches!(
                 model,
@@ -611,12 +615,15 @@ async fn pd_cli_conv_c_shared_executor_upload_is_byte_identical() {
             "converged upload path must resolve to the SFTP connection pool, got {model:?}"
         );
 
-        let runtime_settings = resolve_provider_transfer_settings(TransferSettingsInput {
-            max_concurrent: None,
-            retry_count: None,
-            timeout_seconds: None,
-            download_segments: None,
-        });
+        let runtime_settings = resolve_transfer_settings_for_capabilities(
+            TransferSettingsInput {
+                max_concurrent: Some(concurrency as u32),
+                retry_count: None,
+                timeout_seconds: None,
+                download_segments: None,
+            },
+            &capabilities,
+        );
         let cancel_token = tokio_util::sync::CancellationToken::new();
         let sink: Arc<dyn TransferEventSink> = Arc::new(NoopTransferSink);
         let executor = Arc::new(ProviderUploadExecutor::new(
@@ -626,6 +633,7 @@ async fn pd_cli_conv_c_shared_executor_upload_is_byte_identical() {
             None,
             cancel_token,
             model,
+            capabilities,
         ));
 
         let entries: Vec<TransferEntry> = (0..FILES)
@@ -748,8 +756,8 @@ async fn pd_cli_conv_d_sync_transfer_phase_is_byte_identical() {
     use std::sync::Arc;
 
     use ftp_client_gui_lib::provider_transfer_executor::{
-        resolve_provider_executor_session_model, ProviderDownloadExecutor,
-        ProviderExecutorSessionModel, ProviderUploadExecutor,
+        resolve_provider_executor_runtime, ProviderDownloadExecutor, ProviderExecutorSessionModel,
+        ProviderUploadExecutor,
     };
     use ftp_client_gui_lib::transfer_domain::{
         TransferBatchConfig, TransferDirection, TransferEntry,
@@ -757,7 +765,7 @@ async fn pd_cli_conv_d_sync_transfer_phase_is_byte_identical() {
     use ftp_client_gui_lib::transfer_event_sink::{NoopTransferSink, TransferEventSink};
     use ftp_client_gui_lib::transfer_orchestrator::{execute_batch, TransferBatch};
     use ftp_client_gui_lib::transfer_settings::{
-        resolve_provider_transfer_settings, TransferSettingsInput,
+        resolve_transfer_settings_for_capabilities, TransferSettingsInput,
     };
 
     if !ssh_key_path().exists() {
@@ -787,13 +795,6 @@ async fn pd_cli_conv_d_sync_transfer_phase_is_byte_identical() {
     let _ = std::fs::remove_dir_all(&dl_verify_root);
     let up_verify_root = std::env::temp_dir().join("pd-cli-conv-d-upverify-it");
     let _ = std::fs::remove_dir_all(&up_verify_root);
-
-    let runtime_settings = resolve_provider_transfer_settings(TransferSettingsInput {
-        max_concurrent: None,
-        retry_count: None,
-        timeout_seconds: None,
-        download_segments: None,
-    });
 
     let mut c1_elapsed: Option<std::time::Duration> = None;
     let mut c4_elapsed: Option<std::time::Duration> = None;
@@ -847,13 +848,23 @@ async fn pd_cli_conv_d_sync_transfer_phase_is_byte_identical() {
             let provider_arc = Arc::new(tokio::sync::Mutex::new(Some(
                 Box::new(connected) as Box<dyn StorageProvider>
             )));
-            let model = resolve_provider_executor_session_model(&provider_arc, concurrency).await;
+            let (model, capabilities) =
+                resolve_provider_executor_runtime(&provider_arc, concurrency).await;
             assert!(
                 matches!(
                     model,
                     ProviderExecutorSessionModel::SftpConnectionPool { .. }
                 ),
                 "sync download phase must resolve to the SFTP pool, got {model:?}"
+            );
+            let runtime_settings = resolve_transfer_settings_for_capabilities(
+                TransferSettingsInput {
+                    max_concurrent: Some(concurrency as u32),
+                    retry_count: None,
+                    timeout_seconds: None,
+                    download_segments: None,
+                },
+                &capabilities,
             );
             let cancel_token = tokio_util::sync::CancellationToken::new();
             let sink: Arc<dyn TransferEventSink> = Arc::new(NoopTransferSink);
@@ -863,6 +874,7 @@ async fn pd_cli_conv_d_sync_transfer_phase_is_byte_identical() {
                 runtime_settings,
                 cancel_token,
                 model,
+                capabilities,
             ));
             let entries: Vec<TransferEntry> = (0..FILES)
                 .map(|i| {
@@ -916,13 +928,23 @@ async fn pd_cli_conv_d_sync_transfer_phase_is_byte_identical() {
             let provider_arc = Arc::new(tokio::sync::Mutex::new(Some(
                 Box::new(connected) as Box<dyn StorageProvider>
             )));
-            let model = resolve_provider_executor_session_model(&provider_arc, concurrency).await;
+            let (model, capabilities) =
+                resolve_provider_executor_runtime(&provider_arc, concurrency).await;
             assert!(
                 matches!(
                     model,
                     ProviderExecutorSessionModel::SftpConnectionPool { .. }
                 ),
                 "sync upload phase must resolve to the SFTP pool, got {model:?}"
+            );
+            let runtime_settings = resolve_transfer_settings_for_capabilities(
+                TransferSettingsInput {
+                    max_concurrent: Some(concurrency as u32),
+                    retry_count: None,
+                    timeout_seconds: None,
+                    download_segments: None,
+                },
+                &capabilities,
             );
             let cancel_token = tokio_util::sync::CancellationToken::new();
             let sink: Arc<dyn TransferEventSink> = Arc::new(NoopTransferSink);
@@ -933,6 +955,7 @@ async fn pd_cli_conv_d_sync_transfer_phase_is_byte_identical() {
                 None,
                 cancel_token,
                 model,
+                capabilities,
             ));
             let entries: Vec<TransferEntry> = (0..FILES)
                 .map(|i| {

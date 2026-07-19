@@ -12,7 +12,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 
 use crate::providers::ProviderType;
-use crate::transfer_dag::{TransferSessionLease, TransferSessionPoolHandle};
+use crate::transfer_dag::{TransferCapabilities, TransferSessionLease, TransferSessionPoolHandle};
 use crate::transfer_domain::{
     BatchProgressSnapshot, TransferBatchConfig, TransferBatchResult, TransferDirection,
     TransferEntry, TransferOutcome,
@@ -36,6 +36,16 @@ pub trait TransferExecutor {
 
     fn provider_type(&self) -> Option<ProviderType> {
         None
+    }
+
+    /// Runtime transfer capability snapshot owned by this executor instance.
+    ///
+    /// Defaults to the conservative serial profile so legacy/test executors
+    /// stay single-lease. Production provider executors must return the
+    /// snapshot derived from the live provider and the session model that
+    /// selected clone/pool feasibility (DAG-P1-01).
+    fn transfer_capabilities(&self) -> TransferCapabilities {
+        TransferCapabilities::default()
     }
 
     fn session_pool(&self, _max_concurrent: usize) -> TransferSessionPoolHandle {

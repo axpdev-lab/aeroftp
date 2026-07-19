@@ -17,8 +17,8 @@ use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
 use crate::provider_transfer_executor::{
-    resolve_provider_executor_session_model, resolve_provider_list_session_model,
-    ProviderDownloadExecutor, ProviderUploadExecutor,
+    probe_provider_runtime_capabilities, resolve_provider_executor_runtime,
+    resolve_provider_list_session_model, ProviderDownloadExecutor, ProviderUploadExecutor,
 };
 use crate::providers::{
     FileVersion, LockInfo, ProviderConfig, ProviderError, ProviderFactory, ProviderType,
@@ -30,7 +30,7 @@ use crate::transfer_domain::{TransferBatchConfig, TransferDirection, TransferEnt
 use crate::transfer_event_sink::{AppHandleSink, GuiDagObserver, TransferEventSink};
 use crate::transfer_orchestrator::{execute_batch, ProgressObserver, TransferBatch};
 use crate::transfer_settings::{
-    resolve_provider_transfer_settings, ResolvedTransferSettings, TransferSettingsInput,
+    resolve_transfer_settings_for_capabilities, ResolvedTransferSettings, TransferSettingsInput,
 };
 use crate::util::AbortOnDrop;
 
@@ -3276,12 +3276,17 @@ pub async fn provider_download_folder(
     timeout_seconds: Option<u64>,
     download_segments: Option<u32>,
 ) -> Result<String, String> {
-    let runtime_settings = resolve_provider_transfer_settings(TransferSettingsInput {
-        max_concurrent,
-        retry_count,
-        timeout_seconds,
-        download_segments,
-    });
+    // DAG-P1-02: resolve settings only after live runtime capabilities are known.
+    let runtime_caps = probe_provider_runtime_capabilities(&state.provider).await;
+    let runtime_settings = resolve_transfer_settings_for_capabilities(
+        TransferSettingsInput {
+            max_concurrent,
+            retry_count,
+            timeout_seconds,
+            download_segments,
+        },
+        &runtime_caps,
+    );
 
     // Capture current pwd so we can restore it after folder scan changes it
     let original_pwd = {
@@ -3333,15 +3338,20 @@ pub async fn provider_upload_folder(
     // currently unwrapped (badge locked / outside the encrypted scope).
     state.guard_no_raw_crypt_write("Upload")?;
 
-    let runtime_settings = resolve_provider_transfer_settings(TransferSettingsInput {
-        max_concurrent,
-        retry_count,
-        timeout_seconds,
-        // Upload-side intra-file parallelism is a separate slice (out
-        // of scope for GTC-1); upload paths keep single-stream legacy
-        // behaviour regardless of the requested segments knob.
-        download_segments: None,
-    });
+    // DAG-P1-02: resolve settings only after live runtime capabilities are known.
+    let runtime_caps = probe_provider_runtime_capabilities(&state.provider).await;
+    let runtime_settings = resolve_transfer_settings_for_capabilities(
+        TransferSettingsInput {
+            max_concurrent,
+            retry_count,
+            timeout_seconds,
+            // Upload-side intra-file parallelism is a separate slice (out
+            // of scope for GTC-1); upload paths keep single-stream legacy
+            // behaviour regardless of the requested segments knob.
+            download_segments: None,
+        },
+        &runtime_caps,
+    );
 
     // Capture current pwd so we can restore it after upload
     let original_pwd = {
@@ -3487,9 +3497,10 @@ async fn provider_download_folder_inner(
     let transfer_id = format!("dl-folder-{}", chrono::Utc::now().timestamp_millis());
 
     info!(
-        "Downloading folder via provider: {} -> {} (concurrency={}, retries={}, timeout={}s)",
+        "Downloading folder via provider: {} -> {} (requested_concurrency={}, effective_concurrency={}, retries={}, timeout={}s)",
         remote_path,
         local_path,
+        runtime_settings.requested_max_concurrent,
         runtime_settings.max_concurrent,
         runtime_settings.retry_count,
         runtime_settings.timeout_seconds
@@ -3802,11 +3813,9 @@ async fn provider_download_folder_inner(
         );
     });
 
-    let session_model = resolve_provider_executor_session_model(
-        &state.provider,
-        batch.config.max_concurrent as usize,
-    )
-    .await;
+    let (session_model, capabilities) =
+        resolve_provider_executor_runtime(&state.provider, batch.config.max_concurrent as usize)
+            .await;
     let sink: Arc<dyn TransferEventSink> = Arc::new(AppHandleSink::new(app.clone()));
     let executor = Arc::new(ProviderDownloadExecutor::new(
         sink.clone(),
@@ -3814,6 +3823,7 @@ async fn provider_download_folder_inner(
         runtime_settings,
         cancel_token,
         session_model,
+        capabilities,
     ));
 
     let batch_result = execute_batch(
@@ -3889,9 +3899,10 @@ async fn provider_upload_folder_inner(
     let transfer_id = format!("ul-folder-{}", chrono::Utc::now().timestamp_millis());
 
     info!(
-        "Uploading folder via provider: {} -> {} (concurrency={}, retries={}, timeout={}s)",
+        "Uploading folder via provider: {} -> {} (requested_concurrency={}, effective_concurrency={}, retries={}, timeout={}s)",
         local_path,
         remote_path,
+        runtime_settings.requested_max_concurrent,
         runtime_settings.max_concurrent,
         runtime_settings.retry_count,
         runtime_settings.timeout_seconds
@@ -4244,11 +4255,9 @@ async fn provider_upload_folder_inner(
         );
     });
 
-    let session_model = resolve_provider_executor_session_model(
-        &state.provider,
-        batch.config.max_concurrent as usize,
-    )
-    .await;
+    let (session_model, capabilities) =
+        resolve_provider_executor_runtime(&state.provider, batch.config.max_concurrent as usize)
+            .await;
     let sink: Arc<dyn TransferEventSink> = Arc::new(AppHandleSink::new(app.clone()));
     let executor = Arc::new(ProviderUploadExecutor::new(
         sink.clone(),
@@ -4257,6 +4266,7 @@ async fn provider_upload_folder_inner(
         commit_message,
         cancel_token,
         session_model,
+        capabilities,
     ));
 
     let batch_result = execute_batch(
