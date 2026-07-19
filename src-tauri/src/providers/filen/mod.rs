@@ -356,7 +356,7 @@ struct DirInfo {
 /// Immutable connected auth/crypto snapshot shared by primary and transfer clones.
 ///
 /// Replaced wholesale on connect/disconnect. Workers never run login, KDF,
-/// token refresh, or network reconnect — they only read this snapshot.
+/// token refresh, or network reconnect. They only read this snapshot.
 #[derive(Clone)]
 struct FilenAuthSnapshot {
     /// F-SEC-01: API key wrapped in SecretString for memory zeroization on drop
@@ -3018,7 +3018,7 @@ impl StorageProvider for FilenProvider {
 fn redact_filen_secrets_in_text(input: &str) -> String {
     let mut out = input.to_string();
     // Query-style: uploadKey=<value>, hash=<value> (hash is not a secret but
-    // is long; leave hash — only scrub credential-like params).
+    // is long; leave hash and only scrub credential-like params).
     for key in [
         "uploadKey",
         "upload_key",
