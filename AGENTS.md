@@ -15,9 +15,9 @@ npm run ci:pre-push
 
 This is not optional even when targeted task tests already passed. It mirrors
 the blocking local Linux gates from `checks.yml` and `build.yml`: Rust format,
-security regression, frontend tests/typecheck/i18n, strict Clippy, the complete
-Rust test suite, and RustSec audit. Task-specific tests remain additional gates,
-not substitutes.
+security regression, manifest-version consistency, frontend
+tests/typecheck/i18n, strict Clippy, the complete Rust test suite, and RustSec
+audit. Task-specific tests remain additional gates, not substitutes.
 
 Do not push while the command is red. If a required gate cannot run locally,
 stop and report the exact environmental blocker before pushing. Platform-native
