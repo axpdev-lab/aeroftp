@@ -4804,6 +4804,7 @@
             "unlock": "Atbloķēt",
             "createAndUnlock": "Izveidot un atbloķēt",
             "lock": "Bloķēt",
+            "hardLock": "Bloķēt un dzēst atslēgu",
             "unlocked": "Rclone crypt attālā krātuve atbloķēta",
             "initialised": "Rclone crypt attālā krātuve inicializēta",
             "remoteUnlocked": "Attālā krātuve atbloķēta (ID: {id}...)",

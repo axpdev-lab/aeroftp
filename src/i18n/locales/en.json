@@ -1589,6 +1589,7 @@
       "unlock": "Unlock",
       "createAndUnlock": "Create & Unlock",
       "lock": "Lock",
+      "hardLock": "Lock and clear key",
       "unlocked": "Rclone crypt remote unlocked",
       "initialised": "Rclone crypt remote initialised",
       "remoteUnlocked": "Remote unlocked (ID: {id}...)",

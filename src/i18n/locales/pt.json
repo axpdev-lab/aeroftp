@@ -4804,6 +4804,7 @@
             "unlock": "Desbloquear",
             "createAndUnlock": "Criar e desbloquear",
             "lock": "Bloquear",
+            "hardLock": "Bloquear e limpar a chave",
             "unlocked": "Remoto rclone crypt desbloqueado",
             "initialised": "Remoto rclone crypt inicializado",
             "remoteUnlocked": "Remoto desbloqueado (ID: {id}...)",

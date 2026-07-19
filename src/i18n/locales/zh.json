@@ -4804,6 +4804,7 @@
             "unlock": "解锁",
             "createAndUnlock": "创建并解锁",
             "lock": "锁定",
+            "hardLock": "锁定并清除密钥",
             "unlocked": "Rclone crypt 远程已解锁",
             "initialised": "Rclone crypt 远程已初始化",
             "remoteUnlocked": "远程已解锁 (ID: {id}...)",

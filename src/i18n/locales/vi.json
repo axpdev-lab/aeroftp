@@ -4804,6 +4804,7 @@
             "unlock": "Mở khóa",
             "createAndUnlock": "Tạo và mở khóa",
             "lock": "Khóa",
+            "hardLock": "Khóa và xóa khóa",
             "unlocked": "Đã mở khóa remote rclone crypt",
             "initialised": "Đã khởi tạo remote rclone crypt",
             "remoteUnlocked": "Đã mở khóa remote (ID: {id}...)",

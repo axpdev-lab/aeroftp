@@ -4823,6 +4823,7 @@
             "unlock": "Lås opp",
             "createAndUnlock": "Opprett og lås opp",
             "lock": "Lås",
+            "hardLock": "Lås og tøm nøkkel",
             "unlocked": "Rclone crypt eksternt lager låst opp",
             "initialised": "Rclone crypt eksternt lager initialisert",
             "remoteUnlocked": "Eksternt lager låst opp (ID: {id}...)",

@@ -4804,6 +4804,7 @@
             "unlock": "Deblochează",
             "createAndUnlock": "Creează și deblochează",
             "lock": "Blochează",
+            "hardLock": "Blochează și șterge cheia",
             "unlocked": "Remote rclone crypt deblocat",
             "initialised": "Remote rclone crypt inițializat",
             "remoteUnlocked": "Remote deblocat (ID: {id}...)",

@@ -4823,6 +4823,7 @@
             "unlock": "Datgloi",
             "createAndUnlock": "Creu a datgloi",
             "lock": "Cloi",
+            "hardLock": "Cloi a chlirio'r allwedd",
             "unlocked": "Anghysbell rclone crypt wedi'i ddatgloi",
             "initialised": "Anghysbell rclone crypt wedi'i gychwyn",
             "remoteUnlocked": "Anghysbell wedi'i ddatgloi (ID: {id}...)",

@@ -4804,6 +4804,7 @@
             "unlock": "Feloldás",
             "createAndUnlock": "Létrehozás és feloldás",
             "lock": "Zárolás",
+            "hardLock": "Zárolás és kulcs törlése",
             "unlocked": "Rclone crypt távoli tároló feloldva",
             "initialised": "Rclone crypt távoli tároló inicializálva",
             "remoteUnlocked": "Távoli tároló feloldva (ID: {id}...)",

@@ -4804,6 +4804,7 @@
             "unlock": "Buka kunci",
             "createAndUnlock": "Cipta & Buka kunci",
             "lock": "Kunci",
+            "hardLock": "Kunci dan padam kunci",
             "unlocked": "Jauh rclone crypt dibuka kuncinya",
             "initialised": "Jauh rclone crypt dimulakan",
             "remoteUnlocked": "Jauh dibuka kuncinya (ID: {id}...)",

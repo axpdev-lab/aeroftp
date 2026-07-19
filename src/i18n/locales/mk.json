@@ -4823,6 +4823,7 @@
             "unlock": "Отклучи",
             "createAndUnlock": "Создај и отклучи",
             "lock": "Заклучи",
+            "hardLock": "Заклучи и избриши клуч",
             "unlocked": "Rclone crypt далечински складиш отклучен",
             "initialised": "Rclone crypt далечински складиш иницијализиран",
             "remoteUnlocked": "Далечински складиш отклучен (ID: {id}...)",

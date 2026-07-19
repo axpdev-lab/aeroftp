@@ -4804,6 +4804,7 @@
             "unlock": "ปลดล็อก",
             "createAndUnlock": "สร้างและปลดล็อก",
             "lock": "ล็อก",
+            "hardLock": "ล็อกและล้างกุญแจ",
             "unlocked": "รีโมต rclone crypt ปลดล็อกแล้ว",
             "initialised": "รีโมต rclone crypt เริ่มต้นแล้ว",
             "remoteUnlocked": "รีโมตปลดล็อกแล้ว (ID: {id}...)",

@@ -4823,6 +4823,7 @@
             "unlock": "I-unlock",
             "createAndUnlock": "Gumawa at i-unlock",
             "lock": "I-lock",
+            "hardLock": "I-lock at burahin ang key",
             "unlocked": "Naka-unlock ang remote ng rclone crypt",
             "initialised": "Na-initialize ang remote ng rclone crypt",
             "remoteUnlocked": "Naka-unlock ang remote (ID: {id}...)",

@@ -62,9 +62,32 @@ impl Drop for TransferInProgressGuard {
 }
 
 /// State for managing the active storage provider
+/// Connection-scoped cache of the unlocked overlay keys, so a view-only lock
+/// (toggle the crypt overlay off then on on the SAME connection) can re-arm
+/// instantly without re-running the KDF (Argon2id for AeroCrypt, scrypt for
+/// rclone-crypt). Bound to a `generation`: any connect/disconnect/swap or an
+/// explicit hard lock bumps the generation and drops this (zeroizing the keys),
+/// so a cached key can NEVER be applied to a different connection.
+struct CachedCryptOverlay {
+    keys: crate::crypt_overlay_provider::OverlayKeys,
+    /// Normalized plaintext scope the overlay was armed at.
+    scope: String,
+    /// Wire tag: `"rclone-crypt"` | `"aerocrypt"`.
+    kind: String,
+    /// Connection generation this cache belongs to.
+    generation: u64,
+}
+
 pub struct ProviderState {
     /// Currently active provider (if connected)
     pub provider: Arc<Mutex<Option<Box<dyn StorageProvider>>>>,
+    /// Connection-scoped unlocked-overlay-key cache for instant re-arm after a
+    /// view-only lock. `std::sync::Mutex`: the critical sections are tiny and
+    /// never await. Wiped (keys zeroized) on connect/disconnect and hard lock.
+    cached_overlay: std::sync::Mutex<Option<CachedCryptOverlay>>,
+    /// Bumped on every connection change (connect swap, disconnect, hard lock)
+    /// so a stale cached key can never be re-armed onto a new connection.
+    connection_generation: Arc<AtomicU64>,
     /// Current provider configuration
     pub config: Arc<Mutex<Option<ProviderConfig>>>,
     /// Cancel flag for aborting folder transfers
@@ -104,6 +127,8 @@ impl ProviderState {
     pub fn new() -> Self {
         Self {
             provider: Arc::new(Mutex::new(None)),
+            cached_overlay: std::sync::Mutex::new(None),
+            connection_generation: Arc::new(AtomicU64::new(0)),
             config: Arc::new(Mutex::new(None)),
             cancel_flag: Arc::new(AtomicBool::new(false)),
             cancel_token: Mutex::new(CancellationToken::new()),
@@ -161,6 +186,58 @@ impl ProviderState {
     pub fn arm_crypt_capability(&self) {
         self.active_crypt_overlay.store(true, Ordering::SeqCst);
         self.overlay_wrapped.store(false, Ordering::SeqCst);
+    }
+
+    /// Store (a clone of) the unlocked overlay keys for the current connection so
+    /// a later view-only lock can re-arm without re-deriving. Stamped with the
+    /// live generation; a re-arm only proceeds when the generation still matches.
+    fn store_overlay_key_cache(
+        &self,
+        keys: crate::crypt_overlay_provider::OverlayKeys,
+        scope: String,
+        kind: String,
+    ) {
+        let generation = self.connection_generation.load(Ordering::SeqCst);
+        if let Ok(mut slot) = self.cached_overlay.lock() {
+            *slot = Some(CachedCryptOverlay {
+                keys,
+                scope,
+                kind,
+                generation,
+            });
+        }
+    }
+
+    /// Hard-invalidate the key cache: bump the connection generation and drop the
+    /// cached keys (zeroized). Called on connect/disconnect/swap and on an
+    /// explicit hard lock. After this, a re-arm falls back to a full re-derive.
+    fn invalidate_overlay_key_cache(&self) {
+        self.connection_generation.fetch_add(1, Ordering::SeqCst);
+        if let Ok(mut slot) = self.cached_overlay.lock() {
+            *slot = None;
+        }
+    }
+
+    /// Take the cached keys for an instant re-arm IF one exists AND still belongs
+    /// to the live connection generation. Returns `(keys, scope, kind)`. A stale
+    /// entry (generation moved on) is dropped and `None` returned so the caller
+    /// re-derives. The clone is cheap key material; it zeroizes on drop.
+    fn cached_overlay_for_rearm(
+        &self,
+    ) -> Option<(crate::crypt_overlay_provider::OverlayKeys, String, String)> {
+        let live = self.connection_generation.load(Ordering::SeqCst);
+        let mut slot = self.cached_overlay.lock().ok()?;
+        match slot.as_ref() {
+            Some(c) if c.generation == live => {
+                Some((c.keys.clone(), c.scope.clone(), c.kind.clone()))
+            }
+            Some(_) => {
+                // Stale (connection changed under it): drop so it can never re-arm.
+                *slot = None;
+                None
+            }
+            None => None,
+        }
     }
 }
 
@@ -1306,6 +1383,10 @@ async fn provider_connect_inner(
             }
         }
         *prov_lock = Some(provider);
+        // A new connection occupies the slot: the previous connection's cached
+        // overlay keys must never re-arm onto it. Bump generation + zeroize while
+        // still holding the provider lock, so a concurrent re-arm is serialized out.
+        state.invalidate_overlay_key_cache();
     }
     // A fresh connection carries no crypt overlay: reset both the sticky
     // capability flag and the wrapped flag. The GUI re-applies the overlay via
@@ -1394,6 +1475,8 @@ pub async fn provider_disconnect(
     // The provider (raw or wrapped) is gone: clear both crypt-overlay flags.
     state.active_crypt_overlay.store(false, Ordering::SeqCst);
     state.overlay_wrapped.store(false, Ordering::SeqCst);
+    // Connection torn down: zeroize any cached overlay keys and bump generation.
+    state.invalidate_overlay_key_cache();
 
     Ok(())
 }
@@ -1537,6 +1620,23 @@ pub async fn provider_apply_crypt_overlay(
     // satisfied (writes route through the decorator).
     state.active_crypt_overlay.store(true, Ordering::SeqCst);
     state.overlay_wrapped.store(true, Ordering::SeqCst);
+    // Cache the just-derived keys for this connection so a later view-only lock
+    // can re-arm instantly (no KDF re-run). Clone them off the live decorator;
+    // the cache is bound to the current generation and wiped on any connection
+    // change or hard lock.
+    {
+        let mut guard = state.provider.lock().await;
+        if let Some(dec) = guard.as_mut().and_then(|p| {
+            p.as_any_mut()
+                .downcast_mut::<crate::crypt_overlay_provider::CryptOverlayProvider>()
+        }) {
+            state.store_overlay_key_cache(
+                dec.keys().clone(),
+                dec.scope().to_string(),
+                dec.keys().kind_str().to_string(),
+            );
+        }
+    }
     info!(
         "Crypt overlay applied to live provider (scope: {:?}, marker_restored={})",
         result.scope, result.marker_restored
@@ -1647,7 +1747,10 @@ pub async fn crypt_generate_keyfile(path: String) -> Result<(), String> {
 /// names while locked, plaintext names outside the scope) exactly like the
 /// retired command layer did. `full = true` also drops the sticky capability
 /// flag (a complete overlay removal, not a transient lock / scope-out), which
-/// re-opens the agent `gui_tools` raw paths. Idempotent.
+/// re-opens the agent `gui_tools` raw paths, AND hard-invalidates the cached
+/// overlay keys (zeroize): this is the "hard lock" / teardown path. A view-only
+/// lock that wants an instant re-arm uses [`provider_lock_crypt_overlay`]
+/// instead, which keeps the cache. Idempotent.
 #[tauri::command]
 pub async fn provider_clear_crypt_overlay(
     state: State<'_, ProviderState>,
@@ -1660,8 +1763,69 @@ pub async fn provider_clear_crypt_overlay(
     state.overlay_wrapped.store(false, Ordering::SeqCst);
     if full.unwrap_or(false) {
         state.active_crypt_overlay.store(false, Ordering::SeqCst);
+        // Hard lock / teardown: the cached keys must not survive.
+        state.invalidate_overlay_key_cache();
     }
     Ok(removed)
+}
+
+/// View-only lock: unwrap the live provider to raw (ciphertext names) exactly
+/// like a locked overlay, but KEEP the cached overlay keys so a following
+/// [`provider_rearm_cached_crypt_overlay`] can re-arm instantly without
+/// re-running the KDF. Backs the fast crypt toggle (off then on on the same
+/// connection). Mirrors the flag effect of a full clear (capability dropped so
+/// the raw view is honest) but never touches the key cache. Idempotent.
+#[tauri::command]
+pub async fn provider_lock_crypt_overlay(state: State<'_, ProviderState>) -> Result<bool, String> {
+    let removed = {
+        let mut guard = state.provider.lock().await;
+        crate::crypt_overlay_provider::clear_overlay_in_place(&mut guard)
+    };
+    state.overlay_wrapped.store(false, Ordering::SeqCst);
+    state.active_crypt_overlay.store(false, Ordering::SeqCst);
+    Ok(removed)
+}
+
+/// Result of an instant cached re-arm.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RearmCryptOverlayResult {
+    /// Normalized plaintext scope the overlay is anchored at.
+    pub scope: String,
+    /// Wire tag: `"rclone-crypt"` | `"aerocrypt"`.
+    pub kind: String,
+}
+
+/// Instant re-arm from the connection-scoped key cache: re-wrap the live raw
+/// provider with the cached overlay keys, skipping the KDF entirely. Returns the
+/// scope + kind on success. Fails (so the caller falls back to a full re-derive)
+/// when there is no cached key for the live connection generation, or the slot
+/// is empty. The cache is only ever populated by a successful
+/// `provider_apply_crypt_overlay` on THIS connection and wiped on any connection
+/// change, so a cached key can never re-arm onto a different server.
+#[tauri::command]
+pub async fn provider_rearm_cached_crypt_overlay(
+    state: State<'_, ProviderState>,
+) -> Result<RearmCryptOverlayResult, String> {
+    // Hold the provider lock across the whole re-arm so a concurrent
+    // connect/disconnect (which bumps the generation under the same lock) cannot
+    // interleave between the generation check and the re-wrap.
+    let mut guard = state.provider.lock().await;
+    let (keys, scope, kind) = state
+        .cached_overlay_for_rearm()
+        .ok_or_else(|| "no cached overlay key for this connection".to_string())?;
+    // Revert any existing overlay first so we never stack two decorators, then
+    // take the raw inner, wrap it with the cached keys, and put it back.
+    crate::crypt_overlay_provider::clear_overlay_in_place(&mut guard);
+    let raw = guard
+        .take()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+    let wrapped = crate::crypt_overlay_provider::CryptOverlayProvider::new(raw, keys, &scope);
+    *guard = Some(Box::new(wrapped));
+    drop(guard);
+    state.active_crypt_overlay.store(true, Ordering::SeqCst);
+    state.overlay_wrapped.store(true, Ordering::SeqCst);
+    Ok(RearmCryptOverlayResult { scope, kind })
 }
 
 /// #390 smart re-anchor probe. After arming the overlay, report whether the
@@ -12054,6 +12218,58 @@ mod tests {
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Arc;
     use std::time::{Duration, Instant};
+
+    // Connection-scoped overlay-key cache (instant re-arm after a view-only lock):
+    // store keeps a re-armable copy, re-arm is non-consuming, a generation change
+    // (connect/disconnect/swap) drops a stale entry so a cached key can never
+    // re-arm onto a different connection, and an explicit hard lock wipes it.
+    #[test]
+    fn overlay_key_cache_rearm_invalidate_and_stale_generation() {
+        use crate::crypt_overlay_provider::OverlayKeys;
+        let make_keys = || {
+            let (name_key, data_key, name_tweak) =
+                derive_keys_with_tweak("overlay-pass", "overlay-salt").unwrap();
+            OverlayKeys::Rclone(RcloneCryptKeys {
+                name_key,
+                data_key,
+                name_tweak,
+                filename_encryption: FilenameEncryption::Standard,
+                off_suffix: String::new(),
+                directory_name_encryption: true,
+            })
+        };
+        let state = ProviderState::new();
+        assert!(state.cached_overlay_for_rearm().is_none());
+
+        // Store -> re-arm sees it, scope + kind preserved, and it is non-consuming
+        // (the same connection can toggle off/on repeatedly).
+        state.store_overlay_key_cache(
+            make_keys(),
+            "/Vault".to_string(),
+            "rclone-crypt".to_string(),
+        );
+        let got = state.cached_overlay_for_rearm().expect("cache present");
+        assert_eq!(got.1, "/Vault");
+        assert_eq!(got.2, "rclone-crypt");
+        assert!(state.cached_overlay_for_rearm().is_some());
+
+        // A connection change (generation bump) invalidates a stale entry.
+        state.connection_generation.fetch_add(1, Ordering::SeqCst);
+        assert!(
+            state.cached_overlay_for_rearm().is_none(),
+            "stale-generation cache must never re-arm onto a new connection"
+        );
+
+        // Explicit hard lock wipes it.
+        state.store_overlay_key_cache(
+            make_keys(),
+            "/Vault".to_string(),
+            "rclone-crypt".to_string(),
+        );
+        assert!(state.cached_overlay_for_rearm().is_some());
+        state.invalidate_overlay_key_cache();
+        assert!(state.cached_overlay_for_rearm().is_none());
+    }
 
     fn s3_params(path_style: Option<bool>) -> ProviderConnectionParams {
         ProviderConnectionParams {

@@ -105,6 +105,13 @@ const RCLONE_DIRIV_SENTINELS: &[&str] = &["dirIV", ".diriv", "diriv"];
 /// [`OverlayConfig`] required by [`overlay::encrypt_data`]. Key material is
 /// zeroized on drop (the `RcloneCryptKeys` via its own `Drop`, the AeroCrypt
 /// master key here).
+///
+/// `Clone` is derived so the connection-scoped key cache (`ProviderState`) can
+/// keep a copy for an instant re-arm after a view-only lock (toggle off/on on
+/// the same connection) without re-deriving the KDF. Every copy still zeroizes
+/// on drop, and the cache is wiped on connect/disconnect and on an explicit
+/// hard lock.
+#[derive(Clone)]
 pub enum OverlayKeys {
     /// rclone-crypt interop keys (scrypt-derived, EME/AES-256 names,
     /// XSalsa20-Poly1305 content).
@@ -126,6 +133,15 @@ impl Drop for OverlayKeys {
 }
 
 impl OverlayKeys {
+    /// Overlay kind wire tag, matching the frontend `'rclone-crypt' | 'aerocrypt'`
+    /// union. Used by the key cache to report which mode a cached re-arm restores.
+    pub fn kind_str(&self) -> &'static str {
+        match self {
+            Self::Rclone(_) => "rclone-crypt",
+            Self::AeroCrypt { .. } => "aerocrypt",
+        }
+    }
+
     /// Whether an rclone name with this kind/mode is encrypted on the wire for a
     /// given `is_dir`. Off mode and directory-name-encryption-off both leave a
     /// (sub)set of names cleartext. AeroCrypt always encrypts.
@@ -606,6 +622,13 @@ impl CryptOverlayProvider {
     /// The plaintext anchor this overlay is bound to (`""` = whole remote).
     pub fn scope(&self) -> &str {
         &self.scope
+    }
+
+    /// Borrow the unlocked overlay keys. Used only by the connection-scoped key
+    /// cache to clone them for an instant re-arm after a view-only lock; the
+    /// clone zeroizes on drop like the live keys.
+    pub fn keys(&self) -> &OverlayKeys {
+        &self.keys
     }
 
     /// Detach and return the wrapped raw provider, leaving this decorator husk

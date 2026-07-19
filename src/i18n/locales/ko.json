@@ -4804,6 +4804,7 @@
             "unlock": "잠금 해제",
             "createAndUnlock": "만들기 및 잠금 해제",
             "lock": "잠금",
+            "hardLock": "잠그고 키 지우기",
             "unlocked": "Rclone crypt 원격 저장소 잠금 해제됨",
             "initialised": "Rclone crypt 원격 저장소 초기화됨",
             "remoteUnlocked": "원격 저장소 잠금 해제됨 (ID: {id}...)",

@@ -4823,6 +4823,7 @@
             "unlock": "Opna",
             "createAndUnlock": "Búa til og opna",
             "lock": "Læsa",
+            "hardLock": "Læsa og hreinsa lykil",
             "unlocked": "Rclone crypt fjarlæg geymsla opin",
             "initialised": "Rclone crypt fjarlæg geymsla frumstillt",
             "remoteUnlocked": "Fjarlæg geymsla opin (ID: {id}...)",

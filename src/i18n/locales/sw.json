@@ -4804,6 +4804,7 @@
             "unlock": "Fungua",
             "createAndUnlock": "Unda na ufungue",
             "lock": "Funga",
+            "hardLock": "Funga na futa ufunguo",
             "unlocked": "Hifadhi ya mbali ya rclone crypt imefunguliwa",
             "initialised": "Hifadhi ya mbali ya rclone crypt imeanzishwa",
             "remoteUnlocked": "Hifadhi ya mbali imefunguliwa (ID: {id}...)",

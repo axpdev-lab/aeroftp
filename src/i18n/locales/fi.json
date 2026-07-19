@@ -4804,6 +4804,7 @@
             "unlock": "Avaa lukitus",
             "createAndUnlock": "Luo ja avaa lukitus",
             "lock": "Lukitse",
+            "hardLock": "Lukitse ja tyhjennä avain",
             "unlocked": "Rclone crypt -etäpaikka avattu",
             "initialised": "Rclone crypt -etäpaikka alustettu",
             "remoteUnlocked": "Etäpaikka avattu (ID: {id}...)",

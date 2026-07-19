@@ -4804,6 +4804,7 @@
             "unlock": "Odkleni",
             "createAndUnlock": "Ustvari in odkleni",
             "lock": "Zakleni",
+            "hardLock": "Zakleni in počisti ključ",
             "unlocked": "Oddaljeni vir rclone crypt odklenjen",
             "initialised": "Oddaljeni vir rclone crypt inicializiran",
             "remoteUnlocked": "Oddaljeni vir odklenjen (ID: {id}...)",

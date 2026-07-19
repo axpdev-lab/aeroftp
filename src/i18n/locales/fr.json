@@ -4804,6 +4804,7 @@
             "unlock": "Déverrouiller",
             "createAndUnlock": "Créer et déverrouiller",
             "lock": "Verrouiller",
+            "hardLock": "Verrouiller et effacer la clé",
             "unlocked": "Dépôt rclone crypt déverrouillé",
             "initialised": "Dépôt rclone crypt initialisé",
             "remoteUnlocked": "Dépôt déverrouillé (ID : {id}...)",

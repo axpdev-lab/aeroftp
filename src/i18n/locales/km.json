@@ -4823,6 +4823,7 @@
             "unlock": "ដោះសោ",
             "createAndUnlock": "បង្កើត និងដោះសោ",
             "lock": "ចាក់សោ",
+            "hardLock": "ចាក់សោ និងសម្អាតកូនសោ",
             "unlocked": "ផ្ទុក Rclone crypt ពីចម្ងាយត្រូវបានដោះសោ",
             "initialised": "ផ្ទុក Rclone crypt ពីចម្ងាយត្រូវបានចាប់ផ្តើម",
             "remoteUnlocked": "ផ្ទុកពីចម្ងាយត្រូវបានដោះសោ (ID: {id}...)",
