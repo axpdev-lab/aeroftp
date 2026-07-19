@@ -1092,7 +1092,10 @@ mod tests {
         // B2 clone pool is static (no connection_spec gate).
         assert_eq!(v["capabilities"]["file_parallel"], "supported");
         assert_eq!(v["capabilities"]["session_pool"], "supported");
-        assert_eq!(v["capabilities"]["strict_concurrent_range_download"], "supported");
+        assert_eq!(
+            v["capabilities"]["strict_concurrent_range_download"],
+            "supported"
+        );
         assert_eq!(v["capabilities"]["server_side_copy"], "supported");
         assert_eq!(v["capabilities"]["max_file_slots"], 8);
     }

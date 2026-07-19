@@ -11,6 +11,7 @@ pub mod adaptive;
 pub mod aimd_hints;
 pub mod builder;
 pub mod capabilities;
+pub mod error;
 pub mod executor;
 pub mod graph;
 pub mod metrics;
@@ -31,6 +32,7 @@ pub use builder::{
     TransferGraphProfile,
 };
 pub use capabilities::{Capability, TransferCapabilities};
+pub use error::{FailureScope, RetryDirective, TransferError, TransferErrorKind};
 pub use observer::{
     DagObserver, NoopDagObserver, ObservedOutcome, OrderedDagObserver, SyncJournalDagObserver,
     SyncJournalTerminal,

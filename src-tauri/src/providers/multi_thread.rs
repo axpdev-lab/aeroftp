@@ -448,7 +448,7 @@ where
     use crate::transfer_dag::graph::TransferNode;
     use crate::transfer_dag::{
         AimdConfig, AimdController, DagObserver, NoopDagObserver, TransferBudget,
-        TransferDagBuilder, TransferResourceManager,
+        TransferDagBuilder, TransferError, TransferResourceManager,
     };
     use std::sync::atomic::AtomicBool;
     use std::sync::Mutex;
@@ -514,7 +514,7 @@ where
             let (start, end) = ranges[node.id];
             // Mirror the JoinSet path's pre-write cancel check.
             if cancel.is_cancelled() {
-                return NodeOutcome::Failed("Transfer cancelled by user".to_string());
+                return NodeOutcome::Failed(TransferError::cancelled());
             }
             match write_one_range(
                 start,
@@ -540,10 +540,10 @@ where
                 }
                 Err(e) => {
                     // ProviderError is not Clone (IoError wraps io::Error):
-                    // stringify for the node message, then move the owned
-                    // error into the first-error slot to preserve the exact
-                    // variant for the caller (diff-0 error semantics).
-                    let message = e.to_string();
+                    // lift a typed TransferError for the DAG/AIMD path, then
+                    // move the owned error into the first-error slot to
+                    // preserve the exact variant for the caller.
+                    let typed = TransferError::from_provider(&e);
                     {
                         let mut slot = first_error.lock().unwrap();
                         if slot.is_none() {
@@ -551,7 +551,7 @@ where
                         }
                     }
                     cancel.cancel();
-                    NodeOutcome::Failed(message)
+                    NodeOutcome::Failed(typed)
                 }
             }
         })

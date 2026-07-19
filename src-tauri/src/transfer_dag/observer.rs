@@ -31,8 +31,9 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 /// Outcome category reported to [`DagObserver::on_node_complete`]. Mirrors the
-/// executor's `NodeOutcome` without coupling the observer to its `String`
-/// failure payload (kept observer-object-safe and allocation-free here).
+/// executor's `NodeOutcome` without coupling the observer to the typed
+/// [`super::error::TransferError`] failure payload (kept observer-object-safe
+/// and allocation-free here).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ObservedOutcome {
     Completed,

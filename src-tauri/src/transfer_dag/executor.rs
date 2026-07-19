@@ -24,7 +24,8 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 use tokio::task::JoinSet;
 
-use super::adaptive::{congestion_from_error, parse_embedded_retry_after, AimdController};
+use super::adaptive::{congestion_from_error, AimdController};
+use super::error::TransferError;
 use super::graph::{TransferDag, TransferNode};
 use super::metrics::TransferDagMetrics;
 use super::observer::{DagObserver, ObservedOutcome};
@@ -51,8 +52,9 @@ pub enum NodeOutcome {
     /// `fallback_count`). This is an honest, non-error completion.
     Fallback,
     /// Node failed. Scheduling stops, in-flight nodes are drained, and the
-    /// error is propagated.
-    Failed(String),
+    /// typed error is propagated (kind / retry / Retry-After are machine-safe;
+    /// presentation lives in [`TransferError::message`]).
+    Failed(TransferError),
 }
 
 /// Boxed node future. `Send + 'static` so node work runs on the runtime's
@@ -80,7 +82,10 @@ where
 pub enum DagExecutionError {
     /// A node action returned [`NodeOutcome::Failed`]. Scheduling stopped and
     /// in-flight nodes were drained before returning.
-    NodeFailed { node_id: usize, message: String },
+    NodeFailed {
+        node_id: usize,
+        error: TransferError,
+    },
     /// A node's `ResourceRequest` exceeds the manager budget for some class
     /// and could never be satisfied. Detected before dispatch to avoid a hang.
     Unschedulable { node_id: usize, message: String },
@@ -95,8 +100,8 @@ pub enum DagExecutionError {
 impl fmt::Display for DagExecutionError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            DagExecutionError::NodeFailed { node_id, message } => {
-                write!(f, "node {node_id} failed: {message}")
+            DagExecutionError::NodeFailed { node_id, error } => {
+                write!(f, "node {node_id} failed: {error}")
             }
             DagExecutionError::Unschedulable { node_id, message } => {
                 write!(f, "node {node_id} is unschedulable: {message}")
@@ -172,9 +177,10 @@ fn request_exceeds_budget(request: &ResourceRequest, budget: &TransferBudget) ->
 /// AIMD loop: each dispatched node first acquires per-class dispatch permits
 /// from the controller and holds them for its lifetime, so shrinking the
 /// concurrency target only withholds *future* dispatches and never aborts an
-/// in-flight transfer. Congestion is mapped off the existing error classifier
-/// (no new classifier, no provider signature change). `None` is the previous
-/// behaviour exactly (diff-0 for every current caller).
+/// in-flight transfer. Congestion is mapped from the typed
+/// [`TransferError`] on the failure (kind + optional `retry_after`); the
+/// controller never substring-matches presentation text. `None` is the
+/// previous behaviour exactly for congestion-free runs.
 pub async fn execute_dag(
     dag: &TransferDag,
     manager: &TransferResourceManager,
@@ -205,7 +211,7 @@ pub async fn execute_dag(
     let mut completed: HashSet<usize> = HashSet::new();
     let mut started: HashSet<usize> = HashSet::new();
     let mut requests: HashMap<usize, ResourceRequest> = HashMap::new();
-    let mut failed: Option<(usize, String)> = None;
+    let mut failed: Option<(usize, TransferError)> = None;
     let mut terminal_error: Option<DagExecutionError> = None;
     let mut join_set: JoinSet<(usize, NodeOutcome)> = JoinSet::new();
 
@@ -245,7 +251,9 @@ pub async fn execute_dag(
                         }
                         Err(e) => (
                             id,
-                            NodeOutcome::Failed(format!("resource acquire failed: {e}")),
+                            NodeOutcome::Failed(TransferError::resource_acquire(format!(
+                                "resource acquire failed: {e}"
+                            ))),
                         ),
                     }
                 });
@@ -299,24 +307,22 @@ pub async fn execute_dag(
                 // signal for the concurrency controller.
                 aimd_note_healthy(&controller, node_request.as_ref());
             }
-            NodeOutcome::Failed(message) => {
+            NodeOutcome::Failed(error) => {
                 summary.nodes_failed += 1;
                 // Only the narrow congestion set throttles; other failures
-                // (auth, not-found, ...) must not shrink concurrency.
+                // (auth, not-found, cancel, ...) must not shrink concurrency.
+                // Kind + retry_after are typed — no message substring matching.
                 if let (Some(ctrl), Some(request)) = (&controller, node_request.as_ref()) {
-                    if congestion_from_error(&message).is_some() {
+                    if congestion_from_error(&error).is_some() {
                         summary.metrics.backpressure_events += 1;
-                        // T-DEBT-05: providers that parsed Retry-After embed
-                        // it in the message via embed_retry_after_marker.
-                        // Absent marker → None → legacy default-cooldown path.
-                        let hint = parse_embedded_retry_after(&message);
+                        let hint = error.retry_after;
                         for class in AimdController::classes_for(request) {
                             ctrl.on_congestion_with_hint(class, hint);
                         }
                     }
                 }
                 if failed.is_none() {
-                    failed = Some((id, message));
+                    failed = Some((id, error));
                 }
                 observer.on_node_complete(id, ObservedOutcome::Failed);
             }
@@ -329,8 +335,8 @@ pub async fn execute_dag(
     if let Some(error) = terminal_error {
         return Err(error);
     }
-    if let Some((node_id, message)) = failed {
-        return Err(DagExecutionError::NodeFailed { node_id, message });
+    if let Some((node_id, error)) = failed {
+        return Err(DagExecutionError::NodeFailed { node_id, error });
     }
     Ok(summary)
 }
@@ -559,7 +565,7 @@ mod tests {
         let runner: Arc<dyn DagNodeRunner> = Arc::new(|node: TransferNode| -> NodeFuture {
             Box::pin(async move {
                 if node.id == 0 {
-                    NodeOutcome::Failed("synthetic plan failure".into())
+                    NodeOutcome::Failed(TransferError::from_message("synthetic plan failure"))
                 } else {
                     NodeOutcome::Completed
                 }
@@ -571,9 +577,9 @@ mod tests {
             .unwrap_err();
 
         match err {
-            DagExecutionError::NodeFailed { node_id, message } => {
+            DagExecutionError::NodeFailed { node_id, error } => {
                 assert_eq!(node_id, 0);
-                assert!(message.contains("synthetic plan failure"));
+                assert!(error.message.contains("synthetic plan failure"));
             }
             other => panic!("expected NodeFailed, got {other:?}"),
         }
@@ -694,7 +700,9 @@ mod tests {
         );
 
         let runner: Arc<dyn DagNodeRunner> = Arc::new(|_n: TransferNode| -> NodeFuture {
-            Box::pin(async { NodeOutcome::Failed("HTTP 429 Too Many Requests".into()) })
+            Box::pin(async {
+                NodeOutcome::Failed(TransferError::from_message("HTTP 429 Too Many Requests"))
+            })
         });
         let controller = Arc::new(AimdController::new(8, 1, 1, 1, AimdConfig::default()));
         let manager = TransferResourceManager::new(TransferBudget::from_file_slots(8));
@@ -717,15 +725,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn aimd_honors_embedded_retry_after_hint() {
-        // T-DEBT-05 S1-T02g: when a provider has embedded a Retry-After
-        // marker in the error message, the executor must extract it and
-        // pass it as a hint to on_congestion_with_hint so the AIMD cooldown
-        // is armed to the server-provided value (clamped) instead of the
-        // configured default.
-        use crate::transfer_dag::adaptive::{
-            embed_retry_after_marker, AdaptiveClass, AimdConfig, AimdController,
-        };
+    async fn aimd_honors_typed_retry_after_hint() {
+        // DAG-P0-03: Retry-After is a typed field on TransferError. The
+        // executor passes `error.retry_after` to on_congestion_with_hint so
+        // the AIMD cooldown is armed to the server-provided value (clamped)
+        // instead of the configured default — no marker re-parse in the
+        // controller.
+        use crate::transfer_dag::adaptive::{AdaptiveClass, AimdConfig, AimdController};
+        use crate::transfer_dag::error::TransferErrorKind;
         use std::time::{Duration, Instant};
 
         let mut dag = TransferDag::default();
@@ -738,11 +745,12 @@ mod tests {
         // The hint (45 s) is well above the lower clamp (1 s) and below the
         // upper clamp (10 × default cooldown = 50 s), so it must pass through
         // verbatim.
-        let marker = embed_retry_after_marker(45);
-        let msg = format!("HTTP 429 Too Many Requests{marker}");
+        let mut err =
+            TransferError::new(TransferErrorKind::RateLimited, "HTTP 429 Too Many Requests");
+        err.retry_after = Some(Duration::from_secs(45));
         let runner: Arc<dyn DagNodeRunner> = Arc::new(move |_n: TransferNode| -> NodeFuture {
-            let m = msg.clone();
-            Box::pin(async move { NodeOutcome::Failed(m) })
+            let e = err.clone();
+            Box::pin(async move { NodeOutcome::Failed(e) })
         });
         let controller = Arc::new(AimdController::new(8, 1, 1, 1, AimdConfig::default()));
         let manager = TransferResourceManager::new(TransferBudget::from_file_slots(8));
@@ -775,6 +783,57 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn aimd_honors_retry_after_lifted_from_provider_marker() {
+        // Providers still embed the marker in ProviderError presentation
+        // strings; the adapter lifts it once into TransferError.retry_after.
+        use crate::providers::ProviderError;
+        use crate::transfer_dag::adaptive::{
+            embed_retry_after_marker, AdaptiveClass, AimdConfig, AimdController,
+        };
+        use std::time::{Duration, Instant};
+
+        let mut dag = TransferDag::default();
+        dag.add_node(
+            TransferNodeKind::DownloadFile,
+            vec![],
+            ResourceRequest::file_transfer(),
+        );
+
+        let marker = embed_retry_after_marker(45);
+        let pe = ProviderError::TransferFailed(format!("HTTP 429 Too Many Requests{marker}"));
+        let te = TransferError::from_provider(&pe);
+        assert_eq!(te.retry_after, Some(Duration::from_secs(45)));
+
+        let runner: Arc<dyn DagNodeRunner> = Arc::new(move |_n: TransferNode| -> NodeFuture {
+            let e = te.clone();
+            Box::pin(async move { NodeOutcome::Failed(e) })
+        });
+        let controller = Arc::new(AimdController::new(8, 1, 1, 1, AimdConfig::default()));
+        let manager = TransferResourceManager::new(TransferBudget::from_file_slots(8));
+
+        let before = Instant::now();
+        let _ = execute_dag(
+            &dag,
+            &manager,
+            runner,
+            noop_observer(),
+            Some(Arc::clone(&controller)),
+        )
+        .await;
+
+        assert_eq!(controller.target(AdaptiveClass::File), 4);
+        let until = controller
+            .cooldown_until(AdaptiveClass::File)
+            .expect("cooldown must be armed");
+        let armed = until.saturating_duration_since(before);
+        assert!(
+            armed >= Duration::from_secs(44) && armed <= Duration::from_secs(46),
+            "expected ~45s, got {:?}",
+            armed
+        );
+    }
+
+    #[tokio::test]
     async fn aimd_ignores_non_congestion_failures() {
         use crate::transfer_dag::adaptive::{AdaptiveClass, AimdConfig, AimdController};
 
@@ -786,7 +845,7 @@ mod tests {
         );
 
         let runner: Arc<dyn DagNodeRunner> = Arc::new(|_n: TransferNode| -> NodeFuture {
-            Box::pin(async { NodeOutcome::Failed("404 not found".into()) })
+            Box::pin(async { NodeOutcome::Failed(TransferError::from_message("404 not found")) })
         });
         let controller = Arc::new(AimdController::new(8, 1, 1, 1, AimdConfig::default()));
         let manager = TransferResourceManager::new(TransferBudget::from_file_slots(8));
@@ -802,6 +861,46 @@ mod tests {
 
         // A not-found failure is not congestion: the target stays put.
         assert_eq!(controller.target(AdaptiveClass::File), 8);
+    }
+
+    #[tokio::test]
+    async fn aimd_ignores_cancel_failures() {
+        use crate::transfer_dag::adaptive::{AdaptiveClass, AimdConfig, AimdController};
+
+        let mut dag = TransferDag::default();
+        dag.add_node(
+            TransferNodeKind::DownloadFile,
+            vec![],
+            ResourceRequest::file_transfer(),
+        );
+
+        let runner: Arc<dyn DagNodeRunner> = Arc::new(|_n: TransferNode| -> NodeFuture {
+            Box::pin(async { NodeOutcome::Failed(TransferError::cancelled()) })
+        });
+        let controller = Arc::new(AimdController::new(8, 1, 1, 1, AimdConfig::default()));
+        let manager = TransferResourceManager::new(TransferBudget::from_file_slots(8));
+
+        let err = execute_dag(
+            &dag,
+            &manager,
+            runner,
+            noop_observer(),
+            Some(Arc::clone(&controller)),
+        )
+        .await
+        .unwrap_err();
+
+        match err {
+            DagExecutionError::NodeFailed { error, .. } => {
+                assert_eq!(
+                    error.kind,
+                    crate::transfer_dag::error::TransferErrorKind::Cancelled
+                );
+            }
+            other => panic!("expected NodeFailed, got {other:?}"),
+        }
+        assert_eq!(controller.target(AdaptiveClass::File), 8);
+        assert_eq!(controller.cooldown_until(AdaptiveClass::File), None);
     }
 
     #[tokio::test]

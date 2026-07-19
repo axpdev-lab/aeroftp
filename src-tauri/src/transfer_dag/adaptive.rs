@@ -5,12 +5,13 @@
 //!
 //! Three pieces:
 //!
-//! 1. [`congestion_from_error`] is a *thin* mapping layered on top of the
-//!    existing [`crate::sync::classify_sync_error`] classifier. It is not a
-//!    new classifier and changes no provider signature: it only recognises
-//!    the narrow congestion trigger set (429, 503, request timeout,
-//!    server-side max-connections, connection reset). Generic 5xx is
-//!    deliberately excluded.
+//! 1. [`congestion_from_error`] maps a typed [`crate::transfer_dag::error::TransferError`]
+//!    onto the narrow congestion trigger set (429, 503, request timeout,
+//!    server-side max-connections, connection reset) by matching
+//!    [`crate::transfer_dag::error::TransferErrorKind`] only — no message
+//!    substring parsing in the controller. Generic 5xx is deliberately
+//!    excluded. String classification happens once at the provider→DAG
+//!    adapter ([`crate::transfer_dag::error::TransferError::from_provider`]).
 //!
 //! 2. [`DynamicSemaphore`] is a permit gate whose ceiling can be lowered and
 //!    raised at runtime. Shrinking is *lazy*: it withholds future permits and
@@ -37,6 +38,7 @@ use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use tokio::time::sleep;
 
 use super::aimd_hints;
+use super::error::{TransferError, TransferErrorKind};
 use super::resources::{ResourceRequest, TransferBudget};
 use crate::providers::ProviderType;
 
@@ -76,48 +78,36 @@ pub enum CongestionEvent {
     ConnectionReset,
 }
 
-/// Map a raw error string to a [`CongestionEvent`], or `None` if it is not a
-/// congestion signal. Layered on top of [`crate::sync::classify_sync_error`]
-/// for the cases it already isolates (rate limit, timeout, connection reset),
-/// plus two explicit substring checks for signals the shared classifier folds
-/// into broader buckets (503, max-connections). A "504 Gateway Timeout" maps
-/// to [`CongestionEvent::Timeout`] because it is a timeout, which is in the
-/// D2 set; a plain server error with no load/timeout/availability semantics
-/// (500, 502) returns `None`: only the D2 set throttles, never generic 5xx.
-pub fn congestion_from_error(raw: &str) -> Option<CongestionEvent> {
-    let lower = raw.to_lowercase();
-
-    // Signals the shared classifier does not single out.
-    if lower.contains("503") || lower.contains("service unavailable") {
-        return Some(CongestionEvent::ServiceUnavailable);
-    }
-    if lower.contains("too many connections")
-        || lower.contains("max connections")
-        || lower.contains("maximum number of connections")
-        || lower.contains("421 ")
-    {
-        return Some(CongestionEvent::MaxConnections);
-    }
-
-    // Reuse the shared classifier for the rest. We only act on the subset
-    // that is genuinely congestion; everything else is left to normal error
-    // handling (no throttling).
-    let info = crate::sync::classify_sync_error(raw, None);
-    match info.kind {
-        crate::sync::SyncErrorKind::RateLimit => Some(CongestionEvent::TooManyRequests),
-        crate::sync::SyncErrorKind::Timeout => Some(CongestionEvent::Timeout),
-        crate::sync::SyncErrorKind::Network if lower.contains("reset") => {
-            Some(CongestionEvent::ConnectionReset)
-        }
+/// Map a typed [`TransferError`] to a [`CongestionEvent`], or `None` if it is
+/// not a congestion signal.
+///
+/// **Controller contract (DAG-P0-03):** this function matches only on
+/// [`TransferErrorKind`]. It never inspects `message` text. Providers still
+/// embed `Retry-After` markers in presentation strings for the adapter; the
+/// adapter lifts them into [`TransferError::retry_after`] before the
+/// executor calls this mapper.
+///
+/// A "504 Gateway Timeout" is classified as [`TransferErrorKind::Timeout`] at
+/// the adapter and maps here to [`CongestionEvent::Timeout`]. Plain server
+/// errors with no load/timeout/availability semantics (500, 502 →
+/// [`TransferErrorKind::Unknown`] / [`TransferErrorKind::RemoteIo`]) return
+/// `None`: only the D2 set throttles, never generic 5xx.
+pub fn congestion_from_error(err: &TransferError) -> Option<CongestionEvent> {
+    match err.kind {
+        TransferErrorKind::RateLimited => Some(CongestionEvent::TooManyRequests),
+        TransferErrorKind::ServiceUnavailable => Some(CongestionEvent::ServiceUnavailable),
+        TransferErrorKind::Timeout => Some(CongestionEvent::Timeout),
+        TransferErrorKind::MaxConnections => Some(CongestionEvent::MaxConnections),
+        TransferErrorKind::ConnectionReset => Some(CongestionEvent::ConnectionReset),
         _ => None,
     }
 }
 
 /// Marker prefix for embedding a `Retry-After` hint inside a `ProviderError`
-/// message string. The call chain provider → executor doesn't carry typed
-/// metadata, so per-provider helpers (`parse_retry_after_drive` /
-/// `_dropbox` / `_onedrive` / `_box`) append the marker when they emit the
-/// error, and [`parse_embedded_retry_after`] consumes it in the executor.
+/// message string. Providers that parse `Retry-After` append the marker when
+/// they emit the error; [`crate::transfer_dag::error::TransferError::from_provider`]
+/// extracts it into the typed [`TransferError::retry_after`] field so the
+/// executor never re-parses the presentation string.
 ///
 /// Format: ` [retry-after-secs=NN]` appended to the error text, where `NN`
 /// is a non-negative integer of seconds. Sub-second hints round up at the
@@ -126,15 +116,17 @@ pub fn congestion_from_error(raw: &str) -> Option<CongestionEvent> {
 const RETRY_HINT_MARKER: &str = " [retry-after-secs=";
 
 /// Build the marker substring to append to a `ProviderError` message after a
-/// rate-limit response. Pair with [`parse_embedded_retry_after`] in the
-/// executor to recover the value without changing `ProviderError`'s shape.
+/// rate-limit response. The typed adapter ([`TransferError::from_provider`])
+/// recovers the value into [`TransferError::retry_after`].
 pub fn embed_retry_after_marker(seconds: u64) -> String {
     format!("{RETRY_HINT_MARKER}{seconds}]")
 }
 
 /// Extract a `Retry-After` hint that a provider embedded in the error
-/// message via [`embed_retry_after_marker`]. Returns `None` when the marker
-/// is absent, malformed, or carries a value that does not parse as a u64.
+/// message via [`embed_retry_after_marker`]. Used by the provider→DAG adapter
+/// only; the AIMD controller reads [`TransferError::retry_after`].
+/// Returns `None` when the marker is absent, malformed, or carries a value
+/// that does not parse as a u64.
 pub fn parse_embedded_retry_after(message: &str) -> Option<Duration> {
     let start = message.find(RETRY_HINT_MARKER)?;
     let rest = &message[start + RETRY_HINT_MARKER.len()..];
@@ -852,40 +844,122 @@ mod tests {
 
     #[test]
     fn congestion_mapping_covers_the_trigger_set_only() {
+        // Controller matches kind only; adapter classification is covered in
+        // transfer_dag::error tests. Use typed kinds here.
         assert_eq!(
-            congestion_from_error("HTTP 429 Too Many Requests"),
+            congestion_from_error(&TransferError::new(
+                TransferErrorKind::RateLimited,
+                "HTTP 429 Too Many Requests"
+            )),
             Some(CongestionEvent::TooManyRequests)
         );
         assert_eq!(
-            congestion_from_error("rate limit exceeded"),
+            congestion_from_error(&TransferError::new(
+                TransferErrorKind::RateLimited,
+                "rate limit exceeded"
+            )),
             Some(CongestionEvent::TooManyRequests)
         );
         assert_eq!(
-            congestion_from_error("503 Service Unavailable"),
+            congestion_from_error(&TransferError::new(
+                TransferErrorKind::ServiceUnavailable,
+                "503 Service Unavailable"
+            )),
             Some(CongestionEvent::ServiceUnavailable)
         );
         assert_eq!(
-            congestion_from_error("operation timed out after 30s"),
+            congestion_from_error(&TransferError::new(
+                TransferErrorKind::Timeout,
+                "operation timed out after 30s"
+            )),
             Some(CongestionEvent::Timeout)
         );
         assert_eq!(
-            congestion_from_error("421 too many connections from your IP"),
+            congestion_from_error(&TransferError::new(
+                TransferErrorKind::MaxConnections,
+                "421 too many connections from your IP"
+            )),
             Some(CongestionEvent::MaxConnections)
         );
         assert_eq!(
-            congestion_from_error("connection reset by peer"),
+            congestion_from_error(&TransferError::new(
+                TransferErrorKind::ConnectionReset,
+                "connection reset by peer"
+            )),
             Some(CongestionEvent::ConnectionReset)
         );
         // 504 is a timeout, which is in the D2 set.
         assert_eq!(
-            congestion_from_error("504 Gateway Timeout"),
+            congestion_from_error(&TransferError::new(
+                TransferErrorKind::Timeout,
+                "504 Gateway Timeout"
+            )),
             Some(CongestionEvent::Timeout)
         );
         // Plain server errors with no load/timeout semantics must NOT throttle.
-        assert_eq!(congestion_from_error("500 Internal Server Error"), None);
-        assert_eq!(congestion_from_error("502 Bad Gateway"), None);
-        assert_eq!(congestion_from_error("404 not found"), None);
-        assert_eq!(congestion_from_error("permission denied"), None);
+        assert_eq!(
+            congestion_from_error(&TransferError::new(
+                TransferErrorKind::Unknown,
+                "500 Internal Server Error"
+            )),
+            None
+        );
+        assert_eq!(
+            congestion_from_error(&TransferError::new(
+                TransferErrorKind::RemoteIo,
+                "502 Bad Gateway"
+            )),
+            None
+        );
+        assert_eq!(
+            congestion_from_error(&TransferError::new(
+                TransferErrorKind::NotFound,
+                "404 not found"
+            )),
+            None
+        );
+        assert_eq!(
+            congestion_from_error(&TransferError::new(
+                TransferErrorKind::PermissionDenied,
+                "permission denied"
+            )),
+            None
+        );
+        // Controller must ignore misleading presentation text when kind is
+        // non-congestion (no substring fallback).
+        assert_eq!(
+            congestion_from_error(&TransferError::new(
+                TransferErrorKind::NotFound,
+                "HTTP 429 Too Many Requests"
+            )),
+            None
+        );
+    }
+
+    #[test]
+    fn congestion_mapping_via_adapter_preserves_d2_set() {
+        // End-to-end: free-form messages classified once at the adapter still
+        // feed the controller correctly.
+        assert_eq!(
+            congestion_from_error(&TransferError::from_message("HTTP 429 Too Many Requests")),
+            Some(CongestionEvent::TooManyRequests)
+        );
+        assert_eq!(
+            congestion_from_error(&TransferError::from_message("503 Service Unavailable")),
+            Some(CongestionEvent::ServiceUnavailable)
+        );
+        assert_eq!(
+            congestion_from_error(&TransferError::from_message("504 Gateway Timeout")),
+            Some(CongestionEvent::Timeout)
+        );
+        assert_eq!(
+            congestion_from_error(&TransferError::from_message("500 Internal Server Error")),
+            None
+        );
+        assert_eq!(
+            congestion_from_error(&TransferError::from_message("404 not found")),
+            None
+        );
     }
 
     #[tokio::test]

@@ -85,7 +85,7 @@ use crate::transfer_dag::executor::{execute_dag, DagNodeRunner, NodeFuture, Node
 use crate::transfer_dag::graph::{TransferNode, TransferNodeKind};
 use crate::transfer_dag::{
     AimdConfig, AimdController, DagObserver, ShapedFileDag, TransferBudget, TransferDirection,
-    TransferResourceManager,
+    TransferError, TransferResourceManager,
 };
 
 /// A per-byte transfer progress callback, as accepted by
@@ -565,17 +565,18 @@ async fn read_chunk(path: &str, offset: u64, len: u64) -> Result<Vec<u8>, Provid
     Ok(data)
 }
 
-/// Stash the typed error for the caller and return the matching node failure.
+/// Stash the original [`ProviderError`] for the caller and return a typed
+/// node failure so AIMD/cancel decisions never re-parse presentation text.
 fn record_failure(
     first_error: &Arc<StdMutex<Option<ProviderError>>>,
     error: ProviderError,
 ) -> NodeOutcome {
-    let message = error.to_string();
+    let typed = TransferError::from_provider(&error);
     let mut slot = first_error.lock().expect("first-error slot poisoned");
     if slot.is_none() {
         *slot = Some(error);
     }
-    NodeOutcome::Failed(message)
+    NodeOutcome::Failed(typed)
 }
 
 fn single_file_needs_aimd(built: &ShapedFileDag) -> bool {
