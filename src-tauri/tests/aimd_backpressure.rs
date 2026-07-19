@@ -9,15 +9,17 @@
 //! non-congestion failure does not throttle, and prove a congestion shrink
 //! carries into the following run as a genuine concurrency throttle.
 //!
-//! The congestion signal is delivered as the provider error string the real
-//! `congestion_from_error` classifier parses; a mock HTTP server would only
-//! produce the same strings. The live rate-limited validation against a real
-//! provider (Google Drive) is F3-T08, run in the phase-4 validation window.
+//! Congestion is delivered as a typed [`TransferError`] built once at the
+//! adapter boundary via `TransferError::from_message` (same path production
+//! uses after `from_provider`). The AIMD controller matches only on
+//! `TransferErrorKind` — no substring matching in the hot path. The live
+//! rate-limited validation against a real provider (Google Drive) is F3-T08.
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
+use ftp_client_gui_lib::transfer_dag::error::TransferError;
 use ftp_client_gui_lib::transfer_dag::executor::{
     execute_dag, DagNodeRunner, NodeFuture, NodeOutcome,
 };
@@ -39,10 +41,11 @@ fn one_file_dag() -> TransferDag {
     dag
 }
 
-/// A runner whose every node fails with a fixed message.
+/// A runner whose every node fails with a typed error classified once from
+/// the presentation string (adapter-boundary semantics).
 fn failing_runner(message: &'static str) -> Arc<dyn DagNodeRunner> {
     Arc::new(move |_node: TransferNode| -> NodeFuture {
-        Box::pin(async move { NodeOutcome::Failed(message.to_string()) })
+        Box::pin(async move { NodeOutcome::Failed(TransferError::from_message(message)) })
     })
 }
 

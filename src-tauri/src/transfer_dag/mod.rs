@@ -33,6 +33,10 @@ pub use builder::{
 };
 pub use capabilities::{Capability, TransferCapabilities};
 pub use error::{FailureScope, RetryDirective, TransferError, TransferErrorKind};
+pub use executor::{
+    execute_dag, execute_dag_with_dispatch_window, DagExecutionError, DagExecutionSummary,
+    DagNodeRunner, NodeFuture, NodeOutcome, DEFAULT_DISPATCH_WINDOW,
+};
 pub use observer::{
     DagObserver, NoopDagObserver, ObservedOutcome, OrderedDagObserver, SyncJournalDagObserver,
     SyncJournalTerminal,

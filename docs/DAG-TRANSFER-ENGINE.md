@@ -49,11 +49,13 @@ typed nodes. A node runs only after its dependencies complete and its
 - `DagObserver` lifecycle hooks and the executor summary.
 
 The executor is not globally bounded by process or endpoint. The ready
-frontier currently spawns all currently-ready nodes before waiting for a
-completion; resource permits bound I/O classes, not resident Tokio tasks or
-multipart buffer bytes. On failure it stops new dispatches and drains
-in-flight tasks; it does not yet cancel every sibling through a graph-scoped
-token.
+frontier is dispatch-window bounded (`DEFAULT_DISPATCH_WINDOW = 256`,
+overridable via `execute_dag_with_dispatch_window`): only that many tasks may
+be resident in the `JoinSet` at once, with an O(V+E) indexed ready queue so
+wide frontiers do not spawn unbounded futures. Resource permits still bound
+I/O classes separately; they do not cover multipart buffer bytes. On failure
+the executor stops new dispatches and drains in-flight tasks; it does not yet
+cancel every sibling through a graph-scoped token (that is `DAG-P0-05`).
 
 Three production wrappers call the core:
 

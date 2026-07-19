@@ -4,18 +4,22 @@
 //! Ready-frontier executor for the transfer node graph.
 //!
 //! This walks a [`TransferDag`](super::graph::TransferDag): it keeps a
-//! completed set, repeatedly selects the nodes whose `depends_on` are all
-//! satisfied (the ready frontier), and dispatches them concurrently. Each
-//! dispatched node first acquires its `ResourceRequest` permits from the
-//! shared [`TransferResourceManager`], so real concurrency is bounded by the
-//! per-class semaphores, not by the scheduler. The scheduler exposes a single
-//! dispatch step, which is the point a later slice throttles adaptively.
+//! completed set, a ready queue of nodes whose `depends_on` are all
+//! satisfied, and dispatches them concurrently up to a bounded
+//! [`DEFAULT_DISPATCH_WINDOW`] (or an explicit window). Each dispatched
+//! node first acquires its `ResourceRequest` permits from the shared
+//! [`TransferResourceManager`], so I/O concurrency is bounded by the
+//! per-class semaphores. The dispatch window is a separate cap: it limits
+//! how many tasks may be resident in the `JoinSet` at once, so a million-wide
+//! ready frontier cannot spawn unbounded futures. The scheduler exposes a
+//! single dispatch step, which is also the point a later slice throttles
+//! adaptively (AIMD).
 //!
 //! It is additive: nothing dispatches a graph yet. Existing GUI/CLI transfer
 //! paths are unchanged until one path is migrated onto this executor behind a
 //! flag with a byte-identical guarantee.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt;
 use std::future::Future;
 use std::pin::Pin;
@@ -158,15 +162,51 @@ fn request_exceeds_budget(request: &ResourceRequest, budget: &TransferBudget) ->
     None
 }
 
-/// Run `dag` to completion on a ready-frontier schedule.
+/// Default maximum number of concurrently resident dispatched tasks.
 ///
-/// Each node, once its dependencies are complete, is dispatched on the runtime
-/// and acquires its `ResourceRequest` from `manager` before its action runs;
-/// the lease is held until the action returns. Concurrency is bounded by the
-/// manager's semaphores. On the first failed node, no further nodes are
-/// dispatched, in-flight nodes are drained, and [`DagExecutionError::NodeFailed`]
-/// is returned (matching the abort-on-error semantics of the converged
-/// single-file path this executor will host).
+/// Resource permits remain the binding limit for normal transfer graphs
+/// (multipart fan-out is typically far smaller). This cap prevents a wide
+/// ready frontier — e.g. a million independent batch nodes — from spawning
+/// an unbounded `JoinSet` of futures. A node is marked started and observed
+/// only when it enters this window, not when it merely becomes ready.
+pub const DEFAULT_DISPATCH_WINDOW: usize = 256;
+
+/// Run `dag` to completion on a ready-frontier schedule with
+/// [`DEFAULT_DISPATCH_WINDOW`].
+///
+/// See [`execute_dag_with_dispatch_window`] for full semantics.
+pub async fn execute_dag(
+    dag: &TransferDag,
+    manager: &TransferResourceManager,
+    runner: Arc<dyn DagNodeRunner>,
+    observer: Arc<dyn DagObserver>,
+    controller: Option<Arc<AimdController>>,
+) -> Result<DagExecutionSummary, DagExecutionError> {
+    execute_dag_with_dispatch_window(
+        dag,
+        manager,
+        runner,
+        observer,
+        controller,
+        DEFAULT_DISPATCH_WINDOW,
+    )
+    .await
+}
+
+/// Run `dag` to completion on a ready-frontier schedule with an explicit
+/// dispatch window.
+///
+/// Each node, once its dependencies are complete, enters a ready queue and is
+/// dispatched only while fewer than `dispatch_window` tasks are resident in
+/// the `JoinSet`. Dispatched nodes acquire their `ResourceRequest` from
+/// `manager` before the action runs; the lease is held until the action
+/// returns. I/O concurrency is therefore still bounded by the manager's
+/// semaphores; the window is an orthogonal residency cap.
+///
+/// On the first failed node, no further nodes are dispatched, in-flight nodes
+/// are drained, and [`DagExecutionError::NodeFailed`] is returned (matching
+/// the abort-on-error semantics of the converged single-file path this
+/// executor will host). Failed nodes do not release dependents.
 ///
 /// `observer` receives node lifecycle and a final [`TransferDagMetrics`]
 /// snapshot through an `AppHandle`-free abstraction. It defaults to a no-op
@@ -181,13 +221,19 @@ fn request_exceeds_budget(request: &ResourceRequest, budget: &TransferBudget) ->
 /// [`TransferError`] on the failure (kind + optional `retry_after`); the
 /// controller never substring-matches presentation text. `None` is the
 /// previous behaviour exactly for congestion-free runs.
-pub async fn execute_dag(
+///
+/// `dispatch_window` is clamped to at least 1. Readiness is maintained with
+/// an O(V+E) remaining-deps index so million-node synthetic graphs stay
+/// linear-time in the scheduler (aside from the work of the nodes themselves).
+pub async fn execute_dag_with_dispatch_window(
     dag: &TransferDag,
     manager: &TransferResourceManager,
     runner: Arc<dyn DagNodeRunner>,
     observer: Arc<dyn DagObserver>,
     controller: Option<Arc<AimdController>>,
+    dispatch_window: usize,
 ) -> Result<DagExecutionSummary, DagExecutionError> {
+    let dispatch_window = dispatch_window.max(1);
     let nodes = dag.nodes();
     let mut summary = DagExecutionSummary::default();
     if nodes.is_empty() {
@@ -208,6 +254,33 @@ pub async fn execute_dag(
         }
     }
 
+    // Indexed ready frontier: remaining unique-predecessor count + reverse
+    // edges. Nodes enter `ready` only when remaining hits zero; they become
+    // `started` only when they enter the dispatch window (spawned into the
+    // JoinSet). Duplicate edges in `depends_on` count once so release matches
+    // the old `all(|d| completed.contains(d))` semantics. Out-of-range
+    // predecessors are kept in the remaining count and never released → Stuck.
+    let n = nodes.len();
+    let mut remaining_deps: Vec<usize> = Vec::with_capacity(n);
+    let mut dependents: Vec<Vec<usize>> = vec![Vec::new(); n];
+    for node in nodes {
+        let mut preds = node.depends_on.clone();
+        preds.sort_unstable();
+        preds.dedup();
+        remaining_deps.push(preds.len());
+        for &dep in &preds {
+            if dep < n {
+                dependents[dep].push(node.id);
+            }
+        }
+    }
+    let mut ready: VecDeque<usize> = VecDeque::new();
+    for (id, &rem) in remaining_deps.iter().enumerate() {
+        if rem == 0 {
+            ready.push_back(id);
+        }
+    }
+
     let mut completed: HashSet<usize> = HashSet::new();
     let mut started: HashSet<usize> = HashSet::new();
     let mut requests: HashMap<usize, ResourceRequest> = HashMap::new();
@@ -216,20 +289,21 @@ pub async fn execute_dag(
     let mut join_set: JoinSet<(usize, NodeOutcome)> = JoinSet::new();
 
     loop {
-        // Dispatch step. Once a node has failed we stop launching new work and
-        // only drain what is already running. This single step is the point a
-        // later slice gates adaptively.
+        // Dispatch step: fill the window from the ready queue. Once a node
+        // has failed we stop launching new work and only drain what is
+        // already running. This single step is the point AIMD gates adaptively.
         if failed.is_none() {
-            let ready: Vec<TransferNode> = nodes
-                .iter()
-                .filter(|n| {
-                    !started.contains(&n.id) && n.depends_on.iter().all(|d| completed.contains(d))
-                })
-                .cloned()
-                .collect();
-            for node in ready {
-                started.insert(node.id);
-                requests.insert(node.id, node.resources);
+            while join_set.len() < dispatch_window {
+                let Some(id) = ready.pop_front() else {
+                    break;
+                };
+                // Defensive: a node should only enqueue once.
+                if started.contains(&id) {
+                    continue;
+                }
+                let node = nodes[id].clone();
+                started.insert(id);
+                requests.insert(id, node.resources);
                 observer.on_node_start(node.id, node.kind);
                 let manager = manager.clone();
                 let runner = Arc::clone(&runner);
@@ -261,13 +335,14 @@ pub async fn execute_dag(
         }
 
         if join_set.is_empty() {
-            if failed.is_some() || started.len() == nodes.len() {
+            if failed.is_some() || completed.len() == n {
                 break;
             }
-            // Nothing ready, nothing running, not everything started: a
-            // dependency can never be satisfied.
+            // Nothing ready, nothing running, not every node completed: a
+            // dependency can never be satisfied (malformed/cyclic graph), or
+            // a prior failure left dependents unreleased (handled above).
             terminal_error = Some(DagExecutionError::Stuck {
-                pending: nodes.len() - completed.len(),
+                pending: n - completed.len(),
             });
             break;
         }
@@ -287,13 +362,16 @@ pub async fn execute_dag(
                 break;
             }
         };
-        let node_request = requests.get(&id).copied();
+        // Drop the stored request once the task finishes so a million-node
+        // run does not retain a full request map after drain.
+        let node_request = requests.remove(&id);
         match outcome {
             NodeOutcome::Completed => {
                 summary.nodes_completed += 1;
                 completed.insert(id);
                 observer.on_node_complete(id, ObservedOutcome::Completed);
                 aimd_note_healthy(&controller, node_request.as_ref());
+                release_dependents(id, &dependents, &mut remaining_deps, &mut ready);
             }
             NodeOutcome::Fallback => {
                 summary.nodes_completed += 1;
@@ -306,12 +384,14 @@ pub async fn execute_dag(
                 // A successful (if degraded) completion is still a healthy
                 // signal for the concurrency controller.
                 aimd_note_healthy(&controller, node_request.as_ref());
+                release_dependents(id, &dependents, &mut remaining_deps, &mut ready);
             }
             NodeOutcome::Failed(error) => {
                 summary.nodes_failed += 1;
                 // Only the narrow congestion set throttles; other failures
                 // (auth, not-found, cancel, ...) must not shrink concurrency.
                 // Kind + retry_after are typed — no message substring matching.
+                // Failed nodes intentionally do not release dependents.
                 if let (Some(ctrl), Some(request)) = (&controller, node_request.as_ref()) {
                     if congestion_from_error(&error).is_some() {
                         summary.metrics.backpressure_events += 1;
@@ -339,6 +419,34 @@ pub async fn execute_dag(
         return Err(DagExecutionError::NodeFailed { node_id, error });
     }
     Ok(summary)
+}
+
+/// After a successful completion, decrement remaining-deps for each child and
+/// enqueue any that become fully satisfied.
+fn release_dependents(
+    id: usize,
+    dependents: &[Vec<usize>],
+    remaining_deps: &mut [usize],
+    ready: &mut VecDeque<usize>,
+) {
+    if id >= dependents.len() {
+        return;
+    }
+    for &child in &dependents[id] {
+        if child >= remaining_deps.len() {
+            continue;
+        }
+        // Saturating: a well-formed graph never double-releases, but a
+        // malformed one must not underflow.
+        let rem = &mut remaining_deps[child];
+        if *rem == 0 {
+            continue;
+        }
+        *rem -= 1;
+        if *rem == 0 {
+            ready.push_back(child);
+        }
+    }
 }
 
 /// Reward the AIMD controller for a healthy completion on every controlled
@@ -959,6 +1067,300 @@ mod tests {
             probe_some.peak(),
             6,
             "an at-ceiling controller adds no throttle to a congestion-free run"
+        );
+    }
+
+    // --- DAG-P0-04: bounded dispatch window --------------------------------
+
+    /// Wide independent frontier: concurrent runner work never exceeds the
+    /// dispatch window (resource budget is deliberately larger so the window
+    /// is the binding cap).
+    #[tokio::test]
+    async fn dispatch_window_caps_resident_tasks_on_wide_frontier() {
+        const N: usize = 64;
+        const WINDOW: usize = 8;
+
+        let mut dag = TransferDag::default();
+        for _ in 0..N {
+            dag.add_node(
+                TransferNodeKind::EmitProgress,
+                vec![],
+                ResourceRequest::default(),
+            );
+        }
+
+        let probe = Arc::new(ProbeRunner::default());
+        // Budget >> window so resource permits cannot explain the serialization.
+        let manager = TransferResourceManager::new(TransferBudget::from_file_slots(N as u16));
+        let summary = execute_dag_with_dispatch_window(
+            &dag,
+            &manager,
+            runner_arc(Arc::clone(&probe)),
+            noop_observer(),
+            None,
+            WINDOW,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(summary.nodes_completed, N as u32);
+        assert_eq!(summary.nodes_failed, 0);
+        assert!(
+            probe.peak() <= WINDOW,
+            "peak resident tasks {} exceeded dispatch_window {}",
+            probe.peak(),
+            WINDOW
+        );
+        // With sleep overlap and WINDOW slots free of resource pressure, we
+        // should actually use more than one slot (otherwise the cap is a no-op
+        // and the test would not prove concurrency still happens).
+        assert!(
+            probe.peak() >= 2,
+            "expected overlapping work under window={WINDOW}, peak={}",
+            probe.peak()
+        );
+    }
+
+    /// Window of 1 forces full serialization even with unlimited resources.
+    #[tokio::test]
+    async fn dispatch_window_one_serializes_independent_nodes() {
+        let mut dag = TransferDag::default();
+        for _ in 0..5 {
+            dag.add_node(
+                TransferNodeKind::EmitProgress,
+                vec![],
+                ResourceRequest::default(),
+            );
+        }
+        let probe = Arc::new(ProbeRunner::default());
+        let manager = TransferResourceManager::new(TransferBudget::from_file_slots(8));
+        let summary = execute_dag_with_dispatch_window(
+            &dag,
+            &manager,
+            runner_arc(Arc::clone(&probe)),
+            noop_observer(),
+            None,
+            1,
+        )
+        .await
+        .unwrap();
+        assert_eq!(summary.nodes_completed, 5);
+        assert_eq!(probe.peak(), 1);
+    }
+
+    /// Dependencies still hold under a tight window (diamond + chain).
+    #[tokio::test]
+    async fn dispatch_window_respects_dependencies() {
+        let mut dag = TransferDag::default();
+        let a = dag.add_node(
+            TransferNodeKind::PlanTransfer,
+            vec![],
+            ResourceRequest::default(),
+        );
+        let b = dag.add_node(
+            TransferNodeKind::DownloadRange,
+            vec![a],
+            ResourceRequest::default(),
+        );
+        let c = dag.add_node(
+            TransferNodeKind::DownloadRange,
+            vec![a],
+            ResourceRequest::default(),
+        );
+        let d = dag.add_node(
+            TransferNodeKind::CommitTemp,
+            vec![b, c],
+            ResourceRequest::default(),
+        );
+
+        let probe = Arc::new(ProbeRunner::default());
+        let manager = TransferResourceManager::new(TransferBudget::from_file_slots(4));
+        let summary = execute_dag_with_dispatch_window(
+            &dag,
+            &manager,
+            runner_arc(Arc::clone(&probe)),
+            noop_observer(),
+            None,
+            2, // window=2: b and c may overlap, d waits for both
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(summary.nodes_completed, 4);
+        let order = probe.order();
+        let pos = |id: usize| order.iter().position(|&x| x == id).unwrap();
+        assert!(pos(a) < pos(b) && pos(a) < pos(c));
+        assert!(pos(b) < pos(d) && pos(c) < pos(d));
+    }
+
+    /// Failure stops further dispatch; dependents of the failed node never run.
+    /// In-flight siblings may still complete (drain semantics — fail-fast cancel
+    /// is P0-05).
+    #[tokio::test]
+    async fn dispatch_window_failure_does_not_release_dependents() {
+        let mut dag = TransferDag::default();
+        let a = dag.add_node(
+            TransferNodeKind::PlanTransfer,
+            vec![],
+            ResourceRequest::default(),
+        );
+        let _b = dag.add_node(
+            TransferNodeKind::DownloadFile,
+            vec![a],
+            ResourceRequest::default(),
+        );
+        let _c = dag.add_node(
+            TransferNodeKind::DownloadFile,
+            vec![a],
+            ResourceRequest::default(),
+        );
+
+        let ran: Arc<Mutex<Vec<usize>>> = Arc::new(Mutex::new(Vec::new()));
+        let ran_c = Arc::clone(&ran);
+        let runner: Arc<dyn DagNodeRunner> = Arc::new(move |node: TransferNode| -> NodeFuture {
+            let ran = Arc::clone(&ran_c);
+            Box::pin(async move {
+                ran.lock().unwrap().push(node.id);
+                if node.id == 0 {
+                    NodeOutcome::Failed(TransferError::from_message("plan failed"))
+                } else {
+                    NodeOutcome::Completed
+                }
+            })
+        });
+        let manager = TransferResourceManager::new(TransferBudget::from_file_slots(4));
+        let err =
+            execute_dag_with_dispatch_window(&dag, &manager, runner, noop_observer(), None, 4)
+                .await
+                .unwrap_err();
+
+        match err {
+            DagExecutionError::NodeFailed { node_id, .. } => assert_eq!(node_id, 0),
+            other => panic!("expected NodeFailed, got {other:?}"),
+        }
+        let ran = ran.lock().unwrap().clone();
+        assert!(ran.contains(&0));
+        assert!(
+            !ran.contains(&1) && !ran.contains(&2),
+            "dependents of a failed node must not run, ran={ran:?}"
+        );
+    }
+
+    /// Duplicate `depends_on` edges must not leave a node stuck (unique count).
+    #[tokio::test]
+    async fn dispatch_window_tolerates_duplicate_depends_on() {
+        let mut dag = TransferDag::default();
+        let a = dag.add_node(
+            TransferNodeKind::PlanTransfer,
+            vec![],
+            ResourceRequest::default(),
+        );
+        // Same predecessor listed twice — still a single logical edge.
+        let _b = dag.add_node(
+            TransferNodeKind::DownloadFile,
+            vec![a, a],
+            ResourceRequest::default(),
+        );
+
+        let manager = TransferResourceManager::new(TransferBudget::from_file_slots(2));
+        let summary = execute_dag_with_dispatch_window(
+            &dag,
+            &manager,
+            Arc::new(|_n: TransferNode| -> NodeFuture {
+                Box::pin(async { NodeOutcome::Completed })
+            }),
+            noop_observer(),
+            None,
+            2,
+        )
+        .await
+        .unwrap();
+        assert_eq!(summary.nodes_completed, 2);
+    }
+
+    /// Zero window is clamped to 1 (never unlimited, never a hang).
+    #[tokio::test]
+    async fn dispatch_window_zero_clamps_to_one() {
+        let mut dag = TransferDag::default();
+        for _ in 0..3 {
+            dag.add_node(
+                TransferNodeKind::EmitProgress,
+                vec![],
+                ResourceRequest::default(),
+            );
+        }
+        let probe = Arc::new(ProbeRunner::default());
+        let manager = TransferResourceManager::new(TransferBudget::from_file_slots(8));
+        let summary = execute_dag_with_dispatch_window(
+            &dag,
+            &manager,
+            runner_arc(Arc::clone(&probe)),
+            noop_observer(),
+            None,
+            0,
+        )
+        .await
+        .unwrap();
+        assert_eq!(summary.nodes_completed, 3);
+        assert_eq!(probe.peak(), 1);
+    }
+
+    /// Gate: 1M independent synthetic nodes complete with resident tasks always
+    /// ≤ dispatch_window. Instant runner (no sleep) so the test stays cheap;
+    /// peak is observed via atomic in-flight around the node body.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn dispatch_window_one_million_independent_nodes() {
+        const N: usize = 1_000_000;
+        const WINDOW: usize = 64;
+
+        let mut dag = TransferDag::default();
+        for _ in 0..N {
+            dag.add_node(
+                TransferNodeKind::EmitProgress,
+                vec![],
+                ResourceRequest::default(),
+            );
+        }
+        assert_eq!(dag.nodes().len(), N);
+
+        let in_flight = Arc::new(AtomicUsize::new(0));
+        let peak = Arc::new(AtomicUsize::new(0));
+        let in_flight_r = Arc::clone(&in_flight);
+        let peak_r = Arc::clone(&peak);
+        let runner: Arc<dyn DagNodeRunner> = Arc::new(move |_node: TransferNode| -> NodeFuture {
+            let in_flight = Arc::clone(&in_flight_r);
+            let peak = Arc::clone(&peak_r);
+            Box::pin(async move {
+                let now = in_flight.fetch_add(1, Ordering::SeqCst) + 1;
+                peak.fetch_max(now, Ordering::SeqCst);
+                // Yield once so the runtime can actually overlap tasks inside
+                // the window; without a yield, single-threaded scheduling can
+                // run bodies back-to-back and under-report peak.
+                tokio::task::yield_now().await;
+                in_flight.fetch_sub(1, Ordering::SeqCst);
+                NodeOutcome::Completed
+            })
+        });
+
+        let manager = TransferResourceManager::new(TransferBudget::from_file_slots(1));
+        let summary =
+            execute_dag_with_dispatch_window(&dag, &manager, runner, noop_observer(), None, WINDOW)
+                .await
+                .unwrap();
+
+        assert_eq!(summary.nodes_completed, N as u32);
+        assert_eq!(summary.nodes_failed, 0);
+        let observed = peak.load(Ordering::SeqCst);
+        assert!(
+            observed <= WINDOW,
+            "peak resident tasks {observed} exceeded dispatch_window {WINDOW}"
+        );
+        // Sanity: we must have used the window, not accidentally serialized to 1
+        // on a multi-thread runtime with yields. (If this flakes under extreme
+        // load, the hard gate remains `observed <= WINDOW`.)
+        assert!(
+            observed >= 2,
+            "expected some concurrency under window={WINDOW}, peak={observed}"
         );
     }
 }
