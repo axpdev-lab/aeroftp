@@ -72,11 +72,9 @@
 
 use std::collections::HashMap;
 use std::future::Future;
-use std::io::SeekFrom;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex as StdMutex};
 
-use tokio::io::{AsyncReadExt, AsyncSeekExt};
 use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 
@@ -85,10 +83,12 @@ use crate::transfer_dag::executor::{
     execute_dag_with_options, DagExecuteOptions, DagNodeRunner, NodeFuture, NodeOutcome,
 };
 use crate::transfer_dag::graph::{TransferNode, TransferNodeKind};
+use crate::transfer_dag::multipart_part_byte_len;
 use crate::transfer_dag::{
-    multipart_part_byte_len, AimdConfig, AimdController, DagObserver, FailureScope, ShapedFileDag,
-    TransferBudget, TransferDirection, TransferError, TransferResourceManager,
+    AimdConfig, AimdController, DagObserver, FailureScope, ShapedFileDag, TransferBudget,
+    TransferDirection, TransferError, TransferResourceManager,
 };
+use crate::transfer_multipart::{clone_multipart_worker, read_chunk, MultipartLayout};
 
 /// A per-byte transfer progress callback, as accepted by
 /// [`StorageProvider::download`] / [`StorageProvider::upload`].
@@ -204,36 +204,27 @@ pub async fn execute_single_file_dag(
         && built.profile.upload_parts > 1
         && file_size > 0
     {
-        let total_parts = built.profile.upload_parts as u64;
-        // Prefer the provider's exact advertised chunk size when supplied
-        // so chunks honour per-provider alignment contracts (Drive: 256 KiB
-        // multiple; OneDrive: 320 KiB multiple; B2 / S3: any size ≥ 5 MiB).
-        // The last part takes whatever remains; the `ctx.part_size.min(...)`
-        // slice below handles that automatically. When `preferred_chunk_size`
-        // is `0` (no provider hint) fall back to the legacy `div_ceil`
-        // equalisation that keeps every part the same size.
-        let part_size = if built.profile.preferred_chunk_size > 0 {
-            built.profile.preferred_chunk_size
-        } else {
-            file_size.div_ceil(total_parts)
-        };
+        // Shared layout math with the batch runner (DAG-P1-03).
+        let layout = MultipartLayout::from_profile(
+            file_size,
+            built.profile.upload_parts,
+            built.profile.preferred_chunk_size,
+            &local_path,
+        );
         let node_to_part: HashMap<usize, u32> = built
             .transfer
             .iter()
             .enumerate()
             .map(|(idx, node_id)| (*node_id, (idx + 1) as u32))
             .collect();
-        let content_type = mime_guess::from_path(&*local)
-            .first_or_octet_stream()
-            .to_string();
         Some(Arc::new(MultipartCtx {
             handle: Arc::new(Mutex::new(None)),
-            parts: Arc::new(Mutex::new(Vec::with_capacity(total_parts as usize))),
+            parts: Arc::new(Mutex::new(Vec::with_capacity(layout.total_parts as usize))),
             node_to_part: Arc::new(node_to_part),
-            part_size,
-            total_parts: total_parts as usize,
-            total_size: file_size,
-            content_type,
+            part_size: layout.preferred_part_size,
+            total_parts: layout.total_parts as usize,
+            total_size: layout.total_size,
+            content_type: layout.content_type,
         }))
     } else {
         None
@@ -610,21 +601,6 @@ pub async fn execute_single_file_dag(
     }
 }
 
-/// Read `len` bytes from `path` starting at `offset` into a fresh `Vec`.
-///
-/// Called only from an `UploadPart` node after the executor has already
-/// acquired that node's `ResourceRequest` (including `buffer_bytes == len`).
-/// Peak credited concurrent part buffers therefore cannot exceed the
-/// per-manager byte budget (aside from the documented one-at-a-time oversize
-/// policy). Do not call this without a matching lease held above.
-async fn read_chunk(path: &str, offset: u64, len: u64) -> Result<Vec<u8>, ProviderError> {
-    let mut file = tokio::fs::File::open(path).await?;
-    file.seek(SeekFrom::Start(offset)).await?;
-    let mut data = vec![0u8; len as usize];
-    file.read_exact(&mut data).await?;
-    Ok(data)
-}
-
 /// Stash the original [`ProviderError`] for the caller and return a typed
 /// node failure so AIMD/cancel decisions never re-parse presentation text.
 ///
@@ -672,25 +648,6 @@ fn single_file_budget(built: &ShapedFileDag) -> TransferBudget {
         budget.disk_read_slots = 1;
     }
     budget
-}
-
-/// Mint an independent worker for a concurrent part upload, or `None` when the
-/// provider must serialise its parts on the shared session mutex.
-///
-/// Gated on `clone_for_transfer()` (the actual capability the parallel part
-/// path needs: an independent HTTP/session worker) rather than a hardcoded
-/// `S3`/`B2` downcast or the `transfer_executor_kind()` flag. Gating on the
-/// clone itself lets a provider parallelise its multipart chunks WITHOUT also
-/// opting into clone-pool BATCH execution (which `transfer_executor_kind`
-/// drives), so the blast radius stays exactly the per-part path. S3, B2, Azure
-/// and Nextcloud WebDAV produce an independent worker here; providers that
-/// cannot clone (the trait default) return `None` and keep the session-mutex
-/// fallback at the call site (audit CHUNK-01). Ordering-sensitive providers
-/// (Drive/OneDrive) stay correct regardless: the builder serialises their part
-/// nodes when `max_chunk_slots <= 1`, so even a cloned worker runs them one at
-/// a time in part-number order.
-fn clone_multipart_worker(provider: &dyn StorageProvider) -> Option<Box<dyn StorageProvider>> {
-    provider.clone_for_transfer().ok()
 }
 
 #[cfg(test)]

@@ -197,6 +197,7 @@ pub mod transfer_dag_single_file;
 pub mod transfer_dag_sync;
 pub mod transfer_domain;
 pub mod transfer_event_sink;
+pub mod transfer_multipart;
 pub mod transfer_orchestrator;
 mod transfer_pool;
 mod transfer_queue_journal;

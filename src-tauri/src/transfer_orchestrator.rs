@@ -5,19 +5,24 @@
 //!
 //! Phase 0 objective: establish the shared contract and bounded-concurrency
 //! execution surface that later phases will wire to FTP and provider executors.
+//!
+//! DAG-P1-03 adds an optional multipart per-part wire contract. Defaults are
+//! conservative so legacy and test executors never silently advertise runnable
+//! per-part I/O.
 
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
 use async_trait::async_trait;
 
-use crate::providers::ProviderType;
+use crate::providers::{MultipartHandle, ProviderType, UploadedPart};
 use crate::transfer_dag::{TransferCapabilities, TransferSessionLease, TransferSessionPoolHandle};
 use crate::transfer_domain::{
     BatchProgressSnapshot, TransferBatchConfig, TransferBatchResult, TransferDirection,
-    TransferEntry, TransferOutcome,
+    TransferEntry, TransferFailure, TransferOutcome,
 };
 use crate::transfer_event_sink::TransferEventSink;
+use crate::transfer_multipart::{unsupported_multipart_failure, MultipartLayout};
 
 pub type ProgressObserver = Arc<dyn Fn(BatchProgressSnapshot) + Send + Sync>;
 
@@ -61,6 +66,63 @@ pub trait TransferExecutor {
         drop(session_lease);
         outcome
     }
+
+    /// Whether this executor implements real multipart begin/part/complete/abort.
+    ///
+    /// Default `false`: a shaped multipart graph against a conservative executor
+    /// must fail closed at batch preflight (DAG-P1-03).
+    fn supports_multipart_wire(&self) -> bool {
+        false
+    }
+
+    /// Cooperative cancellation observed by multipart part nodes.
+    fn is_transfer_cancelled(&self) -> bool {
+        false
+    }
+
+    /// Begin one multipart session for `entry` (at most once per file state).
+    async fn multipart_begin(
+        &self,
+        _entry: &TransferEntry,
+        _layout: &MultipartLayout,
+    ) -> Result<MultipartHandle, TransferFailure> {
+        Err(unsupported_multipart_failure())
+    }
+
+    /// Upload one numbered part against an open multipart handle.
+    async fn multipart_upload_part(
+        &self,
+        _entry: &TransferEntry,
+        _handle: &MultipartHandle,
+        _part_number: u32,
+        _data: Vec<u8>,
+    ) -> Result<UploadedPart, TransferFailure> {
+        Err(unsupported_multipart_failure())
+    }
+
+    /// Complete a multipart session with receipts sorted by part number.
+    async fn multipart_complete(
+        &self,
+        _entry: &TransferEntry,
+        _handle: MultipartHandle,
+        _parts: Vec<UploadedPart>,
+    ) -> Result<(), TransferFailure> {
+        Err(unsupported_multipart_failure())
+    }
+
+    /// Best-effort abort of a leftover multipart session (diagnostic errors).
+    async fn multipart_abort(&self, _entry: &TransferEntry, _handle: MultipartHandle) {
+        // Default: no-op. Production executors perform provider abort.
+    }
+
+    /// Emit once-per-file start for a multipart file (executor-owned events).
+    fn multipart_emit_file_start(&self, _entry: &TransferEntry, _total_size: u64) {}
+
+    /// Emit once-per-file terminal success for a multipart file.
+    fn multipart_emit_file_complete(&self, _entry: &TransferEntry) {}
+
+    /// Emit once-per-file terminal failure for a multipart file.
+    fn multipart_emit_file_error(&self, _entry: &TransferEntry, _failure: &TransferFailure) {}
 }
 
 pub async fn execute_batch<E>(

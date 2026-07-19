@@ -46,7 +46,8 @@ use tokio_util::sync::CancellationToken;
 use tracing::warn;
 
 use crate::providers::{
-    ProviderListExecutorKind, ProviderTransferExecutorKind, ProviderType, StorageProvider,
+    MultipartHandle, ProviderListExecutorKind, ProviderTransferExecutorKind, ProviderType,
+    StorageProvider, UploadedPart,
 };
 use crate::transfer_dag::{
     Capability, TransferCapabilities, TransferSessionLease, TransferSessionPoolHandle,
@@ -56,6 +57,9 @@ use crate::transfer_domain::{
     TransferFailure, TransferOutcome,
 };
 use crate::transfer_event_sink::TransferEventSink;
+use crate::transfer_multipart::{
+    clone_multipart_worker, transfer_failure_from_message, MultipartLayout,
+};
 use crate::transfer_orchestrator::TransferExecutor;
 use crate::transfer_settings::{
     resolve_transfer_settings_for_capabilities, ResolvedTransferSettings, TransferSettingsInput,
@@ -1436,6 +1440,160 @@ impl TransferExecutor for ProviderUploadExecutor {
         };
         drop(session_lease);
         outcome
+    }
+
+    // ---- DAG-P1-03: real per-part multipart wire contract --------------------
+
+    fn supports_multipart_wire(&self) -> bool {
+        self.capabilities.multipart_upload.is_available()
+    }
+
+    fn is_transfer_cancelled(&self) -> bool {
+        self.cancel_token.is_cancelled()
+    }
+
+    async fn multipart_begin(
+        &self,
+        entry: &TransferEntry,
+        layout: &MultipartLayout,
+    ) -> Result<MultipartHandle, TransferFailure> {
+        if self.cancel_token.is_cancelled() {
+            return Err(crate::transfer_multipart::cancelled_failure());
+        }
+        let mut provider_lock = self.provider.lock().await;
+        let provider = provider_lock.as_mut().ok_or_else(|| {
+            transfer_failure_from_message("Provider disconnected", Some(&entry.remote_path))
+        })?;
+        crate::restricted_chars::validate_path(provider.provider_type(), &entry.remote_path)
+            .map_err(|e| transfer_failure_from_message(&e.to_string(), Some(&entry.remote_path)))?;
+        let begin = provider.begin_multipart_upload(
+            &entry.remote_path,
+            layout.total_size,
+            Some(&layout.content_type),
+            Some(&entry.local_path),
+        );
+        tokio::select! {
+            biased;
+            _ = self.cancel_token.cancelled() => {
+                Err(crate::transfer_multipart::cancelled_failure())
+            }
+            result = begin => result.map_err(|e| {
+                crate::transfer_multipart::transfer_failure_from_provider(
+                    &e,
+                    Some(&entry.remote_path),
+                )
+            }),
+        }
+    }
+
+    async fn multipart_upload_part(
+        &self,
+        entry: &TransferEntry,
+        handle: &MultipartHandle,
+        part_number: u32,
+        data: Vec<u8>,
+    ) -> Result<UploadedPart, TransferFailure> {
+        if self.cancel_token.is_cancelled() {
+            return Err(crate::transfer_multipart::cancelled_failure());
+        }
+
+        // Prefer an independent clone when the provider supports it so part
+        // nodes can overlap under the chunk budget without holding the
+        // primary session mutex for the entire PUT body.
+        let cloned_worker = {
+            let mut guard = self.provider.lock().await;
+            let provider = guard.as_mut().ok_or_else(|| {
+                transfer_failure_from_message("Provider disconnected", Some(&entry.remote_path))
+            })?;
+            clone_multipart_worker(provider.as_mut())
+        };
+
+        let upload = async {
+            if let Some(mut worker) = cloned_worker {
+                worker.upload_part(handle, part_number, data).await
+            } else {
+                let mut guard = self.provider.lock().await;
+                let provider = guard
+                    .as_mut()
+                    .ok_or(crate::providers::ProviderError::NotConnected)?;
+                provider.upload_part(handle, part_number, data).await
+            }
+        };
+
+        tokio::select! {
+            biased;
+            _ = self.cancel_token.cancelled() => {
+                Err(crate::transfer_multipart::cancelled_failure())
+            }
+            result = upload => result.map_err(|e| {
+                crate::transfer_multipart::transfer_failure_from_provider(
+                    &e,
+                    Some(&entry.local_path),
+                )
+            }),
+        }
+    }
+
+    async fn multipart_complete(
+        &self,
+        entry: &TransferEntry,
+        handle: MultipartHandle,
+        parts: Vec<UploadedPart>,
+    ) -> Result<(), TransferFailure> {
+        if self.cancel_token.is_cancelled() {
+            return Err(crate::transfer_multipart::cancelled_failure());
+        }
+        let mut provider_lock = self.provider.lock().await;
+        let provider = provider_lock.as_mut().ok_or_else(|| {
+            transfer_failure_from_message("Provider disconnected", Some(&entry.remote_path))
+        })?;
+        let complete = provider.complete_multipart_upload(handle, parts);
+        tokio::select! {
+            biased;
+            _ = self.cancel_token.cancelled() => {
+                Err(crate::transfer_multipart::cancelled_failure())
+            }
+            result = complete => result.map_err(|e| {
+                crate::transfer_multipart::transfer_failure_from_provider(
+                    &e,
+                    Some(&entry.remote_path),
+                )
+            }),
+        }
+    }
+
+    async fn multipart_abort(&self, entry: &TransferEntry, handle: MultipartHandle) {
+        let mut provider_lock = self.provider.lock().await;
+        if let Some(provider) = provider_lock.as_mut() {
+            if let Err(error) = provider.abort_multipart_upload(handle).await {
+                warn!(
+                    "Best-effort multipart abort failed for {}: {}",
+                    entry.remote_path, error
+                );
+            }
+        }
+    }
+
+    fn multipart_emit_file_start(&self, entry: &TransferEntry, total_size: u64) {
+        self.emit_upload_start(entry, &entry.id, total_size);
+    }
+
+    fn multipart_emit_file_complete(&self, entry: &TransferEntry) {
+        self.emit_upload_complete(entry, &entry.id);
+    }
+
+    fn multipart_emit_file_error(&self, entry: &TransferEntry, failure: &TransferFailure) {
+        self.sink.emit_transfer_event(crate::TransferEvent {
+            event_type: "file_error".to_string(),
+            transfer_id: entry.id.clone(),
+            filename: entry.display_name.clone(),
+            direction: "upload".to_string(),
+            message: Some(failure.message.clone()),
+            progress: None,
+            path: Some(entry.remote_path.clone()),
+            delta_stats: None,
+            fallback_reason: None,
+        });
     }
 }
 

@@ -6,39 +6,36 @@
 //! [`crate::transfer_orchestrator::execute_batch`] is the single chokepoint
 //! for every multi-file transfer in the app: GUI drag&drop, GUI file-list
 //! batch operations, the FTP batch path in `lib.rs`, the CLI file-level batch,
-//! and cross-profile transfers. This module is the flag-gated bridge that
-//! routes that one chokepoint through the shared graph engine instead of the
-//! hand-rolled `JoinSet` sliding window.
+//! and cross-profile transfers. This module is the bridge that routes that
+//! chokepoint through the shared graph engine.
 //!
 //! ## Scope
 //!
 //! [`execute_batch_dag`] builds one [`BatchDag`](crate::transfer_dag::BatchDag)
 //! from the batch entries (one seven-node single-file sub-DAG per file) and
 //! runs it through [`execute_dag`]. The graph's single
-//! [`TransferResourceManager`] is the only file-level concurrency governor, so
-//! `max_concurrent` flows in through `TransferBatchConfig::transfer_budget()`
-//! exactly as the legacy path consumes it (F2-T03).
+//! [`TransferResourceManager`] is the only node-level concurrency governor.
 //!
-//! The real per-file I/O is unchanged: every transfer node calls the same
-//! [`TransferExecutor::execute_with_session`] the legacy path called, holding
-//! the same per-file session lease from the same `executor.session_pool(..)`.
-//! Only the *scheduling* moves onto the graph; the bytes on the wire and the
-//! serialized `transfer_batch_*` payload shapes are unchanged. The GUI sink
-//! may coalesce intermediate progress frequency under DAG-P0-08.
+//! ## DAG-P1-03 — real per-part multipart wire I/O
+//!
+//! When the executor advertises multipart and implements
+//! [`TransferExecutor::supports_multipart_wire`], shaped `UploadPart` nodes
+//! each perform one provider `upload_part` call over an exact local byte
+//! range. One multipart session is begun lazily per file; `CommitTemp`
+//! completes once (or aborts once after in-flight parts drain). File/session
+//! ownership is a single session-pool lease per multipart file — not one
+//! lease per part. Plain `UploadFile` / `DownloadFile` stay on the whole-file
+//! `execute_with_session` contract.
 //!
 //! ## Payload-compatible contract
 //!
 //! - `emit_batch_started` / `emit_batch_progress` / `emit_batch_completed`
-//!   are produced at the same lifecycle points with the same payload shapes
-//!   as the legacy orchestrator. The GUI governor may coalesce multiple
-//!   intermediate snapshots into the latest sample within a 100 ms window.
-//! - A failed file does NOT abort the batch. The legacy executor records the
-//!   failure in the progress snapshot and proceeds to the next entry, so each
-//!   transfer node always reports [`NodeOutcome::Completed`] to the graph
-//!   executor; the failure lives only in the [`BatchProgressSnapshot`].
-//! - Cancellation leaves the remaining files untouched and unaccounted,
-//!   mirroring the legacy task that returns early after `cancel` is observed.
-//!
+//!   are produced at the same lifecycle points with the same payload shapes.
+//! - A failed file does NOT abort the batch (DAG-P1-04 policy unchanged):
+//!   transfer and commit nodes report [`NodeOutcome::Completed`]; the failure
+//!   lives only in the [`BatchProgressSnapshot`].
+//! - Cancellation leaves unstarted files untouched and unaccounted.
+
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -50,21 +47,41 @@ use crate::transfer_dag::executor::{execute_dag, DagNodeRunner, NodeFuture, Node
 use crate::transfer_dag::graph::{TransferNode, TransferNodeKind};
 use crate::transfer_dag::{
     AimdConfig, AimdController, BatchDagItem, DagObserver, NoopDagObserver, TransferCapabilities,
-    TransferDagBuilder, TransferDirection, TransferResourceManager,
+    TransferDagBuilder, TransferDirection, TransferGraphProfile, TransferResourceManager,
+    TransferSessionLease,
 };
 use crate::transfer_domain::{
     BatchProgressSnapshot, TransferBatchResult, TransferDirection as DomainTransferDirection,
-    TransferOutcome,
+    TransferFailure, TransferFailureKind, TransferOutcome,
 };
 use crate::transfer_event_sink::TransferEventSink;
+use crate::transfer_multipart::{
+    cancelled_failure, read_chunk, unsupported_multipart_failure, MultipartFileState,
+    MultipartLayout,
+};
 use crate::transfer_orchestrator::{ProgressObserver, TransferBatch, TransferExecutor};
+
+/// Per-multipart-file runtime: shared driver state + one session lease.
+struct MultipartFileRuntime {
+    state: Arc<MultipartFileState>,
+    /// One file/session lease for the whole multipart lifecycle.
+    /// `None` = not yet acquired; acquire is serialised by this mutex.
+    session_lease: Mutex<SessionLeaseSlot>,
+}
+
+enum SessionLeaseSlot {
+    /// No acquire attempted yet.
+    Vacant,
+    /// Lease held for the multipart file lifecycle.
+    Held(#[allow(dead_code)] TransferSessionLease),
+    /// Acquire failed; siblings must drain without I/O.
+    Failed,
+}
 
 /// Run a multi-file batch transfer through the graph engine.
 ///
 /// A drop-in replacement for [`crate::transfer_orchestrator::execute_batch`]:
-/// same arguments, same [`TransferBatchResult`]. Every batch transfer
-/// routes through this function; the legacy `JoinSet` sliding window
-/// orchestrator is gone (DAG-ENGINE A-branch SG-T18 closure).
+/// same arguments, same [`TransferBatchResult`].
 pub async fn execute_batch_dag<E>(
     sink: Arc<dyn TransferEventSink>,
     batch: TransferBatch,
@@ -103,13 +120,8 @@ where
         ..BatchProgressSnapshot::default()
     }));
 
-    // One capability-shaped sub-DAG per entry, merged into one graph.
-    // Every batch is bound to a single provider session, so the caps set is
-    // shared across files. DAG-P1-01: consume exactly the executor's runtime
-    // capability snapshot (not `TransferCapabilities::default()`). That enables
-    // truthful multipart graph shape and file-slot ceilings for pool-backed
-    // providers. Wire-level per-part I/O inside one batch file remains gated
-    // on `entry_transferred` until DAG-P1-03.
+    // DAG-P1-01/P1-02: consume exactly the executor's runtime capability
+    // snapshot for graph shape and budget ceilings.
     let caps: TransferCapabilities = executor.transfer_capabilities();
     let items: Vec<BatchDagItem> = entries
         .iter()
@@ -117,38 +129,96 @@ where
         .collect();
     let built = TransferDagBuilder::from_batch_shaped(&items, &caps);
 
-    // The builder preserves entry order, so `built.files[i]` is `entries[i]`.
-    // Map every transfer-core node id back to its entry index. With the
-    // shaped batch builder a file may carry more than one transfer node
-    // (multipart fan-out), so we iterate `transfer_nodes` rather than
-    // binding the single `transfer` id.
-    let mut node_to_entry: HashMap<usize, usize> = HashMap::with_capacity(built.files.len());
+    // Map transfer-core nodes AND multipart CommitTemp nodes to entry index.
+    let mut node_to_entry: HashMap<usize, usize> = HashMap::with_capacity(built.files.len() * 2);
+    let mut multipart_runtimes: Vec<Option<Arc<MultipartFileRuntime>>> =
+        Vec::with_capacity(built.files.len());
+
     for (index, file) in built.files.iter().enumerate() {
         for &node_id in &file.transfer_nodes {
             node_to_entry.insert(node_id, index);
         }
+
+        let is_multipart = file.transfer_nodes.len() > 1;
+        if is_multipart {
+            // Fail closed when the graph is multipart-shaped but the executor
+            // has no wire contract (conservative default / capability mismatch).
+            if !executor.supports_multipart_wire() {
+                multipart_runtimes.push(None);
+                // Still map commit so we can account a single failure.
+                node_to_entry.insert(file.commit, index);
+                continue;
+            }
+            let entry = &entries[index];
+            let profile = TransferGraphProfile::resolve(dag_direction, &caps, entry.size);
+            let layout = MultipartLayout::from_profile(
+                entry.size,
+                profile.upload_parts,
+                profile.preferred_chunk_size,
+                &entry.local_path,
+            );
+            let node_to_part: HashMap<usize, u32> = file
+                .transfer_nodes
+                .iter()
+                .enumerate()
+                .map(|(idx, node_id)| (*node_id, (idx + 1) as u32))
+                .collect();
+            let state = MultipartFileState::new(layout, node_to_part);
+            node_to_entry.insert(file.commit, index);
+            multipart_runtimes.push(Some(Arc::new(MultipartFileRuntime {
+                state,
+                session_lease: Mutex::new(SessionLeaseSlot::Vacant),
+            })));
+        } else {
+            multipart_runtimes.push(None);
+        }
     }
-    // The legacy `execute_with_session` is per-file, not per-part: when the
-    // shaped graph hands out N `UploadPart` nodes for one entry, only the
-    // first one to enter the runner performs the transfer; the rest become
-    // structural no-ops. This preserves the batch contract (one
-    // `execute_with_session` per file, one progress snapshot per file) and
-    // keeps the multipart fan-out as a future optimisation gate that
-    // engages once the executor exposes a native per-part contract (P1-03).
-    let entry_transferred = Arc::new(Mutex::new(vec![false; entries.len()]));
+
+    // Preflight: multipart-shaped files without wire support fail closed once.
+    let preflight_unsupported: Vec<usize> = built
+        .files
+        .iter()
+        .enumerate()
+        .filter(|(i, f)| f.transfer_nodes.len() > 1 && multipart_runtimes[*i].is_none())
+        .map(|(i, _)| i)
+        .collect();
+    if !preflight_unsupported.is_empty() && !executor.supports_multipart_wire() {
+        for &index in &preflight_unsupported {
+            let entry = &entries[index];
+            let failure = unsupported_multipart_failure();
+            executor.multipart_emit_file_error(entry, &failure);
+            let snapshot_clone = {
+                let mut snapshot = progress.lock().await;
+                snapshot.failed += 1;
+                snapshot.clone()
+            };
+            sink.emit_batch_progress(&snapshot_clone);
+            if let Some(observer) = progress_observer.as_ref() {
+                observer(snapshot_clone);
+            }
+        }
+        // Do not schedule multipart wire work for unsupported files; strip by
+        // leaving runtime None and making part/commit nodes no-op after
+        // accounting above. Parts/commit for those indices short-circuit.
+    }
 
     let entries = Arc::new(entries);
     let node_to_entry = Arc::new(node_to_entry);
+    let multipart_runtimes = Arc::new(multipart_runtimes);
+    // Track preflight-accounted unsupported entries so commit/part skip re-account.
+    let preflight_failed = Arc::new(std::sync::Mutex::new(
+        preflight_unsupported
+            .into_iter()
+            .collect::<std::collections::HashSet<_>>(),
+    ));
+
     let max_concurrent = config.max_concurrent.max(1) as usize;
     let session_pool = Arc::new(executor.session_pool(max_concurrent));
-    let resource_manager = TransferResourceManager::new(config.transfer_budget());
+    // DAG-P1-03: expose resolved chunk/disk-read credits from capabilities.
+    let resource_manager =
+        TransferResourceManager::new(config.transfer_budget_for_capabilities(&caps));
     let provider_type = executor.provider_type();
 
-    // AIMD backpressure (F3-T05). The controller's File ceiling is the batch
-    // `file_slots` budget and starts there, so a congestion-free batch
-    // dispatches every file exactly as before; when a file fails with a
-    // genuine congestion signal the File dispatch target halves, throttling
-    // the remaining files instead of hammering an overloaded server.
     let aimd = Arc::new(AimdController::from_budget_for_provider(
         &resource_manager.budget(),
         provider_type,
@@ -163,7 +233,8 @@ where
         let entries = Arc::clone(&entries);
         let node_to_entry = Arc::clone(&node_to_entry);
         let session_pool = Arc::clone(&session_pool);
-        let entry_transferred = Arc::clone(&entry_transferred);
+        let multipart_runtimes = Arc::clone(&multipart_runtimes);
+        let preflight_failed = Arc::clone(&preflight_failed);
         Arc::new(move |node: TransferNode| -> NodeFuture {
             let sink = Arc::clone(&sink);
             let executor = Arc::clone(&executor);
@@ -173,107 +244,58 @@ where
             let entries = Arc::clone(&entries);
             let node_to_entry = Arc::clone(&node_to_entry);
             let session_pool = Arc::clone(&session_pool);
-            let entry_transferred = Arc::clone(&entry_transferred);
+            let multipart_runtimes = Arc::clone(&multipart_runtimes);
+            let preflight_failed = Arc::clone(&preflight_failed);
             Box::pin(async move {
-                // Only the real transfer nodes do I/O; every structural node
-                // (discover / acquire / verify / preserve / commit / emit) is
-                // a no-op anchor, exactly like the single-file bridge.
-                if !matches!(
-                    node.kind,
-                    TransferNodeKind::DownloadFile
-                        | TransferNodeKind::UploadFile
-                        | TransferNodeKind::UploadPart
-                ) {
-                    return NodeOutcome::Completed;
-                }
-                let Some(&entry_index) = node_to_entry.get(&node.id) else {
-                    return NodeOutcome::Completed;
-                };
-                let entry = entries[entry_index].clone();
-
-                // Multiple UploadPart nodes can map to the same entry under
-                // the shaped fan-out shape. The legacy `execute_with_session`
-                // is a per-file contract, so only the first part to enter the
-                // runner performs the transfer; the others fall through as
-                // structural no-ops and let the graph drain.
-                {
-                    let mut transferred = entry_transferred.lock().await;
-                    if transferred[entry_index] {
-                        return NodeOutcome::Completed;
+                match node.kind {
+                    TransferNodeKind::DownloadFile | TransferNodeKind::UploadFile => {
+                        run_whole_file_node(
+                            node.id,
+                            &node_to_entry,
+                            &entries,
+                            &executor,
+                            &cancel,
+                            &session_pool,
+                            &progress,
+                            &sink,
+                            progress_observer.as_ref(),
+                        )
+                        .await
                     }
-                    transferred[entry_index] = true;
-                }
-
-                // Cancellation: a cancelled batch leaves the remaining files
-                // untouched and unaccounted, mirroring the legacy task that
-                // returns early. The node still completes so the graph drains.
-                if cancel.load(Ordering::Relaxed) {
-                    return NodeOutcome::Completed;
-                }
-
-                let session_lease = match session_pool.acquire().await {
-                    Ok(lease) => lease,
-                    Err(error) => {
-                        tracing::warn!("Transfer session acquisition failed: {}", error);
-                        // Issue #234: a transient session-pool acquire failure
-                        // must be recorded in the batch snapshot too, or the
-                        // GUI "X of Y completed" counters silently miss the
-                        // failed entry. Mirror the success/skip/fail branches
-                        // below: bump `failed`, emit progress, notify observer.
-                        let snapshot_clone = {
-                            let mut snapshot = progress.lock().await;
-                            snapshot.failed += 1;
-                            snapshot.clone()
-                        };
-                        sink.emit_batch_progress(&snapshot_clone);
-                        if let Some(observer) = progress_observer {
-                            observer(snapshot_clone);
-                        }
-                        return NodeOutcome::Completed;
+                    TransferNodeKind::UploadPart => {
+                        run_multipart_part_node(
+                            node.id,
+                            &node_to_entry,
+                            &entries,
+                            &multipart_runtimes,
+                            &preflight_failed,
+                            &executor,
+                            &cancel,
+                            &session_pool,
+                            &progress,
+                            &sink,
+                            progress_observer.as_ref(),
+                        )
+                        .await
                     }
-                };
-
-                if cancel.load(Ordering::Relaxed) {
-                    return NodeOutcome::Completed;
-                }
-
-                {
-                    let mut snapshot = progress.lock().await;
-                    snapshot.active += 1;
-                }
-
-                let outcome = executor
-                    .execute_with_session(entry.clone(), session_lease)
-                    .await;
-
-                let snapshot_clone = {
-                    let mut snapshot = progress.lock().await;
-                    snapshot.active = snapshot.active.saturating_sub(1);
-                    match &outcome {
-                        TransferOutcome::Success => {
-                            snapshot.completed += 1;
-                            snapshot.bytes_transferred += entry.size;
-                        }
-                        TransferOutcome::Skipped { .. } => {
-                            snapshot.skipped += 1;
-                        }
-                        TransferOutcome::Failed(_) => {
-                            snapshot.failed += 1;
-                        }
+                    TransferNodeKind::CommitTemp => {
+                        run_multipart_commit_node(
+                            node.id,
+                            &node_to_entry,
+                            &entries,
+                            &multipart_runtimes,
+                            &preflight_failed,
+                            &executor,
+                            &cancel,
+                            &progress,
+                            &sink,
+                            progress_observer.as_ref(),
+                        )
+                        .await
                     }
-                    snapshot.clone()
-                };
-
-                sink.emit_batch_progress(&snapshot_clone);
-                if let Some(observer) = progress_observer {
-                    observer(snapshot_clone);
+                    // Structural anchors: discover / acquire / verify / preserve / emit.
+                    _ => NodeOutcome::Completed,
                 }
-
-                // A failed file must NOT abort the batch: the legacy executor
-                // records the failure and proceeds to the next entry. The node
-                // therefore always reports Completed; the failure lives only in
-                // the progress snapshot.
-                NodeOutcome::Completed
             })
         })
     };
@@ -282,9 +304,6 @@ where
     if let Err(error) =
         execute_dag(&built.dag, &resource_manager, runner, observer, Some(aimd)).await
     {
-        // The runner never returns Failed, so a graph error here means an
-        // executor-level fault (panic, semaphore closed). Surface it and still
-        // build the honest result from whatever the snapshot recorded.
         tracing::warn!("Batch transfer graph stopped early: {}", error);
     }
 
@@ -303,13 +322,480 @@ where
     batch_result
 }
 
+#[allow(clippy::too_many_arguments)]
+async fn run_whole_file_node<E>(
+    node_id: usize,
+    node_to_entry: &HashMap<usize, usize>,
+    entries: &[crate::transfer_domain::TransferEntry],
+    executor: &Arc<E>,
+    cancel: &AtomicBool,
+    session_pool: &crate::transfer_dag::TransferSessionPoolHandle,
+    progress: &Mutex<BatchProgressSnapshot>,
+    sink: &Arc<dyn TransferEventSink>,
+    progress_observer: Option<&ProgressObserver>,
+) -> NodeOutcome
+where
+    E: TransferExecutor + Send + Sync + 'static,
+{
+    let Some(&entry_index) = node_to_entry.get(&node_id) else {
+        return NodeOutcome::Completed;
+    };
+    let entry = entries[entry_index].clone();
+
+    if cancel.load(Ordering::Relaxed) {
+        return NodeOutcome::Completed;
+    }
+
+    let session_lease = match session_pool.acquire().await {
+        Ok(lease) => lease,
+        Err(error) => {
+            tracing::warn!("Transfer session acquisition failed: {}", error);
+            account_outcome(
+                progress,
+                sink,
+                progress_observer,
+                TransferOutcome::Failed(TransferFailure {
+                    kind: TransferFailureKind::Unknown,
+                    message: format!("Transfer session acquisition failed: {error}"),
+                    retryable: true,
+                }),
+                0,
+                true,
+            )
+            .await;
+            return NodeOutcome::Completed;
+        }
+    };
+
+    if cancel.load(Ordering::Relaxed) {
+        return NodeOutcome::Completed;
+    }
+
+    {
+        let mut snapshot = progress.lock().await;
+        snapshot.active += 1;
+    }
+
+    let outcome = executor
+        .execute_with_session(entry.clone(), session_lease)
+        .await;
+
+    let bytes = match &outcome {
+        TransferOutcome::Success => entry.size,
+        _ => 0,
+    };
+    account_outcome(progress, sink, progress_observer, outcome, bytes, true).await;
+    NodeOutcome::Completed
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn run_multipart_part_node<E>(
+    node_id: usize,
+    node_to_entry: &HashMap<usize, usize>,
+    entries: &[crate::transfer_domain::TransferEntry],
+    multipart_runtimes: &[Option<Arc<MultipartFileRuntime>>],
+    preflight_failed: &std::sync::Mutex<std::collections::HashSet<usize>>,
+    executor: &Arc<E>,
+    cancel: &AtomicBool,
+    session_pool: &crate::transfer_dag::TransferSessionPoolHandle,
+    progress: &Mutex<BatchProgressSnapshot>,
+    _sink: &Arc<dyn TransferEventSink>,
+    _progress_observer: Option<&ProgressObserver>,
+) -> NodeOutcome
+where
+    E: TransferExecutor + Send + Sync + 'static,
+{
+    let Some(&entry_index) = node_to_entry.get(&node_id) else {
+        return NodeOutcome::Completed;
+    };
+    if preflight_failed
+        .lock()
+        .expect("preflight set")
+        .contains(&entry_index)
+    {
+        return NodeOutcome::Completed;
+    }
+    let Some(runtime) = multipart_runtimes
+        .get(entry_index)
+        .and_then(|r| r.as_ref())
+        .cloned()
+    else {
+        return NodeOutcome::Completed;
+    };
+    let entry = entries[entry_index].clone();
+    let state = Arc::clone(&runtime.state);
+
+    // Already failed: drain as no-op so siblings finish before commit.
+    if state.has_failure().await {
+        return NodeOutcome::Completed;
+    }
+
+    // Pre-cancel before begin/lease: leave the file unaccounted (legacy contract).
+    // After begin, record cancellation so CommitTemp aborts once.
+    let cancelled_now = cancel.load(Ordering::Relaxed) || executor.is_transfer_cancelled();
+    if cancelled_now {
+        if state.is_begun() {
+            state.record_failure(cancelled_failure()).await;
+        }
+        return NodeOutcome::Completed;
+    }
+
+    let Some(part_number) = state.part_number_for_node(node_id) else {
+        state
+            .record_failure(TransferFailure {
+                kind: TransferFailureKind::Unknown,
+                message: format!("UploadPart node {node_id} not mapped to a part number"),
+                retryable: false,
+            })
+            .await;
+        return NodeOutcome::Completed;
+    };
+
+    // One session lease per multipart file (file/session dimension). Holding the
+    // mutex during acquire serialises siblings so they never race the slot.
+    {
+        let mut slot = runtime.session_lease.lock().await;
+        match &*slot {
+            SessionLeaseSlot::Held(_) => {}
+            SessionLeaseSlot::Failed => {
+                return NodeOutcome::Completed;
+            }
+            SessionLeaseSlot::Vacant => {
+                // Re-check cancel before acquiring a lease for an unstarted file.
+                if cancel.load(Ordering::Relaxed) || executor.is_transfer_cancelled() {
+                    return NodeOutcome::Completed;
+                }
+                match session_pool.acquire().await {
+                    Ok(lease) => {
+                        *slot = SessionLeaseSlot::Held(lease);
+                        let mut snapshot = progress.lock().await;
+                        snapshot.active += 1;
+                    }
+                    Err(error) => {
+                        tracing::warn!("Multipart session acquisition failed: {}", error);
+                        *slot = SessionLeaseSlot::Failed;
+                        state
+                            .record_failure(TransferFailure {
+                                kind: TransferFailureKind::Unknown,
+                                message: format!("Transfer session acquisition failed: {error}"),
+                                retryable: true,
+                            })
+                            .await;
+                        return NodeOutcome::Completed;
+                    }
+                }
+            }
+        }
+    }
+
+    if cancel.load(Ordering::Relaxed) || executor.is_transfer_cancelled() {
+        if state.is_begun() {
+            state.record_failure(cancelled_failure()).await;
+        }
+        return NodeOutcome::Completed;
+    }
+    if state.has_failure().await {
+        return NodeOutcome::Completed;
+    }
+
+    // Lazy begin once under the begin gate.
+    ensure_multipart_begun(executor, &entry, &state).await;
+
+    if state.has_failure().await {
+        return NodeOutcome::Completed;
+    }
+    if cancel.load(Ordering::Relaxed) || executor.is_transfer_cancelled() {
+        if state.is_begun() {
+            state.record_failure(cancelled_failure()).await;
+        }
+        return NodeOutcome::Completed;
+    }
+
+    let handle = match state.clone_handle().await {
+        Some(h) => h,
+        None => {
+            if !state.has_failure().await {
+                state
+                    .record_failure(TransferFailure {
+                        kind: TransferFailureKind::Unknown,
+                        message: "Multipart session was not begun".to_string(),
+                        retryable: false,
+                    })
+                    .await;
+            }
+            return NodeOutcome::Completed;
+        }
+    };
+
+    let (offset, len) = match state.layout().part_range(part_number) {
+        Ok(range) => range,
+        Err(failure) => {
+            state.record_failure(failure).await;
+            return NodeOutcome::Completed;
+        }
+    };
+
+    let data = match read_chunk(&entry.local_path, offset, len).await {
+        Ok(buf) => buf,
+        Err(error) => {
+            state
+                .record_failure(crate::transfer_multipart::transfer_failure_from_provider(
+                    &error,
+                    Some(&entry.local_path),
+                ))
+                .await;
+            return NodeOutcome::Completed;
+        }
+    };
+
+    if cancel.load(Ordering::Relaxed) || executor.is_transfer_cancelled() {
+        // Session already begun: cancel is a terminal file failure.
+        state.record_failure(cancelled_failure()).await;
+        return NodeOutcome::Completed;
+    }
+
+    match executor
+        .multipart_upload_part(&entry, &handle, part_number, data)
+        .await
+    {
+        Ok(receipt) => {
+            if let Err(failure) = state.store_receipt(receipt).await {
+                state.record_failure(failure).await;
+            }
+        }
+        Err(failure) => {
+            state.record_failure(failure).await;
+        }
+    }
+
+    // File failures still return Completed so sibling parts and unrelated
+    // files drain (DAG-P1-04 policy). Abort is deferred to CommitTemp.
+    NodeOutcome::Completed
+}
+
+/// Serialize lazy begin so only one part opens the provider session.
+async fn ensure_multipart_begun<E>(
+    executor: &Arc<E>,
+    entry: &crate::transfer_domain::TransferEntry,
+    state: &MultipartFileState,
+) where
+    E: TransferExecutor + Send + Sync + 'static,
+{
+    state
+        .with_begin_gate(async {
+            if !state.needs_begin().await || state.has_failure().await {
+                return;
+            }
+            if state.claim_start_event() {
+                executor.multipart_emit_file_start(entry, state.layout().total_size);
+            }
+            if executor.is_transfer_cancelled() {
+                state.record_failure(cancelled_failure()).await;
+                return;
+            }
+            match executor.multipart_begin(entry, state.layout()).await {
+                Ok(handle) => {
+                    state.install_handle(handle).await;
+                }
+                Err(failure) => {
+                    state.record_failure(failure).await;
+                }
+            }
+        })
+        .await;
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn run_multipart_commit_node<E>(
+    node_id: usize,
+    node_to_entry: &HashMap<usize, usize>,
+    entries: &[crate::transfer_domain::TransferEntry],
+    multipart_runtimes: &[Option<Arc<MultipartFileRuntime>>],
+    preflight_failed: &std::sync::Mutex<std::collections::HashSet<usize>>,
+    executor: &Arc<E>,
+    cancel: &AtomicBool,
+    progress: &Mutex<BatchProgressSnapshot>,
+    sink: &Arc<dyn TransferEventSink>,
+    progress_observer: Option<&ProgressObserver>,
+) -> NodeOutcome
+where
+    E: TransferExecutor + Send + Sync + 'static,
+{
+    let Some(&entry_index) = node_to_entry.get(&node_id) else {
+        return NodeOutcome::Completed;
+    };
+    if preflight_failed
+        .lock()
+        .expect("preflight set")
+        .contains(&entry_index)
+    {
+        return NodeOutcome::Completed;
+    }
+    let Some(runtime) = multipart_runtimes
+        .get(entry_index)
+        .and_then(|r| r.as_ref())
+        .cloned()
+    else {
+        return NodeOutcome::Completed;
+    };
+    let entry = entries[entry_index].clone();
+    let state = Arc::clone(&runtime.state);
+
+    // All part nodes have drained (DAG dependency). Decide complete vs abort.
+    let cancel_flag = cancel.load(Ordering::Relaxed) || executor.is_transfer_cancelled();
+    let lease_was_held = {
+        let slot = runtime.session_lease.lock().await;
+        matches!(*slot, SessionLeaseSlot::Held(_))
+    };
+
+    // Pre-cancel / cancel-before-begin: leave the file unaccounted (legacy).
+    if !state.is_begun() && !state.has_failure().await && (cancel_flag || !lease_was_held) {
+        if lease_was_held {
+            let mut snapshot = progress.lock().await;
+            snapshot.active = snapshot.active.saturating_sub(1);
+        }
+        let mut slot = runtime.session_lease.lock().await;
+        *slot = SessionLeaseSlot::Vacant;
+        return NodeOutcome::Completed;
+    }
+
+    if cancel_flag {
+        state.record_failure(cancelled_failure()).await;
+    }
+
+    let outcome = decide_multipart_file_outcome(executor, &entry, &state).await;
+
+    if state.claim_account() {
+        let bytes = match &outcome {
+            TransferOutcome::Success => entry.size,
+            _ => 0,
+        };
+        account_outcome(
+            progress,
+            sink,
+            progress_observer,
+            outcome,
+            bytes,
+            lease_was_held,
+        )
+        .await;
+    }
+
+    // Release the one file/session lease after terminal decision.
+    {
+        let mut slot = runtime.session_lease.lock().await;
+        *slot = SessionLeaseSlot::Vacant;
+    }
+    NodeOutcome::Completed
+}
+
+async fn decide_multipart_file_outcome<E>(
+    executor: &Arc<E>,
+    entry: &crate::transfer_domain::TransferEntry,
+    state: &MultipartFileState,
+) -> TransferOutcome
+where
+    E: TransferExecutor + Send + Sync + 'static,
+{
+    if state.has_failure().await {
+        if let Some(handle) = state.take_for_abort().await {
+            executor.multipart_abort(entry, handle).await;
+        }
+        let failure = state
+            .take_first_failure()
+            .await
+            .unwrap_or_else(cancelled_failure);
+        executor.multipart_emit_file_error(entry, &failure);
+        return TransferOutcome::Failed(failure);
+    }
+
+    if !state.has_all_receipts().await {
+        let count = state.receipt_count().await;
+        let failure = TransferFailure {
+            kind: TransferFailureKind::Unknown,
+            message: format!(
+                "multipart receipt count {count} != expected {}",
+                state.layout().total_parts
+            ),
+            retryable: false,
+        };
+        if let Some(handle) = state.take_for_abort().await {
+            executor.multipart_abort(entry, handle).await;
+        }
+        executor.multipart_emit_file_error(entry, &failure);
+        return TransferOutcome::Failed(failure);
+    }
+
+    let Some(handle) = state.clone_handle().await else {
+        let failure = TransferFailure {
+            kind: TransferFailureKind::Unknown,
+            message: "multipart complete without handle".to_string(),
+            retryable: false,
+        };
+        executor.multipart_emit_file_error(entry, &failure);
+        return TransferOutcome::Failed(failure);
+    };
+
+    let parts = state.take_sorted_receipts().await;
+    match executor.multipart_complete(entry, handle, parts).await {
+        Ok(()) => {
+            state.clear_handle_after_complete().await;
+            executor.multipart_emit_file_complete(entry);
+            TransferOutcome::Success
+        }
+        Err(failure) => {
+            // Complete-time failure keeps the handle available for one abort.
+            if let Some(handle) = state.take_for_abort().await {
+                executor.multipart_abort(entry, handle).await;
+            }
+            executor.multipart_emit_file_error(entry, &failure);
+            TransferOutcome::Failed(failure)
+        }
+    }
+}
+
+async fn account_outcome(
+    progress: &Mutex<BatchProgressSnapshot>,
+    sink: &Arc<dyn TransferEventSink>,
+    progress_observer: Option<&ProgressObserver>,
+    outcome: TransferOutcome,
+    success_bytes: u64,
+    dec_active: bool,
+) {
+    let snapshot_clone = {
+        let mut snapshot = progress.lock().await;
+        if dec_active {
+            snapshot.active = snapshot.active.saturating_sub(1);
+        }
+        match &outcome {
+            TransferOutcome::Success => {
+                snapshot.completed += 1;
+                snapshot.bytes_transferred += success_bytes;
+            }
+            TransferOutcome::Skipped { .. } => {
+                snapshot.skipped += 1;
+            }
+            TransferOutcome::Failed(_) => {
+                snapshot.failed += 1;
+            }
+        }
+        snapshot.clone()
+    };
+    sink.emit_batch_progress(&snapshot_clone);
+    if let Some(observer) = progress_observer {
+        observer(snapshot_clone);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::providers::{MultipartHandle, UploadedPart};
     use crate::transfer_dag::TransferSessionPoolHandle;
     use crate::transfer_domain::{
         TransferBatchConfig, TransferEntry, TransferFailure, TransferFailureKind,
     };
+    use crate::transfer_multipart::MultipartLayout;
     use crate::TransferEvent;
     use async_trait::async_trait;
     use std::collections::HashSet;
@@ -317,8 +803,7 @@ mod tests {
     use std::sync::Mutex as StdMutex;
     use std::time::Duration;
 
-    /// A `TransferExecutor` whose outcome per entry is scripted, with peak
-    /// concurrency tracking and a configurable session-pool capacity.
+    /// Scripted whole-file executor with optional multipart wire log.
     struct MockExecutor {
         fail: HashSet<String>,
         skip: HashSet<String>,
@@ -327,8 +812,22 @@ mod tests {
         peak: AtomicUsize,
         session_capacity: usize,
         capabilities: TransferCapabilities,
-        /// Counts how many times `execute_with_session` actually ran I/O.
         transfer_calls: AtomicUsize,
+        /// When true, implements multipart wire methods.
+        multipart_wire: bool,
+        begin_calls: AtomicUsize,
+        part_calls: AtomicUsize,
+        complete_calls: AtomicUsize,
+        abort_calls: AtomicUsize,
+        part_numbers: StdMutex<Vec<u32>>,
+        part_byte_lens: StdMutex<Vec<u64>>,
+        part_in_flight: AtomicUsize,
+        part_peak: AtomicUsize,
+        part_delay: Duration,
+        fail_begin_for: StdMutex<HashSet<String>>,
+        fail_part: StdMutex<Option<(String, u32)>>,
+        fail_complete_for: StdMutex<HashSet<String>>,
+        cancelled: AtomicBool,
     }
 
     impl MockExecutor {
@@ -340,14 +839,32 @@ mod tests {
                 in_flight: AtomicUsize::new(0),
                 peak: AtomicUsize::new(0),
                 session_capacity,
-                // Default trait path: conservative serial snapshot.
                 capabilities: TransferCapabilities::default(),
                 transfer_calls: AtomicUsize::new(0),
+                multipart_wire: false,
+                begin_calls: AtomicUsize::new(0),
+                part_calls: AtomicUsize::new(0),
+                complete_calls: AtomicUsize::new(0),
+                abort_calls: AtomicUsize::new(0),
+                part_numbers: StdMutex::new(Vec::new()),
+                part_byte_lens: StdMutex::new(Vec::new()),
+                part_in_flight: AtomicUsize::new(0),
+                part_peak: AtomicUsize::new(0),
+                part_delay: Duration::from_millis(15),
+                fail_begin_for: StdMutex::new(HashSet::new()),
+                fail_part: StdMutex::new(None),
+                fail_complete_for: StdMutex::new(HashSet::new()),
+                cancelled: AtomicBool::new(false),
             }
         }
 
         fn with_capabilities(mut self, capabilities: TransferCapabilities) -> Self {
             self.capabilities = capabilities;
+            self
+        }
+
+        fn with_multipart_wire(mut self) -> Self {
+            self.multipart_wire = true;
             self
         }
 
@@ -361,6 +878,10 @@ mod tests {
 
         fn transfer_calls(&self) -> usize {
             self.transfer_calls.load(AtomicOrdering::SeqCst)
+        }
+
+        fn part_peak(&self) -> usize {
+            self.part_peak.load(AtomicOrdering::SeqCst)
         }
     }
 
@@ -399,9 +920,98 @@ mod tests {
                 self.session_capacity.min(max_concurrent).max(1),
             )
         }
+
+        fn supports_multipart_wire(&self) -> bool {
+            self.multipart_wire
+        }
+
+        fn is_transfer_cancelled(&self) -> bool {
+            self.cancelled.load(Ordering::Relaxed)
+        }
+
+        async fn multipart_begin(
+            &self,
+            entry: &TransferEntry,
+            _layout: &MultipartLayout,
+        ) -> Result<MultipartHandle, TransferFailure> {
+            if self.cancelled.load(Ordering::Relaxed) {
+                return Err(cancelled_failure());
+            }
+            if self.fail_begin_for.lock().unwrap().contains(&entry.id) {
+                return Err(TransferFailure {
+                    kind: TransferFailureKind::RemoteIo,
+                    message: "mock begin failure".to_string(),
+                    retryable: false,
+                });
+            }
+            self.begin_calls.fetch_add(1, AtomicOrdering::SeqCst);
+            Ok(MultipartHandle {
+                upload_id: format!("up-{}", entry.id),
+                remote_path: entry.remote_path.clone(),
+            })
+        }
+
+        async fn multipart_upload_part(
+            &self,
+            entry: &TransferEntry,
+            _handle: &MultipartHandle,
+            part_number: u32,
+            data: Vec<u8>,
+        ) -> Result<UploadedPart, TransferFailure> {
+            if self.cancelled.load(Ordering::Relaxed) {
+                return Err(cancelled_failure());
+            }
+            if let Some((ref id, n)) = *self.fail_part.lock().unwrap() {
+                if id == &entry.id && n == part_number {
+                    return Err(TransferFailure {
+                        kind: TransferFailureKind::RemoteIo,
+                        message: format!("mock part {part_number} failure"),
+                        retryable: false,
+                    });
+                }
+            }
+            let now = self.part_in_flight.fetch_add(1, AtomicOrdering::SeqCst) + 1;
+            self.part_peak.fetch_max(now, AtomicOrdering::SeqCst);
+            self.part_calls.fetch_add(1, AtomicOrdering::SeqCst);
+            self.part_numbers.lock().unwrap().push(part_number);
+            self.part_byte_lens.lock().unwrap().push(data.len() as u64);
+            tokio::time::sleep(self.part_delay).await;
+            self.part_in_flight.fetch_sub(1, AtomicOrdering::SeqCst);
+            // Intentionally return receipt with part_number as-is; complete sorts.
+            Ok(UploadedPart {
+                part_number,
+                etag: format!("etag-{part_number}"),
+            })
+        }
+
+        async fn multipart_complete(
+            &self,
+            entry: &TransferEntry,
+            _handle: MultipartHandle,
+            parts: Vec<UploadedPart>,
+        ) -> Result<(), TransferFailure> {
+            if self.fail_complete_for.lock().unwrap().contains(&entry.id) {
+                return Err(TransferFailure {
+                    kind: TransferFailureKind::RemoteIo,
+                    message: "mock complete failure".to_string(),
+                    retryable: false,
+                });
+            }
+            // Prove receipts arrive sorted.
+            let nums: Vec<u32> = parts.iter().map(|p| p.part_number).collect();
+            let mut sorted = nums.clone();
+            sorted.sort();
+            assert_eq!(nums, sorted, "complete must receive sorted receipts");
+            self.complete_calls.fetch_add(1, AtomicOrdering::SeqCst);
+            self.executed.lock().unwrap().push(entry.id.clone());
+            Ok(())
+        }
+
+        async fn multipart_abort(&self, _entry: &TransferEntry, _handle: MultipartHandle) {
+            self.abort_calls.fetch_add(1, AtomicOrdering::SeqCst);
+        }
     }
 
-    /// A sink that counts the three batch-lifecycle events.
     #[derive(Default)]
     struct CountingSink {
         started: AtomicUsize,
@@ -433,6 +1043,17 @@ mod tests {
         }
     }
 
+    fn entry_with_local(id: &str, size: u64, local_path: &str) -> TransferEntry {
+        TransferEntry {
+            id: id.to_string(),
+            display_name: id.to_string(),
+            remote_path: format!("/remote/{id}"),
+            local_path: local_path.to_string(),
+            size,
+            modified: None,
+        }
+    }
+
     fn batch(entries: Vec<TransferEntry>, max_concurrent: u32) -> TransferBatch {
         TransferBatch {
             id: "batch-1".to_string(),
@@ -445,6 +1066,41 @@ mod tests {
             },
             entries,
         }
+    }
+
+    fn upload_batch(entries: Vec<TransferEntry>, max_concurrent: u32) -> TransferBatch {
+        TransferBatch {
+            id: "batch-up".to_string(),
+            display_name: "Upload batch".to_string(),
+            direction: DomainTransferDirection::Upload,
+            config: TransferBatchConfig {
+                max_concurrent,
+                max_retries: 0,
+                timeout_ms: 30_000,
+            },
+            entries,
+        }
+    }
+
+    fn multipart_caps(max_chunk: u16, chunk_size: u64) -> TransferCapabilities {
+        TransferCapabilities {
+            file_parallel: crate::transfer_dag::Capability::Supported,
+            session_pool: crate::transfer_dag::Capability::Supported,
+            multipart_upload: crate::transfer_dag::Capability::Supported,
+            max_file_slots: Some(8),
+            max_chunk_slots: Some(max_chunk),
+            preferred_chunk_size: Some(chunk_size),
+            multipart_threshold: 0,
+            ..TransferCapabilities::default()
+        }
+    }
+
+    fn write_temp_file(bytes: usize) -> (tempfile::TempDir, std::path::PathBuf) {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("source.bin");
+        let data: Vec<u8> = (0..bytes).map(|i| (i % 256) as u8).collect();
+        std::fs::write(&path, data).expect("write");
+        (dir, path)
     }
 
     #[tokio::test]
@@ -470,7 +1126,6 @@ mod tests {
         assert_eq!(result.failed, 1);
         assert!(!result.cancelled);
         assert_eq!(executor.executed().len(), 3);
-        // Lifecycle events: one start, one completed, one progress per file.
         assert_eq!(sink.started.load(AtomicOrdering::SeqCst), 1);
         assert_eq!(sink.completed.load(AtomicOrdering::SeqCst), 1);
         assert_eq!(sink.progress.load(AtomicOrdering::SeqCst), 3);
@@ -479,7 +1134,6 @@ mod tests {
     #[tokio::test]
     async fn batch_dag_failed_file_does_not_abort_remaining() {
         let mut executor = MockExecutor::new(1);
-        // The first entry fails; the remaining two must still transfer.
         executor.fail.insert("first".to_string());
         let executor = Arc::new(executor);
 
@@ -505,8 +1159,6 @@ mod tests {
 
     #[tokio::test]
     async fn batch_dag_respects_file_slot_concurrency() {
-        // file_slots = 2 (from max_concurrent), session pool wide enough: the
-        // graph's resource manager is the binding limit, peak must be 2.
         let executor = Arc::new(MockExecutor::new(8));
         let result = execute_batch_dag(
             Arc::new(CountingSink::default()) as Arc<dyn TransferEventSink>,
@@ -605,16 +1257,11 @@ mod tests {
         assert_eq!(observed.load(AtomicOrdering::SeqCst), 2);
     }
 
-    // ============ Issue #234: session_pool.acquire() failure accounting ============
-
     use crate::transfer_dag::session_pool::{
         SessionLeaseKind, SessionPoolCapacity, SessionPoolError, TransferSessionLease,
         TransferSessionPool,
     };
 
-    /// A `TransferSessionPool` whose `acquire()` always fails with a
-    /// `Closed` error. Stand-in for the production failure mode where a
-    /// semaphore is closed mid-batch.
     struct AlwaysFailingPool;
 
     #[async_trait]
@@ -640,8 +1287,6 @@ mod tests {
         }
     }
 
-    /// MockExecutor variant that hands out a pool whose acquire() always
-    /// fails. The transfer node never gets to call `execute_with_session`.
     struct FailingPoolExecutor;
 
     #[async_trait]
@@ -656,7 +1301,6 @@ mod tests {
 
     #[test]
     fn default_executor_capabilities_are_conservative_serial() {
-        // Trait default (and MockExecutor without override) must stay serial.
         let executor = MockExecutor::new(1);
         let caps = executor.transfer_capabilities();
         assert_eq!(
@@ -668,49 +1312,41 @@ mod tests {
             caps.multipart_upload,
             crate::transfer_dag::Capability::Unsupported
         );
+        assert!(!executor.supports_multipart_wire());
     }
 
     #[tokio::test]
     async fn batch_dag_uses_executor_capability_snapshot_not_defaults() {
-        // A clone-capable snapshot with multipart must shape UploadPart nodes,
-        // proving the batch builder consumes executor.transfer_capabilities()
-        // rather than TransferCapabilities::default().
-        use crate::transfer_dag::Capability;
-        let caps = TransferCapabilities {
-            file_parallel: Capability::Supported,
-            session_pool: Capability::Supported,
-            multipart_upload: Capability::Supported,
-            max_file_slots: Some(4),
-            max_chunk_slots: Some(4),
-            preferred_chunk_size: Some(5 * 1024 * 1024),
-            multipart_threshold: 0,
-            ..TransferCapabilities::default()
-        };
-        // Large enough to fan out under preferred_chunk_size.
+        let caps = multipart_caps(4, 5 * 1024 * 1024);
         let file_size = 20 * 1024 * 1024;
-        let executor = Arc::new(MockExecutor::new(4).with_capabilities(caps));
+        let (_dir, path) = write_temp_file(file_size as usize);
+        let executor = Arc::new(
+            MockExecutor::new(4)
+                .with_capabilities(caps)
+                .with_multipart_wire(),
+        );
         let result = execute_batch_dag(
             Arc::new(CountingSink::default()) as Arc<dyn TransferEventSink>,
-            batch(vec![entry("big", file_size)], 4),
+            upload_batch(
+                vec![entry_with_local("big", file_size, path.to_str().unwrap())],
+                4,
+            ),
             Arc::clone(&executor),
             Arc::new(AtomicBool::new(false)),
             None,
         )
         .await;
         assert_eq!(result.completed, 1);
-        // Whole-file contract until P1-03: multiparts may exist in the graph,
-        // but execute_with_session runs once per entry (entry_transferred).
-        assert_eq!(
-            executor.transfer_calls(),
-            1,
-            "batch multipart must stay whole-file/deduplicated until P1-03"
-        );
-        assert_eq!(executor.executed().len(), 1);
+        // Real per-part I/O: 1 begin + N parts + 1 complete, zero whole-file.
+        assert_eq!(executor.transfer_calls(), 0);
+        assert_eq!(executor.begin_calls.load(AtomicOrdering::SeqCst), 1);
+        assert_eq!(executor.part_calls.load(AtomicOrdering::SeqCst), 4);
+        assert_eq!(executor.complete_calls.load(AtomicOrdering::SeqCst), 1);
+        assert_eq!(executor.abort_calls.load(AtomicOrdering::SeqCst), 0);
     }
 
     #[tokio::test]
     async fn batch_dag_independent_file_overlap_for_enabled_executor() {
-        // Peak concurrency >1 when max_concurrent and session pool allow it.
         let caps = TransferCapabilities {
             file_parallel: crate::transfer_dag::Capability::Supported,
             session_pool: crate::transfer_dag::Capability::Supported,
@@ -735,15 +1371,11 @@ mod tests {
             "independent files must overlap for a pool-enabled executor (peak={})",
             executor.peak()
         );
-        assert!(
-            executor.peak() <= 4,
-            "peak must not exceed file_slots/session capacity"
-        );
+        assert!(executor.peak() <= 4);
     }
 
     #[tokio::test]
     async fn batch_dag_peak_bounded_by_min_of_file_slots_and_session_pool() {
-        // file_slots=4 from config, session pool capacity=2 → peak ≤ 2.
         let caps = TransferCapabilities {
             file_parallel: crate::transfer_dag::Capability::Supported,
             session_pool: crate::transfer_dag::Capability::Supported,
@@ -763,19 +1395,11 @@ mod tests {
         )
         .await;
         assert_eq!(result.completed, 4);
-        assert_eq!(
-            executor.peak(),
-            2,
-            "session-pool capacity must bound peak without double-limiting past the tighter cap"
-        );
+        assert_eq!(executor.peak(), 2);
     }
 
     #[tokio::test]
     async fn batch_dag_session_pool_acquire_failure_is_counted_in_snapshot() {
-        // Issue #234: when session_pool.acquire() returns Err for every
-        // entry, the batch result must report each entry as `failed` (not
-        // silently zero), and the sink must see one progress emission per
-        // entry to keep "X of Y completed" honest.
         let executor = Arc::new(FailingPoolExecutor);
         let sink = Arc::new(CountingSink::default());
         let observed = Arc::new(AtomicUsize::new(0));
@@ -796,21 +1420,380 @@ mod tests {
         .await;
 
         assert_eq!(result.total, 3);
-        assert_eq!(
-            result.failed, 3,
-            "each acquire failure must be recorded as a failed entry"
-        );
+        assert_eq!(result.failed, 3);
         assert_eq!(result.completed, 0);
         assert_eq!(result.skipped, 0);
-        assert_eq!(
-            sink.progress.load(AtomicOrdering::SeqCst),
-            3,
-            "every entry must emit a progress event, even on acquire failure"
+        assert_eq!(sink.progress.load(AtomicOrdering::SeqCst), 3);
+        assert_eq!(observed.load(AtomicOrdering::SeqCst), 3);
+    }
+
+    // ---------------- DAG-P1-03 multipart wire tests -------------------------
+
+    #[tokio::test]
+    async fn multipart_batch_one_begin_n_parts_one_complete_zero_aborts() {
+        let chunk = 8 * 1024;
+        let file_size = 24 * 1024; // 3 parts
+        let (_dir, path) = write_temp_file(file_size);
+        let executor = Arc::new(
+            MockExecutor::new(4)
+                .with_capabilities(multipart_caps(4, chunk as u64))
+                .with_multipart_wire(),
         );
-        assert_eq!(
-            observed.load(AtomicOrdering::SeqCst),
-            3,
-            "progress observer must be invoked on acquire failure too"
+        let result = execute_batch_dag(
+            Arc::new(CountingSink::default()) as Arc<dyn TransferEventSink>,
+            upload_batch(
+                vec![entry_with_local(
+                    "m",
+                    file_size as u64,
+                    path.to_str().unwrap(),
+                )],
+                4,
+            ),
+            Arc::clone(&executor),
+            Arc::new(AtomicBool::new(false)),
+            None,
+        )
+        .await;
+        assert_eq!(result.completed, 1);
+        assert_eq!(result.failed, 0);
+        assert_eq!(executor.begin_calls.load(AtomicOrdering::SeqCst), 1);
+        assert_eq!(executor.part_calls.load(AtomicOrdering::SeqCst), 3);
+        assert_eq!(executor.complete_calls.load(AtomicOrdering::SeqCst), 1);
+        assert_eq!(executor.abort_calls.load(AtomicOrdering::SeqCst), 0);
+        let mut nums = executor.part_numbers.lock().unwrap().clone();
+        nums.sort();
+        assert_eq!(nums, vec![1, 2, 3]);
+    }
+
+    #[tokio::test]
+    async fn multipart_batch_exact_byte_ranges_match_layout_helper() {
+        use crate::transfer_dag::multipart_part_byte_len;
+        let chunk = 10u64;
+        let file_size = 25u64; // parts: 10, 10, 5
+        let (_dir, path) = write_temp_file(file_size as usize);
+        let executor = Arc::new(
+            MockExecutor::new(4)
+                .with_capabilities(multipart_caps(4, chunk))
+                .with_multipart_wire(),
+        );
+        let result = execute_batch_dag(
+            Arc::new(CountingSink::default()) as Arc<dyn TransferEventSink>,
+            upload_batch(
+                vec![entry_with_local("r", file_size, path.to_str().unwrap())],
+                4,
+            ),
+            Arc::clone(&executor),
+            Arc::new(AtomicBool::new(false)),
+            None,
+        )
+        .await;
+        assert_eq!(result.completed, 1);
+        let lens = executor.part_byte_lens.lock().unwrap().clone();
+        let expected: Vec<u64> = (0..3)
+            .map(|i| multipart_part_byte_len(file_size, i, 3, chunk))
+            .collect();
+        // Order of completion may differ; compare as multisets.
+        let mut got = lens;
+        let mut exp = expected;
+        got.sort();
+        exp.sort();
+        assert_eq!(got, exp);
+        assert_eq!(got.iter().sum::<u64>(), file_size);
+    }
+
+    #[tokio::test]
+    async fn multipart_batch_cap1_preserves_monotonic_wire_order() {
+        let chunk = 8u64;
+        let file_size = 24u64;
+        let (_dir, path) = write_temp_file(file_size as usize);
+        let mut exec = MockExecutor::new(4)
+            .with_capabilities(multipart_caps(1, chunk))
+            .with_multipart_wire();
+        exec.part_delay = Duration::from_millis(5);
+        let executor = Arc::new(exec);
+        let result = execute_batch_dag(
+            Arc::new(CountingSink::default()) as Arc<dyn TransferEventSink>,
+            upload_batch(
+                vec![entry_with_local("s", file_size, path.to_str().unwrap())],
+                4,
+            ),
+            Arc::clone(&executor),
+            Arc::new(AtomicBool::new(false)),
+            None,
+        )
+        .await;
+        assert_eq!(result.completed, 1);
+        let nums = executor.part_numbers.lock().unwrap().clone();
+        assert_eq!(nums, vec![1, 2, 3], "cap=1 must wire parts in order");
+        assert_eq!(executor.part_peak(), 1);
+    }
+
+    #[tokio::test]
+    async fn multipart_batch_cap_gt1_shows_real_part_overlap() {
+        let chunk = 8u64;
+        let file_size = 32u64; // 4 parts
+        let (_dir, path) = write_temp_file(file_size as usize);
+        let mut exec = MockExecutor::new(4)
+            .with_capabilities(multipart_caps(4, chunk))
+            .with_multipart_wire();
+        exec.part_delay = Duration::from_millis(40);
+        let executor = Arc::new(exec);
+        let result = execute_batch_dag(
+            Arc::new(CountingSink::default()) as Arc<dyn TransferEventSink>,
+            upload_batch(
+                vec![entry_with_local("o", file_size, path.to_str().unwrap())],
+                4,
+            ),
+            Arc::clone(&executor),
+            Arc::new(AtomicBool::new(false)),
+            None,
+        )
+        .await;
+        assert_eq!(result.completed, 1);
+        assert!(
+            executor.part_peak() > 1,
+            "cap>1 must overlap parts (peak={})",
+            executor.part_peak()
+        );
+        assert!(executor.part_peak() <= 4);
+    }
+
+    #[tokio::test]
+    async fn multipart_batch_budget_exposes_chunk_slots() {
+        let config = TransferBatchConfig {
+            max_concurrent: 3,
+            max_retries: 0,
+            timeout_ms: 30_000,
+        };
+        let caps = multipart_caps(4, 1024);
+        let budget = config.transfer_budget_for_capabilities(&caps);
+        assert_eq!(budget.file_slots, 3);
+        assert_eq!(budget.chunk_slots, 4);
+        assert!(budget.disk_read_slots >= 4);
+    }
+
+    #[tokio::test]
+    async fn multipart_batch_begin_failure_no_part_complete_one_failed() {
+        let chunk = 8u64;
+        let file_size = 24u64;
+        let (_dir, path) = write_temp_file(file_size as usize);
+        let exec = MockExecutor::new(4)
+            .with_capabilities(multipart_caps(4, chunk))
+            .with_multipart_wire();
+        exec.fail_begin_for
+            .lock()
+            .unwrap()
+            .insert("bad".to_string());
+        let executor = Arc::new(exec);
+        let result = execute_batch_dag(
+            Arc::new(CountingSink::default()) as Arc<dyn TransferEventSink>,
+            upload_batch(
+                vec![entry_with_local("bad", file_size, path.to_str().unwrap())],
+                4,
+            ),
+            Arc::clone(&executor),
+            Arc::new(AtomicBool::new(false)),
+            None,
+        )
+        .await;
+        assert_eq!(result.failed, 1);
+        assert_eq!(result.completed, 0);
+        assert_eq!(executor.part_calls.load(AtomicOrdering::SeqCst), 0);
+        assert_eq!(executor.complete_calls.load(AtomicOrdering::SeqCst), 0);
+        assert_eq!(executor.abort_calls.load(AtomicOrdering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn multipart_batch_part_failure_aborts_once_and_continues_sibling_file() {
+        let chunk = 8u64;
+        let file_size = 24u64;
+        let (_dir, path_a) = write_temp_file(file_size as usize);
+        let (_dir2, path_b) = write_temp_file(file_size as usize);
+        let exec = MockExecutor::new(4)
+            .with_capabilities(multipart_caps(4, chunk))
+            .with_multipart_wire();
+        *exec.fail_part.lock().unwrap() = Some(("fail".to_string(), 2));
+        let executor = Arc::new(exec);
+        let result = execute_batch_dag(
+            Arc::new(CountingSink::default()) as Arc<dyn TransferEventSink>,
+            upload_batch(
+                vec![
+                    entry_with_local("fail", file_size, path_a.to_str().unwrap()),
+                    entry_with_local("ok", file_size, path_b.to_str().unwrap()),
+                ],
+                4,
+            ),
+            Arc::clone(&executor),
+            Arc::new(AtomicBool::new(false)),
+            None,
+        )
+        .await;
+        assert_eq!(result.failed, 1);
+        assert_eq!(result.completed, 1);
+        assert_eq!(executor.abort_calls.load(AtomicOrdering::SeqCst), 1);
+        assert_eq!(executor.complete_calls.load(AtomicOrdering::SeqCst), 1);
+        assert!(executor.executed().contains(&"ok".to_string()));
+    }
+
+    #[tokio::test]
+    async fn multipart_batch_complete_failure_aborts_once() {
+        let chunk = 8u64;
+        let file_size = 16u64;
+        let (_dir, path) = write_temp_file(file_size as usize);
+        let exec = MockExecutor::new(4)
+            .with_capabilities(multipart_caps(4, chunk))
+            .with_multipart_wire();
+        exec.fail_complete_for
+            .lock()
+            .unwrap()
+            .insert("c".to_string());
+        let executor = Arc::new(exec);
+        let result = execute_batch_dag(
+            Arc::new(CountingSink::default()) as Arc<dyn TransferEventSink>,
+            upload_batch(
+                vec![entry_with_local("c", file_size, path.to_str().unwrap())],
+                4,
+            ),
+            Arc::clone(&executor),
+            Arc::new(AtomicBool::new(false)),
+            None,
+        )
+        .await;
+        assert_eq!(result.failed, 1);
+        assert_eq!(executor.complete_calls.load(AtomicOrdering::SeqCst), 0);
+        // complete was attempted (fail before increment) — check abort
+        assert_eq!(executor.abort_calls.load(AtomicOrdering::SeqCst), 1);
+        assert_eq!(executor.part_calls.load(AtomicOrdering::SeqCst), 2);
+    }
+
+    #[tokio::test]
+    async fn multipart_batch_pre_cancel_no_begin_part_complete_abort() {
+        let chunk = 8u64;
+        let file_size = 24u64;
+        let (_dir, path) = write_temp_file(file_size as usize);
+        let executor = Arc::new(
+            MockExecutor::new(4)
+                .with_capabilities(multipart_caps(4, chunk))
+                .with_multipart_wire(),
+        );
+        let result = execute_batch_dag(
+            Arc::new(CountingSink::default()) as Arc<dyn TransferEventSink>,
+            upload_batch(
+                vec![entry_with_local("x", file_size, path.to_str().unwrap())],
+                4,
+            ),
+            Arc::clone(&executor),
+            Arc::new(AtomicBool::new(true)),
+            None,
+        )
+        .await;
+        assert!(result.cancelled);
+        assert_eq!(result.completed, 0);
+        assert_eq!(result.failed, 0);
+        assert_eq!(executor.begin_calls.load(AtomicOrdering::SeqCst), 0);
+        assert_eq!(executor.part_calls.load(AtomicOrdering::SeqCst), 0);
+        assert_eq!(executor.complete_calls.load(AtomicOrdering::SeqCst), 0);
+        assert_eq!(executor.abort_calls.load(AtomicOrdering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn multipart_batch_progress_once_per_file_bytes_after_complete() {
+        let chunk = 8u64;
+        let file_size = 24u64;
+        let (_dir, path) = write_temp_file(file_size as usize);
+        let executor = Arc::new(
+            MockExecutor::new(4)
+                .with_capabilities(multipart_caps(4, chunk))
+                .with_multipart_wire(),
+        );
+        let sink = Arc::new(CountingSink::default());
+        let result = execute_batch_dag(
+            Arc::clone(&sink) as Arc<dyn TransferEventSink>,
+            upload_batch(
+                vec![entry_with_local("p", file_size, path.to_str().unwrap())],
+                4,
+            ),
+            Arc::clone(&executor),
+            Arc::new(AtomicBool::new(false)),
+            None,
+        )
+        .await;
+        assert_eq!(result.completed, 1);
+        // One progress emission for the one file (not per part).
+        assert_eq!(sink.progress.load(AtomicOrdering::SeqCst), 1);
+        // Bytes credited after complete (via result bookkeeping in snapshot).
+        // We don't expose snapshot; completed=1 and size accounted in run.
+        assert_eq!(result.failed, 0);
+    }
+
+    #[tokio::test]
+    async fn multipart_batch_conservative_executor_fails_preflight() {
+        // Multipart caps but no wire support → fail closed, no silent default.
+        let caps = multipart_caps(4, 8);
+        let file_size = 24u64;
+        let (_dir, path) = write_temp_file(file_size as usize);
+        let executor = Arc::new(MockExecutor::new(4).with_capabilities(caps));
+        assert!(!executor.supports_multipart_wire());
+        let result = execute_batch_dag(
+            Arc::new(CountingSink::default()) as Arc<dyn TransferEventSink>,
+            upload_batch(
+                vec![entry_with_local("c", file_size, path.to_str().unwrap())],
+                4,
+            ),
+            Arc::clone(&executor),
+            Arc::new(AtomicBool::new(false)),
+            None,
+        )
+        .await;
+        assert_eq!(result.failed, 1);
+        assert_eq!(result.completed, 0);
+        assert_eq!(executor.begin_calls.load(AtomicOrdering::SeqCst), 0);
+        assert_eq!(executor.part_calls.load(AtomicOrdering::SeqCst), 0);
+        assert_eq!(executor.transfer_calls(), 0);
+    }
+
+    #[tokio::test]
+    async fn multipart_batch_session_lease_bounds_concurrent_files() {
+        // Session capacity 1: two multipart files must serialize on lease.
+        let chunk = 8u64;
+        let file_size = 16u64;
+        let (_d1, p1) = write_temp_file(file_size as usize);
+        let (_d2, p2) = write_temp_file(file_size as usize);
+        let mut exec = MockExecutor::new(1)
+            .with_capabilities(multipart_caps(4, chunk))
+            .with_multipart_wire();
+        exec.part_delay = Duration::from_millis(20);
+        let executor = Arc::new(exec);
+        let result = execute_batch_dag(
+            Arc::new(CountingSink::default()) as Arc<dyn TransferEventSink>,
+            upload_batch(
+                vec![
+                    entry_with_local("a", file_size, p1.to_str().unwrap()),
+                    entry_with_local("b", file_size, p2.to_str().unwrap()),
+                ],
+                4,
+            ),
+            Arc::clone(&executor),
+            Arc::new(AtomicBool::new(false)),
+            None,
+        )
+        .await;
+        assert_eq!(result.completed, 2);
+        // Two begins, two completes — session released between files.
+        assert_eq!(executor.begin_calls.load(AtomicOrdering::SeqCst), 2);
+        assert_eq!(executor.complete_calls.load(AtomicOrdering::SeqCst), 2);
+        assert_eq!(executor.abort_calls.load(AtomicOrdering::SeqCst), 0);
+    }
+
+    #[test]
+    fn whole_file_dedupe_seam_absent_from_production_batch_runner() {
+        // Production code must not keep the whole-file multipart no-op seam.
+        // Strip the test module so this assertion itself cannot match.
+        let src = include_str!("transfer_dag_batch.rs");
+        let prod = src.split("#[cfg(test)]").next().expect("prod section");
+        assert!(
+            !prod.contains("entry_transferred"),
+            "production batch runner must not contain the whole-file dedupe seam"
         );
     }
 }

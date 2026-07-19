@@ -24,7 +24,7 @@ The audit rule used here is:
 |---|---|---|---|
 | Single-file GUI `get` / `put` | `provider_commands::run_dag_*_leaf` → `execute_single_file_dag` (`src-tauri/src/provider_commands.rs:2289`, `:2438`) | `UploadFile`/`DownloadFile` bind to provider I/O; multipart binds begin/part/complete/abort; several structural nodes are no-ops | Shaped DAG is the normal network path, subject to the transfer router and explicit legacy override |
 | Single-file CLI `get` / `put` | `run_single_file_transfer` → `execute_single_file_dag` (`src-tauri/src/bin/aeroftp_cli.rs:8748-8767`) | Same shaped-file runner and provider binding | DAG is selected by the router for normal network transfers; local-to-local or explicit legacy routes bypass it |
-| Multi-file batch | `transfer_orchestrator::execute_batch` → `execute_batch_dag` (`src-tauri/src/transfer_orchestrator.rs:66-70`) | Graph built from the executor's runtime capability snapshot (DAG-P1-01); provider settings use capability-aware resolution (DAG-P1-02); `entry_transferred` remains a whole-file contract until P1-03 | File-level parallelism is real for clone/session-pool providers (S3/B2/Azure and other pool kinds); per-part wire I/O inside one batch file is still deferred |
+| Multi-file batch | `transfer_orchestrator::execute_batch` → `execute_batch_dag` (`src-tauri/src/transfer_orchestrator.rs:66-70`) | Graph from executor runtime capabilities (P1-01); capability-aware settings (P1-02); real per-part multipart wire I/O (P1-03) via shared `transfer_multipart` lifecycle | File-level parallelism for clone/session-pool providers; multipart batch files issue N wire `upload_part` calls with one begin/complete (or abort once after drain) |
 | Non-dry-run sync | `sync_tree_core` → `execute_sync_dag` (`src-tauri/src/sync.rs:1223-1238`) | Scan and planning happen before the graph; the graph wraps a precomputed plan and a serial file driver | DAG wrapper is active; file transfer remains serial by design; dry-run stays on the planning path |
 | Segmented download | `run_provider_segmented_download` (`src-tauri/src/providers/multi_thread.rs:290-310`) | Default is the legacy `JoinSet` range scheduler; `shaped_ranges` calls `execute_dag` only on the opt-in graph branch | Range I/O is real; DAG range scheduling requires `AEROFTP_RANGE_GRAPH=1`; GUI Auto may use one stream |
 | Same-provider copy | GUI/CLI copy commands → `server_side_copy_with_fallback` (`src-tauri/src/provider_commands.rs:5011`, `src-tauri/src/bin/aeroftp_cli.rs:32161`) | Native provider copy or download → upload fallback | Native copy avoids local payload bytes; normal copy is not orchestrated by `shaped_copy` |
@@ -99,7 +99,7 @@ command or default range path uses them.
 |---|---|---|
 | Single-file core | `shaped_file(Download|Upload, caps, size)` | Active in normal GUI/CLI single-file network paths, with router and provider exceptions |
 | Multipart single-file | `shaped_file(Upload, caps, size)` → `UploadPart × N` | Active when the single-file runner receives multipart capabilities; independent wire workers only for the provider set listed below |
-| Batch | `from_batch_shaped(items, caps)` | Active graph wrapper; caps come from `TransferExecutor::transfer_capabilities()` (runtime snapshot). Still no per-part batch I/O contract (`entry_transferred` whole-file until P1-03) |
+| Batch | `from_batch_shaped(items, caps)` | Active graph wrapper; caps from `TransferExecutor::transfer_capabilities()`. Multipart files run real per-part wire I/O (DAG-P1-03); plain upload/download stay whole-file |
 | Sync | `from_sync_plan_shaped(plan, caps)` | Active for non-dry-run sync, with default capabilities, precomputed scan/plan, and serial file execution |
 | Copy | `shaped_copy(caps)` | Builder/test/forward-compatible runner shape; normal copy commands use `server_side_copy_with_fallback` directly |
 | Segmented download | `shaped_ranges(N)` | Active only from the `AEROFTP_RANGE_GRAPH=1` branch; default remains the `JoinSet` scheduler |
@@ -167,15 +167,21 @@ Single-file (`shaped_file`), batch (`from_batch_shaped`), and sync
 (`append_transfer_core`) so the topology cannot drift (DAG-P0-07). Different
 files in a batch/sync graph stay independent: cap=1 serialises parts within
 each file, not the whole job across files. This is protocol correctness for
-ordering-sensitive upload sessions; batch/sync runners still deduplicate
-per-file whole-file I/O until P1-03 lands the real per-part contract.
+ordering-sensitive upload sessions.
+
+After `DAG-P1-03`, the batch runner executes real per-part wire I/O for shaped
+multipart uploads: one lazy begin, N `upload_part` calls with exact
+`multipart_part_byte_len` ranges, sorted complete, and at-most-once abort after
+in-flight parts drain. Layout and once-guards live in the shared
+`transfer_multipart` module used by the single-file path. Sync still does not
+own a separate per-part batch contract beyond the shared topology helper.
 
 ## Batch and sync limitations
 
 ### Batch
 
 `execute_batch_dag` is the current batch entry point, so the old hand-written
-batch scheduler is gone. After `DAG-P1-01` / `DAG-P1-02`:
+batch scheduler is gone. After `DAG-P1-01` / `DAG-P1-02` / `DAG-P1-03`:
 
 - the graph is shaped from `executor.transfer_capabilities()` (the runtime
   snapshot owned by the provider executor after clone-probe composition), not
@@ -189,16 +195,26 @@ batch scheduler is gone. After `DAG-P1-01` / `DAG-P1-02`:
   `file_slots` and the session-pool lease capacity;
 - unknown, locked-single, failed clone probes, and non-pool kinds stay
   serial (`max_file_slots = 1`);
-- `entry_transferred` remains a whole-file `execute_with_session` contract.
-  When a shaped batch graph contains multiple part nodes, the first node
-  dispatches the whole file and the remaining nodes become no-ops until
-  `DAG-P1-03`.
+- multipart-shaped batch files use `TransferExecutor::{multipart_begin,
+  multipart_upload_part, multipart_complete, multipart_abort}` (default
+  conservative: unsupported). `ProviderUploadExecutor` implements the wire
+  path when `multipart_upload` is available. One session-pool lease is held
+  per multipart file for the whole lifecycle; chunk/disk-read budgets come
+  from `TransferBatchConfig::transfer_budget_for_capabilities`;
+- the whole-file `entry_transferred` dedupe seam is **removed**. Plain
+  `UploadFile` / `DownloadFile` still use `execute_with_session`.
 
-The batch graph is therefore capability-aware at file level, but not yet a
-per-part wire-parallel cloud scheduler. A file error is also recorded in the
-batch snapshot while the node currently returns `Completed`, so the
-documented AIMD and failure semantics must not be stronger than that
-implementation (`DAG-P1-04`).
+Honest distinctions:
+
+- **multipart lifecycle correctness** (begin/part/complete/abort once) is
+  active on the batch path for wire-capable executors;
+- **graph task overlap** follows the shaped topology (cap=1 chain vs cap>1
+  fan-out);
+- **actual wire overlap** still requires independent workers
+  (`clone_for_transfer`); otherwise parts serialise on the session mutex;
+- a file error is still recorded in the batch snapshot while the node
+  returns `Completed`, so AIMD does not yet see per-file congestion
+  (`DAG-P1-04`).
 
 ### Sync
 
