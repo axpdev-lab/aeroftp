@@ -4804,6 +4804,7 @@
             "unlock": "Atrakinti",
             "createAndUnlock": "Sukurti ir atrakinti",
             "lock": "Užrakinti",
+            "hardLock": "Užrakinti ir išvalyti raktą",
             "unlocked": "Rclone crypt nuotolinė saugykla atrakinta",
             "initialised": "Rclone crypt nuotolinė saugykla inicijuota",
             "remoteUnlocked": "Nuotolinė saugykla atrakinta (ID: {id}...)",

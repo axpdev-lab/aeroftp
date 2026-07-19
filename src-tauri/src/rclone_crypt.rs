@@ -82,6 +82,10 @@ pub fn resolve_off_suffix(arg: Option<&str>) -> String {
 }
 
 /// Derived keys for an unlocked rclone crypt remote.
+///
+/// `Clone` backs the connection-scoped key cache (an instant re-arm after a
+/// view-only lock); every clone still zeroizes on drop via the `Drop` impl below.
+#[derive(Clone)]
 pub struct RcloneCryptKeys {
     pub name_key: [u8; 32],
     pub data_key: [u8; 32],

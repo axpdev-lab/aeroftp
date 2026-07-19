@@ -4804,6 +4804,7 @@
             "unlock": "Kilidi aç",
             "createAndUnlock": "Oluştur ve kilidi aç",
             "lock": "Kilitle",
+            "hardLock": "Kilitle ve anahtarı temizle",
             "unlocked": "Rclone crypt uzak hizmeti açıldı",
             "initialised": "Rclone crypt uzak hizmeti başlatıldı",
             "remoteUnlocked": "Uzak hizmet açıldı (ID: {id}...)",

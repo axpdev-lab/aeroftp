@@ -4804,6 +4804,7 @@
             "unlock": "Ava lukk",
             "createAndUnlock": "Loo ja ava",
             "lock": "Lukusta",
+            "hardLock": "Lukusta ja kustuta võti",
             "unlocked": "Rclone crypti kaughoidla avatud",
             "initialised": "Rclone crypti kaughoidla lähtestatud",
             "remoteUnlocked": "Kaughoidla avatud (ID: {id}...)",

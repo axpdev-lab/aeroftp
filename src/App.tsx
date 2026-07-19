@@ -3854,7 +3854,11 @@ interface UpdateVerificationInfo {
       humanLog.logRaw('activity.overlay_locked', 'CONNECT', {}, 'success');
       void (async () => {
         try {
-          await invoke('provider_clear_crypt_overlay', { full: true });
+          // View-only lock: unwrap to raw names but KEEP the derived key cached
+          // on this connection, so toggling back ON re-arms instantly (no KDF).
+          // The key is still zeroized on disconnect / tab switch, and the badge
+          // menu's explicit "Lock vault" wipes it now (provider_clear... full).
+          await invoke('provider_lock_crypt_overlay');
         } finally {
           await loadRemoteFiles(undefined, true, true);
         }
@@ -3868,16 +3872,70 @@ interface UpdateVerificationInfo {
       openLockedOverlayUnlockPrompt(lockedOverlayProfile.kind);
       return;
     }
-    // LOCKED -> re-unlock. Saved profiles re-run the auto-unlock+decrypt flow
-    // (animation + real key re-derivation); ad-hoc overlays re-open their modal.
+    // LOCKED -> re-unlock. Fast path first: if the overlay was unlocked earlier
+    // on THIS connection, the derived key is cached in the backend, so re-arm
+    // instantly with no KDF and no decrypt animation. The cache is bound to the
+    // live connection generation (wiped on disconnect / tab switch / hard lock),
+    // so a cached key can never re-arm onto a different server. On a cache miss
+    // we fall back to the full re-derive (saved profile) or the password modal
+    // (ad-hoc), exactly as before.
+    // Instant re-arm is scoped to SAVED profiles: their overlay owner identity is
+    // the stable savedServerId (the same one the auto-unlock and lock bind on), so
+    // the re-armed vault sentinel and session binding line up exactly. Ad-hoc
+    // (modal) overlays keep re-opening their password modal, unchanged.
     if (sess?.savedServerId) {
-      overlayReloadedVaultRef.current = null;
-      setPendingOverlayUnlock(sess.savedServerId);
-    } else if (kind === 'aerocrypt') {
+      const savedId = sess.savedServerId;
+      void (async () => {
+        try {
+          const rearm = await invoke<{ scope: string; kind: 'rclone-crypt' | 'aerocrypt' }>(
+            'provider_rearm_cached_crypt_overlay',
+          );
+          const vaultId = cryptOverlaySentinel(rearm.kind, savedId);
+          if (rearm.kind === 'rclone-crypt') {
+            setAeroCryptVaultId(null);
+            setRcloneCryptVaultId(vaultId);
+          } else {
+            setRcloneCryptVaultId(null);
+            setAeroCryptVaultId(vaultId);
+          }
+          setCryptOverlayOwner({ savedServerId: savedId, sessionId: null });
+          bindSessionCryptOverlay({ savedServerId: savedId }, vaultId, rearm.kind, rearm.scope);
+          humanLog.logRaw('activity.overlay_unlocked', 'CONNECT', {}, 'success');
+          await loadRemoteFiles(undefined, true, true);
+        } catch {
+          // Cache miss (different connection, disconnect, or hard lock): fall back
+          // to the full re-derive + decrypt animation, exactly as before.
+          overlayReloadedVaultRef.current = null;
+          setPendingOverlayUnlock(savedId);
+        }
+      })();
+      return;
+    }
+    // Ad-hoc overlay (no saved profile): re-open the unlock modal.
+    if (kind === 'aerocrypt') {
       setShowAeroCryptUnlock(true);
     } else {
       setShowRcloneCryptUnlock(true);
     }
+  };
+
+  // Explicit HARD lock (badge menu): unwrap AND wipe the cached key from memory
+  // now, so the next unlock re-derives from the password/keyfile. This is the
+  // real security lock; the plain toggle above is a fast view lock that keeps the
+  // key cached for the connection. Mirrors the toggle-OFF UI effect otherwise.
+  const hardLockActiveCryptOverlay = () => {
+    setAeroCryptVaultId(null);
+    setRcloneCryptVaultId(null);
+    setCryptOverlayOwner(null);
+    lockSessionCryptOverlay({ sessionId: activeSessionId ?? undefined });
+    humanLog.logRaw('activity.overlay_locked', 'CONNECT', {}, 'success');
+    void (async () => {
+      try {
+        await invoke('provider_clear_crypt_overlay', { full: true });
+      } finally {
+        await loadRemoteFiles(undefined, true, true);
+      }
+    })();
   };
 
   // Right-click the crypt overlay badge: a small menu to toggle the overlay
@@ -3900,6 +3958,15 @@ interface UpdateVerificationInfo {
           action: () => toggleActiveCryptOverlay(),
         },
       ];
+      // Explicit hard lock: wipe the cached key from memory now, so the next
+      // unlock re-derives (the plain toggle above keeps the key cached for an
+      // instant re-arm). Offered whenever the session is crypt-capable.
+      items.push({
+        label: t('aerocrypt.hardLock'),
+        icon: <Lock size={14} />,
+        action: () => hardLockActiveCryptOverlay(),
+        divider: true,
+      });
       if (kind === 'aerocrypt') {
         items.push({
           label: t('aerocryptNative.keyslotsManage'),

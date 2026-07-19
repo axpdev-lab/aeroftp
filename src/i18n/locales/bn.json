@@ -4804,6 +4804,7 @@
             "unlock": "আনলক করুন",
             "createAndUnlock": "তৈরি ও আনলক করুন",
             "lock": "লক করুন",
+            "hardLock": "লক করুন এবং কী মুছে ফেলুন",
             "unlocked": "Rclone crypt রিমোট আনলক হয়েছে",
             "initialised": "Rclone crypt রিমোট শুরু হয়েছে",
             "remoteUnlocked": "রিমোট আনলক হয়েছে (ID: {id}...)",

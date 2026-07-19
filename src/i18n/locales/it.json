@@ -3346,6 +3346,7 @@
             "unlock": "Sblocca",
             "createAndUnlock": "Crea e sblocca",
             "lock": "Blocca",
+            "hardLock": "Blocca e cancella la chiave",
             "unlocked": "Remote rclone crypt sbloccato",
             "initialised": "Remote rclone crypt inizializzato",
             "remoteUnlocked": "Remote sbloccato (ID: {id}...)",

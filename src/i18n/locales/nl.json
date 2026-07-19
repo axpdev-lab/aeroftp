@@ -4804,6 +4804,7 @@
             "unlock": "Ontgrendelen",
             "createAndUnlock": "Maken en ontgrendelen",
             "lock": "Vergrendelen",
+            "hardLock": "Vergrendelen en sleutel wissen",
             "unlocked": "Rclone crypt externe opslag ontgrendeld",
             "initialised": "Rclone crypt externe opslag geïnitialiseerd",
             "remoteUnlocked": "Externe opslag ontgrendeld (ID: {id}...)",

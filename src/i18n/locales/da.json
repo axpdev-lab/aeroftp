@@ -4804,6 +4804,7 @@
             "unlock": "Lås op",
             "createAndUnlock": "Opret og lås op",
             "lock": "Lås",
+            "hardLock": "Lås og ryd nøgle",
             "unlocked": "Rclone crypt-fjernlagring låst op",
             "initialised": "Rclone crypt-fjernlagring initialiseret",
             "remoteUnlocked": "Fjernlagring låst op (ID: {id}...)",

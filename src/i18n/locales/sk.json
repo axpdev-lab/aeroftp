@@ -4804,6 +4804,7 @@
             "unlock": "Odomknúť",
             "createAndUnlock": "Vytvoriť a odomknúť",
             "lock": "Zamknúť",
+            "hardLock": "Uzamknúť a vymazať kľúč",
             "unlocked": "Vzdialené úložisko rclone crypt odomknuté",
             "initialised": "Vzdialené úložisko rclone crypt inicializované",
             "remoteUnlocked": "Vzdialené úložisko odomknuté (ID: {id}...)",

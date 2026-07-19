@@ -4804,6 +4804,7 @@
             "unlock": "ロック解除",
             "createAndUnlock": "作成してロック解除",
             "lock": "ロック",
+            "hardLock": "ロックしてキーを消去",
             "unlocked": "Rclone crypt リモートをロック解除しました",
             "initialised": "Rclone crypt リモートを初期化しました",
             "remoteUnlocked": "リモートをロック解除しました（ID: {id}...）",

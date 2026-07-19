@@ -4823,6 +4823,7 @@
             "unlock": "Desblokeatu",
             "createAndUnlock": "Sortu eta desblokeatu",
             "lock": "Blokeatu",
+            "hardLock": "Blokeatu eta gakoa garbitu",
             "unlocked": "Rclone crypt urruneko desblokeatua",
             "initialised": "Rclone crypt urruneko hasieratua",
             "remoteUnlocked": "Urrunekoa desblokeatua (ID: {id}...)",

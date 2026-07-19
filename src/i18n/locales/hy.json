@@ -4804,6 +4804,7 @@
             "unlock": "Բացել",
             "createAndUnlock": "Ստեղծել և բացել",
             "lock": "Կողպել",
+            "hardLock": "Կողպել և ջնջել բանալին",
             "unlocked": "Rclone crypt հեռակա պահոցը բացված է",
             "initialised": "Rclone crypt հեռակա պահոցը սկզբնավորված է",
             "remoteUnlocked": "Հեռակա պահոցը բացված է (ID: {id}...)",

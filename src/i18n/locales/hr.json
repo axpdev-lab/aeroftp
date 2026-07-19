@@ -4804,6 +4804,7 @@
             "unlock": "Otključaj",
             "createAndUnlock": "Stvori i otključaj",
             "lock": "Zaključaj",
+            "hardLock": "Zaključaj i izbriši ključ",
             "unlocked": "Rclone crypt udaljeni sustav otključan",
             "initialised": "Rclone crypt udaljeni sustav inicijaliziran",
             "remoteUnlocked": "Udaljeni sustav otključan (ID: {id}...)",
