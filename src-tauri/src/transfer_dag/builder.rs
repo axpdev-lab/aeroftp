@@ -703,51 +703,10 @@ impl TransferDagBuilder {
             ResourceRequest::default(),
         );
 
-        let mut transfer = Vec::new();
-        if direction == TransferDirection::Upload && profile.upload_parts > 1 {
-            // Providers that hit one chunk slot at a time (`max_chunk_slots
-            // == 1`) usually require monotonic per-part ordering: Drive's
-            // resumable session enforces a strictly increasing
-            // `Content-Range`; OneDrive's Graph session does the same.
-            // Without explicit inter-part dependencies the DAG executor is
-            // free to dispatch any ready node, so even with a single
-            // chunk slot we could see part 7 land before part 2. Chain
-            // the `UploadPart` nodes (N depends on N-1) whenever
-            // parallelism is 1 so the runner's lazy `begin` sees parts
-            // in order. Backends with `max_chunk_slots > 1` (S3, B2,
-            // Dropbox concurrent sessions, Box chunked v2) keep the
-            // unconstrained fan-out shape so the runner can dispatch
-            // chunk uploads in parallel up to `max_chunk_slots`.
-            let serialise = profile.max_chunk_slots <= 1;
-            for idx in 0..profile.upload_parts {
-                let parent_dep = if serialise && idx > 0 {
-                    vec![transfer[idx - 1]]
-                } else {
-                    vec![acquire]
-                };
-                let part_bytes = multipart_part_byte_len(
-                    file_size,
-                    idx,
-                    profile.upload_parts,
-                    profile.preferred_chunk_size,
-                );
-                transfer.push(dag.add_node(
-                    TransferNodeKind::UploadPart,
-                    parent_dep,
-                    part_request(profile.api_slots, part_bytes),
-                ));
-            }
-        } else {
-            let transfer_kind = match direction {
-                TransferDirection::Download => TransferNodeKind::DownloadFile,
-                TransferDirection::Upload => TransferNodeKind::UploadFile,
-            };
-            transfer.push(dag.add_node(
-                transfer_kind,
-                vec![acquire],
-                transfer_request(direction, profile.api_slots),
-            ));
-        }
+        // Single transfer-core helper shared with batch/sync shaped builders
+        // so multipart topology (cap=1 chain vs cap>1 fan-out) cannot drift.
+        let transfer =
+            append_transfer_core(&mut dag, direction, acquire, &profile, file_size);
 
         let verify = dag.add_node(
             TransferNodeKind::VerifyChecksum,
@@ -883,6 +842,77 @@ fn part_request(api_slots: u16, buffer_bytes: u64) -> ResourceRequest {
     ResourceRequest::upload_part(buffer_bytes).with_api_slots(api_slots)
 }
 
+/// Append the transfer core for one file: a single `UploadFile` /
+/// `DownloadFile`, or N `UploadPart` nodes under `acquire_node`.
+///
+/// This is the **single source of truth** for capability-shaped multipart
+/// topology across [`TransferDagBuilder::shaped_file`],
+/// [`TransferDagBuilder::from_batch_shaped`], and
+/// [`TransferDagBuilder::from_sync_plan_shaped`]:
+///
+/// - `max_chunk_slots <= 1` (or missing → effective 1): strict part-number
+///   chain `acquire → part1 → part2 → … → partN` for ordering-sensitive
+///   upload sessions (Drive, OneDrive, OpenDrive, …).
+/// - `max_chunk_slots > 1`: fan-out `acquire → {part1, …, partN}` so the
+///   executor may overlap parts up to the chunk budget (S3, B2, Azure, …).
+///
+/// Returns transfer node ids in **part-number order**. Does not invent
+/// part numbers from global node ids; callers treat ids as opaque.
+fn append_transfer_core(
+    dag: &mut TransferDag,
+    direction: TransferDirection,
+    acquire_node: usize,
+    profile: &TransferGraphProfile,
+    file_size: u64,
+) -> Vec<usize> {
+    let mut transfer = Vec::new();
+    if direction == TransferDirection::Upload && profile.upload_parts > 1 {
+        // Providers that hit one chunk slot at a time (`max_chunk_slots
+        // == 1`) usually require monotonic per-part ordering: Drive's
+        // resumable session enforces a strictly increasing
+        // `Content-Range`; OneDrive's Graph session does the same.
+        // Without explicit inter-part dependencies the DAG executor is
+        // free to dispatch any ready node, so even with a single
+        // chunk slot we could see part 7 land before part 2. Chain
+        // the `UploadPart` nodes (N depends on N-1) whenever
+        // parallelism is 1 so the runner's lazy `begin` sees parts
+        // in order. Backends with `max_chunk_slots > 1` (S3, B2,
+        // Dropbox concurrent sessions, Box chunked v2) keep the
+        // unconstrained fan-out shape so the runner can dispatch
+        // chunk uploads in parallel up to `max_chunk_slots`.
+        let serialise = profile.max_chunk_slots <= 1;
+        for idx in 0..profile.upload_parts {
+            let parent_dep = if serialise && idx > 0 {
+                vec![transfer[idx - 1]]
+            } else {
+                vec![acquire_node]
+            };
+            let part_bytes = multipart_part_byte_len(
+                file_size,
+                idx,
+                profile.upload_parts,
+                profile.preferred_chunk_size,
+            );
+            transfer.push(dag.add_node(
+                TransferNodeKind::UploadPart,
+                parent_dep,
+                part_request(profile.api_slots, part_bytes),
+            ));
+        }
+    } else {
+        let transfer_kind = match direction {
+            TransferDirection::Download => TransferNodeKind::DownloadFile,
+            TransferDirection::Upload => TransferNodeKind::UploadFile,
+        };
+        transfer.push(dag.add_node(
+            transfer_kind,
+            vec![acquire_node],
+            transfer_request(direction, profile.api_slots),
+        ));
+    }
+    transfer
+}
+
 #[derive(Debug, Clone, Copy)]
 struct SingleFileNodeIds {
     discover: usize,
@@ -967,7 +997,8 @@ struct ShapedFileNodeIds {
 ///
 /// Same node bindings as [`TransferDagBuilder::shaped_file`], but emitted in
 /// place onto an existing graph so the batch (and, later, sync) builders can
-/// stitch per-file sub-DAGs into a single [`TransferDag`].
+/// stitch per-file sub-DAGs into a single [`TransferDag`]. Multipart topology
+/// comes exclusively from [`append_transfer_core`].
 fn append_shaped_file_chain(
     dag: &mut TransferDag,
     direction: TransferDirection,
@@ -987,32 +1018,8 @@ fn append_shaped_file_chain(
         ResourceRequest::default(),
     );
 
-    let mut transfer_nodes = Vec::new();
-    if direction == TransferDirection::Upload && profile.upload_parts > 1 {
-        for idx in 0..profile.upload_parts {
-            let part_bytes = multipart_part_byte_len(
-                file_size,
-                idx,
-                profile.upload_parts,
-                profile.preferred_chunk_size,
-            );
-            transfer_nodes.push(dag.add_node(
-                TransferNodeKind::UploadPart,
-                vec![acquire],
-                part_request(profile.api_slots, part_bytes),
-            ));
-        }
-    } else {
-        let transfer_kind = match direction {
-            TransferDirection::Download => TransferNodeKind::DownloadFile,
-            TransferDirection::Upload => TransferNodeKind::UploadFile,
-        };
-        transfer_nodes.push(dag.add_node(
-            transfer_kind,
-            vec![acquire],
-            transfer_request(direction, profile.api_slots),
-        ));
-    }
+    let transfer_nodes =
+        append_transfer_core(dag, direction, acquire, &profile, file_size);
 
     let verify = dag.add_node(
         TransferNodeKind::VerifyChecksum,
@@ -1049,9 +1056,10 @@ fn append_shaped_file_chain(
 /// Append one capability-shaped sync sub-DAG to `dag` below the global
 /// `compare` join node.
 ///
-/// Same node bindings as [`append_shaped_file_chain`] but with `compare`
-/// substituted for the absent per-file discover prefix, mirroring how
-/// [`append_sync_file_chain`] threads the global sync prefix.
+/// Same transfer-core bindings as [`append_shaped_file_chain`] (via
+/// [`append_transfer_core`]) but with `compare` substituted for the absent
+/// per-file discover prefix, mirroring how [`append_sync_file_chain`] threads
+/// the global sync prefix.
 fn append_shaped_sync_file_chain(
     dag: &mut TransferDag,
     direction: TransferDirection,
@@ -1067,32 +1075,8 @@ fn append_shaped_sync_file_chain(
         ResourceRequest::default(),
     );
 
-    let mut transfer_nodes = Vec::new();
-    if direction == TransferDirection::Upload && profile.upload_parts > 1 {
-        for idx in 0..profile.upload_parts {
-            let part_bytes = multipart_part_byte_len(
-                file_size,
-                idx,
-                profile.upload_parts,
-                profile.preferred_chunk_size,
-            );
-            transfer_nodes.push(dag.add_node(
-                TransferNodeKind::UploadPart,
-                vec![acquire],
-                part_request(profile.api_slots, part_bytes),
-            ));
-        }
-    } else {
-        let transfer_kind = match direction {
-            TransferDirection::Download => TransferNodeKind::DownloadFile,
-            TransferDirection::Upload => TransferNodeKind::UploadFile,
-        };
-        transfer_nodes.push(dag.add_node(
-            transfer_kind,
-            vec![acquire],
-            transfer_request(direction, profile.api_slots),
-        ));
-    }
+    let transfer_nodes =
+        append_transfer_core(dag, direction, acquire, &profile, file_size);
 
     let verify = dag.add_node(
         TransferNodeKind::VerifyChecksum,
@@ -1485,13 +1469,14 @@ mod tests {
 
     #[test]
     fn shaped_batch_with_multipart_caps_fans_out_uploads() {
-        // A multipart-capable cap set + 24 MiB upload over 8 MiB chunks
-        // produces 3 `UploadPart` nodes for the upload item and a single
-        // `DownloadFile` node for the download item (multipart is upload
-        // only). All three part nodes share the same `acquire` predecessor.
+        // A multipart-capable cap set with max_chunk_slots > 1 + 24 MiB
+        // upload over 8 MiB chunks produces 3 `UploadPart` nodes for the
+        // upload item and a single `DownloadFile` for the download item.
+        // All three part nodes share the same `acquire` predecessor (fan-out).
         let caps = TransferCapabilities {
             multipart_upload: Capability::Supported,
             preferred_chunk_size: Some(8 * 1024 * 1024),
+            max_chunk_slots: Some(4),
             multipart_threshold: 0, // unset: fan out at chunk size
             ..TransferCapabilities::default()
         };
@@ -1578,6 +1563,7 @@ mod tests {
         let caps = TransferCapabilities {
             multipart_upload: Capability::Supported,
             preferred_chunk_size: Some(8 * 1024 * 1024),
+            max_chunk_slots: Some(4),
             multipart_threshold: 0, // unset: fan out at chunk size
             ..TransferCapabilities::default()
         };
@@ -2119,5 +2105,468 @@ mod tests {
         // discover + acquire + 4 parts + verify + preserve + commit + emit.
         assert_eq!(summary.nodes_completed, 10);
         assert_eq!(summary.nodes_failed, 0);
+    }
+
+    // ---- DAG-P0-07: serial multipart topology on all shaped surfaces ------
+
+    /// Assert a strict part-number chain under `acquire` for one file's
+    /// transfer core: part 0 → acquire, part N>0 → only part N-1, verify joins
+    /// every part. Node ids are treated as opaque builder outputs.
+    fn assert_serial_part_chain(
+        nodes: &[TransferNode],
+        acquire: usize,
+        transfer_nodes: &[usize],
+        verify: usize,
+    ) {
+        assert!(
+            transfer_nodes.len() > 1,
+            "serial chain gate needs multipart (>1 part)"
+        );
+        assert_eq!(nodes[transfer_nodes[0]].depends_on, vec![acquire]);
+        for idx in 1..transfer_nodes.len() {
+            assert_eq!(
+                nodes[transfer_nodes[idx]].depends_on,
+                vec![transfer_nodes[idx - 1]],
+                "part {idx} must depend only on previous part"
+            );
+        }
+        assert_eq!(nodes[verify].depends_on, transfer_nodes.to_vec());
+    }
+
+    /// Assert fan-out: every part depends directly on that file's acquire.
+    fn assert_fanout_parts(nodes: &[TransferNode], acquire: usize, transfer_nodes: &[usize]) {
+        assert!(transfer_nodes.len() > 1);
+        for &part in transfer_nodes {
+            assert_eq!(
+                nodes[part].depends_on,
+                vec![acquire],
+                "cap>1 fan-out: every part depends only on acquire"
+            );
+        }
+    }
+
+    /// P0-06 invariants that must hold on every shaped surface for multipart.
+    fn assert_p0_06_part_accounting(
+        nodes: &[TransferNode],
+        transfer_nodes: &[usize],
+        file_size: u64,
+        parts: usize,
+        chunk: u64,
+        api_slots: u16,
+    ) {
+        for (idx, &part) in transfer_nodes.iter().enumerate() {
+            let r = &nodes[part].resources;
+            assert_eq!(nodes[part].kind, TransferNodeKind::UploadPart);
+            assert_eq!(r.disk_read_slots, 1, "upload part is disk-read only");
+            assert_eq!(r.disk_write_slots, 0, "upload part never disk-write");
+            assert_eq!(r.chunk_slots, 1);
+            assert_eq!(r.api_slots, api_slots);
+            assert_eq!(
+                r.buffer_bytes,
+                multipart_part_byte_len(file_size, idx, parts, chunk)
+            );
+        }
+    }
+
+    fn caps_multipart_serial(chunk_size: u64) -> TransferCapabilities {
+        let mut caps = caps_multipart(chunk_size);
+        caps.max_chunk_slots = Some(1);
+        caps
+    }
+
+    /// Missing `max_chunk_slots` resolves to effective cap=1 (serial topology).
+    fn caps_multipart_missing_slots(chunk_size: u64) -> TransferCapabilities {
+        let mut caps = caps_multipart(chunk_size);
+        caps.max_chunk_slots = None;
+        caps
+    }
+
+    #[test]
+    fn p0_07_shaped_file_cap1_strict_part_chain() {
+        let chunk = 1024 * 1024;
+        let file_size = 3 * chunk;
+        let built = TransferDagBuilder::shaped_file(
+            TransferDirection::Upload,
+            &caps_multipart_serial(chunk),
+            file_size,
+        );
+        let nodes = built.dag.nodes();
+        assert_eq!(built.profile.max_chunk_slots, 1);
+        assert_serial_part_chain(&nodes, built.acquire, &built.transfer, built.verify);
+        assert_p0_06_part_accounting(&nodes, &built.transfer, file_size, 3, chunk, 0);
+    }
+
+    #[test]
+    fn p0_07_batch_shaped_cap1_per_file_serial_no_cross_file_deps() {
+        let chunk = 8 * 1024 * 1024;
+        let file_size = 24 * 1024 * 1024; // 3 parts each
+        let caps = caps_multipart_serial(chunk);
+        let items = vec![
+            BatchDagItem::with_size("a.bin", TransferDirection::Upload, file_size),
+            BatchDagItem::with_size("b.bin", TransferDirection::Upload, file_size),
+        ];
+        let built = TransferDagBuilder::from_batch_shaped(&items, &caps);
+        assert_eq!(built.files.len(), 2);
+        let nodes = built.dag.nodes();
+
+        let a_parts: std::collections::HashSet<usize> =
+            built.files[0].transfer_nodes.iter().copied().collect();
+        let b_parts: std::collections::HashSet<usize> =
+            built.files[1].transfer_nodes.iter().copied().collect();
+        assert!(a_parts.is_disjoint(&b_parts));
+
+        for file in &built.files {
+            assert_eq!(file.transfer_nodes.len(), 3);
+            assert_serial_part_chain(
+                &nodes,
+                file.acquire,
+                &file.transfer_nodes,
+                file.verify,
+            );
+            // No part may depend on a part belonging to another file.
+            let own: std::collections::HashSet<usize> =
+                file.transfer_nodes.iter().copied().collect();
+            let other: std::collections::HashSet<usize> = built
+                .files
+                .iter()
+                .filter(|f| f.key != file.key)
+                .flat_map(|f| f.transfer_nodes.iter().copied())
+                .collect();
+            for &part in &file.transfer_nodes {
+                for &dep in &nodes[part].depends_on {
+                    assert!(
+                        !other.contains(&dep),
+                        "part of {} must not depend on another file's part",
+                        file.key
+                    );
+                    assert!(
+                        dep == file.acquire || own.contains(&dep),
+                        "part deps must stay within this file's acquire/chain"
+                    );
+                }
+            }
+            assert_p0_06_part_accounting(
+                &nodes,
+                &file.transfer_nodes,
+                file_size,
+                3,
+                chunk,
+                0,
+            );
+        }
+
+        // Files remain independent roots after discover: no edge from one
+        // file's acquire/transfer into the other file's sub-DAG.
+        assert_ne!(built.files[0].acquire, built.files[1].acquire);
+        assert!(nodes[built.files[0].acquire]
+            .depends_on
+            .iter()
+            .all(|&d| d != built.files[1].acquire));
+        assert!(nodes[built.files[1].acquire]
+            .depends_on
+            .iter()
+            .all(|&d| d != built.files[0].acquire));
+    }
+
+    #[test]
+    fn p0_07_sync_shaped_cap1_per_file_serial_no_cross_file_deps() {
+        let chunk = 8 * 1024 * 1024;
+        let file_size = 24 * 1024 * 1024;
+        let caps = caps_multipart_serial(chunk);
+        let items = vec![
+            SyncDagItem::with_size("a.bin", SyncDagAction::Upload, file_size),
+            SyncDagItem::with_size("b.bin", SyncDagAction::Upload, file_size),
+        ];
+        let built = TransferDagBuilder::from_sync_plan_shaped(&items, &caps);
+        assert_eq!(built.files.len(), 2);
+        let nodes = built.dag.nodes();
+
+        // Global compare prefix is shared; per-file chains hang below it.
+        for file in &built.files {
+            assert_eq!(nodes[file.acquire].depends_on, vec![built.compare]);
+            assert_eq!(file.transfer_nodes.len(), 3);
+            assert_serial_part_chain(
+                &nodes,
+                file.acquire,
+                &file.transfer_nodes,
+                file.verify,
+            );
+            let other: std::collections::HashSet<usize> = built
+                .files
+                .iter()
+                .filter(|f| f.key != file.key)
+                .flat_map(|f| f.transfer_nodes.iter().copied())
+                .collect();
+            for &part in &file.transfer_nodes {
+                for &dep in &nodes[part].depends_on {
+                    assert!(
+                        !other.contains(&dep),
+                        "sync part of {} must not depend on another file's part",
+                        file.key
+                    );
+                }
+            }
+            assert_p0_06_part_accounting(
+                &nodes,
+                &file.transfer_nodes,
+                file_size,
+                3,
+                chunk,
+                0,
+            );
+        }
+    }
+
+    #[test]
+    fn p0_07_all_shaped_surfaces_cap_gt1_fan_out() {
+        let chunk = 1024 * 1024;
+        let file_size = 4 * chunk;
+        let caps = caps_multipart(chunk); // max_chunk_slots = 4
+
+        let single =
+            TransferDagBuilder::shaped_file(TransferDirection::Upload, &caps, file_size);
+        assert_eq!(single.profile.max_chunk_slots, 4);
+        assert_fanout_parts(
+            single.dag.nodes(),
+            single.acquire,
+            &single.transfer,
+        );
+
+        let batch = TransferDagBuilder::from_batch_shaped(
+            &[
+                BatchDagItem::with_size("a.bin", TransferDirection::Upload, file_size),
+                BatchDagItem::with_size("b.bin", TransferDirection::Upload, file_size),
+            ],
+            &caps,
+        );
+        for file in &batch.files {
+            assert_fanout_parts(batch.dag.nodes(), file.acquire, &file.transfer_nodes);
+        }
+
+        let sync = TransferDagBuilder::from_sync_plan_shaped(
+            &[
+                SyncDagItem::with_size("a.bin", SyncDagAction::Upload, file_size),
+                SyncDagItem::with_size("b.bin", SyncDagAction::Upload, file_size),
+            ],
+            &caps,
+        );
+        for file in &sync.files {
+            assert_fanout_parts(sync.dag.nodes(), file.acquire, &file.transfer_nodes);
+        }
+    }
+
+    #[test]
+    fn p0_07_missing_max_chunk_slots_follows_serial_topology() {
+        let chunk = 1024 * 1024;
+        let file_size = 3 * chunk;
+        let caps = caps_multipart_missing_slots(chunk);
+
+        let single =
+            TransferDagBuilder::shaped_file(TransferDirection::Upload, &caps, file_size);
+        assert_eq!(
+            single.profile.max_chunk_slots, 1,
+            "None max_chunk_slots resolves to effective cap=1"
+        );
+        assert_serial_part_chain(
+            single.dag.nodes(),
+            single.acquire,
+            &single.transfer,
+            single.verify,
+        );
+
+        let batch = TransferDagBuilder::from_batch_shaped(
+            &[BatchDagItem::with_size(
+                "a.bin",
+                TransferDirection::Upload,
+                file_size,
+            )],
+            &caps,
+        );
+        let f = &batch.files[0];
+        assert_serial_part_chain(
+            batch.dag.nodes(),
+            f.acquire,
+            &f.transfer_nodes,
+            f.verify,
+        );
+
+        let sync = TransferDagBuilder::from_sync_plan_shaped(
+            &[SyncDagItem::with_size(
+                "a.bin",
+                SyncDagAction::Upload,
+                file_size,
+            )],
+            &caps,
+        );
+        let s = &sync.files[0];
+        assert_serial_part_chain(sync.dag.nodes(), s.acquire, &s.transfer_nodes, s.verify);
+    }
+
+    #[test]
+    fn p0_07_shaped_surfaces_preserve_p0_06_buffer_and_api_slots() {
+        let chunk = 8 * 1024 * 1024;
+        let file_size = 25 * 1024 * 1024; // 4 parts, short tail on last
+        let mut caps = caps_multipart(chunk);
+        caps.rate_limited_api = Capability::Supported;
+        let expected_api = 1u16;
+        let parts = 4usize;
+
+        let single =
+            TransferDagBuilder::shaped_file(TransferDirection::Upload, &caps, file_size);
+        assert_eq!(single.profile.api_slots, expected_api);
+        assert_p0_06_part_accounting(
+            single.dag.nodes(),
+            &single.transfer,
+            file_size,
+            parts,
+            chunk,
+            expected_api,
+        );
+
+        let batch = TransferDagBuilder::from_batch_shaped(
+            &[BatchDagItem::with_size(
+                "big.bin",
+                TransferDirection::Upload,
+                file_size,
+            )],
+            &caps,
+        );
+        assert_p0_06_part_accounting(
+            batch.dag.nodes(),
+            &batch.files[0].transfer_nodes,
+            file_size,
+            parts,
+            chunk,
+            expected_api,
+        );
+
+        let sync = TransferDagBuilder::from_sync_plan_shaped(
+            &[SyncDagItem::with_size(
+                "big.bin",
+                SyncDagAction::Upload,
+                file_size,
+            )],
+            &caps,
+        );
+        assert_p0_06_part_accounting(
+            sync.dag.nodes(),
+            &sync.files[0].transfer_nodes,
+            file_size,
+            parts,
+            chunk,
+            expected_api,
+        );
+    }
+
+    #[tokio::test]
+    async fn p0_07_executor_cap1_observes_monotone_part_order() {
+        let chunk = 1024 * 1024;
+        let built = TransferDagBuilder::shaped_file(
+            TransferDirection::Upload,
+            &caps_multipart_serial(chunk),
+            4 * chunk,
+        );
+        // Map part node id → part index in transfer_nodes order (opaque ids).
+        let part_order: std::collections::HashMap<usize, usize> = built
+            .transfer
+            .iter()
+            .enumerate()
+            .map(|(idx, &id)| (id, idx))
+            .collect();
+        let observed: Arc<std::sync::Mutex<Vec<usize>>> =
+            Arc::new(std::sync::Mutex::new(Vec::new()));
+        let observed_run = Arc::clone(&observed);
+        let part_order_run = part_order.clone();
+        let runner: Arc<dyn DagNodeRunner> = Arc::new(move |node: TransferNode| -> NodeFuture {
+            let observed = Arc::clone(&observed_run);
+            let part_order = part_order_run.clone();
+            Box::pin(async move {
+                if let Some(&idx) = part_order.get(&node.id) {
+                    // Hold briefly so a racey fan-out would reorder; serial
+                    // deps force monotone completion order regardless.
+                    tokio::time::sleep(Duration::from_millis(5)).await;
+                    observed.lock().expect("lock").push(idx);
+                }
+                NodeOutcome::Completed
+            })
+        });
+        let manager = TransferResourceManager::new(TransferBudget {
+            chunk_slots: 4, // budget allows overlap; topology must still serialise
+            ..TransferBudget::from_file_slots(1)
+        });
+
+        let summary = execute_dag(
+            &built.dag,
+            &manager,
+            runner,
+            Arc::new(NoopDagObserver),
+            None,
+        )
+        .await
+        .expect("serial multipart must run cleanly");
+        assert_eq!(summary.nodes_failed, 0);
+
+        let order = observed.lock().expect("lock").clone();
+        assert_eq!(order, vec![0, 1, 2, 3], "cap=1 must dispatch parts in order");
+    }
+
+    #[tokio::test]
+    async fn p0_07_executor_cap_gt1_can_overlap_parts() {
+        let chunk = 1024 * 1024;
+        let built = TransferDagBuilder::shaped_file(
+            TransferDirection::Upload,
+            &caps_multipart(chunk), // max_chunk_slots = 4
+            4 * chunk,
+        );
+        let part_ids: std::collections::HashSet<usize> =
+            built.transfer.iter().copied().collect();
+        let in_flight = Arc::new(AtomicUsize::new(0));
+        let peak = Arc::new(AtomicUsize::new(0));
+        let in_flight_run = Arc::clone(&in_flight);
+        let peak_run = Arc::clone(&peak);
+        let part_ids_run = part_ids.clone();
+        let runner: Arc<dyn DagNodeRunner> = Arc::new(move |node: TransferNode| -> NodeFuture {
+            let in_flight = Arc::clone(&in_flight_run);
+            let peak = Arc::clone(&peak_run);
+            let part_ids = part_ids_run.clone();
+            Box::pin(async move {
+                if part_ids.contains(&node.id) {
+                    let cur = in_flight.fetch_add(1, Ordering::SeqCst) + 1;
+                    peak.fetch_max(cur, Ordering::SeqCst);
+                    tokio::time::sleep(Duration::from_millis(30)).await;
+                    in_flight.fetch_sub(1, Ordering::SeqCst);
+                }
+                NodeOutcome::Completed
+            })
+        });
+        // chunk_slots + disk_read_slots must both allow overlap: UploadPart
+        // reserves one of each, and from_file_slots(1) defaults disk_read=1.
+        let manager = TransferResourceManager::new(TransferBudget {
+            chunk_slots: 4,
+            disk_read_slots: 4,
+            buffer_bytes: 64 * 1024 * 1024,
+            ..TransferBudget::from_file_slots(1)
+        });
+
+        let summary = execute_dag(
+            &built.dag,
+            &manager,
+            runner,
+            Arc::new(NoopDagObserver),
+            None,
+        )
+        .await
+        .expect("fan-out multipart must run cleanly");
+        assert_eq!(summary.nodes_failed, 0);
+        assert!(
+            peak.load(Ordering::SeqCst) > 1,
+            "cap>1 fan-out must allow overlapping parts (peak={})",
+            peak.load(Ordering::SeqCst)
+        );
+        assert!(
+            peak.load(Ordering::SeqCst) <= 4,
+            "overlap remains bounded by chunk/disk budgets (peak={})",
+            peak.load(Ordering::SeqCst)
+        );
     }
 }

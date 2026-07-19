@@ -149,9 +149,26 @@ wire-level DAG fan-out without an independent worker and a provider-specific
 live gate. A graph with N part nodes therefore means “N scheduled part
 operations”, not automatically “N concurrent network requests”.
 
-For providers with `max_chunk_slots <= 1`, `shaped_file` chains parts in
-order. The composed batch and sync builders do not yet apply the same ordering
-to every path; that is tracked by `DAG-P0-07`.
+For providers with `max_chunk_slots <= 1` (or missing → effective 1), every
+capability-shaped builder chains parts in strict part-number order:
+
+```text
+AcquireResource -> part 1 -> part 2 -> ... -> part N
+```
+
+When `max_chunk_slots > 1`, parts fan out from acquire:
+
+```text
+AcquireResource -> {part 1, part 2, ... part N}
+```
+
+Single-file (`shaped_file`), batch (`from_batch_shaped`), and sync
+(`from_sync_plan_shaped`) share one internal transfer-core helper
+(`append_transfer_core`) so the topology cannot drift (DAG-P0-07). Different
+files in a batch/sync graph stay independent: cap=1 serialises parts within
+each file, not the whole job across files. This is protocol correctness for
+ordering-sensitive upload sessions; batch/sync runners still deduplicate
+per-file whole-file I/O until P1-03 lands the real per-part contract.
 
 ## Batch and sync limitations
 
