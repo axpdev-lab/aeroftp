@@ -47,9 +47,9 @@ use super::error::{TransferError, TransferErrorKind};
 use super::graph::{TransferDag, TransferNode};
 use super::metrics::TransferDagMetrics;
 use super::observer::{DagObserver, ObservedOutcome};
-use super::resources::{request_exceeds_budget, ResourceRequest, TransferResourceManager};
 #[cfg(test)]
 use super::resources::TransferBudget;
+use super::resources::{request_exceeds_budget, ResourceRequest, TransferResourceManager};
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DagExecutionSummary {

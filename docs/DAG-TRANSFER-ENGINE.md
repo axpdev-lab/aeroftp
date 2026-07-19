@@ -63,8 +63,10 @@ Resource permits bound I/O classes and, as of `DAG-P0-06`, also bound owned
 multipart part buffers via per-manager `buffer_bytes` credits (64 KiB quanta,
 `acquire_many_owned`; env `AEROFTP_TRANSFER_BUFFER_BYTES`; default
 `min(512 MiB, max(64 MiB, 10% MemAvailable))` on Linux, else 256 MiB). A
-single part larger than the budget is admitted one-at-a-time through an
-explicit oversize lane. This is **not** a process-global memory governor
+normal pool rounds its capacity down to whole quanta, so it never exceeds the
+configured byte budget. A part whose rounded demand does not fit that usable
+pool is admitted one-at-a-time through an explicit oversize lane. This is
+**not** a process-global memory governor
 (`DAG-P2-01`); the legacy non-DAG concurrent upload path in
 `providers/multi_thread.rs` (`read_part_from_disk`) remains outside these
 credits. On the first node failure the executor cancels a graph-scoped token

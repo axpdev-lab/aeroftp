@@ -86,8 +86,8 @@ use crate::transfer_dag::executor::{
 };
 use crate::transfer_dag::graph::{TransferNode, TransferNodeKind};
 use crate::transfer_dag::{
-    AimdConfig, AimdController, DagObserver, FailureScope, ShapedFileDag, TransferBudget,
-    TransferDirection, TransferError, TransferResourceManager,
+    multipart_part_byte_len, AimdConfig, AimdController, DagObserver, FailureScope, ShapedFileDag,
+    TransferBudget, TransferDirection, TransferError, TransferResourceManager,
 };
 
 /// A per-byte transfer progress callback, as accepted by
@@ -138,6 +138,7 @@ struct MultipartCtx {
     parts: Arc<Mutex<Vec<UploadedPart>>>,
     node_to_part: Arc<HashMap<usize, u32>>,
     part_size: u64,
+    total_parts: usize,
     total_size: u64,
     content_type: String,
 }
@@ -230,6 +231,7 @@ pub async fn execute_single_file_dag(
             parts: Arc::new(Mutex::new(Vec::with_capacity(total_parts as usize))),
             node_to_part: Arc::new(node_to_part),
             part_size,
+            total_parts: total_parts as usize,
             total_size: file_size,
             content_type,
         }))
@@ -378,10 +380,16 @@ pub async fn execute_single_file_dag(
 
                         // 2. Read this part's slice from disk at the matching
                         //    offset. The last part may be smaller than
-                        //    `part_size`; `saturating_sub` handles that
-                        //    without panicking on an exact multiple.
+                        //    `part_size`. Use the same helper as the builder so
+                        //    the acquired `buffer_bytes` and allocation cannot
+                        //    drift.
                         let offset = (part_number as u64 - 1) * ctx.part_size;
-                        let len = ctx.part_size.min(ctx.total_size.saturating_sub(offset));
+                        let len = multipart_part_byte_len(
+                            ctx.total_size,
+                            part_number as usize - 1,
+                            ctx.total_parts,
+                            ctx.part_size,
+                        );
                         let data = match race_cancel(&cancel_token, read_chunk(&local, offset, len))
                             .await
                         {
@@ -812,8 +820,7 @@ mod tests {
             multipart_threshold: 0,
             ..TransferCapabilities::default()
         };
-        let built =
-            TransferDagBuilder::shaped_file(TransferDirection::Upload, &caps, file_size);
+        let built = TransferDagBuilder::shaped_file(TransferDirection::Upload, &caps, file_size);
         let parts = built.profile.upload_parts;
         assert!(parts > 1);
         for (idx, &node_id) in built.transfer.iter().enumerate() {

@@ -68,6 +68,7 @@ impl TransferBatchConfig {
     /// `TransferBudget::file_slots`.
     pub fn transfer_budget(&self) -> TransferBudget {
         TransferBudget::from_file_slots(self.max_concurrent.min(u16::MAX as u32) as u16)
+            .with_resolved_buffer_budget()
     }
 }
 

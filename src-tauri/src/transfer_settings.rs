@@ -93,6 +93,7 @@ impl ResolvedTransferSettings {
     /// `file_slots` vocabulary tied to the same resolved value.
     pub fn transfer_budget(&self) -> TransferBudget {
         TransferBudget::from_file_slots(self.max_concurrent.min(u16::MAX as u32) as u16)
+            .with_resolved_buffer_budget()
     }
 }
 
@@ -155,8 +156,9 @@ pub fn resolve_transfer_settings_for_capabilities(
         .max_concurrent
         .unwrap_or(DEFAULT_MAX_CONCURRENT)
         .clamp(MIN_MAX_CONCURRENT, MAX_MAX_CONCURRENT);
-    let budget =
-        TransferBudget::from_file_slots(requested as u16).clamped_for_capabilities(capabilities);
+    let budget = TransferBudget::from_file_slots(requested as u16)
+        .with_resolved_buffer_budget()
+        .clamped_for_capabilities(capabilities);
 
     resolve_transfer_settings(
         input,

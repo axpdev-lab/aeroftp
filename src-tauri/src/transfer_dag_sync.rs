@@ -615,7 +615,9 @@ pub async fn execute_sync_dag(
         // A sync drives one provider connection: file_slots = 1 keeps the
         // transfer nodes strictly serial, matching the single delta-batch
         // session and the legacy core.
-        let manager = TransferResourceManager::new(TransferBudget::from_file_slots(1));
+        let manager = TransferResourceManager::new(
+            TransferBudget::from_file_slots(1).with_resolved_buffer_budget(),
+        );
         let observer: Arc<dyn DagObserver> = Arc::new(NoopDagObserver);
         let provider_type = provider.provider_type();
         // AIMD backpressure (F3-T05). file_slots = 1 means the File class

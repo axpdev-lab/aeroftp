@@ -915,11 +915,7 @@ fn append_single_file_chain(
         vec![discover],
         ResourceRequest::default(),
     );
-    let transfer = dag.add_node(
-        transfer_kind,
-        vec![acquire],
-        transfer_request(direction, 0),
-    );
+    let transfer = dag.add_node(transfer_kind, vec![acquire], transfer_request(direction, 0));
     let verify = dag.add_node(
         TransferNodeKind::VerifyChecksum,
         vec![transfer],
@@ -1145,11 +1141,7 @@ fn append_sync_file_chain(
         vec![compare],
         ResourceRequest::default(),
     );
-    let transfer = dag.add_node(
-        transfer_kind,
-        vec![acquire],
-        transfer_request(direction, 0),
-    );
+    let transfer = dag.add_node(transfer_kind, vec![acquire], transfer_request(direction, 0));
     let verify = dag.add_node(
         TransferNodeKind::VerifyChecksum,
         vec![transfer],

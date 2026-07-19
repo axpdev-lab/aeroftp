@@ -26,9 +26,11 @@
 //!
 //! ## Oversize-part policy
 //!
-//! A single part whose length exceeds the manager budget is admitted through a
-//! dedicated one-at-a-time oversize lane: it takes the full quantum pool plus
-//! the oversize permit. Concurrent oversize parts cannot hold leases together.
+//! A single part whose rounded credit demand exceeds the usable manager pool is
+//! admitted through a dedicated one-at-a-time oversize lane: it takes the full
+//! quantum pool plus the oversize permit. Concurrent oversize parts cannot hold
+//! leases together. Pool capacity rounds down to whole quanta, so normal
+//! allocations never exceed the configured byte budget.
 //! Peak RSS may therefore briefly equal that one oversized part; the cap is
 //! never silently disabled for in-budget concurrent parts.
 //!
@@ -132,8 +134,7 @@ impl TransferBudget {
     }
 
     /// Explicit buffer budget (e.g. tests). Zero is preserved so callers can
-    /// construct a manager that rejects all non-zero buffer requests except
-    /// via the oversize lane when budget is zero (see manager ctor floor).
+    /// construct a manager that rejects every non-zero buffer request.
     pub fn with_buffer_bytes(mut self, buffer_bytes: u64) -> Self {
         self.buffer_bytes = buffer_bytes;
         self
@@ -187,11 +188,7 @@ fn system_available_memory_bytes() -> Option<u64> {
     let contents = std::fs::read_to_string("/proc/meminfo").ok()?;
     for line in contents.lines() {
         if let Some(rest) = line.strip_prefix("MemAvailable:") {
-            let kb: u64 = rest
-                .split_whitespace()
-                .next()?
-                .parse()
-                .ok()?;
+            let kb: u64 = rest.split_whitespace().next()?.parse().ok()?;
             return kb.checked_mul(1024);
         }
     }
@@ -208,12 +205,18 @@ pub fn buffer_bytes_to_quanta(bytes: u64) -> u32 {
     u32::try_from(q).unwrap_or(u32::MAX)
 }
 
-/// Quanta capacity for a budgeted byte pool (at least 1 when budget > 0).
+/// Quanta capacity for a budgeted byte pool.
+///
+/// Capacity rounds down so ordinary leases can never represent more bytes
+/// than the configured budget. A positive sub-quantum budget still gets one
+/// quantum; requests larger than its raw byte budget use the oversize lane.
 pub fn buffer_budget_to_quanta(budget_bytes: u64) -> u32 {
     if budget_bytes == 0 {
         return 0;
     }
-    buffer_bytes_to_quanta(budget_bytes).max(1)
+    u32::try_from(budget_bytes / BUFFER_QUANTUM_BYTES)
+        .unwrap_or(u32::MAX)
+        .max(1)
 }
 
 /// Byte length of multipart part `part_index` (0-based) under the shared
@@ -445,12 +448,11 @@ impl TransferResourceManager {
 
         let budget = self.budget.buffer_bytes;
         if budget == 0 || self.buffer_quanta_capacity == 0 {
-            return Err(
-                "buffer_bytes requested but the manager buffer budget is zero".to_string(),
-            );
+            return Err("buffer_bytes requested but the manager buffer budget is zero".to_string());
         }
 
-        if buffer_bytes > budget {
+        let requested_quanta = buffer_bytes_to_quanta(buffer_bytes);
+        if buffer_bytes > budget || requested_quanta > self.buffer_quanta_capacity {
             // Oversize one-at-a-time: exclusive lane + entire quantum pool so
             // concurrent in-budget parts cannot run beside an oversize part.
             let oversize = self
@@ -478,14 +480,13 @@ impl TransferResourceManager {
             return Ok(());
         }
 
-        let quanta = buffer_bytes_to_quanta(buffer_bytes);
-        if quanta == 0 {
+        if requested_quanta == 0 {
             return Ok(());
         }
         let permit = self
             .buffer_quanta
             .clone()
-            .acquire_many_owned(quanta)
+            .acquire_many_owned(requested_quanta)
             .await
             .map_err(|_| {
                 format!(
@@ -521,7 +522,10 @@ async fn acquire_many(
 /// Buffer credits: zero-budget + non-zero request is unschedulable. A request
 /// larger than the budget is **schedulable** via the oversize lane (see module
 /// docs) and is not rejected here.
-pub fn request_exceeds_budget(request: &ResourceRequest, budget: &TransferBudget) -> Option<String> {
+pub fn request_exceeds_budget(
+    request: &ResourceRequest,
+    budget: &TransferBudget,
+) -> Option<String> {
     // Each slot semaphore is sized at `budget.X.max(1)` (see TransferResourceManager).
     let checks: [(&str, u16, u16); 8] = [
         ("file_slots", request.file_slots, budget.file_slots.max(1)),
@@ -650,6 +654,17 @@ mod tests {
         assert_eq!(buffer_bytes_to_quanta(1), 1);
         assert_eq!(buffer_bytes_to_quanta(BUFFER_QUANTUM_BYTES), 1);
         assert_eq!(buffer_bytes_to_quanta(BUFFER_QUANTUM_BYTES + 1), 2);
+    }
+
+    #[test]
+    fn budget_quanta_never_round_above_configured_bytes() {
+        let q = BUFFER_QUANTUM_BYTES;
+        assert_eq!(buffer_budget_to_quanta(0), 0);
+        assert_eq!(buffer_budget_to_quanta(1), 1);
+        assert_eq!(buffer_budget_to_quanta(q), 1);
+        assert_eq!(buffer_budget_to_quanta(q + 1), 1);
+        assert_eq!(buffer_budget_to_quanta(q * 2 - 1), 1);
+        assert_eq!(buffer_budget_to_quanta(q * 2), 2);
     }
 
     #[test]
@@ -815,6 +830,33 @@ mod tests {
         drop(lease);
         assert_eq!(manager.available_oversize_permits(), 1);
         assert_eq!(manager.available_buffer_quanta(), 2);
+    }
+
+    #[tokio::test]
+    async fn non_aligned_budget_routes_unrepresentable_tail_through_oversize_lane() {
+        let quantum = BUFFER_QUANTUM_BYTES;
+        // Usable normal pool rounds down to one quantum. A request equal to
+        // the raw byte budget needs two rounded quanta and must not hang.
+        let budget = TransferBudget::from_file_slots(1).with_buffer_bytes(quantum + 1);
+        let manager = TransferResourceManager::new(budget);
+        assert_eq!(manager.available_buffer_quanta(), 1);
+
+        let lease = tokio::time::timeout(
+            Duration::from_secs(1),
+            manager.acquire(ResourceRequest {
+                buffer_bytes: quantum + 1,
+                ..ResourceRequest::default()
+            }),
+        )
+        .await
+        .expect("non-aligned request must route to oversize instead of hanging")
+        .unwrap();
+        assert_eq!(manager.available_oversize_permits(), 0);
+        assert_eq!(manager.available_buffer_quanta(), 0);
+
+        drop(lease);
+        assert_eq!(manager.available_oversize_permits(), 1);
+        assert_eq!(manager.available_buffer_quanta(), 1);
     }
 
     #[tokio::test]
