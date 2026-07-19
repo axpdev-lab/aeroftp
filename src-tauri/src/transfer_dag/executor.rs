@@ -66,10 +66,10 @@ pub struct DagExecutionSummary {
     pub nodes_completed: u32,
     pub nodes_failed: u32,
     pub fallback_count: u32,
-    /// Accumulated run metrics. In this slice only the truthfully known
-    /// fields are populated (`range_fallbacks` from fallback completions);
-    /// bytes/retries/backpressure stay zero until a real path is migrated
-    /// and adaptive throttling lands. No value is fabricated.
+    /// Accumulated run metrics. Generic fallback completions populate
+    /// `range_fallbacks`; copy-specific fallback completions populate
+    /// `copy_fallbacks`. Operation runners can emit richer byte fields in
+    /// their combined observer snapshot. No value is fabricated.
     pub metrics: TransferDagMetrics,
 }
 
@@ -81,6 +81,11 @@ pub enum NodeOutcome {
     /// Node finished, but via a degraded path (counted as completed, plus
     /// `fallback_count`). This is an honest, non-error completion.
     Fallback,
+    /// A native server-side copy decision transitioned to the separately
+    /// shaped observable download-upload graph. Stops the current graph at
+    /// this node and is kept distinct from range fallback so metrics do not
+    /// conflate two different policy decisions.
+    CopyFallback,
     /// File-local terminal failure that must not abort the graph (DAG-P1-04).
     ///
     /// Semantics:
@@ -373,6 +378,11 @@ pub async fn execute_dag_with_options(
     let mut requests: HashMap<usize, ResourceRequest> = HashMap::new();
     let mut failed: Option<(usize, TransferError)> = None;
     let mut terminal_error: Option<DagExecutionError> = None;
+    // A copy fallback is a successful transition to a separately shaped
+    // DownloadFile -> UploadFile graph. Its current graph must stop at the
+    // decision node so structural tail nodes do not report premature copy
+    // completion before the payload graph runs.
+    let mut copy_transition = false;
     let mut join_set: JoinSet<(usize, NodeOutcome)> = JoinSet::new();
     // Preserve task→node identity even when Tokio returns a JoinError and the
     // task output `(node_id, outcome)` is unavailable.
@@ -396,7 +406,7 @@ pub async fn execute_dag_with_options(
 
         // Dispatch step: fill the window from the ready queue. Once a node
         // has failed (or external cancel) we stop launching new work.
-        if failed.is_none() {
+        if failed.is_none() && !copy_transition {
             while join_set.len() < dispatch_window {
                 let Some(id) = ready.pop_front() else {
                     break;
@@ -429,7 +439,7 @@ pub async fn execute_dag_with_options(
         }
 
         if join_set.is_empty() {
-            if failed.is_some() || completed.len() == n {
+            if failed.is_some() || completed.len() == n || copy_transition {
                 break;
             }
             // Nothing ready, nothing running, not every node completed: a
@@ -574,6 +584,20 @@ pub async fn execute_dag_with_options(
                 if failed.is_none() {
                     release_dependents(id, &dependents, &mut remaining_deps, &mut ready);
                 }
+            }
+            NodeOutcome::CopyFallback => {
+                summary.nodes_completed += 1;
+                summary.fallback_count += 1;
+                summary.metrics.copy_fallbacks += 1;
+                completed.insert(id);
+                terminal_notified.insert(id);
+                observer.on_node_complete(id, ObservedOutcome::Fallback);
+                aimd_note_healthy(&controller, node_request.as_ref());
+                // The copy orchestrator builds and executes the fallback
+                // graph after this run returns. Do not release this shape's
+                // structural dependents: they would otherwise emit a terminal
+                // completion before the real payload legs have run.
+                copy_transition = true;
             }
             NodeOutcome::FileFailedButGraphContinues(error) => {
                 // DAG-P1-04: file-local terminal — visible, non-fatal, releases

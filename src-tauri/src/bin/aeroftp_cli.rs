@@ -5330,6 +5330,17 @@ struct CliOk {
 }
 
 #[derive(Serialize)]
+struct CliCopyResult {
+    status: &'static str,
+    message: String,
+    decision: &'static str,
+    logical_bytes: u64,
+    wire_bytes: u64,
+    local_payload_bytes: u64,
+    copy_fallbacks: u32,
+}
+
+#[derive(Serialize)]
 struct CliHashResult {
     status: &'static str,
     algorithm: String,
@@ -27565,16 +27576,15 @@ async fn webdav_dispatch(
                 }
             };
             let dest_remote = build_served_remote_path(&state.base_path, &dest_relative);
-            let mut provider = state.provider.lock().await;
-            // Shared fallback policy: tries server_copy first, then streams
-            // through a local temp file on capability-boundary failures
-            // (S3 cross-bucket, WebDAV 501, Nextcloud cross-share) so the
-            // bridged COPY always returns 201 when the bytes did move,
-            // regardless of which path got us there.
-            match ftp_client_gui_lib::copy_fallback::server_side_copy_with_fallback(
-                provider.as_mut(),
-                &remote_path,
-                &dest_remote,
+            // The bridge shares the production copy DAG and its one
+            // authoritative fallback classifier with GUI and `cp`.
+            match ftp_client_gui_lib::transfer_dag_single_file::execute_copy_dag(
+                ftp_client_gui_lib::transfer_dag_single_file::CopyProviderHandle::required(
+                    Arc::clone(&state.provider),
+                ),
+                remote_path,
+                dest_remote,
+                Arc::new(ftp_client_gui_lib::transfer_dag::NoopDagObserver),
             )
             .await
             {
@@ -32142,48 +32152,68 @@ async fn cmd_mv(url: &str, from: &str, to: &str, cli: &Cli, format: OutputFormat
 }
 
 async fn cmd_cp(url: &str, from: &str, to: &str, cli: &Cli, format: OutputFormat) -> i32 {
-    let (mut provider, initial_path) = match create_and_connect(url, cli, format).await {
+    let (provider, initial_path) = match create_and_connect(url, cli, format).await {
         Ok(v) => v,
         Err(code) => return code,
     };
 
     let from = &resolve_cli_remote_path(&initial_path, from);
     let to = &resolve_cli_remote_path(&initial_path, to);
-    if let Some(code) = reject_restricted_target(provider.as_mut(), to, "cp", format).await {
+    let provider = Arc::new(AsyncMutex::new(provider));
+    if let Some(code) = {
+        let mut guard = provider.lock().await;
+        reject_restricted_target(guard.as_mut(), to, "cp", format).await
+    } {
         return code;
     }
 
-    // Goes through `server_side_copy_with_fallback` so the CLI exits 0
-    // even when the provider does not advertise server-side copy or
-    // rejects this specific operation (S3 cross-bucket without IAM,
-    // WebDAV 501, Nextcloud cross-share). Hard errors (auth, source not
-    // found, quota) still surface with their original exit code.
-    match ftp_client_gui_lib::copy_fallback::server_side_copy_with_fallback(
-        provider.as_mut(),
-        from,
-        to,
+    // Production copy is capability-shaped as one ServerSideCopy node or an
+    // observable DownloadFile -> UploadFile core. A recoverable rejection is
+    // recorded before the fallback graph executes.
+    match ftp_client_gui_lib::transfer_dag_single_file::execute_copy_dag(
+        ftp_client_gui_lib::transfer_dag_single_file::CopyProviderHandle::required(Arc::clone(
+            &provider,
+        )),
+        from.to_string(),
+        to.to_string(),
+        Arc::new(ftp_client_gui_lib::transfer_dag::NoopDagObserver),
     )
     .await
     {
         Ok(outcome) => {
-            let suffix = match outcome {
-                ftp_client_gui_lib::copy_fallback::CopyOutcome::ServerSide => "",
-                ftp_client_gui_lib::copy_fallback::CopyOutcome::Fallback { .. } => {
-                    " (fallback: download→upload)"
+            let (suffix, decision) = match &outcome.decision {
+                ftp_client_gui_lib::transfer_dag_single_file::CopyDecision::ServerSide => {
+                    ("", "server_side")
                 }
+                ftp_client_gui_lib::transfer_dag_single_file::CopyDecision::DownloadUpload {
+                    ..
+                } => (" (fallback: download->upload)", "download_upload"),
             };
             match format {
                 OutputFormat::Text => {
                     if !cli.quiet {
-                        eprintln!("{} ⇒ {}{}", from, to, suffix);
+                        eprintln!(
+                            "{} ⇒ {}{} [logical={} wire={} local_payload={}]",
+                            from,
+                            to,
+                            suffix,
+                            outcome.metrics.logical_bytes,
+                            outcome.metrics.wire_bytes,
+                            outcome.metrics.local_payload_bytes
+                        );
                     }
                 }
-                OutputFormat::Json => print_json(&CliOk {
+                OutputFormat::Json => print_json(&CliCopyResult {
                     status: "ok",
                     message: format!("{} ⇒ {}{}", from, to, suffix),
+                    decision,
+                    logical_bytes: outcome.metrics.logical_bytes,
+                    wire_bytes: outcome.metrics.wire_bytes,
+                    local_payload_bytes: outcome.metrics.local_payload_bytes,
+                    copy_fallbacks: outcome.metrics.copy_fallbacks,
                 }),
             }
-            let _ = provider.disconnect().await;
+            let _ = provider.lock().await.disconnect().await;
             0
         }
         Err(e) => {
@@ -32192,7 +32222,7 @@ async fn cmd_cp(url: &str, from: &str, to: &str, cli: &Cli, format: OutputFormat
                 &format!("cp failed: {}", e),
                 provider_error_to_exit_code(&e),
             );
-            let _ = provider.disconnect().await;
+            let _ = provider.lock().await.disconnect().await;
             provider_error_to_exit_code(&e)
         }
     }

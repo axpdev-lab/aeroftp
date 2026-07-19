@@ -12,9 +12,11 @@
 //! download-then-upload so the user-visible operation still succeeds. Hard
 //! errors (auth, quota, source not found, cancellation) propagate untouched.
 //!
-//! The same helper is wired from the GUI Tauri command, the CLI `cp` and
-//! WebDAV-bridge `COPY` handlers, and the DAG `ServerSideCopy` runner node
-//! so all four entry points share one classification and one fallback path.
+//! Production GUI, CLI `cp`, and WebDAV-bridge `COPY` route through
+//! `transfer_dag_single_file::execute_copy_dag`, which reuses
+//! [`should_attempt_copy_fallback`] but exposes both payload legs as graph
+//! nodes. [`server_side_copy_with_fallback`] remains behavior-compatible for
+//! library callers and policy regression coverage.
 
 use crate::providers::{ProviderError, StorageProvider};
 
@@ -130,11 +132,12 @@ pub async fn copy_via_download_upload(
     result
 }
 
-/// Try the provider's native server-side copy and degrade to a
-/// download-then-upload on a recoverable failure. The single entry point
-/// for all four call sites (GUI Tauri command, CLI `cp`, CLI WebDAV-bridge
-/// `COPY` handler, DAG `ServerSideCopy` runner node) so they share one
-/// fallback policy.
+/// Legacy compatibility helper: try native server-side copy and degrade to a
+/// download-then-upload on a recoverable failure.
+///
+/// Production copy endpoints use `execute_copy_dag` so the decision and both
+/// payload legs are observable. This helper intentionally shares the same
+/// authoritative [`should_attempt_copy_fallback`] policy.
 pub async fn server_side_copy_with_fallback(
     provider: &mut dyn StorageProvider,
     from: &str,

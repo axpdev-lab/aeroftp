@@ -4970,14 +4970,11 @@ pub async fn provider_rename(
     Ok(())
 }
 
-/// Server-side copy with automatic download → upload fallback.
+/// Capability-shaped copy through the production transfer DAG.
 ///
-/// Tries the provider's native `server_copy` first; if the provider does
-/// not advertise the capability OR advertises it but rejects this specific
-/// operation with a recoverable error (S3 cross-bucket without IAM, WebDAV
-/// 501 / Method Not Allowed, Nextcloud cross-share), degrades to a
-/// streaming download-then-upload so the user-visible operation succeeds.
-/// Hard errors (auth, source not found, quota) propagate unchanged.
+/// The graph exposes either one native `ServerSideCopy` core or an explicit
+/// `DownloadFile` then `UploadFile` core. Recoverable native-copy rejection
+/// is observed at the node boundary before the fallback graph runs.
 #[tauri::command]
 pub async fn provider_server_copy(
     state: State<'_, ProviderState>,
@@ -4990,19 +4987,33 @@ pub async fn provider_server_copy(
     // overlay's decrypted listing.
     state.guard_no_raw_crypt_write("Server copy")?;
 
-    let mut provider_lock = state.provider.lock().await;
-
-    let provider = provider_lock
-        .as_mut()
-        .ok_or("Not connected to any provider")?;
+    let provider_lock = state.provider.lock().await;
+    if provider_lock.is_none() {
+        return Err("Not connected to any provider".to_string());
+    }
 
     info!("Server copy: {} -> {}", from, to);
 
-    match crate::copy_fallback::server_side_copy_with_fallback(provider.as_mut(), &from, &to).await
+    let provider = Arc::clone(&state.provider);
+    let _op_guard = TransferOperationGuard::acquire(&state);
+    drop(provider_lock);
+
+    match crate::transfer_dag_single_file::execute_copy_dag(
+        crate::transfer_dag_single_file::CopyProviderHandle::optional(provider),
+        from,
+        to,
+        Arc::new(crate::transfer_dag::NoopDagObserver),
+    )
+    .await
     {
-        Ok(crate::copy_fallback::CopyOutcome::ServerSide) => Ok(()),
-        Ok(crate::copy_fallback::CopyOutcome::Fallback { note }) => {
-            info!("Server copy fell back to download→upload: {}", note);
+        Ok(outcome) => {
+            info!(
+                decision = ?outcome.decision,
+                logical_bytes = outcome.metrics.logical_bytes,
+                wire_bytes = outcome.metrics.wire_bytes,
+                local_payload_bytes = outcome.metrics.local_payload_bytes,
+                "Copy DAG completed"
+            );
             Ok(())
         }
         Err(e) => Err(format!("Failed to copy: {}", e)),

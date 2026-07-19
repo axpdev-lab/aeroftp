@@ -38,6 +38,7 @@ pub use executor::{
     DagExecutionError, DagExecutionSummary, DagNodeRunner, NodeFuture, NodeOutcome,
     DEFAULT_DISPATCH_WINDOW, FAIL_FAST_ABORT_GRACE,
 };
+pub use metrics::TransferDagMetrics;
 pub use observer::{
     DagObserver, NoopDagObserver, ObservedOutcome, OrderedDagObserver, SyncJournalDagObserver,
     SyncJournalTerminal,

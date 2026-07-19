@@ -84,8 +84,9 @@ use crate::transfer_dag::executor::{
 };
 use crate::transfer_dag::graph::{TransferNode, TransferNodeKind};
 use crate::transfer_dag::{
-    AimdConfig, AimdController, DagObserver, FailureScope, ShapedFileDag, TransferBudget,
-    TransferDirection, TransferError, TransferResourceManager,
+    AimdConfig, AimdController, CopyDag, DagObserver, FailureScope, ObservedOutcome, ShapedFileDag,
+    TransferBudget, TransferCapabilities, TransferDagBuilder, TransferDagMetrics,
+    TransferDirection, TransferError, TransferErrorKind, TransferResourceManager,
 };
 use crate::transfer_multipart::{
     clone_multipart_worker, read_chunk, MultipartFileState, MultipartLayout,
@@ -98,6 +99,372 @@ pub type ProgressCallback = Box<dyn Fn(u64, u64) + Send>;
 /// The connected-provider handle shared between the GUI command state and the
 /// spawned DAG node tasks. `Option` because a session may be disconnected.
 pub type SharedProvider = Arc<Mutex<Option<Box<dyn StorageProvider>>>>;
+
+/// Provider ownership accepted by the production copy DAG.
+///
+/// GUI commands keep the connected provider in an optional slot while CLI
+/// commands and the WebDAV bridge own a mandatory provider box. Both shapes
+/// route through the same runner without moving or duplicating the provider.
+#[derive(Clone)]
+pub enum CopyProviderHandle {
+    Optional(SharedProvider),
+    Required(Arc<Mutex<Box<dyn StorageProvider>>>),
+}
+
+impl CopyProviderHandle {
+    pub fn optional(provider: SharedProvider) -> Self {
+        Self::Optional(provider)
+    }
+
+    pub fn required(provider: Arc<Mutex<Box<dyn StorageProvider>>>) -> Self {
+        Self::Required(provider)
+    }
+
+    async fn transfer_capabilities(&self) -> Result<TransferCapabilities, ProviderError> {
+        match self {
+            Self::Optional(provider) => provider
+                .lock()
+                .await
+                .as_ref()
+                .map(|provider| provider.transfer_capabilities())
+                .ok_or(ProviderError::NotConnected),
+            Self::Required(provider) => Ok(provider.lock().await.transfer_capabilities()),
+        }
+    }
+
+    async fn source_size(&self, path: &str) -> Option<u64> {
+        match self {
+            Self::Optional(provider) => {
+                let mut guard = provider.lock().await;
+                let provider = guard.as_mut()?;
+                provider.size(path).await.ok()
+            }
+            Self::Required(provider) => provider.lock().await.size(path).await.ok(),
+        }
+    }
+
+    async fn server_side_copy(&self, from: &str, to: &str) -> Result<(), ProviderError> {
+        match self {
+            Self::Optional(provider) => {
+                let mut guard = provider.lock().await;
+                let provider = guard.as_mut().ok_or(ProviderError::NotConnected)?;
+                provider.server_side_copy(from, to).await
+            }
+            Self::Required(provider) => provider.lock().await.server_side_copy(from, to).await,
+        }
+    }
+
+    async fn download(&self, remote: &str, local: &str) -> Result<(), ProviderError> {
+        match self {
+            Self::Optional(provider) => {
+                let mut guard = provider.lock().await;
+                let provider = guard.as_mut().ok_or(ProviderError::NotConnected)?;
+                provider.download(remote, local, None).await
+            }
+            Self::Required(provider) => provider.lock().await.download(remote, local, None).await,
+        }
+    }
+
+    async fn upload(&self, local: &str, remote: &str) -> Result<(), ProviderError> {
+        match self {
+            Self::Optional(provider) => {
+                let mut guard = provider.lock().await;
+                let provider = guard.as_mut().ok_or(ProviderError::NotConnected)?;
+                provider.upload(local, remote, None).await
+            }
+            Self::Required(provider) => provider.lock().await.upload(local, remote, None).await,
+        }
+    }
+}
+
+/// Typed production decision for a copy operation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CopyDecision {
+    /// The provider moved the bytes without a local payload path.
+    ServerSide,
+    /// The shaped graph exposed both payload legs.
+    DownloadUpload { trigger: CopyFallbackTrigger },
+}
+
+/// Why the production copy path selected the download-upload subgraph.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CopyFallbackTrigger {
+    /// Capability shaping selected the two-node core before dispatch.
+    CapabilityUnavailable,
+    /// A native copy node was dispatched, then rejected at a capability
+    /// boundary classified by `should_attempt_copy_fallback`.
+    ServerRejected { kind: TransferErrorKind },
+}
+
+/// Completed production copy with its observed logical and data-path totals.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CopyDagOutcome {
+    pub decision: CopyDecision,
+    pub metrics: TransferDagMetrics,
+}
+
+/// Observer adapter for a logical copy that can execute a second shaped graph
+/// after a recoverable native-copy rejection.
+///
+/// Node ids from the second graph are offset so lifecycle events remain unique.
+/// Executor-level per-graph snapshots are suppressed; `execute_copy_dag`
+/// emits one combined logical-vs-wire snapshot after the whole copy completes.
+struct CopyDagObserver {
+    inner: Arc<dyn DagObserver>,
+    node_offset: usize,
+}
+
+impl DagObserver for CopyDagObserver {
+    fn on_node_start(&self, node_id: usize, kind: TransferNodeKind) {
+        self.inner.on_node_start(self.node_offset + node_id, kind);
+    }
+
+    fn on_node_complete(&self, node_id: usize, outcome: ObservedOutcome) {
+        self.inner
+            .on_node_complete(self.node_offset + node_id, outcome);
+    }
+
+    fn on_scan_progress(&self, scanned: usize, in_flight: usize) {
+        self.inner.on_scan_progress(scanned, in_flight);
+    }
+
+    fn on_metrics(&self, _metrics: &TransferDagMetrics) {}
+}
+
+/// Execute one production copy through [`TransferDagBuilder::shaped_copy`].
+///
+/// Capability-unavailable providers run the observable `DownloadFile` then
+/// `UploadFile` shape immediately. A recoverable rejection from a dispatched
+/// `ServerSideCopy` node is recorded as [`ObservedOutcome::Fallback`], then a
+/// second shaped graph with server copy disabled performs the two payload
+/// legs. Non-recoverable errors retain their typed file scope and never reach
+/// the fallback graph.
+pub async fn execute_copy_dag(
+    provider: CopyProviderHandle,
+    from: String,
+    to: String,
+    observer: Arc<dyn DagObserver>,
+) -> Result<CopyDagOutcome, ProviderError> {
+    let caps = provider.transfer_capabilities().await?;
+    let initial = TransferDagBuilder::shaped_copy(&caps);
+    let source_size = provider.source_size(&from).await.unwrap_or(0);
+
+    if initial.server_side {
+        let fallback_trigger: Arc<StdMutex<Option<CopyFallbackTrigger>>> =
+            Arc::new(StdMutex::new(None));
+        run_copy_shape(
+            &initial,
+            provider.clone(),
+            Arc::from(from.as_str()),
+            Arc::from(to.as_str()),
+            None,
+            Arc::clone(&fallback_trigger),
+            Arc::new(CopyDagObserver {
+                inner: Arc::clone(&observer),
+                node_offset: 0,
+            }),
+        )
+        .await?;
+
+        let trigger = fallback_trigger
+            .lock()
+            .expect("copy fallback trigger poisoned")
+            .clone();
+        if let Some(trigger) = trigger {
+            let fallback = TransferDagBuilder::shaped_copy(&TransferCapabilities::default());
+            let temp = copy_temp_path()?;
+            let fallback_result = run_copy_shape(
+                &fallback,
+                provider,
+                Arc::from(from.as_str()),
+                Arc::from(to.as_str()),
+                Some(Arc::clone(&temp)),
+                Arc::new(StdMutex::new(None)),
+                Arc::new(CopyDagObserver {
+                    inner: Arc::clone(&observer),
+                    node_offset: initial.dag.nodes().len(),
+                }),
+            )
+            .await;
+            let local_bytes = std::fs::metadata(&*temp)
+                .map(|meta| meta.len())
+                .unwrap_or(0);
+            let _ = std::fs::remove_file(&*temp);
+            fallback_result?;
+            let logical_bytes = source_size.max(local_bytes);
+            let metrics = TransferDagMetrics {
+                logical_bytes,
+                wire_bytes: local_bytes.saturating_mul(2),
+                local_payload_bytes: local_bytes,
+                bytes_transferred: logical_bytes,
+                copy_fallbacks: 1,
+                ..TransferDagMetrics::default()
+            };
+            observer.on_metrics(&metrics);
+            return Ok(CopyDagOutcome {
+                decision: CopyDecision::DownloadUpload { trigger },
+                metrics,
+            });
+        }
+
+        let metrics = TransferDagMetrics {
+            logical_bytes: source_size,
+            wire_bytes: 0,
+            local_payload_bytes: 0,
+            bytes_transferred: source_size,
+            ..TransferDagMetrics::default()
+        };
+        observer.on_metrics(&metrics);
+        return Ok(CopyDagOutcome {
+            decision: CopyDecision::ServerSide,
+            metrics,
+        });
+    }
+
+    let temp = copy_temp_path()?;
+    let fallback_trigger = CopyFallbackTrigger::CapabilityUnavailable;
+    let fallback_result = run_copy_shape(
+        &initial,
+        provider,
+        Arc::from(from.as_str()),
+        Arc::from(to.as_str()),
+        Some(Arc::clone(&temp)),
+        Arc::new(StdMutex::new(None)),
+        Arc::new(CopyDagObserver {
+            inner: Arc::clone(&observer),
+            node_offset: 0,
+        }),
+    )
+    .await;
+    let local_bytes = std::fs::metadata(&*temp)
+        .map(|meta| meta.len())
+        .unwrap_or(0);
+    let _ = std::fs::remove_file(&*temp);
+    fallback_result?;
+    let logical_bytes = source_size.max(local_bytes);
+    let metrics = TransferDagMetrics {
+        logical_bytes,
+        wire_bytes: local_bytes.saturating_mul(2),
+        local_payload_bytes: local_bytes,
+        bytes_transferred: logical_bytes,
+        copy_fallbacks: 1,
+        ..TransferDagMetrics::default()
+    };
+    observer.on_metrics(&metrics);
+    Ok(CopyDagOutcome {
+        decision: CopyDecision::DownloadUpload {
+            trigger: fallback_trigger,
+        },
+        metrics,
+    })
+}
+
+fn copy_temp_path() -> Result<Arc<str>, ProviderError> {
+    let temp = tempfile::Builder::new()
+        .prefix("aeroftp-copy-dag-")
+        .tempfile()
+        .map_err(ProviderError::IoError)?;
+    let (_, path) = temp
+        .keep()
+        .map_err(|error| ProviderError::IoError(error.error))?;
+    Ok(Arc::from(path.to_string_lossy().as_ref()))
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn run_copy_shape(
+    built: &CopyDag,
+    provider: CopyProviderHandle,
+    from: Arc<str>,
+    to: Arc<str>,
+    temp: Option<Arc<str>>,
+    fallback_trigger: Arc<StdMutex<Option<CopyFallbackTrigger>>>,
+    observer: Arc<dyn DagObserver>,
+) -> Result<(), ProviderError> {
+    let first_error: Arc<StdMutex<Option<ProviderError>>> = Arc::new(StdMutex::new(None));
+    let runner: Arc<dyn DagNodeRunner> = {
+        let first_error = Arc::clone(&first_error);
+        Arc::new(move |node: TransferNode| -> NodeFuture {
+            let provider = provider.clone();
+            let from = Arc::clone(&from);
+            let to = Arc::clone(&to);
+            let temp = temp.clone();
+            let first_error = Arc::clone(&first_error);
+            let fallback_trigger = Arc::clone(&fallback_trigger);
+            Box::pin(async move {
+                match node.kind {
+                    TransferNodeKind::ServerSideCopy => {
+                        match provider.server_side_copy(&from, &to).await {
+                            Ok(()) => NodeOutcome::Completed,
+                            Err(error)
+                                if crate::copy_fallback::should_attempt_copy_fallback(&error) =>
+                            {
+                                let kind = TransferError::from_provider(&error).kind;
+                                *fallback_trigger
+                                    .lock()
+                                    .expect("copy fallback trigger poisoned") =
+                                    Some(CopyFallbackTrigger::ServerRejected { kind });
+                                NodeOutcome::CopyFallback
+                            }
+                            Err(error) => record_failure(&first_error, error, FailureScope::File),
+                        }
+                    }
+                    TransferNodeKind::DownloadFile => {
+                        let Some(temp) = temp.as_deref() else {
+                            return record_failure(
+                                &first_error,
+                                ProviderError::TransferFailed(
+                                    "DownloadFile copy node missing temp path".to_string(),
+                                ),
+                                FailureScope::File,
+                            );
+                        };
+                        match provider.download(&from, temp).await {
+                            Ok(()) => NodeOutcome::Completed,
+                            Err(error) => record_failure(&first_error, error, FailureScope::File),
+                        }
+                    }
+                    TransferNodeKind::UploadFile => {
+                        let Some(temp) = temp.as_deref() else {
+                            return record_failure(
+                                &first_error,
+                                ProviderError::TransferFailed(
+                                    "UploadFile copy node missing temp path".to_string(),
+                                ),
+                                FailureScope::File,
+                            );
+                        };
+                        match provider.upload(temp, &to).await {
+                            Ok(()) => NodeOutcome::Completed,
+                            Err(error) => record_failure(&first_error, error, FailureScope::File),
+                        }
+                    }
+                    _ => NodeOutcome::Completed,
+                }
+            })
+        })
+    };
+
+    let manager = TransferResourceManager::new(
+        TransferBudget::from_file_slots(1).with_resolved_buffer_budget(),
+    );
+    match execute_dag_with_options(
+        &built.dag,
+        &manager,
+        runner,
+        observer,
+        None,
+        DagExecuteOptions::default(),
+    )
+    .await
+    {
+        Ok(_) => Ok(()),
+        Err(error) => Err(first_error
+            .lock()
+            .expect("copy first-error slot poisoned")
+            .take()
+            .unwrap_or_else(|| ProviderError::TransferFailed(error.to_string()))),
+    }
+}
 
 fn cancelled_transfer_error() -> ProviderError {
     ProviderError::TransferFailed("Transfer cancelled by user".to_string())
@@ -414,17 +781,12 @@ pub async fn execute_single_file_dag(
                         }
                     }
                     TransferNodeKind::ServerSideCopy => {
-                        // Forward-compat: the shaped-copy graph emits this
-                        // kind, the shaped-file graph does not. Wired for
-                        // SG-T12 when shaped-copy lands in the sync runner.
-                        //
-                        // Goes through `server_side_copy_with_fallback` so
-                        // providers that advertise the capability but reject
-                        // a specific operation (S3 cross-bucket without IAM,
-                        // WebDAV 501, Nextcloud cross-share MOVE) degrade to
-                        // streaming download → upload instead of failing the
-                        // node outright. Hard errors (auth, missing source)
-                        // still propagate via `record_failure`.
+                        // `shaped_file` never emits this kind. Production copy
+                        // uses `execute_copy_dag`, whose node boundary records
+                        // a typed fallback and then dispatches an observable
+                        // DownloadFile -> UploadFile graph. Keep this defensive
+                        // binding native-only so no hidden payload fallback can
+                        // re-enter through the single-file runner.
                         let mut guard = provider.lock().await;
                         let Some(p) = guard.as_mut() else {
                             return record_failure(
@@ -433,14 +795,8 @@ pub async fn execute_single_file_dag(
                                 FailureScope::File,
                             );
                         };
-                        match crate::copy_fallback::server_side_copy_with_fallback(
-                            p.as_mut(),
-                            &remote,
-                            &local,
-                        )
-                        .await
-                        {
-                            Ok(_outcome) => NodeOutcome::Completed,
+                        match p.server_side_copy(&remote, &local).await {
+                            Ok(()) => NodeOutcome::Completed,
                             Err(e) => record_failure(&first_error, e, FailureScope::File),
                         }
                     }
@@ -627,8 +983,403 @@ fn single_file_budget(built: &ShapedFileDag) -> TransferBudget {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::providers::{MultipartHandle, UploadedPart};
+    use crate::providers::{MultipartHandle, ProviderType, RemoteEntry, UploadedPart};
+    use crate::transfer_dag::observer::CollectingDagObserver;
     use crate::transfer_dag::{Capability, TransferCapabilities, TransferDagBuilder};
+
+    #[derive(Default)]
+    struct CopyMockState {
+        server_copy_calls: AtomicU64,
+        download_calls: AtomicU64,
+        upload_calls: AtomicU64,
+        files: StdMutex<HashMap<String, Vec<u8>>>,
+    }
+
+    struct DagCopyMockProvider {
+        supports_copy: bool,
+        server_copy_error: StdMutex<Option<ProviderError>>,
+        reported_size: u64,
+        state: Arc<CopyMockState>,
+    }
+
+    impl DagCopyMockProvider {
+        fn new(
+            supports_copy: bool,
+            server_copy_error: Option<ProviderError>,
+            reported_size: u64,
+        ) -> (Self, Arc<CopyMockState>) {
+            let state = Arc::new(CopyMockState::default());
+            state
+                .files
+                .lock()
+                .expect("copy mock files poisoned")
+                .insert("/src.bin".to_string(), b"hello aeroftp".to_vec());
+            (
+                Self {
+                    supports_copy,
+                    server_copy_error: StdMutex::new(server_copy_error),
+                    reported_size,
+                    state: Arc::clone(&state),
+                },
+                state,
+            )
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl StorageProvider for DagCopyMockProvider {
+        fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+            self
+        }
+
+        fn provider_type(&self) -> ProviderType {
+            ProviderType::S3
+        }
+
+        fn display_name(&self) -> String {
+            "dag-copy-mock".to_string()
+        }
+
+        async fn connect(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+
+        async fn disconnect(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+
+        fn is_connected(&self) -> bool {
+            true
+        }
+
+        async fn list(&mut self, _path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+            Ok(Vec::new())
+        }
+
+        async fn pwd(&mut self) -> Result<String, ProviderError> {
+            Ok("/".to_string())
+        }
+
+        async fn cd(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+
+        async fn cd_up(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+
+        async fn download(
+            &mut self,
+            remote_path: &str,
+            local_path: &str,
+            _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            self.state.download_calls.fetch_add(1, Ordering::SeqCst);
+            let data = self
+                .state
+                .files
+                .lock()
+                .expect("copy mock files poisoned")
+                .get(remote_path)
+                .cloned()
+                .ok_or_else(|| ProviderError::NotFound(remote_path.to_string()))?;
+            std::fs::write(local_path, data).map_err(ProviderError::IoError)
+        }
+
+        async fn download_to_bytes(&mut self, remote_path: &str) -> Result<Vec<u8>, ProviderError> {
+            self.state
+                .files
+                .lock()
+                .expect("copy mock files poisoned")
+                .get(remote_path)
+                .cloned()
+                .ok_or_else(|| ProviderError::NotFound(remote_path.to_string()))
+        }
+
+        async fn upload(
+            &mut self,
+            local_path: &str,
+            remote_path: &str,
+            _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            self.state.upload_calls.fetch_add(1, Ordering::SeqCst);
+            let data = std::fs::read(local_path).map_err(ProviderError::IoError)?;
+            self.state
+                .files
+                .lock()
+                .expect("copy mock files poisoned")
+                .insert(remote_path.to_string(), data);
+            Ok(())
+        }
+
+        async fn mkdir(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+
+        async fn delete(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+
+        async fn rmdir(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+
+        async fn rmdir_recursive(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+
+        async fn rename(&mut self, _from: &str, _to: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+
+        async fn stat(&mut self, _path: &str) -> Result<RemoteEntry, ProviderError> {
+            Err(ProviderError::NotSupported("stat".to_string()))
+        }
+
+        async fn size(&mut self, _path: &str) -> Result<u64, ProviderError> {
+            Ok(self.reported_size)
+        }
+
+        async fn exists(&mut self, _path: &str) -> Result<bool, ProviderError> {
+            Ok(true)
+        }
+
+        async fn keep_alive(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+
+        async fn server_info(&mut self) -> Result<String, ProviderError> {
+            Ok("dag-copy-mock".to_string())
+        }
+
+        fn supports_server_copy(&self) -> bool {
+            self.supports_copy
+        }
+
+        async fn server_copy(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+            self.state.server_copy_calls.fetch_add(1, Ordering::SeqCst);
+            if let Some(error) = self
+                .server_copy_error
+                .lock()
+                .expect("copy mock error poisoned")
+                .take()
+            {
+                return Err(error);
+            }
+            let mut files = self.state.files.lock().expect("copy mock files poisoned");
+            if let Some(data) = files.get(from).cloned() {
+                files.insert(to.to_string(), data);
+            }
+            Ok(())
+        }
+    }
+
+    fn copy_handle(provider: DagCopyMockProvider) -> CopyProviderHandle {
+        CopyProviderHandle::optional(Arc::new(Mutex::new(Some(
+            Box::new(provider) as Box<dyn StorageProvider>
+        ))))
+    }
+
+    #[tokio::test]
+    async fn production_copy_dispatches_one_native_node_with_zero_local_payload() {
+        let (provider, state) = DagCopyMockProvider::new(true, None, 13);
+        let observer = Arc::new(CollectingDagObserver::default());
+        let outcome = execute_copy_dag(
+            copy_handle(provider),
+            "/src.bin".to_string(),
+            "/dst.bin".to_string(),
+            Arc::clone(&observer) as Arc<dyn DagObserver>,
+        )
+        .await
+        .expect("native copy DAG");
+
+        assert_eq!(outcome.decision, CopyDecision::ServerSide);
+        assert_eq!(outcome.metrics.logical_bytes, 13);
+        assert_eq!(outcome.metrics.wire_bytes, 0);
+        assert_eq!(outcome.metrics.local_payload_bytes, 0);
+        assert_eq!(state.server_copy_calls.load(Ordering::SeqCst), 1);
+        assert_eq!(state.download_calls.load(Ordering::SeqCst), 0);
+        assert_eq!(state.upload_calls.load(Ordering::SeqCst), 0);
+        assert_eq!(
+            observer
+                .started_nodes()
+                .iter()
+                .filter(|(_, kind)| *kind == TransferNodeKind::ServerSideCopy)
+                .count(),
+            1
+        );
+        assert_eq!(observer.metrics(), outcome.metrics);
+    }
+
+    #[tokio::test]
+    async fn production_copy_without_capability_dispatches_download_then_upload() {
+        let (provider, state) = DagCopyMockProvider::new(false, None, 13);
+        let observer = Arc::new(CollectingDagObserver::default());
+        let outcome = execute_copy_dag(
+            copy_handle(provider),
+            "/src.bin".to_string(),
+            "/dst.bin".to_string(),
+            Arc::clone(&observer) as Arc<dyn DagObserver>,
+        )
+        .await
+        .expect("fallback copy DAG");
+
+        assert_eq!(
+            outcome.decision,
+            CopyDecision::DownloadUpload {
+                trigger: CopyFallbackTrigger::CapabilityUnavailable
+            }
+        );
+        assert_eq!(outcome.metrics.logical_bytes, 13);
+        assert_eq!(outcome.metrics.wire_bytes, 26);
+        assert_eq!(outcome.metrics.local_payload_bytes, 13);
+        assert_eq!(outcome.metrics.copy_fallbacks, 1);
+        assert_eq!(state.server_copy_calls.load(Ordering::SeqCst), 0);
+        assert_eq!(state.download_calls.load(Ordering::SeqCst), 1);
+        assert_eq!(state.upload_calls.load(Ordering::SeqCst), 1);
+        let transfer_kinds: Vec<TransferNodeKind> = observer
+            .started_nodes()
+            .into_iter()
+            .map(|(_, kind)| kind)
+            .filter(|kind| {
+                matches!(
+                    kind,
+                    TransferNodeKind::ServerSideCopy
+                        | TransferNodeKind::DownloadFile
+                        | TransferNodeKind::UploadFile
+                )
+            })
+            .collect();
+        assert_eq!(
+            transfer_kinds,
+            vec![TransferNodeKind::DownloadFile, TransferNodeKind::UploadFile]
+        );
+    }
+
+    #[tokio::test]
+    async fn recoverable_native_rejection_is_observed_before_payload_fallback() {
+        let (provider, state) = DagCopyMockProvider::new(
+            true,
+            Some(ProviderError::NotSupported("cross-bucket".to_string())),
+            13,
+        );
+        let observer = Arc::new(CollectingDagObserver::default());
+        let outcome = execute_copy_dag(
+            copy_handle(provider),
+            "/src.bin".to_string(),
+            "/dst.bin".to_string(),
+            Arc::clone(&observer) as Arc<dyn DagObserver>,
+        )
+        .await
+        .expect("rejected native copy falls back");
+
+        assert_eq!(
+            outcome.decision,
+            CopyDecision::DownloadUpload {
+                trigger: CopyFallbackTrigger::ServerRejected {
+                    kind: TransferErrorKind::RemoteIo
+                }
+            }
+        );
+        assert_eq!(outcome.metrics.logical_bytes, 13);
+        assert_eq!(outcome.metrics.wire_bytes, 26);
+        assert_eq!(outcome.metrics.local_payload_bytes, 13);
+        assert_eq!(state.server_copy_calls.load(Ordering::SeqCst), 1);
+        assert_eq!(state.download_calls.load(Ordering::SeqCst), 1);
+        assert_eq!(state.upload_calls.load(Ordering::SeqCst), 1);
+        let started = observer.started_nodes();
+        let native_shape_len = TransferDagBuilder::shaped_copy(&TransferCapabilities {
+            server_side_copy: Capability::Supported,
+            ..TransferCapabilities::default()
+        })
+        .dag
+        .nodes()
+        .len();
+        let initial_kinds: Vec<TransferNodeKind> = started
+            .iter()
+            .filter(|(id, _)| *id < native_shape_len)
+            .map(|(_, kind)| *kind)
+            .collect();
+        assert_eq!(
+            initial_kinds,
+            vec![
+                TransferNodeKind::DiscoverRemote,
+                TransferNodeKind::AcquireResource,
+                TransferNodeKind::ServerSideCopy
+            ],
+            "the rejected native graph must stop before its structural tail"
+        );
+        let server_id = started
+            .iter()
+            .find(|(_, kind)| *kind == TransferNodeKind::ServerSideCopy)
+            .map(|(id, _)| *id)
+            .expect("server copy node observed");
+        assert!(observer
+            .completed_nodes()
+            .contains(&(server_id, ObservedOutcome::Fallback)));
+        assert!(started
+            .iter()
+            .any(|(_, kind)| *kind == TransferNodeKind::DownloadFile));
+        assert!(started
+            .iter()
+            .any(|(_, kind)| *kind == TransferNodeKind::UploadFile));
+    }
+
+    #[tokio::test]
+    async fn permission_and_not_found_fail_at_file_node_without_fallback() {
+        for expected in [
+            ProviderError::PermissionDenied("403".to_string()),
+            ProviderError::NotFound("/src.bin".to_string()),
+        ] {
+            let (provider, state) = DagCopyMockProvider::new(true, Some(expected), 13);
+            let observer = Arc::new(CollectingDagObserver::default());
+            let error = execute_copy_dag(
+                copy_handle(provider),
+                "/src.bin".to_string(),
+                "/dst.bin".to_string(),
+                Arc::clone(&observer) as Arc<dyn DagObserver>,
+            )
+            .await
+            .expect_err("hard copy error");
+
+            assert!(matches!(
+                error,
+                ProviderError::PermissionDenied(_) | ProviderError::NotFound(_)
+            ));
+            assert_eq!(state.server_copy_calls.load(Ordering::SeqCst), 1);
+            assert_eq!(state.download_calls.load(Ordering::SeqCst), 0);
+            assert_eq!(state.upload_calls.load(Ordering::SeqCst), 0);
+            assert!(!observer.started_nodes().iter().any(|(_, kind)| matches!(
+                kind,
+                TransferNodeKind::DownloadFile | TransferNodeKind::UploadFile
+            )));
+            assert!(observer
+                .completed_nodes()
+                .iter()
+                .any(|(_, outcome)| *outcome == ObservedOutcome::Failed));
+        }
+    }
+
+    #[tokio::test]
+    async fn object_larger_than_five_gib_stays_on_native_provider_copy() {
+        let large_size = 5 * 1024 * 1024 * 1024 + 1;
+        let (provider, state) = DagCopyMockProvider::new(true, None, large_size);
+        let outcome = execute_copy_dag(
+            copy_handle(provider),
+            "/src.bin".to_string(),
+            "/dst.bin".to_string(),
+            Arc::new(crate::transfer_dag::NoopDagObserver),
+        )
+        .await
+        .expect("large native copy");
+
+        assert_eq!(outcome.decision, CopyDecision::ServerSide);
+        assert_eq!(outcome.metrics.logical_bytes, large_size);
+        assert_eq!(outcome.metrics.wire_bytes, 0);
+        assert_eq!(state.server_copy_calls.load(Ordering::SeqCst), 1);
+        assert_eq!(state.download_calls.load(Ordering::SeqCst), 0);
+        assert_eq!(state.upload_calls.load(Ordering::SeqCst), 0);
+    }
 
     #[test]
     fn shaped_upload_without_multipart_keeps_single_transfer_core() {

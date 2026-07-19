@@ -1,6 +1,6 @@
 # DAG Transfer Engine
 
-*Last updated: 2026-07-19. The engine is active in several production call
+*Last updated: 2026-07-20. The engine is active in several production call
 paths, but convergence is partial; this document records the paths that are
 actually reachable, not every shape that the builder can represent.*
 
@@ -27,7 +27,7 @@ The audit rule used here is:
 | Multi-file batch | `transfer_orchestrator::execute_batch` → `execute_batch_dag` (`src-tauri/src/transfer_orchestrator.rs:66-70`) | Graph from executor runtime capabilities (P1-01); capability-aware settings (P1-02); real per-part multipart wire I/O (P1-03) via shared `transfer_multipart` lifecycle | File-level parallelism for clone/session-pool providers; multipart batch files issue N wire `upload_part` calls with one begin/complete (or abort once after drain) |
 | Non-dry-run sync | `sync_tree_core` → `execute_sync_dag` (`src-tauri/src/sync.rs:1223-1238`) | Scan and planning happen before the graph; the graph wraps a precomputed plan and a serial file driver | DAG wrapper is active; file transfer remains serial by design; dry-run stays on the planning path |
 | Segmented download | `run_provider_segmented_download` (`src-tauri/src/providers/multi_thread.rs:290-310`) | Default is the legacy `JoinSet` range scheduler; `shaped_ranges` calls `execute_dag` only on the opt-in graph branch | Range I/O is real; DAG range scheduling requires `AEROFTP_RANGE_GRAPH=1`; GUI Auto may use one stream |
-| Same-provider copy | GUI/CLI copy commands → `server_side_copy_with_fallback` (`src-tauri/src/provider_commands.rs:5011`, `src-tauri/src/bin/aeroftp_cli.rs:32161`) | Native provider copy or download → upload fallback | Native copy avoids local payload bytes; normal copy is not orchestrated by `shaped_copy` |
+| Same-provider copy | GUI `provider_server_copy`, CLI `cp`, and CLI WebDAV `COPY` -> `execute_copy_dag` -> `TransferDagBuilder::shaped_copy` | One `ServerSideCopy` core, or observable `DownloadFile` -> `UploadFile`; recoverable native rejection emits typed fallback before the second shape | Native copy reports logical bytes with `wire_bytes=0` and `local_payload_bytes=0`; fallback reports both payload legs |
 | Cross-profile transfer | `cross_profile_transfer::copy_one_file_with_options` (`src-tauri/src/cross_profile_transfer.rs:123-167`) | Source download → local temp file → destination upload, with optional SFTP delta and optional segmented source helper | Provider-owned/temp-file bridge; not one shared transfer DAG |
 
 The MCP surface can reuse GUI command paths, but the engine does not make all
@@ -80,7 +80,7 @@ waits), are typed as `TransferErrorKind::Timeout`, and are distinct from
 external cancel (`Cancelled`). Production keeps `node_timeout = None` so long
 valid transfers are not cut by an arbitrary engine limit (`DAG-P0-05`).
 
-Three production wrappers call the core:
+Four production wrappers call the core:
 
 - `transfer_dag_single_file` builds `shaped_file` and binds real single-file
   provider operations;
@@ -88,10 +88,11 @@ Three production wrappers call the core:
   existing `TransferExecutor` session contract;
 - `transfer_dag_sync` builds `from_sync_plan_shaped` after scan/planning and
   adapts graph nodes to a serial per-file driver.
+- `transfer_dag_single_file::execute_copy_dag` builds `shaped_copy` for GUI,
+  CLI `cp`, and the CLI WebDAV bridge.
 
-The builder also exposes `shaped_copy` and `shaped_ranges`. Those shapes are
-useful and tested, but their presence is not evidence that the normal copy
-command or default range path uses them.
+The builder also exposes `shaped_ranges`. That shape is useful and tested, but
+its presence is not evidence that the default range path uses it.
 
 ## The shapes and their status
 
@@ -101,7 +102,7 @@ command or default range path uses them.
 | Multipart single-file | `shaped_file(Upload, caps, size)` → `UploadPart × N` | Active when the single-file runner receives multipart capabilities; independent wire workers only for the provider set listed below |
 | Batch | `from_batch_shaped(items, caps)` | Active graph wrapper; caps from `TransferExecutor::transfer_capabilities()`. Multipart files run real per-part wire I/O (DAG-P1-03); plain upload/download stay whole-file |
 | Sync | `from_sync_plan_shaped(plan, caps)` | Active for non-dry-run sync, with default capabilities, precomputed scan/plan, and serial file execution |
-| Copy | `shaped_copy(caps)` | Builder/test/forward-compatible runner shape; normal copy commands use `server_side_copy_with_fallback` directly |
+| Copy | `shaped_copy(caps)` | Active for GUI copy, CLI `cp`, and CLI WebDAV `COPY`; native rejection fallback is observed and then runs an explicit two-node payload core |
 | Segmented download | `shaped_ranges(N)` | Active only from the `AEROFTP_RANGE_GRAPH=1` branch; default remains the `JoinSet` scheduler |
 
 The usual seven-node envelope is a graph representation, not a guarantee that
@@ -310,17 +311,30 @@ a single stream.
 
 ## Server-side copy and cross-profile copy
 
-The normal same-provider copy feature is real, but it is not currently a
-`shaped_copy` production graph. `server_side_copy_with_fallback` is the shared
-entry point for GUI and CLI copy call sites. It first tries the provider's
-native `server_copy` when `supports_server_copy()` is true, then falls back to
-download → upload only for the explicitly recoverable capability failures.
-Authentication, missing-source, quota, and other hard errors remain errors.
+Normal same-provider copy is a production `shaped_copy` graph. GUI
+`provider_server_copy`, CLI `cp`, and the CLI WebDAV `COPY` handler call
+`execute_copy_dag`, which snapshots `transfer_capabilities()` and builds one
+of two transfer cores:
 
-The `shaped_copy` builder and the `ServerSideCopy` runner branch model the
-desired one-API-slot graph, and the builder has unit tests for both native and
-fallback shapes. The normal copy commands do not construct that graph, so the
-engine must not claim a unified copy node or S3 `UploadPartCopy` fan-out.
+1. `ServerSideCopy`, reserving an API slot and no file/disk payload resource;
+2. `DownloadFile` -> `UploadFile`, sharing one temporary path and the existing
+   directional file/disk resource model.
+
+The native node calls `StorageProvider::server_side_copy`, so S3 and B2 retain
+their provider-owned multipart server copy above 5 GiB. A recoverable
+capability-boundary rejection is classified only by
+`should_attempt_copy_fallback`, completed as an observed copy fallback, and
+then followed by the explicit payload graph. Permission, 404, auth, quota,
+transient transport, I/O, and cancel errors fail the `ServerSideCopy` node at
+`FailureScope::File` and do not dispatch either payload leg.
+
+The combined copy metric snapshot separates `logical_bytes`, `wire_bytes`,
+and `local_payload_bytes`. Native copy reports zero for both local data-path
+fields. Download-upload reports one logical object, two wire legs, and one
+locally materialized temporary payload. The legacy
+`server_side_copy_with_fallback` helper remains behavior-compatible for
+external/library callers and its policy regression tests, but no production
+copy endpoint calls it.
 
 Cross-profile transfer is a different operation: it downloads the source into
 a local temporary file and uploads it to the destination. It may select the
@@ -369,8 +383,8 @@ GUI progress pressure is governed by the shared `ProgressGovernor`
 - CLI `indicatif`, MCP progress notifications, and archive/sync-scan
   throttles remain separate product domains.
 
-The executor's bytes and retries fields remain zero until the corresponding
-bindings are wired (P2 telemetry).
+Copy now populates logical, wire, local-payload, and copy-fallback metrics.
+Other executor byte and retry fields remain incomplete until P2 telemetry.
 
 ## Capability contract
 
@@ -382,9 +396,9 @@ from the live provider plus clone/pool feasibility
 Provider batch settings resolve through
 `resolve_provider_transfer_runtime` and its single
 `resolve_transfer_settings_for_capabilities` pass (DAG-P1-02). The sync runner still
-uses `TransferCapabilities::default()` at its documented call site. The normal
-copy helper uses the provider's `supports_server_copy()` and `server_copy()`
-methods rather than `shaped_copy`'s capability snapshot.
+uses `TransferCapabilities::default()` at its documented call site. The copy
+runner consumes the live provider snapshot before `shaped_copy`; the native
+node calls `server_side_copy`.
 
 The trait methods below describe available provider primitives; they do not
 by themselves prove that every production operation invokes them:
@@ -413,11 +427,11 @@ operation.
 | `src-tauri/src/transfer_dag/resources.rs` | Per-operation budgets and resource permits |
 | `src-tauri/src/transfer_dag/adaptive.rs` | AIMD controller and congestion classification |
 | `src-tauri/src/transfer_dag/observer.rs` | Observer abstraction and adapters |
-| `src-tauri/src/transfer_dag_single_file.rs` | Real shaped single-file runner |
+| `src-tauri/src/transfer_dag_single_file.rs` | Real shaped single-file and same-provider copy runners |
 | `src-tauri/src/transfer_dag_batch.rs` | Batch graph wrapper and file-session adapter |
 | `src-tauri/src/transfer_dag_sync.rs` | Non-dry-run sync graph wrapper and serial driver |
 | `src-tauri/src/providers/multi_thread.rs` | Default range scheduler and opt-in DAG range runner |
-| `src-tauri/src/copy_fallback.rs` | Normal native-copy/fallback policy |
+| `src-tauri/src/copy_fallback.rs` | Authoritative copy-fallback classifier and legacy compatibility helper |
 | `src-tauri/src/cross_profile_transfer.rs` | Temp-file cross-profile bridge |
 
 `provider_transfer_executor.rs` remains active for batch session execution,
@@ -431,12 +445,12 @@ is an explicit reminder that the transfer architecture is transitional.
 | Rollout flags for the early DAG phases | The three `AEROFTP_TRANSFER_ENGINE_DAG_*` flags were removed; the single-file router still has an explicit legacy override |
 | Hand-written `JoinSet` batch orchestrator | `execute_batch_dag` is the batch entry point |
 | Provider-owned multipart in the old single-file paths | The shaped single-file runner owns the multipart lifecycle where its call path reaches it |
-| Copy behavior spread across provider call sites | Native copy/fallback policy is shared by `server_side_copy_with_fallback`, but is not yet a production `ServerSideCopy` DAG node |
+| Copy behavior spread across provider call sites | GUI, CLI `cp`, and WebDAV `COPY` share `execute_copy_dag`; native copy and both fallback payload legs are observable nodes |
 | Range graph migration | `shaped_ranges` exists and is real, but the default remains the `JoinSet` scheduler |
 | One fully converged engine for every surface | Shared core plus selected wrappers; batch/sync/copy/cross-profile still have documented adapters and limits |
 
-For the planned next steps (resource credits, capability-aware batch, real
-sync concurrency, production shaped copy, and global resource governance), see
+For the planned next steps (real sync concurrency, complete telemetry, and
+global resource governance), see
 the audit appendix at
 `docs/dev/roadmap/APPENDIX-DAG-ENGINE_Parallel-Transfers-Audit.md`.
 Bounded dispatch (P0-04), typed outcomes (P0-03), and graph-scoped
