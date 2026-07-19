@@ -417,6 +417,30 @@ impl BoxProvider {
         UPLOAD_BASE
     }
 
+    /// Delete a chunked upload session without masking the transfer error that
+    /// triggered cleanup. A disconnected provider has no usable primary
+    /// lifecycle owner, so cleanup becomes an explicit no-op.
+    async fn abort_upload_session_best_effort(&self, session_id: &str) {
+        if !self.connected {
+            return;
+        }
+        if let Ok(token) = self.get_token().await {
+            if let Ok(header) = Self::bearer_header(&token) {
+                let abort_url = format!(
+                    "{}/files/upload_sessions/{}",
+                    self.upload_api_base(),
+                    session_id
+                );
+                let _ = self
+                    .client
+                    .delete(&abort_url)
+                    .header(AUTHORIZATION, header)
+                    .send()
+                    .await;
+            }
+        }
+    }
+
     /// Get access token from OAuth manager (returns SecretString for memory zeroization)
     async fn get_token(&self) -> Result<secrecy::SecretString, ProviderError> {
         #[cfg(test)]
@@ -2807,6 +2831,11 @@ impl StorageProvider for BoxProvider {
         // this almost always matches; surface a typed error otherwise so
         // the runner aborts cleanly instead of producing corrupt commits.
         if meta.part != BOX_ADVERTISED_PART_SIZE {
+            // `begin_multipart_upload` has not returned a handle yet, so the
+            // graph runner cannot perform its normal abort. The primary must
+            // clean up the already-created mismatched session here.
+            self.abort_upload_session_best_effort(&meta.session_id)
+                .await;
             return Err(ProviderError::TransferFailed(format!(
                 "Box server returned part_size {} but the runner expects {}; \
                  cannot proceed without runner re-shaping (out-of-scope for S2)",
@@ -3027,26 +3056,11 @@ impl StorageProvider for BoxProvider {
         &mut self,
         handle: MultipartHandle,
     ) -> Result<(), ProviderError> {
-        // Connected check is intentional: best-effort abort must not fail
-        // closed when the session is already torn down, but it still needs a
-        // usable client + token path. Ignore transport errors so abort never
-        // masks the original transfer failure.
+        // The helper has an explicit disconnected no-op and ignores auth or
+        // transport failures so abort never masks the original failure.
         let meta = BoxMultipartMeta::decode(&handle.upload_id)?;
-        if let Ok(token) = self.get_token().await {
-            if let Ok(header) = Self::bearer_header(&token) {
-                let abort_url = format!(
-                    "{}/files/upload_sessions/{}",
-                    self.upload_api_base(),
-                    meta.session_id
-                );
-                let _ = self
-                    .client
-                    .delete(&abort_url)
-                    .header(AUTHORIZATION, header)
-                    .send()
-                    .await;
-            }
-        }
+        self.abort_upload_session_best_effort(&meta.session_id)
+            .await;
         Ok(())
     }
 }
@@ -3733,24 +3747,43 @@ mod tests {
 
     #[tokio::test]
     async fn begin_rejects_server_part_size_mismatch() {
-        use axum::{http::StatusCode, routing::post, Router};
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
 
-        let app = Router::new().route(
-            "/files/upload_sessions",
-            post(|| async {
-                (
-                    StatusCode::OK,
-                    axum::Json(serde_json::json!({
-                        "id": "sess-mismatch",
-                        "part_size": 4 * 1024 * 1024,
-                        "session_endpoints": {
-                            "upload_part": "http://127.0.0.1/part",
-                            "commit": "http://127.0.0.1/commit"
+        use axum::{http::StatusCode, routing::delete, routing::post, Router};
+
+        let abort_hits = Arc::new(AtomicUsize::new(0));
+        let abort_hits_h = Arc::clone(&abort_hits);
+        let app = Router::new()
+            .route(
+                "/files/upload_sessions",
+                post(|| async {
+                    (
+                        StatusCode::OK,
+                        axum::Json(serde_json::json!({
+                            "id": "sess-mismatch",
+                            "part_size": 4 * 1024 * 1024,
+                            "session_endpoints": {
+                                "upload_part": "http://127.0.0.1/part",
+                                "commit": "http://127.0.0.1/commit"
+                            }
+                        })),
+                    )
+                }),
+            )
+            .route(
+                "/files/upload_sessions/{id}",
+                delete(
+                    move |axum::extract::Path(id): axum::extract::Path<String>| {
+                        let abort_hits = Arc::clone(&abort_hits_h);
+                        async move {
+                            assert_eq!(id, "sess-mismatch");
+                            abort_hits.fetch_add(1, Ordering::SeqCst);
+                            StatusCode::NO_CONTENT
                         }
-                    })),
-                )
-            }),
-        );
+                    },
+                ),
+            );
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
             .await
             .expect("bind");
@@ -3776,6 +3809,11 @@ mod tests {
         assert!(
             msg.contains("part_size") || msg.contains("runner expects"),
             "unexpected error: {msg}"
+        );
+        assert_eq!(
+            abort_hits.load(Ordering::SeqCst),
+            1,
+            "a rejected server part size must clean up the opened session"
         );
 
         server.abort();
