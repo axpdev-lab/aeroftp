@@ -36,6 +36,37 @@ const PCLOUD_MULTIPART_THRESHOLD: u64 = 4 * 1024 * 1024;
 /// against pCloud's ~30 ms RTT on the EU/US APIs.
 const PCLOUD_MULTIPART_PART_SIZE: u64 = 4 * 1024 * 1024;
 
+/// pCloud JSON result code for throttle (often inside HTTP 200).
+const PCLOUD_RESULT_THROTTLE: u32 = 4006;
+
+/// Live DAG-P1-05C blocker: concurrent `upload_write` on one `uploadid`
+/// returns result `2068` ("Error writing to upload"). Serial multipart still
+/// works (with occasional retry). Promotion to `HttpClonePool` is therefore
+/// withheld; executor stays `LockedSingle`.
+#[allow(dead_code)]
+const PCLOUD_RESULT_WRITE_ERROR: u32 = 2068;
+
+/// True when a pCloud API `result` code means the request was throttled.
+fn pcloud_is_throttle_result(result: u32) -> bool {
+    result == PCLOUD_RESULT_THROTTLE
+}
+
+/// Provider-boundary throttle error that classifies as typed DAG
+/// [`crate::transfer_dag::TransferErrorKind::RateLimited`].
+///
+/// Controllers must never parse pCloud-specific strings. The message therefore
+/// carries a stable `rate limit` phrase (plus the numeric code) so
+/// `TransferError::from_provider` maps it once at the adapter boundary.
+fn pcloud_throttle_error(context: &str, error: Option<&str>) -> ProviderError {
+    let detail = error.unwrap_or("Throttle limit reached");
+    ProviderError::TransferFailed(format!(
+        "pCloud rate limit (result {}): {} — {}",
+        PCLOUD_RESULT_THROTTLE,
+        context,
+        sanitize_api_error(detail)
+    ))
+}
+
 /// pCloud folder metadata
 #[derive(Debug, Deserialize)]
 #[allow(dead_code)]
@@ -229,6 +260,14 @@ pub struct PCloudProvider {
     /// Server profile identifier owning these OAuth tokens. Empty when the
     /// caller has not bound a profile (legacy singleton key path). Issue #214.
     profile_id: String,
+    /// Test-only API base. `None` keeps production region URL from config.
+    /// Production connect paths never set this.
+    #[cfg(test)]
+    api_base_override: Option<String>,
+    /// Test-only bearer token for local HTTP fixtures (bypasses vault).
+    /// Never set on production connect paths; never logged or put in handles.
+    #[cfg(test)]
+    test_access_token: Option<String>,
 }
 
 impl PCloudProvider {
@@ -247,7 +286,19 @@ impl PCloudProvider {
             current_path: "/".to_string(),
             account_email: None,
             profile_id: String::new(),
+            #[cfg(test)]
+            api_base_override: None,
+            #[cfg(test)]
+            test_access_token: None,
         }
+    }
+
+    /// Connected provider for unit tests (no network).
+    #[cfg(test)]
+    fn connected_for_test(config: PCloudConfig) -> Self {
+        let mut p = Self::new(config);
+        p.connected = true;
+        p
     }
 
     /// Bind this provider to a server profile so OAuth tokens are stored
@@ -268,9 +319,22 @@ impl PCloudProvider {
         .with_profile_id(&self.profile_id)
     }
 
+    /// Production region base, or the test-only local fixture base when set.
+    fn api_base(&self) -> &str {
+        #[cfg(test)]
+        if let Some(ref base) = self.api_base_override {
+            return base.as_str();
+        }
+        self.config.api_base()
+    }
+
     /// Get Authorization header with Bearer token (token never exposed in URL)
     async fn auth_header(&self) -> Result<String, ProviderError> {
         use secrecy::ExposeSecret;
+        #[cfg(test)]
+        if let Some(ref tok) = self.test_access_token {
+            return Ok(format!("Bearer {tok}"));
+        }
         let config = self.oauth_config();
         let secret = self
             .oauth_manager
@@ -335,16 +399,34 @@ impl PCloudProvider {
         base_url: &str,
     ) -> Result<reqwest::Response, ProviderError> {
         use secrecy::ExposeSecret;
-        let config = self.oauth_config();
-        let token = self
-            .oauth_manager
-            .get_valid_token(&config)
-            .await
-            .map_err(|e| {
-                ProviderError::AuthenticationFailed(format!("pCloud token error: {}", e))
-            })?;
+        #[cfg(test)]
+        let token_raw: String = if let Some(ref tok) = self.test_access_token {
+            tok.clone()
+        } else {
+            let config = self.oauth_config();
+            self.oauth_manager
+                .get_valid_token(&config)
+                .await
+                .map_err(|e| {
+                    ProviderError::AuthenticationFailed(format!("pCloud token error: {}", e))
+                })?
+                .expose_secret()
+                .to_string()
+        };
+        #[cfg(not(test))]
+        let token_raw: String = {
+            let config = self.oauth_config();
+            self.oauth_manager
+                .get_valid_token(&config)
+                .await
+                .map_err(|e| {
+                    ProviderError::AuthenticationFailed(format!("pCloud token error: {}", e))
+                })?
+                .expose_secret()
+                .to_string()
+        };
         let sep = if base_url.contains('?') { "&" } else { "?" };
-        let url = format!("{}{}access_token={}", base_url, sep, token.expose_secret());
+        let url = format!("{}{}access_token={}", base_url, sep, token_raw);
         let request =
             self.client.get(&url).build().map_err(|e| {
                 ProviderError::NetworkError(format!("Failed to build request: {}", e))
@@ -417,6 +499,9 @@ impl PCloudProvider {
                 2005 | 2009 | 2010 => ProviderError::NotFound(msg),
                 2003 | 2028 => ProviderError::PermissionDenied(msg),
                 2004 => ProviderError::AlreadyExists(msg),
+                // 4006: "Throttle limit reached" — often inside HTTP 200 JSON.
+                // Map through a stable rate-limit phrase so AIMD sees RateLimited.
+                PCLOUD_RESULT_THROTTLE => pcloud_throttle_error("API", Some(msg.as_str())),
                 _ => ProviderError::ServerError(msg),
             });
         }
@@ -437,7 +522,7 @@ impl PCloudProvider {
         };
         let url = format!(
             "{}/listfolder?path={}&nofiles=1",
-            self.config.api_base(),
+            self.api_base(),
             urlencoding::encode(&normalised)
         );
         let auth = self.auth_header().await?;
@@ -459,7 +544,7 @@ impl PCloudProvider {
                 // Create the missing parent and re-resolve.
                 let create_url = format!(
                     "{}/createfolderifnotexists?path={}",
-                    self.config.api_base(),
+                    self.api_base(),
                     urlencoding::encode(&normalised)
                 );
                 let create_resp: PCloudResponse = self
@@ -489,7 +574,7 @@ impl PCloudProvider {
     /// non-zero `result` or omits the id so the runner does not try to
     /// proceed against a phantom session.
     async fn upload_create(&self) -> Result<u64, ProviderError> {
-        let url = format!("{}/upload_create", self.config.api_base());
+        let url = format!("{}/upload_create", self.api_base());
         let auth = self.auth_header().await?;
         let resp: PCloudUploadCreateResponse = self
             .get_with_retry(&url, &auth)
@@ -497,6 +582,12 @@ impl PCloudProvider {
             .json()
             .await
             .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
+        if pcloud_is_throttle_result(resp.result) {
+            return Err(pcloud_throttle_error(
+                "upload_create",
+                resp.error.as_deref(),
+            ));
+        }
         if resp.result != 0 {
             return Err(ProviderError::ServerError(sanitize_api_error(
                 &resp
@@ -533,7 +624,7 @@ impl StorageProvider for PCloudProvider {
     }
 
     async fn connect(&mut self) -> Result<(), ProviderError> {
-        let url = format!("{}/userinfo", self.config.api_base());
+        let url = format!("{}/userinfo", self.api_base());
         let auth = self.auth_header().await?;
         let resp = self.get_with_retry(&url, &auth).await?;
 
@@ -579,7 +670,7 @@ impl StorageProvider for PCloudProvider {
         // The API does not support offset/limit parameters for listfolder.
         let url = format!(
             "{}/listfolder?path={}",
-            self.config.api_base(),
+            self.api_base(),
             urlencoding::encode(&resolved)
         );
 
@@ -633,7 +724,7 @@ impl StorageProvider for PCloudProvider {
         // Verify folder exists
         let url = format!(
             "{}/listfolder?path={}&nofiles=1",
-            self.config.api_base(),
+            self.api_base(),
             urlencoding::encode(&new_path)
         );
 
@@ -679,7 +770,7 @@ impl StorageProvider for PCloudProvider {
         // Step 1: Get download link
         let url = format!(
             "{}/getfilelink?path={}",
-            self.config.api_base(),
+            self.api_base(),
             urlencoding::encode(&resolved)
         );
 
@@ -760,7 +851,7 @@ impl StorageProvider for PCloudProvider {
         // Step 1: Get download link (same as download())
         let url = format!(
             "{}/getfilelink?path={}",
-            self.config.api_base(),
+            self.api_base(),
             urlencoding::encode(&resolved)
         );
 
@@ -811,7 +902,7 @@ impl StorageProvider for PCloudProvider {
         // Step 1: Get download link
         let url = format!(
             "{}/getfilelink?path={}",
-            self.config.api_base(),
+            self.api_base(),
             urlencoding::encode(&resolved)
         );
 
@@ -902,7 +993,7 @@ impl StorageProvider for PCloudProvider {
 
         let url = format!(
             "{}/uploadfile?path={}&filename={}&nopartial=1",
-            self.config.api_base(),
+            self.api_base(),
             urlencoding::encode(dir_path),
             urlencoding::encode(file_name)
         );
@@ -952,7 +1043,7 @@ impl StorageProvider for PCloudProvider {
         let resolved = self.resolve_path(path);
         let url = format!(
             "{}/createfolder?path={}",
-            self.config.api_base(),
+            self.api_base(),
             urlencoding::encode(&resolved)
         );
 
@@ -975,7 +1066,7 @@ impl StorageProvider for PCloudProvider {
         // PA-007: Try deletefile first; if it fails, fall back to deletefolder
         let url = format!(
             "{}/deletefile?path={}",
-            self.config.api_base(),
+            self.api_base(),
             urlencoding::encode(&resolved)
         );
 
@@ -993,7 +1084,7 @@ impl StorageProvider for PCloudProvider {
         // Fall back to deletefolder for directory paths
         let url = format!(
             "{}/deletefolder?path={}",
-            self.config.api_base(),
+            self.api_base(),
             urlencoding::encode(&resolved)
         );
 
@@ -1012,7 +1103,7 @@ impl StorageProvider for PCloudProvider {
         let resolved = self.resolve_path(path);
         let url = format!(
             "{}/deletefolderrecursive?path={}",
-            self.config.api_base(),
+            self.api_base(),
             urlencoding::encode(&resolved)
         );
 
@@ -1074,7 +1165,7 @@ impl StorageProvider for PCloudProvider {
         // Try file rename first
         let url = format!(
             "{}/renamefile?path={}&topath={}",
-            self.config.api_base(),
+            self.api_base(),
             urlencoding::encode(&from_resolved),
             urlencoding::encode(&to_resolved)
         );
@@ -1093,7 +1184,7 @@ impl StorageProvider for PCloudProvider {
         // Try folder rename
         let url = format!(
             "{}/renamefolder?path={}&topath={}",
-            self.config.api_base(),
+            self.api_base(),
             urlencoding::encode(&from_resolved),
             urlencoding::encode(&to_resolved)
         );
@@ -1116,7 +1207,7 @@ impl StorageProvider for PCloudProvider {
         // PA-006: Try stat first (works for both files and folders in pCloud API)
         let url = format!(
             "{}/stat?path={}",
-            self.config.api_base(),
+            self.api_base(),
             urlencoding::encode(&resolved)
         );
 
@@ -1131,7 +1222,7 @@ impl StorageProvider for PCloudProvider {
         if resp.result != 0 {
             let url = format!(
                 "{}/listfolder?path={}&nofiles=1",
-                self.config.api_base(),
+                self.api_base(),
                 urlencoding::encode(&resolved)
             );
 
@@ -1206,12 +1297,12 @@ impl StorageProvider for PCloudProvider {
         Ok(format!(
             "pCloud ({}) - {}",
             self.config.region.to_uppercase(),
-            self.config.api_base()
+            self.api_base()
         ))
     }
 
     async fn storage_info(&mut self) -> Result<StorageInfo, ProviderError> {
-        let url = format!("{}/userinfo", self.config.api_base());
+        let url = format!("{}/userinfo", self.api_base());
         let auth = self.auth_header().await?;
         let info: PCloudUserInfo = self
             .get_with_retry(&url, &auth)
@@ -1255,7 +1346,7 @@ impl StorageProvider for PCloudProvider {
         // pCloud API: getfilepublink with optional expire, linkpassword, shortlink (Premium)
         let mut url = format!(
             "{}/getfilepublink?path={}",
-            self.config.api_base(),
+            self.api_base(),
             urlencoding::encode(&resolved)
         );
         if let Some(secs) = options.expires_in_secs {
@@ -1300,7 +1391,7 @@ impl StorageProvider for PCloudProvider {
         let resolved = self.resolve_path(path);
         let auth = self.auth_header().await?;
 
-        let list_url = format!("{}/listpublinks", self.config.api_base());
+        let list_url = format!("{}/listpublinks", self.api_base());
         let links_resp: PCloudPubLinksResponse = self
             .get_with_retry(&list_url, &auth)
             .await?
@@ -1354,7 +1445,7 @@ impl StorageProvider for PCloudProvider {
 
         // PA-001 (CRITICAL): pCloud deletepublink requires `linkid`, not path.
         // First, list all public links to find the one matching this path.
-        let list_url = format!("{}/listpublinks", self.config.api_base());
+        let list_url = format!("{}/listpublinks", self.api_base());
 
         let links_resp: PCloudPubLinksResponse = self
             .get_with_retry(&list_url, &auth)
@@ -1397,11 +1488,7 @@ impl StorageProvider for PCloudProvider {
             })?;
 
         // Now delete using the correct linkid parameter
-        let delete_url = format!(
-            "{}/deletepublink?linkid={}",
-            self.config.api_base(),
-            link_id
-        );
+        let delete_url = format!("{}/deletepublink?linkid={}", self.api_base(), link_id);
 
         let resp: PCloudResponse = self
             .get_with_retry(&delete_url, &auth)
@@ -1437,7 +1524,7 @@ impl StorageProvider for PCloudProvider {
         // Try copyfile first
         let url = format!(
             "{}/copyfile?path={}&topath={}",
-            self.config.api_base(),
+            self.api_base(),
             urlencoding::encode(&from_resolved),
             urlencoding::encode(&to_resolved)
         );
@@ -1456,7 +1543,7 @@ impl StorageProvider for PCloudProvider {
         // Try copyfolder
         let url = format!(
             "{}/copyfolder?path={}&topath={}",
-            self.config.api_base(),
+            self.api_base(),
             urlencoding::encode(&from_resolved),
             urlencoding::encode(&to_resolved)
         );
@@ -1480,7 +1567,7 @@ impl StorageProvider for PCloudProvider {
         let resolved = self.resolve_path(path);
         let url = format!(
             "{}/getthumblink?path={}&size=256x256",
-            self.config.api_base(),
+            self.api_base(),
             urlencoding::encode(&resolved)
         );
 
@@ -1533,7 +1620,7 @@ impl StorageProvider for PCloudProvider {
         let resolved = self.resolve_path(path);
         let url = format!(
             "{}/listrevisions?path={}",
-            self.config.api_base(),
+            self.api_base(),
             urlencoding::encode(&resolved)
         );
 
@@ -1576,7 +1663,7 @@ impl StorageProvider for PCloudProvider {
         // Get download link for specific revision (query param auth)
         let url = format!(
             "{}/getfilelink?path={}&revisionid={}",
-            self.config.api_base(),
+            self.api_base(),
             urlencoding::encode(&resolved),
             version_id
         );
@@ -1630,7 +1717,7 @@ impl StorageProvider for PCloudProvider {
         let resolved = self.resolve_path(path);
         let url = format!(
             "{}/checksumfile?path={}",
-            self.config.api_base(),
+            self.api_base(),
             urlencoding::encode(&resolved)
         );
 
@@ -1682,7 +1769,7 @@ impl StorageProvider for PCloudProvider {
         // and save it to the user's account. This is NOT the same as client-side download.
         let api_url = format!(
             "{}/downloadfile?url={}&path={}",
-            self.config.api_base(),
+            self.api_base(),
             urlencoding::encode(url),
             urlencoding::encode(&resolved)
         );
@@ -1710,7 +1797,7 @@ impl StorageProvider for PCloudProvider {
         // PA-009: pCloud returns all items in a single recursive response (no pagination)
         let url = format!(
             "{}/listfolder?path={}&recursive=1",
-            self.config.api_base(),
+            self.api_base(),
             urlencoding::encode(&resolved)
         );
 
@@ -1742,6 +1829,9 @@ impl StorageProvider for PCloudProvider {
             // IP. Keeping the fan-out at 2 leaves slack for the runner's
             // commit + abort calls without tripping `4006 Throttle limit
             // reached`.
+            // Hints still advertise fan-out 2 for future promotion, but the
+            // executor stays LockedSingle after live DAG-P1-05C evidence that
+            // concurrent upload_write on one uploadid returns result 2068.
             multipart_max_parallel: 2,
             supports_resume_download: true,
             supports_resume_upload: true,
@@ -1757,8 +1847,10 @@ impl StorageProvider for PCloudProvider {
     //      parent + `name` + `total` + `part` so subsequent calls don't
     //      need to re-resolve the path.
     //   2. `upload_write?uploadid=N&uploadoffset=M` PUT with the raw chunk
-    //      body. pCloud accepts independent offsets so the runner can
-    //      fan out up to `multipart_max_parallel` parallel writes.
+    //      body. Offsets are handle-derived. Live evidence (DAG-P1-05C)
+    //      shows concurrent writes on the same uploadid return result
+    //      2068, so the executor remains LockedSingle even though hints
+    //      advertise multipart_max_parallel=2.
     //   3. `upload_save?uploadid=N&folderid=Y&name=Z` finalises and atomically
     //      moves the staged bytes into place. Idempotent: a repeated call
     //      on the same uploadid returns the same fileid.
@@ -1843,9 +1935,13 @@ impl StorageProvider for PCloudProvider {
             )));
         }
 
+        // Contract: `uploadid` + immutable handle-derived `uploadoffset`.
+        // Live DAG-P1-05C tried adding `uploadsize=data.len()`; concurrent
+        // writes still returned 2068 and serial demoted runs did not improve,
+        // so the unverified parameter is not sent (baton: no blind add).
         let url = format!(
             "{}/upload_write?uploadid={}&uploadoffset={}",
-            self.config.api_base(),
+            self.api_base(),
             meta.uploadid,
             offset
         );
@@ -1879,12 +1975,18 @@ impl StorageProvider for PCloudProvider {
             .json()
             .await
             .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
+        if pcloud_is_throttle_result(parsed.result) {
+            return Err(pcloud_throttle_error(
+                &format!("upload_write part {part_number}"),
+                parsed.error.as_deref(),
+            ));
+        }
         if parsed.result != 0 {
             return Err(ProviderError::TransferFailed(format!(
                 "pCloud upload_write part {} returned result {}: {}",
                 part_number,
                 parsed.result,
-                parsed.error.unwrap_or_default()
+                sanitize_api_error(&parsed.error.unwrap_or_default())
             )));
         }
         Ok(UploadedPart {
@@ -1913,7 +2015,7 @@ impl StorageProvider for PCloudProvider {
 
         let url = format!(
             "{}/upload_save?uploadid={}&folderid={}&name={}",
-            self.config.api_base(),
+            self.api_base(),
             meta.uploadid,
             meta.folderid,
             urlencoding::encode(&meta.name)
@@ -1938,7 +2040,7 @@ impl StorageProvider for PCloudProvider {
         // session. Re-raising would mask the original transfer error.
         let url = format!(
             "{}/upload_delete?uploadid={}",
-            self.config.api_base(),
+            self.api_base(),
             meta.uploadid
         );
         if let Ok(auth) = self.auth_header().await {
@@ -1973,7 +2075,7 @@ impl PCloudProvider {
     /// API: GET trash_list?access_token=TOKEN: returns metadata.contents[]
     /// Note: pCloud trash/revisions endpoints reject Bearer header: must use query param auth.
     pub async fn list_trash(&self) -> Result<Vec<RemoteEntry>, ProviderError> {
-        let url = format!("{}/trash_list?recursive=1", self.config.api_base());
+        let url = format!("{}/trash_list?recursive=1", self.api_base());
         let resp: PCloudResponse = self
             .get_with_token_param(&url)
             .await?
@@ -2027,7 +2129,7 @@ impl PCloudProvider {
     /// `id` is the fileid or folderid from the trash listing metadata.
     pub async fn restore_from_trash(&self, id: &str, is_folder: bool) -> Result<(), ProviderError> {
         let param = if is_folder { "folderid" } else { "fileid" };
-        let url = format!("{}/trash_restore?{}={}", self.config.api_base(), param, id);
+        let url = format!("{}/trash_restore?{}={}", self.api_base(), param, id);
         let resp: PCloudSimpleResponse = self
             .get_with_token_param(&url)
             .await?
@@ -2048,7 +2150,7 @@ impl PCloudProvider {
 
     /// Empty the entire pCloud trash/recycle bin.
     pub async fn empty_trash(&self) -> Result<(), ProviderError> {
-        let url = format!("{}/trash_clear", self.config.api_base());
+        let url = format!("{}/trash_clear", self.api_base());
         let resp: PCloudSimpleResponse = self
             .get_with_token_param(&url)
             .await?
@@ -2075,7 +2177,7 @@ impl PCloudProvider {
         is_folder: bool,
     ) -> Result<(), ProviderError> {
         let param = if is_folder { "folderid" } else { "fileid" };
-        let url = format!("{}/trash_clear?{}={}", self.config.api_base(), param, id);
+        let url = format!("{}/trash_clear?{}={}", self.api_base(), param, id);
         let resp: PCloudSimpleResponse = self
             .get_with_token_param(&url)
             .await?
@@ -2177,12 +2279,28 @@ mod tests {
             PCloudProvider::check_response(&api_response(9999, Some("Server hiccup"))),
             Err(ProviderError::ServerError(_))
         ));
+        // 4006 throttle must surface as TransferFailed with a rate-limit phrase.
+        let throttle =
+            PCloudProvider::check_response(&api_response(4006, Some("Throttle limit reached")))
+                .unwrap_err();
+        assert!(matches!(throttle, ProviderError::TransferFailed(_)));
+        let msg = throttle.to_string();
+        assert!(msg.contains("rate limit"), "msg={msg}");
+        assert!(msg.contains("4006"), "msg={msg}");
     }
 
     #[test]
     fn check_response_synthesizes_error_when_none_provided() {
         let err = PCloudProvider::check_response(&api_response(5000, None)).unwrap_err();
         assert!(format!("{}", err).contains("5000"));
+    }
+
+    #[test]
+    fn result_4006_maps_to_typed_rate_limited() {
+        let pe = pcloud_throttle_error("upload_write part 2", Some("Throttle limit reached"));
+        let te = crate::transfer_dag::TransferError::from_provider(&pe);
+        assert_eq!(te.kind, crate::transfer_dag::TransferErrorKind::RateLimited);
+        assert!(te.is_congestion());
     }
 
     // ---- S3-T01 multipart trait wiring ----
@@ -2233,10 +2351,188 @@ mod tests {
         assert!(hints.supports_multipart);
         assert_eq!(hints.multipart_threshold, PCLOUD_MULTIPART_THRESHOLD);
         assert_eq!(hints.multipart_part_size, PCLOUD_MULTIPART_PART_SIZE);
-        // pCloud free-tier rate-limits to ~2 calls/s; keep fan-out at 2
-        // so commit + abort calls don't trip throttle errors.
+        // Hints keep fan-out 2 for future promotion; executor remains LockedSingle.
         assert_eq!(hints.multipart_max_parallel, 2);
         assert!(hints.supports_resume_download);
         assert!(hints.supports_resume_upload);
+    }
+
+    // ---- DAG-P1-05C: evidence-backed LockedSingle retention ----
+
+    fn demo_cfg() -> PCloudConfig {
+        PCloudConfig::new("client-id", "client-secret", "us")
+    }
+
+    fn fixture_connected() -> PCloudProvider {
+        let mut p = PCloudProvider::connected_for_test(demo_cfg());
+        p.test_access_token = Some("fixture-token".to_string());
+        p
+    }
+
+    #[test]
+    fn retained_locked_single_executor_and_composition() {
+        use crate::provider_transfer_executor::{
+            compose_runtime_transfer_capabilities, resolve_session_model,
+        };
+        use crate::providers::ProviderTransferExecutorKind;
+        use crate::transfer_dag::Capability;
+
+        let p = fixture_connected();
+        assert_eq!(
+            p.transfer_executor_kind(),
+            ProviderTransferExecutorKind::LockedSingle
+        );
+        // Default trait clone is fail-closed NotSupported → not a transfer worker.
+        assert!(p.clone_for_transfer().is_err());
+
+        let can_clone = p.clone_for_transfer().is_ok();
+        let caps = compose_runtime_transfer_capabilities(
+            &p.transfer_capabilities(),
+            p.transfer_executor_kind(),
+            can_clone,
+        );
+        // LockedSingle keeps file/session serial even when multipart hints say 2.
+        assert_eq!(caps.file_parallel, Capability::Unsupported);
+        assert_eq!(caps.session_pool, Capability::Unsupported);
+        assert_eq!(caps.max_file_slots, Some(1));
+        assert_eq!(caps.max_chunk_slots, Some(2));
+        assert_eq!(caps.rate_limited_api, Capability::Supported);
+
+        let model = resolve_session_model(
+            ProviderType::PCloud,
+            &caps,
+            p.transfer_executor_kind(),
+            can_clone,
+            p.transfer_executor_max_sessions(),
+            8,
+        );
+        assert!(matches!(
+            model,
+            crate::provider_transfer_executor::ProviderExecutorSessionModel::LockedSingle { .. }
+        ));
+        assert_eq!(model.max_leases(), 1);
+    }
+
+    #[test]
+    fn live_blocker_code_2068_is_documented_constant() {
+        // Regression anchor for the live evidence that closed promotion:
+        // concurrent upload_write → result 2068 "Error writing to upload".
+        assert_eq!(PCLOUD_RESULT_WRITE_ERROR, 2068);
+    }
+
+    #[tokio::test]
+    async fn upload_write_result_4006_is_rate_limited() {
+        use axum::{http::StatusCode, routing::put, Router};
+
+        let app = Router::new().route(
+            "/upload_write",
+            put(|| async {
+                (
+                    StatusCode::OK,
+                    axum::Json(serde_json::json!({
+                        "result": 4006,
+                        "error": "Throttle limit reached"
+                    })),
+                )
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.ok();
+        });
+
+        let mut primary = fixture_connected();
+        primary.api_base_override = Some(format!("http://{addr}"));
+        let meta = PCloudMultipartMeta {
+            uploadid: 1,
+            folderid: 0,
+            name: "t.bin".into(),
+            total: 64,
+            part: 64,
+        };
+        let handle = MultipartHandle {
+            upload_id: meta.encode(),
+            remote_path: "/t.bin".into(),
+        };
+        let err = primary
+            .upload_part(&handle, 1, vec![9u8; 8])
+            .await
+            .expect_err("throttle");
+        let te = crate::transfer_dag::TransferError::from_provider(&err);
+        assert_eq!(te.kind, crate::transfer_dag::TransferErrorKind::RateLimited);
+        assert!(te.is_congestion());
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn upload_write_sends_offset_contract_and_no_secret_in_url() {
+        use std::sync::{Arc, Mutex};
+
+        use axum::{extract::Request, http::StatusCode, routing::put, Router};
+
+        let urls = Arc::new(Mutex::new(Vec::<String>::new()));
+        let urls_h = Arc::clone(&urls);
+        let app = Router::new().route(
+            "/upload_write",
+            put(move |req: Request| {
+                let urls = Arc::clone(&urls_h);
+                async move {
+                    urls.lock().unwrap().push(req.uri().to_string());
+                    let _ = axum::body::to_bytes(req.into_body(), 64 * 1024).await;
+                    (StatusCode::OK, axum::Json(serde_json::json!({"result": 0})))
+                }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.ok();
+        });
+
+        let mut primary = fixture_connected();
+        primary.api_base_override = Some(format!("http://{addr}"));
+        let meta = PCloudMultipartMeta {
+            uploadid: 42,
+            folderid: 0,
+            name: "t.bin".into(),
+            total: 64,
+            part: 64,
+        };
+        let handle = MultipartHandle {
+            upload_id: meta.encode(),
+            remote_path: "/t.bin".into(),
+        };
+        assert!(!handle.upload_id.contains("fixture-token"));
+        primary
+            .upload_part(&handle, 1, vec![7u8; 12])
+            .await
+            .expect("write");
+        let url = urls.lock().unwrap()[0].clone();
+        assert!(url.contains("uploadid=42"));
+        assert!(url.contains("uploadoffset=0"));
+        assert!(
+            !url.contains("uploadsize="),
+            "unverified uploadsize must not be sent blindly"
+        );
+        assert!(!url.contains("fixture-token"));
+        assert!(!url.contains("access_token"));
+        server.abort();
+    }
+
+    #[test]
+    fn clone_multipart_worker_helper_returns_none_under_locked_single() {
+        use crate::transfer_multipart::clone_multipart_worker;
+
+        let disconnected = PCloudProvider::new(demo_cfg());
+        assert!(clone_multipart_worker(&disconnected).is_none());
+
+        let connected = fixture_connected();
+        // LockedSingle: no clone_for_transfer override → helper stays None.
+        assert!(clone_multipart_worker(&connected).is_none());
     }
 }

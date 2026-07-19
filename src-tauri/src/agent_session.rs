@@ -650,6 +650,9 @@ fn static_http_clone_pool_slots(provider_type: ProviderType) -> Option<(u16, u16
         // DAG-P1-05B: Dropbox + Box multipart part workers, ceiling 4;
         // list remains locked-single.
         ProviderType::Dropbox | ProviderType::Box => Some((4, 1)),
+        // DAG-P1-05C: pCloud deliberately stays off this registry — live
+        // concurrent upload_write returns result 2068, so executor remains
+        // LockedSingle (hints may still advertise multipart_max_parallel=2).
         _ => None,
     }
 }
@@ -1225,6 +1228,30 @@ mod tests {
             caps.server_side_copy,
             crate::transfer_dag::Capability::Supported
         );
+        assert_eq!(
+            caps.rate_limited_api,
+            crate::transfer_dag::Capability::Supported
+        );
+    }
+
+    #[test]
+    fn pcloud_protocol_defaults_remain_locked_single_after_p1_05c() {
+        // DAG-P1-05C: live concurrent upload_write → result 2068; retain LockedSingle.
+        let caps = transfer_capabilities_for_protocol("pcloud").expect("pcloud");
+        assert_eq!(
+            caps.multipart_upload,
+            crate::transfer_dag::Capability::Supported
+        );
+        assert_eq!(caps.max_chunk_slots, Some(2));
+        assert_eq!(
+            caps.file_parallel,
+            crate::transfer_dag::Capability::Unsupported
+        );
+        assert_eq!(
+            caps.session_pool,
+            crate::transfer_dag::Capability::Unsupported
+        );
+        assert_eq!(caps.max_file_slots, Some(1));
         assert_eq!(
             caps.rate_limited_api,
             crate::transfer_dag::Capability::Supported

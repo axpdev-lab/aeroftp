@@ -147,9 +147,15 @@ shared mutex. The current independent-worker set is:
 - **Dropbox** (`HttpClonePool`, max sessions 4), DAG-P1-05B;
 - **Box** (`HttpClonePool`, max sessions 4), DAG-P1-05B.
 
-pCloud and Filen can expose multipart capability or part APIs, but are not yet
-promoted to wire-level DAG fan-out without an independent worker and a
-provider-specific live gate (next waves of `DAG-P1-05`). A graph with N part
+**pCloud** (DAG-P1-05C, 2026-07-19): multipart session API remains
+**`LockedSingle`**. Live probes with independent workers on one `uploadid`
+returned result **2068** ("Error writing to upload") on part 2 for every
+attempt (including with `uploadsize=`). Serial multipart still completes
+(with occasional 2068 + CLI retry). Result **4006** throttle is now mapped
+to typed DAG `RateLimited`. Hints still advertise `multipart_max_parallel=2`
+for a future re-attempt if the service contract changes.
+
+Filen is the remaining `DAG-P1-05` wave (`DAG-P1-05D`). A graph with N part
 nodes therefore means "N scheduled part operations", not automatically "N
 concurrent network requests", unless the provider is in the independent-worker
 set above.
@@ -167,6 +173,16 @@ transfer clone. Cross-process serialization remains on `RefreshLease`.
 | Deterministic HTTP part overlap | peak ∈ (1, 4] on 4 workers | peak ∈ (1, 4] on 4 workers | barrier-backed peak = 4 on 4 workers | barrier-backed peak = 4 on 4 workers |
 | Live WAN integrity (multipart ≥4 parts, download-back SHA-256, cleanup) | profile `Drime`, 22 MiB, byte-identical | profile `Uploadcare`, 22 MiB jpg, byte-identical | profile `My Dropbox`, 160 MiB, SHA-256 match, cleanup on **promoted debug CLI** after `profile-export --include-credentials` from prod → `profile-import` into dev vault | profile `MyBox`, 32 MiB (4×8 MiB plan), SHA-256 match, cleanup on **promoted debug CLI** (same export/import path) |
 | Live WAN peak part overlap with **this** code | not claimed | not claimed | not instrumented on this run (integrity + cleanup only; first prod-only attempt saw one append_v2 drop during a 5G hotspot → WiFi reconnect) | not instrumented on this run |
+
+### Evidence split (DAG-P1-05C pCloud)
+
+| Layer | pCloud |
+|---|---|
+| Promotion decision | **Conservative: keep `LockedSingle`** |
+| Concurrent live probe (experimental `HttpClonePool` debug CLI) | 20 MiB, ≥5×4 MiB parts: every attempt failed with `upload_write` result **2068** on part 2 ("Error writing to upload"); trial `uploadsize=` did not fix concurrent writes and was not retained |
+| Serial live control (production CLI LockedSingle) | 20 MiB: success after occasional 2068 + CLI retry; download-back SHA-256 match; cleanup |
+| Result 4006 | provider boundary maps to typed `TransferErrorKind::RateLimited` / AIMD congestion feedback |
+| Wire contract retained | `upload_write?uploadid=&uploadoffset=`; bearer not in URL; offsets handle-derived |
 | Whole-file clone pool vs multipart part workers | file/session ≤4 | same | file/session ≤4; shared OAuth refresh guard | file/session ≤4; shared OAuth refresh guard; bounded `id_cache` seed (root + current path only) |
 | Server part-size vs plan | n/a | n/a | n/a | fail-closed if session `part_size` ≠ 8 MiB plan |
 
