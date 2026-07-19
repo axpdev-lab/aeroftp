@@ -360,6 +360,23 @@ impl B2Provider {
         }
     }
 
+    #[cfg(test)]
+    pub(crate) fn connected_test_fixture() -> Self {
+        let mut provider = Self::new(B2Config {
+            application_key_id: "test-id".into(),
+            application_key: SecretString::new("test-key".into()),
+            bucket: "test-bucket".into(),
+            initial_path: None,
+        });
+        provider.account_id = "test-account".into();
+        provider.api_url = "https://api.example.invalid".into();
+        provider.download_url = "https://download.example.invalid".into();
+        provider.auth_token = SecretString::new("test-token".into());
+        provider.bucket_id = "test-bucket-id".into();
+        provider.connected = true;
+        provider
+    }
+
     fn auth_header(&self) -> Result<HeaderValue, ProviderError> {
         HeaderValue::from_str(self.auth_token.expose_secret())
             .map_err(|_| ProviderError::AuthenticationFailed("invalid auth token".into()))

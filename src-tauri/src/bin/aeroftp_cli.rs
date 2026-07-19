@@ -8942,8 +8942,7 @@ async fn run_shared_provider_download_batch(
     cancelled: Arc<AtomicBool>,
 ) -> Result<SharedDownloadOutcome, Box<dyn StorageProvider>> {
     use ftp_client_gui_lib::provider_transfer_executor::{
-        probe_provider_runtime_capabilities, resolve_provider_executor_runtime,
-        ProviderDownloadExecutor, ProviderExecutorSessionModel,
+        resolve_provider_transfer_runtime, ProviderDownloadExecutor, ProviderExecutorSessionModel,
     };
     use ftp_client_gui_lib::transfer_domain::{
         TransferBatchConfig, TransferDirection, TransferEntry,
@@ -8952,17 +8951,15 @@ async fn run_shared_provider_download_batch(
     use ftp_client_gui_lib::transfer_orchestrator::{
         execute_batch, ProgressObserver, TransferBatch,
     };
-    use ftp_client_gui_lib::transfer_settings::{
-        resolve_transfer_settings_for_capabilities, TransferSettingsInput,
-    };
+    use ftp_client_gui_lib::transfer_settings::TransferSettingsInput;
 
     let workers = effective_parallel_workers(cli);
     let provider_arc = Arc::new(AsyncMutex::new(Some(base)));
 
-    // DAG-P1-02: capability-aware settings; requested workers clamped to the
-    // runtime file-parallel ceiling of the live provider.
-    let runtime_caps = probe_provider_runtime_capabilities(&provider_arc).await;
-    let runtime_settings = resolve_transfer_settings_for_capabilities(
+    // DAG-P1-02: one live snapshot owns capability-aware settings and the
+    // executor session model, so requested/effective/pool cannot diverge.
+    let (runtime_settings, model, capabilities) = resolve_provider_transfer_runtime(
+        &provider_arc,
         TransferSettingsInput {
             max_concurrent: Some(workers as u32),
             retry_count: None,
@@ -8971,12 +8968,8 @@ async fn run_shared_provider_download_batch(
             // the GUI provider executor, so the executor stays single-stream.
             download_segments: None,
         },
-        &runtime_caps,
-    );
-    let effective_workers = runtime_settings.max_concurrent.max(1) as usize;
-
-    let (model, capabilities) =
-        resolve_provider_executor_runtime(&provider_arc, effective_workers).await;
+    )
+    .await;
     let is_pool_backed = matches!(
         model,
         ProviderExecutorSessionModel::HttpClonePool { .. }
@@ -9160,8 +9153,7 @@ async fn run_shared_provider_upload_batch(
     cancelled: Arc<AtomicBool>,
 ) -> Result<SharedUploadOutcome, Box<dyn StorageProvider>> {
     use ftp_client_gui_lib::provider_transfer_executor::{
-        probe_provider_runtime_capabilities, resolve_provider_executor_runtime,
-        ProviderExecutorSessionModel, ProviderUploadExecutor,
+        resolve_provider_transfer_runtime, ProviderExecutorSessionModel, ProviderUploadExecutor,
     };
     use ftp_client_gui_lib::transfer_domain::{
         TransferBatchConfig, TransferDirection, TransferEntry,
@@ -9170,17 +9162,15 @@ async fn run_shared_provider_upload_batch(
     use ftp_client_gui_lib::transfer_orchestrator::{
         execute_batch, ProgressObserver, TransferBatch,
     };
-    use ftp_client_gui_lib::transfer_settings::{
-        resolve_transfer_settings_for_capabilities, TransferSettingsInput,
-    };
+    use ftp_client_gui_lib::transfer_settings::TransferSettingsInput;
 
     let workers = effective_parallel_workers(cli);
     let provider_arc = Arc::new(AsyncMutex::new(Some(base)));
 
-    // DAG-P1-02: capability-aware settings; requested workers clamped to the
-    // runtime file-parallel ceiling of the live provider.
-    let runtime_caps = probe_provider_runtime_capabilities(&provider_arc).await;
-    let runtime_settings = resolve_transfer_settings_for_capabilities(
+    // DAG-P1-02: one live snapshot owns capability-aware settings and the
+    // executor session model, so requested/effective/pool cannot diverge.
+    let (runtime_settings, model, capabilities) = resolve_provider_transfer_runtime(
+        &provider_arc,
         TransferSettingsInput {
             max_concurrent: Some(workers as u32),
             retry_count: None,
@@ -9189,12 +9179,8 @@ async fn run_shared_provider_upload_batch(
             // the GUI provider executor, so the executor stays single-stream.
             download_segments: None,
         },
-        &runtime_caps,
-    );
-    let effective_workers = runtime_settings.max_concurrent.max(1) as usize;
-
-    let (model, capabilities) =
-        resolve_provider_executor_runtime(&provider_arc, effective_workers).await;
+    )
+    .await;
     let is_pool_backed = matches!(
         model,
         ProviderExecutorSessionModel::HttpClonePool { .. }

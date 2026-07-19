@@ -57,7 +57,10 @@ use crate::transfer_domain::{
 };
 use crate::transfer_event_sink::TransferEventSink;
 use crate::transfer_orchestrator::TransferExecutor;
-use crate::transfer_settings::ResolvedTransferSettings;
+use crate::transfer_settings::{
+    resolve_transfer_settings_for_capabilities, ResolvedTransferSettings, TransferSettingsInput,
+    DEFAULT_MAX_CONCURRENT, MAX_MAX_CONCURRENT, MIN_MAX_CONCURRENT,
+};
 
 /// Minimum file size before intra-file range parallelism kicks in
 /// (GTC-1). Below this, the per-stream overhead dominates the WAN gain
@@ -547,23 +550,6 @@ pub fn finalize_capabilities_for_session_model(
     out
 }
 
-/// Probe the live provider once and return the composed runtime capability
-/// snapshot used by settings resolution (DAG-P1-02) and executor construction
-/// (DAG-P1-01). Disconnected / missing providers stay fully conservative.
-pub async fn probe_provider_runtime_capabilities(
-    provider: &Arc<Mutex<Option<Box<dyn StorageProvider>>>>,
-) -> TransferCapabilities {
-    let provider_lock = provider.lock().await;
-    let Some(provider) = provider_lock.as_ref() else {
-        return TransferCapabilities::default();
-    };
-    compose_runtime_transfer_capabilities(
-        &provider.transfer_capabilities(),
-        provider.transfer_executor_kind(),
-        provider.clone_for_transfer().is_ok(),
-    )
-}
-
 /// Resolve session model and the executor-owned capability snapshot together.
 ///
 /// Uses one provider lock, one clone probe, and finalizes capabilities against
@@ -595,6 +581,37 @@ pub async fn resolve_provider_executor_runtime(
     );
     let executor_caps = finalize_capabilities_for_session_model(&runtime_caps, &model);
     (model, executor_caps)
+}
+
+/// Resolve user settings, session ownership and executor capabilities from one
+/// live provider snapshot.
+///
+/// Keeping this composition atomic prevents a successful settings probe from
+/// being followed by a failed executor probe that would leave public
+/// `max_concurrent` above the actual session-pool capacity.
+pub async fn resolve_provider_transfer_runtime(
+    provider: &Arc<Mutex<Option<Box<dyn StorageProvider>>>>,
+    input: TransferSettingsInput,
+) -> (
+    ResolvedTransferSettings,
+    ProviderExecutorSessionModel,
+    TransferCapabilities,
+) {
+    let requested_max_concurrent = input
+        .max_concurrent
+        .unwrap_or(DEFAULT_MAX_CONCURRENT)
+        .clamp(MIN_MAX_CONCURRENT, MAX_MAX_CONCURRENT) as usize;
+    let (session_model, capabilities) =
+        resolve_provider_executor_runtime(provider, requested_max_concurrent).await;
+    let runtime_settings = resolve_transfer_settings_for_capabilities(input, &capabilities);
+
+    debug_assert_eq!(
+        runtime_settings.max_concurrent as usize,
+        session_model.max_leases(),
+        "effective settings and executor session capacity must share one snapshot"
+    );
+
+    (runtime_settings, session_model, capabilities)
 }
 
 /// Thin async wrapper over [`resolve_session_model`]: locks the provider,
@@ -1838,6 +1855,30 @@ mod tests {
             ProviderTransferExecutorKind::HttpClonePool
         );
         assert!(provider.transfer_executor_max_sessions() > 1);
+    }
+
+    #[tokio::test]
+    async fn connected_b2_runtime_snapshot_and_settings_share_one_pool_ceiling() {
+        use crate::providers::b2::B2Provider;
+
+        let provider: Arc<Mutex<Option<Box<dyn StorageProvider>>>> = Arc::new(Mutex::new(Some(
+            Box::new(B2Provider::connected_test_fixture()),
+        )));
+        let (settings, model, capabilities) = resolve_provider_transfer_runtime(
+            &provider,
+            TransferSettingsInput {
+                max_concurrent: Some(4),
+                ..TransferSettingsInput::default()
+            },
+        )
+        .await;
+
+        assert_eq!(settings.requested_max_concurrent, 4);
+        assert_eq!(settings.max_concurrent, 4);
+        assert_eq!(model.max_leases(), 4);
+        assert!(model.is_clone_pool());
+        assert_eq!(capabilities.file_parallel, Capability::Supported);
+        assert!(capabilities.max_file_slots.unwrap_or(1) > 1);
     }
 
     #[test]

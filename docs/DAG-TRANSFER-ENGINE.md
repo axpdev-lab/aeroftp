@@ -181,7 +181,8 @@ batch scheduler is gone. After `DAG-P1-01` / `DAG-P1-02`:
   snapshot owned by the provider executor after clone-probe composition), not
   from `TransferCapabilities::default()`;
 - provider folder/batch entrypoints resolve settings with
-  `resolve_transfer_settings_for_capabilities`, preserving
+  `resolve_provider_transfer_runtime`, which performs one live clone probe and
+  then applies `resolve_transfer_settings_for_capabilities`, preserving
   `requested_max_concurrent` vs effective `max_concurrent`;
 - clone/session-pool providers (S3, B2 when connected, Azure, SFTP/FTP pool
   kinds) can realize file-level concurrency bounded by the tighter of graph
@@ -297,7 +298,8 @@ uses `TransferExecutor::transfer_capabilities()` — a runtime snapshot composed
 from the live provider plus clone/pool feasibility
 (`compose_runtime_transfer_capabilities` / `finalize_capabilities_for_session_model`).
 Provider batch settings resolve through
-`resolve_transfer_settings_for_capabilities` (DAG-P1-02). The sync runner still
+`resolve_provider_transfer_runtime` and its single
+`resolve_transfer_settings_for_capabilities` pass (DAG-P1-02). The sync runner still
 uses `TransferCapabilities::default()` at its documented call site. The normal
 copy helper uses the provider's `supports_server_copy()` and `server_copy()`
 methods rather than `shaped_copy`'s capability snapshot.
