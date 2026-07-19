@@ -559,7 +559,7 @@ where
         .await
     {
         Ok(receipt) => {
-            if let Err(failure) = state.store_receipt(receipt).await {
+            if let Err(failure) = state.store_receipt_for_part(part_number, receipt).await {
                 state.record_failure(failure).await;
             }
         }

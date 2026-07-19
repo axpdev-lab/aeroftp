@@ -202,9 +202,27 @@ impl MultipartFileState {
         self.accounted.load(Ordering::Acquire)
     }
 
-    /// Store a successful part receipt. Fails closed on duplicates.
-    pub async fn store_receipt(&self, receipt: UploadedPart) -> Result<(), TransferFailure> {
+    /// Store a successful receipt for the requested part.
+    ///
+    /// The provider must echo the exact part number it was asked to upload.
+    /// Accepting a different in-range number could make two swapped receipts
+    /// look complete while binding verification tokens to the wrong byte ranges.
+    pub async fn store_receipt_for_part(
+        &self,
+        expected_part_number: u32,
+        receipt: UploadedPart,
+    ) -> Result<(), TransferFailure> {
         let part_number = receipt.part_number;
+        if part_number != expected_part_number {
+            return Err(TransferFailure {
+                kind: TransferFailureKind::Unknown,
+                message: format!(
+                    "multipart receipt part {} does not match requested part {}",
+                    part_number, expected_part_number
+                ),
+                retryable: false,
+            });
+        }
         if part_number == 0 || part_number > self.layout.total_parts {
             return Err(TransferFailure {
                 kind: TransferFailureKind::Unknown,
@@ -225,6 +243,13 @@ impl MultipartFileState {
         }
         parts.insert(part_number, receipt);
         Ok(())
+    }
+
+    /// Store a receipt when the caller already treats its part number as the
+    /// requested number. Prefer [`Self::store_receipt_for_part`] at wire sites.
+    pub async fn store_receipt(&self, receipt: UploadedPart) -> Result<(), TransferFailure> {
+        let expected = receipt.part_number;
+        self.store_receipt_for_part(expected, receipt).await
     }
 
     pub async fn receipt_count(&self) -> usize {
@@ -418,6 +443,31 @@ mod tests {
             sorted.iter().map(|p| p.part_number).collect::<Vec<_>>(),
             vec![1, 2, 3]
         );
+    }
+
+    #[tokio::test]
+    async fn receipt_must_match_the_requested_part() {
+        let layout = MultipartLayout {
+            total_size: 20,
+            total_parts: 2,
+            preferred_part_size: 10,
+            content_type: "application/octet-stream".into(),
+        };
+        let state = MultipartFileState::new(layout, HashMap::from([(1, 1), (2, 2)]));
+
+        let failure = state
+            .store_receipt_for_part(
+                1,
+                UploadedPart {
+                    part_number: 2,
+                    etag: "wrong-part".into(),
+                },
+            )
+            .await
+            .expect_err("mismatched receipt must fail closed");
+
+        assert!(failure.message.contains("does not match requested part 1"));
+        assert_eq!(state.receipt_count().await, 0);
     }
 
     #[tokio::test]

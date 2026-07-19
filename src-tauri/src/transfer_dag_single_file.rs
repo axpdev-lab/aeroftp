@@ -78,17 +78,18 @@ use std::sync::{Arc, Mutex as StdMutex};
 use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 
-use crate::providers::{MultipartHandle, ProviderError, StorageProvider, UploadedPart};
+use crate::providers::{ProviderError, StorageProvider};
 use crate::transfer_dag::executor::{
     execute_dag_with_options, DagExecuteOptions, DagNodeRunner, NodeFuture, NodeOutcome,
 };
 use crate::transfer_dag::graph::{TransferNode, TransferNodeKind};
-use crate::transfer_dag::multipart_part_byte_len;
 use crate::transfer_dag::{
     AimdConfig, AimdController, DagObserver, FailureScope, ShapedFileDag, TransferBudget,
     TransferDirection, TransferError, TransferResourceManager,
 };
-use crate::transfer_multipart::{clone_multipart_worker, read_chunk, MultipartLayout};
+use crate::transfer_multipart::{
+    clone_multipart_worker, read_chunk, MultipartFileState, MultipartLayout,
+};
 
 /// A per-byte transfer progress callback, as accepted by
 /// [`StorageProvider::download`] / [`StorageProvider::upload`].
@@ -119,28 +120,6 @@ where
         }
         None => fut.await,
     }
-}
-
-/// Per-transfer multipart orchestration context, shared across every
-/// `UploadPart` runner invocation and the terminal `CommitTemp` finalize /
-/// abort path.
-///
-/// `handle` is lazy because parts run in topological order under the shared
-/// chunk budget, and only one of them needs to open the session; the rest
-/// reuse the handle. `parts` accumulates receipts (one per successful
-/// `upload_part`); the commit node sorts by `part_number` ascending before
-/// submitting to `complete_multipart_upload`, matching the S3 contract that
-/// every multipart backend in our matrix happens to follow. `node_to_part`
-/// maps the DAG node id of an `UploadPart` to the 1-based part number the
-/// builder assigned to it (transfer[0] = part 1, transfer[1] = part 2, ...).
-struct MultipartCtx {
-    handle: Arc<Mutex<Option<MultipartHandle>>>,
-    parts: Arc<Mutex<Vec<UploadedPart>>>,
-    node_to_part: Arc<HashMap<usize, u32>>,
-    part_size: u64,
-    total_parts: usize,
-    total_size: u64,
-    content_type: String,
 }
 
 /// Run a plain single-file transfer through the graph engine.
@@ -200,11 +179,10 @@ pub async fn execute_single_file_dag(
     // out into N `UploadPart` nodes. When the transfer core is a single
     // `UploadFile` or `DownloadFile`, the context stays `None` and every
     // `UploadPart`/`CommitTemp` branch short-circuits to the legacy no-op.
-    let multipart_ctx: Option<Arc<MultipartCtx>> = if direction == TransferDirection::Upload
+    let multipart_state: Option<Arc<MultipartFileState>> = if direction == TransferDirection::Upload
         && built.profile.upload_parts > 1
         && file_size > 0
     {
-        // Shared layout math with the batch runner (DAG-P1-03).
         let layout = MultipartLayout::from_profile(
             file_size,
             built.profile.upload_parts,
@@ -217,15 +195,7 @@ pub async fn execute_single_file_dag(
             .enumerate()
             .map(|(idx, node_id)| (*node_id, (idx + 1) as u32))
             .collect();
-        Some(Arc::new(MultipartCtx {
-            handle: Arc::new(Mutex::new(None)),
-            parts: Arc::new(Mutex::new(Vec::with_capacity(layout.total_parts as usize))),
-            node_to_part: Arc::new(node_to_part),
-            part_size: layout.preferred_part_size,
-            total_parts: layout.total_parts as usize,
-            total_size: layout.total_size,
-            content_type: layout.content_type,
-        }))
+        Some(MultipartFileState::new(layout, node_to_part))
     } else {
         None
     };
@@ -238,7 +208,7 @@ pub async fn execute_single_file_dag(
         let progress_slot = Arc::clone(&progress_slot);
         let first_error = Arc::clone(&first_error);
         let report_size = Arc::clone(&report_size);
-        let multipart_ctx = multipart_ctx.clone();
+        let multipart_state = multipart_state.clone();
         let cancel_token = cancel_token.clone();
         Arc::new(move |node: TransferNode| -> NodeFuture {
             let provider = Arc::clone(&provider);
@@ -248,7 +218,7 @@ pub async fn execute_single_file_dag(
             let progress_slot = Arc::clone(&progress_slot);
             let first_error = Arc::clone(&first_error);
             let report_size = Arc::clone(&report_size);
-            let multipart_ctx = multipart_ctx.clone();
+            let multipart_state = multipart_state.clone();
             let cancel_token = cancel_token.clone();
             Box::pin(async move {
                 match node.kind {
@@ -312,7 +282,7 @@ pub async fn execute_single_file_dag(
                         }
                     }
                     TransferNodeKind::UploadPart => {
-                        let Some(ctx) = multipart_ctx.as_ref() else {
+                        let Some(state) = multipart_state.as_ref() else {
                             return record_failure(
                                 &first_error,
                                 ProviderError::TransferFailed(
@@ -321,7 +291,7 @@ pub async fn execute_single_file_dag(
                                 FailureScope::Part,
                             );
                         };
-                        let Some(part_number) = ctx.node_to_part.get(&node.id).copied() else {
+                        let Some(part_number) = state.part_number_for_node(node.id) else {
                             return record_failure(
                                 &first_error,
                                 ProviderError::TransferFailed(format!(
@@ -331,56 +301,64 @@ pub async fn execute_single_file_dag(
                                 FailureScope::Part,
                             );
                         };
-                        // 1. Lazy `begin_multipart_upload`. The first runner
-                        //    invocation that wins the handle mutex opens the
-                        //    session; subsequent invocations observe an
-                        //    initialized handle and skip the call. The
-                        //    handle is cheap to clone (a few-byte `String`
-                        //    plus the remote path), so we hold it by value
-                        //    in every part call below.
-                        {
-                            let mut handle_guard = ctx.handle.lock().await;
-                            if handle_guard.is_none() {
+                        // 1. Lazy begin through the same once-guarded file state
+                        //    used by the batch DAG runner.
+                        let begin_result: Result<(), ProviderError> = state
+                            .with_begin_gate(async {
+                                if !state.needs_begin().await {
+                                    return Ok(());
+                                }
                                 let mut guard = provider.lock().await;
                                 let Some(p) = guard.as_mut() else {
-                                    return record_failure(
-                                        &first_error,
-                                        ProviderError::NotConnected,
-                                        FailureScope::Part,
-                                    );
+                                    return Err(ProviderError::NotConnected);
                                 };
                                 let begin = async {
                                     p.begin_multipart_upload(
                                         &remote,
-                                        ctx.total_size,
-                                        Some(&ctx.content_type),
+                                        state.layout().total_size,
+                                        Some(&state.layout().content_type),
                                         Some(&local),
                                     )
                                     .await
                                 };
                                 match race_cancel(&cancel_token, begin).await {
                                     Ok(handle) => {
-                                        *handle_guard = Some(handle);
+                                        state.install_handle(handle).await;
+                                        Ok(())
                                     }
-                                    Err(e) => {
-                                        return record_failure(&first_error, e, FailureScope::Part);
-                                    }
+                                    Err(error) => Err(error),
                                 }
-                            }
+                            })
+                            .await;
+                        if let Err(error) = begin_result {
+                            return record_failure(&first_error, error, FailureScope::Part);
                         }
 
+                        let handle = match state.clone_handle().await {
+                            Some(handle) => handle,
+                            None => {
+                                return record_failure(
+                                    &first_error,
+                                    ProviderError::TransferFailed(
+                                        "Multipart session was not begun".to_string(),
+                                    ),
+                                    FailureScope::Part,
+                                );
+                            }
+                        };
+
                         // 2. Read this part's slice from disk at the matching
-                        //    offset. The last part may be smaller than
-                        //    `part_size`. Use the same helper as the builder so
-                        //    the acquired `buffer_bytes` and allocation cannot
-                        //    drift.
-                        let offset = (part_number as u64 - 1) * ctx.part_size;
-                        let len = multipart_part_byte_len(
-                            ctx.total_size,
-                            part_number as usize - 1,
-                            ctx.total_parts,
-                            ctx.part_size,
-                        );
+                        //    offset through the shared validated layout.
+                        let (offset, len) = match state.layout().part_range(part_number) {
+                            Ok(range) => range,
+                            Err(failure) => {
+                                return record_failure(
+                                    &first_error,
+                                    ProviderError::TransferFailed(failure.message),
+                                    FailureScope::Part,
+                                );
+                            }
+                        };
                         let data = match race_cancel(&cancel_token, read_chunk(&local, offset, len))
                             .await
                         {
@@ -391,13 +369,6 @@ pub async fn execute_single_file_dag(
                         };
 
                         // 3. Upload the part using the resolved handle.
-                        let handle = {
-                            let handle_guard = ctx.handle.lock().await;
-                            handle_guard
-                                .as_ref()
-                                .cloned()
-                                .expect("multipart handle initialized in step 1")
-                        };
                         let cloned_worker = {
                             let mut guard = provider.lock().await;
                             let Some(p) = guard.as_mut() else {
@@ -430,8 +401,14 @@ pub async fn execute_single_file_dag(
                         };
                         match upload_result {
                             Ok(receipt) => {
-                                ctx.parts.lock().await.push(receipt);
-                                NodeOutcome::Completed
+                                match state.store_receipt_for_part(part_number, receipt).await {
+                                    Ok(()) => NodeOutcome::Completed,
+                                    Err(failure) => record_failure(
+                                        &first_error,
+                                        ProviderError::TransferFailed(failure.message),
+                                        FailureScope::Part,
+                                    ),
+                                }
                             }
                             Err(e) => record_failure(&first_error, e, FailureScope::Part),
                         }
@@ -477,18 +454,21 @@ pub async fn execute_single_file_dag(
                         // orphaned session instead of leaking the upload id
                         // (audit ERR-01). For the single-transfer-core shape
                         // this is a no-op.
-                        if let Some(ctx) = multipart_ctx.as_ref() {
-                            let handle = {
-                                let handle_guard = ctx.handle.lock().await;
-                                handle_guard.as_ref().cloned()
-                            };
+                        if let Some(state) = multipart_state.as_ref() {
+                            let handle = state.clone_handle().await;
                             if let Some(handle) = handle {
-                                let mut parts = std::mem::take(&mut *ctx.parts.lock().await);
-                                parts.sort_by_key(|p| p.part_number);
-                                // Scope the provider guard so it is released
-                                // before we touch the handle mutex, keeping the
-                                // lock order (handle then provider) consistent
-                                // with the lazy-begin path.
+                                if !state.has_all_receipts().await {
+                                    return record_failure(
+                                        &first_error,
+                                        ProviderError::TransferFailed(format!(
+                                            "multipart receipt count {} != expected {}",
+                                            state.receipt_count().await,
+                                            state.layout().total_parts
+                                        )),
+                                        FailureScope::File,
+                                    );
+                                }
+                                let parts = state.take_sorted_receipts().await;
                                 let result = {
                                     let mut guard = provider.lock().await;
                                     let Some(p) = guard.as_mut() else {
@@ -505,9 +485,7 @@ pub async fn execute_single_file_dag(
                                 };
                                 match result {
                                     Ok(()) => {
-                                        // Session finalized: clear the handle so
-                                        // the abort guard becomes a no-op.
-                                        ctx.handle.lock().await.take();
+                                        state.clear_handle_after_complete().await;
                                         NodeOutcome::Completed
                                     }
                                     Err(e) => record_failure(&first_error, e, FailureScope::File),
@@ -577,12 +555,8 @@ pub async fn execute_single_file_dag(
     // successful commit leaves no handle and this is a no-op. `take()` ensures
     // abort is called at most once even when fail-fast cancelled many parts.
     if outcome.is_err() {
-        if let Some(ctx) = multipart_ctx.as_ref() {
-            let leftover_handle = {
-                let mut handle_guard = ctx.handle.lock().await;
-                handle_guard.take()
-            };
-            if let Some(handle) = leftover_handle {
+        if let Some(state) = multipart_state.as_ref() {
+            if let Some(handle) = state.take_for_abort().await {
                 let mut guard = provider.lock().await;
                 if let Some(p) = guard.as_mut() {
                     let _ = p.abort_multipart_upload(handle).await;
@@ -653,6 +627,7 @@ fn single_file_budget(built: &ShapedFileDag) -> TransferBudget {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::providers::{MultipartHandle, UploadedPart};
     use crate::transfer_dag::{Capability, TransferCapabilities, TransferDagBuilder};
 
     #[test]
