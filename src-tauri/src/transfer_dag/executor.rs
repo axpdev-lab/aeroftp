@@ -26,6 +26,16 @@
 //! timeouts are typed as [`TransferErrorKind::Timeout`] and never confused
 //! with external cancel ([`TransferErrorKind::Cancelled`]).
 //!
+//! ## File-local continuing failure (DAG-P1-04)
+//!
+//! [`NodeOutcome::FileFailedButGraphContinues`] is a non-fatal terminal: the
+//! node counts as failed for summary/observer/AIMD, dependents are released
+//! so structural tails can drain, and the graph cancel token is **not**
+//! fired. Congestion feedback for this outcome is always scoped to
+//! [`AdaptiveClass::File`] (explicit file-terminal contract — never inferred
+//! from an empty `ResourceRequest`, which `CommitTemp` legitimately has).
+//! Fatal [`NodeOutcome::Failed`] remains the fail-fast default.
+//!
 //! The executor is active in the single-file, batch, and sync DAG wrappers;
 //! the segmented-range wrapper also uses it when its graph path is selected.
 //! Those callers bind different amounts of real I/O, so using this scheduler
@@ -42,7 +52,7 @@ use serde::{Deserialize, Serialize};
 use tokio::task::{Id as TaskId, JoinSet};
 use tokio_util::sync::CancellationToken;
 
-use super::adaptive::{congestion_from_error, AimdController};
+use super::adaptive::{congestion_from_error, AdaptiveClass, AimdController};
 use super::error::{TransferError, TransferErrorKind};
 use super::graph::{TransferDag, TransferNode};
 use super::metrics::TransferDagMetrics;
@@ -71,10 +81,26 @@ pub enum NodeOutcome {
     /// Node finished, but via a degraded path (counted as completed, plus
     /// `fallback_count`). This is an honest, non-error completion.
     Fallback,
-    /// Node failed. Scheduling stops, the graph cancel token fires, resident
-    /// siblings are terminated within [`FAIL_FAST_ABORT_GRACE`], and the typed
-    /// error is propagated (kind / retry / Retry-After are machine-safe;
-    /// presentation lives in [`TransferError::message`]).
+    /// File-local terminal failure that must not abort the graph (DAG-P1-04).
+    ///
+    /// Semantics:
+    /// - increments `nodes_failed` (not `nodes_completed`);
+    /// - emits exactly one [`ObservedOutcome::Failed`] (or `Cancelled` when
+    ///   the typed kind is cancel);
+    /// - never calls healthy AIMD feedback;
+    /// - applies at most one file-class congestion decrease when the typed
+    ///   kind is in the D2 set (always [`AdaptiveClass::File`], even when the
+    ///   terminal node has a zero resource request such as `CommitTemp`);
+    /// - treats the node as dependency-satisfied and releases dependents;
+    /// - does **not** populate the graph-fatal first-error slot, cancel the
+    ///   graph token, or start the fail-fast grace timer;
+    /// - the run still returns `Ok(DagExecutionSummary)` when the graph drains.
+    FileFailedButGraphContinues(TransferError),
+    /// Graph-fatal node failure. Scheduling stops, the graph cancel token
+    /// fires, resident siblings are terminated within
+    /// [`FAIL_FAST_ABORT_GRACE`], and the typed error is propagated (kind /
+    /// retry / Retry-After are machine-safe; presentation lives in
+    /// [`TransferError::message`]). Dependents are **not** released.
     Failed(TransferError),
 }
 
@@ -549,6 +575,26 @@ pub async fn execute_dag_with_options(
                     release_dependents(id, &dependents, &mut remaining_deps, &mut ready);
                 }
             }
+            NodeOutcome::FileFailedButGraphContinues(error) => {
+                // DAG-P1-04: file-local terminal — visible, non-fatal, releases
+                // dependents so the structural tail can drain. Never healthy.
+                summary.nodes_failed += 1;
+                completed.insert(id);
+                if aimd_note_file_congestion(&controller, &error) {
+                    summary.metrics.backpressure_events += 1;
+                }
+                let observed = if error.kind == TransferErrorKind::Cancelled {
+                    ObservedOutcome::Cancelled
+                } else {
+                    ObservedOutcome::Failed
+                };
+                terminal_notified.insert(id);
+                observer.on_node_complete(id, observed);
+                // Intentionally do NOT set `failed` / cancel the graph.
+                if failed.is_none() {
+                    release_dependents(id, &dependents, &mut remaining_deps, &mut ready);
+                }
+            }
             NodeOutcome::Failed(error) => {
                 summary.nodes_failed += 1;
                 // Only the narrow congestion set throttles; other failures
@@ -739,6 +785,26 @@ fn aimd_note_healthy(controller: &Option<Arc<AimdController>>, request: Option<&
             ctrl.note_healthy(class);
         }
     }
+}
+
+/// File-scoped congestion feedback for a continuing file-terminal failure.
+///
+/// Always targets [`AdaptiveClass::File`]: multipart commit nodes have a zero
+/// resource request (session lease already held separately), and a second
+/// synthetic `file_slots` lease would risk lock-order deadlocks. Returns true
+/// when a D2 congestion decrease was applied.
+fn aimd_note_file_congestion(
+    controller: &Option<Arc<AimdController>>,
+    error: &TransferError,
+) -> bool {
+    let Some(ctrl) = controller else {
+        return false;
+    };
+    if congestion_from_error(error).is_none() {
+        return false;
+    }
+    ctrl.on_congestion_with_hint(AdaptiveClass::File, error.retry_after);
+    true
 }
 
 #[cfg(test)]
@@ -2257,6 +2323,431 @@ mod tests {
         .expect("permit leak: second graph hung on acquire")
         .expect("second graph should succeed");
         assert_eq!(summary.nodes_completed, 1);
+    }
+
+    /// DAG-P1-04: continuing file failure increments nodes_failed, reports
+    /// ObservedOutcome::Failed, releases dependents, and returns Ok.
+    #[tokio::test]
+    async fn continuing_file_failure_releases_dependents_and_returns_ok() {
+        let mut dag = TransferDag::default();
+        let fail_id = dag.add_node(
+            TransferNodeKind::DownloadFile,
+            vec![],
+            ResourceRequest::upload_file(),
+        );
+        let tail_id = dag.add_node(
+            TransferNodeKind::VerifyChecksum,
+            vec![fail_id],
+            ResourceRequest::default(),
+        );
+
+        let ran_tail = Arc::new(AtomicUsize::new(0));
+        let ran_tail_c = Arc::clone(&ran_tail);
+        let runner: Arc<dyn DagNodeRunner> = Arc::new(move |node: TransferNode| -> NodeFuture {
+            let ran_tail = Arc::clone(&ran_tail_c);
+            Box::pin(async move {
+                if node.id == fail_id {
+                    NodeOutcome::FileFailedButGraphContinues(TransferError::new(
+                        TransferErrorKind::RateLimited,
+                        "HTTP 429",
+                    ))
+                } else if node.id == tail_id {
+                    ran_tail.fetch_add(1, Ordering::SeqCst);
+                    NodeOutcome::Completed
+                } else {
+                    NodeOutcome::Completed
+                }
+            })
+        });
+        let observer = Arc::new(CollectingDagObserver::default());
+        let manager = TransferResourceManager::new(TransferBudget::from_file_slots(4));
+        let summary = execute_dag(
+            &dag,
+            &manager,
+            runner,
+            Arc::clone(&observer) as Arc<dyn DagObserver>,
+            None,
+        )
+        .await
+        .expect("continuing failure must return Ok");
+
+        assert_eq!(summary.nodes_failed, 1);
+        assert_eq!(summary.nodes_completed, 1);
+        assert_eq!(
+            ran_tail.load(Ordering::SeqCst),
+            1,
+            "structural tail must drain"
+        );
+        let completed = observer.completed_nodes();
+        assert!(
+            completed
+                .iter()
+                .any(|(id, o)| *id == fail_id && *o == ObservedOutcome::Failed),
+            "observer must see Failed once for the file terminal"
+        );
+        assert!(
+            completed
+                .iter()
+                .any(|(id, o)| *id == tail_id && *o == ObservedOutcome::Completed),
+            "tail must complete"
+        );
+    }
+
+    /// DAG-P1-04 negative: fatal Failed still cancels siblings and does not
+    /// release dependents.
+    #[tokio::test]
+    async fn fatal_failed_still_cancels_siblings_without_releasing_dependents() {
+        let mut dag = TransferDag::default();
+        let fail_id = dag.add_node(
+            TransferNodeKind::DownloadFile,
+            vec![],
+            ResourceRequest::upload_file(),
+        );
+        let _sibling = dag.add_node(
+            TransferNodeKind::DownloadFile,
+            vec![],
+            ResourceRequest::upload_file(),
+        );
+        let dependent = dag.add_node(
+            TransferNodeKind::VerifyChecksum,
+            vec![fail_id],
+            ResourceRequest::default(),
+        );
+
+        let dependent_ran = Arc::new(AtomicUsize::new(0));
+        let dependent_ran_c = Arc::clone(&dependent_ran);
+        let runner: Arc<dyn DagNodeRunner> = Arc::new(move |node: TransferNode| -> NodeFuture {
+            let dependent_ran = Arc::clone(&dependent_ran_c);
+            Box::pin(async move {
+                if node.id == fail_id {
+                    NodeOutcome::Failed(TransferError::from_message("plan failed"))
+                } else if node.id == dependent {
+                    dependent_ran.fetch_add(1, Ordering::SeqCst);
+                    NodeOutcome::Completed
+                } else {
+                    // Sibling: park long enough to be cancelled by fail-fast.
+                    tokio::time::sleep(Duration::from_secs(30)).await;
+                    NodeOutcome::Completed
+                }
+            })
+        });
+        let manager = TransferResourceManager::new(TransferBudget::from_file_slots(4));
+        let err = execute_dag(&dag, &manager, runner, noop_observer(), None)
+            .await
+            .expect_err("fatal failure must return Err");
+        assert!(matches!(err, DagExecutionError::NodeFailed { .. }));
+        assert_eq!(
+            dependent_ran.load(Ordering::SeqCst),
+            0,
+            "dependents of a fatal failure must not run"
+        );
+    }
+
+    /// File-local 429 at target 8 halves File to 4; a later independent file
+    /// still completes.
+    #[tokio::test]
+    async fn continuing_429_halves_file_target_and_independent_file_completes() {
+        use crate::transfer_dag::adaptive::{AdaptiveClass, AimdConfig, AimdController};
+
+        let mut dag = TransferDag::default();
+        let a = dag.add_node(
+            TransferNodeKind::DownloadFile,
+            vec![],
+            ResourceRequest::upload_file(),
+        );
+        // Independent second file (no dependency on a).
+        let b = dag.add_node(
+            TransferNodeKind::DownloadFile,
+            vec![],
+            ResourceRequest::upload_file(),
+        );
+
+        let b_completed = Arc::new(AtomicUsize::new(0));
+        let b_completed_c = Arc::clone(&b_completed);
+        let runner: Arc<dyn DagNodeRunner> = Arc::new(move |node: TransferNode| -> NodeFuture {
+            let b_completed = Arc::clone(&b_completed_c);
+            Box::pin(async move {
+                if node.id == a {
+                    // Brief yield so both can be ready; a fails with 429.
+                    tokio::time::sleep(Duration::from_millis(5)).await;
+                    NodeOutcome::FileFailedButGraphContinues(TransferError::new(
+                        TransferErrorKind::RateLimited,
+                        "HTTP 429 Too Many Requests",
+                    ))
+                } else if node.id == b {
+                    // Start after a's failure so the decrease is visible.
+                    tokio::time::sleep(Duration::from_millis(30)).await;
+                    b_completed.fetch_add(1, Ordering::SeqCst);
+                    NodeOutcome::Completed
+                } else {
+                    NodeOutcome::Completed
+                }
+            })
+        });
+        let controller = Arc::new(AimdController::new(8, 1, 1, 1, AimdConfig::default()));
+        let manager = TransferResourceManager::new(TransferBudget::from_file_slots(8));
+        let summary = execute_dag(
+            &dag,
+            &manager,
+            runner,
+            noop_observer(),
+            Some(Arc::clone(&controller)),
+        )
+        .await
+        .expect("batch-like continuing failure returns Ok");
+
+        assert_eq!(summary.nodes_failed, 1);
+        assert_eq!(summary.nodes_completed, 1);
+        assert_eq!(b_completed.load(Ordering::SeqCst), 1);
+        assert_eq!(controller.target(AdaptiveClass::File), 4);
+        assert_eq!(summary.metrics.backpressure_events, 1);
+    }
+
+    /// Typed 503 / timeout / max-connections / connection-reset each trigger
+    /// one file-class decrease without message parsing.
+    #[tokio::test]
+    async fn continuing_d2_kinds_each_trigger_file_decrease() {
+        use crate::transfer_dag::adaptive::{AdaptiveClass, AimdConfig, AimdController};
+
+        let kinds = [
+            TransferErrorKind::ServiceUnavailable,
+            TransferErrorKind::Timeout,
+            TransferErrorKind::MaxConnections,
+            TransferErrorKind::ConnectionReset,
+        ];
+        for kind in kinds {
+            let mut dag = TransferDag::default();
+            dag.add_node(
+                TransferNodeKind::DownloadFile,
+                vec![],
+                ResourceRequest::upload_file(),
+            );
+            // Presentation message deliberately lacks status codes.
+            let err = TransferError::new(kind, "redacted user-facing failure");
+            let runner: Arc<dyn DagNodeRunner> = Arc::new(move |_n: TransferNode| -> NodeFuture {
+                let e = err.clone();
+                Box::pin(async move { NodeOutcome::FileFailedButGraphContinues(e) })
+            });
+            let controller = Arc::new(AimdController::new(8, 1, 1, 1, AimdConfig::default()));
+            let manager = TransferResourceManager::new(TransferBudget::from_file_slots(8));
+            let summary = execute_dag(
+                &dag,
+                &manager,
+                runner,
+                noop_observer(),
+                Some(Arc::clone(&controller)),
+            )
+            .await
+            .expect("Ok");
+            assert_eq!(summary.nodes_failed, 1, "{kind:?}");
+            assert_eq!(
+                controller.target(AdaptiveClass::File),
+                4,
+                "{kind:?} must halve 8→4 without message parsing"
+            );
+        }
+    }
+
+    /// auth / not-found / permission / quota / local-I/O / remote-I/O / unknown
+    /// must not change the File target.
+    #[tokio::test]
+    async fn continuing_non_congestion_kinds_do_not_shrink() {
+        use crate::transfer_dag::adaptive::{AdaptiveClass, AimdConfig, AimdController};
+
+        let kinds = [
+            TransferErrorKind::Auth,
+            TransferErrorKind::NotFound,
+            TransferErrorKind::PermissionDenied,
+            TransferErrorKind::QuotaExceeded,
+            TransferErrorKind::LocalIo,
+            TransferErrorKind::RemoteIo,
+            TransferErrorKind::Unknown,
+        ];
+        for kind in kinds {
+            let mut dag = TransferDag::default();
+            dag.add_node(
+                TransferNodeKind::DownloadFile,
+                vec![],
+                ResourceRequest::upload_file(),
+            );
+            let err = TransferError::new(kind, "redacted");
+            let runner: Arc<dyn DagNodeRunner> = Arc::new(move |_n: TransferNode| -> NodeFuture {
+                let e = err.clone();
+                Box::pin(async move { NodeOutcome::FileFailedButGraphContinues(e) })
+            });
+            let controller = Arc::new(AimdController::new(8, 1, 1, 1, AimdConfig::default()));
+            let manager = TransferResourceManager::new(TransferBudget::from_file_slots(8));
+            let _ = execute_dag(
+                &dag,
+                &manager,
+                runner,
+                noop_observer(),
+                Some(Arc::clone(&controller)),
+            )
+            .await
+            .expect("Ok");
+            assert_eq!(
+                controller.target(AdaptiveClass::File),
+                8,
+                "{kind:?} must not shrink"
+            );
+        }
+    }
+
+    /// Cancellation continuing outcome is observer-Cancelled and not congestion.
+    #[tokio::test]
+    async fn continuing_cancellation_is_not_congestion() {
+        use crate::transfer_dag::adaptive::{AdaptiveClass, AimdConfig, AimdController};
+
+        let mut dag = TransferDag::default();
+        let id = dag.add_node(
+            TransferNodeKind::DownloadFile,
+            vec![],
+            ResourceRequest::upload_file(),
+        );
+        let runner: Arc<dyn DagNodeRunner> = Arc::new(|_n: TransferNode| -> NodeFuture {
+            Box::pin(async { NodeOutcome::FileFailedButGraphContinues(TransferError::cancelled()) })
+        });
+        let observer = Arc::new(CollectingDagObserver::default());
+        let controller = Arc::new(AimdController::new(8, 1, 1, 1, AimdConfig::default()));
+        let manager = TransferResourceManager::new(TransferBudget::from_file_slots(8));
+        let summary = execute_dag(
+            &dag,
+            &manager,
+            runner,
+            Arc::clone(&observer) as Arc<dyn DagObserver>,
+            Some(Arc::clone(&controller)),
+        )
+        .await
+        .expect("Ok");
+        assert_eq!(summary.nodes_failed, 1);
+        assert_eq!(controller.target(AdaptiveClass::File), 8);
+        assert_eq!(controller.cooldown_until(AdaptiveClass::File), None);
+        assert!(observer
+            .completed_nodes()
+            .iter()
+            .any(|(nid, o)| *nid == id && *o == ObservedOutcome::Cancelled));
+    }
+
+    /// Retry-After on a continuing congestion failure arms the controller cooldown.
+    #[tokio::test]
+    async fn continuing_failure_honors_typed_retry_after() {
+        use crate::transfer_dag::adaptive::{AdaptiveClass, AimdConfig, AimdController};
+        use std::time::Instant;
+
+        let mut dag = TransferDag::default();
+        dag.add_node(
+            TransferNodeKind::DownloadFile,
+            vec![],
+            ResourceRequest::upload_file(),
+        );
+        let mut err = TransferError::new(
+            TransferErrorKind::RateLimited,
+            "Transfer rate limit reached",
+        );
+        err.retry_after = Some(Duration::from_secs(45));
+        let runner: Arc<dyn DagNodeRunner> = Arc::new(move |_n: TransferNode| -> NodeFuture {
+            let e = err.clone();
+            Box::pin(async move { NodeOutcome::FileFailedButGraphContinues(e) })
+        });
+        let controller = Arc::new(AimdController::new(8, 1, 1, 1, AimdConfig::default()));
+        let manager = TransferResourceManager::new(TransferBudget::from_file_slots(8));
+        let before = Instant::now();
+        let _ = execute_dag(
+            &dag,
+            &manager,
+            runner,
+            noop_observer(),
+            Some(Arc::clone(&controller)),
+        )
+        .await
+        .expect("Ok");
+        assert_eq!(controller.target(AdaptiveClass::File), 4);
+        let until = controller
+            .cooldown_until(AdaptiveClass::File)
+            .expect("cooldown armed");
+        let armed = until.saturating_duration_since(before);
+        assert!(
+            armed >= Duration::from_secs(44) && armed <= Duration::from_secs(46),
+            "expected ~45s, got {armed:?}"
+        );
+    }
+
+    /// AIMD kill switch leaves the target at the honest ceiling on continuing
+    /// congestion.
+    #[tokio::test]
+    async fn continuing_failure_aimd_disabled_is_noop() {
+        use crate::transfer_dag::adaptive::{AdaptiveClass, AimdConfig, AimdController};
+
+        let mut dag = TransferDag::default();
+        dag.add_node(
+            TransferNodeKind::DownloadFile,
+            vec![],
+            ResourceRequest::upload_file(),
+        );
+        let runner: Arc<dyn DagNodeRunner> = Arc::new(|_n: TransferNode| -> NodeFuture {
+            Box::pin(async {
+                NodeOutcome::FileFailedButGraphContinues(TransferError::new(
+                    TransferErrorKind::RateLimited,
+                    "429",
+                ))
+            })
+        });
+        let cfg = AimdConfig {
+            disabled: true,
+            ..AimdConfig::default()
+        };
+        let controller = Arc::new(AimdController::new(8, 1, 1, 1, cfg));
+        let manager = TransferResourceManager::new(TransferBudget::from_file_slots(8));
+        let _ = execute_dag(
+            &dag,
+            &manager,
+            runner,
+            noop_observer(),
+            Some(Arc::clone(&controller)),
+        )
+        .await
+        .expect("Ok");
+        assert_eq!(controller.target(AdaptiveClass::File), 8);
+    }
+
+    /// CommitTemp-style terminal (zero resource request) still feeds File-class
+    /// AIMD once; no false healthy signal.
+    #[tokio::test]
+    async fn continuing_failure_on_empty_request_uses_file_class() {
+        use crate::transfer_dag::adaptive::{AdaptiveClass, AimdConfig, AimdController};
+
+        let mut dag = TransferDag::default();
+        // CommitTemp has no transfer resource classes.
+        dag.add_node(
+            TransferNodeKind::CommitTemp,
+            vec![],
+            ResourceRequest::default(),
+        );
+        let runner: Arc<dyn DagNodeRunner> = Arc::new(|_n: TransferNode| -> NodeFuture {
+            Box::pin(async {
+                NodeOutcome::FileFailedButGraphContinues(TransferError::new(
+                    TransferErrorKind::RateLimited,
+                    "part failed at commit",
+                ))
+            })
+        });
+        let controller = Arc::new(AimdController::new(8, 1, 1, 1, AimdConfig::default()));
+        let manager = TransferResourceManager::new(TransferBudget::from_file_slots(8));
+        let summary = execute_dag(
+            &dag,
+            &manager,
+            runner,
+            noop_observer(),
+            Some(Arc::clone(&controller)),
+        )
+        .await
+        .expect("Ok");
+        assert_eq!(summary.nodes_failed, 1);
+        assert_eq!(summary.nodes_completed, 0);
+        assert_eq!(controller.target(AdaptiveClass::File), 4);
+        // Chunk class must be untouched (no false multi-class feedback).
+        assert_eq!(controller.target(AdaptiveClass::Chunk), 1);
     }
 
     /// Happy path and fallback still complete under options API.

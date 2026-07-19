@@ -21,10 +21,7 @@ use tokio::sync::Mutex;
 
 use crate::providers::{MultipartHandle, ProviderError, StorageProvider, UploadedPart};
 use crate::transfer_dag::multipart_part_byte_len;
-use crate::transfer_domain::{
-    transfer_failure_kind_from_sync, user_facing_transfer_failure_message, TransferFailure,
-    TransferFailureKind,
-};
+use crate::transfer_domain::{TransferFailure, TransferFailureKind};
 
 /// Resolved multipart layout for one file (neutral, executor-facing).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -71,6 +68,7 @@ impl MultipartLayout {
                     part_number, self.total_parts
                 ),
                 retryable: false,
+                retry_after_secs: None,
             });
         }
         let idx = (part_number - 1) as usize;
@@ -85,6 +83,7 @@ impl MultipartLayout {
                 kind: TransferFailureKind::Unknown,
                 message: format!("multipart part {} has zero length", part_number),
                 retryable: false,
+                retry_after_secs: None,
             });
         }
         let offset = (part_number as u64 - 1) * self.preferred_part_size;
@@ -221,6 +220,7 @@ impl MultipartFileState {
                     part_number, expected_part_number
                 ),
                 retryable: false,
+                retry_after_secs: None,
             });
         }
         if part_number == 0 || part_number > self.layout.total_parts {
@@ -231,6 +231,7 @@ impl MultipartFileState {
                     part_number, self.layout.total_parts
                 ),
                 retryable: false,
+                retry_after_secs: None,
             });
         }
         let mut parts = self.parts.lock().await;
@@ -239,6 +240,7 @@ impl MultipartFileState {
                 kind: TransferFailureKind::Unknown,
                 message: format!("duplicate multipart receipt for part {}", part_number),
                 retryable: false,
+                retry_after_secs: None,
             });
         }
         parts.insert(part_number, receipt);
@@ -334,44 +336,43 @@ pub fn clone_multipart_worker(provider: &dyn StorageProvider) -> Option<Box<dyn 
 }
 
 /// Map a provider/string error into a typed [`TransferFailure`].
-pub fn transfer_failure_from_message(message: &str, path_hint: Option<&str>) -> TransferFailure {
+///
+/// Classification happens once at this adapter boundary (via the shared
+/// [`TransferError`] taxonomy). Controllers later read only machine fields.
+pub fn transfer_failure_from_message(message: &str, _path_hint: Option<&str>) -> TransferFailure {
     if message.to_lowercase().contains("cancel") {
-        return TransferFailure {
-            kind: TransferFailureKind::Cancelled,
-            message: "Transfer cancelled by user".to_string(),
-            retryable: false,
-        };
+        return cancelled_failure();
     }
-    let error_info = crate::sync::classify_sync_error(message, path_hint);
-    let kind = transfer_failure_kind_from_sync(&error_info.kind);
-    TransferFailure {
-        kind,
-        message: user_facing_transfer_failure_message(&kind).to_string(),
-        retryable: error_info.retryable,
-    }
+    // Lift typed congestion / Retry-After from the raw message before the
+    // redacted user-facing string replaces it.
+    TransferFailure::from_raw_message(message)
 }
 
 pub fn transfer_failure_from_provider(
     error: &ProviderError,
-    path_hint: Option<&str>,
+    _path_hint: Option<&str>,
 ) -> TransferFailure {
-    transfer_failure_from_message(&error.to_string(), path_hint)
+    use crate::transfer_dag::TransferError;
+    // Discriminant-first mapping (Timeout, Cancelled, ConnectionLost, …) with
+    // a single text classification only for string-bearing variants.
+    let typed = TransferError::from_provider(error);
+    TransferFailure::from_transfer_error(&typed)
 }
 
 pub fn cancelled_failure() -> TransferFailure {
-    TransferFailure {
-        kind: TransferFailureKind::Cancelled,
-        message: "Transfer cancelled by user".to_string(),
-        retryable: false,
-    }
+    TransferFailure::new(
+        TransferFailureKind::Cancelled,
+        "Transfer cancelled by user",
+        false,
+    )
 }
 
 pub fn unsupported_multipart_failure() -> TransferFailure {
-    TransferFailure {
-        kind: TransferFailureKind::Unknown,
-        message: "Executor does not implement multipart per-part wire I/O".to_string(),
-        retryable: false,
-    }
+    TransferFailure::new(
+        TransferFailureKind::Unknown,
+        "Executor does not implement multipart per-part wire I/O",
+        false,
+    )
 }
 
 #[cfg(test)]

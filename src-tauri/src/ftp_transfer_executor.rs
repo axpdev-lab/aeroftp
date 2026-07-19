@@ -15,8 +15,7 @@ use tracing::warn;
 use crate::ftp_session_pool::FtpSessionPool;
 use crate::transfer_dag::TransferSessionPoolHandle;
 use crate::transfer_domain::{
-    transfer_failure_kind_from_sync, user_facing_transfer_failure_message, TransferEntry,
-    TransferFailure, TransferFailureKind, TransferOutcome,
+    TransferEntry, TransferFailure, TransferFailureKind, TransferOutcome,
 };
 use crate::transfer_orchestrator::TransferExecutor;
 use crate::transfer_settings::ResolvedTransferSettings;
@@ -280,20 +279,13 @@ impl TransferExecutor for FtpDownloadExecutor {
         }
 
         let failure = if self.cancel_token.is_cancelled() || last_error.contains("cancelled") {
-            TransferFailure {
-                kind: TransferFailureKind::Cancelled,
-                message: "Transfer cancelled by user".to_string(),
-                retryable: false,
-            }
+            TransferFailure::new(
+                TransferFailureKind::Cancelled,
+                "Transfer cancelled by user",
+                false,
+            )
         } else {
-            let error_info =
-                crate::sync::classify_sync_error(&last_error, Some(&entry.remote_path));
-            let failure_kind = transfer_failure_kind_from_sync(&error_info.kind);
-            TransferFailure {
-                kind: failure_kind,
-                message: user_facing_transfer_failure_message(&failure_kind).to_string(),
-                retryable: error_info.retryable,
-            }
+            TransferFailure::from_raw_message(&last_error)
         };
 
         crate::transfer_event_sink::emit_gui_transfer_event(
@@ -529,19 +521,13 @@ impl TransferExecutor for FtpUploadExecutor {
         }
 
         let failure = if self.cancel_token.is_cancelled() || last_error.contains("cancelled") {
-            TransferFailure {
-                kind: TransferFailureKind::Cancelled,
-                message: "Transfer cancelled by user".to_string(),
-                retryable: false,
-            }
+            TransferFailure::new(
+                TransferFailureKind::Cancelled,
+                "Transfer cancelled by user",
+                false,
+            )
         } else {
-            let error_info = crate::sync::classify_sync_error(&last_error, Some(&entry.local_path));
-            let failure_kind = transfer_failure_kind_from_sync(&error_info.kind);
-            TransferFailure {
-                kind: failure_kind,
-                message: user_facing_transfer_failure_message(&failure_kind).to_string(),
-                retryable: error_info.retryable,
-            }
+            TransferFailure::from_raw_message(&last_error)
         };
 
         crate::transfer_event_sink::emit_gui_transfer_event(

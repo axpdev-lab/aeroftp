@@ -52,10 +52,7 @@ use crate::providers::{
 use crate::transfer_dag::{
     Capability, TransferCapabilities, TransferSessionLease, TransferSessionPoolHandle,
 };
-use crate::transfer_domain::{
-    transfer_failure_kind_from_sync, user_facing_transfer_failure_message, TransferEntry,
-    TransferFailure, TransferOutcome,
-};
+use crate::transfer_domain::{TransferEntry, TransferFailure, TransferOutcome};
 use crate::transfer_event_sink::TransferEventSink;
 use crate::transfer_multipart::{
     clone_multipart_worker, transfer_failure_from_message, MultipartLayout,
@@ -1034,21 +1031,16 @@ impl ProviderDownloadExecutor {
     }
 
     fn failed_download(&self, entry: TransferEntry, last_error: String) -> TransferOutcome {
+        // Classify from the raw provider string once; domain carrier keeps
+        // typed congestion / Retry-After while the public event stays redacted.
         let failure = if self.cancel_token.is_cancelled() || last_error.contains("cancelled") {
-            TransferFailure {
-                kind: crate::transfer_domain::TransferFailureKind::Cancelled,
-                message: "Transfer cancelled by user".to_string(),
-                retryable: false,
-            }
+            TransferFailure::new(
+                crate::transfer_domain::TransferFailureKind::Cancelled,
+                "Transfer cancelled by user",
+                false,
+            )
         } else {
-            let error_info =
-                crate::sync::classify_sync_error(&last_error, Some(&entry.remote_path));
-            let failure_kind = transfer_failure_kind_from_sync(&error_info.kind);
-            TransferFailure {
-                kind: failure_kind,
-                message: user_facing_transfer_failure_message(&failure_kind).to_string(),
-                retryable: error_info.retryable,
-            }
+            TransferFailure::from_raw_message(&last_error)
         };
 
         self.sink.emit_transfer_event(crate::TransferEvent {
@@ -1336,19 +1328,13 @@ impl ProviderUploadExecutor {
 
     fn failed_upload(&self, entry: TransferEntry, last_error: String) -> TransferOutcome {
         let failure = if self.cancel_token.is_cancelled() || last_error.contains("cancelled") {
-            TransferFailure {
-                kind: crate::transfer_domain::TransferFailureKind::Cancelled,
-                message: "Transfer cancelled by user".to_string(),
-                retryable: false,
-            }
+            TransferFailure::new(
+                crate::transfer_domain::TransferFailureKind::Cancelled,
+                "Transfer cancelled by user",
+                false,
+            )
         } else {
-            let error_info = crate::sync::classify_sync_error(&last_error, Some(&entry.local_path));
-            let failure_kind = transfer_failure_kind_from_sync(&error_info.kind);
-            TransferFailure {
-                kind: failure_kind,
-                message: user_facing_transfer_failure_message(&failure_kind).to_string(),
-                retryable: error_info.retryable,
-            }
+            TransferFailure::from_raw_message(&last_error)
         };
 
         self.sink.emit_transfer_event(crate::TransferEvent {

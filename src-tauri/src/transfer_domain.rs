@@ -3,9 +3,14 @@
 
 //! Shared transfer domain model for GUI batch transfers.
 
+use std::time::Duration;
+
 use serde::{Deserialize, Serialize};
 
-use crate::transfer_dag::{TransferBudget, TransferCapabilities};
+use crate::transfer_dag::{
+    FailureScope, RetryDirective, TransferBudget, TransferCapabilities, TransferError,
+    TransferErrorKind,
+};
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -14,26 +19,192 @@ pub enum TransferDirection {
     Upload,
 }
 
+/// Public/domain failure taxonomy for batch and multipart outcomes.
+///
+/// Extended in DAG-P1-04 so congestion kinds (429 / 503 / timeout / max
+/// connections / connection-reset) and non-congestion policy kinds (auth /
+/// quota) survive the redacted user-facing message. Controllers map from
+/// these discriminants only — never from [`TransferFailure::message`].
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum TransferFailureKind {
     Timeout,
     ConnectionLost,
+    /// Distinct from generic connection loss: AIMD D2 congestion trigger.
+    #[serde(alias = "connection_reset")]
+    ConnectionReset,
     RateLimited,
+    /// HTTP 503 / service unavailable under load (AIMD D2).
+    ServiceUnavailable,
+    /// Server refused for too many connections, e.g. FTP 421 (AIMD D2).
+    MaxConnections,
     NotFound,
     PermissionDenied,
     InvalidPath,
     LocalIo,
     RemoteIo,
     Cancelled,
+    /// Authentication / credential failure (never congestion).
+    Auth,
+    /// Hard storage / quota limit (never congestion).
+    QuotaExceeded,
     Unknown,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TransferFailure {
     pub kind: TransferFailureKind,
+    /// Redacted, user-facing presentation string. Controllers must not parse it.
     pub message: String,
     pub retryable: bool,
+    /// Typed Retry-After from the provider adapter, in whole seconds.
+    /// Never recovered by substring-matching [`Self::message`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retry_after_secs: Option<u64>,
+}
+
+impl TransferFailure {
+    /// Build a failure without a Retry-After hint.
+    pub fn new(kind: TransferFailureKind, message: impl Into<String>, retryable: bool) -> Self {
+        Self {
+            kind,
+            message: message.into(),
+            retryable,
+            retry_after_secs: None,
+        }
+    }
+
+    /// Attach a typed Retry-After (seconds).
+    pub fn with_retry_after_secs(mut self, secs: u64) -> Self {
+        self.retry_after_secs = Some(secs);
+        self
+    }
+
+    /// Lossless machine-field bridge into the DAG executor's typed error.
+    ///
+    /// Preserves congestion kind, file scope, retryability, and Retry-After.
+    /// Presentation stays the (already redacted) domain message.
+    pub fn to_transfer_error(&self) -> TransferError {
+        transfer_error_from_failure(self)
+    }
+
+    /// Build a domain failure from a typed DAG error, redacting the public
+    /// message while keeping machine fields.
+    pub fn from_transfer_error(error: &TransferError) -> Self {
+        transfer_failure_from_transfer_error(error)
+    }
+
+    /// Classify a raw provider / transport string once at the adapter boundary.
+    ///
+    /// Uses [`TransferError::from_message`] so 503 / 421 / connection-reset /
+    /// Retry-After markers are lifted into typed fields before the redacted
+    /// presentation string replaces the raw text.
+    pub fn from_raw_message(raw: &str) -> Self {
+        let typed = TransferError::from_message(raw);
+        Self::from_transfer_error(&typed)
+    }
+}
+
+/// Central, lossless adapter: domain failure → DAG [`TransferError`].
+///
+/// Single source of truth for whole-file, session-acquire and multipart
+/// terminal outcomes. Never re-classifies from the presentation message.
+pub fn transfer_error_from_failure(failure: &TransferFailure) -> TransferError {
+    let kind = transfer_error_kind_from_failure_kind(failure.kind);
+    let mut err = TransferError::new(kind, failure.message.clone()).with_scope(FailureScope::File);
+
+    if !failure.retryable {
+        // Honour the domain retry flag when it is stricter than the kind default.
+        if !matches!(
+            kind,
+            TransferErrorKind::RateLimited
+                | TransferErrorKind::ServiceUnavailable
+                | TransferErrorKind::Timeout
+                | TransferErrorKind::MaxConnections
+                | TransferErrorKind::ConnectionReset
+                | TransferErrorKind::Network
+        ) {
+            err.retry = RetryDirective::Never;
+        }
+    }
+
+    if let Some(secs) = failure.retry_after_secs {
+        err.retry_after = Some(Duration::from_secs(secs));
+        if matches!(
+            kind,
+            TransferErrorKind::RateLimited | TransferErrorKind::ServiceUnavailable
+        ) {
+            err.retry = RetryDirective::AfterHint;
+        }
+    }
+
+    err
+}
+
+/// Central adapter: typed DAG error → domain failure with redacted message.
+pub fn transfer_failure_from_transfer_error(error: &TransferError) -> TransferFailure {
+    let kind = transfer_failure_kind_from_error_kind(error.kind);
+    let retryable = !matches!(error.retry, RetryDirective::Never)
+        && !matches!(
+            error.kind,
+            TransferErrorKind::Cancelled
+                | TransferErrorKind::Auth
+                | TransferErrorKind::NotFound
+                | TransferErrorKind::PermissionDenied
+                | TransferErrorKind::QuotaExceeded
+        );
+    let mut failure =
+        TransferFailure::new(kind, user_facing_transfer_failure_message(&kind), retryable);
+    if let Some(d) = error.retry_after {
+        // Round up sub-second hints so a 0-duration never defeats AIMD.
+        let secs = d.as_secs().max(if d.subsec_nanos() > 0 { 1 } else { 0 });
+        if secs > 0 || d.as_secs() > 0 {
+            failure.retry_after_secs = Some(d.as_secs().max(1));
+        }
+    }
+    failure
+}
+
+fn transfer_error_kind_from_failure_kind(kind: TransferFailureKind) -> TransferErrorKind {
+    match kind {
+        TransferFailureKind::Timeout => TransferErrorKind::Timeout,
+        TransferFailureKind::ConnectionLost => TransferErrorKind::Network,
+        TransferFailureKind::ConnectionReset => TransferErrorKind::ConnectionReset,
+        TransferFailureKind::RateLimited => TransferErrorKind::RateLimited,
+        TransferFailureKind::ServiceUnavailable => TransferErrorKind::ServiceUnavailable,
+        TransferFailureKind::MaxConnections => TransferErrorKind::MaxConnections,
+        TransferFailureKind::NotFound | TransferFailureKind::InvalidPath => {
+            TransferErrorKind::NotFound
+        }
+        TransferFailureKind::PermissionDenied => TransferErrorKind::PermissionDenied,
+        TransferFailureKind::LocalIo => TransferErrorKind::LocalIo,
+        TransferFailureKind::RemoteIo => TransferErrorKind::RemoteIo,
+        TransferFailureKind::Cancelled => TransferErrorKind::Cancelled,
+        TransferFailureKind::Auth => TransferErrorKind::Auth,
+        TransferFailureKind::QuotaExceeded => TransferErrorKind::QuotaExceeded,
+        TransferFailureKind::Unknown => TransferErrorKind::Unknown,
+    }
+}
+
+fn transfer_failure_kind_from_error_kind(kind: TransferErrorKind) -> TransferFailureKind {
+    match kind {
+        TransferErrorKind::Timeout => TransferFailureKind::Timeout,
+        TransferErrorKind::ConnectionReset => TransferFailureKind::ConnectionReset,
+        TransferErrorKind::Network => TransferFailureKind::ConnectionLost,
+        TransferErrorKind::RateLimited => TransferFailureKind::RateLimited,
+        TransferErrorKind::ServiceUnavailable => TransferFailureKind::ServiceUnavailable,
+        TransferErrorKind::MaxConnections => TransferFailureKind::MaxConnections,
+        TransferErrorKind::NotFound => TransferFailureKind::NotFound,
+        TransferErrorKind::PermissionDenied => TransferFailureKind::PermissionDenied,
+        TransferErrorKind::LocalIo => TransferFailureKind::LocalIo,
+        TransferErrorKind::RemoteIo => TransferFailureKind::RemoteIo,
+        TransferErrorKind::Cancelled => TransferFailureKind::Cancelled,
+        TransferErrorKind::Auth => TransferFailureKind::Auth,
+        TransferErrorKind::QuotaExceeded => TransferFailureKind::QuotaExceeded,
+        TransferErrorKind::NotConnected => TransferFailureKind::ConnectionLost,
+        TransferErrorKind::ResourceAcquire => TransferFailureKind::Unknown,
+        TransferErrorKind::Unknown => TransferFailureKind::Unknown,
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -149,6 +320,8 @@ pub fn transfer_failure_kind_from_sync(kind: &crate::sync::SyncErrorKind) -> Tra
         crate::sync::SyncErrorKind::PathNotFound => TransferFailureKind::NotFound,
         crate::sync::SyncErrorKind::PermissionDenied => TransferFailureKind::PermissionDenied,
         crate::sync::SyncErrorKind::DiskError => TransferFailureKind::LocalIo,
+        crate::sync::SyncErrorKind::Auth => TransferFailureKind::Auth,
+        crate::sync::SyncErrorKind::QuotaExceeded => TransferFailureKind::QuotaExceeded,
         _ => TransferFailureKind::Unknown,
     }
 }
@@ -157,13 +330,18 @@ pub fn user_facing_transfer_failure_message(kind: &TransferFailureKind) -> &'sta
     match kind {
         TransferFailureKind::Timeout => "Transfer timed out",
         TransferFailureKind::ConnectionLost => "Connection lost during transfer",
+        TransferFailureKind::ConnectionReset => "Connection reset during transfer",
         TransferFailureKind::RateLimited => "Transfer rate limit reached",
+        TransferFailureKind::ServiceUnavailable => "Remote service temporarily unavailable",
+        TransferFailureKind::MaxConnections => "Too many connections to remote service",
         TransferFailureKind::NotFound => "Requested file or path was not found",
         TransferFailureKind::PermissionDenied => "Permission denied during transfer",
         TransferFailureKind::InvalidPath => "Invalid transfer path",
         TransferFailureKind::LocalIo => "Local file system error during transfer",
         TransferFailureKind::RemoteIo => "Remote storage error during transfer",
         TransferFailureKind::Cancelled => "Transfer cancelled by user",
+        TransferFailureKind::Auth => "Authentication failed during transfer",
+        TransferFailureKind::QuotaExceeded => "Storage quota exceeded during transfer",
         TransferFailureKind::Unknown => "Transfer failed",
     }
 }
@@ -179,8 +357,14 @@ mod tests {
     }
 
     #[test]
-    fn maps_unhandled_sync_kind_to_unknown() {
+    fn maps_sync_auth_to_transfer_auth() {
         let kind = transfer_failure_kind_from_sync(&crate::sync::SyncErrorKind::Auth);
+        assert_eq!(kind, TransferFailureKind::Auth);
+    }
+
+    #[test]
+    fn maps_unhandled_sync_kind_to_unknown() {
+        let kind = transfer_failure_kind_from_sync(&crate::sync::SyncErrorKind::FileLocked);
         assert_eq!(kind, TransferFailureKind::Unknown);
     }
 
@@ -188,6 +372,80 @@ mod tests {
     fn exposes_redacted_user_facing_message() {
         let message = user_facing_transfer_failure_message(&TransferFailureKind::PermissionDenied);
         assert_eq!(message, "Permission denied during transfer");
+    }
+
+    #[test]
+    fn from_raw_message_preserves_congestion_kinds_not_presentation() {
+        let f429 =
+            TransferFailure::from_raw_message("HTTP 429 Too Many Requests [retry-after-secs=30]");
+        assert_eq!(f429.kind, TransferFailureKind::RateLimited);
+        assert_eq!(f429.retry_after_secs, Some(30));
+        assert_eq!(f429.message, "Transfer rate limit reached");
+        assert!(!f429.message.contains("429"));
+
+        let f503 = TransferFailure::from_raw_message("503 Service Unavailable");
+        assert_eq!(f503.kind, TransferFailureKind::ServiceUnavailable);
+        assert_eq!(f503.message, "Remote service temporarily unavailable");
+
+        let f421 = TransferFailure::from_raw_message("421 too many connections from your IP");
+        assert_eq!(f421.kind, TransferFailureKind::MaxConnections);
+
+        let reset = TransferFailure::from_raw_message("connection reset by peer");
+        assert_eq!(reset.kind, TransferFailureKind::ConnectionReset);
+    }
+
+    #[test]
+    fn adapter_round_trip_preserves_d2_and_retry_after() {
+        let failure = TransferFailure::new(
+            TransferFailureKind::RateLimited,
+            "Transfer rate limit reached",
+            true,
+        )
+        .with_retry_after_secs(45);
+        let te = failure.to_transfer_error();
+        assert_eq!(te.kind, TransferErrorKind::RateLimited);
+        assert_eq!(te.scope, FailureScope::File);
+        assert_eq!(te.retry_after, Some(Duration::from_secs(45)));
+        assert_eq!(te.retry, RetryDirective::AfterHint);
+        assert!(te.is_congestion());
+
+        // Reverse: typed error → redacted domain failure.
+        let mut typed = TransferError::new(
+            TransferErrorKind::ServiceUnavailable,
+            "raw 503 secret token=abc",
+        );
+        typed.retry_after = Some(Duration::from_secs(12));
+        let back = TransferFailure::from_transfer_error(&typed);
+        assert_eq!(back.kind, TransferFailureKind::ServiceUnavailable);
+        assert_eq!(back.retry_after_secs, Some(12));
+        assert!(!back.message.contains("token"));
+        assert!(!back.message.contains("503"));
+    }
+
+    #[test]
+    fn non_congestion_kinds_are_not_congestion_on_dag_error() {
+        for kind in [
+            TransferFailureKind::Auth,
+            TransferFailureKind::NotFound,
+            TransferFailureKind::PermissionDenied,
+            TransferFailureKind::QuotaExceeded,
+            TransferFailureKind::LocalIo,
+            TransferFailureKind::RemoteIo,
+            TransferFailureKind::Cancelled,
+            TransferFailureKind::Unknown,
+        ] {
+            let te = TransferFailure::new(kind, user_facing_transfer_failure_message(&kind), false)
+                .to_transfer_error();
+            assert!(!te.is_congestion(), "{kind:?} must not be congestion");
+        }
+    }
+
+    #[test]
+    fn serde_defaults_accept_legacy_payload_without_retry_after() {
+        let json = r#"{"kind":"timeout","message":"Transfer timed out","retryable":true}"#;
+        let failure: TransferFailure = serde_json::from_str(json).expect("legacy payload");
+        assert_eq!(failure.kind, TransferFailureKind::Timeout);
+        assert_eq!(failure.retry_after_secs, None);
     }
 
     #[test]

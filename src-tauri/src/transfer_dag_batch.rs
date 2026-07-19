@@ -31,10 +31,16 @@
 //!
 //! - `emit_batch_started` / `emit_batch_progress` / `emit_batch_completed`
 //!   are produced at the same lifecycle points with the same payload shapes.
-//! - A failed file does NOT abort the batch (DAG-P1-04 policy unchanged):
-//!   transfer and commit nodes report [`NodeOutcome::Completed`]; the failure
-//!   lives only in the [`BatchProgressSnapshot`].
-//! - Cancellation leaves unstarted files untouched and unaccounted.
+//! - A failed file does NOT abort the batch (DAG-P1-04): whole-file transfer
+//!   nodes and multipart `CommitTemp` report
+//!   [`NodeOutcome::FileFailedButGraphContinues`] after exactly-once snapshot
+//!   accounting, so DAG/AIMD see a typed file-local failure while independent
+//!   files continue. Part nodes still return [`NodeOutcome::Completed`] so
+//!   siblings drain; the single file-class AIMD signal is at commit.
+//! - Cancellation leaves unstarted files untouched and unaccounted, and is
+//!   never treated as congestion.
+//! - Preflight unsupported-multipart failures are accounted once before graph
+//!   execution (not congestion); part/commit nodes for those entries no-op.
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -88,6 +94,37 @@ pub async fn execute_batch_dag<E>(
     executor: Arc<E>,
     cancel: Arc<AtomicBool>,
     progress_observer: Option<ProgressObserver>,
+) -> TransferBatchResult
+where
+    E: TransferExecutor + Send + Sync + 'static,
+{
+    execute_batch_dag_inner(sink, batch, executor, cancel, progress_observer, None).await
+}
+
+/// Test-only entry that injects a pre-built AIMD controller so probes can
+/// assert target decrease without live network or process-global state.
+#[cfg(test)]
+async fn execute_batch_dag_with_aimd<E>(
+    sink: Arc<dyn TransferEventSink>,
+    batch: TransferBatch,
+    executor: Arc<E>,
+    cancel: Arc<AtomicBool>,
+    progress_observer: Option<ProgressObserver>,
+    aimd: Arc<AimdController>,
+) -> TransferBatchResult
+where
+    E: TransferExecutor + Send + Sync + 'static,
+{
+    execute_batch_dag_inner(sink, batch, executor, cancel, progress_observer, Some(aimd)).await
+}
+
+async fn execute_batch_dag_inner<E>(
+    sink: Arc<dyn TransferEventSink>,
+    batch: TransferBatch,
+    executor: Arc<E>,
+    cancel: Arc<AtomicBool>,
+    progress_observer: Option<ProgressObserver>,
+    aimd_override: Option<Arc<AimdController>>,
 ) -> TransferBatchResult
 where
     E: TransferExecutor + Send + Sync + 'static,
@@ -219,11 +256,13 @@ where
         TransferResourceManager::new(config.transfer_budget_for_capabilities(&caps));
     let provider_type = executor.provider_type();
 
-    let aimd = Arc::new(AimdController::from_budget_for_provider(
-        &resource_manager.budget(),
-        provider_type,
-        AimdConfig::runtime(),
-    ));
+    let aimd = aimd_override.unwrap_or_else(|| {
+        Arc::new(AimdController::from_budget_for_provider(
+            &resource_manager.budget(),
+            provider_type,
+            AimdConfig::runtime(),
+        ))
+    });
 
     let runner: Arc<dyn DagNodeRunner> = {
         let sink = Arc::clone(&sink);
@@ -350,20 +389,23 @@ where
         Ok(lease) => lease,
         Err(error) => {
             tracing::warn!("Transfer session acquisition failed: {}", error);
+            // Session-pool acquire failure is visible and non-fatal, but never
+            // congestion (Unknown kind → no AIMD decrease).
+            let failure = TransferFailure::new(
+                TransferFailureKind::Unknown,
+                format!("Transfer session acquisition failed: {error}"),
+                true,
+            );
             account_outcome(
                 progress,
                 sink,
                 progress_observer,
-                TransferOutcome::Failed(TransferFailure {
-                    kind: TransferFailureKind::Unknown,
-                    message: format!("Transfer session acquisition failed: {error}"),
-                    retryable: true,
-                }),
+                TransferOutcome::Failed(failure.clone()),
                 0,
                 true,
             )
             .await;
-            return NodeOutcome::Completed;
+            return node_outcome_for_file_result(&TransferOutcome::Failed(failure));
         }
     };
 
@@ -384,8 +426,11 @@ where
         TransferOutcome::Success => entry.size,
         _ => 0,
     };
+    // Exactly-once snapshot/event accounting, then the typed node outcome so
+    // DAG/AIMD see the file terminal without aborting the batch graph.
+    let node_outcome = node_outcome_for_file_result(&outcome);
     account_outcome(progress, sink, progress_observer, outcome, bytes, true).await;
-    NodeOutcome::Completed
+    node_outcome
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -446,6 +491,7 @@ where
                 kind: TransferFailureKind::Unknown,
                 message: format!("UploadPart node {node_id} not mapped to a part number"),
                 retryable: false,
+                retry_after_secs: None,
             })
             .await;
         return NodeOutcome::Completed;
@@ -479,6 +525,7 @@ where
                                 kind: TransferFailureKind::Unknown,
                                 message: format!("Transfer session acquisition failed: {error}"),
                                 retryable: true,
+                                retry_after_secs: None,
                             })
                             .await;
                         return NodeOutcome::Completed;
@@ -520,6 +567,7 @@ where
                         kind: TransferFailureKind::Unknown,
                         message: "Multipart session was not begun".to_string(),
                         retryable: false,
+                        retry_after_secs: None,
                     })
                     .await;
             }
@@ -664,6 +712,8 @@ where
     }
 
     let outcome = decide_multipart_file_outcome(executor, &entry, &state).await;
+    // Capture the node outcome before moving `outcome` into accounting.
+    let node_outcome = node_outcome_for_file_result(&outcome);
 
     if state.claim_account() {
         let bytes = match &outcome {
@@ -681,12 +731,29 @@ where
         .await;
     }
 
-    // Release the one file/session lease after terminal decision.
+    // Release the one file/session lease after terminal decision (and after
+    // the single file-class feedback will be applied by the executor).
     {
         let mut slot = runtime.session_lease.lock().await;
         *slot = SessionLeaseSlot::Vacant;
     }
-    NodeOutcome::Completed
+    node_outcome
+}
+
+/// Map a batch file terminal into the DAG node outcome (DAG-P1-04).
+///
+/// Success and skip remain honest healthy completions. Failures — including
+/// cancellation — become [`NodeOutcome::FileFailedButGraphContinues`] so the
+/// executor can count them, release dependents, and apply at most one
+/// file-class AIMD decrease for the D2 congestion set. Graph-fatal
+/// [`NodeOutcome::Failed`] is reserved for true scheduler/engine faults.
+fn node_outcome_for_file_result(outcome: &TransferOutcome) -> NodeOutcome {
+    match outcome {
+        TransferOutcome::Success | TransferOutcome::Skipped { .. } => NodeOutcome::Completed,
+        TransferOutcome::Failed(failure) => {
+            NodeOutcome::FileFailedButGraphContinues(failure.to_transfer_error())
+        }
+    }
 }
 
 async fn decide_multipart_file_outcome<E>(
@@ -718,6 +785,7 @@ where
                 state.layout().total_parts
             ),
             retryable: false,
+            retry_after_secs: None,
         };
         if let Some(handle) = state.take_for_abort().await {
             executor.multipart_abort(entry, handle).await;
@@ -731,6 +799,7 @@ where
             kind: TransferFailureKind::Unknown,
             message: "multipart complete without handle".to_string(),
             retryable: false,
+            retry_after_secs: None,
         };
         executor.multipart_emit_file_error(entry, &failure);
         return TransferOutcome::Failed(failure);
@@ -803,9 +872,15 @@ mod tests {
     use std::sync::Mutex as StdMutex;
     use std::time::Duration;
 
+    /// (file id, part number) → (failure kind, optional Retry-After secs).
+    type TypedPartFailMap =
+        std::collections::HashMap<(String, u32), (TransferFailureKind, Option<u64>)>;
+
     /// Scripted whole-file executor with optional multipart wire log.
     struct MockExecutor {
         fail: HashSet<String>,
+        /// Typed whole-file failure overrides (kind + optional Retry-After secs).
+        fail_typed: StdMutex<std::collections::HashMap<String, (TransferFailureKind, Option<u64>)>>,
         skip: HashSet<String>,
         executed: StdMutex<Vec<String>>,
         in_flight: AtomicUsize,
@@ -826,6 +901,8 @@ mod tests {
         part_delay: Duration,
         fail_begin_for: StdMutex<HashSet<String>>,
         fail_part: StdMutex<Option<(String, u32)>>,
+        /// Typed part failure overrides keyed by (file id, part number).
+        fail_part_typed: StdMutex<TypedPartFailMap>,
         fail_complete_for: StdMutex<HashSet<String>>,
         cancelled: AtomicBool,
     }
@@ -834,6 +911,7 @@ mod tests {
         fn new(session_capacity: usize) -> Self {
             Self {
                 fail: HashSet::new(),
+                fail_typed: StdMutex::new(std::collections::HashMap::new()),
                 skip: HashSet::new(),
                 executed: StdMutex::new(Vec::new()),
                 in_flight: AtomicUsize::new(0),
@@ -853,9 +931,35 @@ mod tests {
                 part_delay: Duration::from_millis(15),
                 fail_begin_for: StdMutex::new(HashSet::new()),
                 fail_part: StdMutex::new(None),
+                fail_part_typed: StdMutex::new(std::collections::HashMap::new()),
                 fail_complete_for: StdMutex::new(HashSet::new()),
                 cancelled: AtomicBool::new(false),
             }
+        }
+
+        fn set_typed_fail(
+            &self,
+            id: &str,
+            kind: TransferFailureKind,
+            retry_after_secs: Option<u64>,
+        ) {
+            self.fail_typed
+                .lock()
+                .unwrap()
+                .insert(id.to_string(), (kind, retry_after_secs));
+        }
+
+        fn set_typed_part_fail(
+            &self,
+            id: &str,
+            part: u32,
+            kind: TransferFailureKind,
+            retry_after_secs: Option<u64>,
+        ) {
+            self.fail_part_typed
+                .lock()
+                .unwrap()
+                .insert((id.to_string(), part), (kind, retry_after_secs));
         }
 
         fn with_capabilities(mut self, capabilities: TransferCapabilities) -> Self {
@@ -895,12 +999,22 @@ mod tests {
             self.in_flight.fetch_sub(1, AtomicOrdering::SeqCst);
             self.executed.lock().unwrap().push(entry.id.clone());
 
-            if self.fail.contains(&entry.id) {
-                TransferOutcome::Failed(TransferFailure {
-                    kind: TransferFailureKind::Unknown,
-                    message: "mock failure".to_string(),
-                    retryable: false,
-                })
+            if let Some((kind, retry_after)) =
+                self.fail_typed.lock().unwrap().get(&entry.id).copied()
+            {
+                let mut failure = TransferFailure::new(
+                    kind,
+                    crate::transfer_domain::user_facing_transfer_failure_message(&kind),
+                    true,
+                );
+                failure.retry_after_secs = retry_after;
+                TransferOutcome::Failed(failure)
+            } else if self.fail.contains(&entry.id) {
+                TransferOutcome::Failed(TransferFailure::new(
+                    TransferFailureKind::Unknown,
+                    "mock failure",
+                    false,
+                ))
             } else if self.skip.contains(&entry.id) {
                 TransferOutcome::Skipped {
                     reason: "mock skip".to_string(),
@@ -938,11 +1052,11 @@ mod tests {
                 return Err(cancelled_failure());
             }
             if self.fail_begin_for.lock().unwrap().contains(&entry.id) {
-                return Err(TransferFailure {
-                    kind: TransferFailureKind::RemoteIo,
-                    message: "mock begin failure".to_string(),
-                    retryable: false,
-                });
+                return Err(TransferFailure::new(
+                    TransferFailureKind::RemoteIo,
+                    "mock begin failure",
+                    false,
+                ));
             }
             self.begin_calls.fetch_add(1, AtomicOrdering::SeqCst);
             Ok(MultipartHandle {
@@ -961,13 +1075,28 @@ mod tests {
             if self.cancelled.load(Ordering::Relaxed) {
                 return Err(cancelled_failure());
             }
+            if let Some((kind, retry_after)) = self
+                .fail_part_typed
+                .lock()
+                .unwrap()
+                .get(&(entry.id.clone(), part_number))
+                .copied()
+            {
+                let mut failure = TransferFailure::new(
+                    kind,
+                    crate::transfer_domain::user_facing_transfer_failure_message(&kind),
+                    true,
+                );
+                failure.retry_after_secs = retry_after;
+                return Err(failure);
+            }
             if let Some((ref id, n)) = *self.fail_part.lock().unwrap() {
                 if id == &entry.id && n == part_number {
-                    return Err(TransferFailure {
-                        kind: TransferFailureKind::RemoteIo,
-                        message: format!("mock part {part_number} failure"),
-                        retryable: false,
-                    });
+                    return Err(TransferFailure::new(
+                        TransferFailureKind::RemoteIo,
+                        format!("mock part {part_number} failure"),
+                        false,
+                    ));
                 }
             }
             let now = self.part_in_flight.fetch_add(1, AtomicOrdering::SeqCst) + 1;
@@ -991,11 +1120,11 @@ mod tests {
             parts: Vec<UploadedPart>,
         ) -> Result<(), TransferFailure> {
             if self.fail_complete_for.lock().unwrap().contains(&entry.id) {
-                return Err(TransferFailure {
-                    kind: TransferFailureKind::RemoteIo,
-                    message: "mock complete failure".to_string(),
-                    retryable: false,
-                });
+                return Err(TransferFailure::new(
+                    TransferFailureKind::RemoteIo,
+                    "mock complete failure",
+                    false,
+                ));
             }
             // Prove receipts arrive sorted.
             let nums: Vec<u32> = parts.iter().map(|p| p.part_number).collect();
@@ -1795,5 +1924,334 @@ mod tests {
             !prod.contains("entry_transferred"),
             "production batch runner must not contain the whole-file dedupe seam"
         );
+    }
+
+    // ── DAG-P1-04: typed file failures → AIMD without aborting the batch ──
+
+    #[tokio::test]
+    async fn p1_04_whole_file_429_halves_file_target_and_sibling_completes() {
+        use crate::transfer_dag::adaptive::{AdaptiveClass, AimdConfig, AimdController};
+
+        let executor = MockExecutor::new(8);
+        executor.set_typed_fail("bad", TransferFailureKind::RateLimited, Some(12));
+        let executor = Arc::new(executor);
+        let sink = Arc::new(CountingSink::default());
+        let aimd = Arc::new(AimdController::new(8, 1, 1, 1, AimdConfig::default()));
+
+        let result = execute_batch_dag_with_aimd(
+            Arc::clone(&sink) as Arc<dyn TransferEventSink>,
+            batch(vec![entry("bad", 100), entry("good", 200)], 8),
+            Arc::clone(&executor),
+            Arc::new(AtomicBool::new(false)),
+            None,
+            Arc::clone(&aimd),
+        )
+        .await;
+
+        assert_eq!(result.failed, 1, "snapshot counts one failure");
+        assert_eq!(result.completed, 1, "independent file completes");
+        assert!(!result.cancelled);
+        assert_eq!(aimd.target(AdaptiveClass::File), 4, "8 → 4 on typed 429");
+        // Exactly one progress event per file (failed + success).
+        assert_eq!(sink.progress.load(AtomicOrdering::SeqCst), 2);
+        let executed = executor.executed();
+        assert!(executed.contains(&"good".to_string()));
+        assert!(executed.contains(&"bad".to_string()));
+    }
+
+    #[tokio::test]
+    async fn p1_04_whole_file_non_congestion_does_not_shrink() {
+        use crate::transfer_dag::adaptive::{AdaptiveClass, AimdConfig, AimdController};
+
+        for kind in [
+            TransferFailureKind::Auth,
+            TransferFailureKind::NotFound,
+            TransferFailureKind::PermissionDenied,
+            TransferFailureKind::QuotaExceeded,
+            TransferFailureKind::LocalIo,
+            TransferFailureKind::RemoteIo,
+            TransferFailureKind::Unknown,
+        ] {
+            let executor = MockExecutor::new(8);
+            executor.set_typed_fail("bad", kind, None);
+            let executor = Arc::new(executor);
+            let aimd = Arc::new(AimdController::new(8, 1, 1, 1, AimdConfig::default()));
+            let result = execute_batch_dag_with_aimd(
+                Arc::new(CountingSink::default()) as Arc<dyn TransferEventSink>,
+                batch(vec![entry("bad", 10), entry("good", 20)], 8),
+                Arc::clone(&executor),
+                Arc::new(AtomicBool::new(false)),
+                None,
+                Arc::clone(&aimd),
+            )
+            .await;
+            assert_eq!(result.failed, 1, "{kind:?}");
+            assert_eq!(result.completed, 1, "{kind:?}");
+            assert_eq!(
+                aimd.target(AdaptiveClass::File),
+                8,
+                "{kind:?} must not shrink"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn p1_04_session_acquire_failure_visible_not_congestion() {
+        use crate::transfer_dag::adaptive::{AdaptiveClass, AimdConfig, AimdController};
+
+        let aimd = Arc::new(AimdController::new(8, 1, 1, 1, AimdConfig::default()));
+        let result = execute_batch_dag_with_aimd(
+            Arc::new(CountingSink::default()) as Arc<dyn TransferEventSink>,
+            batch(vec![entry("a", 1), entry("b", 1)], 8),
+            Arc::new(FailingPoolExecutor),
+            Arc::new(AtomicBool::new(false)),
+            None,
+            Arc::clone(&aimd),
+        )
+        .await;
+        assert_eq!(result.failed, 2);
+        assert_eq!(result.completed, 0);
+        assert_eq!(
+            aimd.target(AdaptiveClass::File),
+            8,
+            "session-acquire Unknown is not congestion"
+        );
+    }
+
+    #[tokio::test]
+    async fn p1_04_multipart_part_failure_one_file_decrease_not_two() {
+        use crate::transfer_dag::adaptive::{AdaptiveClass, AimdConfig, AimdController};
+
+        // Two parts; both can fail, but commit is the single file terminal →
+        // at most one File-class decrease.
+        let caps = multipart_caps(4, 8);
+        let file_size = 16u64;
+        let (_dir, path) = write_temp_file(file_size as usize);
+        let executor = MockExecutor::new(4)
+            .with_capabilities(caps)
+            .with_multipart_wire();
+        // Both sibling parts fail with congestion; first-wins records one
+        // RateLimited and commit must apply exactly one File-class decrease.
+        executor.set_typed_part_fail("mp", 1, TransferFailureKind::RateLimited, Some(20));
+        executor.set_typed_part_fail("mp", 2, TransferFailureKind::RateLimited, Some(20));
+        let executor = Arc::new(executor);
+        let aimd = Arc::new(AimdController::new(8, 4, 1, 1, AimdConfig::default()));
+
+        let result = execute_batch_dag_with_aimd(
+            Arc::new(CountingSink::default()) as Arc<dyn TransferEventSink>,
+            upload_batch(
+                vec![entry_with_local("mp", file_size, path.to_str().unwrap())],
+                8,
+            ),
+            Arc::clone(&executor),
+            Arc::new(AtomicBool::new(false)),
+            None,
+            Arc::clone(&aimd),
+        )
+        .await;
+
+        assert_eq!(result.failed, 1);
+        assert_eq!(result.completed, 0);
+        assert_eq!(
+            executor.abort_calls.load(AtomicOrdering::SeqCst),
+            1,
+            "abort once after parts drain"
+        );
+        assert_eq!(
+            executor.complete_calls.load(AtomicOrdering::SeqCst),
+            0,
+            "complete must not run after part failure"
+        );
+        // One multiplicative decrease (8→4), not two (would be 8→4→2).
+        assert_eq!(
+            aimd.target(AdaptiveClass::File),
+            4,
+            "two failing parts → one file-class decrease at CommitTemp"
+        );
+    }
+
+    #[tokio::test]
+    async fn p1_04_multipart_failure_does_not_stop_independent_plain_file() {
+        use crate::transfer_dag::adaptive::{AdaptiveClass, AimdConfig, AimdController};
+
+        let caps = multipart_caps(4, 8);
+        let file_size = 16u64;
+        let (_dir, path) = write_temp_file(file_size as usize);
+        let executor = MockExecutor::new(4)
+            .with_capabilities(caps)
+            .with_multipart_wire();
+        // Congestion on one multipart file; independent sibling multipart continues.
+        executor.set_typed_part_fail("bad", 1, TransferFailureKind::RateLimited, None);
+        let executor = Arc::new(executor);
+        let aimd = Arc::new(AimdController::new(8, 4, 1, 1, AimdConfig::default()));
+        let (_dir2, path2) = write_temp_file(file_size as usize);
+
+        let result = execute_batch_dag_with_aimd(
+            Arc::new(CountingSink::default()) as Arc<dyn TransferEventSink>,
+            upload_batch(
+                vec![
+                    entry_with_local("bad", file_size, path.to_str().unwrap()),
+                    entry_with_local("good", file_size, path2.to_str().unwrap()),
+                ],
+                8,
+            ),
+            Arc::clone(&executor),
+            Arc::new(AtomicBool::new(false)),
+            None,
+            Arc::clone(&aimd),
+        )
+        .await;
+
+        assert_eq!(result.failed, 1);
+        assert_eq!(result.completed, 1, "independent multipart file completes");
+        assert_eq!(aimd.target(AdaptiveClass::File), 4);
+        assert!(executor.executed().contains(&"good".to_string()));
+    }
+
+    #[tokio::test]
+    async fn p1_04_multipart_begin_failure_surfaces_once_at_commit() {
+        let caps = multipart_caps(4, 8);
+        let file_size = 16u64;
+        let (_dir, path) = write_temp_file(file_size as usize);
+        let executor = MockExecutor::new(4)
+            .with_capabilities(caps)
+            .with_multipart_wire();
+        executor
+            .fail_begin_for
+            .lock()
+            .unwrap()
+            .insert("b".to_string());
+        let executor = Arc::new(executor);
+        let sink = Arc::new(CountingSink::default());
+        let result = execute_batch_dag(
+            Arc::clone(&sink) as Arc<dyn TransferEventSink>,
+            upload_batch(
+                vec![entry_with_local("b", file_size, path.to_str().unwrap())],
+                4,
+            ),
+            Arc::clone(&executor),
+            Arc::new(AtomicBool::new(false)),
+            None,
+        )
+        .await;
+        assert_eq!(result.failed, 1);
+        assert_eq!(sink.progress.load(AtomicOrdering::SeqCst), 1);
+        assert_eq!(executor.complete_calls.load(AtomicOrdering::SeqCst), 0);
+        // begin attempted; abort may or may not run depending on begun flag.
+        assert_eq!(executor.part_calls.load(AtomicOrdering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn p1_04_successful_and_skipped_not_reported_as_failures() {
+        let mut executor = MockExecutor::new(2);
+        executor.skip.insert("s".to_string());
+        let executor = Arc::new(executor);
+        let result = execute_batch_dag(
+            Arc::new(CountingSink::default()) as Arc<dyn TransferEventSink>,
+            batch(vec![entry("ok", 10), entry("s", 20)], 2),
+            Arc::clone(&executor),
+            Arc::new(AtomicBool::new(false)),
+            None,
+        )
+        .await;
+        assert_eq!(result.completed, 1);
+        assert_eq!(result.skipped, 1);
+        assert_eq!(result.failed, 0);
+    }
+
+    #[tokio::test]
+    async fn p1_04_mixed_success_failure_cancel_totals() {
+        let mut executor = MockExecutor::new(4);
+        executor.set_typed_fail("f", TransferFailureKind::Timeout, None);
+        executor.skip.insert("s".to_string());
+        let executor = Arc::new(executor);
+        let cancel = Arc::new(AtomicBool::new(false));
+        let result = execute_batch_dag(
+            Arc::new(CountingSink::default()) as Arc<dyn TransferEventSink>,
+            batch(vec![entry("ok", 50), entry("f", 60), entry("s", 70)], 4),
+            Arc::clone(&executor),
+            Arc::clone(&cancel),
+            None,
+        )
+        .await;
+        assert_eq!(result.completed, 1);
+        assert_eq!(result.failed, 1);
+        assert_eq!(result.skipped, 1);
+        assert_eq!(result.total, 3);
+        assert!(!result.cancelled);
+        // Bytes: only the successful file credits size.
+        // Snapshot bytes aren't on result; completed/failed/skipped is the contract.
+    }
+
+    #[tokio::test]
+    async fn p1_04_cancel_flag_is_not_congestion() {
+        use crate::transfer_dag::adaptive::{AdaptiveClass, AimdConfig, AimdController};
+
+        let executor = Arc::new(MockExecutor::new(4));
+        let aimd = Arc::new(AimdController::new(8, 1, 1, 1, AimdConfig::default()));
+        let result = execute_batch_dag_with_aimd(
+            Arc::new(CountingSink::default()) as Arc<dyn TransferEventSink>,
+            batch(vec![entry("a", 1), entry("b", 1)], 8),
+            Arc::clone(&executor),
+            Arc::new(AtomicBool::new(true)),
+            None,
+            Arc::clone(&aimd),
+        )
+        .await;
+        assert!(result.cancelled);
+        assert_eq!(result.failed, 0);
+        assert_eq!(result.completed, 0);
+        assert_eq!(aimd.target(AdaptiveClass::File), 8);
+    }
+
+    #[tokio::test]
+    async fn p1_04_aimd_disabled_leaves_ceiling() {
+        use crate::transfer_dag::adaptive::{AdaptiveClass, AimdConfig, AimdController};
+
+        let executor = MockExecutor::new(8);
+        executor.set_typed_fail("bad", TransferFailureKind::RateLimited, None);
+        let executor = Arc::new(executor);
+        let cfg = AimdConfig {
+            disabled: true,
+            ..AimdConfig::default()
+        };
+        let aimd = Arc::new(AimdController::new(8, 1, 1, 1, cfg));
+        let result = execute_batch_dag_with_aimd(
+            Arc::new(CountingSink::default()) as Arc<dyn TransferEventSink>,
+            batch(vec![entry("bad", 10), entry("good", 20)], 8),
+            Arc::clone(&executor),
+            Arc::new(AtomicBool::new(false)),
+            None,
+            Arc::clone(&aimd),
+        )
+        .await;
+        assert_eq!(result.failed, 1);
+        assert_eq!(result.completed, 1);
+        assert_eq!(aimd.target(AdaptiveClass::File), 8);
+    }
+
+    #[test]
+    fn p1_04_node_outcome_mapping_success_skip_fail() {
+        let ok = node_outcome_for_file_result(&TransferOutcome::Success);
+        assert_eq!(ok, NodeOutcome::Completed);
+
+        let skip = node_outcome_for_file_result(&TransferOutcome::Skipped { reason: "x".into() });
+        assert_eq!(skip, NodeOutcome::Completed);
+
+        let failure = TransferFailure::new(
+            TransferFailureKind::RateLimited,
+            "Transfer rate limit reached",
+            true,
+        )
+        .with_retry_after_secs(30);
+        let cont = node_outcome_for_file_result(&TransferOutcome::Failed(failure));
+        match cont {
+            NodeOutcome::FileFailedButGraphContinues(e) => {
+                assert_eq!(e.kind, crate::transfer_dag::TransferErrorKind::RateLimited);
+                assert_eq!(e.retry_after, Some(Duration::from_secs(30)));
+                assert_eq!(e.scope, crate::transfer_dag::FailureScope::File);
+            }
+            other => panic!("expected continuing failure, got {other:?}"),
+        }
     }
 }

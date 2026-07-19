@@ -212,9 +212,13 @@ Honest distinctions:
   fan-out);
 - **actual wire overlap** still requires independent workers
   (`clone_for_transfer`); otherwise parts serialise on the session mutex;
-- a file error is still recorded in the batch snapshot while the node
-  returns `Completed`, so AIMD does not yet see per-file congestion
-  (`DAG-P1-04`).
+- a file error is recorded once in the batch snapshot **and** returned as
+  `NodeOutcome::FileFailedButGraphContinues(TransferError)` so DAG
+  accounting, observers and AIMD see a typed file-local failure without
+  aborting unrelated files (`DAG-P1-04`). Multipart part nodes still drain as
+  `Completed`; the single file-class congestion signal is applied at
+  `CommitTemp` after complete/abort and lease release. Cancellation is never
+  congestion.
 
 ### Sync
 

@@ -519,19 +519,19 @@ fn entry_to_cross_profile(entry: &TransferEntry) -> CrossProfileTransferEntry {
 }
 
 fn transfer_failed(message: String) -> TransferOutcome {
-    TransferOutcome::Failed(TransferFailure {
-        kind: TransferFailureKind::Unknown,
+    TransferOutcome::Failed(TransferFailure::new(
+        TransferFailureKind::Unknown,
         message,
-        retryable: false,
-    })
+        false,
+    ))
 }
 
 fn transfer_cancelled() -> TransferOutcome {
-    TransferOutcome::Failed(TransferFailure {
-        kind: TransferFailureKind::Cancelled,
-        message: "Transfer cancelled by user".to_string(),
-        retryable: false,
-    })
+    TransferOutcome::Failed(TransferFailure::new(
+        TransferFailureKind::Cancelled,
+        "Transfer cancelled by user",
+        false,
+    ))
 }
 
 // ── Tauri Commands ─────────────────────────────────────────────────────────
