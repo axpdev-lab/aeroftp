@@ -223,6 +223,7 @@ pub async fn run_provider_segmented_download(
     let cfg = ConcurrentRangeConfig {
         final_path: PathBuf::from(local_path),
         provider_type: primary.provider_type(),
+        endpoint_identity: primary.endpoint_identity(),
         total_size: file_size,
         streams: segments,
         max_streams: segments,
@@ -1359,6 +1360,22 @@ impl TransferExecutor for ProviderDownloadExecutor {
         self.session_model.provider_type()
     }
 
+    async fn endpoint_identity(&self) -> crate::transfer_dag::EndpointIdentity {
+        let provider = self.provider.lock().await;
+        provider
+            .as_ref()
+            .map(|provider| provider.endpoint_identity())
+            .unwrap_or_else(|| {
+                crate::transfer_dag::EndpointIdentity::new(
+                    self.provider_type()
+                        .map(|provider| provider.to_string())
+                        .unwrap_or_else(|| "unknown".to_string()),
+                    "provider-download-disconnected",
+                    "",
+                )
+            })
+    }
+
     fn transfer_capabilities(&self) -> TransferCapabilities {
         self.capabilities.clone()
     }
@@ -1395,6 +1412,22 @@ impl TransferExecutor for ProviderDownloadExecutor {
 impl TransferExecutor for ProviderUploadExecutor {
     fn provider_type(&self) -> Option<ProviderType> {
         self.session_model.provider_type()
+    }
+
+    async fn endpoint_identity(&self) -> crate::transfer_dag::EndpointIdentity {
+        let provider = self.provider.lock().await;
+        provider
+            .as_ref()
+            .map(|provider| provider.endpoint_identity())
+            .unwrap_or_else(|| {
+                crate::transfer_dag::EndpointIdentity::new(
+                    self.provider_type()
+                        .map(|provider| provider.to_string())
+                        .unwrap_or_else(|| "unknown".to_string()),
+                    "provider-upload-disconnected",
+                    "",
+                )
+            })
     }
 
     fn transfer_capabilities(&self) -> TransferCapabilities {

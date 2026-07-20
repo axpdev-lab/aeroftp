@@ -1019,6 +1019,7 @@ impl B2Provider {
         let cfg = ConcurrentRangeConfig {
             final_path: PathBuf::from(local_path),
             provider_type: super::ProviderType::Backblaze,
+            endpoint_identity: self.endpoint_identity(),
             total_size,
             streams,
             max_streams: MULTI_THREAD_MAX_STREAMS,

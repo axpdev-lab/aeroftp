@@ -175,6 +175,9 @@ pub struct ConcurrentRangeConfig {
     /// Final destination path (used only to derive the `.aerotmp` sibling).
     pub final_path: PathBuf,
     pub provider_type: super::ProviderType,
+    /// Canonical remote authority held for the entire segmented job. Keeping
+    /// this at job scope avoids multiplying endpoint leases by every range.
+    pub endpoint_identity: crate::transfer_dag::EndpointIdentity,
     pub total_size: u64,
     pub streams: usize,
     pub max_streams: usize,
@@ -261,6 +264,16 @@ where
     }
 
     let temp_path = aerotmp_path_for(&config.final_path);
+    // DAG-P2-01b: a segmented transfer remains one foreground job for the
+    // global governor. The lease covers pre-allocation, every range and the
+    // final atomic commit; range fan-out must not multiply endpoint permits.
+    let _governor_lease = crate::transfer_dag::governor::global()
+        .acquire_job(
+            config.endpoint_identity.clone(),
+            crate::transfer_dag::TransferPriority::Foreground,
+            [crate::transfer_dag::DiskLeaseRequest::write(&temp_path)],
+        )
+        .await;
     if let Some(parent) = config.final_path.parent() {
         if !parent.as_os_str().is_empty() {
             tokio::fs::create_dir_all(parent)
@@ -1018,6 +1031,20 @@ pub(crate) async fn try_http_concurrent_range_download(
     let cfg = ConcurrentRangeConfig {
         final_path: PathBuf::from(&req.local_path),
         provider_type: req.provider_type,
+        endpoint_identity: reqwest::Url::parse(&req.url)
+            .ok()
+            .and_then(|url| {
+                url.host_str()
+                    .map(|host| (url.scheme().to_string(), host.to_string()))
+            })
+            .map(|(protocol, host)| crate::transfer_dag::EndpointIdentity::new(protocol, host, ""))
+            .unwrap_or_else(|| {
+                crate::transfer_dag::EndpointIdentity::new(
+                    req.provider_type.to_string(),
+                    "http-range",
+                    "",
+                )
+            }),
         total_size: total,
         streams: req.streams,
         max_streams: req.max_streams,
@@ -1825,6 +1852,7 @@ mod tests {
         let config = ConcurrentRangeConfig {
             final_path,
             provider_type: super::super::ProviderType::S3,
+            endpoint_identity: crate::transfer_dag::EndpointIdentity::new("s3", "test", ""),
             total_size: 10,
             streams: 3,
             max_streams: 16,

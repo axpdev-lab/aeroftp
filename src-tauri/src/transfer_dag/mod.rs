@@ -40,9 +40,11 @@ pub use executor::{
     DEFAULT_DISPATCH_WINDOW, FAIL_FAST_ABORT_GRACE,
 };
 pub use governor::{
-    global as global_governor, init as init_governor, BandwidthBucket, EndpointGovernor,
-    EndpointIdentity, EndpointOpLease, GlobalTransferGovernor, GovernorConfig, MemoryPool,
-    DEFAULT_ENDPOINT_MAX_SLOTS, ENDPOINT_MAX_SLOTS_ENV, GLOBAL_BANDWIDTH_ENV,
+    global as global_governor, init as init_governor, BandwidthBucket, DiskDeviceGovernor,
+    DiskDeviceIdentity, DiskDirection, DiskLeaseRequest, DiskOpLease, EndpointGovernor,
+    EndpointIdentity, EndpointOpLease, GlobalTransferGovernor, GovernorConfig, GovernorJobLease,
+    MemoryPool, TransferPriority, DEFAULT_DISK_DEVICE_SLOTS, DEFAULT_ENDPOINT_MAX_SLOTS,
+    DISK_DEVICE_SLOTS_ENV, ENDPOINT_MAX_SLOTS_ENV, GLOBAL_BANDWIDTH_ENV,
 };
 pub use metrics::TransferDagMetrics;
 pub use observer::{

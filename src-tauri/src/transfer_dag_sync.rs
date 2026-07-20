@@ -80,8 +80,8 @@ use crate::sync_core::scan::{
 use crate::transfer_dag::executor::{execute_dag, DagNodeRunner, NodeFuture, NodeOutcome};
 use crate::transfer_dag::graph::{TransferNode, TransferNodeKind};
 use crate::transfer_dag::{
-    AimdConfig, AimdController, DagObserver, NoopDagObserver, SyncDagAction, SyncDagItem,
-    TransferBudget, TransferCapabilities, TransferDagBuilder,
+    AimdConfig, AimdController, DagObserver, DiskLeaseRequest, NoopDagObserver, SyncDagAction,
+    SyncDagItem, TransferBudget, TransferCapabilities, TransferDagBuilder, TransferPriority,
 };
 
 /// Bounded capacity of the transfer-job channel. The DAG file-slot budget is
@@ -921,6 +921,21 @@ pub async fn execute_sync_dag(
         prepare_normal_file_workers(provider, opts.delta_policy).await;
 
     if !plan.transfers.is_empty() {
+        let endpoint = provider.endpoint_identity();
+        // A tree sync is background work. It may upload and download in one
+        // plan, so it holds one directional lease for each local-root side.
+        // The device registry coalesces both requests when they resolve to the
+        // same physical disk.
+        let _job_lease = crate::transfer_dag::governor::global()
+            .acquire_job(
+                endpoint,
+                TransferPriority::Background,
+                [
+                    DiskLeaseRequest::read(local_root),
+                    DiskLeaseRequest::write(local_root),
+                ],
+            )
+            .await;
         // One sync graph: a global DiscoverLocal/DiscoverRemote -> Compare
         // prefix, then a per-file transfer chain for every upload/download.
         // The shaped sync builder picks the transfer-core shape per entry

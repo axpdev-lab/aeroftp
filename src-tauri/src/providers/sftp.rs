@@ -434,6 +434,7 @@ impl SftpProvider {
         let cfg = ConcurrentRangeConfig {
             final_path: PathBuf::from(local_path),
             provider_type: ProviderType::Sftp,
+            endpoint_identity: self.endpoint_identity(),
             total_size,
             streams,
             max_streams: SFTP_MULTI_THREAD_MAX_STREAMS,
@@ -1008,6 +1009,10 @@ impl StorageProvider for SftpProvider {
 
     fn display_name(&self) -> String {
         format!("{}@{}", self.config.username, self.config.host)
+    }
+
+    fn endpoint_identity(&self) -> crate::transfer_dag::EndpointIdentity {
+        crate::transfer_dag::EndpointIdentity::new("sftp", &self.config.host, &self.config.username)
     }
 
     async fn connect(&mut self) -> Result<(), ProviderError> {

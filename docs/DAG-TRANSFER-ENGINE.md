@@ -67,7 +67,8 @@ multipart part buffers via per-manager `buffer_bytes` credits (64 KiB quanta,
 normal pool rounds its capacity down to whole quanta, so it never exceeds the
 configured byte budget. A part whose rounded demand does not fit that usable
 pool is admitted one-at-a-time through an explicit oversize lane. As of
-`DAG-P2-01` the buffer-byte pool is **process-global**: a single hierarchical
+`DAG-P2-01`, operationally completed by `DAG-P2-01b`, the buffer-byte pool is
+**process-global**: a single hierarchical
 governor (`transfer_dag/governor.rs`, reachable from the GUI `AppState`, the
 CLI/MCP context, and the CLI TUI via `governor::global()`) owns ONE shared
 quanta pool and ONE oversize lane, and every production job builds its manager
@@ -379,11 +380,23 @@ process-global governor's shared pool. The endpoint level of the hierarchy
 token bucket also live in that governor. The bounded local-copy fallback and
 the non-pipelined SFTP copy loops reserve bucket credits before moving each
 chunk, so concurrent jobs honour one configured cap
-(`AEROFTP_GLOBAL_BANDWIDTH_BPS`; unset = unlimited, no throttle). Upload/download
-resource requests reserve only the disk direction they use (`DAG-P0-06`). The
-remaining P2-01b follow-ups are priority lanes,
-the disk-device resolver, and threading the endpoint concurrency lease through
-every provider job.
+(`AEROFTP_GLOBAL_BANDWIDTH_BPS`; unset = unlimited, no throttle).
+
+`DAG-P2-01b` completes the job-level hierarchy without a second scheduler:
+foreground single/copy/range jobs and background batch/sync jobs acquire an
+RAII endpoint lease. Foreground is preferred, but after eight bypasses a
+waiting background job receives the next endpoint slot. `StorageProvider`
+supplies a canonical endpoint identity, with exact host/account overrides for
+FTP and SFTP; the batch executor and shared segmented-range helper carry that
+identity through to the lease. The same lease boundary resolves local physical
+devices (Unix `st_dev`, conservative nearest-existing-path fallback elsewhere)
+and reserves independent read/write slots per device
+(`AEROFTP_DISK_DEVICE_SLOTS`, default 4). Multiple local paths are sorted and
+deduplicated before acquisition, so a cross-device copy cannot invert lock
+order. Cancellation drops queued or held RAII leases without leaving a phantom
+priority turn. Upload/download resource requests still reserve only their
+per-operation disk direction (`DAG-P0-06`); the device lease is the additional
+process-wide cap.
 
 `DagObserver` provides a shared node lifecycle abstraction. The GUI's
 `GuiDagObserver` is used on the shaped single-file path, but surface start,

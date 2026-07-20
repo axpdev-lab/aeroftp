@@ -39,6 +39,7 @@
 //! scheduler beyond the governor's own accounting (baton requirement).
 
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
@@ -57,10 +58,37 @@ pub const GLOBAL_BANDWIDTH_ENV: &str = "AEROFTP_GLOBAL_BANDWIDTH_BPS";
 /// 0 / unset = the generous default so a single job is never endpoint-bound.
 pub const ENDPOINT_MAX_SLOTS_ENV: &str = "AEROFTP_ENDPOINT_MAX_SLOTS";
 
+/// Env override: concurrent I/O slots per physical local device and direction.
+pub const DISK_DEVICE_SLOTS_ENV: &str = "AEROFTP_DISK_DEVICE_SLOTS";
+
 /// Generous default endpoint concurrency sub-cap. Chosen well above the
 /// per-job slot counts real jobs use, so single-job throughput is unaffected;
 /// it only bites when many jobs pile onto one endpoint.
 pub const DEFAULT_ENDPOINT_MAX_SLOTS: u32 = 256;
+
+/// Default per-device, per-direction I/O concurrency. This matches the legacy
+/// per-job disk-slot default while making concurrent jobs on the same device
+/// share one ceiling.
+pub const DEFAULT_DISK_DEVICE_SLOTS: u32 = 4;
+
+/// Maximum consecutive foreground admissions while a background job waits.
+/// The next available endpoint slot then goes to background work, preventing
+/// starvation without weakening foreground preference under ordinary load.
+const MAX_FOREGROUND_BYPASS: u32 = 8;
+
+/// Scheduling class for a process-governed transfer job.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TransferPriority {
+    Foreground,
+    Background,
+}
+
+/// Direction of local I/O for a device-governor lease.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum DiskDirection {
+    Read,
+    Write,
+}
 
 /// Floor for the bandwidth bucket burst so a normal copy chunk (tens to
 /// hundreds of KiB) never exceeds the burst and deadlocks (1 MiB).
@@ -75,6 +103,8 @@ pub struct GovernorConfig {
     pub bandwidth_bps: u64,
     /// Max concurrent operation slots per endpoint identity.
     pub endpoint_slots: u32,
+    /// Max concurrent read or write jobs per local physical device.
+    pub disk_device_slots: u32,
 }
 
 impl GovernorConfig {
@@ -86,10 +116,15 @@ impl GovernorConfig {
             .and_then(|v| u32::try_from(v).ok())
             .filter(|v| *v > 0)
             .unwrap_or(DEFAULT_ENDPOINT_MAX_SLOTS);
+        let disk_device_slots = parse_env_u64(DISK_DEVICE_SLOTS_ENV)
+            .and_then(|v| u32::try_from(v).ok())
+            .filter(|v| *v > 0)
+            .unwrap_or(DEFAULT_DISK_DEVICE_SLOTS);
         Self {
             buffer_bytes,
             bandwidth_bps,
             endpoint_slots,
+            disk_device_slots,
         }
     }
 }
@@ -311,16 +346,114 @@ impl EndpointIdentity {
     }
 }
 
-/// Per-endpoint concurrency sub-cap. Jobs to the same identity share `op_slots`.
+/// Per-endpoint concurrency sub-cap. Jobs to the same identity share one
+/// priority-aware operation budget.
 pub struct EndpointGovernor {
     identity: EndpointIdentity,
-    op_slots: Arc<Semaphore>,
+    state: Mutex<EndpointState>,
+    notify: tokio::sync::Notify,
     capacity: u32,
 }
 
 /// RAII handle for one endpoint operation slot.
 pub struct EndpointOpLease {
-    _permit: OwnedSemaphorePermit,
+    governor: Arc<EndpointGovernor>,
+}
+
+struct EndpointState {
+    available: u32,
+    foreground_waiters: u32,
+    background_waiters: u32,
+    foreground_bypass: u32,
+}
+
+/// A registered endpoint waiter. Drop unregisters it, so cancellation while
+/// awaiting a priority turn cannot leave phantom waiters or starve a lane.
+struct EndpointWaiter {
+    governor: Arc<EndpointGovernor>,
+    priority: TransferPriority,
+    registered: bool,
+}
+
+impl EndpointWaiter {
+    fn new(governor: Arc<EndpointGovernor>, priority: TransferPriority) -> Self {
+        {
+            let mut state = governor.state.lock().expect("endpoint state poisoned");
+            match priority {
+                TransferPriority::Foreground => state.foreground_waiters += 1,
+                TransferPriority::Background => state.background_waiters += 1,
+            }
+        }
+        Self {
+            governor,
+            priority,
+            registered: true,
+        }
+    }
+
+    fn admit(&mut self, state: &mut EndpointState) -> bool {
+        if !priority_admits(state, self.priority) {
+            return false;
+        }
+
+        state.available -= 1;
+        match self.priority {
+            TransferPriority::Foreground => {
+                state.foreground_waiters -= 1;
+                if state.background_waiters > 0 {
+                    state.foreground_bypass += 1;
+                } else {
+                    state.foreground_bypass = 0;
+                }
+            }
+            TransferPriority::Background => {
+                state.background_waiters -= 1;
+                state.foreground_bypass = 0;
+            }
+        }
+        self.registered = false;
+        true
+    }
+}
+
+fn priority_admits(state: &EndpointState, priority: TransferPriority) -> bool {
+    if state.available == 0 {
+        return false;
+    }
+    let background_turn =
+        state.background_waiters > 0 && state.foreground_bypass >= MAX_FOREGROUND_BYPASS;
+    match priority {
+        TransferPriority::Foreground => !background_turn,
+        TransferPriority::Background => state.foreground_waiters == 0 || background_turn,
+    }
+}
+
+impl Drop for EndpointWaiter {
+    fn drop(&mut self) {
+        if !self.registered {
+            return;
+        }
+        let mut state = self.governor.state.lock().expect("endpoint state poisoned");
+        match self.priority {
+            TransferPriority::Foreground => {
+                state.foreground_waiters = state.foreground_waiters.saturating_sub(1)
+            }
+            TransferPriority::Background => {
+                state.background_waiters = state.background_waiters.saturating_sub(1)
+            }
+        }
+        if state.background_waiters == 0 {
+            state.foreground_bypass = 0;
+        }
+        drop(state);
+        self.governor.notify.notify_waiters();
+    }
+}
+
+impl Drop for EndpointOpLease {
+    fn drop(&mut self) {
+        self.governor.release_op();
+    }
 }
 
 impl EndpointGovernor {
@@ -328,7 +461,13 @@ impl EndpointGovernor {
         let capacity = capacity.max(1);
         Self {
             identity,
-            op_slots: Arc::new(Semaphore::new(capacity as usize)),
+            state: Mutex::new(EndpointState {
+                available: capacity,
+                foreground_waiters: 0,
+                background_waiters: 0,
+                foreground_bypass: 0,
+            }),
+            notify: tokio::sync::Notify::new(),
             capacity,
         }
     }
@@ -343,19 +482,182 @@ impl EndpointGovernor {
 
     /// Operation slots available at this endpoint right now.
     pub fn available_ops(&self) -> usize {
-        self.op_slots.available_permits()
+        self.state
+            .lock()
+            .expect("endpoint state poisoned")
+            .available as usize
     }
 
-    /// Acquire one endpoint operation slot, waiting under contention.
-    pub async fn acquire_op(&self) -> EndpointOpLease {
-        let permit = self
-            .op_slots
-            .clone()
+    #[cfg(test)]
+    fn waiter_counts(&self) -> (u32, u32) {
+        let state = self.state.lock().expect("endpoint state poisoned");
+        (state.foreground_waiters, state.background_waiters)
+    }
+
+    /// Acquire one endpoint operation slot as foreground work.
+    pub async fn acquire_op(self: &Arc<Self>) -> EndpointOpLease {
+        self.acquire_op_with_priority(TransferPriority::Foreground)
+            .await
+    }
+
+    /// Acquire one endpoint operation slot. Foreground jobs are preferred;
+    /// after a bounded number of bypasses a waiting background job gets the
+    /// next slot, ensuring progress under sustained interactive traffic.
+    pub async fn acquire_op_with_priority(
+        self: &Arc<Self>,
+        priority: TransferPriority,
+    ) -> EndpointOpLease {
+        let mut waiter = EndpointWaiter::new(Arc::clone(self), priority);
+        loop {
+            let notified = self.notify.notified();
+            {
+                let mut state = self.state.lock().expect("endpoint state poisoned");
+                if waiter.admit(&mut state) {
+                    return EndpointOpLease {
+                        governor: Arc::clone(self),
+                    };
+                }
+            }
+            notified.await;
+        }
+    }
+
+    fn release_op(&self) {
+        let mut state = self.state.lock().expect("endpoint state poisoned");
+        state.available = state.available.saturating_add(1).min(self.capacity);
+        drop(state);
+        self.notify.notify_waiters();
+    }
+}
+
+/// Canonical local physical-device identity. Unix uses the kernel device id;
+/// other platforms use the nearest existing path anchor, which is conservative
+/// (it can merge devices but never assumes independent paths share no limit).
+#[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Debug)]
+pub struct DiskDeviceIdentity(String);
+
+impl DiskDeviceIdentity {
+    pub fn for_path(path: impl AsRef<Path>) -> Self {
+        let anchor = nearest_existing_path(path.as_ref());
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::MetadataExt;
+            if let Ok(metadata) = std::fs::metadata(&anchor) {
+                return Self(format!("unix-dev:{}", metadata.dev()));
+            }
+        }
+        let label = std::fs::canonicalize(&anchor).unwrap_or(anchor);
+        Self(format!("path:{}", label.to_string_lossy()))
+    }
+}
+
+fn nearest_existing_path(path: &Path) -> PathBuf {
+    let mut candidate = path.to_path_buf();
+    loop {
+        if candidate.exists() {
+            return candidate;
+        }
+        match candidate.parent() {
+            Some(parent) if parent != candidate => candidate = parent.to_path_buf(),
+            _ => return path.to_path_buf(),
+        }
+    }
+}
+
+/// Per-device directional slots shared by every job touching that device.
+pub struct DiskDeviceGovernor {
+    identity: DiskDeviceIdentity,
+    read_slots: Arc<Semaphore>,
+    write_slots: Arc<Semaphore>,
+    capacity: u32,
+}
+
+/// RAII handle for one local disk-direction slot.
+pub struct DiskOpLease {
+    _permit: OwnedSemaphorePermit,
+}
+
+impl DiskDeviceGovernor {
+    fn new(identity: DiskDeviceIdentity, capacity: u32) -> Self {
+        let capacity = capacity.max(1);
+        Self {
+            identity,
+            read_slots: Arc::new(Semaphore::new(capacity as usize)),
+            write_slots: Arc::new(Semaphore::new(capacity as usize)),
+            capacity,
+        }
+    }
+
+    pub fn identity(&self) -> &DiskDeviceIdentity {
+        &self.identity
+    }
+
+    pub fn capacity(&self) -> u32 {
+        self.capacity
+    }
+
+    pub fn available(&self, direction: DiskDirection) -> usize {
+        match direction {
+            DiskDirection::Read => self.read_slots.available_permits(),
+            DiskDirection::Write => self.write_slots.available_permits(),
+        }
+    }
+
+    async fn acquire(&self, direction: DiskDirection) -> DiskOpLease {
+        let semaphore = match direction {
+            DiskDirection::Read => Arc::clone(&self.read_slots),
+            DiskDirection::Write => Arc::clone(&self.write_slots),
+        };
+        let permit = semaphore
             .acquire_owned()
             .await
-            .expect("endpoint semaphore never closed");
-        EndpointOpLease { _permit: permit }
+            .expect("disk governor semaphore never closed");
+        DiskOpLease { _permit: permit }
     }
+
+    #[cfg(test)]
+    fn try_acquire(&self, direction: DiskDirection) -> Option<DiskOpLease> {
+        let semaphore = match direction {
+            DiskDirection::Read => Arc::clone(&self.read_slots),
+            DiskDirection::Write => Arc::clone(&self.write_slots),
+        };
+        semaphore
+            .try_acquire_owned()
+            .ok()
+            .map(|permit| DiskOpLease { _permit: permit })
+    }
+}
+
+/// Input for a job-level disk lease. A job may touch one or two local devices;
+/// the governor sorts and de-duplicates requests before awaiting permits, so
+/// concurrent cross-device copies cannot deadlock each other.
+#[derive(Clone, Debug)]
+pub struct DiskLeaseRequest {
+    pub path: PathBuf,
+    pub direction: DiskDirection,
+}
+
+impl DiskLeaseRequest {
+    pub fn read(path: impl Into<PathBuf>) -> Self {
+        Self {
+            path: path.into(),
+            direction: DiskDirection::Read,
+        }
+    }
+
+    pub fn write(path: impl Into<PathBuf>) -> Self {
+        Self {
+            path: path.into(),
+            direction: DiskDirection::Write,
+        }
+    }
+}
+
+/// RAII aggregate for the process endpoint and local-device leases held by one
+/// transfer job. Dropping it returns every child permit in reverse field order.
+pub struct GovernorJobLease {
+    _endpoint: EndpointOpLease,
+    _disk: Vec<DiskOpLease>,
 }
 
 /// The process-global hierarchical governor.
@@ -364,6 +666,7 @@ pub struct GlobalTransferGovernor {
     memory: MemoryPool,
     bandwidth: Arc<BandwidthBucket>,
     endpoints: Mutex<HashMap<EndpointIdentity, Arc<EndpointGovernor>>>,
+    disks: Mutex<HashMap<DiskDeviceIdentity, Arc<DiskDeviceGovernor>>>,
 }
 
 impl GlobalTransferGovernor {
@@ -374,6 +677,7 @@ impl GlobalTransferGovernor {
             memory: MemoryPool::new(config.buffer_bytes),
             bandwidth: Arc::new(BandwidthBucket::new(config.bandwidth_bps)),
             endpoints: Mutex::new(HashMap::new()),
+            disks: Mutex::new(HashMap::new()),
         })
     }
 
@@ -416,6 +720,66 @@ impl GlobalTransferGovernor {
             .len()
     }
 
+    /// Get (or lazily create) the local physical-device governor for `path`.
+    pub fn disk_for_path(&self, path: impl AsRef<Path>) -> Arc<DiskDeviceGovernor> {
+        self.disk(&DiskDeviceIdentity::for_path(path))
+    }
+
+    fn disk(&self, identity: &DiskDeviceIdentity) -> Arc<DiskDeviceGovernor> {
+        let mut map = self.disks.lock().expect("disk registry poisoned");
+        if let Some(existing) = map.get(identity) {
+            return Arc::clone(existing);
+        }
+        let created = Arc::new(DiskDeviceGovernor::new(
+            identity.clone(),
+            self.config.disk_device_slots,
+        ));
+        map.insert(identity.clone(), Arc::clone(&created));
+        created
+    }
+
+    /// Number of physical-device identities registered (test / diagnostics).
+    pub fn disk_count(&self) -> usize {
+        self.disks.lock().expect("disk registry poisoned").len()
+    }
+
+    /// Acquire the endpoint and local-device leases for one transfer job.
+    ///
+    /// The endpoint lease is priority-aware. Disk requests are resolved,
+    /// sorted and de-duplicated before acquisition, giving same-device jobs one
+    /// shared directional cap and avoiding lock-order cycles for copies that
+    /// touch two devices.
+    pub async fn acquire_job(
+        &self,
+        endpoint: EndpointIdentity,
+        priority: TransferPriority,
+        disk_requests: impl IntoIterator<Item = DiskLeaseRequest>,
+    ) -> GovernorJobLease {
+        let endpoint = self.endpoint(&endpoint);
+        let endpoint_lease = endpoint.acquire_op_with_priority(priority).await;
+
+        let mut requests: Vec<(DiskDeviceIdentity, DiskDirection)> = disk_requests
+            .into_iter()
+            .map(|request| {
+                (
+                    DiskDeviceIdentity::for_path(request.path),
+                    request.direction,
+                )
+            })
+            .collect();
+        requests.sort_unstable();
+        requests.dedup();
+
+        let mut disk = Vec::with_capacity(requests.len());
+        for (identity, direction) in requests {
+            disk.push(self.disk(&identity).acquire(direction).await);
+        }
+        GovernorJobLease {
+            _endpoint: endpoint_lease,
+            _disk: disk,
+        }
+    }
+
     /// Build a child job manager that shares this governor's byte-memory pool.
     ///
     /// The per-job slot classes come from `budget`; the buffer-byte pool is the
@@ -438,11 +802,29 @@ impl GlobalTransferGovernor {
 
 static GOVERNOR: OnceLock<Arc<GlobalTransferGovernor>> = OnceLock::new();
 
+#[cfg(test)]
+fn singleton_config() -> GovernorConfig {
+    // Rust unit tests share one process and run their unrelated transfer
+    // fixtures in parallel. Keep that harness singleton deliberately roomy so
+    // a batch test cannot borrow another test's endpoint or device slot and
+    // turn its own concurrency assertion flaky. Governor cap proofs construct
+    // a fresh `GlobalTransferGovernor` with an explicit small configuration.
+    let mut config = GovernorConfig::from_env();
+    config.endpoint_slots = config.endpoint_slots.max(4096);
+    config.disk_device_slots = config.disk_device_slots.max(4096);
+    config
+}
+
+#[cfg(not(test))]
+fn singleton_config() -> GovernorConfig {
+    GovernorConfig::from_env()
+}
+
 /// The process-global governor, reachable from every context root (Tauri
 /// `AppState`, the CLI/MCP context, the CLI TUI). Lazily initialised from the
 /// environment on first use; [`init`] pins an explicit config at startup.
 pub fn global() -> Arc<GlobalTransferGovernor> {
-    Arc::clone(GOVERNOR.get_or_init(GlobalTransferGovernor::from_env))
+    Arc::clone(GOVERNOR.get_or_init(|| GlobalTransferGovernor::new(singleton_config())))
 }
 
 /// Initialise the process singleton with an explicit config. Idempotent: the
@@ -465,6 +847,7 @@ mod tests {
             buffer_bytes,
             bandwidth_bps,
             endpoint_slots,
+            disk_device_slots: DEFAULT_DISK_DEVICE_SLOTS,
         }
     }
 
@@ -616,6 +999,156 @@ mod tests {
         let unblocked = waiter.await.unwrap();
         drop(unblocked);
         assert_eq!(g1.available_ops(), 1);
+    }
+
+    #[tokio::test]
+    async fn cancelled_endpoint_waiter_unregisters_without_leaking_a_turn() {
+        let gov = GlobalTransferGovernor::new(test_config(BUFFER_QUANTUM_BYTES, 0, 1));
+        let endpoint = gov.endpoint(&EndpointIdentity::new("sftp", "cancel.test", "alice"));
+        let held = endpoint.acquire_op().await;
+
+        let waiting_endpoint = Arc::clone(&endpoint);
+        let waiter = tokio::spawn(async move {
+            waiting_endpoint
+                .acquire_op_with_priority(TransferPriority::Background)
+                .await
+        });
+        for _ in 0..16 {
+            if endpoint.waiter_counts().1 == 1 {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+        assert_eq!(endpoint.waiter_counts(), (0, 1));
+
+        waiter.abort();
+        let _ = waiter.await;
+        assert_eq!(endpoint.waiter_counts(), (0, 0));
+
+        drop(held);
+        let next = tokio::time::timeout(Duration::from_millis(100), endpoint.acquire_op()).await;
+        assert!(
+            next.is_ok(),
+            "cancelled waiter left the endpoint unavailable"
+        );
+    }
+
+    #[test]
+    fn foreground_is_preferred_but_background_gets_a_bounded_turn() {
+        let mut state = EndpointState {
+            available: 1,
+            foreground_waiters: 1,
+            background_waiters: 1,
+            foreground_bypass: 0,
+        };
+        assert!(priority_admits(&state, TransferPriority::Foreground));
+        assert!(!priority_admits(&state, TransferPriority::Background));
+
+        state.foreground_bypass = MAX_FOREGROUND_BYPASS;
+        assert!(!priority_admits(&state, TransferPriority::Foreground));
+        assert!(priority_admits(&state, TransferPriority::Background));
+    }
+
+    #[tokio::test]
+    async fn same_disk_direction_is_shared_but_opposite_direction_is_independent() {
+        let gov = GlobalTransferGovernor::new(test_config(
+            BUFFER_QUANTUM_BYTES,
+            0,
+            DEFAULT_ENDPOINT_MAX_SLOTS,
+        ));
+        let disk = gov.disk_for_path(std::env::temp_dir());
+        assert_eq!(
+            disk.available(DiskDirection::Read),
+            DEFAULT_DISK_DEVICE_SLOTS as usize
+        );
+
+        let mut held = Vec::new();
+        for _ in 0..DEFAULT_DISK_DEVICE_SLOTS {
+            held.push(disk.acquire(DiskDirection::Read).await);
+        }
+        assert_eq!(disk.available(DiskDirection::Read), 0);
+        assert!(disk.try_acquire(DiskDirection::Read).is_none());
+        assert!(disk.try_acquire(DiskDirection::Write).is_some());
+        drop(held);
+        assert_eq!(
+            disk.available(DiskDirection::Read),
+            DEFAULT_DISK_DEVICE_SLOTS as usize
+        );
+    }
+
+    #[tokio::test]
+    async fn job_leases_hold_one_shared_endpoint_and_device_cap() {
+        let config = GovernorConfig {
+            buffer_bytes: BUFFER_QUANTUM_BYTES,
+            bandwidth_bps: 0,
+            endpoint_slots: 1,
+            disk_device_slots: 1,
+        };
+        let gov = GlobalTransferGovernor::new(config);
+        let endpoint_a = EndpointIdentity::new("sftp", "lease.test", "alice");
+        let endpoint_b = EndpointIdentity::new("sftp", "lease.test", "bob");
+        let path = std::env::temp_dir().join("aeroftp-governor-lease-test");
+
+        let held = gov
+            .acquire_job(
+                endpoint_a.clone(),
+                TransferPriority::Foreground,
+                [DiskLeaseRequest::write(path.clone())],
+            )
+            .await;
+
+        // Same endpoint queues before it can acquire a duplicate device slot.
+        let same_endpoint = gov.endpoint(&endpoint_a);
+        let same_governor = Arc::clone(&gov);
+        let same_path = path.clone();
+        let same_waiter = tokio::spawn(async move {
+            same_governor
+                .acquire_job(
+                    endpoint_a,
+                    TransferPriority::Background,
+                    [DiskLeaseRequest::write(same_path)],
+                )
+                .await
+        });
+        for _ in 0..16 {
+            if same_endpoint.waiter_counts().1 == 1 {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+        assert_eq!(same_endpoint.waiter_counts(), (0, 1));
+
+        // A different endpoint gets past its own cap but still waits on the
+        // one physical-device write slot held by the first job.
+        let other_governor = Arc::clone(&gov);
+        let other_path = path.clone();
+        let other_waiter = tokio::spawn(async move {
+            other_governor
+                .acquire_job(
+                    endpoint_b,
+                    TransferPriority::Foreground,
+                    [DiskLeaseRequest::write(other_path)],
+                )
+                .await
+        });
+        for _ in 0..16 {
+            if !other_waiter.is_finished() {
+                tokio::task::yield_now().await;
+            }
+        }
+        assert!(
+            !other_waiter.is_finished(),
+            "distinct endpoints bypassed disk cap"
+        );
+        other_waiter.abort();
+        let _ = other_waiter.await;
+
+        drop(held);
+        let same_lease = tokio::time::timeout(Duration::from_millis(100), same_waiter)
+            .await
+            .expect("same endpoint waiter did not release after job lease drop")
+            .expect("same endpoint task panicked");
+        drop(same_lease);
     }
 
     #[test]

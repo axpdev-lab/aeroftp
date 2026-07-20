@@ -54,8 +54,9 @@ use tokio::sync::Mutex;
 use crate::transfer_dag::executor::{execute_dag, DagNodeRunner, NodeFuture, NodeOutcome};
 use crate::transfer_dag::graph::{TransferNode, TransferNodeKind};
 use crate::transfer_dag::{
-    AimdConfig, AimdController, BatchDagItem, DagObserver, NoopDagObserver, TransferCapabilities,
-    TransferDagBuilder, TransferDirection, TransferGraphProfile, TransferSessionLease,
+    AimdConfig, AimdController, BatchDagItem, DagObserver, DiskLeaseRequest, NoopDagObserver,
+    TransferCapabilities, TransferDagBuilder, TransferDirection, TransferGraphProfile,
+    TransferPriority, TransferSessionLease,
 };
 use crate::transfer_domain::{
     BatchProgressSnapshot, TransferBatchResult, TransferDirection as DomainTransferDirection,
@@ -74,6 +75,10 @@ struct MultipartFileRuntime {
     /// One file/session lease for the whole multipart lifecycle.
     /// `None` = not yet acquired; acquire is serialised by this mutex.
     session_lease: Mutex<SessionLeaseSlot>,
+    /// Process-global endpoint plus local-device lease for the multipart file.
+    /// Held from the first part through terminal commit/abort so individual
+    /// part nodes cannot bypass the provider-job governor.
+    governor_lease: Mutex<Option<crate::transfer_dag::GovernorJobLease>>,
 }
 
 enum SessionLeaseSlot {
@@ -206,6 +211,7 @@ where
             multipart_runtimes.push(Some(Arc::new(MultipartFileRuntime {
                 state,
                 session_lease: Mutex::new(SessionLeaseSlot::Vacant),
+                governor_lease: Mutex::new(None),
             })));
         } else {
             multipart_runtimes.push(None);
@@ -291,8 +297,14 @@ where
             Box::pin(async move {
                 match node.kind {
                     TransferNodeKind::DownloadFile | TransferNodeKind::UploadFile => {
+                        let direction = match node.kind {
+                            TransferNodeKind::DownloadFile => TransferDirection::Download,
+                            TransferNodeKind::UploadFile => TransferDirection::Upload,
+                            _ => unreachable!("whole-file branch has one of two kinds"),
+                        };
                         run_whole_file_node(
                             node.id,
+                            direction,
                             &node_to_entry,
                             &entries,
                             &executor,
@@ -367,6 +379,7 @@ where
 #[allow(clippy::too_many_arguments)]
 async fn run_whole_file_node<E>(
     node_id: usize,
+    direction: TransferDirection,
     node_to_entry: &HashMap<usize, usize>,
     entries: &[crate::transfer_domain::TransferEntry],
     executor: &Arc<E>,
@@ -415,6 +428,18 @@ where
     if cancel.load(Ordering::Relaxed) {
         return NodeOutcome::Completed;
     }
+
+    let endpoint = executor.endpoint_identity().await;
+    let disk_request = match direction {
+        TransferDirection::Upload => DiskLeaseRequest::read(entry.local_path.clone()),
+        TransferDirection::Download => DiskLeaseRequest::write(entry.local_path.clone()),
+    };
+    // Batches are background work. The endpoint and local-device permits are
+    // held only while this file's session is active, preserving file-level
+    // parallelism across different endpoints and disks.
+    let _job_lease = crate::transfer_dag::governor::global()
+        .acquire_job(endpoint, TransferPriority::Background, [disk_request])
+        .await;
 
     {
         let mut snapshot = progress.lock().await;
@@ -500,6 +525,25 @@ where
         return NodeOutcome::Completed;
     };
 
+    // Serialize the one job-level governor acquire with the multipart file
+    // state. Once acquired it remains held until CommitTemp has completed or
+    // aborted the file, so parallel parts cannot each consume a fresh endpoint
+    // slot or evade the local disk-device cap.
+    {
+        let mut lease = runtime.governor_lease.lock().await;
+        if lease.is_none() {
+            let endpoint = executor.endpoint_identity().await;
+            let acquired = crate::transfer_dag::governor::global()
+                .acquire_job(
+                    endpoint,
+                    TransferPriority::Background,
+                    [DiskLeaseRequest::read(entry.local_path.clone())],
+                )
+                .await;
+            *lease = Some(acquired);
+        }
+    }
+
     // One session lease per multipart file (file/session dimension). Holding the
     // mutex during acquire serialises siblings so they never race the slot.
     {
@@ -523,6 +567,7 @@ where
                     Err(error) => {
                         tracing::warn!("Multipart session acquisition failed: {}", error);
                         *slot = SessionLeaseSlot::Failed;
+                        *runtime.governor_lease.lock().await = None;
                         state
                             .record_failure(TransferFailure {
                                 kind: TransferFailureKind::Unknown,
@@ -707,6 +752,7 @@ where
         }
         let mut slot = runtime.session_lease.lock().await;
         *slot = SessionLeaseSlot::Vacant;
+        *runtime.governor_lease.lock().await = None;
         return NodeOutcome::Completed;
     }
 
@@ -740,6 +786,7 @@ where
         let mut slot = runtime.session_lease.lock().await;
         *slot = SessionLeaseSlot::Vacant;
     }
+    *runtime.governor_lease.lock().await = None;
     node_outcome
 }
 

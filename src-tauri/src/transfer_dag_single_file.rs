@@ -84,9 +84,9 @@ use crate::transfer_dag::executor::{
 };
 use crate::transfer_dag::graph::{TransferNode, TransferNodeKind};
 use crate::transfer_dag::{
-    AimdConfig, AimdController, CopyDag, DagObserver, FailureScope, ObservedOutcome, ShapedFileDag,
-    TransferBudget, TransferCapabilities, TransferDagBuilder, TransferDagMetrics,
-    TransferDirection, TransferError, TransferErrorKind,
+    AimdConfig, AimdController, CopyDag, DagObserver, DiskLeaseRequest, FailureScope,
+    ObservedOutcome, ShapedFileDag, TransferBudget, TransferCapabilities, TransferDagBuilder,
+    TransferDagMetrics, TransferDirection, TransferError, TransferErrorKind, TransferPriority,
 };
 use crate::transfer_multipart::{
     clone_multipart_worker, read_chunk, MultipartFileState, MultipartLayout,
@@ -140,6 +140,20 @@ impl CopyProviderHandle {
                 provider.size(path).await.ok()
             }
             Self::Required(provider) => provider.lock().await.size(path).await.ok(),
+        }
+    }
+
+    async fn endpoint_identity(
+        &self,
+    ) -> Result<crate::transfer_dag::EndpointIdentity, ProviderError> {
+        match self {
+            Self::Optional(provider) => provider
+                .lock()
+                .await
+                .as_ref()
+                .map(|provider| provider.endpoint_identity())
+                .ok_or(ProviderError::NotConnected),
+            Self::Required(provider) => Ok(provider.lock().await.endpoint_identity()),
         }
     }
 
@@ -380,6 +394,22 @@ async fn run_copy_shape(
     fallback_trigger: Arc<StdMutex<Option<CopyFallbackTrigger>>>,
     observer: Arc<dyn DagObserver>,
 ) -> Result<(), ProviderError> {
+    let endpoint = provider.endpoint_identity().await?;
+    let disk_requests = temp
+        .as_ref()
+        .map(|path| {
+            vec![
+                DiskLeaseRequest::write(path.as_ref()),
+                DiskLeaseRequest::read(path.as_ref()),
+            ]
+        })
+        .unwrap_or_default();
+    // A user-initiated copy is foreground work. The lease covers the whole
+    // graph, so native and download-upload fallback shapes cannot exceed the
+    // endpoint or local-device caps between nodes.
+    let _job_lease = crate::transfer_dag::governor::global()
+        .acquire_job(endpoint, TransferPriority::Foreground, disk_requests)
+        .await;
     let first_error: Arc<StdMutex<Option<ProviderError>>> = Arc::new(StdMutex::new(None));
     let runner: Arc<dyn DagNodeRunner> = {
         let first_error = Arc::clone(&first_error);
@@ -871,10 +901,22 @@ pub async fn execute_single_file_dag(
 
     // DAG-P2-01: shared process-global buffer-byte pool (see governor.rs).
     let manager = crate::transfer_dag::governor::global().child_manager(single_file_budget(built));
-    let aimd_provider_type = {
+    let (aimd_provider_type, endpoint) = {
         let guard = provider.lock().await;
-        guard.as_ref().map(|provider| provider.provider_type())
+        let provider = guard.as_ref().ok_or(ProviderError::NotConnected)?;
+        (Some(provider.provider_type()), provider.endpoint_identity())
     };
+
+    let disk_request = match direction {
+        TransferDirection::Upload => DiskLeaseRequest::read(local_path.clone()),
+        TransferDirection::Download => DiskLeaseRequest::write(local_path.clone()),
+    };
+    // Single-file GUI/CLI actions are foreground work. Hold one endpoint and
+    // directional local-device lease for the complete graph, including native
+    // multipart fan-out and terminal cleanup.
+    let _job_lease = crate::transfer_dag::governor::global()
+        .acquire_job(endpoint, TransferPriority::Foreground, [disk_request])
+        .await;
 
     // AIMD backpressure only helps when a shaped graph has real chunk/http/api
     // concurrency to tune. Plain single-stream providers such as SFTP request

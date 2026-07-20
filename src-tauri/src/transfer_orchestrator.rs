@@ -16,7 +16,9 @@ use std::sync::Arc;
 use async_trait::async_trait;
 
 use crate::providers::{MultipartHandle, ProviderType, UploadedPart};
-use crate::transfer_dag::{TransferCapabilities, TransferSessionLease, TransferSessionPoolHandle};
+use crate::transfer_dag::{
+    EndpointIdentity, TransferCapabilities, TransferSessionLease, TransferSessionPoolHandle,
+};
 use crate::transfer_domain::{
     BatchProgressSnapshot, TransferBatchConfig, TransferBatchResult, TransferDirection,
     TransferEntry, TransferFailure, TransferOutcome,
@@ -41,6 +43,17 @@ pub trait TransferExecutor {
 
     fn provider_type(&self) -> Option<ProviderType> {
         None
+    }
+
+    /// Endpoint identity for the process-global governor. Production provider
+    /// executors override this by querying their connected provider; legacy and
+    /// test executors retain a conservative, provider-type-scoped fallback.
+    async fn endpoint_identity(&self) -> EndpointIdentity {
+        let protocol = self
+            .provider_type()
+            .map(|provider| provider.to_string())
+            .unwrap_or_else(|| "unknown".to_string());
+        EndpointIdentity::new(protocol, "batch-executor", "")
     }
 
     /// Runtime transfer capability snapshot owned by this executor instance.

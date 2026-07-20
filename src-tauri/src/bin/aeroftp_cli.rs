@@ -29778,15 +29778,28 @@ async fn pget_segmented_download(
     let pool = Arc::new(tokio::sync::Mutex::new(std::collections::VecDeque::from(
         conns,
     )));
-    let provider_type = {
+    let (provider_type, endpoint_identity) = {
         let guard = pool.lock().await;
-        guard.front().map(|provider| provider.provider_type())
+        guard
+            .front()
+            .map(|provider| (provider.provider_type(), provider.endpoint_identity()))
+            .unwrap_or_else(|| {
+                (
+                    ProviderType::Sftp,
+                    ftp_client_gui_lib::transfer_dag::EndpointIdentity::new(
+                        "sftp",
+                        "cli-range",
+                        "",
+                    ),
+                )
+            })
     };
     let remote_owned = remote_path.to_string();
 
     let cfg = ConcurrentRangeConfig {
         final_path: PathBuf::from(local_path),
-        provider_type: provider_type.unwrap_or(ProviderType::Sftp),
+        provider_type,
+        endpoint_identity,
         total_size: file_size,
         streams: actual_segments,
         max_streams: actual_segments,

@@ -486,6 +486,18 @@ pub trait StorageProvider: Send + Sync {
         None
     }
 
+    /// Stable identity for the process-global transfer governor. Direct
+    /// providers normally expose a `user@host` display name; cloud providers
+    /// expose their account or tenant label. Implementations with richer
+    /// authority data may override this default.
+    fn endpoint_identity(&self) -> crate::transfer_dag::EndpointIdentity {
+        crate::transfer_dag::EndpointIdentity::new(
+            self.provider_type().to_string(),
+            self.display_name(),
+            self.account_email().unwrap_or_default(),
+        )
+    }
+
     /// Connect to the storage backend
     async fn connect(&mut self) -> Result<(), ProviderError>;
 
