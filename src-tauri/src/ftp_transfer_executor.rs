@@ -20,11 +20,17 @@ use crate::transfer_domain::{
 use crate::transfer_orchestrator::TransferExecutor;
 use crate::transfer_settings::ResolvedTransferSettings;
 
+/// DAG-P2-07: whole-file attempts per entry id (first try counts as 1, so
+/// retries = attempts - 1). Removed on read via
+/// [`TransferExecutor::take_transfer_attempts`] so nothing accumulates.
+type AttemptCounts = std::sync::Mutex<std::collections::HashMap<String, u32>>;
+
 pub struct FtpDownloadExecutor {
     app: AppHandle,
     pool: Arc<FtpSessionPool>,
     runtime_settings: ResolvedTransferSettings,
     cancel_token: CancellationToken,
+    attempt_counts: AttemptCounts,
 }
 
 impl FtpDownloadExecutor {
@@ -39,6 +45,7 @@ impl FtpDownloadExecutor {
             pool,
             runtime_settings,
             cancel_token,
+            attempt_counts: AttemptCounts::default(),
         }
     }
 }
@@ -48,6 +55,7 @@ pub struct FtpUploadExecutor {
     pool: Arc<FtpSessionPool>,
     runtime_settings: ResolvedTransferSettings,
     cancel_token: CancellationToken,
+    attempt_counts: AttemptCounts,
 }
 
 impl FtpUploadExecutor {
@@ -62,6 +70,7 @@ impl FtpUploadExecutor {
             pool,
             runtime_settings,
             cancel_token,
+            attempt_counts: AttemptCounts::default(),
         }
     }
 }
@@ -73,6 +82,13 @@ impl TransferExecutor for FtpDownloadExecutor {
             "ftp-download-executor",
             self.pool.total_sessions(),
         )
+    }
+
+    fn take_transfer_attempts(&self, entry_id: &str) -> Option<u32> {
+        self.attempt_counts
+            .lock()
+            .expect("attempt counts poisoned")
+            .remove(entry_id)
     }
 
     async fn execute(&self, entry: TransferEntry) -> TransferOutcome {
@@ -135,6 +151,13 @@ impl TransferExecutor for FtpDownloadExecutor {
             let cancel_token = self.cancel_token.clone();
             let modified = entry.modified.clone();
 
+            // Meter every attempt actually made (first try included) before
+            // it runs, so a cancel during backoff or mid-transfer still
+            // leaves an honest count behind.
+            self.attempt_counts
+                .lock()
+                .expect("attempt counts poisoned")
+                .insert(entry.id.clone(), attempt + 1);
             let result = match self.pool.acquire().await {
                 Ok(lease) => {
                     let transfer_result = {
@@ -316,6 +339,13 @@ impl TransferExecutor for FtpUploadExecutor {
         )
     }
 
+    fn take_transfer_attempts(&self, entry_id: &str) -> Option<u32> {
+        self.attempt_counts
+            .lock()
+            .expect("attempt counts poisoned")
+            .remove(entry_id)
+    }
+
     async fn execute(&self, entry: TransferEntry) -> TransferOutcome {
         let file_transfer_id = entry.id.clone();
         let file_size = if entry.size > 0 {
@@ -381,6 +411,13 @@ impl TransferExecutor for FtpUploadExecutor {
             let local_path = entry.local_path.clone();
             let cancel_token = self.cancel_token.clone();
 
+            // Meter every attempt actually made (first try included) before
+            // it runs, so a cancel during backoff or mid-transfer still
+            // leaves an honest count behind.
+            self.attempt_counts
+                .lock()
+                .expect("attempt counts poisoned")
+                .insert(entry.id.clone(), attempt + 1);
             let result = match self.pool.acquire().await {
                 Ok(lease) => {
                     let transfer_result = {

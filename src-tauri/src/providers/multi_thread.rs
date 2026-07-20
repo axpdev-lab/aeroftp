@@ -304,7 +304,10 @@ where
     // The equivalence harness below keeps the former JoinSet implementation
     // test-only so byte, outcome, error, progress, cancellation and cap parity
     // remain regression-gated without retaining a production escape hatch.
-    let outcome = run_ranges_via_graph(
+    // The per-run DAG summary (DAG-P2-07 timing/byte telemetry) is available
+    // to tests through `run_ranges_via_graph`; this transport-agnostic shell
+    // has no metrics surface of its own, so it is dropped here.
+    let (outcome, _dag_summary) = run_ranges_via_graph(
         &ranges,
         &temp_path,
         total_size,
@@ -445,6 +448,12 @@ fn range_aimd_controller(
 /// only shrinks the in-flight range set under a real congestion signal.
 /// Outcome, error variant and cancel semantics are regression-gated against
 /// the test-only legacy scheduler; only the internal scheduling differs.
+///
+/// Returns the executor summary alongside the outcome (DAG-P2-07): its
+/// metrics carry the executor timing attribution, and on a completed run the
+/// byte triple is populated here (logical == wire == local == `total_size`,
+/// since every range verified its exact window into the local temp file).
+/// `ServerIgnoredRange` commits no bytes, so its metrics stay zeroed.
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn run_ranges_via_graph<W, WFut>(
     ranges: &[(u64, u64)],
@@ -456,7 +465,13 @@ pub(crate) async fn run_ranges_via_graph<W, WFut>(
     write_one_range: Arc<W>,
     cancel: CancellationToken,
     on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
-) -> Result<ConcurrentRangeOutcome, ProviderError>
+) -> Result<
+    (
+        ConcurrentRangeOutcome,
+        crate::transfer_dag::executor::DagExecutionSummary,
+    ),
+    ProviderError,
+>
 where
     W: Fn(u64, u64, PathBuf, Arc<AtomicU64>, CancellationToken) -> WFut + Send + Sync + 'static,
     WFut: std::future::Future<Output = Result<ConcurrentRangeOutcome, ProviderError>>
@@ -613,10 +628,23 @@ where
     // then fail with "cancelled" and execute_dag returns NodeFailed. Check the
     // fallback flag before treating that as an error.
     if server_ignored.load(Ordering::SeqCst) {
-        return Ok(ConcurrentRangeOutcome::ServerIgnoredRange);
+        // No bytes are committed on the honest fallback; a cancelled sibling
+        // drain may have turned the summary into an Err, which carries no
+        // telemetry worth keeping here.
+        let summary = exec.unwrap_or_default();
+        return Ok((ConcurrentRangeOutcome::ServerIgnoredRange, summary));
     }
     match exec {
-        Ok(_summary) => Ok(ConcurrentRangeOutcome::Completed),
+        Ok(mut summary) => {
+            // Every range verified its exact window into the local temp, so
+            // the whole object crossed the wire once and fully materialized
+            // locally.
+            summary.metrics.logical_bytes = total_size;
+            summary.metrics.wire_bytes = total_size;
+            summary.metrics.local_payload_bytes = total_size;
+            summary.metrics.bytes_transferred = total_size;
+            Ok((ConcurrentRangeOutcome::Completed, summary))
+        }
         Err(dag_err) => {
             if let Some(e) = first_error.lock().unwrap().take() {
                 Err(e)
@@ -1439,7 +1467,8 @@ mod tests {
             None,
         )
         .await
-        .unwrap();
+        .unwrap()
+        .0;
 
         assert_eq!(out_a, ConcurrentRangeOutcome::Completed);
         assert_eq!(out_b, ConcurrentRangeOutcome::Completed);
@@ -1455,6 +1484,141 @@ mod tests {
         for (o, byte) in bytes_a.iter().enumerate() {
             assert_eq!(*byte, ((o as u64) % 251) as u8, "byte mismatch at {o}");
         }
+
+        let _ = tokio::fs::remove_dir_all(&dir).await;
+    }
+
+    /// DAG-P2-07: a completed graph run attests the whole object in its
+    /// returned summary (logical == wire == local == total), plus executor
+    /// timing attribution.
+    #[tokio::test]
+    async fn graph_run_reports_range_bytes_and_timing_in_summary() {
+        let total: u64 = 1 << 16;
+        let ranges = plan_multi_thread_ranges(total, 4, 16);
+
+        let dir = scratch_dir("metrics");
+        tokio::fs::create_dir_all(&dir).await.unwrap();
+        let temp = aerotmp_path_for(&dir.join("m.bin"));
+        prealloc(&temp, total).await;
+
+        let (outcome, summary) = run_ranges_via_graph(
+            &ranges,
+            &temp,
+            total,
+            4,
+            super::super::ProviderType::S3,
+            crate::transfer_dag::EndpointIdentity::new("s3", "metrics-test", ""),
+            Arc::new(deterministic_writer()),
+            CancellationToken::new(),
+            None,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(outcome, ConcurrentRangeOutcome::Completed);
+        assert_eq!(summary.metrics.bytes_transferred, total);
+        assert_eq!(summary.metrics.logical_bytes, total);
+        assert_eq!(summary.metrics.wire_bytes, total);
+        assert_eq!(summary.metrics.local_payload_bytes, total);
+        assert!(summary.metrics.run_nanos_total > 0);
+        assert!(summary.metrics.slot_peak >= 1);
+
+        let _ = tokio::fs::remove_dir_all(&dir).await;
+    }
+
+    /// DAG-P2-07 (block C): ranged segments fetch through the shared
+    /// send_with_retry choke point, so a graph run of N segment requests
+    /// reaching headers folds exactly N honest first-byte samples into the
+    /// summary. Runtime-scoped recording keeps parallel-test fixture traffic
+    /// out of these exact counts.
+    #[tokio::test]
+    async fn graph_run_reports_ttfb_for_ranged_segments() {
+        use crate::transfer_dag::ttfb::test_fixture::{
+            spawn_delayed_http_fixture, FixtureResponse,
+        };
+
+        let total: u64 = 96;
+        let ranges = plan_multi_thread_ranges(total, 3, 16);
+        assert_eq!(ranges.len(), 3);
+        let window = (ranges[0].1 - ranges[0].0 + 1) as usize;
+
+        let addr = spawn_delayed_http_fixture(
+            std::time::Duration::from_millis(20),
+            ranges.len(),
+            move |_head| FixtureResponse {
+                status: "200 OK".to_string(),
+                headers: Vec::new(),
+                body: vec![b'x'; window],
+            },
+        )
+        .await;
+
+        let dir = scratch_dir("ttfb");
+        tokio::fs::create_dir_all(&dir).await.unwrap();
+        let temp = aerotmp_path_for(&dir.join("t.bin"));
+        prealloc(&temp, total).await;
+
+        let writer = Arc::new(
+            move |start: u64,
+                  _end: u64,
+                  temp_path: PathBuf,
+                  aggregate: Arc<AtomicU64>,
+                  _cancel: CancellationToken|
+                  -> BoxedRangeFut {
+                Box::pin(async move {
+                    let client = reqwest::Client::new();
+                    let request = client
+                        .get(format!("http://{addr}/object"))
+                        .build()
+                        .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+                    let response = send_with_retry(&client, request, &HttpRetryConfig::default())
+                        .await
+                        .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+                    let body = response
+                        .bytes()
+                        .await
+                        .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+                    let mut f = tokio::fs::OpenOptions::new()
+                        .write(true)
+                        .open(&temp_path)
+                        .await
+                        .map_err(ProviderError::IoError)?;
+                    f.seek(std::io::SeekFrom::Start(start))
+                        .await
+                        .map_err(ProviderError::IoError)?;
+                    f.write_all(&body).await.map_err(ProviderError::IoError)?;
+                    f.flush().await.map_err(ProviderError::IoError)?;
+                    aggregate.fetch_add(body.len() as u64, Ordering::Relaxed);
+                    Ok(ConcurrentRangeOutcome::Completed)
+                })
+            },
+        );
+
+        let (outcome, summary) = run_ranges_via_graph(
+            &ranges,
+            &temp,
+            total,
+            3,
+            super::super::ProviderType::WebDav,
+            crate::transfer_dag::EndpointIdentity::new("http", "127.0.0.1", ""),
+            writer,
+            CancellationToken::new(),
+            None,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(outcome, ConcurrentRangeOutcome::Completed);
+        assert_eq!(
+            summary.metrics.ttfb_samples, 3,
+            "three segment requests reaching headers are exactly three samples"
+        );
+        assert!(
+            summary.metrics.ttfb_nanos_total
+                >= std::time::Duration::from_millis(30).as_nanos() as u64,
+            "three 20ms-delayed segments must total >= 30ms, got {}ns",
+            summary.metrics.ttfb_nanos_total
+        );
 
         let _ = tokio::fs::remove_dir_all(&dir).await;
     }
@@ -1510,7 +1674,8 @@ mod tests {
             None,
         )
         .await
-        .unwrap();
+        .unwrap()
+        .0;
 
         assert_eq!(out_a, ConcurrentRangeOutcome::ServerIgnoredRange);
         assert_eq!(out_b, ConcurrentRangeOutcome::ServerIgnoredRange);
@@ -1652,6 +1817,7 @@ mod tests {
                 None,
             )
             .await
+            .map(|(outcome, _summary)| outcome)
         } else {
             run_ranges_via_joinset(&ranges, &temp, 2, 2, writer, cancel, None).await
         };
@@ -1798,7 +1964,8 @@ mod tests {
             Some(callback_b),
         )
         .await
-        .unwrap();
+        .unwrap()
+        .0;
 
         assert_eq!(out_a, ConcurrentRangeOutcome::Completed);
         assert_eq!(out_a, out_b);
@@ -1850,7 +2017,8 @@ mod tests {
                 None,
             )
             .await
-            .unwrap();
+            .unwrap()
+            .0;
 
             assert_eq!(out_a, ConcurrentRangeOutcome::Completed, "case {tag}");
             assert_eq!(out_a, out_b, "case {tag}");
@@ -2017,6 +2185,7 @@ mod tests {
                     None,
                 )
                 .await
+                .map(|(outcome, _summary)| outcome)
             } else {
                 run_ranges_via_joinset(
                     &run_ranges,

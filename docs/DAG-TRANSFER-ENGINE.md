@@ -512,8 +512,80 @@ GUI progress pressure is governed by the shared `ProgressGovernor`
 - CLI `indicatif`, MCP progress notifications, and archive/sync-scan
   throttles remain separate product domains.
 
-Copy now populates logical, wire, local-payload, and copy-fallback metrics.
-Other executor byte and retry fields remain incomplete until P2 telemetry.
+Copy populates logical, wire, local-payload, and copy-fallback metrics. As of
+`DAG-P2-07` blocks A-D the other runners also attest bytes, wait/run timing,
+slot peak, TTFB (on covered paths), and whole-file retries; see the telemetry
+section below for the exact coverage and the remaining gaps.
+
+## Engine telemetry (DAG-P2-07 blocks A-D, partial)
+
+This wave is not closed. What landed is the metric population core; the
+unified stats surface, the slow optimization loop, and the nightly CI
+benchmark remain open (blocks E, F, G).
+
+`TransferDagMetrics` (`src-tauri/src/transfer_dag/metrics.rs`) carries the
+logical/wire/local-payload byte triple, backpressure, and fallback counters,
+and now also `wait_nanos_total` (dispatch to runner start: AIMD permit plus
+resource lease wait), `run_nanos_total` (runner execution), `slot_peak`
+(high-water mark of filled dispatch slots, sampled after each dispatch fill),
+and `ttfb_nanos_total` with `ttfb_samples`. All new fields are additive with
+serde defaults, and `absorb()` merges per-file subgraph metrics into job-level
+totals across the streaming batch/sync frontier (sums; max for `slot_peak`).
+The executor attributes timing per node through `NodeTiming`; cancel and
+timeout wrapper arms attest wait/run up to the abort via a shared
+`RunnerStartSlot` stamp instead of fabricating durations, and the `JoinError`
+force-abort arm contributes nothing.
+
+Byte attestation is explicit per runner. The shaped single-file runner reports
+through a shared `AtomicU64` and `SingleFileMetricsObserver` (download:
+on-disk size; upload: file size; multipart: `layout.total_size` once at
+commit). Batch folds per-file `FileMetricCounters`, with multipart commit
+bytes recorded inside the once-guard of `claim_account`. Sync sends
+driver-attested outcome bytes through `TransferJob.ack`
+(`oneshot::Sender<u64>`). The range graph returns
+`(ConcurrentRangeOutcome, DagExecutionSummary)` from
+`providers/multi_thread.rs`: the byte triple on `Completed`, zeroed counters
+on `ServerIgnoredRange`.
+
+Retries are metered only where a real retry loop exists, and those loops live
+in the executors, not in the DAG runners. `TransferExecutor::
+take_transfer_attempts` defaults to `None` (unmetered, reported as zero
+retries, never guessed); the provider and FTP whole-file executors
+(`provider_transfer_executor.rs`, `ftp_transfer_executor.rs`) implement it
+with a per-entry attempt map (first try included, retries = attempts - 1,
+consumed once). Unmetered residuals: `CrossProfileExecutor`, http_retry
+attempts for the range family, and provider-internal retry loops
+(`yandex_disk.rs`, `s3.rs`, `internxt.rs`, `filen/mod.rs`, `webdav.rs`,
+`mega_native.rs`) that sit below the metrics surface.
+
+Time-to-first-byte is recorded by `transfer_dag/ttfb.rs`: a process-global
+registry scoped by `tokio::runtime::Id`, one recorder installed per
+`execute_dag` run and folded at the single finalize. Concurrent runs on the
+same runtime share attribution (documented, never relabeled); foreign runtimes
+cannot pollute a run. The single instrumented choke point is
+`providers/http_retry.rs::send_with_retry`: a sample is the honest first byte
+(the reqwest future resolving with headers received), the timer starts after
+the tpslimit toll so throttle wait is not counted, a transport error records
+nothing, and each retried attempt that reaches headers is its own sample. This
+covers every DAG production path whose provider routes through
+`send_with_retry` (18 provider files: whole-file GET/PUT, multipart UploadPart
+fan-out, ranged segments, batch/sync) with zero per-provider surgery. Paths
+that record nothing, keeping their latency inside `run_nanos_total`: FTP/FTPS
+and SFTP (non-HTTP), HTTP providers that bypass `send_with_retry` with raw
+`client.execute`/`send` (webdav, dropbox, google_drive, onedrive, box,
+cloudinary, drime_cloud, google_photos, imagekit, immich, opendrive,
+uploadcare, yandex_disk, mega_native, oauth helpers), and MEGAcmd subprocess
+providers.
+
+A process resource sampler exists (`src-tauri/src/proc_stats.rs`: CPU
+user/system nanoseconds, RSS bytes, FD count from Linux `/proc/self`,
+compile-time `None` stub elsewhere) but is not yet wired into any transfer
+command; that wiring is part of block E. The unified surface is equally not
+wired: GUI, CLI `--json`, and MCP do not yet read one engine-level stats
+source, and batch/sync job totals currently surface only via `tracing::debug`
+(the `TransferBatchResult`/`SyncReport` contracts are unchanged). This wave
+adds no WAN benchmark numbers; evidence is the deterministic test suite listed
+in the appendix tracker (`docs/dev/drafts/TRACKER-DAG-P2-07-DRAFT-telemetry-benchmark.md`).
 
 ## Capability contract
 

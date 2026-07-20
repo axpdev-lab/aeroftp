@@ -56,9 +56,9 @@ use crate::transfer_dag::executor::{execute_dag, DagNodeRunner, NodeFuture, Node
 use crate::transfer_dag::graph::{TransferNode, TransferNodeKind};
 use crate::transfer_dag::{
     AimdConfig, AimdController, DagObserver, DiskLeaseRequest, FileAdmission, NoopDagObserver,
-    StreamingConfig, TransferCapabilities, TransferDagBuilder, TransferDirection,
-    TransferGraphProfile, TransferPriority, TransferResourceManager, TransferSessionLease,
-    TransferSessionPoolHandle, TransferWorkItem, WorkSource,
+    StreamingConfig, TransferCapabilities, TransferDagBuilder, TransferDagMetrics,
+    TransferDirection, TransferGraphProfile, TransferPriority, TransferResourceManager,
+    TransferSessionLease, TransferSessionPoolHandle, TransferWorkItem, WorkSource,
 };
 use crate::transfer_domain::{
     BatchProgressSnapshot, TransferBatchConfig, TransferBatchResult,
@@ -90,6 +90,16 @@ enum SessionLeaseSlot {
     Held(#[allow(dead_code)] TransferSessionLease),
     /// Acquire failed; siblings must drain without I/O.
     Failed,
+}
+
+/// Per-file counters the batch node runners can attest (DAG-P2-07). Bytes
+/// land only on a successful file terminal; retries come from the executor's
+/// own attempt metering (first try excluded). Folded into the file's subgraph
+/// metrics at the end of [`run_one_batch_file`].
+#[derive(Default)]
+struct FileMetricCounters {
+    bytes: std::sync::atomic::AtomicU64,
+    retries: std::sync::atomic::AtomicU32,
 }
 
 /// Run a multi-file batch transfer through the graph engine.
@@ -248,14 +258,24 @@ where
         next: 0,
     };
     let streaming_config = batch_streaming_config(&config, &ctx.caps);
-    let _summary =
+    let streaming_summary =
         crate::transfer_dag::run_streaming(source, streaming_config, move |item, admission| {
             let ctx = Arc::clone(&ctx);
-            async move {
-                run_one_batch_file(item, admission, ctx).await;
-            }
+            async move { run_one_batch_file(item, admission, ctx).await }
         })
         .await;
+    // DAG-P2-07: the frontier folded every per-file subgraph metrics into one
+    // job-level total; surface it for diagnostics without changing the batch
+    // result contract.
+    tracing::debug!(
+        "batch DAG totals: files={} bytes_transferred={} retries={} wait_nanos={} run_nanos={} slot_peak={}",
+        streaming_summary.items_admitted,
+        streaming_summary.metrics.bytes_transferred,
+        streaming_summary.metrics.retries,
+        streaming_summary.metrics.wait_nanos_total,
+        streaming_summary.metrics.run_nanos_total,
+        streaming_summary.metrics.slot_peak,
+    );
 
     let snapshot = progress.lock().await.clone();
     let batch_result = TransferBatchResult {
@@ -345,17 +365,22 @@ fn batch_streaming_config(
 /// Behavioral parity with the former single-graph path is preserved because the
 /// per-node work is the same `run_whole_file_node` / `run_multipart_part_node` /
 /// `run_multipart_commit_node`, bound here to a one-element entry slice.
+///
+/// Returns this file's metrics (executor timing plus runner-attested bytes and
+/// retries) so the streaming frontier can fold them into the job-level total;
+/// a file that never reaches the graph contributes zero.
 async fn run_one_batch_file<E>(
     item: TransferWorkItem,
     mut admission: FileAdmission,
     ctx: Arc<BatchStreamContext<E>>,
-) where
+) -> TransferDagMetrics
+where
     E: TransferExecutor + Send + Sync + 'static,
 {
     // Cancel mid-batch: do not expand or run remaining files. In-flight files
     // still observe the flag inside their node runners (legacy accounting).
     if ctx.cancel.load(Ordering::Relaxed) || ctx.executor.is_transfer_cancelled() {
-        return;
+        return TransferDagMetrics::default();
     }
 
     let entry = ctx.entries[item.index].clone();
@@ -381,7 +406,7 @@ async fn run_one_batch_file<E>(
         if let Some(observer) = ctx.progress_observer.as_ref() {
             observer(snapshot_clone);
         }
-        return;
+        return TransferDagMetrics::default();
     }
 
     // Bind this subgraph's local node ids to the single admitted entry (index 0
@@ -424,6 +449,7 @@ async fn run_one_batch_file<E>(
     let preflight_failed = Arc::new(std::sync::Mutex::new(
         std::collections::HashSet::<usize>::new(),
     ));
+    let file_counters = Arc::new(FileMetricCounters::default());
 
     let runner: Arc<dyn DagNodeRunner> = {
         let sink = Arc::clone(&ctx.sink);
@@ -436,6 +462,7 @@ async fn run_one_batch_file<E>(
         let session_pool = Arc::clone(&ctx.session_pool);
         let multipart_runtimes = Arc::clone(&multipart_runtimes);
         let preflight_failed = Arc::clone(&preflight_failed);
+        let file_counters = Arc::clone(&file_counters);
         Arc::new(move |node: TransferNode| -> NodeFuture {
             let sink = Arc::clone(&sink);
             let executor = Arc::clone(&executor);
@@ -447,6 +474,7 @@ async fn run_one_batch_file<E>(
             let session_pool = Arc::clone(&session_pool);
             let multipart_runtimes = Arc::clone(&multipart_runtimes);
             let preflight_failed = Arc::clone(&preflight_failed);
+            let file_counters = Arc::clone(&file_counters);
             Box::pin(async move {
                 match node.kind {
                     TransferNodeKind::DownloadFile | TransferNodeKind::UploadFile => {
@@ -466,6 +494,7 @@ async fn run_one_batch_file<E>(
                             &progress,
                             &sink,
                             progress_observer.as_ref(),
+                            &file_counters,
                         )
                         .await
                     }
@@ -497,6 +526,7 @@ async fn run_one_batch_file<E>(
                             &progress,
                             &sink,
                             progress_observer.as_ref(),
+                            &file_counters,
                         )
                         .await
                     }
@@ -508,7 +538,7 @@ async fn run_one_batch_file<E>(
     };
 
     let observer: Arc<dyn DagObserver> = Arc::new(NoopDagObserver);
-    if let Err(error) = execute_dag(
+    let mut metrics = match execute_dag(
         &shaped.dag,
         &ctx.resource_manager,
         runner,
@@ -517,8 +547,27 @@ async fn run_one_batch_file<E>(
     )
     .await
     {
-        tracing::warn!("Batch transfer file graph stopped early: {}", error);
+        Ok(summary) => summary.metrics,
+        Err(error) => {
+            tracing::warn!("Batch transfer file graph stopped early: {}", error);
+            TransferDagMetrics::default()
+        }
+    };
+
+    // Fold runner-attested totals into the executor's timing metrics. Byte
+    // semantics are directional (upload moves no local payload; a download
+    // materializes the whole object locally).
+    let bytes = file_counters.bytes.load(Ordering::Relaxed);
+    metrics.logical_bytes = metrics.logical_bytes.saturating_add(bytes);
+    metrics.wire_bytes = metrics.wire_bytes.saturating_add(bytes);
+    if ctx.dag_direction == TransferDirection::Download {
+        metrics.local_payload_bytes = metrics.local_payload_bytes.saturating_add(bytes);
     }
+    metrics.bytes_transferred = metrics.bytes_transferred.saturating_add(bytes);
+    metrics.retries = metrics
+        .retries
+        .saturating_add(file_counters.retries.load(Ordering::Relaxed));
+    metrics
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -533,6 +582,7 @@ async fn run_whole_file_node<E>(
     progress: &Mutex<BatchProgressSnapshot>,
     sink: &Arc<dyn TransferEventSink>,
     progress_observer: Option<&ProgressObserver>,
+    file_counters: &FileMetricCounters,
 ) -> NodeOutcome
 where
     E: TransferExecutor + Send + Sync + 'static,
@@ -595,10 +645,20 @@ where
         .execute_with_session(entry.clone(), session_lease)
         .await;
 
+    // Consume the executor's attempt metering (first try excluded => actual
+    // retries). Unmetered executors honestly contribute zero.
+    if let Some(attempts) = executor.take_transfer_attempts(&entry.id) {
+        file_counters
+            .retries
+            .fetch_add(attempts.saturating_sub(1), Ordering::Relaxed);
+    }
     let bytes = match &outcome {
         TransferOutcome::Success => entry.size,
         _ => 0,
     };
+    if bytes > 0 {
+        file_counters.bytes.fetch_add(bytes, Ordering::Relaxed);
+    }
     // Exactly-once snapshot/event accounting, then the typed node outcome so
     // DAG/AIMD see the file terminal without aborting the batch graph.
     let node_outcome = node_outcome_for_file_result(&outcome);
@@ -854,6 +914,7 @@ async fn run_multipart_commit_node<E>(
     progress: &Mutex<BatchProgressSnapshot>,
     sink: &Arc<dyn TransferEventSink>,
     progress_observer: Option<&ProgressObserver>,
+    file_counters: &FileMetricCounters,
 ) -> NodeOutcome
 where
     E: TransferExecutor + Send + Sync + 'static,
@@ -910,6 +971,9 @@ where
             TransferOutcome::Success => entry.size,
             _ => 0,
         };
+        if bytes > 0 {
+            file_counters.bytes.fetch_add(bytes, Ordering::Relaxed);
+        }
         account_outcome(
             progress,
             sink,
@@ -1130,6 +1194,8 @@ mod tests {
         fail_part_typed: StdMutex<TypedPartFailMap>,
         fail_complete_for: StdMutex<HashSet<String>>,
         cancelled: AtomicBool,
+        /// Scripted per-entry attempt counts for the DAG-P2-07 retry metric.
+        metered_attempts: StdMutex<std::collections::HashMap<String, u32>>,
     }
 
     impl MockExecutor {
@@ -1159,7 +1225,17 @@ mod tests {
                 fail_part_typed: StdMutex::new(std::collections::HashMap::new()),
                 fail_complete_for: StdMutex::new(HashSet::new()),
                 cancelled: AtomicBool::new(false),
+                metered_attempts: StdMutex::new(std::collections::HashMap::new()),
             }
+        }
+
+        /// Script the attempt count `take_transfer_attempts` reports once for
+        /// `id` (first try included, mirroring the production executors).
+        fn set_metered_attempts(&self, id: &str, attempts: u32) {
+            self.metered_attempts
+                .lock()
+                .unwrap()
+                .insert(id.to_string(), attempts);
         }
 
         fn set_typed_fail(
@@ -1251,6 +1327,10 @@ mod tests {
 
         fn transfer_capabilities(&self) -> TransferCapabilities {
             self.capabilities.clone()
+        }
+
+        fn take_transfer_attempts(&self, entry_id: &str) -> Option<u32> {
+            self.metered_attempts.lock().unwrap().remove(entry_id)
         }
 
         fn session_pool(&self, max_concurrent: usize) -> TransferSessionPoolHandle {
@@ -2563,6 +2643,136 @@ mod tests {
             executor.executed().len(),
             count as usize,
             "every file transferred through the streaming frontier"
+        );
+    }
+
+    // ---- DAG-P2-07: job-level metrics over the streaming frontier --------
+
+    /// Build the same per-file streaming wiring `execute_batch_dag_inner`
+    /// uses, so tests can observe the job-level `StreamingSummary.metrics`.
+    fn batch_metrics_ctx(
+        executor: Arc<MockExecutor>,
+        entries: Arc<Vec<TransferEntry>>,
+        dag_direction: TransferDirection,
+    ) -> Arc<BatchStreamContext<MockExecutor>> {
+        use crate::transfer_dag::{
+            AdaptiveProfileConfig, AdaptiveProfileRegistry, EndpointIdentity, TransferBudget,
+        };
+        let caps = executor.transfer_capabilities();
+        let session_pool = Arc::new(executor.session_pool(2));
+        let resource_manager = crate::transfer_dag::governor::global()
+            .child_manager(TransferBudget::from_file_slots(2));
+        let aimd = batch_aimd_controller(
+            &resource_manager.budget(),
+            executor.provider_type(),
+            EndpointIdentity::new("mock", "batch-metrics-test", ""),
+            Arc::new(AdaptiveProfileRegistry::new(
+                AdaptiveProfileConfig::default(),
+            )),
+            AimdConfig::default(),
+        );
+        Arc::new(BatchStreamContext {
+            sink: Arc::new(CountingSink::default()),
+            executor,
+            cancel: Arc::new(AtomicBool::new(false)),
+            progress: Arc::new(Mutex::new(BatchProgressSnapshot {
+                batch_id: "metrics".to_string(),
+                total: entries.len() as u32,
+                bytes_total: entries.iter().map(|entry| entry.size).sum(),
+                ..BatchProgressSnapshot::default()
+            })),
+            progress_observer: None,
+            entries,
+            session_pool,
+            resource_manager,
+            aimd,
+            caps,
+            dag_direction,
+        })
+    }
+
+    /// Two-plus files through the streaming frontier: the job-level byte
+    /// totals equal the sum of per-file sizes (the per-subgraph merge works),
+    /// with direction-honest local-payload semantics.
+    #[tokio::test]
+    async fn batch_streaming_folds_per_file_bytes_into_job_total() {
+        for (dag_direction, expect_local) in [
+            (TransferDirection::Download, 600u64),
+            (TransferDirection::Upload, 0u64),
+        ] {
+            let entries: Arc<Vec<TransferEntry>> =
+                Arc::new(vec![entry("a", 100), entry("b", 200), entry("c", 300)]);
+            let executor = Arc::new(MockExecutor::new(4));
+            let ctx = batch_metrics_ctx(Arc::clone(&executor), Arc::clone(&entries), dag_direction);
+            let source = BatchEntriesWorkSource {
+                entries,
+                direction: dag_direction,
+                next: 0,
+            };
+            let summary = crate::transfer_dag::run_streaming(
+                source,
+                StreamingConfig::for_file_slots(2, 16),
+                move |item, admission| {
+                    let ctx = Arc::clone(&ctx);
+                    async move { run_one_batch_file(item, admission, ctx).await }
+                },
+            )
+            .await;
+
+            assert_eq!(summary.items_admitted, 3);
+            assert_eq!(
+                summary.metrics.bytes_transferred, 600,
+                "{dag_direction:?}: job total must sum per-file bytes"
+            );
+            assert_eq!(summary.metrics.logical_bytes, 600);
+            assert_eq!(summary.metrics.wire_bytes, 600);
+            assert_eq!(
+                summary.metrics.local_payload_bytes, expect_local,
+                "{dag_direction:?}: local payload only materializes on download"
+            );
+            assert_eq!(summary.metrics.retries, 0, "clean runs have no retries");
+            assert!(
+                summary.metrics.run_nanos_total > 0,
+                "executor timing survives the per-subgraph merge"
+            );
+            assert!(summary.metrics.slot_peak >= 1);
+        }
+    }
+
+    /// Metered attempts flow from the executor through the per-file subgraph
+    /// into the job total: one retry on `flaky`, none on `ok`.
+    #[tokio::test]
+    async fn batch_streaming_counts_executor_metered_retries() {
+        let entries: Arc<Vec<TransferEntry>> =
+            Arc::new(vec![entry("ok", 100), entry("flaky", 200)]);
+        let executor = Arc::new(MockExecutor::new(4));
+        executor.set_metered_attempts("ok", 1);
+        executor.set_metered_attempts("flaky", 2);
+        let ctx = batch_metrics_ctx(
+            Arc::clone(&executor),
+            Arc::clone(&entries),
+            TransferDirection::Download,
+        );
+        let source = BatchEntriesWorkSource {
+            entries,
+            direction: TransferDirection::Download,
+            next: 0,
+        };
+        let summary = crate::transfer_dag::run_streaming(
+            source,
+            StreamingConfig::for_file_slots(2, 16),
+            move |item, admission| {
+                let ctx = Arc::clone(&ctx);
+                async move { run_one_batch_file(item, admission, ctx).await }
+            },
+        )
+        .await;
+
+        assert_eq!(summary.items_admitted, 2);
+        assert_eq!(summary.metrics.bytes_transferred, 300);
+        assert_eq!(
+            summary.metrics.retries, 1,
+            "attempts minus the first try, summed over files"
         );
     }
 }

@@ -80,6 +80,15 @@ pub trait TransferExecutor {
         outcome
     }
 
+    /// Attempts metered for the most recently finished whole-file transfer of
+    /// `entry_id`, first try included (so retries = attempts - 1). Consumed
+    /// once: the value is removed on read so a long-lived executor does not
+    /// accumulate per-file state. `None` means this executor does not meter
+    /// attempts; callers record zero retries rather than guessing (DAG-P2-07).
+    fn take_transfer_attempts(&self, _entry_id: &str) -> Option<u32> {
+        None
+    }
+
     /// Whether this executor implements real multipart begin/part/complete/abort.
     ///
     /// Default `false`: a shaped multipart graph against a conservative executor

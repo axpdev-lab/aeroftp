@@ -83,8 +83,8 @@ use crate::transfer_dag::executor::{execute_dag, DagNodeRunner, NodeFuture, Node
 use crate::transfer_dag::graph::{TransferNode, TransferNodeKind};
 use crate::transfer_dag::{
     AimdConfig, AimdController, DagObserver, DiskLeaseRequest, FileAdmission, NoopDagObserver,
-    StreamingConfig, TransferBudget, TransferCapabilities, TransferDagBuilder, TransferDirection,
-    TransferPriority, TransferWorkItem, WorkSource,
+    StreamingConfig, TransferBudget, TransferCapabilities, TransferDagBuilder, TransferDagMetrics,
+    TransferDirection, TransferPriority, TransferWorkItem, WorkSource,
 };
 
 /// Bounded capacity of the transfer-job channel. The DAG file-slot budget is
@@ -381,8 +381,18 @@ struct TransferJob {
     /// Index into [`SyncDagPlan::transfers`].
     transfer_index: usize,
     lane: SyncTransferLane,
-    /// Resolved once the driver has performed the transfer.
-    ack: oneshot::Sender<()>,
+    /// Resolved once the driver has performed the transfer. Carries the
+    /// user-visible bytes for this file (0 on failure/skip) so the admitted
+    /// subgraph can attest per-file byte totals (DAG-P2-07).
+    ack: oneshot::Sender<u64>,
+}
+
+/// User-visible bytes a sync file outcome transferred (0 for skip/failure).
+fn sync_outcome_bytes(outcome: &FileOutcome) -> u64 {
+    match outcome {
+        FileOutcome::Uploaded { bytes, .. } | FileOutcome::Downloaded { bytes, .. } => *bytes,
+        _ => 0,
+    }
 }
 
 /// Build the node runner for a sync graph.
@@ -438,7 +448,7 @@ fn build_sync_runner(
                 }
                 dispatched[transfer_index] = true;
             }
-            let (ack_tx, ack_rx) = oneshot::channel::<()>();
+            let (ack_tx, ack_rx) = oneshot::channel::<u64>();
             if job_tx
                 .send(TransferJob {
                     transfer_index,
@@ -510,22 +520,30 @@ impl WorkSource for SyncTransfersWorkSource {
 /// and observers stay on real nodes via [`execute_dag`]; the real per-file I/O,
 /// the bounded worker pool, and the exclusive delta lane stay in
 /// [`drive_sync_transfers`].
+///
+/// Returns this file's metrics (executor timing plus the driver-attested byte
+/// totals from the job ack) so the streaming frontier folds them into the
+/// job-level total (DAG-P2-07).
 async fn run_one_sync_file(
     item: TransferWorkItem,
     mut admission: FileAdmission,
     ctx: Arc<SyncStreamContext>,
     job_tx: mpsc::Sender<TransferJob>,
-) {
+) -> TransferDagMetrics {
     let shaped = TransferDagBuilder::shaped_file(item.direction, &ctx.caps, item.size);
     admission.materialize_nodes(shaped.dag.nodes().len());
 
     let transfer_index = item.index;
     let lane = ctx.lane;
     let dispatched = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    // Byte total attested by the driver through the job ack (0 until then).
+    let acked_bytes = Arc::new(std::sync::atomic::AtomicU64::new(0));
+    let acked_bytes_out = Arc::clone(&acked_bytes);
 
     let runner: Arc<dyn DagNodeRunner> = Arc::new(move |node: TransferNode| -> NodeFuture {
         let job_tx = job_tx.clone();
         let dispatched = Arc::clone(&dispatched);
+        let acked_bytes = Arc::clone(&acked_bytes);
         Box::pin(async move {
             if !matches!(
                 node.kind,
@@ -540,7 +558,7 @@ async fn run_one_sync_file(
             if dispatched.swap(true, std::sync::atomic::Ordering::SeqCst) {
                 return NodeOutcome::Completed;
             }
-            let (ack_tx, ack_rx) = oneshot::channel::<()>();
+            let (ack_tx, ack_rx) = oneshot::channel::<u64>();
             if job_tx
                 .send(TransferJob {
                     transfer_index,
@@ -553,13 +571,15 @@ async fn run_one_sync_file(
                 // The driver is gone; nothing more this node can do.
                 return NodeOutcome::Completed;
             }
-            let _ = ack_rx.await;
+            if let Ok(bytes) = ack_rx.await {
+                acked_bytes.store(bytes, std::sync::atomic::Ordering::SeqCst);
+            }
             NodeOutcome::Completed
         })
     });
 
     let observer: Arc<dyn DagObserver> = Arc::new(NoopDagObserver);
-    if let Err(error) = execute_dag(
+    let mut metrics = match execute_dag(
         &shaped.dag,
         &ctx.manager,
         runner,
@@ -568,8 +588,24 @@ async fn run_one_sync_file(
     )
     .await
     {
-        tracing::warn!("Sync transfer file graph stopped early: {}", error);
+        Ok(summary) => summary.metrics,
+        Err(error) => {
+            tracing::warn!("Sync transfer file graph stopped early: {}", error);
+            TransferDagMetrics::default()
+        }
+    };
+
+    // Fold driver-attested bytes into the executor's timing metrics. Byte
+    // semantics are directional (upload moves no local payload; a download
+    // materializes the whole object locally).
+    let bytes = acked_bytes_out.load(std::sync::atomic::Ordering::SeqCst);
+    metrics.logical_bytes = metrics.logical_bytes.saturating_add(bytes);
+    metrics.wire_bytes = metrics.wire_bytes.saturating_add(bytes);
+    if item.direction == TransferDirection::Download {
+        metrics.local_payload_bytes = metrics.local_payload_bytes.saturating_add(bytes);
     }
+    metrics.bytes_transferred = metrics.bytes_transferred.saturating_add(bytes);
+    metrics
 }
 
 /// Progress produced by an independent normal-file worker.
@@ -812,6 +848,7 @@ async fn drive_sync_transfers(
                         workers.push_back(completion.worker);
                         completion.progress.replay(sink);
                         let transfer = &transfers[completion.job.transfer_index];
+                        let bytes = sync_outcome_bytes(&completion.outcome);
                         apply_sync_tree_outcome(
                             report,
                             &transfer.rel,
@@ -820,7 +857,7 @@ async fn drive_sync_transfers(
                             transfer.decision_policy,
                             sink,
                         );
-                        let _ = completion.job.ack.send(());
+                        let _ = completion.job.ack.send(bytes);
                     }
                     Err(error) => {
                         // A provider worker panic is an executor fault, just
@@ -861,8 +898,9 @@ async fn drive_sync_transfers(
                             sink,
                             error_correction,
                         ).await;
+                        let bytes = sync_outcome_bytes(&outcome);
                         apply_sync_tree_outcome(report, &transfer.rel, transfer.op, outcome, transfer.decision_policy, sink);
-                        let _ = job.ack.send(());
+                        let _ = job.ack.send(bytes);
                     }
                     Some(job) if matches!(job.lane, SyncTransferLane::NormalPool) => {
                         pending_normals.push_back(job);
@@ -884,8 +922,9 @@ async fn drive_sync_transfers(
                             sink,
                             error_correction,
                         ).await;
+                        let bytes = sync_outcome_bytes(&outcome);
                         apply_sync_tree_outcome(report, &transfer.rel, transfer.op, outcome, transfer.decision_policy, sink);
-                        let _ = job.ack.send(());
+                        let _ = job.ack.send(bytes);
                     }
                     None => channel_closed = true,
                 }
@@ -1153,9 +1192,7 @@ pub async fn execute_sync_dag(
             crate::transfer_dag::run_streaming(source, streaming_config, move |item, admission| {
                 let ctx = Arc::clone(&ctx);
                 let job_tx = stream_tx.clone();
-                async move {
-                    run_one_sync_file(item, admission, ctx, job_tx).await;
-                }
+                async move { run_one_sync_file(item, admission, ctx, job_tx).await }
             })
             .await
         };
@@ -1173,7 +1210,19 @@ pub async fn execute_sync_dag(
             &opts.error_correction,
             normal_workers,
         );
-        let (_summary, ()) = tokio::join!(stream_future, driver_future);
+        let (stream_summary, ()) = tokio::join!(stream_future, driver_future);
+        // DAG-P2-07: per-file subgraph metrics folded into one job-level
+        // total by the frontier; diagnostics only, the report contract is
+        // unchanged.
+        tracing::debug!(
+            "sync DAG totals: files={} bytes_transferred={} retries={} wait_nanos={} run_nanos={} slot_peak={}",
+            stream_summary.items_admitted,
+            stream_summary.metrics.bytes_transferred,
+            stream_summary.metrics.retries,
+            stream_summary.metrics.wait_nanos_total,
+            stream_summary.metrics.run_nanos_total,
+            stream_summary.metrics.slot_peak,
+        );
     }
 
     // Orphan deletion runs after every transfer, while the delta batch is
@@ -1791,7 +1840,7 @@ mod tests {
             async move {
                 while let Some(job) = job_rx.recv().await {
                     seen.lock().unwrap().push(job.transfer_index);
-                    let _ = job.ack.send(());
+                    let _ = job.ack.send(0);
                 }
             }
         };
@@ -2004,7 +2053,7 @@ mod tests {
             async move {
                 while let Some(job) = job_rx.recv().await {
                     seen.lock().unwrap().push(job.transfer_index);
-                    let _ = job.ack.send(());
+                    let _ = job.ack.send(0);
                 }
             }
         };
@@ -2025,9 +2074,7 @@ mod tests {
                 move |item, admission| {
                     let ctx = Arc::clone(&ctx);
                     let job_tx = stream_tx.clone();
-                    async move {
-                        run_one_sync_file(item, admission, ctx, job_tx).await;
-                    }
+                    async move { run_one_sync_file(item, admission, ctx, job_tx).await }
                 },
             )
             .await
@@ -2064,7 +2111,7 @@ mod tests {
             async move {
                 while let Some(job) = job_rx.recv().await {
                     count.fetch_add(1, Ordering::SeqCst);
-                    let _ = job.ack.send(());
+                    let _ = job.ack.send(0);
                 }
             }
         };
@@ -2085,9 +2132,7 @@ mod tests {
                 move |item, admission| {
                     let ctx = Arc::clone(&ctx);
                     let job_tx = stream_tx.clone();
-                    async move {
-                        run_one_sync_file(item, admission, ctx, job_tx).await;
-                    }
+                    async move { run_one_sync_file(item, admission, ctx, job_tx).await }
                 },
             )
             .await
@@ -2097,6 +2142,81 @@ mod tests {
         assert_eq!(count.load(Ordering::SeqCst), 200);
         assert_eq!(summary.items_admitted, 200);
         assert!(summary.peak_active_nodes <= 8 * 7);
+    }
+
+    /// DAG-P2-07: driver-attested per-file bytes fold into the job-level
+    /// total through the streaming frontier (sum of both files), with
+    /// direction-honest local-payload semantics.
+    #[tokio::test]
+    async fn streaming_sync_folds_driver_attested_bytes_into_job_total() {
+        let transfers = Arc::new(vec![
+            PlannedTransfer {
+                rel: "up.txt".to_string(),
+                op: "upload",
+                total: 100,
+                decision_policy: DeltaPolicy::SizeOnly,
+                expected_sha256_hex: None,
+            },
+            PlannedTransfer {
+                rel: "down.txt".to_string(),
+                op: "download",
+                total: 250,
+                decision_policy: DeltaPolicy::SizeOnly,
+                expected_sha256_hex: None,
+            },
+        ]);
+        let ctx = sync_stream_ctx();
+
+        let (job_tx, mut job_rx) = mpsc::channel::<TransferJob>(JOB_CHANNEL_CAPACITY);
+        // A success-driver: every job acks its planned byte total.
+        let driver = {
+            let transfers = Arc::clone(&transfers);
+            async move {
+                while let Some(job) = job_rx.recv().await {
+                    let _ = job.ack.send(transfers[job.transfer_index].total);
+                }
+            }
+        };
+
+        let source = SyncTransfersWorkSource {
+            transfers: Arc::clone(&transfers),
+            next: 0,
+        };
+        let stream_tx = job_tx.clone();
+        drop(job_tx);
+        let stream_future = async move {
+            crate::transfer_dag::run_streaming(
+                source,
+                StreamingConfig {
+                    backlog_cap: 8,
+                    active_file_cap: 2,
+                },
+                move |item, admission| {
+                    let ctx = Arc::clone(&ctx);
+                    let job_tx = stream_tx.clone();
+                    async move { run_one_sync_file(item, admission, ctx, job_tx).await }
+                },
+            )
+            .await
+        };
+        let (summary, ()) = tokio::join!(stream_future, driver);
+
+        assert_eq!(summary.items_admitted, 2);
+        assert_eq!(
+            summary.metrics.bytes_transferred, 350,
+            "job total must sum per-file bytes"
+        );
+        assert_eq!(summary.metrics.logical_bytes, 350);
+        assert_eq!(summary.metrics.wire_bytes, 350);
+        assert_eq!(
+            summary.metrics.local_payload_bytes, 250,
+            "only the download materializes a local payload"
+        );
+        assert!(
+            summary.metrics.run_nanos_total > 0,
+            "executor timing survives the per-subgraph merge"
+        );
+        assert!(summary.metrics.slot_peak >= 1);
     }
 
     /// SyncOptions.max_backlog maps into the streaming frontier (residual

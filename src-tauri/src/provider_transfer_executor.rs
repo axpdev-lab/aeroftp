@@ -58,6 +58,26 @@ use crate::transfer_multipart::{
     clone_multipart_worker, transfer_failure_from_message, MultipartLayout,
 };
 use crate::transfer_orchestrator::TransferExecutor;
+
+/// DAG-P2-07: per-file whole-file attempt counts shared by the download and
+/// upload executors. Keyed by entry id, removed on read
+/// ([`TransferExecutor::take_transfer_attempts`]) so a long-lived executor
+/// accumulates nothing. First try counts as 1; retries = attempts - 1.
+type AttemptCounts = std::sync::Mutex<std::collections::HashMap<String, u32>>;
+
+fn note_transfer_attempt(counts: &AttemptCounts, entry_id: &str, attempt: u32) {
+    counts
+        .lock()
+        .expect("attempt counts poisoned")
+        .insert(entry_id.to_string(), attempt);
+}
+
+fn take_transfer_attempts(counts: &AttemptCounts, entry_id: &str) -> Option<u32> {
+    counts
+        .lock()
+        .expect("attempt counts poisoned")
+        .remove(entry_id)
+}
 use crate::transfer_settings::{
     resolve_transfer_settings_for_capabilities, ResolvedTransferSettings, TransferSettingsInput,
     DEFAULT_MAX_CONCURRENT, MAX_MAX_CONCURRENT, MIN_MAX_CONCURRENT,
@@ -666,6 +686,8 @@ pub struct ProviderDownloadExecutor {
     session_model: ProviderExecutorSessionModel,
     /// Runtime capability snapshot used by the batch DAG builder (DAG-P1-01).
     capabilities: TransferCapabilities,
+    /// Whole-file attempts per entry id (DAG-P2-07 retry telemetry).
+    attempt_counts: AttemptCounts,
 }
 
 impl ProviderDownloadExecutor {
@@ -684,6 +706,7 @@ impl ProviderDownloadExecutor {
             cancel_token,
             capabilities: finalize_capabilities_for_session_model(&capabilities, &session_model),
             session_model,
+            attempt_counts: AttemptCounts::default(),
         }
     }
 
@@ -731,6 +754,10 @@ impl ProviderDownloadExecutor {
                 }
             }
 
+            // Meter every attempt actually made (first try included) before
+            // it runs, so a cancel during backoff or mid-transfer still
+            // leaves an honest count behind.
+            note_transfer_attempt(&self.attempt_counts, &entry.id, attempt + 1);
             match self
                 .download_attempt(provider, &entry, &file_transfer_id, attempt)
                 .await
@@ -1069,6 +1096,8 @@ pub struct ProviderUploadExecutor {
     session_model: ProviderExecutorSessionModel,
     /// Runtime capability snapshot used by the batch DAG builder (DAG-P1-01).
     capabilities: TransferCapabilities,
+    /// Whole-file attempts per entry id (DAG-P2-07 retry telemetry).
+    attempt_counts: AttemptCounts,
 }
 
 impl ProviderUploadExecutor {
@@ -1089,6 +1118,7 @@ impl ProviderUploadExecutor {
             cancel_token,
             capabilities: finalize_capabilities_for_session_model(&capabilities, &session_model),
             session_model,
+            attempt_counts: AttemptCounts::default(),
         }
     }
 
@@ -1137,6 +1167,10 @@ impl ProviderUploadExecutor {
                 }
             }
 
+            // Meter every attempt actually made (first try included) before
+            // it runs, so a cancel during backoff or mid-transfer still
+            // leaves an honest count behind.
+            note_transfer_attempt(&self.attempt_counts, &entry.id, attempt + 1);
             match self
                 .upload_attempt(provider, &entry, &file_transfer_id, file_size)
                 .await
@@ -1388,6 +1422,10 @@ impl TransferExecutor for ProviderDownloadExecutor {
         self.execute_locked(entry).await
     }
 
+    fn take_transfer_attempts(&self, entry_id: &str) -> Option<u32> {
+        take_transfer_attempts(&self.attempt_counts, entry_id)
+    }
+
     async fn execute_with_session(
         &self,
         entry: TransferEntry,
@@ -1440,6 +1478,10 @@ impl TransferExecutor for ProviderUploadExecutor {
 
     async fn execute(&self, entry: TransferEntry) -> TransferOutcome {
         self.execute_locked(entry).await
+    }
+
+    fn take_transfer_attempts(&self, entry_id: &str) -> Option<u32> {
+        take_transfer_attempts(&self.attempt_counts, entry_id)
     }
 
     async fn execute_with_session(
@@ -2095,5 +2137,241 @@ mod tests {
         );
         assert_eq!(caps.file_parallel, Capability::Unsupported);
         assert_eq!(caps.max_file_slots, Some(1));
+    }
+
+    // ---- DAG-P2-07: whole-file retry attempt metering ---------------------
+
+    /// Scripted download provider: fails the first `fail_first_n` attempts
+    /// with a retryable error, optionally cancelling the run on a given call.
+    struct FlakyDownloadProvider {
+        calls: std::sync::atomic::AtomicUsize,
+        fail_first_n: usize,
+        cancel_on_call: Option<(usize, CancellationToken)>,
+    }
+
+    impl FlakyDownloadProvider {
+        fn fail_first(n: usize) -> Self {
+            Self {
+                calls: std::sync::atomic::AtomicUsize::new(0),
+                fail_first_n: n,
+                cancel_on_call: None,
+            }
+        }
+
+        fn cancel_on(mut self, call: usize, token: CancellationToken) -> Self {
+            self.cancel_on_call = Some((call, token));
+            self
+        }
+    }
+
+    #[async_trait]
+    impl StorageProvider for FlakyDownloadProvider {
+        fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+            self
+        }
+        fn provider_type(&self) -> ProviderType {
+            ProviderType::S3
+        }
+        fn display_name(&self) -> String {
+            "flaky-download".to_string()
+        }
+        async fn connect(&mut self) -> Result<(), crate::providers::ProviderError> {
+            Ok(())
+        }
+        async fn disconnect(&mut self) -> Result<(), crate::providers::ProviderError> {
+            Ok(())
+        }
+        fn is_connected(&self) -> bool {
+            true
+        }
+        async fn list(
+            &mut self,
+            _path: &str,
+        ) -> Result<Vec<crate::providers::RemoteEntry>, crate::providers::ProviderError> {
+            Ok(Vec::new())
+        }
+        async fn pwd(&mut self) -> Result<String, crate::providers::ProviderError> {
+            Ok("/".to_string())
+        }
+        async fn cd(&mut self, _path: &str) -> Result<(), crate::providers::ProviderError> {
+            Ok(())
+        }
+        async fn cd_up(&mut self) -> Result<(), crate::providers::ProviderError> {
+            Ok(())
+        }
+        async fn download(
+            &mut self,
+            _remote_path: &str,
+            local_path: &str,
+            _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), crate::providers::ProviderError> {
+            let call = self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+            if call <= self.fail_first_n {
+                if let Some((cancel_call, token)) = &self.cancel_on_call {
+                    if call == *cancel_call {
+                        token.cancel();
+                    }
+                }
+                // "timeout" classifies as retryable via classify_sync_error.
+                return Err(crate::providers::ProviderError::TransferFailed(
+                    "connection timeout mid-stream".to_string(),
+                ));
+            }
+            std::fs::write(local_path, b"ok").map_err(crate::providers::ProviderError::IoError)
+        }
+        async fn download_to_bytes(
+            &mut self,
+            _remote_path: &str,
+        ) -> Result<Vec<u8>, crate::providers::ProviderError> {
+            Ok(Vec::new())
+        }
+        async fn upload(
+            &mut self,
+            _local_path: &str,
+            _remote_path: &str,
+            _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), crate::providers::ProviderError> {
+            Ok(())
+        }
+        async fn mkdir(&mut self, _path: &str) -> Result<(), crate::providers::ProviderError> {
+            Ok(())
+        }
+        async fn delete(&mut self, _path: &str) -> Result<(), crate::providers::ProviderError> {
+            Ok(())
+        }
+        async fn rmdir(&mut self, _path: &str) -> Result<(), crate::providers::ProviderError> {
+            Ok(())
+        }
+        async fn rmdir_recursive(
+            &mut self,
+            _path: &str,
+        ) -> Result<(), crate::providers::ProviderError> {
+            Ok(())
+        }
+        async fn rename(
+            &mut self,
+            _from: &str,
+            _to: &str,
+        ) -> Result<(), crate::providers::ProviderError> {
+            Ok(())
+        }
+        async fn stat(
+            &mut self,
+            _path: &str,
+        ) -> Result<crate::providers::RemoteEntry, crate::providers::ProviderError> {
+            Err(crate::providers::ProviderError::NotSupported(
+                "stat".to_string(),
+            ))
+        }
+        async fn size(&mut self, _path: &str) -> Result<u64, crate::providers::ProviderError> {
+            Ok(2)
+        }
+        async fn exists(&mut self, _path: &str) -> Result<bool, crate::providers::ProviderError> {
+            Ok(true)
+        }
+        async fn keep_alive(&mut self) -> Result<(), crate::providers::ProviderError> {
+            Ok(())
+        }
+        async fn server_info(&mut self) -> Result<String, crate::providers::ProviderError> {
+            Ok("flaky-download".to_string())
+        }
+    }
+
+    fn retry_download_executor(
+        provider: FlakyDownloadProvider,
+        retry_count: u32,
+        cancel_token: CancellationToken,
+    ) -> ProviderDownloadExecutor {
+        ProviderDownloadExecutor::new(
+            Arc::new(crate::transfer_event_sink::NoopTransferSink),
+            Arc::new(Mutex::new(Some(
+                Box::new(provider) as Box<dyn StorageProvider>
+            ))),
+            ResolvedTransferSettings {
+                requested_max_concurrent: 1,
+                max_concurrent: 1,
+                retry_count,
+                timeout_seconds: 30,
+                download_segments: 1,
+            },
+            cancel_token,
+            ProviderExecutorSessionModel::locked(Some(ProviderType::S3)),
+            TransferCapabilities::default(),
+        )
+    }
+
+    fn retry_entry(dir: &std::path::Path) -> TransferEntry {
+        TransferEntry {
+            id: "flaky".to_string(),
+            display_name: "flaky".to_string(),
+            remote_path: "/remote/flaky".to_string(),
+            local_path: dir.join("out.bin").to_string_lossy().to_string(),
+            size: 2,
+            modified: None,
+        }
+    }
+
+    /// One injected failure then success: exactly one retry is metered, and
+    /// the count is consumed on read so it cannot be double counted.
+    #[tokio::test]
+    async fn whole_file_retry_meters_one_retry_after_single_failure() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let executor = retry_download_executor(
+            FlakyDownloadProvider::fail_first(1),
+            2,
+            CancellationToken::new(),
+        );
+
+        let outcome = executor.execute(retry_entry(dir.path())).await;
+        assert!(
+            matches!(outcome, TransferOutcome::Success),
+            "retry must recover: {outcome:?}"
+        );
+        assert_eq!(
+            executor.take_transfer_attempts("flaky"),
+            Some(2),
+            "two attempts (first try + one retry)"
+        );
+        assert_eq!(
+            executor.take_transfer_attempts("flaky"),
+            None,
+            "consumed once, never double counted"
+        );
+    }
+
+    /// A clean first-try success meters one attempt => zero retries.
+    #[tokio::test]
+    async fn whole_file_clean_run_meters_a_single_attempt() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let executor = retry_download_executor(
+            FlakyDownloadProvider::fail_first(0),
+            2,
+            CancellationToken::new(),
+        );
+
+        let outcome = executor.execute(retry_entry(dir.path())).await;
+        assert!(matches!(outcome, TransferOutcome::Success));
+        assert_eq!(executor.take_transfer_attempts("flaky"), Some(1));
+    }
+
+    /// Cancel landing during the second attempt: only the two attempts
+    /// actually made are metered (retries == 1), never the full envelope.
+    #[tokio::test]
+    async fn whole_file_cancel_meters_only_attempts_actually_made() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let token = CancellationToken::new();
+        let provider = FlakyDownloadProvider::fail_first(10).cancel_on(2, token.clone());
+        let executor = retry_download_executor(provider, 5, token);
+
+        let outcome = executor.execute(retry_entry(dir.path())).await;
+        assert!(
+            matches!(outcome, TransferOutcome::Failed(_)),
+            "a cancelled run fails: {outcome:?}"
+        );
+        assert_eq!(
+            executor.take_transfer_attempts("flaky"),
+            Some(2),
+            "cancel during attempt 2 leaves exactly two made attempts"
+        );
     }
 }

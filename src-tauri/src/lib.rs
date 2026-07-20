@@ -159,6 +159,7 @@ pub mod mcp;
 mod mount_manager;
 mod plugin_registry;
 mod plugins;
+pub mod proc_stats;
 pub mod profile_auth_state;
 mod profile_export;
 mod provider_commands;

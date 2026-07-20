@@ -310,7 +310,12 @@ impl Drop for FileAdmission {
 /// Outcome of a streaming multi-file run: how many items were admitted and the
 /// proven peak resident graph size. The per-file transfer results are recorded
 /// through the caller's own shared state (progress snapshot, sync report), not
-/// here — this summary is purely the frontier's bookkeeping.
+/// here; this summary is purely the frontier's bookkeeping. `metrics` is the
+/// job-level DAG total: each admitted file's per-subgraph
+/// [`TransferDagMetrics`](super::metrics::TransferDagMetrics) (executor timing
+/// plus runner-attested bytes/retries) folded in via
+/// [`TransferDagMetrics::absorb`](super::metrics::TransferDagMetrics::absorb),
+/// so the totals accumulate across the whole job, not just the last subgraph.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct StreamingSummary {
     pub items_admitted: usize,
@@ -318,6 +323,7 @@ pub struct StreamingSummary {
     pub peak_active_nodes: usize,
     pub backlog_cap: usize,
     pub active_file_cap: usize,
+    pub metrics: super::metrics::TransferDagMetrics,
 }
 
 /// Drive a [`WorkSource`] through a bounded backlog and a bounded active set,
@@ -332,6 +338,10 @@ pub struct StreamingSummary {
 ///   file — only the work the per-file closure itself spawns). Each file gets a
 ///   [`FileAdmission`] it uses to record its materialized node count; the file
 ///   subgraph is retired when that future completes and drops the admission.
+/// - **Metrics**: each `per_file` future returns its file's
+///   [`TransferDagMetrics`](super::metrics::TransferDagMetrics) (zero when the
+///   file never reached a graph); the frontier folds them into the job-level
+///   [`StreamingSummary::metrics`] total.
 ///
 /// The whole job graph is never materialized: peak resident nodes stay
 /// `<= active_file_cap * max_nodes_per_template`.
@@ -343,10 +353,15 @@ pub async fn run_streaming<S, F, Fut>(
 where
     S: WorkSource + 'static,
     F: Fn(TransferWorkItem, FileAdmission) -> Fut + Send + Sync,
-    Fut: Future<Output = ()> + Send,
+    Fut: Future<Output = super::metrics::TransferDagMetrics> + Send,
 {
     let config = config.normalized();
     let meter = Arc::new(ActiveGraphMeter::default());
+    // Concurrent per-file futures fold their metrics here; the updates are
+    // short and synchronous, so a plain mutex suffices.
+    let metrics_total = Arc::new(std::sync::Mutex::new(
+        super::metrics::TransferDagMetrics::default(),
+    ));
 
     // Bounded backlog: a producer task pulls from the source and sends into a
     // channel of capacity `backlog_cap`. `send` awaits when the channel is
@@ -370,10 +385,18 @@ where
     {
         let meter = &meter;
         let per_file = &per_file;
+        let metrics_total = &metrics_total;
         stream
             .for_each_concurrent(config.active_file_cap, move |item| {
                 let admission = FileAdmission::new(Arc::clone(meter));
-                per_file(item, admission)
+                let metrics_total = Arc::clone(metrics_total);
+                async move {
+                    let file_metrics = per_file(item, admission).await;
+                    metrics_total
+                        .lock()
+                        .expect("streaming metrics total poisoned")
+                        .absorb(&file_metrics);
+                }
             })
             .await;
     }
@@ -382,12 +405,18 @@ where
     // was consumed. Join the producer so its task never outlives the run.
     let _ = producer.await;
 
+    let metrics = std::mem::take(
+        &mut *metrics_total
+            .lock()
+            .expect("streaming metrics total poisoned"),
+    );
     StreamingSummary {
         items_admitted: meter.admitted(),
         peak_active_files: meter.peak_files(),
         peak_active_nodes: meter.peak_nodes(),
         backlog_cap: config.backlog_cap,
         active_file_cap: config.active_file_cap,
+        metrics,
     }
 }
 
@@ -510,6 +539,7 @@ mod tests {
             // Simulate expand-on-admit: materialize the template's node count.
             admission.materialize_nodes(TEMPLATE_NODES);
             // Instant runner: no node execution, this proves the graph bound.
+            crate::transfer_dag::TransferDagMetrics::default()
         })
         .await;
 
@@ -545,6 +575,7 @@ mod tests {
             run_streaming(source, config, |_item, mut admission| async move {
                 admission.materialize_nodes(TEMPLATE_NODES);
                 tokio::task::yield_now().await;
+                crate::transfer_dag::TransferDagMetrics::default()
             })
             .await
             .peak_active_nodes
@@ -584,6 +615,7 @@ mod tests {
                     async move {
                         // Hold the active slot until released.
                         let _permit = gate.acquire().await.expect("gate open");
+                        crate::transfer_dag::TransferDagMetrics::default()
                     }
                 },
             )
@@ -671,6 +703,7 @@ mod tests {
                     let observer: Arc<dyn crate::transfer_dag::observer::DagObserver> =
                         Arc::new(NoopDagObserver);
                     let _ = execute_dag(&shaped.dag, &manager, runner, observer, None).await;
+                    crate::transfer_dag::TransferDagMetrics::default()
                 }
             },
         )

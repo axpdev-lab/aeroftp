@@ -22,6 +22,7 @@ pub mod planner;
 pub mod probe;
 pub mod resources;
 pub mod session_pool;
+pub mod ttfb;
 pub mod work_source;
 
 pub use adaptive::{

@@ -113,6 +113,32 @@ pub enum NodeOutcome {
 /// worker threads (real parallelism, not single-task concurrency).
 pub type NodeFuture = Pin<Box<dyn Future<Output = NodeOutcome> + Send + 'static>>;
 
+/// Per-node timing attribution for DAG-P2-07 telemetry.
+///
+/// `wait_nanos` is the dispatch-to-runner-start latency (AIMD permit plus
+/// resource-lease acquisition, or the elapsed time up to an abort during
+/// those acquisitions). `run_nanos` is the runner execution time and stays 0
+/// when the runner never started. No value is fabricated: arms that lose the
+/// inner future report only what the shared runner-start stamp can attest.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct NodeTiming {
+    pub wait_nanos: u64,
+    pub run_nanos: u64,
+}
+
+/// Runner-start stamp shared between a dispatched node body and its
+/// timeout/cancel wrapper. When the wrapper drops the inner future, the stamp
+/// is all that survives, so the wrapper can still report honest wait/run up
+/// to the abort instead of a fabricated zero.
+#[derive(Default)]
+struct RunnerStartSlot(std::sync::Mutex<Option<Instant>>);
+
+/// Duration to nanos, saturating at `u64::MAX` (a >584-year node is a bug,
+/// not a reason to wrap telemetry).
+fn duration_nanos(d: Duration) -> u64 {
+    d.as_nanos().min(u64::MAX as u128) as u64
+}
+
 /// Per-node action. Invoked once per node, after its dependencies are complete
 /// and after the node's `ResourceRequest` permits have been acquired and are
 /// held for the duration of the returned future.
@@ -331,6 +357,13 @@ pub async fn execute_dag_with_options(
         return Ok(summary);
     }
 
+    // DAG-P2-07 (block C): this run's honest first-byte recorder. Choke
+    // points (providers::http_retry::send_with_retry) publish samples to the
+    // registry while it is installed; totals fold into the metrics at the
+    // single finalize below. Runtime-scoped, so fixture traffic on foreign
+    // runtimes cannot pollute this run's attribution.
+    let ttfb_guard = super::ttfb::TtfbRecorder::install();
+
     // Pre-flight: a node demanding more of a class than the manager owns would
     // wait on the semaphore forever. Fail it honestly instead of hanging. This
     // is detected before any node runs, so no metrics are reported.
@@ -383,7 +416,7 @@ pub async fn execute_dag_with_options(
     // decision node so structural tail nodes do not report premature copy
     // completion before the payload graph runs.
     let mut copy_transition = false;
-    let mut join_set: JoinSet<(usize, NodeOutcome)> = JoinSet::new();
+    let mut join_set: JoinSet<(usize, NodeOutcome, NodeTiming)> = JoinSet::new();
     // Preserve task→node identity even when Tokio returns a JoinError and the
     // task output `(node_id, outcome)` is unavailable.
     let mut task_nodes: HashMap<TaskId, usize> = HashMap::new();
@@ -436,6 +469,10 @@ pub async fn execute_dag_with_options(
                 });
                 task_nodes.insert(abort_handle.id(), id);
             }
+            // High-water mark of resident dispatched tasks, sampled right
+            // after the fill so the peak reflects the widest this window
+            // actually got during the run.
+            summary.metrics.slot_peak = summary.metrics.slot_peak.max(join_set.len() as u32);
         }
 
         if join_set.is_empty() {
@@ -503,17 +540,20 @@ pub async fn execute_dag_with_options(
                 .expect("join_set checked non-empty above")
         };
 
-        let (id, outcome) = match joined {
-            Ok((task_id, pair)) => {
+        let (id, outcome, timing) = match joined {
+            Ok((task_id, triple)) => {
                 task_nodes.remove(&task_id);
-                pair
+                triple
             }
             Err(join_err) => {
                 let node_id = task_nodes.remove(&join_err.id()).unwrap_or(usize::MAX);
                 if join_err.is_cancelled() {
                     // Forced abort (or task cancel): Tokio retains task
                     // identity in JoinError even though the task output is
-                    // lost, so close the exact node lifecycle.
+                    // lost, so close the exact node lifecycle. The output
+                    // carries the NodeTiming, so a force-aborted node
+                    // contributes nothing to wait/run totals rather than a
+                    // fabricated value.
                     if node_id == usize::MAX || terminal_notified.contains(&node_id) {
                         continue;
                     }
@@ -558,6 +598,16 @@ pub async fn execute_dag_with_options(
         // Drop the stored request once the task finishes so a million-node
         // run does not retain a full request map after drain.
         let node_request = requests.remove(&id);
+        // Every joined task attests its own wait/run split; totals are
+        // sums over nodes, never wall clock (see metrics.rs).
+        summary.metrics.wait_nanos_total = summary
+            .metrics
+            .wait_nanos_total
+            .saturating_add(timing.wait_nanos);
+        summary.metrics.run_nanos_total = summary
+            .metrics
+            .run_nanos_total
+            .saturating_add(timing.run_nanos);
         match outcome {
             NodeOutcome::Completed => {
                 summary.nodes_completed += 1;
@@ -665,6 +715,17 @@ pub async fn execute_dag_with_options(
         }
     }
 
+    // DAG-P2-07 (block C): fold the honest first-byte samples recorded by
+    // provider call boundaries while this run's recorder was installed. Runs
+    // whose paths have no first-byte moment contribute nothing; their latency
+    // stays attributed to run_nanos_total only.
+    let (ttfb_nanos, ttfb_samples) = ttfb_guard.totals();
+    summary.metrics.ttfb_nanos_total = summary.metrics.ttfb_nanos_total.saturating_add(ttfb_nanos);
+    summary.metrics.ttfb_samples = summary
+        .metrics
+        .ttfb_samples
+        .saturating_add(u32::try_from(ttfb_samples).unwrap_or(u32::MAX));
+
     // Single finalize: report the accumulated metrics once for any run that
     // entered the scheduling loop, then surface the terminal state.
     observer.on_metrics(&summary.metrics);
@@ -688,6 +749,13 @@ pub async fn execute_dag_with_options(
 /// dispatched lifetime (AIMD wait, resource wait, and runner); cancel is
 /// biased ahead of timeout. Dropping the inner future releases any held lease
 /// or AIMD permits on every exit path.
+///
+/// Timing (DAG-P2-07): the inner body owns the entry and runner-start
+/// instants and returns a fully attributed [`NodeTiming`] on every arm it
+/// controls. When this wrapper's cancel/timeout arm wins, the inner future is
+/// dropped and its return value is lost; the shared [`RunnerStartSlot`] still
+/// attests whether the runner ever started, so the wrapper reports wait/run
+/// up to the abort (run = 0 when the runner never started).
 async fn run_dispatched_node(
     node: TransferNode,
     manager: TransferResourceManager,
@@ -695,35 +763,58 @@ async fn run_dispatched_node(
     controller: Option<Arc<AimdController>>,
     graph_cancel: CancellationToken,
     node_timeout: Option<Duration>,
-) -> (usize, NodeOutcome) {
+) -> (usize, NodeOutcome, NodeTiming) {
     let id = node.id;
-    let run_fut = run_node_cancel_aware(node, manager, runner, controller, &graph_cancel);
-    let outcome = match node_timeout {
+    let entry = Instant::now();
+    let runner_start = Arc::new(RunnerStartSlot::default());
+    // Timing honestly known when the inner future is dropped mid-flight:
+    // wait/run up to the abort, zero run if the runner never began.
+    let abort_timing = {
+        let runner_start = Arc::clone(&runner_start);
+        move || match *runner_start.0.lock().expect("runner-start slot poisoned") {
+            Some(start) => NodeTiming {
+                wait_nanos: duration_nanos(start - entry),
+                run_nanos: duration_nanos(start.elapsed()),
+            },
+            None => NodeTiming {
+                wait_nanos: duration_nanos(entry.elapsed()),
+                run_nanos: 0,
+            },
+        }
+    };
+    let run_fut = run_node_cancel_aware(
+        node,
+        manager,
+        runner,
+        controller,
+        &graph_cancel,
+        &runner_start,
+    );
+    match node_timeout {
         Some(timeout) => {
             tokio::select! {
                 biased;
                 _ = graph_cancel.cancelled() => {
-                    NodeOutcome::Failed(TransferError::cancelled())
+                    (id, NodeOutcome::Failed(TransferError::cancelled()), abort_timing())
                 }
                 _ = tokio::time::sleep(timeout) => {
-                    NodeOutcome::Failed(TransferError::timeout(format!(
+                    (id, NodeOutcome::Failed(TransferError::timeout(format!(
                         "node exceeded timeout of {timeout:?}"
-                    )))
+                    ))), abort_timing())
                 }
-                outcome = run_fut => outcome,
+                (outcome, timing) = run_fut => (id, outcome, timing),
             }
         }
         None => {
             tokio::select! {
                 biased;
                 _ = graph_cancel.cancelled() => {
-                    NodeOutcome::Failed(TransferError::cancelled())
+                    (id, NodeOutcome::Failed(TransferError::cancelled()), abort_timing())
                 }
-                outcome = run_fut => outcome,
+                (outcome, timing) = run_fut => (id, outcome, timing),
             }
         }
-    };
-    (id, outcome)
+    }
 }
 
 async fn run_node_cancel_aware(
@@ -732,7 +823,14 @@ async fn run_node_cancel_aware(
     runner: Arc<dyn DagNodeRunner>,
     controller: Option<Arc<AimdController>>,
     graph_cancel: &CancellationToken,
-) -> NodeOutcome {
+    runner_start_slot: &RunnerStartSlot,
+) -> (NodeOutcome, NodeTiming) {
+    // Dispatch moment: the wait clock starts here, not at runner start.
+    let entry = Instant::now();
+    let wait_only = |entry: Instant| NodeTiming {
+        wait_nanos: duration_nanos(entry.elapsed()),
+        run_nanos: 0,
+    };
     let request = node.resources;
     // Adaptive dispatch gate (held for the node's lifetime): a shrink only
     // parks not-yet-started nodes here, never an already-running transfer.
@@ -741,7 +839,7 @@ async fn run_node_cancel_aware(
             tokio::select! {
                 biased;
                 _ = graph_cancel.cancelled() => {
-                    return NodeOutcome::Failed(TransferError::cancelled());
+                    return (NodeOutcome::Failed(TransferError::cancelled()), wait_only(entry));
                 }
                 permit = ctrl.acquire(&request) => Some(permit),
             }
@@ -752,24 +850,41 @@ async fn run_node_cancel_aware(
     let _lease = match tokio::select! {
         biased;
         _ = graph_cancel.cancelled() => {
-            return NodeOutcome::Failed(TransferError::cancelled());
+            return (NodeOutcome::Failed(TransferError::cancelled()), wait_only(entry));
         }
         result = manager.acquire(request) => result,
     } {
         Ok(lease) => lease,
         Err(e) => {
-            return NodeOutcome::Failed(TransferError::resource_acquire(format!(
-                "resource acquire failed: {e}"
-            )));
+            return (
+                NodeOutcome::Failed(TransferError::resource_acquire(format!(
+                    "resource acquire failed: {e}"
+                ))),
+                wait_only(entry),
+            );
         }
     };
 
+    let runner_start = Instant::now();
+    *runner_start_slot
+        .0
+        .lock()
+        .expect("runner-start slot poisoned") = Some(runner_start);
+    let wait_nanos = duration_nanos(runner_start - entry);
     tokio::select! {
         biased;
         _ = graph_cancel.cancelled() => {
-            NodeOutcome::Failed(TransferError::cancelled())
+            // Cancel mid-run: the runner future is dropped here, so the run
+            // time up to this point is the most that can be attested.
+            (NodeOutcome::Failed(TransferError::cancelled()), NodeTiming {
+                wait_nanos,
+                run_nanos: duration_nanos(runner_start.elapsed()),
+            })
         }
-        outcome = runner.run(node) => outcome,
+        outcome = runner.run(node) => (outcome, NodeTiming {
+            wait_nanos,
+            run_nanos: duration_nanos(runner_start.elapsed()),
+        }),
     }
 }
 
@@ -875,6 +990,104 @@ mod tests {
 
     fn runner_arc(probe: Arc<ProbeRunner>) -> Arc<dyn DagNodeRunner> {
         Arc::new(move |node: TransferNode| probe_future(Arc::clone(&probe), node))
+    }
+
+    // DAG-P2-07 (block C): honest first-byte samples measured inside a node
+    // (through the shared send_with_retry choke point) fold into the run
+    // metrics at the single finalize. The recorder is runtime-scoped, so
+    // fixture traffic from parallel tests cannot inflate these exact counts.
+    #[tokio::test]
+    async fn run_metrics_fold_ttfb_samples_from_http_nodes() {
+        use crate::transfer_dag::ttfb::test_fixture::{
+            spawn_delayed_http_fixture, FixtureResponse,
+        };
+
+        let addr = spawn_delayed_http_fixture(Duration::from_millis(50), 1, |_head| {
+            FixtureResponse::ok("payload")
+        })
+        .await;
+
+        let mut dag = TransferDag::default();
+        dag.add_node(
+            TransferNodeKind::DownloadFile,
+            vec![],
+            ResourceRequest::default(),
+        );
+        let runner: Arc<dyn DagNodeRunner> = Arc::new(move |_node: TransferNode| -> NodeFuture {
+            Box::pin(async move {
+                let client = reqwest::Client::new();
+                let request = client
+                    .get(format!("http://{addr}/object"))
+                    .build()
+                    .expect("build request");
+                let response = crate::providers::send_with_retry(
+                    &client,
+                    request,
+                    &crate::providers::HttpRetryConfig::default(),
+                )
+                .await
+                .expect("fixture response");
+                let _ = response.bytes().await;
+                NodeOutcome::Completed
+            })
+        });
+
+        let observer = Arc::new(CollectingDagObserver::default());
+        let manager = TransferResourceManager::new(TransferBudget::from_file_slots(1));
+        let summary = execute_dag(
+            &dag,
+            &manager,
+            runner,
+            Arc::clone(&observer) as Arc<dyn DagObserver>,
+            None,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(summary.nodes_completed, 1);
+        assert_eq!(
+            summary.metrics.ttfb_samples, 1,
+            "one node request reaching headers is exactly one sample"
+        );
+        assert!(
+            summary.metrics.ttfb_nanos_total >= Duration::from_millis(40).as_nanos() as u64,
+            "sampled TTFB {}ns below the 50ms fixture first-byte delay",
+            summary.metrics.ttfb_nanos_total
+        );
+        // The finalize snapshot the observer received carries the same fold.
+        assert_eq!(observer.metrics().ttfb_samples, 1);
+        assert_eq!(
+            observer.metrics().ttfb_nanos_total,
+            summary.metrics.ttfb_nanos_total
+        );
+    }
+
+    #[tokio::test]
+    async fn run_metrics_report_zero_ttfb_without_first_byte_moment() {
+        // A node doing only local compute has no honest first-byte moment:
+        // operation latency stays in run_nanos_total, ttfb_* stays zero.
+        let mut dag = TransferDag::default();
+        dag.add_node(
+            TransferNodeKind::VerifyChecksum,
+            vec![],
+            ResourceRequest::default(),
+        );
+        let runner: Arc<dyn DagNodeRunner> = Arc::new(|_node: TransferNode| -> NodeFuture {
+            Box::pin(async move {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+                NodeOutcome::Completed
+            })
+        });
+
+        let manager = TransferResourceManager::new(TransferBudget::from_file_slots(1));
+        let summary = execute_dag(&dag, &manager, runner, noop_observer(), None)
+            .await
+            .unwrap();
+
+        assert_eq!(summary.nodes_completed, 1);
+        assert_eq!(summary.metrics.ttfb_samples, 0);
+        assert_eq!(summary.metrics.ttfb_nanos_total, 0);
+        assert!(summary.metrics.run_nanos_total > 0);
     }
 
     #[tokio::test]
@@ -1655,7 +1868,28 @@ mod tests {
         .await
         .unwrap();
 
-        assert_eq!(summary_none, summary_some);
+        assert_eq!(summary_none.nodes_completed, summary_some.nodes_completed);
+        assert_eq!(summary_none.nodes_failed, summary_some.nodes_failed);
+        assert_eq!(summary_none.fallback_count, summary_some.fallback_count);
+        // Congestion/fallback counters must match; per-run wall-clock timing
+        // (wait/run nanos) legitimately differs between the two runs.
+        assert_eq!(
+            summary_none.metrics.backpressure_events,
+            summary_some.metrics.backpressure_events
+        );
+        assert_eq!(
+            summary_none.metrics.range_fallbacks,
+            summary_some.metrics.range_fallbacks
+        );
+        assert_eq!(
+            summary_none.metrics.copy_fallbacks,
+            summary_some.metrics.copy_fallbacks
+        );
+        // The structural high-water mark is expected to match across runs.
+        assert_eq!(
+            summary_none.metrics.slot_peak, summary_some.metrics.slot_peak,
+            "an at-ceiling controller dispatches the same width as None"
+        );
         assert_eq!(probe_none.peak(), probe_some.peak());
         assert_eq!(
             probe_some.peak(),
@@ -3000,5 +3234,191 @@ mod tests {
         assert_eq!(summary.nodes_completed, 2);
         assert_eq!(summary.fallback_count, 1);
         assert_eq!(summary.metrics.range_fallbacks, 1);
+    }
+
+    // --- DAG-P2-07: executor timing attribution + slot peak ----------------
+
+    /// A barrier-gated wide frontier: the dispatch window is provably filled
+    /// (four runners are simultaneously inside their node body), so
+    /// `slot_peak` equals the window exactly and never exceeds it, and every
+    /// completed node contributes positive run time.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn slot_peak_marks_filled_window_and_run_time_is_attributed() {
+        const N: usize = 8;
+        const WINDOW: usize = 4;
+
+        let mut dag = TransferDag::default();
+        for _ in 0..N {
+            dag.add_node(
+                TransferNodeKind::EmitProgress,
+                vec![],
+                ResourceRequest::default(),
+            );
+        }
+
+        // Every runner sleeps, then waits on the barrier. With WINDOW slots
+        // the first four overlap at the barrier: proof the window was
+        // actually filled before slot_peak was sampled.
+        let gate = Arc::new(tokio::sync::Barrier::new(WINDOW));
+        let runner: Arc<dyn DagNodeRunner> = {
+            let gate = Arc::clone(&gate);
+            Arc::new(move |_node: TransferNode| -> NodeFuture {
+                let gate = Arc::clone(&gate);
+                Box::pin(async move {
+                    tokio::time::sleep(Duration::from_millis(5)).await;
+                    gate.wait().await;
+                    NodeOutcome::Completed
+                })
+            })
+        };
+        let manager = TransferResourceManager::new(TransferBudget::from_file_slots(8));
+        let summary =
+            execute_dag_with_dispatch_window(&dag, &manager, runner, noop_observer(), None, WINDOW)
+                .await
+                .unwrap();
+
+        assert_eq!(summary.nodes_completed, N as u32);
+        assert_eq!(
+            summary.metrics.slot_peak, WINDOW as u32,
+            "the barrier proves WINDOW tasks were concurrently resident"
+        );
+        assert!(
+            summary.metrics.run_nanos_total >= N as u64 * 5_000_000,
+            "8 nodes x >=5ms of runner time must sum into run_nanos_total, got {}",
+            summary.metrics.run_nanos_total
+        );
+        assert!(
+            summary.metrics.slot_peak <= WINDOW as u32,
+            "slot_peak must never exceed the dispatch window"
+        );
+    }
+
+    /// The only file slot is held outside the graph: node 0 (no resource
+    /// request) runs briefly and fails; node 1 is parked behind the held
+    /// lease and is cancelled by fail-fast during acquisition, so it
+    /// contributes its wait but zero run time. The failed node still
+    /// contributes both its wait and its run.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn failed_node_contributes_timing_acquire_cancelled_node_zero_run() {
+        let mut dag = TransferDag::default();
+        dag.add_node(
+            TransferNodeKind::DownloadFile,
+            vec![],
+            ResourceRequest::default(),
+        );
+        dag.add_node(
+            TransferNodeKind::DownloadFile,
+            vec![],
+            ResourceRequest::upload_file(),
+        );
+
+        let runner: Arc<dyn DagNodeRunner> = Arc::new(|node: TransferNode| -> NodeFuture {
+            Box::pin(async move {
+                if node.id == 0 {
+                    tokio::time::sleep(Duration::from_millis(30)).await;
+                    NodeOutcome::Failed(TransferError::from_message("boom"))
+                } else {
+                    tokio::time::sleep(Duration::from_secs(30)).await;
+                    NodeOutcome::Completed
+                }
+            })
+        });
+        let observer = Arc::new(CollectingDagObserver::default());
+        let manager = TransferResourceManager::new(TransferBudget::from_file_slots(1));
+        // Hold the only file slot outside the graph so node 1 provably parks
+        // in lease acquisition (no acquire-order race between the two nodes).
+        let _held = manager
+            .acquire(ResourceRequest::upload_file())
+            .await
+            .expect("test must hold the only file permit");
+        let err = execute_dag(
+            &dag,
+            &manager,
+            runner,
+            Arc::clone(&observer) as Arc<dyn DagObserver>,
+            None,
+        )
+        .await
+        .unwrap_err();
+        assert!(matches!(err, DagExecutionError::NodeFailed { .. }));
+
+        // Err path: the summary is lost, but the final on_metrics snapshot
+        // carries the same accumulated timing.
+        let metrics = observer.metrics();
+        assert_eq!(
+            metrics.slot_peak, 2,
+            "both nodes were resident before the failure"
+        );
+        assert!(
+            metrics.wait_nanos_total > 0,
+            "the acquire-parked node attests a non-zero wait"
+        );
+        assert!(
+            metrics.run_nanos_total >= 30_000_000,
+            "the failed node's ~30ms run must be counted, got {}",
+            metrics.run_nanos_total
+        );
+        assert!(
+            metrics.run_nanos_total < 5_000_000_000,
+            "a cancelled-during-acquire node must contribute zero run time, got {}",
+            metrics.run_nanos_total
+        );
+    }
+
+    /// No scarce resource: both runners start; node 0 fails fast and node 1
+    /// is cancelled mid-run by the graph token. Node 1's run contribution is
+    /// the honest elapsed time up to the abort, neither zero nor its full
+    /// 30s sleep.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn cancel_mid_run_attests_partial_run_time() {
+        let mut dag = TransferDag::default();
+        dag.add_node(
+            TransferNodeKind::DownloadFile,
+            vec![],
+            ResourceRequest::default(),
+        );
+        dag.add_node(
+            TransferNodeKind::DownloadFile,
+            vec![],
+            ResourceRequest::default(),
+        );
+
+        let runner: Arc<dyn DagNodeRunner> = Arc::new(|node: TransferNode| -> NodeFuture {
+            Box::pin(async move {
+                if node.id == 0 {
+                    tokio::time::sleep(Duration::from_millis(30)).await;
+                    NodeOutcome::Failed(TransferError::from_message("primary failed"))
+                } else {
+                    // Non-self-checking long work: the wrapper's cancel arm
+                    // drops this future and reports run-up-to-abort.
+                    tokio::time::sleep(Duration::from_secs(30)).await;
+                    NodeOutcome::Completed
+                }
+            })
+        });
+        let observer = Arc::new(CollectingDagObserver::default());
+        let manager = TransferResourceManager::new(TransferBudget::from_file_slots(4));
+        let err = execute_dag(
+            &dag,
+            &manager,
+            runner,
+            Arc::clone(&observer) as Arc<dyn DagObserver>,
+            None,
+        )
+        .await
+        .unwrap_err();
+        assert!(matches!(err, DagExecutionError::NodeFailed { .. }));
+
+        let metrics = observer.metrics();
+        assert!(
+            metrics.run_nanos_total >= 30_000_000,
+            "both nodes ran at least the ~30ms primary, got {}",
+            metrics.run_nanos_total
+        );
+        assert!(
+            metrics.run_nanos_total < 10_000_000_000,
+            "mid-run cancel must not count the sibling's full 30s sleep, got {}",
+            metrics.run_nanos_total
+        );
     }
 }

@@ -359,6 +359,43 @@ impl DagObserver for CopyDagObserver {
     fn on_metrics(&self, _metrics: &TransferDagMetrics) {}
 }
 
+/// DAG-P2-07: merges runner-attested byte totals into the executor's final
+/// metrics snapshot, so the executor's single finalize stays single. Byte
+/// semantics are directional: an upload crosses the provider data path once
+/// with no local payload materialization; a download additionally lands the
+/// whole object on local disk.
+struct SingleFileMetricsObserver {
+    inner: Arc<dyn DagObserver>,
+    bytes_total: Arc<AtomicU64>,
+    direction: TransferDirection,
+}
+
+impl DagObserver for SingleFileMetricsObserver {
+    fn on_node_start(&self, node_id: usize, kind: TransferNodeKind) {
+        self.inner.on_node_start(node_id, kind);
+    }
+
+    fn on_node_complete(&self, node_id: usize, outcome: ObservedOutcome) {
+        self.inner.on_node_complete(node_id, outcome);
+    }
+
+    fn on_scan_progress(&self, scanned: usize, in_flight: usize) {
+        self.inner.on_scan_progress(scanned, in_flight);
+    }
+
+    fn on_metrics(&self, metrics: &TransferDagMetrics) {
+        let bytes = self.bytes_total.load(Ordering::SeqCst);
+        let mut merged = metrics.clone();
+        merged.logical_bytes = merged.logical_bytes.saturating_add(bytes);
+        merged.wire_bytes = merged.wire_bytes.saturating_add(bytes);
+        if self.direction == TransferDirection::Download {
+            merged.local_payload_bytes = merged.local_payload_bytes.saturating_add(bytes);
+        }
+        merged.bytes_transferred = merged.bytes_transferred.saturating_add(bytes);
+        self.inner.on_metrics(&merged);
+    }
+}
+
 /// Execute one production copy through [`TransferDagBuilder::shaped_copy`].
 ///
 /// Capability-unavailable providers run the observable `DownloadFile` then
@@ -685,6 +722,9 @@ pub async fn execute_single_file_dag(
     // The executor only surfaces a stringified `DagExecutionError`; the typed
     // provider error is stashed here so the caller keeps exact error semantics.
     let first_error: Arc<StdMutex<Option<ProviderError>>> = Arc::new(StdMutex::new(None));
+    // DAG-P2-07: byte total the transfer node attests at its success point;
+    // folded into the metrics snapshot by SingleFileMetricsObserver below.
+    let bytes_total = Arc::new(AtomicU64::new(0));
 
     // Resolve the canonical endpoint once before the durable multipart state
     // is built. The checkpoint identity includes provider + endpoint + remote
@@ -814,6 +854,7 @@ pub async fn execute_single_file_dag(
         let multipart_state = multipart_state.clone();
         let durable_checkpoint = durable_checkpoint.clone();
         let cancel_token = cancel_token.clone();
+        let bytes_total = Arc::clone(&bytes_total);
         Arc::new(move |node: TransferNode| -> NodeFuture {
             let provider = Arc::clone(&provider);
             let remote = Arc::clone(&remote);
@@ -825,6 +866,7 @@ pub async fn execute_single_file_dag(
             let multipart_state = multipart_state.clone();
             let durable_checkpoint = durable_checkpoint.clone();
             let cancel_token = cancel_token.clone();
+            let bytes_total = Arc::clone(&bytes_total);
             Box::pin(async move {
                 match node.kind {
                     TransferNodeKind::DownloadFile => {
@@ -854,6 +896,7 @@ pub async fn execute_single_file_dag(
                                 // caller-seeded value if the stat fails.
                                 if let Ok(meta) = std::fs::metadata(&*local) {
                                     report_size.store(meta.len(), Ordering::SeqCst);
+                                    bytes_total.store(meta.len(), Ordering::SeqCst);
                                 }
                                 NodeOutcome::Completed
                             }
@@ -882,7 +925,12 @@ pub async fn execute_single_file_dag(
                             None => ul.await,
                         };
                         match res {
-                            Ok(()) => NodeOutcome::Completed,
+                            Ok(()) => {
+                                // Whole-file upload: the declared source size
+                                // is the wire/logical byte truth.
+                                bytes_total.store(file_size, Ordering::SeqCst);
+                                NodeOutcome::Completed
+                            }
                             Err(e) => record_failure(&first_error, e, FailureScope::File),
                         }
                     }
@@ -1188,6 +1236,11 @@ pub async fn execute_single_file_dag(
                                             }
                                         }
                                         state.clear_handle_after_complete().await;
+                                        // Multipart upload committed: the
+                                        // layout total is the wire/logical
+                                        // byte truth for the whole object.
+                                        bytes_total
+                                            .store(state.layout().total_size, Ordering::SeqCst);
                                         NodeOutcome::Completed
                                     }
                                     Err(e) => record_failure(&first_error, e, FailureScope::File),
@@ -1276,6 +1329,11 @@ pub async fn execute_single_file_dag(
     // user Stop and first-part fail-fast both terminate resident siblings
     // within FAIL_FAST_ABORT_GRACE. Production keeps node_timeout = None so
     // valid long transfers are never cut by an arbitrary engine limit.
+    let observer: Arc<dyn DagObserver> = Arc::new(SingleFileMetricsObserver {
+        inner: observer,
+        bytes_total,
+        direction,
+    });
     let outcome = execute_dag_with_options(
         &built.dag,
         &manager,
@@ -2522,6 +2580,139 @@ mod tests {
         );
     }
 
+    /// DAG-P2-07: a successful whole-file download attests its on-disk byte
+    /// total in the final metrics snapshot (logical == wire == local payload).
+    #[tokio::test]
+    async fn single_file_download_reports_bytes_in_final_metrics() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let local = dir.path().join("out.bin");
+        let mock = SlowMockProvider::new(
+            Arc::new(StdMutex::new(false)),
+            Arc::new(StdMutex::new(false)),
+        );
+        let arc: SharedProvider = Arc::new(Mutex::new(Some(
+            Box::new(mock) as Box<dyn crate::providers::StorageProvider>
+        )));
+        let caps = TransferCapabilities::default();
+        let built = TransferDagBuilder::shaped_file(TransferDirection::Download, &caps, 30);
+        let report = Arc::new(AtomicU64::new(30));
+        let observer = Arc::new(CollectingDagObserver::default());
+
+        let res = execute_single_file_dag(
+            &built,
+            arc,
+            "/remote.bin".to_string(),
+            local.to_string_lossy().to_string(),
+            None,
+            None,
+            Arc::clone(&observer) as Arc<dyn DagObserver>,
+            report,
+            30,
+            Some(CancellationToken::new()),
+        )
+        .await;
+        assert!(res.is_ok(), "download completes: {res:?}");
+
+        // The mock writes b"complete" (8 bytes).
+        let metrics = observer.metrics();
+        assert_eq!(metrics.bytes_transferred, 8);
+        assert_eq!(metrics.logical_bytes, 8);
+        assert_eq!(metrics.wire_bytes, 8);
+        assert_eq!(metrics.local_payload_bytes, 8);
+        assert!(metrics.run_nanos_total > 0, "the transfer node ran");
+        assert!(metrics.slot_peak >= 1);
+    }
+
+    /// DAG-P2-07: a successful whole-file upload attests the declared source
+    /// size with no local payload materialization (local stays 0).
+    #[tokio::test]
+    async fn single_file_upload_reports_bytes_without_local_payload() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let local = dir.path().join("source.bin");
+        std::fs::write(&local, b"hello aeroftp").expect("write source"); // 13 bytes
+        let mock = SlowMockProvider::new(
+            Arc::new(StdMutex::new(false)),
+            Arc::new(StdMutex::new(false)),
+        );
+        let arc: SharedProvider = Arc::new(Mutex::new(Some(
+            Box::new(mock) as Box<dyn crate::providers::StorageProvider>
+        )));
+        let caps = TransferCapabilities::default();
+        let built = TransferDagBuilder::shaped_file(TransferDirection::Upload, &caps, 13);
+        let report = Arc::new(AtomicU64::new(13));
+        let observer = Arc::new(CollectingDagObserver::default());
+
+        let res = execute_single_file_dag(
+            &built,
+            arc,
+            "/remote.bin".to_string(),
+            local.to_string_lossy().to_string(),
+            None,
+            None,
+            Arc::clone(&observer) as Arc<dyn DagObserver>,
+            report,
+            13,
+            Some(CancellationToken::new()),
+        )
+        .await;
+        assert!(res.is_ok(), "upload completes: {res:?}");
+
+        let metrics = observer.metrics();
+        assert_eq!(metrics.bytes_transferred, 13);
+        assert_eq!(metrics.logical_bytes, 13);
+        assert_eq!(metrics.wire_bytes, 13);
+        assert_eq!(metrics.local_payload_bytes, 0);
+    }
+
+    /// DAG-P2-07: a committed native-multipart upload attests the layout
+    /// total at the commit node, not per part (bytes are counted once).
+    #[tokio::test]
+    async fn multipart_upload_reports_layout_bytes_once_at_commit() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let local = dir.path().join("source.bin");
+        std::fs::write(&local, b"0123456789abcdefghij").expect("write source"); // 20 bytes
+
+        let mock = SlowMockProvider::new(
+            Arc::new(StdMutex::new(false)),
+            Arc::new(StdMutex::new(false)),
+        );
+        let arc: SharedProvider = Arc::new(Mutex::new(Some(
+            Box::new(mock) as Box<dyn crate::providers::StorageProvider>
+        )));
+        let caps = TransferCapabilities {
+            multipart_upload: Capability::Supported,
+            preferred_chunk_size: Some(10),
+            multipart_threshold: 0,
+            max_chunk_slots: Some(1),
+            ..TransferCapabilities::default()
+        };
+        let built = TransferDagBuilder::shaped_file(TransferDirection::Upload, &caps, 20);
+        assert_eq!(built.profile.upload_parts, 2);
+        let report = Arc::new(AtomicU64::new(20));
+        let observer = Arc::new(CollectingDagObserver::default());
+
+        let res = execute_single_file_dag(
+            &built,
+            arc,
+            "/remote.bin".to_string(),
+            local.to_string_lossy().to_string(),
+            None,
+            None,
+            Arc::clone(&observer) as Arc<dyn DagObserver>,
+            report,
+            20,
+            Some(CancellationToken::new()),
+        )
+        .await;
+        assert!(res.is_ok(), "multipart upload commits: {res:?}");
+
+        let metrics = observer.metrics();
+        assert_eq!(metrics.bytes_transferred, 20);
+        assert_eq!(metrics.logical_bytes, 20);
+        assert_eq!(metrics.wire_bytes, 20);
+        assert_eq!(metrics.local_payload_bytes, 0);
+    }
+
     #[tokio::test]
     async fn read_chunk_returns_exact_slice() {
         // The slicing helper underpins the multipart per-part disk read;
@@ -2543,5 +2734,292 @@ mod tests {
             .await
             .expect("read tail");
         assert_eq!(tail, content[16..20]);
+    }
+
+    /// DAG-P2-07 (block C): a provider whose data path goes through the
+    /// shared `send_with_retry` choke point. The single-file runner never
+    /// measures anything itself; the choke point publishes the honest
+    /// first-byte sample and the executor folds it at the single finalize.
+    struct HttpFixtureMockProvider {
+        addr: std::net::SocketAddr,
+    }
+
+    impl HttpFixtureMockProvider {
+        async fn get_body(&self, url: &str) -> Result<Vec<u8>, ProviderError> {
+            let client = reqwest::Client::new();
+            let request = client
+                .get(url)
+                .build()
+                .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+            let response = crate::providers::send_with_retry(
+                &client,
+                request,
+                &crate::providers::HttpRetryConfig::default(),
+            )
+            .await
+            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+            response
+                .bytes()
+                .await
+                .map(|b| b.to_vec())
+                .map_err(|e| ProviderError::TransferFailed(e.to_string()))
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl crate::providers::StorageProvider for HttpFixtureMockProvider {
+        fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+            self
+        }
+        fn provider_type(&self) -> crate::providers::ProviderType {
+            crate::providers::ProviderType::WebDav
+        }
+        fn display_name(&self) -> String {
+            "http-fixture-mock".into()
+        }
+        async fn connect(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn disconnect(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        fn is_connected(&self) -> bool {
+            true
+        }
+        async fn list(
+            &mut self,
+            _p: &str,
+        ) -> Result<Vec<crate::providers::RemoteEntry>, ProviderError> {
+            Ok(vec![])
+        }
+        async fn pwd(&mut self) -> Result<String, ProviderError> {
+            Ok("/".into())
+        }
+        async fn cd(&mut self, _p: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn cd_up(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn download(
+            &mut self,
+            _remote: &str,
+            local: &str,
+            _cb: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            let body = self
+                .get_body(&format!("http://{}/object", self.addr))
+                .await?;
+            std::fs::write(local, body).map_err(ProviderError::IoError)
+        }
+        async fn download_to_bytes(&mut self, _remote: &str) -> Result<Vec<u8>, ProviderError> {
+            self.get_body(&format!("http://{}/object", self.addr)).await
+        }
+        async fn upload(
+            &mut self,
+            _local: &str,
+            _remote: &str,
+            _cb: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn begin_multipart_upload(
+            &mut self,
+            remote_path: &str,
+            _total_size: u64,
+            _content_type: Option<&str>,
+            _local_source_path: Option<&str>,
+        ) -> Result<MultipartHandle, ProviderError> {
+            Ok(MultipartHandle {
+                upload_id: "fixture-upload".to_string(),
+                remote_path: remote_path.to_string(),
+            })
+        }
+        async fn upload_part(
+            &mut self,
+            _handle: &MultipartHandle,
+            part_number: u32,
+            data: Vec<u8>,
+        ) -> Result<UploadedPart, ProviderError> {
+            let client = reqwest::Client::new();
+            let request = client
+                .put(format!("http://{}/part-{part_number}", self.addr))
+                .body(data)
+                .build()
+                .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+            let response = crate::providers::send_with_retry(
+                &client,
+                request,
+                &crate::providers::HttpRetryConfig::default(),
+            )
+            .await
+            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+            if !response.status().is_success() {
+                return Err(ProviderError::TransferFailed(format!(
+                    "part {part_number} rejected: {}",
+                    response.status()
+                )));
+            }
+            Ok(UploadedPart {
+                part_number,
+                etag: format!("etag-{part_number}"),
+            })
+        }
+        async fn complete_multipart_upload(
+            &mut self,
+            _handle: MultipartHandle,
+            _parts: Vec<UploadedPart>,
+        ) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn abort_multipart_upload(
+            &mut self,
+            _handle: MultipartHandle,
+        ) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn mkdir(&mut self, _p: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn delete(&mut self, _p: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn rmdir(&mut self, _p: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn rmdir_recursive(&mut self, _p: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn rename(&mut self, _f: &str, _t: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn stat(&mut self, _p: &str) -> Result<crate::providers::RemoteEntry, ProviderError> {
+            Err(ProviderError::NotSupported("stat".into()))
+        }
+        async fn size(&mut self, _p: &str) -> Result<u64, ProviderError> {
+            Ok(30)
+        }
+        async fn exists(&mut self, _p: &str) -> Result<bool, ProviderError> {
+            Ok(true)
+        }
+        async fn keep_alive(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn server_info(&mut self) -> Result<String, ProviderError> {
+            Ok("http-fixture-mock".into())
+        }
+    }
+
+    /// DAG-P2-07 (block C): the whole-file single GET runner is honestly
+    /// measurable through the shared choke point: one download request
+    /// reaching headers folds exactly one first-byte sample into the run
+    /// metrics the observer receives at the single finalize.
+    #[tokio::test]
+    async fn single_file_download_folds_one_ttfb_sample_from_send_with_retry() {
+        use crate::transfer_dag::ttfb::test_fixture::{
+            spawn_delayed_http_fixture, FixtureResponse,
+        };
+
+        let addr = spawn_delayed_http_fixture(std::time::Duration::from_millis(50), 1, |_head| {
+            FixtureResponse::ok("payload")
+        })
+        .await;
+
+        let dir = tempfile::tempdir().expect("tempdir");
+        let local = dir.path().join("out.bin");
+        let arc: SharedProvider =
+            Arc::new(Mutex::new(Some(Box::new(HttpFixtureMockProvider { addr })
+                as Box<dyn crate::providers::StorageProvider>)));
+        let caps = TransferCapabilities::default();
+        let built = TransferDagBuilder::shaped_file(TransferDirection::Download, &caps, 7);
+        let report = Arc::new(AtomicU64::new(7));
+        let observer = Arc::new(CollectingDagObserver::default());
+
+        let res = execute_single_file_dag(
+            &built,
+            arc,
+            "/remote.bin".to_string(),
+            local.to_string_lossy().to_string(),
+            None,
+            None,
+            Arc::clone(&observer) as Arc<dyn DagObserver>,
+            report,
+            7,
+            Some(CancellationToken::new()),
+        )
+        .await;
+        assert!(res.is_ok(), "fixture download completes: {res:?}");
+
+        let metrics = observer.metrics();
+        assert_eq!(
+            metrics.ttfb_samples, 1,
+            "one download request reaching headers is exactly one sample"
+        );
+        assert!(
+            metrics.ttfb_nanos_total >= std::time::Duration::from_millis(40).as_nanos() as u64,
+            "sampled TTFB {}ns below the 50ms fixture first-byte delay",
+            metrics.ttfb_nanos_total
+        );
+    }
+
+    /// DAG-P2-07 (block C): the multipart part path is honestly measurable
+    /// through the same choke point: each `UploadPart` node PUT that reaches
+    /// headers folds its own first-byte sample, so a 2-part fan-out reports
+    /// exactly 2 samples.
+    #[tokio::test]
+    async fn multipart_upload_folds_one_ttfb_sample_per_part() {
+        use crate::transfer_dag::ttfb::test_fixture::{
+            spawn_delayed_http_fixture, FixtureResponse,
+        };
+
+        let addr = spawn_delayed_http_fixture(std::time::Duration::from_millis(20), 2, |_head| {
+            FixtureResponse::ok("ack")
+        })
+        .await;
+
+        let dir = tempfile::tempdir().expect("tempdir");
+        let local = dir.path().join("source.bin");
+        std::fs::write(&local, b"0123456789abcdefghij").expect("write source"); // 20 bytes
+
+        let arc: SharedProvider =
+            Arc::new(Mutex::new(Some(Box::new(HttpFixtureMockProvider { addr })
+                as Box<dyn crate::providers::StorageProvider>)));
+        let caps = TransferCapabilities {
+            multipart_upload: Capability::Supported,
+            preferred_chunk_size: Some(10),
+            multipart_threshold: 0,
+            max_chunk_slots: Some(1),
+            ..TransferCapabilities::default()
+        };
+        let built = TransferDagBuilder::shaped_file(TransferDirection::Upload, &caps, 20);
+        assert_eq!(built.profile.upload_parts, 2);
+        let report = Arc::new(AtomicU64::new(20));
+        let observer = Arc::new(CollectingDagObserver::default());
+
+        let res = execute_single_file_dag(
+            &built,
+            arc,
+            "/remote.bin".to_string(),
+            local.to_string_lossy().to_string(),
+            None,
+            None,
+            Arc::clone(&observer) as Arc<dyn DagObserver>,
+            report,
+            20,
+            Some(CancellationToken::new()),
+        )
+        .await;
+        assert!(res.is_ok(), "multipart fixture upload commits: {res:?}");
+
+        let metrics = observer.metrics();
+        assert_eq!(
+            metrics.ttfb_samples, 2,
+            "two part PUTs reaching headers are exactly two samples"
+        );
+        assert!(
+            metrics.ttfb_nanos_total >= std::time::Duration::from_millis(30).as_nanos() as u64,
+            "two 20ms-delayed parts must total >= 30ms, got {}ns",
+            metrics.ttfb_nanos_total
+        );
     }
 }
