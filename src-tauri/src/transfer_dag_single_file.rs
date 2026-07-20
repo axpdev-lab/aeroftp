@@ -60,13 +60,21 @@
 //! - `ServerSideCopy`: structural anchor in the single-file graph (the
 //!   shaped-copy graph is the place where the kind is actually emitted by
 //!   the builder); included for forward-compatibility.
-//! - `VerifyChecksum`: no-op in this slice (the legacy single-file path does
-//!   not verify).
+//! - `VerifyChecksum`: real node on the durable native-multipart path. It runs
+//!   after every `UploadPart` receipt and before `CommitTemp`, so the remote
+//!   object is not yet finalized: it makes no provider checksum claim and
+//!   instead verifies, from durable facts, that all parts are present and the
+//!   local source still matches the identity that produced them, then records
+//!   the durable `Verified` fact. On the plain single-transfer-core path there
+//!   is no journal, so it is an honest no-op that makes no claim.
 //! - `PreserveMetadata`: restores the remote mtime on a downloaded file; a
 //!   no-op on the upload direction.
-//! - `CommitTemp`: no-op for the single transfer core. For multipart it
-//!   takes the accumulated parts, sorts by part number, and calls
-//!   `provider.complete_multipart_upload` to finalize the object.
+//! - `CommitTemp`: the commit node for native multipart. It is fail-closed on
+//!   the durable `Verified` fact, then takes the accumulated parts, sorts by
+//!   part number, calls `provider.complete_multipart_upload` to finalize the
+//!   object, and records the durable `Committed` fact before reporting success.
+//!   For the single transfer core it makes no atomic-commit claim: any temp
+//!   rename or in-place boundary is owned by the provider's own download/upload.
 //! - `EmitProgress`: no-op terminal node; its completion is the signal a
 //!   [`DagObserver`] maps onto the GUI "complete" event.
 
@@ -152,6 +160,29 @@ impl DurableMultipartCheckpoint {
             .map_err(ProviderError::TransferFailed)
     }
 
+    /// Truthful pre-commit verification: check the durable payload facts against
+    /// a fresh observation of the local source, then record the durable Verified
+    /// fact. Fail-closed: a failed check never advances the record, so the
+    /// commit node (which requires Verified) cannot finalize the session.
+    fn verify(
+        &mut self,
+        observed: &crate::transfer_dag::ObservedSource,
+    ) -> Result<(), ProviderError> {
+        self.record
+            .verify_against_source(observed)
+            .map_err(ProviderError::TransferFailed)?;
+        self.store
+            .mark_verified(&mut self.record)
+            .map_err(ProviderError::TransferFailed)
+    }
+
+    /// Whether the durable verified gate has been passed. The commit node checks
+    /// this before finalizing the provider session so an unverified payload can
+    /// never be committed or reported as complete.
+    fn is_verified(&self) -> bool {
+        self.record.is_verified()
+    }
+
     fn mark_committed(&mut self) -> Result<(), ProviderError> {
         self.store
             .mark_committed(&mut self.record)
@@ -160,6 +191,28 @@ impl DurableMultipartCheckpoint {
 
     fn mark_failed(&mut self) {
         let _ = self.store.mark_failed(&mut self.record);
+    }
+}
+
+/// Observe the local source file for pre-commit verification. A stat failure is
+/// reported as a non-existent source so verification fails closed rather than
+/// silently skipping the check.
+fn observe_source(path: &str) -> crate::transfer_dag::ObservedSource {
+    match std::fs::metadata(path) {
+        Ok(meta) => crate::transfer_dag::ObservedSource {
+            exists: true,
+            size: meta.len(),
+            modified_unix_nanos: meta
+                .modified()
+                .ok()
+                .and_then(|stamp| stamp.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|stamp| stamp.as_nanos()),
+        },
+        Err(_) => crate::transfer_dag::ObservedSource {
+            exists: false,
+            size: 0,
+            modified_unix_nanos: None,
+        },
     }
 }
 
@@ -1027,15 +1080,28 @@ pub async fn execute_single_file_dag(
                         }
                     }
                     TransferNodeKind::CommitTemp => {
-                        // For multipart uploads, finalize the session by
-                        // submitting the accumulated parts in part-number
-                        // order. The handle is CLONED for the complete call
-                        // and the slot is cleared only on success; on a
-                        // commit-time failure the handle stays in place so the
-                        // post-execute abort guard reliably aborts the
-                        // orphaned session instead of leaking the upload id
-                        // (audit ERR-01). For the single-transfer-core shape
-                        // this is a no-op.
+                        // For native multipart uploads this is the commit node:
+                        // it finalizes the session by submitting the accumulated
+                        // parts in part-number order. The handle is CLONED for
+                        // the complete call and the slot is cleared only on
+                        // success; on a commit-time failure the handle stays in
+                        // place so the post-execute abort guard reliably aborts
+                        // the orphaned session instead of leaking the upload id
+                        // (audit ERR-01). The commit is fail-closed on the
+                        // durable Verified fact (P2-03): VerifyChecksum runs
+                        // before this node and writes Verified only after a
+                        // truthful check, and this node refuses to finalize the
+                        // provider session unless that fact is present. So an
+                        // unverified payload can never be committed or reported
+                        // complete. Ordering is explicit: provider complete,
+                        // then the durable Committed fact, then visible success.
+                        //
+                        // For the single-transfer-core shape (a plain
+                        // UploadFile/DownloadFile with no journal) this node
+                        // makes NO atomic-commit claim: any temp-file rename or
+                        // in-place write boundary is owned by the provider's own
+                        // download/upload (see providers::atomic_write), so there
+                        // is nothing to commit here and no false claim to make.
                         if let Some(state) = multipart_state.as_ref() {
                             let handle = state.clone_handle().await;
                             if let Some(handle) = handle {
@@ -1047,6 +1113,23 @@ pub async fn execute_single_file_dag(
                                             state.receipt_count().await,
                                             state.layout().total_parts
                                         )),
+                                        FailureScope::File,
+                                    );
+                                }
+                                // Fail-closed gate: never finalize the provider
+                                // session unless the payload durably verified.
+                                if durable_checkpoint.as_ref().is_some_and(|checkpoint| {
+                                    !checkpoint
+                                        .lock()
+                                        .expect("checkpoint mutex poisoned")
+                                        .is_verified()
+                                }) {
+                                    return record_failure(
+                                        &first_error,
+                                        ProviderError::TransferFailed(
+                                            "multipart commit blocked: payload not durably verified"
+                                                .to_string(),
+                                        ),
                                         FailureScope::File,
                                     );
                                 }
@@ -1067,12 +1150,16 @@ pub async fn execute_single_file_dag(
                                 };
                                 match result {
                                     Ok(()) => {
-                                        // The durable terminal fact must land
-                                        // before this node reports Completed.
-                                        // A crash after provider completion but
-                                        // before this write remains resumable
-                                        // and retries the provider complete;
-                                        // P2-03 owns checksum/commit semantics.
+                                        // The durable Committed fact must land
+                                        // before this node reports Completed, and
+                                        // mark_committed is itself fail-closed on
+                                        // the Verified state. A crash after
+                                        // provider completion but before this
+                                        // write remains resumable: the reopened
+                                        // record rewinds to Transferring, so the
+                                        // resumed run re-verifies and retries the
+                                        // provider complete before it can report
+                                        // success.
                                         if let Some(checkpoint) = durable_checkpoint.as_ref() {
                                             if let Err(error) = checkpoint
                                                 .lock()
@@ -1098,6 +1185,32 @@ pub async fn execute_single_file_dag(
                             NodeOutcome::Completed
                         }
                     }
+                    TransferNodeKind::VerifyChecksum => {
+                        // On the durable native-multipart path this is a real
+                        // node. It runs after every UploadPart receipt and
+                        // BEFORE CommitTemp finalizes the provider session, so
+                        // the remote object is not yet finalized and no provider
+                        // checksum is claimed here. Instead it verifies, from
+                        // durable facts, that every part is present and that the
+                        // local source still matches the identity that produced
+                        // the uploaded parts, then records the durable Verified
+                        // fact. A failed check is terminal for this file: it
+                        // never reaches commit or visible completion.
+                        if let Some(checkpoint) = durable_checkpoint.as_ref() {
+                            let observed = observe_source(&local);
+                            if let Err(error) = checkpoint
+                                .lock()
+                                .expect("checkpoint mutex poisoned")
+                                .verify(&observed)
+                            {
+                                return record_failure(&first_error, error, FailureScope::File);
+                            }
+                        }
+                        // No durable journal (a single UploadFile/DownloadFile
+                        // core): the legacy path performs no checksum
+                        // verification and makes no claim.
+                        NodeOutcome::Completed
+                    }
                     TransferNodeKind::PreserveMetadata => {
                         if direction == TransferDirection::Download {
                             crate::preserve_remote_mtime(&local, modified.as_deref());
@@ -1105,9 +1218,8 @@ pub async fn execute_single_file_dag(
                         NodeOutcome::Completed
                     }
                     // DiscoverRemote / DiscoverLocal / AcquireResource /
-                    // VerifyChecksum / EmitProgress: structural anchors,
-                    // no-ops in the current slice. A single-file graph
-                    // never produces any other kind.
+                    // EmitProgress: structural anchors, no-ops in the current
+                    // slice. A single-file graph never produces any other kind.
                     _ => NodeOutcome::Completed,
                 }
             })
@@ -2201,6 +2313,198 @@ mod tests {
         assert!(
             !*multipart_aborted.lock().unwrap(),
             "a durable checkpoint keeps the provider session for missing-part resume"
+        );
+    }
+
+    /// A consistent native-multipart upload passes the real VerifyChecksum node
+    /// and then commits: the provider session is finalized only after a durable
+    /// verified fact, and the happy path still completes end to end.
+    #[tokio::test]
+    async fn multipart_verifies_then_commits_on_a_consistent_source() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let local = dir.path().join("source.bin");
+        std::fs::write(&local, b"0123456789abcdefghij").expect("write source"); // 20 bytes
+
+        let multipart_completed = Arc::new(StdMutex::new(false));
+        let multipart_aborted = Arc::new(StdMutex::new(false));
+        let part_started = Arc::new(AtomicU64::new(0));
+        let mock = SlowMockProvider::new(
+            Arc::new(StdMutex::new(false)),
+            Arc::new(StdMutex::new(false)),
+        )
+        .with_multipart_state(
+            Arc::clone(&multipart_completed),
+            Arc::clone(&multipart_aborted),
+            Arc::clone(&part_started),
+        );
+        let arc: SharedProvider = Arc::new(Mutex::new(Some(
+            Box::new(mock) as Box<dyn crate::providers::StorageProvider>
+        )));
+        let caps = TransferCapabilities {
+            multipart_upload: Capability::Supported,
+            preferred_chunk_size: Some(10),
+            multipart_threshold: 0,
+            max_chunk_slots: Some(1),
+            ..TransferCapabilities::default()
+        };
+        let built = TransferDagBuilder::shaped_file(TransferDirection::Upload, &caps, 20);
+        assert_eq!(built.profile.upload_parts, 2);
+        let report = Arc::new(AtomicU64::new(20));
+        let observer: Arc<dyn DagObserver> = Arc::new(crate::transfer_dag::NoopDagObserver);
+
+        let res = execute_single_file_dag(
+            &built,
+            arc,
+            "/remote.bin".to_string(),
+            local.to_string_lossy().to_string(),
+            None,
+            None,
+            observer,
+            report,
+            20,
+            Some(CancellationToken::new()),
+        )
+        .await;
+
+        assert!(
+            res.is_ok(),
+            "a consistent multipart upload verifies and commits: {res:?}"
+        );
+        assert!(
+            *multipart_completed.lock().unwrap(),
+            "the provider session is finalized only after the durable verified fact"
+        );
+        assert!(!*multipart_aborted.lock().unwrap());
+    }
+
+    /// A native-multipart payload that fails the real VerifyChecksum node never
+    /// reaches CommitTemp: the provider session is not finalized and the
+    /// transfer surfaces a verification failure rather than a false success.
+    #[tokio::test]
+    async fn verify_failure_blocks_multipart_commit_and_visible_completion() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let local = dir.path().join("source.bin");
+        // 25 bytes on disk, but the caller-declared transfer size is 20: the
+        // multipart layout covers only 20 bytes, so 5 source bytes would be lost.
+        // VerifyChecksum catches this durable inconsistency and blocks commit.
+        std::fs::write(&local, b"0123456789abcdefghijKLMNO").expect("write source"); // 25 bytes
+
+        let multipart_completed = Arc::new(StdMutex::new(false));
+        let multipart_aborted = Arc::new(StdMutex::new(false));
+        let part_started = Arc::new(AtomicU64::new(0));
+        let mock = SlowMockProvider::new(
+            Arc::new(StdMutex::new(false)),
+            Arc::new(StdMutex::new(false)),
+        )
+        .with_multipart_state(
+            Arc::clone(&multipart_completed),
+            Arc::clone(&multipart_aborted),
+            Arc::clone(&part_started),
+        );
+        let arc: SharedProvider = Arc::new(Mutex::new(Some(
+            Box::new(mock) as Box<dyn crate::providers::StorageProvider>
+        )));
+        let caps = TransferCapabilities {
+            multipart_upload: Capability::Supported,
+            preferred_chunk_size: Some(10),
+            multipart_threshold: 0,
+            max_chunk_slots: Some(1),
+            ..TransferCapabilities::default()
+        };
+        let built = TransferDagBuilder::shaped_file(TransferDirection::Upload, &caps, 20);
+        assert_eq!(built.profile.upload_parts, 2);
+        let report = Arc::new(AtomicU64::new(20));
+        let observer: Arc<dyn DagObserver> = Arc::new(crate::transfer_dag::NoopDagObserver);
+
+        let res = execute_single_file_dag(
+            &built,
+            arc,
+            "/remote.bin".to_string(),
+            local.to_string_lossy().to_string(),
+            None,
+            None,
+            observer,
+            report,
+            20,
+            Some(CancellationToken::new()),
+        )
+        .await;
+
+        assert!(
+            res.is_err(),
+            "verification must fail closed on a size-inconsistent payload"
+        );
+        let msg = res.unwrap_err().to_string().to_lowercase();
+        assert!(
+            msg.contains("inconsistent") || msg.contains("layout"),
+            "error should be a verification failure, got: {msg}"
+        );
+        assert!(
+            !*multipart_completed.lock().unwrap(),
+            "a payload that fails verification is never committed or reported complete"
+        );
+    }
+
+    /// A plain single-transfer-core upload (no multipart, no durable journal)
+    /// makes no atomic-commit claim: CommitTemp finalizes nothing, so the
+    /// provider's own `upload` owns the write and no multipart commit is called.
+    #[tokio::test]
+    async fn plain_single_file_upload_makes_no_commit_claim() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let local = dir.path().join("source.bin");
+        std::fs::write(&local, b"hello aeroftp").expect("write source");
+
+        let upload_completed = Arc::new(StdMutex::new(false));
+        let multipart_completed = Arc::new(StdMutex::new(false));
+        let multipart_aborted = Arc::new(StdMutex::new(false));
+        let part_started = Arc::new(AtomicU64::new(0));
+        let mock = SlowMockProvider::new(
+            Arc::new(StdMutex::new(false)),
+            Arc::clone(&upload_completed),
+        )
+        .with_multipart_state(
+            Arc::clone(&multipart_completed),
+            Arc::clone(&multipart_aborted),
+            Arc::clone(&part_started),
+        );
+        let arc: SharedProvider = Arc::new(Mutex::new(Some(
+            Box::new(mock) as Box<dyn crate::providers::StorageProvider>
+        )));
+        // Default capabilities: no multipart, so the shape is a single
+        // UploadFile core with a no-op CommitTemp.
+        let caps = TransferCapabilities::default();
+        let built = TransferDagBuilder::shaped_file(TransferDirection::Upload, &caps, 13);
+        assert_eq!(built.profile.upload_parts, 1);
+        let report = Arc::new(AtomicU64::new(13));
+        let observer: Arc<dyn DagObserver> = Arc::new(crate::transfer_dag::NoopDagObserver);
+
+        let res = execute_single_file_dag(
+            &built,
+            arc,
+            "/remote.bin".to_string(),
+            local.to_string_lossy().to_string(),
+            None,
+            None,
+            observer,
+            report,
+            13,
+            Some(CancellationToken::new()),
+        )
+        .await;
+
+        assert!(res.is_ok(), "a plain upload completes: {res:?}");
+        assert!(
+            *upload_completed.lock().unwrap(),
+            "the provider's own upload owns the write"
+        );
+        assert!(
+            !*multipart_completed.lock().unwrap(),
+            "a plain single-file path never claims a multipart commit"
+        );
+        assert_eq!(
+            part_started.load(Ordering::SeqCst),
+            0,
+            "no multipart part is ever uploaded on the single-transfer-core path"
         );
     }
 

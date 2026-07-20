@@ -38,8 +38,8 @@ pub use builder::{
 pub use capabilities::{Capability, TransferCapabilities};
 pub use checkpoint::{
     CheckpointDestinationIdentity, CheckpointLayout, CheckpointOpen, CheckpointPartReceipt,
-    CheckpointSourceIdentity, CheckpointStatus, MultipartCheckpoint, TransferCheckpointStore,
-    CHECKPOINT_SCHEMA_VERSION,
+    CheckpointSourceIdentity, CheckpointStatus, MultipartCheckpoint, ObservedSource,
+    TransferCheckpointStore, CHECKPOINT_SCHEMA_VERSION,
 };
 pub use error::{FailureScope, RetryDirective, TransferError, TransferErrorKind};
 pub use executor::{

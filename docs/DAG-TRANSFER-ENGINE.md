@@ -121,10 +121,17 @@ each node performs I/O on every path:
 `Discover` → `AcquireResource` → *transfer core* → `VerifyChecksum` →
 `PreserveMetadata` → `CommitTemp` → `EmitProgress`.
 
-In the current single-file runner, `Discover*`, `AcquireResource`,
-`VerifyChecksum`, and `EmitProgress` are structural no-ops. `CommitTemp` is
-real for multipart completion, and `PreserveMetadata` is real for download
-mtime preservation. Progress start/byte/error events still come from the
+In the current single-file runner, `Discover*`, `AcquireResource`, and
+`EmitProgress` are structural no-ops. After DAG-P2-03, `VerifyChecksum` is a
+real node on the durable native-multipart path: it runs after every part
+receipt and before `CommitTemp`, so the remote object is not yet finalized. It
+therefore makes no provider checksum claim and instead verifies, from durable
+facts, that every part is present and the local source still matches the
+identity that produced the uploaded parts, then records a durable `Verified`
+fact. On the plain single-transfer-core path there is no journal, so it stays an
+honest no-op that makes no claim. `CommitTemp` is real for multipart completion
+and is fail-closed on that `Verified` fact; `PreserveMetadata` is real for
+download mtime preservation. Progress start/byte/error events still come from the
 surface adapters and provider callbacks; the executor summary does not yet
 populate a complete engine-level byte/retry telemetry stream.
 
@@ -140,9 +147,13 @@ This is the most complete DAG path. `execute_single_file_dag` binds
 3. receipts are collected and ordered by part number;
 4. every successful receipt is atomically written to the transfer-versioned
    durable checkpoint before its node completes;
-5. `CommitTemp` calls `complete_multipart_upload`, then writes the durable
-   `Committed` fact before the graph can report success;
-6. a failed or cancelled durable upload keeps its session and valid receipts for
+5. `VerifyChecksum` verifies the durable payload against a fresh observation of
+   the local source and records the durable `Verified` fact; the durable state
+   machine is `Prepared` → `Transferring` → `PayloadComplete` → `Verified` →
+   `Committed`;
+6. `CommitTemp` is fail-closed on `Verified`, calls `complete_multipart_upload`,
+   then writes the durable `Committed` fact before the graph can report success;
+7. a failed or cancelled durable upload keeps its session and valid receipts for
    restart, while a conservative TTL scavenger aborts only an expired matching
    session and removes its record only after that abort succeeds.
 
