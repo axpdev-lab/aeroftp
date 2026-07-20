@@ -124,7 +124,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sevenz-rust2",
- "sha1 0.10.6",
+ "sha1 0.10.7",
  "sha2 0.10.9",
  "sigstore",
  "similar",
@@ -9604,9 +9604,9 @@ dependencies = [
 
 [[package]]
 name = "sha1"
-version = "0.10.6"
+version = "0.10.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e3bf829a2d51ab4a5ddf1352d8470c140cadc8301b2ae1789db023f01cedd6ba"
+checksum = "a978451301f4db1d02937a4ab3ccce137717b81826e79b7d49ffe3244a13c3b8"
 dependencies = [
  "cfg-if",
  "cpufeatures 0.2.17",
@@ -11379,7 +11379,7 @@ dependencies = [
  "constant_time_eq 0.3.1",
  "hmac 0.12.1",
  "qrcodegen-image",
- "sha1 0.10.6",
+ "sha1 0.10.7",
  "sha2 0.10.9",
  "url",
  "urlencoding",
@@ -13208,7 +13208,7 @@ checksum = "1301e935010a701ae5f8655edc0ad17c44bad3ac5ce8c39185f75453b720ae94"
 dependencies = [
  "const-oid 0.9.6",
  "der 0.7.10",
- "sha1 0.10.6",
+ "sha1 0.10.7",
  "signature 2.2.0",
  "spki 0.7.3",
  "tls_codec",
@@ -13336,7 +13336,7 @@ dependencies = [
  "rand 0.8.7",
  "serde",
  "serde_repr",
- "sha1 0.10.6",
+ "sha1 0.10.7",
  "static_assertions",
  "tracing",
  "uds_windows",
