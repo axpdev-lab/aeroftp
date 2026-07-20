@@ -1424,9 +1424,15 @@ impl StorageProvider for SftpProvider {
         // existing* SFTP session (no new connection, no pool). Off by
         // default = the serial loop below, byte-identical. Skipped when the
         // size is unknown/zero or a bandwidth limit is active (the serial
-        // loop owns the exact throttling); the SHA-256 live gate guards it.
+        // loop owns the exact throttling, including the process-global cap);
+        // the SHA-256 live gate guards it.
         if let Some(window) = sftp_read_pipeline_window() {
-            if total_size > 0 && self.download_limit_bps == 0 {
+            if total_size > 0
+                && self.download_limit_bps == 0
+                && crate::transfer_dag::governor::global()
+                    .bandwidth()
+                    .is_unlimited()
+            {
                 let sftp = self.get_sftp()?;
                 let mut atomic = super::atomic_write::AtomicFile::new(local_path)
                     .await
@@ -1522,6 +1528,20 @@ impl StorageProvider for SftpProvider {
         let global_bw = crate::transfer_dag::governor::global().bandwidth();
 
         loop {
+            if total_size > 0 && transferred >= total_size {
+                break;
+            }
+            // Reserve global tokens before the remote read so concurrent jobs
+            // cannot put bytes on the wire before the shared cap admits them.
+            // A short final read can over-reserve only the unused tail of one
+            // buffer, which is conservative and never lets the cap burst.
+            let remaining = total_size.saturating_sub(transferred);
+            let allowance = if remaining == 0 {
+                buffer.len() as u64
+            } else {
+                remaining.min(buffer.len() as u64)
+            };
+            global_bw.acquire(allowance).await;
             let bytes_read = remote_file.read(&mut buffer).await.map_err(|e| {
                 classify_russh_err(e, |s| {
                     ProviderError::TransferFailed(format!("Read error: {}", s))
@@ -1542,9 +1562,6 @@ impl StorageProvider for SftpProvider {
             if let Some(ref progress) = on_progress {
                 progress(transferred, total_size);
             }
-
-            // DAG-P2-01: charge wire bytes against the shared global cap.
-            global_bw.acquire(bytes_read as u64).await;
 
             // Apply bandwidth throttling on bytes moved THIS session, so a
             // resume does not over-sleep for already-downloaded data.
@@ -1712,6 +1729,9 @@ impl StorageProvider for SftpProvider {
                 break;
             }
 
+            // Reserve global tokens before the remote write so concurrent jobs
+            // cannot put bytes on the wire before the shared cap admits them.
+            global_bw.acquire(bytes_read as u64).await;
             remote_file
                 .write_all(&buffer[..bytes_read])
                 .await
@@ -1726,9 +1746,6 @@ impl StorageProvider for SftpProvider {
             if let Some(ref progress) = on_progress {
                 progress(transferred, total_size);
             }
-
-            // DAG-P2-01: charge wire bytes against the shared global cap.
-            global_bw.acquire(bytes_read as u64).await;
 
             // Apply bandwidth throttling
             if self.upload_limit_bps > 0 {
@@ -1884,6 +1901,9 @@ impl StorageProvider for SftpProvider {
                     if bytes_read == 0 {
                         break;
                     }
+                    // Reserve global tokens before the remote write so the
+                    // resumed path shares the same process-wide cap.
+                    global_bw.acquire(bytes_read as u64).await;
                     remote_file
                         .write_all(&buffer[..bytes_read])
                         .await
@@ -1896,8 +1916,6 @@ impl StorageProvider for SftpProvider {
                     if let Some(ref progress) = on_progress {
                         progress(transferred, total_size);
                     }
-                    // DAG-P2-01: charge wire bytes against the shared global cap.
-                    global_bw.acquire(bytes_read as u64).await;
                     // Throttle only on bytes moved THIS session so a resume does
                     // not over-sleep for already-uploaded data.
                     if self.upload_limit_bps > 0 {
@@ -2809,6 +2827,7 @@ async fn sftp_download_one_range(
 
     let full_path = worker.normalize_path(&remote_path);
     let sftp = worker.get_sftp()?;
+    let global_bw = crate::transfer_dag::governor::global().bandwidth();
 
     // PD-PIPE-2: when the opt-in flag yields a window and no bandwidth cap
     // is active, pipeline this range worker's read of
@@ -2817,7 +2836,7 @@ async fn sftp_download_one_range(
     // channel. Default (flag unset) or an active cap falls through to the
     // exact serial loop below = diff-0 (the serial loop owns the precise
     // throttle, as in PD-PIPE-1).
-    if limit_bps == 0 {
+    if limit_bps == 0 && global_bw.is_unlimited() {
         if let Some(window) = sftp_read_pipeline_window() {
             let mut out = tokio::fs::OpenOptions::new()
                 .write(true)
@@ -2869,12 +2888,16 @@ async fn sftp_download_one_range(
     let mut buf = vec![0u8; buffer_size];
     let mut written: u64 = 0;
     let started = std::time::Instant::now();
-    // DAG-P2-01: the process-global bandwidth bucket. Unlimited (no
-    // AEROFTP_GLOBAL_BANDWIDTH_BPS) makes every `acquire` an immediate no-op, so
-    // this range loop behaves exactly as before unless a global cap is set.
-    let global_bw = crate::transfer_dag::governor::global().bandwidth();
-
     while written < expected {
+        let allowance = (expected - written).min(buf.len() as u64);
+        tokio::select! {
+            _ = cancel.cancelled() => {
+                return Err(ProviderError::TransferFailed(
+                    "Transfer cancelled by user".to_string(),
+                ));
+            }
+            _ = global_bw.acquire(allowance) => {}
+        }
         tokio::select! {
             _ = cancel.cancelled() => {
                 return Err(ProviderError::TransferFailed(
@@ -2900,9 +2923,6 @@ async fn sftp_download_one_range(
                     .map_err(ProviderError::IoError)?;
                 aggregate.fetch_add(take as u64, Ordering::Relaxed);
                 written += take as u64;
-
-                // DAG-P2-01: charge the wire bytes against the shared global cap.
-                global_bw.acquire(take as u64).await;
 
                 if limit_bps > 0 {
                     let expected_elapsed = std::time::Duration::from_secs_f64(

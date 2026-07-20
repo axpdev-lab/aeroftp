@@ -74,6 +74,9 @@ pub struct LocalSyncEntry {
 }
 
 const MAX_ENTRY_ROWS: usize = 5000;
+/// Keep global-bandwidth reservations small enough to pace the actual copy,
+/// rather than charging a completed whole file after it has already burst.
+const GLOBAL_COPY_BUFFER_BYTES: usize = 64 * 1024;
 
 /// Process-global cancel flag for the local-to-local sync run.
 ///
@@ -130,6 +133,41 @@ fn push_entry(report: &mut LocalSyncReport, entry: LocalSyncEntry) {
         return;
     }
     report.entries.push(entry);
+}
+
+/// Copy to the caller-selected temporary path while taking process-global
+/// bandwidth credits before each write. The rename remains the caller's final,
+/// atomic commit step, preserving the interrupted-copy safety contract.
+async fn copy_file_with_global_bandwidth(src: &Path, temp: &Path) -> std::io::Result<u64> {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    let permissions = tokio::fs::metadata(src).await?.permissions();
+    let mut input = tokio::fs::File::open(src).await?;
+    let mut output = tokio::fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .open(temp)
+        .await?;
+    let bandwidth = crate::transfer_dag::governor::global().bandwidth();
+    let mut buffer = vec![0u8; GLOBAL_COPY_BUFFER_BYTES];
+    let mut copied = 0u64;
+
+    loop {
+        let read = input.read(&mut buffer).await?;
+        if read == 0 {
+            break;
+        }
+        // Reserve before writing so concurrent local-copy jobs cannot move a
+        // full file before the shared process cap observes them.
+        bandwidth.acquire(read as u64).await;
+        output.write_all(&buffer[..read]).await?;
+        copied = copied.saturating_add(read as u64);
+    }
+    output.flush().await?;
+    drop(output);
+    tokio::fs::set_permissions(temp, permissions).await?;
+    Ok(copied)
 }
 
 /// Walk `source` and mirror every file into `destination`. Files at or above
@@ -320,21 +358,21 @@ pub async fn local_sync_run(
             // CLAUDE-AV-B3-10: copy to a temp sibling then rename onto the
             // destination, so an interrupted copy (app killed / power loss)
             // cannot leave a truncated file where the previous good mirror copy
-            // was. `std::fs::copy` writes the destination in place; the delta
-            // path already uses kill-safe rename-last writes.
+            // was. The bounded async copy preserves source permissions; the
+            // delta path already uses kill-safe rename-last writes.
             let tmp = {
                 let mut t = dst.clone().into_os_string();
                 t.push(".aerotmp");
                 std::path::PathBuf::from(t)
             };
-            let copy_result = std::fs::copy(&src, &tmp).and_then(|n| {
-                std::fs::rename(&tmp, &dst)?;
-                Ok(n)
-            });
+            let copy_result = match copy_file_with_global_bandwidth(&src, &tmp).await {
+                Ok(n) => tokio::fs::rename(&tmp, &dst).await.map(|()| n),
+                Err(error) => Err(error),
+            };
             match copy_result {
                 Ok(n) => wire_bytes = n,
                 Err(e) => {
-                    let _ = std::fs::remove_file(&tmp);
+                    let _ = tokio::fs::remove_file(&tmp).await;
                     report.errors += 1;
                     report
                         .error_messages
@@ -400,17 +438,6 @@ pub async fn local_sync_run(
                 status: entry_status.to_string(),
             },
         );
-
-        // DAG-P2-01: charge the wire bytes against the process-global bandwidth
-        // bucket so concurrent jobs share one aggregate cap. When no global cap
-        // is configured (AEROFTP_GLOBAL_BANDWIDTH_BPS unset) this is an immediate
-        // no-op, preserving the per-run throttle below unchanged.
-        if wire_bytes > 0 {
-            crate::transfer_dag::governor::global()
-                .bandwidth()
-                .acquire(wire_bytes)
-                .await;
-        }
 
         // CO-3: post-file throttle. Sleeps for the time the configured
         // cap implies for the bytes we just produced. Skipped when no

@@ -51,11 +51,12 @@ typed nodes. A node runs only after its dependencies complete and its
   budget, not an AIMD congestion class);
 - `DagObserver` lifecycle hooks and the executor summary.
 
-The executor is not globally bounded by process or endpoint. The ready
-frontier is dispatch-window bounded (`DEFAULT_DISPATCH_WINDOW = 256`,
-overridable via `execute_dag_with_dispatch_window`): only that many tasks may
-be resident in the `JoinSet` at once. The indexed ready queue visits each node
-and normalized edge once during dispatch; preprocessing uses
+The executor's ready frontier is not a second process-wide scheduler. It is
+dispatch-window bounded (`DEFAULT_DISPATCH_WINDOW = 256`, overridable via
+`execute_dag_with_dispatch_window`), while the separate `DAG-P2-01` governor
+applies the process-wide byte-memory and bandwidth caps. Only that many tasks
+may be resident in the `JoinSet` at once. The indexed ready queue visits each
+node and normalized edge once during dispatch; preprocessing uses
 `sort_unstable`/`dedup` per dependency list, so setup is
 O(V + sum(d_i log d_i)) rather than a strict O(V+E). Wide independent
 frontiers therefore avoid both repeated full scans and unbounded task spawn.
@@ -375,11 +376,12 @@ disk-read, disk-write, hash) are per operation. Its byte-credit pool for
 multipart buffers is no longer per operation: as of `DAG-P2-01` it is the
 process-global governor's shared pool. The endpoint level of the hierarchy
 (a concurrency sub-cap keyed by protocol + host + account) and a bandwidth
-token bucket also live in that governor; `local_sync` and the SFTP copy loops
-consult the bucket so the aggregate wire rate of concurrent jobs honours one
-configured global cap (`AEROFTP_GLOBAL_BANDWIDTH_BPS`; unset = unlimited, no
-throttle). Upload/download resource requests reserve only the disk direction
-they use (`DAG-P0-06`). The remaining P2-01b follow-ups are priority lanes,
+token bucket also live in that governor. The bounded local-copy fallback and
+the non-pipelined SFTP copy loops reserve bucket credits before moving each
+chunk, so concurrent jobs honour one configured cap
+(`AEROFTP_GLOBAL_BANDWIDTH_BPS`; unset = unlimited, no throttle). Upload/download
+resource requests reserve only the disk direction they use (`DAG-P0-06`). The
+remaining P2-01b follow-ups are priority lanes,
 the disk-device resolver, and threading the endpoint concurrency lease through
 every provider job.
 

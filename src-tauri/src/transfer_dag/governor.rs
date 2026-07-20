@@ -203,15 +203,25 @@ impl BandwidthBucket {
 
     /// Wait until `bytes` may be sent under the global cap, then charge them.
     ///
-    /// A single request larger than the burst is clamped to the burst for the
-    /// token cost (it can never wait for more than the bucket can hold) but the
-    /// full `bytes` are still counted in `granted_total` so accounting reflects
-    /// the real wire bytes. Unlimited buckets and zero-byte requests are no-ops.
+    /// A request larger than the bucket burst is split into burst-sized grants.
+    /// This avoids treating an arbitrarily large transfer as one burst while
+    /// keeping the public API safe for callers that do not already stream in
+    /// bounded chunks. Unlimited buckets and zero-byte requests are no-ops.
     pub async fn acquire(&self, bytes: u64) {
         if self.rate_bps == 0 || bytes == 0 {
             return;
         }
-        let need = (bytes.min(self.burst)) as f64;
+        let mut remaining = bytes;
+        while remaining > 0 {
+            let chunk = remaining.min(self.burst);
+            self.acquire_one(chunk).await;
+            remaining -= chunk;
+        }
+    }
+
+    async fn acquire_one(&self, bytes: u64) {
+        debug_assert!(bytes > 0 && bytes <= self.burst);
+        let need = bytes as f64;
         loop {
             let wait = {
                 let mut s = self.state.lock().expect("bandwidth state poisoned");
@@ -268,7 +278,10 @@ impl BandwidthBucket {
             s.tokens = (s.tokens + dt * self.rate_bps as f64).min(self.burst as f64);
             s.last_refill = now;
         }
-        let need = (bytes.min(self.burst)) as f64;
+        if bytes > self.burst {
+            return false;
+        }
+        let need = bytes as f64;
         if s.tokens >= need {
             s.tokens -= need;
             s.granted_total = s.granted_total.saturating_add(bytes);
@@ -644,6 +657,19 @@ mod tests {
         assert_eq!(bucket.granted_bytes(), burst + granted_after);
         // The window was genuinely productive (not a vacuous zero-grant pass).
         assert!(granted_after >= refill_budget - chunk);
+    }
+
+    #[test]
+    fn bandwidth_accounting_never_treats_a_large_request_as_one_burst() {
+        let rate = 4 * 1024 * 1024;
+        let bucket = BandwidthBucket::new(rate);
+        let t0 = bucket.refill_anchor();
+
+        assert!(
+            !bucket.try_consume_at(bucket.burst_bytes() + 1, t0),
+            "a request larger than the available burst must not be granted at one instant"
+        );
+        assert_eq!(bucket.granted_bytes(), 0);
     }
 
     #[tokio::test]
