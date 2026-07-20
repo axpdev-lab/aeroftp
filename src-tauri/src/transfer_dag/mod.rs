@@ -11,6 +11,7 @@ pub mod adaptive;
 pub mod aimd_hints;
 pub mod builder;
 pub mod capabilities;
+pub mod checkpoint;
 pub mod error;
 pub mod executor;
 pub mod governor;
@@ -35,6 +36,11 @@ pub use builder::{
     TransferGraphProfile,
 };
 pub use capabilities::{Capability, TransferCapabilities};
+pub use checkpoint::{
+    CheckpointDestinationIdentity, CheckpointLayout, CheckpointOpen, CheckpointPartReceipt,
+    CheckpointSourceIdentity, CheckpointStatus, MultipartCheckpoint, TransferCheckpointStore,
+    CHECKPOINT_SCHEMA_VERSION,
+};
 pub use error::{FailureScope, RetryDirective, TransferError, TransferErrorKind};
 pub use executor::{
     execute_dag, execute_dag_with_dispatch_window, execute_dag_with_options, DagExecuteOptions,

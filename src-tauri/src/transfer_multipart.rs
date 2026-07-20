@@ -289,6 +289,32 @@ impl MultipartFileState {
         self.begun.store(true, Ordering::Release);
     }
 
+    /// Restore a durable multipart session before the DAG starts. The caller
+    /// has already validated source/destination/layout identity in the durable
+    /// checkpoint store. Receipts still pass the same strict part-number and
+    /// duplicate checks as newly uploaded parts, so a corrupt journal cannot
+    /// make the commit node accept a fabricated complete upload.
+    pub async fn restore_session(
+        &self,
+        handle: MultipartHandle,
+        receipts: Vec<UploadedPart>,
+    ) -> Result<(), TransferFailure> {
+        if handle.remote_path.is_empty() {
+            return Err(TransferFailure {
+                kind: TransferFailureKind::Unknown,
+                message: "durable multipart checkpoint has an empty remote path".to_string(),
+                retryable: false,
+                retry_after_secs: None,
+            });
+        }
+        self.install_handle(handle).await;
+        for receipt in receipts {
+            let expected = receipt.part_number;
+            self.store_receipt_for_part(expected, receipt).await?;
+        }
+        Ok(())
+    }
+
     /// Clone the current handle if present.
     pub async fn clone_handle(&self) -> Option<MultipartHandle> {
         self.handle.lock().await.clone()

@@ -78,7 +78,7 @@ use std::sync::{Arc, Mutex as StdMutex};
 use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 
-use crate::providers::{ProviderError, StorageProvider};
+use crate::providers::{MultipartHandle, ProviderError, StorageProvider, UploadedPart};
 use crate::transfer_dag::executor::{
     execute_dag_with_options, DagExecuteOptions, DagNodeRunner, NodeFuture, NodeOutcome,
 };
@@ -99,6 +99,69 @@ pub type ProgressCallback = Box<dyn Fn(u64, u64) + Send>;
 /// The connected-provider handle shared between the GUI command state and the
 /// spawned DAG node tasks. `Option` because a session may be disconnected.
 pub type SharedProvider = Arc<Mutex<Option<Box<dyn StorageProvider>>>>;
+
+/// The small synchronous bridge between the durable journal and the async DAG
+/// runner. It never schedules work or owns provider permits; it merely makes a
+/// durable fact survive before the corresponding node becomes visible as done.
+struct DurableMultipartCheckpoint {
+    store: crate::transfer_dag::TransferCheckpointStore,
+    record: crate::transfer_dag::MultipartCheckpoint,
+}
+
+impl DurableMultipartCheckpoint {
+    fn restored_handle(&self) -> Option<MultipartHandle> {
+        self.record
+            .upload_id
+            .as_ref()
+            .map(|upload_id| MultipartHandle {
+                upload_id: upload_id.clone(),
+                remote_path: self.record.destination.remote_path.clone(),
+            })
+    }
+
+    fn restored_receipts(&self) -> Vec<UploadedPart> {
+        self.record
+            .receipts
+            .values()
+            .map(|receipt| UploadedPart {
+                part_number: receipt.part_number,
+                etag: receipt.etag.clone(),
+            })
+            .collect()
+    }
+
+    fn has_receipt(&self, part_number: u32) -> bool {
+        self.record.receipts.contains_key(&part_number)
+    }
+
+    fn begin(&mut self, handle: &MultipartHandle) -> Result<(), ProviderError> {
+        self.store
+            .begin(&mut self.record, handle.upload_id.clone())
+            .map_err(ProviderError::TransferFailed)
+    }
+
+    fn record_receipt(&mut self, receipt: &UploadedPart) -> Result<(), ProviderError> {
+        self.store
+            .record_receipt(
+                &mut self.record,
+                crate::transfer_dag::CheckpointPartReceipt {
+                    part_number: receipt.part_number,
+                    etag: receipt.etag.clone(),
+                },
+            )
+            .map_err(ProviderError::TransferFailed)
+    }
+
+    fn mark_committed(&mut self) -> Result<(), ProviderError> {
+        self.store
+            .mark_committed(&mut self.record)
+            .map_err(ProviderError::TransferFailed)
+    }
+
+    fn mark_failed(&mut self) {
+        let _ = self.store.mark_failed(&mut self.record);
+    }
+}
 
 /// Provider ownership accepted by the production copy DAG.
 ///
@@ -572,13 +635,23 @@ pub async fn execute_single_file_dag(
     // provider error is stashed here so the caller keeps exact error semantics.
     let first_error: Arc<StdMutex<Option<ProviderError>>> = Arc::new(StdMutex::new(None));
 
+    // Resolve the canonical endpoint once before the durable multipart state
+    // is built. The checkpoint identity includes provider + endpoint + remote
+    // destination, so receipts cannot bleed across accounts or destinations.
+    let (aimd_provider_type, endpoint) = {
+        let guard = provider.lock().await;
+        let provider = guard.as_ref().ok_or(ProviderError::NotConnected)?;
+        (Some(provider.provider_type()), provider.endpoint_identity())
+    };
+
     // The multipart context is set up once, only when the shape actually fans
     // out into N `UploadPart` nodes. When the transfer core is a single
     // `UploadFile` or `DownloadFile`, the context stays `None` and every
     // `UploadPart`/`CommitTemp` branch short-circuits to the legacy no-op.
-    let multipart_state: Option<Arc<MultipartFileState>> = if direction == TransferDirection::Upload
-        && built.profile.upload_parts > 1
-        && file_size > 0
+    let (multipart_state, durable_checkpoint): (
+        Option<Arc<MultipartFileState>>,
+        Option<Arc<StdMutex<DurableMultipartCheckpoint>>>,
+    ) = if direction == TransferDirection::Upload && built.profile.upload_parts > 1 && file_size > 0
     {
         let layout = MultipartLayout::from_profile(
             file_size,
@@ -592,9 +665,91 @@ pub async fn execute_single_file_dag(
             .enumerate()
             .map(|(idx, node_id)| (*node_id, (idx + 1) as u32))
             .collect();
-        Some(MultipartFileState::new(layout, node_to_part))
+        let source_meta = std::fs::metadata(&local_path).map_err(ProviderError::IoError)?;
+        let source = crate::transfer_dag::CheckpointSourceIdentity {
+            local_path: local_path.clone(),
+            size: source_meta.len(),
+            modified_unix_nanos: source_meta
+                .modified()
+                .ok()
+                .and_then(|stamp| stamp.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|stamp| stamp.as_nanos()),
+        };
+        let destination = crate::transfer_dag::CheckpointDestinationIdentity {
+            provider: format!("{:?}", aimd_provider_type.expect("provider resolved")),
+            protocol: endpoint.protocol.clone(),
+            host: endpoint.host.clone(),
+            account: endpoint.account.clone(),
+            remote_path: remote_path.clone(),
+        };
+        let checkpoint_layout = crate::transfer_dag::CheckpointLayout {
+            total_size: layout.total_size,
+            total_parts: layout.total_parts,
+            preferred_part_size: layout.preferred_part_size,
+        };
+        let store = crate::transfer_dag::TransferCheckpointStore::default_store()
+            .map_err(ProviderError::TransferFailed)?;
+        // Conservative orphan scavenging: only records past the durable TTL,
+        // only for this exact connected endpoint/provider, and only after a
+        // successful provider abort. Unknown, current, and failed-abort records
+        // stay intact for a later resume or a safer operator decision.
+        let stale = store
+            .stale_nonterminal()
+            .map_err(ProviderError::TransferFailed)?;
+        for stale_record in stale.into_iter().filter(|record| {
+            record.destination.provider
+                == format!(
+                    "{:?}",
+                    aimd_provider_type.as_ref().expect("provider resolved")
+                )
+                && record.destination.protocol == endpoint.protocol
+                && record.destination.host == endpoint.host
+                && record.destination.account == endpoint.account
+        }) {
+            let Some(upload_id) = stale_record.upload_id.clone() else {
+                store
+                    .remove(&stale_record.transfer_key)
+                    .map_err(ProviderError::TransferFailed)?;
+                continue;
+            };
+            let handle = MultipartHandle {
+                upload_id,
+                remote_path: stale_record.destination.remote_path.clone(),
+            };
+            let aborted = {
+                let mut guard = provider.lock().await;
+                let provider = guard.as_mut().ok_or(ProviderError::NotConnected)?;
+                provider.abort_multipart_upload(handle).await.is_ok()
+            };
+            if aborted {
+                store
+                    .remove(&stale_record.transfer_key)
+                    .map_err(ProviderError::TransferFailed)?;
+            }
+        }
+        let opened = store
+            .open_or_create(source, destination, checkpoint_layout)
+            .map_err(ProviderError::TransferFailed)?;
+        let checkpoint = Arc::new(StdMutex::new(DurableMultipartCheckpoint {
+            store,
+            record: opened.checkpoint,
+        }));
+        let state = MultipartFileState::new(layout, node_to_part);
+        if opened.resumed {
+            let restored = {
+                let checkpoint = checkpoint.lock().expect("checkpoint mutex poisoned");
+                (checkpoint.restored_handle(), checkpoint.restored_receipts())
+            };
+            if let Some(handle) = restored.0 {
+                state
+                    .restore_session(handle, restored.1)
+                    .await
+                    .map_err(|failure| ProviderError::TransferFailed(failure.message))?;
+            }
+        }
+        (Some(state), Some(checkpoint))
     } else {
-        None
+        (None, None)
     };
 
     let runner: Arc<dyn DagNodeRunner> = {
@@ -606,6 +761,7 @@ pub async fn execute_single_file_dag(
         let first_error = Arc::clone(&first_error);
         let report_size = Arc::clone(&report_size);
         let multipart_state = multipart_state.clone();
+        let durable_checkpoint = durable_checkpoint.clone();
         let cancel_token = cancel_token.clone();
         Arc::new(move |node: TransferNode| -> NodeFuture {
             let provider = Arc::clone(&provider);
@@ -616,6 +772,7 @@ pub async fn execute_single_file_dag(
             let first_error = Arc::clone(&first_error);
             let report_size = Arc::clone(&report_size);
             let multipart_state = multipart_state.clone();
+            let durable_checkpoint = durable_checkpoint.clone();
             let cancel_token = cancel_token.clone();
             Box::pin(async move {
                 match node.kind {
@@ -698,6 +855,18 @@ pub async fn execute_single_file_dag(
                                 FailureScope::Part,
                             );
                         };
+                        // A receipt is durable only after the checkpoint's
+                        // atomic write succeeded. On restart, receipt-backed
+                        // nodes complete without another provider upload, so
+                        // only the missing parts are dispatched to the wire.
+                        if durable_checkpoint.as_ref().is_some_and(|checkpoint| {
+                            checkpoint
+                                .lock()
+                                .expect("checkpoint mutex poisoned")
+                                .has_receipt(part_number)
+                        }) {
+                            return NodeOutcome::Completed;
+                        }
                         // 1. Lazy begin through the same once-guarded file state
                         //    used by the batch DAG runner.
                         let begin_result: Result<(), ProviderError> = state
@@ -720,6 +889,12 @@ pub async fn execute_single_file_dag(
                                 };
                                 match race_cancel(&cancel_token, begin).await {
                                     Ok(handle) => {
+                                        if let Some(checkpoint) = durable_checkpoint.as_ref() {
+                                            checkpoint
+                                                .lock()
+                                                .expect("checkpoint mutex poisoned")
+                                                .begin(&handle)?;
+                                        }
                                         state.install_handle(handle).await;
                                         Ok(())
                                     }
@@ -799,7 +974,28 @@ pub async fn execute_single_file_dag(
                         match upload_result {
                             Ok(receipt) => {
                                 match state.store_receipt_for_part(part_number, receipt).await {
-                                    Ok(()) => NodeOutcome::Completed,
+                                    Ok(()) => {
+                                        let receipt = state
+                                            .sorted_receipts_snapshot()
+                                            .await
+                                            .into_iter()
+                                            .find(|receipt| receipt.part_number == part_number)
+                                            .expect("stored receipt must be present");
+                                        if let Some(checkpoint) = durable_checkpoint.as_ref() {
+                                            if let Err(error) = checkpoint
+                                                .lock()
+                                                .expect("checkpoint mutex poisoned")
+                                                .record_receipt(&receipt)
+                                            {
+                                                return record_failure(
+                                                    &first_error,
+                                                    error,
+                                                    FailureScope::Part,
+                                                );
+                                            }
+                                        }
+                                        NodeOutcome::Completed
+                                    }
                                     Err(failure) => record_failure(
                                         &first_error,
                                         ProviderError::TransferFailed(failure.message),
@@ -871,6 +1067,25 @@ pub async fn execute_single_file_dag(
                                 };
                                 match result {
                                     Ok(()) => {
+                                        // The durable terminal fact must land
+                                        // before this node reports Completed.
+                                        // A crash after provider completion but
+                                        // before this write remains resumable
+                                        // and retries the provider complete;
+                                        // P2-03 owns checksum/commit semantics.
+                                        if let Some(checkpoint) = durable_checkpoint.as_ref() {
+                                            if let Err(error) = checkpoint
+                                                .lock()
+                                                .expect("checkpoint mutex poisoned")
+                                                .mark_committed()
+                                            {
+                                                return record_failure(
+                                                    &first_error,
+                                                    error,
+                                                    FailureScope::File,
+                                                );
+                                            }
+                                        }
                                         state.clear_handle_after_complete().await;
                                         NodeOutcome::Completed
                                     }
@@ -901,12 +1116,6 @@ pub async fn execute_single_file_dag(
 
     // DAG-P2-01: shared process-global buffer-byte pool (see governor.rs).
     let manager = crate::transfer_dag::governor::global().child_manager(single_file_budget(built));
-    let (aimd_provider_type, endpoint) = {
-        let guard = provider.lock().await;
-        let provider = guard.as_ref().ok_or(ProviderError::NotConnected)?;
-        (Some(provider.provider_type()), provider.endpoint_identity())
-    };
-
     let disk_request = match direction {
         TransferDirection::Upload => DiskLeaseRequest::read(local_path.clone()),
         TransferDirection::Download => DiskLeaseRequest::write(local_path.clone()),
@@ -954,14 +1163,18 @@ pub async fn execute_single_file_dag(
     )
     .await;
 
-    // On failure, best-effort abort an in-flight multipart session so the
-    // provider does not accumulate orphan upload IDs. Idempotent because the
-    // commit branch clears the handle ONLY on success, so this runs for both a
-    // failure before commit AND a commit-time failure (audit ERR-01); a
-    // successful commit leaves no handle and this is a no-op. `take()` ensures
-    // abort is called at most once even when fail-fast cancelled many parts.
+    // A durable multipart session is intentionally preserved after a failure:
+    // its journaled receipts are the proof that a restart may submit only the
+    // missing parts. Legacy in-memory multipart state keeps the old best-effort
+    // abort behavior. Expired durable records are scavenged conservatively by
+    // a later connected run, which can abort the matching provider session.
     if outcome.is_err() {
-        if let Some(state) = multipart_state.as_ref() {
+        if let Some(checkpoint) = durable_checkpoint.as_ref() {
+            checkpoint
+                .lock()
+                .expect("checkpoint mutex poisoned")
+                .mark_failed();
+        } else if let Some(state) = multipart_state.as_ref() {
             if let Some(handle) = state.take_for_abort().await {
                 let mut guard = provider.lock().await;
                 if let Some(p) = guard.as_mut() {
@@ -1918,7 +2131,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn cancel_token_aborts_in_flight_multipart_upload() {
+    async fn cancel_token_keeps_durable_multipart_session_for_resume() {
         let dir = tempfile::tempdir().expect("tempdir");
         let local = dir.path().join("source.bin");
         std::fs::write(&local, b"0123456789abcdefghij").expect("write source");
@@ -1986,8 +2199,8 @@ mod tests {
             "cancelled multipart upload must not be completed"
         );
         assert!(
-            *multipart_aborted.lock().unwrap(),
-            "cancelled multipart upload must abort the provider session"
+            !*multipart_aborted.lock().unwrap(),
+            "a durable checkpoint keeps the provider session for missing-part resume"
         );
     }
 

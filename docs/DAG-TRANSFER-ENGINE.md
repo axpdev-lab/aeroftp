@@ -138,12 +138,22 @@ This is the most complete DAG path. `execute_single_file_dag` binds
    each part reads its local slice (`read_chunk` → `vec![0u8; len]`) and
    calls `upload_part` while the lease is still held;
 3. receipts are collected and ordered by part number;
-4. `CommitTemp` calls `complete_multipart_upload`;
-5. a failed graph makes a best-effort `abort_multipart_upload` call.
+4. every successful receipt is atomically written to the transfer-versioned
+   durable checkpoint before its node completes;
+5. `CommitTemp` calls `complete_multipart_upload`, then writes the durable
+   `Committed` fact before the graph can report success;
+6. a failed or cancelled durable upload keeps its session and valid receipts for
+   restart, while a conservative TTL scavenger aborts only an expired matching
+   session and removes its record only after that abort succeeds.
 
 Part buffer sizing is shared: builder and runner use
 `multipart_part_byte_len(file_size, part_index, part_count,
 preferred_chunk_size)` so graph accounting cannot drift from the allocation.
+The checkpoint identity binds local path/size/mtime, provider, endpoint account,
+remote path and multipart layout. A matching restart restores only validated
+receipts and dispatches only missing parts. Checkpoints are process-external
+durable state; the P2-06 adaptive profile cache remains process-local and has
+no ownership of them.
 
 The runner first tries `clone_for_transfer()`. A clone-capable provider gets an
 independent worker per part; otherwise the provider is taken through the
