@@ -25,7 +25,7 @@ The audit rule used here is:
 | Single-file GUI `get` / `put` | `provider_commands::run_dag_*_leaf` → `execute_single_file_dag` (`src-tauri/src/provider_commands.rs:2289`, `:2438`) | `UploadFile`/`DownloadFile` bind to provider I/O; multipart binds begin/part/complete/abort; several structural nodes are no-ops | Shaped DAG is the normal network path, subject to the transfer router and explicit legacy override |
 | Single-file CLI `get` / `put` | `run_single_file_transfer` → `execute_single_file_dag` (`src-tauri/src/bin/aeroftp_cli.rs:8748-8767`) | Same shaped-file runner and provider binding | DAG is selected by the router for normal network transfers; local-to-local or explicit legacy routes bypass it |
 | Multi-file batch | `transfer_orchestrator::execute_batch` → `execute_batch_dag` (`src-tauri/src/transfer_orchestrator.rs:66-70`) | Graph from executor runtime capabilities (P1-01); capability-aware settings (P1-02); real per-part multipart wire I/O (P1-03) via shared `transfer_multipart` lifecycle | File-level parallelism for clone/session-pool providers; multipart batch files issue N wire `upload_part` calls with one begin/complete (or abort once after drain) |
-| Non-dry-run sync | `sync_tree_core` → `execute_sync_dag` (`src-tauri/src/sync.rs:1223-1238`) | Scan and planning happen before the graph; the graph wraps a precomputed plan and a serial file driver | DAG wrapper is active; file transfer remains serial by design; dry-run stays on the planning path |
+| Non-dry-run sync | `sync_tree_core` → `execute_sync_dag` (`src-tauri/src/sync.rs:1223-1238`) | Scan/planning precede the graph; normal files use bounded independent clone workers, while delta retains the primary `DeltaBatch` lane | Clone-backed providers use their live session ceiling; locked or failed-clone providers and every delta request stay serial; dry-run stays on planning path |
 | Segmented download | Provider/CLI adapters -> `run_concurrent_range_download` (`src-tauri/src/providers/multi_thread.rs:244`) | `shaped_ranges` drives real range requests and offset writes through `execute_dag`; the old `JoinSet` runner is test-only | Graph scheduling is the only production range scheduler; GUI Auto may still select one stream |
 | Same-provider copy | GUI `provider_server_copy`, CLI `cp`, and CLI WebDAV `COPY` -> `execute_copy_dag` -> `TransferDagBuilder::shaped_copy` | One `ServerSideCopy` core, or observable `DownloadFile` -> `UploadFile`; recoverable native rejection emits typed fallback before the second shape | Native copy reports logical bytes with `wire_bytes=0` and `local_payload_bytes=0`; fallback reports both payload legs |
 | Cross-profile transfer | `cross_profile_transfer::copy_one_file_with_options` (`src-tauri/src/cross_profile_transfer.rs:123-167`) | Source download → local temp file → destination upload, with optional SFTP delta and optional segmented source helper | Provider-owned/temp-file bridge; not one shared transfer DAG |
@@ -86,8 +86,9 @@ Four production wrappers call the core:
   provider operations;
 - `transfer_dag_batch` builds `from_batch_shaped` and adapts each file to the
   existing `TransferExecutor` session contract;
-- `transfer_dag_sync` builds `from_sync_plan_shaped` after scan/planning and
-  adapts graph nodes to a serial per-file driver.
+- `transfer_dag_sync` snapshots live capabilities after scan/planning, builds
+  `from_sync_plan_shaped`, and owns clone workers, primary delta session,
+  report aggregation, and progress replay explicitly.
 - `transfer_dag_single_file::execute_copy_dag` builds `shaped_copy` for GUI,
   CLI `cp`, and the CLI WebDAV bridge.
 
@@ -101,7 +102,7 @@ concurrent range orchestrator always consumes that shape in production.
 | Single-file core | `shaped_file(Download|Upload, caps, size)` | Active in normal GUI/CLI single-file network paths, with router and provider exceptions |
 | Multipart single-file | `shaped_file(Upload, caps, size)` → `UploadPart × N` | Active when the single-file runner receives multipart capabilities; independent wire workers only for the provider set listed below |
 | Batch | `from_batch_shaped(items, caps)` | Active graph wrapper; caps from `TransferExecutor::transfer_capabilities()`. Multipart files run real per-part wire I/O (DAG-P1-03); plain upload/download stay whole-file |
-| Sync | `from_sync_plan_shaped(plan, caps)` | Active for non-dry-run sync, with default capabilities, precomputed scan/plan, and serial file execution |
+| Sync | `from_sync_plan_shaped(plan, live caps)` | Active for non-dry-run sync; normal files use the clone-backed cap, while delta is an exclusive primary-session lane |
 | Copy | `shaped_copy(caps)` | Active for GUI copy, CLI `cp`, and CLI WebDAV `COPY`; native rejection fallback is observed and then runs an explicit two-node payload core |
 | Segmented download | `shaped_ranges(N)` | Active for every shared concurrent range download; legacy `JoinSet` retained only in the equivalence test harness |
 
@@ -289,12 +290,18 @@ which is a real benefit. The complete scan and plan are then materialized
 before graph construction. `DiscoverLocal`, `DiscoverRemote`, and `Compare`
 describe that plan but do not perform the scan/planning work themselves.
 
-The sync builder receives default capabilities at
-`src-tauri/src/transfer_dag_sync.rs:587-592`, the resource profile has one
-file slot at `:615`, and `drive_sync_transfers` consumes jobs serially. This is
-why the sync DAG should be described as a graph wrapper around a serial file
-driver, not as parallel sync orchestration. Dry-run remains on the legacy
-planning path by design.
+The sync runner snapshots `transfer_capabilities()` and allocates clone workers
+only when the provider's existing `clone_for_transfer` contract realizes its
+advertised session ceiling. The DAG `file_slots` use that same cap. Worker I/O
+returns recorded progress and outcomes to `drive_sync_transfers`, the sole
+owner of the caller sink and `SyncReport`, so completion order does not affect
+counters or per-file start/done integrity. A clone allocation failure demotes
+the operation to the former primary serial path.
+
+A requested delta sync always retains the primary provider and one
+`DeltaBatch`; it is dispatched only by the exclusive serial lane. Normal clone
+workers never borrow that session. Deletes still start only after every graph
+file node has drained, and dry-run remains on the legacy planning path.
 
 ## Segmented downloads
 
@@ -397,8 +404,9 @@ from the live provider plus clone/pool feasibility
 (`compose_runtime_transfer_capabilities` / `finalize_capabilities_for_session_model`).
 Provider batch settings resolve through
 `resolve_provider_transfer_runtime` and its single
-`resolve_transfer_settings_for_capabilities` pass (DAG-P1-02). The sync runner still
-uses `TransferCapabilities::default()` at its documented call site. The copy
+`resolve_transfer_settings_for_capabilities` pass (DAG-P1-02). The sync runner
+uses a live capability snapshot and demotes failed clone allocation to one file
+slot. The copy
 runner consumes the live provider snapshot before `shaped_copy`; the native
 node calls `server_side_copy`.
 
@@ -431,7 +439,7 @@ operation.
 | `src-tauri/src/transfer_dag/observer.rs` | Observer abstraction and adapters |
 | `src-tauri/src/transfer_dag_single_file.rs` | Real shaped single-file and same-provider copy runners |
 | `src-tauri/src/transfer_dag_batch.rs` | Batch graph wrapper and file-session adapter |
-| `src-tauri/src/transfer_dag_sync.rs` | Non-dry-run sync graph wrapper and serial driver |
+| `src-tauri/src/transfer_dag_sync.rs` | Non-dry-run sync graph wrapper, bounded normal worker ownership, and exclusive delta lane |
 | `src-tauri/src/providers/multi_thread.rs` | Shared graph range scheduler and test-only legacy equivalence runner |
 | `src-tauri/src/copy_fallback.rs` | Authoritative copy-fallback classifier and legacy compatibility helper |
 | `src-tauri/src/cross_profile_transfer.rs` | Temp-file cross-profile bridge |
@@ -451,8 +459,7 @@ is an explicit reminder that the transfer architecture is transitional.
 | Range graph migration | `shaped_ranges` is the only production concurrent range scheduler; the old `JoinSet` is test-only |
 | One fully converged engine for every surface | Shared core plus selected wrappers; batch/sync/copy/cross-profile still have documented adapters and limits |
 
-For the planned next steps (real sync concurrency, complete telemetry, and
-global resource governance), see
+For the planned next steps (complete telemetry and global resource governance), see
 the audit appendix at
 `docs/dev/roadmap/APPENDIX-DAG-ENGINE_Parallel-Transfers-Audit.md`.
 Bounded dispatch (P0-04), typed outcomes (P0-03), and graph-scoped

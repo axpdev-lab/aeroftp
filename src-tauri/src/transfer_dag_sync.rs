@@ -19,13 +19,14 @@
 //!
 //! ## What this actually buys
 //!
-//! A sync drives a single provider connection, so the per-file transfers are
-//! serial by nature (`file_slots = 1`). Routing them through the graph does
-//! not add transfer parallelism; it buys:
+//! A normal sync can own independent `clone_for_transfer` workers, bounded by
+//! the provider's live session ceiling and the graph's file slots. A requested
+//! rsync delta sync retains the primary provider and one `DeltaBatch` in an
+//! exclusive serial lane. Routing both modes through the graph buys:
 //!
-//! - **Parallel discovery.** The local filesystem walk and the network-bound
-//!   remote scan overlap (blocking thread + provider task), instead of
-//!   running back to back. This is the one real throughput win.
+//! - **Parallel discovery and normal-file transfer.** The local filesystem
+//!   walk overlaps the remote scan, and clone-backed providers can execute
+//!   bounded whole-file nodes concurrently.
 //! - **Structural uniformity** with the single-file (phase 1) and batch
 //!   (phase 2) graphs: one scheduler, one observability surface, and the
 //!   foundation phase 3 needs to make capability-aware nodes (server-side
@@ -57,14 +58,16 @@
 //! [`should_route_sync_to_dag`]) makes that a structural guarantee rather
 //! than a convention buried in the executor.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex as StdMutex};
 use std::time::Instant;
 
 use tokio::sync::{mpsc, oneshot};
+use tokio::task::JoinSet;
 
 use crate::delta_transport::DeltaBatch;
-use crate::providers::StorageProvider;
+use crate::provider_transfer_executor::compose_runtime_transfer_capabilities;
+use crate::providers::{ProviderTransferExecutorKind, StorageProvider};
 use crate::sync::{
     apply_sync_tree_outcome, decide_download, decide_upload, ensure_remote_dir, perform_download,
     perform_local_delete, perform_remote_delete, perform_upload, scan_options_for_sync,
@@ -81,9 +84,8 @@ use crate::transfer_dag::{
     TransferBudget, TransferCapabilities, TransferDagBuilder, TransferResourceManager,
 };
 
-/// Bounded capacity of the transfer-job channel. With `file_slots = 1` only
-/// one transfer node ever holds the slot, so at most one job is in flight;
-/// the buffer is pure headroom and the sender never blocks.
+/// Bounded capacity of the transfer-job channel. The DAG file-slot budget is
+/// the actual normal-file cap; this channel is bounded dispatch headroom.
 const JOB_CHANNEL_CAPACITY: usize = 32;
 
 /// Whether a sync call should route through the graph engine.
@@ -96,6 +98,7 @@ pub fn should_route_sync_to_dag(dry_run: bool) -> bool {
 }
 
 /// One resolved transfer in a sync plan, in plan order.
+#[derive(Clone)]
 struct PlannedTransfer {
     rel: String,
     /// `"upload"` or `"download"`: the operation label the legacy core
@@ -281,10 +284,100 @@ fn plan_sync_dag(
     }
 }
 
-/// A transfer node handing one planned file off to the serial driver.
+/// The session lane selected before a transfer node is dispatched.
+///
+/// A requested rsync delta run retains the primary provider and its one
+/// `DeltaBatch` for the whole session. Normal sync runs use only independent
+/// `clone_for_transfer` workers, never the primary session.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SyncTransferLane {
+    NormalPool,
+    DeltaExclusive,
+}
+
+fn transfer_lane(requested_policy: DeltaPolicy) -> SyncTransferLane {
+    if matches!(requested_policy, DeltaPolicy::Delta) {
+        SyncTransferLane::DeltaExclusive
+    } else {
+        SyncTransferLane::NormalPool
+    }
+}
+
+fn is_clone_backed_executor(kind: ProviderTransferExecutorKind) -> bool {
+    matches!(
+        kind,
+        ProviderTransferExecutorKind::HttpClonePool
+            | ProviderTransferExecutorKind::SftpConnectionPool
+            | ProviderTransferExecutorKind::FtpConnectionPool
+    )
+}
+
+/// Snapshot runtime capabilities and take ownership of normal-file workers.
+///
+/// The caller keeps the primary provider. Delta always uses that primary and
+/// therefore deliberately receives no clone workers. For normal syncs we
+/// create every worker through the existing `clone_for_transfer` contract;
+/// a partial allocation is discarded and the call falls back to one primary
+/// serial lane rather than overclaiming the provider's session ceiling.
+async fn prepare_normal_file_workers(
+    provider: &mut Box<dyn StorageProvider>,
+    requested_policy: DeltaPolicy,
+) -> (TransferCapabilities, Vec<Box<dyn StorageProvider>>) {
+    let advertised = provider.transfer_capabilities();
+    let executor_kind = provider.transfer_executor_kind();
+
+    if matches!(requested_policy, DeltaPolicy::Delta) || !is_clone_backed_executor(executor_kind) {
+        return (
+            compose_runtime_transfer_capabilities(&advertised, executor_kind, false),
+            Vec::new(),
+        );
+    }
+
+    let ceiling = advertised
+        .max_file_slots
+        .unwrap_or_else(|| provider.transfer_executor_max_sessions())
+        .min(provider.transfer_executor_max_sessions())
+        .max(1) as usize;
+    // A one-session "pool" cannot add parallelism. Keep the established
+    // primary serial path in that case, avoiding a needless extra login.
+    if ceiling < 2 {
+        return (
+            compose_runtime_transfer_capabilities(&advertised, executor_kind, false),
+            Vec::new(),
+        );
+    }
+
+    let mut workers = Vec::with_capacity(ceiling);
+    for _ in 0..ceiling {
+        match provider.clone_for_transfer() {
+            Ok(worker) => workers.push(worker),
+            Err(error) => {
+                tracing::info!(
+                    "sync normal file pool demoted to serial after clone allocation failed: {}",
+                    error
+                );
+                for mut worker in workers {
+                    let _ = worker.disconnect().await;
+                }
+                return (
+                    compose_runtime_transfer_capabilities(&advertised, executor_kind, false),
+                    Vec::new(),
+                );
+            }
+        }
+    }
+
+    (
+        compose_runtime_transfer_capabilities(&advertised, executor_kind, true),
+        workers,
+    )
+}
+
+/// A transfer node handing one planned file off to the ownership driver.
 struct TransferJob {
     /// Index into [`SyncDagPlan::transfers`].
     transfer_index: usize,
+    lane: SyncTransferLane,
     /// Resolved once the driver has performed the transfer.
     ack: oneshot::Sender<()>,
 }
@@ -305,11 +398,13 @@ fn build_sync_runner(
     node_to_index: Arc<HashMap<usize, usize>>,
     transfer_dispatched: Arc<StdMutex<Vec<bool>>>,
     job_tx: mpsc::Sender<TransferJob>,
+    lanes: Arc<Vec<SyncTransferLane>>,
 ) -> Arc<dyn DagNodeRunner> {
     Arc::new(move |node: TransferNode| -> NodeFuture {
         let node_to_index = Arc::clone(&node_to_index);
         let transfer_dispatched = Arc::clone(&transfer_dispatched);
         let job_tx = job_tx.clone();
+        let lanes = Arc::clone(&lanes);
         Box::pin(async move {
             if !matches!(
                 node.kind,
@@ -338,6 +433,7 @@ fn build_sync_runner(
             if job_tx
                 .send(TransferJob {
                     transfer_index,
+                    lane: lanes[transfer_index],
                     ack: ack_tx,
                 })
                 .await
@@ -352,13 +448,196 @@ fn build_sync_runner(
     })
 }
 
-/// Drain the transfer-job channel, performing each file serially.
+/// Progress produced by an independent normal-file worker.
 ///
-/// Runs on the `execute_sync_dag` task itself (not spawned), so it can hold
-/// the borrowed provider, delta batch, report and sink that the graph's
-/// spawned nodes cannot. The loop ends when every sender drops: that happens
-/// when `execute_dag` finishes its body and releases the runner, which is
-/// the only thing the channel needs to terminate cleanly.
+/// Workers never borrow the session's caller-owned sink. They record events
+/// and return them to the ownership driver, which is the only code that calls
+/// the real sink and aggregates the report. This keeps callback ordering
+/// coherent when files complete out of plan order.
+enum RecordedProgress {
+    Start {
+        rel: String,
+        total: u64,
+        op: &'static str,
+        decision_policy: DeltaPolicy,
+    },
+    Progress {
+        rel: String,
+        sent: u64,
+        total: u64,
+    },
+}
+
+struct RecordingProgressSink {
+    events: Vec<RecordedProgress>,
+    last_progress: HashMap<String, Instant>,
+}
+
+impl RecordingProgressSink {
+    fn replay(self, sink: &mut dyn SyncProgressSink) {
+        for event in self.events {
+            match event {
+                RecordedProgress::Start {
+                    rel,
+                    total,
+                    op,
+                    decision_policy,
+                } => sink.on_file_start(&rel, total, op, decision_policy),
+                RecordedProgress::Progress { rel, sent, total } => {
+                    sink.on_file_progress(&rel, sent, total)
+                }
+            }
+        }
+    }
+}
+
+impl SyncProgressSink for RecordingProgressSink {
+    fn on_phase(&mut self, _phase: SyncPhase) {}
+
+    fn on_file_start(
+        &mut self,
+        rel: &str,
+        total: u64,
+        op: &'static str,
+        decision_policy: DeltaPolicy,
+    ) {
+        self.events.push(RecordedProgress::Start {
+            rel: rel.to_string(),
+            total,
+            op,
+            decision_policy,
+        });
+    }
+
+    fn on_file_progress(&mut self, rel: &str, sent: u64, total: u64) {
+        // Preserve the P0-08 upper bound even before the caller's own
+        // throttling sink sees a worker's replayed events. A terminal update
+        // is always retained so a completed file cannot look stalled.
+        let now = Instant::now();
+        let emit = sent >= total
+            || self
+                .last_progress
+                .get(rel)
+                .is_none_or(|last| now.duration_since(*last).as_millis() >= 100);
+        if emit {
+            self.last_progress.insert(rel.to_string(), now);
+            self.events.push(RecordedProgress::Progress {
+                rel: rel.to_string(),
+                sent,
+                total,
+            });
+        }
+    }
+
+    fn on_file_done(&mut self, _rel: &str, _outcome: &FileOutcome) {}
+}
+
+struct NormalWorkerCompletion {
+    worker: Box<dyn StorageProvider>,
+    job: TransferJob,
+    outcome: FileOutcome,
+    progress: RecordingProgressSink,
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn perform_sync_transfer(
+    provider: &mut Box<dyn StorageProvider>,
+    delta_batch: &mut Option<Box<dyn DeltaBatch>>,
+    transfer: &PlannedTransfer,
+    local_root: &str,
+    remote_root: &str,
+    download_segments: u32,
+    requested_policy: DeltaPolicy,
+    sink: &mut dyn SyncProgressSink,
+    error_correction: &crate::sync::SyncErrorCorrectionOptions,
+) -> FileOutcome {
+    let spec = SyncTransferSpec {
+        rel: &transfer.rel,
+        total: transfer.total,
+        decision_policy: transfer.decision_policy,
+        requested_policy,
+    };
+    match transfer.op {
+        "upload" => {
+            perform_upload(
+                provider,
+                local_root,
+                remote_root,
+                spec,
+                false,
+                sink,
+                delta_batch,
+                error_correction,
+            )
+            .await
+        }
+        _ => {
+            perform_download(
+                provider,
+                local_root,
+                remote_root,
+                spec,
+                download_segments,
+                false,
+                sink,
+                delta_batch,
+                transfer.expected_sha256_hex.as_deref(),
+                error_correction,
+            )
+            .await
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn spawn_normal_worker(
+    workers: &mut VecDeque<Box<dyn StorageProvider>>,
+    jobs: &mut JoinSet<NormalWorkerCompletion>,
+    job: TransferJob,
+    transfer: PlannedTransfer,
+    local_root: String,
+    remote_root: String,
+    download_segments: u32,
+    requested_policy: DeltaPolicy,
+    error_correction: crate::sync::SyncErrorCorrectionOptions,
+) {
+    let mut worker = workers
+        .pop_front()
+        .expect("normal worker dispatch must have a clone lease");
+    jobs.spawn(async move {
+        let mut progress = RecordingProgressSink {
+            events: Vec::new(),
+            last_progress: HashMap::new(),
+        };
+        let mut no_delta_batch = None;
+        let outcome = perform_sync_transfer(
+            &mut worker,
+            &mut no_delta_batch,
+            &transfer,
+            &local_root,
+            &remote_root,
+            download_segments,
+            requested_policy,
+            &mut progress,
+            &error_correction,
+        )
+        .await;
+        NormalWorkerCompletion {
+            worker,
+            job,
+            outcome,
+            progress,
+        }
+    });
+}
+
+/// Drain transfer jobs while retaining explicit session ownership.
+///
+/// Normal files receive one independent clone worker each and are bounded by
+/// both the graph's file slots and the worker vector. Delta files never leave
+/// this driver: they retain the primary provider plus its one `DeltaBatch`, so
+/// no two delta operations can overlap. Report aggregation and calls to the
+/// caller-owned progress sink remain here, after each worker returns.
 #[allow(clippy::too_many_arguments)]
 async fn drive_sync_transfers(
     mut job_rx: mpsc::Receiver<TransferJob>,
@@ -372,54 +651,122 @@ async fn drive_sync_transfers(
     download_segments: u32,
     requested_policy: DeltaPolicy,
     error_correction: &crate::sync::SyncErrorCorrectionOptions,
+    normal_workers: Vec<Box<dyn StorageProvider>>,
 ) {
-    while let Some(job) = job_rx.recv().await {
-        let transfer = &transfers[job.transfer_index];
-        let spec = SyncTransferSpec {
-            rel: &transfer.rel,
-            total: transfer.total,
-            decision_policy: transfer.decision_policy,
-            requested_policy,
-        };
-        let outcome = match transfer.op {
-            "upload" => {
-                perform_upload(
-                    provider,
-                    local_root,
-                    remote_root,
-                    spec,
-                    false,
-                    sink,
-                    delta_batch,
-                    error_correction,
-                )
-                .await
+    let mut workers = VecDeque::from(normal_workers);
+    let mut normal_jobs = JoinSet::new();
+    let mut pending_normals: VecDeque<TransferJob> = VecDeque::new();
+    let mut channel_closed = false;
+
+    loop {
+        while !workers.is_empty() {
+            let Some(job) = pending_normals.pop_front() else {
+                break;
+            };
+            let transfer = transfers[job.transfer_index].clone();
+            spawn_normal_worker(
+                &mut workers,
+                &mut normal_jobs,
+                job,
+                transfer,
+                local_root.to_string(),
+                remote_root.to_string(),
+                download_segments,
+                requested_policy,
+                error_correction.clone(),
+            );
+        }
+
+        if channel_closed && normal_jobs.is_empty() && pending_normals.is_empty() {
+            break;
+        }
+
+        tokio::select! {
+            joined = normal_jobs.join_next(), if !normal_jobs.is_empty() => {
+                match joined.expect("normal worker set is non-empty") {
+                    Ok(completion) => {
+                        workers.push_back(completion.worker);
+                        completion.progress.replay(sink);
+                        let transfer = &transfers[completion.job.transfer_index];
+                        apply_sync_tree_outcome(
+                            report,
+                            &transfer.rel,
+                            transfer.op,
+                            completion.outcome,
+                            transfer.decision_policy,
+                            sink,
+                        );
+                        let _ = completion.job.ack.send(());
+                    }
+                    Err(error) => {
+                        // A provider worker panic is an executor fault, just
+                        // like a panic in the legacy serial driver. Log it
+                        // rather than fabricating a successful completion.
+                        tracing::error!("sync normal worker task stopped: {}", error);
+                    }
+                }
             }
-            _ => {
-                perform_download(
-                    provider,
-                    local_root,
-                    remote_root,
-                    spec,
-                    download_segments,
-                    false,
-                    sink,
-                    delta_batch,
-                    transfer.expected_sha256_hex.as_deref(),
-                    error_correction,
-                )
-                .await
+            received = job_rx.recv(), if !channel_closed => {
+                match received {
+                    Some(job) if matches!(job.lane, SyncTransferLane::NormalPool) && !workers.is_empty() => {
+                        let transfer = transfers[job.transfer_index].clone();
+                        spawn_normal_worker(
+                            &mut workers,
+                            &mut normal_jobs,
+                            job,
+                            transfer,
+                            local_root.to_string(),
+                            remote_root.to_string(),
+                            download_segments,
+                            requested_policy,
+                            error_correction.clone(),
+                        );
+                    }
+                    Some(job) if matches!(job.lane, SyncTransferLane::NormalPool) && normal_jobs.is_empty() => {
+                        // No honest clone pool was available. Reuse the
+                        // primary session exactly as the former serial driver.
+                        let transfer = &transfers[job.transfer_index];
+                        let outcome = perform_sync_transfer(
+                            provider,
+                            delta_batch,
+                            transfer,
+                            local_root,
+                            remote_root,
+                            download_segments,
+                            requested_policy,
+                            sink,
+                            error_correction,
+                        ).await;
+                        apply_sync_tree_outcome(report, &transfer.rel, transfer.op, outcome, transfer.decision_policy, sink);
+                        let _ = job.ack.send(());
+                    }
+                    Some(job) if matches!(job.lane, SyncTransferLane::NormalPool) => {
+                        pending_normals.push_back(job);
+                    }
+                    Some(job) => {
+                        // Delta retains the primary provider and the one
+                        // session-backed batch. This branch is deliberately
+                        // awaited in the driver, making the lane serial even
+                        // when normal clone tasks are in flight.
+                        let transfer = &transfers[job.transfer_index];
+                        let outcome = perform_sync_transfer(
+                            provider,
+                            delta_batch,
+                            transfer,
+                            local_root,
+                            remote_root,
+                            download_segments,
+                            requested_policy,
+                            sink,
+                            error_correction,
+                        ).await;
+                        apply_sync_tree_outcome(report, &transfer.rel, transfer.op, outcome, transfer.decision_policy, sink);
+                        let _ = job.ack.send(());
+                    }
+                    None => channel_closed = true,
+                }
             }
-        };
-        apply_sync_tree_outcome(
-            report,
-            &transfer.rel,
-            transfer.op,
-            outcome,
-            transfer.decision_policy,
-            sink,
-        );
-        let _ = job.ack.send(());
+        }
     }
 }
 
@@ -566,13 +913,19 @@ pub async fn execute_sync_dag(
             None
         };
 
+    // Snapshot the provider exactly once for this sync execution. Normal
+    // whole-file work receives all of the independently cloned sessions the
+    // provider honestly advertises; a delta request retains the primary
+    // session and intentionally demotes the normal pool to one serial lane.
+    let (sync_caps, normal_workers) =
+        prepare_normal_file_workers(provider, opts.delta_policy).await;
+
     if !plan.transfers.is_empty() {
         // One sync graph: a global DiscoverLocal/DiscoverRemote -> Compare
         // prefix, then a per-file transfer chain for every upload/download.
         // The shaped sync builder picks the transfer-core shape per entry
-        // from the shared capability snapshot; with default caps the graph
-        // is byte-identical with the legacy linear chain, so existing test
-        // surfaces and journal observers stay structurally equivalent.
+        // from the shared live capability snapshot. Transfer decisions remain
+        // the precomputed legacy decisions, so journal semantics stay stable.
         let sync_items: Vec<SyncDagItem> = plan
             .transfers
             .iter()
@@ -584,12 +937,7 @@ pub async fn execute_sync_dag(
                 SyncDagItem::with_size(transfer.rel.clone(), action, transfer.total)
             })
             .collect();
-        // Sync runs against one provider session, so the cap set is shared
-        // across files. Until the sync engine exposes its provider snapshot
-        // to this surface (the SG-T15 wire-in gate), default caps produce
-        // the same single-transfer-core shape as the legacy builder.
-        let caps = TransferCapabilities::default();
-        let sync_dag = TransferDagBuilder::from_sync_plan_shaped(&sync_items, &caps);
+        let sync_dag = TransferDagBuilder::from_sync_plan_shaped(&sync_items, &sync_caps);
 
         // The builder preserves plan order, so `files[i]` is `transfers[i]`.
         // Every transfer-core node in `transfer_nodes` maps back to the
@@ -609,21 +957,28 @@ pub async fn execute_sync_dag(
         // guard hands a `TransferJob` to the driver; the others fall
         // through as structural no-ops.
         let transfer_dispatched = Arc::new(StdMutex::new(vec![false; plan.transfers.len()]));
+        let lanes = Arc::new(
+            plan.transfers
+                .iter()
+                .map(|_| transfer_lane(opts.delta_policy))
+                .collect::<Vec<_>>(),
+        );
 
         let (job_tx, job_rx) = mpsc::channel::<TransferJob>(JOB_CHANNEL_CAPACITY);
-        let runner = build_sync_runner(node_to_index, transfer_dispatched, job_tx);
-        // A sync drives one provider connection: file_slots = 1 keeps the
-        // transfer nodes strictly serial, matching the single delta-batch
-        // session and the legacy core.
+        let runner = build_sync_runner(node_to_index, transfer_dispatched, job_tx, lanes);
+        // The manager is the existing bounded DAG resource model. Its file
+        // cap equals the live clone ceiling, or one after an honest demotion.
+        // Delta work is additionally serialized by the ownership driver.
         let manager = TransferResourceManager::new(
-            TransferBudget::from_file_slots(1).with_resolved_buffer_budget(),
+            TransferBudget::from_file_slots(sync_caps.max_file_slots.unwrap_or(1))
+                .clamped_for_capabilities(&sync_caps)
+                .with_resolved_buffer_budget(),
         );
         let observer: Arc<dyn DagObserver> = Arc::new(NoopDagObserver);
         let provider_type = provider.provider_type();
-        // AIMD backpressure (F3-T05). file_slots = 1 means the File class
-        // cannot shrink, so this is structurally inert today; it is wired for
-        // uniformity with the batch and single-file surfaces and so the Api
-        // class becomes live once a sync connection pool lands (Fase 3).
+        // AIMD backpressure (F3-T05) uses the same bounded file resource as
+        // the normal clone lane. A serial demotion retains the conservative
+        // one-slot behavior.
         let aimd = Arc::new(AimdController::from_budget_for_provider(
             &manager.budget(),
             Some(provider_type),
@@ -648,6 +1003,7 @@ pub async fn execute_sync_dag(
                 opts.download_segments,
                 opts.delta_policy,
                 &opts.error_correction,
+                normal_workers,
             );
             let (dag_result, ()) = tokio::join!(dag_future, driver_future);
             dag_result
@@ -718,14 +1074,206 @@ pub async fn execute_sync_dag(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::providers::{ProviderError, ProviderType, RemoteEntry as ProviderRemoteEntry};
     use crate::sync::{
         CompareDirection, JournalEntryStatus, RetryPolicy, SyncJournal, SyncJournalEntry,
         VerifyPolicy,
     };
     use crate::transfer_dag::observer::SyncJournalDagObserver;
-    use crate::transfer_dag::{NoopDagObserver, OrderedDagObserver};
+    use crate::transfer_dag::{Capability, NoopDagObserver, OrderedDagObserver};
+    use async_trait::async_trait;
+    use std::any::Any;
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Mutex as StdMutex;
     use std::time::Duration;
+    use tokio::sync::Barrier;
+
+    #[derive(Default)]
+    struct TestSyncSink {
+        starts: Vec<String>,
+        done: Vec<String>,
+    }
+
+    impl SyncProgressSink for TestSyncSink {
+        fn on_phase(&mut self, _phase: SyncPhase) {}
+
+        fn on_file_start(
+            &mut self,
+            rel: &str,
+            _total: u64,
+            _op: &'static str,
+            _decision_policy: DeltaPolicy,
+        ) {
+            self.starts.push(rel.to_string());
+        }
+
+        fn on_file_progress(&mut self, _rel: &str, _sent: u64, _total: u64) {}
+
+        fn on_file_done(&mut self, rel: &str, _outcome: &FileOutcome) {
+            self.done.push(rel.to_string());
+        }
+    }
+
+    struct BarrierProviderState {
+        barrier: Arc<Barrier>,
+        active: AtomicUsize,
+        peak: AtomicUsize,
+        clone_allowed: bool,
+    }
+
+    struct BarrierProvider {
+        state: Arc<BarrierProviderState>,
+    }
+
+    impl BarrierProvider {
+        fn new(barrier_parties: usize, clone_allowed: bool) -> (Self, Arc<BarrierProviderState>) {
+            let state = Arc::new(BarrierProviderState {
+                barrier: Arc::new(Barrier::new(barrier_parties)),
+                active: AtomicUsize::new(0),
+                peak: AtomicUsize::new(0),
+                clone_allowed,
+            });
+            (
+                Self {
+                    state: Arc::clone(&state),
+                },
+                state,
+            )
+        }
+
+        async fn enter_transfer(&self) {
+            let active = self.state.active.fetch_add(1, Ordering::SeqCst) + 1;
+            let mut observed = self.state.peak.load(Ordering::SeqCst);
+            while active > observed {
+                match self.state.peak.compare_exchange_weak(
+                    observed,
+                    active,
+                    Ordering::SeqCst,
+                    Ordering::SeqCst,
+                ) {
+                    Ok(_) => break,
+                    Err(next) => observed = next,
+                }
+            }
+            self.state.barrier.wait().await;
+            self.state.active.fetch_sub(1, Ordering::SeqCst);
+        }
+    }
+
+    #[async_trait]
+    impl StorageProvider for BarrierProvider {
+        fn as_any_mut(&mut self) -> &mut dyn Any {
+            self
+        }
+
+        fn provider_type(&self) -> ProviderType {
+            ProviderType::Ftp
+        }
+
+        fn display_name(&self) -> String {
+            "barrier-sync".to_string()
+        }
+
+        async fn connect(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn disconnect(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        fn is_connected(&self) -> bool {
+            true
+        }
+        async fn list(&mut self, _path: &str) -> Result<Vec<ProviderRemoteEntry>, ProviderError> {
+            Ok(Vec::new())
+        }
+        async fn pwd(&mut self) -> Result<String, ProviderError> {
+            Ok("/".to_string())
+        }
+        async fn cd(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn cd_up(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn download(
+            &mut self,
+            _remote: &str,
+            _local: &str,
+            _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            self.enter_transfer().await;
+            Ok(())
+        }
+        async fn download_to_bytes(&mut self, _remote: &str) -> Result<Vec<u8>, ProviderError> {
+            Ok(Vec::new())
+        }
+        async fn upload(
+            &mut self,
+            _local: &str,
+            _remote: &str,
+            _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            self.enter_transfer().await;
+            Ok(())
+        }
+        async fn mkdir(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn delete(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn rmdir(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn rmdir_recursive(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn rename(&mut self, _from: &str, _to: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn stat(&mut self, _path: &str) -> Result<ProviderRemoteEntry, ProviderError> {
+            Err(ProviderError::NotSupported("stat".to_string()))
+        }
+        async fn size(&mut self, _path: &str) -> Result<u64, ProviderError> {
+            Ok(1)
+        }
+        async fn exists(&mut self, _path: &str) -> Result<bool, ProviderError> {
+            Ok(true)
+        }
+        async fn keep_alive(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn server_info(&mut self) -> Result<String, ProviderError> {
+            Ok("barrier".to_string())
+        }
+
+        fn transfer_capabilities(&self) -> TransferCapabilities {
+            TransferCapabilities {
+                file_parallel: Capability::Supported,
+                session_pool: Capability::Supported,
+                max_file_slots: Some(2),
+                ..TransferCapabilities::default()
+            }
+        }
+
+        fn transfer_executor_kind(&self) -> ProviderTransferExecutorKind {
+            ProviderTransferExecutorKind::FtpConnectionPool
+        }
+
+        fn transfer_executor_max_sessions(&self) -> u16 {
+            2
+        }
+
+        fn clone_for_transfer(&self) -> Result<Box<dyn StorageProvider>, ProviderError> {
+            if self.state.clone_allowed {
+                Ok(Box::new(Self {
+                    state: Arc::clone(&self.state),
+                }))
+            } else {
+                Err(ProviderError::NotSupported("clone".to_string()))
+            }
+        }
+    }
 
     // ---- dry-run gate ----------------------------------------------------
 
@@ -772,6 +1320,147 @@ mod tests {
             error_correction: Default::default(),
             download_segments: 1,
         }
+    }
+
+    fn planned_upload(rel: &str, policy: DeltaPolicy) -> PlannedTransfer {
+        PlannedTransfer {
+            rel: rel.to_string(),
+            op: "upload",
+            total: 1,
+            decision_policy: policy,
+            expected_sha256_hex: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn normal_clone_workers_are_barrier_parallel_and_report_out_of_order_safely() {
+        let (primary, state) = BarrierProvider::new(2, true);
+        let mut primary: Box<dyn StorageProvider> = Box::new(primary);
+        let (caps, workers) =
+            prepare_normal_file_workers(&mut primary, DeltaPolicy::SizeOnly).await;
+        assert_eq!(caps.max_file_slots, Some(2));
+        assert_eq!(workers.len(), 2);
+
+        let transfers = vec![
+            planned_upload("first.bin", DeltaPolicy::SizeOnly),
+            planned_upload("second.bin", DeltaPolicy::SizeOnly),
+        ];
+        let (tx, rx) = mpsc::channel(JOB_CHANNEL_CAPACITY);
+        let (first_ack_tx, first_ack_rx) = oneshot::channel();
+        let (second_ack_tx, second_ack_rx) = oneshot::channel();
+        tx.send(TransferJob {
+            transfer_index: 0,
+            lane: SyncTransferLane::NormalPool,
+            ack: first_ack_tx,
+        })
+        .await
+        .unwrap();
+        tx.send(TransferJob {
+            transfer_index: 1,
+            lane: SyncTransferLane::NormalPool,
+            ack: second_ack_tx,
+        })
+        .await
+        .unwrap();
+        drop(tx);
+
+        let mut delta_batch = None;
+        let mut report = SyncReport::default();
+        let mut sink = TestSyncSink::default();
+        tokio::time::timeout(
+            Duration::from_secs(1),
+            drive_sync_transfers(
+                rx,
+                &mut primary,
+                &mut delta_batch,
+                &mut report,
+                &mut sink,
+                &transfers,
+                "/local",
+                "/remote",
+                1,
+                DeltaPolicy::SizeOnly,
+                &Default::default(),
+                workers,
+            ),
+        )
+        .await
+        .expect("two clone workers must meet the barrier");
+
+        assert!(first_ack_rx.await.is_ok());
+        assert!(second_ack_rx.await.is_ok());
+        assert_eq!(state.peak.load(Ordering::SeqCst), 2);
+        assert_eq!(report.uploaded, 2);
+        assert_eq!(report.error_count(), 0);
+        assert_eq!(sink.starts.len(), 2);
+        assert_eq!(sink.done.len(), 2);
+        assert!(sink.starts.iter().all(|rel| sink.done.contains(rel)));
+    }
+
+    #[tokio::test]
+    async fn delta_lane_is_serial_and_clone_failure_demotes_to_primary() {
+        let (primary, state) = BarrierProvider::new(1, false);
+        let mut primary: Box<dyn StorageProvider> = Box::new(primary);
+        let (caps, workers) =
+            prepare_normal_file_workers(&mut primary, DeltaPolicy::SizeOnly).await;
+        assert_eq!(caps.max_file_slots, Some(1));
+        assert!(workers.is_empty());
+
+        let transfers = vec![
+            planned_upload("delta-one.bin", DeltaPolicy::Delta),
+            planned_upload("delta-two.bin", DeltaPolicy::Delta),
+        ];
+        let (tx, rx) = mpsc::channel(JOB_CHANNEL_CAPACITY);
+        let (first_ack_tx, first_ack_rx) = oneshot::channel();
+        let (second_ack_tx, second_ack_rx) = oneshot::channel();
+        tx.send(TransferJob {
+            transfer_index: 0,
+            lane: SyncTransferLane::DeltaExclusive,
+            ack: first_ack_tx,
+        })
+        .await
+        .unwrap();
+        tx.send(TransferJob {
+            transfer_index: 1,
+            lane: SyncTransferLane::DeltaExclusive,
+            ack: second_ack_tx,
+        })
+        .await
+        .unwrap();
+        drop(tx);
+
+        let mut delta_batch = None;
+        let mut report = SyncReport::default();
+        let mut sink = TestSyncSink::default();
+        drive_sync_transfers(
+            rx,
+            &mut primary,
+            &mut delta_batch,
+            &mut report,
+            &mut sink,
+            &transfers,
+            "/local",
+            "/remote",
+            1,
+            DeltaPolicy::Delta,
+            &Default::default(),
+            Vec::new(),
+        )
+        .await;
+
+        assert!(first_ack_rx.await.is_ok());
+        assert!(second_ack_rx.await.is_ok());
+        assert_eq!(state.peak.load(Ordering::SeqCst), 1);
+        assert_eq!(report.uploaded, 2);
+        assert_eq!(report.error_count(), 0);
+        assert_eq!(
+            transfer_lane(DeltaPolicy::Delta),
+            SyncTransferLane::DeltaExclusive
+        );
+        assert_eq!(
+            transfer_lane(DeltaPolicy::Mtime),
+            SyncTransferLane::NormalPool
+        );
     }
 
     #[test]
@@ -889,7 +1578,12 @@ mod tests {
 
         let (job_tx, mut job_rx) = mpsc::channel::<TransferJob>(JOB_CHANNEL_CAPACITY);
         let transfer_dispatched = Arc::new(StdMutex::new(vec![false; sync_dag.files.len()]));
-        let runner = build_sync_runner(node_to_index, transfer_dispatched, job_tx);
+        let runner = build_sync_runner(
+            node_to_index,
+            transfer_dispatched,
+            job_tx,
+            Arc::new(vec![SyncTransferLane::NormalPool; sync_dag.files.len()]),
+        );
         let manager = TransferResourceManager::new(TransferBudget::from_file_slots(1));
         let observer: Arc<dyn DagObserver> = Arc::new(NoopDagObserver);
 
@@ -920,7 +1614,12 @@ mod tests {
         let node_to_index: Arc<HashMap<usize, usize>> = Arc::new(HashMap::new());
         let (job_tx, mut job_rx) = mpsc::channel::<TransferJob>(JOB_CHANNEL_CAPACITY);
         let transfer_dispatched = Arc::new(StdMutex::new(Vec::new()));
-        let runner = build_sync_runner(node_to_index, transfer_dispatched, job_tx);
+        let runner = build_sync_runner(
+            node_to_index,
+            transfer_dispatched,
+            job_tx,
+            Arc::new(Vec::new()),
+        );
         let manager = TransferResourceManager::new(TransferBudget::from_file_slots(1));
         let observer: Arc<dyn DagObserver> = Arc::new(NoopDagObserver);
 
