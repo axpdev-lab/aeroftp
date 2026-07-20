@@ -2263,11 +2263,32 @@ impl StorageProvider for DropboxProvider {
         })
     }
 
+    // DAG-P2-05: Dropbox append_v2 is a single send with a known length and no
+    // whole-part hashing, so stream the part body one bounded window at a time
+    // instead of buffering the whole part in memory.
+    fn multipart_streams_part_body(&self) -> bool {
+        true
+    }
+
     async fn upload_part(
         &mut self,
         handle: &MultipartHandle,
         part_number: u32,
         data: Vec<u8>,
+    ) -> Result<UploadedPart, ProviderError> {
+        self.upload_part_body(
+            handle,
+            part_number,
+            crate::transfer_multipart::PartBody::owned(data),
+        )
+        .await
+    }
+
+    async fn upload_part_body(
+        &mut self,
+        handle: &MultipartHandle,
+        part_number: u32,
+        body: crate::transfer_multipart::PartBody,
     ) -> Result<UploadedPart, ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
@@ -2277,7 +2298,8 @@ impl StorageProvider for DropboxProvider {
                 "Dropbox upload_part requires 1-based part_number".to_string(),
             ));
         }
-        if data.is_empty() {
+        let part_len = body.len();
+        if part_len == 0 {
             return Err(ProviderError::Other(
                 "Dropbox upload_part received empty data".to_string(),
             ));
@@ -2285,15 +2307,12 @@ impl StorageProvider for DropboxProvider {
         let meta = DropboxMultipartMeta::decode(&handle.upload_id)?;
         let offset = (part_number as u64 - 1) * meta.part;
         let end = offset
-            .checked_add(data.len() as u64)
+            .checked_add(part_len)
             .ok_or_else(|| ProviderError::Other("Dropbox part offset overflow".to_string()))?;
         if end > meta.total {
             return Err(ProviderError::Other(format!(
                 "Dropbox part {} exceeds declared total: offset {} + len {} > total {}",
-                part_number,
-                offset,
-                data.len(),
-                meta.total
+                part_number, offset, part_len, meta.total
             )));
         }
 
@@ -2313,7 +2332,10 @@ impl StorageProvider for DropboxProvider {
             .header(AUTHORIZATION, auth)
             .header(CONTENT_TYPE, "application/octet-stream")
             .header("Dropbox-API-Arg", append_arg.to_string())
-            .body(data)
+            // DAG-P2-05: explicit length so the streamed body is fixed-length,
+            // never chunked.
+            .header("Content-Length", part_len.to_string())
+            .body(body.into_reqwest_body())
             .send()
             .await
             .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;

@@ -67,8 +67,7 @@ use crate::transfer_domain::{
 };
 use crate::transfer_event_sink::TransferEventSink;
 use crate::transfer_multipart::{
-    cancelled_failure, read_chunk, unsupported_multipart_failure, MultipartFileState,
-    MultipartLayout,
+    cancelled_failure, unsupported_multipart_failure, MultipartFileState, MultipartLayout,
 };
 use crate::transfer_orchestrator::{ProgressObserver, TransferBatch, TransferExecutor};
 
@@ -777,19 +776,10 @@ where
         }
     };
 
-    let data = match read_chunk(&entry.local_path, offset, len).await {
-        Ok(buf) => buf,
-        Err(error) => {
-            state
-                .record_failure(crate::transfer_multipart::transfer_failure_from_provider(
-                    &error,
-                    Some(&entry.local_path),
-                ))
-                .await;
-            return NodeOutcome::Completed;
-        }
-    };
-
+    // DAG-P2-05: hand the part as a disk slice, not an owned buffer. Streaming
+    // providers read a bounded window; owning providers materialize it inside
+    // `multipart_upload_part_body`. Both stay inside the held `buffer_bytes`
+    // lease, and a read error surfaces as a typed part failure from the call.
     if cancel.load(Ordering::Relaxed) || executor.is_transfer_cancelled() {
         // Session already begun: cancel is a terminal file failure.
         state.record_failure(cancelled_failure()).await;
@@ -797,7 +787,12 @@ where
     }
 
     match executor
-        .multipart_upload_part(&entry, &handle, part_number, data)
+        .multipart_upload_part_body(
+            &entry,
+            &handle,
+            part_number,
+            crate::transfer_multipart::PartBody::disk_slice(entry.local_path.clone(), offset, len),
+        )
         .await
     {
         Ok(receipt) => {

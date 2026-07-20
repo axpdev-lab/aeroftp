@@ -1512,6 +1512,22 @@ impl TransferExecutor for ProviderUploadExecutor {
         part_number: u32,
         data: Vec<u8>,
     ) -> Result<UploadedPart, TransferFailure> {
+        self.multipart_upload_part_body(
+            entry,
+            handle,
+            part_number,
+            crate::transfer_multipart::PartBody::owned(data),
+        )
+        .await
+    }
+
+    async fn multipart_upload_part_body(
+        &self,
+        entry: &TransferEntry,
+        handle: &MultipartHandle,
+        part_number: u32,
+        body: crate::transfer_multipart::PartBody,
+    ) -> Result<UploadedPart, TransferFailure> {
         if self.cancel_token.is_cancelled() {
             return Err(crate::transfer_multipart::cancelled_failure());
         }
@@ -1527,15 +1543,18 @@ impl TransferExecutor for ProviderUploadExecutor {
             clone_multipart_worker(provider.as_mut())
         };
 
+        // DAG-P2-05: thread the `PartBody` to the provider's streaming entry
+        // point. Streaming-capable providers avoid materializing the whole part;
+        // the rest fall back to their owned-buffer `upload_part` via the default.
         let upload = async {
             if let Some(mut worker) = cloned_worker {
-                worker.upload_part(handle, part_number, data).await
+                worker.upload_part_body(handle, part_number, body).await
             } else {
                 let mut guard = self.provider.lock().await;
                 let provider = guard
                     .as_mut()
                     .ok_or(crate::providers::ProviderError::NotConnected)?;
-                provider.upload_part(handle, part_number, data).await
+                provider.upload_part_body(handle, part_number, body).await
             }
         };
 

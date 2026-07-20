@@ -113,6 +113,30 @@ pub trait TransferExecutor {
         Err(unsupported_multipart_failure())
     }
 
+    /// Upload one numbered part from a [`PartBody`] (DAG-P2-05).
+    ///
+    /// The default materializes the body and delegates to
+    /// [`multipart_upload_part`](TransferExecutor::multipart_upload_part), so
+    /// conservative and test executors keep their existing behaviour. The
+    /// production provider executor overrides this to thread the `PartBody`
+    /// through the provider's streaming `upload_part_body`.
+    async fn multipart_upload_part_body(
+        &self,
+        entry: &TransferEntry,
+        handle: &MultipartHandle,
+        part_number: u32,
+        body: crate::transfer_multipart::PartBody,
+    ) -> Result<UploadedPart, TransferFailure> {
+        let data = body.into_owned_bytes().await.map_err(|error| {
+            crate::transfer_multipart::transfer_failure_from_provider(
+                &error,
+                Some(&entry.local_path),
+            )
+        })?;
+        self.multipart_upload_part(entry, handle, part_number, data)
+            .await
+    }
+
     /// Complete a multipart session with receipts sorted by part number.
     async fn multipart_complete(
         &self,

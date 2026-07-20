@@ -76,9 +76,22 @@ as a child via `governor::child_manager(budget)`. K concurrent jobs therefore
 cannot each claim the full budget, and the single oversize allowance is
 serialised across all jobs, not merely within one. A single job alone sees the
 same budget and behaviour as before (the pool is sized by the same P0-06
-policy). The legacy non-DAG concurrent upload path in
-`providers/multi_thread.rs` (`read_part_from_disk`) still allocates its
-full-part buffers outside these credits. On the first node failure the executor cancels a graph-scoped token
+policy).
+
+As of `DAG-P2-05`, a multipart part is handed to the provider as a `PartBody`
+(`transfer_multipart.rs`), not a pre-read `Vec<u8>`. Providers whose part upload
+is a single send with a known length and no whole-part hashing (WebDAV/Nextcloud,
+Dropbox, Drime, pCloud, Uploadcare, Google Drive, Yandex Disk, OneDrive,
+OpenDrive, Cloudinary) stream the part from disk one bounded
+`PART_STREAM_WINDOW_BYTES` (128 KiB) window at a time through a reusable window
+pool, so those parts reserve only a window of `buffer_bytes` (not the whole part)
+and many more fit the shared budget concurrently. Providers that must own the
+whole part to hash, sign or encrypt it (S3 signed payload, B2/Box SHA-1, Azure,
+MEGA, Filen) keep the full-part reservation and a full owned buffer: honest and
+unchanged. The legacy non-DAG concurrent upload path in
+`providers/multi_thread.rs` (`read_part_from_disk`, used only by B2, which needs
+the whole part for its `x-bz-content-sha1` header) still allocates its full-part
+buffers outside these credits. On the first node failure the executor cancels a graph-scoped token
 (optionally a child of an external parent), stops new dispatch, and
 terminates resident siblings within two seconds: cooperative cancel first,
 then forced `JoinSet` abort, followed by one bounded drain. This bound
@@ -142,8 +155,10 @@ This is the most complete DAG path. `execute_single_file_dag` binds
 
 1. the first part lazily calls `begin_multipart_upload`;
 2. the executor acquires the part's directional + buffer-byte lease, then
-   each part reads its local slice (`read_chunk` → `vec![0u8; len]`) and
-   calls `upload_part` while the lease is still held;
+   hands the part to the provider as a `PartBody::DiskSlice` (DAG-P2-05) and
+   calls `upload_part_body` while the lease is still held: streaming providers
+   read a bounded window at a time, owning providers materialize the slice into
+   an owned buffer;
 3. receipts are collected and ordered by part number;
 4. every successful receipt is atomically written to the transfer-versioned
    durable checkpoint before its node completes;

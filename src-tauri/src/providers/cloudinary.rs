@@ -1373,11 +1373,32 @@ impl StorageProvider for CloudinaryProvider {
         })
     }
 
+    // DAG-P2-05: Cloudinary chunked upload is a single multipart POST with a
+    // known Content-Range and no whole-part hashing, so stream the part body one
+    // bounded window at a time instead of buffering the whole part in memory.
+    fn multipart_streams_part_body(&self) -> bool {
+        true
+    }
+
     async fn upload_part(
         &mut self,
         handle: &MultipartHandle,
         part_number: u32,
         data: Vec<u8>,
+    ) -> Result<UploadedPart, ProviderError> {
+        self.upload_part_body(
+            handle,
+            part_number,
+            crate::transfer_multipart::PartBody::owned(data),
+        )
+        .await
+    }
+
+    async fn upload_part_body(
+        &mut self,
+        handle: &MultipartHandle,
+        part_number: u32,
+        body: crate::transfer_multipart::PartBody,
     ) -> Result<UploadedPart, ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
@@ -1387,7 +1408,8 @@ impl StorageProvider for CloudinaryProvider {
                 "Cloudinary upload_part requires 1-based part_number".to_string(),
             ));
         }
-        if data.is_empty() {
+        let part_len = body.len();
+        if part_len == 0 {
             return Err(ProviderError::Other(
                 "Cloudinary upload_part received empty data".to_string(),
             ));
@@ -1400,20 +1422,19 @@ impl StorageProvider for CloudinaryProvider {
             )));
         }
         let offset = (part_number as u64 - 1) * meta.part;
-        let len = data.len() as u64;
         let end = offset
-            .checked_add(len)
+            .checked_add(part_len)
             .ok_or_else(|| ProviderError::Other("Cloudinary part offset overflow".to_string()))?;
         if end > meta.total {
             return Err(ProviderError::Other(format!(
                 "Cloudinary part {} exceeds declared total: offset {} + len {} > total {}",
-                part_number, offset, len, meta.total
+                part_number, offset, part_len, meta.total
             )));
         }
         let content_range = format!("bytes {}-{}/{}", offset, end - 1, meta.total);
 
         let mime = mime_guess::from_path(&meta.file_name).first_or_octet_stream();
-        let file_part = multipart::Part::bytes(data)
+        let file_part = multipart::Part::stream_with_length(body.into_reqwest_body(), part_len)
             .file_name(meta.file_name.clone())
             .mime_str(mime.as_ref())
             .map_err(|e| ProviderError::InvalidConfig(e.to_string()))?;

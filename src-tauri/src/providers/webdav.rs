@@ -3702,11 +3702,32 @@ impl StorageProvider for WebDavProvider {
         })
     }
 
+    // DAG-P2-05: Nextcloud chunked PUT is a single send with a known length and
+    // no whole-part hashing, so stream the part body one bounded window at a time
+    // instead of buffering the whole part in memory.
+    fn multipart_streams_part_body(&self) -> bool {
+        true
+    }
+
     async fn upload_part(
         &mut self,
         handle: &MultipartHandle,
         part_number: u32,
         data: Vec<u8>,
+    ) -> Result<UploadedPart, ProviderError> {
+        self.upload_part_body(
+            handle,
+            part_number,
+            crate::transfer_multipart::PartBody::owned(data),
+        )
+        .await
+    }
+
+    async fn upload_part_body(
+        &mut self,
+        handle: &MultipartHandle,
+        part_number: u32,
+        body: crate::transfer_multipart::PartBody,
     ) -> Result<UploadedPart, ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
@@ -3724,12 +3745,12 @@ impl StorageProvider for WebDavProvider {
                 ProviderError::Other("Failed to build Nextcloud chunk URL".to_string())
             })?;
 
-        let part_len = data.len() as u64;
+        let part_len = body.len();
         let response = self
             .request_url(Method::PUT, &chunk_url)
             .header("Content-Length", part_len)
             .header("OC-Total-Length", payload.total_size)
-            .body(data)
+            .body(body.into_reqwest_body())
             .send()
             .await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;

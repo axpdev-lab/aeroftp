@@ -301,6 +301,13 @@ pub struct TransferGraphProfile {
     /// remains of the file. `0` means no preference — the runner falls
     /// back to the `file_size / upload_parts` div_ceil distribution.
     pub preferred_chunk_size: u64,
+    /// DAG-P2-05: the provider streams each multipart part from disk one bounded
+    /// window at a time instead of holding the whole part in memory. When `true`
+    /// every `UploadPart` node reserves only a streaming window of `buffer_bytes`
+    /// (`PART_STREAM_WINDOW_BYTES`) rather than the full part size, so more parts
+    /// fit the governor budget concurrently. Sourced from
+    /// `TransferCapabilities::multipart_streaming_body`.
+    pub streams_part_body: bool,
 }
 
 impl TransferGraphProfile {
@@ -368,6 +375,9 @@ impl TransferGraphProfile {
             api_slots,
             max_chunk_slots,
             preferred_chunk_size,
+            // Only meaningful for a real multipart fan-out; a single PUT never
+            // reserves a part window.
+            streams_part_body: multipart_eligible && caps.multipart_streaming_body,
         }
     }
 }
@@ -890,10 +900,21 @@ fn append_transfer_core(
                 profile.upload_parts,
                 profile.preferred_chunk_size,
             );
+            // DAG-P2-05: a streaming provider holds only a bounded window in
+            // memory while it uploads the part, so reserve the window, not the
+            // whole part. Owning providers keep the full-part reservation. The
+            // runner hands the matching `PartBody` (disk slice vs owned buffer),
+            // and the reservation never under-counts because both derive from the
+            // same provider capability.
+            let buffer_bytes = if profile.streams_part_body {
+                (crate::transfer_multipart::PART_STREAM_WINDOW_BYTES as u64).min(part_bytes)
+            } else {
+                part_bytes
+            };
             transfer.push(dag.add_node(
                 TransferNodeKind::UploadPart,
                 parent_dep,
-                part_request(profile.api_slots, part_bytes),
+                part_request(profile.api_slots, buffer_bytes),
             ));
         }
     } else {
@@ -1731,6 +1752,53 @@ mod tests {
             max_chunk_slots: Some(4),
             multipart_threshold: 0, // unset: fan out at chunk size
             ..TransferCapabilities::default()
+        }
+    }
+
+    fn caps_multipart_streaming(chunk_size: u64) -> TransferCapabilities {
+        TransferCapabilities {
+            multipart_streaming_body: true,
+            ..caps_multipart(chunk_size)
+        }
+    }
+
+    #[test]
+    fn streaming_multipart_parts_reserve_only_a_window_not_the_whole_part() {
+        // DAG-P2-05: a streaming provider holds only a bounded window per part,
+        // so every UploadPart node reserves that window of `buffer_bytes`, not
+        // the full 8 MiB part an owning provider must reserve.
+        let file_size = 40 * 1024 * 1024;
+        let chunk = 8 * 1024 * 1024;
+        let streaming = TransferDagBuilder::shaped_file(
+            TransferDirection::Upload,
+            &caps_multipart_streaming(chunk),
+            file_size,
+        );
+        let owning = TransferDagBuilder::shaped_file(
+            TransferDirection::Upload,
+            &caps_multipart(chunk),
+            file_size,
+        );
+
+        assert!(streaming.profile.streams_part_body);
+        assert!(!owning.profile.streams_part_body);
+        assert_eq!(streaming.transfer.len(), owning.transfer.len());
+
+        let window = crate::transfer_multipart::PART_STREAM_WINDOW_BYTES as u64;
+        for idx in 0..streaming.transfer.len() {
+            let full = multipart_part_byte_len(file_size, idx, owning.profile.upload_parts, chunk);
+            let streamed = streaming.dag.nodes()[streaming.transfer[idx]]
+                .resources
+                .buffer_bytes;
+            let owned = owning.dag.nodes()[owning.transfer[idx]]
+                .resources
+                .buffer_bytes;
+            assert_eq!(owned, full);
+            assert_eq!(streamed, window.min(full));
+            assert!(
+                streamed < owned,
+                "streaming part must reserve strictly less than the full part"
+            );
         }
     }
 

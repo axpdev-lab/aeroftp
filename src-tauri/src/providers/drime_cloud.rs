@@ -2332,11 +2332,32 @@ impl StorageProvider for DrimeCloudProvider {
         })
     }
 
+    // DAG-P2-05: Drime's presigned S3 PUT is a single send with a known length
+    // and no whole-part hashing, so stream the part body one bounded window at a
+    // time instead of buffering the whole part in memory.
+    fn multipart_streams_part_body(&self) -> bool {
+        true
+    }
+
     async fn upload_part(
         &mut self,
         handle: &MultipartHandle,
         part_number: u32,
         data: Vec<u8>,
+    ) -> Result<UploadedPart, ProviderError> {
+        self.upload_part_body(
+            handle,
+            part_number,
+            crate::transfer_multipart::PartBody::owned(data),
+        )
+        .await
+    }
+
+    async fn upload_part_body(
+        &mut self,
+        handle: &MultipartHandle,
+        part_number: u32,
+        body: crate::transfer_multipart::PartBody,
     ) -> Result<UploadedPart, ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
@@ -2346,7 +2367,8 @@ impl StorageProvider for DrimeCloudProvider {
                 "Drime upload_part requires 1-based part_number".to_string(),
             ));
         }
-        if data.is_empty() {
+        let part_len = body.len();
+        if part_len == 0 {
             return Err(ProviderError::Other(
                 "Drime upload_part received empty data".to_string(),
             ));
@@ -2368,12 +2390,21 @@ impl StorageProvider for DrimeCloudProvider {
             })?
             .to_string();
 
-        let resp = self.client.put(&url).body(data).send().await.map_err(|e| {
-            ProviderError::ConnectionFailed(format!(
-                "Drime upload part {} failed: {}",
-                part_number, e
-            ))
-        })?;
+        let resp = self
+            .client
+            .put(&url)
+            // DAG-P2-05: explicit length so the streamed body is fixed-length,
+            // never chunked (the presigned S3 PUT rejects plain chunked).
+            .header("Content-Length", part_len.to_string())
+            .body(body.into_reqwest_body())
+            .send()
+            .await
+            .map_err(|e| {
+                ProviderError::ConnectionFailed(format!(
+                    "Drime upload part {} failed: {}",
+                    part_number, e
+                ))
+            })?;
 
         if !resp.status().is_success() {
             let status = resp.status();

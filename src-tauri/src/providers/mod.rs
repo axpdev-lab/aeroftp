@@ -705,6 +705,34 @@ pub trait StorageProvider: Send + Sync {
         Err(ProviderError::NotSupported("upload_part".to_string()))
     }
 
+    /// Upload one part from a [`PartBody`] (DAG-P2-05).
+    ///
+    /// The runner hands part data as a `PartBody` so providers that can honestly
+    /// stream a bounded window (single-`send` PUT/POST with a known length) avoid
+    /// keeping the whole part in memory. The default materializes the body and
+    /// delegates to [`upload_part`](StorageProvider::upload_part), so providers
+    /// that must own the whole part to hash/encrypt/sign it (or that have not
+    /// been migrated) keep their behaviour byte for byte. Streaming providers
+    /// override this and return `true` from
+    /// [`multipart_streams_part_body`](StorageProvider::multipart_streams_part_body).
+    async fn upload_part_body(
+        &mut self,
+        handle: &MultipartHandle,
+        part_number: u32,
+        body: crate::transfer_multipart::PartBody,
+    ) -> Result<UploadedPart, ProviderError> {
+        let data = body.into_owned_bytes().await?;
+        self.upload_part(handle, part_number, data).await
+    }
+
+    /// Whether [`upload_part_body`](StorageProvider::upload_part_body) streams a
+    /// `PartBody::DiskSlice` without holding the whole part in memory. When
+    /// `true`, the runner reserves only a bounded streaming window of
+    /// `buffer_bytes` per part instead of the full part size.
+    fn multipart_streams_part_body(&self) -> bool {
+        false
+    }
+
     /// Finalize a multipart upload by submitting the ordered list of parts.
     ///
     /// The `handle` is consumed because the session is no longer valid after
@@ -1116,6 +1144,12 @@ pub trait StorageProvider: Send + Sync {
             &self.transfer_optimization_hints(),
             self.supports_server_side_copy(),
         );
+
+        // DAG-P2-05: single source of truth for streaming part bodies. The
+        // shaping profile reads this to reserve a streaming window (not the whole
+        // part) of `buffer_bytes`, so it must reflect whether this provider
+        // actually streams (i.e. overrides `upload_part_body`).
+        caps.multipart_streaming_body = self.multipart_streams_part_body();
 
         if matches!(
             self.transfer_executor_kind(),

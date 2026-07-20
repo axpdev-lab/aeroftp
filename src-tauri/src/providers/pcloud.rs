@@ -1901,11 +1901,32 @@ impl StorageProvider for PCloudProvider {
         })
     }
 
+    // DAG-P2-05: pCloud upload_write is a single send with a known length and no
+    // whole-part hashing, so stream the part body one bounded window at a time
+    // instead of buffering the whole part in memory.
+    fn multipart_streams_part_body(&self) -> bool {
+        true
+    }
+
     async fn upload_part(
         &mut self,
         handle: &MultipartHandle,
         part_number: u32,
         data: Vec<u8>,
+    ) -> Result<UploadedPart, ProviderError> {
+        self.upload_part_body(
+            handle,
+            part_number,
+            crate::transfer_multipart::PartBody::owned(data),
+        )
+        .await
+    }
+
+    async fn upload_part_body(
+        &mut self,
+        handle: &MultipartHandle,
+        part_number: u32,
+        body: crate::transfer_multipart::PartBody,
     ) -> Result<UploadedPart, ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
@@ -1915,7 +1936,8 @@ impl StorageProvider for PCloudProvider {
                 "pCloud upload_part requires 1-based part_number".to_string(),
             ));
         }
-        if data.is_empty() {
+        let part_len = body.len();
+        if part_len == 0 {
             return Err(ProviderError::Other(
                 "pCloud upload_part received empty data".to_string(),
             ));
@@ -1923,15 +1945,12 @@ impl StorageProvider for PCloudProvider {
         let meta = PCloudMultipartMeta::decode(&handle.upload_id)?;
         let offset = (part_number as u64 - 1) * meta.part;
         let end = offset
-            .checked_add(data.len() as u64)
+            .checked_add(part_len)
             .ok_or_else(|| ProviderError::Other("pCloud part offset overflow".to_string()))?;
         if end > meta.total {
             return Err(ProviderError::Other(format!(
                 "pCloud part {} exceeds declared total: offset {} + len {} > total {}",
-                part_number,
-                offset,
-                data.len(),
-                meta.total
+                part_number, offset, part_len, meta.total
             )));
         }
 
@@ -1952,7 +1971,10 @@ impl StorageProvider for PCloudProvider {
             .put(&url)
             .header(reqwest::header::AUTHORIZATION, auth)
             .header(reqwest::header::CONTENT_TYPE, "application/octet-stream")
-            .body(data)
+            // DAG-P2-05: explicit length so the streamed body is fixed-length,
+            // never chunked.
+            .header(reqwest::header::CONTENT_LENGTH, part_len.to_string())
+            .body(body.into_reqwest_body())
             .send()
             .await
             .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;

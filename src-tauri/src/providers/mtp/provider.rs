@@ -114,6 +114,7 @@ impl MtpProvider {
             max_checker_slots: Some(1),
             preferred_chunk_size: None,
             multipart_threshold: u64::MAX,
+            multipart_streaming_body: false,
         }
     }
 

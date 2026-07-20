@@ -795,6 +795,74 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn streaming_part_windows_fit_a_budget_a_full_part_would_exhaust() {
+        // DAG-P2-05: a streaming provider reserves only a bounded window per
+        // part, so several parts co-reside in a byte budget that even one full
+        // part would exhaust. Model three streamed windows against a budget
+        // sized for exactly three; a fourth must wait for a release.
+        let window = crate::transfer_multipart::PART_STREAM_WINDOW_BYTES as u64;
+        let budget = TransferBudget::from_file_slots(1).with_buffer_bytes(window * 3);
+        let manager = Arc::new(TransferResourceManager::new(budget));
+
+        let a = manager
+            .acquire(ResourceRequest {
+                buffer_bytes: window,
+                ..ResourceRequest::default()
+            })
+            .await
+            .unwrap();
+        let b = manager
+            .acquire(ResourceRequest {
+                buffer_bytes: window,
+                ..ResourceRequest::default()
+            })
+            .await
+            .unwrap();
+        let c = manager
+            .acquire(ResourceRequest {
+                buffer_bytes: window,
+                ..ResourceRequest::default()
+            })
+            .await
+            .unwrap();
+        assert_eq!(
+            manager.available_buffer_quanta(),
+            0,
+            "three streamed windows fill the whole budget"
+        );
+
+        // A fourth streamed part cannot enter until one of the three releases.
+        let manager2 = manager.clone();
+        let barrier = Arc::new(Barrier::new(2));
+        let b_barrier = barrier.clone();
+        let waiter = tokio::spawn(async move {
+            b_barrier.wait().await;
+            manager2
+                .acquire(ResourceRequest {
+                    buffer_bytes: window,
+                    ..ResourceRequest::default()
+                })
+                .await
+        });
+        barrier.wait().await;
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        assert!(
+            !waiter.is_finished(),
+            "budget is full at three windows: the fourth waits"
+        );
+
+        drop(a);
+        let fourth = waiter.await.unwrap().unwrap();
+        drop((b, c, fourth));
+        assert_eq!(manager.available_buffer_quanta(), 6);
+
+        // Contrast: a single full 8 MiB owned part already exceeds this whole
+        // budget, so three of them could never co-reside the way three streamed
+        // windows just did. The window reservation is what unlocks the peak.
+        assert!(8 * 1024 * 1024 > window * 3);
+    }
+
+    #[tokio::test]
     async fn cancel_while_waiting_for_byte_credits_leaks_no_permits() {
         let quantum = BUFFER_QUANTUM_BYTES;
         let budget = TransferBudget::from_file_slots(1).with_buffer_bytes(quantum * 2);

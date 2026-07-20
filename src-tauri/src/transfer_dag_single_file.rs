@@ -96,9 +96,7 @@ use crate::transfer_dag::{
     ObservedOutcome, ShapedFileDag, TransferBudget, TransferCapabilities, TransferDagBuilder,
     TransferDagMetrics, TransferDirection, TransferError, TransferErrorKind, TransferPriority,
 };
-use crate::transfer_multipart::{
-    clone_multipart_worker, read_chunk, MultipartFileState, MultipartLayout,
-};
+use crate::transfer_multipart::{clone_multipart_worker, MultipartFileState, MultipartLayout};
 
 /// A per-byte transfer progress callback, as accepted by
 /// [`StorageProvider::download`] / [`StorageProvider::upload`].
@@ -972,8 +970,13 @@ pub async fn execute_single_file_dag(
                             }
                         };
 
-                        // 2. Read this part's slice from disk at the matching
-                        //    offset through the shared validated layout.
+                        // 2. Resolve this part's byte range from the shared
+                        //    validated layout. DAG-P2-05: the slice is handed to
+                        //    the provider as a `PartBody::DiskSlice`, not read
+                        //    into an owned buffer here; streaming providers read a
+                        //    bounded window, owning providers materialize it
+                        //    inside `upload_part_body`. Both stay inside the held
+                        //    `buffer_bytes` lease.
                         let (offset, len) = match state.layout().part_range(part_number) {
                             Ok(range) => range,
                             Err(failure) => {
@@ -982,14 +985,6 @@ pub async fn execute_single_file_dag(
                                     ProviderError::TransferFailed(failure.message),
                                     FailureScope::Part,
                                 );
-                            }
-                        };
-                        let data = match race_cancel(&cancel_token, read_chunk(&local, offset, len))
-                            .await
-                        {
-                            Ok(buf) => buf,
-                            Err(e) => {
-                                return record_failure(&first_error, e, FailureScope::Part);
                             }
                         };
 
@@ -1007,7 +1002,17 @@ pub async fn execute_single_file_dag(
                         };
                         let upload_result = if let Some(mut worker) = cloned_worker {
                             race_cancel(&cancel_token, async {
-                                worker.upload_part(&handle, part_number, data).await
+                                worker
+                                    .upload_part_body(
+                                        &handle,
+                                        part_number,
+                                        crate::transfer_multipart::PartBody::disk_slice(
+                                            local.to_string(),
+                                            offset,
+                                            len,
+                                        ),
+                                    )
+                                    .await
                             })
                             .await
                         } else {
@@ -1020,7 +1025,16 @@ pub async fn execute_single_file_dag(
                                 );
                             };
                             race_cancel(&cancel_token, async {
-                                p.upload_part(&handle, part_number, data).await
+                                p.upload_part_body(
+                                    &handle,
+                                    part_number,
+                                    crate::transfer_multipart::PartBody::disk_slice(
+                                        local.to_string(),
+                                        offset,
+                                        len,
+                                    ),
+                                )
+                                .await
                             })
                             .await
                         };
@@ -2520,12 +2534,12 @@ mod tests {
         }
         std::fs::write(&path, &content).expect("write fixture");
 
-        let inner = read_chunk(path.to_str().unwrap(), 5, 8)
+        let inner = crate::transfer_multipart::read_chunk(path.to_str().unwrap(), 5, 8)
             .await
             .expect("read inner");
         assert_eq!(inner, content[5..13]);
 
-        let tail = read_chunk(path.to_str().unwrap(), 16, 4)
+        let tail = crate::transfer_multipart::read_chunk(path.to_str().unwrap(), 16, 4)
             .await
             .expect("read tail");
         assert_eq!(tail, content[16..20]);

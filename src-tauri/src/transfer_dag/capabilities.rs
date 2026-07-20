@@ -59,6 +59,15 @@ pub struct TransferCapabilities {
     /// declare multipart without a threshold. Defaults to `u64::MAX` so a
     /// capability built without hints never accidentally fans out a small file.
     pub multipart_threshold: u64,
+    /// DAG-P2-05: the provider streams multipart part bodies from disk one
+    /// bounded window at a time (`StorageProvider::multipart_streams_part_body`)
+    /// instead of holding the whole part in memory. When `true`, the shaping
+    /// profile reserves only a streaming window of `buffer_bytes` per part; when
+    /// `false`, it reserves the whole part size, as providers that must own the
+    /// buffer to hash/encrypt/sign it require. Defaults to `false` so a snapshot
+    /// built without provider truth stays on the safe full-part reservation.
+    #[serde(default)]
+    pub multipart_streaming_body: bool,
 }
 
 impl Default for TransferCapabilities {
@@ -83,6 +92,7 @@ impl Default for TransferCapabilities {
             max_checker_slots: Some(1),
             preferred_chunk_size: None,
             multipart_threshold: u64::MAX,
+            multipart_streaming_body: false,
         }
     }
 }

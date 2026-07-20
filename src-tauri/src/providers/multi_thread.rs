@@ -770,7 +770,11 @@ where
 /// local semaphore. Do not treat P0-06 as process-wide complete while this
 /// path remains. Wire into the same credit abstraction only when this
 /// scheduler moves fully onto the DAG (or a shared credit helper is extracted
-/// for both paths). Streaming reuse is `DAG-P2-05`.
+/// for both paths). DAG-P2-05 added streaming part bodies (`PartBody`) for
+/// providers whose part upload is a single send without whole-part hashing; its
+/// only caller here is B2, which must hold the whole part in memory to compute
+/// the `x-bz-content-sha1` header before the send, so this path stays owned by
+/// necessity and is out of scope for that streaming reuse.
 async fn read_part_from_disk(path: &Path, offset: u64, len: u64) -> Result<Vec<u8>, ProviderError> {
     let mut file = tokio::fs::File::open(path)
         .await

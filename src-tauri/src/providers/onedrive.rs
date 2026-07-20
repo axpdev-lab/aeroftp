@@ -2361,18 +2361,40 @@ impl StorageProvider for OneDriveProvider {
         })
     }
 
+    // DAG-P2-05: OneDrive uploadSession chunk is a single PUT with a known
+    // length and no whole-part hashing, so stream the part body one bounded
+    // window at a time instead of buffering the whole part in memory.
+    fn multipart_streams_part_body(&self) -> bool {
+        true
+    }
+
     async fn upload_part(
         &mut self,
         handle: &MultipartHandle,
         part_number: u32,
         data: Vec<u8>,
     ) -> Result<UploadedPart, ProviderError> {
+        self.upload_part_body(
+            handle,
+            part_number,
+            crate::transfer_multipart::PartBody::owned(data),
+        )
+        .await
+    }
+
+    async fn upload_part_body(
+        &mut self,
+        handle: &MultipartHandle,
+        part_number: u32,
+        body: crate::transfer_multipart::PartBody,
+    ) -> Result<UploadedPart, ProviderError> {
         if part_number == 0 {
             return Err(ProviderError::Other(
                 "OneDrive upload_part requires 1-based part_number".to_string(),
             ));
         }
-        if data.is_empty() {
+        let part_len = body.len();
+        if part_len == 0 {
             return Err(ProviderError::Other(
                 "OneDrive upload_part received empty data".to_string(),
             ));
@@ -2380,26 +2402,22 @@ impl StorageProvider for OneDriveProvider {
         let meta = OneDriveMultipartMeta::decode(&handle.upload_id)?;
         let offset = (part_number as u64 - 1) * meta.part;
         let end = offset
-            .checked_add(data.len() as u64)
+            .checked_add(part_len)
             .ok_or_else(|| ProviderError::Other("OneDrive part offset overflow".to_string()))?;
         if end > meta.total {
             return Err(ProviderError::Other(format!(
                 "OneDrive part {} exceeds declared total: offset {} + len {} > total {}",
-                part_number,
-                offset,
-                data.len(),
-                meta.total
+                part_number, offset, part_len, meta.total
             )));
         }
-        let len = data.len();
         let content_range = format!("bytes {}-{}/{}", offset, end - 1, meta.total);
 
         let resp = self
             .client
             .put(&meta.url)
             .header("Content-Range", &content_range)
-            .header("Content-Length", len.to_string())
-            .body(data)
+            .header("Content-Length", part_len.to_string())
+            .body(body.into_reqwest_body())
             .send()
             .await
             .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;

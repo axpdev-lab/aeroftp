@@ -13,8 +13,9 @@
 
 use std::collections::HashMap;
 use std::io::SeekFrom;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Arc, Mutex as StdMutex, OnceLock};
 
 use tokio::io::{AsyncReadExt, AsyncSeekExt};
 use tokio::sync::Mutex;
@@ -355,6 +356,279 @@ pub async fn read_chunk(path: &str, offset: u64, len: u64) -> Result<Vec<u8>, Pr
     Ok(data)
 }
 
+// ============================================================================
+// DAG-P2-05: reusable buffer pool + streaming part body
+// ============================================================================
+
+/// Bounded read window used when streaming a part body from disk.
+///
+/// A streamed part is read one window at a time, so peak resident memory for an
+/// in-flight streamed part is this window, not the whole part. It is a small
+/// fixed size (two 64 KiB buffer-credit quanta) so a streamed part can reserve
+/// a single, honest `buffer_bytes` window instead of the whole part size.
+pub const PART_STREAM_WINDOW_BYTES: usize = 128 * 1024;
+
+/// Bounded pool of reusable read-window buffers for streamed part bodies.
+///
+/// The pool recycles the scratch `Vec<u8>` a streamed part reads windows into,
+/// so N sequential streamed parts reuse a bounded set of allocations instead of
+/// allocating and freeing N fresh windows. It adds **no** byte accounting of its
+/// own: how many part buffers may be live at once, and how large, is already
+/// bounded by the `buffer_bytes` governor credit each part holds while its node
+/// runs (DAG-P0-06 / DAG-P2-01). The pool only avoids re-allocating a window.
+pub struct PartBufferPool {
+    free: StdMutex<Vec<Vec<u8>>>,
+    max_idle: usize,
+    window: usize,
+    allocations: AtomicU64,
+}
+
+impl PartBufferPool {
+    /// Pool that parks up to `max_idle` idle buffers of `window` bytes each.
+    pub fn new(max_idle: usize, window: usize) -> Self {
+        Self {
+            free: StdMutex::new(Vec::new()),
+            max_idle: max_idle.max(1),
+            window: window.max(1),
+            allocations: AtomicU64::new(0),
+        }
+    }
+
+    /// Take a reusable window buffer, recycled from the free list when one is
+    /// idle or freshly allocated otherwise. It returns to the pool on drop.
+    pub fn acquire(self: &Arc<Self>) -> PooledWindow {
+        let recycled = self.free.lock().unwrap().pop();
+        let buf = match recycled {
+            Some(mut buf) => {
+                if buf.len() != self.window {
+                    buf.resize(self.window, 0);
+                }
+                buf
+            }
+            None => {
+                self.allocations.fetch_add(1, Ordering::Relaxed);
+                vec![0u8; self.window]
+            }
+        };
+        PooledWindow {
+            buf: Some(buf),
+            pool: Arc::clone(self),
+        }
+    }
+
+    /// Total window buffers ever allocated (diagnostics and reuse tests). A
+    /// value well below the number of parts streamed proves real reuse.
+    pub fn allocations(&self) -> u64 {
+        self.allocations.load(Ordering::Relaxed)
+    }
+
+    /// Idle buffers currently parked for reuse.
+    pub fn idle(&self) -> usize {
+        self.free.lock().unwrap().len()
+    }
+
+    fn recycle(&self, buf: Vec<u8>) {
+        let mut free = self.free.lock().unwrap();
+        if free.len() < self.max_idle {
+            free.push(buf);
+        }
+    }
+}
+
+/// A window buffer borrowed from a [`PartBufferPool`]; returned on drop.
+pub struct PooledWindow {
+    buf: Option<Vec<u8>>,
+    pool: Arc<PartBufferPool>,
+}
+
+impl PooledWindow {
+    fn window_mut(&mut self) -> &mut [u8] {
+        self.buf
+            .as_mut()
+            .expect("pooled window present")
+            .as_mut_slice()
+    }
+
+    fn window_ref(&self) -> &[u8] {
+        self.buf.as_ref().expect("pooled window present").as_slice()
+    }
+}
+
+impl Drop for PooledWindow {
+    fn drop(&mut self) {
+        if let Some(buf) = self.buf.take() {
+            self.pool.recycle(buf);
+        }
+    }
+}
+
+static PART_BUFFER_POOL: OnceLock<Arc<PartBufferPool>> = OnceLock::new();
+
+/// Process-global reusable window pool for streamed part bodies. Idle capacity
+/// covers the default concurrent active-file / part window; the byte budget is
+/// governed elsewhere (the `buffer_bytes` credit each streamed part holds).
+pub fn part_buffer_pool() -> Arc<PartBufferPool> {
+    PART_BUFFER_POOL
+        .get_or_init(|| Arc::new(PartBufferPool::new(64, PART_STREAM_WINDOW_BYTES)))
+        .clone()
+}
+
+/// A byte range `[offset, offset + len)` of a local file used as a replayable
+/// streaming source for one multipart part. Re-opening and re-seeking the file
+/// per attempt makes the source honestly replayable for node-level retry.
+#[derive(Debug, Clone)]
+pub struct DiskSlicePart {
+    path: Arc<PathBuf>,
+    offset: u64,
+    len: u64,
+}
+
+impl DiskSlicePart {
+    /// Name the byte range without touching the disk yet.
+    pub fn new(path: impl Into<PathBuf>, offset: u64, len: u64) -> Self {
+        Self {
+            path: Arc::new(path.into()),
+            offset,
+            len,
+        }
+    }
+
+    /// Exact byte length of the slice (known without reading it).
+    pub fn len(&self) -> u64 {
+        self.len
+    }
+
+    /// Whether the slice is empty.
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+
+    /// Read the whole slice into an owned buffer (materialize). Used by the
+    /// compat path for providers that must own the whole part.
+    pub async fn read_to_vec(&self) -> Result<Vec<u8>, ProviderError> {
+        read_chunk(&self.path.to_string_lossy(), self.offset, self.len).await
+    }
+
+    /// A fresh bounded reader over the slice: opens the file and seeks to the
+    /// part offset. Replayable, because each call re-opens from scratch.
+    async fn open_reader(&self) -> std::io::Result<tokio::io::Take<tokio::fs::File>> {
+        let mut file = tokio::fs::File::open(self.path.as_ref()).await?;
+        file.seek(SeekFrom::Start(self.offset)).await?;
+        Ok(file.take(self.len))
+    }
+}
+
+/// State machine threaded through the disk-slice window stream so the pooled
+/// scratch buffer and the file reader are reused across every window of one
+/// part (the scratch returns to the pool when the stream is dropped).
+enum DiskSliceStream {
+    Init(DiskSlicePart, PooledWindow),
+    Reading(tokio::io::Take<tokio::fs::File>, PooledWindow),
+}
+
+/// Stream one part from disk, one pooled window at a time. Each yielded chunk is
+/// a fresh owned copy of the bytes just read (the transient wire chunk that
+/// `reqwest` sends and drops); the scratch window itself is reused for the next
+/// read and recycled to the pool at the end. Exact total bytes yielded equal the
+/// slice length. `Vec<u8>` is yielded because `reqwest` converts it to `Bytes`
+/// internally, so the crate needs no direct `bytes` dependency.
+fn disk_slice_window_stream(
+    slice: DiskSlicePart,
+    scratch: PooledWindow,
+) -> impl futures_util::Stream<Item = std::io::Result<Vec<u8>>> + Send {
+    futures_util::stream::try_unfold(DiskSliceStream::Init(slice, scratch), |state| async move {
+        let (mut reader, mut scratch) = match state {
+            DiskSliceStream::Init(slice, scratch) => (slice.open_reader().await?, scratch),
+            DiskSliceStream::Reading(reader, scratch) => (reader, scratch),
+        };
+        let read = reader.read(scratch.window_mut()).await?;
+        if read == 0 {
+            Ok(None)
+        } else {
+            let chunk = scratch.window_ref()[..read].to_vec();
+            Ok(Some((chunk, DiskSliceStream::Reading(reader, scratch))))
+        }
+    })
+}
+
+/// The body of one multipart upload part, decoupled from buffer ownership
+/// (DAG-P2-05).
+///
+/// The runner no longer forces a fully-owned `Vec<u8>` across the provider
+/// boundary for every part. It hands a `PartBody`:
+///
+/// * [`PartBody::Owned`] carries the whole part resident in memory. Providers
+///   that must hash, encrypt, or sign the entire part before sending (S3 signed
+///   payload, B2/Box SHA-1, MEGA, Filen) consume it by value exactly as before,
+///   bounded by the same `buffer_bytes` governor credit (DAG-P0-06 / DAG-P2-01).
+/// * [`PartBody::DiskSlice`] names a byte range of a local file. Providers that
+///   can honestly stream a bounded window (single-`send` PUT/POST with a known
+///   length) open a fresh reader per attempt and stream it, so peak resident
+///   memory is one [`PART_STREAM_WINDOW_BYTES`] window, not the whole part.
+///
+/// Both variants are **replayable** (owned re-sends its buffer; disk re-opens
+/// and re-seeks), so there is deliberately no one-shot variant and no provider
+/// can claim a retry-by-reread it cannot honour.
+pub enum PartBody {
+    Owned(Vec<u8>),
+    DiskSlice(DiskSlicePart),
+}
+
+impl PartBody {
+    /// Wrap an already-read, owned buffer (compat path).
+    pub fn owned(data: Vec<u8>) -> Self {
+        PartBody::Owned(data)
+    }
+
+    /// Name a disk slice to stream without reading it yet.
+    pub fn disk_slice(path: impl Into<PathBuf>, offset: u64, len: u64) -> Self {
+        PartBody::DiskSlice(DiskSlicePart::new(path, offset, len))
+    }
+
+    /// Exact byte length of the part (known for both variants without reading).
+    pub fn len(&self) -> u64 {
+        match self {
+            PartBody::Owned(data) => data.len() as u64,
+            PartBody::DiskSlice(slice) => slice.len(),
+        }
+    }
+
+    /// Whether the part is empty.
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// Both variants are replayable across attempts.
+    pub fn is_replayable(&self) -> bool {
+        true
+    }
+
+    /// Materialize the whole part into an owned buffer. Instant for `Owned`; a
+    /// bounded disk read for `DiskSlice`. The default provider `upload_part_body`
+    /// uses this so any provider that has not been migrated to streaming keeps
+    /// its existing owned-buffer `upload_part` behaviour byte for byte.
+    pub async fn into_owned_bytes(self) -> Result<Vec<u8>, ProviderError> {
+        match self {
+            PartBody::Owned(data) => Ok(data),
+            PartBody::DiskSlice(slice) => slice.read_to_vec().await,
+        }
+    }
+
+    /// A `reqwest` body for streamable providers. `Owned` sends the in-memory
+    /// buffer; `DiskSlice` streams one pooled window at a time. Set the
+    /// `Content-Length` from [`len`](Self::len); the streamed body carries no
+    /// implicit length.
+    pub fn into_reqwest_body(self) -> reqwest::Body {
+        match self {
+            PartBody::Owned(data) => reqwest::Body::from(data),
+            PartBody::DiskSlice(slice) => {
+                let scratch = part_buffer_pool().acquire();
+                reqwest::Body::wrap_stream(disk_slice_window_stream(slice, scratch))
+            }
+        }
+    }
+}
+
 /// Mint an independent worker for a concurrent part upload, or `None` when
 /// parts must serialise on the shared session mutex.
 pub fn clone_multipart_worker(provider: &dyn StorageProvider) -> Option<Box<dyn StorageProvider>> {
@@ -514,5 +788,98 @@ mod tests {
             .await;
         assert!(state.take_for_abort().await.is_some());
         assert!(state.take_for_abort().await.is_none());
+    }
+
+    // ------------------------------------------------------------------
+    // DAG-P2-05: part body + reusable window pool
+    // ------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn part_buffer_pool_reuses_one_window_across_sequential_parts() {
+        let pool = Arc::new(PartBufferPool::new(2, 4096));
+        // Ten sequential parts, each acquiring then releasing before the next:
+        // the pool must reuse a single window, not allocate ten distinct ones.
+        for _ in 0..10 {
+            let window = pool.acquire();
+            assert_eq!(window.window_ref().len(), 4096);
+            drop(window);
+        }
+        assert_eq!(
+            pool.allocations(),
+            1,
+            "sequential parts must reuse one pooled window, not allocate per part"
+        );
+        assert!(pool.idle() <= 2);
+    }
+
+    #[tokio::test]
+    async fn part_buffer_pool_allocations_track_concurrent_demand_then_reuse() {
+        let pool = Arc::new(PartBufferPool::new(4, 1024));
+        let a = pool.acquire();
+        let b = pool.acquire();
+        let c = pool.acquire();
+        assert_eq!(
+            pool.allocations(),
+            3,
+            "three concurrently held windows need three buffers"
+        );
+        drop((a, b, c));
+        // Released buffers are parked; a fresh acquire allocates none.
+        let _d = pool.acquire();
+        assert_eq!(pool.allocations(), 3);
+    }
+
+    #[tokio::test]
+    async fn disk_slice_reads_and_streams_exact_bytes_reusing_one_window() {
+        use futures_util::StreamExt;
+
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("part.bin");
+        let content: Vec<u8> = (0..300_000u32).map(|i| (i % 251) as u8).collect();
+        tokio::fs::write(&path, &content).await.expect("write");
+
+        let offset = 10_000u64;
+        let len = 200_000u64;
+        let expected = &content[offset as usize..(offset + len) as usize];
+
+        // Materialize path yields the exact slice.
+        let slice = DiskSlicePart::new(path.clone(), offset, len);
+        let owned = slice.read_to_vec().await.expect("read slice");
+        assert_eq!(owned.as_slice(), expected);
+
+        // Streaming path yields the same bytes, reusing a single pooled window
+        // across the windows the 200 KiB slice spans (window = 128 KiB).
+        let pool = Arc::new(PartBufferPool::new(4, PART_STREAM_WINDOW_BYTES));
+        let scratch = pool.acquire();
+        let mut stream = Box::pin(disk_slice_window_stream(slice, scratch));
+        let mut streamed = Vec::new();
+        while let Some(chunk) = stream.next().await {
+            streamed.extend_from_slice(&chunk.expect("chunk"));
+        }
+        drop(stream);
+        assert_eq!(streamed.as_slice(), expected);
+        assert_eq!(
+            pool.allocations(),
+            1,
+            "one streamed part flows through a single reused window"
+        );
+    }
+
+    #[tokio::test]
+    async fn part_body_owned_and_disk_slice_agree_on_len_and_bytes() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("p.bin");
+        let content: Vec<u8> = (0..1000u32).map(|i| i as u8).collect();
+        tokio::fs::write(&path, &content).await.expect("write");
+
+        let owned = PartBody::owned(content[100..400].to_vec());
+        let disk = PartBody::disk_slice(path, 100, 300);
+        assert_eq!(owned.len(), 300);
+        assert_eq!(disk.len(), 300);
+        assert!(owned.is_replayable() && disk.is_replayable());
+        assert_eq!(
+            owned.into_owned_bytes().await.unwrap(),
+            disk.into_owned_bytes().await.unwrap()
+        );
     }
 }
