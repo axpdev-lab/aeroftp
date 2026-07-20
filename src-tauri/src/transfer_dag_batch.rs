@@ -334,16 +334,7 @@ fn batch_streaming_config(
         .transfer_budget_for_capabilities(caps)
         .file_slots
         .max(1) as usize;
-    // +2 lets the next file's structural prefix start while a transfer holds a
-    // file slot. Never force the default window as a floor when slots are low.
-    let pipeline = file_slots.saturating_add(2);
-    let ceiling = crate::transfer_dag::DEFAULT_ACTIVE_FILE_WINDOW.max(file_slots);
-    let active_file_cap = pipeline.min(ceiling).max(file_slots);
-    StreamingConfig {
-        backlog_cap: config.max_backlog,
-        active_file_cap,
-    }
-    .normalized()
+    StreamingConfig::for_file_slots(file_slots, config.max_backlog)
 }
 
 /// Execute one admitted batch file: expand its shaped subgraph template, bind

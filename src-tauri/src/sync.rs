@@ -377,6 +377,10 @@ pub struct SyncOptions {
     /// Requested intra-file download segments for the transfer phase.
     /// `1` preserves the legacy single-stream path.
     pub download_segments: u32,
+    /// DAG-P2-04 residual close-out: bounded streaming backlog for the sync
+    /// transfer frontier (same knob as CLI `--max-backlog` / batch). When the
+    /// plan is large, the WorkSource pauses instead of unbounded growth.
+    pub max_backlog: usize,
 }
 
 impl Default for SyncOptions {
@@ -390,6 +394,7 @@ impl Default for SyncOptions {
             scan: ScanOptions::default(),
             error_correction: SyncErrorCorrectionOptions::default(),
             download_segments: crate::transfer_settings::DEFAULT_DOWNLOAD_SEGMENTS,
+            max_backlog: crate::transfer_dag::DEFAULT_ENGINE_MAX_BACKLOG,
         }
     }
 }

@@ -1119,16 +1119,12 @@ pub async fn execute_sync_dag(
         // All transfers share one lane decision (delta vs normal pool) because
         // they share the requested delta policy.
         let lane = transfer_lane(opts.delta_policy);
-        // Same active-set policy as batch: saturate file slots with small
-        // pipeline headroom, ceiling at DEFAULT_ACTIVE_FILE_WINDOW (or slots).
+        // Same production policy as batch (`StreamingConfig::for_file_slots`),
+        // with backlog from SyncOptions (CLI --max-backlog when the caller sets
+        // it; default DEFAULT_ENGINE_MAX_BACKLOG).
         let file_slots = sync_caps.max_file_slots.unwrap_or(1).max(1) as usize;
-        let pipeline = file_slots.saturating_add(2);
-        let ceiling = crate::transfer_dag::DEFAULT_ACTIVE_FILE_WINDOW.max(file_slots);
-        let active_file_cap = pipeline.min(ceiling).max(file_slots);
-        let streaming_config = StreamingConfig {
-            backlog_cap: crate::transfer_dag::DEFAULT_ENGINE_MAX_BACKLOG,
-            active_file_cap,
-        };
+        let streaming_config =
+            StreamingConfig::for_file_slots(file_slots, opts.max_backlog);
         let ctx = Arc::new(SyncStreamContext {
             caps: sync_caps,
             manager,
@@ -1521,6 +1517,7 @@ mod tests {
             scan: Default::default(),
             error_correction: Default::default(),
             download_segments: 1,
+            max_backlog: crate::transfer_dag::DEFAULT_ENGINE_MAX_BACKLOG,
         }
     }
 
@@ -2101,5 +2098,21 @@ mod tests {
         assert_eq!(count.load(Ordering::SeqCst), 200);
         assert_eq!(summary.items_admitted, 200);
         assert!(summary.peak_active_nodes <= 8 * 7);
+    }
+
+    /// SyncOptions.max_backlog maps into the streaming frontier (residual
+    /// close-out of DAG-P2-04: same knob as batch / CLI --max-backlog).
+    #[test]
+    fn sync_streaming_config_honors_max_backlog() {
+        let mut o = opts(SyncDirection::Upload);
+        o.max_backlog = 2_500;
+        let cfg = StreamingConfig::for_file_slots(4, o.max_backlog);
+        assert_eq!(cfg.backlog_cap, 2_500);
+        assert_eq!(cfg.active_file_cap, 6);
+
+        o.max_backlog = 50_000;
+        let cfg = StreamingConfig::for_file_slots(1, o.max_backlog);
+        assert_eq!(cfg.backlog_cap, 50_000);
+        assert_eq!(cfg.active_file_cap, 3);
     }
 }

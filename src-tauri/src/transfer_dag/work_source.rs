@@ -205,6 +205,24 @@ impl StreamingConfig {
         self.active_file_cap = active_file_cap;
         self
     }
+
+    /// Production multi-file policy shared by batch and sync.
+    ///
+    /// Active set = `file_slots + 2` pipeline headroom (structural prefix can
+    /// start while a transfer holds a slot), never below `file_slots`, never
+    /// above `DEFAULT_ACTIVE_FILE_WINDOW` unless slots themselves exceed it.
+    /// Backlog comes from the CLI/engine knob (`--max-backlog` / config).
+    pub fn for_file_slots(file_slots: usize, backlog_cap: usize) -> Self {
+        let file_slots = file_slots.max(1);
+        let pipeline = file_slots.saturating_add(2);
+        let ceiling = DEFAULT_ACTIVE_FILE_WINDOW.max(file_slots);
+        let active_file_cap = pipeline.min(ceiling).max(file_slots);
+        Self {
+            backlog_cap,
+            active_file_cap,
+        }
+        .normalized()
+    }
 }
 
 /// Live counters for the streaming frontier's materialized graph, so the
@@ -433,6 +451,26 @@ mod tests {
         .normalized();
         assert_eq!(cfg.active_file_cap, 32);
         assert_eq!(cfg.backlog_cap, 32);
+    }
+
+    #[test]
+    fn streaming_config_for_file_slots_tracks_budget_not_a_fixed_floor() {
+        let serial = StreamingConfig::for_file_slots(1, 1_000);
+        assert_eq!(serial.active_file_cap, 3);
+        assert_eq!(serial.backlog_cap, 1_000);
+
+        let mid = StreamingConfig::for_file_slots(4, 5_000);
+        assert_eq!(mid.active_file_cap, 6);
+        assert_eq!(mid.backlog_cap, 5_000);
+
+        let wide = StreamingConfig::for_file_slots(32, 10_000);
+        assert_eq!(
+            wide.active_file_cap,
+            34.min(DEFAULT_ACTIVE_FILE_WINDOW),
+            "32 slots + 2 headroom, capped by default window"
+        );
+        // Backlog never below active after normalize.
+        assert!(wide.backlog_cap >= wide.active_file_cap);
     }
 
     #[test]
