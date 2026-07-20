@@ -1,0 +1,9 @@
+# Pin the Rust toolchain so the local pre-push gate uses the SAME clippy/rustfmt
+# as CI. CI installs `dtolnay/rust-toolchain@stable`, which currently resolves to
+# 1.97.0; without this pin the local gate silently ran an older stable (1.96.0)
+# and was blind to version-sensitive lints (e.g. clippy::question_mark landed in
+# 1.97 and turned pre-existing code red only in CI). Bump this deliberately when
+# moving the whole project to a newer stable, so local and CI advance together.
+[toolchain]
+channel = "1.97.0"
+components = ["clippy", "rustfmt"]

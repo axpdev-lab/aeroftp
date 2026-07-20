@@ -683,9 +683,9 @@ impl AdaptiveProfileRegistry {
             .inner
             .lock()
             .expect("adaptive profile registry poisoned");
-        let expired = match inner.entries.get(key) {
-            Some(entry) => now.saturating_duration_since(entry.updated_at) >= self.ttl,
-            None => return None,
+        let expired = {
+            let entry = inner.entries.get(key)?;
+            now.saturating_duration_since(entry.updated_at) >= self.ttl
         };
         if expired {
             inner.entries.remove(key);
