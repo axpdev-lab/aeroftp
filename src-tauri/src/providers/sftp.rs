@@ -1518,6 +1518,8 @@ impl StorageProvider for SftpProvider {
             progress(transferred, total_size);
         }
         let start = std::time::Instant::now();
+        // DAG-P2-01: shared process-global bandwidth bucket (no-op when unset).
+        let global_bw = crate::transfer_dag::governor::global().bandwidth();
 
         loop {
             let bytes_read = remote_file.read(&mut buffer).await.map_err(|e| {
@@ -1540,6 +1542,9 @@ impl StorageProvider for SftpProvider {
             if let Some(ref progress) = on_progress {
                 progress(transferred, total_size);
             }
+
+            // DAG-P2-01: charge wire bytes against the shared global cap.
+            global_bw.acquire(bytes_read as u64).await;
 
             // Apply bandwidth throttling on bytes moved THIS session, so a
             // resume does not over-sleep for already-downloaded data.
@@ -1695,6 +1700,8 @@ impl StorageProvider for SftpProvider {
         let mut buffer = vec![0u8; self.buffer_size];
         let mut transferred: u64 = 0;
         let start = std::time::Instant::now();
+        // DAG-P2-01: shared process-global bandwidth bucket (no-op when unset).
+        let global_bw = crate::transfer_dag::governor::global().bandwidth();
 
         loop {
             let bytes_read = tokio::io::AsyncReadExt::read(&mut local_file, &mut buffer)
@@ -1719,6 +1726,9 @@ impl StorageProvider for SftpProvider {
             if let Some(ref progress) = on_progress {
                 progress(transferred, total_size);
             }
+
+            // DAG-P2-01: charge wire bytes against the shared global cap.
+            global_bw.acquire(bytes_read as u64).await;
 
             // Apply bandwidth throttling
             if self.upload_limit_bps > 0 {
@@ -1862,6 +1872,8 @@ impl StorageProvider for SftpProvider {
                     progress(transferred, total_size);
                 }
                 let start = std::time::Instant::now();
+                // DAG-P2-01: shared process-global bandwidth bucket (no-op when unset).
+                let global_bw = crate::transfer_dag::governor::global().bandwidth();
 
                 loop {
                     let bytes_read = AsyncReadExt::read(&mut local_file, &mut buffer)
@@ -1884,6 +1896,8 @@ impl StorageProvider for SftpProvider {
                     if let Some(ref progress) = on_progress {
                         progress(transferred, total_size);
                     }
+                    // DAG-P2-01: charge wire bytes against the shared global cap.
+                    global_bw.acquire(bytes_read as u64).await;
                     // Throttle only on bytes moved THIS session so a resume does
                     // not over-sleep for already-uploaded data.
                     if self.upload_limit_bps > 0 {
@@ -2855,6 +2869,10 @@ async fn sftp_download_one_range(
     let mut buf = vec![0u8; buffer_size];
     let mut written: u64 = 0;
     let started = std::time::Instant::now();
+    // DAG-P2-01: the process-global bandwidth bucket. Unlimited (no
+    // AEROFTP_GLOBAL_BANDWIDTH_BPS) makes every `acquire` an immediate no-op, so
+    // this range loop behaves exactly as before unless a global cap is set.
+    let global_bw = crate::transfer_dag::governor::global().bandwidth();
 
     while written < expected {
         tokio::select! {
@@ -2882,6 +2900,9 @@ async fn sftp_download_one_range(
                     .map_err(ProviderError::IoError)?;
                 aggregate.fetch_add(take as u64, Ordering::Relaxed);
                 written += take as u64;
+
+                // DAG-P2-01: charge the wire bytes against the shared global cap.
+                global_bw.acquire(take as u64).await;
 
                 if limit_bps > 0 {
                     let expected_elapsed = std::time::Duration::from_secs_f64(

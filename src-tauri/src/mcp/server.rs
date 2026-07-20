@@ -76,6 +76,12 @@ impl McpServerCore {
         pool: ConnectionPool,
         rate_limiter: RateLimiter,
     ) -> Self {
+        // DAG-P2-01: construct the process-global transfer governor once, when the
+        // MCP server context root is built. All MCP transfer tools reach the same
+        // singleton via `governor::global()`.
+        let _ = crate::transfer_dag::governor::init(
+            crate::transfer_dag::governor::GovernorConfig::from_env(),
+        );
         Self {
             profiles: Arc::new(profiles),
             vault_error,

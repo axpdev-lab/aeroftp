@@ -81,7 +81,7 @@ use crate::transfer_dag::executor::{execute_dag, DagNodeRunner, NodeFuture, Node
 use crate::transfer_dag::graph::{TransferNode, TransferNodeKind};
 use crate::transfer_dag::{
     AimdConfig, AimdController, DagObserver, NoopDagObserver, SyncDagAction, SyncDagItem,
-    TransferBudget, TransferCapabilities, TransferDagBuilder, TransferResourceManager,
+    TransferBudget, TransferCapabilities, TransferDagBuilder,
 };
 
 /// Bounded capacity of the transfer-job channel. The DAG file-slot budget is
@@ -969,10 +969,11 @@ pub async fn execute_sync_dag(
         // The manager is the existing bounded DAG resource model. Its file
         // cap equals the live clone ceiling, or one after an honest demotion.
         // Delta work is additionally serialized by the ownership driver.
-        let manager = TransferResourceManager::new(
+        // DAG-P2-01: the buffer-byte pool is now the process-global governor's,
+        // shared with every concurrent job; the slot classes stay per-job.
+        let manager = crate::transfer_dag::governor::global().child_manager(
             TransferBudget::from_file_slots(sync_caps.max_file_slots.unwrap_or(1))
-                .clamped_for_capabilities(&sync_caps)
-                .with_resolved_buffer_budget(),
+                .clamped_for_capabilities(&sync_caps),
         );
         let observer: Arc<dyn DagObserver> = Arc::new(NoopDagObserver);
         let provider_type = provider.provider_type();
@@ -1080,6 +1081,7 @@ mod tests {
         VerifyPolicy,
     };
     use crate::transfer_dag::observer::SyncJournalDagObserver;
+    use crate::transfer_dag::TransferResourceManager;
     use crate::transfer_dag::{Capability, NoopDagObserver, OrderedDagObserver};
     use async_trait::async_trait;
     use std::any::Any;

@@ -86,7 +86,7 @@ use crate::transfer_dag::graph::{TransferNode, TransferNodeKind};
 use crate::transfer_dag::{
     AimdConfig, AimdController, CopyDag, DagObserver, FailureScope, ObservedOutcome, ShapedFileDag,
     TransferBudget, TransferCapabilities, TransferDagBuilder, TransferDagMetrics,
-    TransferDirection, TransferError, TransferErrorKind, TransferResourceManager,
+    TransferDirection, TransferError, TransferErrorKind,
 };
 use crate::transfer_multipart::{
     clone_multipart_worker, read_chunk, MultipartFileState, MultipartLayout,
@@ -444,9 +444,9 @@ async fn run_copy_shape(
         })
     };
 
-    let manager = TransferResourceManager::new(
-        TransferBudget::from_file_slots(1).with_resolved_buffer_budget(),
-    );
+    // DAG-P2-01: shared process-global buffer-byte pool (see governor.rs).
+    let manager =
+        crate::transfer_dag::governor::global().child_manager(TransferBudget::from_file_slots(1));
     match execute_dag_with_options(
         &built.dag,
         &manager,
@@ -869,7 +869,8 @@ pub async fn execute_single_file_dag(
         })
     };
 
-    let manager = TransferResourceManager::new(single_file_budget(built));
+    // DAG-P2-01: shared process-global buffer-byte pool (see governor.rs).
+    let manager = crate::transfer_dag::governor::global().child_manager(single_file_budget(built));
     let aimd_provider_type = {
         let guard = provider.lock().await;
         guard.as_ref().map(|provider| provider.provider_type())

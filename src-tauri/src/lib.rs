@@ -17412,6 +17412,13 @@ pub fn run() {
     #[cfg(not(debug_assertions))]
     let _ = install_crypto_provider();
 
+    // DAG-P2-01: construct the process-global hierarchical transfer governor
+    // once, at GUI startup. Every transfer path (GUI, embedded MCP, TUI) reaches
+    // the same singleton via `governor::global()`.
+    let _ = crate::transfer_dag::governor::init(
+        crate::transfer_dag::governor::GovernorConfig::from_env(),
+    );
+
     // Fix WebKitGTK rendering issues on Linux: disable DMA-BUF renderer
     // which causes canvas/WebGL artifacts in Monaco and xterm.js.
     // Must be set BEFORE any WebKit initialization.

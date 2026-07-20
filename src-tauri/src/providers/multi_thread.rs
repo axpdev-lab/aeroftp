@@ -431,7 +431,7 @@ where
     use crate::transfer_dag::graph::TransferNode;
     use crate::transfer_dag::{
         AimdConfig, AimdController, DagObserver, FailureScope, NoopDagObserver, TransferBudget,
-        TransferDagBuilder, TransferError, TransferResourceManager,
+        TransferDagBuilder, TransferError,
     };
     use std::sync::atomic::AtomicBool;
     use std::sync::Mutex;
@@ -452,16 +452,15 @@ where
     // because the active runner streams response chunks and does not own a
     // full-range allocation — do not invent full-range byte accounting here).
     let slots = max_parallel.max(1).min(u16::MAX as usize) as u16;
-    let manager = TransferResourceManager::new(
-        TransferBudget {
-            chunk_slots: slots,
-            http_slots: slots,
-            disk_write_slots: slots,
-            disk_read_slots: 1,
-            ..TransferBudget::from_file_slots(1)
-        }
-        .with_resolved_buffer_budget(),
-    );
+    // DAG-P2-01: the buffer-byte pool is the process-global governor's, shared
+    // with every concurrent range job; the slot classes stay per-job.
+    let manager = crate::transfer_dag::governor::global().child_manager(TransferBudget {
+        chunk_slots: slots,
+        http_slots: slots,
+        disk_write_slots: slots,
+        disk_read_slots: 1,
+        ..TransferBudget::from_file_slots(1)
+    });
 
     // AIMD backpressure (F3-T05). The controller's per-class ceilings are the
     // budget above, and every class starts at its ceiling: a download with no

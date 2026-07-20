@@ -14,7 +14,9 @@
 //! [`execute_batch_dag`] builds one [`BatchDag`](crate::transfer_dag::BatchDag)
 //! from the batch entries (one seven-node single-file sub-DAG per file) and
 //! runs it through [`execute_dag`]. The graph's single
-//! [`TransferResourceManager`] is the only node-level concurrency governor.
+//! [`TransferResourceManager`](crate::transfer_dag::TransferResourceManager) is
+//! the only node-level concurrency governor; DAG-P2-01 makes its buffer-byte
+//! pool the process-global governor's while slot classes stay per-job.
 //!
 //! ## DAG-P1-03 — real per-part multipart wire I/O
 //!
@@ -53,8 +55,7 @@ use crate::transfer_dag::executor::{execute_dag, DagNodeRunner, NodeFuture, Node
 use crate::transfer_dag::graph::{TransferNode, TransferNodeKind};
 use crate::transfer_dag::{
     AimdConfig, AimdController, BatchDagItem, DagObserver, NoopDagObserver, TransferCapabilities,
-    TransferDagBuilder, TransferDirection, TransferGraphProfile, TransferResourceManager,
-    TransferSessionLease,
+    TransferDagBuilder, TransferDirection, TransferGraphProfile, TransferSessionLease,
 };
 use crate::transfer_domain::{
     BatchProgressSnapshot, TransferBatchResult, TransferDirection as DomainTransferDirection,
@@ -252,8 +253,10 @@ where
     let max_concurrent = config.max_concurrent.max(1) as usize;
     let session_pool = Arc::new(executor.session_pool(max_concurrent));
     // DAG-P1-03: expose resolved chunk/disk-read credits from capabilities.
-    let resource_manager =
-        TransferResourceManager::new(config.transfer_budget_for_capabilities(&caps));
+    // DAG-P2-01: borrow the buffer-byte pool from the process-global governor so
+    // concurrent batch jobs share one memory cap; slot classes remain per-job.
+    let resource_manager = crate::transfer_dag::governor::global()
+        .child_manager(config.transfer_budget_for_capabilities(&caps));
     let provider_type = executor.provider_type();
 
     let aimd = aimd_override.unwrap_or_else(|| {

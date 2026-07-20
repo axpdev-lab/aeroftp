@@ -65,11 +65,18 @@ multipart part buffers via per-manager `buffer_bytes` credits (64 KiB quanta,
 `min(512 MiB, max(64 MiB, 10% MemAvailable))` on Linux, else 256 MiB). A
 normal pool rounds its capacity down to whole quanta, so it never exceeds the
 configured byte budget. A part whose rounded demand does not fit that usable
-pool is admitted one-at-a-time through an explicit oversize lane. This is
-**not** a process-global memory governor
-(`DAG-P2-01`); the legacy non-DAG concurrent upload path in
-`providers/multi_thread.rs` (`read_part_from_disk`) remains outside these
-credits. On the first node failure the executor cancels a graph-scoped token
+pool is admitted one-at-a-time through an explicit oversize lane. As of
+`DAG-P2-01` the buffer-byte pool is **process-global**: a single hierarchical
+governor (`transfer_dag/governor.rs`, reachable from the GUI `AppState`, the
+CLI/MCP context, and the CLI TUI via `governor::global()`) owns ONE shared
+quanta pool and ONE oversize lane, and every production job builds its manager
+as a child via `governor::child_manager(budget)`. K concurrent jobs therefore
+cannot each claim the full budget, and the single oversize allowance is
+serialised across all jobs, not merely within one. A single job alone sees the
+same budget and behaviour as before (the pool is sized by the same P0-06
+policy). The legacy non-DAG concurrent upload path in
+`providers/multi_thread.rs` (`read_part_from_disk`) still allocates its
+full-part buffers outside these credits. On the first node failure the executor cancels a graph-scoped token
 (optionally a child of an external parent), stops new dispatch, and
 terminates resident siblings within two seconds: cooperative cancel first,
 then forced `JoinSet` abort, followed by one bounded drain. This bound
@@ -356,16 +363,25 @@ single-file DAG runner for both legs.
 the paths that expose actual class-level concurrency, especially batch
 transfers, single-file multipart, and the production range graph. It is not a
 global governor, is rebuilt per operation, and cannot tune a serial file slot
-into parallelism. Batch file-level failures use the typed, non-fatal
+into parallelism. The process-global cap that spans operations is the separate
+`DAG-P2-01` governor (byte-memory pool + bandwidth token bucket), not AIMD.
+Batch file-level failures use the typed, non-fatal
 `FileFailedButGraphContinues` outcome: D2 congestion reduces the File-class
 target while unrelated file subgraphs continue. Sync still uses one file slot
 and does not yet expose this batch feedback contract.
 
-The resource manager is also per operation. It has file, checker, chunk, HTTP,
-API, disk-read, disk-write, and hash classes, but no process/endpoint governor
-and no byte-credit pool for multipart buffers. Upload/download resource
-requests currently reserve both disk directions in the generic whole-file
-profile. These are follow-up tasks, not guarantees of the present engine.
+The resource manager's slot classes (file, checker, chunk, HTTP, API,
+disk-read, disk-write, hash) are per operation. Its byte-credit pool for
+multipart buffers is no longer per operation: as of `DAG-P2-01` it is the
+process-global governor's shared pool. The endpoint level of the hierarchy
+(a concurrency sub-cap keyed by protocol + host + account) and a bandwidth
+token bucket also live in that governor; `local_sync` and the SFTP copy loops
+consult the bucket so the aggregate wire rate of concurrent jobs honours one
+configured global cap (`AEROFTP_GLOBAL_BANDWIDTH_BPS`; unset = unlimited, no
+throttle). Upload/download resource requests reserve only the disk direction
+they use (`DAG-P0-06`). The remaining P2-01b follow-ups are priority lanes,
+the disk-device resolver, and threading the endpoint concurrency lease through
+every provider job.
 
 `DagObserver` provides a shared node lifecycle abstraction. The GUI's
 `GuiDagObserver` is used on the shaped single-file path, but surface start,

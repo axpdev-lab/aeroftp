@@ -358,6 +358,43 @@ impl TransferResourceManager {
         }
     }
 
+    /// Construct a manager whose **buffer-byte pool is shared** with a
+    /// process-global governor (DAG-P2-01), while slot semaphores stay per-job.
+    ///
+    /// The caller passes the governor's shared quanta semaphore, its oversize
+    /// lane, the pool capacity in quanta, and the pool budget in bytes. The
+    /// per-job slot classes come from `budget`; `budget.buffer_bytes` is
+    /// overwritten with the shared pool budget so the oversize threshold in
+    /// [`Self::acquire_buffer_credits`] matches the shared pool exactly.
+    ///
+    /// With a single job alone, a shared pool sized to `resolve_buffer_budget_bytes()`
+    /// is byte-identical to [`Self::new`]; with K concurrent jobs the shared
+    /// pool caps aggregate borrowed memory and serialises the one oversize lane
+    /// across every job.
+    pub fn with_shared_buffer_pool(
+        mut budget: TransferBudget,
+        shared_quanta: Arc<Semaphore>,
+        shared_capacity_quanta: u32,
+        shared_oversize_lane: Arc<Semaphore>,
+        pool_budget_bytes: u64,
+    ) -> Self {
+        budget.buffer_bytes = pool_budget_bytes;
+        Self {
+            budget,
+            buffer_quanta_capacity: shared_capacity_quanta,
+            file_slots: Arc::new(Semaphore::new(budget.file_slots.max(1) as usize)),
+            checker_slots: Arc::new(Semaphore::new(budget.checker_slots.max(1) as usize)),
+            chunk_slots: Arc::new(Semaphore::new(budget.chunk_slots.max(1) as usize)),
+            http_slots: Arc::new(Semaphore::new(budget.http_slots.max(1) as usize)),
+            api_slots: Arc::new(Semaphore::new(budget.api_slots.max(1) as usize)),
+            disk_read_slots: Arc::new(Semaphore::new(budget.disk_read_slots.max(1) as usize)),
+            disk_write_slots: Arc::new(Semaphore::new(budget.disk_write_slots.max(1) as usize)),
+            hash_slots: Arc::new(Semaphore::new(budget.hash_slots.max(1) as usize)),
+            buffer_quanta: shared_quanta,
+            oversize_lane: shared_oversize_lane,
+        }
+    }
+
     pub fn budget(&self) -> TransferBudget {
         self.budget
     }

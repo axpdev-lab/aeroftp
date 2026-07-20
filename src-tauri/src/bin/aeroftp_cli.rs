@@ -60128,6 +60128,14 @@ async fn main() {
         ftp_client_gui_lib::providers::tpslimit::init(cli.tpslimit, burst);
     }
 
+    // DAG-P2-01: construct the process-global hierarchical transfer governor
+    // once, at CLI startup (the CLI has no long-lived AppState). Every transfer
+    // path reaches the same singleton via `governor::global()`; env
+    // `AEROFTP_GLOBAL_BANDWIDTH_BPS` / `AEROFTP_ENDPOINT_MAX_SLOTS` tune it.
+    let _governor = ftp_client_gui_lib::transfer_dag::governor::init(
+        ftp_client_gui_lib::transfer_dag::governor::GovernorConfig::from_env(),
+    );
+
     // Setup tracing based on verbosity. -vv forces TRACE; -v forces DEBUG.
     // Without the env-filter feature we still honor the common RUST_LOG
     // levels globally, so `RUST_LOG=warn` does not accidentally enable the

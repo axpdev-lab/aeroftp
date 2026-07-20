@@ -401,6 +401,17 @@ pub async fn local_sync_run(
             },
         );
 
+        // DAG-P2-01: charge the wire bytes against the process-global bandwidth
+        // bucket so concurrent jobs share one aggregate cap. When no global cap
+        // is configured (AEROFTP_GLOBAL_BANDWIDTH_BPS unset) this is an immediate
+        // no-op, preserving the per-run throttle below unchanged.
+        if wire_bytes > 0 {
+            crate::transfer_dag::governor::global()
+                .bandwidth()
+                .acquire(wire_bytes)
+                .await;
+        }
+
         // CO-3: post-file throttle. Sleeps for the time the configured
         // cap implies for the bytes we just produced. Skipped when no
         // cap is set or the file did not move bytes.
