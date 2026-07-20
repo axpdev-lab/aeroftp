@@ -6,7 +6,7 @@ actually reachable, not every shape that the builder can represent.*
 
 AeroFTP contains a shared, provider-agnostic transfer-DAG core. The core is
 real and is used by the shaped single-file runner, the batch wrapper, the
-non-dry-run sync wrapper, and the opt-in range runner. It is not correct to
+non-dry-run sync wrapper, and the production range runner. It is not correct to
 turn the existence of a builder, a capability flag, or a unit test into a
 claim about production wire behavior.
 
@@ -26,7 +26,7 @@ The audit rule used here is:
 | Single-file CLI `get` / `put` | `run_single_file_transfer` → `execute_single_file_dag` (`src-tauri/src/bin/aeroftp_cli.rs:8748-8767`) | Same shaped-file runner and provider binding | DAG is selected by the router for normal network transfers; local-to-local or explicit legacy routes bypass it |
 | Multi-file batch | `transfer_orchestrator::execute_batch` → `execute_batch_dag` (`src-tauri/src/transfer_orchestrator.rs:66-70`) | Graph from executor runtime capabilities (P1-01); capability-aware settings (P1-02); real per-part multipart wire I/O (P1-03) via shared `transfer_multipart` lifecycle | File-level parallelism for clone/session-pool providers; multipart batch files issue N wire `upload_part` calls with one begin/complete (or abort once after drain) |
 | Non-dry-run sync | `sync_tree_core` → `execute_sync_dag` (`src-tauri/src/sync.rs:1223-1238`) | Scan and planning happen before the graph; the graph wraps a precomputed plan and a serial file driver | DAG wrapper is active; file transfer remains serial by design; dry-run stays on the planning path |
-| Segmented download | `run_provider_segmented_download` (`src-tauri/src/providers/multi_thread.rs:290-310`) | Default is the legacy `JoinSet` range scheduler; `shaped_ranges` calls `execute_dag` only on the opt-in graph branch | Range I/O is real; DAG range scheduling requires `AEROFTP_RANGE_GRAPH=1`; GUI Auto may use one stream |
+| Segmented download | Provider/CLI adapters -> `run_concurrent_range_download` (`src-tauri/src/providers/multi_thread.rs:244`) | `shaped_ranges` drives real range requests and offset writes through `execute_dag`; the old `JoinSet` runner is test-only | Graph scheduling is the only production range scheduler; GUI Auto may still select one stream |
 | Same-provider copy | GUI `provider_server_copy`, CLI `cp`, and CLI WebDAV `COPY` -> `execute_copy_dag` -> `TransferDagBuilder::shaped_copy` | One `ServerSideCopy` core, or observable `DownloadFile` -> `UploadFile`; recoverable native rejection emits typed fallback before the second shape | Native copy reports logical bytes with `wire_bytes=0` and `local_payload_bytes=0`; fallback reports both payload legs |
 | Cross-profile transfer | `cross_profile_transfer::copy_one_file_with_options` (`src-tauri/src/cross_profile_transfer.rs:123-167`) | Source download → local temp file → destination upload, with optional SFTP delta and optional segmented source helper | Provider-owned/temp-file bridge; not one shared transfer DAG |
 
@@ -91,8 +91,8 @@ Four production wrappers call the core:
 - `transfer_dag_single_file::execute_copy_dag` builds `shaped_copy` for GUI,
   CLI `cp`, and the CLI WebDAV bridge.
 
-The builder also exposes `shaped_ranges`. That shape is useful and tested, but
-its presence is not evidence that the default range path uses it.
+The builder also exposes `shaped_ranges`. Since `DAG-P1-06`, the shared
+concurrent range orchestrator always consumes that shape in production.
 
 ## The shapes and their status
 
@@ -103,7 +103,7 @@ its presence is not evidence that the default range path uses it.
 | Batch | `from_batch_shaped(items, caps)` | Active graph wrapper; caps from `TransferExecutor::transfer_capabilities()`. Multipart files run real per-part wire I/O (DAG-P1-03); plain upload/download stay whole-file |
 | Sync | `from_sync_plan_shaped(plan, caps)` | Active for non-dry-run sync, with default capabilities, precomputed scan/plan, and serial file execution |
 | Copy | `shaped_copy(caps)` | Active for GUI copy, CLI `cp`, and CLI WebDAV `COPY`; native rejection fallback is observed and then runs an explicit two-node payload core |
-| Segmented download | `shaped_ranges(N)` | Active only from the `AEROFTP_RANGE_GRAPH=1` branch; default remains the `JoinSet` scheduler |
+| Segmented download | `shaped_ranges(N)` | Active for every shared concurrent range download; legacy `JoinSet` retained only in the equivalence test harness |
 
 The usual seven-node envelope is a graph representation, not a guarantee that
 each node performs I/O on every path:
@@ -298,16 +298,18 @@ planning path by design.
 
 ## Segmented downloads
 
-The range primitive itself is production code: it preallocates a temporary
-file, writes validated ranges at offsets, handles servers that ignore Range,
-and cleans up on cancellation. The default selection in
-`providers/multi_thread.rs:290-310` still chooses the `JoinSet` scheduler.
+The range primitive preallocates a temporary file, writes validated ranges at
+offsets, handles servers that ignore Range, and cleans up on cancellation.
+`run_concurrent_range_download` now calls `run_ranges_via_graph` directly,
+which builds `shaped_ranges` and binds each `DownloadRange` node to a real
+request and offset write. There is no environment switch or production
+legacy branch.
 
-When `AEROFTP_RANGE_GRAPH=1`, the same module builds `shaped_ranges` and calls
-`execute_dag`; that branch binds each `DownloadRange` node to a real range
-request and offset write. This is an opt-in migration path, not the default
-production scheduler. The GUI's Auto value is conservative and can resolve to
-a single stream.
+The former `JoinSet` runner is compiled only under `#[cfg(test)]`. Its
+equivalence matrix gates byte identity, outcome and typed-error parity,
+progress totals, range boundaries, panic propagation, fail-fast cancellation,
+and the same `max_parallel` ceiling. The GUI's Auto value remains conservative
+and can still resolve to a single stream.
 
 ## Server-side copy and cross-profile copy
 
@@ -345,7 +347,7 @@ single-file DAG runner for both legs.
 
 `AimdController` is real and can be passed to `execute_dag`. It is useful on
 the paths that expose actual class-level concurrency, especially batch
-transfers, single-file multipart, and the opt-in range graph. It is not a
+transfers, single-file multipart, and the production range graph. It is not a
 global governor, is rebuilt per operation, and cannot tune a serial file slot
 into parallelism. Batch file-level failures use the typed, non-fatal
 `FileFailedButGraphContinues` outcome: D2 congestion reduces the File-class
@@ -430,7 +432,7 @@ operation.
 | `src-tauri/src/transfer_dag_single_file.rs` | Real shaped single-file and same-provider copy runners |
 | `src-tauri/src/transfer_dag_batch.rs` | Batch graph wrapper and file-session adapter |
 | `src-tauri/src/transfer_dag_sync.rs` | Non-dry-run sync graph wrapper and serial driver |
-| `src-tauri/src/providers/multi_thread.rs` | Default range scheduler and opt-in DAG range runner |
+| `src-tauri/src/providers/multi_thread.rs` | Shared graph range scheduler and test-only legacy equivalence runner |
 | `src-tauri/src/copy_fallback.rs` | Authoritative copy-fallback classifier and legacy compatibility helper |
 | `src-tauri/src/cross_profile_transfer.rs` | Temp-file cross-profile bridge |
 
@@ -446,7 +448,7 @@ is an explicit reminder that the transfer architecture is transitional.
 | Hand-written `JoinSet` batch orchestrator | `execute_batch_dag` is the batch entry point |
 | Provider-owned multipart in the old single-file paths | The shaped single-file runner owns the multipart lifecycle where its call path reaches it |
 | Copy behavior spread across provider call sites | GUI, CLI `cp`, and WebDAV `COPY` share `execute_copy_dag`; native copy and both fallback payload legs are observable nodes |
-| Range graph migration | `shaped_ranges` exists and is real, but the default remains the `JoinSet` scheduler |
+| Range graph migration | `shaped_ranges` is the only production concurrent range scheduler; the old `JoinSet` is test-only |
 | One fully converged engine for every surface | Shared core plus selected wrappers; batch/sync/copy/cross-profile still have documented adapters and limits |
 
 For the planned next steps (real sync concurrency, complete telemetry, and

@@ -647,12 +647,10 @@ impl TransferDagBuilder {
     /// Returns one [`TransferNodeKind::DownloadRange`] node per requested
     /// segment, with no dependencies between them. Every node reserves one
     /// `range_chunk` resource so the shared chunk / HTTP / disk-write budget
-    /// governs how many segments run at once. The legacy
+    /// governs how many segments run at once. The production
     /// [`crate::providers::multi_thread::run_ranges_via_graph`] runner
-    /// produced this exact shape inline; expressing it here keeps the
-    /// builder the single source of truth for every production graph shape
-    /// and unblocks the SG-T19 collapse where the manual node construction
-    /// goes away.
+    /// consumes this shape directly, keeping the builder the single source of
+    /// truth for every production graph shape.
     pub fn shaped_ranges(segments: usize) -> ShapedRangesDag {
         let mut dag = TransferDag::default();
         let mut transfer = Vec::with_capacity(segments);

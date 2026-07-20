@@ -2427,10 +2427,9 @@ impl StorageProvider for SftpProvider {
 
 /// PD-PIPE-1: parse `AEROFTP_SFTP_READ_PIPELINE` into a pipeline window.
 ///
-/// Mirrors the `AEROFTP_RANGE_GRAPH` opt-in discipline (PD-ADAPT-1d): the
-/// flag is **off by default**, so an unset/`0`/`1`/`false` value keeps the
-/// exact serial `download()` loop (byte-identical, diff-0). A value `>= 2`
-/// (or a truthy word) enables bounded read pipelining on the **single
+/// The flag is **off by default**, so an unset/`0`/`1`/`false` value keeps
+/// the exact serial `download()` loop (byte-identical, diff-0). A value
+/// `>= 2` (or a truthy word) enables bounded read pipelining on the **single
 /// existing** SFTP session and is the only thing that changes the read
 /// scheduling. The window is capped so a hostile value cannot blow memory
 /// (`window * buffer_size` is the worst-case in-flight footprint).
@@ -2803,7 +2802,7 @@ async fn sftp_download_one_range(
     // with PD-SFTP-2's N independent connections; no new connection / pool /
     // channel. Default (flag unset) or an active cap falls through to the
     // exact serial loop below = diff-0 (the serial loop owns the precise
-    // throttle, same discipline as PD-PIPE-1 / `AEROFTP_RANGE_GRAPH`).
+    // throttle, as in PD-PIPE-1).
     if limit_bps == 0 {
         if let Some(window) = sftp_read_pipeline_window() {
             let mut out = tokio::fs::OpenOptions::new()
