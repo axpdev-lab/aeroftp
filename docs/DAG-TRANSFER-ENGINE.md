@@ -24,8 +24,8 @@ The audit rule used here is:
 |---|---|---|---|
 | Single-file GUI `get` / `put` | `provider_commands::run_dag_*_leaf` → `execute_single_file_dag` (`src-tauri/src/provider_commands.rs:2289`, `:2438`) | `UploadFile`/`DownloadFile` bind to provider I/O; multipart binds begin/part/complete/abort; several structural nodes are no-ops | Shaped DAG is the normal network path, subject to the transfer router and explicit legacy override |
 | Single-file CLI `get` / `put` | `run_single_file_transfer` → `execute_single_file_dag` (`src-tauri/src/bin/aeroftp_cli.rs:8748-8767`) | Same shaped-file runner and provider binding | DAG is selected by the router for normal network transfers; local-to-local or explicit legacy routes bypass it |
-| Multi-file batch | `transfer_orchestrator::execute_batch` → `execute_batch_dag` (`src-tauri/src/transfer_orchestrator.rs:66-70`) | Graph from executor runtime capabilities (P1-01); capability-aware settings (P1-02); real per-part multipart wire I/O (P1-03) via shared `transfer_multipart` lifecycle | File-level parallelism for clone/session-pool providers; multipart batch files issue N wire `upload_part` calls with one begin/complete (or abort once after drain) |
-| Non-dry-run sync | `sync_tree_core` → `execute_sync_dag` (`src-tauri/src/sync.rs:1223-1238`) | Scan/planning precede the graph; normal files use bounded independent clone workers, while delta retains the primary `DeltaBatch` lane | Clone-backed providers use their live session ceiling; locked or failed-clone providers and every delta request stay serial; dry-run stays on planning path |
+| Multi-file batch | `transfer_orchestrator::execute_batch` → `execute_batch_dag` (`src-tauri/src/transfer_orchestrator.rs:66-70`) | Streams the known entry list through a bounded backlog and a bounded active set (P2-04): each file's shaped subgraph is expanded only when admitted and dropped when done, never a full static graph. Graph from executor runtime capabilities (P1-01); capability-aware settings (P1-02); real per-part multipart wire I/O (P1-03) via shared `transfer_multipart` lifecycle | File-level parallelism for clone/session-pool providers; multipart batch files issue N wire `upload_part` calls with one begin/complete (or abort once after drain); `--max-backlog` bounds the pending-work queue |
+| Non-dry-run sync | `sync_tree_core` → `execute_sync_dag` (`src-tauri/src/sync.rs:1223-1238`) | Scan/planning precede the graph; the precomputed transfer plan then streams per-file subgraphs through the same bounded frontier (P2-04) instead of one static plan graph; normal files use bounded independent clone workers, while delta retains the primary `DeltaBatch` lane | Clone-backed providers use their live session ceiling; locked or failed-clone providers and every delta request stay serial; dry-run stays on planning path |
 | Segmented download | Provider/CLI adapters -> `run_concurrent_range_download` (`src-tauri/src/providers/multi_thread.rs:244`) | `shaped_ranges` drives real range requests and offset writes through `execute_dag`; the old `JoinSet` runner is test-only | Graph scheduling is the only production range scheduler; GUI Auto may still select one stream |
 | Same-provider copy | GUI `provider_server_copy`, CLI `cp`, and CLI WebDAV `COPY` -> `execute_copy_dag` -> `TransferDagBuilder::shaped_copy` | One `ServerSideCopy` core, or observable `DownloadFile` -> `UploadFile`; recoverable native rejection emits typed fallback before the second shape | Native copy reports logical bytes with `wire_bytes=0` and `local_payload_bytes=0`; fallback reports both payload legs |
 | Cross-profile transfer | `cross_profile_transfer::copy_one_file_with_options` (`src-tauri/src/cross_profile_transfer.rs:123-167`) | Source download → local temp file → destination upload, with optional SFTP delta and optional segmented source helper | Provider-owned/temp-file bridge; not one shared transfer DAG |
@@ -316,9 +316,16 @@ Honest distinctions:
 ### Sync
 
 Non-dry-run sync reaches `execute_sync_dag`. Local and remote scans overlap,
-which is a real benefit. The complete scan and plan are then materialized
-before graph construction. `DiscoverLocal`, `DiscoverRemote`, and `Compare`
-describe that plan but do not perform the scan/planning work themselves.
+which is a real benefit. The complete scan and plan are still resolved before
+transfer (sync is scan-first, and its decision equivalence depends on that),
+but the plan is now a plain vector, not a full executable node graph. The
+transfer set streams through the same bounded frontier as batch (P2-04): each
+planned transfer's shaped subgraph is expanded only when it is admitted into
+the active set and dropped when it completes, so peak resident nodes stay
+`O(active_file_cap x nodes_per_file)` instead of one static graph of N chains.
+The global `DiscoverLocal` / `DiscoverRemote` / `Compare` prefix is gone from
+the transfer graph because the scan/plan already ran; the per-file subgraph's
+own discover node is a structural no-op.
 
 The sync runner snapshots `transfer_capabilities()` and allocates clone workers
 only when the provider's existing `clone_for_transfer` contract realizes its
@@ -332,6 +339,39 @@ A requested delta sync always retains the primary provider and one
 `DeltaBatch`; it is dispatched only by the exclusive serial lane. Normal clone
 workers never borrow that session. Deletes still start only after every graph
 file node has drained, and dry-run remains on the legacy planning path.
+
+## Streaming multi-file frontier (DAG-P2-04)
+
+Multi-file production no longer builds one static `TransferDag` for the entire
+job. A `WorkSource` (`src-tauri/src/transfer_dag/work_source.rs`) emits
+`TransferWorkItem`s; a bounded backlog buffers pending items and pauses the
+source when full (backpressure); and at most `active_file_cap` file subgraphs
+are materialized and executing at once. Each admitted file's shaped subgraph is
+built with `TransferDagBuilder::shaped_file`, run through `execute_dag` with the
+job-wide resource manager, AIMD controller, and session pool, then dropped. Peak
+resident nodes are therefore `O(active_file_cap x nodes_per_file)`, not
+`O(total_files x nodes_per_file)`.
+
+- **Batch** streams the known entry list (`BatchEntriesWorkSource`); every
+  existing behavior is preserved because the per-file node runners
+  (`run_whole_file_node`, `run_multipart_part_node`, `run_multipart_commit_node`)
+  are reused verbatim, bound to a one-element entry slice.
+- **Sync** streams the precomputed transfer plan (`SyncTransfersWorkSource`);
+  each subgraph hands its transfer to the same `drive_sync_transfers` driver,
+  which still owns the bounded worker pool, the exclusive delta lane, and
+  out-of-order report aggregation. Sync remains scan-first: the plan is a plain
+  vector (a plan iterator), but the graph is streamed.
+- **Backlog knob**: the CLI `--max-backlog` (default 10000) maps to the batch
+  `TransferBatchConfig::max_backlog` and thence the engine backlog cap. Sync
+  uses the engine default; a smaller value than the active window is clamped up
+  because a backlog below the active set cannot fill it.
+- **Bounds proof**: a deterministic gate streams 10,000,000 synthetic items and
+  asserts peak materialized nodes stay within `active_file_cap x template`;
+  the assertion fails on the old build-full-graph-first approach.
+
+`--check-first` / audit modes that need a complete preview may still materialize
+a full plan (a work-item inventory), never a full executable node graph for
+millions of files.
 
 ## Segmented downloads
 

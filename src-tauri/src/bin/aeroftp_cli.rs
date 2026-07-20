@@ -9046,6 +9046,8 @@ async fn run_shared_provider_download_batch(
             max_concurrent: runtime_settings.max_concurrent,
             max_retries: runtime_settings.retry_count,
             timeout_ms: runtime_settings.timeout_seconds.saturating_mul(1000),
+            // DAG-P2-04: the --max-backlog knob is now a real engine bound.
+            max_backlog: cli.max_backlog,
         },
         entries,
     };
@@ -9248,6 +9250,8 @@ async fn run_shared_provider_upload_batch(
             max_concurrent: runtime_settings.max_concurrent,
             max_retries: runtime_settings.retry_count,
             timeout_ms: runtime_settings.timeout_seconds.saturating_mul(1000),
+            // DAG-P2-04: the --max-backlog knob is now a real engine bound.
+            max_backlog: cli.max_backlog,
         },
         entries,
     };

@@ -49,18 +49,21 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 
+use async_trait::async_trait;
 use tokio::sync::Mutex;
 
 use crate::transfer_dag::executor::{execute_dag, DagNodeRunner, NodeFuture, NodeOutcome};
 use crate::transfer_dag::graph::{TransferNode, TransferNodeKind};
 use crate::transfer_dag::{
-    AimdConfig, AimdController, BatchDagItem, DagObserver, DiskLeaseRequest, NoopDagObserver,
-    TransferCapabilities, TransferDagBuilder, TransferDirection, TransferGraphProfile,
-    TransferPriority, TransferSessionLease,
+    AimdConfig, AimdController, DagObserver, DiskLeaseRequest, FileAdmission, NoopDagObserver,
+    StreamingConfig, TransferCapabilities, TransferDagBuilder, TransferDirection,
+    TransferGraphProfile, TransferPriority, TransferResourceManager, TransferSessionLease,
+    TransferSessionPoolHandle, TransferWorkItem, WorkSource,
 };
 use crate::transfer_domain::{
-    BatchProgressSnapshot, TransferBatchResult, TransferDirection as DomainTransferDirection,
-    TransferFailure, TransferFailureKind, TransferOutcome,
+    BatchProgressSnapshot, TransferBatchConfig, TransferBatchResult,
+    TransferDirection as DomainTransferDirection, TransferEntry, TransferFailure,
+    TransferFailureKind, TransferOutcome,
 };
 use crate::transfer_event_sink::TransferEventSink;
 use crate::transfer_multipart::{
@@ -189,95 +192,11 @@ where
     // DAG-P1-01/P1-02: consume exactly the executor's runtime capability
     // snapshot for graph shape and budget ceilings.
     let caps: TransferCapabilities = executor.transfer_capabilities();
-    let items: Vec<BatchDagItem> = entries
-        .iter()
-        .map(|entry| BatchDagItem::with_size(entry.id.clone(), dag_direction, entry.size))
-        .collect();
-    let built = TransferDagBuilder::from_batch_shaped(&items, &caps);
-
-    // Map transfer-core nodes AND multipart CommitTemp nodes to entry index.
-    let mut node_to_entry: HashMap<usize, usize> = HashMap::with_capacity(built.files.len() * 2);
-    let mut multipart_runtimes: Vec<Option<Arc<MultipartFileRuntime>>> =
-        Vec::with_capacity(built.files.len());
-
-    for (index, file) in built.files.iter().enumerate() {
-        for &node_id in &file.transfer_nodes {
-            node_to_entry.insert(node_id, index);
-        }
-
-        let is_multipart = file.transfer_nodes.len() > 1;
-        if is_multipart {
-            // Fail closed when the graph is multipart-shaped but the executor
-            // has no wire contract (conservative default / capability mismatch).
-            if !executor.supports_multipart_wire() {
-                multipart_runtimes.push(None);
-                // Still map commit so we can account a single failure.
-                node_to_entry.insert(file.commit, index);
-                continue;
-            }
-            let entry = &entries[index];
-            let profile = TransferGraphProfile::resolve(dag_direction, &caps, entry.size);
-            let layout = MultipartLayout::from_profile(
-                entry.size,
-                profile.upload_parts,
-                profile.preferred_chunk_size,
-                &entry.local_path,
-            );
-            let node_to_part: HashMap<usize, u32> = file
-                .transfer_nodes
-                .iter()
-                .enumerate()
-                .map(|(idx, node_id)| (*node_id, (idx + 1) as u32))
-                .collect();
-            let state = MultipartFileState::new(layout, node_to_part);
-            node_to_entry.insert(file.commit, index);
-            multipart_runtimes.push(Some(Arc::new(MultipartFileRuntime {
-                state,
-                session_lease: Mutex::new(SessionLeaseSlot::Vacant),
-                governor_lease: Mutex::new(None),
-            })));
-        } else {
-            multipart_runtimes.push(None);
-        }
-    }
-
-    // Preflight: multipart-shaped files without wire support fail closed once.
-    let preflight_unsupported: Vec<usize> = built
-        .files
-        .iter()
-        .enumerate()
-        .filter(|(i, f)| f.transfer_nodes.len() > 1 && multipart_runtimes[*i].is_none())
-        .map(|(i, _)| i)
-        .collect();
-    if !preflight_unsupported.is_empty() && !executor.supports_multipart_wire() {
-        for &index in &preflight_unsupported {
-            let entry = &entries[index];
-            let failure = unsupported_multipart_failure();
-            executor.multipart_emit_file_error(entry, &failure);
-            let snapshot_clone = {
-                let mut snapshot = progress.lock().await;
-                snapshot.failed += 1;
-                snapshot.clone()
-            };
-            sink.emit_batch_progress(&snapshot_clone);
-            if let Some(observer) = progress_observer.as_ref() {
-                observer(snapshot_clone);
-            }
-        }
-        // Do not schedule multipart wire work for unsupported files; strip by
-        // leaving runtime None and making part/commit nodes no-op after
-        // accounting above. Parts/commit for those indices short-circuit.
-    }
-
-    let entries = Arc::new(entries);
-    let node_to_entry = Arc::new(node_to_entry);
-    let multipart_runtimes = Arc::new(multipart_runtimes);
-    // Track preflight-accounted unsupported entries so commit/part skip re-account.
-    let preflight_failed = Arc::new(std::sync::Mutex::new(
-        preflight_unsupported
-            .into_iter()
-            .collect::<std::collections::HashSet<_>>(),
-    ));
+    // DAG-P2-04: the whole job graph is no longer materialized up front. The
+    // known entry list is streamed through a bounded backlog; each file's
+    // shaped subgraph is expanded only when it is admitted into the active set
+    // (see `run_one_batch_file`), so peak resident nodes stay
+    // O(active_file_cap * nodes_per_file), not O(total_files * nodes_per_file).
 
     let max_concurrent = config.max_concurrent.max(1) as usize;
     let session_pool = Arc::new(executor.session_pool(max_concurrent));
@@ -304,14 +223,212 @@ where
         }
     };
 
+    let entries = Arc::new(entries);
+
+    // Everything shared across the whole batch. Only a file's subgraph, its
+    // node bindings, and its multipart runtime are built fresh on admission.
+    let ctx = Arc::new(BatchStreamContext {
+        sink: Arc::clone(&sink),
+        executor: Arc::clone(&executor),
+        cancel: Arc::clone(&cancel),
+        progress: Arc::clone(&progress),
+        progress_observer,
+        entries: Arc::clone(&entries),
+        session_pool,
+        resource_manager,
+        aimd,
+        caps,
+        dag_direction,
+    });
+
+    // Stream the known entry list through a bounded backlog and a bounded
+    // active set. A file's transfer subgraph exists only while it is admitted.
+    let source = BatchEntriesWorkSource {
+        entries: Arc::clone(&entries),
+        direction: dag_direction,
+        next: 0,
+    };
+    let streaming_config = batch_streaming_config(&config, &ctx.caps);
+    let _summary =
+        crate::transfer_dag::run_streaming(source, streaming_config, move |item, admission| {
+            let ctx = Arc::clone(&ctx);
+            async move {
+                run_one_batch_file(item, admission, ctx).await;
+            }
+        })
+        .await;
+
+    let snapshot = progress.lock().await.clone();
+    let batch_result = TransferBatchResult {
+        completed: snapshot.completed,
+        skipped: snapshot.skipped,
+        failed: snapshot.failed,
+        total: snapshot.total,
+        cancelled: cancel.load(Ordering::Relaxed),
+        duration_ms: started_at.elapsed().as_millis() as u64,
+    };
+
+    sink.emit_batch_completed(&batch_result);
+
+    batch_result
+}
+
+/// State shared across every file of one streaming batch run. Cloned (Arc) into
+/// each admitted file's execution; the file-specific subgraph, node bindings,
+/// and multipart runtime are built per file in [`run_one_batch_file`].
+struct BatchStreamContext<E> {
+    sink: Arc<dyn TransferEventSink>,
+    executor: Arc<E>,
+    cancel: Arc<AtomicBool>,
+    progress: Arc<Mutex<BatchProgressSnapshot>>,
+    progress_observer: Option<ProgressObserver>,
+    entries: Arc<Vec<TransferEntry>>,
+    session_pool: Arc<TransferSessionPoolHandle>,
+    resource_manager: TransferResourceManager,
+    aimd: Arc<AimdController>,
+    caps: TransferCapabilities,
+    dag_direction: TransferDirection,
+}
+
+/// A lazy [`WorkSource`] over a known batch entry list. It yields one work item
+/// per entry on demand, so the frontier never allocates a second O(total_files)
+/// vector alongside the caller's entries.
+struct BatchEntriesWorkSource {
+    entries: Arc<Vec<TransferEntry>>,
+    direction: TransferDirection,
+    next: usize,
+}
+
+#[async_trait]
+impl WorkSource for BatchEntriesWorkSource {
+    async fn next_item(&mut self) -> Option<TransferWorkItem> {
+        let index = self.next;
+        let entry = self.entries.get(index)?;
+        self.next += 1;
+        Some(TransferWorkItem::new(
+            entry.id.clone(),
+            index,
+            entry.size,
+            self.direction,
+        ))
+    }
+
+    fn known_total(&self) -> Option<usize> {
+        Some(self.entries.len())
+    }
+}
+
+/// DAG-P2-04: map batch config + capabilities to the streaming frontier bounds.
+///
+/// The backlog cap honors the CLI `--max-backlog` knob (`config.max_backlog`).
+/// The active-file window is at least the resolved file-slot concurrency so the
+/// active set can always saturate the shared file budget, with headroom (the
+/// default window) for discover/acquire prefixes to overlap in-flight transfers.
+fn batch_streaming_config(
+    config: &TransferBatchConfig,
+    caps: &TransferCapabilities,
+) -> StreamingConfig {
+    let file_slots = config.transfer_budget_for_capabilities(caps).file_slots as usize;
+    let active_file_cap = file_slots.max(crate::transfer_dag::DEFAULT_ACTIVE_FILE_WINDOW);
+    StreamingConfig {
+        backlog_cap: config.max_backlog,
+        active_file_cap,
+    }
+    .normalized()
+}
+
+/// Execute one admitted batch file: expand its shaped subgraph template, bind
+/// the shared node runners to this single entry, and run it through
+/// [`execute_dag`] with the batch-wide resource manager, AIMD controller, and
+/// session pool. The subgraph is dropped when this returns, so peak resident
+/// nodes stay `O(active_file_cap * nodes_per_file)`.
+///
+/// Behavioral parity with the former single-graph path is preserved because the
+/// per-node work is the same `run_whole_file_node` / `run_multipart_part_node` /
+/// `run_multipart_commit_node`, bound here to a one-element entry slice.
+async fn run_one_batch_file<E>(
+    item: TransferWorkItem,
+    mut admission: FileAdmission,
+    ctx: Arc<BatchStreamContext<E>>,
+) where
+    E: TransferExecutor + Send + Sync + 'static,
+{
+    let entry = ctx.entries[item.index].clone();
+
+    // Expand the file subgraph template only now, on admission.
+    let shaped = TransferDagBuilder::shaped_file(ctx.dag_direction, &ctx.caps, entry.size);
+    admission.materialize_nodes(shaped.dag.nodes().len());
+
+    let is_multipart = shaped.transfer.len() > 1;
+
+    // Preflight: a multipart-shaped file without a wire contract fails closed
+    // exactly once (same contract as the former pre-graph preflight); no
+    // transfer nodes run for it.
+    if is_multipart && !ctx.executor.supports_multipart_wire() {
+        let failure = unsupported_multipart_failure();
+        ctx.executor.multipart_emit_file_error(&entry, &failure);
+        let snapshot_clone = {
+            let mut snapshot = ctx.progress.lock().await;
+            snapshot.failed += 1;
+            snapshot.clone()
+        };
+        ctx.sink.emit_batch_progress(&snapshot_clone);
+        if let Some(observer) = ctx.progress_observer.as_ref() {
+            observer(snapshot_clone);
+        }
+        return;
+    }
+
+    // Bind this subgraph's local node ids to the single admitted entry (index 0
+    // of a one-element slice), so the shared node runners are reused verbatim
+    // without an O(total_files) side array.
+    let entries_one: Arc<Vec<TransferEntry>> = Arc::new(vec![entry.clone()]);
+    let mut node_to_entry: HashMap<usize, usize> = HashMap::new();
+    for &node_id in &shaped.transfer {
+        node_to_entry.insert(node_id, 0);
+    }
+    let multipart_runtime: Option<Arc<MultipartFileRuntime>> = if is_multipart {
+        let profile = TransferGraphProfile::resolve(ctx.dag_direction, &ctx.caps, entry.size);
+        let layout = MultipartLayout::from_profile(
+            entry.size,
+            profile.upload_parts,
+            profile.preferred_chunk_size,
+            &entry.local_path,
+        );
+        let node_to_part: HashMap<usize, u32> = shaped
+            .transfer
+            .iter()
+            .enumerate()
+            .map(|(idx, node_id)| (*node_id, (idx + 1) as u32))
+            .collect();
+        let state = MultipartFileState::new(layout, node_to_part);
+        node_to_entry.insert(shaped.commit, 0);
+        Some(Arc::new(MultipartFileRuntime {
+            state,
+            session_lease: Mutex::new(SessionLeaseSlot::Vacant),
+            governor_lease: Mutex::new(None),
+        }))
+    } else {
+        None
+    };
+
+    let node_to_entry = Arc::new(node_to_entry);
+    let multipart_runtimes: Arc<Vec<Option<Arc<MultipartFileRuntime>>>> =
+        Arc::new(vec![multipart_runtime]);
+    // No preflight entries reach the graph (handled above), so this stays empty.
+    let preflight_failed = Arc::new(std::sync::Mutex::new(
+        std::collections::HashSet::<usize>::new(),
+    ));
+
     let runner: Arc<dyn DagNodeRunner> = {
-        let sink = Arc::clone(&sink);
-        let executor = Arc::clone(&executor);
-        let cancel = Arc::clone(&cancel);
-        let progress = Arc::clone(&progress);
-        let entries = Arc::clone(&entries);
+        let sink = Arc::clone(&ctx.sink);
+        let executor = Arc::clone(&ctx.executor);
+        let cancel = Arc::clone(&ctx.cancel);
+        let progress = Arc::clone(&ctx.progress);
+        let progress_observer = ctx.progress_observer.clone();
+        let entries = Arc::clone(&entries_one);
         let node_to_entry = Arc::clone(&node_to_entry);
-        let session_pool = Arc::clone(&session_pool);
+        let session_pool = Arc::clone(&ctx.session_pool);
         let multipart_runtimes = Arc::clone(&multipart_runtimes);
         let preflight_failed = Arc::clone(&preflight_failed);
         Arc::new(move |node: TransferNode| -> NodeFuture {
@@ -386,25 +503,17 @@ where
     };
 
     let observer: Arc<dyn DagObserver> = Arc::new(NoopDagObserver);
-    if let Err(error) =
-        execute_dag(&built.dag, &resource_manager, runner, observer, Some(aimd)).await
+    if let Err(error) = execute_dag(
+        &shaped.dag,
+        &ctx.resource_manager,
+        runner,
+        observer,
+        Some(Arc::clone(&ctx.aimd)),
+    )
+    .await
     {
-        tracing::warn!("Batch transfer graph stopped early: {}", error);
+        tracing::warn!("Batch transfer file graph stopped early: {}", error);
     }
-
-    let snapshot = progress.lock().await.clone();
-    let batch_result = TransferBatchResult {
-        completed: snapshot.completed,
-        skipped: snapshot.skipped,
-        failed: snapshot.failed,
-        total: snapshot.total,
-        cancelled: cancel.load(Ordering::Relaxed),
-        duration_ms: started_at.elapsed().as_millis() as u64,
-    };
-
-    sink.emit_batch_completed(&batch_result);
-
-    batch_result
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1307,6 +1416,7 @@ mod tests {
                 max_concurrent,
                 max_retries: 0,
                 timeout_ms: 30_000,
+                max_backlog: crate::transfer_domain::default_transfer_max_backlog(),
             },
             entries,
         }
@@ -1321,6 +1431,7 @@ mod tests {
                 max_concurrent,
                 max_retries: 0,
                 timeout_ms: 30_000,
+                max_backlog: crate::transfer_domain::default_transfer_max_backlog(),
             },
             entries,
         }
@@ -1808,6 +1919,7 @@ mod tests {
             max_concurrent: 3,
             max_retries: 0,
             timeout_ms: 30_000,
+            max_backlog: crate::transfer_domain::default_transfer_max_backlog(),
         };
         let caps = multipart_caps(4, 1024);
         let budget = config.transfer_budget_for_capabilities(&caps);
@@ -2368,5 +2480,55 @@ mod tests {
             }
             other => panic!("expected continuing failure, got {other:?}"),
         }
+    }
+
+    // DAG-P2-04: the CLI --max-backlog knob maps to the streaming engine's
+    // bounded backlog cap.
+    #[test]
+    fn batch_streaming_config_honors_max_backlog() {
+        let caps = TransferCapabilities::default();
+        let mut config = TransferBatchConfig {
+            max_concurrent: 4,
+            max_retries: 0,
+            timeout_ms: 30_000,
+            max_backlog: 5_000,
+        };
+        let cfg = batch_streaming_config(&config, &caps);
+        assert_eq!(cfg.backlog_cap, 5_000, "backlog cap follows --max-backlog");
+
+        config.max_backlog = 20_000;
+        let cfg = batch_streaming_config(&config, &caps);
+        assert_eq!(cfg.backlog_cap, 20_000, "a larger knob widens the backlog");
+
+        // The active-file window is at least the default residency window, and
+        // the backlog is never below the active window after normalization.
+        assert!(cfg.active_file_cap >= crate::transfer_dag::DEFAULT_ACTIVE_FILE_WINDOW);
+        assert!(cfg.backlog_cap >= cfg.active_file_cap);
+    }
+
+    // DAG-P2-04: a batch with more files than the active window streams to
+    // completion — subgraphs are admitted, retired, and re-admitted without the
+    // whole job graph ever being materialized.
+    #[tokio::test]
+    async fn batch_streaming_completes_more_files_than_the_active_window() {
+        let executor = Arc::new(MockExecutor::new(8));
+        let entries: Vec<TransferEntry> = (0..100).map(|i| entry(&format!("f{i}"), 1)).collect();
+        let count = entries.len() as u32;
+        let result = execute_batch_dag(
+            Arc::new(CountingSink::default()) as Arc<dyn TransferEventSink>,
+            batch(entries, 4),
+            Arc::clone(&executor),
+            Arc::new(AtomicBool::new(false)),
+            None,
+        )
+        .await;
+
+        assert_eq!(result.completed, count);
+        assert_eq!(result.total, count);
+        assert_eq!(
+            executor.executed().len(),
+            count as usize,
+            "every file transferred through the streaming frontier"
+        );
     }
 }

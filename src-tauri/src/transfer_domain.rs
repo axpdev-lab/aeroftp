@@ -213,6 +213,18 @@ pub struct TransferBatchConfig {
     pub max_concurrent: u32,
     pub max_retries: u32,
     pub timeout_ms: u64,
+    /// DAG-P2-04: bounded backlog of work items the streaming batch frontier
+    /// buffers between the work source and the active set. Maps from the CLI
+    /// `--max-backlog` knob (default 10000). When full, the source pauses
+    /// (backpressure) instead of materializing the whole job graph up front.
+    #[serde(default = "default_transfer_max_backlog")]
+    pub max_backlog: usize,
+}
+
+/// Default bounded backlog, aligned with the CLI `--max-backlog` default and
+/// [`crate::transfer_dag::DEFAULT_ENGINE_MAX_BACKLOG`].
+pub fn default_transfer_max_backlog() -> usize {
+    crate::transfer_dag::DEFAULT_ENGINE_MAX_BACKLOG
 }
 
 impl Default for TransferBatchConfig {
@@ -221,6 +233,7 @@ impl Default for TransferBatchConfig {
             max_concurrent: 1,
             max_retries: 0,
             timeout_ms: 30_000,
+            max_backlog: default_transfer_max_backlog(),
         }
     }
 }
@@ -468,6 +481,7 @@ mod tests {
             max_concurrent: 6,
             max_retries: 0,
             timeout_ms: 30_000,
+            max_backlog: default_transfer_max_backlog(),
         };
 
         assert_eq!(config.transfer_budget().file_slots, 6);
@@ -479,6 +493,7 @@ mod tests {
             max_concurrent: 0,
             max_retries: 0,
             timeout_ms: 30_000,
+            max_backlog: default_transfer_max_backlog(),
         };
 
         assert_eq!(config.transfer_budget().file_slots, 1);
@@ -491,6 +506,7 @@ mod tests {
             max_concurrent: 4,
             max_retries: 0,
             timeout_ms: 30_000,
+            max_backlog: default_transfer_max_backlog(),
         };
         let caps = TransferCapabilities {
             multipart_upload: Capability::Supported,
@@ -513,6 +529,7 @@ mod tests {
             max_concurrent: 16,
             max_retries: 0,
             timeout_ms: 30_000,
+            max_backlog: default_transfer_max_backlog(),
         };
         let caps = TransferCapabilities {
             multipart_upload: Capability::Supported,

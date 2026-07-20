@@ -3651,6 +3651,7 @@ async fn download_files_batch(
             max_concurrent: runtime_settings.max_concurrent,
             max_retries: runtime_settings.retry_count,
             timeout_ms: runtime_settings.timeout_seconds * 1000,
+            max_backlog: transfer_domain::default_transfer_max_backlog(),
         },
         entries: batch_entries,
     };
@@ -3871,6 +3872,7 @@ async fn upload_files_batch(
             max_concurrent: runtime_settings.max_concurrent,
             max_retries: runtime_settings.retry_count,
             timeout_ms: runtime_settings.timeout_seconds * 1000,
+            max_backlog: transfer_domain::default_transfer_max_backlog(),
         },
         entries: batch_entries,
     };
@@ -4423,6 +4425,7 @@ async fn download_folder(
             max_concurrent: runtime_settings.max_concurrent,
             max_retries: runtime_settings.retry_count,
             timeout_ms: runtime_settings.timeout_seconds * 1000,
+            max_backlog: transfer_domain::default_transfer_max_backlog(),
         },
         entries: scan_result.entries,
     };
@@ -4959,6 +4962,7 @@ async fn upload_folder(
             max_concurrent: runtime_settings.max_concurrent,
             max_retries: runtime_settings.retry_count,
             timeout_ms: runtime_settings.timeout_seconds * 1000,
+            max_backlog: transfer_domain::default_transfer_max_backlog(),
         },
         entries: prep_result.entries,
     };

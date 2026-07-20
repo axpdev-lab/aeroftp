@@ -59,7 +59,7 @@
 //! than a convention buried in the executor.
 
 use std::collections::{HashMap, VecDeque};
-use std::sync::{Arc, Mutex as StdMutex};
+use std::sync::Arc;
 use std::time::Instant;
 
 use tokio::sync::{mpsc, oneshot};
@@ -77,11 +77,14 @@ use crate::sync::{
 use crate::sync_core::scan::{
     scan_local_tree_checked, scan_remote_tree_checked, LocalEntry, RemoteEntry, ScanCompleteness,
 };
+use async_trait::async_trait;
+
 use crate::transfer_dag::executor::{execute_dag, DagNodeRunner, NodeFuture, NodeOutcome};
 use crate::transfer_dag::graph::{TransferNode, TransferNodeKind};
 use crate::transfer_dag::{
-    AimdConfig, AimdController, DagObserver, DiskLeaseRequest, NoopDagObserver, SyncDagAction,
-    SyncDagItem, TransferBudget, TransferCapabilities, TransferDagBuilder, TransferPriority,
+    AimdConfig, AimdController, DagObserver, DiskLeaseRequest, FileAdmission, NoopDagObserver,
+    StreamingConfig, TransferBudget, TransferCapabilities, TransferDagBuilder, TransferDirection,
+    TransferPriority, TransferWorkItem, WorkSource,
 };
 
 /// Bounded capacity of the transfer-job channel. The DAG file-slot budget is
@@ -394,9 +397,15 @@ struct TransferJob {
 /// A node always reports [`NodeOutcome::Completed`]: a failed file is
 /// recorded in the [`SyncReport`] by the driver, never on the graph, exactly
 /// like the phase-2 batch path. The graph therefore never aborts mid-sync.
+///
+/// DAG-P2-04: production now streams per-file subgraphs through
+/// [`run_one_sync_file`], which replicates this node -> job handoff for one
+/// admitted transfer. This multi-file builder is retained as test scaffolding
+/// that exercises the same dedup/handoff contract against a whole plan graph.
+#[cfg(test)]
 fn build_sync_runner(
     node_to_index: Arc<HashMap<usize, usize>>,
-    transfer_dispatched: Arc<StdMutex<Vec<bool>>>,
+    transfer_dispatched: Arc<std::sync::Mutex<Vec<bool>>>,
     job_tx: mpsc::Sender<TransferJob>,
     lanes: Arc<Vec<SyncTransferLane>>,
 ) -> Arc<dyn DagNodeRunner> {
@@ -446,6 +455,121 @@ fn build_sync_runner(
             NodeOutcome::Completed
         })
     })
+}
+
+/// DAG-P2-04: state shared across every transfer of one streaming sync run.
+/// Cloned (Arc) into each admitted transfer; only the per-file subgraph and its
+/// dispatch guard are built per file in [`run_one_sync_file`].
+struct SyncStreamContext {
+    caps: TransferCapabilities,
+    manager: crate::transfer_dag::TransferResourceManager,
+    aimd: Arc<AimdController>,
+    lane: SyncTransferLane,
+}
+
+/// A lazy [`WorkSource`] over the precomputed sync transfer plan. Yields one
+/// work item per planned transfer on demand. The plan stays a plain vector —
+/// allowed by the streaming contract as a plan iterator, not a full executable
+/// node graph for N files.
+struct SyncTransfersWorkSource {
+    transfers: Arc<Vec<PlannedTransfer>>,
+    next: usize,
+}
+
+#[async_trait]
+impl WorkSource for SyncTransfersWorkSource {
+    async fn next_item(&mut self) -> Option<TransferWorkItem> {
+        let index = self.next;
+        let transfer = self.transfers.get(index)?;
+        self.next += 1;
+        let direction = match transfer.op {
+            "upload" => TransferDirection::Upload,
+            _ => TransferDirection::Download,
+        };
+        Some(TransferWorkItem::new(
+            transfer.rel.clone(),
+            index,
+            transfer.total,
+            direction,
+        ))
+    }
+
+    fn known_total(&self) -> Option<usize> {
+        Some(self.transfers.len())
+    }
+}
+
+/// Execute one admitted sync transfer: expand its shaped subgraph, hand the
+/// transfer off to the ownership driver exactly once, and drop the subgraph
+/// when done.
+///
+/// The transfer-core nodes dedup through a per-file guard, so a multipart-shaped
+/// upload still hands off a single [`TransferJob`] and its remaining
+/// `UploadPart` nodes drain as structural no-ops — the same per-file
+/// `perform_upload` / `perform_download` contract as before. Node permits, AIMD,
+/// and observers stay on real nodes via [`execute_dag`]; the real per-file I/O,
+/// the bounded worker pool, and the exclusive delta lane stay in
+/// [`drive_sync_transfers`].
+async fn run_one_sync_file(
+    item: TransferWorkItem,
+    mut admission: FileAdmission,
+    ctx: Arc<SyncStreamContext>,
+    job_tx: mpsc::Sender<TransferJob>,
+) {
+    let shaped = TransferDagBuilder::shaped_file(item.direction, &ctx.caps, item.size);
+    admission.materialize_nodes(shaped.dag.nodes().len());
+
+    let transfer_index = item.index;
+    let lane = ctx.lane;
+    let dispatched = Arc::new(std::sync::atomic::AtomicBool::new(false));
+
+    let runner: Arc<dyn DagNodeRunner> = Arc::new(move |node: TransferNode| -> NodeFuture {
+        let job_tx = job_tx.clone();
+        let dispatched = Arc::clone(&dispatched);
+        Box::pin(async move {
+            if !matches!(
+                node.kind,
+                TransferNodeKind::DownloadFile
+                    | TransferNodeKind::UploadFile
+                    | TransferNodeKind::UploadPart
+            ) {
+                return NodeOutcome::Completed;
+            }
+            // Per-file dedup: only the first transfer-core node hands off a job;
+            // multipart parts become structural no-ops so the graph drains.
+            if dispatched.swap(true, std::sync::atomic::Ordering::SeqCst) {
+                return NodeOutcome::Completed;
+            }
+            let (ack_tx, ack_rx) = oneshot::channel::<()>();
+            if job_tx
+                .send(TransferJob {
+                    transfer_index,
+                    lane,
+                    ack: ack_tx,
+                })
+                .await
+                .is_err()
+            {
+                // The driver is gone; nothing more this node can do.
+                return NodeOutcome::Completed;
+            }
+            let _ = ack_rx.await;
+            NodeOutcome::Completed
+        })
+    });
+
+    let observer: Arc<dyn DagObserver> = Arc::new(NoopDagObserver);
+    if let Err(error) = execute_dag(
+        &shaped.dag,
+        &ctx.manager,
+        runner,
+        observer,
+        Some(Arc::clone(&ctx.aimd)),
+    )
+    .await
+    {
+        tracing::warn!("Sync transfer file graph stopped early: {}", error);
+    }
 }
 
 /// Progress produced by an independent normal-file worker.
@@ -959,66 +1083,31 @@ pub async fn execute_sync_dag(
                 ],
             )
             .await;
-        // One sync graph: a global DiscoverLocal/DiscoverRemote -> Compare
-        // prefix, then a per-file transfer chain for every upload/download.
-        // The shaped sync builder picks the transfer-core shape per entry
-        // from the shared live capability snapshot. Transfer decisions remain
-        // the precomputed legacy decisions, so journal semantics stay stable.
-        let sync_items: Vec<SyncDagItem> = plan
-            .transfers
-            .iter()
-            .map(|transfer| {
-                let action = match transfer.op {
-                    "upload" => SyncDagAction::Upload,
-                    _ => SyncDagAction::Download,
-                };
-                SyncDagItem::with_size(transfer.rel.clone(), action, transfer.total)
-            })
-            .collect();
-        let sync_dag = TransferDagBuilder::from_sync_plan_shaped(&sync_items, &sync_caps);
+        // DAG-P2-04: the transfer set is no longer materialized as one static
+        // `from_sync_plan_shaped` graph of N chains. The precomputed plan (a
+        // plan iterator, decision-equivalent as before) is streamed through a
+        // bounded backlog; each transfer's shaped subgraph is expanded only when
+        // it is admitted into the bounded active set (`run_one_sync_file`) and
+        // dropped when it completes, so peak resident nodes stay
+        // O(active_file_cap * nodes_per_file), not O(total_transfers). The real
+        // per-file I/O, the bounded worker pool, the exclusive delta lane, and
+        // out-of-order report aggregation all remain in `drive_sync_transfers`.
+        let transfers = Arc::new(plan.transfers);
 
-        // The builder preserves plan order, so `files[i]` is `transfers[i]`.
-        // Every transfer-core node in `transfer_nodes` maps back to the
-        // same plan index: multipart fan-out (when it engages) hands every
-        // part to the same per-file driver invocation through the dedup
-        // guard inside the runner.
-        let mut node_to_index_map: HashMap<usize, usize> = HashMap::new();
-        for (index, file) in sync_dag.files.iter().enumerate() {
-            for &node_id in &file.transfer_nodes {
-                node_to_index_map.insert(node_id, index);
-            }
-        }
-        let node_to_index: Arc<HashMap<usize, usize>> = Arc::new(node_to_index_map);
-        // The legacy `perform_upload` / `perform_download` is a per-file
-        // contract, so when the shaped graph emits multiple `UploadPart`
-        // nodes for a single entry only the first one to win the dispatch
-        // guard hands a `TransferJob` to the driver; the others fall
-        // through as structural no-ops.
-        let transfer_dispatched = Arc::new(StdMutex::new(vec![false; plan.transfers.len()]));
-        let lanes = Arc::new(
-            plan.transfers
-                .iter()
-                .map(|_| transfer_lane(opts.delta_policy))
-                .collect::<Vec<_>>(),
-        );
-
-        let (job_tx, job_rx) = mpsc::channel::<TransferJob>(JOB_CHANNEL_CAPACITY);
-        let runner = build_sync_runner(node_to_index, transfer_dispatched, job_tx, lanes);
-        // The manager is the existing bounded DAG resource model. Its file
-        // cap equals the live clone ceiling, or one after an honest demotion.
-        // Delta work is additionally serialized by the ownership driver.
-        // DAG-P2-01: the buffer-byte pool is now the process-global governor's,
-        // shared with every concurrent job; the slot classes stay per-job.
+        // The manager is the existing bounded DAG resource model. Its file cap
+        // equals the live clone ceiling, or one after an honest demotion. Delta
+        // work is additionally serialized by the ownership driver. DAG-P2-01:
+        // the buffer-byte pool is the process-global governor's, shared with
+        // every concurrent job; the slot classes stay per-job.
         let manager = crate::transfer_dag::governor::global().child_manager(
             TransferBudget::from_file_slots(sync_caps.max_file_slots.unwrap_or(1))
                 .clamped_for_capabilities(&sync_caps),
         );
-        let observer: Arc<dyn DagObserver> = Arc::new(NoopDagObserver);
         let provider_type = provider.provider_type();
-        // AIMD backpressure (F3-T05) uses the same bounded file resource as
-        // the normal clone lane. A serial demotion retains the conservative
-        // one-slot behavior. DAG-P2-06: seed from / learn into this endpoint's
-        // whole-file profile, shared with batch under the same workload key.
+        // AIMD backpressure (F3-T05) uses the same bounded file resource as the
+        // normal clone lane. A serial demotion retains the conservative one-slot
+        // behavior. DAG-P2-06: seed from / learn into this endpoint's whole-file
+        // profile, shared with batch under the same workload key.
         let aimd = sync_aimd_controller(
             &manager.budget(),
             provider_type,
@@ -1027,35 +1116,61 @@ pub async fn execute_sync_dag(
             AimdConfig::runtime(),
         );
 
-        // The graph scheduling (spawned) and the real I/O driver (borrowing
-        // the provider) run concurrently on this task. The driver loop ends
-        // when `execute_dag` finishes its body and drops the runner, which
-        // closes the job channel.
-        let dag_result = {
-            let dag_future = execute_dag(&sync_dag.dag, &manager, runner, observer, Some(aimd));
-            let driver_future = drive_sync_transfers(
-                job_rx,
-                provider,
-                &mut delta_batch,
-                &mut report,
-                sink,
-                &plan.transfers,
-                local_root,
-                remote_root,
-                opts.download_segments,
-                opts.delta_policy,
-                &opts.error_correction,
-                normal_workers,
-            );
-            let (dag_result, ()) = tokio::join!(dag_future, driver_future);
-            dag_result
+        // All transfers share one lane decision (delta vs normal pool) because
+        // they share the requested delta policy.
+        let lane = transfer_lane(opts.delta_policy);
+        let file_slots = sync_caps.max_file_slots.unwrap_or(1) as usize;
+        let streaming_config = StreamingConfig {
+            backlog_cap: crate::transfer_dag::DEFAULT_ENGINE_MAX_BACKLOG,
+            active_file_cap: file_slots.max(crate::transfer_dag::DEFAULT_ACTIVE_FILE_WINDOW),
         };
-        if let Err(error) = dag_result {
-            // The runner never reports Failed, so a graph error here is an
-            // executor-level fault. Surface it; the report still reflects
-            // whatever the driver recorded.
-            tracing::warn!("Sync transfer graph stopped early: {}", error);
-        }
+        let ctx = Arc::new(SyncStreamContext {
+            caps: sync_caps,
+            manager,
+            aimd,
+            lane,
+        });
+
+        let (job_tx, job_rx) = mpsc::channel::<TransferJob>(JOB_CHANNEL_CAPACITY);
+
+        // The streaming frontier (which expands and schedules per-file
+        // subgraphs) and the real I/O driver (borrowing the provider) run
+        // concurrently on this task. Each admitted subgraph hands its transfer
+        // to the driver over a `job_tx` clone; when the frontier finishes, every
+        // clone is dropped, the channel closes, and the driver loop ends.
+        let source = SyncTransfersWorkSource {
+            transfers: Arc::clone(&transfers),
+            next: 0,
+        };
+        let stream_tx = job_tx.clone();
+        // Drop the original handle so only the frontier's clones keep the
+        // channel open; the driver sees close once the frontier is done.
+        drop(job_tx);
+        let stream_future = async move {
+            crate::transfer_dag::run_streaming(source, streaming_config, move |item, admission| {
+                let ctx = Arc::clone(&ctx);
+                let job_tx = stream_tx.clone();
+                async move {
+                    run_one_sync_file(item, admission, ctx, job_tx).await;
+                }
+            })
+            .await
+        };
+        let driver_future = drive_sync_transfers(
+            job_rx,
+            provider,
+            &mut delta_batch,
+            &mut report,
+            sink,
+            transfers.as_slice(),
+            local_root,
+            remote_root,
+            opts.download_segments,
+            opts.delta_policy,
+            &opts.error_correction,
+            normal_workers,
+        );
+        let (_summary, ()) = tokio::join!(stream_future, driver_future);
     }
 
     // Orphan deletion runs after every transfer, while the delta batch is
@@ -1123,8 +1238,9 @@ mod tests {
     };
     use crate::transfer_dag::observer::SyncJournalDagObserver;
     use crate::transfer_dag::TransferResourceManager;
-    use crate::transfer_dag::{Capability, NoopDagObserver, OrderedDagObserver};
-    use async_trait::async_trait;
+    use crate::transfer_dag::{
+        Capability, NoopDagObserver, OrderedDagObserver, SyncDagAction, SyncDagItem,
+    };
     use std::any::Any;
 
     // DAG-P2-06 (wire-level): the sync construction point binds learned tuning
@@ -1832,5 +1948,150 @@ mod tests {
             elapsed < Duration::from_millis(50),
             "1000-file sync graph build took {elapsed:?}, budget is 50ms"
         );
+    }
+
+    // ---- DAG-P2-04: streaming sync frontier ------------------------------
+
+    fn sync_stream_ctx() -> Arc<SyncStreamContext> {
+        use crate::transfer_dag::{
+            AdaptiveProfileConfig, AdaptiveProfileRegistry, EndpointIdentity,
+        };
+        let registry = Arc::new(AdaptiveProfileRegistry::new(
+            AdaptiveProfileConfig::default(),
+        ));
+        let budget = TransferBudget::from_file_slots(2);
+        let manager = TransferResourceManager::new(budget);
+        let aimd = sync_aimd_controller(
+            &budget,
+            ProviderType::Ftp,
+            EndpointIdentity::new("ftp", "stream-host", "acct"),
+            registry,
+            AimdConfig::default(),
+        );
+        Arc::new(SyncStreamContext {
+            caps: TransferCapabilities::default(),
+            manager,
+            aimd,
+            lane: SyncTransferLane::NormalPool,
+        })
+    }
+
+    /// The streaming sync frontier hands every planned transfer to the driver
+    /// exactly once, without materializing a full static graph of N chains.
+    #[tokio::test]
+    async fn streaming_sync_drives_every_transfer_exactly_once() {
+        let transfers = Arc::new(vec![
+            planned_upload("a.txt", DeltaPolicy::SizeOnly),
+            PlannedTransfer {
+                rel: "b.txt".to_string(),
+                op: "download",
+                total: 1,
+                decision_policy: DeltaPolicy::SizeOnly,
+                expected_sha256_hex: None,
+            },
+            planned_upload("c.txt", DeltaPolicy::SizeOnly),
+        ]);
+        let ctx = sync_stream_ctx();
+
+        let (job_tx, mut job_rx) = mpsc::channel::<TransferJob>(JOB_CHANNEL_CAPACITY);
+        let seen: Arc<StdMutex<Vec<usize>>> = Arc::new(StdMutex::new(Vec::new()));
+        let driver = {
+            let seen = Arc::clone(&seen);
+            async move {
+                while let Some(job) = job_rx.recv().await {
+                    seen.lock().unwrap().push(job.transfer_index);
+                    let _ = job.ack.send(());
+                }
+            }
+        };
+
+        let source = SyncTransfersWorkSource {
+            transfers: Arc::clone(&transfers),
+            next: 0,
+        };
+        let stream_tx = job_tx.clone();
+        drop(job_tx);
+        let stream_future = async move {
+            crate::transfer_dag::run_streaming(
+                source,
+                StreamingConfig {
+                    backlog_cap: 8,
+                    active_file_cap: 2,
+                },
+                move |item, admission| {
+                    let ctx = Arc::clone(&ctx);
+                    let job_tx = stream_tx.clone();
+                    async move {
+                        run_one_sync_file(item, admission, ctx, job_tx).await;
+                    }
+                },
+            )
+            .await
+        };
+        let (summary, ()) = tokio::join!(stream_future, driver);
+
+        let mut seen = seen.lock().unwrap().clone();
+        seen.sort_unstable();
+        assert_eq!(seen, vec![0, 1, 2], "every transfer is driven exactly once");
+        assert_eq!(summary.items_admitted, 3);
+        // Streaming, not a full static graph: peak nodes stay O(active x template).
+        assert!(
+            summary.peak_active_nodes <= 2 * 7,
+            "peak nodes {} exceeded the active-set bound",
+            summary.peak_active_nodes
+        );
+    }
+
+    /// A streaming sync of far more transfers than the active window still hands
+    /// off every one, proving admission/retirement re-uses the bounded frontier.
+    #[tokio::test]
+    async fn streaming_sync_handles_more_transfers_than_the_active_window() {
+        let transfers = Arc::new(
+            (0..200)
+                .map(|i| planned_upload(&format!("f{i}.txt"), DeltaPolicy::SizeOnly))
+                .collect::<Vec<_>>(),
+        );
+        let ctx = sync_stream_ctx();
+
+        let (job_tx, mut job_rx) = mpsc::channel::<TransferJob>(JOB_CHANNEL_CAPACITY);
+        let count = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let driver = {
+            let count = Arc::clone(&count);
+            async move {
+                while let Some(job) = job_rx.recv().await {
+                    count.fetch_add(1, Ordering::SeqCst);
+                    let _ = job.ack.send(());
+                }
+            }
+        };
+
+        let source = SyncTransfersWorkSource {
+            transfers: Arc::clone(&transfers),
+            next: 0,
+        };
+        let stream_tx = job_tx.clone();
+        drop(job_tx);
+        let stream_future = async move {
+            crate::transfer_dag::run_streaming(
+                source,
+                StreamingConfig {
+                    backlog_cap: 16,
+                    active_file_cap: 8,
+                },
+                move |item, admission| {
+                    let ctx = Arc::clone(&ctx);
+                    let job_tx = stream_tx.clone();
+                    async move {
+                        run_one_sync_file(item, admission, ctx, job_tx).await;
+                    }
+                },
+            )
+            .await
+        };
+        let (summary, ()) = tokio::join!(stream_future, driver);
+
+        assert_eq!(count.load(Ordering::SeqCst), 200);
+        assert_eq!(summary.items_admitted, 200);
+        assert!(summary.peak_active_nodes <= 8 * 7);
     }
 }

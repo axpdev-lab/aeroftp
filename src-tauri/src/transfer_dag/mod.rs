@@ -22,6 +22,7 @@ pub mod planner;
 pub mod probe;
 pub mod resources;
 pub mod session_pool;
+pub mod work_source;
 
 pub use adaptive::{
     congestion_from_error, global_profile_registry, AdaptiveClass, AdaptiveClock,
@@ -70,4 +71,9 @@ pub use session_pool::{
     FtpPoolSessionLease, FtpSessionPoolAdapter, SessionLeaseId, SessionLeaseInfo, SessionLeaseKind,
     SessionPoolCapacity, SessionPoolError, SingleSessionPool, TransferSessionLease,
     TransferSessionPoolHandle,
+};
+pub use work_source::{
+    run_streaming, ActiveGraphMeter, ChannelWorkSource, FileAdmission, SliceWorkSource,
+    StreamingConfig, StreamingSummary, TransferWorkItem, WorkSource, DEFAULT_ACTIVE_FILE_WINDOW,
+    DEFAULT_ENGINE_MAX_BACKLOG,
 };
