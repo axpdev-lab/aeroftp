@@ -1123,8 +1123,7 @@ pub async fn execute_sync_dag(
         // with backlog from SyncOptions (CLI --max-backlog when the caller sets
         // it; default DEFAULT_ENGINE_MAX_BACKLOG).
         let file_slots = sync_caps.max_file_slots.unwrap_or(1).max(1) as usize;
-        let streaming_config =
-            StreamingConfig::for_file_slots(file_slots, opts.max_backlog);
+        let streaming_config = StreamingConfig::for_file_slots(file_slots, opts.max_backlog);
         let ctx = Arc::new(SyncStreamContext {
             caps: sync_caps,
             manager,

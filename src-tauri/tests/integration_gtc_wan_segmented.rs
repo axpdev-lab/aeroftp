@@ -248,6 +248,9 @@ async fn run_sync_download_once(
         scan: ScanOptions::default(),
         error_correction: Default::default(),
         download_segments,
+        // DAG-P2-04 residual: SyncOptions gained max_backlog; keep the engine
+        // default so this segmented-WAN test compiles under --all-targets.
+        max_backlog: ftp_client_gui_lib::transfer_dag::DEFAULT_ENGINE_MAX_BACKLOG,
     };
     let mut sink = NoopProgressSink;
     let t = Instant::now();
