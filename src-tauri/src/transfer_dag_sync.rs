@@ -1119,10 +1119,15 @@ pub async fn execute_sync_dag(
         // All transfers share one lane decision (delta vs normal pool) because
         // they share the requested delta policy.
         let lane = transfer_lane(opts.delta_policy);
-        let file_slots = sync_caps.max_file_slots.unwrap_or(1) as usize;
+        // Same active-set policy as batch: saturate file slots with small
+        // pipeline headroom, ceiling at DEFAULT_ACTIVE_FILE_WINDOW (or slots).
+        let file_slots = sync_caps.max_file_slots.unwrap_or(1).max(1) as usize;
+        let pipeline = file_slots.saturating_add(2);
+        let ceiling = crate::transfer_dag::DEFAULT_ACTIVE_FILE_WINDOW.max(file_slots);
+        let active_file_cap = pipeline.min(ceiling).max(file_slots);
         let streaming_config = StreamingConfig {
             backlog_cap: crate::transfer_dag::DEFAULT_ENGINE_MAX_BACKLOG,
-            active_file_cap: file_slots.max(crate::transfer_dag::DEFAULT_ACTIVE_FILE_WINDOW),
+            active_file_cap,
         };
         let ctx = Arc::new(SyncStreamContext {
             caps: sync_caps,
@@ -1131,7 +1136,10 @@ pub async fn execute_sync_dag(
             lane,
         });
 
-        let (job_tx, job_rx) = mpsc::channel::<TransferJob>(JOB_CHANNEL_CAPACITY);
+        // Channel must not be narrower than the active set: otherwise admitted
+        // files block on send while holding a materialized subgraph.
+        let job_channel_cap = JOB_CHANNEL_CAPACITY.max(streaming_config.active_file_cap);
+        let (job_tx, job_rx) = mpsc::channel::<TransferJob>(job_channel_cap);
 
         // The streaming frontier (which expands and schedules per-file
         // subgraphs) and the real I/O driver (borrowing the provider) run

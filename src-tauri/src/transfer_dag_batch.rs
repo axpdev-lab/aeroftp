@@ -321,15 +321,24 @@ impl WorkSource for BatchEntriesWorkSource {
 /// DAG-P2-04: map batch config + capabilities to the streaming frontier bounds.
 ///
 /// The backlog cap honors the CLI `--max-backlog` knob (`config.max_backlog`).
-/// The active-file window is at least the resolved file-slot concurrency so the
-/// active set can always saturate the shared file budget, with headroom (the
-/// default window) for discover/acquire prefixes to overlap in-flight transfers.
+/// The active-file window saturates the resolved file-slot budget with a small
+/// pipeline headroom for structural prefix nodes (discover/acquire are free
+/// no-ops, so a large fixed floor would only multiply idle multipart graphs).
+/// A ceiling of [`DEFAULT_ACTIVE_FILE_WINDOW`](crate::transfer_dag::DEFAULT_ACTIVE_FILE_WINDOW)
+/// (or `file_slots` when higher) keeps peak materialization bounded.
 fn batch_streaming_config(
     config: &TransferBatchConfig,
     caps: &TransferCapabilities,
 ) -> StreamingConfig {
-    let file_slots = config.transfer_budget_for_capabilities(caps).file_slots as usize;
-    let active_file_cap = file_slots.max(crate::transfer_dag::DEFAULT_ACTIVE_FILE_WINDOW);
+    let file_slots = config
+        .transfer_budget_for_capabilities(caps)
+        .file_slots
+        .max(1) as usize;
+    // +2 lets the next file's structural prefix start while a transfer holds a
+    // file slot. Never force the default window as a floor when slots are low.
+    let pipeline = file_slots.saturating_add(2);
+    let ceiling = crate::transfer_dag::DEFAULT_ACTIVE_FILE_WINDOW.max(file_slots);
+    let active_file_cap = pipeline.min(ceiling).max(file_slots);
     StreamingConfig {
         backlog_cap: config.max_backlog,
         active_file_cap,
@@ -353,6 +362,12 @@ async fn run_one_batch_file<E>(
 ) where
     E: TransferExecutor + Send + Sync + 'static,
 {
+    // Cancel mid-batch: do not expand or run remaining files. In-flight files
+    // still observe the flag inside their node runners (legacy accounting).
+    if ctx.cancel.load(Ordering::Relaxed) || ctx.executor.is_transfer_cancelled() {
+        return;
+    }
+
     let entry = ctx.entries[item.index].clone();
 
     // Expand the file subgraph template only now, on admission.
@@ -2500,10 +2515,43 @@ mod tests {
         let cfg = batch_streaming_config(&config, &caps);
         assert_eq!(cfg.backlog_cap, 20_000, "a larger knob widens the backlog");
 
-        // The active-file window is at least the default residency window, and
-        // the backlog is never below the active window after normalization.
-        assert!(cfg.active_file_cap >= crate::transfer_dag::DEFAULT_ACTIVE_FILE_WINDOW);
+        // Active set saturates file slots with small pipeline headroom and stays
+        // at/under the default window ceiling; backlog never drops below active.
+        assert!(cfg.active_file_cap >= 4, "active set at least file_slots");
+        assert!(
+            cfg.active_file_cap <= crate::transfer_dag::DEFAULT_ACTIVE_FILE_WINDOW.max(4),
+            "active set respects the default ceiling"
+        );
         assert!(cfg.backlog_cap >= cfg.active_file_cap);
+    }
+
+    #[test]
+    fn batch_streaming_active_set_tracks_file_slots_not_a_fixed_floor() {
+        let caps = TransferCapabilities::default();
+        // Serial budget: pipeline headroom only, not a forced 64-wide active set.
+        let serial = TransferBatchConfig {
+            max_concurrent: 1,
+            max_retries: 0,
+            timeout_ms: 30_000,
+            max_backlog: 1_000,
+        };
+        let cfg = batch_streaming_config(&serial, &caps);
+        assert_eq!(cfg.active_file_cap, 3, "1 file slot + 2 pipeline headroom");
+
+        // High concurrency: ceiling clamps at DEFAULT_ACTIVE_FILE_WINDOW when
+        // slots stay at/under that window.
+        let wide = TransferBatchConfig {
+            max_concurrent: 32,
+            max_retries: 0,
+            timeout_ms: 30_000,
+            max_backlog: 10_000,
+        };
+        let cfg = batch_streaming_config(&wide, &caps);
+        assert_eq!(
+            cfg.active_file_cap,
+            34.min(crate::transfer_dag::DEFAULT_ACTIVE_FILE_WINDOW),
+            "32 slots + 2 headroom, capped by default window"
+        );
     }
 
     // DAG-P2-04: a batch with more files than the active window streams to

@@ -51,13 +51,13 @@ use super::builder::TransferDirection;
 /// `--max-backlog` default so the documented knob and the engine agree.
 pub const DEFAULT_ENGINE_MAX_BACKLOG: usize = 10_000;
 
-/// Default maximum number of file subgraphs materialized and executing at once
-/// (the active-set residency cap). Kept modest so the resident node count
-/// (`active_file_cap * nodes_per_template`) stays in the low hundreds — the same
-/// spirit as [`DEFAULT_DISPATCH_WINDOW`](super::executor::DEFAULT_DISPATCH_WINDOW)
-/// capping resident tasks — while still giving discover/acquire prefixes room to
-/// overlap in-flight transfers. Production callers raise it to at least the
-/// resolved file-slot concurrency so the shared file budget can always saturate.
+/// Ceiling for file subgraphs materialized and executing at once (the
+/// active-set residency cap). Production callers set `active_file_cap` to
+/// `file_slots + small pipeline headroom`, then clamp by this ceiling (or by
+/// `file_slots` when higher). That keeps peak nodes near
+/// `O(file_slots * nodes_per_template)` instead of forcing a wide idle window
+/// of multipart graphs. Same spirit as
+/// [`DEFAULT_DISPATCH_WINDOW`](super::executor::DEFAULT_DISPATCH_WINDOW).
 pub const DEFAULT_ACTIVE_FILE_WINDOW: usize = 64;
 
 /// One unit of streaming transfer work.
