@@ -1,0 +1,74 @@
+name: Nightly Telemetry
+
+# DAG-P2-07 (block G): schedule-only lab-telemetry lane. It runs the
+# deterministic DAG telemetry gates and one local (no-WAN) benchmark cell,
+# then uploads the cell's JSON metrics as an artifact. It NEVER runs on push
+# or pull_request: those lanes stay in checks.yml / build.yml. WAN and
+# competitor cells are not here; they need real endpoints and stay manual in
+# tests/gtc/parity_harness.sh. This job must run on a bare runner and never
+# needs lab hardware.
+on:
+  schedule:
+    # 03:00 UTC nightly.
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly-telemetry-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  telemetry:
+    name: DAG telemetry gates and local benchmark cell
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+
+      - name: Install Rust (with rustfmt + clippy)
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+        with:
+          toolchain: stable
+          components: rustfmt, clippy
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      - name: Rust formatting (cargo fmt --check)
+        working-directory: ./src-tauri
+        run: cargo fmt --all -- --check
+
+      - name: Clippy (deny warnings)
+        working-directory: ./src-tauri
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: DAG telemetry suites (deterministic, no WAN)
+        working-directory: ./src-tauri
+        # Substring filter: covers transfer_dag, transfer_dag_batch,
+        # transfer_dag_single_file, transfer_dag_sync and the adaptive /
+        # metrics / engine_stats / ttfb / executor / work_source telemetry
+        # modules under transfer_dag::.
+        run: cargo test --lib transfer_dag -- --nocapture
+
+      - name: Process resource sampler suite
+        working-directory: ./src-tauri
+        run: cargo test --lib proc_stats -- --nocapture
+
+      - name: Local telemetry benchmark cell (emits JSON)
+        working-directory: ./src-tauri
+        env:
+          AEROFTP_TELEMETRY_JSON: ${{ github.workspace }}/telemetry-nightly.json
+          AEROFTP_TELEMETRY_BYTES: '16777216'
+        run: cargo test --test telemetry_nightly -- --ignored --nocapture
+
+      - name: Upload telemetry metrics artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: telemetry-nightly-json
+          path: telemetry-nightly.json
+          if-no-files-found: error

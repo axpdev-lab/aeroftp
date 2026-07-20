@@ -5269,6 +5269,12 @@ struct CliSyncResult {
     /// output is unchanged for callers that never pass `--dry-run`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     plan: Vec<CliSyncPlanEntry>,
+    /// DAG-P2-07 (block E): engine-level telemetry of the transfer(s) this
+    /// result covers (folded DAG metrics + wall clock + process resource
+    /// bracket). Present only for real runs on the converged pool-backed engine
+    /// path; additive and omitted otherwise, so historical JSON is unchanged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    stats: Option<ftp_client_gui_lib::transfer_dag::EngineTransferStats>,
 }
 
 /// Single plan entry surfaced in `sync --dry-run --json`.
@@ -8877,10 +8883,31 @@ async fn upload_transfer_task(
 
 // ── PD-CLI-CONV-B: shared provider executor convergence ────────────
 
+/// DAG-P2-07 (block E): fold an incoming batch's engine stats into a running
+/// accumulator. Used by the CLI `sync` cycle, which runs an upload batch and a
+/// download batch under one `CliSyncResult`. The first present snapshot seeds
+/// the accumulator; later ones absorb (see [`EngineTransferStats::absorb`]).
+fn absorb_engine_stats(
+    acc: &mut Option<ftp_client_gui_lib::transfer_dag::EngineTransferStats>,
+    incoming: Option<ftp_client_gui_lib::transfer_dag::EngineTransferStats>,
+) {
+    if let Some(o) = incoming {
+        match acc.as_mut() {
+            Some(existing) => existing.absorb(&o),
+            None => *acc = Some(o),
+        }
+    }
+}
+
 /// Outcome of the converged shared-executor download batch.
 struct SharedDownloadOutcome {
     downloaded: u32,
     errors: Vec<String>,
+    /// DAG-P2-07 (block E): the engine-level stats for this batch job, threaded
+    /// in-band so the CLI `--json` result attributes them to the exact transfer
+    /// it ran (never a stale process-global snapshot). `None` on the legacy
+    /// non-pool-backed fallback, which runs no DAG engine.
+    engine_stats: Option<ftp_client_gui_lib::transfer_dag::EngineTransferStats>,
 }
 
 /// Sink-agnostic CLI sink for the shared provider executor.
@@ -9116,6 +9143,7 @@ async fn run_shared_provider_download_batch(
     Ok(SharedDownloadOutcome {
         downloaded: batch_result.completed,
         errors: sink.take_errors(),
+        engine_stats: batch_result.engine_stats,
     })
 }
 
@@ -9123,6 +9151,9 @@ async fn run_shared_provider_download_batch(
 struct SharedUploadOutcome {
     uploaded: u32,
     errors: Vec<String>,
+    /// DAG-P2-07 (block E): engine-level stats for this batch job, threaded
+    /// in-band (see [`SharedDownloadOutcome::engine_stats`]).
+    engine_stats: Option<ftp_client_gui_lib::transfer_dag::EngineTransferStats>,
 }
 
 /// Run the CLI file-level upload batch through the SAME shared provider
@@ -9321,6 +9352,7 @@ async fn run_shared_provider_upload_batch(
     Ok(SharedUploadOutcome {
         uploaded: batch_result.completed,
         errors: sink.take_errors(),
+        engine_stats: batch_result.engine_stats,
     })
 }
 
@@ -30205,6 +30237,9 @@ async fn cmd_get_recursive(
 
     let mut downloaded: u32 = 0;
     let mut errors: Vec<String> = Vec::new();
+    // DAG-P2-07 (block E): engine-level stats when this folder download ran on
+    // the converged DAG-engine path; stays `None` on the legacy fallback.
+    let mut engine_stats: Option<ftp_client_gui_lib::transfer_dag::EngineTransferStats> = None;
 
     // PD-CLI-CONV-B: converge the file-level batch on the shared provider
     // executor + orchestrator (sink-agnostic) for pool-backed providers
@@ -30225,6 +30260,7 @@ async fn cmd_get_recursive(
         Ok(outcome) => {
             downloaded = outcome.downloaded;
             errors = outcome.errors;
+            engine_stats = outcome.engine_stats;
         }
         Err(mut base) => {
             let _ = base.disconnect().await;
@@ -30306,6 +30342,7 @@ async fn cmd_get_recursive(
                 errors,
                 elapsed_secs: elapsed.as_secs_f64(),
                 plan: Vec::new(),
+                stats: engine_stats,
             });
         }
     }
@@ -30441,6 +30478,10 @@ async fn cmd_get_glob(
         }
     }
 
+    // DAG-P2-07 (block E): engine-level stats when this glob download ran on
+    // the converged DAG-engine path; stays `None` on the legacy fallback.
+    let mut engine_stats: Option<ftp_client_gui_lib::transfer_dag::EngineTransferStats> = None;
+
     // PD-CLI-CONV-C: converge the glob file-level batch on the SAME shared
     // provider executor + orchestrator `aeroftp get -r` uses
     // (PD-CLI-CONV-B), sink-agnostic. Pool-backed providers (clone-pool:
@@ -30461,6 +30502,7 @@ async fn cmd_get_glob(
         Ok(outcome) => {
             downloaded = outcome.downloaded;
             errors.extend(outcome.errors);
+            engine_stats = outcome.engine_stats;
         }
         Err(mut base) => {
             let _ = base.disconnect().await;
@@ -30537,6 +30579,7 @@ async fn cmd_get_glob(
                 errors,
                 elapsed_secs: elapsed.as_secs_f64(),
                 plan: Vec::new(),
+                stats: engine_stats,
             });
         }
     }
@@ -31042,6 +31085,10 @@ async fn cmd_put_recursive(
     let mut skipped: u32 = 0;
     let mut errors: Vec<String> = Vec::new();
 
+    // DAG-P2-07 (block E): engine-level stats when this folder upload ran on
+    // the converged DAG-engine path; stays `None` on legacy/--immutable paths.
+    let mut engine_stats: Option<ftp_client_gui_lib::transfer_dag::EngineTransferStats> = None;
+
     // PD-CLI-CONV-C: converge the upload batch on the SAME shared provider
     // executor + orchestrator `aeroftp get -r` uses (PD-CLI-CONV-B),
     // sink-agnostic: the upload twin of `cmd_get_recursive`. Every remote
@@ -31074,6 +31121,7 @@ async fn cmd_put_recursive(
             Ok(outcome) => {
                 uploaded = outcome.uploaded;
                 errors = outcome.errors;
+                engine_stats = outcome.engine_stats;
                 false
             }
             Err(mut base) => {
@@ -31165,6 +31213,7 @@ async fn cmd_put_recursive(
                 errors,
                 elapsed_secs: elapsed.as_secs_f64(),
                 plan: Vec::new(),
+                stats: engine_stats,
             });
         }
     }
@@ -44295,6 +44344,8 @@ async fn cmd_sync(
                     errors: vec![],
                     elapsed_secs: start.elapsed().as_secs_f64(),
                     plan,
+                    // Dry run performs no transfer, so there is no engine job.
+                    stats: None,
                 });
             }
         }
@@ -44333,6 +44384,11 @@ async fn cmd_sync(
     let mut downloaded: u32 = 0;
     let mut deleted: u32 = 0;
     let mut errors: Vec<String> = Vec::new();
+    // DAG-P2-07 (block E): a sync cycle runs an upload batch and a download
+    // batch on the converged DAG engine; fold their engine stats into one
+    // snapshot for the `--json` result via `absorb_engine_stats`. `None` while
+    // both stay on the legacy per-file fallback (no DAG engine).
+    let mut engine_stats: Option<ftp_client_gui_lib::transfer_dag::EngineTransferStats> = None;
 
     let upload_jobs: Vec<(String, String, String, u64)> = to_upload
         .iter()
@@ -44524,6 +44580,7 @@ async fn cmd_sync(
                     Ok(outcome) => {
                         uploaded += outcome.uploaded;
                         errors.extend(outcome.errors);
+                        absorb_engine_stats(&mut engine_stats, outcome.engine_stats);
                         false
                     }
                     Err(mut base) => {
@@ -44700,6 +44757,7 @@ async fn cmd_sync(
                 Ok(outcome) => {
                     downloaded += outcome.downloaded;
                     errors.extend(outcome.errors);
+                    absorb_engine_stats(&mut engine_stats, outcome.engine_stats);
                     false
                 }
                 Err(mut base) => {
@@ -44928,6 +44986,7 @@ async fn cmd_sync(
                 errors: errors.clone(),
                 elapsed_secs: elapsed.as_secs_f64(),
                 plan: Vec::new(),
+                stats: engine_stats,
             });
         }
     }
@@ -51880,6 +51939,10 @@ async fn cmd_put_glob(
     let mut uploaded: u32 = 0;
     let mut errors: Vec<String> = Vec::new();
 
+    // DAG-P2-07 (block E): engine-level stats when this glob upload ran on the
+    // converged DAG-engine path; stays `None` on legacy/--immutable paths.
+    let mut engine_stats: Option<ftp_client_gui_lib::transfer_dag::EngineTransferStats> = None;
+
     // PD-CLI-CONV-C: converge the glob upload batch on the SAME shared
     // provider executor + orchestrator (PD-CLI-CONV-B), sink-agnostic.
     // The probe connection was only used to resolve `initial_path`; the
@@ -51913,6 +51976,7 @@ async fn cmd_put_glob(
                     Ok(outcome) => {
                         uploaded = outcome.uploaded;
                         errors = outcome.errors;
+                        engine_stats = outcome.engine_stats;
                         false
                     }
                     Err(mut base) => {
@@ -51995,6 +52059,7 @@ async fn cmd_put_glob(
                 errors,
                 elapsed_secs: elapsed.as_secs_f64(),
                 plan: Vec::new(),
+                stats: engine_stats,
             });
         }
     }

@@ -8,8 +8,8 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 
 use crate::transfer_dag::{
-    FailureScope, RetryDirective, TransferBudget, TransferCapabilities, TransferError,
-    TransferErrorKind,
+    EngineTransferStats, FailureScope, RetryDirective, TransferBudget, TransferCapabilities,
+    TransferError, TransferErrorKind,
 };
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -317,6 +317,13 @@ pub struct TransferBatchResult {
     pub total: u32,
     pub cancelled: bool,
     pub duration_ms: u64,
+    /// DAG-P2-07 (block E): the engine-level stats for this batch job, folded
+    /// once from every per-file subgraph plus the process resource bracket.
+    /// Additive and optional: `None` for the legacy independent-connection
+    /// batch path (which runs no DAG engine), so no existing key changes and an
+    /// older reader is unaffected.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub engine_stats: Option<EngineTransferStats>,
 }
 
 pub fn transfer_failure_kind_from_sync(kind: &crate::sync::SyncErrorKind) -> TransferFailureKind {

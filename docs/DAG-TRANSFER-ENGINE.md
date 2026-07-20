@@ -517,11 +517,11 @@ Copy populates logical, wire, local-payload, and copy-fallback metrics. As of
 slot peak, TTFB (on covered paths), and whole-file retries; see the telemetry
 section below for the exact coverage and the remaining gaps.
 
-## Engine telemetry (DAG-P2-07 blocks A-D, partial)
+## Engine telemetry (DAG-P2-07)
 
-This wave is not closed. What landed is the metric population core; the
-unified stats surface, the slow optimization loop, and the nightly CI
-benchmark remain open (blocks E, F, G).
+Blocks A-D populate the metric core; blocks E, F, G add the unified stats
+surface, the slow optimization loop, and the nightly CI benchmark. The
+paragraphs below describe the whole wave.
 
 `TransferDagMetrics` (`src-tauri/src/transfer_dag/metrics.rs`) carries the
 logical/wire/local-payload byte triple, backpressure, and fallback counters,
@@ -577,15 +577,57 @@ cloudinary, drime_cloud, google_photos, imagekit, immich, opendrive,
 uploadcare, yandex_disk, mega_native, oauth helpers), and MEGAcmd subprocess
 providers.
 
-A process resource sampler exists (`src-tauri/src/proc_stats.rs`: CPU
-user/system nanoseconds, RSS bytes, FD count from Linux `/proc/self`,
-compile-time `None` stub elsewhere) but is not yet wired into any transfer
-command; that wiring is part of block E. The unified surface is equally not
-wired: GUI, CLI `--json`, and MCP do not yet read one engine-level stats
-source, and batch/sync job totals currently surface only via `tracing::debug`
-(the `TransferBatchResult`/`SyncReport` contracts are unchanged). This wave
-adds no WAN benchmark numbers; evidence is the deterministic test suite listed
-in the appendix tracker (`docs/dev/drafts/TRACKER-DAG-P2-07-DRAFT-telemetry-benchmark.md`).
+The process resource sampler (`src-tauri/src/proc_stats.rs`: CPU user/system
+nanoseconds, RSS bytes, FD count from Linux `/proc/self`, compile-time `None`
+stub elsewhere) is wired at job start/end (block E): the batch and sync runners
+bracket the whole job with a `ResourceSampleGuard`, so the delta is present on
+Linux and honestly `None` (never a zeroed guess) elsewhere.
+
+Block E adds one engine-level stats source, `EngineTransferStats`
+(`metrics.rs`): the folded job `TransferDagMetrics`, the real wall-clock
+milliseconds (not the summed `run_nanos_total`, which double-counts concurrent
+nodes), and the optional `ProcessResourceDelta`. It is built once at job end,
+replacing the former `tracing::debug` of the batch/sync totals, and every
+surface reads that one struct. The CLI `--json` folder and sync results carry
+it in-band under an additive `stats` key (threaded through the shared batch
+runners, so a legacy non-pool-backed transfer honestly reports no stats rather
+than a stale one). The GUI receives one `transfer_engine_stats` event at job
+end. The MCP `aeroftp_transfer_stats` accessor reads the most recent job from a
+one-slot process-global store (`transfer_dag/engine_stats.rs`); it reports
+`{available:false}` when none has run, and its description states honestly that
+the MCP server's own `aeroftp_transfer`/`transfer_tree` tools use the direct
+cross-profile path and do not run the DAG engine, so they are not counted.
+
+Block F is the slow optimization loop. After a job drains (never on
+cancellation, and never while `--aimd-disable` is set), the batch/sync runner
+distills the populated job telemetry into a `JobThroughputObservation`
+(aggregate throughput, dispatch-wait ratio, concurrency high-water) and feeds
+it to `AdaptiveProfileRegistry::observe_job` under the same
+`AdaptiveProfileKey` (endpoint + workload) the P2-06 seed/feedback path uses.
+The loop is decrease-biased: a plateau (more concurrency without more
+throughput) or a wait-dominated dispatch shaves one slot off the learned safe
+target; only a job that beats the throughput baseline by more than 5% at low
+wait steps the target up by one toward the concurrency that achieved it
+(bounded recovery). It shares the registry's key isolation, TTL, capacity and
+LRU eviction, and injectable clock, so it stays bounded and never poisons a
+profile across a cancellation.
+
+Block G is a schedule-only nightly workflow
+(`.github/workflows/nightly-telemetry.yml`): it runs the deterministic DAG
+telemetry suites plus the process-sampler suite as gates, then one local
+(no-WAN) benchmark cell (`src-tauri/tests/telemetry_nightly.rs`, `#[ignore]`d
+outside the nightly) that moves bytes through a temp file and serializes an
+`EngineTransferStats` envelope as an uploaded JSON artifact. It never runs on
+push or pull request and never needs lab hardware. WAN and competitor cells
+stay manual in `tests/gtc/parity_harness.sh`. This wave adds no WAN benchmark
+numbers; evidence is the deterministic test suite listed in the appendix
+tracker (`docs/dev/drafts/TRACKER-DAG-P2-07-DRAFT-telemetry-benchmark.md`).
+
+Residuals carried forward (unchanged from blocks A-D): unmetered retry sites
+(`CrossProfileExecutor`, http_retry for the range family, provider-internal
+loops in `yandex_disk`/`s3`/`internxt`/`filen`/`webdav`/`mega_native`) and
+TTFB not recorded on FTP/SFTP or on HTTP providers that bypass
+`send_with_retry`.
 
 ## Capability contract
 

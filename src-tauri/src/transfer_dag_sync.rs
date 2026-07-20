@@ -82,9 +82,9 @@ use async_trait::async_trait;
 use crate::transfer_dag::executor::{execute_dag, DagNodeRunner, NodeFuture, NodeOutcome};
 use crate::transfer_dag::graph::{TransferNode, TransferNodeKind};
 use crate::transfer_dag::{
-    AimdConfig, AimdController, DagObserver, DiskLeaseRequest, FileAdmission, NoopDagObserver,
-    StreamingConfig, TransferBudget, TransferCapabilities, TransferDagBuilder, TransferDagMetrics,
-    TransferDirection, TransferPriority, TransferWorkItem, WorkSource,
+    AimdConfig, AimdController, DagObserver, DiskLeaseRequest, EngineTransferStats, FileAdmission,
+    NoopDagObserver, StreamingConfig, TransferBudget, TransferCapabilities, TransferDagBuilder,
+    TransferDagMetrics, TransferDirection, TransferPriority, TransferWorkItem, WorkSource,
 };
 
 /// Bounded capacity of the transfer-job channel. The DAG file-slot budget is
@@ -970,6 +970,13 @@ pub async fn execute_sync_dag(
     sink: &mut dyn SyncProgressSink,
 ) -> SyncReport {
     let start = Instant::now();
+    // DAG-P2-07 (block E): bracket the whole sync job with a process resource
+    // sample; `None` off Linux or when `/proc` is unreadable, never fabricated.
+    let resource_guard = crate::proc_stats::ResourceSampleGuard::begin();
+    // DAG-P2-07 (block E): the job-level DAG metrics folded by the streaming
+    // frontier, captured out of the transfers block below so the single
+    // engine-stats source can be built once at job end.
+    let mut job_metrics: Option<TransferDagMetrics> = None;
 
     // Phase 1: Scanning. The local filesystem walk runs on a blocking thread
     // while the network-bound remote scan runs on the provider, so the two
@@ -1163,6 +1170,10 @@ pub async fn execute_sync_dag(
         // it; default DEFAULT_ENGINE_MAX_BACKLOG).
         let file_slots = sync_caps.max_file_slots.unwrap_or(1).max(1) as usize;
         let streaming_config = StreamingConfig::for_file_slots(file_slots, opts.max_backlog);
+        // DAG-P2-07 (block F): keep the same profile-bound controller so the
+        // slow optimization loop can feed this sync's realized telemetry back to
+        // the shared BatchSyncFile key after the run drains.
+        let aimd_for_slow_loop = Arc::clone(&aimd);
         let ctx = Arc::new(SyncStreamContext {
             caps: sync_caps,
             manager,
@@ -1211,18 +1222,22 @@ pub async fn execute_sync_dag(
             normal_workers,
         );
         let (stream_summary, ()) = tokio::join!(stream_future, driver_future);
-        // DAG-P2-07: per-file subgraph metrics folded into one job-level
-        // total by the frontier; diagnostics only, the report contract is
-        // unchanged.
-        tracing::debug!(
-            "sync DAG totals: files={} bytes_transferred={} retries={} wait_nanos={} run_nanos={} slot_peak={}",
-            stream_summary.items_admitted,
-            stream_summary.metrics.bytes_transferred,
-            stream_summary.metrics.retries,
-            stream_summary.metrics.wait_nanos_total,
-            stream_summary.metrics.run_nanos_total,
-            stream_summary.metrics.slot_peak,
-        );
+        // DAG-P2-07 (block F): feed this sync's populated telemetry into the
+        // slow optimization loop. A tree sync never aborts mid-run (the graph
+        // has no cancel token), so the only no-poison guard needed is the
+        // degenerate-job check inside `from_metrics` (a scan that moved zero
+        // bytes yields no observation). The controller guards `--aimd-disable`
+        // and the no-profile case.
+        if let Some(obs) = crate::transfer_dag::JobThroughputObservation::from_metrics(
+            &stream_summary.metrics,
+            start.elapsed(),
+        ) {
+            aimd_for_slow_loop.observe_job(crate::transfer_dag::AdaptiveClass::File, obs);
+        }
+        // DAG-P2-07 (block E): capture the folded job-level totals for the
+        // single engine-stats source, built once at job end below. This
+        // replaces the former diagnostics-only `tracing::debug`.
+        job_metrics = Some(stream_summary.metrics);
     }
 
     // Orphan deletion runs after every transfer, while the delta batch is
@@ -1276,6 +1291,21 @@ pub async fn execute_sync_dag(
     }
 
     report.elapsed_secs = start.elapsed().as_secs_f64();
+
+    // DAG-P2-07 (block E): build the single engine-stats source once from the
+    // folded job totals, the real wall clock, and the process resource bracket.
+    // Attach it to the report (read in-band by programmatic/GUI callers) and
+    // publish it for the out-of-band MCP accessor. A sync that transferred
+    // nothing (`job_metrics` is `None`) still publishes an honest empty-metrics
+    // snapshot with the real wall clock and resource delta.
+    let engine_stats = EngineTransferStats::from_job(
+        job_metrics.unwrap_or_default(),
+        start.elapsed().as_millis() as u64,
+        resource_guard.and_then(|g| g.finish()),
+    );
+    crate::transfer_dag::engine_stats::publish(engine_stats.clone());
+    report.engine_stats = Some(engine_stats);
+
     sink.on_phase(SyncPhase::Done);
     report
 }

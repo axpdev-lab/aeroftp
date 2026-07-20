@@ -12,6 +12,7 @@ pub mod aimd_hints;
 pub mod builder;
 pub mod capabilities;
 pub mod checkpoint;
+pub mod engine_stats;
 pub mod error;
 pub mod executor;
 pub mod governor;
@@ -29,7 +30,7 @@ pub use adaptive::{
     congestion_from_error, global_profile_registry, AdaptiveClass, AdaptiveClock,
     AdaptiveProfileConfig, AdaptiveProfileKey, AdaptiveProfileRegistry, AdaptiveProfileSnapshot,
     AdaptiveWorkload, AimdClassOverrides, AimdClassWindow, AimdConfig, AimdController,
-    CongestionEvent, ManualClock, SystemClock,
+    CongestionEvent, JobThroughputObservation, ManualClock, SlowLoopDecision, SystemClock,
 };
 pub use aimd_hints::AimdHint;
 pub use builder::{
@@ -56,7 +57,7 @@ pub use governor::{
     MemoryPool, TransferPriority, DEFAULT_DISK_DEVICE_SLOTS, DEFAULT_ENDPOINT_MAX_SLOTS,
     DISK_DEVICE_SLOTS_ENV, ENDPOINT_MAX_SLOTS_ENV, GLOBAL_BANDWIDTH_ENV,
 };
-pub use metrics::TransferDagMetrics;
+pub use metrics::{EngineTransferStats, TransferDagMetrics};
 pub use observer::{
     DagObserver, NoopDagObserver, ObservedOutcome, OrderedDagObserver, SyncJournalDagObserver,
     SyncJournalTerminal,

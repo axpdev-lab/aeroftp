@@ -121,6 +121,88 @@ impl AdaptiveProfileKey {
     }
 }
 
+/// DAG-P2-07 (block F): one completed job's realized telemetry, distilled into
+/// the three signals the slow optimization loop reads. Built by
+/// [`JobThroughputObservation::from_metrics`] from the populated job-total
+/// [`crate::transfer_dag::TransferDagMetrics`] plus the real wall clock, so
+/// every field traces to a measured value; none is fabricated.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct JobThroughputObservation {
+    /// Concurrency high-water the executor actually reached (`slot_peak`),
+    /// floored at 1.
+    pub concurrency: usize,
+    /// Payload bytes moved (`bytes_transferred`), guaranteed non-zero.
+    pub bytes: u64,
+    /// Real elapsed wall-clock nanoseconds for the whole job, non-zero.
+    pub wall_clock_nanos: u64,
+    /// Summed dispatch-to-runner-start wait nanos over dispatched nodes.
+    pub wait_nanos: u64,
+    /// Summed runner execution nanos over dispatched nodes.
+    pub run_nanos: u64,
+}
+
+impl JobThroughputObservation {
+    /// Distill a job's populated metrics and wall clock into an observation, or
+    /// `None` when the job carries no usable signal (moved zero bytes, e.g. a
+    /// skip-only run, or reported no elapsed time). Returning `None` here is the
+    /// degenerate-job half of the no-poison guard; the caller supplies the
+    /// not-cancelled half.
+    pub fn from_metrics(
+        metrics: &super::metrics::TransferDagMetrics,
+        wall_clock: Duration,
+    ) -> Option<Self> {
+        let wall_clock_nanos = duration_to_nanos(wall_clock);
+        if metrics.bytes_transferred == 0 || wall_clock_nanos == 0 {
+            return None;
+        }
+        Some(Self {
+            concurrency: (metrics.slot_peak.max(1)) as usize,
+            bytes: metrics.bytes_transferred,
+            wall_clock_nanos,
+            wait_nanos: metrics.wait_nanos_total,
+            run_nanos: metrics.run_nanos_total,
+        })
+    }
+}
+
+/// DAG-P2-07 (block F): what the slow optimization loop did with one
+/// observation. Returned for diagnostics and deterministic tests; the live
+/// effect is a write of the learned safe target into the shared registry.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SlowLoopDecision {
+    /// First observation for this key/class: adopted as the throughput
+    /// baseline. The learned target is not moved (no comparison exists yet).
+    Seeded,
+    /// A proven-faster job (throughput up more than [`SLOW_LOOP_IMPROVE_PCT`],
+    /// dispatch wait below [`SLOW_LOOP_WAIT_PLATEAU_PCT`]) raised the learned
+    /// safe target one step toward the productive concurrency.
+    Raised(usize),
+    /// A plateau (more concurrency without more throughput) or a wait-dominated
+    /// dispatch lowered the learned safe target one step (floor 1).
+    Lowered(usize),
+    /// Steady state: the target was left unchanged.
+    Held,
+    /// No learning happened: the controller has no profile, AIMD is disabled,
+    /// or the observation carried no usable signal.
+    NoSignal,
+}
+
+/// A job must beat the learned throughput baseline by more than this percent
+/// (with low dispatch wait) before the slow loop treats its concurrency as
+/// proven-faster. Set at the ">5% live convergence" evidence bar deferred out
+/// of P2-06.
+const SLOW_LOOP_IMPROVE_PCT: u64 = 5;
+/// When dispatched-node time is at least this percent spent waiting for
+/// permits/leases rather than running, the job over-subscribed its own
+/// pipeline: the slow loop reads that as a plateau and shaves one slot.
+const SLOW_LOOP_WAIT_PLATEAU_PCT: u64 = 50;
+
+/// Saturating `Duration` to nanoseconds (a >584-year job is a bug, not a reason
+/// to wrap telemetry).
+fn duration_to_nanos(d: Duration) -> u64 {
+    d.as_nanos().min(u64::MAX as u128) as u64
+}
+
 /// The narrow set of congestion signals (decision D2). No generic 5xx.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CongestionEvent {
@@ -564,6 +646,15 @@ struct ProfileEntry {
     api: Option<usize>,
     updated_at: Instant,
     touch_seq: u64,
+    /// DAG-P2-07 (block F): best aggregate throughput observed for this key so
+    /// far, in bytes per second. The slow loop compares each new job against
+    /// this baseline. Cleared on TTL reset (via `new`), so a stale link speed
+    /// never pins the comparison forever.
+    best_throughput_bps: Option<u64>,
+    /// The concurrency at which `best_throughput_bps` was observed, so the loop
+    /// can tell "more width, same speed" (plateau) from "more width, more
+    /// speed" (productive).
+    best_concurrency: Option<usize>,
 }
 
 impl ProfileEntry {
@@ -575,6 +666,8 @@ impl ProfileEntry {
             api: None,
             updated_at: now,
             touch_seq: seq,
+            best_throughput_bps: None,
+            best_concurrency: None,
         }
     }
 
@@ -726,6 +819,115 @@ impl AdaptiveProfileRegistry {
         let mut entry = ProfileEntry::new(now, seq);
         entry.set(class, target);
         inner.entries.insert(key.clone(), entry);
+    }
+
+    /// DAG-P2-07 (block F): the slow optimization loop. Fold one completed
+    /// job's realized throughput/wait/plateau signal into the learned safe
+    /// target for `key`/`class`.
+    ///
+    /// It shares the same key isolation, TTL reset, capacity/eviction and
+    /// clock as [`Self::record`], so learned tuning stays bounded and per
+    /// endpoint/workload exactly as in P2-06. It is decrease-biased: it lowers
+    /// the target one step on a plateau or a wait-dominated dispatch, and
+    /// raises it at most one step (toward the concurrency that actually ran)
+    /// only when a job beat the throughput baseline by more than
+    /// [`SLOW_LOOP_IMPROVE_PCT`] with low wait. The first observation only
+    /// seeds the baseline; it never moves the target. Callers must not invoke
+    /// this on a cancelled job (that is the caller's half of the no-poison
+    /// guard); [`AimdController::observe_job`] additionally drops the call when
+    /// AIMD is disabled.
+    pub fn observe_job(
+        &self,
+        key: &AdaptiveProfileKey,
+        class: AdaptiveClass,
+        obs: JobThroughputObservation,
+    ) -> SlowLoopDecision {
+        let now = self.clock.now();
+        let throughput_bps = (u128::from(obs.bytes) * 1_000_000_000
+            / u128::from(obs.wall_clock_nanos.max(1)))
+        .min(u128::from(u64::MAX)) as u64;
+        let total_dispatch = obs.wait_nanos.saturating_add(obs.run_nanos);
+        let wait_pct = if total_dispatch > 0 {
+            (u128::from(obs.wait_nanos) * 100 / u128::from(total_dispatch)) as u64
+        } else {
+            0
+        };
+        let concurrency = obs.concurrency.max(1);
+
+        let mut inner = self
+            .inner
+            .lock()
+            .expect("adaptive profile registry poisoned");
+        let seq = inner.next_seq();
+
+        // Fetch-or-create honoring the same TTL reset / capacity rules as
+        // `record`: an expired entry behaves like a first use.
+        if let Some(entry) = inner.entries.get(key) {
+            if now.saturating_duration_since(entry.updated_at) >= self.ttl {
+                inner
+                    .entries
+                    .insert(key.clone(), ProfileEntry::new(now, seq));
+            }
+        } else {
+            if inner.entries.len() >= self.capacity {
+                inner.evict_lru();
+            }
+            inner
+                .entries
+                .insert(key.clone(), ProfileEntry::new(now, seq));
+        }
+        let entry = inner
+            .entries
+            .get_mut(key)
+            .expect("entry present after fetch-or-create");
+        entry.updated_at = now;
+        entry.touch_seq = seq;
+
+        match (entry.best_throughput_bps, entry.best_concurrency) {
+            (Some(best_tp), Some(best_conc)) => {
+                let improved = u128::from(throughput_bps) * 100
+                    > u128::from(best_tp) * u128::from(100 + SLOW_LOOP_IMPROVE_PCT);
+                let starved = wait_pct >= SLOW_LOOP_WAIT_PLATEAU_PCT;
+                if improved && !starved {
+                    // Proven-faster at low wait: step the learned target one
+                    // toward the concurrency that achieved it (never above it:
+                    // bounded recovery, additive like AIMD). On the first raise
+                    // there is no learned target yet, so start from the prior
+                    // productive concurrency (`best_conc`) and add one, rather
+                    // than jumping straight to the new width.
+                    let base = entry.value(class).unwrap_or(best_conc);
+                    let raised = base.saturating_add(1).min(concurrency).max(1);
+                    entry.set(class, raised);
+                    entry.best_throughput_bps = Some(throughput_bps);
+                    entry.best_concurrency = Some(concurrency);
+                    SlowLoopDecision::Raised(raised)
+                } else if starved || (concurrency > best_conc && throughput_bps <= best_tp) {
+                    // Plateau or starvation: the extra width did not pay off, or
+                    // the dispatch spent most of its life waiting for permits.
+                    // Shave one slot; keep the throughput baseline (never raise
+                    // it on a regression).
+                    let base = entry.value(class).unwrap_or(concurrency);
+                    let lowered = base.saturating_sub(1).max(1);
+                    entry.set(class, lowered);
+                    SlowLoopDecision::Lowered(lowered)
+                } else {
+                    // Marginal, equal, or slower-but-not-starved: hold the
+                    // target. Let the baseline creep up on any real gain so it
+                    // tracks the honest ceiling without moving concurrency.
+                    if throughput_bps > best_tp {
+                        entry.best_throughput_bps = Some(throughput_bps);
+                        entry.best_concurrency = Some(concurrency);
+                    }
+                    SlowLoopDecision::Held
+                }
+            }
+            // First real observation (or post-reset): adopt the baseline only.
+            _ => {
+                entry.best_throughput_bps = Some(throughput_bps);
+                entry.best_concurrency = Some(concurrency);
+                SlowLoopDecision::Seeded
+            }
+        }
     }
 
     /// Narrow diagnostic snapshot of every live (non-expired) entry.
@@ -1094,6 +1296,27 @@ impl AimdController {
     fn record_learned(&self, class: AdaptiveClass, target: usize) {
         if let (Some(registry), Some(key)) = (&self.registry, &self.profile_key) {
             registry.record(key, class, target);
+        }
+    }
+
+    /// DAG-P2-07 (block F): feed a completed job's realized throughput/wait
+    /// telemetry into the slow optimization loop for this controller's profile.
+    ///
+    /// A no-op returning [`SlowLoopDecision::NoSignal`] for a controller without
+    /// a profile (test-injected) and, like the per-event congestion/healthy
+    /// feedback, a full no-op while AIMD is disabled so `--aimd-disable`
+    /// records nothing. Callers must not invoke this on a cancelled job.
+    pub fn observe_job(
+        &self,
+        class: AdaptiveClass,
+        obs: JobThroughputObservation,
+    ) -> SlowLoopDecision {
+        if self.config.disabled {
+            return SlowLoopDecision::NoSignal;
+        }
+        match (&self.registry, &self.profile_key) {
+            (Some(registry), Some(key)) => registry.observe_job(key, class, obs),
+            _ => SlowLoopDecision::NoSignal,
         }
     }
 
@@ -2618,5 +2841,212 @@ mod tests {
         assert_eq!(snapshot[0].key, key);
         assert_eq!(snapshot[0].chunk, Some(4));
         assert_eq!(snapshot[0].file, None);
+    }
+
+    // ── DAG-P2-07 (block F): slow optimization loop ──────────────────────
+
+    /// Whole-file (batch/sync) key, the workload the slow loop feeds from the
+    /// job-total telemetry.
+    fn file_key(host: &str, account: &str) -> AdaptiveProfileKey {
+        AdaptiveProfileKey::new(endpoint(host, account), AdaptiveWorkload::BatchSyncFile)
+    }
+
+    /// Build an observation. `wall_ms` sets the wall clock; `wait`/`run` set the
+    /// dispatch wait ratio.
+    fn obs(
+        concurrency: usize,
+        bytes: u64,
+        wall_ms: u64,
+        wait_nanos: u64,
+        run_nanos: u64,
+    ) -> JobThroughputObservation {
+        JobThroughputObservation {
+            concurrency,
+            bytes,
+            wall_clock_nanos: wall_ms * 1_000_000,
+            wait_nanos,
+            run_nanos,
+        }
+    }
+
+    #[test]
+    fn slow_loop_first_observation_only_seeds_the_baseline() {
+        let registry = profile_registry();
+        let key = file_key("host-a", "acct-1");
+        // 1000 bytes in 1s at concurrency 2, negligible dispatch wait.
+        let d = registry.observe_job(&key, AdaptiveClass::File, obs(2, 1000, 1000, 0, 900));
+        assert_eq!(d, SlowLoopDecision::Seeded);
+        assert_eq!(
+            registry.seed(&key, AdaptiveClass::File),
+            None,
+            "seeding the baseline must not move the learned target"
+        );
+    }
+
+    #[test]
+    fn slow_loop_raises_target_on_proven_faster_low_wait() {
+        let registry = profile_registry();
+        let key = file_key("host-a", "acct-1");
+        registry.observe_job(&key, AdaptiveClass::File, obs(2, 1000, 1000, 0, 900));
+        // 3x throughput at higher concurrency with low wait: proven productive.
+        // The first raise steps one above the prior productive concurrency (2).
+        let d = registry.observe_job(&key, AdaptiveClass::File, obs(4, 3000, 1000, 0, 900));
+        assert_eq!(d, SlowLoopDecision::Raised(3));
+        assert_eq!(
+            registry.seed(&key, AdaptiveClass::File),
+            Some(3),
+            "a proven-faster job steps the target one toward the productive width"
+        );
+    }
+
+    #[test]
+    fn slow_loop_raise_is_bounded_by_the_observed_concurrency() {
+        let registry = profile_registry();
+        let key = file_key("host-a", "acct-1");
+        registry.observe_job(&key, AdaptiveClass::File, obs(2, 1000, 1000, 0, 900));
+        // Progressively faster jobs step the learned target up by at most one
+        // per observation and never above the concurrency that ran.
+        registry.observe_job(&key, AdaptiveClass::File, obs(8, 3000, 1000, 0, 900));
+        let first = registry.seed(&key, AdaptiveClass::File).unwrap();
+        registry.observe_job(&key, AdaptiveClass::File, obs(8, 9000, 1000, 0, 900));
+        let second = registry.seed(&key, AdaptiveClass::File).unwrap();
+        assert!(second <= 8, "never above the observed concurrency");
+        assert_eq!(second, first + 1, "one step per observation");
+    }
+
+    #[test]
+    fn slow_loop_lowers_target_on_plateau() {
+        let registry = profile_registry();
+        let key = file_key("host-a", "acct-1");
+        registry.observe_job(&key, AdaptiveClass::File, obs(2, 1000, 1000, 0, 900));
+        // More concurrency (4 > 2) but no more throughput: a plateau.
+        let d = registry.observe_job(&key, AdaptiveClass::File, obs(4, 1000, 1000, 0, 900));
+        assert_eq!(d, SlowLoopDecision::Lowered(3));
+        assert_eq!(registry.seed(&key, AdaptiveClass::File), Some(3));
+    }
+
+    #[test]
+    fn slow_loop_lowers_target_on_starved_dispatch() {
+        let registry = profile_registry();
+        let key = file_key("host-a", "acct-1");
+        registry.observe_job(&key, AdaptiveClass::File, obs(2, 1000, 1000, 0, 900));
+        // Even a faster job is read as over-subscription when the dispatch spent
+        // most of its life waiting for permits (wait >= 50%).
+        let d = registry.observe_job(&key, AdaptiveClass::File, obs(2, 2000, 1000, 800, 200));
+        assert_eq!(d, SlowLoopDecision::Lowered(1));
+    }
+
+    #[test]
+    fn slow_loop_holds_on_marginal_gain() {
+        let registry = profile_registry();
+        let key = file_key("host-a", "acct-1");
+        registry.observe_job(&key, AdaptiveClass::File, obs(2, 1000, 1000, 0, 900));
+        // +2% throughput (< the 5% bar) at the same concurrency, low wait.
+        let d = registry.observe_job(&key, AdaptiveClass::File, obs(2, 1020, 1000, 0, 900));
+        assert_eq!(d, SlowLoopDecision::Held);
+        assert_eq!(
+            registry.seed(&key, AdaptiveClass::File),
+            None,
+            "a marginal gain does not move the learned target"
+        );
+    }
+
+    #[test]
+    fn slow_loop_is_isolated_by_key() {
+        let registry = profile_registry();
+        let k1 = file_key("host-a", "acct-1");
+        let k2 = file_key("host-b", "acct-1");
+        registry.observe_job(&k1, AdaptiveClass::File, obs(2, 1000, 1000, 0, 900));
+        registry.observe_job(&k1, AdaptiveClass::File, obs(4, 1000, 1000, 0, 900)); // plateau k1
+        assert_eq!(registry.seed(&k1, AdaptiveClass::File), Some(3));
+        // k2 has seen nothing: its first observation still just seeds.
+        let d2 = registry.observe_job(&k2, AdaptiveClass::File, obs(2, 1000, 1000, 0, 900));
+        assert_eq!(d2, SlowLoopDecision::Seeded);
+        assert_eq!(registry.seed(&k2, AdaptiveClass::File), None);
+    }
+
+    #[test]
+    fn slow_loop_ttl_expiry_resets_the_baseline() {
+        let clock = Arc::new(ManualClock::new());
+        let cfg = AdaptiveProfileConfig {
+            ttl: Duration::from_secs(100),
+            capacity: 8,
+        };
+        let registry = AdaptiveProfileRegistry::with_clock(cfg, clock.clone());
+        let key = file_key("host-a", "acct-1");
+        registry.observe_job(&key, AdaptiveClass::File, obs(2, 1000, 1000, 0, 900));
+        clock.advance(Duration::from_secs(101));
+        // The expired entry behaves like a first use again: seeds, does not
+        // raise/lower off a stale baseline.
+        let d = registry.observe_job(&key, AdaptiveClass::File, obs(4, 3000, 1000, 0, 900));
+        assert_eq!(d, SlowLoopDecision::Seeded);
+    }
+
+    #[test]
+    fn slow_loop_no_signal_when_aimd_disabled() {
+        let registry = profile_registry();
+        let budget = profile_budget(8, 8, 8, 8);
+        let key = file_key("host-a", "acct-1");
+        let disabled = AimdConfig {
+            disabled: true,
+            ..AimdConfig::default()
+        };
+        let controller = AimdController::from_budget_for_profile(
+            &budget,
+            None,
+            key.clone(),
+            registry.clone(),
+            disabled,
+        );
+        let d = controller.observe_job(AdaptiveClass::File, obs(4, 3000, 1000, 0, 900));
+        assert_eq!(d, SlowLoopDecision::NoSignal);
+        assert!(
+            registry.is_empty(),
+            "--aimd-disable records nothing in the slow loop"
+        );
+    }
+
+    #[test]
+    fn slow_loop_no_signal_without_a_profile() {
+        // A per-run controller built with no profile has nowhere to learn.
+        let controller =
+            AimdController::from_budget(&profile_budget(8, 8, 8, 8), AimdConfig::default());
+        let d = controller.observe_job(AdaptiveClass::File, obs(4, 3000, 1000, 0, 900));
+        assert_eq!(d, SlowLoopDecision::NoSignal);
+    }
+
+    #[test]
+    fn slow_loop_controller_feeds_the_registry_end_to_end() {
+        let registry = profile_registry();
+        let budget = profile_budget(8, 8, 8, 8);
+        let key = file_key("host-a", "acct-1");
+        let controller = AimdController::from_budget_for_profile(
+            &budget,
+            None,
+            key.clone(),
+            registry.clone(),
+            AimdConfig::default(),
+        );
+        assert_eq!(
+            controller.observe_job(AdaptiveClass::File, obs(2, 1000, 1000, 0, 900)),
+            SlowLoopDecision::Seeded
+        );
+        assert_eq!(
+            controller.observe_job(AdaptiveClass::File, obs(4, 3000, 1000, 0, 900)),
+            SlowLoopDecision::Raised(3)
+        );
+        assert_eq!(registry.seed(&key, AdaptiveClass::File), Some(3));
+    }
+
+    #[test]
+    fn observation_is_none_on_a_zero_byte_job() {
+        let metrics = super::super::metrics::TransferDagMetrics {
+            slot_peak: 4,
+            ..Default::default()
+        };
+        assert!(
+            JobThroughputObservation::from_metrics(&metrics, Duration::from_secs(1)).is_none(),
+            "a job that moved no bytes yields no slow-loop signal"
+        );
     }
 }

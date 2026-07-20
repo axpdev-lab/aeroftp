@@ -553,6 +553,11 @@ pub struct SyncReport {
     pub ec_generate_failed: u32,
     pub ec_sidecar_deleted: u32,
     pub ec_sidecar_delete_failed: u32,
+    /// DAG-P2-07 (block E): the engine-level stats for this sync job (folded DAG
+    /// metrics + wall clock + process resource bracket). `None` for the legacy
+    /// core path; populated by `execute_sync_dag`. Additive: `SyncReport` is not
+    /// serialized directly, and every existing constructor uses `..default()`.
+    pub engine_stats: Option<crate::transfer_dag::EngineTransferStats>,
 }
 
 impl SyncReport {

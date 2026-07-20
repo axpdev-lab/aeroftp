@@ -35,7 +35,7 @@ use crate::progress_governor::{
     ProgressGovernor,
 };
 use crate::transfer_dag::graph::TransferNodeKind;
-use crate::transfer_dag::{DagObserver, ObservedOutcome};
+use crate::transfer_dag::{DagObserver, EngineTransferStats, ObservedOutcome};
 use crate::transfer_domain::{BatchProgressSnapshot, TransferBatchResult};
 use crate::TransferEvent;
 
@@ -105,6 +105,13 @@ pub trait TransferEventSink: Send + Sync {
     /// associated `batch_id`, then `app.emit("transfer_batch_completed", result)`.
     /// Default: no-op.
     fn emit_batch_completed(&self, _result: &TransferBatchResult) {}
+
+    /// DAG-P2-07 (block E): the single engine-level stats event, emitted once
+    /// at job end with the folded [`EngineTransferStats`]. GUI:
+    /// `app.emit("transfer_engine_stats", stats)`. Default: no-op, so the CLI
+    /// (which reads the same stats in-band from the batch result) and every
+    /// existing test inherit it unchanged.
+    fn emit_engine_stats(&self, _stats: &EngineTransferStats) {}
 }
 
 /// GUI sink: adapter over [`tauri::AppHandle::emit`] with the shared
@@ -223,6 +230,14 @@ impl TransferEventSink for AppHandleSink {
         } else {
             let _ = self.app.emit("transfer_batch_completed", result);
         }
+    }
+
+    fn emit_engine_stats(&self, stats: &EngineTransferStats) {
+        use tauri::Emitter;
+        // A single terminal, ungoverned event: it fires exactly once per job at
+        // job end, so it needs no ≤10 Hz lane. The frontend consumes it
+        // additively (no existing listener depends on it).
+        let _ = self.app.emit("transfer_engine_stats", stats);
     }
 }
 

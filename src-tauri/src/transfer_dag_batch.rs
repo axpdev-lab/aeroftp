@@ -55,8 +55,8 @@ use tokio::sync::Mutex;
 use crate::transfer_dag::executor::{execute_dag, DagNodeRunner, NodeFuture, NodeOutcome};
 use crate::transfer_dag::graph::{TransferNode, TransferNodeKind};
 use crate::transfer_dag::{
-    AimdConfig, AimdController, DagObserver, DiskLeaseRequest, FileAdmission, NoopDagObserver,
-    StreamingConfig, TransferCapabilities, TransferDagBuilder, TransferDagMetrics,
+    AimdConfig, AimdController, DagObserver, DiskLeaseRequest, EngineTransferStats, FileAdmission,
+    NoopDagObserver, StreamingConfig, TransferCapabilities, TransferDagBuilder, TransferDagMetrics,
     TransferDirection, TransferGraphProfile, TransferPriority, TransferResourceManager,
     TransferSessionLease, TransferSessionPoolHandle, TransferWorkItem, WorkSource,
 };
@@ -171,6 +171,10 @@ where
     E: TransferExecutor + Send + Sync + 'static,
 {
     let started_at = Instant::now();
+    // DAG-P2-07 (block E): bracket the whole job with a process resource
+    // sample. `begin()` is `None` off Linux or when `/proc` is unreadable, so
+    // the delta is honestly absent rather than a fabricated zero.
+    let resource_guard = crate::proc_stats::ResourceSampleGuard::begin();
     let TransferBatch {
         id,
         display_name,
@@ -234,6 +238,11 @@ where
 
     let entries = Arc::new(entries);
 
+    // DAG-P2-07 (block F): keep a handle to the same profile-bound controller
+    // the run uses, so the slow optimization loop can feed this job's realized
+    // telemetry back to the exact endpoint/workload key after the run drains.
+    let aimd_for_slow_loop = Arc::clone(&aimd);
+
     // Everything shared across the whole batch. Only a file's subgraph, its
     // node bindings, and its multipart runtime are built fresh on admission.
     let ctx = Arc::new(BatchStreamContext {
@@ -264,18 +273,34 @@ where
             async move { run_one_batch_file(item, admission, ctx).await }
         })
         .await;
-    // DAG-P2-07: the frontier folded every per-file subgraph metrics into one
-    // job-level total; surface it for diagnostics without changing the batch
-    // result contract.
-    tracing::debug!(
-        "batch DAG totals: files={} bytes_transferred={} retries={} wait_nanos={} run_nanos={} slot_peak={}",
-        streaming_summary.items_admitted,
-        streaming_summary.metrics.bytes_transferred,
-        streaming_summary.metrics.retries,
-        streaming_summary.metrics.wait_nanos_total,
-        streaming_summary.metrics.run_nanos_total,
-        streaming_summary.metrics.slot_peak,
+    // DAG-P2-07 (block F): feed this job's populated throughput/wait/plateau
+    // telemetry into the slow optimization loop, but only on a job that
+    // actually drained (never on cancellation, so a torn-down run cannot
+    // poison the learned profile). The controller itself is the guard for
+    // `--aimd-disable` and for the no-profile (test-injected) case.
+    let cancelled = cancel.load(Ordering::Relaxed);
+    if !cancelled {
+        if let Some(obs) = crate::transfer_dag::JobThroughputObservation::from_metrics(
+            &streaming_summary.metrics,
+            started_at.elapsed(),
+        ) {
+            aimd_for_slow_loop.observe_job(crate::transfer_dag::AdaptiveClass::File, obs);
+        }
+    }
+
+    // DAG-P2-07 (block E): the frontier folded every per-file subgraph metrics
+    // into one job-level total. Combine it with the wall clock and the process
+    // resource bracket into the single engine-level stats source, then surface
+    // it on the result (CLI reads it in-band), publish it for the MCP accessor,
+    // and emit the one GUI job-end event. This replaces the former
+    // diagnostics-only `tracing::debug` of the job totals.
+    let engine_stats = EngineTransferStats::from_job(
+        streaming_summary.metrics.clone(),
+        started_at.elapsed().as_millis() as u64,
+        resource_guard.and_then(|g| g.finish()),
     );
+    crate::transfer_dag::engine_stats::publish(engine_stats.clone());
+    sink.emit_engine_stats(&engine_stats);
 
     let snapshot = progress.lock().await.clone();
     let batch_result = TransferBatchResult {
@@ -283,8 +308,9 @@ where
         skipped: snapshot.skipped,
         failed: snapshot.failed,
         total: snapshot.total,
-        cancelled: cancel.load(Ordering::Relaxed),
+        cancelled,
         duration_ms: started_at.elapsed().as_millis() as u64,
+        engine_stats: Some(engine_stats),
     };
 
     sink.emit_batch_completed(&batch_result);
@@ -1565,6 +1591,44 @@ mod tests {
         assert_eq!(sink.started.load(AtomicOrdering::SeqCst), 1);
         assert_eq!(sink.completed.load(AtomicOrdering::SeqCst), 1);
         assert_eq!(sink.progress.load(AtomicOrdering::SeqCst), 3);
+    }
+
+    /// DAG-P2-07 (block E): `execute_batch_dag` surfaces the single engine-level
+    /// stats source on the result. The folded byte total and a real wall clock
+    /// are present; the byte triple matches the completed downloads.
+    #[tokio::test]
+    async fn batch_dag_surfaces_engine_stats_on_the_result() {
+        let executor = Arc::new(MockExecutor::new(4));
+        let result = execute_batch_dag(
+            Arc::new(CountingSink::default()) as Arc<dyn TransferEventSink>,
+            batch(vec![entry("a", 100), entry("b", 200), entry("c", 300)], 2),
+            Arc::clone(&executor),
+            Arc::new(AtomicBool::new(false)),
+            None,
+        )
+        .await;
+
+        assert_eq!(result.completed, 3);
+        let stats = result
+            .engine_stats
+            .expect("block E: the result carries the engine stats source");
+        assert_eq!(
+            stats.metrics.bytes_transferred, 600,
+            "job total folds every completed file's bytes"
+        );
+        assert_eq!(stats.metrics.logical_bytes, 600);
+        assert!(
+            stats.metrics.slot_peak >= 1,
+            "a run that dispatched work has a non-zero slot peak"
+        );
+        // wall_clock_ms is real elapsed time; it can round to zero on a fast
+        // mock run, so assert the field exists rather than a positive lower
+        // bound. `resources` is Some on Linux CI, None elsewhere: never asserted
+        // as a fabricated value.
+        let _ = stats.wall_clock_ms;
+        // The same snapshot was published to the process-global store the MCP
+        // accessor reads.
+        assert!(crate::transfer_dag::engine_stats::latest().is_some());
     }
 
     #[tokio::test]

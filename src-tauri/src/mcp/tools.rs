@@ -241,6 +241,12 @@ pub fn tool_definitions() -> Vec<McpToolDef> {
             }, "required": ["profile"] }),
             category: RateCategory::ReadOnly,
         },
+        McpToolDef {
+            name: "aeroftp_transfer_stats",
+            description: "Return the engine-level telemetry of the most recent DAG-engine transfer job seen by this process: byte triple (logical/wire/local-payload), retries, dispatch wait and runner nanos, concurrency high-water (slot_peak), time-to-first-byte totals, real wall-clock duration, and the process CPU/RSS/FD delta bracketing the job. Read-only, no external I/O, no arguments. Returns {available:false} when no such job has run yet. Note: this MCP server's own aeroftp_transfer / aeroftp_transfer_tree tools use the direct cross-profile path and do NOT run the DAG engine, so they are not counted here; the numbers come from GUI/CLI folder and sync transfers in the same process.",
+            input_schema: json!({ "type": "object", "properties": {}, "required": [] }),
+            category: RateCategory::ReadOnly,
+        },
     ];
 
     // Inject dynamic tools from the unified core registry (T3 Gate 3).
@@ -818,6 +824,28 @@ fn build_mcp_info() -> Value {
     payload
 }
 
+/// DAG-P2-07 (block E): the MCP `aeroftp_transfer_stats` accessor. Reads the
+/// most recent DAG-engine job snapshot from the process-global engine-stats
+/// store and renders it as a model-facing JSON payload. Split from the pure
+/// [`render_transfer_stats`] renderer so unit tests can exercise the shape
+/// without depending on process-global state ordering.
+fn build_transfer_stats() -> Value {
+    render_transfer_stats(crate::transfer_dag::engine_stats::latest().as_ref())
+}
+
+/// Pure renderer for the transfer-stats payload. `None` (no engine job yet)
+/// renders `{available:false}` so a client never misreads an absent job as a
+/// zeroed one; `Some` renders `{available:true, stats:<EngineTransferStats>}`.
+fn render_transfer_stats(stats: Option<&crate::transfer_dag::EngineTransferStats>) -> Value {
+    match stats {
+        None => json!({ "available": false }),
+        Some(s) => json!({
+            "available": true,
+            "stats": s,
+        }),
+    }
+}
+
 // `apply_replacements` and `delete_kind` were used by the legacy
 // per-tool match arms removed in T3 Gate 3. The unified dispatcher
 // (ai_core::remote_tools::dispatch_remote_tool) handles edits and
@@ -917,6 +945,12 @@ pub async fn execute_tool(
         "aeroftp_mcp_info" => {
             // No server/path validation: this tool has no external I/O.
             let result = ok(build_mcp_info());
+            finish(tool_name, None, None, result, start)
+        }
+        "aeroftp_transfer_stats" => {
+            // No server/path validation: reads the process-global engine-stats
+            // snapshot, no external I/O.
+            let result = ok(build_transfer_stats());
             finish(tool_name, None, None, result, start)
         }
         "aeroftp_debug_snapshot" => {
@@ -2103,6 +2137,53 @@ mod tests {
             .into_iter()
             .find(|t| t.name == "aeroftp_mcp_info")
             .expect("aeroftp_mcp_info tool registered");
+        assert_eq!(t.category, super::RateCategory::ReadOnly);
+        let required = t
+            .input_schema
+            .get("required")
+            .and_then(|v| v.as_array())
+            .expect("required array");
+        assert!(required.is_empty(), "tool should take no arguments");
+    }
+
+    #[test]
+    fn transfer_stats_reports_unavailable_when_no_job_ran() {
+        let v = super::render_transfer_stats(None);
+        assert_eq!(v["available"], serde_json::json!(false));
+        assert!(
+            v.get("stats").is_none(),
+            "absent job must not render a fabricated zero snapshot"
+        );
+    }
+
+    #[test]
+    fn transfer_stats_serializes_the_snapshot_when_present() {
+        use crate::transfer_dag::{EngineTransferStats, TransferDagMetrics};
+        let m = TransferDagMetrics {
+            bytes_transferred: 4096,
+            slot_peak: 4,
+            ..Default::default()
+        };
+        let stats = EngineTransferStats::from_job(m, 250, None);
+        let v = super::render_transfer_stats(Some(&stats));
+        assert_eq!(v["available"], serde_json::json!(true));
+        assert_eq!(v["stats"]["wall_clock_ms"], serde_json::json!(250));
+        assert_eq!(
+            v["stats"]["metrics"]["bytes_transferred"],
+            serde_json::json!(4096)
+        );
+        assert_eq!(v["stats"]["metrics"]["slot_peak"], serde_json::json!(4));
+        // `resources` is `None` here, so it is omitted (skip_serializing_if),
+        // never serialized as a fabricated zero delta.
+        assert!(v["stats"].get("resources").is_none());
+    }
+
+    #[test]
+    fn transfer_stats_registry_entry_is_read_only_and_requires_nothing() {
+        let t = tool_definitions()
+            .into_iter()
+            .find(|t| t.name == "aeroftp_transfer_stats")
+            .expect("aeroftp_transfer_stats tool registered");
         assert_eq!(t.category, super::RateCategory::ReadOnly);
         let required = t
             .input_schema
