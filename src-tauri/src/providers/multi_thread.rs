@@ -310,6 +310,7 @@ where
         total_size,
         config.max_parallel,
         config.provider_type,
+        config.endpoint_identity.clone(),
         write_one_range,
         cancel,
         on_progress,
@@ -408,6 +409,29 @@ where
     Ok(ConcurrentRangeOutcome::Completed)
 }
 
+/// DAG-P2-06: the single construction point for the segmented-range AIMD
+/// controller. It binds learned tuning to `endpoint` under the
+/// [`crate::transfer_dag::AdaptiveWorkload::SegmentedRange`] shape. Taking the
+/// registry as a parameter lets the wire-level test inject a fresh instance and
+/// assert the exact key this site records under; production passes the
+/// process-global registry via [`crate::transfer_dag::global_profile_registry`].
+fn range_aimd_controller(
+    budget: &crate::transfer_dag::TransferBudget,
+    provider_type: super::ProviderType,
+    endpoint: crate::transfer_dag::EndpointIdentity,
+    registry: Arc<crate::transfer_dag::AdaptiveProfileRegistry>,
+    config: crate::transfer_dag::AimdConfig,
+) -> Arc<crate::transfer_dag::AimdController> {
+    use crate::transfer_dag::{AdaptiveProfileKey, AdaptiveWorkload, AimdController};
+    Arc::new(AimdController::from_budget_for_profile(
+        budget,
+        Some(provider_type),
+        AdaptiveProfileKey::new(endpoint, AdaptiveWorkload::SegmentedRange),
+        registry,
+        config,
+    ))
+}
+
 /// Dispatch the same range plan as independent fan-out nodes on the transfer
 /// node-graph executor (`transfer_dag::executor::execute_dag`). Each range is
 /// one `DownloadRange` node with no dependencies and a `range_chunk` resource
@@ -428,6 +452,7 @@ pub(crate) async fn run_ranges_via_graph<W, WFut>(
     total_size: u64,
     max_parallel: usize,
     provider_type: super::ProviderType,
+    endpoint: crate::transfer_dag::EndpointIdentity,
     write_one_range: Arc<W>,
     cancel: CancellationToken,
     on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
@@ -443,8 +468,8 @@ where
     };
     use crate::transfer_dag::graph::TransferNode;
     use crate::transfer_dag::{
-        AimdConfig, AimdController, DagObserver, FailureScope, NoopDagObserver, TransferBudget,
-        TransferDagBuilder, TransferError,
+        AimdConfig, DagObserver, FailureScope, NoopDagObserver, TransferBudget, TransferDagBuilder,
+        TransferError,
     };
     use std::sync::atomic::AtomicBool;
     use std::sync::Mutex;
@@ -481,11 +506,13 @@ where
     // `None`. It only ever shrinks the Chunk/Http dispatch target when a range
     // fails with a genuine congestion signal (429/503/timeout/reset), where a
     // smaller in-flight set is the safer, faster choice.
-    let aimd = Arc::new(AimdController::from_budget_for_provider(
+    let aimd = range_aimd_controller(
         &manager.budget(),
-        Some(provider_type),
+        provider_type,
+        endpoint,
+        crate::transfer_dag::global_profile_registry(),
         AimdConfig::runtime(),
-    ));
+    );
 
     let ranges: Arc<Vec<(u64, u64)>> = Arc::new(ranges.to_vec());
     let aggregate = Arc::new(AtomicU64::new(0));
@@ -1109,6 +1136,44 @@ mod tests {
 
     const MAX: usize = 16;
 
+    // DAG-P2-06 (wire-level): the segmented-range construction point binds
+    // learned tuning to its endpoint under the SegmentedRange workload key.
+    #[test]
+    fn range_aimd_controller_records_under_the_segmented_range_key() {
+        use crate::transfer_dag::{
+            AdaptiveClass, AdaptiveProfileConfig, AdaptiveProfileKey, AdaptiveProfileRegistry,
+            AdaptiveWorkload, AimdConfig, EndpointIdentity, TransferBudget,
+        };
+        let registry = Arc::new(AdaptiveProfileRegistry::new(
+            AdaptiveProfileConfig::default(),
+        ));
+        let endpoint = EndpointIdentity::new("s3", "wire-test-host", "wire-acct");
+        let budget = TransferBudget {
+            chunk_slots: 8,
+            http_slots: 8,
+            ..TransferBudget::from_file_slots(1)
+        };
+        let ctrl = range_aimd_controller(
+            &budget,
+            super::super::ProviderType::S3,
+            endpoint.clone(),
+            registry.clone(),
+            AimdConfig::default(),
+        );
+        assert_eq!(
+            ctrl.profile_key().map(|k| k.workload),
+            Some(AdaptiveWorkload::SegmentedRange)
+        );
+        ctrl.on_congestion(AdaptiveClass::Chunk);
+        let snapshot = registry.snapshot();
+        assert_eq!(snapshot.len(), 1);
+        assert_eq!(
+            snapshot[0].key,
+            AdaptiveProfileKey::new(endpoint, AdaptiveWorkload::SegmentedRange)
+        );
+        assert_eq!(snapshot[0].chunk, Some(4));
+    }
+
     fn ranges_cover(total: u64, ranges: &[(u64, u64)]) -> bool {
         if ranges.is_empty() {
             return total == 0;
@@ -1364,6 +1429,7 @@ mod tests {
             total,
             4,
             super::super::ProviderType::S3,
+            crate::transfer_dag::EndpointIdentity::new("s3", "equivalence-harness", ""),
             w.clone(),
             CancellationToken::new(),
             None,
@@ -1434,6 +1500,7 @@ mod tests {
             total,
             4,
             super::super::ProviderType::S3,
+            crate::transfer_dag::EndpointIdentity::new("s3", "equivalence-harness", ""),
             w.clone(),
             CancellationToken::new(),
             None,
@@ -1495,6 +1562,7 @@ mod tests {
             total,
             4,
             super::super::ProviderType::S3,
+            crate::transfer_dag::EndpointIdentity::new("s3", "equivalence-harness", ""),
             w.clone(),
             CancellationToken::new(),
             None,
@@ -1574,6 +1642,7 @@ mod tests {
                 2,
                 2,
                 super::super::ProviderType::S3,
+                crate::transfer_dag::EndpointIdentity::new("s3", "equivalence-harness", ""),
                 writer,
                 cancel,
                 None,
@@ -1719,6 +1788,7 @@ mod tests {
             total,
             1,
             super::super::ProviderType::S3,
+            crate::transfer_dag::EndpointIdentity::new("s3", "equivalence-harness", ""),
             writer_b,
             CancellationToken::new(),
             Some(callback_b),
@@ -1770,6 +1840,7 @@ mod tests {
                 total,
                 2,
                 super::super::ProviderType::S3,
+                crate::transfer_dag::EndpointIdentity::new("s3", "equivalence-harness", ""),
                 writer,
                 CancellationToken::new(),
                 None,
@@ -1825,6 +1896,7 @@ mod tests {
             1,
             1,
             super::super::ProviderType::S3,
+            crate::transfer_dag::EndpointIdentity::new("s3", "equivalence-harness", ""),
             writer,
             CancellationToken::new(),
             None,
@@ -1935,6 +2007,7 @@ mod tests {
                     4,
                     2,
                     super::super::ProviderType::S3,
+                    crate::transfer_dag::EndpointIdentity::new("s3", "equivalence-harness", ""),
                     writer,
                     CancellationToken::new(),
                     None,

@@ -23,8 +23,10 @@ pub mod resources;
 pub mod session_pool;
 
 pub use adaptive::{
-    congestion_from_error, AdaptiveClass, AimdClassOverrides, AimdClassWindow, AimdConfig,
-    AimdController, CongestionEvent,
+    congestion_from_error, global_profile_registry, AdaptiveClass, AdaptiveClock,
+    AdaptiveProfileConfig, AdaptiveProfileKey, AdaptiveProfileRegistry, AdaptiveProfileSnapshot,
+    AdaptiveWorkload, AimdClassOverrides, AimdClassWindow, AimdConfig, AimdController,
+    CongestionEvent, ManualClock, SystemClock,
 };
 pub use aimd_hints::AimdHint;
 pub use builder::{

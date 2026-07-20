@@ -772,6 +772,29 @@ async fn drive_sync_transfers(
 
 /// Run a full sync session through the graph engine.
 ///
+/// DAG-P2-06: the single construction point for the sync whole-file AIMD
+/// controller. It binds learned tuning to `endpoint` under the
+/// [`crate::transfer_dag::AdaptiveWorkload::BatchSyncFile`] shape, the same
+/// workload key batch uses, so both whole-file surfaces to one endpoint share a
+/// learned safe target. The registry is a parameter so the wire-level test can
+/// inject a fresh instance and assert the key this site records under.
+fn sync_aimd_controller(
+    budget: &crate::transfer_dag::TransferBudget,
+    provider_type: crate::providers::ProviderType,
+    endpoint: crate::transfer_dag::EndpointIdentity,
+    registry: Arc<crate::transfer_dag::AdaptiveProfileRegistry>,
+    config: AimdConfig,
+) -> Arc<AimdController> {
+    use crate::transfer_dag::{AdaptiveProfileKey, AdaptiveWorkload};
+    Arc::new(AimdController::from_budget_for_profile(
+        budget,
+        Some(provider_type),
+        AdaptiveProfileKey::new(endpoint, AdaptiveWorkload::BatchSyncFile),
+        registry,
+        config,
+    ))
+}
+
 /// A drop-in replacement for [`crate::sync::sync_tree_core`]: same arguments,
 /// same [`SyncReport`]. Reached for every non-dry-run sync; only a dry-run
 /// sync diverts to the legacy interleaved path (kept exclusively for the
@@ -928,7 +951,7 @@ pub async fn execute_sync_dag(
         // same physical disk.
         let _job_lease = crate::transfer_dag::governor::global()
             .acquire_job(
-                endpoint,
+                endpoint.clone(),
                 TransferPriority::Background,
                 [
                     DiskLeaseRequest::read(local_root),
@@ -994,12 +1017,15 @@ pub async fn execute_sync_dag(
         let provider_type = provider.provider_type();
         // AIMD backpressure (F3-T05) uses the same bounded file resource as
         // the normal clone lane. A serial demotion retains the conservative
-        // one-slot behavior.
-        let aimd = Arc::new(AimdController::from_budget_for_provider(
+        // one-slot behavior. DAG-P2-06: seed from / learn into this endpoint's
+        // whole-file profile, shared with batch under the same workload key.
+        let aimd = sync_aimd_controller(
             &manager.budget(),
-            Some(provider_type),
+            provider_type,
+            endpoint,
+            crate::transfer_dag::global_profile_registry(),
             AimdConfig::runtime(),
-        ));
+        );
 
         // The graph scheduling (spawned) and the real I/O driver (borrowing
         // the provider) run concurrently on this task. The driver loop ends
@@ -1100,6 +1126,41 @@ mod tests {
     use crate::transfer_dag::{Capability, NoopDagObserver, OrderedDagObserver};
     use async_trait::async_trait;
     use std::any::Any;
+
+    // DAG-P2-06 (wire-level): the sync construction point binds learned tuning
+    // to its endpoint under the whole-file BatchSyncFile workload key (shared
+    // with batch so both whole-file surfaces to one endpoint learn together).
+    #[test]
+    fn sync_aimd_controller_records_under_the_batch_sync_key() {
+        use crate::transfer_dag::{
+            AdaptiveClass, AdaptiveProfileConfig, AdaptiveProfileKey, AdaptiveProfileRegistry,
+            AdaptiveWorkload, EndpointIdentity, TransferBudget,
+        };
+        let registry = Arc::new(AdaptiveProfileRegistry::new(
+            AdaptiveProfileConfig::default(),
+        ));
+        let endpoint = EndpointIdentity::new("sftp", "wire-test-host", "wire-acct");
+        let budget = TransferBudget::from_file_slots(8);
+        let ctrl = sync_aimd_controller(
+            &budget,
+            ProviderType::S3,
+            endpoint.clone(),
+            registry.clone(),
+            AimdConfig::default(),
+        );
+        assert_eq!(
+            ctrl.profile_key().map(|k| k.workload),
+            Some(AdaptiveWorkload::BatchSyncFile)
+        );
+        ctrl.on_congestion(AdaptiveClass::File);
+        let snapshot = registry.snapshot();
+        assert_eq!(snapshot.len(), 1);
+        assert_eq!(
+            snapshot[0].key,
+            AdaptiveProfileKey::new(endpoint, AdaptiveWorkload::BatchSyncFile)
+        );
+        assert_eq!(snapshot[0].file, Some(4));
+    }
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Mutex as StdMutex;
     use std::time::Duration;

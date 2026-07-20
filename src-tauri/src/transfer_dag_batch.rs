@@ -107,6 +107,29 @@ where
     execute_batch_dag_inner(sink, batch, executor, cancel, progress_observer, None).await
 }
 
+/// DAG-P2-06: the single construction point for the batch/sync whole-file AIMD
+/// controller. It binds learned tuning to `endpoint` under the
+/// [`crate::transfer_dag::AdaptiveWorkload::BatchSyncFile`] shape. The registry
+/// is a parameter so the wire-level test can inject a fresh instance and assert
+/// the key this site records under; production passes the process-global
+/// registry via [`crate::transfer_dag::global_profile_registry`].
+fn batch_aimd_controller(
+    budget: &crate::transfer_dag::TransferBudget,
+    provider_type: Option<crate::providers::ProviderType>,
+    endpoint: crate::transfer_dag::EndpointIdentity,
+    registry: Arc<crate::transfer_dag::AdaptiveProfileRegistry>,
+    config: AimdConfig,
+) -> Arc<AimdController> {
+    use crate::transfer_dag::{AdaptiveProfileKey, AdaptiveWorkload};
+    Arc::new(AimdController::from_budget_for_profile(
+        budget,
+        provider_type,
+        AdaptiveProfileKey::new(endpoint, AdaptiveWorkload::BatchSyncFile),
+        registry,
+        config,
+    ))
+}
+
 /// Test-only entry that injects a pre-built AIMD controller so probes can
 /// assert target decrease without live network or process-global state.
 #[cfg(test)]
@@ -265,13 +288,21 @@ where
         .child_manager(config.transfer_budget_for_capabilities(&caps));
     let provider_type = executor.provider_type();
 
-    let aimd = aimd_override.unwrap_or_else(|| {
-        Arc::new(AimdController::from_budget_for_provider(
-            &resource_manager.budget(),
-            provider_type,
-            AimdConfig::runtime(),
-        ))
-    });
+    // DAG-P2-06: seed from / learn into this endpoint's whole-file profile.
+    // Skipped entirely when a test injects an explicit controller override.
+    let aimd = match aimd_override {
+        Some(aimd) => aimd,
+        None => {
+            let endpoint = executor.endpoint_identity().await;
+            batch_aimd_controller(
+                &resource_manager.budget(),
+                provider_type,
+                endpoint,
+                crate::transfer_dag::global_profile_registry(),
+                AimdConfig::runtime(),
+            )
+        }
+    };
 
     let runner: Arc<dyn DagNodeRunner> = {
         let sink = Arc::clone(&sink);
@@ -919,6 +950,40 @@ mod tests {
     use async_trait::async_trait;
     use std::collections::HashSet;
     use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrdering};
+
+    // DAG-P2-06 (wire-level): the batch construction point binds learned tuning
+    // to its endpoint under the whole-file BatchSyncFile workload key.
+    #[test]
+    fn batch_aimd_controller_records_under_the_batch_sync_key() {
+        use crate::transfer_dag::{
+            AdaptiveClass, AdaptiveProfileConfig, AdaptiveProfileKey, AdaptiveProfileRegistry,
+            AdaptiveWorkload, EndpointIdentity, TransferBudget,
+        };
+        let registry = Arc::new(AdaptiveProfileRegistry::new(
+            AdaptiveProfileConfig::default(),
+        ));
+        let endpoint = EndpointIdentity::new("s3", "wire-test-host", "wire-acct");
+        let budget = TransferBudget::from_file_slots(8);
+        let ctrl = batch_aimd_controller(
+            &budget,
+            Some(crate::providers::ProviderType::S3),
+            endpoint.clone(),
+            registry.clone(),
+            AimdConfig::default(),
+        );
+        assert_eq!(
+            ctrl.profile_key().map(|k| k.workload),
+            Some(AdaptiveWorkload::BatchSyncFile)
+        );
+        ctrl.on_congestion(AdaptiveClass::File);
+        let snapshot = registry.snapshot();
+        assert_eq!(snapshot.len(), 1);
+        assert_eq!(
+            snapshot[0].key,
+            AdaptiveProfileKey::new(endpoint, AdaptiveWorkload::BatchSyncFile)
+        );
+        assert_eq!(snapshot[0].file, Some(4));
+    }
     use std::sync::Mutex as StdMutex;
     use std::time::Duration;
 

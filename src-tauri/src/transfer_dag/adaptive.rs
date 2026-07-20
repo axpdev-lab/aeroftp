@@ -3,7 +3,7 @@
 
 //! Prudent AIMD backpressure for the ready-frontier executor.
 //!
-//! Three pieces:
+//! Four pieces:
 //!
 //! 1. [`congestion_from_error`] maps a typed [`crate::transfer_dag::error::TransferError`]
 //!    onto the narrow congestion trigger set (429, 503, request timeout,
@@ -22,14 +22,28 @@
 //! 3. [`AimdController`] applies additive-increase / multiplicative-decrease
 //!    per controlled resource class. It is decrease-biased and cannot grant
 //!    concurrency above the honest `effective_budget` ceiling: it can only
-//!    ever reduce below it and grow back toward it. State is per-run; no
-//!    cross-run persistence (out of scope for v1).
+//!    ever reduce below it and grow back toward it. The live dispatch permits
+//!    are always per-run.
+//!
+//! 4. DAG-P2-06: [`AdaptiveProfileRegistry`] is a bounded, process-local cache
+//!    of the *safe target* a controller converged to, keyed by
+//!    [`AdaptiveProfileKey`] (P2-01b [`EndpointIdentity`] + [`AdaptiveWorkload`]).
+//!    It is a seed/feedback record only, never a shared semaphore and never a
+//!    second dispatch loop. When [`AimdController::from_budget_for_profile`]
+//!    builds a controller it seeds each class from the learned safe target for
+//!    that key (clamped so first use is byte-for-byte the honest ceiling), and
+//!    the typed congestion/healthy lifecycle mirrors moves back to the same key
+//!    only. Entries are held for the process lifetime and up to a finite TTL,
+//!    with a finite key cap and deterministic LRU eviction; an expired entry
+//!    behaves like a first use. It holds no ownership over the P2-02 checkpoint
+//!    state and never retains a secret, credential, path, or object name.
 //!
 //! The controller throttles the executor's *dispatch* step. A node parked
 //! waiting for a dispatch permit has not begun its transfer yet, so shrinking
 //! is always safe.
 
 use std::cmp::Ordering as CmpOrdering;
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
@@ -39,6 +53,7 @@ use tokio::time::sleep;
 
 use super::aimd_hints;
 use super::error::{TransferError, TransferErrorKind};
+use super::governor::EndpointIdentity;
 use super::resources::{ResourceRequest, TransferBudget};
 use crate::providers::ProviderType;
 
@@ -61,6 +76,49 @@ impl AdaptiveClass {
         AdaptiveClass::Http,
         AdaptiveClass::Api,
     ];
+}
+
+/// DAG-P2-06: the workload shape half of an [`AdaptiveProfileKey`]. A congestion
+/// signal learned while running one workload against an endpoint must not seed a
+/// structurally different workload against the same endpoint: a segmented range
+/// download tuning its chunk/http fan-out says nothing about the safe whole-file
+/// concurrency for a batch of small files. We therefore key learned tuning by
+/// the *actual* production graph shapes, not by a display label.
+///
+/// The three variants map one-to-one onto the four active AIMD construction
+/// sites: batch and sync share [`BatchSyncFile`](Self::BatchSyncFile) because
+/// both drive whole-file transfers dominated by the File class; the shaped
+/// single-file / native multipart path is [`ShapedFile`](Self::ShapedFile); the
+/// concurrent range engine is [`SegmentedRange`](Self::SegmentedRange).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum AdaptiveWorkload {
+    /// Whole-file batch and tree-sync transfers (File-class dominated).
+    BatchSyncFile,
+    /// Shaped single-file uploads/downloads and native multipart fan-out.
+    ShapedFile,
+    /// Concurrent segmented range download (Chunk/Http fan-out).
+    SegmentedRange,
+}
+
+/// DAG-P2-06: canonical key for a learned adaptive tuning profile. It pairs the
+/// P2-01b [`EndpointIdentity`] (protocol + host + account, already the
+/// process-global governor's key) with the explicit [`AdaptiveWorkload`] shape.
+///
+/// Privacy boundary: the key carries only the same authority identity the
+/// endpoint governor already holds. It never contains a password, token, remote
+/// path, or remote object name. A different account on the same host, a
+/// different host, or a different workload is a distinct key by construction, so
+/// tuning learned for one can never bleed into another.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct AdaptiveProfileKey {
+    pub endpoint: EndpointIdentity,
+    pub workload: AdaptiveWorkload,
+}
+
+impl AdaptiveProfileKey {
+    pub fn new(endpoint: EndpointIdentity, workload: AdaptiveWorkload) -> Self {
+        Self { endpoint, workload }
+    }
 }
 
 /// The narrow set of congestion signals (decision D2). No generic 5xx.
@@ -414,6 +472,319 @@ impl AimdConfig {
     }
 }
 
+/// DAG-P2-06: injectable monotonic clock for the [`AdaptiveProfileRegistry`] TTL
+/// and eviction recency. Production uses [`SystemClock`]; deterministic tests
+/// use a manual clock so TTL expiry can be proven without wall-clock sleeps.
+///
+/// This governs *only* the registry's own bookkeeping. The per-run
+/// [`AimdController`] cooldown/healthy timers keep using real [`Instant`]s
+/// exactly as before; the registry stores learned target *values* (plain
+/// integers) and timestamps them with this clock.
+pub trait AdaptiveClock: Send + Sync {
+    fn now(&self) -> Instant;
+}
+
+/// Wall-clock implementation of [`AdaptiveClock`].
+#[derive(Debug, Default, Clone, Copy)]
+pub struct SystemClock;
+
+impl AdaptiveClock for SystemClock {
+    fn now(&self) -> Instant {
+        Instant::now()
+    }
+}
+
+/// Manually advanced [`AdaptiveClock`] for deterministic TTL/eviction tests.
+/// `advance` moves the observed instant forward without any real sleeping.
+pub struct ManualClock {
+    base: Instant,
+    offset: Mutex<Duration>,
+}
+
+impl ManualClock {
+    pub fn new() -> Self {
+        Self {
+            base: Instant::now(),
+            offset: Mutex::new(Duration::ZERO),
+        }
+    }
+
+    pub fn advance(&self, by: Duration) {
+        let mut offset = self.offset.lock().expect("manual clock poisoned");
+        *offset = offset.saturating_add(by);
+    }
+}
+
+impl Default for ManualClock {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl AdaptiveClock for ManualClock {
+    fn now(&self) -> Instant {
+        self.base + *self.offset.lock().expect("manual clock poisoned")
+    }
+}
+
+/// DAG-P2-06: bounds for the process-local [`AdaptiveProfileRegistry`]. Both
+/// bounds are finite by contract so the cache can never grow without limit nor
+/// pin a stale throttle forever.
+#[derive(Debug, Clone, Copy)]
+pub struct AdaptiveProfileConfig {
+    /// A learned entry older than this (since its last update) is treated as a
+    /// first use again: the next controller for that key starts at its honest
+    /// ceiling. The default is generous enough to carry a safe target across
+    /// back-to-back jobs in one process, yet short enough that a provider whose
+    /// rate limit has long since cleared is not throttled indefinitely (the
+    /// controller would in any case recover conservatively toward the ceiling).
+    pub ttl: Duration,
+    /// Hard cap on distinct keys retained. On overflow the least-recently
+    /// touched key is evicted deterministically. Bounds memory regardless of
+    /// how many endpoints/workloads a long-running process touches.
+    pub capacity: usize,
+}
+
+impl Default for AdaptiveProfileConfig {
+    fn default() -> Self {
+        Self {
+            ttl: Duration::from_secs(600),
+            capacity: 256,
+        }
+    }
+}
+
+/// One learned entry: an optional safe target per controlled class, its last
+/// update instant (for TTL) and a monotonic touch sequence (for deterministic
+/// LRU eviction).
+struct ProfileEntry {
+    file: Option<usize>,
+    chunk: Option<usize>,
+    http: Option<usize>,
+    api: Option<usize>,
+    updated_at: Instant,
+    touch_seq: u64,
+}
+
+impl ProfileEntry {
+    fn new(now: Instant, seq: u64) -> Self {
+        Self {
+            file: None,
+            chunk: None,
+            http: None,
+            api: None,
+            updated_at: now,
+            touch_seq: seq,
+        }
+    }
+
+    fn set(&mut self, class: AdaptiveClass, target: usize) {
+        match class {
+            AdaptiveClass::File => self.file = Some(target),
+            AdaptiveClass::Chunk => self.chunk = Some(target),
+            AdaptiveClass::Http => self.http = Some(target),
+            AdaptiveClass::Api => self.api = Some(target),
+        }
+    }
+
+    fn value(&self, class: AdaptiveClass) -> Option<usize> {
+        match class {
+            AdaptiveClass::File => self.file,
+            AdaptiveClass::Chunk => self.chunk,
+            AdaptiveClass::Http => self.http,
+            AdaptiveClass::Api => self.api,
+        }
+    }
+}
+
+struct RegistryInner {
+    entries: HashMap<AdaptiveProfileKey, ProfileEntry>,
+    seq: u64,
+}
+
+impl RegistryInner {
+    fn next_seq(&mut self) -> u64 {
+        self.seq = self.seq.wrapping_add(1);
+        self.seq
+    }
+
+    /// Remove the least-recently-touched entry. Deterministic: `touch_seq` is
+    /// strictly monotonic, so there is exactly one minimum.
+    fn evict_lru(&mut self) {
+        if let Some(key) = self
+            .entries
+            .iter()
+            .min_by_key(|(_, entry)| entry.touch_seq)
+            .map(|(key, _)| key.clone())
+        {
+            self.entries.remove(&key);
+        }
+    }
+}
+
+/// A narrow, read-only view of one live profile entry for diagnostics and
+/// future UI. Carries the same identity the endpoint governor already exposes;
+/// it holds no credential, path, or object name.
+#[derive(Debug, Clone)]
+pub struct AdaptiveProfileSnapshot {
+    pub key: AdaptiveProfileKey,
+    pub file: Option<usize>,
+    pub chunk: Option<usize>,
+    pub http: Option<usize>,
+    pub api: Option<usize>,
+    /// Time since this entry was last updated, per the registry clock.
+    pub age: Duration,
+}
+
+/// DAG-P2-06: the process-local, bounded, in-process cache of safe adaptive
+/// targets keyed by [`AdaptiveProfileKey`]. It is a *seed/feedback record only*,
+/// never a shared semaphore and never a second dispatch loop: the live dispatch
+/// permits remain per-run inside each [`AimdController`], and the process-wide
+/// resource cap remains the P2-01b endpoint/disk leases in the governor.
+///
+/// Boundary (documented for point 7 of the task): entries live only for the
+/// process lifetime and only up to [`AdaptiveProfileConfig::ttl`]; at most
+/// [`AdaptiveProfileConfig::capacity`] keys are retained (LRU eviction beyond
+/// that). It is not durable and holds no ownership over the P2-02 checkpoint
+/// state.
+pub struct AdaptiveProfileRegistry {
+    inner: Mutex<RegistryInner>,
+    ttl: Duration,
+    capacity: usize,
+    clock: Arc<dyn AdaptiveClock>,
+}
+
+impl AdaptiveProfileRegistry {
+    /// Build a registry on the wall clock.
+    pub fn new(config: AdaptiveProfileConfig) -> Self {
+        Self::with_clock(config, Arc::new(SystemClock))
+    }
+
+    /// Build a registry on an injected clock (deterministic tests).
+    pub fn with_clock(config: AdaptiveProfileConfig, clock: Arc<dyn AdaptiveClock>) -> Self {
+        Self {
+            inner: Mutex::new(RegistryInner {
+                entries: HashMap::new(),
+                seq: 0,
+            }),
+            ttl: config.ttl,
+            capacity: config.capacity.max(1),
+            clock,
+        }
+    }
+
+    /// Cached safe target for `key`/`class`, or `None` when the key is unknown,
+    /// expired (treated as first use, and purged), or has no learned value for
+    /// that class yet. A live read refreshes the entry's recency so an actively
+    /// seeded key is not evicted out from under a fresh controller.
+    pub fn seed(&self, key: &AdaptiveProfileKey, class: AdaptiveClass) -> Option<usize> {
+        let now = self.clock.now();
+        let mut inner = self
+            .inner
+            .lock()
+            .expect("adaptive profile registry poisoned");
+        let expired = match inner.entries.get(key) {
+            Some(entry) => now.saturating_duration_since(entry.updated_at) >= self.ttl,
+            None => return None,
+        };
+        if expired {
+            inner.entries.remove(key);
+            return None;
+        }
+        let seq = inner.next_seq();
+        let entry = inner
+            .entries
+            .get_mut(key)
+            .expect("entry present after non-expired check");
+        entry.touch_seq = seq;
+        entry.value(class)
+    }
+
+    /// Record a learned safe target for `key`/`class`. Called from the typed
+    /// controller lifecycle after a congestion decrease or a healthy-recovery
+    /// increase actually moved the class target. An expired entry is reset
+    /// before the write so a stale sibling class cannot resurrect.
+    pub fn record(&self, key: &AdaptiveProfileKey, class: AdaptiveClass, target: usize) {
+        let now = self.clock.now();
+        let mut inner = self
+            .inner
+            .lock()
+            .expect("adaptive profile registry poisoned");
+        let seq = inner.next_seq();
+        if let Some(entry) = inner.entries.get_mut(key) {
+            if now.saturating_duration_since(entry.updated_at) >= self.ttl {
+                *entry = ProfileEntry::new(now, seq);
+            }
+            entry.set(class, target);
+            entry.updated_at = now;
+            entry.touch_seq = seq;
+            return;
+        }
+        if inner.entries.len() >= self.capacity {
+            inner.evict_lru();
+        }
+        let mut entry = ProfileEntry::new(now, seq);
+        entry.set(class, target);
+        inner.entries.insert(key.clone(), entry);
+    }
+
+    /// Narrow diagnostic snapshot of every live (non-expired) entry.
+    pub fn snapshot(&self) -> Vec<AdaptiveProfileSnapshot> {
+        let now = self.clock.now();
+        let inner = self
+            .inner
+            .lock()
+            .expect("adaptive profile registry poisoned");
+        inner
+            .entries
+            .iter()
+            .filter(|(_, entry)| now.saturating_duration_since(entry.updated_at) < self.ttl)
+            .map(|(key, entry)| AdaptiveProfileSnapshot {
+                key: key.clone(),
+                file: entry.file,
+                chunk: entry.chunk,
+                http: entry.http,
+                api: entry.api,
+                age: now.saturating_duration_since(entry.updated_at),
+            })
+            .collect()
+    }
+
+    /// Number of live (non-expired) entries currently retained.
+    pub fn len(&self) -> usize {
+        let now = self.clock.now();
+        let inner = self
+            .inner
+            .lock()
+            .expect("adaptive profile registry poisoned");
+        inner
+            .entries
+            .values()
+            .filter(|entry| now.saturating_duration_since(entry.updated_at) < self.ttl)
+            .count()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+}
+
+static PROFILE_REGISTRY: OnceLock<Arc<AdaptiveProfileRegistry>> = OnceLock::new();
+
+/// The process-global adaptive profile registry, lazily built on first use with
+/// [`AdaptiveProfileConfig::default`] on the wall clock. Every production AIMD
+/// construction site shares this one instance so a safe target learned by one
+/// job seeds the next job to the same endpoint/workload within the process.
+pub fn global_profile_registry() -> Arc<AdaptiveProfileRegistry> {
+    PROFILE_REGISTRY
+        .get_or_init(|| {
+            Arc::new(AdaptiveProfileRegistry::new(
+                AdaptiveProfileConfig::default(),
+            ))
+        })
+        .clone()
+}
+
 struct ClassState {
     sem: DynamicSemaphore,
     ceiling: usize,
@@ -473,16 +844,28 @@ impl ApiPacerState {
 }
 
 impl ClassState {
-    /// KE-D2: build a class with operator-supplied window overrides.
-    /// Clamping rules — applied here so [`AimdConfig::class_overrides`]
-    /// values cannot ever yield an unsafe controller state:
-    /// - `max` only ever shrinks the budget-derived `ceiling`; it cannot
-    ///   raise it above the honest cap (AIMD is decrease-biased).
-    /// - `min` is clamped to `[1, ceiling]`; values below `1` collapse to
-    ///   `1`, values above the clamped ceiling collapse to the ceiling.
+    /// KE-D2 + DAG-P2-06: build a class with operator-supplied window overrides,
+    /// starting from a cached safe target instead of the honest ceiling. `seed`
+    /// is the learned safe target for this class from a prior job to the same
+    /// endpoint/workload. It is clamped into `[min_target, ceiling]`, so a seed
+    /// can only ever *lower* the starting point: AIMD stays decrease-biased and
+    /// can never begin above the effective budget or an operator cap. `seed ==
+    /// None` (every first use, and every disabled controller) is byte-for-byte
+    /// the historical behaviour: start at the honest ceiling.
+    ///
+    /// Clamping rules (applied here so overrides can never yield an unsafe
+    /// controller state):
+    /// - `max` only ever shrinks the budget-derived `ceiling`; it cannot raise
+    ///   it above the honest cap (AIMD is decrease-biased).
+    /// - `min` is clamped to `[1, ceiling]`; values below `1` collapse to `1`,
+    ///   values above the clamped ceiling collapse to the ceiling.
     /// - `step` is clamped to `[1, usize::MAX]`; a `step == 0` request is
     ///   coerced to `1` so additive increase still makes forward progress.
-    fn with_overrides(ceiling: usize, overrides: AimdClassWindow) -> Self {
+    fn with_overrides_seeded(
+        ceiling: usize,
+        overrides: AimdClassWindow,
+        seed: Option<usize>,
+    ) -> Self {
         let budget_ceiling = ceiling.max(1);
         let ceiling = match overrides.max {
             Some(cap) => budget_ceiling.min(cap.max(1)),
@@ -490,14 +873,24 @@ impl ClassState {
         };
         let min_target = overrides.min.unwrap_or(1).clamp(1, ceiling);
         let step = overrides.step.unwrap_or(1).max(1);
+        // A cached safe target seeds the *starting* point only; it is clamped
+        // so it can never exceed the honest ceiling or drop below the floor.
+        let start = match seed {
+            Some(cached) => cached.clamp(min_target, ceiling),
+            None => ceiling,
+        };
         Self {
-            // Start at the honest ceiling: AIMD is decrease-biased and only
-            // ever reduces below the effective budget, never above it.
-            sem: DynamicSemaphore::new(ceiling, ceiling),
+            // Start at the seeded target (== the honest ceiling on first use):
+            // AIMD is decrease-biased and only ever reduces below the effective
+            // budget, never above it.
+            sem: DynamicSemaphore::new(ceiling, start),
             ceiling,
-            target: ceiling,
+            target: start,
             cooldown_until: None,
             healthy_since: None,
+            // The guard band still starts at the honest ceiling: a seeded-low
+            // start recovers conservatively (+step per quiet window) back up to
+            // the ceiling once the endpoint proves healthy again.
             regrowth_cap: ceiling,
             last_congestion: None,
             min_target,
@@ -517,6 +910,15 @@ pub struct AimdController {
     http: Mutex<ClassState>,
     api: Mutex<ClassState>,
     api_pacer: Mutex<ApiPacerState>,
+    /// DAG-P2-06: shared safe-target cache this controller seeds from and
+    /// mirrors feedback into. `None` for every per-run constructor: those
+    /// controllers neither read nor write learned tuning (byte-for-byte the
+    /// pre-P2-06 behaviour).
+    registry: Option<Arc<AdaptiveProfileRegistry>>,
+    /// DAG-P2-06: the endpoint/workload key this controller learns against.
+    /// Feedback is mirrored to this key only; another endpoint or workload is a
+    /// different key and is never touched.
+    profile_key: Option<AdaptiveProfileKey>,
 }
 
 impl AimdController {
@@ -551,27 +953,79 @@ impl AimdController {
         current_provider: Option<ProviderType>,
         config: AimdConfig,
     ) -> Self {
+        Self::build(
+            file_ceiling,
+            chunk_ceiling,
+            http_ceiling,
+            api_ceiling,
+            current_provider,
+            config,
+            None,
+        )
+    }
+
+    /// Shared construction core (DAG-P2-06). `profile`, when `Some`, seeds each
+    /// class from the registry's learned safe target for that key (unless AIMD
+    /// is disabled, which stays pinned at the honest ceiling) and attaches the
+    /// key + registry so the typed lifecycle can mirror feedback back.
+    fn build(
+        file_ceiling: usize,
+        chunk_ceiling: usize,
+        http_ceiling: usize,
+        api_ceiling: usize,
+        current_provider: Option<ProviderType>,
+        config: AimdConfig,
+        profile: Option<(AdaptiveProfileKey, Arc<AdaptiveProfileRegistry>)>,
+    ) -> Self {
         let overrides = config.class_overrides;
+        // KE-D1: a disabled controller never consults the learned cache. It
+        // must remain pinned at the honest ceiling for the whole run so the
+        // "is throughput capped by AIMD?" diagnostic stays truthful. Resolve
+        // every class seed up front so no borrow of `profile` outlives the
+        // point where it is moved into the controller below.
+        let (file_seed, chunk_seed, http_seed, api_seed) = match (&profile, config.disabled) {
+            (Some((key, registry)), false) => (
+                registry.seed(key, AdaptiveClass::File),
+                registry.seed(key, AdaptiveClass::Chunk),
+                registry.seed(key, AdaptiveClass::Http),
+                registry.seed(key, AdaptiveClass::Api),
+            ),
+            _ => (None, None, None, None),
+        };
+        let file = Mutex::new(ClassState::with_overrides_seeded(
+            file_ceiling,
+            overrides.for_class(AdaptiveClass::File),
+            file_seed,
+        ));
+        let chunk = Mutex::new(ClassState::with_overrides_seeded(
+            chunk_ceiling,
+            overrides.for_class(AdaptiveClass::Chunk),
+            chunk_seed,
+        ));
+        let http = Mutex::new(ClassState::with_overrides_seeded(
+            http_ceiling,
+            overrides.for_class(AdaptiveClass::Http),
+            http_seed,
+        ));
+        let api = Mutex::new(ClassState::with_overrides_seeded(
+            api_ceiling,
+            overrides.for_class(AdaptiveClass::Api),
+            api_seed,
+        ));
+        let (profile_key, registry) = match profile {
+            Some((key, registry)) => (Some(key), Some(registry)),
+            None => (None, None),
+        };
         Self {
             config,
             current_provider,
-            file: Mutex::new(ClassState::with_overrides(
-                file_ceiling,
-                overrides.for_class(AdaptiveClass::File),
-            )),
-            chunk: Mutex::new(ClassState::with_overrides(
-                chunk_ceiling,
-                overrides.for_class(AdaptiveClass::Chunk),
-            )),
-            http: Mutex::new(ClassState::with_overrides(
-                http_ceiling,
-                overrides.for_class(AdaptiveClass::Http),
-            )),
-            api: Mutex::new(ClassState::with_overrides(
-                api_ceiling,
-                overrides.for_class(AdaptiveClass::Api),
-            )),
+            file,
+            chunk,
+            http,
+            api,
             api_pacer: Mutex::new(ApiPacerState::default()),
+            registry,
+            profile_key,
         }
     }
 
@@ -598,6 +1052,49 @@ impl AimdController {
             current_provider,
             config,
         )
+    }
+
+    /// DAG-P2-06: build a controller bound to an endpoint/workload profile and
+    /// the shared [`AdaptiveProfileRegistry`]. Each class starts from the
+    /// intersection of the honest effective ceiling, the operator max (both
+    /// already folded into the budget-derived ceiling and `class_overrides`),
+    /// and the learned safe target for this exact key. On first use (an empty
+    /// or expired cache entry) the seed is `None` and every class starts at its
+    /// honest ceiling, byte-for-byte the current behaviour. Congestion and
+    /// healthy-recovery feedback are mirrored back to this key only.
+    pub fn from_budget_for_profile(
+        budget: &TransferBudget,
+        current_provider: Option<ProviderType>,
+        profile_key: AdaptiveProfileKey,
+        registry: Arc<AdaptiveProfileRegistry>,
+        config: AimdConfig,
+    ) -> Self {
+        Self::build(
+            budget.file_slots.max(1) as usize,
+            budget.chunk_slots.max(1) as usize,
+            budget.http_slots.max(1) as usize,
+            budget.api_slots.max(1) as usize,
+            current_provider,
+            config,
+            Some((profile_key, registry)),
+        )
+    }
+
+    /// The endpoint/workload profile this controller learns against, if any.
+    /// Exposed for diagnostics and wire-level tests; `None` for per-run
+    /// controllers built without a profile.
+    pub fn profile_key(&self) -> Option<&AdaptiveProfileKey> {
+        self.profile_key.as_ref()
+    }
+
+    /// Mirror a class's new safe target back to the shared registry for this
+    /// controller's profile. A no-op for a controller built without a profile,
+    /// and never reached while AIMD is disabled (both feedback entry points
+    /// short-circuit on `config.disabled` before any target moves).
+    fn record_learned(&self, class: AdaptiveClass, target: usize) {
+        if let (Some(registry), Some(key)) = (&self.registry, &self.profile_key) {
+            registry.record(key, class, target);
+        }
     }
 
     fn provider_hint(&self) -> Option<aimd_hints::AimdHint> {
@@ -709,6 +1206,13 @@ impl AimdController {
             .max(1)
             .min(st.regrowth_cap);
         st.last_congestion = Some(now);
+        // DAG-P2-06: mirror the lowered safe target to the shared registry so
+        // the next job to this same endpoint/workload seeds here, not at the
+        // ceiling that just congested. Release the class lock first: the
+        // registry mutex is a strict leaf and never touches a class lock.
+        let learned = st.target;
+        drop(st);
+        self.record_learned(class, learned);
     }
 
     /// Note a healthy completion. After a quiet `healthy_window` with no
@@ -751,6 +1255,14 @@ impl AimdController {
                     st.target = st.target.saturating_add(step).min(growth_cap);
                     st.sem.set_live(st.target);
                     st.healthy_since = Some(now);
+                    // DAG-P2-06: real recovery raises the learned safe target
+                    // for this key at the existing quiet cadence, so a later
+                    // job to the same endpoint/workload resumes from the higher
+                    // proven-safe level. Only fires when the target actually
+                    // moved; a controller pinned at its ceiling records nothing.
+                    let learned = st.target;
+                    drop(st);
+                    self.record_learned(class, learned);
                 }
             }
         }
@@ -1592,5 +2104,519 @@ mod tests {
         ctrl.on_congestion_with_hint(AdaptiveClass::File, Some(Duration::from_secs(60)));
         assert_eq!(ctrl.target(AdaptiveClass::File), 8);
         assert!(ctrl.cooldown_until(AdaptiveClass::File).is_none());
+    }
+
+    // DAG-P2-06: endpoint/workload-aware adaptive profiles. The registry is a
+    // seed/feedback record; the live dispatch permits stay per-run. Every test
+    // uses a fresh registry instance (and an injected clock where TTL matters)
+    // so it never touches the process-global registry and is order-independent.
+
+    fn profile_registry() -> Arc<AdaptiveProfileRegistry> {
+        Arc::new(AdaptiveProfileRegistry::new(
+            AdaptiveProfileConfig::default(),
+        ))
+    }
+
+    fn endpoint(host: &str, account: &str) -> EndpointIdentity {
+        EndpointIdentity::new("s3", host, account)
+    }
+
+    fn range_key(host: &str, account: &str) -> AdaptiveProfileKey {
+        AdaptiveProfileKey::new(endpoint(host, account), AdaptiveWorkload::SegmentedRange)
+    }
+
+    fn profile_budget(file: u16, chunk: u16, http: u16, api: u16) -> TransferBudget {
+        TransferBudget {
+            file_slots: file,
+            chunk_slots: chunk,
+            http_slots: http,
+            api_slots: api,
+            ..TransferBudget::default()
+        }
+    }
+
+    fn zero_windows() -> AimdConfig {
+        AimdConfig {
+            cooldown: Duration::from_secs(0),
+            healthy_window: Duration::from_secs(0),
+            recovery_window: Duration::from_secs(0),
+            disabled: false,
+            class_overrides: AimdClassOverrides::default(),
+        }
+    }
+
+    // (Acceptance 1) First profile use is byte-for-byte the per-run ceiling and
+    // records nothing on the happy path, so a single-job run is unchanged.
+    #[test]
+    fn first_profile_use_matches_the_per_run_ceiling_and_records_nothing() {
+        let registry = profile_registry();
+        let budget = profile_budget(6, 3, 9, 2);
+        let key = range_key("host-a", "acct-1");
+        let profiled = AimdController::from_budget_for_profile(
+            &budget,
+            None,
+            key,
+            registry.clone(),
+            AimdConfig::default(),
+        );
+        let per_run = AimdController::from_budget(&budget, AimdConfig::default());
+        for class in AdaptiveClass::ORDER {
+            assert_eq!(
+                profiled.target(class),
+                per_run.target(class),
+                "first use must match the per-run ceiling for {class:?}"
+            );
+            assert_eq!(profiled.live(class), per_run.live(class));
+        }
+        assert!(
+            registry.is_empty(),
+            "a congestion-free first use records nothing"
+        );
+    }
+
+    // (Acceptance 2) Congestion on (A, range) seeds only the next (A, range)
+    // controller; endpoint B, a different account on A, and (A, batch) are
+    // untouched.
+    #[test]
+    fn congestion_seeds_only_the_same_endpoint_and_workload() {
+        let registry = profile_registry();
+        let budget = profile_budget(1, 8, 8, 1);
+        let job1 = AimdController::from_budget_for_profile(
+            &budget,
+            None,
+            range_key("host-a", "acct-1"),
+            registry.clone(),
+            AimdConfig::default(),
+        );
+        job1.on_congestion(AdaptiveClass::Chunk); // 8 -> 4
+        job1.on_congestion(AdaptiveClass::Http); // 8 -> 4
+
+        let job2 = AimdController::from_budget_for_profile(
+            &budget,
+            None,
+            range_key("host-a", "acct-1"),
+            registry.clone(),
+            AimdConfig::default(),
+        );
+        assert_eq!(
+            job2.target(AdaptiveClass::Chunk),
+            4,
+            "same key seeds the lowered chunk target"
+        );
+        assert_eq!(
+            job2.target(AdaptiveClass::Http),
+            4,
+            "same key seeds the lowered http target"
+        );
+        // File/Api were never congested for this key: still at their ceiling.
+        assert_eq!(job2.target(AdaptiveClass::File), 1);
+
+        let other_host = AimdController::from_budget_for_profile(
+            &budget,
+            None,
+            range_key("host-b", "acct-1"),
+            registry.clone(),
+            AimdConfig::default(),
+        );
+        assert_eq!(
+            other_host.target(AdaptiveClass::Chunk),
+            8,
+            "a different endpoint host is a different key"
+        );
+
+        let other_account = AimdController::from_budget_for_profile(
+            &budget,
+            None,
+            range_key("host-a", "acct-2"),
+            registry.clone(),
+            AimdConfig::default(),
+        );
+        assert_eq!(
+            other_account.target(AdaptiveClass::Chunk),
+            8,
+            "a different account on the same host is a different key"
+        );
+
+        let batch_key = AdaptiveProfileKey::new(
+            endpoint("host-a", "acct-1"),
+            AdaptiveWorkload::BatchSyncFile,
+        );
+        let batch = AimdController::from_budget_for_profile(
+            &budget,
+            None,
+            batch_key,
+            registry.clone(),
+            AimdConfig::default(),
+        );
+        assert_eq!(
+            batch.target(AdaptiveClass::Chunk),
+            8,
+            "the same endpoint under a different workload is a different key"
+        );
+    }
+
+    // (Acceptance 3) Healthy feedback recovers one bounded step, and only after
+    // the quiet window, and never above the current budget or explicit max.
+    #[test]
+    fn healthy_recovery_raises_the_learned_seed_one_bounded_step() {
+        let registry = profile_registry();
+        let budget = profile_budget(8, 1, 1, 1);
+        let key = AdaptiveProfileKey::new(
+            endpoint("host-a", "acct-1"),
+            AdaptiveWorkload::BatchSyncFile,
+        );
+        let job1 = AimdController::from_budget_for_profile(
+            &budget,
+            None,
+            key.clone(),
+            registry.clone(),
+            zero_windows(),
+        );
+        job1.on_congestion(AdaptiveClass::File); // 8 -> 4, learns 4
+                                                 // First note arms, second crosses the (zero) window: 4 -> 5.
+        job1.note_healthy(AdaptiveClass::File);
+        job1.note_healthy(AdaptiveClass::File);
+        assert_eq!(job1.target(AdaptiveClass::File), 5);
+
+        let job2 = AimdController::from_budget_for_profile(
+            &budget,
+            None,
+            key.clone(),
+            registry.clone(),
+            zero_windows(),
+        );
+        assert_eq!(
+            job2.target(AdaptiveClass::File),
+            5,
+            "recovery raised the learned seed one step (not back to 4, not to 8)"
+        );
+
+        for _ in 0..40 {
+            job2.note_healthy(AdaptiveClass::File);
+        }
+        assert_eq!(job2.target(AdaptiveClass::File), 8);
+        let job3 = AimdController::from_budget_for_profile(
+            &budget,
+            None,
+            key,
+            registry.clone(),
+            zero_windows(),
+        );
+        assert_eq!(
+            job3.target(AdaptiveClass::File),
+            8,
+            "a learned seed never exceeds the honest ceiling"
+        );
+    }
+
+    #[test]
+    fn recovery_is_gated_on_the_quiet_window_before_it_is_learned() {
+        let registry = profile_registry();
+        let budget = profile_budget(8, 1, 1, 1);
+        let key = AdaptiveProfileKey::new(
+            endpoint("host-a", "acct-1"),
+            AdaptiveWorkload::BatchSyncFile,
+        );
+        // A long healthy window: two quick notes do not cross it, so nothing
+        // grows and nothing new is learned beyond the congested level.
+        let cfg = AimdConfig {
+            cooldown: Duration::from_secs(0),
+            healthy_window: Duration::from_secs(3600),
+            recovery_window: Duration::from_secs(0),
+            disabled: false,
+            class_overrides: AimdClassOverrides::default(),
+        };
+        let job = AimdController::from_budget_for_profile(
+            &budget,
+            None,
+            key.clone(),
+            registry.clone(),
+            cfg,
+        );
+        job.on_congestion(AdaptiveClass::File); // 8 -> 4, learns 4
+        job.note_healthy(AdaptiveClass::File);
+        job.note_healthy(AdaptiveClass::File); // window not elapsed -> no growth
+        assert_eq!(job.target(AdaptiveClass::File), 4);
+        let seeded =
+            AimdController::from_budget_for_profile(&budget, None, key, registry.clone(), cfg);
+        assert_eq!(
+            seeded.target(AdaptiveClass::File),
+            4,
+            "no premature recovery is learned before the quiet window elapses"
+        );
+    }
+
+    #[test]
+    fn operator_max_caps_the_seeded_target() {
+        let registry = profile_registry();
+        let budget = profile_budget(8, 1, 1, 1);
+        let key = AdaptiveProfileKey::new(
+            endpoint("host-a", "acct-1"),
+            AdaptiveWorkload::BatchSyncFile,
+        );
+        // A prior run without a max recovers the learned File target above 3.
+        let prior = AimdController::from_budget_for_profile(
+            &budget,
+            None,
+            key.clone(),
+            registry.clone(),
+            zero_windows(),
+        );
+        prior.on_congestion(AdaptiveClass::File); // 8 -> 4
+        for _ in 0..4 {
+            prior.note_healthy(AdaptiveClass::File);
+        }
+        assert!(prior.target(AdaptiveClass::File) >= 6);
+        // A new run with an explicit File max of 3 must never start above 3,
+        // even though the learned safe target is higher: the operator cap wins.
+        let capped_cfg = AimdConfig {
+            class_overrides: AimdClassOverrides {
+                file: AimdClassWindow {
+                    max: Some(3),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+            ..zero_windows()
+        };
+        let capped = AimdController::from_budget_for_profile(
+            &budget,
+            None,
+            key,
+            registry.clone(),
+            capped_cfg,
+        );
+        assert_eq!(
+            capped.target(AdaptiveClass::File),
+            3,
+            "an explicit operator max caps the learned seed"
+        );
+    }
+
+    // (Acceptance 4) TTL expiry returns a key to first-use behaviour; capacity
+    // eviction is deterministic and retains no unbounded identities.
+    #[test]
+    fn expired_profile_returns_to_first_use_behavior() {
+        let clock = Arc::new(ManualClock::new());
+        let cfg = AdaptiveProfileConfig {
+            ttl: Duration::from_secs(100),
+            capacity: 8,
+        };
+        let registry = Arc::new(AdaptiveProfileRegistry::with_clock(cfg, clock.clone()));
+        let budget = profile_budget(1, 8, 8, 1);
+        let key = range_key("host-a", "acct-1");
+        let job = AimdController::from_budget_for_profile(
+            &budget,
+            None,
+            key.clone(),
+            registry.clone(),
+            AimdConfig::default(),
+        );
+        job.on_congestion(AdaptiveClass::Chunk); // learns chunk=4 at t=0
+
+        clock.advance(Duration::from_secs(99));
+        let before = AimdController::from_budget_for_profile(
+            &budget,
+            None,
+            key.clone(),
+            registry.clone(),
+            AimdConfig::default(),
+        );
+        assert_eq!(
+            before.target(AdaptiveClass::Chunk),
+            4,
+            "seed applies before TTL"
+        );
+
+        clock.advance(Duration::from_secs(2)); // total 101 >= 100
+        let after = AimdController::from_budget_for_profile(
+            &budget,
+            None,
+            key,
+            registry.clone(),
+            AimdConfig::default(),
+        );
+        assert_eq!(
+            after.target(AdaptiveClass::Chunk),
+            8,
+            "an expired entry behaves like a first use"
+        );
+        assert!(registry.is_empty(), "expired entries are purged on access");
+    }
+
+    #[test]
+    fn registry_capacity_evicts_least_recently_used_deterministically() {
+        let clock = Arc::new(ManualClock::new());
+        let cfg = AdaptiveProfileConfig {
+            ttl: Duration::from_secs(10_000),
+            capacity: 2,
+        };
+        let registry = AdaptiveProfileRegistry::with_clock(cfg, clock);
+        let k1 = range_key("host-1", "acct");
+        let k2 = range_key("host-2", "acct");
+        let k3 = range_key("host-3", "acct");
+        registry.record(&k1, AdaptiveClass::Chunk, 3);
+        registry.record(&k2, AdaptiveClass::Chunk, 4);
+        assert_eq!(registry.len(), 2);
+        // Touch k1 so k2 becomes the least-recently-used entry.
+        assert_eq!(registry.seed(&k1, AdaptiveClass::Chunk), Some(3));
+        // A third key over capacity evicts k2, never k1 or k3.
+        registry.record(&k3, AdaptiveClass::Chunk, 5);
+        assert_eq!(registry.len(), 2, "capacity is a hard cap");
+        assert_eq!(
+            registry.seed(&k1, AdaptiveClass::Chunk),
+            Some(3),
+            "a recently touched key is retained"
+        );
+        assert_eq!(
+            registry.seed(&k2, AdaptiveClass::Chunk),
+            None,
+            "the least-recently-used key is evicted"
+        );
+        assert_eq!(
+            registry.seed(&k3, AdaptiveClass::Chunk),
+            Some(5),
+            "the new key is inserted"
+        );
+    }
+
+    // (Acceptance 5) Retry-After, non-D2 failures, cancellation and
+    // `--aimd-disable` preserve their behaviour and never poison a profile.
+    #[test]
+    fn disabled_controller_neither_seeds_nor_records() {
+        let registry = profile_registry();
+        let budget = profile_budget(1, 8, 8, 1);
+        let key = range_key("host-a", "acct-1");
+        // Warm the profile with a real (enabled) congestion: chunk learns 4.
+        let warm = AimdController::from_budget_for_profile(
+            &budget,
+            None,
+            key.clone(),
+            registry.clone(),
+            AimdConfig::default(),
+        );
+        warm.on_congestion(AdaptiveClass::Chunk);
+        assert_eq!(warm.target(AdaptiveClass::Chunk), 4);
+
+        // A disabled controller ignores the learned seed and pins at the honest
+        // ceiling (the KE-D1 diagnostic contract).
+        let disabled_cfg = AimdConfig {
+            disabled: true,
+            ..AimdConfig::default()
+        };
+        let disabled = AimdController::from_budget_for_profile(
+            &budget,
+            None,
+            key.clone(),
+            registry.clone(),
+            disabled_cfg,
+        );
+        assert_eq!(
+            disabled.target(AdaptiveClass::Chunk),
+            8,
+            "a disabled controller ignores the learned seed"
+        );
+        // It must not mutate the profile either: both feedback paths are no-ops.
+        disabled.on_congestion(AdaptiveClass::Chunk);
+        disabled.note_healthy(AdaptiveClass::Chunk);
+
+        let probe = AimdController::from_budget_for_profile(
+            &budget,
+            None,
+            key,
+            registry.clone(),
+            AimdConfig::default(),
+        );
+        assert_eq!(
+            probe.target(AdaptiveClass::Chunk),
+            4,
+            "the disabled run left the learned profile untouched"
+        );
+    }
+
+    #[test]
+    fn typed_retry_after_congestion_learns_the_halved_target_without_poisoning() {
+        let registry = profile_registry();
+        let budget = profile_budget(1, 8, 8, 1);
+        let key = range_key("host-a", "acct-1");
+        let job = AimdController::from_budget_for_profile(
+            &budget,
+            None,
+            key.clone(),
+            registry.clone(),
+            AimdConfig::default(),
+        );
+        // A server Retry-After is a legitimate D2 congestion: it lowers the
+        // target and arms the hinted cooldown, but only the honest halved safe
+        // target is written to the profile (never the hint value).
+        job.on_congestion_with_hint(AdaptiveClass::Chunk, Some(Duration::from_secs(45)));
+        assert_eq!(job.target(AdaptiveClass::Chunk), 4);
+        assert!(job.cooldown_until(AdaptiveClass::Chunk).is_some());
+        let next = AimdController::from_budget_for_profile(
+            &budget,
+            None,
+            key,
+            registry.clone(),
+            AimdConfig::default(),
+        );
+        assert_eq!(
+            next.target(AdaptiveClass::Chunk),
+            4,
+            "the profile learns the halved safe target, not the Retry-After value"
+        );
+    }
+
+    #[test]
+    fn a_run_without_d2_congestion_records_nothing() {
+        // Generic failures, cancellation and plain success never call
+        // on_congestion (the executor gates on `congestion_from_error`, covered
+        // by the mapping tests above), so the target never leaves the ceiling
+        // and the profile stays empty. Healthy notes at the ceiling are inert.
+        let registry = profile_registry();
+        let budget = profile_budget(8, 1, 1, 1);
+        let key = AdaptiveProfileKey::new(
+            endpoint("host-a", "acct-1"),
+            AdaptiveWorkload::BatchSyncFile,
+        );
+        let job = AimdController::from_budget_for_profile(
+            &budget,
+            None,
+            key,
+            registry.clone(),
+            zero_windows(),
+        );
+        for _ in 0..10 {
+            job.note_healthy(AdaptiveClass::File);
+        }
+        assert_eq!(
+            job.target(AdaptiveClass::File),
+            8,
+            "healthy notes at the ceiling do not grow"
+        );
+        assert!(
+            registry.is_empty(),
+            "a run with no D2 congestion learns nothing"
+        );
+    }
+
+    #[test]
+    fn snapshot_exposes_live_learned_targets() {
+        let registry = profile_registry();
+        let budget = profile_budget(1, 8, 8, 1);
+        let key = range_key("host-a", "acct-1");
+        let job = AimdController::from_budget_for_profile(
+            &budget,
+            None,
+            key.clone(),
+            registry.clone(),
+            AimdConfig::default(),
+        );
+        assert_eq!(job.profile_key(), Some(&key));
+        job.on_congestion(AdaptiveClass::Chunk);
+        let snapshot = registry.snapshot();
+        assert_eq!(snapshot.len(), 1);
+        assert_eq!(snapshot[0].key, key);
+        assert_eq!(snapshot[0].chunk, Some(4));
+        assert_eq!(snapshot[0].file, None);
     }
 }

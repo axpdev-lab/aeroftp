@@ -915,7 +915,11 @@ pub async fn execute_single_file_dag(
     // directional local-device lease for the complete graph, including native
     // multipart fan-out and terminal cleanup.
     let _job_lease = crate::transfer_dag::governor::global()
-        .acquire_job(endpoint, TransferPriority::Foreground, [disk_request])
+        .acquire_job(
+            endpoint.clone(),
+            TransferPriority::Foreground,
+            [disk_request],
+        )
         .await;
 
     // AIMD backpressure only helps when a shaped graph has real chunk/http/api
@@ -923,11 +927,14 @@ pub async fn execute_single_file_dag(
     // only the one file slot, whose ceiling cannot shrink usefully, so keep
     // their dispatch path free of no-op adaptive bookkeeping.
     let aimd = single_file_needs_aimd(built).then(|| {
-        Arc::new(AimdController::from_budget_for_provider(
+        // DAG-P2-06: seed from / learn into this endpoint's shaped-file profile.
+        single_file_aimd_controller(
             &manager.budget(),
             aimd_provider_type,
+            endpoint,
+            crate::transfer_dag::global_profile_registry(),
             AimdConfig::runtime(),
-        ))
+        )
     });
 
     // Graph-scoped cancel is a child of the caller's token (when present) so
@@ -992,6 +999,30 @@ fn record_failure(
     NodeOutcome::Failed(typed)
 }
 
+/// DAG-P2-06: the single construction point for the shaped single-file /
+/// native-multipart AIMD controller. It binds learned tuning to `endpoint`
+/// under the [`crate::transfer_dag::AdaptiveWorkload::ShapedFile`] shape, which
+/// is distinct from the whole-file batch/sync key and the segmented-range key so
+/// a chunk/http fan-out tuning cannot bleed across workload shapes. The registry
+/// is a parameter so the wire-level test can inject a fresh instance and assert
+/// the key this site records under.
+fn single_file_aimd_controller(
+    budget: &crate::transfer_dag::TransferBudget,
+    provider_type: Option<crate::providers::ProviderType>,
+    endpoint: crate::transfer_dag::EndpointIdentity,
+    registry: Arc<crate::transfer_dag::AdaptiveProfileRegistry>,
+    config: AimdConfig,
+) -> Arc<AimdController> {
+    use crate::transfer_dag::{AdaptiveProfileKey, AdaptiveWorkload};
+    Arc::new(AimdController::from_budget_for_profile(
+        budget,
+        provider_type,
+        AdaptiveProfileKey::new(endpoint, AdaptiveWorkload::ShapedFile),
+        registry,
+        config,
+    ))
+}
+
 fn single_file_needs_aimd(built: &ShapedFileDag) -> bool {
     built.dag.nodes().iter().any(|node| {
         node.resources.chunk_slots > 0
@@ -1029,6 +1060,45 @@ mod tests {
     use crate::providers::{MultipartHandle, ProviderType, RemoteEntry, UploadedPart};
     use crate::transfer_dag::observer::CollectingDagObserver;
     use crate::transfer_dag::{Capability, TransferCapabilities, TransferDagBuilder};
+
+    // DAG-P2-06 (wire-level): the shaped single-file construction point binds
+    // learned tuning to its endpoint under the ShapedFile workload key, which is
+    // distinct from the whole-file and segmented-range keys.
+    #[test]
+    fn single_file_aimd_controller_records_under_the_shaped_file_key() {
+        use crate::transfer_dag::{
+            AdaptiveClass, AdaptiveProfileConfig, AdaptiveProfileKey, AdaptiveProfileRegistry,
+            AdaptiveWorkload, EndpointIdentity, TransferBudget,
+        };
+        let registry = Arc::new(AdaptiveProfileRegistry::new(
+            AdaptiveProfileConfig::default(),
+        ));
+        let endpoint = EndpointIdentity::new("s3", "wire-test-host", "wire-acct");
+        let budget = TransferBudget {
+            chunk_slots: 8,
+            http_slots: 8,
+            ..TransferBudget::from_file_slots(1)
+        };
+        let ctrl = single_file_aimd_controller(
+            &budget,
+            Some(ProviderType::S3),
+            endpoint.clone(),
+            registry.clone(),
+            AimdConfig::default(),
+        );
+        assert_eq!(
+            ctrl.profile_key().map(|k| k.workload),
+            Some(AdaptiveWorkload::ShapedFile)
+        );
+        ctrl.on_congestion(AdaptiveClass::Chunk);
+        let snapshot = registry.snapshot();
+        assert_eq!(snapshot.len(), 1);
+        assert_eq!(
+            snapshot[0].key,
+            AdaptiveProfileKey::new(endpoint, AdaptiveWorkload::ShapedFile)
+        );
+        assert_eq!(snapshot[0].chunk, Some(4));
+    }
 
     #[derive(Default)]
     struct CopyMockState {

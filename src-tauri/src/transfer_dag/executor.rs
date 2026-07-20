@@ -1341,6 +1341,91 @@ mod tests {
         assert_eq!(controller.live(AdaptiveClass::File), 4);
     }
 
+    // DAG-P2-06: end-to-end through execute_dag, a profiled controller mirrors a
+    // D2 congestion into its registry key but a cancellation records nothing:
+    // the executor's existing typed gate (congestion_from_error) is what keeps
+    // non-D2 outcomes from poisoning the learned profile.
+    #[tokio::test]
+    async fn profile_records_d2_congestion_but_not_cancellation_through_execute_dag() {
+        use crate::transfer_dag::adaptive::{
+            AdaptiveClass, AdaptiveProfileConfig, AdaptiveProfileKey, AdaptiveProfileRegistry,
+            AdaptiveWorkload, AimdConfig, AimdController,
+        };
+        use crate::transfer_dag::EndpointIdentity;
+
+        let registry = Arc::new(AdaptiveProfileRegistry::new(
+            AdaptiveProfileConfig::default(),
+        ));
+        let endpoint = EndpointIdentity::new("s3", "exec-test-host", "exec-acct");
+
+        // A cancelled node is not a D2 signal: it must not record anything.
+        {
+            let mut dag = TransferDag::default();
+            dag.add_node(
+                TransferNodeKind::DownloadFile,
+                vec![],
+                ResourceRequest::upload_file(),
+            );
+            let runner: Arc<dyn DagNodeRunner> = Arc::new(|_n: TransferNode| -> NodeFuture {
+                Box::pin(async { NodeOutcome::Failed(TransferError::cancelled()) })
+            });
+            let key = AdaptiveProfileKey::new(endpoint.clone(), AdaptiveWorkload::BatchSyncFile);
+            let controller = Arc::new(AimdController::from_budget_for_profile(
+                &TransferBudget::from_file_slots(8),
+                None,
+                key,
+                registry.clone(),
+                AimdConfig::default(),
+            ));
+            let manager = TransferResourceManager::new(TransferBudget::from_file_slots(8));
+            let _ = execute_dag(&dag, &manager, runner, noop_observer(), Some(controller)).await;
+            assert!(
+                registry.is_empty(),
+                "a cancellation must not record a learned target"
+            );
+        }
+
+        // A 429 on a distinct workload key records the halved safe target.
+        {
+            let mut dag = TransferDag::default();
+            dag.add_node(
+                TransferNodeKind::DownloadFile,
+                vec![],
+                ResourceRequest::upload_file(),
+            );
+            let runner: Arc<dyn DagNodeRunner> = Arc::new(|_n: TransferNode| -> NodeFuture {
+                Box::pin(async {
+                    NodeOutcome::Failed(TransferError::from_message("HTTP 429 Too Many Requests"))
+                })
+            });
+            let key = AdaptiveProfileKey::new(endpoint.clone(), AdaptiveWorkload::ShapedFile);
+            let controller = Arc::new(AimdController::from_budget_for_profile(
+                &TransferBudget::from_file_slots(8),
+                None,
+                key.clone(),
+                registry.clone(),
+                AimdConfig::default(),
+            ));
+            let manager = TransferResourceManager::new(TransferBudget::from_file_slots(8));
+            let err = execute_dag(
+                &dag,
+                &manager,
+                runner,
+                noop_observer(),
+                Some(Arc::clone(&controller)),
+            )
+            .await
+            .unwrap_err();
+            assert!(matches!(err, DagExecutionError::NodeFailed { .. }));
+            assert_eq!(controller.target(AdaptiveClass::File), 4);
+            // Exactly one entry: the cancel run above recorded nothing.
+            let snapshot = registry.snapshot();
+            assert_eq!(snapshot.len(), 1, "only the D2 run recorded");
+            assert_eq!(snapshot[0].key, key);
+            assert_eq!(snapshot[0].file, Some(4));
+        }
+    }
+
     #[tokio::test]
     async fn aimd_honors_typed_retry_after_hint() {
         // DAG-P0-03: Retry-After is a typed field on TransferError. The

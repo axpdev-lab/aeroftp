@@ -364,13 +364,26 @@ single-file DAG runner for both legs.
 `AimdController` is real and can be passed to `execute_dag`. It is useful on
 the paths that expose actual class-level concurrency, especially batch
 transfers, single-file multipart, and the production range graph. It is not a
-global governor, is rebuilt per operation, and cannot tune a serial file slot
-into parallelism. The process-global cap that spans operations is the separate
-`DAG-P2-01` governor (byte-memory pool + bandwidth token bucket), not AIMD.
-Batch file-level failures use the typed, non-fatal
+global governor and cannot tune a serial file slot into parallelism; its live
+dispatch permits are always per operation. The process-global cap that spans
+operations is the separate `DAG-P2-01` governor (byte-memory pool + bandwidth
+token bucket), not AIMD. Batch file-level failures use the typed, non-fatal
 `FileFailedButGraphContinues` outcome: D2 congestion reduces the File-class
 target while unrelated file subgraphs continue. Sync still uses one file slot
 and does not yet expose this batch feedback contract.
+
+`DAG-P2-06` makes the controller endpoint and workload aware across successive
+jobs in one process. A bounded, process-local `AdaptiveProfileRegistry` caches
+the safe target a controller converged to, keyed by an `AdaptiveProfileKey`:
+the `DAG-P2-01b` endpoint identity plus a workload class (batch/sync file,
+shaped single/multipart, or segmented range). A new controller seeds each class
+from the intersection of the effective budget, the operator max, and the cached
+safe target, so a first or expired use starts at the honest ceiling exactly as
+before; the typed congestion and healthy lifecycle then mirrors moves back to
+the same key only. It is a seed/feedback record, never a shared semaphore: the
+cache has a finite TTL (600 s) and key cap (256, least-recently-used eviction),
+holds no secret, path, or object name, and owns none of the `DAG-P2-02`
+checkpoint state.
 
 The resource manager's slot classes (file, checker, chunk, HTTP, API,
 disk-read, disk-write, hash) are per operation. Its byte-credit pool for
@@ -466,7 +479,7 @@ operation.
 | `src-tauri/src/transfer_dag/executor.rs` | Ready-frontier execution, resource arbitration, observer summary |
 | `src-tauri/src/transfer_dag/capabilities.rs` | `TransferCapabilities` and capability states |
 | `src-tauri/src/transfer_dag/resources.rs` | Per-operation budgets and resource permits |
-| `src-tauri/src/transfer_dag/adaptive.rs` | AIMD controller and congestion classification |
+| `src-tauri/src/transfer_dag/adaptive.rs` | AIMD controller, congestion classification, and the endpoint/workload adaptive profile registry (`DAG-P2-06`) |
 | `src-tauri/src/transfer_dag/observer.rs` | Observer abstraction and adapters |
 | `src-tauri/src/transfer_dag_single_file.rs` | Real shaped single-file and same-provider copy runners |
 | `src-tauri/src/transfer_dag_batch.rs` | Batch graph wrapper and file-session adapter |
