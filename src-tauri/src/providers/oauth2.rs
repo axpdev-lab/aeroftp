@@ -1182,7 +1182,7 @@ Connection: close
             position: relative;
             z-index: 1;
             text-align: center;
-            padding: 60px 50px;
+            padding: 60px 30px;
             background: rgba(22, 33, 62, 0.8);
             backdrop-filter: blur(20px);
             border-radius: 24px;
@@ -1339,7 +1339,7 @@ Connection: close
             Cloud Storage Connected
         </div>
         
-        <p class="close-hint">You can close this window and return to AeroFTP<br>or press <kbd>Alt</kbd> + <kbd>F4</kbd></p>
+        <p class="close-hint">You can close this tab and return to AeroFTP<br>or press <kbd>Ctrl</kbd> + <kbd>W</kbd></p>
     </div>
     
     <script>

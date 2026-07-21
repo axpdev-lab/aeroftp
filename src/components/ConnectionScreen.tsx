@@ -613,6 +613,15 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         options?: ConnectionParams['options'];
     }>>({});
 
+    // #389: the password value that was hydrated / restored into the form for
+    // the CURRENTLY active mode. On edit-save a now-blank field only means
+    // "delete the saved password" when a non-empty password was actually shown
+    // for this mode and the user cleared it. This distinguishes a deliberate
+    // removal from a passwordless mode (Filen API) or an in-flight hydration,
+    // so clearing a WebDAV password persists (was silently kept before) without
+    // wiping the primary credential of a mode group (would regress #215).
+    const editHydratedPasswordRef = React.useRef<string>('');
+
     // Issue #215: opt-in to PERSIST the per-mode snapshots to the encrypted
     // vault so they survive a restart (one profile per account, switch protocol
     // freely). Mirrors profile.persistModeCredentials; only meaningful for
@@ -1434,6 +1443,25 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             const credentialStored = await tryStoreCredential(`server_${editingProfileId}`, connectionParams.password);
             const prevProfile = existingServers.find((s) => s.id === editingProfileId);
             const filenKeyStored = await stashFilenApiKey(editingProfileId, optionsToSave, prevProfile?.hasStoredFilenApiKey);
+            // #389: `server_<id>` holds the password of the profile's active mode
+            // and is what Connect reads, so a now-blank field is an explicit
+            // "remove the saved password" ONLY when a non-empty password was shown
+            // for this mode and the user cleared it (editHydratedPasswordRef). That
+            // guard excludes a passwordless mode (Filen API) and an in-flight
+            // hydration, so clearing a WebDAV password finally persists (it used to
+            // be silently kept, so a saved password could never be removed) without
+            // wiping a mode group's primary credential (would regress #215). Mirrors
+            // the Filen API key removal (#128 / #215).
+            const passwordExplicitlyCleared = !credentialStored
+                && !!editHydratedPasswordRef.current
+                && protocol !== 'mtp';
+            if (passwordExplicitlyCleared) {
+                try {
+                    await invoke('delete_credential', { account: `server_${editingProfileId}` });
+                } catch (err) {
+                    console.error('Failed to delete server credential:', err);
+                }
+            }
             const editedName = connectionName || prevProfile?.name || normalizedParams.server || protocol;
             const duplicate = findDuplicateProfile(
                 existingServers,
@@ -1475,7 +1503,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                         username: protocol === 'mtp' ? '' : normalizedParams.username,
                         hasStoredCredential: protocol === 'mtp'
                             ? false
-                            : (credentialStored || (s.hasStoredCredential && !connectionParams.password)),
+                            : (credentialStored || (s.hasStoredCredential && !connectionParams.password && !passwordExplicitlyCleared)),
                         hasStoredFilenApiKey: filenKeyStored,
                         protocol: protocol as ProviderType,
                         options: protocol === 'mtp' ? undefined : optionsToSave,
@@ -2259,6 +2287,13 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             }
         }
 
+        // #389: record the password shown for the active mode so a later blank
+        // Save can tell a deliberate removal from a passwordless mode. Guarded by
+        // the same race as the apply below (user may switch profiles mid-fetch).
+        if (editingProfileIdRef.current === targetProfileId) {
+            editHydratedPasswordRef.current = hydratedPassword;
+        }
+
         // Apply once, only if a secret actually hydrated and we're still editing
         // the same profile (guards the same race the password load always guarded:
         // the user may switch to another server mid-fetch).
@@ -2335,6 +2370,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         setOverlaysRemotePath('');
         setOverlaysRemotePathError(null);
         modeCredentialSnapshotsRef.current = {};
+        editHydratedPasswordRef.current = '';
         // Reset params
         onConnectionParamsChange({ ...connectionParams, server: '', username: '', password: '', options: {} });
         onQuickConnectDirsChange({ remoteDir: '', localDir: '' });
@@ -2434,6 +2470,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                     username: connectionParams.username,
                     password: connectionParams.password,
                 });
+                // #389: the password now shown for the mode we switched to becomes
+                // the baseline for the "was it explicitly cleared?" check on Save.
+                editHydratedPasswordRef.current = switchCreds.password;
                 if (providerId) {
                     const provider = getProviderById(providerId);
                     if (provider) {
@@ -2502,6 +2541,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             setOriginalEditMode(null);
             setConnectionName('');
             setSaveConnection(false);
+            editHydratedPasswordRef.current = '';
         }
 
         // Reset provider selection when protocol changes

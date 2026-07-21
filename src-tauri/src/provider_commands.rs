@@ -7036,7 +7036,7 @@ Connection: close
         }
         .container {
             position: relative; z-index: 1; text-align: center;
-            padding: 60px 50px;
+            padding: 60px 30px;
             background: rgba(22, 33, 62, 0.8);
             backdrop-filter: blur(20px); border-radius: 24px;
             box-shadow: 0 25px 80px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.1);
@@ -7123,7 +7123,7 @@ Connection: close
             </svg>
             4shared Connected
         </div>
-        <p class="close-hint">You can close this window and return to AeroFTP<br>or press <kbd>Alt</kbd> + <kbd>F4</kbd></p>
+        <p class="close-hint">You can close this tab and return to AeroFTP<br>or press <kbd>Ctrl</kbd> + <kbd>W</kbd></p>
     </div>
 </body>
 </html>"#;
