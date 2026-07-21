@@ -3,10 +3,12 @@
 //! first-class component of the Aero family.
 //!
 //! The Cargo feature `aerorsync` is compiled by default. Runtime dispatch
-//! is gated by `settings::load_native_rsync_enabled()` (default OFF, TOML
-//! key retains the legacy `native_rsync_enabled` name for backward
-//! compatibility of persisted user settings). See `README.md` for the
-//! current product status, scope, and the open stock-rsync interop track.
+//! is gated by `settings::load_native_rsync_mode()` (default `Auto` = ON
+//! since v3.8.0, with automatic fallback to the classic rsync binary on
+//! soft refusals; the TOML key retains the legacy `native_rsync_enabled`
+//! name for backward compatibility of persisted user settings). See
+//! `README.md` for the current product status, scope, and the open
+//! stock-rsync interop track.
 //!
 //! Useful local checks:
 //!
