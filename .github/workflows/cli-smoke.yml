@@ -318,7 +318,15 @@ jobs:
         # Gate is set below baseline so CI passes today; raise per T8 Fase B/C/D
         # as new tests land. Target after Fase C (16 zero-coverage providers): 25%.
         run: |
-          cargo llvm-cov --no-report --all-targets
+          # The three batch rendezvous-barrier tests assert wall-clock scheduler
+          # overlap; under llvm-cov instrumentation (10x+ slowdown on the shared
+          # runner) the rendezvous can exceed even a 30s budget. They gate
+          # uninstrumented in Build's Rust tests step and in the nightly
+          # telemetry workflow, so skipping them here loses no coverage signal.
+          cargo llvm-cov --no-report --all-targets -- \
+            --skip batch_dag_respects_file_slot_concurrency \
+            --skip batch_dag_independent_file_overlap_for_enabled_executor \
+            --skip batch_dag_peak_bounded_by_min_of_file_slots_and_session_pool
           cargo llvm-cov report --lcov --output-path lcov.info
           cargo llvm-cov report --summary-only --fail-under-lines 10 | tee coverage-summary.txt
 

@@ -301,6 +301,23 @@ impl FtpProvider {
             .or_else(|| self.parse_dos_listing(line, base_path))
     }
 
+    /// Shape check for the leading token of a DOS-style listing row:
+    /// `MM-DD-YY` or `MM-DD-YYYY`, all digits.
+    fn is_dos_date(token: &str) -> bool {
+        let mut fields = token.split('-');
+        let valid = match (fields.next(), fields.next(), fields.next()) {
+            (Some(month), Some(day), Some(year)) => {
+                [month, day].iter().all(|f| f.len() == 2)
+                    && (year.len() == 2 || year.len() == 4)
+                    && [month, day, year]
+                        .iter()
+                        .all(|f| f.bytes().all(|b| b.is_ascii_digit()))
+            }
+            _ => false,
+        };
+        valid && fields.next().is_none()
+    }
+
     fn join_remote_path(base_path: &str, name: &str) -> String {
         if name.starts_with('/') {
             return name.to_string();
@@ -391,11 +408,21 @@ impl FtpProvider {
             return None;
         }
 
+        // A DOS row always opens with a `MM-DD-YY[YY]` date. Requiring the
+        // shape keeps this parser from resurrecting a Unix line that
+        // parse_unix_listing already rejected (e.g. the "." / ".." rows that
+        // `LIST -a` adds): a Unix permissions field never looks like a date.
+        if !Self::is_dos_date(parts[0]) {
+            return None;
+        }
+
         // In the DOS format parts[2] is always either "<DIR>" or the numeric
-        // size. Requiring that keeps this parser from resurrecting a Unix line
-        // that parse_unix_listing already rejected (e.g. the "." / ".." rows that
-        // `LIST -a` adds, whose parts[2] is the group name): without this guard
-        // those become bogus entries and recursive delete would issue `DELE .`.
+        // size. Requiring that alone is NOT enough: on a server that renders
+        // owner/group as numeric ids (vsftpd's default text_userdb_names=NO)
+        // the Unix "." row `drwxr-xr-x 2 1001 1001 4096 Jul 21 09:41 .` has a
+        // numeric parts[2] (the uid) and would otherwise become a bogus file
+        // named "1001 4096 Jul 21 09:41 ." that recursive delete then DELEs,
+        // which the server answers with `550 Delete operation failed`.
         let is_dir = parts[2] == "<DIR>";
         let size: u64 = if is_dir {
             0
@@ -2129,6 +2156,38 @@ mod tests {
             .collect();
 
         assert_eq!(names, vec![".aeroftp-crypt.json", "visible.txt"]);
+    }
+
+    #[test]
+    fn list_a_output_with_numeric_ids_still_drops_dot_dirs() {
+        // vsftpd's default `text_userdb_names=NO` renders owner/group as
+        // numeric ids. The `.`/`..` rows then carry a numeric third token,
+        // which passed the old "parts[2] is numeric" DOS guard and was
+        // resurrected as a bogus file ("1001 4096 Jul 21 09:41 .") that
+        // recursive delete tried to DELE: the server answered
+        // `550 Delete operation failed` and the whole delete aborted.
+        let provider = FtpProvider::new(FtpConfig {
+            host: "test".to_string(),
+            port: 21,
+            username: "user".to_string(),
+            password: "pass".to_string().into(),
+            tls_mode: FtpTlsMode::None,
+            verify_cert: true,
+            initial_path: None,
+        });
+
+        let listing = [
+            "drwxr-xr-x    2 1001     1001         4096 Jul 21 09:41 .",
+            "drwxr-xr-x    3 1001     1001         4096 Jul 21 09:41 ..",
+            "-rw-r--r--    1 1001     1001            6 Jul 21 09:41 a.txt",
+        ];
+        let names: Vec<String> = listing
+            .iter()
+            .filter_map(|line| provider.parse_listing(line, "/scope"))
+            .map(|entry| entry.name)
+            .collect();
+
+        assert_eq!(names, vec!["a.txt"]);
     }
 
     #[test]

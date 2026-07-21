@@ -31045,7 +31045,7 @@ async fn cmd_put_recursive(
     };
 
     // Re-resolve remote_base and all derived paths against initial_path
-    let _remote_base = resolve_cli_remote_path(&initial_path, &remote_base);
+    let resolved_remote_base = resolve_cli_remote_path(&initial_path, &remote_base);
     let dirs: Vec<String> = dirs
         .into_iter()
         .map(|d| resolve_cli_remote_path(&initial_path, &d))
@@ -31065,6 +31065,42 @@ async fn cmd_put_recursive(
             print_error(format, &format!("put failed: {}", e), code);
             let _ = provider.disconnect().await;
             return code;
+        }
+    }
+
+    // Pre-flight: create every missing ancestor of remote_base, top-down,
+    // before any STOR. `dirs` below only holds remote_base itself and the
+    // folders found in the local walk, so a nested target whose parents do
+    // not exist yet (put -r into /a/b/c with no /a) MKDs remote_base against
+    // a missing parent, swallows the 550, and then stalls on the first STOR
+    // into the non-existent directory on FTP/FTPS instead of erroring.
+    // Mirrors the single-file put parent check: on FTP/FTPS an ancestor that
+    // cannot be created aborts the whole command with the MKD error. FTP maps
+    // every MKD failure (including "already exists") to a generic ServerError,
+    // so an existing ancestor is confirmed via stat rather than error text.
+    // On other backends the ancestor creation stays best-effort: their mkdir
+    // semantics differ (virtual prefixes, bucket components) and their native
+    // put errors already point at the missing path.
+    if resolved_remote_base != "/" {
+        let strict_ancestors = matches!(ptype, ProviderType::Ftp | ProviderType::Ftps);
+        for ancestor in benchmark_mkdir_ladder(&resolved_remote_base) {
+            match provider.mkdir(&ancestor).await {
+                Ok(()) => {}
+                Err(mkd_err) if strict_ancestors => match provider.stat(&ancestor).await {
+                    Ok(entry) if entry.is_dir => {}
+                    _ => {
+                        let code = provider_error_to_exit_code(&mkd_err);
+                        print_error(
+                            format,
+                            &format!("Cannot create remote directory '{}': {}", ancestor, mkd_err),
+                            code,
+                        );
+                        let _ = provider.disconnect().await;
+                        return code;
+                    }
+                },
+                Err(_) => {}
+            }
         }
     }
 
@@ -60330,7 +60366,7 @@ async fn main() {
             } else {
                 (url.as_str(), remote.as_str(), local.as_deref())
             };
-            let max_attempts = cli.retries.max(1);
+            let max_attempts = effective_max_attempts(&cli, format);
             let sleep_dur = parse_retry_sleep(&cli.retries_sleep);
             let max_transfer_limit = resolve_max_transfer(&cli);
             let mut last_code = 0i32;
@@ -60378,7 +60414,7 @@ async fn main() {
             } else {
                 (url.as_str(), remote.as_str(), local.as_deref())
             };
-            let max_attempts = cli.retries.max(1);
+            let max_attempts = effective_max_attempts(&cli, format);
             let sleep_dur = parse_retry_sleep(&cli.retries_sleep);
             let max_transfer_limit = resolve_max_transfer(&cli);
             let mut last_code = 0i32;
@@ -60427,7 +60463,7 @@ async fn main() {
             } else {
                 (url.as_str(), local.as_str(), remote.as_deref())
             };
-            let max_attempts = cli.retries.max(1);
+            let max_attempts = effective_max_attempts(&cli, format);
             let sleep_dur = parse_retry_sleep(&cli.retries_sleep);
             let max_transfer_limit = resolve_max_transfer(&cli);
             let mut last_code = 0i32;
@@ -61214,7 +61250,7 @@ async fn main() {
                             )
                             .await
                         } else {
-                            let max_attempts = cli.retries.max(1);
+                            let max_attempts = effective_max_attempts(&cli, format);
                             let sleep_dur = parse_retry_sleep(&cli.retries_sleep);
                             let max_transfer_limit = resolve_max_transfer(&cli);
                             let mut last_code = 0i32;
@@ -64222,6 +64258,21 @@ fn is_retryable_exit(code: i32) -> bool {
     //   7  operation not supported
     //   9  already exists (--no-clobber short-circuit)
     code != 0 && code != 2 && code != 5 && code != 6 && code != 7 && code != 9
+}
+
+/// Attempt budget for the dispatch-level retry loops (get/put/pget/sync).
+///
+/// JSON output collapses the budget to a single attempt: the --machine
+/// contract is exactly one structured document on stdout, and every retried
+/// attempt re-runs the command and prints the same result document again
+/// (observed: three identical `put -r --json` documents for one command).
+/// Errors already go to stderr, so an agent sees the failure and can retry
+/// the invocation itself. Text mode is human-read and keeps --retries.
+fn effective_max_attempts(cli: &Cli, format: OutputFormat) -> u32 {
+    match format {
+        OutputFormat::Json => 1,
+        OutputFormat::Text => cli.retries.max(1),
+    }
 }
 
 // ── Tests ──────────────────────────────────────────────────────────
@@ -67997,6 +68048,17 @@ mod tests {
         assert_eq!(
             benchmark_mkdir_ladder("a//b/"),
             vec!["a".to_string(), "a/b".to_string()]
+        );
+    }
+
+    #[test]
+    fn mkdir_ladder_covers_put_recursive_ancestor_chain() {
+        // cmd_put_recursive pre-creates this chain before any STOR, so a
+        // nested target with no pre-existing parents no longer stalls on
+        // FTP/FTPS.
+        assert_eq!(
+            benchmark_mkdir_ladder("/a/b/src"),
+            vec!["/a".to_string(), "/a/b".to_string(), "/a/b/src".to_string(),]
         );
     }
 
