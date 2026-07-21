@@ -110,6 +110,19 @@ pub(crate) fn xxh128_wire_bytes(hash: u128) -> Vec<u8> {
     out
 }
 
+/// `SumHead.remainder_length` for a `file_size`-byte baseline with the
+/// given wire `block_length`: `file_size mod block_length`, computed in
+/// u64 so baselines >= 2 GiB do not wrap through a signed 32-bit cast.
+/// Mirrors `generator.c`'s derivation (`(int32)(size % blength)`); the
+/// result always fits i32 because it is strictly smaller than
+/// `block_length`, itself an i32 on the wire.
+fn sum_head_remainder(file_size: u64, block_length: i32) -> i32 {
+    if block_length <= 0 {
+        return 0;
+    }
+    (file_size % block_length as u64) as i32
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum FileChecksumKind {
     Xxh128,
@@ -335,6 +348,18 @@ enum SignatureHeader {
         head: SumHead,
     },
     NoopDone,
+    /// Stock rsync skips an already-up-to-date file with `ndx + iflags`
+    /// lacking `ITEM_TRANSFER` and sends **no sum_head** (the signature
+    /// only follows a real transfer request, `sender.c` /
+    /// `generator.c::recv_generator`). First observed live 2026-07-21
+    /// against bookworm rsync 3.2.7 (proto 32 advertised): identical
+    /// upload answered `ndx=1, iflags=0x0008` then the phase markers —
+    /// the pre-fix driver blocked forever reading a sum_head that was
+    /// never coming.
+    Skipped {
+        ndx: i32,
+        iflags: u16,
+    },
 }
 
 /// Per-endpoint capability advertisement used in the preamble exchange.
@@ -1632,25 +1657,36 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         bridge: &mut dyn EventSink,
     ) -> Result<(), AerorsyncError> {
         self.phase = AerorsyncSessionPhase::SumHeadReceiving;
-        let SignatureHeader::Transfer { ndx, iflags, head } =
-            self.read_signature_header(bridge).await?
-        else {
-            self.upload_noop_transfer = true;
-            self.received_sum_head = None;
-            self.received_signatures.clear();
-            self.sender_phase_markers_seen = 1;
-            self.emit_ndx_done_marker().await?;
-            self.phase = AerorsyncSessionPhase::DeltaSent;
-            return Ok(());
+        let (ndx, iflags, head) = match self.read_signature_header(bridge).await? {
+            SignatureHeader::Transfer { ndx, iflags, head } => (ndx, iflags, head),
+            SignatureHeader::NoopDone => {
+                // The server answered with a bare NDX_DONE: that marker IS
+                // the first phase trigger, so the echo goes out now and the
+                // finish-side phase loop starts from phase 1.
+                self.upload_noop_transfer = true;
+                self.received_sum_head = None;
+                self.received_signatures.clear();
+                self.sender_phase_markers_seen = 1;
+                self.emit_ndx_done_marker().await?;
+                self.phase = AerorsyncSessionPhase::DeltaSent;
+                return Ok(());
+            }
+            SignatureHeader::Skipped { .. } => {
+                // The file is already up to date on the receiver. No
+                // sum_head, no delta; the phase triggers are still all
+                // ahead of us, so the finish-side loop starts from 0 and
+                // no echo is due yet (sender.c::send_files).
+                self.upload_noop_transfer = true;
+                self.received_sum_head = None;
+                self.received_signatures.clear();
+                self.sender_phase_markers_seen = 0;
+                self.phase = AerorsyncSessionPhase::DeltaSent;
+                return Ok(());
+            }
         };
-        if !(0..=i32::MAX).contains(&ndx) {
+        if ndx < 0 {
             return Err(AerorsyncError::invalid_frame(format!(
                 "unexpected ndx sentinel before signature phase: {ndx}"
-            )));
-        }
-        if iflags & ITEM_TRANSFER == 0 {
-            return Err(AerorsyncError::invalid_frame(format!(
-                "server signature message lacks ITEM_TRANSFER bit: iflags=0x{iflags:04X}"
             )));
         }
         // B.2 Step 4: stash the received NDX so `send_delta_phase_*`
@@ -1741,6 +1777,14 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
             let payload = self.next_data_frame(bridge).await?;
             buf.extend_from_slice(&payload);
         };
+        // Stock rsync only sends a sum_head when the generator asks for
+        // the file (ITEM_TRANSFER set). A message without the bit is a
+        // skip notice: reading 16 more bytes here would deadlock against
+        // a real server, which moves straight to the phase markers.
+        if iflags & ITEM_TRANSFER == 0 {
+            self.summary_seed = std::mem::take(&mut buf);
+            return Ok(SignatureHeader::Skipped { ndx, iflags });
+        }
         // 3. sum_head (16 bytes)
         let head = loop {
             self.check_cancel("read_signature_header sum_head")?;
@@ -1860,16 +1904,16 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
 
         // Compose sum_head. Block length from the engine's choice;
         // remainder is (file_size mod block_size): identical to rsync's
-        // own derivation.
-        let file_size = destination_data.len() as i32;
+        // own derivation. The modulo is computed in u64: truncating the
+        // file size to i32 first wraps negative for baselines >= 2 GiB
+        // and would emit a negative remainder_length, which stock rsync
+        // rejects in `io.c::read_sum_head`.
         let block_length = block_size as i32;
-        let remainder_length = if block_length > 0 {
-            file_size % block_length
-        } else {
-            0
-        };
+        let remainder_length = sum_head_remainder(destination_data.len() as u64, block_length);
         let head = SumHead {
-            count: sum_blocks.len() as i32,
+            count: i32::try_from(sum_blocks.len()).map_err(|_| {
+                AerorsyncError::invalid_frame("signature block count exceeds the int32 wire field")
+            })?,
             block_length,
             checksum_length: s2length,
             remainder_length,
@@ -2409,6 +2453,12 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
                 self.install_download_noop_reconstructed(destination_data);
                 return Ok(());
             }
+            Ok(SignatureHeader::Skipped { .. }) => {
+                // Sender-side skip notice (iflags without ITEM_TRANSFER):
+                // same semantics as NoopDone, the baseline is current.
+                self.install_download_noop_reconstructed(destination_data);
+                return Ok(());
+            }
             Err(e) if Self::is_download_clean_eof_noop(&e) => {
                 // Server closed before sending any ndx: a no-payload
                 // identical no-op (nothing to reconstruct, keep local).
@@ -2573,6 +2623,13 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
                 std::mem::take(&mut self.sig_residual_after_header)
             }
             Ok(SignatureHeader::NoopDone) => {
+                self.install_download_noop_streaming(baseline, writer)
+                    .await?;
+                return Ok(());
+            }
+            Ok(SignatureHeader::Skipped { .. }) => {
+                // Sender-side skip notice (iflags without ITEM_TRANSFER):
+                // same semantics as NoopDone, the baseline is current.
                 self.install_download_noop_streaming(baseline, writer)
                     .await?;
                 return Ok(());
@@ -3723,6 +3780,88 @@ mod tests {
         }
     }
 
+    /// Realistic FIRST-entry shape for live tests against stock rsync.
+    ///
+    /// `sample_file_list_entry` sets `XMIT_SAME_TIME | XMIT_SAME_MODE` with
+    /// zeroed mtime/mode — legal only from the SECOND entry of a list, when
+    /// a predecessor exists to be "same" as. Against a real rsync server
+    /// the first entry decodes to mode 0 (a non-regular "special" file),
+    /// the generator never enters the signature/delta phase, and the
+    /// session deadlocks (verified 2026-07-21 by replaying the lane-3
+    /// wire capture into stock rsync 3.2.7: the server stalls after
+    /// `recv_file_name`; with explicit mtime/mode it proceeds exactly
+    /// like the native client). Mock transports never parse the flist, so
+    /// the unit suite could not catch this. Production uploads use
+    /// `build_source_entry` and were never affected.
+    ///
+    /// Flags mirror `build_source_entry` minus the USER/GROUP_NAME_FOLLOWS
+    /// pair: explicit mtime (+nsec) and mode on the wire, numeric
+    /// uid/gid varints (the harness user is uid 1000).
+    fn live_file_list_entry(path: &str) -> FileListEntry {
+        const XMIT_MOD_NSEC: u32 = 1 << 13;
+        let mtime = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs() as i64;
+        FileListEntry {
+            flags: XMIT_MOD_NSEC,
+            path: path.to_string(),
+            size: 4096,
+            mtime,
+            mtime_nsec: Some(0),
+            mode: 0o100_644,
+            uid: Some(1000),
+            uid_name: None,
+            gid: Some(1000),
+            gid_name: None,
+            checksum: vec![0xAA; 16],
+            symlink_target: None,
+        }
+    }
+
+    /// Deterministic incompressible payload for live lane tests: the
+    /// summary-frame assertion `bytes_sent >= source.len()` only holds
+    /// when zstd (negotiated with stock rsync) cannot shrink the literal
+    /// stream. A cyclic text payload compresses ~7x and the wire total
+    /// legitimately drops below the source length. xorshift64 with a
+    /// fixed seed keeps the run reproducible without new dependencies.
+    fn incompressible_payload(seed: u64, len: usize) -> Vec<u8> {
+        let mut state = seed | 1;
+        (0..len)
+            .map(|_| {
+                state ^= state << 13;
+                state ^= state >> 7;
+                state ^= state << 17;
+                (state >> 32) as u8
+            })
+            .collect()
+    }
+
+    // ---- sum_head remainder regression pins (baseline >= 2 GiB) ---------
+
+    #[test]
+    fn sum_head_remainder_matches_u32_math_below_2_gib() {
+        for (size, blen) in [(0u64, 700i32), (1, 700), (4096, 700), (1_048_576, 2048)] {
+            let expected = if blen > 0 { (size as i32) % blen } else { 0 };
+            assert_eq!(sum_head_remainder(size, blen), expected);
+        }
+    }
+
+    #[test]
+    fn sum_head_remainder_stays_positive_above_2_gib() {
+        // 2 GiB + 123 bytes with a 700-byte block: the pre-fix `as i32`
+        // cast wrapped the file size negative and produced a negative
+        // remainder_length, which stock rsync rejects in read_sum_head.
+        let size = (1u64 << 31) + 123;
+        let r = sum_head_remainder(size, 700);
+        assert!(r >= 0, "remainder must never be negative: {r}");
+        assert_eq!(r, (size % 700) as i32);
+        // Exact multiple of the block size wraps to zero, not to garbage.
+        assert_eq!(sum_head_remainder(700u64 << 22, 700), 0);
+        // Degenerate zero block length (whole-file signature) stays 0.
+        assert_eq!(sum_head_remainder(size, 0), 0);
+    }
+
     // ---- A2.0 regression pins (preserved) -------------------------------
 
     #[test]
@@ -4727,12 +4866,7 @@ mod tests {
             return;
         }
 
-        let source_data: Vec<u8> = b"aeroftp lane 3 native rsync upload payload\n"
-            .iter()
-            .copied()
-            .cycle()
-            .take(1024)
-            .collect();
+        let source_data: Vec<u8> = incompressible_payload(0xA380_5EED_0001, 1024);
 
         let key_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("src/aerorsync/capture/keys/id_ed25519");
@@ -4775,7 +4909,7 @@ mod tests {
                 .as_nanos()
         );
 
-        let entry = sample_file_list_entry("lane3-live.bin");
+        let entry = live_file_list_entry("lane3-live.bin");
         let entry = FileListEntry {
             size: source_data.len() as i64,
             ..entry
@@ -4832,12 +4966,7 @@ mod tests {
             return;
         }
 
-        let source_data: Vec<u8> = b"aeroftp lane 3 streaming upload payload\n"
-            .iter()
-            .copied()
-            .cycle()
-            .take(1024)
-            .collect();
+        let source_data: Vec<u8> = incompressible_payload(0xA380_5EED_0002, 1024);
         let source_len = source_data.len() as u64;
 
         let key_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -4879,7 +5008,7 @@ mod tests {
                 .unwrap_or_default()
                 .as_nanos()
         );
-        let entry = sample_file_list_entry("lane3-streaming.bin");
+        let entry = live_file_list_entry("lane3-streaming.bin");
         let entry = FileListEntry {
             size: source_len as i64,
             ..entry
@@ -5237,38 +5366,37 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn driver_upload_rejects_sig_without_item_transfer_bit() {
-        // iflags = 0: server signature message without ITEM_TRANSFER bit
-        // must be refused by the driver (protocol contract violation).
-        let head = SumHead {
-            count: 1,
-            block_length: 1024,
-            checksum_length: 2,
-            remainder_length: 0,
-        };
-        let blocks = vec![make_sig_block(0x12345678, 0xEE, 2)];
-        // iflags = 0: missing ITEM_TRANSFER.
-        let sig_payload = build_sig_phase_payload(1, 0x0000, &head, &blocks);
-
+    async fn driver_upload_treats_skip_notice_as_noop() {
+        // Stock rsync 3.2.7 skips an up-to-date file with `ndx + iflags`
+        // lacking ITEM_TRANSFER and NO sum_head (live-captured shape
+        // 2026-07-21: `02 08 00` = ndx 1, iflags 0x0008). The driver must
+        // treat it as a clean no-op, not a protocol violation, and the
+        // finish-side phase loop consumes the remaining markers.
         let mut inbound = canonical_server_preamble_bytes();
-        inbound.extend_from_slice(&mux_frame(MuxTag::Data, &sig_payload));
+        inbound.extend_from_slice(&mux_frame(MuxTag::Data, &[0x02, 0x08, 0x00]));
+        inbound.extend_from_slice(&mux_frame(MuxTag::Data, &[0x00; 5]));
 
         let transport = mock_transport_with_raw_inbound(inbound);
         let mut d = make_driver(transport);
         let mut sink = CollectingSink::default();
-        let err = d
-            .drive_upload(
-                RemoteCommandSpec::upload("/remote/target.bin"),
-                sample_file_list_entry("target.bin"),
-                &[],
-                &MockSigAdapter::default(),
-                &mut sink,
-            )
-            .await
-            .unwrap_err();
-        assert_eq!(err.kind, AerorsyncErrorKind::InvalidFrame);
-        assert!(err.detail.contains("ITEM_TRANSFER"));
-        assert_eq!(d.phase(), AerorsyncSessionPhase::Failed);
+        d.drive_upload_through_delta(
+            RemoteCommandSpec::upload("/remote/target.bin"),
+            sample_file_list_entry("target.bin"),
+            b"already present",
+            &MockSigAdapter::default(),
+            &mut sink,
+        )
+        .await
+        .unwrap();
+
+        assert!(d.upload_noop_transfer);
+        assert!(!d.committed(), "no delta bytes are emitted for a skip");
+        assert!(d.received_sum_head().is_none());
+        assert!(d.received_signatures().is_empty());
+        assert!(d.emitted_delta_ops().is_empty());
+
+        d.finish_session(&mut sink).await.unwrap();
+        assert_eq!(d.phase(), AerorsyncSessionPhase::Complete);
     }
 
     #[tokio::test]
@@ -7917,5 +8045,321 @@ mod tests {
             d.reconstructed().is_none(),
             "streaming path must NOT populate self.reconstructed"
         );
+    }
+
+    // ---- Live comparative benchmark vs native rsync (manual, #[ignore]) --
+    //
+    // Mirrors the native-rsync baseline runs documented in the 2026-07-21
+    // AeroRsync audit (docs/dev/roadmap/APPENDIX-C-Y-D/APPENDIX-Y/reports/).
+    // Requires the lane-3 Docker harness on 127.0.0.1:2224 and the bench
+    // dataset under /tmp/bench (generation steps in the same report).
+    // Run with:
+    //   cargo test --features aerorsync --lib aerorsync_bench -- --ignored --nocapture
+    // Skip-graceful when the harness or the dataset is absent.
+
+    /// Shared lane-3 transport config for the benchmark tests.
+    async fn bench_lane3_driver() -> Option<(
+        AerorsyncDriver<crate::aerorsync::ssh_transport::SshRemoteShellTransport>,
+        CollectingSink,
+    )> {
+        use crate::aerorsync::ssh_transport::{
+            SshHostKeyPolicy, SshRemoteShellTransport, SshTransportConfig,
+        };
+        use crate::aerorsync::transport::RemoteExecRequest;
+
+        if tokio::net::TcpStream::connect("127.0.0.1:2224")
+            .await
+            .is_err()
+        {
+            eprintln!("[bench] lane 3 harness not reachable on 127.0.0.1:2224: skipping");
+            return None;
+        }
+        let key_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("src/aerorsync/capture/keys/id_ed25519");
+        if !key_path.exists() {
+            eprintln!("[bench] ssh key not found: skipping");
+            return None;
+        }
+        let ssh_config = SshTransportConfig {
+            host: "127.0.0.1".into(),
+            port: 2224,
+            username: "testuser".into(),
+            private_key_path: key_path,
+            connect_timeout_ms: 10_000,
+            io_timeout_ms: 120_000,
+            worker_idle_poll_ms: 250,
+            max_frame_size: 1 << 20,
+            host_key_policy: SshHostKeyPolicy::AcceptAny,
+            probe_request: RemoteExecRequest {
+                program: "rsync".into(),
+                args: vec!["--version".into()],
+                environment: Vec::new(),
+            },
+            auth_password: None,
+            auth_agent: false,
+        };
+        let transport = SshRemoteShellTransport::new(ssh_config);
+        let driver = AerorsyncDriver::new(transport, CancelHandle::inert());
+        Some((driver, CollectingSink::default()))
+    }
+
+    fn bench_read_local(path: &str) -> Option<Vec<u8>> {
+        match std::fs::read(path) {
+            Ok(d) => Some(d),
+            Err(e) => {
+                eprintln!("[bench] dataset missing at {path}: {e}: skipping");
+                None
+            }
+        }
+    }
+
+    /// One cold upload + one 5%-changed delta upload + one redundant
+    /// upload, timing each and reporting wire bytes from the driver
+    /// counters. Native-rsync twin numbers are in the audit report.
+    #[ignore = "manual live benchmark vs native rsync"]
+    #[tokio::test]
+    async fn aerorsync_bench_upload_vs_native() {
+        use crate::aerorsync::engine_adapter::CurrentDeltaSyncBridge;
+
+        let Some((mut driver, mut sink)) = bench_lane3_driver().await else {
+            return;
+        };
+        let Some(rand50) = bench_read_local("/tmp/bench/local/R_rand.bin") else {
+            return;
+        };
+        let Some(base50) = bench_read_local("/tmp/bench/local/A_base.bin") else {
+            return;
+        };
+        let Some(mod50) = bench_read_local("/tmp/bench/local/A_mod.bin") else {
+            return;
+        };
+        let adapter = CurrentDeltaSyncBridge::new();
+
+        // A1: cold upload, incompressible 50 MiB.
+        let remote = "/workspace/bench-aero/R.bin";
+        let entry = live_file_list_entry("R.bin");
+        let entry = FileListEntry {
+            size: rand50.len() as i64,
+            ..entry
+        };
+        let t0 = std::time::Instant::now();
+        driver
+            .drive_upload_through_delta(
+                RemoteCommandSpec::upload(remote),
+                entry,
+                &rand50,
+                &adapter,
+                &mut sink,
+            )
+            .await
+            .expect("A1 cold upload");
+        driver.finish_session(&mut sink).await.expect("A1 finish");
+        eprintln!(
+            "[bench] A1 cold-upload-50MB-random: {:?}, wire-sent={} wire-recv={}",
+            t0.elapsed(),
+            driver.sent_data_bytes(),
+            driver.received_raw_bytes()
+        );
+
+        // A2: delta upload, 5% scattered changes vs remote baseline.
+        let (mut driver, mut sink) = bench_lane3_driver().await.unwrap();
+        let remote = "/workspace/bench-aero/A.bin";
+        // Seed the baseline with a cold upload first (not timed).
+        let entry = live_file_list_entry("A.bin");
+        let entry = FileListEntry {
+            size: base50.len() as i64,
+            ..entry
+        };
+        driver
+            .drive_upload_through_delta(
+                RemoteCommandSpec::upload(remote),
+                entry,
+                &base50,
+                &adapter,
+                &mut sink,
+            )
+            .await
+            .expect("A2 baseline seed");
+        driver
+            .finish_session(&mut sink)
+            .await
+            .expect("A2 seed finish");
+
+        let (mut driver, mut sink) = bench_lane3_driver().await.unwrap();
+        let entry = live_file_list_entry("A.bin");
+        let entry = FileListEntry {
+            size: mod50.len() as i64,
+            ..entry
+        };
+        let t0 = std::time::Instant::now();
+        driver
+            .drive_upload_through_delta(
+                RemoteCommandSpec::upload(remote),
+                entry,
+                &mod50,
+                &adapter,
+                &mut sink,
+            )
+            .await
+            .expect("A2 delta upload");
+        driver.finish_session(&mut sink).await.expect("A2 finish");
+        eprintln!(
+            "[bench] A2 delta-upload-50MB-5pct: {:?}, wire-sent={} wire-recv={}",
+            t0.elapsed(),
+            driver.sent_data_bytes(),
+            driver.received_raw_bytes()
+        );
+
+        // A5: redundant upload (remote already holds A_mod).
+        let (mut driver, mut sink) = bench_lane3_driver().await.unwrap();
+        let entry = live_file_list_entry("A.bin");
+        let entry = FileListEntry {
+            size: mod50.len() as i64,
+            ..entry
+        };
+        let t0 = std::time::Instant::now();
+        driver
+            .drive_upload_through_delta(
+                RemoteCommandSpec::upload(remote),
+                entry,
+                &mod50,
+                &adapter,
+                &mut sink,
+            )
+            .await
+            .expect("A5 redundant upload");
+        driver.finish_session(&mut sink).await.expect("A5 finish");
+        eprintln!(
+            "[bench] A5 redundant-upload: {:?}, wire-sent={} wire-recv={}",
+            t0.elapsed(),
+            driver.sent_data_bytes(),
+            driver.received_raw_bytes()
+        );
+    }
+
+    /// Delta download: remote holds A_base, local baseline is A_mod
+    /// (5% scattered changes). Verifies the reconstructed content matches
+    /// the remote byte-for-byte (xxh128 whole-file trailer decoded by the
+    /// driver) and reports wall time + wire bytes.
+    #[ignore = "manual live benchmark vs native rsync"]
+    #[tokio::test]
+    async fn aerorsync_bench_download_vs_native() {
+        use crate::aerorsync::engine_adapter::CurrentDeltaSyncBridge;
+
+        let Some(base50) = bench_read_local("/tmp/bench/local/A_base.bin") else {
+            return;
+        };
+        let Some(mod50) = bench_read_local("/tmp/bench/local/A_mod.bin") else {
+            return;
+        };
+        let adapter = CurrentDeltaSyncBridge::new();
+
+        // Seed remote B.bin with A_base (cold upload, not timed).
+        let (mut driver, mut sink) = {
+            let Some(x) = bench_lane3_driver().await else {
+                return;
+            };
+            x
+        };
+        let remote = "/workspace/bench-aero/B.bin";
+        let entry = live_file_list_entry("B.bin");
+        let entry = FileListEntry {
+            size: base50.len() as i64,
+            ..entry
+        };
+        driver
+            .drive_upload_through_delta(
+                RemoteCommandSpec::upload(remote),
+                entry,
+                &base50,
+                &adapter,
+                &mut sink,
+            )
+            .await
+            .expect("seed B.bin");
+        driver.finish_session(&mut sink).await.expect("seed finish");
+
+        // A3: delta download against the A_mod baseline.
+        let (mut driver, mut sink) = bench_lane3_driver().await.unwrap();
+        let t0 = std::time::Instant::now();
+        driver
+            .drive_download_through_delta(
+                RemoteCommandSpec::download(remote),
+                &mod50,
+                &adapter,
+                &mut sink,
+            )
+            .await
+            .expect("A3 delta download");
+        driver.finish_session(&mut sink).await.expect("A3 finish");
+        let reconstructed = driver
+            .reconstructed()
+            .expect("bulk download reconstructs in memory")
+            .to_vec();
+        eprintln!(
+            "[bench] A3 delta-download-50MB-5pct: {:?}, wire-sent={} wire-recv={}",
+            t0.elapsed(),
+            driver.sent_data_bytes(),
+            driver.received_raw_bytes()
+        );
+        assert_eq!(
+            reconstructed.len(),
+            base50.len(),
+            "reconstructed size mismatch"
+        );
+        assert_eq!(
+            reconstructed, base50,
+            "reconstructed content must match the remote byte-for-byte"
+        );
+    }
+
+    /// Small-file batch: 20 x 256 KiB cold uploads, one SSH session per
+    /// file (the per-file driver API surface). Native rsync does the same
+    /// tree in ONE recursive invocation; the gap is exactly what
+    /// `AerorsyncBatch` (session reuse) exists to close at the transport
+    /// layer. Reports total wall time.
+    #[ignore = "manual live benchmark vs native rsync"]
+    #[tokio::test]
+    async fn aerorsync_bench_small_batch_vs_native() {
+        use crate::aerorsync::engine_adapter::CurrentDeltaSyncBridge;
+
+        let adapter = CurrentDeltaSyncBridge::new();
+        let t0 = std::time::Instant::now();
+        let mut done = 0usize;
+        for i in 0..20 {
+            let path = format!("/tmp/bench/local/small/f{i:02}.bin");
+            let Some(data) = bench_read_local(&path) else {
+                return;
+            };
+            let name = format!("f{i:02}.bin");
+            let Some((mut driver, mut sink)) = bench_lane3_driver().await else {
+                return;
+            };
+            let entry = live_file_list_entry(&name);
+            let entry = FileListEntry {
+                size: data.len() as i64,
+                ..entry
+            };
+            driver
+                .drive_upload_through_delta(
+                    RemoteCommandSpec::upload(format!("/workspace/bench-aero/small/{name}")),
+                    entry,
+                    &data,
+                    &adapter,
+                    &mut sink,
+                )
+                .await
+                .expect("batch upload");
+            driver
+                .finish_session(&mut sink)
+                .await
+                .expect("batch finish");
+            done += 1;
+        }
+        eprintln!(
+            "[bench] A4 small-batch-20x256KiB-per-file-session: {:?} for {done} files",
+            t0.elapsed()
+        );
+        assert_eq!(done, 20);
     }
 }
