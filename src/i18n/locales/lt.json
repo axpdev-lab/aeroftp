@@ -5254,7 +5254,10 @@
             "overlaysRemotePathInvalid": "Tai turi būti Nuotolinis kelias arba jo poaplankis",
             "defaultSaltToggle": "Numatytoji druska (tik slaptažodis atidaro; po sukūrimo nereikia rinkinio ar raktų saugyklos)",
             "defaultSaltToggleHint": "Vieša pastovi druska (rclone-style). Reikia sugeneruoto didelės entropijos slaptažodžio. Tas pats slaptažodis keliuose saugyklose daro užšifruotus pavadinimus susiejamus be rakto.",
-            "defaultSaltAttestation": "Šį slaptažodį sugeneravau naudodamas slaptažodžių tvarkyklę ir suprantu susiejamumo kompromisą."
+            "defaultSaltAttestation": "Šį slaptažodį sugeneravau naudodamas slaptažodžių tvarkyklę ir suprantu susiejamumo kompromisą.",
+            "defaultSaltNeedsStronger": "Įveskite stiprų sugeneruotą slaptažodį, kad įjungtumėte numatytąjį salt.",
+            "defaultSaltTier128": "128-bit (rekomenduojama, reikia 20+ simbolių slaptažodžio)",
+            "defaultSaltTier256": "256-bit (griežtesnis, reikia 39+ simbolių slaptažodžio)"
         },
         "modalGuard": {
             "busyTitle": "Vykdoma operacija",

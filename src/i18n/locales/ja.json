@@ -5254,7 +5254,10 @@
             "overlaysRemotePathInvalid": "リモートパス自体か、そのサブフォルダーである必要があります",
             "defaultSaltToggle": "デフォルトソルト (パスワードだけで開く; 作成後はキットやキーストアは不要)",
             "defaultSaltToggleHint": "公開定数ソルト (rclone-style)。高エントロピーの生成パスワードが必要です。複数のボールトで同じパスワードを使うと、鍵なしで暗号化名がリンク可能になります。",
-            "defaultSaltAttestation": "このパスワードをパスワードマネージャーで生成し、リンク可能性のトレードオフを理解しています。"
+            "defaultSaltAttestation": "このパスワードをパスワードマネージャーで生成し、リンク可能性のトレードオフを理解しています。",
+            "defaultSaltNeedsStronger": "デフォルトのソルトを有効にするには、強力な生成済みパスワードを入力してください。",
+            "defaultSaltTier128": "128-bit（推奨、20+文字のパスワードが必要）",
+            "defaultSaltTier256": "256-bit（より厳格、39+文字のパスワードが必要）"
         },
         "modalGuard": {
             "busyTitle": "操作の実行中",

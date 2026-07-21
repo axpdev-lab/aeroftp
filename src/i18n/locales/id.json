@@ -5254,7 +5254,10 @@
             "overlaysRemotePathInvalid": "Harus berupa Jalur Jarak Jauh atau subfolder darinya",
             "defaultSaltToggle": "Salt default (hanya kata sandi yang membuka; setelah dibuat tidak perlu kit atau keystore)",
             "defaultSaltToggleHint": "Salt konstan publik (gaya rclone). Membutuhkan kata sandi berentropi tinggi yang dihasilkan. Kata sandi yang sama di beberapa brankas membuat nama terenkripsi dapat ditautkan tanpa kunci.",
-            "defaultSaltAttestation": "Saya menghasilkan kata sandi ini dengan manajer kata sandi dan memahami trade-off keterkaitan."
+            "defaultSaltAttestation": "Saya menghasilkan kata sandi ini dengan manajer kata sandi dan memahami trade-off keterkaitan.",
+            "defaultSaltNeedsStronger": "Masukkan kata sandi kuat yang dibuat untuk mengaktifkan salt bawaan.",
+            "defaultSaltTier128": "128-bit (disarankan, memerlukan kata sandi 20+ karakter)",
+            "defaultSaltTier256": "256-bit (lebih ketat, memerlukan kata sandi 39+ karakter)"
         },
         "modalGuard": {
             "busyTitle": "Operasi berlangsung",

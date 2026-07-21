@@ -5254,7 +5254,10 @@
             "overlaysRemotePathInvalid": "Mestilah Laluan Jauh atau subfolder daripadanya",
             "defaultSaltToggle": "Salt lalai (hanya kata laluan membuka; tiada kit atau storan kunci diperlukan selepas dicipta)",
             "defaultSaltToggleHint": "Salt malar awam (gaya rclone). Memerlukan kata laluan berentropi tinggi yang dijana. Kata laluan sama pada berbilang vault menjadikan nama tersulit boleh dipaut tanpa kunci.",
-            "defaultSaltAttestation": "Saya menjana kata laluan ini dengan pengurus kata laluan dan memahami pertukaran keboleh-pautan."
+            "defaultSaltAttestation": "Saya menjana kata laluan ini dengan pengurus kata laluan dan memahami pertukaran keboleh-pautan.",
+            "defaultSaltNeedsStronger": "Masukkan kata laluan kuat yang dijana untuk menghidupkan salt lalai.",
+            "defaultSaltTier128": "128-bit (disyorkan, memerlukan kata laluan 20+ aksara)",
+            "defaultSaltTier256": "256-bit (lebih ketat, memerlukan kata laluan 39+ aksara)"
         },
         "modalGuard": {
             "busyTitle": "Operasi sedang berjalan",

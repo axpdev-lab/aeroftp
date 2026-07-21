@@ -5254,7 +5254,10 @@
             "overlaysRemotePathInvalid": "Biti mora Oddaljena pot ali njena podmapa",
             "defaultSaltToggle": "Privzeta sol (samo geslo odpre; po ustvarjanju ni potreben komplet ali shramba ključev)",
             "defaultSaltToggleHint": "Javna konstantna sol (rclone-style). Zahteva ustvarjeno geslo z visoko entropijo. Isto geslo na več trezorjih naredi šifrirana imena povezljiva brez ključa.",
-            "defaultSaltAttestation": "To geslo sem ustvaril z upravljalnikom gesel in razumem kompromis povezljivosti."
+            "defaultSaltAttestation": "To geslo sem ustvaril z upravljalnikom gesel in razumem kompromis povezljivosti.",
+            "defaultSaltNeedsStronger": "Vnesite močno ustvarjeno geslo, da vklopite privzeti salt.",
+            "defaultSaltTier128": "128-bit (priporočeno, zahteva geslo z 20+ znaki)",
+            "defaultSaltTier256": "256-bit (strožje, zahteva geslo z 39+ znaki)"
         },
         "modalGuard": {
             "busyTitle": "Operacija poteka",

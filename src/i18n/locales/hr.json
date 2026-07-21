@@ -5254,7 +5254,10 @@
             "overlaysRemotePathInvalid": "Mora biti Udaljena putanja ili njezina podmapa",
             "defaultSaltToggle": "Zadana sol (samo lozinka otvara; nakon stvaranja nije potreban kit ili spremište ključeva)",
             "defaultSaltToggleHint": "Javna konstantna sol (rclone-style). Zahtijeva generiranu lozinku visoke entropije. Ista lozinka na više trezora čini šifrirana imena povezivima bez ključa.",
-            "defaultSaltAttestation": "Generirao sam ovu lozinku pomoću upravitelja lozinki i razumijem kompromis povezivosti."
+            "defaultSaltAttestation": "Generirao sam ovu lozinku pomoću upravitelja lozinki i razumijem kompromis povezivosti.",
+            "defaultSaltNeedsStronger": "Unesite jaku generiranu lozinku da biste uključili zadani salt.",
+            "defaultSaltTier128": "128-bit (preporučeno, zahtijeva lozinku od 20+ znakova)",
+            "defaultSaltTier256": "256-bit (strože, zahtijeva lozinku od 39+ znakova)"
         },
         "modalGuard": {
             "busyTitle": "Operacija u tijeku",

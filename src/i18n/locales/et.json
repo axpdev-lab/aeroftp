@@ -5254,7 +5254,10 @@
             "overlaysRemotePathInvalid": "Peab olema Kaugtee või selle alamkaust",
             "defaultSaltToggle": "Vaikesool (ainult parool avab; pärast loomist pole komplekti ega võtmehoidjat vaja)",
             "defaultSaltToggleHint": "Avalik konstantne sool (rclone-style). Nõuab genereeritud kõrge entroopiaga parooli. Sama parool mitmel hoidlal muudab krüpteeritud nimed võtmeta lingitavaks.",
-            "defaultSaltAttestation": "Lõin selle parooli paroolihalduriga ja mõistan lingitavuse kompromissi."
+            "defaultSaltAttestation": "Lõin selle parooli paroolihalduriga ja mõistan lingitavuse kompromissi.",
+            "defaultSaltNeedsStronger": "Vaikimisi salti sisselülitamiseks sisestage tugev genereeritud parool.",
+            "defaultSaltTier128": "128-bit (soovitatav, vajab 20+ tähemärgiga parooli)",
+            "defaultSaltTier256": "256-bit (rangem, vajab 39+ tähemärgiga parooli)"
         },
         "modalGuard": {
             "busyTitle": "Toiming käib",

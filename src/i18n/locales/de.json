@@ -5254,7 +5254,10 @@
             "overlaysRemotePathInvalid": "Muss der Remote-Pfad oder ein Unterordner davon sein",
             "defaultSaltToggle": "Standard-Salt (nur Passwort öffnet; nach Erstellung kein Kit oder Keystore nötig)",
             "defaultSaltToggleHint": "Öffentliches konstantes Salt (rclone-style). Erfordert ein generiertes Passwort mit hoher Entropie. Dasselbe Passwort auf mehreren Tresoren macht verschlüsselte Namen ohne Schlüssel verknüpfbar.",
-            "defaultSaltAttestation": "Ich habe dieses Passwort mit einem Passwort-Manager generiert und verstehe den Linkbarkeits-Kompromiss."
+            "defaultSaltAttestation": "Ich habe dieses Passwort mit einem Passwort-Manager generiert und verstehe den Linkbarkeits-Kompromiss.",
+            "defaultSaltNeedsStronger": "Geben Sie ein starkes generiertes Passwort ein, um den Standard-Salt zu aktivieren.",
+            "defaultSaltTier128": "128-bit (empfohlen, erfordert ein Passwort mit 20+ Zeichen)",
+            "defaultSaltTier256": "256-bit (strenger, erfordert ein Passwort mit 39+ Zeichen)"
         },
         "modalGuard": {
             "busyTitle": "Vorgang läuft",

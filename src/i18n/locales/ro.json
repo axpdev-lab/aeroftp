@@ -5254,7 +5254,10 @@
             "overlaysRemotePathInvalid": "Trebuie să fie Calea la distanță sau un subfolder al acesteia",
             "defaultSaltToggle": "Sare implicită (doar parola deschide; după creare nu este nevoie de kit sau depozit de chei)",
             "defaultSaltToggleHint": "Sare constantă publică (stil rclone). Necesită o parolă generată cu entropie ridicată. Aceeași parolă pe mai multe seifuri face ca numele criptate să fie conectabile fără cheie.",
-            "defaultSaltAttestation": "Am generat această parolă cu un manager de parole și înțeleg compromisul de conectabilitate."
+            "defaultSaltAttestation": "Am generat această parolă cu un manager de parole și înțeleg compromisul de conectabilitate.",
+            "defaultSaltNeedsStronger": "Introduceți o parolă generată puternică pentru a activa saltul implicit.",
+            "defaultSaltTier128": "128-bit (recomandat, necesită o parolă de 20+ caractere)",
+            "defaultSaltTier256": "256-bit (mai strict, necesită o parolă de 39+ caractere)"
         },
         "modalGuard": {
             "busyTitle": "Operațiune în curs",

@@ -5254,7 +5254,10 @@
             "overlaysRemotePathInvalid": "Uzak Yol veya onun bir alt klasörü olmalıdır",
             "defaultSaltToggle": "Varsayılan tuz (yalnızca parola açar; oluşturduktan sonra kit veya anahtar deposu gerekmez)",
             "defaultSaltToggleHint": "Herkese açık sabit tuz (rclone-style). Yüksek entropili üretilmiş parola gerektirir. Birden fazla kasada aynı parola kullanmak, anahtar olmadan şifrelenmiş adları bağlanabilir hale getirir.",
-            "defaultSaltAttestation": "Bu parolayı bir parola yöneticisiyle oluşturdum ve bağlanabilirlik değiş tokuşunu anlıyorum."
+            "defaultSaltAttestation": "Bu parolayı bir parola yöneticisiyle oluşturdum ve bağlanabilirlik değiş tokuşunu anlıyorum.",
+            "defaultSaltNeedsStronger": "Varsayılan salt'ı açmak için güçlü, oluşturulmuş bir parola girin.",
+            "defaultSaltTier128": "128-bit (önerilir, 20+ karakterlik bir parola gerektirir)",
+            "defaultSaltTier256": "256-bit (daha katı, 39+ karakterlik bir parola gerektirir)"
         },
         "modalGuard": {
             "busyTitle": "İşlem sürüyor",

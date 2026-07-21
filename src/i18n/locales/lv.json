@@ -5254,7 +5254,10 @@
             "overlaysRemotePathInvalid": "Tam jābūt Attālajam ceļam vai tā apakšmapei",
             "defaultSaltToggle": "Noklusējuma sāls (tikai parole atver; pēc izveides nav nepieciešams komplekts vai atslēgu krātuve)",
             "defaultSaltToggleHint": "Publiska konstanta sāls (rclone-style). Nepieciešama augstas entropijas ģenerēta parole. Viena un tā pati parole vairākos seifos padara šifrētos nosaukumus saistāmus bez atslēgas.",
-            "defaultSaltAttestation": "Es ģenerēju šo paroli ar paroļu pārvaldnieku un saprotu saistāmības kompromisu."
+            "defaultSaltAttestation": "Es ģenerēju šo paroli ar paroļu pārvaldnieku un saprotu saistāmības kompromisu.",
+            "defaultSaltNeedsStronger": "Ievadiet spēcīgu ģenerētu paroli, lai ieslēgtu noklusējuma salt.",
+            "defaultSaltTier128": "128-bit (ieteicams, nepieciešama parole ar 20+ rakstzīmēm)",
+            "defaultSaltTier256": "256-bit (stingrāks, nepieciešama parole ar 39+ rakstzīmēm)"
         },
         "modalGuard": {
             "busyTitle": "Notiek darbība",

@@ -5254,7 +5254,10 @@
             "overlaysRemotePathInvalid": "必须是远程路径或其子文件夹",
             "defaultSaltToggle": "默认盐值（仅密码即可打开；创建后无需套件或密钥库）",
             "defaultSaltToggleHint": "公共常量盐值（rclone-style）。需要生成的高熵密码。在多个保险库上使用相同密码会使加密名称在无密钥情况下可关联。",
-            "defaultSaltAttestation": "我使用密码管理器生成了此密码，并理解可关联性的权衡。"
+            "defaultSaltAttestation": "我使用密码管理器生成了此密码，并理解可关联性的权衡。",
+            "defaultSaltNeedsStronger": "输入生成的强密码以启用默认盐值。",
+            "defaultSaltTier128": "128-bit（推荐，需要 20+ 个字符的密码）",
+            "defaultSaltTier256": "256-bit（更严格，需要 39+ 个字符的密码）"
         },
         "modalGuard": {
             "busyTitle": "操作进行中",

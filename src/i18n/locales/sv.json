@@ -5254,7 +5254,10 @@
             "overlaysRemotePathInvalid": "Måste vara Fjärrsökvägen eller en undermapp till den",
             "defaultSaltToggle": "Standardsalt (endast lösenord öppnar; inget kit eller nyckellager behövs efter skapande)",
             "defaultSaltToggleHint": "Offentligt konstant salt (rclone-style). Kräver ett genererat lösenord med hög entropi. Samma lösenord på flera valv gör krypterade namn länkbara utan nyckeln.",
-            "defaultSaltAttestation": "Jag genererade detta lösenord med en lösenordshanterare och förstår länkbarhetskompromissen."
+            "defaultSaltAttestation": "Jag genererade detta lösenord med en lösenordshanterare och förstår länkbarhetskompromissen.",
+            "defaultSaltNeedsStronger": "Ange ett starkt genererat lösenord för att aktivera standardsaltet.",
+            "defaultSaltTier128": "128-bit (rekommenderas, kräver ett lösenord på 20+ tecken)",
+            "defaultSaltTier256": "256-bit (strängare, kräver ett lösenord på 39+ tecken)"
         },
         "modalGuard": {
             "busyTitle": "Åtgärd pågår",

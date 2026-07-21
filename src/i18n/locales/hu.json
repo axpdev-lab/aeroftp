@@ -5254,7 +5254,10 @@
             "overlaysRemotePathInvalid": "A Távoli útvonalnak vagy annak almappájának kell lennie",
             "defaultSaltToggle": "Alapértelmezett só (csak a jelszó nyitja ki; létrehozás után nincs szükség készletre vagy kulcstárolóra)",
             "defaultSaltToggleHint": "Nyilvános állandó só (rclone-stílus). Magas entrópia jelszót igényel. Ugyanaz a jelszó több tárolón a titkosított neveket kulcs nélkül összekapcsolhatóvá teszi.",
-            "defaultSaltAttestation": "Ezt a jelszót jelszókezelővel generáltam, és megértem az összekapcsolhatósági kompromisszumot."
+            "defaultSaltAttestation": "Ezt a jelszót jelszókezelővel generáltam, és megértem az összekapcsolhatósági kompromisszumot.",
+            "defaultSaltNeedsStronger": "Az alapértelmezett salt bekapcsolásához adjon meg egy erős, generált jelszót.",
+            "defaultSaltTier128": "128-bit (ajánlott, 20+ karakteres jelszót igényel)",
+            "defaultSaltTier256": "256-bit (szigorúbb, 39+ karakteres jelszót igényel)"
         },
         "modalGuard": {
             "busyTitle": "Művelet folyamatban",

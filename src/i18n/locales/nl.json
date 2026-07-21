@@ -5254,7 +5254,10 @@
             "overlaysRemotePathInvalid": "Moet het Externe pad of een submap ervan zijn",
             "defaultSaltToggle": "Standaard salt (alleen wachtwoord opent; na aanmaken geen kit of sleutelopslag nodig)",
             "defaultSaltToggleHint": "Publieke constante salt (rclone-stijl). Vereist een gegenereerd wachtwoord met hoge entropie. Zelfde wachtwoord op meerdere kluizen maakt versleutelde namen koppelbaar zonder sleutel.",
-            "defaultSaltAttestation": "Ik heb dit wachtwoord gegenereerd met een wachtwoordbeheerder en begrijp de linkbaarheid-afweging."
+            "defaultSaltAttestation": "Ik heb dit wachtwoord gegenereerd met een wachtwoordbeheerder en begrijp de linkbaarheid-afweging.",
+            "defaultSaltNeedsStronger": "Voer een sterk gegenereerd wachtwoord in om de standaard-salt in te schakelen.",
+            "defaultSaltTier128": "128-bit (aanbevolen, vereist een wachtwoord van 20+ tekens)",
+            "defaultSaltTier256": "256-bit (strenger, vereist een wachtwoord van 39+ tekens)"
         },
         "modalGuard": {
             "busyTitle": "Bewerking bezig",

@@ -5254,7 +5254,10 @@
             "overlaysRemotePathInvalid": "Musi to być Ścieżka zdalna lub jej podfolder",
             "defaultSaltToggle": "Domyślna sól (tylko hasło otwiera; po utworzeniu nie jest potrzebny zestaw ani magazyn kluczy)",
             "defaultSaltToggleHint": "Publiczna stała sól (styl rclone). Wymaga wygenerowanego hasła o wysokiej entropii. To samo hasło na wielu sejfach sprawia, że zaszyfrowane nazwy są powiązane bez klucza.",
-            "defaultSaltAttestation": "Wygenerowałem to hasło za pomocą menedżera haseł i rozumiem kompromis w zakresie powiązywalności."
+            "defaultSaltAttestation": "Wygenerowałem to hasło za pomocą menedżera haseł i rozumiem kompromis w zakresie powiązywalności.",
+            "defaultSaltNeedsStronger": "Wprowadź silne wygenerowane hasło, aby włączyć domyślny salt.",
+            "defaultSaltTier128": "128-bit (zalecane, wymaga hasła o długości 20+ znaków)",
+            "defaultSaltTier256": "256-bit (bardziej restrykcyjne, wymaga hasła o długości 39+ znaków)"
         },
         "modalGuard": {
             "busyTitle": "Operacja w toku",

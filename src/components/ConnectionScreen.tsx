@@ -3254,7 +3254,17 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     </div>
                                                 </label>
 
-                                                {/* Two-tier selector (appears when considering default salt or always for clarity) */}
+                                                {/* #9 (Ehud): the toggle is entropy-gated (strengthLevel 4 + length),
+                                                    so without feedback it reads as "broken". Say why, with a live
+                                                    counter, when it is disabled by the password (not by a locked binding). */}
+                                                {aeroCryptKind === 'aerocrypt' && !overlayFieldsLocked && !canToggleDefaultSalt && (
+                                                    <span className="ml-12 text-xs text-amber-600 dark:text-amber-400 leading-relaxed">
+                                                        {t('aerocryptProfile.defaultSaltNeedsStronger') || 'Enter a Strong generated password to turn on default salt.'} ({pwLen}/{requiredLen})
+                                                    </span>
+                                                )}
+
+                                                {/* Two-tier selector: the tier sets the password length required to
+                                                    enable default salt (128-bit: 20+ chars, 256-bit: 39+ chars). */}
                                                 {aeroCryptKind === 'aerocrypt' && (
                                                     <div className="ml-12 mt-1 flex items-center gap-3 text-xs">
                                                         <label className="flex items-center gap-1.5">
@@ -3265,7 +3275,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                                 onChange={() => setAeroCryptDefaultSaltStrength('128')}
                                                                 disabled={overlayFieldsLocked}
                                                             />
-                                                            <span>128-bit (recommended)</span>
+                                                            <span>{t('aerocryptProfile.defaultSaltTier128') || '128-bit (recommended, needs a 20+ character password)'}</span>
                                                         </label>
                                                         <label className="flex items-center gap-1.5">
                                                             <input
@@ -3275,7 +3285,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                                 onChange={() => setAeroCryptDefaultSaltStrength('256')}
                                                                 disabled={overlayFieldsLocked}
                                                             />
-                                                            <span>256-bit (stricter)</span>
+                                                            <span>{t('aerocryptProfile.defaultSaltTier256') || '256-bit (stricter, needs a 39+ character password)'}</span>
                                                         </label>
                                                     </div>
                                                 )}

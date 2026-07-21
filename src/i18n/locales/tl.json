@@ -5273,7 +5273,10 @@
             "overlaysRemotePathInvalid": "Dapat itong ang Remote Path o isang subfolder nito",
             "defaultSaltToggle": "Default salt (password lang ang nagbubukas; walang kailangang kit o keystore pagkatapos gawin)",
             "defaultSaltToggleHint": "Pampublikong constant salt (rclone-style). Nangangailangan ng high-entropy na generated password. Ang parehong password sa maraming vault ay nagpapagawang naka-link ang mga encrypted name nang walang key.",
-            "defaultSaltAttestation": "Gumawa ako ng password na ito gamit ang password manager at nauunawaan ang trade-off ng kakayahang i-link."
+            "defaultSaltAttestation": "Gumawa ako ng password na ito gamit ang password manager at nauunawaan ang trade-off ng kakayahang i-link.",
+            "defaultSaltNeedsStronger": "Maglagay ng malakas na binuong password para i-on ang default na salt.",
+            "defaultSaltTier128": "128-bit (inirerekomenda, kailangan ng password na 20+ karakter)",
+            "defaultSaltTier256": "256-bit (mas mahigpit, kailangan ng password na 39+ karakter)"
         },
         "modalGuard": {
             "busyTitle": "May isinasagawang operasyon",

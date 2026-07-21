@@ -5254,7 +5254,10 @@
             "overlaysRemotePathInvalid": "Phải là Đường dẫn từ xa hoặc thư mục con của nó",
             "defaultSaltToggle": "Muối mặc định (chỉ mật khẩu mở; không cần bộ công cụ hay kho khóa sau khi tạo)",
             "defaultSaltToggleHint": "Muối hằng số công khai (kiểu rclone). Yêu cầu mật khẩu được tạo có độ entropy cao. Cùng một mật khẩu trên nhiều kho làm cho tên đã mã hóa có thể liên kết mà không cần khóa.",
-            "defaultSaltAttestation": "Tôi đã tạo mật khẩu này bằng trình quản lý mật khẩu và hiểu sự đánh đổi về khả năng liên kết."
+            "defaultSaltAttestation": "Tôi đã tạo mật khẩu này bằng trình quản lý mật khẩu và hiểu sự đánh đổi về khả năng liên kết.",
+            "defaultSaltNeedsStronger": "Nhập mật khẩu mạnh đã tạo để bật salt mặc định.",
+            "defaultSaltTier128": "128-bit (khuyến nghị, cần mật khẩu 20+ ký tự)",
+            "defaultSaltTier256": "256-bit (nghiêm ngặt hơn, cần mật khẩu 39+ ký tự)"
         },
         "modalGuard": {
             "busyTitle": "Đang thực hiện thao tác",

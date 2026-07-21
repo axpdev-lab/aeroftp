@@ -5254,7 +5254,10 @@
             "overlaysRemotePathInvalid": "원격 경로이거나 그 하위 폴더여야 합니다",
             "defaultSaltToggle": "기본 솔트 (비밀번호만으로 열림; 생성 후 키트나 키스토어 필요 없음)",
             "defaultSaltToggleHint": "공개 상수 솔트 (rclone-style). 높은 엔트로피의 생성된 비밀번호가 필요합니다. 여러 볼트에서 동일한 비밀번호를 사용하면 키 없이 암호화된 이름을 연결할 수 있게 됩니다.",
-            "defaultSaltAttestation": "이 비밀번호를 비밀번호 관리자로 생성했으며 연결 가능성의 절충을 이해합니다."
+            "defaultSaltAttestation": "이 비밀번호를 비밀번호 관리자로 생성했으며 연결 가능성의 절충을 이해합니다.",
+            "defaultSaltNeedsStronger": "기본 솔트를 켜려면 강력하게 생성된 비밀번호를 입력하세요.",
+            "defaultSaltTier128": "128-bit (권장, 20+자 비밀번호 필요)",
+            "defaultSaltTier256": "256-bit (더 엄격함, 39+자 비밀번호 필요)"
         },
         "modalGuard": {
             "busyTitle": "작업 진행 중",

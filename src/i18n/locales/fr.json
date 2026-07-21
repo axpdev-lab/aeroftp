@@ -5254,7 +5254,10 @@
             "overlaysRemotePathInvalid": "Doit être le Chemin distant ou un de ses sous-dossiers",
             "defaultSaltToggle": "Sel par défaut (seul le mot de passe ouvre ; aucun kit ou magasin de clés nécessaire après création)",
             "defaultSaltToggleHint": "Sel constant public (style rclone). Nécessite un mot de passe généré à haute entropie. Le même mot de passe sur plusieurs coffres rend les noms chiffrés associables sans la clé.",
-            "defaultSaltAttestation": "J'ai généré ce mot de passe avec un gestionnaire de mots de passe et je comprends le compromis de traçabilité."
+            "defaultSaltAttestation": "J'ai généré ce mot de passe avec un gestionnaire de mots de passe et je comprends le compromis de traçabilité.",
+            "defaultSaltNeedsStronger": "Saisissez un mot de passe généré fort pour activer le sel par défaut.",
+            "defaultSaltTier128": "128-bit (recommandé, nécessite un mot de passe de 20+ caractères)",
+            "defaultSaltTier256": "256-bit (plus strict, nécessite un mot de passe de 39+ caractères)"
         },
         "modalGuard": {
             "busyTitle": "Opération en cours",

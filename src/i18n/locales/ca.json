@@ -5273,7 +5273,10 @@
             "overlaysRemotePathInvalid": "Ha de ser la Ruta remota o una subcarpeta d'aquesta",
             "defaultSaltToggle": "Sal per defecte (només amb la contrasenya s'obre; no cal kit ni magatzem de claus després de crear)",
             "defaultSaltToggleHint": "Sal constant pública (estil rclone). Requereix una contrasenya generada d'alta entropia. La mateixa contrasenya en múltiples cofres fa que els noms xifrats siguin enllaçables sense la clau.",
-            "defaultSaltAttestation": "He generat aquesta contrasenya amb un gestor de contrasenyes i entenc el compromís de vinculabilitat."
+            "defaultSaltAttestation": "He generat aquesta contrasenya amb un gestor de contrasenyes i entenc el compromís de vinculabilitat.",
+            "defaultSaltNeedsStronger": "Introduïu una contrasenya generada forta per activar la sal predeterminada.",
+            "defaultSaltTier128": "128-bit (recomanat, necessita una contrasenya de 20+ caràcters)",
+            "defaultSaltTier256": "256-bit (més estricte, necessita una contrasenya de 39+ caràcters)"
         },
         "modalGuard": {
             "busyTitle": "Operació en curs",

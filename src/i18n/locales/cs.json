@@ -5254,7 +5254,10 @@
             "overlaysRemotePathInvalid": "Musí to být Vzdálená cesta nebo její podsložka",
             "defaultSaltToggle": "Výchozí sůl (pouze heslo otevírá; po vytvoření není potřeba sada ani úložiště klíčů)",
             "defaultSaltToggleHint": "Veřejná konstantní sůl (rclone-style). Vyžaduje vygenerované heslo s vysokou entropií. Stejné heslo na více trezorech činí šifrované názvy propojitelné bez klíče.",
-            "defaultSaltAttestation": "Vygeneroval jsem toto heslo pomocí správce hesel a rozumím kompromisu ohledně propojování."
+            "defaultSaltAttestation": "Vygeneroval jsem toto heslo pomocí správce hesel a rozumím kompromisu ohledně propojování.",
+            "defaultSaltNeedsStronger": "Zadejte silné vygenerované heslo pro zapnutí výchozího saltu.",
+            "defaultSaltTier128": "128-bit (doporučeno, vyžaduje heslo o délce 20+ znaků)",
+            "defaultSaltTier256": "256-bit (přísnější, vyžaduje heslo o délce 39+ znaků)"
         },
         "modalGuard": {
             "busyTitle": "Probíhá operace",

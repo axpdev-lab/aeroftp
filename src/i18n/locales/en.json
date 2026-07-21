@@ -5272,7 +5272,10 @@
       "headerToggleHint": "Default is headerless (tamper-evident, zero remote footprint). Enable to store the configuration on the remote instead of your local keystore.",
       "defaultSaltToggle": "Default salt (password alone opens; no kit or keystore needed after create)",
       "defaultSaltToggleHint": "Public constant salt (rclone-style). Requires a generated high-entropy password. Same password on multiple vaults makes encrypted names linkable without the key.",
-      "defaultSaltAttestation": "I generated this password with a password manager and understand the linkability tradeoff."
+      "defaultSaltAttestation": "I generated this password with a password manager and understand the linkability tradeoff.",
+      "defaultSaltNeedsStronger": "Enter a Strong generated password to turn on default salt.",
+      "defaultSaltTier128": "128-bit (recommended, needs a 20+ character password)",
+      "defaultSaltTier256": "256-bit (stricter, needs a 39+ character password)"
     },
     "modalView": {
       "listView": "List view",

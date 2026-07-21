@@ -5273,7 +5273,10 @@
             "overlaysRemotePathInvalid": "Verður að vera Fjarslóðin eða undirmappa hennar",
             "defaultSaltToggle": "Sjálfgefið salt (aðeins lykilorð opnar; engin pakkning eða lyklageymsla þarf eftir stofnun)",
             "defaultSaltToggleHint": "Opinbert fast salt (rclone-stíll). Krefst myndaðs lykilorðs með mikilli óreiðu. Sama lykilorð á mörgum geymslum gerir dulrituð nöfn tengjanleg án lykils.",
-            "defaultSaltAttestation": "Ég bjó til þetta lykilorð með lykilorðastjóra og skil tengjanleikaviðskiptin."
+            "defaultSaltAttestation": "Ég bjó til þetta lykilorð með lykilorðastjóra og skil tengjanleikaviðskiptin.",
+            "defaultSaltNeedsStronger": "Sláðu inn sterkt myndað lykilorð til að kveikja á sjálfgefna saltinu.",
+            "defaultSaltTier128": "128-bit (mælt með, þarf lykilorð með 20+ stöfum)",
+            "defaultSaltTier256": "256-bit (strangara, þarf lykilorð með 39+ stöfum)"
         },
         "modalGuard": {
             "busyTitle": "Aðgerð í gangi",

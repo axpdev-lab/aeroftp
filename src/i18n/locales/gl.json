@@ -5273,7 +5273,10 @@
             "overlaysRemotePathInvalid": "Debe ser a Ruta remota ou un subcartafol dela",
             "defaultSaltToggle": "Sal predeterminada (só o contrasinal abre; non se necesita kit nin almacén de chaves despois de crear)",
             "defaultSaltToggleHint": "Sal constante pública (estilo rclone). Require un contrasinal xerado de alta entropía. O mesmo contrasinal en varias bóvedas fai que os nomes cifrados sexan ligables sen a chave.",
-            "defaultSaltAttestation": "Xerei este contrasinal cun xestor de contrasinais e entendo o compromiso de ligabilidade."
+            "defaultSaltAttestation": "Xerei este contrasinal cun xestor de contrasinais e entendo o compromiso de ligabilidade.",
+            "defaultSaltNeedsStronger": "Introduce un contrasinal xerado forte para activar o sal predeterminado.",
+            "defaultSaltTier128": "128-bit (recomendado, precisa un contrasinal de 20+ caracteres)",
+            "defaultSaltTier256": "256-bit (máis estrito, precisa un contrasinal de 39+ caracteres)"
         },
         "modalGuard": {
             "busyTitle": "Operación en curso",

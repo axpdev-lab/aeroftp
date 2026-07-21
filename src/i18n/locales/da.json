@@ -5254,7 +5254,10 @@
             "overlaysRemotePathInvalid": "Skal være Fjernstien eller en undermappe af den",
             "defaultSaltToggle": "Standard salt (kun adgangskode åbner; ingen kit eller nøglelager nødvendigt efter oprettelse)",
             "defaultSaltToggleHint": "Offentlig konstant salt (rclone-style). Kræver et genereret høj-entropi adgangskode. Samme adgangskode på flere vaults gør krypterede navne linkbare uden nøglen.",
-            "defaultSaltAttestation": "Jeg genererede denne adgangskode med en adgangskodehåndtering og forstår linkbarheds-kompromiset."
+            "defaultSaltAttestation": "Jeg genererede denne adgangskode med en adgangskodehåndtering og forstår linkbarheds-kompromiset.",
+            "defaultSaltNeedsStronger": "Indtast en stærk genereret adgangskode for at aktivere standardsaltet.",
+            "defaultSaltTier128": "128-bit (anbefales, kræver en adgangskode på 20+ tegn)",
+            "defaultSaltTier256": "256-bit (strengere, kræver en adgangskode på 39+ tegn)"
         },
         "modalGuard": {
             "busyTitle": "Handling i gang",

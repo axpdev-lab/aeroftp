@@ -5262,7 +5262,10 @@
             "overlaysRemotePathInvalid": "Deve essere il Percorso remoto o una sua sottocartella",
             "defaultSaltToggle": "Sale predefinito (solo la password apre; dopo la creazione non serve kit o keystore)",
             "defaultSaltToggleHint": "Sale costante pubblico (stile rclone). Richiede una password generata ad alta entropia. La stessa password su più vault rende i nomi criptati collegabili senza la chiave.",
-            "defaultSaltAttestation": "Ho generato questa password con un gestore password e comprendo il compromesso di collegabilità."
+            "defaultSaltAttestation": "Ho generato questa password con un gestore password e comprendo il compromesso di collegabilità.",
+            "defaultSaltNeedsStronger": "Inserisci una password generata robusta per attivare il salt predefinito.",
+            "defaultSaltTier128": "128-bit (consigliato, richiede una password di 20+ caratteri)",
+            "defaultSaltTier256": "256-bit (più restrittivo, richiede una password di 39+ caratteri)"
         },
         "modalGuard": {
             "busyTitle": "Operazione in corso",

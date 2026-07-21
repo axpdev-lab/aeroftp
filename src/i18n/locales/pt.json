@@ -5254,7 +5254,10 @@
             "overlaysRemotePathInvalid": "Deve ser o Caminho remoto ou uma subpasta dele",
             "defaultSaltToggle": "Sal padrão (apenas a senha abre; nenhum kit ou armazenamento de chaves necessário após criar)",
             "defaultSaltToggleHint": "Sal constante público (estilo rclone). Requer uma senha gerada de alta entropia. A mesma senha em múltiplos cofres torna os nomes criptografados vinculáveis sem a chave.",
-            "defaultSaltAttestation": "Gerei esta senha com um gerenciador de senhas e entendo o compromisso de vinculabilidade."
+            "defaultSaltAttestation": "Gerei esta senha com um gerenciador de senhas e entendo o compromisso de vinculabilidade.",
+            "defaultSaltNeedsStronger": "Insira uma senha gerada forte para ativar o sal padrão.",
+            "defaultSaltTier128": "128-bit (recomendado, precisa de uma senha de 20+ caracteres)",
+            "defaultSaltTier256": "256-bit (mais rigoroso, precisa de uma senha de 39+ caracteres)"
         },
         "modalGuard": {
             "busyTitle": "Operação em curso",

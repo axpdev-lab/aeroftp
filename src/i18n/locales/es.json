@@ -5254,7 +5254,10 @@
             "overlaysRemotePathInvalid": "Debe ser la Ruta remota o una subcarpeta de ella",
             "defaultSaltToggle": "Sal por defecto (solo la contraseña abre; no se necesita kit ni almacén de claves tras crear)",
             "defaultSaltToggleHint": "Sal constante pública (rclone-style). Requiere una contraseña generada de alta entropía. Usar la misma contraseña en múltiples bóvedas hace que los nombres cifrados sean vinculables sin la clave.",
-            "defaultSaltAttestation": "Generé esta contraseña con un gestor de contraseñas y entiendo el compromiso de vinculabilidad."
+            "defaultSaltAttestation": "Generé esta contraseña con un gestor de contraseñas y entiendo el compromiso de vinculabilidad.",
+            "defaultSaltNeedsStronger": "Introduce una contraseña generada segura para activar la sal predeterminada.",
+            "defaultSaltTier128": "128-bit (recomendado, necesita una contraseña de 20+ caracteres)",
+            "defaultSaltTier256": "256-bit (más estricto, necesita una contraseña de 39+ caracteres)"
         },
         "modalGuard": {
             "busyTitle": "Operación en curso",
