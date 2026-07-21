@@ -584,13 +584,19 @@ the force-abort drain-ceiling path (executor drain timeout) a sample that
 resolves after the fold is recorded late and not counted: an honest
 under-count, never a fabricated value. This
 covers every DAG production path whose provider routes through
-`send_with_retry` (15 provider files: whole-file GET/PUT, multipart UploadPart
-fan-out, ranged segments, batch/sync) with zero per-provider surgery. Paths
+`send_with_retry` (15 provider files). Coverage is per call site, not per
+provider: within one provider only the operations that flow through
+`send_with_retry` record TTFB. Example, verified live on Backblaze B2 and
+MinIO: the S3 provider signs downloads through `s3_request` (which uses
+`send_with_retry`, TTFB recorded) but issues uploads through raw
+`client.send` (no TTFB), so an S3 download job reports `ttfb_samples == file
+count` while an upload job honestly reports zero. Paths
 that record nothing, keeping their latency inside `run_nanos_total`: FTP/FTPS
 and SFTP (non-HTTP), HTTP providers that bypass `send_with_retry` with raw
 `client.execute`/`send` (webdav, dropbox, google_drive, onedrive, box,
 cloudinary, drime_cloud, google_photos, imagekit, immich, opendrive,
-uploadcare, yandex_disk, mega_native, oauth helpers), and MEGAcmd subprocess
+uploadcare, yandex_disk, mega_native, oauth helpers, and the non-`s3_request`
+S3 operations above), and MEGAcmd subprocess
 providers.
 
 The process resource sampler (`src-tauri/src/proc_stats.rs`: CPU user/system
