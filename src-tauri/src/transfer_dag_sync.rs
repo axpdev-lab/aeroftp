@@ -83,8 +83,8 @@ use crate::transfer_dag::executor::{execute_dag, DagNodeRunner, NodeFuture, Node
 use crate::transfer_dag::graph::{TransferNode, TransferNodeKind};
 use crate::transfer_dag::{
     AimdConfig, AimdController, DagObserver, DiskLeaseRequest, EngineTransferStats, FileAdmission,
-    NoopDagObserver, StreamingConfig, TransferBudget, TransferCapabilities, TransferDagBuilder,
-    TransferDagMetrics, TransferDirection, TransferPriority, TransferWorkItem, WorkSource,
+    StreamingConfig, TransferBudget, TransferCapabilities, TransferDagBuilder, TransferDagMetrics,
+    TransferDirection, TransferPriority, TransferWorkItem, WorkSource,
 };
 
 /// Bounded capacity of the transfer-job channel. The DAG file-slot budget is
@@ -381,17 +381,48 @@ struct TransferJob {
     /// Index into [`SyncDagPlan::transfers`].
     transfer_index: usize,
     lane: SyncTransferLane,
-    /// Resolved once the driver has performed the transfer. Carries the
-    /// user-visible bytes for this file (0 on failure/skip) so the admitted
+    /// Resolved once the driver has performed the transfer. Carries the byte
+    /// attestation for this file (zero on failure/skip) so the admitted
     /// subgraph can attest per-file byte totals (DAG-P2-07).
-    ack: oneshot::Sender<u64>,
+    ack: oneshot::Sender<SyncByteAttestation>,
 }
 
-/// User-visible bytes a sync file outcome transferred (0 for skip/failure).
-fn sync_outcome_bytes(outcome: &FileOutcome) -> u64 {
+/// Byte attestation the sync driver sends through the job ack. `logical` is
+/// the user-visible operation size; `wire` is what actually crossed the
+/// provider data path (the rsync delta payload when the delta path carried
+/// the transfer, the full size otherwise).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct SyncByteAttestation {
+    logical: u64,
+    wire: u64,
+}
+
+/// Byte attestation of a sync file outcome (zero for skip/failure). Logical
+/// stays the user-visible `bytes`; when the rsync delta path carried the
+/// transfer the wire figure is the real delta traffic (`bytes_sent` on
+/// upload, `bytes_received` on download) instead of the full file size.
+/// Paths without an honest wire figure fall back to the logical size.
+fn sync_outcome_bytes(outcome: &FileOutcome) -> SyncByteAttestation {
     match outcome {
-        FileOutcome::Uploaded { bytes, .. } | FileOutcome::Downloaded { bytes, .. } => *bytes,
-        _ => 0,
+        FileOutcome::Uploaded {
+            bytes, delta_stats, ..
+        } => SyncByteAttestation {
+            logical: *bytes,
+            wire: delta_stats
+                .as_ref()
+                .map(|stats| stats.bytes_sent)
+                .unwrap_or(*bytes),
+        },
+        FileOutcome::Downloaded {
+            bytes, delta_stats, ..
+        } => SyncByteAttestation {
+            logical: *bytes,
+            wire: delta_stats
+                .as_ref()
+                .map(|stats| stats.bytes_received)
+                .unwrap_or(*bytes),
+        },
+        _ => SyncByteAttestation::default(),
     }
 }
 
@@ -448,7 +479,7 @@ fn build_sync_runner(
                 }
                 dispatched[transfer_index] = true;
             }
-            let (ack_tx, ack_rx) = oneshot::channel::<u64>();
+            let (ack_tx, ack_rx) = oneshot::channel::<SyncByteAttestation>();
             if job_tx
                 .send(TransferJob {
                     transfer_index,
@@ -536,14 +567,17 @@ async fn run_one_sync_file(
     let transfer_index = item.index;
     let lane = ctx.lane;
     let dispatched = Arc::new(std::sync::atomic::AtomicBool::new(false));
-    // Byte total attested by the driver through the job ack (0 until then).
-    let acked_bytes = Arc::new(std::sync::atomic::AtomicU64::new(0));
-    let acked_bytes_out = Arc::clone(&acked_bytes);
+    // Byte attestation from the driver through the job ack (zero until then).
+    let acked_logical = Arc::new(std::sync::atomic::AtomicU64::new(0));
+    let acked_wire = Arc::new(std::sync::atomic::AtomicU64::new(0));
+    let acked_logical_out = Arc::clone(&acked_logical);
+    let acked_wire_out = Arc::clone(&acked_wire);
 
     let runner: Arc<dyn DagNodeRunner> = Arc::new(move |node: TransferNode| -> NodeFuture {
         let job_tx = job_tx.clone();
         let dispatched = Arc::clone(&dispatched);
-        let acked_bytes = Arc::clone(&acked_bytes);
+        let acked_logical = Arc::clone(&acked_logical);
+        let acked_wire = Arc::clone(&acked_wire);
         Box::pin(async move {
             if !matches!(
                 node.kind,
@@ -558,7 +592,7 @@ async fn run_one_sync_file(
             if dispatched.swap(true, std::sync::atomic::Ordering::SeqCst) {
                 return NodeOutcome::Completed;
             }
-            let (ack_tx, ack_rx) = oneshot::channel::<u64>();
+            let (ack_tx, ack_rx) = oneshot::channel::<SyncByteAttestation>();
             if job_tx
                 .send(TransferJob {
                     transfer_index,
@@ -571,19 +605,20 @@ async fn run_one_sync_file(
                 // The driver is gone; nothing more this node can do.
                 return NodeOutcome::Completed;
             }
-            if let Ok(bytes) = ack_rx.await {
-                acked_bytes.store(bytes, std::sync::atomic::Ordering::SeqCst);
+            if let Ok(attestation) = ack_rx.await {
+                acked_logical.store(attestation.logical, std::sync::atomic::Ordering::SeqCst);
+                acked_wire.store(attestation.wire, std::sync::atomic::Ordering::SeqCst);
             }
             NodeOutcome::Completed
         })
     });
 
-    let observer: Arc<dyn DagObserver> = Arc::new(NoopDagObserver);
+    let observer = Arc::new(crate::transfer_dag::observer::CollectingDagObserver::default());
     let mut metrics = match execute_dag(
         &shaped.dag,
         &ctx.manager,
         runner,
-        observer,
+        Arc::clone(&observer) as Arc<dyn DagObserver>,
         Some(Arc::clone(&ctx.aimd)),
     )
     .await
@@ -591,20 +626,26 @@ async fn run_one_sync_file(
         Ok(summary) => summary.metrics,
         Err(error) => {
             tracing::warn!("Sync transfer file graph stopped early: {}", error);
-            TransferDagMetrics::default()
+            // The executor's single finalize still ran for a graph that
+            // entered the scheduling loop: keep the partial wait/run/slot_peak
+            // the file measured instead of dropping them with its bytes.
+            observer.metrics()
         }
     };
 
-    // Fold driver-attested bytes into the executor's timing metrics. Byte
-    // semantics are directional (upload moves no local payload; a download
-    // materializes the whole object locally).
-    let bytes = acked_bytes_out.load(std::sync::atomic::Ordering::SeqCst);
-    metrics.logical_bytes = metrics.logical_bytes.saturating_add(bytes);
-    metrics.wire_bytes = metrics.wire_bytes.saturating_add(bytes);
+    // Fold driver-attested bytes into the executor's timing metrics. Logical
+    // is the user-visible size; wire is the real delta payload when the rsync
+    // delta path carried the transfer, the logical size otherwise. Local
+    // payload semantics are directional (a download materializes the whole
+    // object locally).
+    let logical = acked_logical_out.load(std::sync::atomic::Ordering::SeqCst);
+    let wire = acked_wire_out.load(std::sync::atomic::Ordering::SeqCst);
+    metrics.logical_bytes = metrics.logical_bytes.saturating_add(logical);
+    metrics.wire_bytes = metrics.wire_bytes.saturating_add(wire);
     if item.direction == TransferDirection::Download {
-        metrics.local_payload_bytes = metrics.local_payload_bytes.saturating_add(bytes);
+        metrics.local_payload_bytes = metrics.local_payload_bytes.saturating_add(logical);
     }
-    metrics.bytes_transferred = metrics.bytes_transferred.saturating_add(bytes);
+    metrics.bytes_transferred = metrics.bytes_transferred.saturating_add(logical);
     metrics
 }
 
@@ -848,7 +889,7 @@ async fn drive_sync_transfers(
                         workers.push_back(completion.worker);
                         completion.progress.replay(sink);
                         let transfer = &transfers[completion.job.transfer_index];
-                        let bytes = sync_outcome_bytes(&completion.outcome);
+                        let attestation = sync_outcome_bytes(&completion.outcome);
                         apply_sync_tree_outcome(
                             report,
                             &transfer.rel,
@@ -857,7 +898,7 @@ async fn drive_sync_transfers(
                             transfer.decision_policy,
                             sink,
                         );
-                        let _ = completion.job.ack.send(bytes);
+                        let _ = completion.job.ack.send(attestation);
                     }
                     Err(error) => {
                         // A provider worker panic is an executor fault, just
@@ -898,9 +939,9 @@ async fn drive_sync_transfers(
                             sink,
                             error_correction,
                         ).await;
-                        let bytes = sync_outcome_bytes(&outcome);
+                        let attestation = sync_outcome_bytes(&outcome);
                         apply_sync_tree_outcome(report, &transfer.rel, transfer.op, outcome, transfer.decision_policy, sink);
-                        let _ = job.ack.send(bytes);
+                        let _ = job.ack.send(attestation);
                     }
                     Some(job) if matches!(job.lane, SyncTransferLane::NormalPool) => {
                         pending_normals.push_back(job);
@@ -922,9 +963,9 @@ async fn drive_sync_transfers(
                             sink,
                             error_correction,
                         ).await;
-                        let bytes = sync_outcome_bytes(&outcome);
+                        let attestation = sync_outcome_bytes(&outcome);
                         apply_sync_tree_outcome(report, &transfer.rel, transfer.op, outcome, transfer.decision_policy, sink);
-                        let _ = job.ack.send(bytes);
+                        let _ = job.ack.send(attestation);
                     }
                     None => channel_closed = true,
                 }
@@ -1199,6 +1240,16 @@ pub async fn execute_sync_dag(
         // Drop the original handle so only the frontier's clones keep the
         // channel open; the driver sees close once the frontier is done.
         drop(job_tx);
+        // DAG-P2-07 (block C, job-level attribution): the owning TTFB guard
+        // wraps the whole frontier, so every per-transfer subgraph's
+        // execute_dag nests and each real HTTP first-byte sample is counted
+        // exactly once for the job (per-file subgraph metrics report
+        // ttfb_samples == 0). Folded into the job metrics after the join.
+        // DAG-P2-07 (block F): bracket the transfer phase with its own clock.
+        // The slow-loop throughput denominator must exclude the scan/plan
+        // phases that `start` spans.
+        let transfer_started_at = Instant::now();
+        let ttfb_guard = crate::transfer_dag::ttfb::TtfbRecorder::install();
         let stream_future = async move {
             crate::transfer_dag::run_streaming(source, streaming_config, move |item, admission| {
                 let ctx = Arc::clone(&ctx);
@@ -1221,18 +1272,32 @@ pub async fn execute_sync_dag(
             &opts.error_correction,
             normal_workers,
         );
-        let (stream_summary, ()) = tokio::join!(stream_future, driver_future);
+        let (mut stream_summary, ()) = tokio::join!(stream_future, driver_future);
+        let (ttfb_nanos, ttfb_samples) = ttfb_guard.totals();
+        drop(ttfb_guard);
+        stream_summary.metrics.ttfb_nanos_total = stream_summary
+            .metrics
+            .ttfb_nanos_total
+            .saturating_add(ttfb_nanos);
+        stream_summary.metrics.ttfb_samples = stream_summary
+            .metrics
+            .ttfb_samples
+            .saturating_add(u32::try_from(ttfb_samples).unwrap_or(u32::MAX));
         // DAG-P2-07 (block F): feed this sync's populated telemetry into the
         // slow optimization loop. A tree sync never aborts mid-run (the graph
-        // has no cancel token), so the only no-poison guard needed is the
+        // has no cancel token, so the engine stats always report
+        // `cancelled: false` here), so the no-poison guards are the
         // degenerate-job check inside `from_metrics` (a scan that moved zero
-        // bytes yields no observation). The controller guards `--aimd-disable`
-        // and the no-profile case.
-        if let Some(obs) = crate::transfer_dag::JobThroughputObservation::from_metrics(
-            &stream_summary.metrics,
-            start.elapsed(),
-        ) {
-            aimd_for_slow_loop.observe_job(crate::transfer_dag::AdaptiveClass::File, obs);
+        // bytes yields no observation) and skipping a run with per-file
+        // failures (a retry storm can depress or inflate the baseline). The
+        // controller guards `--aimd-disable` and the no-profile case.
+        if report.errors.is_empty() {
+            if let Some(obs) = crate::transfer_dag::JobThroughputObservation::from_metrics(
+                &stream_summary.metrics,
+                transfer_started_at.elapsed(),
+            ) {
+                aimd_for_slow_loop.observe_job(crate::transfer_dag::AdaptiveClass::File, obs);
+            }
         }
         // DAG-P2-07 (block E): capture the folded job-level totals for the
         // single engine-stats source, built once at job end below. This
@@ -1870,7 +1935,7 @@ mod tests {
             async move {
                 while let Some(job) = job_rx.recv().await {
                     seen.lock().unwrap().push(job.transfer_index);
-                    let _ = job.ack.send(0);
+                    let _ = job.ack.send(SyncByteAttestation::default());
                 }
             }
         };
@@ -2083,7 +2148,7 @@ mod tests {
             async move {
                 while let Some(job) = job_rx.recv().await {
                     seen.lock().unwrap().push(job.transfer_index);
-                    let _ = job.ack.send(0);
+                    let _ = job.ack.send(SyncByteAttestation::default());
                 }
             }
         };
@@ -2141,7 +2206,7 @@ mod tests {
             async move {
                 while let Some(job) = job_rx.recv().await {
                     count.fetch_add(1, Ordering::SeqCst);
-                    let _ = job.ack.send(0);
+                    let _ = job.ack.send(SyncByteAttestation::default());
                 }
             }
         };
@@ -2203,7 +2268,13 @@ mod tests {
             let transfers = Arc::clone(&transfers);
             async move {
                 while let Some(job) = job_rx.recv().await {
-                    let _ = job.ack.send(transfers[job.transfer_index].total);
+                    // A success-driver: every job acks its planned byte total
+                    // (classic path: wire equals logical).
+                    let bytes = transfers[job.transfer_index].total;
+                    let _ = job.ack.send(SyncByteAttestation {
+                        logical: bytes,
+                        wire: bytes,
+                    });
                 }
             }
         };
@@ -2247,6 +2318,133 @@ mod tests {
             "executor timing survives the per-subgraph merge"
         );
         assert!(summary.metrics.slot_peak >= 1);
+    }
+
+    // ---- DAG-P2-07 fix wave (M1): honest wire bytes on the delta path ----
+
+    #[test]
+    fn sync_outcome_bytes_attests_delta_wire_not_full_size() {
+        // Upload delta: the wire figure is what the local side sent.
+        let upload = FileOutcome::Uploaded {
+            bytes: 1_000,
+            delta_stats: Some(crate::sync::DeltaTransferStats {
+                bytes_sent: 120,
+                bytes_received: 40,
+                total_size: 1_000,
+                speedup: 8.0,
+            }),
+            fallback_reason: None,
+            ec_status: None,
+        };
+        assert_eq!(
+            sync_outcome_bytes(&upload),
+            SyncByteAttestation {
+                logical: 1_000,
+                wire: 120,
+            },
+            "a delta upload's wire bytes are the delta payload, not the file size"
+        );
+
+        // Download delta: the wire figure is what the local side received.
+        let download = FileOutcome::Downloaded {
+            bytes: 1_000,
+            delta_stats: Some(crate::sync::DeltaTransferStats {
+                bytes_sent: 40,
+                bytes_received: 130,
+                total_size: 1_000,
+                speedup: 7.0,
+            }),
+            fallback_reason: None,
+            ec_status: None,
+        };
+        assert_eq!(
+            sync_outcome_bytes(&download),
+            SyncByteAttestation {
+                logical: 1_000,
+                wire: 130,
+            },
+            "a delta download's wire bytes are the received delta payload"
+        );
+
+        // Classic path: no honest wire figure exists, so wire falls back to
+        // the logical size.
+        let classic = FileOutcome::Uploaded {
+            bytes: 500,
+            delta_stats: None,
+            fallback_reason: None,
+            ec_status: None,
+        };
+        assert_eq!(
+            sync_outcome_bytes(&classic),
+            SyncByteAttestation {
+                logical: 500,
+                wire: 500,
+            }
+        );
+
+        // Skip/failure attest nothing.
+        let skipped = FileOutcome::Skipped {
+            reason: "same".to_string(),
+        };
+        assert_eq!(sync_outcome_bytes(&skipped), SyncByteAttestation::default());
+    }
+
+    /// A sync transfer carried by the delta path folds wire_bytes == delta
+    /// payload (not the full file size) into the job total through the
+    /// frontier, while logical stays the user-visible size.
+    #[tokio::test]
+    async fn streaming_sync_folds_delta_wire_bytes_into_job_total() {
+        let transfers = Arc::new(vec![PlannedTransfer {
+            rel: "delta.bin".to_string(),
+            op: "upload",
+            total: 1_000,
+            decision_policy: DeltaPolicy::Delta,
+            expected_sha256_hex: None,
+        }]);
+        let ctx = sync_stream_ctx();
+
+        let (job_tx, mut job_rx) = mpsc::channel::<TransferJob>(JOB_CHANNEL_CAPACITY);
+        // A delta driver: the file's logical size is 1000 but only the 120
+        // byte delta payload crossed the wire.
+        let driver = async move {
+            while let Some(job) = job_rx.recv().await {
+                let _ = job.ack.send(SyncByteAttestation {
+                    logical: 1_000,
+                    wire: 120,
+                });
+            }
+        };
+
+        let source = SyncTransfersWorkSource {
+            transfers: Arc::clone(&transfers),
+            next: 0,
+        };
+        let stream_tx = job_tx.clone();
+        drop(job_tx);
+        let stream_future = async move {
+            crate::transfer_dag::run_streaming(
+                source,
+                StreamingConfig {
+                    backlog_cap: 8,
+                    active_file_cap: 2,
+                },
+                move |item, admission| {
+                    let ctx = Arc::clone(&ctx);
+                    let job_tx = stream_tx.clone();
+                    async move { run_one_sync_file(item, admission, ctx, job_tx).await }
+                },
+            )
+            .await
+        };
+        let (summary, ()) = tokio::join!(stream_future, driver);
+
+        assert_eq!(summary.items_admitted, 1);
+        assert_eq!(summary.metrics.logical_bytes, 1_000);
+        assert_eq!(summary.metrics.bytes_transferred, 1_000);
+        assert_eq!(
+            summary.metrics.wire_bytes, 120,
+            "wire bytes must be the delta payload, not the full file size"
+        );
     }
 
     /// SyncOptions.max_backlog maps into the streaming frontier (residual

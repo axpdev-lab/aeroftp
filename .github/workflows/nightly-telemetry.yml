@@ -43,6 +43,17 @@ jobs:
         working-directory: ./src-tauri
         run: cargo fmt --all -- --check
 
+      # cargo clippy / cargo test compile the full Tauri crate, whose
+      # glib/gtk/webkit build scripts fail on a bare runner without the
+      # system dev packages. Same set as cli-smoke.yml.
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev
+
       - name: Clippy (deny warnings)
         working-directory: ./src-tauri
         run: cargo clippy --all-targets -- -D warnings

@@ -414,6 +414,11 @@ pub enum SyncPhase {
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct DeltaTransferStats {
     pub bytes_sent: u64,
+    /// Bytes received by the local side. On a delta download this is the real
+    /// wire figure (the delta payload); on an upload it is the much smaller
+    /// signature/checksum traffic.
+    #[serde(default)]
+    pub bytes_received: u64,
     pub total_size: u64,
     /// Per-file ratio from rsync (`total_size / bytes_sent`). Zero when rsync
     /// didn't compute one (tiny or empty transfer): the directory-wide
@@ -460,6 +465,7 @@ impl DeltaTransferStats {
     pub(crate) fn from_rsync(stats: &crate::rsync_over_ssh::RsyncStats) -> Self {
         Self {
             bytes_sent: stats.bytes_sent,
+            bytes_received: stats.bytes_received,
             total_size: stats.total_size,
             speedup: stats.speedup,
         }
@@ -4521,6 +4527,7 @@ mod tests {
             bytes: total,
             delta_stats: Some(DeltaTransferStats {
                 bytes_sent,
+                bytes_received: 0,
                 total_size: total,
                 speedup,
             }),
@@ -4534,6 +4541,7 @@ mod tests {
             bytes: total,
             delta_stats: Some(DeltaTransferStats {
                 bytes_sent,
+                bytes_received: 0,
                 total_size: total,
                 speedup,
             }),

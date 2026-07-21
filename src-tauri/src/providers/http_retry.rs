@@ -70,7 +70,10 @@ fn calculate_delay(attempt: u32, config: &HttpRetryConfig) -> Duration {
 /// exactly once per attempt that reaches headers; a transport error has no
 /// first byte and records nothing.
 fn record_headers_received(start: std::time::Instant) {
-    crate::transfer_dag::ttfb::record_sample(start.elapsed().as_nanos() as u64);
+    // Saturate like the executor's duration_nanos: u128 nanos beyond u64
+    // range clamp to u64::MAX instead of wrapping.
+    let nanos = u64::try_from(start.elapsed().as_nanos()).unwrap_or(u64::MAX);
+    crate::transfer_dag::ttfb::record_sample(nanos);
 }
 
 /// Send an HTTP request with automatic retry on 429/5xx.

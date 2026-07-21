@@ -131,6 +131,7 @@ impl ProcessResourceSample {
 /// `comm` (field 2) may contain spaces and parentheses, so naive whitespace
 /// splitting misaligns every later field. Anchor on the LAST ')' instead:
 /// everything after it is whitespace-separated starting at field 3.
+#[cfg(any(target_os = "linux", test))]
 fn parse_stat_cpu_ticks(stat: &str) -> Option<(u64, u64)> {
     let after_comm = stat.get(stat.rfind(')')? + 1..)?;
     let fields: Vec<&str> = after_comm.split_whitespace().collect();
@@ -146,6 +147,7 @@ fn parse_stat_cpu_ticks(stat: &str) -> Option<(u64, u64)> {
 /// while statm's resident count is in pages and would need a second
 /// page-size lookup to convert. VmRSS also matches what standard tools
 /// (top, ps) report as RSS.
+#[cfg(any(target_os = "linux", test))]
 fn parse_status_vm_rss(status: &str) -> Option<u64> {
     for line in status.lines() {
         if let Some(rest) = line.strip_prefix("VmRSS:") {
@@ -164,6 +166,7 @@ fn parse_status_vm_rss(status: &str) -> Option<u64> {
 
 /// Counts entries of `/proc/self/fd`. `None` means the directory could not
 /// be read at all; callers treat that as "unknown", not as zero fds.
+#[cfg(any(target_os = "linux", test))]
 fn count_fds() -> Option<u32> {
     let entries = std::fs::read_dir("/proc/self/fd").ok()?;
     let mut count: u32 = 0;
@@ -197,6 +200,7 @@ fn clock_ticks_per_sec() -> u64 {
 
 /// Converts clock ticks to nanoseconds via a u128 intermediate so large
 /// uptimes cannot overflow the multiply.
+#[cfg(any(target_os = "linux", test))]
 fn ticks_to_nanos(ticks: u64, hz: u64) -> u64 {
     if hz == 0 {
         return 0;

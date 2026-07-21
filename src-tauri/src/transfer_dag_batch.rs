@@ -56,7 +56,7 @@ use crate::transfer_dag::executor::{execute_dag, DagNodeRunner, NodeFuture, Node
 use crate::transfer_dag::graph::{TransferNode, TransferNodeKind};
 use crate::transfer_dag::{
     AimdConfig, AimdController, DagObserver, DiskLeaseRequest, EngineTransferStats, FileAdmission,
-    NoopDagObserver, StreamingConfig, TransferCapabilities, TransferDagBuilder, TransferDagMetrics,
+    StreamingConfig, TransferCapabilities, TransferDagBuilder, TransferDagMetrics,
     TransferDirection, TransferGraphProfile, TransferPriority, TransferResourceManager,
     TransferSessionLease, TransferSessionPoolHandle, TransferWorkItem, WorkSource,
 };
@@ -267,22 +267,44 @@ where
         next: 0,
     };
     let streaming_config = batch_streaming_config(&config, &ctx.caps);
-    let streaming_summary =
+    // DAG-P2-07 (block C, job-level attribution): the owning TTFB guard wraps
+    // the whole frontier, so every per-file subgraph's execute_dag nests and
+    // each real HTTP first-byte sample is counted exactly once for the job
+    // (per-file subgraph metrics report ttfb_samples == 0). Folded below.
+    // DAG-P2-07 (block F): bracket the transfer phase with its own clock. The
+    // slow-loop throughput denominator must exclude the pre-frontier setup
+    // (caps/identity/AIMD construction) that `started_at` spans.
+    let transfer_started_at = Instant::now();
+    let ttfb_guard = crate::transfer_dag::ttfb::TtfbRecorder::install();
+    let mut streaming_summary =
         crate::transfer_dag::run_streaming(source, streaming_config, move |item, admission| {
             let ctx = Arc::clone(&ctx);
             async move { run_one_batch_file(item, admission, ctx).await }
         })
         .await;
+    let (ttfb_nanos, ttfb_samples) = ttfb_guard.totals();
+    drop(ttfb_guard);
+    streaming_summary.metrics.ttfb_nanos_total = streaming_summary
+        .metrics
+        .ttfb_nanos_total
+        .saturating_add(ttfb_nanos);
+    streaming_summary.metrics.ttfb_samples = streaming_summary
+        .metrics
+        .ttfb_samples
+        .saturating_add(u32::try_from(ttfb_samples).unwrap_or(u32::MAX));
     // DAG-P2-07 (block F): feed this job's populated throughput/wait/plateau
     // telemetry into the slow optimization loop, but only on a job that
-    // actually drained (never on cancellation, so a torn-down run cannot
-    // poison the learned profile). The controller itself is the guard for
-    // `--aimd-disable` and for the no-profile (test-injected) case.
+    // actually drained clean: never on cancellation (a torn-down run cannot
+    // poison the learned profile) and never with per-file failures (a
+    // retry-storm file can depress or inflate the baseline). The controller
+    // itself is the guard for `--aimd-disable` and for the no-profile
+    // (test-injected) case.
     let cancelled = cancel.load(Ordering::Relaxed);
-    if !cancelled {
+    let failed = progress.lock().await.failed;
+    if !cancelled && failed == 0 {
         if let Some(obs) = crate::transfer_dag::JobThroughputObservation::from_metrics(
             &streaming_summary.metrics,
-            started_at.elapsed(),
+            transfer_started_at.elapsed(),
         ) {
             aimd_for_slow_loop.observe_job(crate::transfer_dag::AdaptiveClass::File, obs);
         }
@@ -293,13 +315,23 @@ where
     // resource bracket into the single engine-level stats source, then surface
     // it on the result (CLI reads it in-band), publish it for the MCP accessor,
     // and emit the one GUI job-end event. This replaces the former
-    // diagnostics-only `tracing::debug` of the job totals.
-    let engine_stats = EngineTransferStats::from_job(
+    // diagnostics-only `tracing::debug` of the job totals. The wall clock is
+    // sampled once and reused for the result's `duration_ms`.
+    let wall_clock = started_at.elapsed();
+    let mut engine_stats = EngineTransferStats::from_job(
         streaming_summary.metrics.clone(),
-        started_at.elapsed().as_millis() as u64,
+        wall_clock.as_millis() as u64,
         resource_guard.and_then(|g| g.finish()),
     );
+    // The stats are still published/emitted on a cancelled job (the data is
+    // real), now labeled so consumers can tell a torn-down job from a
+    // completed one.
+    engine_stats.cancelled = cancelled;
     crate::transfer_dag::engine_stats::publish(engine_stats.clone());
+    // The `transfer_engine_stats` GUI event is batch-only for now: the sync
+    // runner sees only a `SyncProgressSink`, which has no transfer-event
+    // plumbing, so sync stats travel in-band on the `SyncReport` and through
+    // the MCP store.
     sink.emit_engine_stats(&engine_stats);
 
     let snapshot = progress.lock().await.clone();
@@ -309,7 +341,7 @@ where
         failed: snapshot.failed,
         total: snapshot.total,
         cancelled,
-        duration_ms: started_at.elapsed().as_millis() as u64,
+        duration_ms: wall_clock.as_millis() as u64,
         engine_stats: Some(engine_stats),
     };
 
@@ -563,12 +595,12 @@ where
         })
     };
 
-    let observer: Arc<dyn DagObserver> = Arc::new(NoopDagObserver);
+    let observer = Arc::new(crate::transfer_dag::observer::CollectingDagObserver::default());
     let mut metrics = match execute_dag(
         &shaped.dag,
         &ctx.resource_manager,
         runner,
-        observer,
+        Arc::clone(&observer) as Arc<dyn DagObserver>,
         Some(Arc::clone(&ctx.aimd)),
     )
     .await
@@ -576,7 +608,10 @@ where
         Ok(summary) => summary.metrics,
         Err(error) => {
             tracing::warn!("Batch transfer file graph stopped early: {}", error);
-            TransferDagMetrics::default()
+            // The executor's single finalize still ran for a graph that
+            // entered the scheduling loop: keep the partial wait/run/slot_peak
+            // the file measured instead of dropping them with its bytes.
+            observer.metrics()
         }
     };
 
@@ -1186,6 +1221,7 @@ mod tests {
     }
     use std::sync::Mutex as StdMutex;
     use std::time::Duration;
+    use tokio::sync::Barrier;
 
     /// (file id, part number) → (failure kind, optional Retry-After secs).
     type TypedPartFailMap =
@@ -1194,6 +1230,9 @@ mod tests {
     /// Scripted whole-file executor with optional multipart wire log.
     struct MockExecutor {
         fail: HashSet<String>,
+        /// Entries whose `execute` panics inside the node task, driving the
+        /// executor's TaskPanicked engine fault (the batch Err path).
+        panic: HashSet<String>,
         /// Typed whole-file failure overrides (kind + optional Retry-After secs).
         fail_typed: StdMutex<std::collections::HashMap<String, (TransferFailureKind, Option<u64>)>>,
         skip: HashSet<String>,
@@ -1222,12 +1261,18 @@ mod tests {
         cancelled: AtomicBool,
         /// Scripted per-entry attempt counts for the DAG-P2-07 retry metric.
         metered_attempts: StdMutex<std::collections::HashMap<String, u32>>,
+        /// When set, `execute` blocks on this barrier instead of the fixed
+        /// sleep: deterministic proof that N files are concurrently resident
+        /// (the concurrency tests rendezvous here; a serialized scheduler
+        /// deadlocks the barrier and the test's timeout fails).
+        rendezvous: Option<Arc<Barrier>>,
     }
 
     impl MockExecutor {
         fn new(session_capacity: usize) -> Self {
             Self {
                 fail: HashSet::new(),
+                panic: HashSet::new(),
                 fail_typed: StdMutex::new(std::collections::HashMap::new()),
                 skip: HashSet::new(),
                 executed: StdMutex::new(Vec::new()),
@@ -1252,6 +1297,7 @@ mod tests {
                 fail_complete_for: StdMutex::new(HashSet::new()),
                 cancelled: AtomicBool::new(false),
                 metered_attempts: StdMutex::new(std::collections::HashMap::new()),
+                rendezvous: None,
             }
         }
 
@@ -1299,6 +1345,13 @@ mod tests {
             self
         }
 
+        /// Hold every `execute` call on this barrier instead of the fixed
+        /// sleep, so the test provably fills the concurrent window.
+        fn with_rendezvous(mut self, barrier: Arc<Barrier>) -> Self {
+            self.rendezvous = Some(barrier);
+            self
+        }
+
         fn executed(&self) -> Vec<String> {
             self.executed.lock().unwrap().clone()
         }
@@ -1322,9 +1375,23 @@ mod tests {
             self.transfer_calls.fetch_add(1, AtomicOrdering::SeqCst);
             let now = self.in_flight.fetch_add(1, AtomicOrdering::SeqCst) + 1;
             self.peak.fetch_max(now, AtomicOrdering::SeqCst);
-            tokio::time::sleep(Duration::from_millis(15)).await;
+            match &self.rendezvous {
+                Some(barrier) => {
+                    barrier.wait().await;
+                }
+                None => {
+                    tokio::time::sleep(Duration::from_millis(15)).await;
+                }
+            }
             self.in_flight.fetch_sub(1, AtomicOrdering::SeqCst);
             self.executed.lock().unwrap().push(entry.id.clone());
+
+            if self.panic.contains(&entry.id) {
+                // Engine fault: the node task dies, execute_dag surfaces
+                // TaskPanicked after the earlier anchor nodes already
+                // measured their wait/run timing.
+                panic!("synthetic executor panic");
+            }
 
             if let Some((kind, retry_after)) =
                 self.fail_typed.lock().unwrap().get(&entry.id).copied()
@@ -1631,6 +1698,115 @@ mod tests {
         assert!(crate::transfer_dag::engine_stats::latest().is_some());
     }
 
+    /// DAG-P2-07 (block E): a cancelled batch still surfaces its real folded
+    /// stats, now labeled `cancelled: true` so MCP/GUI consumers can tell the
+    /// torn-down job from a completed one.
+    #[tokio::test]
+    async fn batch_dag_cancelled_job_surfaces_engine_stats_labeled_cancelled() {
+        let executor = Arc::new(MockExecutor::new(1));
+        let result = execute_batch_dag(
+            Arc::new(CountingSink::default()) as Arc<dyn TransferEventSink>,
+            batch(vec![entry("a", 1), entry("b", 1)], 1),
+            Arc::clone(&executor),
+            Arc::new(AtomicBool::new(true)),
+            None,
+        )
+        .await;
+
+        assert!(result.cancelled);
+        let stats = result
+            .engine_stats
+            .expect("a cancelled job still surfaces its real stats");
+        assert!(
+            stats.cancelled,
+            "the engine stats label the torn-down job as cancelled"
+        );
+    }
+
+    /// DAG-P2-07 (block F) wiring: a drained successful batch feeds its
+    /// realized telemetry into the shared BatchSyncFile profile key through
+    /// `observe_job`.
+    #[tokio::test]
+    async fn batch_dag_drained_success_records_the_slow_loop_baseline() {
+        use crate::transfer_dag::{
+            AdaptiveProfileConfig, AdaptiveProfileKey, AdaptiveProfileRegistry, AdaptiveWorkload,
+            EndpointIdentity, TransferBudget,
+        };
+        let registry = Arc::new(AdaptiveProfileRegistry::new(
+            AdaptiveProfileConfig::default(),
+        ));
+        let endpoint = EndpointIdentity::new("mock", "slow-loop-host", "slow-loop-acct");
+        let aimd = batch_aimd_controller(
+            &TransferBudget::from_file_slots(2),
+            Some(crate::providers::ProviderType::S3),
+            endpoint.clone(),
+            registry.clone(),
+            AimdConfig::default(),
+        );
+        let executor = Arc::new(MockExecutor::new(4));
+        let result = execute_batch_dag_with_aimd(
+            Arc::new(CountingSink::default()) as Arc<dyn TransferEventSink>,
+            batch(vec![entry("a", 100), entry("b", 200)], 2),
+            Arc::clone(&executor),
+            Arc::new(AtomicBool::new(false)),
+            None,
+            aimd,
+        )
+        .await;
+
+        assert_eq!(result.completed, 2);
+        assert_eq!(result.failed, 0);
+        let snapshot = registry.snapshot();
+        assert_eq!(
+            snapshot.len(),
+            1,
+            "a drained successful batch records exactly one profile entry"
+        );
+        assert_eq!(
+            snapshot[0].key,
+            AdaptiveProfileKey::new(endpoint, AdaptiveWorkload::BatchSyncFile)
+        );
+    }
+
+    /// DAG-P2-07 (block F) no-poison guard: a batch that drained with a
+    /// per-file failure records nothing into the slow-loop registry (a
+    /// retry-storm file can depress or inflate the learned baseline).
+    #[tokio::test]
+    async fn batch_dag_drained_with_a_failed_file_records_nothing_in_the_slow_loop() {
+        use crate::transfer_dag::{
+            AdaptiveProfileConfig, AdaptiveProfileRegistry, EndpointIdentity, TransferBudget,
+        };
+        let registry = Arc::new(AdaptiveProfileRegistry::new(
+            AdaptiveProfileConfig::default(),
+        ));
+        let aimd = batch_aimd_controller(
+            &TransferBudget::from_file_slots(2),
+            Some(crate::providers::ProviderType::S3),
+            EndpointIdentity::new("mock", "slow-loop-host", "slow-loop-acct"),
+            registry.clone(),
+            AimdConfig::default(),
+        );
+        let mut executor = MockExecutor::new(4);
+        executor.fail.insert("bad".to_string());
+        let executor = Arc::new(executor);
+        let result = execute_batch_dag_with_aimd(
+            Arc::new(CountingSink::default()) as Arc<dyn TransferEventSink>,
+            batch(vec![entry("bad", 100), entry("good", 200)], 2),
+            Arc::clone(&executor),
+            Arc::new(AtomicBool::new(false)),
+            None,
+            aimd,
+        )
+        .await;
+
+        assert_eq!(result.failed, 1);
+        assert_eq!(result.completed, 1);
+        assert!(
+            registry.is_empty(),
+            "a batch with per-file failures must not feed the slow loop"
+        );
+    }
+
     #[tokio::test]
     async fn batch_dag_failed_file_does_not_abort_remaining() {
         let mut executor = MockExecutor::new(1);
@@ -1659,18 +1835,28 @@ mod tests {
 
     #[tokio::test]
     async fn batch_dag_respects_file_slot_concurrency() {
-        let executor = Arc::new(MockExecutor::new(8));
-        let result = execute_batch_dag(
-            Arc::new(CountingSink::default()) as Arc<dyn TransferEventSink>,
-            batch(
-                vec![entry("a", 1), entry("b", 1), entry("c", 1), entry("d", 1)],
-                2,
+        // Rendezvous barrier: the first two files must be concurrently
+        // resident for the batch to finish at all, so peak==2 no longer
+        // depends on a 15 ms wall-clock window. If the scheduler ignored the
+        // slot cap, peak would exceed 2 and the assert below fails; if it
+        // serialized, the barrier never releases and the timeout fails.
+        let gate = Arc::new(Barrier::new(2));
+        let executor = Arc::new(MockExecutor::new(8).with_rendezvous(Arc::clone(&gate)));
+        let result = tokio::time::timeout(
+            Duration::from_secs(30),
+            execute_batch_dag(
+                Arc::new(CountingSink::default()) as Arc<dyn TransferEventSink>,
+                batch(
+                    vec![entry("a", 1), entry("b", 1), entry("c", 1), entry("d", 1)],
+                    2,
+                ),
+                Arc::clone(&executor),
+                Arc::new(AtomicBool::new(false)),
+                None,
             ),
-            Arc::clone(&executor),
-            Arc::new(AtomicBool::new(false)),
-            None,
         )
-        .await;
+        .await
+        .expect("two files must meet the rendezvous barrier under file_slots=2");
 
         assert_eq!(result.completed, 4);
         assert_eq!(executor.peak(), 2, "file_slots=2 must cap concurrency at 2");
@@ -1853,18 +2039,30 @@ mod tests {
             max_file_slots: Some(4),
             ..TransferCapabilities::default()
         };
-        let executor = Arc::new(MockExecutor::new(4).with_capabilities(caps));
-        let result = execute_batch_dag(
-            Arc::new(CountingSink::default()) as Arc<dyn TransferEventSink>,
-            batch(
-                vec![entry("a", 1), entry("b", 1), entry("c", 1), entry("d", 1)],
-                4,
+        // Rendezvous barrier: two files must overlap for the batch to finish,
+        // deterministically. A serialized scheduler deadlocks the barrier and
+        // the timeout fails the test.
+        let gate = Arc::new(Barrier::new(2));
+        let executor = Arc::new(
+            MockExecutor::new(4)
+                .with_capabilities(caps)
+                .with_rendezvous(Arc::clone(&gate)),
+        );
+        let result = tokio::time::timeout(
+            Duration::from_secs(30),
+            execute_batch_dag(
+                Arc::new(CountingSink::default()) as Arc<dyn TransferEventSink>,
+                batch(
+                    vec![entry("a", 1), entry("b", 1), entry("c", 1), entry("d", 1)],
+                    4,
+                ),
+                Arc::clone(&executor),
+                Arc::new(AtomicBool::new(false)),
+                None,
             ),
-            Arc::clone(&executor),
-            Arc::new(AtomicBool::new(false)),
-            None,
         )
-        .await;
+        .await
+        .expect("independent files must overlap for a pool-enabled executor");
         assert_eq!(result.completed, 4);
         assert!(
             executor.peak() > 1,
@@ -1882,18 +2080,31 @@ mod tests {
             max_file_slots: Some(8),
             ..TransferCapabilities::default()
         };
-        let executor = Arc::new(MockExecutor::new(2).with_capabilities(caps));
-        let result = execute_batch_dag(
-            Arc::new(CountingSink::default()) as Arc<dyn TransferEventSink>,
-            batch(
-                vec![entry("a", 1), entry("b", 1), entry("c", 1), entry("d", 1)],
-                4,
+        // Rendezvous barrier: the session pool (2 leases) must admit two
+        // concurrent files for the batch to finish, so peak==2 is proven
+        // without relying on sleep timing. Exceeding the pool cap trips the
+        // assert; serializing trips the timeout.
+        let gate = Arc::new(Barrier::new(2));
+        let executor = Arc::new(
+            MockExecutor::new(2)
+                .with_capabilities(caps)
+                .with_rendezvous(Arc::clone(&gate)),
+        );
+        let result = tokio::time::timeout(
+            Duration::from_secs(30),
+            execute_batch_dag(
+                Arc::new(CountingSink::default()) as Arc<dyn TransferEventSink>,
+                batch(
+                    vec![entry("a", 1), entry("b", 1), entry("c", 1), entry("d", 1)],
+                    4,
+                ),
+                Arc::clone(&executor),
+                Arc::new(AtomicBool::new(false)),
+                None,
             ),
-            Arc::clone(&executor),
-            Arc::new(AtomicBool::new(false)),
-            None,
         )
-        .await;
+        .await
+        .expect("the session pool must admit two concurrent files");
         assert_eq!(result.completed, 4);
         assert_eq!(executor.peak(), 2);
     }
@@ -2838,5 +3049,53 @@ mod tests {
             summary.metrics.retries, 1,
             "attempts minus the first try, summed over files"
         );
+    }
+
+    /// DAG-P2-07 fix wave (M2): a file whose subgraph stops early on an
+    /// engine fault still contributes the executor timing its nodes measured
+    /// before the stop (the finalize reported it to the observer), while its
+    /// byte counters stay honestly zero.
+    #[tokio::test]
+    async fn batch_streaming_keeps_failed_file_executor_timing() {
+        let entries: Arc<Vec<TransferEntry>> = Arc::new(vec![entry("doomed", 100)]);
+        let mut executor = MockExecutor::new(4);
+        executor.panic.insert("doomed".to_string());
+        let executor = Arc::new(executor);
+        let ctx = batch_metrics_ctx(
+            Arc::clone(&executor),
+            Arc::clone(&entries),
+            TransferDirection::Download,
+        );
+        let source = BatchEntriesWorkSource {
+            entries,
+            direction: TransferDirection::Download,
+            next: 0,
+        };
+        let summary = crate::transfer_dag::run_streaming(
+            source,
+            StreamingConfig::for_file_slots(2, 16),
+            move |item, admission| {
+                let ctx = Arc::clone(&ctx);
+                async move { run_one_batch_file(item, admission, ctx).await }
+            },
+        )
+        .await;
+
+        assert_eq!(summary.items_admitted, 1);
+        assert_eq!(
+            summary.metrics.bytes_transferred, 0,
+            "a failed file attests no bytes"
+        );
+        assert_eq!(summary.metrics.logical_bytes, 0);
+        assert_eq!(summary.metrics.wire_bytes, 0);
+        assert!(
+            summary.metrics.run_nanos_total > 0,
+            "the anchor nodes' measured run timing must survive the early stop"
+        );
+        assert!(
+            summary.metrics.wait_nanos_total > 0,
+            "the anchor nodes' measured wait timing must survive the early stop"
+        );
+        assert!(summary.metrics.slot_peak >= 1);
     }
 }

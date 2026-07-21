@@ -18,12 +18,27 @@
 //! [`TtfbRecorder`] guard at executor start and folds its totals into the
 //! run metrics at the executor's single finalize, the same point the
 //! byte/timing attestations land. Recorders are scoped by
-//! [`tokio::runtime::Id`]: a sample lands only in recorders installed
+//! [`tokio::runtime::Id`]: a sample lands only in the recorder installed
 //! on the runtime it was recorded on, so a foreign runtime (a parallel test's
 //! fixture traffic, or any non-transfer runtime) can never pollute a run's
-//! attribution. Concurrent runs on the SAME runtime each see every sample
-//! recorded while they are active; that per-run attribution is documented as
-//! shared, never relabeled.
+//! attribution.
+//!
+//! ## Job-level attribution (one owning guard per runtime)
+//!
+//! Attribution is job-level, not per-subgraph: at most ONE recorder is
+//! registered per runtime. [`TtfbRecorder::install`] on a runtime that already
+//! has an active recorder returns a NESTED guard which owns nothing and folds
+//! zero; only the outermost (owning) guard accumulates samples. The batch and
+//! sync streaming frontiers install the owning guard around the whole job, so
+//! every per-file `execute_dag` subgraph nests inside it and each real HTTP
+//! sample is counted exactly once per job (per-file subgraph metrics honestly
+//! report `ttfb_samples == 0`). A single-file or copy run is itself outermost,
+//! so it owns the recorder and folds exactly as before. A second independent
+//! top-level job started on the SAME runtime while one is active also nests
+//! and reports zero TTFB: the samples are attributed to the first job.
+//! Concurrent unrelated `send_with_retry` traffic on the same runtime during
+//! a job is likewise attributed to that job; that shared-runtime attribution
+//! is documented, never relabeled.
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
@@ -39,22 +54,29 @@ pub struct TtfbRecorder {
 
 impl TtfbRecorder {
     /// Register a fresh recorder for the current runtime and return its
-    /// guard. Samples recorded on this runtime while the guard is alive fold
-    /// into this recorder; dropping the guard detaches it.
+    /// guard, unless the runtime already has an active recorder: then the
+    /// returned guard is NESTED, registers nothing, and folds zero, so each
+    /// sample is counted exactly once, by the outermost (owning) guard.
+    /// Samples recorded on this runtime while the owning guard is alive fold
+    /// into that recorder; dropping it detaches it.
     ///
     /// Panics when called outside a Tokio runtime context. The executor only
     /// runs inside one.
     pub fn install() -> TtfbGuard {
+        let runtime = tokio::runtime::Handle::current().id();
+        let mut registry = active().lock().expect("ttfb registry poisoned");
+        if registry.iter().any(|recorder| recorder.runtime == runtime) {
+            return TtfbGuard { recorder: None };
+        }
         let recorder = Arc::new(Self {
             nanos_total: AtomicU64::new(0),
             samples: AtomicU64::new(0),
-            runtime: tokio::runtime::Handle::current().id(),
+            runtime,
         });
-        active()
-            .lock()
-            .expect("ttfb registry poisoned")
-            .push(Arc::clone(&recorder));
-        TtfbGuard { recorder }
+        registry.push(Arc::clone(&recorder));
+        TtfbGuard {
+            recorder: Some(recorder),
+        }
     }
 
     fn record(&self, nanos: u64) {
@@ -71,25 +93,42 @@ impl TtfbRecorder {
     }
 }
 
-/// Keeps a [`TtfbRecorder`] registered for its runtime; detaches on drop.
+/// Keeps the owning [`TtfbRecorder`] registered for its runtime; detaches on
+/// drop. A nested guard (a recorder was already active on the runtime) owns
+/// nothing: it folds zero and its drop is a no-op.
 #[derive(Debug)]
 pub struct TtfbGuard {
-    recorder: Arc<TtfbRecorder>,
+    /// `Some` for the outermost (owning) guard on its runtime, `None` for a
+    /// nested one.
+    recorder: Option<Arc<TtfbRecorder>>,
 }
 
 impl TtfbGuard {
-    /// `(ttfb_nanos_total, ttfb_samples)` accumulated so far.
+    /// `(ttfb_nanos_total, ttfb_samples)` accumulated so far. Always `(0, 0)`
+    /// for a nested guard: attribution lives at the outermost run.
     pub fn totals(&self) -> (u64, u64) {
-        self.recorder.totals()
+        self.recorder
+            .as_ref()
+            .map_or((0, 0), |recorder| recorder.totals())
+    }
+
+    /// True when this guard owns the runtime's active recorder.
+    pub fn is_owning(&self) -> bool {
+        self.recorder.is_some()
     }
 }
 
 impl Drop for TtfbGuard {
     fn drop(&mut self) {
-        active()
-            .lock()
-            .expect("ttfb registry poisoned")
-            .retain(|candidate| !Arc::ptr_eq(candidate, &self.recorder));
+        let Some(recorder) = self.recorder.take() else {
+            return;
+        };
+        // Graceful on a poisoned registry: a mutex poisoned during unwind
+        // must not abort the process. Skipping the detach only leaves a
+        // stale recorder whose runtime id can never match a fresh runtime.
+        if let Ok(mut registry) = active().lock() {
+            registry.retain(|candidate| !Arc::ptr_eq(candidate, &recorder));
+        }
     }
 }
 
@@ -99,9 +138,11 @@ fn active() -> &'static Mutex<Vec<Arc<TtfbRecorder>>> {
 }
 
 /// Record one honest first-byte sample (request start to first byte /
-/// headers received) into every recorder registered for the CURRENT runtime.
-/// With no active recorder the sample is dropped: non-DAG paths simply do
-/// not report TTFB, which beats inventing one.
+/// headers received) into the recorder registered for the CURRENT runtime.
+/// At most one recorder exists per runtime (nested guards register nothing),
+/// so a sample is counted exactly once, by the outermost run. With no active
+/// recorder the sample is dropped: non-DAG paths simply do not report TTFB,
+/// which beats inventing one.
 pub fn record_sample(nanos: u64) {
     let Ok(handle) = tokio::runtime::Handle::try_current() else {
         return;
@@ -200,12 +241,46 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn fan_out_reaches_every_recorder_on_the_same_runtime() {
+    async fn nested_install_folds_zero_and_the_owner_sees_every_sample() {
+        let outer = TtfbRecorder::install();
+        let inner = TtfbRecorder::install();
+        assert!(outer.is_owning(), "the first install owns the recorder");
+        assert!(
+            !inner.is_owning(),
+            "a concurrent install on one runtime nests"
+        );
+        record_sample(1_000);
+        record_sample(2_000);
+        assert_eq!(
+            inner.totals(),
+            (0, 0),
+            "a nested guard folds zero TTFB into its per-run metrics"
+        );
+        assert_eq!(
+            outer.totals(),
+            (3_000, 2),
+            "the outermost guard counts each sample exactly once"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_second_guard_on_the_same_runtime_nests_instead_of_fanning_out() {
         let first = TtfbRecorder::install();
         let second = TtfbRecorder::install();
         record_sample(500);
         assert_eq!(first.totals(), (500, 1));
-        assert_eq!(second.totals(), (500, 1));
+        assert_eq!(
+            second.totals(),
+            (0, 0),
+            "no fan-out: the nested guard reports zero"
+        );
+        drop(second);
+        drop(first);
+        // With the owner detached, a fresh install owns again.
+        let third = TtfbRecorder::install();
+        assert!(third.is_owning());
+        record_sample(500);
+        assert_eq!(third.totals(), (500, 1));
     }
 
     #[tokio::test]

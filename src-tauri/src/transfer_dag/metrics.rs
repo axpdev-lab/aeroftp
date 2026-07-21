@@ -84,12 +84,22 @@ pub struct EngineTransferStats {
     pub wall_clock_ms: u64,
     /// Process resource cost bracketing the job (CPU user/system nanos, RSS
     /// start/end, FD start/end). Absent when the sampler produced no sample.
+    /// The delta is process-wide: concurrent jobs in one process over-attribute
+    /// each other's cost to their own bracket.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub resources: Option<crate::proc_stats::ProcessResourceDelta>,
+    /// True when the job was torn down by cancellation before it drained. The
+    /// folded stats are still real measured data; this label lets MCP/GUI
+    /// consumers tell a torn-down job from a completed one. Sync jobs have no
+    /// cancel token, so this is always false for them.
+    #[serde(default)]
+    pub cancelled: bool,
 }
 
 impl EngineTransferStats {
-    /// Build a job stats snapshot from its three honest inputs.
+    /// Build a job stats snapshot from its three honest inputs. `cancelled`
+    /// starts false; the batch runner sets it after construction when the job
+    /// was torn down (sync has no cancel token, so it stays false there).
     pub fn from_job(
         metrics: TransferDagMetrics,
         wall_clock_ms: u64,
@@ -99,6 +109,7 @@ impl EngineTransferStats {
             metrics,
             wall_clock_ms,
             resources,
+            cancelled: false,
         }
     }
 
@@ -124,6 +135,11 @@ impl TransferDagMetrics {
     /// job-level total aggregates per-subgraph runs (the batch/sync
     /// streaming frontier) so bytes, retries, and timing accumulate across
     /// the whole job rather than reflecting only the last subgraph.
+    ///
+    /// TTFB invariant: summing the `ttfb_*` fields is exact because
+    /// attribution is job-level (`transfer_dag::ttfb`): per-file subgraphs
+    /// nest inside the frontier's owning guard and always contribute 0 here,
+    /// while the job total comes from the owning run's fold.
     pub fn absorb(&mut self, other: &TransferDagMetrics) {
         self.logical_bytes = self.logical_bytes.saturating_add(other.logical_bytes);
         self.wire_bytes = self.wire_bytes.saturating_add(other.wire_bytes);
@@ -163,6 +179,78 @@ mod tests {
             fd_start_count: 3,
             fd_end_count: 4,
         }
+    }
+
+    #[test]
+    fn transfer_dag_metrics_absorb_pins_per_field_semantics() {
+        // Direct unit pin of the absorb contract: every additive counter
+        // (bytes, retries, events, wait/run, ttfb) sums; slot_peak keeps the
+        // high-water mark.
+        let mut a = TransferDagMetrics {
+            logical_bytes: 100,
+            wire_bytes: 90,
+            local_payload_bytes: 80,
+            bytes_transferred: 100,
+            retries: 1,
+            backpressure_events: 2,
+            range_fallbacks: 1,
+            wait_nanos_total: 1_000,
+            run_nanos_total: 2_000,
+            slot_peak: 7,
+            ttfb_nanos_total: 3_000,
+            ttfb_samples: 2,
+            copy_fallbacks: 1,
+        };
+        let b = TransferDagMetrics {
+            logical_bytes: 50,
+            wire_bytes: 40,
+            local_payload_bytes: 30,
+            bytes_transferred: 50,
+            retries: 3,
+            backpressure_events: 1,
+            range_fallbacks: 2,
+            wait_nanos_total: 500,
+            run_nanos_total: 700,
+            slot_peak: 4,
+            ttfb_nanos_total: 900,
+            ttfb_samples: 1,
+            copy_fallbacks: 2,
+        };
+        a.absorb(&b);
+        assert_eq!(
+            a,
+            TransferDagMetrics {
+                logical_bytes: 150,
+                wire_bytes: 130,
+                local_payload_bytes: 110,
+                bytes_transferred: 150,
+                retries: 4,
+                backpressure_events: 3,
+                range_fallbacks: 3,
+                wait_nanos_total: 1_500,
+                run_nanos_total: 2_700,
+                slot_peak: 7,
+                ttfb_nanos_total: 3_900,
+                ttfb_samples: 3,
+                copy_fallbacks: 3,
+            },
+            "additive counters sum, slot_peak keeps the max"
+        );
+
+        // The max is direction-independent.
+        let mut c = TransferDagMetrics {
+            slot_peak: 2,
+            ..TransferDagMetrics::default()
+        };
+        c.absorb(&TransferDagMetrics {
+            slot_peak: 5,
+            ..TransferDagMetrics::default()
+        });
+        c.absorb(&TransferDagMetrics {
+            slot_peak: 3,
+            ..TransferDagMetrics::default()
+        });
+        assert_eq!(c.slot_peak, 5);
     }
 
     #[test]
@@ -239,5 +327,30 @@ mod tests {
         let back: EngineTransferStats = serde_json::from_str(&json).expect("additive default");
         assert_eq!(back, stats);
         assert!(back.resources.is_none());
+    }
+
+    #[test]
+    fn engine_stats_cancelled_defaults_false_for_older_payloads() {
+        // Additive/back-compat: a payload written before the `cancelled` key
+        // existed still decodes, with the flag defaulting to false.
+        let stats = EngineTransferStats::from_job(
+            TransferDagMetrics {
+                bytes_transferred: 9,
+                ..Default::default()
+            },
+            3,
+            None,
+        );
+        let mut json = serde_json::to_value(&stats).expect("serialize");
+        json.as_object_mut()
+            .expect("stats serialize as an object")
+            .remove("cancelled");
+        let back: EngineTransferStats = serde_json::from_value(json).expect("additive default");
+        assert!(
+            !back.cancelled,
+            "a pre-flag payload decodes as not cancelled"
+        );
+        assert_eq!(back.metrics.bytes_transferred, 9);
+        assert_eq!(back.wall_clock_ms, 3);
     }
 }

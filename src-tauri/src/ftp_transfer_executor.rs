@@ -151,14 +151,14 @@ impl TransferExecutor for FtpDownloadExecutor {
             let cancel_token = self.cancel_token.clone();
             let modified = entry.modified.clone();
 
-            // Meter every attempt actually made (first try included) before
-            // it runs, so a cancel during backoff or mid-transfer still
-            // leaves an honest count behind.
-            self.attempt_counts
-                .lock()
-                .expect("attempt counts poisoned")
-                .insert(entry.id.clone(), attempt + 1);
-            let result = match self.pool.acquire().await {
+            let result = match acquire_metered_lease(
+                &self.pool,
+                &self.attempt_counts,
+                &entry.id,
+                attempt + 1,
+            )
+            .await
+            {
                 Ok(lease) => {
                     let transfer_result = {
                         let manager = lease.manager();
@@ -411,14 +411,14 @@ impl TransferExecutor for FtpUploadExecutor {
             let local_path = entry.local_path.clone();
             let cancel_token = self.cancel_token.clone();
 
-            // Meter every attempt actually made (first try included) before
-            // it runs, so a cancel during backoff or mid-transfer still
-            // leaves an honest count behind.
-            self.attempt_counts
-                .lock()
-                .expect("attempt counts poisoned")
-                .insert(entry.id.clone(), attempt + 1);
-            let result = match self.pool.acquire().await {
+            let result = match acquire_metered_lease(
+                &self.pool,
+                &self.attempt_counts,
+                &entry.id,
+                attempt + 1,
+            )
+            .await
+            {
                 Ok(lease) => {
                     let transfer_result = {
                         let manager = lease.manager();
@@ -586,6 +586,27 @@ impl TransferExecutor for FtpUploadExecutor {
     }
 }
 
+/// Acquire a pool lease, metering the attempt only once the lease is in
+/// hand: a failed acquire never touched the wire, so it must not count as
+/// an attempt (mirrors `note_transfer_attempt` in the provider executor,
+/// which notes directly before the real transfer attempt).
+async fn acquire_metered_lease(
+    pool: &FtpSessionPool,
+    attempt_counts: &AttemptCounts,
+    entry_id: &str,
+    attempt: u32,
+) -> Result<crate::ftp_session_pool::FtpSessionLease, String> {
+    let lease = pool.acquire().await?;
+    // Meter every attempt actually made (first try included) before it runs,
+    // so a cancel during backoff or mid-transfer still leaves an honest
+    // count behind.
+    attempt_counts
+        .lock()
+        .expect("attempt counts poisoned")
+        .insert(entry_id.to_string(), attempt);
+    Ok(lease)
+}
+
 fn split_remote_path(remote_path: &str) -> (String, String) {
     let path = Path::new(remote_path);
     let file_name = path
@@ -609,7 +630,7 @@ fn split_remote_path(remote_path: &str) -> (String, String) {
 
 #[cfg(test)]
 mod tests {
-    use super::split_remote_path;
+    use super::{acquire_metered_lease, split_remote_path, AttemptCounts};
 
     #[test]
     fn split_remote_path_extracts_parent_and_file() {
@@ -623,5 +644,22 @@ mod tests {
         let (parent, file) = split_remote_path("file.txt");
         assert_eq!(parent, "/");
         assert_eq!(file, "file.txt");
+    }
+
+    /// A pool that cannot hand out a lease (zero sessions, short acquire
+    /// timeout) must meter zero attempts: a failed acquire never touched
+    /// the wire.
+    #[tokio::test]
+    async fn failed_pool_acquire_meters_no_attempt() {
+        let pool = crate::ftp_session_pool::FtpSessionPool::empty_for_test(50);
+        let counts = AttemptCounts::default();
+
+        let result = acquire_metered_lease(&pool, &counts, "entry-1", 1).await;
+
+        assert!(result.is_err(), "an empty pool cannot hand out a lease");
+        assert!(
+            counts.lock().expect("attempt counts poisoned").is_empty(),
+            "a failed acquire meters nothing"
+        );
     }
 }

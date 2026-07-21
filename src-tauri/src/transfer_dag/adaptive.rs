@@ -124,8 +124,10 @@ impl AdaptiveProfileKey {
 /// DAG-P2-07 (block F): one completed job's realized telemetry, distilled into
 /// the three signals the slow optimization loop reads. Built by
 /// [`JobThroughputObservation::from_metrics`] from the populated job-total
-/// [`crate::transfer_dag::TransferDagMetrics`] plus the real wall clock, so
-/// every field traces to a measured value; none is fabricated.
+/// [`crate::transfer_dag::TransferDagMetrics`] plus the transfer-phase wall
+/// clock (the streaming frontier bracket, not the whole-job elapsed that also
+/// spans scan/plan/setup), so every field traces to a measured value; none is
+/// fabricated.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct JobThroughputObservation {
     /// Concurrency high-water the executor actually reached (`slot_peak`),
@@ -133,7 +135,10 @@ pub struct JobThroughputObservation {
     pub concurrency: usize,
     /// Payload bytes moved (`bytes_transferred`), guaranteed non-zero.
     pub bytes: u64,
-    /// Real elapsed wall-clock nanoseconds for the whole job, non-zero.
+    /// Real elapsed wall-clock nanoseconds bracketing the job's transfer
+    /// phase, non-zero. The callers clock only the streaming frontier (not the
+    /// pre-transfer scan/plan/setup work the whole-job wall clock spans), so
+    /// the throughput denominator reflects realized transfer time.
     pub wall_clock_nanos: u64,
     /// Summed dispatch-to-runner-start wait nanos over dispatched nodes.
     pub wait_nanos: u64,
@@ -142,7 +147,8 @@ pub struct JobThroughputObservation {
 }
 
 impl JobThroughputObservation {
-    /// Distill a job's populated metrics and wall clock into an observation, or
+    /// Distill a job's populated metrics and transfer-phase wall clock into an
+    /// observation, or
     /// `None` when the job carries no usable signal (moved zero bytes, e.g. a
     /// skip-only run, or reported no elapsed time). Returning `None` here is the
     /// degenerate-job half of the no-poison guard; the caller supplies the
@@ -894,13 +900,22 @@ impl AdaptiveProfileRegistry {
                     // bounded recovery, additive like AIMD). On the first raise
                     // there is no learned target yet, so start from the prior
                     // productive concurrency (`best_conc`) and add one, rather
-                    // than jumping straight to the new width.
+                    // than jumping straight to the new width. The clamp to the
+                    // observed concurrency can land at or below `base` (a
+                    // narrower job than the learned target), so the decision
+                    // variant reports what the clamped outcome actually did.
                     let base = entry.value(class).unwrap_or(best_conc);
-                    let raised = base.saturating_add(1).min(concurrency).max(1);
-                    entry.set(class, raised);
+                    let new_target = base.saturating_add(1).min(concurrency).max(1);
+                    entry.set(class, new_target);
                     entry.best_throughput_bps = Some(throughput_bps);
                     entry.best_concurrency = Some(concurrency);
-                    SlowLoopDecision::Raised(raised)
+                    if new_target > base {
+                        SlowLoopDecision::Raised(new_target)
+                    } else if new_target < base {
+                        SlowLoopDecision::Lowered(new_target)
+                    } else {
+                        SlowLoopDecision::Held
+                    }
                 } else if starved || (concurrency > best_conc && throughput_bps <= best_tp) {
                     // Plateau or starvation: the extra width did not pay off, or
                     // the dispatch spent most of its life waiting for permits.
@@ -3048,5 +3063,76 @@ mod tests {
             JobThroughputObservation::from_metrics(&metrics, Duration::from_secs(1)).is_none(),
             "a job that moved no bytes yields no slow-loop signal"
         );
+    }
+
+    #[test]
+    fn observation_is_none_on_a_zero_duration_job() {
+        let metrics = super::super::metrics::TransferDagMetrics {
+            bytes_transferred: 100,
+            slot_peak: 4,
+            ..Default::default()
+        };
+        assert!(
+            JobThroughputObservation::from_metrics(&metrics, Duration::ZERO).is_none(),
+            "a job with no elapsed transfer time yields no slow-loop signal"
+        );
+    }
+
+    #[test]
+    fn slow_loop_decision_follows_the_clamped_outcome() {
+        // The raise clamp (`base + 1` capped at the observed concurrency) can
+        // land at or below `base` when the job ran narrower than the learned
+        // target; the decision variant must report what the clamp actually
+        // did, never a blanket Raised.
+        let registry = profile_registry();
+        let key = file_key("host-a", "acct-1");
+        // Baseline at concurrency 8, then a proven-faster job at concurrency
+        // 2: the clamp pulls the target down to 2, below base 8.
+        registry.observe_job(&key, AdaptiveClass::File, obs(8, 1000, 1000, 0, 900));
+        let d = registry.observe_job(&key, AdaptiveClass::File, obs(2, 2000, 1000, 0, 900));
+        assert_eq!(
+            d,
+            SlowLoopDecision::Lowered(2),
+            "a clamp below base is a Lowered outcome, not Raised"
+        );
+        assert_eq!(registry.seed(&key, AdaptiveClass::File), Some(2));
+
+        // Same-width clamp: base equals the observed concurrency, so the step
+        // lands exactly on base and the target holds.
+        let registry = profile_registry();
+        let key = file_key("host-a", "acct-1");
+        registry.observe_job(&key, AdaptiveClass::File, obs(2, 1000, 1000, 0, 900));
+        let d = registry.observe_job(&key, AdaptiveClass::File, obs(2, 2000, 1000, 0, 900));
+        assert_eq!(
+            d,
+            SlowLoopDecision::Held,
+            "a clamp landing on base is a Held outcome, not Raised"
+        );
+        assert_eq!(registry.seed(&key, AdaptiveClass::File), Some(2));
+    }
+
+    #[test]
+    fn slow_loop_improvement_bar_is_strictly_above_five_percent() {
+        let registry = profile_registry();
+        let key = file_key("host-a", "acct-1");
+        // Baseline: 1000 bytes in 1s = 1000 B/s.
+        registry.observe_job(&key, AdaptiveClass::File, obs(2, 1000, 1000, 0, 900));
+        // Exactly +5% (1050 B/s) at the same width with no wait: the strict >
+        // bar is not met, so the target must not move (the baseline still
+        // creeps up to the honest gain).
+        let d = registry.observe_job(&key, AdaptiveClass::File, obs(2, 1050, 1000, 0, 900));
+        assert_eq!(d, SlowLoopDecision::Held, "exactly +5% does not raise");
+        assert_eq!(registry.seed(&key, AdaptiveClass::File), None);
+    }
+
+    #[test]
+    fn slow_loop_shaves_at_exactly_fifty_percent_wait() {
+        let registry = profile_registry();
+        let key = file_key("host-a", "acct-1");
+        registry.observe_job(&key, AdaptiveClass::File, obs(2, 1000, 1000, 0, 900));
+        // Half the dispatch life spent waiting: the >= plateau bar is met even
+        // on a faster job, so the target shaves one slot.
+        let d = registry.observe_job(&key, AdaptiveClass::File, obs(2, 2000, 1000, 500, 500));
+        assert_eq!(d, SlowLoopDecision::Lowered(1), "exactly 50% wait shaves");
     }
 }

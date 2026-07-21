@@ -319,9 +319,9 @@ pub struct TransferBatchResult {
     pub duration_ms: u64,
     /// DAG-P2-07 (block E): the engine-level stats for this batch job, folded
     /// once from every per-file subgraph plus the process resource bracket.
-    /// Additive and optional: `None` for the legacy independent-connection
-    /// batch path (which runs no DAG engine), so no existing key changes and an
-    /// older reader is unaffected.
+    /// This result struct is only constructed by the DAG batch runner now, so
+    /// the field is always `Some`; the `Option` stays so the serialized shape
+    /// remains additive and an older reader is unaffected.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub engine_stats: Option<EngineTransferStats>,
 }

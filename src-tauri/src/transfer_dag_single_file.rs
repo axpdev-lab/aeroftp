@@ -363,10 +363,14 @@ impl DagObserver for CopyDagObserver {
 /// metrics snapshot, so the executor's single finalize stays single. Byte
 /// semantics are directional: an upload crosses the provider data path once
 /// with no local payload materialization; a download additionally lands the
-/// whole object on local disk.
+/// whole object on local disk. `bytes_total` is the logical attestation;
+/// `wire_bytes_total` is what actually crossed the wire this run (equal to
+/// logical for whole-file transfers, only the re-uploaded parts for a
+/// resumed multipart upload).
 struct SingleFileMetricsObserver {
     inner: Arc<dyn DagObserver>,
     bytes_total: Arc<AtomicU64>,
+    wire_bytes_total: Arc<AtomicU64>,
     direction: TransferDirection,
 }
 
@@ -384,14 +388,15 @@ impl DagObserver for SingleFileMetricsObserver {
     }
 
     fn on_metrics(&self, metrics: &TransferDagMetrics) {
-        let bytes = self.bytes_total.load(Ordering::SeqCst);
+        let logical = self.bytes_total.load(Ordering::SeqCst);
+        let wire = self.wire_bytes_total.load(Ordering::SeqCst);
         let mut merged = metrics.clone();
-        merged.logical_bytes = merged.logical_bytes.saturating_add(bytes);
-        merged.wire_bytes = merged.wire_bytes.saturating_add(bytes);
+        merged.logical_bytes = merged.logical_bytes.saturating_add(logical);
+        merged.wire_bytes = merged.wire_bytes.saturating_add(wire);
         if self.direction == TransferDirection::Download {
-            merged.local_payload_bytes = merged.local_payload_bytes.saturating_add(bytes);
+            merged.local_payload_bytes = merged.local_payload_bytes.saturating_add(logical);
         }
-        merged.bytes_transferred = merged.bytes_transferred.saturating_add(bytes);
+        merged.bytes_transferred = merged.bytes_transferred.saturating_add(logical);
         self.inner.on_metrics(&merged);
     }
 }
@@ -722,9 +727,13 @@ pub async fn execute_single_file_dag(
     // The executor only surfaces a stringified `DagExecutionError`; the typed
     // provider error is stashed here so the caller keeps exact error semantics.
     let first_error: Arc<StdMutex<Option<ProviderError>>> = Arc::new(StdMutex::new(None));
-    // DAG-P2-07: byte total the transfer node attests at its success point;
-    // folded into the metrics snapshot by SingleFileMetricsObserver below.
+    // DAG-P2-07: byte totals the transfer nodes attest at their success
+    // points, folded into the metrics snapshot by SingleFileMetricsObserver
+    // below. `bytes_total` is the logical (user-visible) total;
+    // `wire_bytes_total` counts only payload that actually crossed the wire
+    // this run (receipt-backed resumed parts contribute 0 to wire).
     let bytes_total = Arc::new(AtomicU64::new(0));
+    let wire_bytes_total = Arc::new(AtomicU64::new(0));
 
     // Resolve the canonical endpoint once before the durable multipart state
     // is built. The checkpoint identity includes provider + endpoint + remote
@@ -855,6 +864,7 @@ pub async fn execute_single_file_dag(
         let durable_checkpoint = durable_checkpoint.clone();
         let cancel_token = cancel_token.clone();
         let bytes_total = Arc::clone(&bytes_total);
+        let wire_bytes_total = Arc::clone(&wire_bytes_total);
         Arc::new(move |node: TransferNode| -> NodeFuture {
             let provider = Arc::clone(&provider);
             let remote = Arc::clone(&remote);
@@ -867,6 +877,7 @@ pub async fn execute_single_file_dag(
             let durable_checkpoint = durable_checkpoint.clone();
             let cancel_token = cancel_token.clone();
             let bytes_total = Arc::clone(&bytes_total);
+            let wire_bytes_total = Arc::clone(&wire_bytes_total);
             Box::pin(async move {
                 match node.kind {
                     TransferNodeKind::DownloadFile => {
@@ -897,6 +908,7 @@ pub async fn execute_single_file_dag(
                                 if let Ok(meta) = std::fs::metadata(&*local) {
                                     report_size.store(meta.len(), Ordering::SeqCst);
                                     bytes_total.store(meta.len(), Ordering::SeqCst);
+                                    wire_bytes_total.store(meta.len(), Ordering::SeqCst);
                                 }
                                 NodeOutcome::Completed
                             }
@@ -926,9 +938,15 @@ pub async fn execute_single_file_dag(
                         };
                         match res {
                             Ok(()) => {
-                                // Whole-file upload: the declared source size
-                                // is the wire/logical byte truth.
-                                bytes_total.store(file_size, Ordering::SeqCst);
+                                // Whole-file upload: attest the real on-disk
+                                // source length (mirrors the download arm).
+                                // If the stat fails, keep the caller-declared
+                                // size rather than attesting nothing.
+                                let attested = std::fs::metadata(&*local)
+                                    .map(|meta| meta.len())
+                                    .unwrap_or(file_size);
+                                bytes_total.store(attested, Ordering::SeqCst);
+                                wire_bytes_total.store(attested, Ordering::SeqCst);
                                 NodeOutcome::Completed
                             }
                             Err(e) => record_failure(&first_error, e, FailureScope::File),
@@ -1109,6 +1127,12 @@ pub async fn execute_single_file_dag(
                                                 );
                                             }
                                         }
+                                        // Attest this part's size on the wire
+                                        // only now that its upload succeeded.
+                                        // Receipt-backed parts of a resumed
+                                        // run return early above and
+                                        // contribute 0 to the wire total.
+                                        wire_bytes_total.fetch_add(len, Ordering::SeqCst);
                                         NodeOutcome::Completed
                                     }
                                     Err(failure) => record_failure(
@@ -1237,8 +1261,12 @@ pub async fn execute_single_file_dag(
                                         }
                                         state.clear_handle_after_complete().await;
                                         // Multipart upload committed: the
-                                        // layout total is the wire/logical
-                                        // byte truth for the whole object.
+                                        // layout total is the logical byte
+                                        // truth for the whole object. The
+                                        // wire total was attested per part as
+                                        // each upload succeeded, so a resumed
+                                        // run counts only the parts it
+                                        // actually re-uploaded.
                                         bytes_total
                                             .store(state.layout().total_size, Ordering::SeqCst);
                                         NodeOutcome::Completed
@@ -1332,6 +1360,7 @@ pub async fn execute_single_file_dag(
     let observer: Arc<dyn DagObserver> = Arc::new(SingleFileMetricsObserver {
         inner: observer,
         bytes_total,
+        wire_bytes_total,
         direction,
     });
     let outcome = execute_dag_with_options(
@@ -2053,6 +2082,9 @@ mod tests {
         multipart_completed: Arc<StdMutex<bool>>,
         multipart_aborted: Arc<StdMutex<bool>>,
         multipart_part_started: Arc<AtomicU64>,
+        /// Part numbers whose upload fails (a scriptable first-run failure so
+        /// resume tests are deterministic, not timing-based).
+        multipart_failing_parts: Arc<StdMutex<std::collections::HashSet<u32>>>,
     }
 
     impl SlowMockProvider {
@@ -2066,6 +2098,7 @@ mod tests {
                 multipart_completed: Arc::new(StdMutex::new(false)),
                 multipart_aborted: Arc::new(StdMutex::new(false)),
                 multipart_part_started: Arc::new(AtomicU64::new(0)),
+                multipart_failing_parts: Arc::new(StdMutex::new(std::collections::HashSet::new())),
             }
         }
 
@@ -2078,6 +2111,14 @@ mod tests {
             self.multipart_completed = completed;
             self.multipart_aborted = aborted;
             self.multipart_part_started = part_started;
+            self
+        }
+
+        fn with_failing_parts(
+            mut self,
+            failing: Arc<StdMutex<std::collections::HashSet<u32>>>,
+        ) -> Self {
+            self.multipart_failing_parts = failing;
             self
         }
     }
@@ -2169,6 +2210,16 @@ mod tests {
             part_number: u32,
             _data: Vec<u8>,
         ) -> Result<UploadedPart, ProviderError> {
+            if self
+                .multipart_failing_parts
+                .lock()
+                .unwrap()
+                .contains(&part_number)
+            {
+                return Err(ProviderError::TransferFailed(format!(
+                    "mock part {part_number} failure"
+                )));
+            }
             self.multipart_part_started.fetch_add(1, Ordering::SeqCst);
             tokio::time::sleep(std::time::Duration::from_millis(200)).await;
             Ok(UploadedPart {
@@ -2623,8 +2674,9 @@ mod tests {
         assert!(metrics.slot_peak >= 1);
     }
 
-    /// DAG-P2-07: a successful whole-file upload attests the declared source
-    /// size with no local payload materialization (local stays 0).
+    /// DAG-P2-07: a successful whole-file upload attests the real on-disk
+    /// source size (not the caller-declared value) with no local payload
+    /// materialization (local stays 0).
     #[tokio::test]
     async fn single_file_upload_reports_bytes_without_local_payload() {
         let dir = tempfile::tempdir().expect("tempdir");
@@ -2638,8 +2690,10 @@ mod tests {
             Box::new(mock) as Box<dyn crate::providers::StorageProvider>
         )));
         let caps = TransferCapabilities::default();
-        let built = TransferDagBuilder::shaped_file(TransferDirection::Upload, &caps, 13);
-        let report = Arc::new(AtomicU64::new(13));
+        // The declared size (5) deliberately disagrees with the on-disk
+        // length (13): attestation must follow the real file, not the caller.
+        let built = TransferDagBuilder::shaped_file(TransferDirection::Upload, &caps, 5);
+        let report = Arc::new(AtomicU64::new(5));
         let observer = Arc::new(CollectingDagObserver::default());
 
         let res = execute_single_file_dag(
@@ -2651,7 +2705,7 @@ mod tests {
             None,
             Arc::clone(&observer) as Arc<dyn DagObserver>,
             report,
-            13,
+            5,
             Some(CancellationToken::new()),
         )
         .await;
@@ -2661,6 +2715,144 @@ mod tests {
         assert_eq!(metrics.bytes_transferred, 13);
         assert_eq!(metrics.logical_bytes, 13);
         assert_eq!(metrics.wire_bytes, 13);
+        assert_eq!(metrics.local_payload_bytes, 0);
+    }
+
+    /// DAG-P2-07 fix wave (10a): a cancelled single-file download attests no
+    /// bytes in the final metrics snapshot: the transfer node never reached
+    /// its success point, so every byte counter stays zero.
+    #[tokio::test]
+    async fn cancelled_single_file_download_reports_zero_bytes() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let local = dir.path().join("out.bin");
+        let completed = Arc::new(StdMutex::new(false));
+        let mock = SlowMockProvider::new(Arc::clone(&completed), Arc::new(StdMutex::new(false)));
+        let arc: SharedProvider = Arc::new(Mutex::new(Some(
+            Box::new(mock) as Box<dyn crate::providers::StorageProvider>
+        )));
+        let caps = TransferCapabilities::default();
+        let built = TransferDagBuilder::shaped_file(TransferDirection::Download, &caps, 30);
+        let report = Arc::new(AtomicU64::new(30));
+        let observer = Arc::new(CollectingDagObserver::default());
+
+        let token = CancellationToken::new();
+        let canceller = token.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(40)).await;
+            canceller.cancel();
+        });
+
+        let res = execute_single_file_dag(
+            &built,
+            arc,
+            "/remote.bin".to_string(),
+            local.to_string_lossy().to_string(),
+            None,
+            None,
+            Arc::clone(&observer) as Arc<dyn DagObserver>,
+            report,
+            30,
+            Some(token),
+        )
+        .await;
+
+        assert!(res.is_err(), "a cancelled transfer must return an error");
+        assert!(!*completed.lock().unwrap());
+        let metrics = observer.metrics();
+        assert_eq!(metrics.bytes_transferred, 0);
+        assert_eq!(metrics.logical_bytes, 0);
+        assert_eq!(metrics.wire_bytes, 0);
+        assert_eq!(metrics.local_payload_bytes, 0);
+    }
+
+    /// DAG-P2-07 fix wave (M4): a resumed multipart upload keeps the layout
+    /// total as its logical bytes but attests on the wire only the parts it
+    /// actually re-uploaded this run (receipt-backed parts contribute 0).
+    #[tokio::test]
+    async fn resumed_multipart_upload_attests_only_reuploaded_parts_on_the_wire() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let local = dir.path().join("source.bin");
+        std::fs::write(&local, b"0123456789abcdefghij").expect("write source"); // 20 bytes
+
+        let multipart_completed = Arc::new(StdMutex::new(false));
+        let multipart_aborted = Arc::new(StdMutex::new(false));
+        let part_started = Arc::new(AtomicU64::new(0));
+        // First run: part 2 fails deterministically after part 1's receipt is
+        // durable, leaving a resumable checkpoint with one of two parts.
+        let failing_parts: Arc<StdMutex<std::collections::HashSet<u32>>> =
+            Arc::new(StdMutex::new(std::collections::HashSet::from([2])));
+        let mock = SlowMockProvider::new(
+            Arc::new(StdMutex::new(false)),
+            Arc::new(StdMutex::new(false)),
+        )
+        .with_multipart_state(
+            Arc::clone(&multipart_completed),
+            Arc::clone(&multipart_aborted),
+            Arc::clone(&part_started),
+        )
+        .with_failing_parts(Arc::clone(&failing_parts));
+        let arc: SharedProvider = Arc::new(Mutex::new(Some(
+            Box::new(mock) as Box<dyn crate::providers::StorageProvider>
+        )));
+        let caps = TransferCapabilities {
+            multipart_upload: Capability::Supported,
+            preferred_chunk_size: Some(10),
+            multipart_threshold: 0,
+            max_chunk_slots: Some(1),
+            ..TransferCapabilities::default()
+        };
+        let built = TransferDagBuilder::shaped_file(TransferDirection::Upload, &caps, 20);
+        assert_eq!(built.profile.upload_parts, 2);
+
+        let first = execute_single_file_dag(
+            &built,
+            Arc::clone(&arc),
+            "/remote.bin".to_string(),
+            local.to_string_lossy().to_string(),
+            None,
+            None,
+            Arc::new(crate::transfer_dag::NoopDagObserver) as Arc<dyn DagObserver>,
+            Arc::new(AtomicU64::new(20)),
+            20,
+            Some(CancellationToken::new()),
+        )
+        .await;
+        assert!(
+            first.is_err(),
+            "the scripted part-2 failure must stop the first run"
+        );
+        assert!(
+            !*multipart_aborted.lock().unwrap(),
+            "a durable checkpoint keeps the provider session for resume"
+        );
+
+        // Second run: no scripted failure. Part 1 is receipt-backed and skips
+        // its upload; only part 2 crosses the wire.
+        failing_parts.lock().unwrap().clear();
+        let observer = Arc::new(CollectingDagObserver::default());
+        let second = execute_single_file_dag(
+            &built,
+            arc,
+            "/remote.bin".to_string(),
+            local.to_string_lossy().to_string(),
+            None,
+            None,
+            Arc::clone(&observer) as Arc<dyn DagObserver>,
+            Arc::new(AtomicU64::new(20)),
+            20,
+            Some(CancellationToken::new()),
+        )
+        .await;
+        assert!(second.is_ok(), "the resumed run commits: {second:?}");
+
+        let metrics = observer.metrics();
+        assert_eq!(metrics.bytes_transferred, 20);
+        assert_eq!(metrics.logical_bytes, 20);
+        assert_eq!(
+            metrics.wire_bytes, 10,
+            "only the re-uploaded part crosses the wire on resume"
+        );
+        assert!(metrics.wire_bytes < metrics.logical_bytes);
         assert_eq!(metrics.local_payload_bytes, 0);
     }
 

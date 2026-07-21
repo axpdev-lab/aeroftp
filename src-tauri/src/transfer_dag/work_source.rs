@@ -339,9 +339,11 @@ pub struct StreamingSummary {
 ///   [`FileAdmission`] it uses to record its materialized node count; the file
 ///   subgraph is retired when that future completes and drops the admission.
 /// - **Metrics**: each `per_file` future returns its file's
-///   [`TransferDagMetrics`](super::metrics::TransferDagMetrics) (zero when the
-///   file never reached a graph); the frontier folds them into the job-level
-///   [`StreamingSummary::metrics`] total.
+///   [`TransferDagMetrics`](super::metrics::TransferDagMetrics): full executor
+///   timing plus runner-attested bytes on success, the partial executor timing
+///   the finalize still reported when the subgraph stopped early, and zero
+///   only when the file never reached a graph; the frontier folds them into
+///   the job-level [`StreamingSummary::metrics`] total.
 ///
 /// The whole job graph is never materialized: peak resident nodes stay
 /// `<= active_file_cap * max_nodes_per_template`.

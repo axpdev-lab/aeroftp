@@ -1662,7 +1662,7 @@ mod tests {
         )
         .await
         .unwrap();
-        let out_b = run_ranges_via_graph(
+        let (out_b, summary_b) = run_ranges_via_graph(
             &ranges,
             &temp_b,
             total,
@@ -1674,12 +1674,17 @@ mod tests {
             None,
         )
         .await
-        .unwrap()
-        .0;
+        .unwrap();
 
         assert_eq!(out_a, ConcurrentRangeOutcome::ServerIgnoredRange);
         assert_eq!(out_b, ConcurrentRangeOutcome::ServerIgnoredRange);
         assert_eq!(out_a, out_b);
+        // The honest fallback commits no bytes, so every byte counter the
+        // graph summary carries stays zeroed, not just the outcome variant.
+        assert_eq!(summary_b.metrics.bytes_transferred, 0);
+        assert_eq!(summary_b.metrics.logical_bytes, 0);
+        assert_eq!(summary_b.metrics.wire_bytes, 0);
+        assert_eq!(summary_b.metrics.local_payload_bytes, 0);
 
         let _ = tokio::fs::remove_dir_all(&dir).await;
     }

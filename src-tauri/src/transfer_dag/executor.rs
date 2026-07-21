@@ -361,7 +361,10 @@ pub async fn execute_dag_with_options(
     // points (providers::http_retry::send_with_retry) publish samples to the
     // registry while it is installed; totals fold into the metrics at the
     // single finalize below. Runtime-scoped, so fixture traffic on foreign
-    // runtimes cannot pollute this run's attribution.
+    // runtimes cannot pollute this run's attribution. When a job-level guard
+    // is already active on this runtime (the batch/sync streaming frontier
+    // installs one around the whole job), this install NESTS: the run folds
+    // zero TTFB and attribution stays with the outermost run.
     let ttfb_guard = super::ttfb::TtfbRecorder::install();
 
     // Pre-flight: a node demanding more of a class than the manager owns would
@@ -718,7 +721,10 @@ pub async fn execute_dag_with_options(
     // DAG-P2-07 (block C): fold the honest first-byte samples recorded by
     // provider call boundaries while this run's recorder was installed. Runs
     // whose paths have no first-byte moment contribute nothing; their latency
-    // stays attributed to run_nanos_total only.
+    // stays attributed to run_nanos_total only. A nested run (a per-file
+    // subgraph inside a batch/sync streaming job, or a second top-level job
+    // on the same runtime) owns no recorder and folds zero here; the job-level
+    // total is folded by the outermost run's owning guard.
     let (ttfb_nanos, ttfb_samples) = ttfb_guard.totals();
     summary.metrics.ttfb_nanos_total = summary.metrics.ttfb_nanos_total.saturating_add(ttfb_nanos);
     summary.metrics.ttfb_samples = summary
@@ -1088,6 +1094,77 @@ mod tests {
         assert_eq!(summary.metrics.ttfb_samples, 0);
         assert_eq!(summary.metrics.ttfb_nanos_total, 0);
         assert!(summary.metrics.run_nanos_total > 0);
+    }
+
+    // DAG-P2-07 (block C, job-level attribution): two concurrent runs on one
+    // runtime under an outer job guard each perform one real HTTP GET. The
+    // per-run installs nest, so the inner folds are zero and the outer guard
+    // counts each true sample exactly once (2, not the 4 the old fan-out
+    // produced). This is the attribution the batch/sync streaming frontier
+    // relies on for its per-file subgraphs.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn concurrent_runs_nest_ttfb_into_the_outer_job_guard() {
+        use crate::transfer_dag::ttfb::test_fixture::{
+            spawn_delayed_http_fixture, FixtureResponse,
+        };
+
+        let addr = spawn_delayed_http_fixture(Duration::from_millis(30), 2, |_head| {
+            FixtureResponse::ok("payload")
+        })
+        .await;
+
+        let outer = crate::transfer_dag::ttfb::TtfbRecorder::install();
+        assert!(
+            outer.is_owning(),
+            "no recorder is active on a fresh runtime"
+        );
+
+        async fn one_get_run(addr: std::net::SocketAddr) -> DagExecutionSummary {
+            let mut dag = TransferDag::default();
+            dag.add_node(
+                TransferNodeKind::DownloadFile,
+                vec![],
+                ResourceRequest::default(),
+            );
+            let runner: Arc<dyn DagNodeRunner> =
+                Arc::new(move |_node: TransferNode| -> NodeFuture {
+                    Box::pin(async move {
+                        let client = reqwest::Client::new();
+                        let request = client
+                            .get(format!("http://{addr}/object"))
+                            .build()
+                            .expect("build request");
+                        let response = crate::providers::send_with_retry(
+                            &client,
+                            request,
+                            &crate::providers::HttpRetryConfig::default(),
+                        )
+                        .await
+                        .expect("fixture response");
+                        let _ = response.bytes().await;
+                        NodeOutcome::Completed
+                    })
+                });
+            let manager = TransferResourceManager::new(TransferBudget::from_file_slots(1));
+            execute_dag(&dag, &manager, runner, noop_observer(), None)
+                .await
+                .unwrap()
+        }
+
+        let (first, second) = tokio::join!(one_get_run(addr), one_get_run(addr));
+
+        assert_eq!(first.nodes_completed, 1);
+        assert_eq!(second.nodes_completed, 1);
+        let inner_samples = first.metrics.ttfb_samples + second.metrics.ttfb_samples;
+        assert_eq!(
+            inner_samples, 0,
+            "nested per-run folds must be zero, got {inner_samples}"
+        );
+        let (_nanos, samples) = outer.totals();
+        assert_eq!(
+            samples, 2,
+            "each real HTTP sample is counted exactly once per job, got {samples}"
+        );
     }
 
     #[tokio::test]

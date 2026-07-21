@@ -540,9 +540,12 @@ Byte attestation is explicit per runner. The shaped single-file runner reports
 through a shared `AtomicU64` and `SingleFileMetricsObserver` (download:
 on-disk size; upload: file size; multipart: `layout.total_size` once at
 commit). Batch folds per-file `FileMetricCounters`, with multipart commit
-bytes recorded inside the once-guard of `claim_account`. Sync sends
-driver-attested outcome bytes through `TransferJob.ack`
-(`oneshot::Sender<u64>`). The range graph returns
+bytes recorded inside the once-guard of `claim_account`. Sync sends a
+driver-attested per-file `SyncByteAttestation` (logical and wire) through
+`TransferJob.ack` (`oneshot::Sender<SyncByteAttestation>`): on the rsync delta
+path the wire figure is the real delta payload (`delta_stats.bytes_sent`), not
+the whole file, and paths without an honest wire figure fall back to the
+logical size. The range graph returns
 `(ConcurrentRangeOutcome, DagExecutionSummary)` from
 `providers/multi_thread.rs`: the byte triple on `Completed`, zeroed counters
 on `ServerIgnoredRange`.
@@ -559,16 +562,29 @@ attempts for the range family, and provider-internal retry loops
 `mega_native.rs`) that sit below the metrics surface.
 
 Time-to-first-byte is recorded by `transfer_dag/ttfb.rs`: a process-global
-registry scoped by `tokio::runtime::Id`, one recorder installed per
-`execute_dag` run and folded at the single finalize. Concurrent runs on the
-same runtime share attribution (documented, never relabeled); foreign runtimes
+registry scoped by `tokio::runtime::Id`, with job-level attribution. At most
+one recorder is active per runtime: the first `TtfbRecorder::install` owns
+it, and any later install on the same runtime NESTS (owns nothing, folds
+zero). The batch and sync streaming runners install the owning guard around
+the whole streaming frontier, so every per-file `execute_dag` subgraph nests
+and each real HTTP sample is counted exactly once per job; per-file subgraph
+metrics therefore report `ttfb_samples == 0` and the exact total lands on the
+owning job run. Single-file and copy runs are themselves outermost, so they
+own the recorder and fold at their own single finalize as before. A second
+independent top-level job started on the same runtime while one is active
+nests and reports zero TTFB, and concurrent unrelated `send_with_retry`
+traffic on the same runtime during a job is attributed to that job; both are
+documented shared-runtime attribution, never relabeled. Foreign runtimes
 cannot pollute a run. The single instrumented choke point is
 `providers/http_retry.rs::send_with_retry`: a sample is the honest first byte
 (the reqwest future resolving with headers received), the timer starts after
 the tpslimit toll so throttle wait is not counted, a transport error records
-nothing, and each retried attempt that reaches headers is its own sample. This
+nothing, and each retried attempt that reaches headers is its own sample. On
+the force-abort drain-ceiling path (executor drain timeout) a sample that
+resolves after the fold is recorded late and not counted: an honest
+under-count, never a fabricated value. This
 covers every DAG production path whose provider routes through
-`send_with_retry` (18 provider files: whole-file GET/PUT, multipart UploadPart
+`send_with_retry` (15 provider files: whole-file GET/PUT, multipart UploadPart
 fan-out, ranged segments, batch/sync) with zero per-provider surgery. Paths
 that record nothing, keeping their latency inside `run_nanos_total`: FTP/FTPS
 and SFTP (non-HTTP), HTTP providers that bypass `send_with_retry` with raw
@@ -586,7 +602,10 @@ Linux and honestly `None` (never a zeroed guess) elsewhere.
 Block E adds one engine-level stats source, `EngineTransferStats`
 (`metrics.rs`): the folded job `TransferDagMetrics`, the real wall-clock
 milliseconds (not the summed `run_nanos_total`, which double-counts concurrent
-nodes), and the optional `ProcessResourceDelta`. It is built once at job end,
+nodes), the optional `ProcessResourceDelta`, and a `cancelled` flag (additive,
+serde-defaulted to `false` for older payloads) so a torn-down job's real
+folded stats are still surfaced but honestly labeled, letting MCP/GUI
+consumers tell it from a completed one. It is built once at job end,
 replacing the former `tracing::debug` of the batch/sync totals, and every
 surface reads that one struct. The CLI `--json` folder and sync results carry
 it in-band under an additive `stats` key (threaded through the shared batch
@@ -598,10 +617,13 @@ one-slot process-global store (`transfer_dag/engine_stats.rs`); it reports
 the MCP server's own `aeroftp_transfer`/`transfer_tree` tools use the direct
 cross-profile path and do not run the DAG engine, so they are not counted.
 
-Block F is the slow optimization loop. After a job drains (never on
-cancellation, and never while `--aimd-disable` is set), the batch/sync runner
+Block F is the slow optimization loop. After a job drains fully successfully
+(never on cancellation, never with per-file failures, and never while
+`--aimd-disable` is set), the batch/sync runner
 distills the populated job telemetry into a `JobThroughputObservation`
-(aggregate throughput, dispatch-wait ratio, concurrency high-water) and feeds
+(aggregate throughput against the transfer-phase wall clock, which brackets
+the streaming frontier and excludes scan/plan and per-runner setup rather
+than spanning the whole job, dispatch-wait ratio, concurrency high-water) and feeds
 it to `AdaptiveProfileRegistry::observe_job` under the same
 `AdaptiveProfileKey` (endpoint + workload) the P2-06 seed/feedback path uses.
 The loop is decrease-biased: a plateau (more concurrency without more

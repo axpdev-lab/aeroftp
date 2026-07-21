@@ -196,6 +196,35 @@ impl FtpSessionPool {
         self.inner.config.clone()
     }
 
+    /// Test-only pool with zero sessions: `acquire` can never succeed and
+    /// times out after `acquire_timeout_ms`, giving executor tests a
+    /// deterministic acquire-failure fixture without a live FTP server.
+    #[cfg(test)]
+    pub(crate) fn empty_for_test(acquire_timeout_ms: u64) -> Self {
+        let config = FtpPoolConfig {
+            connection: FtpConnectionSpec {
+                server: "127.0.0.1:1".to_string(),
+                username: "user".to_string(),
+                password: secrecy::SecretString::from("unused".to_string()),
+                initial_path: "/".to_string(),
+                timeouts: crate::ftp::FtpTimeoutConfig::default(),
+            },
+            pool_size: 1,
+            min_ready_sessions: 0,
+            acquire_timeout_ms,
+        }
+        .validated();
+        Self {
+            inner: Arc::new(FtpSessionPoolInner {
+                config,
+                available: StdMutex::new(VecDeque::new()),
+                all_sessions: Vec::new(),
+                closed: AtomicBool::new(false),
+                notify: Notify::new(),
+            }),
+        }
+    }
+
     pub async fn close(&self) -> Result<(), String> {
         self.inner.closed.store(true, Ordering::Relaxed);
         self.inner.notify.notify_waiters();
