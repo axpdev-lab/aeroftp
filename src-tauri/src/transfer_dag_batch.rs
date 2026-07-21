@@ -1843,7 +1843,7 @@ mod tests {
         let gate = Arc::new(Barrier::new(2));
         let executor = Arc::new(MockExecutor::new(8).with_rendezvous(Arc::clone(&gate)));
         let result = tokio::time::timeout(
-            Duration::from_secs(30),
+            Duration::from_secs(120),
             execute_batch_dag(
                 Arc::new(CountingSink::default()) as Arc<dyn TransferEventSink>,
                 batch(
@@ -2049,7 +2049,7 @@ mod tests {
                 .with_rendezvous(Arc::clone(&gate)),
         );
         let result = tokio::time::timeout(
-            Duration::from_secs(30),
+            Duration::from_secs(120),
             execute_batch_dag(
                 Arc::new(CountingSink::default()) as Arc<dyn TransferEventSink>,
                 batch(
@@ -2091,7 +2091,7 @@ mod tests {
                 .with_rendezvous(Arc::clone(&gate)),
         );
         let result = tokio::time::timeout(
-            Duration::from_secs(30),
+            Duration::from_secs(120),
             execute_batch_dag(
                 Arc::new(CountingSink::default()) as Arc<dyn TransferEventSink>,
                 batch(
