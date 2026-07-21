@@ -1210,7 +1210,8 @@ pub async fn execute_sync_dag(
         // with backlog from SyncOptions (CLI --max-backlog when the caller sets
         // it; default DEFAULT_ENGINE_MAX_BACKLOG).
         let file_slots = sync_caps.max_file_slots.unwrap_or(1).max(1) as usize;
-        let streaming_config = StreamingConfig::for_file_slots(file_slots, opts.max_backlog);
+        let streaming_config = StreamingConfig::for_file_slots(file_slots, opts.max_backlog)
+            .with_admission(opts.schedule);
         // DAG-P2-07 (block F): keep the same profile-bound controller so the
         // slow optimization loop can feed this sync's realized telemetry back to
         // the shared BatchSyncFile key after the run drains.
@@ -1661,6 +1662,7 @@ mod tests {
             error_correction: Default::default(),
             download_segments: 1,
             max_backlog: crate::transfer_dag::DEFAULT_ENGINE_MAX_BACKLOG,
+            schedule: crate::transfer_dag::AdmissionPolicy::Fifo,
         }
     }
 
@@ -2165,6 +2167,7 @@ mod tests {
                 StreamingConfig {
                     backlog_cap: 8,
                     active_file_cap: 2,
+                    admission: crate::transfer_dag::AdmissionPolicy::Fifo,
                 },
                 move |item, admission| {
                     let ctx = Arc::clone(&ctx);
@@ -2223,6 +2226,7 @@ mod tests {
                 StreamingConfig {
                     backlog_cap: 16,
                     active_file_cap: 8,
+                    admission: crate::transfer_dag::AdmissionPolicy::Fifo,
                 },
                 move |item, admission| {
                     let ctx = Arc::clone(&ctx);
@@ -2291,6 +2295,7 @@ mod tests {
                 StreamingConfig {
                     backlog_cap: 8,
                     active_file_cap: 2,
+                    admission: crate::transfer_dag::AdmissionPolicy::Fifo,
                 },
                 move |item, admission| {
                     let ctx = Arc::clone(&ctx);
@@ -2427,6 +2432,7 @@ mod tests {
                 StreamingConfig {
                     backlog_cap: 8,
                     active_file_cap: 2,
+                    admission: crate::transfer_dag::AdmissionPolicy::Fifo,
                 },
                 move |item, admission| {
                     let ctx = Arc::clone(&ctx);

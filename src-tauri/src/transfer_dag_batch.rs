@@ -411,7 +411,7 @@ fn batch_streaming_config(
         .transfer_budget_for_capabilities(caps)
         .file_slots
         .max(1) as usize;
-    StreamingConfig::for_file_slots(file_slots, config.max_backlog)
+    StreamingConfig::for_file_slots(file_slots, config.max_backlog).with_admission(config.schedule)
 }
 
 /// Execute one admitted batch file: expand its shaped subgraph template, bind
@@ -1591,6 +1591,7 @@ mod tests {
                 max_retries: 0,
                 timeout_ms: 30_000,
                 max_backlog: crate::transfer_domain::default_transfer_max_backlog(),
+                schedule: Default::default(),
             },
             entries,
         }
@@ -1606,6 +1607,7 @@ mod tests {
                 max_retries: 0,
                 timeout_ms: 30_000,
                 max_backlog: crate::transfer_domain::default_transfer_max_backlog(),
+                schedule: Default::default(),
             },
             entries,
         }
@@ -2276,6 +2278,7 @@ mod tests {
             max_retries: 0,
             timeout_ms: 30_000,
             max_backlog: crate::transfer_domain::default_transfer_max_backlog(),
+            schedule: Default::default(),
         };
         let caps = multipart_caps(4, 1024);
         let budget = config.transfer_budget_for_capabilities(&caps);
@@ -2848,6 +2851,7 @@ mod tests {
             max_retries: 0,
             timeout_ms: 30_000,
             max_backlog: 5_000,
+            schedule: Default::default(),
         };
         let cfg = batch_streaming_config(&config, &caps);
         assert_eq!(cfg.backlog_cap, 5_000, "backlog cap follows --max-backlog");
@@ -2875,6 +2879,7 @@ mod tests {
             max_retries: 0,
             timeout_ms: 30_000,
             max_backlog: 1_000,
+            schedule: Default::default(),
         };
         let cfg = batch_streaming_config(&serial, &caps);
         assert_eq!(cfg.active_file_cap, 3, "1 file slot + 2 pipeline headroom");
@@ -2886,6 +2891,7 @@ mod tests {
             max_retries: 0,
             timeout_ms: 30_000,
             max_backlog: 10_000,
+            schedule: Default::default(),
         };
         let cfg = batch_streaming_config(&wide, &caps);
         assert_eq!(

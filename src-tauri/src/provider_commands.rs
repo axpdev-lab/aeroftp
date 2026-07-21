@@ -3756,6 +3756,7 @@ async fn provider_download_folder_inner(
             max_retries: runtime_settings.retry_count,
             timeout_ms: runtime_settings.timeout_seconds * 1000,
             max_backlog: crate::transfer_domain::default_transfer_max_backlog(),
+            schedule: Default::default(),
         },
         entries: transfer_entries,
     };
@@ -4200,6 +4201,7 @@ async fn provider_upload_folder_inner(
             max_retries: runtime_settings.retry_count,
             timeout_ms: runtime_settings.timeout_seconds * 1000,
             max_backlog: crate::transfer_domain::default_transfer_max_backlog(),
+            schedule: Default::default(),
         },
         entries: transfer_entries,
     };

@@ -381,6 +381,10 @@ pub struct SyncOptions {
     /// transfer frontier (same knob as CLI `--max-backlog` / batch). When the
     /// plan is large, the WorkSource pauses instead of unbounded growth.
     pub max_backlog: usize,
+    /// DAG-P2-08: multi-file admission schedule for the sync streaming frontier
+    /// (same knob as CLI `--schedule` / batch). Default FIFO; `size` enables
+    /// size-fair admission with aging.
+    pub schedule: crate::transfer_dag::AdmissionPolicy,
 }
 
 impl Default for SyncOptions {
@@ -395,6 +399,7 @@ impl Default for SyncOptions {
             error_correction: SyncErrorCorrectionOptions::default(),
             download_segments: crate::transfer_settings::DEFAULT_DOWNLOAD_SEGMENTS,
             max_backlog: crate::transfer_dag::DEFAULT_ENGINE_MAX_BACKLOG,
+            schedule: crate::transfer_dag::AdmissionPolicy::Fifo,
         }
     }
 }

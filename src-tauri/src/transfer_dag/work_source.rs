@@ -40,11 +40,15 @@
 use std::future::Future;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::time::Instant;
 
 use async_trait::async_trait;
+use futures_util::stream::FuturesUnordered;
 use futures_util::StreamExt;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use tokio::sync::mpsc;
 
+use super::adaptive::{AdaptiveClock, SystemClock};
 use super::builder::TransferDirection;
 
 /// Default bounded backlog of pending work items. Aligned with the CLI
@@ -59,6 +63,77 @@ pub const DEFAULT_ENGINE_MAX_BACKLOG: usize = 10_000;
 /// of multipart graphs. Same spirit as
 /// [`DEFAULT_DISPATCH_WINDOW`](super::executor::DEFAULT_DISPATCH_WINDOW).
 pub const DEFAULT_ACTIVE_FILE_WINDOW: usize = 64;
+
+/// Default small-file threshold for [`AdmissionPolicy::SizeFair`] (8 MiB).
+/// Files at or below this size are latency-favored; larger files keep a
+/// reserved slot and age into priority so they never starve.
+pub const DEFAULT_SIZE_FAIR_SMALL_MAX_BYTES: u64 = 8 * 1024 * 1024;
+
+/// Base fairness score for a small pending item under SizeFair.
+const SIZE_FAIR_SMALL_BASE_SCORE: i64 = 1_000_000;
+/// Aging score gained per millisecond of wait. After 1 s a large item ties a
+/// fresh small item; longer waits promote the large item above new smalls.
+const SIZE_FAIR_AGE_SCORE_PER_MS: i64 = 1_000;
+
+/// How the streaming frontier admits backlog items into the active set.
+///
+/// - [`AdmissionPolicy::Fifo`]: arrival order (default; zero behavior change
+///   vs DAG-P2-04).
+/// - [`AdmissionPolicy::SizeFair`]: weighted fair scheduling for mixed-size
+///   workloads with aging and a large-file slot reservation (DAG-P2-08).
+///
+/// Serializes as `"fifo"` / `"size"` for CLI and config compatibility with
+/// rclone-style `size,mixed` naming (`size` is the accepted short form).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum AdmissionPolicy {
+    #[default]
+    Fifo,
+    SizeFair {
+        small_max_bytes: u64,
+    },
+}
+
+impl AdmissionPolicy {
+    /// Size-fair policy with the engine default small threshold.
+    pub fn size_fair() -> Self {
+        Self::SizeFair {
+            small_max_bytes: DEFAULT_SIZE_FAIR_SMALL_MAX_BYTES,
+        }
+    }
+
+    /// Parse CLI / config tokens: `fifo`, `size`, `size,mixed`, `size_fair`.
+    pub fn parse(s: &str) -> Result<Self, String> {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "fifo" => Ok(Self::Fifo),
+            "size" | "size,mixed" | "size_mixed" | "size-fair" | "size_fair" => {
+                Ok(Self::size_fair())
+            }
+            other => Err(format!(
+                "unknown admission schedule '{other}' (expected fifo or size)"
+            )),
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Fifo => "fifo",
+            Self::SizeFair { .. } => "size",
+        }
+    }
+}
+
+impl Serialize for AdmissionPolicy {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(self.as_str())
+    }
+}
+
+impl<'de> Deserialize<'de> for AdmissionPolicy {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(deserializer)?;
+        Self::parse(&s).map_err(serde::de::Error::custom)
+    }
+}
 
 /// One unit of streaming transfer work.
 ///
@@ -164,7 +239,8 @@ impl WorkSource for ChannelWorkSource {
 }
 
 /// Streaming frontier configuration: the two bounds that keep the resident
-/// graph `O(active_file_cap * nodes_per_template)` regardless of job size.
+/// graph `O(active_file_cap * nodes_per_template)` regardless of job size,
+/// plus the optional size-fair admission policy (DAG-P2-08).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct StreamingConfig {
     /// Bounded backlog of work items pulled from the source but not yet
@@ -173,6 +249,9 @@ pub struct StreamingConfig {
     pub backlog_cap: usize,
     /// Maximum file subgraphs materialized and executing concurrently.
     pub active_file_cap: usize,
+    /// How pending items are selected into the active set. Default
+    /// [`AdmissionPolicy::Fifo`] preserves arrival order.
+    pub admission: AdmissionPolicy,
 }
 
 impl Default for StreamingConfig {
@@ -180,6 +259,7 @@ impl Default for StreamingConfig {
         Self {
             backlog_cap: DEFAULT_ENGINE_MAX_BACKLOG,
             active_file_cap: DEFAULT_ACTIVE_FILE_WINDOW,
+            admission: AdmissionPolicy::Fifo,
         }
     }
 }
@@ -193,6 +273,7 @@ impl StreamingConfig {
         Self {
             backlog_cap,
             active_file_cap,
+            admission: self.admission,
         }
     }
 
@@ -206,12 +287,18 @@ impl StreamingConfig {
         self
     }
 
+    pub fn with_admission(mut self, admission: AdmissionPolicy) -> Self {
+        self.admission = admission;
+        self
+    }
+
     /// Production multi-file policy shared by batch and sync.
     ///
     /// Active set = `file_slots + 2` pipeline headroom (structural prefix can
     /// start while a transfer holds a slot), never below `file_slots`, never
     /// above `DEFAULT_ACTIVE_FILE_WINDOW` unless slots themselves exceed it.
     /// Backlog comes from the CLI/engine knob (`--max-backlog` / config).
+    /// Admission defaults to FIFO; chain [`Self::with_admission`] for SizeFair.
     pub fn for_file_slots(file_slots: usize, backlog_cap: usize) -> Self {
         let file_slots = file_slots.max(1);
         let pipeline = file_slots.saturating_add(2);
@@ -220,6 +307,7 @@ impl StreamingConfig {
         Self {
             backlog_cap,
             active_file_cap,
+            admission: AdmissionPolicy::Fifo,
         }
         .normalized()
     }
@@ -334,28 +422,42 @@ pub struct StreamingSummary {
 ///   full the producer awaits on `send`, so the source pauses rather than
 ///   growing without bound.
 /// - **Active set**: at most `active_file_cap` `per_file` futures run
-///   concurrently (via `for_each_concurrent`, so there is no task spawn per
-///   file — only the work the per-file closure itself spawns). Each file gets a
-///   [`FileAdmission`] it uses to record its materialized node count; the file
-///   subgraph is retired when that future completes and drops the admission.
+///   concurrently. Under [`AdmissionPolicy::Fifo`] this is
+///   `for_each_concurrent` (arrival order). Under
+///   [`AdmissionPolicy::SizeFair`] an explicit pending buffer picks by
+///   fairness score (small-file latency + aging) with a large-file slot
+///   reservation so large work never starves.
 /// - **Metrics**: each `per_file` future returns its file's
-///   [`TransferDagMetrics`](super::metrics::TransferDagMetrics): full executor
-///   timing plus runner-attested bytes on success, the partial executor timing
-///   the finalize still reported when the subgraph stopped early, and zero
-///   only when the file never reached a graph; the frontier folds them into
-///   the job-level [`StreamingSummary::metrics`] total.
+///   [`TransferDagMetrics`](super::metrics::TransferDagMetrics); the frontier
+///   folds them into the job-level [`StreamingSummary::metrics`] total.
 ///
 /// The whole job graph is never materialized: peak resident nodes stay
 /// `<= active_file_cap * max_nodes_per_template`.
 pub async fn run_streaming<S, F, Fut>(
-    mut source: S,
+    source: S,
     config: StreamingConfig,
     per_file: F,
 ) -> StreamingSummary
 where
     S: WorkSource + 'static,
     F: Fn(TransferWorkItem, FileAdmission) -> Fut + Send + Sync,
-    Fut: Future<Output = super::metrics::TransferDagMetrics> + Send,
+    Fut: Future<Output = super::metrics::TransferDagMetrics> + Send + 'static,
+{
+    run_streaming_with_clock(source, config, Arc::new(SystemClock), per_file).await
+}
+
+/// Like [`run_streaming`], but uses an injectable [`AdaptiveClock`] so SizeFair
+/// aging tests can advance time without wall-clock sleeps.
+pub async fn run_streaming_with_clock<S, F, Fut>(
+    mut source: S,
+    config: StreamingConfig,
+    clock: Arc<dyn AdaptiveClock>,
+    per_file: F,
+) -> StreamingSummary
+where
+    S: WorkSource + 'static,
+    F: Fn(TransferWorkItem, FileAdmission) -> Fut + Send + Sync,
+    Fut: Future<Output = super::metrics::TransferDagMetrics> + Send + 'static,
 {
     let config = config.normalized();
     let meter = Arc::new(ActiveGraphMeter::default());
@@ -378,29 +480,41 @@ where
         }
     });
 
-    // Admission: consume the backlog, running up to `active_file_cap` per-file
-    // futures at once. `unfold` turns the receiver into a stream without
-    // pulling more than the concurrency limit needs.
-    let stream = futures_util::stream::unfold(rx, |mut rx| async move {
-        rx.recv().await.map(|item| (item, rx))
-    });
-    {
-        let meter = &meter;
-        let per_file = &per_file;
-        let metrics_total = &metrics_total;
-        stream
-            .for_each_concurrent(config.active_file_cap, move |item| {
-                let admission = FileAdmission::new(Arc::clone(meter));
-                let metrics_total = Arc::clone(metrics_total);
-                async move {
-                    let file_metrics = per_file(item, admission).await;
-                    metrics_total
-                        .lock()
-                        .expect("streaming metrics total poisoned")
-                        .absorb(&file_metrics);
-                }
-            })
+    match config.admission {
+        AdmissionPolicy::Fifo => {
+            // Arrival-order path: identical to pre-P2-08 behaviour.
+            let stream = futures_util::stream::unfold(rx, |mut rx| async move {
+                rx.recv().await.map(|item| (item, rx))
+            });
+            let meter = &meter;
+            let per_file = &per_file;
+            let metrics_total = &metrics_total;
+            stream
+                .for_each_concurrent(config.active_file_cap, move |item| {
+                    let admission = FileAdmission::new(Arc::clone(meter));
+                    let metrics_total = Arc::clone(metrics_total);
+                    async move {
+                        let file_metrics = per_file(item, admission).await;
+                        metrics_total
+                            .lock()
+                            .expect("streaming metrics total poisoned")
+                            .absorb(&file_metrics);
+                    }
+                })
+                .await;
+        }
+        AdmissionPolicy::SizeFair { small_max_bytes } => {
+            run_size_fair_admission(
+                rx,
+                config.active_file_cap,
+                small_max_bytes,
+                Arc::clone(&meter),
+                Arc::clone(&metrics_total),
+                clock,
+                &per_file,
+            )
             .await;
+        }
     }
 
     // The stream drained: the channel closed (producer finished) or every item
@@ -422,10 +536,264 @@ where
     }
 }
 
+/// One work item waiting for an active-set slot under SizeFair.
+struct PendingItem {
+    item: TransferWorkItem,
+    enqueued_at: Instant,
+    /// Monotonic enqueue order for stable FIFO tie-breaks.
+    seq: u64,
+}
+
+fn is_small_file(size: u64, small_max_bytes: u64) -> bool {
+    size <= small_max_bytes
+}
+
+/// Fairness score: higher is admitted sooner. Small files get a large base;
+/// wait time ages every pending item so large files eventually outrank fresh
+/// small ones.
+fn size_fair_score(pending: &PendingItem, now: Instant, small_max_bytes: u64) -> i64 {
+    let age_ms = now
+        .saturating_duration_since(pending.enqueued_at)
+        .as_millis()
+        .min(i64::MAX as u128) as i64;
+    let class = if is_small_file(pending.item.size, small_max_bytes) {
+        SIZE_FAIR_SMALL_BASE_SCORE
+    } else {
+        0
+    };
+    class.saturating_add(age_ms.saturating_mul(SIZE_FAIR_AGE_SCORE_PER_MS))
+}
+
+/// Pick the next pending index. Prefer high fairness score; on ties prefer
+/// earlier enqueue (`seq`). When the last free slot would otherwise be filled
+/// by a small file while a large is pending and none is active, reserve that
+/// slot for a large file (anti-starvation). Reservation only applies when the
+/// active set already holds work (`active_count > 0`); an empty active set
+/// uses pure score so a lone small still wins low-latency admission.
+fn pick_size_fair_index(
+    pending: &[PendingItem],
+    active_large: usize,
+    active_count: usize,
+    free_slots: usize,
+    now: Instant,
+    small_max_bytes: u64,
+) -> usize {
+    debug_assert!(!pending.is_empty());
+    let has_pending_large = pending
+        .iter()
+        .any(|p| !is_small_file(p.item.size, small_max_bytes));
+    let reserve_large =
+        has_pending_large && active_large == 0 && free_slots == 1 && active_count > 0;
+
+    let eligible = |p: &PendingItem| {
+        if reserve_large {
+            !is_small_file(p.item.size, small_max_bytes)
+        } else {
+            true
+        }
+    };
+
+    pending
+        .iter()
+        .enumerate()
+        .filter(|(_, p)| eligible(p))
+        .max_by(|(_, a), (_, b)| {
+            size_fair_score(a, now, small_max_bytes)
+                .cmp(&size_fair_score(b, now, small_max_bytes))
+                // Lower seq (earlier enqueue) wins ties.
+                .then_with(|| b.seq.cmp(&a.seq))
+        })
+        .map(|(i, _)| i)
+        // reserve_large filter should always find a large when has_pending_large;
+        // fall back to best overall if the invariant is somehow empty.
+        .unwrap_or_else(|| {
+            pending
+                .iter()
+                .enumerate()
+                .max_by(|(_, a), (_, b)| {
+                    size_fair_score(a, now, small_max_bytes)
+                        .cmp(&size_fair_score(b, now, small_max_bytes))
+                        .then_with(|| b.seq.cmp(&a.seq))
+                })
+                .map(|(i, _)| i)
+                .expect("pending non-empty")
+        })
+}
+
+fn push_size_fair_pending(
+    pending: &mut Vec<PendingItem>,
+    item: TransferWorkItem,
+    clock: &dyn AdaptiveClock,
+    next_seq: &mut u64,
+) {
+    pending.push(PendingItem {
+        item,
+        enqueued_at: clock.now(),
+        seq: *next_seq,
+    });
+    *next_seq = next_seq.saturating_add(1);
+}
+
+fn drain_size_fair_channel(
+    rx: &mut mpsc::Receiver<TransferWorkItem>,
+    pending: &mut Vec<PendingItem>,
+    next_seq: &mut u64,
+    source_done: &mut bool,
+    clock: &dyn AdaptiveClock,
+) {
+    loop {
+        match rx.try_recv() {
+            Ok(item) => push_size_fair_pending(pending, item, clock, next_seq),
+            Err(mpsc::error::TryRecvError::Empty) => break,
+            Err(mpsc::error::TryRecvError::Disconnected) => {
+                *source_done = true;
+                break;
+            }
+        }
+    }
+}
+
+/// SizeFair admission loop: drain the backlog channel into a pending buffer,
+/// run a capped `FuturesUnordered` active set, and pick the next item by
+/// fairness score + large reservation.
+async fn run_size_fair_admission<F, Fut>(
+    mut rx: mpsc::Receiver<TransferWorkItem>,
+    active_file_cap: usize,
+    small_max_bytes: u64,
+    meter: Arc<ActiveGraphMeter>,
+    metrics_total: Arc<std::sync::Mutex<super::metrics::TransferDagMetrics>>,
+    clock: Arc<dyn AdaptiveClock>,
+    per_file: &F,
+) where
+    F: Fn(TransferWorkItem, FileAdmission) -> Fut + Send + Sync,
+    // Boxed into FuturesUnordered; production and test per_file closures are
+    // already 'static (move + Arc), same as the FIFO for_each_concurrent path
+    // effectively requires in practice.
+    Fut: Future<Output = super::metrics::TransferDagMetrics> + Send + 'static,
+{
+    let mut pending: Vec<PendingItem> = Vec::new();
+    let mut next_seq: u64 = 0;
+    let mut source_done = false;
+    let mut active_large: usize = 0;
+    // Each active future yields (was_large, metrics).
+    type ActiveFileFut =
+        std::pin::Pin<Box<dyn Future<Output = (bool, super::metrics::TransferDagMetrics)> + Send>>;
+    let mut active: FuturesUnordered<ActiveFileFut> = FuturesUnordered::new();
+
+    loop {
+        drain_size_fair_channel(
+            &mut rx,
+            &mut pending,
+            &mut next_seq,
+            &mut source_done,
+            clock.as_ref(),
+        );
+
+        // Admit while slots free and work is pending.
+        while active.len() < active_file_cap && !pending.is_empty() {
+            let free_slots = active_file_cap - active.len();
+            let now = clock.now();
+            let idx = pick_size_fair_index(
+                &pending,
+                active_large,
+                active.len(),
+                free_slots,
+                now,
+                small_max_bytes,
+            );
+            let chosen = pending.remove(idx);
+            let is_large = !is_small_file(chosen.item.size, small_max_bytes);
+            if is_large {
+                active_large = active_large.saturating_add(1);
+            }
+            let admission = FileAdmission::new(Arc::clone(&meter));
+            let item = chosen.item;
+            let fut = per_file(item, admission);
+            active.push(Box::pin(async move {
+                let file_metrics = fut.await;
+                (is_large, file_metrics)
+            }));
+        }
+
+        if active.is_empty() {
+            if source_done && pending.is_empty() {
+                break;
+            }
+            if !pending.is_empty() {
+                // Pending has work but we failed to admit (should not happen
+                // when free slots exist). Loop back to drain/admit.
+                continue;
+            }
+            // Block for the next backlog item (or channel close).
+            match rx.recv().await {
+                Some(item) => {
+                    push_size_fair_pending(&mut pending, item, clock.as_ref(), &mut next_seq);
+                    // One cooperative yield lets the producer enqueue already-ready
+                    // siblings (e.g. a SliceWorkSource batch) before the first pick,
+                    // so SizeFair can see mixed sizes instead of racing one-by-one.
+                    tokio::task::yield_now().await;
+                }
+                None => {
+                    source_done = true;
+                    if pending.is_empty() {
+                        break;
+                    }
+                }
+            }
+            continue;
+        }
+
+        // Wait for a free slot or more backlog.
+        tokio::select! {
+            Some((was_large, file_metrics)) = active.next() => {
+                if was_large {
+                    active_large = active_large.saturating_sub(1);
+                }
+                metrics_total
+                    .lock()
+                    .expect("streaming metrics total poisoned")
+                    .absorb(&file_metrics);
+                // After a slot frees, yield so newly ready siblings can land
+                // in the backlog before the next fairness pick.
+                if !source_done {
+                    tokio::task::yield_now().await;
+                }
+            }
+            item = rx.recv(), if !source_done => {
+                match item {
+                    Some(item) => {
+                        push_size_fair_pending(
+                            &mut pending,
+                            item,
+                            clock.as_ref(),
+                            &mut next_seq,
+                        )
+                    }
+                    None => source_done = true,
+                }
+            }
+        }
+    }
+
+    // Drain any stragglers (should already be empty when pending+source done).
+    while let Some((was_large, file_metrics)) = active.next().await {
+        if was_large {
+            active_large = active_large.saturating_sub(1);
+        }
+        metrics_total
+            .lock()
+            .expect("streaming metrics total poisoned")
+            .absorb(&file_metrics);
+    }
+    let _ = active_large;
+}
+
 #[cfg(test)]
 mod tests {
+    use super::super::adaptive::ManualClock;
     use super::*;
     use std::sync::atomic::AtomicUsize;
+    use std::sync::Mutex as StdMutex;
     use std::time::Duration;
     use tokio::sync::Semaphore;
 
@@ -469,6 +837,7 @@ mod tests {
         let cfg = StreamingConfig {
             backlog_cap: 0,
             active_file_cap: 0,
+            admission: AdmissionPolicy::Fifo,
         }
         .normalized();
         assert_eq!(cfg.active_file_cap, 1);
@@ -478,6 +847,7 @@ mod tests {
         let cfg = StreamingConfig {
             backlog_cap: 4,
             active_file_cap: 32,
+            admission: AdmissionPolicy::Fifo,
         }
         .normalized();
         assert_eq!(cfg.active_file_cap, 32);
@@ -535,6 +905,7 @@ mod tests {
         let config = StreamingConfig {
             backlog_cap: 10_000,
             active_file_cap: ACTIVE,
+            admission: AdmissionPolicy::Fifo,
         };
 
         let summary = run_streaming(source, config, |_item, mut admission| async move {
@@ -573,6 +944,7 @@ mod tests {
             let config = StreamingConfig {
                 backlog_cap: 1_000,
                 active_file_cap: ACTIVE,
+                admission: AdmissionPolicy::Fifo,
             };
             run_streaming(source, config, |_item, mut admission| async move {
                 admission.materialize_nodes(TEMPLATE_NODES);
@@ -611,6 +983,7 @@ mod tests {
                 StreamingConfig {
                     backlog_cap: BACKLOG,
                     active_file_cap: ACTIVE,
+                    admission: AdmissionPolicy::Fifo,
                 },
                 move |_item, _admission| {
                     let gate = Arc::clone(&gate_run);
@@ -678,6 +1051,7 @@ mod tests {
             StreamingConfig {
                 backlog_cap: 8,
                 active_file_cap: 2,
+                admission: AdmissionPolicy::Fifo,
             },
             move |item, mut admission| {
                 let trace = Arc::clone(&trace_run);
@@ -751,5 +1125,185 @@ mod tests {
             !file1.contains(&TransferNodeKind::EmitProgress),
             "no terminal emit after a blocked commit"
         );
+    }
+
+    /// DAG-P2-08: under SizeFair a small item enqueued after a large one is
+    /// still admitted first (low small-file latency). Uses the current_thread
+    /// runtime so the producer fills both items into the backlog channel
+    /// before the first pick, and an injectable clock for aging determinism.
+    #[tokio::test(flavor = "current_thread")]
+    async fn size_fair_admits_small_before_large_for_low_latency() {
+        const SMALL: u64 = 1_024;
+        const LARGE: u64 = 64 * 1024 * 1024;
+        let source = SliceWorkSource::new(vec![
+            TransferWorkItem::new("large.bin", 0, LARGE, TransferDirection::Upload),
+            TransferWorkItem::new("small.bin", 1, SMALL, TransferDirection::Upload),
+        ]);
+        let order = Arc::new(StdMutex::new(Vec::new()));
+        let order_run = Arc::clone(&order);
+        let clock = Arc::new(ManualClock::new());
+        let config = StreamingConfig {
+            backlog_cap: 8,
+            active_file_cap: 1,
+            admission: AdmissionPolicy::SizeFair {
+                small_max_bytes: 8 * 1024 * 1024,
+            },
+        };
+
+        let summary = run_streaming_with_clock(source, config, clock, move |item, _admission| {
+            let order = Arc::clone(&order_run);
+            async move {
+                order.lock().unwrap().push(item.key.clone());
+                crate::transfer_dag::TransferDagMetrics::default()
+            }
+        })
+        .await;
+
+        assert_eq!(summary.items_admitted, 2);
+        let order = order.lock().unwrap().clone();
+        assert_eq!(
+            order,
+            vec!["small.bin".to_string(), "large.bin".to_string()],
+            "SizeFair must admit the small file before the earlier large file"
+        );
+    }
+
+    /// DAG-P2-08: under a flood of small files, a large file still gets a slot
+    /// via the large-reservation invariant (last free slot when no large is
+    /// active) so it cannot starve.
+    #[tokio::test(flavor = "current_thread")]
+    async fn size_fair_reserves_a_slot_so_large_never_starves() {
+        const SMALL: u64 = 512;
+        const LARGE: u64 = 100 * 1024 * 1024;
+        // One large followed by many smalls; active set of 2 so the reservation
+        // claims the last free slot for the large while smalls fill the rest.
+        let mut items = vec![TransferWorkItem::new(
+            "large.bin",
+            0,
+            LARGE,
+            TransferDirection::Upload,
+        )];
+        for i in 1..=32 {
+            items.push(TransferWorkItem::new(
+                format!("s{i}.bin"),
+                i,
+                SMALL,
+                TransferDirection::Upload,
+            ));
+        }
+        let source = SliceWorkSource::new(items);
+        let admitted = Arc::new(StdMutex::new(Vec::new()));
+        let admitted_run = Arc::clone(&admitted);
+        // Hold every small file so the large must share the window via reservation
+        // rather than waiting for the entire small flood to drain.
+        let small_gate = Arc::new(Semaphore::new(0));
+        let small_gate_run = Arc::clone(&small_gate);
+        let large_done = Arc::new(tokio::sync::Notify::new());
+        let large_done_run = Arc::clone(&large_done);
+        let clock = Arc::new(ManualClock::new());
+        let config = StreamingConfig {
+            backlog_cap: 64,
+            active_file_cap: 2,
+            admission: AdmissionPolicy::SizeFair {
+                small_max_bytes: 8 * 1024 * 1024,
+            },
+        };
+
+        let run = tokio::spawn(async move {
+            run_streaming_with_clock(source, config, clock, move |item, _admission| {
+                let admitted = Arc::clone(&admitted_run);
+                let small_gate = Arc::clone(&small_gate_run);
+                let large_done = Arc::clone(&large_done_run);
+                async move {
+                    let key = item.key.clone();
+                    admitted.lock().unwrap().push(key.clone());
+                    if key == "large.bin" {
+                        large_done.notify_one();
+                    } else {
+                        let _permit = small_gate.acquire().await.expect("gate open");
+                    }
+                    crate::transfer_dag::TransferDagMetrics::default()
+                }
+            })
+            .await
+        });
+
+        // The large file must be admitted while smalls are still holding slots.
+        tokio::time::timeout(Duration::from_secs(2), large_done.notified())
+            .await
+            .expect("large file must be admitted within a bounded wait (reservation)");
+
+        // Release all small holders and finish the run.
+        small_gate.add_permits(64);
+        let summary = run.await.expect("streaming join");
+        assert_eq!(summary.items_admitted, 33);
+        let order = admitted.lock().unwrap().clone();
+        assert!(
+            order.iter().any(|k| k == "large.bin"),
+            "large must appear in the admission order: {order:?}"
+        );
+        // Large is among the first two admissions (reservation of the last free slot).
+        assert!(
+            order[..2.min(order.len())].iter().any(|k| k == "large.bin"),
+            "large must be admitted in the first active window, got {order:?}"
+        );
+    }
+
+    /// DAG-P2-08: default Fifo path stays strictly arrival-ordered.
+    #[tokio::test(flavor = "current_thread")]
+    async fn fifo_policy_is_unchanged() {
+        const SMALL: u64 = 1_024;
+        const LARGE: u64 = 64 * 1024 * 1024;
+        let source = SliceWorkSource::new(vec![
+            TransferWorkItem::new("large.bin", 0, LARGE, TransferDirection::Upload),
+            TransferWorkItem::new("small.bin", 1, SMALL, TransferDirection::Upload),
+            TransferWorkItem::new("mid.bin", 2, 4 * 1024 * 1024, TransferDirection::Upload),
+        ]);
+        let order = Arc::new(StdMutex::new(Vec::new()));
+        let order_run = Arc::clone(&order);
+        // Default config is Fifo.
+        let config = StreamingConfig {
+            backlog_cap: 8,
+            active_file_cap: 1,
+            admission: AdmissionPolicy::Fifo,
+        };
+
+        let summary = run_streaming(source, config, move |item, _admission| {
+            let order = Arc::clone(&order_run);
+            async move {
+                order.lock().unwrap().push(item.key.clone());
+                crate::transfer_dag::TransferDagMetrics::default()
+            }
+        })
+        .await;
+
+        assert_eq!(summary.items_admitted, 3);
+        let order = order.lock().unwrap().clone();
+        assert_eq!(
+            order,
+            vec![
+                "large.bin".to_string(),
+                "small.bin".to_string(),
+                "mid.bin".to_string()
+            ],
+            "Fifo must preserve strict arrival order"
+        );
+    }
+
+    #[test]
+    fn admission_policy_parse_accepts_fifo_and_size_aliases() {
+        assert_eq!(
+            AdmissionPolicy::parse("fifo").unwrap(),
+            AdmissionPolicy::Fifo
+        );
+        assert_eq!(
+            AdmissionPolicy::parse("size").unwrap(),
+            AdmissionPolicy::size_fair()
+        );
+        assert_eq!(
+            AdmissionPolicy::parse("size,mixed").unwrap(),
+            AdmissionPolicy::size_fair()
+        );
+        assert!(AdmissionPolicy::parse("random").is_err());
     }
 }

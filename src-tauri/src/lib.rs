@@ -3653,6 +3653,7 @@ async fn download_files_batch(
             max_retries: runtime_settings.retry_count,
             timeout_ms: runtime_settings.timeout_seconds * 1000,
             max_backlog: transfer_domain::default_transfer_max_backlog(),
+            schedule: crate::transfer_dag::AdmissionPolicy::Fifo,
         },
         entries: batch_entries,
     };
@@ -3874,6 +3875,7 @@ async fn upload_files_batch(
             max_retries: runtime_settings.retry_count,
             timeout_ms: runtime_settings.timeout_seconds * 1000,
             max_backlog: transfer_domain::default_transfer_max_backlog(),
+            schedule: crate::transfer_dag::AdmissionPolicy::Fifo,
         },
         entries: batch_entries,
     };
@@ -4427,6 +4429,7 @@ async fn download_folder(
             max_retries: runtime_settings.retry_count,
             timeout_ms: runtime_settings.timeout_seconds * 1000,
             max_backlog: transfer_domain::default_transfer_max_backlog(),
+            schedule: crate::transfer_dag::AdmissionPolicy::Fifo,
         },
         entries: scan_result.entries,
     };
@@ -4964,6 +4967,7 @@ async fn upload_folder(
             max_retries: runtime_settings.retry_count,
             timeout_ms: runtime_settings.timeout_seconds * 1000,
             max_backlog: transfer_domain::default_transfer_max_backlog(),
+            schedule: crate::transfer_dag::AdmissionPolicy::Fifo,
         },
         entries: prep_result.entries,
     };

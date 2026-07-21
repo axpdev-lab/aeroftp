@@ -413,6 +413,7 @@ async fn product_path_uses_delta_when_session_is_eligible() {
         // DAG-P2-04 residual: SyncOptions gained max_backlog; keep the engine
         // default so these product-path sync tests compile under --all-targets.
         max_backlog: ftp_client_gui_lib::transfer_dag::DEFAULT_ENGINE_MAX_BACKLOG,
+        schedule: ftp_client_gui_lib::transfer_dag::AdmissionPolicy::Fifo,
     };
     let mut sink = NoopProgressSink;
 
@@ -528,6 +529,7 @@ async fn product_path_uses_native_delta_for_password_sftp_with_pinned_host_key()
         // DAG-P2-04 residual: SyncOptions gained max_backlog; keep the engine
         // default so these product-path sync tests compile under --all-targets.
         max_backlog: ftp_client_gui_lib::transfer_dag::DEFAULT_ENGINE_MAX_BACKLOG,
+        schedule: ftp_client_gui_lib::transfer_dag::AdmissionPolicy::Fifo,
     };
     let mut sink = NoopProgressSink;
 
@@ -964,6 +966,7 @@ async fn z11_kpi_batch_session_reuse_on_100_small_files() {
         // DAG-P2-04 residual: SyncOptions gained max_backlog; keep the engine
         // default so these product-path sync tests compile under --all-targets.
         max_backlog: ftp_client_gui_lib::transfer_dag::DEFAULT_ENGINE_MAX_BACKLOG,
+        schedule: ftp_client_gui_lib::transfer_dag::AdmissionPolicy::Fifo,
     };
     let mut sink = NoopProgressSink;
 
@@ -1107,6 +1110,7 @@ async fn z11_kpi_delta_savings_on_large_file() {
         // DAG-P2-04 residual: SyncOptions gained max_backlog; keep the engine
         // default so these product-path sync tests compile under --all-targets.
         max_backlog: ftp_client_gui_lib::transfer_dag::DEFAULT_ENGINE_MAX_BACKLOG,
+        schedule: ftp_client_gui_lib::transfer_dag::AdmissionPolicy::Fifo,
     };
     let mut sink = NoopProgressSink;
 

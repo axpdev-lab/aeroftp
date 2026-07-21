@@ -473,6 +473,7 @@ async fn pd_cli_conv_b_shared_executor_download_is_byte_identical() {
                 max_retries: runtime_settings.retry_count,
                 timeout_ms: runtime_settings.timeout_seconds.saturating_mul(1000),
                 max_backlog: ftp_client_gui_lib::transfer_domain::default_transfer_max_backlog(),
+                schedule: ftp_client_gui_lib::transfer_dag::AdmissionPolicy::Fifo,
             },
             entries,
         };
@@ -659,6 +660,7 @@ async fn pd_cli_conv_c_shared_executor_upload_is_byte_identical() {
                 max_retries: runtime_settings.retry_count,
                 timeout_ms: runtime_settings.timeout_seconds.saturating_mul(1000),
                 max_backlog: ftp_client_gui_lib::transfer_domain::default_transfer_max_backlog(),
+                schedule: ftp_client_gui_lib::transfer_dag::AdmissionPolicy::Fifo,
             },
             entries,
         };
@@ -901,6 +903,7 @@ async fn pd_cli_conv_d_sync_transfer_phase_is_byte_identical() {
                     timeout_ms: runtime_settings.timeout_seconds.saturating_mul(1000),
                     max_backlog: ftp_client_gui_lib::transfer_domain::default_transfer_max_backlog(
                     ),
+                    schedule: ftp_client_gui_lib::transfer_dag::AdmissionPolicy::Fifo,
                 },
                 entries,
             };
@@ -984,6 +987,7 @@ async fn pd_cli_conv_d_sync_transfer_phase_is_byte_identical() {
                     timeout_ms: runtime_settings.timeout_seconds.saturating_mul(1000),
                     max_backlog: ftp_client_gui_lib::transfer_domain::default_transfer_max_backlog(
                     ),
+                    schedule: ftp_client_gui_lib::transfer_dag::AdmissionPolicy::Fifo,
                 },
                 entries,
             };

@@ -75,7 +75,8 @@ pub use session_pool::{
     TransferSessionPoolHandle,
 };
 pub use work_source::{
-    run_streaming, ActiveGraphMeter, ChannelWorkSource, FileAdmission, SliceWorkSource,
-    StreamingConfig, StreamingSummary, TransferWorkItem, WorkSource, DEFAULT_ACTIVE_FILE_WINDOW,
-    DEFAULT_ENGINE_MAX_BACKLOG,
+    run_streaming, run_streaming_with_clock, ActiveGraphMeter, AdmissionPolicy, ChannelWorkSource,
+    FileAdmission, SliceWorkSource, StreamingConfig, StreamingSummary, TransferWorkItem,
+    WorkSource, DEFAULT_ACTIVE_FILE_WINDOW, DEFAULT_ENGINE_MAX_BACKLOG,
+    DEFAULT_SIZE_FAIR_SMALL_MAX_BYTES,
 };

@@ -8,8 +8,8 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 
 use crate::transfer_dag::{
-    EngineTransferStats, FailureScope, RetryDirective, TransferBudget, TransferCapabilities,
-    TransferError, TransferErrorKind,
+    AdmissionPolicy, EngineTransferStats, FailureScope, RetryDirective, TransferBudget,
+    TransferCapabilities, TransferError, TransferErrorKind,
 };
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -219,6 +219,10 @@ pub struct TransferBatchConfig {
     /// (backpressure) instead of materializing the whole job graph up front.
     #[serde(default = "default_transfer_max_backlog")]
     pub max_backlog: usize,
+    /// DAG-P2-08: multi-file admission schedule (`fifo` default, or `size` for
+    /// size-fair with aging). Maps from the CLI `--schedule` knob.
+    #[serde(default)]
+    pub schedule: AdmissionPolicy,
 }
 
 /// Default bounded backlog, aligned with the CLI `--max-backlog` default and
@@ -234,6 +238,7 @@ impl Default for TransferBatchConfig {
             max_retries: 0,
             timeout_ms: 30_000,
             max_backlog: default_transfer_max_backlog(),
+            schedule: AdmissionPolicy::Fifo,
         }
     }
 }
@@ -489,6 +494,7 @@ mod tests {
             max_retries: 0,
             timeout_ms: 30_000,
             max_backlog: default_transfer_max_backlog(),
+            schedule: Default::default(),
         };
 
         assert_eq!(config.transfer_budget().file_slots, 6);
@@ -501,6 +507,7 @@ mod tests {
             max_retries: 0,
             timeout_ms: 30_000,
             max_backlog: default_transfer_max_backlog(),
+            schedule: Default::default(),
         };
 
         assert_eq!(config.transfer_budget().file_slots, 1);
@@ -514,6 +521,7 @@ mod tests {
             max_retries: 0,
             timeout_ms: 30_000,
             max_backlog: default_transfer_max_backlog(),
+            schedule: Default::default(),
         };
         let caps = TransferCapabilities {
             multipart_upload: Capability::Supported,
@@ -537,6 +545,7 @@ mod tests {
             max_retries: 0,
             timeout_ms: 30_000,
             max_backlog: default_transfer_max_backlog(),
+            schedule: Default::default(),
         };
         let caps = TransferCapabilities {
             multipart_upload: Capability::Supported,
