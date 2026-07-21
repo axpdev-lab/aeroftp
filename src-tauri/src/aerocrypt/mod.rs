@@ -47,6 +47,59 @@ pub const AEROCRYPT_DEFAULT_SALT_V1: [u8; SALT_SIZE] = [
     0xcd, 0xfc, 0x27, 0x45, 0x61, 0xc3, 0xc3, 0xa8, 0x77, 0x1d, 0x7d, 0xbb, 0x78, 0x70, 0x49, 0x13,
     0x3b, 0x2f, 0x3e, 0x70, 0x36, 0x96, 0xa7, 0x14, 0x3f, 0x5c, 0xa5, 0x85, 0xc0, 0xa1, 0xca, 0x63,
 ];
+
+/// Two-tier entropy gate for the public default salt, enforced at the crypto
+/// boundary (not React only). The default salt is a single public constant
+/// shared by every default-salt vault, so a weak password is crackable across
+/// all of them with one Argon2id precomputation; every create path MUST gate on
+/// this before deriving the master key. `tier` is "256" for the stricter tier,
+/// anything else the 128 recommended tier. Faithful mirror of the frontend gate
+/// (ConnectionScreen.tsx): a Strong rating (level 4) plus a minimum length (20
+/// for 128, 39 for 256).
+pub fn enforce_default_salt_entropy(password: &str, tier: &str) -> Result<(), String> {
+    let required_len = if tier == "256" { 39 } else { 20 };
+    let len = password.chars().count();
+    if default_salt_strength_level(password) == 4 && len >= required_len {
+        Ok(())
+    } else {
+        Err(format!(
+            "Default salt requires a high-entropy generated password (Strong rating, at least {required_len} characters). This password does not meet the floor; use a stronger generated password, or a per-vault salt."
+        ))
+    }
+}
+
+/// Password strength level 0..=4, a faithful mirror of the frontend gate compute
+/// in ConnectionScreen.tsx, so the backend enforces exactly what the UI shows.
+fn default_salt_strength_level(password: &str) -> u8 {
+    if password.is_empty() {
+        return 0;
+    }
+    let len = password.chars().count();
+    let mut sc: i32 = (len as i32 * 4).min(40);
+    let has_lower = password.chars().any(|c| c.is_ascii_lowercase());
+    let has_upper = password.chars().any(|c| c.is_ascii_uppercase());
+    let has_digit = password.chars().any(|c| c.is_ascii_digit());
+    let has_symbol = password.chars().any(|c| !c.is_ascii_alphanumeric());
+    let variety = [has_lower, has_upper, has_digit, has_symbol]
+        .iter()
+        .filter(|present| **present)
+        .count() as i32;
+    sc += variety * 10;
+    if variety >= 3 && len >= 12 {
+        sc += 10;
+    }
+    if variety >= 4 && len >= 16 {
+        sc += 10;
+    }
+    sc = sc.clamp(0, 100);
+    match sc {
+        s if s < 20 => 0,
+        s if s < 40 => 1,
+        s if s < 60 => 2,
+        s if s < 80 => 3,
+        _ => 4,
+    }
+}
 /// AES-GCM-SIV nonce length, in bytes.
 pub const NONCE_SIZE: usize = 12;
 /// Length of an AES-KW-wrapped 256-bit key (key + 8-byte integrity check).
@@ -409,6 +462,27 @@ mod tests {
         // Sanity: not the all-zero or all-one trap value.
         assert_ne!(AEROCRYPT_DEFAULT_SALT_V1, [0u8; SALT_SIZE]);
         assert_ne!(AEROCRYPT_DEFAULT_SALT_V1, [0xffu8; SALT_SIZE]);
+    }
+
+    #[test]
+    fn default_salt_entropy_gate_mirrors_ui_and_fails_closed() {
+        // Weak passwords are rejected on every tier (the whole point: the salt is
+        // a public constant, so a weak password is crackable across all vaults).
+        assert!(enforce_default_salt_entropy("hunter2", "128").is_err());
+        assert!(enforce_default_salt_entropy("short", "256").is_err());
+        // Long but single character class stays below the Strong (level 4) floor.
+        assert!(enforce_default_salt_entropy(&"a".repeat(40), "128").is_err());
+        // 20 chars, four character classes: clears 128, not the 39-char 256 floor.
+        let p128 = "Aa1!".repeat(5);
+        assert_eq!(p128.chars().count(), 20);
+        assert!(enforce_default_salt_entropy(&p128, "128").is_ok());
+        assert!(enforce_default_salt_entropy(&p128, "256").is_err());
+        // 40 chars, four classes: clears the stricter 256 floor too.
+        let p256 = "Aa1!".repeat(10);
+        assert!(enforce_default_salt_entropy(&p256, "256").is_ok());
+        // An unknown tier string falls back to the 128 floor (never stricter-fails open).
+        assert!(enforce_default_salt_entropy(&p128, "weird").is_ok());
+        assert!(enforce_default_salt_entropy("hunter2", "weird").is_err());
     }
 
     #[test]

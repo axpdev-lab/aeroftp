@@ -50007,7 +50007,7 @@ async fn cmd_crypt_init(
     no_bind: bool,
     keyfile_path: Option<&str>,
     use_default_salt: bool,
-    _salt_strength: &str,
+    salt_strength: &str,
     i_understand_linkability: bool,
     cli: &Cli,
     format: OutputFormat,
@@ -50028,6 +50028,17 @@ async fn cmd_crypt_init(
             5,
         );
         return 5;
+    }
+    // Entropy gate at the crypto boundary (not UI-only): a public constant salt
+    // is only safe with a high-entropy password, so reject a weak one here too,
+    // consuming the requested strength tier (--salt-strength 128|256).
+    if use_default_salt {
+        if let Err(e) =
+            ftp_client_gui_lib::aerocrypt::enforce_default_salt_entropy(password, salt_strength)
+        {
+            print_error(format, &e, 5);
+            return 5;
+        }
     }
     let salt_mode = if use_default_salt {
         overlay::SaltMode::DefaultV1

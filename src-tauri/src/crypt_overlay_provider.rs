@@ -2220,6 +2220,15 @@ async fn unlock_overlay_keys_encrypting(
                     }
                 }
                 let use_default = use_default_salt.unwrap_or(false);
+                // Entropy gate at the crypto boundary for a newly bootstrapped
+                // default-salt vault (this branch only runs on create, never on
+                // unlock of an existing vault). A public constant salt is only safe
+                // with a high-entropy password, so reject a weak one even if a
+                // direct invoke skipped the UI gate. The 128 floor is the minimum;
+                // the UI still enforces the stricter 256 tier when selected.
+                if use_default {
+                    crate::aerocrypt::enforce_default_salt_entropy(password, "128")?;
+                }
                 let salt = if use_default {
                     crate::aerocrypt::AEROCRYPT_DEFAULT_SALT_V1
                 } else {

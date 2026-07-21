@@ -510,6 +510,7 @@ pub async fn aerocrypt_provider_migrate_legacy_marker(
 /// at the (optional) sub-path, and register the unlocked vault. Refuses to
 /// overwrite an existing overlay unless `force` is set, because re-initializing
 /// rotates the salt and would orphan every existing file.
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn aerocrypt_provider_create_remote(
     provider_state: State<'_, ProviderState>,
@@ -519,11 +520,21 @@ pub async fn aerocrypt_provider_create_remote(
     force: Option<bool>,
     keyfile_path: Option<String>,
     use_default_salt: Option<bool>,
+    salt_strength: Option<String>,
 ) -> Result<AeroCryptVaultInfo, String> {
     let secret_pwd = secrecy::SecretString::from(password);
     let force = force.unwrap_or(false);
     let keyfile_digest = resolve_ui_keyfile_digest(keyfile_path.as_deref())?;
     let use_default = use_default_salt.unwrap_or(false);
+    // Entropy gate at the crypto boundary (not UI-only): reject a weak password
+    // for a public-constant-salt vault. The UI already gates this, but a direct
+    // invoke must not bypass it. Defaults to the 128 floor when the tier is absent.
+    if use_default {
+        crate::aerocrypt::enforce_default_salt_entropy(
+            secrecy::ExposeSecret::expose_secret(&secret_pwd),
+            salt_strength.as_deref().unwrap_or("128"),
+        )?;
+    }
     let salt = if use_default {
         crate::aerocrypt::AEROCRYPT_DEFAULT_SALT_V1
     } else {
