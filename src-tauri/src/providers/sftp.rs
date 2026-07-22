@@ -1425,6 +1425,32 @@ impl StorageProvider for SftpProvider {
                 .await;
         }
 
+        // EXPERIMENT (2026-07-22): sliding-window read-ahead downloader (our own,
+        // no crate fork). Takes precedence over PD-PIPE-1 when
+        // AEROFTP_SFTP_READAHEAD is set. Same guardrails: known size, no active
+        // bandwidth cap (the serial loop owns precise throttling).
+        if let Some(window) = sftp_readahead_window() {
+            if total_size > 0
+                && self.download_limit_bps == 0
+                && crate::transfer_dag::governor::global()
+                    .bandwidth()
+                    .is_unlimited()
+            {
+                let sftp = self.get_sftp()?;
+                sftp_readahead_download(
+                    sftp,
+                    &full_path,
+                    total_size,
+                    local_path,
+                    self.buffer_size,
+                    window,
+                    on_progress,
+                )
+                .await?;
+                return Ok(());
+            }
+        }
+
         // PD-PIPE-1: opt-in pipelined single-stream read on the *one
         // existing* SFTP session (no new connection, no pool). Off by
         // default = the serial loop below, byte-identical. Skipped when the
@@ -2491,6 +2517,28 @@ fn sftp_read_pipeline_window() -> Option<usize> {
     parse_sftp_read_pipeline_window(std::env::var("AEROFTP_SFTP_READ_PIPELINE").ok().as_deref())
 }
 
+/// EXPERIMENT (2026-07-22): sliding-window read-ahead flag. Our own downloader,
+/// so it is pushed hard: no tight cap. Unset / `0` / `1` / falsey = off;
+/// `on`/`yes`/`true` = a large default window; numeric `>= 2` = that window
+/// (only a generous anti-footgun ceiling). Distinct env so it can be A/B'd
+/// against the batched `sftp_pipelined_download`.
+const SFTP_READAHEAD_DEFAULT_WINDOW: usize = 64;
+const SFTP_READAHEAD_MAX_WINDOW: usize = 1024;
+fn parse_sftp_readahead_window(raw: Option<&str>) -> Option<usize> {
+    let v = raw?.trim().to_ascii_lowercase();
+    match v.as_str() {
+        "" | "0" | "1" | "false" | "off" | "no" => None,
+        "true" | "on" | "yes" => Some(SFTP_READAHEAD_DEFAULT_WINDOW),
+        _ => match v.parse::<usize>() {
+            Ok(n) if n >= 2 => Some(n.min(SFTP_READAHEAD_MAX_WINDOW)),
+            _ => None,
+        },
+    }
+}
+fn sftp_readahead_window() -> Option<usize> {
+    parse_sftp_readahead_window(std::env::var("AEROFTP_SFTP_READAHEAD").ok().as_deref())
+}
+
 /// PD-PIPE-1: read exactly `want` bytes from `file` starting at the absolute
 /// offset `abs_off`, looping on short protocol reads. A `read() == 0` before
 /// `want` is **not** an error here: it means EOF (the remote file is shorter
@@ -2527,6 +2575,244 @@ async fn sftp_pipelined_read_window(
     }
     buf.truncate(filled);
     Ok(buf)
+}
+
+/// Removes a partial read-ahead download temp on drop unless disarmed after a
+/// successful commit, so a mid-transfer error or a dropped future never leaves
+/// an orphan `.aerardtmp` behind.
+struct ReadaheadTempGuard {
+    path: String,
+    armed: bool,
+}
+impl ReadaheadTempGuard {
+    fn new(path: String) -> Self {
+        Self { path, armed: true }
+    }
+    fn disarm(&mut self) {
+        self.armed = false;
+    }
+}
+impl Drop for ReadaheadTempGuard {
+    fn drop(&mut self) {
+        if self.armed {
+            let _ = std::fs::remove_file(&self.path);
+        }
+    }
+}
+
+/// Sliding-window read-ahead for the byte range `[start, start + expected)` on
+/// ONE SFTP session, written positioned into the already-open `out` at each
+/// chunk's absolute offset.
+///
+/// Why this exists: russh-sftp's `File` reads serially (one `SSH_FXP_READ`
+/// awaited per `poll_read`; upstream AspectUnk/russh-sftp#70), so a single SFTP
+/// connection downloads far below the link while its writes pipeline
+/// (`write_nowait`) and upload runs ~3x faster on the same session. We cannot
+/// reach the private `RawSftpSession` to add a symmetric `read_nowait`, but the
+/// session multiplexes concurrent requests by id with no global lock, so we keep
+/// `window` `SSH_FXP_READ` continuously in flight: open `window` cheap file
+/// handles and stripe the chunks across them (handle `h` reads chunks
+/// `h, h+window, ...`). Unlike the batched `sftp_pipelined_download` there is no
+/// per-window barrier: the `window` readers feed a single writer over a bounded
+/// channel, so the pipe never drains between batches. Composes with the
+/// PD-SFTP-2 independent-connection pool (N connections x this read-ahead).
+///
+/// Strict: every chunk must return its full `want` (a short read before the
+/// range end is a truncation / mid-transfer change -> hard error, never a silent
+/// short write; the SHA-256 gate backs it). Cancellation is honored before and
+/// during each read. `aggregate` always accumulates bytes written (the PD-SFTP-2
+/// pool observes progress through it). `on_progress`, when set, is additionally
+/// called from the single writer with the running total against
+/// `total_for_progress`; it is taken by value (an owned `Box<dyn Fn + Send>` is
+/// `Send`, so holding it across the writer's awaits keeps this future `Send`,
+/// with no spawned ticker to leak).
+#[allow(clippy::too_many_arguments)]
+async fn sftp_readahead_range_into(
+    sftp: &SftpSession,
+    full_path: &str,
+    start: u64,
+    expected: u64,
+    out: &mut tokio::fs::File,
+    chunk: usize,
+    window: usize,
+    aggregate: &Arc<AtomicU64>,
+    cancel: &CancellationToken,
+    total_for_progress: u64,
+    on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+) -> Result<(), ProviderError> {
+    use tokio::io::{AsyncSeekExt, AsyncWriteExt};
+    if expected == 0 {
+        return Ok(());
+    }
+    let chunk = (chunk.max(4096)) as u64;
+    let n_chunks = expected.div_ceil(chunk).max(1);
+    let eff_window = (window.clamp(2, SFTP_READAHEAD_MAX_WINDOW) as u64).min(n_chunks) as usize;
+
+    // Open the `eff_window` handles concurrently (one batched round trip, not
+    // `window` serial opens).
+    let handles = futures_util::future::try_join_all((0..eff_window).map(|_| sftp.open(full_path)))
+        .await
+        .map_err(|e| {
+            classify_russh_err(e, |s| {
+                ProviderError::TransferFailed(format!(
+                    "Failed to open remote file (readahead): {}",
+                    s
+                ))
+            })
+        })?;
+
+    // `eff_window` readers -> one writer. The writer owns `out` (no cursor race)
+    // and is the sole caller of `on_progress`.
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<(u64, Vec<u8>)>(eff_window.max(2));
+
+    let readers = async {
+        let mut reader_tasks = Vec::with_capacity(eff_window);
+        for (h, mut file) in handles.into_iter().enumerate() {
+            let tx = tx.clone();
+            let cancel = cancel.clone();
+            let eff = eff_window as u64;
+            reader_tasks.push(async move {
+                let mut j = h as u64;
+                while j < n_chunks {
+                    let rel_off = j * chunk;
+                    let abs_off = start + rel_off;
+                    let want = std::cmp::min(chunk, expected - rel_off) as usize;
+                    let buf = tokio::select! {
+                        _ = cancel.cancelled() => {
+                            return Err(ProviderError::TransferFailed(
+                                "Transfer cancelled by user".to_string(),
+                            ));
+                        }
+                        r = sftp_pipelined_read_window(&mut file, abs_off, want) => r?,
+                    };
+                    if buf.len() != want {
+                        return Err(ProviderError::TransferFailed(format!(
+                            "Short read at offset {} ({} of {} bytes): remote file changed or truncated",
+                            abs_off,
+                            buf.len(),
+                            want
+                        )));
+                    }
+                    if tx.send((abs_off, buf)).await.is_err() {
+                        // Writer went away (its error/cancel is the one that
+                        // propagates); stop feeding it.
+                        break;
+                    }
+                    j += eff;
+                }
+                Ok::<(), ProviderError>(())
+            });
+        }
+        // Drop the original sender so `rx` closes once every reader clone is
+        // gone; otherwise the writer would wait forever.
+        drop(tx);
+        futures_util::future::try_join_all(reader_tasks).await?;
+        Ok::<(), ProviderError>(())
+    };
+
+    // `async move` so `on_progress` is captured BY VALUE (owned `Box<dyn Fn +
+    // Send>` is `Send`); capturing it by reference would need it to be `Sync`,
+    // which a bare `dyn Fn + Send` is not, and would make this future `!Send`.
+    let writer = async move {
+        while let Some((abs_off, buf)) = rx.recv().await {
+            if cancel.is_cancelled() {
+                return Err(ProviderError::TransferFailed(
+                    "Transfer cancelled by user".to_string(),
+                ));
+            }
+            out.seek(std::io::SeekFrom::Start(abs_off))
+                .await
+                .map_err(ProviderError::IoError)?;
+            out.write_all(&buf).await.map_err(ProviderError::IoError)?;
+            let done = aggregate.fetch_add(buf.len() as u64, Ordering::Relaxed) + buf.len() as u64;
+            if let Some(ref cb) = on_progress {
+                cb(done, total_for_progress);
+            }
+        }
+        Ok::<(), ProviderError>(())
+    };
+
+    tokio::try_join!(readers, writer)?;
+    Ok(())
+}
+
+/// Single-connection sliding-window read-ahead download of a whole file, over
+/// the one existing SFTP session (no new connection, no crate fork). Opt-in via
+/// `AEROFTP_SFTP_READAHEAD`; see `sftp_readahead_range_into` for the mechanism
+/// and the issue #70 rationale. Byte-identical to the serial loop for a static
+/// file; SHA-256 gated.
+async fn sftp_readahead_download(
+    sftp: &SftpSession,
+    full_path: &str,
+    total_size: u64,
+    local_path: &str,
+    chunk: usize,
+    window: usize,
+    on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+) -> Result<(), ProviderError> {
+    use tokio::io::AsyncWriteExt;
+
+    // Pre-size a local temp for positioned (out-of-order) writes; the guard
+    // removes it on any early return or drop until we commit with the rename.
+    let temp_path = format!("{}.aerardtmp", local_path);
+    {
+        let f = tokio::fs::File::create(&temp_path).await.map_err(|e| {
+            ProviderError::TransferFailed(format!("Failed to create local temp: {}", e))
+        })?;
+        f.set_len(total_size).await.map_err(|e| {
+            ProviderError::TransferFailed(format!("Failed to size local temp: {}", e))
+        })?;
+    }
+    let mut guard = ReadaheadTempGuard::new(temp_path.clone());
+
+    let mut out = tokio::fs::OpenOptions::new()
+        .write(true)
+        .open(&temp_path)
+        .await
+        .map_err(|e| ProviderError::TransferFailed(format!("Failed to open local temp: {}", e)))?;
+
+    let aggregate = Arc::new(AtomicU64::new(0));
+    let cancel = CancellationToken::new();
+
+    // The writer owns `on_progress` and calls it directly (real, incremental);
+    // an owned `Box<dyn Fn + Send>` stays `Send` across the writer's awaits, so
+    // there is no spawned ticker to leak on a dropped/cancelled transfer.
+    sftp_readahead_range_into(
+        sftp,
+        full_path,
+        0,
+        total_size,
+        &mut out,
+        chunk,
+        window,
+        &aggregate,
+        &cancel,
+        total_size,
+        on_progress,
+    )
+    .await?;
+
+    out.flush()
+        .await
+        .map_err(|e| ProviderError::TransferFailed(format!("Failed to flush download: {}", e)))?;
+    out.sync_all()
+        .await
+        .map_err(|e| ProviderError::TransferFailed(format!("Failed to sync download: {}", e)))?;
+    drop(out);
+
+    tokio::fs::rename(&temp_path, local_path)
+        .await
+        .map_err(|e| {
+            ProviderError::TransferFailed(format!("Failed to finalize download: {}", e))
+        })?;
+    guard.disarm();
+
+    tracing::info!(
+        "SFTP: Download complete (readahead, window={}): {} bytes",
+        window,
+        total_size
+    );
+    Ok(())
 }
 
 /// PD-PIPE-1: pipelined single-stream SFTP download over the **one existing**
@@ -2834,6 +3120,39 @@ async fn sftp_download_one_range(
     let sftp = worker.get_sftp()?;
     let global_bw = crate::transfer_dag::governor::global().bandwidth();
 
+    // READ-AHEAD (our own issue #70 workaround) takes precedence over PD-PIPE-2
+    // when AEROFTP_SFTP_READAHEAD is set: keep `window` `SSH_FXP_READ` in flight
+    // on THIS range worker's connection with no per-batch barrier. Composes with
+    // PD-SFTP-2's N independent connections (N x this read-ahead). Same guardrail
+    // as PD-PIPE-2: no active bandwidth cap (the serial loop owns throttling).
+    if limit_bps == 0 && global_bw.is_unlimited() {
+        if let Some(window) = sftp_readahead_window() {
+            let mut out = tokio::fs::OpenOptions::new()
+                .write(true)
+                .open(&temp_path)
+                .await
+                .map_err(ProviderError::IoError)?;
+            sftp_readahead_range_into(
+                sftp,
+                &full_path,
+                start,
+                expected,
+                &mut out,
+                buffer_size,
+                window,
+                &aggregate,
+                &cancel,
+                expected,
+                None,
+            )
+            .await?;
+            out.flush().await.map_err(ProviderError::IoError)?;
+            out.sync_all().await.map_err(ProviderError::IoError)?;
+            let _ = worker.disconnect().await;
+            return Ok(ConcurrentRangeOutcome::Completed);
+        }
+    }
+
     // PD-PIPE-2: when the opt-in flag yields a window and no bandwidth cap
     // is active, pipeline this range worker's read of
     // `[start, start + expected)` on its OWN single SFTP session. Compounds
@@ -2982,6 +3301,36 @@ mod tests {
                 None,
                 "{junk:?}"
             );
+        }
+    }
+
+    #[test]
+    fn readahead_flag_off_by_default_large_default_and_generous_cap() {
+        // Off by default and for the degenerate "1", mirroring the pipeline flag.
+        assert_eq!(parse_sftp_readahead_window(None), None);
+        for off in ["", " ", "0", "1", "false", "off", "no", "FALSE", "Off"] {
+            assert_eq!(parse_sftp_readahead_window(Some(off)), None, "{off:?}");
+        }
+        // Truthy words enable the large default window (our own downloader is
+        // pushed hard, so the default is bigger than the pipeline default).
+        for on in ["true", "on", "yes", "TRUE", " On "] {
+            assert_eq!(
+                parse_sftp_readahead_window(Some(on)),
+                Some(SFTP_READAHEAD_DEFAULT_WINDOW),
+                "{on:?}"
+            );
+        }
+        // Explicit numeric window, only >= 2 enables; capped only by the
+        // generous anti-footgun ceiling (no tight cap).
+        assert_eq!(parse_sftp_readahead_window(Some("2")), Some(2));
+        assert_eq!(parse_sftp_readahead_window(Some("64")), Some(64));
+        assert_eq!(parse_sftp_readahead_window(Some("256")), Some(256));
+        assert_eq!(
+            parse_sftp_readahead_window(Some("100000")),
+            Some(SFTP_READAHEAD_MAX_WINDOW)
+        );
+        for junk in ["abc", "-3", "2.5", "0x10"] {
+            assert_eq!(parse_sftp_readahead_window(Some(junk)), None, "{junk:?}");
         }
     }
 
