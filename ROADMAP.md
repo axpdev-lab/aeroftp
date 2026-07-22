@@ -181,9 +181,9 @@ _Nothing actively in flight right now; the next items are queued under Up Next b
 - **Flathub publish**
   Flatpak manifest (`com.aeroftp.AeroFTP.yml`) done and maintained in-repo, awaiting acceptance into the Flathub remote.
 - **IPFS / Web3 Storage**
-  Decentralized storage integration (NLnet grant submitted).
+  Decentralized storage integration.
 - **Tor Support**
-  Anonymous file transfers via Tor hidden services (NLnet grant submitted).
+  Anonymous file transfers via Tor hidden services.
 - **Biometric Unlock**
   Fingerprint and face unlock for the encrypted vault (Touch ID, Windows Hello).
 - **Per-protocol comparison page in docs**
