@@ -1,6 +1,6 @@
 # cargo-audit configuration for AeroFTP
 #
-# Each ignore below carries a written justification. Reviewers (NLnet, OpenSSF,
+# Each ignore below carries a written justification. Reviewers (OpenSSF,
 # OSSSign, supply-chain auditors) should read these inline and either accept
 # them or push back with a specific objection. We do NOT ignore advisories
 # without a tracked rationale.
