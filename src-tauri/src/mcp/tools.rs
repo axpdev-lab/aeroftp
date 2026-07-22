@@ -1461,6 +1461,7 @@ pub async fn execute_tool(
                 error_correction: Default::default(),
                 download_segments: crate::transfer_settings::DEFAULT_DOWNLOAD_SEGMENTS,
                 max_backlog: crate::transfer_dag::DEFAULT_ENGINE_MAX_BACKLOG,
+                schedule: crate::transfer_dag::AdmissionPolicy::Fifo,
             };
 
             // Entry-time pool invalidate. Wave-1 added an end-of-run

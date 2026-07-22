@@ -346,6 +346,13 @@ struct Cli {
     #[arg(long, global = true, default_value_t = 10000)]
     max_backlog: usize,
 
+    /// Multi-file admission schedule for the streaming transfer frontier
+    /// (DAG-P2-08). `fifo` (default) preserves arrival order; `size` prefers
+    /// small files for low latency with aging so large files never starve
+    /// (rclone-style size,mixed).
+    #[arg(long, global = true, default_value = "fifo", value_parser = ["fifo", "size"])]
+    schedule: String,
+
     /// Number of retries for failed operations (default: 3, 0 = no retry)
     #[arg(long, global = true, default_value_t = 3)]
     retries: u32,
@@ -6011,6 +6018,7 @@ fn first_command_index(args: &[String]) -> Option<usize> {
                 | "--parallel"
                 | "--max-transfer"
                 | "--max-backlog"
+                | "--schedule"
                 | "--retries"
                 | "--retries-sleep"
                 | "--chunk-size"
@@ -9075,6 +9083,9 @@ async fn run_shared_provider_download_batch(
             timeout_ms: runtime_settings.timeout_seconds.saturating_mul(1000),
             // DAG-P2-04: the --max-backlog knob is now a real engine bound.
             max_backlog: cli.max_backlog,
+            // DAG-P2-08: --schedule fifo|size (default fifo).
+            schedule: ftp_client_gui_lib::transfer_dag::AdmissionPolicy::parse(&cli.schedule)
+                .unwrap_or_default(),
         },
         entries,
     };
@@ -9283,6 +9294,9 @@ async fn run_shared_provider_upload_batch(
             timeout_ms: runtime_settings.timeout_seconds.saturating_mul(1000),
             // DAG-P2-04: the --max-backlog knob is now a real engine bound.
             max_backlog: cli.max_backlog,
+            // DAG-P2-08: --schedule fifo|size (default fifo).
+            schedule: ftp_client_gui_lib::transfer_dag::AdmissionPolicy::parse(&cli.schedule)
+                .unwrap_or_default(),
         },
         entries,
     };
@@ -65796,6 +65810,7 @@ mod tests {
             max_age: None,
             max_transfer: None,
             max_backlog: 10000,
+            schedule: "fifo".to_string(),
             retries: 3,
             retries_sleep: "1s".to_string(),
             dump: Vec::new(),

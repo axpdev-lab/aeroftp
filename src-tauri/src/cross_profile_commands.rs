@@ -686,6 +686,7 @@ pub async fn cross_profile_execute(
                 max_retries: 0,
                 timeout_ms: 30_000,
                 max_backlog: crate::transfer_domain::default_transfer_max_backlog(),
+                schedule: Default::default(),
             },
             entries,
         };

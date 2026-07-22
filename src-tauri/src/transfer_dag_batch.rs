@@ -411,7 +411,7 @@ fn batch_streaming_config(
         .transfer_budget_for_capabilities(caps)
         .file_slots
         .max(1) as usize;
-    StreamingConfig::for_file_slots(file_slots, config.max_backlog)
+    StreamingConfig::for_file_slots(file_slots, config.max_backlog).with_admission(config.schedule)
 }
 
 /// Execute one admitted batch file: expand its shaped subgraph template, bind
@@ -1591,6 +1591,7 @@ mod tests {
                 max_retries: 0,
                 timeout_ms: 30_000,
                 max_backlog: crate::transfer_domain::default_transfer_max_backlog(),
+                schedule: Default::default(),
             },
             entries,
         }
@@ -1606,6 +1607,7 @@ mod tests {
                 max_retries: 0,
                 timeout_ms: 30_000,
                 max_backlog: crate::transfer_domain::default_transfer_max_backlog(),
+                schedule: Default::default(),
             },
             entries,
         }
@@ -1833,6 +1835,35 @@ mod tests {
         assert!(executed.contains(&"third".to_string()));
     }
 
+    /// Deterministic AIMD for concurrency proofs: disabled (no shrink) and
+    /// isolated from the process-global profile registry. Under a full
+    /// `cargo test --lib` run, other suites seed `BatchSyncFile` for the
+    /// shared mock endpoint (`unknown`/`batch-executor`); a learned File
+    /// target of 1 would serialize dispatch and deadlock a 2-party
+    /// rendezvous barrier until the outer timeout (Nightly Telemetry flake).
+    fn concurrency_proof_aimd(file_slots: usize) -> Arc<crate::transfer_dag::AimdController> {
+        use crate::transfer_dag::{AimdConfig, AimdController};
+        Arc::new(AimdController::new(
+            file_slots,
+            1,
+            1,
+            1,
+            AimdConfig {
+                disabled: true,
+                ..AimdConfig::default()
+            },
+        ))
+    }
+
+    fn concurrency_proof_caps(max_file_slots: u16) -> TransferCapabilities {
+        TransferCapabilities {
+            file_parallel: crate::transfer_dag::Capability::Supported,
+            session_pool: crate::transfer_dag::Capability::Supported,
+            max_file_slots: Some(max_file_slots),
+            ..TransferCapabilities::default()
+        }
+    }
+
     #[tokio::test]
     async fn batch_dag_respects_file_slot_concurrency() {
         // Rendezvous barrier: the first two files must be concurrently
@@ -1840,11 +1871,18 @@ mod tests {
         // depends on a 15 ms wall-clock window. If the scheduler ignored the
         // slot cap, peak would exceed 2 and the assert below fails; if it
         // serialized, the barrier never releases and the timeout fails.
+        //
+        // Inject a disabled AIMD so process-global adaptive learning from
+        // sibling tests cannot shrink File permits below 2 (see helper).
         let gate = Arc::new(Barrier::new(2));
-        let executor = Arc::new(MockExecutor::new(8).with_rendezvous(Arc::clone(&gate)));
+        let executor = Arc::new(
+            MockExecutor::new(8)
+                .with_capabilities(concurrency_proof_caps(2))
+                .with_rendezvous(Arc::clone(&gate)),
+        );
         let result = tokio::time::timeout(
-            Duration::from_secs(120),
-            execute_batch_dag(
+            Duration::from_secs(30),
+            execute_batch_dag_with_aimd(
                 Arc::new(CountingSink::default()) as Arc<dyn TransferEventSink>,
                 batch(
                     vec![entry("a", 1), entry("b", 1), entry("c", 1), entry("d", 1)],
@@ -1853,6 +1891,7 @@ mod tests {
                 Arc::clone(&executor),
                 Arc::new(AtomicBool::new(false)),
                 None,
+                concurrency_proof_aimd(2),
             ),
         )
         .await
@@ -2033,24 +2072,18 @@ mod tests {
 
     #[tokio::test]
     async fn batch_dag_independent_file_overlap_for_enabled_executor() {
-        let caps = TransferCapabilities {
-            file_parallel: crate::transfer_dag::Capability::Supported,
-            session_pool: crate::transfer_dag::Capability::Supported,
-            max_file_slots: Some(4),
-            ..TransferCapabilities::default()
-        };
         // Rendezvous barrier: two files must overlap for the batch to finish,
         // deterministically. A serialized scheduler deadlocks the barrier and
-        // the timeout fails the test.
+        // the timeout fails the test. Disabled AIMD: see concurrency_proof_aimd.
         let gate = Arc::new(Barrier::new(2));
         let executor = Arc::new(
             MockExecutor::new(4)
-                .with_capabilities(caps)
+                .with_capabilities(concurrency_proof_caps(4))
                 .with_rendezvous(Arc::clone(&gate)),
         );
         let result = tokio::time::timeout(
-            Duration::from_secs(120),
-            execute_batch_dag(
+            Duration::from_secs(30),
+            execute_batch_dag_with_aimd(
                 Arc::new(CountingSink::default()) as Arc<dyn TransferEventSink>,
                 batch(
                     vec![entry("a", 1), entry("b", 1), entry("c", 1), entry("d", 1)],
@@ -2059,6 +2092,7 @@ mod tests {
                 Arc::clone(&executor),
                 Arc::new(AtomicBool::new(false)),
                 None,
+                concurrency_proof_aimd(4),
             ),
         )
         .await
@@ -2074,25 +2108,19 @@ mod tests {
 
     #[tokio::test]
     async fn batch_dag_peak_bounded_by_min_of_file_slots_and_session_pool() {
-        let caps = TransferCapabilities {
-            file_parallel: crate::transfer_dag::Capability::Supported,
-            session_pool: crate::transfer_dag::Capability::Supported,
-            max_file_slots: Some(8),
-            ..TransferCapabilities::default()
-        };
         // Rendezvous barrier: the session pool (2 leases) must admit two
         // concurrent files for the batch to finish, so peak==2 is proven
         // without relying on sleep timing. Exceeding the pool cap trips the
-        // assert; serializing trips the timeout.
+        // assert; serializing trips the timeout. Disabled AIMD: see helper.
         let gate = Arc::new(Barrier::new(2));
         let executor = Arc::new(
             MockExecutor::new(2)
-                .with_capabilities(caps)
+                .with_capabilities(concurrency_proof_caps(8))
                 .with_rendezvous(Arc::clone(&gate)),
         );
         let result = tokio::time::timeout(
-            Duration::from_secs(120),
-            execute_batch_dag(
+            Duration::from_secs(30),
+            execute_batch_dag_with_aimd(
                 Arc::new(CountingSink::default()) as Arc<dyn TransferEventSink>,
                 batch(
                     vec![entry("a", 1), entry("b", 1), entry("c", 1), entry("d", 1)],
@@ -2101,6 +2129,7 @@ mod tests {
                 Arc::clone(&executor),
                 Arc::new(AtomicBool::new(false)),
                 None,
+                concurrency_proof_aimd(4),
             ),
         )
         .await
@@ -2276,6 +2305,7 @@ mod tests {
             max_retries: 0,
             timeout_ms: 30_000,
             max_backlog: crate::transfer_domain::default_transfer_max_backlog(),
+            schedule: Default::default(),
         };
         let caps = multipart_caps(4, 1024);
         let budget = config.transfer_budget_for_capabilities(&caps);
@@ -2848,6 +2878,7 @@ mod tests {
             max_retries: 0,
             timeout_ms: 30_000,
             max_backlog: 5_000,
+            schedule: Default::default(),
         };
         let cfg = batch_streaming_config(&config, &caps);
         assert_eq!(cfg.backlog_cap, 5_000, "backlog cap follows --max-backlog");
@@ -2875,6 +2906,7 @@ mod tests {
             max_retries: 0,
             timeout_ms: 30_000,
             max_backlog: 1_000,
+            schedule: Default::default(),
         };
         let cfg = batch_streaming_config(&serial, &caps);
         assert_eq!(cfg.active_file_cap, 3, "1 file slot + 2 pipeline headroom");
@@ -2886,6 +2918,7 @@ mod tests {
             max_retries: 0,
             timeout_ms: 30_000,
             max_backlog: 10_000,
+            schedule: Default::default(),
         };
         let cfg = batch_streaming_config(&wide, &caps);
         assert_eq!(
