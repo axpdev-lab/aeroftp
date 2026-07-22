@@ -21,8 +21,22 @@ pub fn set_inplace_mode(enabled: bool) {
     INPLACE_MODE.store(enabled, Ordering::Relaxed);
 }
 
-fn inplace_active() -> bool {
+pub(crate) fn inplace_active() -> bool {
     INPLACE_MODE.load(Ordering::Relaxed)
+}
+
+/// Generate the dedicated temp path used by out-of-order read-ahead downloads.
+/// It must stay distinct from `.aerotmp`: a pre-sized, out-of-order partial is
+/// not safe for the length-based resumable writer to append to or commit.
+pub fn readahead_temp_path_for(final_path: &Path) -> PathBuf {
+    let mut temp = final_path.as_os_str().to_owned();
+    temp.push(".aeroardtmp");
+    PathBuf::from(temp)
+}
+
+/// True for local download sidecars that filesystem watchers must hide.
+pub fn is_download_temp_path(path: &str) -> bool {
+    path.ends_with(".aerotmp") || path.ends_with(".aeroardtmp")
 }
 
 /// A guard that writes to a temp file and renames on commit.
@@ -298,5 +312,18 @@ impl Drop for ResumableFile {
                 self.temp_path.display()
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn local_classifier_recognizes_serial_and_readahead_sidecars() {
+        assert!(is_download_temp_path("file.bin.aerotmp"));
+        assert!(is_download_temp_path("file.bin.aeroardtmp"));
+        assert!(!is_download_temp_path("file.bin"));
+        assert!(!is_download_temp_path("file.bin.aerardtmp"));
     }
 }

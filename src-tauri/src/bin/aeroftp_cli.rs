@@ -15786,13 +15786,18 @@ async fn run_cli_tui_worker(
             }
             WorkerCommand::DiscardPartial { local_path } => {
                 // A transfer was dropped from the queue: remove its resumable
-                // `.aerotmp` leftover so a cleared cancel leaves no orphan. The
+                // download sidecars so a cleared cancel leaves no orphan. The
                 // final file (if the transfer completed) is never touched. Silent
                 // best-effort: the UI already removed the row.
                 let temp = ftp_client_gui_lib::providers::multi_thread::aerotmp_path_for(
                     std::path::Path::new(&local_path),
                 );
                 let _ = tokio::fs::remove_file(&temp).await;
+                let readahead_temp =
+                    ftp_client_gui_lib::providers::atomic_write::readahead_temp_path_for(
+                        std::path::Path::new(&local_path),
+                    );
+                let _ = tokio::fs::remove_file(&readahead_temp).await;
             }
             // Phase 3: real local filesystem listing/stat for dual-pane.
             WorkerCommand::LocalList { path } => {
@@ -52172,7 +52177,7 @@ fn should_exclude_watch_path(path: &std::path::Path) -> bool {
     if name.starts_with('~')
         || name.starts_with(".#")
         || name.ends_with('~')
-        || name.ends_with(".aerotmp")
+        || ftp_client_gui_lib::providers::atomic_write::is_download_temp_path(name)
     {
         return true;
     }
@@ -67830,6 +67835,9 @@ mod tests {
         assert!(should_exclude_watch_path(std::path::Path::new("/a/file~")));
         assert!(should_exclude_watch_path(std::path::Path::new(
             "/a/file.aerotmp"
+        )));
+        assert!(should_exclude_watch_path(std::path::Path::new(
+            "/a/file.aeroardtmp"
         )));
         assert!(should_exclude_watch_path(std::path::Path::new(
             "/a/.file.swp"
