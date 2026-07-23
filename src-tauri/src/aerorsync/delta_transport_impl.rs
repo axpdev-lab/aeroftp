@@ -71,8 +71,8 @@ use crate::aerorsync::engine_adapter::{
 };
 use crate::aerorsync::fallback_policy::{classify_fallback, FallbackVerdict};
 use crate::aerorsync::native_driver::{
-    xxh128_wire_bytes, AerorsyncDriver, PreambleProfile, MD5_ALGO_NAME, XXH128_ALGO_NAME,
-    XXH3_ALGO_NAME, XXH64_ALGO_NAME,
+    xxh128_wire_bytes, AerorsyncDriver, PreambleProfile, MD4_ALGO_NAME, MD5_ALGO_NAME,
+    SHA1_ALGO_NAME, XXH128_ALGO_NAME, XXH3_ALGO_NAME, XXH64_ALGO_NAME,
 };
 use crate::aerorsync::real_wire::{is_symlink_mode, FileListEntry};
 use crate::aerorsync::remote_command::RemoteCommandSpec;
@@ -1025,9 +1025,10 @@ where
     // refuses the file.
     //
     // INTEROP: run ONLY for algorithms we can recompute in-tree (xxh128
-    // via the streaming `HashingWriter`, md5 via a page-cache re-read of
-    // the temp). Against a peer that negotiated anything else (xxh3,
-    // xxh64, md4, ...) the check is a deliberate no-op so a verify that
+    // via the streaming `HashingWriter`; xxh3/xxh64/md5/md4/sha1 via a
+    // page-cache re-read of the temp). Against a peer that negotiated
+    // anything else (sha256, sha512, none: reachable only through the
+    // env override) the check is a deliberate no-op so a verify that
     // assumed the wrong digest cannot silently disable delta forever.
     //
     // HASHER DESIGN (CLAUDE-AV-B3-14): `HashingWriter` is constructed
@@ -1039,10 +1040,13 @@ where
     // `compute_xxh128_file_streaming`); dual-hashing every download would
     // throttle the xxh128 path at md5 disk speed for no gain.
     //
-    // SEED: rsync's FILE checksum is UNSEEDED for both xxh3 and md5.
-    // `checksum.c::sum_init` calls `XXH3_128bits_reset` / `md5_begin`
-    // (or `EVP_DigestInit_ex(..., NULL)` under OpenSSL) and ignores its
-    // `seed` argument; only the legacy MD4 variants mix it in. The
+    // SEED: rsync's FILE checksum is UNSEEDED for every negotiable
+    // algorithm, md4 and sha1 included. `checksum.c::sum_init` calls
+    // `XXH3_128bits_reset` / `md5_begin` / `mdfour_begin` (or
+    // `EVP_DigestInit_ex(..., NULL)` under OpenSSL) and ignores its
+    // `seed` argument; the only seeded trailers are the legacy
+    // `CSUM_MD4_OLD/BUSTED/ARCHAIC` variants, which name negotiation can
+    // never select (the negotiated "md4" is the modern `CSUM_MD4`). The
     // per-BLOCK checksum does seed via `get_checksum2`. Our sender
     // mirrors that asymmetry already, so `checksum_seed` must NOT enter
     // here: feeding it in would break against real rsync AND against our
@@ -1067,7 +1071,10 @@ where
         }
         // Non-xxh128 peers. Re-read the temp (flushed) rather than
         // dual-hash during the drive; see HASHER DESIGN above.
-        Some(algo @ (MD5_ALGO_NAME | XXH3_ALGO_NAME | XXH64_ALGO_NAME)) => {
+        Some(
+            algo @ (MD5_ALGO_NAME | XXH3_ALGO_NAME | XXH64_ALGO_NAME | MD4_ALGO_NAME
+            | SHA1_ALGO_NAME),
+        ) => {
             if let Some(expected) = driver.received_file_checksum() {
                 if let Err(e) = writer.flush().await {
                     let stderr = format!(
@@ -1082,6 +1089,8 @@ where
                     MD5_ALGO_NAME => compute_md5_file_streaming(writer.temp_path()).await,
                     XXH3_ALGO_NAME => compute_xxh3_file_streaming(writer.temp_path()).await,
                     XXH64_ALGO_NAME => compute_xxh64_file_streaming(writer.temp_path()).await,
+                    MD4_ALGO_NAME => compute_md4_file_streaming(writer.temp_path()).await,
+                    SHA1_ALGO_NAME => compute_sha1_file_streaming(writer.temp_path()).await,
                     _ => unreachable!("match arm restricts the negotiated checksum algorithm"),
                 };
                 let actual = match actual {
@@ -1112,9 +1121,10 @@ where
             }
         }
         _ => {
-            // Unimplemented algo (md4 / sha variants / none): leave the
-            // delta path alone. The no-op is what keeps this shippable
-            // without live fixtures for every peer flavour.
+            // Unimplemented algo (sha256 / sha512 / none, or an absent
+            // negotiation): leave the delta path alone. The no-op is what
+            // keeps this shippable without live fixtures for every peer
+            // flavour. Y-RSC.3 moved md4 and sha1 out of this arm.
         }
     }
 
@@ -1566,6 +1576,54 @@ async fn compute_md5_file_streaming(path: &Path) -> std::io::Result<Vec<u8>> {
     let mut file = fs::File::open(path).await?;
     let mut hasher = Md5::new();
     let mut buf = vec![0u8; MD5_STREAM_BUF_BYTES];
+    loop {
+        let n = file.read(&mut buf).await?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buf[..n]);
+    }
+    Ok(hasher.finalize().to_vec())
+}
+
+/// Y-RSC.3: streaming md4 over a file path, twin of
+/// [`compute_md5_file_streaming`] for peers that negotiated the legacy
+/// md4. Output is the raw 16-byte digest rsync puts on the wire
+/// (`sum_end` for the modern `CSUM_MD4`); the trailer is UNSEEDED (only
+/// the pre-negotiation `CSUM_MD4_OLD/BUSTED/ARCHAIC` variants seed
+/// `sum_init`, and name negotiation can never select those), so
+/// `checksum_seed` must NOT enter here.
+async fn compute_md4_file_streaming(path: &Path) -> std::io::Result<Vec<u8>> {
+    use md4::{Digest, Md4};
+    use tokio::io::AsyncReadExt;
+    const STREAM_BUF_BYTES: usize = 4 * 1024 * 1024;
+
+    let mut file = fs::File::open(path).await?;
+    let mut hasher = Md4::new();
+    let mut buf = vec![0u8; STREAM_BUF_BYTES];
+    loop {
+        let n = file.read(&mut buf).await?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buf[..n]);
+    }
+    Ok(hasher.finalize().to_vec())
+}
+
+/// Y-RSC.3: streaming sha1 over a file path for peers that negotiated
+/// sha1 (reachable via the `AEROFTP_RSYNC_CSUM_ALGOS` override). Output
+/// is the raw 20-byte digest; rsync's sha1 whole-file sum runs through
+/// `EVP_DigestInit_ex(..., NULL)` and is unseeded like every other
+/// negotiable trailer.
+async fn compute_sha1_file_streaming(path: &Path) -> std::io::Result<Vec<u8>> {
+    use sha1::{Digest, Sha1};
+    use tokio::io::AsyncReadExt;
+    const STREAM_BUF_BYTES: usize = 4 * 1024 * 1024;
+
+    let mut file = fs::File::open(path).await?;
+    let mut hasher = Sha1::new();
+    let mut buf = vec![0u8; STREAM_BUF_BYTES];
     loop {
         let n = file.read(&mut buf).await?;
         if n == 0 {
@@ -2252,6 +2310,29 @@ mod tests {
         peer_algos: &str,
         trailer: Vec<u8>,
     ) -> (Result<RsyncStats, RsyncError>, PathBuf) {
+        run_download_fixture_with_profile(
+            dir,
+            content,
+            PreambleProfile::default(),
+            peer_algos,
+            trailer,
+        )
+        .await
+    }
+
+    /// Y-RSC.3: like [`run_download_fixture`] but with an explicit client
+    /// advertisement. Needed for winners outside the byte-pinned default
+    /// list (sha1, sha256, ...), which in production become reachable
+    /// only through the `AEROFTP_RSYNC_CSUM_ALGOS` override; the custom
+    /// profile mirrors that override without touching process env (unit
+    /// tests run in parallel).
+    async fn run_download_fixture_with_profile(
+        dir: &TempDir,
+        content: &[u8],
+        profile: PreambleProfile,
+        peer_algos: &str,
+        trailer: Vec<u8>,
+    ) -> (Result<RsyncStats, RsyncError>, PathBuf) {
         use crate::aerorsync::mock::{MockRemoteShellTransport, MockTransportConfig};
 
         let local_path = dir.path().join("target.bin");
@@ -2264,7 +2345,7 @@ mod tests {
             CancelHandle::inert(),
             "/remote/target.bin",
             &local_path,
-            PreambleProfile::default(),
+            profile,
             None,
         )
         .await;
@@ -2315,19 +2396,30 @@ mod tests {
     }
 
     /// The interop guard for algorithms we still do not recompute.
-    /// xxh128, xxh3, xxh64, and md5 are verified, so the skip case now
-    /// points at md4. The same
-    /// mismatching trailer that is fatal for xxh128/md5 has to commit
-    /// here. Getting this wrong would silently disable delta for every
-    /// peer that negotiated an unimplemented algo.
+    /// xxh128, xxh3, xxh64, md5, md4, and sha1 are verified (Y-RSC.3
+    /// moved md4/sha1 out of this pin), so the skip case now points at
+    /// sha256: reachable only when an `AEROFTP_RSYNC_CSUM_ALGOS`-shaped
+    /// override advertises it, mirrored here via a custom profile. The
+    /// same mismatching trailer that is fatal for the implemented algos
+    /// has to commit here. Getting this wrong would silently disable
+    /// delta for every peer that negotiated an unimplemented algo.
     #[tokio::test]
     async fn download_skips_the_verify_when_the_peer_negotiated_an_unimplemented_algo() {
         let dir = fresh_tempdir();
         let content = b"the bytes that actually arrive on the wire".to_vec();
-        // "md4" alone wins negotiation and remains unimplemented, so
-        // the verify must no-op.
-        let (result, local_path) =
-            run_download_fixture(&dir, &content, "md4", vec![0xCC; 16]).await;
+        // "sha256" wins negotiation (32-byte trailer) and remains
+        // unimplemented, so the verify must no-op.
+        let (result, local_path) = run_download_fixture_with_profile(
+            &dir,
+            &content,
+            PreambleProfile {
+                checksum_algos: "sha256".to_string(),
+                compression_algos: "zstd".to_string(),
+            },
+            "sha256",
+            vec![0xCC; 32],
+        )
+        .await;
 
         assert!(
             result.is_ok(),
@@ -2418,6 +2510,134 @@ mod tests {
         assert!(
             result.is_ok(),
             "a matching md5 trailer must commit, got {result:?}"
+        );
+        assert_eq!(
+            tokio::fs::read(&local_path).await.expect("target written"),
+            content
+        );
+    }
+
+    /// Y-RSC.3: an md4 peer with a wrong trailer must be refused, the
+    /// same way as the md5 mismatch case. Before Y-RSC.3 this exact
+    /// fixture committed (the verify was a deliberate no-op for md4);
+    /// this test is the proof the no-op branch is gone for md4.
+    #[tokio::test]
+    async fn download_refuses_md4_reconstruction_that_fails_the_whole_file_checksum() {
+        let dir = fresh_tempdir();
+        let content = b"the bytes that actually arrive on the wire".to_vec();
+        let (result, local_path) =
+            run_download_fixture(&dir, &content, "md4", vec![0xCC; 16]).await;
+
+        match result {
+            Err(RsyncError::TransferFailed { exit, stderr }) => {
+                assert_eq!(exit, -1, "must be fallback-eligible, not a hard rejection");
+                assert!(
+                    stderr.contains("checksum mismatch")
+                        && stderr.contains("md4")
+                        && stderr.contains("/remote/target.bin"),
+                    "stderr must name the failure, the algo, and the file: {stderr}"
+                );
+            }
+            other => panic!("expected TransferFailed on md4 checksum mismatch, got {other:?}"),
+        }
+        assert!(
+            !local_path.exists(),
+            "target must be untouched: the temp is never renamed onto it"
+        );
+    }
+
+    /// Y-RSC.3: md4 peer + correct unseeded trailer commits. The
+    /// fixture preamble carries a nonzero `checksum_seed` (0xDEAD_BEEF)
+    /// while the matching digest is plain MD4 over the file bytes: the
+    /// pin that the negotiated `CSUM_MD4` trailer never mixes the seed
+    /// (only the pre-negotiation MD4_OLD/BUSTED/ARCHAIC variants do).
+    /// Expected bytes from the independent python RFC 1320 oracle.
+    #[tokio::test]
+    async fn download_commits_when_the_md4_whole_file_checksum_matches() {
+        let dir = fresh_tempdir();
+        let content = b"the bytes that actually arrive on the wire".to_vec();
+        let trailer = vec![
+            0x7f, 0x58, 0x69, 0x36, 0x72, 0xf4, 0x02, 0xea, 0xcc, 0xcf, 0xec, 0xf4, 0xe2, 0x9d,
+            0x50, 0x9a,
+        ];
+        let (result, local_path) = run_download_fixture(&dir, &content, "md4", trailer).await;
+
+        assert!(
+            result.is_ok(),
+            "a matching md4 trailer must commit, got {result:?}"
+        );
+        assert_eq!(
+            tokio::fs::read(&local_path).await.expect("target written"),
+            content
+        );
+    }
+
+    /// Y-RSC.3: sha1 peer + wrong 20-byte trailer must be refused. sha1
+    /// is outside the byte-pinned default advertisement, so the fixture
+    /// mirrors the `AEROFTP_RSYNC_CSUM_ALGOS=sha1` override with a
+    /// custom profile; the peer list is the stock rsync 3.2.7 full
+    /// advertisement, which includes sha1 on OpenSSL builds.
+    #[tokio::test]
+    async fn download_refuses_sha1_reconstruction_that_fails_the_whole_file_checksum() {
+        let dir = fresh_tempdir();
+        let content = b"the bytes that actually arrive on the wire".to_vec();
+        let (result, local_path) = run_download_fixture_with_profile(
+            &dir,
+            &content,
+            PreambleProfile {
+                checksum_algos: "sha1".to_string(),
+                compression_algos: "zstd".to_string(),
+            },
+            "xxh128 xxh3 xxh64 md5 md4 sha1 none",
+            vec![0xCC; 20],
+        )
+        .await;
+
+        match result {
+            Err(RsyncError::TransferFailed { exit, stderr }) => {
+                assert_eq!(exit, -1, "must be fallback-eligible, not a hard rejection");
+                assert!(
+                    stderr.contains("checksum mismatch")
+                        && stderr.contains("sha1")
+                        && stderr.contains("/remote/target.bin"),
+                    "stderr must name the failure, the algo, and the file: {stderr}"
+                );
+            }
+            other => panic!("expected TransferFailed on sha1 checksum mismatch, got {other:?}"),
+        }
+        assert!(
+            !local_path.exists(),
+            "target must be untouched: the temp is never renamed onto it"
+        );
+    }
+
+    /// Y-RSC.3: sha1 peer + correct unseeded 20-byte trailer commits.
+    /// Nonzero fixture seed + plain SHA1(content) trailer pins the
+    /// unseeded whole-file decision for sha1 too. Expected bytes from
+    /// python3 hashlib.
+    #[tokio::test]
+    async fn download_commits_when_the_sha1_whole_file_checksum_matches() {
+        let dir = fresh_tempdir();
+        let content = b"the bytes that actually arrive on the wire".to_vec();
+        let trailer = vec![
+            0x18, 0x39, 0x5a, 0xd3, 0x7c, 0x06, 0xe3, 0xab, 0xd7, 0xe9, 0x0a, 0x89, 0x83, 0x11,
+            0x8b, 0x4c, 0xdf, 0x56, 0x0e, 0xe8,
+        ];
+        let (result, local_path) = run_download_fixture_with_profile(
+            &dir,
+            &content,
+            PreambleProfile {
+                checksum_algos: "sha1".to_string(),
+                compression_algos: "zstd".to_string(),
+            },
+            "xxh128 xxh3 xxh64 md5 md4 sha1 none",
+            trailer,
+        )
+        .await;
+
+        assert!(
+            result.is_ok(),
+            "a matching sha1 trailer must commit, got {result:?}"
         );
         assert_eq!(
             tokio::fs::read(&local_path).await.expect("target written"),

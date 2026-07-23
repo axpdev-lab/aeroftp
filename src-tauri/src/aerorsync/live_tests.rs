@@ -530,6 +530,102 @@ async fn live_real_rsync_native_delta_download_md5_peer() {
     );
 }
 
+/// Y-RSC.3: same production wire path with checksum negotiation forced
+/// to the legacy md4 (`AEROFTP_RSYNC_CSUM_ALGOS=md4`), proving a delta
+/// transfer with a REAL whole-file verify: before Y-RSC.3 the md4
+/// branch was a deliberate no-op. A passing run pins live, against the
+/// stock peer, both md4 decisions taken from the rsync 3.2.7 sources:
+/// the UNSEEDED trailer (a seeded recompute would mismatch and abort)
+/// and the data-then-seed per-block order (a wrong order would confirm
+/// no rolling hit and zero the delta, tripping the bytes_received
+/// assertion).
+///
+/// Uses `RSNP_TEST_REAL_LOCAL_DOWNLOAD_FILE_MD4` so it can run in
+/// parallel with the other twins without racing on the same `.aerotmp`.
+#[tokio::test]
+#[ignore = "requires the Docker real-rsync SSH fixture + md4 preamble override"]
+async fn live_real_rsync_native_delta_download_md4_peer() {
+    if env::var("RSNP_TEST_REAL_SSH_KEY").is_err() {
+        eprintln!("skipping: RSNP_TEST_REAL_SSH_KEY not set (real-rsync lane inactive)");
+        return;
+    }
+
+    // SAFETY: live test process; no other concurrent reader of this var
+    // in the md4 peer path. Cleared before return.
+    unsafe {
+        env::set_var("AEROFTP_RSYNC_CSUM_ALGOS", "md4");
+    }
+
+    let (transport, remote, local, expected) =
+        real_rsync_delta_download_inputs("RSNP_TEST_REAL_LOCAL_DOWNLOAD_FILE_MD4");
+
+    let result = transport.download(&remote, &local).await;
+    unsafe {
+        env::remove_var("AEROFTP_RSYNC_CSUM_ALGOS");
+    }
+
+    let stats = result.unwrap_or_else(|e| {
+        panic!("native delta download (md4 peer) against real rsync failed: {e:?}")
+    });
+    let got = fs::read(&local).expect("read reconstructed local target");
+    assert_eq!(got, expected, "md4-peer reconstruction must match remote");
+    eprintln!(
+        "live real-rsync native delta download (md4): total_size={} bytes_sent={} bytes_received={} speedup={:.2}",
+        stats.total_size, stats.bytes_sent, stats.bytes_received, stats.speedup
+    );
+    assert!(
+        stats.bytes_received < stats.total_size || stats.total_size < 4096,
+        "expected a real delta under md4 block-strong; got bytes_received={} total={}",
+        stats.bytes_received,
+        stats.total_size
+    );
+}
+
+/// Y-RSC.3: sha1 twin of the md4 test above. sha1 is NOT in our
+/// byte-pinned default advertisement; forcing
+/// `AEROFTP_RSYNC_CSUM_ALGOS=sha1` makes it the winner against a stock
+/// OpenSSL-built rsync (the harness advertises `... md5 md4 sha1 none`).
+/// Pins the 20-byte unseeded trailer and the seed-first per-block order
+/// of the EVP branch, live.
+#[tokio::test]
+#[ignore = "requires the Docker real-rsync SSH fixture + sha1 preamble override"]
+async fn live_real_rsync_native_delta_download_sha1_peer() {
+    if env::var("RSNP_TEST_REAL_SSH_KEY").is_err() {
+        eprintln!("skipping: RSNP_TEST_REAL_SSH_KEY not set (real-rsync lane inactive)");
+        return;
+    }
+
+    // SAFETY: live test process; no other concurrent reader of this var
+    // in the sha1 peer path. Cleared before return.
+    unsafe {
+        env::set_var("AEROFTP_RSYNC_CSUM_ALGOS", "sha1");
+    }
+
+    let (transport, remote, local, expected) =
+        real_rsync_delta_download_inputs("RSNP_TEST_REAL_LOCAL_DOWNLOAD_FILE_SHA1");
+
+    let result = transport.download(&remote, &local).await;
+    unsafe {
+        env::remove_var("AEROFTP_RSYNC_CSUM_ALGOS");
+    }
+
+    let stats = result.unwrap_or_else(|e| {
+        panic!("native delta download (sha1 peer) against real rsync failed: {e:?}")
+    });
+    let got = fs::read(&local).expect("read reconstructed local target");
+    assert_eq!(got, expected, "sha1-peer reconstruction must match remote");
+    eprintln!(
+        "live real-rsync native delta download (sha1): total_size={} bytes_sent={} bytes_received={} speedup={:.2}",
+        stats.total_size, stats.bytes_sent, stats.bytes_received, stats.speedup
+    );
+    assert!(
+        stats.bytes_received < stats.total_size || stats.total_size < 4096,
+        "expected a real delta under sha1 block-strong; got bytes_received={} total={}",
+        stats.bytes_received,
+        stats.total_size
+    );
+}
+
 /// CLAUDE-AV-B3-18: production download path against stock rsync 3.2.7
 /// with each 8-byte checksum winner forced in turn. Before the fix both
 /// cases decoded the complete file-list frame as truncated and timed out
@@ -626,6 +722,74 @@ async fn live_real_rsync_native_upload_completes_for_xxh64_and_xxh3_peers() {
         let mut expected = baseline.clone();
         for byte in &mut expected[512 * 1024..512 * 1024 + 4096] {
             *byte ^= 0xA5;
+        }
+        write_bytes(&remote_bind, &baseline);
+        write_bytes(&local, &expected);
+
+        // SAFETY: ignored live test, documented and invoked with one test
+        // thread. Clear the override before asserting on the result.
+        unsafe {
+            env::set_var("AEROFTP_RSYNC_CSUM_ALGOS", &algorithm);
+        }
+        let result = transport.upload(&local, &remote).await;
+        unsafe {
+            env::remove_var("AEROFTP_RSYNC_CSUM_ALGOS");
+        }
+
+        let stats = result.unwrap_or_else(|e| {
+            panic!("native upload ({algorithm} peer) against real rsync failed: {e:?}")
+        });
+        let got = fs::read(&remote_bind).expect("read reconstructed remote target");
+        assert_eq!(
+            got, expected,
+            "{algorithm}-peer reconstruction must match local source"
+        );
+        assert_eq!(stats.total_size, expected.len() as u64);
+        eprintln!(
+            "live real-rsync native upload ({algorithm}): total_size={} bytes_sent={} bytes_received={} copy_blocks={} speedup={:.2} duration_ms={}",
+            stats.total_size,
+            stats.bytes_sent,
+            stats.bytes_received,
+            stats.copy_blocks,
+            stats.speedup,
+            stats.duration_ms
+        );
+        assert!(
+            stats.copy_blocks > 0,
+            "{algorithm} upload must emit at least one CopyRun block"
+        );
+    }
+}
+
+/// Y-RSC.3: upload twin for the two last-resort compatibility winners.
+/// Same harness and assertions as the xxh64/xxh3 loop above: remote
+/// bytes byte-identical to the local source AND `copy_blocks > 0`. The
+/// latter is the live pin of the per-block seeding order (md4
+/// data-then-seed via the builtin branch, sha1 seed-first via EVP): a
+/// wrong order would leave the stock generator's signatures
+/// unconfirmable and zero the delta. The stock receiver also recomputes
+/// our whole-file trailer (`receiver.c` compares `file_sum1/2`), so a
+/// seeded trailer would fail the transfer outright.
+///
+/// Run with `--test-threads=1`: the checksum advertisement override is a
+/// process-global environment variable.
+#[tokio::test]
+#[ignore = "requires the Docker real-rsync SSH fixture + md4/sha1 overrides"]
+async fn live_real_rsync_native_upload_completes_for_md4_and_sha1_peers() {
+    if env::var("RSNP_TEST_REAL_SSH_KEY").is_err() {
+        eprintln!("skipping: RSNP_TEST_REAL_SSH_KEY not set (real-rsync lane inactive)");
+        return;
+    }
+
+    let algorithms = env::var("RSNP_TEST_ONLY_CSUM_ALGO")
+        .map(|value| vec![value])
+        .unwrap_or_else(|_| vec!["md4".to_string(), "sha1".to_string()]);
+    for algorithm in algorithms {
+        let (transport, remote, local, remote_bind) = real_rsync_delta_upload_inputs();
+        let baseline = make_incompressible_payload(1024 * 1024, 0x1E9A_C15E_ED00_0001);
+        let mut expected = baseline.clone();
+        for byte in &mut expected[512 * 1024..512 * 1024 + 4096] {
+            *byte ^= 0x3C;
         }
         write_bytes(&remote_bind, &baseline);
         write_bytes(&local, &expected);

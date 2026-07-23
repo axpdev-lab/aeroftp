@@ -67,9 +67,29 @@ pub enum BlockStrongAlgo {
     ///
     /// Seed 0 is identical under both orders (no seed bytes mixed in).
     Md5 { seed: u32, proper_seed_order: bool },
-    /// Negotiated block algo we cannot recompute in-tree (xxh64/xxh3/md4/...).
-    /// Never confirm a rolling hit: prefer a full transfer over a silent
-    /// false match.
+    /// MD4 of the window, 16 wire bytes. Seeded per the rsync 3.2.7
+    /// `get_checksum2` BUILTIN `CSUM_MD4` branch: the seed LE bytes are
+    /// APPENDED to the data (`SIVAL(buf1, len, checksum_seed)`) when
+    /// seed != 0, the opposite of md5's proper order. `proper_seed_order`
+    /// never enters the md4 branch, so no flag here.
+    ///
+    /// Y-RSC.3 interop note: an rsync built where OpenSSL EVP provides
+    /// md4 (legacy provider enabled) hashes seed-first through the EVP
+    /// fast path instead. Stock OpenSSL 3.x distributions (the CI lane 3
+    /// harness included) ship without the legacy provider, so real peers
+    /// take the builtin data-then-seed branch mirrored here. A seed-first
+    /// peer costs delta efficiency (no rolling hit confirms), never
+    /// correctness: the whole-file trailer is unseeded on both paths.
+    Md4 { seed: u32 },
+    /// SHA1 of the window, 20 wire bytes. rsync implements sha1 only
+    /// through the OpenSSL EVP path of `get_checksum2` (a peer without
+    /// EVP sha1 cannot advertise it), which feeds the seed LE bytes
+    /// BEFORE the data when seed != 0, with no `proper_seed_order`
+    /// dependence. Y-RSC.3.
+    Sha1 { seed: u32 },
+    /// Negotiated block algo we cannot recompute in-tree (sha256/sha512/
+    /// none/...). Never confirm a rolling hit: prefer a full transfer
+    /// over a silent false match.
     Unknown,
 }
 
@@ -124,6 +144,36 @@ impl BlockStrongAlgo {
                 }
                 let mut out = [0u8; 32];
                 out[..16].copy_from_slice(&hasher.finalize());
+                out
+            }
+            // Y-RSC.3: rsync 3.2.7 checksum.c::get_checksum2 builtin
+            // CSUM_MD4: full MD4 over (data || seed LE bytes). The
+            // pre-protocol-27 tail-skip quirk applies only to
+            // CSUM_MD4_BUSTED/ARCHAIC, which name negotiation can never
+            // select, so the standard MD4 padding is correct here.
+            Self::Md4 { seed } => {
+                use md4::{Digest, Md4};
+                let mut hasher = Md4::new();
+                hasher.update(data);
+                if seed != 0 {
+                    hasher.update(seed.to_le_bytes());
+                }
+                let mut out = [0u8; 32];
+                out[..16].copy_from_slice(&hasher.finalize());
+                out
+            }
+            // Y-RSC.3: rsync 3.2.7 checksum.c::get_checksum2 OpenSSL EVP
+            // branch (the only sha1 implementation): seed LE bytes first
+            // when seed != 0, then data.
+            Self::Sha1 { seed } => {
+                use sha1::{Digest, Sha1};
+                let mut hasher = Sha1::new();
+                if seed != 0 {
+                    hasher.update(seed.to_le_bytes());
+                }
+                hasher.update(data);
+                let mut out = [0u8; 32];
+                out[..20].copy_from_slice(&hasher.finalize());
                 out
             }
             Self::Unknown => [0u8; 32],
@@ -1655,6 +1705,83 @@ mod producer_tests {
         );
     }
 
+    /// Y-RSC.3: per-block md4 mirrors the rsync 3.2.7 builtin
+    /// `get_checksum2` CSUM_MD4 branch: MD4(data || seed LE bytes) when
+    /// seed != 0, plain MD4(data) at seed 0. Expected bytes were derived
+    /// with an independent pure-python RFC 1320 implementation
+    /// (self-checked against the RFC appendix test suite), not with the
+    /// `md4` crate under test.
+    #[test]
+    fn seeded_md4_block_digest_appends_seed_after_data() {
+        let payload = b"rsync-c-full-known-vector";
+        // MD4(payload || 0x78563412 LE): the builtin data-then-seed order.
+        let seeded = BlockStrongAlgo::Md4 { seed: 0x1234_5678 }.digest(payload);
+        assert_eq!(
+            &seeded[..16],
+            &[
+                0x0d, 0xb1, 0x55, 0xf2, 0x6e, 0x0a, 0x15, 0x05, 0xe4, 0x3d, 0x71, 0xe3, 0xd4, 0x1a,
+                0x85, 0x76
+            ]
+        );
+        // Seed 0 mixes no seed bytes at all.
+        let unseeded = BlockStrongAlgo::Md4 { seed: 0 }.digest(payload);
+        assert_eq!(
+            &unseeded[..16],
+            &[
+                0x55, 0x78, 0x31, 0x98, 0xcb, 0x18, 0x55, 0xc7, 0x10, 0x84, 0x40, 0x04, 0xf6, 0x0d,
+                0x35, 0x19
+            ]
+        );
+        // Divergence pin: the OpenSSL EVP path (legacy provider enabled,
+        // NOT the stock OpenSSL 3.x deployment) would hash seed-first.
+        // MD4(seed LE || payload) from the same python oracle must NOT
+        // match the builtin order implemented here.
+        assert_ne!(
+            &seeded[..16],
+            &[
+                0x64, 0x43, 0xca, 0xe9, 0x1e, 0x3f, 0x4d, 0xfd, 0x6c, 0xa3, 0xa1, 0xba, 0x38, 0x7d,
+                0xee, 0xa1
+            ],
+            "builtin CSUM_MD4 must append the seed, not prepend it"
+        );
+    }
+
+    /// Y-RSC.3: per-block sha1 mirrors the rsync 3.2.7 OpenSSL EVP
+    /// branch of `get_checksum2` (the only sha1 implementation): SHA1
+    /// (seed LE bytes || data) when seed != 0, plain SHA1(data) at seed
+    /// 0. Expected bytes from python3 hashlib.
+    #[test]
+    fn seeded_sha1_block_digest_prepends_seed_before_data() {
+        let payload = b"rsync-c-full-known-vector";
+        let seeded = BlockStrongAlgo::Sha1 { seed: 0x1234_5678 }.digest(payload);
+        assert_eq!(
+            &seeded[..20],
+            &[
+                0x74, 0x00, 0xfb, 0x71, 0x8f, 0x54, 0x61, 0xb7, 0x36, 0x9d, 0x7c, 0x4a, 0x81, 0x0b,
+                0xad, 0x6e, 0xdf, 0x85, 0x44, 0x9a
+            ]
+        );
+        let unseeded = BlockStrongAlgo::Sha1 { seed: 0 }.digest(payload);
+        assert_eq!(
+            &unseeded[..20],
+            &[
+                0xec, 0xb3, 0xea, 0x04, 0x18, 0x20, 0x2b, 0x92, 0xfd, 0x27, 0x80, 0xbe, 0x94, 0xed,
+                0xc4, 0xc4, 0xc6, 0x4b, 0x70, 0x07
+            ]
+        );
+        // Divergence pin: SHA1(payload || seed LE) (the md4-style
+        // data-then-seed order) must NOT match: the EVP branch is
+        // unconditionally seed-first, with no proper_seed_order input.
+        assert_ne!(
+            &seeded[..20],
+            &[
+                0xdf, 0x1e, 0x3c, 0x55, 0x56, 0x05, 0x2c, 0xac, 0x0b, 0x83, 0x9e, 0x7d, 0x9b, 0xbd,
+                0x9d, 0x6f, 0xcd, 0x4b, 0x17, 0x0f
+            ],
+            "sha1 EVP order is seed-then-data"
+        );
+    }
+
     #[test]
     fn producer_empty_source_matches_bulk_literal_empty() {
         let block_size = 512;
@@ -2153,6 +2280,92 @@ mod producer_tests {
         assert_eq!(
             stats.copy_blocks, 2,
             "seed 0 digests must match regardless of proper_seed_order"
+        );
+    }
+
+    /// Y-RSC.3: truncated md4 strong prefixes confirm an identical
+    /// source when the seed matches, exactly like the md5 twin above.
+    #[test]
+    fn producer_truncated_md4_strong_confirms_identical_source() {
+        let block_size = 512;
+        let dest = patterned_blocks(block_size, 4);
+        let source = dest.clone();
+        let algo = BlockStrongAlgo::Md4 { seed: 0xDEAD_BEEF };
+        let sigs = wire_short_sigs_from_dest_with_algo(&dest, block_size, algo);
+        let (ops, stats) = run_producer_with_algo(block_size, sigs, &source, 64, algo);
+        assert_eq!(stats.copy_blocks, 4);
+        assert_eq!(stats.literal_bytes, 0);
+        assert!(
+            ops.iter()
+                .all(|op| matches!(op, EngineDeltaOp::CopyBlock(_))),
+            "identical source with correct md4 prefixes must be all CopyBlocks"
+        );
+    }
+
+    /// Y-RSC.3 landmine: a wrong (nonzero) md4 seed must match nothing.
+    #[test]
+    fn producer_wrong_md4_seed_disables_matches() {
+        let block_size = 512;
+        let dest = vec![0xBBu8; 2 * block_size];
+        let source = dest.clone();
+        let sigs = wire_short_sigs_from_dest_with_algo(
+            &dest,
+            block_size,
+            BlockStrongAlgo::Md4 { seed: 0xDEAD_BEEF },
+        );
+        let (_, stats) = run_producer_with_algo(
+            block_size,
+            sigs,
+            &source,
+            0,
+            BlockStrongAlgo::Md4 { seed: 0xCAFE_BABE },
+        );
+        assert_eq!(
+            stats.copy_blocks, 0,
+            "wrong md4 seed must not spuriously match"
+        );
+    }
+
+    /// Y-RSC.3: truncated sha1 strong prefixes confirm an identical
+    /// source when the seed matches.
+    #[test]
+    fn producer_truncated_sha1_strong_confirms_identical_source() {
+        let block_size = 512;
+        let dest = patterned_blocks(block_size, 4);
+        let source = dest.clone();
+        let algo = BlockStrongAlgo::Sha1 { seed: 0xDEAD_BEEF };
+        let sigs = wire_short_sigs_from_dest_with_algo(&dest, block_size, algo);
+        let (ops, stats) = run_producer_with_algo(block_size, sigs, &source, 64, algo);
+        assert_eq!(stats.copy_blocks, 4);
+        assert_eq!(stats.literal_bytes, 0);
+        assert!(
+            ops.iter()
+                .all(|op| matches!(op, EngineDeltaOp::CopyBlock(_))),
+            "identical source with correct sha1 prefixes must be all CopyBlocks"
+        );
+    }
+
+    /// Y-RSC.3 landmine: a wrong (nonzero) sha1 seed must match nothing.
+    #[test]
+    fn producer_wrong_sha1_seed_disables_matches() {
+        let block_size = 512;
+        let dest = vec![0x99u8; 2 * block_size];
+        let source = dest.clone();
+        let sigs = wire_short_sigs_from_dest_with_algo(
+            &dest,
+            block_size,
+            BlockStrongAlgo::Sha1 { seed: 0xDEAD_BEEF },
+        );
+        let (_, stats) = run_producer_with_algo(
+            block_size,
+            sigs,
+            &source,
+            0,
+            BlockStrongAlgo::Sha1 { seed: 0xCAFE_BABE },
+        );
+        assert_eq!(
+            stats.copy_blocks, 0,
+            "wrong sha1 seed must not spuriously match"
         );
     }
 

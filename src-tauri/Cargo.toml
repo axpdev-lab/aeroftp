@@ -104,6 +104,9 @@ sha1 = "0.10"
 sha2 = "0.10"
 ripemd = "0.1"
 md-5 = "0.10"
+# aerorsync Y-RSC.3: legacy rsync `md4` negotiated checksum (block-strong
+# signatures + whole-file trailer). RustCrypto crate, same family as md-5.
+md4 = "0.10"
 zip = { version = "8", default-features = false, features = ["deflate", "deflate64", "bzip2", "lzma", "zstd", "xz", "aes-crypto"] }
 walkdir = "2"
 quick-xml = "0.41"

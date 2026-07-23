@@ -70,7 +70,8 @@ shipped as default on OpenBSD).
 
 ## Scope del modulo
 
-- **Protocol 31/32 wire format**: varint/varlong, preamble (client + server), file-list entries, signature phase (sum_head + sum_block), delta ops (literal + match + zstd-compressed literals), summary frame, xxh128 checksum trailer
+- **Protocol 31/32 wire format**: varint/varlong, preamble (client + server), file-list entries, signature phase (sum_head + sum_block), delta ops (literal + match + zstd-compressed literals), summary frame, whole-file checksum trailer nel winner negoziato
+- **Checksum negoziati first-class (Y-RSC.3)**: xxh128, xxh3, xxh64, md5, md4 e sha1 sono implementati in entrambi i ruoli e in entrambe le direzioni (block-strong signatures seeded + whole-file trailer/flist digest unseeded, semantica derivata da rsync 3.2.7 `checksum.c`). L'advertisement di default resta `xxh128 xxh3 xxh64 md5 md4` (byte-pinned, md4 last-resort); sha1 non è pubblicizzato di default e diventa negoziabile via `AEROFTP_RSYNC_CSUM_ALGOS=sha1`. La verify whole-file lato download è un no-op onesto solo per i winner non implementati raggiungibili via override (sha256/sha512/none)
 - **Multiplex framing** bidirezionale attivato dopo il preamble (`MPLEX_BASE = 7`)
 - **Remote-shell mode** via SSH (`SshRemoteShellTransport` con libssh2), host key pinning obbligatorio
 - **Single-file transfer** (batch / session reuse chiuso con `AerorsyncBatch`, P3-T01 W3)

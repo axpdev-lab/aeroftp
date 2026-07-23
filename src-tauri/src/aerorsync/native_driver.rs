@@ -129,6 +129,8 @@ enum FileChecksumKind {
     Xxh3,
     Xxh64,
     Md5,
+    Md4,
+    Sha1,
 }
 
 impl FileChecksumKind {
@@ -137,13 +139,22 @@ impl FileChecksumKind {
             Some(XXH3_ALGO_NAME) => Self::Xxh3,
             Some(XXH64_ALGO_NAME) => Self::Xxh64,
             Some(MD5_ALGO_NAME) => Self::Md5,
+            Some(MD4_ALGO_NAME) => Self::Md4,
+            Some(SHA1_ALGO_NAME) => Self::Sha1,
             // Preserve the historical xxh128 behavior for an absent or
             // unsupported winner. The default production profile always
-            // negotiates one of the four explicitly supported algorithms.
+            // negotiates one of the explicitly supported algorithms.
             _ => Self::Xxh128,
         }
     }
 
+    /// Whole-file digest for the delta trailer and the `--checksum`
+    /// file-list field. UNSEEDED for every kind: rsync 3.2.7 `sum_init`
+    /// ignores its seed argument on all the negotiable paths (only the
+    /// pre-negotiation `CSUM_MD4_OLD/BUSTED/ARCHAIC` variants mix it in,
+    /// and name negotiation can never select those), and `file_checksum`
+    /// never seeds. Per-block digests seed via [`BlockStrongAlgo`]
+    /// instead: that asymmetry is the B3-12 pin.
     fn digest(self, data: &[u8]) -> Vec<u8> {
         match self {
             Self::Xxh128 => compute_xxh128_wire(data),
@@ -152,6 +163,14 @@ impl FileChecksumKind {
             Self::Md5 => {
                 use md5::{Digest, Md5};
                 Md5::digest(data).to_vec()
+            }
+            Self::Md4 => {
+                use md4::{Digest, Md4};
+                Md4::digest(data).to_vec()
+            }
+            Self::Sha1 => {
+                use sha1::{Digest, Sha1};
+                Sha1::digest(data).to_vec()
             }
         }
     }
@@ -163,6 +182,8 @@ impl FileChecksumKind {
             Self::Xxh3 => FileChecksumHasher::Xxh3(Xxh3Default::new()),
             Self::Xxh64 => FileChecksumHasher::Xxh64(Xxh64::new(0)),
             Self::Md5 => FileChecksumHasher::Md5(md5::Md5::new()),
+            Self::Md4 => FileChecksumHasher::Md4(md4::Md4::new()),
+            Self::Sha1 => FileChecksumHasher::Sha1(sha1::Sha1::new()),
         }
     }
 }
@@ -172,38 +193,40 @@ enum FileChecksumHasher {
     Xxh3(Xxh3Default),
     Xxh64(Xxh64),
     Md5(md5::Md5),
+    Md4(md4::Md4),
+    Sha1(sha1::Sha1),
 }
 
 impl FileChecksumHasher {
     fn update(&mut self, data: &[u8]) {
+        use md5::Digest;
         match self {
             Self::Xxh128(hasher) | Self::Xxh3(hasher) => hasher.update(data),
             Self::Xxh64(hasher) => hasher.update(data),
-            Self::Md5(hasher) => {
-                use md5::Digest;
-                hasher.update(data);
-            }
+            Self::Md5(hasher) => Digest::update(hasher, data),
+            Self::Md4(hasher) => Digest::update(hasher, data),
+            Self::Sha1(hasher) => Digest::update(hasher, data),
         }
     }
 
     fn finish(self) -> Vec<u8> {
+        use md5::Digest;
         match self {
             Self::Xxh128(hasher) => xxh128_wire_bytes(hasher.digest128()),
             Self::Xxh3(hasher) => hasher.digest().to_le_bytes().to_vec(),
             Self::Xxh64(hasher) => hasher.digest().to_le_bytes().to_vec(),
-            Self::Md5(hasher) => {
-                use md5::Digest;
-                hasher.finalize().to_vec()
-            }
+            Self::Md5(hasher) => hasher.finalize().to_vec(),
+            Self::Md4(hasher) => hasher.finalize().to_vec(),
+            Self::Sha1(hasher) => hasher.finalize().to_vec(),
         }
     }
 }
 
 /// Checksum algorithm names the download-side whole-file verify can
-/// recompute in-tree. Peers that negotiate anything else (xxh3, xxh64,
-/// md4, ...) keep the pre-verify delta path untouched: the check is a
-/// deliberate no-op for unimplemented algorithms so a verify that
-/// assumed the wrong digest cannot silently disable delta forever.
+/// recompute in-tree. Peers that negotiate anything else (sha256,
+/// sha512, none, ...) keep the pre-verify delta path untouched: the
+/// check is a deliberate no-op for unimplemented algorithms so a verify
+/// that assumed the wrong digest cannot silently disable delta forever.
 pub(crate) const XXH128_ALGO_NAME: &str = "xxh128";
 /// CLAUDE-AV-B3-14: md5 whole-file trailer, the practical fallback
 /// real rsync uses when xxh* is unavailable. Same 16-byte length as
@@ -215,6 +238,19 @@ pub(crate) const MD5_ALGO_NAME: &str = "md5";
 /// `xxh3` is the 8-byte variant; the 16-byte variant is `xxh128`.
 pub(crate) const XXH3_ALGO_NAME: &str = "xxh3";
 pub(crate) const XXH64_ALGO_NAME: &str = "xxh64";
+/// Y-RSC.3: legacy md4, the last-resort compatibility entry of the
+/// advertisement. Whole-file trailer and file-list digest are UNSEEDED
+/// (rsync 3.2.7 `sum_init` mixes the seed only for the pre-negotiation
+/// `CSUM_MD4_OLD/BUSTED/ARCHAIC` variants, never for the negotiated
+/// `CSUM_MD4`); the per-block strong via the builtin `get_checksum2`
+/// branch APPENDS the seed to the data (see [`BlockStrongAlgo::Md4`]).
+pub(crate) const MD4_ALGO_NAME: &str = "md4";
+/// Y-RSC.3: sha1, negotiable when a peer advertises it (stock rsync
+/// builds it via OpenSSL EVP). NOT part of our default advertisement;
+/// reachable through the `AEROFTP_RSYNC_CSUM_ALGOS` override. 20-byte
+/// digest; whole-file trailer unseeded, per-block seeded seed-first
+/// (see [`BlockStrongAlgo::Sha1`]).
+pub(crate) const SHA1_ALGO_NAME: &str = "sha1";
 
 /// rsync.h `CF_CHKSUM_SEED_FIX` (`1<<5`). When set in the server's
 /// `compat_flags`, `proper_seed_order=1` and `get_checksum2` for
@@ -587,7 +623,8 @@ pub struct AerorsyncDriver<T: RawRemoteShellTransport> {
     /// `AsyncWrite` sink passed by reference.
     reconstructed: Option<Vec<u8>>,
     /// Download path: file-level strong checksum trailer read from the
-    /// wire (16 bytes in A2.3: xxh128 / md5 / md4).
+    /// wire, sized by [`Self::negotiated_file_checksum_len`] (16 bytes
+    /// for xxh128 / md5 / md4, 8 for xxh3 / xxh64, 20 for sha1).
     received_file_checksum: Option<Vec<u8>>,
     /// Upload path: delta ops emitted on the wire, in emission order.
     /// Kept for test visibility: production callers should ignore this.
@@ -760,9 +797,10 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
     /// Block-strong algorithm for
     /// confirming rolling hits against wire signatures. Must match how
     /// the peer (or we, on the download emit path) filled
-    /// `SumBlock.strong`. xxh128, xxh3, xxh64, and md5 are recomputed
-    /// in-tree; other winners (md4, sha variants, ...) stay `Unknown`
-    /// (safer than rolling-only confirmation).
+    /// `SumBlock.strong`. xxh128, xxh3, xxh64, md5, md4, and sha1 are
+    /// recomputed in-tree; other winners (sha256/sha512/none, reachable
+    /// only through the env override) stay `Unknown` (safer than
+    /// rolling-only confirmation).
     pub(crate) fn block_strong_algo(&self) -> BlockStrongAlgo {
         match self.negotiated_checksum_algo() {
             Some(XXH128_ALGO_NAME) => BlockStrongAlgo::Xxh128 {
@@ -778,6 +816,16 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
             Some(MD5_ALGO_NAME) => BlockStrongAlgo::Md5 {
                 seed: self.checksum_seed,
                 proper_seed_order: self.compat_flags & CF_CHKSUM_SEED_FIX != 0,
+            },
+            // Y-RSC.3: builtin CSUM_MD4 appends the seed to the data;
+            // CF_CHKSUM_SEED_FIX never enters that branch.
+            Some(MD4_ALGO_NAME) => BlockStrongAlgo::Md4 {
+                seed: self.checksum_seed,
+            },
+            // Y-RSC.3: sha1 exists only through rsync's OpenSSL EVP
+            // path, which hashes the seed before the data.
+            Some(SHA1_ALGO_NAME) => BlockStrongAlgo::Sha1 {
+                seed: self.checksum_seed,
             },
             _ => BlockStrongAlgo::Unknown,
         }
@@ -825,10 +873,12 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
     pub(crate) fn negotiated_file_checksum_len(&self) -> usize {
         match self.negotiated_checksum_algo() {
             Some(XXH3_ALGO_NAME | XXH64_ALGO_NAME | "xxhash") => 8,
-            Some("sha1") => 20,
+            Some(SHA1_ALGO_NAME) => 20,
             Some("sha256") => 32,
             Some("sha512") => 64,
             Some("none") => 1,
+            // xxh128, md5, md4, and the absent-negotiation fallback all
+            // share the historical 16-byte width.
             _ => A2_3_FILE_CHECKSUM_LEN,
         }
     }
@@ -1986,17 +2036,13 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
                 BlockStrongAlgo::Xxh64 { .. } | BlockStrongAlgo::Xxh3_64 { .. } => {
                     strong_algo.digest(block)[..8].to_vec()
                 }
-                BlockStrongAlgo::Md5 {
-                    seed,
-                    proper_seed_order,
-                } => {
-                    let digest = BlockStrongAlgo::Md5 {
-                        seed,
-                        proper_seed_order,
-                    }
-                    .digest(block);
-                    digest[..16].to_vec()
+                // Y-RSC.3: 16-byte seeded digests (md5 proper/legacy
+                // order, md4 data-then-seed).
+                BlockStrongAlgo::Md5 { .. } | BlockStrongAlgo::Md4 { .. } => {
+                    strong_algo.digest(block)[..16].to_vec()
                 }
+                // Y-RSC.3: 20-byte seed-first sha1.
+                BlockStrongAlgo::Sha1 { .. } => strong_algo.digest(block)[..20].to_vec(),
                 BlockStrongAlgo::Sha256 | BlockStrongAlgo::Unknown => {
                     compute_xxh128_wire_with_seed(block, self.checksum_seed as u64)
                 }
@@ -4240,6 +4286,49 @@ mod tests {
         );
     }
 
+    /// Y-RSC.3: md4 and sha1 winners map to their seeded block-strong
+    /// variants. Neither carries `proper_seed_order`: the builtin
+    /// CSUM_MD4 branch always appends the seed and the sha1 EVP branch
+    /// always prepends it, regardless of CF_CHKSUM_SEED_FIX, so the
+    /// mapping must be identical with and without the compat flag.
+    #[tokio::test]
+    async fn block_strong_algo_maps_md4_and_sha1_winners() {
+        async fn algo(ours: &str, theirs: &str, compat_flags: i32) -> BlockStrongAlgo {
+            let encoded = encode_server_preamble(&ServerPreamble {
+                protocol_version: 31,
+                compat_flags,
+                checksum_algos: theirs.to_string(),
+                compression_algos: "none".to_string(),
+                checksum_seed: 0x1111_2222,
+                consumed: 0,
+            });
+            let mut d = make_driver(mock_transport()).with_preamble_profile(PreambleProfile {
+                checksum_algos: ours.to_string(),
+                compression_algos: "zstd none".to_string(),
+            });
+            d.receive_server_preamble(&encoded).await.unwrap();
+            d.block_strong_algo()
+        }
+        // md4 through the default advertisement (its last entry).
+        for flags in [0x07, 0x07 | CF_CHKSUM_SEED_FIX] {
+            assert_eq!(
+                algo("xxh128 xxh3 xxh64 md5 md4", "md4", flags).await,
+                BlockStrongAlgo::Md4 { seed: 0x1111_2222 },
+                "md4 mapping must ignore CF_CHKSUM_SEED_FIX (flags {flags:#x})"
+            );
+        }
+        // sha1 is not in the default advertisement; it becomes the
+        // winner only under an `AEROFTP_RSYNC_CSUM_ALGOS`-shaped
+        // override profile, mirrored here without touching process env.
+        for flags in [0x07, 0x07 | CF_CHKSUM_SEED_FIX] {
+            assert_eq!(
+                algo("sha1", "xxh128 xxh3 xxh64 md5 md4 sha1 none", flags).await,
+                BlockStrongAlgo::Sha1 { seed: 0x1111_2222 },
+                "sha1 mapping must ignore CF_CHKSUM_SEED_FIX (flags {flags:#x})"
+            );
+        }
+    }
+
     #[tokio::test]
     async fn download_signature_emit_uses_negotiated_xxh64_and_xxh3_digest_prefixes() {
         let payload = b"rsync-c-full-known-vector";
@@ -4251,6 +4340,69 @@ mod tests {
             (
                 XXH3_ALGO_NAME,
                 vec![0x3a, 0x02, 0x2e, 0xf8, 0xca, 0xce, 0xd9, 0x6c],
+            ),
+        ];
+        for (algorithm, full_digest) in cases {
+            let inbound = encode_server_preamble(&ServerPreamble {
+                protocol_version: 31,
+                compat_flags: 0x07 | CF_CHKSUM_SEED_FIX,
+                checksum_algos: algorithm.to_string(),
+                compression_algos: "none".to_string(),
+                checksum_seed: 0x1234_5678,
+                consumed: 0,
+            });
+            let transport = mock_transport_with_raw_inbound(inbound);
+            let mut driver = make_driver(transport).with_preamble_profile(PreambleProfile {
+                checksum_algos: algorithm.to_string(),
+                compression_algos: "none".to_string(),
+            });
+            driver
+                .open_raw_stream_internal(&RemoteCommandSpec::download("/remote/target.bin"))
+                .await
+                .unwrap();
+            driver
+                .perform_preamble_exchange(31, algorithm, "none")
+                .await
+                .unwrap();
+            let adapter = MockSigAdapter::with_fixed_signatures(
+                payload.len(),
+                vec![make_engine_sig(0, 0xA0A0_A0A0, 0, payload.len() as u32)],
+            );
+            driver
+                .send_signature_phase_single_file(payload, &adapter)
+                .await
+                .unwrap();
+            assert_eq!(driver.sent_signatures().len(), 1);
+            assert_eq!(
+                driver.sent_signatures()[0].strong,
+                full_digest[..A2_2_DOWNLOAD_S2LENGTH as usize],
+                "{algorithm} signature must emit the negotiated digest before protocol truncation"
+            );
+        }
+    }
+
+    /// Y-RSC.3: download-side signature emit for md4 and sha1 winners.
+    /// Same shape as the xxh64/xxh3 twin above; expected full digests
+    /// come from the independent python oracle (seed 0x1234_5678, md4
+    /// data-then-seed, sha1 seed-then-data) so the truncated wire
+    /// prefix pins both the algorithm and the seeding order.
+    #[tokio::test]
+    async fn download_signature_emit_uses_negotiated_md4_and_sha1_digest_prefixes() {
+        let payload = b"rsync-c-full-known-vector";
+        let cases = [
+            (
+                MD4_ALGO_NAME,
+                vec![
+                    0x0d, 0xb1, 0x55, 0xf2, 0x6e, 0x0a, 0x15, 0x05, 0xe4, 0x3d, 0x71, 0xe3, 0xd4,
+                    0x1a, 0x85, 0x76,
+                ],
+            ),
+            (
+                SHA1_ALGO_NAME,
+                vec![
+                    0x74, 0x00, 0xfb, 0x71, 0x8f, 0x54, 0x61, 0xb7, 0x36, 0x9d, 0x7c, 0x4a, 0x81,
+                    0x0b, 0xad, 0x6e, 0xdf, 0x85, 0x44, 0x9a,
+                ],
             ),
         ];
         for (algorithm, full_digest) in cases {
@@ -6094,6 +6246,26 @@ mod tests {
             (
                 XXH3_ALGO_NAME,
                 vec![0x1b, 0x50, 0x88, 0xcd, 0xd5, 0x07, 0x4a, 0xd3],
+            ),
+            // Y-RSC.3: md4 and sha1 file-list digest + trailer are plain
+            // UNSEEDED hashes even though the fixture preamble carries a
+            // nonzero checksum_seed (0x1234_5678): `sum_init` /
+            // `file_checksum` never seed the negotiated winner. Expected
+            // bytes from an independent python oracle (RFC 1320 MD4 /
+            // hashlib sha1), not from the crates under test.
+            (
+                MD4_ALGO_NAME,
+                vec![
+                    0x55, 0x78, 0x31, 0x98, 0xcb, 0x18, 0x55, 0xc7, 0x10, 0x84, 0x40, 0x04, 0xf6,
+                    0x0d, 0x35, 0x19,
+                ],
+            ),
+            (
+                SHA1_ALGO_NAME,
+                vec![
+                    0xec, 0xb3, 0xea, 0x04, 0x18, 0x20, 0x2b, 0x92, 0xfd, 0x27, 0x80, 0xbe, 0x94,
+                    0xed, 0xc4, 0xc4, 0xc6, 0x4b, 0x70, 0x07,
+                ],
             ),
         ];
 
