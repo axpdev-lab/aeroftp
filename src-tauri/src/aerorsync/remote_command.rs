@@ -183,6 +183,22 @@ mod tests {
         );
     }
 
+    // Y-RSC.4 pin: `-l` (preserve links) must stay in the compact flag
+    // bundle sent to stock `rsync --server`. The roadmap item assumed the
+    // flag had to be ADDED; the captured shape already carries it as the
+    // first short option (`-l ogDtprcz...`), because stock clients enable
+    // it via `-a`. Without `-l` the remote side would follow / skip
+    // symlinks instead of preserving them, breaking the symlink
+    // end-to-end path in both directions.
+    #[test]
+    fn compact_flags_pin_preserve_links() {
+        assert!(
+            OBSERVED_COMPACT_FLAGS.starts_with("-l"),
+            "server flag string must keep -l (preserve links) as captured: {}",
+            OBSERVED_COMPACT_FLAGS
+        );
+    }
+
     #[test]
     fn download_spec_is_always_wrapper_parity_for_production() {
         let spec = RemoteCommandSpec::download("/workdir/anything.bin");

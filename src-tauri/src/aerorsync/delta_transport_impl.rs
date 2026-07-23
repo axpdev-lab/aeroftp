@@ -74,7 +74,7 @@ use crate::aerorsync::native_driver::{
     xxh128_wire_bytes, AerorsyncDriver, PreambleProfile, MD5_ALGO_NAME, XXH128_ALGO_NAME,
     XXH3_ALGO_NAME, XXH64_ALGO_NAME,
 };
-use crate::aerorsync::real_wire::FileListEntry;
+use crate::aerorsync::real_wire::{is_symlink_mode, FileListEntry};
 use crate::aerorsync::remote_command::RemoteCommandSpec;
 use crate::aerorsync::rsync_event_bridge::RsyncEventBridge;
 use crate::aerorsync::russh_session_transport::RusshSessionTransport;
@@ -368,7 +368,32 @@ where
     T: RawRemoteShellTransport + 'static,
 {
     let start = Instant::now();
-    let metadata = fs::metadata(local_path).await.map_err(RsyncError::Io)?;
+    // Y-RSC.4: lstat semantics. `fs::metadata` follows symlinks, which
+    // silently uploaded the link TARGET's content as a regular file;
+    // stock rsync with `-l` (already in the pinned server flag string)
+    // preserves the link itself. For non-symlink paths the two calls
+    // return identical metadata.
+    let metadata = fs::symlink_metadata(local_path)
+        .await
+        .map_err(RsyncError::Io)?;
+    if metadata.file_type().is_symlink() {
+        // Symlinks bypass the `min_file_size` gate on purpose: the gate
+        // exists to skip delta overhead on small FILE payloads, but a
+        // symlink has no data phase at all, and a `TooSmall` refusal
+        // would reroute it to the classic SFTP path, which materialises
+        // the target's content instead of the link.
+        return do_upload_symlink(
+            transport,
+            cancel,
+            local_path,
+            remote_path,
+            &metadata,
+            preamble_profile,
+            progress,
+            start,
+        )
+        .await;
+    }
     let file_size = metadata.len();
     if file_size < min_file_size {
         return Err(RsyncError::TooSmall {
@@ -395,7 +420,7 @@ where
     // identifies the negotiated algorithm. The placeholder stays empty
     // here so upload cannot accidentally advertise xxh128 bytes to an
     // xxh64/xxh3/md5 receiver.
-    let source_entry = build_source_entry(local_path, file_size, &metadata, Vec::new());
+    let source_entry = build_source_entry(local_path, file_size, &metadata, Vec::new(), None);
 
     let source_file = fs::File::open(local_path).await.map_err(RsyncError::Io)?;
 
@@ -436,6 +461,95 @@ where
         duration_ms,
         warnings,
     ))
+}
+
+/// Y-RSC.4: upload a local symlink as a symlink (never its target's
+/// content). The link travels entirely inside the file-list entry
+/// (`S_IFLNK` mode + target string): the driver's
+/// [`AerorsyncDriver::drive_upload_symlink`] skips the signature /
+/// delta / data phases and the stock remote generator creates the link
+/// from the flist.
+///
+/// Unix-only by construction: on non-Unix targets the function fails
+/// closed with [`RsyncError::HardRejection`]. A soft error here would
+/// re-route the transfer to the classic SFTP path, which follows the
+/// link and silently materialises the target's content as a regular
+/// file: the exact corruption this guard exists to prevent (mirror of
+/// the module's `S_IFREG` non-Unix lesson, Z.4.3.f6).
+#[allow(clippy::too_many_arguments)]
+async fn do_upload_symlink<T>(
+    transport: T,
+    cancel: CancelHandle,
+    local_path: &Path,
+    remote_path: &str,
+    metadata: &std::fs::Metadata,
+    preamble_profile: PreambleProfile,
+    progress: Option<crate::delta_transport::DeltaProgressSink>,
+    start: Instant,
+) -> Result<RsyncStats, RsyncError>
+where
+    T: RawRemoteShellTransport + 'static,
+{
+    #[cfg(not(unix))]
+    {
+        let _ = (
+            transport,
+            cancel,
+            remote_path,
+            metadata,
+            preamble_profile,
+            progress,
+            start,
+        );
+        return Err(RsyncError::HardRejection(format!(
+            "symlink upload is not supported on this platform: {} is a symbolic link and \
+             uploading it as a regular file would silently materialise its target's content",
+            local_path.display()
+        )));
+    }
+    #[cfg(unix)]
+    {
+        let target_os = fs::read_link(local_path).await.map_err(RsyncError::Io)?;
+        let Some(target) = target_os.to_str().map(str::to_owned) else {
+            // The proto-31 flist codec transports the target as UTF-8;
+            // a non-UTF-8 target cannot round-trip, and degrading to the
+            // classic path would materialise the target content instead.
+            return Err(RsyncError::HardRejection(format!(
+                "symlink target of {} is not valid UTF-8; cannot transport it on the wire",
+                local_path.display()
+            )));
+        };
+        // rsync F_LENGTH convention for links: st_size == strlen(target).
+        let target_len = target.len() as u64;
+        let source_entry =
+            build_source_entry(local_path, target_len, metadata, Vec::new(), Some(target));
+
+        let mut driver = AerorsyncDriver::new(transport, cancel)
+            .with_preamble_profile(preamble_profile)
+            .with_progress_sink(progress);
+        let warnings = new_warnings_sink();
+        let mut bridge = build_event_bridge(warnings.clone());
+
+        let spec = RemoteCommandSpec::upload(remote_path);
+        if let Err(e) = driver
+            .drive_upload_symlink(spec, source_entry, &mut bridge)
+            .await
+        {
+            return Err(map_native_error_to_rsync(e, driver.committed()));
+        }
+        if let Err(e) = driver.finish_session(&mut bridge).await {
+            return Err(map_native_error_to_rsync(e, driver.committed()));
+        }
+
+        let duration_ms = start.elapsed().as_millis() as u64;
+        let warnings = drain_warnings(warnings);
+        Ok(build_stats(
+            driver.session_stats(),
+            target_len,
+            duration_ms,
+            warnings,
+        ))
+    }
 }
 
 // --- download flow -------------------------------------------------------
@@ -497,6 +611,117 @@ async fn discard_streaming_temp(writer: StreamingAtomicWriter) {
     let temp = writer.temp_path().to_path_buf();
     drop(writer);
     let _ = fs::remove_file(&temp).await;
+}
+
+/// Y-RSC.4: materialise a downloaded symlink entry at `local_path` with
+/// the create-at-temp-name + atomic-rename discipline of the regular
+/// download path (`<target>.aerotmp` → rename; the rename is the
+/// commit, so a kill-9 mid-create leaves the original path untouched).
+///
+/// Every failure maps to [`RsyncError::HardRejection`] on purpose: a
+/// soft error would send `transfer_with_delta` down the classic SFTP
+/// fallback, which follows the remote link and silently materialises
+/// the TARGET's content as a regular file: exactly the corruption this
+/// path must never produce (the module's non-Unix `S_IFREG` lesson,
+/// Z.4.3.f6). That is also why the non-Unix arm fails closed instead of
+/// writing anything.
+///
+/// The symlink's own mtime is restored best-effort via `utimensat(...,
+/// AT_SYMLINK_NOFOLLOW)`: mirror of rsync's `CAN_SET_SYMLINK_TIMES`
+/// behaviour, where a failed time-set on a link is a warning, never a
+/// transfer failure.
+async fn create_symlink_atomic(
+    entry: &FileListEntry,
+    local_path: &Path,
+    remote_path: &str,
+) -> Result<(), RsyncError> {
+    let Some(target) = entry.symlink_target.as_deref().filter(|t| !t.is_empty()) else {
+        return Err(RsyncError::HardRejection(format!(
+            "symlink entry for {} carries no target string; refusing to guess",
+            remote_path
+        )));
+    };
+    #[cfg(unix)]
+    {
+        // Same deterministic temp name as `StreamingAtomicWriter` (the
+        // writer's temp was discarded just above, so the slot is free);
+        // clear any stale leftover before `symlink`, which has
+        // create-new semantics and would otherwise fail with EEXIST.
+        let mut temp_os = local_path.as_os_str().to_owned();
+        temp_os.push(TEMP_SUFFIX);
+        let temp_path = PathBuf::from(temp_os);
+        let _ = fs::remove_file(&temp_path).await;
+        fs::symlink(target, &temp_path).await.map_err(|e| {
+            RsyncError::HardRejection(format!(
+                "cannot create symlink temp {} -> {}: {}",
+                temp_path.display(),
+                target,
+                e
+            ))
+        })?;
+        set_symlink_times_best_effort(&temp_path, entry.mtime, entry.mtime_nsec.unwrap_or(0));
+        if let Err(e) = fs::rename(&temp_path, local_path).await {
+            let _ = fs::remove_file(&temp_path).await;
+            return Err(RsyncError::HardRejection(format!(
+                "cannot commit symlink {} -> {}: {}",
+                local_path.display(),
+                target,
+                e
+            )));
+        }
+        Ok(())
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = local_path;
+        Err(RsyncError::HardRejection(format!(
+            "remote {} is a symbolic link (target {}); symlink creation is not supported on \
+             this platform and downloading the target's content in its place would be silent \
+             corruption",
+            remote_path, target
+        )))
+    }
+}
+
+/// Best-effort `lutimes` equivalent: set the mtime of the link ITSELF
+/// (never the target) via `utimensat(AT_FDCWD, path, times,
+/// AT_SYMLINK_NOFOLLOW)`. Failure is logged at debug level and ignored,
+/// mirroring rsync's warning-only handling when symlink times cannot be
+/// set.
+#[cfg(unix)]
+fn set_symlink_times_best_effort(path: &Path, mtime_secs: i64, mtime_nsec: i32) {
+    use std::os::unix::ffi::OsStrExt;
+    let Ok(c_path) = std::ffi::CString::new(path.as_os_str().as_bytes()) else {
+        return;
+    };
+    let times = [
+        // atime: leave untouched.
+        libc::timespec {
+            tv_sec: 0,
+            tv_nsec: libc::UTIME_OMIT,
+        },
+        libc::timespec {
+            tv_sec: mtime_secs as libc::time_t,
+            tv_nsec: mtime_nsec.max(0) as _,
+        },
+    ];
+    // SAFETY: `c_path` is a valid NUL-terminated path and `times` is a
+    // valid 2-element timespec array for the whole call.
+    let rc = unsafe {
+        libc::utimensat(
+            libc::AT_FDCWD,
+            c_path.as_ptr(),
+            times.as_ptr(),
+            libc::AT_SYMLINK_NOFOLLOW,
+        )
+    };
+    if rc != 0 {
+        tracing::debug!(
+            "set_symlink_times_best_effort: utimensat({}) failed: {}",
+            path.display(),
+            std::io::Error::last_os_error()
+        );
+    }
 }
 
 /// CLAUDE-AV-B3-12: `AsyncWrite` shim that xxh3-128s every byte on its
@@ -723,6 +948,26 @@ where
     let file_size = writer.bytes_written();
 
     let remote_entry = driver.downloaded_entry().cloned();
+    // Y-RSC.4: a symlink entry has no signature/delta/data phases: the
+    // driver returned right after the flist and nothing reached the
+    // streaming writer. Discard the (empty) temp and materialise the
+    // link itself; every guard below (size, checksum, finalize) is
+    // file-content machinery that does not apply to links.
+    if let Some(ref entry) = remote_entry {
+        if is_symlink_mode(entry.mode) {
+            let stats_snapshot = driver.session_stats().clone();
+            discard_streaming_temp(writer).await;
+            create_symlink_atomic(entry, local_path, remote_path).await?;
+            let duration_ms = start.elapsed().as_millis() as u64;
+            let warnings = drain_warnings(warnings);
+            return Ok(build_stats(
+                &stats_snapshot,
+                entry.size.max(0) as u64,
+                duration_ms,
+                warnings,
+            ));
+        }
+    }
     let preserve_mode = remote_entry
         .as_ref()
         .map(|entry| entry.mode)
@@ -1174,11 +1419,20 @@ impl DeltaBatch for AerorsyncBatch {
 /// XMIT_GROUP_NAME_FOLLOWS | XMIT_MOD_NSEC` is the cumulative shape; the
 /// uid/gid varints + name pairs follow inline because `inc_recurse=1`
 /// is negotiated via CF_INC_RECURSE in the server compat byte.
+/// `symlink_target` is `Some` only on the Y-RSC.4 symlink-upload path:
+/// the caller resolved it with `read_link` after an lstat-style
+/// `symlink_metadata` probe, and `metadata` then carries `S_IFLNK` mode
+/// bits plus `st_size == strlen(target)`. Regular uploads pass `None`
+/// and are byte-identical to before the parameter existed. The entry is
+/// still a FIRST-list-entry shape either way: explicit mtime/mode, no
+/// `XMIT_SAME_*` compression (audit 2026-07-21 §4.1: SAME flags are
+/// legal only from the second entry on).
 fn build_source_entry(
     local_path: &Path,
     size: u64,
     metadata: &std::fs::Metadata,
     file_checksum: Vec<u8>,
+    symlink_target: Option<String>,
 ) -> FileListEntry {
     // 0x2c00 = USER_NAME_FOLLOWS (1<<10) | GROUP_NAME_FOLLOWS (1<<11) | MOD_NSEC (1<<13).
     const BASELINE_FLAGS: u32 = (1 << 10) | (1 << 11) | (1 << 13);
@@ -1213,16 +1467,7 @@ fn build_source_entry(
         gid: Some(gid_value as i64),
         gid_name: Some(gid_name),
         checksum: file_checksum,
-        // Symlink source detection is deliberately not wired here: the
-        // single-file delta path is only reached with regular-file
-        // metadata today, and transferring a symlink also requires
-        // bypassing the data/delta phase (a symlink carries no content
-        // stream) plus a byte-fixture capture against stock rsync to
-        // validate the end-to-end flow. The wire codec
-        // (`encode/decode_file_list_entry`) already round-trips symlink
-        // entries; wiring the source builder + receiver is the tracked
-        // follow-up (see PROTOCOL-RSYNC-COMPARE.md).
-        symlink_target: None,
+        symlink_target,
     }
 }
 
@@ -2390,7 +2635,7 @@ mod tests {
         let dir = fresh_tempdir();
         let path = dir.path().join("payload.bin");
         let meta = metadata_for(&path);
-        let entry = build_source_entry(&path, 1_234_567, &meta, xxh128_digest_bytes(&[]));
+        let entry = build_source_entry(&path, 1_234_567, &meta, xxh128_digest_bytes(&[]), None);
         assert_eq!(entry.path, "payload.bin");
         assert_eq!(entry.size, 1_234_567);
         // U-07 regression pin: mtime MUST be populated from metadata;
@@ -2431,7 +2676,7 @@ mod tests {
         // a source (a directory is fine for the fallback check).
         let dir = fresh_tempdir();
         let meta = std::fs::metadata(dir.path()).unwrap();
-        let entry = build_source_entry(Path::new("/"), 0, &meta, xxh128_digest_bytes(&[]));
+        let entry = build_source_entry(Path::new("/"), 0, &meta, xxh128_digest_bytes(&[]), None);
         assert_eq!(entry.path, "source.bin");
     }
 
@@ -2445,11 +2690,570 @@ mod tests {
             std::fs::File::create(&path).unwrap();
             std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o640)).unwrap();
             let meta = std::fs::metadata(&path).unwrap();
-            let entry = build_source_entry(&path, 0, &meta, xxh128_digest_bytes(&[]));
+            let entry = build_source_entry(&path, 0, &meta, xxh128_digest_bytes(&[]), None);
             // `mode` is the raw `st_mode` value; the low 12 bits carry
             // the permission bits we just set.
             assert_eq!((entry.mode as u32) & 0o7777, 0o640);
         }
+    }
+
+    // -- Y-RSC.4: symlink source entry + atomic link creation ---------------
+
+    #[cfg(unix)]
+    #[test]
+    fn build_source_entry_symlink_carries_iflnk_mode_target_and_no_checksum() {
+        let dir = fresh_tempdir();
+        let target = "payload-target.bin";
+        std::fs::write(dir.path().join(target), b"tgt").unwrap();
+        let link = dir.path().join("entry.lnk");
+        std::os::unix::fs::symlink(target, &link).unwrap();
+
+        // lstat semantics: `symlink_metadata` describes the LINK, not
+        // its target (mode carries S_IFLNK, len is strlen(target)).
+        let meta = std::fs::symlink_metadata(&link).unwrap();
+        assert!(meta.file_type().is_symlink());
+        let entry = build_source_entry(
+            &link,
+            target.len() as u64,
+            &meta,
+            Vec::new(),
+            Some(target.to_string()),
+        );
+
+        assert_eq!(entry.mode & 0o170000, 0o120000, "S_IFLNK mode bits");
+        assert_eq!(entry.symlink_target.as_deref(), Some(target));
+        assert_eq!(entry.size, target.len() as i64, "rsync F_LENGTH for links");
+        assert!(
+            entry.checksum.is_empty(),
+            "symlink entries carry no flist checksum (proto >= 28)"
+        );
+        // First-entry shape (audit 2026-07-21 §4.1): explicit mtime and
+        // mode, never XMIT_SAME_* compression.
+        assert_eq!(entry.flags, (1 << 10) | (1 << 11) | (1 << 13));
+        assert!(entry.mtime > 0, "explicit mtime required on first entry");
+        assert!(entry.mtime_nsec.is_some(), "MOD_NSEC requires a value");
+    }
+
+    #[tokio::test]
+    async fn create_symlink_atomic_rejects_entry_without_target() {
+        let dir = fresh_tempdir();
+        let dest = dir.path().join("no-target.lnk");
+        let mut entry = crate::aerorsync::real_wire::FileListEntry {
+            flags: 1 << 13,
+            path: "no-target.lnk".to_string(),
+            size: 0,
+            mtime: 0,
+            mtime_nsec: Some(0),
+            mode: 0o120_777,
+            uid: None,
+            uid_name: None,
+            gid: None,
+            gid_name: None,
+            checksum: vec![],
+            symlink_target: None,
+        };
+        let err = create_symlink_atomic(&entry, &dest, "/remote/no-target.lnk")
+            .await
+            .unwrap_err();
+        assert!(matches!(err, RsyncError::HardRejection(_)));
+        // Empty target string is equally refused: readlink can never
+        // produce it, so it only appears from a malformed peer.
+        entry.symlink_target = Some(String::new());
+        let err = create_symlink_atomic(&entry, &dest, "/remote/no-target.lnk")
+            .await
+            .unwrap_err();
+        assert!(matches!(err, RsyncError::HardRejection(_)));
+        assert!(!dest.exists(), "nothing may be materialised on refusal");
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn create_symlink_atomic_replaces_existing_file_and_leaves_no_temp() {
+        let dir = fresh_tempdir();
+        let dest = dir.path().join("replace-me.lnk");
+        std::fs::write(&dest, b"old regular content").unwrap();
+        let entry = crate::aerorsync::real_wire::FileListEntry {
+            flags: 1 << 13,
+            path: "replace-me.lnk".to_string(),
+            size: 11,
+            mtime: 1_700_000_000,
+            mtime_nsec: Some(0),
+            mode: 0o120_777,
+            uid: None,
+            uid_name: None,
+            gid: None,
+            gid_name: None,
+            checksum: vec![],
+            symlink_target: Some("rel/tgt.bin".to_string()),
+        };
+        create_symlink_atomic(&entry, &dest, "/remote/replace-me.lnk")
+            .await
+            .expect("atomic symlink replace");
+
+        let meta = std::fs::symlink_metadata(&dest).unwrap();
+        assert!(meta.file_type().is_symlink(), "dest must now be a symlink");
+        assert_eq!(
+            std::fs::read_link(&dest).unwrap(),
+            PathBuf::from("rel/tgt.bin")
+        );
+        let temp = {
+            let mut os = dest.as_os_str().to_os_string();
+            os.push(TEMP_SUFFIX);
+            PathBuf::from(os)
+        };
+        assert!(!temp.exists(), "temp must be renamed away, never leaked");
+    }
+
+    #[cfg(not(unix))]
+    #[tokio::test]
+    async fn create_symlink_atomic_fails_closed_on_non_unix() {
+        // Compile-surface + behaviour guard for the Windows lane: a
+        // symlink entry must surface a typed HardRejection, never a
+        // silently materialised regular file (module S_IFREG lesson).
+        let dir = fresh_tempdir();
+        let dest = dir.path().join("refused.lnk");
+        let entry = crate::aerorsync::real_wire::FileListEntry {
+            flags: 1 << 13,
+            path: "refused.lnk".to_string(),
+            size: 7,
+            mtime: 0,
+            mtime_nsec: Some(0),
+            mode: 0o120_777,
+            uid: None,
+            uid_name: None,
+            gid: None,
+            gid_name: None,
+            checksum: vec![],
+            symlink_target: Some("tgt.bin".to_string()),
+        };
+        let err = create_symlink_atomic(&entry, &dest, "/remote/refused.lnk")
+            .await
+            .unwrap_err();
+        assert!(matches!(err, RsyncError::HardRejection(_)));
+        assert!(!dest.exists(), "fail closed: nothing on disk");
+    }
+
+    /// Scripted no-op upload session: server preamble + the 5 NDX_DONE
+    /// markers the generator emits when nothing needs transferring: the
+    /// exact inbound shape of a symlink upload (flist-only, no
+    /// signature/delta phases; see
+    /// `native_driver::tests::driver_upload_symlink_emits_flist_only_and_finishes_noop`).
+    fn symlink_upload_session_inbound() -> Vec<u8> {
+        use crate::aerorsync::real_wire::{
+            encode_server_preamble, MuxHeader, MuxTag, ServerPreamble,
+        };
+        let mut inbound = encode_server_preamble(&ServerPreamble {
+            protocol_version: 31,
+            compat_flags: 0x07,
+            checksum_algos: "md5".to_string(),
+            compression_algos: "none zstd".to_string(),
+            checksum_seed: 0xDEAD_BEEF,
+            consumed: 0,
+        });
+        let payload = [0x00u8; 5];
+        let header = MuxHeader {
+            tag: MuxTag::Data,
+            length: payload.len() as u32,
+        };
+        inbound.extend_from_slice(&header.encode());
+        inbound.extend_from_slice(&payload);
+        inbound
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn do_upload_detects_symlink_and_bypasses_min_file_size() {
+        use crate::aerorsync::mock::{MockRemoteShellTransport, MockTransportConfig};
+
+        let dir = fresh_tempdir();
+        std::fs::write(dir.path().join("payload.bin"), b"content").unwrap();
+        let link = dir.path().join("up.lnk");
+        std::os::unix::fs::symlink("payload.bin", &link).unwrap();
+
+        let transport = MockRemoteShellTransport::new(
+            MockTransportConfig::healthy_upload()
+                .with_raw_inbound(symlink_upload_session_inbound()),
+        );
+        // A prohibitive threshold proves the symlink path bypasses the
+        // TooSmall gate: rerouting a link to the classic SFTP path would
+        // materialise the TARGET content instead of the link.
+        let result = do_upload(
+            transport,
+            CancelHandle::inert(),
+            &link,
+            "/remote/up.lnk",
+            10_000_000,
+            PreambleProfile::default(),
+            None,
+        )
+        .await
+        .expect("symlink upload must succeed despite the min_file_size gate");
+        assert_eq!(
+            result.total_size,
+            "payload.bin".len() as u64,
+            "stats total is the target string length (rsync F_LENGTH)"
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn do_upload_rejects_non_utf8_symlink_target_hard() {
+        use crate::aerorsync::mock::{MockRemoteShellTransport, MockTransportConfig};
+        use std::ffi::OsStr;
+        use std::os::unix::ffi::OsStrExt;
+
+        let dir = fresh_tempdir();
+        let link = dir.path().join("bad.lnk");
+        std::os::unix::fs::symlink(OsStr::from_bytes(b"\xff\xfe-tgt"), &link).unwrap();
+
+        let transport = MockRemoteShellTransport::new(MockTransportConfig::healthy_upload());
+        let err = do_upload(
+            transport,
+            CancelHandle::inert(),
+            &link,
+            "/remote/bad.lnk",
+            0,
+            PreambleProfile::default(),
+            None,
+        )
+        .await
+        .unwrap_err();
+        assert!(
+            matches!(err, RsyncError::HardRejection(_)),
+            "non-UTF-8 target must fail closed, got {err:?}"
+        );
+    }
+
+    /// Scripted symlink download session: preamble + flist carrying one
+    /// S_IFLNK entry (target string, no flist checksum) + terminator,
+    /// then directly the sender finish tail (3 NDX_DONE + SummaryFrame +
+    /// trailing marker). No signature echo and no delta stream: the
+    /// generator never requests symlinks.
+    fn symlink_download_session_inbound(link_name: &str, target: &str) -> Vec<u8> {
+        use crate::aerorsync::real_wire::{
+            encode_file_list_entry, encode_file_list_terminator, encode_server_preamble,
+            encode_summary_frame, FileListDecodeOptions, FileListEntry, MuxHeader, MuxTag,
+            ServerPreamble, SummaryFrame,
+        };
+
+        fn mux(payload: &[u8]) -> Vec<u8> {
+            let header = MuxHeader {
+                tag: MuxTag::Data,
+                length: payload.len() as u32,
+            };
+            let mut out = header.encode().to_vec();
+            out.extend_from_slice(payload);
+            out
+        }
+
+        let entry = FileListEntry {
+            flags: 1 << 13, // XMIT_MOD_NSEC: explicit first-entry shape
+            path: link_name.to_string(),
+            size: target.len() as i64,
+            mtime: 1_750_000_000,
+            mtime_nsec: Some(0),
+            mode: 0o120_777,
+            uid: Some(1000),
+            uid_name: None,
+            gid: Some(1000),
+            gid_name: None,
+            checksum: vec![],
+            symlink_target: Some(target.to_string()),
+        };
+        let opts = FileListDecodeOptions {
+            protocol: 31,
+            xfer_flags_as_varint: true,
+            always_checksum: true,
+            csum_len: 16,
+            preserve_uid: true,
+            preserve_gid: true,
+            previous_name: None,
+        };
+        let mut finish_tail = vec![0x00; 3];
+        finish_tail.extend_from_slice(&encode_summary_frame(
+            &SummaryFrame {
+                total_read: 100,
+                total_written: target.len() as i64,
+                total_size: target.len() as i64,
+                flist_buildtime: Some(1),
+                flist_xfertime: Some(0),
+            },
+            31,
+        ));
+
+        let mut inbound = encode_server_preamble(&ServerPreamble {
+            protocol_version: 31,
+            compat_flags: 0x07,
+            checksum_algos: "md5".to_string(),
+            compression_algos: "none zstd".to_string(),
+            checksum_seed: 0xDEAD_BEEF,
+            consumed: 0,
+        });
+        inbound.extend_from_slice(&mux(&encode_file_list_entry(&entry, &opts)));
+        inbound.extend_from_slice(&mux(&encode_file_list_terminator(&opts)));
+        inbound.extend_from_slice(&mux(&finish_tail));
+        inbound.extend_from_slice(&mux(&[0x00]));
+        inbound
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn do_download_creates_symlink_end_to_end() {
+        use crate::aerorsync::mock::{MockRemoteShellTransport, MockTransportConfig};
+
+        let dir = fresh_tempdir();
+        let local = dir.path().join("down.lnk");
+        let target = "../rel/tgt.bin";
+        let transport = MockRemoteShellTransport::new(
+            MockTransportConfig::healthy_upload()
+                .with_raw_inbound(symlink_download_session_inbound("down.lnk", target)),
+        );
+        let stats = do_download(
+            transport,
+            CancelHandle::inert(),
+            "/remote/down.lnk",
+            &local,
+            PreambleProfile::default(),
+            None,
+        )
+        .await
+        .expect("symlink download must create the link");
+        assert_eq!(stats.total_size, target.len() as u64);
+
+        let meta = std::fs::symlink_metadata(&local).unwrap();
+        assert!(meta.file_type().is_symlink(), "local must be a symlink");
+        assert_eq!(std::fs::read_link(&local).unwrap(), PathBuf::from(target));
+        let temp = {
+            let mut os = local.as_os_str().to_os_string();
+            os.push(TEMP_SUFFIX);
+            PathBuf::from(os)
+        };
+        assert!(!temp.exists(), "streaming + symlink temps must be gone");
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn do_download_symlink_replaces_existing_regular_file() {
+        use crate::aerorsync::mock::{MockRemoteShellTransport, MockTransportConfig};
+
+        let dir = fresh_tempdir();
+        let local = dir.path().join("was-file.lnk");
+        std::fs::write(&local, b"stale regular baseline").unwrap();
+        let target = "tgt-after.bin";
+        let transport = MockRemoteShellTransport::new(
+            MockTransportConfig::healthy_upload()
+                .with_raw_inbound(symlink_download_session_inbound("was-file.lnk", target)),
+        );
+        do_download(
+            transport,
+            CancelHandle::inert(),
+            "/remote/was-file.lnk",
+            &local,
+            PreambleProfile::default(),
+            None,
+        )
+        .await
+        .expect("symlink download over an existing regular file");
+
+        let meta = std::fs::symlink_metadata(&local).unwrap();
+        assert!(
+            meta.file_type().is_symlink(),
+            "regular file must be atomically replaced by the link"
+        );
+        assert_eq!(std::fs::read_link(&local).unwrap(), PathBuf::from(target));
+    }
+
+    // -- Y-RSC.4 live lane 3 (stock rsync 3.2.7 over SSH, port 2224) --------
+    //
+    // Gated like the native_driver live tests: compiled only under
+    // `RUSTFLAGS='--cfg ci_lane3'`, skip-graceful when the Docker
+    // harness is not reachable. Server-side setup/verification runs over
+    // SSH as root with the same capture key (readlink / ln -s).
+
+    #[cfg(all(ci_lane3, unix))]
+    fn lane3_key_path() -> Option<PathBuf> {
+        let key_path =
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/aerorsync/capture/keys/id_ed25519");
+        if key_path.exists() {
+            Some(key_path)
+        } else {
+            eprintln!("[lane3-symlink] ssh key not found at {key_path:?}: skipping");
+            None
+        }
+    }
+
+    #[cfg(all(ci_lane3, unix))]
+    fn lane3_ssh_config(key_path: PathBuf) -> crate::aerorsync::ssh_transport::SshTransportConfig {
+        use crate::aerorsync::transport::RemoteExecRequest;
+        crate::aerorsync::ssh_transport::SshTransportConfig {
+            host: "127.0.0.1".into(),
+            port: 2224,
+            username: "testuser".into(),
+            private_key_path: key_path,
+            connect_timeout_ms: 10_000,
+            io_timeout_ms: 30_000,
+            worker_idle_poll_ms: 250,
+            max_frame_size: 1 << 20,
+            host_key_policy: SshHostKeyPolicy::AcceptAny,
+            probe_request: RemoteExecRequest {
+                program: "rsync".into(),
+                args: vec!["--version".into()],
+                environment: Vec::new(),
+            },
+            auth_password: None,
+            auth_agent: false,
+        }
+    }
+
+    /// Run a shell command on the harness as root over SSH and return
+    /// trimmed stdout. Panics on a non-zero exit so a broken harness
+    /// surfaces loudly instead of producing vacuous assertions.
+    #[cfg(all(ci_lane3, unix))]
+    fn lane3_ssh_testuser(key_path: &Path, command: &str) -> String {
+        let out = std::process::Command::new("ssh")
+            .args([
+                "-p",
+                "2224",
+                "-i",
+                key_path.to_str().expect("key path is UTF-8"),
+                "-o",
+                "StrictHostKeyChecking=no",
+                "-o",
+                "UserKnownHostsFile=/dev/null",
+                "-o",
+                "BatchMode=yes",
+                "testuser@127.0.0.1",
+                command,
+            ])
+            .output()
+            .expect("spawn ssh for harness verification");
+        assert!(
+            out.status.success(),
+            "harness ssh command failed ({}): {}",
+            command,
+            String::from_utf8_lossy(&out.stderr)
+        );
+        String::from_utf8_lossy(&out.stdout).trim().to_string()
+    }
+
+    /// (a) Upload a local symlink with a relative target through the
+    /// production `do_upload` path (symlink_metadata detection included)
+    /// and verify server-side over SSH that `readlink` returns the
+    /// identical target and the file type is a symlink.
+    #[cfg(all(ci_lane3, unix))]
+    #[tokio::test]
+    async fn delta_upload_symlink_live_lane_3_readlink_identical() {
+        use crate::aerorsync::ssh_transport::SshRemoteShellTransport;
+
+        if tokio::net::TcpStream::connect("127.0.0.1:2224")
+            .await
+            .is_err()
+        {
+            eprintln!("[lane3-symlink] harness not reachable on 127.0.0.1:2224: skipping");
+            return;
+        }
+        let Some(key_path) = lane3_key_path() else {
+            return;
+        };
+
+        let dir = fresh_tempdir();
+        let relative_target = "lane3-up-target.bin";
+        std::fs::write(dir.path().join(relative_target), b"lane3 payload").unwrap();
+        let link = dir.path().join("lane3-up.lnk");
+        std::os::unix::fs::symlink(relative_target, &link).unwrap();
+
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let remote_path = format!("/workspace/lane3-symlink-up-{nanos}.lnk");
+
+        let transport = SshRemoteShellTransport::new(lane3_ssh_config(key_path.clone()));
+        let stats = do_upload(
+            transport,
+            CancelHandle::inert(),
+            &link,
+            &remote_path,
+            1_000_000, // prohibitive threshold: symlinks must bypass TooSmall
+            PreambleProfile::for_host("127.0.0.1"),
+            None,
+        )
+        .await
+        .expect("live symlink upload against stock rsync");
+        assert_eq!(stats.total_size, relative_target.len() as u64);
+
+        let observed = lane3_ssh_testuser(&key_path, &format!("readlink '{remote_path}'"));
+        eprintln!("[lane3-symlink] server readlink: {observed}");
+        assert_eq!(
+            observed, relative_target,
+            "server-side readlink must be identical to the uploaded target"
+        );
+        let ftype = lane3_ssh_testuser(
+            &key_path,
+            &format!("test -L '{remote_path}' && echo symlink || echo other"),
+        );
+        assert_eq!(ftype, "symlink", "server-side file type must be a symlink");
+    }
+
+    /// (b) Create a symlink server-side over SSH, download it through
+    /// the production `do_download` path, and verify the local link is
+    /// readlink-identical.
+    #[cfg(all(ci_lane3, unix))]
+    #[tokio::test]
+    async fn delta_download_symlink_live_lane_3_readlink_identical() {
+        use crate::aerorsync::ssh_transport::SshRemoteShellTransport;
+
+        if tokio::net::TcpStream::connect("127.0.0.1:2224")
+            .await
+            .is_err()
+        {
+            eprintln!("[lane3-symlink] harness not reachable on 127.0.0.1:2224: skipping");
+            return;
+        }
+        let Some(key_path) = lane3_key_path() else {
+            return;
+        };
+
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let relative_target = format!("lane3-dl-target-{nanos}.bin");
+        let remote_link = format!("/workspace/lane3-symlink-dl-{nanos}.lnk");
+        lane3_ssh_testuser(
+            &key_path,
+            &format!("ln -sfn '{relative_target}' '{remote_link}' && readlink '{remote_link}'"),
+        );
+
+        let dir = fresh_tempdir();
+        let local = dir.path().join("lane3-dl.lnk");
+        let transport = SshRemoteShellTransport::new(lane3_ssh_config(key_path.clone()));
+        let stats = do_download(
+            transport,
+            CancelHandle::inert(),
+            &remote_link,
+            &local,
+            PreambleProfile::for_host("127.0.0.1"),
+            None,
+        )
+        .await
+        .expect("live symlink download against stock rsync");
+        assert_eq!(stats.total_size, relative_target.len() as u64);
+
+        let meta = std::fs::symlink_metadata(&local).expect("local link created");
+        assert!(meta.file_type().is_symlink(), "local must be a symlink");
+        let observed = std::fs::read_link(&local).expect("read_link");
+        eprintln!(
+            "[lane3-symlink] local readlink: {}",
+            observed.to_string_lossy()
+        );
+        assert_eq!(observed, PathBuf::from(&relative_target));
+        let temp = {
+            let mut os = local.as_os_str().to_os_string();
+            os.push(TEMP_SUFFIX);
+            PathBuf::from(os)
+        };
+        assert!(!temp.exists(), "no temp leftovers after live download");
     }
 
     // -- build_stats --------------------------------------------------------

@@ -1259,7 +1259,9 @@ pub struct FileListEntry {
     pub gid: Option<i64>,
     pub gid_name: Option<String>,
     /// Raw checksum bytes when `always_checksum` is active. Length
-    /// equals `options.csum_len`; empty otherwise.
+    /// equals `options.csum_len`; empty otherwise. Always empty for
+    /// symlink entries: from proto 28 onward `flist.c` sends the flist
+    /// checksum only for `S_ISREG` entries.
     pub checksum: Vec<u8>,
     /// Symlink target, present iff this entry's `mode` is `S_IFLNK`.
     /// `None` for every regular file / directory, so the encoder emits
@@ -1578,7 +1580,20 @@ pub fn decode_file_list_entry(
     };
 
     // --- 9. Checksum (always_checksum active) ------------------------------
-    let checksum = if options.always_checksum && options.csum_len > 0 {
+    // flist.c gates the flist checksum on `always_checksum &&
+    // (S_ISREG(mode) || protocol_version < 28)`: from proto 28 onward a
+    // symlink entry carries NO checksum bytes on the wire (the target
+    // string in section 8.5 is its whole payload). Decoding `csum_len`
+    // bytes here for a symlink would swallow the list terminator and
+    // desynchronise the stream against stock rsync. The codec keys the
+    // skip on `S_ISLNK(mode)` rather than the full `!S_ISREG(mode)`:
+    // in the single-file scope the sole entry is either an explicit
+    // regular file or an explicit symlink, and keying on S_ISLNK keeps
+    // mode-0 (SAME_MODE) entries byte-identical to before this change.
+    // Directory / device / SAME_MODE checksum gating is deferred to the
+    // recursive file-list work together with the SAME_MODE symlink
+    // caveat documented in section 8.5.
+    let checksum = if options.always_checksum && options.csum_len > 0 && !is_symlink_mode(mode) {
         if cursor + options.csum_len > buf.len() {
             return Err(RealWireError::TruncatedBuffer {
                 at: "flist_checksum",
@@ -1763,7 +1778,11 @@ pub fn encode_file_list_entry(entry: &FileListEntry, options: &FileListDecodeOpt
     }
 
     // --- 9. Checksum (always_checksum) ------------------------------------
-    if options.always_checksum && options.csum_len > 0 {
+    // Mirror of the decoder gate: symlink entries never carry a flist
+    // checksum on the wire from proto 28 onward (`flist.c::send_file_entry`
+    // sends it only for `S_ISREG(mode)`); see the decoder comment for why
+    // the codec keys on `S_ISLNK` in the single-file scope.
+    if options.always_checksum && options.csum_len > 0 && !is_symlink_mode(entry.mode) {
         assert_eq!(
             entry.checksum.len(),
             options.csum_len,
@@ -5297,7 +5316,9 @@ mod tests {
         // A symlink file-list entry: S_IFLNK mode, target carried in
         // `symlink_target`, size = target length (rsync F_LENGTH
         // convention for links). The round-trip helper also asserts
-        // `symlink_target` equality.
+        // `symlink_target` equality. The checksum is empty because from
+        // proto 28 onward `flist.c` sends the flist checksum only for
+        // regular files, even with `always_checksum` active.
         let target = "../relative/path/to/target.bin".to_string();
         let entry = FileListEntry {
             flags: XMIT_USER_NAME_FOLLOWS | XMIT_GROUP_NAME_FOLLOWS,
@@ -5310,7 +5331,7 @@ mod tests {
             uid_name: Some("axpnet".to_string()),
             gid: Some(1000),
             gid_name: Some("axpnet".to_string()),
-            checksum: vec![0x7Fu8; 16],
+            checksum: vec![],
             symlink_target: Some(target),
         };
         let opts = frozen_oracle_options_for_test(None);
@@ -5318,13 +5339,66 @@ mod tests {
     }
 
     #[test]
+    fn symlink_entry_carries_no_flist_checksum_even_with_csum_len_set() {
+        // Y-RSC.4 pin: with `always_checksum` on and `csum_len = 16`
+        // (the production xxh128 decode options), a symlink entry must
+        // encode WITHOUT checksum bytes and decode back with an empty
+        // checksum: `flist.c` proto >= 28 sends the flist checksum only
+        // for `S_ISREG` entries. Before this gate the decoder consumed
+        // 16 bytes past the symlink target and swallowed the list
+        // terminator, desynchronising against stock rsync.
+        let target = "rel/tgt.bin".to_string();
+        let entry = FileListEntry {
+            flags: XMIT_MOD_NSEC,
+            path: "pin.lnk".to_string(),
+            size: target.len() as i64,
+            mtime: 1_750_000_000,
+            mtime_nsec: Some(0),
+            mode: S_IFLNK | 0o777,
+            uid: Some(1000),
+            uid_name: None,
+            gid: Some(1000),
+            gid_name: None,
+            checksum: vec![],
+            symlink_target: Some(target.clone()),
+        };
+        let opts = frozen_oracle_options_for_test(None);
+        assert_eq!(opts.csum_len, 16, "pin assumes the production csum_len");
+        let bytes = encode_file_list_entry(&entry, &opts);
+
+        // Encoded length: identical entry with a 16-byte checksum would
+        // be exactly 16 bytes longer. Prove the tail really is the
+        // symlink target, not checksum padding.
+        assert!(
+            bytes.ends_with(target.as_bytes()),
+            "symlink entry must end with the raw target bytes (no trailing checksum)"
+        );
+
+        let (outcome, consumed) = decode_file_list_entry(&bytes, &opts).expect("decode");
+        assert_eq!(consumed, bytes.len(), "no residual bytes");
+        match outcome {
+            FileListDecodeOutcome::Entry(d) => {
+                assert_eq!(d.symlink_target.as_deref(), Some(target.as_str()));
+                assert!(
+                    d.checksum.is_empty(),
+                    "symlink entries must decode with an empty flist checksum"
+                );
+            }
+            other => panic!("expected Entry, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn symlink_target_adds_exactly_varint_len_plus_bytes_over_regular() {
         // Regression: the encoder must emit the symlink target ONLY for
-        // S_IFLNK entries, and exactly `varint(len) + len` extra bytes
-        // versus the identical entry encoded as a regular file. This
-        // proves non-symlink entries are byte-identical to before the
-        // symlink codec was added (the frozen-oracle tests are the
-        // companion proof on real captured bytes).
+        // S_IFLNK entries: exactly `varint(len) + len` extra bytes versus
+        // the identical entry encoded as a regular file, MINUS the
+        // `csum_len` flist checksum that proto >= 28 reserves for regular
+        // files (`flist.c::send_file_entry` sends it only under
+        // `S_ISREG(mode)`). This proves non-symlink entries are
+        // byte-identical to before the symlink codec was added (the
+        // frozen-oracle tests are the companion proof on real captured
+        // bytes).
         let opts = frozen_oracle_options_for_test(None);
         let target = "target/over/here".to_string();
 
@@ -5335,14 +5409,15 @@ mod tests {
 
         let mut lnk = baseline_entry();
         lnk.mode = S_IFLNK | 0o777;
+        lnk.checksum = vec![];
         lnk.symlink_target = Some(target.clone());
         let lnk_bytes = encode_file_list_entry(&lnk, &opts);
 
         let expected_extra = encode_varint(target.len() as i32).len() + target.len();
         assert_eq!(
-            lnk_bytes.len(),
+            lnk_bytes.len() + opts.csum_len,
             reg_bytes.len() + expected_extra,
-            "symlink entry must add exactly varint(len)+len bytes"
+            "symlink entry must add exactly varint(len)+len bytes and drop the csum_len checksum"
         );
 
         // And a regular entry decodes back with no symlink target.

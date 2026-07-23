@@ -59,10 +59,10 @@ use crate::aerorsync::real_wire::{
     decode_ndx, decode_server_preamble, decode_sum_block, decode_sum_head, decode_summary_frame,
     decompress_zstd_literal_stream_boundaries, encode_client_preamble, encode_delta_stream,
     encode_file_list_entry, encode_file_list_terminator, encode_item_flags, encode_ndx,
-    encode_sum_block, encode_sum_head, encode_summary_frame, ClientPreamble, DeltaOp,
-    DeltaStreamReport, FileListDecodeOptions, FileListDecodeOutcome, FileListEntry, MuxHeader,
-    MuxPoll, MuxStreamReader, MuxTag, NdxState, RealWireError, SumBlock, SumHead, SummaryFrame,
-    MAX_DELTA_LITERAL_LEN, NDX_DONE, NDX_FLIST_EOF,
+    encode_sum_block, encode_sum_head, encode_summary_frame, is_symlink_mode, ClientPreamble,
+    DeltaOp, DeltaStreamReport, FileListDecodeOptions, FileListDecodeOutcome, FileListEntry,
+    MuxHeader, MuxPoll, MuxStreamReader, MuxTag, NdxState, RealWireError, SumBlock, SumHead,
+    SummaryFrame, MAX_DELTA_LITERAL_LEN, NDX_DONE, NDX_FLIST_EOF,
 };
 use crate::aerorsync::remote_command::{RemoteCommandFlavor, RemoteCommandSpec};
 use crate::aerorsync::transport::{CancelHandle, RawByteStream, RawRemoteShellTransport};
@@ -1037,6 +1037,83 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         }
     }
 
+    /// Y-RSC.4: upload a single **symlink** entry against stock
+    /// `rsync --server`.
+    ///
+    /// rsync transports a symlink entirely inside the file-list entry
+    /// (`S_IFLNK` mode + target string, `flist.c::send_file_entry`);
+    /// there is no signature, delta, or data phase for it. The remote
+    /// generator creates the link straight from the flist
+    /// (`generator.c::recv_generator`, `S_ISLNK` branch) and never
+    /// requests a transfer, so after the flist the session goes directly
+    /// to the phase-marker bookkeeping: the same shape as the no-op
+    /// upload paths already pinned by the skip-notice tests.
+    ///
+    /// The caller must still invoke [`finish_session`] afterwards,
+    /// exactly like the regular upload entry points.
+    ///
+    /// Errors:
+    /// - `IllegalStateTransition` when `source_entry` is not a symlink
+    ///   entry (`S_ISLNK(mode)` false or no target): the regular
+    ///   `drive_upload_through_delta*` entry points own those.
+    /// - `InvalidFrame` when the peer requests a delta transfer for the
+    ///   symlink (`ITEM_TRANSFER` set): stock rsync never does; a peer
+    ///   that does would next expect a token stream this driver has no
+    ///   bytes for, so the session fails closed instead of deadlocking.
+    ///
+    /// [`finish_session`]: Self::finish_session
+    pub async fn drive_upload_symlink(
+        &mut self,
+        command_spec: RemoteCommandSpec,
+        source_entry: FileListEntry,
+        bridge: &mut dyn EventSink,
+    ) -> Result<(), AerorsyncError> {
+        match self
+            .drive_upload_symlink_inner(command_spec, source_entry, bridge)
+            .await
+        {
+            Ok(()) => Ok(()),
+            Err(e) => {
+                self.phase = AerorsyncSessionPhase::Failed;
+                Err(e)
+            }
+        }
+    }
+
+    async fn drive_upload_symlink_inner(
+        &mut self,
+        command_spec: RemoteCommandSpec,
+        mut source_entry: FileListEntry,
+        bridge: &mut dyn EventSink,
+    ) -> Result<(), AerorsyncError> {
+        if !is_symlink_mode(source_entry.mode) || source_entry.symlink_target.is_none() {
+            return Err(AerorsyncError::illegal_transition(
+                "drive_upload_symlink requires an S_IFLNK entry with a symlink target; \
+                 use drive_upload_through_delta* for regular files",
+            ));
+        }
+        self.session_role = Some(SessionRole::Sender);
+        self.remote_command_flavor = command_spec.flavor;
+        self.open_raw_stream_internal(&command_spec).await?;
+        let csum_algos = self.preamble_profile.checksum_algos.clone();
+        let comp_algos = self.preamble_profile.compression_algos.clone();
+        self.perform_preamble_exchange(31, &csum_algos, &comp_algos)
+            .await?;
+        // No flist checksum for symlinks (proto >= 28, `flist.c` sends it
+        // only for S_ISREG entries); the codec skips the field for
+        // S_IFLNK modes, this just keeps the entry state truthful.
+        source_entry.checksum = Vec::new();
+        self.send_file_list_single_file(&source_entry).await?;
+        self.receive_signature_phase_single_file(bridge).await?;
+        if !self.upload_noop_transfer {
+            return Err(AerorsyncError::invalid_frame(
+                "peer requested a delta transfer (ITEM_TRANSFER) for a symlink entry; \
+                 rsync transports symlinks in the file list only",
+            ));
+        }
+        Ok(())
+    }
+
     pub async fn drive_download_through_delta(
         &mut self,
         command_spec: RemoteCommandSpec,
@@ -1122,6 +1199,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         adapter: &dyn DeltaEngineAdapter,
         bridge: &mut dyn EventSink,
     ) -> Result<(), AerorsyncError> {
+        self.reject_symlink_entry_on_regular_upload(&source_entry)?;
         self.session_role = Some(SessionRole::Sender);
         self.remote_command_flavor = command_spec.flavor;
         self.open_raw_stream_internal(&command_spec).await?;
@@ -1161,6 +1239,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
     where
         R: AsyncRead + AsyncSeek + Unpin + Send,
     {
+        self.reject_symlink_entry_on_regular_upload(&source_entry)?;
         self.session_role = Some(SessionRole::Sender);
         self.remote_command_flavor = command_spec.flavor;
         self.open_raw_stream_internal(&command_spec).await?;
@@ -1197,6 +1276,27 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         Ok(())
     }
 
+    /// Y-RSC.4 guard: the regular upload entry points must not carry a
+    /// symlink entry. rsync transports symlinks flist-only (no
+    /// signature / delta / data phases), so pushing one through the
+    /// delta pipeline would wait forever on a signature header the
+    /// generator never sends. Fails closed with a typed error that
+    /// points the caller at [`drive_upload_symlink`].
+    ///
+    /// [`drive_upload_symlink`]: Self::drive_upload_symlink
+    fn reject_symlink_entry_on_regular_upload(
+        &self,
+        source_entry: &FileListEntry,
+    ) -> Result<(), AerorsyncError> {
+        if is_symlink_mode(source_entry.mode) {
+            return Err(AerorsyncError::illegal_transition(
+                "regular upload entry points cannot carry an S_IFLNK entry; \
+                 use drive_upload_symlink (symlinks have no delta phase)",
+            ));
+        }
+        Ok(())
+    }
+
     async fn drive_download_inner(
         &mut self,
         command_spec: RemoteCommandSpec,
@@ -1218,6 +1318,9 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
             .await?;
         self.send_download_receiver_phase_prefix().await?;
         self.receive_file_list_single_file(bridge).await?;
+        if self.received_entry_is_symlink() {
+            return self.complete_download_symlink_flist_only().await;
+        }
         self.send_signature_phase_single_file(destination_data, adapter)
             .await?;
         self.receive_delta_phase_single_file(destination_data, adapter, bridge)
@@ -1249,6 +1352,9 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
             .await?;
         self.send_download_receiver_phase_prefix().await?;
         self.receive_file_list_single_file(bridge).await?;
+        if self.received_entry_is_symlink() {
+            return self.complete_download_symlink_flist_only().await;
+        }
         self.send_signature_phase_single_file(destination_data, adapter)
             .await?;
         self.receive_delta_phase_streaming(baseline, writer, adapter, bridge)
@@ -1953,6 +2059,45 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
     async fn send_download_receiver_phase_prefix(&mut self) -> Result<(), AerorsyncError> {
         self.write_data_frame(&[0x00; A2_2_DOWNLOAD_SIGNATURE_PREFIX_ZEROS])
             .await
+    }
+
+    /// True when the just-received single-entry file list carries a
+    /// symlink (`S_ISLNK(mode)`). Only meaningful after
+    /// `receive_file_list_single_file` has populated `file_list`.
+    fn received_entry_is_symlink(&self) -> bool {
+        self.file_list
+            .first()
+            .map(|entry| is_symlink_mode(entry.mode))
+            .unwrap_or(false)
+    }
+
+    /// Y-RSC.4 download tail for a symlink entry: no signature, delta,
+    /// or data phase.
+    ///
+    /// Stock rsync's generator (`generator.c::recv_generator`, `S_ISLNK`
+    /// branch) creates the link straight from the flist target and never
+    /// writes `ndx + iflags + sum_head` for it: the only receiver-side
+    /// bytes after the flist are the same phase-marker bookkeeping the
+    /// regular path appends after its signature payload. Emitting the
+    /// marker tail (and nothing else) keeps the stock sender's phase
+    /// loop advancing, so `finish_session`'s Receiver branch then drains
+    /// the standard 3 leading NDX_DONE + SummaryFrame + trailing marker
+    /// exactly like a regular download.
+    ///
+    /// The driver deliberately does NOT create the symlink itself: the
+    /// filesystem side (atomic create + rename, `#[cfg(unix)]`) belongs
+    /// to the A4 adapter, which reads the target from
+    /// [`downloaded_entry`]. `reconstructed` stays `None` and no bytes
+    /// reach the caller's writer.
+    ///
+    /// [`downloaded_entry`]: Self::downloaded_entry
+    async fn complete_download_symlink_flist_only(&mut self) -> Result<(), AerorsyncError> {
+        self.phase = AerorsyncSessionPhase::DeltaReceiving;
+        self.write_data_frame(&[0x00; A2_2_DOWNLOAD_SIGNATURE_TAIL_NDX_DONE_COUNT])
+            .await?;
+        self.received_file_checksum = None;
+        self.phase = AerorsyncSessionPhase::DeltaReceived;
+        Ok(())
     }
 
     // --- A2.3 delta phase (upload: send, download: receive) --------------
@@ -3813,6 +3958,34 @@ mod tests {
         }
     }
 
+    /// Y-RSC.4: realistic FIRST-entry shape for a symlink, mirror of
+    /// [`live_file_list_entry`] with `S_IFLNK` mode, the target string,
+    /// `size = strlen(target)` (rsync F_LENGTH convention), and an empty
+    /// checksum (proto >= 28 sends the flist checksum only for regular
+    /// files). Explicit mtime/mode: the audit 2026-07-21 §4.1 lesson,
+    /// `XMIT_SAME_*` is legal only from the second entry on.
+    fn symlink_file_list_entry(path: &str, target: &str) -> FileListEntry {
+        const XMIT_MOD_NSEC: u32 = 1 << 13;
+        let mtime = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs() as i64;
+        FileListEntry {
+            flags: XMIT_MOD_NSEC,
+            path: path.to_string(),
+            size: target.len() as i64,
+            mtime,
+            mtime_nsec: Some(0),
+            mode: 0o120_777,
+            uid: Some(1000),
+            uid_name: None,
+            gid: Some(1000),
+            gid_name: None,
+            checksum: vec![],
+            symlink_target: Some(target.to_string()),
+        }
+    }
+
     /// Deterministic incompressible payload for live lane tests: the
     /// summary-frame assertion `bytes_sent >= source.len()` only holds
     /// when zstd (negotiated with stock rsync) cannot shrink the literal
@@ -5391,6 +5564,317 @@ mod tests {
 
         d.finish_session(&mut sink).await.unwrap();
         assert_eq!(d.phase(), AerorsyncSessionPhase::Complete);
+    }
+
+    // ---- Y-RSC.4 symlink tests ------------------------------------------
+
+    #[tokio::test]
+    async fn driver_upload_symlink_emits_flist_only_and_finishes_noop() {
+        // A symlink upload is flist-only: the generator creates the link
+        // from the entry and answers with the phase markers, never with
+        // a transfer request. Scripted inbound mirrors the no-op upload
+        // shape (5 NDX_DONE markers across drive + finish).
+        let mut inbound = canonical_server_preamble_bytes();
+        inbound.extend_from_slice(&mux_frame(MuxTag::Data, &[0x00; 5]));
+
+        let transport = mock_transport_with_raw_inbound(inbound);
+        let last_raw_outbound = transport.last_raw_outbound.clone();
+        let mut d = make_driver(transport);
+        let mut sink = CollectingSink::default();
+
+        let target = "../data/target.bin";
+        let entry = symlink_file_list_entry("link.lnk", target);
+        d.drive_upload_symlink(
+            RemoteCommandSpec::upload("/remote/link.lnk"),
+            entry.clone(),
+            &mut sink,
+        )
+        .await
+        .expect("symlink upload must complete as a flist-only no-op");
+
+        assert!(d.upload_noop_transfer, "symlinks have no delta phase");
+        assert!(!d.committed(), "no delta bytes are emitted for a symlink");
+        assert!(d.received_sum_head().is_none());
+        assert!(d.received_signatures().is_empty());
+        assert!(d.emitted_delta_ops().is_empty());
+
+        // Pinned outbound shape: client preamble, then ONE coalesced
+        // MSG_DATA frame with entry + terminator + NDX_FLIST_EOF. The
+        // entry must ride the wire with the S_IFLNK mode, the raw target
+        // bytes, and NO flist checksum (csum_len 0 in the driver's own
+        // options because the checksum stays empty for links).
+        let outbound_arc = {
+            let guard = last_raw_outbound.lock().unwrap();
+            guard
+                .as_ref()
+                .expect("raw stream must have been opened")
+                .clone()
+        };
+        let outbound = outbound_arc.lock().unwrap().clone();
+        let expected_client = encode_client_preamble(&ClientPreamble {
+            protocol_version: 31,
+            checksum_algos: "xxh128 xxh3 xxh64 md5 md4".to_string(),
+            compression_algos: "zstd lz4 zlibx zlib".to_string(),
+            consumed: 0,
+        });
+        let opts = FileListDecodeOptions {
+            protocol: 31,
+            xfer_flags_as_varint: true,
+            always_checksum: true,
+            csum_len: 0,
+            preserve_uid: true,
+            preserve_gid: true,
+            previous_name: None,
+        };
+        let mut flist_payload = encode_file_list_entry(&entry, &opts);
+        flist_payload.extend_from_slice(&encode_file_list_terminator(&opts));
+        let mut ndx_state = NdxState::default();
+        flist_payload.extend_from_slice(&encode_ndx(NDX_FLIST_EOF, &mut ndx_state));
+        let expected_flist_frame = mux_frame(MuxTag::Data, &flist_payload);
+        let suffix_start = expected_client.len();
+        assert_eq!(
+            &outbound[suffix_start..suffix_start + expected_flist_frame.len()],
+            expected_flist_frame.as_slice(),
+            "symlink flist frame mismatch (entry + terminator + NDX_FLIST_EOF coalesced)"
+        );
+        let payload_str = String::from_utf8_lossy(&flist_payload);
+        assert!(
+            payload_str.contains(target),
+            "encoded flist payload must carry the raw symlink target bytes"
+        );
+
+        d.finish_session(&mut sink).await.unwrap();
+        assert_eq!(d.phase(), AerorsyncSessionPhase::Complete);
+        assert!(d.session_stats().bytes_sent > 0);
+    }
+
+    #[tokio::test]
+    async fn driver_upload_symlink_rejects_transfer_request() {
+        // A peer that answers a symlink entry with ITEM_TRANSFER wants a
+        // token stream this driver has no bytes for. Fail closed instead
+        // of deadlocking on a delta phase that cannot happen.
+        let head = SumHead {
+            count: 0,
+            block_length: 1024,
+            checksum_length: 2,
+            remainder_length: 0,
+        };
+        let sig_payload = build_sig_phase_payload(1, 0x8002, &head, &[]);
+        let mut inbound = canonical_server_preamble_bytes();
+        inbound.extend_from_slice(&mux_frame(MuxTag::Data, &sig_payload));
+
+        let transport = mock_transport_with_raw_inbound(inbound);
+        let mut d = make_driver(transport);
+        let mut sink = CollectingSink::default();
+        let err = d
+            .drive_upload_symlink(
+                RemoteCommandSpec::upload("/remote/link.lnk"),
+                symlink_file_list_entry("link.lnk", "t.bin"),
+                &mut sink,
+            )
+            .await
+            .unwrap_err();
+        assert_eq!(err.kind, AerorsyncErrorKind::InvalidFrame);
+        assert_eq!(d.phase(), AerorsyncSessionPhase::Failed);
+    }
+
+    #[tokio::test]
+    async fn driver_upload_symlink_rejects_non_symlink_entry() {
+        // The dedicated entry point owns S_IFLNK entries only; a regular
+        // file must keep using the delta pipeline.
+        let mut d = make_driver(mock_transport());
+        let mut sink = CollectingSink::default();
+        let err = d
+            .drive_upload_symlink(
+                RemoteCommandSpec::upload("/remote/target.bin"),
+                live_file_list_entry("target.bin"),
+                &mut sink,
+            )
+            .await
+            .unwrap_err();
+        assert_eq!(err.kind, AerorsyncErrorKind::IllegalStateTransition);
+    }
+
+    #[tokio::test]
+    async fn driver_regular_upload_paths_reject_symlink_entry() {
+        // Symlinks pushed through the delta pipeline would wait forever
+        // on a signature header the generator never sends. Both regular
+        // entry points must refuse before any wire byte goes out.
+        let entry = symlink_file_list_entry("link.lnk", "t.bin");
+
+        let mut d = make_driver(mock_transport());
+        let mut sink = CollectingSink::default();
+        let err = d
+            .drive_upload_through_delta(
+                RemoteCommandSpec::upload("/remote/link.lnk"),
+                entry.clone(),
+                b"",
+                &MockSigAdapter::default(),
+                &mut sink,
+            )
+            .await
+            .unwrap_err();
+        assert_eq!(err.kind, AerorsyncErrorKind::IllegalStateTransition);
+
+        let mut d = make_driver(mock_transport());
+        let err = d
+            .drive_upload_through_delta_streaming(
+                RemoteCommandSpec::upload("/remote/link.lnk"),
+                entry,
+                std::io::Cursor::new(Vec::new()),
+                0,
+                &MockSigAdapter::default(),
+                &mut sink,
+            )
+            .await
+            .unwrap_err();
+        assert_eq!(err.kind, AerorsyncErrorKind::IllegalStateTransition);
+    }
+
+    #[tokio::test]
+    async fn driver_download_symlink_skips_signature_and_delta_phases() {
+        use crate::aerorsync::engine_adapter::MemoryBaseline;
+
+        // Inbound: preamble + flist(symlink entry + terminator), then
+        // directly the sender's finish tail (3 leading NDX_DONE +
+        // SummaryFrame + trailing marker). No sender delta prefix: the
+        // generator never requests symlinks, so the sender has nothing
+        // to send for them.
+        let opts = FileListDecodeOptions {
+            protocol: 31,
+            xfer_flags_as_varint: true,
+            always_checksum: true,
+            csum_len: 16,
+            preserve_uid: true,
+            preserve_gid: true,
+            previous_name: None,
+        };
+        let target = "../rel/target.bin";
+        let entry = symlink_file_list_entry("link.lnk", target);
+        let entry_bytes = encode_file_list_entry(&entry, &opts);
+        let term_bytes = encode_file_list_terminator(&opts);
+        let mut finish_tail = vec![0x00; PRE_SUMMARY_NDX_DONE_COUNT_DOWNLOAD];
+        finish_tail.extend_from_slice(&build_summary_frame_bytes(31));
+
+        let mut inbound = canonical_server_preamble_bytes();
+        inbound.extend_from_slice(&mux_frame(MuxTag::Data, &entry_bytes));
+        inbound.extend_from_slice(&mux_frame(MuxTag::Data, &term_bytes));
+        inbound.extend_from_slice(&mux_frame(MuxTag::Data, &finish_tail));
+        inbound.extend_from_slice(&mux_frame(MuxTag::Data, &[0x00]));
+
+        let transport = mock_transport_with_raw_inbound(inbound);
+        let last_raw_outbound = transport.last_raw_outbound.clone();
+        let mut baseline = MemoryBaseline::new(Vec::new());
+        let (mut writer, captured) = MockAsyncWriter::new();
+        let mut d = make_driver(transport);
+        let mut sink = CollectingSink::default();
+
+        d.drive_download_through_delta_streaming(
+            RemoteCommandSpec::download("/remote/link.lnk"),
+            &[],
+            &mut baseline,
+            &mut writer,
+            &MockSigAdapter::default(),
+            &mut sink,
+        )
+        .await
+        .expect("symlink download must complete without signature/delta phases");
+
+        let downloaded = d.downloaded_entry().expect("flist entry retained");
+        assert!(is_symlink_mode(downloaded.mode));
+        assert_eq!(downloaded.symlink_target.as_deref(), Some(target));
+        assert!(
+            downloaded.checksum.is_empty(),
+            "symlink entries carry no flist checksum on the wire"
+        );
+        assert!(
+            captured.lock().expect("captured lock").is_empty(),
+            "no reconstruction bytes may reach the writer for a symlink"
+        );
+        assert!(d.reconstructed().is_none());
+        assert!(d.sent_sum_head().is_none(), "no signature phase for links");
+        assert!(d.received_file_checksum().is_none());
+        assert_eq!(d.phase(), AerorsyncSessionPhase::DeltaReceived);
+
+        d.finish_session(&mut sink).await.unwrap();
+        assert_eq!(d.phase(), AerorsyncSessionPhase::Complete);
+
+        // Outbound pin: client preamble, then exactly the receiver
+        // housekeeping prefix (4 zero bytes), the phase-marker tail
+        // (5 NDX_DONE), and the finish ACK marker: never an
+        // ndx + iflags + sum_head signature request for the link.
+        let outbound_arc = {
+            let guard = last_raw_outbound.lock().unwrap();
+            guard
+                .as_ref()
+                .expect("raw stream must have been opened")
+                .clone()
+        };
+        let outbound = outbound_arc.lock().unwrap().clone();
+        let expected_client = encode_client_preamble(&ClientPreamble {
+            protocol_version: 31,
+            checksum_algos: "xxh128 xxh3 xxh64 md5 md4".to_string(),
+            compression_algos: "zstd lz4 zlibx zlib".to_string(),
+            consumed: 0,
+        });
+        let expected_after_preamble = [
+            mux_frame(MuxTag::Data, &[0x00; A2_2_DOWNLOAD_SIGNATURE_PREFIX_ZEROS]),
+            mux_frame(
+                MuxTag::Data,
+                &[0x00; A2_2_DOWNLOAD_SIGNATURE_TAIL_NDX_DONE_COUNT],
+            ),
+            mux_frame(MuxTag::Data, &[0x00]),
+        ]
+        .concat();
+        assert_eq!(
+            &outbound[expected_client.len()..],
+            expected_after_preamble.as_slice(),
+            "symlink download outbound must be housekeeping + phase markers only"
+        );
+    }
+
+    #[tokio::test]
+    async fn driver_download_symlink_bulk_path_skips_phases_too() {
+        // Bulk twin of the streaming test: `drive_download_through_delta`
+        // must take the same flist-only branch. `reconstructed` stays
+        // None on purpose: a symlink has no content stream, consumers
+        // read `downloaded_entry().symlink_target` instead.
+        let opts = FileListDecodeOptions {
+            protocol: 31,
+            xfer_flags_as_varint: true,
+            always_checksum: true,
+            csum_len: 16,
+            preserve_uid: true,
+            preserve_gid: true,
+            previous_name: None,
+        };
+        let entry = symlink_file_list_entry("link.lnk", "t/rel.bin");
+        let entry_bytes = encode_file_list_entry(&entry, &opts);
+        let term_bytes = encode_file_list_terminator(&opts);
+        let mut inbound = canonical_server_preamble_bytes();
+        inbound.extend_from_slice(&mux_frame(MuxTag::Data, &entry_bytes));
+        inbound.extend_from_slice(&mux_frame(MuxTag::Data, &term_bytes));
+
+        let transport = mock_transport_with_raw_inbound(inbound);
+        let mut d = make_driver(transport);
+        let mut sink = CollectingSink::default();
+        d.drive_download_through_delta(
+            RemoteCommandSpec::download("/remote/link.lnk"),
+            b"",
+            &MockSigAdapter::default(),
+            &mut sink,
+        )
+        .await
+        .expect("bulk symlink download must complete after the flist");
+
+        assert!(d.reconstructed().is_none());
+        assert!(d.sent_sum_head().is_none());
+        assert_eq!(
+            d.downloaded_entry()
+                .and_then(|e| e.symlink_target.as_deref()),
+            Some("t/rel.bin")
+        );
+        assert_eq!(d.phase(), AerorsyncSessionPhase::DeltaReceived);
     }
 
     #[tokio::test]

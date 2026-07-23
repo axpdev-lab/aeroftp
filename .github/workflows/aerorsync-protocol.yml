@@ -204,6 +204,8 @@ jobs:
           cargo test --features aerorsync --lib -- \
             aerorsync::native_driver::tests::driver_upload_live_lane_3_real_rsync_byte_identical \
             aerorsync::native_driver::tests::driver_upload_streaming_live_lane_3_real_rsync_byte_identical \
+            aerorsync::delta_transport_impl::tests::delta_upload_symlink_live_lane_3_readlink_identical \
+            aerorsync::delta_transport_impl::tests::delta_download_symlink_live_lane_3_readlink_identical \
             --nocapture
       - name: Tear down harness
         if: always()
