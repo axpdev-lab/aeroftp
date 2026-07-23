@@ -592,7 +592,17 @@
             "resumeNoProfile": "Tällä siirrolla ei ole tallennettua palvelinprofiilia. Yhdistä manuaalisesti ja jatka sitten.",
             "resumeProfileMissing": "Tämän siirron tallennettua palvelinta ei löytynyt (se on ehkä poistettu).",
             "connectingToResume": "Yhdistetään palvelimeen {name} siirtojen jatkamiseksi…",
-            "resumeConnectFailed": "Yhteyttä palvelimeen {name} ei voitu muodostaa. Siirtoja ei aloitettu."
+            "resumeConnectFailed": "Yhteyttä palvelimeen {name} ei voitu muodostaa. Siirtoja ei aloitettu.",
+            "sftpModeCompatibility": "Yhteensopiva",
+            "sftpModeCompatibilityDescription": "Vanha yksittäinen yhteys varovaisella ennakkoluvulla",
+            "sftpModeEfficient": "Tehokas",
+            "sftpModeEfficientDescription": "Yksi yhteys optimoidulla ennakkoluvulla",
+            "sftpModeBalanced": "Tasapainoinen",
+            "sftpModeBalancedDescription": "Neljä yhteyttä optimoidulla ennakkoluvulla",
+            "sftpModeFast": "Nopea",
+            "sftpModeFastDescription": "Kahdeksan yhteyttä optimoidulla ennakkoluvulla",
+            "sftpModeMaximumTested": "Testattu enimmäismäärä",
+            "sftpModeMaximumTestedDescription": "Kaksitoista yhteyttä optimoidulla ennakkoluvulla"
         },
         "settings": {
             "title": "Asetukset",

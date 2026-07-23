@@ -592,7 +592,17 @@
             "resumeNoProfile": "이 전송에는 저장된 서버 프로필이 없습니다. 수동으로 연결한 다음 재개하세요.",
             "resumeProfileMissing": "이 전송의 저장된 서버를 찾을 수 없습니다(삭제되었을 수 있음).",
             "connectingToResume": "전송을 재개하기 위해 {name}에 연결 중…",
-            "resumeConnectFailed": "{name}에 연결할 수 없습니다. 전송이 시작되지 않았습니다."
+            "resumeConnectFailed": "{name}에 연결할 수 없습니다. 전송이 시작되지 않았습니다.",
+            "sftpModeCompatibility": "호환성",
+            "sftpModeCompatibilityDescription": "보수적인 미리 읽기를 사용하는 기존 단일 연결",
+            "sftpModeEfficient": "효율적",
+            "sftpModeEfficientDescription": "최적화된 미리 읽기를 사용하는 연결 1개",
+            "sftpModeBalanced": "균형",
+            "sftpModeBalancedDescription": "최적화된 미리 읽기를 사용하는 연결 4개",
+            "sftpModeFast": "빠름",
+            "sftpModeFastDescription": "최적화된 미리 읽기를 사용하는 연결 8개",
+            "sftpModeMaximumTested": "테스트된 최대값",
+            "sftpModeMaximumTestedDescription": "최적화된 미리 읽기를 사용하는 연결 12개"
         },
         "settings": {
             "title": "설정",

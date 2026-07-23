@@ -592,7 +592,17 @@
             "resumeNoProfile": "У цієї передачі немає збереженого профілю сервера. Підключіться вручну, потім відновіть.",
             "resumeProfileMissing": "Збережений сервер для цієї передачі не знайдено (можливо, його видалено).",
             "connectingToResume": "Підключення до {name} для відновлення передач…",
-            "resumeConnectFailed": "Не вдалося підключитися до {name}. Передачі не було запущено."
+            "resumeConnectFailed": "Не вдалося підключитися до {name}. Передачі не було запущено.",
+            "sftpModeCompatibility": "Сумісність",
+            "sftpModeCompatibilityDescription": "Застаріле одиночне з’єднання з консервативним випереджальним читанням",
+            "sftpModeEfficient": "Ефективний",
+            "sftpModeEfficientDescription": "Одне з’єднання з оптимізованим випереджальним читанням",
+            "sftpModeBalanced": "Збалансований",
+            "sftpModeBalancedDescription": "Чотири з’єднання з оптимізованим випереджальним читанням",
+            "sftpModeFast": "Швидкий",
+            "sftpModeFastDescription": "Вісім з’єднань з оптимізованим випереджальним читанням",
+            "sftpModeMaximumTested": "Протестований максимум",
+            "sftpModeMaximumTestedDescription": "Дванадцять з’єднань з оптимізованим випереджальним читанням"
         },
         "settings": {
             "title": "Налаштування",

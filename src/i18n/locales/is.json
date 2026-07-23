@@ -592,7 +592,17 @@
             "resumeNoProfile": "Þessi flutningur hefur ekkert vistað þjónasnið. Tengstu handvirkt og haltu síðan áfram.",
             "resumeProfileMissing": "Vistaði þjónninn fyrir þennan flutning fannst ekki (hann kann að hafa verið eytt).",
             "connectingToResume": "Tengist {name} til að halda áfram flutningum…",
-            "resumeConnectFailed": "Gat ekki tengst {name}. Flutningar voru ekki ræstir."
+            "resumeConnectFailed": "Gat ekki tengst {name}. Flutningar voru ekki ræstir.",
+            "sftpModeCompatibility": "Samhæfni",
+            "sftpModeCompatibilityDescription": "Eldri stök tenging með varfærinni forlesningu",
+            "sftpModeEfficient": "Skilvirkt",
+            "sftpModeEfficientDescription": "Ein tenging með fínstilltri forlesningu",
+            "sftpModeBalanced": "Jafnvægi",
+            "sftpModeBalancedDescription": "Fjórar tengingar með fínstilltri forlesningu",
+            "sftpModeFast": "Hratt",
+            "sftpModeFastDescription": "Átta tengingar með fínstilltri forlesningu",
+            "sftpModeMaximumTested": "Prófað hámark",
+            "sftpModeMaximumTestedDescription": "Tólf tengingar með fínstilltri forlesningu"
         },
         "settings": {
             "title": "Stillingar",

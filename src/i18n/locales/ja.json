@@ -592,7 +592,17 @@
             "resumeNoProfile": "この転送には保存済みのサーバープロファイルがありません。手動で接続してから再開してください。",
             "resumeProfileMissing": "この転送の保存済みサーバーが見つかりません（削除された可能性があります）。",
             "connectingToResume": "転送を再開するため {name} に接続中…",
-            "resumeConnectFailed": "{name} に接続できませんでした。転送は開始されませんでした。"
+            "resumeConnectFailed": "{name} に接続できませんでした。転送は開始されませんでした。",
+            "sftpModeCompatibility": "互換性",
+            "sftpModeCompatibilityDescription": "控えめな先読みを使用する従来の単一接続",
+            "sftpModeEfficient": "効率的",
+            "sftpModeEfficientDescription": "最適化された先読みを使用する1接続",
+            "sftpModeBalanced": "バランス",
+            "sftpModeBalancedDescription": "最適化された先読みを使用する4接続",
+            "sftpModeFast": "高速",
+            "sftpModeFastDescription": "最適化された先読みを使用する8接続",
+            "sftpModeMaximumTested": "テスト済み最大値",
+            "sftpModeMaximumTestedDescription": "最適化された先読みを使用する12接続"
         },
         "settings": {
             "title": "設定",

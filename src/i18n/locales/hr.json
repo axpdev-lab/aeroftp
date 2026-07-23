@@ -592,7 +592,17 @@
             "resumeNoProfile": "Ovaj prijenos nema spremljeni profil poslužitelja. Povežite se ručno, zatim nastavite.",
             "resumeProfileMissing": "Spremljeni poslužitelj za ovaj prijenos nije pronađen (možda je obrisan).",
             "connectingToResume": "Povezivanje s {name} za nastavak prijenosa…",
-            "resumeConnectFailed": "Nije moguće povezati se s {name}. Prijenosi nisu pokrenuti."
+            "resumeConnectFailed": "Nije moguće povezati se s {name}. Prijenosi nisu pokrenuti.",
+            "sftpModeCompatibility": "Kompatibilnost",
+            "sftpModeCompatibilityDescription": "Naslijeđena pojedinačna veza s konzervativnim čitanjem unaprijed",
+            "sftpModeEfficient": "Učinkovito",
+            "sftpModeEfficientDescription": "Jedna veza s optimiziranim čitanjem unaprijed",
+            "sftpModeBalanced": "Uravnoteženo",
+            "sftpModeBalancedDescription": "Četiri veze s optimiziranim čitanjem unaprijed",
+            "sftpModeFast": "Brzo",
+            "sftpModeFastDescription": "Osam veza s optimiziranim čitanjem unaprijed",
+            "sftpModeMaximumTested": "Testirani maksimum",
+            "sftpModeMaximumTestedDescription": "Dvanaest veza s optimiziranim čitanjem unaprijed"
         },
         "settings": {
             "title": "Postavke",

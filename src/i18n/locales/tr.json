@@ -592,7 +592,17 @@
             "resumeNoProfile": "Bu aktarımın kayıtlı sunucu profili yok. Elle bağlanın, ardından sürdürün.",
             "resumeProfileMissing": "Bu aktarımın kayıtlı sunucusu bulunamadı (silinmiş olabilir).",
             "connectingToResume": "Aktarımları sürdürmek için {name} sunucusuna bağlanılıyor…",
-            "resumeConnectFailed": "{name} sunucusuna bağlanılamadı. Aktarımlar başlatılmadı."
+            "resumeConnectFailed": "{name} sunucusuna bağlanılamadı. Aktarımlar başlatılmadı.",
+            "sftpModeCompatibility": "Uyumluluk",
+            "sftpModeCompatibilityDescription": "Tutucu önden okumalı eski tek bağlantı",
+            "sftpModeEfficient": "Verimli",
+            "sftpModeEfficientDescription": "Optimize edilmiş önden okumalı bir bağlantı",
+            "sftpModeBalanced": "Dengeli",
+            "sftpModeBalancedDescription": "Optimize edilmiş önden okumalı dört bağlantı",
+            "sftpModeFast": "Hızlı",
+            "sftpModeFastDescription": "Optimize edilmiş önden okumalı sekiz bağlantı",
+            "sftpModeMaximumTested": "Test edilen maksimum",
+            "sftpModeMaximumTestedDescription": "Optimize edilmiş önden okumalı on iki bağlantı"
         },
         "settings": {
             "title": "Ayarlar",

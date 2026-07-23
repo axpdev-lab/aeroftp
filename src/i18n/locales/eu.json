@@ -592,7 +592,17 @@
             "resumeNoProfile": "Transferentzia honek ez du gordetako zerbitzari-profilik. Konektatu eskuz, eta ondoren berrekin.",
             "resumeProfileMissing": "Ez da aurkitu transferentzia honen gordetako zerbitzaria (ezabatua izan daiteke).",
             "connectingToResume": "{name}-ra konektatzen transferentziak berrekiteko…",
-            "resumeConnectFailed": "Ezin izan da {name}-ra konektatu. Transferentziak ez dira hasi."
+            "resumeConnectFailed": "Ezin izan da {name}-ra konektatu. Transferentziak ez dira hasi.",
+            "sftpModeCompatibility": "Bateragarritasuna",
+            "sftpModeCompatibilityDescription": "Konexio bakar zaharra aurreirakurketa kontserbadorearekin",
+            "sftpModeEfficient": "Eraginkorra",
+            "sftpModeEfficientDescription": "Konexio bat aurreirakurketa optimizatuarekin",
+            "sftpModeBalanced": "Orekatua",
+            "sftpModeBalancedDescription": "Lau konexio aurreirakurketa optimizatuarekin",
+            "sftpModeFast": "Azkarra",
+            "sftpModeFastDescription": "Zortzi konexio aurreirakurketa optimizatuarekin",
+            "sftpModeMaximumTested": "Probatutako gehienekoa",
+            "sftpModeMaximumTestedDescription": "Hamabi konexio aurreirakurketa optimizatuarekin"
         },
         "settings": {
             "title": "Ezarpenak",

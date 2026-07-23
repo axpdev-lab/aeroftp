@@ -592,7 +592,17 @@
             "resumeNoProfile": "Den här överföringen har ingen sparad serverprofil. Anslut manuellt och återuppta sedan.",
             "resumeProfileMissing": "Den sparade servern för den här överföringen hittades inte (den kan ha tagits bort).",
             "connectingToResume": "Ansluter till {name} för att återuppta överföringar…",
-            "resumeConnectFailed": "Kunde inte ansluta till {name}. Överföringar startades inte."
+            "resumeConnectFailed": "Kunde inte ansluta till {name}. Överföringar startades inte.",
+            "sftpModeCompatibility": "Kompatibilitet",
+            "sftpModeCompatibilityDescription": "Äldre enkelanslutning med försiktig förhandsläsning",
+            "sftpModeEfficient": "Effektiv",
+            "sftpModeEfficientDescription": "En anslutning med optimerad förhandsläsning",
+            "sftpModeBalanced": "Balanserad",
+            "sftpModeBalancedDescription": "Fyra anslutningar med optimerad förhandsläsning",
+            "sftpModeFast": "Snabb",
+            "sftpModeFastDescription": "Åtta anslutningar med optimerad förhandsläsning",
+            "sftpModeMaximumTested": "Testat maximum",
+            "sftpModeMaximumTestedDescription": "Tolv anslutningar med optimerad förhandsläsning"
         },
         "settings": {
             "title": "Inställningar",

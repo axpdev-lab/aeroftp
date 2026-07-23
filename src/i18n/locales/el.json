@@ -592,7 +592,17 @@
             "resumeNoProfile": "Αυτή η μεταφορά δεν έχει αποθηκευμένο προφίλ διακομιστή. Συνδεθείτε χειροκίνητα και μετά συνεχίστε.",
             "resumeProfileMissing": "Ο αποθηκευμένος διακομιστής για αυτή τη μεταφορά δεν βρέθηκε (μπορεί να έχει διαγραφεί).",
             "connectingToResume": "Σύνδεση στο {name} για συνέχιση μεταφορών…",
-            "resumeConnectFailed": "Αδυναμία σύνδεσης στο {name}. Οι μεταφορές δεν ξεκίνησαν."
+            "resumeConnectFailed": "Αδυναμία σύνδεσης στο {name}. Οι μεταφορές δεν ξεκίνησαν.",
+            "sftpModeCompatibility": "Συμβατότητα",
+            "sftpModeCompatibilityDescription": "Παρωχημένη μονή σύνδεση με συντηρητική προανάγνωση",
+            "sftpModeEfficient": "Αποδοτική",
+            "sftpModeEfficientDescription": "Μία σύνδεση με βελτιστοποιημένη προανάγνωση",
+            "sftpModeBalanced": "Ισορροπημένη",
+            "sftpModeBalancedDescription": "Τέσσερις συνδέσεις με βελτιστοποιημένη προανάγνωση",
+            "sftpModeFast": "Γρήγορη",
+            "sftpModeFastDescription": "Οκτώ συνδέσεις με βελτιστοποιημένη προανάγνωση",
+            "sftpModeMaximumTested": "Μέγιστη δοκιμασμένη",
+            "sftpModeMaximumTestedDescription": "Δώδεκα συνδέσεις με βελτιστοποιημένη προανάγνωση"
         },
         "settings": {
             "title": "Ρυθμίσεις",

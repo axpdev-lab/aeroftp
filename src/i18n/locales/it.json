@@ -998,7 +998,17 @@
             "resumeNoProfile": "Questo trasferimento non ha un profilo server salvato. Connettiti manualmente, poi riprendi.",
             "resumeProfileMissing": "Il server salvato per questo trasferimento non è stato trovato (potrebbe essere stato eliminato).",
             "connectingToResume": "Connessione a {name} per riprendere i trasferimenti…",
-            "resumeConnectFailed": "Impossibile connettersi a {name}. I trasferimenti non sono stati avviati."
+            "resumeConnectFailed": "Impossibile connettersi a {name}. I trasferimenti non sono stati avviati.",
+            "sftpModeCompatibility": "Compatibilità",
+            "sftpModeCompatibilityDescription": "Singola connessione legacy con lettura anticipata conservativa",
+            "sftpModeEfficient": "Efficiente",
+            "sftpModeEfficientDescription": "Una connessione con lettura anticipata ottimizzata",
+            "sftpModeBalanced": "Bilanciata",
+            "sftpModeBalancedDescription": "Quattro connessioni con lettura anticipata ottimizzata",
+            "sftpModeFast": "Veloce",
+            "sftpModeFastDescription": "Otto connessioni con lettura anticipata ottimizzata",
+            "sftpModeMaximumTested": "Massimo testato",
+            "sftpModeMaximumTestedDescription": "Dodici connessioni con lettura anticipata ottimizzata"
         },
         "scanning": {
             "deleting": "Eliminazione",

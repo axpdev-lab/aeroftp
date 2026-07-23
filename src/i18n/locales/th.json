@@ -592,7 +592,17 @@
             "resumeNoProfile": "การถ่ายโอนนี้ไม่มีโปรไฟล์เซิร์ฟเวอร์ที่บันทึกไว้ เชื่อมต่อด้วยตนเอง แล้วจึงดำเนินการต่อ",
             "resumeProfileMissing": "ไม่พบเซิร์ฟเวอร์ที่บันทึกไว้สำหรับการถ่ายโอนนี้ (อาจถูกลบไปแล้ว)",
             "connectingToResume": "กำลังเชื่อมต่อกับ {name} เพื่อดำเนินการต่อการถ่ายโอน…",
-            "resumeConnectFailed": "ไม่สามารถเชื่อมต่อกับ {name} ได้ การถ่ายโอนยังไม่เริ่ม"
+            "resumeConnectFailed": "ไม่สามารถเชื่อมต่อกับ {name} ได้ การถ่ายโอนยังไม่เริ่ม",
+            "sftpModeCompatibility": "ความเข้ากันได้",
+            "sftpModeCompatibilityDescription": "การเชื่อมต่อเดี่ยวแบบเดิมพร้อมการอ่านล่วงหน้าอย่างระมัดระวัง",
+            "sftpModeEfficient": "มีประสิทธิภาพ",
+            "sftpModeEfficientDescription": "หนึ่งการเชื่อมต่อพร้อมการอ่านล่วงหน้าที่ปรับให้เหมาะสม",
+            "sftpModeBalanced": "สมดุล",
+            "sftpModeBalancedDescription": "สี่การเชื่อมต่อพร้อมการอ่านล่วงหน้าที่ปรับให้เหมาะสม",
+            "sftpModeFast": "เร็ว",
+            "sftpModeFastDescription": "แปดการเชื่อมต่อพร้อมการอ่านล่วงหน้าที่ปรับให้เหมาะสม",
+            "sftpModeMaximumTested": "สูงสุดที่ทดสอบแล้ว",
+            "sftpModeMaximumTestedDescription": "สิบสองการเชื่อมต่อพร้อมการอ่านล่วงหน้าที่ปรับให้เหมาะสม"
         },
         "settings": {
             "title": "การตั้งค่า",

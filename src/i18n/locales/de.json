@@ -592,7 +592,17 @@
             "resumeNoProfile": "Diese Übertragung hat kein gespeichertes Serverprofil. Manuell verbinden, dann fortsetzen.",
             "resumeProfileMissing": "Der gespeicherte Server für diese Übertragung wurde nicht gefunden (er wurde möglicherweise gelöscht).",
             "connectingToResume": "Verbindung mit {name} wird hergestellt, um Übertragungen fortzusetzen…",
-            "resumeConnectFailed": "Verbindung mit {name} fehlgeschlagen. Übertragungen wurden nicht gestartet."
+            "resumeConnectFailed": "Verbindung mit {name} fehlgeschlagen. Übertragungen wurden nicht gestartet.",
+            "sftpModeCompatibility": "Kompatibilität",
+            "sftpModeCompatibilityDescription": "Ältere Einzelverbindung mit konservativem Vorauslesen",
+            "sftpModeEfficient": "Effizient",
+            "sftpModeEfficientDescription": "Eine Verbindung mit optimiertem Vorauslesen",
+            "sftpModeBalanced": "Ausgewogen",
+            "sftpModeBalancedDescription": "Vier Verbindungen mit optimiertem Vorauslesen",
+            "sftpModeFast": "Schnell",
+            "sftpModeFastDescription": "Acht Verbindungen mit optimiertem Vorauslesen",
+            "sftpModeMaximumTested": "Getestetes Maximum",
+            "sftpModeMaximumTestedDescription": "Zwölf Verbindungen mit optimiertem Vorauslesen"
         },
         "settings": {
             "title": "Einstellungen",

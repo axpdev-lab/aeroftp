@@ -592,7 +592,17 @@
             "resumeNoProfile": "Quá trình truyền này không có hồ sơ máy chủ đã lưu. Hãy kết nối thủ công, rồi tiếp tục.",
             "resumeProfileMissing": "Không tìm thấy máy chủ đã lưu cho quá trình truyền này (có thể đã bị xóa).",
             "connectingToResume": "Đang kết nối tới {name} để tiếp tục truyền…",
-            "resumeConnectFailed": "Không thể kết nối tới {name}. Các quá trình truyền chưa được bắt đầu."
+            "resumeConnectFailed": "Không thể kết nối tới {name}. Các quá trình truyền chưa được bắt đầu.",
+            "sftpModeCompatibility": "Tương thích",
+            "sftpModeCompatibilityDescription": "Một kết nối kiểu cũ với khả năng đọc trước thận trọng",
+            "sftpModeEfficient": "Hiệu quả",
+            "sftpModeEfficientDescription": "Một kết nối với khả năng đọc trước được tối ưu hóa",
+            "sftpModeBalanced": "Cân bằng",
+            "sftpModeBalancedDescription": "Bốn kết nối với khả năng đọc trước được tối ưu hóa",
+            "sftpModeFast": "Nhanh",
+            "sftpModeFastDescription": "Tám kết nối với khả năng đọc trước được tối ưu hóa",
+            "sftpModeMaximumTested": "Mức tối đa đã kiểm thử",
+            "sftpModeMaximumTestedDescription": "Mười hai kết nối với khả năng đọc trước được tối ưu hóa"
         },
         "settings": {
             "title": "Cài đặt",

@@ -592,7 +592,17 @@
             "resumeNoProfile": "ამ გადაცემას არ აქვს შენახული სერვერის პროფილი. დაუკავშირდით ხელით, შემდეგ განაახლეთ.",
             "resumeProfileMissing": "ამ გადაცემის შენახული სერვერი ვერ მოიძებნა (შესაძლოა წაშლილია).",
             "connectingToResume": "დაკავშირება {name}-თან გადაცემების გასაგრძელებლად…",
-            "resumeConnectFailed": "ვერ დავუკავშირდით {name}-ს. გადაცემები არ დაიწყო."
+            "resumeConnectFailed": "ვერ დავუკავშირდით {name}-ს. გადაცემები არ დაიწყო.",
+            "sftpModeCompatibility": "თავსებადობა",
+            "sftpModeCompatibilityDescription": "ძველი ერთი კავშირი კონსერვატიული წინასწარი წაკითხვით",
+            "sftpModeEfficient": "ეფექტური",
+            "sftpModeEfficientDescription": "ერთი კავშირი ოპტიმიზებული წინასწარი წაკითხვით",
+            "sftpModeBalanced": "დაბალანსებული",
+            "sftpModeBalancedDescription": "ოთხი კავშირი ოპტიმიზებული წინასწარი წაკითხვით",
+            "sftpModeFast": "სწრაფი",
+            "sftpModeFastDescription": "რვა კავშირი ოპტიმიზებული წინასწარი წაკითხვით",
+            "sftpModeMaximumTested": "შემოწმებული მაქსიმუმი",
+            "sftpModeMaximumTestedDescription": "თორმეტი კავშირი ოპტიმიზებული წინასწარი წაკითხვით"
         },
         "settings": {
             "title": "პარამეტრები",

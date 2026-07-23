@@ -592,7 +592,17 @@
             "resumeNoProfile": "Walang naka-save na server profile ang transfer na ito. Manu-manong kumonekta, pagkatapos ay ipagpatuloy.",
             "resumeProfileMissing": "Hindi nahanap ang naka-save na server para sa transfer na ito (maaaring nabura na).",
             "connectingToResume": "Kumokonekta sa {name} para ipagpatuloy ang mga transfer…",
-            "resumeConnectFailed": "Hindi makakonekta sa {name}. Hindi nasimulan ang mga transfer."
+            "resumeConnectFailed": "Hindi makakonekta sa {name}. Hindi nasimulan ang mga transfer.",
+            "sftpModeCompatibility": "Pagkakatugma",
+            "sftpModeCompatibilityDescription": "Lumang iisang koneksyon na may maingat na paunang pagbasa",
+            "sftpModeEfficient": "Mahusay",
+            "sftpModeEfficientDescription": "Isang koneksyon na may na-optimize na paunang pagbasa",
+            "sftpModeBalanced": "Balanse",
+            "sftpModeBalancedDescription": "Apat na koneksyon na may na-optimize na paunang pagbasa",
+            "sftpModeFast": "Mabilis",
+            "sftpModeFastDescription": "Walong koneksyon na may na-optimize na paunang pagbasa",
+            "sftpModeMaximumTested": "Pinakamataas na nasubukan",
+            "sftpModeMaximumTestedDescription": "Labindalawang koneksyon na may na-optimize na paunang pagbasa"
         },
         "settings": {
             "title": "Mga Setting",

@@ -592,7 +592,17 @@
             "resumeNoProfile": "Šai pārsūtīšanai nav saglabāta servera profila. Savienojieties manuāli un pēc tam turpiniet.",
             "resumeProfileMissing": "Šīs pārsūtīšanas saglabātais serveris netika atrasts (iespējams, tas ir izdzēsts).",
             "connectingToResume": "Notiek savienojums ar {name}, lai turpinātu pārsūtīšanas…",
-            "resumeConnectFailed": "Neizdevās savienoties ar {name}. Pārsūtīšanas netika sāktas."
+            "resumeConnectFailed": "Neizdevās savienoties ar {name}. Pārsūtīšanas netika sāktas.",
+            "sftpModeCompatibility": "Saderība",
+            "sftpModeCompatibilityDescription": "Mantots viens savienojums ar piesardzīgu priekšlasīšanu",
+            "sftpModeEfficient": "Efektīvs",
+            "sftpModeEfficientDescription": "Viens savienojums ar optimizētu priekšlasīšanu",
+            "sftpModeBalanced": "Līdzsvarots",
+            "sftpModeBalancedDescription": "Četri savienojumi ar optimizētu priekšlasīšanu",
+            "sftpModeFast": "Ātrs",
+            "sftpModeFastDescription": "Astoņi savienojumi ar optimizētu priekšlasīšanu",
+            "sftpModeMaximumTested": "Pārbaudītais maksimums",
+            "sftpModeMaximumTestedDescription": "Divpadsmit savienojumi ar optimizētu priekšlasīšanu"
         },
         "settings": {
             "title": "Iestatījumi",

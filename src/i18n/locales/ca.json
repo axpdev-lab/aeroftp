@@ -592,7 +592,17 @@
             "resumeNoProfile": "Aquesta transferència no té cap perfil de servidor desat. Connecteu-vos manualment i després repreneu.",
             "resumeProfileMissing": "No s'ha trobat el servidor desat d'aquesta transferència (potser s'ha suprimit).",
             "connectingToResume": "S'està connectant a {name} per reprendre les transferències…",
-            "resumeConnectFailed": "No s'ha pogut connectar a {name}. No s'han iniciat les transferències."
+            "resumeConnectFailed": "No s'ha pogut connectar a {name}. No s'han iniciat les transferències.",
+            "sftpModeCompatibility": "Compatibilitat",
+            "sftpModeCompatibilityDescription": "Connexió única antiga amb lectura anticipada conservadora",
+            "sftpModeEfficient": "Eficient",
+            "sftpModeEfficientDescription": "Una connexió amb lectura anticipada optimitzada",
+            "sftpModeBalanced": "Equilibrat",
+            "sftpModeBalancedDescription": "Quatre connexions amb lectura anticipada optimitzada",
+            "sftpModeFast": "Ràpid",
+            "sftpModeFastDescription": "Vuit connexions amb lectura anticipada optimitzada",
+            "sftpModeMaximumTested": "Màxim provat",
+            "sftpModeMaximumTestedDescription": "Dotze connexions amb lectura anticipada optimitzada"
         },
         "settings": {
             "title": "Configuracio",

@@ -592,7 +592,17 @@
             "resumeNoProfile": "Transfer ini tidak memiliki profil server tersimpan. Hubungkan secara manual, lalu lanjutkan.",
             "resumeProfileMissing": "Server tersimpan untuk transfer ini tidak ditemukan (mungkin telah dihapus).",
             "connectingToResume": "Menghubungkan ke {name} untuk melanjutkan transfer…",
-            "resumeConnectFailed": "Tidak dapat terhubung ke {name}. Transfer tidak dimulai."
+            "resumeConnectFailed": "Tidak dapat terhubung ke {name}. Transfer tidak dimulai.",
+            "sftpModeCompatibility": "Kompatibilitas",
+            "sftpModeCompatibilityDescription": "Satu koneksi lama dengan baca awal konservatif",
+            "sftpModeEfficient": "Efisien",
+            "sftpModeEfficientDescription": "Satu koneksi dengan baca awal yang dioptimalkan",
+            "sftpModeBalanced": "Seimbang",
+            "sftpModeBalancedDescription": "Empat koneksi dengan baca awal yang dioptimalkan",
+            "sftpModeFast": "Cepat",
+            "sftpModeFastDescription": "Delapan koneksi dengan baca awal yang dioptimalkan",
+            "sftpModeMaximumTested": "Maksimum teruji",
+            "sftpModeMaximumTestedDescription": "Dua belas koneksi dengan baca awal yang dioptimalkan"
         },
         "settings": {
             "title": "Pengaturan",

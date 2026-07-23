@@ -160,23 +160,11 @@ interface ServerProfilesImportResult {
   servers: ImportedServerProfile[];
 }
 
-type TransferSpeedPreset = 'base' | 'fast' | 'super';
 type MountManagerOpenOptions = {
   profileId?: string;
   remotePath?: string;
 };
 
-const TRANSFER_SPEED_PRESETS: Record<TransferSpeedPreset, { label: string; channels: number }> = {
-  base: { label: 'Safe', channels: 1 },
-  fast: { label: 'Balanced', channels: 3 },
-  super: { label: 'Max', channels: 5 },
-};
-
-const deriveTransferSpeedPreset = (channels: number): TransferSpeedPreset => {
-  if (channels <= 1) return 'base';
-  if (channels <= 3) return 'fast';
-  return 'super';
-};
 import { SessionTabs } from './components/SessionTabs';
 import { PermissionsDialog } from './components/PermissionsDialog';
 import { ToastContainer, useToast } from './components/Toast';
@@ -227,6 +215,17 @@ import { UniversalPreview, PreviewFileData, getPreviewCategory, isPreviewable as
 // while the unified AeroSync modal absorbs delete/verify/journal/retry
 // (GAP-2..GAP-4). Reachable only via the Command Palette for now.
 import { UnifiedTransferPlanDialog } from './components/UnifiedTransferPlanDialog';
+import {
+  buildSftpDownloadPresetPayload,
+  getSftpDownloadPresetDefinition,
+  nextSftpDownloadPreset,
+} from './utils/sftpDownloadPresets';
+import {
+  TRANSFER_SPEED_PRESETS,
+  deriveTransferSpeedPreset,
+  nextTransferSpeedPreset,
+  type TransferSpeedPreset,
+} from './utils/ftpTransferSpeedPresets';
 import { AeroSyncDialog } from './components/AeroSync/AeroSyncDialog';
 import { DeltaEligibilityDialog } from './components/AeroSync/DeltaEligibilityDialog';
 import type { AeroSyncTab, AeroSyncContext, AeroSyncRuntime } from './components/AeroSync/types';
@@ -668,6 +667,7 @@ const App: React.FC = () => {
     showStatusBar, defaultLocalPath, fontSize, fontFamily, doubleClickAction, rememberLastFolder, visibleColumns,
     sortFoldersFirst, showFileExtensions, timeoutSeconds, maxConcurrentTransfers, retryCount,
     downloadSegments,
+    sftpDownloadPreset, setSftpDownloadPreset,
     fileExistsAction, swapPanels,
     showActivityLog, showConnectionScreen,
     showSettingsPanel, setShowSettingsPanel, setShowConnectionScreen,
@@ -685,6 +685,7 @@ const App: React.FC = () => {
   const [sessionTransferSpeedPreset, setSessionTransferSpeedPreset] = useState<TransferSpeedPreset>(
     () => deriveTransferSpeedPreset(maxConcurrentTransfers)
   );
+  const [isSftpPresetSaving, setIsSftpPresetSaving] = useState(false);
 
   // Sync font CSS variables to <html> so Tailwind rem-based classes scale globally
   useEffect(() => {
@@ -6349,19 +6350,29 @@ interface UpdateVerificationInfo {
   };
 
   const activeTransferProtocol = getActiveProviderProtocol();
-  const supportsParallelTransferPresets = !!activeTransferProtocol && isFtpProtocol(activeTransferProtocol);
+  const supportsFtpTransferPresets = !!activeTransferProtocol && isFtpProtocol(activeTransferProtocol);
+  const supportsSftpTransferPresets = activeTransferProtocol === 'sftp';
+  const supportsParallelTransferPresets = supportsFtpTransferPresets || supportsSftpTransferPresets;
   const transferPresetLabelMap: Record<TransferSpeedPreset, string> = {
     base: t('transfer.modeSafe'),
     fast: t('transfer.modeBalanced'),
     super: t('transfer.modeMax'),
   };
-  const effectiveTransferSpeedPreset: TransferSpeedPreset = supportsParallelTransferPresets
+  const effectiveTransferSpeedPreset: TransferSpeedPreset = supportsFtpTransferPresets
     ? sessionTransferSpeedPreset
     : 'base';
-  const effectiveMaxConcurrentTransfers = supportsParallelTransferPresets
+  const effectiveMaxConcurrentTransfers = supportsFtpTransferPresets
     ? TRANSFER_SPEED_PRESETS[effectiveTransferSpeedPreset].channels
-    : 1;
-  const effectiveTransferSpeedLabel = `${transferPresetLabelMap[effectiveTransferSpeedPreset]} ${TRANSFER_SPEED_PRESETS[effectiveTransferSpeedPreset].channels}x`;
+    : supportsSftpTransferPresets
+      ? maxConcurrentTransfers
+      : 1;
+  const sftpPresetDefinition = getSftpDownloadPresetDefinition(sftpDownloadPreset);
+  const effectiveTransferSpeedLabel = supportsSftpTransferPresets
+    ? `${t(sftpPresetDefinition.labelKey)} ${sftpPresetDefinition.connections}x`
+    : `${transferPresetLabelMap[effectiveTransferSpeedPreset]} ${TRANSFER_SPEED_PRESETS[effectiveTransferSpeedPreset].channels}x`;
+  const effectiveTransferSpeedDescription = supportsSftpTransferPresets
+    ? t(sftpPresetDefinition.descriptionKey)
+    : effectiveTransferSpeedLabel;
 
   // Proactive archive/encryption surfacing for the REMOTE panel, mirroring the
   // local file browser's padlock + Encryption column + AeroVault generation chip.
@@ -6404,17 +6415,37 @@ interface UpdateVerificationInfo {
     );
   };
 
-  const cycleTransferSpeedPreset = useCallback(() => {
-    if (!supportsParallelTransferPresets) {
+  const cycleTransferSpeedPreset = useCallback(async () => {
+    if (!supportsParallelTransferPresets || isSftpPresetSaving) {
       return;
     }
 
-    setSessionTransferSpeedPreset(current => {
-      if (current === 'base') return 'fast';
-      if (current === 'fast') return 'super';
-      return 'base';
-    });
-  }, [supportsParallelTransferPresets]);
+    if (supportsSftpTransferPresets) {
+      const next = nextSftpDownloadPreset(sftpDownloadPreset);
+      setIsSftpPresetSaving(true);
+      setSftpDownloadPreset(next);
+      try {
+        const existing = await secureGetWithFallback<Record<string, unknown>>('app_settings', SETTINGS_KEY);
+        const updated = { ...(existing || {}), sftpDownloadPreset: next };
+        await secureStoreAndClean('app_settings', SETTINGS_KEY, updated);
+        window.dispatchEvent(new CustomEvent('aeroftp-settings-changed', { detail: updated }));
+      } catch {
+        setSftpDownloadPreset(sftpDownloadPreset);
+      } finally {
+        setIsSftpPresetSaving(false);
+      }
+      return;
+    }
+
+    setSessionTransferSpeedPreset(nextTransferSpeedPreset);
+  }, [
+    SETTINGS_KEY,
+    isSftpPresetSaving,
+    setSftpDownloadPreset,
+    sftpDownloadPreset,
+    supportsParallelTransferPresets,
+    supportsSftpTransferPresets,
+  ]);
 
   const buildProviderParams = async (params: ConnectionParams, initialPath: string | null) => {
     let effectiveParams = normalizeProviderConnectionParams(params);
@@ -9318,6 +9349,7 @@ interface UpdateVerificationInfo {
               // GTC-5: intra-file range parallelism per download.
               // 0 = Auto (backend = legacy single-stream).
               downloadSegments: downloadSegments > 0 ? downloadSegments : undefined,
+              ...buildSftpDownloadPresetPayload(protocol, sftpDownloadPreset),
             });
             // pwd is restored by the backend (provider_download_folder saves/restores pwd)
           } else {
@@ -9383,6 +9415,7 @@ interface UpdateVerificationInfo {
               // GTC-5: intra-file range parallelism per download.
               // 0 = Auto (backend = legacy single-stream).
               downloadSegments: downloadSegments > 0 ? downloadSegments : undefined,
+              ...buildSftpDownloadPresetPayload(protocol, sftpDownloadPreset),
             });
           } else {
             const params: DownloadParams = { remote_path: remoteFilePath, local_path: localFilePath, modified: remoteModified };
@@ -17316,18 +17349,20 @@ interface UpdateVerificationInfo {
                       </button>
                       <button
                         onClick={cycleTransferSpeedPreset}
-                        disabled={!supportsParallelTransferPresets}
+                        disabled={!supportsParallelTransferPresets || isSftpPresetSaving}
                         className={`px-3 py-1.5 rounded-lg text-sm flex items-center gap-1.5 transition-colors ${
                           supportsParallelTransferPresets
-                            ? effectiveTransferSpeedPreset === 'super'
+                            ? (supportsSftpTransferPresets && sftpDownloadPreset === 'maximum-tested')
+                              || (!supportsSftpTransferPresets && effectiveTransferSpeedPreset === 'super')
                               ? 'bg-emerald-500 hover:bg-emerald-600 text-white'
-                              : effectiveTransferSpeedPreset === 'fast'
+                              : (supportsSftpTransferPresets && ['balanced', 'fast'].includes(sftpDownloadPreset))
+                                || (!supportsSftpTransferPresets && effectiveTransferSpeedPreset === 'fast')
                                 ? 'bg-blue-500 hover:bg-blue-600 text-white'
                                 : 'bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500'
                             : 'bg-gray-200 dark:bg-gray-600 text-gray-400 dark:text-gray-500 cursor-not-allowed'
                         }`}
                         title={supportsParallelTransferPresets
-                          ? `${t('transfer.mode')}: ${effectiveTransferSpeedLabel}`
+                          ? `${t('transfer.mode')}: ${effectiveTransferSpeedLabel}. ${effectiveTransferSpeedDescription}`
                           : t('transfer.modeUnavailable')}
                       >
                         <Zap size={16} />

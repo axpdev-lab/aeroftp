@@ -592,7 +592,17 @@
             "resumeNoProfile": "এই স্থানান্তরের কোনো সংরক্ষিত সার্ভার প্রোফাইল নেই। ম্যানুয়ালি সংযোগ করুন, তারপর পুনরায় শুরু করুন।",
             "resumeProfileMissing": "এই স্থানান্তরের সংরক্ষিত সার্ভার পাওয়া যায়নি (হয়তো মুছে ফেলা হয়েছে)।",
             "connectingToResume": "স্থানান্তর পুনরায় শুরু করতে {name}-এ সংযোগ করা হচ্ছে…",
-            "resumeConnectFailed": "{name}-এ সংযোগ করা যায়নি। স্থানান্তর শুরু হয়নি।"
+            "resumeConnectFailed": "{name}-এ সংযোগ করা যায়নি। স্থানান্তর শুরু হয়নি।",
+            "sftpModeCompatibility": "সামঞ্জস্যতা",
+            "sftpModeCompatibilityDescription": "রক্ষণশীল অগ্রিম পাঠসহ পুরোনো একক সংযোগ",
+            "sftpModeEfficient": "দক্ষ",
+            "sftpModeEfficientDescription": "অপ্টিমাইজ করা অগ্রিম পাঠসহ একটি সংযোগ",
+            "sftpModeBalanced": "ভারসাম্যপূর্ণ",
+            "sftpModeBalancedDescription": "অপ্টিমাইজ করা অগ্রিম পাঠসহ চারটি সংযোগ",
+            "sftpModeFast": "দ্রুত",
+            "sftpModeFastDescription": "অপ্টিমাইজ করা অগ্রিম পাঠসহ আটটি সংযোগ",
+            "sftpModeMaximumTested": "পরীক্ষিত সর্বোচ্চ",
+            "sftpModeMaximumTestedDescription": "অপ্টিমাইজ করা অগ্রিম পাঠসহ বারোটি সংযোগ"
         },
         "settings": {
             "title": "সেটিংস",

@@ -592,7 +592,17 @@
             "resumeNoProfile": "Ta prenos nima shranjenega profila strežnika. Povežite se ročno, nato nadaljujte.",
             "resumeProfileMissing": "Shranjenega strežnika za ta prenos ni bilo mogoče najti (morda je bil izbrisan).",
             "connectingToResume": "Povezovanje s {name} za nadaljevanje prenosov…",
-            "resumeConnectFailed": "Povezava s {name} ni uspela. Prenosi niso bili zagnani."
+            "resumeConnectFailed": "Povezava s {name} ni uspela. Prenosi niso bili zagnani.",
+            "sftpModeCompatibility": "Združljivost",
+            "sftpModeCompatibilityDescription": "Stara enojna povezava s konservativnim vnaprejšnjim branjem",
+            "sftpModeEfficient": "Učinkovito",
+            "sftpModeEfficientDescription": "Ena povezava z optimiziranim vnaprejšnjim branjem",
+            "sftpModeBalanced": "Uravnoteženo",
+            "sftpModeBalancedDescription": "Štiri povezave z optimiziranim vnaprejšnjim branjem",
+            "sftpModeFast": "Hitro",
+            "sftpModeFastDescription": "Osem povezav z optimiziranim vnaprejšnjim branjem",
+            "sftpModeMaximumTested": "Preizkušeni maksimum",
+            "sftpModeMaximumTestedDescription": "Dvanajst povezav z optimiziranim vnaprejšnjim branjem"
         },
         "settings": {
             "title": "Nastavitve",

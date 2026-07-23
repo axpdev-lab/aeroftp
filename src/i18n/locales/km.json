@@ -592,7 +592,17 @@
             "resumeNoProfile": "ការផ្ទេរនេះគ្មានប្រវត្តិរូបម៉ាស៊ីនមេដែលបានរក្សាទុកទេ។ ភ្ជាប់ដោយដៃ បន្ទាប់មកបន្ត។",
             "resumeProfileMissing": "រកមិនឃើញម៉ាស៊ីនមេដែលបានរក្សាទុកសម្រាប់ការផ្ទេរនេះ (ប្រហែលជាត្រូវបានលុប)។",
             "connectingToResume": "កំពុងភ្ជាប់ទៅ {name} ដើម្បីបន្តការផ្ទេរ…",
-            "resumeConnectFailed": "មិនអាចភ្ជាប់ទៅ {name} បានទេ។ ការផ្ទេរមិនបានចាប់ផ្តើមទេ។"
+            "resumeConnectFailed": "មិនអាចភ្ជាប់ទៅ {name} បានទេ។ ការផ្ទេរមិនបានចាប់ផ្តើមទេ។",
+            "sftpModeCompatibility": "ភាពឆបគ្នា",
+            "sftpModeCompatibilityDescription": "ការតភ្ជាប់តែមួយបែបចាស់ជាមួយការអានទុកជាមុនដោយប្រុងប្រយ័ត្ន",
+            "sftpModeEfficient": "មានប្រសិទ្ធភាព",
+            "sftpModeEfficientDescription": "ការតភ្ជាប់មួយជាមួយការអានទុកជាមុនដែលបានបង្កើនប្រសិទ្ធភាព",
+            "sftpModeBalanced": "មានតុល្យភាព",
+            "sftpModeBalancedDescription": "ការតភ្ជាប់បួនជាមួយការអានទុកជាមុនដែលបានបង្កើនប្រសិទ្ធភាព",
+            "sftpModeFast": "លឿន",
+            "sftpModeFastDescription": "ការតភ្ជាប់ប្រាំបីជាមួយការអានទុកជាមុនដែលបានបង្កើនប្រសិទ្ធភាព",
+            "sftpModeMaximumTested": "អតិបរមាដែលបានសាកល្បង",
+            "sftpModeMaximumTestedDescription": "ការតភ្ជាប់ដប់ពីរជាមួយការអានទុកជាមុនដែលបានបង្កើនប្រសិទ្ធភាព"
         },
         "settings": {
             "title": "ការកំណត់",

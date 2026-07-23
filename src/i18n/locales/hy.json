@@ -592,7 +592,17 @@
             "resumeNoProfile": "Այս փոխանցումը պահված սերվերի պրոֆիլ չունի։ Միացեք ձեռքով, ապա վերսկսեք։",
             "resumeProfileMissing": "Այս փոխանցման պահված սերվերը չի գտնվել (հնարավոր է՝ ջնջվել է)։",
             "connectingToResume": "Միացում {name}-ին՝ փոխանցումները վերսկսելու համար…",
-            "resumeConnectFailed": "Չհաջողվեց միանալ {name}-ին։ Փոխանցումները չեն մեկնարկել։"
+            "resumeConnectFailed": "Չհաջողվեց միանալ {name}-ին։ Փոխանցումները չեն մեկնարկել։",
+            "sftpModeCompatibility": "Համատեղելիություն",
+            "sftpModeCompatibilityDescription": "Հին մեկ կապ՝ պահպանողական նախնական ընթերցմամբ",
+            "sftpModeEfficient": "Արդյունավետ",
+            "sftpModeEfficientDescription": "Մեկ կապ՝ օպտիմալացված նախնական ընթերցմամբ",
+            "sftpModeBalanced": "Հավասարակշռված",
+            "sftpModeBalancedDescription": "Չորս կապ՝ օպտիմալացված նախնական ընթերցմամբ",
+            "sftpModeFast": "Արագ",
+            "sftpModeFastDescription": "Ութ կապ՝ օպտիմալացված նախնական ընթերցմամբ",
+            "sftpModeMaximumTested": "Փորձարկված առավելագույնը",
+            "sftpModeMaximumTestedDescription": "Տասներկու կապ՝ օպտիմալացված նախնական ընթերցմամբ"
         },
         "settings": {
             "title": "Կարգավորումներ",

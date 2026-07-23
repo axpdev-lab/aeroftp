@@ -592,7 +592,17 @@
             "resumeNoProfile": "Ten transfer nie ma zapisanego profilu serwera. Połącz się ręcznie, a następnie wznów.",
             "resumeProfileMissing": "Nie znaleziono zapisanego serwera dla tego transferu (mógł zostać usunięty).",
             "connectingToResume": "Łączenie z {name} w celu wznowienia transferów…",
-            "resumeConnectFailed": "Nie udało się połączyć z {name}. Transfery nie zostały uruchomione."
+            "resumeConnectFailed": "Nie udało się połączyć z {name}. Transfery nie zostały uruchomione.",
+            "sftpModeCompatibility": "Zgodność",
+            "sftpModeCompatibilityDescription": "Starsze pojedyncze połączenie z zachowawczym odczytem z wyprzedzeniem",
+            "sftpModeEfficient": "Wydajny",
+            "sftpModeEfficientDescription": "Jedno połączenie ze zoptymalizowanym odczytem z wyprzedzeniem",
+            "sftpModeBalanced": "Zrównoważony",
+            "sftpModeBalancedDescription": "Cztery połączenia ze zoptymalizowanym odczytem z wyprzedzeniem",
+            "sftpModeFast": "Szybki",
+            "sftpModeFastDescription": "Osiem połączeń ze zoptymalizowanym odczytem z wyprzedzeniem",
+            "sftpModeMaximumTested": "Przetestowane maksimum",
+            "sftpModeMaximumTestedDescription": "Dwanaście połączeń ze zoptymalizowanym odczytem z wyprzedzeniem"
         },
         "settings": {
             "title": "Ustawienia",

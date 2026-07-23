@@ -592,7 +592,17 @@
             "resumeNoProfile": "Овој пренос нема зачуван профил на сервер. Поврзете се рачно, потоа продолжете.",
             "resumeProfileMissing": "Зачуваниот сервер за овој пренос не е пронајден (можеби е избришан).",
             "connectingToResume": "Поврзување со {name} за продолжување на преносите…",
-            "resumeConnectFailed": "Не можеше да се поврзе со {name}. Преносите не беа започнати."
+            "resumeConnectFailed": "Не можеше да се поврзе со {name}. Преносите не беа започнати.",
+            "sftpModeCompatibility": "Компатибилност",
+            "sftpModeCompatibilityDescription": "Стара единечна врска со конзервативно претчитување",
+            "sftpModeEfficient": "Ефикасно",
+            "sftpModeEfficientDescription": "Една врска со оптимизирано претчитување",
+            "sftpModeBalanced": "Балансирано",
+            "sftpModeBalancedDescription": "Четири врски со оптимизирано претчитување",
+            "sftpModeFast": "Брзо",
+            "sftpModeFastDescription": "Осум врски со оптимизирано претчитување",
+            "sftpModeMaximumTested": "Тестиран максимум",
+            "sftpModeMaximumTestedDescription": "Дванаесет врски со оптимизирано претчитување"
         },
         "settings": {
             "title": "Поставки",

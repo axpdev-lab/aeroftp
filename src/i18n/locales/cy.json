@@ -592,7 +592,17 @@
             "resumeNoProfile": "Nid oes proffil gweinydd wedi'i gadw gan y trosglwyddiad hwn. Cysylltwch â llaw, yna ailgychwynnwch.",
             "resumeProfileMissing": "Ni chanfuwyd y gweinydd wedi'i gadw ar gyfer y trosglwyddiad hwn (efallai ei fod wedi'i ddileu).",
             "connectingToResume": "Yn cysylltu â {name} i ailgychwyn trosglwyddiadau…",
-            "resumeConnectFailed": "Methu cysylltu â {name}. Ni chychwynnwyd y trosglwyddiadau."
+            "resumeConnectFailed": "Methu cysylltu â {name}. Ni chychwynnwyd y trosglwyddiadau.",
+            "sftpModeCompatibility": "Cydnawsedd",
+            "sftpModeCompatibilityDescription": "Un cysylltiad etifeddol gyda rhagddarllen ceidwadol",
+            "sftpModeEfficient": "Effeithlon",
+            "sftpModeEfficientDescription": "Un cysylltiad gyda rhagddarllen wedi'i optimeiddio",
+            "sftpModeBalanced": "Cytbwys",
+            "sftpModeBalancedDescription": "Pedwar cysylltiad gyda rhagddarllen wedi'i optimeiddio",
+            "sftpModeFast": "Cyflym",
+            "sftpModeFastDescription": "Wyth cysylltiad gyda rhagddarllen wedi'i optimeiddio",
+            "sftpModeMaximumTested": "Uchafswm wedi'i brofi",
+            "sftpModeMaximumTestedDescription": "Deuddeg cysylltiad gyda rhagddarllen wedi'i optimeiddio"
         },
         "settings": {
             "title": "Gosodiadau",

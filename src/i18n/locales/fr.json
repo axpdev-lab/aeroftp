@@ -592,7 +592,17 @@
             "resumeNoProfile": "Ce transfert n'a pas de profil de serveur enregistré. Connectez-vous manuellement, puis reprenez.",
             "resumeProfileMissing": "Le serveur enregistré pour ce transfert est introuvable (il a peut-être été supprimé).",
             "connectingToResume": "Connexion à {name} pour reprendre les transferts…",
-            "resumeConnectFailed": "Impossible de se connecter à {name}. Les transferts n'ont pas démarré."
+            "resumeConnectFailed": "Impossible de se connecter à {name}. Les transferts n'ont pas démarré.",
+            "sftpModeCompatibility": "Compatibilité",
+            "sftpModeCompatibilityDescription": "Ancienne connexion unique avec lecture anticipée prudente",
+            "sftpModeEfficient": "Efficace",
+            "sftpModeEfficientDescription": "Une connexion avec lecture anticipée optimisée",
+            "sftpModeBalanced": "Équilibré",
+            "sftpModeBalancedDescription": "Quatre connexions avec lecture anticipée optimisée",
+            "sftpModeFast": "Rapide",
+            "sftpModeFastDescription": "Huit connexions avec lecture anticipée optimisée",
+            "sftpModeMaximumTested": "Maximum testé",
+            "sftpModeMaximumTestedDescription": "Douze connexions avec lecture anticipée optimisée"
         },
         "settings": {
             "title": "Paramètres",

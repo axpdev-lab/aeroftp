@@ -592,7 +592,17 @@
             "resumeNoProfile": "Šis perdavimas neturi išsaugoto serverio profilio. Prisijunkite rankiniu būdu, tada tęskite.",
             "resumeProfileMissing": "Šio perdavimo išsaugotas serveris nerastas (galėjo būti ištrintas).",
             "connectingToResume": "Jungiamasi prie {name}, kad būtų tęsiami perdavimai…",
-            "resumeConnectFailed": "Nepavyko prisijungti prie {name}. Perdavimai nepradėti."
+            "resumeConnectFailed": "Nepavyko prisijungti prie {name}. Perdavimai nepradėti.",
+            "sftpModeCompatibility": "Suderinamumas",
+            "sftpModeCompatibilityDescription": "Senas vienas ryšys su konservatyviu išankstiniu nuskaitymu",
+            "sftpModeEfficient": "Efektyvus",
+            "sftpModeEfficientDescription": "Vienas ryšys su optimizuotu išankstiniu nuskaitymu",
+            "sftpModeBalanced": "Subalansuotas",
+            "sftpModeBalancedDescription": "Keturi ryšiai su optimizuotu išankstiniu nuskaitymu",
+            "sftpModeFast": "Greitas",
+            "sftpModeFastDescription": "Aštuoni ryšiai su optimizuotu išankstiniu nuskaitymu",
+            "sftpModeMaximumTested": "Išbandytas maksimumas",
+            "sftpModeMaximumTestedDescription": "Dvylika ryšių su optimizuotu išankstiniu nuskaitymu"
         },
         "settings": {
             "title": "Nustatymai",

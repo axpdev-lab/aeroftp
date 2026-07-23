@@ -592,7 +592,17 @@
             "resumeNoProfile": "Denne overførsel har ingen gemt serverprofil. Opret forbindelse manuelt, og genoptag derefter.",
             "resumeProfileMissing": "Den gemte server for denne overførsel blev ikke fundet (den kan være slettet).",
             "connectingToResume": "Opretter forbindelse til {name} for at genoptage overførsler…",
-            "resumeConnectFailed": "Kunne ikke oprette forbindelse til {name}. Overførsler blev ikke startet."
+            "resumeConnectFailed": "Kunne ikke oprette forbindelse til {name}. Overførsler blev ikke startet.",
+            "sftpModeCompatibility": "Kompatibilitet",
+            "sftpModeCompatibilityDescription": "Ældre enkeltforbindelse med konservativ forhåndslæsning",
+            "sftpModeEfficient": "Effektiv",
+            "sftpModeEfficientDescription": "Én forbindelse med optimeret forhåndslæsning",
+            "sftpModeBalanced": "Balanceret",
+            "sftpModeBalancedDescription": "Fire forbindelser med optimeret forhåndslæsning",
+            "sftpModeFast": "Hurtig",
+            "sftpModeFastDescription": "Otte forbindelser med optimeret forhåndslæsning",
+            "sftpModeMaximumTested": "Testet maksimum",
+            "sftpModeMaximumTestedDescription": "Tolv forbindelser med optimeret forhåndslæsning"
         },
         "settings": {
             "title": "Indstillinger",

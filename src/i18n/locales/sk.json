@@ -592,7 +592,17 @@
             "resumeNoProfile": "Tento prenos nemá uložený profil servera. Pripojte sa ručne a potom obnovte.",
             "resumeProfileMissing": "Uložený server pre tento prenos sa nenašiel (mohol byť odstránený).",
             "connectingToResume": "Pripájanie k {name} na obnovenie prenosov…",
-            "resumeConnectFailed": "Nepodarilo sa pripojiť k {name}. Prenosy neboli spustené."
+            "resumeConnectFailed": "Nepodarilo sa pripojiť k {name}. Prenosy neboli spustené.",
+            "sftpModeCompatibility": "Kompatibilita",
+            "sftpModeCompatibilityDescription": "Staršie jedno pripojenie s konzervatívnym predbežným načítaním",
+            "sftpModeEfficient": "Efektívny",
+            "sftpModeEfficientDescription": "Jedno pripojenie s optimalizovaným predbežným načítaním",
+            "sftpModeBalanced": "Vyvážený",
+            "sftpModeBalancedDescription": "Štyri pripojenia s optimalizovaným predbežným načítaním",
+            "sftpModeFast": "Rýchly",
+            "sftpModeFastDescription": "Osem pripojení s optimalizovaným predbežným načítaním",
+            "sftpModeMaximumTested": "Testované maximum",
+            "sftpModeMaximumTestedDescription": "Dvanásť pripojení s optimalizovaným predbežným načítaním"
         },
         "settings": {
             "title": "Nastavenia",

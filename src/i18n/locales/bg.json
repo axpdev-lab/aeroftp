@@ -592,7 +592,17 @@
             "resumeNoProfile": "Това прехвърляне няма запазен сървърен профил. Свържете се ръчно, след това възобновете.",
             "resumeProfileMissing": "Запазеният сървър за това прехвърляне не беше намерен (възможно е да е изтрит).",
             "connectingToResume": "Свързване с {name} за възобновяване на прехвърлянията…",
-            "resumeConnectFailed": "Неуспешна връзка с {name}. Прехвърлянията не бяха стартирани."
+            "resumeConnectFailed": "Неуспешна връзка с {name}. Прехвърлянията не бяха стартирани.",
+            "sftpModeCompatibility": "Съвместимост",
+            "sftpModeCompatibilityDescription": "Наследена единична връзка с консервативно предварително четене",
+            "sftpModeEfficient": "Ефективен",
+            "sftpModeEfficientDescription": "Една връзка с оптимизирано предварително четене",
+            "sftpModeBalanced": "Балансиран",
+            "sftpModeBalancedDescription": "Четири връзки с оптимизирано предварително четене",
+            "sftpModeFast": "Бърз",
+            "sftpModeFastDescription": "Осем връзки с оптимизирано предварително четене",
+            "sftpModeMaximumTested": "Максимално тестван",
+            "sftpModeMaximumTestedDescription": "Дванадесет връзки с оптимизирано предварително четене"
         },
         "settings": {
             "title": "Настройки",

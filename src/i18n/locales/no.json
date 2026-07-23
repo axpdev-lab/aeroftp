@@ -592,7 +592,17 @@
             "resumeNoProfile": "Denne overføringen har ingen lagret serverprofil. Koble til manuelt, og fortsett deretter.",
             "resumeProfileMissing": "Den lagrede serveren for denne overføringen ble ikke funnet (den kan ha blitt slettet).",
             "connectingToResume": "Kobler til {name} for å fortsette overføringer…",
-            "resumeConnectFailed": "Kunne ikke koble til {name}. Overføringer ble ikke startet."
+            "resumeConnectFailed": "Kunne ikke koble til {name}. Overføringer ble ikke startet.",
+            "sftpModeCompatibility": "Kompatibilitet",
+            "sftpModeCompatibilityDescription": "Eldre enkeltforbindelse med konservativ forhåndslesing",
+            "sftpModeEfficient": "Effektiv",
+            "sftpModeEfficientDescription": "Én forbindelse med optimalisert forhåndslesing",
+            "sftpModeBalanced": "Balansert",
+            "sftpModeBalancedDescription": "Fire forbindelser med optimalisert forhåndslesing",
+            "sftpModeFast": "Rask",
+            "sftpModeFastDescription": "Åtte forbindelser med optimalisert forhåndslesing",
+            "sftpModeMaximumTested": "Testet maksimum",
+            "sftpModeMaximumTestedDescription": "Tolv forbindelser med optimalisert forhåndslesing"
         },
         "settings": {
             "title": "Innstillinger",

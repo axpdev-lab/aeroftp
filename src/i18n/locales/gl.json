@@ -592,7 +592,17 @@
             "resumeNoProfile": "Esta transferencia non ten un perfil de servidor gardado. Conéctese manualmente e despois retome.",
             "resumeProfileMissing": "Non se atopou o servidor gardado desta transferencia (pode que se eliminase).",
             "connectingToResume": "Conectando a {name} para retomar as transferencias…",
-            "resumeConnectFailed": "Non se puido conectar a {name}. Non se iniciaron as transferencias."
+            "resumeConnectFailed": "Non se puido conectar a {name}. Non se iniciaron as transferencias.",
+            "sftpModeCompatibility": "Compatibilidade",
+            "sftpModeCompatibilityDescription": "Conexión única herdada con lectura anticipada conservadora",
+            "sftpModeEfficient": "Eficiente",
+            "sftpModeEfficientDescription": "Unha conexión con lectura anticipada optimizada",
+            "sftpModeBalanced": "Equilibrado",
+            "sftpModeBalancedDescription": "Catro conexións con lectura anticipada optimizada",
+            "sftpModeFast": "Rápido",
+            "sftpModeFastDescription": "Oito conexións con lectura anticipada optimizada",
+            "sftpModeMaximumTested": "Máximo probado",
+            "sftpModeMaximumTestedDescription": "Doce conexións con lectura anticipada optimizada"
         },
         "settings": {
             "title": "Axustes",

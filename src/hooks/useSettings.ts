@@ -17,6 +17,11 @@
 import { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { secureGetWithFallback, secureStoreAndClean } from '../utils/secureStorage';
+import {
+  DEFAULT_SFTP_DOWNLOAD_PRESET,
+  normalizeSftpDownloadPreset,
+  type SftpDownloadPreset,
+} from '../utils/sftpDownloadPresets';
 
 const SETTINGS_KEY = 'aeroftp_settings';
 const SETTINGS_VAULT_KEY = 'app_settings';
@@ -93,6 +98,9 @@ export interface AppSettings {
   /** Intra-file range parallelism per download. 0 = Auto (backend decides,
    *  today: single-stream). Supported values: 0, 2, 4, 8, 16. */
   downloadSegments: number;
+  /** SFTP intra-file tuning preset. The backend owns connection, cutoff, and
+   * read-ahead semantics for each persisted ID. */
+  sftpDownloadPreset: SftpDownloadPreset;
   fileExistsAction: 'ask' | 'overwrite' | 'skip' | 'rename' | 'resume' | 'overwrite_if_newer' | 'overwrite_if_different' | 'skip_if_identical';
   swapPanels: boolean;
   lastLocalPath?: string;
@@ -149,6 +157,7 @@ const DEFAULTS: AppSettings = {
   maxConcurrentTransfers: 5,
   retryCount: 3,
   downloadSegments: 0,
+  sftpDownloadPreset: DEFAULT_SFTP_DOWNLOAD_PRESET,
   fileExistsAction: 'ask',
   swapPanels: false,
   disableUpdateChecks: false,
@@ -185,6 +194,7 @@ export const useSettings = () => {
   const [maxConcurrentTransfers, setMaxConcurrentTransfers] = useState(DEFAULTS.maxConcurrentTransfers);
   const [retryCount, setRetryCount] = useState(DEFAULTS.retryCount);
   const [downloadSegments, setDownloadSegments] = useState(DEFAULTS.downloadSegments);
+  const [sftpDownloadPreset, setSftpDownloadPreset] = useState(DEFAULTS.sftpDownloadPreset);
   const [fileExistsAction, setFileExistsAction] = useState<AppSettings['fileExistsAction']>(DEFAULTS.fileExistsAction);
   const [swapPanels, setSwapPanels] = useState(DEFAULTS.swapPanels);
   const [disableUpdateChecks, setDisableUpdateChecks] = useState(DEFAULTS.disableUpdateChecks);
@@ -222,6 +232,9 @@ export const useSettings = () => {
     if (typeof parsed.retryCount === 'number') setRetryCount(parsed.retryCount);
     if (typeof parsed.downloadSegments === 'number' && [0, 2, 4, 8, 16].includes(parsed.downloadSegments)) {
       setDownloadSegments(parsed.downloadSegments);
+    }
+    if ('sftpDownloadPreset' in parsed) {
+      setSftpDownloadPreset(normalizeSftpDownloadPreset(parsed.sftpDownloadPreset));
     }
     if (
       typeof parsed.fileExistsAction === 'string' &&
@@ -329,6 +342,7 @@ export const useSettings = () => {
     maxConcurrentTransfers,
     retryCount,
     downloadSegments,
+    sftpDownloadPreset,
     fileExistsAction,
     swapPanels,
     disableUpdateChecks,
@@ -365,6 +379,7 @@ export const useSettings = () => {
     setMaxConcurrentTransfers,
     setRetryCount,
     setDownloadSegments,
+    setSftpDownloadPreset,
     setFileExistsAction,
     setSwapPanels,
     setDisableUpdateChecks,

@@ -592,7 +592,17 @@
             "resumeNoProfile": "此传输没有已保存的服务器配置。请手动连接后再恢复。",
             "resumeProfileMissing": "未找到此传输已保存的服务器（可能已删除）。",
             "connectingToResume": "正在连接 {name} 以恢复传输…",
-            "resumeConnectFailed": "无法连接到 {name}。传输未启动。"
+            "resumeConnectFailed": "无法连接到 {name}。传输未启动。",
+            "sftpModeCompatibility": "兼容",
+            "sftpModeCompatibilityDescription": "使用保守预读的传统单连接",
+            "sftpModeEfficient": "高效",
+            "sftpModeEfficientDescription": "使用优化预读的一个连接",
+            "sftpModeBalanced": "均衡",
+            "sftpModeBalancedDescription": "使用优化预读的四个连接",
+            "sftpModeFast": "快速",
+            "sftpModeFastDescription": "使用优化预读的八个连接",
+            "sftpModeMaximumTested": "已测试的最大值",
+            "sftpModeMaximumTestedDescription": "使用优化预读的十二个连接"
         },
         "settings": {
             "title": "设置",

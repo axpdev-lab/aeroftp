@@ -592,7 +592,17 @@
             "resumeNoProfile": "Uhamishaji huu hauna wasifu wa seva uliohifadhiwa. Unganisha kwa mikono, kisha uendelee.",
             "resumeProfileMissing": "Seva iliyohifadhiwa ya uhamishaji huu haikupatikana (huenda ilifutwa).",
             "connectingToResume": "Inaunganisha kwenye {name} ili kuendelea na uhamishaji…",
-            "resumeConnectFailed": "Imeshindwa kuunganisha kwenye {name}. Uhamishaji haukuanza."
+            "resumeConnectFailed": "Imeshindwa kuunganisha kwenye {name}. Uhamishaji haukuanza.",
+            "sftpModeCompatibility": "Upatanifu",
+            "sftpModeCompatibilityDescription": "Muunganisho mmoja wa zamani wenye usomaji wa mapema wa tahadhari",
+            "sftpModeEfficient": "Fanisi",
+            "sftpModeEfficientDescription": "Muunganisho mmoja wenye usomaji wa mapema ulioboreshwa",
+            "sftpModeBalanced": "Uwiano",
+            "sftpModeBalancedDescription": "Miunganisho minne yenye usomaji wa mapema ulioboreshwa",
+            "sftpModeFast": "Haraka",
+            "sftpModeFastDescription": "Miunganisho minane yenye usomaji wa mapema ulioboreshwa",
+            "sftpModeMaximumTested": "Kiwango cha juu kilichojaribiwa",
+            "sftpModeMaximumTestedDescription": "Miunganisho kumi na miwili yenye usomaji wa mapema ulioboreshwa"
         },
         "settings": {
             "title": "Mipangilio",

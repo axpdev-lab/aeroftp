@@ -592,7 +592,17 @@
             "resumeNoProfile": "Acest transfer nu are un profil de server salvat. Conectați-vă manual, apoi reluați.",
             "resumeProfileMissing": "Serverul salvat pentru acest transfer nu a fost găsit (este posibil să fi fost șters).",
             "connectingToResume": "Se conectează la {name} pentru a relua transferurile…",
-            "resumeConnectFailed": "Nu s-a putut conecta la {name}. Transferurile nu au fost pornite."
+            "resumeConnectFailed": "Nu s-a putut conecta la {name}. Transferurile nu au fost pornite.",
+            "sftpModeCompatibility": "Compatibilitate",
+            "sftpModeCompatibilityDescription": "Conexiune unică veche cu citire anticipată conservatoare",
+            "sftpModeEfficient": "Eficient",
+            "sftpModeEfficientDescription": "O conexiune cu citire anticipată optimizată",
+            "sftpModeBalanced": "Echilibrat",
+            "sftpModeBalancedDescription": "Patru conexiuni cu citire anticipată optimizată",
+            "sftpModeFast": "Rapid",
+            "sftpModeFastDescription": "Opt conexiuni cu citire anticipată optimizată",
+            "sftpModeMaximumTested": "Maxim testat",
+            "sftpModeMaximumTestedDescription": "Douăsprezece conexiuni cu citire anticipată optimizată"
         },
         "settings": {
             "title": "Setări",

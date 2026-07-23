@@ -592,7 +592,17 @@
             "resumeNoProfile": "इस स्थानांतरण का कोई सहेजा हुआ सर्वर प्रोफ़ाइल नहीं है। मैन्युअल रूप से कनेक्ट करें, फिर फिर से शुरू करें।",
             "resumeProfileMissing": "इस स्थानांतरण का सहेजा हुआ सर्वर नहीं मिला (शायद हटा दिया गया हो)।",
             "connectingToResume": "स्थानांतरण फिर से शुरू करने के लिए {name} से कनेक्ट हो रहा है…",
-            "resumeConnectFailed": "{name} से कनेक्ट नहीं हो सका। स्थानांतरण शुरू नहीं हुए।"
+            "resumeConnectFailed": "{name} से कनेक्ट नहीं हो सका। स्थानांतरण शुरू नहीं हुए।",
+            "sftpModeCompatibility": "संगतता",
+            "sftpModeCompatibilityDescription": "सावधानीपूर्ण अग्रिम पठन वाला पुराना एकल कनेक्शन",
+            "sftpModeEfficient": "कुशल",
+            "sftpModeEfficientDescription": "अनुकूलित अग्रिम पठन वाला एक कनेक्शन",
+            "sftpModeBalanced": "संतुलित",
+            "sftpModeBalancedDescription": "अनुकूलित अग्रिम पठन वाले चार कनेक्शन",
+            "sftpModeFast": "तेज़",
+            "sftpModeFastDescription": "अनुकूलित अग्रिम पठन वाले आठ कनेक्शन",
+            "sftpModeMaximumTested": "अधिकतम परीक्षित",
+            "sftpModeMaximumTestedDescription": "अनुकूलित अग्रिम पठन वाले बारह कनेक्शन"
         },
         "settings": {
             "title": "सेटिंग्स",
