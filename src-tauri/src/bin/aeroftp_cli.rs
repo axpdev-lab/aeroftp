@@ -1879,7 +1879,9 @@ enum Commands {
         /// Requires a saved profile via the global `--profile <name>` flag.
         #[arg(value_enum, default_value = "quick")]
         level: BenchmarkLevel,
-        /// Override file sizes (comma-separated, e.g. "1M,100M,1G")
+        /// Override single-file sweep sizes (comma-separated). A bare number is
+        /// MEBIBYTES (e.g. "1,100,1024"); K/M/G suffixes are explicit (e.g.
+        /// "1M,100M,1G").
         #[arg(long)]
         sizes: Option<String>,
         /// Override timed runs per (operation, size) tuple
@@ -1916,15 +1918,17 @@ enum Commands {
         /// Many-small-files workload: number of files to exercise (e.g. 100,
         /// 1000). When > 0, runs a dedicated small-files benchmark on a separate
         /// axis (upload-all / download-all / list-dir / stat-all / delete-all)
-        /// reporting files/sec and mean per-file time, in addition to the
-        /// single-file size sweep. This is the workload where per-file overhead
-        /// (handshake, signing, metadata round-trips) dominates and S3 typically
-        /// pulls ahead of WebDAV and FTP.
+        /// reporting files/sec and mean per-file time. This is the workload
+        /// where per-file overhead (handshake, signing, metadata round-trips)
+        /// dominates and S3 typically pulls ahead of WebDAV and FTP. On its own
+        /// it replaces the single-file size sweep; add explicit --sizes to run
+        /// both axes together.
         #[arg(long, value_name = "N")]
         file_count: Option<u32>,
-        /// Size of each file in the many-small-files workload (e.g. 4K, 64K,
-        /// 1M). Defaults to 64K. Total payload (file-count x file-size) is
-        /// capped at 5 GiB.
+        /// Size of each file in the many-small-files workload. A bare number is
+        /// MEBIBYTES (e.g. 1 = 1 MiB, matching how chunk sizes are discussed);
+        /// K/M/G suffixes are explicit (e.g. 64K, 4M). Defaults to 64K. Total
+        /// payload (file-count x file-size) is capped at 5 GiB.
         #[arg(long, value_name = "SIZE", default_value = "64K")]
         file_size: String,
         /// Compare several saved profiles in one run: comma or space separated
@@ -5507,6 +5511,11 @@ struct BenchmarkReport {
     generated_at: String,
     cli: BenchmarkCliMeta,
     level: BenchmarkLevel,
+    // Access-method class of the profile (issue #277): the wire protocol for
+    // transport providers (SFTP, WebDAV, S3, ...) or the auth/API class for
+    // native ones (OAuth 2.0, OAuth 1.0, REST API). Additive to schema v1.
+    #[serde(default)]
+    access: String,
     environment: BenchmarkEnvironment,
     consent: BenchmarkConsent,
     results: Vec<BenchmarkResult>,
@@ -7311,6 +7320,25 @@ fn parse_size_filter(s: &str) -> Result<u64, String> {
         .map_err(|e| format!("Invalid size '{}': {}", s, e))
 }
 
+/// Parse a benchmark payload size (issue #277). Unlike the shared
+/// [`parse_size_filter`], a bare number here means MEBIBYTES, not bytes: the
+/// benchmark file-size and chunk-size domain is always discussed in MB, so
+/// `--file-size 1` is a 1 MiB file rather than a 1-byte file. Explicit K/M/G
+/// suffixes keep the same 1024-power meaning as everywhere else.
+fn parse_benchmark_size(s: &str) -> Result<u64, String> {
+    let t = s.trim();
+    if t.is_empty() {
+        return Err("Empty size".into());
+    }
+    match t.as_bytes().last() {
+        Some(b'k' | b'K' | b'm' | b'M' | b'g' | b'G') => parse_size_filter(t),
+        _ => t
+            .parse::<f64>()
+            .map(|n| (n * (1024.0 * 1024.0)) as u64)
+            .map_err(|e| format!("Invalid size '{}': {}", t, e)),
+    }
+}
+
 /// Parse an age/duration string like "7d", "24h", "2w" into seconds.
 fn parse_age_filter(s: &str) -> Result<u64, String> {
     let s = s.trim();
@@ -7685,6 +7713,33 @@ fn many_files_progress_bar(label: &str, total: u64, show: bool) -> ProgressBar {
     pb.set_style(
         ProgressStyle::default_bar()
             .template("{msg}  [{bar:40.cyan/blue}] {pos}/{len}  {percent}%  ETA {eta}")
+            .unwrap()
+            .progress_chars("━╸─"),
+    );
+    pb.set_message(label.to_string());
+    pb
+}
+
+/// Minimum single-file payload that gets a byte progress bar in the benchmark
+/// size sweep (issue #277). Below this a transfer completes near-instantly and a
+/// bar would only flash, so the house 10 MB progress threshold applies here too.
+const BENCHMARK_PROGRESS_MIN_BYTES: u64 = 10 * 1024 * 1024;
+
+/// Byte-oriented progress bar for a single large benchmark transfer (issue
+/// #277): shows transferred/total bytes, percent and throughput, driven by the
+/// real per-byte progress callback the transfer engine already exposes. Hidden
+/// (a no-op) when progress should not be shown, matching
+/// [`many_files_progress_bar`].
+fn benchmark_bytes_progress_bar(label: &str, total_bytes: u64, show: bool) -> ProgressBar {
+    if !show || !use_color() {
+        return ProgressBar::hidden();
+    }
+    let pb = ProgressBar::new(total_bytes);
+    pb.set_style(
+        ProgressStyle::default_bar()
+            .template(
+                "{msg}  [{bar:40.cyan/blue}] {bytes}/{total_bytes}  {percent}%  {bytes_per_sec}",
+            )
             .unwrap()
             .progress_chars("━╸─"),
     );
@@ -39610,7 +39665,7 @@ fn resolve_many_files_config(
             count, BENCHMARK_MAX_FILE_COUNT
         ));
     }
-    let file_size_bytes = parse_size_filter(file_size.trim())?;
+    let file_size_bytes = parse_benchmark_size(file_size)?;
     if file_size_bytes == 0 {
         return Err("--file-size cannot be zero".into());
     }
@@ -40016,7 +40071,7 @@ fn resolve_benchmark_config(
         let parsed: Result<Vec<u64>, String> = s
             .split(',')
             .filter(|t| !t.trim().is_empty())
-            .map(|tok| parse_size_filter(tok.trim()))
+            .map(|tok| parse_benchmark_size(tok.trim()))
             .collect();
         let v = parsed?;
         if v.is_empty() {
@@ -40498,7 +40553,7 @@ async fn cmd_benchmark(
         None
     };
 
-    let cfg =
+    let mut cfg =
         match resolve_benchmark_config(level, sizes_override, runs_override, operations_override) {
             Ok(c) => c,
             Err(msg) => {
@@ -40507,7 +40562,20 @@ async fn cmd_benchmark(
             }
         };
 
-    if matches!(level, BenchmarkLevel::Deep) && !cli.quiet && matches!(format, OutputFormat::Text) {
+    // B6 (issue #277): when the many-small-files workload is requested and the
+    // user did NOT pass explicit --sizes, run ONLY that workload and skip the
+    // single-file size sweep. Ehud expected `--file-count N --file-size S` to
+    // transfer N files of S, not also a separate single-file payload alongside.
+    // An explicit --sizes still runs both axes (opt back in).
+    if many_files_cfg.is_some() && sizes_override.is_none() {
+        cfg.sizes_bytes.clear();
+    }
+
+    if matches!(level, BenchmarkLevel::Deep)
+        && !cfg.sizes_bytes.is_empty()
+        && !cli.quiet
+        && matches!(format, OutputFormat::Text)
+    {
         let total_bytes: u64 =
             cfg.sizes_bytes.iter().sum::<u64>() * (cfg.runs_per_size + cfg.warmup_runs) as u64;
         eprintln!(
@@ -40525,6 +40593,10 @@ async fn cmd_benchmark(
             Err(code) => return code,
         };
     let protocol = provider.provider_type().to_string();
+    // Access-method label for the "Protocol" column (issue #277): computed from
+    // the live provider type so it reflects the transport the factory actually
+    // built (e.g. a Koofr-over-WebDAV profile reports `WebDAV`, native `REST API`).
+    let access = provider.provider_type().access_label().to_string();
 
     let report_id = uuid::Uuid::new_v4().to_string();
     let (bench_base, test_root) = match test_root_prefix_override {
@@ -40656,17 +40728,32 @@ async fn cmd_benchmark(
                 let start = Instant::now();
                 let local_payload_path = local_payload.path().to_string_lossy().to_string();
                 let upload_result = if !cli.partial {
+                    // Byte progress bar for large single-file payloads (issue
+                    // #277): real per-byte updates from the transfer engine, only
+                    // once the payload clears the house 10 MB threshold.
+                    let show_bar = !cli.quiet
+                        && matches!(format, OutputFormat::Text)
+                        && !is_warmup
+                        && size >= BENCHMARK_PROGRESS_MIN_BYTES;
+                    let pb = benchmark_bytes_progress_bar("upload  ", size, show_bar);
+                    let progress_cb: Option<Box<dyn Fn(u64, u64) + Send>> = if show_bar {
+                        let pbc = pb.clone();
+                        Some(Box::new(move |done, _total| pbc.set_position(done)))
+                    } else {
+                        None
+                    };
                     let (returned, result) = cli_run_single_file_dag(
                         provider,
                         ftp_client_gui_lib::transfer_dag::TransferDirection::Upload,
                         &remote_path,
                         &local_payload_path,
-                        None,
+                        progress_cb,
                         cli,
                         None,
                     )
                     .await;
                     provider = returned;
+                    pb.finish_and_clear();
                     result
                 } else {
                     provider
@@ -40740,17 +40827,31 @@ async fn cmd_benchmark(
                 let start = Instant::now();
                 let local_download_path = local_download.path().to_string_lossy().to_string();
                 let dl_result = if !cli.partial {
+                    // Byte progress bar for large downloads, mirroring the upload
+                    // phase (issue #277).
+                    let show_bar = !cli.quiet
+                        && matches!(format, OutputFormat::Text)
+                        && !is_warmup
+                        && size >= BENCHMARK_PROGRESS_MIN_BYTES;
+                    let pb = benchmark_bytes_progress_bar("download", size, show_bar);
+                    let progress_cb: Option<Box<dyn Fn(u64, u64) + Send>> = if show_bar {
+                        let pbc = pb.clone();
+                        Some(Box::new(move |done, _total| pbc.set_position(done)))
+                    } else {
+                        None
+                    };
                     let (returned, result) = cli_run_single_file_dag(
                         provider,
                         ftp_client_gui_lib::transfer_dag::TransferDirection::Download,
                         &remote_path,
                         &local_download_path,
-                        None,
+                        progress_cb,
                         cli,
                         None,
                     )
                     .await;
                     provider = returned;
+                    pb.finish_and_clear();
                     result
                 } else {
                     provider
@@ -41107,6 +41208,7 @@ async fn cmd_benchmark(
                 .to_string(),
         },
         level,
+        access: access.clone(),
         environment,
         consent: BenchmarkConsent {
             publish: consent_publish,
@@ -41209,18 +41311,35 @@ fn benchmark_report_protocol(report: &BenchmarkReport) -> String {
         .unwrap_or_default()
 }
 
+/// Access-method label for a report (issue #277): the "Protocol" column value,
+/// e.g. `SFTP`, `WebDAV`, `S3`, `OAuth 2.0`, `REST API`. Populated at connect
+/// time from the live provider type; falls back to the transport/provider
+/// display name for reports produced before the field existed.
+fn benchmark_report_access(report: &BenchmarkReport) -> String {
+    if report.access.is_empty() {
+        benchmark_report_protocol(report)
+    } else {
+        report.access.clone()
+    }
+}
+
 fn print_benchmark_text_report(report: &BenchmarkReport) {
     let color_on = use_color();
-    let protocol = benchmark_report_protocol(report);
-    let protocol_cell = if protocol.is_empty() {
+    // Identity line (issue #277): the service name (Type) and the access-method
+    // class (Protocol), matching the comparison-table column semantics.
+    let type_name = benchmark_report_protocol(report);
+    let access = benchmark_report_access(report);
+    let identity_cell = if type_name.is_empty() {
         String::new()
+    } else if access.is_empty() || access == type_name {
+        format!(" type={}", type_name)
     } else {
-        format!(" protocol={}", protocol)
+        format!(" type={} protocol={}", type_name, access)
     };
     println!(
         "Benchmark complete: level={:?}{} runs={} bytes={} duration={}ms",
         report.level,
-        protocol_cell,
+        identity_cell,
         report.summary.total_runs,
         format_size(report.summary.total_bytes_transferred),
         report.summary.total_duration_ms
@@ -41341,7 +41460,19 @@ fn print_benchmark_table(
             .collect::<Vec<_>>()
             .join(gap)
     };
-    let header_cells: Vec<String> = headers.iter().map(|h| h.to_string()).collect();
+    // Capitalize the first letter of every header cell (issue #277): "profile"
+    // -> "Profile", "files/s" -> "Files/s". Done centrally so all benchmark
+    // tables share one casing rule and call sites keep their lowercase match keys.
+    let header_cells: Vec<String> = headers
+        .iter()
+        .map(|h| {
+            let mut chars = h.chars();
+            match chars.next() {
+                Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+                None => String::new(),
+            }
+        })
+        .collect();
     println!("{}", paint_bold(title, color_on));
     println!("  {}", paint_dim(&fmt_row(&header_cells), color_on));
     println!("  {}", paint_dim(&"\u{2500}".repeat(total), color_on));
@@ -41503,24 +41634,6 @@ async fn cmd_benchmark_compare(
     // Profile-type labels for the comparison table (issue #277 #15), keyed by the
     // same profile name used as the report label. The service identity (provider
     // id, e.g. pcloud / mega / s3) disambiguates multi-protocol profiles.
-    let type_by_name: std::collections::HashMap<String, String> = idxs
-        .iter()
-        .map(|&i| {
-            let name = profiles[i]
-                .get("name")
-                .and_then(|v| v.as_str())
-                .unwrap_or("unnamed")
-                .to_string();
-            let ptype = profiles[i]
-                .get("providerId")
-                .and_then(|v| v.as_str())
-                .or_else(|| profiles[i].get("provider_id").and_then(|v| v.as_str()))
-                .unwrap_or("")
-                .to_string();
-            (name, ptype)
-        })
-        .collect();
-
     let sink: std::cell::RefCell<Vec<(String, BenchmarkReport)>> =
         std::cell::RefCell::new(Vec::new());
     let mut failed: Vec<String> = Vec::new();
@@ -41630,7 +41743,7 @@ async fn cmd_benchmark_compare(
                     );
                     print_benchmark_text_report(report);
                 }
-                print_benchmark_comparison(&entries, &type_by_name, use_color());
+                print_benchmark_comparison(&entries, use_color());
                 if !failed.is_empty() {
                     println!();
                     println!("Skipped (failed to benchmark): {}", failed.join(", "));
@@ -41655,24 +41768,23 @@ async fn cmd_benchmark_compare(
 /// Render the cross-profile comparison: one row per profile, columns per
 /// operation. Many-small-files ops compare files/s, single-file ops compare
 /// Mbps. Both headlined "higher is better".
-fn print_benchmark_comparison(
-    entries: &[(String, BenchmarkReport)],
-    types: &std::collections::HashMap<String, String>,
-    color_on: bool,
-) {
+fn print_benchmark_comparison(entries: &[(String, BenchmarkReport)], color_on: bool) {
     if entries.len() < 2 {
         return;
     }
-    // Profile-type cell (issue #277 #15): the service identity (provider id,
-    // e.g. pcloud / mega / s3) that disambiguates multi-protocol profiles where
-    // the transport-level "protocol" column alone is ambiguous. Falls back to a
-    // dash when unknown.
-    let type_of = |name: &str| -> String {
-        types
-            .get(name)
-            .filter(|s| !s.is_empty())
-            .cloned()
-            .unwrap_or_else(|| "-".to_string())
+    // Column semantics (issue #277): the "Type" cell is the service identity
+    // (kDrive, Koofr, WebDAV, S3, ...) taken from the live provider display
+    // name, and the "Protocol" cell is the access-method class (SFTP, WebDAV,
+    // OAuth 2.0, REST API, ...). Previously "type" read a lowercase providerId
+    // and "protocol" read the same display name, so the two columns duplicated
+    // each other for native providers. Falls back to a dash when unknown.
+    let type_of = |r: &BenchmarkReport| -> String {
+        let name = benchmark_report_protocol(r);
+        if name.is_empty() {
+            "-".to_string()
+        } else {
+            name
+        }
     };
 
     let many_ops = [
@@ -41693,7 +41805,7 @@ fn print_benchmark_comparison(
         let rows: Vec<Vec<String>> = entries
             .iter()
             .map(|(name, r)| {
-                let mut row = vec![name.clone(), type_of(name), benchmark_report_protocol(r)];
+                let mut row = vec![name.clone(), type_of(r), benchmark_report_access(r)];
                 for op in many_ops {
                     let cell = r
                         .results
@@ -41745,8 +41857,8 @@ fn print_benchmark_comparison(
                 };
                 vec![
                     name.clone(),
-                    type_of(name),
-                    benchmark_report_protocol(r),
+                    type_of(r),
+                    benchmark_report_access(r),
                     cell(single_ops[0]),
                     cell(single_ops[1]),
                 ]
@@ -41788,16 +41900,50 @@ fn benchmark_pick_in_pool(
     }
 }
 
+/// Derive the (Type, Protocol) picker columns for a saved profile (issue #277)
+/// without connecting: the service display name and the access-method class,
+/// resolved from the profile's `providerId`/`protocol` field via
+/// [`ProviderType`]. Falls back to the raw protocol string when the token does
+/// not resolve to a known provider type (matching the benchmark comparison
+/// table semantics, where Type is the service name and Protocol the transport).
+fn benchmark_profile_identity(p: &serde_json::Value) -> (String, String) {
+    let raw = p
+        .get("providerId")
+        .and_then(|v| v.as_str())
+        .or_else(|| p.get("provider_id").and_then(|v| v.as_str()))
+        .or_else(|| p.get("protocol").and_then(|v| v.as_str()))
+        .unwrap_or("");
+    match ProviderType::from_lowercase(raw) {
+        Some(pt) => (pt.to_string(), pt.access_label().to_string()),
+        None => (raw.to_string(), raw.to_string()),
+    }
+}
+
 fn benchmark_pick_profiles_inline(profiles: &[serde_json::Value]) -> std::io::Result<Vec<usize>> {
     use std::io::Write;
 
     let color_on = use_color();
     let mut err = std::io::stderr();
     writeln!(err, "{}", paint_bold("Saved profiles:", color_on))?;
+    writeln!(
+        err,
+        "{}",
+        paint_dim(
+            &format!("      {:<14}{:<12}{}", "Type", "Protocol", "Profile"),
+            color_on
+        )
+    )?;
     for (i, p) in profiles.iter().enumerate() {
         let name = p.get("name").and_then(|v| v.as_str()).unwrap_or("unnamed");
-        let proto = p.get("protocol").and_then(|v| v.as_str()).unwrap_or("");
-        writeln!(err, "  {:>2}. {:<10} {}", i + 1, proto, name)?;
+        let (type_name, access) = benchmark_profile_identity(p);
+        writeln!(
+            err,
+            "  {:>2}. {:<14}{:<12}{}",
+            i + 1,
+            type_name,
+            access,
+            name
+        )?;
     }
 
     for attempt in 0..3 {
@@ -41875,11 +42021,10 @@ fn benchmark_pick_profiles(profiles: &[serde_json::Value]) -> std::io::Result<Ve
             .get("name")
             .and_then(|v| v.as_str())
             .unwrap_or("unnamed");
-        let proto = profiles[i]
-            .get("protocol")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
-        format!("{:<10} {}", proto, name)
+        // Type (service name) + Protocol (access class), matching the comparison
+        // table and the inline picker (issue #277).
+        let (type_name, access) = benchmark_profile_identity(&profiles[i]);
+        format!("{:<14}{:<12}{}", type_name, access, name)
     };
 
     // Restore the main screen and the cursor no matter how we leave.
@@ -41934,7 +42079,17 @@ fn benchmark_pick_profiles(profiles: &[serde_json::Value]) -> std::io::Result<Ve
         write!(err, "{}", paint_bold("Pick profiles to compare", color_on))?;
         queue!(err, terminal::Clear(terminal::ClearType::UntilNewLine))?;
         write!(err, "\r\n")?;
-        // Blank separator line, cleared in case it held content last frame.
+        // Column header (issue #277), indented to align under the row labels
+        // (pointer + mark + index prefix is 10 columns wide). Cleared in case it
+        // held content last frame.
+        write!(
+            err,
+            "{}",
+            paint_dim(
+                &format!("          {:<14}{:<12}{}", "Type", "Protocol", "Profile"),
+                color_on
+            )
+        )?;
         queue!(err, terminal::Clear(terminal::ClearType::UntilNewLine))?;
         write!(err, "\r\n")?;
         for (off, &is_checked) in checked[top..end].iter().enumerate() {
@@ -66967,6 +67122,30 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_benchmark_size_bare_number_is_mib() {
+        // Issue #277: a bare benchmark size is MiB, not bytes.
+        assert_eq!(parse_benchmark_size("1").unwrap(), 1024 * 1024);
+        assert_eq!(parse_benchmark_size("10").unwrap(), 10 * 1024 * 1024);
+        assert_eq!(parse_benchmark_size(" 100 ").unwrap(), 100 * 1024 * 1024);
+        // Explicit suffixes keep their 1024-power meaning.
+        assert_eq!(parse_benchmark_size("64K").unwrap(), 64 * 1024);
+        assert_eq!(parse_benchmark_size("4M").unwrap(), 4 * 1024 * 1024);
+        assert_eq!(parse_benchmark_size("1G").unwrap(), 1024 * 1024 * 1024);
+        assert!(parse_benchmark_size("").is_err());
+        assert!(parse_benchmark_size("abc").is_err());
+    }
+
+    #[test]
+    fn test_many_files_config_bare_file_size_is_mib() {
+        // `--file-count 10 --file-size 1` must be ten 1 MiB files, not 1-byte.
+        let mf = resolve_many_files_config(Some(10), "1")
+            .expect("valid config")
+            .expect("workload requested");
+        assert_eq!(mf.file_count, 10);
+        assert_eq!(mf.file_size_bytes, 1024 * 1024);
+    }
+
+    #[test]
     fn test_mount_knobs_default_is_all_none() {
         // The defaulted `MountKnobs` has every field unset; `AeroFuseFs::new`
         // then falls back to the `--cache-ttl` legacy values on Linux. This
@@ -68563,6 +68742,7 @@ mod tests {
                 rustc: "1.75.0".into(),
             },
             level: BenchmarkLevel::Quick,
+            access: "SFTP".into(),
             environment: BenchmarkEnvironment {
                 asn_bucket: None,
                 country_bucket: None,
