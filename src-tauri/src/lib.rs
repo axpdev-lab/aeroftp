@@ -96,6 +96,7 @@ pub mod panic_safe;
 pub mod putty_import;
 pub mod readable_vault;
 pub mod s3cmd_import;
+pub mod sftp_download_tuning;
 pub mod vault_mount;
 pub mod vault_storage_provider;
 pub mod vault_telemetry;
@@ -3565,6 +3566,7 @@ async fn download_files_batch(
             // (no-double-pool invariant); the segments knob only
             // matters on the `ProviderDownloadExecutor` path.
             download_segments: None,
+            sftp_download_preset: None,
         },
     );
 
@@ -3799,6 +3801,7 @@ async fn upload_files_batch(
             // (no-double-pool invariant); the segments knob only
             // matters on the `ProviderDownloadExecutor` path.
             download_segments: None,
+            sftp_download_preset: None,
         },
     );
 
@@ -4330,6 +4333,7 @@ async fn download_folder(
             // (no-double-pool invariant); the segments knob only
             // matters on the `ProviderDownloadExecutor` path.
             download_segments: None,
+            sftp_download_preset: None,
         },
     );
     info!(
@@ -4866,6 +4870,7 @@ async fn upload_folder(
             // (no-double-pool invariant); the segments knob only
             // matters on the `ProviderDownloadExecutor` path.
             download_segments: None,
+            sftp_download_preset: None,
         },
     );
     info!(

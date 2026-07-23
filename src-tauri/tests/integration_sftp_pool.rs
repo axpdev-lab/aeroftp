@@ -438,6 +438,7 @@ async fn pd_cli_conv_b_shared_executor_download_is_byte_identical() {
                 retry_count: None,
                 timeout_seconds: None,
                 download_segments: None,
+                sftp_download_preset: None,
             },
             &capabilities,
         );
@@ -623,6 +624,7 @@ async fn pd_cli_conv_c_shared_executor_upload_is_byte_identical() {
                 retry_count: None,
                 timeout_seconds: None,
                 download_segments: None,
+                sftp_download_preset: None,
             },
             &capabilities,
         );
@@ -867,6 +869,7 @@ async fn pd_cli_conv_d_sync_transfer_phase_is_byte_identical() {
                     retry_count: None,
                     timeout_seconds: None,
                     download_segments: None,
+                    sftp_download_preset: None,
                 },
                 &capabilities,
             );
@@ -950,6 +953,7 @@ async fn pd_cli_conv_d_sync_transfer_phase_is_byte_identical() {
                     retry_count: None,
                     timeout_seconds: None,
                     download_segments: None,
+                    sftp_download_preset: None,
                 },
                 &capabilities,
             );

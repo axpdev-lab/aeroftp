@@ -77,6 +77,7 @@ use ftp_client_gui_lib::providers::{
     FileVersion, ProviderConfig, ProviderError, ProviderFactory, ProviderType, RemoteEntry,
     ShareLinkOptions, StorageProvider, TrashEntry, MAX_DOWNLOAD_TO_BYTES,
 };
+use ftp_client_gui_lib::sftp_download_tuning::SftpDownloadPreset;
 use ftp_client_gui_lib::user_partitions;
 use ftp_client_gui_lib::util::shutdown_signal;
 use futures_util::StreamExt;
@@ -400,6 +401,23 @@ struct Cli {
         env = "AEROFTP_MULTI_THREAD_CUTOFF"
     )]
     multi_thread_cutoff: String,
+
+    /// SFTP single-file download tuning preset. Presets configure independent
+    /// SSH connections, read-ahead, and the multi-connection cutoff together.
+    /// `efficient` matches the GUI default. The option is ignored for non-SFTP
+    /// providers.
+    #[arg(long, global = true)]
+    sftp_download_preset: Option<SftpDownloadPreset>,
+
+    /// Explicit SFTP read-ahead window. Overrides `--sftp-download-preset`.
+    /// Range 2-1024. When neither CLI option is supplied, the legacy
+    /// `AEROFTP_SFTP_READAHEAD` provider fallback remains active.
+    #[arg(
+        long,
+        global = true,
+        value_parser = parse_cli_sftp_readahead
+    )]
+    sftp_readahead: Option<usize>,
 
     /// Default mtime when backend returns None (ISO 8601 or "now")
     #[arg(long, global = true)]
@@ -6026,6 +6044,8 @@ fn first_command_index(args: &[String]) -> Option<usize> {
                 | "--dump"
                 | "--multi-thread-streams"
                 | "--multi-thread-cutoff"
+                | "--sftp-download-preset"
+                | "--sftp-readahead"
                 | "--default-time"
                 | "--transfer-engine"
                 | "--order-by"
@@ -6057,6 +6077,89 @@ fn first_command_index(args: &[String]) -> Option<usize> {
         }
     }
     None
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct CliSftpDownloadTuning {
+    preset: Option<SftpDownloadPreset>,
+    connections: usize,
+    readahead: Option<usize>,
+    readahead_is_explicit: bool,
+    cutoff: u64,
+}
+
+fn parse_cli_sftp_readahead(raw: &str) -> Result<usize, String> {
+    let window = raw
+        .parse::<usize>()
+        .map_err(|_| "SFTP read-ahead must be an integer from 2 to 1024".to_string())?;
+    if (2..=1024).contains(&window) {
+        Ok(window)
+    } else {
+        Err("SFTP read-ahead must be from 2 to 1024".to_string())
+    }
+}
+
+fn format_cli_sftp_download_tuning(tuning: CliSftpDownloadTuning) -> String {
+    let readahead = if tuning.readahead_is_explicit {
+        tuning
+            .readahead
+            .map(|window| window.to_string())
+            .unwrap_or_else(|| "disabled".to_string())
+    } else {
+        "legacy-env".to_string()
+    };
+    format!(
+        "SFTP download tuning: preset={}, connections={}, readahead={}, cutoff={}",
+        tuning
+            .preset
+            .map(|preset| preset.as_str())
+            .unwrap_or("none"),
+        tuning.connections,
+        readahead,
+        format_size(tuning.cutoff)
+    )
+}
+
+fn resolve_cli_sftp_download_tuning(cli: &Cli, is_sftp: bool) -> Option<CliSftpDownloadTuning> {
+    if !is_sftp {
+        return None;
+    }
+
+    let preset = cli.sftp_download_preset;
+    let resolved_preset = preset.map(SftpDownloadPreset::resolve);
+    let has_sftp_override =
+        preset.is_some() || cli.sftp_readahead.is_some() || cli.sftp_concurrency > 0;
+    if !has_sftp_override {
+        return None;
+    }
+
+    let connections = if cli.sftp_concurrency > 0 {
+        cli.sftp_concurrency.clamp(1, 16)
+    } else if let Some(resolved) = resolved_preset {
+        resolved.connections
+    } else {
+        cli.multi_thread_streams.clamp(1, 16)
+    };
+    let (readahead, readahead_is_explicit) = if let Some(window) = cli.sftp_readahead {
+        (Some(window), true)
+    } else if let Some(resolved) = resolved_preset {
+        (resolved.readahead_window, true)
+    } else {
+        (None, false)
+    };
+    let cutoff = resolved_preset
+        .map(|resolved| resolved.multi_connection_cutoff)
+        .unwrap_or_else(|| {
+            parse_size_filter(&cli.multi_thread_cutoff).unwrap_or(250 * 1024 * 1024)
+        });
+
+    Some(CliSftpDownloadTuning {
+        preset,
+        connections,
+        readahead,
+        readahead_is_explicit,
+        cutoff,
+    })
 }
 
 fn expand_aliases(args: &[String], config: &CliConfigFile) -> Result<Vec<String>, String> {
@@ -9013,6 +9116,7 @@ async fn run_shared_provider_download_batch(
             // CLI segmented downloads use the dedicated `pget` path, not
             // the GUI provider executor, so the executor stays single-stream.
             download_segments: None,
+            sftp_download_preset: None,
         },
     )
     .await;
@@ -9233,6 +9337,7 @@ async fn run_shared_provider_upload_batch(
             // CLI segmented downloads use the dedicated `pget` path, not
             // the GUI provider executor, so the executor stays single-stream.
             download_segments: None,
+            sftp_download_preset: None,
         },
     )
     .await;
@@ -15786,13 +15891,18 @@ async fn run_cli_tui_worker(
             }
             WorkerCommand::DiscardPartial { local_path } => {
                 // A transfer was dropped from the queue: remove its resumable
-                // `.aerotmp` leftover so a cleared cancel leaves no orphan. The
+                // download sidecars so a cleared cancel leaves no orphan. The
                 // final file (if the transfer completed) is never touched. Silent
                 // best-effort: the UI already removed the row.
                 let temp = ftp_client_gui_lib::providers::multi_thread::aerotmp_path_for(
                     std::path::Path::new(&local_path),
                 );
                 let _ = tokio::fs::remove_file(&temp).await;
+                let readahead_temp =
+                    ftp_client_gui_lib::providers::atomic_write::readahead_temp_path_for(
+                        std::path::Path::new(&local_path),
+                    );
+                let _ = tokio::fs::remove_file(&readahead_temp).await;
             }
             // Phase 3: real local filesystem listing/stat for dual-pane.
             WorkerCommand::LocalList { path } => {
@@ -26215,33 +26325,34 @@ async fn create_and_connect_with(
     // N reads on one channel) but at the provider trait level both map
     // to `set_multi_thread_download(streams, cutoff)`. Documented in
     // the flag help so rclone users know what they are getting.
-    let base_mt_streams = cli.multi_thread_streams.clamp(1, 16);
-    let effective_mt_streams = if cli.sftp_concurrency > 0
-        && provider.provider_type() == ftp_client_gui_lib::providers::ProviderType::Sftp
-    {
-        cli.sftp_concurrency.clamp(1, 16)
-    } else {
-        base_mt_streams
-    };
-    if effective_mt_streams > 1 {
-        let mt_cutoff = match parse_size_filter(&cli.multi_thread_cutoff) {
-            Ok(v) => v,
-            Err(e) => {
-                if cli.verbose > 0 {
-                    eprintln!(
-                        "Warning: invalid --multi-thread-cutoff '{}': {} (using 250M)",
-                        cli.multi_thread_cutoff, e
-                    );
+    let is_sftp = provider.provider_type() == ProviderType::Sftp;
+    let sftp_tuning = resolve_cli_sftp_download_tuning(cli, is_sftp);
+    let effective_mt_streams = sftp_tuning
+        .map(|tuning| tuning.connections)
+        .unwrap_or_else(|| cli.multi_thread_streams.clamp(1, 16));
+    if effective_mt_streams > 1 || sftp_tuning.is_some_and(|tuning| tuning.preset.is_some()) {
+        let mt_cutoff = if let Some(tuning) = sftp_tuning {
+            tuning.cutoff
+        } else {
+            match parse_size_filter(&cli.multi_thread_cutoff) {
+                Ok(v) => v,
+                Err(e) => {
+                    if cli.verbose > 0 {
+                        eprintln!(
+                            "Warning: invalid --multi-thread-cutoff '{}': {} (using 250M)",
+                            cli.multi_thread_cutoff, e
+                        );
+                    }
+                    250 * 1024 * 1024
                 }
-                250 * 1024 * 1024
             }
         };
         provider.set_multi_thread_download(effective_mt_streams, mt_cutoff);
         if cli.verbose > 0 {
-            let knob = if cli.sftp_concurrency > 0
-                && provider.provider_type() == ftp_client_gui_lib::providers::ProviderType::Sftp
-            {
+            let knob = if is_sftp && cli.sftp_concurrency > 0 {
                 "--sftp-concurrency"
+            } else if is_sftp && cli.sftp_download_preset.is_some() {
+                "--sftp-download-preset"
             } else {
                 "--multi-thread-streams"
             };
@@ -26251,6 +26362,14 @@ async fn create_and_connect_with(
                 effective_mt_streams,
                 format_size(mt_cutoff)
             );
+        }
+    }
+    if let Some(tuning) = sftp_tuning {
+        if tuning.readahead_is_explicit {
+            provider.set_sftp_readahead(tuning.readahead);
+        }
+        if cli.verbose > 0 {
+            eprintln!("{}", format_cli_sftp_download_tuning(tuning));
         }
     }
 
@@ -52172,7 +52291,7 @@ fn should_exclude_watch_path(path: &std::path::Path) -> bool {
     if name.starts_with('~')
         || name.starts_with(".#")
         || name.ends_with('~')
-        || name.ends_with(".aerotmp")
+        || ftp_client_gui_lib::providers::atomic_write::is_download_temp_path(name)
     {
         return true;
     }
@@ -65818,6 +65937,8 @@ mod tests {
             buffer_size: None,
             multi_thread_streams: 1,
             multi_thread_cutoff: "250M".to_string(),
+            sftp_download_preset: None,
+            sftp_readahead: None,
             default_time: None,
             fast_list: false,
             inplace: false,
@@ -65889,6 +66010,98 @@ mod tests {
             },
             ..test_cli()
         }
+    }
+
+    #[test]
+    fn sftp_download_flags_parse_and_reject_out_of_range_readahead() {
+        on_big_stack(|| {
+            let cli = Cli::try_parse_from([
+                "aeroftp",
+                "--sftp-download-preset",
+                "maximum-tested",
+                "--sftp-readahead",
+                "32",
+                "profiles",
+            ])
+            .expect("valid SFTP tuning flags");
+            assert_eq!(
+                cli.sftp_download_preset,
+                Some(SftpDownloadPreset::MaximumTested)
+            );
+            assert_eq!(cli.sftp_readahead, Some(32));
+
+            for invalid in ["1", "1025", "not-a-number"] {
+                assert!(
+                    Cli::try_parse_from(["aeroftp", "--sftp-readahead", invalid, "profiles"])
+                        .is_err(),
+                    "{invalid} must be rejected"
+                );
+            }
+        });
+    }
+
+    #[test]
+    fn sftp_presets_resolve_all_five_audited_mappings() {
+        let expected = [
+            (SftpDownloadPreset::Compatibility, 1, None),
+            (SftpDownloadPreset::Efficient, 1, Some(16)),
+            (SftpDownloadPreset::Balanced, 4, Some(16)),
+            (SftpDownloadPreset::Fast, 8, Some(16)),
+            (SftpDownloadPreset::MaximumTested, 12, Some(16)),
+        ];
+        for (preset, connections, readahead) in expected {
+            let mut cli = test_cli();
+            cli.sftp_download_preset = Some(preset);
+            let tuning = resolve_cli_sftp_download_tuning(&cli, true).unwrap();
+            assert_eq!(tuning.connections, connections);
+            assert_eq!(tuning.readahead, readahead);
+            assert!(tuning.readahead_is_explicit);
+            assert_eq!(
+                tuning.cutoff,
+                ftp_client_gui_lib::sftp_download_tuning::SFTP_PRESET_MULTI_CONNECTION_CUTOFF
+            );
+        }
+    }
+
+    #[test]
+    fn explicit_sftp_flags_have_locked_precedence_and_are_sftp_only() {
+        let mut cli = test_cli();
+        cli.multi_thread_streams = 3;
+        cli.sftp_download_preset = Some(SftpDownloadPreset::Balanced);
+        cli.sftp_concurrency = 9;
+        cli.sftp_readahead = Some(64);
+
+        let tuning = resolve_cli_sftp_download_tuning(&cli, true).unwrap();
+        assert_eq!(tuning.connections, 9);
+        assert_eq!(tuning.readahead, Some(64));
+        assert_eq!(tuning.preset, Some(SftpDownloadPreset::Balanced));
+        assert_eq!(resolve_cli_sftp_download_tuning(&cli, false), None);
+    }
+
+    #[test]
+    fn absent_sftp_cli_flags_preserve_provider_legacy_environment_fallback() {
+        let cli = test_cli();
+        assert_eq!(resolve_cli_sftp_download_tuning(&cli, true), None);
+
+        let mut concurrency_only = test_cli();
+        concurrency_only.sftp_concurrency = 4;
+        let tuning = resolve_cli_sftp_download_tuning(&concurrency_only, true).unwrap();
+        assert!(!tuning.readahead_is_explicit);
+        assert!(format_cli_sftp_download_tuning(tuning).contains("readahead=legacy-env"));
+    }
+
+    #[test]
+    fn verbose_sftp_diagnostic_reports_requested_and_effective_values() {
+        let mut cli = test_cli();
+        cli.sftp_download_preset = Some(SftpDownloadPreset::Fast);
+        cli.sftp_concurrency = 6;
+        cli.sftp_readahead = Some(48);
+        let diagnostic =
+            format_cli_sftp_download_tuning(resolve_cli_sftp_download_tuning(&cli, true).unwrap());
+        assert_eq!(
+            diagnostic,
+            "SFTP download tuning: preset=fast, connections=6, readahead=48, cutoff=250.0 MB"
+        );
     }
 
     #[test]
@@ -67830,6 +68043,9 @@ mod tests {
         assert!(should_exclude_watch_path(std::path::Path::new("/a/file~")));
         assert!(should_exclude_watch_path(std::path::Path::new(
             "/a/file.aerotmp"
+        )));
+        assert!(should_exclude_watch_path(std::path::Path::new(
+            "/a/file.aeroardtmp"
         )));
         assert!(should_exclude_watch_path(std::path::Path::new(
             "/a/.file.swp"

@@ -25,6 +25,7 @@ use crate::providers::{
     RemoteEntry, ShareLinkCapabilities, ShareLinkOptions, ShareLinkResult, SharePermission,
     StorageInfo, StorageProvider,
 };
+use crate::sftp_download_tuning::SftpDownloadPreset;
 use crate::transfer_dag::{DagObserver, TransferDagBuilder};
 use crate::transfer_domain::{TransferBatchConfig, TransferDirection, TransferEntry};
 use crate::transfer_event_sink::{AppHandleSink, GuiDagObserver, TransferEventSink};
@@ -2782,6 +2783,7 @@ pub async fn provider_download_file(
     modified: Option<String>,
     use_delta: Option<bool>,
     download_segments: Option<u32>,
+    sftp_download_preset: Option<SftpDownloadPreset>,
 ) -> Result<String, String> {
     let mut provider_lock = state.provider.lock().await;
 
@@ -2823,6 +2825,13 @@ pub async fn provider_download_file(
     }
 
     let file_size = provider.size(&remote_path).await.unwrap_or(0);
+    if provider.provider_type() == ProviderType::Sftp {
+        if let Some(preset) = sftp_download_preset {
+            let tuning = preset.resolve();
+            provider.set_multi_thread_download(tuning.connections, tuning.multi_connection_cutoff);
+            provider.set_sftp_readahead(tuning.readahead_window);
+        }
+    }
     let app_progress = app.clone();
     let tid_progress = transfer_id.clone();
     let fname_progress = filename.clone();
@@ -3273,12 +3282,14 @@ pub async fn provider_download_folder(
     retry_count: Option<u32>,
     timeout_seconds: Option<u64>,
     download_segments: Option<u32>,
+    sftp_download_preset: Option<SftpDownloadPreset>,
 ) -> Result<String, String> {
     let transfer_settings = TransferSettingsInput {
         max_concurrent,
         retry_count,
         timeout_seconds,
         download_segments,
+        sftp_download_preset,
     };
 
     // Capture current pwd so we can restore it after folder scan changes it
@@ -3339,6 +3350,7 @@ pub async fn provider_upload_folder(
         // of scope for GTC-1); upload paths keep single-stream legacy
         // behaviour regardless of the requested segments knob.
         download_segments: None,
+        sftp_download_preset: None,
     };
 
     // Capture current pwd so we can restore it after upload
@@ -3474,6 +3486,20 @@ async fn provider_download_folder_inner(
     transfer_settings: TransferSettingsInput,
 ) -> Result<String, String> {
     let file_exists_action = file_exists_action.unwrap_or_default();
+    {
+        let mut provider_lock = state.provider.lock().await;
+        let provider = provider_lock
+            .as_mut()
+            .ok_or("Not connected to any provider")?;
+        if provider.provider_type() == ProviderType::Sftp {
+            if let Some(preset) = transfer_settings.sftp_download_preset {
+                let tuning = preset.resolve();
+                provider
+                    .set_multi_thread_download(tuning.connections, tuning.multi_connection_cutoff);
+                provider.set_sftp_readahead(tuning.readahead_window);
+            }
+        }
+    }
     let (runtime_settings, session_model, capabilities) =
         resolve_provider_transfer_runtime(&state.provider, transfer_settings).await;
 

@@ -54,6 +54,11 @@ import { useStorageThresholds, DEFAULT_THRESHOLDS } from '../hooks/useStorageThr
 import { useMyServersDensity } from '../hooks/useMyServersDensity';
 import { createTauriListener } from '../hooks/useTauriListener';
 import { useDraggableModal } from '../hooks/useDraggableModal';
+import {
+    DEFAULT_SFTP_DOWNLOAD_PRESET,
+    normalizeSftpDownloadPreset,
+    type SftpDownloadPreset,
+} from '../utils/sftpDownloadPresets';
 
 import type { UpdateInfo } from '../hooks/useAutoUpdate';
 import { useI18n, Language, AVAILABLE_LANGUAGES } from '../i18n';
@@ -174,6 +179,7 @@ interface AppSettings {
     retryCount: number;
     /** Intra-file range parallelism per download. 0 = Auto. */
     downloadSegments: number;
+    sftpDownloadPreset: SftpDownloadPreset;
     /** Transfer Queue staging gate. When true (default), transfers launch
      *  immediately on drag/drop or click. When false, transfers are parked
      *  in the queue panel as `staged` for prune-then-start workflows. */
@@ -235,6 +241,7 @@ const defaultSettings: AppSettings = {
     maxConcurrentTransfers: 5,
     retryCount: 3,
     downloadSegments: 0,
+    sftpDownloadPreset: DEFAULT_SFTP_DOWNLOAD_PRESET,
     autoStartTransfers: true,
     fileExistsAction: 'ask',
     preserveTimestamps: true,
@@ -586,6 +593,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                             fontSize: clampAppFontSize(saved.fontSize ?? defaultSettings.fontSize),
                             fontFamily: normalizeAppFontFamily(saved.fontFamily ?? defaultSettings.fontFamily),
                             introHubIconSize: clampIntroHubIconSize(saved.introHubIconSize ?? defaultSettings.introHubIconSize),
+                            sftpDownloadPreset: normalizeSftpDownloadPreset(saved.sftpDownloadPreset),
                         };
                         setSettings(normalizedSettings);
                         // One-way idempotent migration to vault with plaintext cleanup

@@ -5,6 +5,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::sftp_download_tuning::SftpDownloadPreset;
 use crate::sync::RetryPolicy;
 use crate::transfer_dag::{TransferBudget, TransferCapabilities};
 
@@ -37,6 +38,8 @@ pub struct TransferSettingsInput {
     pub timeout_seconds: Option<u64>,
     #[serde(default)]
     pub download_segments: Option<u32>,
+    #[serde(default)]
+    pub sftp_download_preset: Option<SftpDownloadPreset>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -69,6 +72,10 @@ pub struct ResolvedTransferSettings {
     /// session-pool kind at attempt time before honouring this value.
     #[serde(default = "default_download_segments")]
     pub download_segments: u32,
+    /// Explicit SFTP product preset. `None` preserves legacy environment
+    /// fallback and leaves provider tuning untouched.
+    #[serde(default)]
+    pub sftp_download_preset: Option<SftpDownloadPreset>,
 }
 
 fn default_download_segments() -> u32 {
@@ -128,6 +135,7 @@ pub fn resolve_transfer_settings(
             .download_segments
             .unwrap_or(DEFAULT_DOWNLOAD_SEGMENTS)
             .clamp(MIN_DOWNLOAD_SEGMENTS, MAX_DOWNLOAD_SEGMENTS),
+        sftp_download_preset: input.sftp_download_preset,
     }
 }
 
@@ -192,6 +200,7 @@ mod tests {
             retry_count: Some(2),
             timeout_seconds: Some(45),
             download_segments: None,
+            sftp_download_preset: None,
         });
 
         assert_eq!(resolved.requested_max_concurrent, 4);
@@ -209,6 +218,7 @@ mod tests {
                 retry_count: Some(2),
                 timeout_seconds: Some(45),
                 download_segments: None,
+                sftp_download_preset: None,
             },
             &TransferCapabilities {
                 file_parallel: crate::transfer_dag::Capability::Supported,
@@ -231,6 +241,7 @@ mod tests {
                 retry_count: None,
                 timeout_seconds: None,
                 download_segments: None,
+                sftp_download_preset: None,
             },
             &TransferCapabilities {
                 max_file_slots: Some(3),
@@ -280,6 +291,26 @@ mod tests {
     }
 
     #[test]
+    fn explicit_sftp_preset_survives_capability_resolution() {
+        let resolved = resolve_transfer_settings_for_capabilities(
+            TransferSettingsInput {
+                sftp_download_preset: Some(SftpDownloadPreset::MaximumTested),
+                ..TransferSettingsInput::default()
+            },
+            &TransferCapabilities::default(),
+        );
+
+        assert_eq!(
+            resolved.sftp_download_preset,
+            Some(SftpDownloadPreset::MaximumTested)
+        );
+        assert_eq!(
+            resolved.sftp_download_preset.unwrap().resolve().connections,
+            12
+        );
+    }
+
+    #[test]
     fn capability_settings_clamp_to_dag_file_slots() {
         let resolved = resolve_transfer_settings_for_capabilities(
             TransferSettingsInput {
@@ -287,6 +318,7 @@ mod tests {
                 retry_count: None,
                 timeout_seconds: None,
                 download_segments: None,
+                sftp_download_preset: None,
             },
             &TransferCapabilities {
                 max_file_slots: Some(2),
@@ -306,6 +338,7 @@ mod tests {
                 retry_count: None,
                 timeout_seconds: None,
                 download_segments: None,
+                sftp_download_preset: None,
             },
             &TransferCapabilities {
                 max_file_slots: Some(2),
