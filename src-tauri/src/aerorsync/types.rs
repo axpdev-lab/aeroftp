@@ -137,10 +137,32 @@ pub enum AerorsyncErrorKind {
     Internal,
 }
 
+/// Machine-readable sub-classification carried by transport-produced
+/// errors alongside [`AerorsyncErrorKind::TransportFailure`].
+///
+/// Y-RSC.2: the driver used to recognise a clean remote close by
+/// substring-matching the error detail, so a transport rewording could
+/// silently change protocol behaviour. Transports now stamp the class at
+/// construction time and the driver matches on it structurally; the
+/// human-readable `detail` text is free to change.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum TransportErrorClass {
+    /// The remote closed the byte stream cleanly: EOF with exit status 0
+    /// on the libssh2 leg, or a scripted inbound exhaustion on the mock
+    /// transports. Carries no indication of data loss by itself.
+    CleanEof,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AerorsyncError {
     pub kind: AerorsyncErrorKind,
     pub detail: String,
+    /// Structured transport sub-classification (Y-RSC.2). `None` for all
+    /// non-transport errors and for transport failures with no special
+    /// class. Serde-defaulted so payloads serialized before this field
+    /// existed still deserialize.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transport_class: Option<TransportErrorClass>,
 }
 
 impl AerorsyncError {
@@ -148,6 +170,7 @@ impl AerorsyncError {
         Self {
             kind,
             detail: detail.into(),
+            transport_class: None,
         }
     }
 
@@ -165,6 +188,32 @@ impl AerorsyncError {
 
     pub fn transport(detail: impl Into<String>) -> Self {
         Self::new(AerorsyncErrorKind::TransportFailure, detail)
+    }
+
+    /// Transport failure for a clean remote close (EOF, exit status 0).
+    ///
+    /// Same `kind` and `Display` output as [`AerorsyncError::transport`];
+    /// only the machine-readable [`TransportErrorClass::CleanEof`] marker
+    /// differs, so `kind`-based policies downstream (fallback matrix,
+    /// teardown tolerance) are unaffected. The download driver matches on
+    /// [`AerorsyncError::is_clean_transport_eof`] to decide the
+    /// identical-baseline no-op path.
+    pub fn transport_clean_eof(detail: impl Into<String>) -> Self {
+        Self {
+            transport_class: Some(TransportErrorClass::CleanEof),
+            ..Self::new(AerorsyncErrorKind::TransportFailure, detail)
+        }
+    }
+
+    /// True when this error is a transport-level clean EOF stamped by the
+    /// producing transport via [`AerorsyncError::transport_clean_eof`].
+    ///
+    /// Classification is purely structural: the `detail` wording plays no
+    /// role, so transports can reword messages without changing protocol
+    /// behaviour.
+    pub fn is_clean_transport_eof(&self) -> bool {
+        self.kind == AerorsyncErrorKind::TransportFailure
+            && self.transport_class == Some(TransportErrorClass::CleanEof)
     }
 
     pub fn remote(code: u16, message: impl Into<String>) -> Self {
@@ -325,5 +374,61 @@ mod tests {
         };
         let err = AerorsyncError::from_oob_event(&ev);
         assert_eq!(err.kind, AerorsyncErrorKind::Internal);
+    }
+
+    #[test]
+    fn transport_clean_eof_sets_structured_class_and_keeps_display() {
+        // Y-RSC.2: the clean-EOF constructor differs from the plain one
+        // only by the machine-readable class; kind and Display stay
+        // byte-identical so kind-based policies and log texts are
+        // unchanged.
+        let clean = AerorsyncError::transport_clean_eof("remote closed (exit 0): bye");
+        let plain = AerorsyncError::transport("remote closed (exit 0): bye");
+        assert_eq!(clean.kind, AerorsyncErrorKind::TransportFailure);
+        assert!(clean.is_clean_transport_eof());
+        assert_eq!(clean.transport_class, Some(TransportErrorClass::CleanEof));
+        assert_eq!(clean.to_string(), plain.to_string());
+    }
+
+    #[test]
+    fn plain_transport_error_with_clean_eof_wording_is_not_classified() {
+        // The historical magic substrings must carry no weight: only the
+        // structural marker classifies. This pins "structure, not text".
+        for detail in [
+            "read_bytes: remote closed (exit 0): ",
+            "mock raw inbound exhausted: simulated remote close",
+        ] {
+            let err = AerorsyncError::transport(detail);
+            assert!(
+                !err.is_clean_transport_eof(),
+                "wording alone must never classify: {detail}"
+            );
+        }
+    }
+
+    #[test]
+    fn non_transport_kinds_never_classify_as_clean_eof() {
+        assert!(!AerorsyncError::cancelled("stop").is_clean_transport_eof());
+        assert!(!AerorsyncError::invalid_frame("bad").is_clean_transport_eof());
+    }
+
+    #[test]
+    fn error_without_transport_class_field_still_deserializes() {
+        // Backward compatibility: payloads serialized before Y-RSC.2 lack
+        // the `transport_class` field and must decode to `None`.
+        let json = r#"{"kind":"TransportFailure","detail":"x"}"#;
+        let err: AerorsyncError = serde_json::from_str(json).expect("legacy payload decodes");
+        assert_eq!(err.kind, AerorsyncErrorKind::TransportFailure);
+        assert_eq!(err.transport_class, None);
+        assert!(!err.is_clean_transport_eof());
+    }
+
+    #[test]
+    fn clean_eof_class_survives_serde_round_trip() {
+        let err = AerorsyncError::transport_clean_eof("peer done");
+        let json = serde_json::to_string(&err).expect("serialize");
+        let back: AerorsyncError = serde_json::from_str(&json).expect("deserialize");
+        assert!(back.is_clean_transport_eof());
+        assert_eq!(back.detail, "peer done");
     }
 }

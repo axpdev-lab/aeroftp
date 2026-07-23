@@ -55,6 +55,12 @@ pub struct MockTransportConfig {
     /// A2.1: optional raw-stream behaviour. `None` means `open_raw_stream`
     /// returns `AerorsyncError::transport("raw stream not configured")`.
     pub raw_stream_behavior: Option<OpenRawStreamBehavior>,
+    /// Y-RSC.2: optional override for the detail text of the clean-EOF
+    /// error `MockRawStream` returns once its inbound buffer is
+    /// exhausted. `None` keeps the canonical message. Driver tests
+    /// reword this freely to prove that clean-EOF classification tracks
+    /// the structured error class, never the wording.
+    pub raw_exhausted_detail: Option<String>,
 }
 
 /// How the mock should behave when `open_raw_stream` is called. The
@@ -84,6 +90,7 @@ impl MockTransportConfig {
             },
             read_exhausted: ReadExhaustedBehavior::Error,
             raw_stream_behavior: None,
+            raw_exhausted_detail: None,
         }
     }
 
@@ -101,6 +108,15 @@ impl MockTransportConfig {
     /// byte buffer. Use for `open_raw_stream` happy-path tests.
     pub fn with_raw_inbound(mut self, inbound: Vec<u8>) -> Self {
         self.raw_stream_behavior = Some(OpenRawStreamBehavior::Success { inbound });
+        self
+    }
+
+    /// Y-RSC.2 helper: reword the clean-EOF detail the raw stream returns
+    /// on inbound exhaustion. The structured
+    /// [`crate::aerorsync::types::TransportErrorClass::CleanEof`] marker
+    /// is attached either way; only the human-readable text changes.
+    pub fn with_raw_exhausted_detail(mut self, detail: impl Into<String>) -> Self {
+        self.raw_exhausted_detail = Some(detail.into());
         self
     }
 }
@@ -146,7 +162,9 @@ impl BidirectionalByteStream for MockStream {
             return Ok(frame);
         }
         match self.read_exhausted {
-            ReadExhaustedBehavior::Error => Err(AerorsyncError::transport(
+            // Y-RSC.2: a scripted exhaustion simulates a clean remote
+            // close, so it carries the structured clean-EOF class.
+            ReadExhaustedBehavior::Error => Err(AerorsyncError::transport_clean_eof(
                 "mock inbound exhausted: simulated remote close",
             )),
             ReadExhaustedBehavior::EmptyFrame => Ok(Vec::new()),
@@ -278,6 +296,10 @@ pub struct MockRawStream {
     /// Optional flag consulted on each read/write. When it flips to
     /// `true` the operation returns `AerorsyncError::Cancelled`.
     cancel_flag: Option<Arc<AtomicBool>>,
+    /// Y-RSC.2: optional override for the clean-EOF detail returned once
+    /// `inbound` is exhausted. See
+    /// [`MockTransportConfig::with_raw_exhausted_detail`].
+    exhausted_detail: Option<String>,
 }
 
 impl MockRawStream {
@@ -290,6 +312,7 @@ impl MockRawStream {
             outbound: outbound.clone(),
             shutdown_called: shutdown.clone(),
             cancel_flag: None,
+            exhausted_detail: None,
         };
         (stream, outbound, shutdown)
     }
@@ -318,9 +341,14 @@ impl RawByteStream for MockRawStream {
     async fn read_bytes(&mut self, max: usize) -> Result<Vec<u8>, AerorsyncError> {
         self.check_cancel("read_bytes")?;
         if self.inbound_cursor >= self.inbound.len() {
-            return Err(AerorsyncError::transport(
-                "mock raw inbound exhausted: simulated remote close",
-            ));
+            // Y-RSC.2: exhaustion simulates a clean remote close. The
+            // classification is the structured class; the detail text is
+            // reword-able so driver tests can pin wording invariance.
+            let detail = self
+                .exhausted_detail
+                .clone()
+                .unwrap_or_else(|| "mock raw inbound exhausted: simulated remote close".into());
+            return Err(AerorsyncError::transport_clean_eof(detail));
         }
         let available = self.inbound.len() - self.inbound_cursor;
         let take = max.min(available);
@@ -376,7 +404,8 @@ impl RawRemoteShellTransport for MockRemoteShellTransport {
         }
         match &self.config.raw_stream_behavior {
             Some(OpenRawStreamBehavior::Success { inbound }) => {
-                let (stream, outbound, shutdown) = MockRawStream::new(inbound.clone());
+                let (mut stream, outbound, shutdown) = MockRawStream::new(inbound.clone());
+                stream.exhausted_detail = self.config.raw_exhausted_detail.clone();
                 *self.last_raw_outbound.lock().unwrap() = Some(outbound);
                 *self.last_raw_shutdown.lock().unwrap() = Some(shutdown);
                 Ok(stream)

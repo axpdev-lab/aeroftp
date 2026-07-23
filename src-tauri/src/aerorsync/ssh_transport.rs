@@ -187,6 +187,11 @@ struct ActiveSession {
     tcp: Arc<TcpStream>,
 }
 
+/// Cloned control handles of the active session (worker command sender +
+/// shared TCP stream for the forced fd shutdown), or `None` when no
+/// session is in flight.
+type ActiveSessionSnapshot = Option<(mpsc::Sender<WorkerCommand>, Arc<TcpStream>)>;
+
 impl SshRemoteShellTransport {
     pub fn new(config: SshTransportConfig) -> Self {
         Self {
@@ -214,6 +219,37 @@ impl SshRemoteShellTransport {
         if let Ok(mut guard) = self.active.lock() {
             *guard = None;
         }
+    }
+
+    /// Store the freshly opened session in the `active` slot.
+    ///
+    /// Y-RSC.2: a poisoned mutex means another thread panicked while
+    /// holding this lock. Propagate a typed transport error instead of
+    /// panicking in the caller's async context.
+    fn store_active(&self, session: ActiveSession) -> Result<(), AerorsyncError> {
+        let mut guard = self.active.lock().map_err(|_| {
+            AerorsyncError::transport(
+                "ssh transport session mutex poisoned while storing the active session",
+            )
+        })?;
+        *guard = Some(session);
+        Ok(())
+    }
+
+    /// Snapshot the worker sender + TCP handle of the active session, if
+    /// any, without holding the lock across the subsequent I/O.
+    ///
+    /// Y-RSC.2: mutex poison surfaces as a typed transport error. The
+    /// caller (`cancel`) has already stored the cancel flag by then, so
+    /// cooperative cancellation still engages even when the forced fd
+    /// shutdown cannot be reached.
+    fn snapshot_active(&self) -> Result<ActiveSessionSnapshot, AerorsyncError> {
+        let guard = self.active.lock().map_err(|_| {
+            AerorsyncError::transport(
+                "ssh transport session mutex poisoned while snapshotting the active session",
+            )
+        })?;
+        Ok(guard.as_ref().map(|s| (s.sender.clone(), s.tcp.clone())))
     }
 }
 
@@ -340,10 +376,7 @@ impl RemoteShellTransport for SshRemoteShellTransport {
         .await
         .map_err(|e| AerorsyncError::transport(format!("spawn worker join: {e}")))??;
 
-        {
-            let mut guard = self.active.lock().unwrap();
-            *guard = Some(ActiveSession { sender, tcp });
-        }
+        self.store_active(ActiveSession { sender, tcp })?;
 
         Ok(SshProtoStream {
             sender: stream_sender,
@@ -352,11 +385,11 @@ impl RemoteShellTransport for SshRemoteShellTransport {
     }
 
     async fn cancel(&self) -> Result<(), AerorsyncError> {
+        // Flag first: even if the session snapshot below fails on a
+        // poisoned mutex, every in-flight and future operation observes
+        // the cooperative cancel.
         self.cancel_flag.store(true, Ordering::SeqCst);
-        let snapshot = {
-            let guard = self.active.lock().unwrap();
-            guard.as_ref().map(|s| (s.sender.clone(), s.tcp.clone()))
-        };
+        let snapshot = self.snapshot_active()?;
         if let Some((sender, tcp)) = snapshot {
             let _ = sender.send(WorkerCommand::Terminate);
             // Close the underlying fd so any libssh2 read blocked inside the
@@ -590,10 +623,26 @@ fn sha256_hex_of(bytes: &[u8]) -> String {
 /// Raw-stream worker command. Parallel to `WorkerCommand` but without the
 /// length-prefix on the wire.
 enum RawWorkerCommand {
-    Write(Vec<u8>, oneshot::Sender<Result<(), String>>),
-    Read(usize, oneshot::Sender<Result<Vec<u8>, String>>),
-    Shutdown(oneshot::Sender<Result<(), String>>),
+    Write(Vec<u8>, oneshot::Sender<Result<(), RawWorkerError>>),
+    Read(usize, oneshot::Sender<Result<Vec<u8>, RawWorkerError>>),
+    Shutdown(oneshot::Sender<Result<(), RawWorkerError>>),
     Terminate,
+}
+
+/// Error payload the raw worker thread sends back over its reply
+/// channels.
+///
+/// Y-RSC.2: the worker knows structurally whether an EOF was a clean
+/// remote close (exit status 0), so it stamps that classification here
+/// instead of encoding it in the message text. The async side maps it to
+/// [`AerorsyncError::transport_clean_eof`] without ever inspecting the
+/// wording.
+enum RawWorkerError {
+    /// The remote closed the channel cleanly (exit status 0) while a
+    /// read was pending.
+    CleanEof(String),
+    /// Any other worker-side failure.
+    Other(String),
 }
 
 pub struct SshRawStream {
@@ -612,11 +661,20 @@ impl SshRawStream {
         }
     }
 
-    fn map_worker_error(&self, err: String) -> AerorsyncError {
+    fn map_worker_error(&self, err: RawWorkerError) -> AerorsyncError {
+        let (clean_eof, detail) = match err {
+            RawWorkerError::CleanEof(detail) => (true, detail),
+            RawWorkerError::Other(detail) => (false, detail),
+        };
+        // Cancel takes precedence: a worker failure observed after the
+        // cancel flag flipped is reported as the cancellation the caller
+        // asked for, exactly as before Y-RSC.2.
         if self.cancel_flag.load(Ordering::SeqCst) {
-            AerorsyncError::cancelled(err)
+            AerorsyncError::cancelled(detail)
+        } else if clean_eof {
+            AerorsyncError::transport_clean_eof(detail)
         } else {
-            AerorsyncError::transport(err)
+            AerorsyncError::transport(detail)
         }
     }
 }
@@ -739,7 +797,7 @@ fn spawn_raw_worker(
                     let result = channel
                         .write_all(&bytes)
                         .and_then(|_| channel.flush())
-                        .map_err(|e| format!("write_bytes: {e}"));
+                        .map_err(|e| RawWorkerError::Other(format!("write_bytes: {e}")));
                     let _ = reply.send(result);
                 }
                 Ok(RawWorkerCommand::Read(max, reply)) => {
@@ -755,14 +813,21 @@ fn spawn_raw_worker(
                                 let _ = channel.wait_close();
                                 let status = channel.exit_status().unwrap_or(-1);
                                 let stderr = String::from_utf8_lossy(&stderr);
-                                Err(format!(
-                                    "read_bytes: remote closed (exit {status}): {stderr}"
-                                ))
+                                let message =
+                                    format!("read_bytes: remote closed (exit {status}): {stderr}");
+                                // Y-RSC.2: exit status 0 is a clean close;
+                                // classify structurally instead of leaving
+                                // the driver to parse the message text.
+                                Err(if status == 0 {
+                                    RawWorkerError::CleanEof(message)
+                                } else {
+                                    RawWorkerError::Other(message)
+                                })
                             } else {
                                 Ok(buf)
                             }
                         }
-                        Err(e) => Err(format!("read_bytes: {e}")),
+                        Err(e) => Err(RawWorkerError::Other(format!("read_bytes: {e}"))),
                     };
                     let _ = reply.send(result);
                     if eof {
@@ -775,7 +840,8 @@ fn spawn_raw_worker(
                         .map_err(|e| format!("send_eof: {e}"))
                         .and_then(|_| channel.wait_eof().map_err(|e| format!("wait_eof: {e}")))
                         .and_then(|_| channel.close().map_err(|e| format!("close: {e}")))
-                        .and_then(|_| channel.wait_close().map_err(|e| format!("wait_close: {e}")));
+                        .and_then(|_| channel.wait_close().map_err(|e| format!("wait_close: {e}")))
+                        .map_err(RawWorkerError::Other);
                     let _ = reply.send(result.map(|_| ()));
                     break;
                 }
@@ -1001,5 +1067,141 @@ mod tests {
             elapsed < Duration::from_secs(2),
             "shutdown did not unblock the read in time: {elapsed:?}"
         );
+    }
+
+    // ---- Y-RSC.2: structured clean-EOF classification --------------------
+
+    fn raw_stream_with_flag(cancelled: bool) -> super::SshRawStream {
+        use std::sync::atomic::AtomicBool;
+        let (sender, _receiver) = std::sync::mpsc::channel::<super::RawWorkerCommand>();
+        // The receiver is dropped: these tests only exercise the error
+        // mapping, never a live worker round-trip.
+        super::SshRawStream {
+            sender,
+            cancel_flag: Arc::new(AtomicBool::new(cancelled)),
+        }
+    }
+
+    #[test]
+    fn raw_worker_clean_eof_maps_to_structured_clean_transport_eof() {
+        let stream = raw_stream_with_flag(false);
+        let err = stream.map_worker_error(super::RawWorkerError::CleanEof(
+            "read_bytes: remote closed (exit 0): ".to_string(),
+        ));
+        assert!(err.is_clean_transport_eof());
+        assert_eq!(
+            err.kind,
+            crate::aerorsync::types::AerorsyncErrorKind::TransportFailure
+        );
+        assert_eq!(err.detail, "read_bytes: remote closed (exit 0): ");
+    }
+
+    #[test]
+    fn raw_worker_other_error_is_plain_transport_failure() {
+        let stream = raw_stream_with_flag(false);
+        let err = stream.map_worker_error(super::RawWorkerError::Other(
+            "read_bytes: remote closed (exit 12): boom".to_string(),
+        ));
+        assert!(!err.is_clean_transport_eof());
+        assert_eq!(
+            err.kind,
+            crate::aerorsync::types::AerorsyncErrorKind::TransportFailure
+        );
+    }
+
+    #[test]
+    fn raw_worker_error_after_cancel_maps_to_cancelled_even_for_clean_eof() {
+        // Cancel precedence is pre-Y-RSC.2 behaviour: preserve it.
+        let stream = raw_stream_with_flag(true);
+        let err = stream.map_worker_error(super::RawWorkerError::CleanEof(
+            "read_bytes: remote closed (exit 0): ".to_string(),
+        ));
+        assert_eq!(
+            err.kind,
+            crate::aerorsync::types::AerorsyncErrorKind::Cancelled
+        );
+        assert!(!err.is_clean_transport_eof());
+    }
+
+    // ---- Y-RSC.2: typed mutex-poison propagation -------------------------
+
+    fn poisoned_transport() -> super::SshRemoteShellTransport {
+        use super::SshTransportConfig;
+        use std::path::PathBuf;
+        let transport = super::SshRemoteShellTransport::new(SshTransportConfig::localhost_test(
+            PathBuf::from("/dev/null"),
+            1 << 20,
+        ));
+        let active = transport.active.clone();
+        let _ = thread::spawn(move || {
+            let _guard = active.lock().unwrap();
+            panic!("poison the active-session mutex on purpose");
+        })
+        .join();
+        assert!(transport.active.lock().is_err(), "mutex must be poisoned");
+        transport
+    }
+
+    #[tokio::test]
+    async fn cancel_on_poisoned_mutex_returns_typed_error_and_still_flags() {
+        use super::RemoteShellTransport;
+        use std::sync::atomic::Ordering;
+
+        let transport = poisoned_transport();
+        let err = transport
+            .cancel()
+            .await
+            .expect_err("poisoned mutex must surface as a typed error, not a panic");
+        assert_eq!(
+            err.kind,
+            crate::aerorsync::types::AerorsyncErrorKind::TransportFailure
+        );
+        assert!(err.detail.contains("poisoned"), "detail: {}", err.detail);
+        // The cooperative cancel must have engaged before the failure.
+        assert!(transport.cancel_flag.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn store_and_snapshot_active_return_typed_error_on_poisoned_mutex() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let tcp = TcpStream::connect(addr).unwrap();
+
+        let transport = poisoned_transport();
+        let (sender, _receiver) = std::sync::mpsc::channel();
+        let store_err = transport
+            .store_active(super::ActiveSession {
+                sender,
+                tcp: Arc::new(tcp),
+            })
+            .expect_err("store_active must not panic on poison");
+        assert_eq!(
+            store_err.kind,
+            crate::aerorsync::types::AerorsyncErrorKind::TransportFailure
+        );
+        assert!(store_err.detail.contains("poisoned"));
+
+        let snapshot_err = transport
+            .snapshot_active()
+            .expect_err("snapshot_active must not panic on poison");
+        assert_eq!(
+            snapshot_err.kind,
+            crate::aerorsync::types::AerorsyncErrorKind::TransportFailure
+        );
+        assert!(snapshot_err.detail.contains("poisoned"));
+    }
+
+    #[test]
+    fn snapshot_active_on_healthy_transport_is_none() {
+        use super::SshTransportConfig;
+        use std::path::PathBuf;
+        let transport = super::SshRemoteShellTransport::new(SshTransportConfig::localhost_test(
+            PathBuf::from("/dev/null"),
+            1 << 20,
+        ));
+        let snapshot = transport
+            .snapshot_active()
+            .expect("healthy mutex snapshots fine");
+        assert!(snapshot.is_none(), "no session was ever stored");
     }
 }

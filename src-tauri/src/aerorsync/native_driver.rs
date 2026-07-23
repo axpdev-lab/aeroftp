@@ -2459,7 +2459,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
                 self.install_download_noop_reconstructed(destination_data);
                 return Ok(());
             }
-            Err(e) if Self::is_download_clean_eof_noop(&e) => {
+            Err(e) if e.is_clean_transport_eof() => {
                 // Server closed before sending any ndx: a no-payload
                 // identical no-op (nothing to reconstruct, keep local).
                 self.download_clean_eof_noop = true;
@@ -2511,8 +2511,9 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
                         .unwrap_or(0);
                     self.report_wire_progress(received, total_hint);
                 }
-                Err(e) if Self::is_download_clean_eof_noop(&e) => {
-                    // A clean "remote closed (exit 0)" terminates a
+                Err(e) if e.is_clean_transport_eof() => {
+                    // A clean transport EOF (structured class stamped by
+                    // the producing transport, Y-RSC.2) terminates a
                     // complete full/delta stream the loop-top decode
                     // could not consume earlier solely because it was
                     // still truncated: decode it now, exactly as the
@@ -2546,14 +2547,6 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
                 Err(e) => return Err(e),
             }
         }
-    }
-
-    fn is_download_clean_eof_noop(err: &AerorsyncError) -> bool {
-        if err.kind != AerorsyncErrorKind::TransportFailure {
-            return false;
-        }
-        err.detail.contains("remote closed (exit 0)")
-            || err.detail.contains("simulated remote close")
     }
 
     fn install_reconstructed_from_wire(
@@ -2634,7 +2627,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
                     .await?;
                 return Ok(());
             }
-            Err(e) if Self::is_download_clean_eof_noop(&e) => {
+            Err(e) if e.is_clean_transport_eof() => {
                 self.download_clean_eof_noop = true;
                 self.install_download_noop_streaming(baseline, writer)
                     .await?;
@@ -2681,8 +2674,9 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
                         .unwrap_or(0);
                     self.report_wire_progress(received, total_hint);
                 }
-                Err(e) if Self::is_download_clean_eof_noop(&e) => {
-                    // A clean "remote closed (exit 0)" terminates a
+                Err(e) if e.is_clean_transport_eof() => {
+                    // A clean transport EOF (structured class stamped by
+                    // the producing transport, Y-RSC.2) terminates a
                     // complete full/delta stream the loop-top decode
                     // could not consume earlier solely because it was
                     // still truncated: decode it now, exactly as the
@@ -6129,6 +6123,67 @@ mod tests {
         assert!(d.session_stats().bytes_sent > 0);
     }
 
+    /// Y-RSC.2 acceptance: the clean-EOF no-op classification must be
+    /// invariant under a full rewording of the transport error text.
+    /// Identical fixture to
+    /// `driver_download_delta_treats_clean_eof_as_noop_and_finishes`, but
+    /// the mock's exhaustion detail shares no substring with the
+    /// historical magic strings ("remote closed (exit 0)" / "simulated
+    /// remote close"). Only the structured `TransportErrorClass::CleanEof`
+    /// marker can classify it; the pre-Y-RSC.2 substring matcher would
+    /// have surfaced a hard transport error here.
+    #[tokio::test]
+    async fn driver_download_clean_eof_noop_is_invariant_to_transport_rewording() {
+        let opts = FileListDecodeOptions {
+            protocol: 31,
+            xfer_flags_as_varint: true,
+            always_checksum: true,
+            csum_len: 16,
+            preserve_uid: true,
+            preserve_gid: true,
+            previous_name: None,
+        };
+        let entry_bytes = encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
+        let term_bytes = encode_file_list_terminator(&opts);
+
+        let mut inbound = canonical_server_preamble_bytes();
+        inbound.extend_from_slice(&mux_frame(MuxTag::Data, &entry_bytes));
+        inbound.extend_from_slice(&mux_frame(MuxTag::Data, &term_bytes));
+
+        let cfg = MockTransportConfig::healthy_upload()
+            .with_raw_inbound(inbound)
+            .with_raw_exhausted_detail("peer finished and went away: wording rotated for Y-RSC.2");
+        let transport = MockRemoteShellTransport::new(cfg);
+        let adapter = MockSigAdapter::with_fixed_signatures(
+            4,
+            vec![
+                make_engine_sig(0, 0xA0, 0x01, 4),
+                make_engine_sig(1, 0xA1, 0x02, 4),
+            ],
+        );
+        let destination_data: Vec<u8> = b"BLK1BLK2".to_vec();
+        let mut d = make_driver(transport);
+        let mut sink = CollectingSink::default();
+
+        d.drive_download_through_delta(
+            RemoteCommandSpec::download("/remote/target.bin"),
+            &destination_data,
+            &adapter,
+            &mut sink,
+        )
+        .await
+        .expect("reworded clean EOF must still be a no-op download");
+
+        assert_eq!(d.reconstructed(), Some(destination_data.as_slice()));
+        assert!(d.received_file_checksum().is_none());
+
+        d.finish_session(&mut sink)
+            .await
+            .expect("reworded clean EOF no-op has no summary tail to drain");
+        assert_eq!(d.phase(), AerorsyncSessionPhase::Complete);
+        assert!(d.received_summary().is_none());
+    }
+
     #[tokio::test]
     async fn driver_upload_delta_flips_committed_on_first_op() {
         // Even an empty delta plan still emits END_FLAG + checksum,
@@ -7895,6 +7950,69 @@ mod tests {
             .expect("streaming clean EOF no-op has no summary tail");
         assert_eq!(d.phase(), AerorsyncSessionPhase::Complete);
         assert!(d.session_stats().bytes_sent > 0);
+    }
+
+    /// Y-RSC.2 acceptance, streaming twin of
+    /// `driver_download_clean_eof_noop_is_invariant_to_transport_rewording`:
+    /// the streaming receive path guards on the same structured class, so
+    /// a reworded transport detail must not change its no-op behaviour.
+    #[tokio::test]
+    async fn driver_download_streaming_clean_eof_noop_is_invariant_to_transport_rewording() {
+        use crate::aerorsync::engine_adapter::MemoryBaseline;
+
+        let opts = FileListDecodeOptions {
+            protocol: 31,
+            xfer_flags_as_varint: true,
+            always_checksum: true,
+            csum_len: 16,
+            preserve_uid: true,
+            preserve_gid: true,
+            previous_name: None,
+        };
+        let entry_bytes = encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
+        let term_bytes = encode_file_list_terminator(&opts);
+
+        let mut inbound = canonical_server_preamble_bytes();
+        inbound.extend_from_slice(&mux_frame(MuxTag::Data, &entry_bytes));
+        inbound.extend_from_slice(&mux_frame(MuxTag::Data, &term_bytes));
+
+        let cfg = MockTransportConfig::healthy_upload()
+            .with_raw_inbound(inbound)
+            .with_raw_exhausted_detail("copesetic teardown, nothing left to stream");
+        let transport = MockRemoteShellTransport::new(cfg);
+        let adapter = MockSigAdapter::with_fixed_signatures(
+            4,
+            vec![
+                make_engine_sig(0, 0xA0, 0x01, 4),
+                make_engine_sig(1, 0xA1, 0x02, 4),
+            ],
+        );
+        let destination_data: Vec<u8> = b"BLK1BLK2".to_vec();
+        let mut baseline = MemoryBaseline::new(destination_data.clone());
+        let (mut writer, captured) = MockAsyncWriter::new();
+        let mut d = make_driver(transport);
+        let mut sink = CollectingSink::default();
+
+        d.drive_download_through_delta_streaming(
+            RemoteCommandSpec::download("/remote/target.bin"),
+            &destination_data,
+            &mut baseline,
+            &mut writer,
+            &adapter,
+            &mut sink,
+        )
+        .await
+        .expect("reworded streaming clean EOF must still be a no-op download");
+
+        let on_writer = captured.lock().expect("captured lock").clone();
+        assert_eq!(on_writer, destination_data);
+        assert!(d.reconstructed().is_none());
+        assert!(d.received_file_checksum().is_none());
+
+        d.finish_session(&mut sink)
+            .await
+            .expect("reworded streaming clean EOF no-op has no summary tail");
+        assert_eq!(d.phase(), AerorsyncSessionPhase::Complete);
     }
 
     /// W2.4 test 2: pin that the driver dispatches `CopyBlock(idx)`
