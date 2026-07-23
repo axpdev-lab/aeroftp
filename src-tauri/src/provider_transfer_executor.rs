@@ -130,6 +130,25 @@ fn is_plain_github_provider(provider: &mut dyn StorageProvider) -> bool {
         && !crate::crypt_overlay_provider::is_crypt_overlay_provider(provider)
 }
 
+fn segmented_runtime_request(
+    provider_type: ProviderType,
+    settings: &ResolvedTransferSettings,
+    session_max_leases: usize,
+) -> (u32, usize) {
+    let sftp_tuning = (provider_type == ProviderType::Sftp)
+        .then_some(settings.sftp_download_preset)
+        .flatten()
+        .map(|preset| preset.resolve());
+    (
+        sftp_tuning
+            .map(|tuning| tuning.connections as u32)
+            .unwrap_or(settings.download_segments),
+        sftp_tuning
+            .map(|tuning| tuning.connections)
+            .unwrap_or(session_max_leases),
+    )
+}
+
 /// Eligibility probe for the segmented download path. Returns
 /// `Some(N)` (the final segment count after pool cap + provider
 /// capability) when the segmented path can be attempted, or `None`
@@ -826,7 +845,12 @@ impl ProviderDownloadExecutor {
         // retry envelope. The capability check inside
         // `try_segmented_download_attempt` re-locks the session model,
         // provider capability flag, and file-size floor honestly.
-        if attempt == 0 && partial_offset == 0 && self.runtime_settings.download_segments > 1 {
+        let (requested_segments, _) = segmented_runtime_request(
+            provider.provider_type(),
+            &self.runtime_settings,
+            self.session_model.max_leases(),
+        );
+        if attempt == 0 && partial_offset == 0 && requested_segments > 1 {
             if let Some(segmented_result) = self
                 .try_segmented_download_attempt(
                     provider,
@@ -943,11 +967,16 @@ impl ProviderDownloadExecutor {
     ) -> Option<Result<(), String>> {
         // Single-source-of-truth gate: capability + session-pool kind +
         // anti-fragmentation count + pool-cap clamp.
+        let (requested_segments, max_segments) = segmented_runtime_request(
+            primary.provider_type(),
+            &self.runtime_settings,
+            self.session_model.max_leases(),
+        );
         let segments = provider_segmented_download_eligible(
             primary,
             file_size,
-            self.runtime_settings.download_segments,
-            self.session_model.max_leases(),
+            requested_segments,
+            max_segments,
         )?;
 
         // Progress bridge to the executor's TransferEventSink, same
@@ -1736,6 +1765,29 @@ mod tests {
     }
 
     #[test]
+    fn sftp_preset_segment_request_is_not_clamped_to_file_lease_cap() {
+        let settings = ResolvedTransferSettings {
+            requested_max_concurrent: 4,
+            max_concurrent: 4,
+            retry_count: 3,
+            timeout_seconds: 30,
+            download_segments: 1,
+            sftp_download_preset: Some(
+                crate::sftp_download_tuning::SftpDownloadPreset::MaximumTested,
+            ),
+        };
+
+        assert_eq!(
+            segmented_runtime_request(ProviderType::Sftp, &settings, 4),
+            (12, 12)
+        );
+        assert_eq!(
+            segmented_runtime_request(ProviderType::S3, &settings, 4),
+            (1, 4)
+        );
+    }
+
+    #[test]
     fn locked_provider_model_uses_single_legacy_lease() {
         let model = ProviderExecutorSessionModel::locked(Some(ProviderType::Sftp));
         let pool = model.session_pool("provider-test");
@@ -2293,6 +2345,7 @@ mod tests {
                 retry_count,
                 timeout_seconds: 30,
                 download_segments: 1,
+                sftp_download_preset: None,
             },
             cancel_token,
             ProviderExecutorSessionModel::locked(Some(ProviderType::S3)),

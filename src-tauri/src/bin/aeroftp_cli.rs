@@ -9013,6 +9013,7 @@ async fn run_shared_provider_download_batch(
             // CLI segmented downloads use the dedicated `pget` path, not
             // the GUI provider executor, so the executor stays single-stream.
             download_segments: None,
+            sftp_download_preset: None,
         },
     )
     .await;
@@ -9233,6 +9234,7 @@ async fn run_shared_provider_upload_batch(
             // CLI segmented downloads use the dedicated `pget` path, not
             // the GUI provider executor, so the executor stays single-stream.
             download_segments: None,
+            sftp_download_preset: None,
         },
     )
     .await;

@@ -2634,7 +2634,10 @@ fn effective_sftp_readahead_window(
 /// resumable or in-place semantics. A pre-existing `.aerotmp` is handled by the
 /// serial path, which validates symlinks and resumes from its known offset.
 fn sftp_readahead_local_path_is_eligible(local_path: &str) -> bool {
-    !super::atomic_write::inplace_active() && !aerotmp_path_for(Path::new(local_path)).exists()
+    let local_path = Path::new(local_path);
+    !super::atomic_write::inplace_active()
+        && !aerotmp_path_for(local_path).exists()
+        && !super::atomic_write::readahead_temp_path_for(local_path).exists()
 }
 
 /// PD-PIPE-1: read exactly `want` bytes from `file` starting at the absolute
@@ -3544,6 +3547,24 @@ mod tests {
             None
         );
         assert_eq!(effective_sftp_readahead_window(16, 256 * 1024, 1, 1), None);
+    }
+
+    #[test]
+    fn readahead_stale_sidecar_falls_back_without_deleting_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let final_path = dir.path().join("file.bin");
+        let temp = super::super::atomic_write::readahead_temp_path_for(&final_path);
+        std::fs::write(&temp, b"possibly active").unwrap();
+
+        assert!(!sftp_readahead_local_path_is_eligible(
+            final_path.to_string_lossy().as_ref()
+        ));
+        assert_eq!(std::fs::read(&temp).unwrap(), b"possibly active");
+
+        std::fs::remove_file(&temp).unwrap();
+        assert!(sftp_readahead_local_path_is_eligible(
+            final_path.to_string_lossy().as_ref()
+        ));
     }
 
     #[tokio::test]

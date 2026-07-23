@@ -3566,6 +3566,7 @@ async fn download_files_batch(
             // (no-double-pool invariant); the segments knob only
             // matters on the `ProviderDownloadExecutor` path.
             download_segments: None,
+            sftp_download_preset: None,
         },
     );
 
@@ -3800,6 +3801,7 @@ async fn upload_files_batch(
             // (no-double-pool invariant); the segments knob only
             // matters on the `ProviderDownloadExecutor` path.
             download_segments: None,
+            sftp_download_preset: None,
         },
     );
 
@@ -4331,6 +4333,7 @@ async fn download_folder(
             // (no-double-pool invariant); the segments knob only
             // matters on the `ProviderDownloadExecutor` path.
             download_segments: None,
+            sftp_download_preset: None,
         },
     );
     info!(
@@ -4867,6 +4870,7 @@ async fn upload_folder(
             // (no-double-pool invariant); the segments knob only
             // matters on the `ProviderDownloadExecutor` path.
             download_segments: None,
+            sftp_download_preset: None,
         },
     );
     info!(
