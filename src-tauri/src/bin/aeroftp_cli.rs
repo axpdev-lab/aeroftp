@@ -5507,6 +5507,11 @@ struct BenchmarkReport {
     generated_at: String,
     cli: BenchmarkCliMeta,
     level: BenchmarkLevel,
+    // Access-method class of the profile (issue #277): the wire protocol for
+    // transport providers (SFTP, WebDAV, S3, ...) or the auth/API class for
+    // native ones (OAuth 2.0, OAuth 1.0, REST API). Additive to schema v1.
+    #[serde(default)]
+    access: String,
     environment: BenchmarkEnvironment,
     consent: BenchmarkConsent,
     results: Vec<BenchmarkResult>,
@@ -40525,6 +40530,10 @@ async fn cmd_benchmark(
             Err(code) => return code,
         };
     let protocol = provider.provider_type().to_string();
+    // Access-method label for the "Protocol" column (issue #277): computed from
+    // the live provider type so it reflects the transport the factory actually
+    // built (e.g. a Koofr-over-WebDAV profile reports `WebDAV`, native `REST API`).
+    let access = provider.provider_type().access_label().to_string();
 
     let report_id = uuid::Uuid::new_v4().to_string();
     let (bench_base, test_root) = match test_root_prefix_override {
@@ -41107,6 +41116,7 @@ async fn cmd_benchmark(
                 .to_string(),
         },
         level,
+        access: access.clone(),
         environment,
         consent: BenchmarkConsent {
             publish: consent_publish,
@@ -41209,18 +41219,35 @@ fn benchmark_report_protocol(report: &BenchmarkReport) -> String {
         .unwrap_or_default()
 }
 
+/// Access-method label for a report (issue #277): the "Protocol" column value,
+/// e.g. `SFTP`, `WebDAV`, `S3`, `OAuth 2.0`, `REST API`. Populated at connect
+/// time from the live provider type; falls back to the transport/provider
+/// display name for reports produced before the field existed.
+fn benchmark_report_access(report: &BenchmarkReport) -> String {
+    if report.access.is_empty() {
+        benchmark_report_protocol(report)
+    } else {
+        report.access.clone()
+    }
+}
+
 fn print_benchmark_text_report(report: &BenchmarkReport) {
     let color_on = use_color();
-    let protocol = benchmark_report_protocol(report);
-    let protocol_cell = if protocol.is_empty() {
+    // Identity line (issue #277): the service name (Type) and the access-method
+    // class (Protocol), matching the comparison-table column semantics.
+    let type_name = benchmark_report_protocol(report);
+    let access = benchmark_report_access(report);
+    let identity_cell = if type_name.is_empty() {
         String::new()
+    } else if access.is_empty() || access == type_name {
+        format!(" type={}", type_name)
     } else {
-        format!(" protocol={}", protocol)
+        format!(" type={} protocol={}", type_name, access)
     };
     println!(
         "Benchmark complete: level={:?}{} runs={} bytes={} duration={}ms",
         report.level,
-        protocol_cell,
+        identity_cell,
         report.summary.total_runs,
         format_size(report.summary.total_bytes_transferred),
         report.summary.total_duration_ms
@@ -41341,7 +41368,19 @@ fn print_benchmark_table(
             .collect::<Vec<_>>()
             .join(gap)
     };
-    let header_cells: Vec<String> = headers.iter().map(|h| h.to_string()).collect();
+    // Capitalize the first letter of every header cell (issue #277): "profile"
+    // -> "Profile", "files/s" -> "Files/s". Done centrally so all benchmark
+    // tables share one casing rule and call sites keep their lowercase match keys.
+    let header_cells: Vec<String> = headers
+        .iter()
+        .map(|h| {
+            let mut chars = h.chars();
+            match chars.next() {
+                Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+                None => String::new(),
+            }
+        })
+        .collect();
     println!("{}", paint_bold(title, color_on));
     println!("  {}", paint_dim(&fmt_row(&header_cells), color_on));
     println!("  {}", paint_dim(&"\u{2500}".repeat(total), color_on));
@@ -41503,24 +41542,6 @@ async fn cmd_benchmark_compare(
     // Profile-type labels for the comparison table (issue #277 #15), keyed by the
     // same profile name used as the report label. The service identity (provider
     // id, e.g. pcloud / mega / s3) disambiguates multi-protocol profiles.
-    let type_by_name: std::collections::HashMap<String, String> = idxs
-        .iter()
-        .map(|&i| {
-            let name = profiles[i]
-                .get("name")
-                .and_then(|v| v.as_str())
-                .unwrap_or("unnamed")
-                .to_string();
-            let ptype = profiles[i]
-                .get("providerId")
-                .and_then(|v| v.as_str())
-                .or_else(|| profiles[i].get("provider_id").and_then(|v| v.as_str()))
-                .unwrap_or("")
-                .to_string();
-            (name, ptype)
-        })
-        .collect();
-
     let sink: std::cell::RefCell<Vec<(String, BenchmarkReport)>> =
         std::cell::RefCell::new(Vec::new());
     let mut failed: Vec<String> = Vec::new();
@@ -41630,7 +41651,7 @@ async fn cmd_benchmark_compare(
                     );
                     print_benchmark_text_report(report);
                 }
-                print_benchmark_comparison(&entries, &type_by_name, use_color());
+                print_benchmark_comparison(&entries, use_color());
                 if !failed.is_empty() {
                     println!();
                     println!("Skipped (failed to benchmark): {}", failed.join(", "));
@@ -41655,24 +41676,23 @@ async fn cmd_benchmark_compare(
 /// Render the cross-profile comparison: one row per profile, columns per
 /// operation. Many-small-files ops compare files/s, single-file ops compare
 /// Mbps. Both headlined "higher is better".
-fn print_benchmark_comparison(
-    entries: &[(String, BenchmarkReport)],
-    types: &std::collections::HashMap<String, String>,
-    color_on: bool,
-) {
+fn print_benchmark_comparison(entries: &[(String, BenchmarkReport)], color_on: bool) {
     if entries.len() < 2 {
         return;
     }
-    // Profile-type cell (issue #277 #15): the service identity (provider id,
-    // e.g. pcloud / mega / s3) that disambiguates multi-protocol profiles where
-    // the transport-level "protocol" column alone is ambiguous. Falls back to a
-    // dash when unknown.
-    let type_of = |name: &str| -> String {
-        types
-            .get(name)
-            .filter(|s| !s.is_empty())
-            .cloned()
-            .unwrap_or_else(|| "-".to_string())
+    // Column semantics (issue #277): the "Type" cell is the service identity
+    // (kDrive, Koofr, WebDAV, S3, ...) taken from the live provider display
+    // name, and the "Protocol" cell is the access-method class (SFTP, WebDAV,
+    // OAuth 2.0, REST API, ...). Previously "type" read a lowercase providerId
+    // and "protocol" read the same display name, so the two columns duplicated
+    // each other for native providers. Falls back to a dash when unknown.
+    let type_of = |r: &BenchmarkReport| -> String {
+        let name = benchmark_report_protocol(r);
+        if name.is_empty() {
+            "-".to_string()
+        } else {
+            name
+        }
     };
 
     let many_ops = [
@@ -41693,7 +41713,7 @@ fn print_benchmark_comparison(
         let rows: Vec<Vec<String>> = entries
             .iter()
             .map(|(name, r)| {
-                let mut row = vec![name.clone(), type_of(name), benchmark_report_protocol(r)];
+                let mut row = vec![name.clone(), type_of(r), benchmark_report_access(r)];
                 for op in many_ops {
                     let cell = r
                         .results
@@ -41745,8 +41765,8 @@ fn print_benchmark_comparison(
                 };
                 vec![
                     name.clone(),
-                    type_of(name),
-                    benchmark_report_protocol(r),
+                    type_of(r),
+                    benchmark_report_access(r),
                     cell(single_ops[0]),
                     cell(single_ops[1]),
                 ]

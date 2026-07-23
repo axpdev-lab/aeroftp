@@ -293,6 +293,64 @@ impl ProviderType {
     pub fn is_aerocloud(&self) -> bool {
         matches!(self, ProviderType::AeroCloud)
     }
+
+    /// Access-method label for the benchmark "Protocol" column (issue #277).
+    ///
+    /// The Display name already answers "which service" (kDrive, Koofr, ...),
+    /// so the Protocol column answers "how do we reach it": the wire protocol
+    /// for the transport providers, or the authentication/API class for the
+    /// native ones (OAuth 2.0, OAuth 1.0, REST API). This keeps the two columns
+    /// from duplicating each other for native providers, where the Display name
+    /// and a raw `provider_type()` string were previously near-identical.
+    ///
+    /// The label reflects the actual transport the factory built: a Koofr or
+    /// pCloud profile connected over WebDAV reports `WebDAV` here, while the
+    /// same company over its native API reports `REST API`.
+    pub fn access_label(&self) -> &'static str {
+        match self {
+            // Wire transport protocols: the protocol is the access method.
+            ProviderType::Ftp => "FTP",
+            ProviderType::Ftps => "FTPS",
+            ProviderType::Sftp => "SFTP",
+            ProviderType::WebDav => "WebDAV",
+            ProviderType::S3 => "S3",
+            ProviderType::Azure => "Azure Blob",
+            ProviderType::Swift => "Swift",
+            // OAuth 2.0 authorization-code / device-flow providers.
+            ProviderType::GoogleDrive
+            | ProviderType::Dropbox
+            | ProviderType::OneDrive
+            | ProviderType::Box
+            | ProviderType::PCloud
+            | ProviderType::ZohoWorkdrive
+            | ProviderType::GooglePhotos
+            | ProviderType::Jottacloud
+            | ProviderType::YandexDisk
+            | ProviderType::GitHub => "OAuth 2.0",
+            // OAuth 1.0 (4shared is the only one remaining).
+            ProviderType::FourShared => "OAuth 1.0",
+            // Token / API-key / Basic / session REST APIs.
+            ProviderType::KDrive
+            | ProviderType::DrimeCloud
+            | ProviderType::FileLu
+            | ProviderType::Koofr
+            | ProviderType::OpenDrive
+            | ProviderType::GitLab
+            | ProviderType::Immich
+            | ProviderType::ImageKit
+            | ProviderType::Uploadcare
+            | ProviderType::Backblaze
+            | ProviderType::Cloudinary
+            | ProviderType::Mega
+            | ProviderType::Filen
+            | ProviderType::Internxt => "REST API",
+            // Special / non-standard transports.
+            ProviderType::AeroCloud => "AeroCloud",
+            ProviderType::Peer => "P2P (iroh)",
+            ProviderType::Mtp => "MTP",
+            ProviderType::AeroVaultMount => "local vault",
+        }
+    }
 }
 
 /// Generic provider configuration
