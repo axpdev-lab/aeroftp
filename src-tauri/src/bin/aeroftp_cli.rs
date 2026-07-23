@@ -9066,17 +9066,18 @@ impl ftp_client_gui_lib::transfer_event_sink::TransferEventSink for CliBatchSink
 /// executor + orchestrator the GUI uses, sink-agnostic (PD-CLI-CONV-A).
 ///
 /// Engaged ONLY for pool-backed providers (clone-pool session model:
-/// SFTP / S3 / Azure / WebDAV / Koofr). For non-pool-backed providers
-/// (FTP, single-connection APIs) the connected base provider is handed
+/// SFTP / FTP / S3 / Azure / WebDAV / Koofr). For non-pool-backed providers
+/// (single-connection APIs) the connected base provider is handed
 /// back un-consumed via `Err(base)` so the caller keeps the legacy
 /// independent-connection path: honest fallback, no overclaim.
 ///
 /// Non-regression: the legacy CLI path opens N independent connections via
-/// `buffer_unordered(workers)`. The shared SFTP path opens N independent
-/// SSH connections too (`clone_for_transfer` re-dial, PD-SFTP-1), bounded
-/// by `min(workers, provider session cap)`. Parallelism is preserved up to
-/// the provider's advertised safe cap; beyond it the shared engine clamps
-/// deliberately (surfaced honestly), it never silently serialises.
+/// `buffer_unordered(workers)`. The shared SFTP/FTP path opens N independent
+/// SSH/FTP connections too (`clone_for_transfer` re-dial, PD-SFTP-1 /
+/// PD-FTP-1), bounded by `min(workers, provider session cap)`. Parallelism
+/// is preserved up to the provider's advertised safe cap; beyond it the
+/// shared engine clamps deliberately (surfaced honestly), it never silently
+/// serialises.
 ///
 /// `--max-transfer` is enforced here, not bypassed: the file list is
 /// pre-flight truncated to the remaining session budget (file-granular,
@@ -9124,6 +9125,7 @@ async fn run_shared_provider_download_batch(
         model,
         ProviderExecutorSessionModel::HttpClonePool { .. }
             | ProviderExecutorSessionModel::SftpConnectionPool { .. }
+            | ProviderExecutorSessionModel::FtpConnectionPool { .. }
     );
     if !is_pool_backed {
         // Not pool-backed: return the still-connected provider so the
@@ -9276,8 +9278,8 @@ struct SharedUploadOutcome {
 /// the upload twin of `run_shared_provider_download_batch`.
 ///
 /// Engaged ONLY for pool-backed providers (clone-pool session model:
-/// SFTP / S3 / Azure / WebDAV / Koofr). For non-pool-backed providers
-/// (FTP, single-connection APIs) the connected base provider is handed
+/// SFTP / FTP / S3 / Azure / WebDAV / Koofr). For non-pool-backed providers
+/// (single-connection APIs) the connected base provider is handed
 /// back un-consumed via `Err(base)` so the caller keeps the legacy
 /// independent-connection path: honest fallback, no overclaim.
 ///
@@ -9298,9 +9300,9 @@ struct SharedUploadOutcome {
 /// scan provider is connected (the shared executor does not mkdir).
 ///
 /// Non-regression: the legacy CLI path opens N independent connections
-/// via `buffer_unordered(workers)`. The shared SFTP path opens N
-/// independent SSH connections too (`clone_for_transfer` re-dial,
-/// PD-SFTP-1), bounded by `min(workers, provider session cap)`.
+/// via `buffer_unordered(workers)`. The shared SFTP/FTP path opens N
+/// independent SSH/FTP connections too (`clone_for_transfer` re-dial,
+/// PD-SFTP-1 / PD-FTP-1), bounded by `min(workers, provider session cap)`.
 /// Parallelism is preserved up to the provider's advertised safe cap;
 /// beyond it the shared engine clamps deliberately, never silently
 /// serialises.
@@ -9345,6 +9347,7 @@ async fn run_shared_provider_upload_batch(
         model,
         ProviderExecutorSessionModel::HttpClonePool { .. }
             | ProviderExecutorSessionModel::SftpConnectionPool { .. }
+            | ProviderExecutorSessionModel::FtpConnectionPool { .. }
     );
     if !is_pool_backed {
         // Not pool-backed: return the still-connected provider so the
@@ -30376,9 +30379,9 @@ async fn cmd_get_recursive(
 
     // PD-CLI-CONV-B: converge the file-level batch on the shared provider
     // executor + orchestrator (sink-agnostic) for pool-backed providers
-    // (clone-pool: SFTP / S3 / Azure / WebDAV / Koofr). The scan provider
+    // (clone-pool: SFTP / FTP / S3 / Azure / WebDAV / Koofr). The scan provider
     // stays connected so its captured secure connection spec backs the
-    // clone-pool workers. Non-pool-backed providers (FTP, single-conn
+    // clone-pool workers. Non-pool-backed providers (single-conn
     // APIs) fall back to the legacy independent-connection batch below:
     // honest fallback, no overclaim.
     match run_shared_provider_download_batch(
@@ -30618,10 +30621,10 @@ async fn cmd_get_glob(
     // PD-CLI-CONV-C: converge the glob file-level batch on the SAME shared
     // provider executor + orchestrator `aeroftp get -r` uses
     // (PD-CLI-CONV-B), sink-agnostic. Pool-backed providers (clone-pool:
-    // SFTP / S3 / Azure / WebDAV / Koofr) run on the shared engine; the
+    // SFTP / FTP / S3 / Azure / WebDAV / Koofr) run on the shared engine; the
     // scan provider stays connected so its captured secure connection
-    // spec backs the clone-pool workers. Non-pool-backed providers (FTP,
-    // single-conn APIs) fall back to the legacy independent-connection
+    // spec backs the clone-pool workers. Non-pool-backed providers
+    // (single-conn APIs) fall back to the legacy independent-connection
     // batch below: honest fallback, no overclaim.
     match run_shared_provider_download_batch(
         provider,
@@ -31265,8 +31268,8 @@ async fn cmd_put_recursive(
     // connected, so the shared executor uploads into existing parents.
     // `--immutable` stays on the legacy path: the shared upload executor
     // has no remote-stat skip and the put scan (unlike get -r) does not
-    // pre-filter existing remote files. Non-pool-backed providers (FTP,
-    // single-conn APIs) fall back to the legacy independent-connection
+    // pre-filter existing remote files. Non-pool-backed providers
+    // (single-conn APIs) fall back to the legacy independent-connection
     // batch below: honest fallback, no overclaim.
     let use_legacy = if cli.immutable {
         if !cli.quiet {

@@ -697,6 +697,37 @@ pub async fn resolve_provider_list_session_model(
     }
 }
 
+/// Warm-connection reuse pool shared by the clone-pool transfer executors
+/// (PD-FTP-2). A worker that opted in via
+/// [`StorageProvider::supports_transfer_worker_reuse`] and finished a file
+/// cleanly is parked here; the next file pops it and reuses its live
+/// connection instead of paying a fresh control handshake. The pool is
+/// bounded implicitly by the session-lease semaphore (never more than
+/// `max_leases` workers are alive at once), so no explicit cap is needed.
+/// Providers that do not opt in are never parked, so their branch keeps the
+/// exact per-file re-dial behaviour and the pool stays empty for them.
+#[derive(Clone, Default)]
+struct WarmWorkerPool {
+    workers: Arc<Mutex<Vec<Box<dyn StorageProvider>>>>,
+}
+
+impl WarmWorkerPool {
+    /// Pop a parked warm worker, if any is available for reuse.
+    async fn take(&self) -> Option<Box<dyn StorageProvider>> {
+        self.workers.lock().await.pop()
+    }
+
+    /// Park a worker for the next file to reuse, but only when it opted into
+    /// reuse AND its last transfer succeeded: a failed or skipped transfer may
+    /// leave the control/data stream desynced, so that connection is dropped
+    /// (closed on `Box` drop) rather than recycled.
+    async fn park(&self, worker: Box<dyn StorageProvider>, outcome: &TransferOutcome) {
+        if matches!(outcome, TransferOutcome::Success) && worker.supports_transfer_worker_reuse() {
+            self.workers.lock().await.push(worker);
+        }
+    }
+}
+
 pub struct ProviderDownloadExecutor {
     sink: Arc<dyn TransferEventSink>,
     provider: Arc<Mutex<Option<Box<dyn StorageProvider>>>>,
@@ -707,6 +738,14 @@ pub struct ProviderDownloadExecutor {
     capabilities: TransferCapabilities,
     /// Whole-file attempts per entry id (DAG-P2-07 retry telemetry).
     attempt_counts: AttemptCounts,
+    /// Warm-connection reuse pool (PD-FTP-2). Clone-pool workers that finished
+    /// a file successfully are parked here so the next file reuses their live
+    /// connection instead of re-dialling, matching how rclone amortises the
+    /// per-file control handshake. Only providers that opt in via
+    /// [`StorageProvider::supports_transfer_worker_reuse`] are ever returned
+    /// here, so non-opted transports (SFTP, HTTP clone) keep the exact
+    /// per-file re-dial behaviour and this pool stays empty for them.
+    warm_workers: WarmWorkerPool,
 }
 
 impl ProviderDownloadExecutor {
@@ -726,10 +765,14 @@ impl ProviderDownloadExecutor {
             capabilities: finalize_capabilities_for_session_model(&capabilities, &session_model),
             session_model,
             attempt_counts: AttemptCounts::default(),
+            warm_workers: WarmWorkerPool::default(),
         }
     }
 
     async fn clone_worker(&self) -> Result<Box<dyn StorageProvider>, String> {
+        if let Some(worker) = self.warm_workers.take().await {
+            return Ok(worker);
+        }
         let provider_lock = self.provider.lock().await;
         provider_lock
             .as_ref()
@@ -1127,6 +1170,10 @@ pub struct ProviderUploadExecutor {
     capabilities: TransferCapabilities,
     /// Whole-file attempts per entry id (DAG-P2-07 retry telemetry).
     attempt_counts: AttemptCounts,
+    /// Warm-connection reuse pool (PD-FTP-2), the upload twin of
+    /// [`ProviderDownloadExecutor::warm_workers`]. See its doc for the
+    /// opt-in + success gating that keeps non-FTP transports untouched.
+    warm_workers: WarmWorkerPool,
 }
 
 impl ProviderUploadExecutor {
@@ -1148,10 +1195,14 @@ impl ProviderUploadExecutor {
             capabilities: finalize_capabilities_for_session_model(&capabilities, &session_model),
             session_model,
             attempt_counts: AttemptCounts::default(),
+            warm_workers: WarmWorkerPool::default(),
         }
     }
 
     async fn clone_worker(&self) -> Result<Box<dyn StorageProvider>, String> {
+        if let Some(worker) = self.warm_workers.take().await {
+            return Ok(worker);
+        }
         let provider_lock = self.provider.lock().await;
         provider_lock
             .as_ref()
@@ -1467,7 +1518,15 @@ impl TransferExecutor for ProviderDownloadExecutor {
         }
 
         let outcome = match self.clone_worker().await {
-            Ok(mut provider) => self.execute_with_provider(entry, provider.as_mut()).await,
+            Ok(mut provider) => {
+                let outcome = self.execute_with_provider(entry, provider.as_mut()).await;
+                // PD-FTP-2: return the still-warm worker to the pool (gated on
+                // opt-in + success) so the next file reuses its connection.
+                // Parked before releasing the lease, so the waiter that wakes
+                // on the freed permit finds it ready to pop.
+                self.warm_workers.park(provider, &outcome).await;
+                outcome
+            }
             Err(error) => self.failed_download(entry, error),
         };
         drop(session_lease);
@@ -1525,7 +1584,13 @@ impl TransferExecutor for ProviderUploadExecutor {
         }
 
         let outcome = match self.clone_worker().await {
-            Ok(mut provider) => self.execute_with_provider(entry, provider.as_mut()).await,
+            Ok(mut provider) => {
+                let outcome = self.execute_with_provider(entry, provider.as_mut()).await;
+                // PD-FTP-2: park the warm worker for the next file (opt-in +
+                // success gated), the upload twin of the download path.
+                self.warm_workers.park(provider, &outcome).await;
+                outcome
+            }
             Err(error) => self.failed_upload(entry, error),
         };
         drop(session_lease);
@@ -1818,6 +1883,25 @@ mod tests {
 
         assert!(model.is_clone_pool());
         assert_eq!(pool.capacity().kind, SessionLeaseKind::Sftp);
+        assert_eq!(pool.capacity().max_leases, 4);
+    }
+
+    #[test]
+    fn ftp_connection_model_uses_ftp_lease_kind_not_http() {
+        // PD-FTP-1 (CLI multi-file admission): the FTP mirror of the SFTP
+        // pool must count as a clone pool so the shared CLI batch path
+        // (`run_shared_provider_{download,upload}_batch` `is_pool_backed`
+        // gate) admits FTP instead of dropping it to the legacy re-dial
+        // fallback, and its leases must be labelled `Ftp`, never `HttpClone`.
+        let model = ProviderExecutorSessionModel::FtpConnectionPool {
+            provider_type: ProviderType::Ftp,
+            max_leases: 4,
+        };
+        let pool = model.session_pool("provider-test");
+
+        assert!(model.is_clone_pool());
+        assert_eq!(model.max_leases(), 4);
+        assert_eq!(pool.capacity().kind, SessionLeaseKind::Ftp);
         assert_eq!(pool.capacity().max_leases, 4);
     }
 
@@ -2199,6 +2283,7 @@ mod tests {
         calls: std::sync::atomic::AtomicUsize,
         fail_first_n: usize,
         cancel_on_call: Option<(usize, CancellationToken)>,
+        reusable: bool,
     }
 
     impl FlakyDownloadProvider {
@@ -2207,11 +2292,18 @@ mod tests {
                 calls: std::sync::atomic::AtomicUsize::new(0),
                 fail_first_n: n,
                 cancel_on_call: None,
+                reusable: false,
             }
         }
 
         fn cancel_on(mut self, call: usize, token: CancellationToken) -> Self {
             self.cancel_on_call = Some((call, token));
+            self
+        }
+
+        /// Opt this mock into warm-worker reuse (PD-FTP-2), like `FtpProvider`.
+        fn reusable(mut self) -> Self {
+            self.reusable = true;
             self
         }
     }
@@ -2220,6 +2312,9 @@ mod tests {
     impl StorageProvider for FlakyDownloadProvider {
         fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
             self
+        }
+        fn supports_transfer_worker_reuse(&self) -> bool {
+            self.reusable
         }
         fn provider_type(&self) -> ProviderType {
             ProviderType::S3
@@ -2327,6 +2422,48 @@ mod tests {
         async fn server_info(&mut self) -> Result<String, crate::providers::ProviderError> {
             Ok("flaky-download".to_string())
         }
+    }
+
+    #[tokio::test]
+    async fn warm_worker_pool_recycles_only_opted_in_successful_workers() {
+        // PD-FTP-2: the reuse pool must recycle a warm worker ONLY when the
+        // provider opted in AND the transfer succeeded. Every other case drops
+        // the worker (connection closed on `Box` drop), which is what keeps
+        // SFTP / HTTP-clone transports on their exact per-file re-dial path.
+        let pool = WarmWorkerPool::default();
+        assert!(pool.take().await.is_none(), "an empty pool yields nothing");
+
+        // Opted-in worker after a success: recycled.
+        let worker: Box<dyn StorageProvider> =
+            Box::new(FlakyDownloadProvider::fail_first(0).reusable());
+        pool.park(worker, &TransferOutcome::Success).await;
+        assert!(
+            pool.take().await.is_some(),
+            "opted-in worker after success is recycled"
+        );
+        assert!(pool.take().await.is_none(), "only one worker was parked");
+
+        // Opted-in worker after a failure: dropped, never recycled.
+        let worker: Box<dyn StorageProvider> =
+            Box::new(FlakyDownloadProvider::fail_first(0).reusable());
+        let failure = TransferOutcome::Failed(TransferFailure::new(
+            crate::transfer_domain::TransferFailureKind::Unknown,
+            "boom",
+            false,
+        ));
+        pool.park(worker, &failure).await;
+        assert!(
+            pool.take().await.is_none(),
+            "a failed transfer never recycles its connection"
+        );
+
+        // Non-opted-in worker after a success: dropped (SFTP/HTTP unchanged).
+        let worker: Box<dyn StorageProvider> = Box::new(FlakyDownloadProvider::fail_first(0));
+        pool.park(worker, &TransferOutcome::Success).await;
+        assert!(
+            pool.take().await.is_none(),
+            "a provider that did not opt in is never recycled"
+        );
     }
 
     fn retry_download_executor(

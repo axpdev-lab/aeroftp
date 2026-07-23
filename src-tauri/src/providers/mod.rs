@@ -1102,6 +1102,22 @@ pub trait StorageProvider: Send + Sync {
         ))
     }
 
+    /// Whether a `clone_for_transfer` worker can serve several sequential
+    /// transfers over ONE warm connection, so the shared transfer executor may
+    /// park it in a reuse pool after a file and hand it to the next file
+    /// instead of re-dialling (PD-FTP-2, the connection-reuse rclone amortises).
+    ///
+    /// Default `false`: the conservative per-file re-dial, unchanged for every
+    /// transport that does not override this (SFTP, HTTP clone pools). FTP opts
+    /// in because `download`/`upload` are safe to call repeatedly on one
+    /// connected provider (`ensure_connected` is a no-op when connected and each
+    /// call is a self-contained SIZE/RETR or STOR by absolute path). A worker is
+    /// only ever parked after a SUCCESSFUL transfer, so a desynced stream is
+    /// dropped rather than recycled.
+    fn supports_transfer_worker_reuse(&self) -> bool {
+        false
+    }
+
     /// Scheduler-facing provider scanner model.
     ///
     /// Defaults to a single locked session. Override only when list/stat/checksum
