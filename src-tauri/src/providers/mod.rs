@@ -1200,6 +1200,11 @@ pub trait StorageProvider: Send + Sync {
     /// Providers that support concurrent Range downloads should override this.
     fn set_multi_thread_download(&mut self, _streams: usize, _cutoff_bytes: u64) {}
 
+    /// Configure the SFTP read-ahead window for this provider instance.
+    /// `None` explicitly disables read-ahead; `Some(n)` requests a bounded
+    /// window. Providers other than SFTP ignore this setting.
+    fn set_sftp_readahead(&mut self, _window: Option<usize>) {}
+
     /// Whether this provider supports delta sync (rsync-style block transfer)
     fn supports_delta_sync(&self) -> bool {
         false

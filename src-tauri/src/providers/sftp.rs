@@ -43,6 +43,8 @@ const SFTP_MULTI_THREAD_MAX_STREAMS: usize = 16;
 /// permit a very large numeric window.
 const SFTP_READAHEAD_JOB_BUFFER_BUDGET: u64 = 128 * 1024 * 1024;
 const SFTP_READAHEAD_JOB_MAX_HANDLES: usize = 256;
+const SFTP_READAHEAD_DEFAULT_WINDOW: usize = 16;
+const SFTP_READAHEAD_MAX_WINDOW: usize = 1024;
 
 /// Default intra-file cutoff: below this a single SFTP stream is faster
 /// than paying N SSH handshakes. Matches the S3 default (250 MiB) so the
@@ -266,6 +268,40 @@ impl SftpConnectionSpec {
     }
 }
 
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+enum SftpReadaheadSetting {
+    #[default]
+    LegacyEnvironment,
+    Disabled,
+    Window(usize),
+}
+
+impl SftpReadaheadSetting {
+    fn from_explicit(window: Option<usize>) -> Self {
+        match window.and_then(normalize_sftp_readahead_window) {
+            Some(window) => Self::Window(window),
+            None => Self::Disabled,
+        }
+    }
+
+    fn requested_window_from(self, legacy_raw: Option<&str>) -> Option<usize> {
+        match self {
+            Self::LegacyEnvironment => parse_sftp_readahead_window(legacy_raw),
+            Self::Disabled => None,
+            Self::Window(window) => Some(window),
+        }
+    }
+
+    fn requested_window(self) -> Option<usize> {
+        match self {
+            Self::LegacyEnvironment => {
+                self.requested_window_from(std::env::var("AEROFTP_SFTP_READAHEAD").ok().as_deref())
+            }
+            Self::Disabled | Self::Window(_) => self.requested_window_from(None),
+        }
+    }
+}
+
 /// SFTP Provider
 ///
 /// Provides secure file transfer over SSH using the SFTP protocol.
@@ -307,6 +343,10 @@ pub struct SftpProvider {
     multi_thread_streams: usize,
     /// File size at/above which intra-file parallelism engages.
     multi_thread_cutoff: u64,
+    /// Per-provider read-ahead selection. The legacy environment is consulted
+    /// only while this remains unspecified; GUI/CLI configuration replaces it
+    /// with an isolated explicit value.
+    sftp_readahead: SftpReadaheadSetting,
 }
 
 impl SftpProvider {
@@ -330,6 +370,7 @@ impl SftpProvider {
             connection_spec: None,
             multi_thread_streams: 1,
             multi_thread_cutoff: SFTP_MULTI_THREAD_CUTOFF_DEFAULT,
+            sftp_readahead: SftpReadaheadSetting::LegacyEnvironment,
         }
     }
 
@@ -437,6 +478,7 @@ impl SftpProvider {
         let current_dir = self.current_dir.clone();
         let home_dir = self.home_dir.clone();
         let compression_enabled = self.compression_enabled;
+        let requested_readahead_window = self.sftp_readahead.requested_window();
 
         let cfg = ConcurrentRangeConfig {
             final_path: PathBuf::from(local_path),
@@ -474,6 +516,7 @@ impl SftpProvider {
                     per_stream_limit_bps,
                     compression_enabled,
                     streams,
+                    requested_readahead_window,
                     start,
                     end,
                     temp_path,
@@ -1433,11 +1476,11 @@ impl StorageProvider for SftpProvider {
                 .await;
         }
 
-        // EXPERIMENT (2026-07-22): sliding-window read-ahead downloader (our own,
-        // no crate fork). Takes precedence over PD-PIPE-1 when
-        // AEROFTP_SFTP_READAHEAD is set. Same guardrails: known size, no active
+        // Sliding-window read-ahead downloader (our own, no crate fork). Takes
+        // precedence over PD-PIPE-1 when provider state selects it. Same
+        // guardrails: known size, no active
         // bandwidth cap (the serial loop owns precise throttling).
-        if let Some(requested_window) = sftp_readahead_window() {
+        if let Some(requested_window) = self.sftp_readahead.requested_window() {
             if total_size > 0
                 && self.download_limit_bps == 0
                 && crate::transfer_dag::governor::global()
@@ -2411,6 +2454,7 @@ impl StorageProvider for SftpProvider {
         worker.connection_spec = Some(spec);
         worker.multi_thread_streams = self.multi_thread_streams;
         worker.multi_thread_cutoff = self.multi_thread_cutoff;
+        worker.sftp_readahead = self.sftp_readahead;
         Ok(Box::new(worker))
     }
 
@@ -2435,6 +2479,10 @@ impl StorageProvider for SftpProvider {
     fn set_multi_thread_download(&mut self, streams: usize, cutoff_bytes: u64) {
         self.multi_thread_streams = streams.clamp(1, SFTP_MULTI_THREAD_MAX_STREAMS);
         self.multi_thread_cutoff = cutoff_bytes.max(1024 * 1024);
+    }
+
+    fn set_sftp_readahead(&mut self, window: Option<usize>) {
+        self.sftp_readahead = SftpReadaheadSetting::from_explicit(window);
     }
 
     fn supports_delta_sync(&self) -> bool {
@@ -2539,21 +2587,20 @@ fn sftp_read_pipeline_window() -> Option<usize> {
 /// that window. The effective value is further reduced by the job-wide byte
 /// and handle budgets. Distinct env so it can be A/B'd against the batched
 /// `sftp_pipelined_download`.
-const SFTP_READAHEAD_DEFAULT_WINDOW: usize = 16;
-const SFTP_READAHEAD_MAX_WINDOW: usize = 1024;
+fn normalize_sftp_readahead_window(requested: usize) -> Option<usize> {
+    (requested >= 2).then_some(requested.min(SFTP_READAHEAD_MAX_WINDOW))
+}
+
 fn parse_sftp_readahead_window(raw: Option<&str>) -> Option<usize> {
     let v = raw?.trim().to_ascii_lowercase();
     match v.as_str() {
         "" | "0" | "1" | "false" | "off" | "no" => None,
         "true" | "on" | "yes" => Some(SFTP_READAHEAD_DEFAULT_WINDOW),
-        _ => match v.parse::<usize>() {
-            Ok(n) if n >= 2 => Some(n.min(SFTP_READAHEAD_MAX_WINDOW)),
-            _ => None,
-        },
+        _ => v
+            .parse::<usize>()
+            .ok()
+            .and_then(normalize_sftp_readahead_window),
     }
-}
-fn sftp_readahead_window() -> Option<usize> {
-    parse_sftp_readahead_window(std::env::var("AEROFTP_SFTP_READAHEAD").ok().as_deref())
 }
 
 /// Apply a job-wide resource budget to a requested per-connection window.
@@ -2865,8 +2912,8 @@ async fn sftp_readahead_range_into(
 }
 
 /// Single-connection sliding-window read-ahead download of a whole file, over
-/// the one existing SFTP session (no new connection, no crate fork). Opt-in via
-/// `AEROFTP_SFTP_READAHEAD`; see `sftp_readahead_range_into` for the mechanism
+/// the one existing SFTP session (no new connection, no crate fork). Selected
+/// through provider state; see `sftp_readahead_range_into` for the mechanism
 /// and the issue #70 rationale. Byte-identical to the serial loop for a static
 /// file; SHA-256 gated.
 async fn sftp_readahead_download(
@@ -3215,6 +3262,7 @@ async fn sftp_download_one_range(
     limit_bps: u64,
     compression_enabled: bool,
     parallel_connections: usize,
+    requested_readahead_window: Option<usize>,
     start: u64,
     end: u64,
     temp_path: PathBuf,
@@ -3239,12 +3287,12 @@ async fn sftp_download_one_range(
     let global_bw = crate::transfer_dag::governor::global().bandwidth();
 
     // READ-AHEAD (our own issue #70 workaround) takes precedence over PD-PIPE-2
-    // when AEROFTP_SFTP_READAHEAD is set: keep `window` `SSH_FXP_READ` in flight
-    // on THIS range worker's connection with no per-batch barrier. Composes with
+    // when provider state requests it: keep `window` `SSH_FXP_READ` in flight on
+    // THIS range worker's connection with no per-batch barrier. Composes with
     // PD-SFTP-2's N independent connections (N x this read-ahead). Same guardrail
     // as PD-PIPE-2: no active bandwidth cap (the serial loop owns throttling).
     if limit_bps == 0 && global_bw.is_unlimited() {
-        if let Some(window) = sftp_readahead_window().and_then(|requested| {
+        if let Some(window) = requested_readahead_window.and_then(|requested| {
             effective_sftp_readahead_window(requested, buffer_size, expected, parallel_connections)
         }) {
             let mut out = tokio::fs::OpenOptions::new()
@@ -3454,10 +3502,37 @@ mod tests {
     }
 
     #[test]
+    fn readahead_provider_state_distinguishes_legacy_disabled_and_window() {
+        let legacy = SftpReadaheadSetting::LegacyEnvironment;
+        assert_eq!(legacy.requested_window_from(Some("on")), Some(16));
+        assert_eq!(legacy.requested_window_from(Some("64")), Some(64));
+        assert_eq!(legacy.requested_window_from(Some("off")), None);
+
+        let disabled = SftpReadaheadSetting::from_explicit(None);
+        assert_eq!(disabled, SftpReadaheadSetting::Disabled);
+        assert_eq!(disabled.requested_window_from(Some("64")), None);
+
+        let explicit = SftpReadaheadSetting::from_explicit(Some(16));
+        assert_eq!(explicit, SftpReadaheadSetting::Window(16));
+        assert_eq!(explicit.requested_window_from(Some("off")), Some(16));
+        assert_eq!(
+            SftpReadaheadSetting::from_explicit(Some(100_000)),
+            SftpReadaheadSetting::Window(SFTP_READAHEAD_MAX_WINDOW)
+        );
+        assert_eq!(
+            SftpReadaheadSetting::from_explicit(Some(1)),
+            SftpReadaheadSetting::Disabled
+        );
+    }
+
+    #[test]
     fn readahead_effective_window_preserves_tuned_case_and_caps_job_resources() {
         let gib = 1024 * 1024 * 1024;
+        let requested = SftpReadaheadSetting::from_explicit(Some(16))
+            .requested_window_from(Some("off"))
+            .unwrap();
         assert_eq!(
-            effective_sftp_readahead_window(16, 256 * 1024, gib, 12),
+            effective_sftp_readahead_window(requested, 256 * 1024, gib, 12),
             Some(16)
         );
         assert_eq!(
