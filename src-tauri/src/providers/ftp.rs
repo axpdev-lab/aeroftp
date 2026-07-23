@@ -1555,10 +1555,16 @@ impl StorageProvider for FtpProvider {
         }
     }
 
-    /// Conservative initial cap, mirroring the SFTP pool / FTP pool clamp.
-    /// Each lease is a full independent FTP connection.
+    /// File-level clone-pool cap for the shared provider executor
+    /// (CLI multi-file batch, PD-FTP-1). Aligned with the FTP/FTPS speed
+    /// button's Maximum (5x) tier so a Max-preset multi-file run actually
+    /// dials up to 5 independent FTP connections instead of silently
+    /// clamping to 4. Each lease is a full independent FTP connection; the
+    /// legacy GUI FTP transfer path uses its own dedicated `FtpSessionPool`
+    /// and never consults this, so it is unaffected. Raise further only
+    /// after a live benchmark on the target server says it pays.
     fn transfer_executor_max_sessions(&self) -> u16 {
-        4
+        5
     }
 
     /// Produce an independent transfer worker. It is **not connected**: it
@@ -1578,6 +1584,16 @@ impl StorageProvider for FtpProvider {
         worker.multi_thread_streams = self.multi_thread_streams;
         worker.multi_thread_cutoff = self.multi_thread_cutoff;
         Ok(Box::new(worker))
+    }
+
+    /// PD-FTP-2: opt into warm-connection reuse. An FTP worker keeps its
+    /// control connection open across files (`download`/`upload` short-circuit
+    /// `ensure_connected` when already connected and transfer by absolute path),
+    /// so the shared executor can recycle it instead of re-dialling per file,
+    /// which is exactly the per-file handshake cost that left multi-file FTP
+    /// behind rclone. Only warm workers from SUCCESSFUL transfers are recycled.
+    fn supports_transfer_worker_reuse(&self) -> bool {
+        true
     }
 
     fn set_chunk_sizes(&mut self, upload: Option<u64>, download: Option<u64>) {
@@ -2339,6 +2355,25 @@ mod tests {
                 .strict_concurrent_range_download,
             crate::transfer_dag::Capability::Supported
         ));
+    }
+
+    #[test]
+    fn transfer_executor_max_sessions_matches_maximum_5x_speed_tier() {
+        // PD-FTP-1 (Task 2): the file-level clone-pool cap must equal the
+        // FTP/FTPS speed button's Maximum (5x) tier, so a Max-preset
+        // multi-file batch dials up to 5 independent FTP connections and is
+        // not silently clamped to 4 (which would lose one channel versus a
+        // fair `rclone --transfers 5`).
+        let provider = FtpProvider::new(FtpConfig {
+            host: "example.invalid".to_string(),
+            port: 21,
+            username: "user".to_string(),
+            password: "pass".to_string().into(),
+            tls_mode: FtpTlsMode::None,
+            verify_cert: true,
+            initial_path: None,
+        });
+        assert_eq!(provider.transfer_executor_max_sessions(), 5);
     }
 
     #[test]
