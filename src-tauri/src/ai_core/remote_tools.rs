@@ -338,6 +338,15 @@ async fn ensure_remote_parents(
                 {
                     continue;
                 }
+                // Some FTP servers (e.g. ProFTPD, as used by Aruba shared
+                // hosting) answer MKD on an already-existing directory with
+                // "550 Permission denied" instead of a recognizable "exists"
+                // message. Rather than widen the string match (which would
+                // mask genuine permission failures), confirm via stat: if the
+                // path is already present, treat mkdir as a no-op.
+                if backend.stat(&acc).await.is_ok() {
+                    continue;
+                }
                 return Err(ToolError::Exec(format!("mkdir {} failed: {}", acc, e)));
             }
         }
