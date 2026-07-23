@@ -41,6 +41,14 @@ const FTP_MULTI_THREAD_CUTOFF_DEFAULT: u64 = 250 * 1024 * 1024;
 /// window never buffers itself in RAM per worker.
 const FTP_RANGE_READ_CHUNK: usize = 256 * 1024;
 
+/// Default single-stream transfer buffer. The previous 8 KiB default made
+/// TLS record churn dominate the FTPS 1-channel path; the 2026-07-23 buffer
+/// A/B (docs/dev/benchmarks/2026-07-23_ftp-presets-matrix, 3 interleaved
+/// reps per size on the lab FTPS profile) measured 64 KiB at a 89.7 s median
+/// vs 130.8 s for 8 KiB and 112.4 s for 256 KiB on the same 1 GiB object,
+/// with the tightest spread. `--buffer-size` still overrides this.
+const FTP_DOWNLOAD_BUFFER_DEFAULT: usize = 64 * 1024;
+
 /// FTP/FTPS Storage Provider
 pub struct FtpProvider {
     config: FtpConfig,
@@ -93,7 +101,7 @@ impl FtpProvider {
             mfmt_supported: false,
             hash_supported: None,
             tls_downgraded: false,
-            buffer_size: 8192,
+            buffer_size: FTP_DOWNLOAD_BUFFER_DEFAULT,
             connection_spec: None,
             multi_thread_streams: 1,
             multi_thread_cutoff: FTP_MULTI_THREAD_CUTOFF_DEFAULT,
@@ -2356,6 +2364,42 @@ mod tests {
         assert_eq!(provider.multi_thread_cutoff, 50 * 1024 * 1024);
         provider.set_multi_thread_download(4, 250 * 1024 * 1024);
         assert_eq!(provider.multi_thread_streams, 4);
+    }
+
+    #[test]
+    fn download_buffer_default_is_64k_and_cli_override_still_wins() {
+        // Buffer A/B contract (2026-07-23, lab FTPS single-stream): the
+        // provider default is the measured 64 KiB winner, and an explicit
+        // `--buffer-size` (set_chunk_sizes) keeps overriding it within the
+        // documented [4 KiB, 16 MiB] clamp.
+        let mut provider = FtpProvider::new(FtpConfig {
+            host: "example.invalid".to_string(),
+            port: 21,
+            username: "user".to_string(),
+            password: "pass".to_string().into(),
+            tls_mode: FtpTlsMode::None,
+            verify_cert: true,
+            initial_path: None,
+        });
+        assert_eq!(provider.buffer_size, FTP_DOWNLOAD_BUFFER_DEFAULT);
+        provider.set_chunk_sizes(None, Some(256 * 1024));
+        assert_eq!(provider.buffer_size, 256 * 1024);
+        provider.set_chunk_sizes(None, Some(1024));
+        assert_eq!(provider.buffer_size, 4096);
+        provider.set_chunk_sizes(None, Some(64 * 1024 * 1024));
+        assert_eq!(provider.buffer_size, 16 * 1024 * 1024);
+        // A no-op call (no overrides) must leave the tuned default untouched.
+        let mut fresh = FtpProvider::new(FtpConfig {
+            host: "example.invalid".to_string(),
+            port: 21,
+            username: "user".to_string(),
+            password: "pass".to_string().into(),
+            tls_mode: FtpTlsMode::None,
+            verify_cert: true,
+            initial_path: None,
+        });
+        fresh.set_chunk_sizes(None, None);
+        assert_eq!(fresh.buffer_size, FTP_DOWNLOAD_BUFFER_DEFAULT);
     }
 }
 
