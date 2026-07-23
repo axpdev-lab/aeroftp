@@ -2297,6 +2297,66 @@ mod tests {
         // Unknown algo degrades, never dropped.
         assert_eq!(canonical_hash_key("Whirlpool"), "whirlpool");
     }
+
+    #[test]
+    fn captured_connection_spec_unlocks_pool_kind_and_strict_range_capability() {
+        // Speed-button audit contract (PD-FTP-1): before connect() the
+        // provider must NOT overclaim intra-file parallelism (LockedSingle,
+        // capability derived off the pool branch); once the connection spec
+        // is captured it advertises FtpConnectionPool plus strict concurrent
+        // range download, which is what lets the GUI single-file segmented
+        // path dial N independent FTP connections for one large file.
+        let config = FtpConfig {
+            host: "example.invalid".to_string(),
+            port: 21,
+            username: "user".to_string(),
+            password: "pass".to_string().into(),
+            tls_mode: FtpTlsMode::Explicit,
+            verify_cert: true,
+            initial_path: None,
+        };
+        let mut provider = FtpProvider::new(config.clone());
+        assert!(matches!(
+            provider.transfer_executor_kind(),
+            ProviderTransferExecutorKind::LockedSingle
+        ));
+        provider.connection_spec = Some(config);
+        assert!(matches!(
+            provider.transfer_executor_kind(),
+            ProviderTransferExecutorKind::FtpConnectionPool
+        ));
+        assert!(matches!(
+            provider
+                .transfer_capabilities()
+                .strict_concurrent_range_download,
+            crate::transfer_dag::Capability::Supported
+        ));
+    }
+
+    #[test]
+    fn set_multi_thread_download_clamps_streams_and_floors_cutoff() {
+        // The CLI `--multi-thread-streams` path and any future GUI wiring
+        // share these bounds: streams clamp to [1, FTP_MULTI_THREAD_MAX_STREAMS]
+        // and the cutoff never drops below 1 MiB.
+        let mut provider = FtpProvider::new(FtpConfig {
+            host: "example.invalid".to_string(),
+            port: 21,
+            username: "user".to_string(),
+            password: "pass".to_string().into(),
+            tls_mode: FtpTlsMode::None,
+            verify_cert: true,
+            initial_path: None,
+        });
+        assert_eq!(provider.multi_thread_streams, 1);
+        provider.set_multi_thread_download(999, 0);
+        assert_eq!(provider.multi_thread_streams, FTP_MULTI_THREAD_MAX_STREAMS);
+        assert_eq!(provider.multi_thread_cutoff, 1024 * 1024);
+        provider.set_multi_thread_download(0, 50 * 1024 * 1024);
+        assert_eq!(provider.multi_thread_streams, 1);
+        assert_eq!(provider.multi_thread_cutoff, 50 * 1024 * 1024);
+        provider.set_multi_thread_download(4, 250 * 1024 * 1024);
+        assert_eq!(provider.multi_thread_streams, 4);
+    }
 }
 
 /// Dangerous TLS certificate verifier that accepts all certificates.

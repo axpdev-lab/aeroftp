@@ -602,7 +602,10 @@
             "sftpModeFast": "Rápido",
             "sftpModeFastDescription": "Oito conexións con lectura anticipada optimizada",
             "sftpModeMaximumTested": "Máximo probado",
-            "sftpModeMaximumTestedDescription": "Doce conexións con lectura anticipada optimizada"
+            "sftpModeMaximumTestedDescription": "Doce conexións con lectura anticipada optimizada",
+            "modeSafeDescription": "Unha conexión: un ficheiro cada vez, un só fluxo por ficheiro",
+            "modeBalancedDescription": "Ata 3 conexións: ficheiros en paralelo ou canles de rangos dentro dun ficheiro grande",
+            "modeMaxDescription": "Ata 5 conexións: ficheiros en paralelo ou canles de rangos dentro dun ficheiro grande"
         },
         "settings": {
             "title": "Axustes",
@@ -1038,7 +1041,7 @@
             "downloadSegments": "Segmentos de descarga por ficheiro",
             "downloadSegmentsAuto": "Auto (fluxo único)",
             "downloadSegmentsN": "{n} segmentos por ficheiro",
-            "downloadSegmentsDesc": "Divide cada descarga en intervalos de bytes paralelos. Auto mantén o comportamento actual de fluxo único. Eficaz nos provedores que admiten solicitudes de rango (SFTP, S3, HTTP) para ficheiros suficientemente grandes como para beneficiarse.",
+            "downloadSegmentsDesc": "Divide cada descarga en rangos de bytes paralelos. Un valor explícito prevalece sobre o preaxuste de velocidade da barra de ferramentas FTP/FTPS; Automático deixa que o preaxuste decida (Seguro mantén un só fluxo). Efectivo en provedores que admiten solicitudes de rango (SFTP, FTP/FTPS, S3, HTTP) para ficheiros dabondo grandes para beneficiarse.",
             "autoStartTransfers": "Inicio automatico de transferencias",
             "autoStartTransfersHelp": "Cando esta activado, as transferencias por arrastrar e soltar e clic inicianse de inmediato. Cando esta desactivado, aparcanse na Transfer Queue como staged para que poidas podar arbores de cartafoles e reordenar antes de premer Start.",
             "importKeystorePrompt": "Introduce o contrasinal usado para cifrar esta copia de seguridade do keystore.",

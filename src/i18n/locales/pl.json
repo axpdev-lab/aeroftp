@@ -602,7 +602,10 @@
             "sftpModeFast": "Szybki",
             "sftpModeFastDescription": "Osiem połączeń ze zoptymalizowanym odczytem z wyprzedzeniem",
             "sftpModeMaximumTested": "Przetestowane maksimum",
-            "sftpModeMaximumTestedDescription": "Dwanaście połączeń ze zoptymalizowanym odczytem z wyprzedzeniem"
+            "sftpModeMaximumTestedDescription": "Dwanaście połączeń ze zoptymalizowanym odczytem z wyprzedzeniem",
+            "modeSafeDescription": "Jedno połączenie: jeden plik naraz, jeden strumień na plik",
+            "modeBalancedDescription": "Do 3 połączeń: równoległe pliki lub kanały zakresowe w jednym dużym pliku",
+            "modeMaxDescription": "Do 5 połączeń: równoległe pliki lub kanały zakresowe w jednym dużym pliku"
         },
         "settings": {
             "title": "Ustawienia",
@@ -1038,7 +1041,7 @@
             "downloadSegments": "Segmenty pobierania na plik",
             "downloadSegmentsAuto": "Auto (pojedynczy strumień)",
             "downloadSegmentsN": "{n} segmentów na plik",
-            "downloadSegmentsDesc": "Dziel każde pobieranie na równoległe zakresy bajtów. Auto zachowuje obecne zachowanie z pojedynczym strumieniem. Działa u dostawców obsługujących żądania zakresów (SFTP, S3, HTTP) dla plików wystarczająco dużych, aby odnieść korzyść.",
+            "downloadSegmentsDesc": "Dzieli każde pobieranie na równoległe zakresy bajtów. Jawna wartość ma pierwszeństwo przed ustawieniem wstępnym prędkości na pasku narzędzi FTP/FTPS; Auto pozwala decydować temu ustawieniu (Bezpieczny zachowuje jeden strumień). Działa u dostawców obsługujących żądania zakresów (SFTP, FTP/FTPS, S3, HTTP) dla plików wystarczająco dużych, by odnieść korzyść.",
             "autoStartTransfers": "Automatyczne uruchamianie transferow",
             "autoStartTransfersHelp": "Gdy wlaczone, transfery przeciagnij-i-upusc oraz klikniecia startuja od razu. Gdy wylaczone, sa odkladane w Transfer Queue jako staged, abys mogl przyciac drzewa folderow i zmienic kolejnosc przed nacisnieciem Start.",
             "importKeystorePrompt": "Wprowadź hasło użyte do zaszyfrowania tej kopii zapasowej keystore.",

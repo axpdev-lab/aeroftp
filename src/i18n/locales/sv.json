@@ -602,7 +602,10 @@
             "sftpModeFast": "Snabb",
             "sftpModeFastDescription": "Åtta anslutningar med optimerad förhandsläsning",
             "sftpModeMaximumTested": "Testat maximum",
-            "sftpModeMaximumTestedDescription": "Tolv anslutningar med optimerad förhandsläsning"
+            "sftpModeMaximumTestedDescription": "Tolv anslutningar med optimerad förhandsläsning",
+            "modeSafeDescription": "En anslutning: en fil i taget, en ström per fil",
+            "modeBalancedDescription": "Upp till 3 anslutningar: parallella filer eller intervallkanaler i en stor fil",
+            "modeMaxDescription": "Upp till 5 anslutningar: parallella filer eller intervallkanaler i en stor fil"
         },
         "settings": {
             "title": "Inställningar",
@@ -1038,7 +1041,7 @@
             "downloadSegments": "Nedladdningssegment per fil",
             "downloadSegmentsAuto": "Auto (enkel ström)",
             "downloadSegmentsN": "{n} segment per fil",
-            "downloadSegmentsDesc": "Dela upp varje nedladdning i parallella byteintervall. Auto behåller dagens beteende med en enskild ström. Fungerar hos leverantörer som stöder intervallförfrågningar (SFTP, S3, HTTP) för filer som är tillräckligt stora för att tjäna på det.",
+            "downloadSegmentsDesc": "Delar upp varje nedladdning i parallella byteintervall. Ett explicit värde vinner över hastighetsförinställningen i FTP/FTPS-verktygsfältet; Auto låter förinställningen bestämma (Säker behåller en ström). Gäller leverantörer som stöder intervallförfrågningar (SFTP, FTP/FTPS, S3, HTTP) för filer som är stora nog att dra nytta av det.",
             "autoStartTransfers": "Starta overforingar automatiskt",
             "autoStartTransfersHelp": "Nar pa startas dra-och-slapp- och klick-overforingar omedelbart. Nar av parkeras de i Transfer Queue som staged sa att du kan beskara mapptrad och omordna innan du trycker Start.",
             "importKeystorePrompt": "Ange losenordet som anvandes for att kryptera denna keystore-sakerhetskopia.",

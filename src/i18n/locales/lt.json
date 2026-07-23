@@ -602,7 +602,10 @@
             "sftpModeFast": "Greitas",
             "sftpModeFastDescription": "Aštuoni ryšiai su optimizuotu išankstiniu nuskaitymu",
             "sftpModeMaximumTested": "Išbandytas maksimumas",
-            "sftpModeMaximumTestedDescription": "Dvylika ryšių su optimizuotu išankstiniu nuskaitymu"
+            "sftpModeMaximumTestedDescription": "Dvylika ryšių su optimizuotu išankstiniu nuskaitymu",
+            "modeSafeDescription": "Vienas ryšys: vienas failas vienu metu, vienas srautas vienam failui",
+            "modeBalancedDescription": "Iki 3 ryšių: lygiagretūs failai arba diapazono kanalai viename dideliame faile",
+            "modeMaxDescription": "Iki 5 ryšių: lygiagretūs failai arba diapazono kanalai viename dideliame faile"
         },
         "settings": {
             "title": "Nustatymai",
@@ -1038,7 +1041,7 @@
             "downloadSegments": "Atsisiuntimo segmentai vienam failui",
             "downloadSegmentsAuto": "Automatinis (vienas srautas)",
             "downloadSegmentsN": "{n} segmentų viename faile",
-            "downloadSegmentsDesc": "Padalykite kiekvieną atsisiuntimą į lygiagrečius baitų diapazonus. Automatinis išlaiko esamą vieno srauto elgseną. Veiksminga su tiekėjais, palaikančiais diapazonų užklausas (SFTP, S3, HTTP), pakankamai dideliems failams.",
+            "downloadSegmentsDesc": "Kiekvieną atsisiuntimą padalija į lygiagrečius baitų diapazonus. Aiški reikšmė turi pirmenybę prieš FTP/FTPS įrankių juostos greičio išankstinį nustatymą; Automatiškai leidžia tam nustatymui nuspręsti (Saugus išlaiko vieną srautą). Galioja teikėjams, kurie palaiko diapazono užklausas (SFTP, FTP/FTPS, S3, HTTP), pakankamai dideliems failams.",
             "autoStartTransfers": "Automatinis perdavimu paleidimas",
             "autoStartTransfersHelp": "Kai ijungta, vilkimo ir spustelejimo perdavimai prasideda is karto. Kai isjungta, jie paliekami Transfer Queue kaip staged, kad galetum apkarpyti aplanku medzius ir pertvarkyti pries paspausdamas Start.",
             "importKeystorePrompt": "Iveskite slaptazodi, naudota sifruoti si keystore atsargine kopija.",

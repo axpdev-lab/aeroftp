@@ -602,7 +602,10 @@
             "sftpModeFast": "Hratt",
             "sftpModeFastDescription": "Átta tengingar með fínstilltri forlesningu",
             "sftpModeMaximumTested": "Prófað hámark",
-            "sftpModeMaximumTestedDescription": "Tólf tengingar með fínstilltri forlesningu"
+            "sftpModeMaximumTestedDescription": "Tólf tengingar með fínstilltri forlesningu",
+            "modeSafeDescription": "Ein tenging: ein skrá í einu, einn straumur á skrá",
+            "modeBalancedDescription": "Allt að 3 tengingar: samhliða skrár eða bilsrásir innan einnar stórrar skráar",
+            "modeMaxDescription": "Allt að 5 tengingar: samhliða skrár eða bilsrásir innan einnar stórrar skráar"
         },
         "settings": {
             "title": "Stillingar",
@@ -1038,7 +1041,7 @@
             "downloadSegments": "Niðurhalshlutar á skrá",
             "downloadSegmentsAuto": "Sjálfvirkt (einn straumur)",
             "downloadSegmentsN": "{n} hlutar á skrá",
-            "downloadSegmentsDesc": "Skiptu hverju niðurhali í samhliða bætasvið. Sjálfvirkt heldur núverandi hegðun með einum straumi. Virkar á þjónustum sem styðja sviðsbeiðnir (SFTP, S3, HTTP) fyrir skrár sem eru nógu stórar til að hagnast.",
+            "downloadSegmentsDesc": "Skiptir hverri niðurhalningu í samhliða bætabil. Skýrt gildi vinnur fram yfir hraðaforsstillingu FTP/FTPS verkfærastikunnar; Sjálfvirkt lætur forsstillinguna ráða (Öruggt heldur einum straumi). Gildir hjá þjónustuaðilum sem styðja bilsbeiðnir (SFTP, FTP/FTPS, S3, HTTP) fyrir skrár sem eru nógu stórar til að njóta ávinnings.",
             "autoStartTransfers": "Sjalfvirkt upphaf flutninga",
             "autoStartTransfersHelp": "Kveikt hefjast drag-and-drop og smella flutningar strax. Slokkt eru their lagdir i Transfer Queue sem staged, svo thu getir snyrt mopputre og endurrada adur en thu yttir a Start.",
             "importKeystorePrompt": "Sláðu inn lykilorðið sem var notað til að dulkóða þetta keystore afrit.",

@@ -602,7 +602,10 @@
             "sftpModeFast": "Hurtig",
             "sftpModeFastDescription": "Otte forbindelser med optimeret forhåndslæsning",
             "sftpModeMaximumTested": "Testet maksimum",
-            "sftpModeMaximumTestedDescription": "Tolv forbindelser med optimeret forhåndslæsning"
+            "sftpModeMaximumTestedDescription": "Tolv forbindelser med optimeret forhåndslæsning",
+            "modeSafeDescription": "Én forbindelse: én fil ad gangen, én strøm pr. fil",
+            "modeBalancedDescription": "Op til 3 forbindelser: parallelle filer eller intervalkanaler i én stor fil",
+            "modeMaxDescription": "Op til 5 forbindelser: parallelle filer eller intervalkanaler i én stor fil"
         },
         "settings": {
             "title": "Indstillinger",
@@ -1038,7 +1041,7 @@
             "downloadSegments": "Download-segmenter pr. fil",
             "downloadSegmentsAuto": "Auto (enkelt stream)",
             "downloadSegmentsN": "{n} segmenter pr. fil",
-            "downloadSegmentsDesc": "Opdel hver download i parallelle byte-intervaller. Auto bevarer den nuværende adfærd med enkelt stream. Virker hos udbydere, der understøtter range-anmodninger (SFTP, S3, HTTP), for filer der er store nok til at have gavn af det.",
+            "downloadSegmentsDesc": "Opdeler hver download i parallelle byteintervaller. En eksplicit værdi har forrang over FTP/FTPS-værktøjslinjens hastighedsforudindstilling; Auto lader forudindstillingen bestemme (Sikker beholder én strøm). Gælder for udbydere, der understøtter intervalanmodninger (SFTP, FTP/FTPS, S3, HTTP), for filer der er store nok til at drage fordel.",
             "autoStartTransfers": "Start overforsler automatisk",
             "autoStartTransfersHelp": "Hvis tilvalgt, starter drag-and-drop- og klik-overforsler med det samme. Hvis fravalgt, parkeres de i Transfer Queue som staged, sa du kan beskaere mappetraeer og omarrangere, for du trykker Start.",
             "importKeystorePrompt": "Indtast adgangskoden, der blev brugt til at kryptere denne keystore-sikkerhedskopi.",

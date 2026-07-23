@@ -602,7 +602,10 @@
             "sftpModeFast": "Gyors",
             "sftpModeFastDescription": "Nyolc kapcsolat optimalizált előreolvasással",
             "sftpModeMaximumTested": "Tesztelt maximum",
-            "sftpModeMaximumTestedDescription": "Tizenkét kapcsolat optimalizált előreolvasással"
+            "sftpModeMaximumTestedDescription": "Tizenkét kapcsolat optimalizált előreolvasással",
+            "modeSafeDescription": "Egy kapcsolat: egyszerre egy fájl, egy adatfolyam fájlonként",
+            "modeBalancedDescription": "Legfeljebb 3 kapcsolat: párhuzamos fájlok vagy tartománycsatornák egy nagy fájlon belül",
+            "modeMaxDescription": "Legfeljebb 5 kapcsolat: párhuzamos fájlok vagy tartománycsatornák egy nagy fájlon belül"
         },
         "settings": {
             "title": "Beállítások",
@@ -1038,7 +1041,7 @@
             "downloadSegments": "Letöltési szegmensek fájlonként",
             "downloadSegmentsAuto": "Automatikus (egy adatfolyam)",
             "downloadSegmentsN": "{n} szegmens fájlonként",
-            "downloadSegmentsDesc": "Minden letöltés felosztása párhuzamos byte-tartományokra. Az Automatikus megőrzi a jelenlegi egycsatornás működést. Olyan szolgáltatóknál hatékony, amelyek támogatják a range-kéréseket (SFTP, S3, HTTP), megfelelően nagy fájlok esetén.",
+            "downloadSegmentsDesc": "Minden letöltést párhuzamos bájttartományokra bont. Egy explicit érték felülírja az FTP/FTPS eszköztár sebesség-előbeállítását; az Automatikus az előbeállításra bízza a döntést (a Biztonságos egy adatfolyamot tart meg). Olyan szolgáltatóknál érvényes, amelyek támogatják a tartománykérelmeket (SFTP, FTP/FTPS, S3, HTTP), elegendően nagy fájlok esetén.",
             "autoStartTransfers": "Atvitelek automatikus inditasa",
             "autoStartTransfersHelp": "Bekapcsolva a fogd-es-vidd es kattintasos atvitelek azonnal elindulnak. Kikapcsolva a Transfer Queue-ban staged allapotban parkolnak, igy a Start gomb megnyomasa elott megrostalhatod a mappafakat es atrendezheted oket.",
             "importKeystorePrompt": "Adja meg a keystore biztonsági mentés titkosításához használt jelszót.",

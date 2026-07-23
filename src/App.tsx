@@ -224,6 +224,7 @@ import {
   TRANSFER_SPEED_PRESETS,
   deriveTransferSpeedPreset,
   nextTransferSpeedPreset,
+  resolveFtpDownloadSegments,
   type TransferSpeedPreset,
 } from './utils/ftpTransferSpeedPresets';
 import { AeroSyncDialog } from './components/AeroSync/AeroSyncDialog';
@@ -6372,7 +6373,7 @@ interface UpdateVerificationInfo {
     : `${transferPresetLabelMap[effectiveTransferSpeedPreset]} ${TRANSFER_SPEED_PRESETS[effectiveTransferSpeedPreset].channels}x`;
   const effectiveTransferSpeedDescription = supportsSftpTransferPresets
     ? t(sftpPresetDefinition.descriptionKey)
-    : effectiveTransferSpeedLabel;
+    : t(TRANSFER_SPEED_PRESETS[effectiveTransferSpeedPreset].descriptionKey);
 
   // Proactive archive/encryption surfacing for the REMOTE panel, mirroring the
   // local file browser's padlock + Encryption column + AeroVault generation chip.
@@ -9414,7 +9415,13 @@ interface UpdateVerificationInfo {
               modified: remoteModified,
               // GTC-5: intra-file range parallelism per download.
               // 0 = Auto (backend = legacy single-stream).
-              downloadSegments: downloadSegments > 0 ? downloadSegments : undefined,
+              // FTP/FTPS speed-button contract: an explicit setting wins,
+              // otherwise the Safe/Balanced/Max preset supplies the channels.
+              downloadSegments: resolveFtpDownloadSegments(
+                downloadSegments,
+                supportsFtpTransferPresets,
+                effectiveMaxConcurrentTransfers,
+              ),
               ...buildSftpDownloadPresetPayload(protocol, sftpDownloadPreset),
             });
           } else {

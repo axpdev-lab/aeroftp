@@ -602,7 +602,10 @@
             "sftpModeFast": "Nhanh",
             "sftpModeFastDescription": "Tám kết nối với khả năng đọc trước được tối ưu hóa",
             "sftpModeMaximumTested": "Mức tối đa đã kiểm thử",
-            "sftpModeMaximumTestedDescription": "Mười hai kết nối với khả năng đọc trước được tối ưu hóa"
+            "sftpModeMaximumTestedDescription": "Mười hai kết nối với khả năng đọc trước được tối ưu hóa",
+            "modeSafeDescription": "Một kết nối: mỗi lần một tệp, một luồng cho mỗi tệp",
+            "modeBalancedDescription": "Tối đa 3 kết nối: các tệp song song, hoặc các kênh phạm vi trong một tệp lớn",
+            "modeMaxDescription": "Tối đa 5 kết nối: các tệp song song, hoặc các kênh phạm vi trong một tệp lớn"
         },
         "settings": {
             "title": "Cài đặt",
@@ -1038,7 +1041,7 @@
             "downloadSegments": "Số phân đoạn tải xuống cho mỗi tệp",
             "downloadSegmentsAuto": "Tự động (luồng đơn)",
             "downloadSegmentsN": "{n} phân đoạn cho mỗi tệp",
-            "downloadSegmentsDesc": "Chia mỗi lần tải xuống thành các dải byte song song. Tự động giữ nguyên hành vi luồng đơn hiện tại. Hiệu quả với các nhà cung cấp hỗ trợ yêu cầu theo dải (SFTP, S3, HTTP) cho các tệp đủ lớn để có lợi.",
+            "downloadSegmentsDesc": "Chia mỗi lượt tải xuống thành các phạm vi byte song song. Giá trị rõ ràng được ưu tiên hơn thiết lập trước tốc độ trên thanh công cụ FTP/FTPS; Tự động để thiết lập trước đó quyết định (An toàn giữ một luồng). Có hiệu lực với các nhà cung cấp hỗ trợ yêu cầu phạm vi (SFTP, FTP/FTPS, S3, HTTP) cho các tệp đủ lớn để hưởng lợi.",
             "autoStartTransfers": "Tu dong bat dau truyen",
             "autoStartTransfersHelp": "Khi bat, truyen bang keo-tha va nhap bat dau ngay lap tuc. Khi tat, chung duoc do trong Transfer Queue o trang thai staged de ban co the cat tia cay thu muc va sap xep lai truoc khi nhan Start.",
             "importKeystorePrompt": "Nhap mat khau da dung de ma hoa ban sao luu keystore nay.",

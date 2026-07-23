@@ -602,7 +602,10 @@
             "sftpModeFast": "빠름",
             "sftpModeFastDescription": "최적화된 미리 읽기를 사용하는 연결 8개",
             "sftpModeMaximumTested": "테스트된 최대값",
-            "sftpModeMaximumTestedDescription": "최적화된 미리 읽기를 사용하는 연결 12개"
+            "sftpModeMaximumTestedDescription": "최적화된 미리 읽기를 사용하는 연결 12개",
+            "modeSafeDescription": "연결 1개: 한 번에 파일 하나, 파일당 단일 스트림",
+            "modeBalancedDescription": "최대 3개 연결: 파일 병렬 전송 또는 하나의 큰 파일 내 범위 채널",
+            "modeMaxDescription": "최대 5개 연결: 파일 병렬 전송 또는 하나의 큰 파일 내 범위 채널"
         },
         "settings": {
             "title": "설정",
@@ -1038,7 +1041,7 @@
             "downloadSegments": "파일당 다운로드 세그먼트 수",
             "downloadSegmentsAuto": "자동 (단일 스트림)",
             "downloadSegmentsN": "파일당 {n}개 세그먼트",
-            "downloadSegmentsDesc": "각 다운로드를 병렬 바이트 범위로 분할합니다. 자동은 현재의 단일 스트림 동작을 유지합니다. 범위 요청을 지원하는 제공자(SFTP, S3, HTTP)에서 충분히 큰 파일에 대해 효과적입니다.",
+            "downloadSegmentsDesc": "각 다운로드를 병렬 바이트 범위로 분할합니다. 명시적 값은 FTP/FTPS 도구 모음 속도 프리셋보다 우선하며, 자동은 해당 프리셋이 결정하도록 합니다(안전은 스트림 하나를 유지). 범위 요청을 지원하는 제공자(SFTP, FTP/FTPS, S3, HTTP)에서 충분히 큰 파일에 대해 유효합니다.",
             "autoStartTransfers": "전송 자동 시작",
             "autoStartTransfersHelp": "켜져 있으면 드래그 앤 드롭 및 클릭 전송이 즉시 시작됩니다. 꺼져 있으면 Transfer Queue 에 staged 상태로 보관되어 Start 를 누르기 전에 폴더 트리를 정리하고 순서를 바꿀 수 있습니다.",
             "importKeystorePrompt": "이 keystore 백업을 암호화할 때 사용한 비밀번호를 입력하세요.",

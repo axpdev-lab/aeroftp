@@ -602,7 +602,10 @@
             "sftpModeFast": "Rask",
             "sftpModeFastDescription": "Åtte forbindelser med optimalisert forhåndslesing",
             "sftpModeMaximumTested": "Testet maksimum",
-            "sftpModeMaximumTestedDescription": "Tolv forbindelser med optimalisert forhåndslesing"
+            "sftpModeMaximumTestedDescription": "Tolv forbindelser med optimalisert forhåndslesing",
+            "modeSafeDescription": "Én tilkobling: én fil om gangen, én strøm per fil",
+            "modeBalancedDescription": "Opptil 3 tilkoblinger: parallelle filer eller intervallkanaler i én stor fil",
+            "modeMaxDescription": "Opptil 5 tilkoblinger: parallelle filer eller intervallkanaler i én stor fil"
         },
         "settings": {
             "title": "Innstillinger",
@@ -1038,7 +1041,7 @@
             "downloadSegments": "Nedlastingssegmenter per fil",
             "downloadSegmentsAuto": "Auto (én strøm)",
             "downloadSegmentsN": "{n} segmenter per fil",
-            "downloadSegmentsDesc": "Del hver nedlasting i parallelle byteområder. Auto beholder dagens oppførsel med én strøm. Effektivt på leverandører som støtter områdeforespørsler (SFTP, S3, HTTP) for filer som er store nok til å dra nytte av det.",
+            "downloadSegmentsDesc": "Deler hver nedlasting i parallelle byteintervaller. En eksplisitt verdi vinner over hastighetsforhåndsinnstillingen på FTP/FTPS-verktøylinjen; Auto lar forhåndsinnstillingen bestemme (Safe beholder én strøm). Gjelder for leverandører som støtter intervallforespørsler (SFTP, FTP/FTPS, S3, HTTP) for filer som er store nok til å dra nytte av det.",
             "autoStartTransfers": "Start overforinger automatisk",
             "autoStartTransfersHelp": "Nar pa, starter dra-og-slipp- og klikkoverforinger umiddelbart. Nar av, parkeres de i Transfer Queue som staged, slik at du kan beskjaere mappetraer og omorganisere for du trykker Start.",
             "importKeystorePrompt": "Skriv inn passordet som ble brukt til å kryptere denne keystore-sikkerhetskopien.",

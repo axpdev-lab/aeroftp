@@ -602,7 +602,10 @@
             "sftpModeFast": "Cepat",
             "sftpModeFastDescription": "Delapan koneksi dengan baca awal yang dioptimalkan",
             "sftpModeMaximumTested": "Maksimum teruji",
-            "sftpModeMaximumTestedDescription": "Dua belas koneksi dengan baca awal yang dioptimalkan"
+            "sftpModeMaximumTestedDescription": "Dua belas koneksi dengan baca awal yang dioptimalkan",
+            "modeSafeDescription": "Satu koneksi: satu file sekaligus, satu aliran per file",
+            "modeBalancedDescription": "Hingga 3 koneksi: file paralel, atau saluran rentang dalam satu file besar",
+            "modeMaxDescription": "Hingga 5 koneksi: file paralel, atau saluran rentang dalam satu file besar"
         },
         "settings": {
             "title": "Pengaturan",
@@ -1038,7 +1041,7 @@
             "downloadSegments": "Segmen Unduhan per Berkas",
             "downloadSegmentsAuto": "Auto (aliran tunggal)",
             "downloadSegmentsN": "{n} segmen per berkas",
-            "downloadSegmentsDesc": "Bagi setiap unduhan menjadi rentang byte paralel. Auto mempertahankan perilaku aliran tunggal saat ini. Efektif pada penyedia yang mendukung permintaan rentang (SFTP, S3, HTTP) untuk berkas yang cukup besar.",
+            "downloadSegmentsDesc": "Membagi setiap unduhan menjadi rentang byte paralel. Nilai eksplisit mengalahkan preset kecepatan bilah alat FTP/FTPS; Otomatis membiarkan preset tersebut yang memutuskan (Aman mempertahankan satu aliran). Berlaku pada penyedia yang mendukung permintaan rentang (SFTP, FTP/FTPS, S3, HTTP) untuk file yang cukup besar untuk mendapatkan manfaat.",
             "autoStartTransfers": "Mulai transfer otomatis",
             "autoStartTransfersHelp": "Saat aktif, transfer drag-and-drop dan klik dimulai segera. Saat nonaktif, transfer diparkir di Transfer Queue sebagai staged sehingga kamu dapat memangkas pohon folder dan menyusun ulang sebelum menekan Start.",
             "importKeystorePrompt": "Masukkan kata sandi yang digunakan untuk mengenkripsi backup keystore ini.",

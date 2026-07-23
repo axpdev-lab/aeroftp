@@ -602,7 +602,10 @@
             "sftpModeFast": "Ātrs",
             "sftpModeFastDescription": "Astoņi savienojumi ar optimizētu priekšlasīšanu",
             "sftpModeMaximumTested": "Pārbaudītais maksimums",
-            "sftpModeMaximumTestedDescription": "Divpadsmit savienojumi ar optimizētu priekšlasīšanu"
+            "sftpModeMaximumTestedDescription": "Divpadsmit savienojumi ar optimizētu priekšlasīšanu",
+            "modeSafeDescription": "Viens savienojums: viens fails vienlaikus, viena plūsma katram failam",
+            "modeBalancedDescription": "Līdz 3 savienojumiem: paralēlie faili vai diapazona kanāli vienā lielā failā",
+            "modeMaxDescription": "Līdz 5 savienojumiem: paralēlie faili vai diapazona kanāli vienā lielā failā"
         },
         "settings": {
             "title": "Iestatījumi",
@@ -1038,7 +1041,7 @@
             "downloadSegments": "Lejupielādes segmenti vienam failam",
             "downloadSegmentsAuto": "Automātiski (viena plūsma)",
             "downloadSegmentsN": "{n} segmenti vienam failam",
-            "downloadSegmentsDesc": "Sadaliet katru lejupielādi paralēlos baitu diapazonos. Automātiski saglabā pašreizējo vienas plūsmas darbību. Efektīvi pakalpojumu sniedzējiem, kuri atbalsta diapazonu pieprasījumus (SFTP, S3, HTTP), pietiekami lieliem failiem.",
+            "downloadSegmentsDesc": "Sadala katru lejupielādi paralēlos baitu diapazonos. Skaidri norādītai vērtībai ir priekšroka pār FTP/FTPS rīkjoslas ātruma sākumiestatījumu; Automātiski ļauj iestatījumam lemt (Drošs saglabā vienu plūsmu). Spēkā pakalpojumu sniedzējiem, kas atbalsta diapazona pieprasījumus (SFTP, FTP/FTPS, S3, HTTP), pietiekami lieliem failiem.",
             "autoStartTransfers": "Parsutisanu automatiska sakums",
             "autoStartTransfersHelp": "Kad ieslegts, vilksanas un nomesanas un klikskinasanas parsutisanas sakas nekavejoties. Kad izslegts, tas tiek novietotas Transfer Queue ka staged, lai tu varetu apgriezt mapju kokus un parkartot pirms nospiez Start.",
             "importKeystorePrompt": "Ievadiet paroli, kas izmantota si keystore dublejuma sifresanai.",

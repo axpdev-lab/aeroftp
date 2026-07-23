@@ -602,7 +602,10 @@
             "sftpModeFast": "Cyflym",
             "sftpModeFastDescription": "Wyth cysylltiad gyda rhagddarllen wedi'i optimeiddio",
             "sftpModeMaximumTested": "Uchafswm wedi'i brofi",
-            "sftpModeMaximumTestedDescription": "Deuddeg cysylltiad gyda rhagddarllen wedi'i optimeiddio"
+            "sftpModeMaximumTestedDescription": "Deuddeg cysylltiad gyda rhagddarllen wedi'i optimeiddio",
+            "modeSafeDescription": "Un cysylltiad: un ffeil ar y tro, un ffrwd i bob ffeil",
+            "modeBalancedDescription": "Hyd at 3 cysylltiad: ffeiliaid yn gyfochrog, neu sianeli ystod o fewn un ffeil fawr",
+            "modeMaxDescription": "Hyd at 5 cysylltiad: ffeiliaid yn gyfochrog, neu sianeli ystod o fewn un ffeil fawr"
         },
         "settings": {
             "title": "Gosodiadau",
@@ -1038,7 +1041,7 @@
             "downloadSegments": "Segmentau lawrlwytho fesul ffeil",
             "downloadSegmentsAuto": "Auto (un ffrwd)",
             "downloadSegmentsN": "{n} segment fesul ffeil",
-            "downloadSegmentsDesc": "Rhannu pob lawrlwythiad yn ystodau beit cyfochrog. Mae Auto yn cadw'r ymddygiad un ffrwd presennol. Effeithiol gyda darparwyr sy'n cefnogi ceisiadau ystod (SFTP, S3, HTTP) ar gyfer ffeiliau digon mawr i elwa.",
+            "downloadSegmentsDesc": "Yn rhannu pob lawrlwythiad yn ystodau beitiau cyfochrog. Mae gwerth penodol yn ennill dros ragosodiad cyflymder y bar offer FTP/FTPS; mae Auto yn gadael i'r rhagosodiad benderfynu (mae Diogel yn cadw un ffrwd). Yn effeithiol ar ddarparwyr sy'n cefnogi ceisiadau ystod (SFTP, FTP/FTPS, S3, HTTP) ar gyfer ffeiliaid sy'n ddigon mawr i elwa.",
             "autoStartTransfers": "Cychwyn trosglwyddiadau yn awtomatig",
             "autoStartTransfersHelp": "Pan fydd ymlaen, mae trosglwyddiadau drag-and-drop a chlicio yn cychwyn ar unwaith. Pan fydd i ffwrdd, cant eu parcio yn y Transfer Queue fel staged er mwyn i ti docio coed ffolderi ac aildrefnu cyn pwyso Start.",
             "importKeystorePrompt": "Rhowch y cyfrinair a ddefnyddiwyd i amgryptio'r copi wrth gefn keystore hwn.",

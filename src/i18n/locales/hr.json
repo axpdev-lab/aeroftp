@@ -602,7 +602,10 @@
             "sftpModeFast": "Brzo",
             "sftpModeFastDescription": "Osam veza s optimiziranim čitanjem unaprijed",
             "sftpModeMaximumTested": "Testirani maksimum",
-            "sftpModeMaximumTestedDescription": "Dvanaest veza s optimiziranim čitanjem unaprijed"
+            "sftpModeMaximumTestedDescription": "Dvanaest veza s optimiziranim čitanjem unaprijed",
+            "modeSafeDescription": "Jedna veza: jedna datoteka odjednom, jedan tok po datoteci",
+            "modeBalancedDescription": "Do 3 veze: paralelne datoteke ili kanali raspona unutar jedne velike datoteke",
+            "modeMaxDescription": "Do 5 veza: paralelne datoteke ili kanali raspona unutar jedne velike datoteke"
         },
         "settings": {
             "title": "Postavke",
@@ -1038,7 +1041,7 @@
             "downloadSegments": "Segmenti preuzimanja po datoteci",
             "downloadSegmentsAuto": "Auto (jedan tok)",
             "downloadSegmentsN": "{n} segmenata po datoteci",
-            "downloadSegmentsDesc": "Podijelite svako preuzimanje na paralelne raspone bajtova. Auto zadržava trenutno ponašanje s jednim tokom. Učinkovito na pružateljima koji podržavaju zahtjeve za raspon (SFTP, S3, HTTP) za datoteke dovoljno velike da imaju koristi.",
+            "downloadSegmentsDesc": "Dijeli svako preuzimanje na paralelne raspone bajtova. Eksplicitna vrijednost ima prednost nad unaprijed postavljenom brzinom na alatnoj traci FTP/FTPS; Automatski ostavlja da ta postavka odluči (Sigurno zadržava jedan tok). Djeluje kod pružatelja koji podržavaju zahtjeve raspona (SFTP, FTP/FTPS, S3, HTTP) za dovoljno velike datoteke.",
             "autoStartTransfers": "Automatsko pokretanje prijenosa",
             "autoStartTransfersHelp": "Kad je ukljuceno, prijenosi povucenjem-i-ispustanjem i klikom krecu odmah. Kad je iskljuceno, parkiraju se u Transfer Queue kao staged, kako bi mogao prorijediti stabla mapa i preraspodijeliti prije pritiska na Start.",
             "importKeystorePrompt": "Unesi lozinku koja je korištena za šifriranje ove sigurnosne kopije keystore-a.",

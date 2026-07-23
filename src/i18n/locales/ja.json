@@ -602,7 +602,10 @@
             "sftpModeFast": "高速",
             "sftpModeFastDescription": "最適化された先読みを使用する8接続",
             "sftpModeMaximumTested": "テスト済み最大値",
-            "sftpModeMaximumTestedDescription": "最適化された先読みを使用する12接続"
+            "sftpModeMaximumTestedDescription": "最適化された先読みを使用する12接続",
+            "modeSafeDescription": "接続数1: 一度に1ファイル、ファイルごとにシングルストリーム",
+            "modeBalancedDescription": "最大3接続: 複数ファイルの並列転送、または1つの大きなファイル内でのレンジチャネル",
+            "modeMaxDescription": "最大5接続: 複数ファイルの並列転送、または1つの大きなファイル内でのレンジチャネル"
         },
         "settings": {
             "title": "設定",
@@ -1038,7 +1041,7 @@
             "downloadSegments": "ファイルごとのダウンロードセグメント数",
             "downloadSegmentsAuto": "自動（単一ストリーム）",
             "downloadSegmentsN": "ファイルあたり {n} セグメント",
-            "downloadSegmentsDesc": "各ダウンロードを並列のバイト範囲に分割します。「自動」は現在のシングルストリーム動作を維持します。範囲リクエストに対応したプロバイダー（SFTP、S3、HTTP）で、効果が見込める程度に大きいファイルで有効です。",
+            "downloadSegmentsDesc": "各ダウンロードを並列のバイトレンジに分割します。明示的な値はFTP/FTPSツールバーの速度プリセットより優先されます。自動はプリセットに判断を委ねます(安全は1ストリームを維持)。レンジリクエストをサポートするプロバイダー(SFTP、FTP/FTPS、S3、HTTP)で、十分に大きなファイルに対して有効です。",
             "autoStartTransfers": "転送を自動開始",
             "autoStartTransfersHelp": "オンの場合、ドラッグ&ドロップやクリックでの転送はすぐに開始されます。オフの場合、Transfer Queue に staged として保留され、Start を押す前にフォルダツリーを整理して並び替えできます。",
             "importKeystorePrompt": "この keystore バックアップを暗号化するために使用したパスワードを入力してください。",

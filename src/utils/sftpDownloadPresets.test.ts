@@ -14,6 +14,7 @@ import {
   TRANSFER_SPEED_PRESETS,
   deriveTransferSpeedPreset,
   nextTransferSpeedPreset,
+  resolveFtpDownloadSegments,
 } from './ftpTransferSpeedPresets';
 
 describe('SFTP download presets', () => {
@@ -69,12 +70,12 @@ describe('SFTP download presets', () => {
   });
 });
 
-describe('FTP and FTPS transfer presets remain unchanged', () => {
-  it('keeps the Safe, Balanced, Max channel model and cycle', () => {
+describe('FTP and FTPS transfer presets', () => {
+  it('keeps the Safe, Balanced, Max channel model, cycle, and description keys', () => {
     expect(TRANSFER_SPEED_PRESETS).toEqual({
-      base: { label: 'Safe', channels: 1 },
-      fast: { label: 'Balanced', channels: 3 },
-      super: { label: 'Max', channels: 5 },
+      base: { label: 'Safe', channels: 1, descriptionKey: 'transfer.modeSafeDescription' },
+      fast: { label: 'Balanced', channels: 3, descriptionKey: 'transfer.modeBalancedDescription' },
+      super: { label: 'Max', channels: 5, descriptionKey: 'transfer.modeMaxDescription' },
     });
     expect([0, 1, 2, 3, 4, 5].map(deriveTransferSpeedPreset)).toEqual([
       'base',
@@ -87,5 +88,22 @@ describe('FTP and FTPS transfer presets remain unchanged', () => {
     expect(nextTransferSpeedPreset('base')).toBe('fast');
     expect(nextTransferSpeedPreset('fast')).toBe('super');
     expect(nextTransferSpeedPreset('super')).toBe('base');
+  });
+
+  it('lets an explicit download-segments setting win over the preset', () => {
+    expect(resolveFtpDownloadSegments(8, true, 3)).toBe(8);
+    expect(resolveFtpDownloadSegments(2, true, 5)).toBe(2);
+    expect(resolveFtpDownloadSegments(4, false, 3)).toBe(4);
+  });
+
+  it('maps the preset channels onto single-file FTP/FTPS downloads in Auto', () => {
+    expect(resolveFtpDownloadSegments(0, true, 1)).toBe(1);
+    expect(resolveFtpDownloadSegments(0, true, 3)).toBe(3);
+    expect(resolveFtpDownloadSegments(0, true, 5)).toBe(5);
+  });
+
+  it('keeps the legacy single-stream contract for non-FTP protocols in Auto', () => {
+    expect(resolveFtpDownloadSegments(0, false, 1)).toBeUndefined();
+    expect(resolveFtpDownloadSegments(0, false, 5)).toBeUndefined();
   });
 });

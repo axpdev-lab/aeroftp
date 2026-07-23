@@ -602,7 +602,10 @@
             "sftpModeFast": "Hitro",
             "sftpModeFastDescription": "Osem povezav z optimiziranim vnaprejšnjim branjem",
             "sftpModeMaximumTested": "Preizkušeni maksimum",
-            "sftpModeMaximumTestedDescription": "Dvanajst povezav z optimiziranim vnaprejšnjim branjem"
+            "sftpModeMaximumTestedDescription": "Dvanajst povezav z optimiziranim vnaprejšnjim branjem",
+            "modeSafeDescription": "Ena povezava: ena datoteka hkrati, en tok na datoteko",
+            "modeBalancedDescription": "Do 3 povezave: vzporedne datoteke ali kanali obsegov znotraj ene velike datoteke",
+            "modeMaxDescription": "Do 5 povezav: vzporedne datoteke ali kanali obsegov znotraj ene velike datoteke"
         },
         "settings": {
             "title": "Nastavitve",
@@ -1038,7 +1041,7 @@
             "downloadSegments": "Segmenti prenosa na datoteko",
             "downloadSegmentsAuto": "Samodejno (en tok)",
             "downloadSegmentsN": "{n} segmentov na datoteko",
-            "downloadSegmentsDesc": "Vsak prenos razdeli na vzporedne razpone bajtov. Samodejno ohrani trenutno vedenje z enim tokom. Učinkovito pri ponudnikih, ki podpirajo zahteve po razponu (SFTP, S3, HTTP), za datoteke dovolj velike, da prinašajo korist.",
+            "downloadSegmentsDesc": "Razdeli vsak prenos na vzporedne obsege bajtov. Izrecna vrednost ima prednost pred prednastavitvijo hitrosti v orodni vrstici FTP/FTPS; Samodejno pusti, da prednastavitev odloči (Varno ohrani en tok). Velja pri ponudnikih, ki podpirajo zahteve obsegov (SFTP, FTP/FTPS, S3, HTTP), za dovolj velike datoteke.",
             "autoStartTransfers": "Samodejni zacetek prenosov",
             "autoStartTransfersHelp": "Ko je vklopljeno, se prenosi z vleci-in-spusti in s klikom zacnejo takoj. Ko je izklopljeno, so parkirani v Transfer Queue kot staged, da lahko obrezes drevesa map in preuredis vrstni red, preden pritisnes Start.",
             "importKeystorePrompt": "Vnesi geslo, uporabljeno za sifriranje te varnostne kopije keystore.",
