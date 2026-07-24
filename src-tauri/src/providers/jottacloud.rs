@@ -1463,34 +1463,12 @@ impl StorageProvider for JottacloudProvider {
     }
 
     async fn delete(&mut self, path: &str) -> Result<(), ProviderError> {
-        let resolved = self.resolve_path(path);
-        // Hard delete (?rm=true): removes immediately without going to trash
-        let url = format!("{}?rm=true", self.jfs_url(&resolved));
-
-        let resp = self
-            .post_with_retry(&url, "application/octet-stream", vec![])
-            .await?;
-
-        if !resp.status().is_success() {
-            // Try directory hard delete
-            let url_dir = format!("{}?rmDir=true", self.jfs_url(&resolved));
-            let resp_dir = self
-                .post_with_retry(&url_dir, "application/octet-stream", vec![])
-                .await?;
-            if !resp_dir.status().is_success() {
-                let status = resp_dir.status();
-                let body = resp_dir.text().await.unwrap_or_default();
-                return Err(ProviderError::ServerError(format!(
-                    "Delete {} failed ({}): {}",
-                    resolved,
-                    status,
-                    sanitize_api_error(&body)
-                )));
-            }
-        }
-
-        jotta_log(&format!("Deleted: {}", resolved));
-        Ok(())
+        // Soft-delete into Jottacloud Trash (recoverable via View Trash).
+        // Hard delete used to fire `?rm=true` / `?rmDir=true` which skipped the
+        // recycle bin entirely — unlike OpenDrive/Google Drive — so folders
+        // disappeared permanently from AeroFTP. Permanent purge stays on
+        // `permanent_delete_from_trash` / `delete_permanent` only (#397).
+        self.move_to_trash(path).await
     }
 
     async fn rename(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
@@ -1668,11 +1646,17 @@ impl StorageProvider for JottacloudProvider {
         self.delete(path).await
     }
 
-    // delete_permanent: not overridden. Jottacloud's `delete()` already
-    // sends `?rm=true` (hard delete that bypasses trash), so the default
-    // Ok(false) no-op is correct: there is nothing to purge afterwards.
-    // The inherent `permanent_delete_from_trash` exists for the separate
-    // case of items already in trash from another client.
+    async fn delete_permanent(&mut self, path: &str) -> Result<bool, ProviderError> {
+        // `delete()` now soft-deletes into Trash (#397). Permanent purge of an
+        // already-trashed entry (or a hard wipe when the caller opts in) goes
+        // through the trash path with `?rm=true`.
+        let basename = path.rsplit('/').next().unwrap_or(path);
+        match self.permanent_delete_from_trash(basename).await {
+            Ok(()) => Ok(true),
+            Err(ProviderError::NotFound(_)) => Ok(false),
+            Err(e) => Err(e),
+        }
+    }
 
     async fn size(&mut self, path: &str) -> Result<u64, ProviderError> {
         let entry = self.stat(path).await?;
