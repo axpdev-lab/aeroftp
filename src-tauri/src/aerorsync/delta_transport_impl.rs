@@ -92,6 +92,7 @@ const AERORSYNC_TRANSPORT_NAME: &str = "aerorsync-proto-31";
 
 /// Chunk size used by `write_atomic_chunked` in production. 64 KiB
 /// matches the AeroVault v2 body chunk + keeps syscall count reasonable.
+#[allow(dead_code)] // retained for production atomic-write path callers
 const ATOMIC_WRITE_CHUNK_SIZE: usize = 64 * 1024;
 
 /// Suffix appended to the destination path while the write is in
@@ -1597,6 +1598,7 @@ fn lookup_group_name(gid: u32) -> String {
 /// Compute the 16-byte xxh128 digest of `data` and return it as the
 /// little-endian byte sequence rsync expects on the wire (rsync stores
 /// the digest as raw bytes in the order returned by `XXH128_digest`).
+#[allow(dead_code)] // helper retained for checksum parity paths
 fn xxh128_digest_bytes(data: &[u8]) -> Vec<u8> {
     use xxhash_rust::xxh3::xxh3_128;
     let digest = xxh3_128(data);

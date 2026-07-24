@@ -22,16 +22,6 @@ name = "aeroftp-dispatch"
 path = "src/bin/aeroftp_dispatch.rs"
 
 [[bin]]
-name = "aerorsync_serve"
-path = "src/bin/aerorsync_serve.rs"
-# The real server body is gated behind the `aerorsync` feature. When the
-# feature is OFF this binary compiles to a stub that prints a message and
-# exits with code 1, so the Tauri bundler can still copy the expected
-# artifact on macOS and Windows without failing the release build.
-# (This dev helper is the wire-protocol oracle used by unit and live tests;
-# the production path talks to stock `rsync --server` via `WrapperParity`.)
-
-[[bin]]
 name = "seed_test_profiles"
 path = "src/bin/seed_test_profiles.rs"
 
@@ -339,13 +329,12 @@ aerorsync = ["dep:xxhash-rust"]
 local-stt = ["dep:hound", "dep:whisper-rs"]
 
 # Strada C: Docker-harness lane cfg flags. Declared here so
-# `#[cfg(ci_lane2)]` / `#[cfg(ci_lane3)]` do not surface
-# `unexpected_cfgs` warnings under `-D warnings`. Enable on CI with
-# `RUSTFLAGS='--cfg ci_lane3'` (or `ci_lane2`); left unset otherwise.
+# `#[cfg(ci_lane3)]` does not surface `unexpected_cfgs` warnings under
+# `-D warnings`. Enable on CI with `RUSTFLAGS='--cfg ci_lane3'`; left
+# unset otherwise. (ci_lane2 retired with Y-RSC.8 / RSNP stack.)
 # mtp_libmtp: set by build.rs when pkg-config finds libmtp (optional).
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = [
-    'cfg(ci_lane2)',
     'cfg(ci_lane3)',
     'cfg(mtp_libmtp)',
 ] }

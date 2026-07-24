@@ -17,15 +17,14 @@
 //! cargo test  --features aerorsync --lib aerorsync
 //! cargo clippy --all-targets --features aerorsync -- -D warnings
 //! ```
-
-// The module intentionally keeps protocol helpers and test fixtures available
-// next to the production bridge. Several are exercised only by regression
-// tests or live-test lanes, so dead-code warnings here would be noise.
-#![allow(dead_code)]
+//!
+//! Y-RSC.8 retired the legacy RSNP envelope stack (SessionDriver, session,
+//! planner, server, aerorsync_serve). Production dispatch is WrapperParity
+//! against stock `rsync --server` only.
 
 pub mod delta_transport_impl;
-pub mod driver;
 pub mod engine_adapter;
+pub mod engine_protocol_types;
 pub mod events;
 pub mod fallback_policy;
 pub mod fixtures;
@@ -34,14 +33,10 @@ pub mod live_tests;
 pub mod local_transport;
 pub mod mock;
 pub mod native_driver;
-pub mod planner;
-pub mod protocol;
 pub mod real_wire;
 pub mod remote_command;
 pub mod rsync_event_bridge;
 pub mod russh_session_transport;
-pub mod server;
-pub mod session;
 pub mod shell_escape;
 pub mod ssh_transport;
 pub mod streaming_writer;
