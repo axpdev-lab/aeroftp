@@ -726,6 +726,10 @@ fn relocate_surface_has_account_id(profile: &Value) -> bool {
 /// Vault / partition key candidates that hold the identifying secret for a
 /// profile. Prefer per-profile keys so distinct accounts never share a
 /// machine-level singleton fingerprint.
+///
+/// This is the *identity* subset only (`server_*` + OAuth/Jottacloud token).
+/// Cross-user secret dual-write uses [`relocate_all_secret_key_candidates`] so
+/// Crypt overlay / Filen / OneDrive hints travel with the profile (#366).
 fn relocate_credential_key_candidates(protocol: &str, profile_id: &str) -> Vec<String> {
     let mut keys = vec![format!("server_{profile_id}")];
     if let Some(oauth_base) = oauth_vault_key_for_protocol(protocol) {
@@ -734,6 +738,15 @@ fn relocate_credential_key_candidates(protocol: &str, profile_id: &str) -> Vec<S
         keys.push(format!("{oauth_base}_{profile_id}"));
     }
     keys
+}
+
+/// Every per-profile vault key that must follow a profile across users on
+/// Copy/Move. Delegates to [`crate::per_profile_vault_keys`] (same source of
+/// truth as same-user duplicate / purge / export) so Crypt overlay passwords,
+/// salts, keyfile paths, keystore blobs, Filen keys and OneDrive drive hints
+/// are not left behind when the profile JSON badges still say Crypt is ON.
+fn relocate_all_secret_key_candidates(protocol: &str, profile_id: &str) -> Vec<String> {
+    crate::per_profile_vault_keys(profile_id, Some(protocol))
 }
 
 /// Decrypt one credential row with an already-resolved DEK (session-free).
@@ -1742,16 +1755,34 @@ pub fn relocate_server_profile(
 }
 
 /// Partition credential_type for a relocate key (migrate precedent at
-/// `copy_user_secrets_with_dek`: `server` / `oauth` / `jottacloud_refresh`).
+/// `copy_user_secrets_with_dek`: `server` / `oauth` / `jottacloud_refresh`,
+/// plus the crypt/Filen/OneDrive prefixes from [`relocate_all_secret_key_candidates`]).
 fn relocate_secret_kind(credential_key: &str) -> &'static str {
-    if credential_key.starts_with("server_") {
+    if credential_key.starts_with("server_modes_") {
+        "server_modes"
+    } else if credential_key.starts_with("server_") {
         "server"
     } else if credential_key.starts_with("jottacloud_refresh_") {
         "jottacloud_refresh"
     } else if credential_key.starts_with("oauth_") {
         "oauth"
+    } else if credential_key.starts_with("aerocrypt_overlay_pw_") {
+        "aerocrypt_overlay_pw"
+    } else if credential_key.starts_with("aerocrypt_overlay_salt_") {
+        "aerocrypt_overlay_salt"
+    } else if credential_key.starts_with("aerocrypt_overlay_keyfile_path_") {
+        "aerocrypt_overlay_keyfile_path"
+    } else if credential_key.starts_with("aerocrypt_overlay_config_") {
+        "aerocrypt_overlay_config"
+    } else if credential_key.starts_with("filen_api_key_") {
+        "filen_api_key"
+    } else if credential_key.starts_with("onedrive_drive_id_") {
+        "onedrive_drive_id"
+    } else if credential_key.starts_with("onedrive_drive_type_") {
+        "onedrive_drive_type"
     } else {
-        // relocate_credential_key_candidates only emits the prefixes above.
+        // Unknown prefix from a future per_profile_vault_keys entry: still
+        // dual-write under a stable generic type rather than dropping it.
         "server"
     }
 }
@@ -1829,16 +1860,21 @@ fn relocate_secret_key_dual(
 
 /// MUV-3 cross-user credential relocation: the partition profile row is already
 /// moved by [`relocate_server_profile`]; this carries every per-profile secret
-/// resolved by [`relocate_credential_key_candidates`] (`server_<id>` plus
-/// OAuth / Jottacloud when the protocol has a vault base). The vault stays the
-/// source of truth (copy onto the new id, drop the orphan on a Move), and each
-/// secret is mirrored onto the TARGET user's partition under its own scoped DEK
-/// (resolved with `target_passphrase`, never the source session). Best-effort on
-/// the partition mirror: a locked/uncovered target falls back to the dual-written
-/// vault. Caller must invoke this while `root_key` / `target_passphrase` are
-/// still live (before zeroize).
+/// resolved by [`relocate_all_secret_key_candidates`] (full
+/// [`crate::per_profile_vault_keys`] set: `server_*`, OAuth / Jottacloud, Crypt
+/// overlay secrets, Filen, OneDrive hints). The vault stays the source of truth
+/// (copy onto the new id, drop the orphan on a Move), and each secret is mirrored
+/// onto the TARGET user's partition under its own scoped DEK (resolved with
+/// `target_passphrase`, never the source session). Best-effort on the partition
+/// mirror: a locked/uncovered target falls back to the dual-written vault. Caller
+/// must invoke this while `root_key` / `target_passphrase` are still live
+/// (before zeroize).
 ///
 /// #366: for every key, `inserted` gates copy before `moved` gates delete.
+/// Crypt overlay secrets were previously omitted from the dual (identity-only
+/// candidates), so a Copy/Move to another user kept the Crypt badges on the
+/// profile JSON while the overlay password/salt/config stayed on the source id —
+/// connect showed no decrypt toggles working and ciphertext names.
 fn relocate_server_credential_dual(
     conn: &Connection,
     store: &CredentialStore,
@@ -1848,9 +1884,9 @@ fn relocate_server_credential_dual(
     target_passphrase: Option<&str>,
 ) {
     let source_keys =
-        relocate_credential_key_candidates(&relocation.protocol, &relocation.source_profile_id);
+        relocate_all_secret_key_candidates(&relocation.protocol, &relocation.source_profile_id);
     let new_keys =
-        relocate_credential_key_candidates(&relocation.protocol, &relocation.new_profile_id);
+        relocate_all_secret_key_candidates(&relocation.protocol, &relocation.new_profile_id);
     for (source_key, new_key) in source_keys.iter().zip(new_keys.iter()) {
         relocate_secret_key_dual(
             conn,
@@ -4095,8 +4131,8 @@ pub fn cli_relocate_server_profile(
 }
 
 /// CLI bridge (MUV-3) for the credential half of a cross-user relocation: copies
-/// every per-profile secret from [`relocate_credential_key_candidates`]
-/// (`server_<id>` plus OAuth/Jottacloud when applicable) onto the new id
+/// every per-profile secret from [`relocate_all_secret_key_candidates`] (full
+/// `per_profile_vault_keys` set including Crypt overlay secrets) onto the new id
 /// (vault + the target user's partition under its scoped DEK) and, on a Move,
 /// drops the orphaned source secrets from both stores. Call after
 /// [`cli_relocate_server_profile`] with the same `target_passphrase` still live.
@@ -6055,9 +6091,9 @@ mod tests {
         target_passphrase: Option<&str>,
     ) {
         let source_keys =
-            relocate_credential_key_candidates(&relocation.protocol, &relocation.source_profile_id);
+            relocate_all_secret_key_candidates(&relocation.protocol, &relocation.source_profile_id);
         let new_keys =
-            relocate_credential_key_candidates(&relocation.protocol, &relocation.new_profile_id);
+            relocate_all_secret_key_candidates(&relocation.protocol, &relocation.new_profile_id);
         for (source_key, new_key) in source_keys.iter().zip(new_keys.iter()) {
             relocate_secret_key_dual(
                 conn,
@@ -6071,6 +6107,41 @@ mod tests {
                 relocate_secret_kind(source_key),
             );
         }
+    }
+
+    fn seed_crypt_overlay_secrets(
+        conn: &Connection,
+        root: &[u8; 32],
+        user_id: i64,
+        profile_id: &str,
+    ) {
+        set_user_credential_for(
+            conn,
+            root,
+            user_id,
+            &format!("aerocrypt_overlay_pw_{profile_id}"),
+            "aerocrypt_overlay_pw",
+            "overlay-password",
+        )
+        .expect("seed aerocrypt pw");
+        set_user_credential_for(
+            conn,
+            root,
+            user_id,
+            &format!("aerocrypt_overlay_salt_{profile_id}"),
+            "aerocrypt_overlay_salt",
+            "overlay-salt",
+        )
+        .expect("seed aerocrypt salt");
+        set_user_credential_for(
+            conn,
+            root,
+            user_id,
+            &format!("aerocrypt_overlay_config_{profile_id}"),
+            "aerocrypt_overlay_config",
+            r#"{"v":3}"#,
+        )
+        .expect("seed aerocrypt config");
     }
 
     fn assert_cred_present(
@@ -6815,8 +6886,9 @@ mod tests {
 
     #[test]
     fn relocate_credential_dual_password_protocol_only_server_keys() {
-        // sftp: resolver returns no oauth base → only server_* is relocated;
-        // no phantom oauth_* / jottacloud_refresh_* rows.
+        // sftp: identity resolver returns no oauth base → only server_* is
+        // identifying. Dual still walks the full per_profile_vault_keys set but
+        // only copies keys that exist, so no phantom oauth_* rows appear.
         let _guard = test_lock();
         let mut conn = migrated_conn(0);
         let root = test_root();
@@ -6856,6 +6928,120 @@ mod tests {
         assert_cred_absent(&conn, &root, bob.id, "jottacloud_refresh_srv_pw_new");
         assert_cred_absent(&conn, &root, default.id, "oauth_pcloud_srv_pw");
         assert_cred_absent(&conn, &root, default.id, "jottacloud_refresh_srv_pw");
+    }
+
+    #[test]
+    fn relocate_credential_dual_copy_carries_crypt_overlay_secrets() {
+        // #366 follow-up: Copy to another user must dual-write Crypt overlay
+        // secrets onto the new profile id so badges stay honest and decrypt works.
+        let _guard = test_lock();
+        let mut conn = migrated_conn(0);
+        let root = test_root();
+        let default = get_active_user(&conn).expect("active").expect("default");
+        let bob = create_passphrase_less_user(&mut conn, &root, "Bob", Some("B"), Some("#6366f1"))
+            .expect("create bob");
+        replace_active_server_profiles(&mut conn, &root, &[sftp_profile("srv_crypt")])
+            .expect("seed sftp+crypt");
+        seed_server_secret(&conn, &root, default.id, "srv_crypt", "sftp-password");
+        seed_crypt_overlay_secrets(&conn, &root, default.id, "srv_crypt");
+
+        let report = relocate_server_profile(
+            &mut conn,
+            &root,
+            default.id,
+            bob.id,
+            "srv_crypt",
+            "srv_crypt_new",
+            None,
+            /*remove_from_source=*/ false,
+        )
+        .expect("crypt copy");
+        assert!(report.inserted);
+        assert!(!report.moved);
+
+        relocate_credentials_partition_only(&conn, &root, default.id, &report, None);
+
+        // Target has the full crypt bundle under the new id.
+        assert_cred_present(&conn, &root, bob.id, "server_srv_crypt_new", "sftp-password");
+        assert_cred_present(
+            &conn,
+            &root,
+            bob.id,
+            "aerocrypt_overlay_pw_srv_crypt_new",
+            "overlay-password",
+        );
+        assert_cred_present(
+            &conn,
+            &root,
+            bob.id,
+            "aerocrypt_overlay_salt_srv_crypt_new",
+            "overlay-salt",
+        );
+        assert_cred_present(
+            &conn,
+            &root,
+            bob.id,
+            "aerocrypt_overlay_config_srv_crypt_new",
+            r#"{"v":3}"#,
+        );
+        // Copy keeps source secrets intact.
+        assert_cred_present(
+            &conn,
+            &root,
+            default.id,
+            "aerocrypt_overlay_pw_srv_crypt",
+            "overlay-password",
+        );
+        assert_cred_present(&conn, &root, default.id, "server_srv_crypt", "sftp-password");
+    }
+
+    #[test]
+    fn relocate_credential_dual_move_drops_source_crypt_overlay_secrets() {
+        let _guard = test_lock();
+        let mut conn = migrated_conn(0);
+        let root = test_root();
+        let default = get_active_user(&conn).expect("active").expect("default");
+        let bob = create_passphrase_less_user(&mut conn, &root, "Bob", Some("B"), Some("#6366f1"))
+            .expect("create bob");
+        replace_active_server_profiles(&mut conn, &root, &[sftp_profile("srv_crypt_m")])
+            .expect("seed sftp+crypt");
+        seed_server_secret(&conn, &root, default.id, "srv_crypt_m", "sftp-password");
+        seed_crypt_overlay_secrets(&conn, &root, default.id, "srv_crypt_m");
+
+        let report = relocate_server_profile(
+            &mut conn,
+            &root,
+            default.id,
+            bob.id,
+            "srv_crypt_m",
+            "srv_crypt_m_new",
+            None,
+            /*remove_from_source=*/ true,
+        )
+        .expect("crypt move");
+        assert!(report.inserted);
+        assert!(report.moved);
+
+        relocate_credentials_partition_only(&conn, &root, default.id, &report, None);
+
+        assert_cred_present(
+            &conn,
+            &root,
+            bob.id,
+            "aerocrypt_overlay_pw_srv_crypt_m_new",
+            "overlay-password",
+        );
+        assert_cred_present(
+            &conn,
+            &root,
+            bob.id,
+            "aerocrypt_overlay_config_srv_crypt_m_new",
+            r#"{"v":3}"#,
+        );
+        assert_cred_absent(&conn, &root, default.id, "aerocrypt_overlay_pw_srv_crypt_m");
+        assert_cred_absent(&conn, &root, default.id, "aerocrypt_overlay_salt_srv_crypt_m");
+        assert_cred_absent(&conn, &root, default.id, "aerocrypt_overlay_config_srv_crypt_m");
+        assert_cred_absent(&conn, &root, default.id, "server_srv_crypt_m");
     }
 
     #[test]
