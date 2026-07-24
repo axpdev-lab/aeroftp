@@ -22394,6 +22394,18 @@ struct ModeGroupRow {
     group_id: &'static str,
     protocol: &'static str,
     provider_id: Option<&'static str>,
+    /// Endpoint this mode must talk to, mirroring the `defaults.server` of the
+    /// matching preset in `src/providers/registry.ts`. Every mode of a group
+    /// targets the SAME account but a DIFFERENT endpoint (Koofr native speaks
+    /// `app.koofr.net`, its WebDAV surface only answers under
+    /// `app.koofr.net/dav/Koofr`), so switching mode without rewriting the host
+    /// produces a profile that authenticates and then 404s on every request.
+    /// `None` marks a mode whose endpoint cannot be derived (the S3 surfaces
+    /// need a user-specific bucket/region), which callers must treat as
+    /// "not synthesizable" rather than guessing.
+    preset_host: Option<&'static str>,
+    /// Port that goes with `preset_host`. `None` leaves the port untouched.
+    preset_port: Option<u16>,
 }
 
 const MODE_GROUPS: &[ModeGroupRow] = &[
@@ -22402,61 +22414,124 @@ const MODE_GROUPS: &[ModeGroupRow] = &[
         group_id: "filelu",
         protocol: "filelu",
         provider_id: Some("filelu"),
+        preset_host: Some("filelu.com"),
+        preset_port: None,
     },
     ModeGroupRow {
         group_id: "filelu",
         protocol: "webdav",
         provider_id: Some("filelu-webdav"),
+        preset_host: Some("https://webdav.filelu.com"),
+        preset_port: Some(443),
     },
     ModeGroupRow {
         group_id: "filelu",
         protocol: "s3",
         provider_id: Some("filelu-s3"),
+        preset_host: None,
+        preset_port: None,
     },
     ModeGroupRow {
         group_id: "filelu",
         protocol: "ftp",
         provider_id: Some("filelu-ftp"),
+        preset_host: Some("ftp.filelu.com"),
+        preset_port: Some(21),
     },
     // Filen (native API has no preset providerId)
     ModeGroupRow {
         group_id: "filen",
         protocol: "filen",
         provider_id: None,
+        preset_host: Some("filen.io"),
+        preset_port: None,
     },
     ModeGroupRow {
         group_id: "filen",
         protocol: "webdav",
         provider_id: Some("filen-desktop-webdav"),
+        preset_host: Some("local.webdav.filen.io"),
+        preset_port: Some(1900),
     },
     ModeGroupRow {
         group_id: "filen",
         protocol: "s3",
         provider_id: Some("filen-desktop-s3"),
+        preset_host: None,
+        preset_port: None,
     },
     // OpenDrive (native API has no preset providerId)
     ModeGroupRow {
         group_id: "opendrive",
         protocol: "opendrive",
         provider_id: None,
+        preset_host: Some("dev.opendrive.com"),
+        preset_port: None,
     },
     ModeGroupRow {
         group_id: "opendrive",
         protocol: "webdav",
         provider_id: Some("opendrive-webdav"),
+        preset_host: Some("https://webdav.opendrive.com"),
+        preset_port: Some(443),
     },
     // Koofr (native API has no preset providerId; `koofr` providerId is the WebDAV preset)
     ModeGroupRow {
         group_id: "koofr",
         protocol: "koofr",
         provider_id: None,
+        preset_host: Some("app.koofr.net"),
+        preset_port: None,
     },
     ModeGroupRow {
         group_id: "koofr",
         protocol: "webdav",
         provider_id: Some("koofr"),
+        preset_host: Some("https://app.koofr.net/dav/Koofr"),
+        preset_port: Some(443),
     },
 ];
+
+/// Look up the `MODE_GROUPS` row for one (group, protocol, provider_id) triple.
+fn mode_group_row(
+    group_id: &str,
+    protocol: &str,
+    provider_id: Option<&str>,
+) -> Option<&'static ModeGroupRow> {
+    MODE_GROUPS
+        .iter()
+        .find(|r| r.group_id == group_id && r.protocol == protocol && r.provider_id == provider_id)
+}
+
+/// Rewrite a synthesized profile's `host`/`port` to the target mode's endpoint.
+/// Pure (operates on the profile map) so the endpoint table stays unit-tested
+/// without touching the vault. Returns false when the target mode has no
+/// derivable endpoint, in which case the caller must not pretend the profile is
+/// usable: the S3 surfaces need a user-specific bucket and region that no
+/// preset can supply.
+fn apply_mode_endpoint_preset(
+    map: &mut serde_json::Map<String, serde_json::Value>,
+    group_id: &str,
+    target_protocol: &str,
+    target_provider_id: Option<&str>,
+) -> bool {
+    let Some(row) = mode_group_row(group_id, target_protocol, target_provider_id) else {
+        return false;
+    };
+    let Some(host) = row.preset_host else {
+        return false;
+    };
+    map.insert("host".into(), serde_json::Value::String(host.to_string()));
+    match row.preset_port {
+        Some(port) => {
+            map.insert("port".into(), serde_json::Value::from(port));
+        }
+        None => {
+            map.remove("port");
+        }
+    }
+    true
+}
 
 /// Short mode label per row: `api` for native modes, otherwise the
 /// protocol value verbatim (`webdav`, `s3`, `ftp`).
@@ -22663,6 +22738,20 @@ fn duplicate_or_convert_mode_in_vault(
             None => {
                 map.remove("providerId");
             }
+        }
+        // Point the copy at the TARGET mode's endpoint. Without this the new
+        // profile keeps the source's host: a Koofr native profile duplicated
+        // into WebDAV mode stayed on `app.koofr.net` and every request 404'd,
+        // because the Koofr DAV surface only answers under `/dav/Koofr`. The
+        // GUI got this right through its preset registry; the CLI had no
+        // endpoint table at all (issue #277 B4 triage).
+        if !apply_mode_endpoint_preset(map, group, target_protocol, target_provider_id)
+            && !cli.quiet
+        {
+            eprintln!(
+                "warning: mode '{}' has no preset endpoint; set the endpoint, bucket and keys on the new profile before connecting",
+                mode_label
+            );
         }
         if let Some(u) = username {
             map.insert("username".into(), serde_json::Value::String(u.to_string()));
@@ -64584,6 +64673,71 @@ mod tests {
     use super::*;
     use ftp_client_gui_lib::profile_loader::insert_profile_option;
     use serde_json::json;
+
+    #[test]
+    fn mode_endpoint_preset_rewrites_koofr_webdav_host() {
+        // Regression for the #277 B4 triage: a Koofr native profile duplicated
+        // into WebDAV mode kept `app.koofr.net` and 404'd on every request.
+        let mut map = serde_json::Map::new();
+        map.insert("host".into(), json!("app.koofr.net"));
+        assert!(apply_mode_endpoint_preset(
+            &mut map,
+            "koofr",
+            "webdav",
+            Some("koofr")
+        ));
+        assert_eq!(map["host"], json!("https://app.koofr.net/dav/Koofr"));
+        assert_eq!(map["port"], json!(443));
+    }
+
+    #[test]
+    fn mode_endpoint_preset_rewrites_back_to_native_host() {
+        let mut map = serde_json::Map::new();
+        map.insert("host".into(), json!("https://webdav.opendrive.com"));
+        map.insert("port".into(), json!(443));
+        assert!(apply_mode_endpoint_preset(
+            &mut map,
+            "opendrive",
+            "opendrive",
+            None
+        ));
+        assert_eq!(map["host"], json!("dev.opendrive.com"));
+        // The native API surface has no fixed port: the stale 443 must go.
+        assert!(!map.contains_key("port"));
+    }
+
+    #[test]
+    fn mode_endpoint_preset_refuses_s3_modes() {
+        // S3 surfaces need a user-specific bucket/region, so there is nothing
+        // to inject and the caller must skip instead of guessing.
+        let mut map = serde_json::Map::new();
+        map.insert("host".into(), json!("filelu.com"));
+        assert!(!apply_mode_endpoint_preset(
+            &mut map,
+            "filelu",
+            "s3",
+            Some("filelu-s3")
+        ));
+        assert_eq!(map["host"], json!("filelu.com"));
+    }
+
+    #[test]
+    fn mode_group_rows_cover_every_resolvable_mode() {
+        // Every row `resolve_target_mode_in_group` can return must be findable
+        // by `mode_group_row`, otherwise the endpoint injection silently
+        // no-ops for that mode.
+        for row in MODE_GROUPS {
+            let label = mode_label_for_row(row);
+            let (proto, pid) = resolve_target_mode_in_group(row.group_id, label)
+                .expect("every row resolves from its own label");
+            assert!(
+                mode_group_row(row.group_id, proto, pid).is_some(),
+                "row {}/{} is not addressable",
+                row.group_id,
+                label
+            );
+        }
+    }
 
     #[test]
     fn aerocloud_direction_maps_cli_to_serde() {
