@@ -74,6 +74,13 @@ Var AeroFTPAppDataPresentPre
 !macro AeroFTPDeleteExtractVerbs BASEKEY
     DeleteRegKey HKCU "${BASEKEY}\shell\AeroFTPExtractHere"
     DeleteRegKey HKCU "${BASEKEY}\shell\AeroFTPExtractToFolder"
+    ; Drop the containers we had to create to hold the two verbs, but only when
+    ; nothing else lives in them (issue #454: an uninstall used to leave an empty
+    ; `SystemFileAssociations\.<ext>\shell` behind for all 8 archive formats).
+    ; /ifempty is what keeps this safe on the shared SystemFileAssociations keys:
+    ; if Windows or another archiver added its own verb, the key stays.
+    DeleteRegKey /ifempty HKCU "${BASEKEY}\shell"
+    DeleteRegKey /ifempty HKCU "${BASEKEY}"
 !macroend
 
 ; ── Deliverable G: Windows available-opener registration ──
@@ -135,6 +142,13 @@ Var AeroFTPAppDataPresentPre
 !macro AeroFTPDeleteArchiveOpenWith EXT
     ; Only remove our value; other apps may have written their own ProgIDs here.
     DeleteRegValue HKCU "${EXT}\OpenWithProgids" "AeroFTP.Archive"
+    ; And drop the containers when ours was the only entry (issue #454). On a
+    ; stock machine the real .zip/.7z/... owner lives in HKLM, so the HKCU key
+    ; here is one we created purely to hang OpenWithProgids off; without these
+    ; two lines an uninstall left 8 empty `.<ext>\OpenWithProgids` keys behind.
+    ; /ifempty leaves the key alone the moment another app has a value in it.
+    DeleteRegKey /ifempty HKCU "${EXT}\OpenWithProgids"
+    DeleteRegKey /ifempty HKCU "${EXT}"
 !macroend
 
 !macro NSIS_HOOK_PREINSTALL
@@ -488,6 +502,86 @@ Var AeroFTPAppDataPresentPre
 !macroend
 
 !macro NSIS_HOOK_POSTUNINSTALL
+    ; --- Association residue sweep (issue #454) ---
+    ;
+    ; This has to live in POSTUNINSTALL, not beside the association deletes in
+    ; PREUNINSTALL, because of the order Tauri's bundled installer.nsi uses:
+    ;
+    ;   Section Uninstall
+    ;     NSIS_HOOK_PREUNINSTALL     <- our association deletes run here
+    ;     ...delete installed files...
+    ;     APP_UNASSOCIATE x5         <- Tauri's own association cleanup
+    ;     ...delete the uninstall key...
+    ;     NSIS_HOOK_POSTUNINSTALL    <- this block
+    ;
+    ; APP_UNASSOCIATE (FileAssociation.nsh, shipped by the bundler) is:
+    ;     ReadRegStr  $R0 SHELL_CONTEXT "Software\Classes\.<ext>" "<progid>_backup"
+    ;     WriteRegStr     SHELL_CONTEXT "Software\Classes\.<ext>" "" "$R0"
+    ;     DeleteRegKey    SHELL_CONTEXT "Software\Classes\<progid>"
+    ;
+    ; By the time it runs, PREUNINSTALL has already deleted the whole
+    ; `Software\Classes\.<ext>` key, `_backup` value included. The ReadRegStr
+    ; therefore yields an empty string and the WriteRegStr RECREATES the
+    ; extension key carrying nothing but an empty default value. Those five
+    ; resurrected shells are the HKCR junk reported in issue #454 (.aeroftp,
+    ; .aeroftp-keystore, .aeroftp-script and their two siblings surviving a full
+    ; uninstall). Deleting them harder in PREUNINSTALL cannot help; only a pass
+    ; that runs after APP_UNASSOCIATE can.
+    ;
+    ; The bare lowercase ProgIDs Tauri derives from the extension names
+    ; (aerovault, aeroftp, aeroftp-keystore, aerozip, aeroftp-script; note NOT
+    ; `AeroFTP.<ext>`, that spelling belongs to the WiX/MSI path) are removed
+    ; correctly by APP_UNASSOCIATE itself. They are re-deleted below only as belt
+    ; and braces, for machines carrying leftovers from a build that predates this.
+    ;
+    ; The Explorer FileExts entries are written by Explorer rather than by us and
+    ; were never cleaned by anyone. They go too: they hold our ProgIDs plus an
+    ; OpenWithList pointing at the binary this uninstaller just deleted.
+    ;
+    ; Skipped in update mode: an in-app or WinGet upgrade runs this uninstaller
+    ; with /UPDATE and reinstalls right afterwards. FileExts is where Explorer
+    ; keeps the user's UserChoice default, so wiping it on every upgrade would
+    ; silently reset a choice the user made by hand. This is the same guard the
+    ; Tauri template puts on its own Run-key and application-data blocks.
+    StrCmp $UpdateMode "1" _aeroftp_post_assoc_done 0
+        DeleteRegKey HKCU "Software\Classes\.aerovault"
+        DeleteRegKey HKCU "Software\Classes\.aeroftp"
+        DeleteRegKey HKCU "Software\Classes\.aeroftp-keystore"
+        DeleteRegKey HKCU "Software\Classes\.aerozip"
+        DeleteRegKey HKCU "Software\Classes\.aeroftp-script"
+
+        DeleteRegKey HKCU "Software\Classes\aerovault"
+        DeleteRegKey HKCU "Software\Classes\aeroftp"
+        DeleteRegKey HKCU "Software\Classes\aeroftp-keystore"
+        DeleteRegKey HKCU "Software\Classes\aerozip"
+        DeleteRegKey HKCU "Software\Classes\aeroftp-script"
+
+        ; The advertised ProgIDs the WiX/MSI path registers instead. A no-op on an
+        ; NSIS-only machine; tidies up after a user who tried the .msi first and
+        ; then switched to the .exe installer.
+        DeleteRegKey HKCU "Software\Classes\AeroFTP.aerovault"
+        DeleteRegKey HKCU "Software\Classes\AeroFTP.aeroftp"
+        DeleteRegKey HKCU "Software\Classes\AeroFTP.aeroftp-keystore"
+        DeleteRegKey HKCU "Software\Classes\AeroFTP.aerozip"
+        DeleteRegKey HKCU "Software\Classes\AeroFTP.aeroftp-script"
+
+        DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.aerovault"
+        DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.aeroftp"
+        DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.aeroftp-keystore"
+        DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.aerozip"
+        DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.aeroftp-script"
+
+        ; Our Capabilities subkey is already gone (PREUNINSTALL). Tauri keeps its
+        ; own `Software\AeroFTP\AeroFTP` (install location + installer language)
+        ; unless the user ticks "Remove application data", so this only fires on
+        ; that branch, retiring the shared parent instead of leaving it empty.
+        DeleteRegKey /ifempty HKCU "Software\AeroFTP"
+
+        ; SHCNE_ASSOCCHANGED again. PREUNINSTALL already fired one, but the keys
+        ; above only disappear now and Explorer caches the extension list.
+        System::Call 'shell32::SHChangeNotify(i 0x08000000, i 0x0000, p 0, p 0)'
+    _aeroftp_post_assoc_done:
+
     ; --- Coherent user-data cleanup, choice-aware ---
     ;
     ; Silent mode (WinGet upgrade, `/S` flag) preserves user data: same
