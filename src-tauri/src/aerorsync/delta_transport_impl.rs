@@ -43,14 +43,11 @@
 //!   atomic rename on `finalize`). The download-side
 //!   `AERORSYNC_MAX_IN_MEMORY_BYTES` guard was removed.
 //!
-//!   The signature phase still bulk-reads `local_path` via `tokio::fs::read`
-//!   because `DeltaEngineAdapter::build_signatures` is bulk-only; a
-//!   `build_signatures_streaming` adapter API is the post-P3-T01
-//!   follow-up that brings the resident set to `O(window)` regardless of
-//!   baseline size. Until then, baselines are still read once into RAM
-//!   for signatures, but the reconstructed buffer is gone: RSS scales
-//!   with `O(baseline + writer_buffer)` instead of
-//!   `O(baseline + reconstructed)`.
+//!   Y-RSC.5: the signature phase also streams from `FileBaseline` via
+//!   `send_signature_phase_from_baseline` (single `read_block` pass for
+//!   rolling + wire strong). There is no bulk `tokio::fs::read` of the
+//!   baseline on the production download path. Peak RSS is
+//!   `O(block_size + writer_buffer)`, independent of baseline size.
 
 #![cfg(feature = "aerorsync")]
 
@@ -861,10 +858,10 @@ where
     T: RawRemoteShellTransport + 'static,
 {
     let start = Instant::now();
-    // P3-T01 W2.5: the bulk read still feeds the signature phase
-    // (`adapter.build_signatures` is bulk-only until the post-P3-T01
-    // streaming variant lands). Reconstruction, however, no longer
-    // materialises a `Vec<u8>`: it streams into a
+    // Y-RSC.5: open a streaming baseline only (no bulk `fs::read`).
+    // Signatures and CopyBlock reconstruction both use
+    // `BaselineSource::read_block`, so peak RAM is O(block_size) plus
+    // the writer buffer. Reconstruction streams into a
     // `StreamingAtomicWriter` opened below.
     //
     // U-03: distinguish `NotFound` (legitimate empty baseline) from
@@ -872,46 +869,13 @@ where
     // silently masked `PermissionDenied`, `EIO`, symlink loops, etc.
     // into "empty baseline", degrading the delta path to a full
     // download while hiding the underlying error from the user.
-    let (destination_data, baseline_mode) = match fs::read(local_path).await {
-        Ok(data) => {
-            // U-09: capture the pre-existing mode so we can restore it on
-            // the temp file before the atomic rename, preserving
-            // perms / setuid / readonly across the in-place update.
-            let mode = existing_mode_if_any(local_path).await;
-            (data, mode)
-        }
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            // Legitimate empty baseline: target file does not exist
-            // yet. Classic full-download semantics via the native
-            // delta pipeline.
-            (Vec::new(), None)
-        }
-        Err(error) => {
-            // Any other read failure must surface, not silently
-            // degrade to full-size delta. Pre-commit classification
-            // routes this through classic fallback with a visible
-            // reason in the stderr string.
-            return Err(RsyncError::TransferFailed {
-                exit: -1,
-                stderr: format!(
-                    "native fallback: cannot read local baseline {}: {}",
-                    local_path.display(),
-                    error
-                ),
-            });
-        }
-    };
-
-    // Random-access baseline for `apply_delta_streaming`'s
-    // `CopyBlock(idx)` dispatch. When the target does not exist yet
-    // we substitute an empty `MemoryBaseline`: the engine never
-    // emits CopyBlocks against an empty signature set, so the
-    // baseline is unused but the trait object is still required by
-    // the streaming entry-point signature.
-    let mut baseline: Box<dyn BaselineSource + Send> = if destination_data.is_empty() {
-        Box::new(MemoryBaseline::new(Vec::new()))
-    } else {
-        match FileBaseline::open(local_path).await {
+    //
+    // U-09: capture the pre-existing mode so we can restore it on
+    // the temp file before the atomic rename, preserving
+    // perms / setuid / readonly across the in-place update.
+    let baseline_mode = existing_mode_if_any(local_path).await;
+    let mut baseline: Box<dyn BaselineSource + Send> = match fs::metadata(local_path).await {
+        Ok(meta) if meta.is_file() => match FileBaseline::open(local_path).await {
             Ok(fb) => Box::new(fb),
             Err(error) => {
                 return Err(RsyncError::TransferFailed {
@@ -923,6 +887,40 @@ where
                     ),
                 });
             }
+        },
+        Ok(_) => {
+            // Directory / special file: same class as a non-NotFound
+            // read failure under the old bulk path (fs::read would have
+            // rejected these). Surface rather than silently full-download.
+            return Err(RsyncError::TransferFailed {
+                exit: -1,
+                stderr: format!(
+                    "native fallback: local baseline {} is not a regular file",
+                    local_path.display()
+                ),
+            });
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            // Legitimate empty baseline: target file does not exist
+            // yet. Classic full-download semantics via the native
+            // delta pipeline. Empty MemoryBaseline: no CopyBlocks
+            // against an empty signature set, but the trait object is
+            // still required by the streaming entry-point signature.
+            Box::new(MemoryBaseline::new(Vec::new()))
+        }
+        Err(error) => {
+            // Any other metadata failure must surface, not silently
+            // degrade to full-size delta. Pre-commit classification
+            // routes this through classic fallback with a visible
+            // reason in the stderr string.
+            return Err(RsyncError::TransferFailed {
+                exit: -1,
+                stderr: format!(
+                    "native fallback: cannot inspect local baseline {}: {}",
+                    local_path.display(),
+                    error
+                ),
+            });
         }
     };
 
@@ -961,7 +959,6 @@ where
         let res = driver
             .drive_download_through_delta_streaming(
                 spec,
-                &destination_data,
                 &mut *baseline,
                 &mut hashing_writer,
                 &adapter,

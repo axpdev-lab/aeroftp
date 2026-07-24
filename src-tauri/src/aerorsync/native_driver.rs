@@ -1183,31 +1183,24 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         }
     }
 
-    /// P3-T01 W2.4/W2.5: streaming-sink sibling of
-    /// [`drive_download_through_delta`]. The pre-delta phases (preamble,
-    /// file list receive, signature send) are identical to the bulk path;
-    /// only the final `receive_delta_phase` differs. The reconstructed
-    /// bytes do not materialise as a `Vec<u8>`: they flow into the
-    /// caller-supplied `writer` (typically a `StreamingAtomicWriter`,
-    /// W2.3) which retains full ownership across the call so the caller
-    /// can `finalize` it (commit the temp file via rename) once the
-    /// driver returns.
+    /// P3-T01 W2.4/W2.5 + Y-RSC.5: streaming-sink sibling of
+    /// [`drive_download_through_delta`].
     ///
-    /// `destination_data` is still passed because the signature phase
-    /// runs `adapter.build_signatures(destination_data, block_size)`
-    /// in bulk; making *that* phase streaming requires a separate
-    /// `build_signatures_streaming` adapter API that is out of scope for
-    /// W2.5. The W2.5 caller gives the same `destination_data` slice
-    /// (read once into RAM with `tokio::fs::read`) and a `FileBaseline`
-    /// over the same path; the cap removal in W2.5 targets the
-    /// reconstruction side, where the asymmetry is `O(reconstructed)`
-    /// vs `O(baseline + reconstructed)` for >1 GiB downloads with mostly
-    /// matching baselines.
+    /// Both the signature phase and the reconstruction phase stream from
+    /// `baseline` (`BaselineSource::read_block`): there is no bulk
+    /// `destination_data: &[u8]` argument anymore. Peak RAM is
+    /// `O(block_size + writer buffer)`, independent of baseline size
+    /// (Y-RSC.5 closes the signature-phase bulk-read left open by W2.5).
     ///
-    /// `baseline` is the random-access source consulted by
-    /// `apply_delta_streaming` for `EngineDeltaOp::CopyBlock(idx)`. It
-    /// must be the byte-for-byte identical content as `destination_data`
-    /// (caller invariant; the streaming + bulk views of the same file).
+    /// The reconstructed bytes do not materialise as a `Vec<u8>`: they
+    /// flow into the caller-supplied `writer` (typically a
+    /// `StreamingAtomicWriter`, W2.3) which retains full ownership across
+    /// the call so the caller can `finalize` it (commit the temp file
+    /// via rename) once the driver returns.
+    ///
+    /// `baseline` is the random-access source for both
+    /// `send_signature_phase_from_baseline` (rolling + wire strong) and
+    /// `apply_delta_streaming` (`EngineDeltaOp::CopyBlock(idx)`).
     ///
     /// `writer` is borrowed by `&mut` for the duration of the call -
     /// the caller retains ownership and is responsible for
@@ -1216,21 +1209,13 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
     pub async fn drive_download_through_delta_streaming(
         &mut self,
         command_spec: RemoteCommandSpec,
-        destination_data: &[u8],
         baseline: &mut dyn BaselineSource,
         writer: &mut (dyn AsyncWrite + Send + Unpin),
         adapter: &dyn DeltaEngineAdapter,
         bridge: &mut dyn EventSink,
     ) -> Result<(), AerorsyncError> {
         match self
-            .drive_download_inner_streaming(
-                command_spec,
-                destination_data,
-                baseline,
-                writer,
-                adapter,
-                bridge,
-            )
+            .drive_download_inner_streaming(command_spec, baseline, writer, adapter, bridge)
             .await
         {
             Ok(()) => Ok(()),
@@ -1378,16 +1363,12 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         Ok(())
     }
 
-    /// P3-T01 W2.4: streaming-sink twin of [`drive_download_inner`]. The
-    /// pre-delta phases run unchanged against the bulk `destination_data`
-    /// slice; the final phase swaps `receive_delta_phase_single_file` for
-    /// `receive_delta_phase_streaming` which writes reconstructed bytes
-    /// to the configured `Streaming(writer)` target via
-    /// `apply_delta_streaming(baseline, ops, block_size, writer)`.
+    /// P3-T01 W2.4 + Y-RSC.5: streaming-sink twin of
+    /// [`drive_download_inner`]. Signature send and delta receive both
+    /// stream from `baseline` (no bulk `destination_data` slice).
     async fn drive_download_inner_streaming(
         &mut self,
         command_spec: RemoteCommandSpec,
-        destination_data: &[u8],
         baseline: &mut dyn BaselineSource,
         writer: &mut (dyn AsyncWrite + Send + Unpin),
         adapter: &dyn DeltaEngineAdapter,
@@ -1405,7 +1386,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         if self.received_entry_is_symlink() {
             return self.complete_download_symlink_flist_only().await;
         }
-        self.send_signature_phase_single_file(destination_data, adapter)
+        self.send_signature_phase_from_baseline(baseline, adapter)
             .await?;
         self.receive_delta_phase_streaming(baseline, writer, adapter, bridge)
             .await?;
@@ -2002,10 +1983,14 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         Ok(out)
     }
 
-    /// Download path: compute signatures from `destination_data` via
-    /// `adapter` and emit a single mux-wrapped blob with
+    /// Download path (bulk): compute signatures from `destination_data`
+    /// via `adapter` and emit a single mux-wrapped blob with
     /// `ndx + iflags + sum_head + count × sum_block`. Phase transitions:
     /// `FileListReceived → SumHeadSent → SumBlocksSent`.
+    ///
+    /// Kept for the bulk `drive_download` path and mock fixtures that
+    /// inject canned signatures through `DeltaEngineAdapter`. Production
+    /// downloads use [`Self::send_signature_phase_from_baseline`] (Y-RSC.5).
     async fn send_signature_phase_single_file(
         &mut self,
         destination_data: &[u8],
@@ -2031,22 +2016,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
                 .saturating_add(sig.block_len as usize)
                 .min(destination_data.len());
             let block = destination_data.get(start..end).unwrap_or(&[]);
-            let strong_wire = match strong_algo {
-                BlockStrongAlgo::Xxh128 { seed } => compute_xxh128_wire_with_seed(block, seed),
-                BlockStrongAlgo::Xxh64 { .. } | BlockStrongAlgo::Xxh3_64 { .. } => {
-                    strong_algo.digest(block)[..8].to_vec()
-                }
-                // Y-RSC.3: 16-byte seeded digests (md5 proper/legacy
-                // order, md4 data-then-seed).
-                BlockStrongAlgo::Md5 { .. } | BlockStrongAlgo::Md4 { .. } => {
-                    strong_algo.digest(block)[..16].to_vec()
-                }
-                // Y-RSC.3: 20-byte seed-first sha1.
-                BlockStrongAlgo::Sha1 { .. } => strong_algo.digest(block)[..20].to_vec(),
-                BlockStrongAlgo::Sha256 | BlockStrongAlgo::Unknown => {
-                    compute_xxh128_wire_with_seed(block, self.checksum_seed as u64)
-                }
-            };
+            let strong_wire = self.wire_block_strong(block, strong_algo);
             let strong = strong_wire[..s2length_usize.min(strong_wire.len())].to_vec();
             sum_blocks.push(SumBlock {
                 rolling: sig.rolling,
@@ -2054,6 +2024,111 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
             });
         }
 
+        self.emit_signature_phase_payload(
+            destination_data.len() as u64,
+            block_size,
+            sum_blocks,
+            s2length,
+        )
+        .await
+    }
+
+    /// Y-RSC.5: streaming signature phase for production downloads.
+    ///
+    /// Walks `baseline` once via [`BaselineSource::read_block`]: for each
+    /// block computes the Adler-32 rolling checksum (same primitive as
+    /// `delta_sync::compute_signatures`) and the negotiated wire strong
+    /// hash, then emits the same mux-wrapped blob as the bulk path.
+    /// Peak RAM is `O(block_size)` plus the encoded payload buffer
+    /// (itself proportional to block count, not file size: each sum
+    /// block is a few dozen bytes).
+    ///
+    /// Rolling fields are byte-identical to bulk
+    /// `adapter.build_signatures` / `compute_signatures` for the same
+    /// content (see `compute_signatures_streaming_matches_bulk_*` and
+    /// `build_signatures_streaming_matches_bulk`). Mock adapters that
+    /// return canned signatures are intentionally not consulted: the
+    /// streaming path always derives rolling from the baseline bytes so
+    /// a large file can never be forced into RAM just to feed the
+    /// adapter trait.
+    async fn send_signature_phase_from_baseline(
+        &mut self,
+        baseline: &mut dyn BaselineSource,
+        adapter: &dyn DeltaEngineAdapter,
+    ) -> Result<(), AerorsyncError> {
+        self.phase = AerorsyncSessionPhase::SumHeadSent;
+        let file_len = baseline.len();
+        let block_size = adapter.compute_block_size(file_len);
+        let s2length = A2_2_DOWNLOAD_S2LENGTH;
+        let s2length_usize = s2length as usize;
+        let strong_algo = self.block_strong_algo();
+
+        let n_blocks: u32 = if file_len == 0 || block_size == 0 {
+            0
+        } else {
+            let raw = file_len.div_ceil(block_size as u64);
+            u32::try_from(raw).map_err(|_| {
+                AerorsyncError::invalid_frame("signature block count exceeds the u32 range")
+            })?
+        };
+
+        let mut sum_blocks: Vec<SumBlock> = Vec::with_capacity(n_blocks as usize);
+        for idx in 0..n_blocks {
+            let block = baseline
+                .read_block(idx, block_size as u32)
+                .await
+                .map_err(|e| {
+                    AerorsyncError::transport(format!(
+                        "send_signature_phase_from_baseline: read_block({idx}) failed: {e}"
+                    ))
+                })?;
+            let rolling = crate::delta_sync::RollingChecksum::new(&block).value();
+            let strong_wire = self.wire_block_strong(&block, strong_algo);
+            let strong = strong_wire[..s2length_usize.min(strong_wire.len())].to_vec();
+            sum_blocks.push(SumBlock { rolling, strong });
+        }
+
+        self.emit_signature_phase_payload(file_len, block_size, sum_blocks, s2length)
+            .await
+    }
+
+    /// Shared wire strong-hash dispatch used by both bulk and streaming
+    /// signature phases. Keeps the negotiated-algo match arms in one
+    /// place so Y-RSC.3 (md4/sha1) cannot drift between the two paths.
+    fn wire_block_strong(&self, block: &[u8], strong_algo: BlockStrongAlgo) -> Vec<u8> {
+        match strong_algo {
+            BlockStrongAlgo::Xxh128 { seed } => compute_xxh128_wire_with_seed(block, seed),
+            BlockStrongAlgo::Xxh64 { .. } | BlockStrongAlgo::Xxh3_64 { .. } => {
+                strong_algo.digest(block)[..8].to_vec()
+            }
+            // Y-RSC.3: 16-byte seeded digests (md5 proper/legacy
+            // order, md4 data-then-seed).
+            BlockStrongAlgo::Md5 { .. } | BlockStrongAlgo::Md4 { .. } => {
+                strong_algo.digest(block)[..16].to_vec()
+            }
+            // Y-RSC.3: 20-byte seed-first sha1.
+            BlockStrongAlgo::Sha1 { .. } => strong_algo.digest(block)[..20].to_vec(),
+            BlockStrongAlgo::Sha256 | BlockStrongAlgo::Unknown => {
+                compute_xxh128_wire_with_seed(block, self.checksum_seed as u64)
+            }
+        }
+    }
+
+    /// Encode and write the per-file signature mux payload: ndx, iflags,
+    /// sum_head, sum_blocks, and the receiver phase tail. Shared by bulk
+    /// and streaming signature senders after they have produced
+    /// `sum_blocks`.
+    ///
+    /// Callers supply the already-built `sum_blocks` and the file length
+    /// used for `remainder_length`.
+    async fn emit_signature_phase_payload(
+        &mut self,
+        file_len: u64,
+        block_size: usize,
+        sum_blocks: Vec<SumBlock>,
+        s2length: i32,
+    ) -> Result<(), AerorsyncError> {
+        let s2length_usize = s2length as usize;
         // Compose sum_head. Block length from the engine's choice;
         // remainder is (file_size mod block_size): identical to rsync's
         // own derivation. The modulo is computed in u64: truncating the
@@ -2061,7 +2136,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         // and would emit a negative remainder_length, which stock rsync
         // rejects in `io.c::read_sum_head`.
         let block_length = block_size as i32;
-        let remainder_length = sum_head_remainder(destination_data.len() as u64, block_length);
+        let remainder_length = sum_head_remainder(file_len, block_length);
         let head = SumHead {
             count: i32::try_from(sum_blocks.len()).map_err(|_| {
                 AerorsyncError::invalid_frame("signature block count exceeds the int32 wire field")
@@ -2094,10 +2169,6 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         self.write_data_frame(&payload).await?;
 
         self.sent_signatures = sum_blocks;
-        // Keep engine_sigs alive until after emit in case the caller
-        // inspects them via a future getter. Dropped here.
-        let _ = engine_sigs;
-
         self.phase = AerorsyncSessionPhase::SumBlocksSent;
         Ok(())
     }
@@ -5923,7 +5994,6 @@ mod tests {
 
         d.drive_download_through_delta_streaming(
             RemoteCommandSpec::download("/remote/link.lnk"),
-            &[],
             &mut baseline,
             &mut writer,
             &MockSigAdapter::default(),
@@ -8452,8 +8522,7 @@ mod tests {
                 make_engine_sig(1, 0xA1, 0x02, 4),
             ],
         );
-        let destination_data: Vec<u8> = b"BLK1BLK2".to_vec();
-        let mut baseline = MemoryBaseline::new(destination_data.clone());
+        let mut baseline = MemoryBaseline::new(b"BLK1BLK2".to_vec());
 
         let (mut writer, captured) = MockAsyncWriter::new();
         let mut d = make_driver(transport);
@@ -8461,7 +8530,6 @@ mod tests {
         let mut sink = CollectingSink::default();
         d.drive_download_through_delta_streaming(
             RemoteCommandSpec::download("/remote/target.bin"),
-            &destination_data,
             &mut baseline,
             &mut writer,
             &adapter,
@@ -8523,15 +8591,14 @@ mod tests {
                 make_engine_sig(1, 0xA1, 0x02, 4),
             ],
         );
-        let destination_data: Vec<u8> = b"BLK1BLK2".to_vec();
-        let mut baseline = MemoryBaseline::new(destination_data.clone());
+        let baseline_bytes = b"BLK1BLK2".to_vec();
+        let mut baseline = MemoryBaseline::new(baseline_bytes.clone());
         let (mut writer, captured) = MockAsyncWriter::new();
         let mut d = make_driver(transport);
         let mut sink = CollectingSink::default();
 
         d.drive_download_through_delta_streaming(
             RemoteCommandSpec::download("/remote/target.bin"),
-            &destination_data,
             &mut baseline,
             &mut writer,
             &adapter,
@@ -8541,7 +8608,7 @@ mod tests {
         .expect("streaming no-op delta succeeds");
 
         let on_writer = captured.lock().expect("captured lock").clone();
-        assert_eq!(on_writer, destination_data);
+        assert_eq!(on_writer, baseline_bytes);
         assert!(d.reconstructed().is_none());
         assert!(d.received_file_checksum().is_none());
 
@@ -8579,15 +8646,14 @@ mod tests {
                 make_engine_sig(1, 0xA1, 0x02, 4),
             ],
         );
-        let destination_data: Vec<u8> = b"BLK1BLK2".to_vec();
-        let mut baseline = MemoryBaseline::new(destination_data.clone());
+        let baseline_bytes = b"BLK1BLK2".to_vec();
+        let mut baseline = MemoryBaseline::new(baseline_bytes.clone());
         let (mut writer, captured) = MockAsyncWriter::new();
         let mut d = make_driver(transport);
         let mut sink = CollectingSink::default();
 
         d.drive_download_through_delta_streaming(
             RemoteCommandSpec::download("/remote/target.bin"),
-            &destination_data,
             &mut baseline,
             &mut writer,
             &adapter,
@@ -8597,7 +8663,7 @@ mod tests {
         .expect("streaming clean EOF no-op succeeds");
 
         let on_writer = captured.lock().expect("captured lock").clone();
-        assert_eq!(on_writer, destination_data);
+        assert_eq!(on_writer, baseline_bytes);
         assert!(d.reconstructed().is_none());
         assert!(d.received_file_checksum().is_none());
 
@@ -8643,15 +8709,14 @@ mod tests {
                 make_engine_sig(1, 0xA1, 0x02, 4),
             ],
         );
-        let destination_data: Vec<u8> = b"BLK1BLK2".to_vec();
-        let mut baseline = MemoryBaseline::new(destination_data.clone());
+        let baseline_bytes = b"BLK1BLK2".to_vec();
+        let mut baseline = MemoryBaseline::new(baseline_bytes.clone());
         let (mut writer, captured) = MockAsyncWriter::new();
         let mut d = make_driver(transport);
         let mut sink = CollectingSink::default();
 
         d.drive_download_through_delta_streaming(
             RemoteCommandSpec::download("/remote/target.bin"),
-            &destination_data,
             &mut baseline,
             &mut writer,
             &adapter,
@@ -8661,7 +8726,7 @@ mod tests {
         .expect("reworded streaming clean EOF must still be a no-op download");
 
         let on_writer = captured.lock().expect("captured lock").clone();
-        assert_eq!(on_writer, destination_data);
+        assert_eq!(on_writer, baseline_bytes);
         assert!(d.reconstructed().is_none());
         assert!(d.received_file_checksum().is_none());
 
@@ -8671,12 +8736,11 @@ mod tests {
         assert_eq!(d.phase(), AerorsyncSessionPhase::Complete);
     }
 
-    /// W2.4 test 2: pin that the driver dispatches `CopyBlock(idx)`
-    /// against the **caller-supplied baseline**, not the
-    /// `destination_data` slice that the signature phase consumed. Uses
-    /// distinct byte patterns for the two so a divergence is loud:
-    /// the writer receives the baseline pattern, never the destination
-    /// pattern.
+    /// W2.4/Y-RSC.5 test 2: pin that the driver dispatches
+    /// `CopyBlock(idx)` against the caller-supplied `BaselineSource`.
+    /// After Y-RSC.5 the signature phase also streams from the same
+    /// baseline (no bulk `destination_data` slice), so this test pins
+    /// reconstruction from the baseline bytes the fixture provides.
     #[tokio::test]
     async fn driver_download_streaming_through_delta_consults_baseline_source() {
         use crate::aerorsync::engine_adapter::MemoryBaseline;
@@ -8692,8 +8756,6 @@ mod tests {
                 make_engine_sig(1, 0xA1, 0x02, 4),
             ],
         );
-        // Distinct patterns so the assertion can tell them apart.
-        let destination_data: Vec<u8> = b"AAAABBBB".to_vec();
         let baseline_bytes: Vec<u8> = b"XXXXYYYY".to_vec();
         let mut baseline = MemoryBaseline::new(baseline_bytes);
 
@@ -8703,7 +8765,6 @@ mod tests {
         let mut sink = CollectingSink::default();
         d.drive_download_through_delta_streaming(
             RemoteCommandSpec::download("/remote/target.bin"),
-            &destination_data,
             &mut baseline,
             &mut writer,
             &adapter,
@@ -8713,13 +8774,10 @@ mod tests {
         .expect("streaming download succeeds");
 
         let on_writer = captured.lock().expect("captured lock").clone();
-        // CopyBlock(0)+CopyBlock(1) must read from the BASELINE, not
-        // the destination. If we see "AAAABBBB" the dispatcher is
-        // reading from the wrong source.
         assert_eq!(
             &on_writer[0..8],
             b"XXXXYYYY",
-            "CopyBlock dispatch must consult BaselineSource, not destination_data"
+            "CopyBlock dispatch must consult BaselineSource"
         );
         assert_eq!(&on_writer[8..], raw_literal.as_slice());
     }
@@ -8743,8 +8801,7 @@ mod tests {
                 make_engine_sig(1, 0xA1, 0x02, 4),
             ],
         );
-        let destination_data: Vec<u8> = b"BLK1BLK2".to_vec();
-        let mut baseline = MemoryBaseline::new(destination_data.clone());
+        let mut baseline = MemoryBaseline::new(b"BLK1BLK2".to_vec());
 
         let mut d = make_driver(transport);
         let mut writer = FailingMockWriter;
@@ -8753,7 +8810,6 @@ mod tests {
         let err = d
             .drive_download_through_delta_streaming(
                 RemoteCommandSpec::download("/remote/target.bin"),
-                &destination_data,
                 &mut baseline,
                 &mut writer,
                 &adapter,
@@ -8797,8 +8853,7 @@ mod tests {
                 make_engine_sig(1, 0xA1, 0x02, 4),
             ],
         );
-        let destination_data: Vec<u8> = b"BLK1BLK2".to_vec();
-        let mut baseline = MemoryBaseline::new(destination_data.clone());
+        let mut baseline = MemoryBaseline::new(b"BLK1BLK2".to_vec());
 
         let (mut writer, _captured) = MockAsyncWriter::new();
         let mut d = make_driver(transport);
@@ -8806,7 +8861,6 @@ mod tests {
         let mut sink = CollectingSink::default();
         d.drive_download_through_delta_streaming(
             RemoteCommandSpec::download("/remote/target.bin"),
-            &destination_data,
             &mut baseline,
             &mut writer,
             &adapter,
