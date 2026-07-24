@@ -6962,7 +6962,13 @@ mod tests {
         relocate_credentials_partition_only(&conn, &root, default.id, &report, None);
 
         // Target has the full crypt bundle under the new id.
-        assert_cred_present(&conn, &root, bob.id, "server_srv_crypt_new", "sftp-password");
+        assert_cred_present(
+            &conn,
+            &root,
+            bob.id,
+            "server_srv_crypt_new",
+            "sftp-password",
+        );
         assert_cred_present(
             &conn,
             &root,
@@ -6992,7 +6998,13 @@ mod tests {
             "aerocrypt_overlay_pw_srv_crypt",
             "overlay-password",
         );
-        assert_cred_present(&conn, &root, default.id, "server_srv_crypt", "sftp-password");
+        assert_cred_present(
+            &conn,
+            &root,
+            default.id,
+            "server_srv_crypt",
+            "sftp-password",
+        );
     }
 
     #[test]
@@ -7039,8 +7051,18 @@ mod tests {
             r#"{"v":3}"#,
         );
         assert_cred_absent(&conn, &root, default.id, "aerocrypt_overlay_pw_srv_crypt_m");
-        assert_cred_absent(&conn, &root, default.id, "aerocrypt_overlay_salt_srv_crypt_m");
-        assert_cred_absent(&conn, &root, default.id, "aerocrypt_overlay_config_srv_crypt_m");
+        assert_cred_absent(
+            &conn,
+            &root,
+            default.id,
+            "aerocrypt_overlay_salt_srv_crypt_m",
+        );
+        assert_cred_absent(
+            &conn,
+            &root,
+            default.id,
+            "aerocrypt_overlay_config_srv_crypt_m",
+        );
         assert_cred_absent(&conn, &root, default.id, "server_srv_crypt_m");
     }
 
