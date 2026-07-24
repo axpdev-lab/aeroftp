@@ -1963,9 +1963,19 @@ enum Commands {
         /// selection, so you never have to list them with --compare or tick them
         /// with -i/--tui. Combine with --group to run all members of those groups,
         /// or with -i/--tui to pre-tick the whole list. Profiles that fail to
-        /// connect are reported as skipped, not fatal. Alias: --all-protocols.
-        #[arg(long, visible_alias = "all-protocols")]
+        /// connect are reported as skipped, not fatal.
+        #[arg(long)]
         all: bool,
+        /// Expand every selected profile into one run per transport mode of its
+        /// provider (Ehud #277): a Koofr profile is benchmarked over both its
+        /// REST API and its WebDAV surface, giving one comparison row and one
+        /// mini table per mode, exactly as if you had saved a profile for each.
+        /// Combines with --all, --compare, --group and the pickers. Modes whose
+        /// credentials or endpoint cannot be resolved are reported as skipped,
+        /// never measured as zero. Multi-mode providers: Koofr, OpenDrive,
+        /// FileLu, Filen.
+        #[arg(long)]
+        all_protocols: bool,
     },
     /// Remove orphaned .aerotmp files from interrupted downloads.
     Cleanup {
@@ -22394,6 +22404,23 @@ struct ModeGroupRow {
     group_id: &'static str,
     protocol: &'static str,
     provider_id: Option<&'static str>,
+    /// Endpoint this mode must talk to, mirroring the `defaults.server` of the
+    /// matching preset in `src/providers/registry.ts`. Every mode of a group
+    /// targets the SAME account but a DIFFERENT endpoint (Koofr native speaks
+    /// `app.koofr.net`, its WebDAV surface only answers under
+    /// `app.koofr.net/dav/Koofr`), so switching mode without rewriting the host
+    /// produces a profile that authenticates and then 404s on every request.
+    /// `None` marks a mode whose endpoint cannot be derived (the S3 surfaces
+    /// need a user-specific bucket/region), which callers must treat as
+    /// "not synthesizable" rather than guessing.
+    preset_host: Option<&'static str>,
+    /// Port that goes with `preset_host`. `None` leaves the port untouched.
+    preset_port: Option<u16>,
+    /// Whether every mode of the group authenticates with the SAME credential
+    /// (mirrors `sharedCredentials` in `src/components/providerModeGroups.tsx`).
+    /// False means each mode needs its own secret, so a run cannot be
+    /// synthesized by cloning the source profile's password.
+    shared_credentials: bool,
 }
 
 const MODE_GROUPS: &[ModeGroupRow] = &[
@@ -22402,61 +22429,135 @@ const MODE_GROUPS: &[ModeGroupRow] = &[
         group_id: "filelu",
         protocol: "filelu",
         provider_id: Some("filelu"),
+        preset_host: Some("filelu.com"),
+        preset_port: None,
+        shared_credentials: false,
     },
     ModeGroupRow {
         group_id: "filelu",
         protocol: "webdav",
         provider_id: Some("filelu-webdav"),
+        preset_host: Some("https://webdav.filelu.com"),
+        preset_port: Some(443),
+        shared_credentials: false,
     },
     ModeGroupRow {
         group_id: "filelu",
         protocol: "s3",
         provider_id: Some("filelu-s3"),
+        preset_host: None,
+        preset_port: None,
+        shared_credentials: false,
     },
     ModeGroupRow {
         group_id: "filelu",
         protocol: "ftp",
         provider_id: Some("filelu-ftp"),
+        preset_host: Some("ftp.filelu.com"),
+        preset_port: Some(21),
+        shared_credentials: false,
     },
     // Filen (native API has no preset providerId)
     ModeGroupRow {
         group_id: "filen",
         protocol: "filen",
         provider_id: None,
+        preset_host: Some("filen.io"),
+        preset_port: None,
+        shared_credentials: false,
     },
     ModeGroupRow {
         group_id: "filen",
         protocol: "webdav",
         provider_id: Some("filen-desktop-webdav"),
+        preset_host: Some("local.webdav.filen.io"),
+        preset_port: Some(1900),
+        shared_credentials: false,
     },
     ModeGroupRow {
         group_id: "filen",
         protocol: "s3",
         provider_id: Some("filen-desktop-s3"),
+        preset_host: None,
+        preset_port: None,
+        shared_credentials: false,
     },
     // OpenDrive (native API has no preset providerId)
     ModeGroupRow {
         group_id: "opendrive",
         protocol: "opendrive",
         provider_id: None,
+        preset_host: Some("dev.opendrive.com"),
+        preset_port: None,
+        shared_credentials: true,
     },
     ModeGroupRow {
         group_id: "opendrive",
         protocol: "webdav",
         provider_id: Some("opendrive-webdav"),
+        preset_host: Some("https://webdav.opendrive.com"),
+        preset_port: Some(443),
+        shared_credentials: true,
     },
     // Koofr (native API has no preset providerId; `koofr` providerId is the WebDAV preset)
     ModeGroupRow {
         group_id: "koofr",
         protocol: "koofr",
         provider_id: None,
+        preset_host: Some("app.koofr.net"),
+        preset_port: None,
+        shared_credentials: true,
     },
     ModeGroupRow {
         group_id: "koofr",
         protocol: "webdav",
         provider_id: Some("koofr"),
+        preset_host: Some("https://app.koofr.net/dav/Koofr"),
+        preset_port: Some(443),
+        shared_credentials: true,
     },
 ];
+
+/// Look up the `MODE_GROUPS` row for one (group, protocol, provider_id) triple.
+fn mode_group_row(
+    group_id: &str,
+    protocol: &str,
+    provider_id: Option<&str>,
+) -> Option<&'static ModeGroupRow> {
+    MODE_GROUPS
+        .iter()
+        .find(|r| r.group_id == group_id && r.protocol == protocol && r.provider_id == provider_id)
+}
+
+/// Rewrite a synthesized profile's `host`/`port` to the target mode's endpoint.
+/// Pure (operates on the profile map) so the endpoint table stays unit-tested
+/// without touching the vault. Returns false when the target mode has no
+/// derivable endpoint, in which case the caller must not pretend the profile is
+/// usable: the S3 surfaces need a user-specific bucket and region that no
+/// preset can supply.
+fn apply_mode_endpoint_preset(
+    map: &mut serde_json::Map<String, serde_json::Value>,
+    group_id: &str,
+    target_protocol: &str,
+    target_provider_id: Option<&str>,
+) -> bool {
+    let Some(row) = mode_group_row(group_id, target_protocol, target_provider_id) else {
+        return false;
+    };
+    let Some(host) = row.preset_host else {
+        return false;
+    };
+    map.insert("host".into(), serde_json::Value::String(host.to_string()));
+    match row.preset_port {
+        Some(port) => {
+            map.insert("port".into(), serde_json::Value::from(port));
+        }
+        None => {
+            map.remove("port");
+        }
+    }
+    true
+}
 
 /// Short mode label per row: `api` for native modes, otherwise the
 /// protocol value verbatim (`webdav`, `s3`, `ftp`).
@@ -22469,22 +22570,33 @@ fn mode_label_for_row(row: &ModeGroupRow) -> &'static str {
     }
 }
 
+/// Find the `MODE_GROUPS` row a saved profile currently sits on, mirroring
+/// `findActiveModeGroup` in providerModeGroups.tsx.
+fn find_mode_group_row_of(
+    protocol: &str,
+    provider_id: Option<&str>,
+) -> Option<&'static ModeGroupRow> {
+    MODE_GROUPS.iter().find(|row| match row.provider_id {
+        Some(pid) => Some(pid) == provider_id,
+        None => {
+            row.protocol == protocol && (provider_id.is_none() || provider_id == Some(row.protocol))
+        }
+    })
+}
+
 /// Find the mode group that contains the given (protocol, provider_id)
 /// pair, mirroring `findActiveModeGroup` in providerModeGroups.tsx.
 fn find_mode_group_of(protocol: &str, provider_id: Option<&str>) -> Option<&'static str> {
-    for row in MODE_GROUPS {
-        let matches = match row.provider_id {
-            Some(pid) => Some(pid) == provider_id,
-            None => {
-                row.protocol == protocol
-                    && (provider_id.is_none() || provider_id == Some(row.protocol))
-            }
-        };
-        if matches {
-            return Some(row.group_id);
-        }
-    }
-    None
+    find_mode_group_row_of(protocol, provider_id).map(|row| row.group_id)
+}
+
+/// Whether all modes of a group authenticate with the same credential. Only
+/// such groups can have a sibling mode synthesized from a saved profile: the
+/// others need a secret the CLI does not have.
+fn mode_group_shares_credentials(group_id: &str) -> bool {
+    MODE_GROUPS
+        .iter()
+        .any(|row| row.group_id == group_id && row.shared_credentials)
 }
 
 /// Resolve a short mode label (`api`, `webdav`, `s3`, `ftp`) into the
@@ -22663,6 +22775,20 @@ fn duplicate_or_convert_mode_in_vault(
             None => {
                 map.remove("providerId");
             }
+        }
+        // Point the copy at the TARGET mode's endpoint. Without this the new
+        // profile keeps the source's host: a Koofr native profile duplicated
+        // into WebDAV mode stayed on `app.koofr.net` and every request 404'd,
+        // because the Koofr DAV surface only answers under `/dav/Koofr`. The
+        // GUI got this right through its preset registry; the CLI had no
+        // endpoint table at all (issue #277 B4 triage).
+        if !apply_mode_endpoint_preset(map, group, target_protocol, target_provider_id)
+            && !cli.quiet
+        {
+            eprintln!(
+                "warning: mode '{}' has no preset endpoint; set the endpoint, bucket and keys on the new profile before connecting",
+                mode_label
+            );
         }
         if let Some(u) = username {
             map.insert("username".into(), serde_json::Value::String(u.to_string()));
@@ -25087,6 +25213,23 @@ fn profile_to_provider_config(
         }
     };
 
+    profile_value_to_provider_config(profile, &store, cli, format)
+}
+
+/// Build a `ProviderConfig` from an ALREADY resolved saved-profile value.
+///
+/// Split out of `profile_to_provider_config` so callers that do not have a
+/// profile name can reuse the exact same translation: the `--all-protocols`
+/// benchmark fan-out (issue #277 B4) synthesizes a per-mode profile in memory
+/// and must not diverge from how a saved profile is interpreted. The
+/// credential still comes from the vault, keyed by the profile's `id`, so a
+/// synthesized value that keeps its source id resolves the source's password.
+fn profile_value_to_provider_config(
+    profile: &serde_json::Value,
+    store: &CredentialStore,
+    cli: &Cli,
+    format: OutputFormat,
+) -> Result<(ProviderConfig, String), i32> {
     let id = profile.get("id").and_then(|v| v.as_str()).unwrap_or("");
     let name = profile
         .get("name")
@@ -25149,8 +25292,8 @@ fn profile_to_provider_config(
     // server_{id}.
     let (mut cred_user, mut cred_pass) = if !id.is_empty() {
         match read_server_cred(
-            &store,
-            scoped_credential_user_id(cli, &store),
+            store,
+            scoped_credential_user_id(cli, store),
             &format!("server_{}", id),
         ) {
             Some(password_str) => {
@@ -26141,7 +26284,7 @@ async fn create_and_connect(
     cli: &Cli,
     format: OutputFormat,
 ) -> Result<(Box<dyn StorageProvider>, String), i32> {
-    create_and_connect_with(url, cli, cli.profile.as_deref(), format, true).await
+    create_and_connect_with(url, cli, cli.profile.as_deref(), format, true, None).await
 }
 
 /// Connect WITHOUT applying a bound profile's transparent crypt overlay. The
@@ -26154,7 +26297,7 @@ async fn create_and_connect_raw(
     cli: &Cli,
     format: OutputFormat,
 ) -> Result<(Box<dyn StorageProvider>, String), i32> {
-    create_and_connect_with(url, cli, cli.profile.as_deref(), format, false).await
+    create_and_connect_with(url, cli, cli.profile.as_deref(), format, false, None).await
 }
 
 /// Like `create_and_connect` but with an explicit profile-name override instead
@@ -26162,12 +26305,19 @@ async fn create_and_connect_raw(
 /// compare, which connects each profile by name while `--profile` stays unset.
 /// `apply_overlay` wraps a bound profile in its transparent crypt overlay; the
 /// standalone `crypt` commands pass `false` so they see the raw ciphertext.
+///
+/// `synth_profile` short-circuits the by-name vault lookup with a profile value
+/// built in memory. The `--all-protocols` benchmark fan-out (issue #277 B4)
+/// uses it to connect one saved account over each of its transport modes
+/// WITHOUT writing throwaway profiles into the user's vault; everything after
+/// the lookup (factory, runtime knobs, crypt overlay) stays the shared path.
 async fn create_and_connect_with(
     url: &str,
     cli: &Cli,
     profile_override: Option<&str>,
     format: OutputFormat,
     apply_overlay: bool,
+    synth_profile: Option<&serde_json::Value>,
 ) -> Result<(Box<dyn StorageProvider>, String), i32> {
     // Check if the selected profile points to an OAuth provider - handle separately
     // Uses the same strict matching as profile_to_provider_config (exact → ID → disambiguated substring)
@@ -26176,7 +26326,9 @@ async fn create_and_connect_with(
             if let Ok(profiles) = load_active_user_profiles(cli, &store) {
                 {
                     let profile_lower = profile_name.to_lowercase();
-                    let matched = if let Ok(idx) = profile_name.parse::<usize>() {
+                    let matched = if let Some(synth) = synth_profile {
+                        Some(synth.clone())
+                    } else if let Ok(idx) = profile_name.parse::<usize>() {
                         profiles.get(idx.saturating_sub(1)).cloned()
                     } else {
                         // Exact name → exact ID → disambiguated substring (same as profile_to_provider_config)
@@ -26289,7 +26441,22 @@ async fn create_and_connect_with(
         }
     }
 
-    let (config, path) = resolve_url_or_profile_with(url, cli, profile_override, format)?;
+    let (config, path) = match synth_profile {
+        // Synthesized (in-memory) profile: same translation as a saved one, so
+        // the fan-out cannot drift from the normal connect path. The credential
+        // is still read from the vault under the value's own `id`.
+        Some(synth) => {
+            let store = match open_vault(cli) {
+                Ok(s) => s,
+                Err(e) => {
+                    print_error(format, &e, 5);
+                    return Err(5);
+                }
+            };
+            profile_value_to_provider_config(synth, &store, cli, format)?
+        }
+        None => resolve_url_or_profile_with(url, cli, profile_override, format)?,
+    };
 
     dump_connection_info(cli, &config);
 
@@ -40503,6 +40670,11 @@ async fn cmd_benchmark(
     // combined comparison. None for an ordinary single-profile run.
     compare_label: Option<&str>,
     out: Option<&std::cell::RefCell<Vec<(String, BenchmarkReport)>>>,
+    // `--all-protocols` fan-out (issue #277 B4): the profile to connect is
+    // synthesized in memory for the sibling modes of a multi-protocol account,
+    // so it is passed as a value instead of being looked up by name. None for
+    // every ordinary run.
+    synth_profile: Option<&serde_json::Value>,
     cli: &Cli,
     format: OutputFormat,
 ) -> i32 {
@@ -40588,7 +40760,9 @@ async fn cmd_benchmark(
     // the global --profile (which stays unset across the whole compare run).
     let profile_for_connect = compare_label.or(cli.profile.as_deref());
     let (mut provider, initial_path) =
-        match create_and_connect_with("_", cli, profile_for_connect, format, true).await {
+        match create_and_connect_with("_", cli, profile_for_connect, format, true, synth_profile)
+            .await
+        {
             Ok(v) => v,
             Err(code) => return code,
         };
@@ -41481,15 +41655,152 @@ fn print_benchmark_table(
     }
 }
 
+/// One planned benchmark run of the `--all-protocols` fan-out (issue #277 B4).
+///
+/// A profile that belongs to a multi-mode provider group produces one entry per
+/// mode of that group; anything else produces a single "run it as saved" entry.
+/// Pure data: planning never touches the vault or the network, so the expansion
+/// is unit-tested without credentials.
+#[derive(Debug, PartialEq)]
+struct FanoutEntry {
+    /// Index into the profile list the selection was taken from.
+    source_idx: usize,
+    /// Group the source belongs to, empty when it has no sibling modes.
+    group_id: &'static str,
+    /// `api`, `webdav`, `s3` or `ftp`; empty when there is no fan-out.
+    mode_label: &'static str,
+    target_protocol: &'static str,
+    target_provider_id: Option<&'static str>,
+    /// True when this entry is the mode the profile is already saved in, which
+    /// runs the profile verbatim instead of a synthesized copy.
+    is_source_mode: bool,
+}
+
+impl FanoutEntry {
+    /// The plain "benchmark this profile as saved" entry, used for every
+    /// profile when `--all-protocols` is off and for profiles with no
+    /// sibling modes when it is on.
+    fn plain(source_idx: usize) -> Self {
+        FanoutEntry {
+            source_idx,
+            group_id: "",
+            mode_label: "",
+            target_protocol: "",
+            target_provider_id: None,
+            is_source_mode: true,
+        }
+    }
+}
+
+/// Expand a profile selection into one entry per available transport mode.
+fn plan_protocol_fanout(profiles: &[serde_json::Value], idxs: &[usize]) -> Vec<FanoutEntry> {
+    let mut plan = Vec::new();
+    for &idx in idxs {
+        let Some(profile) = profiles.get(idx) else {
+            continue;
+        };
+        let protocol = profile
+            .get("protocol")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        let provider_id = profile.get("providerId").and_then(|v| v.as_str());
+        let Some(source_row) = find_mode_group_row_of(protocol, provider_id) else {
+            plan.push(FanoutEntry::plain(idx));
+            continue;
+        };
+        for row in MODE_GROUPS
+            .iter()
+            .filter(|row| row.group_id == source_row.group_id)
+        {
+            plan.push(FanoutEntry {
+                source_idx: idx,
+                group_id: row.group_id,
+                mode_label: mode_label_for_row(row),
+                target_protocol: row.protocol,
+                target_provider_id: row.provider_id,
+                is_source_mode: std::ptr::eq(row, source_row),
+            });
+        }
+    }
+    plan
+}
+
+/// Build the profile the fan-out will connect with for one entry.
+///
+/// The source mode runs the saved profile verbatim. A sibling mode is derived
+/// in memory: same account, same vault credential (the `id` is deliberately
+/// kept so `server_<id>` still resolves), target protocol and provider preset,
+/// and the endpoint rewritten to that mode's host. Nothing is written to the
+/// vault, so an interrupted sweep cannot leave throwaway profiles behind.
+///
+/// `Err` carries the reason the mode cannot be measured honestly, which the
+/// caller prints as a skip: modes with per-mode secrets (FileLu, Filen) or
+/// without a derivable endpoint (the S3 surfaces need a user's own bucket and
+/// region) are never guessed at.
+fn synth_profile_for_mode(
+    source: &serde_json::Value,
+    entry: &FanoutEntry,
+) -> Result<serde_json::Value, String> {
+    if entry.is_source_mode {
+        return Ok(source.clone());
+    }
+    if !mode_group_shares_credentials(entry.group_id) {
+        return Err(format!(
+            "mode '{}' needs its own credentials; save a profile for it (or switch the profile to that mode once in the GUI)",
+            entry.mode_label
+        ));
+    }
+    let mut synth = source.clone();
+    let Some(map) = synth.as_object_mut() else {
+        return Err("profile is not an object".to_string());
+    };
+    map.insert(
+        "protocol".into(),
+        serde_json::Value::String(entry.target_protocol.to_string()),
+    );
+    match entry.target_provider_id {
+        Some(pid) => {
+            map.insert(
+                "providerId".into(),
+                serde_json::Value::String(pid.to_string()),
+            );
+        }
+        None => {
+            map.remove("providerId");
+        }
+    }
+    if !apply_mode_endpoint_preset(
+        map,
+        entry.group_id,
+        entry.target_protocol,
+        entry.target_provider_id,
+    ) {
+        return Err(format!(
+            "mode '{}' has no derivable endpoint; it needs a bucket and region of its own",
+            entry.mode_label
+        ));
+    }
+    // Same scrub the vault-level mode duplicate performs: options that only
+    // make sense for the source mode would follow the copy into the new one.
+    if let Some(serde_json::Value::Object(opts)) = map.get_mut("options") {
+        scrub_options_for_mode(opts);
+    }
+    map.remove("lastConnected");
+    Ok(synth)
+}
+
 /// Run the same benchmark workload across several saved profiles and print a
-/// combined comparison. Selectors come from one of three sources: `--compare`
-/// (comma list), the inline name/index prompt when `interactive` is set, or the
-/// full-screen checklist when `tui` is set.
+/// combined comparison. Selectors come from one of four sources: `--compare`
+/// (comma list), the inline name/index prompt when `interactive` is set, the
+/// full-screen checklist when `tui` is set, or every saved profile with `--all`.
+/// `all_protocols` then expands whatever was selected into one run per
+/// transport mode of each profile's provider.
 #[allow(clippy::too_many_arguments)]
 async fn cmd_benchmark_compare(
     compare: Option<&str>,
     groups: Option<&str>,
     all: bool,
+    all_protocols: bool,
     interactive: bool,
     tui: bool,
     level: BenchmarkLevel,
@@ -41614,6 +41925,18 @@ async fn cmd_benchmark_compare(
     } else if all {
         // --all without a group or picker (Ehud #277): every saved profile.
         (0..profiles.len()).collect()
+    } else if all_protocols && cli.profile.is_some() {
+        // --all-protocols expands a selection, it does not create one, so on its
+        // own it follows the global --profile: `benchmark --profile Koofr
+        // --all-protocols` benchmarks that one account over each of its modes.
+        let sel = cli.profile.as_deref().unwrap_or("");
+        match resolve_profile_selector(&profiles, sel) {
+            Ok(i) => vec![i],
+            Err(e) => {
+                print_error(format, &format!("--profile '{}': {}", sel, e), 5);
+                return 5;
+            }
+        }
     } else {
         Vec::new()
     };
@@ -41623,11 +41946,19 @@ async fn cmd_benchmark_compare(
     idxs.retain(|i| seen.insert(*i));
     if idxs.is_empty() {
         if !cli.quiet {
-            eprintln!("No profiles selected; nothing to compare.");
+            if all_protocols {
+                eprintln!(
+                    "No profiles selected. --all-protocols expands a selection: combine it with --profile, --compare, --group, --all or -i/--tui."
+                );
+            } else {
+                eprintln!("No profiles selected; nothing to compare.");
+            }
         }
         return 0;
     }
-    if idxs.len() < 2 && !cli.quiet && matches!(format, OutputFormat::Text) {
+    // With --all-protocols one profile can still yield several rows (one per
+    // mode), so the "pick 2 or more" nudge would be wrong there.
+    if idxs.len() < 2 && !all_protocols && !cli.quiet && matches!(format, OutputFormat::Text) {
         eprintln!("note: comparing a single profile; pick 2 or more for a side-by-side.");
     }
 
@@ -41649,13 +41980,51 @@ async fn cmd_benchmark_compare(
     let sweep_start_ip = benchmark_public_ip().await;
     let mut ip_changed_midrun = false;
 
-    let total_profiles = idxs.len();
-    for (pos, &i) in idxs.iter().enumerate() {
+    // --all-protocols (issue #277 B4): expand each selected profile into one
+    // run per transport mode of its provider group. Off, every profile keeps
+    // exactly one run, so the flag is the only thing that changes the plan.
+    let plan: Vec<FanoutEntry> = if all_protocols {
+        plan_protocol_fanout(&profiles, &idxs)
+    } else {
+        idxs.iter().copied().map(FanoutEntry::plain).collect()
+    };
+    let mut skipped_modes: Vec<String> = Vec::new();
+
+    let total_profiles = plan.len();
+    for (pos, entry) in plan.iter().enumerate() {
+        let i = entry.source_idx;
         let name = profiles[i]
             .get("name")
             .and_then(|v| v.as_str())
             .unwrap_or("unnamed")
             .to_string();
+        // One row per (profile, mode), labelled like the GUI names a duplicated
+        // mode, so the comparison reads as if each mode were its own profile.
+        let label = if entry.mode_label.is_empty() {
+            name.clone()
+        } else {
+            format!("{} ({})", name, entry.mode_label)
+        };
+        // Honest skip: a mode we cannot build a real connection for is reported
+        // with its reason and left out of the table, never measured as zero.
+        let synth = match synth_profile_for_mode(&profiles[i], entry) {
+            Ok(v) => v,
+            Err(reason) => {
+                if !cli.quiet {
+                    match format {
+                        OutputFormat::Text => {
+                            println!();
+                            println!("skipped {}: {}", label, reason);
+                        }
+                        // Keep the JSON report stream clean but never let a
+                        // skipped mode pass unmentioned.
+                        OutputFormat::Json => eprintln!("skipped {}: {}", label, reason),
+                    }
+                }
+                skipped_modes.push(format!("{}: {}", label, reason));
+                continue;
+            }
+        };
         if !cli.quiet && matches!(format, OutputFormat::Text) {
             println!();
             // Progress indication (issue #368 #2): show position in the sweep
@@ -41664,7 +42033,7 @@ async fn cmd_benchmark_compare(
             println!(
                 "{}",
                 paint_bold(
-                    &format!("=== [{}/{}] {} ===", pos + 1, total_profiles, name),
+                    &format!("=== [{}/{}] {} ===", pos + 1, total_profiles, label),
                     use_color()
                 )
             );
@@ -41685,12 +42054,24 @@ async fn cmd_benchmark_compare(
             file_size,
             Some(name.as_str()),
             Some(&sink),
+            // The saved profile is connected by name as before; only a
+            // synthesized sibling mode overrides the lookup.
+            if entry.is_source_mode {
+                None
+            } else {
+                Some(&synth)
+            },
             cli,
             format,
         )
         .await;
         if sink.borrow().len() == before {
-            failed.push(name);
+            failed.push(label);
+        } else {
+            // Relabel the report the run just pushed: cmd_benchmark labels it
+            // with the profile name it connected by, which is the same for
+            // every mode of one account.
+            sink.borrow_mut()[before].0 = label;
         }
         worst = worst.max(code);
         // Per-profile IP snapshot (issue #277 #16): catch a mid-run change even
@@ -41747,6 +42128,16 @@ async fn cmd_benchmark_compare(
                 if !failed.is_empty() {
                     println!();
                     println!("Skipped (failed to benchmark): {}", failed.join(", "));
+                }
+                // --all-protocols: modes that could not be measured are listed
+                // with their reason, so a short table is never mistaken for
+                // "this account only speaks one protocol".
+                if !skipped_modes.is_empty() {
+                    println!();
+                    println!("Skipped modes ({}):", skipped_modes.len());
+                    for skipped in &skipped_modes {
+                        println!("  {}", skipped);
+                    }
                 }
                 if ip_changed {
                     println!();
@@ -61726,17 +62117,25 @@ async fn main() {
             tui,
             group,
             all,
+            all_protocols,
         } => {
             let groups_arg = if group.is_empty() {
                 None
             } else {
                 Some(group.join(","))
             };
-            if *interactive || *tui || compare.is_some() || groups_arg.is_some() || *all {
+            if *interactive
+                || *tui
+                || compare.is_some()
+                || groups_arg.is_some()
+                || *all
+                || *all_protocols
+            {
                 cmd_benchmark_compare(
                     compare.as_deref(),
                     groups_arg.as_deref(),
                     *all,
+                    *all_protocols,
                     *interactive,
                     *tui,
                     *level,
@@ -61768,6 +62167,7 @@ async fn main() {
                     *pre_delete,
                     *file_count,
                     file_size,
+                    None,
                     None,
                     None,
                     &cli,
@@ -64584,6 +64984,142 @@ mod tests {
     use super::*;
     use ftp_client_gui_lib::profile_loader::insert_profile_option;
     use serde_json::json;
+
+    #[test]
+    fn mode_endpoint_preset_rewrites_koofr_webdav_host() {
+        // Regression for the #277 B4 triage: a Koofr native profile duplicated
+        // into WebDAV mode kept `app.koofr.net` and 404'd on every request.
+        let mut map = serde_json::Map::new();
+        map.insert("host".into(), json!("app.koofr.net"));
+        assert!(apply_mode_endpoint_preset(
+            &mut map,
+            "koofr",
+            "webdav",
+            Some("koofr")
+        ));
+        assert_eq!(map["host"], json!("https://app.koofr.net/dav/Koofr"));
+        assert_eq!(map["port"], json!(443));
+    }
+
+    #[test]
+    fn mode_endpoint_preset_rewrites_back_to_native_host() {
+        let mut map = serde_json::Map::new();
+        map.insert("host".into(), json!("https://webdav.opendrive.com"));
+        map.insert("port".into(), json!(443));
+        assert!(apply_mode_endpoint_preset(
+            &mut map,
+            "opendrive",
+            "opendrive",
+            None
+        ));
+        assert_eq!(map["host"], json!("dev.opendrive.com"));
+        // The native API surface has no fixed port: the stale 443 must go.
+        assert!(!map.contains_key("port"));
+    }
+
+    #[test]
+    fn mode_endpoint_preset_refuses_s3_modes() {
+        // S3 surfaces need a user-specific bucket/region, so there is nothing
+        // to inject and the caller must skip instead of guessing.
+        let mut map = serde_json::Map::new();
+        map.insert("host".into(), json!("filelu.com"));
+        assert!(!apply_mode_endpoint_preset(
+            &mut map,
+            "filelu",
+            "s3",
+            Some("filelu-s3")
+        ));
+        assert_eq!(map["host"], json!("filelu.com"));
+    }
+
+    #[test]
+    fn fanout_expands_koofr_into_both_modes() {
+        // The reporter's acceptance case (#277, comment 17737942): one Koofr
+        // profile must produce a Koofr API row and a Koofr WebDAV row.
+        let profiles = vec![json!({
+            "id": "srv_1", "name": "Koofr", "protocol": "koofr",
+            "providerId": "koofr", "host": "app.koofr.net"
+        })];
+        let plan = plan_protocol_fanout(&profiles, &[0]);
+        assert_eq!(plan.len(), 2);
+        assert_eq!(
+            plan.iter().map(|e| e.mode_label).collect::<Vec<_>>(),
+            vec!["api", "webdav"]
+        );
+        assert!(plan[0].is_source_mode);
+        assert!(!plan[1].is_source_mode);
+        assert_eq!(plan[1].target_protocol, "webdav");
+    }
+
+    #[test]
+    fn fanout_expands_each_group_to_its_mode_count() {
+        let profiles = vec![
+            json!({"id": "a", "name": "OpenDrive", "protocol": "opendrive"}),
+            json!({"id": "b", "name": "FileLu", "protocol": "filelu", "providerId": "filelu"}),
+            json!({"id": "c", "name": "NAS", "protocol": "sftp"}),
+        ];
+        assert_eq!(plan_protocol_fanout(&profiles, &[0]).len(), 2);
+        assert_eq!(plan_protocol_fanout(&profiles, &[1]).len(), 4);
+        // No sibling modes: exactly one run, and it runs the profile as saved.
+        let plain = plan_protocol_fanout(&profiles, &[2]);
+        assert_eq!(plain, vec![FanoutEntry::plain(2)]);
+    }
+
+    #[test]
+    fn fanout_synthesizes_koofr_webdav_from_the_native_profile() {
+        let source = json!({
+            "id": "srv_1", "name": "Koofr", "protocol": "koofr", "providerId": "koofr",
+            "host": "app.koofr.net", "username": "u@example.com",
+            "options": {"region": "eu", "manualTotalBytes": 42}
+        });
+        let plan = plan_protocol_fanout(std::slice::from_ref(&source), &[0]);
+        let webdav = plan.iter().find(|e| e.mode_label == "webdav").unwrap();
+        let synth = synth_profile_for_mode(&source, webdav).expect("koofr modes share creds");
+        assert_eq!(synth["protocol"], json!("webdav"));
+        assert_eq!(synth["host"], json!("https://app.koofr.net/dav/Koofr"));
+        // Same account: keeping the id is what makes `server_<id>` resolve.
+        assert_eq!(synth["id"], json!("srv_1"));
+        // Mode-specific options are scrubbed, mode-agnostic ones survive.
+        assert!(synth["options"].get("region").is_none());
+        assert_eq!(synth["options"]["manualTotalBytes"], json!(42));
+    }
+
+    #[test]
+    fn fanout_skips_modes_it_cannot_build_honestly() {
+        let source = json!({
+            "id": "srv_2", "name": "FileLu", "protocol": "filelu", "providerId": "filelu"
+        });
+        let plan = plan_protocol_fanout(std::slice::from_ref(&source), &[0]);
+        for entry in plan.iter().filter(|e| !e.is_source_mode) {
+            let err = synth_profile_for_mode(&source, entry)
+                .expect_err("FileLu modes each need their own secret");
+            assert!(err.contains("credentials"), "unexpected reason: {}", err);
+        }
+        // The source mode always runs, verbatim.
+        let source_entry = plan.iter().find(|e| e.is_source_mode).unwrap();
+        assert_eq!(
+            synth_profile_for_mode(&source, source_entry).unwrap(),
+            source
+        );
+    }
+
+    #[test]
+    fn mode_group_rows_cover_every_resolvable_mode() {
+        // Every row `resolve_target_mode_in_group` can return must be findable
+        // by `mode_group_row`, otherwise the endpoint injection silently
+        // no-ops for that mode.
+        for row in MODE_GROUPS {
+            let label = mode_label_for_row(row);
+            let (proto, pid) = resolve_target_mode_in_group(row.group_id, label)
+                .expect("every row resolves from its own label");
+            assert!(
+                mode_group_row(row.group_id, proto, pid).is_some(),
+                "row {}/{} is not addressable",
+                row.group_id,
+                label
+            );
+        }
+    }
 
     #[test]
     fn aerocloud_direction_maps_cli_to_serde() {
