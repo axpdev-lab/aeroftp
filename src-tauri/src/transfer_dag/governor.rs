@@ -66,10 +66,17 @@ pub const DISK_DEVICE_SLOTS_ENV: &str = "AEROFTP_DISK_DEVICE_SLOTS";
 /// it only bites when many jobs pile onto one endpoint.
 pub const DEFAULT_ENDPOINT_MAX_SLOTS: u32 = 256;
 
-/// Default per-device, per-direction I/O concurrency. This matches the legacy
-/// per-job disk-slot default while making concurrent jobs on the same device
-/// share one ceiling.
-pub const DEFAULT_DISK_DEVICE_SLOTS: u32 = 4;
+/// Default per-device, per-direction I/O concurrency shared by concurrent jobs
+/// on the same local physical device.
+///
+/// Aligned with the global transfer concurrency ceiling
+/// (`transfer_settings::MAX_MAX_CONCURRENT` = 8), not the legacy per-job disk
+/// default of 4. A Max-tier multi-file batch (`--parallel 5`, FTP leases 5,
+/// `file_slots` 5) was previously clamped to 4 true in-flight workers by this
+/// governor write/read slot even though every other gate resolved to 5. Keep
+/// this >= that ceiling so the local-disk governor never silently undercuts a
+/// capability-resolved batch; raise further only with a live benchmark.
+pub const DEFAULT_DISK_DEVICE_SLOTS: u32 = 8;
 
 /// Maximum consecutive foreground admissions while a background job waits.
 /// The next available endpoint slot then goes to background work, preventing
@@ -1283,5 +1290,24 @@ mod tests {
         drop(held);
         assert_eq!(gov.memory().available_quanta(), 2);
         assert_eq!(gov.memory().available_oversize_permits(), 1);
+    }
+
+    /// Pin: the process-global disk-device ceiling must not undercut the
+    /// transfer concurrency ceiling (`MAX_MAX_CONCURRENT` = 8). A Max-tier
+    /// multi-file batch (`--parallel 5`) was silently clamped to 4 true
+    /// in-flight workers by the previous default of 4, even though
+    /// file_slots / session leases / max_concurrent all resolved to 5.
+    #[test]
+    fn disk_device_slots_default_covers_transfer_concurrency_ceiling() {
+        // Keep these numeric (not an import of transfer_settings) to avoid a
+        // transfer_dag -> transfer_settings cycle; the two ceilings must move
+        // together. See DEFAULT_DISK_DEVICE_SLOTS doc. `const` asserts so
+        // clippy::assertions_on_constants stays clean under `-D warnings`.
+        const TRANSFER_MAX_MAX_CONCURRENT: u32 = 8;
+        const MAX_FTP_FILE_TIER: u32 = 5;
+        const {
+            assert!(DEFAULT_DISK_DEVICE_SLOTS >= TRANSFER_MAX_MAX_CONCURRENT);
+            assert!(DEFAULT_DISK_DEVICE_SLOTS >= MAX_FTP_FILE_TIER);
+        };
     }
 }
