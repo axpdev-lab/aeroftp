@@ -234,9 +234,12 @@ pub fn tool_definitions() -> Vec<McpToolDef> {
                     "enum": ["quick", "standard", "deep", "custom"],
                     "description": "Preset level. Default: 'quick'. 'deep' may take 30+ minutes."
                 },
-                "sizes": { "type": "string", "description": "Override file sizes as comma-separated list (e.g. '1M,100M,1G'). Only effective with level=custom." },
+                "sizes": { "type": "string", "description": "Override file sizes as comma-separated list. A BARE NUMBER MEANS MEBIBYTES ('1,100,1024'); K/M/G suffixes are explicit ('1M,100M,1G'). Only effective with level=custom." },
                 "runs": { "type": "integer", "description": "Override timed runs per (operation, size) tuple. Only effective with level=custom." },
                 "operations": { "type": "string", "description": "Comma-separated operations subset: upload,download,list,stat,delete. Only effective with level=custom." },
+                "file_count": { "type": "integer", "description": "Many-small-files workload: number of files to exercise (e.g. 100, 1000). This is the workload where per-file overhead dominates. On its own it REPLACES the single-file size sweep; pass 'sizes' as well to run both axes." },
+                "file_size": { "type": "string", "description": "Size of each file in the many-small-files workload. A BARE NUMBER MEANS MEBIBYTES (1 = 1 MiB); K/M/G suffixes are explicit ('64K', '4M'). Default: 64K. Total payload (file_count x file_size) is capped at 5 GiB." },
+                "all_protocols": { "type": "boolean", "description": "Benchmark the profile once per transport mode of its provider instead of once overall: a Koofr account is measured over both its REST API and its WebDAV surface. Changes the RESULT SHAPE to {reports: [...], skipped: [...]}, where each report carries a 'mode' field ('api', 'webdav', 's3', 'ftp') and 'skipped' explains every mode that could not be measured (modes needing their own credentials, or an S3 surface needing a bucket of its own). Without this flag the result stays a single report object. Multi-mode providers: Koofr, OpenDrive, FileLu, Filen. Default: false." },
                 "anonymize_extra": { "type": "boolean", "description": "Hash the provider hint as well (extra anonymization). Default: false." }
             }, "required": ["profile"] }),
             category: RateCategory::ReadOnly,
@@ -699,12 +702,16 @@ async fn run_debug_test_for_mcp(test_id: &str) -> Result<Value, String> {
 
 // ─── Pass 7: benchmark subprocess wrap ─────────────────────────────────────
 
+#[allow(clippy::too_many_arguments)]
 async fn run_benchmark_via_subprocess(
     profile: &str,
     level: &str,
     sizes: Option<&str>,
     runs: Option<u64>,
     operations: Option<&str>,
+    file_count: Option<u64>,
+    file_size: Option<&str>,
+    all_protocols: bool,
     anonymize_extra: bool,
 ) -> Result<Value, String> {
     let exe =
@@ -718,6 +725,10 @@ async fn run_benchmark_via_subprocess(
         ("level", Some(level)),
         ("sizes", sizes),
         ("operations", operations),
+        // `file_size` is user-controlled text that becomes argv exactly like
+        // `sizes`, so it needs the same guard. `file_count` is an integer and
+        // cannot carry a flag.
+        ("file_size", file_size),
     ] {
         if let Some(v) = value {
             if v.starts_with('-') {
@@ -733,10 +744,16 @@ async fn run_benchmark_via_subprocess(
     cmd.arg("--profile")
         .arg(profile)
         .arg("--format")
-        .arg("json")
-        .arg("--quiet")
-        .arg("benchmark")
-        .arg(level);
+        .arg("json");
+    // `--quiet` keeps an ordinary run silent apart from its JSON report. A
+    // fan-out run must NOT be quiet: the CLI reports the modes it could not
+    // measure on stderr (they have no report to appear in), and dropping that
+    // would leave the agent thinking the account only speaks the protocols it
+    // sees. stdout stays pure JSON either way.
+    if !all_protocols {
+        cmd.arg("--quiet");
+    }
+    cmd.arg("benchmark").arg(level);
     if let Some(s) = sizes {
         cmd.arg("--sizes").arg(s);
     }
@@ -745,6 +762,15 @@ async fn run_benchmark_via_subprocess(
     }
     if let Some(o) = operations {
         cmd.arg("--operations").arg(o);
+    }
+    if let Some(n) = file_count {
+        cmd.arg("--file-count").arg(n.to_string());
+    }
+    if let Some(s) = file_size {
+        cmd.arg("--file-size").arg(s);
+    }
+    if all_protocols {
+        cmd.arg("--all-protocols");
     }
     if anonymize_extra {
         cmd.arg("--anonymize-extra");
@@ -767,8 +793,39 @@ async fn run_benchmark_via_subprocess(
     // The CLI writes the schema-v1 JSON report to stdout when invoked with
     // `--format json`. We parse and pass it through as a JSON value so the
     // agent sees structured fields instead of an opaque string.
-    serde_json::from_slice::<Value>(&output.stdout)
-        .map_err(|e| format!("Cannot parse benchmark JSON output: {}", e))
+    let parsed = serde_json::from_slice::<Value>(&output.stdout)
+        .map_err(|e| format!("Cannot parse benchmark JSON output: {}", e))?;
+
+    if !all_protocols {
+        return Ok(parsed);
+    }
+
+    // Fan-out: the CLI emits one report per measured mode (each carrying a
+    // `mode` field) and one stderr line per mode it refused to measure. The
+    // agent gets both in one envelope, so "two rows" and "the other two modes
+    // need their own credentials" are equally visible. The shape is stable:
+    // asking for all_protocols always returns this object, even when a single
+    // mode was measured.
+    let reports = match parsed {
+        Value::Array(items) => items,
+        single => vec![single],
+    };
+    Ok(json!({
+        "reports": reports,
+        "skipped": parse_benchmark_skipped(&String::from_utf8_lossy(&output.stderr)),
+    }))
+}
+
+/// Lift the fan-out's "skipped <profile> (<mode>): <reason>" diagnostics off the
+/// CLI's stderr. They are the only record of a mode that produced no report, so
+/// they travel in the tool result instead of being swallowed.
+fn parse_benchmark_skipped(stderr: &str) -> Vec<Value> {
+    stderr
+        .lines()
+        .filter_map(|line| line.trim().strip_prefix("skipped "))
+        .filter(|rest| !rest.is_empty())
+        .map(|rest| Value::String(rest.to_string()))
+        .collect()
 }
 
 /// Build the payload returned by `aeroftp_mcp_info`. Kept as a standalone
@@ -992,6 +1049,15 @@ pub async fn execute_tool(
                 .get("operations")
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string());
+            let file_count = args.get("file_count").and_then(|v| v.as_u64());
+            let file_size = args
+                .get("file_size")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+            let all_protocols = args
+                .get("all_protocols")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
             let anonymize_extra = args
                 .get("anonymize_extra")
                 .and_then(|v| v.as_bool())
@@ -1002,6 +1068,9 @@ pub async fn execute_tool(
                 sizes.as_deref(),
                 runs,
                 operations.as_deref(),
+                file_count,
+                file_size.as_deref(),
+                all_protocols,
                 anonymize_extra,
             )
             .await
@@ -1935,7 +2004,10 @@ impl crate::sync_core::SyncProgressSink for NotifierSyncSink<'_> {
 
 #[cfg(test)]
 mod tests {
-    use super::{tool_definitions, validate_read_preview_target, MAX_READ_PREVIEW_BYTES};
+    use super::{
+        parse_benchmark_skipped, tool_definitions, validate_read_preview_target,
+        MAX_READ_PREVIEW_BYTES,
+    };
 
     #[test]
     fn read_preview_rejects_directories() {
@@ -2543,5 +2615,43 @@ mod tests {
         assert!(req.contains(&"server"));
         assert!(!req.contains(&"path"));
         assert!(!req.contains(&"paths"));
+    }
+
+    #[test]
+    fn benchmark_schema_exposes_many_files_and_fanout_inputs() {
+        let bench = tool_definitions()
+            .into_iter()
+            .find(|d| d.name == "aeroftp_benchmark")
+            .expect("aeroftp_benchmark is defined");
+        let props = bench.input_schema["properties"]
+            .as_object()
+            .expect("properties");
+        for key in ["file_count", "file_size", "all_protocols"] {
+            assert!(props.contains_key(key), "missing input '{}'", key);
+        }
+        // The MiB convention must be stated where the agent reads it, so the
+        // MCP surface documents the same unit the CLI help shipped.
+        let file_size_doc = props["file_size"]["description"].as_str().unwrap_or("");
+        assert!(
+            file_size_doc.contains("MEBIBYTES"),
+            "file_size description must state the bare-number unit: {}",
+            file_size_doc
+        );
+    }
+
+    #[test]
+    fn parse_benchmark_skipped_lifts_reasons_off_stderr() {
+        let stderr = concat!(
+            "connecting\n",
+            "skipped FileLu (webdav): mode 'webdav' needs its own credentials\n",
+            "skipped FileLu (s3): mode 's3' needs its own credentials\n",
+            "done\n"
+        );
+        let skipped = parse_benchmark_skipped(stderr);
+        assert_eq!(skipped.len(), 2);
+        assert_eq!(
+            skipped[0],
+            serde_json::json!("FileLu (webdav): mode 'webdav' needs its own credentials")
+        );
     }
 }
