@@ -191,6 +191,11 @@ fn parse_byte_amount(raw: &str) -> Result<u64, String> {
 
 const ZOHO_WORKDRIVE_FALLBACK_QUOTA_BYTES: u64 = 5 * 1024 * 1024 * 1024;
 
+/// Error reported when neither a team nor a personal privatespace can be found.
+/// Personal accounts have no team, so "create a team" is never the only answer:
+/// an empty result almost always means the wrong region or WorkDrive not enabled.
+const NO_TEAM_NO_PRIVATESPACE_ERROR: &str = "No WorkDrive team and no personal My Folders (privatespace) found for this account. Check that the configured region matches your Zoho account (eu, com, in, com.au, jp, uk, ca, sa) and that WorkDrive is enabled for it. Personal accounts connect through the privatespace of their own user id, so an empty result is usually a region mismatch.";
+
 const ZOHO_USED_QUOTA_KEYS: &[&str] = &[
     "storage_used",
     "used_storage",
@@ -274,6 +279,21 @@ struct TeamCurrentUserResource {
 #[derive(Debug, Deserialize)]
 struct WorkspaceResource {
     id: String,
+}
+
+/// Extract the privatespace (My Folders) root id from a
+/// `GET /users/{id}/privatespace` body. Zoho answers either with a JSON:API
+/// list (`{"data": [...]}`) or with a single object (`{"data": {...}}`),
+/// depending on account type, so both shapes are accepted.
+fn parse_privatespace_id(body: &str) -> Option<String> {
+    if let Ok(list) = serde_json::from_str::<JsonApiListResponse<WorkspaceResource>>(body) {
+        if let Some(first) = list.data.into_iter().next() {
+            return Some(first.id);
+        }
+    }
+    serde_json::from_str::<JsonApiResponse<WorkspaceResource>>(body)
+        .ok()
+        .map(|single| single.data.id)
 }
 
 /// Workspace list resource (for GET /teams/{id}/workspaces)
@@ -367,6 +387,10 @@ struct UserAttributes {
     #[serde(default)]
     #[allow(dead_code)]
     role: Option<String>,
+    /// Account edition (e.g. "PERSONAL", "TEAM"): logged for diagnostics only,
+    /// discovery never gates on it because some accounts omit the field.
+    #[serde(default)]
+    edition: Option<String>,
 }
 
 /// Public user info returned by get_user_info()
@@ -1124,7 +1148,8 @@ impl ZohoWorkdriveProvider {
                 "Unknown".to_string()
             }
         } else {
-            "Unknown".to_string()
+            // Personal account: no team unit exists, the privatespace is the root.
+            "Personal".to_string()
         };
 
         Ok(ZohoUserInfo {
@@ -1345,9 +1370,10 @@ impl ZohoWorkdriveProvider {
                 self.account_email = body.data.attributes.email_id.clone();
                 user_id = Some(body.data.id.clone());
                 info!(
-                    "Zoho WorkDrive user: {} ({})",
+                    "Zoho WorkDrive user: {} ({}), edition: {}",
                     body.data.attributes.email_id.as_deref().unwrap_or("?"),
-                    body.data.id
+                    body.data.id,
+                    body.data.attributes.edition.as_deref().unwrap_or("?")
                 );
             }
         } else {
@@ -1440,9 +1466,32 @@ impl ZohoWorkdriveProvider {
             None
         };
 
-        let team = team.ok_or_else(|| ProviderError::Other(
-            "No teams found in Zoho WorkDrive. Create a team at workdrive.zoho.eu (or your region's URL).".to_string()
-        ))?;
+        // No team unit at all: personal / no-team account (rclone PERSONAL path).
+        // The privatespace (My Folders) of the ZUID is then the whole account root,
+        // so discovery continues there instead of failing.
+        let team = match team {
+            Some(team) => team,
+            None => {
+                let uid = user_id.clone().ok_or_else(|| {
+                    ProviderError::Other(NO_TEAM_NO_PRIVATESPACE_ERROR.to_string())
+                })?;
+                info!(
+                    "Zoho WorkDrive: no teams; trying personal privatespace for ZUID {}",
+                    uid
+                );
+                self.team_id = None;
+                // Personal accounts have no team-scoped user id: the ZUID plays
+                // that role for the endpoints that need one (labels, privatespace).
+                self.team_user_id = Some(uid.clone());
+                if self.discover_privatespace(&uid).await? {
+                    info!("Zoho WorkDrive: connected as personal account (no team)");
+                    return Ok(());
+                }
+                return Err(ProviderError::Other(
+                    NO_TEAM_NO_PRIVATESPACE_ERROR.to_string(),
+                ));
+            }
+        };
 
         self.team_id = Some(team.id.clone());
         info!(
@@ -1493,58 +1542,12 @@ impl ZohoWorkdriveProvider {
         // Step 4: Get privatespace (My Folders) root using teamUserID
         // rclone flow: /users/{teamUserID}/privatespace → root folder ID
         let ps_user_id = team_user_id
-            .as_deref()
-            .unwrap_or(user_id.as_deref().unwrap_or(&team.id));
-        let private_url = format!("{}/users/{}/privatespace", self.api_base(), ps_user_id);
-        info!("Zoho WorkDrive: GET {}", private_url);
-        let resp = self
-            .client
-            .get(&private_url)
-            .header(AUTHORIZATION, self.auth_header().await?)
-            .send()
-            .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
-
-        if resp.status().is_success() {
-            let body_text = resp.text().await.unwrap_or_default();
-            debug!(
-                "Zoho WorkDrive privatespace response: {}",
-                &body_text[..body_text.len().min(500)]
-            );
-            // Zoho returns {"data": [...]} (array), try array first, then single object
-            let ps_id = if let Ok(body) =
-                serde_json::from_str::<JsonApiListResponse<WorkspaceResource>>(&body_text)
-            {
-                body.data.into_iter().next().map(|r| r.id)
-            } else if let Ok(body) =
-                serde_json::from_str::<JsonApiResponse<WorkspaceResource>>(&body_text)
-            {
-                Some(body.data.id)
-            } else {
-                info!("Zoho WorkDrive privatespace parse failed for both array and object formats");
-                None
-            };
-
-            if let Some(id) = ps_id {
-                self.privatespace_id = Some(id.clone());
-                self.current_folder_id = id.clone();
-                self.folder_cache.insert("/".to_string(), id);
-                info!(
-                    "Zoho WorkDrive privatespace root: {}",
-                    self.current_folder_id
-                );
-                self.discover_team_folders(&team.id).await;
-                return Ok(());
-            }
-        } else {
-            let status = resp.status();
-            let text = resp.text().await.unwrap_or_default();
-            debug!(
-                "Zoho WorkDrive /users/{}/privatespace failed ({}): {}",
-                ps_user_id,
-                status,
-                &text[..text.len().min(300)]
-            );
+            .clone()
+            .or_else(|| user_id.clone())
+            .unwrap_or_else(|| team.id.clone());
+        if self.discover_privatespace(&ps_user_id).await? {
+            self.discover_team_folders(&team.id).await;
+            return Ok(());
         }
 
         // Last fallback: use team ID as root
@@ -1555,6 +1558,103 @@ impl ZohoWorkdriveProvider {
         self.discover_team_folders(&team.id).await;
 
         Ok(())
+    }
+
+    /// Resolve the privatespace (My Folders) root for `user_id` and make it the
+    /// current root. Returns `false` when the endpoint fails or returns no
+    /// workspace, so the caller can fall back (team accounts) or report a
+    /// precise error (personal accounts).
+    async fn discover_privatespace(&mut self, user_id: &str) -> Result<bool, ProviderError> {
+        let private_url = format!("{}/users/{}/privatespace", self.api_base(), user_id);
+        info!("Zoho WorkDrive: GET {}", private_url);
+        let resp = self
+            .client
+            .get(&private_url)
+            .header(AUTHORIZATION, self.auth_header().await?)
+            .send()
+            .await
+            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            debug!(
+                "Zoho WorkDrive /users/{}/privatespace failed ({}): {}",
+                user_id,
+                status,
+                &text[..text.len().min(300)]
+            );
+            return Ok(false);
+        }
+
+        let body_text = resp.text().await.unwrap_or_default();
+        debug!(
+            "Zoho WorkDrive privatespace response: {}",
+            &body_text[..body_text.len().min(500)]
+        );
+
+        match parse_privatespace_id(&body_text) {
+            Some(id) => {
+                self.privatespace_id = Some(id.clone());
+                self.current_folder_id = id.clone();
+                self.folder_cache.insert("/".to_string(), id);
+                info!(
+                    "Zoho WorkDrive privatespace root: {}",
+                    self.current_folder_id
+                );
+                Ok(true)
+            }
+            None => {
+                info!("Zoho WorkDrive privatespace parse failed for both array and object formats");
+                Ok(false)
+            }
+        }
+    }
+
+    /// Storage quota for a personal account (no team unit): `/teams/{id}` does
+    /// not exist there, so quota is read from the user record and falls back to
+    /// the free WorkDrive quota when Zoho omits the fields.
+    async fn personal_storage_info(&mut self) -> Result<StorageInfo, ProviderError> {
+        let url = format!("{}/users/me", self.api_base());
+        let resp = self
+            .client
+            .get(&url)
+            .header(AUTHORIZATION, self.auth_header().await?)
+            .send()
+            .await
+            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+
+        let mut used = 0u64;
+        let mut total = 0u64;
+        if resp.status().is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            if let Ok(raw) = serde_json::from_str::<serde_json::Value>(&body) {
+                used = find_byte_amount_by_keys(&raw, ZOHO_USED_QUOTA_KEYS).unwrap_or(0);
+                total = find_byte_amount_by_keys(&raw, ZOHO_TOTAL_QUOTA_KEYS).unwrap_or(0);
+            }
+        } else {
+            debug!(
+                "Zoho WorkDrive personal storage_info /users/me failed ({})",
+                resp.status()
+            );
+        }
+
+        if total == 0 {
+            debug!(
+                "Zoho WorkDrive personal storage_info: no quota in /users/me, using 5 GB fallback"
+            );
+            total = ZOHO_WORKDRIVE_FALLBACK_QUOTA_BYTES;
+        }
+        if used > total {
+            total = used;
+        }
+
+        Ok(StorageInfo {
+            used,
+            total,
+            free: total.saturating_sub(used),
+            versioning_bytes: None,
+        })
     }
 
     /// Discover team folders.
@@ -2783,7 +2883,8 @@ impl StorageProvider for ZohoWorkdriveProvider {
                 "Unknown".to_string()
             }
         } else {
-            "Unknown".to_string()
+            // Personal account: no team unit exists, the privatespace is the root.
+            "Personal".to_string()
         };
 
         Ok(format!(
@@ -3023,10 +3124,12 @@ impl StorageProvider for ZohoWorkdriveProvider {
     }
 
     async fn storage_info(&mut self) -> Result<StorageInfo, ProviderError> {
-        let team_id = self
-            .team_id
-            .as_ref()
-            .ok_or_else(|| ProviderError::Other("Not connected to a team".to_string()))?;
+        // Personal accounts have no team unit: quota comes from the user record.
+        let owned_team_id = match self.team_id.clone() {
+            Some(id) => id,
+            None => return self.personal_storage_info().await,
+        };
+        let team_id = &owned_team_id;
 
         let url = format!("{}/teams/{}", self.api_base(), team_id);
         let resp = self
@@ -3132,11 +3235,13 @@ impl StorageProvider for ZohoWorkdriveProvider {
         _path: &str,
         pattern: &str,
     ) -> Result<Vec<RemoteEntry>, ProviderError> {
-        let team_id = self
-            .team_id
-            .as_ref()
-            .ok_or_else(|| ProviderError::Other("Not connected to a team".to_string()))?
-            .clone();
+        // /files/search is team scoped: personal accounts have no team id, so
+        // remote search is unavailable there (listing and transfers still work).
+        let team_id = self.team_id.as_ref().cloned().ok_or_else(|| {
+            ProviderError::NotSupported(
+                "remote search on a Zoho WorkDrive personal account (no team)".to_string(),
+            )
+        })?;
 
         // Zoho /files/search?search_string= is substring on filename and
         // ignores glob metacharacters. Strip glob chars for the broad server
@@ -3508,6 +3613,49 @@ mod tests {
         assert_eq!(parse_byte_amount_value(&json!({"value": 100})), Some(100));
         assert_eq!(parse_byte_amount_value(&json!(true)), None);
         assert_eq!(parse_byte_amount_value(&json!("garbage")), None);
+    }
+
+    #[test]
+    fn parse_privatespace_id_accepts_array_and_object_shapes() {
+        // Team accounts answer with a JSON:API list.
+        let array = r#"{"data":[{"id":"fmip966f979e195e64ec78e6846976861eed5","attributes":{"name":"My Folders"}}]}"#;
+        assert_eq!(
+            parse_privatespace_id(array).as_deref(),
+            Some("fmip966f979e195e64ec78e6846976861eed5")
+        );
+
+        // Personal accounts may answer with a single object.
+        let object = r#"{"data":{"id":"fmip9personal0000000000000000000000","attributes":{}}}"#;
+        assert_eq!(
+            parse_privatespace_id(object).as_deref(),
+            Some("fmip9personal0000000000000000000000")
+        );
+
+        // First element wins when several workspaces are returned.
+        let many = r#"{"data":[{"id":"first"},{"id":"second"}]}"#;
+        assert_eq!(parse_privatespace_id(many).as_deref(), Some("first"));
+    }
+
+    #[test]
+    fn parse_privatespace_id_rejects_empty_and_malformed_bodies() {
+        assert_eq!(parse_privatespace_id(r#"{"data":[]}"#), None);
+        assert_eq!(parse_privatespace_id(r#"{"data":{}}"#), None);
+        assert_eq!(
+            parse_privatespace_id(r#"{"errors":[{"title":"F6016"}]}"#),
+            None
+        );
+        assert_eq!(parse_privatespace_id(""), None);
+        assert_eq!(parse_privatespace_id("not json"), None);
+    }
+
+    #[test]
+    fn no_team_error_does_not_demand_creating_a_team() {
+        // #451: personal accounts cannot create a team, so the error must point
+        // at region and WorkDrive availability, not at "create a team".
+        let msg = NO_TEAM_NO_PRIVATESPACE_ERROR.to_lowercase();
+        assert!(!msg.contains("create a team"));
+        assert!(msg.contains("privatespace"));
+        assert!(msg.contains("region"));
     }
 
     #[test]
