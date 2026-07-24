@@ -613,6 +613,39 @@ async fn discard_streaming_temp(writer: StreamingAtomicWriter) {
     let _ = fs::remove_file(&temp).await;
 }
 
+/// Audit S1: is a peer-supplied symlink target safe to materialise on a
+/// download? Safe means it stays within the link's own directory: an
+/// absolute target, or a relative target whose lexical resolution rises
+/// above the directory the link is created in, is refused. This is the
+/// `--safe-links` policy applied by default, resolved lexically without
+/// touching the filesystem (no TOCTOU, no following the link).
+#[cfg(unix)]
+fn symlink_target_is_safe(target: &str) -> bool {
+    use std::path::{Component, Path};
+    let path = Path::new(target);
+    if path.is_absolute() {
+        return false;
+    }
+    let mut depth: i64 = 0;
+    for component in path.components() {
+        match component {
+            Component::ParentDir => {
+                depth -= 1;
+                if depth < 0 {
+                    // Rose above the link's own directory.
+                    return false;
+                }
+            }
+            Component::Normal(_) => depth += 1,
+            Component::CurDir => {}
+            // Absolute markers are already rejected above; treat any
+            // residual root/prefix as unsafe rather than guessing.
+            Component::RootDir | Component::Prefix(_) => return false,
+        }
+    }
+    true
+}
+
 /// Y-RSC.4: materialise a downloaded symlink entry at `local_path` with
 /// the create-at-temp-name + atomic-rename discipline of the regular
 /// download path (`<target>.aerotmp` → rename; the rename is the
@@ -643,6 +676,19 @@ async fn create_symlink_atomic(
     };
     #[cfg(unix)]
     {
+        // Audit S1: the target is peer-controlled. A hostile server can
+        // otherwise make a download materialise a link to an absolute
+        // path (/etc/passwd) or a parent traversal; creating the link
+        // does not follow it, but a later write-through would. Refuse an
+        // unsafe target fail-closed (mirror of rsync `--safe-links`), the
+        // secure default for a client pulling from an untrusted peer.
+        if !symlink_target_is_safe(target) {
+            return Err(RsyncError::HardRejection(format!(
+                "symlink entry for {} has an unsafe target {} (absolute, or escaping the \
+                 download directory); refusing (safe-links)",
+                remote_path, target
+            )));
+        }
         // Same deterministic temp name as `StreamingAtomicWriter` (the
         // writer's temp was discarded just above, so the slot is free);
         // clear any stale leftover before `symlink`, which has
@@ -2987,6 +3033,56 @@ mod tests {
     }
 
     #[cfg(unix)]
+    #[test]
+    fn symlink_target_is_safe_rejects_absolute_and_traversal() {
+        // Safe: the target stays within the link's own directory.
+        assert!(symlink_target_is_safe("sibling.bin"));
+        assert!(symlink_target_is_safe("sub/dir/file.bin"));
+        assert!(symlink_target_is_safe("sub/../also-here.bin"));
+        assert!(symlink_target_is_safe("./here.bin"));
+        // Unsafe: absolute target.
+        assert!(!symlink_target_is_safe("/etc/passwd"));
+        // Unsafe: rises above the link's own directory.
+        assert!(!symlink_target_is_safe("../secret"));
+        assert!(!symlink_target_is_safe("sub/../../escape"));
+        assert!(!symlink_target_is_safe(
+            "../../../../home/user/.ssh/authorized_keys"
+        ));
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn create_symlink_atomic_refuses_unsafe_target_fail_closed() {
+        let dir = fresh_tempdir();
+        let dest = dir.path().join("evil.lnk");
+        let entry = crate::aerorsync::real_wire::FileListEntry {
+            flags: 1 << 13,
+            path: "evil.lnk".to_string(),
+            size: 0,
+            mtime: 0,
+            mtime_nsec: Some(0),
+            mode: 0o120_777,
+            uid: None,
+            uid_name: None,
+            gid: None,
+            gid_name: None,
+            checksum: vec![],
+            symlink_target: Some("../../../../etc/passwd".to_string()),
+        };
+        let err = create_symlink_atomic(&entry, &dest, "/remote/evil.lnk")
+            .await
+            .unwrap_err();
+        assert!(matches!(err, RsyncError::HardRejection(_)));
+        assert!(!dest.exists(), "unsafe symlink must not be materialised");
+        let mut temp_os = dest.as_os_str().to_owned();
+        temp_os.push(TEMP_SUFFIX);
+        assert!(
+            !std::path::Path::new(&temp_os).exists(),
+            "no temp may be left behind on refusal"
+        );
+    }
+
+    #[cfg(unix)]
     #[tokio::test]
     async fn create_symlink_atomic_replaces_existing_file_and_leaves_no_temp() {
         let dir = fresh_tempdir();
@@ -3223,7 +3319,10 @@ mod tests {
 
         let dir = fresh_tempdir();
         let local = dir.path().join("down.lnk");
-        let target = "../rel/tgt.bin";
+        // Safe-links (audit S1): a representative in-directory target. An
+        // escaping target (`../...`) is covered by
+        // `create_symlink_atomic_refuses_unsafe_target_fail_closed`.
+        let target = "rel/tgt.bin";
         let transport = MockRemoteShellTransport::new(
             MockTransportConfig::healthy_upload()
                 .with_raw_inbound(symlink_download_session_inbound("down.lnk", target)),
