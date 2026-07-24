@@ -4111,6 +4111,11 @@ mod tests {
     /// stream. A cyclic text payload compresses ~7x and the wire total
     /// legitimately drops below the source length. xorshift64 with a
     /// fixed seed keeps the run reproducible without new dependencies.
+    ///
+    /// Only the `#[cfg(ci_lane3)]` live tests call this; without that
+    /// cfg (the default CI check job) the helper would trip `-D dead_code`
+    /// after the Y-RSC.8 removal of the module-wide allow.
+    #[cfg(ci_lane3)]
     fn incompressible_payload(seed: u64, len: usize) -> Vec<u8> {
         let mut state = seed | 1;
         (0..len)
