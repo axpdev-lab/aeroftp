@@ -2114,9 +2114,10 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         }
     }
 
-    /// Encode and write the per-file signature mux payload (ndx + iflags
-    /// + sum_head + sum_blocks + receiver phase tail). Shared by bulk and
-    /// streaming signature senders after they have produced `sum_blocks`.
+    /// Encode and write the per-file signature mux payload: ndx, iflags,
+    /// sum_head, sum_blocks, and the receiver phase tail. Shared by bulk
+    /// and streaming signature senders after they have produced
+    /// `sum_blocks`.
     ///
     /// Callers supply the already-built `sum_blocks` and the file length
     /// used for `remainder_length`.

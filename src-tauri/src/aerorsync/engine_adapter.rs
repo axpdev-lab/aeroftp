@@ -1178,7 +1178,8 @@ mod apply_delta_streaming_tests {
                 .await
                 .expect("streaming signatures must succeed");
             assert_eq!(
-                streaming, bulk,
+                streaming,
+                bulk,
                 "streaming signatures must match bulk for len={} block_size={}",
                 data.len(),
                 block_size
@@ -1232,7 +1233,11 @@ mod apply_delta_streaming_tests {
             .await
             .expect("streaming signatures over 4 GiB sparse");
         let expected_blocks = (FOUR_GIB / BLOCK as u64) as usize;
-        assert_eq!(sigs.len(), expected_blocks, "signature count for 4 GiB / 8 KiB");
+        assert_eq!(
+            sigs.len(),
+            expected_blocks,
+            "signature count for 4 GiB / 8 KiB"
+        );
         assert_eq!(sigs[0].block_len, BLOCK as u32);
         assert_eq!(sigs[expected_blocks - 1].block_len, BLOCK as u32);
 
