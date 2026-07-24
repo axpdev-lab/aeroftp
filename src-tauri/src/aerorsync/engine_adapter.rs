@@ -968,6 +968,62 @@ impl BaselineSource for MemoryBaseline {
     }
 }
 
+// --- Y-RSC.5: streaming build_signatures --------------------------------
+//
+// Free function (not a trait method), same rationale as
+// `apply_delta_streaming`: there is one correct implementation (walk
+// `BaselineSource::read_block` with the same Adler-32 + SHA-256
+// primitives as `delta_sync::compute_signatures`), and forcing every
+// mock adapter to re-implement it would only create drift.
+//
+// Wire path note: `AerorsyncDriver::send_signature_phase_from_baseline`
+// does a *single* pass over the baseline (rolling + negotiated wire
+// strong in one `read_block` each) and does not call this free function,
+// so large downloads do not pay for a second baseline scan. This helper
+// exists for parity tests, classic-engine consumers, and any future
+// caller that needs engine-form signatures without bulk RAM.
+
+/// Streaming twin of [`DeltaEngineAdapter::build_signatures`].
+///
+/// Reads the baseline via [`BaselineSource::read_block`] so peak RAM is
+/// `O(block_size)`. Output is byte-identical to
+/// `CurrentDeltaSyncBridge::build_signatures(full_bytes, block_size)` for
+/// the same content (pinned by `build_signatures_streaming_matches_bulk`).
+///
+/// `block_size` must be greater than zero when the baseline is non-empty.
+/// An empty baseline yields an empty `Vec`.
+pub async fn build_signatures_streaming(
+    baseline: &mut dyn BaselineSource,
+    block_size: usize,
+) -> std::io::Result<Vec<EngineSignatureBlock>> {
+    let file_len = baseline.len();
+    if file_len == 0 {
+        return Ok(Vec::new());
+    }
+    if block_size == 0 {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "build_signatures_streaming: block_size must be > 0 for a non-empty baseline",
+        ));
+    }
+
+    let n_blocks = file_len.div_ceil(block_size as u64) as u32;
+    let mut out = Vec::with_capacity(n_blocks as usize);
+    for index in 0..n_blocks {
+        let block = baseline.read_block(index, block_size as u32).await?;
+        let rolling = delta_sync::RollingChecksum::new(&block);
+        let strong = delta_sync::strong_hash(&block);
+        out.push(EngineSignatureBlock {
+            index,
+            rolling: rolling.value(),
+            strong,
+            strong_len: 32,
+            block_len: block.len() as u32,
+        });
+    }
+    Ok(out)
+}
+
 // --- W2.2: streaming download apply_delta -------------------------------
 //
 // `apply_delta_streaming` is the chunk-driven counterpart of
@@ -1099,6 +1155,93 @@ mod apply_delta_streaming_tests {
             .await
             .expect("streaming apply must succeed on parity fixture");
         (sink, written)
+    }
+
+    /// Y-RSC.5: `build_signatures_streaming` must be byte-identical to
+    /// bulk `CurrentDeltaSyncBridge::build_signatures` for the same
+    /// content. Identical engine signatures => identical wire rolling
+    /// fields on the production single-pass path.
+    #[tokio::test]
+    async fn build_signatures_streaming_matches_bulk() {
+        let bridge = CurrentDeltaSyncBridge::new();
+        let cases: Vec<(Vec<u8>, usize)> = vec![
+            (Vec::new(), 512),
+            (vec![0xABu8; 100], 512),
+            (vec![0x11u8; 4096], 512),
+            (vec![0x5Au8; 3 * 512 + 17], 512),
+            (deterministic_bytes(64 * 1024 + 333, 0x51C), 1024),
+        ];
+        for (data, block_size) in cases {
+            let bulk = bridge.build_signatures(&data, block_size);
+            let mut baseline = MemoryBaseline::new(data.clone());
+            let streaming = build_signatures_streaming(&mut baseline, block_size)
+                .await
+                .expect("streaming signatures must succeed");
+            assert_eq!(
+                streaming, bulk,
+                "streaming signatures must match bulk for len={} block_size={}",
+                data.len(),
+                block_size
+            );
+        }
+    }
+
+    /// Parse `VmHWM` (peak resident set) from `/proc/self/status`, in bytes.
+    fn read_vmhwm_bytes() -> Option<u64> {
+        let status = std::fs::read_to_string("/proc/self/status").ok()?;
+        for line in status.lines() {
+            if let Some(rest) = line.strip_prefix("VmHWM:") {
+                let kb: u64 = rest.split_whitespace().next()?.parse().ok()?;
+                return Some(kb.saturating_mul(1024));
+            }
+        }
+        None
+    }
+
+    /// Y-RSC.5 acceptance: stream signatures over a 4 GiB *sparse*
+    /// baseline without the process peak RSS growing by more than
+    /// 128 MiB. A bulk `fs::read` of the same file would push growth by
+    /// ~4 GiB and fail this gate immediately.
+    ///
+    /// Ignored by default (disk + wall-clock: walks 524288 blocks of 8
+    /// KiB). Run with:
+    /// `cargo test --features aerorsync --lib \
+    ///   aerorsync::engine_adapter::apply_delta_streaming_tests::build_signatures_streaming_rss_under_128mib_on_4gib_sparse \
+    ///   -- --ignored --nocapture`
+    #[tokio::test]
+    #[ignore = "Y-RSC.5 RSS acceptance: 4 GiB sparse baseline, peak VmHWM growth < 128 MiB"]
+    async fn build_signatures_streaming_rss_under_128mib_on_4gib_sparse() {
+        const FOUR_GIB: u64 = 4 * 1024 * 1024 * 1024;
+        const BLOCK: usize = 8192; // MAX_BLOCK_SIZE for large files
+        const LIMIT: u64 = 128 * 1024 * 1024;
+
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("sparse-4gib.bin");
+        {
+            let f = std::fs::File::create(&path).expect("create sparse");
+            f.set_len(FOUR_GIB).expect("set_len 4 GiB sparse");
+        }
+
+        let hwm_before = read_vmhwm_bytes().expect("VmHWM readable on Linux");
+        let mut baseline = FileBaseline::open(&path)
+            .await
+            .expect("open sparse baseline");
+        assert_eq!(baseline.len(), FOUR_GIB);
+
+        let sigs = build_signatures_streaming(&mut baseline, BLOCK)
+            .await
+            .expect("streaming signatures over 4 GiB sparse");
+        let expected_blocks = (FOUR_GIB / BLOCK as u64) as usize;
+        assert_eq!(sigs.len(), expected_blocks, "signature count for 4 GiB / 8 KiB");
+        assert_eq!(sigs[0].block_len, BLOCK as u32);
+        assert_eq!(sigs[expected_blocks - 1].block_len, BLOCK as u32);
+
+        let hwm_after = read_vmhwm_bytes().expect("VmHWM readable after");
+        let growth = hwm_after.saturating_sub(hwm_before);
+        assert!(
+            growth < LIMIT,
+            "VmHWM grew by {growth} bytes (limit {LIMIT}); streaming signatures must not load the 4 GiB baseline (before={hwm_before} after={hwm_after})"
+        );
     }
 
     /// Source consists entirely of literal bytes (no overlap with dest).

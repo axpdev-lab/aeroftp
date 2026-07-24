@@ -131,7 +131,12 @@ pub struct DeltaResult {
     pub should_use_delta: bool,
 }
 
-/// Compute block signatures for a file (destination side)
+/// Compute block signatures for a file (destination side).
+///
+/// Bulk helper kept for the classic delta path and for small in-memory
+/// fixtures. For large baselines prefer [`compute_signatures_streaming`],
+/// which is byte-identical for the same content (see parity tests) and
+/// bounds peak RAM to `O(block_size)`.
 pub fn compute_signatures(data: &[u8], block_size: usize) -> SignatureTable {
     let mut signatures = Vec::new();
     let mut offset = 0usize;
@@ -160,6 +165,68 @@ pub fn compute_signatures(data: &[u8], block_size: usize) -> SignatureTable {
         file_size: data.len() as u64,
         signatures,
     }
+}
+
+/// Streaming twin of [`compute_signatures`].
+///
+/// Reads the baseline in successive `block_size` chunks from `reader` so
+/// peak RAM is `O(block_size)` rather than `O(file_size)`. The returned
+/// [`SignatureTable`] is byte-identical to
+/// `compute_signatures(full_bytes, block_size)` for the same content
+/// (pinned by `compute_signatures_streaming_matches_bulk_*`).
+///
+/// `block_size` must be greater than zero. An empty stream yields an empty
+/// signature table with `file_size == 0`. A short final read shorter than
+/// `block_size` becomes the ragged-tail signature, matching the bulk path.
+pub fn compute_signatures_streaming<R: std::io::Read>(
+    reader: &mut R,
+    block_size: usize,
+) -> std::io::Result<SignatureTable> {
+    if block_size == 0 {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "compute_signatures_streaming: block_size must be > 0",
+        ));
+    }
+
+    let mut signatures = Vec::new();
+    let mut index = 0u32;
+    let mut file_size = 0u64;
+    let mut buf = vec![0u8; block_size];
+
+    loop {
+        let mut filled = 0usize;
+        while filled < block_size {
+            match reader.read(&mut buf[filled..])? {
+                0 => break,
+                n => filled += n,
+            }
+        }
+        if filled == 0 {
+            break;
+        }
+        let block = &buf[..filled];
+        let rolling = RollingChecksum::new(block);
+        let strong = strong_hash(block);
+        signatures.push(BlockSignature {
+            index,
+            rolling: rolling.value(),
+            strong,
+            size: filled as u32,
+        });
+        file_size += filled as u64;
+        index = index.saturating_add(1);
+        if filled < block_size {
+            // Ragged tail: EOF mid-block. Same as bulk's final shorter slice.
+            break;
+        }
+    }
+
+    Ok(SignatureTable {
+        block_size,
+        file_size,
+        signatures,
+    })
 }
 
 /// Build a lookup table from rolling checksums to signature indices
@@ -433,6 +500,71 @@ mod tests {
         assert_eq!(sigs.signatures.len(), 4);
         assert_eq!(sigs.block_size, 512);
         assert_eq!(sigs.file_size, 2048);
+    }
+
+    /// Y-RSC.5: streaming signatures must be byte-identical to bulk across
+    /// the shapes the wire path actually emits (empty / sub-block /
+    /// exact-multiple / ragged-tail / many-blocks).
+    fn assert_streaming_matches_bulk(data: &[u8], block_size: usize) {
+        let bulk = compute_signatures(data, block_size);
+        let streaming = compute_signatures_streaming(&mut std::io::Cursor::new(data), block_size)
+            .expect("cursor read cannot fail");
+        assert_eq!(streaming.block_size, bulk.block_size, "block_size");
+        assert_eq!(streaming.file_size, bulk.file_size, "file_size");
+        assert_eq!(
+            streaming.signatures.len(),
+            bulk.signatures.len(),
+            "signature count"
+        );
+        for (i, (s, b)) in streaming
+            .signatures
+            .iter()
+            .zip(bulk.signatures.iter())
+            .enumerate()
+        {
+            assert_eq!(s.index, b.index, "sig[{i}].index");
+            assert_eq!(s.rolling, b.rolling, "sig[{i}].rolling");
+            assert_eq!(s.strong, b.strong, "sig[{i}].strong");
+            assert_eq!(s.size, b.size, "sig[{i}].size");
+        }
+    }
+
+    #[test]
+    fn compute_signatures_streaming_matches_bulk_empty() {
+        assert_streaming_matches_bulk(&[], 512);
+    }
+
+    #[test]
+    fn compute_signatures_streaming_matches_bulk_sub_block() {
+        assert_streaming_matches_bulk(&[0xABu8; 100], 512);
+    }
+
+    #[test]
+    fn compute_signatures_streaming_matches_bulk_exact_multiple() {
+        assert_streaming_matches_bulk(&[0x11u8; 4096], 512);
+    }
+
+    #[test]
+    fn compute_signatures_streaming_matches_bulk_ragged_tail() {
+        // 3 full blocks + 17-byte tail.
+        assert_streaming_matches_bulk(&[0x5Au8; 3 * 512 + 17], 512);
+    }
+
+    #[test]
+    fn compute_signatures_streaming_matches_bulk_many_blocks() {
+        // Patterned payload so rolling + strong cover non-trivial data.
+        let mut data = vec![0u8; 64 * 1024 + 333];
+        for (i, b) in data.iter_mut().enumerate() {
+            *b = ((i.wrapping_mul(131) ^ (i >> 3) ^ 0x5A) & 0xFF) as u8;
+        }
+        assert_streaming_matches_bulk(&data, 1024);
+    }
+
+    #[test]
+    fn compute_signatures_streaming_rejects_zero_block_size() {
+        let err = compute_signatures_streaming(&mut std::io::Cursor::new(b"x"), 0)
+            .expect_err("block_size 0 must fail");
+        assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
     }
 
     #[test]
