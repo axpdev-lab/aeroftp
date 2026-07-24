@@ -13,6 +13,7 @@
 //! The panel is the source of truth; no localStorage checkbox state is used.
 
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 use std::process::Command;
 
 use crate::hidden_command;
@@ -26,6 +27,17 @@ pub struct AssocCatalogEntry {
     pub linux_mimes: &'static [&'static str],
     /// Windows ProgIDs to recognize as "AeroFTP is handling this".
     /// Order: preferred first (e.g. AeroFTP.Archive before legacy).
+    ///
+    /// Three spellings can legitimately be the live handler, because three different
+    /// writers register these extensions:
+    /// - `AeroFTP.<Name>` (capitalised): written by our own NSIS hook.
+    /// - `AeroFTP.<ext>`: the advertised ProgID registered by the WiX/MSI package.
+    /// - `<ext>` (bare): what the Tauri NSIS template derives from the extension when a
+    ///   `fileAssociations` entry carries no `name` field, which is our case.
+    ///
+    /// Leaving the bare form out made this panel report "not default" for a user whose
+    /// default really was AeroFTP through the Tauri ProgID. Found on Win11 during the
+    /// issue #454 registry sweep.
     #[allow(dead_code)]
     pub windows_progids: &'static [&'static str],
 }
@@ -37,35 +49,39 @@ pub const AERO_OWNED: &[AssocCatalogEntry] = &[
         label: "AeroVault",
         extensions: &[".aerovault"],
         linux_mimes: &["application/x-aerovault"],
-        windows_progids: &["AeroFTP.AeroVault", "AeroFTP.aerovault"],
+        windows_progids: &["AeroFTP.AeroVault", "AeroFTP.aerovault", "aerovault"],
     },
     AssocCatalogEntry {
         key: "aerozip",
         label: "AeroZip",
         extensions: &[".aerozip"],
         linux_mimes: &["application/x-aerozip"],
-        windows_progids: &["AeroFTP.AeroZip", "AeroFTP.aerozip"],
+        windows_progids: &["AeroFTP.AeroZip", "AeroFTP.aerozip", "aerozip"],
     },
     AssocCatalogEntry {
         key: "profile",
         label: "AeroFTP Profile",
         extensions: &[".aeroftp"],
         linux_mimes: &["application/x-aeroftp"],
-        windows_progids: &["AeroFTP.Profile", "AeroFTP.aeroftp"],
+        windows_progids: &["AeroFTP.Profile", "AeroFTP.aeroftp", "aeroftp"],
     },
     AssocCatalogEntry {
         key: "keystore",
         label: "AeroFTP Keystore",
         extensions: &[".aeroftp-keystore"],
         linux_mimes: &["application/x-aeroftp-keystore"],
-        windows_progids: &["AeroFTP.Keystore", "AeroFTP.aeroftp-keystore"],
+        windows_progids: &[
+            "AeroFTP.Keystore",
+            "AeroFTP.aeroftp-keystore",
+            "aeroftp-keystore",
+        ],
     },
     AssocCatalogEntry {
         key: "script",
         label: "AeroFTP Script",
         extensions: &[".aeroftp-script"],
         linux_mimes: &["application/x-aeroftp-script"],
-        windows_progids: &["AeroFTP.Script", "AeroFTP.aeroftp-script"],
+        windows_progids: &["AeroFTP.Script", "AeroFTP.aeroftp-script", "aeroftp-script"],
     },
 ];
 
@@ -137,6 +153,62 @@ const LINUX_DESKTOP_IDS: &[&str] = &[
     "AeroFTP.desktop",
     "aeroftp.desktop",
 ];
+
+/// Directories that hold installed `.desktop` files, in XDG lookup order:
+/// `$XDG_DATA_HOME/applications` (default `~/.local/share/applications`), then every
+/// `$XDG_DATA_DIRS` entry suffixed with `/applications` (default `/usr/local/share`
+/// and `/usr/share`).
+fn linux_application_dirs() -> Vec<PathBuf> {
+    let mut dirs = Vec::new();
+
+    let data_home = std::env::var_os("XDG_DATA_HOME")
+        .map(PathBuf::from)
+        .filter(|p| !p.as_os_str().is_empty())
+        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".local/share")));
+    if let Some(home) = data_home {
+        dirs.push(home.join("applications"));
+    }
+
+    let data_dirs = std::env::var("XDG_DATA_DIRS")
+        .ok()
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "/usr/local/share:/usr/share".to_string());
+    for dir in data_dirs.split(':').filter(|s| !s.is_empty()) {
+        dirs.push(PathBuf::from(dir).join("applications"));
+    }
+
+    dirs
+}
+
+/// Pure core of the desktop-id resolution: the first candidate that exists as a file in
+/// one of `dirs`. Split out from the filesystem lookup so it can be unit tested.
+fn pick_installed_desktop_id<'a>(candidates: &[&'a str], dirs: &[PathBuf]) -> Option<&'a str> {
+    candidates
+        .iter()
+        .copied()
+        .find(|id| dirs.iter().any(|dir| dir.join(id).is_file()))
+}
+
+/// True when `desktop_id` names a `.desktop` file that is actually installed.
+fn linux_desktop_id_is_installed(desktop_id: &str) -> bool {
+    let dirs = linux_application_dirs();
+    dirs.iter().any(|dir| dir.join(desktop_id).is_file())
+}
+
+/// Which of [`LINUX_DESKTOP_IDS`] is really installed on this system, if any.
+///
+/// This is the fix for "Make default does nothing" on Linux. `xdg-mime default` exits 0
+/// even when handed a desktop id that is installed nowhere: it just records the mapping
+/// in `mimeapps.list`. The old code walked [`LINUX_DESKTOP_IDS`] and broke on the first
+/// call that returned success, so the first candidate always won and we never fell
+/// through to the id the package had actually installed. On a machine where the package
+/// installs `AeroFTP.desktop`, that wrote `application/zip=com.aeroftp.AeroFTP.desktop`,
+/// a dangling entry the desktop environment ignores. The write reported success, the
+/// panel then re-read the real OS state (correctly) and still showed the old handler, so
+/// the button appeared to do nothing.
+fn linux_installed_desktop_id() -> Option<&'static str> {
+    pick_installed_desktop_id(LINUX_DESKTOP_IDS, &linux_application_dirs())
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -267,8 +339,13 @@ fn linux_item_status(entry: &AssocCatalogEntry) -> FileAssociationItemStatus {
 
     for mime in entry.linux_mimes {
         if let Some(h) = xdg_mime_query_default(mime) {
+            // An aeroftp-looking handler is only really ours if its desktop file exists.
+            // `mimeapps.list` can name a desktop id that is not installed (that is exactly
+            // the dangling state this module used to create), and the desktop environment
+            // ignores such an entry. Reporting "Default" for it would be a lie the user
+            // can see through the moment they double-click a file.
             let h_lower = h.to_lowercase();
-            if h_lower.contains("aeroftp") {
+            if h_lower.contains("aeroftp") && linux_desktop_id_is_installed(&h) {
                 is_default = true;
             }
             // Keep the first non-empty handler we saw for UX label.
@@ -278,10 +355,10 @@ fn linux_item_status(entry: &AssocCatalogEntry) -> FileAssociationItemStatus {
         }
     }
 
-    // Availability: if the desktop file itself is installed (best-effort: xdg-mime query or which).
-    // We treat "AeroFTP is in the list of candidates" as true on Linux if xdg-mime works at all
-    // (the desktop file with our MimeType= must have been installed).
-    let is_available = true; // conservative: if we reached here the runtime supports xdg-mime
+    // Availability is not a given: with no AeroFTP desktop file installed (a dev run, or
+    // an AppImage that was never integrated) nothing can be applied at all, so the panel
+    // must not advertise the format as available.
+    let is_available = linux_installed_desktop_id().is_some();
 
     FileAssociationItemStatus {
         key: entry.key.to_string(),
@@ -420,26 +497,54 @@ pub async fn file_associations_set_default(
 
     match platform.as_str() {
         "linux" => {
-            for k in keys {
-                if let Some(entry) = entry_for_key(&k) {
-                    let mut ok = true;
-                    for mime in entry.linux_mimes {
-                        let mut set_ok = false;
-                        for &id in LINUX_DESKTOP_IDS {
-                            if xdg_mime_set_default(id, mime).is_ok() {
-                                set_ok = true;
-                                break;
+            // Resolve the desktop id ONCE, and only among ids that really exist on disk.
+            // Never iterate candidates trusting the exit status of `xdg-mime default`:
+            // it succeeds for an uninstalled id and leaves a dangling association.
+            match linux_installed_desktop_id() {
+                None => {
+                    // Nothing installed to point the association at. Writing anyway would
+                    // "succeed" and change nothing, so report the truth instead.
+                    errors.push(
+                        "no installed AeroFTP desktop file found: file associations can only be set from an installed package"
+                            .to_string(),
+                    );
+                    for k in keys {
+                        requires.push(k);
+                    }
+                }
+                Some(desktop_id) => {
+                    for k in keys {
+                        if let Some(entry) = entry_for_key(&k) {
+                            let mut ok = true;
+                            for mime in entry.linux_mimes {
+                                if let Err(e) = xdg_mime_set_default(desktop_id, mime) {
+                                    ok = false;
+                                    errors.push(format!("{}: {}", k, e));
+                                    continue;
+                                }
+                                // Read back what the system actually resolved. A write can
+                                // report success and still be overridden or ignored by the
+                                // desktop environment, and the panel must not claim a
+                                // default it does not have.
+                                match xdg_mime_query_default(mime) {
+                                    Some(h) if h == desktop_id => {}
+                                    other => {
+                                        ok = false;
+                                        errors.push(format!(
+                                            "{}: {} still resolves to {}",
+                                            k,
+                                            mime,
+                                            other.as_deref().unwrap_or("no handler")
+                                        ));
+                                    }
+                                }
+                            }
+                            if ok {
+                                applied.push(k);
+                            } else {
+                                requires.push(k);
                             }
                         }
-                        if !set_ok {
-                            ok = false;
-                            errors.push(format!("{}: xdg-mime failed for {}", k, mime));
-                        }
-                    }
-                    if ok {
-                        applied.push(k);
-                    } else {
-                        requires.push(k);
                     }
                 }
             }
@@ -616,5 +721,83 @@ mod tests {
         let exts = extensions_for_key("tar");
         assert!(exts.iter().any(|e| e.contains(".tar")));
         assert!(exts.iter().any(|e| e.contains(".tgz")));
+    }
+
+    fn desktop_dir_with(names: &[&str]) -> (tempfile::TempDir, PathBuf) {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let apps = tmp.path().join("applications");
+        std::fs::create_dir_all(&apps).expect("create applications dir");
+        for name in names {
+            std::fs::write(apps.join(name), "[Desktop Entry]\n").expect("write desktop file");
+        }
+        (tmp, apps)
+    }
+
+    #[test]
+    fn desktop_id_resolution_skips_an_uninstalled_higher_priority_candidate() {
+        // The real-world case: the package installs AeroFTP.desktop, but the preferred
+        // reverse-DNS id does not exist. The old code wrote the reverse-DNS id anyway
+        // (xdg-mime exits 0 regardless) and produced a dangling association.
+        let (_tmp, apps) = desktop_dir_with(&["AeroFTP.desktop"]);
+        assert_eq!(
+            pick_installed_desktop_id(LINUX_DESKTOP_IDS, &[apps]),
+            Some("AeroFTP.desktop")
+        );
+    }
+
+    #[test]
+    fn desktop_id_resolution_is_none_when_nothing_is_installed() {
+        let (_tmp, apps) = desktop_dir_with(&[]);
+        assert_eq!(pick_installed_desktop_id(LINUX_DESKTOP_IDS, &[apps]), None);
+    }
+
+    #[test]
+    fn desktop_id_resolution_honours_candidate_priority() {
+        let (_tmp, apps) = desktop_dir_with(&["AeroFTP.desktop", "com.aeroftp.AeroFTP.desktop"]);
+        assert_eq!(
+            pick_installed_desktop_id(LINUX_DESKTOP_IDS, &[apps]),
+            Some("com.aeroftp.AeroFTP.desktop")
+        );
+    }
+
+    #[test]
+    fn desktop_id_resolution_searches_every_directory() {
+        let (_tmp, second) = desktop_dir_with(&["aeroftp.desktop"]);
+        let empty = second.parent().expect("parent").join("empty");
+        std::fs::create_dir_all(&empty).expect("create empty dir");
+        assert_eq!(
+            pick_installed_desktop_id(LINUX_DESKTOP_IDS, &[empty, second]),
+            Some("aeroftp.desktop")
+        );
+    }
+
+    #[test]
+    fn a_directory_named_like_a_desktop_file_is_not_an_install() {
+        // is_file(), not exists(): a stray directory must not pass for an installed app.
+        let (_tmp, apps) = desktop_dir_with(&[]);
+        std::fs::create_dir_all(apps.join("AeroFTP.desktop")).expect("create decoy dir");
+        assert_eq!(pick_installed_desktop_id(LINUX_DESKTOP_IDS, &[apps]), None);
+    }
+
+    #[test]
+    fn windows_progids_include_the_bare_nsis_spelling() {
+        // The Tauri NSIS template derives the ProgID from the extension when the
+        // fileAssociations entry carries no `name`, which is our case. Without the bare
+        // form the panel reports "not default" for a user who IS defaulted to AeroFTP.
+        for (key, bare) in [
+            ("aerovault", "aerovault"),
+            ("aerozip", "aerozip"),
+            ("profile", "aeroftp"),
+            ("keystore", "aeroftp-keystore"),
+            ("script", "aeroftp-script"),
+        ] {
+            let entry = entry_for_key(key).expect("catalog entry");
+            assert!(
+                entry.windows_progids.contains(&bare),
+                "{} is missing the bare NSIS ProgID {}",
+                key,
+                bare
+            );
+        }
     }
 }
