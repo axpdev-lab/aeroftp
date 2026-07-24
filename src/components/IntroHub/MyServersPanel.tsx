@@ -816,12 +816,21 @@ export function MyServersPanel({
             : idx === DRAG_SENTINEL_BOTTOM
                 ? insEnd
                 : idx;
-        const boundedInsertIdx = Math.max(0, Math.min(rawInsertIdx, servers.length));
-        const target = dragIdx < boundedInsertIdx ? boundedInsertIdx - 1 : boundedInsertIdx;
+        // Drop ON a card inherits that card's index (matches `aero profiles --tui` #).
+        // Insert at the original drop index after remove — no "to-1 when moving
+        // right" adjustment. That classic list-insert formula landed profiles
+        // one slot short when dragging right/down (#453).
+        const target = Math.max(0, Math.min(rawInsertIdx, servers.length));
         if (dragIdx === target) { setDragIdx(null); setOverIdx(null); return; }
         const updated = [...servers];
         const [moved] = updated.splice(dragIdx, 1);
-        updated.splice(target, 0, moved);
+        const insertAt = Math.max(0, Math.min(target, updated.length));
+        updated.splice(insertAt, 0, moved);
+        if (updated.every((s, i) => s.id === servers[i]?.id)) {
+            setDragIdx(null);
+            setOverIdx(null);
+            return;
+        }
         setServers(updated);
         storeSavedServerProfiles(updated).catch(() => {});
         setDragIdx(null);
