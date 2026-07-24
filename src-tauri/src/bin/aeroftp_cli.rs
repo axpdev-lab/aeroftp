@@ -5526,6 +5526,14 @@ struct BenchmarkReport {
     // native ones (OAuth 2.0, OAuth 1.0, REST API). Additive to schema v1.
     #[serde(default)]
     access: String,
+    // Transport mode this run measured when `--all-protocols` expanded one
+    // profile into several runs (issue #277 B4): `api`, `webdav`, `s3` or `ftp`.
+    // Absent for an ordinary single-mode run. Without it a JSON consumer cannot
+    // tell the fan-out rows apart, because the per-mode label lives only in the
+    // text table. A fixed vocabulary, never user text, so the report stays as
+    // anonymous as it was. Additive to schema v1.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    mode: Option<String>,
     environment: BenchmarkEnvironment,
     consent: BenchmarkConsent,
     results: Vec<BenchmarkResult>,
@@ -41383,6 +41391,8 @@ async fn cmd_benchmark(
         },
         level,
         access: access.clone(),
+        // Set by the compare sweep for a fan-out run; a standalone run has no mode.
+        mode: None,
         environment,
         consent: BenchmarkConsent {
             publish: consent_publish,
@@ -42070,8 +42080,14 @@ async fn cmd_benchmark_compare(
         } else {
             // Relabel the report the run just pushed: cmd_benchmark labels it
             // with the profile name it connected by, which is the same for
-            // every mode of one account.
-            sink.borrow_mut()[before].0 = label;
+            // every mode of one account. The mode also goes INTO the report, so
+            // a JSON consumer (the MCP tool, an agent, a script) can tell the
+            // fan-out rows apart without parsing the text table.
+            let mut sink_mut = sink.borrow_mut();
+            sink_mut[before].0 = label;
+            if !entry.mode_label.is_empty() {
+                sink_mut[before].1.mode = Some(entry.mode_label.to_string());
+            }
         }
         worst = worst.max(code);
         // Per-profile IP snapshot (issue #277 #16): catch a mid-run change even
@@ -69279,6 +69295,7 @@ mod tests {
             },
             level: BenchmarkLevel::Quick,
             access: "SFTP".into(),
+            mode: None,
             environment: BenchmarkEnvironment {
                 asn_bucket: None,
                 country_bucket: None,
