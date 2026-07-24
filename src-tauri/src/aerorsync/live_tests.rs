@@ -5,21 +5,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use tokio::time::sleep;
-
 use crate::aerorsync::delta_transport_impl::AerorsyncDeltaTransport;
-use crate::aerorsync::driver::SessionDriver;
-use crate::aerorsync::engine_adapter::CurrentDeltaSyncBridge;
-use crate::aerorsync::protocol::{AerorsyncFrameCodec, FileMetadataMessage};
 use crate::aerorsync::remote_command::RemoteCommandSpec;
-use crate::aerorsync::session::AerorsyncSession;
-use crate::aerorsync::ssh_transport::{
-    SshHostKeyPolicy, SshRemoteShellTransport, SshTransportConfig,
-};
-use crate::aerorsync::transport::{
-    BidirectionalByteStream, RemoteExecRequest, RemoteShellTransport,
-};
-use crate::aerorsync::types::{AerorsyncConfig, AerorsyncErrorKind};
+use crate::aerorsync::ssh_transport::{SshHostKeyPolicy, SshTransportConfig};
+use crate::aerorsync::transport::RemoteExecRequest;
 use crate::delta_transport::DeltaTransport;
 
 fn env_path(name: &str) -> PathBuf {
@@ -33,10 +22,6 @@ fn write_bytes(path: &Path, bytes: &[u8]) {
     fs::write(path, bytes).unwrap();
 }
 
-fn make_payload(size: usize) -> Vec<u8> {
-    (0..size).map(|index| (index % 251) as u8).collect()
-}
-
 fn make_incompressible_payload(size: usize, seed: u64) -> Vec<u8> {
     let mut state = seed;
     (0..size)
@@ -47,13 +32,6 @@ fn make_incompressible_payload(size: usize, seed: u64) -> Vec<u8> {
             state as u8
         })
         .collect()
-}
-
-fn mutate_payload(basis: &[u8], offset: usize, patch: &[u8]) -> Vec<u8> {
-    let mut out = basis.to_vec();
-    let end = offset + patch.len();
-    out[offset..end].copy_from_slice(patch);
-    out
 }
 
 fn base_config_with_prefix(prefix: &str) -> SshTransportConfig {
@@ -80,186 +58,6 @@ fn base_config_with_prefix(prefix: &str) -> SshTransportConfig {
     }
     config
 }
-
-fn base_config() -> SshTransportConfig {
-    base_config_with_prefix("RSNP_TEST")
-}
-
-fn ssh_transport() -> SshRemoteShellTransport {
-    SshRemoteShellTransport::new(base_config())
-}
-
-fn file_metadata_for(path: &Path, bytes: &[u8]) -> FileMetadataMessage {
-    FileMetadataMessage {
-        path: path.display().to_string(),
-        size: bytes.len() as u64,
-        mode: 0o644,
-        modified_unix_secs: 0,
-    }
-}
-
-#[tokio::test]
-#[ignore = "requires the Docker RSNP SSH fixture"]
-async fn live_probe_reports_protocol_31() {
-    // B.4: default `probe_request` is now `rsync --version`. This live
-    // lane targets the dev helper fixture (not stock rsync), so override
-    // to invoke the helper explicitly. The helper's banner is now
-    // rsync-compatible ("... protocol version N"), so the same
-    // `parse_probe_protocol` accepts it.
-    let mut config = base_config();
-    config.probe_request = crate::aerorsync::transport::RemoteExecRequest {
-        program: "/opt/aerorsync/bin/aerorsync_serve".to_string(),
-        args: vec!["--probe".to_string()],
-        environment: Vec::new(),
-    };
-    let transport = SshRemoteShellTransport::new(config);
-    let probe = transport.probe().await.unwrap();
-    assert_eq!(probe.protocol.as_u32(), 31);
-    assert!(probe.remote_banner.contains("rsnp-proto server"));
-    assert!(probe.remote_banner.contains("protocol version 31"));
-}
-
-#[tokio::test]
-#[ignore = "requires the Docker RSNP SSH fixture"]
-async fn live_upload_applies_delta_to_remote_target() {
-    let local_file = env_path("RSNP_TEST_LOCAL_UPLOAD_FILE");
-    let remote_target = env::var("RSNP_TEST_REMOTE_UPLOAD_TARGET").unwrap();
-
-    let basis = make_payload(256 * 1024);
-    let updated = mutate_payload(&basis, 8 * 1024, b"native-live-upload");
-    write_bytes(&local_file, &updated);
-
-    let transport = ssh_transport();
-    let codec = AerorsyncFrameCodec::new(AerorsyncConfig::default().max_frame_size);
-    let session = AerorsyncSession::new(transport, AerorsyncConfig::default());
-    let mut driver = SessionDriver::new(session, codec);
-    let outcome = driver
-        .drive_upload_with_engine(
-            RemoteCommandSpec::aerorsync_upload(remote_target),
-            file_metadata_for(&local_file, &updated),
-            updated.clone(),
-            &CurrentDeltaSyncBridge,
-        )
-        .await
-        .unwrap();
-
-    assert!(outcome.stats.literal_bytes > 0);
-    let remote_bytes = fs::read(env_path("RSNP_TEST_EXPECT_UPLOAD_FILE")).unwrap();
-    assert_eq!(remote_bytes, updated);
-}
-
-#[tokio::test]
-#[ignore = "requires the Docker RSNP SSH fixture"]
-async fn live_download_applies_delta_to_local_target() {
-    let local_target = env_path("RSNP_TEST_LOCAL_DOWNLOAD_FILE");
-    let remote_target = env::var("RSNP_TEST_REMOTE_DOWNLOAD_TARGET").unwrap();
-
-    let basis = make_payload(256 * 1024);
-    let updated = mutate_payload(&basis, 8 * 1024, b"native-live-download");
-    write_bytes(&local_target, &basis);
-    write_bytes(&env_path("RSNP_TEST_EXPECT_DOWNLOAD_FILE"), &updated);
-
-    let transport = ssh_transport();
-    let codec = AerorsyncFrameCodec::new(AerorsyncConfig::default().max_frame_size);
-    let session = AerorsyncSession::new(transport, AerorsyncConfig::default());
-    let mut driver = SessionDriver::new(session, codec);
-    let outcome = driver
-        .drive_download_with_engine(
-            RemoteCommandSpec::aerorsync_download(remote_target),
-            basis.clone(),
-            &CurrentDeltaSyncBridge,
-        )
-        .await
-        .unwrap();
-
-    assert!(outcome.stats.literal_bytes > 0);
-    let local_bytes = outcome.reconstructed.unwrap();
-    let expected = fs::read(env_path("RSNP_TEST_EXPECT_DOWNLOAD_FILE")).unwrap();
-    assert_eq!(local_bytes, expected);
-}
-
-#[tokio::test]
-#[ignore = "requires the Docker RSNP SSH fixture"]
-async fn live_host_key_pin_mismatch_rejects_session() {
-    // Supply an obviously-wrong fingerprint so that `connect_and_auth`
-    // must reject the session after the handshake but before authentication.
-    // This exercises the `PinnedFingerprintSha256` arm of `enforce_host_key_policy`.
-    let mut config = base_config();
-    config.host_key_policy = SshHostKeyPolicy::pinned_hex(
-        "0000000000000000000000000000000000000000000000000000000000000000",
-    );
-    // Small connect timeout so the test never hangs on a wrong host.
-    config.connect_timeout_ms = 5_000;
-    let transport = SshRemoteShellTransport::new(config);
-    let err = transport.probe().await.unwrap_err();
-    assert_eq!(
-        err.kind,
-        AerorsyncErrorKind::HostKeyRejected,
-        "expected HostKeyRejected, got {:?}: {}",
-        err.kind,
-        err.detail
-    );
-    assert!(err.detail.contains("fingerprint mismatch"));
-}
-
-#[tokio::test]
-#[ignore = "requires the Docker RSNP SSH fixture"]
-async fn live_cancel_during_read_unblocks_quickly() {
-    // The `aerorsync_serve` upload stream reads its first frame from the
-    // client before emitting anything. If we open the stream and try to
-    // read immediately, we block inside libssh2 until either the server
-    // speaks (which it never will without our Hello) or the I/O times out.
-    // Cancelling via `transport.cancel()` must unblock the read in well
-    // under the configured `io_timeout_ms`.
-    let mut config = base_config();
-    // 10s is the default; keep it: the whole point is that cancel wins.
-    config.io_timeout_ms = 10_000;
-    let transport = SshRemoteShellTransport::new(config);
-    let stream_request = RemoteExecRequest {
-        program: "/opt/aerorsync/bin/aerorsync_serve".to_string(),
-        args: vec![
-            "--mode".to_string(),
-            "upload".to_string(),
-            "--target".to_string(),
-            env::var("RSNP_TEST_REMOTE_UPLOAD_TARGET").unwrap(),
-        ],
-        environment: Vec::new(),
-    };
-    let mut stream = transport
-        .open_stream(stream_request)
-        .await
-        .expect("open_stream against aerorsync_serve");
-
-    let handle = transport.cancel_handle();
-    let cancel_task = tokio::spawn(async move {
-        sleep(Duration::from_millis(200)).await;
-        handle.cancel();
-    });
-
-    let started = Instant::now();
-    let err = stream
-        .read_frame()
-        .await
-        .expect_err("read_frame must fail once cancel fires");
-    let elapsed = started.elapsed();
-
-    cancel_task.await.unwrap();
-
-    assert!(
-        elapsed < Duration::from_secs(3),
-        "cancel did not unblock the read in time: {elapsed:?}"
-    );
-    assert!(
-        matches!(
-            err.kind,
-            AerorsyncErrorKind::Cancelled | AerorsyncErrorKind::TransportFailure
-        ),
-        "expected Cancelled or TransportFailure, got {:?}: {}",
-        err.kind,
-        err.detail
-    );
-}
-
 /// S8a byte-oracle lane. The real rsync server is invoked via sshd's
 /// `ForceCommand` tee wrapper, so every byte it emits is captured under
 /// `/workspace/real_capture/<ts>/capture_out.bin` and available to later
@@ -428,7 +226,7 @@ fn real_rsync_delta_upload_inputs() -> (AerorsyncDeltaTransport, String, PathBuf
 
 /// Production wire path against stock rsync (B3-12 / B3-15 xxh128 path).
 ///
-/// Unlike the RSNP `SessionDriver` lane above, this drives
+/// Drives
 /// [`AerorsyncDeltaTransport`] / `do_download` against a real `rsync --server
 /// --sender` peer. That is the path that negotiates xxh128 by default,
 /// confirms rolling hits with truncated block-strong (B3-15), and verifies

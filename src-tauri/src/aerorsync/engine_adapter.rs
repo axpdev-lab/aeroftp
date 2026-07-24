@@ -22,7 +22,7 @@ use std::path::{Path, PathBuf};
 use async_trait::async_trait;
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWrite, AsyncWriteExt, SeekFrom};
 
-use crate::aerorsync::protocol::{
+use crate::aerorsync::engine_protocol_types::{
     DeltaInstruction as ProtocolDeltaInstruction, SignatureBlock as ProtocolSignatureBlock,
 };
 use crate::delta_sync;

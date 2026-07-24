@@ -3679,6 +3679,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
     // frozen-oracle pins and round-trip tests do not regress. The
     // production drive loop uses `perform_preamble_exchange` instead.
 
+    #[allow(dead_code)] // A2.0 surface kept for frozen-oracle pins
     #[allow(clippy::unused_async)] // kept async for API symmetry with A2.0
     async fn send_client_preamble(
         &mut self,
@@ -3699,6 +3700,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         Ok(())
     }
 
+    #[allow(dead_code)] // A2.0 surface kept for frozen-oracle pins
     #[allow(clippy::unused_async)]
     async fn receive_server_preamble(&mut self, source: &[u8]) -> Result<usize, AerorsyncError> {
         let preamble = decode_server_preamble(source).map_err(|e| {

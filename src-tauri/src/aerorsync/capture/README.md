@@ -1,8 +1,7 @@
-# Strada C: Capture Harnesses (Three Lanes)
+# Aerorsync capture harnesses
 
 This folder hosts the Docker + shell harnesses that produce the fixtures
-the Strada C prototype is developed against. Three independent "lanes"
-exist, each with its own port, image, and purpose.
+the native rsync (aerorsync) stack is developed against.
 
 Everything here is prototype-only and already covered by the repository
 `.gitignore` for `src-tauri/src/aerorsync/`.
@@ -12,11 +11,10 @@ Everything here is prototype-only and already covered by the repository
 | lane | port | stack file                        | container name               | role                                                                 |
 |------|------|-----------------------------------|------------------------------|----------------------------------------------------------------------|
 | 1    | 2222 | `docker-compose.yml`              | `aeroftp-rsync-capture`      | Wrapper baseline (rsync-over-ssh text oracle). **Frozen.**            |
-| 2    | 2223 | `docker-compose.native.yml`       | `aeroftp-rsync-native`       | RSNP client ↔ RSNP server (Sinergie 6/7 live tests).                  |
-| 3    | 2224 | `docker-compose.real-rsync.yml`   | `aeroftp-rsync-real`         | **S8a**: host rsync client ↔ real rsync server with byte-level oracle.|
+| 3    | 2224 | `docker-compose.real-rsync.yml`   | `aeroftp-rsync-real`         | Stock rsync server with byte-level oracle + live lane3 tests.        |
 
-Only lane 2 runs inside the Rust test process; lanes 1 and 3 are driven by
-shell harnesses.
+Lane 2 (native RSNP / `aerorsync_serve`) was retired in Y-RSC.8 with the
+legacy SessionDriver stack.
 
 ## Lane 1: wrapper baseline (frozen)
 
@@ -28,22 +26,6 @@ Captures stdout/stderr, `execve` chains, and SSH debug lines into
 
 ```bash
 ./capture_wrapper_transcripts.sh
-```
-
-## Lane 2: native RSNP live tests
-
-Our dev-only `aerorsync_serve` binary is cross-compiled from the host
-and mounted into a debian:trixie-slim container. The Rust test process
-(via `ssh2`) drives real SSH exec sessions against it and runs the five
-live tests in `live_tests.rs` (probe / upload / download / host-key
-mismatch / cancel-during-read).
-
-sshd is pinned to Ed25519-only so the in-process fingerprint can be
-extracted deterministically with `docker exec cat` and exported as
-`RSNP_TEST_HOST_FINGERPRINT`.
-
-```bash
-./run_native_live_tests.sh
 ```
 
 ## Lane 3: real rsync byte oracle (S8a)

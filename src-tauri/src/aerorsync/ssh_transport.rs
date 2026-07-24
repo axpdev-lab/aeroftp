@@ -626,6 +626,7 @@ enum RawWorkerCommand {
     Write(Vec<u8>, oneshot::Sender<Result<(), RawWorkerError>>),
     Read(usize, oneshot::Sender<Result<Vec<u8>, RawWorkerError>>),
     Shutdown(oneshot::Sender<Result<(), RawWorkerError>>),
+    #[allow(dead_code)] // reserved hard-stop path for worker teardown
     Terminate,
 }
 
