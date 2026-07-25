@@ -4623,7 +4623,8 @@
                 "customFtp": "FTP / FTPS",
                 "customSftp": "SFTP",
                 "customS3": "S3",
-                "customWebdav": "WebDAV"
+                "customWebdav": "WebDAV",
+                "parentCompany": "Entreprise"
             },
             "healthCheck": "Vérification de disponibilité",
             "storageVersioning": "Versions du fichier : {size}",
@@ -5114,7 +5115,9 @@
             "errNewRequired": "Le nouveau mot de passe du compte est requis.",
             "confirmRemovePassword": "Supprimer le mot de passe du compte pour \"{name}\" ?",
             "confirmDelete": "Supprimer le compte \"{name}\" ?\n\nDonnées chiffrées à supprimer : {profiles} profils, {settings} domaines de paramètres.",
-            "passwordChoiceNote": "Définir un mot de passe de compte est facultatif. Cela empêche les autres personnes qui utilisent cet appareil d'ouvrir votre compte; vos données enregistrées restent chiffrées dans tous les cas. Ignorez cette étape si vous êtes le seul utilisateur ou si vous faites confiance à tous ceux qui utilisent cet appareil."
+            "passwordChoiceNote": "Définir un mot de passe de compte est facultatif. Cela empêche les autres personnes qui utilisent cet appareil d'ouvrir votre compte; vos données enregistrées restent chiffrées dans tous les cas. Ignorez cette étape si vous êtes le seul utilisateur ou si vous faites confiance à tous ceux qui utilisent cet appareil.",
+            "copy": "Dupliquer l'utilisateur (serveurs uniquement, sans mots de passe)",
+            "copyLockedHint": "Basculez d'abord sur ce compte pour dupliquer ses serveurs"
         },
         "aerocryptNative": {
             "title": "Superposition AeroCrypt",

@@ -4623,7 +4623,8 @@
                 "customFtp": "FTP / FTPS",
                 "customSftp": "SFTP",
                 "customS3": "S3",
-                "customWebdav": "WebDAV"
+                "customWebdav": "WebDAV",
+                "parentCompany": "Uzņēmums"
             },
             "healthCheck": "Pieejamības pārbaude",
             "storageVersioning": "Failu versijas: {size}",
@@ -5114,7 +5115,9 @@
             "errNewRequired": "Jaunā konta parole ir obligāta.",
             "confirmRemovePassword": "Noņemt konta paroli kontam \"{name}\"?",
             "confirmDelete": "Dzēst kontu \"{name}\"?\n\nNoņemamie šifrētie dati: {profiles} profili, {settings} iestatījumu jomas.",
-            "passwordChoiceNote": "Konta paroles iestatīšana nav obligāta. Tā neļauj citiem cilvēkiem, kuri izmanto šo ierīci, atvērt jūsu kontu; jūsu saglabātie dati abos gadījumos paliek šifrēti. Izlaidiet to, ja esat vienīgais lietotājs vai ja uzticaties visiem, kas izmanto šo ierīci."
+            "passwordChoiceNote": "Konta paroles iestatīšana nav obligāta. Tā neļauj citiem cilvēkiem, kuri izmanto šo ierīci, atvērt jūsu kontu; jūsu saglabātie dati abos gadījumos paliek šifrēti. Izlaidiet to, ja esat vienīgais lietotājs vai ja uzticaties visiem, kas izmanto šo ierīci.",
+            "copy": "Dublēt lietotāju (tikai serveri, bez parolēm)",
+            "copyLockedHint": "Vispirms pārslēdzieties uz šo kontu, lai dublētu tā serverus"
         },
         "aerocryptNative": {
             "title": "AeroCrypt pārklājums",

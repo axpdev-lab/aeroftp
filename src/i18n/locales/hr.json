@@ -4623,7 +4623,8 @@
                 "customFtp": "FTP / FTPS",
                 "customSftp": "SFTP",
                 "customS3": "S3",
-                "customWebdav": "WebDAV"
+                "customWebdav": "WebDAV",
+                "parentCompany": "Tvrtka"
             },
             "healthCheck": "Provjera dostupnosti",
             "storageVersioning": "Verzije datoteka: {size}",
@@ -5114,7 +5115,9 @@
             "errNewRequired": "Nova lozinka računa je obavezna.",
             "confirmRemovePassword": "Ukloniti lozinku računa za \"{name}\"?",
             "confirmDelete": "Izbrisati račun \"{name}\"?\n\nŠifrirani podaci za uklanjanje: {profiles} profila, {settings} opsega postavki.",
-            "passwordChoiceNote": "Postavljanje lozinke za račun nije obavezno. Sprječava druge osobe koje koriste ovaj uređaj da otvore vaš račun; vaši spremljeni podaci u svakom slučaju ostaju šifrirani. Preskočite ovo ako ste jedini korisnik ili ako vjerujete svima koji koriste ovaj uređaj."
+            "passwordChoiceNote": "Postavljanje lozinke za račun nije obavezno. Sprječava druge osobe koje koriste ovaj uređaj da otvore vaš račun; vaši spremljeni podaci u svakom slučaju ostaju šifrirani. Preskočite ovo ako ste jedini korisnik ili ako vjerujete svima koji koriste ovaj uređaj.",
+            "copy": "Dupliciraj korisnika (samo poslužitelji, bez lozinki)",
+            "copyLockedHint": "Prvo se prebacite na ovaj račun da biste duplicirali njegove poslužitelje"
         },
         "aerocryptNative": {
             "title": "AeroCrypt sloj",

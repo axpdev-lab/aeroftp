@@ -80,8 +80,15 @@ export interface CatalogProtocolRef {
 }
 
 export interface CatalogCompany {
-    /** Display name (the row identity). */
+    /** Display name / product (the row identity). Shown in the Provider column. */
     company: string;
+    /**
+     * Parent company when the product name differs or the same parent ships
+     * several products in AeroFTP (Ehud #274: optional Company column so
+     * GitHub sorts near Microsoft OneDrive/Azure, kDrive under Infomaniak).
+     * Omit when the product name already is the company brand.
+     */
+    parentCompany?: string;
     /** Key into `PROVIDER_LOGOS`. */
     logoId: string;
     /** ISO 3166-1 alpha-2 HQ code (or 'EU'), '' when unknown/self-hosted. */
@@ -105,6 +112,11 @@ export interface CatalogCompany {
     /** Extra lowercase search terms the Add Services search should match on top
      *  of the display name (e.g. 'aws' for Amazon Web Services). */
     searchAliases?: string[];
+}
+
+/** Sort/search key for the optional parent-company column: parent when set, else product. */
+export function catalogParentKey(c: CatalogCompany): string {
+    return (c.parentCompany || c.company).trim();
 }
 
 /**
@@ -147,7 +159,7 @@ export const PROVIDER_CATALOG: CatalogCompany[] = [
     { company: 'Storj', logoId: 'storj', countryCode: 'US', freeStorageGb: null,
       freeNote: '30-day trial',
       protocols: [{ label: 'S3', protocol: 's3', providerId: 'storj', category: 'object-storage', paid: true }] },
-    { company: 'Google Drive', logoId: 'googledrive', countryCode: 'US', freeStorageGb: 15,
+    { company: 'Google Drive', parentCompany: 'Google', logoId: 'googledrive', countryCode: 'US', freeStorageGb: 15,
       healthCheckUrl: 'https://www.googleapis.com',
       protocols: [{ label: 'OAuth', protocol: 'googledrive', category: 'cloud-storage' }] },
     { company: '4shared', logoId: '4shared', countryCode: 'VG', freeStorageGb: 15,
@@ -156,13 +168,14 @@ export const PROVIDER_CATALOG: CatalogCompany[] = [
           { label: 'OAuth', protocol: 'fourshared', category: 'cloud-storage' },
           { label: 'WebDAV', protocol: 'webdav', providerId: '4shared-webdav', category: 'webdav' },
       ] },
-    { company: 'kDrive', logoId: 'kdrive', countryCode: 'CH', freeStorageGb: 15,
+    { company: 'kDrive', parentCompany: 'Infomaniak', logoId: 'kdrive', countryCode: 'CH', freeStorageGb: 15,
       healthCheckUrl: 'https://api.infomaniak.com',
+      searchAliases: ['infomaniak'],
       protocols: [{ label: 'API', protocol: 'kdrive', category: 'cloud-storage' }] },
     { company: 'Box', logoId: 'box', countryCode: 'US', freeStorageGb: 10,
       healthCheckUrl: 'https://api.box.com',
       protocols: [{ label: 'OAuth', protocol: 'box', category: 'cloud-storage' }] },
-    { company: 'pCloud Drive', logoId: 'pcloud', countryCode: 'CH', freeStorageGb: 10,
+    { company: 'pCloud Drive', parentCompany: 'pCloud', logoId: 'pcloud', countryCode: 'CH', freeStorageGb: 10,
       healthCheckUrl: 'https://api.pcloud.com',
       protocols: [
           { label: 'OAuth', protocol: 'pcloud', category: 'cloud-storage' },
@@ -181,25 +194,25 @@ export const PROVIDER_CATALOG: CatalogCompany[] = [
           { label: 'API', protocol: 'koofr', category: 'cloud-storage' },
           { label: 'WebDAV', protocol: 'webdav', providerId: 'koofr', category: 'webdav' },
       ] },
-    { company: 'Backblaze B2', logoId: 'backblaze', countryCode: 'US', freeStorageGb: 10,
+    { company: 'Backblaze B2', parentCompany: 'Backblaze', logoId: 'backblaze', countryCode: 'US', freeStorageGb: 10,
       healthCheckUrl: 'https://api.backblazeb2.com',
       protocols: [
           { label: 'API', protocol: 'backblaze', providerId: 'backblaze-native', category: 'cloud-storage' },
           { label: 'S3', protocol: 's3', providerId: 'backblaze', category: 'object-storage' },
       ] },
-    { company: 'IDrive e2', logoId: 'idrive-e2', countryCode: 'US', freeStorageGb: null,
+    { company: 'IDrive e2', parentCompany: 'IDrive', logoId: 'idrive-e2', countryCode: 'US', freeStorageGb: null,
       freeNote: '7-day trial',
       protocols: [{ label: 'S3', protocol: 's3', providerId: 'idrive-e2', category: 'object-storage', paid: true }] },
-    { company: 'Cloudflare R2', logoId: 'cloudflare-r2', countryCode: 'US', freeStorageGb: 10,
+    { company: 'Cloudflare R2', parentCompany: 'Cloudflare', logoId: 'cloudflare-r2', countryCode: 'US', freeStorageGb: 10,
       freeNote: 'egress-free, card req.', freeRequiresCard: true,
       protocols: [{ label: 'S3', protocol: 's3', providerId: 'cloudflare-r2', category: 'object-storage', paid: true }] },
-    { company: 'Oracle Cloud', logoId: 'oracle-cloud', countryCode: 'US', freeStorageGb: 20,
+    { company: 'Oracle Cloud', parentCompany: 'Oracle', logoId: 'oracle-cloud', countryCode: 'US', freeStorageGb: 20,
       freeNote: 'always-free, card req.', freeRequiresCard: true,
       protocols: [{ label: 'S3', protocol: 's3', providerId: 'oracle-cloud', category: 'object-storage', paid: true }] },
-    { company: 'Microsoft OneDrive', logoId: 'onedrive', countryCode: 'US', freeStorageGb: 5,
+    { company: 'Microsoft OneDrive', parentCompany: 'Microsoft', logoId: 'onedrive', countryCode: 'US', freeStorageGb: 5,
       healthCheckUrl: 'https://graph.microsoft.com',
       protocols: [{ label: 'OAuth', protocol: 'onedrive', category: 'cloud-storage' }] },
-    { company: 'Zoho WorkDrive', logoId: 'zohoworkdrive', countryCode: 'IN', freeStorageGb: 5,
+    { company: 'Zoho WorkDrive', parentCompany: 'Zoho', logoId: 'zohoworkdrive', countryCode: 'IN', freeStorageGb: 5,
       healthCheckUrl: 'https://www.zohoapis.com',
       protocols: [{ label: 'OAuth', protocol: 'zohoworkdrive', category: 'cloud-storage' }] },
     { company: 'Jottacloud', logoId: 'jottacloud', countryCode: 'NO', freeStorageGb: 5,
@@ -211,16 +224,16 @@ export const PROVIDER_CATALOG: CatalogCompany[] = [
           { label: 'API', protocol: 'opendrive', category: 'cloud-storage' },
           { label: 'WebDAV', protocol: 'webdav', providerId: 'opendrive-webdav', category: 'webdav' },
       ] },
-    { company: 'Yandex Disk', logoId: 'yandexdisk', countryCode: 'RU', freeStorageGb: 5,
+    { company: 'Yandex Disk', parentCompany: 'Yandex', logoId: 'yandexdisk', countryCode: 'RU', freeStorageGb: 5,
       healthCheckUrl: 'https://cloud-api.yandex.net',
       protocols: [
           { label: 'OAuth', protocol: 'yandexdisk', category: 'cloud-storage' },
           { label: 'WebDAV', protocol: 'webdav', providerId: 'yandexdisk-webdav', category: 'webdav', paid: true, note: 'Yandex 360 subscription' },
       ] },
-    { company: 'Yandex Object Storage', logoId: 'yandex-storage', countryCode: 'RU', freeStorageGb: 1,
+    { company: 'Yandex Object Storage', parentCompany: 'Yandex', logoId: 'yandex-storage', countryCode: 'RU', freeStorageGb: 1,
       freeNote: 'always-free, card req.', freeRequiresCard: true,
       protocols: [{ label: 'S3', protocol: 's3', providerId: 'yandex-storage', category: 'object-storage', paid: true, note: 'Yandex Object Storage' }] },
-    { company: 'Google Cloud Storage', logoId: 'google-cloud-storage', countryCode: 'US', freeStorageGb: 5,
+    { company: 'Google Cloud Storage', parentCompany: 'Google', logoId: 'google-cloud-storage', countryCode: 'US', freeStorageGb: 5,
       freeNote: 'always-free, card req.', freeRequiresCard: true, healthCheckUrl: 'https://storage.googleapis.com',
       protocols: [{ label: 'S3', protocol: 's3', providerId: 'google-cloud-storage', category: 'object-storage', paid: true }] },
     { company: 'CloudMe', logoId: 'cloudme', countryCode: 'SE', freeStorageGb: 3,
@@ -256,26 +269,26 @@ export const PROVIDER_CATALOG: CatalogCompany[] = [
     { company: 'Cloudinary', logoId: 'cloudinary', countryCode: 'US', freeStorageGb: null,
       freeNote: 'credit-based', healthCheckUrl: 'https://api.cloudinary.com',
       protocols: [{ label: 'API', protocol: 'cloudinary', providerId: 'cloudinary', category: 'media-services' }] },
-    { company: 'Amazon Web Services (AWS)', logoId: 'amazon-s3', countryCode: 'US', freeStorageGb: 5,
+    { company: 'Amazon Web Services (AWS)', parentCompany: 'Amazon', logoId: 'amazon-s3', countryCode: 'US', freeStorageGb: 5,
       freeNote: 'always-free, card req.', freeRequiresCard: true, healthCheckUrl: 'https://s3.amazonaws.com',
       searchAliases: ['aws', 'amazon web services', 's3', 'amazon'],
       protocols: [{ label: 'S3', protocol: 's3', providerId: 'amazon-s3', category: 'object-storage', paid: true }] },
     { company: 'Wasabi', logoId: 'wasabi', countryCode: 'US', freeStorageGb: null,
       freeNote: '30-day trial',
       protocols: [{ label: 'S3', protocol: 's3', providerId: 'wasabi', category: 'object-storage', paid: true }] },
-    { company: 'DigitalOcean Spaces', logoId: 'digitalocean-spaces', countryCode: 'US', freeStorageGb: null,
+    { company: 'DigitalOcean Spaces', parentCompany: 'DigitalOcean', logoId: 'digitalocean-spaces', countryCode: 'US', freeStorageGb: null,
       freeNote: 'paid plan',
       protocols: [{ label: 'S3', protocol: 's3', providerId: 'digitalocean-spaces', category: 'object-storage', paid: true }] },
-    { company: 'Alibaba OSS', logoId: 'alibaba-oss', countryCode: 'CN', freeStorageGb: 5,
+    { company: 'Alibaba OSS', parentCompany: 'Alibaba', logoId: 'alibaba-oss', countryCode: 'CN', freeStorageGb: 5,
       freeNote: 'overseas only, card req.', freeRequiresCard: true,
       protocols: [{ label: 'S3', protocol: 's3', providerId: 'alibaba-oss', category: 'object-storage', paid: true }] },
-    { company: 'Tencent COS', logoId: 'tencent-cos', countryCode: 'CN', freeStorageGb: null,
+    { company: 'Tencent COS', parentCompany: 'Tencent', logoId: 'tencent-cos', countryCode: 'CN', freeStorageGb: null,
       freeNote: '6-month trial',
       protocols: [{ label: 'S3', protocol: 's3', providerId: 'tencent-cos', category: 'object-storage', paid: true }] },
-    { company: 'Microsoft Azure Blob', logoId: 'azure', countryCode: 'US', freeStorageGb: 5,
+    { company: 'Microsoft Azure Blob', parentCompany: 'Microsoft', logoId: 'azure', countryCode: 'US', freeStorageGb: 5,
       freeNote: 'always-free, card req.', freeRequiresCard: true, healthCheckUrl: 'https://login.microsoftonline.com/common/v2.0/.well-known/openid-configuration',
       protocols: [{ label: 'Blob', protocol: 'azure', category: 'object-storage', paid: true }] },
-    { company: 'Hetzner Storage Box', logoId: 'hetzner-storage-box', countryCode: 'DE', freeStorageGb: null,
+    { company: 'Hetzner Storage Box', parentCompany: 'Hetzner', logoId: 'hetzner-storage-box', countryCode: 'DE', freeStorageGb: null,
       freeNote: 'paid plan',
       protocols: [{ label: 'SFTP', protocol: 'sftp', providerId: 'hetzner-storage-box', category: 'protocols', paid: true }] },
     { company: 'TAB.DIGITAL', logoId: 'tabdigital', countryCode: 'EU', freeStorageGb: 8,
@@ -313,8 +326,9 @@ export const PROVIDER_CATALOG: CatalogCompany[] = [
     { company: 'SourceForge', logoId: 'sourceforge', countryCode: 'US', freeStorageGb: null,
       freeNote: 'OSS hosting',
       protocols: [{ label: 'SFTP', protocol: 'sftp', providerId: 'sourceforge', category: 'developer' }] },
-    { company: 'GitHub', logoId: 'github', countryCode: 'US', freeStorageGb: null,
+    { company: 'GitHub', parentCompany: 'Microsoft', logoId: 'github', countryCode: 'US', freeStorageGb: null,
       freeNote: 'repo storage', healthCheckUrl: 'https://api.github.com',
+      searchAliases: ['microsoft github'],
       protocols: [{ label: 'API', protocol: 'github', category: 'developer' }] },
     { company: 'GitLab', logoId: 'gitlab', countryCode: 'US', freeStorageGb: null,
       freeNote: 'repo storage', healthCheckUrl: 'https://gitlab.com',

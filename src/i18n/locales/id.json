@@ -4623,7 +4623,8 @@
                 "customFtp": "FTP / FTPS",
                 "customSftp": "SFTP",
                 "customS3": "S3",
-                "customWebdav": "WebDAV"
+                "customWebdav": "WebDAV",
+                "parentCompany": "Perusahaan"
             },
             "healthCheck": "Pemeriksaan ketersediaan",
             "storageVersioning": "Versi file: {size}",
@@ -5114,7 +5115,9 @@
             "errNewRequired": "Kata sandi akun baru wajib diisi.",
             "confirmRemovePassword": "Hapus kata sandi akun untuk \"{name}\"?",
             "confirmDelete": "Hapus akun \"{name}\"?\n\nData terenkripsi yang akan dihapus: {profiles} profil, {settings} cakupan pengaturan.",
-            "passwordChoiceNote": "Mengatur kata sandi akun bersifat opsional. Ini mencegah orang lain yang menggunakan perangkat ini membuka akun Anda; data tersimpan Anda tetap terenkripsi dalam kedua kasus. Lewati saja jika Anda satu-satunya pengguna, atau jika Anda memercayai semua orang yang menggunakan perangkat ini."
+            "passwordChoiceNote": "Mengatur kata sandi akun bersifat opsional. Ini mencegah orang lain yang menggunakan perangkat ini membuka akun Anda; data tersimpan Anda tetap terenkripsi dalam kedua kasus. Lewati saja jika Anda satu-satunya pengguna, atau jika Anda memercayai semua orang yang menggunakan perangkat ini.",
+            "copy": "Duplikat pengguna (hanya server, tanpa kata sandi)",
+            "copyLockedHint": "Beralih ke akun ini dulu untuk menduplikasi servernya"
         },
         "aerocryptNative": {
             "title": "Overlay AeroCrypt",

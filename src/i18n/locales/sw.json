@@ -4623,7 +4623,8 @@
                 "customFtp": "FTP / FTPS",
                 "customSftp": "SFTP",
                 "customS3": "S3",
-                "customWebdav": "WebDAV"
+                "customWebdav": "WebDAV",
+                "parentCompany": "Kampuni"
             },
             "healthCheck": "Ukaguzi wa afya",
             "storageVersioning": "Matoleo ya faili: {size}",
@@ -5114,7 +5115,9 @@
             "errNewRequired": "Nenosiri jipya la akaunti linahitajika.",
             "confirmRemovePassword": "Ondoa nenosiri la akaunti kwa \"{name}\"?",
             "confirmDelete": "Futa akaunti \"{name}\"?\n\nData zilizosimbwa za kuondoa: wasifu {profiles}, mipangilio {settings}.",
-            "passwordChoiceNote": "Kuweka nenosiri la akaunti ni hiari. Linazuia watu wengine wanaotumia kifaa hiki kufungua akaunti yako; data uliyohifadhi inabaki imesimbwa kwa njia fiche vyovyote vile. Ruka hatua hii ikiwa wewe ndiye mtumiaji pekee hapa, au ikiwa unawaamini wote wanaotumia kifaa hiki."
+            "passwordChoiceNote": "Kuweka nenosiri la akaunti ni hiari. Linazuia watu wengine wanaotumia kifaa hiki kufungua akaunti yako; data uliyohifadhi inabaki imesimbwa kwa njia fiche vyovyote vile. Ruka hatua hii ikiwa wewe ndiye mtumiaji pekee hapa, au ikiwa unawaamini wote wanaotumia kifaa hiki.",
+            "copy": "Nakili mtumiaji (seva tu, bila nywila)",
+            "copyLockedHint": "Badili kwa akaunti hii kwanza ili kunakili seva zake"
         },
         "aerocryptNative": {
             "title": "Tabaka la AeroCrypt",

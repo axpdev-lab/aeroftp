@@ -4642,7 +4642,8 @@
                 "customFtp": "FTP / FTPS",
                 "customSftp": "SFTP",
                 "customS3": "S3",
-                "customWebdav": "WebDAV"
+                "customWebdav": "WebDAV",
+                "parentCompany": "Cwmni"
             },
             "healthCheck": "Gwiriad iechyd",
             "storageVersioning": "Fersiynau ffeil: {size}",
@@ -5133,7 +5134,9 @@
             "errNewRequired": "Mae angen cyfrinair newydd y cyfrif.",
             "confirmRemovePassword": "Tynnu cyfrinair y cyfrif ar gyfer \"{name}\"?",
             "confirmDelete": "Dileu'r cyfrif \"{name}\"?\n\nLlwythi wedi'u hamgryptio i'w tynnu: {profiles} proffil, {settings} cwmpas gosodiadau.",
-            "passwordChoiceNote": "Mae gosod cyfrinair cyfrif yn ddewisol. Mae'n atal pobl eraill sy'n defnyddio'r ddyfais hon rhag agor eich cyfrif; mae eich data sydd wedi'i gadw yn aros wedi'i amgryptio y naill ffordd neu'r llall. Hepgorwch ef os mai chi yw'r unig un yma, neu os ydych yn ymddiried yn bawb sy'n defnyddio'r ddyfais hon."
+            "passwordChoiceNote": "Mae gosod cyfrinair cyfrif yn ddewisol. Mae'n atal pobl eraill sy'n defnyddio'r ddyfais hon rhag agor eich cyfrif; mae eich data sydd wedi'i gadw yn aros wedi'i amgryptio y naill ffordd neu'r llall. Hepgorwch ef os mai chi yw'r unig un yma, neu os ydych yn ymddiried yn bawb sy'n defnyddio'r ddyfais hon.",
+            "copy": "Dyblygu defnyddiwr (gweinyddion yn unig, dim cyfrineiriau)",
+            "copyLockedHint": "Newidiwch i'r cyfrif hwn yn gyntaf i ddyblygu ei weinyddion"
         },
         "aerocryptNative": {
             "title": "Troshaen AeroCrypt",

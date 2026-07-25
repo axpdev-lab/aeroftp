@@ -4623,7 +4623,8 @@
                 "customFtp": "FTP / FTPS",
                 "customSftp": "SFTP",
                 "customS3": "S3",
-                "customWebdav": "WebDAV"
+                "customWebdav": "WebDAV",
+                "parentCompany": "Companie"
             },
             "healthCheck": "Verificarea disponibilității",
             "storageVersioning": "Versiuni fișier: {size}",
@@ -5114,7 +5115,9 @@
             "errNewRequired": "Parola nouă a contului este obligatorie.",
             "confirmRemovePassword": "Elimini parola contului pentru „{name}”?",
             "confirmDelete": "Ștergi contul „{name}”?\n\nDate criptate de eliminat: {profiles} profiluri, {settings} domenii de setări.",
-            "passwordChoiceNote": "Setarea unei parole de cont este opțională. Împiedică alte persoane care folosesc acest dispozitiv să îți deschidă contul; datele tale salvate rămân criptate oricum. Sari peste acest pas dacă ești singurul utilizator aici sau dacă ai încredere în toți cei care folosesc acest dispozitiv."
+            "passwordChoiceNote": "Setarea unei parole de cont este opțională. Împiedică alte persoane care folosesc acest dispozitiv să îți deschidă contul; datele tale salvate rămân criptate oricum. Sari peste acest pas dacă ești singurul utilizator aici sau dacă ai încredere în toți cei care folosesc acest dispozitiv.",
+            "copy": "Duplică utilizatorul (doar servere, fără parole)",
+            "copyLockedHint": "Comută mai întâi la acest cont pentru a-i duplica serverele"
         },
         "aerocryptNative": {
             "title": "Strat AeroCrypt",

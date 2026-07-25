@@ -4623,7 +4623,8 @@
                 "customFtp": "FTP / FTPS",
                 "customSftp": "SFTP",
                 "customS3": "S3",
-                "customWebdav": "WebDAV"
+                "customWebdav": "WebDAV",
+                "parentCompany": "Cég"
             },
             "healthCheck": "Elérhetőség-ellenőrzés",
             "storageVersioning": "Fájlverziók: {size}",
@@ -5114,7 +5115,9 @@
             "errNewRequired": "A fiók új jelszava kötelező.",
             "confirmRemovePassword": "Eltávolítja a fiók jelszavát ehhez: \"{name}\"?",
             "confirmDelete": "Törli a(z) \"{name}\" fiókot?\n\nEltávolítandó titkosított adatok: {profiles} profil, {settings} beállítási hatókör.",
-            "passwordChoiceNote": "A fiókjelszó beállítása nem kötelező. Megakadályozza, hogy mások, akik ezt az eszközt használják, megnyissák a fiókodat; a mentett adataid mindkét esetben titkosítva maradnak. Hagyd ki, ha egyedül használod, vagy ha megbízol mindenkiben, aki ezt az eszközt használja."
+            "passwordChoiceNote": "A fiókjelszó beállítása nem kötelező. Megakadályozza, hogy mások, akik ezt az eszközt használják, megnyissák a fiókodat; a mentett adataid mindkét esetben titkosítva maradnak. Hagyd ki, ha egyedül használod, vagy ha megbízol mindenkiben, aki ezt az eszközt használja.",
+            "copy": "Felhasználó másolása (csak szerverek, jelszavak nélkül)",
+            "copyLockedHint": "Először váltson erre a fiókra a szervereinek másolásához"
         },
         "aerocryptNative": {
             "title": "AeroCrypt réteg",

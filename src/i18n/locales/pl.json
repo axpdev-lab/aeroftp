@@ -4623,7 +4623,8 @@
                 "customFtp": "FTP / FTPS",
                 "customSftp": "SFTP",
                 "customS3": "S3",
-                "customWebdav": "WebDAV"
+                "customWebdav": "WebDAV",
+                "parentCompany": "Firma"
             },
             "healthCheck": "Sprawdzanie dostępności",
             "storageVersioning": "Wersje plików: {size}",
@@ -5114,7 +5115,9 @@
             "errNewRequired": "Nowe hasło konta jest wymagane.",
             "confirmRemovePassword": "Usunąć hasło konta dla „{name}”?",
             "confirmDelete": "Usunąć konto „{name}”?\n\nZaszyfrowane dane do usunięcia: {profiles} profili, {settings} zakresów ustawień.",
-            "passwordChoiceNote": "Ustawienie hasła konta jest opcjonalne. Uniemożliwia ono innym osobom korzystającym z tego urządzenia otwarcie Twojego konta; zapisane dane i tak pozostają zaszyfrowane. Pomiń ten krok, jeśli jesteś jedyną osobą, która tu pracuje, lub jeśli ufasz wszystkim, którzy używają tego urządzenia."
+            "passwordChoiceNote": "Ustawienie hasła konta jest opcjonalne. Uniemożliwia ono innym osobom korzystającym z tego urządzenia otwarcie Twojego konta; zapisane dane i tak pozostają zaszyfrowane. Pomiń ten krok, jeśli jesteś jedyną osobą, która tu pracuje, lub jeśli ufasz wszystkim, którzy używają tego urządzenia.",
+            "copy": "Duplikuj użytkownika (tylko serwery, bez haseł)",
+            "copyLockedHint": "Najpierw przełącz się na to konto, aby zduplikować jego serwery"
         },
         "aerocryptNative": {
             "title": "Nakładka AeroCrypt",

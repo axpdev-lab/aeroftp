@@ -4623,7 +4623,8 @@
                 "customFtp": "FTP / FTPS",
                 "customSftp": "SFTP",
                 "customS3": "S3",
-                "customWebdav": "WebDAV"
+                "customWebdav": "WebDAV",
+                "parentCompany": "Podjetje"
             },
             "healthCheck": "Preverjanje razpoložljivosti",
             "storageVersioning": "Različice datotek: {size}",
@@ -5114,7 +5115,9 @@
             "errNewRequired": "Novo geslo računa je obvezno.",
             "confirmRemovePassword": "Odstranim geslo računa za \"{name}\"?",
             "confirmDelete": "Izbrišem račun \"{name}\"?\n\nŠifrirane vsebine za odstranitev: {profiles} profilov, {settings} obsegov nastavitev.",
-            "passwordChoiceNote": "Nastavitev gesla za račun je izbirna. Drugim ljudem, ki uporabljajo to napravo, prepreči, da bi odprli vaš račun; vaši shranjeni podatki ostanejo v vsakem primeru šifrirani. Ta korak preskočite, če ste edini uporabnik tukaj ali če zaupate vsem, ki uporabljajo to napravo."
+            "passwordChoiceNote": "Nastavitev gesla za račun je izbirna. Drugim ljudem, ki uporabljajo to napravo, prepreči, da bi odprli vaš račun; vaši shranjeni podatki ostanejo v vsakem primeru šifrirani. Ta korak preskočite, če ste edini uporabnik tukaj ali če zaupate vsem, ki uporabljajo to napravo.",
+            "copy": "Podvoji uporabnika (samo strežniki, brez gesel)",
+            "copyLockedHint": "Najprej preklopite na ta račun, da podvojite njegove strežnike"
         },
         "aerocryptNative": {
             "title": "Sloj AeroCrypt",

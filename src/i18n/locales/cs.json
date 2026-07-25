@@ -4623,7 +4623,8 @@
                 "customFtp": "FTP / FTPS",
                 "customSftp": "SFTP",
                 "customS3": "S3",
-                "customWebdav": "WebDAV"
+                "customWebdav": "WebDAV",
+                "parentCompany": "Společnost"
             },
             "healthCheck": "Kontrola dostupnosti",
             "storageVersioning": "Verze souborů: {size}",
@@ -5114,7 +5115,9 @@
             "errNewRequired": "Nové heslo účtu je povinné.",
             "confirmRemovePassword": "Odebrat heslo účtu pro \"{name}\"?",
             "confirmDelete": "Odstranit účet \"{name}\"?\n\nŠifrovaná data k odstranění: {profiles} profilů, {settings} oblastí nastavení.",
-            "passwordChoiceNote": "Nastavení hesla účtu je volitelné. Zabrání ostatním lidem, kteří používají toto zařízení, otevřít váš účet; vaše uložená data zůstávají tak jako tak zašifrovaná. Přeskočte to, pokud jste jediný, kdo zařízení používá, nebo pokud důvěřujete všem, kdo toto zařízení používají."
+            "passwordChoiceNote": "Nastavení hesla účtu je volitelné. Zabrání ostatním lidem, kteří používají toto zařízení, otevřít váš účet; vaše uložená data zůstávají tak jako tak zašifrovaná. Přeskočte to, pokud jste jediný, kdo zařízení používá, nebo pokud důvěřujete všem, kdo toto zařízení používají.",
+            "copy": "Duplikovat uživatele (pouze servery, bez hesel)",
+            "copyLockedHint": "Nejprve přepněte na tento účet, abyste mohli duplikovat jeho servery"
         },
         "aerocryptNative": {
             "title": "Vrstva AeroCrypt",

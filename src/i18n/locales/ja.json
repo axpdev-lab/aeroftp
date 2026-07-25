@@ -4623,7 +4623,8 @@
                 "customFtp": "FTP / FTPS",
                 "customSftp": "SFTP",
                 "customS3": "S3",
-                "customWebdav": "WebDAV"
+                "customWebdav": "WebDAV",
+                "parentCompany": "会社"
             },
             "healthCheck": "ヘルスチェック",
             "storageVersioning": "ファイルのバージョン: {size}",
@@ -5114,7 +5115,9 @@
             "errNewRequired": "新しいアカウントパスワードが必要です。",
             "confirmRemovePassword": "「{name}」のアカウントパスワードを削除しますか？",
             "confirmDelete": "アカウント「{name}」を削除しますか？\n\n削除される暗号化データ: {profiles} 件のプロファイル、{settings} 件の設定スコープ。",
-            "passwordChoiceNote": "アカウントパスワードの設定は任意です。このデバイスを使う他の人があなたのアカウントを開くのを防ぎます。保存したデータはどちらの場合でも暗号化されたままです。あなたが唯一の利用者であるか、このデバイスを使う全員を信頼できる場合は、この手順をスキップしてかまいません。"
+            "passwordChoiceNote": "アカウントパスワードの設定は任意です。このデバイスを使う他の人があなたのアカウントを開くのを防ぎます。保存したデータはどちらの場合でも暗号化されたままです。あなたが唯一の利用者であるか、このデバイスを使う全員を信頼できる場合は、この手順をスキップしてかまいません。",
+            "copy": "ユーザーを複製（サーバーのみ、パスワードなし）",
+            "copyLockedHint": "サーバーを複製するには、先にこのアカウントに切り替えてください"
         },
         "aerocryptNative": {
             "title": "AeroCrypt オーバーレイ",

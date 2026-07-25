@@ -4623,7 +4623,8 @@
                 "customFtp": "FTP / FTPS",
                 "customSftp": "SFTP",
                 "customS3": "S3",
-                "customWebdav": "WebDAV"
+                "customWebdav": "WebDAV",
+                "parentCompany": "公司"
             },
             "healthCheck": "健康检查",
             "storageVersioning": "文件版本：{size}",
@@ -5114,7 +5115,9 @@
             "errNewRequired": "需要新的账户密码。",
             "confirmRemovePassword": "移除 \"{name}\" 的账户密码？",
             "confirmDelete": "删除账户 \"{name}\"？\n\n要移除的加密数据：{profiles} 个配置文件，{settings} 个设置范围。",
-            "passwordChoiceNote": "设置账户密码是可选的。它可以防止使用此设备的其他人打开你的账户;无论是否设置，你保存的数据都会保持加密。如果这里只有你一个人使用，或者你信任使用此设备的每个人，可以跳过此步骤。"
+            "passwordChoiceNote": "设置账户密码是可选的。它可以防止使用此设备的其他人打开你的账户;无论是否设置，你保存的数据都会保持加密。如果这里只有你一个人使用，或者你信任使用此设备的每个人，可以跳过此步骤。",
+            "copy": "复制用户（仅服务器，不含密码）",
+            "copyLockedHint": "请先切换到此账户以复制其服务器"
         },
         "aerocryptNative": {
             "title": "AeroCrypt 叠加层",

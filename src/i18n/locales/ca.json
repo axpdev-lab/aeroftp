@@ -4642,7 +4642,8 @@
                 "customFtp": "FTP / FTPS",
                 "customSftp": "SFTP",
                 "customS3": "S3",
-                "customWebdav": "WebDAV"
+                "customWebdav": "WebDAV",
+                "parentCompany": "Empresa"
             },
             "healthCheck": "Comprovació de disponibilitat",
             "storageVersioning": "Versions del fitxer: {size}",
@@ -5133,7 +5134,9 @@
             "errNewRequired": "La nova contrasenya del compte és obligatòria.",
             "confirmRemovePassword": "Voleu eliminar la contrasenya del compte de \"{name}\"?",
             "confirmDelete": "Voleu eliminar el compte \"{name}\"?\n\nDades xifrades a eliminar: {profiles} perfils, {settings} àmbits de configuració.",
-            "passwordChoiceNote": "Establir una contrasenya del compte és opcional. Evita que altres persones que utilitzen aquest dispositiu obrin el vostre compte; les vostres dades desades es mantenen xifrades en qualsevol cas. Ometeu-ho si sou l'única persona que l'utilitza, o si confieu en tothom qui utilitza aquest dispositiu."
+            "passwordChoiceNote": "Establir una contrasenya del compte és opcional. Evita que altres persones que utilitzen aquest dispositiu obrin el vostre compte; les vostres dades desades es mantenen xifrades en qualsevol cas. Ometeu-ho si sou l'única persona que l'utilitza, o si confieu en tothom qui utilitza aquest dispositiu.",
+            "copy": "Duplica l'usuari (només servidors, sense contrasenyes)",
+            "copyLockedHint": "Canvia primer a aquest compte per duplicar-ne els servidors"
         },
         "aerocryptNative": {
             "title": "Superposició AeroCrypt",

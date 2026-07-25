@@ -4623,7 +4623,8 @@
                 "customFtp": "FTP / FTPS",
                 "customSftp": "SFTP",
                 "customS3": "S3",
-                "customWebdav": "WebDAV"
+                "customWebdav": "WebDAV",
+                "parentCompany": "Företag"
             },
             "healthCheck": "Tillgänglighetskontroll",
             "storageVersioning": "Filversioner: {size}",
@@ -5114,7 +5115,9 @@
             "errNewRequired": "Nytt kontolösenord krävs.",
             "confirmRemovePassword": "Ta bort kontolösenordet för \"{name}\"?",
             "confirmDelete": "Ta bort kontot \"{name}\"?\n\nKrypterade data att ta bort: {profiles} profiler, {settings} inställningsområden.",
-            "passwordChoiceNote": "Att ange ett kontolösenord är valfritt. Det hindrar andra som använder den här enheten från att öppna ditt konto; dina sparade data förblir krypterade oavsett. Hoppa över det här steget om du är den enda här eller om du litar på alla som använder den här enheten."
+            "passwordChoiceNote": "Att ange ett kontolösenord är valfritt. Det hindrar andra som använder den här enheten från att öppna ditt konto; dina sparade data förblir krypterade oavsett. Hoppa över det här steget om du är den enda här eller om du litar på alla som använder den här enheten.",
+            "copy": "Duplicera användare (endast servrar, inga lösenord)",
+            "copyLockedHint": "Byt till det här kontot först för att duplicera dess servrar"
         },
         "aerocryptNative": {
             "title": "AeroCrypt-överlägg",
