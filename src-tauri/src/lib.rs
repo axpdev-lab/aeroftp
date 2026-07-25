@@ -21479,3 +21479,142 @@ mod scan_completeness_gate_tests {
         assert!(err.contains("stopped before the end"));
     }
 }
+
+#[cfg(test)]
+mod update_verification_tests {
+    use super::{compute_update_download_progress, parse_sigstore_bundle_metadata};
+
+    /// Digest of the real v4.1.6 `.deb`, as base64 in the bundle and as the hex
+    /// the UI compares against. Keeping the authentic pair means the base64 ->
+    /// hex conversion is pinned to a value that was actually verified, not to a
+    /// round-trip of our own encoder.
+    const REAL_DIGEST_B64: &str = "60oA9p8vaBacYHyEquEkZith9pvo7F3+Fx6VrCAQ2CI=";
+    const REAL_DIGEST_HEX: &str =
+        "eb4a00f69f2f68169c607c84aae124662b61f69be8ec5dfe171e95ac2010d822";
+
+    /// The shape `cosign sign-blob --new-bundle-format` produces, trimmed to the
+    /// fields the panel reads.
+    fn real_bundle() -> serde_json::Value {
+        serde_json::json!({
+            "mediaType": "application/vnd.dev.sigstore.bundle.v0.3+json",
+            "verificationMaterial": {
+                "certificate": { "rawBytes": "MIIG8TCC" },
+                "tlogEntries": [{
+                    "logIndex": "2242869187",
+                    "logId": { "keyId": "wNI9atQGlz+VWfO6LRygH4QUfY/8W4RFwiT5i5WRgB0=" },
+                    "kindVersion": { "kind": "hashedrekord", "version": "0.0.1" },
+                    "integratedTime": "1784953451"
+                }]
+            },
+            "messageSignature": {
+                "messageDigest": { "algorithm": "SHA2_256", "digest": REAL_DIGEST_B64 },
+                "signature": "MEUCIFEVsPYEyddhKhLUD2UFIxypkRSOt8r7PHvu0V/LuJAJ"
+            }
+        })
+    }
+
+    #[test]
+    fn reads_every_field_from_a_real_bundle() {
+        let meta = parse_sigstore_bundle_metadata(&real_bundle());
+        assert_eq!(meta.bundle_version.as_deref(), Some("0.3"));
+        assert_eq!(meta.rekor_log_index, Some(2_242_869_187));
+        assert_eq!(meta.rekor_integrated_time, Some(1_784_953_451));
+        assert_eq!(meta.rekor_entry_kind.as_deref(), Some("hashedrekord 0.0.1"));
+        assert_eq!(meta.attested_sha256.as_deref(), Some(REAL_DIGEST_HEX));
+    }
+
+    /// The protobuf-JSON mapping allows 64-bit integers as numbers as well as
+    /// strings; Rekor uses strings today, but a numeric encoding must not make
+    /// the Rekor row silently disappear.
+    #[test]
+    fn accepts_numeric_log_index_and_time() {
+        let mut bundle = real_bundle();
+        bundle["verificationMaterial"]["tlogEntries"][0]["logIndex"] =
+            serde_json::json!(2_242_869_187u64);
+        bundle["verificationMaterial"]["tlogEntries"][0]["integratedTime"] =
+            serde_json::json!(1_784_953_451i64);
+
+        let meta = parse_sigstore_bundle_metadata(&bundle);
+        assert_eq!(meta.rekor_log_index, Some(2_242_869_187));
+        assert_eq!(meta.rekor_integrated_time, Some(1_784_953_451));
+    }
+
+    /// A bundle with no transparency-log entry still carries a signed digest:
+    /// the digest row must survive even when the Rekor row cannot be shown.
+    #[test]
+    fn missing_tlog_entries_drops_only_the_rekor_fields() {
+        let mut bundle = real_bundle();
+        bundle["verificationMaterial"]
+            .as_object_mut()
+            .unwrap()
+            .remove("tlogEntries");
+
+        let meta = parse_sigstore_bundle_metadata(&bundle);
+        assert_eq!(meta.rekor_log_index, None);
+        assert_eq!(meta.rekor_integrated_time, None);
+        assert_eq!(meta.rekor_entry_kind, None);
+        assert_eq!(meta.attested_sha256.as_deref(), Some(REAL_DIGEST_HEX));
+        assert_eq!(meta.bundle_version.as_deref(), Some("0.3"));
+    }
+
+    /// An unrecognised document must degrade to "nothing to show" rather than
+    /// panic or invent a value: the panel hides every row it has no data for.
+    #[test]
+    fn unrecognised_shapes_yield_nothing() {
+        for value in [
+            serde_json::json!({}),
+            serde_json::json!({ "mediaType": "application/json" }),
+            serde_json::json!({ "verificationMaterial": "not-an-object" }),
+            serde_json::json!([1, 2, 3]),
+        ] {
+            let meta = parse_sigstore_bundle_metadata(&value);
+            assert_eq!(meta.bundle_version, None, "value: {value}");
+            assert_eq!(meta.rekor_log_index, None, "value: {value}");
+            assert_eq!(meta.attested_sha256, None, "value: {value}");
+        }
+    }
+
+    /// A digest that is not 32 bytes is not a SHA-256. Showing it would put a
+    /// truncated string next to the locally computed one and invite the reader
+    /// to compare two things that are not comparable.
+    #[test]
+    fn a_digest_of_the_wrong_length_is_refused() {
+        let mut bundle = real_bundle();
+        bundle["messageSignature"]["messageDigest"]["digest"] = serde_json::json!("YWJj"); // "abc"
+        assert_eq!(parse_sigstore_bundle_metadata(&bundle).attested_sha256, None);
+
+        bundle["messageSignature"]["messageDigest"]["digest"] = serde_json::json!("!!not base64!!");
+        assert_eq!(parse_sigstore_bundle_metadata(&bundle).attested_sha256, None);
+    }
+
+    /// The version is read from the media type, so an unversioned or unexpected
+    /// media type shows no version rather than a guessed one.
+    #[test]
+    fn bundle_version_comes_from_the_media_type() {
+        let mut bundle = real_bundle();
+        bundle["mediaType"] =
+            serde_json::json!("application/vnd.dev.sigstore.bundle.v0.4+json");
+        assert_eq!(
+            parse_sigstore_bundle_metadata(&bundle).bundle_version.as_deref(),
+            Some("0.4")
+        );
+
+        bundle["mediaType"] = serde_json::json!("application/vnd.dev.sigstore.bundle+json");
+        assert_eq!(parse_sigstore_bundle_metadata(&bundle).bundle_version, None);
+    }
+
+    /// The cap is what keeps a rounding artefact from painting 100% before the
+    /// last byte is on disk; the honest 100% only ever comes from `completed`.
+    #[test]
+    fn streaming_progress_stops_at_99_and_completion_reaches_100() {
+        assert_eq!(compute_update_download_progress(0, 1000, false), 0);
+        assert_eq!(compute_update_download_progress(500, 1000, false), 50);
+        // 99.9% still rounds down to 99 while bytes are in flight.
+        assert_eq!(compute_update_download_progress(999, 1000, false), 99);
+        assert_eq!(compute_update_download_progress(1000, 1000, false), 99);
+        assert_eq!(compute_update_download_progress(1000, 1000, true), 100);
+        // An unknown content length reports 0 rather than a fabricated fraction.
+        assert_eq!(compute_update_download_progress(500, 0, false), 0);
+        assert_eq!(compute_update_download_progress(0, 0, true), 100);
+    }
+}
