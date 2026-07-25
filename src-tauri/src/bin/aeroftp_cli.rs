@@ -2610,6 +2610,12 @@ enum Commands {
         /// ignored in JSON / non-interactive mode.
         #[arg(long, short = 'i')]
         interactive: bool,
+
+        /// Open the inline action menu (TUI) directly, skipping the `-i` line
+        /// prompt (Ehud #311). Implies interactive and needs a TTY; equivalent
+        /// to running `-i` and immediately typing `tui`. Quitting the menu exits.
+        #[arg(long)]
+        tui: bool,
     },
     /// Manage local AeroFTP user partitions
     ///
@@ -2624,6 +2630,12 @@ enum Commands {
         /// Requires a TTY; ignored in JSON / non-interactive mode. Per Ehud #311.
         #[arg(long, short = 'i')]
         interactive: bool,
+
+        /// Open the inline action menu (TUI) directly, skipping the `-i` line
+        /// prompt (Ehud #311). Implies interactive and needs a TTY; equivalent
+        /// to running `-i` and immediately typing `tui`. Quitting the menu exits.
+        #[arg(long)]
+        tui: bool,
     },
     /// User-to-user P2P encrypted drives (identity, contacts, grant/import, publish/replicate)
     Peer {
@@ -17424,6 +17436,7 @@ fn print_groups_help() {
     eprintln!("  x <group> <p...>  remove profile(s) from a group");
     eprintln!("  d <N|name>        delete a group (the member servers are kept)");
     eprintln!("  # <N|name> <pos>  move a group to position <pos> (re-index, persisted)");
+    eprintln!("  tui / nav         inline action menu: pick an action (single key or arrows + Enter), then type the target");
     eprintln!("  cls / . / refresh reload + reprint the table");
     eprintln!("  clear             wipe the screen only (no reprint)");
     eprintln!("  h / help / ?      show this help");
@@ -17442,7 +17455,7 @@ fn print_groups_help() {
 /// `aeroftp-cli groups [-i]`: list and (interactively) manage server-profile
 /// groups. The plain listing prints to stdout (JSON or a table); `-i` drops into
 /// the shared interactive engine. Per Ehud #311 (D2).
-fn cmd_groups(cli: &Cli, format: OutputFormat, interactive: bool) -> i32 {
+fn cmd_groups(cli: &Cli, format: OutputFormat, interactive: bool, tui: bool) -> i32 {
     use std::io::IsTerminal;
     let store = match open_vault(cli) {
         Ok(store) => store,
@@ -17471,7 +17484,7 @@ fn cmd_groups(cli: &Cli, format: OutputFormat, interactive: bool) -> i32 {
         return 0;
     }
 
-    if interactive {
+    if interactive || tui {
         if !std::io::stdin().is_terminal() {
             // Non-TTY: behave like the plain listing instead of hanging on a
             // prompt nobody can answer.
@@ -17479,7 +17492,8 @@ fn cmd_groups(cli: &Cli, format: OutputFormat, interactive: bool) -> i32 {
             eprintln!("`groups -i` needs an interactive terminal; printed the listing instead.");
             return 0;
         }
-        return interactive_groups_loop(cli, &store);
+        // `--tui` implies interactive and opens the inline menu immediately (#311).
+        return interactive_groups_loop(cli, &store, tui);
     }
 
     println!("{}", format_groups_table(&groups));
@@ -17522,11 +17536,24 @@ fn groups_summary_rows(groups: &[CliServerGroup]) -> Vec<Vec<String>> {
 /// the table is reloaded from `config_server_groups` at the top of every
 /// iteration, so changes made in the GUI (or another session) show up on the
 /// next prompt. Per Ehud #311.
-fn interactive_groups_loop(cli: &Cli, store: &CredentialStore) -> i32 {
+fn interactive_groups_loop(cli: &Cli, store: &CredentialStore, start_in_tui: bool) -> i32 {
+    use std::io::IsTerminal;
     let verbs = groups_section_verbs();
     // One-shot summary queued by the previous iteration's delete / re-index; it
     // replaces this iteration's plain table print (#311, point 5).
     let mut pending: Option<SectionPending> = None;
+    // Command queued by the raw-mode `tui` navigator: when set it is consumed
+    // instead of reading a line, so the existing verb dispatch runs it. `--tui`
+    // (Ehud #311) seeds it with "tui" so the menu opens immediately; `direct_tui`
+    // is session-sticky so an explicit Quit exits while completing/cancelling an
+    // action loops back to the menu instead of the line prompt.
+    let mut pending_command: Option<String> = if start_in_tui {
+        Some("tui".to_string())
+    } else {
+        None
+    };
+    let direct_tui = start_in_tui;
+    let mut reopen_tui = false;
     loop {
         let groups = load_server_groups(store);
         match pending.take() {
@@ -17556,23 +17583,33 @@ fn interactive_groups_loop(cli: &Cli, store: &CredentialStore) -> i32 {
             Some(SectionPending::PlainClear) => {}
             None => eprintln!("{}", format_groups_table(&groups)),
         }
-        eprintln!("\nActions: {}", render_section_actions(&verbs));
-        eprintln!(
-            "Interactive: n [name] new group  \u{00b7}  r/c/d <N|name>  \u{00b7}  a/x <group> <profile N|name ...> add/remove members  \u{00b7}  # <N|name> <pos> reorder  \u{00b7}  l [N|name ...] members  \u{00b7}  cls/. reprint  \u{00b7}  clear wipe  \u{00b7}  h help  \u{00b7}  0/q quit"
-        );
+        // Re-open the --tui menu once the previous action has drained, so the
+        // navigator loops back to itself instead of the line prompt (#311).
+        if reopen_tui && pending_command.is_none() {
+            reopen_tui = false;
+            pending_command = Some("tui".to_string());
+        }
 
-        let line = match section_prompt_line("groups> ") {
-            Ok(Some(l)) => l,
-            Ok(None) => {
-                eprintln!();
-                return 0;
-            }
-            Err(e) => {
-                eprintln!("Read error: {}. Exiting interactive mode.", e);
-                return 1;
+        let raw_owned: String = if let Some(cmd) = pending_command.take() {
+            cmd
+        } else {
+            eprintln!("\nActions: {}", render_section_actions(&verbs));
+            eprintln!(
+                "Interactive: n [name] new group  \u{00b7}  r/c/d <N|name>  \u{00b7}  a/x <group> <profile N|name ...> add/remove members  \u{00b7}  # <N|name> <pos> reorder  \u{00b7}  l [N|name ...] members  \u{00b7}  tui inline action menu  \u{00b7}  cls/. reprint  \u{00b7}  clear wipe  \u{00b7}  h help  \u{00b7}  0/q quit"
+            );
+            match section_prompt_line("groups> ") {
+                Ok(Some(l)) => l,
+                Ok(None) => {
+                    eprintln!();
+                    return 0;
+                }
+                Err(e) => {
+                    eprintln!("Read error: {}. Exiting interactive mode.", e);
+                    return 1;
+                }
             }
         };
-        let raw = line.trim();
+        let raw = raw_owned.trim();
         if raw.is_empty() {
             continue;
         }
@@ -17595,6 +17632,34 @@ fn interactive_groups_loop(cli: &Cli, store: &CredentialStore) -> i32 {
             // reprint on the next iteration, leaving only the prompt.
             section_clear_screen();
             pending = Some(SectionPending::PlainClear);
+            continue;
+        }
+
+        // Inline action menu (Ehud #311): pick an action from a raw-mode bar,
+        // then type the target; returns the equivalent line-mode command, which
+        // the existing verb dispatch below executes (with its prompts and
+        // confirmations) so the mutation logic lives in one place.
+        if lower == "tui" || lower == "nav" {
+            if !std::io::stdin().is_terminal() {
+                eprintln!("The inline action menu needs an interactive terminal.");
+                continue;
+            }
+            let was_direct = direct_tui;
+            match groups_tui_pick(&groups) {
+                Ok(SectionTuiOutcome::Quit) => {
+                    if was_direct {
+                        return 0;
+                    }
+                }
+                Ok(SectionTuiOutcome::Command(cmd)) => {
+                    pending_command = Some(cmd);
+                    reopen_tui = was_direct;
+                }
+                Ok(SectionTuiOutcome::Cancel) => {
+                    reopen_tui = was_direct;
+                }
+                Err(e) => eprintln!("Navigator error: {}. Back to the prompt.", e),
+            }
             continue;
         }
 
@@ -18161,6 +18226,7 @@ fn print_users_help() {
     eprintln!(
         "  t / tree          users -> their servers (with group tags from *that* user's groups)"
     );
+    eprintln!("  tui / nav         inline action menu: pick an action (single key or arrows + Enter), then type the target");
     eprintln!("  cls / . / refresh reload + reprint the table");
     eprintln!("  clear             wipe the screen only (no reprint)");
     eprintln!("  h / help / ?      show this help");
@@ -18177,7 +18243,7 @@ fn print_users_help() {
 /// users. The plain listing prints to stdout (JSON or a table); `-i` drops into
 /// the shared interactive engine. Per Ehud #311 (D1). The JSON branch matches
 /// `users list` so scripts see one schema.
-fn cmd_users_section(cli: &Cli, format: OutputFormat, interactive: bool) -> i32 {
+fn cmd_users_section(cli: &Cli, format: OutputFormat, interactive: bool, tui: bool) -> i32 {
     use std::io::IsTerminal;
     let store = match open_vault(cli) {
         Ok(store) => store,
@@ -18207,7 +18273,7 @@ fn cmd_users_section(cli: &Cli, format: OutputFormat, interactive: bool) -> i32 
     let marker = load_favorite_marker(&store);
     let (prof_counts, group_counts) = users_table_counts(&store);
 
-    if interactive {
+    if interactive || tui {
         if !std::io::stdin().is_terminal() {
             // Non-TTY: behave like the plain listing instead of hanging on a
             // prompt nobody can answer.
@@ -18218,7 +18284,8 @@ fn cmd_users_section(cli: &Cli, format: OutputFormat, interactive: bool) -> i32 
             eprintln!("`users -i` needs an interactive terminal; printed the listing instead.");
             return 0;
         }
-        return interactive_users_loop(cli, &store);
+        // `--tui` implies interactive and opens the inline menu immediately (#311).
+        return interactive_users_loop(cli, &store, tui);
     }
 
     println!(
@@ -18283,12 +18350,23 @@ fn users_summary_rows(
 /// the single source of truth: the table is reloaded at the top of every
 /// iteration, so GUI Manage Users changes show up on the next prompt. Per
 /// Ehud #311 (D1).
-fn interactive_users_loop(cli: &Cli, store: &CredentialStore) -> i32 {
+fn interactive_users_loop(cli: &Cli, store: &CredentialStore, start_in_tui: bool) -> i32 {
+    use std::io::IsTerminal;
     let marker = load_favorite_marker(store);
     let verbs = users_section_verbs(marker);
     // One-shot summary queued by the previous iteration's delete / re-index; it
     // replaces this iteration's plain table print (#311, point 5).
     let mut pending: Option<SectionPending> = None;
+    // Command queued by the raw-mode `tui` navigator (see interactive_groups_loop
+    // for the full rationale): `--tui` (Ehud #311) seeds it with "tui" so the
+    // menu opens immediately and is session-sticky via `direct_tui`.
+    let mut pending_command: Option<String> = if start_in_tui {
+        Some("tui".to_string())
+    } else {
+        None
+    };
+    let direct_tui = start_in_tui;
+    let mut reopen_tui = false;
     loop {
         let users = match user_partitions::cli_list_users(store) {
             Ok(u) => u,
@@ -18328,23 +18406,33 @@ fn interactive_users_loop(cli: &Cli, store: &CredentialStore) -> i32 {
                 format_users_table(&users, marker, &prof_counts, &group_counts)
             ),
         }
-        eprintln!("\nActions: {}", render_section_actions(&verbs));
-        eprintln!(
-            "Interactive: n [name] new user  \u{00b7}  r/c <N|name>  \u{00b7}  a/x <N|name> <group>  \u{00b7}  d/f <N|name>  \u{00b7}  # <N|name> <pos>  \u{00b7}  l [..]  t  \u{00b7}  cls/.  clear  h  0/q"
-        );
+        // Re-open the --tui menu once the previous action has drained, so the
+        // navigator loops back to itself instead of the line prompt (#311).
+        if reopen_tui && pending_command.is_none() {
+            reopen_tui = false;
+            pending_command = Some("tui".to_string());
+        }
 
-        let line = match section_prompt_line("users> ") {
-            Ok(Some(l)) => l,
-            Ok(None) => {
-                eprintln!();
-                return 0;
-            }
-            Err(e) => {
-                eprintln!("Read error: {}. Exiting interactive mode.", e);
-                return 1;
+        let raw_owned: String = if let Some(cmd) = pending_command.take() {
+            cmd
+        } else {
+            eprintln!("\nActions: {}", render_section_actions(&verbs));
+            eprintln!(
+                "Interactive: n [name] new user  \u{00b7}  r/c <N|name>  \u{00b7}  a/x <N|name> <group>  \u{00b7}  d/f <N|name>  \u{00b7}  # <N|name> <pos>  \u{00b7}  l [..]  t  \u{00b7}  tui inline action menu  \u{00b7}  cls/.  clear  h  0/q"
+            );
+            match section_prompt_line("users> ") {
+                Ok(Some(l)) => l,
+                Ok(None) => {
+                    eprintln!();
+                    return 0;
+                }
+                Err(e) => {
+                    eprintln!("Read error: {}. Exiting interactive mode.", e);
+                    return 1;
+                }
             }
         };
-        let raw = line.trim();
+        let raw = raw_owned.trim();
         if raw.is_empty() {
             continue;
         }
@@ -18367,6 +18455,34 @@ fn interactive_users_loop(cli: &Cli, store: &CredentialStore) -> i32 {
             // reprint on the next iteration, leaving only the prompt.
             section_clear_screen();
             pending = Some(SectionPending::PlainClear);
+            continue;
+        }
+
+        // Inline action menu (Ehud #311): pick an action from a raw-mode bar,
+        // then type the target; returns the equivalent line-mode command, which
+        // the existing verb dispatch below executes (with its prompts and
+        // confirmations) so the mutation logic lives in one place.
+        if lower == "tui" || lower == "nav" {
+            if !std::io::stdin().is_terminal() {
+                eprintln!("The inline action menu needs an interactive terminal.");
+                continue;
+            }
+            let was_direct = direct_tui;
+            match users_tui_pick(marker) {
+                Ok(SectionTuiOutcome::Quit) => {
+                    if was_direct {
+                        return 0;
+                    }
+                }
+                Ok(SectionTuiOutcome::Command(cmd)) => {
+                    pending_command = Some(cmd);
+                    reopen_tui = was_direct;
+                }
+                Ok(SectionTuiOutcome::Cancel) => {
+                    reopen_tui = was_direct;
+                }
+                Err(e) => eprintln!("Navigator error: {}. Back to the prompt.", e),
+            }
             continue;
         }
 
@@ -19147,16 +19263,16 @@ fn interactive_profiles_loop(
             // one-shot: every outcome returns to that prompt, as before. (#311)
             let was_direct = direct_tui;
             match profiles_tui_pick(&current, fav_marker) {
-                Ok(ProfilesTuiOutcome::Quit) => {
+                Ok(SectionTuiOutcome::Quit) => {
                     if was_direct {
                         return 0;
                     }
                 }
-                Ok(ProfilesTuiOutcome::Command(cmd)) => {
+                Ok(SectionTuiOutcome::Command(cmd)) => {
                     pending_command = Some(cmd);
                     reopen_tui = was_direct;
                 }
-                Ok(ProfilesTuiOutcome::Cancel) => {
+                Ok(SectionTuiOutcome::Cancel) => {
                     reopen_tui = was_direct;
                 }
                 Err(e) => eprintln!("Navigator error: {}. Back to the prompt.", e),
@@ -20087,9 +20203,10 @@ fn interactive_profiles_loop(
     }
 }
 
-/// Outcome of one raw-mode navigator session over the profile list.
-enum ProfilesTuiOutcome {
-    /// User picked an action for a profile: the equivalent line-mode command.
+/// Outcome of one raw-mode navigator session over a section list. Shared by the
+/// `profiles -i`, `groups -i` and `users -i` inline action menus (Ehud #311).
+enum SectionTuiOutcome {
+    /// User picked an action for an item: the equivalent line-mode command.
     Command(String),
     /// User picked an action but left the target blank: cancel this action only,
     /// with no change. Under `--tui` this re-opens the menu instead of exiting the
@@ -20100,7 +20217,7 @@ enum ProfilesTuiOutcome {
 }
 
 /// What the user types after picking an action in the inline menu.
-enum ProfilesActionTarget {
+enum SectionActionTarget {
     /// No target needed (Quit).
     None,
     /// One or more space-separated selectors (list/tree/delete/fav/copy).
@@ -20111,25 +20228,39 @@ enum ProfilesActionTarget {
     Reindex,
 }
 
-/// Inline action menu for `profiles -i` (issue #270, refined per @EhudKirsh #311).
+/// What the shared raw-mode action bar returned.
+enum ActionBarChoice {
+    /// The action at this index was picked (Enter on the focused option, its
+    /// hotkey, or the '0'/Quit alias).
+    Picked(usize),
+    /// The bar was dismissed with Esc: no action chosen.
+    Dismissed,
+}
+
+/// The shared raw-mode action bar behind the `profiles -i`, `groups -i` and
+/// `users -i` inline menus (issue #270, refined per @EhudKirsh #311).
 ///
 /// Faithful to Ehud's raw-mode demo, and deliberately NOT a full-screen app: it
-/// does not enter the alternate screen and never redraws the profile table,
-/// which `profiles -i` has already printed in full above (with headers and the
-/// favourite column). It shows a compact, width-adaptive action bar on a couple
-/// of lines, lets the user pick an action either with a single key or by moving
-/// the highlight (Left/Right, Up/Down, Tab/Shift+Tab and PageUp/PageDown all
-/// step one option and wrap at the ends; Home/End jump to first/last) and Enter,
-/// then prompts on one line for the target profile(s)/index, which are typed
-/// just like `rclone config`. The chosen option stays highlighted while the
-/// target is typed. It returns the
-/// equivalent line-mode command (e.g. `d 3 4`) so the existing, tested action
-/// handlers do the actual work; the menu never mutates the vault itself. Raw
-/// mode and the cursor are always restored, even on error.
-fn profiles_tui_pick(
-    profiles: &[serde_json::Value],
-    fav_marker: &str,
-) -> std::io::Result<ProfilesTuiOutcome> {
+/// does not enter the alternate screen and never redraws the table above it,
+/// which the `-i` view has already printed in full (headers and all). It shows a
+/// compact, width-adaptive action bar on a couple of lines, lets the user pick
+/// an action either with a single key or by moving the highlight (Left/Right,
+/// Up/Down, Tab/Shift+Tab and PageUp/PageDown all step one option and wrap at the
+/// ends; Home/End jump to first/last) and Enter. It returns the chosen action
+/// index (or `Dismissed` on Esc); the caller then prompts for the target and
+/// builds the equivalent line-mode command so the existing, tested action
+/// handlers do the actual work — the menu never mutates the vault itself.
+///
+/// `actions` is the `(hotkey, label)` list in display order; `initial_focus` is
+/// the option highlighted on entry (callers focus the safe Quit option so a
+/// stray Enter just leaves). `zero_selects`, when `Some`, maps the '0' key to
+/// that action index (the Quit alias from Ehud's demo). Raw mode and the cursor
+/// are always restored, even on error/panic.
+fn run_action_bar(
+    actions: &[(char, String)],
+    initial_focus: usize,
+    zero_selects: Option<usize>,
+) -> std::io::Result<ActionBarChoice> {
     use crossterm::{
         cursor,
         event::{self, Event, KeyCode, KeyEventKind},
@@ -20137,43 +20268,15 @@ fn profiles_tui_pick(
         style::{Attribute, Color, Print, ResetColor, SetAttribute, SetForegroundColor},
         terminal::{self, Clear, ClearType},
     };
-    use std::io::{BufRead, Write};
+    use std::io::Write;
 
-    if profiles.is_empty() {
-        return Ok(ProfilesTuiOutcome::Quit);
-    }
-
-    // Actions in Ehud's column order (#311): re-index(#)|Rename(R)|Edit(E)|Copy(C)|
-    // Delete(D)|Fav★(F)|List/ls(L)|Tree(T)|Quit(Q/0). The leading group mirrors the
-    // profile/My-Servers table columns left-to-right; the trailing group (List,
-    // Tree, Quit) are read-only and reprint nothing. `Fav` carries the user's
-    // marker glyph (★ default, ♥ if chosen) so it matches the rest of the CLI.
-    let actions: Vec<(char, String, ProfilesActionTarget)> = vec![
-        (
-            '#',
-            "re-index(#)".to_string(),
-            ProfilesActionTarget::Reindex,
-        ),
-        ('r', "Rename(R)".to_string(), ProfilesActionTarget::One),
-        ('e', "Edit(E)".to_string(), ProfilesActionTarget::One),
-        ('c', "Copy(C)".to_string(), ProfilesActionTarget::Many),
-        ('d', "Delete(D)".to_string(), ProfilesActionTarget::Many),
-        (
-            'f',
-            format!("Fav{}(F)", fav_marker),
-            ProfilesActionTarget::Many,
-        ),
-        ('l', "List/ls(L)".to_string(), ProfilesActionTarget::Many),
-        ('t', "Tree(T)".to_string(), ProfilesActionTarget::Many),
-        ('q', "Quit(Q/0)".to_string(), ProfilesActionTarget::None),
-    ];
     let n = actions.len();
-    // Ehud (#311): on entering the TUI, focus the safe option (Quit) by default,
-    // never a consequential one. Re-index is the riskiest action and used to be
-    // the default focus; starting on Quit makes every action opt-in, so a stray
-    // Enter just leaves instead of triggering a re-index. Robust to reordering.
-    let quit_idx = actions.iter().position(|(c, _, _)| *c == 'q').unwrap_or(0);
-    let mut selected = quit_idx;
+    if n == 0 {
+        return Ok(ActionBarChoice::Dismissed);
+    }
+    // The caller focuses the safe option (Quit) on entry so a stray Enter just
+    // leaves instead of triggering a consequential action (Ehud #311).
+    let mut selected = initial_focus.min(n - 1);
 
     // Restore the terminal no matter how we leave (early return, panic unwind).
     struct RawGuard;
@@ -20199,7 +20302,7 @@ fn profiles_tui_pick(
         let mut lines: Vec<(Vec<usize>, usize)> = Vec::new();
         let mut cur: Vec<usize> = Vec::new();
         let mut width = 1usize; // leading space
-        for (i, (_, label, _)) in actions.iter().enumerate() {
+        for (i, (_, label)) in actions.iter().enumerate() {
             let w = label.chars().count();
             let add = if cur.is_empty() { w } else { w + sep };
             if !cur.is_empty() && width + add > budget {
@@ -20285,13 +20388,13 @@ fn profiles_tui_pick(
 
         match event::read()? {
             Event::Key(key) if key.kind == KeyEventKind::Press => match key.code {
-                // Esc escapes silently (wipes the bar). Q/0 SELECT Quit, which is then
-                // redrawn highlighted like any other picked action (Ehud #311: Quit was
-                // only highlighted while focused, never when chosen via its hotkey).
+                // Esc escapes silently (wipes the bar). '0' selects the caller's
+                // Quit alias, which is then redrawn highlighted like any other
+                // picked action (Ehud #311: Quit was only highlighted while focused,
+                // never when chosen via its hotkey). 'q'/'Q' fall through to the
+                // hotkey matcher below (the Quit option owns the 'q' hotkey).
                 KeyCode::Esc => break None,
-                KeyCode::Char('q') | KeyCode::Char('Q') | KeyCode::Char('0') => {
-                    break Some(quit_idx)
-                }
+                KeyCode::Char('0') if zero_selects.is_some() => break zero_selects,
                 KeyCode::Enter => break Some(selected),
                 // Arrows, Tab and PageUp/PageDown all step the highlight one
                 // option at a time and wrap at the ends (Ehud: PageUp/PageDown
@@ -20307,7 +20410,7 @@ fn profiles_tui_pick(
                 KeyCode::End => selected = n - 1,
                 KeyCode::Char(c) => {
                     let lc = c.to_ascii_lowercase();
-                    if let Some(idx) = actions.iter().position(|(k, _, _)| *k == lc) {
+                    if let Some(idx) = actions.iter().position(|(k, _)| *k == lc) {
                         break Some(idx);
                     }
                 }
@@ -20342,35 +20445,136 @@ fn profiles_tui_pick(
     }
     drop(guard);
 
-    let action_idx = chosen.filter(|&idx| !matches!(actions[idx].2, ProfilesActionTarget::None));
-    let Some(idx) = action_idx else {
-        return Ok(ProfilesTuiOutcome::Quit);
-    };
-    let (key, _, target) = &actions[idx];
+    Ok(match chosen {
+        Some(idx) => ActionBarChoice::Picked(idx),
+        None => ActionBarChoice::Dismissed,
+    })
+}
 
-    // Second step: the action is picked, the target is typed (Ehud's model).
+/// Prompt for the target of a just-picked section action and build the
+/// equivalent line-mode command (or Cancel/Quit). `noun` is the section's item
+/// word ("profile"/"group"/"user") used in the prompts. Shared by all three
+/// `-i` navigators so the target step reads identically everywhere.
+fn section_prompt_target(
+    key: char,
+    target: &SectionActionTarget,
+    noun: &str,
+) -> std::io::Result<SectionTuiOutcome> {
+    use std::io::{BufRead, Write};
+
     let prompt = match target {
-        ProfilesActionTarget::Reindex => {
-            "re-index <profile> <new-index> (e.g. 3 1, blank cancels): "
+        SectionActionTarget::Reindex => {
+            format!("re-index <{noun}> <new-index> (e.g. 3 1, blank cancels): ")
         }
-        ProfilesActionTarget::One => "target profile (blank cancels): ",
-        ProfilesActionTarget::Many => "target profile(s) (blank cancels): ",
-        ProfilesActionTarget::None => "",
+        SectionActionTarget::One => format!("target {noun} (blank cancels): "),
+        SectionActionTarget::Many => format!("target {noun}(s) (blank cancels): "),
+        SectionActionTarget::None => String::new(),
     };
     eprint!("{}", prompt);
     let _ = std::io::stderr().flush();
     let mut line = String::new();
     if std::io::stdin().lock().read_line(&mut line).unwrap_or(0) == 0 {
-        return Ok(ProfilesTuiOutcome::Quit);
+        return Ok(SectionTuiOutcome::Quit);
     }
     let line = line.trim();
     if line.is_empty() {
         // Nothing typed: cancel this action only, no change. Distinct from Quit so
         // a blank target under --tui re-opens the menu rather than exiting (#311).
-        return Ok(ProfilesTuiOutcome::Cancel);
+        return Ok(SectionTuiOutcome::Cancel);
     }
 
-    Ok(ProfilesTuiOutcome::Command(format!("{} {}", key, line)))
+    Ok(SectionTuiOutcome::Command(format!("{} {}", key, line)))
+}
+
+/// Run the inline action menu for a section: draw the raw-mode action bar over
+/// `actions`, then (unless Quit/Esc) prompt for the target and return the
+/// equivalent line-mode command. `noun` is the item word used in the prompts.
+/// The Quit option is focused on entry and also bound to the '0' alias. Shared
+/// by profiles/groups/users (Ehud #270/#311).
+fn section_tui_pick(
+    actions: &[(char, String, SectionActionTarget)],
+    noun: &str,
+) -> std::io::Result<SectionTuiOutcome> {
+    let quit_idx = actions.iter().position(|(c, _, _)| *c == 'q').unwrap_or(0);
+    let bar: Vec<(char, String)> = actions.iter().map(|(c, l, _)| (*c, l.clone())).collect();
+    let idx = match run_action_bar(&bar, quit_idx, Some(quit_idx))? {
+        ActionBarChoice::Picked(i) => i,
+        ActionBarChoice::Dismissed => return Ok(SectionTuiOutcome::Quit),
+    };
+    let (key, _, target) = &actions[idx];
+    if matches!(target, SectionActionTarget::None) {
+        return Ok(SectionTuiOutcome::Quit);
+    }
+    section_prompt_target(*key, target, noun)
+}
+
+/// Inline action menu for `profiles -i` (Ehud #270/#311). Actions in the
+/// profile / My-Servers column order: re-index(#), Rename(R), Edit(E), Copy(C),
+/// Delete(D), Fav(F), List(L), Tree(T), Quit. `Fav` carries the user's marker
+/// glyph (★ default, ♥ if chosen) so it matches the rest of the CLI.
+fn profiles_tui_pick(
+    profiles: &[serde_json::Value],
+    fav_marker: &str,
+) -> std::io::Result<SectionTuiOutcome> {
+    if profiles.is_empty() {
+        return Ok(SectionTuiOutcome::Quit);
+    }
+    let actions: Vec<(char, String, SectionActionTarget)> = vec![
+        ('#', "re-index(#)".to_string(), SectionActionTarget::Reindex),
+        ('r', "Rename(R)".to_string(), SectionActionTarget::One),
+        ('e', "Edit(E)".to_string(), SectionActionTarget::One),
+        ('c', "Copy(C)".to_string(), SectionActionTarget::Many),
+        ('d', "Delete(D)".to_string(), SectionActionTarget::Many),
+        (
+            'f',
+            format!("Fav{}(F)", fav_marker),
+            SectionActionTarget::Many,
+        ),
+        ('l', "List/ls(L)".to_string(), SectionActionTarget::Many),
+        ('t', "Tree(T)".to_string(), SectionActionTarget::Many),
+        ('q', "Quit(Q/0)".to_string(), SectionActionTarget::None),
+    ];
+    section_tui_pick(&actions, "profile")
+}
+
+/// Inline action menu for `groups -i` (Ehud #311). Selector-based actions only:
+/// re-index(#), Rename(R), Copy(C), Delete(D), List(L), Quit — member add/remove
+/// (`a`/`x`) take a second argument and stay at the line prompt.
+fn groups_tui_pick(groups: &[CliServerGroup]) -> std::io::Result<SectionTuiOutcome> {
+    if groups.is_empty() {
+        return Ok(SectionTuiOutcome::Quit);
+    }
+    let actions: Vec<(char, String, SectionActionTarget)> = vec![
+        ('#', "re-index(#)".to_string(), SectionActionTarget::Reindex),
+        ('r', "Rename(R)".to_string(), SectionActionTarget::One),
+        ('c', "Copy(C)".to_string(), SectionActionTarget::One),
+        ('d', "Delete(D)".to_string(), SectionActionTarget::Many),
+        ('l', "List(L)".to_string(), SectionActionTarget::Many),
+        ('q', "Quit(Q/0)".to_string(), SectionActionTarget::None),
+    ];
+    section_tui_pick(&actions, "group")
+}
+
+/// Inline action menu for `users -i` (Ehud #311). Selector-based actions:
+/// re-index(#), Rename(R), Copy(C), Delete(D), Fav(F), List(L), Tree(T), Quit —
+/// member add/remove (`a`/`x`) take a second argument and stay at the line
+/// prompt. `Fav` carries the user's marker glyph.
+fn users_tui_pick(fav_marker: &str) -> std::io::Result<SectionTuiOutcome> {
+    let actions: Vec<(char, String, SectionActionTarget)> = vec![
+        ('#', "re-index(#)".to_string(), SectionActionTarget::Reindex),
+        ('r', "Rename(R)".to_string(), SectionActionTarget::One),
+        ('c', "Copy(C)".to_string(), SectionActionTarget::One),
+        ('d', "Delete(D)".to_string(), SectionActionTarget::Many),
+        (
+            'f',
+            format!("Fav{}(F)", fav_marker),
+            SectionActionTarget::One,
+        ),
+        ('l', "List(L)".to_string(), SectionActionTarget::Many),
+        ('t', "Tree(T)".to_string(), SectionActionTarget::Many),
+        ('q', "Quit(Q/0)".to_string(), SectionActionTarget::None),
+    ];
+    section_tui_pick(&actions, "user")
 }
 
 /// Resolve a single selector (integer or profile name) against the visible
@@ -63727,13 +63931,15 @@ async fn main() {
         Commands::Groups {
             _ignored: _,
             interactive,
-        } => cmd_groups(&cli, format, *interactive),
+            tui,
+        } => cmd_groups(&cli, format, *interactive, *tui),
         Commands::Users {
             command,
             interactive,
+            tui,
         } => match command {
             Some(cmd) => cmd_users(&cli, cmd, format),
-            None => cmd_users_section(&cli, format, *interactive),
+            None => cmd_users_section(&cli, format, *interactive, *tui),
         },
         Commands::Peer { command } => cmd_peer(&cli, command, format).await,
         Commands::ProfileAdd {
