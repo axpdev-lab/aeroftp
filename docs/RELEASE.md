@@ -93,37 +93,47 @@ git push origin main --tags
 
 The AUR package is `aeroftp-bin`, maintained in its own checkout (`ssh://aur@aur.archlinux.org/aeroftp-bin.git`), separate from this repo. The package installs the `.deb` payload (not the AppImage, which hit `EGL_BAD_PARAMETER` on some GPU drivers). After GitHub Actions publishes the release artifacts:
 
-### 1. Compute SHA-256 for ALL 3 sources
+> **Always `git fetch` the AUR checkout first.** A local copy can be a release behind if a previous bump was pushed from another machine; a stale base makes the push fail non-fast-forward. Rebase the bump onto `origin/master`, never force.
+
+### 1. Compute SHA-256 for the .deb
+
+The PKGBUILD has **two sources and two `sha256sums`**, not three: the `.deb` and its Sigstore bundle. Only index 0 (the `.deb`) is a real hash.
 
 ```bash
-# Download the .deb (the AUR PKGBUILD source)
 curl -L -o /tmp/AeroFTP.deb \
   "https://github.com/axpdev-lab/aeroftp/releases/download/vX.Y.Z/AeroFTP_X.Y.Z_amd64.deb"
-
-# Download icon
-curl -L -o /tmp/aeroftp-icon.png \
-  "https://raw.githubusercontent.com/axpdev-lab/aeroftp/main/src-tauri/icons/128x128.png"
-
-# Compute hashes (deb, then the local aeroftp.desktop in the AUR checkout, then the icon)
 sha256sum /tmp/AeroFTP.deb
-sha256sum aeroftp.desktop
-sha256sum /tmp/aeroftp-icon.png
 ```
+
+> `sha256sums[1]` is **deliberately `SKIP`** and must stay that way. The Sigstore bundle is authenticated in `prepare()` by `cosign verify-blob`, pinned to the release workflow identity and the GitHub OIDC issuer, so a swapped bundle either fails cosign or attests a different artifact than the hash-pinned `.deb`. A checksum there would be redundant. This is the one place the "never leave SKIP" rule does not apply.
 
 ### 2. Update PKGBUILD and .SRCINFO (in the AUR checkout)
 
 - Bump `pkgver=X.Y.Z` and reset `pkgrel=1`
-- Replace all 3 `sha256sums` (deb, .desktop, .png) - never leave `SKIP`
-- Update the source URLs in both `PKGBUILD` and `.SRCINFO` (3 occurrences in `.SRCINFO`)
-- Regenerate `.SRCINFO` if `makepkg` is available: `makepkg --printsrcinfo > .SRCINFO`
+- Replace `sha256sums[0]` with the new `.deb` hash; leave `sha256sums[1]` as `SKIP`
+- Both source URLs interpolate `${pkgver}`, so they follow the bump automatically in `PKGBUILD`. `.SRCINFO` is expanded, so its two `source =` lines carry the version literally (twice each) and must be edited
+- Regenerate `.SRCINFO` with `makepkg --printsrcinfo > .SRCINFO` when on Arch. Off Arch, hand-edit it to mirror the PKGBUILD exactly, then confirm no old version string survives: `grep -c '<old-version>' PKGBUILD .SRCINFO` must be `0 0`
 
-### 3. Push to AUR
+### 3. Verify before pushing
+
+```bash
+# Both sources must resolve, or the package fails to build for every user
+for u in ".deb" ".deb.sigstore.json"; do
+  curl -sL -o /dev/null -w "%{http_code}\n" \
+    "https://github.com/axpdev-lab/aeroftp/releases/download/vX.Y.Z/AeroFTP_X.Y.Z_amd64${u}"
+done
+```
+
+The cosign identity in `prepare()` pins `refs/tags/vX.Y.Z`, so it re-pins per release; confirm the bundle's certificate really carries that tag before publishing.
+
+### 4. Push to AUR
 
 ```bash
 cd /path/to/aeroftp-bin   # the separate AUR checkout
-git add PKGBUILD .SRCINFO aeroftp.desktop
-git commit -m "Update to X.Y.Z"
-git push
+git fetch origin && git rebase origin/master
+git add PKGBUILD .SRCINFO
+git commit -m "aeroftp-bin X.Y.Z - Short Release Title"
+git push origin master
 ```
 
 ---
