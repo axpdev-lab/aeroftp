@@ -33,8 +33,15 @@ Vulnerable range `<= 0.62.3`, first patched **0.62.4**.
 `russh 0.62.4` is the **latest published version** (`cargo info russh`) - there is no 0.61.x
 backport to take instead.
 
+Reproduce with `.github/scripts/check-russh-unblock.sh`. Note that the transcript below is
+the resolution failure, which only surfaces once the manifest requirement has been raised to
+`^0.62.4`; the script does that in a scratch copy and restores the tree on exit. Running
+`cargo update -p russh --precise 0.62.4` against the manifest as committed instead fails on
+the *requirement* (`failed to select a version for the requirement russh = "^0.61.2"`) and
+never reaches resolution, so it tells you nothing about upstream.
+
 ```
-$ cargo update -p russh --precise 0.62.4
+$ .github/scripts/check-russh-unblock.sh
 error: failed to select a version for `ed25519-dalek`.
     ... required by package `n0-mainline v0.5.0`
     ... which satisfies dependency `n0-mainline = "^0.5"` of package `iroh-mainline-address-lookup v0.4.0`
@@ -56,6 +63,11 @@ The two requirements are mutually unsatisfiable:
 
 Both upstreams are already at their newest release: `n0-mainline` 0.5.0 and
 `iroh-mainline-address-lookup` 0.4.0 (`cargo search`). There is no newer version to bump into.
+
+Worth knowing when judging how long this will last: `n0-mainline` 0.5.0 was published
+2026-06-15, *before* `ed25519-dalek` 3.0.0-rc.1 (2026-06-18) and 3.0.0 final (2026-07-06)
+existed. Its exact pin is not a deliberate rejection of the final release, it is a pin that
+upstream has not revisited since the final shipped. Re-checked 2026-07-25: unchanged.
 
 ### Paths deliberately NOT taken
 
@@ -91,5 +103,8 @@ Tracked for the release after v4.1.6:
 2. If it does not land, open a branch that patches `n0-mainline` to `^3.0.0-rc.0`, confirms
    `ed25519-dalek 3.0.0` final is API-compatible for it, re-runs the peer/AeroShare live lane,
    and regenerates `cargo-sources.json`.
-3. Re-check `cargo update -p russh --precise 0.62.4` first each time - if the pin clears
-   upstream it becomes a one-line bump.
+3. Re-check with `.github/scripts/check-russh-unblock.sh` first each time - if the pin clears
+   upstream it becomes a one-line bump. The script raises the requirement in a scratch copy
+   before resolving (a bare `cargo update --precise` cannot reach the conflict, see above),
+   restores `Cargo.toml`/`Cargo.lock` unconditionally, and exits 0 only when the bump is
+   genuinely available: 1 means the same ed25519-dalek conflict, 2 means read the output.
