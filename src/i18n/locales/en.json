@@ -2176,6 +2176,8 @@
       "settingsCount": "{count} settings",
       "never": "Never",
       "rename": "Rename",
+      "copy": "Duplicate user (servers only, no passwords)",
+      "copyLockedHint": "Switch to this account first to duplicate its servers",
       "changeMyPassword": "Change my password",
       "setPassword": "Set password",
       "resetPassword": "Reset password",

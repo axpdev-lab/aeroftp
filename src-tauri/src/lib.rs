@@ -18783,6 +18783,7 @@ pub fn run() {
             user_partitions::user_partitions_save_active_server_profiles,
             user_partitions::user_partitions_relocate_server_profile,
             user_partitions::user_partitions_add_user,
+            user_partitions::user_partitions_copy_user,
             user_partitions::user_partitions_unlock_user,
             user_partitions::user_partitions_lock_session,
             user_partitions::user_partitions_unlock_status,

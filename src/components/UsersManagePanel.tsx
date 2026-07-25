@@ -5,6 +5,7 @@ import * as React from 'react';
 import {
     AlertTriangle,
     Check,
+    Copy,
     Eye,
     EyeOff,
     GripVertical,
@@ -31,6 +32,7 @@ import { PasswordMatchHint } from './common/PasswordMatchHint';
 import {
     addUser,
     changeUserPassphrase,
+    copyUser,
     deleteUser,
     getUserStorageStats,
     getUnlockStatus,
@@ -294,6 +296,30 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
         setError('');
         try {
             await deleteUser(user.id);
+            await refresh();
+            notifyProfilesChanged(onChanged);
+        } catch (err) {
+            setError(mapUserPartitionError(err, t));
+        } finally {
+            setBusyUserId(null);
+        }
+    };
+
+    const handleCopy = async (user: UserMetadata) => {
+        if (!currentUserIsAdmin) return;
+        // A locked, password-protected peer's servers can't be read (its DEK is
+        // sealed until it is unlocked), so mirror the CLI guard and ask the user
+        // to switch to it first rather than creating an empty copy.
+        if (user.hasPassphrase && user.id !== selfId) {
+            setError(t('manageUsers.copyLockedHint'));
+            return;
+        }
+        setBusyUserId(user.id);
+        setError('');
+        try {
+            // No explicit name: the backend auto-names it "<source> (copy)",
+            // identical to the CLI. Passwords/credentials are never copied.
+            await copyUser(user.id);
             await refresh();
             notifyProfilesChanged(onChanged);
         } catch (err) {
@@ -598,6 +624,11 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
                             const canUseSelfPasswordFlow = isSelf && canModify;
                             const canAdminReset = currentUserIsAdmin && !isSelf && user.hasPassphrase;
                             const canDelete = canModify && !user.isActive && users.length > 1 && !isLastAdmin;
+                            // Copying creates a new user (admin-only). The source's
+                            // servers are only readable when it is password-free or
+                            // the currently-unlocked account; a locked peer would
+                            // fail with USER_LOCKED, so disable Copy there.
+                            const canCopy = currentUserIsAdmin && (!user.hasPassphrase || isSelf);
                             return (
                                 <div
                                     key={user.id}
@@ -725,6 +756,17 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
                                                         <Pencil size={15} />
                                                     </button>
                                                 </>
+                                            )}
+                                            {currentUserIsAdmin && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => { void handleCopy(user); }}
+                                                    disabled={busyUserId === user.id || !canCopy}
+                                                    className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-800 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:bg-gray-700 dark:hover:text-gray-100"
+                                                    title={canCopy ? t('manageUsers.copy') : t('manageUsers.copyLockedHint')}
+                                                >
+                                                    <Copy size={15} />
+                                                </button>
                                             )}
                                             {canUseSelfPasswordFlow && (
                                                 <button

@@ -136,6 +136,8 @@
             "settingsCount": "{count} impostazioni",
             "never": "Mai",
             "rename": "Rinomina",
+            "copy": "Duplica utente (solo server, senza password)",
+            "copyLockedHint": "Passa prima a questo account per duplicarne i server",
             "changeMyPassword": "Cambia la mia password",
             "setPassword": "Imposta password",
             "resetPassword": "Reimposta password",

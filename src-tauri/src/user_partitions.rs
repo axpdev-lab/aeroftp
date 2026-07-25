@@ -5062,6 +5062,120 @@ pub async fn user_partitions_add_user(
     result
 }
 
+/// True when `candidate` matches an existing user name (case-insensitive,
+/// trimmed). Pure helper backing the copy-user auto-naming (mirrors the CLI's
+/// `user_name_taken`).
+fn user_name_is_taken(users: &[UserMetadata], candidate: &str) -> bool {
+    users
+        .iter()
+        .any(|u| u.name.eq_ignore_ascii_case(candidate.trim()))
+}
+
+/// The auto name for a user copy: `"<src> (copy)"`, then `"... (copy 2)"`, etc.
+/// when the base is taken. Pure, case-insensitive; mirrors the CLI's
+/// `next_user_copy_name` so GUI and CLI produce identical copy names.
+fn next_user_copy_name(users: &[UserMetadata], src_name: &str) -> String {
+    let base = format!("{src_name} (copy)");
+    if !user_name_is_taken(users, &base) {
+        return base;
+    }
+    let mut n = 2;
+    loop {
+        let candidate = format!("{src_name} (copy {n})");
+        if !user_name_is_taken(users, &candidate) {
+            return candidate;
+        }
+        n += 1;
+    }
+}
+
+/// Duplicate an existing user (GUI mirror of the CLI `users -i` Copy verb,
+/// Ehud #347). Creates a brand-new, password-free, non-admin user that copies
+/// the source's display avatar and all of its server profiles, but NO passwords
+/// or credentials — those live in the source user's keyring and stay with it.
+/// The new user gets fresh crypto material (its own DEK).
+///
+/// `source_user_id` is the user to copy; `new_name` is an optional explicit
+/// name (must be free) — when omitted it is auto-derived as `"<source> (copy)"`
+/// (then `(copy 2)`, …), identical to the CLI. Admin-gated exactly like
+/// [`user_partitions_add_user`]. Returns `USER_LOCKED` when the source is
+/// password-protected and not the currently-unlocked user (its servers cannot
+/// be read) — the caller should ask the user to switch to it first.
+#[tauri::command]
+pub async fn user_partitions_copy_user(
+    app: AppHandle,
+    source_user_id: i64,
+    new_name: Option<String>,
+) -> Result<UserMetadata, String> {
+    init_or_migrate(&app)?;
+    let mut conn = open_or_init(&app)?;
+    let users = list_users(&conn)?;
+
+    // Admin gate (same policy as user_partitions_add_user): only an unlocked
+    // admin may create users. A copy always runs against >=1 existing user, so
+    // the gate always applies.
+    let status = user_unlock_status(&conn)?;
+    let actor_id = status
+        .unlocked_user_id
+        .ok_or_else(|| "VAULT_LOCKED".to_string())?;
+    if !is_admin_user(&conn, actor_id)? {
+        return Err("NOT_AUTHORIZED".to_string());
+    }
+
+    let src = users
+        .iter()
+        .find(|u| u.id == source_user_id)
+        .cloned()
+        .ok_or_else(|| "USER_NOT_FOUND".to_string())?;
+
+    // Resolve the target name: explicit (must be free) else "<src> (copy)".
+    let target_name = match new_name.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+        Some(n) => {
+            if user_name_is_taken(&users, n) {
+                return Err("NAME_TAKEN".to_string());
+            }
+            n.to_string()
+        }
+        None => next_user_copy_name(&users, &src.name),
+    };
+
+    let store = CredentialStore::from_cache().ok_or_else(|| "STORE_NOT_READY".to_string())?;
+    let mut root_key = store.derive_user_partition_wrapping_key();
+
+    // Read the source's servers first (no passwords copied — keyring creds stay
+    // with the original). A locked, password-protected source cannot be read
+    // and surfaces USER_LOCKED, telling the caller to switch to it first.
+    let profiles = match list_server_profiles_for(&conn, &root_key, source_user_id) {
+        Ok(p) => p,
+        Err(e) => {
+            root_key.zeroize();
+            return Err(e);
+        }
+    };
+
+    // Create the new, password-free user (fresh DEK, non-admin), copying only
+    // the display avatar (emoji + colour).
+    let new_user = match create_user(
+        &mut conn,
+        &root_key,
+        &target_name,
+        src.avatar_emoji.as_deref(),
+        src.avatar_color.as_deref(),
+        None,
+    ) {
+        Ok(u) => u,
+        Err(e) => {
+            root_key.zeroize();
+            return Err(e);
+        }
+    };
+
+    // Copy the (credential-free) server profiles into the new user.
+    let result = replace_server_profiles_for(&mut conn, &root_key, new_user.id, &profiles);
+    root_key.zeroize();
+    result.map(|()| new_user)
+}
+
 #[tauri::command]
 pub async fn user_partitions_unlock_user(
     app: AppHandle,

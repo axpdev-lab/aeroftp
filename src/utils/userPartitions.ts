@@ -82,6 +82,17 @@ export const addUser = (
         passphrase,
     });
 
+// Duplicate an existing user (GUI mirror of the CLI `users -i` Copy verb,
+// Ehud #347). Creates a password-free, non-admin user copying the source's
+// avatar and all server profiles, but NO passwords/credentials. `newName` is
+// optional — omitted, the backend auto-names it "<source> (copy)". Admin-gated;
+// returns USER_LOCKED if the source is a locked, password-protected peer.
+export const copyUser = (
+    sourceUserId: number,
+    newName?: string | null,
+): Promise<UserMetadata> =>
+    invoke<UserMetadata>('user_partitions_copy_user', { sourceUserId, newName });
+
 export const unlockUser = (
     userId: number,
     passphrase?: string | null,
