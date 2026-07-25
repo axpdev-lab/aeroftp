@@ -4634,7 +4634,7 @@
                 "paidProtocols": "Ordainpeko protokoloak",
                 "health": "Egoera",
                 "columns": "Zutabeak",
-                "searchPlaceholder": "Bilatu hornitzaileak, protokoloak...",
+                "searchPlaceholder": "Bilatu hornitzaileak, enpresak, protokoloak...",
                 "footerSummary": "{count} hornitzaile · ~{gb} GB doan",
                 "approximate": "gutxi gorabehera, egiaztatu hornitzailearekin",
                 "connectHint": "Konektatu {company}-(e)ra",

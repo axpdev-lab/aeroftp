@@ -4615,7 +4615,7 @@
                 "paidProtocols": "Ücretli protokoller",
                 "health": "Durum",
                 "columns": "Sütunlar",
-                "searchPlaceholder": "Sağlayıcı, protokol ara...",
+                "searchPlaceholder": "Sağlayıcı, şirket, protokol ara...",
                 "footerSummary": "{count} sağlayıcı · ~{gb} GB ücretsiz",
                 "approximate": "yaklaşık, sağlayıcıyla doğrulayın",
                 "connectHint": "{company} öğesine bağlan",
@@ -4624,7 +4624,7 @@
                 "customSftp": "SFTP",
                 "customS3": "S3",
                 "customWebdav": "WebDAV",
-                "parentCompany": "Şirket"
+                "parentCompany": "Ana şirket"
             },
             "healthCheck": "Sağlık kontrolü",
             "storageVersioning": "Dosya sürümleri: {size}",

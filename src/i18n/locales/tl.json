@@ -4634,7 +4634,7 @@
                 "paidProtocols": "Mga bayad na protocol",
                 "health": "Status",
                 "columns": "Mga column",
-                "searchPlaceholder": "Maghanap ng mga provider, protocol...",
+                "searchPlaceholder": "Maghanap ng mga provider, kumpanya, protocol...",
                 "footerSummary": "{count} provider · ~{gb} GB libre",
                 "approximate": "tinatayang, i-verify sa provider",
                 "connectHint": "Kumonekta sa {company}",

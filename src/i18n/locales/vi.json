@@ -4615,7 +4615,7 @@
                 "paidProtocols": "Giao thức trả phí",
                 "health": "Trạng thái",
                 "columns": "Cột",
-                "searchPlaceholder": "Tìm nhà cung cấp, giao thức...",
+                "searchPlaceholder": "Tìm nhà cung cấp, công ty, giao thức...",
                 "footerSummary": "{count} nhà cung cấp · ~{gb} GB miễn phí",
                 "approximate": "ước tính, hãy xác minh với nhà cung cấp",
                 "connectHint": "Kết nối tới {company}",

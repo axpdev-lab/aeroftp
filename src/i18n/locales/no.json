@@ -4634,7 +4634,7 @@
                 "paidProtocols": "Betalte protokoller",
                 "health": "Status",
                 "columns": "Kolonner",
-                "searchPlaceholder": "Søk etter leverandører, protokoller...",
+                "searchPlaceholder": "Søk etter leverandører, selskaper, protokoller...",
                 "footerSummary": "{count} leverandører · ~{gb} GB gratis",
                 "approximate": "omtrentlig, bekreft med leverandøren",
                 "connectHint": "Koble til {company}",

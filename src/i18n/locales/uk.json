@@ -4615,7 +4615,7 @@
                 "paidProtocols": "Платні протоколи",
                 "health": "Статус",
                 "columns": "Стовпці",
-                "searchPlaceholder": "Пошук провайдерів, протоколів...",
+                "searchPlaceholder": "Шукати провайдерів, компанії, протоколи...",
                 "footerSummary": "{count} провайдерів · ~{gb} GB безкоштовно",
                 "approximate": "приблизно, уточніть у провайдера",
                 "connectHint": "Підключитися до {company}",

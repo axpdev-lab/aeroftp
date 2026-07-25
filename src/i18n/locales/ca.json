@@ -4634,7 +4634,7 @@
                 "paidProtocols": "Protocols de pagament",
                 "health": "Estat",
                 "columns": "Columnes",
-                "searchPlaceholder": "Cerca proveïdors, protocols...",
+                "searchPlaceholder": "Cerca proveïdors, empreses, protocols...",
                 "footerSummary": "{count} proveïdors · ~{gb} GB gratis",
                 "approximate": "aproximat, verifiqueu-ho amb el proveïdor",
                 "connectHint": "Connecta a {company}",

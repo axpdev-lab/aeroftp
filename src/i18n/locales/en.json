@@ -4910,7 +4910,7 @@
                 "paidProtocols": "Paid protocols",
                 "health": "Status",
                 "columns": "Columns",
-                "searchPlaceholder": "Search providers, protocols...",
+                "searchPlaceholder": "Search providers, companies, protocols...",
                 "footerSummary": "{count} providers · ~{gb} GB free",
                 "approximate": "approximate, verify with the provider",
                 "connectHint": "Connect to {company}",

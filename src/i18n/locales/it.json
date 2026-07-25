@@ -4888,7 +4888,7 @@
                 "paidProtocols": "Protocolli a pagamento",
                 "health": "Stato",
                 "columns": "Colonne",
-                "searchPlaceholder": "Cerca provider, protocolli...",
+                "searchPlaceholder": "Cerca provider, aziende, protocolli...",
                 "footerSummary": "{count} provider · ~{gb} GB gratis",
                 "approximate": "approssimativo, verifica con il provider",
                 "connectHint": "Connetti a {company}",

@@ -4615,7 +4615,7 @@
                 "paidProtocols": "付费协议",
                 "health": "状态",
                 "columns": "列",
-                "searchPlaceholder": "搜索提供商、协议...",
+                "searchPlaceholder": "搜索提供商、公司、协议...",
                 "footerSummary": "{count} 个提供商 · 约 {gb} GB 免费",
                 "approximate": "近似值，请向提供商核实",
                 "connectHint": "连接到 {company}",

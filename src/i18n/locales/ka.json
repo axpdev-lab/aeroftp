@@ -4615,7 +4615,7 @@
                 "paidProtocols": "ფასიანი პროტოკოლები",
                 "health": "სტატუსი",
                 "columns": "სვეტები",
-                "searchPlaceholder": "მოძებნეთ პროვაიდერები, პროტოკოლები...",
+                "searchPlaceholder": "მომწოდებლების, კომპანიების, პროტოკოლების ძიება...",
                 "footerSummary": "{count} პროვაიდერი · ~{gb} GB უფასო",
                 "approximate": "სავარაუდო, გადაამოწმეთ პროვაიდერთან",
                 "connectHint": "დაკავშირება {company}-თან",

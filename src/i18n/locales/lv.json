@@ -4615,7 +4615,7 @@
                 "paidProtocols": "Maksas protokoli",
                 "health": "Statuss",
                 "columns": "Kolonnas",
-                "searchPlaceholder": "Meklēt pakalpojumu sniedzējus, protokolus...",
+                "searchPlaceholder": "Meklēt pakalpojumu sniedzējus, uzņēmumus, protokolus...",
                 "footerSummary": "{count} sniedzēji · ~{gb} GB bez maksas",
                 "approximate": "aptuvens, pārbaudiet pie pakalpojumu sniedzēja",
                 "connectHint": "Savienoties ar {company}",

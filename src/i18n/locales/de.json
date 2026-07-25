@@ -4615,7 +4615,7 @@
                 "paidProtocols": "Kostenpflichtige Protokolle",
                 "health": "Status",
                 "columns": "Spalten",
-                "searchPlaceholder": "Anbieter, Protokolle suchen...",
+                "searchPlaceholder": "Anbieter, Unternehmen, Protokolle suchen...",
                 "footerSummary": "{count} Anbieter · ~{gb} GB kostenlos",
                 "approximate": "ungefähr, beim Anbieter prüfen",
                 "connectHint": "Mit {company} verbinden",

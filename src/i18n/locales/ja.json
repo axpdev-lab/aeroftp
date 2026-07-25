@@ -4615,7 +4615,7 @@
                 "paidProtocols": "有料プロトコル",
                 "health": "ステータス",
                 "columns": "列",
-                "searchPlaceholder": "プロバイダー、プロトコルを検索...",
+                "searchPlaceholder": "プロバイダー、企業、プロトコルを検索...",
                 "footerSummary": "{count} 件のプロバイダー · 約 {gb} GB 無料",
                 "approximate": "概算です。プロバイダーで確認してください",
                 "connectHint": "{company} に接続",
@@ -4624,7 +4624,7 @@
                 "customSftp": "SFTP",
                 "customS3": "S3",
                 "customWebdav": "WebDAV",
-                "parentCompany": "会社"
+                "parentCompany": "親会社"
             },
             "healthCheck": "ヘルスチェック",
             "storageVersioning": "ファイルのバージョン: {size}",

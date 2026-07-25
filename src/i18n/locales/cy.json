@@ -4634,7 +4634,7 @@
                 "paidProtocols": "Protocolau taledig",
                 "health": "Statws",
                 "columns": "Colofnau",
-                "searchPlaceholder": "Chwilio darparwyr, protocolau...",
+                "searchPlaceholder": "Chwilio darparwyr, cwmnïau, protocolau...",
                 "footerSummary": "{count} darparwr · ~{gb} GB am ddim",
                 "approximate": "bras, gwiriwch gyda'r darparwr",
                 "connectHint": "Cysylltu â {company}",

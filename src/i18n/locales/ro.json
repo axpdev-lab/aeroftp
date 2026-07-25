@@ -4615,7 +4615,7 @@
                 "paidProtocols": "Protocoale cu plată",
                 "health": "Stare",
                 "columns": "Coloane",
-                "searchPlaceholder": "Caută furnizori, protocoale...",
+                "searchPlaceholder": "Caută furnizori, companii, protocoale...",
                 "footerSummary": "{count} furnizori · ~{gb} GB gratuit",
                 "approximate": "aproximativ, verifică la furnizor",
                 "connectHint": "Conectează-te la {company}",

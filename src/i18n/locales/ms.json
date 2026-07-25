@@ -4615,7 +4615,7 @@
                 "paidProtocols": "Protokol berbayar",
                 "health": "Status",
                 "columns": "Lajur",
-                "searchPlaceholder": "Cari penyedia, protokol...",
+                "searchPlaceholder": "Cari penyedia, syarikat, protokol...",
                 "footerSummary": "{count} penyedia · ~{gb} GB percuma",
                 "approximate": "anggaran, sahkan dengan penyedia",
                 "connectHint": "Sambung ke {company}",
@@ -4624,7 +4624,7 @@
                 "customSftp": "SFTP",
                 "customS3": "S3",
                 "customWebdav": "WebDAV",
-                "parentCompany": "Syarikat"
+                "parentCompany": "Syarikat induk"
             },
             "healthCheck": "Pemeriksaan kesihatan",
             "storageVersioning": "Versi fail: {size}",

@@ -4615,7 +4615,7 @@
                 "paidProtocols": "Platené protokoly",
                 "health": "Stav",
                 "columns": "Stĺpce",
-                "searchPlaceholder": "Hľadať poskytovateľov, protokoly...",
+                "searchPlaceholder": "Hľadať poskytovateľov, spoločnosti, protokoly...",
                 "footerSummary": "{count} poskytovateľov · ~{gb} GB zadarmo",
                 "approximate": "približné, overte u poskytovateľa",
                 "connectHint": "Pripojiť k {company}",

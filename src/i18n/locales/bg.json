@@ -4615,7 +4615,7 @@
                 "paidProtocols": "Платени протоколи",
                 "health": "Състояние",
                 "columns": "Колони",
-                "searchPlaceholder": "Търсене на доставчици, протоколи...",
+                "searchPlaceholder": "Търсене на доставчици, компании, протоколи...",
                 "footerSummary": "{count} доставчици · ~{gb} GB безплатно",
                 "approximate": "приблизително, проверете при доставчика",
                 "connectHint": "Свържи се с {company}",

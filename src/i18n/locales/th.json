@@ -4615,7 +4615,7 @@
                 "paidProtocols": "โปรโตคอลแบบเสียค่าใช้จ่าย",
                 "health": "สถานะ",
                 "columns": "คอลัมน์",
-                "searchPlaceholder": "ค้นหาผู้ให้บริการ โปรโตคอล...",
+                "searchPlaceholder": "ค้นหาผู้ให้บริการ บริษัท โปรโตคอล...",
                 "footerSummary": "{count} ผู้ให้บริการ · ~{gb} GB ฟรี",
                 "approximate": "โดยประมาณ โปรดยืนยันกับผู้ให้บริการ",
                 "connectHint": "เชื่อมต่อกับ {company}",

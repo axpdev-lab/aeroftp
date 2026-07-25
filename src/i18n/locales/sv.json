@@ -4615,7 +4615,7 @@
                 "paidProtocols": "Betalda protokoll",
                 "health": "Status",
                 "columns": "Kolumner",
-                "searchPlaceholder": "Sök leverantörer, protokoll...",
+                "searchPlaceholder": "Sök leverantörer, företag, protokoll...",
                 "footerSummary": "{count} leverantörer · ~{gb} GB gratis",
                 "approximate": "ungefärligt, kontrollera med leverantören",
                 "connectHint": "Anslut till {company}",
