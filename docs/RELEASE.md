@@ -16,16 +16,19 @@ That's it! GitHub Actions handles everything else automatically.
 
 ## Pre-Release Checklist (10 files)
 
-### Version Files (6 files - MUST be identical)
+### Version Files (7 files - MUST be identical)
 
 | # | File | Field | Notes |
 |---|------|-------|-------|
 | 1 | `package.json` | `"version": "X.Y.Z"` | Line ~4 |
-| 2 | `src-tauri/tauri.conf.json` | `"version": "X.Y.Z"` | Line ~4 |
-| 3 | `src-tauri/Cargo.toml` | `version = "X.Y.Z"` | Line ~3 |
-| 4 | `src-tauri/Cargo.lock` | `name = "aeroftp"` package `version` | Re-locks on `cargo build`; commit it |
-| 5 | `snap/snapcraft.yaml` | `version: 'X.Y.Z'` | Path is `snap/`, NOT root |
-| 6 | `public/splash.html` | Hardcoded in `.version` div | Tauri IPC not available in splash |
+| 2 | `package-lock.json` | `version` at the root **and** in `packages[""]` | **Two places.** `npm ci` hard-fails on a lock that disagrees with `package.json`, and CI runs `npm ci` - so missing this goes green locally and red *after* the tag. Regenerate with the same npm CI uses: `npx npm@10.8.2 install --package-lock-only` |
+| 3 | `src-tauri/tauri.conf.json` | `"version": "X.Y.Z"` | Line ~4 |
+| 4 | `src-tauri/Cargo.toml` | `version = "X.Y.Z"` | Line ~3 |
+| 5 | `src-tauri/Cargo.lock` | `name = "aeroftp"` package `version` | Re-locks on `cargo build`; commit it |
+| 6 | `snap/snapcraft.yaml` | `version: 'X.Y.Z'` | Path is `snap/`, NOT root |
+| 7 | `public/splash.html` | Hardcoded in `.version` div | Tauri IPC not available in splash |
+
+> All seven are enforced by the **R10 check** in `.github/scripts/pre-push-gate.sh`, which fails the gate on any divergence. Bump them in one block rather than one at a time.
 
 > **AUR is maintained in a separate repository**, not the in-repo `aur/` folder (that copy is stale and no longer the source of truth). The AUR `PKGBUILD` / `.SRCINFO` are bumped and pushed from that separate checkout after CI publishes the `.deb` (see Post-CI: AUR Update). Do not treat the in-repo `aur/` files as a release gate.
 
@@ -223,6 +226,7 @@ yay -Si aeroftp-bin   # Check version on AUR
 - **v2.1.0**: `snap/snapcraft.yaml` forgotten at `2.0.11` (path confusion with root)
 - **v2.2.3**: `public/splash.html` hardcoded version missed (Tauri IPC unavailable in splash)
 - **v2.6.10**: `aur/.SRCINFO` not updated alongside PKGBUILD
+- **v4.1.6 (caught pre-tag)**: `package-lock.json` was absent from this checklist and from the R10 gate, so the bump left it at the previous version. The local gate never runs `npm ci`, so it stayed green; CI would have failed on `npm ci` only after the tag was pushed. Both the checklist and R10 now cover it, along with `Cargo.lock` and `public/splash.html`
 
 ---
 

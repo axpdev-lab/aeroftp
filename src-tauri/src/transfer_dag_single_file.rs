@@ -2400,8 +2400,20 @@ mod tests {
 
         let token = CancellationToken::new();
         let canceller = token.clone();
+        // Cancel on the observable precondition - a part is on the wire - not on
+        // a wall-clock guess. Time-to-first-`upload_part` has no lower bound, so
+        // a loaded runner can consume a fixed delay before the DAG ever reaches
+        // it, cancelling too early and failing the in-flight assertion below for
+        // scheduling reasons rather than a real regression. The mock holds each
+        // part for 200ms after it counts it, which is the window this lands in.
+        let started_probe = Arc::clone(&part_started);
         tokio::spawn(async move {
-            tokio::time::sleep(std::time::Duration::from_millis(40)).await;
+            for _ in 0..2_000 {
+                if started_probe.load(Ordering::SeqCst) >= 1 {
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+            }
             canceller.cancel();
         });
 

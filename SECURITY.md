@@ -182,6 +182,9 @@ These are verified compliance checks, not formal certifications.
 | [CVE-2025-54804](https://github.com/axpdev-lab/aeroftp/security/dependabot/3) | Medium | **Resolved** | russh SFTP, fixed by upgrade to v0.57 |
 | [GHSA-wwx6-x28x-8259](https://github.com/advisories/GHSA-wwx6-x28x-8259) | High | **Resolved** | russh, resolved by upgrade to 0.61.2 (v4.0.5) |
 | [GHSA-hpv4-5h6f-wqr3](https://github.com/advisories/GHSA-hpv4-5h6f-wqr3) | Medium | **Resolved** | russh, resolved by upgrade to 0.61.2 (v4.0.5) |
+| [GHSA-g9hv-x236-4qp3](https://github.com/advisories/GHSA-g9hv-x236-4qp3) | Medium | **Open, blocked upstream** | russh client X25519 wrong-length panic (availability only). Fixed in russh 0.62.4, which requires `ed25519-dalek ^3` against the `=3.0.0-rc.0` pin held by `n0-mainline` in the iroh P2P graph. See [evidence](docs/security-evidence/RUSSH-DEPENDABOT-ADVISORIES-2026-07.md) |
+| [GHSA-5xvq-cp9x-6p6r](https://github.com/advisories/GHSA-5xvq-cp9x-6p6r) | Medium | **Open, blocked upstream** | russh all-zero Curve25519 `encode_mpint` panic (availability only). Same 0.62.4 blocker |
+| [GHSA-cqjc-rmpq-xprq](https://github.com/advisories/GHSA-cqjc-rmpq-xprq) | Medium | **Open, not reachable** | russh server-side `pty-req` panic. AeroFTP is an SSH client only and runs no server |
 
 ## Reporting a Vulnerability
 
@@ -193,4 +196,4 @@ For the full disclosure policy, bug bounty scope, and Security Hall of Fame, see
 
 ---
 
-*AeroFTP v4.0.x*
+*AeroFTP v4.1.x*
