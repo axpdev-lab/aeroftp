@@ -537,6 +537,15 @@ jobs:
           body: ${{ steps.changelog.outputs.notes }}
           draft: false
           prerelease: false
+          # Published release assets are immutable. The action defaults to overwriting,
+          # so re-running a tag build silently replaced every asset with a fresh,
+          # non-reproducible build - which is how the winget 3.3.5 manifest ended up
+          # pinning digests that no longer existed (microsoft/winget-pkgs#407672).
+          # With false the action skips assets that are already there and only uploads
+          # the missing ones, so a re-run repairs a partial release instead of
+          # invalidating a complete one. Replacing an asset is now a deliberate manual
+          # delete, not a side effect.
+          overwrite_files: false
           files: |
             src-tauri/target/release/bundle/deb/*.deb
             src-tauri/target/release/bundle/deb/*.deb.sigstore.json
@@ -552,6 +561,8 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/') && matrix.target == 'windows'
         uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
         with:
+          # See the Linux upload step: published assets are immutable.
+          overwrite_files: false
           files: |
             src-tauri/target/release/bundle/msi/*.msi
             src-tauri/target/release/bundle/msi/*.msi.sigstore.json
@@ -566,6 +577,8 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/') && matrix.target == 'macos'
         uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
         with:
+          # See the Linux upload step: published assets are immutable.
+          overwrite_files: false
           files: |
             src-tauri/target/release/bundle/dmg/*.dmg
             src-tauri/target/release/bundle/dmg/*.dmg.sigstore.json
@@ -737,6 +750,8 @@ jobs:
           name: 'AeroFTP ${{ github.ref_name }}'
           draft: false
           prerelease: false
+          # See the Linux upload step: published assets are immutable.
+          overwrite_files: false
           files: |
             ${{ steps.snap-check.outputs.snap }}
             ${{ steps.snap-check.outputs.snap }}.sigstore.json
