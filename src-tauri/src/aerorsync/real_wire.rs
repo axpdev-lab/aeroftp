@@ -164,6 +164,38 @@ pub enum RealWireError {
     ZstdDecompressionFailed {
         reason: String,
     },
+    /// The xattr blob opened with a non-zero `write_varint(ndx + 1)`,
+    /// i.e. the abbreviated "same list as a previously sent entry" form
+    /// (`xattrs.c::send_xattr`). Resolving it needs the per-session list
+    /// table that only a multi-entry file-list builds; in the current
+    /// single-file scope stock rsync never emits it. Rejected rather than
+    /// mis-parsed, since the following bytes are an index and not a list.
+    XattrAbbrevUnsupported {
+        reference: i64,
+    },
+    /// A peer-declared xattr length (`count`, `name_len` or `datum_len`)
+    /// is negative, zero where the wire forbids it, or larger than the
+    /// bytes actually left in the buffer. `field` names which one.
+    InvalidXattrField {
+        field: &'static str,
+        declared: i64,
+        available: usize,
+    },
+    /// An xattr name did not end with the NUL byte that rsync's
+    /// `name_len` counts. Mirrors the `name[name_len-1] != '\0'` guard in
+    /// `xattrs.c::recv_xattr`: without it a crafted blob could smuggle a
+    /// name whose length disagrees with its content.
+    XattrNameNotNulTerminated {
+        name_len: usize,
+    },
+    /// The peer declared an xattr value above `MAX_FULL_DATUM`, which on
+    /// the wire means "16-byte digest here, datum out of band". That is
+    /// task X.2b: refuse it explicitly instead of decoding the digest as
+    /// if it were the value.
+    XattrDatumAboveInlineLimit {
+        datum_len: usize,
+        limit: usize,
+    },
 }
 
 impl fmt::Display for RealWireError {
@@ -264,6 +296,37 @@ impl fmt::Display for RealWireError {
             }
             RealWireError::ZstdDecompressionFailed { reason } => {
                 write!(f, "zstd decompression failed: {reason}")
+            }
+            RealWireError::XattrAbbrevUnsupported { reference } => {
+                write!(
+                    f,
+                    "xattr blob uses the abbreviated back-reference form (list index {}), \
+                     which the single-file codec does not resolve",
+                    reference - 1
+                )
+            }
+            RealWireError::InvalidXattrField {
+                field,
+                declared,
+                available,
+            } => {
+                write!(
+                    f,
+                    "invalid xattr {field}: declared {declared}, {available} byte(s) available"
+                )
+            }
+            RealWireError::XattrNameNotNulTerminated { name_len } => {
+                write!(
+                    f,
+                    "xattr name of declared length {name_len} is not NUL-terminated"
+                )
+            }
+            RealWireError::XattrDatumAboveInlineLimit { datum_len, limit } => {
+                write!(
+                    f,
+                    "xattr value of {datum_len} bytes exceeds the inline limit of {limit}: \
+                     the wire carries a digest plus an out-of-band datum (task X.2b)"
+                )
             }
         }
     }
@@ -1209,6 +1272,16 @@ pub struct FileListDecodeOptions<'a> {
     /// `-g` / `--group` equivalent: gid field is present when
     /// `XMIT_SAME_GID` is not set.
     pub preserve_gid: bool,
+    /// `-X` / `--xattrs` was negotiated, so every entry carries a
+    /// trailing xattr blob — including entries whose file has no
+    /// extended attribute at all, where the blob is still `00 00`
+    /// (measured, `04-xattr-wire-evidence.md` §4.1). The blob's presence
+    /// is keyed on this option alone and never on the entry contents,
+    /// because the wire is not self-describing here.
+    ///
+    /// Off by default: the frozen oracles were captured without `-X`, and
+    /// leaving it off is what keeps their byte-pinned path unchanged.
+    pub preserve_xattrs: bool,
     /// Last file's name, used when `XMIT_SAME_NAME` with `l1 > 0` asks
     /// us to reuse its prefix.
     pub previous_name: Option<&'a str>,
@@ -1226,6 +1299,7 @@ impl<'a> FileListDecodeOptions<'a> {
             csum_len: 16,
             preserve_uid: true,
             preserve_gid: true,
+            preserve_xattrs: false,
             previous_name: None,
         }
     }
@@ -1233,6 +1307,18 @@ impl<'a> FileListDecodeOptions<'a> {
 
 /// What `decode_file_list_entry` yielded. The caller then either
 /// appends the entry to its working file-list or finalises the list.
+///
+/// The `Entry` variant is far larger than `EndOfList` — X.2a pushed
+/// `FileListEntry` past clippy's 200-byte threshold — but boxing it would
+/// be a pessimisation here, not a fix. This enum is only ever built as an
+/// immediate return value and matched on the spot: every construction
+/// site is a `return Ok((…, cursor))` and every consumer destructures it
+/// straight away, moving the `FileListEntry` into the caller's file-list.
+/// It is never held in a collection, which is the case the lint exists
+/// for. Boxing would add a heap allocation and a free per decoded entry
+/// on the file-list path — precisely the path the recursive tree sync
+/// (Y-RSC.7) will make hot — to save memory that is never actually held.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FileListDecodeOutcome {
     Entry(FileListEntry),
@@ -1241,6 +1327,33 @@ pub enum FileListDecodeOutcome {
         /// 31+ with `CF_VARINT_FLIST_FLAGS`. Zero for the happy path.
         io_error: i32,
     },
+}
+
+/// rsync's `MAX_FULL_DATUM` (`xattrs.c`): an xattr value of at most this
+/// many bytes travels inline inside the file-list entry. A strictly
+/// larger value is replaced in the entry by a 16-byte digest and shipped
+/// out of band in a later section, with `datum_len` still carrying the
+/// real length.
+///
+/// Measured at the byte against rsync 3.2.7 (32 inline, 33 out of band):
+/// `docs/dev/roadmap/APPENDIX-AERORSYNC/04-xattr-wire-evidence.md` §4.5.
+/// The out-of-band form is task X.2b and is deliberately NOT implemented
+/// here: this codec refuses it loudly at both ends rather than emitting
+/// or accepting a shape that diverges from stock rsync.
+pub const MAX_FULL_DATUM: usize = 32;
+
+/// One extended attribute carried by a file-list entry.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct XattrPair {
+    /// Attribute name including its namespace prefix (`user.foo`) but
+    /// WITHOUT the trailing NUL. The NUL is a wire artifact that the
+    /// codec appends on encode and strips on decode; rsync's `name_len`
+    /// counts it, so on the wire `name_len == name.len() + 1`.
+    pub name: String,
+    /// Raw attribute value. Not NUL-terminated and not necessarily text:
+    /// `datum_len` is authoritative and embedded NUL bytes pass through
+    /// intact (measured, `04-xattr-wire-evidence.md` §4.3).
+    pub value: Vec<u8>,
 }
 
 /// Decoded file-list entry (regular file, protocol ≥ 31 path). Device /
@@ -1272,6 +1385,25 @@ pub struct FileListEntry {
     /// uid/gid block and before the trailing checksum (mirrors
     /// `flist.c::send_file_entry`'s `S_ISLNK` branch).
     pub symlink_target: Option<String>,
+    /// Extended attributes, present iff `-X` was negotiated for the
+    /// session (`FileListDecodeOptions::preserve_xattrs`). Three states,
+    /// all measured on rsync 3.2.7 (`04-xattr-wire-evidence.md` §4.1):
+    ///
+    /// | State | Wire | Here |
+    /// |---|---|---|
+    /// | `-X` not negotiated | zero bytes | `None` |
+    /// | `-X` negotiated, file has no xattr | `00 00` | `Some(vec![])` |
+    /// | `-X` negotiated, file has xattrs | `00 <count> …` | `Some(vec![..])` |
+    ///
+    /// `Some(vec![])` is NOT the same as `None`: with `-X` active the
+    /// blob is mandatory on the wire, so the encoder still emits its two
+    /// bytes. Conflating the two would desynchronise the stream.
+    ///
+    /// Unlike `symlink_target` this is not gated on `mode`: rsync sends
+    /// the blob for symlink entries too (`flist.c::send_file_entry` gates
+    /// it on `preserve_xattrs` alone, with no `S_ISLNK` exclusion — that
+    /// exclusion applies to ACLs, not xattrs).
+    pub xattrs: Option<Vec<XattrPair>>,
 }
 
 /// POSIX `S_IFMT` mask and `S_IFLNK` value. Used to gate symlink wire
@@ -1346,6 +1478,141 @@ fn decode_flist_flags(
             Ok((lo, 1))
         }
     }
+}
+
+/// Decode the trailing xattr blob of a file-list entry. Returns the
+/// decoded pairs and the number of bytes consumed.
+///
+/// Wire shape, measured on rsync 3.2.7 and mirroring
+/// `xattrs.c::send_xattr`:
+///
+/// ```text
+/// marker(varint)  count(varint)
+/// per xattr: name_len(varint) datum_len(varint) name+NUL datum
+/// ```
+///
+/// The per-xattr records are concatenated with no separator; `count` in
+/// the header is what says where the blob ends
+/// (`04-xattr-wire-evidence.md` §4.2). Both lengths come first, then both
+/// payloads — not name_len/name/datum_len/datum.
+///
+/// **Fail-closed.** Every length here is peer-supplied. Negative values,
+/// a zero `name_len`, a name missing its NUL, and values above
+/// [`MAX_FULL_DATUM`] all produce a typed error. None of them may panic:
+/// the precedent is `negative_symlink_target_len_errors_not_panics` and,
+/// before it, audit S1 on peer-supplied symlink targets.
+///
+/// **Truncation is reported as [`RealWireError::TruncatedBuffer`]**, and
+/// that choice is load-bearing rather than cosmetic. The file list is
+/// decoded from a streaming buffer that is refilled one `MSG_DATA` frame
+/// at a time, and `receive_file_list_single_file` treats exactly three
+/// error shapes as "pull another frame and retry" — `TruncatedBuffer`,
+/// `InvalidNameLen`, `InvalidAlgoListLen` — while everything else aborts
+/// the transfer. A blob that straddles a frame boundary is normal, so it
+/// must land in the recoverable set; a structurally impossible length is
+/// not, so it must not.
+fn decode_xattr_blob(buf: &[u8]) -> Result<(Vec<XattrPair>, usize), RealWireError> {
+    let mut cursor = 0usize;
+
+    // `send_xattr` opens with `write_varint(ndx + 1)`: `ndx` is the index
+    // of an identical xattr list already sent, or -1 when the list is
+    // new, so a fresh list writes 0. A non-zero value selects the
+    // abbreviated form, whose payload is an index rather than a list.
+    let (marker, consumed) = decode_varint(&buf[cursor..])?;
+    cursor += consumed;
+    if marker != 0 {
+        return Err(RealWireError::XattrAbbrevUnsupported { reference: marker });
+    }
+
+    let (count, consumed) = decode_varint(&buf[cursor..])?;
+    cursor += consumed;
+    if count < 0 {
+        return Err(RealWireError::InvalidXattrField {
+            field: "count",
+            declared: count,
+            available: buf.len().saturating_sub(cursor),
+        });
+    }
+
+    // Deliberately no `Vec::with_capacity(count)`: `count` is peer-supplied
+    // and a bogus large value would reserve memory before a single one of
+    // its bytes has been validated. Growing on push costs nothing at the
+    // handful of xattrs a real file carries.
+    let mut pairs: Vec<XattrPair> = Vec::new();
+
+    for _ in 0..count {
+        let (name_len, consumed) = decode_varint(&buf[cursor..])?;
+        cursor += consumed;
+        let (datum_len, consumed) = decode_varint(&buf[cursor..])?;
+        cursor += consumed;
+        let available = buf.len().saturating_sub(cursor);
+
+        // `name_len` counts the trailing NUL, so the shortest well-formed
+        // name field is 1 byte (an empty name plus its NUL).
+        if name_len < 1 {
+            return Err(RealWireError::InvalidXattrField {
+                field: "name_len",
+                declared: name_len,
+                available,
+            });
+        }
+        if datum_len < 0 {
+            return Err(RealWireError::InvalidXattrField {
+                field: "datum_len",
+                declared: datum_len,
+                available,
+            });
+        }
+        // Above the threshold the entry does NOT carry the value: it
+        // carries a 16-byte digest and the datum follows out of band.
+        // Decoding those 16 bytes as if they were the value would hand
+        // the caller a silently wrong attribute, so refuse instead.
+        if datum_len as usize > MAX_FULL_DATUM {
+            return Err(RealWireError::XattrDatumAboveInlineLimit {
+                datum_len: datum_len as usize,
+                limit: MAX_FULL_DATUM,
+            });
+        }
+
+        let name_len = name_len as usize;
+        let datum_len = datum_len as usize;
+        // Checked add: on a 32-bit target two large-but-legal varints
+        // could otherwise wrap and pass the bounds test below.
+        let need = name_len
+            .checked_add(datum_len)
+            .ok_or(RealWireError::InvalidXattrField {
+                field: "name_len+datum_len",
+                declared: i64::MAX,
+                available,
+            })?;
+        // Not enough bytes for a name+datum whose declared lengths are
+        // themselves well-formed: on a streaming file-list that is a
+        // frame boundary, not an attack. Reporting it as a truncation
+        // puts it in the driver's recoverable set, where the whole blob
+        // is retried once the next `MSG_DATA` frame has landed.
+        if need > available {
+            return Err(RealWireError::TruncatedBuffer {
+                at: "flist_xattr_payload",
+                needed: need,
+                available,
+            });
+        }
+
+        // The NUL is a wire artifact: validate it, then keep it out of the
+        // Rust-side name so `name.len() + 1` reconstructs `name_len`.
+        if buf[cursor + name_len - 1] != 0 {
+            return Err(RealWireError::XattrNameNotNulTerminated { name_len });
+        }
+        let name = read_utf8_slice(buf, cursor, name_len - 1)?;
+        cursor += name_len;
+
+        let value = buf[cursor..cursor + datum_len].to_vec();
+        cursor += datum_len;
+
+        pairs.push(XattrPair { name, value });
+    }
+
+    Ok((pairs, cursor))
 }
 
 /// Decode a single file-list entry, or signal end-of-list if the entry
@@ -1608,6 +1875,31 @@ pub fn decode_file_list_entry(
         Vec::new()
     };
 
+    // --- 10. Xattr blob (`-X` negotiated) ---------------------------------
+    // Last field of the entry, sitting AFTER the checksum: measured on the
+    // wire (`04-xattr-wire-evidence.md` §2) and matching
+    // `flist.c::send_file_entry`, which calls `send_xattr` at the very end
+    // of the entry. Gated on the option alone, never on `mode` or on the
+    // entry contents: with `-X` active even a file with no extended
+    // attribute carries the two-byte empty-list blob, and a file-list
+    // decoder that skipped it would swallow the list terminator and
+    // desynchronise the stream.
+    //
+    // With `-X` off this branch consumes nothing, so every byte-pinned
+    // capture decodes exactly as it did before this codec existed.
+    //
+    // Note on ACLs: `-A` would insert its own blob between the checksum
+    // and this one (`send_acl` runs first, and skips symlinks). We never
+    // negotiate `-A`, so the two are adjacent here; whoever adds ACL
+    // support must slot it in before this block, not after.
+    let xattrs = if options.preserve_xattrs {
+        let (pairs, consumed) = decode_xattr_blob(&buf[cursor..])?;
+        cursor += consumed;
+        Some(pairs)
+    } else {
+        None
+    };
+
     Ok((
         FileListDecodeOutcome::Entry(FileListEntry {
             flags,
@@ -1622,6 +1914,7 @@ pub fn decode_file_list_entry(
             gid_name,
             checksum,
             symlink_target,
+            xattrs,
         }),
         cursor,
     ))
@@ -1666,6 +1959,41 @@ fn compute_flist_name_split<'a>(
         l1 += 1;
     }
     (l1, &entry_bytes[l1..])
+}
+
+/// Encode the trailing xattr blob. Exact mirror of [`decode_xattr_blob`],
+/// so a round trip is byte-stable.
+///
+/// **Caller contract**: every value must be at most [`MAX_FULL_DATUM`]
+/// bytes. Above that, stock rsync puts a 16-byte digest in the entry and
+/// ships the datum out of band; emitting the value inline instead would
+/// produce a wire that no stock rsync can read. That is task X.2b, and
+/// until it lands this asserts rather than silently diverging — the same
+/// stance `encode_file_list_entry` already takes on a checksum whose
+/// length disagrees with `csum_len`.
+fn encode_xattr_blob(pairs: &[XattrPair], out: &mut Vec<u8>) {
+    // `write_varint(ndx + 1)` with `ndx == -1`: this codec always sends
+    // the full list and never the abbreviated back-reference, which needs
+    // a multi-entry file-list to be meaningful.
+    out.extend_from_slice(&encode_varint(0));
+    out.extend_from_slice(&encode_varint(pairs.len() as i32));
+    for pair in pairs {
+        assert!(
+            pair.value.len() <= MAX_FULL_DATUM,
+            "xattr {:?} carries a {}-byte value, above MAX_FULL_DATUM ({}): stock rsync \
+             would send a 16-byte digest plus an out-of-band datum, which is task X.2b",
+            pair.name,
+            pair.value.len(),
+            MAX_FULL_DATUM
+        );
+        // `name_len` counts the trailing NUL that rsync writes with the
+        // name; `XattrPair::name` deliberately does not store it.
+        out.extend_from_slice(&encode_varint(pair.name.len() as i32 + 1));
+        out.extend_from_slice(&encode_varint(pair.value.len() as i32));
+        out.extend_from_slice(pair.name.as_bytes());
+        out.push(0);
+        out.extend_from_slice(&pair.value);
+    }
 }
 
 /// Encode a `FileListEntry` using the same option set the decoder
@@ -1791,6 +2119,27 @@ pub fn encode_file_list_entry(entry: &FileListEntry, options: &FileListDecodeOpt
             options.csum_len
         );
         out.extend_from_slice(&entry.checksum);
+    }
+
+    // --- 10. Xattr blob (`-X` negotiated) ---------------------------------
+    // Mirror of the decoder: last field, after the checksum, keyed on the
+    // option alone. `None` under an xattr session means "this file has no
+    // extended attribute", which is still two bytes on the wire (`00 00`),
+    // because with `-X` active rsync makes the blob mandatory. Decoding
+    // that back therefore yields `Some(vec![])`, not `None`.
+    if options.preserve_xattrs {
+        encode_xattr_blob(entry.xattrs.as_deref().unwrap_or(&[]), &mut out);
+    } else {
+        // Emitting the blob would desynchronise a peer that never
+        // negotiated `-X`; dropping it quietly would lose metadata the
+        // caller explicitly attached. Both are wrong, so the mismatch is
+        // a caller bug and says so.
+        assert!(
+            entry.xattrs.is_none(),
+            "entry {:?} carries {} xattr(s) but the session did not negotiate -X",
+            entry.path,
+            entry.xattrs.as_ref().map_or(0, Vec::len)
+        );
     }
 
     out
@@ -4083,6 +4432,7 @@ mod tests {
             preserve_uid: false,
             preserve_gid: false,
             previous_name: None,
+            preserve_xattrs: false,
         };
         let (outcome, consumed) = decode_file_list_entry(&buf, &opts).unwrap();
         assert_eq!(consumed, buf.len());
@@ -4122,6 +4472,7 @@ mod tests {
             preserve_uid: false,
             preserve_gid: false,
             previous_name: None,
+            preserve_xattrs: false,
         };
         let (outcome, _) = decode_file_list_entry(&buf, &opts).unwrap();
         let entry = match outcome {
@@ -4170,6 +4521,7 @@ mod tests {
             preserve_uid: true,
             preserve_gid: true,
             previous_name: Some("/tmp"),
+            preserve_xattrs: false,
         };
         let (outcome, _consumed) = decode_file_list_entry(&buf, &opts).unwrap();
         let entry = match outcome {
@@ -5272,6 +5624,17 @@ mod tests {
                     decoded.symlink_target, entry.symlink_target,
                     "symlink_target drift"
                 );
+                // With `-X` off the field is absent at both ends. With
+                // `-X` on the blob is mandatory, so an entry that carried
+                // `None` comes back as the empty list: that is the
+                // encoder normalising "no xattr on this file" to the two
+                // bytes rsync requires, not a round-trip failure.
+                let expected_xattrs = if opts.preserve_xattrs {
+                    Some(entry.xattrs.clone().unwrap_or_default())
+                } else {
+                    None
+                };
+                assert_eq!(decoded.xattrs, expected_xattrs, "xattrs drift");
             }
             other => panic!("expected Entry, got {other:?}"),
         }
@@ -5293,6 +5656,7 @@ mod tests {
             gid_name: Some("axpnet".to_string()),
             checksum: vec![0xAB; 16],
             symlink_target: None,
+            xattrs: None,
         }
     }
 
@@ -5333,6 +5697,7 @@ mod tests {
             gid_name: Some("axpnet".to_string()),
             checksum: vec![],
             symlink_target: Some(target),
+            xattrs: None,
         };
         let opts = frozen_oracle_options_for_test(None);
         assert_flist_entry_round_trip(entry, &opts);
@@ -5361,6 +5726,7 @@ mod tests {
             gid_name: None,
             checksum: vec![],
             symlink_target: Some(target.clone()),
+            xattrs: None,
         };
         let opts = frozen_oracle_options_for_test(None);
         assert_eq!(opts.csum_len, 16, "pin assumes the production csum_len");
@@ -5453,6 +5819,7 @@ mod tests {
             gid_name: None,
             checksum: vec![],
             symlink_target: Some(String::new()),
+            xattrs: None,
         };
         let mut opts = frozen_oracle_options_for_test(None);
         opts.always_checksum = false;
@@ -5481,6 +5848,7 @@ mod tests {
             gid_name: None,
             checksum: vec![],
             symlink_target: Some(String::new()),
+            xattrs: None,
         };
         let mut opts = frozen_oracle_options_for_test(None);
         opts.always_checksum = false;
@@ -5499,6 +5867,493 @@ mod tests {
             Err(RealWireError::InvalidNameLen { .. }) => {}
             other => panic!("expected InvalidNameLen error, got {other:?}"),
         }
+    }
+
+    // -------------------------------------------------------------------------
+    // X.2a — xattr blob, inline values (≤ MAX_FULL_DATUM).
+    //
+    // Every byte sequence asserted below was measured against rsync 3.2.7
+    // with `--only-write-batch` on 2026-07-25 and is written up in
+    // `docs/dev/roadmap/APPENDIX-AERORSYNC/04-xattr-wire-evidence.md`.
+    // These are pins on real captured bytes, not on our own encoder's
+    // opinion: an encoder that round-trips with its own decoder but
+    // disagrees with stock rsync would still pass a pure round-trip test
+    // and fail on the wire.
+    // -------------------------------------------------------------------------
+
+    /// Options for an entry sent under a negotiated `-X` session.
+    fn xattr_options_for_test<'a>(prev: Option<&'a str>) -> FileListDecodeOptions<'a> {
+        let mut opts = frozen_oracle_options_for_test(prev);
+        opts.preserve_xattrs = true;
+        opts
+    }
+
+    /// The blob alone, stripped from an entry encoded with the given
+    /// xattrs: encode once with `-X` off and once on, and return the tail
+    /// that only the second one carries.
+    fn encoded_xattr_blob(pairs: Vec<XattrPair>) -> Vec<u8> {
+        let mut without = baseline_entry();
+        without.xattrs = None;
+        let base = encode_file_list_entry(&without, &frozen_oracle_options_for_test(None));
+
+        let mut with = baseline_entry();
+        with.xattrs = Some(pairs);
+        let full = encode_file_list_entry(&with, &xattr_options_for_test(None));
+
+        assert!(
+            full.starts_with(&base),
+            "the xattr blob must be appended to an otherwise identical entry, \
+             not woven into it"
+        );
+        full[base.len()..].to_vec()
+    }
+
+    #[test]
+    fn xattr_blob_matches_measured_rsync_bytes() {
+        // `04-xattr-wire-evidence.md` §2: one xattr, `user.aeroftp.test`
+        // = `v1`, captured as 24 bytes.
+        //   00    marker: full list, not a back-reference
+        //   01    count = 1
+        //   12    name_len = 18 — 17 name bytes PLUS the trailing NUL
+        //   02    datum_len = 2
+        //   ...   "user.aeroftp.test\0"
+        //   ...   "v1", no terminator
+        let blob = encoded_xattr_blob(vec![XattrPair {
+            name: "user.aeroftp.test".to_string(),
+            value: b"v1".to_vec(),
+        }]);
+
+        let mut expected: Vec<u8> = vec![0x00, 0x01, 0x12, 0x02];
+        expected.extend_from_slice(b"user.aeroftp.test\0");
+        expected.extend_from_slice(b"v1");
+
+        assert_eq!(
+            blob, expected,
+            "blob diverges from the captured rsync bytes"
+        );
+        assert_eq!(blob.len(), 24, "the captured blob is 24 bytes");
+    }
+
+    #[test]
+    fn xattr_blob_with_no_attributes_is_exactly_two_zero_bytes() {
+        // §4.1: with `-X` active a file that has no extended attribute
+        // still carries `00 00` — marker plus a zero count. This is the
+        // measurement that forced three states instead of two: absence
+        // (`None`) and empty (`Some(vec![])`) are different on the wire.
+        assert_eq!(encoded_xattr_blob(vec![]), vec![0x00, 0x00]);
+
+        let mut entry = baseline_entry();
+        entry.xattrs = Some(vec![]);
+        let opts = xattr_options_for_test(None);
+        let bytes = encode_file_list_entry(&entry, &opts);
+        let (outcome, consumed) = decode_file_list_entry(&bytes, &opts).expect("decode");
+        assert_eq!(consumed, bytes.len(), "no residual bytes");
+        match outcome {
+            FileListDecodeOutcome::Entry(d) => assert_eq!(
+                d.xattrs,
+                Some(vec![]),
+                "an empty list must decode as Some(vec![]), never as None: \
+                 conflating them loses the fact that -X was negotiated"
+            ),
+            other => panic!("expected Entry, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn xattr_blob_adds_exactly_its_bytes_and_zero_when_not_negotiated() {
+        // Companion to `symlink_target_adds_exactly_varint_len_plus_bytes_over_regular`,
+        // and the invariant the whole task hangs on: with `-X` off the
+        // encoder must emit byte-for-byte what it emitted before this
+        // codec existed. Not "roughly the same", not "the same plus a
+        // zero byte": identical.
+        let opts_off = frozen_oracle_options_for_test(None);
+        let mut off = baseline_entry();
+        off.xattrs = None;
+        let off_bytes = encode_file_list_entry(&off, &opts_off);
+
+        let pair = XattrPair {
+            name: "user.aeroftp.test".to_string(),
+            value: b"v1".to_vec(),
+        };
+        let mut on = baseline_entry();
+        on.xattrs = Some(vec![pair]);
+        let on_bytes = encode_file_list_entry(&on, &xattr_options_for_test(None));
+
+        assert_eq!(
+            on_bytes.len(),
+            off_bytes.len() + 24,
+            "the measured blob is 24 bytes and must be added whole"
+        );
+        assert_eq!(
+            &on_bytes[..off_bytes.len()],
+            &off_bytes[..],
+            "the bytes before the blob must be untouched"
+        );
+
+        // And the un-negotiated entry decodes back with no xattr field at
+        // all, so nothing downstream can mistake absence for emptiness.
+        let (outcome, consumed) = decode_file_list_entry(&off_bytes, &opts_off).expect("decode");
+        assert_eq!(consumed, off_bytes.len());
+        match outcome {
+            FileListDecodeOutcome::Entry(d) => assert!(d.xattrs.is_none()),
+            other => panic!("expected Entry, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn multiple_xattrs_concatenate_with_no_separator() {
+        // §4.2, measured: `00 03 | 07 02 user.a\0 v1 | 08 03 user.bb\0 v22
+        // | 09 04 user.ccc\0 v333`. The count in the header is the only
+        // thing that says where the blob ends — there is no separator and
+        // no terminator to resynchronise on.
+        let pairs = vec![
+            XattrPair {
+                name: "user.a".to_string(),
+                value: b"v1".to_vec(),
+            },
+            XattrPair {
+                name: "user.bb".to_string(),
+                value: b"v22".to_vec(),
+            },
+            XattrPair {
+                name: "user.ccc".to_string(),
+                value: b"v333".to_vec(),
+            },
+        ];
+        let mut expected: Vec<u8> = vec![0x00, 0x03, 0x07, 0x02];
+        expected.extend_from_slice(b"user.a\0v1");
+        expected.extend_from_slice(&[0x08, 0x03]);
+        expected.extend_from_slice(b"user.bb\0v22");
+        expected.extend_from_slice(&[0x09, 0x04]);
+        expected.extend_from_slice(b"user.ccc\0v333");
+
+        assert_eq!(encoded_xattr_blob(pairs.clone()), expected);
+
+        let mut entry = baseline_entry();
+        entry.xattrs = Some(pairs);
+        assert_flist_entry_round_trip(entry, &xattr_options_for_test(None));
+    }
+
+    #[test]
+    fn binary_xattr_value_with_embedded_nul_survives_intact() {
+        // §4.3, measured: `user.bin` = `A\0B\0C`, encoded as
+        // `00 01 09 05 user.bin\0 41 00 42 00 43`. `datum_len` is
+        // authoritative: the value is NOT NUL-terminated and its interior
+        // NULs are payload, so anything that treats the value as a C
+        // string truncates it at the first byte.
+        let pair = XattrPair {
+            name: "user.bin".to_string(),
+            value: vec![b'A', 0x00, b'B', 0x00, b'C'],
+        };
+        let mut expected: Vec<u8> = vec![0x00, 0x01, 0x09, 0x05];
+        expected.extend_from_slice(b"user.bin\0");
+        expected.extend_from_slice(&[0x41, 0x00, 0x42, 0x00, 0x43]);
+        assert_eq!(encoded_xattr_blob(vec![pair.clone()]), expected);
+
+        let mut entry = baseline_entry();
+        entry.xattrs = Some(vec![pair]);
+        assert_flist_entry_round_trip(entry, &xattr_options_for_test(None));
+    }
+
+    #[test]
+    fn xattr_value_at_the_inline_limit_stays_inline() {
+        // §4.5: the cut is at 32 bytes INCLUSIVE (rsync's
+        // `MAX_FULL_DATUM`). 32 travels inline; 33 would be a digest plus
+        // an out-of-band datum. Pin the boundary itself, since an
+        // off-by-one here produces a wire that stock rsync mis-reads
+        // rather than an error we would notice.
+        assert_eq!(MAX_FULL_DATUM, 32, "rsync's MAX_FULL_DATUM, measured");
+        let value = vec![b'L'; MAX_FULL_DATUM];
+        let pair = XattrPair {
+            name: "user.at_limit".to_string(),
+            value: value.clone(),
+        };
+        let blob = encoded_xattr_blob(vec![pair.clone()]);
+        assert!(
+            blob.ends_with(&value),
+            "a 32-byte value must appear inline, in full, at the end of the blob"
+        );
+
+        let mut entry = baseline_entry();
+        entry.xattrs = Some(vec![pair]);
+        assert_flist_entry_round_trip(entry, &xattr_options_for_test(None));
+    }
+
+    #[test]
+    fn xattr_value_above_the_inline_limit_is_refused_not_misread() {
+        // One byte over the threshold the entry carries a 16-byte digest,
+        // not the value (§4.4). Decoding those 16 bytes as the value would
+        // hand the caller a silently wrong attribute, so the decoder says
+        // so instead. This is task X.2b's entry point, and until it lands
+        // the failure has to be loud.
+        let mut entry = baseline_entry();
+        entry.xattrs = Some(vec![XattrPair {
+            name: "user.long".to_string(),
+            value: vec![b'L'; MAX_FULL_DATUM],
+        }]);
+        let opts = xattr_options_for_test(None);
+        let mut bytes = encode_file_list_entry(&entry, &opts);
+
+        // Bump the declared datum_len from 32 to 33 without touching the
+        // payload: exactly what a peer sending the digest form looks like
+        // up to this field.
+        let datum_len_at = bytes.len() - MAX_FULL_DATUM - "user.long\0".len() - 1;
+        assert_eq!(
+            bytes[datum_len_at], MAX_FULL_DATUM as u8,
+            "expected the datum_len varint at this offset"
+        );
+        bytes[datum_len_at] = (MAX_FULL_DATUM + 1) as u8;
+
+        match decode_file_list_entry(&bytes, &opts) {
+            Err(RealWireError::XattrDatumAboveInlineLimit { datum_len, limit }) => {
+                assert_eq!(datum_len, MAX_FULL_DATUM + 1);
+                assert_eq!(limit, MAX_FULL_DATUM);
+            }
+            other => panic!("expected XattrDatumAboveInlineLimit, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn abbreviated_xattr_back_reference_is_refused() {
+        // `xattrs.c::send_xattr` opens with `write_varint(ndx + 1)`: a
+        // non-zero value means "same list as a previously sent entry" and
+        // what follows is an index, not a list. Single-file transfers
+        // never produce it; parsing on regardless would read the next
+        // entry's bytes as xattr names.
+        let mut entry = baseline_entry();
+        entry.xattrs = Some(vec![]);
+        let opts = xattr_options_for_test(None);
+        let mut bytes = encode_file_list_entry(&entry, &opts);
+        let marker_at = bytes.len() - 2;
+        assert_eq!(bytes[marker_at], 0x00, "expected the blob marker here");
+        bytes[marker_at] = 0x03;
+
+        match decode_file_list_entry(&bytes, &opts) {
+            Err(RealWireError::XattrAbbrevUnsupported { reference }) => {
+                assert_eq!(reference, 3);
+            }
+            other => panic!("expected XattrAbbrevUnsupported, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn hostile_xattr_lengths_error_and_never_panic() {
+        // Fail-closed sweep over the three peer-supplied lengths, in the
+        // spirit of `negative_symlink_target_len_errors_not_panics` and of
+        // audit S1 (peer-supplied symlink targets materialised without
+        // sanitisation). Each case must produce a typed error; none may
+        // panic, wrap around, or allocate on the declared size.
+        let opts = xattr_options_for_test(None);
+        let mut base = baseline_entry();
+        base.xattrs = Some(vec![]);
+        let prefix = {
+            let bytes = encode_file_list_entry(&base, &opts);
+            bytes[..bytes.len() - 2].to_vec() // drop the `00 00` blob
+        };
+
+        let mut cases: Vec<(&str, Vec<u8>)> = Vec::new();
+
+        // Negative count.
+        let mut b = prefix.clone();
+        b.extend_from_slice(&encode_varint(0));
+        b.extend_from_slice(&encode_varint(-1));
+        cases.push(("negative count", b));
+
+        // Negative name_len.
+        let mut b = prefix.clone();
+        b.extend_from_slice(&encode_varint(0));
+        b.extend_from_slice(&encode_varint(1));
+        b.extend_from_slice(&encode_varint(-1));
+        b.extend_from_slice(&encode_varint(1));
+        b.push(b'x');
+        cases.push(("negative name_len", b));
+
+        // name_len == 0: the NUL rsync counts cannot fit.
+        let mut b = prefix.clone();
+        b.extend_from_slice(&encode_varint(0));
+        b.extend_from_slice(&encode_varint(1));
+        b.extend_from_slice(&encode_varint(0));
+        b.extend_from_slice(&encode_varint(0));
+        cases.push(("zero name_len", b));
+
+        // Negative datum_len.
+        let mut b = prefix.clone();
+        b.extend_from_slice(&encode_varint(0));
+        b.extend_from_slice(&encode_varint(1));
+        b.extend_from_slice(&encode_varint(6));
+        b.extend_from_slice(&encode_varint(-1));
+        b.extend_from_slice(b"user.a\0");
+        cases.push(("negative datum_len", b));
+
+        // name_len + datum_len past the end of the buffer.
+        let mut b = prefix.clone();
+        b.extend_from_slice(&encode_varint(0));
+        b.extend_from_slice(&encode_varint(1));
+        b.extend_from_slice(&encode_varint(120));
+        b.extend_from_slice(&encode_varint(4));
+        b.extend_from_slice(b"user.a\0v1");
+        cases.push(("lengths past end of buffer", b));
+
+        // A count far larger than the bytes that follow: must run out of
+        // buffer and stop, not spin or pre-allocate.
+        let mut b = prefix.clone();
+        b.extend_from_slice(&encode_varint(0));
+        b.extend_from_slice(&encode_varint(100_000));
+        cases.push(("count with no payload", b));
+
+        // Truncated mid-name.
+        let mut b = prefix.clone();
+        b.extend_from_slice(&encode_varint(0));
+        b.extend_from_slice(&encode_varint(1));
+        b.extend_from_slice(&encode_varint(7));
+        b.extend_from_slice(&encode_varint(2));
+        b.extend_from_slice(b"use");
+        cases.push(("truncated mid-name", b));
+
+        // Blob header cut off entirely.
+        cases.push(("empty blob", prefix.clone()));
+
+        for (label, buf) in cases {
+            match decode_file_list_entry(&buf, &opts) {
+                Err(_) => {}
+                Ok(other) => panic!("{label}: expected a typed error, decoded {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn truncated_xattr_blob_is_recoverable_but_a_bogus_one_is_not() {
+        // The file list is decoded from a buffer refilled one MSG_DATA
+        // frame at a time, and `receive_file_list_single_file` retries
+        // only on `TruncatedBuffer` / `InvalidNameLen` /
+        // `InvalidAlgoListLen`. So the split between "come back with more
+        // bytes" and "abort" is not cosmetic: classify a frame boundary
+        // as fatal and a perfectly good transfer dies; classify a hostile
+        // length as recoverable and the driver pulls frames forever.
+        //
+        // If that allowlist in `native_driver.rs` ever changes, this test
+        // is what should stop it.
+        let opts = xattr_options_for_test(None);
+        let mut entry = baseline_entry();
+        entry.xattrs = Some(vec![XattrPair {
+            name: "user.aeroftp.test".to_string(),
+            value: b"v1".to_vec(),
+        }]);
+        let full = encode_file_list_entry(&entry, &opts);
+
+        // Every prefix that cuts into the blob must read as a truncation.
+        let blob_starts = full.len() - 24;
+        for cut in blob_starts..full.len() {
+            match decode_file_list_entry(&full[..cut], &opts) {
+                Err(RealWireError::TruncatedBuffer { .. }) => {}
+                other => panic!(
+                    "a blob cut at byte {cut} of {} must be recoverable, got {other:?}",
+                    full.len()
+                ),
+            }
+        }
+        // And the whole thing decodes once the last byte is there.
+        let (_, consumed) = decode_file_list_entry(&full, &opts).expect("complete blob decodes");
+        assert_eq!(consumed, full.len());
+
+        // A structurally impossible length must NOT be recoverable, or
+        // the driver would sit in a frame-pull loop against a hostile
+        // peer instead of failing.
+        let mut bogus = full[..blob_starts].to_vec();
+        bogus.extend_from_slice(&encode_varint(0)); // marker
+        bogus.extend_from_slice(&encode_varint(1)); // count
+        bogus.extend_from_slice(&encode_varint(-1)); // name_len
+        bogus.extend_from_slice(&encode_varint(2)); // datum_len
+        match decode_file_list_entry(&bogus, &opts) {
+            Err(RealWireError::InvalidXattrField { field, .. }) => {
+                assert_eq!(field, "name_len");
+            }
+            other => panic!("a negative name_len must abort, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn xattr_name_without_its_nul_is_refused() {
+        // `name_len` counts a trailing NUL. A name whose last byte is not
+        // NUL means the declared length disagrees with the content, which
+        // is how a crafted blob would shift every following field.
+        // Mirrors the `name[name_len-1] != '\0'` guard in
+        // `xattrs.c::recv_xattr`.
+        let opts = xattr_options_for_test(None);
+        let mut base = baseline_entry();
+        base.xattrs = Some(vec![]);
+        let mut buf = {
+            let bytes = encode_file_list_entry(&base, &opts);
+            bytes[..bytes.len() - 2].to_vec()
+        };
+        buf.extend_from_slice(&encode_varint(0)); // marker
+        buf.extend_from_slice(&encode_varint(1)); // count
+        buf.extend_from_slice(&encode_varint(6)); // name_len, no room for a NUL
+        buf.extend_from_slice(&encode_varint(2)); // datum_len
+        buf.extend_from_slice(b"user.a"); // ...and indeed no NUL
+        buf.extend_from_slice(b"v1");
+
+        match decode_file_list_entry(&buf, &opts) {
+            Err(RealWireError::XattrNameNotNulTerminated { name_len }) => {
+                assert_eq!(name_len, 6);
+            }
+            other => panic!("expected XattrNameNotNulTerminated, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn symlink_entry_carries_the_xattr_blob_too() {
+        // rsync gates the blob on `preserve_xattrs` alone: unlike ACLs,
+        // which `send_acl` skips for symlinks, xattrs are sent for symlink
+        // entries as well. A symlink carries no flist checksum, so here
+        // the blob follows the target directly — the one shape where the
+        // two optional tails are adjacent.
+        //
+        // **Provenance**: unlike every other pin in this block, this one
+        // is read off `send_file_name`'s call order in rsync 3.2.7 rather
+        // than measured — §4 of the evidence doc never captured a symlink
+        // under `-X`, because on Linux a symlink cannot hold a `user.*`
+        // attribute and the capture used `user.aeroftp.test`. The shape
+        // is not in doubt (the blob is unconditional once `-X` is on) but
+        // it is the one xattr claim here without bytes behind it, so X.6
+        // should cover a symlink in the Docker fixture, where a
+        // privileged `security.*` attribute is reachable.
+        let target = "rel/tgt.bin".to_string();
+        let mut entry = baseline_entry();
+        entry.path = "pin.lnk".to_string();
+        entry.mode = S_IFLNK | 0o777;
+        entry.size = target.len() as i64;
+        entry.checksum = vec![];
+        entry.symlink_target = Some(target.clone());
+        entry.xattrs = Some(vec![]);
+
+        let opts = xattr_options_for_test(None);
+        let bytes = encode_file_list_entry(&entry, &opts);
+        assert_eq!(
+            &bytes[bytes.len() - 2..],
+            &[0x00, 0x00],
+            "the blob must still be present on a symlink entry"
+        );
+        assert!(
+            bytes[..bytes.len() - 2].ends_with(target.as_bytes()),
+            "and it must sit after the symlink target, with no checksum between"
+        );
+        assert_flist_entry_round_trip(entry, &opts);
+    }
+
+    #[test]
+    #[should_panic(expected = "did not negotiate -X")]
+    fn encoding_xattrs_without_negotiating_them_is_a_caller_bug() {
+        // Emitting the blob to a peer that never asked for `-X` would
+        // desynchronise the stream; dropping it silently would lose
+        // metadata the caller attached. Neither is acceptable, so the
+        // combination is refused outright.
+        let mut entry = baseline_entry();
+        entry.xattrs = Some(vec![XattrPair {
+            name: "user.a".to_string(),
+            value: b"v1".to_vec(),
+        }]);
+        let _ = encode_file_list_entry(&entry, &frozen_oracle_options_for_test(None));
     }
 
     #[test]
@@ -5567,6 +6422,7 @@ mod tests {
             gid_name: None,
             checksum: vec![0; 16],
             symlink_target: None,
+            xattrs: None,
         };
         let mut opts = FileListDecodeOptions::frozen_oracle_default();
         opts.preserve_uid = false;
@@ -5601,6 +6457,7 @@ mod tests {
             gid_name: None,
             checksum: vec![],
             symlink_target: None,
+            xattrs: None,
         };
         let mut opts = FileListDecodeOptions::frozen_oracle_default();
         opts.xfer_flags_as_varint = false;
@@ -5626,6 +6483,7 @@ mod tests {
             gid_name: None,
             checksum: vec![],
             symlink_target: None,
+            xattrs: None,
         };
         let mut opts = FileListDecodeOptions::frozen_oracle_default();
         opts.xfer_flags_as_varint = false;
@@ -5707,6 +6565,7 @@ mod tests {
                 0x82, 0xc9,
             ],
             symlink_target: None,
+            xattrs: None,
         }
     }
 
@@ -5722,6 +6581,7 @@ mod tests {
             preserve_uid: true,
             preserve_gid: true,
             previous_name: None,
+            preserve_xattrs: false,
         }
     }
 

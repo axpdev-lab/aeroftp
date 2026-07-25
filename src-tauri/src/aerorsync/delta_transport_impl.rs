@@ -1522,6 +1522,11 @@ fn build_source_entry(
         gid_name: Some(gid_name),
         checksum: file_checksum,
         symlink_target,
+        // X.2a: no xattr is read from the local file yet — that is X.3,
+        // which slots in beside `file_owner_components` below. `None`
+        // keeps the sender emitting zero xattr bytes, matching the
+        // `preserve_xattrs: false` the driver puts in its flist options.
+        xattrs: None,
     }
 }
 
@@ -2286,6 +2291,7 @@ mod tests {
             gid_name: None,
             checksum: vec![0xAA; checksum_len],
             symlink_target: None,
+            xattrs: None,
         };
         let opts = FileListDecodeOptions {
             protocol: 31,
@@ -2295,6 +2301,7 @@ mod tests {
             preserve_uid: true,
             preserve_gid: true,
             previous_name: None,
+            preserve_xattrs: false,
         };
 
         // Sender's signature-phase echo: ndx + iflags + an empty sum_head
@@ -3016,6 +3023,7 @@ mod tests {
             gid_name: None,
             checksum: vec![],
             symlink_target: None,
+            xattrs: None,
         };
         let err = create_symlink_atomic(&entry, &dest, "/remote/no-target.lnk")
             .await
@@ -3067,6 +3075,7 @@ mod tests {
             gid_name: None,
             checksum: vec![],
             symlink_target: Some("../../../../etc/passwd".to_string()),
+            xattrs: None,
         };
         let err = create_symlink_atomic(&entry, &dest, "/remote/evil.lnk")
             .await
@@ -3100,6 +3109,7 @@ mod tests {
             gid_name: None,
             checksum: vec![],
             symlink_target: Some("rel/tgt.bin".to_string()),
+            xattrs: None,
         };
         create_symlink_atomic(&entry, &dest, "/remote/replace-me.lnk")
             .await
@@ -3140,6 +3150,7 @@ mod tests {
             gid_name: None,
             checksum: vec![],
             symlink_target: Some("tgt.bin".to_string()),
+            xattrs: None,
         };
         let err = create_symlink_atomic(&entry, &dest, "/remote/refused.lnk")
             .await
@@ -3274,6 +3285,7 @@ mod tests {
             gid_name: None,
             checksum: vec![],
             symlink_target: Some(target.to_string()),
+            xattrs: None,
         };
         let opts = FileListDecodeOptions {
             protocol: 31,
@@ -3283,6 +3295,7 @@ mod tests {
             preserve_uid: true,
             preserve_gid: true,
             previous_name: None,
+            preserve_xattrs: false,
         };
         let mut finish_tail = vec![0x00; 3];
         finish_tail.extend_from_slice(&encode_summary_frame(

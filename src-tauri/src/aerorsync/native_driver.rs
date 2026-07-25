@@ -1536,6 +1536,21 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
             csum_len,
             preserve_uid: true,
             preserve_gid: true,
+            // X.2a: the codec can carry the xattr blob, but nothing
+            // negotiates `-X` yet — `RemoteCommandSpec::preserve_xattrs`
+            // is still false for every spec, so the server we invoke is
+            // never told to send one. Claiming otherwise here would make
+            // the decoder eat two bytes that are not on the wire and
+            // desynchronise the file list.
+            //
+            // **Coupling, for whoever does X.3**: this flag and the `-X`
+            // in `compact_flags_for(spec.preserve_xattrs)`
+            // (`remote_command.rs:59`) describe the same negotiation and
+            // MUST flip together. They are hard-wired apart today only
+            // because both are off; the driver holds no `RemoteCommandSpec`
+            // (it arrives per-call), so wiring them to one source of truth
+            // means giving the session a negotiated-xattrs field.
+            preserve_xattrs: false,
             previous_name: None,
         }
     }
@@ -1605,6 +1620,18 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
                     // the current buffer, or a declared algo-list length that
                     // overshoots. All three are recoverable by pulling
                     // another MSG_DATA frame off the wire.
+                    //
+                    // X.2a: this list is a contract the xattr codec is
+                    // written against. `decode_xattr_blob` reports a blob
+                    // that straddles a frame boundary as `TruncatedBuffer`
+                    // precisely so it lands here, and reserves its own
+                    // `InvalidXattrField` / `XattrAbbrevUnsupported` /
+                    // `XattrDatumAboveInlineLimit` for shapes that must
+                    // abort. Widening this arm to swallow those would turn
+                    // a hostile blob into an unbounded frame-pull loop.
+                    // Retrying is safe because decoding restarts from the
+                    // front of `flist_buf` and the codec keeps no state
+                    // across calls.
                     Err(RealWireError::TruncatedBuffer { .. })
                     | Err(RealWireError::InvalidNameLen { .. })
                     | Err(RealWireError::InvalidAlgoListLen { .. }) => {
@@ -3975,6 +4002,7 @@ mod tests {
             preserve_uid: true,
             preserve_gid: true,
             previous_name: None,
+            preserve_xattrs: false,
         };
         let (entry, mut cursor) =
             match decode_file_list_entry(&app, &opts).expect("decode outbound file-list entry") {
@@ -4035,6 +4063,7 @@ mod tests {
             // validated against file content in unit tests.
             checksum: vec![0xAA; 16],
             symlink_target: None,
+            xattrs: None,
         }
     }
 
@@ -4074,6 +4103,7 @@ mod tests {
             gid_name: None,
             checksum: vec![0xAA; 16],
             symlink_target: None,
+            xattrs: None,
         }
     }
 
@@ -4102,6 +4132,7 @@ mod tests {
             gid_name: None,
             checksum: vec![],
             symlink_target: Some(target.to_string()),
+            xattrs: None,
         }
     }
 
@@ -4762,6 +4793,7 @@ mod tests {
             preserve_uid: true,
             preserve_gid: true,
             previous_name: None,
+            preserve_xattrs: false,
         };
         let mut expected_entry = sample_file_list_entry("target.bin");
         expected_entry.checksum = FileChecksumKind::Md5.digest(&[]);
@@ -4936,6 +4968,7 @@ mod tests {
             preserve_uid: true,
             preserve_gid: true,
             previous_name: None,
+            preserve_xattrs: false,
         };
         let entry = sample_file_list_entry("target.bin");
         let entry_bytes = encode_file_list_entry(&entry, &opts);
@@ -4989,6 +5022,7 @@ mod tests {
             preserve_uid: true,
             preserve_gid: true,
             previous_name: None,
+            preserve_xattrs: false,
         };
         let mut entry = sample_file_list_entry("target.bin");
         entry.checksum = vec![0xA5; 8];
@@ -5039,6 +5073,7 @@ mod tests {
             preserve_uid: true,
             preserve_gid: true,
             previous_name: None,
+            preserve_xattrs: false,
         };
         let entry = sample_file_list_entry("target.bin");
         let entry_bytes = encode_file_list_entry(&entry, &opts);
@@ -5153,6 +5188,7 @@ mod tests {
             preserve_uid: true,
             preserve_gid: true,
             previous_name: None,
+            preserve_xattrs: false,
         };
         let entry = sample_file_list_entry("target.bin");
         let entry_bytes = encode_file_list_entry(&entry, &opts);
@@ -5515,6 +5551,7 @@ mod tests {
             preserve_uid: true,
             preserve_gid: true,
             previous_name: None,
+            preserve_xattrs: false,
         };
         let entry_bytes = encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
         let term_bytes = encode_file_list_terminator(&opts);
@@ -5855,6 +5892,7 @@ mod tests {
             preserve_uid: true,
             preserve_gid: true,
             previous_name: None,
+            preserve_xattrs: false,
         };
         let mut flist_payload = encode_file_list_entry(&entry, &opts);
         flist_payload.extend_from_slice(&encode_file_list_terminator(&opts));
@@ -5978,6 +6016,7 @@ mod tests {
             preserve_uid: true,
             preserve_gid: true,
             previous_name: None,
+            preserve_xattrs: false,
         };
         let target = "../rel/target.bin";
         let entry = symlink_file_list_entry("link.lnk", target);
@@ -6076,6 +6115,7 @@ mod tests {
             preserve_uid: true,
             preserve_gid: true,
             previous_name: None,
+            preserve_xattrs: false,
         };
         let entry = symlink_file_list_entry("link.lnk", "t/rel.bin");
         let entry_bytes = encode_file_list_entry(&entry, &opts);
@@ -6165,6 +6205,7 @@ mod tests {
             preserve_uid: true,
             preserve_gid: true,
             previous_name: None,
+            preserve_xattrs: false,
         };
         let entry_bytes = encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
         let term_bytes = encode_file_list_terminator(&opts);
@@ -6563,6 +6604,7 @@ mod tests {
             preserve_uid: true,
             preserve_gid: true,
             previous_name: None,
+            preserve_xattrs: false,
         };
         let entry_bytes = encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
         let term_bytes = encode_file_list_terminator(&opts);
@@ -6688,6 +6730,7 @@ mod tests {
             preserve_uid: true,
             preserve_gid: true,
             previous_name: None,
+            preserve_xattrs: false,
         };
         let entry_bytes = encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
         let term_bytes = encode_file_list_terminator(&opts);
@@ -6756,6 +6799,7 @@ mod tests {
             preserve_uid: true,
             preserve_gid: true,
             previous_name: None,
+            preserve_xattrs: false,
         };
         let entry_bytes = encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
         let term_bytes = encode_file_list_terminator(&opts);
@@ -6816,6 +6860,7 @@ mod tests {
             preserve_uid: true,
             preserve_gid: true,
             previous_name: None,
+            preserve_xattrs: false,
         };
         let entry_bytes = encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
         let term_bytes = encode_file_list_terminator(&opts);
@@ -6875,6 +6920,7 @@ mod tests {
             preserve_uid: true,
             preserve_gid: true,
             previous_name: None,
+            preserve_xattrs: false,
         };
         let entry_bytes = encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
         let term_bytes = encode_file_list_terminator(&opts);
@@ -6971,6 +7017,7 @@ mod tests {
             preserve_uid: true,
             preserve_gid: true,
             previous_name: None,
+            preserve_xattrs: false,
         };
         let entry_bytes = encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
         let term_bytes = encode_file_list_terminator(&opts);
@@ -7010,6 +7057,7 @@ mod tests {
             preserve_uid: true,
             preserve_gid: true,
             previous_name: None,
+            preserve_xattrs: false,
         };
         let entry_bytes = encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
         let term_bytes = encode_file_list_terminator(&opts);
@@ -7097,6 +7145,7 @@ mod tests {
             preserve_uid: true,
             preserve_gid: true,
             previous_name: None,
+            preserve_xattrs: false,
         };
         let entry_bytes = encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
         let term_bytes = encode_file_list_terminator(&opts);
@@ -7434,6 +7483,7 @@ mod tests {
             preserve_uid: true,
             preserve_gid: true,
             previous_name: None,
+            preserve_xattrs: false,
         };
         let entry_bytes = encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
         let term_bytes = encode_file_list_terminator(&opts);
@@ -7600,6 +7650,7 @@ mod tests {
             preserve_uid: true,
             preserve_gid: true,
             previous_name: None,
+            preserve_xattrs: false,
         };
         let entry_bytes = encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
         let term_bytes = encode_file_list_terminator(&opts);
@@ -7659,6 +7710,7 @@ mod tests {
             preserve_uid: true,
             preserve_gid: true,
             previous_name: None,
+            preserve_xattrs: false,
         };
         let entry_bytes = encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
         let term_bytes = encode_file_list_terminator(&opts);
@@ -7759,6 +7811,7 @@ mod tests {
             preserve_uid: true,
             preserve_gid: true,
             previous_name: None,
+            preserve_xattrs: false,
         };
         let entry_bytes = encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
         let term_bytes = encode_file_list_terminator(&opts);
@@ -8495,6 +8548,7 @@ mod tests {
             preserve_uid: true,
             preserve_gid: true,
             previous_name: None,
+            preserve_xattrs: false,
         };
         let entry_bytes = encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
         let term_bytes = encode_file_list_terminator(&opts);
@@ -8575,6 +8629,7 @@ mod tests {
             preserve_uid: true,
             preserve_gid: true,
             previous_name: None,
+            preserve_xattrs: false,
         };
         let entry_bytes = encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
         let term_bytes = encode_file_list_terminator(&opts);
@@ -8637,6 +8692,7 @@ mod tests {
             preserve_uid: true,
             preserve_gid: true,
             previous_name: None,
+            preserve_xattrs: false,
         };
         let entry_bytes = encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
         let term_bytes = encode_file_list_terminator(&opts);
@@ -8697,6 +8753,7 @@ mod tests {
             preserve_uid: true,
             preserve_gid: true,
             previous_name: None,
+            preserve_xattrs: false,
         };
         let entry_bytes = encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
         let term_bytes = encode_file_list_terminator(&opts);
