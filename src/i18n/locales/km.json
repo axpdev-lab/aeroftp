@@ -4634,7 +4634,7 @@
                 "paidProtocols": "ពិធីការបង់ប្រាក់",
                 "health": "ស្ថានភាព",
                 "columns": "ជួរឈរ",
-                "searchPlaceholder": "ស្វែងរកអ្នកផ្តល់សេវា ពិធីការ...",
+                "searchPlaceholder": "ស្វែងរកអ្នកផ្តល់សេវា ក្រុមហ៊ុន ពិធីការ...",
                 "footerSummary": "{count} អ្នកផ្តល់សេវា · ~{gb} GB ឥតគិតថ្លៃ",
                 "approximate": "ប្រហាក់ប្រហែល សូមផ្ទៀងផ្ទាត់ជាមួយអ្នកផ្តល់សេវា",
                 "connectHint": "ភ្ជាប់ទៅ {company}",

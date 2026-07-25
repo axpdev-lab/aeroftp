@@ -4615,7 +4615,7 @@
                 "paidProtocols": "Itifaki za malipo",
                 "health": "Hali",
                 "columns": "Safu wima",
-                "searchPlaceholder": "Tafuta watoa huduma, itifaki...",
+                "searchPlaceholder": "Tafuta watoa huduma, kampuni, itifaki...",
                 "footerSummary": "{count} watoa huduma · ~{gb} GB bure",
                 "approximate": "takriban, thibitisha na mtoa huduma",
                 "connectHint": "Unganisha kwa {company}",

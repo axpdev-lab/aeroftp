@@ -4615,7 +4615,7 @@
                 "paidProtocols": "Плаћени протоколи",
                 "health": "Статус",
                 "columns": "Колоне",
-                "searchPlaceholder": "Претражи провајдере, протоколе...",
+                "searchPlaceholder": "Претражи провајдере, компаније, протоколе...",
                 "footerSummary": "{count} провајдера · ~{gb} GB бесплатно",
                 "approximate": "приближно, проверите код провајдера",
                 "connectHint": "Повежи се са {company}",

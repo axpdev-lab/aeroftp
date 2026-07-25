@@ -4615,7 +4615,7 @@
                 "paidProtocols": "Protokol berbayar",
                 "health": "Status",
                 "columns": "Kolom",
-                "searchPlaceholder": "Cari penyedia, protokol...",
+                "searchPlaceholder": "Cari penyedia, perusahaan, protokol...",
                 "footerSummary": "{count} penyedia · ~{gb} GB gratis",
                 "approximate": "perkiraan, verifikasi dengan penyedia",
                 "connectHint": "Hubungkan ke {company}",

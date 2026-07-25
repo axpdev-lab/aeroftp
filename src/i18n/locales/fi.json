@@ -4615,7 +4615,7 @@
                 "paidProtocols": "Maksulliset protokollat",
                 "health": "Tila",
                 "columns": "Sarakkeet",
-                "searchPlaceholder": "Hae palveluntarjoajia, protokollia...",
+                "searchPlaceholder": "Hae palveluntarjoajia, yrityksiä, protokollia...",
                 "footerSummary": "{count} palveluntarjoajaa · ~{gb} GB ilmaiseksi",
                 "approximate": "arvio, vahvista palveluntarjoajalta",
                 "connectHint": "Yhdistä palveluun {company}",
@@ -4624,7 +4624,7 @@
                 "customSftp": "SFTP",
                 "customS3": "S3",
                 "customWebdav": "WebDAV",
-                "parentCompany": "Yritys"
+                "parentCompany": "Emoyhtiö"
             },
             "healthCheck": "Saatavuuden tarkistus",
             "storageVersioning": "Tiedostoversiot: {size}",

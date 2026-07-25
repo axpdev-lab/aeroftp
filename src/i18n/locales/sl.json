@@ -4615,7 +4615,7 @@
                 "paidProtocols": "Plačljivi protokoli",
                 "health": "Stanje",
                 "columns": "Stolpci",
-                "searchPlaceholder": "Iskanje ponudnikov, protokolov...",
+                "searchPlaceholder": "Išči ponudnike, podjetja, protokole...",
                 "footerSummary": "{count} ponudnikov · ~{gb} GB brezplačno",
                 "approximate": "približno, preverite pri ponudniku",
                 "connectHint": "Poveži s {company}",

@@ -4615,7 +4615,7 @@
                 "paidProtocols": "Tasulised protokollid",
                 "health": "Olek",
                 "columns": "Veerud",
-                "searchPlaceholder": "Otsi teenusepakkujaid, protokolle...",
+                "searchPlaceholder": "Otsi teenusepakkujaid, ettevõtteid, protokolle...",
                 "footerSummary": "{count} pakkujat · ~{gb} GB tasuta",
                 "approximate": "ligikaudne, kontrolli teenusepakkujaga",
                 "connectHint": "Ühenda teenusega {company}",

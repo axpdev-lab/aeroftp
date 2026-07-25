@@ -4615,7 +4615,7 @@
                 "paidProtocols": "유료 프로토콜",
                 "health": "상태",
                 "columns": "열",
-                "searchPlaceholder": "제공업체, 프로토콜 검색...",
+                "searchPlaceholder": "제공업체, 회사, 프로토콜 검색...",
                 "footerSummary": "{count}개 제공업체 · 약 {gb} GB 무료",
                 "approximate": "대략적인 값이며 제공업체에서 확인하세요",
                 "connectHint": "{company}에 연결",

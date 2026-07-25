@@ -4634,7 +4634,7 @@
                 "paidProtocols": "Protocolos de pago",
                 "health": "Estado",
                 "columns": "Columnas",
-                "searchPlaceholder": "Buscar provedores, protocolos...",
+                "searchPlaceholder": "Buscar provedores, empresas, protocolos...",
                 "footerSummary": "{count} provedores · ~{gb} GB gratis",
                 "approximate": "aproximado, verifícao co provedor",
                 "connectHint": "Conectar a {company}",

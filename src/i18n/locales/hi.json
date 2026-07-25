@@ -4615,7 +4615,7 @@
                 "paidProtocols": "सशुल्क प्रोटोकॉल",
                 "health": "स्थिति",
                 "columns": "कॉलम",
-                "searchPlaceholder": "प्रदाता, प्रोटोकॉल खोजें...",
+                "searchPlaceholder": "प्रदाता, कंपनियाँ, प्रोटोकॉल खोजें...",
                 "footerSummary": "{count} प्रदाता · ~{gb} GB मुफ़्त",
                 "approximate": "अनुमानित, प्रदाता से सत्यापित करें",
                 "connectHint": "{company} से कनेक्ट करें",

@@ -4615,7 +4615,7 @@
                 "paidProtocols": "পেইড প্রোটোকল",
                 "health": "অবস্থা",
                 "columns": "কলাম",
-                "searchPlaceholder": "প্রদানকারী, প্রোটোকল খুঁজুন...",
+                "searchPlaceholder": "প্রোভাইডার, কোম্পানি, প্রোটোকল খুঁজুন...",
                 "footerSummary": "{count} প্রদানকারী · ~{gb} GB ফ্রি",
                 "approximate": "আনুমানিক, প্রদানকারীর সাথে যাচাই করুন",
                 "connectHint": "{company}-এ সংযুক্ত হন",

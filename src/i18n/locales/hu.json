@@ -4615,7 +4615,7 @@
                 "paidProtocols": "Fizetős protokollok",
                 "health": "Állapot",
                 "columns": "Oszlopok",
-                "searchPlaceholder": "Szolgáltatók, protokollok keresése...",
+                "searchPlaceholder": "Szolgáltatók, cégek, protokollok keresése...",
                 "footerSummary": "{count} szolgáltató · ~{gb} GB ingyen",
                 "approximate": "hozzávetőleges, ellenőrizze a szolgáltatónál",
                 "connectHint": "Csatlakozás ehhez: {company}",
@@ -4624,7 +4624,7 @@
                 "customSftp": "SFTP",
                 "customS3": "S3",
                 "customWebdav": "WebDAV",
-                "parentCompany": "Cég"
+                "parentCompany": "Anyavállalat"
             },
             "healthCheck": "Elérhetőség-ellenőrzés",
             "storageVersioning": "Fájlverziók: {size}",
