@@ -4623,7 +4623,8 @@
                 "customFtp": "FTP / FTPS",
                 "customSftp": "SFTP",
                 "customS3": "S3",
-                "customWebdav": "WebDAV"
+                "customWebdav": "WebDAV",
+                "parentCompany": "Ettevõte"
             },
             "healthCheck": "Saadavuse kontroll",
             "storageVersioning": "Faili versioonid: {size}",
@@ -5114,7 +5115,9 @@
             "errNewRequired": "Konto uus parool on kohustuslik.",
             "confirmRemovePassword": "Kas eemaldada konto parool kasutajale \"{name}\"?",
             "confirmDelete": "Kas kustutada konto \"{name}\"?\n\nEemaldatavad krüpteeritud andmed: {profiles} profiili, {settings} seadete ulatust.",
-            "passwordChoiceNote": "Konto parooli määramine on valikuline. See takistab teistel seda seadet kasutavatel inimestel teie kontot avada; teie salvestatud andmed jäävad nii või teisiti krüptituks. Jätke see vahele, kui olete ainus kasutaja või kui usaldate kõiki, kes seda seadet kasutavad."
+            "passwordChoiceNote": "Konto parooli määramine on valikuline. See takistab teistel seda seadet kasutavatel inimestel teie kontot avada; teie salvestatud andmed jäävad nii või teisiti krüptituks. Jätke see vahele, kui olete ainus kasutaja või kui usaldate kõiki, kes seda seadet kasutavad.",
+            "copy": "Dubleeri kasutaja (ainult serverid, paroole pole)",
+            "copyLockedHint": "Lülitu esmalt sellele kontole, et dubleerida selle servereid"
         },
         "aerocryptNative": {
             "title": "AeroCrypti kattekiht",

@@ -4642,7 +4642,8 @@
                 "customFtp": "FTP / FTPS",
                 "customSftp": "SFTP",
                 "customS3": "S3",
-                "customWebdav": "WebDAV"
+                "customWebdav": "WebDAV",
+                "parentCompany": "Kumpanya"
             },
             "healthCheck": "Health check",
             "storageVersioning": "Mga bersyon ng file: {size}",
@@ -5133,7 +5134,9 @@
             "errNewRequired": "Kinakailangan ang bagong password ng account.",
             "confirmRemovePassword": "Tanggalin ang password ng account para sa \"{name}\"?",
             "confirmDelete": "Tanggalin ang account na \"{name}\"?\n\nMga naka-encrypt na payload na tatanggalin: {profiles} na profile, {settings} na saklaw ng setting.",
-            "passwordChoiceNote": "Opsyonal ang pagtatakda ng password ng account. Pinipigilan nito ang ibang taong gumagamit ng device na ito na buksan ang iyong account; mananatiling naka-encrypt ang iyong naka-save na data sa alinmang paraan. Laktawan ito kung ikaw lang ang gumagamit dito, o kung pinagkakatiwalaan mo ang lahat ng gumagamit ng device na ito."
+            "passwordChoiceNote": "Opsyonal ang pagtatakda ng password ng account. Pinipigilan nito ang ibang taong gumagamit ng device na ito na buksan ang iyong account; mananatiling naka-encrypt ang iyong naka-save na data sa alinmang paraan. Laktawan ito kung ikaw lang ang gumagamit dito, o kung pinagkakatiwalaan mo ang lahat ng gumagamit ng device na ito.",
+            "copy": "Kopyahin ang user (mga server lang, walang password)",
+            "copyLockedHint": "Lumipat muna sa account na ito para kopyahin ang mga server nito"
         },
         "aerocryptNative": {
             "title": "AeroCrypt overlay",

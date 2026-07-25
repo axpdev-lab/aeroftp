@@ -4623,7 +4623,8 @@
                 "customFtp": "FTP / FTPS",
                 "customSftp": "SFTP",
                 "customS3": "S3",
-                "customWebdav": "WebDAV"
+                "customWebdav": "WebDAV",
+                "parentCompany": "Şirket"
             },
             "healthCheck": "Sağlık kontrolü",
             "storageVersioning": "Dosya sürümleri: {size}",
@@ -5114,7 +5115,9 @@
             "errNewRequired": "Yeni hesap parolasi gereklidir.",
             "confirmRemovePassword": "\"{name}\" hesabinin parolasi kaldirilsin mi?",
             "confirmDelete": "\"{name}\" hesabi silinsin mi?\n\nKaldirilacak sifreli veriler: {profiles} profil, {settings} ayar kapsami.",
-            "passwordChoiceNote": "Hesap parolası belirlemek isteğe bağlıdır. Bu cihazı kullanan diğer kişilerin hesabınızı açmasını engeller; kayıtlı verileriniz her durumda şifreli kalır. Burada tek kullanıcı sizseniz ya da bu cihazı kullanan herkese güveniyorsanız bu adımı atlayın."
+            "passwordChoiceNote": "Hesap parolası belirlemek isteğe bağlıdır. Bu cihazı kullanan diğer kişilerin hesabınızı açmasını engeller; kayıtlı verileriniz her durumda şifreli kalır. Burada tek kullanıcı sizseniz ya da bu cihazı kullanan herkese güveniyorsanız bu adımı atlayın.",
+            "copy": "Kullanıcıyı çoğalt (yalnızca sunucular, parola yok)",
+            "copyLockedHint": "Sunucularını çoğaltmak için önce bu hesaba geçin"
         },
         "aerocryptNative": {
             "title": "AeroCrypt katmanı",

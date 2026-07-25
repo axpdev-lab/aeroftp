@@ -4623,7 +4623,8 @@
                 "customFtp": "FTP / FTPS",
                 "customSftp": "SFTP",
                 "customS3": "S3",
-                "customWebdav": "WebDAV"
+                "customWebdav": "WebDAV",
+                "parentCompany": "Công ty"
             },
             "healthCheck": "Kiểm tra tình trạng",
             "storageVersioning": "Phiên bản tệp: {size}",
@@ -5114,7 +5115,9 @@
             "errNewRequired": "Cần có mật khẩu tài khoản mới.",
             "confirmRemovePassword": "Xóa mật khẩu tài khoản cho \"{name}\"?",
             "confirmDelete": "Xóa tài khoản \"{name}\"?\n\nDữ liệu mã hóa cần xóa: {profiles} hồ sơ, {settings} phạm vi cài đặt.",
-            "passwordChoiceNote": "Việc đặt mật khẩu tài khoản là tùy chọn. Nó ngăn những người khác dùng thiết bị này mở tài khoản của bạn; dữ liệu đã lưu của bạn vẫn được mã hóa trong mọi trường hợp. Bỏ qua bước này nếu bạn là người duy nhất ở đây, hoặc nếu bạn tin tưởng tất cả những người dùng thiết bị này."
+            "passwordChoiceNote": "Việc đặt mật khẩu tài khoản là tùy chọn. Nó ngăn những người khác dùng thiết bị này mở tài khoản của bạn; dữ liệu đã lưu của bạn vẫn được mã hóa trong mọi trường hợp. Bỏ qua bước này nếu bạn là người duy nhất ở đây, hoặc nếu bạn tin tưởng tất cả những người dùng thiết bị này.",
+            "copy": "Nhân bản người dùng (chỉ máy chủ, không mật khẩu)",
+            "copyLockedHint": "Hãy chuyển sang tài khoản này trước để nhân bản máy chủ của nó"
         },
         "aerocryptNative": {
             "title": "Lớp phủ AeroCrypt",

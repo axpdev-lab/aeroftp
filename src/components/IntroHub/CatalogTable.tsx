@@ -32,13 +32,17 @@ import {
     companyRegions,
     companyLaunchProtocol,
     companyTierInCategory,
+    catalogParentKey,
 } from '../providerCatalog';
 
-type CatalogColId = 'company' | 'region' | 'freeGb' | 'free' | 'paid' | 'health';
+type CatalogColId = 'company' | 'parent' | 'region' | 'freeGb' | 'free' | 'paid' | 'health';
 type TierFilter = 'all' | 'free' | 'freecard' | 'paid';
 
 const CATALOG_COLUMNS: TableColumnDef<CatalogColId>[] = [
     { id: 'company', labelKey: 'introHub.list.company', sortable: true, defaultVisible: true, defaultWidth: 200, minWidth: 140, pinnedStart: true, defaultAlign: 'left' },
+    // Optional parent-company column (Ehud #274): default hidden; enable via Columns
+    // so GitHub / OneDrive / Azure group under Microsoft, kDrive under Infomaniak, etc.
+    { id: 'parent', labelKey: 'introHub.list.parentCompany', sortable: true, defaultVisible: false, defaultWidth: 130, minWidth: 90, defaultAlign: 'left' },
     { id: 'region', labelKey: 'introHub.list.region', sortable: true, defaultVisible: true, defaultWidth: 80, minWidth: 56, defaultAlign: 'center' },
     { id: 'freeGb', labelKey: 'introHub.list.freeStorage', sortable: true, defaultVisible: true, defaultWidth: 110, minWidth: 80, defaultAlign: 'right' },
     { id: 'free', labelKey: 'introHub.list.freeProtocols', sortable: false, defaultVisible: true, defaultWidth: 200, minWidth: 120, defaultAlign: 'left' },
@@ -46,11 +50,11 @@ const CATALOG_COLUMNS: TableColumnDef<CatalogColId>[] = [
     { id: 'health', labelKey: 'introHub.list.health', sortable: false, defaultVisible: true, defaultWidth: 70, minWidth: 48, pinnedEnd: true, defaultAlign: 'center' },
 ];
 
-const SORTABLE: CatalogColId[] = ['company', 'region', 'freeGb'];
+const SORTABLE: CatalogColId[] = ['company', 'parent', 'region', 'freeGb'];
 
-/** Tokens a company is searchable by (name, regions, note, protocol labels). */
+/** Tokens a company is searchable by (name, parent, regions, note, protocol labels). */
 function searchText(c: CatalogCompany): string {
-    return [c.company, c.countryCode, c.freeNote, ...companyRegions(c), ...c.protocols.flatMap(p => [p.label, p.labelOverride]), ...(c.searchAliases ?? [])]
+    return [c.company, c.parentCompany, c.countryCode, c.freeNote, ...companyRegions(c), ...c.protocols.flatMap(p => [p.label, p.labelOverride]), ...(c.searchAliases ?? [])]
         .filter(Boolean)
         .join(' ')
         .toLowerCase();
@@ -167,6 +171,14 @@ export function CatalogTable({ companies, category, onSelectProvider, getHealth,
             switch (effectiveSort.colId) {
                 case 'company':
                     return dir * a.company.localeCompare(b.company);
+                case 'parent': {
+                    // Group siblings (Microsoft GitHub + OneDrive + Azure) then
+                    // break ties by product name. Rows without a parent sort by
+                    // product so the column stays useful even when sparse.
+                    const byParent = catalogParentKey(a).localeCompare(catalogParentKey(b));
+                    if (byParent !== 0) return dir * byParent;
+                    return dir * a.company.localeCompare(b.company);
+                }
                 case 'region':
                     return dir * (a.countryCode || 'zz').localeCompare(b.countryCode || 'zz');
                 case 'freeGb':
@@ -256,6 +268,14 @@ export function CatalogTable({ companies, category, onSelectProvider, getHealth,
                     </td>
                 );
             }
+            case 'parent':
+                return (
+                    <td key={col.id} className={`py-1.5 px-3 ${alignClass(col.id)}`}>
+                        {c.parentCompany
+                            ? <span className="text-gray-700 dark:text-gray-300 truncate">{c.parentCompany}</span>
+                            : <span className="text-gray-300 dark:text-gray-600">-</span>}
+                    </td>
+                );
             case 'region': {
                 const regions = companyRegions(c);
                 const MAX_FLAGS = 3;

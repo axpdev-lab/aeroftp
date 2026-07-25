@@ -4623,7 +4623,8 @@
                 "customFtp": "FTP / FTPS",
                 "customSftp": "SFTP",
                 "customS3": "S3",
-                "customWebdav": "WebDAV"
+                "customWebdav": "WebDAV",
+                "parentCompany": "Syarikat"
             },
             "healthCheck": "Pemeriksaan kesihatan",
             "storageVersioning": "Versi fail: {size}",
@@ -5114,7 +5115,9 @@
             "errNewRequired": "Kata laluan akaun baharu diperlukan.",
             "confirmRemovePassword": "Buang kata laluan akaun untuk \"{name}\"?",
             "confirmDelete": "Padam akaun \"{name}\"?\n\nMuatan disulitkan untuk dibuang: {profiles} profil, {settings} skop tetapan.",
-            "passwordChoiceNote": "Menetapkan kata laluan akaun adalah pilihan. Ia menghalang orang lain yang menggunakan peranti ini daripada membuka akaun anda; data tersimpan anda kekal disulitkan dalam kedua-dua keadaan. Langkau langkah ini jika anda satu-satunya pengguna, atau jika anda mempercayai semua orang yang menggunakan peranti ini."
+            "passwordChoiceNote": "Menetapkan kata laluan akaun adalah pilihan. Ia menghalang orang lain yang menggunakan peranti ini daripada membuka akaun anda; data tersimpan anda kekal disulitkan dalam kedua-dua keadaan. Langkau langkah ini jika anda satu-satunya pengguna, atau jika anda mempercayai semua orang yang menggunakan peranti ini.",
+            "copy": "Pendua pengguna (pelayan sahaja, tiada kata laluan)",
+            "copyLockedHint": "Tukar ke akaun ini dahulu untuk menduplikasi pelayannya"
         },
         "aerocryptNative": {
             "title": "Tindanan AeroCrypt",

@@ -4896,7 +4896,8 @@
                 "customFtp": "FTP / FTPS",
                 "customSftp": "SFTP",
                 "customS3": "S3",
-                "customWebdav": "WebDAV"
+                "customWebdav": "WebDAV",
+                "parentCompany": "Azienda"
             },
             "confirmDeleteServer": "Eliminare il server \"{name}\"? Verranno rimosse le credenziali salvate e l'operazione non potrà essere annullata.",
             "renameWithHotkey": "Rinomina (F2)",

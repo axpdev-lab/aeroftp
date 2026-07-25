@@ -4642,7 +4642,8 @@
                 "customFtp": "FTP / FTPS",
                 "customSftp": "SFTP",
                 "customS3": "S3",
-                "customWebdav": "WebDAV"
+                "customWebdav": "WebDAV",
+                "parentCompany": "Enpresa"
             },
             "healthCheck": "Erabilgarritasun-egiaztapena",
             "storageVersioning": "Fitxategi-bertsioak: {size}",
@@ -5133,7 +5134,9 @@
             "errNewRequired": "Kontuaren pasahitz berria beharrezkoa da.",
             "confirmRemovePassword": "\"{name}\" kontuaren pasahitza kendu?",
             "confirmDelete": "\"{name}\" kontua ezabatu?\n\nKendu beharreko karga zifratuak: {profiles} profil, {settings} ezarpen-eremu.",
-            "passwordChoiceNote": "Kontuaren pasahitza ezartzea aukerakoa da. Gailu hau erabiltzen duten beste pertsona batzuek zure kontua irekitzea eragozten du; zure gordetako datuak zifratuta jarraitzen dute edonola ere. Saltatu hau gailua erabiltzen duen bakarra bazara, edo gailu hau erabiltzen duten guztiengan konfiantza baduzu."
+            "passwordChoiceNote": "Kontuaren pasahitza ezartzea aukerakoa da. Gailu hau erabiltzen duten beste pertsona batzuek zure kontua irekitzea eragozten du; zure gordetako datuak zifratuta jarraitzen dute edonola ere. Saltatu hau gailua erabiltzen duen bakarra bazara, edo gailu hau erabiltzen duten guztiengan konfiantza baduzu.",
+            "copy": "Bikoiztu erabiltzailea (zerbitzariak soilik, pasahitzik gabe)",
+            "copyLockedHint": "Aldatu lehenik kontu honetara haren zerbitzariak bikoizteko"
         },
         "aerocryptNative": {
             "title": "AeroCrypt gainjartzea",

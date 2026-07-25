@@ -4623,7 +4623,8 @@
                 "customFtp": "FTP / FTPS",
                 "customSftp": "SFTP",
                 "customS3": "S3",
-                "customWebdav": "WebDAV"
+                "customWebdav": "WebDAV",
+                "parentCompany": "Yritys"
             },
             "healthCheck": "Saatavuuden tarkistus",
             "storageVersioning": "Tiedostoversiot: {size}",
@@ -5114,7 +5115,9 @@
             "errNewRequired": "Tilin uusi salasana vaaditaan.",
             "confirmRemovePassword": "Poistetaanko tilin \"{name}\" salasana?",
             "confirmDelete": "Poistetaanko tili \"{name}\"?\n\nPoistettavat salatut tiedot: {profiles} profiilia, {settings} asetusaluetta.",
-            "passwordChoiceNote": "Tilin salasanan asettaminen on valinnaista. Se estää muita tätä laitetta käyttäviä avaamasta tiliäsi; tallennetut tietosi pysyvät joka tapauksessa salattuina. Ohita tämä, jos olet ainoa käyttäjä tai luotat kaikkiin, jotka käyttävät tätä laitetta."
+            "passwordChoiceNote": "Tilin salasanan asettaminen on valinnaista. Se estää muita tätä laitetta käyttäviä avaamasta tiliäsi; tallennetut tietosi pysyvät joka tapauksessa salattuina. Ohita tämä, jos olet ainoa käyttäjä tai luotat kaikkiin, jotka käyttävät tätä laitetta.",
+            "copy": "Monista käyttäjä (vain palvelimet, ei salasanoja)",
+            "copyLockedHint": "Vaihda ensin tähän tiliin monistaaksesi sen palvelimet"
         },
         "aerocryptNative": {
             "title": "AeroCrypt-peittokerros",

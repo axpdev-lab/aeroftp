@@ -4642,7 +4642,8 @@
                 "customFtp": "FTP / FTPS",
                 "customSftp": "SFTP",
                 "customS3": "S3",
-                "customWebdav": "WebDAV"
+                "customWebdav": "WebDAV",
+                "parentCompany": "Fyrirtæki"
             },
             "healthCheck": "Aðgengisathugun",
             "storageVersioning": "Skráarútgáfur: {size}",
@@ -5133,7 +5134,9 @@
             "errNewRequired": "Nýtt lykilorð reiknings er nauðsynlegt.",
             "confirmRemovePassword": "Fjarlægja lykilorð reiknings fyrir \"{name}\"?",
             "confirmDelete": "Eyða reikningnum \"{name}\"?\n\nDulkóðuð gögn til að fjarlægja: {profiles} snið, {settings} stillingasvið.",
-            "passwordChoiceNote": "Það er valfrjálst að setja lykilorð fyrir reikninginn. Það kemur í veg fyrir að aðrir sem nota þetta tæki opni reikninginn þinn; vistuðu gögnin þín haldast dulkóðuð hvort sem er. Slepptu þessu ef þú ert eini notandinn, eða ef þú treystir öllum sem nota þetta tæki."
+            "passwordChoiceNote": "Það er valfrjálst að setja lykilorð fyrir reikninginn. Það kemur í veg fyrir að aðrir sem nota þetta tæki opni reikninginn þinn; vistuðu gögnin þín haldast dulkóðuð hvort sem er. Slepptu þessu ef þú ert eini notandinn, eða ef þú treystir öllum sem nota þetta tæki.",
+            "copy": "Afrita notanda (aðeins netþjónar, engir lykilorð)",
+            "copyLockedHint": "Skiptu fyrst yfir á þennan reikning til að afrita netþjóna hans"
         },
         "aerocryptNative": {
             "title": "AeroCrypt-yfirlag",

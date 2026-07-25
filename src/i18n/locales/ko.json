@@ -4623,7 +4623,8 @@
                 "customFtp": "FTP / FTPS",
                 "customSftp": "SFTP",
                 "customS3": "S3",
-                "customWebdav": "WebDAV"
+                "customWebdav": "WebDAV",
+                "parentCompany": "회사"
             },
             "healthCheck": "상태 확인",
             "storageVersioning": "파일 버전: {size}",
@@ -5114,7 +5115,9 @@
             "errNewRequired": "새 계정 비밀번호가 필요합니다.",
             "confirmRemovePassword": "\"{name}\"의 계정 비밀번호를 제거하시겠습니까?",
             "confirmDelete": "계정 \"{name}\"을(를) 삭제하시겠습니까?\n\n제거될 암호화된 데이터: 프로필 {profiles}개, 설정 범위 {settings}개.",
-            "passwordChoiceNote": "계정 비밀번호 설정은 선택 사항입니다. 이 기기를 사용하는 다른 사람이 계정을 여는 것을 막아 줍니다. 저장된 데이터는 어느 경우든 암호화된 상태로 유지됩니다. 사용자가 본인뿐이거나 이 기기를 사용하는 모든 사람을 신뢰한다면 건너뛰어도 됩니다."
+            "passwordChoiceNote": "계정 비밀번호 설정은 선택 사항입니다. 이 기기를 사용하는 다른 사람이 계정을 여는 것을 막아 줍니다. 저장된 데이터는 어느 경우든 암호화된 상태로 유지됩니다. 사용자가 본인뿐이거나 이 기기를 사용하는 모든 사람을 신뢰한다면 건너뛰어도 됩니다.",
+            "copy": "사용자 복제 (서버만, 비밀번호 제외)",
+            "copyLockedHint": "서버를 복제하려면 먼저 이 계정으로 전환하세요"
         },
         "aerocryptNative": {
             "title": "AeroCrypt 오버레이",

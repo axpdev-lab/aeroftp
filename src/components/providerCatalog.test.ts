@@ -10,6 +10,7 @@ import {
     PROVIDER_CATALOG,
     buildCliCatalog,
     buildProvidersMarkdown,
+    catalogParentKey,
     companyInCategory,
     companyLaunchProtocol,
     companyTier,
@@ -128,6 +129,25 @@ describe('provider catalog category model (issue #224)', () => {
         // Same free-OAuth + paid-WebDAV shape as pCloud Drive.
         const pcloud = PROVIDER_CATALOG.find(c => c.company === 'pCloud Drive')!;
         expect(pcloud.protocols.find(p => p.providerId === 'pcloud-webdav')!.paid).toBe(true);
+    });
+
+    it('parentCompany groups multi-product parents (Ehud #274 optional Company column)', () => {
+        // Microsoft family: OneDrive, Azure Blob, GitHub all sort under "Microsoft".
+        for (const name of ['Microsoft OneDrive', 'Microsoft Azure Blob', 'GitHub']) {
+            const c = PROVIDER_CATALOG.find(x => x.company === name)!;
+            expect(c.parentCompany, name).toBe('Microsoft');
+            expect(catalogParentKey(c)).toBe('Microsoft');
+        }
+        // Google Drive + Google Cloud Storage.
+        expect(PROVIDER_CATALOG.find(c => c.company === 'Google Drive')!.parentCompany).toBe('Google');
+        expect(PROVIDER_CATALOG.find(c => c.company === 'Google Cloud Storage')!.parentCompany).toBe('Google');
+        // Yandex pair, kDrive under Infomaniak (product name differs from company).
+        expect(PROVIDER_CATALOG.find(c => c.company === 'Yandex Disk')!.parentCompany).toBe('Yandex');
+        expect(PROVIDER_CATALOG.find(c => c.company === 'Yandex Object Storage')!.parentCompany).toBe('Yandex');
+        expect(PROVIDER_CATALOG.find(c => c.company === 'kDrive')!.parentCompany).toBe('Infomaniak');
+        // Brand-as-product rows leave parent unset so the optional column stays sparse.
+        expect(PROVIDER_CATALOG.find(c => c.company === 'Dropbox')!.parentCompany).toBeUndefined();
+        expect(catalogParentKey(PROVIDER_CATALOG.find(c => c.company === 'Dropbox')!)).toBe('Dropbox');
     });
 });
 
