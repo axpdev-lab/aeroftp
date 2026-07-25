@@ -21581,10 +21581,16 @@ mod update_verification_tests {
     fn a_digest_of_the_wrong_length_is_refused() {
         let mut bundle = real_bundle();
         bundle["messageSignature"]["messageDigest"]["digest"] = serde_json::json!("YWJj"); // "abc"
-        assert_eq!(parse_sigstore_bundle_metadata(&bundle).attested_sha256, None);
+        assert_eq!(
+            parse_sigstore_bundle_metadata(&bundle).attested_sha256,
+            None
+        );
 
         bundle["messageSignature"]["messageDigest"]["digest"] = serde_json::json!("!!not base64!!");
-        assert_eq!(parse_sigstore_bundle_metadata(&bundle).attested_sha256, None);
+        assert_eq!(
+            parse_sigstore_bundle_metadata(&bundle).attested_sha256,
+            None
+        );
     }
 
     /// The version is read from the media type, so an unversioned or unexpected
@@ -21592,10 +21598,11 @@ mod update_verification_tests {
     #[test]
     fn bundle_version_comes_from_the_media_type() {
         let mut bundle = real_bundle();
-        bundle["mediaType"] =
-            serde_json::json!("application/vnd.dev.sigstore.bundle.v0.4+json");
+        bundle["mediaType"] = serde_json::json!("application/vnd.dev.sigstore.bundle.v0.4+json");
         assert_eq!(
-            parse_sigstore_bundle_metadata(&bundle).bundle_version.as_deref(),
+            parse_sigstore_bundle_metadata(&bundle)
+                .bundle_version
+                .as_deref(),
             Some("0.4")
         );
 
