@@ -1693,6 +1693,25 @@ struct ReleaseAssetSelection {
     bundle_url: String,
 }
 
+/// Which stage of `download_update` the emitted progress belongs to.
+///
+/// The frontend used to infer this from `percentage < 100`, which made the
+/// "verifying" state unreachable: the only 100% event was emitted after Sigstore
+/// verification had already finished, in the same tick as the command's return
+/// value. Reporting the stage explicitly lets the UI hold a green 100% bar for
+/// the duration of the verification, which is real work rather than a contrived
+/// pause.
+#[derive(Serialize, Clone, Copy, PartialEq, Eq, Debug)]
+enum UpdateDownloadPhase {
+    /// Bytes are still arriving; percentage is capped at 99.
+    Downloading,
+    /// The artifact is fully written to disk; the Sigstore bundle is being
+    /// fetched and verified. Percentage is 100.
+    Verifying,
+    /// Verification finished and the artifact is ready to install.
+    Complete,
+}
+
 #[derive(Serialize, Clone)]
 struct UpdateDownloadProgress {
     downloaded: u64,
@@ -1701,6 +1720,7 @@ struct UpdateDownloadProgress {
     speed_bps: u64,
     eta_seconds: u64,
     filename: String,
+    phase: UpdateDownloadPhase,
 }
 
 const GITHUB_RELEASES_API_URL: &str =
@@ -1863,6 +1883,13 @@ fn unique_download_path(directory: &Path, file_name: &str) -> PathBuf {
     directory.join(format!("{}-{}", uuid::Uuid::new_v4(), file_name))
 }
 
+/// Percentage for the update download bar.
+///
+/// While bytes are still streaming the result is capped at 99 on purpose: a
+/// rounding artefact must never show 100% before the last byte is on disk. The
+/// real 100% comes from `completed`, which the caller sets once the file has been
+/// written and flushed (see `download_update_artifact`), not once the whole
+/// `download_update` command is finished.
 fn compute_update_download_progress(downloaded: u64, total: u64, completed: bool) -> u8 {
     if completed {
         return 100;
@@ -1881,8 +1908,9 @@ fn emit_update_download_progress(
     downloaded: u64,
     total: u64,
     started_at: Instant,
-    completed: bool,
+    phase: UpdateDownloadPhase,
 ) {
+    let completed = phase != UpdateDownloadPhase::Downloading;
     let elapsed = started_at.elapsed().as_secs_f64();
     let speed_bps = if elapsed > 0.0 {
         (downloaded as f64 / elapsed) as u64
@@ -1904,6 +1932,7 @@ fn emit_update_download_progress(
             speed_bps,
             eta_seconds,
             filename: filename.to_string(),
+            phase,
         },
     );
 }
@@ -2043,7 +2072,14 @@ async fn download_update_artifact(
         let should_emit = last_emit.elapsed().as_millis() >= 150
             || percentage.saturating_sub(last_percentage) >= 2;
         if should_emit {
-            emit_update_download_progress(app, filename, downloaded, total, started_at, false);
+            emit_update_download_progress(
+                app,
+                filename,
+                downloaded,
+                total,
+                started_at,
+                UpdateDownloadPhase::Downloading,
+            );
             last_emit = Instant::now();
             last_percentage = percentage;
         }
@@ -2052,6 +2088,18 @@ async fn download_update_artifact(
     file.flush()
         .await
         .map_err(|error| format!("Failed to flush update file: {}", error))?;
+
+    // The artifact is fully on disk: this is the honest 100%, and it is emitted
+    // here rather than after verification so the UI can show a completed bar
+    // while the Sigstore bundle is fetched and checked.
+    emit_update_download_progress(
+        app,
+        filename,
+        downloaded,
+        total,
+        started_at,
+        UpdateDownloadPhase::Verifying,
+    );
 
     Ok(())
 }
@@ -2064,6 +2112,93 @@ enum VerificationMode {
     VerificationFailed,
 }
 
+/// Provenance read out of a Sigstore bundle before the verifier consumes it.
+///
+/// The bundle already travels with the update and carries the evidence a user
+/// would need to re-check the release themselves (which Rekor entry, which
+/// digest was signed); until now all of it was discarded. Every field is
+/// optional on purpose: a bundle shape we do not recognise must degrade to
+/// "not shown" rather than to a wrong claim.
+#[derive(Serialize, Clone, Default)]
+struct SigstoreBundleMetadata {
+    /// Bundle format version parsed from `mediaType`, e.g. `0.3`.
+    bundle_version: Option<String>,
+    /// Rekor transparency-log index, the handle for search.sigstore.dev.
+    rekor_log_index: Option<u64>,
+    /// Unix seconds at which Rekor integrated the entry.
+    rekor_integrated_time: Option<i64>,
+    /// Entry kind and version, e.g. `hashedrekord 0.0.1`.
+    rekor_entry_kind: Option<String>,
+    /// The SHA-256 that was actually signed, hex encoded.
+    attested_sha256: Option<String>,
+}
+
+/// Extract [`SigstoreBundleMetadata`] from a raw bundle document.
+///
+/// Kept separate from `verify_sigstore_bundle` (and free of any I/O) so the
+/// extraction can be unit tested against real and malformed bundles without
+/// driving an update, which is only observable across a signed release pair.
+fn parse_sigstore_bundle_metadata(raw: &serde_json::Value) -> SigstoreBundleMetadata {
+    use base64::{engine::general_purpose::STANDARD, Engine as _};
+
+    // "application/vnd.dev.sigstore.bundle.v0.3+json" -> "0.3"
+    let bundle_version = raw
+        .get("mediaType")
+        .and_then(|value| value.as_str())
+        .and_then(|media| media.split(".bundle.v").nth(1))
+        .and_then(|tail| tail.split('+').next())
+        .filter(|version| !version.is_empty())
+        .map(|version| version.to_string());
+
+    let entry = raw
+        .get("verificationMaterial")
+        .and_then(|material| material.get("tlogEntries"))
+        .and_then(|entries| entries.as_array())
+        .and_then(|entries| entries.first());
+
+    // Rekor serialises these as JSON strings, but accept numbers too: the
+    // protobuf-JSON mapping allows either for 64-bit integers.
+    let number_field = |name: &str| -> Option<i64> {
+        entry.and_then(|entry| entry.get(name)).and_then(|value| {
+            value
+                .as_str()
+                .and_then(|text| text.parse::<i64>().ok())
+                .or_else(|| value.as_i64())
+        })
+    };
+
+    let rekor_log_index = number_field("logIndex")
+        .filter(|index| *index >= 0)
+        .map(|index| index as u64);
+    let rekor_integrated_time = number_field("integratedTime");
+
+    let rekor_entry_kind =
+        entry
+            .and_then(|entry| entry.get("kindVersion"))
+            .and_then(|kind_version| {
+                let kind = kind_version.get("kind")?.as_str()?;
+                let version = kind_version.get("version")?.as_str()?;
+                Some(format!("{} {}", kind, version))
+            });
+
+    let attested_sha256 = raw
+        .get("messageSignature")
+        .and_then(|signature| signature.get("messageDigest"))
+        .and_then(|digest| digest.get("digest"))
+        .and_then(|digest| digest.as_str())
+        .and_then(|digest| STANDARD.decode(digest).ok())
+        .filter(|bytes| bytes.len() == 32)
+        .map(hex::encode);
+
+    SigstoreBundleMetadata {
+        bundle_version,
+        rekor_log_index,
+        rekor_integrated_time,
+        rekor_entry_kind,
+        attested_sha256,
+    }
+}
+
 #[derive(Serialize, Clone)]
 struct UpdateVerificationInfo {
     mode: VerificationMode,
@@ -2074,7 +2209,20 @@ struct UpdateVerificationInfo {
     bundle_parsed: bool,
     bundle_fetch_failed: bool,
     message: String,
+    /// Flattened so the frontend sees one flat object, unchanged in shape for
+    /// the fields that already existed.
+    #[serde(flatten)]
+    bundle_metadata: SigstoreBundleMetadata,
+    /// `Some(true)` when the locally computed digest equals the signed one.
+    /// `None` when there is no signed digest to compare against, which is a
+    /// different statement from "they differ" and must stay distinguishable.
+    digest_match: Option<bool>,
+    /// Version of the crate that performed (or would have performed) the
+    /// verification, resolved from Cargo.lock at build time so it cannot drift.
+    verifier_version: &'static str,
 }
+
+const SIGSTORE_VERIFIER_VERSION: &str = env!("DEP_VERSION_SIGSTORE");
 
 #[derive(Serialize, Clone)]
 struct DownloadUpdateResponse {
@@ -2112,11 +2260,43 @@ fn verify_sigstore_bundle(
                 bundle_parsed: false,
                 bundle_fetch_failed: false,
                 message: "Sigstore bundle not found on GitHub Release".to_string(),
+                bundle_metadata: SigstoreBundleMetadata::default(),
+                digest_match: None,
+                verifier_version: SIGSTORE_VERIFIER_VERSION,
             });
         }
     };
 
-    let bundle: sigstore::bundle::Bundle = match serde_json::from_reader(bundle_file) {
+    // Read the document once as generic JSON so the provenance can be pulled out
+    // before `verifier.verify` takes ownership of the typed bundle.
+    let raw_bundle: serde_json::Value = match serde_json::from_reader(bundle_file) {
+        Ok(value) => value,
+        Err(e) => {
+            return Ok(UpdateVerificationInfo {
+                mode: VerificationMode::VerificationUnavailable,
+                workflow_identity: None,
+                oidc_issuer: None,
+                artifact_sha256,
+                bundle_present: true,
+                bundle_parsed: false,
+                bundle_fetch_failed: false,
+                message: format!("Sigstore bundle unparseable: {}", e),
+                bundle_metadata: SigstoreBundleMetadata::default(),
+                digest_match: None,
+                verifier_version: SIGSTORE_VERIFIER_VERSION,
+            });
+        }
+    };
+
+    let bundle_metadata = parse_sigstore_bundle_metadata(&raw_bundle);
+    // Comparing the local digest with the signed one is only meaningful when a
+    // signed one exists; `None` keeps "nothing to compare" distinct from "differs".
+    let digest_match = bundle_metadata
+        .attested_sha256
+        .as_ref()
+        .map(|attested| attested.eq_ignore_ascii_case(&artifact_sha256));
+
+    let bundle: sigstore::bundle::Bundle = match serde_json::from_value(raw_bundle) {
         Ok(b) => b,
         Err(e) => {
             return Ok(UpdateVerificationInfo {
@@ -2128,6 +2308,9 @@ fn verify_sigstore_bundle(
                 bundle_parsed: false,
                 bundle_fetch_failed: false,
                 message: format!("Sigstore bundle unparseable: {}", e),
+                bundle_metadata,
+                digest_match,
+                verifier_version: SIGSTORE_VERIFIER_VERSION,
             });
         }
     };
@@ -2151,6 +2334,9 @@ fn verify_sigstore_bundle(
             bundle_fetch_failed: false,
             message: "Successfully verified against GitHub Actions Sigstore transparency log"
                 .to_string(),
+            bundle_metadata,
+            digest_match,
+            verifier_version: SIGSTORE_VERIFIER_VERSION,
         }),
         Err(e) => {
             // Sigstore verification errors should NEVER block the user from installing.
@@ -2165,6 +2351,9 @@ fn verify_sigstore_bundle(
                 bundle_parsed: true,
                 bundle_fetch_failed: false,
                 message: format!("Signature verification unavailable: {}", e),
+                bundle_metadata,
+                digest_match,
+                verifier_version: SIGSTORE_VERIFIER_VERSION,
             })
         }
     }
@@ -2579,7 +2768,14 @@ async fn download_update(app: AppHandle, url: String) -> Result<DownloadUpdateRe
     }
 
     validate_update_path(destination.to_string_lossy().as_ref())?;
-    emit_update_download_progress(&app, &asset.asset_name, 1, 1, Instant::now(), true);
+    emit_update_download_progress(
+        &app,
+        &asset.asset_name,
+        1,
+        1,
+        Instant::now(),
+        UpdateDownloadPhase::Complete,
+    );
 
     // Record the just-verified artifact so the privileged install commands can
     // fail closed against a caller-supplied path (see verified_update_registry).
@@ -21281,5 +21477,151 @@ mod scan_completeness_gate_tests {
         let err = ensure_scan_complete("left", "/mnt/backup", &truncated).unwrap_err();
         assert!(err.contains(SCAN_INCOMPLETE_MARKER));
         assert!(err.contains("stopped before the end"));
+    }
+}
+
+#[cfg(test)]
+mod update_verification_tests {
+    use super::{compute_update_download_progress, parse_sigstore_bundle_metadata};
+
+    /// Digest of the real v4.1.6 `.deb`, as base64 in the bundle and as the hex
+    /// the UI compares against. Keeping the authentic pair means the base64 ->
+    /// hex conversion is pinned to a value that was actually verified, not to a
+    /// round-trip of our own encoder.
+    const REAL_DIGEST_B64: &str = "60oA9p8vaBacYHyEquEkZith9pvo7F3+Fx6VrCAQ2CI=";
+    const REAL_DIGEST_HEX: &str =
+        "eb4a00f69f2f68169c607c84aae124662b61f69be8ec5dfe171e95ac2010d822";
+
+    /// The shape `cosign sign-blob --new-bundle-format` produces, trimmed to the
+    /// fields the panel reads.
+    fn real_bundle() -> serde_json::Value {
+        serde_json::json!({
+            "mediaType": "application/vnd.dev.sigstore.bundle.v0.3+json",
+            "verificationMaterial": {
+                "certificate": { "rawBytes": "MIIG8TCC" },
+                "tlogEntries": [{
+                    "logIndex": "2242869187",
+                    "logId": { "keyId": "wNI9atQGlz+VWfO6LRygH4QUfY/8W4RFwiT5i5WRgB0=" },
+                    "kindVersion": { "kind": "hashedrekord", "version": "0.0.1" },
+                    "integratedTime": "1784953451"
+                }]
+            },
+            "messageSignature": {
+                "messageDigest": { "algorithm": "SHA2_256", "digest": REAL_DIGEST_B64 },
+                "signature": "MEUCIFEVsPYEyddhKhLUD2UFIxypkRSOt8r7PHvu0V/LuJAJ"
+            }
+        })
+    }
+
+    #[test]
+    fn reads_every_field_from_a_real_bundle() {
+        let meta = parse_sigstore_bundle_metadata(&real_bundle());
+        assert_eq!(meta.bundle_version.as_deref(), Some("0.3"));
+        assert_eq!(meta.rekor_log_index, Some(2_242_869_187));
+        assert_eq!(meta.rekor_integrated_time, Some(1_784_953_451));
+        assert_eq!(meta.rekor_entry_kind.as_deref(), Some("hashedrekord 0.0.1"));
+        assert_eq!(meta.attested_sha256.as_deref(), Some(REAL_DIGEST_HEX));
+    }
+
+    /// The protobuf-JSON mapping allows 64-bit integers as numbers as well as
+    /// strings; Rekor uses strings today, but a numeric encoding must not make
+    /// the Rekor row silently disappear.
+    #[test]
+    fn accepts_numeric_log_index_and_time() {
+        let mut bundle = real_bundle();
+        bundle["verificationMaterial"]["tlogEntries"][0]["logIndex"] =
+            serde_json::json!(2_242_869_187u64);
+        bundle["verificationMaterial"]["tlogEntries"][0]["integratedTime"] =
+            serde_json::json!(1_784_953_451i64);
+
+        let meta = parse_sigstore_bundle_metadata(&bundle);
+        assert_eq!(meta.rekor_log_index, Some(2_242_869_187));
+        assert_eq!(meta.rekor_integrated_time, Some(1_784_953_451));
+    }
+
+    /// A bundle with no transparency-log entry still carries a signed digest:
+    /// the digest row must survive even when the Rekor row cannot be shown.
+    #[test]
+    fn missing_tlog_entries_drops_only_the_rekor_fields() {
+        let mut bundle = real_bundle();
+        bundle["verificationMaterial"]
+            .as_object_mut()
+            .unwrap()
+            .remove("tlogEntries");
+
+        let meta = parse_sigstore_bundle_metadata(&bundle);
+        assert_eq!(meta.rekor_log_index, None);
+        assert_eq!(meta.rekor_integrated_time, None);
+        assert_eq!(meta.rekor_entry_kind, None);
+        assert_eq!(meta.attested_sha256.as_deref(), Some(REAL_DIGEST_HEX));
+        assert_eq!(meta.bundle_version.as_deref(), Some("0.3"));
+    }
+
+    /// An unrecognised document must degrade to "nothing to show" rather than
+    /// panic or invent a value: the panel hides every row it has no data for.
+    #[test]
+    fn unrecognised_shapes_yield_nothing() {
+        for value in [
+            serde_json::json!({}),
+            serde_json::json!({ "mediaType": "application/json" }),
+            serde_json::json!({ "verificationMaterial": "not-an-object" }),
+            serde_json::json!([1, 2, 3]),
+        ] {
+            let meta = parse_sigstore_bundle_metadata(&value);
+            assert_eq!(meta.bundle_version, None, "value: {value}");
+            assert_eq!(meta.rekor_log_index, None, "value: {value}");
+            assert_eq!(meta.attested_sha256, None, "value: {value}");
+        }
+    }
+
+    /// A digest that is not 32 bytes is not a SHA-256. Showing it would put a
+    /// truncated string next to the locally computed one and invite the reader
+    /// to compare two things that are not comparable.
+    #[test]
+    fn a_digest_of_the_wrong_length_is_refused() {
+        let mut bundle = real_bundle();
+        bundle["messageSignature"]["messageDigest"]["digest"] = serde_json::json!("YWJj"); // "abc"
+        assert_eq!(
+            parse_sigstore_bundle_metadata(&bundle).attested_sha256,
+            None
+        );
+
+        bundle["messageSignature"]["messageDigest"]["digest"] = serde_json::json!("!!not base64!!");
+        assert_eq!(
+            parse_sigstore_bundle_metadata(&bundle).attested_sha256,
+            None
+        );
+    }
+
+    /// The version is read from the media type, so an unversioned or unexpected
+    /// media type shows no version rather than a guessed one.
+    #[test]
+    fn bundle_version_comes_from_the_media_type() {
+        let mut bundle = real_bundle();
+        bundle["mediaType"] = serde_json::json!("application/vnd.dev.sigstore.bundle.v0.4+json");
+        assert_eq!(
+            parse_sigstore_bundle_metadata(&bundle)
+                .bundle_version
+                .as_deref(),
+            Some("0.4")
+        );
+
+        bundle["mediaType"] = serde_json::json!("application/vnd.dev.sigstore.bundle+json");
+        assert_eq!(parse_sigstore_bundle_metadata(&bundle).bundle_version, None);
+    }
+
+    /// The cap is what keeps a rounding artefact from painting 100% before the
+    /// last byte is on disk; the honest 100% only ever comes from `completed`.
+    #[test]
+    fn streaming_progress_stops_at_99_and_completion_reaches_100() {
+        assert_eq!(compute_update_download_progress(0, 1000, false), 0);
+        assert_eq!(compute_update_download_progress(500, 1000, false), 50);
+        // 99.9% still rounds down to 99 while bytes are in flight.
+        assert_eq!(compute_update_download_progress(999, 1000, false), 99);
+        assert_eq!(compute_update_download_progress(1000, 1000, false), 99);
+        assert_eq!(compute_update_download_progress(1000, 1000, true), 100);
+        // An unknown content length reports 0 rather than a fabricated fraction.
+        assert_eq!(compute_update_download_progress(500, 0, false), 0);
+        assert_eq!(compute_update_download_progress(0, 0, true), 100);
     }
 }

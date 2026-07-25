@@ -203,7 +203,8 @@ import { getCredentialWithRetry } from './utils/profileVaultSecrets';
 import { normalizeMegaOptions } from './utils/providerConnectionMeta';
 import { localizeRestrictedCharError } from './utils/restrictedCharError';
 import { CONNECT_CANCELLED_MARKER, CONNECT_HARD_TIMEOUT_MARKER, isConnectCancelledError, isConnectHardTimeoutError } from './utils/connectCancel';
-import { classifyUpdateVerification } from './utils/updateVerification';
+import type { UpdateVerificationInfo } from './utils/updateVerification';
+import { UpdateVerificationPanel } from './components/UpdateVerificationPanel';
 import { safePickerStartDir } from './utils/safePickerDir';
 import { migrateFilenApiKeysToVault } from './utils/filenApiKeyMigration';
 import { CustomTitlebar } from './components/CustomTitlebar';
@@ -311,7 +312,7 @@ import type { ScanningState } from './components/ScanningToast';
 import { ProviderThumbnail } from './components/ProviderThumbnail';
 import {
   FolderUp, RefreshCw, FolderPlus, FolderOpen, FolderInput,
-  Download, Upload, Pencil, Trash2, X, ShieldCheck, ShieldQuestion, ShieldAlert, Loader2,
+  Download, Upload, Pencil, Trash2, X, Loader2,
   Folder, FileText, Globe, HardDrive, Settings, Search, Eye, Link2, Unlink, Shield, ShieldOff, Cloud,
   Archive, Image, Video, Music, FileType, Code, Database, Clock,
   Copy, Clipboard, ClipboardPaste, ClipboardList, Scissors, ExternalLink, List, LayoutGrid, CheckCircle2, AlertTriangle, Share2, Send, Info,
@@ -542,6 +543,12 @@ const STILL_CONNECTING_DELAY_MS = 8000;
 // backstop well above any legitimate slow login (real logins are seconds), not
 // a policy timeout; the "Keep waiting" button re-arms it for another window.
 const CONNECT_HARD_TIMEOUT_MS = 120000;
+
+// Minimum time the finished update progress bar stays on screen before the
+// result card replaces it. Signature verification normally takes longer than
+// this on its own; the floor only covers the runs that return almost instantly,
+// where the completed bar would otherwise never be rendered to a visible frame.
+const UPDATE_COMPLETE_MIN_DWELL_MS = 700;
 
 // Marker the backend returns from `provider_list_files` / `provider_change_dir`
 // when the remote panel's Cancel button aborted the listing (see
@@ -2161,17 +2168,6 @@ const App: React.FC = () => {
   const { updateAvailable, setUpdateAvailable, checkForUpdate } = useAutoUpdate({ activityLog, disabled: disableUpdateChecks });
   const [updateToastDismissed, setUpdateToastDismissed] = useState(false);
   const updateToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-interface UpdateVerificationInfo {
-  mode: 'SigstoreVerified' | 'VerificationUnavailable' | 'VerificationFailed';
-  workflow_identity: string | null;
-  oidc_issuer: string | null;
-  artifact_sha256: string;
-  bundle_present: boolean;
-  bundle_parsed: boolean;
-  bundle_fetch_failed: boolean;
-  message: string;
-}
-
   const [updateDownload, setUpdateDownload] = useState<{
     downloading: boolean;
     percentage: number;
@@ -2185,7 +2181,20 @@ interface UpdateVerificationInfo {
     installing?: boolean;
     installPhase?: 'auth' | 'running' | 'restart';
     verification?: UpdateVerificationInfo;
+    /* Reported by the backend instead of being inferred from percentage < 100,
+       which used to make the verifying state unreachable. */
+    phase?: 'Downloading' | 'Verifying' | 'Complete';
   } | null>(null);
+
+  /* When the bar first reached 100%, and the pending swap to the result card.
+     The completed bar has to be on screen long enough to be seen: verification
+     is real work and normally covers it, but a cached trust root can return in
+     a few milliseconds, which is exactly the case that used to hide the 100%. */
+  const updateReached100AtRef = useRef<number | null>(null);
+  const updateCompleteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (updateCompleteTimerRef.current) clearTimeout(updateCompleteTimerRef.current);
+  }, []);
 
   // Auto-dismiss update toast after 2 animation cycles (8s): only when not downloading
   useEffect(() => {
@@ -4833,17 +4842,25 @@ interface UpdateVerificationInfo {
 
   // Stuck detection moved to TransferToastContainer (isolated from App re-renders)
 
-  // Update download progress listener
+  // Update download progress listener.
+  // The backend reports its own phase: "Verifying" arrives as soon as the file
+  // is flushed to disk, so the bar can sit at a completed 100% for the duration
+  // of the Sigstore check instead of jumping straight to the result card.
   useTauriListener<{
     downloaded: number; total: number; percentage: number;
     speed_bps: number; eta_seconds: number; filename: string;
+    phase: 'Downloading' | 'Verifying' | 'Complete';
   }>('update-download-progress', (event) => {
     const p = event.payload;
+    // Stamped once: later events must not push the dwell deadline forward.
+    if (p.phase !== 'Downloading' && updateReached100AtRef.current === null) {
+      updateReached100AtRef.current = Date.now();
+    }
     setUpdateDownload(prev => ({
       ...(prev || { downloading: true, error: undefined, completedPath: undefined }),
       ...p,
-      downloading: p.percentage < 100,
-      completedPath: p.percentage >= 100 ? prev?.completedPath : undefined,
+      downloading: p.phase === 'Downloading',
+      completedPath: p.phase === 'Downloading' ? undefined : prev?.completedPath,
     }));
   });
 
@@ -4906,15 +4923,40 @@ interface UpdateVerificationInfo {
   // Start update download
   const startUpdateDownload = useCallback(async () => {
     if (!updateAvailable?.download_url) return;
+    if (updateCompleteTimerRef.current) {
+      clearTimeout(updateCompleteTimerRef.current);
+      updateCompleteTimerRef.current = null;
+    }
+    updateReached100AtRef.current = null;
     setUpdateDownload({
       downloading: true, percentage: 0, speed_bps: 0, eta_seconds: 0,
-      filename: '', downloaded: 0, total: 0,
+      filename: '', downloaded: 0, total: 0, phase: 'Downloading',
     });
     try {
       const resp = await invoke<{ path: string; verification: UpdateVerificationInfo }>('download_update', { url: updateAvailable.download_url });
-      setUpdateDownload(prev => prev ? { ...prev, downloading: false, completedPath: resp.path, verification: resp.verification } : null);
       activityLog.log('INFO', `Update downloaded: ${resp.path} (Mode: ${resp.verification.mode})`, 'success');
+
+      const showResult = () => {
+        updateCompleteTimerRef.current = null;
+        setUpdateDownload(prev => prev ? {
+          ...prev, downloading: false, phase: 'Complete',
+          completedPath: resp.path, verification: resp.verification,
+        } : null);
+      };
+      // Hold the completed bar for the rest of its minimum time on screen. When
+      // no 100% event arrived (older backend, or a path that never emitted one)
+      // there is nothing to protect, so swap immediately.
+      const reachedAt = updateReached100AtRef.current;
+      const remaining = reachedAt === null
+        ? 0
+        : Math.max(0, UPDATE_COMPLETE_MIN_DWELL_MS - (Date.now() - reachedAt));
+      if (remaining === 0) showResult();
+      else updateCompleteTimerRef.current = setTimeout(showResult, remaining);
     } catch (error) {
+      if (updateCompleteTimerRef.current) {
+        clearTimeout(updateCompleteTimerRef.current);
+        updateCompleteTimerRef.current = null;
+      }
       setUpdateDownload(prev => prev ? { ...prev, downloading: false, error: String(error) } : null);
       activityLog.log('ERROR', `Update download failed: ${error}`, 'error');
     }
@@ -15414,7 +15456,10 @@ interface UpdateVerificationInfo {
               </div>
             )}
 
-            {/* State: Downloading or Verifying */}
+            {/* State: Downloading or Verifying.
+                The backend reports the phase, so the bar can sit at a completed,
+                green 100% for the whole signature check instead of being replaced
+                by the result card in the same frame the download ends. */}
             {(updateDownload?.downloading || (updateDownload && !updateDownload.completedPath && !updateDownload.error && updateDownload.percentage > 0)) && (
               <div>
                 <TransferProgressBar
@@ -15428,7 +15473,7 @@ interface UpdateVerificationInfo {
                 {!updateDownload.downloading && (
                   <div className="mt-1.5 text-xs text-blue-200/70 flex items-center gap-1.5">
                     <Loader2 size={11} className="animate-spin" />
-                    {t('update.verifyingIntegrity')}
+                    {t('update.verifyingSigstore')}
                   </div>
                 )}
               </div>
@@ -15444,41 +15489,17 @@ interface UpdateVerificationInfo {
                   {updateDownload.completedPath}
                 </span>
 
-                {/* Sigstore / SHA-256 verification badge. Three visible states:
-                    green = sigstore verified, OR no signature bundle present (SHA-256 only);
-                    amber = a signature bundle was present but parsing/verification failed, or
-                            its download failed -> advisory in v4.1.3: still installable, but no longer
-                            masquerades as a green "verified" badge;
-                    red   = VerificationFailed, hides Install (reserved for the v4.1.4 hard gate).
-                    Classified purely from backend-provided fields; the Rust verify path is
-                    untouched so the working verified path cannot regress. */}
-                {updateDownload.verification && (() => {
-                  const v = updateDownload.verification;
-                  const tone = classifyUpdateVerification(v);
-                  const boxClass = tone === 'failed'
-                    ? 'bg-red-500/10 border-red-500/20 text-red-300'
-                    : tone === 'unverified'
-                      ? 'bg-amber-500/10 border-amber-500/20 text-amber-300'
-                      : 'bg-green-500/10 border-green-500/20 text-green-300';
-                  const VIcon = tone === 'failed' ? ShieldAlert : tone === 'unverified' ? ShieldQuestion : ShieldCheck;
-                  const label = tone === 'failed'
-                    ? t('update.verifySignatureFailed')
-                    : tone === 'verified'
-                      ? t('update.verifySignedByCi')
-                      : tone === 'unverified'
-                        ? t('update.verifyUnverified')
-                        : t('update.verifyShaOnly', { hash: v.artifact_sha256.slice(0, 12) });
-                  return (
-                    <div className={`mt-1 flex flex-col gap-1 text-xs border rounded-lg p-2 ${boxClass}`}>
-                      <div className="flex items-center justify-between font-medium">
-                        <div className="flex items-center gap-1.5 truncate">
-                          <VIcon size={14} className="flex-shrink-0" />
-                          <span className="truncate">{label}</span>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })()}
+                {/* Verification result. Four visible states, all classified from
+                    backend-provided fields:
+                    green   = Sigstore verified, with signer / Rekor entry / digest match;
+                    neutral = no signature bundle was published, so the digest was
+                              only computed, never compared (it must not read green);
+                    amber   = a bundle was published but could not be verified -> advisory,
+                              still installable, and it shows both digests;
+                    red     = VerificationFailed, hides Install (v4.1.4 hard gate). */}
+                {updateDownload.verification && (
+                  <UpdateVerificationPanel verification={updateDownload.verification} t={t} />
+                )}
 
                 {/* Install & Restart: platform-aware, block if VerificationFailed.
                     Linux (appimage/deb/rpm): per-format install command + auto-restart.
@@ -15599,25 +15620,9 @@ interface UpdateVerificationInfo {
             {/* Verification result echoed in the centered overlay (not only the
                 top-right toast), so the outcome is visible while installing. Same
                 classification as the toast badge. */}
-            {updateDownload.verification && (() => {
-              const v = updateDownload.verification;
-              const tone = classifyUpdateVerification(v);
-              const VIcon = tone === 'failed' ? ShieldAlert : tone === 'unverified' ? ShieldQuestion : ShieldCheck;
-              const color = tone === 'failed' ? 'text-red-400' : tone === 'unverified' ? 'text-amber-400' : 'text-green-400';
-              const label = tone === 'failed'
-                ? t('update.verifySignatureFailed')
-                : tone === 'verified'
-                  ? t('update.verifySignedByCi')
-                  : tone === 'unverified'
-                    ? t('update.verifyUnverified')
-                    : t('update.verifyShaOnly', { hash: v.artifact_sha256.slice(0, 12) });
-              return (
-                <div className={`flex items-center gap-1.5 text-xs mt-2 ${color}`}>
-                  <VIcon size={13} className="flex-shrink-0" />
-                  <span>{label}</span>
-                </div>
-              );
-            })()}
+            {updateDownload.verification && (
+              <UpdateVerificationPanel verification={updateDownload.verification} t={t} variant="inline" />
+            )}
           </div>
         )}
 
