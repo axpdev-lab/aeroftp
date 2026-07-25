@@ -188,13 +188,27 @@ pub enum RealWireError {
     XattrNameNotNulTerminated {
         name_len: usize,
     },
-    /// The peer declared an xattr value above `MAX_FULL_DATUM`, which on
-    /// the wire means "16-byte digest here, datum out of band". That is
-    /// task X.2b: refuse it explicitly instead of decoding the digest as
-    /// if it were the value.
-    XattrDatumAboveInlineLimit {
-        datum_len: usize,
-        limit: usize,
+    /// A record in the out-of-band xattr datum section carried a skip or
+    /// a length the entry does not support: a non-positive skip (zero is
+    /// the terminator and cannot also be a record), or one that walks past
+    /// the end of the entry's attribute list.
+    XattrDatumSectionInvalid {
+        field: &'static str,
+        value: i64,
+    },
+    /// The section supplied bytes for an attribute that never asked for
+    /// them: one whose value already rode inline, or one already
+    /// resolved, or whose length disagrees with what the entry declared.
+    XattrDatumUnexpected {
+        name: String,
+        reason: &'static str,
+    },
+    /// The bytes in the section do not hash to the digest the entry
+    /// carried. rsync gives us this check for free, so not making it
+    /// would be throwing away the one integrity signal the split form
+    /// provides.
+    XattrDatumDigestMismatch {
+        name: String,
     },
 }
 
@@ -321,11 +335,20 @@ impl fmt::Display for RealWireError {
                     "xattr name of declared length {name_len} is not NUL-terminated"
                 )
             }
-            RealWireError::XattrDatumAboveInlineLimit { datum_len, limit } => {
+            RealWireError::XattrDatumSectionInvalid { field, value } => {
+                write!(f, "invalid xattr datum section {field}: {value}")
+            }
+            RealWireError::XattrDatumUnexpected { name, reason } => {
                 write!(
                     f,
-                    "xattr value of {datum_len} bytes exceeds the inline limit of {limit}: \
-                     the wire carries a digest plus an out-of-band datum (task X.2b)"
+                    "unexpected out-of-band datum for xattr {name:?}: {reason}"
+                )
+            }
+            RealWireError::XattrDatumDigestMismatch { name } => {
+                write!(
+                    f,
+                    "out-of-band datum for xattr {name:?} does not match the digest \
+                     carried by the file-list entry"
                 )
             }
         }
@@ -1337,10 +1360,67 @@ pub enum FileListDecodeOutcome {
 ///
 /// Measured at the byte against rsync 3.2.7 (32 inline, 33 out of band):
 /// `docs/dev/roadmap/APPENDIX-AERORSYNC/04-xattr-wire-evidence.md` §4.5.
-/// The out-of-band form is task X.2b and is deliberately NOT implemented
-/// here: this codec refuses it loudly at both ends rather than emitting
-/// or accepting a shape that diverges from stock rsync.
 pub const MAX_FULL_DATUM: usize = 32;
+
+/// Length of the digest rsync substitutes for an over-threshold value in
+/// the file-list entry. Measured to be **MD5** of the value
+/// (`06-xattr-oob-wire-evidence.md` §1), not merely assumed.
+pub const XATTR_DIGEST_LEN: usize = 16;
+
+/// The value side of an extended attribute. Two shapes because the wire
+/// has two: rsync inlines a value of at most [`MAX_FULL_DATUM`] bytes in
+/// the file-list entry, and replaces anything larger with a digest,
+/// shipping the bytes in a later per-file section.
+///
+/// Modelling this as an enum rather than as "a `Vec<u8>` plus an optional
+/// digest" is deliberate: after decoding an entry, a large attribute's
+/// bytes are genuinely not known yet, and a `Vec` would have to lie about
+/// that by being empty.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum XattrDatum {
+    /// The value itself, carried in the entry. Always used by a sender,
+    /// which has the bytes in hand; the encoder decides from the length
+    /// whether the wire gets the value or its digest.
+    Inline(Vec<u8>),
+    /// Decoded from an entry whose value was too large to inline: the
+    /// declared real length and the digest that stood in for the bytes.
+    /// [`resolve_xattr_datum_section`] turns this back into
+    /// [`XattrDatum::Inline`] once the out-of-band section arrives.
+    Deferred {
+        /// The value's real length, which the entry carries verbatim in
+        /// `datum_len` even though the bytes are elsewhere.
+        len: usize,
+        digest: [u8; XATTR_DIGEST_LEN],
+    },
+}
+
+impl XattrDatum {
+    /// The value's length, known in both shapes.
+    pub fn len(&self) -> usize {
+        match self {
+            XattrDatum::Inline(v) => v.len(),
+            XattrDatum::Deferred { len, .. } => *len,
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// True when this value is too large to ride inside the entry and
+    /// therefore travels in the out-of-band section.
+    pub fn is_out_of_band(&self) -> bool {
+        self.len() > MAX_FULL_DATUM
+    }
+
+    /// The bytes, when they are actually known.
+    pub fn bytes(&self) -> Option<&[u8]> {
+        match self {
+            XattrDatum::Inline(v) => Some(v),
+            XattrDatum::Deferred { .. } => None,
+        }
+    }
+}
 
 /// One extended attribute carried by a file-list entry.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1350,10 +1430,34 @@ pub struct XattrPair {
     /// codec appends on encode and strips on decode; rsync's `name_len`
     /// counts it, so on the wire `name_len == name.len() + 1`.
     pub name: String,
-    /// Raw attribute value. Not NUL-terminated and not necessarily text:
+    /// The value. Not NUL-terminated and not necessarily text:
     /// `datum_len` is authoritative and embedded NUL bytes pass through
     /// intact (measured, `04-xattr-wire-evidence.md` §4.3).
-    pub value: Vec<u8>,
+    pub datum: XattrDatum,
+}
+
+impl XattrPair {
+    /// Build a pair from bytes in hand. This is what a sender always
+    /// uses: it has the value, and the encoder works out whether the wire
+    /// carries it or its digest.
+    pub fn inline(name: impl Into<String>, value: impl Into<Vec<u8>>) -> Self {
+        Self {
+            name: name.into(),
+            datum: XattrDatum::Inline(value.into()),
+        }
+    }
+}
+
+/// MD5 of an xattr value, the digest rsync puts in the entry in place of
+/// an over-threshold value (`06-xattr-oob-wire-evidence.md` §1).
+pub fn xattr_value_digest(value: &[u8]) -> [u8; XATTR_DIGEST_LEN] {
+    use md5::{Digest, Md5};
+    let mut hasher = Md5::new();
+    hasher.update(value);
+    let out = hasher.finalize();
+    let mut digest = [0u8; XATTR_DIGEST_LEN];
+    digest.copy_from_slice(&out);
+    digest
 }
 
 /// Decoded file-list entry (regular file, protocol ≥ 31 path). Device /
@@ -1563,23 +1667,23 @@ fn decode_xattr_blob(buf: &[u8]) -> Result<(Vec<XattrPair>, usize), RealWireErro
                 available,
             });
         }
-        // Above the threshold the entry does NOT carry the value: it
-        // carries a 16-byte digest and the datum follows out of band.
-        // Decoding those 16 bytes as if they were the value would hand
-        // the caller a silently wrong attribute, so refuse instead.
-        if datum_len as usize > MAX_FULL_DATUM {
-            return Err(RealWireError::XattrDatumAboveInlineLimit {
-                datum_len: datum_len as usize,
-                limit: MAX_FULL_DATUM,
-            });
-        }
-
         let name_len = name_len as usize;
         let datum_len = datum_len as usize;
+
+        // Above the threshold the entry does NOT carry the value: it
+        // carries a 16-byte MD5 and the bytes follow in the out-of-band
+        // section. `datum_len` stays the real length either way, so the
+        // number of bytes to actually read here is not `datum_len`.
+        let on_wire_len = if datum_len > MAX_FULL_DATUM {
+            XATTR_DIGEST_LEN
+        } else {
+            datum_len
+        };
+
         // Checked add: on a 32-bit target two large-but-legal varints
         // could otherwise wrap and pass the bounds test below.
         let need = name_len
-            .checked_add(datum_len)
+            .checked_add(on_wire_len)
             .ok_or(RealWireError::InvalidXattrField {
                 field: "name_len+datum_len",
                 declared: i64::MAX,
@@ -1606,10 +1710,21 @@ fn decode_xattr_blob(buf: &[u8]) -> Result<(Vec<XattrPair>, usize), RealWireErro
         let name = read_utf8_slice(buf, cursor, name_len - 1)?;
         cursor += name_len;
 
-        let value = buf[cursor..cursor + datum_len].to_vec();
-        cursor += datum_len;
+        let datum = if datum_len > MAX_FULL_DATUM {
+            let mut digest = [0u8; XATTR_DIGEST_LEN];
+            digest.copy_from_slice(&buf[cursor..cursor + XATTR_DIGEST_LEN]);
+            cursor += XATTR_DIGEST_LEN;
+            XattrDatum::Deferred {
+                len: datum_len,
+                digest,
+            }
+        } else {
+            let v = buf[cursor..cursor + datum_len].to_vec();
+            cursor += datum_len;
+            XattrDatum::Inline(v)
+        };
 
-        pairs.push(XattrPair { name, value });
+        pairs.push(XattrPair { name, datum });
     }
 
     Ok((pairs, cursor))
@@ -1964,13 +2079,12 @@ fn compute_flist_name_split<'a>(
 /// Encode the trailing xattr blob. Exact mirror of [`decode_xattr_blob`],
 /// so a round trip is byte-stable.
 ///
-/// **Caller contract**: every value must be at most [`MAX_FULL_DATUM`]
-/// bytes. Above that, stock rsync puts a 16-byte digest in the entry and
-/// ships the datum out of band; emitting the value inline instead would
-/// produce a wire that no stock rsync can read. That is task X.2b, and
-/// until it lands this asserts rather than silently diverging — the same
-/// stance `encode_file_list_entry` already takes on a checksum whose
-/// length disagrees with `csum_len`.
+/// `datum_len` is always the value's **real** length. Whether the bytes
+/// that follow the name are the value or its MD5 depends on that length
+/// alone: at most [`MAX_FULL_DATUM`] and the value rides inline, above it
+/// and the entry carries [`XATTR_DIGEST_LEN`] digest bytes while the
+/// value travels in the out-of-band section (see
+/// [`encode_xattr_datum_section`]).
 fn encode_xattr_blob(pairs: &[XattrPair], out: &mut Vec<u8>) {
     // `write_varint(ndx + 1)` with `ndx == -1`: this codec always sends
     // the full list and never the abbreviated back-reference, which needs
@@ -1978,21 +2092,179 @@ fn encode_xattr_blob(pairs: &[XattrPair], out: &mut Vec<u8>) {
     out.extend_from_slice(&encode_varint(0));
     out.extend_from_slice(&encode_varint(pairs.len() as i32));
     for pair in pairs {
-        assert!(
-            pair.value.len() <= MAX_FULL_DATUM,
-            "xattr {:?} carries a {}-byte value, above MAX_FULL_DATUM ({}): stock rsync \
-             would send a 16-byte digest plus an out-of-band datum, which is task X.2b",
-            pair.name,
-            pair.value.len(),
-            MAX_FULL_DATUM
-        );
         // `name_len` counts the trailing NUL that rsync writes with the
         // name; `XattrPair::name` deliberately does not store it.
         out.extend_from_slice(&encode_varint(pair.name.len() as i32 + 1));
-        out.extend_from_slice(&encode_varint(pair.value.len() as i32));
+        out.extend_from_slice(&encode_varint(pair.datum.len() as i32));
         out.extend_from_slice(pair.name.as_bytes());
         out.push(0);
-        out.extend_from_slice(&pair.value);
+        match &pair.datum {
+            XattrDatum::Inline(v) if v.len() <= MAX_FULL_DATUM => out.extend_from_slice(v),
+            // Over the threshold the sender substitutes the digest and
+            // remembers to ship the bytes in the section that follows the
+            // per-file header.
+            XattrDatum::Inline(v) => out.extend_from_slice(&xattr_value_digest(v)),
+            XattrDatum::Deferred { digest, .. } => out.extend_from_slice(digest),
+        }
+    }
+}
+
+/// Encode the per-file xattr datum section: the bytes of every value too
+/// large to have ridden inside the file-list entry.
+///
+/// Wire shape, measured (`06-xattr-oob-wire-evidence.md` §2):
+///
+/// ```text
+/// per over-threshold value: skip(varint) len(varint) datum
+/// then: varint(0)
+/// ```
+///
+/// `skip` is **not** the attribute's index. It is the distance from the
+/// previously emitted attribute, starting from a notional -1, so the
+/// first record in a list is always `1` and a run of large values in a row
+/// reads `1 1 1`. Three measured cases separate the two readings: large
+/// attributes at indices 0 and 2 produce `1, 2`, not `1, 3`. Because a
+/// skip of zero cannot occur, `varint(0)` is unambiguous as the
+/// terminator.
+///
+/// **The section is not only about large values.** It is emitted for every
+/// entry whose iflags carry `ITEM_REPORT_XATTR` (`1<<8`, measured as the
+/// `a0` to `a1` difference in the per-file shortint), so a file with
+/// nothing but small attributes still emits the bare `varint(0)`. A file
+/// with no attributes at all emits nothing. Getting that wrong
+/// desynchronises the stream by exactly one byte, which is why the caller
+/// decides on the iflags bit and this function is only ever called under
+/// it.
+pub fn encode_xattr_datum_section(pairs: &[XattrPair]) -> Vec<u8> {
+    let mut out = Vec::new();
+    let mut previous: isize = -1;
+    for (index, pair) in pairs.iter().enumerate() {
+        if !pair.datum.is_out_of_band() {
+            continue;
+        }
+        let skip = index as isize - previous;
+        previous = index as isize;
+        out.extend_from_slice(&encode_varint(skip as i32));
+        out.extend_from_slice(&encode_varint(pair.datum.len() as i32));
+        match &pair.datum {
+            XattrDatum::Inline(v) => out.extend_from_slice(v),
+            // A sender that only ever saw the digest cannot produce the
+            // bytes. Reaching here means an entry decoded from a peer was
+            // handed straight back to the encoder without being resolved.
+            XattrDatum::Deferred { .. } => panic!(
+                "xattr {:?} is still deferred: its bytes were never resolved from the \
+                 out-of-band section, so they cannot be re-sent",
+                pair.name
+            ),
+        }
+    }
+    out.extend_from_slice(&encode_varint(0));
+    out
+}
+
+/// Read the out-of-band xattr datum section and fold the bytes back into
+/// `pairs`, turning every [`XattrDatum::Deferred`] it names into an
+/// [`XattrDatum::Inline`]. Returns the bytes consumed.
+///
+/// Exact mirror of [`encode_xattr_datum_section`], including the fact that
+/// a lone `varint(0)` is a complete and legal section.
+///
+/// **Fail-closed, and then some.** Beyond the usual peer-supplied length
+/// checks, the split form hands us an integrity check the inline form does
+/// not have: the entry already carried MD5 of the value, so bytes that do
+/// not hash to it are rejected rather than applied. Refusing here costs
+/// nothing and is the only place the check can be made.
+///
+/// Truncation is reported as [`RealWireError::TruncatedBuffer`] for the
+/// same reason as in the entry blob: the section is read from a streaming
+/// buffer and a record straddling a frame boundary must be retried, not
+/// treated as hostile.
+pub fn resolve_xattr_datum_section(
+    buf: &[u8],
+    pairs: &mut [XattrPair],
+) -> Result<usize, RealWireError> {
+    let mut cursor = 0usize;
+    let mut previous: isize = -1;
+
+    loop {
+        let (skip, consumed) = decode_varint(&buf[cursor..])?;
+        cursor += consumed;
+        if skip == 0 {
+            return Ok(cursor);
+        }
+        if skip < 0 {
+            return Err(RealWireError::XattrDatumSectionInvalid {
+                field: "skip",
+                value: skip,
+            });
+        }
+
+        // `skip` is a distance from the previously resolved attribute, so
+        // the index it lands on has to be computed, not read.
+        let index =
+            previous
+                .checked_add(skip as isize)
+                .ok_or(RealWireError::XattrDatumSectionInvalid {
+                    field: "skip",
+                    value: skip,
+                })?;
+        if index < 0 || index as usize >= pairs.len() {
+            return Err(RealWireError::XattrDatumSectionInvalid {
+                field: "skip walks past the attribute list",
+                value: index as i64,
+            });
+        }
+        previous = index;
+        let index = index as usize;
+
+        let (declared, consumed) = decode_varint(&buf[cursor..])?;
+        cursor += consumed;
+        if declared < 0 {
+            return Err(RealWireError::XattrDatumSectionInvalid {
+                field: "datum_len",
+                value: declared,
+            });
+        }
+        let declared = declared as usize;
+
+        // Only an attribute the entry marked as out-of-band may receive
+        // bytes here. An already-inline one would mean the peer is
+        // contradicting its own entry, and a second record for the same
+        // attribute would mean it is overwriting a resolved value.
+        let expected = match &pairs[index].datum {
+            XattrDatum::Deferred { len, digest } => (*len, *digest),
+            XattrDatum::Inline(_) => {
+                return Err(RealWireError::XattrDatumUnexpected {
+                    name: pairs[index].name.clone(),
+                    reason: "its value already travelled inside the file-list entry",
+                });
+            }
+        };
+        if declared != expected.0 {
+            return Err(RealWireError::XattrDatumUnexpected {
+                name: pairs[index].name.clone(),
+                reason: "the section declares a different length than the entry did",
+            });
+        }
+
+        let available = buf.len().saturating_sub(cursor);
+        if declared > available {
+            return Err(RealWireError::TruncatedBuffer {
+                at: "xattr_datum_section_payload",
+                needed: declared,
+                available,
+            });
+        }
+        let value = buf[cursor..cursor + declared].to_vec();
+        cursor += declared;
+
+        if xattr_value_digest(&value) != expected.1 {
+            return Err(RealWireError::XattrDatumDigestMismatch {
+                name: pairs[index].name.clone(),
+            });
+        }
+
+        pairs[index].datum = XattrDatum::Inline(value);
     }
 }
 
@@ -5918,10 +6190,7 @@ mod tests {
         //   02    datum_len = 2
         //   ...   "user.aeroftp.test\0"
         //   ...   "v1", no terminator
-        let blob = encoded_xattr_blob(vec![XattrPair {
-            name: "user.aeroftp.test".to_string(),
-            value: b"v1".to_vec(),
-        }]);
+        let blob = encoded_xattr_blob(vec![XattrPair::inline("user.aeroftp.test", b"v1".to_vec())]);
 
         let mut expected: Vec<u8> = vec![0x00, 0x01, 0x12, 0x02];
         expected.extend_from_slice(b"user.aeroftp.test\0");
@@ -5971,10 +6240,7 @@ mod tests {
         off.xattrs = None;
         let off_bytes = encode_file_list_entry(&off, &opts_off);
 
-        let pair = XattrPair {
-            name: "user.aeroftp.test".to_string(),
-            value: b"v1".to_vec(),
-        };
+        let pair = XattrPair::inline("user.aeroftp.test", b"v1".to_vec());
         let mut on = baseline_entry();
         on.xattrs = Some(vec![pair]);
         let on_bytes = encode_file_list_entry(&on, &xattr_options_for_test(None));
@@ -6007,18 +6273,9 @@ mod tests {
         // thing that says where the blob ends — there is no separator and
         // no terminator to resynchronise on.
         let pairs = vec![
-            XattrPair {
-                name: "user.a".to_string(),
-                value: b"v1".to_vec(),
-            },
-            XattrPair {
-                name: "user.bb".to_string(),
-                value: b"v22".to_vec(),
-            },
-            XattrPair {
-                name: "user.ccc".to_string(),
-                value: b"v333".to_vec(),
-            },
+            XattrPair::inline("user.a", b"v1".to_vec()),
+            XattrPair::inline("user.bb", b"v22".to_vec()),
+            XattrPair::inline("user.ccc", b"v333".to_vec()),
         ];
         let mut expected: Vec<u8> = vec![0x00, 0x03, 0x07, 0x02];
         expected.extend_from_slice(b"user.a\0v1");
@@ -6041,10 +6298,7 @@ mod tests {
         // authoritative: the value is NOT NUL-terminated and its interior
         // NULs are payload, so anything that treats the value as a C
         // string truncates it at the first byte.
-        let pair = XattrPair {
-            name: "user.bin".to_string(),
-            value: vec![b'A', 0x00, b'B', 0x00, b'C'],
-        };
+        let pair = XattrPair::inline("user.bin", vec![b'A', 0x00, b'B', 0x00, b'C']);
         let mut expected: Vec<u8> = vec![0x00, 0x01, 0x09, 0x05];
         expected.extend_from_slice(b"user.bin\0");
         expected.extend_from_slice(&[0x41, 0x00, 0x42, 0x00, 0x43]);
@@ -6064,10 +6318,7 @@ mod tests {
         // rather than an error we would notice.
         assert_eq!(MAX_FULL_DATUM, 32, "rsync's MAX_FULL_DATUM, measured");
         let value = vec![b'L'; MAX_FULL_DATUM];
-        let pair = XattrPair {
-            name: "user.at_limit".to_string(),
-            value: value.clone(),
-        };
+        let pair = XattrPair::inline("user.at_limit", value.clone());
         let blob = encoded_xattr_blob(vec![pair.clone()]);
         assert!(
             blob.ends_with(&value),
@@ -6080,37 +6331,372 @@ mod tests {
     }
 
     #[test]
-    fn xattr_value_above_the_inline_limit_is_refused_not_misread() {
-        // One byte over the threshold the entry carries a 16-byte digest,
-        // not the value (§4.4). Decoding those 16 bytes as the value would
-        // hand the caller a silently wrong attribute, so the decoder says
-        // so instead. This is task X.2b's entry point, and until it lands
-        // the failure has to be loud.
-        let mut entry = baseline_entry();
-        entry.xattrs = Some(vec![XattrPair {
-            name: "user.long".to_string(),
-            value: vec![b'L'; MAX_FULL_DATUM],
-        }]);
-        let opts = xattr_options_for_test(None);
-        let mut bytes = encode_file_list_entry(&entry, &opts);
+    fn xattr_value_one_byte_over_the_limit_becomes_a_digest_in_the_entry() {
+        // X.2b. One byte over the threshold the entry stops carrying the
+        // value and carries MD5 of it instead, while `datum_len` still
+        // reports the real length. Pinned against the exact byte layout
+        // measured in `06-xattr-oob-wire-evidence.md` §1.
+        let value = vec![b'L'; MAX_FULL_DATUM + 1];
+        let blob = encoded_xattr_blob(vec![XattrPair::inline("user.long", value.clone())]);
 
-        // Bump the declared datum_len from 32 to 33 without touching the
-        // payload: exactly what a peer sending the digest form looks like
-        // up to this field.
-        let datum_len_at = bytes.len() - MAX_FULL_DATUM - "user.long\0".len() - 1;
+        let mut expected: Vec<u8> = vec![0x00, 0x01, 0x0a, 0x21]; // marker, count, name_len, datum_len=33
+        expected.extend_from_slice(b"user.long\0");
+        expected.extend_from_slice(&xattr_value_digest(&value));
         assert_eq!(
-            bytes[datum_len_at], MAX_FULL_DATUM as u8,
-            "expected the datum_len varint at this offset"
+            blob, expected,
+            "over the threshold the entry must carry the digest, not the value"
         );
-        bytes[datum_len_at] = (MAX_FULL_DATUM + 1) as u8;
 
-        match decode_file_list_entry(&bytes, &opts) {
-            Err(RealWireError::XattrDatumAboveInlineLimit { datum_len, limit }) => {
-                assert_eq!(datum_len, MAX_FULL_DATUM + 1);
-                assert_eq!(limit, MAX_FULL_DATUM);
+        // The blob is shorter than the value it stands for: that is the
+        // whole point of the split form.
+        assert_eq!(blob.len(), 4 + 10 + XATTR_DIGEST_LEN);
+        assert!(
+            !blob.ends_with(&value),
+            "the value itself must NOT be in the entry"
+        );
+
+        // And it decodes back as deferred, not as a 16-byte value.
+        let mut entry = baseline_entry();
+        entry.xattrs = Some(vec![XattrPair::inline("user.long", value.clone())]);
+        let opts = xattr_options_for_test(None);
+        let bytes = encode_file_list_entry(&entry, &opts);
+        let (outcome, consumed) = decode_file_list_entry(&bytes, &opts).expect("decode");
+        assert_eq!(consumed, bytes.len());
+        match outcome {
+            FileListDecodeOutcome::Entry(d) => {
+                let pairs = d.xattrs.expect("xattrs present");
+                assert_eq!(pairs.len(), 1);
+                assert_eq!(
+                    pairs[0].datum,
+                    XattrDatum::Deferred {
+                        len: MAX_FULL_DATUM + 1,
+                        digest: xattr_value_digest(&value),
+                    },
+                    "the entry alone cannot yield the bytes, and must not pretend otherwise"
+                );
+                assert_eq!(pairs[0].datum.len(), MAX_FULL_DATUM + 1);
+                assert!(pairs[0].datum.bytes().is_none());
             }
-            other => panic!("expected XattrDatumAboveInlineLimit, got {other:?}"),
+            other => panic!("expected Entry, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn xattr_digest_in_the_entry_is_md5_of_the_value() {
+        // `06-xattr-oob-wire-evidence.md` §1: the 16 bytes are MD5, taken
+        // from the capture rather than assumed. This pins the exact digest
+        // observed on the wire for the exact value that produced it, so a
+        // future switch to another 16-byte hash cannot pass quietly.
+        let value: Vec<u8> = b"ABCDEFGHIJ".repeat(4);
+        assert_eq!(value.len(), 40);
+        assert_eq!(
+            xattr_value_digest(&value),
+            [
+                0xd4, 0x4d, 0xa2, 0xc1, 0x55, 0x5c, 0x20, 0xff, 0xe8, 0xb7, 0x75, 0x33, 0x04, 0x53,
+                0x5f, 0x5a,
+            ],
+            "measured on rsync 3.2.7 for user.long = \"ABCDEFGHIJ\" * 4"
+        );
+
+        let blob = encoded_xattr_blob(vec![XattrPair::inline("user.long", value.clone())]);
+        let mut expected: Vec<u8> = vec![0x00, 0x01, 0x0a, 0x28];
+        expected.extend_from_slice(b"user.long\0");
+        expected.extend_from_slice(&[
+            0xd4, 0x4d, 0xa2, 0xc1, 0x55, 0x5c, 0x20, 0xff, 0xe8, 0xb7, 0x75, 0x33, 0x04, 0x53,
+            0x5f, 0x5a,
+        ]);
+        assert_eq!(
+            blob, expected,
+            "blob diverges from the captured rsync bytes"
+        );
+    }
+
+    // -------------------------------------------------------------------------
+    // X.2b — the out-of-band datum section.
+    //
+    // Byte sequences below come from captures taken on rsync 3.2.7 and
+    // written up in `06-xattr-oob-wire-evidence.md`. The measurements that
+    // matter most are the ones that separated a skip delta from an
+    // absolute index (§2), because the two agree on every simple case and
+    // only diverge when large values are not adjacent.
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn datum_section_skip_is_a_delta_not_an_index() {
+        // Measured cases F and H. Large attributes at list positions 0 and
+        // 2 emit skips `1, 2`; at 0 and 4 they emit `1, 4`. Absolute
+        // indices would have produced `1, 3` and `1, 5`. This is the pin
+        // that stops the easy misreading, since every single-attribute
+        // case emits `1` under either interpretation.
+        let big_a = vec![b'A'; 40];
+        let big_c = vec![b'C'; 44];
+
+        // F: a_big, b_small, c_big
+        let pairs_f = vec![
+            XattrPair::inline("user.a_big", big_a.clone()),
+            XattrPair::inline("user.b_small", b"s".to_vec()),
+            XattrPair::inline("user.c_big", big_c.clone()),
+        ];
+        let mut expected_f: Vec<u8> = vec![0x01, 0x28];
+        expected_f.extend_from_slice(&big_a);
+        expected_f.extend_from_slice(&[0x02, 0x2c]);
+        expected_f.extend_from_slice(&big_c);
+        expected_f.push(0x00);
+        assert_eq!(
+            encode_xattr_datum_section(&pairs_f),
+            expected_f,
+            "skips must be 1 then 2, not 1 then 3"
+        );
+
+        // H: a_big, three smalls, e_big
+        let pairs_h = vec![
+            XattrPair::inline("user.a_big", big_a.clone()),
+            XattrPair::inline("user.b_s", b"s".to_vec()),
+            XattrPair::inline("user.c_s", b"s".to_vec()),
+            XattrPair::inline("user.d_s", b"s".to_vec()),
+            XattrPair::inline("user.e_big", big_c.clone()),
+        ];
+        let mut expected_h: Vec<u8> = vec![0x01, 0x28];
+        expected_h.extend_from_slice(&big_a);
+        expected_h.extend_from_slice(&[0x04, 0x2c]);
+        expected_h.extend_from_slice(&big_c);
+        expected_h.push(0x00);
+        assert_eq!(
+            encode_xattr_datum_section(&pairs_h),
+            expected_h,
+            "skips must be 1 then 4, not 1 then 5"
+        );
+    }
+
+    #[test]
+    fn datum_section_skip_is_a_varint_not_a_byte() {
+        // Measured case I: 130 small attributes followed by a large one
+        // produce a skip of 131, which appears on the wire as the two-byte
+        // varint `80 83`. A single byte would have been `83`. Under 128
+        // the two encodings coincide, which is why this needs a list this
+        // long to pin at all.
+        let mut pairs: Vec<XattrPair> = (0..130)
+            .map(|i| XattrPair::inline(format!("user.s{i:03}"), b"x".to_vec()))
+            .collect();
+        pairs.push(XattrPair::inline("user.zbig", vec![b'Z'; 40]));
+
+        let section = encode_xattr_datum_section(&pairs);
+        assert_eq!(
+            &section[..3],
+            &[0x80, 0x83, 0x28],
+            "skip 131 must be the varint 80 83, then the length"
+        );
+        assert_eq!(
+            decode_varint(&section[..2]).unwrap(),
+            (131, 2),
+            "and it must decode back to 131"
+        );
+    }
+
+    #[test]
+    fn datum_section_with_only_small_values_is_a_bare_terminator() {
+        // The finding the plan did not predict. The section is keyed on
+        // the entry having xattrs at all (the ITEM_REPORT_XATTR iflag),
+        // not on any of them being large, so a file with nothing but small
+        // attributes still emits one byte. Measured as the difference
+        // between 16 and 17 zero bytes before the compressed payload.
+        // Emitting nothing here would desynchronise the stream by exactly
+        // one byte, which is the hardest kind of bug to see.
+        let pairs = vec![
+            XattrPair::inline("user.a", b"v1".to_vec()),
+            XattrPair::inline("user.b", vec![b'x'; MAX_FULL_DATUM]),
+        ];
+        assert_eq!(
+            encode_xattr_datum_section(&pairs),
+            vec![0x00],
+            "a section with no large values is still one terminator byte"
+        );
+        assert_eq!(
+            encode_xattr_datum_section(&[]),
+            vec![0x00],
+            "and so is an empty attribute list, when the caller emits a section at all"
+        );
+    }
+
+    #[test]
+    fn entry_plus_section_reconstructs_every_value() {
+        // The end-to-end shape: encode an entry and its section the way a
+        // sender would, decode both the way a receiver would, and end up
+        // with exactly the attributes we started from. Mixed sizes, in the
+        // interleaved order that made the skip encoding observable.
+        let originals = vec![
+            XattrPair::inline("user.a_small", b"s1".to_vec()),
+            XattrPair::inline("user.b_big", vec![b'B'; 50]),
+            XattrPair::inline("user.c_edge", vec![b'E'; MAX_FULL_DATUM]),
+            XattrPair::inline(
+                "user.d_huge",
+                (0u8..=255).cycle().take(1000).collect::<Vec<u8>>(),
+            ),
+        ];
+        let mut entry = baseline_entry();
+        entry.xattrs = Some(originals.clone());
+        let opts = xattr_options_for_test(None);
+
+        let entry_bytes = encode_file_list_entry(&entry, &opts);
+        let section_bytes = encode_xattr_datum_section(&originals);
+
+        let (outcome, consumed) = decode_file_list_entry(&entry_bytes, &opts).expect("decode");
+        assert_eq!(consumed, entry_bytes.len());
+        let mut decoded = match outcome {
+            FileListDecodeOutcome::Entry(d) => d.xattrs.expect("xattrs present"),
+            other => panic!("expected Entry, got {other:?}"),
+        };
+
+        // Before the section lands, the two large values are known only by
+        // length and digest.
+        assert!(matches!(decoded[0].datum, XattrDatum::Inline(_)));
+        assert!(matches!(decoded[1].datum, XattrDatum::Deferred { .. }));
+        assert!(matches!(decoded[2].datum, XattrDatum::Inline(_)));
+        assert!(matches!(decoded[3].datum, XattrDatum::Deferred { .. }));
+
+        let used = resolve_xattr_datum_section(&section_bytes, &mut decoded).expect("resolve");
+        assert_eq!(used, section_bytes.len(), "section fully consumed");
+        assert_eq!(decoded, originals, "every value must come back intact");
+    }
+
+    #[test]
+    fn datum_section_rejects_bytes_that_do_not_match_the_digest() {
+        // The entry already carried MD5 of the value, so the split form
+        // hands us an integrity check the inline form never had. A single
+        // flipped byte in the section must be refused, not applied.
+        let value = vec![b'B'; 50];
+        let originals = vec![XattrPair::inline("user.big", value)];
+        let mut decoded = decode_pairs_from_entry(&originals);
+
+        let mut section = encode_xattr_datum_section(&originals);
+        let last = section.len() - 2; // inside the payload, before the terminator
+        section[last] ^= 0x01;
+
+        match resolve_xattr_datum_section(&section, &mut decoded) {
+            Err(RealWireError::XattrDatumDigestMismatch { name }) => {
+                assert_eq!(name, "user.big");
+            }
+            other => panic!("expected XattrDatumDigestMismatch, got {other:?}"),
+        }
+    }
+
+    /// Round-trip helper: encode an entry carrying `pairs`, decode it, and
+    /// hand back the decoded attribute list (large values still deferred).
+    fn decode_pairs_from_entry(pairs: &[XattrPair]) -> Vec<XattrPair> {
+        let mut entry = baseline_entry();
+        entry.xattrs = Some(pairs.to_vec());
+        let opts = xattr_options_for_test(None);
+        let bytes = encode_file_list_entry(&entry, &opts);
+        match decode_file_list_entry(&bytes, &opts).expect("decode").0 {
+            FileListDecodeOutcome::Entry(d) => d.xattrs.expect("xattrs present"),
+            other => panic!("expected Entry, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn hostile_datum_sections_error_and_never_panic() {
+        // Fail-closed sweep over the section's own peer-supplied fields,
+        // matching the stance the entry blob already takes.
+        let originals = vec![
+            XattrPair::inline("user.a_small", b"s".to_vec()),
+            XattrPair::inline("user.b_big", vec![b'B'; 40]),
+        ];
+
+        // A skip that walks past the end of the attribute list.
+        let mut d = decode_pairs_from_entry(&originals);
+        let mut b = encode_varint(9);
+        b.extend_from_slice(&encode_varint(40));
+        b.extend_from_slice(&[b'B'; 40]);
+        b.extend_from_slice(&encode_varint(0));
+        assert!(matches!(
+            resolve_xattr_datum_section(&b, &mut d),
+            Err(RealWireError::XattrDatumSectionInvalid { .. })
+        ));
+
+        // A negative skip.
+        let mut d = decode_pairs_from_entry(&originals);
+        let mut b = encode_varint(-1);
+        b.extend_from_slice(&encode_varint(1));
+        b.push(b'x');
+        assert!(matches!(
+            resolve_xattr_datum_section(&b, &mut d),
+            Err(RealWireError::XattrDatumSectionInvalid { .. })
+        ));
+
+        // Bytes offered for an attribute whose value already rode inline
+        // (skip 1 lands on `user.a_small`).
+        let mut d = decode_pairs_from_entry(&originals);
+        let mut b = encode_varint(1);
+        b.extend_from_slice(&encode_varint(1));
+        b.push(b's');
+        b.extend_from_slice(&encode_varint(0));
+        match resolve_xattr_datum_section(&b, &mut d) {
+            Err(RealWireError::XattrDatumUnexpected { name, .. }) => {
+                assert_eq!(name, "user.a_small");
+            }
+            other => panic!("expected XattrDatumUnexpected, got {other:?}"),
+        }
+
+        // A length that disagrees with what the entry declared.
+        let mut d = decode_pairs_from_entry(&originals);
+        let mut b = encode_varint(2);
+        b.extend_from_slice(&encode_varint(39));
+        b.extend_from_slice(&[b'B'; 39]);
+        b.extend_from_slice(&encode_varint(0));
+        assert!(matches!(
+            resolve_xattr_datum_section(&b, &mut d),
+            Err(RealWireError::XattrDatumUnexpected { .. })
+        ));
+
+        // A second record for an attribute already resolved: the first
+        // pass makes it inline, so the second must be refused rather than
+        // silently overwriting it.
+        let mut d = decode_pairs_from_entry(&originals);
+        let one = {
+            let mut b = encode_varint(2);
+            b.extend_from_slice(&encode_varint(40));
+            b.extend_from_slice(&[b'B'; 40]);
+            b
+        };
+        let mut b = one.clone();
+        b.extend_from_slice(&encode_varint(0)); // skip 0 would terminate, so re-target
+        let mut twice = one.clone();
+        twice.extend_from_slice(&encode_varint(1)); // lands on index 2+1, out of range
+        twice.extend_from_slice(&encode_varint(40));
+        twice.extend_from_slice(&[b'B'; 40]);
+        twice.extend_from_slice(&encode_varint(0));
+        assert!(matches!(
+            resolve_xattr_datum_section(&twice, &mut d),
+            Err(RealWireError::XattrDatumSectionInvalid { .. })
+        ));
+        // (the single-record form is the legal one)
+        let mut d2 = decode_pairs_from_entry(&originals);
+        assert!(resolve_xattr_datum_section(&b, &mut d2).is_ok());
+    }
+
+    #[test]
+    fn truncated_datum_section_is_recoverable_not_fatal() {
+        // Same contract as the entry blob: the section is read from a
+        // buffer refilled one MSG_DATA frame at a time, so every prefix
+        // that cuts into it must read as a truncation the driver can
+        // retry, never as a hostile record.
+        let originals = vec![XattrPair::inline("user.big", vec![b'B'; 60])];
+        let section = encode_xattr_datum_section(&originals);
+
+        for cut in 0..section.len() {
+            let mut d = decode_pairs_from_entry(&originals);
+            match resolve_xattr_datum_section(&section[..cut], &mut d) {
+                Err(RealWireError::TruncatedBuffer { .. }) => {}
+                other => panic!("section cut at {cut} must be recoverable, got {other:?}"),
+            }
+        }
+
+        let mut d = decode_pairs_from_entry(&originals);
+        assert_eq!(
+            resolve_xattr_datum_section(&section, &mut d).expect("complete section"),
+            section.len()
+        );
+        assert_eq!(d, originals);
     }
 
     #[test]
@@ -6235,10 +6821,7 @@ mod tests {
         // is what should stop it.
         let opts = xattr_options_for_test(None);
         let mut entry = baseline_entry();
-        entry.xattrs = Some(vec![XattrPair {
-            name: "user.aeroftp.test".to_string(),
-            value: b"v1".to_vec(),
-        }]);
+        entry.xattrs = Some(vec![XattrPair::inline("user.aeroftp.test", b"v1".to_vec())]);
         let full = encode_file_list_entry(&entry, &opts);
 
         // Every prefix that cuts into the blob must read as a truncation.
@@ -6349,10 +6932,7 @@ mod tests {
         // metadata the caller attached. Neither is acceptable, so the
         // combination is refused outright.
         let mut entry = baseline_entry();
-        entry.xattrs = Some(vec![XattrPair {
-            name: "user.a".to_string(),
-            value: b"v1".to_vec(),
-        }]);
+        entry.xattrs = Some(vec![XattrPair::inline("user.a", b"v1".to_vec())]);
         let _ = encode_file_list_entry(&entry, &frozen_oracle_options_for_test(None));
     }
 

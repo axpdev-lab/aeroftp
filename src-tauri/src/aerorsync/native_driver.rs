@@ -59,10 +59,10 @@ use crate::aerorsync::real_wire::{
     decode_ndx, decode_server_preamble, decode_sum_block, decode_sum_head, decode_summary_frame,
     decompress_zstd_literal_stream_boundaries, encode_client_preamble, encode_delta_stream,
     encode_file_list_entry, encode_file_list_terminator, encode_item_flags, encode_ndx,
-    encode_sum_block, encode_sum_head, encode_summary_frame, is_symlink_mode, ClientPreamble,
-    DeltaOp, DeltaStreamReport, FileListDecodeOptions, FileListDecodeOutcome, FileListEntry,
-    MuxHeader, MuxPoll, MuxStreamReader, MuxTag, NdxState, RealWireError, SumBlock, SumHead,
-    SummaryFrame, MAX_DELTA_LITERAL_LEN, NDX_DONE, NDX_FLIST_EOF,
+    encode_sum_block, encode_sum_head, encode_summary_frame, encode_xattr_datum_section,
+    is_symlink_mode, ClientPreamble, DeltaOp, DeltaStreamReport, FileListDecodeOptions,
+    FileListDecodeOutcome, FileListEntry, MuxHeader, MuxPoll, MuxStreamReader, MuxTag, NdxState,
+    RealWireError, SumBlock, SumHead, SummaryFrame, MAX_DELTA_LITERAL_LEN, NDX_DONE, NDX_FLIST_EOF,
 };
 use crate::aerorsync::remote_command::{RemoteCommandFlavor, RemoteCommandSpec};
 use crate::aerorsync::transport::{CancelHandle, RawByteStream, RawRemoteShellTransport};
@@ -285,6 +285,16 @@ const STREAMING_READ_CHUNK_BYTES: usize = 4 * 1024 * 1024;
 // consumer emerges in S8j we will promote to `real_wire.rs`.
 const ITEM_TRANSFER: u16 = 0x8000;
 const ITEM_REPORT_CHANGE: u16 = 0x0002;
+/// X.2b: `ITEM_REPORT_XATTR` (`1<<8` in `rsync.h`). Set on a per-file
+/// iflags word when that entry carries extended attributes, and it is
+/// this bit, not the presence of any over-threshold value, that says an
+/// out-of-band xattr datum section follows the header on the wire.
+///
+/// Measured as the difference between the `02 a0` and `02 a1` shortints
+/// in `06-xattr-oob-wire-evidence.md` §3: with `-X` on, a file with no
+/// attribute emits `a0` and no section, a file with even a single small
+/// attribute emits `a1` and a section consisting of the lone terminator.
+const ITEM_REPORT_XATTR: u16 = 0x0100;
 /// iflags emitted by the driver in the download path, replicating the
 /// frozen oracle's client→server first-file signature shape.
 const A2_2_DOWNLOAD_IFLAGS: u16 = ITEM_TRANSFER | ITEM_REPORT_CHANGE;
@@ -2253,6 +2263,37 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
     /// wire byte: the PreCommit/PostCommit boundary.
     ///
     /// Phase transitions: `SumBlocksReceiving → DeltaSending → DeltaSent`.
+    /// X.2b: the out-of-band xattr datum section, which on the sender's
+    /// stream sits **between the iflags echo and the sum_head echo**
+    /// (measured, `06-xattr-oob-wire-evidence.md` §2). Mirrors
+    /// `sender.c::send_files`, which calls the xattr datum writer right
+    /// after `write_ndx_and_attrs` and before the sum_head.
+    ///
+    /// Emitted only when BOTH conditions hold: the peer's iflags carry
+    /// `ITEM_REPORT_XATTR`, and the entry we sent actually carries
+    /// attributes. rsync's own gate is `preserve_xattrs && (iflags &
+    /// ITEM_REPORT_XATTR)`; the driver has no negotiated-xattrs flag yet
+    /// (see the coupling note on `build_flist_options`), so requiring the
+    /// entry to have attributes stands in for it. That is the
+    /// conservative reading on purpose: a peer that sets the bit against
+    /// a session which never asked for `-X` must not be able to make us
+    /// inject a byte the stream is not expecting, and a spurious byte
+    /// here desynchronises everything after it.
+    ///
+    /// Returns empty today for every real transfer, because nothing
+    /// negotiates `-X` and `build_source_entry` never populates
+    /// `xattrs`. The placement is what this encodes, and it is placement
+    /// that came from a measurement rather than from a guess.
+    fn xattr_datum_section_bytes(&self) -> Vec<u8> {
+        if self.last_iflags & ITEM_REPORT_XATTR == 0 {
+            return Vec::new();
+        }
+        match self.file_list.first().and_then(|e| e.xattrs.as_deref()) {
+            Some(pairs) => encode_xattr_datum_section(pairs),
+            None => Vec::new(),
+        }
+    }
+
     async fn send_delta_phase_single_file(
         &mut self,
         source_data: &[u8],
@@ -2421,6 +2462,10 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
             &mut self.outbound_ndx_state,
         ));
         payload.extend_from_slice(&encode_item_flags(self.last_iflags));
+        // X.2b: the xattr datum section, when the peer's iflags asked for
+        // one. Empty (zero bytes appended) on every path that does not
+        // negotiate `-X`, so the byte-pinned delta shape is unchanged.
+        payload.extend_from_slice(&self.xattr_datum_section_bytes());
         payload.extend_from_slice(&encode_sum_head(&echo_head));
         payload.extend_from_slice(&delta_bytes);
 
@@ -2689,6 +2734,10 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
             &mut self.outbound_ndx_state,
         ));
         payload.extend_from_slice(&encode_item_flags(self.last_iflags));
+        // X.2b: the xattr datum section, when the peer's iflags asked for
+        // one. Empty (zero bytes appended) on every path that does not
+        // negotiate `-X`, so the byte-pinned delta shape is unchanged.
+        payload.extend_from_slice(&self.xattr_datum_section_bytes());
         payload.extend_from_slice(&encode_sum_head(&echo_head));
         payload.extend_from_slice(&delta_bytes);
 
@@ -3955,6 +4004,117 @@ mod tests {
         transport: MockRemoteShellTransport,
     ) -> AerorsyncDriver<MockRemoteShellTransport> {
         AerorsyncDriver::new(transport, CancelHandle::inert())
+    }
+
+    // ---------------------------------------------------------------------
+    // X.2b: placement and gating of the out-of-band xattr datum section.
+    //
+    // The section is unreachable in a real transfer today (nothing
+    // negotiates `-X`), so these tests are the only thing standing between
+    // the measured placement and a future session guessing at it.
+    // ---------------------------------------------------------------------
+
+    /// Driver primed as if the signature phase had just handed us the
+    /// peer's per-file header, carrying `iflags`, with `entry` as the
+    /// single file-list entry we sent.
+    fn driver_primed_for_delta(
+        iflags: u16,
+        xattrs: Option<Vec<crate::aerorsync::real_wire::XattrPair>>,
+    ) -> AerorsyncDriver<MockRemoteShellTransport> {
+        let mut d = make_driver(mock_transport_with_raw_inbound(Vec::new()));
+        let mut entry = sample_file_list_entry("upload.bin");
+        entry.xattrs = xattrs;
+        d.file_list.push(entry);
+        d.last_iflags = iflags;
+        d
+    }
+
+    #[test]
+    fn xattr_section_is_absent_when_the_peer_did_not_ask_for_it() {
+        // No ITEM_REPORT_XATTR in the echoed iflags means no section on
+        // the wire, even when the entry is loaded with attributes. This is
+        // the case every transfer takes today, and the reason the delta
+        // shape is byte-identical to before X.2b.
+        use crate::aerorsync::real_wire::XattrPair;
+        let d = driver_primed_for_delta(
+            A2_2_DOWNLOAD_IFLAGS,
+            Some(vec![
+                XattrPair::inline("user.small", b"v1".to_vec()),
+                XattrPair::inline("user.big", vec![b'B'; 64]),
+            ]),
+        );
+        assert_eq!(
+            d.xattr_datum_section_bytes(),
+            Vec::<u8>::new(),
+            "without the iflags bit the section must contribute zero bytes"
+        );
+        assert_eq!(
+            A2_2_DOWNLOAD_IFLAGS & ITEM_REPORT_XATTR,
+            0,
+            "the driver's own download iflags must not carry the xattr bit"
+        );
+    }
+
+    #[test]
+    fn xattr_section_is_emitted_when_the_bit_and_the_attributes_agree() {
+        // With the bit set and attributes present, the section carries the
+        // over-threshold value and nothing else, terminated by the zero
+        // skip. Skip 2 because the large attribute is the second of the
+        // two, which is the delta encoding measured in §2.
+        use crate::aerorsync::real_wire::{encode_varint, XattrPair};
+        let big = vec![b'B'; 64];
+        let d = driver_primed_for_delta(
+            A2_2_DOWNLOAD_IFLAGS | ITEM_REPORT_XATTR,
+            Some(vec![
+                XattrPair::inline("user.small", b"v1".to_vec()),
+                XattrPair::inline("user.big", big.clone()),
+            ]),
+        );
+        let mut expected = encode_varint(2);
+        expected.extend_from_slice(&encode_varint(64));
+        expected.extend_from_slice(&big);
+        expected.extend_from_slice(&encode_varint(0));
+        assert_eq!(d.xattr_datum_section_bytes(), expected);
+    }
+
+    #[test]
+    fn xattr_section_with_only_small_values_is_still_one_byte() {
+        // The measured surprise: the section exists because the entry has
+        // attributes, not because any of them is large. Emitting nothing
+        // here would leave the peer one byte ahead for the rest of the
+        // stream.
+        use crate::aerorsync::real_wire::XattrPair;
+        let d = driver_primed_for_delta(
+            A2_2_DOWNLOAD_IFLAGS | ITEM_REPORT_XATTR,
+            Some(vec![XattrPair::inline("user.small", b"v1".to_vec())]),
+        );
+        assert_eq!(d.xattr_datum_section_bytes(), vec![0x00]);
+    }
+
+    #[test]
+    fn xattr_section_stays_empty_if_the_peer_sets_the_bit_against_no_attributes() {
+        // Conservative gate. A peer that sets ITEM_REPORT_XATTR against a
+        // session that never sent `-X` (so our entry carries `None`) must
+        // not be able to make us inject a byte the stream is not
+        // expecting. rsync's own gate has `preserve_xattrs` as the second
+        // conjunct; until the driver tracks that flag, the entry stands in
+        // for it.
+        let d = driver_primed_for_delta(A2_2_DOWNLOAD_IFLAGS | ITEM_REPORT_XATTR, None);
+        assert_eq!(d.xattr_datum_section_bytes(), Vec::<u8>::new());
+    }
+
+    #[test]
+    fn item_report_xattr_is_the_measured_bit() {
+        // `06-xattr-oob-wire-evidence.md` §3: the per-file shortint moves
+        // from `02 a0` to `02 a1` exactly when the entry carries
+        // attributes. Little-endian, that is 0xa002 -> 0xa102, a
+        // difference of 0x0100.
+        let without = u16::from_le_bytes([0x02, 0xa0]);
+        let with = u16::from_le_bytes([0x02, 0xa1]);
+        assert_eq!(with - without, ITEM_REPORT_XATTR);
+        assert_eq!(ITEM_REPORT_XATTR, 1 << 8);
+        assert_eq!(with & ITEM_REPORT_XATTR, ITEM_REPORT_XATTR);
+        assert_eq!(without & ITEM_REPORT_XATTR, 0);
     }
 
     fn canonical_server_preamble_bytes() -> Vec<u8> {
