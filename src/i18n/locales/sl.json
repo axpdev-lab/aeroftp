@@ -2247,7 +2247,7 @@
             "verifyEntry": "Vnos",
             "verifyHashMatch": "se ujema",
             "verifyIdentity": "Identiteta",
-            "verifyInstallStillAllowed": "Kljub temu ga lahko namestiš, a ga ni mogoče izslediti do našega CI.",
+            "verifyInstallStillAllowed": "Kljub temu ga lahko namestite, a ni mogoče potrditi, da izvira iz našega CI.",
             "verifyIssuer": "Izdajatelj",
             "verifyNoSignature": "Za to različico ni objavljenega podpisa",
             "verifyRekorOpen": "Odpri javni vnos Rekor",

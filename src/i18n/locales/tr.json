@@ -2247,7 +2247,7 @@
             "verifyEntry": "Kayıt",
             "verifyHashMatch": "eşleşiyor",
             "verifyIdentity": "Kimlik",
-            "verifyInstallStillAllowed": "Yine de kurabilirsiniz, ancak CI'mıza kadar izlenemiyor.",
+            "verifyInstallStillAllowed": "Yine de kurabilirsiniz, ancak CI'mızdan geldiği doğrulanamıyor.",
             "verifyIssuer": "Veren",
             "verifyNoSignature": "Bu yapı için yayımlanmış imza yok",
             "verifyRekorOpen": "Herkese açık Rekor kaydını aç",

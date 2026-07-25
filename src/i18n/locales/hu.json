@@ -2247,7 +2247,7 @@
             "verifyEntry": "Bejegyzés",
             "verifyHashMatch": "egyezik",
             "verifyIdentity": "Azonosság",
-            "verifyInstallStillAllowed": "Telepítheted így is, de nem vezethető vissza a CI-nkre.",
+            "verifyInstallStillAllowed": "Így is telepíthető, de nem vezethető vissza a CI-rendszerünkhöz.",
             "verifyIssuer": "Kibocsátó",
             "verifyNoSignature": "Ehhez a buildhez nincs közzétett aláírás",
             "verifyRekorOpen": "Nyilvános Rekor-bejegyzés megnyitása",

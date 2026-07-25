@@ -2247,7 +2247,7 @@
             "verifyEntry": "Entri",
             "verifyHashMatch": "cocok",
             "verifyIdentity": "Identitas",
-            "verifyInstallStillAllowed": "Kamu tetap bisa memasangnya, tetapi tidak bisa dilacak ke CI kami.",
+            "verifyInstallStillAllowed": "Anda tetap dapat memasangnya, tetapi tidak dapat dilacak ke CI kami.",
             "verifyIssuer": "Penerbit",
             "verifyNoSignature": "Tidak ada tanda tangan yang dipublikasikan untuk build ini",
             "verifyRekorOpen": "Buka entri Rekor publik",

@@ -2217,7 +2217,7 @@
             "verifyNoSignature": "このビルドの署名は公開されていません",
             "verifyRekorOpen": "公開 Rekor エントリを開く",
             "verifySigner": "署名者",
-            "verifySignedDigest": "署名済み",
+            "verifySignedDigest": "署名値",
             "verifyVerifier": "検証ツール",
             "verifyingSigstore": "Sigstore で検証しています...",
             "verifyRekor": "Rekor",

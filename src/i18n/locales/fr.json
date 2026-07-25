@@ -2241,7 +2241,7 @@
             "verifySignatureFailed": "Échec de la vérification de la signature",
             "verifiedWithSigstore": "Vérifié avec Sigstore",
             "verifyCouldNotVerify": "Signature non vérifiable",
-            "verifyComputedLocally": "Calculé localement. Rien de signé à quoi le comparer.",
+            "verifyComputedLocally": "Calculé localement. Rien de signé auquel le comparer.",
             "verifyDetails": "Détails de la vérification",
             "verifyDigestDiffers": "diffère",
             "verifyEntry": "Entrée",

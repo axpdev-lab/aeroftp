@@ -66,10 +66,18 @@ function headline(tone: UpdateVerifyTone, t: UpdateVerificationPanelProps['t']):
     }
 }
 
-/** One label/value line of the evidence list. */
+/**
+ * One label/value line of the evidence list.
+ *
+ * The label column grows past its 62px floor rather than being fixed: several
+ * languages need more room than the English "Signer" / "Issuer" (and CJK cannot
+ * be abbreviated), and a clipped label on a panel whose whole job is to be
+ * checkable would be the wrong thing to sacrifice. The value truncates instead,
+ * with the full string on hover.
+ */
 const Row: React.FC<{ label: string; children: React.ReactNode; title?: string }> = ({ label, children, title }) => (
-    <div className="grid grid-cols-[62px_1fr] gap-2 items-baseline font-mono text-[11px]">
-        <span className="opacity-60 uppercase tracking-wide text-[9.5px]">{label}</span>
+    <div className="grid grid-cols-[minmax(62px,auto)_1fr] gap-2 items-baseline font-mono text-[11px]">
+        <span className="opacity-60 uppercase tracking-wide text-[9.5px] whitespace-nowrap">{label}</span>
         <span className="truncate" title={title}>{children}</span>
     </div>
 );

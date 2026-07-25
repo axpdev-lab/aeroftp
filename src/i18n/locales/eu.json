@@ -2247,7 +2247,7 @@
             "verifyEntry": "Sarrera",
             "verifyHashMatch": "bat dator",
             "verifyIdentity": "Identitatea",
-            "verifyInstallStillAllowed": "Instalatu dezakezu hala ere, baina ezin da gure CIra arte jarraitu.",
+            "verifyInstallStillAllowed": "Hala ere, instala dezakezu, baina ezin da egiaztatu gure CItik datorrenik.",
             "verifyIssuer": "Jaulkitzailea",
             "verifyNoSignature": "Ez da sinadurarik argitaratu build honetarako",
             "verifyRekorOpen": "Ireki Rekor sarrera publikoa",

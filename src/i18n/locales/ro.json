@@ -2247,7 +2247,7 @@
             "verifyEntry": "Intrare",
             "verifyHashMatch": "corespunde",
             "verifyIdentity": "Identitate",
-            "verifyInstallStillAllowed": "Îl poți instala oricum, dar nu poate fi urmărit până la CI-ul nostru.",
+            "verifyInstallStillAllowed": "Poți instala oricum actualizarea, dar nu se poate confirma că provine din CI-ul nostru.",
             "verifyIssuer": "Emitent",
             "verifyNoSignature": "Nicio semnătură publicată pentru această versiune",
             "verifyRekorOpen": "Deschide intrarea publică Rekor",

@@ -2241,7 +2241,7 @@
             "verifySignatureFailed": "Verificatie van handtekening mislukt",
             "verifiedWithSigstore": "Geverifieerd met Sigstore",
             "verifyCouldNotVerify": "Handtekening kon niet worden geverifieerd",
-            "verifyComputedLocally": "Lokaal berekend. Er is niets ondertekends om mee te vergelijken.",
+            "verifyComputedLocally": "Lokaal berekend. Er is niets ondertekend om mee te vergelijken.",
             "verifyDetails": "Verificatiedetails",
             "verifyDigestDiffers": "wijkt af",
             "verifyEntry": "Vermelding",

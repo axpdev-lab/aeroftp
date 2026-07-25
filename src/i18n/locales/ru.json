@@ -2252,7 +2252,7 @@
             "verifyNoSignature": "Для этой сборки подпись не опубликована",
             "verifyRekorOpen": "Открыть публичную запись Rekor",
             "verifySigner": "Подписант",
-            "verifySignedDigest": "Подписано",
+            "verifySignedDigest": "В подписи",
             "verifyVerifier": "Проверяющий",
             "verifyingSigstore": "Проверка через Sigstore...",
             "verifyRekor": "Rekor",
