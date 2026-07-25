@@ -1215,6 +1215,41 @@ impl CacheMode {
     }
 }
 
+#[derive(Subcommand, Debug)]
+enum TrashCommands {
+    /// List the items currently in the server-side trash.
+    List {
+        /// Server URL (omit when using --profile)
+        #[arg(default_value = "_", hide_default_value = true)]
+        url: String,
+    },
+    /// Permanently delete EVERY item in the trash. This frees the space.
+    Empty {
+        /// Server URL (omit when using --profile)
+        #[arg(default_value = "_", hide_default_value = true)]
+        url: String,
+        /// Required: emptying the trash is irreversible.
+        #[arg(long)]
+        force: bool,
+    },
+    /// Restore one item out of the trash, back to its original path.
+    Restore {
+        /// Trash item id, as reported by `trash list`
+        id: String,
+        /// Server URL (omit when using --profile)
+        #[arg(default_value = "_", hide_default_value = true)]
+        url: String,
+    },
+    /// Permanently delete a single trash item.
+    Delete {
+        /// Trash item id, as reported by `trash list`
+        id: String,
+        /// Server URL (omit when using --profile)
+        #[arg(default_value = "_", hide_default_value = true)]
+        url: String,
+    },
+}
+
 #[derive(Subcommand)]
 enum Commands {
     /// Test connection to a remote server
@@ -1976,6 +2011,16 @@ enum Commands {
         /// FileLu, Filen.
         #[arg(long)]
         all_protocols: bool,
+    },
+    /// Server-side trash / recycle bin: list, restore, or permanently delete.
+    ///
+    /// A `rm` against a provider with a recycle bin (Nextcloud, and the other
+    /// trash-capable backends) does NOT free space: the server moves the file
+    /// to its trash. This is the counterpart that actually reclaims it, and the
+    /// CLI equivalent of the GUI trash managers.
+    Trash {
+        #[command(subcommand)]
+        command: TrashCommands,
     },
     /// Remove orphaned .aerotmp files from interrupted downloads.
     Cleanup {
@@ -38538,11 +38583,26 @@ async fn cmd_size(url: &str, path: &str, cli: &Cli, format: OutputFormat) -> i32
                     );
                     if !cli.quiet {
                         eprintln!("Path: {} (scan method: {})", root, s.method);
-                        if s.truncated {
+                        // Say WHY the figure is a lower bound. Blaming the
+                        // caps when the real cause was an unreadable directory
+                        // sends the user to raise --max-depth, which cannot
+                        // help: the entries were never readable in the first
+                        // place.
+                        if s.unreadable_dirs > 0 {
+                            eprintln!(
+                                "Warning: {} director{} could not be listed (permission denied or transport error); figure is a lower bound",
+                                s.unreadable_dirs,
+                                if s.unreadable_dirs == 1 { "y" } else { "ies" }
+                            );
+                        }
+                        if s.hit_cap {
                             eprintln!(
                                 "Warning: scan capped (depth {} / {} entries); figure is a lower bound",
                                 scan_depth, MAX_SCAN_ENTRIES
                             );
+                        }
+                        if s.cancelled {
+                            eprintln!("Warning: scan cancelled; figure is a lower bound");
                         }
                     }
                 }
@@ -38556,6 +38616,9 @@ async fn cmd_size(url: &str, path: &str, cli: &Cli, format: OutputFormat) -> i32
                         "bytes": s.used_bytes,
                         "human": format_size(s.used_bytes),
                         "truncated": s.truncated,
+                        "unreadable_dirs": s.unreadable_dirs,
+                        "hit_cap": s.hit_cap,
+                        "cancelled": s.cancelled,
                         "scan_method": s.method,
                     }));
                 }
@@ -42788,6 +42851,159 @@ fn print_benchmark_publish_block(serialized: &str) {
     println!("{}", serialized);
     println!("```");
     println!("--- END BENCHMARK REPORT ---");
+}
+
+/// Resolve the connected provider down to a `WebDavProvider`, unwrapping a
+/// crypt overlay if one is layered on top. Returns `None` for every other
+/// backend, which is what makes the trash commands a Nextcloud-only surface
+/// today rather than a silent no-op on, say, FTP.
+fn as_webdav(
+    provider: &mut Box<dyn StorageProvider>,
+) -> Option<&mut ftp_client_gui_lib::providers::webdav::WebDavProvider> {
+    ftp_client_gui_lib::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
+        .as_any_mut()
+        .downcast_mut::<ftp_client_gui_lib::providers::webdav::WebDavProvider>()
+}
+
+const TRASH_UNSUPPORTED: &str =
+    "this backend has no server-side trash reachable from the CLI (Nextcloud WebDAV only today)";
+
+async fn cmd_trash_list(url: &str, cli: &Cli, format: OutputFormat) -> i32 {
+    let (mut provider, _p) = match create_and_connect(url, cli, format).await {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
+    let Some(dav) = as_webdav(&mut provider) else {
+        print_error(format, TRASH_UNSUPPORTED, 4);
+        return 4;
+    };
+    match dav.nextcloud_list_trash().await {
+        Ok(items) => {
+            let total: u64 = items.iter().map(|i| i.size).sum();
+            if matches!(format, OutputFormat::Json) {
+                println!(
+                    "{}",
+                    serde_json::json!({ "items": items, "count": items.len(), "total_bytes": total })
+                );
+            } else if items.is_empty() {
+                println!("Trash is empty");
+            } else {
+                for i in &items {
+                    println!(
+                        "{:<44}  {:>10}  {}",
+                        i.id,
+                        format_size(i.size),
+                        i.original_path
+                    );
+                }
+                println!(
+                    "\n{} item(s), {} reclaimable",
+                    items.len(),
+                    format_size(total)
+                );
+            }
+            0
+        }
+        Err(e) => {
+            print_error(format, &format!("trash list failed: {}", e), 5);
+            5
+        }
+    }
+}
+
+async fn cmd_trash_empty(url: &str, force: bool, cli: &Cli, format: OutputFormat) -> i32 {
+    if !force {
+        print_error(
+            format,
+            "emptying the trash is irreversible: pass --force to confirm",
+            2,
+        );
+        return 2;
+    }
+    let (mut provider, _p) = match create_and_connect(url, cli, format).await {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
+    let Some(dav) = as_webdav(&mut provider) else {
+        print_error(format, TRASH_UNSUPPORTED, 4);
+        return 4;
+    };
+    // Report what is about to go, so the operation is auditable after the fact.
+    let before = dav.nextcloud_list_trash().await.ok();
+    match dav.nextcloud_empty_trash().await {
+        Ok(()) => {
+            let (n, bytes) = before
+                .map(|v| (v.len(), v.iter().map(|i| i.size).sum::<u64>()))
+                .unwrap_or((0, 0));
+            if matches!(format, OutputFormat::Json) {
+                println!(
+                    "{}",
+                    serde_json::json!({ "emptied": true, "items": n, "freed_bytes": bytes })
+                );
+            } else {
+                println!(
+                    "Trash emptied: {} item(s), {} reclaimed",
+                    n,
+                    format_size(bytes)
+                );
+            }
+            0
+        }
+        Err(e) => {
+            print_error(format, &format!("empty trash failed: {}", e), 5);
+            5
+        }
+    }
+}
+
+async fn cmd_trash_restore(id: &str, url: &str, cli: &Cli, format: OutputFormat) -> i32 {
+    let (mut provider, _p) = match create_and_connect(url, cli, format).await {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
+    let Some(dav) = as_webdav(&mut provider) else {
+        print_error(format, TRASH_UNSUPPORTED, 4);
+        return 4;
+    };
+    match dav.nextcloud_restore_trash(id).await {
+        Ok(()) => {
+            if matches!(format, OutputFormat::Json) {
+                println!("{}", serde_json::json!({ "restored": id }));
+            } else {
+                println!("Restored {}", id);
+            }
+            0
+        }
+        Err(e) => {
+            print_error(format, &format!("restore failed: {}", e), 5);
+            5
+        }
+    }
+}
+
+async fn cmd_trash_delete(id: &str, url: &str, cli: &Cli, format: OutputFormat) -> i32 {
+    let (mut provider, _p) = match create_and_connect(url, cli, format).await {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
+    let Some(dav) = as_webdav(&mut provider) else {
+        print_error(format, TRASH_UNSUPPORTED, 4);
+        return 4;
+    };
+    match dav.nextcloud_delete_trash_item(id).await {
+        Ok(()) => {
+            if matches!(format, OutputFormat::Json) {
+                println!("{}", serde_json::json!({ "deleted": id }));
+            } else {
+                println!("Permanently deleted {}", id);
+            }
+            0
+        }
+        Err(e) => {
+            print_error(format, &format!("delete failed: {}", e), 5);
+            5
+        }
+    }
 }
 
 async fn cmd_cleanup(
@@ -62405,6 +62621,12 @@ async fn main() {
                 .await
             }
         }
+        Commands::Trash { command } => match command {
+            TrashCommands::List { url } => cmd_trash_list(url, &cli, format).await,
+            TrashCommands::Empty { url, force } => cmd_trash_empty(url, *force, &cli, format).await,
+            TrashCommands::Restore { id, url } => cmd_trash_restore(id, url, &cli, format).await,
+            TrashCommands::Delete { id, url } => cmd_trash_delete(id, url, &cli, format).await,
+        },
         Commands::Cleanup {
             url,
             path,

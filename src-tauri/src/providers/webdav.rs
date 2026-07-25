@@ -846,17 +846,59 @@ impl WebDavProvider {
 
     // ─── Nextcloud OCS / Trashbin helpers ─────────────────────────────
 
-    /// Detect if this WebDAV server is a Nextcloud instance (URL pattern match).
+    /// Detect if this WebDAV server is a Nextcloud instance.
+    ///
+    /// Delegates to [`Self::is_nextcloud_for_dav`] so every Nextcloud-specific
+    /// surface answers the same question the same way. It used to test the
+    /// configured URL for `/remote.php/dav/files/` on its own, which made the
+    /// answer depend on how the user typed the profile URL rather than on what
+    /// the server is: a profile saved as `https://cloud.example.com` browses
+    /// perfectly (connect resolves the real root) but was reported as "not
+    /// Nextcloud", silently disabling share links and the trashbin.
     fn is_nextcloud(&self) -> bool {
-        self.config.url.contains("/remote.php/dav/files/")
+        self.is_nextcloud_for_dav()
     }
 
-    /// Extract the Nextcloud base URL (e.g. https://cloud.felicloud.com).
+    /// The `scheme://host[:port]` origin of the configured URL, without any
+    /// path component. Used to rebuild absolute OCS / trashbin endpoints when
+    /// the profile URL is a bare base URL.
+    fn config_origin(&self) -> Option<String> {
+        let url = self.config.url.trim().trim_end_matches('/');
+        let after_scheme = url.find("://")? + 3;
+        let authority_end = url[after_scheme..]
+            .find('/')
+            .map(|i| after_scheme + i)
+            .unwrap_or(url.len());
+        if authority_end <= after_scheme {
+            return None;
+        }
+        Some(url[..authority_end].to_string())
+    }
+
+    /// Extract the Nextcloud base URL (e.g. `https://cloud.felicloud.com`).
+    ///
+    /// The OCS and trashbin endpoints live outside the per-user `/files/` root,
+    /// so they are built against this origin rather than through `build_url()`.
+    ///
+    /// Layered, mirroring [`Self::is_nextcloud_for_dav`]:
+    /// 1. The configured URL carries the canonical `/remote.php/` prefix, so
+    ///    the origin is whatever precedes it. Most direct, no probing needed.
+    /// 2. Otherwise, if this is a Nextcloud-class server by any reliable signal
+    ///    (saved-profile preset id, or the `server_root` the connect-time
+    ///    well-known probe resolved), the origin is the configured URL with its
+    ///    path stripped.
+    ///
+    /// Returning `None` here is what surfaces as `Not a Nextcloud instance`, so
+    /// it must mean "this really is not Nextcloud", never "the user typed a
+    /// short URL".
     fn nextcloud_base_url(&self) -> Option<String> {
-        self.config
-            .url
-            .find("/remote.php/")
-            .map(|idx| self.config.url[..idx].to_string())
+        if let Some(idx) = self.config.url.find("/remote.php/") {
+            return Some(self.config.url[..idx].to_string());
+        }
+        if self.is_nextcloud_for_dav() {
+            return self.config_origin();
+        }
+        None
     }
 
     // ─── Nextcloud chunked upload v2 ──────────────────────────────────
@@ -4746,6 +4788,64 @@ mod tests {
         // on a single PUT (faster on LAN), audit Patch Set 2.
         assert_eq!(hints.multipart_threshold, NEXTCLOUD_DAG_THRESHOLD);
         assert_eq!(hints.multipart_max_parallel, NEXTCLOUD_DAG_MAX_PARALLEL);
+    }
+
+    /// Regression, 2026-07-25. The trashbin and OCS share endpoints resolved
+    /// their base URL by searching the CONFIGURED url for `/remote.php/`, so
+    /// the answer depended on how the user typed the profile URL rather than
+    /// on what the server is. A profile saved as the bare origin browses
+    /// perfectly (connect resolves the real root) but reported
+    /// `Not a Nextcloud instance`, silently disabling the trash manager and
+    /// share links. Observed live on two profiles pointing at genuine
+    /// Nextcloud servers whose `status.php` answers `productname: Nextcloud`.
+    #[test]
+    fn nextcloud_base_url_resolves_from_bare_origin_when_provider_id_says_nextcloud() {
+        let mut cfg = test_config("https://cloud.lab.example.test");
+        cfg.provider_id = Some("nextcloud".to_string());
+        let p = WebDavProvider::new(cfg).expect("provider");
+        assert_eq!(
+            p.nextcloud_base_url(),
+            Some("https://cloud.lab.example.test".to_string()),
+            "a bare-origin Nextcloud profile must still resolve its OCS base"
+        );
+        assert!(p.is_nextcloud(), "share links must stay advertised");
+    }
+
+    /// The canonical form keeps working unchanged: the origin is whatever
+    /// precedes `/remote.php/`, trailing user path included.
+    #[test]
+    fn nextcloud_base_url_keeps_canonical_url_form() {
+        let p = WebDavProvider::new(test_config(
+            "https://cloud.example.com/remote.php/dav/files/alice/",
+        ))
+        .expect("provider");
+        assert_eq!(
+            p.nextcloud_base_url(),
+            Some("https://cloud.example.com".to_string())
+        );
+        assert!(p.is_nextcloud());
+    }
+
+    /// A trailing slash on the bare origin must not leak into the endpoint,
+    /// otherwise every built URL carries a double slash.
+    #[test]
+    fn nextcloud_base_url_strips_trailing_slash_and_path() {
+        let mut cfg = test_config("https://cloud.example.com/subdir/");
+        cfg.provider_id = Some("owncloud".to_string());
+        let p = WebDavProvider::new(cfg).expect("provider");
+        assert_eq!(
+            p.nextcloud_base_url(),
+            Some("https://cloud.example.com".to_string())
+        );
+    }
+
+    /// The guard must stay a guard: vanilla WebDAV is still not Nextcloud, so
+    /// the trash commands keep failing closed instead of building bogus URLs.
+    #[test]
+    fn nextcloud_base_url_none_for_vanilla_webdav() {
+        let p = WebDavProvider::new(test_config("https://dav.example.com/")).expect("provider");
+        assert_eq!(p.nextcloud_base_url(), None);
+        assert!(!p.is_nextcloud());
     }
 
     #[test]

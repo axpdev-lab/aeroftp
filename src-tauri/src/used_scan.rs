@@ -33,9 +33,24 @@ pub struct UsedScan {
     pub file_count: u64,
     /// Number of directories traversed.
     pub dir_count: u64,
-    /// True when a cap (depth/entries) or cancellation stopped the scan
-    /// early, so `used_bytes` is a lower bound.
+    /// True when the figure is a lower bound for ANY reason. Kept as the
+    /// single boolean callers can branch on; the fields below say WHY.
     pub truncated: bool,
+    /// Directories the walk could not list at all (permission denied, or a
+    /// transport error). Their contents are missing from `used_bytes`.
+    ///
+    /// Split out from `truncated` because the remedy is the opposite of the
+    /// cap case: raising `max_depth` or `max_entries` cannot help here, and a
+    /// message that blames the caps sends the user to the wrong knob. Observed
+    /// on 2026-07-25 scanning a directory owned by another user, where the
+    /// scan reported "capped (depth 100 / 500000 entries)" after reading
+    /// exactly zero entries.
+    pub unreadable_dirs: u64,
+    /// True when a depth or entry cap stopped the walk. This is the case the
+    /// caps message is actually about.
+    pub hit_cap: bool,
+    /// True when the caller cancelled the scan (Ctrl-C, UI abort).
+    pub cancelled: bool,
     /// Which method produced the figure: "s3-list-recursive",
     /// "webdav-infinity" or "bfs". Surfaced for the tooltip/logs.
     pub method: &'static str,
@@ -154,6 +169,12 @@ pub async fn scan_used_bytes(
         let mut files = 0u64;
         let mut dirs = 0u64;
         let mut truncated = false;
+        let mut hit_cap = false;
+        // The provider handed us a complete single-shot listing, so there is no
+        // per-directory walk here: nothing can be unreadable and nothing polls
+        // cancellation. Fixed at their empty values rather than tracked.
+        let unreadable_dirs: u64 = 0;
+        let cancelled = false;
         for e in fast.entries {
             if e.is_dir {
                 dirs += 1;
@@ -161,6 +182,7 @@ pub async fn scan_used_bytes(
             }
             if files >= max_entries as u64 {
                 truncated = true;
+                hit_cap = true;
                 break;
             }
             used = used.saturating_add(e.size);
@@ -172,6 +194,9 @@ pub async fn scan_used_bytes(
             file_count: files,
             dir_count: dirs,
             truncated,
+            unreadable_dirs,
+            hit_cap,
+            cancelled,
             method: fast.method,
         });
     }
@@ -203,16 +228,21 @@ async fn bfs_used_bytes(
     let mut files = 0u64;
     let mut dirs = 0u64;
     let mut truncated = false;
+    let mut unreadable_dirs: u64 = 0;
+    let mut hit_cap = false;
+    let mut cancelled = false;
     // (absolute path, depth). LIFO is fine: we only sum, order is irrelevant.
     let mut queue: Vec<(String, usize)> = vec![(root.to_string(), 0)];
 
     while let Some((dir, depth)) = queue.pop() {
         if cancel.load(Ordering::Relaxed) {
             truncated = true;
+            cancelled = true;
             break;
         }
         if depth >= max_depth || (files + dirs) >= max_entries as u64 {
             truncated = true;
+            hit_cap = true;
             continue;
         }
         match provider.list(&dir).await {
@@ -231,6 +261,7 @@ async fn bfs_used_bytes(
                     // subdir entries cannot grow the queue past max_entries.
                     if (files + dirs) >= max_entries as u64 {
                         truncated = true;
+                        hit_cap = true;
                         break;
                     }
                     if entry.is_dir {
@@ -248,6 +279,7 @@ async fn bfs_used_bytes(
                 // figure: log and keep going (the result is a lower bound).
                 tracing::warn!("[used_scan] failed to list {}: {}", dir, e);
                 truncated = true;
+                unreadable_dirs += 1;
             }
         }
     }
@@ -257,6 +289,9 @@ async fn bfs_used_bytes(
         file_count: files,
         dir_count: dirs,
         truncated,
+        unreadable_dirs,
+        hit_cap,
+        cancelled,
         method: "bfs",
     })
 }

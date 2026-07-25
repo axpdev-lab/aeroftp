@@ -48,6 +48,7 @@ pub const CLI_SUBCOMMANDS: &[&str] = &[
     "dedupe",
     "sync",
     "sync-doctor",
+    "trash",
     "tree",
     "ncdu",
     "mount",
