@@ -982,8 +982,10 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
     return (
         <>
             <div className="fixed inset-0 z-50 flex items-start justify-center pt-[5vh]">
-                {/* Backdrop */}
-                <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
+                {/* Backdrop: intentionally NOT click-to-close — Settings holds unsaved
+                    form state, and an accidental outside click used to discard it.
+                    Close only via the header X, the footer Cancel, or Escape. */}
+                <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" aria-hidden="true" />
 
                 {/* Panel */}
                 <div

@@ -130,25 +130,23 @@ export const FileAssociationsPanel: React.FC<FileAssociationsPanelProps> = ({ co
     ));
     const more = item.extensions.length > 4 ? <span className="text-[10px] text-gray-400">+{item.extensions.length - 4}</span> : null;
 
-    let stateLabel: React.ReactNode;
-    if (isDef) {
-      stateLabel = (
-        <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400 text-xs">
-          <CheckCircle2 size={12} /> {t('settings.fileAssociationDefault') || 'Default'}
-        </span>
-      );
-    } else if (item.isAvailable) {
-      stateLabel = (
-        <span className="text-xs text-gray-500 dark:text-gray-400">{t('settings.fileAssociationAvailable') || 'Available'}</span>
-      );
-    } else if (item.currentHandler) {
-      stateLabel = (
-        <span className="text-xs text-amber-600 dark:text-amber-400">{t('settings.fileAssociationOther') || 'Handled by another app'}</span>
-      );
-    } else {
-      stateLabel = (
-        <span className="text-xs text-gray-400">{t('settings.fileAssociationUnknown') || 'Unknown'}</span>
-      );
+    // Status column. Default rows say it once, in the action column, so this stays
+    // empty for them (avoids the duplicated "Default / Default" pair).
+    let stateLabel: React.ReactNode = null;
+    if (!isDef) {
+      if (item.isAvailable) {
+        stateLabel = (
+          <span className="text-xs text-gray-500 dark:text-gray-400">{t('settings.fileAssociationAvailable') || 'Available'}</span>
+        );
+      } else if (item.currentHandler) {
+        stateLabel = (
+          <span className="text-xs text-amber-600 dark:text-amber-400">{t('settings.fileAssociationOther') || 'Handled by another app'}</span>
+        );
+      } else {
+        stateLabel = (
+          <span className="text-xs text-gray-400">{t('settings.fileAssociationUnknown') || 'Unknown'}</span>
+        );
+      }
     }
 
     const actionEl = (() => {
@@ -189,8 +187,8 @@ export const FileAssociationsPanel: React.FC<FileAssociationsPanelProps> = ({ co
     })();
 
     return (
-      <div key={item.key} className="flex items-center justify-between py-1.5 border-b border-gray-100 dark:border-gray-800 last:border-b-0 text-sm">
-        <div className="min-w-0 flex-1 pr-3">
+      <div key={item.key} className="flex items-center justify-between gap-3 px-3 py-2 border-b border-gray-100 dark:border-gray-800 last:border-b-0 text-sm">
+        <div className="min-w-0 flex-1">
           <div className="font-medium text-gray-800 dark:text-gray-100 flex items-center gap-2">
             {item.key.includes('zip') || item.key.includes('tar') || item.key === 'rar' || item.key === 'sevenz' || item.key === 'single_stream' ? (
               <Archive size={14} className="text-gray-400 shrink-0" />
@@ -210,8 +208,8 @@ export const FileAssociationsPanel: React.FC<FileAssociationsPanelProps> = ({ co
         </div>
 
         <div className="flex items-center gap-3 shrink-0">
-          <div className="text-right min-w-[92px]">{stateLabel}</div>
-          <div className="min-w-[92px] flex justify-end">{actionEl}</div>
+          <div className="text-right min-w-[80px]">{stateLabel}</div>
+          <div className="min-w-[104px] flex justify-end">{actionEl}</div>
         </div>
       </div>
     );
