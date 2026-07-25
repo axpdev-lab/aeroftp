@@ -568,6 +568,22 @@ pub struct AerorsyncDriver<T: RawRemoteShellTransport> {
     negotiated_checksum_algos: String,
     negotiated_compression_algos: String,
 
+    /// Whether this session asked the remote `rsync --server` for `-X`,
+    /// captured from the [`RemoteCommandSpec`] when the stream is opened.
+    ///
+    /// **This is the single source of truth for xattrs on the wire.**
+    /// Three separate decisions have to agree, and each one on its own is
+    /// enough to desynchronise the stream if it disagrees with the others:
+    /// whether `-X` goes into the server flag bundle
+    /// (`compact_flags_for`), whether the file-list codec expects a
+    /// trailing xattr blob on every entry
+    /// (`FileListDecodeOptions::preserve_xattrs`), and whether the sender
+    /// emits the out-of-band datum section after the per-file header
+    /// (`xattr_datum_section_bytes`). They used to be wired independently
+    /// and only agreed because all three were hard-coded off; now they all
+    /// read from here, which reads from the spec.
+    negotiated_xattrs: bool,
+
     phase: AerorsyncSessionPhase,
     committed: bool,
 
@@ -704,6 +720,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
             checksum_seed: 0,
             negotiated_checksum_algos: String::new(),
             negotiated_compression_algos: String::new(),
+            negotiated_xattrs: false,
             phase: AerorsyncSessionPhase::PreConnect,
             committed: false,
             stream: None,
@@ -1410,6 +1427,10 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         command_spec: &RemoteCommandSpec,
     ) -> Result<(), AerorsyncError> {
         self.check_cancel("open_raw_stream")?;
+        // The one place the spec is in hand and every production path goes
+        // through. Capturing the choice here is what lets the codec and the
+        // sender agree with the flags we actually sent the server.
+        self.negotiated_xattrs = command_spec.preserve_xattrs;
         let stream = self
             .transport
             .open_raw_stream(command_spec.to_exec_request())
@@ -1546,21 +1567,14 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
             csum_len,
             preserve_uid: true,
             preserve_gid: true,
-            // X.2a: the codec can carry the xattr blob, but nothing
-            // negotiates `-X` yet — `RemoteCommandSpec::preserve_xattrs`
-            // is still false for every spec, so the server we invoke is
-            // never told to send one. Claiming otherwise here would make
-            // the decoder eat two bytes that are not on the wire and
-            // desynchronise the file list.
-            //
-            // **Coupling, for whoever does X.3**: this flag and the `-X`
-            // in `compact_flags_for(spec.preserve_xattrs)`
-            // (`remote_command.rs:59`) describe the same negotiation and
-            // MUST flip together. They are hard-wired apart today only
-            // because both are off; the driver holds no `RemoteCommandSpec`
-            // (it arrives per-call), so wiring them to one source of truth
-            // means giving the session a negotiated-xattrs field.
-            preserve_xattrs: false,
+            // Same negotiation as the `-X` in the server flag bundle, so
+            // it reads from the same field rather than being asserted
+            // independently. If this said `true` while the bundle omitted
+            // `-X`, the decoder would eat two bytes that are not on the
+            // wire and the file list would desynchronise; if it said
+            // `false` while the bundle sent `-X`, it would leave those two
+            // bytes behind and swallow the list terminator.
+            preserve_xattrs: self.negotiated_xattrs,
             previous_name: None,
         }
     }
@@ -2269,29 +2283,29 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
     /// `sender.c::send_files`, which calls the xattr datum writer right
     /// after `write_ndx_and_attrs` and before the sum_head.
     ///
-    /// Emitted only when BOTH conditions hold: the peer's iflags carry
-    /// `ITEM_REPORT_XATTR`, and the entry we sent actually carries
-    /// attributes. rsync's own gate is `preserve_xattrs && (iflags &
-    /// ITEM_REPORT_XATTR)`; the driver has no negotiated-xattrs flag yet
-    /// (see the coupling note on `build_flist_options`), so requiring the
-    /// entry to have attributes stands in for it. That is the
-    /// conservative reading on purpose: a peer that sets the bit against
-    /// a session which never asked for `-X` must not be able to make us
-    /// inject a byte the stream is not expecting, and a spurious byte
-    /// here desynchronises everything after it.
+    /// Gated exactly like rsync's own `preserve_xattrs && (iflags &
+    /// ITEM_REPORT_XATTR)`: this session must have asked for `-X`, and the
+    /// peer must have flagged this entry as carrying attributes. Both
+    /// conjuncts matter. Without the first, a peer that sets the bit
+    /// against a session that never negotiated xattrs could make us inject
+    /// a byte the stream is not expecting, and a spurious byte here
+    /// desynchronises everything after it. Without the second, we would
+    /// emit a section the peer is not reading.
     ///
-    /// Returns empty today for every real transfer, because nothing
-    /// negotiates `-X` and `build_source_entry` never populates
-    /// `xattrs`. The placement is what this encodes, and it is placement
-    /// that came from a measurement rather than from a guess.
+    /// Returns empty for every transfer that does not negotiate `-X`,
+    /// which is all of them until the sender learns to read attributes off
+    /// the local file (X.3). The placement is what this encodes, and the
+    /// placement came from a measurement rather than a guess.
     fn xattr_datum_section_bytes(&self) -> Vec<u8> {
-        if self.last_iflags & ITEM_REPORT_XATTR == 0 {
+        if !self.negotiated_xattrs || self.last_iflags & ITEM_REPORT_XATTR == 0 {
             return Vec::new();
         }
-        match self.file_list.first().and_then(|e| e.xattrs.as_deref()) {
-            Some(pairs) => encode_xattr_datum_section(pairs),
-            None => Vec::new(),
-        }
+        let pairs = self
+            .file_list
+            .first()
+            .and_then(|e| e.xattrs.as_deref())
+            .unwrap_or(&[]);
+        encode_xattr_datum_section(pairs)
     }
 
     async fn send_delta_phase_single_file(
@@ -4018,6 +4032,7 @@ mod tests {
     /// peer's per-file header, carrying `iflags`, with `entry` as the
     /// single file-list entry we sent.
     fn driver_primed_for_delta(
+        negotiated_xattrs: bool,
         iflags: u16,
         xattrs: Option<Vec<crate::aerorsync::real_wire::XattrPair>>,
     ) -> AerorsyncDriver<MockRemoteShellTransport> {
@@ -4026,6 +4041,7 @@ mod tests {
         entry.xattrs = xattrs;
         d.file_list.push(entry);
         d.last_iflags = iflags;
+        d.negotiated_xattrs = negotiated_xattrs;
         d
     }
 
@@ -4037,6 +4053,7 @@ mod tests {
         // shape is byte-identical to before X.2b.
         use crate::aerorsync::real_wire::XattrPair;
         let d = driver_primed_for_delta(
+            true,
             A2_2_DOWNLOAD_IFLAGS,
             Some(vec![
                 XattrPair::inline("user.small", b"v1".to_vec()),
@@ -4064,6 +4081,7 @@ mod tests {
         use crate::aerorsync::real_wire::{encode_varint, XattrPair};
         let big = vec![b'B'; 64];
         let d = driver_primed_for_delta(
+            true,
             A2_2_DOWNLOAD_IFLAGS | ITEM_REPORT_XATTR,
             Some(vec![
                 XattrPair::inline("user.small", b"v1".to_vec()),
@@ -4085,6 +4103,7 @@ mod tests {
         // stream.
         use crate::aerorsync::real_wire::XattrPair;
         let d = driver_primed_for_delta(
+            true,
             A2_2_DOWNLOAD_IFLAGS | ITEM_REPORT_XATTR,
             Some(vec![XattrPair::inline("user.small", b"v1".to_vec())]),
         );
@@ -4092,15 +4111,70 @@ mod tests {
     }
 
     #[test]
-    fn xattr_section_stays_empty_if_the_peer_sets_the_bit_against_no_attributes() {
-        // Conservative gate. A peer that sets ITEM_REPORT_XATTR against a
-        // session that never sent `-X` (so our entry carries `None`) must
+    fn xattr_section_stays_empty_if_the_session_never_negotiated_xattrs() {
+        // The conjunct that protects us from the peer. A server that sets
+        // ITEM_REPORT_XATTR against a session which never sent `-X` must
         // not be able to make us inject a byte the stream is not
-        // expecting. rsync's own gate has `preserve_xattrs` as the second
-        // conjunct; until the driver tracks that flag, the entry stands in
-        // for it.
-        let d = driver_primed_for_delta(A2_2_DOWNLOAD_IFLAGS | ITEM_REPORT_XATTR, None);
-        assert_eq!(d.xattr_datum_section_bytes(), Vec::<u8>::new());
+        // expecting: one spurious byte here desynchronises everything
+        // after it. Mirrors rsync's own `preserve_xattrs && (iflags &
+        // ITEM_REPORT_XATTR)`.
+        use crate::aerorsync::real_wire::XattrPair;
+        let d = driver_primed_for_delta(
+            false,
+            A2_2_DOWNLOAD_IFLAGS | ITEM_REPORT_XATTR,
+            Some(vec![XattrPair::inline("user.big", vec![b'B'; 64])]),
+        );
+        assert_eq!(
+            d.xattr_datum_section_bytes(),
+            Vec::<u8>::new(),
+            "the iflags bit alone must not be enough"
+        );
+    }
+
+    #[tokio::test]
+    async fn the_three_xattr_decisions_all_follow_the_command_spec() {
+        // The guard this refactor exists for. Whether `-X` goes into the
+        // server flag bundle, whether the file-list codec expects a
+        // trailing blob on every entry, and whether the sender emits the
+        // out-of-band section are three separate decisions that must
+        // agree. Each one disagreeing on its own is enough to
+        // desynchronise the stream, and they used to be wired
+        // independently.
+        for want_xattrs in [false, true] {
+            let spec = RemoteCommandSpec::upload("/remote/target.bin").with_xattrs(want_xattrs);
+
+            // 1. the server flag bundle
+            let sends_dash_x = spec
+                .to_exec_request()
+                .args
+                .iter()
+                .any(|a| a.contains('X') && a.starts_with("-logDtp"));
+            assert_eq!(sends_dash_x, want_xattrs, "flag bundle disagrees");
+
+            let mut d = make_driver(mock_transport_with_raw_inbound(Vec::new()));
+            d.open_raw_stream_internal(&spec).await.expect("open");
+
+            // 2. the file-list codec
+            assert_eq!(
+                d.build_flist_options(16).preserve_xattrs,
+                want_xattrs,
+                "flist decode options disagree with the flag bundle"
+            );
+
+            // 3. the out-of-band section on the sender path
+            let mut entry = sample_file_list_entry("upload.bin");
+            entry.xattrs = Some(vec![crate::aerorsync::real_wire::XattrPair::inline(
+                "user.big",
+                vec![b'B'; 64],
+            )]);
+            d.file_list.push(entry);
+            d.last_iflags = A2_2_DOWNLOAD_IFLAGS | ITEM_REPORT_XATTR;
+            assert_eq!(
+                !d.xattr_datum_section_bytes().is_empty(),
+                want_xattrs,
+                "datum section disagrees with the flag bundle"
+            );
+        }
     }
 
     #[test]
