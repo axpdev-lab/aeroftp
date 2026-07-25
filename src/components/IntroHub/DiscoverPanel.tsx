@@ -17,6 +17,7 @@ import { useProviderHealth, type HealthStatus } from '../../hooks/useProviderHea
 import { useIntroHubIconSize } from '../../hooks/useIntroHubIconSize';
 import { useDiscoverHealthCheck } from '../../hooks/useDiscoverHealthCheck';
 import { openUrl } from '../../utils/openUrl';
+import { middleClickOpen } from '../../utils/middleClick';
 import { CatalogTable } from './CatalogTable';
 import { PROVIDER_CATALOG, companyInCategory, isDevOnlyProvider } from '../providerCatalog';
 
@@ -87,7 +88,13 @@ const CATEGORY_COLORS: Record<CatalogCategoryId, string> = {
 };
 
 interface DiscoverPanelProps {
-    onSelectProvider: (protocol: ProviderType, providerId?: string, demo?: { server: string; port: number; username: string; password: string }) => void;
+    onSelectProvider: (protocol: ProviderType, providerId?: string, demo?: { server: string; port: number; username: string; password: string }, openInBackground?: boolean) => void;
+    // Search strings lifted to IntroHub (Ehud #274) so they survive tab switches
+    // (DiscoverPanel unmounts on switch) and reset only when the app quits.
+    gridQuery: string;
+    onGridQueryChange: (value: string) => void;
+    listQuery: string;
+    onListQueryChange: (value: string) => void;
 }
 
 function ServiceCard({
@@ -97,7 +104,7 @@ function ServiceCard({
     iconSize,
 }: {
     item: DiscoverItem;
-    onSelect: () => void;
+    onSelect: (openInBackground?: boolean) => void;
     healthStatus?: HealthStatus;
     iconSize: number;
 }) {
@@ -112,7 +119,8 @@ function ServiceCard({
 
     return (
         <button
-            onClick={onSelect}
+            onClick={() => onSelect(false)}
+            {...middleClickOpen(() => onSelect(true))}
             className="group flex items-center gap-3 p-3 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-750 border border-gray-100 dark:border-gray-700/50 hover:border-blue-200 dark:hover:border-blue-500/30 rounded-lg transition-all text-left shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.3)] hover:shadow-[0_4px_12px_rgba(0,0,0,0.1)] dark:hover:shadow-[0_4px_12px_rgba(0,0,0,0.4)]"
         >
             {/* Logo - no container box, just the icon like original ProtocolSelector */}
@@ -188,7 +196,7 @@ function ServiceCard({
     );
 }
 
-export function DiscoverPanel({ onSelectProvider }: DiscoverPanelProps) {
+export function DiscoverPanel({ onSelectProvider, gridQuery, onGridQueryChange, listQuery, onListQueryChange }: DiscoverPanelProps) {
     const t = useTranslation();
     const introHubIconSize = useIntroHubIconSize();
     const categories = useMemo(() => buildDiscoverCategories(), []);
@@ -223,7 +231,9 @@ export function DiscoverPanel({ onSelectProvider }: DiscoverPanelProps) {
         return saved === 'list' ? 'list' : 'grid';
     });
     // Grid-view search (the list view has its own search inside CatalogTable).
-    const [gridQuery, setGridQuery] = useState('');
+    // Both are controlled by IntroHub (Ehud #274) so they survive tab switches;
+    // `setGridQuery` just forwards to the lifted setter.
+    const setGridQuery = onGridQueryChange;
 
     // Provider health scan: per-tab eager (small categories) + chunked
     // sequential for the large All / list views (My Servers pattern). The
@@ -372,13 +382,13 @@ export function DiscoverPanel({ onSelectProvider }: DiscoverPanelProps) {
         scanItems(targets, true);
     }, [healthEnabled, usesChunkedScan, chunkedTargets, activeItems, scanItems]);
 
-    const handleSelect = useCallback((item: DiscoverItem) => {
+    const handleSelect = useCallback((item: DiscoverItem, openInBackground?: boolean) => {
         // AeroShare (peer) now routes through the standard provider form like any
         // other tile. ConnectionScreen renders the shared <AeroShareHandshakeBody>
         // for the peer-ADD case, so the modal (+friend quick-add) and the form-tab
         // reuse ONE handshake body (no duplication). The +friend icon / File menu /
         // My Servers button still open the modal for a quick add.
-        onSelectProvider(item.protocol, item.providerId, item.demo);
+        onSelectProvider(item.protocol, item.providerId, item.demo, openInBackground);
     }, [onSelectProvider]);
 
     const setView = useCallback((mode: DiscoverViewMode) => {
@@ -544,7 +554,9 @@ export function DiscoverPanel({ onSelectProvider }: DiscoverPanelProps) {
                         <CatalogTable
                             companies={catalogCompanies}
                             category={activeCategory}
-                            onSelectProvider={onSelectProvider}
+                            query={listQuery}
+                            onQueryChange={onListQueryChange}
+                            onSelectProvider={(protocol, providerId, openInBackground) => onSelectProvider(protocol, providerId, undefined, openInBackground)}
                             getHealth={(logoId) => getStatus(logoId).status}
                             healthEnabled={healthEnabled}
                             getSignupUrl={resolveCompanySignupUrl}
@@ -568,6 +580,7 @@ export function DiscoverPanel({ onSelectProvider }: DiscoverPanelProps) {
                                             <button
                                                 key={p.labelKey}
                                                 onClick={() => onSelectProvider(p.protocol, p.providerId)}
+                                                {...middleClickOpen(() => onSelectProvider(p.protocol, p.providerId, undefined, true))}
                                                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:border-blue-300 dark:hover:border-blue-500/40 hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors"
                                             >
                                                 <Server size={12} className="text-gray-400" />
@@ -608,7 +621,7 @@ export function DiscoverPanel({ onSelectProvider }: DiscoverPanelProps) {
                                         <ServiceCard
                                             key={item.id}
                                             item={item}
-                                            onSelect={() => handleSelect(item)}
+                                            onSelect={(bg) => handleSelect(item, bg)}
                                             healthStatus={(healthEnabled && item.healthCheckUrl) ? getStatus(item.providerId || item.id).status : 'unknown'}
                                             iconSize={introHubIconSize}
                                         />

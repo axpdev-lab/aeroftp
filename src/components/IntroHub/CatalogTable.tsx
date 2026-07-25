@@ -18,6 +18,7 @@ import { PROVIDER_LOGOS, S3BucketLogo } from '../ProviderLogos';
 import type { CatalogProtocol } from '../providerCatalog';
 import { CountryFlag } from '../CountryFlag';
 import { useTranslation } from '../../i18n';
+import { middleClickOpen } from '../../utils/middleClick';
 import { SearchBox } from '../SearchBox';
 import { useTableColumns, type TableColumnDef } from '../../hooks/useTableColumns';
 import { TableColumnsManager } from '../ui/TableColumnsManager';
@@ -94,11 +95,15 @@ const PROTOCOL_GLYPHS: Record<CatalogProtocol, React.ReactNode> = {
     MEGAcmd: <TerminalSquare size={11} />,
 };
 
-function ProtocolBadge({ p, paid, onClick }: { p: CatalogProtocolRef; paid: boolean; onClick: () => void }) {
+function ProtocolBadge({ p, paid, onSelect }: { p: CatalogProtocolRef; paid: boolean; onSelect: (openInBackground?: boolean) => void }) {
     return (
         <button
             type="button"
-            onClick={(e) => { e.stopPropagation(); onClick(); }}
+            onClick={(e) => { e.stopPropagation(); onSelect(false); }}
+            // Middle-click opens in the background (Ehud #274); stop it bubbling to
+            // the row so the row's own launch doesn't also fire.
+            onAuxClick={(e) => { if (e.button === 1) { e.stopPropagation(); e.preventDefault(); onSelect(true); } }}
+            onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }}
             title={p.note}
             className={`inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded font-medium transition-colors ${
                 paid
@@ -116,7 +121,12 @@ interface CatalogTableProps {
     companies: CatalogCompany[];
     /** Active category ('all' = virtual). Drives the context-aware row launch. */
     category: CatalogCategoryId | 'all';
-    onSelectProvider: (protocol: ProviderType, providerId?: string) => void;
+    /** `openInBackground` (middle-click, Ehud #274) opens the tab without focus. */
+    onSelectProvider: (protocol: ProviderType, providerId?: string, openInBackground?: boolean) => void;
+    /** Controlled search string (lifted to IntroHub to survive tab switches, Ehud
+     *  #274); falls back to local state when omitted. */
+    query?: string;
+    onQueryChange?: (value: string) => void;
     getHealth: (logoId: string) => HealthStatus;
     /** When false the health feature is off: dots render dimmed grey. */
     healthEnabled: boolean;
@@ -126,9 +136,13 @@ interface CatalogTableProps {
     onOpenUrl: (url: string) => void;
 }
 
-export function CatalogTable({ companies, category, onSelectProvider, getHealth, healthEnabled, getSignupUrl, onOpenUrl }: CatalogTableProps) {
+export function CatalogTable({ companies, category, onSelectProvider, getHealth, healthEnabled, getSignupUrl, onOpenUrl, query: controlledQuery, onQueryChange }: CatalogTableProps) {
     const t = useTranslation();
-    const [query, setQuery] = useState('');
+    // Search string is controlled by the parent (IntroHub) when provided so it
+    // survives tab switches (Ehud #274); otherwise falls back to local state.
+    const [localQuery, setLocalQuery] = useState('');
+    const query = controlledQuery ?? localQuery;
+    const setQuery = onQueryChange ?? setLocalQuery;
     const [tierFilter, setTierFilter] = useState<TierFilter>('all');
     const [showColumns, setShowColumns] = useState(false);
     const columnsBtnRef = useRef<HTMLDivElement>(null);
@@ -294,7 +308,7 @@ export function CatalogTable({ companies, category, onSelectProvider, getHealth,
                                 ? <span className="text-gray-300 dark:text-gray-600">-</span>
                                 : free.map((p, i) => (
                                     <ProtocolBadge key={`${p.label}-${i}`} p={p} paid={false}
-                                        onClick={() => onSelectProvider(p.protocol, p.providerId)} />
+                                        onSelect={(bg) => onSelectProvider(p.protocol, p.providerId, bg)} />
                                 ))}
                         </div>
                     </td>
@@ -309,7 +323,7 @@ export function CatalogTable({ companies, category, onSelectProvider, getHealth,
                                 ? <span className="text-gray-300 dark:text-gray-600">-</span>
                                 : paid.map((p, i) => (
                                     <ProtocolBadge key={`${p.label}-${i}`} p={p} paid
-                                        onClick={() => onSelectProvider(p.protocol, p.providerId)} />
+                                        onSelect={(bg) => onSelectProvider(p.protocol, p.providerId, bg)} />
                                 ))}
                         </div>
                     </td>
@@ -414,6 +428,7 @@ export function CatalogTable({ companies, category, onSelectProvider, getHealth,
                                     <tr
                                         key={c.company}
                                         onClick={primary ? () => onSelectProvider(primary.protocol, primary.providerId) : undefined}
+                                        {...(primary ? middleClickOpen(() => onSelectProvider(primary.protocol, primary.providerId, true)) : {})}
                                         className="border-b border-gray-100 dark:border-gray-700/30 hover:bg-blue-50/40 dark:hover:bg-blue-900/10 transition-colors cursor-pointer"
                                         title={t('introHub.list.connectHint', { company: c.company })}
                                     >

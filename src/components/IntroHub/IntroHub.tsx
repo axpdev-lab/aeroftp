@@ -138,6 +138,13 @@ export function IntroHub(props: IntroHubProps) {
     // Dynamic form tabs
     const [formTabs, setFormTabs] = useState<FormTabState[]>([]);
 
+    // Discover search strings are lifted here (Ehud #274) so switching tabs —
+    // which unmounts DiscoverPanel — no longer wipes them. They live in memory
+    // and reset only when the app quits, exactly as requested. `grid` backs the
+    // card view's search box; `list` backs the CatalogTable search box.
+    const [discoverGridQuery, setDiscoverGridQuery] = useState('');
+    const [discoverListQuery, setDiscoverListQuery] = useState('');
+
     // Command Palette
     // showPalette removed: CommandPalette was redundant with filter chips
 
@@ -182,7 +189,7 @@ export function IntroHub(props: IntroHubProps) {
     }, []);
 
     // Create a form tab from Discover (provider selection)
-    const handleSelectProvider = useCallback((protocol: ProviderType, providerId?: string, demo?: { server: string; port: number; username: string; password: string }) => {
+    const handleSelectProvider = useCallback((protocol: ProviderType, providerId?: string, demo?: { server: string; port: number; username: string; password: string }, openInBackground?: boolean) => {
         const id = generateTabId();
         // Apply provider defaults (server, port, basePath) when creating the tab
         const provider = providerId ? getProviderById(providerId) : undefined;
@@ -223,7 +230,10 @@ export function IntroHub(props: IntroHubProps) {
             originTab: activeTab,
         };
         setFormTabs(prev => [...prev, newTab]);
-        setActiveTab(id);
+        // Middle-click (Ehud #274) opens the tab in the background: append it but
+        // keep focus on Discover, like a browser's middle-click-opens-background.
+        // A left-click still switches to the new tab as before.
+        if (!openInBackground) setActiveTab(id);
     }, [activeTab]);
 
     // Create a form tab for editing a saved server
@@ -448,6 +458,10 @@ export function IntroHub(props: IntroHubProps) {
                 {activeTab === 'discover' && (
                     <DiscoverPanel
                         onSelectProvider={handleSelectProvider}
+                        gridQuery={discoverGridQuery}
+                        onGridQueryChange={setDiscoverGridQuery}
+                        listQuery={discoverListQuery}
+                        onListQueryChange={setDiscoverListQuery}
                     />
                 )}
 
