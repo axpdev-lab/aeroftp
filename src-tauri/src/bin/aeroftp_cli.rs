@@ -25709,9 +25709,18 @@ fn profile_value_to_provider_config(
         .filter(|s| !s.is_empty())
         .map(|p| format!(" [{}]", p))
         .unwrap_or_default();
+    // Show the actual transport, not the raw provider name, so the token in the
+    // parens is consistent across a provider's modes (Ehud #277): a native REST
+    // API profile reads `(REST API -> …)` to match its WebDAV sibling's
+    // `(WEBDAV -> …)`; the provider stays identifiable via the host + `[preset]`.
+    let transport = if ftp_client_gui_lib::storage_dedup::is_native_api_protocol(protocol) {
+        "REST API".to_string()
+    } else {
+        protocol.to_uppercase()
+    };
     print_profile_banner_once(
         name,
-        format!("{} -> {}{}", protocol.to_uppercase(), host, preset_suffix),
+        format!("{} -> {}{}", transport, host, preset_suffix),
         cli.quiet,
     );
 

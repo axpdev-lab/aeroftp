@@ -248,6 +248,17 @@ const NATIVE_API_PROTOCOLS: &[&str] = &[
     "gitlab",
 ];
 
+/// True when `proto` is a provider's native REST API protocol (Koofr, kDrive,
+/// MEGA, Filen, …) rather than a generic transport (webdav / s3 / ftp / sftp) or
+/// an OAuth provider. Single source of truth for the "is this the REST API
+/// mode?" question, mirroring the frontend's `isNativeApiProtocol`. The CLI
+/// connection banner uses it to print a consistent `REST API` transport token
+/// instead of the raw provider name — e.g. Koofr-over-API reads
+/// `(REST API -> …)` to match Koofr-over-WebDAV's `(WEBDAV -> …)` (Ehud #277).
+pub fn is_native_api_protocol(proto: &str) -> bool {
+    NATIVE_API_PROTOCOLS.contains(&proto)
+}
+
 /// Compute the canonical dedup key for `profile`. See the Phase 4 handoff for
 /// the per-category formula. The fallback is `id:<profileId>` so distinct
 /// profiles never collapse by mistake.
