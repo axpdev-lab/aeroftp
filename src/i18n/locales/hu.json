@@ -434,6 +434,7 @@
             "shareLinkFailed": "Megosztási link létrehozása sikertelen",
             "shareLinkMoment": "Ez eltarthat egy pillanatig",
             "trashDeletedDate": "Törölve",
+            "trashOriginalPath": "Eredeti útvonal",
             "trashDeselectAll": "Kijelölés megszüntetése",
             "trashEmpty": "A kuka üres",
             "trashLoading": "Kuka betöltése...",

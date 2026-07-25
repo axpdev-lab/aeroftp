@@ -434,6 +434,7 @@
             "shareLinkFailed": "Nu s-a putut crea link-ul de partajare",
             "shareLinkMoment": "Aceasta poate dura un moment",
             "trashDeletedDate": "Șters",
+            "trashOriginalPath": "Cale originală",
             "trashDeselectAll": "Deselectează tot",
             "trashEmpty": "Coșul este gol",
             "trashLoading": "Se încarcă coșul...",

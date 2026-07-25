@@ -434,6 +434,7 @@
             "shareLinkFailed": "გაზიარების ბმულის შექმნა ვერ მოხერხდა",
             "shareLinkMoment": "ეს შეიძლება ცოტა ხანს გაგრძელდეს",
             "trashDeletedDate": "წაშლილია",
+            "trashOriginalPath": "საწყისი გზა",
             "trashDeselectAll": "ყველის მოხსნა",
             "trashEmpty": "სანაგვე ცარიელია",
             "trashLoading": "სანაგვის ჩატვირთვა...",

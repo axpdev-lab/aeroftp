@@ -434,6 +434,7 @@
             "shareLinkFailed": "Falha ao criar link de compartilhamento",
             "shareLinkMoment": "Isso pode levar um momento",
             "trashDeletedDate": "Excluído",
+            "trashOriginalPath": "Caminho original",
             "trashDeselectAll": "Desmarcar tudo",
             "trashEmpty": "A lixeira está vazia",
             "trashLoading": "Carregando lixeira...",

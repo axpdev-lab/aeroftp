@@ -434,6 +434,7 @@
             "shareLinkFailed": "Không thể tạo liên kết chia sẻ",
             "shareLinkMoment": "Quá trình này có thể mất một lúc",
             "trashDeletedDate": "Đã xóa",
+            "trashOriginalPath": "Đường dẫn gốc",
             "trashDeselectAll": "Bỏ chọn tất cả",
             "trashEmpty": "Thùng rác trống",
             "trashLoading": "Đang tải thùng rác...",

@@ -434,6 +434,7 @@
             "shareLinkFailed": "ไม่สามารถสร้างลิงก์แชร์ได้",
             "shareLinkMoment": "อาจใช้เวลาสักครู่",
             "trashDeletedDate": "ลบแล้ว",
+            "trashOriginalPath": "เส้นทางเดิม",
             "trashDeselectAll": "ยกเลิกการเลือกทั้งหมด",
             "trashEmpty": "ถังขยะว่างเปล่า",
             "trashLoading": "กำลังโหลดถังขยะ...",

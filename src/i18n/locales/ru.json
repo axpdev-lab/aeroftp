@@ -434,6 +434,7 @@
             "shareLinkFailed": "Не удалось создать ссылку для общего доступа",
             "shareLinkMoment": "Это может занять некоторое время",
             "trashDeletedDate": "Удалено",
+            "trashOriginalPath": "Исходный путь",
             "trashDeselectAll": "Снять выделение",
             "trashEmpty": "Корзина пуста",
             "trashLoading": "Загрузка корзины...",

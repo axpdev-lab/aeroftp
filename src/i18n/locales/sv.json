@@ -434,6 +434,7 @@
             "shareLinkFailed": "Misslyckades att skapa delningslänk",
             "shareLinkMoment": "Detta kan ta en stund",
             "trashDeletedDate": "Raderat",
+            "trashOriginalPath": "Ursprunglig sökväg",
             "trashDeselectAll": "Avmarkera alla",
             "trashEmpty": "Papperskorgen är tom",
             "trashLoading": "Laddar papperskorgen...",

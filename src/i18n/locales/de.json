@@ -434,6 +434,7 @@
             "shareLinkFailed": "Freigabelink konnte nicht erstellt werden",
             "shareLinkMoment": "Dies kann einen Moment dauern",
             "trashDeletedDate": "Gelöscht",
+            "trashOriginalPath": "Ursprünglicher Pfad",
             "trashDeselectAll": "Auswahl aufheben",
             "trashEmpty": "Der Papierkorb ist leer",
             "trashLoading": "Papierkorb wird geladen...",

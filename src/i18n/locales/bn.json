@@ -434,6 +434,7 @@
             "shareLinkFailed": "শেয়ার লিঙ্ক তৈরি ব্যর্থ হয়েছে",
             "shareLinkMoment": "এটি কয়েক মুহূর্ত নিতে পারে",
             "trashDeletedDate": "মুছে ফেলা হয়েছে",
+            "trashOriginalPath": "মূল পথ",
             "trashDeselectAll": "নির্বাচন বাতিল করুন",
             "trashEmpty": "ট্র্যাশ খালি",
             "trashLoading": "ট্র্যাশ লোড হচ্ছে...",

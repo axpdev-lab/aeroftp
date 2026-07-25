@@ -434,6 +434,7 @@
             "shareLinkFailed": "共有リンクの作成に失敗しました",
             "shareLinkMoment": "少し時間がかかる場合があります",
             "trashDeletedDate": "削除日",
+            "trashOriginalPath": "元のパス",
             "trashDeselectAll": "すべて選択解除",
             "trashEmpty": "ゴミ箱は空です",
             "trashLoading": "ゴミ箱を読み込み中...",

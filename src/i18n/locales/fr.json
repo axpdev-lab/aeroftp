@@ -434,6 +434,7 @@
             "shareLinkFailed": "Echec de la creation du lien de partage",
             "shareLinkMoment": "Cela peut prendre un moment",
             "trashDeletedDate": "Supprimé",
+            "trashOriginalPath": "Chemin d’origine",
             "trashDeselectAll": "Tout désélectionner",
             "trashEmpty": "La corbeille est vide",
             "trashLoading": "Chargement de la corbeille...",

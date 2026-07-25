@@ -434,6 +434,7 @@
             "shareLinkFailed": "Неуспешно создавање линк за споделување",
             "shareLinkMoment": "Ова може да потрае момент",
             "trashDeletedDate": "Избришано",
+            "trashOriginalPath": "Изворна патека",
             "trashDeselectAll": "Откажи го сиот избор",
             "trashEmpty": "Корпата е празна",
             "trashLoading": "Се вчитува корпата...",

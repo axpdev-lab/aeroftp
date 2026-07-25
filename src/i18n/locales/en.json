@@ -1526,6 +1526,7 @@
             "trashDeselectAll": "Deselect All",
             "trashOriginalLocation": "Original location",
             "trashDeletedDate": "Deleted",
+            "trashOriginalPath": "Original path",
             "opendriveTrashTitle": "OpenDrive Trash",
             "yandexTrashTitle": "Yandex Disk Trash",
             "pcloudTrashTitle": "pCloud Drive Trash",

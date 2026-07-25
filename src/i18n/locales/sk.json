@@ -434,6 +434,7 @@
             "shareLinkFailed": "Nepodarilo sa vytvorit odkaz na zdielanie",
             "shareLinkMoment": "Moze to chvilu trvat",
             "trashDeletedDate": "Vymazané",
+            "trashOriginalPath": "Pôvodná cesta",
             "trashDeselectAll": "Zrušiť výber",
             "trashEmpty": "Kôš je prázdny",
             "trashLoading": "Načítavanie koša...",

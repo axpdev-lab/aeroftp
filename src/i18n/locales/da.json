@@ -434,6 +434,7 @@
             "shareLinkFailed": "Kunne ikke oprette delingslink",
             "shareLinkMoment": "Dette kan tage et øjeblik",
             "trashDeletedDate": "Slettet",
+            "trashOriginalPath": "Oprindelig sti",
             "trashDeselectAll": "Fravælg alle",
             "trashEmpty": "Papirkurven er tom",
             "trashLoading": "Indlæser papirkurv...",

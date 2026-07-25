@@ -434,6 +434,7 @@
             "shareLinkFailed": "Paylaşım bağlantısı oluşturulamadı",
             "shareLinkMoment": "Bu biraz zaman alabilir",
             "trashDeletedDate": "Silinme tarihi",
+            "trashOriginalPath": "Özgün yol",
             "trashDeselectAll": "Tümünün Seçimini Kaldır",
             "trashEmpty": "Çöp kutusu boş",
             "trashLoading": "Çöp kutusu yükleniyor...",

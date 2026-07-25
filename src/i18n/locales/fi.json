@@ -434,6 +434,7 @@
             "shareLinkFailed": "Jakolinkin luominen epäonnistui",
             "shareLinkMoment": "Tämä voi kestää hetken",
             "trashDeletedDate": "Poistettu",
+            "trashOriginalPath": "Alkuperäinen polku",
             "trashDeselectAll": "Poista valinnat",
             "trashEmpty": "Roskakori on tyhjä",
             "trashLoading": "Ladataan roskakorta...",

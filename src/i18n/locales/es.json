@@ -434,6 +434,7 @@
             "shareLinkFailed": "Error al crear enlace compartido",
             "shareLinkMoment": "Esto puede tardar un momento",
             "trashDeletedDate": "Eliminado",
+            "trashOriginalPath": "Ruta original",
             "trashDeselectAll": "Deseleccionar todo",
             "trashEmpty": "La papelera está vacía",
             "trashLoading": "Cargando papelera...",

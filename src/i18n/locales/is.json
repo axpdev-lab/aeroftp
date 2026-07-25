@@ -434,6 +434,7 @@
             "shareLinkFailed": "Mistókst að búa til deilingartengil",
             "shareLinkMoment": "Þetta gæti tekið smá tíma",
             "trashDeletedDate": "Eytt",
+            "trashOriginalPath": "Upprunaleg slóð",
             "trashDeselectAll": "Afvelja allt",
             "trashEmpty": "Ruslið er tómt",
             "trashLoading": "Hleður rusli...",

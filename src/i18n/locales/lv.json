@@ -434,6 +434,7 @@
             "shareLinkFailed": "Neizdevās izveidot koplietojuma saiti",
             "shareLinkMoment": "Tas var aizņemt brīdi",
             "trashDeletedDate": "Dzēsts",
+            "trashOriginalPath": "Sākotnējais ceļš",
             "trashDeselectAll": "Noņemt visu atlasi",
             "trashEmpty": "Miskaste ir tukša",
             "trashLoading": "Ielādē miskasti...",

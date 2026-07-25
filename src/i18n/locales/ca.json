@@ -434,6 +434,7 @@
             "shareLinkFailed": "No s'ha pogut crear l'enllaç per compartir",
             "shareLinkMoment": "Això pot trigar un moment",
             "trashDeletedDate": "Eliminat",
+            "trashOriginalPath": "Ruta original",
             "trashDeselectAll": "Desselecciona-ho tot",
             "trashEmpty": "La paperera és buida",
             "trashLoading": "Carregant la paperera...",

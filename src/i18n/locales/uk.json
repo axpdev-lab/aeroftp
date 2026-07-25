@@ -434,6 +434,7 @@
             "shareLinkFailed": "Не вдалося створити посилання для спільного доступу",
             "shareLinkMoment": "Це може зайняти деякий час",
             "trashDeletedDate": "Видалено",
+            "trashOriginalPath": "Вихідний шлях",
             "trashDeselectAll": "Скасувати вибір",
             "trashEmpty": "Кошик порожній",
             "trashLoading": "Завантаження кошика...",

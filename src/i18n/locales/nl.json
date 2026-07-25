@@ -434,6 +434,7 @@
             "shareLinkFailed": "Aanmaken van deellink mislukt",
             "shareLinkMoment": "Dit kan even duren",
             "trashDeletedDate": "Verwijderd",
+            "trashOriginalPath": "Oorspronkelijk pad",
             "trashDeselectAll": "Alles deselecteren",
             "trashEmpty": "De prullenbak is leeg",
             "trashLoading": "Prullenbak laden...",

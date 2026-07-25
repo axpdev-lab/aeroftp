@@ -434,6 +434,7 @@
             "shareLinkFailed": "Ustvarjanje povezave za deljenje ni uspelo",
             "shareLinkMoment": "To lahko traja nekaj trenutkov",
             "trashDeletedDate": "Izbrisano",
+            "trashOriginalPath": "Izvorna pot",
             "trashDeselectAll": "Počisti izbor",
             "trashEmpty": "Smeti so prazne",
             "trashLoading": "Nalaganje smeti...",

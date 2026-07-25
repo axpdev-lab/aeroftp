@@ -434,6 +434,7 @@
             "shareLinkFailed": "创建分享链接失败",
             "shareLinkMoment": "这可能需要一些时间",
             "trashDeletedDate": "删除时间",
+            "trashOriginalPath": "原始路径",
             "trashDeselectAll": "取消全选",
             "trashEmpty": "回收站为空",
             "trashLoading": "正在加载回收站...",

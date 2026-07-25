@@ -434,6 +434,7 @@
             "shareLinkFailed": "Неуспешно създаване на споделена връзка",
             "shareLinkMoment": "Това може да отнеме малко време",
             "trashDeletedDate": "Изтрито",
+            "trashOriginalPath": "Първоначален път",
             "trashDeselectAll": "Премахни избора",
             "trashEmpty": "Кошчето е празно",
             "trashLoading": "Зареждане на кошчето...",

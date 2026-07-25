@@ -845,6 +845,7 @@
             "shareLinkFailed": "Impossibile creare il link di condivisione",
             "shareLinkMoment": "Potrebbe richiedere un momento",
             "trashDeletedDate": "Eliminato",
+            "trashOriginalPath": "Percorso originale",
             "trashDeselectAll": "Deseleziona Tutto",
             "trashEmpty": "Il Cestino è vuoto",
             "trashLoading": "Caricamento cestino...",

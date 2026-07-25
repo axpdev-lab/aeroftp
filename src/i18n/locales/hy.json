@@ -434,6 +434,7 @@
             "shareLinkFailed": "Հղումը ստեղծելը ձախողվեց",
             "shareLinkMoment": "Սա կարող է մի պահ տևել",
             "trashDeletedDate": "Ջնջված",
+            "trashOriginalPath": "Սկզբնական ուղին",
             "trashDeselectAll": "Հանել բոլոր ընտրությունը",
             "trashEmpty": "Աղբամաններ դատարկ է",
             "trashLoading": "Բեռնվում է Աղբամաններ...",

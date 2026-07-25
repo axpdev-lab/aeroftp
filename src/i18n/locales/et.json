@@ -434,6 +434,7 @@
             "shareLinkFailed": "Jagamislingi loomine ebaõnnestus",
             "shareLinkMoment": "See võib võtta hetke",
             "trashDeletedDate": "Kustutatud",
+            "trashOriginalPath": "Algne asukoht",
             "trashDeselectAll": "Tühista valik",
             "trashEmpty": "Prügikast on tühi",
             "trashLoading": "Prügikasti laadimine...",

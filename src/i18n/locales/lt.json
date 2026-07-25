@@ -434,6 +434,7 @@
             "shareLinkFailed": "Nepavyko sukurti bendrinimo nuorodos",
             "shareLinkMoment": "Tai gali užtrukti akimirką",
             "trashDeletedDate": "Ištrinta",
+            "trashOriginalPath": "Pradinis kelias",
             "trashDeselectAll": "Atžymėti viską",
             "trashEmpty": "Šiukšlinė tuščia",
             "trashLoading": "Kraunama šiukšlinė...",
