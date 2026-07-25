@@ -169,18 +169,11 @@ jobs:
     needs: [audit, payload]
     runs-on: ubuntu-24.04
     steps:
-      # The tag provides the sources and snapcraft.yaml; the CI tooling
-      # (gates, scripts) comes from the branch this workflow runs on, so old
-      # tags can be rebuilt with today's checks.
+      # The tag provides the sources and snapcraft.yaml.
       - name: Checkout the release tag (snap sources)
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
           ref: ${{ needs.audit.outputs.tag }}
-
-      - name: Checkout current CI tooling
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
-        with:
-          path: ci-tools
 
       - name: Download the jammy payload
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
@@ -219,6 +212,16 @@ jobs:
           fi
           echo "Snap produced: $SNAP ($(du -h "$SNAP" | cut -f1))"
           echo "snap=$SNAP" >> "$GITHUB_OUTPUT"
+
+      # Only now, after snapcraft has copied the project into its build
+      # environment: the part uses `source: .`, so a second checkout present
+      # during the build would be copied in along with everything else.
+      # The gates come from the branch this workflow runs on, not from the tag,
+      # so an old tag is rebuilt with today's checks.
+      - name: Checkout current CI tooling
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          path: ci-tools
 
       - name: Gate G1 - snap ABI floor vs base
         shell: bash
