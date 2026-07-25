@@ -8889,10 +8889,94 @@ mod tests {
     // Requires the lane-3 Docker harness on 127.0.0.1:2224 and the bench
     // dataset under /tmp/bench (generation steps in the same report).
     // Run with:
-    //   cargo test --features aerorsync --lib aerorsync_bench -- --ignored --nocapture
+    //   cargo test --features aerorsync --lib aerorsync_bench -- --ignored --nocapture --test-threads=1
+    //
+    // `--test-threads=1` is not optional for the timings: run concurrently,
+    // the three scenarios contend for one container and A1 reads 9.49 s
+    // instead of 1.008 s. The remote state is reset per scenario, so
+    // correctness no longer depends on it, but the numbers still do.
+    // Dataset generation: scripts/aerorsync-compare/make-dataset.py (seeded).
     // Skip-graceful when the harness or the dataset is absent.
 
+    /// Wipe and recreate a remote directory over the benchmark SSH endpoint.
+    ///
+    /// Call ONCE at the top of each scenario, never per driver: the delta
+    /// scenarios seed their own baseline and a reset between them would erase
+    /// exactly what they are measuring against.
+    ///
+    /// Without this the suite silently lies. The remote files survive the run,
+    /// so from the SECOND execution onward the "cold upload" scenario finds its
+    /// target already there and measures a no-op instead: 49 bytes on the wire
+    /// in ~480 ms, against 52 MB in ~1 s for a real cold upload. The label does
+    /// not change, so a periodic regression suite reads a spectacular
+    /// improvement where the test in fact stopped doing anything. Observed
+    /// 2026-07-25 over three consecutive runs. It also creates the directory,
+    /// which the scenarios used to assume: without it they fail with an opaque
+    /// `remote rsync exited with code 3`.
+    async fn bench_reset_remote_dir(dir: &str) -> bool {
+        use crate::aerorsync::transport::{RemoteExecRequest, RemoteShellTransport};
+        let Some(cfg) = bench_ssh_config() else {
+            return false;
+        };
+        let t = crate::aerorsync::ssh_transport::SshRemoteShellTransport::new(cfg);
+        let req = RemoteExecRequest {
+            program: "sh".into(),
+            args: vec!["-c".into(), format!("rm -rf '{dir}' && mkdir -p '{dir}'")],
+            environment: Vec::new(),
+        };
+        match t.exec(req).await {
+            Ok(out) if out.exit_code == 0 => true,
+            Ok(out) => {
+                eprintln!(
+                    "[bench] remote reset of {dir} exited {}: {}",
+                    out.exit_code,
+                    String::from_utf8_lossy(&out.stderr).trim()
+                );
+                false
+            }
+            Err(e) => {
+                eprintln!("[bench] remote reset of {dir} failed: {e}: skipping");
+                false
+            }
+        }
+    }
+
+    /// The lane-3 SSH config, or `None` when the harness or the key is absent.
+    fn bench_ssh_config() -> Option<crate::aerorsync::ssh_transport::SshTransportConfig> {
+        use crate::aerorsync::ssh_transport::{SshHostKeyPolicy, SshTransportConfig};
+        use crate::aerorsync::transport::RemoteExecRequest;
+
+        let key_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("src/aerorsync/capture/keys/id_ed25519");
+        if !key_path.exists() {
+            eprintln!("[bench] ssh key not found: skipping");
+            return None;
+        }
+        Some(SshTransportConfig {
+            host: "127.0.0.1".into(),
+            port: 2224,
+            username: "testuser".into(),
+            private_key_path: key_path,
+            connect_timeout_ms: 10_000,
+            io_timeout_ms: 120_000,
+            worker_idle_poll_ms: 250,
+            max_frame_size: 1 << 20,
+            host_key_policy: SshHostKeyPolicy::AcceptAny,
+            probe_request: RemoteExecRequest {
+                program: "rsync".into(),
+                args: vec!["--version".into()],
+                environment: Vec::new(),
+            },
+            auth_password: None,
+            auth_agent: false,
+        })
+    }
+
     /// Shared lane-3 transport config for the benchmark tests.
+    ///
+    /// Timings want `--test-threads=1`: three concurrent scenarios against one
+    /// container measured A1 at 9.49 s versus 1.008 s serialized, which is
+    /// contention rather than signal.
     async fn bench_lane3_driver() -> Option<(
         AerorsyncDriver<crate::aerorsync::ssh_transport::SshRemoteShellTransport>,
         CollectingSink,
@@ -8956,6 +9040,9 @@ mod tests {
     async fn aerorsync_bench_upload_vs_native() {
         use crate::aerorsync::engine_adapter::CurrentDeltaSyncBridge;
 
+        if !bench_reset_remote_dir("/workspace/bench-aero/upload").await {
+            return;
+        }
         let Some((mut driver, mut sink)) = bench_lane3_driver().await else {
             return;
         };
@@ -8971,7 +9058,7 @@ mod tests {
         let adapter = CurrentDeltaSyncBridge::new();
 
         // A1: cold upload, incompressible 50 MiB.
-        let remote = "/workspace/bench-aero/R.bin";
+        let remote = "/workspace/bench-aero/upload/R.bin";
         let entry = live_file_list_entry("R.bin");
         let entry = FileListEntry {
             size: rand50.len() as i64,
@@ -8998,7 +9085,7 @@ mod tests {
 
         // A2: delta upload, 5% scattered changes vs remote baseline.
         let (mut driver, mut sink) = bench_lane3_driver().await.unwrap();
-        let remote = "/workspace/bench-aero/A.bin";
+        let remote = "/workspace/bench-aero/upload/A.bin";
         // Seed the baseline with a cold upload first (not timed).
         let entry = live_file_list_entry("A.bin");
         let entry = FileListEntry {
@@ -9079,6 +9166,9 @@ mod tests {
     #[ignore = "manual live benchmark vs native rsync"]
     #[tokio::test]
     async fn aerorsync_bench_download_vs_native() {
+        if !bench_reset_remote_dir("/workspace/bench-aero/download").await {
+            return;
+        }
         use crate::aerorsync::engine_adapter::CurrentDeltaSyncBridge;
 
         let Some(base50) = bench_read_local("/tmp/bench/local/A_base.bin") else {
@@ -9096,7 +9186,7 @@ mod tests {
             };
             x
         };
-        let remote = "/workspace/bench-aero/B.bin";
+        let remote = "/workspace/bench-aero/download/B.bin";
         let entry = live_file_list_entry("B.bin");
         let entry = FileListEntry {
             size: base50.len() as i64,
@@ -9156,6 +9246,9 @@ mod tests {
     #[ignore = "manual live benchmark vs native rsync"]
     #[tokio::test]
     async fn aerorsync_bench_small_batch_vs_native() {
+        if !bench_reset_remote_dir("/workspace/bench-aero/small").await {
+            return;
+        }
         use crate::aerorsync::engine_adapter::CurrentDeltaSyncBridge;
 
         let adapter = CurrentDeltaSyncBridge::new();
