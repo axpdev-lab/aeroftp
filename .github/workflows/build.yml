@@ -773,8 +773,14 @@ jobs:
         uses: vedantmgoyal9/winget-releaser@4ffc7888bffd451b357355dc214d43bb9f23917e # v2
         with:
           identifier: axpnet.AeroFTP
-          # Keep MSI published as a release asset, but avoid the WinGet x64/machine/wix
-          # validation lane while the service is failing there without a threat family.
-          installers-regex: '_x64-setup\.exe$'
+          # This regex MUST match exactly the installer set of the previously published
+          # manifest. komac builds the new version on the shape of the previous one, so a
+          # regex matching fewer assets than there are installer slots makes it fill the
+          # spare slots with a duplicate -> DuplicateInstallerEntry (hit at 4.1.5 in
+          # microsoft/winget-pkgs#402974 and again at 4.1.6 in #407642, when this was
+          # narrowed to the exe alone to dodge a then-failing wix validation lane).
+          # The package publishes two installers: x64 NSIS user-scope and x64 WiX
+          # machine-scope. Dropping the msi here also drops the machine-scope upgrade path.
+          installers-regex: '_x64-setup\.exe$|_x64_en-US\.msi$'
           fork-user: axpnet
           token: ${{ secrets.WINGET_TOKEN }}
