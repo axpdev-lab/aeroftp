@@ -1,0 +1,279 @@
+name: Snap security refresh
+
+# A snap freezes every stage-package at build time. Because the snap is only
+# built on release tags, its vendored Ubuntu libraries age between releases
+# until the Snap Store mails "aeroftp contains outdated Ubuntu packages"
+# (USN-8584-1 on r216, 2026-07-22). Rebuilding is the documented fix.
+#
+# This workflow closes that loop without cutting a version: it audits the
+# published revision every week and, only when the archive really has newer
+# packages, rebuilds the latest release tag and pushes a new revision. The
+# version string does not change, so the in-app updater stays quiet - the Store
+# simply serves a fresher revision of the same release.
+#
+# It is also the rebuild path used when the *pipeline* was wrong rather than the
+# packages: dispatch it with `force: true` to rebuild a tag on demand.
+#
+# The payload is compiled on ubuntu-22.04 because `base: core22` means jammy.
+# Compiling it on a newer runner is what broke every revision published between
+# 2026-05-06 and 2026-07-25; see
+# issue #460.
+
+on:
+  schedule:
+    # Mondays 04:17 UTC, after the archive's weekend publishing settles.
+    - cron: '17 4 * * 1'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to rebuild (default: newest v* tag)'
+        required: false
+        type: string
+      force:
+        description: 'Rebuild even when no staged package is stale'
+        required: false
+        default: false
+        type: boolean
+      publish:
+        description: 'Upload the rebuilt snap to the Snap Store (stable)'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: snap-refresh
+  cancel-in-progress: false
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # 1. Is a rebuild actually owed? Compares the published revision's own
+  #    primed-stage-packages against the live archive. Cheap: ~30 s, no build.
+  # ---------------------------------------------------------------------------
+  audit:
+    runs-on: ubuntu-24.04
+    outputs:
+      stale: ${{ steps.audit.outputs.stale }}
+      count: ${{ steps.audit.outputs.count }}
+      tag: ${{ steps.resolve.outputs.tag }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          fetch-depth: 0
+
+      - name: Resolve the release tag to rebuild
+        id: resolve
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${{ inputs.tag }}"
+          if [ -z "$TAG" ]; then
+            TAG=$(git tag --list 'v*' --sort=-v:refname | head -1)
+          fi
+          if [ -z "$TAG" ] || ! git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+            echo "::error::cannot resolve a release tag to rebuild (got '$TAG')"
+            exit 1
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Rebuild candidate: $TAG"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '20'
+
+      - name: Install audit tooling
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends squashfs-tools
+
+      - name: Audit published revision against the Ubuntu archive
+        id: audit
+        run: node scripts/snap-stale-packages.mjs --name aeroftp --channel stable
+
+  # ---------------------------------------------------------------------------
+  # 2. Compile the payload on jammy - the release the core22 base is built from.
+  #    Same command as the release pipeline so the two cannot drift.
+  # ---------------------------------------------------------------------------
+  payload:
+    needs: audit
+    if: ${{ needs.audit.outputs.stale == 'true' || inputs.force }}
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout the release tag
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          ref: ${{ needs.audit.outputs.tag }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+        with:
+          toolchain: stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2
+        with:
+          workspaces: './src-tauri -> target'
+          prefix-key: 'v2-whisper-vs18'
+
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libfuse3-dev
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Build Tauri release binaries
+        run: npm run tauri build
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Package the payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd src-tauri/target/release
+          PAYLOAD=(aeroftp aeroftp-dispatch-bundle/aeroftp-cli aeroftp-dispatch-bundle/aeroftp-dispatch)
+          for f in "${PAYLOAD[@]}"; do
+            [ -f "$f" ] || { echo "::error::missing payload binary $f"; exit 1; }
+          done
+          tar -cf "$RUNNER_TEMP/linux-payload.tar" "${PAYLOAD[@]}"
+          ls -l "$RUNNER_TEMP/linux-payload.tar"
+
+      - name: Upload the payload
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: snap-refresh-payload-${{ needs.audit.outputs.tag }}
+          path: ${{ runner.temp }}/linux-payload.tar
+          if-no-files-found: error
+          retention-days: 1
+
+  # ---------------------------------------------------------------------------
+  # 3. Pack, gate, publish. ubuntu-24.04 for LXD headroom (issue #164); nothing
+  #    is compiled here, so the runner's glibc never reaches the snap.
+  # ---------------------------------------------------------------------------
+  pack:
+    needs: [audit, payload]
+    runs-on: ubuntu-24.04
+    steps:
+      # The tag provides the sources and snapcraft.yaml; the CI tooling
+      # (gates, scripts) comes from the branch this workflow runs on, so old
+      # tags can be rebuilt with today's checks.
+      - name: Checkout the release tag (snap sources)
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          ref: ${{ needs.audit.outputs.tag }}
+
+      - name: Checkout current CI tooling
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          path: ci-tools
+
+      - name: Download the jammy payload
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: snap-refresh-payload-${{ needs.audit.outputs.tag }}
+          path: ${{ runner.temp }}/payload
+
+      - name: Restore payload into src-tauri/target/release
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p src-tauri/target/release
+          tar -xf "$RUNNER_TEMP/payload/linux-payload.tar" -C src-tauri/target/release
+          cd src-tauri/target/release
+          chmod +x aeroftp aeroftp-dispatch-bundle/aeroftp-cli aeroftp-dispatch-bundle/aeroftp-dispatch
+          ls -l aeroftp aeroftp-dispatch-bundle/aeroftp-cli aeroftp-dispatch-bundle/aeroftp-dispatch
+
+      - name: Build Snap package
+        id: snap-build
+        uses: snapcore/action-build@3bdaa03e1ba6bf59a65f84a751d943d549a54e79 # v1
+
+      - name: Confirm Snap was built
+        id: snap-check
+        shell: bash
+        run: |
+          set -euo pipefail
+          SNAP="${{ steps.snap-build.outputs.snap }}"
+          if [ -z "$SNAP" ] || [ ! -f "$SNAP" ]; then
+            echo "::error::Snap file not produced by snapcore/action-build"
+            exit 1
+          fi
+          BYTES=$(stat -c %s "$SNAP")
+          if [ "$BYTES" -lt 10485760 ]; then
+            echo "::error::Snap file is suspiciously small ($BYTES bytes)"
+            exit 1
+          fi
+          echo "Snap produced: $SNAP ($(du -h "$SNAP" | cut -f1))"
+          echo "snap=$SNAP" >> "$GITHUB_OUTPUT"
+
+      - name: Gate G1 - snap ABI floor vs base
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends squashfs-tools binutils file
+          ./ci-tools/scripts/snap-abi-check.sh "${{ steps.snap-check.outputs.snap }}" snap/snapcraft.yaml
+
+      - name: Gate G2 - install the snap and exercise the payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo snap install --dangerous "${{ steps.snap-check.outputs.snap }}"
+          out="$(/snap/bin/aeroftp ls --help 2>&1)" || {
+            echo "::error::the rebuilt snap cannot run 'aeroftp ls --help'"
+            echo "$out"
+            exit 1
+          }
+          echo "$out" | head -20
+          grep -qiE 'usage|aeroftp' <<<"$out" || {
+            echo "::error::unexpected output from the snap CLI payload"
+            exit 1
+          }
+          sudo snap remove --purge aeroftp || true
+
+      - name: Upload the rebuilt snap
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: aeroftp-snap-refresh-${{ needs.audit.outputs.tag }}
+          path: ${{ steps.snap-check.outputs.snap }}
+          if-no-files-found: error
+          retention-days: 7
+
+      # Store-only by design: published GitHub Release assets are immutable in
+      # this repo (`overwrite_files: false`), so a security rebuild must not
+      # rewrite the tag's assets. The Store revision may therefore be newer than
+      # the .snap attached to the release; the version is identical.
+      - name: Publish to Snap Store (stable)
+        if: ${{ github.event_name == 'schedule' || inputs.publish }}
+        env:
+          SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
+        run: |
+          set -euo pipefail
+          if ! command -v snapcraft >/dev/null 2>&1; then
+            sudo snap install snapcraft --classic
+          fi
+          snapcraft upload --release=stable "${{ steps.snap-check.outputs.snap }}"
+
+      - name: Summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "### Snap refresh - ${{ needs.audit.outputs.tag }}"
+            echo ""
+            echo "- stale packages found by the audit: ${{ needs.audit.outputs.count }}"
+            echo "- published to the Store: ${{ github.event_name == 'schedule' || inputs.publish }}"
+          } >> "$GITHUB_STEP_SUMMARY"
