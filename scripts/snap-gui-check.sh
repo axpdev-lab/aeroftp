@@ -34,7 +34,11 @@ cleanup() {
 trap cleanup EXIT
 
 echo "Launching the confined GUI under Xvfb (timeout: ${WAIT_SECONDS}s)..."
-setsid xvfb-run -a -s "-screen 0 1600x1000x24" "$APP" >"$LOG" 2>&1 &
+# Strict snaps have a private /tmp and therefore cannot read the temporary
+# Xauthority cookie created by xvfb-run.  This X server is disposable and only
+# reachable inside the CI runner, so disable access control instead of sharing
+# host credentials with the confined application.
+setsid xvfb-run -a -s "-screen 0 1600x1000x24 -ac" "$APP" >"$LOG" 2>&1 &
 PID=$!
 
 ready=false
@@ -52,7 +56,7 @@ done
 echo "--- confined GUI log ---"
 sed -n '1,240p' "$LOG"
 
-if grep -qE "EGL_BAD_(PARAMETER|DISPLAY)|Could not create default EGL display" "$LOG"; then
+if grep -qE "EGL_BAD_(PARAMETER|DISPLAY)|Could not create default EGL display|libEGL fatal" "$LOG"; then
   echo "::error::WebKit could not initialize EGL inside the snap" >&2
   exit 1
 fi
