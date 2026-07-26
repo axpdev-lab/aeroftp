@@ -103,13 +103,11 @@ apps:
       # window.  Make the reliable software compositor the Snap default rather
       # than weakening the CI gate with a test-only override.
       WEBKIT_DISABLE_COMPOSITING_MODE: '1'
-      # WebKitGTK's bubblewrap sandbox cannot nest reliably inside snap
-      # confinement: the WebProcess loses access to the X11 socket and graphics
-      # runtime even though the outer application has the x11/opengl plugs.
-      # Snap strict confinement remains the security boundary.  Keep both names
-      # for the WebKitGTK versions supported by core22/gnome-42.
-      WEBKIT_FORCE_SANDBOX: '0'
-      WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS: '1'
+      # GTK 3 otherwise still probes EGL while creating its GL context, before
+      # WebKit's software compositor takes over.  Force Cairo image surfaces so
+      # headless/remote X servers do not depend on a DRI extension.
+      GDK_DEBUG: nogl
+      GDK_RENDERING: image
     plugs:
       - home
       - removable-media
