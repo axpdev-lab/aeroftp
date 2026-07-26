@@ -64,12 +64,18 @@ jobs:
         with:
           fetch-depth: 0
 
+      # The dispatch input goes through the environment, never through `${{ }}`
+      # in the script body: an expression is substituted before bash parses the
+      # line, so a crafted tag would execute as a command in a workflow that
+      # later holds SNAPCRAFT_STORE_CREDENTIALS. Quoting does not help.
       - name: Resolve the release tag to rebuild
         id: resolve
         shell: bash
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
         run: |
           set -euo pipefail
-          TAG="${{ inputs.tag }}"
+          TAG="${INPUT_TAG:-}"
           if [ -z "$TAG" ]; then
             TAG=$(git tag --list 'v*' --sort=-v:refname | head -1)
           fi
@@ -177,6 +183,24 @@ jobs:
         with:
           ref: ${{ needs.audit.outputs.tag }}
 
+      # Same guard as the release pipeline, and here it earns its keep: this job
+      # publishes to the Store from an arbitrary tag, so the snapcraft.yaml it
+      # just checked out must be the version that tag claims to be.
+      - name: R10-snap version guard (snapcraft.yaml vs rebuilt tag)
+        shell: bash
+        env:
+          TAG: ${{ needs.audit.outputs.tag }}
+        run: |
+          set -euo pipefail
+          SNAP_VERSION=$(grep -m1 '^version:' snap/snapcraft.yaml | sed "s/.*['\"]\(.*\)['\"].*/\1/")
+          EXPECTED="${TAG#v}"
+          echo "snapcraft.yaml: $SNAP_VERSION"
+          echo "tag:            $EXPECTED"
+          if [ "$SNAP_VERSION" != "$EXPECTED" ]; then
+            echo "::error::snap version drift: snapcraft.yaml=$SNAP_VERSION does not match tag=$EXPECTED"
+            exit 1
+          fi
+
       - name: Download the jammy payload
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
@@ -236,16 +260,20 @@ jobs:
 
       - name: Gate G1 - snap ABI floor vs base
         shell: bash
+        env:
+          SNAP_FILE: ${{ steps.snap-check.outputs.snap }}
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends squashfs-tools binutils file
-          ./ci-tools/scripts/snap-abi-check.sh "${{ steps.snap-check.outputs.snap }}" snap/snapcraft.yaml
+          ./ci-tools/scripts/snap-abi-check.sh "$SNAP_FILE" snap/snapcraft.yaml
 
       - name: Gate G2 - install the snap and exercise the payload
         shell: bash
+        env:
+          SNAP_FILE: ${{ steps.snap-check.outputs.snap }}
         run: |
           set -euo pipefail
-          sudo snap install --dangerous "${{ steps.snap-check.outputs.snap }}"
+          sudo snap install --dangerous "$SNAP_FILE"
           out="$(/snap/bin/aeroftp ls --help 2>&1)" || {
             echo "::error::the rebuilt snap cannot run 'aeroftp ls --help'"
             echo "$out"
@@ -266,20 +294,25 @@ jobs:
         if: ${{ github.event_name == 'schedule' || inputs.publish }}
         env:
           SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
+          SNAP_FILE: ${{ steps.snap-check.outputs.snap }}
         run: |
           set -euo pipefail
           if ! command -v snapcraft >/dev/null 2>&1; then
             sudo snap install snapcraft --classic
           fi
-          snapcraft upload --release=stable "${{ steps.snap-check.outputs.snap }}"
+          snapcraft upload --release=stable "$SNAP_FILE"
 
       - name: Summary
         if: always()
         shell: bash
+        env:
+          TAG: ${{ needs.audit.outputs.tag }}
+          STALE_COUNT: ${{ needs.audit.outputs.count }}
+          PUBLISHED: ${{ github.event_name == 'schedule' || inputs.publish }}
         run: |
           {
-            echo "### Snap refresh - ${{ needs.audit.outputs.tag }}"
+            echo "### Snap refresh - $TAG"
             echo ""
-            echo "- stale packages found by the audit: ${{ needs.audit.outputs.count }}"
-            echo "- published to the Store: ${{ github.event_name == 'schedule' || inputs.publish }}"
+            echo "- stale packages found by the audit: $STALE_COUNT"
+            echo "- published to the Store: $PUBLISHED"
           } >> "$GITHUB_STEP_SUMMARY"

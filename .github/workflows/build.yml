@@ -669,10 +669,10 @@ jobs:
 
       # Guard the snap version BEFORE packaging. Kept even though this job now
       # runs behind `needs: build-and-release` (whose R10 gate covers the same
-      # ground): it costs a second, it is the only guard on the snap-refresh
-      # rebuild path, and it is what caught v4.0.9 shipping a Sigstore-signed
-      # 4.0.8 snap as an asset of the 4.0.9 release. Parsed with grep/sed
-      # because there is no node in this job any more.
+      # ground): it costs a second, and it is what caught v4.0.9 shipping a
+      # Sigstore-signed 4.0.8 snap as an asset of the 4.0.9 release. The
+      # snap-refresh rebuild path carries its own copy of this guard. Parsed
+      # with grep/sed because there is no node in this job any more.
       - name: R10-snap version guard (snapcraft.yaml vs tag)
         shell: bash
         run: |
@@ -766,10 +766,12 @@ jobs:
       # ----------------------------------------------------------------------
       - name: Gate G1 - snap ABI floor vs base
         shell: bash
+        env:
+          SNAP_FILE: ${{ steps.snap-check.outputs.snap }}
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends squashfs-tools binutils file
-          ./scripts/snap-abi-check.sh "${{ steps.snap-check.outputs.snap }}"
+          ./scripts/snap-abi-check.sh "$SNAP_FILE"
 
       # ----------------------------------------------------------------------
       # Gate G2 - install the snap and run a command that actually reaches the
@@ -781,10 +783,11 @@ jobs:
       # ----------------------------------------------------------------------
       - name: Gate G2 - install the snap and exercise the payload
         shell: bash
+        env:
+          SNAP_FILE: ${{ steps.snap-check.outputs.snap }}
         run: |
           set -euo pipefail
-          SNAP="${{ steps.snap-check.outputs.snap }}"
-          sudo snap install --dangerous "$SNAP"
+          sudo snap install --dangerous "$SNAP_FILE"
           echo "--- aeroftp ls --help (routes to the CLI payload) ---"
           out="$(/snap/bin/aeroftp ls --help 2>&1)" || {
             echo "::error::the installed snap cannot run 'aeroftp ls --help'"
