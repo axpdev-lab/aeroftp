@@ -96,6 +96,12 @@ apps:
       # AeroFTP currently forces X11; the GNOME extension owns the remaining
       # desktop environment, including GTK_USE_PORTAL and the GL driver paths.
       GDK_BACKEND: x11
+      # WebKitGTK's accelerated compositor requires a DRI-capable X server.
+      # Strict snaps must also work on software-only/remote X servers (including
+      # the Xvfb readiness gate), where EGL otherwise leaves a live white
+      # window.  Make the reliable software compositor the Snap default rather
+      # than weakening the CI gate with a test-only override.
+      WEBKIT_DISABLE_COMPOSITING_MODE: '1'
     plugs:
       - home
       - removable-media
