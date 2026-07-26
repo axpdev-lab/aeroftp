@@ -286,6 +286,18 @@ jobs:
           }
           sudo snap remove --purge aeroftp || true
 
+      - name: Gate G3 - confined GUI readiness under Xvfb
+        shell: bash
+        env:
+          SNAP_FILE: ${{ steps.snap-check.outputs.snap }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends xvfb xauth
+          sudo snap install --dangerous "$SNAP_FILE"
+          trap 'sudo snap remove --purge aeroftp || true' EXIT
+          ./ci-tools/scripts/snap-gui-check.sh
+
       # Store-only by design: published GitHub Release assets are immutable in
       # this repo (`overwrite_files: false`), so a security rebuild must not
       # rewrite the tag's assets. The Store revision may therefore be newer than

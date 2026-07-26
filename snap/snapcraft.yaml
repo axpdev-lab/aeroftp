@@ -87,10 +87,15 @@ apps:
   aeroftp:
     command: usr/bin/aeroftp
     desktop: usr/share/applications/aeroftp.desktop
+    # Keep the GTK/WebKit/OpenGL runtime wiring owned by Snapcraft.  Removing
+    # this extension in 3bf266430 left GLVND with no EGL vendor inside strict
+    # confinement and produced a blank WebKit window (issue #462).
+    extensions:
+      - gnome
     environment:
-      # WebKitGTK environment
+      # AeroFTP currently forces X11; the GNOME extension owns the remaining
+      # desktop environment, including GTK_USE_PORTAL and the GL driver paths.
       GDK_BACKEND: x11
-      GTK_USE_PORTAL: "1"
     plugs:
       - home
       - removable-media
@@ -104,26 +109,6 @@ apps:
       - audio-playback
       - unity7
       - gsettings
-
-plugs:
-  gtk-3-themes:
-    interface: content
-    target: $SNAP/data-dir/themes
-    default-provider: gtk-common-themes
-  icon-themes:
-    interface: content
-    target: $SNAP/data-dir/icons
-    default-provider: gtk-common-themes
-  sound-themes:
-    interface: content
-    target: $SNAP/data-dir/sounds
-    default-provider: gtk-common-themes
-
-layout:
-  /usr/lib/x86_64-linux-gnu/webkit2gtk-4.1:
-    symlink: $SNAP/usr/lib/x86_64-linux-gnu/webkit2gtk-4.1
-  /usr/share/xml/iso-codes:
-    symlink: $SNAP/usr/share/xml/iso-codes
 
 parts:
   aeroftp:

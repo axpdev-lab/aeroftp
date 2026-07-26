@@ -801,6 +801,23 @@ jobs:
           fi
           sudo snap remove --purge aeroftp || true
 
+      # ----------------------------------------------------------------------
+      # Gate G3 - launch the actual confined GUI on a disposable X server.
+      # This checks the frontend readiness log, not merely process liveness,
+      # and catches missing EGL/GLVND wiring such as issue #462.
+      # ----------------------------------------------------------------------
+      - name: Gate G3 - confined GUI readiness under Xvfb
+        shell: bash
+        env:
+          SNAP_FILE: ${{ steps.snap-check.outputs.snap }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends xvfb xauth
+          sudo snap install --dangerous "$SNAP_FILE"
+          trap 'sudo snap remove --purge aeroftp || true' EXIT
+          ./scripts/snap-gui-check.sh
+
       # Sigstore keyless signing of the .snap: only on tags.
       - name: Install Cosign
         if: startsWith(github.ref, 'refs/tags/')
