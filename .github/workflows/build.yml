@@ -120,19 +120,10 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libfuse3-dev
-          # Install Snapcraft with retry on transient snap-store outages
-          for i in 1 2 3 4 5; do
-            if sudo snap install snapcraft --classic; then
-              echo "snapcraft installed (attempt $i)"
-              break
-            fi
-            if [ "$i" -eq 5 ]; then
-              echo "snapcraft install still failing after 5 attempts; continuing: Snap step is continue-on-error"
-              break
-            fi
-            echo "snap install failed (attempt $i/5), retry in 60s..."
-            sleep 60
-          done
+          # No snapcraft here any more: this leg stopped building the snap when
+          # PR #172 moved it to its own job, and snapcore/action-build brings
+          # its own snapcraft. The leftover install (5 retries, 60 s apart on a
+          # store hiccup) was pure cost on every PR run.
 
       - name: Install npm dependencies
         run: npm ci
@@ -228,6 +219,49 @@ jobs:
           done
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # The snap is packaged in the dedicated `build-snap` job below, but its
+      # payload MUST be compiled on the same Ubuntu release as the snap's
+      # `base:` - core22 means jammy, i.e. THIS ubuntu-22.04 leg. Between
+      # 2026-05-06 (PR #172) and 2026-07-25 the snap job compiled its own
+      # payload on ubuntu-24.04, so ~30 published revisions demanded
+      # GLIBC_2.38/2.39 from a 2.35 runtime and died at exec with
+      # "version 'GLIBC_2.38' not found" - the app could not start at all.
+      # See issue #460 for the full analysis.
+      #
+      # Handing the jammy binaries to the snap job means .deb/.rpm/.AppImage
+      # and .snap all ship the exact same bytes, so the mismatch cannot return.
+      # Tarred because GitHub artifacts do not preserve the executable bit and
+      # snapcraft's override-build copies these binaries verbatim.
+      - name: Package Linux payload for the snap job
+        if: matrix.target == 'linux' && (startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch')
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd src-tauri/target/release
+          PAYLOAD=(aeroftp aeroftp-dispatch-bundle/aeroftp-cli aeroftp-dispatch-bundle/aeroftp-dispatch)
+          for f in "${PAYLOAD[@]}"; do
+            if [ ! -f "$f" ]; then
+              echo "::error::missing payload binary $f - the snap job cannot be fed"
+              exit 1
+            fi
+          done
+          # Staged inside the workspace, not in RUNNER_TEMP: an artifact whose
+          # source lies outside the workspace is stored under a relative path
+          # that `gh run download` rejects as path traversal, which is exactly
+          # when you need it - debugging a failed release from a laptop.
+          mkdir -p "$GITHUB_WORKSPACE/payload-stage"
+          tar -cf "$GITHUB_WORKSPACE/payload-stage/linux-payload.tar" "${PAYLOAD[@]}"
+          ls -l "$GITHUB_WORKSPACE/payload-stage/linux-payload.tar"
+
+      - name: Upload Linux payload for the snap job
+        if: matrix.target == 'linux' && (startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch')
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: aeroftp-linux-payload-${{ github.sha }}
+          path: payload-stage/linux-payload.tar
+          if-no-files-found: error
+          retention-days: 1
 
       - name: Build Tauri app
         if: matrix.target != 'linux' && (matrix.target != 'macos' || matrix.arch == 'aarch64')
@@ -594,18 +628,37 @@ jobs:
   # zero-byte snaps because `snap/snapcraft.yaml`'s `override-build` step
   # copies a *pre-built* `src-tauri/target/release/aeroftp` binary into
   # the snap layout. The original inline step inherited that binary from
-  # the matrix Linux job's `npm run tauri build` earlier in the same
-  # workflow; the dedicated job did not. We now reproduce the full
-  # pre-build (Node + Rust + system deps + `npm run tauri build`) inside
-  # this job before invoking snapcore/action-build, which then packages
-  # the freshly-built binary. The workflow_dispatch validation lane
-  # exercises the same path so failures show up before tagging.
+  # the matrix Linux job's `npm run tauri build`; the dedicated job did not,
+  # so it reproduced the whole pre-build (Node + Rust + `npm run tauri build`)
+  # here instead.
+  #
+  # NOTE 2026-07-26: that pre-build was the bug. It ran on THIS ubuntu-24.04
+  # runner (glibc 2.39) while `snap/snapcraft.yaml` stayed on `base: core22`
+  # (glibc 2.35), so from v3.7.2 to v4.1.6 every published revision shipped a
+  # payload the core22 loader refuses - "version 'GLIBC_2.38' not found" - and
+  # the app could not start at all. ~30 releases, caught by nobody because the
+  # only assertion was "the .snap exists and is >10 MB".
+  #
+  # The job is now packaging-only: it consumes the jammy binaries built by the
+  # ubuntu-22.04 `linux` leg, so the snap ships the same bytes as the
+  # .deb/.rpm/.AppImage and the build environment matches the base by
+  # construction. Two blocking gates below prove it before anything is
+  # published. Full analysis: issue #460.
+  #
+  # `needs:` is the point, not a detail: the payload must come from the jammy
+  # leg. It costs ~15 min of release wall clock and saves a whole duplicate
+  # Rust build (~60 min of runner time).
   #
   # Triggers:
   # - Tag pushes: full pipeline (build + sign + release upload + Snap Store)
   # - workflow_dispatch: build only (validation runs without cutting a tag)
   build-snap:
-    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+    # `!cancelled()` rather than the implicit success(): the snap only truly
+    # depends on the ubuntu-22.04 leg's payload, so a flaky macOS or Windows leg
+    # must not block it. If the Linux leg is the one that failed, the payload
+    # artifact is missing and this job fails on the download - which is right.
+    if: ${{ !cancelled() && (startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch') }}
+    needs: build-and-release
     runs-on: ubuntu-24.04
     permissions:
       contents: write   # required for softprops/action-gh-release
@@ -614,15 +667,12 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
 
-      # Guard the snap version BEFORE any build. This job has no `needs:` and runs
-      # in parallel with the R10 gate in build-and-release, so an R10 failure there
-      # cannot stop this job from having already built and uploaded a snap. That is
-      # exactly how v4.0.9 shipped: snapcraft.yaml was left at 4.0.8 and a
-      # Sigstore-signed 4.0.8 snap was published as an asset of the 4.0.9 release.
-      # A `needs: build-and-release` would fix it but serialize the whole pipeline
-      # (the snap would wait for every platform) to pay for a one-second check, so
-      # the guard lives here and fails in a second instead. No node yet (this runs
-      # before Setup Node.js), so both versions are parsed with grep/sed.
+      # Guard the snap version BEFORE packaging. Kept even though this job now
+      # runs behind `needs: build-and-release` (whose R10 gate covers the same
+      # ground): it costs a second, and it is what caught v4.0.9 shipping a
+      # Sigstore-signed 4.0.8 snap as an asset of the 4.0.9 release. The
+      # snap-refresh rebuild path carries its own copy of this guard. Parsed
+      # with grep/sed because there is no node in this job any more.
       - name: R10-snap version guard (snapcraft.yaml vs tag)
         shell: bash
         run: |
@@ -644,44 +694,28 @@ jobs:
             fi
           fi
 
-      - name: Setup Node.js
-        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+      # The payload comes from the ubuntu-22.04 leg, never from this runner:
+      # jammy binaries for a jammy (core22) base. Nothing here compiles Rust.
+      - name: Download Linux payload built on jammy
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
-          node-version: '20'
-          cache: 'npm'
+          name: aeroftp-linux-payload-${{ github.sha }}
+          path: ${{ runner.temp }}/payload
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
-        with:
-          toolchain: stable
-
-      - name: Rust cache
-        uses: swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2
-        with:
-          workspaces: './src-tauri -> target'
-          # Same prefix as build.yml main matrix to keep cache keys
-          # aligned across jobs in this workflow.
-          prefix-key: 'v2-whisper-vs18'
-
-      - name: Install Linux build dependencies
+      - name: Restore payload into src-tauri/target/release
+        shell: bash
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev \
-            libappindicator3-dev \
-            librsvg2-dev \
-            patchelf \
-            libfuse3-dev
-
-      - name: Install npm dependencies
-        run: npm ci
-
-      # Produces src-tauri/target/release/aeroftp, which the
-      # snap/snapcraft.yaml `override-build` step copies into the snap.
-      - name: Build Tauri release binary (Linux x64)
-        run: npm run tauri build
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          set -euo pipefail
+          mkdir -p src-tauri/target/release
+          tar -xf "$RUNNER_TEMP/payload/linux-payload.tar" -C src-tauri/target/release
+          cd src-tauri/target/release
+          # The executable bit does not survive a GitHub artifact round-trip in
+          # every path, and snapcraft copies these binaries as-is.
+          chmod +x aeroftp aeroftp-dispatch-bundle/aeroftp-cli aeroftp-dispatch-bundle/aeroftp-dispatch
+          for f in aeroftp aeroftp-dispatch-bundle/aeroftp-cli aeroftp-dispatch-bundle/aeroftp-dispatch; do
+            [ -x "$f" ] || { echo "::error::payload binary $f missing or not executable"; exit 1; }
+            echo "  $(ls -l "$f")"
+          done
 
       # snapcore/action-build@3bdaa03e is the latest pin (no v2 exists,
       # see issue #164 for the analysis). On ubuntu-24.04 the native LXD
@@ -700,7 +734,9 @@ jobs:
           SNAP="${{ steps.snap-build.outputs.snap }}"
           if [ -z "$SNAP" ] || [ ! -f "$SNAP" ]; then
             echo "::error::Snap file not produced by snapcore/action-build"
-            echo "Expected output `steps.snap-build.outputs.snap` was empty or missing on disk."
+            # Single-quoted on purpose: inside double quotes bash would run the
+            # backticked text as a command and mangle its own error message.
+            echo 'Expected output steps.snap-build.outputs.snap was empty or missing on disk.'
             exit 1
           fi
           BYTES=$(stat -c %s "$SNAP")
@@ -711,8 +747,9 @@ jobs:
           echo "Snap produced: $SNAP ($(du -h "$SNAP" | cut -f1))"
           echo "snap=$SNAP" >> "$GITHUB_OUTPUT"
 
-      # Persist the .snap as a workflow artifact so workflow_dispatch
-      # validation runs (no tag) leave behind something downloadable.
+      # Uploaded BEFORE the gates on purpose: when a gate rejects a snap, the
+      # rejected artifact is exactly what you need in hand to diagnose it.
+      # Publishing still happens only after both gates pass.
       - name: Upload Snap as workflow artifact (validation runs)
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
@@ -720,6 +757,49 @@ jobs:
           path: ${{ steps.snap-check.outputs.snap }}
           if-no-files-found: error
           retention-days: 1
+
+      # ----------------------------------------------------------------------
+      # Gate G1 - static ABI floor. Every ELF in the snap must fit the glibc the
+      # `base:` snap provides; the ceiling is read from the base itself, never
+      # hardcoded. This is the check whose absence let ~30 unstartable revisions
+      # reach the Snap Store between 2026-05-06 and 2026-07-25.
+      # ----------------------------------------------------------------------
+      - name: Gate G1 - snap ABI floor vs base
+        shell: bash
+        env:
+          SNAP_FILE: ${{ steps.snap-check.outputs.snap }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends squashfs-tools binutils file
+          ./scripts/snap-abi-check.sh "$SNAP_FILE"
+
+      # ----------------------------------------------------------------------
+      # Gate G2 - install the snap and run a command that actually reaches the
+      # payload. `aeroftp --version` is NOT a valid smoke test: a leading dash
+      # routes to DispatchRoute::Gui (needs a display), and the dispatcher can
+      # answer without the payload ever loading. Only a token from
+      # CLI_SUBCOMMANDS (src-tauri/src/cli_dispatch.rs) execs aeroftp-cli and
+      # therefore proves the payload links against the base at runtime.
+      # ----------------------------------------------------------------------
+      - name: Gate G2 - install the snap and exercise the payload
+        shell: bash
+        env:
+          SNAP_FILE: ${{ steps.snap-check.outputs.snap }}
+        run: |
+          set -euo pipefail
+          sudo snap install --dangerous "$SNAP_FILE"
+          echo "--- aeroftp ls --help (routes to the CLI payload) ---"
+          out="$(/snap/bin/aeroftp ls --help 2>&1)" || {
+            echo "::error::the installed snap cannot run 'aeroftp ls --help'"
+            echo "$out"
+            exit 1
+          }
+          echo "$out" | head -20
+          if ! grep -qiE 'usage|aeroftp' <<<"$out"; then
+            echo "::error::unexpected output from the snap CLI payload"
+            exit 1
+          fi
+          sudo snap remove --purge aeroftp || true
 
       # Sigstore keyless signing of the .snap: only on tags.
       - name: Install Cosign

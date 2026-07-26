@@ -164,9 +164,55 @@ The pipeline runs automatically when a tag matching `v*` is pushed.
 ## Snap Store Integration
 
 ### How It Works
-1. GitHub Actions builds snap using `snapcore/action-build@v1`
-2. Uploads to Snap Store with `snapcraft upload --release=stable`
-3. Users with AeroFTP installed via snap get auto-updates
+1. The `ubuntu-22.04` Linux leg builds the payload and hands it to `build-snap` as an artifact
+2. `build-snap` (on `ubuntu-24.04`, for LXD headroom) packages it with `snapcore/action-build@v1`
+3. Two blocking gates run before anything is published (see below)
+4. Uploads to Snap Store with `snapcraft upload --release=stable`
+5. Users with AeroFTP installed via snap get auto-updates
+
+### The one invariant: build host release == snap base
+
+**The payload must be compiled on the same Ubuntu release the snap's `base:` is built
+from.** `base: core22` means jammy, so the binaries must come from the `ubuntu-22.04`
+leg — never from the `ubuntu-24.04` runner that packages the snap.
+
+A snap never ships its own glibc: it comes from the base snap (core22 → GLIBC_2.35
+ceiling). A payload compiled on a newer runner asks for symbols the base cannot provide
+and the loader refuses it — the app installs and then dies with
+`version 'GLIBC_2.38' not found`. That shipped for ~30 releases (v3.7.2 → v4.1.6,
+issue #460) because nothing in CI ever ran the snap it published.
+
+If `base:` is ever bumped (e.g. to `core24`), the payload leg must move with it —
+and note that moving the Linux leg raises the glibc floor of the `.deb`/`.rpm`/
+`.AppImage` too, which is a user-facing compatibility decision, not a CI convenience.
+
+Two gates enforce this on every snap build:
+
+| Gate | What it does | Why |
+|------|--------------|-----|
+| **G1** `scripts/snap-abi-check.sh` | Every ELF in the built snap must fit the glibc ceiling *derived from the base snap itself* | Deterministic, ~5 s, catches the mismatch before publishing |
+| **G2** install + smoke | `snap install --dangerous`, then `aeroftp ls --help` | Proves the payload actually loads at runtime |
+
+> G2 deliberately uses a CLI subcommand. `aeroftp --version` is **not** a valid smoke
+> test: a leading dash routes to `DispatchRoute::Gui` (which needs a display), and the
+> dispatcher can answer without the payload ever being loaded.
+
+### Keeping a published revision fresh (`snap-refresh.yml`)
+
+The snap freezes its `stage-packages` at build time, so the published revision ages
+between releases until the Snap Store mails *"contains outdated Ubuntu packages"*.
+The `Snap security refresh` workflow runs weekly, compares the published revision's
+`primed-stage-packages` against the live Ubuntu archive, and rebuilds **only when
+something is genuinely stale**. The version string does not change — the Store just
+serves a newer revision — so the in-app updater stays quiet.
+
+It is also the on-demand rebuild path: dispatch it with `force: true` (and
+`publish: true` when you mean it) to rebuild any tag with today's pipeline.
+
+```bash
+gh workflow run snap-refresh.yml -f tag=v4.1.6 -f force=true -f publish=false
+node scripts/snap-stale-packages.mjs        # same audit, locally
+```
 
 ### Required Secret
 The workflow requires `SNAPCRAFT_STORE_CREDENTIALS` in GitHub repository secrets.

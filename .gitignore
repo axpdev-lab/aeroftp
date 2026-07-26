@@ -105,6 +105,9 @@ run-clean.sh
 !/scripts/gen-cli-catalog.ts
 # Exception: release step, publishes a curated asset subset to SourceForge
 !/scripts/publish-sourceforge.sh
+# Exception: snap gates - ABI floor check and stage-package staleness audit (#460)
+!/scripts/snap-abi-check.sh
+!/scripts/snap-stale-packages.mjs
 # Exception: regenerates the providers table from the GUI SSOT (#270 17104681)
 !/scripts/gen-providers-table.ts
 # Exception: single pre-release smoke entrypoint (`npm run smoke`, #408 row 1)
