@@ -150,14 +150,16 @@ jobs:
           for f in "${PAYLOAD[@]}"; do
             [ -f "$f" ] || { echo "::error::missing payload binary $f"; exit 1; }
           done
-          tar -cf "$RUNNER_TEMP/linux-payload.tar" "${PAYLOAD[@]}"
-          ls -l "$RUNNER_TEMP/linux-payload.tar"
+          # Inside the workspace so `gh run download` can fetch it (see build.yml).
+          mkdir -p "$GITHUB_WORKSPACE/payload-stage"
+          tar -cf "$GITHUB_WORKSPACE/payload-stage/linux-payload.tar" "${PAYLOAD[@]}"
+          ls -l "$GITHUB_WORKSPACE/payload-stage/linux-payload.tar"
 
       - name: Upload the payload
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: snap-refresh-payload-${{ needs.audit.outputs.tag }}
-          path: ${{ runner.temp }}/linux-payload.tar
+          path: payload-stage/linux-payload.tar
           if-no-files-found: error
           retention-days: 1
 
@@ -213,6 +215,15 @@ jobs:
           echo "Snap produced: $SNAP ($(du -h "$SNAP" | cut -f1))"
           echo "snap=$SNAP" >> "$GITHUB_OUTPUT"
 
+      # Before the gates: a rejected snap is exactly what you need to inspect.
+      - name: Upload the rebuilt snap
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: aeroftp-snap-refresh-${{ needs.audit.outputs.tag }}
+          path: ${{ steps.snap-check.outputs.snap }}
+          if-no-files-found: error
+          retention-days: 7
+
       # Only now, after snapcraft has copied the project into its build
       # environment: the part uses `source: .`, so a second checkout present
       # during the build would be copied in along with everything else.
@@ -246,14 +257,6 @@ jobs:
             exit 1
           }
           sudo snap remove --purge aeroftp || true
-
-      - name: Upload the rebuilt snap
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: aeroftp-snap-refresh-${{ needs.audit.outputs.tag }}
-          path: ${{ steps.snap-check.outputs.snap }}
-          if-no-files-found: error
-          retention-days: 7
 
       # Store-only by design: published GitHub Release assets are immutable in
       # this repo (`overwrite_files: false`), so a security rebuild must not

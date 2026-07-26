@@ -88,22 +88,41 @@ else
 
   # Prefer an already-installed base (dev machines); otherwise pull it from the
   # store. `snap download` needs no root and no login.
+  # Two shapes to handle: from glibc 2.34 on, libc.so.6 IS the ELF; before that
+  # it is a symlink to libc-<version>.so. `-type f` therefore matters, and the
+  # pattern must stay tight enough not to match libcrypt.so.1 and friends.
+  find_libc() { find -L "$1" -type f \( -name 'libc.so.6' -o -name 'libc-*.so' \) -print -quit 2>/dev/null || true; }
+
   # `find -L`: /snap/<base>/current is a symlink, and an unfollowed symlink
   # argument is never descended into.
   LIBC=""
   if [ -e "/snap/$BASE/current" ]; then
-    LIBC="$(find -L "/snap/$BASE/current" -name 'libc.so.6' -print -quit 2>/dev/null || true)"
+    LIBC="$(find_libc "/snap/$BASE/current")"
   fi
   if [ -z "$LIBC" ]; then
     echo "Downloading base snap '$BASE' to derive its glibc ceiling..."
     ( cd "$TMP" && snap download "$BASE" >/dev/null )
     BASE_SNAP="$(find "$TMP" -maxdepth 1 -name "${BASE}_*.snap" -print -quit)"
     [ -n "$BASE_SNAP" ] || { echo "::error::could not download base snap '$BASE'" >&2; exit 2; }
-    # Extracted whole: unsquashfs globs do not cross '/', so a filter for
-    # usr/lib/<triplet>/libc.so.6 is brittle across architectures. A base snap
-    # is ~80 MB, so the full extraction costs a couple of seconds.
-    unsquashfs -q -n -f -d "$TMP/base" "$BASE_SNAP" >/dev/null
-    LIBC="$(find "$TMP/base" -name 'libc.so.6' -print -quit 2>/dev/null || true)"
+    # Named paths, not a full extraction: a base snap carries device nodes
+    # (/dev/null, /dev/random, ...) and file capabilities, and unsquashfs
+    # cannot recreate those as a normal user - it prints
+    # "could not create character device ... because you're not superuser"
+    # and exits non-zero. On a CI runner (no base snap installed) that turned
+    # the whole gate into an environment failure. unsquashfs globs do not
+    # cross '/', so the paths are spelled out per architecture.
+    for triplet in x86_64-linux-gnu aarch64-linux-gnu; do
+      unsquashfs -q -n -f -no-xattrs -d "$TMP/base" "$BASE_SNAP" \
+        "usr/lib/$triplet/libc.so.6" "usr/lib/$triplet/libc-*.so" \
+        "lib/$triplet/libc.so.6" "lib/$triplet/libc-*.so" >/dev/null 2>&1 || true
+    done
+    LIBC="$(find_libc "$TMP/base")"
+    if [ -z "$LIBC" ]; then
+      # Unknown layout: fall back to a whole-snap extraction and tolerate the
+      # unavoidable device-node failures, since only libc matters here.
+      unsquashfs -q -n -f -no-xattrs -d "$TMP/base-full" "$BASE_SNAP" >/dev/null 2>&1 || true
+      LIBC="$(find_libc "$TMP/base-full")"
+    fi
   fi
   [ -n "$LIBC" ] || { echo "::error::no libc.so.6 found in base snap '$BASE'" >&2; exit 2; }
 
@@ -118,7 +137,11 @@ echo "Ceiling:  $CEILING"
 # ---------------------------------------------------------------------------
 # 2. Every ELF in the snap - payload binaries AND staged libraries.
 # ---------------------------------------------------------------------------
-unsquashfs -q -n -f -d "$TMP/app" "$SNAP_FILE" >/dev/null
+# -no-xattrs: an app snap can carry file capabilities that a non-root
+# unsquashfs refuses to restore, and that must not read as "the snap is
+# broken". A genuine extraction failure still stops the gate: a partial tree
+# would silently narrow the scan.
+unsquashfs -q -n -f -no-xattrs -d "$TMP/app" "$SNAP_FILE" >/dev/null
 
 mapfile -t ELVES < <(
   find "$TMP/app" -type f -print0 \

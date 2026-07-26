@@ -246,15 +246,20 @@ jobs:
               exit 1
             fi
           done
-          tar -cf "$RUNNER_TEMP/linux-payload.tar" "${PAYLOAD[@]}"
-          ls -l "$RUNNER_TEMP/linux-payload.tar"
+          # Staged inside the workspace, not in RUNNER_TEMP: an artifact whose
+          # source lies outside the workspace is stored under a relative path
+          # that `gh run download` rejects as path traversal, which is exactly
+          # when you need it - debugging a failed release from a laptop.
+          mkdir -p "$GITHUB_WORKSPACE/payload-stage"
+          tar -cf "$GITHUB_WORKSPACE/payload-stage/linux-payload.tar" "${PAYLOAD[@]}"
+          ls -l "$GITHUB_WORKSPACE/payload-stage/linux-payload.tar"
 
       - name: Upload Linux payload for the snap job
         if: matrix.target == 'linux' && (startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch')
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: aeroftp-linux-payload-${{ github.sha }}
-          path: ${{ runner.temp }}/linux-payload.tar
+          path: payload-stage/linux-payload.tar
           if-no-files-found: error
           retention-days: 1
 
@@ -742,6 +747,17 @@ jobs:
           echo "Snap produced: $SNAP ($(du -h "$SNAP" | cut -f1))"
           echo "snap=$SNAP" >> "$GITHUB_OUTPUT"
 
+      # Uploaded BEFORE the gates on purpose: when a gate rejects a snap, the
+      # rejected artifact is exactly what you need in hand to diagnose it.
+      # Publishing still happens only after both gates pass.
+      - name: Upload Snap as workflow artifact (validation runs)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: aeroftp-snap-${{ github.sha }}
+          path: ${{ steps.snap-check.outputs.snap }}
+          if-no-files-found: error
+          retention-days: 1
+
       # ----------------------------------------------------------------------
       # Gate G1 - static ABI floor. Every ELF in the snap must fit the glibc the
       # `base:` snap provides; the ceiling is read from the base itself, never
@@ -781,16 +797,6 @@ jobs:
             exit 1
           fi
           sudo snap remove --purge aeroftp || true
-
-      # Persist the .snap as a workflow artifact so workflow_dispatch
-      # validation runs (no tag) leave behind something downloadable.
-      - name: Upload Snap as workflow artifact (validation runs)
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: aeroftp-snap-${{ github.sha }}
-          path: ${{ steps.snap-check.outputs.snap }}
-          if-no-files-found: error
-          retention-days: 1
 
       # Sigstore keyless signing of the .snap: only on tags.
       - name: Install Cosign
