@@ -112,6 +112,12 @@ static TEMP_SUFFIX_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::At
 pub struct AerorsyncDeltaTransport {
     ssh_config: SshTransportConfig,
     min_file_size: u64,
+    /// When true, negotiate `-X` and carry `user.*` xattrs (B3).
+    /// Default off so frozen wire oracles and non-xattr paths stay
+    /// byte-identical until a caller opts in via [`Self::with_xattrs`].
+    preserve_xattrs: bool,
+    /// X.5: turn ENOTSUP / metadata-loss warnings into hard errors.
+    fail_on_metadata_loss: bool,
 }
 
 impl AerorsyncDeltaTransport {
@@ -121,7 +127,23 @@ impl AerorsyncDeltaTransport {
         Self {
             ssh_config,
             min_file_size,
+            preserve_xattrs: false,
+            fail_on_metadata_loss: false,
         }
+    }
+
+    /// Opt this transport into extended attributes (`-X` + local
+    /// read/apply of `user.*`). Off by default: see field docs.
+    pub fn with_xattrs(mut self, preserve_xattrs: bool) -> Self {
+        self.preserve_xattrs = preserve_xattrs;
+        self
+    }
+
+    /// X.5: when the destination cannot store xattrs, fail the transfer
+    /// instead of continuing with a typed warning.
+    pub fn with_fail_on_metadata_loss(mut self, fail: bool) -> Self {
+        self.fail_on_metadata_loss = fail;
+        self
     }
 
     /// Convenience constructor that maps the production `RsyncConfig`
@@ -321,6 +343,7 @@ impl AerorsyncDeltaTransport {
                 self.min_file_size,
                 preamble_profile,
                 progress,
+                self.preserve_xattrs,
             )
             .await
         } else {
@@ -333,6 +356,7 @@ impl AerorsyncDeltaTransport {
                 self.min_file_size,
                 preamble_profile,
                 progress,
+                self.preserve_xattrs,
             )
             .await
         }
@@ -361,6 +385,7 @@ async fn do_upload<T>(
     min_file_size: u64,
     preamble_profile: PreambleProfile,
     progress: Option<crate::delta_transport::DeltaProgressSink>,
+    preserve_xattrs: bool,
 ) -> Result<RsyncStats, RsyncError>
 where
     T: RawRemoteShellTransport + 'static,
@@ -389,6 +414,7 @@ where
             preamble_profile,
             progress,
             start,
+            preserve_xattrs,
         )
         .await;
     }
@@ -418,7 +444,14 @@ where
     // identifies the negotiated algorithm. The placeholder stays empty
     // here so upload cannot accidentally advertise xxh128 bytes to an
     // xxh64/xxh3/md5 receiver.
-    let source_entry = build_source_entry(local_path, file_size, &metadata, Vec::new(), None);
+    let source_entry = build_source_entry(
+        local_path,
+        file_size,
+        &metadata,
+        Vec::new(),
+        None,
+        preserve_xattrs,
+    );
 
     let source_file = fs::File::open(local_path).await.map_err(RsyncError::Io)?;
 
@@ -433,7 +466,8 @@ where
     // (WrapperParity flavor) instead of the dev helper
     // `aerorsync_serve`. The wrapper command line is byte-pinned
     // against rsync 3.2.7 capture by `upload_remote_command_matches_capture`.
-    let spec = RemoteCommandSpec::upload(remote_path);
+    // B3: `-X` rides on the same switch as local xattr read/apply.
+    let spec = RemoteCommandSpec::upload(remote_path).with_xattrs(preserve_xattrs);
     let drive_res = driver
         .drive_upload_through_delta_streaming(
             spec,
@@ -484,6 +518,7 @@ async fn do_upload_symlink<T>(
     preamble_profile: PreambleProfile,
     progress: Option<crate::delta_transport::DeltaProgressSink>,
     start: Instant,
+    preserve_xattrs: bool,
 ) -> Result<RsyncStats, RsyncError>
 where
     T: RawRemoteShellTransport + 'static,
@@ -498,6 +533,7 @@ where
             preamble_profile,
             progress,
             start,
+            preserve_xattrs,
         );
         return Err(RsyncError::HardRejection(format!(
             "symlink upload is not supported on this platform: {} is a symbolic link and \
@@ -519,8 +555,14 @@ where
         };
         // rsync F_LENGTH convention for links: st_size == strlen(target).
         let target_len = target.len() as u64;
-        let source_entry =
-            build_source_entry(local_path, target_len, metadata, Vec::new(), Some(target));
+        let source_entry = build_source_entry(
+            local_path,
+            target_len,
+            metadata,
+            Vec::new(),
+            Some(target),
+            preserve_xattrs,
+        );
 
         let mut driver = AerorsyncDriver::new(transport, cancel)
             .with_preamble_profile(preamble_profile)
@@ -528,7 +570,7 @@ where
         let warnings = new_warnings_sink();
         let mut bridge = build_event_bridge(warnings.clone());
 
-        let spec = RemoteCommandSpec::upload(remote_path);
+        let spec = RemoteCommandSpec::upload(remote_path).with_xattrs(preserve_xattrs);
         if let Err(e) = driver
             .drive_upload_symlink(spec, source_entry, &mut bridge)
             .await
@@ -577,6 +619,8 @@ impl AerorsyncDeltaTransport {
                 local_path,
                 preamble_profile,
                 progress,
+                self.preserve_xattrs,
+                self.fail_on_metadata_loss,
             )
             .await
         } else {
@@ -588,6 +632,8 @@ impl AerorsyncDeltaTransport {
                 local_path,
                 preamble_profile,
                 progress,
+                self.preserve_xattrs,
+                self.fail_on_metadata_loss,
             )
             .await
         }
@@ -847,6 +893,7 @@ fn hex_checksum(bytes: &[u8]) -> String {
 /// a long-lived transport instead of allocating a fresh SSH session per
 /// file. Pinned by `cargo test --features aerorsync --lib aerorsync::`
 /// 453/453.
+#[allow(clippy::too_many_arguments)]
 async fn do_download<T>(
     transport: T,
     cancel: CancelHandle,
@@ -854,6 +901,8 @@ async fn do_download<T>(
     local_path: &Path,
     preamble_profile: PreambleProfile,
     progress: Option<crate::delta_transport::DeltaProgressSink>,
+    preserve_xattrs: bool,
+    fail_on_metadata_loss: bool,
 ) -> Result<RsyncStats, RsyncError>
 where
     T: RawRemoteShellTransport + 'static,
@@ -950,7 +999,8 @@ where
     // B.1: production dispatch now talks to stock `rsync --server --sender`
     // (WrapperParity flavor). Pinned against rsync 3.2.7 capture by
     // `download_remote_command_matches_capture`.
-    let spec = RemoteCommandSpec::download(remote_path);
+    // B3: `-X` rides on the same switch as local xattr apply.
+    let spec = RemoteCommandSpec::download(remote_path).with_xattrs(preserve_xattrs);
     // CLAUDE-AV-B3-12: hash the reconstruction as it streams to disk so
     // the whole-file trailer can be checked below. The shim borrows
     // `writer` only for the drive; the digest outlives the scope so
@@ -1172,16 +1222,30 @@ where
         }
     }
 
-    // Atomic commit: flush + sync_all + chmod (Unix) + set_mtime + rename.
-    // Failures here are post-commit-cutover and surface as
-    // `HardRejection` via `map_write_atomic_error`.
-    writer
-        .finalize(preserve_mode, preserve_mtime)
+    // B3 / X.4: xattrs must land on the temp file before rename so a
+    // kill-9 never leaves a visible target without its metadata.
+    let apply_xattrs = remote_entry
+        .as_ref()
+        .and_then(|e| e.xattrs.as_ref())
+        .filter(|_| preserve_xattrs)
+        .cloned();
+
+    // Atomic commit: flush + sync_all + chmod (Unix) + set_mtime +
+    // xattrs + rename. Failures here are post-commit-cutover and surface
+    // as `HardRejection` via `map_write_atomic_error`.
+    let xattr_warnings = writer
+        .finalize(
+            preserve_mode,
+            preserve_mtime,
+            apply_xattrs,
+            fail_on_metadata_loss,
+        )
         .await
         .map_err(map_write_atomic_error)?;
 
     let duration_ms = start.elapsed().as_millis() as u64;
-    let warnings = drain_warnings(warnings);
+    let mut warnings = drain_warnings(warnings);
+    warnings.extend(xattr_warnings);
     Ok(build_stats(
         driver.session_stats(),
         file_size,
@@ -1322,6 +1386,7 @@ impl DeltaBatch for AerorsyncBatch {
             self.min_file_size,
             preamble_profile.clone(),
             None,
+            false,
         )
         .await;
         if let Err(ref e) = first {
@@ -1359,6 +1424,7 @@ impl DeltaBatch for AerorsyncBatch {
                     self.min_file_size,
                     preamble_profile,
                     None,
+                    false,
                 )
                 .await?
             }
@@ -1391,6 +1457,8 @@ impl DeltaBatch for AerorsyncBatch {
             local_path,
             preamble_profile.clone(),
             None,
+            false,
+            false,
         )
         .await;
         if let Err(ref e) = first {
@@ -1424,6 +1492,8 @@ impl DeltaBatch for AerorsyncBatch {
                     local_path,
                     preamble_profile,
                     None,
+                    false,
+                    false,
                 )
                 .await?
             }
@@ -1487,6 +1557,7 @@ fn build_source_entry(
     metadata: &std::fs::Metadata,
     file_checksum: Vec<u8>,
     symlink_target: Option<String>,
+    preserve_xattrs: bool,
 ) -> FileListEntry {
     // 0x2c00 = USER_NAME_FOLLOWS (1<<10) | GROUP_NAME_FOLLOWS (1<<11) | MOD_NSEC (1<<13).
     const BASELINE_FLAGS: u32 = (1 << 10) | (1 << 11) | (1 << 13);
@@ -1499,6 +1570,16 @@ fn build_source_entry(
     let (uid_value, gid_value) = file_owner_components(metadata);
     let uid_name = lookup_user_name(uid_value);
     let gid_name = lookup_group_name(gid_value);
+    // B3 / X.3: when the session negotiates `-X`, read `user.*` xattrs
+    // via libc. `None` when xattrs are off keeps the encoder emitting
+    // zero xattr bytes (frozen oracles stay byte-identical). `Some(vec)`
+    // — empty or not — when on matches the codec contract for negotiated
+    // sessions.
+    let xattrs = if preserve_xattrs {
+        Some(crate::aerorsync::xattr_fs::read_user_xattrs(local_path).unwrap_or_default())
+    } else {
+        None
+    };
     // P3-T01 W1.3: caller computes xxh128 via streaming pass over the
     // file (`compute_xxh128_file_streaming`) so we no longer require a
     // fully-buffered `source_data: &[u8]` argument here. xxh128 over
@@ -1522,11 +1603,7 @@ fn build_source_entry(
         gid_name: Some(gid_name),
         checksum: file_checksum,
         symlink_target,
-        // X.2a: no xattr is read from the local file yet — that is X.3,
-        // which slots in beside `file_owner_components` below. `None`
-        // keeps the sender emitting zero xattr bytes, matching the
-        // `preserve_xattrs: false` the driver puts in its flist options.
-        xattrs: None,
+        xattrs,
     }
 }
 
@@ -2399,6 +2476,8 @@ mod tests {
             &local_path,
             profile,
             None,
+            false,
+            false,
         )
         .await;
         (result, local_path)
@@ -2907,7 +2986,14 @@ mod tests {
         let dir = fresh_tempdir();
         let path = dir.path().join("payload.bin");
         let meta = metadata_for(&path);
-        let entry = build_source_entry(&path, 1_234_567, &meta, xxh128_digest_bytes(&[]), None);
+        let entry = build_source_entry(
+            &path,
+            1_234_567,
+            &meta,
+            xxh128_digest_bytes(&[]),
+            None,
+            false,
+        );
         assert_eq!(entry.path, "payload.bin");
         assert_eq!(entry.size, 1_234_567);
         // U-07 regression pin: mtime MUST be populated from metadata;
@@ -2948,7 +3034,14 @@ mod tests {
         // a source (a directory is fine for the fallback check).
         let dir = fresh_tempdir();
         let meta = std::fs::metadata(dir.path()).unwrap();
-        let entry = build_source_entry(Path::new("/"), 0, &meta, xxh128_digest_bytes(&[]), None);
+        let entry = build_source_entry(
+            Path::new("/"),
+            0,
+            &meta,
+            xxh128_digest_bytes(&[]),
+            None,
+            false,
+        );
         assert_eq!(entry.path, "source.bin");
     }
 
@@ -2962,7 +3055,7 @@ mod tests {
             std::fs::File::create(&path).unwrap();
             std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o640)).unwrap();
             let meta = std::fs::metadata(&path).unwrap();
-            let entry = build_source_entry(&path, 0, &meta, xxh128_digest_bytes(&[]), None);
+            let entry = build_source_entry(&path, 0, &meta, xxh128_digest_bytes(&[]), None, false);
             // `mode` is the raw `st_mode` value; the low 12 bits carry
             // the permission bits we just set.
             assert_eq!((entry.mode as u32) & 0o7777, 0o640);
@@ -2990,6 +3083,7 @@ mod tests {
             &meta,
             Vec::new(),
             Some(target.to_string()),
+            false,
         );
 
         assert_eq!(entry.mode & 0o170000, 0o120000, "S_IFLNK mode bits");
@@ -3211,6 +3305,7 @@ mod tests {
             10_000_000,
             PreambleProfile::default(),
             None,
+            false,
         )
         .await
         .expect("symlink upload must succeed despite the min_file_size gate");
@@ -3241,6 +3336,7 @@ mod tests {
             0,
             PreambleProfile::default(),
             None,
+            false,
         )
         .await
         .unwrap_err();
@@ -3346,6 +3442,8 @@ mod tests {
             &local,
             PreambleProfile::default(),
             None,
+            false,
+            false,
         )
         .await
         .expect("symlink download must create the link");
@@ -3382,6 +3480,8 @@ mod tests {
             &local,
             PreambleProfile::default(),
             None,
+            false,
+            false,
         )
         .await
         .expect("symlink download over an existing regular file");
@@ -3508,6 +3608,7 @@ mod tests {
             1_000_000, // prohibitive threshold: symlinks must bypass TooSmall
             PreambleProfile::for_host("127.0.0.1"),
             None,
+            false,
         )
         .await
         .expect("live symlink upload against stock rsync");
@@ -3566,6 +3667,8 @@ mod tests {
             &local,
             PreambleProfile::for_host("127.0.0.1"),
             None,
+            false,
+            false,
         )
         .await
         .expect("live symlink download against stock rsync");
