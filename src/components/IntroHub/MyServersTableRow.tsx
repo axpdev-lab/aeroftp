@@ -281,7 +281,8 @@ export const MyServersTableRow = React.memo(function MyServersTableRow({
     // only shows on hover: pixel-accurate aiming for a gesture that should be
     // forgiving, and the reason a drag "sometimes doesn't start" (#453). Every
     // cell that carries no control is a drag handle now, so the row lifts from
-    // almost anywhere; the icon, actions and favourite cells stay clickable.
+    // almost anywhere; the icon, actions and favourite cells stay clickable,
+    // and so does the health cell while its radial offers a retry.
     // `select-none` travels with it: a leftover text selection over the source
     // makes the engine start a text drag instead of ours.
     const dragTd = (className: string) =>
@@ -450,9 +451,18 @@ export const MyServersTableRow = React.memo(function MyServersTableRow({
                         {timeAgo && <span className="inline-flex items-center gap-0.5"><Clock size={9} />{timeAgo}</span>}
                     </td>
                 );
-            case 'health':
+            case 'health': {
+                // The radial becomes a real <button> when a retry is available
+                // (mirrors `interactive` in HealthRadial), and a draggable
+                // ancestor would turn the smallest pointer travel on it into a
+                // row reorder instead of the retry. So the cell is a drag
+                // handle only while it carries no control, like the icon,
+                // actions and favourite cells.
+                const healthCellClass = `${cellClass} ${alignTd('health', 'center')} text-gray-300 dark:text-gray-600`;
+                const healthIsInteractive =
+                    !isMtpDevice && !!handleRetry && (healthStatus || 'unknown') !== 'pending';
                 return (
-                    <td key="health" {...dragTd(`${cellClass} ${alignTd('health', 'center')} text-gray-300 dark:text-gray-600`)}>
+                    <td key="health" {...(healthIsInteractive ? { className: healthCellClass } : dragTd(healthCellClass))}>
                         <span className={`inline-flex items-center ${alignFlex('health', 'center')}`}>
                             {isMtpDevice ? (
                                 <span
@@ -476,6 +486,7 @@ export const MyServersTableRow = React.memo(function MyServersTableRow({
                         </span>
                     </td>
                 );
+            }
             case 'actions':
                 return (
                     <td key="actions" className={`${cellClass} ${alignTd('actions', 'right')}`}>

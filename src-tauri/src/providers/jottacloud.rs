@@ -1821,7 +1821,8 @@ impl JottacloudProvider {
     }
 
     /// List items in Jottacloud Trash.
-    /// Trash is at /jfs/{username}/Trash (device-less, mountpoint-less).
+    /// Trash is at /jfs/{username}/{device}/Trash: it is a mountpoint of the
+    /// device, so the device segment is required (see `trash_url`).
     pub async fn list_trash(&mut self) -> Result<Vec<RemoteEntry>, ProviderError> {
         let url = self.trash_url("");
         jotta_log(&format!("Listing trash: {}", url));
@@ -1855,7 +1856,7 @@ impl JottacloudProvider {
     }
 
     /// Restore an item from trash to its original location.
-    /// POST /jfs/{username}/Trash/{path}?restore=true
+    /// POST /jfs/{username}/{device}/Trash/{path}?restore=true
     pub async fn restore_from_trash(&mut self, path: &str) -> Result<(), ProviderError> {
         let clean = path.trim_start_matches('/');
         let url = format!("{}?restore=true", self.trash_url(clean));
@@ -1878,7 +1879,7 @@ impl JottacloudProvider {
     }
 
     /// Permanently delete an item from trash.
-    /// POST /jfs/{username}/Trash/{path}?rm=true (file) or `?rmDir=true` (folder)
+    /// POST /jfs/{username}/{device}/Trash/{path}?rm=true (file) or `?rmDir=true` (folder)
     pub async fn permanent_delete_from_trash(&mut self, path: &str) -> Result<(), ProviderError> {
         let clean = path.trim_start_matches('/');
         let url = format!(
