@@ -146,6 +146,16 @@ impl AerorsyncDeltaTransport {
         self
     }
 
+    /// The xattr negotiation a batch must inherit, as one value.
+    ///
+    /// R3: the batch path calls `do_upload` / `do_download` itself, so it
+    /// needs these flags explicitly. Reading them through a single accessor
+    /// keeps `begin_batch` from drifting away from the single-file path,
+    /// which is how the two ended up disagreeing in the first place.
+    fn xattr_policy(&self) -> (bool, bool) {
+        (self.preserve_xattrs, self.fail_on_metadata_loss)
+    }
+
     /// Convenience constructor that maps the production `RsyncConfig`
     /// (used by `providers::sftp::delta_transport`) onto the prototype's
     /// `SshTransportConfig`. `host_key_policy` is provided by the caller
@@ -301,7 +311,15 @@ impl DeltaTransport for AerorsyncDeltaTransport {
     /// without losing the file.
     async fn begin_batch(&self) -> Result<Box<dyn DeltaBatch>, RsyncError> {
         match RusshSessionTransport::connect(self.ssh_config.clone()).await {
-            Ok(transport) => Ok(Box::new(AerorsyncBatch::new(transport, self.min_file_size))),
+            Ok(transport) => {
+                let (preserve_xattrs, fail_on_metadata_loss) = self.xattr_policy();
+                Ok(Box::new(AerorsyncBatch::new(
+                    transport,
+                    self.min_file_size,
+                    preserve_xattrs,
+                    fail_on_metadata_loss,
+                )))
+            }
             Err(e) => {
                 tracing::warn!(
                     "AerorsyncDeltaTransport::begin_batch: russh connect failed ({}); \
@@ -1278,10 +1296,23 @@ pub struct AerorsyncBatch {
     ///
     /// [`finalize`]: DeltaBatch::finalize
     cancel_observed: Arc<AtomicBool>,
+    /// R3: the xattr negotiation of the transport that opened this batch.
+    /// Held here because the batch path calls `do_upload`/`do_download`
+    /// directly and would otherwise hard-code the flags off, dropping the
+    /// attributes of a caller that asked for them without a warning.
+    preserve_xattrs: bool,
+    /// Companion of `preserve_xattrs` (X.5): turns an ENOTSUP warning into
+    /// a hard error. Carried for the same reason.
+    fail_on_metadata_loss: bool,
 }
 
 impl AerorsyncBatch {
-    fn new(transport: RusshSessionTransport, min_file_size: u64) -> Self {
+    fn new(
+        transport: RusshSessionTransport,
+        min_file_size: u64,
+        preserve_xattrs: bool,
+        fail_on_metadata_loss: bool,
+    ) -> Self {
         let flag = Arc::new(AtomicBool::new(false));
         Self {
             transport,
@@ -1290,6 +1321,8 @@ impl AerorsyncBatch {
             files_transferred: AtomicU64::new(0),
             bytes_on_wire: AtomicU64::new(0),
             cancel_observed: flag,
+            preserve_xattrs,
+            fail_on_metadata_loss,
         }
     }
 
@@ -1386,7 +1419,7 @@ impl DeltaBatch for AerorsyncBatch {
             self.min_file_size,
             preamble_profile.clone(),
             None,
-            false,
+            self.preserve_xattrs,
         )
         .await;
         if let Err(ref e) = first {
@@ -1424,7 +1457,7 @@ impl DeltaBatch for AerorsyncBatch {
                     self.min_file_size,
                     preamble_profile,
                     None,
-                    false,
+                    self.preserve_xattrs,
                 )
                 .await?
             }
@@ -1457,8 +1490,8 @@ impl DeltaBatch for AerorsyncBatch {
             local_path,
             preamble_profile.clone(),
             None,
-            false,
-            false,
+            self.preserve_xattrs,
+            self.fail_on_metadata_loss,
         )
         .await;
         if let Err(ref e) = first {
@@ -1492,8 +1525,8 @@ impl DeltaBatch for AerorsyncBatch {
                     local_path,
                     preamble_profile,
                     None,
-                    false,
-                    false,
+                    self.preserve_xattrs,
+                    self.fail_on_metadata_loss,
                 )
                 .await?
             }
@@ -4339,11 +4372,53 @@ PY"#
         path
     }
 
+    /// R3: a batch must carry the transport's xattr negotiation. Before this
+    /// the four `do_upload` / `do_download` call sites inside
+    /// `impl DeltaBatch for AerorsyncBatch` passed `false` literals, so a
+    /// caller that built the transport with `.with_xattrs(true)` and then
+    /// used the **batch** path lost the attributes with no warning, which is
+    /// exactly the silent metadata loss `fail_on_metadata_loss` exists to
+    /// make audible.
+    ///
+    /// This pins the inheritance, which is all a unit test can reach here:
+    /// the call sites themselves need a live peer. They now read `self`
+    /// with no boolean literal left between the transport and the wire.
+    #[test]
+    fn batch_inherits_the_transport_xattr_policy() {
+        let cfg = crate::aerorsync::russh_session_transport::test_dummy_config();
+        let base = AerorsyncDeltaTransport::new(cfg.clone(), 1);
+        assert_eq!(
+            base.xattr_policy(),
+            (false, false),
+            "default must stay off: frozen wire oracles depend on it"
+        );
+
+        let opted_in = AerorsyncDeltaTransport::new(cfg.clone(), 1).with_xattrs(true);
+        assert_eq!(opted_in.xattr_policy(), (true, false));
+
+        let hard = AerorsyncDeltaTransport::new(cfg, 1)
+            .with_xattrs(true)
+            .with_fail_on_metadata_loss(true);
+        assert_eq!(hard.xattr_policy(), (true, true));
+
+        let (preserve_xattrs, fail_on_metadata_loss) = hard.xattr_policy();
+        let transport = RusshSessionTransport::test_with_empty_handle(
+            crate::aerorsync::russh_session_transport::test_dummy_config(),
+            1,
+        );
+        let batch = AerorsyncBatch::new(transport, 1, preserve_xattrs, fail_on_metadata_loss);
+        assert!(batch.preserve_xattrs, "batch dropped -X on the floor");
+        assert!(
+            batch.fail_on_metadata_loss,
+            "batch dropped fail_on_metadata_loss on the floor"
+        );
+    }
+
     #[tokio::test]
     async fn aerorsync_batch_reuses_ssh_session() {
         let cfg = crate::aerorsync::russh_session_transport::test_dummy_config();
         let transport = RusshSessionTransport::test_with_empty_handle(cfg, 1);
-        let mut batch = AerorsyncBatch::new(transport, 1);
+        let mut batch = AerorsyncBatch::new(transport, 1, false, false);
         let dir = fresh_tempdir();
         let local = write_test_file(&dir, "batch_reuse.bin", b"1234567890");
 
@@ -4360,7 +4435,7 @@ PY"#
     async fn aerorsync_batch_per_file_open_raw_stream_count_equals_file_count() {
         let cfg = crate::aerorsync::russh_session_transport::test_dummy_config();
         let transport = RusshSessionTransport::test_with_empty_handle(cfg, 1);
-        let mut batch = AerorsyncBatch::new(transport, 1);
+        let mut batch = AerorsyncBatch::new(transport, 1, false, false);
         let dir = fresh_tempdir();
         let a = write_test_file(&dir, "a.bin", b"AAAA");
         let b = write_test_file(&dir, "b.bin", b"BBBB");
@@ -4378,7 +4453,7 @@ PY"#
     async fn aerorsync_batch_finalize_returns_session_count_one_on_perfect_reuse() {
         let cfg = crate::aerorsync::russh_session_transport::test_dummy_config();
         let transport = RusshSessionTransport::test_with_empty_handle(cfg, 1);
-        let batch = AerorsyncBatch::new(transport, 1);
+        let batch = AerorsyncBatch::new(transport, 1, false, false);
 
         let stats = Box::new(batch)
             .finalize()
@@ -4395,7 +4470,7 @@ PY"#
         // transport state before finalize.
         let cfg = crate::aerorsync::russh_session_transport::test_dummy_config();
         let transport = RusshSessionTransport::test_with_empty_handle(cfg, 1);
-        let batch = AerorsyncBatch::new(transport, 1);
+        let batch = AerorsyncBatch::new(transport, 1, false, false);
         batch.transport.test_set_handshake_count(2);
 
         let stats = Box::new(batch)
