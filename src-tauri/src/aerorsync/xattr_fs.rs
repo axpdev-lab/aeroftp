@@ -154,6 +154,70 @@ pub fn read_user_xattrs(path: &Path) -> Option<Vec<XattrPair>> {
     }
 }
 
+/// Thin libc wrappers: Linux and macOS disagree on xattr signatures.
+/// Linux: listxattr(3), getxattr(4), setxattr(5, flags), removexattr(2).
+/// macOS: listxattr(4, options), getxattr/setxattr(6, position+options),
+/// removexattr(3, options). We always follow symlinks (options/flags = 0)
+/// and use position 0 (whole attribute).
+#[cfg(unix)]
+mod sys {
+    use std::os::raw::{c_char, c_void};
+
+    pub unsafe fn listxattr(path: *const c_char, list: *mut c_char, size: usize) -> isize {
+        #[cfg(any(target_os = "macos", target_os = "ios"))]
+        {
+            libc::listxattr(path, list, size, 0)
+        }
+        #[cfg(not(any(target_os = "macos", target_os = "ios")))]
+        {
+            libc::listxattr(path, list, size)
+        }
+    }
+
+    pub unsafe fn getxattr(
+        path: *const c_char,
+        name: *const c_char,
+        value: *mut c_void,
+        size: usize,
+    ) -> isize {
+        #[cfg(any(target_os = "macos", target_os = "ios"))]
+        {
+            libc::getxattr(path, name, value, size, 0, 0)
+        }
+        #[cfg(not(any(target_os = "macos", target_os = "ios")))]
+        {
+            libc::getxattr(path, name, value, size)
+        }
+    }
+
+    pub unsafe fn setxattr(
+        path: *const c_char,
+        name: *const c_char,
+        value: *const c_void,
+        size: usize,
+    ) -> i32 {
+        #[cfg(any(target_os = "macos", target_os = "ios"))]
+        {
+            libc::setxattr(path, name, value, size, 0, 0)
+        }
+        #[cfg(not(any(target_os = "macos", target_os = "ios")))]
+        {
+            libc::setxattr(path, name, value, size, 0)
+        }
+    }
+
+    pub unsafe fn removexattr(path: *const c_char, name: *const c_char) -> i32 {
+        #[cfg(any(target_os = "macos", target_os = "ios"))]
+        {
+            libc::removexattr(path, name, 0)
+        }
+        #[cfg(not(any(target_os = "macos", target_os = "ios")))]
+        {
+            libc::removexattr(path, name)
+        }
+    }
+}
+
 #[cfg(unix)]
 fn read_user_xattrs_unix(path: &Path) -> Option<Vec<XattrPair>> {
     use std::ffi::CString;
@@ -161,7 +225,7 @@ fn read_user_xattrs_unix(path: &Path) -> Option<Vec<XattrPair>> {
 
     let c_path = CString::new(path.as_os_str().as_bytes()).ok()?;
     // Size probe first (listxattr with size 0 returns needed length).
-    let needed = unsafe { libc::listxattr(c_path.as_ptr(), std::ptr::null_mut(), 0) };
+    let needed = unsafe { sys::listxattr(c_path.as_ptr(), std::ptr::null_mut(), 0) };
     if needed < 0 {
         return None;
     }
@@ -170,7 +234,7 @@ fn read_user_xattrs_unix(path: &Path) -> Option<Vec<XattrPair>> {
     }
     let mut buf = vec![0u8; needed as usize];
     let written = unsafe {
-        libc::listxattr(
+        sys::listxattr(
             c_path.as_ptr(),
             buf.as_mut_ptr() as *mut libc::c_char,
             buf.len(),
@@ -193,13 +257,13 @@ fn read_user_xattrs_unix(path: &Path) -> Option<Vec<XattrPair>> {
             continue;
         };
         let vlen =
-            unsafe { libc::getxattr(c_path.as_ptr(), c_name.as_ptr(), std::ptr::null_mut(), 0) };
+            unsafe { sys::getxattr(c_path.as_ptr(), c_name.as_ptr(), std::ptr::null_mut(), 0) };
         if vlen < 0 {
             continue;
         }
         let mut value = vec![0u8; vlen as usize];
         let got = unsafe {
-            libc::getxattr(
+            sys::getxattr(
                 c_path.as_ptr(),
                 c_name.as_ptr(),
                 value.as_mut_ptr() as *mut libc::c_void,
@@ -303,12 +367,11 @@ fn apply_xattrs_unix(
             };
         };
         let rc = unsafe {
-            libc::setxattr(
+            sys::setxattr(
                 c_path.as_ptr(),
                 c_name.as_ptr(),
                 value.as_ptr() as *const libc::c_void,
                 value.len(),
-                0,
             )
         };
         if rc != 0 {
@@ -390,16 +453,15 @@ fn probe_xattr_support(dir: &Path) -> bool {
     };
     let probe = b"1";
     let rc = unsafe {
-        libc::setxattr(
+        sys::setxattr(
             c_path.as_ptr(),
             c_name.as_ptr(),
             probe.as_ptr() as *const libc::c_void,
             probe.len(),
-            0,
         )
     };
     if rc == 0 {
-        let _ = unsafe { libc::removexattr(c_path.as_ptr(), c_name.as_ptr()) };
+        let _ = unsafe { sys::removexattr(c_path.as_ptr(), c_name.as_ptr()) };
         return true;
     }
     let err = std::io::Error::last_os_error();
@@ -505,12 +567,11 @@ mod tests {
             let c_name = CString::new("user.aeroftp.test").unwrap();
             let val = b"hello-xattr";
             let rc = unsafe {
-                libc::setxattr(
+                sys::setxattr(
                     c_path.as_ptr(),
                     c_name.as_ptr(),
                     val.as_ptr() as *const libc::c_void,
                     val.len(),
-                    0,
                 )
             };
             if rc != 0 {
