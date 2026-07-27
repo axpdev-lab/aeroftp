@@ -11,7 +11,11 @@ pub fn write_length_prefixed_frame<W: Write>(writer: &mut W, frame: &[u8]) -> io
         .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "frame too large"))?;
     writer.write_all(&len.to_be_bytes())?;
     writer.write_all(frame)?;
-    writer.flush()?;
+    // No `flush()` here. When `W` is `ssh2::Channel`, `Write::flush` maps
+    // to `libssh2_channel_flush_ex`, which discards the *read* buffer
+    // rather than pushing the send queue (see the raw-worker Write arm in
+    // `ssh_transport.rs`). Buffered writers that need an explicit flush
+    // must do it at the call site.
     Ok(())
 }
 

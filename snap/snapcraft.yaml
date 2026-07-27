@@ -1,4 +1,5 @@
 name: aeroftp
+title: AeroFTP
 version: '4.1.6'
 summary: Modern Multi-Protocol File Transfer & Cloud Client for Humans and Agents
 description: |
@@ -83,14 +84,45 @@ architectures:
 
 icon: icons/AeroFTP_simbol_color_512x512.png
 
+plugs:
+  # GPU userspace must match the host hardware/kernel.  Consume Canonical's
+  # provider instead of shipping Mesa drivers in the application snap.
+  graphics-core22:
+    interface: content
+    target: $SNAP/graphics
+    default-provider: mesa-core22
+
+layout:
+  /usr/share/libdrm:
+    bind: $SNAP/graphics/libdrm
+  /usr/share/drirc.d:
+    symlink: $SNAP/graphics/drirc.d
+  /usr/share/X11/XErrorDB:
+    symlink: $SNAP/graphics/X11/XErrorDB
+  /usr/share/X11/locale:
+    symlink: $SNAP/graphics/X11/locale
+
 apps:
   aeroftp:
+    command-chain:
+      - bin/graphics-core22-wrapper
     command: usr/bin/aeroftp
     desktop: usr/share/applications/aeroftp.desktop
+    # Keep the GTK/WebKit/OpenGL runtime wiring owned by Snapcraft.  Removing
+    # this extension in 3bf266430 left GLVND with no EGL vendor inside strict
+    # confinement and produced a blank WebKit window (issue #462).
+    extensions:
+      - gnome
     environment:
-      # WebKitGTK environment
+      # AeroFTP currently forces X11; the GNOME extension owns the remaining
+      # desktop environment, including GTK_USE_PORTAL and the GL driver paths.
       GDK_BACKEND: x11
-      GTK_USE_PORTAL: "1"
+      # WebKitGTK's accelerated compositor requires a DRI-capable X server.
+      # Strict snaps must also work on software-only/remote X servers (including
+      # the Xvfb readiness gate), where EGL otherwise leaves a live white
+      # window.  Make the reliable software compositor the Snap default rather
+      # than weakening the CI gate with a test-only override.
+      WEBKIT_DISABLE_COMPOSITING_MODE: '1'
     plugs:
       - home
       - removable-media
@@ -101,29 +133,10 @@ apps:
       - wayland
       - x11
       - opengl
+      - graphics-core22
       - audio-playback
       - unity7
       - gsettings
-
-plugs:
-  gtk-3-themes:
-    interface: content
-    target: $SNAP/data-dir/themes
-    default-provider: gtk-common-themes
-  icon-themes:
-    interface: content
-    target: $SNAP/data-dir/icons
-    default-provider: gtk-common-themes
-  sound-themes:
-    interface: content
-    target: $SNAP/data-dir/sounds
-    default-provider: gtk-common-themes
-
-layout:
-  /usr/lib/x86_64-linux-gnu/webkit2gtk-4.1:
-    symlink: $SNAP/usr/lib/x86_64-linux-gnu/webkit2gtk-4.1
-  /usr/share/xml/iso-codes:
-    symlink: $SNAP/usr/share/xml/iso-codes
 
 parts:
   aeroftp:
@@ -218,5 +231,20 @@ parts:
         done
         cp src-tauri/icons/mimetypes/${icon}.svg \
           $SNAPCRAFT_PART_INSTALL/usr/share/icons/hicolor/scalable/mimetypes/${icon}.svg || \
-          { echo "ERROR: Missing SVG icon ${icon}"; exit 1; }
+            { echo "ERROR: Missing SVG icon ${icon}"; exit 1; }
       done
+
+  # Canonical's maintained wrapper selects the provider's EGL/GL/DRI stack at
+  # runtime.  Its cleanup removes duplicate GPU libraries pulled transitively
+  # by GTK/WebKit, preventing the loader/driver ABI mix that broke swrast.
+  graphics-core22:
+    after:
+      - aeroftp
+    source: https://github.com/canonical/gpu-snap.git
+    source-commit: d2b0948e6396ca0fe57da7748dadabbe06f6f7a4
+    plugin: dump
+    override-prime: |
+      craftctl default
+      ${CRAFT_PART_SRC}/bin/graphics-core22-cleanup mesa-core22 nvidia-core22
+    prime:
+      - bin/graphics-core22-wrapper

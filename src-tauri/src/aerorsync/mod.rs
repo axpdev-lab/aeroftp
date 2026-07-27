@@ -43,5 +43,6 @@ pub mod streaming_writer;
 pub mod tests;
 pub mod transport;
 pub mod types;
+pub mod xattr_fs;
 
 pub const CURRENT_PROTOCOL_VERSION: u32 = 31;

@@ -266,6 +266,15 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends squashfs-tools binutils file
           ./ci-tools/scripts/snap-abi-check.sh "$SNAP_FILE" snap/snapcraft.yaml
+          if unsquashfs -ll "$SNAP_FILE" | grep -E '/dri/[^/]+_dri\.so|/lib(EGL|GLX)_mesa\.so'; then
+            echo "::error::the application snap still bundles Mesa drivers/loaders; graphics-core22 must provide them"
+            exit 1
+          fi
+          echo "OK: GPU userspace is supplied only by graphics-core22."
+
+      - name: Install the graphics userspace provider
+        shell: bash
+        run: sudo snap install mesa-core22
 
       - name: Gate G2 - install the snap and exercise the payload
         shell: bash
@@ -274,6 +283,7 @@ jobs:
         run: |
           set -euo pipefail
           sudo snap install --dangerous "$SNAP_FILE"
+          sudo snap connect aeroftp:graphics-core22 mesa-core22:graphics-core22
           out="$(/snap/bin/aeroftp ls --help 2>&1)" || {
             echo "::error::the rebuilt snap cannot run 'aeroftp ls --help'"
             echo "$out"
@@ -285,6 +295,31 @@ jobs:
             exit 1
           }
           sudo snap remove --purge aeroftp || true
+
+      - name: Gate G3 - confined GUI readiness under Xvfb
+        shell: bash
+        env:
+          SNAP_FILE: ${{ steps.snap-check.outputs.snap }}
+          SNAP_GUI_SCREENSHOT: ${{ runner.temp }}/snap-gui-screenshot.png
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends xvfb x11-apps imagemagick
+          sudo snap install --dangerous "$SNAP_FILE"
+          trap 'sudo snap remove --purge aeroftp || true' EXIT
+          sudo snap connect aeroftp:graphics-core22 mesa-core22:graphics-core22
+          ./ci-tools/scripts/snap-gui-check.sh
+
+      # A rebuild that publishes to the Store must leave behind the frame that
+      # justified publishing it.
+      - name: Upload the confined GUI frame
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: snap-gui-frame-${{ inputs.tag || github.sha }}
+          path: ${{ runner.temp }}/snap-gui-screenshot.png
+          if-no-files-found: warn
+          retention-days: 7
 
       # Store-only by design: published GitHub Release assets are immutable in
       # this repo (`overwrite_files: false`), so a security rebuild must not

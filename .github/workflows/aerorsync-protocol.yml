@@ -124,11 +124,47 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev \
             librsvg2-dev libssl-dev pkg-config libzstd-dev netcat-openbsd
+      # Docker Hub (registry-1.docker.io) occasionally times out on GHA runners
+      # (observed 2026-07-26 06:49Z: dial tcp ...:443: i/o timeout while loading
+      # debian:bookworm-slim metadata for Dockerfile.real-rsync-sshd). That used
+      # to paint the whole lane red before any test ran, indistinguishable from
+      # a protocol regression. Pull the base image first with its own retry so
+      # a registry blip is named in the log; then retry compose up --build.
+      # Gate stays hard: no continue-on-error — only recoverable retries.
+      - name: Pre-pull harness base image
+        shell: bash
+        run: |
+          set -u
+          for attempt in 1 2 3 4; do
+            if docker pull debian:bookworm-slim; then
+              exit 0
+            fi
+            status=$?
+            if [ "$attempt" -eq 4 ]; then
+              echo "::error::Docker Hub unreachable after ${attempt} attempts pulling debian:bookworm-slim (registry-1.docker.io). Not a protocol regression — registry/network failure."
+              exit "$status"
+            fi
+            echo "::warning::Docker Hub pull of debian:bookworm-slim failed on attempt ${attempt}/4 (registry-1.docker.io); retrying"
+            sleep $((attempt * 15))
+          done
       - name: Start real-rsync harness
         working-directory: src-tauri/src/aerorsync/capture
+        shell: bash
         run: |
+          set -u
           chmod 600 keys/id_ed25519
-          docker compose -f docker-compose.real-rsync.yml up -d --build
+          for attempt in 1 2 3; do
+            if docker compose -f docker-compose.real-rsync.yml up -d --build; then
+              exit 0
+            fi
+            status=$?
+            if [ "$attempt" -eq 3 ]; then
+              echo "::error::real-rsync harness build/start failed after ${attempt} attempts. If the log shows registry-1.docker.io / DeadlineExceeded / i/o timeout, this is Docker Hub, not a protocol regression."
+              exit "$status"
+            fi
+            echo "::warning::real-rsync harness compose up --build failed on attempt ${attempt}/3; retrying"
+            sleep $((attempt * 15))
+          done
       - name: Wait for sshd (real rsync, port 2224)
         run: |
           for i in $(seq 1 30); do

@@ -772,6 +772,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends squashfs-tools binutils file
           ./scripts/snap-abi-check.sh "$SNAP_FILE"
+          if unsquashfs -ll "$SNAP_FILE" | grep -E '/dri/[^/]+_dri\.so|/lib(EGL|GLX)_mesa\.so'; then
+            echo "::error::the application snap still bundles Mesa drivers/loaders; graphics-core22 must provide them"
+            exit 1
+          fi
+          echo "OK: GPU userspace is supplied only by graphics-core22."
 
       # ----------------------------------------------------------------------
       # Gate G2 - install the snap and run a command that actually reaches the
@@ -781,6 +786,10 @@ jobs:
       # CLI_SUBCOMMANDS (src-tauri/src/cli_dispatch.rs) execs aeroftp-cli and
       # therefore proves the payload links against the base at runtime.
       # ----------------------------------------------------------------------
+      - name: Install the graphics userspace provider
+        shell: bash
+        run: sudo snap install mesa-core22
+
       - name: Gate G2 - install the snap and exercise the payload
         shell: bash
         env:
@@ -788,6 +797,7 @@ jobs:
         run: |
           set -euo pipefail
           sudo snap install --dangerous "$SNAP_FILE"
+          sudo snap connect aeroftp:graphics-core22 mesa-core22:graphics-core22
           echo "--- aeroftp ls --help (routes to the CLI payload) ---"
           out="$(/snap/bin/aeroftp ls --help 2>&1)" || {
             echo "::error::the installed snap cannot run 'aeroftp ls --help'"
@@ -800,6 +810,36 @@ jobs:
             exit 1
           fi
           sudo snap remove --purge aeroftp || true
+
+      # ----------------------------------------------------------------------
+      # Gate G3 - launch the actual confined GUI on a disposable X server.
+      # This checks the frontend readiness log, not merely process liveness,
+      # and catches missing EGL/GLVND wiring such as issue #462.
+      # ----------------------------------------------------------------------
+      - name: Gate G3 - confined GUI readiness under Xvfb
+        shell: bash
+        env:
+          SNAP_FILE: ${{ steps.snap-check.outputs.snap }}
+          SNAP_GUI_SCREENSHOT: ${{ runner.temp }}/snap-gui-screenshot.png
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends xvfb x11-apps imagemagick
+          sudo snap install --dangerous "$SNAP_FILE"
+          trap 'sudo snap remove --purge aeroftp || true' EXIT
+          sudo snap connect aeroftp:graphics-core22 mesa-core22:graphics-core22
+          ./scripts/snap-gui-check.sh
+
+      # The captured frame is the only human-reviewable evidence that the window
+      # is not the blank one from #462; keep it on failure above all.
+      - name: Upload the confined GUI frame
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: snap-gui-frame-${{ github.sha }}
+          path: ${{ runner.temp }}/snap-gui-screenshot.png
+          if-no-files-found: warn
+          retention-days: 7
 
       # Sigstore keyless signing of the .snap: only on tags.
       - name: Install Cosign

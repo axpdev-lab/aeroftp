@@ -158,8 +158,11 @@ impl StreamingAtomicWriter {
     ///      cannot map the bits faithfully).
     ///   4. apply `mtime` (seconds + nanoseconds) to the temp via the
     ///      `filetime` crate, matching `write_atomic_chunked` semantics.
-    ///   5. `rename` temp → target.
+    ///   5. apply `xattrs` to the temp (B3 / X.4). **Before rename**, so
+    ///      a kill-9 never leaves a visible target without metadata.
+    ///   6. `rename` temp → target.
     ///
+    /// Returns any soft metadata-loss warnings (X.5 ENOTSUP path).
     /// Errors map to `WriteAtomicError::PostOpen { stage, source }` so
     /// the caller can route them through the same R3 cutover-boundary
     /// classification as `write_atomic_chunked` (a rename failure is a
@@ -170,7 +173,9 @@ impl StreamingAtomicWriter {
         self,
         mode: Option<u32>,
         mtime: Option<(i64, u32)>,
-    ) -> Result<(), WriteAtomicError> {
+        xattrs: Option<Vec<crate::aerorsync::real_wire::XattrPair>>,
+        fail_on_metadata_loss: bool,
+    ) -> Result<Vec<String>, WriteAtomicError> {
         let Self {
             target,
             temp,
@@ -178,7 +183,17 @@ impl StreamingAtomicWriter {
             bytes_written: _,
             mut committed,
         } = self;
-        let result = finalize_steps(&target, &temp, file, mode, mtime, &mut committed).await;
+        let result = finalize_steps(
+            &target,
+            &temp,
+            file,
+            mode,
+            mtime,
+            xattrs.as_deref(),
+            fail_on_metadata_loss,
+            &mut committed,
+        )
+        .await;
         if result.is_err() {
             // Best-effort cleanup; we are already on the failure path.
             let _ = fs::remove_file(&temp).await;
@@ -190,14 +205,17 @@ impl StreamingAtomicWriter {
 /// Drives the commit pipeline. Split into a free function so `finalize`
 /// can consume `self` cleanly (destructuring up front) and still recover
 /// the temp path for cleanup on the error arm.
+#[allow(clippy::too_many_arguments)]
 async fn finalize_steps(
     target: &Path,
     temp: &Path,
     mut file: tokio::fs::File,
     mode: Option<u32>,
     mtime: Option<(i64, u32)>,
+    xattrs: Option<&[crate::aerorsync::real_wire::XattrPair]>,
+    fail_on_metadata_loss: bool,
     committed: &mut bool,
-) -> Result<(), WriteAtomicError> {
+) -> Result<Vec<String>, WriteAtomicError> {
     use tokio::io::AsyncWriteExt;
 
     file.flush().await.map_err(|e| WriteAtomicError::PostOpen {
@@ -239,6 +257,23 @@ async fn finalize_steps(
         })?;
     }
 
+    // X.4: xattrs on the temp, before rename. Never after: that would
+    // open a window where the target is visible without metadata.
+    let mut warnings = Vec::new();
+    if let Some(pairs) = xattrs {
+        use crate::aerorsync::xattr_fs::{apply_xattrs, XattrApplyOutcome};
+        match apply_xattrs(temp, pairs, fail_on_metadata_loss) {
+            XattrApplyOutcome::Applied { .. } => {}
+            XattrApplyOutcome::Unsupported { warnings: w } => warnings.extend(w),
+            XattrApplyOutcome::Failed { message } => {
+                return Err(WriteAtomicError::PostOpen {
+                    stage: "xattr",
+                    source: std::io::Error::other(message),
+                });
+            }
+        }
+    }
+
     *committed = true;
     fs::rename(temp, target)
         .await
@@ -246,7 +281,7 @@ async fn finalize_steps(
             stage: "rename",
             source: e,
         })?;
-    Ok(())
+    Ok(warnings)
 }
 
 impl AsyncWrite for StreamingAtomicWriter {
@@ -303,7 +338,7 @@ mod tests {
         w.write_all(b"world").await.expect("chunk3");
         assert_eq!(w.bytes_written(), 21);
         let temp = w.temp_path().to_path_buf();
-        w.finalize(None, None).await.expect("finalize");
+        w.finalize(None, None, None, false).await.expect("finalize");
 
         let bytes = tokio::fs::read(&target).await.expect("read target");
         assert_eq!(bytes, b"hello streaming world");
@@ -323,7 +358,7 @@ mod tests {
 
         let mut w = StreamingAtomicWriter::new(&target).await.expect("new");
         w.write_all(b"NEW PAYLOAD").await.expect("write");
-        w.finalize(None, None).await.expect("finalize");
+        w.finalize(None, None, None, false).await.expect("finalize");
 
         let bytes = tokio::fs::read(&target).await.expect("read");
         assert_eq!(bytes, b"NEW PAYLOAD");
@@ -375,7 +410,7 @@ mod tests {
         w.write_all(b"data").await.expect("write");
         // Use a fixed historical timestamp so the assertion is exact.
         let mtime = (1_700_000_000_i64, 123_456_000_u32);
-        w.finalize(Some(0o600), Some(mtime))
+        w.finalize(Some(0o600), Some(mtime), None, false)
             .await
             .expect("finalize");
 
@@ -407,7 +442,7 @@ mod tests {
         assert_eq!(w.bytes_written(), 5);
         w.write_all(b"fghij").await.expect("w3");
         assert_eq!(w.bytes_written(), 10);
-        w.finalize(None, None).await.expect("finalize");
+        w.finalize(None, None, None, false).await.expect("finalize");
 
         let bytes = tokio::fs::read(&target).await.expect("read");
         assert_eq!(bytes, b"abcdefghij");
@@ -433,7 +468,9 @@ mod tests {
 
         // Build a fresh writer, finalize it, ensure the target lands.
         let w2 = StreamingAtomicWriter::new(&target).await.expect("new2");
-        w2.finalize(None, None).await.expect("finalize");
+        w2.finalize(None, None, None, false)
+            .await
+            .expect("finalize");
         assert!(target.exists(), "target landed after finalize");
     }
 
@@ -454,7 +491,7 @@ mod tests {
 
         let mut w = StreamingAtomicWriter::new(&target).await.expect("new");
         w.write_all(b"FRESH").await.expect("write");
-        w.finalize(None, None).await.expect("finalize");
+        w.finalize(None, None, None, false).await.expect("finalize");
 
         let bytes = tokio::fs::read(&target).await.expect("read");
         assert_eq!(
@@ -504,7 +541,10 @@ mod tests {
             .expect("apply_delta_streaming");
         assert_eq!(n as usize, expected.len(), "byte count matches");
         assert_eq!(writer.bytes_written(), n);
-        writer.finalize(None, None).await.expect("finalize");
+        writer
+            .finalize(None, None, None, false)
+            .await
+            .expect("finalize");
 
         let on_disk = tokio::fs::read(&target).await.expect("read target");
         assert_eq!(on_disk, expected);
@@ -537,7 +577,7 @@ mod tests {
             w.write_all(&[i; 256]).await.expect("write");
             tokio::time::sleep(Duration::from_millis(0)).await;
         }
-        w.finalize(None, None).await.expect("finalize");
+        w.finalize(None, None, None, false).await.expect("finalize");
 
         let bytes = tokio::fs::read(&target).await.expect("read");
         assert_eq!(bytes.len(), 16 * 256);

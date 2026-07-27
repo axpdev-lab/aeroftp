@@ -3770,6 +3770,48 @@ mod tests {
         ));
     }
 
+    /// Pin for known issue #3 (tracker #458): `InvalidProtocolVersion
+    /// { value: 2015297409 }` is not random garbage. It is the LE u32 of
+    /// the four bytes that follow a stock server's 4-byte protocol version
+    /// in the capability preamble — i.e. a decode that started at offset
+    /// +4 into a valid frame.
+    ///
+    /// Root cause (2026-07-26): `ssh2::Channel::flush` after the client
+    /// preamble write discarded those first 4 version bytes from the
+    /// libssh2 read buffer when the server had already replied. See the
+    /// raw-worker Write arm in `ssh_transport.rs`.
+    #[test]
+    fn invalid_protocol_version_2015297409_is_server_preamble_at_offset_4() {
+        // Alpine 3.19 / rsync 3.4.1 shape observed live against the
+        // sftp-rsync fixture (checksum algos length 0x1e = 30, starting
+        // with "xxh128..."):
+        //   20 00 00 00 | 81 ff 1e 78 78 68 ...
+        //   ^ version 32  ^ compat 0x01FF + len + first 'x'
+        let mut preamble = Vec::new();
+        preamble.extend_from_slice(&encode_protocol_version(32));
+        preamble.extend_from_slice(&[0x81, 0xff]); // varint(0x01FF)
+        preamble.push(0x1e); // checksum_algos len
+        preamble.extend_from_slice(b"xxh128 xxh3 xxh64 md5 md4 none");
+        preamble.push(0x18); // compression_algos len
+        preamble.extend_from_slice(b"zstd lz4 zlibx zlib none");
+        preamble.extend_from_slice(&0x1234_5678u32.to_le_bytes());
+        assert_eq!(&preamble[4..8], &[0x81, 0xff, 0x1e, 0x78]);
+        let misaligned = u32::from_le_bytes(preamble[4..8].try_into().unwrap());
+        assert_eq!(misaligned, 2015297409);
+        // A decoder that starts at offset 4 must hard-reject with exactly
+        // this value — the historical CI failure signature.
+        match decode_protocol_version(&preamble[4..]) {
+            Err(RealWireError::InvalidProtocolVersion { value }) => {
+                assert_eq!(value, 2015297409);
+            }
+            other => panic!("expected InvalidProtocolVersion(2015297409), got {other:?}"),
+        }
+        // Full buffer at offset 0 must still decode cleanly.
+        let decoded = decode_server_preamble(&preamble).expect("full preamble at offset 0");
+        assert_eq!(decoded.protocol_version, 32);
+        assert_eq!(decoded.compat_flags, 0x01ff);
+    }
+
     // -------------------------------------------------------------------------
     // Multiplex header
     // -------------------------------------------------------------------------
