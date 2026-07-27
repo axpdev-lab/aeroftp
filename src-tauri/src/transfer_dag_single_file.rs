@@ -2085,6 +2085,10 @@ mod tests {
         /// Part numbers whose upload fails (a scriptable first-run failure so
         /// resume tests are deterministic, not timing-based).
         multipart_failing_parts: Arc<StdMutex<std::collections::HashSet<u32>>>,
+        /// Cancelled from inside `upload_part`, after the part is counted and
+        /// before it returns, so "the cancel lands while a part is in flight"
+        /// is a fact of the call order rather than a wall-clock race.
+        cancel_during_part: Option<CancellationToken>,
     }
 
     impl SlowMockProvider {
@@ -2099,7 +2103,15 @@ mod tests {
                 multipart_aborted: Arc::new(StdMutex::new(false)),
                 multipart_part_started: Arc::new(AtomicU64::new(0)),
                 multipart_failing_parts: Arc::new(StdMutex::new(std::collections::HashSet::new())),
+                cancel_during_part: None,
             }
+        }
+
+        /// Cancel `token` from inside the first `upload_part`, so a cancellation
+        /// test never has to guess when a part is on the wire.
+        fn cancelling_during_part(mut self, token: CancellationToken) -> Self {
+            self.cancel_during_part = Some(token);
+            self
         }
 
         fn with_multipart_state(
@@ -2221,6 +2233,9 @@ mod tests {
                 )));
             }
             self.multipart_part_started.fetch_add(1, Ordering::SeqCst);
+            if let Some(token) = self.cancel_during_part.as_ref() {
+                token.cancel();
+            }
             tokio::time::sleep(std::time::Duration::from_millis(200)).await;
             Ok(UploadedPart {
                 part_number,
@@ -2374,6 +2389,7 @@ mod tests {
         let multipart_completed = Arc::new(StdMutex::new(false));
         let multipart_aborted = Arc::new(StdMutex::new(false));
         let part_started = Arc::new(AtomicU64::new(0));
+        let token = CancellationToken::new();
         let mock = SlowMockProvider::new(
             Arc::new(StdMutex::new(false)),
             Arc::new(StdMutex::new(false)),
@@ -2382,7 +2398,18 @@ mod tests {
             Arc::clone(&multipart_completed),
             Arc::clone(&multipart_aborted),
             Arc::clone(&part_started),
-        );
+        )
+        // Cancel from inside the first `upload_part`, after it has been counted
+        // and before it returns. The previous shape polled `part_started` from a
+        // spawned task and cancelled when it saw the count rise, which reads as
+        // "cancel on the observable precondition" but is still a race: the poll
+        // has a 5ms granularity against a 200ms window, so on a loaded runner the
+        // wake could land after BOTH parts had gone by, the DAG had passed its
+        // checkpoint, and the session was aborted. That is the failure this test
+        // exists to catch, so it was reporting a scheduling accident as the very
+        // regression it guards. Cancelling from the call itself makes "a part is
+        // in flight" a fact of the call order, with no timing assumption left.
+        .cancelling_during_part(token.clone());
         let arc: SharedProvider = Arc::new(Mutex::new(Some(
             Box::new(mock) as Box<dyn crate::providers::StorageProvider>
         )));
@@ -2397,25 +2424,6 @@ mod tests {
         assert_eq!(built.profile.upload_parts, 2);
         let report = Arc::new(AtomicU64::new(20));
         let observer: Arc<dyn DagObserver> = Arc::new(crate::transfer_dag::NoopDagObserver);
-
-        let token = CancellationToken::new();
-        let canceller = token.clone();
-        // Cancel on the observable precondition - a part is on the wire - not on
-        // a wall-clock guess. Time-to-first-`upload_part` has no lower bound, so
-        // a loaded runner can consume a fixed delay before the DAG ever reaches
-        // it, cancelling too early and failing the in-flight assertion below for
-        // scheduling reasons rather than a real regression. The mock holds each
-        // part for 200ms after it counts it, which is the window this lands in.
-        let started_probe = Arc::clone(&part_started);
-        tokio::spawn(async move {
-            for _ in 0..2_000 {
-                if started_probe.load(Ordering::SeqCst) >= 1 {
-                    break;
-                }
-                tokio::time::sleep(std::time::Duration::from_millis(5)).await;
-            }
-            canceller.cancel();
-        });
 
         let res = execute_single_file_dag(
             &built,
