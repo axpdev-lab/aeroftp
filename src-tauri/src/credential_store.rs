@@ -284,7 +284,7 @@ impl VaultKeyFile {
         if !path.exists() {
             return Err(CredentialError::VaultNotInitialized);
         }
-        let data = std::fs::read(&path)?;
+        let data = with_acl_repair(&path, || std::fs::read(&path))?;
         Self::from_bytes(&data)
     }
 
@@ -1375,14 +1375,14 @@ impl CredentialStore {
         // arbitrarily large allocation during deserialization. 64 MiB is far
         // above any real vault yet bounds the worst case.
         const MAX_VAULT_BYTES: u64 = 64 * 1024 * 1024;
-        let len = std::fs::metadata(path)?.len();
+        let len = with_acl_repair(path, || std::fs::metadata(path).map(|m| m.len()))?;
         if len > MAX_VAULT_BYTES {
             return Err(CredentialError::Serialization(format!(
                 "vault file too large: {} bytes (max {} bytes)",
                 len, MAX_VAULT_BYTES
             )));
         }
-        let data = std::fs::read(path)?;
+        let data = with_acl_repair(path, || std::fs::read(path))?;
         serde_json::from_slice(&data).map_err(|e| CredentialError::Serialization(e.to_string()))
     }
 
@@ -1438,6 +1438,48 @@ impl CredentialStore {
 
 // fsync_file_and_parent removed: fsync logic is now inline in write_vault/VaultKeyFile::write
 // with platform-specific handling (Windows can't open directories as files)
+
+/// Run a read against a vault file, repairing a locked-out Windows ACL once
+/// before giving up.
+///
+/// Earlier releases hardened `vault.key` / `vault.db` by shelling out to
+/// `icacls <path> /inheritance:r /grant:r %USERNAME%:F`. On a domain-joined
+/// machine the unqualified `%USERNAME%` can resolve to a local account with
+/// the same name, so inheritance was stripped and the grant landed on a
+/// different SID: the interactive user was left owning a file they could not
+/// read, write or delete. Rebooting does not help — it is an ACL, not a lock.
+///
+/// The owner keeps `WRITE_DAC` implicitly even when the DACL grants nothing,
+/// so we can restore inheritance from inside the app and carry on instead of
+/// stranding the user's credentials behind a `takeown`. On non-Windows the
+/// repair is a no-op and the original error is returned unchanged.
+fn with_acl_repair<T>(
+    path: &Path,
+    op: impl Fn() -> std::io::Result<T>,
+) -> Result<T, CredentialError> {
+    let err = match op() {
+        Ok(value) => return Ok(value),
+        Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => e,
+        Err(e) => return Err(CredentialError::Io(e)),
+    };
+    match crate::windows_acl::repair_access_if_locked(path) {
+        Ok(true) => {
+            warn!(
+                "Restored inherited permissions on {} (locked out by an earlier vault hardening)",
+                path.display()
+            );
+            op().map_err(CredentialError::Io)
+        }
+        Ok(false) => Err(CredentialError::Io(err)),
+        Err(repair_err) => {
+            warn!(
+                "Could not repair permissions on {}: {repair_err}",
+                path.display()
+            );
+            Err(CredentialError::Io(err))
+        }
+    }
+}
 
 /// Get aeroftp config directory, creating it with secure permissions if needed.
 ///
