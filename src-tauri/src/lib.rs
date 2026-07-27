@@ -90,6 +90,8 @@ pub mod duplicacy_import;
 pub mod error_correction;
 pub mod kopia_import;
 pub mod lftp_import;
+#[cfg(target_os = "linux")]
+pub mod linux_egl;
 pub mod local_bridge;
 pub mod mobaxterm_import;
 pub mod panic_safe;
@@ -17636,6 +17638,14 @@ pub fn run() {
     {
         std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
 
+        // Turn WebKit's accelerated compositor off only where EGL cannot feed
+        // it. Without a usable EGL display the compositor produces a live,
+        // "visible", permanently blank window (#462) instead of falling back,
+        // and forcing software rendering for everyone to avoid that would cost
+        // the GPU to every user whose driver was fine. Must stay here, before
+        // any GTK/WebKit initialization: WebKit reads the variable once.
+        crate::linux_egl::configure_webkit_compositing();
+
         // Route GTK file/folder pickers through xdg-desktop-portal instead of
         // the in-process GtkFileChooser. Under WebKitGTK the native chooser can
         // corrupt the GLib heap ("malloc(): unaligned fastbin chunk detected",
@@ -17854,6 +17864,12 @@ pub fn run() {
             // subscriber is already installed (unlikely in our setup) we
             // silently keep the existing one.
             let _ = tracing::subscriber::set_global_default(TracingToLogBridge);
+
+            // Replay the compositing decision taken before this logger existed
+            // (see `linux_egl::log_decision`): which path WebKit took is the
+            // first thing a blank-window report needs to answer.
+            #[cfg(target_os = "linux")]
+            crate::linux_egl::log_decision();
 
             // Register the global AppHandle so Tauri-agnostic code paths
             // (e.g. the MEGAcmd warmup notice in the provider layer) can emit
