@@ -15,7 +15,7 @@
 
 use async_trait::async_trait;
 use base64::Engine;
-use reqwest::header::{HeaderValue, AUTHORIZATION, CONTENT_TYPE};
+use reqwest::header::{HeaderValue, AUTHORIZATION, CONTENT_LENGTH, CONTENT_TYPE};
 use secrecy::{ExposeSecret, SecretString};
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -502,19 +502,24 @@ impl JottacloudProvider {
             .map_err(|e| ProviderError::ConnectionFailed(format!("Request failed: {}", e)))
     }
 
-    async fn post_with_retry(
+    /// POST with no body and no `Content-Type`.
+    ///
+    /// JFS routes a POST on a *file* URL by content type: an
+    /// `application/octet-stream` POST is an upload, so the delete/trash
+    /// parameters in the query string were never reached and the call came
+    /// back `404 Not Found` with an XML error body (#397). Command-style POSTs
+    /// (`?dl`, `?rm`, `?dlDir`, `?rmDir`, `?mv`, `?restore`) must therefore go
+    /// out bare, exactly as the reference JFS clients send them.
+    async fn post_command_with_retry(
         &mut self,
         url: &str,
-        content_type: &str,
-        body: Vec<u8>,
     ) -> Result<reqwest::Response, ProviderError> {
         self.refresh_if_needed().await?;
         let request = self
             .client
             .post(url)
             .header(AUTHORIZATION, self.auth_header())
-            .header(CONTENT_TYPE, content_type)
-            .body(body)
+            .header(CONTENT_LENGTH, "0")
             .build()
             .map_err(|e| ProviderError::ConnectionFailed(format!("Build request failed: {}", e)))?;
         send_with_retry(&self.client, request, &HttpRetryConfig::default())
@@ -1443,9 +1448,7 @@ impl StorageProvider for JottacloudProvider {
         let resolved = self.resolve_path(path);
         let url = format!("{}?mkDir=true", self.jfs_url(&resolved));
 
-        let resp = self
-            .post_with_retry(&url, "application/octet-stream", vec![])
-            .await?;
+        let resp = self.post_command_with_retry(&url).await?;
 
         if !resp.status().is_success() {
             let status = resp.status();
@@ -1493,9 +1496,7 @@ impl StorageProvider for JottacloudProvider {
             urlencoding::encode(&to_jfs)
         );
 
-        let resp = self
-            .post_with_retry(&url, "application/octet-stream", vec![])
-            .await?;
+        let resp = self.post_command_with_retry(&url).await?;
 
         if !resp.status().is_success() {
             let status = resp.status();
@@ -1723,33 +1724,49 @@ impl JottacloudProvider {
         }
     }
 
+    /// Query parameter that deletes a JFS entry.
+    ///
+    /// The file and the directory forms are *not* interchangeable: firing the
+    /// file form at a folder used to take it out of the account without ever
+    /// putting it in the recycle bin (#397, "Move to Trash hard-deletes
+    /// folders"), which is why the type decides the parameter instead of a
+    /// blind retry with the other one.
+    fn delete_param(is_dir: bool, permanent: bool) -> &'static str {
+        match (is_dir, permanent) {
+            (false, false) => "dl",
+            (false, true) => "rm",
+            (true, false) => "dlDir",
+            (true, true) => "rmDir",
+        }
+    }
+
     /// Move a file/folder to Jottacloud Trash (soft delete).
     /// POST /jfs/{...}/{path}?dl=true (file) or ?dlDir=true (directory)
     pub async fn move_to_trash(&mut self, path: &str) -> Result<(), ProviderError> {
-        let resolved = Self::normalize_path(path);
-        let url = format!("{}?dl=true", self.jfs_url(&resolved));
-        jotta_log(&format!("Moving to trash: {}", resolved));
+        // `resolve_path`, not `normalize_path`: a bare name coming from the CLI
+        // or the agent must resolve against the working directory, otherwise it
+        // silently targets a same-named entry in the account root (#397).
+        let resolved = self.resolve_path(path);
+        // Ask what it is first — see `delete_param`.
+        let is_dir = self.stat(&resolved).await?.is_dir;
+        let url = format!(
+            "{}?{}=true",
+            self.jfs_url(&resolved),
+            Self::delete_param(is_dir, false)
+        );
+        jotta_log(&format!("Moving to trash: {} (dir={})", resolved, is_dir));
 
-        let resp = self
-            .post_with_retry(&url, "application/octet-stream", vec![])
-            .await?;
+        let resp = self.post_command_with_retry(&url).await?;
 
         if !resp.status().is_success() {
-            // Try directory soft delete
-            let url_dir = format!("{}?dlDir=true", self.jfs_url(&resolved));
-            let resp_dir = self
-                .post_with_retry(&url_dir, "application/octet-stream", vec![])
-                .await?;
-            if !resp_dir.status().is_success() {
-                let status = resp_dir.status();
-                let body = resp_dir.text().await.unwrap_or_default();
-                return Err(ProviderError::ServerError(format!(
-                    "Move to trash {} failed ({}): {}",
-                    resolved,
-                    status,
-                    sanitize_api_error(&body)
-                )));
-            }
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(ProviderError::ServerError(format!(
+                "Move to trash {} failed ({}): {}",
+                resolved,
+                status,
+                sanitize_api_error(&body)
+            )));
         }
 
         jotta_log(&format!("Moved to trash: {}", resolved));
@@ -1797,9 +1814,7 @@ impl JottacloudProvider {
         let url = format!("{}?restore=true", self.trash_url(clean));
         jotta_log(&format!("Restoring from trash: {}", url));
 
-        let resp = self
-            .post_with_retry(&url, "application/octet-stream", vec![])
-            .await?;
+        let resp = self.post_command_with_retry(&url).await?;
 
         if !resp.status().is_success() {
             let status = resp.status();
@@ -1816,15 +1831,30 @@ impl JottacloudProvider {
     }
 
     /// Permanently delete an item from trash.
-    /// POST /jfs/{username}/Trash/{path}?rm=true
+    /// POST /jfs/{username}/Trash/{path}?rm=true (file) or `?rmDir=true` (folder)
     pub async fn permanent_delete_from_trash(&mut self, path: &str) -> Result<(), ProviderError> {
         let clean = path.trim_start_matches('/');
-        let url = format!("{}?rm=true", self.trash_url(clean));
+        let url = format!(
+            "{}?{}=true",
+            self.trash_url(clean),
+            Self::delete_param(false, true)
+        );
         jotta_log(&format!("Permanent delete from trash: {}", url));
 
-        let resp = self
-            .post_with_retry(&url, "application/octet-stream", vec![])
-            .await?;
+        let mut resp = self.post_command_with_retry(&url).await?;
+
+        // A trashed *folder* needs the directory form. Unlike the soft-delete
+        // path there is nothing to lose by retrying with it: both forms are
+        // permanent, so the fallback can only turn a failure into the intended
+        // purge (#397).
+        if !resp.status().is_success() {
+            let dir_url = format!(
+                "{}?{}=true",
+                self.trash_url(clean),
+                Self::delete_param(true, true)
+            );
+            resp = self.post_command_with_retry(&dir_url).await?;
+        }
 
         if !resp.status().is_success() {
             let status = resp.status();
@@ -2061,6 +2091,16 @@ mod tests {
         let mut p = JottacloudProvider::new(config);
         p.username = "user123".to_string();
         p
+    }
+
+    #[test]
+    fn delete_param_never_sends_the_file_form_at_a_folder() {
+        // #397: the file form fired at a folder took it out of the account
+        // without ever filling the recycle bin.
+        assert_eq!(JottacloudProvider::delete_param(false, false), "dl");
+        assert_eq!(JottacloudProvider::delete_param(true, false), "dlDir");
+        assert_eq!(JottacloudProvider::delete_param(false, true), "rm");
+        assert_eq!(JottacloudProvider::delete_param(true, true), "rmDir");
     }
 
     #[test]
