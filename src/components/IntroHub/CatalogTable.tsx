@@ -38,6 +38,21 @@ import {
 type CatalogColId = 'company' | 'parent' | 'region' | 'freeGb' | 'free' | 'paid' | 'health';
 type TierFilter = 'all' | 'free' | 'freecard' | 'paid';
 
+// The pricing filter is a preference, not a transient toggle (Ehud #274): it
+// survives tab switches and restarts like the view mode, the Discover category
+// and the column settings do.
+const TIER_FILTER_KEY = 'aeroftp-discover-tier';
+const TIER_FILTERS: readonly TierFilter[] = ['all', 'free', 'freecard', 'paid'];
+
+function loadTierFilter(): TierFilter {
+    try {
+        const saved = localStorage.getItem(TIER_FILTER_KEY);
+        return TIER_FILTERS.includes(saved as TierFilter) ? (saved as TierFilter) : 'all';
+    } catch {
+        return 'all';
+    }
+}
+
 const CATALOG_COLUMNS: TableColumnDef<CatalogColId>[] = [
     { id: 'company', labelKey: 'introHub.list.company', sortable: true, defaultVisible: true, defaultWidth: 200, minWidth: 140, pinnedStart: true, defaultAlign: 'left' },
     // Optional parent-company column (Ehud #274): default hidden; enable via Columns
@@ -147,7 +162,11 @@ export function CatalogTable({ companies, category, onSelectProvider, getHealth,
     const [localQuery, setLocalQuery] = useState('');
     const query = controlledQuery ?? localQuery;
     const setQuery = onQueryChange ?? setLocalQuery;
-    const [tierFilter, setTierFilter] = useState<TierFilter>('all');
+    const [tierFilter, setTierFilterState] = useState<TierFilter>(loadTierFilter);
+    const setTierFilter = useCallback((id: TierFilter) => {
+        setTierFilterState(id);
+        try { localStorage.setItem(TIER_FILTER_KEY, id); } catch { /* ignore */ }
+    }, []);
     const [showColumns, setShowColumns] = useState(false);
     const columnsBtnRef = useRef<HTMLDivElement>(null);
 

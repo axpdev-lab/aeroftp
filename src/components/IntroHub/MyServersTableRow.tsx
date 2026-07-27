@@ -46,6 +46,12 @@ interface MyServersTableRowProps {
     isDraggable?: boolean;
     isDragging?: boolean;
     isDragTarget?: boolean;
+    /** Which edge of this row the insertion line is drawn on (#453). A drop
+     *  makes the dragged profile inherit this row's index, so dragging *up*
+     *  inserts above the row ('top') and dragging *down* leaves it below
+     *  ('bottom'). Drawing the line on a fixed edge made every upward drop
+     *  look one slot off. */
+    dragTargetEdge?: 'top' | 'bottom';
     /** Position of this row in the parent's `servers` array. Lets the row
      *  bind the four parent drag callbacks to its own index without
      *  forcing the parent to re-curry on every render (issue #221). */
@@ -95,6 +101,7 @@ export const MyServersTableRow = React.memo(function MyServersTableRow({
     isDraggable,
     isDragging,
     isDragTarget,
+    dragTargetEdge = 'bottom',
     dragIndex,
     onDragStart,
     onDragEnter,
@@ -270,6 +277,24 @@ export const MyServersTableRow = React.memo(function MyServersTableRow({
         })
         : t('introHub.storageQuotaUnavailable');
 
+    // The grab zone used to be the 56px index column alone, with a grip that
+    // only shows on hover: pixel-accurate aiming for a gesture that should be
+    // forgiving, and the reason a drag "sometimes doesn't start" (#453). Every
+    // cell that carries no control is a drag handle now, so the row lifts from
+    // almost anywhere; the icon, actions and favourite cells stay clickable,
+    // and so does the health cell while its radial offers a retry.
+    // `select-none` travels with it: a leftover text selection over the source
+    // makes the engine start a text drag instead of ours.
+    const dragTd = (className: string) =>
+        isDraggable && onDragStart
+            ? {
+                className: `${className} select-none`,
+                draggable: true,
+                onDragStart: handleRowDragStart,
+                onDragEnd,
+            }
+            : { className };
+
     const renderCell = (id: MyServersTableColId): React.ReactNode => {
         switch (id) {
             case 'index':
@@ -284,7 +309,12 @@ export const MyServersTableRow = React.memo(function MyServersTableRow({
                         draggable={isDraggable}
                         onDragStart={isDraggable && onDragStart ? handleRowDragStart : undefined}
                         onDragEnd={isDraggable ? onDragEnd : undefined}
-                        className={`${cellClass} text-right text-[11px] tabular-nums text-gray-400 dark:text-gray-500 ${isDraggable ? 'cursor-grab active:cursor-grabbing' : ''}`}
+                        // `select-none`: a text selection left over from an
+                        // earlier click makes the engine start a *text* drag
+                        // instead of ours, so the grip silently refuses to
+                        // pick the row up until the selection is cleared
+                        // elsewhere (#453, "some rows won't drag anymore").
+                        className={`${cellClass} select-none text-right text-[11px] tabular-nums text-gray-400 dark:text-gray-500 ${isDraggable ? 'cursor-grab active:cursor-grabbing' : ''}`}
                         title={dragDisabledTitle || (isDraggable ? t('introHub.table.dragToReorder') : undefined)}
                     >
                         <div className="flex items-center justify-end gap-1.5">
@@ -348,7 +378,7 @@ export const MyServersTableRow = React.memo(function MyServersTableRow({
                 );
             case 'name':
                 return (
-                    <td key="name" className={`${cellClass} ${alignTd('name', 'left')}`}>
+                    <td key="name" {...(isRenaming ? { className: `${cellClass} ${alignTd('name', 'left')}` } : dragTd(`${cellClass} ${alignTd('name', 'left')}`))}>
                         {isRenaming ? (
                             <RenameInput
                                 initialValue={server.name}
@@ -374,7 +404,7 @@ export const MyServersTableRow = React.memo(function MyServersTableRow({
                 );
             case 'badges':
                 return (
-                    <td key="badges" className={`${cellClass} ${alignTd('badges', 'left')}`}>
+                    <td key="badges" {...dragTd(`${cellClass} ${alignTd('badges', 'left')}`)}>
                         <div className={`flex items-center ${alignFlex('badges', 'left')}`}>
                             <ServerBadges server={server} peerState={peerState} />
                         </div>
@@ -382,23 +412,23 @@ export const MyServersTableRow = React.memo(function MyServersTableRow({
                 );
             case 'subtitle':
                 return (
-                    <td key="subtitle" className={`${cellClass} ${alignTd('subtitle', 'left')} text-xs text-gray-500 dark:text-gray-400 truncate`}>
+                    <td key="subtitle" {...dragTd(`${cellClass} ${alignTd('subtitle', 'left')} text-xs text-gray-500 dark:text-gray-400 truncate`)}>
                         {subtitle}
                     </td>
                 );
             case 'used':
-                return <td key="used" className={`${cellClass} ${alignTd('used', 'right')} text-[11px] text-gray-500 dark:text-gray-400 tabular-nums`} title={quotaTitle}>{quotaCells.used}</td>;
+                return <td key="used" {...dragTd(`${cellClass} ${alignTd('used', 'right')} text-[11px] text-gray-500 dark:text-gray-400 tabular-nums`)} title={quotaTitle}>{quotaCells.used}</td>;
             case 'total':
-                return <td key="total" className={`${cellClass} ${alignTd('total', 'right')} text-[11px] text-gray-400 dark:text-gray-500 tabular-nums`} title={quotaTitle}>{quotaCells.total}</td>;
+                return <td key="total" {...dragTd(`${cellClass} ${alignTd('total', 'right')} text-[11px] text-gray-400 dark:text-gray-500 tabular-nums`)} title={quotaTitle}>{quotaCells.total}</td>;
             case 'pct':
-                return <td key="pct" className={`${cellClass} ${alignTd('pct', 'right')} text-[11px] font-medium tabular-nums ${quotaCells.toneText}`} title={quotaTitle}>{quotaCells.pct}</td>;
+                return <td key="pct" {...dragTd(`${cellClass} ${alignTd('pct', 'right')} text-[11px] font-medium tabular-nums ${quotaCells.toneText}`)} title={quotaTitle}>{quotaCells.pct}</td>;
             case 'saved':
-                return <td key="saved" className={`${cellClass} ${alignTd('saved', 'right')} text-[11px] text-gray-500 dark:text-gray-400 tabular-nums`} title={compressionTitle}>{compressionCells.saved}</td>;
+                return <td key="saved" {...dragTd(`${cellClass} ${alignTd('saved', 'right')} text-[11px] text-gray-500 dark:text-gray-400 tabular-nums`)} title={compressionTitle}>{compressionCells.saved}</td>;
             case 'savedpct':
-                return <td key="savedpct" className={`${cellClass} ${alignTd('savedpct', 'right')} text-[11px] text-gray-400 dark:text-gray-500 tabular-nums`} title={compressionTitle}>{compressionCells.savedpct}</td>;
+                return <td key="savedpct" {...dragTd(`${cellClass} ${alignTd('savedpct', 'right')} text-[11px] text-gray-400 dark:text-gray-500 tabular-nums`)} title={compressionTitle}>{compressionCells.savedpct}</td>;
             case 'paths':
                 return (
-                    <td key="paths" className={`${cellClass} ${alignTd('paths', 'right')}`}>
+                    <td key="paths" {...dragTd(`${cellClass} ${alignTd('paths', 'right')}`)}>
                         <div className={`flex flex-col gap-0.5 min-w-0 ${alignTd('paths', 'right')}`}>
                             {server.initialPath && (
                                 <span className={`flex items-center ${alignFlex('paths', 'right')} gap-1 text-[10px] text-gray-400 dark:text-gray-500`} title={server.initialPath}>
@@ -417,13 +447,22 @@ export const MyServersTableRow = React.memo(function MyServersTableRow({
                 );
             case 'time':
                 return (
-                    <td key="time" className={`${cellClass} ${alignTd('time', 'right')} text-[11px] text-gray-400 dark:text-gray-500 tabular-nums`}>
+                    <td key="time" {...dragTd(`${cellClass} ${alignTd('time', 'right')} text-[11px] text-gray-400 dark:text-gray-500 tabular-nums`)}>
                         {timeAgo && <span className="inline-flex items-center gap-0.5"><Clock size={9} />{timeAgo}</span>}
                     </td>
                 );
-            case 'health':
+            case 'health': {
+                // The radial becomes a real <button> when a retry is available
+                // (mirrors `interactive` in HealthRadial), and a draggable
+                // ancestor would turn the smallest pointer travel on it into a
+                // row reorder instead of the retry. So the cell is a drag
+                // handle only while it carries no control, like the icon,
+                // actions and favourite cells.
+                const healthCellClass = `${cellClass} ${alignTd('health', 'center')} text-gray-300 dark:text-gray-600`;
+                const healthIsInteractive =
+                    !isMtpDevice && !!handleRetry && (healthStatus || 'unknown') !== 'pending';
                 return (
-                    <td key="health" className={`${cellClass} ${alignTd('health', 'center')} text-gray-300 dark:text-gray-600`}>
+                    <td key="health" {...(healthIsInteractive ? { className: healthCellClass } : dragTd(healthCellClass))}>
                         <span className={`inline-flex items-center ${alignFlex('health', 'center')}`}>
                             {isMtpDevice ? (
                                 <span
@@ -447,6 +486,7 @@ export const MyServersTableRow = React.memo(function MyServersTableRow({
                         </span>
                     </td>
                 );
+            }
             case 'actions':
                 return (
                     <td key="actions" className={`${cellClass} ${alignTd('actions', 'right')}`}>
@@ -504,7 +544,7 @@ export const MyServersTableRow = React.memo(function MyServersTableRow({
             onMouseEnter={handleMouseEnter}
             onMouseLeave={handleMouseLeave}
             title={selectionTitle || undefined}
-            className={`group transition-colors ${onSelect ? 'cursor-pointer' : ''} ${isDragging ? 'opacity-40 bg-blue-50 dark:bg-blue-900/20' : isDragTarget ? '' : index % 2 === 1 ? 'bg-gray-50/30 dark:bg-white/[0.02]' : ''} hover:bg-gray-100/50 dark:hover:bg-white/[0.04] ${isDragTarget ? 'border-b-2 !border-b-blue-500 bg-blue-50/50 dark:bg-blue-900/15' : ''} ${selectionRingClass}`}
+            className={`group transition-colors ${onSelect ? 'cursor-pointer' : ''} ${isDragging ? 'opacity-40 bg-blue-50 dark:bg-blue-900/20' : isDragTarget ? '' : index % 2 === 1 ? 'bg-gray-50/30 dark:bg-white/[0.02]' : ''} hover:bg-gray-100/50 dark:hover:bg-white/[0.04] ${isDragTarget ? `${dragTargetEdge === 'top' ? 'border-t-2 !border-t-blue-500' : 'border-b-2 !border-b-blue-500'} bg-blue-50/50 dark:bg-blue-900/15` : ''} ${selectionRingClass}`}
         >
             {orderedColumns.map(col => renderCell(col.id))}
         </tr>

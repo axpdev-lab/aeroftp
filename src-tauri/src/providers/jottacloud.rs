@@ -15,7 +15,7 @@
 
 use async_trait::async_trait;
 use base64::Engine;
-use reqwest::header::{HeaderValue, AUTHORIZATION, CONTENT_TYPE};
+use reqwest::header::{HeaderValue, AUTHORIZATION, CONTENT_LENGTH, CONTENT_TYPE};
 use secrecy::{ExposeSecret, SecretString};
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -29,6 +29,8 @@ use super::{
 
 const JFS_BASE: &str = "https://jfs.jottacloud.com/jfs";
 const API_BASE: &str = "https://api.jottacloud.com";
+/// The recycle bin is a mountpoint of the device, alongside Archive and Sync.
+const TRASH_MOUNTPOINT: &str = "Trash";
 
 fn jotta_log(msg: &str) {
     info!("[JOTTACLOUD] {}", msg);
@@ -502,19 +504,24 @@ impl JottacloudProvider {
             .map_err(|e| ProviderError::ConnectionFailed(format!("Request failed: {}", e)))
     }
 
-    async fn post_with_retry(
+    /// POST with no body and no `Content-Type`.
+    ///
+    /// JFS routes a POST on a *file* URL by content type: an
+    /// `application/octet-stream` POST is an upload, so the delete/trash
+    /// parameters in the query string were never reached and the call came
+    /// back `404 Not Found` with an XML error body (#397). Command-style POSTs
+    /// (`?dl`, `?rm`, `?dlDir`, `?rmDir`, `?mv`, `?restore`) must therefore go
+    /// out bare, exactly as the reference JFS clients send them.
+    async fn post_command_with_retry(
         &mut self,
         url: &str,
-        content_type: &str,
-        body: Vec<u8>,
     ) -> Result<reqwest::Response, ProviderError> {
         self.refresh_if_needed().await?;
         let request = self
             .client
             .post(url)
             .header(AUTHORIZATION, self.auth_header())
-            .header(CONTENT_TYPE, content_type)
-            .body(body)
+            .header(CONTENT_LENGTH, "0")
             .build()
             .map_err(|e| ProviderError::ConnectionFailed(format!("Build request failed: {}", e)))?;
         send_with_retry(&self.client, request, &HttpRetryConfig::default())
@@ -656,12 +663,20 @@ impl JottacloudProvider {
         let mut reader = Reader::from_str(xml);
         reader.config_mut().trim_text(true);
         let mut buf = Vec::new();
+        // JFS nests the name as a child element:
+        //   <mountPoints><mountPoint><name>Archive</name>...
+        // Reading only a `name` attribute made discovery return an empty list
+        // against the live API, silently falling back to the configured
+        // mountpoint (#397). Both shapes are accepted now.
+        let mut in_mount_point = false;
+        let mut in_name = false;
 
         loop {
             match reader.read_event_into(&mut buf) {
                 Ok(Event::Start(ref e)) | Ok(Event::Empty(ref e)) => {
                     let tag = String::from_utf8_lossy(e.name().as_ref()).to_string();
                     if tag == "mountPoint" {
+                        in_mount_point = true;
                         for attr in e.attributes().flatten() {
                             if attr.key.as_ref() == b"name" {
                                 // Account-level mountpoint name: an identifier,
@@ -672,6 +687,22 @@ impl JottacloudProvider {
                                 }
                             }
                         }
+                    } else if tag == "name" && in_mount_point {
+                        in_name = true;
+                    }
+                }
+                Ok(Event::Text(ref e)) if in_name => {
+                    let name = String::from_utf8_lossy(e.as_ref()).trim().to_string();
+                    if !name.is_empty() && !names.contains(&name) {
+                        names.push(name);
+                    }
+                }
+                Ok(Event::End(ref e)) => {
+                    let tag = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                    if tag == "mountPoint" {
+                        in_mount_point = false;
+                    } else if tag == "name" {
+                        in_name = false;
                     }
                 }
                 Ok(Event::Eof) => break,
@@ -860,6 +891,16 @@ impl JottacloudProvider {
                                         ProviderType::Jottacloud,
                                         &super::xml_text::attr_value(&attr),
                                     );
+                                }
+                                // A trashed file stays in its folder listing as a
+                                // tombstone carrying `deleted="<timestamp>"`, the
+                                // same marker the folder branch already honours.
+                                // Only the `<deleted>` *element* form was checked
+                                // here, so a file moved to the recycle bin kept
+                                // showing as live and the delete looked like a
+                                // no-op (#397).
+                                if attr.key.as_ref() == b"deleted" {
+                                    current_deleted = true;
                                 }
                             }
                         }
@@ -1443,9 +1484,7 @@ impl StorageProvider for JottacloudProvider {
         let resolved = self.resolve_path(path);
         let url = format!("{}?mkDir=true", self.jfs_url(&resolved));
 
-        let resp = self
-            .post_with_retry(&url, "application/octet-stream", vec![])
-            .await?;
+        let resp = self.post_command_with_retry(&url).await?;
 
         if !resp.status().is_success() {
             let status = resp.status();
@@ -1493,9 +1532,7 @@ impl StorageProvider for JottacloudProvider {
             urlencoding::encode(&to_jfs)
         );
 
-        let resp = self
-            .post_with_retry(&url, "application/octet-stream", vec![])
-            .await?;
+        let resp = self.post_command_with_retry(&url).await?;
 
         if !resp.status().is_success() {
             let status = resp.status();
@@ -1704,12 +1741,20 @@ impl StorageProvider for JottacloudProvider {
 // ─── Jottacloud-specific methods (trash management) ──────────────────────
 
 impl JottacloudProvider {
-    /// Build JFS URL for the trash: /jfs/{username}/Trash/{path}
+    /// Build JFS URL for the trash: `/jfs/{username}/{device}/Trash/{path}`.
+    ///
+    /// Trash is a **mountpoint of the device**, a sibling of Archive and Sync,
+    /// exactly like the mountpoint the profile browses. The URL used to omit
+    /// the device segment, which makes JFS read `Trash` as a *device* name: no
+    /// such device exists, the request 404s, and `list_trash` reports the 404
+    /// as an empty bin, so the trash always looked empty however many items
+    /// were in it (#397).
     fn trash_url(&self, path: &str) -> String {
         let clean = path.trim_start_matches('/');
         let user = urlencoding::encode(&self.username);
+        let device = urlencoding::encode(&self.config.device);
         if clean.is_empty() {
-            format!("{}/{}/Trash", JFS_BASE, user)
+            format!("{}/{}/{}/{}", JFS_BASE, user, device, TRASH_MOUNTPOINT)
         } else {
             let encoded_path: String = clean
                 .split('/')
@@ -1719,37 +1764,56 @@ impl JottacloudProvider {
                 })
                 .collect::<Vec<_>>()
                 .join("/");
-            format!("{}/{}/Trash/{}", JFS_BASE, user, encoded_path)
+            format!(
+                "{}/{}/{}/{}/{}",
+                JFS_BASE, user, device, TRASH_MOUNTPOINT, encoded_path
+            )
+        }
+    }
+
+    /// Query parameter that deletes a JFS entry.
+    ///
+    /// The file and the directory forms are *not* interchangeable: firing the
+    /// file form at a folder used to take it out of the account without ever
+    /// putting it in the recycle bin (#397, "Move to Trash hard-deletes
+    /// folders"), which is why the type decides the parameter instead of a
+    /// blind retry with the other one.
+    fn delete_param(is_dir: bool, permanent: bool) -> &'static str {
+        match (is_dir, permanent) {
+            (false, false) => "dl",
+            (false, true) => "rm",
+            (true, false) => "dlDir",
+            (true, true) => "rmDir",
         }
     }
 
     /// Move a file/folder to Jottacloud Trash (soft delete).
     /// POST /jfs/{...}/{path}?dl=true (file) or ?dlDir=true (directory)
     pub async fn move_to_trash(&mut self, path: &str) -> Result<(), ProviderError> {
-        let resolved = Self::normalize_path(path);
-        let url = format!("{}?dl=true", self.jfs_url(&resolved));
-        jotta_log(&format!("Moving to trash: {}", resolved));
+        // `resolve_path`, not `normalize_path`: a bare name coming from the CLI
+        // or the agent must resolve against the working directory, otherwise it
+        // silently targets a same-named entry in the account root (#397).
+        let resolved = self.resolve_path(path);
+        // Ask what it is first — see `delete_param`.
+        let is_dir = self.stat(&resolved).await?.is_dir;
+        let url = format!(
+            "{}?{}=true",
+            self.jfs_url(&resolved),
+            Self::delete_param(is_dir, false)
+        );
+        jotta_log(&format!("Moving to trash: {} (dir={})", resolved, is_dir));
 
-        let resp = self
-            .post_with_retry(&url, "application/octet-stream", vec![])
-            .await?;
+        let resp = self.post_command_with_retry(&url).await?;
 
         if !resp.status().is_success() {
-            // Try directory soft delete
-            let url_dir = format!("{}?dlDir=true", self.jfs_url(&resolved));
-            let resp_dir = self
-                .post_with_retry(&url_dir, "application/octet-stream", vec![])
-                .await?;
-            if !resp_dir.status().is_success() {
-                let status = resp_dir.status();
-                let body = resp_dir.text().await.unwrap_or_default();
-                return Err(ProviderError::ServerError(format!(
-                    "Move to trash {} failed ({}): {}",
-                    resolved,
-                    status,
-                    sanitize_api_error(&body)
-                )));
-            }
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(ProviderError::ServerError(format!(
+                "Move to trash {} failed ({}): {}",
+                resolved,
+                status,
+                sanitize_api_error(&body)
+            )));
         }
 
         jotta_log(&format!("Moved to trash: {}", resolved));
@@ -1757,7 +1821,8 @@ impl JottacloudProvider {
     }
 
     /// List items in Jottacloud Trash.
-    /// Trash is at /jfs/{username}/Trash (device-less, mountpoint-less).
+    /// Trash is at /jfs/{username}/{device}/Trash: it is a mountpoint of the
+    /// device, so the device segment is required (see `trash_url`).
     pub async fn list_trash(&mut self) -> Result<Vec<RemoteEntry>, ProviderError> {
         let url = self.trash_url("");
         jotta_log(&format!("Listing trash: {}", url));
@@ -1791,15 +1856,13 @@ impl JottacloudProvider {
     }
 
     /// Restore an item from trash to its original location.
-    /// POST /jfs/{username}/Trash/{path}?restore=true
+    /// POST /jfs/{username}/{device}/Trash/{path}?restore=true
     pub async fn restore_from_trash(&mut self, path: &str) -> Result<(), ProviderError> {
         let clean = path.trim_start_matches('/');
         let url = format!("{}?restore=true", self.trash_url(clean));
         jotta_log(&format!("Restoring from trash: {}", url));
 
-        let resp = self
-            .post_with_retry(&url, "application/octet-stream", vec![])
-            .await?;
+        let resp = self.post_command_with_retry(&url).await?;
 
         if !resp.status().is_success() {
             let status = resp.status();
@@ -1816,15 +1879,30 @@ impl JottacloudProvider {
     }
 
     /// Permanently delete an item from trash.
-    /// POST /jfs/{username}/Trash/{path}?rm=true
+    /// POST /jfs/{username}/{device}/Trash/{path}?rm=true (file) or `?rmDir=true` (folder)
     pub async fn permanent_delete_from_trash(&mut self, path: &str) -> Result<(), ProviderError> {
         let clean = path.trim_start_matches('/');
-        let url = format!("{}?rm=true", self.trash_url(clean));
+        let url = format!(
+            "{}?{}=true",
+            self.trash_url(clean),
+            Self::delete_param(false, true)
+        );
         jotta_log(&format!("Permanent delete from trash: {}", url));
 
-        let resp = self
-            .post_with_retry(&url, "application/octet-stream", vec![])
-            .await?;
+        let mut resp = self.post_command_with_retry(&url).await?;
+
+        // A trashed *folder* needs the directory form. Unlike the soft-delete
+        // path there is nothing to lose by retrying with it: both forms are
+        // permanent, so the fallback can only turn a failure into the intended
+        // purge (#397).
+        if !resp.status().is_success() {
+            let dir_url = format!(
+                "{}?{}=true",
+                self.trash_url(clean),
+                Self::delete_param(true, true)
+            );
+            resp = self.post_command_with_retry(&dir_url).await?;
+        }
 
         if !resp.status().is_success() {
             let status = resp.status();
@@ -2064,6 +2142,16 @@ mod tests {
     }
 
     #[test]
+    fn delete_param_never_sends_the_file_form_at_a_folder() {
+        // #397: the file form fired at a folder took it out of the account
+        // without ever filling the recycle bin.
+        assert_eq!(JottacloudProvider::delete_param(false, false), "dl");
+        assert_eq!(JottacloudProvider::delete_param(true, false), "dlDir");
+        assert_eq!(JottacloudProvider::delete_param(false, true), "rm");
+        assert_eq!(JottacloudProvider::delete_param(true, true), "rmDir");
+    }
+
+    #[test]
     fn normalize_path_trims_and_normalizes_separators() {
         assert_eq!(JottacloudProvider::normalize_path(""), "/");
         assert_eq!(JottacloudProvider::normalize_path("/"), "/");
@@ -2101,6 +2189,21 @@ mod tests {
             p.jfs_url("no-slash/path"),
             format!("{}/user123/Jotta/Archive/no-slash/path", JFS_BASE)
         );
+    }
+
+    #[test]
+    fn trash_url_keeps_the_device_segment() {
+        // Trash is a mountpoint of the device, a sibling of Archive. Without the
+        // device segment JFS reads `Trash` as a device name, 404s, and the bin
+        // reads as empty however many items are in it (#397).
+        let p = test_provider();
+        assert_eq!(p.trash_url(""), format!("{}/user123/Jotta/Trash", JFS_BASE));
+        assert_eq!(
+            p.trash_url("/photo.jpg"),
+            format!("{}/user123/Jotta/Trash/photo.jpg", JFS_BASE)
+        );
+        // The mountpoint the profile browses never appears in a trash URL.
+        assert!(!p.trash_url("/photo.jpg").contains("Archive"));
     }
 
     #[test]
@@ -2173,6 +2276,33 @@ mod tests {
     }
 
     #[test]
+    fn parse_mountpoint_names_reads_the_live_child_element_shape() {
+        // Captured from the live API (#397): the name is a child element, not an
+        // attribute, and the previous attribute-only reader returned an empty
+        // list here while the account clearly had mountpoints.
+        let xml = r#"<device time="2026-07-27-T07:19:53Z">
+          <name xml:space="preserve">Jotta</name>
+          <user>4smczzcts33jjedcplkqrorq</user>
+          <mountPoints>
+            <mountPoint>
+              <name xml:space="preserve">Archive</name>
+              <size></size>
+            </mountPoint>
+            <mountPoint>
+              <name xml:space="preserve">Sync</name>
+            </mountPoint>
+            <mountPoint>
+              <name xml:space="preserve">Trash</name>
+            </mountPoint>
+          </mountPoints>
+        </device>"#;
+        let names = JottacloudProvider::parse_mountpoint_names(xml);
+        assert_eq!(names, vec!["Archive", "Sync", "Trash"]);
+        // The device's own <name> sits outside <mountPoints> and must not leak in.
+        assert!(!names.contains(&"Jotta".to_string()));
+    }
+
+    #[test]
     fn parse_jotta_time_normalizes_nonstandard_format() {
         // Jottacloud uses "-T" separator: parse_jotta_time should strip it
         let out = JottacloudProvider::parse_jotta_time("2023-01-15-T10:30:45+0100");
@@ -2216,6 +2346,12 @@ mod tests {
                         <size>5</size>
                     </currentRevision>
                 </file>
+                <file name="trashed-attr.jpg" uuid="88cec155-fbb0-41eb-82f1-341547d39526" deleted="2026-07-27-T07:23:35Z">
+                    <currentRevision>
+                        <state>COMPLETED</state>
+                        <size>7</size>
+                    </currentRevision>
+                </file>
             </files>
         </folder>"#;
 
@@ -2234,6 +2370,12 @@ mod tests {
         assert!(
             !names.contains(&"trashed.txt"),
             "trashed file must be skipped"
+        );
+        // The live API tombstones a trashed file with a `deleted` *attribute*,
+        // which only the folder branch used to honour (#397).
+        assert!(
+            !names.contains(&"trashed-attr.jpg"),
+            "file tombstoned by attribute must be skipped"
         );
 
         let folder = entries.iter().find(|e| e.name == "Photos").unwrap();

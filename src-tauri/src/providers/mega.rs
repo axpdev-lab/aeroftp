@@ -752,22 +752,18 @@ impl StorageProvider for MegaCmdProvider {
     }
 
     async fn rmdir(&mut self, p: &str) -> Result<(), ProviderError> {
-        let p = self.resolve_path(p);
-        // Issue #263: `-f` is mandatory in the one-shot wrapper path. Without
-        // it MEGAcmd's recursive `rm` prompts "Are you sure?" on stdin, the
-        // wrapper has no tty/stdin attached, and the call hangs until the
-        // 60s outer timeout in `run_mega_cmd` kills it.
-        self.run_mega_cmd_with_reauth("mega-rm", &["-r", "-f", &p])
-            .await?;
-        Ok(())
+        // Soft delete, exactly like `delete()` does for files. This used to be
+        // `mega-rm -r -f`, which bypasses the Rubbish Bin, so deleting a file
+        // was recoverable but deleting a folder was not — on the same account,
+        // through the same UI (#397). Permanent purge stays on
+        // `delete_permanent` and the trash manager.
+        self.move_to_trash(p).await
     }
 
     async fn rmdir_recursive(&mut self, p: &str) -> Result<(), ProviderError> {
-        let p = self.resolve_path(p);
-        // Issue #263: see `rmdir` above for the rationale on `-f`.
-        self.run_mega_cmd_with_reauth("mega-rm", &["-r", "-f", &p])
-            .await?;
-        Ok(())
+        // `mega-mv` takes the whole subtree with it, so recursive and
+        // non-recursive collapse to the same call — see `rmdir` above.
+        self.move_to_trash(p).await
     }
 
     async fn delete_permanent(&mut self, path: &str) -> Result<bool, ProviderError> {

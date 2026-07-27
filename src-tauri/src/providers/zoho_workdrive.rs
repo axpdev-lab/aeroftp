@@ -498,6 +498,22 @@ const ZOHO_NATIVE_EXPORT_MAP: &[(&str, &str, &str, &str)] = &[
     ("presentation", "show", "pptx", ".pptx"),
 ];
 
+/// Body of a relocation (`PATCH {api_base}/files`).
+///
+/// WorkDrive has no per-file `/files/{id}/move` route: that URL is rejected by
+/// the API gateway itself with `F6016 — URL Rule is not configured` (#451).
+/// Relocating is a bulk metadata write on the *collection* endpoint, so `data`
+/// is an array and each element carries its own item id.
+fn move_request_body(file_id: &str, parent_id: &str) -> serde_json::Value {
+    serde_json::json!({
+        "data": [{
+            "attributes": { "parent_id": parent_id },
+            "id": file_id,
+            "type": "files"
+        }]
+    })
+}
+
 /// Check if file extension is a Zoho native document, return export info
 fn zoho_native_export_info(extn: &str) -> Option<(&'static str, &'static str, &'static str)> {
     let lower = extn.to_lowercase();
@@ -2744,16 +2760,8 @@ impl StorageProvider for ZohoWorkdriveProvider {
 
         // Step 1: Move to new folder if cross-folder operation
         if is_cross_folder {
-            let move_body = serde_json::json!({
-                "data": {
-                    "attributes": {
-                        "parent_id": to_parent_id
-                    },
-                    "type": "files"
-                }
-            });
-
-            let url = format!("{}/files/{}/move", self.api_base(), file.id);
+            let move_body = move_request_body(&file.id, &to_parent_id);
+            let url = format!("{}/files", self.api_base());
             let request = self
                 .client
                 .patch(&url)
@@ -3560,6 +3568,21 @@ mod tests {
         assert_eq!(c.api_base(), "https://www.zohoapis.eu/workdrive/api/v1");
         let c = config("us");
         assert_eq!(c.api_base(), "https://www.zohoapis.com/workdrive/api/v1");
+    }
+
+    #[test]
+    fn move_request_body_targets_the_collection_endpoint_shape() {
+        // Regression for #451: a per-file `/files/{id}/move` PATCH is refused by
+        // the gateway (F6016). The relocation is a bulk write, so `data` must be
+        // an array whose element carries the id — not a bare object.
+        let body = move_request_body("file-123", "folder-456");
+        let items = body["data"].as_array().expect("data must be an array");
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0]["id"], "file-123");
+        assert_eq!(items[0]["type"], "files");
+        assert_eq!(items[0]["attributes"]["parent_id"], "folder-456");
+        // The id belongs to the element, never to the envelope.
+        assert!(body.get("id").is_none());
     }
 
     #[test]

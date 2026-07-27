@@ -13305,28 +13305,11 @@ const App: React.FC = () => {
       {
         label: t('contextMenu.properties'), icon: <Info size={14} />, action: () => openRemoteProperties('general')
       },
-      { label: ['zohoworkdrive', 'opendrive'].includes(currentProtocol || '') ? t('contextMenu.moveToTrash') : (currentProtocol === 'github' || currentProtocol === 'gitlab') ? t('github.deleteCommit') : t('contextMenu.delete'), icon: currentProtocol === 'github' ? <Github size={14} className="text-red-500" /> : currentProtocol === 'gitlab' ? <GitLabLogo size={14} /> : <Trash2 size={14} />, action: () => deleteMultipleRemoteFiles(filesToUse), danger: true, divider: !['jottacloud', 'mega', 'googledrive', 'box', 'dropbox', 'onedrive', 'zohoworkdrive', 'opendrive'].includes(currentProtocol || '') },
-      // Jottacloud: Move to Trash (soft delete: recoverable, separate from hard delete above)
-      ...(currentProtocol === 'jottacloud' ? [{
-        label: t('contextMenu.moveToTrash'),
-        icon: <Trash2 size={14} className="text-orange-500" />,
-        action: async () => {
-          try {
-            const paths = filesToUse.map(name => {
-              const f = remoteFiles.find(rf => rf.name === name);
-              return f?.path || `${currentRemotePath === '/' ? '' : currentRemotePath}/${name}`;
-            });
-            const logId = humanLog.logRaw('activity.trash_move_start', 'DELETE', { provider: 'Jottacloud', filename: filesToUse.join(', ') }, 'running');
-            await invoke('jottacloud_move_to_trash', { paths });
-            humanLog.updateEntry(logId, { status: 'success', message: `[Jottacloud] Moved ${paths.length} item(s) to trash` });
-            notify.success(t('toast.movedToTrash', { count: paths.length }));
-            loadRemoteFiles(undefined, true);
-          } catch (err) {
-            notify.error(t('toast.moveToTrashFailed'), String(err));
-          }
-        },
-        divider: true,
-      }] : []),
+      { label: ['zohoworkdrive', 'opendrive', 'jottacloud'].includes(currentProtocol || '') ? t('contextMenu.moveToTrash') : (currentProtocol === 'github' || currentProtocol === 'gitlab') ? t('github.deleteCommit') : t('contextMenu.delete'), icon: currentProtocol === 'github' ? <Github size={14} className="text-red-500" /> : currentProtocol === 'gitlab' ? <GitLabLogo size={14} /> : <Trash2 size={14} />, action: () => deleteMultipleRemoteFiles(filesToUse), danger: true, divider: !['jottacloud', 'mega', 'googledrive', 'box', 'dropbox', 'onedrive', 'zohoworkdrive', 'opendrive'].includes(currentProtocol || '') },
+      // Jottacloud: Delete now does soft-delete (Trash mountpoint) via the trait,
+      // so the separate "Move to Trash" item was a second button doing exactly
+      // the same call; the entry above carries the honest label instead (#397).
+      // Purging for good stays in the trash manager.
       // MEGA: Move to Trash (soft delete: recoverable via Rubbish Bin)
       // MEGA: Delete now does soft-delete (move to //bin/) via the trait: no separate menu item needed
       // Google Drive: Delete now does soft-delete (trash) via the trait: no separate menu item needed

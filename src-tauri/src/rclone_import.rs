@@ -1507,7 +1507,7 @@ pub fn export_rclone(
             }
             "webdav" => {
                 output.push_str("type = webdav\n");
-                // Nextcloud-derived presets (Tab.digital, FeliCloud, generic
+                // Nextcloud-derived presets (TAB.DIGITAL, FeliCloud, generic
                 // Nextcloud) speak the same WebDAV dialect as upstream
                 // Nextcloud. Mapping them to vendor=nextcloud lets rclone
                 // use the correct chunked-upload + checksum behaviour.
@@ -1544,7 +1544,7 @@ pub fn export_rclone(
                 };
                 // Resolve {username} template that Nextcloud-derived
                 // presets store verbatim in the URL or initial path
-                // (Tab.digital, FeliCloud).
+                // (TAB.DIGITAL, FeliCloud).
                 let url = url.replace("{username}", &server.username);
                 // rclone's `nextcloud`/`owncloud` vendors do not auto-discover
                 // the DAV collection root the way AeroFTP does at connect time

@@ -305,6 +305,12 @@ export function MyServersTable({
                                 isDraggable={canDrag}
                                 isDragging={dragIdx === realIdx}
                                 isDragTarget={overIdx === realIdx && dragIdx !== null && dragIdx !== realIdx}
+                                // A drop makes the dragged profile inherit this
+                                // row's index: coming from below it lands above
+                                // the row, coming from above it lands below it.
+                                // The line follows that, so what the user sees is
+                                // where the profile ends up (#453).
+                                dragTargetEdge={dragIdx !== null && dragIdx > realIdx ? 'top' : 'bottom'}
                                 dragIndex={realIdx}
                                 onDragStart={canDrag ? onDragStart : undefined}
                                 onDragEnter={canDrag ? onDragEnter : undefined}

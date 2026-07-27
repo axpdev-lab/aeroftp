@@ -421,15 +421,37 @@ pub async fn import_bridge_config(source: String, file_path: String) -> Result<V
 /// `client_id`/`client_secret`. The GUI stores them under the raw protocol
 /// (`oauth_googledrive_client_id`, ...) with Google Photos aliased onto Google
 /// Drive's app, distinct from the per-profile token slug used by
-/// `oauth_vault_slug_for_protocol`. Returns `Some` only for the OAuth-token
-/// providers AeroFTP actually exports to rclone, so callers can also use it as
-/// the "is this an rclone-exportable OAuth provider?" predicate. `None` for
-/// non-OAuth protocols and for the ones we deliberately gate (jottacloud/zoho).
+/// `oauth_vault_slug_for_protocol`. `None` for non-OAuth protocols and for
+/// Jottacloud, which has no OAuth app at all (it authenticates with a personal
+/// login token).
+///
+/// This is the rclone-facing view: it answers "can this profile become an
+/// rclone remote that refreshes on its own?", so it stays limited to the
+/// backends rclone actually has. Use [`oauth_client_cred_key`] for the native
+/// `.aeroftp` export, which is about the vault and not about rclone.
 pub fn rclone_oauth_client_cred_key(protocol: &str) -> Option<&'static str> {
+    match protocol.to_lowercase().as_str() {
+        // rclone has no Zoho WorkDrive backend, so a Zoho profile is not
+        // rclone-exportable even though it does have app credentials.
+        "zohoworkdrive" => None,
+        other => oauth_client_cred_key(other),
+    }
+}
+
+/// Every provider whose BYO OAuth app credentials live in the vault under
+/// `oauth_<slug>_client_id` / `_client_secret`, rclone-exportable or not.
+///
+/// Zoho WorkDrive belongs here and was missing: its app credentials are a vault
+/// singleton exactly like the others (read at connect time through
+/// `load_oauth_client_config`), so a `.aeroftp` profile export carried the Zoho
+/// token but not the app that can refresh it, and an imported profile failed its
+/// first refresh with an unparseable Zoho error instead of connecting.
+pub fn oauth_client_cred_key(protocol: &str) -> Option<&'static str> {
     match protocol.to_lowercase().as_str() {
         "googledrive" | "googlephotos" => Some("googledrive"),
         "dropbox" => Some("dropbox"),
         "onedrive" => Some("onedrive"),
+        "zohoworkdrive" => Some("zohoworkdrive"),
         "box" => Some("box"),
         "pcloud" => Some("pcloud"),
         "yandexdisk" => Some("yandexdisk"),
@@ -826,6 +848,39 @@ mod tests {
         ));
         std::fs::write(&path, contents).expect("write temp fixture");
         path
+    }
+
+    #[test]
+    fn zoho_has_app_credentials_to_export_but_is_not_an_rclone_remote() {
+        // The vault-facing map must carry Zoho: its app credentials are a
+        // singleton the connect path reads, and leaving them behind made an
+        // imported profile fail its first token refresh.
+        assert_eq!(
+            oauth_client_cred_key("zohoworkdrive"),
+            Some("zohoworkdrive")
+        );
+        // The rclone-facing map must not: there is no Zoho backend in rclone,
+        // and this predicate also gates "export this profile as a remote".
+        assert_eq!(rclone_oauth_client_cred_key("zohoworkdrive"), None);
+        // Every other provider answers the same on both maps.
+        for p in [
+            "googledrive",
+            "googlephotos",
+            "dropbox",
+            "onedrive",
+            "box",
+            "pcloud",
+            "yandexdisk",
+        ] {
+            assert_eq!(
+                oauth_client_cred_key(p),
+                rclone_oauth_client_cred_key(p),
+                "{p} must not diverge between the two maps"
+            );
+        }
+        // Jottacloud has no OAuth app at all (personal login token).
+        assert_eq!(oauth_client_cred_key("jottacloud"), None);
+        assert_eq!(oauth_client_cred_key("ftp"), None);
     }
 
     fn server_count(v: &Value) -> usize {
