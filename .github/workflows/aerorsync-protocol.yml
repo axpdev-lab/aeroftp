@@ -136,10 +136,15 @@ jobs:
         run: |
           set -u
           for attempt in 1 2 3 4; do
+            # Capture the status in the `else` branch: after a plain `if` with
+            # no `else`, `$?` is the status of the `if` itself, which is 0 when
+            # the condition was false, so `exit "$status"` below would have
+            # exited 0 and painted this step green with the registry down.
             if docker pull debian:bookworm-slim; then
               exit 0
+            else
+              status=$?
             fi
-            status=$?
             if [ "$attempt" -eq 4 ]; then
               echo "::error::Docker Hub unreachable after ${attempt} attempts pulling debian:bookworm-slim (registry-1.docker.io). Not a protocol regression — registry/network failure."
               exit "$status"
@@ -154,10 +159,14 @@ jobs:
           set -u
           chmod 600 keys/id_ed25519
           for attempt in 1 2 3; do
+            # Same as the pre-pull step above: `$?` after a plain `if` is the
+            # status of the `if`, not of the condition, so the status has to be
+            # taken in an `else` branch or the final `exit "$status"` exits 0.
             if docker compose -f docker-compose.real-rsync.yml up -d --build; then
               exit 0
+            else
+              status=$?
             fi
-            status=$?
             if [ "$attempt" -eq 3 ]; then
               echo "::error::real-rsync harness build/start failed after ${attempt} attempts. If the log shows registry-1.docker.io / DeadlineExceeded / i/o timeout, this is Docker Hub, not a protocol regression."
               exit "$status"
