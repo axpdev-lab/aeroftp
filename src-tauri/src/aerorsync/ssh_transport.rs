@@ -788,16 +788,31 @@ fn spawn_raw_worker(
             }
             match receiver.recv_timeout(idle_poll) {
                 Ok(RawWorkerCommand::Write(bytes, reply)) => {
-                    // B.2: `channel.write_all` on ssh2 buffers into an
-                    // internal libssh2 send queue; small payloads (e.g.
-                    // a 50-byte rsync preamble) never reach the wire
-                    // until something flushes the channel. Stock
-                    // `rsync --server` then blocks in `read()` waiting
-                    // for bytes we've already "written" client-side.
-                    // `flush()` forces the queue through the TCP socket.
+                    // Do NOT call `channel.flush()` after write.
+                    //
+                    // `ssh2::Channel::flush` maps to `libssh2_channel_flush_ex`,
+                    // which flushes the *read* buffer: it discards unread
+                    // CHANNEL_DATA already queued for this stream (see
+                    // libssh2 docs: "Flush the read buffer for a given
+                    // channel instance"). It does not push the send queue
+                    // to TCP.
+                    //
+                    // Race (known issue #3 / InvalidProtocolVersion
+                    // 2015297409): stock rsync often replies with its
+                    // 4-byte protocol version as soon as it has read ours.
+                    // That reply can land in the libssh2 packet queue
+                    // during `write_all`. A following `flush()` then
+                    // drops those 4 bytes, so the next `read` starts at
+                    // offset +4 of the server preamble (`81 ff 1e 78` =
+                    // compat_flags varint + algo-list length + first 'x'
+                    // of "xxh128..."), which decodes as version
+                    // 2015297409. Intermittent on contended CI; green
+                    // when the server response arrives after flush.
+                    //
+                    // Blocking `write_all` is enough: libssh2 ships the
+                    // CHANNEL_DATA packet before returning.
                     let result = channel
                         .write_all(&bytes)
-                        .and_then(|_| channel.flush())
                         .map_err(|e| RawWorkerError::Other(format!("write_bytes: {e}")));
                     let _ = reply.send(result);
                 }
