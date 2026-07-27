@@ -370,8 +370,12 @@ const SetupWizard: React.FC<{
                     logger.error('consumer_key and consumer_secret are required');
                     return;
                 }
+                // The command takes a single `params` object: passing the two
+                // values as top-level arguments made Tauri reject the call for a
+                // missing `params`, so authorising 4shared from this panel could
+                // only ever fail into the catch below.
                 await invoke('fourshared_full_auth', {
-                    consumerKey, consumerSecret
+                    params: { consumer_key: consumerKey, consumer_secret: consumerSecret }
                 });
                 setOauthAuthorized(true);
                 setOauthEmail('4shared');

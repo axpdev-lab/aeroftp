@@ -1222,14 +1222,14 @@ export function MyServersPanel({
 
             setOauthConnecting(server.id);
             try {
-                const hasTokens = await invoke<boolean>('fourshared_has_tokens');
+                const hasTokens = await invoke<boolean>('fourshared_has_tokens', { profileId: server.id });
 
                 // #360: run the 4shared auth + connect under a connect token so
                 // Esc / "still connecting" Cancel can abort the in-flight call.
                 const doFourSharedConnect = async (connectToken?: string) => {
                     const params = connectToken
-                        ? { consumer_key: consumerKey, consumer_secret: consumerSecret, connect_token: connectToken }
-                        : { consumer_key: consumerKey, consumer_secret: consumerSecret };
+                        ? { consumer_key: consumerKey, consumer_secret: consumerSecret, profile_id: server.id, connect_token: connectToken }
+                        : { consumer_key: consumerKey, consumer_secret: consumerSecret, profile_id: server.id };
                     if (!hasTokens) await invoke('fourshared_full_auth', { params });
                     try {
                         return await invoke<{ display_name: string; account_email: string | null }>('fourshared_connect', { params });

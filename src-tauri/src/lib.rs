@@ -16514,6 +16514,13 @@ pub(crate) fn oauth_vault_slug_for_protocol(protocol: &str) -> Option<&'static s
         "pcloud" => Some("pcloud"),
         "zohoworkdrive" | "zoho_workdrive" | "zoho" => Some("zohoworkdrive"),
         "yandexdisk" | "yandex_disk" | "yandex" => Some("yandexdisk"),
+        // 4shared is OAuth1, but its access token is a vault entry like any
+        // other and it was the one provider present in the auth-state map and
+        // absent here, which by construction made it a profile whose token did
+        // not travel with an export and whose delete left the singleton behind.
+        // Reads fall back to the legacy singleton `oauth_fourshared`, so an
+        // install that authorised before this keeps connecting untouched.
+        "fourshared" | "4shared" => Some("fourshared"),
         _ => None,
     }
 }
@@ -16602,15 +16609,15 @@ fn collect_provider_secrets_for_server(
     // It is the vault-facing map, not the rclone-facing one: Zoho WorkDrive has
     // app credentials to carry even though rclone has no Zoho backend.
     if let Some(cred_slug) = crate::bridge_commands::oauth_client_cred_key(&protocol) {
-        if let Ok(id) = store.get(&format!("oauth_{}_client_id", cred_slug)) {
-            if !id.is_empty() {
-                out.oauth_client_id = Some(id);
-            }
+        // Resolved through the same helper the connect paths use, so an install
+        // still holding its credentials in a legacy blob exports an app that can
+        // refresh rather than an empty pair nobody notices until the import.
+        let (id, secret) = crate::bridge_commands::resolve_oauth_client_config(store, cred_slug);
+        if !id.is_empty() {
+            out.oauth_client_id = Some(id);
         }
-        if let Ok(secret) = store.get(&format!("oauth_{}_client_secret", cred_slug)) {
-            if !secret.is_empty() {
-                out.oauth_client_secret = Some(secret);
-            }
+        if !secret.is_empty() {
+            out.oauth_client_secret = Some(secret);
         }
         // Zoho's region singleton picks the API host, so it belongs with the app
         // credentials: without it an import silently falls back to `us` and a

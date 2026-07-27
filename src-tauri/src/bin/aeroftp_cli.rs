@@ -25982,26 +25982,31 @@ fn create_oauth_provider_by_protocol(
             };
 
             // Read consumer key/secret - try individual keys first (GUI format), then legacy JSON
-            let (ck, cs) = if let (Ok(k), Ok(s)) = (
-                store.get("oauth_fourshared_client_id"),
-                store.get("oauth_fourshared_client_secret"),
-            ) {
-                (k, s)
-            } else {
-                let json = store
-                    .get("fourshared_oauth_settings")
-                    .map_err(|e| format!("No 4shared OAuth settings in vault: {}", e))?;
-                #[derive(serde::Deserialize)]
-                struct Fs {
-                    consumer_key: String,
-                    consumer_secret: String,
+            let (ck, cs) = {
+                let (k, s) = load_oauth_client_config(store, "fourshared");
+                if !k.is_empty() {
+                    (k, s)
+                } else {
+                    let json = store
+                        .get("fourshared_oauth_settings")
+                        .map_err(|e| format!("No 4shared OAuth settings in vault: {}", e))?;
+                    #[derive(serde::Deserialize)]
+                    struct Fs {
+                        consumer_key: String,
+                        consumer_secret: String,
+                    }
+                    let fs: Fs = serde_json::from_str(&json)
+                        .map_err(|e| format!("Failed to parse 4shared settings: {}", e))?;
+                    (fs.consumer_key, fs.consumer_secret)
                 }
-                let fs: Fs = serde_json::from_str(&json)
-                    .map_err(|e| format!("Failed to parse 4shared settings: {}", e))?;
-                (fs.consumer_key, fs.consumer_secret)
             };
             let (at, ats) = {
-                let data = store.get("oauth_fourshared").map_err(|_| {
+                let data = ftp_client_gui_lib::bridge_commands::resolve_profile_oauth_token(
+                    store,
+                    "fourshared",
+                    profile_id,
+                )
+                .ok_or_else(|| {
                     "No 4shared access tokens in vault. Authorize from GUI first.".to_string()
                 })?;
                 data.split_once(':')
@@ -26157,15 +26162,14 @@ async fn try_create_oauth_provider(
                 fourshared::FourSharedProvider, types::FourSharedConfig,
             };
 
-            // GUI stores 4shared credentials as individual vault keys:
-            //   oauth_fourshared_client_id, oauth_fourshared_client_secret (consumer)
-            //   fourshared_access_token, fourshared_access_token_secret (tokens)
-            // Also support legacy JSON format: fourshared_oauth_settings, fourshared_oauth_tokens
-            let (consumer_key, consumer_secret) = if let (Ok(k), Ok(s)) = (
-                store.get("oauth_fourshared_client_id"),
-                store.get("oauth_fourshared_client_secret"),
-            ) {
-                (k, s)
+            // Consumer key/secret are the app-level singletons
+            // `oauth_fourshared_client_id` / `_client_secret`, resolved through
+            // the shared helper so a legacy `config_oauth_clients` blob is
+            // honoured too; `fourshared_oauth_settings` is the older 4shared-only
+            // JSON shape and stays as the last fallback.
+            let fs_app = load_oauth_client_config(store, "fourshared");
+            let (consumer_key, consumer_secret) = if !fs_app.0.is_empty() {
+                fs_app
             } else if let Ok(json) = store.get("fourshared_oauth_settings") {
                 #[derive(serde::Deserialize)]
                 struct FsSettings {
@@ -26184,8 +26188,14 @@ async fn try_create_oauth_provider(
                 return Some(Err(6));
             };
 
-            // Tokens stored as "token:token_secret" in key "oauth_fourshared"
-            let (access_token, access_secret) = if let Ok(data) = store.get("oauth_fourshared") {
+            // Tokens stored as "token:token_secret" under the per-profile key
+            // `oauth_fourshared_<id>`, legacy singleton `oauth_fourshared`.
+            let (access_token, access_secret) = if let Some(data) =
+                ftp_client_gui_lib::bridge_commands::resolve_profile_oauth_token(
+                    store,
+                    "fourshared",
+                    profile_id,
+                ) {
                 if let Some((t, s)) = data.split_once(':') {
                     (t.to_string(), s.to_string())
                 } else {
@@ -26329,41 +26339,13 @@ async fn try_create_oauth_provider(
     Some(Ok((provider, initial_path.to_string())))
 }
 
-/// Load OAuth client_id and client_secret from vault settings
+/// Load OAuth client_id and client_secret from vault settings.
+///
+/// Thin wrapper over the shared resolver: this used to be a second copy of the
+/// same three-shape lookup, and the copy the `.aeroftp` export did NOT use, so
+/// export and connect could disagree about whether an app existed.
 fn load_oauth_client_config(store: &CredentialStore, provider: &str) -> (String, String) {
-    // Format 1: Individual vault keys (current SettingsPanel format)
-    let cid_key = format!("oauth_{}_client_id", provider);
-    let csec_key = format!("oauth_{}_client_secret", provider);
-    if let Ok(cid) = store.get(&cid_key) {
-        if !cid.is_empty() {
-            let csec = store.get(&csec_key).unwrap_or_default();
-            return (cid, csec);
-        }
-    }
-
-    // Format 2: Structured JSON (legacy migration / config_oauth_clients)
-    for key in &["config_oauth_clients", "config_aeroftp_oauth_settings"] {
-        if let Ok(json) = store.get(key) {
-            if let Ok(settings) = serde_json::from_str::<serde_json::Value>(&json) {
-                if let Some(p) = settings.get(provider) {
-                    let cid = p
-                        .get("clientId")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("")
-                        .to_string();
-                    let csec = p
-                        .get("clientSecret")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("")
-                        .to_string();
-                    if !cid.is_empty() {
-                        return (cid, csec);
-                    }
-                }
-            }
-        }
-    }
-    (String::new(), String::new())
+    ftp_client_gui_lib::bridge_commands::resolve_oauth_client_config(store, provider)
 }
 
 use ftp_client_gui_lib::credential_store::CredentialStore;
@@ -34170,6 +34152,7 @@ fn cli_oauth_vault_slug_for_protocol(protocol: &str) -> Option<&'static str> {
         "pcloud" => Some("pcloud"),
         "zohoworkdrive" | "zoho_workdrive" | "zoho" => Some("zohoworkdrive"),
         "yandexdisk" | "yandex_disk" | "yandex" => Some("yandexdisk"),
+        "fourshared" | "4shared" => Some("fourshared"),
         _ => None,
     }
 }

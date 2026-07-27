@@ -514,8 +514,8 @@ export const SavedServers: React.FC<SavedServersProps> = ({
 
             setOauthConnecting(server.id);
             try {
-                const params = { consumer_key: consumerKey, consumer_secret: consumerSecret };
-                const hasTokens = await invoke<boolean>('fourshared_has_tokens');
+                const params = { consumer_key: consumerKey, consumer_secret: consumerSecret, profile_id: server.id };
+                const hasTokens = await invoke<boolean>('fourshared_has_tokens', { profileId: server.id });
 
                 if (!hasTokens) {
                     await invoke('fourshared_full_auth', { params });

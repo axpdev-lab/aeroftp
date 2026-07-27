@@ -197,4 +197,77 @@ mod tests {
             );
         }
     }
+
+    /// The three maps that decide, for one provider, whether it has a stored
+    /// auth blob, whether that blob travels with the profile, and whether the
+    /// app behind it travels too, must agree provider by provider.
+    ///
+    /// They did not, twice, and both times the symptom was an export that
+    /// reconnected nowhere: Zoho WorkDrive was missing from the client-cred map,
+    /// so an imported profile could not refresh, and 4shared was missing from
+    /// both the token map and the client-cred map, so nothing at all travelled.
+    /// A provider added to one map and forgotten in the others now fails here
+    /// instead of shipping.
+    #[test]
+    fn the_three_provider_maps_agree() {
+        for proto in [
+            "googledrive",
+            "googlephotos",
+            "dropbox",
+            "onedrive",
+            "box",
+            "pcloud",
+            "zohoworkdrive",
+            "yandexdisk",
+            "fourshared",
+        ] {
+            assert!(
+                crate::oauth_vault_slug_for_protocol(proto).is_some(),
+                "{proto} has an auth blob but its token would not travel with an export"
+            );
+            assert!(
+                crate::bridge_commands::oauth_client_cred_key(proto).is_some(),
+                "{proto} has an auth blob but the app that refreshes it would not travel"
+            );
+        }
+
+        // Jottacloud is the one legitimate asymmetry: it authenticates with a
+        // personal login token and has no OAuth app at all, so it carries a
+        // refresh blob (handled by its own `jottacloud_refresh_<id>` key) and
+        // must stay out of both OAuth maps rather than be "fixed" into them.
+        assert_eq!(
+            oauth_vault_key_for_protocol("jottacloud"),
+            Some("jottacloud_refresh")
+        );
+        assert_eq!(crate::oauth_vault_slug_for_protocol("jottacloud"), None);
+        assert_eq!(
+            crate::bridge_commands::oauth_client_cred_key("jottacloud"),
+            None
+        );
+
+        // Every provider whose app credentials travel must also have somewhere
+        // to put the token, so the client-cred map can never grow a provider
+        // the token map does not know about. Google Photos is the deliberate
+        // many-to-one: it rides on Google Drive's app.
+        for proto in ["googledrive", "googlephotos", "fourshared"] {
+            assert!(
+                crate::oauth_vault_slug_for_protocol(proto).is_some(),
+                "{proto} carries app credentials but has no per-profile token key"
+            );
+        }
+        assert_eq!(
+            crate::bridge_commands::oauth_client_cred_key("googlephotos"),
+            Some("googledrive")
+        );
+
+        // The rclone-facing view is a strict subset: it drops the providers
+        // rclone has no backend for, and must never add one of its own.
+        for proto in ["zohoworkdrive", "fourshared"] {
+            assert_eq!(
+                crate::bridge_commands::rclone_oauth_client_cred_key(proto),
+                None,
+                "rclone has no {proto} backend, so it must not be offered one"
+            );
+        }
+    }
 }
