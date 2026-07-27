@@ -588,4 +588,75 @@ mod tests {
             );
         }
     }
+
+    /// R4: `apply_xattrs` runs on the temp file **before** the rename, so a
+    /// kill-9 never exposes a target that is missing its metadata. Nothing on
+    /// the success path can tell the two orders apart, since either way the
+    /// final file ends up carrying the attributes. The failure path can: feed
+    /// a blob that `apply_xattrs` rejects, and a target that exists afterwards
+    /// can only mean the rename had already happened, which is precisely the
+    /// block sitting in the wrong place.
+    ///
+    /// The rejection is `sanitize_xattrs_for_apply` refusing a name outside
+    /// the `user.` namespace, which happens before any platform-specific code,
+    /// so this pin holds on Windows as well as Unix.
+    #[tokio::test]
+    async fn xattr_apply_precedes_the_rename_so_a_rejection_leaves_no_target() {
+        use crate::aerorsync::real_wire::XattrPair;
+
+        let dir = fresh_tempdir();
+        let target = dir.path().join("payload.bin");
+
+        let mut w = StreamingAtomicWriter::new(&target).await.expect("new");
+        w.write_all(b"NEW PAYLOAD").await.expect("write");
+        let temp = w.temp_path().to_path_buf();
+
+        let poisoned = vec![XattrPair::inline("trusted.nope", b"v".to_vec())];
+        let err = w
+            .finalize(None, None, Some(poisoned), false)
+            .await
+            .expect_err("a rejected xattr blob must fail finalize");
+        match err {
+            WriteAtomicError::PostOpen { stage, .. } => assert_eq!(stage, "xattr"),
+            other => panic!("expected PostOpen{{stage: \"xattr\"}}, got {other:?}"),
+        }
+
+        assert!(
+            !target.exists(),
+            "target exists after a rejected xattr apply: the rename ran first"
+        );
+        assert!(
+            !temp.exists(),
+            "temp must be cleaned up on the failure path"
+        );
+    }
+
+    /// Same invariant seen from the other side: when the target already
+    /// exists, a rejected xattr blob must leave the old bytes in place. If the
+    /// apply moved after the rename, the cutover would have happened and the
+    /// old content would be gone even though finalize reported a failure.
+    #[tokio::test]
+    async fn xattr_rejection_does_not_cut_over_an_existing_target() {
+        use crate::aerorsync::real_wire::XattrPair;
+
+        let dir = fresh_tempdir();
+        let target = dir.path().join("doc.txt");
+        tokio::fs::write(&target, b"OLD BYTES")
+            .await
+            .expect("seed target");
+
+        let mut w = StreamingAtomicWriter::new(&target).await.expect("new");
+        w.write_all(b"NEW PAYLOAD").await.expect("write");
+
+        let poisoned = vec![XattrPair::inline("trusted.nope", b"v".to_vec())];
+        w.finalize(None, None, Some(poisoned), false)
+            .await
+            .expect_err("a rejected xattr blob must fail finalize");
+
+        let bytes = tokio::fs::read(&target).await.expect("read target");
+        assert_eq!(
+            bytes, b"OLD BYTES",
+            "the target was cut over despite the xattr rejection"
+        );
+    }
 }
