@@ -185,6 +185,11 @@ jobs:
             aerorsync::native_driver::tests::driver_upload_streaming_live_lane_3_real_rsync_byte_identical \
             aerorsync::delta_transport_impl::tests::delta_upload_symlink_live_lane_3_readlink_identical \
             aerorsync::delta_transport_impl::tests::delta_download_symlink_live_lane_3_readlink_identical \
+            aerorsync::delta_transport_impl::tests::delta_upload_xattr_inline_live_lane_3 \
+            aerorsync::delta_transport_impl::tests::delta_upload_xattr_oob_live_lane_3 \
+            aerorsync::delta_transport_impl::tests::delta_upload_xattr_binary_nul_live_lane_3 \
+            aerorsync::delta_transport_impl::tests::delta_upload_xattr_none_with_x_flag_live_lane_3 \
+            aerorsync::delta_transport_impl::tests::delta_download_xattr_live_lane_3 \
             --nocapture
       - name: Tear down harness
         if: always()

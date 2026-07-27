@@ -3690,6 +3690,326 @@ mod tests {
         assert!(!temp.exists(), "no temp leftovers after live download");
     }
 
+    // -- B4 / X.6 live lane 3 xattr acceptance (stock rsync 3.2.7, -X) ------
+    //
+    // Production still defaults preserve_xattrs=false; these tests opt in
+    // via AerorsyncDeltaTransport::with_xattrs(true) only. Remote verify
+    // uses python3+ctypes (attr-utils CLI is absent on host and container).
+
+    /// Apply a single `user.*` xattr on a local path via the public apply
+    /// path (same libc setxattr the production download uses).
+    #[cfg(all(ci_lane3, unix))]
+    fn lane3_local_set_user_xattr(path: &Path, name: &str, value: &[u8]) {
+        use crate::aerorsync::real_wire::XattrPair;
+        use crate::aerorsync::xattr_fs::{apply_xattrs, XattrApplyOutcome};
+        match apply_xattrs(path, &[XattrPair::inline(name, value.to_vec())], true) {
+            XattrApplyOutcome::Applied { count } => {
+                assert!(count >= 1, "setxattr wrote zero pairs for {name}");
+            }
+            other => panic!("local setxattr for {name} failed: {other:?}"),
+        }
+    }
+
+    /// Read one remote xattr as raw bytes (None if missing / ENODATA).
+    /// Paths and names are under test control (no shell metacharacters).
+    #[cfg(all(ci_lane3, unix))]
+    fn lane3_remote_get_xattr(key_path: &Path, remote_path: &str, name: &str) -> Option<Vec<u8>> {
+        let cmd = format!(
+            r#"python3 - <<'PY'
+import ctypes, base64, sys
+L = ctypes.CDLL(None, use_errno=True)
+L.getxattr.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_void_p, ctypes.c_size_t]
+L.getxattr.restype = ctypes.c_ssize_t
+p = b"{remote_path}"
+n = b"{name}"
+s = L.getxattr(p, n, None, 0)
+if s < 0:
+    print("MISSING")
+    sys.exit(0)
+b = ctypes.create_string_buffer(s)
+g = L.getxattr(p, n, b, s)
+print(base64.b64encode(b.raw[:g]).decode())
+PY"#
+        );
+        let out = lane3_ssh_testuser(key_path, &cmd);
+        if out == "MISSING" || out.is_empty() {
+            None
+        } else {
+            use base64::Engine as _;
+            Some(
+                base64::engine::general_purpose::STANDARD
+                    .decode(out.trim())
+                    .expect("remote getxattr base64"),
+            )
+        }
+    }
+
+    /// Seed a remote regular file with a `user.*` xattr (value as base64).
+    #[cfg(all(ci_lane3, unix))]
+    fn lane3_remote_set_xattr(key_path: &Path, remote_path: &str, name: &str, value: &[u8]) {
+        use base64::Engine as _;
+        let b64 = base64::engine::general_purpose::STANDARD.encode(value);
+        let cmd = format!(
+            r#"python3 - <<'PY'
+import ctypes, base64, sys
+L = ctypes.CDLL(None, use_errno=True)
+L.setxattr.argtypes = [
+    ctypes.c_char_p, ctypes.c_char_p, ctypes.c_void_p, ctypes.c_size_t, ctypes.c_int
+]
+L.setxattr.restype = ctypes.c_int
+p = b"{remote_path}"
+n = b"{name}"
+v = base64.b64decode("{b64}")
+rc = L.setxattr(p, n, v, len(v), 0)
+if rc != 0:
+    raise SystemExit("setxattr failed rc=%s errno=%s" % (rc, ctypes.get_errno()))
+print("ok")
+PY"#
+        );
+        let out = lane3_ssh_testuser(key_path, &cmd);
+        assert_eq!(out, "ok", "remote setxattr for {name}");
+    }
+
+    #[cfg(all(ci_lane3, unix))]
+    fn lane3_remote_sha256(key_path: &Path, remote_path: &str) -> String {
+        lane3_ssh_testuser(
+            key_path,
+            &format!("sha256sum '{remote_path}' | awk '{{print $1}}'"),
+        )
+    }
+
+    #[cfg(all(ci_lane3, unix))]
+    fn lane3_local_sha256(path: &Path) -> String {
+        use sha2::{Digest, Sha256};
+        use std::io::Read;
+        let mut f = std::fs::File::open(path).expect("open local for sha256");
+        let mut hasher = Sha256::new();
+        let mut buf = [0u8; 64 * 1024];
+        loop {
+            let n = f.read(&mut buf).expect("read");
+            if n == 0 {
+                break;
+            }
+            hasher.update(&buf[..n]);
+        }
+        format!("{:x}", hasher.finalize())
+    }
+
+    /// Shared cold-upload path: local file (+ optional xattrs) through
+    /// `AerorsyncDeltaTransport::with_xattrs(true)` against stock rsync.
+    #[cfg(all(ci_lane3, unix))]
+    async fn lane3_xattr_upload_and_verify(
+        label: &str,
+        payload: &[u8],
+        attrs: &[(&str, &[u8])],
+        expect_absent: &[&str],
+    ) {
+        if tokio::net::TcpStream::connect("127.0.0.1:2224")
+            .await
+            .is_err()
+        {
+            eprintln!("[lane3-xattr] harness not reachable on 127.0.0.1:2224: skipping");
+            return;
+        }
+        let Some(key_path) = lane3_key_path() else {
+            return;
+        };
+
+        let dir = fresh_tempdir();
+        let local = dir.path().join(format!("{label}.bin"));
+        std::fs::write(&local, payload).expect("write local payload");
+        for (name, value) in attrs {
+            lane3_local_set_user_xattr(&local, name, value);
+        }
+
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let remote_path = format!("/workspace/lane3-xattr-{label}-{nanos}.bin");
+
+        let transport =
+            AerorsyncDeltaTransport::new(lane3_ssh_config(key_path.clone()), 0).with_xattrs(true);
+        let stats = transport
+            .upload(&local, &remote_path)
+            .await
+            .unwrap_or_else(|e| panic!("[{label}] live xattr upload failed: {e:?}"));
+        assert_eq!(
+            stats.total_size,
+            payload.len() as u64,
+            "[{label}] transferred size"
+        );
+
+        let local_hash = lane3_local_sha256(&local);
+        let remote_hash = lane3_remote_sha256(&key_path, &remote_path);
+        assert_eq!(
+            remote_hash, local_hash,
+            "[{label}] content sha256 must match after xattr session"
+        );
+
+        for (name, value) in attrs {
+            let got = lane3_remote_get_xattr(&key_path, &remote_path, name);
+            assert_eq!(
+                got.as_deref(),
+                Some(*value),
+                "[{label}] remote xattr {name} must match local value"
+            );
+            eprintln!(
+                "[lane3-xattr] {label}: remote {name} ok ({} bytes)",
+                value.len()
+            );
+        }
+        for name in expect_absent {
+            let got = lane3_remote_get_xattr(&key_path, &remote_path, name);
+            assert!(
+                got.is_none(),
+                "[{label}] remote must not invent xattr {name}: got {got:?}"
+            );
+        }
+
+        // Clean remote artifact so reruns do not fill /workspace.
+        let _ = lane3_ssh_testuser(&key_path, &format!("rm -f '{remote_path}'"));
+    }
+
+    /// (1) Inline: value ≤ MAX_FULL_DATUM (32 B) rides in the file-list blob.
+    #[cfg(all(ci_lane3, unix))]
+    #[tokio::test]
+    async fn delta_upload_xattr_inline_live_lane_3() {
+        let value = b"hello-inline-xattr"; // 18 B ≤ 32
+        assert!(value.len() <= crate::aerorsync::real_wire::MAX_FULL_DATUM);
+        lane3_xattr_upload_and_verify(
+            "inline",
+            b"lane3-xattr-inline-payload-v1",
+            &[("user.aeroftp.test", value.as_slice())],
+            &[],
+        )
+        .await;
+    }
+
+    /// (2) OOB: value > MAX_FULL_DATUM travels as digest + out-of-band section.
+    #[cfg(all(ci_lane3, unix))]
+    #[tokio::test]
+    async fn delta_upload_xattr_oob_live_lane_3() {
+        let value = vec![b'O'; crate::aerorsync::real_wire::MAX_FULL_DATUM + 64];
+        assert!(value.len() > crate::aerorsync::real_wire::MAX_FULL_DATUM);
+        // Small payload (same class as inline). Larger bodies are covered
+        // by content-parity lane3 tests; here we pin the OOB xattr path.
+        let payload = b"lane3-xattr-oob-payload-small";
+        lane3_xattr_upload_and_verify(
+            "oob",
+            payload,
+            &[("user.aeroftp.oob", value.as_slice())],
+            &[],
+        )
+        .await;
+    }
+
+    /// (3) Binary value with an interior NUL (must not truncate at C string).
+    #[cfg(all(ci_lane3, unix))]
+    #[tokio::test]
+    async fn delta_upload_xattr_binary_nul_live_lane_3() {
+        let value: &[u8] = b"pre\x00mid\xffpost";
+        lane3_xattr_upload_and_verify(
+            "binul",
+            b"lane3-xattr-binary-nul-payload",
+            &[("user.aeroftp.binul", value)],
+            &[],
+        )
+        .await;
+    }
+
+    /// (4) Session negotiates `-X` but the file carries no user xattrs:
+    /// content stays identical and the peer must not desync.
+    #[cfg(all(ci_lane3, unix))]
+    #[tokio::test]
+    async fn delta_upload_xattr_none_with_x_flag_live_lane_3() {
+        lane3_xattr_upload_and_verify(
+            "noxattr",
+            b"lane3-xattr-session-on-but-empty-attrs",
+            &[],
+            &[
+                "user.aeroftp.test",
+                "user.aeroftp.oob",
+                "user.aeroftp.binul",
+            ],
+        )
+        .await;
+    }
+
+    /// (5) Download twin: seed remote xattr over SSH, pull with
+    /// `.with_xattrs(true)`, assert local `read_user_xattrs` matches.
+    #[cfg(all(ci_lane3, unix))]
+    #[tokio::test]
+    async fn delta_download_xattr_live_lane_3() {
+        use crate::aerorsync::xattr_fs::read_user_xattrs;
+
+        if tokio::net::TcpStream::connect("127.0.0.1:2224")
+            .await
+            .is_err()
+        {
+            eprintln!("[lane3-xattr] harness not reachable on 127.0.0.1:2224: skipping");
+            return;
+        }
+        let Some(key_path) = lane3_key_path() else {
+            return;
+        };
+
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let remote_path = format!("/workspace/lane3-xattr-dl-{nanos}.bin");
+        let payload = b"lane3-xattr-download-payload-v1";
+        let attr_name = "user.aeroftp.dl";
+        let attr_value: &[u8] = b"from-remote\x00ok";
+
+        // Seed remote file + xattr (content via python, xattr via ctypes).
+        use base64::Engine as _;
+        let payload_b64 = base64::engine::general_purpose::STANDARD.encode(payload);
+        lane3_ssh_testuser(
+            &key_path,
+            &format!(
+                r#"python3 - <<'PY'
+import base64
+open("{remote_path}", "wb").write(base64.b64decode("{payload_b64}"))
+print("seeded")
+PY"#
+            ),
+        );
+        lane3_remote_set_xattr(&key_path, &remote_path, attr_name, attr_value);
+
+        let dir = fresh_tempdir();
+        let local = dir.path().join("lane3-xattr-dl.bin");
+        let transport =
+            AerorsyncDeltaTransport::new(lane3_ssh_config(key_path.clone()), 0).with_xattrs(true);
+        let stats = transport
+            .download(&remote_path, &local)
+            .await
+            .expect("live xattr download against stock rsync");
+        assert_eq!(stats.total_size, payload.len() as u64);
+
+        let got_bytes = std::fs::read(&local).expect("read downloaded file");
+        assert_eq!(got_bytes.as_slice(), payload, "download content must match");
+
+        let pairs = read_user_xattrs(&local).expect("read local xattrs after download");
+        let found = pairs.iter().find(|p| p.name == attr_name);
+        assert!(
+            found.is_some(),
+            "expected {attr_name} after download, got {pairs:?}"
+        );
+        assert_eq!(
+            found.and_then(|p| p.datum.bytes()),
+            Some(attr_value),
+            "downloaded xattr value must match remote seed"
+        );
+        eprintln!(
+            "[lane3-xattr] download: local {attr_name} ok ({} bytes)",
+            attr_value.len()
+        );
+
+        let _ = lane3_ssh_testuser(&key_path, &format!("rm -f '{remote_path}'"));
+    }
+
     // -- build_stats --------------------------------------------------------
 
     #[test]
