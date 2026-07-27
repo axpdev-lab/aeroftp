@@ -247,6 +247,12 @@ windows = { version = "0.58", features = [
     "Win32_Foundation",
     "Win32_Storage_FileSystem",
     "Win32_Security",
+    # Vault file hardening (windows_acl.rs): SetNamedSecurityInfoW +
+    # SetEntriesInAclW build the DACL from the process token's user SID.
+    # Replaces the old `icacls %USERNAME%` shell-out, which could lock a
+    # domain user out of their own vault.key / vault.db.
+    "Win32_Security_Authorization",
+    "Win32_System_Threading",
     "Win32_UI_Shell",
     "Win32_UI_Shell_PropertiesSystem",
     # SetConsoleCtrlHandler: MCP/orchestrate stdio daemon must swallow
