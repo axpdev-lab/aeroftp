@@ -157,24 +157,36 @@ pub fn read_user_xattrs(path: &Path) -> Option<Vec<XattrPair>> {
 /// Thin libc wrappers: Linux and macOS disagree on xattr signatures.
 /// Linux: listxattr(3), getxattr(4), setxattr(5, flags), removexattr(2).
 /// macOS: listxattr(4, options), getxattr/setxattr(6, position+options),
-/// removexattr(3, options). We always follow symlinks (options/flags = 0)
-/// and use position 0 (whole attribute).
+/// removexattr(3, options). Position is 0 (whole attribute).
+///
+/// The **read** side does not follow symlinks: `llistxattr`/`lgetxattr` on
+/// Linux, `XATTR_NOFOLLOW` on macOS. Reading through a link would attribute
+/// the *target's* attributes to the *link*, and stock rsync does not do that.
+/// On Linux the kernel forbids `user.*` on a symlink outright, so a receiving
+/// rsync answers EPERM and the transfer fails; on macOS a link can carry its
+/// own attributes and those are the ones that belong on the wire. On a regular
+/// file the `l`-prefixed calls behave identically to the plain ones.
+///
+/// The **write** side keeps following, because `apply_xattrs` is documented to
+/// run on the temp file before rename, which is a regular file by construction.
 #[cfg(unix)]
 mod sys {
     use std::os::raw::{c_char, c_void};
 
-    pub unsafe fn listxattr(path: *const c_char, list: *mut c_char, size: usize) -> isize {
+    /// `listxattr` that does not follow symlinks (R2).
+    pub unsafe fn llistxattr(path: *const c_char, list: *mut c_char, size: usize) -> isize {
         #[cfg(any(target_os = "macos", target_os = "ios"))]
         {
-            libc::listxattr(path, list, size, 0)
+            libc::listxattr(path, list, size, libc::XATTR_NOFOLLOW)
         }
         #[cfg(not(any(target_os = "macos", target_os = "ios")))]
         {
-            libc::listxattr(path, list, size)
+            libc::llistxattr(path, list, size)
         }
     }
 
-    pub unsafe fn getxattr(
+    /// `getxattr` that does not follow symlinks (R2).
+    pub unsafe fn lgetxattr(
         path: *const c_char,
         name: *const c_char,
         value: *mut c_void,
@@ -182,11 +194,11 @@ mod sys {
     ) -> isize {
         #[cfg(any(target_os = "macos", target_os = "ios"))]
         {
-            libc::getxattr(path, name, value, size, 0, 0)
+            libc::getxattr(path, name, value, size, 0, libc::XATTR_NOFOLLOW)
         }
         #[cfg(not(any(target_os = "macos", target_os = "ios")))]
         {
-            libc::getxattr(path, name, value, size)
+            libc::lgetxattr(path, name, value, size)
         }
     }
 
@@ -225,7 +237,7 @@ fn read_user_xattrs_unix(path: &Path) -> Option<Vec<XattrPair>> {
 
     let c_path = CString::new(path.as_os_str().as_bytes()).ok()?;
     // Size probe first (listxattr with size 0 returns needed length).
-    let needed = unsafe { sys::listxattr(c_path.as_ptr(), std::ptr::null_mut(), 0) };
+    let needed = unsafe { sys::llistxattr(c_path.as_ptr(), std::ptr::null_mut(), 0) };
     if needed < 0 {
         return None;
     }
@@ -234,7 +246,7 @@ fn read_user_xattrs_unix(path: &Path) -> Option<Vec<XattrPair>> {
     }
     let mut buf = vec![0u8; needed as usize];
     let written = unsafe {
-        sys::listxattr(
+        sys::llistxattr(
             c_path.as_ptr(),
             buf.as_mut_ptr() as *mut libc::c_char,
             buf.len(),
@@ -257,13 +269,13 @@ fn read_user_xattrs_unix(path: &Path) -> Option<Vec<XattrPair>> {
             continue;
         };
         let vlen =
-            unsafe { sys::getxattr(c_path.as_ptr(), c_name.as_ptr(), std::ptr::null_mut(), 0) };
+            unsafe { sys::lgetxattr(c_path.as_ptr(), c_name.as_ptr(), std::ptr::null_mut(), 0) };
         if vlen < 0 {
             continue;
         }
         let mut value = vec![0u8; vlen as usize];
         let got = unsafe {
-            sys::getxattr(
+            sys::lgetxattr(
                 c_path.as_ptr(),
                 c_name.as_ptr(),
                 value.as_mut_ptr() as *mut libc::c_void,
@@ -600,5 +612,62 @@ mod tests {
             }
             XattrApplyOutcome::Failed { message } => panic!("apply failed: {message}"),
         }
+    }
+
+    /// R2: reading a symlink must not report the target's attributes as the
+    /// link's. Stock rsync reads the link itself, and on Linux a symlink
+    /// cannot carry `user.*` at all, so the correct answer is "no attributes".
+    /// Before the `l`-prefixed calls this test failed by finding
+    /// `user.aeroftp.symlink_probe` on the link.
+    #[cfg(unix)]
+    #[test]
+    fn read_user_xattrs_does_not_follow_a_symlink_to_its_target() {
+        use std::ffi::CString;
+        use std::os::unix::ffi::OsStrExt;
+
+        let dir = tempfile::tempdir().expect("tempdir");
+        let target = dir.path().join("target.bin");
+        std::fs::write(&target, b"data").expect("write target");
+
+        let c_target = CString::new(target.as_os_str().as_bytes()).unwrap();
+        let c_name = CString::new("user.aeroftp.symlink_probe").unwrap();
+        let val = b"TARGET_ATTR";
+        let rc = unsafe {
+            sys::setxattr(
+                c_target.as_ptr(),
+                c_name.as_ptr(),
+                val.as_ptr() as *const libc::c_void,
+                val.len(),
+            )
+        };
+        if rc != 0 {
+            // Filesystem without xattr support: nothing to pin here.
+            eprintln!(
+                "skipping symlink probe: setxattr unsupported: {}",
+                std::io::Error::last_os_error()
+            );
+            return;
+        }
+
+        let link = dir.path().join("link.bin");
+        std::os::unix::fs::symlink(&target, &link).expect("symlink");
+
+        // Control: the attribute really is on the target, so a failure below
+        // means we followed the link rather than that the setxattr was lost.
+        let on_target = read_user_xattrs(&target).expect("read target");
+        assert!(
+            on_target
+                .iter()
+                .any(|p| p.name == "user.aeroftp.symlink_probe"),
+            "control failed: attribute missing on the target itself: {on_target:?}"
+        );
+
+        let on_link = read_user_xattrs(&link).unwrap_or_default();
+        assert!(
+            !on_link
+                .iter()
+                .any(|p| p.name == "user.aeroftp.symlink_probe"),
+            "read through the symlink and picked up the target's attributes: {on_link:?}"
+        );
     }
 }
