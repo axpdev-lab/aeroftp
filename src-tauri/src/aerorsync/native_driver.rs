@@ -57,12 +57,13 @@ use crate::aerorsync::events::EventSink;
 use crate::aerorsync::real_wire::{
     compress_zstd_literal_stream, decode_delta_stream, decode_file_list_entry, decode_item_flags,
     decode_ndx, decode_server_preamble, decode_sum_block, decode_sum_head, decode_summary_frame,
-    decompress_zstd_literal_stream_boundaries, encode_client_preamble, encode_delta_stream,
-    encode_file_list_entry, encode_file_list_terminator, encode_item_flags, encode_ndx,
-    encode_sum_block, encode_sum_head, encode_summary_frame, encode_xattr_datum_section,
-    is_symlink_mode, ClientPreamble, DeltaOp, DeltaStreamReport, FileListDecodeOptions,
-    FileListDecodeOutcome, FileListEntry, MuxHeader, MuxPoll, MuxStreamReader, MuxTag, NdxState,
-    RealWireError, SumBlock, SumHead, SummaryFrame, MAX_DELTA_LITERAL_LEN, NDX_DONE, NDX_FLIST_EOF,
+    decode_varint, decompress_zstd_literal_stream_boundaries, encode_client_preamble,
+    encode_delta_stream, encode_file_list_entry, encode_file_list_terminator, encode_item_flags,
+    encode_ndx, encode_sum_block, encode_sum_head, encode_summary_frame,
+    encode_xattr_datum_section, is_symlink_mode, ClientPreamble, DeltaOp, DeltaStreamReport,
+    FileListDecodeOptions, FileListDecodeOutcome, FileListEntry, MuxHeader, MuxPoll,
+    MuxStreamReader, MuxTag, NdxState, RealWireError, SumBlock, SumHead, SummaryFrame,
+    MAX_DELTA_LITERAL_LEN, NDX_DONE, NDX_FLIST_EOF,
 };
 use crate::aerorsync::remote_command::{RemoteCommandFlavor, RemoteCommandSpec};
 use crate::aerorsync::transport::{CancelHandle, RawByteStream, RawRemoteShellTransport};
@@ -1972,6 +1973,43 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         if iflags & ITEM_TRANSFER == 0 {
             self.summary_seed = std::mem::take(&mut buf);
             return Ok(SignatureHeader::Skipped { ndx, iflags });
+        }
+        // 2b. Generator xattr request section (X.2b / B4 live).
+        //
+        // When the peer set ITEM_REPORT_XATTR, `generator.c` calls
+        // `send_xattr_request(NULL, file, f_out)` *before* `write_sum_head`.
+        // That section is a run of skip varints (one per over-threshold
+        // attribute the receiver still needs) terminated by a single
+        // zero byte (`write_byte(f_out, 0)`). Small-only attributes still
+        // emit the bare terminator. Skipping it desynchronises sum_head
+        // by one byte for the small case (latent; all-zero sum_head can
+        // mask it) and by more for OOB values (`count` parses as 1 with
+        // `block_length` 0). See rsync 3.2.7 `xattrs.c::send_xattr_request`
+        // and `sender.c::send_files` which drains it via
+        // `recv_xattr_request` before `receive_sums`.
+        if self.negotiated_xattrs && iflags & ITEM_REPORT_XATTR != 0 {
+            loop {
+                self.check_cancel("read_signature_header xattr_request")?;
+                match decode_varint(&buf) {
+                    Ok((skip, consumed)) => {
+                        buf.drain(..consumed);
+                        if skip == 0 {
+                            break;
+                        }
+                        // Generator-side request carries only the skip
+                        // (no len/datum): those arrive later on the
+                        // sender response path.
+                        continue;
+                    }
+                    Err(RealWireError::TruncatedBuffer { .. }) => {
+                        let payload = self.next_data_frame(bridge).await?;
+                        buf.extend_from_slice(&payload);
+                    }
+                    Err(other) => {
+                        return Err(map_realwire_error(other, "signature xattr_request"));
+                    }
+                }
+            }
         }
         // 3. sum_head (16 bytes)
         let head = loop {
