@@ -2702,20 +2702,24 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     };
 
     const getSuggestedConnectionName = () => {
-        const baseRaw = (selectedProvider?.isGeneric && protocol)
+        // Prefer the provider's *brand* name over its internal id: the id is a
+        // lowercase slug, so the placeholder used to read "tabdigital" /
+        // "pcloud" / "googledrive" where the rest of the app writes
+        // TAB.DIGITAL, pCloud and Google Drive (#347).
+        const base = ((selectedProvider?.isGeneric && protocol)
             ? protocol
-            : (selectedProviderId || protocol || 'connection');
-        const base = baseRaw.replace(/[_\-]+/g, ' ').trim().toLowerCase();
+            : (selectedProvider?.name || selectedProviderId || protocol || 'connection')
+        ).replace(/[_\-]+/g, ' ').trim();
         const taken = new Set(
             savedProfilesForNaming
                 .filter((p) => p.id !== editingProfileId)
                 .map((p) => (p.name || '').trim().toLowerCase())
                 .filter(Boolean)
         );
-        if (!taken.has(base)) return base;
+        if (!taken.has(base.toLowerCase())) return base;
         for (let i = 2; i < 100; i += 1) {
             const candidate = `${base} ${i}`;
-            if (!taken.has(candidate)) return candidate;
+            if (!taken.has(candidate.toLowerCase())) return candidate;
         }
         return base;
     };
