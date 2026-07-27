@@ -29,6 +29,8 @@ use super::{
 
 const JFS_BASE: &str = "https://jfs.jottacloud.com/jfs";
 const API_BASE: &str = "https://api.jottacloud.com";
+/// The recycle bin is a mountpoint of the device, alongside Archive and Sync.
+const TRASH_MOUNTPOINT: &str = "Trash";
 
 fn jotta_log(msg: &str) {
     info!("[JOTTACLOUD] {}", msg);
@@ -661,12 +663,20 @@ impl JottacloudProvider {
         let mut reader = Reader::from_str(xml);
         reader.config_mut().trim_text(true);
         let mut buf = Vec::new();
+        // JFS nests the name as a child element:
+        //   <mountPoints><mountPoint><name>Archive</name>...
+        // Reading only a `name` attribute made discovery return an empty list
+        // against the live API, silently falling back to the configured
+        // mountpoint (#397). Both shapes are accepted now.
+        let mut in_mount_point = false;
+        let mut in_name = false;
 
         loop {
             match reader.read_event_into(&mut buf) {
                 Ok(Event::Start(ref e)) | Ok(Event::Empty(ref e)) => {
                     let tag = String::from_utf8_lossy(e.name().as_ref()).to_string();
                     if tag == "mountPoint" {
+                        in_mount_point = true;
                         for attr in e.attributes().flatten() {
                             if attr.key.as_ref() == b"name" {
                                 // Account-level mountpoint name: an identifier,
@@ -677,6 +687,22 @@ impl JottacloudProvider {
                                 }
                             }
                         }
+                    } else if tag == "name" && in_mount_point {
+                        in_name = true;
+                    }
+                }
+                Ok(Event::Text(ref e)) if in_name => {
+                    let name = String::from_utf8_lossy(e.as_ref()).trim().to_string();
+                    if !name.is_empty() && !names.contains(&name) {
+                        names.push(name);
+                    }
+                }
+                Ok(Event::End(ref e)) => {
+                    let tag = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                    if tag == "mountPoint" {
+                        in_mount_point = false;
+                    } else if tag == "name" {
+                        in_name = false;
                     }
                 }
                 Ok(Event::Eof) => break,
@@ -865,6 +891,16 @@ impl JottacloudProvider {
                                         ProviderType::Jottacloud,
                                         &super::xml_text::attr_value(&attr),
                                     );
+                                }
+                                // A trashed file stays in its folder listing as a
+                                // tombstone carrying `deleted="<timestamp>"`, the
+                                // same marker the folder branch already honours.
+                                // Only the `<deleted>` *element* form was checked
+                                // here, so a file moved to the recycle bin kept
+                                // showing as live and the delete looked like a
+                                // no-op (#397).
+                                if attr.key.as_ref() == b"deleted" {
+                                    current_deleted = true;
                                 }
                             }
                         }
@@ -1705,12 +1741,20 @@ impl StorageProvider for JottacloudProvider {
 // ─── Jottacloud-specific methods (trash management) ──────────────────────
 
 impl JottacloudProvider {
-    /// Build JFS URL for the trash: /jfs/{username}/Trash/{path}
+    /// Build JFS URL for the trash: `/jfs/{username}/{device}/Trash/{path}`.
+    ///
+    /// Trash is a **mountpoint of the device**, a sibling of Archive and Sync,
+    /// exactly like the mountpoint the profile browses. The URL used to omit
+    /// the device segment, which makes JFS read `Trash` as a *device* name: no
+    /// such device exists, the request 404s, and `list_trash` reports the 404
+    /// as an empty bin, so the trash always looked empty however many items
+    /// were in it (#397).
     fn trash_url(&self, path: &str) -> String {
         let clean = path.trim_start_matches('/');
         let user = urlencoding::encode(&self.username);
+        let device = urlencoding::encode(&self.config.device);
         if clean.is_empty() {
-            format!("{}/{}/Trash", JFS_BASE, user)
+            format!("{}/{}/{}/{}", JFS_BASE, user, device, TRASH_MOUNTPOINT)
         } else {
             let encoded_path: String = clean
                 .split('/')
@@ -1720,7 +1764,10 @@ impl JottacloudProvider {
                 })
                 .collect::<Vec<_>>()
                 .join("/");
-            format!("{}/{}/Trash/{}", JFS_BASE, user, encoded_path)
+            format!(
+                "{}/{}/{}/{}/{}",
+                JFS_BASE, user, device, TRASH_MOUNTPOINT, encoded_path
+            )
         }
     }
 
@@ -2144,6 +2191,21 @@ mod tests {
     }
 
     #[test]
+    fn trash_url_keeps_the_device_segment() {
+        // Trash is a mountpoint of the device, a sibling of Archive. Without the
+        // device segment JFS reads `Trash` as a device name, 404s, and the bin
+        // reads as empty however many items are in it (#397).
+        let p = test_provider();
+        assert_eq!(p.trash_url(""), format!("{}/user123/Jotta/Trash", JFS_BASE));
+        assert_eq!(
+            p.trash_url("/photo.jpg"),
+            format!("{}/user123/Jotta/Trash/photo.jpg", JFS_BASE)
+        );
+        // The mountpoint the profile browses never appears in a trash URL.
+        assert!(!p.trash_url("/photo.jpg").contains("Archive"));
+    }
+
+    #[test]
     fn jfs_url_url_encodes_segments_for_special_chars() {
         // Names with `+`, `#`, `%`, ` `, `&` must be percent-encoded so the
         // server doesn't see `+` as space, `#` as fragment, etc.
@@ -2213,6 +2275,33 @@ mod tests {
     }
 
     #[test]
+    fn parse_mountpoint_names_reads_the_live_child_element_shape() {
+        // Captured from the live API (#397): the name is a child element, not an
+        // attribute, and the previous attribute-only reader returned an empty
+        // list here while the account clearly had mountpoints.
+        let xml = r#"<device time="2026-07-27-T07:19:53Z">
+          <name xml:space="preserve">Jotta</name>
+          <user>4smczzcts33jjedcplkqrorq</user>
+          <mountPoints>
+            <mountPoint>
+              <name xml:space="preserve">Archive</name>
+              <size></size>
+            </mountPoint>
+            <mountPoint>
+              <name xml:space="preserve">Sync</name>
+            </mountPoint>
+            <mountPoint>
+              <name xml:space="preserve">Trash</name>
+            </mountPoint>
+          </mountPoints>
+        </device>"#;
+        let names = JottacloudProvider::parse_mountpoint_names(xml);
+        assert_eq!(names, vec!["Archive", "Sync", "Trash"]);
+        // The device's own <name> sits outside <mountPoints> and must not leak in.
+        assert!(!names.contains(&"Jotta".to_string()));
+    }
+
+    #[test]
     fn parse_jotta_time_normalizes_nonstandard_format() {
         // Jottacloud uses "-T" separator: parse_jotta_time should strip it
         let out = JottacloudProvider::parse_jotta_time("2023-01-15-T10:30:45+0100");
@@ -2256,6 +2345,12 @@ mod tests {
                         <size>5</size>
                     </currentRevision>
                 </file>
+                <file name="trashed-attr.jpg" uuid="88cec155-fbb0-41eb-82f1-341547d39526" deleted="2026-07-27-T07:23:35Z">
+                    <currentRevision>
+                        <state>COMPLETED</state>
+                        <size>7</size>
+                    </currentRevision>
+                </file>
             </files>
         </folder>"#;
 
@@ -2274,6 +2369,12 @@ mod tests {
         assert!(
             !names.contains(&"trashed.txt"),
             "trashed file must be skipped"
+        );
+        // The live API tombstones a trashed file with a `deleted` *attribute*,
+        // which only the folder branch used to honour (#397).
+        assert!(
+            !names.contains(&"trashed-attr.jpg"),
+            "file tombstoned by attribute must be skipped"
         );
 
         let folder = entries.iter().find(|e| e.name == "Photos").unwrap();
