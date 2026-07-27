@@ -277,6 +277,23 @@ export const MyServersTableRow = React.memo(function MyServersTableRow({
         })
         : t('introHub.storageQuotaUnavailable');
 
+    // The grab zone used to be the 56px index column alone, with a grip that
+    // only shows on hover: pixel-accurate aiming for a gesture that should be
+    // forgiving, and the reason a drag "sometimes doesn't start" (#453). Every
+    // cell that carries no control is a drag handle now, so the row lifts from
+    // almost anywhere; the icon, actions and favourite cells stay clickable.
+    // `select-none` travels with it: a leftover text selection over the source
+    // makes the engine start a text drag instead of ours.
+    const dragTd = (className: string) =>
+        isDraggable && onDragStart
+            ? {
+                className: `${className} select-none`,
+                draggable: true,
+                onDragStart: handleRowDragStart,
+                onDragEnd,
+            }
+            : { className };
+
     const renderCell = (id: MyServersTableColId): React.ReactNode => {
         switch (id) {
             case 'index':
@@ -360,7 +377,7 @@ export const MyServersTableRow = React.memo(function MyServersTableRow({
                 );
             case 'name':
                 return (
-                    <td key="name" className={`${cellClass} ${alignTd('name', 'left')}`}>
+                    <td key="name" {...(isRenaming ? { className: `${cellClass} ${alignTd('name', 'left')}` } : dragTd(`${cellClass} ${alignTd('name', 'left')}`))}>
                         {isRenaming ? (
                             <RenameInput
                                 initialValue={server.name}
@@ -386,7 +403,7 @@ export const MyServersTableRow = React.memo(function MyServersTableRow({
                 );
             case 'badges':
                 return (
-                    <td key="badges" className={`${cellClass} ${alignTd('badges', 'left')}`}>
+                    <td key="badges" {...dragTd(`${cellClass} ${alignTd('badges', 'left')}`)}>
                         <div className={`flex items-center ${alignFlex('badges', 'left')}`}>
                             <ServerBadges server={server} peerState={peerState} />
                         </div>
@@ -394,23 +411,23 @@ export const MyServersTableRow = React.memo(function MyServersTableRow({
                 );
             case 'subtitle':
                 return (
-                    <td key="subtitle" className={`${cellClass} ${alignTd('subtitle', 'left')} text-xs text-gray-500 dark:text-gray-400 truncate`}>
+                    <td key="subtitle" {...dragTd(`${cellClass} ${alignTd('subtitle', 'left')} text-xs text-gray-500 dark:text-gray-400 truncate`)}>
                         {subtitle}
                     </td>
                 );
             case 'used':
-                return <td key="used" className={`${cellClass} ${alignTd('used', 'right')} text-[11px] text-gray-500 dark:text-gray-400 tabular-nums`} title={quotaTitle}>{quotaCells.used}</td>;
+                return <td key="used" {...dragTd(`${cellClass} ${alignTd('used', 'right')} text-[11px] text-gray-500 dark:text-gray-400 tabular-nums`)} title={quotaTitle}>{quotaCells.used}</td>;
             case 'total':
-                return <td key="total" className={`${cellClass} ${alignTd('total', 'right')} text-[11px] text-gray-400 dark:text-gray-500 tabular-nums`} title={quotaTitle}>{quotaCells.total}</td>;
+                return <td key="total" {...dragTd(`${cellClass} ${alignTd('total', 'right')} text-[11px] text-gray-400 dark:text-gray-500 tabular-nums`)} title={quotaTitle}>{quotaCells.total}</td>;
             case 'pct':
-                return <td key="pct" className={`${cellClass} ${alignTd('pct', 'right')} text-[11px] font-medium tabular-nums ${quotaCells.toneText}`} title={quotaTitle}>{quotaCells.pct}</td>;
+                return <td key="pct" {...dragTd(`${cellClass} ${alignTd('pct', 'right')} text-[11px] font-medium tabular-nums ${quotaCells.toneText}`)} title={quotaTitle}>{quotaCells.pct}</td>;
             case 'saved':
-                return <td key="saved" className={`${cellClass} ${alignTd('saved', 'right')} text-[11px] text-gray-500 dark:text-gray-400 tabular-nums`} title={compressionTitle}>{compressionCells.saved}</td>;
+                return <td key="saved" {...dragTd(`${cellClass} ${alignTd('saved', 'right')} text-[11px] text-gray-500 dark:text-gray-400 tabular-nums`)} title={compressionTitle}>{compressionCells.saved}</td>;
             case 'savedpct':
-                return <td key="savedpct" className={`${cellClass} ${alignTd('savedpct', 'right')} text-[11px] text-gray-400 dark:text-gray-500 tabular-nums`} title={compressionTitle}>{compressionCells.savedpct}</td>;
+                return <td key="savedpct" {...dragTd(`${cellClass} ${alignTd('savedpct', 'right')} text-[11px] text-gray-400 dark:text-gray-500 tabular-nums`)} title={compressionTitle}>{compressionCells.savedpct}</td>;
             case 'paths':
                 return (
-                    <td key="paths" className={`${cellClass} ${alignTd('paths', 'right')}`}>
+                    <td key="paths" {...dragTd(`${cellClass} ${alignTd('paths', 'right')}`)}>
                         <div className={`flex flex-col gap-0.5 min-w-0 ${alignTd('paths', 'right')}`}>
                             {server.initialPath && (
                                 <span className={`flex items-center ${alignFlex('paths', 'right')} gap-1 text-[10px] text-gray-400 dark:text-gray-500`} title={server.initialPath}>
@@ -429,13 +446,13 @@ export const MyServersTableRow = React.memo(function MyServersTableRow({
                 );
             case 'time':
                 return (
-                    <td key="time" className={`${cellClass} ${alignTd('time', 'right')} text-[11px] text-gray-400 dark:text-gray-500 tabular-nums`}>
+                    <td key="time" {...dragTd(`${cellClass} ${alignTd('time', 'right')} text-[11px] text-gray-400 dark:text-gray-500 tabular-nums`)}>
                         {timeAgo && <span className="inline-flex items-center gap-0.5"><Clock size={9} />{timeAgo}</span>}
                     </td>
                 );
             case 'health':
                 return (
-                    <td key="health" className={`${cellClass} ${alignTd('health', 'center')} text-gray-300 dark:text-gray-600`}>
+                    <td key="health" {...dragTd(`${cellClass} ${alignTd('health', 'center')} text-gray-300 dark:text-gray-600`)}>
                         <span className={`inline-flex items-center ${alignFlex('health', 'center')}`}>
                             {isMtpDevice ? (
                                 <span
