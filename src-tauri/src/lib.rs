@@ -17865,6 +17865,12 @@ pub fn run() {
             // silently keep the existing one.
             let _ = tracing::subscriber::set_global_default(TracingToLogBridge);
 
+            // Replay the compositing decision taken before this logger existed
+            // (see `linux_egl::log_decision`): which path WebKit took is the
+            // first thing a blank-window report needs to answer.
+            #[cfg(target_os = "linux")]
+            crate::linux_egl::log_decision();
+
             // Register the global AppHandle so Tauri-agnostic code paths
             // (e.g. the MEGAcmd warmup notice in the provider layer) can emit
             // frontend events without threading a handle through every call.

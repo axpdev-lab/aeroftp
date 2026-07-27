@@ -19,8 +19,12 @@
 
 use std::ffi::{c_void, CString};
 use std::path::PathBuf;
+use std::sync::OnceLock;
 
 use log::{info, warn};
+
+/// The startup decision, held until a logger exists to receive it.
+static DECISION: OnceLock<(bool, String)> = OnceLock::new();
 
 /// The variable WebKitGTK reads to turn its accelerated compositor off.
 const DISABLE_COMPOSITING: &str = "WEBKIT_DISABLE_COMPOSITING_MODE";
@@ -93,30 +97,54 @@ pub fn configure_webkit_compositing() {
         },
     );
 
-    match decision {
-        Decision::RespectOverride => {
-            info!(
+    let record = match decision {
+        Decision::RespectOverride => (
+            false,
+            format!(
                 "WebKit compositing left to the environment: {DISABLE_COMPOSITING} is already set"
-            );
-        }
-        Decision::Accelerated => {
-            info!("WebKit accelerated compositing enabled: EGL is usable on this display");
-        }
+            ),
+        ),
+        Decision::Accelerated => (
+            false,
+            "WebKit accelerated compositing enabled: EGL is usable on this display".to_string(),
+        ),
         Decision::Software(reason) => {
             // Same startup contract as the sibling WebKit variables set around
             // the call site: single-threaded, before anything reads them.
             std::env::set_var(DISABLE_COMPOSITING, "1");
             if previous_probe_crashed {
-                warn!(
-                    "WebKit software compositing: {reason}. Delete {} to try the GPU again.",
-                    sentinel
-                        .as_ref()
-                        .map(|p| p.display().to_string())
-                        .unwrap_or_else(|| SENTINEL_LEAF.to_string())
-                );
+                (
+                    true,
+                    format!(
+                        "WebKit software compositing: {reason}. Delete {} to try the GPU again.",
+                        sentinel
+                            .as_ref()
+                            .map(|p| p.display().to_string())
+                            .unwrap_or_else(|| SENTINEL_LEAF.to_string())
+                    ),
+                )
             } else {
-                info!("WebKit software compositing: {reason}");
+                (false, format!("WebKit software compositing: {reason}"))
             }
+        }
+    };
+    let _ = DECISION.set(record);
+}
+
+/// Emit the startup decision once a logger exists.
+///
+/// `configure_webkit_compositing` has to run before `tauri_plugin_log` is
+/// installed, because WebKit reads the variable on its way up. Logging from
+/// there therefore writes into a facade with no logger behind it, and the one
+/// line that says which path WebKit took would be missing from precisely the
+/// logs a blank-window report arrives with. So the decision is stored and
+/// replayed from `setup`, where the logger is live.
+pub fn log_decision() {
+    if let Some((warning, message)) = DECISION.get() {
+        if *warning {
+            warn!("{message}");
+        } else {
+            info!("{message}");
         }
     }
 }
