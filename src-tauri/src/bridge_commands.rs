@@ -431,9 +431,9 @@ pub async fn import_bridge_config(source: String, file_path: String) -> Result<V
 /// `.aeroftp` export, which is about the vault and not about rclone.
 pub fn rclone_oauth_client_cred_key(protocol: &str) -> Option<&'static str> {
     match protocol.to_lowercase().as_str() {
-        // rclone has no Zoho WorkDrive backend, so a Zoho profile is not
-        // rclone-exportable even though it does have app credentials.
-        "zohoworkdrive" => None,
+        // rclone has no Zoho WorkDrive or 4shared backend, so neither profile is
+        // rclone-exportable even though both do have app credentials.
+        "zohoworkdrive" | "fourshared" => None,
         other => oauth_client_cred_key(other),
     }
 }
@@ -443,9 +443,15 @@ pub fn rclone_oauth_client_cred_key(protocol: &str) -> Option<&'static str> {
 ///
 /// Zoho WorkDrive belongs here and was missing: its app credentials are a vault
 /// singleton exactly like the others (read at connect time through
-/// `load_oauth_client_config`), so a `.aeroftp` profile export carried the Zoho
-/// token but not the app that can refresh it, and an imported profile failed its
-/// first refresh with an unparseable Zoho error instead of connecting.
+/// `resolve_oauth_client_config`), so a `.aeroftp` profile export carried the
+/// Zoho token but not the app that can refresh it, and an imported profile failed
+/// its first refresh with an unparseable Zoho error instead of connecting.
+///
+/// 4shared belongs here for the same reason, one layer worse: it is OAuth1, so
+/// what the connect path reads is the *consumer* key/secret, and they live under
+/// the very same `oauth_fourshared_client_id` / `_client_secret` singletons. With
+/// 4shared out of this map a `.aeroftp` export of a 4shared profile carried
+/// nothing at all and reconnected nowhere.
 pub fn oauth_client_cred_key(protocol: &str) -> Option<&'static str> {
     match protocol.to_lowercase().as_str() {
         "googledrive" | "googlephotos" => Some("googledrive"),
@@ -455,8 +461,87 @@ pub fn oauth_client_cred_key(protocol: &str) -> Option<&'static str> {
         "box" => Some("box"),
         "pcloud" => Some("pcloud"),
         "yandexdisk" => Some("yandexdisk"),
+        "fourshared" => Some("fourshared"),
         _ => None,
     }
+}
+
+/// Read a profile's OAuth token blob: the per-profile key first, then the legacy
+/// per-provider singleton. Mirrors what `collect_provider_secrets_for_server`
+/// does on the export side, so a connect and an export of the same profile can
+/// never resolve to different vault entries.
+///
+/// The singleton fallback is what keeps an install that authorised before the
+/// per-profile layout existed connecting without re-authorising.
+pub fn resolve_profile_oauth_token(
+    store: &CredentialStore,
+    slug: &str,
+    profile_id: &str,
+) -> Option<String> {
+    if !profile_id.is_empty() {
+        if let Ok(Some(value)) = crate::user_partitions::resolve_active_credential(
+            store,
+            &format!("oauth_{}_{}", slug, profile_id),
+        ) {
+            let value = value.to_string();
+            if !value.is_empty() {
+                return Some(value);
+            }
+        }
+    }
+    store
+        .get(&format!("oauth_{}", slug))
+        .ok()
+        .filter(|s| !s.is_empty())
+}
+
+/// Resolve a provider's BYO OAuth app credentials the way the connect paths do:
+/// the modern per-provider singletons first, then the two legacy JSON blobs a
+/// never-migrated install may still be holding them in.
+///
+/// This exists as one function because it used to be two. The CLI connect path
+/// resolved all three shapes while the `.aeroftp` export read only the modern
+/// pair, so an install whose credentials had never left `config_oauth_clients`
+/// exported a profile with no app behind its token, silently: nothing fails at
+/// export time, and the import only discovers it on the first refresh. Export
+/// and connect now ask the same question of the same vault.
+pub fn resolve_oauth_client_config(store: &CredentialStore, slug: &str) -> (String, String) {
+    // Shape 1: individual vault keys, what the settings panel writes today.
+    if let Ok(client_id) = store.get(&format!("oauth_{}_client_id", slug)) {
+        if !client_id.is_empty() {
+            let secret = store
+                .get(&format!("oauth_{}_client_secret", slug))
+                .unwrap_or_default();
+            return (client_id, secret);
+        }
+    }
+
+    // Shape 2: the legacy structured blobs, keyed by provider slug.
+    for key in ["config_oauth_clients", "config_aeroftp_oauth_settings"] {
+        let Ok(json) = store.get(key) else { continue };
+        let Ok(settings) = serde_json::from_str::<Value>(&json) else {
+            continue;
+        };
+        let Some(entry) = settings.get(slug) else {
+            continue;
+        };
+        let client_id = entry
+            .get("clientId")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string();
+        if client_id.is_empty() {
+            continue;
+        }
+        let secret = entry
+            .get("clientSecret")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string();
+        return (client_id, secret);
+    }
+
+    (String::new(), String::new())
 }
 
 /// #128-D: for an rclone OAuth-token export, gather the per-profile OAuth token

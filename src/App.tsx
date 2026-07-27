@@ -9911,8 +9911,8 @@ const App: React.FC = () => {
           );
           return false;
         }
-        const hasTokens = await invoke<boolean>('fourshared_has_tokens');
-        const params = { consumer_key: consumerKey, consumer_secret: consumerSecret };
+        const hasTokens = await invoke<boolean>('fourshared_has_tokens', { profileId: profile.id });
+        const params = { consumer_key: consumerKey, consumer_secret: consumerSecret, profile_id: profile.id };
         if (!hasTokens) await invoke('fourshared_full_auth', { params });
         try {
           await invoke('fourshared_connect', { params });

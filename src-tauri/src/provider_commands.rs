@@ -6734,6 +6734,13 @@ pub async fn provider_compare_directories(
 pub struct FourSharedAuthParams {
     pub consumer_key: String,
     pub consumer_secret: String,
+    /// Server profile identifier owning these tokens. When supplied the vault
+    /// stores the 4shared token under `oauth_fourshared_<profile_id>`, so two
+    /// 4shared accounts coexist on the same device and the token travels with
+    /// a profile export. When omitted the legacy singleton key is used, which
+    /// is what an install authorised before this keeps reading.
+    #[serde(default, alias = "profileId")]
+    pub profile_id: String,
     /// #360: connect token for Esc / "still connecting" Cancel (see
     /// `OAuthConnectionParams::connect_token`).
     #[serde(default, alias = "connectToken")]
@@ -6748,17 +6755,34 @@ pub struct FourSharedAuthStarted {
     pub request_token_secret: String,
 }
 
-/// Vault key for 4shared OAuth tokens
+/// Legacy app-global vault key for the 4shared OAuth1 token. Still read (and
+/// still written when no profile owns the flow) so an install authorised before
+/// the per-profile layout keeps connecting untouched.
 const FOURSHARED_TOKEN_KEY: &str = "oauth_fourshared";
 
+/// Vault key holding a given profile's 4shared token, or the legacy singleton
+/// when the caller has no profile in hand.
+fn fourshared_token_key(profile_id: &str) -> String {
+    if profile_id.is_empty() {
+        FOURSHARED_TOKEN_KEY.to_string()
+    } else {
+        format!("{}_{}", FOURSHARED_TOKEN_KEY, profile_id)
+    }
+}
+
 /// Store 4shared tokens in credential vault (same pattern as OAuth2)
-fn store_fourshared_tokens(access_token: &str, access_token_secret: &str) -> Result<(), String> {
+fn store_fourshared_tokens(
+    profile_id: &str,
+    access_token: &str,
+    access_token_secret: &str,
+) -> Result<(), String> {
     let token_data = format!("{}:{}", access_token, access_token_secret);
+    let key = fourshared_token_key(profile_id);
 
     // Try vault first
     if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
         store
-            .store(FOURSHARED_TOKEN_KEY, &token_data)
+            .store(&key, &token_data)
             .map_err(|e| format!("Failed to store tokens: {}", e))?;
         return Ok(());
     }
@@ -6767,7 +6791,7 @@ fn store_fourshared_tokens(access_token: &str, access_token_secret: &str) -> Res
     if crate::credential_store::CredentialStore::init().is_ok() {
         if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
             store
-                .store(FOURSHARED_TOKEN_KEY, &token_data)
+                .store(&key, &token_data)
                 .map_err(|e| format!("Failed to store tokens: {}", e))?;
             return Ok(());
         }
@@ -6776,13 +6800,15 @@ fn store_fourshared_tokens(access_token: &str, access_token_secret: &str) -> Res
     Err("Credential vault not available. Please unlock the vault first.".to_string())
 }
 
-/// Load 4shared tokens from credential vault
-fn load_fourshared_tokens() -> Result<(String, String), String> {
+/// Load 4shared tokens from credential vault: this profile's key first, then
+/// the legacy singleton, through the same resolver the export and the CLI use.
+fn load_fourshared_tokens(profile_id: &str) -> Result<(String, String), String> {
     if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
-        if let Ok(data) = store.get(FOURSHARED_TOKEN_KEY) {
-            let parts: Vec<&str> = data.splitn(2, ':').collect();
-            if parts.len() == 2 {
-                return Ok((parts[0].to_string(), parts[1].to_string()));
+        if let Some(data) =
+            crate::bridge_commands::resolve_profile_oauth_token(&store, "fourshared", profile_id)
+        {
+            if let Some((token, secret)) = data.split_once(':') {
+                return Ok((token.to_string(), secret.to_string()));
             }
         }
     }
@@ -6856,7 +6882,7 @@ pub async fn fourshared_complete_auth(
     )
     .await?;
 
-    store_fourshared_tokens(&access_token, &access_token_secret)?;
+    store_fourshared_tokens(&params.profile_id, &access_token, &access_token_secret)?;
 
     info!("4shared OAuth 1.0 authentication completed successfully");
     Ok("Authentication successful".to_string())
@@ -6952,7 +6978,7 @@ pub async fn fourshared_full_auth(
     )
     .await?;
 
-    store_fourshared_tokens(&access_token, &access_token_secret)?;
+    store_fourshared_tokens(&params.profile_id, &access_token, &access_token_secret)?;
 
     info!("4shared OAuth 1.0 full auth completed successfully");
     Ok("Authentication successful! You can now connect.".to_string())
@@ -7174,7 +7200,7 @@ pub async fn fourshared_connect(
     info!("Connecting to 4shared...");
 
     let connect_token = params.connect_token.clone();
-    let (access_token, access_token_secret) = load_fourshared_tokens()?;
+    let (access_token, access_token_secret) = load_fourshared_tokens(&params.profile_id)?;
 
     let config = FourSharedConfig {
         consumer_key: params.consumer_key,
@@ -8645,17 +8671,22 @@ pub async fn box_list_folder_locks(
         .map_err(|e| format!("Serialize failed: {}", e))
 }
 
-/// Check if 4shared tokens exist
+/// Check if 4shared tokens exist for a profile (empty id asks about the legacy
+/// app-global token).
 #[tauri::command]
-pub async fn fourshared_has_tokens() -> Result<bool, String> {
-    Ok(load_fourshared_tokens().is_ok())
+pub async fn fourshared_has_tokens(profile_id: Option<String>) -> Result<bool, String> {
+    Ok(load_fourshared_tokens(profile_id.as_deref().unwrap_or_default()).is_ok())
 }
 
-/// Clear 4shared tokens (logout)
+/// Clear 4shared tokens (logout). Removes this profile's token; the legacy
+/// singleton is only removed when no profile owns the call, so logging one
+/// profile out cannot sign the others out with it.
 #[tauri::command]
-pub async fn fourshared_logout() -> Result<(), String> {
+pub async fn fourshared_logout(profile_id: Option<String>) -> Result<(), String> {
     if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
-        let _ = store.delete(FOURSHARED_TOKEN_KEY);
+        let _ = store.delete(&fourshared_token_key(
+            profile_id.as_deref().unwrap_or_default(),
+        ));
     }
     info!("Logged out from 4shared");
     Ok(())
