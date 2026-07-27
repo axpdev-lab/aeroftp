@@ -16596,9 +16596,10 @@ fn collect_provider_secrets_for_server(
     // cannot work without them, so they travel with every OAuth profile in the
     // export (the struct fields already exist for the #128-D rclone-import
     // recovery path). The client-cred slug differs from the per-profile token
-    // slug: `rclone_oauth_client_cred_key` maps Google Photos onto Google Drive's
-    // app and gates the providers that have no BYO app (jottacloud/zoho).
-    if let Some(cred_slug) = crate::bridge_commands::rclone_oauth_client_cred_key(&protocol) {
+    // slug: `oauth_client_cred_key` maps Google Photos onto Google Drive's app.
+    // It is the vault-facing map, not the rclone-facing one: Zoho WorkDrive has
+    // app credentials to carry even though rclone has no Zoho backend.
+    if let Some(cred_slug) = crate::bridge_commands::oauth_client_cred_key(&protocol) {
         if let Ok(id) = store.get(&format!("oauth_{}_client_id", cred_slug)) {
             if !id.is_empty() {
                 out.oauth_client_id = Some(id);
@@ -16607,6 +16608,14 @@ fn collect_provider_secrets_for_server(
         if let Ok(secret) = store.get(&format!("oauth_{}_client_secret", cred_slug)) {
             if !secret.is_empty() {
                 out.oauth_client_secret = Some(secret);
+            }
+        }
+        // Zoho's region singleton picks the API host, so it belongs with the app
+        // credentials: without it an import silently falls back to `us` and a
+        // European account talks to the wrong data centre.
+        if let Ok(region) = store.get(&format!("oauth_{}_region", cred_slug)) {
+            if !region.is_empty() {
+                out.oauth_region = Some(region);
             }
         }
     }
@@ -16898,8 +16907,7 @@ pub async fn import_server_profiles_core_filtered(
                 // client-cred slug, which aliases Google Photos onto Google Drive
                 // and matches the key the GUI/edit form reads.
                 if secrets.oauth_client_id.is_some() || secrets.oauth_client_secret.is_some() {
-                    if let Some(cred_slug) = bridge_commands::rclone_oauth_client_cred_key(protocol)
-                    {
+                    if let Some(cred_slug) = bridge_commands::oauth_client_cred_key(protocol) {
                         if let Some(ref id) = secrets.oauth_client_id {
                             if let Err(e) =
                                 store.store(&format!("oauth_{}_client_id", cred_slug), id)
@@ -16913,6 +16921,13 @@ pub async fn import_server_profiles_core_filtered(
                             {
                                 cred_errors
                                     .push(format!("{} oauth client_secret: {}", profile_id, e));
+                            }
+                        }
+                        if let Some(ref region) = secrets.oauth_region {
+                            if let Err(e) =
+                                store.store(&format!("oauth_{}_region", cred_slug), region)
+                            {
+                                cred_errors.push(format!("{} oauth region: {}", profile_id, e));
                             }
                         }
                     }

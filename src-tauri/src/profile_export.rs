@@ -121,6 +121,12 @@ pub struct ProviderSecrets {
     /// rclone remote (`oauth_<provider>_client_secret` vault singleton).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub oauth_client_secret: Option<String>,
+    /// Zoho WorkDrive data-centre region (`oauth_zohoworkdrive_region` vault
+    /// singleton). It selects the API host, so an import that defaulted it back
+    /// to `us` pointed a European or Indian account at the wrong data centre.
+    /// Absent for providers that have no region singleton.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub oauth_region: Option<String>,
     /// Issue #230: the per-profile Filen CLI API key (`filen_api_key_<id>` vault
     /// entry). This long-lived secret is NEVER persisted on the saved profile
     /// (`options.filen_api_key` is transient, stripped to the vault on save), so
