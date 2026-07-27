@@ -635,6 +635,12 @@ impl SftpProvider {
 
                 match AerorsyncDeltaTransport::from_rsync_config(&rsync_config, host_key_policy) {
                     Ok(transport) => {
+                        // B4 / X.6: after live lane3 xattr acceptance is green,
+                        // opt Unix into -X so user.* rides the native path.
+                        // fail_on_metadata_loss stays off (X.5 soft ENOTSUP).
+                        // Windows: leave default off (no user.* analogue).
+                        #[cfg(unix)]
+                        let transport = transport.with_xattrs(true);
                         tracing::info!(
                             "providers::sftp: using native rsync delta transport (host key pinned)"
                         );
