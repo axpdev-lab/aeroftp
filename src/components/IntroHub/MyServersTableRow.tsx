@@ -46,6 +46,12 @@ interface MyServersTableRowProps {
     isDraggable?: boolean;
     isDragging?: boolean;
     isDragTarget?: boolean;
+    /** Which edge of this row the insertion line is drawn on (#453). A drop
+     *  makes the dragged profile inherit this row's index, so dragging *up*
+     *  inserts above the row ('top') and dragging *down* leaves it below
+     *  ('bottom'). Drawing the line on a fixed edge made every upward drop
+     *  look one slot off. */
+    dragTargetEdge?: 'top' | 'bottom';
     /** Position of this row in the parent's `servers` array. Lets the row
      *  bind the four parent drag callbacks to its own index without
      *  forcing the parent to re-curry on every render (issue #221). */
@@ -95,6 +101,7 @@ export const MyServersTableRow = React.memo(function MyServersTableRow({
     isDraggable,
     isDragging,
     isDragTarget,
+    dragTargetEdge = 'bottom',
     dragIndex,
     onDragStart,
     onDragEnter,
@@ -284,7 +291,12 @@ export const MyServersTableRow = React.memo(function MyServersTableRow({
                         draggable={isDraggable}
                         onDragStart={isDraggable && onDragStart ? handleRowDragStart : undefined}
                         onDragEnd={isDraggable ? onDragEnd : undefined}
-                        className={`${cellClass} text-right text-[11px] tabular-nums text-gray-400 dark:text-gray-500 ${isDraggable ? 'cursor-grab active:cursor-grabbing' : ''}`}
+                        // `select-none`: a text selection left over from an
+                        // earlier click makes the engine start a *text* drag
+                        // instead of ours, so the grip silently refuses to
+                        // pick the row up until the selection is cleared
+                        // elsewhere (#453, "some rows won't drag anymore").
+                        className={`${cellClass} select-none text-right text-[11px] tabular-nums text-gray-400 dark:text-gray-500 ${isDraggable ? 'cursor-grab active:cursor-grabbing' : ''}`}
                         title={dragDisabledTitle || (isDraggable ? t('introHub.table.dragToReorder') : undefined)}
                     >
                         <div className="flex items-center justify-end gap-1.5">
@@ -504,7 +516,7 @@ export const MyServersTableRow = React.memo(function MyServersTableRow({
             onMouseEnter={handleMouseEnter}
             onMouseLeave={handleMouseLeave}
             title={selectionTitle || undefined}
-            className={`group transition-colors ${onSelect ? 'cursor-pointer' : ''} ${isDragging ? 'opacity-40 bg-blue-50 dark:bg-blue-900/20' : isDragTarget ? '' : index % 2 === 1 ? 'bg-gray-50/30 dark:bg-white/[0.02]' : ''} hover:bg-gray-100/50 dark:hover:bg-white/[0.04] ${isDragTarget ? 'border-b-2 !border-b-blue-500 bg-blue-50/50 dark:bg-blue-900/15' : ''} ${selectionRingClass}`}
+            className={`group transition-colors ${onSelect ? 'cursor-pointer' : ''} ${isDragging ? 'opacity-40 bg-blue-50 dark:bg-blue-900/20' : isDragTarget ? '' : index % 2 === 1 ? 'bg-gray-50/30 dark:bg-white/[0.02]' : ''} hover:bg-gray-100/50 dark:hover:bg-white/[0.04] ${isDragTarget ? `${dragTargetEdge === 'top' ? 'border-t-2 !border-t-blue-500' : 'border-b-2 !border-b-blue-500'} bg-blue-50/50 dark:bg-blue-900/15` : ''} ${selectionRingClass}`}
         >
             {orderedColumns.map(col => renderCell(col.id))}
         </tr>
