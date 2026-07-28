@@ -163,6 +163,7 @@ async fn gtc_dag_b2_multipart_byte_identical() {
 
     let report_size = Arc::new(AtomicU64::new(file_size));
     let observer: Arc<dyn DagObserver> = Arc::new(NoopDagObserver);
+    let checkpoint_dir = tempfile::tempdir().expect("checkpoint tempdir");
     execute_single_file_dag(
         &built,
         Arc::clone(&arc_provider),
@@ -174,6 +175,10 @@ async fn gtc_dag_b2_multipart_byte_identical() {
         report_size,
         file_size,
         None,
+        Some(
+            ftp_client_gui_lib::transfer_dag::TransferCheckpointStore::new(checkpoint_dir.path())
+                .expect("per-test checkpoint store"),
+        ),
     )
     .await
     .expect("shaped multipart upload must succeed");

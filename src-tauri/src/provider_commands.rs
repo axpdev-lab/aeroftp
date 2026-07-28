@@ -2296,6 +2296,8 @@ async fn run_dag_download_leaf(
         report_size,
         file_size,
         cancel_token,
+        // The real per-user checkpoint store: this is a production transfer.
+        None,
     )
     .await
     {
@@ -2445,6 +2447,8 @@ async fn run_dag_upload_leaf(
         report_size,
         file_size,
         cancel_token,
+        // The real per-user checkpoint store: this is a production transfer.
+        None,
     )
     .await
     {

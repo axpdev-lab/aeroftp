@@ -9022,6 +9022,8 @@ async fn cli_run_single_file_dag(
         file_size,
         // The CLI relies on process-level Ctrl+C, not the GUI session token.
         None,
+        // The real per-user checkpoint store: this is a production transfer.
+        None,
     )
     .await;
     let provider = arc
