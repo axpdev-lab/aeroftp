@@ -1809,7 +1809,10 @@ export const PROVIDERS: ProviderConfig[] = [
         category: 'swift',
         icon: 'Cloud',
         color: '#7C3AED',
-        stable: false, // Waiting for Blomp support: storage proxy returns 403
+        // Live-verified: Blomp forbids the account (container) listing by design
+        // (403), but the per-account Swift container named after the login email
+        // works fully. swift.rs falls back to it — see discover_container().
+        stable: true,
         fields: [
             {
                 key: 'username',
