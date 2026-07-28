@@ -37,6 +37,11 @@ interface StatusBarProps {
     activePanel: 'remote' | 'local';
     activeLocalPanelId?: 'local' | 'local2';
     dualLocalPanel?: boolean;
+    /** True while the IntroHub (My Servers / Add Service) is the foreground
+     *  view. There is no file panel behind it - AeroFile and the hub are
+     *  mutually exclusive - so the path and the item counts describe nothing
+     *  the user is looking at and are suppressed. */
+    hubVisible?: boolean;
     devToolsOpen?: boolean;
     cloudEnabled?: boolean;
     cloudPaused?: boolean;
@@ -81,6 +86,7 @@ export const StatusBar: React.FC<StatusBarProps> = ({
     activePanel,
     activeLocalPanelId = 'local',
     dualLocalPanel = false,
+    hubVisible = false,
     devToolsOpen = false,
     cloudEnabled = false,
     cloudPaused = false,
@@ -128,23 +134,30 @@ export const StatusBar: React.FC<StatusBarProps> = ({
         <div role="status" aria-label="Status bar" className="h-7 bg-gray-100 dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 px-4 flex items-center justify-between text-xs text-gray-600 dark:text-gray-400 select-none shrink-0 overflow-hidden">
             {/* Left: Connection Status */}
             <div className="flex items-center gap-4 min-w-0 flex-1">
-                <div className="flex items-center gap-1.5">
-                    {isConnected ? (
-                        <>
-                            <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-                            <Wifi size={12} className="text-green-500" />
-                            <span className="font-medium text-green-600 dark:text-green-400 truncate max-w-[200px]">
-                                {serverInfo || t('statusBar.connected')}
-                            </span>
-                        </>
-                    ) : (
-                        <>
-                            <div className="w-2 h-2 rounded-full bg-gray-400" />
-                            <WifiOff size={12} className="text-gray-400" />
-                            <span className="text-gray-500">{t('statusBar.notConnected')}</span>
-                        </>
-                    )}
-                </div>
+                {/* A live session stays visible from anywhere, including the
+                    hub: it is the one piece of state you can act on while
+                    looking at My Servers. "Not connected" on the hub is not
+                    state, it is the page restating itself, so it is dropped
+                    there and kept everywhere a file panel exists. */}
+                {(isConnected || !hubVisible) && (
+                    <div className="flex items-center gap-1.5">
+                        {isConnected ? (
+                            <>
+                                <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                                <Wifi size={12} className="text-green-500" />
+                                <span className="font-medium text-green-600 dark:text-green-400 truncate max-w-[200px]">
+                                    {serverInfo || t('statusBar.connected')}
+                                </span>
+                            </>
+                        ) : (
+                            <>
+                                <div className="w-2 h-2 rounded-full bg-gray-400" />
+                                <WifiOff size={12} className="text-gray-400" />
+                                <span className="text-gray-500">{t('statusBar.notConnected')}</span>
+                            </>
+                        )}
+                    </div>
+                )}
 
                 {/* Connection Security Badges */}
                 {isConnected && connectionSecurity === 'insecure' && (
@@ -187,9 +200,12 @@ export const StatusBar: React.FC<StatusBarProps> = ({
                 )}
 
                 {/* Separator */}
-                <div className="w-px h-4 bg-gray-300 dark:bg-gray-600" />
+                {!hubVisible && <div className="w-px h-4 bg-gray-300 dark:bg-gray-600" />}
 
-                {/* Current Path */}
+                {/* Current Path. Suppressed on the hub, where no file panel is
+                    mounted behind it and the value is a leftover from the last
+                    view rather than a description of this one. */}
+                {!hubVisible && (
                 <div className="flex items-center gap-1.5 min-w-0 truncate">
                     {activePanel === 'remote' ? (
                         <>
@@ -218,6 +234,7 @@ export const StatusBar: React.FC<StatusBarProps> = ({
                         </>
                     )}
                 </div>
+                )}
             </div>
 
             {/* Right: File Count + Sync + DevTools */}
@@ -312,16 +329,18 @@ export const StatusBar: React.FC<StatusBarProps> = ({
                     </button>
                 )}
 
-                {swapPanels ? (
+                {/* Item counts belong to the panels; on the hub there are none
+                    to count, so the whole cluster goes with the path. */}
+                {!hubVisible && (swapPanels ? (
                     <>
                         <div className="flex items-center gap-1.5">
                             <HardDrive size={12} className="text-amber-500" />
-                            <span>{localFileCount} {t('browser.files')}</span>
+                            <span>{localFileCount} {t('browser.items')}</span>
                         </div>
                         {isConnected && (
                             <div className="flex items-center gap-1.5">
                                 <Globe size={12} className="text-blue-500" />
-                                <span>{remoteFileCount} {t('browser.files')}</span>
+                                <span>{remoteFileCount} {t('browser.items')}</span>
                             </div>
                         )}
                     </>
@@ -330,15 +349,15 @@ export const StatusBar: React.FC<StatusBarProps> = ({
                         {isConnected && (
                             <div className="flex items-center gap-1.5">
                                 <Globe size={12} className="text-blue-500" />
-                                <span>{remoteFileCount} {t('browser.files')}</span>
+                                <span>{remoteFileCount} {t('browser.items')}</span>
                             </div>
                         )}
                         <div className="flex items-center gap-1.5">
                             <HardDrive size={12} className="text-amber-500" />
-                            <span>{localFileCount} {t('browser.files')}</span>
+                            <span>{localFileCount} {t('browser.items')}</span>
                         </div>
                     </>
-                )}
+                ))}
 
                 {/* Separator */}
                 <div className="w-px h-4 bg-gray-300 dark:bg-gray-600" />
@@ -358,6 +377,31 @@ export const StatusBar: React.FC<StatusBarProps> = ({
                         {transferQueueCount > 0 && (
                             <span className="px-1.5 py-0.5 text-[10px] font-medium bg-orange-500 text-white rounded-full min-w-[18px] text-center">
                                 {transferQueueCount}
+                            </span>
+                        )}
+                    </button>
+                )}
+
+                {/* Activity Log Toggle. Sits immediately after the Queue: those
+                    two are the only buttons in this cluster that are not part
+                    of the Aero family and the only two that carry a count
+                    badge, so they read as one group. The transient Progress
+                    chip is placed after them rather than between them, so a
+                    running transfer cannot split the pair. */}
+                {onToggleActivityLog && (
+                    <button
+                        onClick={onToggleActivityLog}
+                        className={`flex items-center gap-1.5 px-2 py-0.5 rounded transition-colors ${showActivityLog
+                                ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400'
+                                : 'hover:bg-gray-200 dark:hover:bg-gray-700'
+                            }`}
+                        title={t('statusbar.activityLog')}
+                    >
+                        <ScrollText size={12} />
+                        <span>{t('statusbar.log')}</span>
+                        {activityLogCount > 0 && (
+                            <span className="px-1 text-[9px] font-semibold leading-none bg-emerald-500 text-white rounded-full min-w-[16px] h-[16px] inline-flex items-center justify-center">
+                                {activityLogCount > 99 ? '99+' : activityLogCount}
                             </span>
                         )}
                     </button>
@@ -422,26 +466,6 @@ export const StatusBar: React.FC<StatusBarProps> = ({
                     >
                         <FolderSync size={12} />
                         <span>{t('syncPanel.title')}</span>
-                    </button>
-                )}
-
-                {/* Activity Log Toggle */}
-                {onToggleActivityLog && (
-                    <button
-                        onClick={onToggleActivityLog}
-                        className={`flex items-center gap-1.5 px-2 py-0.5 rounded transition-colors ${showActivityLog
-                                ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400'
-                                : 'hover:bg-gray-200 dark:hover:bg-gray-700'
-                            }`}
-                        title={t('statusbar.activityLog')}
-                    >
-                        <ScrollText size={12} />
-                        <span>{t('statusbar.log')}</span>
-                        {activityLogCount > 0 && (
-                            <span className="px-1 text-[9px] font-semibold leading-none bg-emerald-500 text-white rounded-full min-w-[16px] h-[16px] inline-flex items-center justify-center">
-                                {activityLogCount > 99 ? '99+' : activityLogCount}
-                            </span>
-                        )}
                     </button>
                 )}
 

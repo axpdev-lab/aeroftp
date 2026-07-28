@@ -18856,6 +18856,7 @@ const App: React.FC = () => {
             dualLocalPanel={isDualLocalAeroFileMode}
             swapPanels={swapPanels}
             devToolsOpen={devToolsOpen}
+            hubVisible={showConnectionScreen}
             aeroFileActive={!showConnectionScreen && (!isConnected || !showRemotePanel)}
             onToggleAeroFile={handleToggleAeroFile}
             onToggleDevTools={() => setDevToolsOpen(!devToolsOpen)}
