@@ -40953,6 +40953,9 @@ async fn cmd_benchmark(
     // so it is passed as a value instead of being looked up by name. None for
     // every ordinary run.
     synth_profile: Option<&serde_json::Value>,
+    // The saved profile this row is running, when the caller already resolved
+    // it. Only the "Server" column reads it; the connect path is unchanged.
+    source_profile: Option<&serde_json::Value>,
     cli: &Cli,
     format: OutputFormat,
 ) -> i32 {
@@ -41055,7 +41058,8 @@ async fn cmd_benchmark(
     // from the saved profile, since the built provider only knows the transport.
     let service = benchmark_service_label(
         provider.provider_type(),
-        benchmark_profile_provider_id(cli, profile_for_connect, synth_profile).as_deref(),
+        benchmark_profile_provider_id(cli, profile_for_connect, synth_profile, source_profile)
+            .as_deref(),
     );
 
     let report_id = uuid::Uuid::new_v4().to_string();
@@ -42377,6 +42381,8 @@ async fn cmd_benchmark_compare(
             } else {
                 Some(&synth)
             },
+            // Already resolved by index above: no second vault open per row.
+            Some(&profiles[i]),
             cli,
             format,
         )
@@ -42693,13 +42699,23 @@ fn benchmark_service_label(provider_type: ProviderType, provider_id: Option<&str
 }
 
 /// Best-effort lookup of a saved profile's preset id, for the benchmark
-/// "Server" column. Resolves the name exactly as the connect path does. Any
-/// failure (locked vault, ambiguous name) yields `None`, which downgrades the
-/// column to the provider type: identity labelling must never fail a run.
+/// "Server" column. Any failure (locked vault, ambiguous name) yields `None`,
+/// which downgrades the column to the provider type: identity labelling must
+/// never fail a run.
+///
+/// Three sources, most authoritative first. `--all-protocols` connects a
+/// profile synthesized in memory, so its preset id is the one for the mode
+/// actually being measured. A compare sweep has already loaded the profile
+/// list and knows the exact index of the row it is running, so it hands the
+/// record straight over: that avoids reopening the vault once per row, and it
+/// is also more precise than the fallback, which starts from the name again
+/// and can be ambiguous where an index cannot. The by-name lookup is left for
+/// the single-profile path, which has no list in hand.
 fn benchmark_profile_provider_id(
     cli: &Cli,
     profile_name: Option<&str>,
     synth_profile: Option<&serde_json::Value>,
+    source_profile: Option<&serde_json::Value>,
 ) -> Option<String> {
     let owned = |p: &serde_json::Value| -> Option<String> {
         p.get("providerId")
@@ -42708,10 +42724,11 @@ fn benchmark_profile_provider_id(
             .filter(|s| !s.is_empty())
             .map(str::to_string)
     };
-    // `--all-protocols` connects a profile synthesized in memory, so its preset
-    // id is the authoritative one for the mode actually being measured.
     if let Some(synth) = synth_profile {
         return owned(synth);
+    }
+    if let Some(source) = source_profile {
+        return owned(source);
     }
     let name = profile_name?;
     let store = open_vault(cli).ok()?;
@@ -62730,6 +62747,7 @@ async fn main() {
                     *pre_delete,
                     *file_count,
                     file_size,
+                    None,
                     None,
                     None,
                     None,
