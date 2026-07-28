@@ -1050,6 +1050,7 @@ async fn dag_download_once(
     let built = TransferDagBuilder::shaped_file(TransferDirection::Download, &caps, 0);
     let report = Arc::new(AtomicU64::new(0));
     let observer: Arc<dyn DagObserver> = Arc::new(NoopDagObserver);
+    let checkpoint_dir = tempfile::tempdir().expect("checkpoint tempdir");
     let res = execute_single_file_dag(
         &built,
         Arc::clone(&arc),
@@ -1061,6 +1062,10 @@ async fn dag_download_once(
         report,
         0,
         None,
+        Some(
+            ftp_client_gui_lib::transfer_dag::TransferCheckpointStore::new(checkpoint_dir.path())
+                .expect("per-test checkpoint store"),
+        ),
     )
     .await
     .map_err(|e| e.to_string());
