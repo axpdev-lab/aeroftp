@@ -6338,33 +6338,78 @@ impl crate::transfer_dag::DagObserver for ScanProgressEmitter {
     }
 }
 
-async fn decrypt_remote_file_map_for_compare(
+/// Resolve the keys a crypt-aware compare must normalize the RAW remote listing
+/// with, from whichever unlock path armed this session.
+///
+/// There are two, and only one of them ever populated the standalone vault maps:
+///
+/// * the **provider overlay** (`provider_apply_crypt_overlay`), which is what the
+///   Overlays Path and every saved crypt profile use. It derives the keys into
+///   the live decorator and into this connection's key cache, and the vault id
+///   the frontend then reports is a synthetic sentinel
+///   (`provider-overlay:<kind>:<owner>`), never a map key;
+/// * the **standalone vault** commands (`rclone_crypt_unlock` /
+///   `aerocrypt_unlock`), used by the vault browser, which do insert under the
+///   UUID they hand back.
+///
+/// Looking only in the maps therefore failed for every provider-overlay session,
+/// which is the whole of the Overlays Path (#347). The cache is consulted first
+/// because it is the same key material the file panel is displaying with, so
+/// Compare and the panel cannot disagree; the maps stay as the fallback so the
+/// vault-browser path keeps working unchanged.
+async fn resolve_compare_overlay_keys(
     kind: Option<&str>,
     vault_id: &str,
+    state: &ProviderState,
     rclone_state: &crate::rclone_crypt::RcloneCryptState,
     aerocrypt_state: &crate::aerocrypt_provider::AeroCryptState,
-    entries: HashMap<String, crate::sync::FileInfo>,
-) -> Result<HashMap<String, crate::sync::FileInfo>, String> {
+) -> Result<crate::crypt_overlay_provider::OverlayKeys, String> {
+    use crate::crypt_overlay_provider::OverlayKeys;
+
+    // 1. This connection's armed overlay, if its kind is the one asked for. A
+    //    kind mismatch falls through rather than decrypting with the wrong
+    //    scheme, which would drop every row and read as "no differences".
+    if let Some((keys, _scope, cached_kind)) = state.cached_overlay_for_rearm() {
+        if Some(cached_kind.as_str()) == kind {
+            return Ok(keys);
+        }
+    }
+
+    // 2. A standalone unlocked vault, keyed by the UUID that unlock returned.
     match kind {
         Some("rclone-crypt") => {
             let vaults = rclone_state.vaults.lock().await;
-            let keys = vaults
+            vaults
                 .get(vault_id)
-                .ok_or_else(|| "Crypt vault is not unlocked".to_string())?;
-            Ok(normalize_rclone_remote_files_for_compare(keys, entries))
+                .map(|keys| OverlayKeys::Rclone(keys.clone()))
+                .ok_or_else(|| "Crypt vault is not unlocked".to_string())
         }
         Some("aerocrypt") => {
             let vaults = aerocrypt_state.vaults.lock().await;
-            let keys = vaults
+            vaults
                 .get(vault_id)
-                .ok_or_else(|| "Crypt vault is not unlocked".to_string())?;
-            Ok(normalize_aerocrypt_remote_files_for_compare(
-                &keys.master_key,
-                entries,
-            ))
+                .map(|keys| OverlayKeys::AeroCrypt {
+                    master_key: keys.master_key,
+                    config: keys.config.clone(),
+                })
+                .ok_or_else(|| "Crypt vault is not unlocked".to_string())
         }
         Some(_) => Err("Unsupported crypt overlay kind for compare".to_string()),
         None => Err("Missing crypt overlay kind for compare".to_string()),
+    }
+}
+
+fn normalize_remote_files_for_compare(
+    keys: &crate::crypt_overlay_provider::OverlayKeys,
+    entries: HashMap<String, crate::sync::FileInfo>,
+) -> HashMap<String, crate::sync::FileInfo> {
+    match keys {
+        crate::crypt_overlay_provider::OverlayKeys::Rclone(k) => {
+            normalize_rclone_remote_files_for_compare(k, entries)
+        }
+        crate::crypt_overlay_provider::OverlayKeys::AeroCrypt { master_key, .. } => {
+            normalize_aerocrypt_remote_files_for_compare(master_key, entries)
+        }
     }
 }
 
@@ -6718,25 +6763,68 @@ pub async fn provider_compare_directories(
         }
     }
 
+    // The remote scan above ran through `state.provider`, which IS the crypt
+    // decorator whenever the overlay is armed and in scope. In that case the
+    // listing already came back as plaintext names and plaintext sizes, and
+    // normalizing it a second time would try to decrypt cleartext, drop every
+    // row on the failed-decrypt `continue`, and hand Compare an empty remote:
+    // "no differences" over a folder that is not in sync. Normalization exists
+    // for the OTHER case, a compare launched while the box is unwrapped (badge
+    // locked, or a scope that never applied the overlay slot), where the
+    // listing really is encrypted.
     if let Some(vault_id) = crypt_vault_id.as_deref() {
-        let raw_len = remote_files.len();
-        remote_files = decrypt_remote_file_map_for_compare(
-            crypt_kind.as_deref(),
-            vault_id,
-            &rclone_state,
-            &aerocrypt_state,
-            remote_files,
-        )
-        .await?;
-        // rclone-crypt has no config MAC: a wrong overlay password derives
-        // valid-shaped keys that decrypt nothing, so a non-empty remote that
-        // normalizes to zero rows is a wrong-key signal. Fail closed rather
-        // than re-flag the whole tree as missing (the #364 symptom).
-        if crypt_kind.as_deref() == Some("rclone-crypt") && raw_len > 0 && remote_files.is_empty() {
-            return Err(
-                "Crypt overlay decrypted no remote entries: wrong overlay password or non-crypt remote."
-                    .to_string(),
+        if state.overlay_wrapped.load(Ordering::SeqCst) {
+            // An overlay that cannot map the ciphertext length back to the
+            // plaintext one (legacy AeroCrypt v1/v2) reports the on-wire size,
+            // so comparing it against the local plaintext size flags every
+            // single file as different and proposes re-uploading the whole
+            // tree. `cloud_service` already drops size comparison on that
+            // signal; this path did not, so it does now, and says so in the log
+            // rather than quietly producing a full-tree diff.
+            let exact_size = {
+                let guard = state.provider.lock().await;
+                guard
+                    .as_ref()
+                    .map(|p| p.reports_exact_size())
+                    .unwrap_or(true)
+            };
+            if !exact_size && options.compare_size {
+                options.compare_size = false;
+                info!(
+                    "Crypt compare: overlay does not map ciphertext size to plaintext size, \
+                     size comparison disabled for this run (kind: {})",
+                    crypt_kind.as_deref().unwrap_or("unknown")
+                );
+            }
+            info!(
+                "Crypt compare: live provider is overlay-wrapped, remote listing is already \
+                 plaintext (kind: {})",
+                crypt_kind.as_deref().unwrap_or("unknown")
             );
+        } else {
+            let keys = resolve_compare_overlay_keys(
+                crypt_kind.as_deref(),
+                vault_id,
+                &state,
+                &rclone_state,
+                &aerocrypt_state,
+            )
+            .await?;
+            let raw_len = remote_files.len();
+            remote_files = normalize_remote_files_for_compare(&keys, remote_files);
+            // rclone-crypt has no config MAC: a wrong overlay password derives
+            // valid-shaped keys that decrypt nothing, so a non-empty remote that
+            // normalizes to zero rows is a wrong-key signal. Fail closed rather
+            // than re-flag the whole tree as missing (the #364 symptom).
+            if crypt_kind.as_deref() == Some("rclone-crypt")
+                && raw_len > 0
+                && remote_files.is_empty()
+            {
+                return Err(
+                    "Crypt overlay decrypted no remote entries: wrong overlay password or non-crypt remote."
+                        .to_string(),
+                );
+            }
         }
     }
 
@@ -12299,10 +12387,10 @@ mod tests {
     use super::{
         decrypt_rel_aerocrypt, decrypt_rel_rclone, drain_in_flight_transfers,
         normalize_aerocrypt_remote_files_for_compare, normalize_rclone_remote_files_for_compare,
-        rclone_decrypted_size, remote_matches_repo, run_cancellable_connect,
-        run_cancellable_listing, ConnectTokenGuard, ConnectionCancelRegistry, ListingCancelState,
-        ProviderConnectionParams, ProviderState, TransferOperationGuard, CONNECT_CANCELLED,
-        LISTING_CANCELLED,
+        normalize_remote_files_for_compare, rclone_decrypted_size, remote_matches_repo,
+        resolve_compare_overlay_keys, run_cancellable_connect, run_cancellable_listing,
+        ConnectTokenGuard, ConnectionCancelRegistry, ListingCancelState, ProviderConnectionParams,
+        ProviderState, TransferOperationGuard, CONNECT_CANCELLED, LISTING_CANCELLED,
     };
     use crate::rclone_crypt::{
         derive_keys, derive_keys_with_tweak, encrypt_file_content, encrypt_name,
@@ -12364,6 +12452,187 @@ mod tests {
         assert!(state.cached_overlay_for_rearm().is_some());
         state.invalidate_overlay_key_cache();
         assert!(state.cached_overlay_for_rearm().is_none());
+    }
+
+    // ── Crypt-aware Compare key resolution (#347) ─────────────────────────────
+    //
+    // The regression these pin: a crypt Compare reported "no differences" over a
+    // folder that was not in sync, on BOTH overlay kinds, because the vault id
+    // the frontend passes for a provider overlay is a synthetic sentinel and the
+    // resolver only looked in the standalone vault maps, which that unlock path
+    // never populates. Reported against v4.1.6.
+
+    fn compare_test_keys() -> crate::crypt_overlay_provider::OverlayKeys {
+        let (name_key, data_key, name_tweak) =
+            derive_keys_with_tweak("compare-pass", "compare-salt").unwrap();
+        crate::crypt_overlay_provider::OverlayKeys::Rclone(RcloneCryptKeys {
+            name_key,
+            data_key,
+            name_tweak,
+            filename_encryption: FilenameEncryption::Standard,
+            off_suffix: String::new(),
+            directory_name_encryption: true,
+        })
+    }
+
+    fn compare_file_entry(rel: &str) -> (String, crate::sync::FileInfo) {
+        (
+            rel.to_string(),
+            crate::sync::FileInfo {
+                name: rel.rsplit('/').next().unwrap_or(rel).to_string(),
+                path: rel.to_string(),
+                size: 1024,
+                modified: None,
+                is_dir: false,
+                checksum: None,
+                checksum_alg: None,
+            },
+        )
+    }
+
+    /// The sentinel the GUI reports for a provider overlay resolves to the keys
+    /// this connection actually armed. Before the fix this fell through to the
+    /// vault maps, which a provider overlay never writes to, and the compare
+    /// died with "Crypt vault is not unlocked".
+    #[tokio::test]
+    async fn compare_resolves_provider_overlay_keys_from_the_connection_cache() {
+        let state = ProviderState::new();
+        let rclone_state = crate::rclone_crypt::RcloneCryptState::default();
+        let aerocrypt_state = crate::aerocrypt_provider::AeroCryptState::default();
+        state.store_overlay_key_cache(
+            compare_test_keys(),
+            "/Vault".to_string(),
+            "rclone-crypt".to_string(),
+        );
+
+        let resolved = resolve_compare_overlay_keys(
+            Some("rclone-crypt"),
+            // Exactly the shape App.tsx builds: `provider-overlay:<kind>:<owner>`,
+            // which is not, and never was, a key in either vault map.
+            "provider-overlay:rclone-crypt:saved-server-1",
+            &state,
+            &rclone_state,
+            &aerocrypt_state,
+        )
+        .await
+        .expect("a provider-overlay session must resolve its own armed keys");
+        assert_eq!(resolved.kind_str(), "rclone-crypt");
+    }
+
+    /// A cached overlay of the OTHER kind must not answer: decrypting with the
+    /// wrong scheme drops every row, which reads as "no differences" rather than
+    /// as the error it is.
+    #[tokio::test]
+    async fn compare_does_not_answer_with_a_different_overlay_kind() {
+        let state = ProviderState::new();
+        let rclone_state = crate::rclone_crypt::RcloneCryptState::default();
+        let aerocrypt_state = crate::aerocrypt_provider::AeroCryptState::default();
+        state.store_overlay_key_cache(
+            compare_test_keys(),
+            "/Vault".to_string(),
+            "rclone-crypt".to_string(),
+        );
+
+        // `OverlayKeys` has no `Debug` on purpose (it holds key material), so the
+        // assertion matches rather than unwrapping.
+        match resolve_compare_overlay_keys(
+            Some("aerocrypt"),
+            "provider-overlay:aerocrypt:saved-server-1",
+            &state,
+            &rclone_state,
+            &aerocrypt_state,
+        )
+        .await
+        {
+            Ok(_) => panic!("a kind mismatch must not silently decrypt with the wrong scheme"),
+            Err(err) => assert!(err.contains("not unlocked"), "unexpected error: {err}"),
+        }
+    }
+
+    /// A stale cache (the connection moved on) must not answer either, for the
+    /// same reason it can never re-arm: those keys belong to another server.
+    #[tokio::test]
+    async fn compare_ignores_a_cache_from_a_previous_connection() {
+        let state = ProviderState::new();
+        let rclone_state = crate::rclone_crypt::RcloneCryptState::default();
+        let aerocrypt_state = crate::aerocrypt_provider::AeroCryptState::default();
+        state.store_overlay_key_cache(
+            compare_test_keys(),
+            "/Vault".to_string(),
+            "rclone-crypt".to_string(),
+        );
+        state.connection_generation.fetch_add(1, Ordering::SeqCst);
+
+        assert!(
+            resolve_compare_overlay_keys(
+                Some("rclone-crypt"),
+                "provider-overlay:rclone-crypt:saved-server-1",
+                &state,
+                &rclone_state,
+                &aerocrypt_state,
+            )
+            .await
+            .is_err(),
+            "keys cached for a previous connection must never answer a compare"
+        );
+    }
+
+    /// The standalone vault-browser path keeps working: its unlock really does
+    /// insert under the UUID it hands back, and that is still resolvable.
+    #[tokio::test]
+    async fn compare_still_resolves_a_standalone_unlocked_vault_by_uuid() {
+        let state = ProviderState::new();
+        let rclone_state = crate::rclone_crypt::RcloneCryptState::default();
+        let aerocrypt_state = crate::aerocrypt_provider::AeroCryptState::default();
+        let (name_key, data_key, name_tweak) =
+            derive_keys_with_tweak("compare-pass", "compare-salt").unwrap();
+        rclone_state.vaults.lock().await.insert(
+            "11111111-2222-3333-4444-555555555555".to_string(),
+            RcloneCryptKeys {
+                name_key,
+                data_key,
+                name_tweak,
+                filename_encryption: FilenameEncryption::Standard,
+                off_suffix: String::new(),
+                directory_name_encryption: true,
+            },
+        );
+
+        let resolved = resolve_compare_overlay_keys(
+            Some("rclone-crypt"),
+            "11111111-2222-3333-4444-555555555555",
+            &state,
+            &rclone_state,
+            &aerocrypt_state,
+        )
+        .await
+        .expect("the vault-browser unlock path must keep resolving");
+        assert_eq!(resolved.kind_str(), "rclone-crypt");
+    }
+
+    /// Why the wrapped branch must skip normalization entirely: the compare scan
+    /// runs through `state.provider`, which IS the decorator when the overlay is
+    /// armed, so the listing is already plaintext. Normalizing it again decrypts
+    /// cleartext, every row fails and is dropped, and the remote arrives EMPTY,
+    /// which Compare renders as "no differences" over a folder that is not in
+    /// sync. This asserts the emptying, so the guard around it cannot be removed
+    /// as redundant.
+    #[test]
+    fn normalizing_an_already_plaintext_listing_would_empty_the_remote() {
+        let keys = compare_test_keys();
+        let plaintext: HashMap<String, crate::sync::FileInfo> = [
+            compare_file_entry("notes.txt"),
+            compare_file_entry("photos/holiday.jpg"),
+        ]
+        .into_iter()
+        .collect();
+
+        let normalized = normalize_remote_files_for_compare(&keys, plaintext);
+        assert!(
+            normalized.is_empty(),
+            "plaintext names are not valid ciphertext, so every row drops: this is \
+             exactly the 'no differences' the wrapped-provider guard prevents"
+        );
     }
 
     fn s3_params(path_style: Option<bool>) -> ProviderConnectionParams {
