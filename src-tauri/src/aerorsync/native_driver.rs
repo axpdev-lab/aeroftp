@@ -5116,11 +5116,19 @@ mod tests {
     }
 
     /// The property, rather than another example: whatever a peer
-    /// advertises out of the names rsync knows, the default profile must
-    /// never negotiate a codec this module cannot drive. Written as a
-    /// sweep over every subset of stock rsync 3.2.7's own compress list
-    /// so a future name added to our advertisement without a codec fails
-    /// here instead of against a stranger's NAS.
+    /// advertises, the default profile must never negotiate a codec this
+    /// module cannot drive. So a future name added to our advertisement
+    /// without a codec fails here instead of against a stranger's NAS.
+    ///
+    /// Two sweeps, because either one alone has a blind spot. The subset
+    /// sweep covers every combination a stock rsync can offer, but it is
+    /// anchored to a hardcoded list: a codec added to our advertisement
+    /// that stock does not know (say a future `brotli`) would never be
+    /// offered by it, and the test would stay green while advertising
+    /// something undrivable, which is exactly the failure it exists to
+    /// catch. The second sweep closes that by driving the advertisement
+    /// itself: every token we ship is offered alone, so it must both win
+    /// and be drivable.
     #[tokio::test]
     async fn default_advertisement_never_yields_a_codec_we_cannot_drive() {
         const STOCK: [&str; 5] = ["zstd", "lz4", "zlibx", "zlib", "none"];
@@ -5136,6 +5144,24 @@ mod tests {
                 !matches!(codec, LiteralCompression::Unsupported(_)),
                 "peer advertising {peer:?} negotiated {winner:?}, which the default \
                  advertisement must never allow: {codec:?}"
+            );
+        }
+
+        // Driven from what we actually ship, not from a list beside it.
+        for ours in PreambleProfile::default()
+            .compression_algos
+            .split_whitespace()
+        {
+            let (winner, codec) = negotiate_compression_with_default_profile(ours).await;
+            assert_eq!(
+                winner.as_deref(),
+                Some(ours),
+                "a peer offering only {ours:?} must negotiate it, since we advertise it"
+            );
+            assert!(
+                !matches!(codec, LiteralCompression::Unsupported(_)),
+                "the default advertisement carries {ours:?}, which nothing here can \
+                 drive: {codec:?}. Either add the codec or stop advertising the name"
             );
         }
     }
