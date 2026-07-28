@@ -18,7 +18,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
-import { buildProvidersMarkdown } from '../src/components/providerCatalog';
+import { buildProviderGridHtml, buildProvidersMarkdown } from '../src/components/providerCatalog';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -26,16 +26,18 @@ const ROOT = path.join(__dirname, '..');
 
 const BEGIN = '<!-- BEGIN PROVIDERS-TABLE -->';
 const END = '<!-- END PROVIDERS-TABLE -->';
+const GRID_BEGIN = '<!-- BEGIN PROVIDERS-GRID -->';
+const GRID_END = '<!-- END PROVIDERS-GRID -->';
 
-function inject(relFile: string, block: string): void {
+function inject(relFile: string, block: string, begin = BEGIN, end = END): void {
     const abs = path.join(ROOT, relFile);
     const src = fs.readFileSync(abs, 'utf8');
-    const b = src.indexOf(BEGIN);
-    const e = src.indexOf(END);
+    const b = src.indexOf(begin);
+    const e = src.indexOf(end);
     if (b === -1 || e === -1 || e < b) {
-        throw new Error(`${relFile}: missing "${BEGIN}" ... "${END}" anchors`);
+        throw new Error(`${relFile}: missing "${begin}" ... "${end}" anchors`);
     }
-    const next = `${src.slice(0, b + BEGIN.length)}\n\n${block}\n\n${src.slice(e)}`;
+    const next = `${src.slice(0, b + begin.length)}\n\n${block}\n\n${src.slice(e)}`;
     if (next !== src) {
         fs.writeFileSync(abs, next, 'utf8');
         console.log(`Updated ${relFile}`);
@@ -47,3 +49,7 @@ function inject(relFile: string, block: string): void {
 const block = buildProvidersMarkdown();
 inject('README.md', block);
 inject('docs/PROVIDERS.md', block);
+
+// The logo grid at the top of README.md, generated from the same catalog so it
+// cannot name a provider the table below does not, or name one twice (#347).
+inject('README.md', buildProviderGridHtml(), GRID_BEGIN, GRID_END);
