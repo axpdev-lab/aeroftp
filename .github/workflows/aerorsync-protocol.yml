@@ -162,7 +162,14 @@ jobs:
             # Same as the pre-pull step above: `$?` after a plain `if` is the
             # status of the `if`, not of the condition, so the status has to be
             # taken in an `else` branch or the final `exit "$status"` exits 0.
-            if docker compose -f docker-compose.real-rsync.yml up -d --build; then
+            # HOST_UID/HOST_GID build the container's testuser with the
+            # runner's uid, so the files `rsync --server` writes into the
+            # bind-mounted workspace stay writable by the tests that seed
+            # them from the host side. Without it the harness owns the mount
+            # as uid 1000 and the RSNP_TEST_REAL upload tests die on
+            # PermissionDenied halfway through.
+            if HOST_UID=$(id -u) HOST_GID=$(id -g) \
+                 docker compose -f docker-compose.real-rsync.yml up -d --build; then
               exit 0
             else
               status=$?
@@ -202,6 +209,60 @@ jobs:
             aerorsync::delta_transport_impl::tests::delta_upload_xattr_batch_two_files_live_lane_3 \
             aerorsync::delta_transport_impl::tests::delta_upload_symlink_xattr_not_inherited_live_lane_3 \
             --nocapture
+      # The RSNP_TEST_REAL lane: eight #[ignore] tests that drive the
+      # production AerorsyncDeltaTransport upload and download paths against
+      # the same stock rsync, with each negotiated checksum forced in turn
+      # (xxh128, xxh3, xxh64, md5, md4, sha1).
+      #
+      # Until now nothing set RSNP_TEST_REAL_SSH_KEY, so every one of them
+      # took its early return, printed one line to stderr and reported **ok**.
+      # libtest has no skipped state, so eight tests that never ran looked
+      # exactly like eight that passed, and the production delta upload path
+      # went without live coverage while the suite stayed green.
+      # RSNP_TEST_REAL_REQUIRED=1 makes the missing configuration a panic, so
+      # this step cannot go back to passing by doing nothing.
+      - name: Seed the real-rsync lane fixtures
+        working-directory: src-tauri/src/aerorsync/capture
+        shell: bash
+        run: |
+          set -eu
+          mkdir -p workspace/real/download workspace/real/upload workspace/real/local
+          python3 - <<'PY'
+          import os, random
+          random.seed(20260728)
+          src = bytes(random.getrandbits(8) for _ in range(256 * 1024))
+          basis = bytearray(src)
+          for off in (4096, 60000, 200000):
+              basis[off:off+512] = bytes(random.getrandbits(8) for _ in range(512))
+          root = 'workspace/real'
+          open(f'{root}/download/target.bin', 'wb').write(src)
+          open(f'{root}/upload/target.bin', 'wb').write(bytes(basis))
+          open(f'{root}/local/upload.bin', 'wb').write(src)
+          os.makedirs('/tmp/aerorsync-lane', exist_ok=True)
+          open('/tmp/aerorsync-lane/expected.bin', 'wb').write(src)
+          for suffix in ('', '_MD5', '_MD4', '_SHA1'):
+              open(f'/tmp/aerorsync-lane/local{suffix}.bin', 'wb').write(bytes(basis))
+          PY
+      - name: Run the real-rsync lane (checksum matrix, upload + download)
+        working-directory: src-tauri
+        env:
+          RSNP_TEST_REAL_REQUIRED: '1'
+          RSNP_TEST_REAL_SSH_KEY: ${{ github.workspace }}/src-tauri/src/aerorsync/capture/keys/id_ed25519
+          RSNP_TEST_REAL_HOST: 127.0.0.1
+          RSNP_TEST_REAL_PORT: '2224'
+          RSNP_TEST_REAL_USER: testuser
+          RSNP_TEST_REAL_WORKSPACE: ${{ github.workspace }}/src-tauri/src/aerorsync/capture/workspace/real
+          RSNP_TEST_REAL_REMOTE_DOWNLOAD_TARGET: /workspace/real/download/target.bin
+          RSNP_TEST_REAL_REMOTE_UPLOAD_TARGET: /workspace/real/upload/target.bin
+          RSNP_TEST_REAL_EXPECT_DOWNLOAD_FILE: /tmp/aerorsync-lane/expected.bin
+          RSNP_TEST_REAL_LOCAL_DOWNLOAD_FILE: /tmp/aerorsync-lane/local.bin
+          RSNP_TEST_REAL_LOCAL_DOWNLOAD_FILE_MD5: /tmp/aerorsync-lane/local_MD5.bin
+          RSNP_TEST_REAL_LOCAL_DOWNLOAD_FILE_MD4: /tmp/aerorsync-lane/local_MD4.bin
+          RSNP_TEST_REAL_LOCAL_DOWNLOAD_FILE_SHA1: /tmp/aerorsync-lane/local_SHA1.bin
+        # --test-threads=1: the checksum override is a process-global env var.
+        run: |
+          cargo test --features aerorsync --lib aerorsync::live_tests -- \
+            --ignored --nocapture --test-threads=1
       - name: Tear down harness
         if: always()
         working-directory: src-tauri/src/aerorsync/capture
