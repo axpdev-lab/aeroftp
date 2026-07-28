@@ -12,6 +12,7 @@ Everything here is prototype-only and already covered by the repository
 |------|------|-----------------------------------|------------------------------|----------------------------------------------------------------------|
 | 1    | 2222 | `docker-compose.yml`              | `aeroftp-rsync-capture`      | Wrapper baseline (rsync-over-ssh text oracle). **Frozen.**            |
 | 3    | 2224 | `docker-compose.real-rsync.yml`   | `aeroftp-rsync-real`         | Stock rsync server with byte-level oracle + live lane3 tests.        |
+| D31  | 2225 | `docker-compose.rsync-3.1.3.yml`  | `aeroftp-rsync-313-deflate`  | Upstream rsync 3.1.3, forced-zlibx byte oracle.                       |
 
 Lane 2 (native RSNP / `aerorsync_serve`) was retired in Y-RSC.8 with the
 legacy SessionDriver stack.
@@ -67,6 +68,33 @@ exec channel, reads the server's greeting bytes, and asserts the first
 byte matches a known protocol version low byte (0x1F or 0x20). The test
 uses the `RSNP_TEST_REAL_*` env namespace so it does not collide with
 lane 2.
+
+## D31: rsync 3.1.3 deflate oracle
+
+`Dockerfile.rsync-3.1.3-sshd` builds the upstream 3.1.3 release from its
+SHA-256-pinned Samba tarball on a current Debian base. This avoids depending
+on the retired Debian buster repositories while reproducing the pre-zstd peer
+token path (`zlibx`, protocol 31) used by embedded/NAS firmware.
+
+The same pinned image supplies the client, forced onto zlibx with
+`--new-compress`; neither end depends on the runner's installed rsync. Upload
+and download each start from a distinct deterministic 256-KiB basis, exercise
+both literal and matched delta data, verify the final SHA-256, and capture both
+directions through the same Python byte proxy as lane 3:
+
+```bash
+./run_deflate_rsync_capture.sh
+```
+
+Artifacts land in the ignored
+`artifacts_deflate/<timestamp>/{upload,download}/` tree. The stack uses port
+2225 and a unique container name, so running or tearing it down cannot touch
+the shared lane-1/lane-3 fixtures. Before reporting success, the script passes
+the fresh upload transcript to
+`rsync_3_1_3_deflate_byte_oracle_matches_real_wire_decoder`; that test pins the
+measured token-run/literal shape, file checksum, compressed byte count and
+inflated byte count. The dedicated `deflate-oracle` CI job runs this whole
+sequence, so a stock-to-stock transfer alone cannot paint the lane green.
 
 ## Conventions
 

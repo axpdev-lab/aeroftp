@@ -9,6 +9,7 @@ import type { LocalTab } from '../types/aerofile';
 import { MegaLogo, BoxLogo, PCloudLogo, AzureLogo, FilenLogo, FourSharedLogo, ZohoWorkDriveLogo, InternxtLogo, KDriveLogo, JottacloudLogo, DrimeCloudLogo, FileLuLogo, KoofrLogo, OpenDriveLogo, YandexDiskLogo, GitHubLogo, GitLabLogo, ImmichLogo, PROVIDER_LOGOS } from './ProviderLogos';
 import { useTranslation } from '../i18n';
 import { getGitHubConnectionBadge, getMegaConnectionBadge } from '../utils/providerConnectionMeta';
+import { middleClickClose } from '../utils/middleClick';
 
 interface CloudTabState {
     enabled: boolean;
@@ -381,6 +382,10 @@ export const SessionTabs: React.FC<SessionTabsProps> = ({
                                 : 'hover:bg-gray-200 dark:hover:bg-gray-700/50 cursor-pointer'
                             } ${dragIdx === idx ? 'scale-95' : ''} ${isDragTarget ? 'border-l-2 border-blue-500' : ''}`}
                         onClick={() => { if (!isLocked) onTabClick(session.id); }}
+                        // Middle click closes the tab (Ehud #274), on the ✖ and
+                        // anywhere else on the chip. Never while the tab is locked
+                        // by a running transfer, which is what blocks the ✖ too.
+                        {...middleClickClose(() => onTabClose(session.id), !isLocked)}
                         onContextMenu={(e) => {
                             e.preventDefault();
                             if (!isLocked) setContextMenu({ x: e.clientX, y: e.clientY, sessionId: session.id });
@@ -457,9 +462,7 @@ export const SessionTabs: React.FC<SessionTabsProps> = ({
                                         : 'hover:bg-gray-200 dark:hover:bg-gray-700/50'
                                 }`}
                                 onClick={() => onLocalTabClick?.(tab.id)}
-                                onAuxClick={(e) => {
-                                    if (e.button === 1 && canClose) { e.preventDefault(); onLocalTabClose?.(tab.id); }
-                                }}
+                                {...middleClickClose(() => onLocalTabClose?.(tab.id), canClose)}
                                 onContextMenu={(e) => {
                                     e.preventDefault();
                                     setLocalCtxMenu({ x: e.clientX, y: e.clientY, tabId: tab.id });
@@ -510,9 +513,7 @@ export const SessionTabs: React.FC<SessionTabsProps> = ({
                                                 : 'hover:bg-gray-200 dark:hover:bg-gray-700/50'
                                         }`}
                                         onClick={() => onLocalTabClick2?.(tab.id)}
-                                        onAuxClick={(e) => {
-                                            if (e.button === 1 && canClose) { e.preventDefault(); onLocalTabClose2?.(tab.id); }
-                                        }}
+                                        {...middleClickClose(() => onLocalTabClose2?.(tab.id), canClose)}
                                         onContextMenu={(e) => e.preventDefault()}
                                         title={tab.path}
                                     >

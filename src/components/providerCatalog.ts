@@ -149,7 +149,7 @@ export const PROVIDER_CATALOG: CatalogCompany[] = [
           // row. Shown as "S4 (S3)" — MEGA's product name + the wire protocol.
           { label: 'S3', labelOverride: 'S4 (S3)', protocol: 's3', providerId: 'mega-s4', category: 'object-storage', paid: true, note: 'MEGA S4 object storage (Pro plan)' },
       ] },
-    { company: 'Drime', logoId: 'drime', countryCode: 'FR', freeStorageGb: 20,
+    { company: 'Drime Cloud', parentCompany: 'Drime', logoId: 'drime', countryCode: 'FR', freeStorageGb: 20,
       healthCheckUrl: 'https://app.drime.cloud',
       protocols: [{ label: 'API', protocol: 'drime', category: 'cloud-storage' }] },
     { company: 'InfiniCloud', logoId: 'infinicloud', countryCode: 'JP', freeStorageGb: 20,
@@ -267,7 +267,7 @@ export const PROVIDER_CATALOG: CatalogCompany[] = [
     { company: 'Jianguoyun', logoId: 'jianguoyun', countryCode: 'CN', freeStorageGb: 1,
       freeNote: 'monthly traffic cap',
       protocols: [{ label: 'WebDAV', protocol: 'webdav', providerId: 'jianguoyun', category: 'webdav' }] },
-    { company: 'Felicloud', logoId: 'felicloud', countryCode: '', freeStorageGb: 10,
+    { company: 'Felicloud', logoId: 'felicloud', countryCode: 'EU', freeStorageGb: 10,
       freeNote: 'Nextcloud host',
       protocols: [{ label: 'WebDAV', protocol: 'webdav', providerId: 'felicloud', category: 'webdav' }] },
     { company: 'Cloudinary', logoId: 'cloudinary', countryCode: 'US', freeStorageGb: null,
@@ -342,6 +342,130 @@ export const PROVIDER_CATALOG: CatalogCompany[] = [
 /** Sum of approximate free GB across the given companies (footer total). */
 export function totalFreeStorageGb(companies: CatalogCompany[]): number {
     return companies.reduce((sum, c) => sum + (c.freeStorageGb ?? 0), 0);
+}
+
+/**
+ * Presentation data for the logo grid at the top of README.md: the one thing
+ * the catalog does not already carry, because a 36px tile needs an icon file,
+ * a documentation link and a label short enough to sit under it.
+ *
+ * The grid used to be hand-maintained and drifted from the catalog exactly the
+ * way a reporter found it (#347 17790873): Zoho WorkDrive appeared as "Zoho",
+ * MEGA appeared twice because its paid S4 object storage had its own tile, and
+ * S3Drive was missing entirely. It is generated from this list now, and
+ * `providerCatalog.test.ts` fails unless the list and the public catalog name
+ * exactly the same companies, once each, so a new provider cannot be added to
+ * one and forgotten in the other.
+ *
+ * `label` defaults to the catalog company name and is set only where the full
+ * name does not fit under a tile; the link carries the full name as its title,
+ * so an abbreviation is never the only thing on offer. The order is editorial
+ * and categorical (cloud drives, then object storage, then WebDAV, developer,
+ * media last), which is the order the website and docs.aeroftp.app mirror.
+ */
+export interface ProviderGridTile {
+    /** `logoId` of the catalog company this tile stands for. */
+    logoId: string;
+    /** File under `public/icons/providers/grid/`. */
+    icon: string;
+    /** Path under `https://docs.aeroftp.app/`. */
+    docsPath: string;
+    /** Short tile caption; defaults to the catalog company name. */
+    label?: string;
+}
+
+export const PROVIDER_GRID: readonly ProviderGridTile[] = [
+    // Cloud drives (OAuth / native API)
+    { logoId: 'googledrive', icon: 'Google_Drive.png', docsPath: 'providers/google-drive' },
+    { logoId: 'onedrive', icon: 'onedrive.png', docsPath: 'providers/onedrive', label: 'OneDrive' },
+    { logoId: 'dropbox', icon: 'dropbox.png', docsPath: 'providers/dropbox' },
+    { logoId: 'mega', icon: 'mega.png', docsPath: 'providers/mega' },
+    { logoId: 'box', icon: 'box.png', docsPath: 'providers/box' },
+    { logoId: 'pcloud', icon: 'pcloud.png', docsPath: 'providers/pcloud' },
+    { logoId: 'filen', icon: 'filen.png', docsPath: 'providers/filen' },
+    { logoId: 'internxt', icon: 'internxt.png', docsPath: 'providers/internxt' },
+    { logoId: 'zohoworkdrive', icon: 'ZohoWorkDrive.png', docsPath: 'providers/zoho' },
+    { logoId: 'koofr', icon: 'Koofr.png', docsPath: 'providers/koofr' },
+    { logoId: 'kdrive', icon: 'kdrive.png', docsPath: 'providers/kdrive' },
+    { logoId: 'jottacloud', icon: 'jottacloud.png', docsPath: 'providers/jottacloud' },
+    { logoId: 'drime', icon: 'drime.png', docsPath: 'providers/drime' },
+    { logoId: 'filelu', icon: 'filelu.png', docsPath: 'providers/filelu' },
+    { logoId: 'opendrive', icon: 'opendrive.png', docsPath: 'providers/opendrive' },
+    { logoId: 'yandexdisk', icon: 'YandexDisk.png', docsPath: 'providers/yandex' },
+    { logoId: '4shared', icon: '4shared.png', docsPath: 'providers/4shared' },
+    { logoId: 'backblaze', icon: 'backblaze.png', docsPath: 'providers/backblaze-b2' },
+    // Object storage (S3-compatible)
+    { logoId: 'amazon-s3', icon: 'Amazon_Web_Services.png', docsPath: 'providers/aws-s3', label: 'AWS S3' },
+    { logoId: 'google-cloud-storage', icon: 'googlecloud.png', docsPath: 'providers/google-cloud-storage' },
+    { logoId: 'azure', icon: 'azure.png', docsPath: 'protocols/azure', label: 'Azure Blob' },
+    { logoId: 'wasabi', icon: 'wasabi.png', docsPath: 'providers/wasabi' },
+    { logoId: 'cloudflare-r2', icon: 'cloudfare.png', docsPath: 'providers/cloudflare-r2' },
+    { logoId: 'digitalocean-spaces', icon: 'digitalocean.png', docsPath: 'providers/digitalocean-spaces' },
+    { logoId: 'tencent-cos', icon: 'tencent.png', docsPath: 'providers/tencent-cloud-cos' },
+    { logoId: 'alibaba-oss', icon: 'alibabacloud.png', docsPath: 'providers/alibaba-cloud-oss' },
+    { logoId: 'oracle-cloud', icon: 'oracle_cloud.png', docsPath: 'providers/oracle-cloud' },
+    { logoId: 'storj', icon: 'storj.png', docsPath: 'providers/storj' },
+    { logoId: 'idrive-e2', icon: 'idrive_e2.png', docsPath: 'providers/idrive-e2' },
+    { logoId: 'minio', icon: 'minio.png', docsPath: 'providers/minio' },
+    { logoId: 'yandex-storage', icon: 'yandexcloud.png', docsPath: 'providers/yandex-object-storage' },
+    { logoId: 's3drive', icon: 's3drive.png', docsPath: 'providers/s3drive' },
+    { logoId: 'quotaless-s3', icon: 'quotaless.png', docsPath: 'providers/quotaless' },
+    // WebDAV
+    { logoId: 'nextcloud', icon: 'nextcloud.png', docsPath: 'providers/nextcloud' },
+    { logoId: 'felicloud', icon: 'felicloud.png', docsPath: 'providers/felicloud' },
+    { logoId: 'tabdigital', icon: 'tabdigital.png', docsPath: 'providers/tabdigital' },
+    { logoId: 'cloudme', icon: 'cloudme.png', docsPath: 'providers/cloudme' },
+    { logoId: 'infinicloud', icon: 'infiniCloud.png', docsPath: 'providers/infinicloud' },
+    { logoId: 'jianguoyun', icon: 'jianguoyun.png', docsPath: 'providers/jianguoyun' },
+    { logoId: 'seafile', icon: 'seafile.png', docsPath: 'providers/seafile' },
+    { logoId: 'drivehq', icon: 'drivehq.png', docsPath: 'providers/drivehq' },
+    // SFTP
+    { logoId: 'hetzner-storage-box', icon: 'hetzner.png', docsPath: 'providers/hetzner-storage-box' },
+    // Developer
+    { logoId: 'github', icon: 'github.png', docsPath: 'providers/github' },
+    { logoId: 'gitlab', icon: 'gitlab.png', docsPath: 'providers/gitlab' },
+    { logoId: 'sourceforge', icon: 'sourceforge.png', docsPath: 'providers/sourceforge' },
+    // Media services
+    { logoId: 'immich', icon: 'immich.png', docsPath: 'providers/immich' },
+    { logoId: 'pixelunion', icon: 'pixelunion.png', docsPath: 'providers/pixelunion' },
+    { logoId: 'imagekit', icon: 'imagekit.png', docsPath: 'providers/imagekit' },
+    { logoId: 'uploadcare', icon: 'uploadcare.png', docsPath: 'providers/uploadcare' },
+    { logoId: 'cloudinary', icon: 'cloudinary.png', docsPath: 'providers/cloudinary' },
+];
+
+/** Tiles per row in the generated README grid. */
+const GRID_COLUMNS = 9;
+
+/**
+ * Render the README logo grid from [`PROVIDER_GRID`] + the catalog, so the
+ * tiles carry the catalog's own names and no company can appear twice.
+ * Injected between the `PROVIDERS-GRID` anchors by `npm run gen:providers-table`.
+ */
+export function buildProviderGridHtml(): string {
+    const byLogoId = new Map(PROVIDER_CATALOG.map(c => [c.logoId, c]));
+    const cells = PROVIDER_GRID.map(tile => {
+        const company = byLogoId.get(tile.logoId);
+        if (!company) {
+            throw new Error(`PROVIDER_GRID references unknown logoId "${tile.logoId}"`);
+        }
+        const label = tile.label ?? company.company;
+        const title = label === company.company ? '' : ` title="${company.company}"`;
+        return `    <td align="center" width="80"><a href="https://docs.aeroftp.app/${tile.docsPath}"${title}>`
+            + `<img src="public/icons/providers/grid/${tile.icon}" width="36" /></a>`
+            + `<br><sub>${label}</sub></td>`;
+    });
+
+    const rows: string[] = [];
+    for (let i = 0; i < cells.length; i += GRID_COLUMNS) {
+        rows.push('  <tr>', ...cells.slice(i, i + GRID_COLUMNS), '  </tr>');
+    }
+
+    return [
+        '<!-- Generated from PROVIDER_GRID in src/components/providerCatalog.ts by `npm run gen:providers-table`. Do not edit by hand. -->',
+        '<table align="center">',
+        ...rows,
+        '</table>',
+    ].join('\n');
 }
 
 /**

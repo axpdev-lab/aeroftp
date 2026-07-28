@@ -680,6 +680,26 @@ impl SshRawStream {
     }
 }
 
+/// Append exact native-rsync channel bytes when the wire-dump diagnostic is
+/// enabled. Called by the blocking worker at the point bytes have actually
+/// crossed the libssh2 channel, so the transcript also localises a stalled
+/// read/write phase.
+fn wire_dump_raw_append(file: &str, bytes: &[u8]) {
+    let dir = match std::env::var("AEROFTP_WIRE_DUMP_DIR") {
+        Ok(dir) if !dir.is_empty() => dir,
+        _ => return,
+    };
+    use std::io::Write as _;
+    let path = std::path::Path::new(&dir).join(file);
+    if let Ok(mut output) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+    {
+        let _ = output.write_all(bytes);
+    }
+}
+
 #[async_trait]
 impl RawByteStream for SshRawStream {
     async fn read_bytes(&mut self, max: usize) -> Result<Vec<u8>, AerorsyncError> {
@@ -770,9 +790,11 @@ fn spawn_raw_worker(
     let mut channel = session
         .channel_session()
         .map_err(|e| AerorsyncError::transport(format!("channel_session: {e}")))?;
-    channel.exec(&request.full_command_line()).map_err(|e| {
-        AerorsyncError::transport(format!("exec {}: {e}", request.full_command_line()))
-    })?;
+    let command = request.full_command_line();
+    channel
+        .exec(&command)
+        .map_err(|e| AerorsyncError::transport(format!("exec {command}: {e}")))?;
+    wire_dump_raw_append("remote_command.txt", format!("{command}\n").as_bytes());
 
     let idle_poll = Duration::from_millis(config.worker_idle_poll_ms.max(50));
     let tcp_for_worker = tcp.clone();
@@ -814,6 +836,9 @@ fn spawn_raw_worker(
                     let result = channel
                         .write_all(&bytes)
                         .map_err(|e| RawWorkerError::Other(format!("write_bytes: {e}")));
+                    if result.is_ok() {
+                        wire_dump_raw_append("raw_client_to_server.bin", &bytes);
+                    }
                     let _ = reply.send(result);
                 }
                 Ok(RawWorkerCommand::Read(max, reply)) => {
@@ -840,6 +865,7 @@ fn spawn_raw_worker(
                                     RawWorkerError::Other(message)
                                 })
                             } else {
+                                wire_dump_raw_append("raw_server_to_client.bin", &buf);
                                 Ok(buf)
                             }
                         }

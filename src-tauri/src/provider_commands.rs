@@ -2296,6 +2296,8 @@ async fn run_dag_download_leaf(
         report_size,
         file_size,
         cancel_token,
+        // The real per-user checkpoint store: this is a production transfer.
+        None,
     )
     .await
     {
@@ -2445,6 +2447,8 @@ async fn run_dag_upload_leaf(
         report_size,
         file_size,
         cancel_token,
+        // The real per-user checkpoint store: this is a production transfer.
+        None,
     )
     .await
     {
@@ -5080,6 +5084,27 @@ pub async fn provider_stat(
         .map_err(|e| format!("Failed to get file info: {}", e))
 }
 
+/// Which digests this connection can produce for `path` without downloading
+/// it, so a surface can say up front what it will and will not get.
+///
+/// Answered from the backend rather than guessed from the protocol name: FTP
+/// reports what the server advertised in `FEAT`, SFTP reports nothing without
+/// a live SSH session, and inside a crypt overlay the reply carries
+/// `ciphertext: true` so the caller knows to label the value as covering the
+/// encrypted bytes. An empty `algorithms` means "no server-side digest here".
+#[tauri::command]
+pub async fn provider_checksum_capability(
+    state: State<'_, ProviderState>,
+    path: String,
+) -> Result<crate::providers::ChecksumCapability, String> {
+    let provider_lock = state.provider.lock().await;
+
+    Ok(provider_lock
+        .as_ref()
+        .map(|p| p.checksum_capability(&path))
+        .unwrap_or_default())
+}
+
 /// Server-side content hash(es) of a remote object WITHOUT downloading it.
 ///
 /// Returns an `algo -> hex` map populated only from what the backend
@@ -5087,6 +5112,14 @@ pub async fn provider_stat(
 /// `sha256sum`, Drive/OneDrive/Box API digests, Dropbox `content_hash`).
 /// An empty map means the provider has no cheap server-side hash for
 /// this object; the caller should say so rather than download it.
+///
+/// Gated on [`StorageProvider::checksum_capability`] rather than on
+/// `supports_checksum()`, and served by
+/// [`StorageProvider::stored_checksum`]: the two differ only under a crypt
+/// overlay, where the digest of the stored ciphertext is a real answer that
+/// the sync engine must not compare against a local hash but this surface can
+/// legitimately show, provided it labels it. The capability reply carries that
+/// label.
 #[tauri::command]
 pub async fn provider_checksum(
     state: State<'_, ProviderState>,
@@ -5098,12 +5131,12 @@ pub async fn provider_checksum(
         .as_mut()
         .ok_or("Not connected to any provider")?;
 
-    if !provider.supports_checksum() {
+    if provider.checksum_capability(&path).algorithms.is_empty() {
         return Ok(std::collections::HashMap::new());
     }
 
     provider
-        .checksum(&path)
+        .stored_checksum(&path)
         .await
         .map_err(|e| format!("Failed to get server-side checksum: {}", e))
 }

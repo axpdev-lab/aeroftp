@@ -38,7 +38,7 @@
     ]
   },
   {
-    "company": "Drime",
+    "company": "Drime Cloud",
     "logoId": "drime",
     "country": "FR",
     "freeGb": 20,
@@ -780,11 +780,13 @@
   {
     "company": "Felicloud",
     "logoId": "felicloud",
-    "country": "",
+    "country": "EU",
     "freeGb": 10,
     "freeNote": "Nextcloud host",
     "freeRequiresCard": false,
-    "regions": [],
+    "regions": [
+      "EU"
+    ],
     "protocols": [
       {
         "label": "WebDAV",

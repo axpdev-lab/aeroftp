@@ -8,8 +8,11 @@ import readmeRaw from '../../README.md?raw';
 import providersDocRaw from '../../docs/PROVIDERS.md?raw';
 import {
     PROVIDER_CATALOG,
+    PROVIDER_GRID,
     buildCliCatalog,
+    buildProviderGridHtml,
     buildProvidersMarkdown,
+    isDevOnlyProvider,
     catalogParentKey,
     companyInCategory,
     companyLaunchProtocol,
@@ -50,6 +53,71 @@ describe('providers table drift guard (issue #270 17104681)', () => {
             between(providersDocRaw),
             'docs/PROVIDERS.md is stale - run `npm run gen:providers-table`',
         ).toBe(buildProvidersMarkdown().trim());
+    });
+});
+
+describe('README logo grid drift guard (#347 17790873)', () => {
+    const BEGIN = '<!-- BEGIN PROVIDERS-GRID -->';
+    const END = '<!-- END PROVIDERS-GRID -->';
+    const publicCatalog = PROVIDER_CATALOG.filter(c => !isDevOnlyProvider(c.logoId));
+
+    it('README grid matches buildProviderGridHtml()', () => {
+        const b = readmeRaw.indexOf(BEGIN);
+        const e = readmeRaw.indexOf(END);
+        expect(b, 'BEGIN PROVIDERS-GRID anchor present').toBeGreaterThanOrEqual(0);
+        expect(e, 'END PROVIDERS-GRID anchor after BEGIN').toBeGreaterThan(b);
+        expect(
+            readmeRaw.slice(b + BEGIN.length, e).trim(),
+            'README.md logo grid is stale - run `npm run gen:providers-table`',
+        ).toBe(buildProviderGridHtml().trim());
+    });
+
+    // The reporter's three findings were all instances of one failure: the grid
+    // and the catalog were maintained separately. These pin the relationship
+    // rather than the symptoms, so the next provider cannot reintroduce it.
+    it('every public catalog company has exactly one tile', () => {
+        const tiled = PROVIDER_GRID.map(t => t.logoId);
+        const missing = publicCatalog.map(c => c.logoId).filter(id => !tiled.includes(id));
+        expect(missing, 'catalog companies with no grid tile').toEqual([]);
+    });
+
+    it('no company is tiled twice, and no tile is a method rather than a company', () => {
+        const tiled = PROVIDER_GRID.map(t => t.logoId);
+        expect(tiled.length, 'duplicate logoId in PROVIDER_GRID').toBe(new Set(tiled).size);
+
+        const known = new Set(publicCatalog.map(c => c.logoId));
+        const strays = tiled.filter(id => !known.has(id));
+        // 'mega-s4' used to sit here as its own tile: MEGA's paid S4 object
+        // storage is a connection METHOD of the MEGA row, not a second company.
+        expect(strays, 'grid tiles naming something that is not a public company').toEqual([]);
+    });
+
+    it('a tile is never captioned with the parent company instead of the product', () => {
+        const byLogoId = new Map(PROVIDER_CATALOG.map(c => [c.logoId, c]));
+        for (const tile of PROVIDER_GRID) {
+            const company = byLogoId.get(tile.logoId)!;
+            const caption = tile.label ?? company.company;
+            expect(caption.length, `${company.company} has an empty caption`).toBeGreaterThan(0);
+            // The reported bug in one sentence: a tile showed the company that
+            // OWNS the drive rather than the drive. "Zoho" for Zoho WorkDrive
+            // and "pCloud" for pCloud Drive are both that mistake. Shortening
+            // a product name to fit the tile ("AWS S3", "Azure Blob") is not.
+            if (company.parentCompany && company.parentCompany !== company.company) {
+                expect(
+                    caption.toLowerCase(),
+                    `${company.company} is captioned with its parent company "${caption}" rather than the product`,
+                ).not.toBe(company.parentCompany.toLowerCase());
+            }
+        }
+    });
+
+    it('the products the reporter named are under their full names', () => {
+        const captionOf = (logoId: string) => {
+            const tile = PROVIDER_GRID.find(t => t.logoId === logoId)!;
+            return tile.label ?? PROVIDER_CATALOG.find(c => c.logoId === logoId)!.company;
+        };
+        expect(captionOf('pcloud')).toBe('pCloud Drive');
+        expect(captionOf('zohoworkdrive')).toBe('Zoho WorkDrive');
     });
 });
 

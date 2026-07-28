@@ -20,6 +20,7 @@ import { open, save } from '@tauri-apps/plugin-dialog';
 import { writeTextFile } from '@tauri-apps/plugin-fs';
 import { Lock, Unlock, Loader2, X, FileKey } from 'lucide-react';
 import { useTranslation } from '../i18n';
+import { DefaultSaltDisclosure } from './common/DefaultSaltDisclosure';
 import { PasswordInput } from './common/PasswordInput';
 import { PasswordMatchHint } from './common/PasswordMatchHint';
 import { InlinePasswordGenerator } from './common/InlinePasswordGenerator';
@@ -676,6 +677,11 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({
                                                 <label><input type="radio" name="mstrength" checked={aeroCryptDefaultSaltStrength==='128'} onChange={() => setAeroCryptDefaultSaltStrength('128')} /> {t('aerocryptNative.defaultSaltStrength128')}</label>
                                                 <label><input type="radio" name="mstrength" checked={aeroCryptDefaultSaltStrength==='256'} onChange={() => setAeroCryptDefaultSaltStrength('256')} /> {t('aerocryptNative.defaultSaltStrength256')}</label>
                                             </div>
+                                            {/* Ehud #369: the radios read as "the salt is 128/256-bit".
+                                                They are a password requirement; the salt is a single
+                                                32-byte public constant, printed here so it can be
+                                                read, copied and backed up. */}
+                                            <DefaultSaltDisclosure className="ml-5" />
                                             <label className="ml-5 flex items-start gap-1.5">
                                                 <input type="checkbox" checked={aeroCryptDefaultSaltAttested} onChange={(e)=>setAeroCryptDefaultSaltAttested(e.target.checked)} />
                                                 <span>{t('aerocryptNative.defaultSaltAttestation')}</span>

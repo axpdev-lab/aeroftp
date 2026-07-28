@@ -1455,6 +1455,23 @@ aeroftp-cli benchmark --profile "server" --file-count 5000 --file-size 4K --json
 
 When `--file-count N` is set (`--file-size` defaults to `64K`), the run adds five dedicated operations: **`upload-all`**, **`list-dir`** (one listing of the N-file directory), **`stat-all`**, **`download-all`**, and **`delete-all`**. Each reports **`files_per_second`** and a per-file latency distribution (`latency_ms`, whose p50 is the mean per-file time) alongside raw `throughput_mbps` for the transfer ops. The aggregate payload (`file-count` x `file-size`) is capped at 5 GiB and `--file-count` at 100000.
 
+#### Selecting what to benchmark
+
+```bash
+# Every saved profile (--all is the same flag)
+aeroftp-cli benchmark standard --all-profiles
+
+# Every saved profile, over every transport mode its provider offers
+aeroftp-cli benchmark standard --all-profiles --all-protocols
+
+# One account over each of its modes
+aeroftp-cli benchmark --profile "Koofr" --all-protocols
+```
+
+`--all-profiles` selects; `--all-protocols` expands a selection. Profiles that fail to connect, and modes whose credentials or endpoint cannot be resolved, are reported as skipped rather than measured as zero. Both combine with `--compare`, `--group` and the `-i` / `--tui` pickers.
+
+The comparison tables and the profile pickers show a **Server** column (who and where: `Koofr`, `TAB.DIGITAL`, `MEGA`, or `Custom` for a plain transport aimed at a host of your own) next to a **Protocol** column (how: `WebDAV`, `SFTP`, `S3`, `OAuth 2.0`, `REST API`). A preconfigured Koofr profile connected over WebDAV reads `Koofr / WebDAV`; a custom WebDAV server reads `Custom / WebDAV`.
+
 #### v4.1.0 improvements (#368)
 
 - The scratch base directory is removed after a run (guarded), honouring `--test-root-prefix`.
@@ -2479,7 +2496,7 @@ The following providers have been tested live via CLI with `--profile`:
 - **v3.7.2 - CLI security hardening + community polish**: Codex CLI external audit closes 17 paired findings (CLI-AUDIT-01..17). Highlights: GUI tool execution now enforces backend approval, MCP / AI core remote dispatcher path validation (null bytes, traversal, control chars, option-like forms, length cap), `server_exec` strictly read-only (rejects get/put/mkdir/rm/mv with explicit-use error), MCP profile lookup requires exact id/name or unique substring (no silent first-match), `local_copy_files` and `local_stat_batch` validate every path including symlink rejection, SFTP packet parser bounds-checked end to end, `.aerotmp` writes use `create_new` and refuse symlinked temp paths, inline upload temp files use `tempfile::Builder::tempfile()`, daemon auth token created with `O_NOFOLLOW` + mode 0600, `sync --direction <invalid>` fails before connecting with exit code 5, `sync-doctor` resolves remote paths the same way `sync` does, `sync-doctor --checksum` no longer suggests the non-existent flag, `transfer` checks cancellation between plan and execution returning exit code 130, `agent-info --json` treats missing profile list as empty, CLI help footer documents the extended exit-code contract (9, 10, 11, 130). CLI `profiles` dynamic terminal-width-aware layout (Ehud, #161), unified `--breakdown` table folding TOTAL into the breakdown rows, `--hide=fav` / `favorite` / `favourite` / `favs` alias surface documented. Direct `rsa = "0.9"` dependency dropped, `jsonwebtoken` switched to `aws-lc-rs`. `audit.toml` documents the two remaining transitive RSA paths (sigstore, russh) with written threat-model justifications.
 - **v3.7.1 - Mount Manager + community polish**: GUI Mount Manager dialog wraps `aeroftp-cli mount` with persistent configs, sidecar JSON or vault-backed storage, cross-platform autostart (systemd-user / Task Scheduler ONLOGON), and an "Open mount in file manager" shortcut. CLI `profiles -i` interactive prompt loop with compact `1l` / `2t` / `3d` tokens. Filen Desktop local WebDAV / S3 bridges connect on the first try thanks to the layered WebDAV scheme detection rewrite.
 - **v3.7.0 - AeroRsync session-cached batch + crypto overlay**: new `AerorsyncBatch` trait amortizes one SSH session across many delta transfers; `SyncReport` exposes `delta_files[]` and `bytes_on_wire`. Cross-profile transfer (`aeroftp_transfer`, `aeroftp_transfer_tree`) and six new ops tools (`aeroftp_touch`, `aeroftp_cleanup`, `aeroftp_speed`, `aeroftp_sync_doctor`, `aeroftp_dedupe`, `aeroftp_reconcile`) bring MCP to 39 tools. rclone crypt becomes full read/write through transparent overlay session; AeroVault gets matching overlay-session model.
-- **v3.6.1 - Windows first-class delta sync**: native rsync protocol 31 in pure Rust (`aerorsync`), no `rsync.exe` bundle, no WSL requirement. The Windows binary now performs delta uploads byte-identical to stock rsync 3.4.1 in CI.
+- **v3.6.1 - Windows first-class delta sync**: native rsync protocol 31 in pure Rust (`aerorsync`), no `rsync.exe` bundle, no WSL requirement. The Windows binary now performs delta uploads byte-identical to stock rsync 3.2.7 in CI.
 - **v3.5.4 - MCP hardening**: `aeroftp-cli mcp` top-level alias, vault auto-init in MCP, per-profile serialization, schema validation, S3 bucket fix, FTP/SFTP/WebDAV/Filen/FileLu/Drime/Immich error message hardening.
 - **v3.5.3 - Continuous bidirectional `sync --watch`**: native filesystem watcher (inotify/FSEvents/ReadDirectoryChangesW) with anti-loop cooldown, periodic rescan, NDJSON output. No external sync daemon required.
 - **v3.5.3 - Agent-friendly flags**: `--files-from`, `--immutable`, `--no-check-dest`, `--max-depth`, `--inplace`, `--fast-list` (S3), `--compare-dest`/`--copy-dest`, `cleanup` for orphan `.aerotmp`.

@@ -3351,7 +3351,27 @@
             "privacyPublicDesc": "Всеки с връзката има достъп до този елемент.",
             "visibility": "Видимост",
             "applyPrivacy": "Прилагане",
-            "applyPrivacyAll": "Прилагане към {count} елемента"
+            "applyPrivacyAll": "Прилагане към {count} елемента",
+            "checksumNotOnBackend": "[NEEDS TRANSLATION] {backend} cannot produce this hash server-side",
+            "checksumServerSide": "[NEEDS TRANSLATION] Digests come from the server; the file is never downloaded to hash it, so only what this backend already stores is offered.",
+            "checksumNegotiated": "[NEEDS TRANSLATION] This list is what this particular server advertised, so a given file may still have none.",
+            "checksumCiphertext": "[NEEDS TRANSLATION] This file is inside the Overlays Path, so the server stores it encrypted. These digests cover the encrypted bytes and will not match a hash of your local copy: that is what encryption means, not an error. Use \"aeroftp-cli crypt verify\" to check the decrypted content against your local files.",
+            "checksumAbsentForObject": "[NEEDS TRANSLATION] This backend can serve {algorithm}, but has none stored for this object. Nothing was downloaded to compute it.",
+            "checksumMatrixLink": "[NEEDS TRANSLATION] Which backend supports which hash",
+            "checksumCaveats": {
+                "s3-etag": "[NEEDS TRANSLATION] The ETag is the object MD5 only for single-part objects that are not SSE-KMS encrypted; for the others it is omitted rather than guessed.",
+                "b2-unverified": "[NEEDS TRANSLATION] Large files and uploads B2 recorded as unverified carry no usable SHA-1.",
+                "sftp-sha256sum": "[NEEDS TRANSLATION] Computed by the remote host with sha256sum over an SSH channel: the bytes are read on the server, never sent to you. Omitted if the host has no sha256sum.",
+                "ftp-negotiated": "[NEEDS TRANSLATION] Depends on what the server advertises in FEAT: HASH, or the older XMD5, XSHA1 and XCRC.",
+                "webdav-oc-checksums": "[NEEDS TRANSLATION] Only ownCloud and Nextcloud publish checksums, and only for files uploaded by a client that sent one.",
+                "drive-workspace-docs": "[NEEDS TRANSLATION] Native Google Workspace documents have no byte stream and therefore no digest.",
+                "onedrive-hashes": "[NEEDS TRANSLATION] Which one is present depends on the account: personal OneDrive publishes QuickXorHash, business and SharePoint usually SHA-1 and SHA-256.",
+                "dropbox-content-hash": "[NEEDS TRANSLATION] Not a plain file digest: a SHA-256 over the SHA-256 of each 4 MiB block. It only compares against another Dropbox content hash.",
+                "koofr-proprietary": "[NEEDS TRANSLATION] Koofr's own hash. It only compares against another Koofr hash.",
+                "github-blob-sha": "[NEEDS TRANSLATION] The git blob SHA-1, computed over a git header plus the content, so it does not match a plain SHA-1 of the same file.",
+                "immich-asset-checksum": "[NEEDS TRANSLATION] The asset checksum Immich records at upload time.",
+                "crypt-overlay-ciphertext": "[NEEDS TRANSLATION] The digest covers the encrypted bytes stored on the server."
+            }
         },
         "duplicates": {
             "title": "Намиране на дубликати",
@@ -4843,7 +4863,6 @@
             "decryptName": "Декриптирай името",
             "decryptFileFromDisk": "Декриптирай файл от диска",
             "fileDecryptedTo": "Файлът е декриптиран в {path}",
-            "serverHashGated": "Контролната сума от страна на сървъра не е налична при активно криптирано наслагване (би хеширала шифрования текст, а не вашия файл).",
             "outsideScope": "Извън шифрованата зона (файловете тук не са шифровани)",
             "overlaysPathButton": "Път на слоевете",
             "overlaysPathButtonHint": "Към шифрования път на слоевете: {path}",
@@ -5288,7 +5307,9 @@
             "defaultSaltAttestation": "Генерирах тази парола с мениджър на пароли и разбирам компромиса със свързваемостта.",
             "defaultSaltNeedsStronger": "Въведете силна генерирана парола, за да включите солта по подразбиране.",
             "defaultSaltTier128": "128-bit (препоръчително, изисква парола от 20+ знака)",
-            "defaultSaltTier256": "256-bit (по-строго, изисква парола от 39+ знака)"
+            "defaultSaltTier256": "256-bit (по-строго, изисква парола от 39+ знака)",
+            "defaultSaltTierMeaning": "[NEEDS TRANSLATION] The two tiers set how strong your password must be, not the size of the salt: there is one salt, 32 bytes, the same for every default-salt vault.",
+            "defaultSaltValueLabel": "[NEEDS TRANSLATION] Public default salt (AeroCrypt v3), SHA-256 of"
         },
         "modalGuard": {
             "busyTitle": "Операция в ход",

@@ -714,6 +714,23 @@ pub async fn execute_single_file_dag(
     // instead of running the current file to completion. `None` = no cancel
     // wrapping (the CLI path keeps its own Ctrl+C handling).
     cancel_token: Option<CancellationToken>,
+    // Where durable multipart checkpoints are journaled, and therefore which
+    // orphan records this run is allowed to scavenge and abort. `None` means
+    // the real per-user store under the AeroFTP data root, which is what the
+    // three production call sites pass.
+    //
+    // It is a parameter rather than a `default_store()` call inside the body
+    // because the body also *acts* on what it finds there: it aborts stale
+    // provider sessions whose endpoint matches this one. With no way to
+    // inject it, every test that shaped a multipart upload read and wrote the
+    // developer's own `~/.config/aeroftp-dev/transfer-checkpoints`, so its
+    // result depended on the machine's history rather than on the code. That
+    // is not a hypothetical: it is how
+    // `cancel_token_keeps_durable_multipart_session_for_resume` came to fail
+    // on a residue seven days old (see its comment). Making this explicit at
+    // every call site is deliberate — a new test cannot reach the real store
+    // by forgetting something.
+    checkpoint_store: Option<crate::transfer_dag::TransferCheckpointStore>,
 ) -> Result<(), ProviderError> {
     let direction = built.direction;
     let remote: Arc<str> = Arc::from(remote_path.as_str());
@@ -787,8 +804,11 @@ pub async fn execute_single_file_dag(
             total_parts: layout.total_parts,
             preferred_part_size: layout.preferred_part_size,
         };
-        let store = crate::transfer_dag::TransferCheckpointStore::default_store()
-            .map_err(ProviderError::TransferFailed)?;
+        let store = match checkpoint_store {
+            Some(store) => store,
+            None => crate::transfer_dag::TransferCheckpointStore::default_store()
+                .map_err(ProviderError::TransferFailed)?,
+        };
         // Conservative orphan scavenging: only records past the durable TTL,
         // only for this exact connected endpoint/provider, and only after a
         // successful provider abort. Unknown, current, and failed-abort records
@@ -1486,6 +1506,31 @@ mod tests {
     use crate::providers::{MultipartHandle, ProviderType, RemoteEntry, UploadedPart};
     use crate::transfer_dag::observer::CollectingDagObserver;
     use crate::transfer_dag::{Capability, TransferCapabilities, TransferDagBuilder};
+
+    /// The durable-checkpoint store every test in this module passes to
+    /// [`execute_single_file_dag`], rooted in that test's own temp directory.
+    ///
+    /// Never pass `None` from a test. `None` means the real per-user store
+    /// under the AeroFTP data root, and the multipart path does not merely
+    /// write there: it scavenges orphan records past the TTL whose endpoint
+    /// matches, and aborts the matching provider session. A test that reached
+    /// it therefore inherited every previous run's leftovers, on this machine
+    /// only, so its result depended on the developer's history rather than on
+    /// the code. That is how
+    /// `cancel_token_keeps_durable_multipart_session_for_resume` came to fail
+    /// on 2026-07-28 against four `slow-mock` records written seven days
+    /// earlier, which crossed the TTL that morning; CI never saw it, because a
+    /// fresh runner has no history. See
+    /// `scavenger_only_aborts_stale_records_from_the_injected_store` for the
+    /// behaviour this isolation makes testable on purpose.
+    fn test_checkpoint_store(
+        dir: &std::path::Path,
+    ) -> Option<crate::transfer_dag::TransferCheckpointStore> {
+        Some(
+            crate::transfer_dag::TransferCheckpointStore::new(dir.join("checkpoints"))
+                .expect("per-test checkpoint store"),
+        )
+    }
 
     // DAG-P2-06 (wire-level): the shaped single-file construction point binds
     // learned tuning to its endpoint under the ShapedFile workload key, which is
@@ -2323,6 +2368,7 @@ mod tests {
             report,
             30,
             Some(token),
+            test_checkpoint_store(dir.path()),
         )
         .await;
 
@@ -2369,6 +2415,7 @@ mod tests {
             report,
             30,
             Some(CancellationToken::new()),
+            test_checkpoint_store(dir.path()),
         )
         .await;
 
@@ -2436,6 +2483,7 @@ mod tests {
             report,
             20,
             Some(token),
+            test_checkpoint_store(dir.path()),
         )
         .await;
 
@@ -2456,6 +2504,128 @@ mod tests {
         assert!(
             !*multipart_aborted.lock().unwrap(),
             "a durable checkpoint keeps the provider session for missing-part resume"
+        );
+    }
+
+    /// The orphan scavenger reads the store it was handed, and aborts a stale
+    /// non-terminal record whose endpoint matches this transfer.
+    ///
+    /// This is the mechanism that made the test above fail on 2026-07-28, and
+    /// nothing exercised it: it ran on `default_store()` against whatever the
+    /// developer's machine happened to contain, so it was invisible until it
+    /// misfired and then looked like a timing flake. Pinned here on purpose,
+    /// with both directions asserted, because "aborts too eagerly" and "never
+    /// aborts" are both regressions and one assertion cannot tell them apart.
+    ///
+    /// Two runs against **one** injected directory. The first is the cancelled
+    /// upload above, which leaves a `failed` record: non-terminal, so it is a
+    /// resume candidate rather than garbage. The second re-runs against the
+    /// same directory through a zero-TTL view of it, which is what "seven days
+    /// later" looks like without waiting seven days.
+    #[tokio::test]
+    async fn scavenger_aborts_a_stale_record_from_the_injected_store() {
+        use crate::transfer_dag::TransferCheckpointStore;
+        use std::time::Duration;
+
+        let dir = tempfile::tempdir().expect("tempdir");
+        let store_dir = dir.path().join("checkpoints");
+        let local = dir.path().join("source.bin");
+        std::fs::write(&local, b"0123456789abcdefghij").expect("write source");
+
+        // One cancelled multipart upload, purely to leave a real non-terminal
+        // record behind. Hand-writing the record would let the test drift from
+        // the shape production actually journals.
+        let seed_aborted = Arc::new(StdMutex::new(false));
+        let token = CancellationToken::new();
+        let seed = SlowMockProvider::new(
+            Arc::new(StdMutex::new(false)),
+            Arc::new(StdMutex::new(false)),
+        )
+        .with_multipart_state(
+            Arc::new(StdMutex::new(false)),
+            Arc::clone(&seed_aborted),
+            Arc::new(AtomicU64::new(0)),
+        )
+        .cancelling_during_part(token.clone());
+        let caps = TransferCapabilities {
+            multipart_upload: Capability::Supported,
+            preferred_chunk_size: Some(10),
+            multipart_threshold: 0,
+            max_chunk_slots: Some(1),
+            ..TransferCapabilities::default()
+        };
+        let built = TransferDagBuilder::shaped_file(TransferDirection::Upload, &caps, 20);
+        let observer: Arc<dyn DagObserver> = Arc::new(crate::transfer_dag::NoopDagObserver);
+
+        let seeded = execute_single_file_dag(
+            &built,
+            Arc::new(Mutex::new(Some(
+                Box::new(seed) as Box<dyn crate::providers::StorageProvider>
+            ))),
+            "/remote.bin".to_string(),
+            local.to_string_lossy().to_string(),
+            None,
+            None,
+            Arc::clone(&observer),
+            Arc::new(AtomicU64::new(20)),
+            20,
+            Some(token),
+            Some(TransferCheckpointStore::new(&store_dir).expect("seed store")),
+        )
+        .await;
+        assert!(seeded.is_err(), "the seeding upload is cancelled by design");
+        assert!(
+            !*seed_aborted.lock().unwrap(),
+            "the seeding run must leave the session intact, or there is nothing stale to find"
+        );
+
+        let default_view = TransferCheckpointStore::new(&store_dir).expect("default-TTL view");
+        assert_eq!(
+            default_view.stale_nonterminal().expect("list stale").len(),
+            0,
+            "a record written seconds ago is not stale under the 7-day TTL: \
+             the scavenger must leave a live resume candidate alone"
+        );
+        let expired_view = TransferCheckpointStore::with_ttl(&store_dir, Duration::from_secs(0))
+            .expect("zero-TTL view");
+        assert_eq!(
+            expired_view.stale_nonterminal().expect("list stale").len(),
+            1,
+            "the same record is stale once the TTL has passed"
+        );
+
+        // Second run, same directory seen through the expired view. The
+        // scavenger must now find the seeded record and abort its session.
+        let scavenged = Arc::new(StdMutex::new(false));
+        let second = SlowMockProvider::new(
+            Arc::new(StdMutex::new(false)),
+            Arc::new(StdMutex::new(false)),
+        )
+        .with_multipart_state(
+            Arc::new(StdMutex::new(false)),
+            Arc::clone(&scavenged),
+            Arc::new(AtomicU64::new(0)),
+        );
+        let _ = execute_single_file_dag(
+            &built,
+            Arc::new(Mutex::new(Some(
+                Box::new(second) as Box<dyn crate::providers::StorageProvider>
+            ))),
+            "/remote.bin".to_string(),
+            local.to_string_lossy().to_string(),
+            None,
+            None,
+            observer,
+            Arc::new(AtomicU64::new(20)),
+            20,
+            Some(CancellationToken::new()),
+            Some(TransferCheckpointStore::with_ttl(&store_dir, Duration::from_secs(0)).unwrap()),
+        )
+        .await;
+
+        assert!(
+            *scavenged.lock().unwrap(),
+            "the stale record's provider session must be aborted by the scavenger"
         );
     }
 
@@ -2506,6 +2676,7 @@ mod tests {
             report,
             20,
             Some(CancellationToken::new()),
+            test_checkpoint_store(dir.path()),
         )
         .await;
 
@@ -2570,6 +2741,7 @@ mod tests {
             report,
             20,
             Some(CancellationToken::new()),
+            test_checkpoint_store(dir.path()),
         )
         .await;
 
@@ -2632,6 +2804,7 @@ mod tests {
             report,
             13,
             Some(CancellationToken::new()),
+            test_checkpoint_store(dir.path()),
         )
         .await;
 
@@ -2680,6 +2853,7 @@ mod tests {
             report,
             30,
             Some(CancellationToken::new()),
+            test_checkpoint_store(dir.path()),
         )
         .await;
         assert!(res.is_ok(), "download completes: {res:?}");
@@ -2727,6 +2901,7 @@ mod tests {
             report,
             5,
             Some(CancellationToken::new()),
+            test_checkpoint_store(dir.path()),
         )
         .await;
         assert!(res.is_ok(), "upload completes: {res:?}");
@@ -2773,6 +2948,7 @@ mod tests {
             report,
             30,
             Some(token),
+            test_checkpoint_store(dir.path()),
         )
         .await;
 
@@ -2835,6 +3011,7 @@ mod tests {
             Arc::new(AtomicU64::new(20)),
             20,
             Some(CancellationToken::new()),
+            test_checkpoint_store(dir.path()),
         )
         .await;
         assert!(
@@ -2861,6 +3038,7 @@ mod tests {
             Arc::new(AtomicU64::new(20)),
             20,
             Some(CancellationToken::new()),
+            test_checkpoint_store(dir.path()),
         )
         .await;
         assert!(second.is_ok(), "the resumed run commits: {second:?}");
@@ -2914,6 +3092,7 @@ mod tests {
             report,
             20,
             Some(CancellationToken::new()),
+            test_checkpoint_store(dir.path()),
         )
         .await;
         assert!(res.is_ok(), "multipart upload commits: {res:?}");
@@ -3158,6 +3337,7 @@ mod tests {
             report,
             7,
             Some(CancellationToken::new()),
+            test_checkpoint_store(dir.path()),
         )
         .await;
         assert!(res.is_ok(), "fixture download completes: {res:?}");
@@ -3219,6 +3399,7 @@ mod tests {
             report,
             20,
             Some(CancellationToken::new()),
+            test_checkpoint_store(dir.path()),
         )
         .await;
         assert!(res.is_ok(), "multipart fixture upload commits: {res:?}");

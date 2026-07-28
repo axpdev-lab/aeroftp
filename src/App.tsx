@@ -462,7 +462,7 @@ import { describeScanIncompleteError, isScanIncompleteError } from './utils/scan
 import { useTranslation } from './i18n';
 
 // Components
-import { ConfirmDialog, InputDialog, ArchivePasswordDialog, SyncNavDialog, PropertiesDialog, FileProperties, MultiFilePropertiesDialog, MultiFileProperties, MasterPasswordSetupDialog } from './components/Dialogs';
+import { ConfirmDialog, InputDialog, ArchivePasswordDialog, SyncNavDialog, PropertiesDialog, FileProperties, ChecksumCapability, MultiFilePropertiesDialog, MultiFileProperties, MasterPasswordSetupDialog } from './components/Dialogs';
 import { TransferToastContainer, dispatchTransferToast, reopenTransferToast } from './components/Transfer/TransferToastContainer';
 import { runExtractWithToast } from './utils/extractToast';
 import { archiveStem, dispatchGeneralExtract, isWrongPasswordError, resolveUniqueExtractDir } from './utils/extractOrchestrator';
@@ -1342,6 +1342,27 @@ const App: React.FC = () => {
   // #252: which Properties tab opens first. Set to 'permissions' when the user
   // picks the OpenDrive "Permissions..." entry; reset to 'general' otherwise.
   const [propertiesInitialTab, setPropertiesInitialTab] = useState<'general' | 'permissions' | 'checksum'>('general');
+  // What the connected backend can hash for the path in the open Properties
+  // dialog. Fetched when the dialog opens on a remote file so the Checksum tab
+  // can state up front which algorithms this backend has, instead of offering
+  // a Calculate button that only fails once clicked (#347).
+  const [propertiesChecksumCapability, setPropertiesChecksumCapability] =
+    useState<ChecksumCapability | null>(null);
+  useEffect(() => {
+    const target = propertiesDialog;
+    if (!target?.isRemote || target.is_dir) {
+      setPropertiesChecksumCapability(null);
+      return;
+    }
+    let cancelled = false;
+    // Cheap and local to the backend: it reads what the connection already
+    // knows (FTP's FEAT reply, whether an SSH session is up, the overlay
+    // scope). No network round-trip, so it can run on every open.
+    invoke<ChecksumCapability>('provider_checksum_capability', { path: target.path })
+      .then(cap => { if (!cancelled) setPropertiesChecksumCapability(cap); })
+      .catch(() => { if (!cancelled) setPropertiesChecksumCapability(null); });
+    return () => { cancelled = true; };
+  }, [propertiesDialog?.path, propertiesDialog?.isRemote, propertiesDialog?.is_dir]);
   // #252: apply an OpenDrive privacy level to one or more paths via the
   // three-level command, then refresh the listing. Shared by the single- and
   // multi-file Properties > Permissions editors (replaces the old standalone
@@ -15844,6 +15865,7 @@ const App: React.FC = () => {
         {propertiesDialog && (
           <PropertiesDialog
             file={propertiesDialog}
+            checksumCapability={propertiesChecksumCapability}
             onClose={() => {
               // Cancel remote folder size scan if active
               if (propertiesDialog.isRemote && propertiesDialog.is_dir) {
@@ -15855,40 +15877,41 @@ const App: React.FC = () => {
               if (!propertiesDialog) return;
               setPropertiesDialog(prev => prev ? { ...prev, checksum: { ...prev.checksum, calculating: true } } : null);
               try {
-                if (propertiesDialog.isRemote && isCryptOverlayActive()) {
-                  // P3.5 gating: under an active crypt overlay (native or
-                  // interop) the server stores ciphertext, so a server-side
-                  // digest would hash the encrypted blob, NOT the plaintext the
-                  // user sees. Refuse it honestly rather than return a hash that
-                  // silently fails every integrity check against the real file.
-                  notify.error(
-                    t('toast.checksumFailed'),
-                    t('aerocrypt.serverHashGated'),
-                  );
-                  setPropertiesDialog(prev => prev ? { ...prev, checksum: { ...prev.checksum, calculating: false } } : null);
-                } else if (propertiesDialog.isRemote) {
+                if (propertiesDialog.isRemote) {
                   // Server-side only: provider_checksum never downloads the
                   // file. One call returns every digest the backend exposes
                   // cheaply (S3 md5, B2 sha1, SFTP sha256, Drive/OneDrive/Box
                   // API hashes), so populate them all at once.
+                  //
+                  // Inside the Overlays Path this returns the digest of the
+                  // stored ciphertext. That used to be refused outright, which
+                  // left the tab dead in the one place users most want an
+                  // integrity check; it is now answered and LABELLED, by the
+                  // banner the capability's `ciphertext` flag raises. The sync
+                  // engine still never sees these: the overlay keeps
+                  // `supports_checksum()` false, so no comparison against a
+                  // local plaintext hash can be built on them.
                   const map = await invoke<Record<string, string>>('provider_checksum', { path: propertiesDialog.path });
                   setPropertiesDialog(prev => {
                     if (!prev) return null;
                     const next = { ...prev.checksum, calculating: false };
-                    // quickxor (OneDrive) / dropbox (Dropbox content_hash)
-                    // are server-only: surfaced when the backend returns
-                    // them, never computed locally.
-                    (['md5', 'sha1', 'sha256', 'sha512', 'blake3', 'quickxor', 'dropbox'] as const).forEach(k => {
+                    // The backend-native keys (quickxor, dropbox, koofr,
+                    // git-sha1, crc32, adler32) are server-only: surfaced when
+                    // the backend returns them, never computed locally.
+                    (['md5', 'sha1', 'sha256', 'sha512', 'blake3', 'quickxor', 'dropbox', 'koofr', 'git-sha1', 'crc32', 'adler32'] as const).forEach(k => {
                       if (map[k]) next[k] = map[k];
                     });
                     return { ...prev, checksum: next };
                   });
                   if (!map[algorithm]) {
-                    // Honest: this backend has no cheap server-side digest of
-                    // this type. We deliberately do not download to compute it.
+                    // The capability said this backend could produce it, and
+                    // for this particular object it did not: a multipart S3
+                    // ETag, an unverified B2 upload, a Workspace doc. Name the
+                    // object-level reason rather than repeating the tab's
+                    // backend-level one, and never download to fill the gap.
                     notify.error(
                       t('toast.checksumFailed'),
-                      `${algorithm.toUpperCase()} is not available server-side for this backend (no download performed)`
+                      t('properties.checksumAbsentForObject', { algorithm: algorithm.toUpperCase() }),
                     );
                   }
                 } else {
@@ -18856,6 +18879,7 @@ const App: React.FC = () => {
             dualLocalPanel={isDualLocalAeroFileMode}
             swapPanels={swapPanels}
             devToolsOpen={devToolsOpen}
+            hubVisible={showConnectionScreen}
             aeroFileActive={!showConnectionScreen && (!isConnected || !showRemotePanel)}
             onToggleAeroFile={handleToggleAeroFile}
             onToggleDevTools={() => setDevToolsOpen(!devToolsOpen)}

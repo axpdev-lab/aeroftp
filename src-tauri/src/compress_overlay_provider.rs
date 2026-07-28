@@ -28,7 +28,9 @@
 use async_trait::async_trait;
 use std::io::{Read, Write};
 
-use crate::providers::{ProviderError, ProviderType, RemoteEntry, StorageProvider};
+use crate::providers::{
+    ChecksumCapability, ProviderError, ProviderType, RemoteEntry, StorageProvider,
+};
 
 use aerovault::v3::chunking::zstd_decompress_bounded;
 
@@ -361,6 +363,13 @@ impl StorageProvider for CompressOverlayProvider {
     fn supports_checksum(&self) -> bool {
         // Wire checksum would be over compressed bytes; do not advertise.
         false
+    }
+
+    /// Empty, overriding the matrix default. `provider_type()` forwards to the
+    /// inner backend, so without this the overlay would inherit that backend's
+    /// entry and advertise plaintext digests for objects stored compressed.
+    fn checksum_capability(&self, _path: &str) -> ChecksumCapability {
+        ChecksumCapability::default()
     }
 
     // Delegate the rest via defaults or explicit for the ones used in cloud/sync.

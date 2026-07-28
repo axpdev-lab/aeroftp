@@ -15,6 +15,56 @@ fn env_path(name: &str) -> PathBuf {
     PathBuf::from(env::var(name).unwrap_or_else(|_| panic!("missing env var {name}")))
 }
 
+/// Host-side root of the real-rsync harness bind mount.
+///
+/// `docker-compose.real-rsync.yml` maps `capture/workspace` to `/workspace` in
+/// the container, so a file written here appears to the remote `rsync
+/// --server` at the mirrored path. That is why the tests below write "remote"
+/// fixtures with plain `fs::write` instead of copying them over SSH.
+///
+/// It used to be hardcoded to the in-repo directory. That made the whole lane
+/// unrunnable for anyone whose checkout does not own that tree — on a machine
+/// where the workspace had been created by a different account, three tests
+/// died on `PermissionDenied` inside `write_bytes` before reaching a single
+/// wire byte. `RSNP_TEST_REAL_WORKSPACE` lets a runner point both the mount
+/// and the tests at a directory it can actually write, and the old path stays
+/// the default so existing setups are unaffected.
+fn real_workspace() -> PathBuf {
+    match env::var("RSNP_TEST_REAL_WORKSPACE") {
+        Ok(dir) if !dir.is_empty() => PathBuf::from(dir),
+        _ => PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/aerorsync/capture/workspace/real"),
+    }
+}
+
+/// Whether the real-rsync lane is configured, with a loud failure when the
+/// caller declared it mandatory.
+///
+/// Every test in this file opens with an early return when the lane is not
+/// set up. That is right for a developer sweeping `cargo test live_tests`
+/// across lanes, and wrong for CI: libtest has no "skipped" state, so the
+/// early return prints one line to stderr and reports **ok**. Eight tests
+/// that never ran are indistinguishable, in a result list, from eight that
+/// passed — which is exactly how this lane stayed silently inactive.
+///
+/// Setting `RSNP_TEST_REAL_REQUIRED=1` turns the missing configuration into a
+/// panic, so a job that means to exercise the lane cannot pass by skipping it.
+fn real_lane_active() -> bool {
+    if env::var("RSNP_TEST_REAL_SSH_KEY").is_ok() {
+        return true;
+    }
+    let required = env::var("RSNP_TEST_REAL_REQUIRED")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
+    assert!(
+        !required,
+        "RSNP_TEST_REAL_REQUIRED is set but RSNP_TEST_REAL_SSH_KEY is not: \
+         the real-rsync lane was declared mandatory and is not configured. \
+         Refusing to report a skipped test as a pass."
+    );
+    eprintln!("skipping: RSNP_TEST_REAL_SSH_KEY not set (real-rsync lane inactive)");
+    false
+}
+
 fn write_bytes(path: &Path, bytes: &[u8]) {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).unwrap();
@@ -84,9 +134,9 @@ async fn live_real_rsync_lane_emits_protocol_31_greeting() {
     // selector with the native-lane tests (which use RSNP_TEST_*
     // env vars). When only the native harness is running, the real-rsync
     // env is not set: skip rather than fail so a `live_tests` sweep
-    // across lanes works without bespoke filters.
-    if env::var("RSNP_TEST_REAL_SSH_KEY").is_err() {
-        eprintln!("skipping: RSNP_TEST_REAL_SSH_KEY not set (real-rsync lane inactive)");
+    // across lanes works without bespoke filters. `RSNP_TEST_REAL_REQUIRED=1`
+    // makes that skip a hard failure for callers that mean to run the lane.
+    if !real_lane_active() {
         return;
     }
 
@@ -214,8 +264,7 @@ fn real_rsync_delta_upload_inputs() -> (AerorsyncDeltaTransport, String, PathBuf
     let transport = AerorsyncDeltaTransport::new(ssh, 0);
     let remote = env::var("RSNP_TEST_REAL_REMOTE_UPLOAD_TARGET")
         .expect("RSNP_TEST_REAL_REMOTE_UPLOAD_TARGET must point at the remote file");
-    let workspace =
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/aerorsync/capture/workspace/real");
+    let workspace = real_workspace();
     (
         transport,
         remote,
@@ -240,8 +289,7 @@ fn real_rsync_delta_upload_inputs() -> (AerorsyncDeltaTransport, String, PathBuf
 #[tokio::test]
 #[ignore = "requires the Docker real-rsync SSH fixture + AerorsyncDeltaTransport"]
 async fn live_real_rsync_native_delta_download_verifies_whole_file() {
-    if env::var("RSNP_TEST_REAL_SSH_KEY").is_err() {
-        eprintln!("skipping: RSNP_TEST_REAL_SSH_KEY not set (real-rsync lane inactive)");
+    if !real_lane_active() {
         return;
     }
 
@@ -290,8 +338,7 @@ async fn live_real_rsync_native_delta_download_verifies_whole_file() {
 #[tokio::test]
 #[ignore = "requires the Docker real-rsync SSH fixture + md5 preamble override"]
 async fn live_real_rsync_native_delta_download_md5_peer() {
-    if env::var("RSNP_TEST_REAL_SSH_KEY").is_err() {
-        eprintln!("skipping: RSNP_TEST_REAL_SSH_KEY not set (real-rsync lane inactive)");
+    if !real_lane_active() {
         return;
     }
 
@@ -343,8 +390,7 @@ async fn live_real_rsync_native_delta_download_md5_peer() {
 #[tokio::test]
 #[ignore = "requires the Docker real-rsync SSH fixture + md4 preamble override"]
 async fn live_real_rsync_native_delta_download_md4_peer() {
-    if env::var("RSNP_TEST_REAL_SSH_KEY").is_err() {
-        eprintln!("skipping: RSNP_TEST_REAL_SSH_KEY not set (real-rsync lane inactive)");
+    if !real_lane_active() {
         return;
     }
 
@@ -388,8 +434,7 @@ async fn live_real_rsync_native_delta_download_md4_peer() {
 #[tokio::test]
 #[ignore = "requires the Docker real-rsync SSH fixture + sha1 preamble override"]
 async fn live_real_rsync_native_delta_download_sha1_peer() {
-    if env::var("RSNP_TEST_REAL_SSH_KEY").is_err() {
-        eprintln!("skipping: RSNP_TEST_REAL_SSH_KEY not set (real-rsync lane inactive)");
+    if !real_lane_active() {
         return;
     }
 
@@ -434,13 +479,11 @@ async fn live_real_rsync_native_delta_download_sha1_peer() {
 #[tokio::test]
 #[ignore = "requires the Docker real-rsync SSH fixture + xxh64/xxh3 overrides"]
 async fn live_real_rsync_native_download_completes_for_xxh64_and_xxh3_peers() {
-    if env::var("RSNP_TEST_REAL_SSH_KEY").is_err() {
-        eprintln!("skipping: RSNP_TEST_REAL_SSH_KEY not set (real-rsync lane inactive)");
+    if !real_lane_active() {
         return;
     }
 
-    let workspace =
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/aerorsync/capture/workspace/real");
+    let workspace = real_workspace();
     let remote_bind = workspace.join("download/target.bin");
     let expected_path = env_path("RSNP_TEST_REAL_EXPECT_DOWNLOAD_FILE");
     let baseline = make_incompressible_payload(1024 * 1024, 0xA11C_E55A_55E5_1A11);
@@ -506,8 +549,7 @@ async fn live_real_rsync_native_download_completes_for_xxh64_and_xxh3_peers() {
 #[tokio::test]
 #[ignore = "requires the Docker real-rsync SSH fixture + xxh64/xxh3 overrides"]
 async fn live_real_rsync_native_upload_completes_for_xxh64_and_xxh3_peers() {
-    if env::var("RSNP_TEST_REAL_SSH_KEY").is_err() {
-        eprintln!("skipping: RSNP_TEST_REAL_SSH_KEY not set (real-rsync lane inactive)");
+    if !real_lane_active() {
         return;
     }
 
@@ -574,8 +616,7 @@ async fn live_real_rsync_native_upload_completes_for_xxh64_and_xxh3_peers() {
 #[tokio::test]
 #[ignore = "requires the Docker real-rsync SSH fixture + md4/sha1 overrides"]
 async fn live_real_rsync_native_upload_completes_for_md4_and_sha1_peers() {
-    if env::var("RSNP_TEST_REAL_SSH_KEY").is_err() {
-        eprintln!("skipping: RSNP_TEST_REAL_SSH_KEY not set (real-rsync lane inactive)");
+    if !real_lane_active() {
         return;
     }
 

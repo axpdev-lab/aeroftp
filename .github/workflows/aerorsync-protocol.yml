@@ -16,7 +16,7 @@ name: Aerorsync Protocol
 #     file), same technique as delta-sync-integration.yml. A push that
 #     does not touch them skips every job.
 #   * push / PR on `main` and `strada-c-**` -> check (full module suite)
-#     + Docker lane 3 (stock rsync).
+#     + Docker lane 3 (stock rsync) + deflate oracle (rsync 3.1.3).
 #   * Docker lane 2 (native aerorsync_serve / RSNP) was retired in
 #     Y-RSC.8 with the legacy SessionDriver stack.
 #
@@ -87,6 +87,59 @@ jobs:
       - name: Default build regression (feature off)
         working-directory: src-tauri
         run: cargo check --lib
+
+  # ------------------------------------------------------------------
+  # deflate-oracle: builds upstream rsync 3.1.3 from a SHA-256-pinned
+  # Samba tarball and forces a stock protocol-31 client onto zlibx.
+  # The harness captures both SSH exec streams, requires real literal
+  # and matched data, verifies both final files, then feeds the fresh
+  # upload transcript through AeroRsync's production token + deflate
+  # decoders. This is deliberately separate from lane3's zstd peer.
+  # ------------------------------------------------------------------
+  deflate-oracle:
+    name: Docker deflate oracle (rsync 3.1.3 zlibx)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: [check]
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        with:
+          workspaces: src-tauri
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android \
+            /opt/hostedtoolcache/CodeQL /usr/local/share/boost || true
+          sudo docker image prune --all --force >/dev/null 2>&1 || true
+          df -h /
+      - name: Install Linux system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev \
+            librsvg2-dev libssl-dev pkg-config libzstd-dev
+      - name: Pre-pull harness base image
+        shell: bash
+        run: |
+          set -u
+          for attempt in 1 2 3 4; do
+            if docker pull debian:bookworm-slim; then
+              exit 0
+            else
+              status=$?
+            fi
+            if [ "$attempt" -eq 4 ]; then
+              echo "::error::Docker Hub unreachable after ${attempt} attempts pulling debian:bookworm-slim"
+              exit "$status"
+            fi
+            sleep $((attempt * 15))
+          done
+      - name: Capture and verify rsync 3.1.3 zlibx tokens
+        working-directory: src-tauri/src/aerorsync/capture
+        run: ./run_deflate_rsync_capture.sh
 
   # ------------------------------------------------------------------
   # lane3: Docker-backed lane 3: a real `rsync 3.2.7` server over SSH.
@@ -162,7 +215,14 @@ jobs:
             # Same as the pre-pull step above: `$?` after a plain `if` is the
             # status of the `if`, not of the condition, so the status has to be
             # taken in an `else` branch or the final `exit "$status"` exits 0.
-            if docker compose -f docker-compose.real-rsync.yml up -d --build; then
+            # HOST_UID/HOST_GID build the container's testuser with the
+            # runner's uid, so the files `rsync --server` writes into the
+            # bind-mounted workspace stay writable by the tests that seed
+            # them from the host side. Without it the harness owns the mount
+            # as uid 1000 and the RSNP_TEST_REAL upload tests die on
+            # PermissionDenied halfway through.
+            if HOST_UID=$(id -u) HOST_GID=$(id -g) \
+                 docker compose -f docker-compose.real-rsync.yml up -d --build; then
               exit 0
             else
               status=$?
@@ -199,7 +259,63 @@ jobs:
             aerorsync::delta_transport_impl::tests::delta_upload_xattr_binary_nul_live_lane_3 \
             aerorsync::delta_transport_impl::tests::delta_upload_xattr_none_with_x_flag_live_lane_3 \
             aerorsync::delta_transport_impl::tests::delta_download_xattr_live_lane_3 \
+            aerorsync::delta_transport_impl::tests::delta_upload_xattr_batch_two_files_live_lane_3 \
+            aerorsync::delta_transport_impl::tests::delta_upload_symlink_xattr_not_inherited_live_lane_3 \
             --nocapture
+      # The RSNP_TEST_REAL lane: eight #[ignore] tests that drive the
+      # production AerorsyncDeltaTransport upload and download paths against
+      # the same stock rsync, with each negotiated checksum forced in turn
+      # (xxh128, xxh3, xxh64, md5, md4, sha1).
+      #
+      # Until now nothing set RSNP_TEST_REAL_SSH_KEY, so every one of them
+      # took its early return, printed one line to stderr and reported **ok**.
+      # libtest has no skipped state, so eight tests that never ran looked
+      # exactly like eight that passed, and the production delta upload path
+      # went without live coverage while the suite stayed green.
+      # RSNP_TEST_REAL_REQUIRED=1 makes the missing configuration a panic, so
+      # this step cannot go back to passing by doing nothing.
+      - name: Seed the real-rsync lane fixtures
+        working-directory: src-tauri/src/aerorsync/capture
+        shell: bash
+        run: |
+          set -eu
+          mkdir -p workspace/real/download workspace/real/upload workspace/real/local
+          python3 - <<'PY'
+          import os, random
+          random.seed(20260728)
+          src = bytes(random.getrandbits(8) for _ in range(256 * 1024))
+          basis = bytearray(src)
+          for off in (4096, 60000, 200000):
+              basis[off:off+512] = bytes(random.getrandbits(8) for _ in range(512))
+          root = 'workspace/real'
+          open(f'{root}/download/target.bin', 'wb').write(src)
+          open(f'{root}/upload/target.bin', 'wb').write(bytes(basis))
+          open(f'{root}/local/upload.bin', 'wb').write(src)
+          os.makedirs('/tmp/aerorsync-lane', exist_ok=True)
+          open('/tmp/aerorsync-lane/expected.bin', 'wb').write(src)
+          for suffix in ('', '_MD5', '_MD4', '_SHA1'):
+              open(f'/tmp/aerorsync-lane/local{suffix}.bin', 'wb').write(bytes(basis))
+          PY
+      - name: Run the real-rsync lane (checksum matrix, upload + download)
+        working-directory: src-tauri
+        env:
+          RSNP_TEST_REAL_REQUIRED: '1'
+          RSNP_TEST_REAL_SSH_KEY: ${{ github.workspace }}/src-tauri/src/aerorsync/capture/keys/id_ed25519
+          RSNP_TEST_REAL_HOST: 127.0.0.1
+          RSNP_TEST_REAL_PORT: '2224'
+          RSNP_TEST_REAL_USER: testuser
+          RSNP_TEST_REAL_WORKSPACE: ${{ github.workspace }}/src-tauri/src/aerorsync/capture/workspace/real
+          RSNP_TEST_REAL_REMOTE_DOWNLOAD_TARGET: /workspace/real/download/target.bin
+          RSNP_TEST_REAL_REMOTE_UPLOAD_TARGET: /workspace/real/upload/target.bin
+          RSNP_TEST_REAL_EXPECT_DOWNLOAD_FILE: /tmp/aerorsync-lane/expected.bin
+          RSNP_TEST_REAL_LOCAL_DOWNLOAD_FILE: /tmp/aerorsync-lane/local.bin
+          RSNP_TEST_REAL_LOCAL_DOWNLOAD_FILE_MD5: /tmp/aerorsync-lane/local_MD5.bin
+          RSNP_TEST_REAL_LOCAL_DOWNLOAD_FILE_MD4: /tmp/aerorsync-lane/local_MD4.bin
+          RSNP_TEST_REAL_LOCAL_DOWNLOAD_FILE_SHA1: /tmp/aerorsync-lane/local_SHA1.bin
+        # --test-threads=1: the checksum override is a process-global env var.
+        run: |
+          cargo test --features aerorsync --lib aerorsync::live_tests -- \
+            --ignored --nocapture --test-threads=1
       - name: Tear down harness
         if: always()
         working-directory: src-tauri/src/aerorsync/capture

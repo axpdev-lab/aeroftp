@@ -1,8 +1,20 @@
+# The harness owns everything `rsync --server` writes into ./workspace, which
+# the RSNP_TEST_REAL live tests also write from the host side. Build the
+# container's testuser with the caller's uid so both ends can write:
+#
+#   HOST_UID=$(id -u) HOST_GID=$(id -g) docker compose \
+#     -f docker-compose.real-rsync.yml up -d --build
+#
+# Defaults are 1000/1000, the value useradd used to pick, so an existing setup
+# on a uid-1000 account behaves exactly as before.
 services:
   rsync-sshd-real:
     build:
       context: .
       dockerfile: Dockerfile.real-rsync-sshd
+      args:
+        TESTUSER_UID: "${HOST_UID:-1000}"
+        TESTUSER_GID: "${HOST_GID:-1000}"
     container_name: aeroftp-rsync-real
     ports:
       - "2224:22"

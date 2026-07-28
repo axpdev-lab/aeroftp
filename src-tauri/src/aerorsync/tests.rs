@@ -51,6 +51,106 @@ fn protocol_version_constant_is_pinned() {
     assert!(!ProtocolVersion(32).is_supported());
 }
 
+#[test]
+#[ignore = "requires run_deflate_rsync_capture.sh byte-oracle artifact"]
+fn rsync_3_1_3_deflate_byte_oracle_matches_real_wire_decoder() {
+    use crate::aerorsync::real_wire::decompress_deflate_literal_stream;
+    use std::path::PathBuf;
+
+    let root = PathBuf::from(
+        std::env::var("AEROFTP_DEFLATE_CAPTURE")
+            .expect("set AEROFTP_DEFLATE_CAPTURE to artifacts_deflate/<timestamp>"),
+    );
+    let upload_in = std::fs::read(root.join("upload/capture_in.bin")).unwrap();
+    // Upstream 3.1.3 predates negotiated algorithm strings. Its client
+    // direction therefore has only the four-byte protocol greeting before
+    // multiplexing starts.
+    let app = reassemble_msg_data(&upload_in[4..]).unwrap().app_stream;
+    let opts = FileListDecodeOptions {
+        protocol: 31,
+        xfer_flags_as_varint: false,
+        always_checksum: true,
+        csum_len: 16,
+        preserve_uid: true,
+        preserve_gid: true,
+        preserve_xattrs: false,
+        previous_name: None,
+    };
+    let (entry, entry_bytes) = decode_file_list_entry(&app, &opts).unwrap();
+    let entry = match entry {
+        FileListDecodeOutcome::Entry(entry) => entry,
+        other => panic!("expected captured file-list entry, got {other:?}"),
+    };
+    assert_eq!(entry.path, "upload.bin");
+    assert_eq!(entry.size, 256 * 1024);
+    assert_eq!(app[entry_bytes], 0);
+
+    let mut delta_start = entry_bytes + 1;
+    let mut ndx_state = NdxState::new();
+    let (eof, used) = decode_ndx(&app[delta_start..], &mut ndx_state).unwrap();
+    assert_eq!(eof, NDX_FLIST_EOF);
+    delta_start += used;
+    let (ndx, used) = decode_ndx(&app[delta_start..], &mut ndx_state).unwrap();
+    assert_eq!(ndx, 1);
+    delta_start += used;
+    let (_, used) = decode_item_flags(&app[delta_start..]).unwrap();
+    delta_start += used;
+    let (head, used) = decode_sum_head(&app[delta_start..]).unwrap();
+    delta_start += used;
+    assert_eq!(head.count, 375);
+    assert_eq!(head.block_length, 700);
+    assert_eq!(head.checksum_length, 2);
+    assert_eq!(head.remainder_length, 344);
+
+    let (report, consumed) =
+        decode_delta_stream(&app[delta_start..], 16, Some(head.count)).unwrap();
+    assert_eq!(consumed, 4253);
+    assert_eq!(
+        report.file_checksum,
+        [
+            0xcd, 0x70, 0x77, 0x5f, 0xbc, 0xb7, 0x48, 0x91, 0xbf, 0xbe, 0x07, 0x50, 0x63, 0x10,
+            0x68, 0x55,
+        ]
+    );
+    assert_eq!(&app[delta_start + consumed..], &[0, 0, 0, 0]);
+
+    let shape = report
+        .ops
+        .iter()
+        .map(|op| match op {
+            DeltaOp::Literal { compressed_payload } => (1, 0, compressed_payload.len()),
+            DeltaOp::CopyRun {
+                start_token_index,
+                run_length,
+            } => (0, *start_token_index as usize, *run_length as usize),
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        shape,
+        [
+            (0, 0, 5),
+            (1, 0, 1406),
+            (0, 7, 78),
+            (1, 0, 1406),
+            (0, 87, 198),
+            (1, 0, 1406),
+            (0, 287, 88),
+        ]
+    );
+
+    let literal_slices = report
+        .ops
+        .iter()
+        .filter_map(|op| match op {
+            DeltaOp::Literal { compressed_payload } => Some(compressed_payload.as_slice()),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    let raw = decompress_deflate_literal_stream(&literal_slices).unwrap();
+    assert_eq!(literal_slices.iter().map(|p| p.len()).sum::<usize>(), 4218);
+    assert_eq!(raw.len(), 4200);
+}
+
 // ---------------------------------------------------------------------------
 // remote_command.rs: golden fixture parity
 // ---------------------------------------------------------------------------

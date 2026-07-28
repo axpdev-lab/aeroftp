@@ -72,6 +72,7 @@ CLAUDE.md
 # Module renamed `rsync_native_proto` -> `aerorsync` on 2026-04-25.
 src-tauri/src/aerorsync/capture/bin/
 src-tauri/src/aerorsync/capture/artifacts/
+src-tauri/src/aerorsync/capture/artifacts_deflate/
 src-tauri/src/aerorsync/capture/artifacts_real/
 src-tauri/src/aerorsync/capture/workspace/
 

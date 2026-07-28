@@ -82,7 +82,8 @@ use crate::aerocrypt::overlay::{self, OverlayConfig};
 use crate::aerocrypt::{names, KEY_SIZE};
 use crate::crypt_compare::{rclone_decrypted_size, OverlayUnlockParams};
 use crate::providers::{
-    FileVersion, ProviderError, ProviderType, RemoteEntry, StorageProvider, TrashEntry,
+    ChecksumCapability, FileVersion, ProviderError, ProviderType, RemoteEntry, StorageProvider,
+    TrashEntry,
 };
 use crate::rclone_crypt::{self, FilenameEncryption, RcloneCryptKeys};
 
@@ -1285,7 +1286,44 @@ impl StorageProvider for CryptOverlayProvider {
     }
 
     fn supports_checksum(&self) -> bool {
+        // Deliberately false, and it must stay false. This is what the sync
+        // engine reads to decide whether to compare a remote digest against a
+        // local one, and inside the overlay the remote digest covers
+        // ciphertext: answering true here would mark every unchanged file as
+        // different, every cycle. The Properties surface asks
+        // `checksum_capability()` / `stored_checksum()` instead, which say in
+        // their own return value that the digest is of the stored bytes.
         false
+    }
+
+    /// The inner backend's digests, flagged as covering ciphertext for any
+    /// path inside the Overlays Path.
+    ///
+    /// Outside the scope the overlay stores bytes verbatim, so there the
+    /// digest is an ordinary plaintext one and is reported as such: the
+    /// warning appears exactly where it is true.
+    fn checksum_capability(&self, path: &str) -> ChecksumCapability {
+        let inner = self.inner.checksum_capability(path);
+        if inner.algorithms.is_empty() || !self.target_is_encrypted(path) {
+            return inner;
+        }
+        ChecksumCapability {
+            ciphertext: true,
+            caveat: Some(crate::providers::checksum_matrix::CIPHERTEXT.to_string()),
+            ..inner
+        }
+    }
+
+    /// Digest of the object as it is stored: for an in-scope path that is the
+    /// encrypted blob, which is a real and useful answer to "did what is on
+    /// the server change" and a wrong one to "does this match my local file".
+    /// Callers are told which by [`ChecksumCapability::ciphertext`].
+    async fn stored_checksum(
+        &mut self,
+        path: &str,
+    ) -> Result<std::collections::HashMap<String, String>, ProviderError> {
+        let (enc, _) = self.map_existing(path, AccessKind::Read).await?;
+        self.inner.stored_checksum(&enc).await
     }
 
     fn supports_remote_upload(&self) -> bool {
@@ -2681,6 +2719,53 @@ mod tests {
             assert!(
                 !provider.target_is_encrypted("/Other/x"),
                 "{label}: outside-anchor absolute target is plaintext pass-through"
+            );
+        }
+    }
+
+    /// The Properties surface may show the stored digest; the sync engine may
+    /// never compare it. Those are two different questions and the overlay has
+    /// to answer them differently: `checksum_capability()` reports the inner
+    /// backend's algorithms flagged as ciphertext, while `supports_checksum()`
+    /// stays false so no comparison against a local plaintext hash can be
+    /// built on them. Flipping the latter to true would mark every unchanged
+    /// file inside the overlay as different, on every cycle.
+    #[test]
+    fn ciphertext_digests_are_offered_to_the_ui_and_withheld_from_sync() {
+        for (label, keys) in both_kinds() {
+            let provider = CryptOverlayProvider::new(Box::new(MemProvider::new()), keys, "/Vault");
+
+            assert!(
+                !provider.supports_checksum(),
+                "{label}: sync must not see a comparable digest inside an overlay"
+            );
+
+            let inside = provider.checksum_capability("/Vault/report.pdf");
+            assert!(
+                !inside.algorithms.is_empty(),
+                "{label}: the inner backend's algorithms are still offered"
+            );
+            assert!(
+                inside.ciphertext,
+                "{label}: in-scope digests cover the stored ciphertext and must say so"
+            );
+            assert_eq!(
+                inside.caveat.as_deref(),
+                Some(crate::providers::checksum_matrix::CIPHERTEXT),
+                "{label}: the caveat names the ciphertext case"
+            );
+
+            // Outside the scope the overlay stores bytes verbatim, so the
+            // digest is an ordinary plaintext one: warning off, where it would
+            // be false.
+            let outside = provider.checksum_capability("/Other/report.pdf");
+            assert!(
+                !outside.ciphertext,
+                "{label}: out-of-scope paths are stored as-is, no ciphertext warning"
+            );
+            assert_eq!(
+                outside.algorithms, inside.algorithms,
+                "{label}: same backend, same algorithms either side of the scope"
             );
         }
     }

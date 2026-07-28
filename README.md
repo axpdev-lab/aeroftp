@@ -89,47 +89,49 @@ AeroFTP organizes integrations on three tiers, so what you see in the catalog is
 2. **Native provider integrations (25+):** dedicated OAuth2 / API key / SDK code paths per provider, so each one's specific features (sharing, native delta sync, server-side copy, large-file chunking, media-CDN transformations) are first-class instead of best-effort. Includes the dedicated **media services** tier (ImageKit, Uploadcare, Cloudinary, Immich, PixelUnion).
 3. **Pre-configured presets (45+):** server URL, port, base path, password-generation deep-link filled in automatically for compatible services on top of the protocols above (S3-compatible endpoints from MEGA S4 to Filen S5 to MinIO, WebDAV-compatible servers including Nextcloud, TAB.DIGITAL, Felicloud, Seafile, InfiniCLOUD, etc.).
 
+<!-- BEGIN PROVIDERS-GRID -->
+
+<!-- Generated from PROVIDER_GRID in src/components/providerCatalog.ts by `npm run gen:providers-table`. Do not edit by hand. -->
 <table align="center">
-  <!-- Continuous grid: Cloud (OAuth/API) -> S3-Compatible -> WebDAV -> SFTP -> Developer -> Media (last) -->
   <tr>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/google-drive"><img src="public/icons/providers/grid/Google_Drive.png" width="36" /></a><br><sub>Google Drive</sub></td>
-    <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/onedrive"><img src="public/icons/providers/grid/onedrive.png" width="36" /></a><br><sub>OneDrive</sub></td>
+    <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/onedrive" title="Microsoft OneDrive"><img src="public/icons/providers/grid/onedrive.png" width="36" /></a><br><sub>OneDrive</sub></td>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/dropbox"><img src="public/icons/providers/grid/dropbox.png" width="36" /></a><br><sub>Dropbox</sub></td>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/mega"><img src="public/icons/providers/grid/mega.png" width="36" /></a><br><sub>MEGA</sub></td>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/box"><img src="public/icons/providers/grid/box.png" width="36" /></a><br><sub>Box</sub></td>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/pcloud"><img src="public/icons/providers/grid/pcloud.png" width="36" /></a><br><sub>pCloud Drive</sub></td>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/filen"><img src="public/icons/providers/grid/filen.png" width="36" /></a><br><sub>Filen</sub></td>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/internxt"><img src="public/icons/providers/grid/internxt.png" width="36" /></a><br><sub>Internxt</sub></td>
-    <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/zoho"><img src="public/icons/providers/grid/ZohoWorkDrive.png" width="36" /></a><br><sub>Zoho</sub></td>
+    <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/zoho"><img src="public/icons/providers/grid/ZohoWorkDrive.png" width="36" /></a><br><sub>Zoho WorkDrive</sub></td>
   </tr>
   <tr>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/koofr"><img src="public/icons/providers/grid/Koofr.png" width="36" /></a><br><sub>Koofr</sub></td>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/kdrive"><img src="public/icons/providers/grid/kdrive.png" width="36" /></a><br><sub>kDrive</sub></td>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/jottacloud"><img src="public/icons/providers/grid/jottacloud.png" width="36" /></a><br><sub>Jottacloud</sub></td>
-    <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/drime"><img src="public/icons/providers/grid/drime.png" width="36" /></a><br><sub>Drime</sub></td>
+    <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/drime"><img src="public/icons/providers/grid/drime.png" width="36" /></a><br><sub>Drime Cloud</sub></td>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/filelu"><img src="public/icons/providers/grid/filelu.png" width="36" /></a><br><sub>FileLu</sub></td>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/opendrive"><img src="public/icons/providers/grid/opendrive.png" width="36" /></a><br><sub>OpenDrive</sub></td>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/yandex"><img src="public/icons/providers/grid/YandexDisk.png" width="36" /></a><br><sub>Yandex Disk</sub></td>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/4shared"><img src="public/icons/providers/grid/4shared.png" width="36" /></a><br><sub>4shared</sub></td>
-    <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/backblaze-b2"><img src="public/icons/providers/grid/backblaze.png" width="36" /></a><br><sub>Backblaze</sub></td>
+    <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/backblaze-b2"><img src="public/icons/providers/grid/backblaze.png" width="36" /></a><br><sub>Backblaze B2</sub></td>
   </tr>
   <tr>
-    <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/aws-s3"><img src="public/icons/providers/grid/Amazon_Web_Services.png" width="36" /></a><br><sub>AWS S3</sub></td>
-    <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/google-cloud-storage"><img src="public/icons/providers/grid/googlecloud.png" width="36" /></a><br><sub>Google Cloud</sub></td>
-    <td align="center" width="80"><a href="https://docs.aeroftp.app/protocols/azure"><img src="public/icons/providers/grid/azure.png" width="36" /></a><br><sub>Azure</sub></td>
+    <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/aws-s3" title="Amazon Web Services (AWS)"><img src="public/icons/providers/grid/Amazon_Web_Services.png" width="36" /></a><br><sub>AWS S3</sub></td>
+    <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/google-cloud-storage"><img src="public/icons/providers/grid/googlecloud.png" width="36" /></a><br><sub>Google Cloud Storage</sub></td>
+    <td align="center" width="80"><a href="https://docs.aeroftp.app/protocols/azure" title="Microsoft Azure Blob"><img src="public/icons/providers/grid/azure.png" width="36" /></a><br><sub>Azure Blob</sub></td>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/wasabi"><img src="public/icons/providers/grid/wasabi.png" width="36" /></a><br><sub>Wasabi</sub></td>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/cloudflare-r2"><img src="public/icons/providers/grid/cloudfare.png" width="36" /></a><br><sub>Cloudflare R2</sub></td>
-    <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/digitalocean-spaces"><img src="public/icons/providers/grid/digitalocean.png" width="36" /></a><br><sub>DigitalOcean</sub></td>
+    <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/digitalocean-spaces"><img src="public/icons/providers/grid/digitalocean.png" width="36" /></a><br><sub>DigitalOcean Spaces</sub></td>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/tencent-cloud-cos"><img src="public/icons/providers/grid/tencent.png" width="36" /></a><br><sub>Tencent COS</sub></td>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/alibaba-cloud-oss"><img src="public/icons/providers/grid/alibabacloud.png" width="36" /></a><br><sub>Alibaba OSS</sub></td>
-    <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/oracle-cloud"><img src="public/icons/providers/grid/oracle_cloud.png" width="36" /></a><br><sub>Oracle</sub></td>
+    <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/oracle-cloud"><img src="public/icons/providers/grid/oracle_cloud.png" width="36" /></a><br><sub>Oracle Cloud</sub></td>
   </tr>
   <tr>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/storj"><img src="public/icons/providers/grid/storj.png" width="36" /></a><br><sub>Storj</sub></td>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/idrive-e2"><img src="public/icons/providers/grid/idrive_e2.png" width="36" /></a><br><sub>IDrive e2</sub></td>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/minio"><img src="public/icons/providers/grid/minio.png" width="36" /></a><br><sub>MinIO</sub></td>
-    <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/yandex-object-storage"><img src="public/icons/providers/grid/yandexcloud.png" width="36" /></a><br><sub>Yandex Cloud</sub></td>
-    <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/mega-s4"><img src="public/icons/providers/grid/mega.png" width="36" /></a><br><sub>MEGA S4</sub></td>
+    <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/yandex-object-storage"><img src="public/icons/providers/grid/yandexcloud.png" width="36" /></a><br><sub>Yandex Object Storage</sub></td>
+    <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/s3drive"><img src="public/icons/providers/grid/s3drive.png" width="36" /></a><br><sub>S3Drive</sub></td>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/quotaless"><img src="public/icons/providers/grid/quotaless.png" width="36" /></a><br><sub>Quotaless</sub></td>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/nextcloud"><img src="public/icons/providers/grid/nextcloud.png" width="36" /></a><br><sub>Nextcloud</sub></td>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/felicloud"><img src="public/icons/providers/grid/felicloud.png" width="36" /></a><br><sub>Felicloud</sub></td>
@@ -137,11 +139,11 @@ AeroFTP organizes integrations on three tiers, so what you see in the catalog is
   </tr>
   <tr>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/cloudme"><img src="public/icons/providers/grid/cloudme.png" width="36" /></a><br><sub>CloudMe</sub></td>
-    <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/infinicloud"><img src="public/icons/providers/grid/infiniCloud.png" width="36" /></a><br><sub>InfiniCLOUD</sub></td>
+    <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/infinicloud"><img src="public/icons/providers/grid/infiniCloud.png" width="36" /></a><br><sub>InfiniCloud</sub></td>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/jianguoyun"><img src="public/icons/providers/grid/jianguoyun.png" width="36" /></a><br><sub>Jianguoyun</sub></td>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/seafile"><img src="public/icons/providers/grid/seafile.png" width="36" /></a><br><sub>Seafile</sub></td>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/drivehq"><img src="public/icons/providers/grid/drivehq.png" width="36" /></a><br><sub>DriveHQ</sub></td>
-    <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/hetzner-storage-box"><img src="public/icons/providers/grid/hetzner.png" width="36" /></a><br><sub>Hetzner</sub></td>
+    <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/hetzner-storage-box"><img src="public/icons/providers/grid/hetzner.png" width="36" /></a><br><sub>Hetzner Storage Box</sub></td>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/github"><img src="public/icons/providers/grid/github.png" width="36" /></a><br><sub>GitHub</sub></td>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/gitlab"><img src="public/icons/providers/grid/gitlab.png" width="36" /></a><br><sub>GitLab</sub></td>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/sourceforge"><img src="public/icons/providers/grid/sourceforge.png" width="36" /></a><br><sub>SourceForge</sub></td>
@@ -154,6 +156,8 @@ AeroFTP organizes integrations on three tiers, so what you see in the catalog is
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/cloudinary"><img src="public/icons/providers/grid/cloudinary.png" width="36" /></a><br><sub>Cloudinary</sub></td>
   </tr>
 </table>
+
+<!-- END PROVIDERS-GRID -->
 
 <p align="center">
   <sub>+ FTP, FTPS, SFTP, WebDAV, Swift protocols</sub><br>
@@ -185,10 +189,10 @@ AeroFTP organizes integrations on three tiers, so what you see in the catalog is
 | Cloudinary | US | credit-based | API |
 | CloudMe | SE | 3 GB | WebDAV |
 | DigitalOcean Spaces | US | paid plan | S3* |
-| Drime | FR | 20 GB | API |
+| Drime Cloud | FR | 20 GB | API |
 | DriveHQ | US | 5 GB | WebDAV |
 | Dropbox | US | 2 GB | OAuth |
-| Felicloud | - | 10 GB (Nextcloud host) | WebDAV |
+| Felicloud | EU | 10 GB (Nextcloud host) | WebDAV |
 | FileLu | US | 10 GB | API, FTP, WebDAV, S5 (S3) |
 | Filen | DE | 10 GB (E2E) | API, S3, WebDAV |
 | GitHub | US | repo storage | API |
@@ -375,17 +379,46 @@ This is a **Beta preview** shipping in v4.1.0. The transport is hardened (iroh 1
 
 ### AeroRsync - Native Rust Delta Sync
 
-> [Full documentation →](https://docs.aeroftp.app/features/aerorsync.html)
+> [Full documentation →](https://docs.aeroftp.app/features/aerorsync.html) · [Parity reference →](docs/PROTOCOL-RSYNC-COMPARE.md)
 
-Independent clean-room Rust implementation of the rsync wire protocol 31. AeroRsync ships byte-level delta sync without bundling or replacing the `rsync` binary, so cross-platform deployments (Windows first-class) get the same wire-compatible delta transport as Unix.
+Independent clean-room Rust implementation of the rsync **wire protocol 31**. AeroRsync speaks bytes-on-wire to a standard remote `rsync --server`, so AeroFTP does byte-level delta sync **without an `rsync` binary on the client** - no `rsync.exe` bundle, no MSYS2, no WSL. That is the whole reason it exists: on Unix `rsync` is already everywhere, on Windows it is not, and bundling a GPL binary or demanding WSL would have split the product into a first-class Unix and a second-class Windows.
 
-The delta path is wired into:
+It does **not** replace rsync. It talks to it.
 
-- **AeroSync** delta transfers (the original entry point).
-- **Cross-Profile Transfer** SFTP to SFTP with key-based auth, so only the bytes that differ from the destination travel on the wire.
-- **AeroTools Code Editor** save against a remote SFTP file, so a one-line change to a 5 MB file ships only the diff.
+**Where it runs.** The Cargo feature `aerorsync` is compiled by default, and the runtime toggle (Settings → Advanced) has been ON by default in `Auto` mode since v3.8.0. On Unix `Auto` attempts the native engine first and keeps the classic `rsync` binary as a fallback; on Windows the native engine is the only delta path. Soft conditions (file below `min_file_size`, no key on disk, no remote `rsync`) route back to a plain upload; security failures (host-key mismatch, permission denied) are hard errors and never silently downgrade.
 
-**Session-cached batch transport (v3.7.0)**: a single SSH session amortizes many consecutive delta transfers via the new `AerorsyncBatch` trait: open the session once, transfer N files, close once. `SyncReport` surfaces `delta_files` (per-file delta breakdown) and `bytes_on_wire` so the UI shows exactly which files used the optimized path and the cumulative wire savings. Current scope is SFTP destinations with key-based auth; other providers and the classic `rsync` binary path on Unix coexist on the same `DeltaTransport` trait surface. The Cargo feature `aerorsync` is compiled by default, and the runtime toggle (Settings → Advanced) is ON by default (Auto mode) since v3.8.0, after the cross-platform host-key negotiation asymmetry was resolved. Soft fallbacks (file too small, no key on disk, missing remote helper) silently route back to the classic upload path.
+**Where it is wired.** AeroSync delta transfers, Cross-Profile SFTP-to-SFTP, and AeroTools Code Editor saves against a remote file - a one-line change to a 5 MB file ships only the differing blocks. `AerorsyncBatch` reuses one SSH session for N files in a sync batch, and `SyncReport` surfaces `delta_files` and `bytes_on_wire` so the UI shows which files took the optimized path and what it saved.
+
+**Compression on the wire.** rsync negotiates which compressor carries the literal data, and the winner is the one both sides rank highest, not simply "zstd if the peer mentions it". Every rsync built before 3.2.0 has no zstd at all, which covers NAS firmware, embedded boxes and older LTS images, and those peers land on `zlibx`: raw deflate on one session-wide stream with a `Z_SYNC_FLUSH` boundary per record. AeroRsync drives both families, pinned against a captured **rsync 3.1.3** wire oracle that runs in CI alongside the 3.2.7 lane. Plain `zlib` is the one left out, because it also feeds matched-block data through the compressor history on both ends, so a peer that lands there takes a typed negotiation error and the classic fallback instead of a reconstruction that would be wrong.
+
+#### Measured against stock rsync
+
+Same 50 MB files, same container, same SSH loopback, back-to-back on an idle 24-core machine. The rsync side runs `-logDtprcz`, the client flags that produce **byte-identical server arguments** to the ones AeroRsync sends (`-logDtprcze.iLsfxCIvu`), verified with a wrapper that logged the server command line.
+
+| Scenario | AeroRsync | stock rsync 3.2.7 |
+|---|---|---|
+| Cold upload, 50 MB incompressible | **1.07 s** | 1.37 s |
+| Delta upload, 640 × 4 KiB changed | 2.00 s | **1.36 s** |
+| Delta download, same change set | **1.31 s** | 1.34 s |
+| Redundant upload (nothing to do) | **0.46 s** | 1.26 s |
+| 20 × 256 KiB, one session per file | **4.98 s** | 25.25 s |
+| 20 × 256 KiB, one recursive `rsync` call | *(no recursive scope)* | **1.31 s** |
+
+Read honestly, that is three different results. AeroRsync wins where a process would have to be spawned - a cold upload, a no-op, and twenty small files one at a time, where `rsync` pays a fresh `ssh` plus `rsync` fork per file and AeroRsync opens an in-process session. It **loses the delta upload by ~30%** while putting the same work on the wire: 3,748,322 bytes against rsync's 3,743,589, a 0.13% difference, so the gap is CPU in the encode path and not the protocol. And rsync still does the whole 20-file tree in **one** invocation in 1.31 s, which is 3.8× better than AeroRsync's per-file path - that is the recursive-scope gap, and `AerorsyncBatch` is what closes it at the transport layer.
+
+Repeated across three runs the timings move by a few percent and the byte counts do not move at all. Detailed methodology, dataset characterisation and the full parity matrix: [docs/PROTOCOL-RSYNC-COMPARE.md](docs/PROTOCOL-RSYNC-COMPARE.md).
+
+#### What is verified
+
+- **605 unit tests** on the module, pinned against frozen rsync 3.2.7 byte transcripts.
+- **11 live tests in CI lane 3** against a real `rsync --server` in Docker: a byte-identical upload (sha256 match), streaming upload, symlinks both directions, `user.*` xattrs inline, out-of-band, binary-with-NUL and empty, the batch path over a single session, and a symlink proving it does not inherit its target's attributes.
+- **8 live tests across the negotiated checksum matrix** - xxh128, xxh3, xxh64, md5, md4, sha1 - driving the production upload and download transports.
+
+#### Known limits
+
+Single file per invocation: AeroRsync is a delta accelerator, not a tree walker - enumeration, deletion and retention stay with AeroSync, which owns its own safety gates. Protocol 31 only, SSH remote-shell only: no `rsync://` daemon mode, and an endpoint negotiating protocol 27-30 is served by the stock binary instead. Metadata preserved today is mtime, permissions, symlinks (Unix) and `user.*` xattrs (Unix, `-X`); **ACL, owner/group and device files are not implemented**, and hardlinks are structurally blocked until recursive scope exists, because detecting that two paths share an inode needs the whole file list.
+
+One version note worth stating plainly: upstream rsync **dropped `sha1`** from the negotiated checksum list between 3.2.7 and 3.4.1. AeroRsync still implements it, and it works against peers that still offer it, but against a modern rsync it is simply not negotiable.
 
 ---
 
