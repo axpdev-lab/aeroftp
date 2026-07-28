@@ -3772,33 +3772,62 @@ mod tests {
         let func = if nofollow { "lgetxattr" } else { "getxattr" };
         let cmd = format!(
             r#"python3 - <<'PY'
-import ctypes, base64, sys
+import ctypes, base64, errno, sys
 L = ctypes.CDLL(None, use_errno=True)
 F = L.{func}
 F.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_void_p, ctypes.c_size_t]
 F.restype = ctypes.c_ssize_t
 p = b"{remote_path}"
 n = b"{name}"
+ctypes.set_errno(0)
 s = F(p, n, None, 0)
 if s < 0:
-    print("MISSING")
-    sys.exit(0)
+    e = ctypes.get_errno()
+    if e == errno.ENODATA:
+        print("MISSING")
+        sys.exit(0)
+    sys.stderr.write("probe failed: errno " + str(e) + " " + errno.errorcode.get(e, "?") + "\n")
+    sys.exit(1)
 b = ctypes.create_string_buffer(s)
+ctypes.set_errno(0)
 g = F(p, n, b, s)
-print(base64.b64encode(b.raw[:g]).decode())
+if g < 0:
+    e = ctypes.get_errno()
+    sys.stderr.write("read failed: errno " + str(e) + " " + errno.errorcode.get(e, "?") + "\n")
+    sys.exit(1)
+print("OK " + base64.b64encode(b.raw[:g]).decode())
 PY"#
         );
         let out = lane3_ssh_testuser(key_path, &cmd);
-        if out == "MISSING" || out.is_empty() {
-            None
-        } else {
-            use base64::Engine as _;
-            Some(
-                base64::engine::general_purpose::STANDARD
-                    .decode(out.trim())
-                    .expect("remote getxattr base64"),
-            )
+        // "Absent" must mean ENODATA and nothing else. The first version of
+        // this probe printed MISSING on *any* first-call failure and mapped an
+        // empty stdout to `None`, so a wrong path, a permission error or an
+        // unreadable namespace all read as "the attribute is not there" — and
+        // every `expect_absent` assertion in this file would have passed
+        // without the probe ever having worked. Reported by CodeRabbit on #487.
+        //
+        // The value is prefixed rather than printed bare for the same reason:
+        // an attribute whose value is legitimately empty is otherwise
+        // indistinguishable from a probe that produced no output at all.
+        // `lane3_ssh_testuser` already panics on a non-zero exit and quotes
+        // stderr, so the errno lands in the failure message.
+        if out == "MISSING" {
+            return None;
         }
+        if out == "OK" {
+            // Trailing whitespace is trimmed by the ssh helper, so an empty
+            // value arrives as the bare marker.
+            return Some(Vec::new());
+        }
+        let Some(b64) = out.strip_prefix("OK ") else {
+            panic!("remote xattr probe for {name} on {remote_path} returned {out:?}");
+        };
+        use base64::Engine as _;
+        Some(
+            base64::engine::general_purpose::STANDARD
+                .decode(b64)
+                .expect("remote getxattr base64"),
+        )
     }
 
     /// Seed a remote regular file with a `user.*` xattr (value as base64).
