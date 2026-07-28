@@ -121,12 +121,16 @@ export function catalogParentKey(c: CatalogCompany): string {
 
 /**
  * Providers kept in the codebase for DEV work but hidden from the production UI
- * until they are ready: Blomp (storage proxy 403, awaiting a reliable API) and
- * Google Photos (Photos API problem, fix pending on our side). Single source for
- * the "disabled in production, available in DEV" rule applied across the provider
- * lists (Discover catalog, Providers & Integrations dialog, protocol grid).
+ * until they are ready: currently Google Photos (Photos API problem, fix pending
+ * on our side). Single source for the "disabled in production, available in DEV"
+ * rule applied across the provider lists (Discover catalog, Providers &
+ * Integrations dialog, protocol grid).
+ *
+ * Blomp graduated to production once its Swift backend was live-verified: the
+ * account listing is 403 by design, but swift.rs connects via the per-account
+ * container named after the login email (discover_container fallback).
  */
-export const DEV_ONLY_LOGO_IDS: ReadonlySet<string> = new Set(['blomp', 'googlephotos']);
+export const DEV_ONLY_LOGO_IDS: ReadonlySet<string> = new Set(['googlephotos']);
 
 export const isDevOnlyProvider = (logoId: string): boolean => DEV_ONLY_LOGO_IDS.has(logoId);
 
@@ -541,7 +545,7 @@ function mdCell(s: string): string {
  * em-dash in user-facing output).
  */
 export function buildProvidersMarkdown(): string {
-    // Public docs never list dev-only providers (Blomp, Google Photos).
+    // Public docs never list dev-only providers (currently Google Photos).
     const publicCatalog = PROVIDER_CATALOG.filter(c => !isDevOnlyProvider(c.logoId));
     const rows = [...publicCatalog]
         .sort((a, b) => a.company.toLowerCase().localeCompare(b.company.toLowerCase(), 'en'))

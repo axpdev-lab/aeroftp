@@ -21529,6 +21529,25 @@ fn run_self_subcommand(args: &[&str]) -> i32 {
     }
 }
 
+/// Canonicalize a friendly protocol alias to the form persisted in the vault.
+///
+/// Blomp is an OpenStack Swift deployment; the GUI registry preset stores it as
+/// protocol `swift` + providerId `blomp`. `profile-add --protocol blomp` is
+/// accepted as a friendly alias and normalized to the same canonical pair, so
+/// every downstream consumer keyed on `swift` (connect dispatch, capability
+/// matrix, feature lists) works without a scattered per-alias special case. An
+/// explicit `--provider-id` always wins.
+fn canonical_protocol_and_provider<'a>(
+    proto_lower: &'a str,
+    provider_id: Option<&'a str>,
+) -> (&'a str, Option<&'a str>) {
+    if proto_lower == "blomp" {
+        ("swift", provider_id.or(Some("blomp")))
+    } else {
+        (proto_lower, provider_id)
+    }
+}
+
 /// Create a brand-new profile entry from a set of CLI flags. Validates
 /// the protocol against the registry the GUI uses, applies the same
 /// default port table, and writes the resulting JSON object straight
@@ -21600,24 +21619,18 @@ fn cmd_profile_add(
         "gitlab",
         "immich",
         "pixelunion",
+        // Blomp = OpenStack Swift (40 GB free). Accepted as a friendly alias;
+        // normalized to protocol "swift" + providerId "blomp" below so every
+        // downstream consumer keyed on "swift" works unchanged.
+        "blomp",
     ];
-    // Dev-only providers: kept working in debug builds for development but
-    // hidden from the release CLI's allowlist and "Supported:" advertisement,
-    // mirroring the GUI's isDevOnlyProvider (import.meta.env.DEV) rule so the
-    // CLI does not surface providers the release intentionally hides.
-    const DEV_ONLY_PROTOCOLS: &[&str] = &["blomp"];
-    let dev_known = cfg!(debug_assertions) && DEV_ONLY_PROTOCOLS.contains(&proto_lower.as_str());
-    if !KNOWN_PROTOCOLS.contains(&proto_lower.as_str()) && !dev_known {
-        let mut supported: Vec<&str> = KNOWN_PROTOCOLS.to_vec();
-        if cfg!(debug_assertions) {
-            supported.extend_from_slice(DEV_ONLY_PROTOCOLS);
-        }
+    if !KNOWN_PROTOCOLS.contains(&proto_lower.as_str()) {
         print_error(
             format,
             &format!(
                 "Unknown protocol '{}'. Supported: {}",
                 protocol,
-                supported.join(", ")
+                KNOWN_PROTOCOLS.join(", ")
             ),
             5,
         );
@@ -21679,18 +21692,24 @@ fn cmd_profile_add(
         }
     };
     let resolved_initial_path = initial_path.unwrap_or("/");
+    // Blomp is an OpenStack Swift deployment. Persist it in the canonical form
+    // the GUI registry uses (protocol "swift" + providerId "blomp") so the
+    // connect dispatch, capability matrix and feature lists — all keyed on
+    // "swift" — apply without a per-alias special case.
+    let (stored_protocol, resolved_provider_id) =
+        canonical_protocol_and_provider(&proto_lower, provider_id);
     let new_id = match persist_new_profile_entry(
         cli,
         &store,
         trimmed_name,
-        &proto_lower,
+        stored_protocol,
         host,
         resolved_port,
         username,
         resolved_initial_path,
         local_initial_path,
         color,
-        provider_id,
+        resolved_provider_id,
         manual_total_bytes,
         public_url_base,
         custom_icon_url,
@@ -25612,7 +25631,11 @@ fn profile_value_to_provider_config(
         "kdrive" => ProviderType::KDrive,
         "github" => ProviderType::GitHub,
         "gitlab" => ProviderType::GitLab,
-        "swift" => ProviderType::Swift,
+        // Blomp is an OpenStack Swift deployment; the GUI registry preset
+        // carries protocol: 'swift', but a CLI profile-add --protocol blomp
+        // stores "blomp" verbatim. Route it to the Swift provider so the
+        // dev-only alias connects like any other Swift backend.
+        "swift" | "blomp" => ProviderType::Swift,
         "yandexdisk" => ProviderType::YandexDisk,
         "googledrive" => ProviderType::GoogleDrive,
         "dropbox" => ProviderType::Dropbox,
@@ -70676,6 +70699,38 @@ mod tests {
         // profile-add's optional path: no source given => no credential, no error.
         let got = read_credential_source(OutputFormat::Text, None, None, false, None, None);
         assert_eq!(got, Ok(None));
+    }
+
+    // ---- Blomp alias normalization (profile-add) --------------------------
+
+    #[test]
+    fn blomp_alias_normalizes_to_swift_provider() {
+        // --protocol blomp with no explicit provider-id => swift + providerId blomp.
+        assert_eq!(
+            canonical_protocol_and_provider("blomp", None),
+            ("swift", Some("blomp"))
+        );
+    }
+
+    #[test]
+    fn blomp_alias_keeps_explicit_provider_id() {
+        // An explicit --provider-id wins over the derived default.
+        assert_eq!(
+            canonical_protocol_and_provider("blomp", Some("ovh")),
+            ("swift", Some("ovh"))
+        );
+    }
+
+    #[test]
+    fn non_blomp_protocol_is_passed_through_unchanged() {
+        assert_eq!(
+            canonical_protocol_and_provider("sftp", None),
+            ("sftp", None)
+        );
+        assert_eq!(
+            canonical_protocol_and_provider("swift", Some("rackspace")),
+            ("swift", Some("rackspace"))
+        );
     }
 
     #[test]

@@ -1,7 +1,23 @@
 //! OpenStack Swift provider (Blomp, OVH, Rackspace)
 //!
-//! TempAuth v1 authentication + Swift Object Store REST API.
-//! Blomp-specific constraints: single container, segments in .file-segments/.
+//! Keystone v2 / TempAuth v1 authentication + Swift Object Store REST API.
+//! Version detection is self-healing: if the detected flow fails, the other is
+//! attempted before surfacing an error (see `authenticate`).
+//!
+//! Blomp-specific behaviour (black-box verified against a live account,
+//! 2026-07-28):
+//!   - Auth is Keystone v2 with `tenantName = "storage"`; the object-store
+//!     endpoint resolves to `swiftproxy.acs.ai.net:8080`.
+//!   - The account (container-list) operation `GET {storage_url}?format=json`
+//!     is **forbidden at the proxy** — HTTP 403 for every request and every
+//!     User-Agent, not a spurious/transient failure. This is what made Blomp
+//!     look "broken" (rclone hits the same wall).
+//!   - A single per-account container DOES exist and is fully usable
+//!     (list/upload/download/rename/delete); its name is the login username
+//!     (email). `discover_container` therefore falls back to the username
+//!     container when the account listing is denied.
+//!   - Single container per account (creating a second returns 403); large
+//!     files use SLO segments under `.file-segments/`.
 
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
@@ -149,26 +165,53 @@ impl SwiftProvider {
     async fn authenticate(&mut self) -> Result<(), ProviderError> {
         let base = self.config.auth_url.trim_end_matches('/').to_string();
 
-        // Probe root to detect auth version
+        // Probe root to detect auth version.
         let version = self.detect_auth_version(&base).await;
         debug!("Swift auth version detected: {:?}", version);
 
-        match version {
+        // Try the detected flow, then self-heal by falling back to the other
+        // one. The probe is best-effort (a transient GET failure used to drop
+        // us to V1, which then hits a non-existent /auth/v1.0 → 404 and a bogus
+        // "credentials" error), so never let a single guess be terminal.
+        let (primary, secondary) = match version {
+            AuthVersion::V2 => (
+                self.auth_keystone_v2(&base).await,
+                AuthVersion::V1, // fallback flow to attempt on failure
+            ),
+            AuthVersion::V1 => (self.auth_tempauth_v1(&base).await, AuthVersion::V2),
+        };
+        if primary.is_ok() {
+            return primary;
+        }
+        let primary_err = primary;
+        debug!("Swift primary auth failed; trying fallback flow {secondary:?}");
+        let fallback = match secondary {
             AuthVersion::V2 => self.auth_keystone_v2(&base).await,
             AuthVersion::V1 => self.auth_tempauth_v1(&base).await,
-        }
+        };
+        // On double failure, surface the error from the *detected* flow — it is
+        // the more relevant diagnostic for a correctly-detected endpoint.
+        fallback.or(primary_err)
     }
 
-    /// Detect auth version from root JSON response
+    /// Detect auth version from the root version document.
+    ///
+    /// Keystone endpoints advertise `v2.0` / `v3` in the root JSON; legacy
+    /// TempAuth (Rackspace-style) does not. On any probe failure we default to
+    /// Keystone v2 — the modern norm and what Blomp serves — because
+    /// `authenticate()` self-heals to TempAuth v1 if that guess is wrong.
     async fn detect_auth_version(&self, base: &str) -> AuthVersion {
         if let Ok(resp) = self.client.get(base).send().await {
             if let Ok(text) = resp.text().await {
-                if text.contains("v2.0") {
+                if text.contains("v2.0") || text.contains("v3") {
                     return AuthVersion::V2;
                 }
+                // A reachable root that names neither → assume legacy TempAuth.
+                return AuthVersion::V1;
             }
         }
-        AuthVersion::V1
+        // Unreachable/undecodable probe: prefer Keystone v2, self-heal covers V1.
+        AuthVersion::V2
     }
 
     /// TempAuth v1: GET {base}/auth/v1.0 with X-Auth-User + X-Auth-Key
@@ -376,15 +419,35 @@ impl SwiftProvider {
 
     // ─── Container discovery ───────────────────────────────────
 
-    /// GET {storage_url}?format=json -> first container name.
-    /// Blomp has exactly one container per account.
+    /// Discover the working container.
+    ///
+    /// Standard Swift deployments (OVH, Rackspace, self-hosted) answer the
+    /// account listing `GET {storage_url}?format=json` with the list of
+    /// containers. Blomp, however, forbids the account-level operation at the
+    /// proxy (HTTP 403 for every request and every User-Agent — verified
+    /// black-box against a live account) while still serving a single
+    /// per-account container named exactly after the login username/email.
+    ///
+    /// So: try the account listing first; on 403/401 (or an empty account),
+    /// fall back to the deterministic Blomp container named `= username`,
+    /// confirming it exists with a HEAD before committing.
     async fn discover_container(&mut self) -> Result<String, ProviderError> {
         let url = format!("{}?format=json", self.storage_url()?);
         debug!("Swift container discovery: {}", url);
 
         let resp = self.swift_request(Method::GET, &url, None, &[]).await?;
-
         let status = resp.status();
+
+        // Blomp: account listing is forbidden — fall back to the username
+        // container. Also cover 401 (some proxies mask it) and 404.
+        if matches!(
+            status,
+            StatusCode::FORBIDDEN | StatusCode::UNAUTHORIZED | StatusCode::NOT_FOUND
+        ) {
+            debug!("Account listing HTTP {status}; trying username container fallback");
+            return self.fallback_username_container().await;
+        }
+
         if !status.is_success() {
             let body = resp.text().await.unwrap_or_default();
             return Err(ProviderError::ServerError(format!(
@@ -410,13 +473,40 @@ impl SwiftProvider {
             ))
         })?;
 
-        containers
-            .first()
-            .map(|c| {
+        match containers.first() {
+            Some(c) => {
                 info!("Swift using container: {}", c.name);
-                c.name.clone()
-            })
-            .ok_or_else(|| ProviderError::ServerError("No containers found in account".into()))
+                Ok(c.name.clone())
+            }
+            // Empty account: the container may exist but be hidden from the
+            // account listing (Blomp-style). Try the username fallback.
+            None => self.fallback_username_container().await,
+        }
+    }
+
+    /// Blomp fallback: the single container is named after the login username.
+    /// Confirm it with a HEAD so we fail with a clear message if absent.
+    async fn fallback_username_container(&mut self) -> Result<String, ProviderError> {
+        let name = self.config.username.trim().to_string();
+        if name.is_empty() {
+            return Err(ProviderError::ServerError(
+                "No containers found and no username to derive the container name".into(),
+            ));
+        }
+
+        // The container name is used verbatim throughout object_url(), so probe
+        // it verbatim here too (Blomp accepts the raw email as the path segment).
+        let url = format!("{}/{}", self.storage_url()?, name);
+        let resp = self.swift_request(Method::HEAD, &url, None, &[]).await?;
+        let status = resp.status();
+        if status.is_success() {
+            info!("Swift using username container (Blomp fallback): {}", name);
+            Ok(name)
+        } else {
+            Err(ProviderError::ServerError(format!(
+                "Account listing denied and username container '{name}' not reachable (HTTP {status})"
+            )))
+        }
     }
 
     // ─── URL helpers ───────────────────────────────────────────

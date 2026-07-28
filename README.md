@@ -179,6 +179,7 @@ AeroFTP organizes integrations on three tiers, so what you see in the catalog is
 | Alibaba OSS | CN | 5 GB (overseas only, card req.) | S3* |
 | Amazon Web Services (AWS) | US | 5 GB (always-free, card req.) | S3* |
 | Backblaze B2 | US | 10 GB | API, S3 |
+| Blomp | US | 20 GB (referral bonus) | Swift |
 | Box | US | 10 GB | OAuth |
 | Cloudflare R2 | US | 10 GB (egress-free, card req.) | S3* |
 | Cloudinary | US | credit-based | API |
@@ -226,7 +227,7 @@ AeroFTP organizes integrations on three tiers, so what you see in the catalog is
 | Yandex Object Storage | RU | 1 GB (always-free, card req.) | S3* |
 | Zoho WorkDrive | IN | 5 GB | OAuth |
 
-<sub>50 providers, 64 connection methods. `*` marks a paid / credit-card-gated plan. HQ is the ISO 3166-1 alpha-2 of the company HQ (EU = pan-European). Free-tier sizes are approximate: verify with the provider.</sub>
+<sub>51 providers, 65 connection methods. `*` marks a paid / credit-card-gated plan. HQ is the ISO 3166-1 alpha-2 of the company HQ (EU = pan-European). Free-tier sizes are approximate: verify with the provider.</sub>
 
 <!-- END PROVIDERS-TABLE -->
 
