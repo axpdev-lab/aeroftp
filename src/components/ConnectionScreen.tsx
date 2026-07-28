@@ -405,7 +405,7 @@ const FourSharedConnect: React.FC<FourSharedConnectProps> = ({
                 <div className="p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg space-y-3">
                     <div className="flex items-center justify-between">
                         <h4 className="font-medium text-sm">{t('connection.fourshared.oauth1Credentials')}</h4>
-                        <span className="inline-flex items-center gap-0.5 shrink-0">
+                        <span className="inline-flex items-center shrink-0">
                             <button
                                 onClick={() => openUrl('https://www.4shared.com/developer/docs/app/')}
                                 className="text-xs text-blue-500 hover:text-blue-600 flex items-center gap-1"
@@ -2771,7 +2771,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                 shared between all of them and the copy would drift to the far
                 right, away from the link it belongs to. */}
             {accountSignupUrl && (
-                <span className="inline-flex items-center gap-0.5 shrink-0">
+                <span className="inline-flex items-center shrink-0">
                     <a
                         href={`${accountSignupUrl}${accountSignupUrl.includes('?') ? '&' : '?'}utm_source=aeroftp`}
                         target="_blank"
@@ -2791,7 +2791,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         <div className="flex items-center justify-between gap-2 mb-1.5">
             <label className="block text-sm font-medium">{overrideText ?? getPasswordLabel()}</label>
             {accountPasswordGenUrl && (
-                <span className="inline-flex items-center gap-0.5 shrink-0">
+                <span className="inline-flex items-center shrink-0">
                     <a
                         href={accountPasswordGenUrl}
                         target="_blank"
@@ -3707,16 +3707,22 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                 return (
                                     <div className="flex flex-col items-end gap-0.5">
                                         <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
-                                            <a
-                                                href={docsUrl}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="inline-flex items-center gap-1 text-xs text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300"
-                                            >
-                                                <ExternalLink size={10} />
-                                                Docs
-                                            </a>
-                                            <CopyLinkButton url={docsUrl} />
+                                            {/* Grouped like every other link row: this row is
+                                                gap-2, which would stack on top of the button's own
+                                                margin and leave the copy visibly further from Docs
+                                                than everywhere else in the app. */}
+                                            <span className="inline-flex items-center shrink-0">
+                                                <a
+                                                    href={docsUrl}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="inline-flex items-center gap-1 text-xs text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300"
+                                                >
+                                                    <ExternalLink size={10} />
+                                                    Docs
+                                                </a>
+                                                <CopyLinkButton url={docsUrl} />
+                                            </span>
                                             {LogoComponent && <LogoComponent size={20} />}
                                             <span className="font-medium">{providerName}</span>
                                         </div>
@@ -4473,7 +4479,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             <div>
                                                 <div className="flex items-center justify-between gap-2 mb-1.5">
                                                     <label className="block text-sm font-medium">{t('connection.jottacloudToken')}</label>
-                                                    <span className="inline-flex items-center gap-0.5 shrink-0">
+                                                    <span className="inline-flex items-center shrink-0">
                                                         <a
                                                             href="https://www.jottacloud.com/web/secure"
                                                             target="_blank"
@@ -5171,7 +5177,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                         <div>
                                             <div className="flex items-center justify-between gap-2 mb-1.5">
                                                 <label className="block text-sm font-medium">{t('connection.kdriveDriveId')}</label>
-                                                <span className="inline-flex items-center gap-0.5 shrink-0">
+                                                <span className="inline-flex items-center shrink-0">
                                                     <a
                                                         href="https://ksuite.infomaniak.com/all/kdrive"
                                                         target="_blank"
@@ -5205,7 +5211,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                         <div>
                                             <div className="flex items-center justify-between gap-2 mb-1.5">
                                                 <label className="block text-sm font-medium">{t('connection.kdriveToken')}</label>
-                                                <span className="inline-flex items-center gap-0.5 shrink-0">
+                                                <span className="inline-flex items-center shrink-0">
                                                     <a
                                                         href="https://manager.infomaniak.com/v3/ng/profile/user/token/list"
                                                         target="_blank"
@@ -5986,7 +5992,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     >
                                                         {t('connection.downloadMegacmd')}
                                                     </a>
-                                                    <CopyLinkButton url="https://mega.io/cmd" size={11} className="ml-1" />
+                                                    <CopyLinkButton url="https://mega.io/cmd" size={11} />
                                                     </>
                                                 )}
                                             </p>
@@ -6385,7 +6391,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                         <ExternalLink size={11} />
                                                         {t('protocol.openProviderDocs', { provider: selectedProvider.name })}
                                                     </a>
-                                                    <CopyLinkButton url={selectedProvider.helpUrl} size={11} className="ml-1" />
+                                                    <CopyLinkButton url={selectedProvider.helpUrl} size={11} />
                                                     </>
                                                 )}
                                             </CollapsibleSetupBox>
@@ -6830,7 +6836,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                 <ExternalLink size={14} />
                                 {gitHubDeviceFlow.verificationUri}
                             </a>
-                            <CopyLinkButton url={gitHubDeviceFlow.verificationUri} size={14} className="ml-1.5" />
+                            <CopyLinkButton url={gitHubDeviceFlow.verificationUri} size={14} />
                         </div>
                         <div className="flex justify-end gap-2 px-5 py-3 bg-gray-50 dark:bg-gray-800/50 border-t border-gray-200 dark:border-gray-700">
                             <button

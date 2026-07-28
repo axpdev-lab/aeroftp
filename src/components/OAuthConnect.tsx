@@ -626,7 +626,7 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
                 id, and the provider's own help URL as a fallback before the
                 generic index). Only "Get credentials" belongs here: it points at
                 the provider's developer console, next to the fields it fills. */}
-            <div className="flex items-center gap-1">
+            <div className="flex items-center">
               <button
                 onClick={() => openUrl(oauthApp.help_url)}
                 className="text-xs text-blue-500 hover:text-blue-600 flex items-center gap-1"

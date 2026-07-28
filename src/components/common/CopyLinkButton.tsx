@@ -39,7 +39,12 @@ export const CopyLinkButton: React.FC<CopyLinkButtonProps> = ({ url, size = 10, 
             onClick={(e) => { e.preventDefault(); e.stopPropagation(); void copy(url); }}
             title={copied ? t('common.copied') : `${t('common.copy')}: ${url}`}
             aria-label={`${t('common.copy')}: ${url}`}
-            className={`inline-flex items-center justify-center shrink-0 rounded p-0.5 align-middle text-current opacity-50 hover:opacity-100 hover:bg-black/5 dark:hover:bg-white/10 transition-opacity cursor-pointer ${className}`}
+            // ml-1.5 is not decoration: butted straight against the link the
+            // button is a ~14px target sharing an edge with a click that
+            // navigates, so aiming at it is fiddly and a near miss opens the
+            // page instead of copying. The gap is the separation, and it lives
+            // here rather than at each call site so all 19 of them match.
+            className={`inline-flex items-center justify-center shrink-0 ml-1.5 rounded p-0.5 align-middle text-current opacity-50 hover:opacity-100 hover:bg-black/5 dark:hover:bg-white/10 transition-opacity cursor-pointer ${className}`}
         >
             {copied
                 ? <Check size={size} className="text-green-500 opacity-100" />
