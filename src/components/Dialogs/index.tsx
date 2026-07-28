@@ -404,13 +404,51 @@ export interface FileProperties {
         sha256?: string;
         sha512?: string;
         blake3?: string;
-        // Server-only digests: present only when the backend exposes
-        // them (OneDrive QuickXorHash, Dropbox content_hash). Never
-        // computed locally.
+        // Backend-native digests: present only when the backend exposes
+        // them (OneDrive QuickXorHash, Dropbox content_hash, Koofr's own
+        // hash, a git blob SHA, FTP CRC32, ownCloud Adler-32). Never
+        // computed locally, and never aliased onto a standard algorithm.
         quickxor?: string;
         dropbox?: string;
+        koofr?: string;
+        'git-sha1'?: string;
+        crc32?: string;
+        adler32?: string;
         calculating?: boolean;
     };
+}
+
+/** Digests a backend computes in its own scheme, which AeroFTP can never
+ *  reproduce locally: they are shown under their own name rather than aliased
+ *  onto a standard algorithm they would fail to match. Ordered as the Checksum
+ *  tab lists them, after the five standard rows. */
+const BACKEND_NATIVE_DIGESTS: ReadonlyArray<{
+    key: 'quickxor' | 'dropbox' | 'koofr' | 'git-sha1' | 'crc32' | 'adler32';
+    label: string;
+}> = [
+    { key: 'quickxor', label: 'QuickXor' },
+    { key: 'dropbox', label: 'Dropbox' },
+    { key: 'koofr', label: 'Koofr' },
+    { key: 'git-sha1', label: 'Git SHA-1' },
+    { key: 'crc32', label: 'CRC32' },
+    { key: 'adler32', label: 'Adler-32' },
+];
+
+/// What the connected backend can produce for this path without downloading
+/// it: the `provider_checksum_capability` reply, mirrored from
+/// `src-tauri/src/providers/checksum_matrix.rs`.
+export interface ChecksumCapability {
+    /** Canonical algorithm keys the backend can serve, in offer order. */
+    algorithms: string[];
+    /** The list is what the SERVER advertised, not what the protocol allows:
+     *  a given file may still come back without one. */
+    negotiated: boolean;
+    /** The digests cover the encrypted bytes stored on the server, not the
+     *  plaintext shown here (inside the Overlays Path). */
+    ciphertext: boolean;
+    /** Stable token naming why a digest can be absent; translated through
+     *  `properties.checksumCaveats.<token>`. */
+    caveat?: string | null;
 }
 
 // Label/description/icon for an OpenDrive privacy level (#252). Shared by the
@@ -432,6 +470,10 @@ const privacyLevelMeta = (
 interface PropertiesDialogProps {
     file: FileProperties;
     onClose: () => void;
+    /** What the remote backend can hash for this path, fetched when the dialog
+     *  opens on a remote file. Absent for local files, which AeroFTP reads
+     *  itself and can therefore hash with every algorithm. */
+    checksumCapability?: ChecksumCapability | null;
     onCalculateChecksum?: (algorithm: 'md5' | 'sha1' | 'sha256' | 'sha512' | 'blake3') => void;
     onCalculateFolderSize?: () => void;
     folderSize?: { total_bytes: number; file_count: number; dir_count: number } | null;
@@ -446,6 +488,7 @@ interface PropertiesDialogProps {
 export const PropertiesDialog: React.FC<PropertiesDialogProps> = ({
     file,
     onClose,
+    checksumCapability,
     onCalculateChecksum,
     onCalculateFolderSize,
     folderSize,
@@ -603,13 +646,34 @@ export const PropertiesDialog: React.FC<PropertiesDialogProps> = ({
         </div>
     );
 
+    // The backend this file lives on, named the way the dialog header names it.
+    const backendLabel = file.isRemote
+        ? (file.protocol?.toUpperCase() || 'FTP')
+        : t('properties.local');
+
+    // Which algorithms can actually be produced here. A local file is read by
+    // AeroFTP itself, so all five are available; a remote one can only offer
+    // what the backend already holds, which `provider_checksum_capability`
+    // answers before the user clicks anything.
+    const availableAlgorithms = React.useMemo(() => {
+        if (!file.isRemote) return null; // null = everything standard is available
+        return new Set(checksumCapability?.algorithms ?? []);
+    }, [file.isRemote, checksumCapability]);
+
+    const canCalculate = (algorithm: string) =>
+        availableAlgorithms === null || availableAlgorithms.has(algorithm);
+
     // Checksum row helper. Hash is rendered with `break-all` so the full digest
     // is readable without truncation; the dialog widens (see modal class) to
     // accommodate SHA-512 (128 hex) and BLAKE3 (64 hex) on a single line where
     // possible, wrapping cleanly otherwise.
-    // `serverOnly` rows (quickxor, dropbox) cannot be computed locally:
-    // they exist only when the backend already returned them, so no
-    // "Calculate" action is offered, just the value plus an honest note.
+    //
+    // A row is never hidden because the backend cannot produce it: hiding it
+    // would leave the user wondering whether AeroFTP supports the algorithm at
+    // all, and send them elsewhere to find out. Instead the "Calculate" button
+    // is replaced by the reason, so the answer is on screen before the click.
+    // `serverOnly` rows (QuickXor, Dropbox, Koofr, git SHA) cannot be computed
+    // locally by definition: they exist only when the backend returns them.
     const ChecksumRow: React.FC<{
         label: string;
         value?: string;
@@ -628,6 +692,10 @@ export const PropertiesDialog: React.FC<PropertiesDialogProps> = ({
             ) : serverOnly ? (
                 <span className="flex-1 text-xs text-gray-400 italic pt-1">
                     {t('properties.checksumServerOnly')}
+                </span>
+            ) : algorithm && !canCalculate(algorithm) ? (
+                <span className="flex-1 text-xs text-gray-400 italic pt-1">
+                    {t('properties.checksumNotOnBackend', { backend: backendLabel })}
                 </span>
             ) : (
                 <button
@@ -943,20 +1011,64 @@ export const PropertiesDialog: React.FC<PropertiesDialogProps> = ({
                                     <div className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-3">
                                         {t('properties.checksumVerification')}
                                     </div>
+
+                                    {/* Inside the Overlays Path the server holds
+                                        ciphertext, so its digest is a real answer
+                                        to "did the stored object change" and a
+                                        wrong one to "does this match my local
+                                        file". Say which, above the values. */}
+                                    {checksumCapability?.ciphertext && (
+                                        <div className="flex items-start gap-2 mb-3 px-3 py-2 rounded bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/50">
+                                            <Lock size={13} className="text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
+                                            <span className="text-[11px] leading-relaxed text-amber-800 dark:text-amber-300">
+                                                {t('properties.checksumCiphertext')}
+                                            </span>
+                                        </div>
+                                    )}
+
+                                    {file.isRemote && (
+                                        <div className="text-[11px] leading-relaxed text-gray-500 dark:text-gray-400 mb-3">
+                                            {t('properties.checksumServerSide')}
+                                            {checksumCapability?.negotiated && (
+                                                <> {t('properties.checksumNegotiated')}</>
+                                            )}
+                                            {checksumCapability?.caveat && (
+                                                <> {t(`properties.checksumCaveats.${checksumCapability.caveat}`)}</>
+                                            )}
+                                        </div>
+                                    )}
+
                                     <ChecksumRow label="MD5" value={file.checksum?.md5} algorithm="md5" />
                                     <ChecksumRow label="SHA-1" value={file.checksum?.sha1} algorithm="sha1" />
                                     <ChecksumRow label="SHA-256" value={file.checksum?.sha256} algorithm="sha256" />
                                     <ChecksumRow label="SHA-512" value={file.checksum?.sha512} algorithm="sha512" />
                                     <ChecksumRow label="BLAKE3" value={file.checksum?.blake3} algorithm="blake3" />
-                                    {/* Server-only digests: shown only when the
-                                        backend (OneDrive, Dropbox) actually
-                                        returned them. No local fallback. */}
-                                    {file.checksum?.quickxor && (
-                                        <ChecksumRow label="QuickXor" value={file.checksum.quickxor} serverOnly />
-                                    )}
-                                    {file.checksum?.dropbox && (
-                                        <ChecksumRow label="Dropbox" value={file.checksum.dropbox} serverOnly />
-                                    )}
+
+                                    {/* Digests this backend has of its own, in
+                                        its own scheme. Listed as soon as the
+                                        capability says the backend can produce
+                                        them, so the user sees they exist rather
+                                        than discovering them only after a
+                                        successful call. */}
+                                    {BACKEND_NATIVE_DIGESTS.filter(
+                                        (d) => file.checksum?.[d.key] || availableAlgorithms?.has(d.key)
+                                    ).map((d) => (
+                                        <ChecksumRow
+                                            key={d.key}
+                                            label={d.label}
+                                            value={file.checksum?.[d.key]}
+                                            serverOnly
+                                        />
+                                    ))}
+
+                                    <a
+                                        href="https://docs.aeroftp.app/protocols/checksums"
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="inline-block mt-3 text-[11px] text-blue-500 hover:text-blue-600 hover:underline"
+                                    >
+                                        {t('properties.checksumMatrixLink')}
+                                    </a>
                                 </div>
                             ) : file.is_dir ? (
                                 <div className="text-sm text-gray-500 dark:text-gray-400 text-center py-4">

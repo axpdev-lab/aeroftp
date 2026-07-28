@@ -17,12 +17,13 @@ use suppaftp::{FtpError, Status};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio_util::sync::CancellationToken;
 
+use super::checksum_matrix;
 use super::multi_thread::{
     aerotmp_path_for, run_concurrent_range_download, ConcurrentRangeConfig, ConcurrentRangeOutcome,
 };
 use super::{
-    FtpConfig, FtpTlsMode, ProviderError, ProviderTransferExecutorKind, ProviderType, RemoteEntry,
-    StorageProvider,
+    ChecksumCapability, FtpConfig, FtpTlsMode, ProviderError, ProviderTransferExecutorKind,
+    ProviderType, RemoteEntry, StorageProvider,
 };
 
 /// Hard cap on intra-file FTP range streams (PD-FTP-1), mirroring the SFTP
@@ -1506,6 +1507,38 @@ impl StorageProvider for FtpProvider {
 
     fn supports_checksum(&self) -> bool {
         self.hash_supported.is_some()
+    }
+
+    /// Narrowed to what THIS server advertised in FEAT, which is the whole
+    /// point on FTP: the matrix lists the four algorithms the protocol can
+    /// carry, but a server offering only `XCRC` can produce CRC32 and nothing
+    /// else, and the user should read that instead of clicking to find out.
+    /// `HASH` alone is negotiated per request (the server picks the
+    /// algorithm), so it keeps the flag and the full list.
+    fn checksum_capability(&self, _path: &str) -> ChecksumCapability {
+        let Some(cmd) = self.hash_supported.as_deref() else {
+            return ChecksumCapability::default();
+        };
+        let base = checksum_matrix::capability(self.provider_type());
+        match cmd {
+            "HASH" => base,
+            "XMD5" => ChecksumCapability {
+                algorithms: vec!["md5".to_string()],
+                negotiated: false,
+                ..base
+            },
+            "XSHA1" => ChecksumCapability {
+                algorithms: vec!["sha1".to_string()],
+                negotiated: false,
+                ..base
+            },
+            "XCRC" => ChecksumCapability {
+                algorithms: vec!["crc32".to_string()],
+                negotiated: false,
+                ..base
+            },
+            _ => ChecksumCapability::default(),
+        }
     }
 
     async fn checksum(
