@@ -57,7 +57,7 @@
     "@types/react": "^18.2.15",
     "@types/react-dom": "^18.2.7",
     "@vitejs/plugin-react": "^6.0.4",
-    "autoprefixer": "^10.5.2",
+    "autoprefixer": "^10.5.4",
     "cross-env": "^10.1.0",
     "patch-package": "^8.0.1",
     "postcss": "^8.5.20",
