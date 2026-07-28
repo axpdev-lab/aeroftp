@@ -163,10 +163,23 @@ pub fn read_user_xattrs(path: &Path) -> Option<Vec<XattrPair>> {
 /// The **read** side does not follow symlinks: `llistxattr`/`lgetxattr` on
 /// Linux, `XATTR_NOFOLLOW` on macOS. Reading through a link would attribute
 /// the *target's* attributes to the *link*, and stock rsync does not do that.
-/// On Linux the kernel forbids `user.*` on a symlink outright, so a receiving
-/// rsync answers EPERM and the transfer fails; on macOS a link can carry its
-/// own attributes and those are the ones that belong on the wire. On a regular
-/// file the `l`-prefixed calls behave identically to the plain ones.
+/// On macOS a link can carry its own attributes and those are the ones that
+/// belong on the wire. On a regular file the `l`-prefixed calls behave
+/// identically to the plain ones.
+///
+/// R2 originally predicted that following the link would fail as a receiver
+/// EPERM, since Linux forbids `user.*` on a symlink. **That prediction was
+/// wrong**, and the correction matters because the real failure is worse.
+/// Measured on lane 3 against stock rsync 3.2.7 by running the pre-R2 wrappers
+/// on purpose: with an inline value nothing fails at all, because the kernel
+/// leaves the remote link bare either way and the test passes for the wrong
+/// reason. Above `MAX_FULL_DATUM` the pre-R2 read emits a per-file out-of-band
+/// section for an entry the peer is not expecting, and the stream
+/// desynchronises: `HardRejection(InvalidFrame): expected NDX_DONE (0x00), got
+/// 0x01`. An EPERM is visible and local to one file; a desynchronised protocol
+/// gives arbitrary behaviour downstream. This is why the wire pin in
+/// `delta_upload_symlink_xattr_not_inherited_live_lane_3` deliberately uses an
+/// out-of-band value: an inline one cannot fail.
 ///
 /// The **write** side keeps following, because `apply_xattrs` is documented to
 /// run on the temp file before rename, which is a regular file by construction.
