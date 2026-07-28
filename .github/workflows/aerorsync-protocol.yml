@@ -199,6 +199,8 @@ jobs:
             aerorsync::delta_transport_impl::tests::delta_upload_xattr_binary_nul_live_lane_3 \
             aerorsync::delta_transport_impl::tests::delta_upload_xattr_none_with_x_flag_live_lane_3 \
             aerorsync::delta_transport_impl::tests::delta_download_xattr_live_lane_3 \
+            aerorsync::delta_transport_impl::tests::delta_upload_xattr_batch_two_files_live_lane_3 \
+            aerorsync::delta_transport_impl::tests::delta_upload_symlink_xattr_not_inherited_live_lane_3 \
             --nocapture
       - name: Tear down harness
         if: always()

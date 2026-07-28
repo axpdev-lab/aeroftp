@@ -3747,34 +3747,87 @@ mod tests {
     /// Paths and names are under test control (no shell metacharacters).
     #[cfg(all(ci_lane3, unix))]
     fn lane3_remote_get_xattr(key_path: &Path, remote_path: &str, name: &str) -> Option<Vec<u8>> {
+        lane3_remote_get_xattr_maybe_nofollow(key_path, remote_path, name, false)
+    }
+
+    /// Same probe, but reading the **link itself** (`lgetxattr`) instead of
+    /// its target. R2 needs this: asking `getxattr` about an uploaded symlink
+    /// resolves the target, and when that target does not exist remotely the
+    /// call returns ENOENT — which would make "the link carries no attribute"
+    /// pass for the wrong reason. See
+    /// `delta_upload_symlink_xattr_not_inherited_live_lane_3`, which asserts
+    /// both probes to keep that distinction observable.
+    #[cfg(all(ci_lane3, unix))]
+    fn lane3_remote_lget_xattr(key_path: &Path, remote_path: &str, name: &str) -> Option<Vec<u8>> {
+        lane3_remote_get_xattr_maybe_nofollow(key_path, remote_path, name, true)
+    }
+
+    #[cfg(all(ci_lane3, unix))]
+    fn lane3_remote_get_xattr_maybe_nofollow(
+        key_path: &Path,
+        remote_path: &str,
+        name: &str,
+        nofollow: bool,
+    ) -> Option<Vec<u8>> {
+        let func = if nofollow { "lgetxattr" } else { "getxattr" };
         let cmd = format!(
             r#"python3 - <<'PY'
-import ctypes, base64, sys
+import ctypes, base64, errno, sys
 L = ctypes.CDLL(None, use_errno=True)
-L.getxattr.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_void_p, ctypes.c_size_t]
-L.getxattr.restype = ctypes.c_ssize_t
+F = L.{func}
+F.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_void_p, ctypes.c_size_t]
+F.restype = ctypes.c_ssize_t
 p = b"{remote_path}"
 n = b"{name}"
-s = L.getxattr(p, n, None, 0)
+ctypes.set_errno(0)
+s = F(p, n, None, 0)
 if s < 0:
-    print("MISSING")
-    sys.exit(0)
+    e = ctypes.get_errno()
+    if e == errno.ENODATA:
+        print("MISSING")
+        sys.exit(0)
+    sys.stderr.write("probe failed: errno " + str(e) + " " + errno.errorcode.get(e, "?") + "\n")
+    sys.exit(1)
 b = ctypes.create_string_buffer(s)
-g = L.getxattr(p, n, b, s)
-print(base64.b64encode(b.raw[:g]).decode())
+ctypes.set_errno(0)
+g = F(p, n, b, s)
+if g < 0:
+    e = ctypes.get_errno()
+    sys.stderr.write("read failed: errno " + str(e) + " " + errno.errorcode.get(e, "?") + "\n")
+    sys.exit(1)
+print("OK " + base64.b64encode(b.raw[:g]).decode())
 PY"#
         );
         let out = lane3_ssh_testuser(key_path, &cmd);
-        if out == "MISSING" || out.is_empty() {
-            None
-        } else {
-            use base64::Engine as _;
-            Some(
-                base64::engine::general_purpose::STANDARD
-                    .decode(out.trim())
-                    .expect("remote getxattr base64"),
-            )
+        // "Absent" must mean ENODATA and nothing else. The first version of
+        // this probe printed MISSING on *any* first-call failure and mapped an
+        // empty stdout to `None`, so a wrong path, a permission error or an
+        // unreadable namespace all read as "the attribute is not there" — and
+        // every `expect_absent` assertion in this file would have passed
+        // without the probe ever having worked. Reported by CodeRabbit on #487.
+        //
+        // The value is prefixed rather than printed bare for the same reason:
+        // an attribute whose value is legitimately empty is otherwise
+        // indistinguishable from a probe that produced no output at all.
+        // `lane3_ssh_testuser` already panics on a non-zero exit and quotes
+        // stderr, so the errno lands in the failure message.
+        if out == "MISSING" {
+            return None;
         }
+        if out == "OK" {
+            // Trailing whitespace is trimmed by the ssh helper, so an empty
+            // value arrives as the bare marker.
+            return Some(Vec::new());
+        }
+        let Some(b64) = out.strip_prefix("OK ") else {
+            panic!("remote xattr probe for {name} on {remote_path} returned {out:?}");
+        };
+        use base64::Engine as _;
+        Some(
+            base64::engine::general_purpose::STANDARD
+                .decode(b64)
+                .expect("remote getxattr base64"),
+        )
     }
 
     /// Seed a remote regular file with a `user.*` xattr (value as base64).
@@ -4041,6 +4094,278 @@ PY"#
         );
 
         let _ = lane3_ssh_testuser(&key_path, &format!("rm -f '{remote_path}'"));
+    }
+
+    /// (6) R3 acceptance: the **batch** path preserves xattrs against a real
+    /// rsync, observed rather than argued.
+    ///
+    /// #484 pinned that `begin_batch` inherits the transport's flags, but its
+    /// test stops at the flag: the four call sites want a live peer and
+    /// `AerorsyncBatch` holds a concrete `RusshSessionTransport`, so no mock
+    /// reaches them. Until this test existed, "the batch preserves xattrs" was
+    /// true by construction only.
+    ///
+    /// Two files on one session, because reuse is the whole point of a batch:
+    /// `session_count == 1` is asserted, so a silent degradation to
+    /// one-handshake-per-file would fail here instead of passing quietly. The
+    /// first file carries an inline value and the second an out-of-band one,
+    /// so both xattr encodings cross the batch leg.
+    ///
+    /// Note this is also the first live exercise of the russh leg on lane 3:
+    /// the single-file tests above run on libssh2 (`prefers_russh_leg()` is
+    /// false for a pubkey-file profile) while `begin_batch` always connects
+    /// through russh.
+    #[cfg(all(ci_lane3, unix))]
+    #[tokio::test]
+    async fn delta_upload_xattr_batch_two_files_live_lane_3() {
+        if tokio::net::TcpStream::connect("127.0.0.1:2224")
+            .await
+            .is_err()
+        {
+            eprintln!("[lane3-xattr-batch] harness not reachable on 127.0.0.1:2224: skipping");
+            return;
+        }
+        let Some(key_path) = lane3_key_path() else {
+            return;
+        };
+
+        let inline_value: &[u8] = b"batch-inline-xattr"; // 18 B ≤ MAX_FULL_DATUM
+        assert!(inline_value.len() <= crate::aerorsync::real_wire::MAX_FULL_DATUM);
+        let oob_value = vec![b'B'; crate::aerorsync::real_wire::MAX_FULL_DATUM + 64];
+        assert!(oob_value.len() > crate::aerorsync::real_wire::MAX_FULL_DATUM);
+        const INLINE_NAME: &str = "user.aeroftp.batch_inline";
+        const OOB_NAME: &str = "user.aeroftp.batch_oob";
+        const NEVER_SET: &str = "user.aeroftp.batch_never_set";
+
+        let dir = fresh_tempdir();
+        let local_a = dir.path().join("batch-a.bin");
+        let local_b = dir.path().join("batch-b.bin");
+        std::fs::write(&local_a, b"lane3-batch-payload-a-v1").expect("write payload a");
+        std::fs::write(&local_b, b"lane3-batch-payload-b-v1-longer").expect("write payload b");
+        lane3_local_set_user_xattr(&local_a, INLINE_NAME, inline_value);
+        lane3_local_set_user_xattr(&local_b, OOB_NAME, &oob_value);
+
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let remote_a = format!("/workspace/lane3-xattr-batch-a-{nanos}.bin");
+        let remote_b = format!("/workspace/lane3-xattr-batch-b-{nanos}.bin");
+
+        let transport =
+            AerorsyncDeltaTransport::new(lane3_ssh_config(key_path.clone()), 0).with_xattrs(true);
+        let mut batch = transport
+            .begin_batch()
+            .await
+            .expect("begin_batch must not error on a reachable harness");
+        // begin_batch degrades to NoopBatch when the russh connect fails, and
+        // NoopBatch::upload would then fail with a message about session reuse
+        // that says nothing about xattrs. Name the real cause here instead.
+        assert!(
+            !batch.is_noop(),
+            "batch degraded to NoopBatch: russh could not connect to the lane 3 harness, \
+             so the batch xattr path was never exercised"
+        );
+
+        let stats_a = batch
+            .upload(&local_a, &remote_a)
+            .await
+            .expect("batch upload of file a");
+        assert_eq!(
+            stats_a.total_size,
+            std::fs::metadata(&local_a).unwrap().len(),
+            "[batch-a] transferred size"
+        );
+        let stats_b = batch
+            .upload(&local_b, &remote_b)
+            .await
+            .expect("batch upload of file b");
+        assert_eq!(
+            stats_b.total_size,
+            std::fs::metadata(&local_b).unwrap().len(),
+            "[batch-b] transferred size"
+        );
+
+        let batch_stats = batch.finalize().await.expect("batch finalize");
+        assert_eq!(
+            batch_stats.files_transferred, 2,
+            "both files must be counted by the batch"
+        );
+        assert_eq!(
+            batch_stats.session_count, 1,
+            "two files must ride one SSH handshake: that is what a batch is for"
+        );
+        assert!(
+            !batch_stats.partial,
+            "no cancel was issued, the batch must not report partial"
+        );
+
+        for (label, local, remote, name, value) in [
+            ("batch-a", &local_a, &remote_a, INLINE_NAME, inline_value),
+            (
+                "batch-b",
+                &local_b,
+                &remote_b,
+                OOB_NAME,
+                oob_value.as_slice(),
+            ),
+        ] {
+            let local_hash = lane3_local_sha256(local);
+            let remote_hash = lane3_remote_sha256(&key_path, remote);
+            assert_eq!(
+                remote_hash, local_hash,
+                "[{label}] content sha256 must match after a batch xattr session"
+            );
+            let got = lane3_remote_get_xattr(&key_path, remote, name);
+            assert_eq!(
+                got.as_deref(),
+                Some(value),
+                "[{label}] remote xattr {name} must match the local value"
+            );
+            let absent = lane3_remote_get_xattr(&key_path, remote, NEVER_SET);
+            assert!(
+                absent.is_none(),
+                "[{label}] remote must not invent {NEVER_SET}: got {absent:?}"
+            );
+            eprintln!(
+                "[lane3-xattr-batch] {label}: remote {name} ok ({} bytes), sha256 parity ok",
+                value.len()
+            );
+        }
+
+        // Cross-check: the batch must not smear one file's attribute onto the
+        // other. A single shared session is exactly where that could happen.
+        assert!(
+            lane3_remote_get_xattr(&key_path, &remote_a, OOB_NAME).is_none(),
+            "file a must not carry file b's attribute"
+        );
+        assert!(
+            lane3_remote_get_xattr(&key_path, &remote_b, INLINE_NAME).is_none(),
+            "file b must not carry file a's attribute"
+        );
+
+        let _ = lane3_ssh_testuser(&key_path, &format!("rm -f '{remote_a}' '{remote_b}'"));
+    }
+
+    /// (7) R2 acceptance: uploading a symlink must not ship the **target's**
+    /// attributes labelled as the link's, against a real rsync.
+    ///
+    /// #482 fixed the read side (`llistxattr`/`lgetxattr`) and pinned it with a
+    /// unit test on the local wrappers. What was never observed is the wire
+    /// consequence: that stock rsync ends up with a bare link. On Linux the
+    /// kernel forbids `user.*` on a symlink, so the pre-fix behaviour could
+    /// also make the receiver answer EPERM — this test therefore asserts the
+    /// upload *succeeds* as well as what it leaves behind.
+    ///
+    /// Two remote probes, deliberately: `lgetxattr` on the link must find
+    /// nothing (the pin), and `getxattr` through the link must find the
+    /// target's attribute (the control). Without the control, a dangling
+    /// remote link would make the pin pass for the wrong reason.
+    #[cfg(all(ci_lane3, unix))]
+    #[tokio::test]
+    async fn delta_upload_symlink_xattr_not_inherited_live_lane_3() {
+        use crate::aerorsync::xattr_fs::read_user_xattrs;
+
+        if tokio::net::TcpStream::connect("127.0.0.1:2224")
+            .await
+            .is_err()
+        {
+            eprintln!("[lane3-xattr-symlink] harness not reachable on 127.0.0.1:2224: skipping");
+            return;
+        }
+        let Some(key_path) = lane3_key_path() else {
+            return;
+        };
+
+        const ATTR_NAME: &str = "user.aeroftp.symlink_target_attr";
+        // Out-of-band, deliberately: above `MAX_FULL_DATUM` the value travels
+        // in its own per-file section, and that is what makes this a pin rather
+        // than decoration. With an inline value the test cannot fail on Linux
+        // whatever the code does, because the kernel forbids `user.*` on a
+        // symlink, so the remote link is bare either way. Above the ceiling the
+        // pre-R2 read emits a section for an entry the peer is not expecting and
+        // the stream desynchronises: measured against the reverted wrappers,
+        // this test fails with `expected NDX_DONE (0x00), got 0x01`.
+        let local_attr: &[u8] = &[b'L'; crate::aerorsync::real_wire::MAX_FULL_DATUM + 64];
+        let remote_attr: &[u8] = b"REMOTE_TARGET_ATTR";
+
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let relative_target = format!("lane3-xattr-lnk-target-{nanos}.bin");
+        let remote_link = format!("/workspace/lane3-xattr-lnk-{nanos}.lnk");
+        let remote_target = format!("/workspace/{relative_target}");
+
+        let dir = fresh_tempdir();
+        let target = dir.path().join(&relative_target);
+        std::fs::write(&target, b"lane3 symlink target payload").expect("write target");
+        lane3_local_set_user_xattr(&target, ATTR_NAME, local_attr);
+        let link = dir.path().join("lane3-xattr-up.lnk");
+        std::os::unix::fs::symlink(&relative_target, &link).expect("create symlink");
+
+        // Control on the source side: if this setxattr had silently been lost,
+        // "the link carries nothing" would be true for a reason that has
+        // nothing to do with R2.
+        let target_pairs = read_user_xattrs(&target).expect("read target xattrs");
+        assert!(
+            target_pairs
+                .iter()
+                .any(|p| p.name == ATTR_NAME && p.datum.bytes() == Some(local_attr)),
+            "local target must actually carry {ATTR_NAME}, got {target_pairs:?}"
+        );
+
+        let transport = AerorsyncDeltaTransport::new(
+            lane3_ssh_config(key_path.clone()),
+            1_000_000, // prohibitive threshold: a symlink must bypass TooSmall
+        )
+        .with_xattrs(true);
+        let stats = transport
+            .upload(&link, &remote_link)
+            .await
+            .expect("live symlink upload with -X negotiated must not fail (pre-R2 risk: EPERM)");
+        assert_eq!(stats.total_size, relative_target.len() as u64);
+
+        let ftype = lane3_ssh_testuser(
+            &key_path,
+            &format!("test -L '{remote_link}' && echo symlink || echo other"),
+        );
+        assert_eq!(ftype, "symlink", "server-side file type must be a symlink");
+        let observed = lane3_ssh_testuser(&key_path, &format!("readlink '{remote_link}'"));
+        assert_eq!(
+            observed, relative_target,
+            "server-side readlink must be identical to the uploaded target"
+        );
+
+        // The pin: the link itself carries no user attribute.
+        let on_link = lane3_remote_lget_xattr(&key_path, &remote_link, ATTR_NAME);
+        assert!(
+            on_link.is_none(),
+            "remote link must not carry the target's attribute: got {on_link:?}"
+        );
+
+        // The control: materialise the target remotely with a distinguishable
+        // value, then read *through* the link. Finding it proves the probe
+        // works and that the assertion above measured the link, not ENOENT.
+        lane3_ssh_testuser(&key_path, &format!("printf 'x' > '{remote_target}'"));
+        lane3_remote_set_xattr(&key_path, &remote_target, ATTR_NAME, remote_attr);
+        let through_link = lane3_remote_get_xattr(&key_path, &remote_link, ATTR_NAME);
+        assert_eq!(
+            through_link.as_deref(),
+            Some(remote_attr),
+            "control probe: reading through the link must reach the remote target"
+        );
+        let still_absent = lane3_remote_lget_xattr(&key_path, &remote_link, ATTR_NAME);
+        assert!(
+            still_absent.is_none(),
+            "the link must still carry nothing of its own: got {still_absent:?}"
+        );
+        eprintln!("[lane3-xattr-symlink] link bare, target reachable through it: R2 holds on wire");
+
+        let _ = lane3_ssh_testuser(
+            &key_path,
+            &format!("rm -f '{remote_link}' '{remote_target}'"),
+        );
     }
 
     // -- build_stats --------------------------------------------------------
