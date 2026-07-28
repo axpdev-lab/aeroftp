@@ -266,11 +266,17 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends squashfs-tools binutils file
           ./ci-tools/scripts/snap-abi-check.sh "$SNAP_FILE" snap/snapcraft.yaml
-          if unsquashfs -ll "$SNAP_FILE" | grep -E '/dri/[^/]+_dri\.so|/lib(EGL|GLX)_mesa\.so'; then
-            echo "::error::the application snap still bundles Mesa drivers/loaders; graphics-core22 must provide them"
-            exit 1
-          fi
-          echo "OK: GPU userspace is supplied only by graphics-core22."
+
+      # Was an inline grep for `/dri/*_dri.so` and `libEGL/GLX_mesa` inside G1.
+      # It covered the two loudest patterns and missed the rest of what the
+      # provider owns (libgbm, the vendor libdrm family, vulkan ICDs), and it
+      # never ran the linter whose `gpu:` warnings started this migration.
+      # Both now live in a script that can be run by hand against any .snap.
+      - name: Gate G4 - no bundled GPU userspace
+        shell: bash
+        env:
+          SNAP_FILE: ${{ steps.snap-check.outputs.snap }}
+        run: ./ci-tools/scripts/snap-gpu-lint-check.sh "$SNAP_FILE"
 
       - name: Install the graphics userspace provider
         shell: bash
