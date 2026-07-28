@@ -28815,7 +28815,9 @@ async fn cmd_serve_ftp(
 
 mod serve_sftp {
     use super::*;
-    use russh::server::{Auth, Handler as SshHandler, Msg, Server as SshServer, Session};
+    use russh::server::{
+        Auth, ChannelOpenHandle, Handler as SshHandler, Msg, Server as SshServer, Session,
+    };
     use russh::{Channel, ChannelId};
     use std::collections::HashMap;
 
@@ -29380,12 +29382,24 @@ mod serve_sftp {
             }
         }
 
+        // russh 0.62 replaced the `Ok(true)` / `Ok(false)` return with an
+        // explicit handle, and the default on that handle is REJECT: dropping
+        // it without calling `accept` or `reject` sends
+        // `AdministrativelyProhibited`. So a port that just absorbed the new
+        // parameter as `_reply` would still compile and would refuse every
+        // session `aeroftp-cli serve sftp` is asked to open. Accepting has to
+        // be said out loud now, which is why this is `reply.accept().await`
+        // and not an ignored argument.
         fn channel_open_session(
             &mut self,
             _channel: Channel<Msg>,
+            reply: ChannelOpenHandle,
             _session: &mut Session,
-        ) -> impl std::future::Future<Output = Result<bool, Self::Error>> + Send {
-            async { Ok(true) }
+        ) -> impl std::future::Future<Output = Result<(), Self::Error>> + Send {
+            async move {
+                reply.accept().await;
+                Ok(())
+            }
         }
 
         fn subsystem_request(
