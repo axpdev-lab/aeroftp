@@ -67,12 +67,41 @@ fi
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
-# Same defensive form as the ABI gate: a snap carries device nodes and file
-# capabilities, so unsquashfs can report restore errors that are not our
-# problem. Tolerate a non-zero exit and judge on what actually landed.
-unsquashfs -q -n -f -no-xattrs -d "$TMP/snap" "$SNAP_FILE" >/dev/null 2>&1 || true
-if [ ! -d "$TMP/snap" ]; then
-  echo "::error::could not unpack $SNAP_FILE" >&2
+# We LIST the image, we do not unpack it.
+#
+# The first version of this gate unpacked with `-d` and tolerated a non-zero
+# exit, on the reasoning that a snap carries device nodes and file
+# capabilities so unsquashfs reports restore errors that are not our problem.
+# That tolerance is unsafe for a gate whose only job is to fail on presence:
+# an extraction that aborts part-way still leaves the destination directory
+# behind, so the scan runs on a truncated tree and finds nothing.
+#
+# Measured, not argued (squashfs-tools 4.6.1): a 301-file image containing
+# `dri/zzz_iris_dri.so`, corrupted mid-image, extracts 182 of 301 files
+# WITHOUT the driver, exits 1, and leaves the directory in place. The old form
+# printed "OK: no provider-owned GPU userspace inside the snap" and exited 0
+# on a snap that does carry one. Reported by CodeRabbit on #485.
+#
+# Listing removes the whole class: the file names come from the directory
+# table in one read, there is no restore step to fail on device nodes or
+# capabilities, and there is no half-success to mistake for a clean result. On
+# that same corrupt image `-l` still reports all 306 entries, the driver among
+# them. A directory table too damaged to read exits non-zero, and that is a
+# hard error here rather than something to work around.
+LIST="$TMP/list.txt"
+if ! unsquashfs -l "$SNAP_FILE" >"$LIST" 2>"$TMP/list.err"; then
+  echo "::error::could not list $SNAP_FILE" >&2
+  sed 's/^/    /' "$TMP/list.err" >&2
+  exit 2
+fi
+
+ENTRIES="$(grep -c '' "$LIST" || true)"
+# A snap that lists as (almost) nothing is a broken read, not a clean snap.
+# Without this, an empty listing would sail through the loop below and be
+# reported as "no provider-owned GPU userspace", which is the same false green
+# in a different disguise.
+if [ "$ENTRIES" -lt 2 ]; then
+  echo "::error::listing $SNAP_FILE produced $ENTRIES entries; refusing to read that as a clean snap" >&2
   exit 2
 fi
 
@@ -82,29 +111,40 @@ fi
 #
 # $SNAP/graphics itself is the mount point for the provider's content and is
 # empty in the built snap, so it is excluded rather than matched.
-mapfile -t OFFENDERS < <(
-  find "$TMP/snap" \
-    -path "$TMP/snap/graphics" -prune -o \
-    \( \
-      -path '*/dri/*_dri.so' -o \
-      -name 'libEGL_mesa.so*' -o \
-      -name 'libGLX_mesa.so*' -o \
-      -name 'libgbm.so*' -o \
-      -name 'libdrm_*.so*' -o \
-      -name 'libdrm.so*' -o \
-      -name 'libvulkan_*.so*' \
-    \) -print 2>/dev/null | sort
-)
+#
+# Each listing line is a whole path and nothing else, so a name containing
+# spaces stays intact; that is why `-l` is used rather than the `-ll` long
+# format, whose trailing path would have to be cut out of columns.
+OFFENDERS=()
+while IFS= read -r entry; do
+  rel="${entry#squashfs-root/}"
+  # The root entry itself carries no prefix to strip: skip it.
+  [ "$rel" = "$entry" ] && continue
+  case "$rel" in
+    graphics | graphics/*) continue ;;
+    # Both forms on purpose: paths are relative once the `squashfs-root/`
+    # prefix is off, so `*/dri/...` alone would miss a `dri/` directory
+    # sitting at the very root of the snap, which the previous absolute-path
+    # `find` did match.
+    */dri/*_dri.so | dri/*_dri.so)
+      OFFENDERS+=("$rel")
+      continue
+      ;;
+  esac
+  case "${rel##*/}" in
+    libEGL_mesa.so* | libGLX_mesa.so* | libgbm.so* | libdrm_*.so* | libdrm.so* | libvulkan_*.so*)
+      OFFENDERS+=("$rel")
+      ;;
+  esac
+done <"$LIST"
 
-echo "Snap:     $SNAP_FILE"
-echo "Unpacked: $(find "$TMP/snap" -type f | wc -l) files"
+echo "Snap:    $SNAP_FILE"
+echo "Listed:  $ENTRIES entries"
 
 if [ "${#OFFENDERS[@]}" -gt 0 ]; then
   echo
   echo "::error::the snap primes ${#OFFENDERS[@]} provider-owned GPU file(s):"
-  for f in "${OFFENDERS[@]}"; do
-    echo "    ${f#"$TMP/snap/"}"
-  done
+  printf '    %s\n' "${OFFENDERS[@]}" | sort
   echo
   echo "GPU userspace must come from the graphics-core22 provider, not from"
   echo "this snap. Check that the 'graphics-core22' part still runs"
