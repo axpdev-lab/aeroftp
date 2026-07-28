@@ -5307,7 +5307,9 @@
             "defaultSaltAttestation": "Pasahitz kudeatzaile batekin sortu dut pasahitz hau eta ulertzen dut estekagarritasunaren trukea.",
             "defaultSaltNeedsStronger": "Sartu sortutako pasahitz sendo bat lehenetsitako salt-a aktibatzeko.",
             "defaultSaltTier128": "128-bit (gomendatua, 20+ karaktereko pasahitza behar du)",
-            "defaultSaltTier256": "256-bit (zorrotzagoa, 39+ karaktereko pasahitza behar du)"
+            "defaultSaltTier256": "256-bit (zorrotzagoa, 39+ karaktereko pasahitza behar du)",
+            "defaultSaltTierMeaning": "[NEEDS TRANSLATION] The two tiers set how strong your password must be, not the size of the salt: there is one salt, 32 bytes, the same for every default-salt vault.",
+            "defaultSaltValueLabel": "[NEEDS TRANSLATION] Public default salt (AeroCrypt v3), SHA-256 of"
         },
         "modalGuard": {
             "busyTitle": "Eragiketa abian",

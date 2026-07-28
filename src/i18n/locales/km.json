@@ -5307,7 +5307,9 @@
             "defaultSaltAttestation": "ខ្ញុំបានបង្កើតពាក្យសម្ងាត់នេះដោយប្រើកម្មវិធីគ្រប់គ្រងពាក្យសម្ងាត់ ហើយយល់ពីការផ្លាស់ប្តូរភាពភ្ជាប់បាន។",
             "defaultSaltNeedsStronger": "បញ្ចូលពាក្យសម្ងាត់ដែលបានបង្កើតយ៉ាងរឹងមាំ ដើម្បីបើក salt លំនាំដើម។",
             "defaultSaltTier128": "128-bit (បានណែនាំ ត្រូវការពាក្យសម្ងាត់ 20+ តួអក្សរ)",
-            "defaultSaltTier256": "256-bit (តឹងរឹងជាង ត្រូវការពាក្យសម្ងាត់ 39+ តួអក្សរ)"
+            "defaultSaltTier256": "256-bit (តឹងរឹងជាង ត្រូវការពាក្យសម្ងាត់ 39+ តួអក្សរ)",
+            "defaultSaltTierMeaning": "[NEEDS TRANSLATION] The two tiers set how strong your password must be, not the size of the salt: there is one salt, 32 bytes, the same for every default-salt vault.",
+            "defaultSaltValueLabel": "[NEEDS TRANSLATION] Public default salt (AeroCrypt v3), SHA-256 of"
         },
         "modalGuard": {
             "busyTitle": "ប្រតិបត្តិការកំពុងដំណើរការ",

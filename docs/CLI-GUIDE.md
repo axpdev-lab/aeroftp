@@ -1455,6 +1455,23 @@ aeroftp-cli benchmark --profile "server" --file-count 5000 --file-size 4K --json
 
 When `--file-count N` is set (`--file-size` defaults to `64K`), the run adds five dedicated operations: **`upload-all`**, **`list-dir`** (one listing of the N-file directory), **`stat-all`**, **`download-all`**, and **`delete-all`**. Each reports **`files_per_second`** and a per-file latency distribution (`latency_ms`, whose p50 is the mean per-file time) alongside raw `throughput_mbps` for the transfer ops. The aggregate payload (`file-count` x `file-size`) is capped at 5 GiB and `--file-count` at 100000.
 
+#### Selecting what to benchmark
+
+```bash
+# Every saved profile (--all is the same flag)
+aeroftp-cli benchmark standard --all-profiles
+
+# Every saved profile, over every transport mode its provider offers
+aeroftp-cli benchmark standard --all-profiles --all-protocols
+
+# One account over each of its modes
+aeroftp-cli benchmark --profile "Koofr" --all-protocols
+```
+
+`--all-profiles` selects; `--all-protocols` expands a selection. Profiles that fail to connect, and modes whose credentials or endpoint cannot be resolved, are reported as skipped rather than measured as zero. Both combine with `--compare`, `--group` and the `-i` / `--tui` pickers.
+
+The comparison tables and the profile pickers show a **Server** column (who and where: `Koofr`, `TAB.DIGITAL`, `MEGA`, or `Custom` for a plain transport aimed at a host of your own) next to a **Protocol** column (how: `WebDAV`, `SFTP`, `S3`, `OAuth 2.0`, `REST API`). A preconfigured Koofr profile connected over WebDAV reads `Koofr / WebDAV`; a custom WebDAV server reads `Custom / WebDAV`.
+
 #### v4.1.0 improvements (#368)
 
 - The scratch base directory is removed after a run (guarded), honouring `--test-root-prefix`.

@@ -98,6 +98,26 @@ aeroftp-cli benchmark standard --compare "S3 Backblaze,SFTP Lab,WebDAV Nextcloud
 Use `-i` to type the profiles interactively, or `--tui` for a full-screen
 checklist.
 
+Benchmark everything you have saved, with no list to type and no checklist to
+tick:
+
+```bash
+aeroftp-cli benchmark standard --all-profiles
+```
+
+`--all-profiles` (also spelled `--all`) is the whole-vault selection; profiles
+that fail to connect are reported as skipped, not fatal. It pairs with
+`--all-protocols`, which expands each selected profile into one run per
+transport mode its provider offers, so the two together measure every account
+over every surface:
+
+```bash
+aeroftp-cli benchmark standard --all-profiles --all-protocols
+```
+
+A mode whose credentials or endpoint cannot be resolved is listed as skipped,
+never measured as zero.
+
 Run only metadata operations:
 
 ```bash
@@ -140,8 +160,18 @@ whose parent did not yet exist.
 
 A few presentation details make multi-profile runs easier to read:
 
-- The per-profile header and the comparison tables carry a protocol / transport
-  column, so it is clear which transport each row was measured over.
+- The per-profile header, the profile pickers and the comparison tables carry a
+  **Server** column and a **Protocol** column. Server answers *who and where*
+  (`Koofr`, `TAB.DIGITAL`, `MEGA`), Protocol answers *how* (`WebDAV`, `SFTP`,
+  `S3`, `OAuth 2.0`, `REST API`). The two never repeat each other: a profile
+  that is a plain transport aimed at a host of your own reads `Custom / WebDAV`,
+  not `WebDAV / WebDAV`, and a preconfigured Koofr profile connected over
+  WebDAV reads `Koofr / WebDAV`.
+- The one-line `Benchmark complete:` summary quotes its values
+  (`server="Koofr" protocol="REST API"`), because several of them contain a
+  space. The escaping is JSON string escaping, so any JSON reader can unquote
+  it. For anything beyond a glance, use `--json`, which is the machine-readable
+  form.
 - A public-IP fairness snapshot flags a run as not-comparable if your public IP
   changed mid-sweep (for example, the connection dropped and reconnected on a
   different address), since that breaks the apples-to-apples comparison.

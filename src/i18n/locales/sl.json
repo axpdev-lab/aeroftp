@@ -5288,7 +5288,9 @@
             "defaultSaltAttestation": "To geslo sem ustvaril z upravljalnikom gesel in razumem kompromis povezljivosti.",
             "defaultSaltNeedsStronger": "Vnesite močno ustvarjeno geslo, da vklopite privzeti salt.",
             "defaultSaltTier128": "128-bit (priporočeno, zahteva geslo z 20+ znaki)",
-            "defaultSaltTier256": "256-bit (strožje, zahteva geslo z 39+ znaki)"
+            "defaultSaltTier256": "256-bit (strožje, zahteva geslo z 39+ znaki)",
+            "defaultSaltTierMeaning": "[NEEDS TRANSLATION] The two tiers set how strong your password must be, not the size of the salt: there is one salt, 32 bytes, the same for every default-salt vault.",
+            "defaultSaltValueLabel": "[NEEDS TRANSLATION] Public default salt (AeroCrypt v3), SHA-256 of"
         },
         "modalGuard": {
             "busyTitle": "Operacija poteka",

@@ -1999,7 +1999,11 @@ enum Commands {
         /// with -i/--tui. Combine with --group to run all members of those groups,
         /// or with -i/--tui to pre-tick the whole list. Profiles that fail to
         /// connect are reported as skipped, not fatal.
-        #[arg(long)]
+        ///
+        /// `--all-profiles` is an accepted spelling: it pairs read-for-read with
+        /// `--all-protocols`, and the two combine to benchmark every profile
+        /// over every transport mode its provider offers.
+        #[arg(long, alias = "all-profiles")]
         all: bool,
         /// Expand every selected profile into one run per transport mode of its
         /// provider (Ehud #277): a Koofr profile is benchmarked over both its
@@ -5583,6 +5587,13 @@ struct BenchmarkReport {
     // native ones (OAuth 2.0, OAuth 1.0, REST API). Additive to schema v1.
     #[serde(default)]
     access: String,
+    // Service identity of the profile (issue #277): the catalog company for a
+    // preconfigured preset (`Koofr`, `TAB.DIGITAL`), the provider itself for a
+    // native API, or `Custom` for a generic transport aimed at the user's own
+    // host. A fixed vocabulary drawn from the embedded catalog, never user
+    // text, so the report stays as anonymous as it was. Additive to schema v1.
+    #[serde(default)]
+    service: String,
     // Transport mode this run measured when `--all-protocols` expanded one
     // profile into several runs (issue #277 B4): `api`, `webdav`, `s3` or `ftp`.
     // Absent for an ordinary single-mode run. Without it a JSON consumer cannot
@@ -41038,6 +41049,14 @@ async fn cmd_benchmark(
     // the live provider type so it reflects the transport the factory actually
     // built (e.g. a Koofr-over-WebDAV profile reports `WebDAV`, native `REST API`).
     let access = provider.provider_type().access_label().to_string();
+    // Service identity for the "Server" column (issue #277, Ehud): the preset's
+    // company when the profile is preconfigured, the provider for a native API,
+    // `Custom` for a plain transport aimed at the user's own host. Resolved
+    // from the saved profile, since the built provider only knows the transport.
+    let service = benchmark_service_label(
+        provider.provider_type(),
+        benchmark_profile_provider_id(cli, profile_for_connect, synth_profile).as_deref(),
+    );
 
     let report_id = uuid::Uuid::new_v4().to_string();
     let (bench_base, test_root) = match test_root_prefix_override {
@@ -41650,6 +41669,7 @@ async fn cmd_benchmark(
         },
         level,
         access: access.clone(),
+        service: service.clone(),
         // Set by the compare sweep for a fan-out run; a standalone run has no mode.
         mode: None,
         environment,
@@ -41766,18 +41786,45 @@ fn benchmark_report_access(report: &BenchmarkReport) -> String {
     }
 }
 
+/// Service label for a report (issue #277): the "Server" column value, e.g.
+/// `Koofr`, `TAB.DIGITAL`, `Custom`. Falls back to the transport/provider
+/// display name for reports produced before the field existed.
+fn benchmark_report_service(report: &BenchmarkReport) -> String {
+    if report.service.is_empty() {
+        benchmark_report_protocol(report)
+    } else {
+        report.service.clone()
+    }
+}
+
+/// Quote a value for the one-line `Benchmark complete:` summary (issue #277,
+/// Ehud). The line is `key=value` pairs and several values contain spaces
+/// (`REST API`, `Yandex Disk`), so an unquoted line cannot be split on
+/// whitespace. Double-quote everything and backslash-escape `"` and `\`, which
+/// is the same escaping the shell and CSV readers already understand. The
+/// machine-readable form remains `--format json`.
+fn benchmark_quote(value: &str) -> String {
+    let escaped = value.replace('\\', "\\\\").replace('"', "\\\"");
+    format!("\"{escaped}\"")
+}
+
 fn print_benchmark_text_report(report: &BenchmarkReport) {
     let color_on = use_color();
-    // Identity line (issue #277): the service name (Type) and the access-method
-    // class (Protocol), matching the comparison-table column semantics.
-    let type_name = benchmark_report_protocol(report);
+    // Identity line (issue #277): the service name (Server) and the
+    // access-method class (Protocol), matching the comparison-table column
+    // semantics. Values are quoted because several of them contain spaces.
+    let service = benchmark_report_service(report);
     let access = benchmark_report_access(report);
-    let identity_cell = if type_name.is_empty() {
+    let identity_cell = if service.is_empty() {
         String::new()
-    } else if access.is_empty() || access == type_name {
-        format!(" type={}", type_name)
+    } else if access.is_empty() || access == service {
+        format!(" server={}", benchmark_quote(&service))
     } else {
-        format!(" type={} protocol={}", type_name, access)
+        format!(
+            " server={} protocol={}",
+            benchmark_quote(&service),
+            benchmark_quote(&access)
+        )
     };
     println!(
         "Benchmark complete: level={:?}{} runs={} bytes={} duration={}ms",
@@ -42438,14 +42485,14 @@ fn print_benchmark_comparison(entries: &[(String, BenchmarkReport)], color_on: b
     if entries.len() < 2 {
         return;
     }
-    // Column semantics (issue #277): the "Type" cell is the service identity
-    // (kDrive, Koofr, WebDAV, S3, ...) taken from the live provider display
-    // name, and the "Protocol" cell is the access-method class (SFTP, WebDAV,
-    // OAuth 2.0, REST API, ...). Previously "type" read a lowercase providerId
-    // and "protocol" read the same display name, so the two columns duplicated
-    // each other for native providers. Falls back to a dash when unknown.
-    let type_of = |r: &BenchmarkReport| -> String {
-        let name = benchmark_report_protocol(r);
+    // Column semantics (issue #277, Ehud): the "server" cell is the service
+    // identity (kDrive, Koofr, TAB.DIGITAL, or `Custom` for a generic transport
+    // pointed at the user's own host), and the "protocol" cell is the
+    // access-method class (SFTP, WebDAV, OAuth 2.0, REST API, ...). The two
+    // never repeat each other: a custom WebDAV profile reads `Custom / WebDAV`,
+    // not `WebDAV / WebDAV`. Falls back to a dash when unknown.
+    let server_of = |r: &BenchmarkReport| -> String {
+        let name = benchmark_report_service(r);
         if name.is_empty() {
             "-".to_string()
         } else {
@@ -42464,14 +42511,14 @@ fn print_benchmark_comparison(entries: &[(String, BenchmarkReport)], color_on: b
         .iter()
         .any(|(_, r)| r.results.iter().any(|x| x.files_per_second.is_some()));
     if has_many {
-        let mut headers: Vec<&str> = vec!["profile", "type", "protocol"];
+        let mut headers: Vec<&str> = vec!["profile", "server", "protocol"];
         headers.extend_from_slice(&many_ops);
         let mut aligns = vec![true, true, true];
         aligns.extend(many_ops.iter().map(|_| false));
         let rows: Vec<Vec<String>> = entries
             .iter()
             .map(|(name, r)| {
-                let mut row = vec![name.clone(), type_of(r), benchmark_report_access(r)];
+                let mut row = vec![name.clone(), server_of(r), benchmark_report_access(r)];
                 for op in many_ops {
                     let cell = r
                         .results
@@ -42504,7 +42551,7 @@ fn print_benchmark_comparison(entries: &[(String, BenchmarkReport)], color_on: b
     if has_single {
         let headers = [
             "profile",
-            "type",
+            "server",
             "protocol",
             "upload Mbps",
             "download Mbps",
@@ -42523,7 +42570,7 @@ fn print_benchmark_comparison(entries: &[(String, BenchmarkReport)], color_on: b
                 };
                 vec![
                     name.clone(),
-                    type_of(r),
+                    server_of(r),
                     benchmark_report_access(r),
                     cell(single_ops[0]),
                     cell(single_ops[1]),
@@ -42573,16 +42620,104 @@ fn benchmark_pick_in_pool(
 /// not resolve to a known provider type (matching the benchmark comparison
 /// table semantics, where Type is the service name and Protocol the transport).
 fn benchmark_profile_identity(p: &serde_json::Value) -> (String, String) {
-    let raw = p
+    // The transport is what the profile is SAVED as, so a Koofr-over-WebDAV
+    // profile reads WebDAV here even though its preset id is `koofr`. Reading
+    // the preset id first (as this did) reported the native REST API for it.
+    let protocol = p
+        .get("protocol")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let provider_id = p
         .get("providerId")
         .and_then(|v| v.as_str())
-        .or_else(|| p.get("provider_id").and_then(|v| v.as_str()))
-        .or_else(|| p.get("protocol").and_then(|v| v.as_str()))
-        .unwrap_or("");
-    match ProviderType::from_lowercase(raw) {
-        Some(pt) => (pt.to_string(), pt.access_label().to_string()),
-        None => (raw.to_string(), raw.to_string()),
+        .or_else(|| p.get("provider_id").and_then(|v| v.as_str()));
+    match ProviderType::from_lowercase(&protocol) {
+        Some(pt) => (
+            benchmark_service_label(pt, provider_id),
+            pt.access_label().to_string(),
+        ),
+        None => (protocol.clone(), protocol),
     }
+}
+
+/// Generic transports: the ones a user points at a host of their own, so the
+/// profile carries no service identity beyond what the Protocol column says.
+/// Every other provider type IS a service (Koofr, kDrive, MEGA, ...).
+fn is_generic_transport(provider_type: ProviderType) -> bool {
+    matches!(
+        provider_type,
+        ProviderType::Ftp
+            | ProviderType::Ftps
+            | ProviderType::Sftp
+            | ProviderType::WebDav
+            | ProviderType::S3
+            | ProviderType::Swift
+    )
+}
+
+/// Company display name for a catalog preset id, e.g. `koofr` -> `Koofr`,
+/// `mega-s4` -> `MEGA`, `tabdigital` -> `TAB.DIGITAL`. `None` when the id is
+/// not a known preset. Only ever used as a lookup key: the value returned comes
+/// from the embedded catalog, never from user text, so it cannot leak anything
+/// into a benchmark report.
+fn catalog_company_for_provider_id(provider_id: &str) -> Option<String> {
+    load_cli_catalog().ok()?.into_iter().find_map(|c| {
+        c.protocols
+            .iter()
+            .any(|m| m.provider_id.as_deref() == Some(provider_id))
+            .then_some(c.company)
+    })
+}
+
+/// Service identity for the benchmark "Server" column (issue #277, Ehud).
+///
+/// The column answers "who and where", so it must never repeat the Protocol
+/// column, which answers "how". A profile built on a preconfigured preset
+/// reports its service (`Koofr`, `TAB.DIGITAL`, `MEGA`); a native-API profile
+/// reports the provider itself; and a profile that is only a generic transport
+/// aimed at the user's own host reports `Custom`, because the old "WebDAV /
+/// WebDAV" pair told the reader nothing the Protocol column had not said.
+fn benchmark_service_label(provider_type: ProviderType, provider_id: Option<&str>) -> String {
+    if let Some(company) = provider_id
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .and_then(catalog_company_for_provider_id)
+    {
+        return company;
+    }
+    if is_generic_transport(provider_type) {
+        return "Custom".to_string();
+    }
+    provider_type.to_string()
+}
+
+/// Best-effort lookup of a saved profile's preset id, for the benchmark
+/// "Server" column. Resolves the name exactly as the connect path does. Any
+/// failure (locked vault, ambiguous name) yields `None`, which downgrades the
+/// column to the provider type: identity labelling must never fail a run.
+fn benchmark_profile_provider_id(
+    cli: &Cli,
+    profile_name: Option<&str>,
+    synth_profile: Option<&serde_json::Value>,
+) -> Option<String> {
+    let owned = |p: &serde_json::Value| -> Option<String> {
+        p.get("providerId")
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+    };
+    // `--all-protocols` connects a profile synthesized in memory, so its preset
+    // id is the authoritative one for the mode actually being measured.
+    if let Some(synth) = synth_profile {
+        return owned(synth);
+    }
+    let name = profile_name?;
+    let store = open_vault(cli).ok()?;
+    let profiles = load_active_user_profiles(cli, &store).ok()?;
+    let idx = resolve_profile_selector(&profiles, name).ok()?;
+    owned(profiles.get(idx)?)
 }
 
 fn benchmark_pick_profiles_inline(profiles: &[serde_json::Value]) -> std::io::Result<Vec<usize>> {
@@ -42595,7 +42730,7 @@ fn benchmark_pick_profiles_inline(profiles: &[serde_json::Value]) -> std::io::Re
         err,
         "{}",
         paint_dim(
-            &format!("      {:<14}{:<12}{}", "Type", "Protocol", "Profile"),
+            &format!("      {:<14}{:<12}{}", "Server", "Protocol", "Profile"),
             color_on
         )
     )?;
@@ -42752,7 +42887,7 @@ fn benchmark_pick_profiles(profiles: &[serde_json::Value]) -> std::io::Result<Ve
             err,
             "{}",
             paint_dim(
-                &format!("          {:<14}{:<12}{}", "Type", "Protocol", "Profile"),
+                &format!("          {:<14}{:<12}{}", "Server", "Protocol", "Profile"),
                 color_on
             )
         )?;
@@ -65469,6 +65604,133 @@ mod tests {
     }
 
     #[test]
+    fn service_label_says_custom_for_a_plain_transport() {
+        // Ehud #277: the Server column must not echo the Protocol column. A
+        // WebDAV/SFTP/S3 profile aimed at the user's own host has no service
+        // identity, so it reads `Custom`, never `WebDAV / WebDAV`.
+        for pt in [
+            ProviderType::WebDav,
+            ProviderType::Sftp,
+            ProviderType::Ftp,
+            ProviderType::Ftps,
+            ProviderType::S3,
+            ProviderType::Swift,
+        ] {
+            assert_eq!(benchmark_service_label(pt, None), "Custom", "{pt}");
+            assert_eq!(benchmark_service_label(pt, Some("  ")), "Custom", "{pt}");
+        }
+    }
+
+    #[test]
+    fn service_label_resolves_a_preset_to_its_company() {
+        // A preconfigured profile names the service even when the transport is
+        // generic: Koofr over WebDAV is `Koofr / WebDAV`, not `WebDAV / WebDAV`.
+        assert_eq!(
+            benchmark_service_label(ProviderType::WebDav, Some("koofr")),
+            "Koofr"
+        );
+        assert_eq!(
+            benchmark_service_label(ProviderType::WebDav, Some("tabdigital")),
+            "TAB.DIGITAL"
+        );
+        assert_eq!(
+            benchmark_service_label(ProviderType::S3, Some("mega-s4")),
+            "MEGA"
+        );
+        // An unknown id is not a preset: fall back to the transport rule.
+        assert_eq!(
+            benchmark_service_label(ProviderType::WebDav, Some("not-a-preset")),
+            "Custom"
+        );
+    }
+
+    #[test]
+    fn service_label_keeps_native_providers_as_themselves() {
+        // Native APIs carry their own identity and have no preset id.
+        assert_eq!(benchmark_service_label(ProviderType::Koofr, None), "Koofr");
+        assert_eq!(
+            benchmark_service_label(ProviderType::KDrive, None),
+            "kDrive"
+        );
+        assert_eq!(benchmark_service_label(ProviderType::Mega, None), "MEGA");
+    }
+
+    #[test]
+    fn profile_identity_reads_the_saved_transport_not_the_preset() {
+        // Regression (#277): reading the preset id first reported a Koofr
+        // WebDAV profile as `REST API`, the mode it is NOT saved in.
+        let webdav = json!({
+            "name": "Koofr", "protocol": "webdav", "providerId": "koofr"
+        });
+        assert_eq!(
+            benchmark_profile_identity(&webdav),
+            ("Koofr".to_string(), "WebDAV".to_string())
+        );
+        let native = json!({"name": "Koofr API", "protocol": "koofr"});
+        assert_eq!(
+            benchmark_profile_identity(&native),
+            ("Koofr".to_string(), "REST API".to_string())
+        );
+        let custom = json!({"name": "My NAS", "protocol": "webdav"});
+        assert_eq!(
+            benchmark_profile_identity(&custom),
+            ("Custom".to_string(), "WebDAV".to_string())
+        );
+    }
+
+    #[test]
+    fn benchmark_quote_survives_a_round_trip_through_json() {
+        // The summary line is `key="value"` because several values contain a
+        // space (`REST API`, `Yandex Disk`). The escaping is JSON string
+        // escaping, so a reader can unquote it with any JSON parser.
+        assert_eq!(benchmark_quote("REST API"), "\"REST API\"");
+        for raw in ["REST API", "a\"b", "back\\slash", "Custom"] {
+            let quoted = benchmark_quote(raw);
+            let parsed: String = serde_json::from_str(&quoted).unwrap();
+            assert_eq!(parsed, raw);
+        }
+    }
+
+    #[test]
+    fn benchmark_all_profiles_is_an_accepted_spelling_of_all() {
+        // Ehud #277 #3: `--all-profiles` must exist and pair with
+        // `--all-protocols`, which is how the two read together.
+        use clap::Parser;
+        let parse = |args: &[&str]| {
+            let cli = Cli::try_parse_from(args).expect("flags should parse");
+            match cli.command {
+                Commands::Benchmark {
+                    all, all_protocols, ..
+                } => (all, all_protocols),
+                _ => panic!("expected the benchmark subcommand"),
+            }
+        };
+        // The command tree is large enough to blow a test thread's default
+        // 2 MiB stack while clap builds it, so give the parse its own.
+        std::thread::Builder::new()
+            .stack_size(16 * 1024 * 1024)
+            .spawn(move || {
+                assert_eq!(parse(&["aeroftp-cli", "benchmark", "--all"]), (true, false));
+                assert_eq!(
+                    parse(&["aeroftp-cli", "benchmark", "--all-profiles"]),
+                    (true, false)
+                );
+                assert_eq!(
+                    parse(&[
+                        "aeroftp-cli",
+                        "benchmark",
+                        "--all-profiles",
+                        "--all-protocols"
+                    ]),
+                    (true, true)
+                );
+            })
+            .expect("spawn parse thread")
+            .join()
+            .expect("flag parsing should not panic");
+    }
+
+    #[test]
     fn fanout_expands_koofr_into_both_modes() {
         // The reporter's acceptance case (#277, comment 17737942): one Koofr
         // profile must produce a Koofr API row and a Koofr WebDAV row.
@@ -69715,6 +69977,7 @@ mod tests {
             },
             level: BenchmarkLevel::Quick,
             access: "SFTP".into(),
+            service: "Custom".into(),
             mode: None,
             environment: BenchmarkEnvironment {
                 asn_bucket: None,

@@ -5288,7 +5288,9 @@
             "defaultSaltAttestation": "আমি পাসওয়ার্ড ম্যানেজার দিয়ে এই পাসওয়ার্ড তৈরি করেছি এবং লিঙ্কযোগ্যতার ট্রেডঅফ বুঝতে পেরেছি।",
             "defaultSaltNeedsStronger": "ডিফল্ট সল্ট চালু করতে একটি শক্তিশালী জেনারেট করা পাসওয়ার্ড লিখুন।",
             "defaultSaltTier128": "128-bit (প্রস্তাবিত, একটি 20+ অক্ষরের পাসওয়ার্ড প্রয়োজন)",
-            "defaultSaltTier256": "256-bit (আরও কঠোর, একটি 39+ অক্ষরের পাসওয়ার্ড প্রয়োজন)"
+            "defaultSaltTier256": "256-bit (আরও কঠোর, একটি 39+ অক্ষরের পাসওয়ার্ড প্রয়োজন)",
+            "defaultSaltTierMeaning": "[NEEDS TRANSLATION] The two tiers set how strong your password must be, not the size of the salt: there is one salt, 32 bytes, the same for every default-salt vault.",
+            "defaultSaltValueLabel": "[NEEDS TRANSLATION] Public default salt (AeroCrypt v3), SHA-256 of"
         },
         "modalGuard": {
             "busyTitle": "অপারেশন চলছে",

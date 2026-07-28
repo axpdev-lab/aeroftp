@@ -29,7 +29,7 @@ aeroftp.app / docs.aeroftp.app provider tables mirror this list.
 | Drime | FR | 20 GB | API |
 | DriveHQ | US | 5 GB | WebDAV |
 | Dropbox | US | 2 GB | OAuth |
-| Felicloud | - | 10 GB (Nextcloud host) | WebDAV |
+| Felicloud | EU | 10 GB (Nextcloud host) | WebDAV |
 | FileLu | US | 10 GB | API, FTP, WebDAV, S5 (S3) |
 | Filen | DE | 10 GB (E2E) | API, S3, WebDAV |
 | GitHub | US | repo storage | API |

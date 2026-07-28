@@ -5288,7 +5288,9 @@
             "defaultSaltAttestation": "Я сгенерировал этот пароль с помощью менеджера паролей и понимаю компромисс связываемости.",
             "defaultSaltNeedsStronger": "Введите надёжный сгенерированный пароль, чтобы включить соль по умолчанию.",
             "defaultSaltTier128": "128-bit (рекомендуется, требуется пароль от 20+ символов)",
-            "defaultSaltTier256": "256-bit (строже, требуется пароль от 39+ символов)"
+            "defaultSaltTier256": "256-bit (строже, требуется пароль от 39+ символов)",
+            "defaultSaltTierMeaning": "[NEEDS TRANSLATION] The two tiers set how strong your password must be, not the size of the salt: there is one salt, 32 bytes, the same for every default-salt vault.",
+            "defaultSaltValueLabel": "[NEEDS TRANSLATION] Public default salt (AeroCrypt v3), SHA-256 of"
         },
         "modalGuard": {
             "busyTitle": "Выполняется операция",

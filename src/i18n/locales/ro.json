@@ -5288,7 +5288,9 @@
             "defaultSaltAttestation": "Am generat această parolă cu un manager de parole și înțeleg compromisul de conectabilitate.",
             "defaultSaltNeedsStronger": "Introduceți o parolă generată puternică pentru a activa saltul implicit.",
             "defaultSaltTier128": "128-bit (recomandat, necesită o parolă de 20+ caractere)",
-            "defaultSaltTier256": "256-bit (mai strict, necesită o parolă de 39+ caractere)"
+            "defaultSaltTier256": "256-bit (mai strict, necesită o parolă de 39+ caractere)",
+            "defaultSaltTierMeaning": "[NEEDS TRANSLATION] The two tiers set how strong your password must be, not the size of the salt: there is one salt, 32 bytes, the same for every default-salt vault.",
+            "defaultSaltValueLabel": "[NEEDS TRANSLATION] Public default salt (AeroCrypt v3), SHA-256 of"
         },
         "modalGuard": {
             "busyTitle": "Operațiune în curs",

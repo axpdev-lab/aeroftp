@@ -5288,7 +5288,9 @@
             "defaultSaltAttestation": "Ik heb dit wachtwoord gegenereerd met een wachtwoordbeheerder en begrijp de linkbaarheid-afweging.",
             "defaultSaltNeedsStronger": "Voer een sterk gegenereerd wachtwoord in om de standaard-salt in te schakelen.",
             "defaultSaltTier128": "128-bit (aanbevolen, vereist een wachtwoord van 20+ tekens)",
-            "defaultSaltTier256": "256-bit (strenger, vereist een wachtwoord van 39+ tekens)"
+            "defaultSaltTier256": "256-bit (strenger, vereist een wachtwoord van 39+ tekens)",
+            "defaultSaltTierMeaning": "[NEEDS TRANSLATION] The two tiers set how strong your password must be, not the size of the salt: there is one salt, 32 bytes, the same for every default-salt vault.",
+            "defaultSaltValueLabel": "[NEEDS TRANSLATION] Public default salt (AeroCrypt v3), SHA-256 of"
         },
         "modalGuard": {
             "busyTitle": "Bewerking bezig",

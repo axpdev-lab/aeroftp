@@ -12,6 +12,7 @@ import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { X, Plus, Folder } from 'lucide-react';
 import type { LocalTab } from '../types/aerofile';
 import { useTranslation } from '../i18n';
+import { middleClickClose } from '../utils/middleClick';
 
 // ============================================================================
 // Props
@@ -135,12 +136,7 @@ export const LocalPathTabs: React.FC<LocalPathTabsProps> = ({
                 : 'hover:bg-gray-200 dark:hover:bg-gray-700/50'
             } ${dragIdx === idx ? 'scale-95' : ''} ${isDragTarget ? 'border-l-2 border-blue-500' : ''}`}
             onClick={() => onTabClick(tab.id)}
-            onAuxClick={(e) => {
-              if (e.button === 1) { // Middle click
-                e.preventDefault();
-                onTabClose(tab.id);
-              }
-            }}
+            {...middleClickClose(() => onTabClose(tab.id))}
             onContextMenu={(e) => {
               e.preventDefault();
               setContextMenu({ x: e.clientX, y: e.clientY, tabId: tab.id });

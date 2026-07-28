@@ -5288,7 +5288,9 @@
             "defaultSaltAttestation": "Jeg genererede denne adgangskode med en adgangskodehåndtering og forstår linkbarheds-kompromiset.",
             "defaultSaltNeedsStronger": "Indtast en stærk genereret adgangskode for at aktivere standardsaltet.",
             "defaultSaltTier128": "128-bit (anbefales, kræver en adgangskode på 20+ tegn)",
-            "defaultSaltTier256": "256-bit (strengere, kræver en adgangskode på 39+ tegn)"
+            "defaultSaltTier256": "256-bit (strengere, kræver en adgangskode på 39+ tegn)",
+            "defaultSaltTierMeaning": "[NEEDS TRANSLATION] The two tiers set how strong your password must be, not the size of the salt: there is one salt, 32 bytes, the same for every default-salt vault.",
+            "defaultSaltValueLabel": "[NEEDS TRANSLATION] Public default salt (AeroCrypt v3), SHA-256 of"
         },
         "modalGuard": {
             "busyTitle": "Handling i gang",

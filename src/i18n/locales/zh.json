@@ -5288,7 +5288,9 @@
             "defaultSaltAttestation": "我使用密码管理器生成了此密码，并理解可关联性的权衡。",
             "defaultSaltNeedsStronger": "输入生成的强密码以启用默认盐值。",
             "defaultSaltTier128": "128-bit（推荐，需要 20+ 个字符的密码）",
-            "defaultSaltTier256": "256-bit（更严格，需要 39+ 个字符的密码）"
+            "defaultSaltTier256": "256-bit（更严格，需要 39+ 个字符的密码）",
+            "defaultSaltTierMeaning": "[NEEDS TRANSLATION] The two tiers set how strong your password must be, not the size of the salt: there is one salt, 32 bytes, the same for every default-salt vault.",
+            "defaultSaltValueLabel": "[NEEDS TRANSLATION] Public default salt (AeroCrypt v3), SHA-256 of"
         },
         "modalGuard": {
             "busyTitle": "操作进行中",

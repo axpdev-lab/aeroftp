@@ -4,6 +4,7 @@ import { Server, PlusCircle, Cloud, FolderOpen, Search, X } from 'lucide-react';
 import { ProtocolIcon } from '../ProtocolSelector';
 import { PROVIDER_LOGOS } from '../ProviderLogos';
 import { useTranslation } from '../../i18n';
+import { middleClickClose } from '../../utils/middleClick';
 import type { ServerProfile, ProviderType } from '../../types';
 
 export type IntroHubTab = 'my-servers' | 'discover';
@@ -123,6 +124,10 @@ export function IntroHubHeader({
                                     : 'text-gray-500 dark:text-gray-400 border border-transparent hover:bg-gray-100 dark:hover:bg-gray-700/50 hover:border-gray-200 dark:hover:border-gray-600/50 hover:shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:hover:shadow-[0_1px_3px_rgba(0,0,0,0.3)]'
                             }`}
                             onClick={() => onTabChange(ft.id)}
+                            // Middle click closes the tab (Ehud #274), on the ✖ and
+                            // anywhere else on the chip: the counterpart of the
+                            // middle-click-opens-in-background gesture on Discover.
+                            {...middleClickClose(() => onCloseFormTab(ft.id))}
                             onContextMenu={(e) => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY, tabId: ft.id }); }}
                         >
                             <span className="shrink-0"><FormTabIcon tab={ft} /></span>

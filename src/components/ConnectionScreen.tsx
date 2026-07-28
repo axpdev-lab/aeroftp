@@ -34,6 +34,7 @@ import { loadModeCredentials, storeModeCredentials, deleteModeCredentials, type 
 import { openUrl } from '../utils/openUrl';
 import { safePickerStartDir } from '../utils/safePickerDir';
 import { isValidOverlayScope, resolveOverlayScope } from '../utils/overlayScope';
+import { AEROCRYPT_DEFAULT_SALT_V1_HEX, AEROCRYPT_DEFAULT_SALT_V1_PREIMAGE, formatDefaultSaltForDisplay } from '../utils/aerocryptDefaultSalt';
 import { OAuthConnect } from './OAuthConnect';
 import { ProviderSelector } from './ProviderSelector';
 import { AlertDialog } from './Dialogs';
@@ -3291,6 +3292,32 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                             />
                                                             <span>{t('aerocryptProfile.defaultSaltTier256') || '256-bit (stricter, needs a 39+ character password)'}</span>
                                                         </label>
+                                                    </div>
+                                                )}
+
+                                                {/* Ehud #369: the radios were being read as "the salt is
+                                                    128/256-bit", and the salt itself was nowhere on screen.
+                                                    Say what the radios actually set, then print the one
+                                                    public salt so it can be read and backed up. */}
+                                                {aeroCryptKind === 'aerocrypt' && (
+                                                    <div className="ml-12 mt-1.5 text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
+                                                        <div>
+                                                            {t('aerocryptProfile.defaultSaltTierMeaning')
+                                                                || 'The two tiers set how strong your password must be, not the size of the salt: there is one salt, 32 bytes, the same for every default-salt vault.'}
+                                                        </div>
+                                                        <div className="mt-1 flex flex-wrap items-baseline gap-x-1.5">
+                                                            <span>
+                                                                {t('aerocryptProfile.defaultSaltValueLabel')
+                                                                    || 'Public default salt (AeroCrypt v3), SHA-256 of'}{' '}
+                                                                <code className="font-mono">&quot;{AEROCRYPT_DEFAULT_SALT_V1_PREIMAGE}&quot;</code>:
+                                                            </span>
+                                                            <code
+                                                                className="font-mono select-all break-all text-gray-600 dark:text-gray-300"
+                                                                title={AEROCRYPT_DEFAULT_SALT_V1_HEX}
+                                                            >
+                                                                {formatDefaultSaltForDisplay()}
+                                                            </code>
+                                                        </div>
                                                     </div>
                                                 )}
 

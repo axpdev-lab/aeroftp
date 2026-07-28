@@ -5288,7 +5288,9 @@
             "defaultSaltAttestation": "मैंने इस पासवर्ड को पासवर्ड मैनेजर से जेनरेट किया है और लिंकेबिलिटी ट्रेडऑफ को समझता हूँ।",
             "defaultSaltNeedsStronger": "डिफ़ॉल्ट सॉल्ट चालू करने के लिए एक मजबूत जनरेट किया गया पासवर्ड दर्ज करें।",
             "defaultSaltTier128": "128-bit (अनुशंसित, 20+ वर्णों का पासवर्ड आवश्यक)",
-            "defaultSaltTier256": "256-bit (अधिक सख्त, 39+ वर्णों का पासवर्ड आवश्यक)"
+            "defaultSaltTier256": "256-bit (अधिक सख्त, 39+ वर्णों का पासवर्ड आवश्यक)",
+            "defaultSaltTierMeaning": "[NEEDS TRANSLATION] The two tiers set how strong your password must be, not the size of the salt: there is one salt, 32 bytes, the same for every default-salt vault.",
+            "defaultSaltValueLabel": "[NEEDS TRANSLATION] Public default salt (AeroCrypt v3), SHA-256 of"
         },
         "modalGuard": {
             "busyTitle": "ऑपरेशन जारी है",

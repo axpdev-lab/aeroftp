@@ -5288,7 +5288,9 @@
             "defaultSaltAttestation": "이 비밀번호를 비밀번호 관리자로 생성했으며 연결 가능성의 절충을 이해합니다.",
             "defaultSaltNeedsStronger": "기본 솔트를 켜려면 강력하게 생성된 비밀번호를 입력하세요.",
             "defaultSaltTier128": "128-bit (권장, 20+자 비밀번호 필요)",
-            "defaultSaltTier256": "256-bit (더 엄격함, 39+자 비밀번호 필요)"
+            "defaultSaltTier256": "256-bit (더 엄격함, 39+자 비밀번호 필요)",
+            "defaultSaltTierMeaning": "[NEEDS TRANSLATION] The two tiers set how strong your password must be, not the size of the salt: there is one salt, 32 bytes, the same for every default-salt vault.",
+            "defaultSaltValueLabel": "[NEEDS TRANSLATION] Public default salt (AeroCrypt v3), SHA-256 of"
         },
         "modalGuard": {
             "busyTitle": "작업 진행 중",

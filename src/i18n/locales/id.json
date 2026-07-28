@@ -5288,7 +5288,9 @@
             "defaultSaltAttestation": "Saya menghasilkan kata sandi ini dengan manajer kata sandi dan memahami trade-off keterkaitan.",
             "defaultSaltNeedsStronger": "Masukkan kata sandi kuat yang dibuat untuk mengaktifkan salt bawaan.",
             "defaultSaltTier128": "128-bit (disarankan, memerlukan kata sandi 20+ karakter)",
-            "defaultSaltTier256": "256-bit (lebih ketat, memerlukan kata sandi 39+ karakter)"
+            "defaultSaltTier256": "256-bit (lebih ketat, memerlukan kata sandi 39+ karakter)",
+            "defaultSaltTierMeaning": "[NEEDS TRANSLATION] The two tiers set how strong your password must be, not the size of the salt: there is one salt, 32 bytes, the same for every default-salt vault.",
+            "defaultSaltValueLabel": "[NEEDS TRANSLATION] Public default salt (AeroCrypt v3), SHA-256 of"
         },
         "modalGuard": {
             "busyTitle": "Operasi berlangsung",

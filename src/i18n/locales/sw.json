@@ -5288,7 +5288,9 @@
             "defaultSaltAttestation": "Nilitengeneza neno hili la siri kwa kutumia kidhibiti cha maneno ya siri na ninaelewa maelewano ya uunganishwaji.",
             "defaultSaltNeedsStronger": "Weka nenosiri imara lililozalishwa ili kuwasha salt chaguo-msingi.",
             "defaultSaltTier128": "128-bit (inapendekezwa, inahitaji nenosiri la herufi 20+)",
-            "defaultSaltTier256": "256-bit (kali zaidi, inahitaji nenosiri la herufi 39+)"
+            "defaultSaltTier256": "256-bit (kali zaidi, inahitaji nenosiri la herufi 39+)",
+            "defaultSaltTierMeaning": "[NEEDS TRANSLATION] The two tiers set how strong your password must be, not the size of the salt: there is one salt, 32 bytes, the same for every default-salt vault.",
+            "defaultSaltValueLabel": "[NEEDS TRANSLATION] Public default salt (AeroCrypt v3), SHA-256 of"
         },
         "modalGuard": {
             "busyTitle": "Operesheni inaendelea",

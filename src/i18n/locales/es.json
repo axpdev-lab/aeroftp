@@ -5288,7 +5288,9 @@
             "defaultSaltAttestation": "Generé esta contraseña con un gestor de contraseñas y entiendo el compromiso de vinculabilidad.",
             "defaultSaltNeedsStronger": "Introduce una contraseña generada segura para activar la sal predeterminada.",
             "defaultSaltTier128": "128-bit (recomendado, necesita una contraseña de 20+ caracteres)",
-            "defaultSaltTier256": "256-bit (más estricto, necesita una contraseña de 39+ caracteres)"
+            "defaultSaltTier256": "256-bit (más estricto, necesita una contraseña de 39+ caracteres)",
+            "defaultSaltTierMeaning": "[NEEDS TRANSLATION] The two tiers set how strong your password must be, not the size of the salt: there is one salt, 32 bytes, the same for every default-salt vault.",
+            "defaultSaltValueLabel": "[NEEDS TRANSLATION] Public default salt (AeroCrypt v3), SHA-256 of"
         },
         "modalGuard": {
             "busyTitle": "Operación en curso",

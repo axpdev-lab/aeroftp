@@ -5307,7 +5307,9 @@
             "defaultSaltAttestation": "Gumawa ako ng password na ito gamit ang password manager at nauunawaan ang trade-off ng kakayahang i-link.",
             "defaultSaltNeedsStronger": "Maglagay ng malakas na binuong password para i-on ang default na salt.",
             "defaultSaltTier128": "128-bit (inirerekomenda, kailangan ng password na 20+ karakter)",
-            "defaultSaltTier256": "256-bit (mas mahigpit, kailangan ng password na 39+ karakter)"
+            "defaultSaltTier256": "256-bit (mas mahigpit, kailangan ng password na 39+ karakter)",
+            "defaultSaltTierMeaning": "[NEEDS TRANSLATION] The two tiers set how strong your password must be, not the size of the salt: there is one salt, 32 bytes, the same for every default-salt vault.",
+            "defaultSaltValueLabel": "[NEEDS TRANSLATION] Public default salt (AeroCrypt v3), SHA-256 of"
         },
         "modalGuard": {
             "busyTitle": "May isinasagawang operasyon",

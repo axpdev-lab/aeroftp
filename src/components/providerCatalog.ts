@@ -263,7 +263,7 @@ export const PROVIDER_CATALOG: CatalogCompany[] = [
     { company: 'Jianguoyun', logoId: 'jianguoyun', countryCode: 'CN', freeStorageGb: 1,
       freeNote: 'monthly traffic cap',
       protocols: [{ label: 'WebDAV', protocol: 'webdav', providerId: 'jianguoyun', category: 'webdav' }] },
-    { company: 'Felicloud', logoId: 'felicloud', countryCode: '', freeStorageGb: 10,
+    { company: 'Felicloud', logoId: 'felicloud', countryCode: 'EU', freeStorageGb: 10,
       freeNote: 'Nextcloud host',
       protocols: [{ label: 'WebDAV', protocol: 'webdav', providerId: 'felicloud', category: 'webdav' }] },
     { company: 'Cloudinary', logoId: 'cloudinary', countryCode: 'US', freeStorageGb: null,

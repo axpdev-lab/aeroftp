@@ -5288,7 +5288,9 @@
             "defaultSaltAttestation": "Vygeneroval jsem toto heslo pomocí správce hesel a rozumím kompromisu ohledně propojování.",
             "defaultSaltNeedsStronger": "Zadejte silné vygenerované heslo pro zapnutí výchozího saltu.",
             "defaultSaltTier128": "128-bit (doporučeno, vyžaduje heslo o délce 20+ znaků)",
-            "defaultSaltTier256": "256-bit (přísnější, vyžaduje heslo o délce 39+ znaků)"
+            "defaultSaltTier256": "256-bit (přísnější, vyžaduje heslo o délce 39+ znaků)",
+            "defaultSaltTierMeaning": "[NEEDS TRANSLATION] The two tiers set how strong your password must be, not the size of the salt: there is one salt, 32 bytes, the same for every default-salt vault.",
+            "defaultSaltValueLabel": "[NEEDS TRANSLATION] Public default salt (AeroCrypt v3), SHA-256 of"
         },
         "modalGuard": {
             "busyTitle": "Probíhá operace",

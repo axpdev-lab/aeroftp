@@ -5288,7 +5288,9 @@
             "defaultSaltAttestation": "Gerei esta senha com um gerenciador de senhas e entendo o compromisso de vinculabilidade.",
             "defaultSaltNeedsStronger": "Insira uma senha gerada forte para ativar o sal padrão.",
             "defaultSaltTier128": "128-bit (recomendado, precisa de uma senha de 20+ caracteres)",
-            "defaultSaltTier256": "256-bit (mais rigoroso, precisa de uma senha de 39+ caracteres)"
+            "defaultSaltTier256": "256-bit (mais rigoroso, precisa de uma senha de 39+ caracteres)",
+            "defaultSaltTierMeaning": "[NEEDS TRANSLATION] The two tiers set how strong your password must be, not the size of the salt: there is one salt, 32 bytes, the same for every default-salt vault.",
+            "defaultSaltValueLabel": "[NEEDS TRANSLATION] Public default salt (AeroCrypt v3), SHA-256 of"
         },
         "modalGuard": {
             "busyTitle": "Operação em curso",
