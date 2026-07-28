@@ -399,14 +399,10 @@ enum LiteralCompression {
     /// `zlibx`: raw deflate, `Z_SYNC_FLUSH` per record, no matched-data
     /// history coupling. What every pre-3.2 peer ends up on.
     ///
-    /// Constructed by nobody yet on purpose: the codec behind it
-    /// (`compress_deflate_literal_stream` / `decompress_deflate_*`) is
-    /// written and round-trips, but the deflate token *framing* still has
-    /// to be pinned against captured bytes before a live session can use
-    /// it. This variant is the landing point for that work; until then
-    /// `literal_compression()` routes `zlibx` to `Unsupported` so the
-    /// session falls back cleanly instead of stalling.
-    #[allow(dead_code)]
+    /// The codec and outer token framing are pinned against the dedicated
+    /// rsync 3.1.3 D31 byte oracle. `send_deflated_token` uses the same
+    /// TOKEN*/DEFLATED_DATA grammar as `send_zstd_token`; only the literal
+    /// stream and its flush boundaries differ.
     Deflate,
     /// Negotiation produced `none`, or the peer sent no algorithm list at
     /// all: literals ride the wire raw.
@@ -3428,27 +3424,11 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
     fn literal_compression(&self) -> LiteralCompression {
         match self.negotiated_compression_algo() {
             Some("zstd") => LiteralCompression::Zstd,
-            // `zlibx` is NOT routed to `Deflate` yet, and the reason is
-            // worth recording because the codec itself is finished and
-            // round-trips.
-            //
-            // Swapping the compressor is not enough: rsync's token layer
-            // differs per family. `send_zstd_token` and
-            // `send_deflated_token` (token.c) do not merely compress the
-            // same records differently, they frame the token stream
-            // differently. Driven live against a WD NAS on 2026-07-28,
-            // inflating the DEFLATED_DATA payloads stopped the
-            // reconstruction corruption and turned it into the session
-            // stalling instead, which is the token framing disagreeing.
-            //
-            // Pinning that needs captured bytes from a deflate session,
-            // the way the xattr wire work was done, not reasoning from
-            // the compressor alone. Until those exist, a peer on the
-            // deflate family gets a typed error and falls back
-            // immediately - which is still strictly better than the
-            // behaviour this replaces, where the compressed stream was
-            // read as raw and surfaced as a delta bug much later.
-            Some(name @ "zlibx") => LiteralCompression::Unsupported(name.to_string()),
+            // Measured in both directions against upstream rsync 3.1.3:
+            // the outer grammar is byte-identical to the zstd path and
+            // the captured 4,218 compressed bytes inflate to the 4,200
+            // literal bytes reported by stock `rsync --stats`.
+            Some("zlibx") => LiteralCompression::Deflate,
             // Legacy `zlib` additionally runs matched block data through
             // the compressor history on both ends (`see_deflate_token`),
             // which this codec does not model. `lz4` has no codec here at
@@ -5028,6 +5008,27 @@ mod tests {
         // Substring safety: "xxh128" must not be matched by a peer that
         // only offers "xxh12" or "xxh1284".
         assert_eq!(negotiate("xxh128", "xxh12 xxh1284").await, None);
+    }
+
+    #[tokio::test]
+    async fn negotiated_zlibx_winner_routes_to_deflate_codec() {
+        let encoded = encode_server_preamble(&ServerPreamble {
+            protocol_version: 31,
+            compat_flags: 0x01ff,
+            checksum_algos: "md5 md4 none".to_string(),
+            compression_algos: "zlibx zlib none".to_string(),
+            checksum_seed: 0xDEAD_BEEF,
+            consumed: 0,
+        });
+        let mut d = make_driver(mock_transport()).with_preamble_profile(PreambleProfile {
+            checksum_algos: "xxh128 xxh3 xxh64 md5 md4 none".to_string(),
+            compression_algos: "zstd lz4 zlibx zlib none".to_string(),
+        });
+
+        d.receive_server_preamble(&encoded).await.unwrap();
+
+        assert_eq!(d.negotiated_compression_algo(), Some("zlibx"));
+        assert_eq!(d.literal_compression(), LiteralCompression::Deflate);
     }
 
     /// CLAUDE-AV-B3-18: pin rsync 3.2.7

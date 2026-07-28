@@ -2854,9 +2854,11 @@ pub fn encode_file_checksum(bytes: &[u8]) -> Vec<u8> {
 // paths (zlib + zstd) share an IDENTICAL **outer** byte framing, documented
 // in `token.c` lines 321-327 as the `END_FLAG / TOKEN_* / DEFLATED_DATA /
 // TOKENRUN_* / TOKEN_REL / TOKENRUN_REL` tag set. What changes between the
-// two compressed variants is only the payload bytes inside a DEFLATED_DATA
-// record (a self-contained zlib stream or a self-contained zstd frame).
-// The outer tag parsing is bit-identical.
+// two compressed variants is the payload stream inside DEFLATED_DATA records:
+// zlibx carries raw-deflate segments with a stripped Z_SYNC_FLUSH tail,
+// while zstd carries pieces of one streaming zstd frame. The outer tag
+// parsing is bit-identical. This was measured in both directions against
+// the dedicated rsync 3.1.3 D31 byte oracle on 2026-07-28.
 //
 // The decoder below deals with the **compressed outer framing** only -
 // appropriate for the Strada C frozen oracle (proto 31 + zstd negotiated via
@@ -2916,9 +2918,9 @@ pub enum DeltaOp {
         run_length: u16,
     },
     /// An opaque compressed literal payload. The bytes are the raw
-    /// contents of a self-contained zlib stream or zstd frame: the
-    /// outer framing does NOT tell us which compressor produced them;
-    /// the caller is expected to know from the negotiated algo.
+    /// contents of a streaming raw-deflate or zstd segment: the outer
+    /// framing does NOT tell us which compressor produced them; the caller
+    /// is expected to know from the negotiated algo.
     Literal { compressed_payload: Vec<u8> },
 }
 
@@ -3473,7 +3475,7 @@ pub fn decompress_zstd_literal_stream_boundaries(
 const DEFLATE_SYNC_FLUSH_TAIL: [u8; 4] = [0x00, 0x00, 0xff, 0xff];
 
 /// Inflate a sequence of `DEFLATED_DATA` payloads through one
-/// session-wide raw-inflate stream, mirroring `recv_deflated_token`.
+/// file-wide raw-inflate stream, mirroring `recv_deflated_token`.
 ///
 /// Returns the concatenated raw literal bytes. Payload boundaries carry no
 /// meaning, same as on the zstd path.
@@ -3554,7 +3556,7 @@ pub fn decompress_deflate_literal_stream_boundaries(
     Ok(out)
 }
 
-/// Deflate a sequence of literal payloads through one session-wide
+/// Deflate a sequence of literal payloads through one file-wide
 /// raw-deflate stream, mirroring `send_deflated_token`.
 ///
 /// Returns one record per non-empty input payload, each already stripped
