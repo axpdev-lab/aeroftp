@@ -5288,7 +5288,9 @@
             "defaultSaltAttestation": "Loin tämän salasanan salasananhallinnalla ja ymmärrän linkitettävyyden kompromissin.",
             "defaultSaltNeedsStronger": "Syötä vahva luotu salasana ottaaksesi oletussaltin käyttöön.",
             "defaultSaltTier128": "128-bit (suositeltu, vaatii 20+ merkin salasanan)",
-            "defaultSaltTier256": "256-bit (tiukempi, vaatii 39+ merkin salasanan)"
+            "defaultSaltTier256": "256-bit (tiukempi, vaatii 39+ merkin salasanan)",
+            "defaultSaltTierMeaning": "[NEEDS TRANSLATION] The two tiers set how strong your password must be, not the size of the salt: there is one salt, 32 bytes, the same for every default-salt vault.",
+            "defaultSaltValueLabel": "[NEEDS TRANSLATION] Public default salt (AeroCrypt v3), SHA-256 of"
         },
         "modalGuard": {
             "busyTitle": "Toiminto käynnissä",

@@ -5288,7 +5288,9 @@
             "defaultSaltAttestation": "Я згенерував цей пароль за допомогою менеджера паролів і розумію компроміс пов'язаності.",
             "defaultSaltNeedsStronger": "Введіть надійний згенерований пароль, щоб увімкнути стандартну сіль.",
             "defaultSaltTier128": "128-bit (рекомендовано, потрібен пароль від 20+ символів)",
-            "defaultSaltTier256": "256-bit (суворіше, потрібен пароль від 39+ символів)"
+            "defaultSaltTier256": "256-bit (суворіше, потрібен пароль від 39+ символів)",
+            "defaultSaltTierMeaning": "[NEEDS TRANSLATION] The two tiers set how strong your password must be, not the size of the salt: there is one salt, 32 bytes, the same for every default-salt vault.",
+            "defaultSaltValueLabel": "[NEEDS TRANSLATION] Public default salt (AeroCrypt v3), SHA-256 of"
         },
         "modalGuard": {
             "busyTitle": "Виконується операція",

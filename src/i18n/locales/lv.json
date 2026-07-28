@@ -5288,7 +5288,9 @@
             "defaultSaltAttestation": "Es ģenerēju šo paroli ar paroļu pārvaldnieku un saprotu saistāmības kompromisu.",
             "defaultSaltNeedsStronger": "Ievadiet spēcīgu ģenerētu paroli, lai ieslēgtu noklusējuma salt.",
             "defaultSaltTier128": "128-bit (ieteicams, nepieciešama parole ar 20+ rakstzīmēm)",
-            "defaultSaltTier256": "256-bit (stingrāks, nepieciešama parole ar 39+ rakstzīmēm)"
+            "defaultSaltTier256": "256-bit (stingrāks, nepieciešama parole ar 39+ rakstzīmēm)",
+            "defaultSaltTierMeaning": "[NEEDS TRANSLATION] The two tiers set how strong your password must be, not the size of the salt: there is one salt, 32 bytes, the same for every default-salt vault.",
+            "defaultSaltValueLabel": "[NEEDS TRANSLATION] Public default salt (AeroCrypt v3), SHA-256 of"
         },
         "modalGuard": {
             "busyTitle": "Notiek darbība",

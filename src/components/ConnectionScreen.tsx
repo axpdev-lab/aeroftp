@@ -34,6 +34,8 @@ import { loadModeCredentials, storeModeCredentials, deleteModeCredentials, type 
 import { openUrl } from '../utils/openUrl';
 import { safePickerStartDir } from '../utils/safePickerDir';
 import { isValidOverlayScope, resolveOverlayScope } from '../utils/overlayScope';
+import { DefaultSaltDisclosure } from './common/DefaultSaltDisclosure';
+import { CopyLinkButton } from './common/CopyLinkButton';
 import { OAuthConnect } from './OAuthConnect';
 import { ProviderSelector } from './ProviderSelector';
 import { AlertDialog } from './Dialogs';
@@ -403,12 +405,15 @@ const FourSharedConnect: React.FC<FourSharedConnectProps> = ({
                 <div className="p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg space-y-3">
                     <div className="flex items-center justify-between">
                         <h4 className="font-medium text-sm">{t('connection.fourshared.oauth1Credentials')}</h4>
-                        <button
-                            onClick={() => openUrl('https://www.4shared.com/developer/docs/app/')}
-                            className="text-xs text-blue-500 hover:text-blue-600 flex items-center gap-1"
-                        >
-                            {t('settings.getCredentials')} <ExternalLink size={12} />
-                        </button>
+                        <span className="inline-flex items-center shrink-0">
+                            <button
+                                onClick={() => openUrl('https://www.4shared.com/developer/docs/app/')}
+                                className="text-xs text-blue-500 hover:text-blue-600 flex items-center gap-1"
+                            >
+                                {t('settings.getCredentials')} <ExternalLink size={12} />
+                            </button>
+                            <CopyLinkButton url="https://www.4shared.com/developer/docs/app/" size={12} />
+                        </span>
                     </div>
                     <p className="text-xs text-gray-500 dark:text-gray-400">
                         {t('connection.fourshared.createAppInstructions')}
@@ -2761,16 +2766,23 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     const renderUsernameLabel = (overrideText?: string) => (
         <div className="flex items-center justify-between gap-2 mb-1.5">
             <label className="block text-sm font-medium">{overrideText ?? getUsernameLabel()}</label>
+            {/* Link and its copy button are one group: the row is
+                justify-between, so as three loose children the space would be
+                shared between all of them and the copy would drift to the far
+                right, away from the link it belongs to. */}
             {accountSignupUrl && (
-                <a
-                    href={`${accountSignupUrl}${accountSignupUrl.includes('?') ? '&' : '?'}utm_source=aeroftp`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 text-xs text-emerald-500 hover:text-emerald-600 dark:text-emerald-400 dark:hover:text-emerald-300"
-                >
-                    <ExternalLink size={10} />
-                    {t('connection.createAccount')}
-                </a>
+                <span className="inline-flex items-center shrink-0">
+                    <a
+                        href={`${accountSignupUrl}${accountSignupUrl.includes('?') ? '&' : '?'}utm_source=aeroftp`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-xs text-emerald-500 hover:text-emerald-600 dark:text-emerald-400 dark:hover:text-emerald-300"
+                    >
+                        <ExternalLink size={10} />
+                        {t('connection.createAccount')}
+                    </a>
+                    <CopyLinkButton url={`${accountSignupUrl}${accountSignupUrl.includes('?') ? '&' : '?'}utm_source=aeroftp`} />
+                </span>
             )}
         </div>
     );
@@ -2779,15 +2791,18 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         <div className="flex items-center justify-between gap-2 mb-1.5">
             <label className="block text-sm font-medium">{overrideText ?? getPasswordLabel()}</label>
             {accountPasswordGenUrl && (
-                <a
-                    href={accountPasswordGenUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 text-xs text-amber-500 hover:text-amber-600 dark:text-amber-400 dark:hover:text-amber-300"
-                >
-                    <KeyRound size={10} />
-                    {t('connection.generatePassword')}
-                </a>
+                <span className="inline-flex items-center shrink-0">
+                    <a
+                        href={accountPasswordGenUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-xs text-amber-500 hover:text-amber-600 dark:text-amber-400 dark:hover:text-amber-300"
+                    >
+                        <KeyRound size={10} />
+                        {t('connection.generatePassword')}
+                    </a>
+                    <CopyLinkButton url={accountPasswordGenUrl} />
+                </span>
             )}
         </div>
     );
@@ -3294,6 +3309,14 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     </div>
                                                 )}
 
+                                                {/* Ehud #369: the radios were being read as "the salt is
+                                                    128/256-bit", and the salt itself was nowhere on screen.
+                                                    Say what the radios actually set, then print the one
+                                                    public salt so it can be read, copied and backed up. */}
+                                                {aeroCryptKind === 'aerocrypt' && (
+                                                    <DefaultSaltDisclosure className="ml-12 mt-1.5 text-xs" />
+                                                )}
+
                                                 {/* Attestation (required to enable default salt) */}
                                                 {aeroCryptDefaultSalt && (
                                                     <div className="ml-12 mt-1">
@@ -3684,15 +3707,22 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                 return (
                                     <div className="flex flex-col items-end gap-0.5">
                                         <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
-                                            <a
-                                                href={docsUrl}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="inline-flex items-center gap-1 text-xs text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300"
-                                            >
-                                                <ExternalLink size={10} />
-                                                Docs
-                                            </a>
+                                            {/* Grouped like every other link row: this row is
+                                                gap-2, which would stack on top of the button's own
+                                                margin and leave the copy visibly further from Docs
+                                                than everywhere else in the app. */}
+                                            <span className="inline-flex items-center shrink-0">
+                                                <a
+                                                    href={docsUrl}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="inline-flex items-center gap-1 text-xs text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300"
+                                                >
+                                                    <ExternalLink size={10} />
+                                                    Docs
+                                                </a>
+                                                <CopyLinkButton url={docsUrl} />
+                                            </span>
                                             {LogoComponent && <LogoComponent size={20} />}
                                             <span className="font-medium">{providerName}</span>
                                         </div>
@@ -4424,6 +4454,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                 >
                                                     <ExternalLink size={12} />
                                                 </a>
+                                                <CopyLinkButton url="https://filelu.com/5253515355.html" size={12} />
                                             </p>
                                         </div>
 
@@ -4448,15 +4479,18 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             <div>
                                                 <div className="flex items-center justify-between gap-2 mb-1.5">
                                                     <label className="block text-sm font-medium">{t('connection.jottacloudToken')}</label>
-                                                    <a
-                                                        href="https://www.jottacloud.com/web/secure"
-                                                        target="_blank"
-                                                        rel="noopener noreferrer"
-                                                        className="inline-flex items-center gap-1 text-xs text-amber-500 hover:text-amber-600 dark:text-amber-400 dark:hover:text-amber-300"
-                                                    >
-                                                        <KeyRound size={10} />
-                                                        {t('connection.generatePersonalLoginToken')}
-                                                    </a>
+                                                    <span className="inline-flex items-center shrink-0">
+                                                        <a
+                                                            href="https://www.jottacloud.com/web/secure"
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            className="inline-flex items-center gap-1 text-xs text-amber-500 hover:text-amber-600 dark:text-amber-400 dark:hover:text-amber-300"
+                                                        >
+                                                            <KeyRound size={10} />
+                                                            {t('connection.generatePersonalLoginToken')}
+                                                        </a>
+                                                        <CopyLinkButton url="https://www.jottacloud.com/web/secure" />
+                                                    </span>
                                                 </div>
                                                 <div className="relative">
                                                     <input
@@ -4904,6 +4938,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                         <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener noreferrer" className="text-[var(--color-accent)] hover:underline">
                                                             Generate token
                                                         </a>
+                                                        <CopyLinkButton url="https://github.com/settings/personal-access-tokens/new" />
                                                     </p>
                                                 </div>
                                             )}
@@ -5060,6 +5095,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                         <a href="https://github.com/settings/apps" target="_blank" rel="noopener noreferrer" className="text-[var(--color-accent)] hover:underline">
                                                             {t('github.manageApps')}
                                                         </a>
+                                                        <CopyLinkButton url="https://github.com/settings/apps" />
                                                     </p>
                                                 </div>
                                             )}
@@ -5141,16 +5177,19 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                         <div>
                                             <div className="flex items-center justify-between gap-2 mb-1.5">
                                                 <label className="block text-sm font-medium">{t('connection.kdriveDriveId')}</label>
-                                                <a
-                                                    href="https://ksuite.infomaniak.com/all/kdrive"
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    title={t('connection.kdriveFindDriveIdHint')}
-                                                    className="inline-flex items-center gap-1 text-xs text-emerald-500 hover:text-emerald-600 dark:text-emerald-400 dark:hover:text-emerald-300"
-                                                >
-                                                    <ExternalLink size={10} />
-                                                    {t('connection.kdriveFindDriveId')}
-                                                </a>
+                                                <span className="inline-flex items-center shrink-0">
+                                                    <a
+                                                        href="https://ksuite.infomaniak.com/all/kdrive"
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        title={t('connection.kdriveFindDriveIdHint')}
+                                                        className="inline-flex items-center gap-1 text-xs text-emerald-500 hover:text-emerald-600 dark:text-emerald-400 dark:hover:text-emerald-300"
+                                                    >
+                                                        <ExternalLink size={10} />
+                                                        {t('connection.kdriveFindDriveId')}
+                                                    </a>
+                                                    <CopyLinkButton url="https://ksuite.infomaniak.com/all/kdrive" />
+                                                </span>
                                             </div>
                                             <input
                                                 type="text"
@@ -5172,15 +5211,18 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                         <div>
                                             <div className="flex items-center justify-between gap-2 mb-1.5">
                                                 <label className="block text-sm font-medium">{t('connection.kdriveToken')}</label>
-                                                <a
-                                                    href="https://manager.infomaniak.com/v3/ng/profile/user/token/list"
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    className="inline-flex items-center gap-1 text-xs text-amber-500 hover:text-amber-600 dark:text-amber-400 dark:hover:text-amber-300"
-                                                >
-                                                    <ExternalLink size={10} />
-                                                    {t('connection.kdriveCreateToken')}
-                                                </a>
+                                                <span className="inline-flex items-center shrink-0">
+                                                    <a
+                                                        href="https://manager.infomaniak.com/v3/ng/profile/user/token/list"
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="inline-flex items-center gap-1 text-xs text-amber-500 hover:text-amber-600 dark:text-amber-400 dark:hover:text-amber-300"
+                                                    >
+                                                        <ExternalLink size={10} />
+                                                        {t('connection.kdriveCreateToken')}
+                                                    </a>
+                                                    <CopyLinkButton url="https://manager.infomaniak.com/v3/ng/profile/user/token/list" />
+                                                </span>
                                             </div>
                                             <div className="relative">
                                                 <input
@@ -5941,6 +5983,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             <p className="opacity-80">
                                                 {isMegaCmdMode ? t('connection.megaRequirementDesc') : t('connection.megaNativeNoticeDesc')}
                                                 {isMegaCmdMode && (
+                                                    <>
                                                     <a
                                                         href="https://mega.io/cmd"
                                                         target="_blank"
@@ -5949,6 +5992,8 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     >
                                                         {t('connection.downloadMegacmd')}
                                                     </a>
+                                                    <CopyLinkButton url="https://mega.io/cmd" size={11} />
+                                                    </>
                                                 )}
                                             </p>
                                         </div>
@@ -6049,7 +6094,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             </div>
                                             <p className="text-xs text-gray-400 mt-1.5">
                                                 {t('gitlab.tokenHint')}{' '}
-                                                <a href="https://gitlab.com/-/user_settings/personal_access_tokens" target="_blank" rel="noopener noreferrer" className="underline hover:text-orange-400">{t('gitlab.createToken')}</a>
+                                                <a href="https://gitlab.com/-/user_settings/personal_access_tokens" target="_blank" rel="noopener noreferrer" className="underline hover:text-orange-400">{t('gitlab.createToken')}</a><CopyLinkButton url="https://gitlab.com/-/user_settings/personal_access_tokens" />
                                             </p>
                                         </div>
 
@@ -6336,6 +6381,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     ))}
                                                 </ol>
                                                 {selectedProvider.helpUrl && (
+                                                    <>
                                                     <a
                                                         href={selectedProvider.helpUrl}
                                                         target="_blank"
@@ -6345,6 +6391,8 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                         <ExternalLink size={11} />
                                                         {t('protocol.openProviderDocs', { provider: selectedProvider.name })}
                                                     </a>
+                                                    <CopyLinkButton url={selectedProvider.helpUrl} size={11} />
+                                                    </>
                                                 )}
                                             </CollapsibleSetupBox>
                                         )}
@@ -6788,6 +6836,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                 <ExternalLink size={14} />
                                 {gitHubDeviceFlow.verificationUri}
                             </a>
+                            <CopyLinkButton url={gitHubDeviceFlow.verificationUri} size={14} />
                         </div>
                         <div className="flex justify-end gap-2 px-5 py-3 bg-gray-50 dark:bg-gray-800/50 border-t border-gray-200 dark:border-gray-700">
                             <button

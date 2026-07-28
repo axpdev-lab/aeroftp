@@ -5288,7 +5288,9 @@
             "defaultSaltAttestation": "J'ai généré ce mot de passe avec un gestionnaire de mots de passe et je comprends le compromis de traçabilité.",
             "defaultSaltNeedsStronger": "Saisissez un mot de passe généré fort pour activer le sel par défaut.",
             "defaultSaltTier128": "128-bit (recommandé, nécessite un mot de passe de 20+ caractères)",
-            "defaultSaltTier256": "256-bit (plus strict, nécessite un mot de passe de 39+ caractères)"
+            "defaultSaltTier256": "256-bit (plus strict, nécessite un mot de passe de 39+ caractères)",
+            "defaultSaltTierMeaning": "[NEEDS TRANSLATION] The two tiers set how strong your password must be, not the size of the salt: there is one salt, 32 bytes, the same for every default-salt vault.",
+            "defaultSaltValueLabel": "[NEEDS TRANSLATION] Public default salt (AeroCrypt v3), SHA-256 of"
         },
         "modalGuard": {
             "busyTitle": "Opération en cours",

@@ -5288,7 +5288,9 @@
             "defaultSaltAttestation": "Ezt a jelszót jelszókezelővel generáltam, és megértem az összekapcsolhatósági kompromisszumot.",
             "defaultSaltNeedsStronger": "Az alapértelmezett salt bekapcsolásához adjon meg egy erős, generált jelszót.",
             "defaultSaltTier128": "128-bit (ajánlott, 20+ karakteres jelszót igényel)",
-            "defaultSaltTier256": "256-bit (szigorúbb, 39+ karakteres jelszót igényel)"
+            "defaultSaltTier256": "256-bit (szigorúbb, 39+ karakteres jelszót igényel)",
+            "defaultSaltTierMeaning": "[NEEDS TRANSLATION] The two tiers set how strong your password must be, not the size of the salt: there is one salt, 32 bytes, the same for every default-salt vault.",
+            "defaultSaltValueLabel": "[NEEDS TRANSLATION] Public default salt (AeroCrypt v3), SHA-256 of"
         },
         "modalGuard": {
             "busyTitle": "Művelet folyamatban",

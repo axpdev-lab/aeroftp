@@ -5288,7 +5288,9 @@
             "defaultSaltAttestation": "Lõin selle parooli paroolihalduriga ja mõistan lingitavuse kompromissi.",
             "defaultSaltNeedsStronger": "Vaikimisi salti sisselülitamiseks sisestage tugev genereeritud parool.",
             "defaultSaltTier128": "128-bit (soovitatav, vajab 20+ tähemärgiga parooli)",
-            "defaultSaltTier256": "256-bit (rangem, vajab 39+ tähemärgiga parooli)"
+            "defaultSaltTier256": "256-bit (rangem, vajab 39+ tähemärgiga parooli)",
+            "defaultSaltTierMeaning": "[NEEDS TRANSLATION] The two tiers set how strong your password must be, not the size of the salt: there is one salt, 32 bytes, the same for every default-salt vault.",
+            "defaultSaltValueLabel": "[NEEDS TRANSLATION] Public default salt (AeroCrypt v3), SHA-256 of"
         },
         "modalGuard": {
             "busyTitle": "Toiming käib",

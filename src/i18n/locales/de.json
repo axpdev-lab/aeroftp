@@ -5288,7 +5288,9 @@
             "defaultSaltAttestation": "Ich habe dieses Passwort mit einem Passwort-Manager generiert und verstehe den Linkbarkeits-Kompromiss.",
             "defaultSaltNeedsStronger": "Geben Sie ein starkes generiertes Passwort ein, um den Standard-Salt zu aktivieren.",
             "defaultSaltTier128": "128-bit (empfohlen, erfordert ein Passwort mit 20+ Zeichen)",
-            "defaultSaltTier256": "256-bit (strenger, erfordert ein Passwort mit 39+ Zeichen)"
+            "defaultSaltTier256": "256-bit (strenger, erfordert ein Passwort mit 39+ Zeichen)",
+            "defaultSaltTierMeaning": "[NEEDS TRANSLATION] The two tiers set how strong your password must be, not the size of the salt: there is one salt, 32 bytes, the same for every default-salt vault.",
+            "defaultSaltValueLabel": "[NEEDS TRANSLATION] Public default salt (AeroCrypt v3), SHA-256 of"
         },
         "modalGuard": {
             "busyTitle": "Vorgang läuft",

@@ -5288,7 +5288,9 @@
             "defaultSaltAttestation": "მე ეს პაროლი პაროლების მენეჯერით გენერირებული მაქვს და ვხვდები დაკავშირებადობის კომპრომისს.",
             "defaultSaltNeedsStronger": "ნაგულისხმევი salt-ის ჩასართავად შეიყვანეთ ძლიერი გენერირებული პაროლი.",
             "defaultSaltTier128": "128-bit (რეკომენდებულია, საჭიროებს 20+ სიმბოლოს პაროლს)",
-            "defaultSaltTier256": "256-bit (უფრო მკაცრი, საჭიროებს 39+ სიმბოლოს პაროლს)"
+            "defaultSaltTier256": "256-bit (უფრო მკაცრი, საჭიროებს 39+ სიმბოლოს პაროლს)",
+            "defaultSaltTierMeaning": "[NEEDS TRANSLATION] The two tiers set how strong your password must be, not the size of the salt: there is one salt, 32 bytes, the same for every default-salt vault.",
+            "defaultSaltValueLabel": "[NEEDS TRANSLATION] Public default salt (AeroCrypt v3), SHA-256 of"
         },
         "modalGuard": {
             "busyTitle": "მიმდინარეობს ოპერაცია",

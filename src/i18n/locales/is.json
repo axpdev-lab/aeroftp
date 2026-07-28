@@ -5307,7 +5307,9 @@
             "defaultSaltAttestation": "Ég bjó til þetta lykilorð með lykilorðastjóra og skil tengjanleikaviðskiptin.",
             "defaultSaltNeedsStronger": "Sláðu inn sterkt myndað lykilorð til að kveikja á sjálfgefna saltinu.",
             "defaultSaltTier128": "128-bit (mælt með, þarf lykilorð með 20+ stöfum)",
-            "defaultSaltTier256": "256-bit (strangara, þarf lykilorð með 39+ stöfum)"
+            "defaultSaltTier256": "256-bit (strangara, þarf lykilorð með 39+ stöfum)",
+            "defaultSaltTierMeaning": "[NEEDS TRANSLATION] The two tiers set how strong your password must be, not the size of the salt: there is one salt, 32 bytes, the same for every default-salt vault.",
+            "defaultSaltValueLabel": "[NEEDS TRANSLATION] Public default salt (AeroCrypt v3), SHA-256 of"
         },
         "modalGuard": {
             "busyTitle": "Aðgerð í gangi",

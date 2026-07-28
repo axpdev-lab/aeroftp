@@ -5307,7 +5307,9 @@
             "defaultSaltAttestation": "Fe wnes i gynhyrchu'r cyfrinair hwn gyda rheolwr cyfrineiriau ac rwy'n deall y cyfaddawd cysylltedd.",
             "defaultSaltNeedsStronger": "Rhowch gyfrinair cryf wedi'i gynhyrchu i droi'r salt rhagosodedig ymlaen.",
             "defaultSaltTier128": "128-bit (argymhellir, angen cyfrinair o 20+ nod)",
-            "defaultSaltTier256": "256-bit (llymach, angen cyfrinair o 39+ nod)"
+            "defaultSaltTier256": "256-bit (llymach, angen cyfrinair o 39+ nod)",
+            "defaultSaltTierMeaning": "[NEEDS TRANSLATION] The two tiers set how strong your password must be, not the size of the salt: there is one salt, 32 bytes, the same for every default-salt vault.",
+            "defaultSaltValueLabel": "[NEEDS TRANSLATION] Public default salt (AeroCrypt v3), SHA-256 of"
         },
         "modalGuard": {
             "busyTitle": "Gweithrediad ar y gweill",

@@ -5288,7 +5288,9 @@
             "defaultSaltAttestation": "このパスワードをパスワードマネージャーで生成し、リンク可能性のトレードオフを理解しています。",
             "defaultSaltNeedsStronger": "デフォルトのソルトを有効にするには、強力な生成済みパスワードを入力してください。",
             "defaultSaltTier128": "128-bit（推奨、20+文字のパスワードが必要）",
-            "defaultSaltTier256": "256-bit（より厳格、39+文字のパスワードが必要）"
+            "defaultSaltTier256": "256-bit（より厳格、39+文字のパスワードが必要）",
+            "defaultSaltTierMeaning": "[NEEDS TRANSLATION] The two tiers set how strong your password must be, not the size of the salt: there is one salt, 32 bytes, the same for every default-salt vault.",
+            "defaultSaltValueLabel": "[NEEDS TRANSLATION] Public default salt (AeroCrypt v3), SHA-256 of"
         },
         "modalGuard": {
             "busyTitle": "操作の実行中",

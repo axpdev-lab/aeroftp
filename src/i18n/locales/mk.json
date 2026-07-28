@@ -5307,7 +5307,9 @@
             "defaultSaltAttestation": "Ја генерирав оваа лозинка со менаџер за лозинки и го разбирам компромисот за поврзување.",
             "defaultSaltNeedsStronger": "Внесете силна генерирана лозинка за да ја вклучите стандардната сол.",
             "defaultSaltTier128": "128-bit (препорачано, потребна е лозинка од 20+ знаци)",
-            "defaultSaltTier256": "256-bit (построго, потребна е лозинка од 39+ знаци)"
+            "defaultSaltTier256": "256-bit (построго, потребна е лозинка од 39+ знаци)",
+            "defaultSaltTierMeaning": "[NEEDS TRANSLATION] The two tiers set how strong your password must be, not the size of the salt: there is one salt, 32 bytes, the same for every default-salt vault.",
+            "defaultSaltValueLabel": "[NEEDS TRANSLATION] Public default salt (AeroCrypt v3), SHA-256 of"
         },
         "modalGuard": {
             "busyTitle": "Операција во тек",

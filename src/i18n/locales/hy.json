@@ -5288,7 +5288,9 @@
             "defaultSaltAttestation": "Ես այս գաղտնաբառը գեներացրել եմ գաղտնաբառերի կառավարիչով և հասկանում եմ կապելիության փոխզիջումը:",
             "defaultSaltNeedsStronger": "Լռելյայն salt-ը միացնելու համար մուտքագրեք ուժեղ գեներացված գաղտնաբառ։",
             "defaultSaltTier128": "128-bit (խորհուրդ է տրվում, պահանջում է 20+ նիշանոց գաղտնաբառ)",
-            "defaultSaltTier256": "256-bit (ավելի խիստ, պահանջում է 39+ նիշանոց գաղտնաբառ)"
+            "defaultSaltTier256": "256-bit (ավելի խիստ, պահանջում է 39+ նիշանոց գաղտնաբառ)",
+            "defaultSaltTierMeaning": "[NEEDS TRANSLATION] The two tiers set how strong your password must be, not the size of the salt: there is one salt, 32 bytes, the same for every default-salt vault.",
+            "defaultSaltValueLabel": "[NEEDS TRANSLATION] Public default salt (AeroCrypt v3), SHA-256 of"
         },
         "modalGuard": {
             "busyTitle": "Գործողությունն ընթացքի մեջ է",

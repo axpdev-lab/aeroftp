@@ -636,19 +636,24 @@ export const DevToolsV2: React.FC<DevToolsV2Props> = ({
                             <MessageSquare size={12} />
                             {t('devtools.agent')}
                         </button>
+                        {/* Security Tools sits with the other three launchers and
+                            carries its full label (Ehud #347): icon-only next to
+                            the Maximise/Close buttons read as a window control, so
+                            the entry point was being missed. */}
+                        {onShowCyberTools && (
+                            <button
+                                onClick={onShowCyberTools}
+                                className={`flex items-center gap-1.5 px-2 py-1 rounded text-xs transition-colors ${theme.buttonInactive}`}
+                                title={t('cyberTools.title')}
+                            >
+                                <CyberShieldIcon size={12} />
+                                {t('cyberTools.title')}
+                            </button>
+                        )}
                     </div>
                 </div>
 
                 <div className="flex items-center gap-1">
-                    {onShowCyberTools && (
-                        <button
-                            onClick={onShowCyberTools}
-                            className={`p-1 ${theme.buttonHover} rounded transition-colors`}
-                            title={t('cyberTools.title')}
-                        >
-                            <CyberShieldIcon size={14} />
-                        </button>
-                    )}
                     <button
                         onClick={() => { const next = !isMaximized; setIsMaximized(next); onMaximizeChange?.(next); }}
                         className={`p-1 ${theme.buttonHover} rounded transition-colors`}

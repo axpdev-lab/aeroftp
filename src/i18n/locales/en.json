@@ -1664,8 +1664,8 @@
             "markerMissingRestoreFailedTitle": "AeroCrypt marker still missing",
             "markerMissingRestoreFailedBody": "Unlocked from the local keystore, but the remote safety net could not be restored: {error}",
             "defaultSaltLabel": "Default salt (opt-in, password-only portability; requires high entropy and attestation)",
-            "defaultSaltStrength128": "128-bit recommended",
-            "defaultSaltStrength256": "256-bit",
+            "defaultSaltStrength128": "128-bit (recommended, needs a 20+ character password)",
+            "defaultSaltStrength256": "256-bit (stricter, needs a 39+ character password)",
             "defaultSaltAttestation": "I used a password manager and understand the linkability tradeoff.",
             "legacyMarkerNotice": "This vault still uses the legacy .aeroftp-crypt.json marker. Convert it to .aerocrypt.tsv after entering the password or keyfile.",
             "migrateLegacyMarker": "Convert marker",
@@ -5306,7 +5306,9 @@
             "defaultSaltAttestation": "I generated this password with a password manager and understand the linkability tradeoff.",
             "defaultSaltNeedsStronger": "Enter a Strong generated password to turn on default salt.",
             "defaultSaltTier128": "128-bit (recommended, needs a 20+ character password)",
-            "defaultSaltTier256": "256-bit (stricter, needs a 39+ character password)"
+            "defaultSaltTier256": "256-bit (stricter, needs a 39+ character password)",
+            "defaultSaltTierMeaning": "The two tiers set how strong your password must be, not the size of the salt: there is one salt, 32 bytes, the same for every default-salt vault.",
+            "defaultSaltValueLabel": "Public default salt (AeroCrypt v3), SHA-256 of"
         },
         "modalView": {
             "listView": "List view",

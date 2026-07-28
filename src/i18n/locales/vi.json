@@ -5288,7 +5288,9 @@
             "defaultSaltAttestation": "Tôi đã tạo mật khẩu này bằng trình quản lý mật khẩu và hiểu sự đánh đổi về khả năng liên kết.",
             "defaultSaltNeedsStronger": "Nhập mật khẩu mạnh đã tạo để bật salt mặc định.",
             "defaultSaltTier128": "128-bit (khuyến nghị, cần mật khẩu 20+ ký tự)",
-            "defaultSaltTier256": "256-bit (nghiêm ngặt hơn, cần mật khẩu 39+ ký tự)"
+            "defaultSaltTier256": "256-bit (nghiêm ngặt hơn, cần mật khẩu 39+ ký tự)",
+            "defaultSaltTierMeaning": "[NEEDS TRANSLATION] The two tiers set how strong your password must be, not the size of the salt: there is one salt, 32 bytes, the same for every default-salt vault.",
+            "defaultSaltValueLabel": "[NEEDS TRANSLATION] Public default salt (AeroCrypt v3), SHA-256 of"
         },
         "modalGuard": {
             "busyTitle": "Đang thực hiện thao tác",

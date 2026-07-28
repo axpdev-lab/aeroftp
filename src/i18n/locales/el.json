@@ -5288,7 +5288,9 @@
             "defaultSaltAttestation": "Δημιούργησα αυτόν τον κωδικό με έναν διαχειριστή κωδικών και κατανοώ την αντιστάθμιση της συνδεσιμότητας.",
             "defaultSaltNeedsStronger": "Εισαγάγετε έναν ισχυρό δημιουργημένο κωδικό πρόσβασης για να ενεργοποιήσετε το προεπιλεγμένο salt.",
             "defaultSaltTier128": "128-bit (συνιστάται, απαιτεί κωδικό πρόσβασης 20+ χαρακτήρων)",
-            "defaultSaltTier256": "256-bit (αυστηρότερο, απαιτεί κωδικό πρόσβασης 39+ χαρακτήρων)"
+            "defaultSaltTier256": "256-bit (αυστηρότερο, απαιτεί κωδικό πρόσβασης 39+ χαρακτήρων)",
+            "defaultSaltTierMeaning": "[NEEDS TRANSLATION] The two tiers set how strong your password must be, not the size of the salt: there is one salt, 32 bytes, the same for every default-salt vault.",
+            "defaultSaltValueLabel": "[NEEDS TRANSLATION] Public default salt (AeroCrypt v3), SHA-256 of"
         },
         "modalGuard": {
             "busyTitle": "Λειτουργία σε εξέλιξη",

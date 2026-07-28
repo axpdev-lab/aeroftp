@@ -5288,7 +5288,9 @@
             "defaultSaltAttestation": "Šį slaptažodį sugeneravau naudodamas slaptažodžių tvarkyklę ir suprantu susiejamumo kompromisą.",
             "defaultSaltNeedsStronger": "Įveskite stiprų sugeneruotą slaptažodį, kad įjungtumėte numatytąjį salt.",
             "defaultSaltTier128": "128-bit (rekomenduojama, reikia 20+ simbolių slaptažodžio)",
-            "defaultSaltTier256": "256-bit (griežtesnis, reikia 39+ simbolių slaptažodžio)"
+            "defaultSaltTier256": "256-bit (griežtesnis, reikia 39+ simbolių slaptažodžio)",
+            "defaultSaltTierMeaning": "[NEEDS TRANSLATION] The two tiers set how strong your password must be, not the size of the salt: there is one salt, 32 bytes, the same for every default-salt vault.",
+            "defaultSaltValueLabel": "[NEEDS TRANSLATION] Public default salt (AeroCrypt v3), SHA-256 of"
         },
         "modalGuard": {
             "busyTitle": "Vykdoma operacija",

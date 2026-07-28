@@ -5288,7 +5288,9 @@
             "defaultSaltAttestation": "Wygenerowałem to hasło za pomocą menedżera haseł i rozumiem kompromis w zakresie powiązywalności.",
             "defaultSaltNeedsStronger": "Wprowadź silne wygenerowane hasło, aby włączyć domyślny salt.",
             "defaultSaltTier128": "128-bit (zalecane, wymaga hasła o długości 20+ znaków)",
-            "defaultSaltTier256": "256-bit (bardziej restrykcyjne, wymaga hasła o długości 39+ znaków)"
+            "defaultSaltTier256": "256-bit (bardziej restrykcyjne, wymaga hasła o długości 39+ znaków)",
+            "defaultSaltTierMeaning": "[NEEDS TRANSLATION] The two tiers set how strong your password must be, not the size of the salt: there is one salt, 32 bytes, the same for every default-salt vault.",
+            "defaultSaltValueLabel": "[NEEDS TRANSLATION] Public default salt (AeroCrypt v3), SHA-256 of"
         },
         "modalGuard": {
             "busyTitle": "Operacja w toku",

@@ -14,8 +14,9 @@ import { Checkbox } from './ui/Checkbox';
 import { useOAuth2, OAuthProvider, OAUTH_APPS } from '../hooks/useOAuth2';
 import { useI18n } from '../i18n';
 import { openUrl } from '../utils/openUrl';
-import { getProviderDocsUrl, PROVIDER_DOCS_INDEX } from '../providers/docsLinks';
 import { logger } from '../utils/logger';
+import { CopyLinkButton } from './common/CopyLinkButton';
+import { useClipboardCopy } from '../hooks/useClipboardCopy';
 
 interface OAuthConnectProps {
   provider: 'googledrive' | 'googlephotos' | 'dropbox' | 'onedrive' | 'box' | 'pcloud' | 'zohoworkdrive' | 'yandexdisk';
@@ -212,7 +213,10 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
   const [wantsNewAccount, setWantsNewAccount] = useState(false);
   const [showSecret, setShowSecret] = useState(false);
   const [zohoRegion, setZohoRegion] = useState('us');
-  const [copiedUri, setCopiedUri] = useState(false);
+  // Redirect URI copy: the shared hook, so it goes through the Rust command
+  // like every other copy in the app instead of navigator.clipboard, which
+  // WebKitGTK rejects outside a secure context.
+  const { copied: copiedUri, copy: copyRedirectUri } = useClipboardCopy();
   // Edit-mode toggle: reveals Client ID / Secret / Region inputs from the
   // active state so users can rotate credentials without leaving Edit.
   const [showEditCredentials, setShowEditCredentials] = useState(false);
@@ -614,14 +618,15 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
       <div className="p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg space-y-3">
           <div className="flex items-center justify-between">
             <h4 className="font-medium text-sm">{t('connection.oauth.oauth2Credentials')}</h4>
-            <div className="flex items-center gap-3">
-              {/* AeroFTP docs link on every Quick Connect page (#270). */}
-              <button
-                onClick={() => openUrl(getProviderDocsUrl(provider, provider) || PROVIDER_DOCS_INDEX)}
-                className="text-xs text-blue-500 hover:text-blue-600 flex items-center gap-1"
-              >
-                Docs <ExternalLink className="w-3 h-3" />
-              </button>
+            {/* The AeroFTP docs link that used to sit here was the SAME page as
+                the one in the Quick Connect header: same helper, same arguments,
+                twice on one screen (Ehud #347). The header keeps it, because it
+                is the copy that renders on every Quick Connect page rather than
+                only the OAuth ones, and it resolves better (mode-group provider
+                id, and the provider's own help URL as a fallback before the
+                generic index). Only "Get credentials" belongs here: it points at
+                the provider's developer console, next to the fields it fills. */}
+            <div className="flex items-center">
               <button
                 onClick={() => openUrl(oauthApp.help_url)}
                 className="text-xs text-blue-500 hover:text-blue-600 flex items-center gap-1"
@@ -631,6 +636,7 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
                     "Get credentials" wording for their developer console. */}
                 {t(provider === 'pcloud' ? 'settings.manageCredentials' : 'settings.getCredentials')} <ExternalLink className="w-3 h-3" />
               </button>
+              <CopyLinkButton url={oauthApp.help_url} size={12} />
             </div>
           </div>
 
@@ -648,11 +654,7 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
                 </code>
                 <button
                   type="button"
-                  onClick={() => {
-                    navigator.clipboard.writeText(REDIRECT_URIS[provider].uri);
-                    setCopiedUri(true);
-                    setTimeout(() => setCopiedUri(false), 2000);
-                  }}
+                  onClick={() => { void copyRedirectUri(REDIRECT_URIS[provider].uri); }}
                   className="shrink-0 p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                   title={t('common.copy')}
                 >
