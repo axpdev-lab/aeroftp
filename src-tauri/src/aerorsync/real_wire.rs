@@ -164,6 +164,23 @@ pub enum RealWireError {
     ZstdDecompressionFailed {
         reason: String,
     },
+    /// A `DEFLATED_DATA` payload could not be inflated. Raised on the
+    /// `zlibx` / `zlib` path, the compressors every rsync built before
+    /// zstd landed in 3.2.0 offers.
+    DeflateDecompressionFailed {
+        reason: String,
+    },
+    /// The two peers agreed on a literal compressor this client does not
+    /// implement.
+    ///
+    /// Worth a typed error rather than a silent fallback: the failure it
+    /// replaces was treating a compressed literal stream as raw bytes,
+    /// which does not fail at the token layer at all. It surfaces later as
+    /// a reconstruction that overshoots the file length by the size of the
+    /// compression headers, which reads like a delta bug and is not one.
+    UnsupportedCompressor {
+        chosen: String,
+    },
     /// The xattr blob opened with a non-zero `write_varint(ndx + 1)`,
     /// i.e. the abbreviated "same list as a previously sent entry" form
     /// (`xattrs.c::send_xattr`). Resolving it needs the per-session list
@@ -310,6 +327,15 @@ impl fmt::Display for RealWireError {
             }
             RealWireError::ZstdDecompressionFailed { reason } => {
                 write!(f, "zstd decompression failed: {reason}")
+            }
+            RealWireError::DeflateDecompressionFailed { reason } => {
+                write!(f, "deflate decompression failed: {reason}")
+            }
+            RealWireError::UnsupportedCompressor { chosen } => {
+                write!(
+                    f,
+                    "negotiation chose literal compressor {chosen:?}, which this client does not implement"
+                )
             }
             RealWireError::XattrAbbrevUnsupported { reference } => {
                 write!(
@@ -3408,6 +3434,186 @@ pub fn decompress_zstd_literal_stream_boundaries(
 // concatenated input bytes.
 // ----------------------------------------------------------------------------
 
+// ----------------------------------------------------------------------------
+// zlibx / zlib literal codec (`token.c::send_deflated_token`,
+// `recv_deflated_token`)
+//
+// Every rsync built before zstd arrived in 3.2.0 offers only the deflate
+// family, and plenty of them are still in service: NAS firmware, embedded
+// boxes, older LTS images. Against those the negotiation lands here, so
+// without this codec the native engine has nothing to talk with.
+//
+// Three details decide whether the bytes line up, all from token.c:
+//
+//   1. **Raw deflate, no zlib wrapper.** rsync uses `deflateInit2(...,
+//      -15, ...)` / `inflateInit2(..., -15)`. A two-byte zlib header would
+//      desynchronise the very first token.
+//   2. **One stream per session and direction**, exactly like the zstd
+//      `ZSTD_DCtx`. Each `DEFLATED_DATA` record is a `Z_SYNC_FLUSH` block
+//      inside that shared stream, never a self-contained one.
+//   3. **The four-byte sync-flush tail is stripped on the wire.** After
+//      `deflate(..., Z_SYNC_FLUSH)` the sender drops the trailing
+//      `00 00 FF FF` and sends what is left; the receiver appends those
+//      four bytes back before inflating. Miss this and inflate stalls
+//      waiting for a block that already arrived.
+//
+// **`zlibx` versus `zlib`.** Only `zlibx` is implemented here, and that is
+// a deliberate boundary rather than an omission. Legacy `zlib` also feeds
+// the *matched* (copied) block data through the compressor history on both
+// ends - `see_deflate_token()` in token.c - so the decoder has to be handed
+// the reconstructed data as it goes, which the payload-only API here
+// cannot express. `zlibx` exists upstream precisely to drop that coupling,
+// and it is what a peer offering both will pick, since our advertisement
+// lists it first. A peer that offers only legacy `zlib` gets a typed
+// `UnsupportedCompressor` rather than a corrupted stream.
+// ----------------------------------------------------------------------------
+
+/// The four bytes `deflate(Z_SYNC_FLUSH)` leaves at the end of a block and
+/// that rsync strips before putting the record on the wire.
+const DEFLATE_SYNC_FLUSH_TAIL: [u8; 4] = [0x00, 0x00, 0xff, 0xff];
+
+/// Inflate a sequence of `DEFLATED_DATA` payloads through one
+/// session-wide raw-inflate stream, mirroring `recv_deflated_token`.
+///
+/// Returns the concatenated raw literal bytes. Payload boundaries carry no
+/// meaning, same as on the zstd path.
+///
+/// Available only when the `aerorsync` feature is enabled.
+pub fn decompress_deflate_literal_stream(payloads: &[&[u8]]) -> Result<Vec<u8>, RealWireError> {
+    let boundaries = decompress_deflate_literal_stream_boundaries(payloads)?;
+    Ok(boundaries.concat())
+}
+
+/// Same stream, but keeping one output `Vec` per input payload.
+///
+/// The delta path needs this: it maps literal *runs* back onto the wire
+/// ops that produced them, and a single concatenated blob loses that.
+pub fn decompress_deflate_literal_stream_boundaries(
+    payloads: &[&[u8]],
+) -> Result<Vec<Vec<u8>>, RealWireError> {
+    use flate2::{Decompress, FlushDecompress};
+
+    // `false` = raw deflate, no zlib header: the `-15` of inflateInit2.
+    let mut inflater = Decompress::new(false);
+    let mut out: Vec<Vec<u8>> = Vec::with_capacity(payloads.len());
+
+    for payload in payloads {
+        if payload.is_empty() {
+            out.push(Vec::new());
+            continue;
+        }
+        // Re-attach the tail the sender stripped, then inflate the whole
+        // block. Both halves go through one call sequence so the stream
+        // stays positioned for the next record.
+        let mut framed = Vec::with_capacity(payload.len() + DEFLATE_SYNC_FLUSH_TAIL.len());
+        framed.extend_from_slice(payload);
+        framed.extend_from_slice(&DEFLATE_SYNC_FLUSH_TAIL);
+
+        let mut produced: Vec<u8> = Vec::new();
+        let mut staging = vec![0u8; 32 * 1024];
+        let mut consumed_total = 0usize;
+
+        loop {
+            let before_in = inflater.total_in();
+            let before_out = inflater.total_out();
+            let status = inflater
+                .decompress(
+                    &framed[consumed_total..],
+                    &mut staging,
+                    FlushDecompress::Sync,
+                )
+                .map_err(|e| RealWireError::DeflateDecompressionFailed {
+                    reason: e.to_string(),
+                })?;
+            let read = (inflater.total_in() - before_in) as usize;
+            let wrote = (inflater.total_out() - before_out) as usize;
+            consumed_total += read;
+            produced.extend_from_slice(&staging[..wrote]);
+
+            // Done when the whole framed block has been handed over and
+            // the last call produced nothing more. `read == 0 && wrote == 0`
+            // also guards against an inflater that cannot make progress,
+            // which would otherwise spin here.
+            if consumed_total >= framed.len() && wrote == 0 {
+                break;
+            }
+            if read == 0 && wrote == 0 {
+                return Err(RealWireError::DeflateDecompressionFailed {
+                    reason: format!(
+                        "inflate stalled after {consumed_total} of {} bytes",
+                        framed.len()
+                    ),
+                });
+            }
+            if matches!(status, flate2::Status::StreamEnd) {
+                break;
+            }
+        }
+        out.push(produced);
+    }
+    Ok(out)
+}
+
+/// Deflate a sequence of literal payloads through one session-wide
+/// raw-deflate stream, mirroring `send_deflated_token`.
+///
+/// Returns one record per non-empty input payload, each already stripped
+/// of its `Z_SYNC_FLUSH` tail exactly as rsync puts it on the wire.
+///
+/// Available only when the `aerorsync` feature is enabled.
+pub fn compress_deflate_literal_stream(payloads: &[&[u8]]) -> Result<Vec<Vec<u8>>, RealWireError> {
+    use flate2::{Compress, Compression, FlushCompress};
+
+    // Level 6 is rsync's default (`compression_level` defaults to 6 in
+    // options.c when `-z` is given without `--compress-level`).
+    // `false` = raw deflate, matching `deflateInit2(..., -15, ...)`.
+    let mut deflater = Compress::new_with_window_bits(Compression::new(6), false, 15);
+    let mut out: Vec<Vec<u8>> = Vec::new();
+
+    for payload in payloads {
+        if payload.is_empty() {
+            continue;
+        }
+        let mut produced: Vec<u8> = Vec::new();
+        let mut staging = vec![0u8; 32 * 1024];
+        let mut consumed_total = 0usize;
+
+        loop {
+            let before_in = deflater.total_in();
+            let before_out = deflater.total_out();
+            deflater
+                .compress(
+                    &payload[consumed_total..],
+                    &mut staging,
+                    FlushCompress::Sync,
+                )
+                .map_err(|e| RealWireError::DeflateDecompressionFailed {
+                    reason: format!("deflate: {e}"),
+                })?;
+            let read = (deflater.total_in() - before_in) as usize;
+            let wrote = (deflater.total_out() - before_out) as usize;
+            consumed_total += read;
+            produced.extend_from_slice(&staging[..wrote]);
+
+            if consumed_total >= payload.len() && wrote == 0 {
+                break;
+            }
+            if read == 0 && wrote == 0 {
+                return Err(RealWireError::DeflateDecompressionFailed {
+                    reason: "deflate stalled".to_string(),
+                });
+            }
+        }
+
+        // Strip the sync-flush tail: the receiver appends it back.
+        if produced.ends_with(&DEFLATE_SYNC_FLUSH_TAIL) {
+            produced.truncate(produced.len() - DEFLATE_SYNC_FLUSH_TAIL.len());
+        }
+        out.push(produced);
+    }
+    Ok(out)
+}
+
 /// Compress a sequence of literal payloads through a single
 /// session-wide `ZSTD_CCtx`. Returns one compressed `Vec<u8>` per
 /// non-empty input payload, in encounter order.
@@ -5667,6 +5873,95 @@ mod tests {
         assert_eq!(wire.len(), 28);
         let (decoded, _) = decode_summary_frame(&wire, 29).unwrap();
         assert_eq!(decoded.total_read, -1);
+    }
+
+    // -------------------------------------------------------------------------
+    // zlibx / zlib literal stream codec
+    // -------------------------------------------------------------------------
+
+    /// The property that matters: whatever the encoder puts on the wire,
+    /// the decoder must give the original bytes back. Both run through one
+    /// session stream, so this also covers the cross-record dependency -
+    /// the second record only inflates correctly if the first left the
+    /// stream positioned right.
+    #[test]
+    fn deflate_literal_stream_round_trips_across_records() {
+        let a = b"first literal run, long enough to actually compress aaaaaaaaaaaaaaaa".to_vec();
+        let b = b"second literal run bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_vec();
+        let inputs: Vec<&[u8]> = vec![&a, &b];
+
+        let records = compress_deflate_literal_stream(&inputs).expect("deflate");
+        assert_eq!(records.len(), 2, "one record per non-empty payload");
+
+        let refs: Vec<&[u8]> = records.iter().map(|r| r.as_slice()).collect();
+        let out = decompress_deflate_literal_stream_boundaries(&refs).expect("inflate");
+        assert_eq!(out.len(), 2);
+        assert_eq!(out[0], a, "first record must rebuild exactly");
+        assert_eq!(out[1], b, "second record must rebuild exactly");
+    }
+
+    /// rsync strips the four-byte `Z_SYNC_FLUSH` tail before putting a
+    /// record on the wire, and the receiver appends it back. If the
+    /// encoder ever stopped stripping it, a stock rsync receiver would
+    /// see four stray bytes at every token boundary - so pin its absence.
+    #[test]
+    fn deflate_records_carry_no_sync_flush_tail() {
+        let payload = vec![b'z'; 4096];
+        let records = compress_deflate_literal_stream(&[&payload]).expect("deflate");
+        assert_eq!(records.len(), 1);
+        assert!(
+            !records[0].ends_with(&DEFLATE_SYNC_FLUSH_TAIL),
+            "the 00 00 FF FF tail must be stripped: rsync's receiver re-appends it"
+        );
+    }
+
+    /// Raw deflate, not the zlib wrapper: `deflateInit2(..., -15, ...)`.
+    /// A zlib header would start 0x78 and desynchronise the first token.
+    #[test]
+    fn deflate_records_are_raw_without_zlib_header() {
+        let payload = b"header check payload".to_vec();
+        let records = compress_deflate_literal_stream(&[&payload]).expect("deflate");
+        assert!(!records[0].is_empty());
+        assert_ne!(
+            records[0][0], 0x78,
+            "0x78 is the zlib wrapper magic; rsync uses raw deflate"
+        );
+    }
+
+    /// Empty payloads emit no record, matching `send_deflated_token`'s
+    /// `if (nb)` guard and the zstd path's behaviour.
+    #[test]
+    fn deflate_skips_empty_payloads() {
+        let empty: Vec<u8> = Vec::new();
+        let full = b"content".to_vec();
+        let records = compress_deflate_literal_stream(&[&empty, &full]).expect("deflate");
+        assert_eq!(records.len(), 1, "the empty payload contributes no record");
+    }
+
+    /// A payload larger than one staging buffer must still round-trip:
+    /// the encode and decode loops both refill, and an off-by-one there
+    /// would truncate silently rather than error.
+    #[test]
+    fn deflate_round_trips_a_payload_larger_than_the_staging_buffer() {
+        // Incompressible-ish so the output cannot collapse to nothing.
+        let mut state = 0x1234_5678u32;
+        let payload: Vec<u8> = (0..(200 * 1024))
+            .map(|_| {
+                state ^= state << 13;
+                state ^= state >> 17;
+                state ^= state << 5;
+                state as u8
+            })
+            .collect();
+        let records = compress_deflate_literal_stream(&[&payload]).expect("deflate");
+        let refs: Vec<&[u8]> = records.iter().map(|r| r.as_slice()).collect();
+        let out = decompress_deflate_literal_stream(&refs).expect("inflate");
+        assert_eq!(
+            out.len(),
+            payload.len(),
+            "length must survive the round trip"
+        );
+        assert_eq!(out, payload, "bytes must survive the round trip");
     }
 
     // -------------------------------------------------------------------------

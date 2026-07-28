@@ -387,6 +387,35 @@ pub enum AerorsyncSessionPhase {
     Failed,
 }
 
+/// Which literal codec the negotiated compressor maps onto.
+///
+/// Kept separate from the negotiated *name* so an algorithm we advertise
+/// but cannot drive is a case the compiler forces every caller to handle,
+/// rather than something that quietly reads as "no compression".
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum LiteralCompression {
+    /// zstd, the modern default (rsync 3.2.0 and later).
+    Zstd,
+    /// `zlibx`: raw deflate, `Z_SYNC_FLUSH` per record, no matched-data
+    /// history coupling. What every pre-3.2 peer ends up on.
+    ///
+    /// Constructed by nobody yet on purpose: the codec behind it
+    /// (`compress_deflate_literal_stream` / `decompress_deflate_*`) is
+    /// written and round-trips, but the deflate token *framing* still has
+    /// to be pinned against captured bytes before a live session can use
+    /// it. This variant is the landing point for that work; until then
+    /// `literal_compression()` routes `zlibx` to `Unsupported` so the
+    /// session falls back cleanly instead of stalling.
+    #[allow(dead_code)]
+    Deflate,
+    /// Negotiation produced `none`, or the peer sent no algorithm list at
+    /// all: literals ride the wire raw.
+    None,
+    /// Agreed on something this client has no codec for (legacy `zlib`,
+    /// `lz4`). Carries the name so the error can say which.
+    Unsupported(String),
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SignatureHeader {
     Transfer {
@@ -2405,13 +2434,26 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
             })
             .collect();
 
-        let zstd_on = self.zstd_negotiated();
-        let compressed_blobs: Vec<Vec<u8>> = if zstd_on && !pending_raw.is_empty() {
-            compress_zstd_literal_stream(&pending_raw)
-                .map_err(|e| map_realwire_error(e, "zstd compress literal stream"))?
-        } else {
-            // No compression negotiated: emit raw payloads as-is.
+        // Compress with whatever the negotiation actually chose. Sending
+        // raw bytes inside DEFLATED_DATA records to a peer that agreed on
+        // a compressor is the mirror image of the download-side defect:
+        // the peer inflates them and gets garbage.
+        let compression = self.literal_compression();
+        let compressed_blobs: Vec<Vec<u8>> = if pending_raw.is_empty() {
             pending_raw.iter().map(|p| p.to_vec()).collect()
+        } else {
+            match &compression {
+                LiteralCompression::Zstd => compress_zstd_literal_stream(&pending_raw)
+                    .map_err(|e| map_realwire_error(e, "zstd compress literal stream"))?,
+                LiteralCompression::Deflate => {
+                    crate::aerorsync::real_wire::compress_deflate_literal_stream(&pending_raw)
+                        .map_err(|e| map_realwire_error(e, "deflate compress literal stream"))?
+                }
+                LiteralCompression::None => pending_raw.iter().map(|p| p.to_vec()).collect(),
+                LiteralCompression::Unsupported(name) => {
+                    return Err(unsupported_compressor_error(name));
+                }
+            }
         };
         // S8j: multi-chunk DEFLATED_DATA splitting.
         //
@@ -2734,12 +2776,24 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
             })
             .collect();
 
-        let zstd_on = self.zstd_negotiated();
-        let compressed_blobs: Vec<Vec<u8>> = if zstd_on && !pending_raw.is_empty() {
-            compress_zstd_literal_stream(&pending_raw)
-                .map_err(|e| map_realwire_error(e, "zstd compress literal stream"))?
-        } else {
+        // Second encode path (streaming upload); same dispatch as the
+        // bulk one above.
+        let compression = self.literal_compression();
+        let compressed_blobs: Vec<Vec<u8>> = if pending_raw.is_empty() {
             pending_raw.iter().map(|p| p.to_vec()).collect()
+        } else {
+            match &compression {
+                LiteralCompression::Zstd => compress_zstd_literal_stream(&pending_raw)
+                    .map_err(|e| map_realwire_error(e, "zstd compress literal stream"))?,
+                LiteralCompression::Deflate => {
+                    crate::aerorsync::real_wire::compress_deflate_literal_stream(&pending_raw)
+                        .map_err(|e| map_realwire_error(e, "deflate compress literal stream"))?
+                }
+                LiteralCompression::None => pending_raw.iter().map(|p| p.to_vec()).collect(),
+                LiteralCompression::Unsupported(name) => {
+                    return Err(unsupported_compressor_error(name));
+                }
+            }
         };
 
         let mut wire_ops: Vec<DeltaOp> = Vec::with_capacity(ops.len() + compressed_blobs.len());
@@ -2952,8 +3006,8 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
                 DeltaOp::Literal { .. } => None,
             })
             .sum();
-        let zstd_on = self.zstd_negotiated();
-        let engine_ops = self.delta_wire_to_engine_ops(&wire_ops, zstd_on)?;
+        let compression = self.literal_compression();
+        let engine_ops = self.delta_wire_to_engine_ops(&wire_ops, &compression)?;
         let block_size = self
             .sent_sum_head
             .as_ref()
@@ -3186,8 +3240,8 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
                 DeltaOp::Literal { .. } => None,
             })
             .sum();
-        let zstd_on = self.zstd_negotiated();
-        let engine_ops = self.delta_wire_to_engine_ops(&wire_ops, zstd_on)?;
+        let compression = self.literal_compression();
+        let engine_ops = self.delta_wire_to_engine_ops(&wire_ops, &compression)?;
         let _ = adapter; // adapter is unused on the streaming path -
                          // engine ops carry everything apply_delta_streaming needs.
                          // Kept in the signature for parity with the bulk twin and
@@ -3257,7 +3311,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
     fn delta_wire_to_engine_ops(
         &self,
         wire_ops: &[DeltaOp],
-        zstd_on: bool,
+        compression: &LiteralCompression,
     ) -> Result<Vec<EngineDeltaOp>, AerorsyncError> {
         // Pass 1: coalesce consecutive DeltaOp::Literal chunks into
         // per-run blobs. Each run represents one logical literal; the
@@ -3280,15 +3334,28 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
             literal_run_blobs.push(current_run);
         }
 
-        // Decompress each run. For non-zstd sessions the raw wire
-        // bytes already carry the raw literal, so the concatenated run
-        // blob is already the logical literal's bytes.
+        // Decompress each run through whichever codec the negotiation
+        // actually picked. Only `None` leaves the wire bytes as the
+        // literal; guessing that for every non-zstd peer is what used to
+        // corrupt the reconstruction.
         let run_slices: Vec<&[u8]> = literal_run_blobs.iter().map(|b| b.as_slice()).collect();
-        let raw_run_literals: Vec<Vec<u8>> = if zstd_on && !run_slices.is_empty() {
-            decompress_zstd_literal_stream_boundaries(&run_slices)
-                .map_err(|e| map_realwire_error(e, "zstd decompress delta literals"))?
-        } else {
+        let raw_run_literals: Vec<Vec<u8>> = if run_slices.is_empty() {
             literal_run_blobs
+        } else {
+            match compression {
+                LiteralCompression::Zstd => decompress_zstd_literal_stream_boundaries(&run_slices)
+                    .map_err(|e| map_realwire_error(e, "zstd decompress delta literals"))?,
+                LiteralCompression::Deflate => {
+                    crate::aerorsync::real_wire::decompress_deflate_literal_stream_boundaries(
+                        &run_slices,
+                    )
+                    .map_err(|e| map_realwire_error(e, "deflate decompress delta literals"))?
+                }
+                LiteralCompression::None => literal_run_blobs,
+                LiteralCompression::Unsupported(name) => {
+                    return Err(unsupported_compressor_error(name));
+                }
+            }
         };
 
         // Pass 2: emit engine ops in wire order. Consecutive wire
@@ -3328,19 +3395,71 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         Ok(out)
     }
 
-    fn zstd_negotiated(&self) -> bool {
-        // Rsync's preamble serialises algo lists as SPACE-separated,
-        // priority-descending tokens (see `perform_preamble_exchange`
-        // above). The historical comma split here silently disabled
-        // zstd against every real rsync peer: the list parses as a
-        // single "zstd lz4 zlibx zlib" literal token that never equals
-        // "zstd". The resulting raw-literal delta stream was still a
-        // protocol-shaped `DEFLATED_DATA` payload, which stock rsync
-        // tries to run through `recv_zstd_token` and then drops the
-        // connection ("error in rsync protocol data stream").
-        self.negotiated_compression_algos
-            .split_ascii_whitespace()
-            .any(|a| a.eq_ignore_ascii_case("zstd"))
+    /// The single literal compressor the two peers actually agreed on,
+    /// or `None` when the lists intersect nowhere.
+    ///
+    /// Same rule as [`Self::negotiated_checksum_algo`], and for the same
+    /// reason: rsync's `compat.c::parse_negotiate_str` scores the peer's
+    /// tokens by *our* priority order, which reduces to the first name in
+    /// our advertisement that the peer also advertised.
+    ///
+    /// This was missing, and its absence is what broke every non-zstd
+    /// peer. The old `zstd_negotiated` asked whether the peer's list
+    /// *contained* zstd, which is not the same question as whether zstd
+    /// *won*. Against a peer advertising `zlibx zlib none` the answer was
+    /// "no zstd", the session concluded there was no compression at all,
+    /// and the compressed literals were handed on as raw bytes. Nothing
+    /// fails at the token layer when that happens: it surfaces much later
+    /// as a reconstruction overshooting the file length. Measured against
+    /// a WD NAS rsync on 2026-07-28: 262162 bytes rebuilt for a 262144
+    /// byte file.
+    pub fn negotiated_compression_algo(&self) -> Option<&str> {
+        self.preamble_profile
+            .compression_algos
+            .split_whitespace()
+            .find(|ours| {
+                self.negotiated_compression_algos
+                    .split_whitespace()
+                    .any(|theirs| theirs == *ours)
+            })
+    }
+
+    /// How the negotiated winner maps onto the codecs this client has.
+    fn literal_compression(&self) -> LiteralCompression {
+        match self.negotiated_compression_algo() {
+            Some("zstd") => LiteralCompression::Zstd,
+            // `zlibx` is NOT routed to `Deflate` yet, and the reason is
+            // worth recording because the codec itself is finished and
+            // round-trips.
+            //
+            // Swapping the compressor is not enough: rsync's token layer
+            // differs per family. `send_zstd_token` and
+            // `send_deflated_token` (token.c) do not merely compress the
+            // same records differently, they frame the token stream
+            // differently. Driven live against a WD NAS on 2026-07-28,
+            // inflating the DEFLATED_DATA payloads stopped the
+            // reconstruction corruption and turned it into the session
+            // stalling instead, which is the token framing disagreeing.
+            //
+            // Pinning that needs captured bytes from a deflate session,
+            // the way the xattr wire work was done, not reasoning from
+            // the compressor alone. Until those exist, a peer on the
+            // deflate family gets a typed error and falls back
+            // immediately - which is still strictly better than the
+            // behaviour this replaces, where the compressed stream was
+            // read as raw and surfaced as a delta bug much later.
+            Some(name @ "zlibx") => LiteralCompression::Unsupported(name.to_string()),
+            // Legacy `zlib` additionally runs matched block data through
+            // the compressor history on both ends (`see_deflate_token`),
+            // which this codec does not model. `lz4` has no codec here at
+            // all. Both are named rather than silently treated as "no
+            // compression", which is the failure this replaces.
+            Some(other) if other != "none" => LiteralCompression::Unsupported(other.to_string()),
+            // `none` won, or the peer skipped the negotiated strings
+            // entirely (pre-3.2 servers that answer with an empty list):
+            // literals ride raw.
+            _ => LiteralCompression::None,
+        }
     }
 
     /// A2.4 entry point: drain the server's `SummaryFrame`, populate
@@ -3843,6 +3962,26 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         self.phase = AerorsyncSessionPhase::ClientPreambleRecvd;
         Ok(preamble.consumed)
     }
+}
+
+/// A compressor we advertise but cannot drive is a **negotiation** outcome,
+/// not a malformed frame.
+///
+/// The distinction decides what the user gets. `InvalidFrame` is classified
+/// as a hard error on purpose - it means our own code or the peer produced
+/// something illegal, and silently retrying would hide a bug. This is the
+/// other case: the wire was perfectly well formed, the two peers simply
+/// agreed on something this client has no codec for, and the classic rsync
+/// wrapper may well handle the same endpoint. `NegotiationFailed` routes it
+/// to `AttemptClassicSftpFallback`.
+fn unsupported_compressor_error(chosen: &str) -> AerorsyncError {
+    AerorsyncError::new(
+        AerorsyncErrorKind::NegotiationFailed,
+        format!(
+            "negotiation chose literal compressor {chosen:?}, which this client does not \
+             implement; falling back"
+        ),
+    )
 }
 
 fn map_realwire_error(err: RealWireError, context: &'static str) -> AerorsyncError {
