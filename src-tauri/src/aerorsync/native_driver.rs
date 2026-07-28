@@ -458,9 +458,38 @@ impl Default for PreambleProfile {
     fn default() -> Self {
         // B.2: SPACE-separated, priority-descending. Byte-pinned against
         // the frozen rsync 3.2.7 capture and CI lane 3 (rsync 3.4.1).
+        //
+        // The compression list deliberately does NOT mirror stock rsync's
+        // `zstd lz4 zlibx zlib none`, and the reason is the negotiation
+        // rule itself: the winner is the first name in OUR list that the
+        // peer also advertises (see `negotiated_compression_algo`). So
+        // every name here is a promise that we can drive the codec, and
+        // advertising one we cannot is not a harmless superset, it is a
+        // way to lose to ourselves. With stock's list, a peer built with
+        // lz4 but without zstd made us pick `lz4`, for which there is no
+        // codec in this module at all, and fall back to the classic
+        // wrapper while `zlibx` sat one position lower, implemented and
+        // measured. Same shape for `zlib`, which upstream itself split
+        // `zlibx` out of: it feeds matched block data through the
+        // compressor history on both ends (`token.c::see_deflate_token`)
+        // and so needs rsync's patched internal zlib, whose
+        // `inflateIncomp` is in neither the system zlib nor any Rust
+        // crate. The rsync man page says as much: zlibx is zlib "with
+        // matched data excluded from the compression stream (to try to
+        // make it more compatible with an external zlib implementation)".
+        //
+        // `none` is listed last on purpose. It guarantees the two lists
+        // always intersect, so a peer that offers only codecs we decline
+        // lands on uncompressed literals, which is a working delta
+        // transfer, instead of an empty intersection. That turns the
+        // `LiteralCompression::Unsupported` arm into a path the default
+        // profile cannot reach; it stays reachable through
+        // `AEROFTP_RSYNC_COMPRESS_ALGOS`, which is also the escape hatch
+        // for restoring stock's list verbatim on an endpoint that wants
+        // it.
         Self {
             checksum_algos: "xxh128 xxh3 xxh64 md5 md4".to_string(),
-            compression_algos: "zstd lz4 zlibx zlib".to_string(),
+            compression_algos: "zstd zlibx none".to_string(),
         }
     }
 }
@@ -4612,9 +4641,16 @@ mod tests {
         // rsync 3.2.7 capture and CI lane 3 (rsync 3.4.1). Any change
         // here is a wire-format change and must be reviewed against the
         // frozen oracle, not silently accepted.
+        //
+        // The compression list is deliberately NOT stock rsync's
+        // `zstd lz4 zlibx zlib none`: every name we advertise is a name
+        // the negotiation can hand us, so it has to be one we can drive.
+        // See `PreambleProfile::default` for the full reasoning, and
+        // `default_advertisement_never_yields_a_codec_we_cannot_drive`
+        // for the property this string exists to satisfy.
         let d = PreambleProfile::default();
         assert_eq!(d.checksum_algos, "xxh128 xxh3 xxh64 md5 md4");
-        assert_eq!(d.compression_algos, "zstd lz4 zlibx zlib");
+        assert_eq!(d.compression_algos, "zstd zlibx none");
     }
 
     #[test]
@@ -5031,6 +5067,136 @@ mod tests {
         assert_eq!(d.literal_compression(), LiteralCompression::Deflate);
     }
 
+    /// Build a driver carrying the real default advertisement and feed it
+    /// a server preamble offering `peer_algos`.
+    async fn negotiate_compression_with_default_profile(
+        peer_algos: &str,
+    ) -> (Option<String>, LiteralCompression) {
+        let encoded = encode_server_preamble(&ServerPreamble {
+            protocol_version: 31,
+            compat_flags: 0x01ff,
+            checksum_algos: "md5 md4 none".to_string(),
+            compression_algos: peer_algos.to_string(),
+            checksum_seed: 0xDEAD_BEEF,
+            consumed: 0,
+        });
+        // Deliberately the real default, not a hand-written profile: the
+        // whole point of these pins is what we ship, not what a test can
+        // construct.
+        let mut d = make_driver(mock_transport()).with_preamble_profile(PreambleProfile::default());
+        d.receive_server_preamble(&encoded).await.unwrap();
+        let winner = d.negotiated_compression_algo().map(|s| s.to_string());
+        (winner, d.literal_compression())
+    }
+
+    /// The defect this pins, in one sentence: stock rsync ranks `lz4`
+    /// above `zlibx`, this module has no lz4 codec at all, and the winner
+    /// is the first name in OUR list the peer also has. So mirroring
+    /// stock's advertisement made a peer built with lz4 but without zstd
+    /// hand us a codec we cannot drive while a working one sat one
+    /// position lower, and the transfer fell back to the classic wrapper
+    /// for no reason but our own advertisement.
+    #[tokio::test]
+    async fn lz4_capable_peer_without_zstd_still_lands_on_zlibx() {
+        let (winner, codec) =
+            negotiate_compression_with_default_profile("lz4 zlibx zlib none").await;
+        assert_eq!(winner.as_deref(), Some("zlibx"));
+        assert_eq!(codec, LiteralCompression::Deflate);
+    }
+
+    /// A peer offering only the one deflate family we decline must end up
+    /// on uncompressed literals, which is a working delta transfer, not on
+    /// a typed error that costs the whole native path. This is what the
+    /// trailing `none` in our advertisement buys.
+    #[tokio::test]
+    async fn zlib_only_peer_lands_on_uncompressed_literals_not_a_typed_error() {
+        let (winner, codec) = negotiate_compression_with_default_profile("zlib none").await;
+        assert_eq!(winner.as_deref(), Some("none"));
+        assert_eq!(codec, LiteralCompression::None);
+    }
+
+    /// The property, rather than another example: whatever a peer
+    /// advertises, the default profile must never negotiate a codec this
+    /// module cannot drive. So a future name added to our advertisement
+    /// without a codec fails here instead of against a stranger's NAS.
+    ///
+    /// Two sweeps, because either one alone has a blind spot. The subset
+    /// sweep covers every combination a stock rsync can offer, but it is
+    /// anchored to a hardcoded list: a codec added to our advertisement
+    /// that stock does not know (say a future `brotli`) would never be
+    /// offered by it, and the test would stay green while advertising
+    /// something undrivable, which is exactly the failure it exists to
+    /// catch. The second sweep closes that by driving the advertisement
+    /// itself: every token we ship is offered alone, so it must both win
+    /// and be drivable.
+    #[tokio::test]
+    async fn default_advertisement_never_yields_a_codec_we_cannot_drive() {
+        const STOCK: [&str; 5] = ["zstd", "lz4", "zlibx", "zlib", "none"];
+        for mask in 0u32..(1 << STOCK.len()) {
+            let peer: Vec<&str> = STOCK
+                .iter()
+                .enumerate()
+                .filter(|(i, _)| mask & (1 << i) != 0)
+                .map(|(_, n)| *n)
+                .collect();
+            let (winner, codec) = negotiate_compression_with_default_profile(&peer.join(" ")).await;
+            assert!(
+                !matches!(codec, LiteralCompression::Unsupported(_)),
+                "peer advertising {peer:?} negotiated {winner:?}, which the default \
+                 advertisement must never allow: {codec:?}"
+            );
+        }
+
+        // Driven from what we actually ship, not from a list beside it.
+        for ours in PreambleProfile::default()
+            .compression_algos
+            .split_whitespace()
+        {
+            let (winner, codec) = negotiate_compression_with_default_profile(ours).await;
+            assert_eq!(
+                winner.as_deref(),
+                Some(ours),
+                "a peer offering only {ours:?} must negotiate it, since we advertise it"
+            );
+            assert!(
+                !matches!(codec, LiteralCompression::Unsupported(_)),
+                "the default advertisement carries {ours:?}, which nothing here can \
+                 drive: {codec:?}. Either add the codec or stop advertising the name"
+            );
+        }
+    }
+
+    /// The `Unsupported` arm is unreachable through the default profile by
+    /// construction, so it keeps its own pin through the documented escape
+    /// hatch. Without this, making the default safe would silently delete
+    /// the coverage of the typed-error path that the classic fallback
+    /// depends on.
+    #[tokio::test]
+    async fn forcing_zlib_through_the_env_shaped_profile_still_takes_the_typed_error() {
+        let encoded = encode_server_preamble(&ServerPreamble {
+            protocol_version: 31,
+            compat_flags: 0x01ff,
+            checksum_algos: "md5 md4 none".to_string(),
+            compression_algos: "zlib none".to_string(),
+            checksum_seed: 0xDEAD_BEEF,
+            consumed: 0,
+        });
+        let mut d = make_driver(mock_transport()).with_preamble_profile(PreambleProfile {
+            checksum_algos: "xxh128 xxh3 xxh64 md5 md4".to_string(),
+            // What AEROFTP_RSYNC_COMPRESS_ALGOS="zstd lz4 zlibx zlib"
+            // produces: stock's list restored by hand.
+            compression_algos: "zstd lz4 zlibx zlib".to_string(),
+        });
+
+        d.receive_server_preamble(&encoded).await.unwrap();
+
+        assert_eq!(d.negotiated_compression_algo(), Some("zlib"));
+        assert_eq!(
+            d.literal_compression(),
+            LiteralCompression::Unsupported("zlib".to_string())
+        );
+    }
+
     /// CLAUDE-AV-B3-18: pin rsync 3.2.7
     /// `checksum.c::csum_len_for_type` for every name the runtime override
     /// can advertise. The xxh3 naming trap is intentional: `xxh3` is the
@@ -5183,8 +5349,8 @@ mod tests {
             // single unknown algorithm. The values below match the
             // post-fix driver (and the live wire observed against
             // rsync 3.4.1 / protocol 32).
-            checksum_algos: "xxh128 xxh3 xxh64 md5 md4".to_string(),
-            compression_algos: "zstd lz4 zlibx zlib".to_string(),
+            checksum_algos: PreambleProfile::default().checksum_algos,
+            compression_algos: PreambleProfile::default().compression_algos,
             consumed: 0,
         });
         assert_eq!(
@@ -6290,10 +6456,15 @@ mod tests {
                 .clone()
         };
         let outbound = outbound_arc.lock().unwrap().clone();
+        // Derived from the shipping profile rather than re-typed: this
+        // test checks that the driver EMITS what it advertises, while
+        // `preamble_profile_default_is_byte_pinned` is the single place
+        // that pins the literal strings. Duplicating them here is what
+        // let the advertisement and its pins drift apart before.
         let expected_client = encode_client_preamble(&ClientPreamble {
             protocol_version: 31,
-            checksum_algos: "xxh128 xxh3 xxh64 md5 md4".to_string(),
-            compression_algos: "zstd lz4 zlibx zlib".to_string(),
+            checksum_algos: PreambleProfile::default().checksum_algos,
+            compression_algos: PreambleProfile::default().compression_algos,
             consumed: 0,
         });
         let opts = FileListDecodeOptions {
@@ -6491,10 +6662,15 @@ mod tests {
                 .clone()
         };
         let outbound = outbound_arc.lock().unwrap().clone();
+        // Derived from the shipping profile rather than re-typed: this
+        // test checks that the driver EMITS what it advertises, while
+        // `preamble_profile_default_is_byte_pinned` is the single place
+        // that pins the literal strings. Duplicating them here is what
+        // let the advertisement and its pins drift apart before.
         let expected_client = encode_client_preamble(&ClientPreamble {
             protocol_version: 31,
-            checksum_algos: "xxh128 xxh3 xxh64 md5 md4".to_string(),
-            compression_algos: "zstd lz4 zlibx zlib".to_string(),
+            checksum_algos: PreambleProfile::default().checksum_algos,
+            compression_algos: PreambleProfile::default().compression_algos,
             consumed: 0,
         });
         let expected_after_preamble = [

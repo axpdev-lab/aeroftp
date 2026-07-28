@@ -13,7 +13,11 @@
 //! none"` with all CF_* negotiated. On the client side the wire shape is
 //! `version(4)` + `len_u8 + checksum_algos_ascii` + `len_u8 +
 //! compression_algos_ascii` with no `compat_flags` and no seed, typically
-//! 55 bytes for the matching profile. Early S8b drafts treated
+//! 55 bytes for the matching profile. That 55 is an OBSERVED peer shape,
+//! not ours: with the shipping [`PreambleProfile::default`] advertisement
+//! (`"xxh128 xxh3 xxh64 md5 md4"` over `"zstd zlibx none"`) the client
+//! preamble AeroRsync emits is 4 + 1+25 + 1+15 = 46 bytes. Early S8b
+//! drafts treated
 //! `compat_flags` as a fixed 2-byte opaque block; `compat.c::read_varint`
 //! in rsync 3.2.7 shows it is a proper rsync varint whose length depends
 //! on which bits are set: fixed in S8d.
