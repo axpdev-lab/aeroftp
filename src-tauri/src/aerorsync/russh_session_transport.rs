@@ -616,6 +616,25 @@ impl RusshRawStream {
     }
 }
 
+/// Append raw channel bytes when the existing wire-dump diagnostic is
+/// enabled. Unlike the annotated preamble dumps this preserves exact
+/// post-preamble framing for byte-level comparison with a stock peer.
+fn wire_dump_raw_append(file: &str, bytes: &[u8]) {
+    let dir = match std::env::var("AEROFTP_WIRE_DUMP_DIR") {
+        Ok(dir) if !dir.is_empty() => dir,
+        _ => return,
+    };
+    use std::io::Write as _;
+    let path = std::path::Path::new(&dir).join(file);
+    if let Ok(mut output) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+    {
+        let _ = output.write_all(bytes);
+    }
+}
+
 #[async_trait]
 impl RawByteStream for RusshRawStream {
     async fn read_bytes(&mut self, max: usize) -> Result<Vec<u8>, AerorsyncError> {
@@ -651,6 +670,10 @@ impl RawByteStream for RusshRawStream {
             match channel.wait().await {
                 Some(ChannelMsg::Data { data }) => {
                     let bytes = data.to_vec();
+                    // Record the channel event once, before splitting any
+                    // surplus into `pending`; draining `pending` must not
+                    // duplicate bytes in the diagnostic transcript.
+                    wire_dump_raw_append("raw_server_to_client.bin", &bytes);
                     if bytes.len() > max {
                         let surplus = bytes[max..].to_vec();
                         self.pending = surplus;
@@ -702,6 +725,7 @@ impl RawByteStream for RusshRawStream {
             .data(bytes)
             .await
             .map_err(|e| AerorsyncError::transport(format!("russh channel.data: {e}")))?;
+        wire_dump_raw_append("raw_client_to_server.bin", bytes);
         Ok(())
     }
 

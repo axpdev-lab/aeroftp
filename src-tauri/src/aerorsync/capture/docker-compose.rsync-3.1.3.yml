@@ -1,0 +1,21 @@
+# Isolated deflate oracle. It intentionally does not reuse lane 1 (:2222)
+# or lane 3 (:2224), because both are shared by other AeroRsync work.
+#
+#   HOST_UID=$(id -u) HOST_GID=$(id -g) docker compose \
+#     -f docker-compose.rsync-3.1.3.yml up -d --build
+services:
+  rsync-3-1-3:
+    image: aeroftp-rsync-313-deflate:local
+    build:
+      context: .
+      dockerfile: Dockerfile.rsync-3.1.3-sshd
+      args:
+        TESTUSER_UID: "${HOST_UID:-1000}"
+        TESTUSER_GID: "${HOST_GID:-1000}"
+    container_name: aeroftp-rsync-313-deflate
+    ports:
+      - "2225:22"
+    volumes:
+      - ./keys:/keys:ro
+      - ./workspace:/workspace
+    restart: unless-stopped

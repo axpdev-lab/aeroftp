@@ -16,7 +16,23 @@ RUN apt-get update \
         rsync \
     && rm -rf /var/lib/apt/lists/*
 
-RUN useradd -m -s /bin/bash testuser \
+# testuser's uid decides who owns everything `rsync --server` writes into the
+# bind-mounted /workspace. It used to be whatever useradd picked, i.e. 1000.
+#
+# That silently scoped the whole RSNP_TEST_REAL lane to one account. The live
+# tests seed their "remote" fixtures by writing straight into the host side of
+# the mount, and the upload tests reseed between algorithms - so on a machine
+# where the developer is not uid 1000, the first upload succeeds, rsync
+# recreates the file owned by 1000 with mode 644, and the second iteration
+# dies on PermissionDenied before sending a byte. Measured here 2026-07-28:
+# uid 1001 got 6/8, with both upload tests failing that way.
+#
+# Passing the caller's uid makes the mount writable by the caller. The default
+# stays 1000, so setups that already work are untouched.
+ARG TESTUSER_UID=1000
+ARG TESTUSER_GID=1000
+RUN groupadd -g "${TESTUSER_GID}" testuser \
+    && useradd -m -u "${TESTUSER_UID}" -g "${TESTUSER_GID}" -s /bin/bash testuser \
     && passwd -d testuser \
     && mkdir -p /var/run/sshd /home/testuser/.ssh /workspace /workspace/real_capture /opt/rsync-tee \
     && chmod 700 /home/testuser/.ssh \

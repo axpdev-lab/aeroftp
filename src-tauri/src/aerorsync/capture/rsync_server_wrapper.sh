@@ -30,7 +30,12 @@ if [[ -z "${SSH_ORIGINAL_COMMAND:-}" ]]; then
 fi
 
 TS="$(date -u +%Y%m%d_%H%M%S_%N)"
-CAPTURE_DIR="/workspace/real_capture/$TS"
+if [[ -r /etc/aeroftp-rsync-capture-root ]]; then
+  read -r CAPTURE_ROOT < /etc/aeroftp-rsync-capture-root
+else
+  CAPTURE_ROOT="/workspace/real_capture"
+fi
+CAPTURE_DIR="$CAPTURE_ROOT/$TS"
 mkdir -p "$CAPTURE_DIR"
 
 printf '%s\n' "$SSH_ORIGINAL_COMMAND" > "$CAPTURE_DIR/remote_command.txt"

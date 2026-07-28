@@ -9,7 +9,8 @@
 //! - default namespace filter: `user.*` only
 //! - ENOTSUP on the destination: typed warning + continue, unless
 //!   `fail_on_metadata_loss` turns it into a hard error
-//! - capability probe once per destination directory, not per file
+//! - capability probe once per destination directory, not per file, and
+//!   read-only: it inspects the directory, it never writes to it (R5)
 
 #![cfg(feature = "aerorsync")]
 
@@ -162,10 +163,23 @@ pub fn read_user_xattrs(path: &Path) -> Option<Vec<XattrPair>> {
 /// The **read** side does not follow symlinks: `llistxattr`/`lgetxattr` on
 /// Linux, `XATTR_NOFOLLOW` on macOS. Reading through a link would attribute
 /// the *target's* attributes to the *link*, and stock rsync does not do that.
-/// On Linux the kernel forbids `user.*` on a symlink outright, so a receiving
-/// rsync answers EPERM and the transfer fails; on macOS a link can carry its
-/// own attributes and those are the ones that belong on the wire. On a regular
-/// file the `l`-prefixed calls behave identically to the plain ones.
+/// On macOS a link can carry its own attributes and those are the ones that
+/// belong on the wire. On a regular file the `l`-prefixed calls behave
+/// identically to the plain ones.
+///
+/// R2 originally predicted that following the link would fail as a receiver
+/// EPERM, since Linux forbids `user.*` on a symlink. **That prediction was
+/// wrong**, and the correction matters because the real failure is worse.
+/// Measured on lane 3 against stock rsync 3.2.7 by running the pre-R2 wrappers
+/// on purpose: with an inline value nothing fails at all, because the kernel
+/// leaves the remote link bare either way and the test passes for the wrong
+/// reason. Above `MAX_FULL_DATUM` the pre-R2 read emits a per-file out-of-band
+/// section for an entry the peer is not expecting, and the stream
+/// desynchronises: `HardRejection(InvalidFrame): expected NDX_DONE (0x00), got
+/// 0x01`. An EPERM is visible and local to one file; a desynchronised protocol
+/// gives arbitrary behaviour downstream. This is why the wire pin in
+/// `delta_upload_symlink_xattr_not_inherited_live_lane_3` deliberately uses an
+/// out-of-band value: an inline one cannot fail.
 ///
 /// The **write** side keeps following, because `apply_xattrs` is documented to
 /// run on the temp file before rename, which is a regular file by construction.
@@ -182,6 +196,26 @@ mod sys {
         #[cfg(not(any(target_os = "macos", target_os = "ios")))]
         {
             libc::llistxattr(path, list, size)
+        }
+    }
+
+    /// `listxattr` that **does** follow symlinks, for the capability probe
+    /// only (R5). The probe asks a question about a *filesystem*, so when the
+    /// destination directory path ends in a symlink the answer that matters is
+    /// the target's, not the link's. Everywhere else the read side uses the
+    /// `l`-prefixed calls above.
+    pub unsafe fn listxattr_following(
+        path: *const c_char,
+        list: *mut c_char,
+        size: usize,
+    ) -> isize {
+        #[cfg(any(target_os = "macos", target_os = "ios"))]
+        {
+            libc::listxattr(path, list, size, 0)
+        }
+        #[cfg(not(any(target_os = "macos", target_os = "ios")))]
+        {
+            libc::listxattr(path, list, size)
         }
     }
 
@@ -218,16 +252,10 @@ mod sys {
         }
     }
 
-    pub unsafe fn removexattr(path: *const c_char, name: *const c_char) -> i32 {
-        #[cfg(any(target_os = "macos", target_os = "ios"))]
-        {
-            libc::removexattr(path, name, 0)
-        }
-        #[cfg(not(any(target_os = "macos", target_os = "ios")))]
-        {
-            libc::removexattr(path, name)
-        }
-    }
+    // `removexattr` used to live here, for the sole purpose of cleaning up
+    // after the write-based capability probe. R5 replaced that probe with a
+    // read-only `listxattr`, so nothing writes an attribute it then has to
+    // take back, and the wrapper went with it.
 }
 
 #[cfg(unix)]
@@ -418,23 +446,50 @@ fn apply_xattrs_unix(
 
 // --- capability probe cache (once per destination directory) ---------------
 
-static XATTR_SUPPORT_CACHE: Mutex<Option<HashMap<PathBuf, bool>>> = Mutex::new(None);
+/// How many destination directories the probe cache may remember at once.
+///
+/// The cache used to be unbounded, so a long-lived process that synced into
+/// many directories grew one entry per directory it ever saw, for the life of
+/// the process. The cap turns that into a fixed cost; overflow clears the map
+/// wholesale rather than evicting cleverly, because since R5 a re-probe is a
+/// single read-only `listxattr` and is not worth an LRU.
+const XATTR_CACHE_MAX_ENTRIES: usize = 256;
+
+/// How long a cached answer stays trusted.
+///
+/// Entries used to live forever, which made the *negative* direction sticky: a
+/// filesystem remounted with `user_xattr`, or a destination that moved to a
+/// different device under the same path, kept being treated as unsupported
+/// until the process restarted. (The positive direction always self-corrected,
+/// because the real `setxattr` re-caches a negative on ENOTSUP.) A short expiry
+/// bounds that staleness without giving up the per-file syscall saving.
+const XATTR_CACHE_TTL: std::time::Duration = std::time::Duration::from_secs(60);
+
+type XattrCacheEntry = (bool, std::time::Instant);
+
+static XATTR_SUPPORT_CACHE: Mutex<Option<HashMap<PathBuf, XattrCacheEntry>>> = Mutex::new(None);
 
 fn remember_xattr_support(dir: &Path, supported: bool) {
     let Ok(mut guard) = XATTR_SUPPORT_CACHE.lock() else {
         return;
     };
     let map = guard.get_or_insert_with(HashMap::new);
-    map.insert(dir.to_path_buf(), supported);
+    if map.len() >= XATTR_CACHE_MAX_ENTRIES && !map.contains_key(dir) {
+        map.clear();
+    }
+    map.insert(dir.to_path_buf(), (supported, std::time::Instant::now()));
 }
 
-/// Probe whether `dir`'s filesystem accepts user xattrs. Cached per path.
+/// Probe whether `dir`'s filesystem carries xattrs. Cached per path, bounded
+/// by [`XATTR_CACHE_MAX_ENTRIES`] and expiring after [`XATTR_CACHE_TTL`].
 #[cfg(unix)]
 pub fn fs_supports_xattrs(dir: &Path) -> bool {
     if let Ok(guard) = XATTR_SUPPORT_CACHE.lock() {
         if let Some(map) = guard.as_ref() {
-            if let Some(&known) = map.get(dir) {
-                return known;
+            if let Some(&(known, stamped)) = map.get(dir) {
+                if stamped.elapsed() < XATTR_CACHE_TTL {
+                    return known;
+                }
             }
         }
     }
@@ -448,32 +503,34 @@ pub fn fs_supports_xattrs(_dir: &Path) -> bool {
     false
 }
 
+/// Probe whether `dir`'s filesystem carries extended attributes, **without
+/// writing anything** (R5).
+///
+/// The earlier probe did `setxattr` + `removexattr` on the caller's
+/// destination directory. That answered the question, but at the price of
+/// touching a directory we were only asked to inspect: a crash between the two
+/// calls left a stray `user.aeroftp.xattr_probe` behind on the user's own
+/// folder. `listxattr` distinguishes ENOTSUP from "supported, currently empty"
+/// just as well and cannot leave residue.
+///
+/// The probe is deliberately allowed to be optimistic. It is a fast path to
+/// skip work, never the authority: the authority is the real `setxattr` in
+/// [`apply_xattrs_unix`], which maps ENOTSUP to the soft warning path and
+/// caches the negative. So every error other than ENOTSUP (EACCES on a
+/// directory we may still write into, ENOENT on a racing path) answers
+/// "supported" and lets the real call decide.
 #[cfg(unix)]
 fn probe_xattr_support(dir: &Path) -> bool {
     use std::ffi::CString;
     use std::os::unix::ffi::OsStrExt;
 
-    // Prefer probing the directory itself with a throwaway user xattr.
-    // If the directory is not writable / not an xattr carrier, fall back
-    // to "supported" optimistically so a later setxattr on the temp file
-    // can still try (and map ENOTSUP to the soft path).
     let Ok(c_path) = CString::new(dir.as_os_str().as_bytes()) else {
         return true;
     };
-    let Ok(c_name) = CString::new("user.aeroftp.xattr_probe") else {
-        return true;
-    };
-    let probe = b"1";
-    let rc = unsafe {
-        sys::setxattr(
-            c_path.as_ptr(),
-            c_name.as_ptr(),
-            probe.as_ptr() as *const libc::c_void,
-            probe.len(),
-        )
-    };
-    if rc == 0 {
-        let _ = unsafe { sys::removexattr(c_path.as_ptr(), c_name.as_ptr()) };
+    let rc = unsafe { sys::listxattr_following(c_path.as_ptr(), std::ptr::null_mut(), 0) };
+    if rc >= 0 {
+        // Includes rc == 0: the directory carries no attributes today, but the
+        // filesystem accepts the call, which is what was asked.
         return true;
     }
     let err = std::io::Error::last_os_error();
@@ -612,6 +669,85 @@ mod tests {
             }
             XattrApplyOutcome::Failed { message } => panic!("apply failed: {message}"),
         }
+    }
+
+    /// R5: the capability probe inspects the destination directory, it does
+    /// not write to it. The previous probe did `setxattr` + `removexattr`, so
+    /// a crash between the two left `user.aeroftp.xattr_probe` behind on a
+    /// folder the user owns. This pins the absence of any write at all: the
+    /// directory's attribute set must be identical before and after, which
+    /// also fails if someone reintroduces a write-then-clean-up probe (the
+    /// probe name would appear in the middle) or forgets the cleanup.
+    #[cfg(unix)]
+    #[test]
+    fn capability_probe_leaves_the_destination_directory_untouched() {
+        let dir = tempfile::tempdir().expect("tempdir");
+
+        let before = list_dir_xattr_names(dir.path());
+        let supported = fs_supports_xattrs(dir.path());
+        let after = list_dir_xattr_names(dir.path());
+
+        assert_eq!(
+            before, after,
+            "the probe changed the directory's attributes (supported={supported})"
+        );
+        assert!(
+            !after.iter().any(|n| n.contains("xattr_probe")),
+            "probe residue left on the destination directory: {after:?}"
+        );
+    }
+
+    /// R5: the probe cache is bounded. It used to be an unbounded process-wide
+    /// map, so a long-lived sync into many directories grew one entry per
+    /// directory for the life of the process.
+    #[cfg(unix)]
+    #[test]
+    fn capability_probe_cache_stays_bounded() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        for i in 0..(XATTR_CACHE_MAX_ENTRIES + 32) {
+            let sub = dir.path().join(format!("d{i:04}"));
+            std::fs::create_dir(&sub).expect("create subdir");
+            let _ = fs_supports_xattrs(&sub);
+        }
+        let len = XATTR_SUPPORT_CACHE
+            .lock()
+            .ok()
+            .and_then(|g| g.as_ref().map(|m| m.len()))
+            .expect("cache populated");
+        assert!(
+            len <= XATTR_CACHE_MAX_ENTRIES,
+            "probe cache grew past its cap: {len} > {XATTR_CACHE_MAX_ENTRIES}"
+        );
+    }
+
+    /// Names of the extended attributes on `dir`, sorted. Empty when the
+    /// filesystem does not carry any (which is still a valid comparison:
+    /// the assertion is that the set does not *change*).
+    #[cfg(unix)]
+    fn list_dir_xattr_names(dir: &Path) -> Vec<String> {
+        use std::ffi::CString;
+        use std::os::unix::ffi::OsStrExt;
+
+        let Ok(c_path) = CString::new(dir.as_os_str().as_bytes()) else {
+            return Vec::new();
+        };
+        let needed = unsafe { sys::listxattr_following(c_path.as_ptr(), std::ptr::null_mut(), 0) };
+        if needed <= 0 {
+            return Vec::new();
+        }
+        let mut buf = vec![0i8; needed as usize];
+        let got = unsafe { sys::listxattr_following(c_path.as_ptr(), buf.as_mut_ptr(), buf.len()) };
+        if got <= 0 {
+            return Vec::new();
+        }
+        let bytes: Vec<u8> = buf[..got as usize].iter().map(|&c| c as u8).collect();
+        let mut names: Vec<String> = bytes
+            .split(|&b| b == 0)
+            .filter(|s| !s.is_empty())
+            .map(|s| String::from_utf8_lossy(s).into_owned())
+            .collect();
+        names.sort();
+        names
     }
 
     /// R2: reading a symlink must not report the target's attributes as the
