@@ -394,6 +394,7 @@ export const PROVIDER_GRID: readonly ProviderGridTile[] = [
     { logoId: 'yandexdisk', icon: 'YandexDisk.png', docsPath: 'providers/yandex' },
     { logoId: '4shared', icon: '4shared.png', docsPath: 'providers/4shared' },
     { logoId: 'backblaze', icon: 'backblaze.png', docsPath: 'providers/backblaze-b2' },
+    { logoId: 'blomp', icon: 'blomp.png', docsPath: 'providers/blomp' },
     // Object storage (S3-compatible)
     { logoId: 'amazon-s3', icon: 'Amazon_Web_Services.png', docsPath: 'providers/aws-s3', label: 'AWS S3' },
     { logoId: 'google-cloud-storage', icon: 'googlecloud.png', docsPath: 'providers/google-cloud-storage' },
