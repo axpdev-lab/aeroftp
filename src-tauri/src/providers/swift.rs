@@ -34,6 +34,12 @@ use super::{
     ProviderError, ProviderType, RemoteEntry, StorageInfo, StorageProvider,
 };
 
+/// Per-request timeout for the (tiny) auth exchanges. The shared client keeps a
+/// long read timeout for large object bodies; auth responses are small, so cap
+/// them separately so an accepting-but-stalling endpoint cannot hang a connect
+/// for the full body timeout.
+const AUTH_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+
 // ─── Configuration ─────────────────────────────────────────────────
 
 /// OpenStack Swift configuration (extracted from ProviderConfig)
@@ -201,7 +207,13 @@ impl SwiftProvider {
     /// Keystone v2 — the modern norm and what Blomp serves — because
     /// `authenticate()` self-heals to TempAuth v1 if that guess is wrong.
     async fn detect_auth_version(&self, base: &str) -> AuthVersion {
-        if let Ok(resp) = self.client.get(base).send().await {
+        if let Ok(resp) = self
+            .client
+            .get(base)
+            .timeout(AUTH_REQUEST_TIMEOUT)
+            .send()
+            .await
+        {
             if let Ok(text) = resp.text().await {
                 if text.contains("v2.0") || text.contains("v3") {
                     return AuthVersion::V2;
@@ -222,6 +234,7 @@ impl SwiftProvider {
         let resp = self
             .client
             .get(&url)
+            .timeout(AUTH_REQUEST_TIMEOUT)
             .header("X-Auth-User", &self.config.username)
             .header("X-Auth-Key", self.config.password.expose_secret())
             .send()
@@ -300,6 +313,7 @@ impl SwiftProvider {
         let resp = self
             .client
             .post(&url)
+            .timeout(AUTH_REQUEST_TIMEOUT)
             .header("Content-Type", "application/json")
             .json(&body)
             .send()
@@ -500,11 +514,12 @@ impl SwiftProvider {
         let resp = self.swift_request(Method::HEAD, &url, None, &[]).await?;
         let status = resp.status();
         if status.is_success() {
-            info!("Swift using username container (Blomp fallback): {}", name);
+            // Do not log `name`: the Blomp container name is the login email (PII).
+            info!("Swift using per-account username container (Blomp fallback)");
             Ok(name)
         } else {
             Err(ProviderError::ServerError(format!(
-                "Account listing denied and username container '{name}' not reachable (HTTP {status})"
+                "Account listing denied and the per-account (username) container is not reachable (HTTP {status})"
             )))
         }
     }

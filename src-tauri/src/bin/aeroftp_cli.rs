@@ -25631,10 +25631,11 @@ fn profile_value_to_provider_config(
         "kdrive" => ProviderType::KDrive,
         "github" => ProviderType::GitHub,
         "gitlab" => ProviderType::GitLab,
-        // Blomp is an OpenStack Swift deployment; the GUI registry preset
-        // carries protocol: 'swift', but a CLI profile-add --protocol blomp
-        // stores "blomp" verbatim. Route it to the Swift provider so the
-        // dev-only alias connects like any other Swift backend.
+        // Blomp is an OpenStack Swift deployment. New profiles persist the
+        // canonical form (protocol "swift" + providerId "blomp"; see
+        // canonical_protocol_and_provider), so the "blomp" arm here is only
+        // legacy-profile compatibility for entries created before that
+        // normalization. Both route to the Swift provider.
         "swift" | "blomp" => ProviderType::Swift,
         "yandexdisk" => ProviderType::YandexDisk,
         "googledrive" => ProviderType::GoogleDrive,
