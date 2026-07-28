@@ -26,6 +26,7 @@ pub mod atomic_write;
 pub mod azure;
 pub mod b2;
 pub mod box_provider;
+pub mod checksum_matrix;
 pub mod cloudinary;
 pub mod drime_cloud;
 pub mod dropbox;
@@ -1045,8 +1046,53 @@ pub trait StorageProvider: Send + Sync {
     }
 
     /// Get checksum(s) for a file. Returns HashMap with algorithm → hex digest.
+    ///
+    /// The digests are of the PLAINTEXT and are safe to compare against a
+    /// local hash of the same file, which is what the sync engine does. A
+    /// provider that cannot promise that (a crypt overlay) leaves this
+    /// unsupported and answers [`stored_checksum`](Self::stored_checksum)
+    /// instead.
     async fn checksum(&mut self, _path: &str) -> Result<HashMap<String, String>, ProviderError> {
         Err(ProviderError::NotSupported("checksum".to_string()))
+    }
+
+    /// Which digests this backend can produce without downloading the file.
+    ///
+    /// Describes the backend for a surface that has to decide what to offer;
+    /// it drives no transfer or comparison decision, so a provider can report
+    /// a capability here (a crypt overlay reporting ciphertext digests)
+    /// without that leaking into sync, which keeps reading
+    /// [`supports_checksum`](Self::supports_checksum).
+    ///
+    /// The default reads the shared matrix keyed by
+    /// [`provider_type`](Self::provider_type), so a backend's stance lives in
+    /// one exhaustively-matched table rather than scattered across impls.
+    /// Only backends whose answer is genuinely per-connection override it:
+    /// FTP narrows it to what `FEAT` advertised, SFTP to whether the SSH
+    /// session is up, and the crypt overlay wraps the inner backend's.
+    ///
+    /// `path` is taken because under a crypt overlay the answer really does
+    /// vary by path: a file inside the Overlays Path is stored encrypted and
+    /// its digest covers ciphertext, while a file outside it is stored as-is
+    /// and its digest is an ordinary plaintext one. Every other backend
+    /// ignores the argument.
+    fn checksum_capability(&self, _path: &str) -> ChecksumCapability {
+        checksum_matrix::capability(self.provider_type())
+    }
+
+    /// Digests of the bytes AS STORED on the server.
+    ///
+    /// Identical to [`checksum`](Self::checksum) for every ordinary backend,
+    /// where stored bytes and plaintext are the same thing. A crypt overlay
+    /// overrides it to return the inner backend's digest of the ciphertext,
+    /// which is a real answer to "did the stored object change" and a wrong
+    /// answer to "does this match my local file"; the caller is told which it
+    /// is by [`ChecksumCapability::ciphertext`] and must label it.
+    async fn stored_checksum(
+        &mut self,
+        path: &str,
+    ) -> Result<HashMap<String, String>, ProviderError> {
+        self.checksum(path).await
     }
 
     /// Whether this provider supports remote/URL upload (server fetches a URL)

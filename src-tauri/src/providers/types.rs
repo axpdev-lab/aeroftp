@@ -1842,6 +1842,39 @@ pub struct StorageInfo {
     pub versioning_bytes: Option<u64>,
 }
 
+/// Which digests a backend can hand back for a file WITHOUT downloading it.
+///
+/// [`StorageProvider::supports_checksum`](crate::providers::StorageProvider::supports_checksum)
+/// answers "is there one at all", which is all the sync engine needs. This
+/// answers "which ones", which is what a user-facing surface needs in order to
+/// say *before* the click that MD5 is not coming from a backend that only ever
+/// returns SHA-1. Populated from
+/// [`checksum_matrix`](crate::providers::checksum_matrix).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChecksumCapability {
+    /// Canonical lowercase algorithm keys (`md5`, `sha256`, `quickxor`, ...),
+    /// in the order a surface should offer them. Empty means this backend has
+    /// no server-side digest at all.
+    pub algorithms: Vec<String>,
+    /// True when `algorithms` is what the backend *may* return but cannot be
+    /// known until asked, because it depends on the server rather than on the
+    /// protocol (FTP `FEAT`, WebDAV `oc:checksums`). A surface still offers
+    /// them, and still reports honestly when one comes back absent.
+    pub negotiated: bool,
+    /// True when the digests describe the bytes AS STORED and those are not
+    /// the plaintext the user sees: inside a crypt overlay the value is real
+    /// and useful for "did the stored object change", but comparing it to a
+    /// local hash of the same file will always differ. A surface that sets
+    /// this must say so where the value is shown.
+    pub ciphertext: bool,
+    /// Stable token naming why a digest may still be missing for a given
+    /// object (`s3-etag`, `b2-unverified`, ...). Callers render their own
+    /// translated wording for it; it is never displayed raw.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub caveat: Option<String>,
+}
+
 /// File version metadata (for versioned providers like Google Drive, Dropbox, OneDrive)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FileVersion {

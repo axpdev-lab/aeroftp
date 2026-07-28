@@ -8,10 +8,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
+use super::checksum_matrix;
 use super::types::is_session_closed_error_message;
 use super::{
-    ProviderError, ProviderTransferExecutorKind, ProviderType, RemoteEntry, SftpConfig,
-    StorageProvider,
+    ChecksumCapability, ProviderError, ProviderTransferExecutorKind, ProviderType, RemoteEntry,
+    SftpConfig, StorageProvider,
 };
 use crate::ssh_exec::ssh_exec_collect;
 use async_trait::async_trait;
@@ -2189,6 +2190,17 @@ impl StorageProvider for SftpProvider {
         // `checksum()` degrades to an empty map (consumers then omit) if the
         // server has no `sha256sum`: honest, like rclone.
         self.ssh_handle.is_some()
+    }
+
+    /// Gated on the same live session as `supports_checksum`: without an SSH
+    /// channel there is nobody to run `sha256sum`, so the surface should offer
+    /// nothing rather than a button that cannot fire.
+    fn checksum_capability(&self, _path: &str) -> ChecksumCapability {
+        if self.ssh_handle.is_some() {
+            checksum_matrix::capability(self.provider_type())
+        } else {
+            ChecksumCapability::default()
+        }
     }
 
     /// Server-side SHA-256 computed by the remote host via an SSH exec

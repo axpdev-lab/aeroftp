@@ -187,6 +187,67 @@ open still fails, re-toggle File Transfer on the phone and retry.
 
 ---
 
+## Checksums and Hashes
+
+Which digests a backend can hand back **without downloading the file**, and which it cannot. AeroFTP never downloads a remote file in order to hash it: a digest either comes from metadata the backend already holds (an S3 ETag, a Drive `file.hashes` field, an ownCloud `oc:checksums` property) or from work the *server* does on its own disk (`sha256sum` over an SSH exec channel). Where a backend has nothing to offer, the Properties → Checksum tab says so instead of offering a button that cannot succeed.
+
+**Local files** are different: AeroFTP reads them itself, so MD5, SHA-1, SHA-256, SHA-512 and BLAKE3 are all available for anything on your own disk, on every platform.
+
+A backend's own scheme keeps its own name. Dropbox's `content_hash` is a SHA-256 over the SHA-256 of each 4 MiB block and GitHub's is a git blob SHA-1; neither equals a plain digest of the same bytes, so they are reported under their own labels rather than aliased onto SHA-256 and SHA-1, where they would silently fail every comparison.
+
+<!-- BEGIN CHECKSUM-MATRIX -->
+<!-- Generated from src-tauri/src/providers/checksum_matrix.rs. Do not edit by hand:
+     `cargo test --lib checksum_matrix` fails when this block drifts, and
+     `AEROFTP_UPDATE_DOCS=1 cargo test --lib checksum_matrix` rewrites it. -->
+
+| Backend | Server-side digests | Notes |
+| --- | --- | --- |
+| FTP | MD5, SHA-1, SHA-256, CRC32 (negotiated) | Depends on what the server advertises in FEAT: `HASH` (algorithm chosen by the server), or the older `XMD5` / `XSHA1` / `XCRC`. A server advertising none offers no digest. |
+| FTPS | MD5, SHA-1, SHA-256, CRC32 (negotiated) | Depends on what the server advertises in FEAT: `HASH` (algorithm chosen by the server), or the older `XMD5` / `XSHA1` / `XCRC`. A server advertising none offers no digest. |
+| SFTP | SHA-256 | Computed by the remote host with `sha256sum` over an SSH exec channel: the bytes are read on the server, never sent to us. Omitted if the host has no `sha256sum`. |
+| WebDAV | SHA-1, MD5, Adler-32 (negotiated) | Only ownCloud and Nextcloud publish the `oc:checksums` property, and only for files uploaded by a client that sent one. Every other WebDAV server omits it. |
+| S3 | MD5 | The ETag is the object MD5 only for single-part, non-SSE-KMS objects. For a multipart or KMS-encrypted object the digest is omitted rather than guessed. |
+| Azure Blob | - |  |
+| Swift | - |  |
+| Google Drive | MD5, SHA-1, SHA-256 | Native Google Workspace documents have no byte stream and therefore no digest. |
+| OneDrive | SHA-1, SHA-256, QuickXorHash | Which of the three is present depends on the account: personal OneDrive publishes QuickXorHash, business and SharePoint typically SHA-1 and SHA-256. |
+| Dropbox | Dropbox content hash | Not a plain file digest: a SHA-256 over the SHA-256 of each 4 MiB block. Comparable only against another Dropbox content hash. |
+| Box | SHA-1 |  |
+| pCloud | MD5, SHA-1, SHA-256 |  |
+| Yandex Disk | MD5 |  |
+| Koofr | Koofr hash | Koofr's own opaque hash. Comparable only against another Koofr hash. |
+| Backblaze B2 | SHA-1 | Large files and uploads B2 recorded as `unverified:` carry no usable `contentSha1`; those are omitted. |
+| GitHub | Git blob SHA-1 | The git blob SHA-1, computed over `blob <len>\0` + content, so it does not match a plain SHA-1 of the same file. |
+| GitLab | - |  |
+| Immich | SHA-1 | The asset checksum Immich records at upload time. |
+| MEGA | - |  |
+| Filen | - |  |
+| Internxt Drive | - |  |
+| Zoho WorkDrive | - |  |
+| kDrive | - |  |
+| Jottacloud | - |  |
+| Drime Cloud | - |  |
+| FileLu | - |  |
+| 4shared | - |  |
+| OpenDrive | - |  |
+| Google Photos | - |  |
+| ImageKit | - |  |
+| Uploadcare | - |  |
+| Cloudinary | - |  |
+| MTP | - |  |
+
+<!-- END CHECKSUM-MATRIX -->
+
+### Inside the Overlays Path
+
+Under a crypt overlay (AeroCrypt or rclone `crypt` interop) the server stores ciphertext, so a server-side digest covers the encrypted bytes and **will not match a hash of your local plaintext file**. That is not a failure, it is what encryption means: the digest is still a valid answer to "has the stored object changed", and AeroFTP labels it as covering the stored ciphertext wherever it shows it.
+
+For an integrity check against your local files inside an overlay, use `aeroftp-cli crypt verify`, which stream-decrypts the remote objects (without writing plaintext to disk) and compares the decrypted content.
+
+The sync engine never uses these digests: `supports_checksum()` stays false for an overlay, precisely so a comparison of ciphertext-vs-plaintext hashes cannot mark every unchanged file as different.
+
+---
+
 ## Share Link Support
 
 | Protocol | Link | Password | Expiry | Permissions | Notes |
