@@ -374,17 +374,44 @@ This is a **Beta preview** shipping in v4.1.0. The transport is hardened (iroh 1
 
 ### AeroRsync - Native Rust Delta Sync
 
-> [Full documentation →](https://docs.aeroftp.app/features/aerorsync.html)
+> [Full documentation →](https://docs.aeroftp.app/features/aerorsync.html) · [Parity reference →](docs/PROTOCOL-RSYNC-COMPARE.md)
 
-Independent clean-room Rust implementation of the rsync wire protocol 31. AeroRsync ships byte-level delta sync without bundling or replacing the `rsync` binary, so cross-platform deployments (Windows first-class) get the same wire-compatible delta transport as Unix.
+Independent clean-room Rust implementation of the rsync **wire protocol 31**. AeroRsync speaks bytes-on-wire to a standard remote `rsync --server`, so AeroFTP does byte-level delta sync **without an `rsync` binary on the client** - no `rsync.exe` bundle, no MSYS2, no WSL. That is the whole reason it exists: on Unix `rsync` is already everywhere, on Windows it is not, and bundling a GPL binary or demanding WSL would have split the product into a first-class Unix and a second-class Windows.
 
-The delta path is wired into:
+It does **not** replace rsync. It talks to it.
 
-- **AeroSync** delta transfers (the original entry point).
-- **Cross-Profile Transfer** SFTP to SFTP with key-based auth, so only the bytes that differ from the destination travel on the wire.
-- **AeroTools Code Editor** save against a remote SFTP file, so a one-line change to a 5 MB file ships only the diff.
+**Where it runs.** The Cargo feature `aerorsync` is compiled by default, and the runtime toggle (Settings → Advanced) has been ON by default in `Auto` mode since v3.8.0. On Unix `Auto` attempts the native engine first and keeps the classic `rsync` binary as a fallback; on Windows the native engine is the only delta path. Soft conditions (file below `min_file_size`, no key on disk, no remote `rsync`) route back to a plain upload; security failures (host-key mismatch, permission denied) are hard errors and never silently downgrade.
 
-**Session-cached batch transport (v3.7.0)**: a single SSH session amortizes many consecutive delta transfers via the new `AerorsyncBatch` trait: open the session once, transfer N files, close once. `SyncReport` surfaces `delta_files` (per-file delta breakdown) and `bytes_on_wire` so the UI shows exactly which files used the optimized path and the cumulative wire savings. Current scope is SFTP destinations with key-based auth; other providers and the classic `rsync` binary path on Unix coexist on the same `DeltaTransport` trait surface. The Cargo feature `aerorsync` is compiled by default, and the runtime toggle (Settings → Advanced) is ON by default (Auto mode) since v3.8.0, after the cross-platform host-key negotiation asymmetry was resolved. Soft fallbacks (file too small, no key on disk, missing remote helper) silently route back to the classic upload path.
+**Where it is wired.** AeroSync delta transfers, Cross-Profile SFTP-to-SFTP, and AeroTools Code Editor saves against a remote file - a one-line change to a 5 MB file ships only the differing blocks. `AerorsyncBatch` reuses one SSH session for N files in a sync batch, and `SyncReport` surfaces `delta_files` and `bytes_on_wire` so the UI shows which files took the optimized path and what it saved.
+
+#### Measured against stock rsync
+
+Same 50 MB files, same container, same SSH loopback, back-to-back on an idle 24-core machine. The rsync side runs `-logDtprcz`, the client flags that produce **byte-identical server arguments** to the ones AeroRsync sends (`-logDtprcze.iLsfxCIvu`), verified with a wrapper that logged the server command line.
+
+| Scenario | AeroRsync | stock rsync 3.2.7 |
+|---|---|---|
+| Cold upload, 50 MB incompressible | **1.07 s** | 1.37 s |
+| Delta upload, 640 × 4 KiB changed | 2.00 s | **1.36 s** |
+| Delta download, same change set | **1.31 s** | 1.34 s |
+| Redundant upload (nothing to do) | **0.46 s** | 1.26 s |
+| 20 × 256 KiB, one session per file | **4.98 s** | 25.25 s |
+| 20 × 256 KiB, one recursive `rsync` call | *(no recursive scope)* | **1.31 s** |
+
+Read honestly, that is three different results. AeroRsync wins where a process would have to be spawned - a cold upload, a no-op, and twenty small files one at a time, where `rsync` pays a fresh `ssh` plus `rsync` fork per file and AeroRsync opens an in-process session. It **loses the delta upload by ~30%** while putting the same work on the wire: 3,748,322 bytes against rsync's 3,743,589, a 0.13% difference, so the gap is CPU in the encode path and not the protocol. And rsync still does the whole 20-file tree in **one** invocation in 1.31 s, which is 3.8× better than AeroRsync's per-file path - that is the recursive-scope gap, and `AerorsyncBatch` is what closes it at the transport layer.
+
+Repeated across three runs the timings move by a few percent and the byte counts do not move at all. Detailed methodology, dataset characterisation and the full parity matrix: [docs/PROTOCOL-RSYNC-COMPARE.md](docs/PROTOCOL-RSYNC-COMPARE.md).
+
+#### What is verified
+
+- **599 unit tests** on the module, pinned against frozen rsync 3.2.7 byte transcripts.
+- **11 live tests in CI lane 3** against a real `rsync --server` in Docker: a byte-identical upload (sha256 match), streaming upload, symlinks both directions, `user.*` xattrs inline, out-of-band, binary-with-NUL and empty, the batch path over a single session, and a symlink proving it does not inherit its target's attributes.
+- **8 live tests across the negotiated checksum matrix** - xxh128, xxh3, xxh64, md5, md4, sha1 - driving the production upload and download transports.
+
+#### Known limits
+
+Single file per invocation: AeroRsync is a delta accelerator, not a tree walker - enumeration, deletion and retention stay with AeroSync, which owns its own safety gates. Protocol 31 only, SSH remote-shell only: no `rsync://` daemon mode, and an endpoint negotiating protocol 27-30 is served by the stock binary instead. Metadata preserved today is mtime, permissions, symlinks (Unix) and `user.*` xattrs (Unix, `-X`); **ACL, owner/group and device files are not implemented**, and hardlinks are structurally blocked until recursive scope exists, because detecting that two paths share an inode needs the whole file list.
+
+One version note worth stating plainly: upstream rsync **dropped `sha1`** from the negotiated checksum list between 3.2.7 and 3.4.1. AeroRsync still implements it, and it works against peers that still offer it, but against a modern rsync it is simply not negotiable.
 
 ---
 
