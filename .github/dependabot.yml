@@ -57,6 +57,15 @@ updates:
         versions: [">=0.11.0"]
       - dependency-name: "md-5"
         versions: [">=0.11.0"]
+      # md4 belongs to this block and was simply missing from it, which is
+      # why PR #477 (0.10.2 -> 0.11.0) reached CI and failed every target
+      # rather than never being opened: md4 0.11 requires digest 0.11 while
+      # sha1/sha2/md-5 are held at 0.10, so the `Digest` trait types stop
+      # unifying and the tree does not compile. We use it for the legacy
+      # rsync negotiated checksum (aerorsync Y-RSC.3), so it is
+      # protocol-visible as well as crypto-adjacent.
+      - dependency-name: "md4"
+        versions: [">=0.11.0"]
       - dependency-name: "ripemd"
         versions: [">=0.2.0"]
       - dependency-name: "hkdf"
