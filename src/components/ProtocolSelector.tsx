@@ -29,6 +29,7 @@ import {
 import { ProviderType, FtpTlsMode } from '../types';
 import { useTranslation } from '../i18n';
 import { getProviderById, resolveS3Endpoint } from '../providers';
+import { CopyLinkButton } from './common/CopyLinkButton';
 import { BoxLogo, PCloudLogo, AzureLogo, FilenLogo, FourSharedLogo, ZohoWorkDriveLogo, InternxtLogo, KDriveLogo, JottacloudLogo, DrimeCloudLogo, FileLuLogo, KoofrLogo, OpenDriveLogo, YandexDiskLogo, GitHubLogo, BlompLogo, FeliCloudLogo, TabDigitalLogo, ImmichLogo, ImageKitLogo, UploadcareLogo, CloudinaryLogo } from './ProviderLogos';
 
 // Official brand logos as inline SVGs
@@ -794,8 +795,8 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                                     SourceForge requires SSH key authentication. Generate a key with{' '}
                                     <code className="bg-amber-100 dark:bg-amber-900/30 px-1 rounded text-[11px]">ssh-keygen -t ed25519</code>{' '}
                                     and upload it to{' '}
-                                    <a href="https://sourceforge.net/auth/shell_services" target="_blank" rel="noopener noreferrer" className="underline hover:text-amber-600 dark:hover:text-amber-300">SSH Settings</a>.{' '}
-                                    <a href={providerConfig?.helpUrl || 'https://docs.aeroftp.app/providers/sourceforge'} target="_blank" rel="noopener noreferrer" className="underline hover:text-amber-600 dark:hover:text-amber-300">Full guide</a>
+                                    <a href="https://sourceforge.net/auth/shell_services" target="_blank" rel="noopener noreferrer" className="underline hover:text-amber-600 dark:hover:text-amber-300">SSH Settings</a><CopyLinkButton url="https://sourceforge.net/auth/shell_services" />.{' '}
+                                    <a href={providerConfig?.helpUrl || 'https://docs.aeroftp.app/providers/sourceforge'} target="_blank" rel="noopener noreferrer" className="underline hover:text-amber-600 dark:hover:text-amber-300">Full guide</a><CopyLinkButton url={providerConfig?.helpUrl || 'https://docs.aeroftp.app/providers/sourceforge'} />
                                 </span>
                             </div>
                         )}

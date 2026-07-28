@@ -16,6 +16,8 @@ import { useI18n } from '../i18n';
 import { openUrl } from '../utils/openUrl';
 import { getProviderDocsUrl, PROVIDER_DOCS_INDEX } from '../providers/docsLinks';
 import { logger } from '../utils/logger';
+import { CopyLinkButton } from './common/CopyLinkButton';
+import { useClipboardCopy } from '../hooks/useClipboardCopy';
 
 interface OAuthConnectProps {
   provider: 'googledrive' | 'googlephotos' | 'dropbox' | 'onedrive' | 'box' | 'pcloud' | 'zohoworkdrive' | 'yandexdisk';
@@ -212,7 +214,10 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
   const [wantsNewAccount, setWantsNewAccount] = useState(false);
   const [showSecret, setShowSecret] = useState(false);
   const [zohoRegion, setZohoRegion] = useState('us');
-  const [copiedUri, setCopiedUri] = useState(false);
+  // Redirect URI copy: the shared hook, so it goes through the Rust command
+  // like every other copy in the app instead of navigator.clipboard, which
+  // WebKitGTK rejects outside a secure context.
+  const { copied: copiedUri, copy: copyRedirectUri } = useClipboardCopy();
   // Edit-mode toggle: reveals Client ID / Secret / Region inputs from the
   // active state so users can rotate credentials without leaving Edit.
   const [showEditCredentials, setShowEditCredentials] = useState(false);
@@ -622,6 +627,7 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
               >
                 Docs <ExternalLink className="w-3 h-3" />
               </button>
+              <CopyLinkButton url={getProviderDocsUrl(provider, provider) || PROVIDER_DOCS_INDEX} size={12} className="-ml-2" />
               <button
                 onClick={() => openUrl(oauthApp.help_url)}
                 className="text-xs text-blue-500 hover:text-blue-600 flex items-center gap-1"
@@ -631,6 +637,7 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
                     "Get credentials" wording for their developer console. */}
                 {t(provider === 'pcloud' ? 'settings.manageCredentials' : 'settings.getCredentials')} <ExternalLink className="w-3 h-3" />
               </button>
+              <CopyLinkButton url={oauthApp.help_url} size={12} className="-ml-2" />
             </div>
           </div>
 
@@ -648,11 +655,7 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
                 </code>
                 <button
                   type="button"
-                  onClick={() => {
-                    navigator.clipboard.writeText(REDIRECT_URIS[provider].uri);
-                    setCopiedUri(true);
-                    setTimeout(() => setCopiedUri(false), 2000);
-                  }}
+                  onClick={() => { void copyRedirectUri(REDIRECT_URIS[provider].uri); }}
                   className="shrink-0 p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                   title={t('common.copy')}
                 >

@@ -20,7 +20,7 @@ import { open, save } from '@tauri-apps/plugin-dialog';
 import { writeTextFile } from '@tauri-apps/plugin-fs';
 import { Lock, Unlock, Loader2, X, FileKey } from 'lucide-react';
 import { useTranslation } from '../i18n';
-import { AEROCRYPT_DEFAULT_SALT_V1_HEX, AEROCRYPT_DEFAULT_SALT_V1_PREIMAGE, formatDefaultSaltForDisplay } from '../utils/aerocryptDefaultSalt';
+import { DefaultSaltDisclosure } from './common/DefaultSaltDisclosure';
 import { PasswordInput } from './common/PasswordInput';
 import { PasswordMatchHint } from './common/PasswordMatchHint';
 import { InlinePasswordGenerator } from './common/InlinePasswordGenerator';
@@ -680,20 +680,8 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({
                                             {/* Ehud #369: the radios read as "the salt is 128/256-bit".
                                                 They are a password requirement; the salt is a single
                                                 32-byte public constant, printed here so it can be
-                                                read and backed up. */}
-                                            <div className="ml-5 text-gray-500 dark:text-gray-400 leading-relaxed">
-                                                <div>{t('aerocryptProfile.defaultSaltTierMeaning')}</div>
-                                                <div className="mt-1">
-                                                    {t('aerocryptProfile.defaultSaltValueLabel')}{' '}
-                                                    <code className="font-mono">&quot;{AEROCRYPT_DEFAULT_SALT_V1_PREIMAGE}&quot;</code>:{' '}
-                                                    <code
-                                                        className="font-mono select-all break-all text-gray-600 dark:text-gray-300"
-                                                        title={AEROCRYPT_DEFAULT_SALT_V1_HEX}
-                                                    >
-                                                        {formatDefaultSaltForDisplay()}
-                                                    </code>
-                                                </div>
-                                            </div>
+                                                read, copied and backed up. */}
+                                            <DefaultSaltDisclosure className="ml-5" />
                                             <label className="ml-5 flex items-start gap-1.5">
                                                 <input type="checkbox" checked={aeroCryptDefaultSaltAttested} onChange={(e)=>setAeroCryptDefaultSaltAttested(e.target.checked)} />
                                                 <span>{t('aerocryptNative.defaultSaltAttestation')}</span>
