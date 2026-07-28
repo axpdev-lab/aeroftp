@@ -55,6 +55,14 @@ struct FilenMultipartMeta {
     total: u64,
     part: u64,
     total_chunks: u64,
+    /// Source mtime in epoch ms, captured when the session opened. The commit
+    /// happens long after the local file was read, so the mtime has to travel
+    /// with the handle: without it the multipart path re-dated large files to
+    /// their upload time while the single-shot path preserved them, and the two
+    /// disagreed on the same folder (#347). `None` for handles created before
+    /// this field existed, which then fall back to the commit time.
+    #[serde(default)]
+    last_modified_ms: Option<i64>,
 }
 
 impl FilenMultipartMeta {
@@ -658,6 +666,39 @@ impl FilenProvider {
         }
         // Fall back to raw string (our older format or simple names)
         Some(decrypted)
+    }
+
+    /// The `lastModified` a write must carry, in the epoch milliseconds Filen
+    /// stores in the encrypted file metadata.
+    ///
+    /// It is the SOURCE file's modification time, not the moment of the write.
+    /// Filen's `lastModified` is the only mtime the account holds, so stamping
+    /// the upload instant re-dates every file to when it was transferred: a
+    /// folder uploaded through AeroFTP then compares as entirely out of sync
+    /// against the very local folder it came from, and stays that way, because
+    /// each re-upload stamps a new "now" (#347). The same wrong value is what
+    /// the Filen desktop bridge then serves over WebDAV, which is why the
+    /// symptom shows on both transports.
+    ///
+    /// Falls back to the current time only when the source has no readable
+    /// mtime, which is the best a write can do and is still better than
+    /// nothing for a file that never had one.
+    fn source_last_modified_ms(source: Option<&std::fs::Metadata>) -> i64 {
+        source
+            .and_then(|m| m.modified().ok())
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_millis() as i64)
+            .unwrap_or_else(|| chrono::Utc::now().timestamp_millis())
+    }
+
+    /// Epoch milliseconds for an existing entry's timestamp, so a metadata-only
+    /// write (a rename) can carry the mtime the file already had instead of
+    /// re-dating it. `None` when the entry never had one.
+    fn entry_last_modified_ms(modified: Option<&str>) -> Option<i64> {
+        let raw = modified?;
+        chrono::DateTime::parse_from_rfc3339(raw)
+            .ok()
+            .map(|dt| dt.timestamp_millis())
     }
 
     /// Hash file/folder name for Filen API: SHA-1(SHA-512(name.toLowerCase()).hex()).hex()
@@ -1879,13 +1920,13 @@ impl StorageProvider for FilenProvider {
 
         // Encrypt metadata using the file size in plaintext bytes (matches
         // what the official SDK and the existing download path expect).
-        let now = chrono::Utc::now().timestamp_millis();
+        let last_modified = Self::source_last_modified_ms(Some(&file_metadata));
         let metadata = serde_json::json!({
             "name": file_name,
             "size": file_size,
             "mime": mime_type,
             "key": file_key,
-            "lastModified": now,
+            "lastModified": last_modified,
         });
         let encrypted_metadata = self.encrypt_metadata(&metadata.to_string())?;
         let encrypted_name = self.encrypt_metadata(file_name)?;
@@ -2212,17 +2253,18 @@ impl StorageProvider for FilenProvider {
                 .mime_type
                 .clone()
                 .unwrap_or_else(|| "application/octet-stream".to_string());
-            let now = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_millis() as u64;
+            // A rename changes the name, not the contents: carry the mtime the
+            // file already had. Stamping "now" here re-dated every renamed file
+            // and put it out of sync with its unchanged local twin.
+            let last_modified = Self::entry_last_modified_ms(entry.modified.as_deref())
+                .unwrap_or_else(|| chrono::Utc::now().timestamp_millis());
 
             let meta_json = serde_json::json!({
                 "name": new_name,
                 "size": entry.size,
                 "mime": mime,
                 "key": file_key,
-                "lastModified": now,
+                "lastModified": last_modified,
             });
             let encrypted_metadata = self.encrypt_metadata(&meta_json.to_string())?;
 
@@ -2801,7 +2843,7 @@ impl StorageProvider for FilenProvider {
         remote_path: &str,
         total_size: u64,
         _content_type: Option<&str>,
-        _local_source_path: Option<&str>,
+        local_source_path: Option<&str>,
     ) -> Result<MultipartHandle, ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
@@ -2846,6 +2888,19 @@ impl StorageProvider for FilenProvider {
         let part = filen_runner_part_size(total_size);
         let total_chunks = total_size.div_ceil(part);
 
+        // Capture the source mtime now, while the local file is still the one
+        // being read: the commit runs after every part has landed and has no
+        // access to it. The runner does not always know the source path (a
+        // stream with no file behind it), in which case the commit stamps its
+        // own time, which is the only thing left to stamp.
+        let last_modified_ms = match local_source_path {
+            Some(p) => tokio::fs::metadata(p)
+                .await
+                .ok()
+                .map(|m| Self::source_last_modified_ms(Some(&m))),
+            None => None,
+        };
+
         let meta = FilenMultipartMeta {
             file_uuid,
             parent_uuid,
@@ -2856,6 +2911,7 @@ impl StorageProvider for FilenProvider {
             total: total_size,
             part,
             total_chunks,
+            last_modified_ms,
         };
         Ok(MultipartHandle {
             upload_id: meta.encode(),
@@ -2941,14 +2997,17 @@ impl StorageProvider for FilenProvider {
         }
 
         // Build the same /v3/upload/done envelope as the legacy upload()
-        // path so the file metadata and the file table stay byte-compatible.
-        let now = chrono::Utc::now().timestamp_millis();
+        // path so the file metadata and the file table stay byte-compatible,
+        // including the source mtime the handle carried from the session start.
+        let last_modified = meta
+            .last_modified_ms
+            .unwrap_or_else(|| chrono::Utc::now().timestamp_millis());
         let metadata = serde_json::json!({
             "name": meta.file_name,
             "size": meta.total,
             "mime": meta.mime,
             "key": meta.file_key,
-            "lastModified": now,
+            "lastModified": last_modified,
         });
         let encrypted_metadata = self.encrypt_metadata(&metadata.to_string())?;
         let encrypted_name = self.encrypt_metadata(&meta.file_name)?;
@@ -3354,6 +3413,7 @@ mod tests {
             total: 16 * 1024 * 1024,
             part: 1024 * 1024,
             total_chunks: 16,
+            last_modified_ms: None,
         };
         let encoded = meta.encode();
         let decoded = FilenMultipartMeta::decode(&encoded).expect("decode roundtrip");
@@ -3700,6 +3760,7 @@ mod tests {
             total: 4096,
             part: 1024,
             total_chunks: 4,
+            last_modified_ms: None,
         };
         let handle = MultipartHandle {
             upload_id: meta.encode(),
@@ -3897,6 +3958,7 @@ mod tests {
             total: (4 * part_plain) as u64,
             part: part_plain as u64,
             total_chunks: 4,
+            last_modified_ms: None,
         };
         let handle = MultipartHandle {
             upload_id: meta.encode(),
@@ -4045,6 +4107,7 @@ mod tests {
             total: 4096,
             part: 1024,
             total_chunks: 4,
+            last_modified_ms: None,
         };
         let handle = MultipartHandle {
             upload_id: meta.encode(),
@@ -4136,6 +4199,7 @@ mod tests {
             total: 2048,
             part: 1024,
             total_chunks: 2,
+            last_modified_ms: None,
         };
         let handle = MultipartHandle {
             upload_id: meta.encode(),
@@ -4183,6 +4247,7 @@ mod tests {
             total: 64,
             part: 64,
             total_chunks: 1,
+            last_modified_ms: None,
         };
         let handle = MultipartHandle {
             upload_id: meta.encode(),
@@ -4209,5 +4274,92 @@ mod tests {
             !s.contains("uploadKey=cafe") && !s.contains(&format!("uploadKey={upload_key}")),
             "raw uploadKey query must be redacted: {s}"
         );
+    }
+
+    // ── lastModified is the SOURCE mtime, never the moment of the write ──────
+    //
+    // Filen's `lastModified` is the only mtime the account holds. Stamping the
+    // write instant re-dated every file to when it was transferred, so a folder
+    // uploaded through AeroFTP compared as entirely out of sync against the
+    // local folder it came from, on every subsequent compare, and the Filen
+    // desktop bridge served the same wrong value over WebDAV (#347).
+
+    #[test]
+    fn upload_metadata_carries_the_source_mtime_not_the_upload_time() {
+        let dir = std::env::temp_dir().join(format!("filen_mtime_{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("report.txt");
+        std::fs::write(&path, b"contents").unwrap();
+
+        // Backdate the source well outside any comparison tolerance.
+        let long_ago =
+            std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_000_000_000);
+        filetime::set_file_mtime(&path, filetime::FileTime::from_system_time(long_ago)).unwrap();
+
+        let meta = std::fs::metadata(&path).unwrap();
+        let stamped = FilenProvider::source_last_modified_ms(Some(&meta));
+        assert_eq!(
+            stamped, 1_000_000_000_000,
+            "the upload must record the file's own mtime"
+        );
+
+        let now = chrono::Utc::now().timestamp_millis();
+        assert!(
+            (now - stamped) > 60_000,
+            "a source mtime that lands within a minute of now means the write is              stamping its own time again"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// No readable source mtime is the one case where the write has nothing
+    /// better than its own clock.
+    #[test]
+    fn upload_metadata_falls_back_to_now_without_a_source() {
+        let before = chrono::Utc::now().timestamp_millis();
+        let stamped = FilenProvider::source_last_modified_ms(None);
+        assert!(stamped >= before, "fallback must be the current time");
+    }
+
+    /// A rename changes the name, not the contents, so it carries the mtime the
+    /// file already had rather than re-dating it.
+    #[test]
+    fn rename_preserves_the_existing_mtime() {
+        assert_eq!(
+            FilenProvider::entry_last_modified_ms(Some("2020-05-17T10:30:00Z")),
+            Some(1_589_711_400_000),
+        );
+        // An entry that never had a timestamp, and a malformed one, both decline
+        // rather than inventing a value; the caller then falls back to now.
+        assert_eq!(FilenProvider::entry_last_modified_ms(None), None);
+        assert_eq!(
+            FilenProvider::entry_last_modified_ms(Some("not a date")),
+            None
+        );
+    }
+
+    /// The commit runs long after the local file was read, so the mtime travels
+    /// inside the handle. A handle written before the field existed decodes with
+    /// `None` instead of failing, and the commit then stamps its own time.
+    #[test]
+    fn multipart_handle_carries_the_mtime_and_tolerates_older_handles() {
+        let meta = FilenMultipartMeta {
+            file_uuid: "u".into(),
+            parent_uuid: "p".into(),
+            file_key: "k".into(),
+            upload_key: "uk".into(),
+            file_name: "big.bin".into(),
+            mime: "application/octet-stream".into(),
+            total: 1024,
+            part: 512,
+            total_chunks: 2,
+            last_modified_ms: Some(1_589_711_400_000),
+        };
+        let decoded = FilenMultipartMeta::decode(&meta.encode()).unwrap();
+        assert_eq!(decoded.last_modified_ms, Some(1_589_711_400_000));
+
+        let legacy = r#"{"file_uuid":"u","parent_uuid":"p","file_key":"k","upload_key":"uk","file_name":"big.bin","mime":"application/octet-stream","total":1024,"part":512,"total_chunks":2}"#;
+        let decoded_legacy = FilenMultipartMeta::decode(legacy)
+            .expect("a handle from before this field must still decode");
+        assert_eq!(decoded_legacy.last_modified_ms, None);
     }
 }
