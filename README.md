@@ -384,6 +384,8 @@ It does **not** replace rsync. It talks to it.
 
 **Where it is wired.** AeroSync delta transfers, Cross-Profile SFTP-to-SFTP, and AeroTools Code Editor saves against a remote file - a one-line change to a 5 MB file ships only the differing blocks. `AerorsyncBatch` reuses one SSH session for N files in a sync batch, and `SyncReport` surfaces `delta_files` and `bytes_on_wire` so the UI shows which files took the optimized path and what it saved.
 
+**Compression on the wire.** rsync negotiates which compressor carries the literal data, and the winner is the one both sides rank highest, not simply "zstd if the peer mentions it". Every rsync built before 3.2.0 has no zstd at all, which covers NAS firmware, embedded boxes and older LTS images, and those peers land on `zlibx`: raw deflate on one session-wide stream with a `Z_SYNC_FLUSH` boundary per record. AeroRsync drives both families, pinned against a captured **rsync 3.1.3** wire oracle that runs in CI alongside the 3.2.7 lane. Plain `zlib` is the one left out, because it also feeds matched-block data through the compressor history on both ends, so a peer that lands there takes a typed negotiation error and the classic fallback instead of a reconstruction that would be wrong.
+
 #### Measured against stock rsync
 
 Same 50 MB files, same container, same SSH loopback, back-to-back on an idle 24-core machine. The rsync side runs `-logDtprcz`, the client flags that produce **byte-identical server arguments** to the ones AeroRsync sends (`-logDtprcze.iLsfxCIvu`), verified with a wrapper that logged the server command line.
@@ -403,7 +405,7 @@ Repeated across three runs the timings move by a few percent and the byte counts
 
 #### What is verified
 
-- **599 unit tests** on the module, pinned against frozen rsync 3.2.7 byte transcripts.
+- **605 unit tests** on the module, pinned against frozen rsync 3.2.7 byte transcripts.
 - **11 live tests in CI lane 3** against a real `rsync --server` in Docker: a byte-identical upload (sha256 match), streaming upload, symlinks both directions, `user.*` xattrs inline, out-of-band, binary-with-NUL and empty, the batch path over a single session, and a symlink proving it does not inherit its target's attributes.
 - **8 live tests across the negotiated checksum matrix** - xxh128, xxh3, xxh64, md5, md4, sha1 - driving the production upload and download transports.
 
