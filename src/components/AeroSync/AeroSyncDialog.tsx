@@ -22,6 +22,7 @@ import { SyncTemplateDialog } from '../Sync/SyncTemplateDialog';
 import { MultiPathEditor } from '../Sync/MultiPathEditor';
 import { RollbackDialog } from '../Sync/RollbackDialog';
 import { useTransferCapabilities } from '../Sync/useTransferCapabilities';
+import { TabStateStoreContext, createTabStateStore } from './tabStateStore';
 import type { AeroSyncDialogProps, AeroSyncTab } from './types';
 
 const TAB_ORDER: AeroSyncTab[] = ['compare', 'plan', 'sync'];
@@ -58,6 +59,13 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
         onClose,
         onAbort: cancelSync,
     });
+
+    // The settings the Plan and Sync tabs hold, kept alive across a tab switch
+    // (which unmounts the tab) and cleared on each fresh open of the dialog.
+    const tabState = React.useRef(createTabStateStore()).current;
+    const wasOpen = React.useRef(false);
+    if (isOpen && !wasOpen.current) tabState.reset();
+    wasOpen.current = isOpen;
 
     React.useEffect(() => {
         if (isOpen) setActiveTab(initialTab);
@@ -232,6 +240,7 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
                     </div>
                 )}
 
+                <TabStateStoreContext.Provider value={tabState}>
                 <div className="flex-1 overflow-y-auto">
                     {activeTab === 'compare' && (
                         <CompareTabContent
@@ -266,6 +275,7 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
                         />
                     )}
                 </div>
+                </TabStateStoreContext.Provider>
             </div>
 
             {/* Re-mounted Sync/* dialogs, surfaced from the AeroSync
