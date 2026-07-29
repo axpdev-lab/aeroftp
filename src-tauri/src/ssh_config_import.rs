@@ -95,6 +95,11 @@ fn split_directive(line: &str) -> Option<(String, String)> {
     Some((k.to_lowercase(), value))
 }
 
+/// Maximum number of `Host` blocks to parse, matching the other importers:
+/// each imported profile with a credential costs a whole-vault rewrite, so an
+/// uncapped parse of a large config is a self-inflicted write storm.
+const MAX_HOSTS: usize = 10_000;
+
 /// Parse the ssh config into ordered `Host` blocks. Comments (`#`) and blank
 /// lines are ignored. Directives before the first `Host` (rare global block)
 /// are discarded since they cannot produce a concrete profile.
@@ -115,6 +120,10 @@ fn parse_ssh_config(content: &str) -> Vec<HostBlock> {
         if key == "host" {
             if let Some(block) = current.take() {
                 blocks.push(block);
+            }
+            if blocks.len() >= MAX_HOSTS {
+                log::warn!("ssh config import: stopped at the {MAX_HOSTS}-host cap");
+                return blocks;
             }
             let aliases: Vec<String> = value
                 .split_whitespace()

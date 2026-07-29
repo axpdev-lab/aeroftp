@@ -30,160 +30,172 @@ const MAX_FILE_SIZE: u64 = 10 * 1024 * 1024;
 
 /// Parse FileZilla sitemanager.xml and extract server entries.
 /// Handles nested <Folder> elements for hierarchical names.
+///
+/// Event-driven (quick-xml) rather than line-oriented: FileZilla itself writes
+/// one tag per line, but a sitemanager.xml that went through a minifier or was
+/// written by another tool is still valid XML, and a line parser silently
+/// imported nothing from it.
 fn parse_sitemanager_xml(content: &str) -> Vec<FileZillaServer> {
-    let mut servers = Vec::new();
-    let mut folder_stack: Vec<String> = Vec::new();
+    use quick_xml::events::Event;
+    use quick_xml::Reader;
+
+    let mut servers: Vec<FileZillaServer> = Vec::new();
+    // (folder name, index of the first server pushed inside it). FileZilla
+    // writes a folder's name as a text node AFTER its children, so the name is
+    // not known yet when the servers inside it are pushed: the path is stamped
+    // onto them when the folder closes, innermost folder first.
+    let mut folder_stack: Vec<(String, usize)> = Vec::new();
     let mut in_server = false;
     let mut current_fields: HashMap<String, String> = HashMap::new();
     let mut current_name = String::new();
     let mut current_tag = String::new();
     let mut current_text = String::new();
     let mut pass_encoding = String::new();
+    let mut capped = false;
 
-    for line in content.lines() {
-        let trimmed = line.trim();
+    let mut reader = Reader::from_str(content);
+    reader.config_mut().trim_text(true);
+    let mut buf = Vec::new();
 
-        // Folder open: <Folder expanded="1">
-        if trimmed.starts_with("<Folder") && !trimmed.starts_with("</Folder") {
-            // Next text content before </Folder> is the folder name,
-            // but FileZilla puts folder name as text AFTER child elements.
-            // We'll handle it via a stack approach.
-            folder_stack.push(String::new());
-            continue;
-        }
-
-        // Folder close: </Folder>
-        if trimmed == "</Folder>" {
-            folder_stack.pop();
-            continue;
-        }
-
-        // Folder name (text between <Folder> children and </Folder>)
-        // FileZilla puts folder name as the last text node before </Folder>
-        // We detect it as a bare text line when we're not in a server
-        if !in_server && !trimmed.is_empty() && !trimmed.starts_with('<') {
-            if let Some(last) = folder_stack.last_mut() {
-                if last.is_empty() {
-                    *last = xml_unescape(trimmed);
-                }
-            }
-            continue;
-        }
-
-        // Server open
-        if trimmed == "<Server>" {
-            if servers.len() >= MAX_SERVERS {
-                break;
-            }
-            in_server = true;
-            current_fields.clear();
-            current_name.clear();
-            pass_encoding.clear();
-            continue;
-        }
-
-        // Server close
-        if trimmed == "</Server>" {
-            if in_server {
-                // Build hierarchical name from folder stack
-                let folder_path: Vec<&str> = folder_stack
-                    .iter()
-                    .filter(|f| !f.is_empty())
-                    .map(|f| f.as_str())
-                    .collect();
-                let display_name = if current_name.is_empty() {
-                    current_fields
-                        .get("Host")
-                        .cloned()
-                        .unwrap_or_else(|| "unnamed".to_string())
-                } else {
-                    current_name.clone()
-                };
-                // Store folder path for reference
-                if !folder_path.is_empty() {
-                    current_fields.insert("_folder".to_string(), folder_path.join("/"));
-                }
-                servers.push(FileZillaServer {
-                    fields: current_fields.clone(),
-                    name: display_name,
-                });
-            }
-            in_server = false;
-            continue;
-        }
-
-        if !in_server {
-            continue;
-        }
-
-        // Parse tag open with optional attributes: <Pass encoding="base64">
-        if trimmed.starts_with('<') && !trimmed.starts_with("</") {
-            if let Some(tag_end) = trimmed.find('>') {
-                let tag_content = &trimmed[1..tag_end];
-                let (tag_name, attrs) = match tag_content.find(' ') {
-                    Some(i) => (&tag_content[..i], &tag_content[i..]),
-                    None => (tag_content, ""),
-                };
-                current_tag = tag_name.to_string();
-                current_text.clear();
-
-                // Check for encoding attribute on Pass
-                if tag_name == "Pass" {
-                    pass_encoding = if attrs.contains("base64") {
-                        "base64".to_string()
-                    } else {
-                        String::new()
-                    };
-                }
-
-                // Inline text: <Host>example.com</Host>
-                let after_open = &trimmed[tag_end + 1..];
-                if let Some(close_start) = after_open.find("</") {
-                    let text = &after_open[..close_start];
-                    let value = xml_unescape(text);
-
-                    if current_tag == "Name" {
-                        current_name = value;
-                    } else {
-                        current_fields.insert(current_tag.clone(), value);
+    // Malformed XML ends iteration while preserving every server parsed
+    // cleanly before the error.
+    while let Ok(event) = reader.read_event_into(&mut buf) {
+        match event {
+            Event::Eof => break,
+            Event::Start(e) => {
+                let tag = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                match tag.as_str() {
+                    "Folder" if !in_server => {
+                        folder_stack.push((String::new(), servers.len()));
                     }
-                    // Store pass encoding info
+                    "Server" if !in_server => {
+                        if servers.len() >= MAX_SERVERS {
+                            capped = true;
+                            break;
+                        }
+                        in_server = true;
+                        current_fields.clear();
+                        current_name.clear();
+                        pass_encoding.clear();
+                        current_tag.clear();
+                        current_text.clear();
+                    }
+                    _ if in_server => {
+                        if tag == "Pass" {
+                            pass_encoding = e
+                                .try_get_attribute("encoding")
+                                .ok()
+                                .flatten()
+                                .map(|a| String::from_utf8_lossy(&a.value).to_string())
+                                .unwrap_or_default();
+                        }
+                        current_tag = tag;
+                        current_text.clear();
+                    }
+                    _ => {}
+                }
+            }
+            // Self-closing element, e.g. <Name/>: an empty value.
+            Event::Empty(e) => {
+                if !in_server {
+                    continue;
+                }
+                let tag = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                if tag == "Pass" {
+                    let enc = e
+                        .try_get_attribute("encoding")
+                        .ok()
+                        .flatten()
+                        .map(|a| String::from_utf8_lossy(&a.value).to_string())
+                        .unwrap_or_default();
+                    current_fields.insert("_pass_encoding".to_string(), enc);
+                }
+                if tag == "Name" {
+                    current_name.clear();
+                } else {
+                    current_fields.insert(tag, String::new());
+                }
+            }
+            Event::Text(e) => {
+                let text = e
+                    .xml_content(quick_xml::XmlVersion::Implicit1_0)
+                    .map(|c| c.to_string())
+                    .unwrap_or_else(|_| {
+                        xml_unescape(&String::from_utf8_lossy(e.into_inner().as_ref()))
+                    });
+                if text.is_empty() {
+                    continue;
+                }
+                if in_server {
+                    if current_tag.is_empty() {
+                        continue;
+                    }
+                    if !current_text.is_empty() {
+                        current_text.push(' ');
+                    }
+                    current_text.push_str(&text);
+                } else if let Some((name, _)) = folder_stack.last_mut() {
+                    // FileZilla writes the folder name as a text node after the
+                    // folder's children; the first one wins.
+                    if name.is_empty() {
+                        *name = text;
+                    }
+                }
+            }
+            Event::End(e) => {
+                let tag = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                if in_server && tag == "Server" {
+                    let display_name = if current_name.is_empty() {
+                        current_fields
+                            .get("Host")
+                            .cloned()
+                            .unwrap_or_else(|| "unnamed".to_string())
+                    } else {
+                        current_name.clone()
+                    };
+                    servers.push(FileZillaServer {
+                        fields: current_fields.clone(),
+                        name: display_name,
+                    });
+                    in_server = false;
+                    current_tag.clear();
+                    current_text.clear();
+                } else if !in_server && tag == "Folder" {
+                    // The name is known only now: stamp it on every server this
+                    // folder contains. Inner folders closed first, so prepending
+                    // builds the path outermost-last.
+                    if let Some((name, first_server)) = folder_stack.pop() {
+                        if !name.is_empty() {
+                            for server in servers.iter_mut().skip(first_server) {
+                                let path = match server.fields.get("_folder") {
+                                    Some(inner) => format!("{name}/{inner}"),
+                                    None => name.clone(),
+                                };
+                                server.fields.insert("_folder".to_string(), path);
+                            }
+                        }
+                    }
+                } else if in_server && tag == current_tag {
+                    if current_tag == "Name" {
+                        current_name = current_text.clone();
+                    } else {
+                        current_fields.insert(current_tag.clone(), current_text.clone());
+                    }
                     if current_tag == "Pass" {
                         current_fields.insert("_pass_encoding".to_string(), pass_encoding.clone());
                     }
                     current_tag.clear();
+                    current_text.clear();
                 }
             }
-            continue;
+            _ => {}
         }
-
-        // Close tag
-        if trimmed.starts_with("</") {
-            if !current_tag.is_empty() && !current_text.is_empty() {
-                let value = xml_unescape(&current_text);
-                if current_tag == "Name" {
-                    current_name = value;
-                } else {
-                    current_fields.insert(current_tag.clone(), value);
-                }
-                if current_tag == "Pass" {
-                    current_fields.insert("_pass_encoding".to_string(), pass_encoding.clone());
-                }
-            }
-            current_tag.clear();
-            current_text.clear();
-            continue;
-        }
-
-        // Text content between tags
-        if !current_tag.is_empty() {
-            if !current_text.is_empty() {
-                current_text.push(' ');
-            }
-            current_text.push_str(trimmed);
-        }
+        buf.clear();
     }
 
+    if capped {
+        log::warn!("filezilla import: stopped at the {MAX_SERVERS}-server cap");
+    }
     servers
 }
 
@@ -774,5 +786,94 @@ mod tests {
         assert_eq!(servers.len(), 2);
         assert_eq!(servers[0].name, "Server 1");
         assert_eq!(servers[1].name, "Server 2");
+    }
+
+    /// CLAUDE-AV-B9-01: the parser used to be line-oriented, so a well-formed
+    /// sitemanager.xml whose tags were not one-per-line (an XML minifier, a
+    /// third-party writer, a hand edit) imported ZERO sites and reported
+    /// success, with no skip reason. Same document, no newlines.
+    #[test]
+    fn parses_sitemanager_written_on_a_single_line() {
+        let xml = concat!(
+            r#"<?xml version="1.0"?><FileZilla3><Servers>"#,
+            r#"<Server><Host>h1</Host><Port>21</Port><Protocol>0</Protocol>"#,
+            r#"<User>u</User><Pass encoding="base64">QUJD</Pass>"#,
+            r#"<Name>one-liner</Name></Server>"#,
+            r#"</Servers></FileZilla3>"#,
+        );
+        let servers = parse_sitemanager_xml(xml);
+        assert_eq!(servers.len(), 1, "single-line XML must still import");
+        assert_eq!(servers[0].name, "one-liner");
+        assert_eq!(
+            servers[0].fields.get("Host").map(String::as_str),
+            Some("h1")
+        );
+        assert_eq!(
+            servers[0].fields.get("_pass_encoding").map(String::as_str),
+            Some("base64"),
+            "the Pass encoding attribute must survive the event parser"
+        );
+        assert_eq!(
+            decode_filezilla_password("QUJD", "base64").as_deref(),
+            Some("ABC")
+        );
+    }
+
+    /// FileZilla writes a folder's name as a text node AFTER its children, so
+    /// the name is not yet known when the servers inside it are parsed. The
+    /// path is stamped on when the folder closes; before this it always came
+    /// out empty.
+    #[test]
+    fn stamps_the_folder_path_on_the_servers_it_contains() {
+        let xml = concat!(
+            r#"<?xml version="1.0"?><FileZilla3><Servers>"#,
+            r#"<Folder expanded="1"><Server><Host>h1</Host><Name>inner</Name></Server>"#,
+            r#"Clients</Folder>"#,
+            r#"<Server><Host>h2</Host><Name>outside</Name></Server>"#,
+            r#"</Servers></FileZilla3>"#,
+        );
+        let servers = parse_sitemanager_xml(xml);
+        assert_eq!(servers.len(), 2);
+        assert_eq!(servers[0].name, "inner");
+        assert_eq!(
+            servers[0].fields.get("_folder").map(String::as_str),
+            Some("Clients")
+        );
+        assert_eq!(
+            servers[1].fields.get("_folder"),
+            None,
+            "a server outside the folder must not inherit its path"
+        );
+    }
+
+    /// Nested folders compose outermost-first.
+    #[test]
+    fn nested_folder_paths_compose_in_order() {
+        let xml = concat!(
+            r#"<?xml version="1.0"?><FileZilla3><Servers>"#,
+            r#"<Folder><Folder><Server><Host>h1</Host><Name>deep</Name></Server>"#,
+            r#"Inner</Folder>Outer</Folder>"#,
+            r#"</Servers></FileZilla3>"#,
+        );
+        let servers = parse_sitemanager_xml(xml);
+        assert_eq!(servers.len(), 1);
+        assert_eq!(
+            servers[0].fields.get("_folder").map(String::as_str),
+            Some("Outer/Inner")
+        );
+    }
+
+    /// A truncated document must keep the servers that parsed cleanly instead
+    /// of discarding the whole file.
+    #[test]
+    fn keeps_servers_parsed_before_a_malformed_tail() {
+        let xml = concat!(
+            r#"<?xml version="1.0"?><FileZilla3><Servers>"#,
+            r#"<Server><Host>h1</Host><Name>good</Name></Server>"#,
+            r#"<Server><Host>h2</Host><Name>trunc"#,
+        );
+        let servers = parse_sitemanager_xml(xml);
+        assert_eq!(servers.len(), 1);
+        assert_eq!(servers[0].name, "good");
     }
 }

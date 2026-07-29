@@ -80,6 +80,14 @@ fn obscure_password(plaintext: &str) -> Result<String, String> {
 /// A parsed rclone remote: section name → key/value pairs.
 type RcloneRemote = HashMap<String, String>;
 
+/// Maximum number of remotes to parse.
+///
+/// A 10 MB config (the caller's cap) holds hundreds of thousands of minimal
+/// `[name]\ntype=ftp\npass=x` sections, and each imported credential costs a
+/// full read-modify-rewrite of the vault, so an uncapped parse turns one file
+/// into a quadratic write storm. Matches the cap the other importers use.
+const MAX_REMOTES: usize = 10_000;
+
 /// Parse rclone.conf INI format into named sections.
 fn parse_rclone_conf(content: &str) -> HashMap<String, RcloneRemote> {
     let mut sections: HashMap<String, RcloneRemote> = HashMap::new();
@@ -97,6 +105,10 @@ fn parse_rclone_conf(content: &str) -> HashMap<String, RcloneRemote> {
         if line.starts_with('[') && line.ends_with(']') {
             let name = line[1..line.len() - 1].trim().to_string();
             if !name.is_empty() {
+                if !sections.contains_key(&name) && sections.len() >= MAX_REMOTES {
+                    log::warn!("rclone import: stopped at the {MAX_REMOTES}-remote cap");
+                    break;
+                }
                 sections.entry(name.clone()).or_default();
                 current_section = Some(name);
             }
@@ -1857,33 +1869,12 @@ pub fn export_rclone(
         exported += 1;
     }
 
-    // Atomic write + secure permissions. Create the temp file 0600 *before*
-    // writing so the OAuth refresh blob / obscured passwords are never world-
-    // readable, not even in the window between write and the post-rename chmod.
-    let tmp_path = file_path.with_extension("tmp");
-    #[cfg(unix)]
-    {
-        use std::io::Write;
-        use std::os::unix::fs::OpenOptionsExt;
-        let mut f = std::fs::OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .mode(0o600)
-            .open(&tmp_path)
-            .map_err(|e| format!("Write rclone.conf: {}", e))?;
-        f.write_all(output.as_bytes())
-            .map_err(|e| format!("Write rclone.conf: {}", e))?;
-    }
-    #[cfg(not(unix))]
-    std::fs::write(&tmp_path, output.as_bytes())
+    // Atomic write + secure permissions, through the same helper the other
+    // bridge exporters use: its temp file is O_EXCL/0600 (so a symlink planted
+    // at a predictable sibling path cannot capture the secrets) and it unlinks
+    // itself on any early return instead of leaving a partial cleartext file.
+    crate::bridge_shared::atomic_write_600(file_path, output.as_bytes())
         .map_err(|e| format!("Write rclone.conf: {}", e))?;
-    std::fs::rename(&tmp_path, file_path).map_err(|e| format!("Rename temp file: {}", e))?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let _ = std::fs::set_permissions(file_path, std::fs::Permissions::from_mode(0o600));
-    }
 
     Ok(exported)
 }
@@ -1897,6 +1888,27 @@ mod tests {
         let path = std::env::temp_dir().join(name);
         std::fs::write(&path, conf).expect("write temp conf");
         path
+    }
+
+    /// CLAUDE-AV-B9-02: an uncapped parse let a single 10 MB config declare
+    /// hundreds of thousands of remotes, each costing a whole-vault rewrite.
+    #[test]
+    fn parse_rclone_conf_stops_at_the_remote_cap() {
+        let mut conf = String::new();
+        for i in 0..(MAX_REMOTES + 500) {
+            conf.push_str(&format!("[r{i}]\ntype = ftp\nhost = h\n"));
+        }
+        let sections = parse_rclone_conf(&conf);
+        assert_eq!(sections.len(), MAX_REMOTES);
+    }
+
+    /// The cap must not disturb an ordinary config.
+    #[test]
+    fn parse_rclone_conf_keeps_every_remote_below_the_cap() {
+        let conf = "[a]\ntype = ftp\nhost = h1\n\n[b]\ntype = sftp\nhost = h2\n";
+        let sections = parse_rclone_conf(conf);
+        assert_eq!(sections.len(), 2);
+        assert_eq!(sections["b"]["host"], "h2");
     }
 
     #[test]

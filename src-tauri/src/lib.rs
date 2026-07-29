@@ -19646,6 +19646,7 @@ pub fn run() {
             cyber_tools::hash_text,
             cyber_tools::hash_file,
             cyber_tools::stage_hash_drop,
+            cyber_tools::discard_hash_drop,
             cyber_tools::compare_hashes,
             cyber_tools::crypto_encrypt_text,
             cyber_tools::crypto_decrypt_text,
