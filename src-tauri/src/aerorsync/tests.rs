@@ -2790,3 +2790,88 @@ fn compress_zstd_literal_stream_round_trips_through_frozen_oracle_payloads() {
         "round-trip raw -> compress -> decompress drifted from original"
     );
 }
+
+/// The public parity docs state the module's `unsafe` surface as a number
+/// and say what each block is for. That claim used to read "no unsafe in
+/// the module", which was wrong by 13, and nothing contradicted it: a
+/// memory-safety claim with no mechanism behind it is the same shape as
+/// the `--mkpath` claim and the compressor list, both of which survived
+/// for months because reading them was the only check they ever got.
+///
+/// This is the mechanism. It counts production `unsafe` in the module and
+/// fails when the number moves, so adding one is a deliberate act that
+/// updates the documentation rather than a silent widening of the claim.
+/// Test code is excluded on purpose: `live_tests.rs` is a harness, and its
+/// `unsafe` is not part of what ships.
+///
+/// If this fails, do not adjust the constant on its own. Update
+/// `docs/PROTOCOL-RSYNC-COMPARE.md` (the Language row and the strengths
+/// bullet) and `docs.aeroftp.app/features/aerorsync.md` in the same
+/// commit, then move it.
+#[test]
+fn production_unsafe_surface_matches_the_documented_count() {
+    // (file, blocks) as documented. A file that is entirely test code is
+    // recognised by its own inner `#![cfg(test)]` rather than by a
+    // hardcoded exclusion list, so a new harness file is handled without
+    // editing this test, and a production file can never be excluded by
+    // being added to a list.
+    const DOCUMENTED: [(&str, usize); 2] = [("xattr_fs.rs", 10), ("delta_transport_impl.rs", 3)];
+
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/aerorsync");
+    let mut found: Vec<(String, usize)> = Vec::new();
+
+    for entry in std::fs::read_dir(&dir).expect("aerorsync module directory must be readable") {
+        let path = entry.expect("readable dir entry").path();
+        if path.extension().and_then(|e| e.to_str()) != Some("rs") {
+            continue;
+        }
+        let name = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .expect("utf-8 file name")
+            .to_string();
+        let src = std::fs::read_to_string(&path).expect("readable source file");
+        // An inner `#![cfg(test)]` (or `#![cfg(all(test, ...))]`) means the
+        // whole file is test code, so it ships nothing.
+        if src
+            .lines()
+            .map(str::trim_start)
+            .any(|l| l.starts_with("#![cfg(") && l.contains("test"))
+        {
+            continue;
+        }
+        // Otherwise everything from the first `#[cfg(test)]` on is tests.
+        let production = match src.find("\n#[cfg(test)]") {
+            Some(i) => &src[..i],
+            None => &src[..],
+        };
+        let count = production
+            .lines()
+            .map(str::trim_start)
+            // Comments mentioning the word must not inflate the count, and
+            // `// SAFETY:` notes sit directly above the real blocks.
+            .filter(|l| !l.starts_with("//") && !l.starts_with("*"))
+            .filter(|l| l.contains("unsafe {") || l.contains("unsafe fn"))
+            .count();
+        if count > 0 {
+            found.push((name, count));
+        }
+    }
+
+    found.sort();
+    let mut expected: Vec<(String, usize)> = DOCUMENTED
+        .iter()
+        .map(|(f, n)| ((*f).to_string(), *n))
+        .collect();
+    expected.sort();
+
+    assert_eq!(
+        found, expected,
+        "the module's production `unsafe` surface moved. The parity docs state this \
+         count and what each block is for, so update them in the same commit instead \
+         of only moving the constant here"
+    );
+
+    let total: usize = found.iter().map(|(_, n)| n).sum();
+    assert_eq!(total, 13, "documented total in the parity docs is 13");
+}
