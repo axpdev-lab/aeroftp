@@ -244,6 +244,31 @@ mod tests {
         assert_eq!(chooser_unavailable().await, chooser_unavailable_reason());
     }
 
+    /// Distinguishes one `private_bus` config file from another.
+    ///
+    /// Without it, two tests calling `private_bus(None)` resolve to the same
+    /// `bus-bare-<pid>.conf` and each truncates it with `File::create` while the
+    /// other test's `dbus-daemon` may still be reading it at startup. The loser
+    /// gets a daemon that fails to start, `private_bus` returns `None`, and the
+    /// test skips: not a red flake but a **silent** one, where the pin stops
+    /// pinning and still reports success. Found by CodeRabbit on #515.
+    #[cfg(target_os = "linux")]
+    static BUS_SEQ: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+
+    /// Whether an unavailable `dbus-daemon` may be treated as "skip this test".
+    ///
+    /// Locally it may: a developer without `dbus-daemon` should not be blocked.
+    /// In CI it may **not**. `build.yml` runs `cargo test` on Linux, so these
+    /// three cases are the only automated proof that a portal-less host reads as
+    /// portal-less, and a skip there is indistinguishable in the log from a pass:
+    /// `eprintln!` from a passing test is captured and never printed. That is the
+    /// same "silence reads as success" this whole change set exists to remove, so
+    /// in CI a missing daemon is a failure that names itself.
+    #[cfg(target_os = "linux")]
+    fn no_bus_daemon_is_fatal() -> bool {
+        std::env::var_os("CI").is_some()
+    }
+
     /// A throwaway session bus, built to order, so the three cases below are
     /// measured rather than reasoned about. Returns the connection and the
     /// daemon, which the caller must kill.
@@ -254,8 +279,9 @@ mod tests {
         use std::io::Write;
         let dir = std::env::temp_dir().join(format!("aeroftp-portal-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).ok()?;
+        let seq = BUS_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let conf = dir.join(format!(
-            "bus-{}.conf",
+            "bus-{}-{seq}.conf",
             servicedir.map(|_| "svc").unwrap_or("bare")
         ));
         let services = match servicedir {
@@ -313,6 +339,11 @@ mod tests {
     #[cfg(target_os = "linux")]
     fn a_bus_with_no_portal_is_reported_missing() {
         let Some((conn, mut daemon)) = private_bus(None) else {
+            assert!(
+                !no_bus_daemon_is_fatal(),
+                "dbus-daemon is required for this pin and CI is set: a skip here \
+                 would report success while proving nothing. Install `dbus`."
+            );
             eprintln!("skipped: dbus-daemon unavailable");
             return;
         };
@@ -332,6 +363,11 @@ mod tests {
     fn a_bus_where_the_name_is_owned_is_reported_available() {
         use gtk::prelude::*;
         let Some((conn, mut daemon)) = private_bus(None) else {
+            assert!(
+                !no_bus_daemon_is_fatal(),
+                "dbus-daemon is required for this pin and CI is set: a skip here \
+                 would report success while proving nothing. Install `dbus`."
+            );
             eprintln!("skipped: dbus-daemon unavailable");
             return;
         };
@@ -375,6 +411,11 @@ mod tests {
         drop(f);
 
         let Some((conn, mut daemon)) = private_bus(Some(&dir)) else {
+            assert!(
+                !no_bus_daemon_is_fatal(),
+                "dbus-daemon is required for this pin and CI is set: a skip here \
+                 would report success while proving nothing. Install `dbus`."
+            );
             eprintln!("skipped: dbus-daemon unavailable");
             let _ = std::fs::remove_dir_all(&dir);
             return;

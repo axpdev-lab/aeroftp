@@ -5582,7 +5582,7 @@
         "picker": {
             "unavailable": {
                 "title": "Dosya seçici kullanılamıyor",
-                "portalMissing": "Masaüstü portalı kurulu olmadığı için bu sistem dosya seçici açamıyor. xdg-desktop-portal paketini ve masaüstünüz için bir arka uç (örneğin xdg-desktop-portal-gtk) kurup yeniden deneyin.",
+                "portalMissing": "Masaüstü portalı kurulu olmadığı için bu sistemde dosya seçici açılamıyor. xdg-desktop-portal paketini ve masaüstünüz için bir arka uç (örneğin xdg-desktop-portal-gtk) kurup yeniden deneyin.",
                 "unknown": "Dosya seçici açılamadı. Ayrıntılar için uygulama günlüğüne bakın."
             }
         }
