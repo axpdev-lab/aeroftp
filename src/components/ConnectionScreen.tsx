@@ -657,8 +657,6 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     const [showAeroCryptPassword, setShowAeroCryptPassword] = useState(false);
     const [aeroCryptWithHeader, setAeroCryptWithHeader] = useState(false);
     const [aeroCryptDefaultSalt, setAeroCryptDefaultSalt] = useState(false);
-    const [aeroCryptDefaultSaltStrength, setAeroCryptDefaultSaltStrength] = useState<'128' | '256'>('128');
-    const [aeroCryptDefaultSaltAttested, setAeroCryptDefaultSaltAttested] = useState(false);
     // P3.3b: rclone-crypt interop needs salt (password2) + filename/dir-name
     // encryption mode to auto-unlock on connect, mirroring the RcloneCryptUnlock
     // modal. Native AeroCrypt ignores these (config lives in its marker).
@@ -1166,12 +1164,23 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         return sc < 20 ? 0 : sc < 40 ? 1 : sc < 60 ? 2 : sc < 80 ? 3 : 4;
     }, [aeroCryptPassword, pwLen]);
 
-    const requiredLen = aeroCryptDefaultSaltStrength === '256' ? 39 : 20;
+    // Password floor for default-salt mode, matching the backend's own gate
+    // (`enforce_default_salt_entropy`, tier "128"). Ehud #369: the 128/256 radios
+    // that used to pick between two floors never reached the backend at all, so
+    // the stricter one was UI-only theatre; the password strength meter already
+    // tells the user where they stand.
+    const requiredLen = 20;
     const meetsEntropy = strengthLevel === 4 && pwLen >= requiredLen;
-    // Effective flag only when user explicitly opts in + attests + passes gate.
-    const effectiveUseDefaultSalt = aeroCryptDefaultSalt && aeroCryptDefaultSaltAttested && meetsEntropy;
-    // Checkbox itself enabled as soon as entropy floor is met (attestation revealed after).
     const canToggleDefaultSalt = meetsEntropy;
+    // The toggle IS the intent, with no second silent gate: an attestation
+    // checkbox used to sit between the two, and leaving it unticked quietly
+    // created a per-vault-salt vault while the toggle still read as on (#276).
+    // Weakening the password after ticking the toggle now blocks the save
+    // instead of silently downgrading the mode.
+    const effectiveUseDefaultSalt = aeroCryptDefaultSalt;
+    const defaultSaltEntropyMismatch =
+        aeroCryptEnabled && overlayEligible && !overlayFieldsLocked
+        && aeroCryptKind === 'aerocrypt' && aeroCryptDefaultSalt && !meetsEntropy;
 
     // P3: build the overlay-binding profile fields + stash the overlay password
     // in the vault under aerocrypt_overlay_pw_<id> (mirrors stashFilenApiKey).
@@ -1338,6 +1347,12 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         // already shows the translated error and the button is disabled while
         // invalid; this is defense-in-depth (same pattern as the password confirm).
         if (overlaysRemotePathError) return;
+
+        // #276: never persist default-salt intent that the backend would reject
+        // for entropy. The button is disabled in that state; defense-in-depth so
+        // the vault can never be created with a per-vault salt behind an on-
+        // looking toggle.
+        if (defaultSaltEntropyMismatch) return;
 
         // #128: saving a Quick Connect profile (typically to add the Filen API
         // key so a 2FA login is no longer needed) must cancel any pending
@@ -2367,8 +2382,6 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         setAeroCryptDirNameEnc(true);
         setAeroCryptWithHeader(false);
         setAeroCryptDefaultSalt(false);
-        setAeroCryptDefaultSaltStrength('128');
-        setAeroCryptDefaultSaltAttested(false);
         setAeroCryptKeyfilePath('');
         setKeyfileJustGenerated(false);
         setKeyfileError(null);
@@ -3282,56 +3295,19 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     </span>
                                                 )}
 
-                                                {/* Two-tier selector: the tier sets the password length required to
-                                                    enable default salt (128-bit: 20+ chars, 256-bit: 39+ chars). */}
-                                                {aeroCryptKind === 'aerocrypt' && (
-                                                    <div className="ml-12 mt-1 flex items-center gap-3 text-xs">
-                                                        <label className="flex items-center gap-1.5">
-                                                            <input
-                                                                type="radio"
-                                                                name="saltStrength"
-                                                                checked={!aeroCryptDefaultSaltStrength || aeroCryptDefaultSaltStrength === '128'}
-                                                                onChange={() => setAeroCryptDefaultSaltStrength('128')}
-                                                                disabled={overlayFieldsLocked}
-                                                            />
-                                                            <span>{t('aerocryptProfile.defaultSaltTier128') || '128-bit (recommended, needs a 20+ character password)'}</span>
-                                                        </label>
-                                                        <label className="flex items-center gap-1.5">
-                                                            <input
-                                                                type="radio"
-                                                                name="saltStrength"
-                                                                checked={aeroCryptDefaultSaltStrength === '256'}
-                                                                onChange={() => setAeroCryptDefaultSaltStrength('256')}
-                                                                disabled={overlayFieldsLocked}
-                                                            />
-                                                            <span>{t('aerocryptProfile.defaultSaltTier256') || '256-bit (stricter, needs a 39+ character password)'}</span>
-                                                        </label>
-                                                    </div>
-                                                )}
-
-                                                {/* Ehud #369: the radios were being read as "the salt is
-                                                    128/256-bit", and the salt itself was nowhere on screen.
-                                                    Say what the radios actually set, then print the one
-                                                    public salt so it can be read, copied and backed up. */}
+                                                {/* Ehud #369: print the one public salt so it can be read,
+                                                    copied and backed up. */}
                                                 {aeroCryptKind === 'aerocrypt' && (
                                                     <DefaultSaltDisclosure className="ml-12 mt-1.5 text-xs" />
                                                 )}
 
-                                                {/* Attestation (required to enable default salt) */}
-                                                {aeroCryptDefaultSalt && (
-                                                    <div className="ml-12 mt-1">
-                                                        <label className="flex items-start gap-2 text-xs cursor-pointer">
-                                                            <input
-                                                                type="checkbox"
-                                                                checked={aeroCryptDefaultSaltAttested}
-                                                                onChange={(e) => setAeroCryptDefaultSaltAttested(e.target.checked)}
-                                                                className="mt-0.5"
-                                                            />
-                                                            <span className="text-gray-600 dark:text-gray-400">
-                                                                {t('aerocryptProfile.defaultSaltAttestation') || 'I generated this password with a password manager and understand the linkability tradeoff (identical passwords produce linkable encrypted names).'}
-                                                            </span>
-                                                        </label>
-                                                    </div>
+                                                {/* The toggle stays on while the password no longer clears the
+                                                    floor: say so and block the save, rather than saving a
+                                                    per-vault salt behind an on-looking toggle (#276). */}
+                                                {defaultSaltEntropyMismatch && (
+                                                    <span className="ml-12 text-xs text-red-600 dark:text-red-400 leading-relaxed">
+                                                        {t('aerocryptProfile.defaultSaltNeedsStronger')} ({pwLen}/{requiredLen})
+                                                    </span>
                                                 )}
                                             </div>
                                         )}
@@ -3554,7 +3530,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                         )}
                         <button
                             onClick={saveOverride || handleConnectAndSave}
-                            disabled={saveOverride ? (loading || btnDisabled) : (loading || btnDisabled || aeroCryptConfirmMismatch || !!overlaysRemotePathError)}
+                            disabled={saveOverride ? (loading || btnDisabled) : (loading || btnDisabled || aeroCryptConfirmMismatch || !!overlaysRemotePathError || defaultSaltEntropyMismatch)}
                             className={`${(showCancelSaveAsNew || cancelOverride) ? 'flex-1' : 'w-full'} py-3 rounded-lg font-medium text-white cursor-pointer active:scale-[0.98] transition-all flex items-center justify-center gap-2 shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.3)] disabled:opacity-50 ${loading ? 'bg-gray-400 !cursor-not-allowed' : buttonColorClass}`}
                         >
                             {loading ? (

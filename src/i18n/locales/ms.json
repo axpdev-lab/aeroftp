@@ -5195,9 +5195,6 @@
             "hideKit": "Tutup",
             "kitUnavailable": "Kit pemulihan belum tersedia untuk bilik kebal ini lagi.",
             "defaultSaltLabel": "Salt lalai (ikut serta, kebolehalihan hanya dengan kata laluan; memerlukan entropi tinggi dan perakuan)",
-            "defaultSaltStrength128": "128-bit disyorkan",
-            "defaultSaltStrength256": "256-bit",
-            "defaultSaltAttestation": "Saya menggunakan pengurus kata laluan dan memahami kompromi kebolehpautan.",
             "legacyMarkerNotice": "Vault ini masih menggunakan marker lama .aeroftp-crypt.json. Tukarkannya kepada .aerocrypt.tsv selepas memasukkan kata laluan atau keyfile.",
             "migrateLegacyMarker": "Tukar marker",
             "legacyMarkerMigrated": "Marker ditukar kepada .aerocrypt.tsv.",
@@ -5304,11 +5301,8 @@
             "overlaysRemotePathInvalid": "Mestilah Laluan Jauh atau subfolder daripadanya",
             "defaultSaltToggle": "Salt lalai (hanya kata laluan membuka; tiada kit atau storan kunci diperlukan selepas dicipta)",
             "defaultSaltToggleHint": "Salt malar awam (gaya rclone). Memerlukan kata laluan berentropi tinggi yang dijana. Kata laluan sama pada berbilang vault menjadikan nama tersulit boleh dipaut tanpa kunci.",
-            "defaultSaltAttestation": "Saya menjana kata laluan ini dengan pengurus kata laluan dan memahami pertukaran keboleh-pautan.",
             "defaultSaltNeedsStronger": "Masukkan kata laluan kuat yang dijana untuk menghidupkan salt lalai.",
-            "defaultSaltTier128": "128-bit (disyorkan, memerlukan kata laluan 20+ aksara)",
-            "defaultSaltTier256": "256-bit (lebih ketat, memerlukan kata laluan 39+ aksara)",
-            "defaultSaltTierMeaning": "Dua peringkat ini menetapkan sekuat mana kata laluan anda perlu jadi, bukan saiz salt: salt hanya ada satu, 32 bait, sama bagi setiap vault yang menggunakan salt lalai.",
+            "defaultSaltOneSaltNote": "Hanya ada satu salt: 32 bait, awam, sama untuk setiap peti besi dengan salt lalai.",
             "defaultSaltValueLabel": "Salt lalai awam (AeroCrypt v3), SHA-256 bagi"
         },
         "modalGuard": {

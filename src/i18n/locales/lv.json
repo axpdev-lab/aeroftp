@@ -5195,9 +5195,6 @@
             "hideKit": "Aizvērt",
             "kitUnavailable": "Atkopšanas komplekts šai glabātavai vēl nav pieejams.",
             "defaultSaltLabel": "Noklusējuma sāls (izvēles režīms, pārnesamība tikai ar paroli; nepieciešama augsta entropija un apliecinājums)",
-            "defaultSaltStrength128": "ieteicami 128 biti",
-            "defaultSaltStrength256": "256 biti",
-            "defaultSaltAttestation": "Es izmantoju paroļu pārvaldnieku un saprotu sasaistāmības kompromisu.",
             "legacyMarkerNotice": "Šis vault joprojām izmanto veco marķieri .aeroftp-crypt.json. Pēc paroles vai keyfile ievadīšanas konvertējiet to uz .aerocrypt.tsv.",
             "migrateLegacyMarker": "Konvertēt marķieri",
             "legacyMarkerMigrated": "Marķieris konvertēts uz .aerocrypt.tsv.",
@@ -5304,11 +5301,8 @@
             "overlaysRemotePathInvalid": "Tam jābūt Attālajam ceļam vai tā apakšmapei",
             "defaultSaltToggle": "Noklusējuma sāls (tikai parole atver; pēc izveides nav nepieciešams komplekts vai atslēgu krātuve)",
             "defaultSaltToggleHint": "Publiska konstanta sāls (rclone-style). Nepieciešama augstas entropijas ģenerēta parole. Viena un tā pati parole vairākos seifos padara šifrētos nosaukumus saistāmus bez atslēgas.",
-            "defaultSaltAttestation": "Es ģenerēju šo paroli ar paroļu pārvaldnieku un saprotu saistāmības kompromisu.",
             "defaultSaltNeedsStronger": "Ievadiet spēcīgu ģenerētu paroli, lai ieslēgtu noklusējuma salt.",
-            "defaultSaltTier128": "128-bit (ieteicams, nepieciešama parole ar 20+ rakstzīmēm)",
-            "defaultSaltTier256": "256-bit (stingrāks, nepieciešama parole ar 39+ rakstzīmēm)",
-            "defaultSaltTierMeaning": "Abi līmeņi nosaka, cik spēcīgai jābūt jūsu parolei, nevis sāls izmēru: sāls ir viena fiksēta 32 baitu vērtība, tā pati visiem seifiem ar noklusējuma sāli.",
+            "defaultSaltOneSaltNote": "Ir tikai viens salt: 32 baiti, publisks, vienāds visām glabātavām ar noklusējuma salt.",
             "defaultSaltValueLabel": "Publiskā noklusējuma sāls (AeroCrypt v3), SHA-256 no"
         },
         "modalGuard": {

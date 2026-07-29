@@ -5195,9 +5195,6 @@
             "hideKit": "Sulje",
             "kitUnavailable": "Palautuspaketti ei ole vielä käytettävissä tälle holville.",
             "defaultSaltLabel": "Oletussuola (valinnainen, siirrettävyys vain salasanalla; vaatii suuren entropian ja vakuutuksen)",
-            "defaultSaltStrength128": "128-bittinen suositeltu",
-            "defaultSaltStrength256": "256-bittinen",
-            "defaultSaltAttestation": "Käytin salasananhallintaa ja ymmärrän linkitettävyyden kompromissin.",
             "legacyMarkerNotice": "Tämä vault käyttää yhä vanhaa .aeroftp-crypt.json-merkkiä. Muunna se .aerocrypt.tsv-muotoon salasanan tai keyfile-tiedoston syöttämisen jälkeen.",
             "migrateLegacyMarker": "Muunna merkki",
             "legacyMarkerMigrated": "Merkki muunnettu muotoon .aerocrypt.tsv.",
@@ -5304,11 +5301,8 @@
             "overlaysRemotePathInvalid": "Sen on oltava Etäpolku tai sen alikansio",
             "defaultSaltToggle": "Oletussuola (vain salasana avaa; luomisen jälkeen ei tarvita pakettia tai avainvarastoa)",
             "defaultSaltToggleHint": "Julkinen vakiosuola (rclone-tyyli). Vaatii luodun korkean entropian salasanan. Sama salasana useissa holveissa tekee salatuista nimistä linkitettäviä ilman avainta.",
-            "defaultSaltAttestation": "Loin tämän salasanan salasananhallinnalla ja ymmärrän linkitettävyyden kompromissin.",
             "defaultSaltNeedsStronger": "Syötä vahva luotu salasana ottaaksesi oletussuolan käyttöön.",
-            "defaultSaltTier128": "128-bit (suositeltu, vaatii 20+ merkin salasanan)",
-            "defaultSaltTier256": "256-bit (tiukempi, vaatii 39+ merkin salasanan)",
-            "defaultSaltTierMeaning": "Nämä kaksi tasoa määrittävät, kuinka vahva salasanasi on oltava, eivät suolan kokoa: suoloja on vain yksi, 32 tavua, sama jokaisessa oletussuolaa käyttävässä holvissa.",
+            "defaultSaltOneSaltNote": "Saltteja on vain yksi: 32 tavua, julkinen, sama kaikissa oletussalttia käyttävissä holveissa.",
             "defaultSaltValueLabel": "Julkinen oletussuola (AeroCrypt v3), SHA-256 merkkijonosta"
         },
         "modalGuard": {

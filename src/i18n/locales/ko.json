@@ -5195,9 +5195,6 @@
             "hideKit": "닫기",
             "kitUnavailable": "이 볼트에 대한 복구 키트는 아직 사용할 수 없습니다.",
             "defaultSaltLabel": "기본 salt(선택 사항, 비밀번호만으로 이동 가능; 높은 entropy와 attestation 필요)",
-            "defaultSaltStrength128": "128-bit 권장",
-            "defaultSaltStrength256": "256-bit",
-            "defaultSaltAttestation": "비밀번호 관리자를 사용했으며 linkability tradeoff를 이해합니다.",
             "legacyMarkerNotice": "이 vault는 아직 기존 .aeroftp-crypt.json 마커를 사용합니다. 비밀번호 또는 keyfile을 입력한 후 .aerocrypt.tsv로 변환하세요.",
             "migrateLegacyMarker": "마커 변환",
             "legacyMarkerMigrated": "마커가 .aerocrypt.tsv로 변환되었습니다.",
@@ -5304,11 +5301,8 @@
             "overlaysRemotePathInvalid": "원격 경로이거나 그 하위 폴더여야 합니다",
             "defaultSaltToggle": "기본 솔트 (비밀번호만으로 열림; 생성 후 키트나 키스토어 필요 없음)",
             "defaultSaltToggleHint": "공개 상수 솔트 (rclone-style). 높은 엔트로피의 생성된 비밀번호가 필요합니다. 여러 볼트에서 동일한 비밀번호를 사용하면 키 없이 암호화된 이름을 연결할 수 있게 됩니다.",
-            "defaultSaltAttestation": "이 비밀번호를 비밀번호 관리자로 생성했으며 연결 가능성의 절충을 이해합니다.",
             "defaultSaltNeedsStronger": "기본 솔트를 켜려면 강력하게 생성된 비밀번호를 입력하세요.",
-            "defaultSaltTier128": "128-bit (권장, 20+자 비밀번호 필요)",
-            "defaultSaltTier256": "256-bit (더 엄격함, 39+자 비밀번호 필요)",
-            "defaultSaltTierMeaning": "두 등급은 솔트의 크기가 아니라 비밀번호가 얼마나 강해야 하는지를 정합니다. 솔트는 32바이트 하나뿐이며, 기본 솔트를 쓰는 모든 볼트에서 동일합니다.",
+            "defaultSaltOneSaltNote": "솔트는 하나뿐입니다. 32바이트이며 공개되어 있고, 기본 솔트를 사용하는 모든 보관소에서 동일합니다.",
             "defaultSaltValueLabel": "공개 기본 솔트 (AeroCrypt v3), 다음 문자열의 SHA-256"
         },
         "modalGuard": {

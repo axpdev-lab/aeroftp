@@ -5195,9 +5195,6 @@
             "hideKit": "Funga",
             "kitUnavailable": "Kifurushi cha kurejesha bado hakipatikani kwa hazina hii.",
             "defaultSaltLabel": "Salt chaguomsingi (hiari, uhamishikaji kwa nenosiri pekee; inahitaji entropy ya juu na attestation)",
-            "defaultSaltStrength128": "128-bit inapendekezwa",
-            "defaultSaltStrength256": "256-bit",
-            "defaultSaltAttestation": "Nilitumia kidhibiti cha manenosiri na ninaelewa mabadilishano ya linkability.",
             "legacyMarkerNotice": "Vault hii bado inatumia marker ya zamani .aeroftp-crypt.json. Ibadilishe kuwa .aerocrypt.tsv baada ya kuingiza nenosiri au keyfile.",
             "migrateLegacyMarker": "Badilisha marker",
             "legacyMarkerMigrated": "Marker imebadilishwa kuwa .aerocrypt.tsv.",
@@ -5304,11 +5301,8 @@
             "overlaysRemotePathInvalid": "Lazima iwe Njia ya Mbali au folda ndogo yake",
             "defaultSaltToggle": "Chumvi chaguomsingi (neno la siri pekee hufungua; hakuna kit au hifadhi ya funguo inayohitajika baada ya kuunda)",
             "defaultSaltToggleHint": "Chumvi ya mara kwa mara ya umma (mtindo wa rclone). Inahitaji neno la siri lililotengenezwa lenye entropia ya juu. Neno la siri sawa kwenye hifadhi nyingi hufanya majina yaliyosimbwa kuwa yanayoweza kuunganishwa bila ufunguo.",
-            "defaultSaltAttestation": "Nilitengeneza neno hili la siri kwa kutumia kidhibiti cha maneno ya siri na ninaelewa maelewano ya uunganishwaji.",
             "defaultSaltNeedsStronger": "Weka nenosiri imara lililozalishwa ili kuwasha salt chaguo-msingi.",
-            "defaultSaltTier128": "128-bit (inapendekezwa, inahitaji nenosiri la herufi 20+)",
-            "defaultSaltTier256": "256-bit (kali zaidi, inahitaji nenosiri la herufi 39+)",
-            "defaultSaltTierMeaning": "Ngazi hizi mbili huamua nenosiri lako liwe imara kiasi gani, si ukubwa wa chumvi: kuna chumvi moja tu, baiti 32, ile ile kwa kila hazina yenye chumvi chaguo-msingi.",
+            "defaultSaltOneSaltNote": "Kuna salt moja tu: baiti 32, ya umma, sawa kwa kila hazina inayotumia salt chaguo-msingi.",
             "defaultSaltValueLabel": "Chumvi chaguo-msingi ya umma (AeroCrypt v3), SHA-256 ya"
         },
         "modalGuard": {

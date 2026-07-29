@@ -5195,9 +5195,6 @@
             "hideKit": "Cerrar",
             "kitUnavailable": "El kit de recuperación aún no está disponible para esta bóveda.",
             "defaultSaltLabel": "Sal predeterminada (opcional, portabilidad solo con contraseña; requiere alta entropía y atestación)",
-            "defaultSaltStrength128": "128 bits recomendado",
-            "defaultSaltStrength256": "256 bits",
-            "defaultSaltAttestation": "He usado un gestor de contraseñas y entiendo el compromiso de vinculabilidad.",
             "legacyMarkerNotice": "Este vault aún usa el marcador heredado .aeroftp-crypt.json. Conviértelo a .aerocrypt.tsv después de introducir la contraseña o el keyfile.",
             "migrateLegacyMarker": "Convertir marcador",
             "legacyMarkerMigrated": "Marcador convertido a .aerocrypt.tsv.",
@@ -5304,11 +5301,8 @@
             "overlaysRemotePathInvalid": "Debe ser la Ruta remota o una subcarpeta de ella",
             "defaultSaltToggle": "Sal por defecto (solo la contraseña abre; no se necesita kit ni almacén de claves tras crear)",
             "defaultSaltToggleHint": "Sal constante pública (rclone-style). Requiere una contraseña generada de alta entropía. Usar la misma contraseña en múltiples bóvedas hace que los nombres cifrados sean vinculables sin la clave.",
-            "defaultSaltAttestation": "Generé esta contraseña con un gestor de contraseñas y entiendo el compromiso de vinculabilidad.",
             "defaultSaltNeedsStronger": "Introduce una contraseña generada segura para activar la sal predeterminada.",
-            "defaultSaltTier128": "128-bit (recomendado, necesita una contraseña de 20+ caracteres)",
-            "defaultSaltTier256": "256-bit (más estricto, necesita una contraseña de 39+ caracteres)",
-            "defaultSaltTierMeaning": "Los dos niveles fijan lo fuerte que debe ser tu contraseña, no el tamaño del salt: hay un único salt, de 32 bytes, el mismo para todas las bóvedas con salt predeterminado.",
+            "defaultSaltOneSaltNote": "Existe un único salt: 32 bytes, público, idéntico para todas las bóvedas con salt predeterminado.",
             "defaultSaltValueLabel": "Salt predeterminado público (AeroCrypt v3), SHA-256 de"
         },
         "modalGuard": {

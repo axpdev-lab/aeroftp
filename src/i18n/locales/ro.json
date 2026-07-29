@@ -5195,9 +5195,6 @@
             "hideKit": "Închide",
             "kitUnavailable": "Kitul de recuperare nu este încă disponibil pentru acest seif.",
             "defaultSaltLabel": "Salt implicit (opțional, portabilitate doar cu parolă; necesită entropie ridicată și atestare)",
-            "defaultSaltStrength128": "128 de biți recomandat",
-            "defaultSaltStrength256": "256 de biți",
-            "defaultSaltAttestation": "Am folosit un manager de parole și înțeleg compromisul privind posibilitatea de corelare.",
             "legacyMarkerNotice": "Acest vault folosește încă vechiul marker .aeroftp-crypt.json. Convertiți-l în .aerocrypt.tsv după introducerea parolei sau a keyfile-ului.",
             "migrateLegacyMarker": "Convertește markerul",
             "legacyMarkerMigrated": "Marker convertit în .aerocrypt.tsv.",
@@ -5304,11 +5301,8 @@
             "overlaysRemotePathInvalid": "Trebuie să fie Calea la distanță sau un subfolder al acesteia",
             "defaultSaltToggle": "Salt implicit (doar parola deschide; după creare nu este nevoie de kit sau depozit de chei)",
             "defaultSaltToggleHint": "Salt constant public (stil rclone). Necesită o parolă generată cu entropie ridicată. Aceeași parolă pe mai multe seifuri face ca numele criptate să fie conectabile fără cheie.",
-            "defaultSaltAttestation": "Am generat această parolă cu un manager de parole și înțeleg compromisul de conectabilitate.",
             "defaultSaltNeedsStronger": "Introduceți o parolă generată puternică pentru a activa saltul implicit.",
-            "defaultSaltTier128": "128-bit (recomandat, necesită o parolă de 20+ caractere)",
-            "defaultSaltTier256": "256-bit (mai strict, necesită o parolă de 39+ caractere)",
-            "defaultSaltTierMeaning": "Cele două niveluri stabilesc cât de puternică trebuie să fie parola, nu dimensiunea saltului: există un singur salt, de 32 de octeți, același pentru fiecare seif cu salt implicit.",
+            "defaultSaltOneSaltNote": "Există un singur salt: 32 de octeți, public, identic pentru fiecare seif cu salt implicit.",
             "defaultSaltValueLabel": "Salt implicit public (AeroCrypt v3), SHA-256 al șirului"
         },
         "modalGuard": {

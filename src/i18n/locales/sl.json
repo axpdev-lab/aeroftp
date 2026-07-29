@@ -5195,9 +5195,6 @@
             "hideKit": "Zapri",
             "kitUnavailable": "Komplet za obnovitev za ta trezor še ni na voljo.",
             "defaultSaltLabel": "Privzeta sol (izbirno, prenosljivost samo z geslom; zahteva visoko entropijo in potrditev)",
-            "defaultSaltStrength128": "priporočeno 128-bitno",
-            "defaultSaltStrength256": "256-bitno",
-            "defaultSaltAttestation": "Uporabil(a) sem upravitelja gesel in razumem kompromis povezljivosti.",
             "legacyMarkerNotice": "Ta vault še vedno uporablja stari marker .aeroftp-crypt.json. Po vnosu gesla ali keyfile ga pretvorite v .aerocrypt.tsv.",
             "migrateLegacyMarker": "Pretvori marker",
             "legacyMarkerMigrated": "Marker pretvorjen v .aerocrypt.tsv.",
@@ -5304,12 +5301,9 @@
             "overlaysRemotePathInvalid": "Biti mora Oddaljena pot ali njena podmapa",
             "defaultSaltToggle": "Privzeta sol (samo geslo odpre; po ustvarjanju ni potreben komplet ali shramba ključev)",
             "defaultSaltToggleHint": "Javna konstantna sol (rclone-style). Zahteva ustvarjeno geslo z visoko entropijo. Isto geslo na več trezorjih naredi šifrirana imena povezljiva brez ključa.",
-            "defaultSaltAttestation": "To geslo sem ustvaril z upravljalnikom gesel in razumem kompromis povezljivosti.",
             "defaultSaltNeedsStronger": "Vnesite močno ustvarjeno geslo, da vklopite privzeti salt.",
-            "defaultSaltTier128": "128-bit (priporočeno, zahteva geslo z 20+ znaki)",
-            "defaultSaltTier256": "256-bit (strožje, zahteva geslo z 39+ znaki)",
-            "defaultSaltTierMeaning": "Stopnji določata, kako močno mora biti vaše geslo, ne velikosti soli: sol je ena sama, 32 bajtov, enaka za vsak trezor s privzeto soljo.",
-            "defaultSaltValueLabel": "Javna privzeta sol (AeroCrypt v3), SHA-256 od"
+            "defaultSaltOneSaltNote": "Obstaja samo en salt: 32 bajtov, javen, enak za vse trezorje s privzetim saltom.",
+            "defaultSaltValueLabel": "Javni privzeti salt (AeroCrypt v3), SHA-256 od"
         },
         "modalGuard": {
             "busyTitle": "Operacija poteka",

@@ -5195,9 +5195,6 @@
             "hideKit": "Uždaryti",
             "kitUnavailable": "Atkūrimo rinkinys šiai saugyklai dar neprieinamas.",
             "defaultSaltLabel": "Numatytoji druska (pasirenkama, perkeliamumas tik su slaptažodžiu; reikia didelės entropijos ir patvirtinimo)",
-            "defaultSaltStrength128": "rekomenduojama 128 bitų",
-            "defaultSaltStrength256": "256 bitų",
-            "defaultSaltAttestation": "Naudojau slaptažodžių tvarkyklę ir suprantu susiejimo kompromisą.",
             "legacyMarkerNotice": "Ši vault saugykla vis dar naudoja seną .aeroftp-crypt.json žymeklį. Įvedę slaptažodį arba keyfile, konvertuokite jį į .aerocrypt.tsv.",
             "migrateLegacyMarker": "Konvertuoti žymeklį",
             "legacyMarkerMigrated": "Žymeklis konvertuotas į .aerocrypt.tsv.",
@@ -5304,11 +5301,8 @@
             "overlaysRemotePathInvalid": "Tai turi būti Nuotolinis kelias arba jo poaplankis",
             "defaultSaltToggle": "Numatytoji druska (tik slaptažodis atidaro; po sukūrimo nereikia rinkinio ar raktų saugyklos)",
             "defaultSaltToggleHint": "Vieša pastovi druska (rclone-style). Reikia sugeneruoto didelės entropijos slaptažodžio. Tas pats slaptažodis keliuose saugyklose daro užšifruotus pavadinimus susiejamus be rakto.",
-            "defaultSaltAttestation": "Šį slaptažodį sugeneravau naudodamas slaptažodžių tvarkyklę ir suprantu susiejamumo kompromisą.",
             "defaultSaltNeedsStronger": "Įveskite stiprų sugeneruotą slaptažodį, kad įjungtumėte numatytąjį salt.",
-            "defaultSaltTier128": "128-bit (rekomenduojama, reikia 20+ simbolių slaptažodžio)",
-            "defaultSaltTier256": "256-bit (griežtesnis, reikia 39+ simbolių slaptažodžio)",
-            "defaultSaltTierMeaning": "Du lygiai nustato, kiek stiprus turi būti jūsų slaptažodis, o ne druskos dydį: druska yra viena, 32 baitų, ta pati kiekvienai saugyklai su numatytąja druska.",
+            "defaultSaltOneSaltNote": "Yra tik vienas salt: 32 baitai, viešas, vienodas visoms saugykloms su numatytuoju salt.",
             "defaultSaltValueLabel": "Vieša numatytoji druska (AeroCrypt v3), SHA-256 nuo"
         },
         "modalGuard": {

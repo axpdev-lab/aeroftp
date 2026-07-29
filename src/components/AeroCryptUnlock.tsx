@@ -87,8 +87,6 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({
     const [keyfilePath, setKeyfilePath] = useState('');
     const [createSubpath, setCreateSubpath] = useState('');
     const [aeroCryptDefaultSalt, setAeroCryptDefaultSalt] = useState(false);
-    const [aeroCryptDefaultSaltStrength, setAeroCryptDefaultSaltStrength] = useState<'128' | '256'>('128');
-    const [aeroCryptDefaultSaltAttested, setAeroCryptDefaultSaltAttested] = useState(false);
 
     // Entropy gate (D1-D3, mirrors ConnectionScreen)
     const pwLen = password.length;
@@ -102,9 +100,12 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({
         sc = Math.max(0, Math.min(100, sc));
         return sc < 20 ? 0 : sc < 40 ? 1 : sc < 60 ? 2 : sc < 80 ? 3 : 4;
     }, [password, pwLen]);
-    const requiredLen = aeroCryptDefaultSaltStrength === '256' ? 39 : 20;
+    // Single password floor, matching the backend gate. The 128/256 radios never
+    // reached the backend and the attestation checkbox silently downgraded the
+    // mode when left unticked, so both are gone (Ehud #369, #276).
+    const requiredLen = 20;
     const meetsEntropy = strengthLevel === 4 && pwLen >= requiredLen;
-    const effectiveUseDefaultSalt = aeroCryptDefaultSalt && aeroCryptDefaultSaltAttested && meetsEntropy;
+    const effectiveUseDefaultSalt = aeroCryptDefaultSalt && meetsEntropy;
     const canToggleDefaultSalt = meetsEntropy;
 
     const [loading, setLoading] = useState(false);
@@ -204,8 +205,6 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({
         setSuccess(null);
         setKitData(null);
         setAeroCryptDefaultSalt(false);
-        setAeroCryptDefaultSaltStrength('128');
-        setAeroCryptDefaultSaltAttested(false);
         setMarkerStatus(null);
     }, []);
 
@@ -673,19 +672,10 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({
                                     </label>
                                     {aeroCryptDefaultSalt && (
                                         <>
-                                            <div className="ml-5 flex gap-3">
-                                                <label><input type="radio" name="mstrength" checked={aeroCryptDefaultSaltStrength==='128'} onChange={() => setAeroCryptDefaultSaltStrength('128')} /> {t('aerocryptNative.defaultSaltStrength128')}</label>
-                                                <label><input type="radio" name="mstrength" checked={aeroCryptDefaultSaltStrength==='256'} onChange={() => setAeroCryptDefaultSaltStrength('256')} /> {t('aerocryptNative.defaultSaltStrength256')}</label>
-                                            </div>
-                                            {/* Ehud #369: the radios read as "the salt is 128/256-bit".
-                                                They are a password requirement; the salt is a single
-                                                32-byte public constant, printed here so it can be
-                                                read, copied and backed up. */}
+                                            {/* Ehud #369: the salt is a single 32-byte public
+                                                constant, printed here so it can be read, copied
+                                                and backed up. */}
                                             <DefaultSaltDisclosure className="ml-5" />
-                                            <label className="ml-5 flex items-start gap-1.5">
-                                                <input type="checkbox" checked={aeroCryptDefaultSaltAttested} onChange={(e)=>setAeroCryptDefaultSaltAttested(e.target.checked)} />
-                                                <span>{t('aerocryptNative.defaultSaltAttestation')}</span>
-                                            </label>
                                         </>
                                     )}
                                 </div>

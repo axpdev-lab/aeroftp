@@ -3434,9 +3434,6 @@
             "hideKit": "Chiudi",
             "kitUnavailable": "Il kit di ripristino non è ancora disponibile per questa cassaforte.",
             "defaultSaltLabel": "Salt predefinito (opt-in, portabilità solo con password; richiede alta entropia e attestazione)",
-            "defaultSaltStrength128": "128 bit consigliato",
-            "defaultSaltStrength256": "256 bit",
-            "defaultSaltAttestation": "Ho usato un gestore di password e comprendo il compromesso di collegabilità.",
             "legacyMarkerNotice": "Questo vault usa ancora il marker legacy .aeroftp-crypt.json. Convertilo in .aerocrypt.tsv dopo aver inserito la password o il keyfile.",
             "migrateLegacyMarker": "Converti marker",
             "legacyMarkerMigrated": "Marker convertito in .aerocrypt.tsv.",
@@ -5312,11 +5309,8 @@
             "overlaysRemotePathInvalid": "Deve essere il Percorso remoto o una sua sottocartella",
             "defaultSaltToggle": "Salt predefinito (solo la password apre; dopo la creazione non serve kit o keystore)",
             "defaultSaltToggleHint": "Salt costante pubblico (stile rclone). Richiede una password generata ad alta entropia. La stessa password su più vault rende i nomi cifrati collegabili senza la chiave.",
-            "defaultSaltAttestation": "Ho generato questa password con un gestore password e comprendo il compromesso di collegabilità.",
             "defaultSaltNeedsStronger": "Inserisci una password generata robusta per attivare il salt predefinito.",
-            "defaultSaltTier128": "128-bit (consigliato, richiede una password di 20+ caratteri)",
-            "defaultSaltTier256": "256-bit (più restrittivo, richiede una password di 39+ caratteri)",
-            "defaultSaltTierMeaning": "I due livelli stabiliscono quanto deve essere forte la password, non la dimensione del salt: il salt è uno solo, 32 byte, identico per ogni vault a salt predefinito.",
+            "defaultSaltOneSaltNote": "Esiste un solo salt: 32 byte, pubblico, identico per ogni vault in modalità salt predefinito.",
             "defaultSaltValueLabel": "Salt predefinito pubblico (AeroCrypt v3), SHA-256 di"
         },
         "modalGuard": {

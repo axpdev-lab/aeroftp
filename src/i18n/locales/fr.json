@@ -5195,9 +5195,6 @@
             "hideKit": "Fermer",
             "kitUnavailable": "Le kit de récupération n'est pas encore disponible pour ce coffre.",
             "defaultSaltLabel": "Sel par défaut (activation volontaire, portabilité par mot de passe uniquement ; exige une entropie élevée et une attestation)",
-            "defaultSaltStrength128": "128 bits recommandé",
-            "defaultSaltStrength256": "256 bits",
-            "defaultSaltAttestation": "J'ai utilisé un gestionnaire de mots de passe et je comprends le compromis de liabilité.",
             "legacyMarkerNotice": "Ce vault utilise encore l'ancien marqueur .aeroftp-crypt.json. Convertissez-le en .aerocrypt.tsv après avoir saisi le mot de passe ou le keyfile.",
             "migrateLegacyMarker": "Convertir le marqueur",
             "legacyMarkerMigrated": "Marqueur converti en .aerocrypt.tsv.",
@@ -5304,12 +5301,9 @@
             "overlaysRemotePathInvalid": "Doit être le Chemin distant ou un de ses sous-dossiers",
             "defaultSaltToggle": "Sel par défaut (seul le mot de passe ouvre ; aucun kit ou magasin de clés nécessaire après création)",
             "defaultSaltToggleHint": "Sel constant public (style rclone). Nécessite un mot de passe généré à haute entropie. Le même mot de passe sur plusieurs coffres rend les noms chiffrés associables sans la clé.",
-            "defaultSaltAttestation": "J'ai généré ce mot de passe avec un gestionnaire de mots de passe et je comprends le compromis de traçabilité.",
             "defaultSaltNeedsStronger": "Saisissez un mot de passe généré fort pour activer le sel par défaut.",
-            "defaultSaltTier128": "128-bit (recommandé, nécessite un mot de passe de 20+ caractères)",
-            "defaultSaltTier256": "256-bit (plus strict, nécessite un mot de passe de 39+ caractères)",
-            "defaultSaltTierMeaning": "Les deux niveaux fixent la robustesse exigée de votre mot de passe, pas la taille du sel : il n'y a qu'un seul sel, de 32 octets, identique pour tous les coffres à sel par défaut.",
-            "defaultSaltValueLabel": "Sel public par défaut (AeroCrypt v3), SHA-256 de"
+            "defaultSaltOneSaltNote": "Il n'existe qu'un seul salt : 32 octets, public, identique pour tous les coffres en salt par défaut.",
+            "defaultSaltValueLabel": "Salt public par défaut (AeroCrypt v3), SHA-256 de"
         },
         "modalGuard": {
             "busyTitle": "Opération en cours",

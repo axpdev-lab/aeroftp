@@ -5195,9 +5195,6 @@
             "hideKit": "Schließen",
             "kitUnavailable": "Das Wiederherstellungskit ist für diesen Tresor noch nicht verfügbar.",
             "defaultSaltLabel": "Standard-Salt (Opt-in, Portabilität nur mit Passwort; erfordert hohe Entropie und Bestätigung)",
-            "defaultSaltStrength128": "128 Bit empfohlen",
-            "defaultSaltStrength256": "256 Bit",
-            "defaultSaltAttestation": "Ich habe einen Passwortmanager verwendet und verstehe den Kompromiss bei der Verknüpfbarkeit.",
             "legacyMarkerNotice": "Dieser Vault verwendet noch den alten Marker .aeroftp-crypt.json. Konvertiere ihn nach Eingabe des Passworts oder der Keyfile zu .aerocrypt.tsv.",
             "migrateLegacyMarker": "Marker konvertieren",
             "legacyMarkerMigrated": "Marker in .aerocrypt.tsv konvertiert.",
@@ -5304,11 +5301,8 @@
             "overlaysRemotePathInvalid": "Muss der Remote-Pfad oder ein Unterordner davon sein",
             "defaultSaltToggle": "Standard-Salt (nur Passwort öffnet; nach Erstellung kein Kit oder Keystore nötig)",
             "defaultSaltToggleHint": "Öffentliches konstantes Salt (rclone-style). Erfordert ein generiertes Passwort mit hoher Entropie. Dasselbe Passwort auf mehreren Tresoren macht verschlüsselte Namen ohne Schlüssel verknüpfbar.",
-            "defaultSaltAttestation": "Ich habe dieses Passwort mit einem Passwort-Manager generiert und verstehe den Linkbarkeits-Kompromiss.",
             "defaultSaltNeedsStronger": "Geben Sie ein starkes generiertes Passwort ein, um das Standard-Salt zu aktivieren.",
-            "defaultSaltTier128": "128-bit (empfohlen, erfordert ein Passwort mit 20+ Zeichen)",
-            "defaultSaltTier256": "256-bit (strenger, erfordert ein Passwort mit 39+ Zeichen)",
-            "defaultSaltTierMeaning": "Die beiden Stufen legen fest, wie stark Ihr Passwort sein muss, nicht die Größe des Salts: Es gibt genau ein Salt, 32 Byte, dasselbe für jeden Tresor mit Standard-Salt.",
+            "defaultSaltOneSaltNote": "Es gibt genau ein Salt: 32 Byte, öffentlich, identisch für jeden Tresor mit Standard-Salt.",
             "defaultSaltValueLabel": "Öffentliches Standard-Salt (AeroCrypt v3), SHA-256 von"
         },
         "modalGuard": {

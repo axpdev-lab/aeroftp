@@ -5214,9 +5214,6 @@
             "hideKit": "Itxi",
             "kitUnavailable": "Berreskuratze-kita ez dago oraindik erabilgarri kutxa gotor honetarako.",
             "defaultSaltLabel": "Gatz lehenetsia (aukerakoa, pasahitz hutsezko eramangarritasuna; entropia handia eta egiaztapena behar ditu)",
-            "defaultSaltStrength128": "128-bit gomendatua",
-            "defaultSaltStrength256": "256-bit",
-            "defaultSaltAttestation": "Pasahitz-kudeatzaile bat erabili dut eta estekagarritasunaren konpromisoa ulertzen dut.",
             "legacyMarkerNotice": "Vault honek oraindik .aeroftp-crypt.json markatzaile zaharra erabiltzen du. Bihurtu .aerocrypt.tsv-ra pasahitza edo keyfile-a sartu ondoren.",
             "migrateLegacyMarker": "Bihurtu markatzailea",
             "legacyMarkerMigrated": "Markatzailea .aerocrypt.tsv-ra bihurtu da.",
@@ -5323,11 +5320,8 @@
             "overlaysRemotePathInvalid": "Urruneko bidea edo horren azpikarpeta bat izan behar da",
             "defaultSaltToggle": "Gatza lehenetsia (pasahitza bakarrik irekitzen du; sortu ondoren ez da kitik edo giltza-biltegirik behar)",
             "defaultSaltToggleHint": "Gatz konstante publikoa (rclone-estiloa). Sortutako entropia handiko pasahitza behar du. Pasahitz bera hainbat kutxatan izateak giltzarik gabe estekagarri bihurtzen ditu zifratutako izenak.",
-            "defaultSaltAttestation": "Pasahitz kudeatzaile batekin sortu dut pasahitz hau eta ulertzen dut estekagarritasunaren trukea.",
             "defaultSaltNeedsStronger": "Sartu sortutako pasahitz sendo bat lehenetsitako salt-a aktibatzeko.",
-            "defaultSaltTier128": "128-bit (gomendatua, 20+ karaktereko pasahitza behar du)",
-            "defaultSaltTier256": "256-bit (zorrotzagoa, 39+ karaktereko pasahitza behar du)",
-            "defaultSaltTierMeaning": "Bi mailek pasahitzak zein indartsua izan behar duen zehazten dute, ez gatzaren tamaina: gatz bakarra dago, 32 byte, berdina gatz lehenetsidun kutxa gotor bakoitzerako.",
+            "defaultSaltOneSaltNote": "Salt bakarra dago: 32 byte, publikoa, salt lehenetsia darabilten kutxa guztietan berdina.",
             "defaultSaltValueLabel": "Gatz lehenetsi publikoa (AeroCrypt v3), honako kate honen SHA-256"
         },
         "modalGuard": {

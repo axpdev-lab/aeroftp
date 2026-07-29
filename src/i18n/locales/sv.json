@@ -5195,9 +5195,6 @@
             "hideKit": "Stäng",
             "kitUnavailable": "Återställningskitet är ännu inte tillgängligt för detta valv.",
             "defaultSaltLabel": "Standardsalt (valfritt, portabilitet endast med lösenord; kräver hög entropi och attestering)",
-            "defaultSaltStrength128": "128-bit rekommenderas",
-            "defaultSaltStrength256": "256-bit",
-            "defaultSaltAttestation": "Jag använde en lösenordshanterare och förstår avvägningen kring länkbarhet.",
             "legacyMarkerNotice": "Detta vault använder fortfarande den gamla .aeroftp-crypt.json-markören. Konvertera den till .aerocrypt.tsv efter att du har angett lösenordet eller keyfile.",
             "migrateLegacyMarker": "Konvertera markör",
             "legacyMarkerMigrated": "Markör konverterad till .aerocrypt.tsv.",
@@ -5304,12 +5301,9 @@
             "overlaysRemotePathInvalid": "Måste vara Fjärrsökvägen eller en undermapp till den",
             "defaultSaltToggle": "Standardsalt (endast lösenord öppnar; inget kit eller nyckellager behövs efter skapande)",
             "defaultSaltToggleHint": "Offentligt konstant salt (rclone-style). Kräver ett genererat lösenord med hög entropi. Samma lösenord på flera valv gör krypterade namn länkbara utan nyckeln.",
-            "defaultSaltAttestation": "Jag genererade detta lösenord med en lösenordshanterare och förstår länkbarhetskompromissen.",
             "defaultSaltNeedsStronger": "Ange ett starkt genererat lösenord för att aktivera standardsaltet.",
-            "defaultSaltTier128": "128-bit (rekommenderas, kräver ett lösenord på 20+ tecken)",
-            "defaultSaltTier256": "256-bit (strängare, kräver ett lösenord på 39+ tecken)",
-            "defaultSaltTierMeaning": "De två nivåerna anger hur starkt ditt lösenord måste vara, inte saltets storlek: det finns ett enda salt på 32 byte, samma för varje valv med standardsalt.",
-            "defaultSaltValueLabel": "Publikt standardsalt (AeroCrypt v3), SHA-256 av"
+            "defaultSaltOneSaltNote": "Det finns bara ett salt: 32 byte, offentligt, identiskt för alla valv med standardsalt.",
+            "defaultSaltValueLabel": "Offentligt standardsalt (AeroCrypt v3), SHA-256 av"
         },
         "modalGuard": {
             "busyTitle": "Åtgärd pågår",

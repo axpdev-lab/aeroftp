@@ -5214,9 +5214,6 @@
             "hideKit": "Isara",
             "kitUnavailable": "Hindi pa available ang recovery kit para sa vault na ito.",
             "defaultSaltLabel": "Default na salt (opt-in, portability gamit lang ang password; nangangailangan ng mataas na entropy at attestation)",
-            "defaultSaltStrength128": "128-bit ang inirerekomenda",
-            "defaultSaltStrength256": "256-bit",
-            "defaultSaltAttestation": "Gumamit ako ng password manager at nauunawaan ko ang tradeoff sa linkability.",
             "legacyMarkerNotice": "Gumagamit pa rin ang vault na ito ng lumang marker na .aeroftp-crypt.json. I-convert ito sa .aerocrypt.tsv pagkatapos ilagay ang password o keyfile.",
             "migrateLegacyMarker": "I-convert ang marker",
             "legacyMarkerMigrated": "Na-convert ang marker sa .aerocrypt.tsv.",
@@ -5323,11 +5320,8 @@
             "overlaysRemotePathInvalid": "Dapat itong ang Remote Path o isang subfolder nito",
             "defaultSaltToggle": "Default salt (password lang ang nagbubukas; walang kailangang kit o keystore pagkatapos gawin)",
             "defaultSaltToggleHint": "Pampublikong constant salt (rclone-style). Nangangailangan ng high-entropy na generated password. Ang parehong password sa maraming vault ay nagpapagawang naka-link ang mga encrypted name nang walang key.",
-            "defaultSaltAttestation": "Gumawa ako ng password na ito gamit ang password manager at nauunawaan ang trade-off ng kakayahang i-link.",
             "defaultSaltNeedsStronger": "Maglagay ng malakas na binuong password para i-on ang default na salt.",
-            "defaultSaltTier128": "128-bit (inirerekomenda, kailangan ng password na 20+ karakter)",
-            "defaultSaltTier256": "256-bit (mas mahigpit, kailangan ng password na 39+ karakter)",
-            "defaultSaltTierMeaning": "Itinatakda ng dalawang tier kung gaano dapat kalakas ang iyong password, hindi ang laki ng salt: iisa ang salt, 32 byte, pareho para sa bawat vault na may default na salt.",
+            "defaultSaltOneSaltNote": "Iisa lang ang salt: 32 byte, pampubliko, pareho para sa bawat vault na gumagamit ng default na salt.",
             "defaultSaltValueLabel": "Pampublikong default na salt (AeroCrypt v3), SHA-256 ng"
         },
         "modalGuard": {

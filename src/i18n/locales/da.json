@@ -5195,9 +5195,6 @@
             "hideKit": "Luk",
             "kitUnavailable": "Gendannelsessættet er endnu ikke tilgængeligt for denne boks.",
             "defaultSaltLabel": "Standardsalt (tilvalg, portabilitet kun med adgangskode; kræver høj entropi og attestering)",
-            "defaultSaltStrength128": "128-bit anbefales",
-            "defaultSaltStrength256": "256-bit",
-            "defaultSaltAttestation": "Jeg har brugt en adgangskodeadministrator og forstår afvejningen om linkbarhed.",
             "legacyMarkerNotice": "Denne vault bruger stadig den gamle .aeroftp-crypt.json-markør. Konverter den til .aerocrypt.tsv efter indtastning af adgangskoden eller keyfile.",
             "migrateLegacyMarker": "Konverter markør",
             "legacyMarkerMigrated": "Markør konverteret til .aerocrypt.tsv.",
@@ -5304,11 +5301,8 @@
             "overlaysRemotePathInvalid": "Skal være Fjernstien eller en undermappe af den",
             "defaultSaltToggle": "Standardsalt (kun adgangskode åbner; ingen kit eller nøglelager nødvendigt efter oprettelse)",
             "defaultSaltToggleHint": "Offentligt konstant salt (rclone-style). Kræver en genereret høj-entropi adgangskode. Samme adgangskode på flere vaults gør krypterede navne linkbare uden nøglen.",
-            "defaultSaltAttestation": "Jeg genererede denne adgangskode med en adgangskodehåndtering og forstår linkbarheds-kompromiset.",
             "defaultSaltNeedsStronger": "Indtast en stærk genereret adgangskode for at aktivere standardsaltet.",
-            "defaultSaltTier128": "128-bit (anbefales, kræver en adgangskode på 20+ tegn)",
-            "defaultSaltTier256": "256-bit (strengere, kræver en adgangskode på 39+ tegn)",
-            "defaultSaltTierMeaning": "De to niveauer fastsætter, hvor stærk din adgangskode skal være, ikke saltets størrelse: der er ét salt på 32 byte, det samme for hver boks med standardsalt.",
+            "defaultSaltOneSaltNote": "Der findes kun ét salt: 32 byte, offentligt, identisk for alle bokse med standardsalt.",
             "defaultSaltValueLabel": "Offentligt standardsalt (AeroCrypt v3), SHA-256 af"
         },
         "modalGuard": {

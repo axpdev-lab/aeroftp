@@ -5214,9 +5214,6 @@
             "hideKit": "Loka",
             "kitUnavailable": "Endurheimtarsettið er ekki enn tiltækt fyrir þessa hvelfingu.",
             "defaultSaltLabel": "Sjálfgefið salt (valkvætt, færanleiki aðeins með lykilorði; krefst mikillar óreiðu og staðfestingar)",
-            "defaultSaltStrength128": "128-bit mælt með",
-            "defaultSaltStrength256": "256-bit",
-            "defaultSaltAttestation": "Ég notaði lykilorðastjóra og skil málamiðlunina um tengjanleika.",
             "legacyMarkerNotice": "Þessi vault notar enn gamla .aeroftp-crypt.json-merkið. Umbreyttu því í .aerocrypt.tsv eftir að lykilorð eða keyfile hefur verið slegið inn.",
             "migrateLegacyMarker": "Umbreyta merki",
             "legacyMarkerMigrated": "Merki umbreytt í .aerocrypt.tsv.",
@@ -5323,11 +5320,8 @@
             "overlaysRemotePathInvalid": "Verður að vera Fjarslóðin eða undirmappa hennar",
             "defaultSaltToggle": "Sjálfgefið salt (aðeins lykilorð opnar; engin pakkning eða lyklageymsla þarf eftir stofnun)",
             "defaultSaltToggleHint": "Opinbert fast salt (rclone-stíll). Krefst myndaðs lykilorðs með mikilli óreiðu. Sama lykilorð á mörgum geymslum gerir dulrituð nöfn tengjanleg án lykils.",
-            "defaultSaltAttestation": "Ég bjó til þetta lykilorð með lykilorðastjóra og skil tengjanleikaviðskiptin.",
             "defaultSaltNeedsStronger": "Sláðu inn sterkt myndað lykilorð til að kveikja á sjálfgefna saltinu.",
-            "defaultSaltTier128": "128-bit (mælt með, þarf lykilorð með 20+ stöfum)",
-            "defaultSaltTier256": "256-bit (strangara, þarf lykilorð með 39+ stöfum)",
-            "defaultSaltTierMeaning": "Þrepin tvö ákveða hversu sterkt lykilorðið þitt þarf að vera, ekki stærð saltsins: saltið er eitt, 32 bæti, það sama fyrir hverja hirslu með sjálfgefnu salti.",
+            "defaultSaltOneSaltNote": "Það er aðeins eitt salt: 32 bæti, opinbert, eins fyrir allar hvelfingar með sjálfgefið salt.",
             "defaultSaltValueLabel": "Opinbert sjálfgefið salt (AeroCrypt v3), SHA-256 af"
         },
         "modalGuard": {

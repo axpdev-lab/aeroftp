@@ -5724,6 +5724,11 @@ const App: React.FC = () => {
             // Headed intent from the saved profile: missing remote marker is
             // healed from the keystore with a one-shot safety toast (#421 #7).
             withHeader: !!binding.withHeader,
+            // #276: the saved default-salt intent has to travel with the unlock.
+            // Without it the backend defaulted to false and minted a per-vault
+            // random salt on create, so a profile saved with the toggle on came
+            // back with a salt that was not the documented public constant.
+            useDefaultSalt: !!binding.useDefaultSalt,
           },
           savedServerId,
         );

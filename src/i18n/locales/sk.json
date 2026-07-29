@@ -5195,9 +5195,6 @@
             "hideKit": "Zavrieť",
             "kitUnavailable": "Súprava na obnovenie zatiaľ nie je pre tento trezor k dispozícii.",
             "defaultSaltLabel": "Predvolená soľ (voliteľné, prenositeľnosť iba pomocou hesla; vyžaduje vysokú entropiu a potvrdenie)",
-            "defaultSaltStrength128": "odporúča sa 128 bitov",
-            "defaultSaltStrength256": "256 bitov",
-            "defaultSaltAttestation": "Použil(a) som správcu hesiel a rozumiem kompromisu prepojiteľnosti.",
             "legacyMarkerNotice": "Tento vault stále používa starý marker .aeroftp-crypt.json. Po zadaní hesla alebo keyfile ho skonvertujte na .aerocrypt.tsv.",
             "migrateLegacyMarker": "Skonvertovať marker",
             "legacyMarkerMigrated": "Marker skonvertovaný na .aerocrypt.tsv.",
@@ -5304,12 +5301,9 @@
             "overlaysRemotePathInvalid": "Musí to byť Vzdialená cesta alebo jej podpriečinok",
             "defaultSaltToggle": "Predvolená soľ (len heslo otvára; po vytvorení nie je potrebná súprava ani úložisko kľúčov)",
             "defaultSaltToggleHint": "Verejná konštantná soľ (rclone-style). Vyžaduje vygenerované heslo s vysokou entropiou. Rovnaké heslo na viacerých trezoroch robí šifrované názvy prepojiteľnými bez kľúča.",
-            "defaultSaltAttestation": "Vygeneroval som toto heslo pomocou správcu hesiel a rozumiem kompromisu prepojiteľnosti.",
             "defaultSaltNeedsStronger": "Zadajte silné vygenerované heslo na zapnutie predvoleného saltu.",
-            "defaultSaltTier128": "128-bit (odporúčané, vyžaduje heslo s 20+ znakmi)",
-            "defaultSaltTier256": "256-bit (prísnejšie, vyžaduje heslo s 39+ znakmi)",
-            "defaultSaltTierMeaning": "Obe úrovne určujú, aké silné musí byť vaše heslo, nie veľkosť soli: soľ je jediná, 32 bajtov, rovnaká pre každý trezor s predvolenou soľou.",
-            "defaultSaltValueLabel": "Verejná predvolená soľ (AeroCrypt v3), SHA-256 z"
+            "defaultSaltOneSaltNote": "Existuje jediný salt: 32 bajtov, verejný, rovnaký pre každý trezor s predvoleným saltom.",
+            "defaultSaltValueLabel": "Verejný predvolený salt (AeroCrypt v3), SHA-256 z"
         },
         "modalGuard": {
             "busyTitle": "Prebieha operácia",

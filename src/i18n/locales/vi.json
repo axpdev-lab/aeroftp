@@ -5195,9 +5195,6 @@
             "hideKit": "Đóng",
             "kitUnavailable": "Bộ khôi phục chưa khả dụng cho kho này.",
             "defaultSaltLabel": "Salt mặc định (chọn bật, khả năng di chuyển chỉ bằng mật khẩu; yêu cầu entropy cao và attestation)",
-            "defaultSaltStrength128": "khuyến nghị 128-bit",
-            "defaultSaltStrength256": "256-bit",
-            "defaultSaltAttestation": "Tôi đã dùng trình quản lý mật khẩu và hiểu đánh đổi về linkability.",
             "legacyMarkerNotice": "Vault này vẫn dùng marker cũ .aeroftp-crypt.json. Chuyển đổi nó sang .aerocrypt.tsv sau khi nhập mật khẩu hoặc keyfile.",
             "migrateLegacyMarker": "Chuyển đổi marker",
             "legacyMarkerMigrated": "Marker đã được chuyển đổi sang .aerocrypt.tsv.",
@@ -5304,12 +5301,9 @@
             "overlaysRemotePathInvalid": "Phải là Đường dẫn từ xa hoặc thư mục con của nó",
             "defaultSaltToggle": "Muối mặc định (chỉ mật khẩu mở; không cần bộ công cụ hay kho khóa sau khi tạo)",
             "defaultSaltToggleHint": "Muối hằng số công khai (kiểu rclone). Yêu cầu mật khẩu được tạo có độ entropy cao. Cùng một mật khẩu trên nhiều kho làm cho tên đã mã hóa có thể liên kết mà không cần khóa.",
-            "defaultSaltAttestation": "Tôi đã tạo mật khẩu này bằng trình quản lý mật khẩu và hiểu sự đánh đổi về khả năng liên kết.",
             "defaultSaltNeedsStronger": "Nhập mật khẩu mạnh đã tạo để bật salt mặc định.",
-            "defaultSaltTier128": "128-bit (khuyến nghị, cần mật khẩu 20+ ký tự)",
-            "defaultSaltTier256": "256-bit (nghiêm ngặt hơn, cần mật khẩu 39+ ký tự)",
-            "defaultSaltTierMeaning": "Hai mức quy định mật khẩu của bạn phải mạnh đến đâu, chứ không phải kích thước của muối: chỉ có một muối, 32 byte, giống nhau cho mọi két dùng muối mặc định.",
-            "defaultSaltValueLabel": "Muối mặc định công khai (AeroCrypt v3), SHA-256 của"
+            "defaultSaltOneSaltNote": "Chỉ có một salt duy nhất: 32 byte, công khai, giống nhau cho mọi kho sử dụng salt mặc định.",
+            "defaultSaltValueLabel": "Salt mặc định công khai (AeroCrypt v3), SHA-256 của"
         },
         "modalGuard": {
             "busyTitle": "Đang thực hiện thao tác",

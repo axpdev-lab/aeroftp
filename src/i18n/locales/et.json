@@ -5195,9 +5195,6 @@
             "hideKit": "Sulge",
             "kitUnavailable": "Taastekomplekt pole selle hoidla jaoks veel saadaval.",
             "defaultSaltLabel": "Vaikesool (valikuline, paroolipõhine kaasaskantavus; nõuab suurt entroopiat ja kinnitust)",
-            "defaultSaltStrength128": "soovitatav 128-bitine",
-            "defaultSaltStrength256": "256-bitine",
-            "defaultSaltAttestation": "Kasutasin paroolihaldurit ja mõistan seostatavuse kompromissi.",
             "legacyMarkerNotice": "See vault kasutab endiselt pärandmarkerit .aeroftp-crypt.json. Teisendage see pärast parooli või keyfile'i sisestamist vormingusse .aerocrypt.tsv.",
             "migrateLegacyMarker": "Teisenda marker",
             "legacyMarkerMigrated": "Marker teisendati vormingusse .aerocrypt.tsv.",
@@ -5304,11 +5301,8 @@
             "overlaysRemotePathInvalid": "Peab olema Kaugtee või selle alamkaust",
             "defaultSaltToggle": "Vaikesool (ainult parool avab; pärast loomist pole komplekti ega võtmehoidjat vaja)",
             "defaultSaltToggleHint": "Avalik konstantne sool (rclone-style). Nõuab genereeritud kõrge entroopiaga parooli. Sama parool mitmel hoidlal muudab krüpteeritud nimed võtmeta lingitavaks.",
-            "defaultSaltAttestation": "Lõin selle parooli paroolihalduriga ja mõistan lingitavuse kompromissi.",
             "defaultSaltNeedsStronger": "Vaikimisi salti sisselülitamiseks sisestage tugev genereeritud parool.",
-            "defaultSaltTier128": "128-bit (soovitatav, vajab 20+ tähemärgiga parooli)",
-            "defaultSaltTier256": "256-bit (rangem, vajab 39+ tähemärgiga parooli)",
-            "defaultSaltTierMeaning": "Kaks taset määravad teie parooli tugevuse, mitte soola suuruse: sool on üks ja seesama 32-baidine väärtus kõigi vaikesoolaga hoidlate jaoks.",
+            "defaultSaltOneSaltNote": "Salt on ainult üks: 32 baiti, avalik, sama kõigi vaikesaltiga hoidlate puhul.",
             "defaultSaltValueLabel": "Avalik vaikesool (AeroCrypt v3), järgneva teksti SHA-256"
         },
         "modalGuard": {

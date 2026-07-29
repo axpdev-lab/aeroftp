@@ -5214,9 +5214,6 @@
             "hideKit": "Tanca",
             "kitUnavailable": "El kit de recuperació encara no està disponible per a aquest magatzem.",
             "defaultSaltLabel": "Sal predeterminada (opcional, portabilitat només amb contrasenya; requereix alta entropia i attestació)",
-            "defaultSaltStrength128": "128 bits recomanat",
-            "defaultSaltStrength256": "256 bits",
-            "defaultSaltAttestation": "He utilitzat un gestor de contrasenyes i entenc el compromís de vinculabilitat.",
             "legacyMarkerNotice": "Aquest vault encara usa el marcador antic .aeroftp-crypt.json. Convertiu-lo a .aerocrypt.tsv després d'introduir la contrasenya o el keyfile.",
             "migrateLegacyMarker": "Converteix el marcador",
             "legacyMarkerMigrated": "Marcador convertit a .aerocrypt.tsv.",
@@ -5323,12 +5320,9 @@
             "overlaysRemotePathInvalid": "Ha de ser la Ruta remota o una subcarpeta d'aquesta",
             "defaultSaltToggle": "Sal per defecte (només amb la contrasenya s'obre; no cal kit ni magatzem de claus després de crear)",
             "defaultSaltToggleHint": "Sal constant pública (estil rclone). Requereix una contrasenya generada d'alta entropia. La mateixa contrasenya en múltiples cofres fa que els noms xifrats siguin enllaçables sense la clau.",
-            "defaultSaltAttestation": "He generat aquesta contrasenya amb un gestor de contrasenyes i entenc el compromís de vinculabilitat.",
             "defaultSaltNeedsStronger": "Introduïu una contrasenya generada forta per activar la sal predeterminada.",
-            "defaultSaltTier128": "128-bit (recomanat, necessita una contrasenya de 20+ caràcters)",
-            "defaultSaltTier256": "256-bit (més estricte, necessita una contrasenya de 39+ caràcters)",
-            "defaultSaltTierMeaning": "Els dos nivells fixen com de forta ha de ser la contrasenya, no la mida de la sal: hi ha una sola sal, de 32 bytes, la mateixa per a cada caixa forta amb sal per defecte.",
-            "defaultSaltValueLabel": "Sal pública per defecte (AeroCrypt v3), SHA-256 de"
+            "defaultSaltOneSaltNote": "Hi ha un únic salt: 32 bytes, públic, idèntic per a tots els magatzems amb salt predeterminat.",
+            "defaultSaltValueLabel": "Salt públic predeterminat (AeroCrypt v3), SHA-256 de"
         },
         "modalGuard": {
             "busyTitle": "Operació en curs",

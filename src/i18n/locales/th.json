@@ -5195,9 +5195,6 @@
             "hideKit": "ปิด",
             "kitUnavailable": "ชุดกู้คืนยังไม่พร้อมใช้งานสำหรับวอลต์นี้",
             "defaultSaltLabel": "salt เริ่มต้น (เลือกเปิดใช้เอง, พกพาได้ด้วยรหัสผ่านเท่านั้น; ต้องมี entropy สูงและ attestation)",
-            "defaultSaltStrength128": "แนะนำ 128-bit",
-            "defaultSaltStrength256": "256-bit",
-            "defaultSaltAttestation": "ฉันใช้ตัวจัดการรหัสผ่านและเข้าใจ tradeoff ด้าน linkability",
             "legacyMarkerNotice": "vault นี้ยังใช้ marker เก่า .aeroftp-crypt.json อยู่ แปลงเป็น .aerocrypt.tsv หลังจากป้อนรหัสผ่านหรือ keyfile แล้ว",
             "migrateLegacyMarker": "แปลง marker",
             "legacyMarkerMigrated": "แปลง marker เป็น .aerocrypt.tsv แล้ว",
@@ -5304,11 +5301,8 @@
             "overlaysRemotePathInvalid": "ต้องเป็นเส้นทางระยะไกลหรือโฟลเดอร์ย่อยของมัน",
             "defaultSaltToggle": "เกลือเริ่มต้น (เปิดด้วยรหัสผ่านเท่านั้น; ไม่ต้องใช้ชุดหรือที่เก็บคีย์หลังสร้าง)",
             "defaultSaltToggleHint": "เกลือคงที่สาธารณะ (สไตล์ rclone) ต้องใช้รหัสผ่านเอนโทรปีสูงที่สร้างขึ้น การใช้รหัสผ่านเดียวกันในหลายคลังทำให้ชื่อที่เข้ารหัสสามารถเชื่อมโยงได้โดยไม่ต้องใช้กุญแจ",
-            "defaultSaltAttestation": "ฉันสร้างรหัสผ่านนี้ด้วยตัวจัดการรหัสผ่านและเข้าใจการแลกเปลี่ยนความเชื่อมโยง",
             "defaultSaltNeedsStronger": "ป้อนรหัสผ่านที่สร้างขึ้นและแข็งแกร่งเพื่อเปิดใช้งาน salt เริ่มต้น.",
-            "defaultSaltTier128": "128-bit (แนะนำ ต้องใช้รหัสผ่าน 20+ อักขระ)",
-            "defaultSaltTier256": "256-bit (เข้มงวดกว่า ต้องใช้รหัสผ่าน 39+ อักขระ)",
-            "defaultSaltTierMeaning": "สองระดับนี้กำหนดว่ารหัสผ่านของคุณต้องแข็งแกร่งเพียงใด ไม่ใช่ขนาดของเกลือ เกลือมีเพียงค่าเดียว ขนาด 32 ไบต์ เหมือนกันในทุกตู้นิรภัยที่ใช้เกลือค่าเริ่มต้น",
+            "defaultSaltOneSaltNote": "มีซอลต์เพียงค่าเดียว: 32 ไบต์ เป็นสาธารณะ และเหมือนกันสำหรับทุกวอลต์ที่ใช้ซอลต์เริ่มต้น",
             "defaultSaltValueLabel": "เกลือค่าเริ่มต้นสาธารณะ (AeroCrypt v3), SHA-256 ของ"
         },
         "modalGuard": {

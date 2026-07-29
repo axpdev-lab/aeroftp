@@ -5195,9 +5195,6 @@
             "hideKit": "Sluiten",
             "kitUnavailable": "De herstelkit is nog niet beschikbaar voor deze kluis.",
             "defaultSaltLabel": "Standaard-salt (opt-in, portabiliteit met alleen wachtwoord; vereist hoge entropie en attestatie)",
-            "defaultSaltStrength128": "128-bit aanbevolen",
-            "defaultSaltStrength256": "256-bit",
-            "defaultSaltAttestation": "Ik heb een wachtwoordmanager gebruikt en begrijp de afweging rond koppelbaarheid.",
             "legacyMarkerNotice": "Deze vault gebruikt nog de oude marker .aeroftp-crypt.json. Converteer die naar .aerocrypt.tsv nadat je het wachtwoord of keyfile hebt ingevoerd.",
             "migrateLegacyMarker": "Marker converteren",
             "legacyMarkerMigrated": "Marker geconverteerd naar .aerocrypt.tsv.",
@@ -5304,11 +5301,8 @@
             "overlaysRemotePathInvalid": "Moet het Externe pad of een submap ervan zijn",
             "defaultSaltToggle": "Standaard salt (alleen wachtwoord opent; na aanmaken geen kit of sleutelopslag nodig)",
             "defaultSaltToggleHint": "Publieke constante salt (rclone-stijl). Vereist een gegenereerd wachtwoord met hoge entropie. Zelfde wachtwoord op meerdere kluizen maakt versleutelde namen koppelbaar zonder sleutel.",
-            "defaultSaltAttestation": "Ik heb dit wachtwoord gegenereerd met een wachtwoordbeheerder en begrijp de linkbaarheid-afweging.",
             "defaultSaltNeedsStronger": "Voer een sterk gegenereerd wachtwoord in om de standaard-salt in te schakelen.",
-            "defaultSaltTier128": "128-bit (aanbevolen, vereist een wachtwoord van 20+ tekens)",
-            "defaultSaltTier256": "256-bit (strenger, vereist een wachtwoord van 39+ tekens)",
-            "defaultSaltTierMeaning": "De twee niveaus bepalen hoe sterk uw wachtwoord moet zijn, niet de grootte van de salt: er is één salt van 32 bytes, dezelfde voor elke kluis met standaardsalt.",
+            "defaultSaltOneSaltNote": "Er is één enkel salt: 32 bytes, openbaar, identiek voor elke kluis met standaardsalt.",
             "defaultSaltValueLabel": "Openbare standaardsalt (AeroCrypt v3), SHA-256 van"
         },
         "modalGuard": {

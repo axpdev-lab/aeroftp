@@ -5195,9 +5195,6 @@
             "hideKit": "Zamknij",
             "kitUnavailable": "Zestaw odzyskiwania nie jest jeszcze dostępny dla tego skarbca.",
             "defaultSaltLabel": "Domyślna sól (opcjonalnie, przenośność tylko z hasłem; wymaga wysokiej entropii i poświadczenia)",
-            "defaultSaltStrength128": "zalecane 128 bitów",
-            "defaultSaltStrength256": "256 bitów",
-            "defaultSaltAttestation": "Użyłem/użyłam menedżera haseł i rozumiem kompromis dotyczący linkowalności.",
             "legacyMarkerNotice": "Ten vault nadal używa starego znacznika .aeroftp-crypt.json. Po wpisaniu hasła lub keyfile przekonwertuj go na .aerocrypt.tsv.",
             "migrateLegacyMarker": "Konwertuj znacznik",
             "legacyMarkerMigrated": "Znacznik przekonwertowany na .aerocrypt.tsv.",
@@ -5304,12 +5301,9 @@
             "overlaysRemotePathInvalid": "Musi to być Ścieżka zdalna lub jej podfolder",
             "defaultSaltToggle": "Domyślna sól (tylko hasło otwiera; po utworzeniu nie jest potrzebny zestaw ani magazyn kluczy)",
             "defaultSaltToggleHint": "Publiczna stała sól (styl rclone). Wymaga wygenerowanego hasła o wysokiej entropii. To samo hasło na wielu sejfach sprawia, że zaszyfrowane nazwy są powiązane bez klucza.",
-            "defaultSaltAttestation": "Wygenerowałem to hasło za pomocą menedżera haseł i rozumiem kompromis w zakresie powiązywalności.",
             "defaultSaltNeedsStronger": "Wprowadź silne wygenerowane hasło, aby włączyć domyślny salt.",
-            "defaultSaltTier128": "128-bit (zalecane, wymaga hasła o długości 20+ znaków)",
-            "defaultSaltTier256": "256-bit (bardziej restrykcyjne, wymaga hasła o długości 39+ znaków)",
-            "defaultSaltTierMeaning": "Dwa poziomy określają, jak silne musi być hasło, a nie rozmiar soli: sól jest jedna, 32 bajty, taka sama dla każdego sejfu z solą domyślną.",
-            "defaultSaltValueLabel": "Publiczna sól domyślna (AeroCrypt v3), SHA-256 z"
+            "defaultSaltOneSaltNote": "Istnieje tylko jeden salt: 32 bajty, publiczny, identyczny dla każdego sejfu z domyślnym saltem.",
+            "defaultSaltValueLabel": "Publiczny domyślny salt (AeroCrypt v3), SHA-256 z"
         },
         "modalGuard": {
             "busyTitle": "Operacja w toku",

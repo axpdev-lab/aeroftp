@@ -5214,9 +5214,6 @@
             "hideKit": "Cau",
             "kitUnavailable": "Nid yw'r pecyn adfer ar gael ar gyfer y gell hon eto.",
             "defaultSaltLabel": "Halen diofyn (dewisol, cludadwyedd gyda chyfrinair yn unig; mae angen entropi uchel ac ardystiad)",
-            "defaultSaltStrength128": "argymhellir 128-bit",
-            "defaultSaltStrength256": "256-bit",
-            "defaultSaltAttestation": "Defnyddiais reolwr cyfrineiriau ac rwy'n deall y cyfaddawd cysylltadwyedd.",
             "legacyMarkerNotice": "Mae'r vault hwn yn dal i ddefnyddio'r marciwr etifeddol .aeroftp-crypt.json. Troswch ef i .aerocrypt.tsv ar ôl rhoi'r cyfrinair neu'r keyfile.",
             "migrateLegacyMarker": "Trosi marciwr",
             "legacyMarkerMigrated": "Marciwr wedi'i drosi i .aerocrypt.tsv.",
@@ -5323,11 +5320,8 @@
             "overlaysRemotePathInvalid": "Rhaid iddo fod y Llwybr Pell neu is-ffolder ohono",
             "defaultSaltToggle": "Halen diofyn (dim ond y cyfrinair sy'n agor; nid oes angen pecyn neu storfa allweddi ar ôl creu)",
             "defaultSaltToggleHint": "Halen cyson cyhoeddus (arddull rclone). Mae angen cyfrinair uchel-entropi a gynhyrchwyd. Mae'r un cyfrinair ar sawl storfa yn gwneud enwau wedi'u hamgryptio yn gysylltadwy heb yr allwedd.",
-            "defaultSaltAttestation": "Fe wnes i gynhyrchu'r cyfrinair hwn gyda rheolwr cyfrineiriau ac rwy'n deall y cyfaddawd cysylltedd.",
             "defaultSaltNeedsStronger": "Rhowch gyfrinair cryf wedi'i gynhyrchu i droi'r salt rhagosodedig ymlaen.",
-            "defaultSaltTier128": "128-bit (argymhellir, angen cyfrinair o 20+ nod)",
-            "defaultSaltTier256": "256-bit (llymach, angen cyfrinair o 39+ nod)",
-            "defaultSaltTierMeaning": "Mae'r ddwy haen yn pennu pa mor gryf y mae'n rhaid i'ch cyfrinair fod, nid maint yr halen: un halen sydd, 32 beit, yr un fath ar gyfer pob coffor â halen rhagosodedig.",
+            "defaultSaltOneSaltNote": "Dim ond un salt sydd: 32 beit, cyhoeddus, yr un peth ar gyfer pob cell ddiogel sy'n defnyddio'r salt rhagosodedig.",
             "defaultSaltValueLabel": "Halen rhagosodedig cyhoeddus (AeroCrypt v3), SHA-256 o"
         },
         "modalGuard": {

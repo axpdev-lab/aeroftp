@@ -5195,9 +5195,6 @@
             "hideKit": "बंद करें",
             "kitUnavailable": "इस वॉल्ट के लिए पुनर्प्राप्ति किट अभी उपलब्ध नहीं है।",
             "defaultSaltLabel": "डिफ़ॉल्ट salt (opt-in, केवल पासवर्ड से portability; उच्च entropy और attestation आवश्यक)",
-            "defaultSaltStrength128": "128-bit अनुशंसित",
-            "defaultSaltStrength256": "256-bit",
-            "defaultSaltAttestation": "मैंने password manager का उपयोग किया है और linkability tradeoff को समझता/समझती हूँ।",
             "legacyMarkerNotice": "यह vault अभी भी पुराने .aeroftp-crypt.json मार्कर का उपयोग करता है। पासवर्ड या keyfile दर्ज करने के बाद इसे .aerocrypt.tsv में बदलें।",
             "migrateLegacyMarker": "मार्कर बदलें",
             "legacyMarkerMigrated": "मार्कर .aerocrypt.tsv में बदल दिया गया।",
@@ -5304,11 +5301,8 @@
             "overlaysRemotePathInvalid": "यह रिमोट पथ या उसका उपफ़ोल्डर होना चाहिए",
             "defaultSaltToggle": "डिफ़ॉल्ट सॉल्ट (केवल पासवर्ड से खुलता है; बनाने के बाद किट या कीस्टोर की आवश्यकता नहीं)",
             "defaultSaltToggleHint": "सार्वजनिक स्थिर सॉल्ट (rclone-style)। उच्च एन्ट्रॉपी वाला जेनरेट किया गया पासवर्ड आवश्यक है। एकाधिक वॉल्ट पर समान पासवर्ड बिना कुंजी के एन्क्रिप्टेड नामों को लिंक करने योग्य बनाता है।",
-            "defaultSaltAttestation": "मैंने इस पासवर्ड को पासवर्ड मैनेजर से जेनरेट किया है और लिंकेबिलिटी ट्रेडऑफ को समझता हूँ।",
             "defaultSaltNeedsStronger": "डिफ़ॉल्ट सॉल्ट चालू करने के लिए एक मजबूत जनरेट किया गया पासवर्ड दर्ज करें।",
-            "defaultSaltTier128": "128-bit (अनुशंसित, 20+ वर्णों का पासवर्ड आवश्यक)",
-            "defaultSaltTier256": "256-bit (अधिक सख्त, 39+ वर्णों का पासवर्ड आवश्यक)",
-            "defaultSaltTierMeaning": "दोनों स्तर यह तय करते हैं कि आपका पासवर्ड कितना मज़बूत होना चाहिए, सॉल्ट का आकार नहीं: सॉल्ट एक ही है, 32 बाइट, हर डिफ़ॉल्ट-सॉल्ट वॉल्ट के लिए समान।",
+            "defaultSaltOneSaltNote": "केवल एक ही सॉल्ट है: 32 बाइट, सार्वजनिक, डिफ़ॉल्ट सॉल्ट वाले हर वॉल्ट के लिए समान।",
             "defaultSaltValueLabel": "सार्वजनिक डिफ़ॉल्ट सॉल्ट (AeroCrypt v3), निम्नलिखित स्ट्रिंग का SHA-256"
         },
         "modalGuard": {
