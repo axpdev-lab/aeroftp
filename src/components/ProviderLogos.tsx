@@ -10,6 +10,15 @@ import React, { useId } from 'react';
 
 interface LogoProps {
     size?: number;
+    /**
+     * Override the fill of a **single-colour** mark, for the rare surface where
+     * the brand colour has no contrast (a solid coloured button). Only the marks
+     * whose brand form is one flat shape honour it; a multi-colour or gradient
+     * mark ignores it on purpose, because recolouring those breaks the brand
+     * guidelines every one of these vendors publishes. Put such a mark on a
+     * neutral surface instead (see the Google Drive button in `OAuthConnect`).
+     */
+    color?: string;
 }
 
 // Generic S3 "bucket" glyph (issue #270, Ehud). A stroke-based bucket that
@@ -341,9 +350,10 @@ export const DriveHQLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     />
 );
 
-// OneDrive: official Microsoft cloud mark (2025-present brand)
-export const OneDriveLogo: React.FC<LogoProps> = ({ size = 24 }) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="#0078D4">
+// OneDrive: official Microsoft cloud mark (2025-present brand). One flat shape,
+// so `color` can restate it in a single other colour without distorting it.
+export const OneDriveLogo: React.FC<LogoProps> = ({ size = 24, color = '#0078D4' }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill={color}>
         <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.61 5.64 5.36 8.04 2.35 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z" />
     </svg>
 );
