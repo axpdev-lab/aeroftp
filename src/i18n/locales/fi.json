@@ -3353,22 +3353,22 @@
             "applyPrivacy": "Käytä",
             "applyPrivacyAll": "Käytä {count} kohteeseen",
             "checksumNotOnBackend": "{backend} ei pysty tuottamaan tätä tiivistettä palvelimen puolella",
-            "checksumServerSide": "Tiivisteet tulevat palvelimelta; tiedostoa ei koskaan ladata niiden laskemiseksi, joten tarjolla on vain se, mitä tämä taustajärjestelmä jo säilyttää.",
-            "checksumNegotiated": "Tämä luettelo on se, minkä juuri tämä palvelin ilmoitti, joten yksittäisellä tiedostolla ei silti välttämättä ole yhtään.",
-            "checksumCiphertext": "Tämä tiedosto on Overlays Pathin sisällä, joten palvelin säilyttää sen salattuna. Nämä tiivisteet kattavat salatut tavut eivätkä täsmää paikallisen kopiosi tiivisteen kanssa: juuri sitä salaus tarkoittaa, kyse ei ole virheestä. Vertaa purettu sisältö paikallisiin tiedostoihisi komennolla \"aeroftp-cli crypt verify\".",
+            "checksumServerSide": "Tiivisteet tulevat palvelimelta; tiedostoa ei koskaan ladata tiivisteen laskemiseksi, joten tarjolla on vain se, mitä tämä taustajärjestelmä jo säilyttää.",
+            "checksumNegotiated": "Tämä luettelo on se, minkä juuri tämä palvelin ilmoitti, joten yksittäisellä tiedostolla ei silti välttämättä ole lainkaan tiivistettä.",
+            "checksumCiphertext": "Tämä tiedosto on Peittojen polun sisällä, joten palvelin säilyttää sen salattuna. Nämä tiivisteet kattavat salatut tavut eivätkä täsmää paikallisen kopiosi tiivisteen kanssa: juuri sitä salaus tarkoittaa, kyse ei ole virheestä. Vertaa purettua sisältöä paikallisiin tiedostoihisi komennolla \"aeroftp-cli crypt verify\".",
             "checksumAbsentForObject": "Tämä taustajärjestelmä osaa tarjota {algorithm}-tiivisteen, mutta tälle objektille sellaista ei ole tallennettuna. Mitään ei ladattu sen laskemiseksi.",
             "checksumMatrixLink": "Mikä taustajärjestelmä tukee mitäkin tiivistettä",
             "checksumCaveats": {
-                "s3-etag": "ETag on objektin MD5 vain yksiosaisille objekteille, joita ei ole salattu SSE-KMS:llä; muissa se jätetään pois sen sijaan että arvattaisiin.",
-                "b2-unverified": "Suurissa tiedostoissa ja lähetyksissä, jotka B2 on merkinnyt varmistamattomiksi, ei ole käyttökelpoista SHA-1:tä.",
+                "s3-etag": "ETag on objektin MD5 vain yksiosaisille objekteille, joita ei ole salattu SSE-KMS- tai SSE-C-salauksella. Moniosaisen ETagin pääte on `-N`, ja se jätetään pois sen sijaan että arvailtaisiin. SSE-KMS- tai SSE-C-ETag voi silti olla 32 heksadesimaalimerkkiä ja läpäisee tällöin saman muototarkistuksen kuin aito tiiviste, joten raportoitu ETag on tällaiselle objektille vain ohjeellinen.",
+                "b2-unverified": "Suurilla tiedostoilla ei ole käyttökelpoista SHA-1:tä, eikä sellaista ole myöskään lähetyksillä, jotka B2 on merkinnyt varmistamattomiksi.",
                 "sftp-sha256sum": "Etäkone laskee sen sha256sum-komennolla SSH-kanavan yli: tavut luetaan palvelimella eikä niitä koskaan lähetetä sinulle. Jätetään pois, jos koneessa ei ole sha256sum-komentoa.",
                 "ftp-negotiated": "Riippuu siitä, mitä palvelin ilmoittaa FEAT-vastauksessa: HASH tai vanhemmat XMD5, XSHA1 ja XCRC.",
-                "webdav-oc-checksums": "Vain ownCloud ja Nextcloud julkaisevat tarkistussummia, ja vain tiedostoille, jotka on lähettänyt summan mukaan liittänyt asiakasohjelma.",
+                "webdav-oc-checksums": "Vain ownCloud ja Nextcloud julkaisevat tarkistussummia, ja vain tiedostoille, jotka asiakasohjelma on lähettänyt tarkistussumman kanssa.",
                 "drive-workspace-docs": "Natiiveilla Google Workspace -asiakirjoilla ei ole tavuvirtaa eikä siten tiivistettä.",
                 "onedrive-hashes": "Se, mikä on saatavilla, riippuu tilistä: henkilökohtainen OneDrive julkaisee QuickXorHashin, yritystilit ja SharePoint yleensä SHA-1:n ja SHA-256:n.",
-                "dropbox-content-hash": "Ei tavallinen tiedoston tiiviste: SHA-256 kunkin 4 MiB:n lohkon SHA-256:n yli. Sitä voi verrata vain toiseen Dropboxin content hashiin.",
+                "dropbox-content-hash": "Ei ole tavallinen tiedoston tiiviste: kunkin 4 MiB:n lohkon SHA-256-tiivisteet ketjutetaan järjestyksessä peräkkäin, ja tästä ketjusta lasketaan uusi SHA-256. Sitä voi verrata vain toiseen Dropboxin content hashiin.",
                 "koofr-proprietary": "Koofrin oma tiiviste. Sitä voi verrata vain toiseen Koofr-tiivisteeseen.",
-                "github-blob-sha": "git-blobin SHA-1, joka lasketaan git-otsakkeen ja sisällön yli, joten se ei täsmää saman tiedoston tavallisen SHA-1:n kanssa.",
+                "github-blob-sha": "git-blobin SHA-1, joka lasketaan git-otsakkeesta ja sisällöstä, joten se ei täsmää saman tiedoston tavallisen SHA-1:n kanssa.",
                 "immich-asset-checksum": "Kohteen tarkistussumma, jonka Immich kirjaa lähetyshetkellä.",
                 "crypt-overlay-ciphertext": "Tiiviste kattaa palvelimelle tallennetut salatut tavut."
             }
@@ -5308,8 +5308,8 @@
             "defaultSaltNeedsStronger": "Syötä vahva luotu salasana ottaaksesi oletussaltin käyttöön.",
             "defaultSaltTier128": "128-bit (suositeltu, vaatii 20+ merkin salasanan)",
             "defaultSaltTier256": "256-bit (tiukempi, vaatii 39+ merkin salasanan)",
-            "defaultSaltTierMeaning": "Kaksi tasoa määrittävät, kuinka vahva salasanasi on oltava, ei suolan kokoa: suolia on yksi, 32 tavua, sama jokaisessa oletussuolaa käyttävässä holvissa.",
-            "defaultSaltValueLabel": "Julkinen oletussuola (AeroCrypt v3), SHA-256 kohteesta"
+            "defaultSaltTierMeaning": "Nämä kaksi tasoa määrittävät, kuinka vahva salasanasi on oltava, eivät suolan kokoa: suoloja on vain yksi, 32 tavua, sama jokaisessa oletussuolaa käyttävässä holvissa.",
+            "defaultSaltValueLabel": "Julkinen oletussuola (AeroCrypt v3), SHA-256 merkkijonosta"
         },
         "modalGuard": {
             "busyTitle": "Toiminto käynnissä",

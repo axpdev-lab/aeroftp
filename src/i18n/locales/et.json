@@ -3353,24 +3353,24 @@
             "applyPrivacy": "Rakenda",
             "applyPrivacyAll": "Rakenda {count} üksusele",
             "checksumNotOnBackend": "{backend} ei suuda seda räsi serveripoolselt luua",
-            "checksumServerSide": "Sõnumilühendid tulevad serverist; faili ei laadita nende arvutamiseks kunagi alla, seega pakutakse ainult seda, mida see taustsüsteem juba talletab.",
-            "checksumNegotiated": "See loend on see, mida just nimelt see server teatas, seega konkreetsel failil ei pruugi ikkagi ühtegi olla.",
-            "checksumCiphertext": "See fail asub Overlays Path'i sees, seega hoiab server seda krüpteeritult. Need lühendid katavad krüpteeritud baite ega klapi sinu kohaliku koopia räsiga: just seda krüpteerimine tähendabki, see pole viga. Kasuta käsku \"aeroftp-cli crypt verify\", et võrrelda lahtikrüpteeritud sisu oma kohalike failidega.",
+            "checksumServerSide": "Räsid tulevad serverist; faili ei laadita kunagi alla, et räsi arvutada, seega pakutakse ainult seda, mida see taustsüsteem juba talletab.",
+            "checksumNegotiated": "See loend näitab täpselt seda, mida just see server teatas, seega ei pruugi konkreetsel failil olla ühtegi räsi.",
+            "checksumCiphertext": "See fail asub ülekatete tee sees, seega hoiab server seda krüpteeritult. Need räsid katavad krüpteeritud baite ega klapi teie kohaliku koopia räsiga: just seda krüpteerimine tähendabki, see pole viga. Kasutage käsku \"aeroftp-cli crypt verify\", et võrrelda dekrüpteeritud sisu oma kohalike failidega.",
             "checksumAbsentForObject": "See taustsüsteem oskab pakkuda {algorithm}, kuid selle objekti jaoks pole ühtegi salvestatud. Selle arvutamiseks ei laaditud midagi alla.",
             "checksumMatrixLink": "Milline taustsüsteem millist räsi toetab",
             "checksumCaveats": {
-                "s3-etag": "ETag on objekti MD5 ainult üheosaliste objektide puhul, mis pole SSE-KMS-iga krüpteeritud; ülejäänute puhul jäetakse see pigem välja kui arvatakse.",
-                "b2-unverified": "Suured failid ja üleslaadimised, mille B2 märkis kinnitamata olekusse, ei kanna kasutatavat SHA-1.",
-                "sftp-sha256sum": "Arvutab kaugmasin käsuga sha256sum üle SSH-kanali: baite loetakse serveris ja neid ei saadeta kunagi sinule. Jäetakse välja, kui masinal pole sha256sum'i.",
+                "s3-etag": "ETag on objekti MD5 ainult üheosaliste objektide puhul, mis ei ole krüptitud SSE-KMS ega SSE-C-ga. Mitmeosalise ETag-i järelliide on `-N` ning see jäetakse vahele, mitte ei arvata. SSE-KMS või SSE-C ETag võib siiski olla 32 kuueteistkümnendmärki ja läbib siis sama kuju kontrolli kui päris digest, seega on teavitatud ETag sellise objekti puhul vaid soovituslik.",
+                "b2-unverified": "Suurtel failidel pole kasutatavat SHA-1 räsi, samuti pole seda üleslaadimistel, mis B2 märkis kinnitamata olekusse.",
+                "sftp-sha256sum": "Arvutab kaugmasin käsuga sha256sum üle SSH-kanali: baite loetakse serveris ja neid ei saadeta kunagi teile. Jäetakse välja, kui masinal pole sha256sum'i.",
                 "ftp-negotiated": "Sõltub sellest, mida server FEAT-vastuses teatab: HASH või vanemad XMD5, XSHA1 ja XCRC.",
                 "webdav-oc-checksums": "Kontrollsummasid avaldavad ainult ownCloud ja Nextcloud, ja sedagi ainult failide kohta, mille laadis üles kliendiprogramm, mis summa kaasa saatis.",
-                "drive-workspace-docs": "Google Workspace'i omadokumentidel pole baidivoogu ja seega ka lühendit.",
+                "drive-workspace-docs": "Google Workspace'i enda vormingus dokumentidel pole baidivoogu ja seega ka räsi.",
                 "onedrive-hashes": "Milline neist olemas on, sõltub kontost: isiklik OneDrive avaldab QuickXorHashi, ärikontod ja SharePoint tavaliselt SHA-1 ja SHA-256.",
-                "dropbox-content-hash": "Pole tavaline faililühend: see on SHA-256 iga 4 MiB ploki SHA-256 kohal. Seda saab võrrelda ainult teise Dropboxi content hash'iga.",
+                "dropbox-content-hash": "Pole tavaline failiräsi: iga 4 MiB ploki SHA-256 väärtused ühendatakse järjekorras kokku ja saadud tulemusest arvutatakse uus SHA-256. Seda saab võrrelda ainult teise Dropboxi content hash'iga.",
                 "koofr-proprietary": "Koofri enda räsi. Seda saab võrrelda ainult teise Koofri räsiga.",
-                "github-blob-sha": "git-blobi SHA-1, arvutatud git-päise ja sisu kohal, seega ei klapi see sama faili tavalise SHA-1-ga.",
+                "github-blob-sha": "git-blobi SHA-1, arvutatud git-päise ja sisu põhjal, seega ei klapi see sama faili tavalise SHA-1-ga.",
                 "immich-asset-checksum": "Üksuse kontrollsumma, mille Immich üleslaadimisel kirja paneb.",
-                "crypt-overlay-ciphertext": "Lühend katab serveris hoitavaid krüpteeritud baite."
+                "crypt-overlay-ciphertext": "Räsi katab serveris hoitavaid krüpteeritud baite."
             }
         },
         "duplicates": {
@@ -5308,8 +5308,8 @@
             "defaultSaltNeedsStronger": "Vaikimisi salti sisselülitamiseks sisestage tugev genereeritud parool.",
             "defaultSaltTier128": "128-bit (soovitatav, vajab 20+ tähemärgiga parooli)",
             "defaultSaltTier256": "256-bit (rangem, vajab 39+ tähemärgiga parooli)",
-            "defaultSaltTierMeaning": "Kaks taset määravad, kui tugev peab olema sinu parool, mitte soola suuruse: sool on üksainus, 32 baiti, sama iga vaikesoolaga hoidla jaoks.",
-            "defaultSaltValueLabel": "Avalik vaikesool (AeroCrypt v3), SHA-256 sellest:"
+            "defaultSaltTierMeaning": "Kaks taset määravad teie parooli tugevuse, mitte soola suuruse: sool on üks ja seesama 32-baidine väärtus kõigi vaikesoolaga hoidlate jaoks.",
+            "defaultSaltValueLabel": "Avalik vaikesool (AeroCrypt v3), järgneva teksti SHA-256"
         },
         "modalGuard": {
             "busyTitle": "Toiming käib",

@@ -241,6 +241,32 @@ async function validate(): Promise<void> {
             });
         }
 
+        // 6b. Labels the UI composes a value onto must not end in the
+        // separator the UI itself supplies. `DefaultSaltDisclosure` renders the label, then the
+        // pre-image string, then a colon of its own, so a label that already
+        // ends in one produces a double colon and reads as though the hash were
+        // of the salt rather than of the string that follows. Ten locales
+        // shipped in that state before anyone noticed (#347 review round), so
+        // the rule is asserted rather than remembered.
+        //
+        // The set is deliberately only the SEPARATOR marks the UI itself
+        // duplicates, in the scripts we ship — not terminal punctuation in
+        // general. A label ending in '!' or '?' or a danda reads oddly but
+        // renders correctly; flagging it would fail strings that are not
+        // broken. The invariant is "no doubled separator", not "no final
+        // punctuation".
+        const COMPOSED_LABEL_KEYS = ['aerocryptProfile.defaultSaltValueLabel'];
+        const TERMINAL_SEPARATOR = /[:;：；៖՝]\s*$/u;
+        for (const key of COMPOSED_LABEL_KEYS) {
+            const val = getNestedValue(data.translations, key);
+            if (typeof val === 'string' && TERMINAL_SEPARATOR.test(val)) {
+                issues.push({
+                    severity: 'error',
+                    message: `${key} ends in the separator the UI appends after it (${JSON.stringify(val.slice(-6))}), so it renders doubled`
+                });
+            }
+        }
+
         // 7. Type consistency (string vs object mismatch)
         const typeMismatches: string[] = [];
         for (const key of translationKeys) {

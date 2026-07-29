@@ -3353,24 +3353,24 @@
             "applyPrivacy": "Terapkan",
             "applyPrivacyAll": "Terapkan ke {count} item",
             "checksumNotOnBackend": "{backend} tidak dapat menghasilkan hash ini di sisi server",
-            "checksumServerSide": "Ringkasan berasal dari server; berkas tidak pernah diunduh untuk menghitungnya, jadi hanya yang sudah disimpan backend ini yang ditawarkan.",
-            "checksumNegotiated": "Daftar ini adalah apa yang diumumkan oleh server tertentu ini, jadi suatu berkas tetap mungkin tidak punya satu pun.",
-            "checksumCiphertext": "Berkas ini berada di dalam Overlays Path, jadi server menyimpannya terenkripsi. Ringkasan ini mencakup bita terenkripsi dan tidak akan cocok dengan hash salinan lokal Anda: itulah arti enkripsi, bukan sebuah kesalahan. Gunakan \"aeroftp-cli crypt verify\" untuk memeriksa isi yang telah didekripsi terhadap berkas lokal Anda.",
+            "checksumServerSide": "Hash berasal dari server; berkas tidak pernah diunduh untuk menghitungnya, jadi hanya yang sudah disimpan backend ini yang ditawarkan.",
+            "checksumNegotiated": "Daftar ini adalah apa yang diumumkan oleh server tertentu ini, jadi suatu berkas tetap mungkin tidak punya hash sama sekali.",
+            "checksumCiphertext": "Berkas ini berada di dalam Jalur Overlay, jadi server menyimpannya terenkripsi. Hash ini mencakup bita terenkripsi dan tidak akan cocok dengan hash salinan lokal Anda: itulah arti enkripsi, bukan sebuah kesalahan. Gunakan \"aeroftp-cli crypt verify\" untuk memeriksa isi yang telah didekripsi terhadap berkas lokal Anda.",
             "checksumAbsentForObject": "Backend ini bisa menyediakan {algorithm}, tetapi tidak ada yang tersimpan untuk objek ini. Tidak ada yang diunduh untuk menghitungnya.",
             "checksumMatrixLink": "Backend mana mendukung hash mana",
             "checksumCaveats": {
-                "s3-etag": "ETag adalah MD5 objek hanya untuk objek satu bagian yang tidak dienkripsi dengan SSE-KMS; untuk yang lain ia dihilangkan alih-alih ditebak.",
-                "b2-unverified": "Berkas besar dan unggahan yang dicatat B2 sebagai belum terverifikasi tidak membawa SHA-1 yang dapat dipakai.",
+                "s3-etag": "ETag adalah MD5 objek hanya untuk objek satu bagian yang tidak dienkripsi SSE-KMS atau SSE-C. ETag multipart membawa akhiran `-N` dan dihilangkan, bukan ditebak. ETag SSE-KMS atau SSE-C tetap bisa berupa 32 karakter heksadesimal dan kemudian lolos pemeriksaan bentuk yang sama seperti digest asli, sehingga ETag yang dilaporkan bersifat advisori untuk objek semacam itu.",
+                "b2-unverified": "Berkas besar tidak punya SHA-1 yang dapat dipakai, dan begitu pula unggahan yang dicatat B2 sebagai belum terverifikasi.",
                 "sftp-sha256sum": "Dihitung oleh host jarak jauh dengan sha256sum melalui kanal SSH: bita dibaca di server dan tidak pernah dikirimkan kepada Anda. Dihilangkan jika host tidak punya sha256sum.",
                 "ftp-negotiated": "Bergantung pada apa yang diumumkan server di FEAT: HASH, atau XMD5, XSHA1, dan XCRC yang lebih lama.",
                 "webdav-oc-checksums": "Hanya ownCloud dan Nextcloud yang menerbitkan checksum, dan hanya untuk berkas yang diunggah oleh klien yang mengirimkannya.",
-                "drive-workspace-docs": "Dokumen asli Google Workspace tidak punya aliran bita sehingga tidak punya ringkasan.",
+                "drive-workspace-docs": "Dokumen format asli Google Workspace tidak punya aliran bita sehingga tidak punya hash.",
                 "onedrive-hashes": "Yang mana yang tersedia bergantung pada akun: OneDrive pribadi menerbitkan QuickXorHash, akun bisnis dan SharePoint biasanya SHA-1 dan SHA-256.",
-                "dropbox-content-hash": "Bukan ringkasan berkas biasa: sebuah SHA-256 atas SHA-256 setiap blok 4 MiB. Ia hanya bisa dibandingkan dengan content hash Dropbox lainnya.",
+                "dropbox-content-hash": "Bukan hash berkas biasa: SHA-256 dari setiap blok 4 MiB digabungkan berurutan, lalu gabungan itu di-hash lagi dengan SHA-256. Ia hanya bisa dibandingkan dengan content hash Dropbox lainnya.",
                 "koofr-proprietary": "Hash milik Koofr sendiri. Ia hanya bisa dibandingkan dengan hash Koofr lainnya.",
                 "github-blob-sha": "SHA-1 blob git, dihitung atas header git ditambah isinya, sehingga tidak cocok dengan SHA-1 biasa dari berkas yang sama.",
                 "immich-asset-checksum": "Checksum aset yang dicatat Immich pada saat unggah.",
-                "crypt-overlay-ciphertext": "Ringkasan mencakup bita terenkripsi yang tersimpan di server."
+                "crypt-overlay-ciphertext": "Hash mencakup bita terenkripsi yang tersimpan di server."
             }
         },
         "duplicates": {
@@ -5308,7 +5308,7 @@
             "defaultSaltNeedsStronger": "Masukkan kata sandi kuat yang dibuat untuk mengaktifkan salt bawaan.",
             "defaultSaltTier128": "128-bit (disarankan, memerlukan kata sandi 20+ karakter)",
             "defaultSaltTier256": "256-bit (lebih ketat, memerlukan kata sandi 39+ karakter)",
-            "defaultSaltTierMeaning": "Kedua tingkat menentukan seberapa kuat kata sandi Anda harus, bukan ukuran salt: salt-nya hanya satu, 32 bita, sama untuk setiap brankas dengan salt bawaan.",
+            "defaultSaltTierMeaning": "Kedua tingkat ini menentukan seberapa kuat kata sandi Anda harus dibuat, bukan ukuran salt: salt-nya hanya ada satu, 32 bita, sama untuk setiap brankas yang memakai salt bawaan.",
             "defaultSaltValueLabel": "Salt bawaan publik (AeroCrypt v3), SHA-256 dari"
         },
         "modalGuard": {
