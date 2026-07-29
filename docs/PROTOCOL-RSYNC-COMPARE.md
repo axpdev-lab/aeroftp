@@ -39,7 +39,7 @@ Everything below expands this positioning into operational detail.
 | Dimension | rsync (upstream) | AeroRsync (AeroFTP module) | Notes |
 |---|---|---|---|
 | **Software type** | System binary + optional library | In-process Rust module inside AeroFTP (aerorsync 0.0.x crate = name only) | rsync is an executable; AeroRsync is code linked inside the app |
-| **Language** | C | Rust | No unsafe in the module, permissive dependencies only (russh, ssh2, zstd, xxhash-rust) |
+| **Language** | C | Rust | **13 `unsafe` blocks in the module**, all POSIX calls with no Rust equivalent and each carrying a `SAFETY` note: 10 in `xattr_fs.rs` (the `l*xattr` family) and 3 in `delta_transport_impl.rs` (`utimensat` for mtime, `getpwuid_r` and `getgrgid_r` to resolve the user and group names the file-list entry carries). No pointer arithmetic, no hand-rolled parsing in unsafe: every wire byte is decoded in safe Rust. This row used to read "no unsafe in the module", which was measurably wrong, and a memory-safety claim is the last place to round a number |
 | **License** | GPL-3.0-or-later | GPL-3.0-only (aligned with AeroFTP and aerovault) | Compatible without conditions |
 | **Code origin** | Tridgell et al., 1996 | Clean-room 2026, zero copy from rsync sources | Analogous precedent: openrsync (OpenBSD, 2019, BSD-licensed) |
 | **Maturity** | ~30 years, production standard | Pre-1.0, runtime toggle ON by default since v3.8.0 | aerorsync crate stays `0.0.x` until stock-rsync interop is green end-to-end on all targets |
@@ -121,7 +121,7 @@ Items that have already left this list: **symlinks** ship end-to-end on unix in 
 - Delta sync **without installing the rsync binary on the user system** (zero runtime dep)
 - Windows first-class without MSYS2/WSL/Cygwin
 - Direct linking inside a Tauri app (in-process, no fork+exec)
-- **Memory-safe** Rust implementation (no buffer-overflow class CVE from C)
+- **Memory-safe** Rust implementation: every wire byte is decoded in safe Rust, so the buffer-overflow class that comes with parsing untrusted input in C is absent by construction. The 13 `unsafe` blocks in the module are POSIX calls with no Rust equivalent (xattr, `utimensat`, user and group lookup), not parsing
 - Atomic writes with `StreamingAtomicWriter` kill-9-safe invariant designed for desktop UI
 - Native integration with AeroFTP's `DeltaTransport` trait (event sink, fallback policy, host key pinning as part of UI flow)
 

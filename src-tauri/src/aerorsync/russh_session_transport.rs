@@ -1101,16 +1101,94 @@ mod tests {
         );
     }
 
-    #[test]
-    fn host_key_policy_accept_any_compiles() {
-        let _h = RusshHandler::new(SshHostKeyPolicy::AcceptAny);
+    /// Two distinct host keys, generated fresh so neither is a constant
+    /// anyone could have tuned the code to.
+    fn two_distinct_host_keys() -> (PublicKey, PublicKey) {
+        let a = keys::PrivateKey::random(&mut rand_010::rng(), Algorithm::Ed25519)
+            .expect("generate host key A");
+        let b = keys::PrivateKey::random(&mut rand_010::rng(), Algorithm::Ed25519)
+            .expect("generate host key B");
+        let (a, b) = (a.public_key().clone(), b.public_key().clone());
+        assert_ne!(
+            RusshHandler::fingerprint_sha256_hex(&a),
+            RusshHandler::fingerprint_sha256_hex(&b),
+            "two freshly generated keys must not share a fingerprint"
+        );
+        (a, b)
     }
 
-    #[test]
-    fn host_key_policy_pinned_compiles() {
-        let _h = RusshHandler::new(SshHostKeyPolicy::PinnedFingerprintSha256 {
-            sha256_hex: "deadbeef".into(),
+    /// The one that matters: a server presenting a key we did not pin is
+    /// rejected. This is the module's strongest security claim, mandatory
+    /// host-key pinning in the flow rather than delegated to `known_hosts`,
+    /// and until 2026-07-29 nothing exercised it. What existed proved that
+    /// a rejection, once it happens, is a hard error that never falls back
+    /// to the classic wrapper. Nothing proved a wrong key produced one.
+    ///
+    /// Note what this asserts and what it deliberately does not: the
+    /// property is that the comparison SEPARATES two keys, which holds
+    /// regardless of whether `fingerprint_sha256_hex` computes the digest
+    /// the way OpenSSH would. Pinning the expected value through the same
+    /// helper would make a wrong digest self-consistent and invisible; the
+    /// digest itself is pinned separately by `sha256_hex_of` in the libssh2
+    /// leg, against known SHA-256 vectors.
+    #[tokio::test]
+    async fn pinned_host_key_rejects_a_different_server_key() {
+        let (pinned, impostor) = two_distinct_host_keys();
+        let expected = RusshHandler::fingerprint_sha256_hex(&pinned).expect("fingerprint");
+
+        let mut h = RusshHandler::new(SshHostKeyPolicy::PinnedFingerprintSha256 {
+            sha256_hex: expected,
         });
+
+        assert!(
+            h.check_server_key(&pinned)
+                .await
+                .expect("no transport error"),
+            "the pinned key must be accepted"
+        );
+        assert!(
+            !h.check_server_key(&impostor)
+                .await
+                .expect("a mismatch is a rejection, not a transport error"),
+            "a server key we did not pin MUST be rejected: this is the man-in-the-middle case"
+        );
+    }
+
+    /// Fingerprints are hex, and hex has two spellings. A pin captured from
+    /// a tool that emits uppercase must not lock the user out of their own
+    /// server, which is a self-inflicted outage rather than a security win.
+    #[tokio::test]
+    async fn pinned_host_key_comparison_ignores_hex_case() {
+        let (pinned, _) = two_distinct_host_keys();
+        let expected = RusshHandler::fingerprint_sha256_hex(&pinned).expect("fingerprint");
+
+        let mut h = RusshHandler::new(SshHostKeyPolicy::PinnedFingerprintSha256 {
+            sha256_hex: expected.to_ascii_uppercase(),
+        });
+
+        assert!(
+            h.check_server_key(&pinned)
+                .await
+                .expect("no transport error"),
+            "an uppercase pin must match the same key"
+        );
+    }
+
+    /// `AcceptAny` is the documented bootstrap escape hatch, used when the
+    /// fingerprint has not been captured yet. Pinned here so that what it
+    /// does stays a deliberate decision: it accepts a key nobody vouched
+    /// for, and a change that quietly made it stricter or looser should
+    /// have to edit this test and say why.
+    #[tokio::test]
+    async fn accept_any_takes_a_key_nobody_pinned() {
+        let (_, unknown) = two_distinct_host_keys();
+        let mut h = RusshHandler::new(SshHostKeyPolicy::AcceptAny);
+        assert!(
+            h.check_server_key(&unknown)
+                .await
+                .expect("no transport error"),
+            "AcceptAny is the bootstrap hatch and accepts an unvouched key by design"
+        );
     }
 
     /// open_raw_channel without a connected handle returns the typed
