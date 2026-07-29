@@ -461,10 +461,25 @@ bash -uo pipefail -c '
   # The a11y launcher is ours and must not outlive the session. Three fake-portal
   # processes were orphaned this way earlier: the inner shell exited, the parent
   # cleanup only knew about the app and Xvfb, and they kept running.
-  kill -TERM "${A11Y_PID:-0}" 2>/dev/null
-  wait "${A11Y_PID:-0}" 2>/dev/null
-  kill -TERM "${MONITOR_PID:-0}" 2>/dev/null
-  wait "${MONITOR_PID:-0}" 2>/dev/null
+  # Guarded, not "${VAR:-0}": kill with a PID of 0 signals the whole process
+  # group of the caller, so an unset variable here would terminate this shell and
+  # everything in it.
+  if [ -n "${A11Y_PID:-}" ]; then
+    kill -TERM "$A11Y_PID" 2>/dev/null
+    wait "$A11Y_PID" 2>/dev/null
+  fi
+  if [ -n "${MONITOR_PID:-}" ]; then
+    kill -TERM "$MONITOR_PID" 2>/dev/null
+    wait "$MONITOR_PID" 2>/dev/null
+  fi
+
+  # Declare the verdict instead of inheriting it from the cleanup.
+  #
+  # A shell exits with the status of its LAST command, and the last thing this
+  # one does is reap processes it has just SIGTERMed -- so wait returns 143 and a
+  # session that did everything right reported "the session failed (exit 143)".
+  # Every genuine failure above leaves through its own exit before reaching here.
+  exit 0
 '
 rc=$?
 
