@@ -33,7 +33,7 @@ import { findActiveMode, findActiveModeGroup, modeGroupProviderIds, resolveModeH
 import { loadModeCredentials, storeModeCredentials, deleteModeCredentials, type ModeCredentialMap } from '../utils/modeCredentialStore';
 import { openUrl } from '../utils/openUrl';
 import { safePickerStartDir } from '../utils/safePickerDir';
-import { isValidOverlayScope, resolveOverlayScope } from '../utils/overlayScope';
+import { isValidOverlayScope, normalizeRemotePath, resolveOverlayScope } from '../utils/overlayScope';
 import { DefaultSaltDisclosure } from './common/DefaultSaltDisclosure';
 import { CopyLinkButton } from './common/CopyLinkButton';
 import { OAuthConnect } from './OAuthConnect';
@@ -1138,6 +1138,18 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     // C-EDIT-GUARD: kind + credential fields are read-only when editing a profile
     // that already carries an overlay binding (its remote holds keyed blobs).
     const overlayFieldsLocked = overlayBindingLocked && !!editingProfileId;
+    // #369: the Remote Path is NOT one of those fields. It is only the folder the
+    // session lands in; nothing in the crypt derivation depends on it (the master
+    // key comes from password + salt, filename keys from HKDF over the master key,
+    // and names are encrypted per segment), and the anchor lives in its own
+    // remoteScope field. Locking it forced a full teardown of the overlay just to
+    // land somewhere else. It stays editable, with one rule: it must remain the
+    // Overlays Path or one of its parents, otherwise the encrypted folder would
+    // sit outside the session and the vault would look empty.
+    const pinnedOverlayAnchor = overlayFieldsLocked ? normalizeRemotePath(overlaysRemotePath) : '';
+    const remotePathEscapesOverlay =
+        !!pinnedOverlayAnchor
+        && !isValidOverlayScope(pinnedOverlayAnchor, quickConnectDirs.remoteDir);
     // Node 2: enabling an overlay on an EXISTING profile that had none means its
     // remote may already hold plaintext files; those stay unencrypted and render
     // as an undecryptable mix under the overlay. Warn (do not block: a brand-new
@@ -1353,6 +1365,11 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         // the vault can never be created with a per-vault salt behind an on-
         // looking toggle.
         if (defaultSaltEntropyMismatch) return;
+
+        // #369: the Remote Path is editable with a bound overlay, but it must
+        // still contain the pinned anchor. Saving it elsewhere would leave the
+        // encrypted folder outside the session (the vault reads as empty).
+        if (remotePathEscapesOverlay) return;
 
         // #128: saving a Quick Connect profile (typically to add the Filen API
         // key so a 2FA login is no longer needed) must cancel any pending
@@ -2260,9 +2277,17 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         // it differs from the profile's Remote Path; otherwise keep '' which means
         // "same as Remote Path" (so an unchanged profile round-trips unchanged).
         {
-            const savedScope = overlayBinding?.enabled ? (overlayBinding.remoteScope || '') : '';
             const profileRemote = profile.initialPath || '';
-            setOverlaysRemotePath(savedScope && savedScope !== profileRemote ? savedScope : '');
+            if (overlayBinding?.enabled) {
+                // #369: with a bound overlay the anchor is materialized to its
+                // effective absolute value instead of the '' that means "same as
+                // Remote Path". The Remote Path is editable from here on, and a
+                // blank anchor would silently follow it and orphan the encrypted
+                // data; pinning it makes the anchor independent of that edit.
+                setOverlaysRemotePath(overlayBinding.remoteScope || profileRemote);
+            } else {
+                setOverlaysRemotePath('');
+            }
             setOverlaysRemotePathError(null);
         }
         // Tier 1 keyfile PATH: a pointer, not a secret, so unlike the password
@@ -3039,14 +3064,15 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                         <input
                             type="text"
                             value={quickConnectDirs.remoteDir}
-                            disabled={overlayFieldsLocked}
                             onChange={(e) => onQuickConnectDirsChange({ ...quickConnectDirs, remoteDir: e.target.value })}
                             className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm disabled:opacity-60 disabled:cursor-not-allowed"
                             placeholder={remotePathPlaceholder}
                         />
                     )}
-                    {overlayFieldsLocked && (
-                        <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">{t('aerocryptProfile.remotePathLockedNote')}</p>
+                    {remotePathEscapesOverlay && (
+                        <p className="text-xs text-red-600 dark:text-red-400 mt-1">
+                            {t('aerocryptProfile.remotePathMustReachOverlay', { path: pinnedOverlayAnchor })}
+                        </p>
                     )}
                 </div>
                 )}
@@ -3128,7 +3154,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                 overlay is bound (like the Remote Path and the other crypt fields);
                                 editing it on an existing vault would orphan the encrypted data. */}
                             {overlayFieldsLocked && (
-                                <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">{t('aerocryptProfile.remotePathLockedNote')}</p>
+                                <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">{t('aerocryptProfile.overlaysPathLockedNote')}</p>
                             )}
                             {overlaysRemotePathError && (
                                 <p className="mt-1 text-xs text-red-600 dark:text-red-400">{overlaysRemotePathError}</p>
@@ -3530,7 +3556,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                         )}
                         <button
                             onClick={saveOverride || handleConnectAndSave}
-                            disabled={saveOverride ? (loading || btnDisabled) : (loading || btnDisabled || aeroCryptConfirmMismatch || !!overlaysRemotePathError || defaultSaltEntropyMismatch)}
+                            disabled={saveOverride ? (loading || btnDisabled) : (loading || btnDisabled || aeroCryptConfirmMismatch || !!overlaysRemotePathError || defaultSaltEntropyMismatch || remotePathEscapesOverlay)}
                             className={`${(showCancelSaveAsNew || cancelOverride) ? 'flex-1' : 'w-full'} py-3 rounded-lg font-medium text-white cursor-pointer active:scale-[0.98] transition-all flex items-center justify-center gap-2 shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.3)] disabled:opacity-50 ${loading ? 'bg-gray-400 !cursor-not-allowed' : buttonColorClass}`}
                         >
                             {loading ? (
