@@ -214,6 +214,19 @@ bash -uo pipefail -c '
   echo "app_ready seen: $ready"
   sleep "$SETTLE_SECONDS"
 
+  # Fail on the PRECONDITION, with the precondition named. Without this the run
+  # goes on to press controls that do not exist yet and reports "the portal was
+  # never asked", which is true but points at the chooser instead of at an app
+  # that never finished starting. Observed on a CI runner where the webview held
+  # an empty document: eight assertions went red for the wrong reason.
+  if [ "$ready" -eq 0 ] && [ "${RECON_REQUIRE_READY:-1}" = "1" ]; then
+    echo "::error::the app never reported app_ready, so the UI was never driven." >&2
+    echo "  This is an environment failure, not a chooser failure." >&2
+    grep -iE "splash|panic|webkit|localhost is listening" "$OUT/app.log" 2>/dev/null | tail -5 >&2
+    kill -TERM -- "-$APP_PID" 2>/dev/null
+    exit 1
+  fi
+
   # Positive proof that the window is on OUR display. Absence of evidence is not
   # evidence of isolation: the previous version of this harness inferred
   # isolation from a probe that was silently failing, and from a blank frame that
