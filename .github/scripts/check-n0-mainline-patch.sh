@@ -41,9 +41,14 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT_DIR/src-tauri"
 
-if ! git diff --quiet -- Cargo.toml Cargo.lock; then
-  echo "refusing to run: src-tauri/Cargo.toml or Cargo.lock has uncommitted changes" >&2
-  echo "this check rewrites both and restores them from git; commit or stash first" >&2
+# Both halves matter. `git diff` compares the worktree with the INDEX, so a
+# staged edit to either file slips past it, and the restore below is
+# `git checkout HEAD --`, which would then throw that staged work away. Checking
+# --cached as well means the script refuses instead of destroying it.
+if ! git diff --quiet -- Cargo.toml Cargo.lock ||
+   ! git diff --cached --quiet -- Cargo.toml Cargo.lock; then
+  echo "refusing to run: src-tauri/Cargo.toml or Cargo.lock has uncommitted or staged changes" >&2
+  echo "this check rewrites both and restores them from HEAD; commit or stash first" >&2
   exit 2
 fi
 
@@ -62,7 +67,12 @@ echo
 # Restore unconditionally: this rewrites both files in place, and a failed
 # resolution must not leave the tree carrying a manifest nobody asked for.
 restore() {
-  git -C "$ROOT_DIR" checkout -- src-tauri/Cargo.toml src-tauri/Cargo.lock
+  # From HEAD, not from the index: `git checkout -- <path>` restores the STAGED
+  # content, so on a tree with staged manifest edits it would silently reinstate
+  # those instead of the committed state. The guard above already refuses that
+  # case; this makes the restore correct on its own terms rather than relying on
+  # the guard never being weakened.
+  git -C "$ROOT_DIR" checkout HEAD -- src-tauri/Cargo.toml src-tauri/Cargo.lock
 }
 trap restore EXIT
 
@@ -117,10 +127,25 @@ EOF
   exit 0
 fi
 
-if grep -q 'ed25519-dalek' <<<"$output"; then
-  echo "STILL NEEDED - same ed25519-dalek conflict, nothing to do."
+# Match the resolver-conflict SIGNATURE, not the crate name. Any failure that
+# merely mentions ed25519-dalek - a registry timeout, a network blip, a yanked
+# release - would otherwise be classified as "still blocked" and exit 1, which
+# this workflow treats as the quiet normal state. That is precisely the
+# confusion the exit-2 path exists to prevent: a watcher that cannot tell "still
+# blocked" from "I no longer work" is worse than none.
+#
+# Three markers together, and no version literals, so the check survives
+# upstream moving to another release candidate: cargo only prints
+# "previously selected package" when it really failed to reconcile two
+# requirements, which a transport error never does.
+if grep -q 'failed to select a version for' <<<"$output" &&
+   grep -q 'ed25519-dalek' <<<"$output" &&
+   grep -q 'previously selected package' <<<"$output"; then
+  echo "STILL NEEDED - same ed25519-dalek resolver conflict, nothing to do."
   exit 1
 fi
 
-echo "FAILED FOR ANOTHER REASON - the output above is not the ed25519-dalek conflict." >&2
+echo "FAILED FOR ANOTHER REASON - the output above is not the ed25519-dalek resolver conflict." >&2
+echo "Do not read this as 'still blocked': it is either a transport/registry failure or a" >&2
+echo "conflict of a different shape, and both need a human to look at the output." >&2
 exit 2
