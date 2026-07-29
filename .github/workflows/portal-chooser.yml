@@ -30,6 +30,13 @@ on:
       - '.github/workflows/portal-chooser.yml'
       - 'src-tauri/src/lib.rs'
       - 'src/components/ExportImportDialog.tsx'
+      # The trigger finds its controls by ACCESSIBLE NAME, and those names are the
+      # visible labels: they live in en.json and in the screen that renders the
+      # Export / Import button. A rename there breaks this gate while touching
+      # nothing it obviously owns, so those files have to wake it up too. Noticed
+      # because a concurrent PR edited all three.
+      - 'src/i18n/locales/en.json'
+      - 'src/components/ConnectionScreen.tsx'
   schedule:
     # Thursdays 05:41 UTC. Away from the snap refresh (Mon 04:17) and the RustSec
     # scan (Mon 06:00) so a slow week does not queue three heavy jobs together.
