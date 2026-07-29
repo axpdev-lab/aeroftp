@@ -1,0 +1,20 @@
+[package]
+name = "aeroftp-fake-portal"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Test-only xdg-desktop-portal stand-in that records whether AeroFTP's file chooser is portal-backed"
+
+# Deliberately NOT a member of any workspace and not referenced by src-tauri:
+# nothing here may reach a shipped binary. It is built by its own `cargo build`
+# from tests/portal-chooser/ and exists only for the harness.
+[workspace]
+
+[dependencies]
+zbus = { version = "5", default-features = false, features = ["tokio"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal", "time", "sync"] }
+serde_json = "1"
+futures-util = { version = "0.3", default-features = false, features = ["std"] }
+
+[profile.release]
+opt-level = 1
