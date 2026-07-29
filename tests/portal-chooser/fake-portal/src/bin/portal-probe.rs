@@ -49,6 +49,8 @@ trait NetworkMonitor {
     fn get_available(&self) -> zbus::Result<bool>;
     fn get_metered(&self) -> zbus::Result<bool>;
     fn get_connectivity(&self) -> zbus::Result<u32>;
+    /// What a v3-aware GIO calls instead of the three getters above.
+    fn get_status(&self) -> zbus::Result<HashMap<String, OwnedValue>>;
 }
 
 /// The other interface GIO takes over once the portal name is owned. WebKit
@@ -157,6 +159,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             (a, m, c) => {
                 println!("probe: NETMON FAILED available={a:?} metered={m:?} connectivity={c:?}");
+                std::process::exit(8);
+            }
+        }
+
+        // Ask the way a v3-aware GIO asks. The stand-in advertises version 3, so
+        // this method has to exist: claiming a version and not honouring it is
+        // the same defect as not implementing the interface at all, only it
+        // waits for whichever runner upgrades GLib first.
+        match nm.get_status().await {
+            Ok(status) => {
+                let mut keys: Vec<&str> = status.keys().map(|k| k.as_str()).collect();
+                keys.sort_unstable();
+                println!("probe: NETMON GetStatus keys={keys:?}");
+            }
+            Err(e) => {
+                println!("probe: NETMON GetStatus FAILED {e:?}");
                 std::process::exit(8);
             }
         }

@@ -379,6 +379,27 @@ impl NetworkMonitor {
         true
     }
 
+    /// The method version 3 adds, and the reason to implement it rather than
+    /// advertise a lower version: newer GIO prefers `GetStatus` over the three
+    /// getters above, so a stand-in claiming v3 without it hands that caller an
+    /// `UnknownMethod` — the same shape of failure this whole interface was
+    /// added to stop, just deferred to whichever runner upgrades GLib first.
+    fn get_status(&self) -> HashMap<String, OwnedValue> {
+        let mut status: HashMap<String, OwnedValue> = HashMap::new();
+        // try_to_owned on a plain bool/u32 cannot fail; skip any entry that
+        // somehow does rather than panicking inside a D-Bus method.
+        if let Ok(v) = Value::from(true).try_to_owned() {
+            status.insert("available".to_string(), v);
+        }
+        if let Ok(v) = Value::from(false).try_to_owned() {
+            status.insert("metered".to_string(), v);
+        }
+        if let Ok(v) = Value::from(4u32).try_to_owned() {
+            status.insert("connectivity".to_string(), v);
+        }
+        status
+    }
+
     /// GIO reads this to decide which calls it may make. The properties below
     /// cover the older path that reads them directly instead.
     #[zbus(property, name = "version")]

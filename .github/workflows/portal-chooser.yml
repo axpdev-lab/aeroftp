@@ -137,17 +137,24 @@ jobs:
       - name: Build the portal stand-in
         run: cargo build --release --manifest-path tests/portal-chooser/fake-portal/Cargo.toml
 
+      # No WebKit overrides here, deliberately.
+      #
+      # This step used to carry WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS and
+      # WEBKIT_DISABLE_DMABUF_RENDERER, aimed at a webview that held an empty
+      # document while the frontend never loaded. That diagnosis was wrong: the
+      # cause was our own stand-in, which owned org.freedesktop.portal.Desktop
+      # while answering UnknownInterface for NetworkMonitor and ProxyResolver,
+      # both of which GIO routes through the portal under GTK_USE_PORTAL=1 and
+      # WebKit consults before loading any URL. With those implemented the gate
+      # is green WITH the sandbox on.
+      #
+      # It matters that they are gone rather than merely unnecessary: this gate
+      # exists to check a safety property of the shipped app, so it has to run
+      # the app the way users run it. A release-relevant check passing only with
+      # the web-process sandbox disabled would be checking a different program.
       - name: File chooser gate
         env:
           PORTAL_TEST_OUT: ${{ github.workspace }}/portal-test-out
-          # WebKitGTK cannot set up its sandbox inside the runner container: the
-          # first run here left the webview holding an EMPTY document while
-          # tauri-plugin-localhost was listening happily on 127.0.0.1:14321, so
-          # the frontend never loaded and app_ready never arrived. Disabling the
-          # sandbox is acceptable for a throwaway session that loads only our own
-          # loopback origin, and is scoped to this step alone.
-          WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS: '1'
-          WEBKIT_DISABLE_DMABUF_RENDERER: '1'
         run: tests/portal-chooser/portal-chooser-test.sh src-tauri/target/release/aeroftp
 
       - name: Upload the evidence

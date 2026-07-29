@@ -107,7 +107,7 @@ app never reached `app_ready` and the splash hit its 10s safety timeout; the
 no-portal case in the *same job* started normally and rendered its frontend. The
 only portal-related difference was one line:
 
-```
+```text
 GLib-GIO-WARNING: GDBus.Error:org.freedesktop.DBus.Error.UnknownInterface:
 Unknown interface 'org.freedesktop.portal.NetworkMonitor'
 ```
@@ -134,18 +134,19 @@ an assumption.
 tests/portal-chooser/selftest-portal.sh
 ```
 
-Needs only `dbus-run-session`; no display packages, so it runs anywhere. It
-builds the crate on first use.
+At runtime it needs only `dbus-run-session`; no display packages, so it runs
+anywhere. The first run also needs `cargo` and the Rust toolchain, because it
+builds the crate.
 
 The six cases are **verified as pins, not by watching them pass**: with the
-Request path made to ignore the token, 4 of the 12 assertions fail, including
+Request path made to ignore the token, 4 of the 13 assertions fail, including
 both "a subscribing client received the Response" checks. A stub that answers on
 the wrong path is exactly the failure that would otherwise masquerade as an
 application hang.
 
 Case 5 was pinned the same way and is worth its own note: exporting `Request` on
 the portal's own path instead of on the handle returned to the caller fails that
-assertion and **nothing else** — all eleven others stay green. `Close()` then
+assertion and **nothing else** — all twelve others stay green. `Close()` then
 reaches no implementation, and the only symptom is a bus error in the app's log
 that reads like the portal misbehaving.
 
