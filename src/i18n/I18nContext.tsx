@@ -199,20 +199,45 @@ function lookup(
 }
 
 /**
+ * The language the mounted provider is actually rendering in, or `null` before
+ * one has mounted.
+ *
+ * Taken from `<html lang>`, which the provider already maintains for
+ * accessibility, rather than from `localStorage`. That distinction is not
+ * cosmetic: **storage is not always the right answer.** The dedicated extract
+ * window (`extract-main.tsx`) mounts the provider with `initialLanguage` set to
+ * the desktop language Rust injects, deliberately ignoring whatever language the
+ * main app was last left in — and it never persists that choice. Reading storage
+ * here would have shown that window's messages in the wrong language, the exact
+ * thing its entry point goes out of its way to avoid.
+ *
+ * Using the attribute the provider already publishes means there is one source of
+ * truth to keep correct instead of two.
+ */
+function activeLanguage(): Language | null {
+    try {
+        const lang = document.documentElement.lang;
+        return AVAILABLE_LANGUAGES.some((l) => l.code === lang) ? (lang as Language) : null;
+    } catch {
+        // No DOM: a non-browser host, handled by the fallbacks in `translate`.
+        return null;
+    }
+}
+
+/**
  * Translate from outside React.
  *
  * The provider's `t` is only reachable through a hook, so a plain helper module
  * (something called from a click handler, not rendered) has no way to produce a
- * translated string. This resolves the language the same way the provider does
- * at startup — from `localStorage` — which stays correct at runtime because
- * `setLanguage` persists before it re-renders, so the stored value and the
- * mounted provider never disagree.
+ * translated string. This uses the language the mounted provider published,
+ * falling back to storage and then to English for code that runs before any
+ * provider has mounted.
  *
  * Prefer `useTranslation()` inside components: this exists for the code that
  * cannot call a hook, not as an alternative to the context.
  */
 export function translate(key: string, params?: Record<string, string | number>): string {
-    const language = loadPersistedLanguage() || DEFAULT_LANGUAGE;
+    const language = activeLanguage() || loadPersistedLanguage() || DEFAULT_LANGUAGE;
     const translations =
         TRANSLATIONS[language]?.translations || TRANSLATIONS[DEFAULT_LANGUAGE].translations;
     return lookup(
@@ -329,7 +354,9 @@ export const I18nProvider: React.FC<I18nProviderProps> = ({ children, initialLan
         window.dispatchEvent(new CustomEvent('aeroftp-language-changed', { detail: newLanguage }));
     }, []);
 
-    // Update document lang attribute for accessibility
+    // Update document lang attribute for accessibility. Also the value `translate()`
+    // reads for the out-of-React path, so this is load-bearing beyond a11y now:
+    // see `activeLanguage` above before changing or removing it.
     useEffect(() => {
         document.documentElement.lang = language;
     }, [language]);

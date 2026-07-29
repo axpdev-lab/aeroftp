@@ -23,6 +23,7 @@ import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 
 import enTranslations from '../i18n/locales/en.json';
 import itTranslations from '../i18n/locales/it.json';
+import deTranslations from '../i18n/locales/de.json';
 
 const mockInvoke = vi.fn();
 vi.mock('@tauri-apps/api/core', () => ({
@@ -52,8 +53,10 @@ interface ToastDetail {
  */
 let toasts: ToastDetail[] = [];
 let storage: Record<string, string> = {};
+let htmlLang = '';
 const savedWindow = (globalThis as { window?: unknown }).window;
 const savedStorage = (globalThis as { localStorage?: unknown }).localStorage;
+const savedDocument = (globalThis as { document?: unknown }).document;
 
 beforeEach(() => {
     mockInvoke.mockReset();
@@ -61,6 +64,11 @@ beforeEach(() => {
     mockPluginSave.mockReset();
     toasts = [];
     storage = {};
+    htmlLang = '';
+    // What the mounted I18nProvider publishes, and what `translate()` reads.
+    (globalThis as { document?: unknown }).document = {
+        get documentElement() { return { get lang() { return htmlLang; } }; },
+    };
     (globalThis as { window?: unknown }).window = {
         dispatchEvent: (e: Event) => {
             if (e.type === 'aeroftp-toast') toasts.push((e as CustomEvent).detail as ToastDetail);
@@ -77,6 +85,7 @@ beforeEach(() => {
 afterEach(() => {
     (globalThis as { window?: unknown }).window = savedWindow;
     (globalThis as { localStorage?: unknown }).localStorage = savedStorage;
+    (globalThis as { document?: unknown }).document = savedDocument;
 });
 
 /** The copy a user should actually read, straight from the locale files. */
@@ -140,6 +149,25 @@ describe('pickFile / pickSave when no chooser can be presented', () => {
         expect(toasts[0].title).toBe(IT.title);
         expect(toasts[0].message).toBe(IT.portalMissing);
         expect(IT.portalMissing).not.toBe(EN.portalMissing);
+    });
+
+    it('follows the window it is rendered in, not the last language the main app was left in', async () => {
+        // The gap this closes. `extract-main.tsx` mounts the provider with
+        // `initialLanguage` set to the desktop language Rust injects, and never
+        // persists it — precisely so the extract window reads in the desktop
+        // language rather than whatever the main app was last set to. A
+        // `translate()` that consulted storage would have contradicted that, in a
+        // window whose folder picker is one of the migrated call sites.
+        storage['aeroftp_language'] = 'it';   // what the main app was left in
+        htmlLang = 'de';                      // what THIS window is rendering in
+        mockInvoke.mockResolvedValue('portal-missing');
+
+        await pickFile({ directory: true });
+
+        const de = deTranslations.translations.picker.unavailable;
+        expect(toasts[0].title).toBe(de.title);
+        expect(toasts[0].message).toBe(de.portalMissing);
+        expect(de.title).not.toBe(IT.title);
     });
 
     it('falls back to readable copy for a reason it does not recognise', async () => {
