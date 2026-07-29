@@ -3353,6 +3353,16 @@ mod tests {
     ///    and nanoseconds. Not applied -> we DETECTED it, with an
     ///    errno, rather than declaring success in silence.
     ///
+    /// 3. `utimensat` SUCCEEDS while silently truncating to the
+    ///    filesystem's resolution (`s_time_gran`), returning 0 rather
+    ///    than an error. So an `Applied` outcome does not promise the
+    ///    nanoseconds survived, and asserting the requested value would
+    ///    fail on a coarse but perfectly correct filesystem. Every
+    ///    timestamp assertion here therefore compares against what this
+    ///    filesystem actually STORED (the probe for the link, a
+    ///    post-stamp read for the target), never against the value we
+    ///    asked for.
+    ///
     /// The probe runs on a throwaway link so the real link stays pinned
     /// by the production call inside `create_symlink_atomic`: comment
     /// that call out and this test goes red.
@@ -3378,11 +3388,25 @@ mod tests {
             filetime::FileTime::from_unix_time(TARGET_MTIME, TARGET_MTIME_NSEC),
         )
         .expect("stamp the target with its own distinct mtime");
+        // Read back what the filesystem actually STORED, do not assume it
+        // kept the nanoseconds: `utimensat` succeeds while silently
+        // truncating to the filesystem's resolution (`s_time_gran`), so a
+        // coarse but perfectly correct filesystem would fail an assertion
+        // written against the requested value. The stored value is the
+        // honest baseline for "untouched".
+        let target_baseline = filetime::FileTime::from_last_modification_time(
+            &std::fs::symlink_metadata(&target).unwrap(),
+        );
 
-        // Capability probe, on a link nobody else touches.
+        // Capability probe, on a link nobody else touches. It answers two
+        // questions at once: whether this filesystem can date a link at
+        // all, and what it stores when asked for LINK_MTIME.
         let probe = dir.path().join("probe.lnk");
         std::os::unix::fs::symlink("tgt.bin", &probe).unwrap();
         let probe_outcome = set_symlink_times_best_effort(&probe, LINK_MTIME, LINK_MTIME_NSEC);
+        let probe_time = filetime::FileTime::from_last_modification_time(
+            &std::fs::symlink_metadata(&probe).unwrap(),
+        );
 
         let dest = dir.path().join("dated.lnk");
         let entry = crate::aerorsync::real_wire::FileListEntry {
@@ -3413,18 +3437,35 @@ mod tests {
         );
 
         if probe_outcome.applied() {
+            // First, close the tautology: an `Applied` outcome must mean
+            // the requested time really landed, not that the call
+            // returned 0 while leaving the link at creation time. Two
+            // seconds of slack covers the coarsest mtime granularity in
+            // practice (FAT stores mtime in 2-second units); the gap this
+            // catches is ~85 million seconds wide, so the slack costs
+            // nothing.
+            assert!(
+                (probe_time.unix_seconds() - LINK_MTIME).abs() <= 2,
+                "an Applied outcome must have really written the requested time to the \
+                 link: probe reads {} against the requested {}, which is creation time, \
+                 not our value",
+                probe_time.unix_seconds(),
+                LINK_MTIME
+            );
+            // Then the real assertion. The probe is the filesystem's own
+            // answer to "what do you store for LINK_MTIME", so comparing
+            // against it asserts the exact stored value, seconds AND
+            // nanoseconds, without assuming a resolution the filesystem
+            // never promised. It stays a pin: with the production call
+            // gone the link carries creation time, which is nowhere near
+            // the probe.
             let link_time = filetime::FileTime::from_last_modification_time(&link_meta);
             assert_eq!(
-                link_time.unix_seconds(),
-                LINK_MTIME,
-                "the LINK's own mtime seconds must come from the entry; reading {} would \
-                 mean we measured the target instead",
+                link_time, probe_time,
+                "the LINK's own mtime must be exactly what this filesystem stores for the \
+                 entry's timestamp; reading the target's {} instead would mean we measured \
+                 the wrong inode",
                 TARGET_MTIME
-            );
-            assert_eq!(
-                link_time.nanoseconds(),
-                LINK_MTIME_NSEC as u32,
-                "the LINK's own mtime nanoseconds must be applied too, not just the seconds"
             );
         } else {
             assert!(
@@ -3443,15 +3484,9 @@ mod tests {
         let target_meta = std::fs::symlink_metadata(&target).unwrap();
         let target_time = filetime::FileTime::from_last_modification_time(&target_meta);
         assert_eq!(
-            target_time.unix_seconds(),
-            TARGET_MTIME,
-            "the target's mtime seconds must survive untouched: writing through the \
-             link is exactly what AT_SYMLINK_NOFOLLOW is there to prevent"
-        );
-        assert_eq!(
-            target_time.nanoseconds(),
-            TARGET_MTIME_NSEC,
-            "the target's mtime nanoseconds must survive untouched too"
+            target_time, target_baseline,
+            "the target's mtime must survive bit-for-bit: writing through the link is \
+             exactly what AT_SYMLINK_NOFOLLOW is there to prevent"
         );
     }
 
