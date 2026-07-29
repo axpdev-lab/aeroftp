@@ -24,6 +24,8 @@
 //!   5 - the method call itself failed (what --mode error looks like from here)
 //!   7 - Close() on the returned handle was not dispatched (the stand-in
 //!       exported the Request somewhere the caller cannot reach)
+//!   8 - `--netmon`: the portal owns the name but does not answer
+//!       org.freedesktop.portal.NetworkMonitor
 //!   2 - usage/bus error
 
 use std::collections::HashMap;
@@ -33,6 +35,20 @@ use zbus::zvariant::{OwnedObjectPath, OwnedValue, Value};
 use zbus::{proxy, Connection};
 
 use aeroftp_fake_portal::{request_path, sanitize_path_element};
+
+/// The interface GIO reaches for when something owns the portal name. Probed
+/// here because its absence did not look like its absence: it looked like
+/// WebKit failing to render in CI.
+#[proxy(
+    interface = "org.freedesktop.portal.NetworkMonitor",
+    default_service = "org.freedesktop.portal.Desktop",
+    default_path = "/org/freedesktop/portal/desktop"
+)]
+trait NetworkMonitor {
+    fn get_available(&self) -> zbus::Result<bool>;
+    fn get_metered(&self) -> zbus::Result<bool>;
+    fn get_connectivity(&self) -> zbus::Result<u32>;
+}
 
 #[proxy(
     interface = "org.freedesktop.portal.FileChooser",
@@ -68,6 +84,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut token = "probe0".to_string();
     let mut timeout_secs = 10u64;
     let mut close_handle = false;
+    let mut netmon_only = false;
     let args: Vec<String> = std::env::args().skip(1).collect();
     let mut i = 0;
     while i < args.len() {
@@ -78,6 +95,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             "--close" => {
                 close_handle = true;
+                i += 1;
+            }
+            "--netmon" => {
+                netmon_only = true;
                 i += 1;
             }
             "--token" => {
@@ -107,6 +128,29 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let token = sanitize_path_element(&token, "probe");
 
     let conn = Connection::session().await?;
+
+    // Ask the way GIO asks, and stop. A portal that owns the name but does not
+    // answer this leaves the application with a network monitor that cannot say
+    // the network is up, and WebKit then refuses to load anything at all --
+    // including loopback.
+    if netmon_only {
+        let nm = NetworkMonitorProxy::new(&conn).await?;
+        match (
+            nm.get_available().await,
+            nm.get_metered().await,
+            nm.get_connectivity().await,
+        ) {
+            (Ok(a), Ok(m), Ok(c)) => {
+                println!("probe: NETMON available={a} metered={m} connectivity={c}");
+                return Ok(());
+            }
+            (a, m, c) => {
+                println!("probe: NETMON FAILED available={a:?} metered={m:?} connectivity={c:?}");
+                std::process::exit(8);
+            }
+        }
+    }
+
     let unique = conn
         .unique_name()
         .ok_or("no unique name on the session bus")?

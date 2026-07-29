@@ -155,6 +155,21 @@ has "$W" "probe: CLOSE ok" \
   && ok "Close() reached the Request exported on the returned handle" \
   || { bad "Close() on the returned handle was not dispatched"; sed -n '1,20p' "$W/case.out"; }
 
+echo "== 6. the stand-in answers NetworkMonitor, because owning the name is a promise =="
+# Not decoration, and not chooser surface. Measured on a CI runner: with the
+# stand-in owning the portal name the app never reached app_ready and the splash
+# hit its safety timeout, while the no-portal case in the SAME job started and
+# rendered. The difference was one line - Unknown interface
+# 'org.freedesktop.portal.NetworkMonitor' - because GTK_USE_PORTAL=1 makes GIO
+# route the network monitor through the portal, and WebKit consults it before
+# loading any URL. It refused loopback while that URL was serving a 200.
+# An incomplete stand-in does not degrade into "no portal": it becomes a portal
+# that breaks the app, and the damage shows up nowhere near the file chooser.
+W=$(run_case cancel "--netmon")
+has "$W" "probe: NETMON available=true" \
+  && ok "NetworkMonitor answers, so GIO gets a working network monitor" \
+  || { bad "NetworkMonitor is unanswered: the app under test would not load its frontend"; sed -n '1,20p' "$W/case.out"; }
+
 echo
 echo "passed: $PASS   failed: $FAIL"
 [ "$FAIL" -eq 0 ]

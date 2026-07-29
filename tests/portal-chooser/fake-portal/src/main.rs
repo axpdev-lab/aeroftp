@@ -334,6 +334,74 @@ impl Request {
     fn close(&self) {}
 }
 
+/// `org.freedesktop.portal.NetworkMonitor`, and it is NOT optional surface.
+///
+/// Measured on a CI runner, three cases out of three: with the stand-in owning
+/// the portal name the app never reached `app_ready` and the splash hit its
+/// safety timeout, while the no-portal case in the SAME job started normally
+/// and rendered its frontend. The only portal-related line in the difference was
+///
+///   GLib-GIO-WARNING: GDBus.Error:org.freedesktop.DBus.Error.UnknownInterface:
+///   Unknown interface 'org.freedesktop.portal.NetworkMonitor'
+///
+/// Under `GTK_USE_PORTAL=1` GIO routes `g_network_monitor_get_default()` through
+/// the portal instead of netlink. A portal that owns the name and does not
+/// answer leaves GIO with a network monitor that cannot say the network is up,
+/// and WebKitGTK consults exactly that before loading a URL -- so it declined to
+/// load even `http://127.0.0.1:14321`, which the harness proved was serving a
+/// 200 with the real index.html at that moment.
+///
+/// So an incomplete stand-in does not degrade into "no portal". It becomes a
+/// portal that breaks the application, and the damage lands nowhere near the
+/// file chooser: it looked like WebKit failing to render in CI, and cost a round
+/// of environment flags aimed at the wrong thing.
+///
+/// The answers are the boring healthy ones. Nothing here is asserted by the
+/// chooser test; it exists so the app under test sees a portal that behaves.
+struct NetworkMonitor;
+
+#[interface(name = "org.freedesktop.portal.NetworkMonitor")]
+impl NetworkMonitor {
+    fn get_available(&self) -> bool {
+        true
+    }
+
+    fn get_metered(&self) -> bool {
+        false
+    }
+
+    /// 4 = `G_NETWORK_CONNECTIVITY_FULL`.
+    fn get_connectivity(&self) -> u32 {
+        4
+    }
+
+    fn can_reach(&self, _hostname: String, _port: u32) -> bool {
+        true
+    }
+
+    /// GIO reads this to decide which calls it may make. The properties below
+    /// cover the older path that reads them directly instead.
+    #[zbus(property, name = "version")]
+    fn version(&self) -> u32 {
+        3
+    }
+
+    #[zbus(property, name = "available")]
+    fn available(&self) -> bool {
+        true
+    }
+
+    #[zbus(property, name = "metered")]
+    fn metered(&self) -> bool {
+        false
+    }
+
+    #[zbus(property, name = "connectivity")]
+    fn connectivity(&self) -> u32 {
+        4
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut mode = Mode::Cancel;
@@ -396,11 +464,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         accept_path,
     };
 
-    // Only the FileChooser lives at the portal's own path. Each Request is
-    // exported later, on the per-call handle the caller is given.
+    // FileChooser and NetworkMonitor live at the portal's own path. Each Request
+    // is exported later, on the per-call handle the caller is given.
+    //
+    // NetworkMonitor is here because owning the portal name is a promise: GIO
+    // stops using netlink the moment somebody answers to it. See the type for
+    // what an unanswered promise did to the app under test.
     let conn = connection::Builder::session()?
         .name(PORTAL_NAME)?
         .serve_at(PORTAL_PATH, chooser)?
+        .serve_at(PORTAL_PATH, NetworkMonitor)?
         .build()
         .await?;
 
