@@ -109,6 +109,19 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
   // library is long enough that a bare spinner cannot be told apart from a hang.
   const [progress, setProgress] = useState<DuplicateScanProgress | null>(null);
   const [elapsedMs, setElapsedMs] = useState(0);
+  // Show the hash behind each row. Off by default: it is diagnostic, and it is
+  // the reason a group exists rather than something to act on.
+  const [showHashes, setShowHashes] = useState(false);
+  // 'waste' is the historical order (biggest reclaimable space first).
+  // 'similarity' answers "which of these are really the same file?": exact
+  // groups first, then fuzzy groups from the closest signature to the loosest.
+  const [sortBy, setSortBy] = useState<'waste' | 'similarity'>('waste');
+  // The fuzzy cutoff, applied only in non-identical mode. null = engine defaults
+  // (raster <=10, text <=3, other <=100), which is what every scan used before.
+  const [threshold, setThreshold] = useState<number | null>(null);
+  // Committed separately from the input so typing does not restart the scan on
+  // every keystroke; the scan re-runs when this changes.
+  const [appliedThreshold, setAppliedThreshold] = useState<number | null>(null);
 
   // Scan for duplicates when the dialog opens
   const scan = useCallback(async () => {
@@ -123,6 +136,8 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
       const result = await invoke<DuplicateGroup[]>('find_duplicate_files', {
         path: scanPath,
         mode: mode,
+        // Only meaningful for the fuzzy engine; null keeps its per-modality defaults.
+        distance: mode === 'non-identical' ? appliedThreshold : null,
       });
       setGroups(result);
 
@@ -145,7 +160,7 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
     } finally {
       setIsScanning(false);
     }
-  }, [scanPath, mode]);
+  }, [scanPath, mode, appliedThreshold]);
 
   useEffect(() => {
     if (isOpen) {
@@ -158,8 +173,8 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
       setIsScanning(false);
       setIsDeleting(false);
     }
-    // Note: `scan` depends on `mode`, so toggling the mode re-runs this effect
-    // and re-scans automatically. No separate mode effect is needed.
+    // Note: `scan` depends on `mode` and on the applied fuzzy threshold, so
+    // changing either re-runs this effect and re-scans. No separate effect.
   }, [isOpen, scan]);
 
   // Backend progress. Subscribed for the dialog's whole open lifetime rather
@@ -307,6 +322,22 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
     return { totalGroups, totalDuplicates, wastedBytes };
   }, [groups, mode, selectedPaths]);
 
+  // The order the groups are shown in. The backend returns them by reclaimable
+  // space; 'similarity' re-sorts by how alike the group's members actually are,
+  // which is the question when deciding what is a real duplicate: byte-identical
+  // groups (no fuzzy distance at all) first, then the closest signatures, then
+  // the ones the threshold only just let in.
+  const orderedGroups = useMemo(() => {
+    if (sortBy !== 'similarity') return groups;
+    return [...groups].sort((a, b) => {
+      const da = a.distance ?? -1;
+      const db = b.distance ?? -1;
+      if (da !== db) return da - db;
+      // Same closeness: fall back to the reclaimable-space order.
+      return b.size * (b.files.length - 1) - a.size * (a.files.length - 1);
+    });
+  }, [groups, sortBy]);
+
   const selectedCount = selectedPaths.size;
 
   if (!isOpen) return null;
@@ -370,6 +401,54 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
           <span className="ml-2 text-[10px] text-gray-400 dark:text-gray-500">
             {mode === 'non-identical' ? 'Perceptual / text similarity — no auto-delete' : 'Byte-identical'}
           </span>
+        </div>
+
+        {/* View controls: what order the groups come in, whether the hashes are
+            visible, and — in fuzzy mode — how far apart two signatures may be
+            and still be called duplicates. */}
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-2 border-b border-gray-200 dark:border-gray-700 text-xs">
+          <label className="flex items-center gap-1.5 text-gray-500 dark:text-gray-400">
+            Sort:
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as 'waste' | 'similarity')}
+              className="px-1.5 py-0.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200"
+            >
+              <option value="waste">Wasted space</option>
+              <option value="similarity">Similarity</option>
+            </select>
+          </label>
+
+          <label className="flex items-center gap-1.5 text-gray-500 dark:text-gray-400 cursor-pointer">
+            <Checkbox checked={showHashes} onChange={() => setShowHashes((v) => !v)} />
+            Show hashes
+          </label>
+
+          {mode === 'non-identical' && (
+            <label className="flex items-center gap-1.5 text-gray-500 dark:text-gray-400">
+              Fuzzy cutoff:
+              <input
+                type="number"
+                min={0}
+                max={200}
+                value={threshold ?? ''}
+                placeholder="auto"
+                disabled={isScanning}
+                onChange={(e) => {
+                  const raw = e.target.value.trim();
+                  setThreshold(raw === '' ? null : Math.max(0, Math.min(200, Number(raw))));
+                }}
+                // Committed on blur or Enter, never per keystroke: each commit
+                // re-runs the whole scan.
+                onBlur={() => setAppliedThreshold(threshold)}
+                onKeyDown={(e) => { if (e.key === 'Enter') setAppliedThreshold(threshold); }}
+                className="w-16 px-1.5 py-0.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 disabled:opacity-50"
+              />
+              <span className="text-[10px] text-gray-400 dark:text-gray-500">
+                blank = per-type defaults (images 10, text 3, other 100)
+              </span>
+            </label>
+          )}
         </div>
 
         {/* Scanning state: the counters the summary would have shown anyway,
@@ -466,7 +545,7 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
 
             {/* Groups list (scrollable) */}
             <div className="flex-1 overflow-y-auto px-4 py-3 space-y-4 min-h-0">
-              {groups.map((group, groupIdx) => (
+              {orderedGroups.map((group, groupIdx) => (
                 <div
                   key={group.hash}
                   className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden"
@@ -497,6 +576,10 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
                       const isChecked = selectedPaths.has(filePath);
                       const fileName = getFileName(filePath);
                       const dirPath = getDirectory(filePath);
+                      // Exact mode: one BLAKE3 for the whole group. Fuzzy mode:
+                      // this file's own signature, which is what explains why it
+                      // was clustered with the others.
+                      const rowHash = group.file_hashes?.[fileIdx] ?? (group.similarity ? null : group.hash);
 
                       return (
                         <div
@@ -532,6 +615,17 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
                               </span>
                               <RowCopyButton value={dirPath} label={t('contextMenu.copyPath') || 'Copy Path'} />
                             </div>
+                            {showHashes && rowHash && (
+                              <div className="flex items-center gap-1 min-w-0">
+                                <span
+                                  className="font-mono text-[10px] text-gray-400 dark:text-gray-500 truncate"
+                                  title={rowHash}
+                                >
+                                  {group.similarity ? `${group.similarity}: ` : ''}{rowHash}
+                                </span>
+                                <RowCopyButton value={rowHash} label={t('common.copy') || 'Copy'} />
+                              </div>
+                            )}
                           </div>
 
                           {/* Open the file, or its folder, in the desktop's own

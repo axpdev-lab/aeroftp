@@ -1649,6 +1649,10 @@ pub struct DuplicateGroup {
     /// Hamming distance of the cluster (representative); None for exact
     #[serde(skip_serializing_if = "Option::is_none")]
     pub distance: Option<u32>,
+    /// Per-file fuzzy signature, parallel to `files`. None in exact mode, where
+    /// `hash` is the one BLAKE3 every member shares.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file_hashes: Option<Vec<String>>,
 }
 
 // ─── Command 11: find_duplicate_files ───────────────────────────────────────
@@ -1687,6 +1691,11 @@ pub async fn find_duplicate_files(
     path: String,
     min_size: Option<u64>,
     mode: Option<String>,
+    // Fuzzy-hash cutoff for non-identical mode: how far apart two signatures may
+    // be and still be called duplicates. None keeps the engine defaults (raster
+    // <=10, text <=3, other <=100). Exposed because the right threshold is a
+    // judgement about the user's own library, not a constant (discussion #347).
+    distance: Option<u32>,
 ) -> Result<Vec<DuplicateGroup>, String> {
     validate_path(&path)?;
 
@@ -1796,7 +1805,7 @@ pub async fn find_duplicate_files(
         let engine_groups = crate::dedupe::find_similar_local_with_progress(
             &paths,
             crate::dedupe::SimilarityMode::NonIdentical,
-            None, // engine defaults: raster <=10, text <=3
+            distance, // None keeps the engine defaults: raster <=10, text <=3
             min_size,
             &mut |p| emit_analysis(p.files_processed, p.files_total, false),
         );
@@ -1809,6 +1818,7 @@ pub async fn find_duplicate_files(
                 files: g.files,
                 similarity: g.modality,
                 distance: g.distance,
+                file_hashes: g.file_hashes,
             })
             .collect();
         return Ok(result);
@@ -1881,6 +1891,7 @@ pub async fn find_duplicate_files(
             files,
             similarity: None,
             distance: None,
+            file_hashes: None,
         })
         .collect();
 
