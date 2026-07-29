@@ -3359,7 +3359,7 @@
             "checksumAbsentForObject": "Þessi bakendi getur boðið {algorithm}, en hefur ekkert geymt fyrir þennan hlut. Ekkert var sótt til að reikna það.",
             "checksumMatrixLink": "Hvaða bakendi styður hvaða tætigildi",
             "checksumCaveats": {
-                "s3-etag": "ETag er MD5 hlutarins aðeins fyrir hluti sem voru sendir upp í einum hluta og eru ekki dulkóðaðir með SSE-KMS eða SSE-C. ETag fyrir margþátta (multipart) hlut eða SSE-KMS-dulkóðaðan hlut er aldrei 32 sextándakerfisstafir og er því sleppt í stað þess að giska á það. ETag fyrir SSE-C-hlut getur hins vegar verið nákvæmlega 32 sextándakerfisstafir og verður þá ekki greindur frá raunverulegri gátsummu; fyrir slíka hluti skal aðeins líta á birt ETag sem leiðbeinandi og óstaðfest gildi.",
+                "s3-etag": "ETag er MD5 hlutarins aðeins fyrir einhluta hluti sem eru ekki dulkóðaðir með SSE-KMS eða SSE-C. Fjölhluta ETag ber viðskeytið `-N` og er sleppt frekar en giskað á. SSE-KMS eða SSE-C ETag getur samt verið 32 sextándakerfismerkja og stenst þá sömu formprófun og raunverulegt meltingargildi, þannig að tilkynnt ETag er ráðgefandi fyrir slíkan hlut.",
                 "b2-unverified": "Stórar skrár hafa ekkert nothæft SHA-1, og ekki heldur upphleðslur sem B2 skráði sem óstaðfestar.",
                 "sftp-sha256sum": "Reiknað af fjarvélinni með sha256sum um SSH-rás: bætin eru lesin á þjóninum og eru aldrei send til þín. Sleppt ef vélin hefur ekki sha256sum.",
                 "ftp-negotiated": "Fer eftir því hvað þjónninn auglýsir í FEAT: HASH, eða eldri XMD5, XSHA1 og XCRC.",

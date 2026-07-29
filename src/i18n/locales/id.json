@@ -3359,7 +3359,7 @@
             "checksumAbsentForObject": "Backend ini bisa menyediakan {algorithm}, tetapi tidak ada yang tersimpan untuk objek ini. Tidak ada yang diunduh untuk menghitungnya.",
             "checksumMatrixLink": "Backend mana mendukung hash mana",
             "checksumCaveats": {
-                "s3-etag": "ETag sama dengan MD5 objek hanya untuk objek yang diunggah dalam satu bagian dan tidak dienkripsi dengan SSE-KMS atau SSE-C. ETag objek multipart atau objek terenkripsi SSE-KMS tidak pernah terdiri atas 32 karakter heksadesimal, sehingga nilainya tidak ditampilkan alih-alih ditebak. Sebaliknya, ETag objek SSE-C bisa terdiri atas tepat 32 karakter heksadesimal sehingga tidak dapat dibedakan dari digest yang sebenarnya; karena itu, untuk objek seperti ini anggap ETag yang ditampilkan hanya sebagai indikasi, bukan nilai terverifikasi.",
+                "s3-etag": "ETag adalah MD5 objek hanya untuk objek satu bagian yang tidak dienkripsi SSE-KMS atau SSE-C. ETag multipart membawa akhiran `-N` dan dihilangkan, bukan ditebak. ETag SSE-KMS atau SSE-C tetap bisa berupa 32 karakter heksadesimal dan kemudian lolos pemeriksaan bentuk yang sama seperti digest asli, sehingga ETag yang dilaporkan bersifat advisori untuk objek semacam itu.",
                 "b2-unverified": "Berkas besar tidak punya SHA-1 yang dapat dipakai, dan begitu pula unggahan yang dicatat B2 sebagai belum terverifikasi.",
                 "sftp-sha256sum": "Dihitung oleh host jarak jauh dengan sha256sum melalui kanal SSH: bita dibaca di server dan tidak pernah dikirimkan kepada Anda. Dihilangkan jika host tidak punya sha256sum.",
                 "ftp-negotiated": "Bergantung pada apa yang diumumkan server di FEAT: HASH, atau XMD5, XSHA1, dan XCRC yang lebih lama.",

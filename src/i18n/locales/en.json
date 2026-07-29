@@ -2615,7 +2615,7 @@
             "checksumAbsentForObject": "This backend can serve {algorithm}, but has none stored for this object. Nothing was downloaded to compute it.",
             "checksumMatrixLink": "Which backend supports which hash",
             "checksumCaveats": {
-                "s3-etag": "The ETag is the object MD5 only for single-part objects that are not SSE-KMS or SSE-C encrypted. A multipart or SSE-KMS ETag is never 32 hex characters, so it is omitted rather than guessed. An SSE-C ETag can be 32 hex characters and is then indistinguishable from a real digest, so treat a reported ETag as advisory for such an object.",
+                "s3-etag": "The ETag is the object MD5 only for single-part objects that are not SSE-KMS or SSE-C encrypted. A multipart ETag carries a `-N` suffix and is omitted rather than guessed. An SSE-KMS or SSE-C ETag can still be 32 hex characters and then passes the same shape check as a real digest, so a reported ETag is advisory for such an object.",
                 "b2-unverified": "Large files have no usable SHA-1, and neither do uploads B2 recorded as unverified.",
                 "sftp-sha256sum": "Computed by the remote host with sha256sum over an SSH channel: the bytes are read on the server, never sent to you. Omitted if the host has no sha256sum.",
                 "ftp-negotiated": "Depends on what the server advertises in FEAT: HASH, or the older XMD5, XSHA1 and XCRC.",

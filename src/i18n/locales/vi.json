@@ -3359,7 +3359,7 @@
             "checksumAbsentForObject": "Backend này có thể cung cấp {algorithm}, nhưng không lưu mã nào cho đối tượng này. Không có gì được tải xuống để tính nó.",
             "checksumMatrixLink": "Backend nào hỗ trợ mã băm nào",
             "checksumCaveats": {
-                "s3-etag": "ETag chỉ là MD5 của đối tượng đối với các đối tượng được tải lên trong một phần duy nhất và không được mã hóa bằng SSE-KMS hoặc SSE-C. ETag của đối tượng nhiều phần (multipart) hoặc được mã hóa bằng SSE-KMS không bao giờ dài 32 ký tự thập lục phân, nên giá trị này bị bỏ qua thay vì phỏng đoán. Ngược lại, ETag của đối tượng dùng SSE-C có thể dài đúng 32 ký tự thập lục phân và khi đó không thể phân biệt với một giá trị băm thật; vì vậy với đối tượng như thế, hãy coi ETag được hiển thị chỉ mang tính tham khảo, chưa được xác minh.",
+                "s3-etag": "ETag là MD5 của đối tượng chỉ với các đối tượng một phần không được mã hóa SSE-KMS hoặc SSE-C. ETag nhiều phần mang hậu tố `-N` và bị bỏ qua thay vì đoán. ETag SSE-KMS hoặc SSE-C vẫn có thể gồm 32 ký tự hex và khi đó vượt qua cùng kiểm tra hình dạng như digest thật, vì vậy ETag được báo cáo chỉ mang tính tham khảo cho đối tượng như vậy.",
                 "b2-unverified": "Các tệp lớn không có SHA-1 dùng được, và các lần tải lên được B2 ghi nhận là chưa xác minh cũng vậy.",
                 "sftp-sha256sum": "Do máy chủ từ xa tính bằng sha256sum qua một kênh SSH: các byte được đọc trên máy chủ và không bao giờ gửi tới bạn. Bỏ qua nếu máy chủ không có sha256sum.",
                 "ftp-negotiated": "Phụ thuộc vào những gì máy chủ thông báo trong FEAT: HASH, hoặc XMD5, XSHA1 và XCRC cũ hơn.",

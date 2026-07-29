@@ -3359,7 +3359,7 @@
             "checksumAbsentForObject": "Denne backend kan levere {algorithm}, men har ingen gemt for dette objekt. Der blev ikke hentet noget ned for at beregne det.",
             "checksumMatrixLink": "Hvilken backend understøtter hvilket hash",
             "checksumCaveats": {
-                "s3-etag": "ETag er kun objektets MD5 for objekter, der er uploadet i én del og ikke er krypteret med SSE-KMS eller SSE-C. ETag for et multipart-objekt eller et SSE-KMS-krypteret objekt er aldrig 32 hexadecimale tegn, så det udelades i stedet for at blive gættet. ETag for et SSE-C-objekt kan derimod være præcis 32 hexadecimale tegn og kan dermed ikke skelnes fra en rigtig kontrolsum; for sådanne objekter skal en vist ETag kun betragtes som vejledende og ikke verificeret.",
+                "s3-etag": "ETag er objektets MD5 kun for enkeltpartsobjekter, der ikke er SSE-KMS- eller SSE-C-krypterede. En multipart-ETag har suffikset `-N` og udelades i stedet for at blive gættet. En SSE-KMS- eller SSE-C-ETag kan stadig være 32 hextegn og består så den samme formkontrol som et ægte digest, så en rapporteret ETag er vejledende for et sådant objekt.",
                 "b2-unverified": "Store filer har ingen brugbar SHA-1, og det samme gælder uploads, som B2 har registreret som unverified.",
                 "sftp-sha256sum": "Beregnes af fjernværten med sha256sum over en SSH-kanal: byte læses på serveren og sendes aldrig til dig. Udelades, hvis værten ikke har sha256sum.",
                 "ftp-negotiated": "Afhænger af, hvad serveren annoncerer i FEAT: HASH eller de ældre XMD5, XSHA1 og XCRC.",

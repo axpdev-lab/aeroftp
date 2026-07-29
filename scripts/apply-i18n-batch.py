@@ -43,8 +43,10 @@ def apply_batch(batch: dict, *, force: bool = False) -> int:
                 )
             text = pattern.sub(lambda m: m.group(1) + esc(translation) + m.group(3), text, count=1)
             changed += 1
+        # Validate before writing: a bad substitution must not leave the
+        # locale file corrupted on disk.
+        json.loads(text)
         path.write_text(text, encoding="utf-8")
-        json.loads(text)  # the file must still parse
     return changed
 
 

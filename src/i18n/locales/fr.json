@@ -3359,7 +3359,7 @@
             "checksumAbsentForObject": "Ce backend peut fournir {algorithm}, mais n'en a aucun stocké pour cet objet. Rien n'a été téléchargé pour le calculer.",
             "checksumMatrixLink": "Quel backend prend en charge quel hachage",
             "checksumCaveats": {
-                "s3-etag": "L'ETag correspond au MD5 de l'objet uniquement pour les objets envoyés en une seule partie et non chiffrés avec SSE-KMS ou SSE-C. L'ETag d'un objet multipart ou chiffré avec SSE-KMS ne fait jamais 32 caractères hexadécimaux : il est donc omis plutôt que deviné. En revanche, l'ETag d'un objet SSE-C peut faire exactement 32 caractères hexadécimaux et devient alors impossible à distinguer d'une véritable empreinte ; pour un tel objet, considérez l'ETag affiché comme purement indicatif et non vérifié.",
+                "s3-etag": "L'ETag est le MD5 de l'objet uniquement pour les objets en une seule partie non chiffrés par SSE-KMS ou SSE-C. Un ETag multipartite porte le suffixe `-N` et est omis plutôt que deviné. Un ETag SSE-KMS ou SSE-C peut encore faire 32 caractères hexadécimaux et passe alors le même contrôle de forme qu'un digest réel ; un ETag signalé n'est donc qu'indicatif pour un tel objet.",
                 "b2-unverified": "Les gros fichiers n'ont pas de SHA-1 exploitable, et les envois que B2 a enregistrés comme non vérifiés non plus.",
                 "sftp-sha256sum": "Calculé par l'hôte distant avec sha256sum via un canal SSH : les octets sont lus sur le serveur et ne vous sont jamais envoyés. Omis si l'hôte ne dispose pas de sha256sum.",
                 "ftp-negotiated": "Dépend de ce que le serveur annonce dans FEAT : HASH, ou les plus anciens XMD5, XSHA1 et XCRC.",
