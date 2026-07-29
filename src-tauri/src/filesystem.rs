@@ -22,7 +22,8 @@ use serde::Serialize;
 use std::path::{Component, Path, PathBuf};
 #[cfg(target_os = "linux")]
 use std::sync::{LazyLock, Mutex};
-#[cfg(any(target_os = "linux", target_os = "windows"))]
+// Unconditional since find_duplicate_files reports its progress on every
+// platform; the volume-watcher emitters below are the linux/windows ones.
 use tauri::Emitter;
 #[cfg(target_os = "linux")]
 use tracing::{error, info, warn};
@@ -1652,12 +1653,37 @@ pub struct DuplicateGroup {
 
 // ─── Command 11: find_duplicate_files ───────────────────────────────────────
 
+/// What a duplicate scan has got through so far, emitted on
+/// `duplicate-scan-progress`. A scan of a real photo library takes long enough
+/// that a bare spinner leaves the user unable to tell work from a hang
+/// (discussion #347), so the dialog shows these counters and its own clock.
+///
+/// `phase` is "walk" while the tree is being enumerated and "analyze" while
+/// file contents are read and hashed; `files_total` is 0 during the walk, when
+/// the total is not yet knowable.
+#[derive(Serialize, Clone)]
+pub struct DuplicateScanProgress {
+    pub phase: String,
+    pub files_scanned: u64,
+    pub dirs_scanned: u64,
+    pub bytes_scanned: u64,
+    pub max_depth: u32,
+    pub files_processed: u64,
+    pub files_total: u64,
+    pub current_path: String,
+}
+
+/// Emit at most this often. A tick per file would flood the event bridge on a
+/// large tree and slow the scan it is reporting on.
+const DUPLICATE_PROGRESS_INTERVAL_MS: u128 = 120;
+
 /// Scans a directory recursively for duplicate files.
 /// - mode "exact" (default): byte-identical using BLAKE3 (original behavior).
 /// - mode "non-identical": delegates to shared dedupe engine (perceptual for images, simhash for text/SVG).
 /// Returns groups sorted by wasted space descending (for non-identical, sizes may vary within group).
 #[tauri::command]
 pub async fn find_duplicate_files(
+    app: tauri::AppHandle,
     path: String,
     min_size: Option<u64>,
     mode: Option<String>,
@@ -1676,15 +1702,104 @@ pub async fn find_duplicate_files(
         .map(|m| m.eq_ignore_ascii_case("non-identical") || m.eq_ignore_ascii_case("nonidentical"))
         .unwrap_or(false);
 
+    // AF-RUST-H03: Resource exhaustion limits
+    const MAX_FILE_COUNT: u64 = 100_000;
+    const MAX_TOTAL_HASH_BYTES: u64 = 2_000_000_000; // 2 GB max total hash I/O
+
+    // Phase 0: one walk for both modes, so the progress the user sees is the
+    // same shape whichever mode they picked. Non-identical used to let the
+    // engine do its own walk (find_similar_in_dir); it now gets the file list
+    // from here and reports its own analysis pass through the callback below.
+    let walk_started = std::time::Instant::now();
+    let mut last_emit = walk_started;
+    let mut walked: Vec<(PathBuf, u64)> = Vec::new();
+    let mut dirs_scanned: u64 = 0;
+    let mut bytes_scanned: u64 = 0;
+    let mut max_depth: u32 = 0;
+    let mut scan_count: u64 = 0;
+
+    for entry in walkdir::WalkDir::new(&path)
+        .follow_links(false)
+        .max_depth(100)
+        .into_iter()
+        .filter_map(|e| e.ok())
+    {
+        max_depth = max_depth.max(entry.depth() as u32);
+        if entry.file_type().is_dir() {
+            dirs_scanned += 1;
+            continue;
+        }
+        if !entry.file_type().is_file() {
+            continue;
+        }
+        scan_count += 1;
+        if scan_count > MAX_FILE_COUNT {
+            warn!(
+                "find_duplicate_files: file limit ({}) reached, scanning partial results",
+                MAX_FILE_COUNT
+            );
+            break;
+        }
+        let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
+        bytes_scanned += size;
+        if last_emit.elapsed().as_millis() >= DUPLICATE_PROGRESS_INTERVAL_MS {
+            last_emit = std::time::Instant::now();
+            let _ = app.emit(
+                "duplicate-scan-progress",
+                DuplicateScanProgress {
+                    phase: "walk".to_string(),
+                    files_scanned: scan_count,
+                    dirs_scanned,
+                    bytes_scanned,
+                    max_depth,
+                    files_processed: 0,
+                    files_total: 0,
+                    current_path: entry.path().to_string_lossy().to_string(),
+                },
+            );
+        }
+        walked.push((entry.into_path(), size));
+    }
+
+    let files_scanned = scan_count.min(MAX_FILE_COUNT);
+    // The analysis pass reports against a known total, so the dialog can show a
+    // real fraction instead of a number that only goes up.
+    let mut emit_analysis = {
+        let app = app.clone();
+        let mut last = std::time::Instant::now();
+        move |files_processed: u64, files_total: u64, force: bool| {
+            if !force && last.elapsed().as_millis() < DUPLICATE_PROGRESS_INTERVAL_MS {
+                return;
+            }
+            last = std::time::Instant::now();
+            let _ = app.emit(
+                "duplicate-scan-progress",
+                DuplicateScanProgress {
+                    phase: "analyze".to_string(),
+                    files_scanned,
+                    dirs_scanned,
+                    bytes_scanned,
+                    max_depth,
+                    files_processed,
+                    files_total,
+                    current_path: String::new(),
+                },
+            );
+        }
+    };
+
     if is_non_identical {
-        // Delegate entirely to the shared engine (src-tauri/src/dedupe/) — Phase 1 source of truth.
-        // Do NOT re-implement perceptual/SimHash logic here.
-        let engine_groups = crate::dedupe::find_similar_in_dir(
-            path_ref,
+        // The perceptual/SimHash logic stays in the shared engine
+        // (src-tauri/src/dedupe/) — Phase 1 source of truth. Only the walk moved
+        // out, so this call cannot drift from the exact-mode file list.
+        let paths: Vec<PathBuf> = walked.into_iter().map(|(p, _)| p).collect();
+        let engine_groups = crate::dedupe::find_similar_local_with_progress(
+            &paths,
             crate::dedupe::SimilarityMode::NonIdentical,
             None, // engine defaults: raster <=10, text <=3
             min_size,
-        )?;
+            &mut |p| emit_analysis(p.files_processed, p.files_total, false),
+        );
         let result: Vec<DuplicateGroup> = engine_groups
             .into_iter()
             .map(|g| DuplicateGroup {
@@ -1699,37 +1814,14 @@ pub async fn find_duplicate_files(
         return Ok(result);
     }
 
-    // AF-RUST-H03: Resource exhaustion limits
-    const MAX_FILE_COUNT: u64 = 100_000;
-    const MAX_TOTAL_HASH_BYTES: u64 = 2_000_000_000; // 2 GB max total hash I/O
-
     // Phase 1: group files by size
     let mut size_groups: std::collections::HashMap<u64, Vec<PathBuf>> =
         std::collections::HashMap::new();
-    let mut scan_count: u64 = 0;
-
-    for entry in walkdir::WalkDir::new(&path)
-        .follow_links(false)
-        .max_depth(100)
-        .into_iter()
-        .filter_map(|e| e.ok())
-    {
-        if !entry.file_type().is_file() {
-            continue;
-        }
-        scan_count += 1;
-        if scan_count > MAX_FILE_COUNT {
-            warn!(
-                "find_duplicate_files: file limit ({}) reached, scanning partial results",
-                MAX_FILE_COUNT
-            );
-            break;
-        }
-        let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
+    for (file_path, size) in walked {
         if size < min {
             continue;
         }
-        size_groups.entry(size).or_default().push(entry.into_path());
+        size_groups.entry(size).or_default().push(file_path);
     }
 
     // Phase 2: hash only files with matching sizes (2+ files)
@@ -1737,6 +1829,14 @@ pub async fn find_duplicate_files(
         std::collections::HashMap::new();
     let mut total_hash_bytes: u64 = 0;
     let mut budget_exceeded = false;
+    // Only the files that share a size are ever hashed, so that — not the whole
+    // tree — is the denominator the user should be watching.
+    let hash_total: u64 = size_groups
+        .values()
+        .filter(|files| files.len() >= 2)
+        .map(|files| files.len() as u64)
+        .sum();
+    let mut hashed: u64 = 0;
 
     for (size, files) in size_groups {
         if budget_exceeded {
@@ -1757,6 +1857,8 @@ pub async fn find_duplicate_files(
                 budget_exceeded = true;
                 break;
             }
+            hashed += 1;
+            emit_analysis(hashed, hash_total, false);
             match compute_file_hash(file_path) {
                 Ok(hash) => {
                     let entry = hash_groups

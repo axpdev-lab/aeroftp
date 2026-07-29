@@ -269,13 +269,41 @@ pub fn jaccard_from_minhash(a: &[u64], b: &[u64]) -> f64 {
 ///   Cluster by Hamming distance <= threshold (param overrides default).
 ///
 ///   Returns groups with >=2 files, sorted by wasted space desc (or distance asc for visibility).
+/// One tick of a similarity scan, so a caller can show what the engine is
+/// chewing through instead of an indeterminate spinner (discussion #347).
+/// `files_total` is the candidate count the pass started with, which is what
+/// makes the tick a fraction rather than a running number.
+#[derive(Debug, Clone, Copy)]
+pub struct DedupeProgress {
+    pub files_processed: u64,
+    pub bytes_processed: u64,
+    pub files_total: u64,
+}
+
 pub fn find_similar_local(
     paths: &[PathBuf],
     mode: SimilarityMode,
     distance: Option<u32>,
     min_size: Option<u64>,
 ) -> Vec<DuplicateGroup> {
+    find_similar_local_with_progress(paths, mode, distance, min_size, &mut |_| {})
+}
+
+/// `find_similar_local` with a progress callback, called once per file whose
+/// content the engine actually reads — the hashing pass in exact mode and the
+/// signature pass in non-identical mode. The callback runs on this thread, so
+/// keep it cheap (the GUI caller throttles before it emits).
+pub fn find_similar_local_with_progress(
+    paths: &[PathBuf],
+    mode: SimilarityMode,
+    distance: Option<u32>,
+    min_size: Option<u64>,
+    on_progress: &mut dyn FnMut(DedupeProgress),
+) -> Vec<DuplicateGroup> {
     let min = min_size.unwrap_or(1);
+    let files_total = paths.len() as u64;
+    let mut files_processed: u64 = 0;
+    let mut bytes_processed: u64 = 0;
 
     match mode {
         SimilarityMode::Exact => {
@@ -302,6 +330,13 @@ pub fn find_similar_local(
                             .1
                             .push(f.to_string_lossy().to_string());
                     }
+                    files_processed += 1;
+                    bytes_processed += sz;
+                    on_progress(DedupeProgress {
+                        files_processed,
+                        bytes_processed,
+                        files_total,
+                    });
                 }
             }
             let mut result: Vec<DuplicateGroup> = hash_groups
@@ -336,9 +371,18 @@ pub fn find_similar_local(
                     }
                     // Read full for sim (small for typical dupes; capped by caller in practice)
                     if let Ok(bytes) = std::fs::read(p) {
+                        bytes_processed += bytes.len() as u64;
                         candidates.push((p.clone(), sz, bytes));
                     }
                 }
+                // Counted whether or not the read succeeded: the tick tracks how
+                // far through the candidate list we are, not how many worked.
+                files_processed += 1;
+                on_progress(DedupeProgress {
+                    files_processed,
+                    bytes_processed,
+                    files_total,
+                });
             }
 
             // Compute signatures per modality

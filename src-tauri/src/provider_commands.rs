@@ -6726,6 +6726,12 @@ pub async fn provider_compare_directories(
             serde_json::json!({
                 "phase": "remote",
                 "files_found": local_files.len() + remote_files.len(),
+                "dirs_found": remote_files.values().filter(|f| f.is_dir).count(),
+                "bytes_found": remote_files
+                    .values()
+                    .filter(|f| !f.is_dir)
+                    .map(|f| f.size)
+                    .sum::<u64>(),
             }),
         );
     } else {
@@ -6829,11 +6835,19 @@ pub async fn provider_compare_directories(
                 }
             }
 
+            // Recomputed per directory rather than carried in a counter: the
+            // walk can revisit a path, and the map is the deduplicated truth.
             let _ = app.emit(
                 "sync_scan_progress",
                 serde_json::json!({
                     "phase": "remote",
                     "files_found": local_files.len() + remote_files.len(),
+                    "dirs_found": remote_files.values().filter(|f| f.is_dir).count(),
+                    "bytes_found": remote_files
+                        .values()
+                        .filter(|f| !f.is_dir)
+                        .map(|f| f.size)
+                        .sum::<u64>(),
                 }),
             );
         }

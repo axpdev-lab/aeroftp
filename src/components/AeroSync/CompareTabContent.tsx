@@ -28,6 +28,7 @@ import {
     compareRowsToJson,
 } from '../../utils/compareExport';
 import { formatBytes } from '../../utils/formatters';
+import { useScanProgress, formatElapsed } from '../../hooks/useScanProgress';
 import { useTranslation } from '../../i18n';
 
 interface CompareTabContentProps {
@@ -225,6 +226,8 @@ export const CompareTabContent: React.FC<CompareTabContentProps> = ({
     onApplyMirrorRightToLeft,
 }) => {
     const t = useTranslation();
+    // Live counters for the scan the spinner below used to hide entirely.
+    const { totals: scanTotals, elapsedMs: scanElapsedMs } = useScanProgress(!!loading && !result);
 
     // Hooks must run unconditionally: the recursive connected-remote scan
     // (GAP-5) flips `result` from null to a value while this component stays
@@ -300,6 +303,16 @@ export const CompareTabContent: React.FC<CompareTabContentProps> = ({
                 <div className="flex flex-col items-center gap-2 p-8 text-center text-sm text-gray-500 dark:text-gray-400">
                     <Loader2 size={24} className="animate-spin text-blue-500" />
                     {t('syncPanel.scanning') || 'Scanning directories'}
+                    {/* The same numbers the summary will show when the scan
+                        finishes, shown while they are still the only thing to
+                        go on: a scan that is working and a scan that is stuck
+                        used to look identical. */}
+                    <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-xs tabular-nums text-gray-400 dark:text-gray-500">
+                        <span>⏱ {formatElapsed(scanElapsedMs)}</span>
+                        <span>📄 {scanTotals.files.toLocaleString()}</span>
+                        <span>📁 {scanTotals.dirs.toLocaleString()}</span>
+                        <span>{formatBytes(scanTotals.bytes)}</span>
+                    </div>
                 </div>
             );
         }

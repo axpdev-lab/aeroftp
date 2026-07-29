@@ -13,12 +13,37 @@
 import * as React from 'react';
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { Search, X, Trash2, CheckCircle, AlertCircle, Loader2, Copy, FileX } from 'lucide-react';
+import { listen, type UnlistenFn } from '@tauri-apps/api/event';
+import { Search, X, Trash2, CheckCircle, AlertCircle, Loader2, Copy, FileX, Check, ExternalLink, FolderOpen } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { formatBytes } from '../utils/formatters';
 import { DuplicateGroup } from '../types/aerofile';
 import { Checkbox } from './ui/Checkbox';
 import { useDraggableModal } from '../hooks/useDraggableModal';
+import { useClipboardCopy } from '../hooks/useClipboardCopy';
+
+/** Payload of the backend's `duplicate-scan-progress` event (filesystem.rs). */
+interface DuplicateScanProgress {
+  phase: 'walk' | 'analyze';
+  files_scanned: number;
+  dirs_scanned: number;
+  bytes_scanned: number;
+  max_depth: number;
+  files_processed: number;
+  files_total: number;
+  current_path: string;
+}
+
+/** m:ss, or h:mm:ss once a scan has been running that long. */
+const formatElapsed = (ms: number): string => {
+  const total = Math.floor(ms / 1000);
+  const s = total % 60;
+  const m = Math.floor(total / 60) % 60;
+  const h = Math.floor(total / 3600);
+  const mm = String(m).padStart(2, '0');
+  const ss = String(s).padStart(2, '0');
+  return h > 0 ? `${h}:${mm}:${ss}` : `${m}:${ss}`;
+};
 
 interface DuplicateFinderDialogProps {
   isOpen: boolean;
@@ -41,6 +66,28 @@ const getDirectory = (path: string): string => {
   return lastIdx >= 0 ? path.substring(0, lastIdx) : '';
 };
 
+/**
+ * Copy affordance for one row value. One hook instance per button, so the tick
+ * lands on the button that was pressed and not on every copy in the list.
+ *
+ * Ehud asked for these because reading a duplicate's folder off the screen with
+ * an OCR app was the only way to go compare the two files outside AeroFTP.
+ */
+const RowCopyButton: React.FC<{ value: string; label: string }> = ({ value, label }) => {
+  const { copied, copy } = useClipboardCopy();
+  return (
+    <button
+      type="button"
+      onClick={(e) => { e.stopPropagation(); void copy(value); }}
+      title={label}
+      aria-label={label}
+      className="shrink-0 p-1 rounded text-gray-400 hover:text-blue-500 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+    >
+      {copied ? <Check size={12} className="text-green-500" /> : <Copy size={12} />}
+    </button>
+  );
+};
+
 export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
   isOpen,
   scanPath,
@@ -58,6 +105,10 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
   const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set());
   // Mode: 'exact' (default, byte-identical) or 'non-identical' (consumes shared engine)
   const [mode, setMode] = useState<'exact' | 'non-identical'>('exact');
+  // What the backend is chewing through, and for how long. A scan over a photo
+  // library is long enough that a bare spinner cannot be told apart from a hang.
+  const [progress, setProgress] = useState<DuplicateScanProgress | null>(null);
+  const [elapsedMs, setElapsedMs] = useState(0);
 
   // Scan for duplicates when the dialog opens
   const scan = useCallback(async () => {
@@ -65,6 +116,8 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
     setError(null);
     setGroups([]);
     setSelectedPaths(new Set());
+    setProgress(null);
+    setElapsedMs(0);
 
     try {
       const result = await invoke<DuplicateGroup[]>('find_duplicate_files', {
@@ -108,6 +161,35 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
     // Note: `scan` depends on `mode`, so toggling the mode re-runs this effect
     // and re-scans automatically. No separate mode effect is needed.
   }, [isOpen, scan]);
+
+  // Backend progress. Subscribed for the dialog's whole open lifetime rather
+  // than per scan, so a tick that arrives between two scans cannot be missed.
+  useEffect(() => {
+    if (!isOpen) return;
+    let unlisten: UnlistenFn | null = null;
+    let cancelled = false;
+    listen<DuplicateScanProgress>('duplicate-scan-progress', (e) => {
+      setProgress(e.payload);
+    }).then((fn) => {
+      if (cancelled) fn();
+      else unlisten = fn;
+    });
+    return () => {
+      cancelled = true;
+      if (unlisten) unlisten();
+    };
+  }, [isOpen]);
+
+  // The clock. Ticking here rather than off the backend events keeps it moving
+  // during a long single file, which is exactly when the user starts to wonder
+  // whether the scan is stuck.
+  useEffect(() => {
+    if (!isScanning) return;
+    const startedAt = Date.now();
+    setElapsedMs(0);
+    const id = setInterval(() => setElapsedMs(Date.now() - startedAt), 250);
+    return () => clearInterval(id);
+  }, [isScanning]);
 
   // Hide scrollbars when dialog is open (WebKitGTK fix)
   useEffect(() => {
@@ -290,13 +372,50 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
           </span>
         </div>
 
-        {/* Scanning state */}
+        {/* Scanning state: the counters the summary would have shown anyway,
+            shown while they are still the only thing the user can act on. */}
         {isScanning && (
-          <div className="flex flex-col items-center justify-center py-16 gap-3">
+          <div className="flex flex-col items-center justify-center py-12 gap-3 px-8">
             <Loader2 size={32} className="animate-spin text-blue-500" />
             <span className="text-sm text-gray-600 dark:text-gray-400">
               {t('duplicates.scanning')}
             </span>
+
+            {/* Determinate bar for the analysis pass, whose total is known;
+                the walk has no denominator yet, so it stays indeterminate. */}
+            {progress?.phase === 'analyze' && progress.files_total > 0 && (
+              <div className="w-full max-w-sm h-1.5 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
+                <div
+                  className="h-full bg-blue-500 transition-[width] duration-200"
+                  style={{ width: `${Math.min(100, Math.round((progress.files_processed / progress.files_total) * 100))}%` }}
+                />
+              </div>
+            )}
+
+            <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
+              <span className="tabular-nums">⏱ {formatElapsed(elapsedMs)}</span>
+              <span className="tabular-nums">
+                📄 {(progress?.files_scanned ?? 0).toLocaleString()}
+              </span>
+              <span className="tabular-nums">
+                📁 {(progress?.dirs_scanned ?? 0).toLocaleString()}
+              </span>
+              <span className="tabular-nums">{formatBytes(progress?.bytes_scanned ?? 0)}</span>
+              {(progress?.max_depth ?? 0) > 0 && (
+                <span className="tabular-nums">↳ {progress?.max_depth}</span>
+              )}
+              {progress?.phase === 'analyze' && progress.files_total > 0 && (
+                <span className="tabular-nums">
+                  {progress.files_processed.toLocaleString()} / {progress.files_total.toLocaleString()}
+                </span>
+              )}
+            </div>
+
+            {progress?.phase === 'walk' && progress.current_path && (
+              <span className="max-w-full truncate text-[10px] text-gray-400 dark:text-gray-500" title={progress.current_path}>
+                {progress.current_path}
+              </span>
+            )}
           </div>
         )}
 
@@ -399,15 +518,51 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
                             />
                           </div>
 
-                          {/* File info */}
+                          {/* File info, each line with its own copy button */}
                           <div className="flex-1 min-w-0">
-                            <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
-                              {fileName}
+                            <div className="flex items-center gap-1 min-w-0">
+                              <span className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate" title={fileName}>
+                                {fileName}
+                              </span>
+                              <RowCopyButton value={fileName} label={t('contextMenu.copyName') || 'Copy Name'} />
                             </div>
-                            <div className="text-xs text-gray-500 dark:text-gray-400 truncate" title={dirPath}>
-                              {dirPath}
+                            <div className="flex items-center gap-1 min-w-0">
+                              <span className="text-xs text-gray-500 dark:text-gray-400 truncate" title={dirPath}>
+                                {dirPath}
+                              </span>
+                              <RowCopyButton value={dirPath} label={t('contextMenu.copyPath') || 'Copy Path'} />
                             </div>
                           </div>
+
+                          {/* Open the file, or its folder, in the desktop's own
+                              apps: comparing two candidates is what the user is
+                              here to do, and it cannot be done in this dialog. */}
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              invoke('open_local_file', { path: filePath }).catch(() => { /* best-effort */ });
+                            }}
+                            title={t('contextMenu.open') || 'Open'}
+                            aria-label={t('contextMenu.open') || 'Open'}
+                            className="shrink-0 mt-0.5 p-1 rounded text-gray-400 hover:text-blue-500 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                          >
+                            <ExternalLink size={12} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              // the file, not its folder: the command reveals and
+                              // selects it, which is the useful thing here.
+                              invoke('open_in_file_manager', { path: filePath }).catch(() => { /* best-effort */ });
+                            }}
+                            title={t('aeroShare.inbox.revealFile') || 'Show in folder'}
+                            aria-label={t('aeroShare.inbox.revealFile') || 'Show in folder'}
+                            className="shrink-0 mt-0.5 p-1 rounded text-gray-400 hover:text-blue-500 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                          >
+                            <FolderOpen size={12} />
+                          </button>
 
                           {/* Keep / delete badge */}
                           <span
