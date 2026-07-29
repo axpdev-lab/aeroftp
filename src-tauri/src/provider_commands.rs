@@ -169,17 +169,73 @@ impl ProviderState {
     /// decorator transparently, and when the session is not crypt-capable at all
     /// this is a no-op.
     pub fn guard_no_raw_crypt_write(&self, op: &str) -> Result<(), String> {
+        self.guard_no_raw_crypt_write_outside(op, &[])
+    }
+
+    /// Mixed-mode variant of [`Self::guard_no_raw_crypt_write`] (issue #390).
+    ///
+    /// The refusal exists only to protect the encrypted store, so an edit whose
+    /// every endpoint is provably OUTSIDE the overlay anchor touches plaintext
+    /// territory the overlay never owned and is allowed through. This is the
+    /// write-side counterpart of the decorator's own pass-through for
+    /// out-of-anchor targets (`encode_plain_target`, EF-01).
+    ///
+    /// Proving "outside" needs the anchor, which survives a scope-out unwrap in
+    /// the connection-scoped key cache. Anything not provable stays refused:
+    /// no cached anchor (the arm-before-unlock window, or a hard lock that
+    /// invalidated the cache), a whole-remote anchor, a relative path (it
+    /// resolves against the raw provider's cwd, which may sit inside), or the
+    /// remote root itself. `paths` empty keeps the original fail-closed answer.
+    pub fn guard_no_raw_crypt_write_outside(&self, op: &str, paths: &[&str]) -> Result<(), String> {
         let crypt_capable = self.active_crypt_overlay.load(Ordering::SeqCst);
         let wrapped = self.overlay_wrapped.load(Ordering::SeqCst);
-        if crypt_capable && !wrapped {
-            return Err(format!(
-                "{op} is blocked: this session has a crypt overlay that is currently locked or \
-                 out of its encrypted scope, so a direct provider write would inject plaintext \
-                 into the encrypted store. Re-enter the encrypted scope (or unlock the overlay) \
-                 before writing."
-            ));
+        if !crypt_capable || wrapped {
+            return Ok(());
         }
-        Ok(())
+        if !paths.is_empty() {
+            if let Some(scope) = self.cached_overlay_scope() {
+                if paths
+                    .iter()
+                    .all(|p| Self::path_is_outside_crypt_scope(&scope, p))
+                {
+                    return Ok(());
+                }
+            }
+        }
+        Err(format!(
+            "{op} is blocked: this session has a crypt overlay that is currently locked or \
+             out of its encrypted scope, so a direct provider write would inject plaintext \
+             into the encrypted store. Re-enter the encrypted scope (or unlock the overlay) \
+             before writing."
+        ))
+    }
+
+    /// True only when `path` is PROVABLY disjoint from the encrypted anchor
+    /// `scope`: neither inside it nor an ancestor of it. The ancestor half
+    /// matters as much as the inside half, because a recursive delete of a
+    /// parent directory would take the whole vault with it even though no
+    /// single encrypted name is ever named.
+    ///
+    /// Both sides go through `norm_anchor`, which resolves `..`, so a crafted
+    /// `/outside/../vault/secret` cannot pose as out-of-scope.
+    fn path_is_outside_crypt_scope(scope: &str, path: &str) -> bool {
+        let anchor = crate::crypt_overlay_provider::norm_anchor(scope);
+        if anchor.is_empty() {
+            // Whole-remote anchor: nothing is outside it.
+            return false;
+        }
+        if !path.trim_start().starts_with('/') {
+            // Relative: resolves against the raw cwd, which may be inside.
+            return false;
+        }
+        let target = crate::crypt_overlay_provider::norm_anchor(path);
+        if target.is_empty() {
+            // The remote root: an ancestor of the anchor, never a safe write target.
+            return false;
+        }
+        target != anchor
+            && !target.starts_with(&format!("{}/", anchor))
+            && !anchor.starts_with(&format!("{}/", target))
     }
 
     pub fn arm_crypt_capability(&self) {
@@ -221,6 +277,19 @@ impl ProviderState {
     /// to the live connection generation. Returns `(keys, scope, kind)`. A stale
     /// entry (generation moved on) is dropped and `None` returned so the caller
     /// re-derives. The clone is cheap key material; it zeroizes on drop.
+    /// Normalized anchor of the overlay armed on this connection, when the key
+    /// cache is still live for the current generation. Survives a scope-out
+    /// unwrap (`provider_clear_crypt_overlay { full: false }`), which is exactly
+    /// the window the mixed-mode write guard has to reason about.
+    fn cached_overlay_scope(&self) -> Option<String> {
+        let live = self.connection_generation.load(Ordering::SeqCst);
+        let slot = self.cached_overlay.lock().ok()?;
+        match slot.as_ref() {
+            Some(c) if c.generation == live => Some(c.scope.clone()),
+            _ => None,
+        }
+    }
+
     fn cached_overlay_for_rearm(
         &self,
     ) -> Option<(crate::crypt_overlay_provider::OverlayKeys, String, String)> {
@@ -3343,8 +3412,9 @@ pub async fn provider_upload_folder(
     commit_message: Option<String>,
 ) -> Result<String, String> {
     // Fail-closed: never write plaintext into a crypt store whose overlay is
-    // currently unwrapped (badge locked / outside the encrypted scope).
-    state.guard_no_raw_crypt_write("Upload")?;
+    // currently unwrapped (badge locked / outside the encrypted scope). A remote
+    // target provably outside the overlay anchor is plain territory (#390).
+    state.guard_no_raw_crypt_write_outside("Upload", &[&remote_path])?;
 
     let transfer_settings = TransferSettingsInput {
         max_concurrent,
@@ -4347,8 +4417,9 @@ pub async fn provider_upload_file(
     resume: Option<bool>,
 ) -> Result<String, String> {
     // Fail-closed: never write plaintext into a crypt store whose overlay is
-    // currently unwrapped (badge locked / outside the encrypted scope).
-    state.guard_no_raw_crypt_write("Upload")?;
+    // currently unwrapped (badge locked / outside the encrypted scope). A remote
+    // target provably outside the overlay anchor is plain territory (#390).
+    state.guard_no_raw_crypt_write_outside("Upload", &[&remote_path])?;
 
     let mut provider_lock = state.provider.lock().await;
 
@@ -4809,8 +4880,9 @@ pub async fn provider_mkdir(
     path: String,
     commit_message: Option<String>,
 ) -> Result<(), String> {
-    // Fail-closed: refuse a cleartext mkdir name into an unwrapped crypt store.
-    state.guard_no_raw_crypt_write("Create directory")?;
+    // Fail-closed: refuse a cleartext mkdir name into an unwrapped crypt store,
+    // unless the target is provably outside the overlay anchor (#390).
+    state.guard_no_raw_crypt_write_outside("Create directory", &[&path])?;
 
     let mut provider_lock = state.provider.lock().await;
 
@@ -4851,8 +4923,9 @@ pub async fn provider_delete_file(
     commit_message: Option<String>,
 ) -> Result<(), String> {
     // Fail-closed: a plaintext path against an unwrapped crypt store targets the
-    // wrong (or no) object; refuse instead of acting on the raw backend.
-    state.guard_no_raw_crypt_write("Delete file")?;
+    // wrong (or no) object; refuse instead of acting on the raw backend. A target
+    // provably outside the overlay anchor is plain territory and passes (#390).
+    state.guard_no_raw_crypt_write_outside("Delete file", &[&path])?;
 
     let mut provider_lock = state.provider.lock().await;
 
@@ -4892,7 +4965,7 @@ pub async fn provider_delete_dir(
 ) -> Result<(), String> {
     // Fail-closed: a plaintext path against an unwrapped crypt store targets the
     // wrong (or no) object; refuse instead of acting on the raw backend.
-    state.guard_no_raw_crypt_write("Delete directory")?;
+    state.guard_no_raw_crypt_write_outside("Delete directory", &[&path])?;
 
     let mut provider_lock = state.provider.lock().await;
 
@@ -4979,8 +5052,10 @@ pub async fn provider_rename(
     to: String,
 ) -> Result<(), String> {
     // Fail-closed: renaming through the raw backend while the overlay is
-    // unwrapped would create a cleartext name in the encrypted store.
-    state.guard_no_raw_crypt_write("Rename")?;
+    // unwrapped would create a cleartext name in the encrypted store. Allowed
+    // when BOTH endpoints are provably outside the overlay anchor (#390), which
+    // covers cut/paste and drag-move entirely in plaintext territory.
+    state.guard_no_raw_crypt_write_outside("Rename", &[&from, &to])?;
 
     let mut provider_lock = state.provider.lock().await;
 
@@ -5018,8 +5093,9 @@ pub async fn provider_server_copy(
     // Fail-closed: a raw server-side copy while the overlay is unwrapped would
     // land a cleartext-named object in the encrypted store (the content stays
     // ciphertext but the name never gets encrypted), orphaning it from the
-    // overlay's decrypted listing.
-    state.guard_no_raw_crypt_write("Server copy")?;
+    // overlay's decrypted listing. Both endpoints provably outside the anchor
+    // stay plaintext on both sides, so that case is allowed (#390).
+    state.guard_no_raw_crypt_write_outside("Server copy", &[&from, &to])?;
 
     let provider_lock = state.provider.lock().await;
     if provider_lock.is_none() {
@@ -12755,6 +12831,85 @@ mod tests {
         // Clearing capability re-opens the raw path (e.g. after disconnect).
         state.active_crypt_overlay.store(false, Ordering::SeqCst);
         assert!(state.guard_no_raw_crypt_write("Upload").is_ok());
+    }
+
+    #[test]
+    fn path_is_outside_crypt_scope_only_when_provable() {
+        let out = |scope: &str, path: &str| ProviderState::path_is_outside_crypt_scope(scope, path);
+
+        // Plainly outside the anchor, in every shape.
+        assert!(out("/Vault", "/Plain"));
+        assert!(out("/Vault", "/Plain/deep/file.txt"));
+        assert!(out("/Vault", "/Vaultish")); // prefix string match must not fool it
+        assert!(out("/Vault/Inner", "/Vault/Other"));
+        assert!(out("/Vault/", "/Plain/x")); // anchor trailing slash normalizes away
+
+        // Inside, at, or above the anchor: never allowed. An ancestor is refused
+        // because a recursive delete of it would destroy the vault.
+        assert!(!out("/Vault", "/Vault"));
+        assert!(!out("/Vault", "/Vault/file.txt"));
+        assert!(!out("/Vault/Inner", "/Vault"));
+        assert!(!out("/Vault/Inner/Deep", "/Vault"));
+        assert!(!out("/Vault", "/"));
+
+        // Traversal cannot pose as outside: both sides resolve `..` first.
+        assert!(!out("/Vault", "/Plain/../Vault/secret"));
+        assert!(out("/Vault", "/Vault/../Plain/file"));
+
+        // Whole-remote anchor owns everything.
+        assert!(!out("", "/anything"));
+        assert!(!out("/", "/anything"));
+
+        // Relative paths resolve against the raw cwd, which may sit inside.
+        assert!(!out("/Vault", "file.txt"));
+        assert!(!out("/Vault", "sub/dir"));
+    }
+
+    #[test]
+    fn guard_allows_writes_provably_outside_the_anchor() {
+        let state = ProviderState::new();
+        state.active_crypt_overlay.store(true, Ordering::SeqCst);
+        state.overlay_wrapped.store(false, Ordering::SeqCst);
+
+        // No cached anchor (arm-before-unlock window): nothing is provable, so the
+        // guard stays fail-closed even for a path that looks out of scope.
+        assert!(state
+            .guard_no_raw_crypt_write_outside("Create directory", &["/Plain/new"])
+            .is_err());
+
+        state.store_overlay_key_cache(
+            crate::crypt_overlay_provider::OverlayKeys::Rclone(rclone_compare_keys(true)),
+            "/Vault".to_string(),
+            "rclone-crypt".to_string(),
+        );
+
+        // Both endpoints outside the anchor: plaintext territory, allowed (#390).
+        assert!(state
+            .guard_no_raw_crypt_write_outside("Create directory", &["/Plain/new"])
+            .is_ok());
+        assert!(state
+            .guard_no_raw_crypt_write_outside("Rename", &["/Plain/a", "/Plain/b"])
+            .is_ok());
+
+        // Any endpoint inside the anchor keeps the refusal.
+        assert!(state
+            .guard_no_raw_crypt_write_outside("Rename", &["/Plain/a", "/Vault/b"])
+            .is_err());
+        assert!(state
+            .guard_no_raw_crypt_write_outside("Rename", &["/Vault/a", "/Plain/b"])
+            .is_err());
+        assert!(state
+            .guard_no_raw_crypt_write_outside("Delete file", &["/Vault/secret"])
+            .is_err());
+
+        // The no-path form is unchanged: still fail-closed.
+        assert!(state.guard_no_raw_crypt_write("Upload").is_err());
+
+        // A hard lock invalidates the cache, so nothing is provable again.
+        state.invalidate_overlay_key_cache();
+        assert!(state
+            .guard_no_raw_crypt_write_outside("Create directory", &["/Plain/new"])
+            .is_err());
     }
 
     #[test]

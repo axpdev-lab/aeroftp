@@ -291,7 +291,12 @@ impl OverlayKeys {
 /// literal scope-prefix test against real, already-normalized provider paths, so
 /// the whole vault would be treated as out-of-scope and writes would fall through
 /// to the raw provider as plaintext. Mirrors the frontend `normalizeSegments`.
-fn norm_anchor(scope: &str) -> String {
+///
+/// `pub(crate)` so the mixed-mode write guard in `provider_commands` decides
+/// "inside or outside the anchor" with this exact normalization (issue #390):
+/// two different normalizations there would reopen the traversal hole B-F1
+/// closes here.
+pub(crate) fn norm_anchor(scope: &str) -> String {
     let s = scope.trim();
     if s.is_empty() || s == "/" {
         return String::new();
@@ -586,6 +591,41 @@ impl CryptOverlayProvider {
             return false;
         }
         t.starts_with(&format!("{}/", self.scope))
+    }
+
+    /// Refuse a two-endpoint op whose ends sit on opposite sides of the anchor
+    /// (issue #390).
+    ///
+    /// A server-side rename or copy only moves the object: it cannot transcode.
+    /// Encrypted-to-plain would park a ciphertext blob outside the vault under a
+    /// cleartext name, unreadable by anything and no longer listed by the
+    /// overlay; plain-to-encrypted would inject a plaintext object into the
+    /// encrypted store. Both used to succeed silently. Crossing the boundary
+    /// needs a real decrypt/encrypt round trip (download then re-upload through
+    /// the overlay), so it is refused here with an actionable message instead of
+    /// quietly corrupting one side.
+    fn refuse_crossing_the_anchor(
+        &self,
+        op: &str,
+        from: &str,
+        to: &str,
+    ) -> Result<(), ProviderError> {
+        let from_enc = self.target_is_encrypted(from);
+        let to_enc = self.target_is_encrypted(to);
+        if from_enc == to_enc {
+            return Ok(());
+        }
+        let (leaving, entering) = if from_enc {
+            ("encrypted", "plain")
+        } else {
+            ("plain", "encrypted")
+        };
+        Err(ProviderError::NotSupported(format!(
+            "{op} would cross the Overlays Path boundary ({leaving} -> {entering}), which a \
+             server-side operation cannot do: it moves bytes without re-encoding them. Copy the \
+             item to your computer and transfer it back into the destination instead, so it is \
+             decrypted (or encrypted) on the way."
+        )))
     }
 
     /// Map a type-agnostic caller target (stat/rename/chmod take no is_dir) to
@@ -1049,6 +1089,7 @@ impl StorageProvider for CryptOverlayProvider {
     }
 
     async fn rename(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+        self.refuse_crossing_the_anchor("Move/rename", from, to)?;
         // is_dir is unknown for a bare rename. The two leaf encodings differ
         // only under rclone `off`+suffix mode; `map_existing` resolves the
         // source's real kind there, so a directory rename maps both ends in
@@ -1155,6 +1196,7 @@ impl StorageProvider for CryptOverlayProvider {
     }
 
     async fn server_side_copy(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+        self.refuse_crossing_the_anchor("Server-side copy", from, to)?;
         let enc_from = self.map(from, false, AccessKind::Write)?;
         let enc_to = self.map(to, false, AccessKind::Write)?;
         self.inner.server_side_copy(&enc_from, &enc_to).await
@@ -4786,5 +4828,54 @@ mod tests {
         decode_overlay_trash_keys(&mut *bare, &mut plain);
         assert_eq!(plain[0].display_key, "plain.txt");
         assert_eq!(plain[0].key, "plain.txt");
+    }
+
+    // #390: a server-side rename/copy cannot transcode, so crossing the anchor
+    // must be refused instead of silently parking ciphertext outside the vault
+    // (or plaintext inside it). Same-side moves keep working on both sides.
+    #[tokio::test]
+    async fn rename_and_copy_refuse_to_cross_the_anchor() {
+        let mut provider =
+            CryptOverlayProvider::new(Box::new(MemProvider::new()), aerocrypt_keys(), "/Vault");
+
+        let err = provider
+            .rename("/Vault/secret.txt", "/Plain/secret.txt")
+            .await
+            .expect_err("encrypted -> plain rename must be refused");
+        assert!(
+            err.to_string().contains("cross the Overlays Path boundary"),
+            "unexpected error: {err}"
+        );
+
+        let err = provider
+            .rename("/Plain/note.txt", "/Vault/note.txt")
+            .await
+            .expect_err("plain -> encrypted rename must be refused");
+        assert!(
+            err.to_string().contains("cross the Overlays Path boundary"),
+            "unexpected error: {err}"
+        );
+
+        let err = provider
+            .server_side_copy("/Vault/secret.txt", "/Plain/secret.txt")
+            .await
+            .expect_err("encrypted -> plain copy must be refused");
+        assert!(
+            err.to_string().contains("cross the Overlays Path boundary"),
+            "unexpected error: {err}"
+        );
+
+        // Entirely outside the anchor: plaintext on both ends, so it passes
+        // straight through to the inner provider (issue #390 mixed mode).
+        provider
+            .rename("/Plain/a.txt", "/Plain/b.txt")
+            .await
+            .expect("an out-of-anchor move must pass through, not be refused");
+
+        // Entirely inside the anchor: both ends encrypted, still allowed.
+        provider
+            .rename("/Vault/a.txt", "/Vault/b.txt")
+            .await
+            .expect("an in-anchor move must stay allowed");
     }
 }
