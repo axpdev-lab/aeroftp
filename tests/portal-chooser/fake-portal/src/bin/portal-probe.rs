@@ -54,7 +54,13 @@ trait Request {
 fn sanitize_path_element(token: &str) -> String {
     let mapped: String = token
         .chars()
-        .map(|c| if c.is_ascii_alphanumeric() || c == '_' { c } else { '_' })
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect();
     if mapped.is_empty() {
         "probe".to_string()

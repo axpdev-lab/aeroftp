@@ -52,7 +52,13 @@ const REQUEST_IFACE: &str = "org.freedesktop.portal.Request";
 fn sanitize_path_element(token: &str) -> String {
     let mapped: String = token
         .chars()
-        .map(|c| if c.is_ascii_alphanumeric() || c == '_' { c } else { '_' })
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect();
     if mapped.is_empty() {
         "aeroftp".to_string()
@@ -392,7 +398,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build()
         .await?;
 
-    eprintln!("fake-portal: owning {PORTAL_NAME} in --mode {mode:?}, log {}", log.display());
+    eprintln!(
+        "fake-portal: owning {PORTAL_NAME} in --mode {mode:?}, log {}",
+        log.display()
+    );
 
     // The harness waits on this file rather than on a sleep: a fixed delay is
     // how a slow runner turns "the portal was not up yet" into "the app does

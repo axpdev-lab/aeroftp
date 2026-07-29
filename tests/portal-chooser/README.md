@@ -63,6 +63,40 @@ the hang looks like a bug in the application rather than in the stub.
 with a hyphen produces `InvalidObjectPath` from deep inside zvariant with
 nothing naming the token. Both sides sanitise identically.
 
+## What the gate measures, and one finding it produced
+
+`portal-chooser-test.sh` drives the real app through three named controls -
+Export / Import, Import Servers, Choose .aeroftp file... - and asserts on the
+stand-in record. 17 assertions across three cases.
+
+The proof that the call is genuine is the **handle token**: GTK generates
+`gtk<random>`, so a recorded `"handle_token":"gtk573679125"` alongside the app own
+dialog title (`Import Servers`) says the request came through the toolkit rather
+than through anything the harness could have staged.
+
+**The third case contradicts a claim in the source.** `src-tauri/src/lib.rs` says
+that on a host with no portal, GTK falls back to the native chooser. Measured on a
+bus that can activate all 65 other session services and only omits the 9 portal
+ones - a faithful model of a machine without `xdg-desktop-portal` installed - no
+chooser window appears at all and nothing is presented to the user. The window
+count after the press is identical to the portal-backed run.
+
+That matters beyond the test: on a minimal WM, in a container, or on any install
+without the portal, the file picker does nothing. The frontend does not soften it
+either - `ExportImportDialog.tsx` calls `open()` with no `try`/`catch`, so a
+refusal becomes an unhandled rejection and the user sees no message. The gate pins
+the behaviour as measured rather than as wished, with a comment saying so, so a
+future fix has to change the assertion deliberately.
+
+### About `org.freedesktop.portal.Settings`
+
+The stand-in does not implement it, and the app logs
+`Failed to read portal settings: Unknown interface`. That is GDK asking the portal
+for desktop appearance settings, not the file chooser: the chooser call succeeds
+in the same run, which is the evidence that it is unrelated. It is left
+unimplemented deliberately - adding surface to the stand-in that the test does not
+assert on would make it look more like a portal without making the test prove more.
+
 ## Running the self-test
 
 ```

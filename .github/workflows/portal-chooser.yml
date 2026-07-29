@@ -1,0 +1,144 @@
+name: Portal file chooser (#464)
+
+# Two jobs with very different costs.
+#
+# `selftest` proves the portal stand-in itself behaves - it answers on the path
+# the caller predicted, delivers Response to a real subscriber, refuses when told
+# to, and reports "nobody ever asked me" as a failure. It needs only a D-Bus
+# daemon, runs in well under a minute, and blocks every PR that touches the
+# harness.
+#
+# `gate` drives the REAL app and is what #464 actually asks for. It costs a full
+# Rust build, so it runs on the paths that can break it, on demand, and weekly -
+# not on every unrelated PR.
+#
+# The app is built with the Tauri CLI, never a bare `cargo build`: the latter does
+# not embed the frontend and produces a binary that points at the Vite dev server,
+# comes up blank, and would fail here for a reason that has nothing to do with the
+# chooser. The harness refuses such a binary outright, but building it correctly is
+# cheaper than diagnosing the refusal.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'tests/portal-chooser/**'
+      - '.github/workflows/portal-chooser.yml'
+  pull_request:
+    paths:
+      - 'tests/portal-chooser/**'
+      - '.github/workflows/portal-chooser.yml'
+      - 'src-tauri/src/lib.rs'
+      - 'src/components/ExportImportDialog.tsx'
+  schedule:
+    # Thursdays 05:41 UTC. Away from the snap refresh (Mon 04:17) and the RustSec
+    # scan (Mon 06:00) so a slow week does not queue three heavy jobs together.
+    - cron: '41 5 * * 4'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: portal-chooser-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  selftest:
+    name: Portal stand-in self-test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+        with:
+          toolchain: stable
+          components: clippy, rustfmt
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2
+        with:
+          workspaces: './tests/portal-chooser/fake-portal -> target'
+
+      - name: Install D-Bus
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends dbus
+
+      - name: Formatting and lint (the harness is code too)
+        working-directory: tests/portal-chooser/fake-portal
+        run: |
+          cargo fmt --all -- --check
+          cargo clippy --all-targets -- -D warnings
+
+      - name: Self-test
+        run: tests/portal-chooser/selftest-portal.sh
+
+      # The stand-in must never be reachable from the shipped app's build graph.
+      # Cheap here, and it catches the day somebody adds it as a path dependency
+      # "just for tests".
+      - name: The harness is not in the app's build graph
+        run: |
+          if grep -rn "portal-chooser\|aeroftp-fake-portal" src-tauri/Cargo.toml src-tauri/Cargo.lock; then
+            echo "::error::the portal harness has been wired into the app manifest; it must stay standalone" >&2
+            exit 1
+          fi
+          echo "ok: src-tauri does not reference the harness"
+
+  gate:
+    name: File chooser is portal-backed
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+        with:
+          toolchain: stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      # at-spi2-core + python3-pyatspi are what make the trigger name-based
+      # instead of coordinate-based. xdotool is used only to count and describe
+      # windows, never to click.
+      - name: Install the desktop and accessibility stack
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev \
+            librsvg2-dev patchelf \
+            xvfb x11-apps xdotool imagemagick \
+            dbus at-spi2-core python3-pyatspi
+
+      - name: Build the frontend and the app (Tauri CLI, not bare cargo)
+        run: |
+          npm ci
+          npm run tauri build -- --no-bundle
+
+      - name: Build the portal stand-in
+        run: cargo build --release --manifest-path tests/portal-chooser/fake-portal/Cargo.toml
+
+      - name: File chooser gate
+        env:
+          PORTAL_TEST_OUT: ${{ github.workspace }}/portal-test-out
+        run: tests/portal-chooser/portal-chooser-test.sh src-tauri/target/release/aeroftp
+
+      - name: Upload the evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: portal-chooser-evidence
+          path: portal-test-out/
+          if-no-files-found: warn

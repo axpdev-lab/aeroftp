@@ -1,0 +1,100 @@
+#!/usr/bin/env python3
+"""Refuse to continue unless the accessibility bus is ours alone.
+
+This exists because of a real incident while building this harness, and it is
+the most important safety check in it.
+
+`dbus-run-session` isolates the SESSION bus. It does not isolate the
+ACCESSIBILITY bus, which is a separate bus discovered by its own rules -- an
+env var, an X root-window property, an `org.a11y.Bus` lookup, or a path under
+XDG_RUNTIME_DIR. On a developer machine that discovery quietly resolved to the
+bus of the real desktop, and the harness listed `gnome-shell`, `Brave Browser`,
+`code` and `megasync`.
+
+Why that is dangerous rather than merely wrong: the trigger activates a control
+*by name*. Pressing "File" on a bus carrying the developer's editor would
+activate that editor's File menu. Nothing had happened yet only because the
+lookup is scoped to an application named aeroftp -- luck, not design.
+
+So the rule is fail-closed: if anything on this bus was not started by us, stop.
+A test that can reach the machine it runs on is not isolated, whatever its
+DISPLAY says.
+
+Exit codes:
+    0 - the bus carries only expected applications
+    6 - a foreign application is visible: the bus is NOT private
+    2 - the accessibility stack is unusable
+"""
+
+import os
+import sys
+
+try:
+    import pyatspi
+except ImportError:
+    print("python3-pyatspi is not installed (apt: at-spi2-core python3-pyatspi)", file=sys.stderr)
+    sys.exit(2)
+
+# Everything the harness itself is allowed to put on the bus. Anything else means
+# we are looking at somebody's desktop.
+ALLOWED_SUBSTRINGS = ("aeroftp",)
+
+# Not a security boundary, just a clear message: these names are unmistakably a
+# real desktop and produce a better error than "unexpected application".
+DESKTOP_MARKERS = (
+    "gnome-shell", "mutter", "gsd-", "ibus", "nautilus", "evolution",
+    "xdg-desktop-portal", "gjs", "update-notifier", "code", "brave",
+    "firefox", "chrome", "megasync", "thunderbird", "kwin", "plasma",
+)
+
+
+def main():
+    try:
+        desktop = pyatspi.Registry.getDesktop(0)
+    except Exception as exc:
+        print(f"cannot reach the accessibility bus: {exc}", file=sys.stderr)
+        return 2
+
+    names = []
+    for app in desktop:
+        if app is None:
+            continue
+        try:
+            names.append(app.name or "<unnamed>")
+        except Exception as exc:
+            names.append(f"<unreadable: {exc}>")
+
+    foreign = [
+        n for n in names
+        if not any(a in n.lower() for a in ALLOWED_SUBSTRINGS)
+    ]
+
+    bus = os.environ.get("AT_SPI_BUS_ADDRESS", "<unset>")
+    print(f"AT_SPI_BUS_ADDRESS={bus}")
+    print(f"applications on this accessibility bus: {names!r}")
+
+    if foreign:
+        looks_like_desktop = any(
+            any(m in n.lower() for m in DESKTOP_MARKERS) for n in foreign
+        )
+        print(
+            "REFUSING: the accessibility bus is not private.\n"
+            f"  foreign applications: {foreign!r}",
+            file=sys.stderr,
+        )
+        if looks_like_desktop:
+            print(
+                "  This is the real desktop session. Activating a control by name here\n"
+                "  could press a button in one of those applications. dbus-run-session\n"
+                "  does NOT isolate the a11y bus; a private one must be started and\n"
+                "  AT_SPI_BUS_ADDRESS pointed at it.",
+                file=sys.stderr,
+            )
+        return 6
+
+    print("ok: the accessibility bus carries only our own application(s)")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
