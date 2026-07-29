@@ -99,14 +99,17 @@ export const SyncTemplateDialog: React.FC<SyncTemplateDialogProps> = ({
     useEffect(() => {
         if (!isOpen) return;
         let cancelled = false;
+        // Cleared up front, not just on success: a stale id surviving a failed
+        // reload would keep Export enabled and reach the backend, which is the
+        // very "not found" this dialog was fixed to stop producing.
+        setSyncProfiles([]);
+        setPresetId('');
         void (async () => {
             try {
                 const profiles = await invoke<SyncProfile[]>('load_sync_profiles_cmd');
                 if (cancelled) return;
                 setSyncProfiles(profiles);
-                setPresetId(prev =>
-                    profiles.some(p => p.id === prev) ? prev : profiles[0]?.id || '',
-                );
+                setPresetId(profiles[0]?.id || '');
             } catch {
                 // Leave the picker empty: Export stays disabled rather than
                 // reaching a backend lookup that cannot succeed.
@@ -496,10 +499,14 @@ export const SyncTemplateDialog: React.FC<SyncTemplateDialogProps> = ({
                                 onChange={e => setTemplateDesc(e.target.value)}
                             />
                             <div className="space-y-1">
-                                <div className="text-[11px] uppercase tracking-wide text-gray-500">
+                                <label
+                                    htmlFor="sync-template-preset"
+                                    className="block text-[11px] uppercase tracking-wide text-gray-500"
+                                >
                                     {t('syncPresets.title')}
-                                </div>
+                                </label>
                                 <select
+                                    id="sync-template-preset"
                                     className="w-full text-xs bg-transparent border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 dark:bg-gray-800"
                                     value={presetId}
                                     onChange={e => setPresetId(e.target.value)}

@@ -408,7 +408,10 @@ export const BreadcrumbBar: React.FC<BreadcrumbBarProps> = ({
                   onClick={(e) => handleChevronClick(e, realIndex - 1)}
                   className="flex items-center p-0.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700/30 transition-colors group"
                   title={t('breadcrumb.browseSiblings') || 'Browse sibling directories'}
-                  aria-haspopup="menu"
+                  // No aria-haspopup: the dropdown is a plain list of buttons,
+                  // not a role="menu" with arrow-key navigation, so declaring
+                  // one would promise keyboard behaviour that does not exist.
+                  // aria-expanded alone is accurate on a disclosure button.
                   aria-expanded={isSeparatorOpen}
                 >
                   {/* Points down while its menu is open, the way a
@@ -492,7 +495,6 @@ export const BreadcrumbBar: React.FC<BreadcrumbBarProps> = ({
                 onClick={(e) => handleChevronClick(e, trailingIndex)}
                 className="flex items-center p-0.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700/30 transition-colors group"
                 title={t('breadcrumb.browseChildren') || 'Browse subdirectories'}
-                aria-haspopup="menu"
                 aria-expanded={isOpen}
               >
                 <ChevronRight
