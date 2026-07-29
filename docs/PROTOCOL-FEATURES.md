@@ -206,7 +206,7 @@ A backend's own scheme keeps its own name. Dropbox's `content_hash` is a SHA-256
 | FTPS | MD5, SHA-1, SHA-256, CRC32 (negotiated) | Depends on what the server advertises in FEAT: `HASH` (algorithm chosen by the server), or the older `XMD5` / `XSHA1` / `XCRC`. A server advertising none offers no digest. |
 | SFTP | SHA-256 | Computed by the remote host with `sha256sum` over an SSH exec channel: the bytes are read on the server, never sent to us. Omitted if the host has no `sha256sum`. |
 | WebDAV | SHA-1, MD5, Adler-32 (negotiated) | Only ownCloud and Nextcloud publish the `oc:checksums` property, and only for files uploaded by a client that sent one. Every other WebDAV server omits it. |
-| S3 | MD5 | The ETag is the object MD5 only for single-part, non-SSE-KMS objects. For a multipart or KMS-encrypted object the digest is omitted rather than guessed. |
+| S3 | MD5 | The ETag is the object MD5 only for single-part objects that are not SSE-KMS or SSE-C encrypted. For a multipart or SSE-KMS/SSE-C object the ETag is not the MD5, and an SSE-C ETag can still be 32 hex characters, so it cannot be told apart from a real digest: treat a reported ETag as advisory on such a bucket. |
 | Azure Blob | - |  |
 | Swift | - |  |
 | Google Drive | MD5, SHA-1, SHA-256 | Native Google Workspace documents have no byte stream and therefore no digest. |
