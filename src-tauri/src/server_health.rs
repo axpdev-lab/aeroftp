@@ -57,6 +57,14 @@ fn cloud_provider_info(protocol: &str) -> Option<CloudProviderInfo> {
             host: "www.googleapis.com",
             probe_url: "https://www.googleapis.com/discovery/v1/apis/drive/v3/rest",
         }),
+        // The frontend classifies googlephotos as a cloud provider and sends
+        // the bare protocol name as the host, so without this arm a working
+        // profile is DNS-resolved as the literal "googlephotos" and always
+        // scores 0 / unreachable.
+        "googlephotos" => Some(CloudProviderInfo {
+            host: "photoslibrary.googleapis.com",
+            probe_url: "https://photoslibrary.googleapis.com/$discovery/rest?version=v1",
+        }),
         "dropbox" => Some(CloudProviderInfo {
             host: "api.dropboxapi.com",
             probe_url: "https://api.dropboxapi.com/2/check/user",
@@ -337,7 +345,7 @@ fn is_reachable_status(status: reqwest::StatusCode) -> bool {
 
 /// Probe HTTP endpoint. Tries HEAD first, falls back to GET if HEAD fails/times out.
 /// Some APIs (MEGA, Jottacloud) don't respond to HEAD at all.
-async fn check_http(url: &str, is_cloud: bool) -> CheckDetail {
+async fn check_http(url: &str) -> CheckDetail {
     let start = Instant::now();
 
     let client = match reqwest::Client::builder()
@@ -369,10 +377,14 @@ async fn check_http(url: &str, is_cloud: bool) -> CheckDetail {
                     details: Some(format!("HTTP {}", status.as_u16())),
                 };
             }
-            // HEAD returned unexpected status: still reachable, just report it
+            // Not a reachable status: by `is_reachable_status`'s contract that
+            // leaves transport errors and 5xx, i.e. the server is up but
+            // erroring. That is a failure for a cloud API exactly as it is for
+            // a self-hosted one: a provider in a 503 outage must not score as
+            // healthy. The GET fallback below already treats it this way.
             return CheckDetail {
                 name: "http_response".into(),
-                status: if is_cloud { "pass" } else { "fail" }.into(),
+                status: "fail".into(),
                 latency_ms: Some(elapsed.as_secs_f64() * 1000.0),
                 details: Some(format!("HTTP {}", status.as_u16())),
             };
@@ -565,7 +577,6 @@ async fn run_health_check(req: &HealthCheckRequest) -> HealthCheckResult {
     // 4. HTTP Response (for HTTP-based protocols and cloud APIs)
     // Use provider-specific probe URLs when available for accurate results
     if matches!(req.protocol.as_str(), "webdav" | "s3") || is_cloud {
-        let is_cloud_like = is_cloud || req.protocol == "s3";
         let url = if let Some(probe) = cloud_probe_url(&req.protocol) {
             // Provider-specific lightweight health endpoint
             probe.to_string()
@@ -588,7 +599,7 @@ async fn run_health_check(req: &HealthCheckRequest) -> HealthCheckResult {
             };
             format!("{}://{}:{}/", scheme, effective_host, effective_port)
         };
-        let http = check_http(&url, is_cloud_like).await;
+        let http = check_http(&url).await;
         checks.push(http);
     }
 

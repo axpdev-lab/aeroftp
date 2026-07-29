@@ -313,13 +313,32 @@ const HashForgeTab: React.FC = () => {
         };
     }, [mode, input, filePath, algorithm, encoding, outputLen, isBlake3]);
 
+    // A staged drop is a plaintext copy of the dropped file in the temp dir.
+    // Track it so it is removed as soon as it is replaced or the panel goes
+    // away, instead of lingering until the OS clears /tmp.
+    const stagedPathRef = useRef<string | null>(null);
+    const discardStaged = useCallback(() => {
+        const staged = stagedPathRef.current;
+        if (!staged) return;
+        stagedPathRef.current = null;
+        void invoke('discard_hash_drop', { path: staged }).catch(() => {});
+    }, []);
+
+    useEffect(() => discardStaged, [discardStaged]);
+
+    const applyDroppedPath = useCallback((path: string) => {
+        // Replacing the current selection: the previous staged copy is dead.
+        if (stagedPathRef.current !== path) discardStaged();
+        setMode('file');
+        setFilePath(path);
+    }, [discardStaged]);
+
     const selectFile = useCallback(async () => {
         const selected = await open({ multiple: false, directory: false });
         if (selected) {
-            setMode('file');
-            setFilePath(selected as string);
+            applyDroppedPath(selected as string);
         }
-    }, []);
+    }, [applyDroppedPath]);
 
     // Primary drop path on Linux/macOS: Tauri native onDragDropEvent (GTK/WebKit
     // file URIs). Windows keeps disable_drag_drop_handler so HTML5 handleHtmlDrop
@@ -340,8 +359,7 @@ const HashForgeTab: React.FC = () => {
                     } else if (event.payload.type === 'drop' && event.payload.paths.length > 0) {
                         setDragActive(false);
                         dragDepthRef.current = 0;
-                        setMode('file');
-                        setFilePath(event.payload.paths[0]);
+                        applyDroppedPath(event.payload.paths[0]);
                     }
                 });
                 if (cancelled) un();
@@ -365,11 +383,6 @@ const HashForgeTab: React.FC = () => {
             setMatch(null);
         }
     }, [expected, result]);
-
-    const applyDroppedPath = useCallback((path: string) => {
-        setMode('file');
-        setFilePath(path);
-    }, []);
 
     const handleHtmlDrop = useCallback(async (e: ReactDragEvent) => {
         e.preventDefault();
@@ -440,6 +453,7 @@ const HashForgeTab: React.FC = () => {
                 dataBase64,
             });
             applyDroppedPath(staged);
+            stagedPathRef.current = staged;
         } catch (err) {
             setResult(`Error: ${err}`);
             setLoading(false);

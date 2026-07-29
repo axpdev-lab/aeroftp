@@ -574,19 +574,30 @@ fn connect_and_auth(
     Ok((session, tcp_arc))
 }
 
-fn enforce_host_key_policy(
-    session: &Session,
+/// The host-key decision itself, taking the key as bytes instead of a
+/// live [`Session`].
+///
+/// Split out on 2026-07-29 for one reason: until then the decision could
+/// only run against a real server, so nothing tested it. What was tested
+/// was that a rejection, once produced, is a hard error that never falls
+/// back to the classic wrapper. Nothing tested that a wrong fingerprint
+/// produced one, which is the half that stops a man in the middle. This
+/// signature is what makes that testable, and
+/// [`enforce_host_key_policy`] stays a thin wrapper so the production
+/// path is unchanged.
+fn decide_host_key(
     policy: &SshHostKeyPolicy,
+    host_key: Option<&[u8]>,
 ) -> Result<(), AerorsyncError> {
     match policy {
         SshHostKeyPolicy::AcceptAny => Ok(()),
         SshHostKeyPolicy::PinnedFingerprintSha256 { sha256_hex } => {
-            let host_key = session.host_key().ok_or_else(|| {
-                AerorsyncError::host_key_rejected(
+            let Some(host_key) = host_key else {
+                return Err(AerorsyncError::host_key_rejected(
                     "remote did not expose a host key (unsupported cipher suite?)",
-                )
-            })?;
-            let actual = sha256_hex_of(host_key.0);
+                ));
+            };
+            let actual = sha256_hex_of(host_key);
             let expected = sha256_hex.to_ascii_lowercase();
             if actual != expected {
                 return Err(AerorsyncError::host_key_rejected(format!(
@@ -595,6 +606,20 @@ fn enforce_host_key_policy(
             }
             Ok(())
         }
+    }
+}
+
+fn enforce_host_key_policy(
+    session: &Session,
+    policy: &SshHostKeyPolicy,
+) -> Result<(), AerorsyncError> {
+    match policy {
+        // Kept as its own arm rather than falling through to
+        // `decide_host_key`, so `session.host_key()` is still not called
+        // when no pin is configured. Behaviour-preserving by construction
+        // instead of by assuming the getter is free.
+        SshHostKeyPolicy::AcceptAny => Ok(()),
+        pinned => decide_host_key(pinned, session.host_key().map(|(key, _kind)| key)),
     }
 }
 
@@ -1245,5 +1270,70 @@ mod tests {
             .snapshot_active()
             .expect("healthy mutex snapshots fine");
         assert!(snapshot.is_none(), "no session was ever stored");
+    }
+}
+
+#[cfg(test)]
+mod host_key_decision_tests {
+    use super::{decide_host_key, sha256_hex_of, SshHostKeyPolicy};
+    use crate::aerorsync::types::AerorsyncErrorKind;
+
+    const PINNED: &[u8] = b"ssh-ed25519 AAAA the key we trust";
+    const IMPOSTOR: &[u8] = b"ssh-ed25519 AAAA somebody else entirely";
+
+    fn pinned_to(key: &[u8]) -> SshHostKeyPolicy {
+        SshHostKeyPolicy::PinnedFingerprintSha256 {
+            sha256_hex: sha256_hex_of(key),
+        }
+    }
+
+    /// The libssh2 twin of
+    /// `pinned_host_key_rejects_a_different_server_key` on the russh leg.
+    /// Both legs can serve the same profile, so a gap on either one is a
+    /// gap in the claim, and this leg had no test at all because the
+    /// decision used to be reachable only through a live `Session`.
+    #[test]
+    fn pinned_policy_rejects_a_host_key_we_did_not_pin() {
+        assert!(
+            decide_host_key(&pinned_to(PINNED), Some(PINNED)).is_ok(),
+            "the pinned key must be accepted"
+        );
+
+        let err = decide_host_key(&pinned_to(PINNED), Some(IMPOSTOR))
+            .expect_err("a server key we did not pin MUST be rejected");
+        assert_eq!(
+            err.kind,
+            AerorsyncErrorKind::HostKeyRejected,
+            "the rejection must carry the kind the fallback policy treats as a hard error, \
+             otherwise a mismatch could be retried or silently downgraded"
+        );
+    }
+
+    /// A peer that exposes no host key at all must be refused rather than
+    /// waved through: "we could not check" is not "it checked out".
+    #[test]
+    fn pinned_policy_refuses_a_peer_that_exposes_no_host_key() {
+        let err = decide_host_key(&pinned_to(PINNED), None)
+            .expect_err("no host key with a pin configured must fail closed");
+        assert_eq!(err.kind, AerorsyncErrorKind::HostKeyRejected);
+    }
+
+    /// Hex has two spellings, and a pin copied from a tool that emits
+    /// uppercase must not lock the user out of their own server.
+    #[test]
+    fn pinned_policy_ignores_hex_case() {
+        let policy = SshHostKeyPolicy::PinnedFingerprintSha256 {
+            sha256_hex: sha256_hex_of(PINNED).to_ascii_uppercase(),
+        };
+        assert!(decide_host_key(&policy, Some(PINNED)).is_ok());
+    }
+
+    /// `AcceptAny` is the bootstrap hatch used before a fingerprint has
+    /// been captured. Pinned so that staying permissive is a decision
+    /// somebody has to edit this test to change.
+    #[test]
+    fn accept_any_passes_even_with_no_host_key() {
+        assert!(decide_host_key(&SshHostKeyPolicy::AcceptAny, None).is_ok());
+        assert!(decide_host_key(&SshHostKeyPolicy::AcceptAny, Some(IMPOSTOR)).is_ok());
     }
 }

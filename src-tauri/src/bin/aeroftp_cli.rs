@@ -38388,8 +38388,20 @@ async fn cmd_df(url: &str, scan: bool, full: bool, cli: &Cli, format: OutputForm
                     0.0
                 };
                 let scope = if full { "account-root" } else { "initial-path" };
+                // Only a complete walk may be recorded as the profile's used
+                // figure. A cancelled, capped or partly-unreadable scan is a
+                // lower bound, and persisting it would leave the GUI showing it
+                // as an authoritative total for the rest of the profile's life.
+                let partial = s.cancelled || s.truncated || s.hit_cap || s.unreadable_dirs > 0;
                 if cli.profile.is_some() {
-                    persist_scanned_quota_to_profile(cli, used, eff_total, total_source);
+                    if partial {
+                        eprintln!(
+                            "Note: incomplete scan (not saved to the profile){}",
+                            if s.cancelled { ", cancelled" } else { "" }
+                        );
+                    } else {
+                        persist_scanned_quota_to_profile(cli, used, eff_total, total_source);
+                    }
                 }
                 match format {
                     OutputFormat::Text => {

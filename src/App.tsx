@@ -3523,13 +3523,18 @@ const App: React.FC = () => {
             files: res.file_count,
           });
         }
-        await persistQuotaToProfile(profileId, {
-          used: res.used,
-          total: 0,
-          usedSource: 'scan',
-          used_at: new Date().toISOString(),
-          fileCount: res.file_count,
-        });
+        // A truncated walk is a lower bound, not a total. Persisting it would
+        // pin that figure to the profile card as an authoritative "used" across
+        // sessions, so it is shown for this run and deliberately not saved.
+        if (!res.truncated) {
+          await persistQuotaToProfile(profileId, {
+            used: res.used,
+            total: 0,
+            usedSource: 'scan',
+            used_at: new Date().toISOString(),
+            fileCount: res.file_count,
+          });
+        }
         const doneDetail = t('statusBar.usedScanDoneDetail', {
           used: formatBytes(res.used),
           files: String(res.file_count),
