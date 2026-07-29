@@ -206,6 +206,7 @@ import { CONNECT_CANCELLED_MARKER, CONNECT_HARD_TIMEOUT_MARKER, isConnectCancell
 import type { UpdateVerificationInfo } from './utils/updateVerification';
 import { UpdateVerificationPanel } from './components/UpdateVerificationPanel';
 import { safePickerStartDir } from './utils/safePickerDir';
+import { normCryptScope, isWithinCryptScope, resolveBoundCryptScope } from './utils/cryptScope';
 import { migrateFilenApiKeysToVault } from './utils/filenApiKeyMigration';
 import { CustomTitlebar } from './components/CustomTitlebar';
 import { ExportImportDialog } from './components/ExportImportDialog';
@@ -598,30 +599,9 @@ const isRemotePathNotFoundOnConnect = (error: unknown): boolean => {
 //   - Cloud sync events (~98 lines)
 // ============================================================================
 
-// CWP-20B (navigate-out scope): plaintext-absolute scope predicate shared by
-// the path-bar badge and (later) the transfer routing, so the two can never
-// diverge. Both `scope` (binding.remoteScope) and `displayPath`
-// (currentRemoteDisplayPath = the backend's decode_path of pwd) are
-// plaintext-absolute, which is the only sound comparison (current_path is
-// ciphertext). FAIL-CLOSED: returns true ("inside / encrypted") unless we are
-// CONFIDENTLY outside, so a normalization mismatch can only cause a visible
-// decrypt error, never silent plaintext exposure.
-// Spec: docs/dev/roadmap/APPENDIX-CRYPTO-WRAPPER-PROFILES/tasks/CWP-20B-navigate-out-scope.md
-const normCryptScope = (s?: string | null): string => {
-  const t = (s || '').trim();
-  if (!t || t === '/') return ''; // empty / root => whole remote is the scope
-  return '/' + t.replace(/^\/+|\/+$/g, '');
-};
-const isWithinCryptScope = (
-  scope: string | undefined | null,
-  displayPath: string | null | undefined,
-): boolean => {
-  const s = normCryptScope(scope);
-  if (s === '') return true; // whole-remote scope (== legacy anchored session)
-  if (displayPath == null) return true; // unknown path => fail closed
-  const p = '/' + String(displayPath).replace(/^\/+|\/+$/g, '');
-  return p === s || p.startsWith(s + '/');
-};
+// CWP-20B (navigate-out scope): the plaintext-absolute scope predicate and the
+// lock-surviving scope resolution now live in src/utils/cryptScope.ts, where a
+// test can reach them. Behaviour is unchanged; see that file for the contract.
 
 // CWP-20B (B3): the absolute display path a navigation will LAND on, derived from
 // the current display path and the navigation argument, so routing can key off the
@@ -3818,8 +3798,10 @@ const App: React.FC = () => {
   // the clear (or vice-versa). In the legacy anchored architecture the path is
   // always within scope, so 'outside' only becomes reachable once cross-boundary
   // navigation (B3) lands; wiring it now keeps badge and routing on one check.
-  const activeBoundRemoteScope =
-    sessions.find((s) => s.id === activeSessionId)?.cryptOverlay?.remoteScope ?? '';
+  // The live vault's scope when unlocked, else the scope the tab kept across the
+  // lock (see resolveBoundCryptScope: '' would read as "the whole remote is the
+  // anchor" and put the grey toggle in every plaintext folder).
+  const activeBoundRemoteScope = resolveBoundCryptScope(sessions.find((s) => s.id === activeSessionId));
   const overlayInScope = isWithinCryptScope(activeBoundRemoteScope, currentRemoteDisplayPath);
   const overlayBadgeState: 'decrypting' | 'active' | 'outside' | 'locked' =
     overlayBadgeDecrypting
@@ -5468,12 +5450,22 @@ const App: React.FC = () => {
     (match.savedServerId != null && s.savedServerId === match.savedServerId);
   // Mark the tab's persistent overlay CAPABILITY (kind) without a live vault yet:
   // used at decrypt-start so the badge shows immediately (grey) while unlocking.
+  // `remoteScope` is optional because not every caller knows the binding's anchor
+  // at that point; when it is known it is kept alongside the kind, so the badge is
+  // scope-aware before the first unlock as well as after a lock.
   const markSessionOverlayKind = (
     match: { savedServerId?: string; sessionId?: string },
     kind: 'rclone-crypt' | 'aerocrypt',
+    remoteScope?: string | null,
   ) => {
     setSessions((prev) => prev.map((s) =>
-      sessionMatches(s, match) ? { ...s, cryptOverlayKind: kind } : s,
+      sessionMatches(s, match)
+        ? {
+            ...s,
+            cryptOverlayKind: kind,
+            cryptOverlayScope: remoteScope !== undefined ? normCryptScope(remoteScope) : s.cryptOverlayScope,
+          }
+        : s,
     ));
   };
   // Overlay UNLOCKED: store the live vault + keep the capability kind.
@@ -5486,11 +5478,20 @@ const App: React.FC = () => {
     remoteScope?: string,
   ) => {
     setSessions((prev) => prev.map((s) =>
-      sessionMatches(s, match) ? { ...s, cryptOverlay: { vaultId, kind, remoteScope: normCryptScope(remoteScope) }, cryptOverlayKind: kind } : s,
+      sessionMatches(s, match)
+        ? {
+            ...s,
+            cryptOverlay: { vaultId, kind, remoteScope: normCryptScope(remoteScope) },
+            cryptOverlayKind: kind,
+            cryptOverlayScope: normCryptScope(remoteScope),
+          }
+        : s,
     ));
   };
-  // Overlay LOCKED: drop the live vault but KEEP the capability kind so the badge
-  // stays visible (grey) and can be clicked to re-decrypt.
+  // Overlay LOCKED: drop the live vault but KEEP the capability kind AND the bound
+  // scope, so the badge stays visible (grey) where it means something and stays a
+  // 'Overlays Path' jump where it does not. Dropping the scope here is what made a
+  // locked tab show the grey toggle in plaintext folders.
   const lockSessionCryptOverlay = (match: { savedServerId?: string; sessionId?: string }) => {
     setSessions((prev) => prev.map((s) =>
       sessionMatches(s, match) ? { ...s, cryptOverlay: null } : s,
@@ -5499,7 +5500,7 @@ const App: React.FC = () => {
   // Tab is no longer an overlay tab (disconnect / switch-away): drop everything.
   const clearSessionCryptOverlay = (match: { savedServerId?: string; sessionId?: string }) => {
     setSessions((prev) => prev.map((s) =>
-      sessionMatches(s, match) ? { ...s, cryptOverlay: null, cryptOverlayKind: null } : s,
+      sessionMatches(s, match) ? { ...s, cryptOverlay: null, cryptOverlayKind: null, cryptOverlayScope: null } : s,
     ));
   };
 
@@ -5692,7 +5693,7 @@ const App: React.FC = () => {
       // overlay ones.
       setCryptOverlayOwner({ savedServerId, sessionId: null });
       // Show the path-bar badge immediately (grey) for the whole decrypt window.
-      markSessionOverlayKind({ savedServerId }, binding.kind);
+      markSessionOverlayKind({ savedServerId }, binding.kind, binding.remoteScope ?? null);
       setOverlayDecrypting(true);
 
       // T3: live activity-log entry, settled to green by the phase-2 reload.
@@ -5814,7 +5815,7 @@ const App: React.FC = () => {
           const binding = profile?.aeroCryptOverlay;
           if (binding?.enabled) {
             locked = { savedServerId: savedId, kind: binding.kind };
-            markSessionOverlayKind({ savedServerId: savedId }, binding.kind);
+            markSessionOverlayKind({ savedServerId: savedId }, binding.kind, binding.remoteScope ?? null);
           }
         } catch {
           // best-effort: fall through as plain if the profile re-read fails
@@ -7332,7 +7333,7 @@ const App: React.FC = () => {
         setCurrentRemotePath(oauthResponse?.current_path || overlayAnchor);
         setCurrentRemoteDisplayPath(overlayAnchor);
         setCryptOverlayOwner({ savedServerId: overlaySavedId, sessionId: null });
-        markSessionOverlayKind({ savedServerId: overlaySavedId }, overlayHint.kind);
+        markSessionOverlayKind({ savedServerId: overlaySavedId }, overlayHint.kind, overlayHint.anchor);
         setOverlayDecrypting(true);
         connectListingLogIdRef.current = null;
       } else {
@@ -7611,7 +7612,7 @@ const App: React.FC = () => {
           setRemoteFiles([]);
           setCurrentRemoteDisplayPath(overlayHint.anchor || response.current_path);
           setCryptOverlayOwner({ savedServerId: overlaySavedId, sessionId: null });
-          markSessionOverlayKind({ savedServerId: overlaySavedId }, overlayHint.kind);
+          markSessionOverlayKind({ savedServerId: overlaySavedId }, overlayHint.kind, overlayHint.anchor);
           setOverlayDecrypting(true);
           connectListingLogIdRef.current = null;
         } else {
@@ -8262,7 +8263,7 @@ const App: React.FC = () => {
             // LT2b: keep the capability badge + locked affordance so the user
             // can recover with a password prompt after a failed re-apply.
             if (targetSession.savedServerId && targetOverlay.kind) {
-              markSessionOverlayKind({ sessionId }, targetOverlay.kind);
+              markSessionOverlayKind({ sessionId }, targetOverlay.kind, targetOverlay.remoteScope ?? null);
               setLockedOverlayProfile({
                 savedServerId: targetSession.savedServerId,
                 kind: targetOverlay.kind,
@@ -16837,7 +16838,7 @@ const App: React.FC = () => {
                     setCurrentRemotePath(savedOauthResp?.current_path || savedOverlayAnchor);
                     setCurrentRemoteDisplayPath(savedOverlayAnchor);
                     setCryptOverlayOwner({ savedServerId: savedOverlaySavedId, sessionId: null });
-                    markSessionOverlayKind({ savedServerId: savedOverlaySavedId }, savedOverlayHint.kind);
+                    markSessionOverlayKind({ savedServerId: savedOverlaySavedId }, savedOverlayHint.kind, savedOverlayHint.anchor);
                     setOverlayDecrypting(true);
                     connectListingLogIdRef.current = null;
                   } else {
@@ -17000,7 +17001,7 @@ const App: React.FC = () => {
                       setRemoteFiles([]);
                       setCurrentRemoteDisplayPath(overlayHint.anchor || response.current_path);
                       setCryptOverlayOwner({ savedServerId: overlaySavedId, sessionId: null });
-                      markSessionOverlayKind({ savedServerId: overlaySavedId }, overlayHint.kind);
+                      markSessionOverlayKind({ savedServerId: overlaySavedId }, overlayHint.kind, overlayHint.anchor);
                       setOverlayDecrypting(true);
                       connectListingLogIdRef.current = null;
                     } else {

@@ -801,6 +801,12 @@ export interface FtpSession {
   // lit when active. Distinct from `cryptOverlay` (the live unlocked vault, which
   // is cleared on lock). Cleared only on disconnect / switch-away.
   cryptOverlayKind?: 'rclone-crypt' | 'aerocrypt' | null;
+  // The bound plaintext-absolute scope, kept across lock exactly like the kind
+  // above ('' => whole remote). `cryptOverlay` is cleared on lock, so without
+  // this the scope would fall back to '' — "the whole remote is the anchor" —
+  // and a locked tab would render the in-scope toggle in every folder instead
+  // of the 'Overlays Path' button. Cleared only on disconnect / switch-away.
+  cryptOverlayScope?: string | null;
 }
 
 // State for managing multiple tabs
