@@ -3353,24 +3353,24 @@
             "applyPrivacy": "Taikyti",
             "applyPrivacyAll": "Taikyti {count} elementams",
             "checksumNotOnBackend": "{backend} negali sukurti šios maišos serverio pusėje",
-            "checksumServerSide": "Santraukos gaunamos iš serverio; failas niekada nesiunčiamas jų apskaičiavimui, todėl siūloma tik tai, ką ši posistemė jau saugo.",
-            "checksumNegotiated": "Šis sąrašas yra tai, ką paskelbė būtent šis serveris, tad konkretus failas vis tiek gali neturėti nė vienos.",
-            "checksumCiphertext": "Šis failas yra Overlays Path viduje, todėl serveris jį saugo užšifruotą. Šios santraukos apima užšifruotus baitus ir nesutaps su jūsų vietinės kopijos maiša: būtent tai šifravimas ir reiškia, tai ne klaida. Naudokite \"aeroftp-cli crypt verify\", kad palygintumėte iššifruotą turinį su vietiniais failais.",
+            "checksumServerSide": "Maišos gaunamos iš serverio; failas niekada nėra atsisiunčiamas maišai apskaičiuoti, todėl siūloma tik tai, ką ši posistemė jau saugo.",
+            "checksumNegotiated": "Šis sąrašas yra tai, ką paskelbė būtent šis serveris, tad konkretus failas vis tiek gali visai neturėti maišos.",
+            "checksumCiphertext": "Šis failas yra Overlays Path viduje, todėl serveris jį saugo užšifruotą. Šios maišos apima užšifruotus baitus ir nesutaps su jūsų vietinės kopijos maiša: būtent tai šifravimas ir reiškia, tai ne klaida. Naudokite \"aeroftp-cli crypt verify\", kad palygintumėte iššifruotą turinį su vietiniais failais.",
             "checksumAbsentForObject": "Ši posistemė gali pateikti {algorithm}, bet šiam objektui nėra išsaugotos nė vienos. Jai apskaičiuoti niekas nebuvo atsisiųsta.",
             "checksumMatrixLink": "Kuri posistemė kurią maišą palaiko",
             "checksumCaveats": {
                 "s3-etag": "ETag yra objekto MD5 tik vienos dalies objektams, kurie nėra užšifruoti SSE-KMS; kitiems jis praleidžiamas, o ne spėjamas.",
-                "b2-unverified": "Dideli failai ir įkėlimai, kuriuos B2 užfiksavo kaip nepatvirtintus, neturi tinkamos SHA-1.",
+                "b2-unverified": "Dideli failai neturi tinkamos SHA-1 maišos; jos neturi ir įkėlimai, kuriuos B2 užfiksavo kaip nepatvirtintus.",
                 "sftp-sha256sum": "Apskaičiuoja nuotolinis kompiuteris komanda sha256sum per SSH kanalą: baitai skaitomi serveryje ir niekada jums nesiunčiami. Praleidžiama, jei kompiuteryje nėra sha256sum.",
                 "ftp-negotiated": "Priklauso nuo to, ką serveris skelbia FEAT atsakyme: HASH arba senesni XMD5, XSHA1 ir XCRC.",
                 "webdav-oc-checksums": "Kontrolines sumas skelbia tik ownCloud ir Nextcloud, ir tik failams, kuriuos įkėlė klientas, atsiuntęs tokią sumą.",
-                "drive-workspace-docs": "Savieji Google Workspace dokumentai neturi baitų srauto, taigi ir santraukos.",
+                "drive-workspace-docs": "Google Workspace nuosavo formato dokumentai neturi baitų srauto, taigi ir maišos.",
                 "onedrive-hashes": "Kuri yra, priklauso nuo paskyros: asmeninis OneDrive skelbia QuickXorHash, verslo paskyros ir SharePoint paprastai SHA-1 ir SHA-256.",
-                "dropbox-content-hash": "Tai ne paprasta failo santrauka: tai SHA-256 nuo kiekvieno 4 MiB bloko SHA-256. Ji lyginama tik su kita Dropbox content hash.",
+                "dropbox-content-hash": "Tai ne paprasta failo maiša: tai SHA-256 nuo kiekvieno 4 MiB bloko SHA-256. Ji lyginama tik su kita Dropbox content hash.",
                 "koofr-proprietary": "Nuosava Koofr maiša. Ji lyginama tik su kita Koofr maiša.",
                 "github-blob-sha": "git blobo SHA-1, apskaičiuota nuo git antraštės ir turinio, todėl ji nesutampa su paprasta to paties failo SHA-1.",
                 "immich-asset-checksum": "Elemento kontrolinė suma, kurią Immich užfiksuoja įkėlimo metu.",
-                "crypt-overlay-ciphertext": "Santrauka apima serveryje saugomus užšifruotus baitus."
+                "crypt-overlay-ciphertext": "Maiša apima serveryje saugomus užšifruotus baitus."
             }
         },
         "duplicates": {
@@ -5308,7 +5308,7 @@
             "defaultSaltNeedsStronger": "Įveskite stiprų sugeneruotą slaptažodį, kad įjungtumėte numatytąjį salt.",
             "defaultSaltTier128": "128-bit (rekomenduojama, reikia 20+ simbolių slaptažodžio)",
             "defaultSaltTier256": "256-bit (griežtesnis, reikia 39+ simbolių slaptažodžio)",
-            "defaultSaltTierMeaning": "Du lygiai nustato, kiek stiprus turi būti jūsų slaptažodis, o ne druskos dydį: druska yra viena, 32 baitų, ta pati kiekvienam saugyklai su numatytąja druska.",
+            "defaultSaltTierMeaning": "Du lygiai nustato, kiek stiprus turi būti jūsų slaptažodis, o ne druskos dydį: druska yra viena, 32 baitų, ta pati kiekvienai saugyklai su numatytąja druska.",
             "defaultSaltValueLabel": "Vieša numatytoji druska (AeroCrypt v3), SHA-256 nuo"
         },
         "modalGuard": {

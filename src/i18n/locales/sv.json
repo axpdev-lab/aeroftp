@@ -3353,24 +3353,24 @@
             "applyPrivacy": "Tillämpa",
             "applyPrivacyAll": "Tillämpa på {count} objekt",
             "checksumNotOnBackend": "{backend} kan inte skapa den här hashen på serversidan",
-            "checksumServerSide": "Kontrollsummorna kommer från servern; filen hämtas aldrig för att beräkna dem, så bara det som denna backend redan lagrar erbjuds.",
-            "checksumNegotiated": "Den här listan är vad just den här servern annonserade, så en viss fil kan ändå sakna alla.",
-            "checksumCiphertext": "Den här filen ligger i Overlays Path, så servern lagrar den krypterad. Kontrollsummorna täcker de krypterade byten och kommer inte att stämma med en hash av din lokala kopia: det är precis vad kryptering innebär, inte ett fel. Använd \"aeroftp-cli crypt verify\" för att stämma av det dekrypterade innehållet mot dina lokala filer.",
+            "checksumServerSide": "Hasharna kommer från servern; filen hämtas aldrig för att beräkna en hash, så bara det som denna backend redan lagrar erbjuds.",
+            "checksumNegotiated": "Den här listan är vad just den här servern annonserade, så en viss fil kan ändå helt sakna hash.",
+            "checksumCiphertext": "Den här filen ligger i Overlays Path, så servern lagrar den krypterad. De här hasharna täcker de krypterade bytena och kommer inte att stämma med en hash av din lokala kopia: det är precis vad kryptering innebär, inte ett fel. Använd \"aeroftp-cli crypt verify\" för att stämma av det dekrypterade innehållet mot dina lokala filer.",
             "checksumAbsentForObject": "Den här backenden kan leverera {algorithm}, men har ingen lagrad för det här objektet. Inget hämtades för att beräkna den.",
             "checksumMatrixLink": "Vilken backend stöder vilken hash",
             "checksumCaveats": {
                 "s3-etag": "ETag är objektets MD5 bara för objekt i en enda del som inte är SSE-KMS-krypterade; för övriga utelämnas den i stället för att gissas.",
-                "b2-unverified": "Stora filer och uppladdningar som B2 har registrerat som unverified bär ingen användbar SHA-1.",
-                "sftp-sha256sum": "Beräknas av fjärrvärden med sha256sum över en SSH-kanal: byten läses på servern och skickas aldrig till dig. Utelämnas om värden saknar sha256sum.",
+                "b2-unverified": "Stora filer har ingen användbar SHA-1, och detsamma gäller uppladdningar som B2 har registrerat som unverified.",
+                "sftp-sha256sum": "Beräknas av fjärrvärden med sha256sum över en SSH-kanal: bytena läses på servern och skickas aldrig till dig. Utelämnas om värden saknar sha256sum.",
                 "ftp-negotiated": "Beror på vad servern annonserar i FEAT: HASH, eller de äldre XMD5, XSHA1 och XCRC.",
                 "webdav-oc-checksums": "Endast ownCloud och Nextcloud publicerar kontrollsummor, och bara för filer som laddats upp av en klient som skickade en.",
-                "drive-workspace-docs": "Inbyggda Google Workspace-dokument har ingen byteström och därmed ingen kontrollsumma.",
+                "drive-workspace-docs": "Nativa Google Workspace-dokument har ingen byteström och därmed ingen kontrollsumma.",
                 "onedrive-hashes": "Vilken som finns beror på kontot: personligt OneDrive publicerar QuickXorHash, företag och SharePoint oftast SHA-1 och SHA-256.",
                 "dropbox-content-hash": "Ingen vanlig filkontrollsumma: en SHA-256 över SHA-256 för varje 4 MiB-block. Den går bara att jämföra med en annan Dropbox content hash.",
                 "koofr-proprietary": "Koofrs egen hash. Den går bara att jämföra med en annan Koofr-hash.",
                 "github-blob-sha": "git-blobbens SHA-1, beräknad över ett git-huvud plus innehållet, så den stämmer inte med en vanlig SHA-1 av samma fil.",
                 "immich-asset-checksum": "Kontrollsumman för objektet som Immich registrerar vid uppladdning.",
-                "crypt-overlay-ciphertext": "Kontrollsumman täcker de krypterade byten som lagras på servern."
+                "crypt-overlay-ciphertext": "Kontrollsumman täcker de krypterade bytena som lagras på servern."
             }
         },
         "duplicates": {

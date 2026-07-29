@@ -3353,24 +3353,24 @@
             "applyPrivacy": "Aplicar",
             "applyPrivacyAll": "Aplicar a {count} elementos",
             "checksumNotOnBackend": "{backend} no puede generar este hash en el servidor",
-            "checksumServerSide": "Los resúmenes provienen del servidor; el archivo nunca se descarga para calcularlos, así que solo se ofrece lo que este backend ya almacena.",
-            "checksumNegotiated": "Esta lista es lo que anunció este servidor en concreto, por lo que un archivo determinado puede seguir sin tener ninguno.",
-            "checksumCiphertext": "Este archivo está dentro del Overlays Path, así que el servidor lo almacena cifrado. Estos resúmenes cubren los bytes cifrados y no coincidirán con el hash de tu copia local: eso es lo que significa cifrar, no un error. Usa \"aeroftp-cli crypt verify\" para comparar el contenido descifrado con tus archivos locales.",
+            "checksumServerSide": "Los hashes provienen del servidor; el archivo nunca se descarga para calcular uno, así que solo se ofrece lo que este backend ya almacena.",
+            "checksumNegotiated": "Esta lista es lo que anunció este servidor en concreto, por lo que un archivo determinado puede seguir sin tener ningún hash.",
+            "checksumCiphertext": "Este archivo está dentro del Overlays Path, así que el servidor lo almacena cifrado. Estos hashes cubren los bytes cifrados y no coincidirán con el hash de tu copia local: eso es lo que significa cifrar, no un error. Usa \"aeroftp-cli crypt verify\" para comparar el contenido descifrado con tus archivos locales.",
             "checksumAbsentForObject": "Este backend puede ofrecer {algorithm}, pero no tiene ninguno almacenado para este objeto. No se descargó nada para calcularlo.",
             "checksumMatrixLink": "Qué backend admite qué hash",
             "checksumCaveats": {
                 "s3-etag": "El ETag es el MD5 del objeto solo para objetos de una sola parte que no estén cifrados con SSE-KMS; para los demás se omite en lugar de adivinarlo.",
-                "b2-unverified": "Los archivos grandes y las subidas que B2 registró como no verificadas no llevan un SHA-1 utilizable.",
+                "b2-unverified": "Los archivos grandes no tienen un SHA-1 utilizable, y tampoco lo tienen las subidas que B2 registró como no verificadas.",
                 "sftp-sha256sum": "Calculado por el host remoto con sha256sum a través de un canal SSH: los bytes se leen en el servidor, nunca se te envían. Se omite si el host no tiene sha256sum.",
                 "ftp-negotiated": "Depende de lo que el servidor anuncie en FEAT: HASH, o los más antiguos XMD5, XSHA1 y XCRC.",
-                "webdav-oc-checksums": "Solo ownCloud y Nextcloud publican sumas de comprobación, y solo para archivos subidos por un cliente que envió una.",
-                "drive-workspace-docs": "Los documentos nativos de Google Workspace no tienen flujo de bytes y, por tanto, no tienen resumen.",
+                "webdav-oc-checksums": "Solo ownCloud y Nextcloud publican sumas de verificación, y solo para archivos subidos por un cliente que envió una.",
+                "drive-workspace-docs": "Los documentos nativos de Google Workspace no tienen flujo de bytes y, por tanto, no tienen hash.",
                 "onedrive-hashes": "Cuál está presente depende de la cuenta: OneDrive personal publica QuickXorHash; empresa y SharePoint, normalmente SHA-1 y SHA-256.",
-                "dropbox-content-hash": "No es un resumen simple del archivo: es un SHA-256 sobre el SHA-256 de cada bloque de 4 MiB. Solo se compara con otro content hash de Dropbox.",
+                "dropbox-content-hash": "No es un hash simple del archivo: es un SHA-256 sobre el SHA-256 de cada bloque de 4 MiB. Solo se compara con otro content hash de Dropbox.",
                 "koofr-proprietary": "El hash propio de Koofr. Solo se compara con otro hash de Koofr.",
                 "github-blob-sha": "El SHA-1 del blob de git, calculado sobre una cabecera git más el contenido, por lo que no coincide con un SHA-1 simple del mismo archivo.",
-                "immich-asset-checksum": "La suma de comprobación del recurso que Immich registra al subirlo.",
-                "crypt-overlay-ciphertext": "El resumen cubre los bytes cifrados almacenados en el servidor."
+                "immich-asset-checksum": "La suma de verificación del recurso que Immich registra al subirlo.",
+                "crypt-overlay-ciphertext": "El hash cubre los bytes cifrados almacenados en el servidor."
             }
         },
         "duplicates": {
@@ -5308,7 +5308,7 @@
             "defaultSaltNeedsStronger": "Introduce una contraseña generada segura para activar la sal predeterminada.",
             "defaultSaltTier128": "128-bit (recomendado, necesita una contraseña de 20+ caracteres)",
             "defaultSaltTier256": "256-bit (más estricto, necesita una contraseña de 39+ caracteres)",
-            "defaultSaltTierMeaning": "Los dos niveles fijan cuán fuerte debe ser tu contraseña, no el tamaño del salt: hay un único salt, de 32 bytes, el mismo para cada caja fuerte con salt predeterminado.",
+            "defaultSaltTierMeaning": "Los dos niveles fijan lo fuerte que debe ser tu contraseña, no el tamaño del salt: hay un único salt, de 32 bytes, el mismo para todas las bóvedas con salt predeterminado.",
             "defaultSaltValueLabel": "Salt predeterminado público (AeroCrypt v3), SHA-256 de"
         },
         "modalGuard": {

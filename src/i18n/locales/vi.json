@@ -3353,24 +3353,24 @@
             "applyPrivacy": "Áp dụng",
             "applyPrivacyAll": "Áp dụng cho {count} mục",
             "checksumNotOnBackend": "{backend} không thể tạo mã băm này ở phía máy chủ",
-            "checksumServerSide": "Các bản tóm lược đến từ máy chủ; tệp không bao giờ được tải xuống để tính chúng, nên chỉ những gì backend này đã lưu mới được đưa ra.",
-            "checksumNegotiated": "Danh sách này là những gì chính máy chủ đó thông báo, nên một tệp cụ thể vẫn có thể không có mã nào.",
-            "checksumCiphertext": "Tệp này nằm trong Overlays Path, nên máy chủ lưu nó ở dạng đã mã hoá. Các bản tóm lược này bao trùm các byte đã mã hoá và sẽ không khớp với mã băm của bản sao cục bộ: đó chính là ý nghĩa của mã hoá, không phải lỗi. Hãy dùng \"aeroftp-cli crypt verify\" để đối chiếu nội dung đã giải mã với các tệp cục bộ của bạn.",
+            "checksumServerSide": "Các mã băm đến từ máy chủ; tệp không bao giờ được tải xuống để tính một mã băm, nên chỉ những gì backend này đã lưu sẵn mới được đưa ra.",
+            "checksumNegotiated": "Danh sách này là những gì chính máy chủ đó thông báo, nên một tệp cụ thể vẫn có thể không có mã băm nào.",
+            "checksumCiphertext": "Tệp này nằm trong Overlays Path, nên máy chủ lưu nó ở dạng đã mã hoá. Các mã băm này bao trùm các byte đã mã hoá và sẽ không khớp với mã băm của bản sao cục bộ: đó chính là ý nghĩa của mã hoá, không phải lỗi. Hãy dùng \"aeroftp-cli crypt verify\" để đối chiếu nội dung đã giải mã với các tệp cục bộ của bạn.",
             "checksumAbsentForObject": "Backend này có thể cung cấp {algorithm}, nhưng không lưu mã nào cho đối tượng này. Không có gì được tải xuống để tính nó.",
             "checksumMatrixLink": "Backend nào hỗ trợ mã băm nào",
             "checksumCaveats": {
-                "s3-etag": "ETag chỉ là MD5 của đối tượng với các đối tượng một phần không được mã hoá bằng SSE-KMS; với những trường hợp khác thì bỏ qua thay vì đoán.",
-                "b2-unverified": "Các tệp lớn và các lần tải lên mà B2 ghi nhận là chưa xác minh không mang SHA-1 dùng được.",
+                "s3-etag": "ETag là MD5 của đối tượng chỉ đối với các đối tượng được tải lên trong một phần duy nhất và không được mã hoá bằng SSE-KMS; với các trường hợp còn lại, nó được bỏ qua thay vì đoán.",
+                "b2-unverified": "Các tệp lớn không có SHA-1 dùng được, và các lần tải lên được B2 ghi nhận là chưa xác minh cũng vậy.",
                 "sftp-sha256sum": "Do máy chủ từ xa tính bằng sha256sum qua một kênh SSH: các byte được đọc trên máy chủ và không bao giờ gửi tới bạn. Bỏ qua nếu máy chủ không có sha256sum.",
                 "ftp-negotiated": "Phụ thuộc vào những gì máy chủ thông báo trong FEAT: HASH, hoặc XMD5, XSHA1 và XCRC cũ hơn.",
-                "webdav-oc-checksums": "Chỉ ownCloud và Nextcloud công bố tổng kiểm tra, và chỉ với các tệp do một ứng dụng khách có gửi kèm tổng kiểm tra tải lên.",
-                "drive-workspace-docs": "Tài liệu gốc của Google Workspace không có luồng byte nên cũng không có bản tóm lược.",
+                "webdav-oc-checksums": "Chỉ ownCloud và Nextcloud công bố tổng kiểm tra, và chỉ với những tệp được tải lên bởi một ứng dụng khách có gửi kèm tổng kiểm tra.",
+                "drive-workspace-docs": "Tài liệu định dạng gốc của Google Workspace không có luồng byte nên cũng không có mã băm.",
                 "onedrive-hashes": "Loại nào hiện diện tuỳ theo tài khoản: OneDrive cá nhân công bố QuickXorHash, tài khoản doanh nghiệp và SharePoint thường là SHA-1 và SHA-256.",
-                "dropbox-content-hash": "Không phải bản tóm lược tệp thông thường: đó là một SHA-256 trên SHA-256 của từng khối 4 MiB. Nó chỉ so sánh được với một content hash khác của Dropbox.",
+                "dropbox-content-hash": "Không phải mã băm tệp thông thường: đó là một SHA-256 trên SHA-256 của từng khối 4 MiB. Nó chỉ so sánh được với một content hash khác của Dropbox.",
                 "koofr-proprietary": "Mã băm riêng của Koofr. Nó chỉ so sánh được với một mã băm Koofr khác.",
                 "github-blob-sha": "SHA-1 của git blob, tính trên phần đầu git cộng với nội dung, nên nó không khớp với SHA-1 thông thường của cùng tệp đó.",
                 "immich-asset-checksum": "Tổng kiểm tra của tài nguyên mà Immich ghi lại lúc tải lên.",
-                "crypt-overlay-ciphertext": "Bản tóm lược bao trùm các byte đã mã hoá được lưu trên máy chủ."
+                "crypt-overlay-ciphertext": "Mã băm bao trùm các byte đã mã hoá được lưu trên máy chủ."
             }
         },
         "duplicates": {

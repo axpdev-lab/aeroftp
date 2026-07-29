@@ -3352,25 +3352,25 @@
             "visibility": "Keterlihatan",
             "applyPrivacy": "Guna",
             "applyPrivacyAll": "Guna pada {count} item",
-            "checksumNotOnBackend": "{backend} tidak dapat menghasilkan cincangan ini di pihak pelayan",
-            "checksumServerSide": "Cincangan datang daripada pelayan; fail tidak pernah dimuat turun untuk mengiranya, jadi hanya apa yang sudah disimpan oleh backend ini ditawarkan.",
-            "checksumNegotiated": "Senarai ini ialah apa yang diiklankan oleh pelayan tertentu ini, jadi sesuatu fail mungkin tetap tiada satu pun.",
-            "checksumCiphertext": "Fail ini berada di dalam Overlays Path, jadi pelayan menyimpannya dalam keadaan disulitkan. Cincangan ini meliputi bait yang disulitkan dan tidak akan sepadan dengan cincangan salinan setempat anda: itulah maksud penyulitan, bukan satu ralat. Gunakan \"aeroftp-cli crypt verify\" untuk menyemak kandungan yang dinyahsulit terhadap fail setempat anda.",
+            "checksumNotOnBackend": "{backend} tidak dapat menghasilkan hash ini di pihak pelayan",
+            "checksumServerSide": "Hash datang daripada pelayan; fail tidak pernah dimuat turun untuk mengiranya, jadi hanya apa yang sudah disimpan oleh backend ini ditawarkan.",
+            "checksumNegotiated": "Senarai ini ialah apa yang diiklankan oleh pelayan tertentu ini, jadi sesebuah fail mungkin masih tiada hash langsung.",
+            "checksumCiphertext": "Fail ini berada di dalam Overlays Path, jadi pelayan menyimpannya dalam keadaan disulitkan. Hash ini meliputi bait yang disulitkan dan tidak akan sepadan dengan hash salinan setempat anda: itulah maksud penyulitan, bukan satu ralat. Gunakan \"aeroftp-cli crypt verify\" untuk menyemak kandungan yang dinyahsulit terhadap fail setempat anda.",
             "checksumAbsentForObject": "Backend ini boleh menyediakan {algorithm}, tetapi tiada satu pun disimpan untuk objek ini. Tiada apa-apa dimuat turun untuk mengiranya.",
-            "checksumMatrixLink": "Backend yang mana menyokong cincangan yang mana",
+            "checksumMatrixLink": "Backend mana menyokong hash mana",
             "checksumCaveats": {
                 "s3-etag": "ETag ialah MD5 objek hanya bagi objek satu bahagian yang tidak disulitkan dengan SSE-KMS; bagi yang lain ia ditinggalkan dan bukannya diteka.",
-                "b2-unverified": "Fail besar dan muat naik yang direkodkan B2 sebagai belum disahkan tidak membawa SHA-1 yang boleh digunakan.",
+                "b2-unverified": "Fail besar tiada SHA-1 yang boleh digunakan, dan begitu juga muat naik yang direkodkan B2 sebagai belum disahkan.",
                 "sftp-sha256sum": "Dikira oleh hos jauh dengan sha256sum melalui saluran SSH: bait dibaca di pelayan dan tidak pernah dihantar kepada anda. Ditinggalkan jika hos tiada sha256sum.",
                 "ftp-negotiated": "Bergantung pada apa yang diiklankan pelayan dalam FEAT: HASH, atau XMD5, XSHA1 dan XCRC yang lebih lama.",
-                "webdav-oc-checksums": "Hanya ownCloud dan Nextcloud menerbitkan jumlah semak, dan hanya untuk fail yang dimuat naik oleh klien yang menghantarnya.",
-                "drive-workspace-docs": "Dokumen asli Google Workspace tiada aliran bait dan oleh itu tiada cincangan.",
+                "webdav-oc-checksums": "Hanya ownCloud dan Nextcloud menerbitkan checksum, dan hanya untuk fail yang dimuat naik oleh klien yang menghantar checksum tersebut.",
+                "drive-workspace-docs": "Dokumen format asli Google Workspace tiada aliran bait dan oleh itu tiada hash.",
                 "onedrive-hashes": "Yang mana hadir bergantung pada akaun: OneDrive peribadi menerbitkan QuickXorHash, akaun perniagaan dan SharePoint biasanya SHA-1 dan SHA-256.",
-                "dropbox-content-hash": "Bukan cincangan fail biasa: satu SHA-256 ke atas SHA-256 setiap blok 4 MiB. Ia hanya boleh dibandingkan dengan content hash Dropbox yang lain.",
-                "koofr-proprietary": "Cincangan milik Koofr sendiri. Ia hanya boleh dibandingkan dengan cincangan Koofr yang lain.",
+                "dropbox-content-hash": "Bukan hash fail biasa: satu SHA-256 ke atas SHA-256 setiap blok 4 MiB. Ia hanya boleh dibandingkan dengan content hash Dropbox yang lain.",
+                "koofr-proprietary": "Hash milik Koofr sendiri. Ia hanya boleh dibandingkan dengan hash Koofr yang lain.",
                 "github-blob-sha": "SHA-1 blob git, dikira ke atas pengepala git serta kandungannya, jadi ia tidak sepadan dengan SHA-1 biasa bagi fail yang sama.",
-                "immich-asset-checksum": "Jumlah semak aset yang direkodkan Immich semasa muat naik.",
-                "crypt-overlay-ciphertext": "Cincangan meliputi bait disulitkan yang disimpan pada pelayan."
+                "immich-asset-checksum": "Checksum aset yang direkodkan Immich semasa muat naik.",
+                "crypt-overlay-ciphertext": "Hash meliputi bait disulitkan yang disimpan pada pelayan."
             }
         },
         "duplicates": {
@@ -5308,8 +5308,8 @@
             "defaultSaltNeedsStronger": "Masukkan kata laluan kuat yang dijana untuk menghidupkan salt lalai.",
             "defaultSaltTier128": "128-bit (disyorkan, memerlukan kata laluan 20+ aksara)",
             "defaultSaltTier256": "256-bit (lebih ketat, memerlukan kata laluan 39+ aksara)",
-            "defaultSaltTierMeaning": "Dua peringkat ini menetapkan sekuat mana kata laluan anda perlu, bukan saiz garam: garamnya satu sahaja, 32 bait, sama bagi setiap peti dengan garam lalai.",
-            "defaultSaltValueLabel": "Garam lalai awam (AeroCrypt v3), SHA-256 bagi"
+            "defaultSaltTierMeaning": "Dua peringkat ini menetapkan sekuat mana kata laluan anda perlu jadi, bukan saiz salt: salt hanya ada satu, 32 bait, sama bagi setiap vault yang menggunakan salt lalai.",
+            "defaultSaltValueLabel": "Salt lalai awam (AeroCrypt v3), SHA-256 bagi"
         },
         "modalGuard": {
             "busyTitle": "Operasi sedang berjalan",
